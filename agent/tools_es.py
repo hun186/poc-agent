@@ -469,8 +469,8 @@ class ESSearchNews(Tool):
             "變化", "綜整", "報告", "情監偵", "回報",
             "年", "月份", "月", "日",
             # 常見地理詞：這些多半是「範圍」，不是你要的「055 / 遼寧號」之類主體
-            "台灣海峽", "臺灣海峽", "台海", "臺海",
-            "東海", "南海", "黃海", "渤海"
+            #"台灣海峽", "臺灣海峽", "台海", "臺海",
+            #"東海", "南海", "黃海", "渤海"
         }
         return [t for t in terms if t not in stop]
     def _compute_effective_terms(self, q: str) -> List[str]:
@@ -1008,6 +1008,22 @@ class ESSearchNews(Tool):
                     ev["article_title"] = h_title
 
                 evidence_snippets.append(ev)
+                
+        # 若 evidence_snippets 被過濾到 0，但 hits 還很多，保險起見回退成「每個 hit 至少取一段」
+        if not evidence_snippets and out_hits:
+            for h in out_hits[:50]:  # 控制數量
+                for c in (h.get("citations") or [])[:1]:
+                    ev = {
+                        "uuid": h.get("uuid"),
+                        "text": c.get("text", ""),
+                        "article_date_iso": c.get("date_iso", "") or h.get("article_date_iso", ""),
+                        "paragraph_id": c.get("paragraph_id"),
+                        "source_id": c.get("source_id"),
+                        "subject": h.get("subject"),
+                        "article_title": h.get("article_title"),
+                    }
+                    evidence_snippets.append(ev)
+                    
         print(
             f"[es_search_news] query={raw_query!r}, es_query={es_query!r}, "
             f"hits={len(out_hits)}, "
