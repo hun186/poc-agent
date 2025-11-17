@@ -22,6 +22,7 @@ from agent.agent import build_model  # 直接重用你已經有的 LiteLLMModel 
 from agent.direct_llm_json import OpenAIStyleOllama, task_tags, task_title, task_followups
 
 PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE")
+print("PUBLIC_API_BASE",PUBLIC_API_BASE)
 
 json_llm = OpenAIStyleOllama(
     base_url=os.getenv("MODEL_BASE_URL", "http://localhost:11434"),
@@ -30,10 +31,10 @@ json_llm = OpenAIStyleOllama(
 )
 
 def _abs_url(request: Request, path: str) -> str:
-    print("PUBLIC_API_BASE",PUBLIC_API_BASE)
+    #print("PUBLIC_API_BASE",PUBLIC_API_BASE)
     base = (PUBLIC_API_BASE or str(request.base_url)).rstrip("/")
-    print("base",base)
-    print(f"{base}{path}")
+    #print("base",base)
+    #print(f"href {base}{path}")
     return f"{base}{path}"
 
 

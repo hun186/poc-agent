@@ -1011,7 +1011,7 @@ class ESSearchNews(Tool):
                 
         # 若 evidence_snippets 被過濾到 0，但 hits 還很多，保險起見回退成「每個 hit 至少取一段」
         if not evidence_snippets and out_hits:
-            for h in out_hits[:50]:  # 控制數量
+            for h in out_hits[:100]:  # 控制數量
                 for c in (h.get("citations") or [])[:1]:
                     ev = {
                         "uuid": h.get("uuid"),
