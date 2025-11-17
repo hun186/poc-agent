@@ -223,7 +223,7 @@ SYSTEM = """
     }
 - 特別要求：若工具回傳之 citation 內含 subject/article_title，請原樣放入 citations[].subject / citations[].article_title，**不得省略或改寫**。
 - 若 es_search_news 沒有 evidence_snippets，則改用 highlight 的 rawInfo.content 片段填入 citations[].text。
-- 輸出時請保留最多 10–50 則具代表性的 citations，確保每則都附帶 text 與 uuid。
+- 輸出時請保留最多 50 則具代表性的 citations，確保每則都附帶 text 與 uuid。
 - 預設以繁體中文臺灣慣用語回答，除非使用者有特別指明其他語種需求。
 """
 

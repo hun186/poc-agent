@@ -527,7 +527,8 @@ class ESSearchNews(Tool):
         recency_boost: Optional[bool],
         recency_field: Optional[str],
         recency_scale: Optional[str],
-        with_date: bool = True
+        with_date: bool = True,
+        effective_terms: Optional[List[str]] = None,  # ★ 新增
     ) -> Dict[str, Any]:
 
         filters = []
@@ -609,8 +610,19 @@ class ESSearchNews(Tool):
                 "query": {
                     "bool": {
                         "should": [
-                            {"match_phrase": {"multidim_event_json.evidence_snippets.text": q}},
-                            {"match": {"multidim_event_json.evidence_snippets.text": {"query": q, "operator": "and"}}}
+                            {
+                                "match_phrase": {
+                                    "multidim_event_json.evidence_snippets.text": q
+                                }
+                            },
+                            {
+                                "match": {
+                                    "multidim_event_json.evidence_snippets.text": {
+                                        "query": q,
+                                        "operator": "and"
+                                    }
+                                }
+                            }
                         ],
                         "minimum_should_match": 1
                     }
@@ -635,6 +647,43 @@ class ESSearchNews(Tool):
                 }
             }
         }
+
+        # ★ 在 nested 裡也加入平台家族同義詞，強化 snippet 命中
+        if effective_terms:
+            ev_should = evidence_nested["nested"]["query"]["bool"]["should"]
+            for t in effective_terms:
+                ev_should.append({
+                    "match_phrase": {
+                        "multidim_event_json.evidence_snippets.text": t
+                    }
+                })
+        
+        # ★ 4) 平台同義詞：用 OR should 加強 rawInfo.content / subject / title 命中
+        if effective_terms:
+            platform_shoulds = []
+
+            # rawInfo.content
+            platform_shoulds.extend(
+                {"match_phrase": {"rawInfo.content": t}} for t in effective_terms
+            )
+
+            # communication.subject
+            platform_shoulds.extend(
+                {"match_phrase": {"communication.subject": t}} for t in effective_terms
+            )
+
+            # article_title
+            platform_shoulds.extend(
+                {"match_phrase": {"multidim_event_json.article_title": t}} for t in effective_terms
+            )
+
+            shoulds.append({
+                "bool": {
+                    "should": platform_shoulds,
+                    "minimum_should_match": 1
+                }
+            })
+            
         shoulds.append(evidence_nested)
     
         base_bool = {
@@ -766,23 +815,19 @@ class ESSearchNews(Tool):
         
         raw_query = (query or "").strip()
         
-        # ★ 新增：先算出平台家族關鍵詞
+        # ★ 先算出平台家族關鍵詞
         effective_terms = self._compute_effective_terms(raw_query)
-        # ★ 新增：用家族詞擴充 ES 查詢字串
         
+        # ★ ES 的主查詢一律用使用者原始 query
         es_query = raw_query
-        if effective_terms:
-            # 只把不在原 query 裡的詞加進去，避免重複
-            extra_terms = [t for t in effective_terms if t not in raw_query]
-            if extra_terms:
-                es_query = raw_query + " " + " ".join(extra_terms)
                 
         # 1) 含日期的主查詢：改用 es_query
         body = self._build_query_body(
             es_query,
             must_high_value, must_selected, size, date_from, date_to,
             selected_boost, high_value_boost, recency_boost, recency_field, recency_scale,
-            with_date=True
+            with_date=True,
+            effective_terms=effective_terms,  # ★ 傳入同義詞
         )
         try:
             #res = ES.search(index=ES_INDEX, body=body, params={"error_trace": "true"})
@@ -797,7 +842,8 @@ class ESSearchNews(Tool):
             body = self._build_query_body(
                 query, must_high_value, must_selected, size, None, None,
                 selected_boost, high_value_boost, recency_boost, recency_field, recency_scale,
-                with_date=False
+                with_date=False,
+                effective_terms=effective_terms,
             )
             try:
                 #res = ES.search(index=ES_INDEX, body=body, params={"error_trace": "true"})
@@ -1010,7 +1056,8 @@ class ESSearchNews(Tool):
                 evidence_snippets.append(ev)
                 
         # 若 evidence_snippets 被過濾到 0，但 hits 還很多，保險起見回退成「每個 hit 至少取一段」
-        if not evidence_snippets and out_hits:
+        # ★ 只有在「沒有抓到任何有效主題詞」時，才啟用 fallback
+        if not evidence_snippets and out_hits and not effective_terms:
             for h in out_hits[:100]:  # 控制數量
                 for c in (h.get("citations") or [])[:1]:
                     ev = {
