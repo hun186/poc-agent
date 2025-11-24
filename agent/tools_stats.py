@@ -29,6 +29,10 @@ class AggregateMonthQuarter(Tool):
         "根據 evidence_snippets 的日期欄位，"
         "以『文件 × 日期』為單位，統計每日、每月與每季的出現次數，"
         "並回傳文件總數與片段總數。"
+        "重要：請直接使用 es_search_news 回傳的 evidence_snippets 全部元素，"
+        "不要再自行用關鍵字或其它條件對 evidence_snippets 做二次篩選"
+        "（例如 if keyword in txt: 這種寫法），"
+        "以免把 evidence_snippets 過濾成空清單，導致統計結果錯誤地顯示為 0。"
     )
 
     # es_search_news 會傳一個 snippet list 進來
@@ -36,11 +40,13 @@ class AggregateMonthQuarter(Tool):
         "evidence_snippets": {
             "type": "array",
             "items": {
-                "type": "object"   # 每個元素是一個 dict/snippet
+                "type": "object"
             },
             "description": (
                 "包含日期與 uuid 的 snippet 陣列；"
                 "建議至少具備：uuid、article_date_iso 或 date_iso。"
+                "請直接把 es_search_news 回傳的 evidence_snippets 整個 list 傳入，"
+                "不要再用關鍵字檢查或手動過濾。"
             ),
         }
     }

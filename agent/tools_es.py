@@ -7,8 +7,10 @@
 
 import os
 import re
+import unicodedata
 import json
 from typing import Optional, List, Dict, Any
+from agent.llm_utils.ollama_client import call_llm
 import textwrap
 import requests
 from elasticsearch import Elasticsearch, BadRequestError
@@ -36,11 +38,11 @@ def _as_blocks(md):
 
 # 預設內建一份（防止沒給 config 也能用）
 _DEFAULT_PLATFORM_SYNONYMS: Dict[str, List[str]] = {
-  "東風": ["東風", "東風飛彈", "東風導彈", "DF", "DF-"],
-  "DF-11": ["DF-11", "DF11", "東風11", "東風-11", "東風11型", "東風11型導彈"],
-  "DF-15": ["DF-15", "DF15", "東風15", "東風-15", "東風15型", "東風15型導彈"],
-  "DF-21": ["DF-21", "DF21", "東風21", "東風-21", "東風21型", "東風21型導彈"],
-  "055": ["055", "055大驅", "055型驅逐艦", "驅逐艦055"]
+  #"東風": ["東風", "東風飛彈", "東風導彈", "DF", "DF-"],
+  #"DF-11": ["DF-11", "DF11", "東風11", "東風-11", "東風11型", "東風11型導彈"],
+  #"DF-15": ["DF-15", "DF15", "東風15", "東風-15", "東風15型", "東風15型導彈"],
+  #"DF-21": ["DF-21", "DF21", "東風21", "東風-21", "東風21型", "東風21型導彈"],
+  #"055": ["055", "055大驅", "055型驅逐艦", "驅逐艦055"]
     # 之後你可以自己加：
     # "094": [...],
     # "山東號": [...],
@@ -146,68 +148,367 @@ def _extract_platform_terms_from_query(q: str) -> List[str]:
                 found.add(t)
     return list(found)
 
+def _mark_synonym_hit(ev_text: str, effective_terms: Optional[List[str]]) -> List[str]:
+    """
+    回傳這段文字裡實際命中的同義詞（只做最簡單的字串包含）。
+    用來標記 evidence_snippets 是被哪些 term 擊中的。
+    """
+    if not ev_text or not effective_terms:
+        return []
+    hits = []
+    for t in effective_terms:
+        if t and t in ev_text:
+            hits.append(t)
+    return hits
 def _extract_topic_terms_llm(q: str) -> List[str]:
     """
-    用 LLM 幫忙從自然語言 query 抽「平台 / 武器 / 艦艇」類的關鍵詞。
-    - 回傳值只接受 list[str]，其它一律忽略。
-    - 篩選時仍會再經過 PLATFORM_SYNONYMS 白名單，不會讓 LLM 隨便創平台名。
-    
-    ★ 預設示範用 HTTP 呼叫一個簡單 endpoint：
-      URL 從 TOPIC_LLM_URL 環境變數讀取。
-      你可以改成自己既有的 LLM 呼叫工具。
+    通用關鍵字萃取器：
+    使用 LLM 從自然語言查詢中抽取「重要主題詞 / 關鍵詞」，
+    可用在任何領域。
+
+    - 回傳：list[str]，每個元素是一個關鍵詞或短語
+    - 若無法判斷關鍵詞，回傳空陣列 []
     """
     q = (q or "").strip()
     if not q:
         return []
 
-    llm_url = os.getenv("TOPIC_LLM_URL")
-    if not llm_url:
-        # 沒設定就直接當沒啟用
+    # 視為「有沒有啟用這個功能」的總開關
+    if not os.getenv("TOPIC_LLM_URL"):
         return []
 
-    prompt = textwrap.dedent(f"""
-    你是一個「國防情資查詢關鍵詞萃取器」。
-    使用者會給你一段查詢句子（繁體中文），請只做一件事：
-    - 從句子中找出「平台 / 武器 / 艦艇 / 飛機」這類名稱，
-      例如：東風-15、DF-15、東風15型導彈、094型彈道潛艦、山東號航母、055型驅逐艦。
+    system_prompt = textwrap.dedent("""
+    你是一個「通用查詢關鍵字萃取器」。
+    使用者會給你一段查詢句子或自然語言描述，請只做一件事：
 
-    請遵守以下格式要求：
+    從內容中找出最重要的「關鍵詞 / 主題詞」，例如：
+    - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構
+    - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱
+    - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰
+    - 產品 / 平台 / 型號：武器型號、船艦名、飛機型號、產品型號等
+
+    規則：
     1. 僅輸出一個 JSON 陣列（array of string），不得有任何多餘文字。
-       例如：["東風-15", "DF-15"]
-    2. 元素必須是簡短名稱或常見稱呼，不要解釋句子意義。
-    3. 若無明確的平台名稱，可以輸出空陣列：[]。
+       例：["川普經濟學", "對等關稅", "美國就業", "物價", "宮古水道"]
+    2. 每個元素應是短語或名詞，不要整句話。
+    3. 優先挑選具體、可檢索的詞：
+       - 例如「川普經濟學」「宮古水道」「東風15型導彈」
+       - 比起「影響」「變化」「情勢」這種抽象詞更重要。
+    4. 不要輸出：
+       - 功能詞：的、和、是否、以及、影響、分析、情況、趨勢 等
+       - 純時間或日期：如 2025年1月、近年來、今天
+       - 單獨的數字：如 15、2025 等
+       - 過於籠統的地理詞：如 世界、全球、國際、亞洲、歐洲（除非明顯是查詢核心）
+    5. 若覺得沒有明顯的關鍵詞，可以輸出空陣列 []。
+    6. 盡量控制在 3～8 個關鍵詞內，寧可少給也不要亂給。
+    """).strip()
 
+    user_prompt = textwrap.dedent(f"""
     使用者查詢如下：
     {q}
-    """)
+    """).strip()
 
     try:
-        resp = requests.post(
-            llm_url,
-            json={"prompt": prompt},
-            timeout=10
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        # 這裡假設你的 LLM 服務直接回 {"result": ["東風-15", "DF-15"]} 或直接回陣列
-        if isinstance(data, list):
-            arr = data
-        elif isinstance(data, dict) and isinstance(data.get("result"), list):
-            arr = data["result"]
-        else:
+        raw = call_llm(user_prompt, system_prompt=system_prompt)
+        if not raw:
+            return []
+
+        data = json.loads(raw)
+        if not isinstance(data, list):
             return []
 
         out: List[str] = []
-        for x in arr:
+        for x in data:
             if isinstance(x, str):
-                x = x.strip()
-                if x:
-                    out.append(x)
+                s = x.strip()
+                if not s:
+                    continue
+                out.append(s)
         return out
     except Exception as e:
         print(f"[ES tools] LLM topic extractor 失敗：{e}")
         return []
 
+def _expand_synonyms_grouped_llm(q: str, core_terms: List[str]) -> Dict[str, List[str]]:
+    """
+    用 LLM 幫忙，針對「每一個核心主題詞」給一組同義詞，
+    並在 LLM 端就完成「同一語意軸的合併」。
+
+    要求 LLM：
+    - 若覺得某些 core term 其實是互為同義詞（或其中一個只是別名 / 英譯），
+      請只保留一個代表核心詞當 key，其餘全部放到該 key 的同義詞陣列中。
+    """
+    q = (q or "").strip()
+    core_terms = [t.strip() for t in (core_terms or []) if t and t.strip()]
+    if not q or not core_terms:
+        return {}
+
+    if not os.getenv("TOPIC_LLM_URL"):
+        return {}
+
+    core_list = ", ".join(f'"{t}"' for t in core_terms)
+
+    system_prompt = textwrap.dedent("""
+    你是一個「文本檢索查詢關鍵詞同義詞擴充器」。
+
+    使用者會提供：
+    - 一段查詢句子（query）
+    - 一組核心關鍵詞（core_terms）
+
+    你的工作只有一件事：
+    1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。
+    2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），
+       請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 value 的陣列裡。
+
+    具體規則：
+
+    【輸出格式】
+    - 僅輸出一個 JSON 物件（object），不得有任何多餘文字。
+      key: 代表核心詞（string）
+      value: 該語意軸的同義詞陣列（array of string）
+
+    【語意軸合併規則】
+    1. 先觀察 core_terms 列表，思考是否有「其實是同一個概念」的核心詞：
+       例如：
+       - 「敘利亞」「Syrian Arab Republic」「Syria」「敘利亞阿拉伯共和國」
+       - 「DF-15」「東風-15」「東風15型導彈」
+    2. 若你判定它們是同一個概念，請：
+       - 從中挑一個代表核心詞作為 key
+         （優先選用 core_terms 中出現較早、且較常用的寫法）
+       - 其他同義寫法（包含原本的核心詞、別名、縮寫）全部放進該 key 的 value 陣列。
+    3. 不要再為同一個概念產生第二個 key。
+       例如不要同時有「敘利亞」和「Syrian Arab Republic」兩個 key。
+
+    【同義詞擴充】
+    1. value 陣列中可以包含：
+       - 其他 core_terms 中的同義寫法
+       - 常見別名、縮寫、英譯
+    2. 不要發明不存在的專有名詞；不確定就少給。
+    3. 若覺得某個核心關鍵詞沒有需要補充，可以讓它的 value 為空陣列 []。
+
+    【子型號 / 子類的嚴謹規則】
+    1. 若核心關鍵詞包含明確子類或型號資訊（例如「東風15型導彈」「DF-21D」「A型流感」「H1N1流感」「Toyota Corolla Altis 1.8」），
+       同義詞必須保留相同的子類或型號，不可以退化成更廣泛的類別。
+       例如：
+       - 「東風15型導彈」可以對應「東風-15」「DF-15」「DF-15A」，但不能對應「DF」「東風」。
+       - 「A型流感」可以對應「甲型流感」「Influenza A」，但不能對應「流感」「influenza」。
+       - 「H1N1流感」可以對應「H1N1 influenza」，但不能對應「季節性流感」。
+    2. 類似地，若關鍵詞包含明確型號、版本號、系列編號（例如「M1A2」「iPhone 15」「F-16V」），
+       同義詞中也必須保留對應的識別資訊（數字或等價符號），不要只給「坦克」「手機」「戰機」這類籠統詞。
+
+    【代表核心詞的選擇原則（說明用，不用輸出）】
+    - 優先選 core_terms 列表中較前面出現，且較自然、常用的寫法。
+    - 例如 core_terms = ["敘利亞", "Syrian Arab Republic"]，
+      建議 key 用 "敘利亞"，value 包含 ["Syrian Arab Republic", ...]。
+    """).strip()
+
+    user_prompt = textwrap.dedent(f"""
+    查詢句子（query）：
+    {q}
+
+    核心關鍵詞（core_terms）：
+    [{core_list}]
+    """).strip()
+
+    try:
+        raw = call_llm(user_prompt, system_prompt=system_prompt)
+        if not raw:
+            return {}
+
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return {}
+
+        # Python 端只做「防呆 + 清洗」
+        final: Dict[str, List[str]] = {}
+
+        for k, v in data.items():
+            if not isinstance(k, str):
+                continue
+            k = k.strip()
+            if not k:
+                continue
+
+            syns: List[str] = []
+            seen: set[str] = set()
+            if isinstance(v, list):
+                for x in v:
+                    if not isinstance(x, str):
+                        continue
+                    s = x.strip()
+                    if not s:
+                        continue
+                    if s == k:
+                        # 不要把自己塞回同義詞
+                        continue
+                    if s in seen:
+                        continue
+                    seen.add(s)
+                    syns.append(s)
+
+            # 若你只想保留「至少有一個同義詞」的語意軸
+            if syns:
+                final[k] = syns
+
+        # （可選）如果你希望最後的 key 一定要是原本的 core_terms 之一，可以在這裡再過一層：
+        core_set = set(core_terms)
+        filtered: Dict[str, List[str]] = {}
+        for k, syns in final.items():
+            if k in core_set:
+                filtered[k] = syns
+        # 若 filtered 不是空的，就用 filtered；否則 fallback 用 final
+        return filtered or final
+
+    except Exception as e:
+        print(f"[ES tools] LLM grouped synonym expander 失敗：{e}")
+        return {}
+    
+def _expand_synonyms_grouped_llm_1121(q: str, core_terms: List[str]) -> Dict[str, List[str]]:
+    """
+    用 LLM 幫忙，針對「每一個核心主題詞」給一組同義詞：
+    輸出格式預期為：
+      {
+        "敘利亞": ["敘利亞阿拉伯共和國", "Syria"],
+        "化學武器": ["化武", "化學兵器", "化學戰爭武器"]
+      }
+    若某個 key 找不到同義詞，可以是空陣列 []。
+    """
+    q = (q or "").strip()
+    core_terms = [t.strip() for t in (core_terms or []) if t and t.strip()]
+    if not q or not core_terms:
+        return {}
+
+    # 若沒設定 TOPIC_LLM_URL，就視為未啟用
+    if not os.getenv("TOPIC_LLM_URL"):
+        return {}
+
+    core_list = ", ".join(f'"{t}"' for t in core_terms)
+
+    system_prompt = textwrap.dedent("""
+    你是一個「新聞查詢關鍵詞同義詞擴充器」。
+    使用者會提供一個查詢句子，以及一組「核心關鍵詞」（core_terms）。
+    你只需要完成一件事：
+
+    - 對於每一個核心關鍵詞，給出常見的同義詞、縮寫或等價寫法（若有）。
+      例如：
+        查詢句子：敘利亞涉嫌使用化學武器
+        核心關鍵詞：["敘利亞", "化學武器"]
+      可以輸出：
+        {
+          "敘利亞": ["敘利亞阿拉伯共和國", "Syria"],
+          "化學武器": ["化武", "化學兵器", "化學戰爭武器"]
+        }
+
+    必須嚴格遵守：
+    1. 僅輸出一個 JSON 物件（object），不得有任何多餘文字。
+       - key：必須是原始核心關鍵詞之一
+       - value：為字串陣列（array of string）
+    2. 在不要發明不存在的專有名詞的前提下，儘量擴充。
+    3. 若覺得某個核心關鍵詞沒有需要補充，可以給空陣列 []。
+    4. 特別規則：避免把「帶有子類或型號」的關鍵詞，錯誤概括成母類。
+    
+    (1) 若核心關鍵詞包含子類或型號資訊（例如「東風15型導彈」「DF-21D」「A型流感」「H1N1流感」「Toyota Corolla Altis 1.8」），
+       同義詞必須保留相同的子類或型號，不可以退化成更廣泛的類別。
+       例如：
+       - 「東風15型導彈」可以對應「東風-15」「DF-15」「DF-15A」，但不能對應「DF」「東風」。
+       - 「A型流感」可以對應「甲型流感」「Influenza A」，但不能對應「流感」「influenza」。
+       - 「H1N1流感」可以對應「H1N1 influenza」，但不能對應「季節性流感」。
+    
+    (2) 類似地，若關鍵詞包含明確型號、版本號、系列編號（例如「M1A2」「iPhone 15」「F-16V」），
+       同義詞中也必須保留對應的識別資訊（數字或等價符號），不要只給「坦克」「手機」「戰機」這類籠統詞。
+
+    """).strip()
+
+    user_prompt = textwrap.dedent(f"""
+    查詢句子：
+    {q}
+
+    核心關鍵詞（core_terms）：
+    [{core_list}]
+    """).strip()
+
+    try:
+        raw = call_llm(user_prompt, system_prompt=system_prompt)
+        if not raw:
+            return {}
+
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return {}
+
+        out: Dict[str, List[str]] = {}
+        for k, v in data.items():
+            if not isinstance(k, str):
+                continue
+            syns: List[str] = []
+            if isinstance(v, list):
+                for x in v:
+                    if isinstance(x, str):
+                        s = x.strip()
+                        if s:
+                            syns.append(s)
+            out[k] = syns
+        return out
+    except Exception as e:
+        print(f"[ES tools] LLM grouped synonym expander 失敗：{e}")
+        return {}
+    
+def _build_ev_from_hit_and_citation(
+    h: dict,
+    c: dict,
+    date_from: str | None,
+    date_to: str | None,
+) -> dict | None:
+    """
+    把單一 hit + citation 轉成一筆 evidence_snippet：
+    - 自動處理 date_iso / event_dates → article_date_iso
+    - 套用 date_from / date_to 篩選
+    - 帶上 uuid / subject / article_title / paragraph_id / source_id
+    """
+    h_uuid = h.get("uuid")
+    h_subject = h.get("subject")
+    h_title = h.get("article_title")
+    h_article_date = h.get("article_date_iso")
+    h_event_dates = h.get("event_dates") or []
+
+    text = c.get("text")
+    if not text:
+        return None
+
+    # 日期推斷：snippet 自己 → 文章日期 → 第一個 event_dates
+    di = c.get("date_iso") or h_article_date
+    if not di and h_event_dates:
+        di = h_event_dates[0]
+    norm_di = _normalize_iso_date(di)
+    
+    # 日期範圍過濾
+    if norm_di:
+        if date_from and norm_di < date_from:
+            return None
+        if date_to and norm_di > date_to:
+            return None
+
+    article_norm = _normalize_iso_date(h_article_date)
+    snippet_norm = _normalize_iso_date(di)  # di 可以是 snippet 自己推斷出來的
+
+    ev = {
+        "uuid": h_uuid,
+        "text": text,
+        # snippet 自己使用的日期欄位（給 aggregate / agent 用）
+        "date_iso": snippet_norm or article_norm or "",
+        "article_date_iso": article_norm or snippet_norm or "",
+        "subject": h_subject,
+        "article_title": h_title,
+    }
+    if "paragraph_id" in c:
+        ev["paragraph_id"] = c["paragraph_id"]
+    if "source_id" in c:
+        ev["source_id"] = c["source_id"]
+
+    return ev
+
+
+    
 def _safe_es_search(body: dict, *, allow_highlight_retry: bool = True):
     try:
         return ES.search(index=ES_INDEX, body=body, params={"error_trace": "true"})
@@ -301,10 +602,20 @@ def _normalize_iso_date(di) -> str | None:
         di = di[0]
     if not isinstance(di, str):
         return None
-    # 例如 2025-06-27T00:00:00.000Z → 2025-06-27
+
+    # 正規化成前 10 碼
     if len(di) >= 10:
-        return di[:10]
-    return None
+        candidate = di[:10]  # e.g. 2025-06-27 / XXXX-01-01
+    else:
+        return None
+
+    # ★ 多一層：確認年份是 4 位數字，否則視為無效日期
+    year_str = candidate[:4]
+    if not year_str.isdigit():
+        return None
+
+    return candidate
+
 
 def _infer_date_for_snippet(text: str, article_date_iso: str | None, timeline_dates: list[str]) -> str | None:
     if not text: return None
@@ -343,6 +654,7 @@ def _make_fallback_snippet(text: str, q: str, width: int = 180) -> str | None:
     end = min(len(text), start + width)
     return text[start:end]
 
+
 # ===== ES 連線 =====
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
 ES_INDEX = os.getenv("ES_INDEX", "news_test")
@@ -365,9 +677,16 @@ RUNTIME_MAPPINGS = {
     }
 }
 '''
+
 class ESSearchNews(Tool):
     name = "es_search_news"
-    description = "BM25 + nested 日期過濾；回傳證據段落、uuid、subject、分數等。"
+    description = (
+        "BM25 + nested 日期過濾；回傳證據段落、uuid、subject、分數等。"
+        #"回傳結果中的 evidence_snippets 欄位，已經是後續統計與趨勢分析可直接使用的最終片段。"
+        #"若之後要做時間統計，請直接把 es_search_news 回傳的 evidence_snippets 整個 list"
+        #"傳給 aggregate_month_quarter，不要再以關鍵字或其它條件對 evidence_snippets 做二次過濾，"
+        #"以免誤將清單過濾成空而讓統計結果變成 0。"
+    )
     inputs = {
         "query": {
             "type": "string",
@@ -388,8 +707,8 @@ class ESSearchNews(Tool):
         },
         "size": {
             "type": "integer",
-            "description": "返回筆數上限（1–60；預設 40）",
-            "default": 40, "minimum": 1, "maximum": 60, "nullable": True
+            "description": "返回筆數上限（1–10000；預設 10000）",
+            "default": 10000, "minimum": 1, "maximum": 10000, "nullable": True
         },
         "date_from": {
             "type": "string",
@@ -465,15 +784,271 @@ class ESSearchNews(Tool):
         # (3) 停用詞（盡量排掉不是「對象」的字）
         stop = {
             "請整理", "相關", "重點", "事件", "活動", "趨勢", "情勢", "狀況", "局勢",
+            "態勢",
             "偵獲", "情況", "情勢摘要", "活動特徵", "特徵",
             "變化", "綜整", "報告", "情監偵", "回報",
+            "分析",
             "年", "月份", "月", "日",
+            "防治",
             # 常見地理詞：這些多半是「範圍」，不是你要的「055 / 遼寧號」之類主體
             #"台灣海峽", "臺灣海峽", "台海", "臺海",
             #"東海", "南海", "黃海", "渤海"
         }
         return [t for t in terms if t not in stop]
-    def _compute_effective_terms(self, q: str) -> List[str]:
+    def _compute_effective_terms(
+        self,
+        q: str
+    ) -> tuple[List[str], Dict[str, List[str]], bool]:
+        """
+        回傳：
+        - core_terms：合併語意軸後的核心主題詞（每一軸只留一個代表詞）
+        - grouped_synonyms：{核心詞: [同義詞...]}，已在 LLM 端做語意軸合併
+        - is_platform_query：若有展開到平台家族即為 True（僅供後續邏輯需要）
+        """
+        q = (q or "").strip()
+        if not q:
+            return [], {}, False
+    
+        # (1) LLM 抽主題詞（人名 / 地名 / 平台 / 重要概念等）
+        llm_terms_raw = _extract_topic_terms_llm(q)  # 沒 URL 會自動回 []
+        llm_terms: List[str] = []
+        seen: set[str] = set()
+        for t in llm_terms_raw:
+            if not isinstance(t, str):
+                continue
+            s = t.strip()
+            if not s or s in seen:
+                continue
+            seen.add(s)
+            llm_terms.append(s)
+    
+        # (2) 查 query 中直接出現的已知平台詞（靠 PLATFORM_SYNONYMS）
+        platform_terms_in_q = _extract_platform_terms_from_query(q)
+    
+        # (3) 平台家族展開（例如「東風-15」→ 各種 DF-15 寫法）
+        base_terms_for_family: List[str] = []
+        seen_base: set[str] = set()
+        for lst in (llm_terms, platform_terms_in_q):
+            for t in lst:
+                t = (t or "").strip()
+                if t and t not in seen_base:
+                    seen_base.add(t)
+                    base_terms_for_family.append(t)
+    
+        platform_family_terms: List[str] = _expand_platform_terms(base_terms_for_family) if base_terms_for_family else []
+    
+        # 是否為「平台型」查詢（只當旗標用，不再給特權）
+        is_platform_query = bool(platform_family_terms)
+    
+        # (4) 初步核心候選詞 = LLM 主題詞 + query 內平台詞 + 平台家族展開
+        ordered_core_candidates: List[str] = []
+        seen_core: set[str] = set()
+        for lst in (llm_terms, platform_terms_in_q, platform_family_terms):
+            for t in lst:
+                t = (t or "").strip()
+                if t and t not in seen_core:
+                    seen_core.add(t)
+                    ordered_core_candidates.append(t)
+    
+        if not ordered_core_candidates:
+            return [], {}, is_platform_query
+    
+        # (5) 呼叫 LLM 做「同義詞擴充 + 語意軸合併」
+        raw_grouped = _expand_synonyms_grouped_llm(q, ordered_core_candidates) or {}
+    
+        # (6) 依 LLM 合併結果調整最終 core_terms：
+        #     - LLM 會選出每一語意軸的代表詞當 key
+        #     - 其他寫法（含原本 core）進 value
+        #     → core_terms 應以這些代表詞為主，再加上沒有被合併到任何軸的孤立詞
+        grouped_synonyms: Dict[str, List[str]] = {}
+        for k, syns in raw_grouped.items():
+            if not isinstance(k, str):
+                continue
+            k = k.strip()
+            if not k:
+                continue
+            clean_syns: List[str] = []
+            seen_syn: set[str] = set()
+            for x in syns:
+                if not isinstance(x, str):
+                    continue
+                s = x.strip()
+                if not s or s == k or s in seen_syn:
+                    continue
+                seen_syn.add(s)
+                clean_syns.append(s)
+            if clean_syns:
+                grouped_synonyms[k] = clean_syns
+    
+        # 代表軸 key
+        rep_keys = list(grouped_synonyms.keys())
+        rep_key_set = set(rep_keys)
+    
+        # 找出「沒被 LLM 合併進任何軸」的孤立核心詞
+        all_syn_values: set[str] = set()
+        for syns in grouped_synonyms.values():
+            for s in syns:
+                all_syn_values.add(s)
+    
+        isolated_cores: List[str] = []
+        for t in ordered_core_candidates:
+            if t in rep_key_set:
+                continue
+            if t in all_syn_values:
+                continue
+            isolated_cores.append(t)
+    
+        # 最終核心詞：代表軸 + 孤立核心詞（順序盡量維持原始）
+        core_terms: List[str] = rep_keys + [t for t in isolated_cores if t not in rep_key_set]
+    
+        if not core_terms:
+            # 若 LLM 全部吃掉了 key（極少見），就退回原始候選詞
+            core_terms = ordered_core_candidates
+    
+        # grouped_synonyms 只保留在 core_terms 中有出現的 key
+        grouped_synonyms = {k: v for k, v in grouped_synonyms.items() if k in core_terms}
+    
+        return core_terms, grouped_synonyms, is_platform_query
+    
+    def _compute_effective_terms_1121(
+        self,
+        q: str
+    ) -> tuple[List[str], Dict[str, List[str]], bool]:
+        """
+        回傳：
+        - core_terms：平台家族 or 原始主題詞（高權重、做嚴格過濾用）
+        - grouped_synonyms：{核心詞: [同義詞…]}，由 LLM 擴充後再清洗過
+        - is_platform_query：有展開到平台家族就算平台查詢
+        """
+        q = (q or "").strip()
+        if not q:
+            return [], {}, False
+
+        # (1) regex 主題詞（含地名 / 平台等，當作 base）
+        #topic_terms = self._extract_topic_terms(q)
+        topic_terms = []
+
+        # (2) 直接在 query 字串掃平台同義詞表（如 DF-15, 055 等）
+        platform_terms_in_q = _extract_platform_terms_from_query(q)
+
+        # (3) 是否啟用 LLM 平台抽取
+        use_llm_mode = os.getenv("USE_LLM_TOPIC_EXTRACTOR", "fallback").lower()
+        llm_terms: List[str] = []
+        need_llm = False
+        if use_llm_mode == "always":
+            need_llm = True
+        elif use_llm_mode == "fallback":
+            if not topic_terms and not platform_terms_in_q:
+                need_llm = True
+
+        if need_llm:
+            llm_terms = _extract_topic_terms_llm(q)
+
+        # (4) 彙整 base_terms
+        base_terms_set: set[str] = set()
+        for lst in (topic_terms, platform_terms_in_q, llm_terms):
+            for t in lst:
+                t = (t or "").strip()
+                if t:
+                    base_terms_set.add(t)
+        base_terms = list(base_terms_set)
+
+        # (5) 平台家族展開（「東風」→ DF-11/15/21…）
+        platform_terms = _expand_platform_terms(base_terms) if base_terms else []
+
+        # 核心主題詞：有平台就用平台，否則用 base
+        core_terms: List[str] = platform_terms or base_terms
+        is_platform_query = bool(platform_terms)
+
+        # (6) 用 LLM 做「群組同義詞擴充」
+        grouped_synonyms: Dict[str, List[str]] = {}
+        try:
+            raw_groups = _expand_synonyms_grouped_llm(q, core_terms) or {}
+        except Exception as ex:
+            print(f"_expand_synonyms_grouped_llm failed: {ex}")
+            raw_groups = {}
+
+        # 清洗 / 防禦性處理：只保留 core_terms 的 key，值是乾淨 list[str]
+        for core in core_terms:
+            syns = raw_groups.get(core, []) or []
+            cleaned: List[str] = []
+            seen: set[str] = set()
+            for x in syns:
+                if not isinstance(x, str):
+                    continue
+                s = x.strip()
+                if not s:
+                    continue
+                if s == core:
+                    continue  # 不要把核心再塞回同義詞
+                if s in seen:
+                    continue
+                seen.add(s)
+                cleaned.append(s)
+            if cleaned:
+                grouped_synonyms[core] = cleaned
+
+        return core_terms, grouped_synonyms, is_platform_query
+
+
+    def _compute_effective_terms_1120(self, q: str) -> tuple[List[str], bool]:
+        """給 forward() 共用：算出 effective_terms（平台家族關鍵詞），並標記是否為平台查詢"""
+        q = (q or "").strip()
+        if not q:
+            return [], False
+    
+        # (1) 原本 regex 版主題詞
+        topic_terms = self._extract_topic_terms(q)
+    
+        # (2) 直接從 query 字串中掃 PLATFORM_SYNONYMS
+        platform_terms_in_q = _extract_platform_terms_from_query(q)
+    
+        # (3) 視需求決定是否啟用 LLM 補強
+        use_llm_mode = os.getenv("USE_LLM_TOPIC_EXTRACTOR", "fallback").lower()
+        llm_terms: List[str] = []
+        need_llm = False
+        if use_llm_mode == "always":
+            need_llm = True
+        elif use_llm_mode == "fallback":
+            if not topic_terms and not platform_terms_in_q:
+                need_llm = True
+    
+        if need_llm:
+            llm_terms = _extract_topic_terms_llm(q)
+    
+        # (4) 彙整所有候選詞 → base_terms
+        base_terms_set: set[str] = set()
+        for lst in (topic_terms, platform_terms_in_q, llm_terms):
+            for t in lst:
+                t = (t or "").strip()
+                if t:
+                    base_terms_set.add(t)
+        base_terms = list(base_terms_set)
+    
+        # 只對 base_terms 做平台家族展開
+        platform_terms = _expand_platform_terms(base_terms) if base_terms else []
+    
+        # 若有展開成功 → 優先用平台家族；否則退回 base_terms
+        effective_terms = platform_terms or base_terms
+        
+        '''
+        print(f"query: {q}")
+        print(f"effective_terms_before_expand_query_synonyms_llm={effective_terms}")
+        try:
+            expanded = _expand_query_synonyms_llm(q, effective_terms)
+            expanded = [t for t in expanded if isinstance(t, str) and t.strip()]
+            effective_terms = expanded
+            print(f"effective_terms_after_expand_query_synonyms_llm={effective_terms}")
+        except Exception as ex:
+            print(f"_expand_query_synonyms_llm failed: {ex}")
+        '''
+        
+        
+        # is_platform_query：有展開到平台同義詞就視為平台查詢
+        is_platform_query = bool(platform_terms)
+    
+        return effective_terms, is_platform_query
+    def _compute_effective_terms_1119(self, q: str) -> List[str]:
         """給 forward() 共用：算出 effective_terms（平台家族關鍵詞）"""
         q = (q or "").strip()
         if not q:
@@ -512,6 +1087,7 @@ class ESSearchNews(Tool):
 
         # 若有展開成功 → 優先用平台家族；否則退回 base_terms
         effective_terms = platform_terms or base_terms
+
         return effective_terms
     
     def _build_query_body(
@@ -528,8 +1104,15 @@ class ESSearchNews(Tool):
         recency_field: Optional[str],
         recency_scale: Optional[str],
         with_date: bool = True,
-        effective_terms: Optional[List[str]] = None,  # ★ 新增
+        effective_terms: Optional[List[str]] = None,   # 保留給後面 snippet 篩選用
+        core_terms: Optional[List[str]] = None,        # 這三個只用在 ES 查詢加分
+        syn_terms: Optional[List[str]] = None,
+        all_terms: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
+
+        core_terms = core_terms or []
+        syn_terms = syn_terms or []
+        all_terms = all_terms or []
 
         filters = []
         if must_high_value:
@@ -543,8 +1126,10 @@ class ESSearchNews(Tool):
         # 日期過濾：nested range
         if with_date and (date_from or date_to):
             rng = {"range": {"multidim_event_json.Event_Timeline.date_iso": {}}}
-            if date_from: rng["range"]["multidim_event_json.Event_Timeline.date_iso"]["gte"] = date_from
-            if date_to:   rng["range"]["multidim_event_json.Event_Timeline.date_iso"]["lte"] = date_to
+            if date_from:
+                rng["range"]["multidim_event_json.Event_Timeline.date_iso"]["gte"] = date_from
+            if date_to:
+                rng["range"]["multidim_event_json.Event_Timeline.date_iso"]["lte"] = date_to
             filters.append({
                 "nested": {
                     "path": "multidim_event_json.Event_Timeline",
@@ -566,18 +1151,54 @@ class ESSearchNews(Tool):
                 }
             })
     
-        shoulds = []
-    
-        # 1) 一般語義檢索
+        shoulds: List[Dict[str, Any]] = []
+
+        # === ① 主力檢索欄位：以解析後欄位為主，原文 content 不參與第一階段 ===
+        structured_fields_main = [
+            # 事件與實體（主力）
+            "multidim_event_json.Event.subject^8",
+            "multidim_event_json.Event.object^7",
+            "multidim_event_json.Event.location^7",
+            "multidim_event_json.core_entities^7",
+            "multidim_event_json.locations^7",
+
+            # 時間線描述（次要，但常有關鍵敘述）
+            "multidim_event_json.Event_Timeline.description^5",
+
+            # 人物 / 涉入方
+            "multidim_event_json.Person.name^5",
+            "multidim_event_json.Person.role^4",
+            "multidim_event_json.Involved_Parties.party_name^4",
+
+            # 標題與主旨
+            "multidim_event_json.article_title^4",
+            "communication.subject^4",
+
+            # 證據 snippet（給語意與說明用）
+            "multidim_event_json.evidence_snippets.text^3",
+        ]
+
+        structured_fields_sqs = [
+            # simple_query_string 版本，權重略降
+            "multidim_event_json.Event.subject^5",
+            "multidim_event_json.Event.object^4",
+            "multidim_event_json.Event.location^4",
+            "multidim_event_json.core_entities^4",
+            "multidim_event_json.locations^4",
+            "multidim_event_json.Event_Timeline.description^3",
+            "multidim_event_json.Person.name^3",
+            "multidim_event_json.Person.role^2",
+            "multidim_event_json.Involved_Parties.party_name^2",
+            "multidim_event_json.article_title^3",
+            "communication.subject^3",
+            "multidim_event_json.evidence_snippets.text^2",
+        ]
+        
+        # 1) 一般語義檢索（第一階段只打解析後欄位，不打 rawInfo.content）
         shoulds.append({
             "multi_match": {
                 "query": q,
-                "fields": [
-                    "communication.subject^4",
-                    "multidim_event_json.article_title^3",
-                    "rawInfo.content^1.5",
-                    "multidim_event_json.evidence_snippets.text"
-                ],
+                "fields": structured_fields_main,
                 "type": "best_fields",
                 "operator": "or"
             }
@@ -585,12 +1206,7 @@ class ESSearchNews(Tool):
         shoulds.append({
             "simple_query_string": {
                 "query": q,
-                "fields": [
-                    "communication.subject^3",
-                    "multidim_event_json.article_title^2",
-                    "rawInfo.content",
-                    "multidim_event_json.evidence_snippets.text"
-                ],
+                "fields": structured_fields_sqs,
                 "default_operator": "and"
             }
         })
@@ -598,13 +1214,11 @@ class ESSearchNews(Tool):
         # 2) 精準加分（keyword/wildcard）
         if q:
             def wc(field, pat): return {"wildcard": {field: {"value": pat}}}
-            # keyword 欄位：避免在 text 欄位 wildcard
             shoulds.append(wc("communication.subject.keyword", f"*{q}*"))
             shoulds.append(wc("multidim_event_json.article_title.raw", f"*{q}*"))
     
         # 3) 直接命中證據段落（nested + inner_hits）
-        #    讓 citations 幾乎一定拿到 text/source_id/paragraph_id
-        evidence_nested = {
+        evidence_nested: Dict[str, Any] = {
             "nested": {
                 "path": "multidim_event_json.evidence_snippets",
                 "query": {
@@ -648,42 +1262,46 @@ class ESSearchNews(Tool):
             }
         }
 
-        # ★ 在 nested 裡也加入平台家族同義詞，強化 snippet 命中
-        if effective_terms:
+        # ★ 在 nested 裡也加入 all_terms，強化 snippet 命中
+        if all_terms:
             ev_should = evidence_nested["nested"]["query"]["bool"]["should"]
-            for t in effective_terms:
+            for t in all_terms:
                 ev_should.append({
                     "match_phrase": {
                         "multidim_event_json.evidence_snippets.text": t
                     }
                 })
         
-        # ★ 4) 平台同義詞：用 OR should 加強 rawInfo.content / subject / title 命中
-        if effective_terms:
-            platform_shoulds = []
+        # ★ 4) 平台 / 主題詞加分：rawInfo / subject / title
+        if core_terms or syn_terms:
+            platform_shoulds: List[Dict[str, Any]] = []
+        
+            # 核心主題詞：match_phrase（精準）
+            for t in core_terms:
+                platform_shoulds.append({"match_phrase": {"rawInfo.content": t}})
+                platform_shoulds.append({"match_phrase": {"communication.subject": t}})
+                platform_shoulds.append({"match_phrase": {"multidim_event_json.article_title": t}})
+        
+            # 同義詞：用 match（OR），當加分用
+            for t in syn_terms:
+                platform_shoulds.append({
+                    "match": {
+                        "rawInfo.content": {
+                            "query": t,
+                            "operator": "or"
+                        }
+                    }
+                })
+        
+            if platform_shoulds:
+                shoulds.append({
+                    "bool": {
+                        "should": platform_shoulds,
+                        "minimum_should_match": 1
+                    }
+                })
 
-            # rawInfo.content
-            platform_shoulds.extend(
-                {"match_phrase": {"rawInfo.content": t}} for t in effective_terms
-            )
-
-            # communication.subject
-            platform_shoulds.extend(
-                {"match_phrase": {"communication.subject": t}} for t in effective_terms
-            )
-
-            # article_title
-            platform_shoulds.extend(
-                {"match_phrase": {"multidim_event_json.article_title": t}} for t in effective_terms
-            )
-
-            shoulds.append({
-                "bool": {
-                    "should": platform_shoulds,
-                    "minimum_should_match": 1
-                }
-            })
-            
+        # 把 nested evidence 放進 should
         shoulds.append(evidence_nested)
     
         base_bool = {
@@ -695,7 +1313,7 @@ class ESSearchNews(Tool):
         }
     
         # 4) function_score：人審/AI 加權 +（可選）新鮮度
-        functions = [
+        functions: List[Dict[str, Any]] = [
             {"filter": {"term": {"selectedMessage": True}}, "weight": (selected_boost or 6.0)},
             {"filter": {"term": {"ai.classLabels.highValue": True}}, "weight": (high_value_boost or 2.5)},
         ]
@@ -729,7 +1347,6 @@ class ESSearchNews(Tool):
             },
             "highlight": {
                 "fields": {
-                    # ⚠️ 移除 "rawInfo.content"
                     "communication.subject": {"fragment_size": 100, "number_of_fragments": 1},
                     "multidim_event_json.article_title": {"fragment_size": 100, "number_of_fragments": 1}
                 },
@@ -741,14 +1358,19 @@ class ESSearchNews(Tool):
                   "multidim_event_json.Event_Timeline.date_iso": {
                       "order": "desc",
                       "mode": "max",
-                      "nested": {"path": "multidim_event_json.Event_Timeline"}  # ← 修正這裡
+                      "nested": {"path": "multidim_event_json.Event_Timeline"}
                   }
                 },
                 {"importDT": {"order": "desc"}}
             ],
             "track_total_hits": True
         }
+        print("[_build_query_body] q=", q,
+              "core_terms=", core_terms,
+              "syn_terms=", syn_terms,
+              "num_all_terms=", len(all_terms))
         return body
+
 
     def _build_nonscript_fallback_body(
             self,
@@ -801,7 +1423,7 @@ class ESSearchNews(Tool):
         query: Optional[str] = None,
         must_high_value: Optional[bool] = False,
         must_selected: Optional[bool] = False,
-        size: Optional[int] = 5,
+        size: Optional[int] = 10000,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         selected_boost: Optional[float] = 6.0,
@@ -810,25 +1432,91 @@ class ESSearchNews(Tool):
         recency_field: Optional[str] = "importDT",
         recency_scale: Optional[str] = "30d",
     ):
+        
+        max_size = int(os.getenv("ES_MAX_SIZE", "10000"))
+        try:
+            req_size = int(size) if size is not None else max_size
+        except Exception:
+            req_size = max_size
+        size = max(1, min(req_size, max_size))
         if not query:
             return {"hits": [], "error": "query is required"}
-        
+        '''
+        # 🔴 這一段是關鍵：強制統一實際使用的 size
+        max_size = int(os.getenv("ES_MAX_SIZE", "10000"))  # 你可以改成 100、200 等
+        try:
+            req_size = int(size) if size is not None else max_size
+        except Exception:
+            req_size = max_size
+        # clamp 到 [1, max_size]
+        size = max(1, min(req_size, max_size))
+        '''
         raw_query = (query or "").strip()
-        
-        # ★ 先算出平台家族關鍵詞
-        effective_terms = self._compute_effective_terms(raw_query)
-        
-        # ★ ES 的主查詢一律用使用者原始 query
+
+        # 1) 抽核心主題詞 + 群組同義詞（含平台家族展開）
+        core_terms, grouped_syns, is_platform_query = self._compute_effective_terms(raw_query)
+
+        # 2) 扁平化同義詞，建立 ES / snippet 共用的 effective_terms & term_groups
+        # 2-1 扁平同義詞
+        syn_terms_flat: List[str] = []
+        seen_syn: set[str] = set()
+        for core, syns in grouped_syns.items():
+            for s in syns:
+                if not isinstance(s, str):
+                    continue
+                s = s.strip()
+                if not s:
+                    continue
+                if s in seen_syn:
+                    continue
+                seen_syn.add(s)
+                syn_terms_flat.append(s)
+
+        # 2-2 effective_terms = 核心 + 扁平同義詞（給 snippet 過濾 / fallback 用）
+        effective_terms: List[str] = []
+        seen_all: set[str] = set()
+        for t in (core_terms or []) + syn_terms_flat:
+            t = (t or "").strip()
+            if t and t not in seen_all:
+                seen_all.add(t)
+                effective_terms.append(t)
+
+        # 2-3 term_groups = 每一個核心一組（核心 + 其同義詞），給 _match_topic 用
+        term_groups: List[set[str]] = []
+        if core_terms:
+            for core in core_terms:
+                core = (core or "").strip()
+                if not core:
+                    continue
+                g: set[str] = {core}
+                for s in grouped_syns.get(core, []):
+                    if isinstance(s, str):
+                        ss = s.strip()
+                        if ss:
+                            g.add(ss)
+                if g:
+                    term_groups.append(g)
+        else:
+            # 沒有核心時，退回一組：全部 effective_terms
+            if effective_terms:
+                term_groups = [set(effective_terms)]
+
+        # 2-4 ES nested evidence 用的 all_terms（= effective_terms）
+        all_terms = list(effective_terms)
+
         es_query = raw_query
-                
-        # 1) 含日期的主查詢：改用 es_query
+
         body = self._build_query_body(
             es_query,
             must_high_value, must_selected, size, date_from, date_to,
             selected_boost, high_value_boost, recency_boost, recency_field, recency_scale,
             with_date=True,
-            effective_terms=effective_terms,  # ★ 傳入同義詞
+            effective_terms=effective_terms,   # 主要給後面 log / fallback 用
+            core_terms=core_terms,             # 精準加分 match_phrase
+            syn_terms=syn_terms_flat,          # 同義詞加分 match
+            all_terms=all_terms,               # nested evidence_snippets 裡的 match_phrase
         )
+
         try:
             #res = ES.search(index=ES_INDEX, body=body, params={"error_trace": "true"})
             res = _safe_es_search(body)
@@ -994,7 +1682,169 @@ class ESSearchNews(Tool):
         # 如果有展開到平台家族，就優先用 platform_terms；否則退回原本 base_terms
         effective_terms = platform_terms or base_terms
         '''
-        def _match_topic(ev_text: str, subject: str | None, title: str | None) -> bool:
+        def _normalize_for_match(s: str) -> str:
+            """
+            用來做主題詞比對的輕量正規化：
+            - NFKC：統一全形/半形
+            - lower()：英文大小寫忽略
+            - 統一各種破折號、短橫為 '-'
+            - 把所有空白拿掉（含全形空白）
+            """
+            if not s:
+                return ""
+            s = unicodedata.normalize("NFKC", s)
+            s = s.lower()
+            s = re.sub(r"[‐-–—−]", "-", s)
+            s = re.sub(r"\s+", "", s)
+            return s
+        
+        
+        def _match_topic(ev_text: str, subject: str | None, title: str | None) -> tuple[bool, set[str]]:
+            """
+            語意群組版主題詞過濾（加入正規化比對）：
+        
+            - term_groups: list[set[str]]，每一組是一個語意軸（例如「敘利亞」群、「化學武器」群）
+            - 若 term_groups 為空 → 不過濾（避免誤殺其他任務）
+            - 先計算每一組群組是否命中（group_hits），以及整體命中的字串集合 hit_terms
+        
+            判斷邏輯（平台 / 非平台一律相同）：
+            - 若只有一個語意群組（例如只查「052D驅逐艦」或只查「化學武器」）：
+                → 至少命中 1 組即可
+            - 若有兩個以上語意群組（例如「東風15型導彈 宮古水道」）：
+                → 至少要命中 2 組以上，才算同時滿足主體 + 地點/其他條件
+            """
+            if not term_groups:
+                return True, set()
+        
+            haystack_raw = (ev_text or "") + " " + (subject or "") + " " + (title or "")
+            haystack_norm = _normalize_for_match(haystack_raw)
+        
+            hit_terms: set[str] = set()
+            group_hits = 0
+        
+            for g in term_groups:
+                if not g:
+                    continue
+        
+                g_hit: set[str] = set()
+                for t in g:
+                    if not t:
+                        continue
+                    t_norm = _normalize_for_match(t)
+                    if t_norm and t_norm in haystack_norm:
+                        g_hit.add(t)
+        
+                if g_hit:
+                    group_hits += 1
+                    hit_terms |= g_hit
+        
+            if group_hits == 0:
+                return False, set()
+        
+            num_groups = len(term_groups)
+        
+            # 單一語意軸：命中至少一組就可
+            if num_groups <= 1:
+                return True, hit_terms
+        
+            # 多語意軸：至少命中 2 組
+            if group_hits >= 2:
+                return True, hit_terms
+        
+            return False, hit_terms
+        def _match_topic_1121(ev_text: str, subject: str | None, title: str | None) -> tuple[bool, set[str]]:
+            """
+            語意群組版主題詞過濾：
+
+            - term_groups: list[set[str]]，每一組是一個語意軸（例如「敘利亞」群、「化學武器」群）
+            - 若 term_groups 為空 → 不過濾（避免誤殺其他任務）
+            - 先計算每一組群組是否命中（group_hits），以及整體命中的字串集合 hit_terms
+
+            判斷邏輯：
+            - is_platform_query=True（平台查詢）：
+                * 只要有任一群組命中即可（保守一點，避免誤殺）
+            - 非平台查詢：
+                * 若只有一個語意群組（例如只查「化學武器」）：
+                    → 至少一個群組命中即可
+                * 若有兩個以上語意群組（例如「敘利亞 化學武器」）：
+                    → 至少要命中 2 個以上群組
+                      （敘利亞+化武 ✅；阿富汗+化武 ❌）
+            """
+            if not term_groups:
+                return True, set()
+
+            haystack = (ev_text or "") + " " + (subject or "") + " " + (title or "")
+
+            hit_terms: set[str] = set()
+            group_hits = 0
+
+            for g in term_groups:
+                if not g:
+                    continue
+                g_hit = {t for t in g if t and t in haystack}
+                if g_hit:
+                    group_hits += 1
+                    hit_terms |= g_hit
+
+            if group_hits == 0:
+                return False, set()
+
+            # 平台查詢：只要命中任一群組就算相關（維持寬鬆）
+            if is_platform_query:
+                return True, hit_terms
+
+            # 非平台查詢
+            num_groups = len(term_groups)
+
+            if num_groups <= 1:
+                # 單一語意軸：命中至少一組就可
+                return True, hit_terms
+
+            # 多語意軸：至少命中 2 組
+            if group_hits >= 2:
+                return True, hit_terms
+
+            return False, hit_terms
+
+        def _match_topic_1120(ev_text: str, subject: str | None, title: str | None) -> bool:
+            """
+            通用主題詞過濾：
+            - 若 effective_terms 為空 → 不做過濾（避免誤殺其它任務）
+            - 平台查詢（is_platform_query=True）→ 命中任一同義詞即可
+            - 一般查詢 → 命中足夠多的主題詞才算真正相關
+            """
+            if not effective_terms:
+                # 沒抓到主題詞就不過濾，以免誤傷其他分析任務
+                return True
+        
+            haystack = (ev_text or "") + " " + (subject or "") + " " + (title or "")
+        
+            # 實際命中的主題詞
+            hit_terms = {t for t in effective_terms if t and t in haystack}
+            hit_count = len(hit_terms)
+            if hit_count == 0:
+                return False
+        
+            # 平台查詢：例如 DF-15 / 055，只要命中一個同義詞就算
+            if is_platform_query:
+                return True
+        
+            # 一般查詢：依主題詞數量決定門檻
+            total_terms = len(set(effective_terms))
+        
+            if total_terms <= 1:
+                # 只有一個主題詞：有命中就好（跟原本行為一樣）
+                return hit_count >= 1
+        
+            if total_terms == 2:
+                # 兩個主題詞：兩個都要命中，近似 AND
+                return hit_count == 2
+        
+            # 三個以上主題詞：至少命中「一半以上，且不少於 2 個」
+            needed = max(2, (total_terms + 1) // 2)
+            return hit_count >= needed
+
+        def _match_topic_1119(ev_text: str, subject: str | None, title: str | None) -> bool:
             """
             只要 snippet / subject / title 有含任一「有效主題詞」，才保留：
             - 查「東風」→ 實際用 ["東風", "DF-15", "DF-21", ...] 去 match
@@ -1009,80 +1859,120 @@ class ESSearchNews(Tool):
         # === 組 evidence_snippets 給代理人用（加入 snippet 級日期過濾 + 主題詞過濾）===
         evidence_snippets = []
         for h in out_hits:
-            h_uuid = h.get("uuid")
             h_subject = h.get("subject")
             h_title = h.get("article_title")
-            h_article_date = h.get("article_date_iso")
-            h_event_dates = h.get("event_dates") or []
-
+        
             for c in h.get("citations") or []:
-                text = c.get("text")
-                if not text:
+                ev = _build_ev_from_hit_and_citation(h, c, date_from, date_to)
+                if ev is None:
+                    continue
+        
+                text = ev["text"]
+
+                # ★ 語意群組過濾：平台查詢 vs 非平台查詢
+                ok, hit_terms = _match_topic(text, h_subject, h_title)
+                if not ok:
                     continue
 
-                # ★ 若 snippet / subject / title 不含主題詞家族，丟掉（例如純寫「094 彈道潛艦 於 東海」的噪音）
-                if not _match_topic(text, h_subject, h_title):
-                    continue
-
-                # 優先用 citation 自己的 date_iso，其次 hit 的 article_date_iso，再次 event_dates[0]
-                di = c.get("date_iso") or h_article_date
-                if not di and h_event_dates:
-                    di = h_event_dates[0]
-                
-                norm_di = _normalize_iso_date(di)
-
-                # ★ snippet 級日期過濾：確保真正落在 date_from/date_to 範圍內
-                if norm_di:
-                    if date_from and norm_di < date_from:
-                        continue
-                    if date_to and norm_di > date_to:
-                        continue
-                    
-                ev = {
-                    "uuid": h_uuid,
-                    "text": text,
-                    "article_date_iso": norm_di or "",
-                }
-
-                if "paragraph_id" in c:
-                    ev["paragraph_id"] = c["paragraph_id"]
-                if "source_id" in c:
-                    ev["source_id"] = c["source_id"]
-                if h_subject:
-                    ev["subject"] = h_subject
-                if h_title:
-                    ev["article_title"] = h_title
+                # 把實際命中的關鍵詞（跨群組）寫回去
+                if hit_terms:
+                    ev["synonym_hits"] = list(hit_terms)
 
                 evidence_snippets.append(ev)
-                
+
+
+
         # 若 evidence_snippets 被過濾到 0，但 hits 還很多，保險起見回退成「每個 hit 至少取一段」
-        # ★ 只有在「沒有抓到任何有效主題詞」時，才啟用 fallback
+        # ★ 只有在「沒有抓到任何有效主題詞」時，才啟用這個 fallback（避免把「敘利亞 + 化武」這種噪音塞回來）
         if not evidence_snippets and out_hits and not effective_terms:
-            for h in out_hits[:100]:  # 控制數量
+            for h in out_hits[:10000]:  # 控制數量
                 for c in (h.get("citations") or [])[:1]:
-                    ev = {
-                        "uuid": h.get("uuid"),
-                        "text": c.get("text", ""),
-                        "article_date_iso": c.get("date_iso", "") or h.get("article_date_iso", ""),
-                        "paragraph_id": c.get("paragraph_id"),
-                        "source_id": c.get("source_id"),
-                        "subject": h.get("subject"),
-                        "article_title": h.get("article_title"),
-                    }
+                    ev = _build_ev_from_hit_and_citation(h, c, date_from, date_to)
+                    if ev is None:
+                        continue
                     evidence_snippets.append(ev)
-                    
+        '''
+        # === 補救：有 hits、有主題詞，卻沒有任何 snippet ===
+        if not evidence_snippets and out_hits and effective_terms:
+            # 只做一次重試，避免無限迴圈
+            expanded = _expand_query_synonyms_llm(raw_query, effective_terms)
+            expanded = [t for t in expanded if isinstance(t, str) and t.strip()]
+            if expanded:
+                # 合併原本 + 新同義詞
+                extended_terms = list({*effective_terms, *expanded})
+                print(f"[es_search_news] 同義詞補救：effective_terms 擴充為 {extended_terms}")
+
+                new_snippets = []
+                for h in out_hits:
+                    h_subject = h.get("subject")
+                    h_title = h.get("article_title")
+
+                    for c in h.get("citations") or []:
+                        ev = _build_ev_from_hit_and_citation(h, c, date_from, date_to)
+                        if ev is None:
+                            continue
+
+                        text = ev["text"]
+                        haystack = (text or "") + " " + (h_subject or "") + " " + (h_title or "")
+                        # 用 extended_terms 重新判斷（比 _match_topic 寬鬆一點）
+                        hit_terms = {t for t in extended_terms if t and t in haystack}
+                        if not hit_terms:
+                            continue
+
+                        ev["synonym_hits"] = list(hit_terms)
+                        new_snippets.append(ev)
+
+                if new_snippets:
+                    # 視需要可 truncate，例如 [:200]
+                    evidence_snippets = new_snippets
+        '''
+        if not evidence_snippets and out_hits and effective_terms:
+            print("[es_search_news] snippet 為 0，改用寬鬆條件重試（不再打 LLM）")
+            new_snippets = []
+            for h in out_hits:
+                h_subject = h.get("subject")
+                h_title = h.get("article_title")
+        
+                for c in h.get("citations") or []:
+                    ev = _build_ev_from_hit_and_citation(h, c, date_from, date_to)
+                    if ev is None:
+                        continue
+        
+                    text = ev["text"]
+                    haystack = (text or "") + " " + (h_subject or "") + " " + (h_title or "")
+                    hit_terms = {t for t in effective_terms if t and t in haystack}
+                    if not hit_terms:
+                        continue
+        
+                    ev["synonym_hits"] = list(hit_terms)
+                    new_snippets.append(ev)
+        
+            if new_snippets:
+                evidence_snippets = new_snippets
+        # 只保留「至少有一段 evidence_snippet」的文件
+        if evidence_snippets:
+            kept_uuids = {ev["uuid"] for ev in evidence_snippets if ev.get("uuid")}
+            filtered_hits = [h for h in out_hits if h.get("uuid") in kept_uuids]
+        else:
+            filtered_hits = out_hits  # 沒 snippet 就維持原樣（通常 already empty）
+
+        syn_snippets = sum(
+            1 for ev in evidence_snippets
+            if ev.get("synonym_hits")
+        )
         print(
             f"[es_search_news] query={raw_query!r}, es_query={es_query!r}, "
             f"hits={len(out_hits)}, "
+            f"hits_after_filter={len(filtered_hits)}, "   # 新增一個統計
             f"snippets_before_filter={sum(len(h.get('citations', [])) for h in out_hits)}, "
             f"snippets_after_filter={len(evidence_snippets)}, "
-            f"effective_terms={effective_terms}"
+            f"effective_terms={effective_terms}, "
+            f"synonym_hit_snippets={syn_snippets}"
         )
         return {
-            "hits": out_hits,
+            "hits": filtered_hits,
             "evidence_snippets": evidence_snippets
         }
-
 
 
 class ESTimeline(Tool):

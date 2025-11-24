@@ -16,8 +16,10 @@ from elasticsearch import NotFoundError
 import traceback
 
 # 你的代理人單例；內部已走 Ollama（LiteLLMModel -> MODEL_BASE_URL）
-from agent.agent import get_agent, SYSTEM
-from agent.agent import build_model  # 直接重用你已經有的 LiteLLMModel 建構器
+#from agent.agent import get_agent, SYSTEM
+#from agent.agent import build_model  # 直接重用你已經有的 LiteLLMModel 建構器
+
+from agent.agent import ask_with_report, SYSTEM
 
 from agent.direct_llm_json import OpenAIStyleOllama, task_tags, task_title, task_followups
 
@@ -322,9 +324,9 @@ def render_markdown(out: Any, request: Request) -> str:
             #    continue
             #seen.add(sid)
 
-            doc_id = c.get("source_id") or c.get("uuid") or c.get("doc_id") or c.get("id")
-            if doc_id in seen:
-                continue
+            doc_id = c.get("uuid") or c.get("source_id") or c.get("doc_id") or c.get("id")
+            #if doc_id in seen:
+            #    continue
             seen.add(doc_id)
     
             # ★ 新增：顯示名稱優先 subject，其次 article_title/title，最後才用 UUID
@@ -418,7 +420,7 @@ def chat_completions(payload: ChatPayload, request: Request):
         query = (sys_prefix + user_msg).strip() if sys_prefix else user_msg.strip()
 
         # 2) 呼叫代理
-        agent = get_agent()          # ← 每請求新建乾淨 Agent
+        #agent = get_agent()          # ← 每請求新建乾淨 Agent
         #out = agent.run(query)
         
         # 2-1) ★路由：若偵測到 WebUI 的分析任務 → 直接用 LLM 回 JSON；否則才走 CodeAgent
@@ -480,14 +482,21 @@ def chat_completions(payload: ChatPayload, request: Request):
             f"【目前問題】\n{user_msg}\n\n"
             "【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
         )
-        
+        '''
         try:
             out = agent.run(query_for_agent)
         except Exception:
             agent = get_agent()
             out = agent.run(query_for_agent)
-        
+        '''
 
+        # 2) 呼叫代理（改成直接用 ask_with_report，回傳 dict: answer/citations/reasoning）
+        try:
+            out = ask_with_report(query_for_agent)
+        except Exception as e:
+            print("ask_with_report 發生錯誤：", e)
+            raise HTTPException(status_code=500, detail="後端分析發生錯誤，請稍後再試")
+            
         # 3) 產主文：保留你的 format / render_markdown 行為
         fmt = (payload.format or "markdown").lower()
         if fmt == "json":
@@ -499,15 +508,24 @@ def chat_completions(payload: ChatPayload, request: Request):
         citations = []
         if isinstance(out, dict):
             for c in (out.get("citations") or []):
-                doc_id = c.get("source_id") or c.get("uuid")
+                uuid_ = c.get("uuid")
+                source_id = c.get("source_id")
+                # ★ 連結優先用 uuid，fallback 才用 source_id
+                doc_id = uuid_ or source_id or c.get("doc_id") or c.get("id")
                 href = _abs_url(request, f"/v1/docs/{doc_id}") if doc_id else None
-                print("href",href)
+
                 citations.append({
                     "text": c.get("text"),
-                    "source_id": doc_id,
+                    "uuid": uuid_,
+                    "source_id": source_id,
                     "paragraph_id": c.get("paragraph_id"),
-                    "href": href,  # ← 前端可直接用這個做「反查」
-                    "title": c.get("subject") or c.get("article_title") or c.get("title") or str(doc_id)  # ★ 可選
+                    "href": href,
+                    "title": (
+                        c.get("subject")
+                        or c.get("article_title")
+                        or c.get("title")
+                        or (source_id or uuid_ or str(doc_id))
+                    ),
                 })
 
         # 5) 回 OpenAI 兼容格式（多帶一個非標準的 context，客戶端不需要也會略過）

@@ -2,6 +2,7 @@ import datetime
 from collections import Counter
 from typing import List, Dict, Any, Tuple
 
+'''
 def aggregate_month_quarter(evidence: List[Dict[str, Any]]) -> Tuple[Dict[str, int], Dict[str, int]]:
     """
     輸入：tools_es 回傳的 evidence_snippets list
@@ -31,3 +32,4 @@ def aggregate_month_quarter(evidence: List[Dict[str, Any]]) -> Tuple[Dict[str, i
         quarter_counts[q_key] += cnt
 
     return dict(month_counts), dict(quarter_counts)
+'''
