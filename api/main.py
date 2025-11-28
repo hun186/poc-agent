@@ -19,7 +19,8 @@ import traceback
 #from agent.agent import get_agent, SYSTEM
 #from agent.agent import build_model  # 直接重用你已經有的 LiteLLMModel 建構器
 
-from agent.agent import ask_with_report, SYSTEM
+#from agent.agent import ask_with_report
+from agent.agent import answer_with_routing
 
 from agent.direct_llm_json import OpenAIStyleOllama, task_tags, task_title, task_followups
 
@@ -57,18 +58,8 @@ _sessions: dict[str, deque[ChatMessage]] = defaultdict(lambda: deque(maxlen=SESS
 _last_structured: dict[str, dict] = {}     # 會話 -> 上一輪 out（answer/citations/reasoning）
 #_last_orgs: dict[str, list[str]] = {}      # 會話 -> 上一輪提到的機構/組織清單
     
-# --- Heuristics：辨識 WebUI 的「分析任務」：只要純 JSON / 有 <chat_history> / 有 ### Task 標頭等 ---
-META_TASK_TRIGGERS = [
-    r"^###\s*Task:",  # 常見格式： '### Task: ...'
-    #r"JSON\s+format:\s*\{",  # 指定 JSON 輸出格式
-    #r"Your entire response must .* JSON object",  # 強調只能回傳 JSON
-    r"<chat_history>",  # 帶封裝的歷史
-    r"Generate\s+1-3\s+broad\s+tags",  # tags 任務
-    r"Generate a concise,\s*3-5 word title",  # title 任務
-    r"Suggest\s+3-5\s+relevant follow-up questions",  # follow-ups 任務
-]
 
-BYPASS_AGENT_FOR_META=1
+
 
 def _detect_meta_kind(text: str) -> str | None:
     t = (text or "").lower()
@@ -80,15 +71,6 @@ def _detect_meta_kind(text: str) -> str | None:
         return "followups"
     return None
 
-'''
-def _is_webui_meta_task(s: str) -> bool:
-    if not s: 
-        return False
-    for pat in META_TASK_TRIGGERS:
-        if re.search(pat, s, flags=re.IGNORECASE | re.DOTALL):
-            return True
-    return False
-'''
 
 def _strip_code_fences(s: str) -> str:
     # 若模型不小心包了 ```json ... ```，幫忙剝掉
@@ -155,11 +137,11 @@ def pack_chat_history(messages: list[ChatMessage], *, max_chars: int = HISTORY_M
         if not content:
             continue
         if role == "assistant":
-            print("content before",content)
+            #print("content before",content)
             content = _strip_assistant_content(content)
-            print("content after _strip_assistant_content",content)
+            #print("content after _strip_assistant_content",content)
             content = _normalize_newlines_for_save(content)
-            print("content after _normalize_newlines_for_save",content)
+            #print("content after _normalize_newlines_for_save",content)
         lines.append(f"{role.upper()}:\n{content}\n")
     s = "".join(lines)
     if len(s) > max_chars:
@@ -377,11 +359,6 @@ def render_markdown(out: Any, request: Request) -> str:
 
     return "\n\n".join(md)
 
-RAW_JSON_SYSTEM = (
-    "You are a formatter. "
-    "Return ONLY the raw JSON object requested by the user. "
-    "No backticks, no code fences, no commentary."
-)
 
 @app.get("/healthz")
 def healthz():
@@ -454,7 +431,11 @@ def chat_completions(payload: ChatPayload, request: Request):
                 "model": payload.model,
                 "choices": [{
                     "index": 0,
-                    "message": {"role": "assistant", "content": text},
+                    "message": {
+                        "role": "assistant",
+                        "content": text,
+                        "context": {"mode": "META_TASK", "kind": kind}
+                    },
                     "finish_reason": "stop"
                 }],
                 "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -467,9 +448,16 @@ def chat_completions(payload: ChatPayload, request: Request):
             # 沒有 session 時才退回用前端帶回的歷史（去掉當輪 user）
             history_msgs = list(payload.messages[:-1])
         
-        print("history_msgs (effective)", history_msgs)
+        # ★ 給任務分流器用的「最近幾個 user 問題」（不含本輪）
+        recent_user_msgs: list[str] = []
+        for m in history_msgs:
+            role = (m.role or "").lower()
+            if role == "user" and (m.content or "").strip():
+                recent_user_msgs.append(m.content.strip())
+                
+        #print("history_msgs (effective)", history_msgs)
         history_text = pack_chat_history(history_msgs)
-        print("history_text from pack_chat_history",history_text)
+        #print("history_text from pack_chat_history",history_text)
         # 附上上一輪摘要（自動）：主要機構清單（就算正文被截也有這份保底）
         #if session_id and session_id in _last_orgs and _last_orgs[session_id]:
         #    summary_tail = "【上一輪摘要（自動）】\n- 主要機構：" + "、".join(_last_orgs[session_id][:15]) + "\n"
@@ -482,19 +470,16 @@ def chat_completions(payload: ChatPayload, request: Request):
             f"【目前問題】\n{user_msg}\n\n"
             "【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
         )
-        '''
-        try:
-            out = agent.run(query_for_agent)
-        except Exception:
-            agent = get_agent()
-            out = agent.run(query_for_agent)
-        '''
 
-        # 2) 呼叫代理（改成直接用 ask_with_report，回傳 dict: answer/citations/reasoning）
+        # 2) 呼叫總路由（answer_with_routing：內部自己決定是 SRA_REPORT / SRA_STYLE / PURE_LLM）
         try:
-            out = ask_with_report(query_for_agent)
+            out = answer_with_routing(
+                user_msg=user_msg,
+                query_for_agent=query_for_agent,
+                recent_user_msgs=recent_user_msgs,  # ★ 新增這行
+            )
         except Exception as e:
-            print("ask_with_report 發生錯誤：", e)
+            print("answer_with_routing 發生錯誤：", e)
             raise HTTPException(status_code=500, detail="後端分析發生錯誤，請稍後再試")
             
         # 3) 產主文：保留你的 format / render_markdown 行為
@@ -539,12 +524,17 @@ def chat_completions(payload: ChatPayload, request: Request):
                 "message": {
                     "role": "assistant",
                     "content": text,
-                    "context": {"citations": citations}
+                    "context": {
+                        "citations": citations,
+                        "mode": out.get("mode"),
+                        "route": out.get("route"),
+                    }
                 },
                 "finish_reason": "stop"
             }],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         }
+
         
         # 6) 保存本輪到會話歷史 & 更新通用記憶
         try:
@@ -568,136 +558,22 @@ def chat_completions(payload: ChatPayload, request: Request):
         print("=== /v1/chat/completions 發生例外 ===")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-        
-'''
-@app.post("/v1/chat/completions")
-def chat_completions(payload: ChatPayload):
-    try:
-        # 取最後一則使用者訊息；如果有 system，就把它前置到 query（保持你原本 SYSTEM 邏輯）
-        sys_prefix = ""
-        for m in payload.messages:
-            if m.role == "system" and m.content:
-                sys_prefix += m.content.strip() + "\n\n"
-        user_msg = ""
-        for m in reversed(payload.messages):
-            if m.role == "user":
-                user_msg = m.content or ""
-                break
-        query = (sys_prefix + user_msg).strip() if sys_prefix else user_msg.strip()
-
-        out = agent.run(query)
-
-        #if isinstance(out, dict):
-        #    text = out.get("answer") or json.dumps(out, ensure_ascii=False)
-        #else:
-        #    text = str(out)
-        
-        #text = render_markdown(out)
-        
-        fmt = (payload.format or "markdown").lower()
-        if fmt == "json":
-            # 直接把 out 序列化回去
-            text = json.dumps(out, ensure_ascii=False)
-        else:
-            text = render_markdown(out)
-
-        return {
-            "id": f"chatcmpl-{int(time.time()*1000)}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": payload.model,
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": text},
-                "finish_reason": "stop"
-            }],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-'''
-
-@app.post("/v1/chat/completions_stream")
-def chat_completions_stream(payload: ChatPayload, request: Request):
-    def gen():
-        session_id = request.headers.get("x-conversation-id") or request.headers.get("x-session-id") or ""
-
-        # 合併歷史（若前端只送當輪，就用我們存的）
-        merged_msgs = list(payload.messages)
-        if session_id and session_id in _sessions and len(merged_msgs) <= 2:
-            merged_msgs = list(_sessions[session_id])
-
-        # 當輪 user
-        user_msg = next((m.content for m in reversed(merged_msgs) if m.role == "user"), "")
-
-        # 歷史（不含當輪 user）
-        try:
-            last_user_index = max(i for i, m in enumerate(merged_msgs) if m.role == "user")
-            history_msgs = merged_msgs[:last_user_index]
-        except ValueError:
-            history_msgs = merged_msgs
-
-        history_text = pack_chat_history(history_msgs)
-        mem_txt = _render_memory_text(_memory.get(session_id))
-
-        prompt = (
-            (f"【對話記憶】\n{mem_txt}\n\n" if mem_txt else "") +
-            f"【對話歷史】\n{history_text}\n\n"
-            f"【目前問題】\n{user_msg}\n\n"
-            "【要求】延續上文已確立的主題/時間範圍/定義；必要時可做合理假設並在 reasoning 說明。"
-        )
-
-        agent = get_agent()
-        out = agent.run(prompt)
-        text = out.get("answer") if isinstance(out, dict) else str(out)
-
-        # 模擬切塊
-        for chunk in [text[i:i+100] for i in range(0, len(text), 100)]:
-            data = {
-                "id": f"chatcmpl-{int(time.time()*1000)}",
-                "object": "chat.completion.chunk",
-                "choices": [{"index": 0, "delta": {"content": chunk}, "finish_reason": None}]
-            }
-            yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-        yield "data: [DONE]\n\n"
-
-        # 非阻塞：保存會話與更新記憶（串流尾端做即可）
-        try:
-            if session_id:
-                _sessions[session_id].append(ChatMessage(role="user", content=user_msg))
-                rendered_full = render_markdown(out, request) if isinstance(out, dict) else str(out)
-                assistant_save = _choose_assistant_save(out, rendered_full)
-                _sessions[session_id].append(ChatMessage(role="assistant", content=assistant_save))
-                if isinstance(out, dict):
-                    _last_structured[session_id] = out
-                tail_msgs = list(_sessions[session_id])[-6:]
-                tail_text = pack_chat_history(tail_msgs, max_chars=4000)
-                _update_memory(session_id, tail_text, out if isinstance(out, dict) else None)
-        except Exception:
-            pass
-
-    return StreamingResponse(gen(), media_type="text/event-stream")
 
 '''
-@app.get("/v1/chat/completions")
-def chat_completions_get(q: str = Query(..., description="Your question")):
-    out = agent.run(q)
-    text = out.get("answer") if isinstance(out, dict) else str(out)
-    return {
-        "id": "chatcmpl-test",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": "SRA-Structured Retrieval Agent",
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    }
-'''
-
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
 #ES_URL = "http://192.168.0.228:9200"
 ES_INDEX = os.getenv("ES_INDEX", "news_test")
 ES = Elasticsearch(ES_URL)
+'''
 
+ES_URL = os.getenv("ES_URL", "http://localhost:9200")
+ES_INDEX_RAW = os.getenv("ES_INDEX", "news_test,mil_reports-01")
+
+# 允許用逗號分隔多個 index
+ES_INDEXES = [idx.strip() for idx in ES_INDEX_RAW.split(",") if idx.strip()]
+
+ES = Elasticsearch(ES_URL)
+'''
 @app.get("/v1/docs/{doc_id}")
 def get_doc(doc_id: str):
     # 1) 先嘗試用 _id 直接抓（最快、最穩）
@@ -764,3 +640,75 @@ def get_doc(doc_id: str):
 
     # 全部找不到
     raise HTTPException(status_code=404, detail="document not found")
+'''
+@app.get("/v1/docs/{doc_id}")
+def get_doc(doc_id: str):
+    print(f"running get_doc for {doc_id}")
+
+    # 1) 逐一嘗試用 _id 直接抓（每個 index 都試）
+    for idx in ES_INDEXES:
+        try:
+            got = ES.get(index=idx, id=doc_id, _source=True)
+            src = got.get("_source", {}) or {}
+            src["_id"] = got.get("_id")
+            src["_index"] = got.get("_index")
+            return src
+        except NotFoundError:
+            continue
+        except Exception:
+            # 其他錯誤先忽略，稍後用 search fallback
+            continue
+
+    # 2) 用 uuid.keyword 精確比對（跨索引 search）
+    res = ES.search(
+        index=ES_INDEXES,
+        body={
+            "size": 1,
+            "_source": True,
+            "query": {"term": {"uuid.keyword": doc_id}}
+        },
+    )
+    hits = res.get("hits", {}).get("hits", []) or []
+    if hits:
+        hit = hits[0]
+        src = hit.get("_source", {}) or {}
+        src["_id"] = hit.get("_id")
+        src["_index"] = hit.get("_index")
+        return src
+
+    # 3) 再試一次 uuid（非 keyword 的情況）
+    res = ES.search(
+        index=ES_INDEXES,
+        body={
+            "size": 1,
+            "_source": True,
+            "query": {"term": {"uuid": doc_id}}
+        },
+    )
+    hits = res.get("hits", {}).get("hits", []) or []
+    if hits:
+        hit = hits[0]
+        src = hit.get("_source", {}) or {}
+        src["_id"] = hit.get("_id")
+        src["_index"] = hit.get("_index")
+        return src
+
+    # 4) 最後保底：wildcard 模糊比對
+    res = ES.search(
+        index=ES_INDEXES,
+        body={
+            "size": 1,
+            "_source": True,
+            "query": {"wildcard": {"uuid": {"value": f"*{doc_id}*"}}}
+        },
+    )
+    hits = res.get("hits", {}).get("hits", []) or []
+    if hits:
+        hit = hits[0]
+        src = hit.get("_source", {}) or {}
+        src["_id"] = hit.get("_id")
+        src["_index"] = hit.get("_index")
+        return src
+
+    raise HTTPException(status_code=404, detail="document not found")
+    

@@ -15,10 +15,42 @@ import textwrap
 import requests
 from elasticsearch import Elasticsearch, BadRequestError
 from smolagents import Tool
+from typing import Optional, List, Tuple  # 開頭已經有就不用再加
+from typing import Union, List, Optional  # 若上面已有則不用重複
 
 # ===== 統一的搜尋小幫手（處理 highlight 超長容錯） =====
 ES_MAX_ANALYZED_OFFSET = int(os.getenv("ES_MAX_ANALYZED_OFFSET", "200000"))
+'''
+def _parse_index_hint(query: str) -> tuple[Optional[List[str]], str]:
+    """
+    從 query 讀取 [ES_INDEX_HINT=index1,index2,...]
+    回傳 (indexes, cleaned_query)
 
+    - indexes: list[str] 或 None
+    - cleaned_query: 把 [ES_INDEX_HINT=...] 拿掉後的查詢字串
+    """
+    print("query in _parse_index_hint", query)
+    if not query:
+        return None, ""
+
+    m = re.search(r"\[ES_INDEX_HINT=([^\]]+)\]", query)
+    print("m", m)
+    if not m:
+        # 沒有 hint，直接回原 query
+        return None, query.strip()
+
+    raw = m.group(1).strip()
+    print("raw", raw)
+    indexes: List[str] = []
+    if raw:
+        indexes = [x.strip() for x in raw.split(",") if x.strip()]
+
+    # 把 [ES_INDEX_HINT=...] 那一段從 query 移除
+    cleaned_query = (query[:m.start()] + query[m.end():]).strip()
+    print("cleaned_query", cleaned_query)
+
+    return (indexes or None), cleaned_query
+'''
 def _as_blocks(md):
     """把 multidim_event_json 安全轉成 list[dict]。支援 str(json) / dict / list 三種情形。"""
     if not md:
@@ -33,6 +65,7 @@ def _as_blocks(md):
     if isinstance(md, list):
         return [b for b in md if isinstance(b, dict)]
     return []
+
 
 # ================== 平台同義詞：支援外部 config 覆蓋 ==================
 
@@ -509,17 +542,30 @@ def _build_ev_from_hit_and_citation(
 
 
     
-def _safe_es_search(body: dict, *, allow_highlight_retry: bool = True):
+def _safe_es_search(
+    body: dict,
+    *,
+    index: Optional[Union[str, List[str]]] = None,
+    allow_highlight_retry: bool = True
+):
+    idx = index or ES_INDEX_DEFAULT
+
+    # ES client 支援 "a,b" 或 ["a","b"]，這邊統一成字串比較保險
+    if isinstance(idx, list):
+        es_index = ",".join(idx)
+    else:
+        es_index = idx
+
     try:
-        return ES.search(index=ES_INDEX, body=body, params={"error_trace": "true"})
+        return ES.search(index=es_index, body=body, params={"error_trace": "true"})
     except BadRequestError as e:
         info = str(getattr(e, "info", e))
-        # 只要偵測到 highlighter 相關錯誤 → 移除 highlight 再試一次
         if allow_highlight_retry and ("max_analyzed_offset" in info or "highlight" in info):
             body2 = dict(body)
             body2.pop("highlight", None)
-            return ES.search(index=ES_INDEX, body=body2, params={"error_trace": "true"})
+            return ES.search(index=es_index, body=body2, params={"error_trace": "true"})
         raise
+        
         
 # ===== 簡易日期工具（原樣保留） =====
 _YMD = re.compile(r'(?P<y>20\d{2}|19\d{2})[年/\-\.](?P<m>\d{1,2})[月/\-\.](?P<d>\d{1,2})日?')
@@ -657,8 +703,48 @@ def _make_fallback_snippet(text: str, q: str, width: int = 180) -> str | None:
 
 # ===== ES 連線 =====
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
-ES_INDEX = os.getenv("ES_INDEX", "news_test")
+ES_INDEX_DEFAULT = os.getenv("ES_INDEX", "news_test")  # env 預設 index
+ES_INDEX = ES_INDEX_DEFAULT  # 保留舊名稱，避免其他地方還有用到
 ES = Elasticsearch(ES_URL)
+
+IndexType = Union[str, List[str]]
+
+def _resolve_es_index(hint: Optional[Union[str, List[str]]]) -> IndexType:
+    """
+    支援：
+    - None           → 用預設 ES_INDEX_DEFAULT
+    - "a"            → 單一 index
+    - "a,b,c"        → 多 index
+    - ["a","b","c"]  → 多 index
+    """
+    if hint is None:
+        print("[_resolve_es_index] no hint, use default:", ES_INDEX_DEFAULT)
+        return ES_INDEX_DEFAULT
+
+    # list[str]
+    if isinstance(hint, list):
+        idx_list = [i.strip() for i in hint if i and str(i).strip()]
+        if not idx_list:
+            print("[_resolve_es_index] empty list, use default:", ES_INDEX_DEFAULT)
+            return ES_INDEX_DEFAULT
+        print("[_resolve_es_index] use hint list:", idx_list)
+        return idx_list if len(idx_list) > 1 else idx_list[0]
+
+    # str
+    raw = str(hint).strip()
+    if not raw:
+        print("[_resolve_es_index] empty str, use default:", ES_INDEX_DEFAULT)
+        return ES_INDEX_DEFAULT
+
+    # "a,b,c" → list
+    if "," in raw:
+        idx_list = [i.strip() for i in raw.split(",") if i.strip()]
+        print("[_resolve_es_index] parse multi index from str:", idx_list)
+        return idx_list if len(idx_list) > 1 else idx_list[0]
+
+    print("[_resolve_es_index] use single index:", raw)
+    return raw
+
 
 '''
 # 只保留 subject_rt（安全、短字串）
@@ -748,6 +834,12 @@ class ESSearchNews(Tool):
             "type": "string",
             "description": "高斯衰減尺度（如 '30d'、'90d'；預設 '30d'）",
             "default": "30d",
+            "nullable": True
+        },
+        # === 新增：給 LLM 路由用的 index hint ===
+        "index_hint": {
+            "type": "string",
+            "description": "由 LLM 分流傳入的索引提示字串；若未提供則使用環境變數 ES_INDEX",
             "nullable": True
         }
     }
@@ -909,186 +1001,6 @@ class ESSearchNews(Tool):
         grouped_synonyms = {k: v for k, v in grouped_synonyms.items() if k in core_terms}
     
         return core_terms, grouped_synonyms, is_platform_query
-    
-    def _compute_effective_terms_1121(
-        self,
-        q: str
-    ) -> tuple[List[str], Dict[str, List[str]], bool]:
-        """
-        回傳：
-        - core_terms：平台家族 or 原始主題詞（高權重、做嚴格過濾用）
-        - grouped_synonyms：{核心詞: [同義詞…]}，由 LLM 擴充後再清洗過
-        - is_platform_query：有展開到平台家族就算平台查詢
-        """
-        q = (q or "").strip()
-        if not q:
-            return [], {}, False
-
-        # (1) regex 主題詞（含地名 / 平台等，當作 base）
-        #topic_terms = self._extract_topic_terms(q)
-        topic_terms = []
-
-        # (2) 直接在 query 字串掃平台同義詞表（如 DF-15, 055 等）
-        platform_terms_in_q = _extract_platform_terms_from_query(q)
-
-        # (3) 是否啟用 LLM 平台抽取
-        use_llm_mode = os.getenv("USE_LLM_TOPIC_EXTRACTOR", "fallback").lower()
-        llm_terms: List[str] = []
-        need_llm = False
-        if use_llm_mode == "always":
-            need_llm = True
-        elif use_llm_mode == "fallback":
-            if not topic_terms and not platform_terms_in_q:
-                need_llm = True
-
-        if need_llm:
-            llm_terms = _extract_topic_terms_llm(q)
-
-        # (4) 彙整 base_terms
-        base_terms_set: set[str] = set()
-        for lst in (topic_terms, platform_terms_in_q, llm_terms):
-            for t in lst:
-                t = (t or "").strip()
-                if t:
-                    base_terms_set.add(t)
-        base_terms = list(base_terms_set)
-
-        # (5) 平台家族展開（「東風」→ DF-11/15/21…）
-        platform_terms = _expand_platform_terms(base_terms) if base_terms else []
-
-        # 核心主題詞：有平台就用平台，否則用 base
-        core_terms: List[str] = platform_terms or base_terms
-        is_platform_query = bool(platform_terms)
-
-        # (6) 用 LLM 做「群組同義詞擴充」
-        grouped_synonyms: Dict[str, List[str]] = {}
-        try:
-            raw_groups = _expand_synonyms_grouped_llm(q, core_terms) or {}
-        except Exception as ex:
-            print(f"_expand_synonyms_grouped_llm failed: {ex}")
-            raw_groups = {}
-
-        # 清洗 / 防禦性處理：只保留 core_terms 的 key，值是乾淨 list[str]
-        for core in core_terms:
-            syns = raw_groups.get(core, []) or []
-            cleaned: List[str] = []
-            seen: set[str] = set()
-            for x in syns:
-                if not isinstance(x, str):
-                    continue
-                s = x.strip()
-                if not s:
-                    continue
-                if s == core:
-                    continue  # 不要把核心再塞回同義詞
-                if s in seen:
-                    continue
-                seen.add(s)
-                cleaned.append(s)
-            if cleaned:
-                grouped_synonyms[core] = cleaned
-
-        return core_terms, grouped_synonyms, is_platform_query
-
-
-    def _compute_effective_terms_1120(self, q: str) -> tuple[List[str], bool]:
-        """給 forward() 共用：算出 effective_terms（平台家族關鍵詞），並標記是否為平台查詢"""
-        q = (q or "").strip()
-        if not q:
-            return [], False
-    
-        # (1) 原本 regex 版主題詞
-        topic_terms = self._extract_topic_terms(q)
-    
-        # (2) 直接從 query 字串中掃 PLATFORM_SYNONYMS
-        platform_terms_in_q = _extract_platform_terms_from_query(q)
-    
-        # (3) 視需求決定是否啟用 LLM 補強
-        use_llm_mode = os.getenv("USE_LLM_TOPIC_EXTRACTOR", "fallback").lower()
-        llm_terms: List[str] = []
-        need_llm = False
-        if use_llm_mode == "always":
-            need_llm = True
-        elif use_llm_mode == "fallback":
-            if not topic_terms and not platform_terms_in_q:
-                need_llm = True
-    
-        if need_llm:
-            llm_terms = _extract_topic_terms_llm(q)
-    
-        # (4) 彙整所有候選詞 → base_terms
-        base_terms_set: set[str] = set()
-        for lst in (topic_terms, platform_terms_in_q, llm_terms):
-            for t in lst:
-                t = (t or "").strip()
-                if t:
-                    base_terms_set.add(t)
-        base_terms = list(base_terms_set)
-    
-        # 只對 base_terms 做平台家族展開
-        platform_terms = _expand_platform_terms(base_terms) if base_terms else []
-    
-        # 若有展開成功 → 優先用平台家族；否則退回 base_terms
-        effective_terms = platform_terms or base_terms
-        
-        '''
-        print(f"query: {q}")
-        print(f"effective_terms_before_expand_query_synonyms_llm={effective_terms}")
-        try:
-            expanded = _expand_query_synonyms_llm(q, effective_terms)
-            expanded = [t for t in expanded if isinstance(t, str) and t.strip()]
-            effective_terms = expanded
-            print(f"effective_terms_after_expand_query_synonyms_llm={effective_terms}")
-        except Exception as ex:
-            print(f"_expand_query_synonyms_llm failed: {ex}")
-        '''
-        
-        
-        # is_platform_query：有展開到平台同義詞就視為平台查詢
-        is_platform_query = bool(platform_terms)
-    
-        return effective_terms, is_platform_query
-    def _compute_effective_terms_1119(self, q: str) -> List[str]:
-        """給 forward() 共用：算出 effective_terms（平台家族關鍵詞）"""
-        q = (q or "").strip()
-        if not q:
-            return []
-
-        # (1) 原本 regex 版主題詞
-        topic_terms = self._extract_topic_terms(q)
-
-        # (2) 直接從 query 字串中掃 PLATFORM_SYNONYMS
-        platform_terms_in_q = _extract_platform_terms_from_query(q)
-
-        # (3) 視需求決定是否啟用 LLM 補強
-        use_llm_mode = os.getenv("USE_LLM_TOPIC_EXTRACTOR", "fallback").lower()
-        llm_terms: List[str] = []
-        need_llm = False
-        if use_llm_mode == "always":
-            need_llm = True
-        elif use_llm_mode == "fallback":
-            if not topic_terms and not platform_terms_in_q:
-                need_llm = True
-
-        if need_llm:
-            llm_terms = _extract_topic_terms_llm(q)
-
-        # (4) 彙整所有候選詞 → base_terms
-        base_terms_set: set[str] = set()
-        for lst in (topic_terms, platform_terms_in_q, llm_terms):
-            for t in lst:
-                t = (t or "").strip()
-                if t:
-                    base_terms_set.add(t)
-        base_terms = list(base_terms_set)
-
-        # 只對 base_terms 做平台家族展開
-        platform_terms = _expand_platform_terms(base_terms) if base_terms else []
-
-        # 若有展開成功 → 優先用平台家族；否則退回 base_terms
-        effective_terms = platform_terms or base_terms
-
-        return effective_terms
     
     def _build_query_body(
         self,
@@ -1431,7 +1343,9 @@ class ESSearchNews(Tool):
         recency_boost: Optional[bool] = False,
         recency_field: Optional[str] = "importDT",
         recency_scale: Optional[str] = "30d",
+        index_hint: Optional[str] = None,   # ★ 新增
     ):
+        # 依 LLM 分流 or env 決定實際 index
         
         max_size = int(os.getenv("ES_MAX_SIZE", "10000"))
         try:
@@ -1451,10 +1365,26 @@ class ESSearchNews(Tool):
         # clamp 到 [1, max_size]
         size = max(1, min(req_size, max_size))
         '''
+        #print("in forward, query at begining", query)
         raw_query = (query or "").strip()
-
+        #print("in forward, raw_query at begining", raw_query)
+        
+        # 這裡不再從 query 抽 ES_INDEX_HINT，完全靠參數分流
+        #print("index_hint",index_hint)
+        final_hint = index_hint  # 可以是 None 或 "a,b,c"
+        #print("final_hint",final_hint)
+        index = _resolve_es_index(final_hint)
+        #print("[ESSearchNews.forward] index =", index, "query =", raw_query)
+        
+        # 乾淨 query 就是原本的 raw_query
+        query = raw_query
+    
+        print("in ESSearchNews.forward, index =", index, "query =", query)
+        
         # 1) 抽核心主題詞 + 群組同義詞（含平台家族展開）
+        #print("before _compute_effective_terms,raw_query",raw_query)
         core_terms, grouped_syns, is_platform_query = self._compute_effective_terms(raw_query)
+        #print("after _compute_effective_terms,core_terms, grouped_syns, is_platform_query",core_terms, grouped_syns, is_platform_query)
 
         # 2) 扁平化同義詞，建立 ES / snippet 共用的 effective_terms & term_groups
         # 2-1 扁平同義詞
@@ -1519,7 +1449,7 @@ class ESSearchNews(Tool):
 
         try:
             #res = ES.search(index=ES_INDEX, body=body, params={"error_trace": "true"})
-            res = _safe_es_search(body)
+            res = _safe_es_search(body, index=index)
         except BadRequestError as e:
             print("ES BadRequestError (with_date=True):", getattr(e, "info", e))
             raise
@@ -1555,7 +1485,7 @@ class ESSearchNews(Tool):
             )
             try:
                 #res = ES.search(index=ES_INDEX, body=body, params={"error_trace": "true"})
-                res = _safe_es_search(body)
+                res = _safe_es_search(body, index=index)
             except BadRequestError as e:
                 print("ES BadRequestError (fallback):", getattr(e, "info", e))
                 raise
@@ -1647,41 +1577,6 @@ class ESSearchNews(Tool):
         # (2) 直接從 query 字串中掃 PLATFORM_SYNONYMS（專門抓平台／型號）
         platform_terms_in_q = _extract_platform_terms_from_query(query or "")
 
-        # (3) 視需求決定是否啟用 LLM 補強
-        # USE_LLM_TOPIC_EXTRACTOR:
-        #   - "never"     → 完全不用 LLM
-        #   - "always"    → 每次都會打 LLM 幫忙抽平台詞
-        #   - "fallback"  → 只有在 (topic_terms + platform_terms_in_q) 都為空時才打 LLM（建議）
-        '''
-        use_llm_mode = os.getenv("USE_LLM_TOPIC_EXTRACTOR", "fallback").lower()
-        llm_terms: List[str] = []
-
-        need_llm = False
-        if use_llm_mode == "always":
-            need_llm = True
-        elif use_llm_mode == "fallback":
-            if not topic_terms and not platform_terms_in_q:
-                need_llm = True
-
-        if need_llm:
-            llm_terms = _extract_topic_terms_llm(query or "")
-
-        # (4) 彙整所有來源的「候選主題詞」，再交給 _expand_platform_terms 做家族展開
-        base_terms_set: set[str] = set()
-        for lst in (topic_terms, platform_terms_in_q, llm_terms):
-            for t in lst:
-                t = (t or "").strip()
-                if t:
-                    base_terms_set.add(t)
-
-        base_terms = list(base_terms_set)
-
-        # 只對 base_terms 做平台同義詞家族展開
-        platform_terms = _expand_platform_terms(base_terms) if base_terms else []
-
-        # 如果有展開到平台家族，就優先用 platform_terms；否則退回原本 base_terms
-        effective_terms = platform_terms or base_terms
-        '''
         def _normalize_for_match(s: str) -> str:
             """
             用來做主題詞比對的輕量正規化：
@@ -1742,120 +1637,25 @@ class ESSearchNews(Tool):
                 return False, set()
         
             num_groups = len(term_groups)
-        
+    
             # 單一語意軸：命中至少一組就可
             if num_groups <= 1:
                 return True, hit_terms
-        
-            # 多語意軸：至少命中 2 組
-            if group_hits >= 2:
+    
+            # 兩軸：全部都要命中（等於 AND）
+            if num_groups == 2:
+                return (group_hits == 2), hit_terms
+    
+            # 三軸：全部都要命中，避免「只中敘利亞+化武」卻沒「調查」也通過
+            if num_groups == 3:
+                return (group_hits == 3), hit_terms
+    
+            # 四軸以上：至少命中 3 軸，避免太嚴格直接篩成 0
+            if group_hits >= 3:
                 return True, hit_terms
-        
+    
             return False, hit_terms
-        def _match_topic_1121(ev_text: str, subject: str | None, title: str | None) -> tuple[bool, set[str]]:
-            """
-            語意群組版主題詞過濾：
-
-            - term_groups: list[set[str]]，每一組是一個語意軸（例如「敘利亞」群、「化學武器」群）
-            - 若 term_groups 為空 → 不過濾（避免誤殺其他任務）
-            - 先計算每一組群組是否命中（group_hits），以及整體命中的字串集合 hit_terms
-
-            判斷邏輯：
-            - is_platform_query=True（平台查詢）：
-                * 只要有任一群組命中即可（保守一點，避免誤殺）
-            - 非平台查詢：
-                * 若只有一個語意群組（例如只查「化學武器」）：
-                    → 至少一個群組命中即可
-                * 若有兩個以上語意群組（例如「敘利亞 化學武器」）：
-                    → 至少要命中 2 個以上群組
-                      （敘利亞+化武 ✅；阿富汗+化武 ❌）
-            """
-            if not term_groups:
-                return True, set()
-
-            haystack = (ev_text or "") + " " + (subject or "") + " " + (title or "")
-
-            hit_terms: set[str] = set()
-            group_hits = 0
-
-            for g in term_groups:
-                if not g:
-                    continue
-                g_hit = {t for t in g if t and t in haystack}
-                if g_hit:
-                    group_hits += 1
-                    hit_terms |= g_hit
-
-            if group_hits == 0:
-                return False, set()
-
-            # 平台查詢：只要命中任一群組就算相關（維持寬鬆）
-            if is_platform_query:
-                return True, hit_terms
-
-            # 非平台查詢
-            num_groups = len(term_groups)
-
-            if num_groups <= 1:
-                # 單一語意軸：命中至少一組就可
-                return True, hit_terms
-
-            # 多語意軸：至少命中 2 組
-            if group_hits >= 2:
-                return True, hit_terms
-
-            return False, hit_terms
-
-        def _match_topic_1120(ev_text: str, subject: str | None, title: str | None) -> bool:
-            """
-            通用主題詞過濾：
-            - 若 effective_terms 為空 → 不做過濾（避免誤殺其它任務）
-            - 平台查詢（is_platform_query=True）→ 命中任一同義詞即可
-            - 一般查詢 → 命中足夠多的主題詞才算真正相關
-            """
-            if not effective_terms:
-                # 沒抓到主題詞就不過濾，以免誤傷其他分析任務
-                return True
-        
-            haystack = (ev_text or "") + " " + (subject or "") + " " + (title or "")
-        
-            # 實際命中的主題詞
-            hit_terms = {t for t in effective_terms if t and t in haystack}
-            hit_count = len(hit_terms)
-            if hit_count == 0:
-                return False
-        
-            # 平台查詢：例如 DF-15 / 055，只要命中一個同義詞就算
-            if is_platform_query:
-                return True
-        
-            # 一般查詢：依主題詞數量決定門檻
-            total_terms = len(set(effective_terms))
-        
-            if total_terms <= 1:
-                # 只有一個主題詞：有命中就好（跟原本行為一樣）
-                return hit_count >= 1
-        
-            if total_terms == 2:
-                # 兩個主題詞：兩個都要命中，近似 AND
-                return hit_count == 2
-        
-            # 三個以上主題詞：至少命中「一半以上，且不少於 2 個」
-            needed = max(2, (total_terms + 1) // 2)
-            return hit_count >= needed
-
-        def _match_topic_1119(ev_text: str, subject: str | None, title: str | None) -> bool:
-            """
-            只要 snippet / subject / title 有含任一「有效主題詞」，才保留：
-            - 查「東風」→ 實際用 ["東風", "DF-15", "DF-21", ...] 去 match
-            - 查「055大驅」→ 實際用 ["055", "055大驅", "055型驅逐艦", ...]
-            """
-            if not effective_terms:
-                # 沒抓到主題詞就不過濾，以免誤傷其他分析任務
-                return True
-            haystack = (ev_text or "") + " " + (subject or "") + " " + (title or "")
-            return any(t in haystack for t in effective_terms)
-        
+                
         # === 組 evidence_snippets 給代理人用（加入 snippet 級日期過濾 + 主題詞過濾）===
         evidence_snippets = []
         for h in out_hits:
@@ -1992,34 +1792,46 @@ class ESTimeline(Tool):
             "maximum": 60,
             "nullable": True
         },
+        # ★ 新增：和 es_search_news 一樣吃分流 hint
+        "index_hint": {
+            "type": "string",
+            "description": "由 LLM 分流傳入的索引提示字串；若未提供則使用環境變數 ES_INDEX",
+            "nullable": True
+        },
     }
     #output_type = "string"
     #output_type = "json"
     output_type = "any"
 
-    def forward(self, uuid: Optional[str] = None, k: Optional[int] = 10):
+    def forward(
+        self,
+        uuid: Optional[str] = None,
+        k: Optional[int] = 10,
+        index_hint: Optional[str] = None,   # ★ 新增
+    ):
         if not uuid:
             return {"timeline": [], "error": "uuid is required"}
+
+        # 依 LLM 分流或 env 決定實際查詢 index
+        index = _resolve_es_index(index_hint)
+        # （非必要，但 debug 很有用）
+        # print(f"[es_timeline] using ES index: {index}")
+
         try:
             res = _safe_es_search(
-                {"size": 1, "query": {"term": {"uuid.keyword": uuid}}, "_source": ["multidim_event_json.Event_Timeline"]},
-                allow_highlight_retry=False
+                {
+                    "size": 1,
+                    "query": {"term": {"uuid.keyword": uuid}},
+                    "_source": ["multidim_event_json.Event_Timeline"],
+                },
+                index=index,
+                allow_highlight_retry=False,
             )
-            
         except BadRequestError as e:
-            print("ES BadRequestError (timeline):", getattr(e, "info", e)); raise
+            print("ES BadRequestError (timeline):", getattr(e, "info", e))
+            raise
 
         items: List[Dict[str, Any]] = []
-        '''
-        hit = (res.get("hits", {}) or {}).get("hits", [])
-        if hit:
-            blocks = (hit[0].get("_source", {}) or {}).get("multidim_event_json", []) or []
-            for b in blocks:
-                for t in (b or {}).get("Event_Timeline", []) or []:
-                    items.append({"date_iso": t.get("date_iso"),
-                                  "date_raw": t.get("date_raw"),
-                                  "description": t.get("description")})
-        '''
         hit = (res.get("hits", {}) or {}).get("hits", [])
         if hit:
             src0 = (hit[0].get("_source", {}) or {})
@@ -2044,4 +1856,138 @@ class ESTimeline(Tool):
         items = [i for i in items if i.get("date_iso")]
         items.sort(key=lambda x: x["date_iso"])
         return {"timeline": items[: (k or 10)]}
-        #return json.dumps({"timeline": items[: (k or 10)]}, ensure_ascii=False)
+
+class ESFetchDocById(Tool):
+    """
+    依 uuid 從 Elasticsearch 撈出「單篇完整文件」，主要提供風格學習 / 公文範例用。
+
+    - 預期 index 內有欄位 uuid（或 uuid.keyword）
+    - 內文欄位預設用 text_field 指定，預設抓 rawInfo.content
+    """
+    name = "es_fetch_doc_by_id"
+    description = "依 uuid 從 Elasticsearch 撈出完整文件內文，供風格寫作或報告範例參考。"
+
+    inputs = {
+        "uuid": {
+            "type": "string",
+            "description": "文件的 uuid 欄位值（對應索引中的 uuid 或 uuid.keyword）。",
+        },
+        "index_hint": {
+            "type": "string",
+            "description": "可選：指定要查的 index（或多個 index，用逗號分隔）；未提供則走預設 ES_INDEX。",
+            "nullable": True,
+        },
+        "text_field": {
+            "type": "string",
+            "description": (
+                "可選：主要內文欄位名稱，例如 'rawInfo.content'、'content'、"
+                "'doc_text'；預設為 'rawInfo.content'。"
+            ),
+            "nullable": True,
+        },
+    }
+
+    # ★★★★★ 關鍵：一定要設 output_type，不然就會出現你那個錯誤 ★★★★★
+    output_type = "any"
+    
+    outputs = {
+        "uuid": {"type": "string"},
+        "index": {"type": "string"},
+        "full_text": {"type": "string"},
+        # 給之後要 debug / 額外取欄位時用
+        "source": {"type": "object"},
+    }
+
+    # ✅ 這裡直接用全域 ES，不需要 get_es_client
+    def __init__(self):
+        super().__init__()
+        self.es = ES
+
+    def forward(
+        self,
+        uuid: str,
+        index_hint: Optional[str] = None,
+        text_field: Optional[str] = "rawInfo.content",
+    ) -> Dict[str, Any]:
+        if not uuid:
+            return {
+                "uuid": "",
+                "index": "",
+                "full_text": "",
+                "source": {},
+                "error": "uuid is required",
+            }
+
+        # 1) 決定要查的 index（沿用你上面寫好的 _resolve_es_index）
+        index = _resolve_es_index(index_hint)
+
+        # 2) term 查 uuid；你 ESTimeline 也是用 uuid.keyword，就沿用
+        query = {
+            "term": {
+                "uuid.keyword": uuid
+            }
+        }
+
+        try:
+            resp = self.es.search(
+                index=index,
+                size=1,
+                query=query,
+                _source=True,
+            )
+        except Exception as e:
+            print(f"[ESFetchDocById] search error: {e}")
+            return {
+                "uuid": uuid,
+                "index": str(index),
+                "full_text": "",
+                "source": {},
+                "error": str(e),
+            }
+
+        hits = (resp.get("hits") or {}).get("hits") or []
+        if not hits:
+            return {
+                "uuid": uuid,
+                "index": str(index),
+                "full_text": "",
+                "source": {},
+            }
+
+        hit = hits[0]
+        src = hit.get("_source") or {}
+
+        # 3) 根據 text_field 取主要內文，並提供幾個常見備援欄位
+        tf = text_field or "rawInfo.content"
+
+        # 支援 dot path，例如 "rawInfo.content"
+        def _dot_get(d: dict, path: str):
+            cur = d
+            for p in path.split("."):
+                if not isinstance(cur, dict):
+                    return None
+                cur = cur.get(p)
+                if cur is None:
+                    return None
+            return cur
+
+        full_text = (
+            _dot_get(src, tf)
+            or _dot_get(src, "rawInfo.content")
+            or src.get("content")
+            or src.get("doc_text")
+            or ""
+        )
+
+        # 保險一下，轉成字串
+        if not isinstance(full_text, str):
+            full_text = str(full_text)
+
+        return {
+            "uuid": uuid,
+            "index": hit.get("_index", str(index)),
+            "full_text": full_text,
+            "source": src,
+        }
+    
+    

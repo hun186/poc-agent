@@ -181,10 +181,10 @@ def call_llm(
             "[call_llm] "
             f"sys_len={len(system_prompt or '')}, "
             f"user_len={len(prompt)}, "
-            f"user_preview={up[:80]!r}"
+            f"user_preview={up[:500]!r}"
         )
         # 如果你想看一點 system_prompt 也可以加（不建議印太多）
-        print(f"[call_llm] system_preview={sp[:80]!r}")
+        print(f"[call_llm] system_preview={sp[:200]!r}")
 
     client = get_default_client()
 

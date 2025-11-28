@@ -1,14 +1,16 @@
 [ES tools] 已載入平台同義詞表，共 58 組 key（含預設 + 覆蓋）
+[index_loader] loaded: {'topic_index_map': {'news_general': {'indexes': ['news_test'], 'description': '一般新聞、社會事件、國際情勢、政策、趨勢分析'}, 'mil_intel': {'indexes': ['mil_reports-01'], 'description': '本資料庫為較細節之軍事秘密情報細節相關，如果是國際公開軍事動態新聞則屬news_general'}, 'gov_document': {'indexes': ['govdocs_2024'], 'description': '公文、行政文件、政府規定之撰寫或仿寫'}}, 'default_index': 'news_test'}
 PUBLIC_API_BASE http://192.168.0.228:8000
-INFO:     192.168.0.134:57898 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:58442 - "GET /v1/models HTTP/1.1" 200 OK
-history_msgs (effective) []
-history_text from pack_chat_history 
-INFO:     192.168.0.134:58460 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:53224 - "GET /v1/models HTTP/1.1" 200 OK
+==================================================
+[call_llm] sys_len=772, user_len=145, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topi'
+[router] routed = {'mode': 'SRA_REPORT', 'reason': '使用者要求整理特定期間的事件、引用來源、趨勢與SWOT分析，需要彙整與分析資料', 'topic': 'news_general'}
 [agent] building CodeAgent: try model + instructions
 [agent] CodeAgent created with model+instructions
 ┌──────────────────────────────────────────────────────────── New run ─────────────────────────────────────────────────────────────┐
 │                                                                                                                                  │
+│ [ES_INDEX_HINT=news_test\]                                                                                                       │
 │ 【對話歷史】                                                                                                                     │
 │                                                                                                                                  │
 │                                                                                                                                  │
@@ -26,15 +28,15 @@ INFO:     192.168.0.134:58460 - "GET /v1/models HTTP/1.1" 200 OK
   "請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析   
   。目標長度為 2000字的完整報告。"                                                                                                  
                                                                                                                                     
-  # 2. 解析核心關鍵字 (不含時間資訊)                                                                                                
+  # 2. 解析核心關鍵字（不含時間資訊）                                                                                               
   core_terms = ["敘利亞", "化學武器"]                                                                                               
-  core_query = " ".join(core_terms)  # 用空格串接作為搜尋 query                                                                     
+  core_query = " ".join(core_terms)                                                                                                 
                                                                                                                                     
-  # 3. 解析時間範圍                                                                                                                 
+  # 3. 時間範圍                                                                                                                     
   date_from = "2013-01-01"                                                                                                          
-  date_to = "2017-12-31"                                                                                                            
+  date_to   = "2017-12-31"                                                                                                          
                                                                                                                                     
-  # 4. 執行新聞搜尋                                                                                                                 
+  # 4. 搜尋新聞                                                                                                                     
   search_result = es_search_news(                                                                                                   
       query=core_query,                                                                                                             
       must_high_value=False,                                                                                                        
@@ -47,6 +49,7 @@ INFO:     192.168.0.134:58460 - "GET /v1/models HTTP/1.1" 200 OK
       recency_boost=False,                                                                                                          
       recency_field="importDT",                                                                                                     
       recency_scale="30d",                                                                                                          
+      index_hint="news_test"                                                                                                        
   )                                                                                                                                 
                                                                                                                                     
   # 5. 取得 evidence_snippets                                                                                                       
@@ -55,16 +58,16 @@ INFO:     192.168.0.134:58460 - "GET /v1/models HTTP/1.1" 200 OK
   # 6. 時間統計聚合                                                                                                                 
   aggregation = aggregate_month_quarter(evidence_snippets=evidence_snippets)                                                        
                                                                                                                                     
-  doc_count = aggregation.get("doc_count", 0)                                                                                       
-  snippet_count = aggregation.get("snippet_count", 0)                                                                               
-  active_days = aggregation.get("active_days", 0)                                                                                   
-  day_counts = aggregation.get("day_counts", {})                                                                                    
-  month_counts = aggregation.get("month_counts", {})                                                                                
+  doc_count      = aggregation.get("doc_count", 0)                                                                                  
+  snippet_count  = aggregation.get("snippet_count", 0)                                                                              
+  active_days    = aggregation.get("active_days", 0)                                                                                
+  day_counts     = aggregation.get("day_counts", {})                                                                                
+  month_counts   = aggregation.get("month_counts", {})                                                                              
   quarter_counts = aggregation.get("quarter_counts", {})                                                                            
                                                                                                                                     
-  # 7. 若有時間範圍，過濾統計結果                                                                                                   
+  # 7. 若有時間範圍，進一步過濾統計結果                                                                                             
   start_date = date_from                                                                                                            
-  end_date = date_to                                                                                                                
+  end_date   = date_to                                                                                                              
                                                                                                                                     
   if start_date or end_date:                                                                                                        
       # 過濾 day_counts                                                                                                             
@@ -83,7 +86,7 @@ INFO:     192.168.0.134:58460 - "GET /v1/models HTTP/1.1" 200 OK
           m_year = m[0:4]                                                                                                           
           m_month = m[5:7]                                                                                                          
           m_first = f"{m_year}-{m_month}-01"                                                                                        
-          m_last = f"{m_year}-{m_month}-31"  # 簡化處理                                                                             
+          m_last  = f"{m_year}-{m_month}-31"   # 簡化處理                                                                           
           if start_date and m_last < start_date:                                                                                    
               continue                                                                                                              
           if end_date and m_first > end_date:                                                                                       
@@ -91,11 +94,11 @@ INFO:     192.168.0.134:58460 - "GET /v1/models HTTP/1.1" 200 OK
           filtered_month_counts[m] = cnt                                                                                            
       month_counts = filtered_month_counts                                                                                          
                                                                                                                                     
-      # 過濾 quarter_counts（形如 "YYYY-Qn"）                                                                                       
+      # 過濾 quarter_counts（形如 "YYYY-QX"）                                                                                       
       filtered_quarter_counts = {}                                                                                                  
       for q, cnt in quarter_counts.items():                                                                                         
           q_year = q[0:4]                                                                                                           
-          q_id = q[-1]  # '1'..'4'                                                                                                  
+          q_id = q[-1]   # '1'..'4'                                                                                                 
           if q_id == "1":                                                                                                           
               q_first, q_last = f"{q_year}-01-01", f"{q_year}-03-31"                                                                
           elif q_id == "2":                                                                                                         
@@ -104,6 +107,7 @@ INFO:     192.168.0.134:58460 - "GET /v1/models HTTP/1.1" 200 OK
               q_first, q_last = f"{q_year}-07-01", f"{q_year}-09-30"                                                                
           else:                                                                                                                     
               q_first, q_last = f"{q_year}-10-01", f"{q_year}-12-31"                                                                
+                                                                                                                                    
           if start_date and q_last < start_date:                                                                                    
               continue                                                                                                              
           if end_date and q_first > end_date:                                                                                       
@@ -135,183 +139,107 @@ INFO:     192.168.0.134:58460 - "GET /v1/models HTTP/1.1" 200 OK
       "payload": payload                                                                                                            
   })                                                                                                                                
  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+[_resolve_es_index] use single index: news_test
+in ESSearchNews.forward, index = news_test query = 敘利亞 化學武器
 ==================================================
-in call_llm,system_prompt 你是一個「通用查詢關鍵字萃取器」。
-使用者會給你一段查詢句子或自然語言描述，請只做一件事：
-
-從內容中找出最重要的「關鍵詞 / 主題詞」，例如：
-- 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構
-- 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱
-- 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰
-- 產品 / 平台 / 型號：武器型號、船艦名、飛機型號、產品型號等
-
-規則：
-1. 僅輸出一個 JSON 陣列（array of string），不得有任何多餘文字。
-   例：["川普經濟學", "對等關稅", "美國就業", "物價", "宮古水道"]
-2. 每個元素應是短語或名詞，不要整句話。
-3. 優先挑選具體、可檢索的詞：
-   - 例如「川普經濟學」「宮古水道」「東風15型導彈」
-   - 比起「影響」「變化」「情勢」這種抽象詞更重要。
-4. 不要輸出：
-   - 功能詞：的、和、是否、以及、影響、分析、情況、趨勢 等
-   - 純時間或日期：如 2025年1月、近年來、今天
-   - 單獨的數字：如 15、2025 等
-   - 過於籠統的地理詞：如 世界、全球、國際、亞洲、歐洲（除非明顯是查詢核心）
-5. 若覺得沒有明顯的關鍵詞，可以輸出空陣列 []。
-6. 盡量控制在 3～8 個關鍵詞內，寧可少給也不要亂給。
-in call_llm, prompt 使用者查詢如下：
-敘利亞 化學武器
+[call_llm] sys_len=584, user_len=17, user_preview='使用者查詢如下： 敘利亞 化學武器'
+[call_llm] system_preview='你是一個「通用查詢關鍵字萃取器」。 使用者會給你一段查詢句子或自然語言描述，請只做一件事：  從內容中找出最重要的「關鍵詞 / 主題詞」，例如： - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構 - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱 - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰 - 產品 / 平台 / 型號：武器型號、船艦名、飛機型號、產品型號等  '
 ==================================================
-in call_llm,system_prompt 你是一個「新聞查詢關鍵詞同義詞擴充器」。
-
-使用者會提供：
-- 一段查詢句子（query）
-- 一組核心關鍵詞（core_terms）
-
-你的工作只有一件事：
-1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。
-2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），
-   請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 value 的陣列裡。
-
-具體規則：
-
-【輸出格式】
-- 僅輸出一個 JSON 物件（object），不得有任何多餘文字。
-  key: 代表核心詞（string）
-  value: 該語意軸的同義詞陣列（array of string）
-
-【語意軸合併規則】
-1. 先觀察 core_terms 列表，思考是否有「其實是同一個概念」的核心詞：
-   例如：
-   - 「敘利亞」「Syrian Arab Republic」「Syria」「敘利亞阿拉伯共和國」
-   - 「DF-15」「東風-15」「東風15型導彈」
-2. 若你判定它們是同一個概念，請：
-   - 從中挑一個代表核心詞作為 key
-     （優先選用 core_terms 中出現較早、且較常用的寫法）
-   - 其他同義寫法（包含原本的核心詞、別名、縮寫）全部放進該 key 的 value 陣列。
-3. 不要再為同一個概念產生第二個 key。
-   例如不要同時有「敘利亞」和「Syrian Arab Republic」兩個 key。
-
-【同義詞擴充】
-1. value 陣列中可以包含：
-   - 其他 core_terms 中的同義寫法
-   - 常見別名、縮寫、英譯
-2. 不要發明不存在的專有名詞；不確定就少給。
-3. 若覺得某個核心關鍵詞沒有需要補充，可以讓它的 value 為空陣列 []。
-
-【子型號 / 子類的嚴謹規則】
-1. 若核心關鍵詞包含明確子類或型號資訊（例如「東風15型導彈」「DF-21D」「A型流感」「H1N1流感」「Toyota Corolla Altis 1.8」），
-   同義詞必須保留相同的子類或型號，不可以退化成更廣泛的類別。
-   例如：
-   - 「東風15型導彈」可以對應「東風-15」「DF-15」「DF-15A」，但不能對應「DF」「東風」。
-   - 「A型流感」可以對應「甲型流感」「Influenza A」，但不能對應「流感」「influenza」。
-   - 「H1N1流感」可以對應「H1N1 influenza」，但不能對應「季節性流感」。
-2. 類似地，若關鍵詞包含明確型號、版本號、系列編號（例如「M1A2」「iPhone 15」「F-16V」），
-   同義詞中也必須保留對應的識別資訊（數字或等價符號），不要只給「坦克」「手機」「戰機」這類籠統詞。
-
-【代表核心詞的選擇原則（說明用，不用輸出）】
-- 優先選 core_terms 列表中較前面出現，且較自然、常用的寫法。
-- 例如 core_terms = ["敘利亞", "Syrian Arab Republic"]，
-  建議 key 用 "敘利亞"，value 包含 ["Syrian Arab Republic", ...]。
-in call_llm, prompt 查詢句子（query）：
-敘利亞 化學武器
-
-核心關鍵詞（core_terms）：
-["敘利亞", "化學武器"]
-[_build_query_body] q= 敘利亞 化學武器 core_terms= ['敘利亞', '化學武器'] syn_terms= ['Syria', 'Syrian Arab Republic', '敘利亞阿拉伯共和國', 'chemical weapons', '化武', '化學兵器'] num_all_terms= 8
-[es_search_news] query='敘利亞 化學武器', es_query='敘利亞 化學武器', hits=5770, hits_after_filter=7, snippets_before_filter=5819, snippets_after_filter=11, effective_terms=['敘利亞', '化學武器', 'Syria', 'Syrian Arab Republic', '敘利亞阿拉伯共和國', 'chemical weapons', '化武', '化學兵器'], synonym_hit_snippets=11
+[call_llm] sys_len=1366, user_len=57, user_preview='查詢句子（query）： 敘利亞 化學武器  核心關鍵詞（core_terms）： ["敘利亞", "化學武器"]'
+[call_llm] system_preview='你是一個「文本檢索查詢關鍵詞同義詞擴充器」。  使用者會提供： - 一段查詢句子（query） - 一組核心關鍵詞（core_terms）  你的工作只有一件事： 1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。 2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），    請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 va'
+[_build_query_body] q= 敘利亞 化學武器 core_terms= ['敘利亞', '化學武器'] syn_terms= ['Syria', 'Syrian Arab Republic', '敘利亞阿拉伯共和國', 'chemical weapons', '化武', '化學兵器', 'chemical warfare'] num_all_terms= 9
+[es_search_news] query='敘利亞 化學武器', es_query='敘利亞 化學武器', hits=9317, hits_after_filter=7, snippets_before_filter=9376, snippets_after_filter=11, effective_terms=['敘利亞', '化學武器', 'Syria', 'Syrian Arab Republic', '敘利亞阿拉伯共和國', 'chemical weapons', '化武', '化學兵器', 'chemical warfare'], synonym_hit_snippets=11
 Final answer: {'payload': {'question': 
 '請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目
 標長度為 2000字的完整報告。', 'time_range': {'date_from': '2013-01-01', 'date_to': '2017-12-31'}, 'stats': {'doc_count': 7, 
 'snippet_count': 11, 'active_days': 7, 'day_counts': {'2013-03-19': 1, '2013-05-07': 1, '2017-01-01': 1, '2017-02-28': 1, 
 '2017-03-24': 1, '2017-04-04': 1, '2017-06-01': 1}, 'month_counts': {'2013-03': 1, '2013-05': 1, '2017-01': 1, '2017-02': 1, 
 '2017-03': 1, '2017-04': 1, '2017-06': 1}, 'quarter_counts': {'2013-Q1': 1, '2013-Q2': 1, '2017-Q1': 3, '2017-Q2': 2}}, 
-'evidence_snippets': [{'uuid': '82ef3d4f1056eda20429217f925f822cc6bd4e37', 'text': 
-'聯合國兒童基金會執行主任安東尼·雷克發表聲明，對敘利亞伊德利卜的化學武器襲擊事件表示震驚和憤怒。', 'date_iso': '2017-04-04', 
-'article_date_iso': '2017-04-04', 'subject': '世卫组织和儿基会对叙利亚化学武器袭击事件表示震惊', 'article_title': 
-'聯合國兒童基金會與世界衛生組織對敘利亞伊德利卜化學武器襲擊表示震驚', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['敘利亞', '化學武器']}, {'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'The United Nations Mission concluded that 
+'evidence_snippets': [{'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'The United Nations Mission concluded that 
 “chemical weapons have been used in the ongoing conflict between the parties in the Syrian Arab Republic, also against civilians, 
 including children, on a relatively large scale”.', 'date_iso': '2013-03-19', 'article_date_iso': '2013-03-19', 'subject': 
 '叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 'article_title': 'United 
 Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report', 
-'paragraph_id': '38', 'source_id': 'A/67/997‑S/2013/553', 'synonym_hits': ['chemical weapons', 'Syria', 'Syrian Arab Republic']}, 
-{'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'The United Nations Mission travelled to Damascus on 18 August 2013 and
-began its fact‑finding activities in the Syrian Arab Republic on 19 August 2013 ... the mission was intended to investigate the 
-reported allegations of the use of chemical weapons in Khan Al Asal, Saraqueb and Sheik Maqsood.', 'date_iso': '2013-03-19', 
-'article_date_iso': '2013-03-19', 'subject': 
+'paragraph_id': '38', 'source_id': 'A/67/997‑S/2013/553', 'synonym_hits': ['chemical weapons', 'Syrian Arab Republic', 'Syria']}, 
+{'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'On 14 June 2013, the Government of the United States reported to the 
+Secretary-General that the Government of the Syrian Arab Republic had used the chemical warfare agent Sarin against the opposition 
+in an attack on the Aleppo neighborhood of Sheik Maqsood on 13 April 2013.', 'date_iso': '2013-03-19', 'article_date_iso': 
+'2013-03-19', 'subject': '叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 
+'article_title': 'United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – 
+Final Report', 'paragraph_id': 'Appendix 9', 'source_id': None, 'synonym_hits': ['chemical warfare', 'chemical weapons', 'Syrian 
+Arab Republic', 'Syria']}, {'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'The incident was brought to the attention 
+of the Secretary-General by the Government of the United States which reported that the Government of the Syrian Arab Republic had 
+used a small amount of chemical warfare agent Sarin against the opposition in an attack on the Aleppo neighborhood of Sheik 
+Maqsood.', 'date_iso': '2013-03-19', 'article_date_iso': '2013-03-19', 'subject': 
 '叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 'article_title': 'United 
 Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report', 
-'paragraph_id': '34', 'source_id': 'A/67/997‑S/2013/553', 'synonym_hits': ['chemical weapons', 'Syria', 'Syrian Arab Republic']}, 
-{'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'Upon completion of its fact-finding activities in the Syrian Arab 
-Republic, the Head of Mission, in consultation with the Syrian Government, established 30 September 2013 as the date of the United 
-Nations Mission’s departure from the Syrian Arab Republic.', 'date_iso': '2013-03-19', 'article_date_iso': '2013-03-19', 'subject': 
-'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 'article_title': 'United 
-Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report', 
-'paragraph_id': None, 'source_id': 'UN Document A/67/997‑S/2013/553', 'synonym_hits': ['chemical weapons', 'Syria', 'Syrian Arab 
-Republic']}, {'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['chemical warfare', 'chemical weapons', 'Syrian Arab Republic', 'Syria']},
+{'uuid': '82ef3d4f1056eda20429217f925f822cc6bd4e37', 'text': 
+'聯合國兒童基金會執行主任安東尼·雷克發表聲明，對敘利亞伊德利卜的化學武器襲擊事件表示震驚和憤怒。', 'date_iso': '2017-04-04', 
+'article_date_iso': '2017-04-04', 'subject': '世卫组织和儿基会对叙利亚化学武器袭击事件表示震惊', 'article_title': 
+'聯合國兒童基金會與世界衛生組織對敘利亞伊德利卜化學武器襲擊表示震驚', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['化學武器', '敘利亞']}, {'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'text': 
 '有关敘利亞化學武器問題的一項新的決議草案今天在安理會付諸投票表決。決議草案獲得9票贊成、3票反對和3票棄權的結果。雖然決議草案滿足了獲
 得通過的9票贊成的條件，但由於常任理事國俄羅斯和中國投下反對票而未獲通過。', 'date_iso': '2017-02-28', 'article_date_iso': 
 '2017-02-28', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 'article_title': '俄、中行使否决权', 
-'paragraph_id': None, 'source_id': None, 'synonym_hits': ['敘利亞', '化學武器']}, {'uuid': 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '敘利亞']}, {'uuid': 
 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'text': 
 '卜拉希米在會後對記者表示，有關敘利亞被指在8月21日使用化學武器一事，聯合國正在等待敘利亞化學武器調查小組的工作匯報，目前調查小組搜集
 的材料正在實驗室進行檢驗，一旦分析結果出來，秘書長將會轉交安理會。', 'date_iso': '2013-08-21', 'article_date_iso': '2013-05-07', 
 'subject': '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'article_title': '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 
-'paragraph_id': 'p1', 'source_id': 'UN_PRESS_20130906', 'synonym_hits': ['敘利亞', '化學武器']}, {'uuid': 
+'paragraph_id': 'p1', 'source_id': 'UN_PRESS_20130906', 'synonym_hits': ['化學武器', '敘利亞']}, {'uuid': 
 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'text': 
 '卜拉希米在聖彼得堡被邀參加各國外長舉行的會談中指出，自今年5月7日他與美國務卿克里和俄羅斯外長拉夫羅夫在莫斯科就敘問題舉行會談以來，
 聯合國一直與美國和俄羅斯兩國商討籌備敘利亞問題日內瓦第二次國際會議，而現在日內瓦第二次會議因8月21日使用化學武器的問題及其可能帶來的
 後果而受挫。', 'date_iso': '2013-05-07', 'article_date_iso': '2013-05-07', 'subject': 
 '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'article_title': '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'paragraph_id':
-'p3', 'source_id': 'UN_PRESS_20130906', 'synonym_hits': ['敘利亞', '化學武器']}, {'uuid': 
+'p3', 'source_id': 'UN_PRESS_20130906', 'synonym_hits': ['化學武器', '敘利亞']}, {'uuid': 
 '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'text': 
 '第二天，哈馬斯空軍基地的一架敘利亞空軍直升機向勒塔梅納醫院投擲了一个圆筒，该圆筒打破了屋顶，破裂并释放出氯气，影响到至少30人。', 
 'date_iso': '2017-03-24', 'article_date_iso': '2017-03-24', 'subject': 
 '联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 
-'paragraph_id': None, 'source_id': None, 'synonym_hits': ['敘利亞', '化學武器']}, {'uuid': 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '敘利亞']}, {'uuid': 
 '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'text': 
 '報告說，有“合理的理由”假設，2017年3月24日，敘利亞空軍第22航空師第50旅的一架蘇-22戰鬥轟炸機在勒塔梅納鎮南部投擲了一枚含有沙林的M4000
 炸彈，造成至少16人受傷。', 'date_iso': '2017-03-24', 'article_date_iso': '2017-03-24', 'subject': 
 '联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 
-'paragraph_id': None, 'source_id': None, 'synonym_hits': ['敘利亞', '化學武器']}, {'uuid': 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '敘利亞']}, {'uuid': 
 '936524fd6dd4c370fad2313dd8d55fe07d1a5e25', 'text': 'The Organization for the Prohibition of Chemical Weapons subsequently 
 determined that the victims had been exposed to sarin or a sarin‑like substance.', 'date_iso': '2017-06-01', 'article_date_iso': 
 '2017-06-01', 'subject': '事实和数据：叙利亚冲突之附件：1400多万次医疗救助_tika', 'article_title': 'World Health Organization Annual
 Report 2017 – Syrian Arab Republic', 'paragraph_id': 'OPCW_determination', 'source_id': 'WHO_report', 'synonym_hits': ['chemical 
-weapons', 'Syria', 'Syrian Arab Republic']}, {'uuid': '4740342279fbe8be75a7aa28dc81190b35a19df0', 'text': 'The Organization for the 
+weapons', 'Syrian Arab Republic', 'Syria']}, {'uuid': '4740342279fbe8be75a7aa28dc81190b35a19df0', 'text': 'The Organization for the 
 Prohibition of Chemical Weapons subsequently determined that the victims had been exposed to sarin or a sarin‑like substance.', 
 'date_iso': '2017-01-01', 'article_date_iso': '2017-01-01', 'subject': 
 '事实和数据：叙利亚冲突之附件：250万儿童接种了脊髓灰质炎疫苗，为480万儿童接种了麻疹疫苗_tika', 'article_title': 'Annual Report 2017 
 – World Health Organization, Syrian Arab Republic', 'paragraph_id': 'p2', 'source_id': 'WHO report 2017', 'synonym_hits': ['chemical
-weapons', 'Syria', 'Syrian Arab Republic']}], 'raw_search_result': {'hits': [{'uuid': '82ef3d4f1056eda20429217f925f822cc6bd4e37', 
-'subject': '世卫组织和儿基会对叙利亚化学武器袭击事件表示震惊', 'score': 146.20924, 'citations': [{'text': 
+weapons', 'Syrian Arab Republic', 'Syria']}], 'raw_search_result': {'hits': [{'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 
+'subject': '叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 'score': 
+151.4559, 'citations': [{'text': 'The United Nations Mission concluded that “chemical weapons have been used in the ongoing conflict
+between the parties in the Syrian Arab Republic, also against civilians, including children, on a relatively large scale”.', 
+'source_id': 'A/67/997‑S/2013/553', 'paragraph_id': '38', 'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'subject': 
+'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika'}, {'text': 'On 14 June 2013, 
+the Government of the United States reported to the Secretary-General that the Government of the Syrian Arab Republic had used the 
+chemical warfare agent Sarin against the opposition in an attack on the Aleppo neighborhood of Sheik Maqsood on 13 April 2013.', 
+'source_id': None, 'paragraph_id': 'Appendix 9', 'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'subject': 
+'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika'}, {'text': 'The incident was 
+brought to the attention of the Secretary-General by the Government of the United States which reported that the Government of the 
+Syrian Arab Republic had used a small amount of chemical warfare agent Sarin against the opposition in an attack on the Aleppo 
+neighborhood of Sheik Maqsood.', 'source_id': None, 'paragraph_id': None, 'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 
+'subject': '叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika'}], 
+'article_date_iso': '2013-03-19', 'event_dates': ['2013-03-19', '2013-03-20', '2013-03-21', '2013-06-14', '2013-05-23', 
+'2013-08-21', '2013-08-26', '2013-08-31', '2013-09-16', '2013-09-30', '2013-08-20', '2013-03-29', '2013-04-29', '2013-04-13', 
+'2013-09-15', '2013-08-22', '2013-08-24', '2013-08-25', '2013-09-28', '2013-09-25'], 'event_date_span': {'min': '2013-03-19', 'max':
+'2013-09-30'}, 'article_title': 'United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab
+Republic – Final Report', 'selectedMessage': False, 'highValue': False}, {'uuid': '82ef3d4f1056eda20429217f925f822cc6bd4e37', 
+'subject': '世卫组织和儿基会对叙利亚化学武器袭击事件表示震惊', 'score': 145.98102, 'citations': [{'text': 
 '聯合國兒童基金會執行主任安東尼·雷克發表聲明，對敘利亞伊德利卜的化學武器襲擊事件表示震驚和憤怒。', 'source_id': None, 
 'paragraph_id': None, 'uuid': '82ef3d4f1056eda20429217f925f822cc6bd4e37', 'subject': 
 '世卫组织和儿基会对叙利亚化学武器袭击事件表示震惊'}], 'article_date_iso': '2017-04-04', 'event_dates': ['2017-04-04', '2017-04-05', 
 '2012-01-01'], 'event_date_span': {'min': '2012-01-01', 'max': '2017-04-05'}, 'article_title': 
 '聯合國兒童基金會與世界衛生組織對敘利亞伊德利卜化學武器襲擊表示震驚', 'selectedMessage': False, 'highValue': False}, {'uuid': 
-'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'subject': 
-'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 'score': 127.79593, 
-'citations': [{'text': 'The United Nations Mission concluded that “chemical weapons have been used in the ongoing conflict between 
-the parties in the Syrian Arab Republic, also against civilians, including children, on a relatively large scale”.', 'source_id': 
-'A/67/997‑S/2013/553', 'paragraph_id': '38', 'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'subject': 
-'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika'}, {'text': 'The United 
-Nations Mission travelled to Damascus on 18 August 2013 and began its fact‑finding activities in the Syrian Arab Republic on 19 
-August 2013 ... the mission was intended to investigate the reported allegations of the use of chemical weapons in Khan Al Asal, 
-Saraqueb and Sheik Maqsood.', 'source_id': 'A/67/997‑S/2013/553', 'paragraph_id': '34', 'uuid': 
-'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'subject': 
-'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika'}, {'text': 'Upon completion 
-of its fact-finding activities in the Syrian Arab Republic, the Head of Mission, in consultation with the Syrian Government, 
-established 30 September 2013 as the date of the United Nations Mission’s departure from the Syrian Arab Republic.', 'source_id': 
-'UN Document A/67/997‑S/2013/553', 'paragraph_id': None, 'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'subject': 
-'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika'}], 'article_date_iso': 
-'2013-03-19', 'event_dates': ['2013-03-19', '2013-03-20', '2013-03-21', '2013-06-14', '2013-05-23', '2013-08-21', '2013-08-26', 
-'2013-08-31', '2013-09-16', '2013-09-30', '2013-08-20', '2013-03-29', '2013-04-29', '2013-04-13', '2013-09-15', '2013-08-22', 
-'2013-08-24', '2013-08-25', '2013-09-28', '2013-09-25'], 'event_date_span': {'min': '2013-03-19', 'max': '2013-09-30'}, 
-'article_title': 'United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – 
-Final Report', 'selectedMessage': False, 'highValue': False}, {'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'subject': 
-'俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 'score': 113.7733, 'citations': [{'text': 
+'031400c3e9b56024b49af25dc838126905d778d5', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 'score': 
+113.35862, 'citations': [{'text': 
 '有关敘利亞化學武器問題的一項新的決議草案今天在安理會付諸投票表決。決議草案獲得9票贊成、3票反對和3票棄權的結果。雖然決議草案滿足了獲
 得通過的9票贊成的條件，但由於常任理事國俄羅斯和中國投下反對票而未獲通過。', 'source_id': None, 'paragraph_id': None, 'uuid': 
 '031400c3e9b56024b49af25dc838126905d778d5', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过'}, {'text': 
@@ -324,7 +252,7 @@ Safronkov）在投票前發言指出，28日付諸表決的決議草案帶有政
 安理会有关叙利亚化学武器问题决议草案未获通过'}], 'article_date_iso': '2017-02-28', 'event_dates': ['2017-02-28', '2016-01-01'], 
 'event_date_span': {'min': '2016-01-01', 'max': '2017-02-28'}, 'article_title': '俄、中行使否决权', 'selectedMessage': False, 
 'highValue': False}, {'uuid': 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'subject': 
-'卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'score': 96.71312, 'citations': [{'text': 
+'卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'score': 96.52059, 'citations': [{'text': 
 '卜拉希米在會後對記者表示，有關敘利亞被指在8月21日使用化學武器一事，聯合國正在等待敘利亞化學武器調查小組的工作匯報，目前調查小組搜集
 的材料正在實驗室進行檢驗，一旦分析結果出來，秘書長將會轉交安理會。', 'source_id': 'UN_PRESS_20130906', 'paragraph_id': 'p1', 
 'date_iso': '2013-08-21', 'uuid': 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'subject': 
@@ -340,7 +268,7 @@ Safronkov）在投票前發言指出，28日付諸表決的決議草案帶有政
 '2013-09-06'], 'event_date_span': {'min': '2013-05-07', 'max': '2013-09-06'}, 'article_title': 
 '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'selectedMessage': False, 'highValue': False}, {'uuid': 
 '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'subject': '联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'score': 
-81.85771, 'citations': [{'text': 
+81.41521, 'citations': [{'text': 
 '第二天，哈馬斯空軍基地的一架敘利亞空軍直升機向勒塔梅納醫院投擲了一个圆筒，该圆筒打破了屋顶，破裂并释放出氯气，影响到至少30人。', 
 'source_id': None, 'paragraph_id': None, 'uuid': '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'subject': 
 '联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器'}, {'text': 
@@ -350,7 +278,7 @@ Safronkov）在投票前發言指出，28日付諸表決的決議草案帶有政
 'article_date_iso': '2017-03-24', 'event_dates': ['2017-03-24', '2017-03-25', '2017-03-30'], 'event_date_span': {'min': 
 '2017-03-24', 'max': '2017-03-30'}, 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 'selectedMessage': False, 
 'highValue': False}, {'uuid': '936524fd6dd4c370fad2313dd8d55fe07d1a5e25', 'subject': 
-'事实和数据：叙利亚冲突之附件：1400多万次医疗救助_tika', 'score': 65.03485, 'citations': [{'text': 'In late August, under the 
+'事实和数据：叙利亚冲突之附件：1400多万次医疗救助_tika', 'score': 74.6965, 'citations': [{'text': 'In late August, under the 
 International Health Regulations (2005), WHO’s emergency committee issued temporary recommendations for the Syrian Arab Republic as 
 a “state infected with cVDPV2 with potential risk of international spread”. Thanks to close collaboration and coordinated advocacy, 
 WHO, UNICEF, the SARC and other partners managed to conduct two mass immunization campaigns in Deir‑ez‑Zor and Ar‑Raqqa 
@@ -365,7 +293,7 @@ killed in the course of duty.', 'source_id': None, 'paragraph_id': None, 'uuid':
 '2017-01-01', '2018-01-01', '2018-02-01', '2017-02-01', '2017-11-01'], 'event_date_span': {'min': '2017-01-01', 'max': 
 '2018-02-01'}, 'article_title': 'World Health Organization Annual Report 2017 – Syrian Arab Republic', 'selectedMessage': False, 
 'highValue': False}, {'uuid': '4740342279fbe8be75a7aa28dc81190b35a19df0', 'subject': 
-'事实和数据：叙利亚冲突之附件：250万儿童接种了脊髓灰质炎疫苗，为480万儿童接种了麻疹疫苗_tika', 'score': 62.31432, 'citations': 
+'事实和数据：叙利亚冲突之附件：250万儿童接种了脊髓灰质炎疫苗，为480万儿童接种了麻疹疫苗_tika', 'score': 71.99694, 'citations': 
 [{'text': 'In late August, under the International Health Regulations (2005), WHO’s emergency committee issued temporary 
 recommendations for the Syrian Arab Republic as a “state infected with cVDPV2 with potential risk of international spread”. Thanks 
 to close collaboration and coordinated advocacy, WHO, UNICEF, the SARC and other partners managed to conduct two mass immunization 
@@ -383,175 +311,234 @@ Syria in 2017).', 'source_id': None, 'paragraph_id': 'amman_operations', 'uuid':
 '2017-08-01', '2017-09-19', '2017-09-30', '2017-07-01', '2018-12-31', '2018-01-01', '2017-02-01', '2017-04-18', '2017-05-21', 
 '2017-07-22', '2017-08-12', '2017-09-17'], 'event_date_span': {'min': '2017-01-01', 'max': '2018-12-31'}, 'article_title': 'Annual 
 Report 2017 – World Health Organization, Syrian Arab Republic', 'selectedMessage': False, 'highValue': False}], 'evidence_snippets':
-[{'uuid': '82ef3d4f1056eda20429217f925f822cc6bd4e37', 'text': 
+[{'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'The United Nations Mission concluded that “chemical weapons have been
+used in the ongoing conflict between the parties in the Syrian Arab Republic, also against civilians, including children, on a 
+relatively large scale”.', 'date_iso': '2013-03-19', 'article_date_iso': '2013-03-19', 'subject': 
+'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 'article_title': 'United 
+Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report', 
+'paragraph_id': '38', 'source_id': 'A/67/997‑S/2013/553', 'synonym_hits': ['chemical weapons', 'Syrian Arab Republic', 'Syria']}, 
+{'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'On 14 June 2013, the Government of the United States reported to the 
+Secretary-General that the Government of the Syrian Arab Republic had used the chemical warfare agent Sarin against the opposition 
+in an attack on the Aleppo neighborhood of Sheik Maqsood on 13 April 2013.', 'date_iso': '2013-03-19', 'article_date_iso': 
+'2013-03-19', 'subject': '叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 
+'article_title': 'United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – 
+Final Report', 'paragraph_id': 'Appendix 9', 'source_id': None, 'synonym_hits': ['chemical warfare', 'chemical weapons', 'Syrian 
+Arab Republic', 'Syria']}, {'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'The incident was brought to the attention 
+of the Secretary-General by the Government of the United States which reported that the Government of the Syrian Arab Republic had 
+used a small amount of chemical warfare agent Sarin against the opposition in an attack on the Aleppo neighborhood of Sheik 
+Maqsood.', 'date_iso': '2013-03-19', 'article_date_iso': '2013-03-19', 'subject': 
+'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 'article_title': 'United 
+Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['chemical warfare', 'chemical weapons', 'Syrian Arab Republic', 'Syria']},
+{'uuid': '82ef3d4f1056eda20429217f925f822cc6bd4e37', 'text': 
 '聯合國兒童基金會執行主任安東尼·雷克發表聲明，對敘利亞伊德利卜的化學武器襲擊事件表示震驚和憤怒。', 'date_iso': '2017-04-04', 
 'article_date_iso': '2017-04-04', 'subject': '世卫组织和儿基会对叙利亚化学武器袭击事件表示震惊', 'article_title': 
 '聯合國兒童基金會與世界衛生組織對敘利亞伊德利卜化學武器襲擊表示震驚', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['敘利亞', '化學武器']}, {'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'The United Nations Mission concluded that 
-“chemical weapons have been used in the ongoing conflict between the parties in the Syrian Arab Republic, also against civilians, 
-including children, on a relatively large scale”.', 'date_iso': '2013-03-19', 'article_date_iso': '2013-03-19', 'subject': 
-'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 'article_title': 'United 
-Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report', 
-'paragraph_id': '38', 'source_id': 'A/67/997‑S/2013/553', 'synonym_hits': ['chemical weapons', 'Syria', 'Syrian Arab Republic']}, 
-{'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'The United Nations Mission travelled to Damascus on 18 August 2013 and
-began its fact‑finding activities in the Syrian Arab Republic on 19 August 2013 ... the mission was intended to investigate the 
-reported allegations of the use of chemical weapons in Khan Al Asal, Saraqueb and Sheik Maqsood.', 'date_iso': '2013-03-19', 
-'article_date_iso': '2013-03-19', 'subject': 
-'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 'article_title': 'United 
-Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report', 
-'paragraph_id': '34', 'source_id': 'A/67/997‑S/2013/553', 'synonym_hits': ['chemical weapons', 'Syria', 'Syrian Arab Republic']}, 
-{'uuid': 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'text': 'Upon completion of its fact-finding activities in the Syrian Arab 
-Republic, the Head of Mission, in consultation with the Syrian Government, established 30 September 2013 as the date of the United 
-Nations Mission’s departure from the Syrian Arab Republic.', 'date_iso': '2013-03-19', 'article_date_iso': '2013-03-19', 'subject': 
-'叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika', 'article_title': 'United 
-Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report', 
-'paragraph_id': None, 'source_id': 'UN Document A/67/997‑S/2013/553', 'synonym_hits': ['chemical weapons', 'Syria', 'Syrian Arab 
-Republic']}, {'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+['化學武器', '敘利亞']}, {'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'text': 
 '有关敘利亞化學武器問題的一項新的決議草案今天在安理會付諸投票表決。決議草案獲得9票贊成、3票反對和3票棄權的結果。雖然決議草案滿足了獲
 得通過的9票贊成的條件，但由於常任理事國俄羅斯和中國投下反對票而未獲通過。', 'date_iso': '2017-02-28', 'article_date_iso': 
 '2017-02-28', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 'article_title': '俄、中行使否决权', 
-'paragraph_id': None, 'source_id': None, 'synonym_hits': ['敘利亞', '化學武器']}, {'uuid': 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '敘利亞']}, {'uuid': 
 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'text': 
 '卜拉希米在會後對記者表示，有關敘利亞被指在8月21日使用化學武器一事，聯合國正在等待敘利亞化學武器調查小組的工作匯報，目前調查小組搜集
 的材料正在實驗室進行檢驗，一旦分析結果出來，秘書長將會轉交安理會。', 'date_iso': '2013-08-21', 'article_date_iso': '2013-05-07', 
 'subject': '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'article_title': '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 
-'paragraph_id': 'p1', 'source_id': 'UN_PRESS_20130906', 'synonym_hits': ['敘利亞', '化學武器']}, {'uuid': 
+'paragraph_id': 'p1', 'source_id': 'UN_PRESS_20130906', 'synonym_hits': ['化學武器', '敘利亞']}, {'uuid': 
 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'text': 
 '卜拉希米在聖彼得堡被邀參加各國外長舉行的會談中指出，自今年5月7日他與美國務卿克里和俄羅斯外長拉夫羅夫在莫斯科就敘問題舉行會談以來，
 聯合國一直與美國和俄羅斯兩國商討籌備敘利亞問題日內瓦第二次國際會議，而現在日內瓦第二次會議因8月21日使用化學武器的問題及其可能帶來的
 後果而受挫。', 'date_iso': '2013-05-07', 'article_date_iso': '2013-05-07', 'subject': 
 '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'article_title': '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'paragraph_id':
-'p3', 'source_id': 'UN_PRESS_20130906', 'synonym_hits': ['敘利亞', '化學武器']}, {'uuid': 
+'p3', 'source_id': 'UN_PRESS_20130906', 'synonym_hits': ['化學武器', '敘利亞']}, {'uuid': 
 '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'text': 
 '第二天，哈馬斯空軍基地的一架敘利亞空軍直升機向勒塔梅納醫院投擲了一个圆筒，该圆筒打破了屋顶，破裂并释放出氯气，影响到至少30人。', 
 'date_iso': '2017-03-24', 'article_date_iso': '2017-03-24', 'subject': 
 '联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 
-'paragraph_id': None, 'source_id': None, 'synonym_hits': ['敘利亞', '化學武器']}, {'uuid': 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '敘利亞']}, {'uuid': 
 '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'text': 
 '報告說，有“合理的理由”假設，2017年3月24日，敘利亞空軍第22航空師第50旅的一架蘇-22戰鬥轟炸機在勒塔梅納鎮南部投擲了一枚含有沙林的M4000
 炸彈，造成至少16人受傷。', 'date_iso': '2017-03-24', 'article_date_iso': '2017-03-24', 'subject': 
 '联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 
-'paragraph_id': None, 'source_id': None, 'synonym_hits': ['敘利亞', '化學武器']}, {'uuid': 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '敘利亞']}, {'uuid': 
 '936524fd6dd4c370fad2313dd8d55fe07d1a5e25', 'text': 'The Organization for the Prohibition of Chemical Weapons subsequently 
 determined that the victims had been exposed to sarin or a sarin‑like substance.', 'date_iso': '2017-06-01', 'article_date_iso': 
 '2017-06-01', 'subject': '事实和数据：叙利亚冲突之附件：1400多万次医疗救助_tika', 'article_title': 'World Health Organization Annual
 Report 2017 – Syrian Arab Republic', 'paragraph_id': 'OPCW_determination', 'source_id': 'WHO_report', 'synonym_hits': ['chemical 
-weapons', 'Syria', 'Syrian Arab Republic']}, {'uuid': '4740342279fbe8be75a7aa28dc81190b35a19df0', 'text': 'The Organization for the 
+weapons', 'Syrian Arab Republic', 'Syria']}, {'uuid': '4740342279fbe8be75a7aa28dc81190b35a19df0', 'text': 'The Organization for the 
 Prohibition of Chemical Weapons subsequently determined that the victims had been exposed to sarin or a sarin‑like substance.', 
 'date_iso': '2017-01-01', 'article_date_iso': '2017-01-01', 'subject': 
 '事实和数据：叙利亚冲突之附件：250万儿童接种了脊髓灰质炎疫苗，为480万儿童接种了麻疹疫苗_tika', 'article_title': 'Annual Report 2017 
 – World Health Organization, Syrian Arab Republic', 'paragraph_id': 'p2', 'source_id': 'WHO report 2017', 'synonym_hits': ['chemical
-weapons', 'Syria', 'Syrian Arab Republic']}]}}}
-[Step 1: Duration 50.54 seconds| Input tokens: 4,883 | Output tokens: 1,427]
+weapons', 'Syrian Arab Republic', 'Syria']}]}}}
+[Step 1: Duration 38.90 seconds| Input tokens: 4,963 | Output tokens: 1,443]
+[report_agent] plan_full_docs = {'need_full_docs': False, 'max_full_docs': 0, 'reason': 'docs=7, snips=11，資料量不大且問題未明講逐句/逐段/全文；片段已足夠支撐報告。'}
+[report_agent] skip fetching full docs.
 ==================================================
-in call_llm,system_prompt 
-你是一個『資料驅動的分析助手』。
-
-你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：
-
-{
-  "q": "使用者原始問題",
-  "t": ["date_from 或 null", "date_to 或 null"],
-  "agg": {
-    "docs": 整體文件數,
-    "snips": 整體片段數,
-    "active_days": 有活動紀錄的天數,
-    "month": [ ["YYYY-MM", count], ... ],
-    "quarter": [ ["YYYY-Qx", count], ... ],
-    "peak_days": [ ["YYYY-MM-DD", count], ... ],   # 活動最集中的幾天
-    "first_last": ["第一天日期", "最後一天日期"]
-  },
-  "ev": [
-    {
-      "id": "原始 uuid",
-      "d": "YYYY-MM-DD",
-      "title": "原文標題",
-      "s": "subject（如 DF-15_225_20）",
-      "note": "原始片段文字"
-    },
-    ...
-  ]
-}
-
-請嚴格遵守：
-
-1. 所有「具體事實（日期、事件順序、主題）」只能來自：
-   - agg 提供的統計數字（docs/snips/active_days/month/quarter/peak_days/first_last）
-   - ev 裡的 note/title/d。
-2. 不可以捏造不存在的數字（例如次數、比例、百分比）。資料沒有，就不要硬猜。
-3. 可以對趨勢做定性描述（例如「逐漸增加」「集中在第一季」），
-   但不得和 agg 的數字矛盾。
-4. 引用具體事件時，請簡要說明來源片段，例如：
-   「根據 2025-08-15 一則標題為『114/08/15 聯合情監偵綜整回報』的片段……」，
-   內容可以用自己的話轉述。
-5. 如果資料明顯不足以完整回答問題，請直接說明「目前資料不足以完整回答」，
-   並仍然說明能看出的現象。
-6. 以條列 + 小段落方式寫出清楚、有邏輯的分析報告，使用繁體中文。
-
-輸出時：
-- 不要再輸出 JSON，直接輸出可閱讀的中文說明即可。
-
-in call_llm, prompt {"q":"請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。","t":["2013-01-01","2017-12-31"],"agg":{"docs":7,"snips":11,"active_days":7,"month":[["2013-03",1],["2013-05",1],["2017-01",1],["2017-02",1],["2017-03",1],["2017-04",1],["2017-06",1]],"quarter":[["2013-Q1",1],["2013-Q2",1],["2017-Q1",3],["2017-Q2",2]],"peak_days":[["2013-03-19",1],["2013-05-07",1],["2017-01-01",1],["2017-02-28",1],["2017-03-24",1]],"first_last":["2013-03-19","2017-06-01"]},"ev":[{"id":"a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0","d":"2013-03-19","title":"United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report","s":"叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika","note":"The United Nations Mission concluded that “chemical weapons have been used in the ongoing conflict between the parties in the Syrian Arab Republic, also against civilians, including children, on a relatively large scale”."},{"id":"a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0","d":"2013-03-19","title":"United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report","s":"叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika","note":"The United Nations Mission travelled to Damascus on 18 August 2013 and began its fact‑finding activities in the Syrian Arab Republic on 19 August 2013 ... the mission was intended to investigate the reported allegations of the use of chemical weapons in Khan Al Asal, Saraqueb and Sheik Maqsood."},{"id":"a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0","d":"2013-03-19","title":"United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report","s":"叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika","note":"Upon completion of its fact-finding activities in the Syrian Arab Republic, the Head of Mission, in consultation with the Syrian Government, established 30 September 2013 as the date of the United Nations Mission’s departure from the Syrian Arab Republic."},{"id":"b0516432109bcbe9c5b43bc1df5d82e48fe088be","d":"2013-05-07","title":"卜拉希米重申对叙利亚使用武力必须通过安理会授权","s":"卜拉希米重申对叙利亚使用武力必须通过安理会授权","note":"卜拉希米在聖彼得堡被邀參加各國外長舉行的會談中指出，自今年5月7日他與美國務卿克里和俄羅斯外長拉夫羅夫在莫斯科就敘問題舉行會談以來，聯合國一直與美國和俄羅斯兩國商討籌備敘利亞問題日內瓦第二次國際會議，而現在日內瓦第二次會議因8月21日使用化學武器的問題及其可能帶來的後果而受挫。"},{"id":"b0516432109bcbe9c5b43bc1df5d82e48fe088be","d":"2013-08-21","title":"卜拉希米重申对叙利亚使用武力必须通过安理会授权","s":"卜拉希米重申对叙利亚使用武力必须通过安理会授权","note":"卜拉希米在會後對記者表示，有關敘利亞被指在8月21日使用化學武器一事，聯合國正在等待敘利亞化學武器調查小組的工作匯報，目前調查小組搜集的材料正在實驗室進行檢驗，一旦分析結果出來，秘書長將會轉交安理會。"},{"id":"4740342279fbe8be75a7aa28dc81190b35a19df0","d":"2017-01-01","title":"Annual Report 2017 – World Health Organization, Syrian Arab Republic","s":"事实和数据：叙利亚冲突之附件：250万儿童接种了脊髓灰质炎疫苗，为480万儿童接种了麻疹疫苗_tika","note":"The Organization for the Prohibition of Chemical Weapons subsequently determined that the victims had been exposed to sarin or a sarin‑like substance."},{"id":"031400c3e9b56024b49af25dc838126905d778d5","d":"2017-02-28","title":"俄、中行使否决权","s":"俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过","note":"有关敘利亞化學武器問題的一項新的決議草案今天在安理會付諸投票表決。決議草案獲得9票贊成、3票反對和3票棄權的結果。雖然決議草案滿足了獲得通過的9票贊成的條件，但由於常任理事國俄羅斯和中國投下反對票而未獲通過。"},{"id":"82df656f2dc93b270f5dd6ae4dd2ee7689c669f8","d":"2017-03-24","title":"OPCW報告：敘利亞空軍在2017年使用致命化學武器","s":"联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器","note":"第二天，哈馬斯空軍基地的一架敘利亞空軍直升機向勒塔梅納醫院投擲了一个圆筒，该圆筒打破了屋顶，破裂并释放出氯气，影响到至少30人。"},{"id":"82df656f2dc93b270f5dd6ae4dd2ee7689c669f8","d":"2017-03-24","title":"OPCW報告：敘利亞空軍在2017年使用致命化學武器","s":"联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器","note":"報告說，有“合理的理由”假設，2017年3月24日，敘利亞空軍第22航空師第50旅的一架蘇-22戰鬥轟炸機在勒塔梅納鎮南部投擲了一枚含有沙林的M4000炸彈，造成至少16人受傷。"},{"id":"82ef3d4f1056eda20429217f925f822cc6bd4e37","d":"2017-04-04","title":"聯合國兒童基金會與世界衛生組織對敘利亞伊德利卜化學武器襲擊表示震驚","s":"世卫组织和儿基会对叙利亚化学武器袭击事件表示震惊","note":"聯合國兒童基金會執行主任安東尼·雷克發表聲明，對敘利亞伊德利卜的化學武器襲擊事件表示震驚和憤怒。"}]}
-INFO:     192.168.0.134:58444 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:36590 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:36600 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:42268 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:42282 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:42286 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:42292 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-running get_doc for a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0
-INFO:     192.168.0.228:51052 - "GET /v1/docs/a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0 HTTP/1.1" 200 OK
-running get_doc for a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0
-INFO:     192.168.0.228:63483 - "GET /v1/docs/a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0 HTTP/1.1" 200 OK
-running get_doc for b0516432109bcbe9c5b43bc1df5d82e48fe088be
-INFO:     192.168.0.228:52717 - "GET /v1/docs/b0516432109bcbe9c5b43bc1df5d82e48fe088be HTTP/1.1" 200 OK
-running get_doc for 936524fd6dd4c370fad2313dd8d55fe07d1a5e25
-INFO:     192.168.0.228:52482 - "GET /v1/docs/936524fd6dd4c370fad2313dd8d55fe07d1a5e25 HTTP/1.1" 200 OK
-running get_doc for 82df656f2dc93b270f5dd6ae4dd2ee7689c669f8
-INFO:     192.168.0.228:63315 - "GET /v1/docs/82df656f2dc93b270f5dd6ae4dd2ee7689c669f8 HTTP/1.1" 200 OK
-running get_doc for 031400c3e9b56024b49af25dc838126905d778d5
-INFO:     192.168.0.228:49959 - "GET /v1/docs/031400c3e9b56024b49af25dc838126905d778d5 HTTP/1.1" 200 OK
-running get_doc for 82df656f2dc93b270f5dd6ae4dd2ee7689c669f8
-INFO:     192.168.0.228:64730 - "GET /v1/docs/82df656f2dc93b270f5dd6ae4dd2ee7689c669f8 HTTP/1.1" 200 OK
-INFO:     192.168.0.134:57362 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:34078 - "GET /v1/models HTTP/1.1" 200 OK
-running get_doc for a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0
-INFO:     192.168.0.228:51139 - "GET /v1/docs/a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0 HTTP/1.1" 200 OK
-running get_doc for 031400c3e9b56024b49af25dc838126905d778d5
-INFO:     192.168.0.228:57167 - "GET /v1/docs/031400c3e9b56024b49af25dc838126905d778d5 HTTP/1.1" 200 OK
-INFO:     192.168.0.134:50534 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:52390 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:52882 - "GET /v1/models HTTP/1.1" 200 OK
-history_msgs (effective) []
-history_text from pack_chat_history 
+[call_llm] sys_len=1448, user_len=3943, user_preview='{"q":"請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。","t":["2013-01-01","2017-12-31"],"agg":{"docs":7,"snips":11,"active_days":7,"month":[["2013-03",1],["2013-05",1],["2017-01",1],["2017-02",1],["2017-03",1],["2017-04",1],["2017-06",1]],"quarter":[["2013-Q1",1],["2013-Q2",1],["2017-Q1",3],["2017-Q2",2]],"peak_days":[["2013-03-19",1],["2013-05-07",1],["2017-01-01",1],["2017-02-28",1],["2017-03-24",1]],"first_last":["2013-03-19","2017-06-01"]},"ev":[{"id":"'
+[call_llm] system_preview=' 你是一個『資料驅動的分析助手』。  你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：  {   "q": "使用者原始問題",   "t": ["date_from 或 null", "date_to 或 null"],   "agg": {     "docs": 整體文件數,     "snips": 整體片段數,     "active_days": 有活動紀'
+INFO:     192.168.0.134:53236 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:44346 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:44356 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:48516 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:48528 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:48530 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:48540 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:60498 - "GET /v1/models HTTP/1.1" 200 OK
+==================================================
+[call_llm] sys_len=772, user_len=188, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題（務必以此為準）】 我要看中俄表決那篇原文.  【過去問題1（僅供理解上下文，可忽略）】 請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topi'
+[router] routed = {'mode': 'SRA_REPORT', 'reason': '使用者要求提供中俄表決的原文，需要從資料庫查詢原始新聞內容，屬於需要資料查詢的情境。', 'topic': 'news_general'}
 [agent] building CodeAgent: try model + instructions
 [agent] CodeAgent created with model+instructions
 ┌──────────────────────────────────────────────────────────── New run ─────────────────────────────────────────────────────────────┐
 │                                                                                                                                  │
+│ [ES_INDEX_HINT=news_test\]                                                                                                       │
 │ 【對話歷史】                                                                                                                     │
+│ USER:                                                                                                                            │
+│ 請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。 │
+│ 目標長度為 2000字的完整報告。                                                                                                    │
+│ ASSISTANT:                                                                                                                       │
+│ **敘利亞化學武器情況（2013 ~ 2017）分析報告**                                                                                    │
+│ （資料來源：`agg` 統計、`ev` 事件摘要；全文長度約 2,000 字，僅以本次提供的片段與統計為依據）                                     │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ## 1. 資料概況                                                                                                                   │
+│ | 項目 | 數值 |                                                                                                                  │
+│ |------|------|                                                                                                                  │
+│ | 總文件數（`docs`） | 7 |                                                                                                       │
+│ | 片段數（`snips`） | 11 |                                                                                                       │
+│ | 有活動紀錄的天數（`active_days`） | 7 |                                                                                        │
+│ | 首筆紀錄日期 | 2013‑03‑19 |                                                                                                    │
+│ | 末筆紀錄日期 | 2017‑06‑01 |                                                                                                    │
+│ | 月度分布 | 2013‑03、05、2017‑01、02、03、04、06 各 1 件 |                                                                      │
+│ | 季度分布 | 2013‑Q1、Q2 各 1 件；2017‑Q1 3 件、Q2 2 件 |                                                                        │
+│ | 高峰日 | 2013‑03‑19、05‑07、2017‑01‑01、02‑28、03‑24 等 |                                                                      │
+│                                                                                                                                  │
+│ > **說明**：本次查詢期間僅捕捉到 7                                                                                               │
+│ 天的活動紀錄，且每月僅有一筆文件或片段。資料量有限，以下分析以現有紀錄為基礎，若需更完整的時間線，建議縮小查詢範圍或分批取得更多 │
+│ 原文。                                                                                                                           │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ## 2. 事件時間線與重點摘錄                                                                                                       │
+│                                                                                                                                  │
+│ | 日期 | 標題 | 主要內容 | 資料來源 |                                                                                            │
+│ |------|------|----------|----------|                                                                                            │
+│ | **2013‑03‑19** | *United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic │
+│ – Final Report* | - UN 調查小組結論：敘利亞在持續衝突中已大規模使用化學武器，受害者包括平民及兒童。                              │
+│ - 美國於 2013‑06‑14 向聯合國秘書長通報敘利亞於 2013‑04‑13 在阿勒頗 Sheik Maqsood 社區使用沙林（Sarin）攻擊反對派。 | `ev`        │
+│ id:a2ce2c0… note 1、2、3 |                                                                                                       │
+│ | **2013‑05‑07** | *卜拉希米重申对叙利亚使用武力必须通过安理会授权* | - 俄、俄羅斯、德國外長在莫斯科會談，討論敘利亞問題。       │
+│ - 聯合國正與美俄協商舉辦日內瓦第二次國際會議。 | `ev` id:b051643… note 1 |                                                       │
+│ | **2013‑08‑21** | *卜拉希米重申对叙利亚使用武力必须通过安理会授权*（同上） | - 敘利亞被指於 8 月 21 日使用化學武器。            │
+│ - UN 正等待化學武器調查小組的實驗室檢驗結果，將於結果出爐後提交安理會。 | `ev` id:b051643… note 2 |                              │
+│ | **2017‑01‑01** | *Annual Report 2017 – World Health Organization, Syrian Arab Republic* | -                                    │
+│ OPCW（化學武器禁止組織）確定受害者曾接觸沙林或類似物質。 | `ev` id:4740342… note 1 |                                             │
+│ | **2017‑02‑28** | *俄、中行使否決權* | - 安理會就敘利亞化學武器問題的新決議草案投票：9 贊成、3 反對、3 棄權。                   │
+│ - 俄羅斯與中國投反對票，導致決議未通過。 | `ev` id:031400c… note 1 |                                                             │
+│ | **2017‑03‑24** | *OPCW報告：敘利亞空軍在2017年使用致命化學武器* | - 敘利亞空軍在勒塔梅納鎮南部投擲含沙林的 M4000 炸彈，至少 16 │
+│ 人受傷。                                                                                                                         │
+│ - 同日亦有報導稱敘利亞直升機向醫院投放氯氣，波及 30 人。 | `ev` id:82df656… note 1、2 |                                          │
+│ | **2017‑04‑04** | *聯合國兒童基金會與世界衛生組織對敘利亞伊德利卜化學武器襲擊表示震驚* | - UNICEF                               │
+│ 執行主任安東尼·雷克譴責伊德利卜的化學武器襲擊，呼籲國際社會關注兒童受害情況。 | `ev` id:82ef3d4… note 1 |                        │
+│ | **2017‑06‑01**（統計最末日） | — | - 依 `agg` 統計，此日仍有活動紀錄（屬於 2017‑06 月的 1 件），具體內容未列於 `ev`。 | `agg`  │
+│ month/peak_days |                                                                                                                │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ## 3. 趨勢分析（Qualitative）                                                                                                    │
+│                                                                                                                                  │
+│ 1. **2013 年：首次大型國際調查與指控**                                                                                           │
+│    - 3 月 UN 調查小組正式認定化學武器使用，並指出「相對大規模」的事實（來源：2013‑03‑19 報告）。                                 │
+│    - 6 月美國向聯合國通報具體的沙林攻擊案例（4 月 13 日阿勒頗）。                                                                │
+│    - 5、8 月的外交會談與安理會待命顯示國際社會在此階段仍處於「證據收集」與「政治協商」的過程。                                   │
+│                                                                                                                                  │
+│ 2. **2014‑2016 年：資料缺口**                                                                                                    │
+│    - 依 `agg`                                                                                                                    │
+│ 統計，此三年期間（2014‑2016）無任何片段或文件被捕捉。這可能是因為資訊未被收錄、來源不易取得，或是國際焦點暫時轉向其他議題。**目  │
+│ 前資料不足以說明此期間化學武器的實際使用情形。**                                                                                 │
+│                                                                                                                                  │
+│ 3. **2017 年：再次出現明確使用報告與政治僵局**                                                                                   │
+│    - 1 月 WHO 年報引用 OPCW 結論，確認受害者接觸沙林或類似物質。                                                                 │
+│    - 2 月安理會投票因俄中否決未能通過，顯示「大國政治」仍是阻礙行動的關鍵因素。                                                  │
+│    - 3 月 OPCW 報告提供具體作戰細節（蘇‑22 投擲 M4000、直升機投氯氣），證實化學武器已被空軍直接使用。                            │
+│    - 4 月 UNICEF 與 WHO 共同譴責伊德利卜化學襲擊，突顯兒童與平民的受害情況。                                                     │
+│                                                                                                                                  │
+│ 4. **整體趨勢**                                                                                                                  │
+│    - **事件集中**：2013 年與 2017 年分別出現兩個高峰期（分別對應 `peak_days`），期間間隔約 4 年。                                │
+│    - **從指控 → 具體作戰**：2013 年的指控多為「使用疑慮」與「證據收集」，而 2017                                                 │
+│ 年則有明確的空軍作戰報告，顯示化學武器使用的「技術與規模」提升。                                                                 │
+│    - **國際政治阻礙**：兩次高峰期均伴隨安理會的政治爭執（2013 年仍在討論中，2017                                                 │
+│ 年因俄中否決未通過），表明國際制裁與干預的有效性受限。                                                                           │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ## 4. SWOT 分析（基於現有資料）                                                                                                  │
+│                                                                                                                                  │
+│ | 類別 | 內部因素（敘利亞） | 外部因素（國際社會） |                                                                             │
+│ |------|-------------------|----------------------|                                                                              │
+│ | **Strengths（優勢）** | - 擁有成熟的化學武器研製與投放能力（如 2017 年蘇‑22 投擲 M4000）                                       │
+│ - 可利用空軍與地面部隊靈活部署化學彈藥 | - UN、OPCW 具備專業的調查與驗證機制，能夠提供技術證據 |                                 │
+│ | **Weaknesses（弱點）** | - 使用化學武器導致國際譴責與可能的制裁                                                                │
+│ - 受限於國內基礎設施與後勤，難以大規模持續使用 | - 國際社會對敘利亞的制裁執行力受限（如俄中否決）                                │
+│ - 監測與證據收集時間差，導致反應滯後 |                                                                                           │
+│ | **Opportunities（機會）** | - 若國內政治結構變動，可能出現對化學武器使用的內部制衡 | -                                         │
+│ 透過多邊機制（OPCW、WHO、UNICEF）持續曝光，增加國際輿論壓力                                                                      │
+│ - 促進新制裁或外交方案的制定（如 2017 年安理會草案） |                                                                           │
+│ | **Threats（威脅）** | - 持續或升級的化學武器使用可能觸發更嚴格的國際軍事干預                                                   │
+│ - 內部民眾與醫療系統因化學攻擊受創，增加人道危機 | - 大國政治（俄、中）可能繼續阻礙安理會行動，導致制裁無法落實                  │
+│ - 信息不透明與證據不足可能讓國際社會對事件真相產生懷疑，削弱制裁合法性 |                                                         │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ## 5. 小結與建議                                                                                                                 │
+│                                                                                                                                  │
+│ 1. **現象總結**                                                                                                                  │
+│    - 2013 年與 2017 年是敘利亞化學武器使用資訊最為集中的兩個時段。2013 年的證據多為「指控」與「早期調查」，2017                  │
+│ 年則出現具體空軍投放的作戰報告，顯示使用手段的升級。                                                                             │
+│    - 國際社會在兩個時段皆面臨「大國政治」的阻礙，導致安理會決議難以通過或執行。                                                  │
+│                                                                                                                                  │
+│ 2. **資料不足說明**                                                                                                              │
+│    - 2014‑2016 年期間缺乏任何片段或文件，無法判斷該時段是否真的無化學武器使用，或是資訊未被收錄。若需完整的時間序列，建議：      │
+│      - **縮小查詢範圍**（例如僅針對 2014‑2015）或**分批搜尋**（依月份或關鍵字）。                                                │
+│      - **取得 full_docs**（完整原文）以補足片段中可能遺漏的細節。                                                                │
+│                                                                                                                                  │
+│ 3. **未來觀測建議**                                                                                                              │
+│    - 持續追蹤 OPCW、UNSC、WHO 的正式報告與決議，尤其是有關「化學武器使用證據」的實驗室驗證結果。                                 │
+│    - 觀察大國（美、俄、中）在安理會的投票走向，以評估國際制裁或干預的可行性。                                                    │
+│    - 針對兒童與平民受害的醫療與人道數據（如 UNICEF、WHO 相關統計）做長期監測，作為國際壓力的量化依據。                           │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ **結語**                                                                                                                         │
+│ 本報告依據現有 7 份文件與 11 片段，從時間線、趨勢與 SWOT 四個層面，概述了 2013‑2017                                              │
+│ 年敘利亞化學武器的主要情況。資料量受限，尤其是 2014‑2016 年的缺口，限制了完整的敘事與量化分析。若需更精細的研究，建議補充        │
+│ full‑docs 或進一步細分查詢時間範圍，以獲得更全面的證據基礎。                                                                     │
 │                                                                                                                                  │
 │                                                                                                                                  │
 │ 【目前問題】                                                                                                                     │
-│ 我得到一則情報指出2025年11月20日下午4點在馬達加斯加海域發現共軍D52大驅在進行護船，防海盜，請以聯合情監的風格寫成一則軍事情報。   │
+│ 我要看中俄表決那篇原文.                                                                                                          │
 │                                                                                                                                  │
 │ 【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。                                       │
 │                                                                                                                                  │
 └─ LiteLLMModel - ollama_chat/gpt-oss:120b-32k ────────────────────────────────────────────────────────────────────────────────────┘
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  ─ Executing parsed code: ───────────────────────────────────────────────────────────────────────────────────────────────────────── 
-  # 原始問題                                                                                                                        
-  question =                                                                                                                        
-  "我得到一則情報指出2025年11月20日下午4點在馬達加斯加海域發現共軍D52大驅在進行護船，防海盜，請以聯合情監的風格寫成一則軍事情報。"  
+  # 定義使用者問題                                                                                                                  
+  question = "我要看中俄表決那篇原文。"                                                                                             
                                                                                                                                     
-  # 1. 解析核心關鍵字（不含時間資訊）                                                                                               
-  core_terms = ["共軍", "D52大驅", "馬達加斯加海域"]                                                                                
+  # 從問題中萃取核心關鍵字（不含時間資訊）                                                                                          
+  core_terms = ["俄", "中", "敘利亞", "化學武器", "否決"]                                                                           
+                                                                                                                                    
+  # 組成搜尋查詢字串                                                                                                                
   core_query = " ".join(core_terms)                                                                                                 
                                                                                                                                     
-  # 2. 解析時間範圍                                                                                                                 
-  date_from = "2025-11-20"                                                                                                          
-  date_to = "2025-11-20"                                                                                                            
+  # 設定時間範圍（根據先前對話的 2013 至 2017 年）                                                                                  
+  date_from = "2013-01-01"                                                                                                          
+  date_to = "2017-12-31"                                                                                                            
                                                                                                                                     
-  # 3. 搜尋新聞情資                                                                                                                 
+  # 呼叫 Elasticsearch 新聞搜尋                                                                                                     
   search_result = es_search_news(                                                                                                   
       query=core_query,                                                                                                             
       must_high_value=False,                                                                                                        
@@ -564,24 +551,572 @@ history_text from pack_chat_history
       recency_boost=False,                                                                                                          
       recency_field="importDT",                                                                                                     
       recency_scale="30d",                                                                                                          
+      index_hint="news_test"                                                                                                        
+  )                                                                                                                                 
+                                                                                                                                    
+  # 取得證據片段                                                                                                                    
+  evidence_snippets = search_result.get("evidence_snippets", [])                                                                    
+                                                                                                                                    
+  # 組成 payload                                                                                                                    
+  payload = {                                                                                                                       
+      "question": question,                                                                                                         
+      "time_range": {                                                                                                               
+          "date_from": date_from,                                                                                                   
+          "date_to": date_to,                                                                                                       
+      },                                                                                                                            
+      "stats": {},  # 此任務僅需原文，統計資訊可留空                                                                                
+      "evidence_snippets": evidence_snippets,                                                                                       
+      "raw_search_result": search_result,                                                                                           
+  }                                                                                                                                 
+                                                                                                                                    
+  # 回傳結果                                                                                                                        
+  final_answer({                                                                                                                    
+      "payload": payload                                                                                                            
+  })                                                                                                                                
+ ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+[_resolve_es_index] use single index: news_test
+in ESSearchNews.forward, index = news_test query = 俄 中 敘利亞 化學武器 否決
+==================================================
+[call_llm] sys_len=584, user_len=24, user_preview='使用者查詢如下： 俄 中 敘利亞 化學武器 否決'
+[call_llm] system_preview='你是一個「通用查詢關鍵字萃取器」。 使用者會給你一段查詢句子或自然語言描述，請只做一件事：  從內容中找出最重要的「關鍵詞 / 主題詞」，例如： - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構 - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱 - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰 - 產品 / 平台 / 型號：武器型號、船艦名、飛機型號、產品型號等  '
+==================================================
+[call_llm] sys_len=1366, user_len=83, user_preview='查詢句子（query）： 俄 中 敘利亞 化學武器 否決  核心關鍵詞（core_terms）： ["俄羅斯", "中國", "敘利亞", "化學武器", "否決"]'
+[call_llm] system_preview='你是一個「文本檢索查詢關鍵詞同義詞擴充器」。  使用者會提供： - 一段查詢句子（query） - 一組核心關鍵詞（core_terms）  你的工作只有一件事： 1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。 2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），    請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 va'
+[_build_query_body] q= 俄 中 敘利亞 化學武器 否決 core_terms= ['俄羅斯', '中國', '敘利亞', '化學武器', '否決'] syn_terms= ['俄', '俄國', 'Russia', 'RU', '中華人民共和國', 'China', '中', 'PRC', 'Syria', '敘利亞阿拉伯共和國', 'Syrian Arab Republic', '化武', 'chemical weapons', 'chemical weapon', 'veto', '否決權', '拒絕', 'reject'] num_all_terms= 23
+[es_search_news] query='俄 中 敘利亞 化學武器 否決', es_query='俄 中 敘利亞 化學武器 否決', hits=9341, hits_after_filter=10, snippets_before_filter=13004, snippets_after_filter=16, effective_terms=['俄羅斯', '中國', '敘利亞', '化學武器', '否決', '俄', '俄國', 'Russia', 'RU', '中華人民共和國', 'China', '中', 'PRC', 'Syria', '敘利亞阿拉伯共和國', 'Syrian Arab Republic', '化武', 'chemical weapons', 'chemical weapon', 'veto', '否決權', '拒絕', 'reject'], synonym_hit_snippets=16
+Final answer: {'payload': {'question': '我要看中俄表決那篇原文。', 'time_range': {'date_from': '2013-01-01', 'date_to': 
+'2017-12-31'}, 'stats': {}, 'evidence_snippets': [{'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'這是俄羅斯自敘利亞衝突爆發以來在安理會就敘利亞問題的決議表決中第七次行使否決權。俄羅斯常駐聯合國副代表薩夫龍科夫（Vladimir 
+Safronkov）在投票前發言指出，28日付諸表決的決議草案帶有政治偏見，案文未能解決俄羅斯就一些問題存在的關切。', 'date_iso': 
+'2017-02-28', 'article_date_iso': '2017-02-28', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 
+'article_title': '俄、中行使否决权', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['中', '否決', '否決權', '俄羅斯', 
+'俄', '敘利亞']}, {'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'有关敘利亞化學武器問題的一項新的決議草案今天在安理會付諸投票表決。決議草案獲得9票贊成、3票反對和3票棄權的結果。雖然決議草案滿足了獲
+得通過的9票贊成的條件，但由於常任理事國俄羅斯和中國投下反對票而未獲通過。', 'date_iso': '2017-02-28', 'article_date_iso': 
+'2017-02-28', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 'article_title': '俄、中行使否决权', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '中', '敘利亞', '中國', '俄', '俄羅斯']}, {'uuid': 
+'031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'中國常駐聯合國代表劉結一表決後進行的解釋性發言中表示，中方對敘利亞境內發生使用化學材料作為武器事件深表關注並予以強烈譴責。', 
+'date_iso': '2017-02-28', 'article_date_iso': '2017-02-28', 'subject': '俄、中行使否决权  
+安理会有关叙利亚化学武器问题决议草案未获通过', 'article_title': '俄、中行使否决权', 'paragraph_id': None, 'source_id': None, 
+'synonym_hits': ['俄', '中', '中國', '敘利亞']}, {'uuid': '523e4c0c18ed75141a58f484265ab58255df3eb2', 'text': 
+'5月22日上午，安理會就法國等提交的將敘利亞局勢提交國際刑事法院審理的決議草案進行表決。中國和俄羅斯投了反對票。由於中俄行使否決權，決
+議草案未獲通過。', 'date_iso': '2014-05-22', 'article_date_iso': '2014-05-22', 'subject': '中俄否决安理会叙利亚问题决议草案 
+中国对草案存在几点重大困难', 'article_title': '中俄否决安理会叙利亚问题决议草案 中国对草案存在几点重大困难', 'paragraph_id': 'p1', 
+'source_id': None, 'synonym_hits': ['中', '敘利亞', '中國', '否決', '否決權', '俄', '俄羅斯']}, {'uuid': 
+'523e4c0c18ed75141a58f484265ab58255df3eb2', 'text': 
+'當務之急是推動敘利亞政府和反對派盡快停火止暴，重啟第三輪日內瓦談判，推進政治進程，啟動政治過渡。強行將敘利亞局勢提交國際刑事法院不
+利於增進互信，無助於日內瓦談判的盡快重啟。', 'date_iso': '2014-05-22', 'article_date_iso': '2014-05-22', 'subject': 
+'中俄否决安理会叙利亚问题决议草案 中国对草案存在几点重大困难', 'article_title': '中俄否决安理会叙利亚问题决议草案 
+中国对草案存在几点重大困难', 'paragraph_id': 'p3', 'source_id': None, 'synonym_hits': ['俄', '中', '敘利亞']}, {'uuid': 
+'82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'text': 
+'第二天，哈馬斯空軍基地的一架敘利亞空軍直升機向勒塔梅納醫院投擲了一个圆筒，该圆筒打破了屋顶，破裂并释放出氯气，影响到至少30人。', 
+'date_iso': '2017-03-24', 'article_date_iso': '2017-03-24', 'subject': 
+'联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '中', '敘利亞']}, {'uuid': 
+'82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'text': 
+'報告說，有“合理的理由”假設，2017年3月24日，敘利亞空軍第22航空師第50旅的一架蘇-22戰鬥轟炸機在勒塔梅納鎮南部投擲了一枚含有沙林的M4000
+炸彈，造成至少16人受傷。', 'date_iso': '2017-03-24', 'article_date_iso': '2017-03-24', 'subject': 
+'联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '中', '敘利亞']}, {'uuid': 
+'82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'text': 
+'禁止化学武器组织（OPCW）在今天发布的一份报告中称，叙利亚空军在2017年3月对中部城镇勒塔梅纳（Ltamenah）的三次单独袭击中使用了致命化学
+武器，总共至少有106人受到影响。', 'date_iso': '2017-03-24', 'article_date_iso': '2017-03-24', 'subject': 
+'联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '中', '敘利亞']}, {'uuid': 
+'6559f1cda101d889f4a572bc09c2df4bd432fe6c', 'text': 
+'在24日的表决中，俄罗斯和玻利维亚投了反对票，中国和哈萨克斯坦投了弃权票。美国、英国、法国等11国投了赞成票。', 'date_iso': 
+'2016-09-16', 'article_date_iso': '2016-09-16', 'subject': '俄罗斯行使否决权 
+延长叙利亚化武问题“联合调查机制”任期决议草案未在安理会获得通过', 'article_title': '俄罗斯行使否决权 
+延长叙利亚化武问题“联合调查机制”任期决议草案未在安理会获得通过', 'paragraph_id': 'p2', 'source_id': None, 'synonym_hits': ['俄', 
+'中', '化武']}, {'uuid': '4488b72bbd423728f9c6e49579d3ac6227d93ed9', 'text': 
+'在宣布這條消息前的幾個小時，卜拉希米還與中國外交部長楊潔篪通了電話，介紹了對敘利亞局勢的看法以及他所積極開展的斡旋工作。', 
+'date_iso': '2013-01-09', 'article_date_iso': '2013-01-09', 'subject': '卜拉希米本周五与美、俄举行叙利亚问题三方会谈', 
+'article_title': '卜拉希米本周五與美、俄舉行敘利亞問題三方會談', 'paragraph_id': '2', 'source_id': 'UN Spokesperson Office', 
+'synonym_hits': ['俄', '中', '中國', '敘利亞']}, {'uuid': 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'text': 
+'卜拉希米在聖彼得堡被邀參加各國外長舉行的會談中指出，自今年5月7日他與美國務卿克里和俄羅斯外長拉夫羅夫在莫斯科就敘問題舉行會談以來，
+聯合國一直與美國和俄羅斯兩國商討籌備敘利亞問題日內瓦第二次國際會議，而現在日內瓦第二次會議因8月21日使用化學武器的問題及其可能帶來的
+後果而受挫。', 'date_iso': '2013-05-07', 'article_date_iso': '2013-05-07', 'subject': 
+'卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'article_title': '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'paragraph_id':
+'p3', 'source_id': 'UN_PRESS_20130906', 'synonym_hits': ['化學武器', '中', '俄羅斯', '俄', '敘利亞']}, {'uuid': 
+'a3d2e1d0e85e85617bbb5ab6b35e12e8f84b408c', 'text': 
+'潘基文秘書長28日發表聲明，強烈譴責敘利亞城市阿勒頗的一所醫院遭遇空襲的事件。他呼籲敘利亞衝突各方立刻重新履行各自在停止敵對行動協議
+中的義務，並鼓勵俄羅斯和美國向各方施加壓力，以停止衝突。', 'date_iso': '2016-04-28', 'article_date_iso': '2016-04-28', 'subject': 
+'叙利亚问题特使呼吁美、俄向叙利亚各方施加压力 确保停止敌对行动协议的执行', 'article_title': 
+'叙利亚问题特使呼吁美、俄向叙利亚各方施加压力 确保停止敌对行动协议的执行', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['俄', '中', '敘利亞', '俄羅斯']}, {'uuid': '9faa0e2cdf3157d3fda90b2b539a55ca90d21312', 'text': '联合国裁军事务高级代表中满泉（Izumi
+Nakamistu）在安理会会议上发言。', 'date_iso': '2017-11-17', 'article_date_iso': '2017-11-17', 'subject': 
+'安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成       美国表示俄罗斯阻碍安理会对叙利亚近期化武事件进行调查', 
+'article_title': '安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成', 'paragraph_id': None, 'source_id': None, 
+'synonym_hits': ['俄', '中', '化武']}, {'uuid': '9faa0e2cdf3157d3fda90b2b539a55ca90d21312', 'text': 
+'她表示，在叙利亚宣布的27处化学武器设施中，余留的两处设施的摧毁工作正在进行中；联合国项目服务办公室正在与一家负责摧毁工作的私营公司
+敲定合同的细节；预计摧毁工作将在两个月内完成。', 'date_iso': '2017-11-17', 'article_date_iso': '2017-11-17', 'subject': 
+'安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成       美国表示俄罗斯阻碍安理会对叙利亚近期化武事件进行调查', 
+'article_title': '安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成', 'paragraph_id': None, 'source_id': None, 
+'synonym_hits': ['俄', '中', '化武']}, {'uuid': '62ae8de102b6dd19c215e8f090c878004c540abd', 'text': '光芒角号”（Cape 
+Ray）已完成销毁叙利亚交出的全部581.5吨制造沙林毒气和19.8吨制造芥子气毒气的原材料制工作。潘基文秘书长8月20日发表声明对此表示欢迎。\n\
+n潘基在声明中指出，这一进展标志着国际社会在俄罗斯与美国达成协议之后，国际社会在销毁叙利亚化学武器项目方面所取得的成就。\n\n潘基文还
+对叙利亚当局所采取的合作态度表示赞赏，并对为消除叙利亚化武进', 'date_iso': '2014-08-20', 'article_date_iso': '2014-07-02', 
+'subject': '美宣布已全部销毁叙利亚化武 潘基文表示欢迎', 'article_title': '美宣布已全部销毁叙利亚化武 潘基文表示欢迎', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['俄', '中', '化武']}, {'uuid': '9143d90dc1a4963ed35d70813b898afaaed82481',
+'text': 
+'刘结一在谈及叙利亚问题时指出，中国坚定支持并积极参与联合国及禁化武组织框架下销毁叙化武多边行动。为确保叙化武运输安全，中方海军舰艇
+正同俄罗斯、丹麦、挪威等国一道共同为叙化武海运提供联合护航。', 'date_iso': '2014-01-08', 'article_date_iso': '2014-01-08', 
+'subject': '中国常驻联合国代表刘结一：日本领导人参拜靖国神社 公然挑战《联合国宪章》原则', 'article_title': 
+'中国常驻联合国代表刘结一：日本领导人参拜靖国神社 公然挑战《联合国宪章》原则', 'paragraph_id': 'p2', 'source_id': None, 
+'synonym_hits': ['俄', '中', '化武']}], 'raw_search_result': {'hits': [{'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 
+'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 'score': 163.14769, 'citations': [{'text': 
+'這是俄羅斯自敘利亞衝突爆發以來在安理會就敘利亞問題的決議表決中第七次行使否決權。俄羅斯常駐聯合國副代表薩夫龍科夫（Vladimir 
+Safronkov）在投票前發言指出，28日付諸表決的決議草案帶有政治偏見，案文未能解決俄羅斯就一些問題存在的關切。', 'source_id': None, 
+'paragraph_id': None, 'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'subject': '俄、中行使否决权  
+安理会有关叙利亚化学武器问题决议草案未获通过'}, {'text': 
+'有关敘利亞化學武器問題的一項新的決議草案今天在安理會付諸投票表決。決議草案獲得9票贊成、3票反對和3票棄權的結果。雖然決議草案滿足了獲
+得通過的9票贊成的條件，但由於常任理事國俄羅斯和中國投下反對票而未獲通過。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'031400c3e9b56024b49af25dc838126905d778d5', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过'}, {'text': 
+'中國常駐聯合國代表劉結一表決後進行的解釋性發言中表示，中方對敘利亞境內發生使用化學材料作為武器事件深表關注並予以強烈譴責。', 
+'source_id': None, 'paragraph_id': None, 'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'subject': '俄、中行使否决权  
+安理会有关叙利亚化学武器问题决议草案未获通过'}], 'article_date_iso': '2017-02-28', 'event_dates': ['2017-02-28', '2016-01-01'], 
+'event_date_span': {'min': '2016-01-01', 'max': '2017-02-28'}, 'article_title': '俄、中行使否决权', 'selectedMessage': False, 
+'highValue': False}, {'uuid': '523e4c0c18ed75141a58f484265ab58255df3eb2', 'subject': '中俄否决安理会叙利亚问题决议草案 
+中国对草案存在几点重大困难', 'score': 108.75275, 'citations': [{'text': 
+'5月22日上午，安理會就法國等提交的將敘利亞局勢提交國際刑事法院審理的決議草案進行表決。中國和俄羅斯投了反對票。由於中俄行使否決權，決
+議草案未獲通過。', 'source_id': None, 'paragraph_id': 'p1', 'date_iso': '2014-05-22', 'uuid': 
+'523e4c0c18ed75141a58f484265ab58255df3eb2', 'subject': '中俄否决安理会叙利亚问题决议草案 中国对草案存在几点重大困难'}, {'text': 
+'當務之急是推動敘利亞政府和反對派盡快停火止暴，重啟第三輪日內瓦談判，推進政治進程，啟動政治過渡。強行將敘利亞局勢提交國際刑事法院不
+利於增進互信，無助於日內瓦談判的盡快重啟。', 'source_id': None, 'paragraph_id': 'p3', 'uuid': 
+'523e4c0c18ed75141a58f484265ab58255df3eb2', 'subject': '中俄否决安理会叙利亚问题决议草案 中国对草案存在几点重大困难'}, {'text': 
+'王民表示，第一，中方認為，由國際刑事法院追究嚴重違法行為人的責任，應當以尊重國家司法主權為前提，遵守補充性原則。中國不是《羅馬規約
+》締約國，一貫對安理會將一國局勢提交國際刑事法院持保留態度，這是我們的原則立場。', 'source_id': None, 'paragraph_id': 'p2', 'uuid': 
+'523e4c0c18ed75141a58f484265ab58255df3eb2', 'subject': '中俄否决安理会叙利亚问题决议草案 中国对草案存在几点重大困难'}], 
+'article_date_iso': '2014-05-22', 'event_dates': ['2014-05-22'], 'event_date_span': {'min': '2014-05-22', 'max': '2014-05-22'}, 
+'article_title': '中俄否决安理会叙利亚问题决议草案 中国对草案存在几点重大困难', 'selectedMessage': False, 'highValue': False}, 
+{'uuid': '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'subject': '联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 
+'score': 89.521286, 'citations': [{'text': 
+'第二天，哈馬斯空軍基地的一架敘利亞空軍直升機向勒塔梅納醫院投擲了一个圆筒，该圆筒打破了屋顶，破裂并释放出氯气，影响到至少30人。', 
+'source_id': None, 'paragraph_id': None, 'uuid': '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'subject': 
+'联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器'}, {'text': 
+'報告說，有“合理的理由”假設，2017年3月24日，敘利亞空軍第22航空師第50旅的一架蘇-22戰鬥轟炸機在勒塔梅納鎮南部投擲了一枚含有沙林的M4000
+炸彈，造成至少16人受傷。', 'source_id': None, 'paragraph_id': None, 'date_iso': '2017-03-24', 'uuid': 
+'82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'subject': '联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器'}, {'text': 
+'禁止化学武器组织（OPCW）在今天发布的一份报告中称，叙利亚空军在2017年3月对中部城镇勒塔梅纳（Ltamenah）的三次单独袭击中使用了致命化学
+武器，总共至少有106人受到影响。', 'source_id': None, 'paragraph_id': None, 'uuid': '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 
+'subject': '联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器'}], 'article_date_iso': '2017-03-24', 'event_dates': 
+['2017-03-24', '2017-03-25', '2017-03-30'], 'event_date_span': {'min': '2017-03-24', 'max': '2017-03-30'}, 'article_title': 
+'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 'selectedMessage': False, 'highValue': False}, {'uuid': 
+'6559f1cda101d889f4a572bc09c2df4bd432fe6c', 'subject': '俄罗斯行使否决权 
+延长叙利亚化武问题“联合调查机制”任期决议草案未在安理会获得通过', 'score': 87.43255, 'citations': [{'text': 
+'在24日的表决中，俄罗斯和玻利维亚投了反对票，中国和哈萨克斯坦投了弃权票。美国、英国、法国等11国投了赞成票。', 'source_id': None, 
+'paragraph_id': 'p2', 'uuid': '6559f1cda101d889f4a572bc09c2df4bd432fe6c', 'subject': '俄罗斯行使否决权 
+延长叙利亚化武问题“联合调查机制”任期决议草案未在安理会获得通过'}, {'text': 
+'俄罗斯10月24日在安理会行使否决权，对美国等国提出的一项旨在延长负责查明叙利亚境内化学武器袭击责任方的“禁止化学武器组织－联合国联合调
+查机制”（JIM）任期的决议草案投了反对票，从而使这项草案由于一个安理会常任理事国的投票反对而“夭折”。', 'source_id': None, 
+'paragraph_id': 'p1', 'date_iso': '2016-10-24', 'uuid': '6559f1cda101d889f4a572bc09c2df4bd432fe6c', 'subject': '俄罗斯行使否决权 
+延长叙利亚化武问题“联合调查机制”任期决议草案未在安理会获得通过'}], 'article_date_iso': '2016-09-16', 'event_dates': ['2015-02-01', 
+'2015-08-01', '2015-11-01', '2016-08-01', '2017-10-24', '2017-10-26', '2017-11-17'], 'event_date_span': {'min': '2015-02-01', 'max':
+'2017-11-17'}, 'article_title': '俄罗斯行使否决权 延长叙利亚化武问题“联合调查机制”任期决议草案未在安理会获得通过', 
+'selectedMessage': False, 'highValue': False}, {'uuid': '4488b72bbd423728f9c6e49579d3ac6227d93ed9', 'subject': 
+'卜拉希米本周五与美、俄举行叙利亚问题三方会谈', 'score': 78.45456, 'citations': [{'text': 
+'聯合國－阿盟敘利亞危機聯合特別代表卜拉希米將於本周五在日內瓦總部與美國和俄羅斯就敘利亞問題舉行三方會議。', 'source_id': 'UN 
+Spokesperson Office', 'paragraph_id': '1', 'uuid': '4488b72bbd423728f9c6e49579d3ac6227d93ed9', 'subject': 
+'卜拉希米本周五与美、俄举行叙利亚问题三方会谈'}, {'text': 
+'安理會本月輪值主席、巴基斯坦常駐聯合國代表馬蘇德·汗曾向媒體表示，卜拉希米正在與俄羅斯、美国和敘利亞方面進行接觸，並與該地區其他領導
+人展開對話，盡一切努力為這場已持續長達22個月的危機取得外交突破鋪平道路。', 'source_id': 'UN Spokesperson Office', 'paragraph_id': 
+'3', 'uuid': '4488b72bbd423728f9c6e49579d3ac6227d93ed9', 'subject': '卜拉希米本周五与美、俄举行叙利亚问题三方会谈'}, {'text': 
+'在宣布這條消息前的幾個小時，卜拉希米還與中國外交部長楊潔篪通了電話，介紹了對敘利亞局勢的看法以及他所積極開展的斡旋工作。', 
+'source_id': 'UN Spokesperson Office', 'paragraph_id': '2', 'uuid': '4488b72bbd423728f9c6e49579d3ac6227d93ed9', 'subject': 
+'卜拉希米本周五与美、俄举行叙利亚问题三方会谈'}], 'article_date_iso': '2013-01-09', 'event_dates': ['2013-01-09', '2013-01-11', 
+'2012-12-23'], 'event_date_span': {'min': '2012-12-23', 'max': '2013-01-11'}, 'article_title': 
+'卜拉希米本周五與美、俄舉行敘利亞問題三方會談', 'selectedMessage': False, 'highValue': False}, {'uuid': 
+'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'subject': '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'score': 75.95141, 
+'citations': [{'text': 
+'卜拉希米在聖彼得堡被邀參加各國外長舉行的會談中指出，自今年5月7日他與美國務卿克里和俄羅斯外長拉夫羅夫在莫斯科就敘問題舉行會談以來，
+聯合國一直與美國和俄羅斯兩國商討籌備敘利亞問題日內瓦第二次國際會議，而現在日內瓦第二次會議因8月21日使用化學武器的問題及其可能帶來的
+後果而受挫。', 'source_id': 'UN_PRESS_20130906', 'paragraph_id': 'p3', 'date_iso': '2013-05-07', 'uuid': 
+'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'subject': '卜拉希米重申对叙利亚使用武力必须通过安理会授权'}, {'text': 
+'卜拉希米在會後對記者表示，有關敘利亞被指在8月21日使用化學武器一事，聯合國正在等待敘利亞化學武器調查小組的工作匯報，目前調查小組搜集
+的材料正在實驗室進行檢驗，一旦分析結果出來，秘書長將會轉交安理會。', 'source_id': 'UN_PRESS_20130906', 'paragraph_id': 'p1', 
+'date_iso': '2013-08-21', 'uuid': 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'subject': 
+'卜拉希米重申对叙利亚使用武力必须通过安理会授权'}, {'text': 
+'卜拉希米重申了聯合國在對敘利亞使用武力問題上的立場。卜拉希米指出，敘利亞正處於非常嚴重的困境，有關國際社會的成員如果使用武力這一問
+題，秘書長和他都不表達個人意見。他指出，根據國際法，沒有任何國家可以置法律於不顧，他們必須經過安理會。', 'source_id': 
+'UN_PRESS_20130906', 'paragraph_id': 'p2', 'uuid': 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'subject': 
+'卜拉希米重申对叙利亚使用武力必须通过安理会授权'}], 'article_date_iso': '2013-05-07', 'event_dates': ['2013-05-07', '2013-08-21', 
+'2013-09-06'], 'event_date_span': {'min': '2013-05-07', 'max': '2013-09-06'}, 'article_title': 
+'卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'selectedMessage': False, 'highValue': False}, {'uuid': 
+'a3d2e1d0e85e85617bbb5ab6b35e12e8f84b408c', 'subject': '叙利亚问题特使呼吁美、俄向叙利亚各方施加压力 确保停止敌对行动协议的执行', 
+'score': 72.03019, 'citations': [{'text': 
+'潘基文秘書長28日發表聲明，強烈譴責敘利亞城市阿勒頗的一所醫院遭遇空襲的事件。他呼籲敘利亞衝突各方立刻重新履行各自在停止敵對行動協議
+中的義務，並鼓勵俄羅斯和美國向各方施加壓力，以停止衝突。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'a3d2e1d0e85e85617bbb5ab6b35e12e8f84b408c', 'subject': '叙利亚问题特使呼吁美、俄向叙利亚各方施加压力 确保停止敌对行动协议的执行'}, 
+{'text': 
+'聯合國敘利亞問題特使德米斯圖拉日前在日內瓦對媒體發言表示，敘利亞近日令人擔憂的安全局勢和急劇惡化的停止敵對行動協議的執行為新一輪敘
+利亞人之間的談判蒙上了陰影。', 'source_id': None, 'paragraph_id': None, 'uuid': 'a3d2e1d0e85e85617bbb5ab6b35e12e8f84b408c', 
+'subject': '叙利亚问题特使呼吁美、俄向叙利亚各方施加压力 确保停止敌对行动协议的执行'}, {'text': 
+'他特別提到了敘利亞城市阿勒頗發生的暴力衝突，並指出，在過去48小時內，平均每25分鐘就有一名敘利亞人死亡，每13分鐘有一人受傷。', 
+'source_id': None, 'paragraph_id': None, 'uuid': 'a3d2e1d0e85e85617bbb5ab6b35e12e8f84b408c', 'subject': 
+'叙利亚问题特使呼吁美、俄向叙利亚各方施加压力 确保停止敌对行动协议的执行'}], 'article_date_iso': '2016-04-28', 'event_dates': 
+['2016-04-28'], 'event_date_span': {'min': '2016-04-28', 'max': '2016-04-28'}, 'article_title': 
+'叙利亚问题特使呼吁美、俄向叙利亚各方施加压力 确保停止敌对行动协议的执行', 'selectedMessage': False, 'highValue': False}, {'uuid': 
+'9faa0e2cdf3157d3fda90b2b539a55ca90d21312', 'subject': '安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成       
+美国表示俄罗斯阻碍安理会对叙利亚近期化武事件进行调查', 'score': 69.48344, 'citations': [{'text': 
+'美国常驻联合国代表黑莉在会议上表示，俄罗斯阻碍安理会就近期发生在叙利亚的化学武器攻击事件表示谴责。', 'source_id': None, 
+'paragraph_id': None, 'uuid': '9faa0e2cdf3157d3fda90b2b539a55ca90d21312', 'subject': 
+'安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成       美国表示俄罗斯阻碍安理会对叙利亚近期化武事件进行调查'}, 
+{'text': '联合国裁军事务高级代表中满泉（Izumi Nakamistu）在安理会会议上发言。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'9faa0e2cdf3157d3fda90b2b539a55ca90d21312', 'subject': '安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成       
+美国表示俄罗斯阻碍安理会对叙利亚近期化武事件进行调查'}, {'text': 
+'她表示，在叙利亚宣布的27处化学武器设施中，余留的两处设施的摧毁工作正在进行中；联合国项目服务办公室正在与一家负责摧毁工作的私营公司
+敲定合同的细节；预计摧毁工作将在两个月内完成。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'9faa0e2cdf3157d3fda90b2b539a55ca90d21312', 'subject': '安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成       
+美国表示俄罗斯阻碍安理会对叙利亚近期化武事件进行调查'}], 'article_date_iso': '2017-11-17', 'event_dates': ['2018-02-05', 
+'2015-08-01', '2017-11-17'], 'event_date_span': {'min': '2015-08-01', 'max': '2018-02-05'}, 'article_title': 
+'安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成', 'selectedMessage': False, 'highValue': False}, {'uuid': 
+'62ae8de102b6dd19c215e8f090c878004c540abd', 'subject': '美宣布已全部销毁叙利亚化武 潘基文表示欢迎', 'score': 53.50375, 'citations': 
+[{'text': '光芒角号”（Cape 
+Ray）已完成销毁叙利亚交出的全部581.5吨制造沙林毒气和19.8吨制造芥子气毒气的原材料制工作。潘基文秘书长8月20日发表声明对此表示欢迎。\n\
+n潘基在声明中指出，这一进展标志着国际社会在俄罗斯与美国达成协议之后，国际社会在销毁叙利亚化学武器项目方面所取得的成就。\n\n潘基文还
+对叙利亚当局所采取的合作态度表示赞赏，并对为消除叙利亚化武进', 'source_id': None, 'paragraph_id': None, 'date_iso': '2014-08-20', 
+'uuid': '62ae8de102b6dd19c215e8f090c878004c540abd', 'subject': '美宣布已全部销毁叙利亚化武 潘基文表示欢迎'}], 'article_date_iso': 
+'2014-07-02', 'event_dates': ['2014-07-02', '2014-08-20'], 'event_date_span': {'min': '2014-07-02', 'max': '2014-08-20'}, 
+'article_title': '美宣布已全部销毁叙利亚化武 潘基文表示欢迎', 'selectedMessage': False, 'highValue': False}, {'uuid': 
+'9143d90dc1a4963ed35d70813b898afaaed82481', 'subject': '中国常驻联合国代表刘结一：日本领导人参拜靖国神社 
+公然挑战《联合国宪章》原则', 'score': 36.74997, 'citations': [{'text': 
+'刘结一在谈及叙利亚问题时指出，中国坚定支持并积极参与联合国及禁化武组织框架下销毁叙化武多边行动。为确保叙化武运输安全，中方海军舰艇
+正同俄罗斯、丹麦、挪威等国一道共同为叙化武海运提供联合护航。', 'source_id': None, 'paragraph_id': 'p2', 'uuid': 
+'9143d90dc1a4963ed35d70813b898afaaed82481', 'subject': '中国常驻联合国代表刘结一：日本领导人参拜靖国神社 
+公然挑战《联合国宪章》原则'}, {'text': 
+'刘结一表示，中国欢迎叙问题第二次日内瓦会议将于1月22日召开。当务之急是叙各方尽快停火止暴，以建设性态度参与第二次日内瓦会议，早日实质
+性启动政治进程。', 'source_id': None, 'paragraph_id': 'p3', 'date_iso': '2014-01-22', 'uuid': 
+'9143d90dc1a4963ed35d70813b898afaaed82481', 'subject': '中国常驻联合国代表刘结一：日本领导人参拜靖国神社 
+公然挑战《联合国宪章》原则'}], 'article_date_iso': '2014-01-08', 'event_dates': ['2014-01-08', '2014-01-22'], 'event_date_span': 
+{'min': '2014-01-08', 'max': '2014-01-22'}, 'article_title': '中国常驻联合国代表刘结一：日本领导人参拜靖国神社 
+公然挑战《联合国宪章》原则', 'selectedMessage': False, 'highValue': False}], 'evidence_snippets': [{'uuid': 
+'031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'這是俄羅斯自敘利亞衝突爆發以來在安理會就敘利亞問題的決議表決中第七次行使否決權。俄羅斯常駐聯合國副代表薩夫龍科夫（Vladimir 
+Safronkov）在投票前發言指出，28日付諸表決的決議草案帶有政治偏見，案文未能解決俄羅斯就一些問題存在的關切。', 'date_iso': 
+'2017-02-28', 'article_date_iso': '2017-02-28', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 
+'article_title': '俄、中行使否决权', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['中', '否決', '否決權', '俄羅斯', 
+'俄', '敘利亞']}, {'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'有关敘利亞化學武器問題的一項新的決議草案今天在安理會付諸投票表決。決議草案獲得9票贊成、3票反對和3票棄權的結果。雖然決議草案滿足了獲
+得通過的9票贊成的條件，但由於常任理事國俄羅斯和中國投下反對票而未獲通過。', 'date_iso': '2017-02-28', 'article_date_iso': 
+'2017-02-28', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 'article_title': '俄、中行使否决权', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '中', '敘利亞', '中國', '俄', '俄羅斯']}, {'uuid': 
+'031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'中國常駐聯合國代表劉結一表決後進行的解釋性發言中表示，中方對敘利亞境內發生使用化學材料作為武器事件深表關注並予以強烈譴責。', 
+'date_iso': '2017-02-28', 'article_date_iso': '2017-02-28', 'subject': '俄、中行使否决权  
+安理会有关叙利亚化学武器问题决议草案未获通过', 'article_title': '俄、中行使否决权', 'paragraph_id': None, 'source_id': None, 
+'synonym_hits': ['俄', '中', '中國', '敘利亞']}, {'uuid': '523e4c0c18ed75141a58f484265ab58255df3eb2', 'text': 
+'5月22日上午，安理會就法國等提交的將敘利亞局勢提交國際刑事法院審理的決議草案進行表決。中國和俄羅斯投了反對票。由於中俄行使否決權，決
+議草案未獲通過。', 'date_iso': '2014-05-22', 'article_date_iso': '2014-05-22', 'subject': '中俄否决安理会叙利亚问题决议草案 
+中国对草案存在几点重大困难', 'article_title': '中俄否决安理会叙利亚问题决议草案 中国对草案存在几点重大困难', 'paragraph_id': 'p1', 
+'source_id': None, 'synonym_hits': ['中', '敘利亞', '中國', '否決', '否決權', '俄', '俄羅斯']}, {'uuid': 
+'523e4c0c18ed75141a58f484265ab58255df3eb2', 'text': 
+'當務之急是推動敘利亞政府和反對派盡快停火止暴，重啟第三輪日內瓦談判，推進政治進程，啟動政治過渡。強行將敘利亞局勢提交國際刑事法院不
+利於增進互信，無助於日內瓦談判的盡快重啟。', 'date_iso': '2014-05-22', 'article_date_iso': '2014-05-22', 'subject': 
+'中俄否决安理会叙利亚问题决议草案 中国对草案存在几点重大困难', 'article_title': '中俄否决安理会叙利亚问题决议草案 
+中国对草案存在几点重大困难', 'paragraph_id': 'p3', 'source_id': None, 'synonym_hits': ['俄', '中', '敘利亞']}, {'uuid': 
+'82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'text': 
+'第二天，哈馬斯空軍基地的一架敘利亞空軍直升機向勒塔梅納醫院投擲了一个圆筒，该圆筒打破了屋顶，破裂并释放出氯气，影响到至少30人。', 
+'date_iso': '2017-03-24', 'article_date_iso': '2017-03-24', 'subject': 
+'联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '中', '敘利亞']}, {'uuid': 
+'82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'text': 
+'報告說，有“合理的理由”假設，2017年3月24日，敘利亞空軍第22航空師第50旅的一架蘇-22戰鬥轟炸機在勒塔梅納鎮南部投擲了一枚含有沙林的M4000
+炸彈，造成至少16人受傷。', 'date_iso': '2017-03-24', 'article_date_iso': '2017-03-24', 'subject': 
+'联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '中', '敘利亞']}, {'uuid': 
+'82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 'text': 
+'禁止化学武器组织（OPCW）在今天发布的一份报告中称，叙利亚空军在2017年3月对中部城镇勒塔梅纳（Ltamenah）的三次单独袭击中使用了致命化学
+武器，总共至少有106人受到影响。', 'date_iso': '2017-03-24', 'article_date_iso': '2017-03-24', 'subject': 
+'联合国监督机构：叙利亚空军在2017年的袭击中使用了致命的化学武器', 'article_title': 'OPCW報告：敘利亞空軍在2017年使用致命化學武器', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['化學武器', '中', '敘利亞']}, {'uuid': 
+'6559f1cda101d889f4a572bc09c2df4bd432fe6c', 'text': 
+'在24日的表决中，俄罗斯和玻利维亚投了反对票，中国和哈萨克斯坦投了弃权票。美国、英国、法国等11国投了赞成票。', 'date_iso': 
+'2016-09-16', 'article_date_iso': '2016-09-16', 'subject': '俄罗斯行使否决权 
+延长叙利亚化武问题“联合调查机制”任期决议草案未在安理会获得通过', 'article_title': '俄罗斯行使否决权 
+延长叙利亚化武问题“联合调查机制”任期决议草案未在安理会获得通过', 'paragraph_id': 'p2', 'source_id': None, 'synonym_hits': ['俄', 
+'中', '化武']}, {'uuid': '4488b72bbd423728f9c6e49579d3ac6227d93ed9', 'text': 
+'在宣布這條消息前的幾個小時，卜拉希米還與中國外交部長楊潔篪通了電話，介紹了對敘利亞局勢的看法以及他所積極開展的斡旋工作。', 
+'date_iso': '2013-01-09', 'article_date_iso': '2013-01-09', 'subject': '卜拉希米本周五与美、俄举行叙利亚问题三方会谈', 
+'article_title': '卜拉希米本周五與美、俄舉行敘利亞問題三方會談', 'paragraph_id': '2', 'source_id': 'UN Spokesperson Office', 
+'synonym_hits': ['俄', '中', '中國', '敘利亞']}, {'uuid': 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 'text': 
+'卜拉希米在聖彼得堡被邀參加各國外長舉行的會談中指出，自今年5月7日他與美國務卿克里和俄羅斯外長拉夫羅夫在莫斯科就敘問題舉行會談以來，
+聯合國一直與美國和俄羅斯兩國商討籌備敘利亞問題日內瓦第二次國際會議，而現在日內瓦第二次會議因8月21日使用化學武器的問題及其可能帶來的
+後果而受挫。', 'date_iso': '2013-05-07', 'article_date_iso': '2013-05-07', 'subject': 
+'卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'article_title': '卜拉希米重申对叙利亚使用武力必须通过安理会授权', 'paragraph_id':
+'p3', 'source_id': 'UN_PRESS_20130906', 'synonym_hits': ['化學武器', '中', '俄羅斯', '俄', '敘利亞']}, {'uuid': 
+'a3d2e1d0e85e85617bbb5ab6b35e12e8f84b408c', 'text': 
+'潘基文秘書長28日發表聲明，強烈譴責敘利亞城市阿勒頗的一所醫院遭遇空襲的事件。他呼籲敘利亞衝突各方立刻重新履行各自在停止敵對行動協議
+中的義務，並鼓勵俄羅斯和美國向各方施加壓力，以停止衝突。', 'date_iso': '2016-04-28', 'article_date_iso': '2016-04-28', 'subject': 
+'叙利亚问题特使呼吁美、俄向叙利亚各方施加压力 确保停止敌对行动协议的执行', 'article_title': 
+'叙利亚问题特使呼吁美、俄向叙利亚各方施加压力 确保停止敌对行动协议的执行', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['俄', '中', '敘利亞', '俄羅斯']}, {'uuid': '9faa0e2cdf3157d3fda90b2b539a55ca90d21312', 'text': '联合国裁军事务高级代表中满泉（Izumi
+Nakamistu）在安理会会议上发言。', 'date_iso': '2017-11-17', 'article_date_iso': '2017-11-17', 'subject': 
+'安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成       美国表示俄罗斯阻碍安理会对叙利亚近期化武事件进行调查', 
+'article_title': '安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成', 'paragraph_id': None, 'source_id': None, 
+'synonym_hits': ['俄', '中', '化武']}, {'uuid': '9faa0e2cdf3157d3fda90b2b539a55ca90d21312', 'text': 
+'她表示，在叙利亚宣布的27处化学武器设施中，余留的两处设施的摧毁工作正在进行中；联合国项目服务办公室正在与一家负责摧毁工作的私营公司
+敲定合同的细节；预计摧毁工作将在两个月内完成。', 'date_iso': '2017-11-17', 'article_date_iso': '2017-11-17', 'subject': 
+'安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成       美国表示俄罗斯阻碍安理会对叙利亚近期化武事件进行调查', 
+'article_title': '安理会会议：高级代表称叙利亚最后两处化武设施的摧毁工作两月内完成', 'paragraph_id': None, 'source_id': None, 
+'synonym_hits': ['俄', '中', '化武']}, {'uuid': '62ae8de102b6dd19c215e8f090c878004c540abd', 'text': '光芒角号”（Cape 
+Ray）已完成销毁叙利亚交出的全部581.5吨制造沙林毒气和19.8吨制造芥子气毒气的原材料制工作。潘基文秘书长8月20日发表声明对此表示欢迎。\n\
+n潘基在声明中指出，这一进展标志着国际社会在俄罗斯与美国达成协议之后，国际社会在销毁叙利亚化学武器项目方面所取得的成就。\n\n潘基文还
+对叙利亚当局所采取的合作态度表示赞赏，并对为消除叙利亚化武进', 'date_iso': '2014-08-20', 'article_date_iso': '2014-07-02', 
+'subject': '美宣布已全部销毁叙利亚化武 潘基文表示欢迎', 'article_title': '美宣布已全部销毁叙利亚化武 潘基文表示欢迎', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['俄', '中', '化武']}, {'uuid': '9143d90dc1a4963ed35d70813b898afaaed82481',
+'text': 
+'刘结一在谈及叙利亚问题时指出，中国坚定支持并积极参与联合国及禁化武组织框架下销毁叙化武多边行动。为确保叙化武运输安全，中方海军舰艇
+正同俄罗斯、丹麦、挪威等国一道共同为叙化武海运提供联合护航。', 'date_iso': '2014-01-08', 'article_date_iso': '2014-01-08', 
+'subject': '中国常驻联合国代表刘结一：日本领导人参拜靖国神社 公然挑战《联合国宪章》原则', 'article_title': 
+'中国常驻联合国代表刘结一：日本领导人参拜靖国神社 公然挑战《联合国宪章》原则', 'paragraph_id': 'p2', 'source_id': None, 
+'synonym_hits': ['俄', '中', '化武']}]}}}
+[Step 1: Duration 39.49 seconds| Input tokens: 7,834 | Output tokens: 728]
+[report_agent] plan_full_docs = {'need_full_docs': False, 'max_full_docs': 0, 'reason': 'docs=0, snips=0，資料量不大且問題未明講逐句/逐段/全文；片段已足夠支撐報告。'}
+[report_agent] skip fetching full docs.
+==================================================
+[call_llm] sys_len=1448, user_len=4110, user_preview='{"q":"我要看中俄表決那篇原文。","t":["2013-01-01","2017-12-31"],"agg":{"docs":0,"snips":0,"active_days":0,"month":[],"quarter":[],"peak_days":[],"first_last":[null,null]},"ev":[{"id":"4488b72bbd423728f9c6e49579d3ac6227d93ed9","d":"2013-01-09","title":"卜拉希米本周五與美、俄舉行敘利亞問題三方會談","s":"卜拉希米本周五与美、俄举行叙利亚问题三方会谈","note":"在宣布這條消息前的幾個小時，卜拉希米還與中國外交部長楊潔篪通了電話，介紹了對敘利亞局勢的看法以及他所積極開展的斡旋工作。"},{"id":"b0516432109bcbe9c5b43bc1df5d82e48fe088be","d":"2013-05-07","title":"卜拉希米重申对叙利亚使用武力必须通过安理会授权","s":"卜拉希米重申对叙利亚使用武力必须通过安理会授权","note"'
+[call_llm] system_preview=' 你是一個『資料驅動的分析助手』。  你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：  {   "q": "使用者原始問題",   "t": ["date_from 或 null", "date_to 或 null"],   "agg": {     "docs": 整體文件數,     "snips": 整體片段數,     "active_days": 有活動紀'
+INFO:     192.168.0.134:60510 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:56054 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:56064 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:37126 - "GET /v1/models HTTP/1.1" 200 OK
+==================================================
+[call_llm] sys_len=772, user_len=242, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題（務必以此為準）】 請把 2017-02-28 那篇《俄、中行使否決權》全文貼出來  【過去問題1（僅供理解上下文，可忽略）】 請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。  【過去問題2（僅供理解上下文，可忽略）】 我要看中俄表決那篇原文.'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topi'
+[router] routed = {'mode': 'SRA_REPORT', 'reason': '使用者要求提供特定日期的新聞全文，需要從資料庫檢索原始資料', 'topic': 'news_general'}
+[agent] building CodeAgent: try model + instructions
+[agent] CodeAgent created with model+instructions
+┌──────────────────────────────────────────────────────────── New run ─────────────────────────────────────────────────────────────┐
+│                                                                                                                                  │
+│ [ES_INDEX_HINT=news_test\]                                                                                                       │
+│ 【對話歷史】                                                                                                                     │
+│ USER:                                                                                                                            │
+│ 請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。 │
+│ 目標長度為 2000字的完整報告。                                                                                                    │
+│ ASSISTANT:                                                                                                                       │
+│ **敘利亞化學武器情況（2013 ~ 2017）分析報告**                                                                                    │
+│ （資料來源：`agg` 統計、`ev` 事件摘要；全文長度約 2,000 字，僅以本次提供的片段與統計為依據）                                     │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ## 1. 資料概況                                                                                                                   │
+│ | 項目 | 數值 |                                                                                                                  │
+│ |------|------|                                                                                                                  │
+│ | 總文件數（`docs`） | 7 |                                                                                                       │
+│ | 片段數（`snips`） | 11 |                                                                                                       │
+│ | 有活動紀錄的天數（`active_days`） | 7 |                                                                                        │
+│ | 首筆紀錄日期 | 2013‑03‑19 |                                                                                                    │
+│ | 末筆紀錄日期 | 2017‑06‑01 |                                                                                                    │
+│ | 月度分布 | 2013‑03、05、2017‑01、02、03、04、06 各 1 件 |                                                                      │
+│ | 季度分布 | 2013‑Q1、Q2 各 1 件；2017‑Q1 3 件、Q2 2 件 |                                                                        │
+│ | 高峰日 | 2013‑03‑19、05‑07、2017‑01‑01、02‑28、03‑24 等 |                                                                      │
+│                                                                                                                                  │
+│ > **說明**：本次查詢期間僅捕捉到 7                                                                                               │
+│ 天的活動紀錄，且每月僅有一筆文件或片段。資料量有限，以下分析以現有紀錄為基礎，若需更完整的時間線，建議縮小查詢範圍或分批取得更多 │
+│ 原文。                                                                                                                           │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ## 2. 事件時間線與重點摘錄                                                                                                       │
+│                                                                                                                                  │
+│ | 日期 | 標題 | 主要內容 | 資料來源 |                                                                                            │
+│ |------|------|----------|----------|                                                                                            │
+│ | **2013‑03‑19** | *United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic │
+│ – Final Report* | - UN 調查小組結論：敘利亞在持續衝突中已大規模使用化學武器，受害者包括平民及兒童。                              │
+│ - 美國於 2013‑06‑14 向聯合國秘書長通報敘利亞於 2013‑04‑13 在阿勒頗 Sheik Maqsood 社區使用沙林（Sarin）攻擊反對派。 | `ev`        │
+│ id:a2ce2c0… note 1、2、3 |                                                                                                       │
+│ | **2013‑05‑07** | *卜拉希米重申对叙利亚使用武力必须通过安理会授权* | - 俄、俄羅斯、德國外長在莫斯科會談，討論敘利亞問題。       │
+│ - 聯合國正與美俄協商舉辦日內瓦第二次國際會議。 | `ev` id:b051643… note 1 |                                                       │
+│ | **2013‑08‑21** | *卜拉希米重申对叙利亚使用武力必须通过安理会授权*（同上） | - 敘利亞被指於 8 月 21 日使用化學武器。            │
+│ - UN 正等待化學武器調查小組的實驗室檢驗結果，將於結果出爐後提交安理會。 | `ev` id:b051643… note 2 |                              │
+│ | **2017‑01‑01** | *Annual Report 2017 – World Health Organization, Syrian Arab Republic* | -                                    │
+│ OPCW（化學武器禁止組織）確定受害者曾接觸沙林或類似物質。 | `ev` id:4740342… note 1 |                                             │
+│ | **2017‑02‑28** | *俄、中行使否決權* | - 安理會就敘利亞化學武器問題的新決議草案投票：9 贊成、3 反對、3 棄權。                   │
+│ - 俄羅斯與中國投反對票，導致決議未通過。 | `ev` id:031400c… note 1 |                                                             │
+│ | **2017‑03‑24** | *OPCW報告：敘利亞空軍在2017年使用致命化學武器* | - 敘利亞空軍在勒塔梅納鎮南部投擲含沙林的 M4000 炸彈，至少 16 │
+│ 人受傷。                                                                                                                         │
+│ - 同日亦有報導稱敘利亞直升機向醫院投放氯氣，波及 30 人。 | `ev` id:82df656… note 1、2 |                                          │
+│ | **2017‑04‑04** | *聯合國兒童基金會與世界衛生組織對敘利亞伊德利卜化學武器襲擊表示震驚* | - UNICEF                               │
+│ 執行主任安東尼·雷克譴責伊德利卜的化學武器襲擊，呼籲國際社會關注兒童受害情況。 | `ev` id:82ef3d4… note 1 |                        │
+│ | **2017‑06‑01**（統計最末日） | — | - 依 `agg` 統計，此日仍有活動紀錄（屬於 2017‑06 月的 1 件），具體內容未列於 `ev`。 | `agg`  │
+│ month/peak_days |                                                                                                                │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ## 3. 趨勢分析（Qualitative）                                                                                                    │
+│                                                                                                                                  │
+│ 1. **2013 年：首次大型國際調查與指控**                                                                                           │
+│    - 3 月 UN 調查小組正式認定化學武器使用，並指出「相對大規模」的事實（來源：2013‑03‑19 報告）。                                 │
+│    - 6 月美國向聯合國通報具體的沙林攻擊案例（4 月 13 日阿勒頗）。                                                                │
+│    - 5、8 月的外交會談與安理會待命顯示國際社會在此階段仍處於「證據收集」與「政治協商」的過程。                                   │
+│                                                                                                                                  │
+│ 2. **2014‑2016 年：資料缺口**                                                                                                    │
+│    - 依 `agg`                                                                                                                    │
+│ 統計，此三年期間（2014‑2016）無任何片段或文件被捕捉。這可能是因為資訊未被收錄、來源不易取得，或是國際焦點暫時轉向其他議題。**目  │
+│ 前資料不足以說明此期間化學武器的實際使用情形。**                                                                                 │
+│                                                                                                                                  │
+│ 3. **2017 年：再次出現明確使用報告與政治僵局**                                                                                   │
+│    - 1 月 WHO 年報引用 OPCW 結論，確認受害者接觸沙林或類似物質。                                                                 │
+│    - 2 月安理會投票因俄中否決未能通過，顯示「大國政治」仍是阻礙行動的關鍵因素。                                                  │
+│    - 3 月 OPCW 報告提供具體作戰細節（蘇‑22 投擲 M4000、直升機投氯氣），證實化學武器已被空軍直接使用。                            │
+│    - 4 月 UNICEF 與 WHO 共同譴責伊德利卜化學襲擊，突顯兒童與平民的受害情況。                                                     │
+│                                                                                                                                  │
+│ 4. **整體趨勢**                                                                                                                  │
+│    - **事件集中**：2013 年與 2017 年分別出現兩個高峰期（分別對應 `peak_days`），期間間隔約 4 年。                                │
+│    - **從指控 → 具體作戰**：2013 年的指控多為「使用疑慮」與「證據收集」，而 2017                                                 │
+│ 年則有明確的空軍作戰報告，顯示化學武器使用的「技術與規模」提升。                                                                 │
+│    - **國際政治阻礙**：兩次高峰期均伴隨安理會的政治爭執（2013 年仍在討論中，2017                                                 │
+│ 年因俄中否決未通過），表明國際制裁與干預的有效性受限。                                                                           │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ## 4. SWOT 分析（基於現有資料）                                                                                                  │
+│                                                                                                                                  │
+│ | 類別 | 內部因素（敘利亞） | 外部因素（國際社會） |                                                                             │
+│ |------|-------------------|----------------------|                                                                              │
+│ | **Strengths（優勢）** | - 擁有成熟的化學武器研製與投放能力（如 2017 年蘇‑22 投擲 M4000）                                       │
+│ - 可利用空軍與地面部隊靈活部署化學彈藥 | - UN、OPCW 具備專業的調查與驗證機制，能夠提供技術證據 |                                 │
+│ | **Weaknesses（弱點）** | - 使用化學武器導致國際譴責與可能的制裁                                                                │
+│ - 受限於國內基礎設施與後勤，難以大規模持續使用 | - 國際社會對敘利亞的制裁執行力受限（如俄中否決）                                │
+│ - 監測與證據收集時間差，導致反應滯後 |                                                                                           │
+│ | **Opportunities（機會）** | - 若國內政治結構變動，可能出現對化學武器使用的內部制衡 | -                                         │
+│ 透過多邊機制（OPCW、WHO、UNICEF）持續曝光，增加國際輿論壓力                                                                      │
+│ - 促進新制裁或外交方案的制定（如 2017 年安理會草案） |                                                                           │
+│ | **Threats（威脅）** | - 持續或升級的化學武器使用可能觸發更嚴格的國際軍事干預                                                   │
+│ - 內部民眾與醫療系統因化學攻擊受創，增加人道危機 | - 大國政治（俄、中）可能繼續阻礙安理會行動，導致制裁無法落實                  │
+│ - 信息不透明與證據不足可能讓國際社會對事件真相產生懷疑，削弱制裁合法性 |                                                         │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ## 5. 小結與建議                                                                                                                 │
+│                                                                                                                                  │
+│ 1. **現象總結**                                                                                                                  │
+│    - 2013 年與 2017 年是敘利亞化學武器使用資訊最為集中的兩個時段。2013 年的證據多為「指控」與「早期調查」，2017                  │
+│ 年則出現具體空軍投放的作戰報告，顯示使用手段的升級。                                                                             │
+│    - 國際社會在兩個時段皆面臨「大國政治」的阻礙，導致安理會決議難以通過或執行。                                                  │
+│                                                                                                                                  │
+│ 2. **資料不足說明**                                                                                                              │
+│    - 2014‑2016 年期間缺乏任何片段或文件，無法判斷該時段是否真的無化學武器使用，或是資訊未被收錄。若需完整的時間序列，建議：      │
+│      - **縮小查詢範圍**（例如僅針對 2014‑2015）或**分批搜尋**（依月份或關鍵字）。                                                │
+│      - **取得 full_docs**（完整原文）以補足片段中可能遺漏的細節。                                                                │
+│                                                                                                                                  │
+│ 3. **未來觀測建議**                                                                                                              │
+│    - 持續追蹤 OPCW、UNSC、WHO 的正式報告與決議，尤其是有關「化學武器使用證據」的實驗室驗證結果。                                 │
+│    - 觀察大國（美、俄、中）在安理會的投票走向，以評估國際制裁或干預的可行性。                                                    │
+│    - 針對兒童與平民受害的醫療與人道數據（如 UNICEF、WHO 相關統計）做長期監測，作為國際壓力的量化依據。                           │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ **結語**                                                                                                                         │
+│ 本報告依據現有 7 份文件與 11 片段，從時間線、趨勢與 SWOT 四個層面，概述了 2013‑2017                                              │
+│ 年敘利亞化學武器的主要情況。資料量受限，尤其是 2014‑2016 年的缺口，限制了完整的敘事與量化分析。若需更精細的研究，建議補充        │
+│ full‑docs 或進一步細分查詢時間範圍，以獲得更全面的證據基礎。                                                                     │
+│ USER:                                                                                                                            │
+│ 我要看中俄表決那篇原文.                                                                                                          │
+│ ASSISTANT:                                                                                                                       │
+│ **分析報告 – 中俄在聯合國安理會對敘利亞議題的表決（2014‑05‑22）**                                                                │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ### 1. 事件概述                                                                                                                  │
+│ - **日期**：2014‑05‑22                                                                                                           │
+│ - **標題**：*中俄否決安理會敘利亞問題決議草案*（同一標題出現三筆相同的片段）                                                     │
+│ - **來源**：`ev` 中的 `note` 欄位提供了原始片段文字。                                                                            │
+│                                                                                                                                  │
+│ #### 主要內容（摘自片段）                                                                                                        │
+│ 1. **表決結果**：                                                                                                                │
+│    - 法國等國提交的「將敘利亞局勢提交國際刑事法院審理」的決議草案於當日上午在安理會進行表決。                                    │
+│    - 中國與俄羅斯各投 **反對票**，因此決議草案 **未獲通過**。                                                                    │
+│                                                                                                                                  │
+│ 2. **中俄否決的理由（根據片段）**：                                                                                              │
+│    - 中國指出草案存在「**重大困難**」；                                                                                          │
+│    -                                                                                                                             │
+│ 中國強調當務之急是促進敘利亞政府與反對派停火、重啟日內瓦第三輪談判，認為將案件提交國際刑事法院「**不利於增進互信、無助於談判**」 │
+│ 。                                                                                                                               │
+│                                                                                                                                  │
+│ > **引用說明**：上述資訊來自 2014‑05‑22 兩筆 `ev` 记录的 `note` 欄位（ID 為                                                      │
+│ `523e4c0c18ed75141a58f484265ab58255df3eb2`），內容分別敘述了表決結果與中國的立場說明。                                           │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ### 2. 其他相關表決（供參考）                                                                                                    │
+│                                                                                                                                  │
+│ | 日期 | 事件 | 備註 |                                                                                                           │
+│ |------|------|------|                                                                                                           │
+│ | 2017‑02‑28 | 俄、中行使否決權，阻止《敘利亞化學武器問題》決議草案通過 | 這是俄羅斯自敘利亞衝突爆發以來第七次行使否決權（同一筆 │
+│ `ev` 记录） |                                                                                                                    │
+│ | 2016‑09‑16 | 俄羅斯行使否決權，阻止「延長敘利亞化武問題聯合調查機制」決議草案 |                                                │
+│ 俄羅斯與玻利維亞投反對票，中國與哈薩克斯坦投棄權（`ev` ID `6559f1cda101d889f4a572bc09c2df4bd432fe6c`） |                         │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ ### 3. 資料完整性說明                                                                                                            │
+│                                                                                                                                  │
+│ - **目前資料不足**：`agg.docs` 為 0，且在回傳的 JSON 中 **沒有 `full_docs`**（完整原文）可供直接引用。                           │
+│ - 因此，我只能根據 `ev` 中的 `note` 片段提供事件概述與關鍵說明，無法呈現「原文」的完整段落。                                     │
+│                                                                                                                                  │
+│ > **提醒**：若您需要完整原始文件的全文，建議縮小查詢時間範圍或分批檢索，以期在後續的回傳中取得 `full_docs` 欄位的內容。          │
+│                                                                                                                                  │
+│ ---                                                                                                                              │
+│                                                                                                                                  │
+│ **結論**                                                                                                                         │
+│ - 中俄於 2014 年 5 月 22 日在安理會表決中，聯合投下反對票，導致針對敘利亞局勢的決議草案未能通過。                                │
+│ - 具體的否決理由與背景可從上述片段中得知。                                                                                       │
+│ - 目前無法提供完整原文，若需更詳細的全文內容，請再行調整查詢條件或等待包含 `full_docs` 的回傳。                                  │
+│                                                                                                                                  │
+│                                                                                                                                  │
+│ 【目前問題】                                                                                                                     │
+│ 請把 2017-02-28 那篇《俄、中行使否決權》全文貼出來                                                                               │
+│                                                                                                                                  │
+│ 【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。                                       │
+│                                                                                                                                  │
+└─ LiteLLMModel - ollama_chat/gpt-oss:120b-32k ────────────────────────────────────────────────────────────────────────────────────┘
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ─ Executing parsed code: ───────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  # 使用者問題                                                                                                                      
+  question = "請把 2017-02-28 那篇《俄、中行使否決權》全文貼出來"                                                                   
+                                                                                                                                    
+  # 1. 解析核心關鍵字 (不含時間資訊)                                                                                                
+  # 依照規則，core_terms 只能是主題與地點，此處選取與事件相關的關鍵字                                                               
+  core_terms = ["俄", "中", "否決權", "敘利亞"]                                                                                     
+  core_query = " ".join(core_terms)                                                                                                 
+                                                                                                                                    
+  # 2. 時間範圍 (從問題中取得)                                                                                                      
+  date_from = "2017-02-28"                                                                                                          
+  date_to   = "2017-02-28"                                                                                                          
+                                                                                                                                    
+  # 3. 呼叫 ES 搜尋新聞                                                                                                             
+  search_result = es_search_news(                                                                                                   
+      query=core_query,                                                                                                             
+      must_high_value=False,                                                                                                        
+      must_selected=False,                                                                                                          
+      size=10000,                                                                                                                   
+      date_from=date_from,                                                                                                          
+      date_to=date_to,                                                                                                              
+      selected_boost=6.0,                                                                                                           
+      high_value_boost=2.5,                                                                                                         
+      recency_boost=False,                                                                                                          
+      recency_field="importDT",                                                                                                     
+      recency_scale="30d",                                                                                                          
+      index_hint="news_test"                                                                                                        
   )                                                                                                                                 
                                                                                                                                     
   # 4. 取得 evidence_snippets                                                                                                       
   evidence_snippets = search_result.get("evidence_snippets", [])                                                                    
                                                                                                                                     
-  # 5. 時間統計                                                                                                                     
+  # 5. 進行月份/季度統計                                                                                                            
   aggregation = aggregate_month_quarter(evidence_snippets=evidence_snippets)                                                        
-                                                                                                                                    
-  doc_count = aggregation.get("doc_count", 0)                                                                                       
-  snippet_count = aggregation.get("snippet_count", 0)                                                                               
-  active_days = aggregation.get("active_days", 0)                                                                                   
-  day_counts = aggregation.get("day_counts", {})                                                                                    
-  month_counts = aggregation.get("month_counts", {})                                                                                
+  doc_count      = aggregation.get("doc_count", 0)                                                                                  
+  snippet_count  = aggregation.get("snippet_count", 0)                                                                              
+  active_days    = aggregation.get("active_days", 0)                                                                                
+  day_counts     = aggregation.get("day_counts", {})                                                                                
+  month_counts   = aggregation.get("month_counts", {})                                                                              
   quarter_counts = aggregation.get("quarter_counts", {})                                                                            
                                                                                                                                     
-  # 6. 依時間範圍過濾統計結果                                                                                                       
-  start_date = date_from  # "2025-11-20"                                                                                            
-  end_date = date_to      # "2025-11-20"                                                                                            
+  # 6. 若有設定時間範圍，過濾統計結果                                                                                               
+  start_date = date_from                                                                                                            
+  end_date   = date_to                                                                                                              
                                                                                                                                     
   if start_date or end_date:                                                                                                        
       # 過濾 day_counts                                                                                                             
@@ -596,11 +1131,11 @@ history_text from pack_chat_history
                                                                                                                                     
       # 過濾 month_counts（保留完全落在範圍內的月份）                                                                               
       filtered_month_counts = {}                                                                                                    
-      for m, cnt in month_counts.items():  # m 形式如 "2025-11"                                                                     
+      for m, cnt in month_counts.items():  # m 形式如 "YYYY-MM"                                                                     
           m_year = m[0:4]                                                                                                           
           m_month = m[5:7]                                                                                                          
           m_first = f"{m_year}-{m_month}-01"                                                                                        
-          m_last = f"{m_year}-{m_month}-31"                                                                                         
+          m_last  = f"{m_year}-{m_month}-31"                                                                                        
           if start_date and m_last < start_date:                                                                                    
               continue                                                                                                              
           if end_date and m_first > end_date:                                                                                       
@@ -608,7 +1143,7 @@ history_text from pack_chat_history
           filtered_month_counts[m] = cnt                                                                                            
       month_counts = filtered_month_counts                                                                                          
                                                                                                                                     
-      # 過濾 quarter_counts（保留完全落在範圍內的季）                                                                               
+      # 過濾 quarter_counts（形式如 "YYYY-QN"）                                                                                     
       filtered_quarter_counts = {}                                                                                                  
       for q, cnt in quarter_counts.items():                                                                                         
           q_year = q[0:4]                                                                                                           
@@ -648,152 +1183,72 @@ history_text from pack_chat_history
   }                                                                                                                                 
                                                                                                                                     
   # 8. 回傳結果                                                                                                                     
-  final_answer({"payload": payload})                                                                                                
+  final_answer({                                                                                                                    
+      "payload": payload                                                                                                            
+  })                                                                                                                                
  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+[_resolve_es_index] use single index: news_test
+in ESSearchNews.forward, index = news_test query = 俄 中 否決權 敘利亞
 ==================================================
-in call_llm,system_prompt 你是一個「通用查詢關鍵字萃取器」。
-使用者會給你一段查詢句子或自然語言描述，請只做一件事：
-
-從內容中找出最重要的「關鍵詞 / 主題詞」，例如：
-- 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構
-- 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱
-- 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰
-- 產品 / 平台 / 型號：武器型號、船艦名、飛機型號、產品型號等
-
-規則：
-1. 僅輸出一個 JSON 陣列（array of string），不得有任何多餘文字。
-   例：["川普經濟學", "對等關稅", "美國就業", "物價", "宮古水道"]
-2. 每個元素應是短語或名詞，不要整句話。
-3. 優先挑選具體、可檢索的詞：
-   - 例如「川普經濟學」「宮古水道」「東風15型導彈」
-   - 比起「影響」「變化」「情勢」這種抽象詞更重要。
-4. 不要輸出：
-   - 功能詞：的、和、是否、以及、影響、分析、情況、趨勢 等
-   - 純時間或日期：如 2025年1月、近年來、今天
-   - 單獨的數字：如 15、2025 等
-   - 過於籠統的地理詞：如 世界、全球、國際、亞洲、歐洲（除非明顯是查詢核心）
-5. 若覺得沒有明顯的關鍵詞，可以輸出空陣列 []。
-6. 盡量控制在 3～8 個關鍵詞內，寧可少給也不要亂給。
-in call_llm, prompt 使用者查詢如下：
-共軍 D52大驅 馬達加斯加海域
+[call_llm] sys_len=584, user_len=20, user_preview='使用者查詢如下： 俄 中 否決權 敘利亞'
+[call_llm] system_preview='你是一個「通用查詢關鍵字萃取器」。 使用者會給你一段查詢句子或自然語言描述，請只做一件事：  從內容中找出最重要的「關鍵詞 / 主題詞」，例如： - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構 - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱 - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰 - 產品 / 平台 / 型號：武器型號、船艦名、飛機型號、產品型號等  '
 ==================================================
-in call_llm,system_prompt 你是一個「新聞查詢關鍵詞同義詞擴充器」。
-
-使用者會提供：
-- 一段查詢句子（query）
-- 一組核心關鍵詞（core_terms）
-
-你的工作只有一件事：
-1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。
-2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），
-   請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 value 的陣列裡。
-
-具體規則：
-
-【輸出格式】
-- 僅輸出一個 JSON 物件（object），不得有任何多餘文字。
-  key: 代表核心詞（string）
-  value: 該語意軸的同義詞陣列（array of string）
-
-【語意軸合併規則】
-1. 先觀察 core_terms 列表，思考是否有「其實是同一個概念」的核心詞：
-   例如：
-   - 「敘利亞」「Syrian Arab Republic」「Syria」「敘利亞阿拉伯共和國」
-   - 「DF-15」「東風-15」「東風15型導彈」
-2. 若你判定它們是同一個概念，請：
-   - 從中挑一個代表核心詞作為 key
-     （優先選用 core_terms 中出現較早、且較常用的寫法）
-   - 其他同義寫法（包含原本的核心詞、別名、縮寫）全部放進該 key 的 value 陣列。
-3. 不要再為同一個概念產生第二個 key。
-   例如不要同時有「敘利亞」和「Syrian Arab Republic」兩個 key。
-
-【同義詞擴充】
-1. value 陣列中可以包含：
-   - 其他 core_terms 中的同義寫法
-   - 常見別名、縮寫、英譯
-2. 不要發明不存在的專有名詞；不確定就少給。
-3. 若覺得某個核心關鍵詞沒有需要補充，可以讓它的 value 為空陣列 []。
-
-【子型號 / 子類的嚴謹規則】
-1. 若核心關鍵詞包含明確子類或型號資訊（例如「東風15型導彈」「DF-21D」「A型流感」「H1N1流感」「Toyota Corolla Altis 1.8」），
-   同義詞必須保留相同的子類或型號，不可以退化成更廣泛的類別。
-   例如：
-   - 「東風15型導彈」可以對應「東風-15」「DF-15」「DF-15A」，但不能對應「DF」「東風」。
-   - 「A型流感」可以對應「甲型流感」「Influenza A」，但不能對應「流感」「influenza」。
-   - 「H1N1流感」可以對應「H1N1 influenza」，但不能對應「季節性流感」。
-2. 類似地，若關鍵詞包含明確型號、版本號、系列編號（例如「M1A2」「iPhone 15」「F-16V」），
-   同義詞中也必須保留對應的識別資訊（數字或等價符號），不要只給「坦克」「手機」「戰機」這類籠統詞。
-
-【代表核心詞的選擇原則（說明用，不用輸出）】
-- 優先選 core_terms 列表中較前面出現，且較自然、常用的寫法。
-- 例如 core_terms = ["敘利亞", "Syrian Arab Republic"]，
-  建議 key 用 "敘利亞"，value 包含 ["Syrian Arab Republic", ...]。
-in call_llm, prompt 查詢句子（query）：
-共軍 D52大驅 馬達加斯加海域
-
-核心關鍵詞（core_terms）：
-["共軍", "D52大驅", "馬達加斯加海域", "中共解放軍", "人民解放軍", "解放軍", "中國人民解放軍", "中共軍隊"]
-[_build_query_body] q= 共軍 D52大驅 馬達加斯加海域 core_terms= ['共軍', '馬達加斯加海域', 'D52大驅'] syn_terms= ['中共解放軍', '人民解放軍', '解放軍', '中國人民解放軍', '中共軍隊', "People's Liberation Army", 'PLA', '馬達加斯加周邊海域', 'Madagascar Sea', 'Madagascar waters'] num_all_terms= 13
-Final answer: {'payload': {'question': 
-'我得到一則情報指出2025年11月20日下午4點在馬達加斯加海域發現共軍D52大驅在進行護船，防海盜，請以聯合情監的風格寫成一則軍事情報。', 
-'time_range': {'date_from': '2025-11-20', 'date_to': '2025-11-20'}, 'stats': {'doc_count': 0, 'snippet_count': 0, 'active_days': 0, 
-'day_counts': {}, 'month_counts': {}, 'quarter_counts': {}}, 'evidence_snippets': [], 'raw_search_result': {'hits': [], 
-'evidence_snippets': []}}}
-[Step 1: Duration 187.55 seconds| Input tokens: 4,867 | Output tokens: 1,547]
+[call_llm] sys_len=1366, user_len=72, user_preview='查詢句子（query）： 俄 中 否決權 敘利亞  核心關鍵詞（core_terms）： ["俄羅斯", "中國", "否決權", "敘利亞"]'
+[call_llm] system_preview='你是一個「文本檢索查詢關鍵詞同義詞擴充器」。  使用者會提供： - 一段查詢句子（query） - 一組核心關鍵詞（core_terms）  你的工作只有一件事： 1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。 2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），    請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 va'
+[_build_query_body] q= 俄 中 否決權 敘利亞 core_terms= ['俄羅斯', '中國', '否決權', '敘利亞'] syn_terms= ['俄', '俄國', 'Russia', 'Russian Federation', '中', '中華人民共和國', 'China', 'PRC', 'veto', 'veto權', 'veto power', 'Syria', '敘利亞阿拉伯共和國', 'Syrian Arab Republic'] num_all_terms= 18
+[es_search_news] query='俄 中 否決權 敘利亞', es_query='俄 中 否決權 敘利亞', hits=7, hits_after_filter=1, snippets_before_filter=13, snippets_after_filter=3, effective_terms=['俄羅斯', '中國', '否決權', '敘利亞', '俄', '俄國', 'Russia', 'Russian Federation', '中', '中華人民共和國', 'China', 'PRC', 'veto', 'veto權', 'veto power', 'Syria', '敘利亞阿拉伯共和國', 'Syrian Arab Republic'], synonym_hit_snippets=3
+Final answer: {'payload': {'question': '請把 2017-02-28 那篇《俄、中行使否決權》全文貼出來', 'time_range': {'date_from': 
+'2017-02-28', 'date_to': '2017-02-28'}, 'stats': {'doc_count': 1, 'snippet_count': 3, 'active_days': 1, 'day_counts': {'2017-02-28':
+1}, 'month_counts': {'2017-02': 1}, 'quarter_counts': {'2017-Q1': 1}}, 'evidence_snippets': [{'uuid': 
+'031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'這是俄羅斯自敘利亞衝突爆發以來在安理會就敘利亞問題的決議表決中第七次行使否決權。俄羅斯常駐聯合國副代表薩夫龍科夫（Vladimir 
+Safronkov）在投票前發言指出，28日付諸表決的決議草案帶有政治偏見，案文未能解決俄羅斯就一些問題存在的關切。', 'date_iso': 
+'2017-02-28', 'article_date_iso': '2017-02-28', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 
+'article_title': '俄、中行使否决权', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['中', '敘利亞', '否決權', '俄', 
+'俄羅斯']}, {'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'有关敘利亞化學武器問題的一項新的決議草案今天在安理會付諸投票表決。決議草案獲得9票贊成、3票反對和3票棄權的結果。雖然決議草案滿足了獲
+得通過的9票贊成的條件，但由於常任理事國俄羅斯和中國投下反對票而未獲通過。', 'date_iso': '2017-02-28', 'article_date_iso': 
+'2017-02-28', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 'article_title': '俄、中行使否决权', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['中', '敘利亞', '中國', '俄', '俄羅斯']}, {'uuid': 
+'031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'中國常駐聯合國代表劉結一表決後進行的解釋性發言中表示，中方對敘利亞境內發生使用化學材料作為武器事件深表關注並予以強烈譴責。', 
+'date_iso': '2017-02-28', 'article_date_iso': '2017-02-28', 'subject': '俄、中行使否决权  
+安理会有关叙利亚化学武器问题决议草案未获通过', 'article_title': '俄、中行使否决权', 'paragraph_id': None, 'source_id': None, 
+'synonym_hits': ['俄', '中', '中國', '敘利亞']}], 'raw_search_result': {'hits': [{'uuid': 
+'031400c3e9b56024b49af25dc838126905d778d5', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 'score': 
+120.285774, 'citations': [{'text': 
+'這是俄羅斯自敘利亞衝突爆發以來在安理會就敘利亞問題的決議表決中第七次行使否決權。俄羅斯常駐聯合國副代表薩夫龍科夫（Vladimir 
+Safronkov）在投票前發言指出，28日付諸表決的決議草案帶有政治偏見，案文未能解決俄羅斯就一些問題存在的關切。', 'source_id': None, 
+'paragraph_id': None, 'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'subject': '俄、中行使否决权  
+安理会有关叙利亚化学武器问题决议草案未获通过'}, {'text': 
+'有关敘利亞化學武器問題的一項新的決議草案今天在安理會付諸投票表決。決議草案獲得9票贊成、3票反對和3票棄權的結果。雖然決議草案滿足了獲
+得通過的9票贊成的條件，但由於常任理事國俄羅斯和中國投下反對票而未獲通過。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'031400c3e9b56024b49af25dc838126905d778d5', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过'}, {'text': 
+'中國常駐聯合國代表劉結一表決後進行的解釋性發言中表示，中方對敘利亞境內發生使用化學材料作為武器事件深表關注並予以強烈譴責。', 
+'source_id': None, 'paragraph_id': None, 'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'subject': '俄、中行使否决权  
+安理会有关叙利亚化学武器问题决议草案未获通过'}], 'article_date_iso': '2017-02-28', 'event_dates': ['2017-02-28', '2016-01-01'], 
+'event_date_span': {'min': '2016-01-01', 'max': '2017-02-28'}, 'article_title': '俄、中行使否决权', 'selectedMessage': False, 
+'highValue': False}], 'evidence_snippets': [{'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'這是俄羅斯自敘利亞衝突爆發以來在安理會就敘利亞問題的決議表決中第七次行使否決權。俄羅斯常駐聯合國副代表薩夫龍科夫（Vladimir 
+Safronkov）在投票前發言指出，28日付諸表決的決議草案帶有政治偏見，案文未能解決俄羅斯就一些問題存在的關切。', 'date_iso': 
+'2017-02-28', 'article_date_iso': '2017-02-28', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 
+'article_title': '俄、中行使否决权', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['中', '敘利亞', '否決權', '俄', 
+'俄羅斯']}, {'uuid': '031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'有关敘利亞化學武器問題的一項新的決議草案今天在安理會付諸投票表決。決議草案獲得9票贊成、3票反對和3票棄權的結果。雖然決議草案滿足了獲
+得通過的9票贊成的條件，但由於常任理事國俄羅斯和中國投下反對票而未獲通過。', 'date_iso': '2017-02-28', 'article_date_iso': 
+'2017-02-28', 'subject': '俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过', 'article_title': '俄、中行使否决权', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['中', '敘利亞', '中國', '俄', '俄羅斯']}, {'uuid': 
+'031400c3e9b56024b49af25dc838126905d778d5', 'text': 
+'中國常駐聯合國代表劉結一表決後進行的解釋性發言中表示，中方對敘利亞境內發生使用化學材料作為武器事件深表關注並予以強烈譴責。', 
+'date_iso': '2017-02-28', 'article_date_iso': '2017-02-28', 'subject': '俄、中行使否决权  
+安理会有关叙利亚化学武器问题决议草案未获通过', 'article_title': '俄、中行使否决权', 'paragraph_id': None, 'source_id': None, 
+'synonym_hits': ['俄', '中', '中國', '敘利亞']}]}}}
+[Step 1: Duration 37.31 seconds| Input tokens: 8,736 | Output tokens: 1,534]
+[report_agent] plan_full_docs = {'need_full_docs': False, 'max_full_docs': 0, 'reason': 'docs=1, snips=3，資料量不大且問題未明講逐句/逐段/全文；片段已足夠支撐報告。'}
+[report_agent] skip fetching full docs.
 ==================================================
-in call_llm,system_prompt 
-你是一個『資料驅動的分析助手』。
-
-你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：
-
-{
-  "q": "使用者原始問題",
-  "t": ["date_from 或 null", "date_to 或 null"],
-  "agg": {
-    "docs": 整體文件數,
-    "snips": 整體片段數,
-    "active_days": 有活動紀錄的天數,
-    "month": [ ["YYYY-MM", count], ... ],
-    "quarter": [ ["YYYY-Qx", count], ... ],
-    "peak_days": [ ["YYYY-MM-DD", count], ... ],   # 活動最集中的幾天
-    "first_last": ["第一天日期", "最後一天日期"]
-  },
-  "ev": [
-    {
-      "id": "原始 uuid",
-      "d": "YYYY-MM-DD",
-      "title": "原文標題",
-      "s": "subject（如 DF-15_225_20）",
-      "note": "原始片段文字"
-    },
-    ...
-  ]
-}
-
-請嚴格遵守：
-
-1. 所有「具體事實（日期、事件順序、主題）」只能來自：
-   - agg 提供的統計數字（docs/snips/active_days/month/quarter/peak_days/first_last）
-   - ev 裡的 note/title/d。
-2. 不可以捏造不存在的數字（例如次數、比例、百分比）。資料沒有，就不要硬猜。
-3. 可以對趨勢做定性描述（例如「逐漸增加」「集中在第一季」），
-   但不得和 agg 的數字矛盾。
-4. 引用具體事件時，請簡要說明來源片段，例如：
-   「根據 2025-08-15 一則標題為『114/08/15 聯合情監偵綜整回報』的片段……」，
-   內容可以用自己的話轉述。
-5. 如果資料明顯不足以完整回答問題，請直接說明「目前資料不足以完整回答」，
-   並仍然說明能看出的現象。
-6. 以條列 + 小段落方式寫出清楚、有邏輯的分析報告，使用繁體中文。
-
-輸出時：
-- 不要再輸出 JSON，直接輸出可閱讀的中文說明即可。
-
-in call_llm, prompt {"q":"我得到一則情報指出2025年11月20日下午4點在馬達加斯加海域發現共軍D52大驅在進行護船，防海盜，請以聯合情監的風格寫成一則軍事情報。","t":["2025-11-20","2025-11-20"],"agg":{"docs":0,"snips":0,"active_days":0,"month":[],"quarter":[],"peak_days":[],"first_last":[null,null]},"ev":[]}
-INFO:     192.168.0.134:52896 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:49092 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:49104 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:47562 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:47004 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:35532 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:35544 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:36286 - "GET /v1/models HTTP/1.1" 200 OK
+[call_llm] sys_len=1448, user_len=937, user_preview='{"q":"請把 2017-02-28 那篇《俄、中行使否決權》全文貼出來","t":["2017-02-28","2017-02-28"],"agg":{"docs":1,"snips":3,"active_days":1,"month":[["2017-02",1]],"quarter":[["2017-Q1",1]],"peak_days":[["2017-02-28",1]],"first_last":["2017-02-28","2017-02-28"]},"ev":[{"id":"031400c3e9b56024b49af25dc838126905d778d5","d":"2017-02-28","title":"俄、中行使否决权","s":"俄、中行使否决权  安理会有关叙利亚化学武器问题决议草案未获通过","note":"這是俄羅斯自敘利亞衝突爆發以來在安理會就敘利亞問題的決議表決中第七次行使否決權。俄羅斯常駐聯合國副代表薩夫龍科夫（Vladimir Safronkov）在投票前發言指出，28日付諸表決的決議草案帶有政治偏見，案文未能解決俄羅斯就一些問題存在的關切。"}'
+[call_llm] system_preview=' 你是一個『資料驅動的分析助手』。  你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：  {   "q": "使用者原始問題",   "t": ["date_from 或 null", "date_to 或 null"],   "agg": {     "docs": 整體文件數,     "snips": 整體片段數,     "active_days": 有活動紀'
+INFO:     192.168.0.134:37138 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:36024 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:36034 - "POST /v1/chat/completions HTTP/1.1" 200 OK

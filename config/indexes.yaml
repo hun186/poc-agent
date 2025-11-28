@@ -1,0 +1,14 @@
+topic_index_map:
+  news_general:
+    indexes:
+      - news_test
+    description: "一般新聞、社會事件、國際情勢、政策、趨勢分析"
+  mil_intel:
+    indexes:
+      - mil_reports-01
+    description: "本資料庫為較細節之軍事秘密情報細節相關，如果是國際公開軍事動態新聞則屬news_general"
+  gov_document:
+    indexes:
+      - govdocs_2024
+    description: "公文、行政文件、政府規定之撰寫或仿寫"
+default_index: news_test
