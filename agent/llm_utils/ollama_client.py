@@ -192,7 +192,7 @@ def call_llm(
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
-
+    #print("full messages",messages)
     try:
         return client.chat(
             messages,

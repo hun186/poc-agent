@@ -3,14 +3,12 @@
 import os, json, time
 import re
 import html
-from typing import Any, Dict, List
+from typing import Any
 from fastapi import FastAPI, HTTPException
 from collections import defaultdict, deque
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Query
 from fastapi import Request
 from pydantic import BaseModel
-from fastapi.responses import StreamingResponse
 from elasticsearch import Elasticsearch
 from elasticsearch import NotFoundError
 import traceback
@@ -232,6 +230,155 @@ def _update_memory(session_id: str, history_tail_text: str, last_out: dict | Non
 #agent = get_agent()
 
 def render_markdown(out: Any, request: Request) -> str:
+    """
+    把代理人輸出（dict 或 str）轉成排版好的 Markdown：
+    - 回答主文（支援把 <em>/<i>/<strong>/<b>/<br>/<p> 轉成 Markdown）
+    - 引用來源（含段落、縮短引文、可點連結）
+    - 可展開的「推理步驟」與「原始 JSON」
+    """
+    ALLOW_DETAILS = os.getenv("MD_ALLOW_DETAILS", "1") == "1"  # ← 是否輸出 <details>（預設開）
+
+    # 1) 把常見 HTML 轉成 Markdown（保守白名單）
+    def _html_to_markdown_light(s: str) -> str:
+        if not isinstance(s, str):
+            return ""
+        s = html.unescape(s)  # &lt;em&gt; → <em>
+
+        # 換行/段落
+        s = re.sub(r'(?i)<br\s*/?>', '\n', s)
+        s = re.sub(r'(?i)</p\s*>', '\n\n', s)
+        s = re.sub(r'(?i)<p[^>]*>', '', s)
+
+        # 強調/粗體
+        s = re.sub(r'(?i)<(em|i)(\s+[^>]*)?>', '*', s)
+        s = re.sub(r'(?i)</(em|i)\s*>', '*', s)
+        s = re.sub(r'(?i)<(strong|b)(\s+[^>]*)?>', '**', s)
+        s = re.sub(r'(?i)</(strong|b)\s*>', '**', s)
+
+        # 清單（簡化處理）
+        s = re.sub(r'(?i)</li\s*>', '\n', s)
+        s = re.sub(r'(?i)<li[^>]*>', '- ', s)
+        s = re.sub(r'(?i)</?(ul|ol|div|span)[^>]*>', '', s)
+
+        # 其餘標籤直接移除
+        s = re.sub(r'<[^>]+>', '', s)
+        return s
+
+    # 2) 統一換行：把字面 "\\n" 變真正換行；也處理 \r\n
+    def _normalize_newlines(s: str) -> str:
+        if not isinstance(s, str):
+            return ""
+        return s.replace("\r\n", "\n").replace("\\n", "\n")
+
+    # 3) 綜合正規化
+    def _normalize_text(s: str) -> str:
+        return _normalize_newlines(_html_to_markdown_light(s)).strip()
+
+    # out 是字串就直接回傳（也正規化一次）
+    if not isinstance(out, dict):
+        return _normalize_text(str(out))
+
+    # 取欄位 & 正規化
+    answer = _normalize_text(out.get("answer") or "")
+    reasoning = _normalize_text(out.get("reasoning") or "")
+    citations = out.get("citations") or []
+
+    # 把 citation 的 text 也處理（避免 <em> 顯示失敗）
+    for c in citations:
+        if isinstance(c.get("text"), str):
+            c["text"] = _normalize_text(c["text"])
+
+    md: list[str] = []
+
+    # 主文
+    if answer:
+        md.append("# 回答\n")
+        md.append(answer)
+
+    # 引用來源
+    if citations:
+        md.append("\n\n## 來源 / Citations\n")
+        seen = set()  # 若要去掉完全重複的 citation，可以用 (doc_id, paragraph_id, text) 當 key
+
+        for c in citations:
+            doc_id = (
+                c.get("uuid")
+                or c.get("source_id")
+                or c.get("doc_id")
+                or c.get("id")
+            )
+
+            # 去掉完全重複（同文件 + 同段落 + 同文字），避免重複列出
+            key = (doc_id, c.get("paragraph_id"), c.get("text"))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            # ★ 用 ref_no / snippet_index 當顯示編號，對齊主文裡的 ① ② ③…
+            ref_no = c.get("ref_no")
+            if not isinstance(ref_no, int):
+                # fallback：用 snippet_index（_build_citations_from_payload 已經補好）
+                ref_no = c.get("snippet_index") if isinstance(c.get("snippet_index"), int) else None
+
+            # 這裡你可以決定要用「1.」還是「①」
+            if isinstance(ref_no, int):
+                # 用阿拉伯數字：1.
+                label = f"{ref_no}."
+                # 如果你想用圈號數字可以改成：
+                # circled_digits = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+                # label = circled_digits[ref_no-1] if 1 <= ref_no <= len(circled_digits) else f"{ref_no}."
+            else:
+                label = "-"  # 沒有 ref_no 就用無序
+
+            # 顯示名稱：優先 subject，其次 title
+            display = (
+                c.get("subject")
+                or c.get("article_title")
+                or c.get("title")
+                or (str(doc_id) if doc_id is not None else "[未知來源]")
+            )
+
+            pid = c.get("paragraph_id")
+            txt = (c.get("text") or "").replace("\n", " ").strip()
+            if len(txt) > 300:
+                txt = txt[:300] + "…"
+
+            link = ""
+            if isinstance(doc_id, str):
+                url = _abs_url(request, f"/v1/docs/{doc_id}")
+                link = f" · <{url}>"
+
+            pid_str = f"（段落 {pid}）" if pid else ""
+            date_piece = f" · 🗓 {c.get('date_iso')}" if c.get("date_iso") else ""
+
+            md.append(
+                f"{label} **{display}**{pid_str}{link}{date_piece}\n\n   > {txt}"
+            )
+
+    # 推理（可收合 / fallback）
+    if reasoning:
+        if ALLOW_DETAILS:
+            md.append("\n\n<details><summary>展開推理 / 步驟</summary>\n\n")
+            md.append("```text\n" + reasoning + "\n```")
+            md.append("\n</details>")
+        else:
+            md.append("\n\n## 推理 / 步驟\n")
+            md.append("```text\n" + reasoning + "\n```")
+
+    # 原始 JSON（可收合 / fallback 同理）
+    raw_json = "```json\n" + json.dumps(out, ensure_ascii=False, indent=2) + "\n```"
+    if ALLOW_DETAILS:
+        md.append("\n\n<details><summary>原始 JSON</summary>\n\n")
+        md.append(raw_json)
+        md.append("\n</details>\n")
+    else:
+        md.append("\n\n## 原始 JSON\n\n")
+        md.append(raw_json)
+        md.append("\n")
+
+    return "\n\n".join(md)
+
+def render_markdown_1201(out: Any, request: Request) -> str:
     """
     把代理人輸出（dict 或 str）轉成排版好的 Markdown：
     - 回答主文（支援把 <em>/<i>/<strong>/<b>/<br>/<p> 轉成 Markdown）
@@ -471,22 +618,61 @@ def chat_completions(payload: ChatPayload, request: Request):
             "【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
         )
 
-        # 2) 呼叫總路由（answer_with_routing：內部自己決定是 SRA_REPORT / SRA_STYLE / PURE_LLM）
+        # 2) 準備 reuse_uuids：從上一輪結構化輸出裡撿 used_uuids / citations
+        key = session_id or "__default__"
+
+        reuse_uuids: list[str] = []
+        if key in _last_structured:
+            prev_out = _last_structured.get(key) or {}
+            candidates: list[str] = []
+
+            # 2-1) 優先：明確標在 used_uuids 裡的
+            uids = prev_out.get("used_uuids") or []
+            if isinstance(uids, list):
+                candidates.extend([u for u in uids if isinstance(u, str)])
+
+            # 2-2) 保險：從 citations 裡補撿 uuid / source_id / doc_id
+            for c in prev_out.get("citations") or []:
+                if not isinstance(c, dict):
+                    continue
+                u = (
+                    c.get("uuid")
+                    or c.get("source_id")
+                    or c.get("doc_id")
+                    or c.get("id")
+                )
+                if isinstance(u, str):
+                    candidates.append(u)
+
+            # 2-3) 去重、過濾空字串
+            seen = set()
+            for u in candidates:
+                if u and u not in seen:
+                    seen.add(u)
+                    reuse_uuids.append(u)
+
+        # ★ Debug：看一下實際拿到什麼
+        print("[chat_completions] session_id =", repr(session_id), "key =", repr(key))
+        print("[chat_completions] reuse_uuids =", reuse_uuids)
+
+        # 2) 呼叫總路由（answer_with_routing：內部自己決定是 SRA_REPORT / SRA_STYLE / DOC_FOLLOWUP / PURE_LLM）
         try:
             out = answer_with_routing(
                 user_msg=user_msg,
                 query_for_agent=query_for_agent,
-                recent_user_msgs=recent_user_msgs,  # ★ 新增這行
+                recent_user_msgs=recent_user_msgs,
+                reuse_uuids=reuse_uuids,  # ★★★ 這行是關鍵 ★★★
             )
         except Exception as e:
             print("answer_with_routing 發生錯誤：", e)
             raise HTTPException(status_code=500, detail="後端分析發生錯誤，請稍後再試")
-            
+       
         # 3) 產主文：保留你的 format / render_markdown 行為
         fmt = (payload.format or "markdown").lower()
         if fmt == "json":
             text = json.dumps(out, ensure_ascii=False)
         else:
+            #print("in render_markdown, out",out)
             text = render_markdown(out, request)
 
         # 4) 產 citations（加上「可點的」絕對連結）
@@ -538,19 +724,26 @@ def chat_completions(payload: ChatPayload, request: Request):
         
         # 6) 保存本輪到會話歷史 & 更新通用記憶
         try:
-            if session_id:
-                _sessions[session_id].append(ChatMessage(role="user", content=user_msg))
-                # 無論回前端是 json 或 markdown，都另外渲染一份完整 markdown 給保存邏輯用
-                rendered_full = render_markdown(out, request) if isinstance(out, dict) else str(out)
-                assistant_save = _choose_assistant_save(out, rendered_full)
-                _sessions[session_id].append(ChatMessage(role="assistant", content=assistant_save))
-                if isinstance(out, dict):
-                    _last_structured[session_id] = out
-                tail_msgs = list(_sessions[session_id])[-6:]
-                tail_text = pack_chat_history(tail_msgs, max_chars=4000)
-                _update_memory(session_id, tail_text, out if isinstance(out, dict) else None)
+            key = session_id or "__default__"
+
+            _sessions[key].append(ChatMessage(role="user", content=user_msg))
+            # 無論回前端是 json 或 markdown，都另外渲染一份完整 markdown 給保存邏輯用
+            rendered_full = render_markdown(out, request) if isinstance(out, dict) else str(out)
+            assistant_save = _choose_assistant_save(out, rendered_full)
+            _sessions[key].append(ChatMessage(role="assistant", content=assistant_save))
+
+            if isinstance(out, dict):
+                _last_structured[key] = out
+                print("[chat_completions] saved _last_structured for", repr(key),
+                      "used_uuids =", out.get("used_uuids"))
+
+            tail_msgs = list(_sessions[key])[-6:]
+            tail_text = pack_chat_history(tail_msgs, max_chars=4000)
+            _update_memory(key, tail_text, out if isinstance(out, dict) else None)
         except Exception:
             pass
+
+
         
         return resp
     except Exception as e:
@@ -573,78 +766,9 @@ ES_INDEX_RAW = os.getenv("ES_INDEX", "news_test,mil_reports-01")
 ES_INDEXES = [idx.strip() for idx in ES_INDEX_RAW.split(",") if idx.strip()]
 
 ES = Elasticsearch(ES_URL)
-'''
+
 @app.get("/v1/docs/{doc_id}")
 def get_doc(doc_id: str):
-    # 1) 先嘗試用 _id 直接抓（最快、最穩）
-    print(f"running get_doc for {doc_id}")
-    try:
-        got = ES.get(index=ES_INDEX, id=doc_id, _source=True)
-        src = got.get("_source", {})
-        # 順手把 _id 帶回去（有助前端辨識）
-        src["_id"] = got.get("_id")
-        return src
-    except NotFoundError:
-        pass
-    except Exception:
-        # 有些舊版 client 不會丟 NotFoundError，就直接忽略進 fallback
-        pass
-
-    # 2) 用 uuid.keyword 精確比對（若 mapping 有 keyword 子欄位）
-    res = ES.search(
-        index=ES_INDEX,
-        body={
-            "size": 1,
-            "_source": True,
-            "query": {"term": {"uuid.keyword": doc_id}}
-        },
-    )
-    hits = res.get("hits", {}).get("hits", []) or []
-    if hits:
-        hit = hits[0]
-        src = hit.get("_source", {})
-        src["_id"] = hit.get("_id")
-        return src
-
-    # 3) 若沒 keyword 子欄位，試試直接 term 在 uuid（若它本身就是 keyword）
-    res = ES.search(
-        index=ES_INDEX,
-        body={
-            "size": 1,
-            "_source": True,
-            "query": {"term": {"uuid": doc_id}}
-        },
-    )
-    hits = res.get("hits", {}).get("hits", []) or []
-    if hits:
-        hit = hits[0]
-        src = hit.get("_source", {})
-        src["_id"] = hit.get("_id")
-        return src
-
-    # 4) 最後保底：模糊比對（避免因為大小寫/格式微差抓不到）
-    res = ES.search(
-        index=ES_INDEX,
-        body={
-            "size": 1,
-            "_source": True,
-            "query": {"wildcard": {"uuid": {"value": f"*{doc_id}*"}}}
-        },
-    )
-    hits = res.get("hits", {}).get("hits", []) or []
-    if hits:
-        hit = hits[0]
-        src = hit.get("_source", {})
-        src["_id"] = hit.get("_id")
-        return src
-
-    # 全部找不到
-    raise HTTPException(status_code=404, detail="document not found")
-'''
-@app.get("/v1/docs/{doc_id}")
-def get_doc(doc_id: str):
-    print(f"running get_doc for {doc_id}")
-
     # 1) 逐一嘗試用 _id 直接抓（每個 index 都試）
     for idx in ES_INDEXES:
         try:

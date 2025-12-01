@@ -166,7 +166,6 @@ def ask_with_style(question: str) -> Dict[str, Any]:
         ref_sections.append(f"{header}\n\n{body_block}")
 
     if ref_sections:
-        # 主文後面接一個區塊說明，再依序列出樣本
         style_text_with_refs = (
             style_text
             + "\n\n---\n"
@@ -176,11 +175,17 @@ def ask_with_style(question: str) -> Dict[str, Any]:
     else:
         style_text_with_refs = style_text
 
-    # 回傳給前端：answer 直接帶有「主文 + 參考樣本區塊」
-    # 若你之後想在前端分開顯示，可以改用 style_references 自己排版。
+    # ★ 新增：整理本輪可供後續操作的 uuid（順序照 style_docs）
+    used_uuids: list[str] = []
+    for d in style_docs:
+        u = (d.get("uuid") or "").strip()
+        if u and u not in used_uuids:
+            used_uuids.append(u)
+
     return {
         "answer": style_text_with_refs,
         "citations": citations,
         "reasoning": reasoning,
         "style_references": style_docs,
+        "used_uuids": used_uuids,   # ★ 給前端帶去下一輪當 reuse_uuids
     }
