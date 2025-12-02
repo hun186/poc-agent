@@ -184,7 +184,7 @@ def call_llm(
             f"user_preview={up[:500]!r}"
         )
         # 如果你想看一點 system_prompt 也可以加（不建議印太多）
-        print(f"[call_llm] system_preview={sp[:200]!r}")
+        print(f"[call_llm] system_preview={sp[:400]!r}")
 
     client = get_default_client()
 

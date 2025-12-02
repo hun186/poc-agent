@@ -121,17 +121,17 @@ DOC_FOLLOWUP_SYSTEM_PROMPT = """
 
 
 def ask_with_doc_followup(instruction: str, uuids: List[str], index_hint: str | None = None) -> Dict[str, Any]:
-    """
-    通用文件後續代理人入口。
-    """
     docs = fetch_docs_by_uuid(uuids, index_hint=index_hint)
+
+    # 只保留「真的有 full_text」的 uuid
+    ok_uuids = [d["uuid"] for d in docs if d.get("uuid")]
 
     if not docs:
         return {
             "answer": "目前沒有可用的參考文件，因此無法進行這一輪的指令。",
             "citations": [],
             "reasoning": "沒有文件可使用",
-            "used_uuids": uuids,
+            "used_uuids": [],   # 🚫 不要再往下傳壞掉的 uuid
         }
 
     payload = {
@@ -152,6 +152,7 @@ def ask_with_doc_followup(instruction: str, uuids: List[str], index_hint: str | 
         "answer": answer,
         "citations": [],
         "reasoning": "僅依據先前取得的文件全文進行後續任務。",
-        "used_uuids": uuids,
+        "used_uuids": ok_uuids,   # ✅ 只留下真的能被後續使用的 uuid
         "doc_count": len(docs),
     }
+

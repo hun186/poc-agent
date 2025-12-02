@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from elasticsearch import Elasticsearch
 from elasticsearch import NotFoundError
 import traceback
+import hashlib
 
 # 你的代理人單例；內部已走 Ollama（LiteLLMModel -> MODEL_BASE_URL）
 #from agent.agent import get_agent, SYSTEM
@@ -31,6 +32,8 @@ json_llm = OpenAIStyleOllama(
     temperature=float(os.getenv("MODEL_TEMPERATURE", "0")),
 )
 
+
+
 def _abs_url(request: Request, path: str) -> str:
     #print("PUBLIC_API_BASE",PUBLIC_API_BASE)
     base = (PUBLIC_API_BASE or str(request.base_url)).rstrip("/")
@@ -49,13 +52,22 @@ class ChatPayload(BaseModel):
     messages: list[ChatMessage]
     stream: bool | None = None
     format: str | None = "markdown"   # ← 新增
+    
 
 # ===== Session store（簡易記憶）=====
 SESSION_MAX_TURNS = int(os.getenv("SESSION_MAX_TURNS", "20"))
 _sessions: dict[str, deque[ChatMessage]] = defaultdict(lambda: deque(maxlen=SESSION_MAX_TURNS))
 _last_structured: dict[str, dict] = {}     # 會話 -> 上一輪 out（answer/citations/reasoning）
-#_last_orgs: dict[str, list[str]] = {}      # 會話 -> 上一輪提到的機構/組織清單
-    
+
+
+# ★ 歷史 → session 的對照表（用來從「上一輪歷史文字」反查 session）
+_history2session: dict[str, str] = {}
+
+# ★ session → 歷史 key 的對照表（確保一個 session 只會綁一個 history key）
+_session2history_key: dict[str, str] = {}
+
+# ★ 最多保留多少個 session，超過就淘汰最舊的一個
+MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "100"))
 
 
 
@@ -226,6 +238,46 @@ def _update_memory(session_id: str, history_tail_text: str, last_out: dict | Non
     except Exception:
         # 記憶更新失敗不影響主流程
         pass
+    
+def _collect_reuse_from(out: dict) -> list[str]:
+    """
+    從一個 structured out 裡撿出可 reuse 的 uuids：
+    - 先看 used_uuids
+    - 再從 citations 裡補 uuid/source_id/doc_id
+    - 去重、過濾空字串
+    """
+    if not isinstance(out, dict):
+        return []
+
+    candidates: list[str] = []
+
+    # 1) used_uuids
+    uids = out.get("used_uuids") or []
+    if isinstance(uids, list):
+        candidates.extend([u for u in uids if isinstance(u, str)])
+
+    # 2) citations 裡補 uuid/source_id/doc_id
+    for c in out.get("citations") or []:
+        if not isinstance(c, dict):
+            continue
+        u = (
+            c.get("uuid")
+            or c.get("source_id")
+            or c.get("doc_id")
+            or c.get("id")
+        )
+        if isinstance(u, str):
+            candidates.append(u)
+
+    # 3) 去重
+    seen: set[str] = set()
+    reuse: list[str] = []
+    for u in candidates:
+        if u and u not in seen:
+            seen.add(u)
+            reuse.append(u)
+
+    return reuse
     
 #agent = get_agent()
 
@@ -528,8 +580,31 @@ def list_models():
 @app.post("/v1/chat/completions")
 def chat_completions(payload: ChatPayload, request: Request):
     try:
-        # 0) 會話 ID（可用前端 header 傳入）
-        session_id = request.headers.get("x-conversation-id") or request.headers.get("x-session-id") or ""
+        # 0) 決定 session_key：優先用 header，否則用「上一輪歷史」推論
+        raw_header_session = (
+            request.headers.get("x-conversation-id")
+            or request.headers.get("x-session-id")
+            or ""
+        )
+        raw_header_session = (raw_header_session or "").strip()
+        
+        # 先算出「上一輪完整歷史」（這次 payload.messages 去掉最後一則）
+        history_tail_for_lookup = pack_chat_history(payload.messages[:-1]) if payload.messages else ""
+        
+        session_key: str
+        if raw_header_session:
+            # 有 header 就直接用（OpenWebUI 之後可以傳 x-conversation-id 來綁死）
+            session_key = raw_header_session
+        else:
+            # 沒 header，就用「上一輪完整歷史」當 key 找既有 session
+            if history_tail_for_lookup and history_tail_for_lookup in _history2session:
+                session_key = _history2session[history_tail_for_lookup]
+            else:
+                # 找不到就開新的
+                session_key = f"conv_{len(_sessions) + 1}"
+        
+        print("DEBUG _history2session", _history2session)
+        print("[chat_completions] chosen session_key =", repr(session_key))
 
         # 1) 前置 system + 取最後一則 user（保持原本邏輯）
         sys_prefix = ""
@@ -551,14 +626,14 @@ def chat_completions(payload: ChatPayload, request: Request):
         # >>> 新增：若是 WebUI 的 JSON 分析任務，直接用 json_llm 產生，繞開 CodeAgent <<<
         kind = _detect_meta_kind(query)
         if kind:
-            # 用整段 chat history（統一經 pack_chat_history），優先使用我們的 session
-            if session_id and session_id in _sessions and len(_sessions[session_id]) > 0:
-                base_history_msgs = list(_sessions[session_id])
+            if session_key in _sessions and len(_sessions[session_key]) > 0:
+                base_history_msgs = list(_sessions[session_key])
             else:
                 base_history_msgs = list(payload.messages)
             
             history_text = pack_chat_history(base_history_msgs)
-            mem_txt = _render_memory_text(_memory.get(session_id))
+            mem_txt = _render_memory_text(_memory.get(session_key))
+
             if mem_txt:
                 history_text += f"\nMEMORY:\n{mem_txt}\n"
             if kind == "tags":
@@ -589,11 +664,11 @@ def chat_completions(payload: ChatPayload, request: Request):
             }
         # 2-2) 否則 → 多輪：把歷史一併送進 Agent
         # 構造可讀歷史：優先使用我們保存於 session 的乾淨主文
-        if session_id and session_id in _sessions and len(_sessions[session_id]) > 0:
-            history_msgs = list(_sessions[session_id])
+        if session_key in _sessions and len(_sessions[session_key]) > 0:
+            history_msgs = list(_sessions[session_key])
         else:
-            # 沒有 session 時才退回用前端帶回的歷史（去掉當輪 user）
             history_msgs = list(payload.messages[:-1])
+
         
         # ★ 給任務分流器用的「最近幾個 user 問題」（不含本輪）
         recent_user_msgs: list[str] = []
@@ -610,7 +685,7 @@ def chat_completions(payload: ChatPayload, request: Request):
         #    summary_tail = "【上一輪摘要（自動）】\n- 主要機構：" + "、".join(_last_orgs[session_id][:15]) + "\n"
         #    history_text = (history_text + "\n" + summary_tail).strip()
 
-        mem_txt = _render_memory_text(_memory.get(session_id))
+        mem_txt = _render_memory_text(_memory.get(session_key))
         query_for_agent = (
             (f"【對話記憶】\n{mem_txt}\n\n" if mem_txt else "") +
             f"【對話歷史】\n{history_text}\n\n"
@@ -618,42 +693,27 @@ def chat_completions(payload: ChatPayload, request: Request):
             "【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
         )
 
-        # 2) 準備 reuse_uuids：從上一輪結構化輸出裡撿 used_uuids / citations
-        key = session_id or "__default__"
-
+        # 2) 準備 reuse_uuids
         reuse_uuids: list[str] = []
-        if key in _last_structured:
-            prev_out = _last_structured.get(key) or {}
-            candidates: list[str] = []
 
-            # 2-1) 優先：明確標在 used_uuids 裡的
-            uids = prev_out.get("used_uuids") or []
-            if isinstance(uids, list):
-                candidates.extend([u for u in uids if isinstance(u, str)])
-
-            # 2-2) 保險：從 citations 裡補撿 uuid / source_id / doc_id
-            for c in prev_out.get("citations") or []:
-                if not isinstance(c, dict):
-                    continue
-                u = (
-                    c.get("uuid")
-                    or c.get("source_id")
-                    or c.get("doc_id")
-                    or c.get("id")
+        # 2-1) 第一優先：這個 session 自己上一輪的 structured out
+        print("DEBUG _history2session", _history2session)
+        if session_key in _last_structured:
+            prev_out = _last_structured.get(session_key) or {}
+            reuse_uuids = _collect_reuse_from(prev_out)
+        
+        elif history_tail_for_lookup and history_tail_for_lookup in _history2session:
+            parent_session = _history2session[history_tail_for_lookup]
+            prev_out = _last_structured.get(parent_session)
+            if prev_out:
+                reuse_uuids = _collect_reuse_from(prev_out)
+                print(
+                    "[chat_completions] reuse_uuids from parent session",
+                    repr(parent_session),
                 )
-                if isinstance(u, str):
-                    candidates.append(u)
 
-            # 2-3) 去重、過濾空字串
-            seen = set()
-            for u in candidates:
-                if u and u not in seen:
-                    seen.add(u)
-                    reuse_uuids.append(u)
-
-        # ★ Debug：看一下實際拿到什麼
-        print("[chat_completions] session_id =", repr(session_id), "key =", repr(key))
         print("[chat_completions] reuse_uuids =", reuse_uuids)
+
 
         # 2) 呼叫總路由（answer_with_routing：內部自己決定是 SRA_REPORT / SRA_STYLE / DOC_FOLLOWUP / PURE_LLM）
         try:
@@ -724,22 +784,63 @@ def chat_completions(payload: ChatPayload, request: Request):
         
         # 6) 保存本輪到會話歷史 & 更新通用記憶
         try:
-            key = session_id or "__default__"
-
-            _sessions[key].append(ChatMessage(role="user", content=user_msg))
-            # 無論回前端是 json 或 markdown，都另外渲染一份完整 markdown 給保存邏輯用
+            _sessions[session_key].append(ChatMessage(role="user", content=user_msg))
             rendered_full = render_markdown(out, request) if isinstance(out, dict) else str(out)
             assistant_save = _choose_assistant_save(out, rendered_full)
-            _sessions[key].append(ChatMessage(role="assistant", content=assistant_save))
+            _sessions[session_key].append(ChatMessage(role="assistant", content=assistant_save))
 
             if isinstance(out, dict):
-                _last_structured[key] = out
-                print("[chat_completions] saved _last_structured for", repr(key),
-                      "used_uuids =", out.get("used_uuids"))
+                mode = out.get("mode")
+                if mode in ("SRA_REPORT", "SRA_STYLE", "DOC_FOLLOWUP"):
+                   _last_structured[session_key] = out
+                else:
+                   # PURE_LLM 或其他模式就不要沿用 used_uuids，避免污染
+                   _last_structured.pop(session_key, None)
 
-            tail_msgs = list(_sessions[key])[-6:]
+                print(
+                    "[chat_completions] saved _last_structured for",
+                   repr(session_key),
+                    "used_uuids =", out.get("used_uuids")
+                )
+
+            tail_msgs = list(_sessions[session_key])[-6:]
             tail_text = pack_chat_history(tail_msgs, max_chars=4000)
-            _update_memory(key, tail_text, out if isinstance(out, dict) else None)
+            _update_memory(session_key, tail_text, out if isinstance(out, dict) else None)
+            
+            # ★★★ 新版：把「這一輪結束後的完整歷史（以前端這個對話區為主）」註冊到 _history2session，給下一輪用
+            history_key_for_next_turn = pack_chat_history(payload.messages)
+            if history_key_for_next_turn:
+                # 1) 這個 session 若之前有舊的 history key，先移除
+                old_hkey = _session2history_key.get(session_key)
+                if old_hkey and old_hkey in _history2session:
+                    del _history2session[old_hkey]
+            
+                # 2) 掛上新的對照
+                _history2session[history_key_for_next_turn] = session_key
+                _session2history_key[session_key] = history_key_for_next_turn
+            
+                print(
+                    "[chat_completions] register history key for",
+                    repr(session_key),
+                    "len=", len(history_key_for_next_turn)
+                )
+
+
+
+            # ★★★ 新增：若 session 數量超過上限，就淘汰最舊的一個，避免一直堆記憶體
+            if len(_sessions) > MAX_SESSIONS:
+                victim_key = next(iter(_sessions))  # dict 有插入順序，抓第一個當最舊
+                print("[chat_completions] evict session:", repr(victim_key))
+
+                _sessions.pop(victim_key, None)
+                _memory.pop(victim_key, None)
+                _last_structured.pop(victim_key, None)
+
+                # 同步把 history 映射也清掉
+                v_hkey = _session2history_key.pop(victim_key, None)
+                if v_hkey and v_hkey in _history2session:
+                    _history2session.pop(v_hkey, None)
+
         except Exception:
             pass
 
