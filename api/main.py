@@ -60,12 +60,6 @@ _sessions: dict[str, deque[ChatMessage]] = defaultdict(lambda: deque(maxlen=SESS
 _last_structured: dict[str, dict] = {}     # 會話 -> 上一輪 out（answer/citations/reasoning）
 
 
-# ★ 歷史 → session 的對照表（用來從「上一輪歷史文字」反查 session）
-_history2session: dict[str, str] = {}
-
-# ★ session → 歷史 key 的對照表（確保一個 session 只會綁一個 history key）
-_session2history_key: dict[str, str] = {}
-
 # ★ 最多保留多少個 session，超過就淘汰最舊的一個
 MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "100"))
 
@@ -157,6 +151,27 @@ def pack_chat_history(messages: list[ChatMessage], *, max_chars: int = HISTORY_M
     if len(s) > max_chars:
         s = s[-max_chars:]   # 保留最近的上下文
     return s
+
+def _infer_session_key_from_payload(messages: list[ChatMessage]) -> str:
+    """
+    若前端沒帶 header，就用「第一個 user 訊息」的內容做 hash 當 session_key。
+    同一個聊天室第一句不變 → session_key 穩定；不同聊天室 → 自然不同。
+    """
+    first_user = ""
+    for m in messages:
+        role = (m.role or "").lower()
+        if role == "user":
+            txt = (m.content or "").strip()
+            if txt:
+                first_user = txt
+                break
+
+    if not first_user:
+        # 沒有 user 訊息，就退回用遞增編號（很少發生）
+        return f"conv_{len(_sessions) + 1}"
+
+    h = hashlib.sha256(first_user.encode("utf-8")).hexdigest()[:16]
+    return f"conv_{h}"
 
 def _best_assistant_text(session_id: str, maybe_text_from_client: str) -> str:
     """
@@ -580,7 +595,7 @@ def list_models():
 @app.post("/v1/chat/completions")
 def chat_completions(payload: ChatPayload, request: Request):
     try:
-        # 0) 決定 session_key：優先用 header，否則用「上一輪歷史」推論
+        # 0) 決定 session_key：優先用 header，否則用「第一個 user 訊息 hash」
         raw_header_session = (
             request.headers.get("x-conversation-id")
             or request.headers.get("x-session-id")
@@ -588,24 +603,12 @@ def chat_completions(payload: ChatPayload, request: Request):
         )
         raw_header_session = (raw_header_session or "").strip()
         
-        # 先算出「上一輪完整歷史」（這次 payload.messages 去掉最後一則）
-        history_tail_for_lookup = pack_chat_history(payload.messages[:-1]) if payload.messages else ""
-        
-        session_key: str
         if raw_header_session:
-            # 有 header 就直接用（OpenWebUI 之後可以傳 x-conversation-id 來綁死）
             session_key = raw_header_session
         else:
-            # 沒 header，就用「上一輪完整歷史」當 key 找既有 session
-            if history_tail_for_lookup and history_tail_for_lookup in _history2session:
-                session_key = _history2session[history_tail_for_lookup]
-            else:
-                # 找不到就開新的
-                session_key = f"conv_{len(_sessions) + 1}"
+            session_key = _infer_session_key_from_payload(payload.messages or [])
         
-        print("DEBUG _history2session", _history2session)
         print("[chat_completions] chosen session_key =", repr(session_key))
-
         # 1) 前置 system + 取最後一則 user（保持原本邏輯）
         sys_prefix = ""
         for m in payload.messages:
@@ -697,21 +700,12 @@ def chat_completions(payload: ChatPayload, request: Request):
         reuse_uuids: list[str] = []
 
         # 2-1) 第一優先：這個 session 自己上一輪的 structured out
-        print("DEBUG _history2session", _history2session)
         if session_key in _last_structured:
             prev_out = _last_structured.get(session_key) or {}
             reuse_uuids = _collect_reuse_from(prev_out)
+        else:
+            reuse_uuids = []
         
-        elif history_tail_for_lookup and history_tail_for_lookup in _history2session:
-            parent_session = _history2session[history_tail_for_lookup]
-            prev_out = _last_structured.get(parent_session)
-            if prev_out:
-                reuse_uuids = _collect_reuse_from(prev_out)
-                print(
-                    "[chat_completions] reuse_uuids from parent session",
-                    repr(parent_session),
-                )
-
         print("[chat_completions] reuse_uuids =", reuse_uuids)
 
 
@@ -806,24 +800,7 @@ def chat_completions(payload: ChatPayload, request: Request):
             tail_msgs = list(_sessions[session_key])[-6:]
             tail_text = pack_chat_history(tail_msgs, max_chars=4000)
             _update_memory(session_key, tail_text, out if isinstance(out, dict) else None)
-            
-            # ★★★ 新版：把「這一輪結束後的完整歷史（以前端這個對話區為主）」註冊到 _history2session，給下一輪用
-            history_key_for_next_turn = pack_chat_history(payload.messages)
-            if history_key_for_next_turn:
-                # 1) 這個 session 若之前有舊的 history key，先移除
-                old_hkey = _session2history_key.get(session_key)
-                if old_hkey and old_hkey in _history2session:
-                    del _history2session[old_hkey]
-            
-                # 2) 掛上新的對照
-                _history2session[history_key_for_next_turn] = session_key
-                _session2history_key[session_key] = history_key_for_next_turn
-            
-                print(
-                    "[chat_completions] register history key for",
-                    repr(session_key),
-                    "len=", len(history_key_for_next_turn)
-                )
+   
 
 
 
@@ -836,10 +813,7 @@ def chat_completions(payload: ChatPayload, request: Request):
                 _memory.pop(victim_key, None)
                 _last_structured.pop(victim_key, None)
 
-                # 同步把 history 映射也清掉
-                v_hkey = _session2history_key.pop(victim_key, None)
-                if v_hkey and v_hkey in _history2session:
-                    _history2session.pop(v_hkey, None)
+
 
         except Exception:
             pass
