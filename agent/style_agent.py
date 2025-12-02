@@ -5,6 +5,7 @@ import os
 # ★ 依你原本的位置調整 import
 from .data_agent import _run_data_agent         # 如果 _run_data_agent 還在 agent.py
 from agent.utils_citations import _build_citations_from_payload
+from agent.utils_citations import build_citations_from_ev
 from agent.utils_citations import compress_evidence
 from .llm_utils.ollama_client import call_llm           # 若 call_llm 在別的 util 模組
 
@@ -130,7 +131,9 @@ def ask_with_style(question: str) -> Dict[str, Any]:
     )
 
     # 4) 引用 / reasoning
-    citations = _build_citations_from_payload(payload)
+    #citations = _build_citations_from_payload(payload)
+    # ★ citations：直接用 ev_compact
+    citations = build_citations_from_ev(ev)
     reasoning = (
         "本回答參考資料庫中既有文本的語氣與格式，"
         "但所有事實僅來自使用者提供的原始文章內容，"

@@ -43,6 +43,29 @@ for topic, desc in TOPIC_DESCRIPTIONS.items():
     topic_desc_lines.append(f'- "{topic}": {desc}')
 TOPIC_DESC_TEXT = "\n".join(topic_desc_lines)
 
+TOPIC_INDEX_MAP: dict = INDEX_CONFIG["topic_index_map"]
+ES_INDEX_DEFAULT: str = INDEX_CONFIG.get("default_index", "news_test")
+
+def topic_to_index_hint(topic: str | None) -> str | None:
+    """
+    把 LLM 判斷出的 topic（例如 "mil_intel"）轉成 index_hint 給 ES 使用。
+
+    - 若 topic 未設定或找不到對應，就回傳 None（讓後續走 default）
+    - 若該 topic 綁多個 index，就用逗號串起來："a,b,c"
+    """
+    if not topic:
+        return None
+
+    cfg = TOPIC_INDEX_MAP.get(topic)
+    if not cfg:
+        return None
+
+    idxs = cfg.get("indexes") or []
+    if not idxs:
+        return None
+
+    # 多個 index 就 "a,b,c"；_resolve_es_index 已經支援這種格式
+    return ",".join(idxs)
 
 # === Task Router System（safe string，避免 f-string {} 衝突）===
 TASK_ROUTER_SYSTEM = (
@@ -308,9 +331,14 @@ def answer_with_routing(
         indexes = [default_idx] if default_idx else []
 
     if indexes:
-        index_hint_prefix = f"[ES_INDEX_HINT={','.join(indexes)}]\n"
+        # 給 CodeAgent / SRA_REPORT 用的提示前綴
+        index_hint_str = ",".join(indexes)
+        index_hint_prefix = f"[ES_INDEX_HINT={index_hint_str}]\n"
+        # 給 ESFetchDocById / DOC_FOLLOWUP 用的 index_hint
+        index_hint = index_hint_str
     else:
         index_hint_prefix = ""
+        index_hint = None
 
     # === 4) 給 CodeAgent 的 query ===
     q_for_agent = (query_for_agent or user_msg).strip()
@@ -334,6 +362,7 @@ def answer_with_routing(
                 out = ask_with_doc_followup(
                     instruction=user_msg,
                     uuids=reuse_uuids,
+                    index_hint=index_hint,   # ★ 把剛算好的 index_hint 帶進去
                 )
                 
         # === SRA_REPORT：產生資料 payload → 報告 LLM 寫結論 ===

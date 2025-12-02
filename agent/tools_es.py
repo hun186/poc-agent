@@ -14,6 +14,7 @@ from agent.llm_utils.ollama_client import call_llm
 import textwrap
 import requests
 from elasticsearch import Elasticsearch, BadRequestError
+from elasticsearch import NotFoundError
 from smolagents import Tool
 from typing import Optional, List, Tuple  # 開頭已經有就不用再加
 from typing import Union, List, Optional  # 若上面已有則不用重複
@@ -1861,7 +1862,7 @@ class ESFetchDocById(Tool):
     """
     依 uuid 從 Elasticsearch 撈出「單篇完整文件」，主要提供風格學習 / 公文範例用。
 
-    - 預期 index 內有欄位 uuid（或 uuid.keyword）
+    - 預期 index 內有欄位 uuid（或 _id 就是 uuid）
     - 內文欄位預設用 text_field 指定，預設抓 rawInfo.content
     """
     name = "es_fetch_doc_by_id"
@@ -1870,7 +1871,7 @@ class ESFetchDocById(Tool):
     inputs = {
         "uuid": {
             "type": "string",
-            "description": "文件的 uuid 欄位值（對應索引中的 uuid 或 uuid.keyword）。",
+            "description": "文件的 uuid 欄位值（對應索引中的 uuid 或 _id）。",
         },
         "index_hint": {
             "type": "string",
@@ -1887,18 +1888,15 @@ class ESFetchDocById(Tool):
         },
     }
 
-    # ★★★★★ 關鍵：一定要設 output_type，不然就會出現你那個錯誤 ★★★★★
     output_type = "any"
-    
+
     outputs = {
         "uuid": {"type": "string"},
         "index": {"type": "string"},
         "full_text": {"type": "string"},
-        # 給之後要 debug / 額外取欄位時用
         "source": {"type": "object"},
     }
 
-    # ✅ 這裡直接用全域 ES，不需要 get_es_client
     def __init__(self):
         super().__init__()
         self.es = ES
@@ -1918,49 +1916,67 @@ class ESFetchDocById(Tool):
                 "error": "uuid is required",
             }
 
-        # 1) 決定要查的 index（沿用你上面寫好的 _resolve_es_index）
+        # 1) 決定要查的 index
         index = _resolve_es_index(index_hint)
 
-        # 2) term 查 uuid；你 ESTimeline 也是用 uuid.keyword，就沿用
-        query = {
-            "term": {
-                "uuid.keyword": uuid
-            }
-        }
+        src = None
+        hit_index = None
 
+        # === 2) 優先嘗試：當 uuid 就是 _id，用 GET 直接拿 ===
         try:
-            resp = self.es.search(
-                index=index,
-                size=1,
-                query=query,
-                _source=True,
-            )
+            resp = self.es.get(index=index, id=uuid, _source=True)
+            if resp and resp.get("found"):
+                src = resp.get("_source") or {}
+                hit_index = resp.get("_index", str(index))
+        except NotFoundError:
+            # 找不到就當沒事，改用 term 查 uuid
+            pass
         except Exception as e:
-            print(f"[ESFetchDocById] search error: {e}")
+            # 其他錯誤印出來，但不要整個炸掉
+            print(f"[ESFetchDocById] get(id=uuid) error: {e}")
+
+        # === 3) 若 GET 沒拿到，再 fallback 用 uuid 欄位 term 搜尋 ===
+        if src is None:
+            query = {
+                "term": {
+                    # ⚠ 關鍵：不用 uuid.keyword，只用 uuid，本身就適用 keyword / text 兩種 mapping
+                    "uuid": uuid
+                }
+            }
+            try:
+                resp = self.es.search(
+                    index=index,
+                    size=1,
+                    query=query,
+                    _source=True,
+                )
+                hits = (resp.get("hits") or {}).get("hits") or []
+                if hits:
+                    hit = hits[0]
+                    src = hit.get("_source") or {}
+                    hit_index = hit.get("_index", str(index))
+            except Exception as e:
+                print(f"[ESFetchDocById] search(uuid) error: {e}")
+                return {
+                    "uuid": uuid,
+                    "index": str(index),
+                    "full_text": "",
+                    "source": {},
+                    "error": str(e),
+                }
+
+        # 仍然沒資料
+        if not src:
             return {
                 "uuid": uuid,
                 "index": str(index),
                 "full_text": "",
                 "source": {},
-                "error": str(e),
             }
 
-        hits = (resp.get("hits") or {}).get("hits") or []
-        if not hits:
-            return {
-                "uuid": uuid,
-                "index": str(index),
-                "full_text": "",
-                "source": {},
-            }
-
-        hit = hits[0]
-        src = hit.get("_source") or {}
-
-        # 3) 根據 text_field 取主要內文，並提供幾個常見備援欄位
+        # === 4) 取主要內文 ===
         tf = text_field or "rawInfo.content"
 
-        # 支援 dot path，例如 "rawInfo.content"
         def _dot_get(d: dict, path: str):
             cur = d
             for p in path.split("."):
@@ -1979,13 +1995,12 @@ class ESFetchDocById(Tool):
             or ""
         )
 
-        # 保險一下，轉成字串
         if not isinstance(full_text, str):
             full_text = str(full_text)
 
         return {
             "uuid": uuid,
-            "index": hit.get("_index", str(index)),
+            "index": hit_index or str(index),
             "full_text": full_text,
             "source": src,
         }

@@ -646,6 +646,7 @@ def build_agent(mode: str = "report"):
         tools = [
             ESSearchNews(),
             ESTimeline(),
+            ESFetchDocById(),
             AggregateMonthQuarter(),
             PythonInterpreterTool(),
         ]
