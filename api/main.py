@@ -1,10 +1,12 @@
 #api/main.py
-#cd D:\shared\TopicClassification\poc-agent&& uvicorn api.main:app --host 0.0.0.0 --port 8000
+#cd D:\shared\TopicClassification\poc-agent&& uvicorn api.main:app --host 0.0.0.0 --port 9001
 import os, json, time
 import re
 import html
-from typing import Any
+from typing import Any, Dict, List
 from fastapi import FastAPI, HTTPException
+from fastapi import Query
+from fastapi.responses import PlainTextResponse, JSONResponse
 from collections import defaultdict, deque
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
@@ -23,6 +25,7 @@ from agent.agent import answer_with_routing
 
 from agent.direct_llm_json import OpenAIStyleOllama, task_tags, task_title, task_followups
 
+#SRA模型代理人API
 PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE")
 print("PUBLIC_API_BASE",PUBLIC_API_BASE)
 
@@ -412,8 +415,20 @@ def render_markdown(out: Any, request: Request) -> str:
 
             link = ""
             if isinstance(doc_id, str):
-                url = _abs_url(request, f"/v1/docs/{doc_id}")
-                link = f" · <{url}>"
+                # 1) 原來的全文 JSON / 下載全文（維持現狀）
+                base_full = _abs_url(request, f"/v1/docs/{doc_id}/fulltext")
+                url_json = base_full + "?format=json"
+                url_txt  = base_full + "?format=txt&download=1"
+            
+                # 2) 額外：uuid 連結 → 原始 ES 完整文件
+                url_es = _abs_url(request, f"/v1/docs/{doc_id}")
+                uuid_link = f"[{doc_id}]({url_es})"
+            
+                # 3) 組合成一段文字
+                #    （順序可以依你喜好調整）
+                link = f" · UUID: {uuid_link} · [JSON]({url_json}) · [下載全文]({url_txt})"
+            else:
+                link = ""
 
             pid_str = f"（段落 {pid}）" if pid else ""
             date_piece = f" · 🗓 {c.get('date_iso')}" if c.get("date_iso") else ""
@@ -433,6 +448,7 @@ def render_markdown(out: Any, request: Request) -> str:
             md.append("```text\n" + reasoning + "\n```")
 
     # 原始 JSON（可收合 / fallback 同理）
+    '''
     raw_json = "```json\n" + json.dumps(out, ensure_ascii=False, indent=2) + "\n```"
     if ALLOW_DETAILS:
         md.append("\n\n<details><summary>原始 JSON</summary>\n\n")
@@ -442,6 +458,39 @@ def render_markdown(out: Any, request: Request) -> str:
         md.append("\n\n## 原始 JSON\n\n")
         md.append(raw_json)
         md.append("\n")
+    '''
+    # === 智慧判斷：原始 JSON 是否需要預設收合 ===
+    raw_json_str = json.dumps(out, ensure_ascii=False, indent=2)
+    raw_json = f"```json\n{raw_json_str}\n```"
+
+    # 粗略計算 JSON 行數
+    json_line_count = raw_json_str.count("\n") + 1
+    AUTO_COLLAPSE_JSON = json_line_count > 60   # ★ 超過 60 行 → 一律用收合樣式
+
+    # debug（需要時再開）
+    # print(f"[render_markdown] json_line_count={json_line_count}, AUTO_COLLAPSE_JSON={AUTO_COLLAPSE_JSON}, ALLOW_DETAILS={ALLOW_DETAILS}")
+
+    if AUTO_COLLAPSE_JSON:
+        # ★ 不管 ALLOW_DETAILS 設什麼，只要太長就一定用收合 <details>，避免畫面爆炸
+        md.append("\n\n<details><summary>原始 JSON（自動收合，內容較長）</summary>\n\n")
+        md.append(raw_json)
+        md.append("\n</details>\n")
+
+    else:
+        # ★ 行數不多時，才依照 ALLOW_DETAILS 來決定呈現方式
+        if ALLOW_DETAILS:
+            # 可以預設展開（open），使用者仍可手動收合
+            md.append("\n\n<details open><summary>原始 JSON</summary>\n\n")
+            md.append(raw_json)
+            md.append("\n</details>\n")
+        else:
+            # 環境不允許 <details>，就用一般標題直接顯示
+            md.append("\n\n## 原始 JSON\n\n")
+            md.append(raw_json)
+            md.append("\n")
+    print("[render_markdown] json_line_count =", json_line_count, "AUTO_COLLAPSE_JSON =", AUTO_COLLAPSE_JSON)
+
+
 
     return "\n\n".join(md)
 
@@ -696,18 +745,35 @@ def chat_completions(payload: ChatPayload, request: Request):
             "【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
         )
 
-        # 2) 準備 reuse_uuids
+        # 2) 準備 reuse_uuids + refno_uuid_map
         reuse_uuids: list[str] = []
+        refno_uuid_map: dict[int, str] | None = None
 
         # 2-1) 第一優先：這個 session 自己上一輪的 structured out
         if session_key in _last_structured:
             prev_out = _last_structured.get(session_key) or {}
+
+            # a) 撿可重用的 uuid（給 DOC_FOLLOWUP / ESFetchDocById）
             reuse_uuids = _collect_reuse_from(prev_out)
+
+            # b) 撿上一輪報告產生的 refno_uuid_map（來源編號 → uuid）
+            raw_map = prev_out.get("refno_uuid_map") or {}
+            if isinstance(raw_map, dict):
+                tmp: dict[int, str] = {}
+                for k, v in raw_map.items():
+                    try:
+                        kk = int(k)
+                    except Exception:
+                        continue
+                    if isinstance(v, str):
+                        tmp[kk] = v
+                if tmp:
+                    refno_uuid_map = tmp
         else:
             reuse_uuids = []
-        
-        print("[chat_completions] reuse_uuids =", reuse_uuids)
 
+        print("[chat_completions] reuse_uuids =", reuse_uuids)
+        print("[chat_completions] refno_uuid_map =", refno_uuid_map)
 
         # 2) 呼叫總路由（answer_with_routing：內部自己決定是 SRA_REPORT / SRA_STYLE / DOC_FOLLOWUP / PURE_LLM）
         try:
@@ -715,8 +781,10 @@ def chat_completions(payload: ChatPayload, request: Request):
                 user_msg=user_msg,
                 query_for_agent=query_for_agent,
                 recent_user_msgs=recent_user_msgs,
-                reuse_uuids=reuse_uuids,  # ★★★ 這行是關鍵 ★★★
+                reuse_uuids=reuse_uuids,
+                refno_uuid_map=refno_uuid_map,  # ★ 新增這一行
             )
+
         except Exception as e:
             print("answer_with_routing 發生錯誤：", e)
             raise HTTPException(status_code=500, detail="後端分析發生錯誤，請稍後再試")
@@ -839,9 +907,163 @@ ES_INDEX_RAW = os.getenv("ES_INDEX", "news_test,mil_reports-01")
 
 # 允許用逗號分隔多個 index
 ES_INDEXES = [idx.strip() for idx in ES_INDEX_RAW.split(",") if idx.strip()]
-
 ES = Elasticsearch(ES_URL)
 
+def _get_doc_source_or_404(doc_id: str) -> dict:
+    """
+    共用：依 doc_id（可能是 _id 或 uuid）從多個 index 中找到一筆文件的 _source。
+    找不到就丟 404。
+    """
+    # 1) 逐一嘗試用 _id 直接抓（每個 index 都試）
+    for idx in ES_INDEXES:
+        try:
+            got = ES.get(index=idx, id=doc_id, _source=True)
+            src = got.get("_source", {}) or {}
+            src["_id"] = got.get("_id")
+            src["_index"] = got.get("_index")
+            return src
+        except NotFoundError:
+            continue
+        except Exception:
+            # 其他錯誤先忽略，稍後用 search fallback
+            continue
+
+    # 2) 用 uuid.keyword 精確比對（跨索引 search）
+    res = ES.search(
+        index=ES_INDEXES,
+        body={
+            "size": 1,
+            "_source": True,
+            "query": {"term": {"uuid.keyword": doc_id}},
+        },
+    )
+    hits = res.get("hits", {}).get("hits", []) or []
+    if hits:
+        hit = hits[0]
+        src = hit.get("_source", {}) or {}
+        src["_id"] = hit.get("_id")
+        src["_index"] = hit.get("_index")
+        return src
+
+    # 3) 再試一次 uuid（非 keyword 的情況）
+    res = ES.search(
+        index=ES_INDEXES,
+        body={
+            "size": 1,
+            "_source": True,
+            "query": {"term": {"uuid": doc_id}},
+        },
+    )
+    hits = res.get("hits", {}).get("hits", []) or []
+    if hits:
+        hit = hits[0]
+        src = hit.get("_source", {}) or {}
+        src["_id"] = hit.get("_id")
+        src["_index"] = hit.get("_index")
+        return src
+
+    # 4) 最後保底：wildcard 模糊比對
+    res = ES.search(
+        index=ES_INDEXES,
+        body={
+            "size": 1,
+            "_source": True,
+            "query": {"wildcard": {"uuid": {"value": f"*{doc_id}*"}}},
+        },
+    )
+    hits = res.get("hits", {}).get("hits", []) or []
+    if hits:
+        hit = hits[0]
+        src = hit.get("_source", {}) or {}
+        src["_id"] = hit.get("_id")
+        src["_index"] = hit.get("_index")
+        return src
+
+    raise HTTPException(status_code=404, detail="document not found")
+
+@app.get("/v1/docs/{doc_id}")
+def get_doc(doc_id: str):
+    return _get_doc_source_or_404(doc_id)
+    
+@app.get("/v1/docs/{doc_id}/fulltext")
+def get_fulltext_on_demand(
+    doc_id: str,
+    format: str = Query(
+        "json",
+        description="回傳格式：json 或 txt，預設 json。",
+    ),
+    download: bool = Query(
+        False,
+        description="在 format=txt 時，為 true 則以附件下載形式回傳。",
+    ),
+):
+    """
+    按需下載全文：
+    - 不經過 LLM / 文件跟進代理人。
+    - 直接用既有 /v1/docs 的查詢邏輯找到文件，抽出全文欄位回傳。
+    """
+    src = _get_doc_source_or_404(doc_id)
+
+    # 依實際 mapping 調整全文欄位
+    full_text = (
+        src.get("full_text")
+        or src.get("rawInfo", {}).get("content")
+        or src.get("content")
+        or ""
+    )
+
+    if not full_text.strip():
+        raise HTTPException(status_code=404, detail="文件存在，但沒有可用的全文內容。")
+
+    title = (
+        src.get("article_title")
+        or src.get("title")
+        or src.get("rawInfo", {}).get("title")
+        or doc_id
+    )
+    date = (
+        src.get("article_date_iso")
+        or src.get("date_iso")
+        or src.get("rawInfo", {}).get("date")
+        or None
+    )
+    subject = (
+        src.get("subject")
+        or src.get("rawInfo", {}).get("subject")
+        or None
+    )
+
+    total_length = len(full_text)
+
+    # === JSON 模式：meta + full_text 一起回 ===
+    if format.lower() == "json":
+        return JSONResponse(
+            {
+                "uuid": src.get("uuid", doc_id),
+                "title": title,
+                "date": date,
+                "subject": subject,
+                "total_length": total_length,
+                "full_text": full_text,
+            }
+        )
+
+    # === TXT 模式：單純吐出全文（可選擇是否附件下載） ===
+    if format.lower() == "txt":
+        headers = {}
+        if download:
+            safe_title = re.sub(r'[\\/:*?"<>|]+', "_", title)  # 簡單洗一下檔名
+            filename = f"{safe_title or doc_id}.txt"
+            headers["Content-Disposition"] = f'attachment; filename=\"{filename}\"'
+
+        return PlainTextResponse(
+            content=full_text,
+            headers=headers,
+        )
+
+    raise HTTPException(status_code=400, detail="format 只支援 json 或 txt。")
+    
+'''
 @app.get("/v1/docs/{doc_id}")
 def get_doc(doc_id: str):
     # 1) 逐一嘗試用 _id 直接抓（每個 index 都試）
@@ -910,4 +1132,4 @@ def get_doc(doc_id: str):
         return src
 
     raise HTTPException(status_code=404, detail="document not found")
-    
+'''

@@ -222,3 +222,19 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
     return citations
 
 
+def build_refno_uuid_map(ev: List[Dict[str, Any]]) -> Dict[int, str]:
+    """
+    依 ev 裡的 ref_no 建立：
+        { ref_no(int) -> uuid(str) }
+    若同一個 ref_no 缺 uuid 就略過；同一篇有多個片段共用同一 uuid 沒關係。
+    """
+    out: Dict[int, str] = {}
+    for e in ev:
+        ref_no = e.get("ref_no")
+        uuid = e.get("id") or e.get("uuid")
+        if not isinstance(ref_no, int):
+            continue
+        if not uuid:
+            continue
+        out[ref_no] = str(uuid)
+    return out

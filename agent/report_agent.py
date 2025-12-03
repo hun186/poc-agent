@@ -8,6 +8,7 @@ from agent.llm_utils.ollama_client import call_llm  # 你既有的封裝
 from agent.utils_citations import _build_citations_from_payload
 from agent.utils_citations import build_citations_from_ev
 from agent.utils_citations import compress_evidence
+from agent.utils_citations import build_refno_uuid_map
 
 REPORT_SYSTEM_PROMPT = """
 你是一個『資料驅動的分析助手』。
@@ -269,12 +270,14 @@ def ask_with_report(question: str) -> Dict[str, Any]:
             doc_id = str(doc_id)
             if doc_id not in used_uuids:
                 used_uuids.append(doc_id)
-
+    refno_uuid_map = build_refno_uuid_map(ev_compact)
+    
     return {
         "answer": report_text,
         "citations": citations,
         "reasoning": reasoning,
         "used_uuids": used_uuids,
+        "refno_uuid_map": refno_uuid_map,
     }
 
 

@@ -6,7 +6,7 @@ import os
 import json
 
 #from functools import lru_cache
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from smolagents import CodeAgent, LiteLLMModel, PythonInterpreterTool
 #from .agent_utils import aggregate_month_quarter
 from .tools_es import ESSearchNews, ESTimeline, ESFetchDocById
@@ -283,6 +283,7 @@ def answer_with_routing(
     query_for_agent: str | None = None,
     recent_user_msgs: list[str] | None = None,
     reuse_uuids: list[str] | None = None,   # ★ 新增
+    refno_uuid_map: Optional[Dict[int, str]] = None,
 ) -> Dict[str, Any]:
     """
     高層入口：
@@ -339,7 +340,14 @@ def answer_with_routing(
     else:
         index_hint_prefix = ""
         index_hint = None
-
+    # ★ 新增：從 INDEX_CONFIG 整理所有已知 index，給 DOC_FOLLOWUP 當候選 ★
+    topic_map = INDEX_CONFIG.get("topic_index_map", {}) or {}
+    all_indexes: list[str] = []
+    for cfg in topic_map.values():
+        for idx in cfg.get("indexes") or []:
+            if idx and idx not in all_indexes:
+                all_indexes.append(idx)
+                
     # === 4) 給 CodeAgent 的 query ===
     q_for_agent = (query_for_agent or user_msg).strip()
     q_for_agent = index_hint_prefix + q_for_agent
@@ -347,23 +355,27 @@ def answer_with_routing(
     try:
         # === DOC_FOLLOWUP：針對既有參考文件做後續處理，不再查新的 ES ===
         if mode == "DOC_FOLLOWUP":
-            if not reuse_uuids:
-                # 有判斷成 DOC_FOLLOWUP，但手上沒有 uuid，可退回 PURE_LLM 或直接提示
-                generic_answer = (
-                    "目前沒有可用的參考文件列表，因此無法針對「剛剛的第幾篇」等指令操作。"
-                    "如需後續處理，請先重新發起一次查詢取得參考文件。"
-                )
-                out = {
-                    "answer": generic_answer,
-                    "citations": [],
-                    "reasoning": "router 判斷為 DOC_FOLLOWUP，但呼叫端未提供 reuse_uuids。",
-                }
-            else:
-                out = ask_with_doc_followup(
-                    instruction=user_msg,
-                    uuids=reuse_uuids,
-                    index_hint=index_hint,   # ★ 把剛算好的 index_hint 帶進去
-                )
+            # ★ 永遠放行給 doc_followup_agent，讓它自己做 UUID/refno 判斷
+            # 將 refno_uuid_map key 轉成 int（必要防呆）
+            ref_map_int: Optional[Dict[int, str]] = None
+            if refno_uuid_map:
+                ref_map_int = {}
+                for k, v in refno_uuid_map.items():
+                    try:
+                        kk = int(k)
+                    except Exception:
+                        continue
+                    ref_map_int[kk] = v
+        
+            out = ask_with_doc_followup(
+                instruction=user_msg,
+                uuids=reuse_uuids or [],     # 允許空 → 會轉交給 uuid extractor 處理
+                index_hint=index_hint,
+                refno_uuid_map=ref_map_int,
+                index_candidates=all_indexes,  # ★ 把所有已知 index 丟下去做 fallback
+            )
+
+
                 
         # === SRA_REPORT：產生資料 payload → 報告 LLM 寫結論 ===
         elif mode == "SRA_REPORT":
@@ -408,7 +420,14 @@ def answer_with_routing(
     out.setdefault("reasoning", "")
     out["mode"] = mode
     out["route"] = route
-
+    
+    # ★ 如果是 DOC_FOLLOWUP，且底層有回傳 used_indexes，就加到 route
+    if mode == "DOC_FOLLOWUP":
+        used_indexes = out.get("used_indexes") or []
+        if used_indexes:
+            # 例如：actual_indexes = ["news_test"]
+            out["route"]["actual_indexes"] = used_indexes
+            
     return out
 
 
