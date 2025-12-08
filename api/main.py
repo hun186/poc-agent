@@ -2,7 +2,6 @@
 #cd D:\shared\TopicClassification\poc-agent&& uvicorn api.main:app --host 0.0.0.0 --port 9001
 import os, json, time
 import re
-import html
 from typing import Any, Dict, List
 from fastapi import FastAPI, HTTPException
 from fastapi import Query
@@ -24,6 +23,8 @@ import hashlib
 from agent.agent import answer_with_routing
 
 from agent.direct_llm_json import OpenAIStyleOllama, task_tags, task_title, task_followups
+from api.core.markdown_renderer import render_markdown
+from api.core.url_utils import abs_url
 
 #SRA模型代理人API
 PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE")
@@ -35,14 +36,6 @@ json_llm = OpenAIStyleOllama(
     temperature=float(os.getenv("MODEL_TEMPERATURE", "0")),
 )
 
-
-
-def _abs_url(request: Request, path: str) -> str:
-    #print("PUBLIC_API_BASE",PUBLIC_API_BASE)
-    base = (PUBLIC_API_BASE or str(request.base_url)).rstrip("/")
-    #print("base",base)
-    #print(f"href {base}{path}")
-    return f"{base}{path}"
 
 
 class ChatMessage(BaseModel):
@@ -296,331 +289,6 @@ def _collect_reuse_from(out: dict) -> list[str]:
             reuse.append(u)
 
     return reuse
-    
-#agent = get_agent()
-
-def render_markdown(out: Any, request: Request) -> str:
-    """
-    把代理人輸出（dict 或 str）轉成排版好的 Markdown：
-    - 回答主文（支援把 <em>/<i>/<strong>/<b>/<br>/<p> 轉成 Markdown）
-    - 引用來源（含段落、縮短引文、可點連結）
-    - 可展開的「推理步驟」與「原始 JSON」
-    """
-    ALLOW_DETAILS = os.getenv("MD_ALLOW_DETAILS", "1") == "1"  # ← 是否輸出 <details>（預設開）
-
-    # 1) 把常見 HTML 轉成 Markdown（保守白名單）
-    def _html_to_markdown_light(s: str) -> str:
-        if not isinstance(s, str):
-            return ""
-        s = html.unescape(s)  # &lt;em&gt; → <em>
-
-        # 換行/段落
-        s = re.sub(r'(?i)<br\s*/?>', '\n', s)
-        s = re.sub(r'(?i)</p\s*>', '\n\n', s)
-        s = re.sub(r'(?i)<p[^>]*>', '', s)
-
-        # 強調/粗體
-        s = re.sub(r'(?i)<(em|i)(\s+[^>]*)?>', '*', s)
-        s = re.sub(r'(?i)</(em|i)\s*>', '*', s)
-        s = re.sub(r'(?i)<(strong|b)(\s+[^>]*)?>', '**', s)
-        s = re.sub(r'(?i)</(strong|b)\s*>', '**', s)
-
-        # 清單（簡化處理）
-        s = re.sub(r'(?i)</li\s*>', '\n', s)
-        s = re.sub(r'(?i)<li[^>]*>', '- ', s)
-        s = re.sub(r'(?i)</?(ul|ol|div|span)[^>]*>', '', s)
-
-        # 其餘標籤直接移除
-        s = re.sub(r'<[^>]+>', '', s)
-        return s
-
-    # 2) 統一換行：把字面 "\\n" 變真正換行；也處理 \r\n
-    def _normalize_newlines(s: str) -> str:
-        if not isinstance(s, str):
-            return ""
-        return s.replace("\r\n", "\n").replace("\\n", "\n")
-
-    # 3) 綜合正規化
-    def _normalize_text(s: str) -> str:
-        return _normalize_newlines(_html_to_markdown_light(s)).strip()
-
-    # out 是字串就直接回傳（也正規化一次）
-    if not isinstance(out, dict):
-        return _normalize_text(str(out))
-
-    # 取欄位 & 正規化
-    answer = _normalize_text(out.get("answer") or "")
-    reasoning = _normalize_text(out.get("reasoning") or "")
-    citations = out.get("citations") or []
-
-    # 把 citation 的 text 也處理（避免 <em> 顯示失敗）
-    for c in citations:
-        if isinstance(c.get("text"), str):
-            c["text"] = _normalize_text(c["text"])
-
-    md: list[str] = []
-
-    # 主文
-    if answer:
-        md.append("# 回答\n")
-        md.append(answer)
-
-    # 引用來源
-    if citations:
-        md.append("\n\n## 來源 / Citations\n")
-        seen = set()  # 若要去掉完全重複的 citation，可以用 (doc_id, paragraph_id, text) 當 key
-
-        for c in citations:
-            doc_id = (
-                c.get("uuid")
-                or c.get("source_id")
-                or c.get("doc_id")
-                or c.get("id")
-            )
-
-            # 去掉完全重複（同文件 + 同段落 + 同文字），避免重複列出
-            key = (doc_id, c.get("paragraph_id"), c.get("text"))
-            if key in seen:
-                continue
-            seen.add(key)
-
-            # ★ 用 ref_no / snippet_index 當顯示編號，對齊主文裡的 ① ② ③…
-            ref_no = c.get("ref_no")
-            if not isinstance(ref_no, int):
-                # fallback：用 snippet_index（_build_citations_from_payload 已經補好）
-                ref_no = c.get("snippet_index") if isinstance(c.get("snippet_index"), int) else None
-
-            # 這裡你可以決定要用「1.」還是「①」
-            if isinstance(ref_no, int):
-                # 用阿拉伯數字：1.
-                label = f"{ref_no}."
-                # 如果你想用圈號數字可以改成：
-                # circled_digits = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
-                # label = circled_digits[ref_no-1] if 1 <= ref_no <= len(circled_digits) else f"{ref_no}."
-            else:
-                label = "-"  # 沒有 ref_no 就用無序
-
-            # 顯示名稱：優先 subject，其次 title
-            display = (
-                c.get("subject")
-                or c.get("article_title")
-                or c.get("title")
-                or (str(doc_id) if doc_id is not None else "[未知來源]")
-            )
-
-            pid = c.get("paragraph_id")
-            txt = (c.get("text") or "").replace("\n", " ").strip()
-            if len(txt) > 300:
-                txt = txt[:300] + "…"
-
-            link = ""
-            if isinstance(doc_id, str):
-                # 1) 原來的全文 JSON / 下載全文（維持現狀）
-                base_full = _abs_url(request, f"/v1/docs/{doc_id}/fulltext")
-                url_json = base_full + "?format=json"
-                url_txt  = base_full + "?format=txt&download=1"
-            
-                # 2) 額外：uuid 連結 → 原始 ES 完整文件
-                url_es = _abs_url(request, f"/v1/docs/{doc_id}")
-                uuid_link = f"[{doc_id}]({url_es})"
-            
-                # 3) 組合成一段文字
-                #    （順序可以依你喜好調整）
-                link = f" · UUID: {uuid_link} · [JSON]({url_json}) · [下載全文]({url_txt})"
-            else:
-                link = ""
-
-            pid_str = f"（段落 {pid}）" if pid else ""
-            date_piece = f" · 🗓 {c.get('date_iso')}" if c.get("date_iso") else ""
-
-            md.append(
-                f"{label} **{display}**{pid_str}{link}{date_piece}\n\n   > {txt}"
-            )
-
-    # 推理（可收合 / fallback）
-    if reasoning:
-        if ALLOW_DETAILS:
-            md.append("\n\n<details><summary>展開推理 / 步驟</summary>\n\n")
-            md.append("```text\n" + reasoning + "\n```")
-            md.append("\n</details>")
-        else:
-            md.append("\n\n## 推理 / 步驟\n")
-            md.append("```text\n" + reasoning + "\n```")
-
-    # 原始 JSON（可收合 / fallback 同理）
-    '''
-    raw_json = "```json\n" + json.dumps(out, ensure_ascii=False, indent=2) + "\n```"
-    if ALLOW_DETAILS:
-        md.append("\n\n<details><summary>原始 JSON</summary>\n\n")
-        md.append(raw_json)
-        md.append("\n</details>\n")
-    else:
-        md.append("\n\n## 原始 JSON\n\n")
-        md.append(raw_json)
-        md.append("\n")
-    '''
-    # === 智慧判斷：原始 JSON 是否需要預設收合 ===
-    raw_json_str = json.dumps(out, ensure_ascii=False, indent=2)
-    raw_json = f"```json\n{raw_json_str}\n```"
-
-    # 粗略計算 JSON 行數
-    json_line_count = raw_json_str.count("\n") + 1
-    AUTO_COLLAPSE_JSON = json_line_count > 60   # ★ 超過 60 行 → 一律用收合樣式
-
-    # debug（需要時再開）
-    # print(f"[render_markdown] json_line_count={json_line_count}, AUTO_COLLAPSE_JSON={AUTO_COLLAPSE_JSON}, ALLOW_DETAILS={ALLOW_DETAILS}")
-
-    if AUTO_COLLAPSE_JSON:
-        # ★ 不管 ALLOW_DETAILS 設什麼，只要太長就一定用收合 <details>，避免畫面爆炸
-        md.append("\n\n<details><summary>原始 JSON（自動收合，內容較長）</summary>\n\n")
-        md.append(raw_json)
-        md.append("\n</details>\n")
-
-    else:
-        # ★ 行數不多時，才依照 ALLOW_DETAILS 來決定呈現方式
-        if ALLOW_DETAILS:
-            # 可以預設展開（open），使用者仍可手動收合
-            md.append("\n\n<details open><summary>原始 JSON</summary>\n\n")
-            md.append(raw_json)
-            md.append("\n</details>\n")
-        else:
-            # 環境不允許 <details>，就用一般標題直接顯示
-            md.append("\n\n## 原始 JSON\n\n")
-            md.append(raw_json)
-            md.append("\n")
-    print("[render_markdown] json_line_count =", json_line_count, "AUTO_COLLAPSE_JSON =", AUTO_COLLAPSE_JSON)
-
-
-
-    return "\n\n".join(md)
-
-def render_markdown_1201(out: Any, request: Request) -> str:
-    """
-    把代理人輸出（dict 或 str）轉成排版好的 Markdown：
-    - 回答主文（支援把 <em>/<i>/<strong>/<b>/<br>/<p> 轉成 Markdown）
-    - 引用來源（含段落、縮短引文、可點連結）
-    - 可展開的「推理步驟」與「原始 JSON」
-    """
-    ALLOW_DETAILS = os.getenv("MD_ALLOW_DETAILS", "1") == "1"  # ← 新增：是否輸出 <details>（預設關閉）
-    # 1) 把常見 HTML 轉成 Markdown（保守白名單）
-    def _html_to_markdown_light(s: str) -> str:
-        if not isinstance(s, str):
-            return ""
-        s = html.unescape(s)  # &lt;em&gt; → <em>
-
-        # 換行/段落
-        s = re.sub(r'(?i)<br\s*/?>', '\n', s)
-        s = re.sub(r'(?i)</p\s*>', '\n\n', s)
-        s = re.sub(r'(?i)<p[^>]*>', '', s)
-
-        # 強調/粗體
-        s = re.sub(r'(?i)<(em|i)(\s+[^>]*)?>', '*', s)
-        s = re.sub(r'(?i)</(em|i)\s*>', '*', s)
-        s = re.sub(r'(?i)<(strong|b)(\s+[^>]*)?>', '**', s)
-        s = re.sub(r'(?i)</(strong|b)\s*>', '**', s)
-
-        # 清單（簡化處理）
-        s = re.sub(r'(?i)</li\s*>', '\n', s)
-        s = re.sub(r'(?i)<li[^>]*>', '- ', s)
-        s = re.sub(r'(?i)</?(ul|ol|div|span)[^>]*>', '', s)
-
-        # 其餘標籤直接移除
-        s = re.sub(r'<[^>]+>', '', s)
-        return s
-
-    # 2) 統一換行：把字面 "\\n" 變真正換行；也處理 \r\n
-    def _normalize_newlines(s: str) -> str:
-        if not isinstance(s, str):
-            return ""
-        return s.replace("\r\n", "\n").replace("\\n", "\n")
-
-    # 3) 綜合正規化
-    def _normalize_text(s: str) -> str:
-        return _normalize_newlines(_html_to_markdown_light(s)).strip()
-
-    # 字串就直接回傳（也正規化一次）
-    if not isinstance(out, dict):
-        return _normalize_text(str(out))
-
-    # 取欄位 & 正規化
-    answer = _normalize_text(out.get("answer") or "")
-    reasoning = _normalize_text(out.get("reasoning") or "")
-    citations = out.get("citations") or []
-
-    # 把 citation 的 text 也處理（避免 <em> 顯示失敗）
-    for c in citations:
-        if isinstance(c.get("text"), str):
-            c["text"] = _normalize_text(c["text"])
-
-    md = []
-
-    # 主文
-    if answer:
-        md.append("# 回答\n")
-        md.append(answer)
-
-    # 引用來源
-    if citations:
-        md.append("\n\n## 來源 / Citations\n")
-        seen = set()
-        for i, c in enumerate(citations, 1):
-            #sid = c.get("source_id") or c.get("uuid") or c.get("doc_id") or c.get("id")
-            #if sid in seen:
-            #    continue
-            #seen.add(sid)
-
-            doc_id = c.get("uuid") or c.get("source_id") or c.get("doc_id") or c.get("id")
-            #if doc_id in seen:
-            #    continue
-            seen.add(doc_id)
-    
-            # ★ 新增：顯示名稱優先 subject，其次 article_title/title，最後才用 UUID
-            display = c.get("subject") or c.get("article_title") or c.get("title") or str(doc_id)
-            
-            pid = c.get("paragraph_id")
-            txt = (c.get("text") or "").replace("\n", " ").strip()
-            if len(txt) > 300:
-                txt = txt[:300] + "…"
-
-            link = ""
-            #if isinstance(sid, str):
-            #    url = _abs_url(request, f"/v1/docs/{sid}")
-            #    link = f" · <{url}>"
-
-            if isinstance(doc_id, str):
-                url = _abs_url(request, f"/v1/docs/{doc_id}")
-                link = f" · <{url}>"
-                
-            pid_str = f"（段落 {pid}）" if pid else ""
-            date_piece = f" · 🗓 {c.get('date_iso')}" if c.get("date_iso") else ""
-            #md.append(f"{i}. **{sid}**{pid_str}{link}{date_piece}\n\n   > {txt}")
-            # ★ 用 display（subject）取代原先的 sid（UUID）
-            md.append(f"{i}. **{display}**{pid_str}{link}{date_piece}\n\n   > {txt}")
-
-    # 推理（可收合 / fallback）
-    if reasoning:
-        if ALLOW_DETAILS:
-            # 讓前端能渲染 <details>（需前端允許原生 HTML）
-            md.append("\n\n<details><summary>展開推理 / 步驟</summary>\n\n")
-            md.append("```text\n" + reasoning + "\n```")
-            md.append("\n</details>")
-        else:
-            # Fallback：純 Markdown 章節
-            md.append("\n\n## 推理 / 步驟\n")
-            md.append("```text\n" + reasoning + "\n```")
-
-    # 原始 JSON（可收合 / fallback 同理）
-    raw_json = "```json\n" + json.dumps(out, ensure_ascii=False, indent=2) + "\n```"
-    if ALLOW_DETAILS:
-        md.append("\n\n<details><summary>原始 JSON</summary>\n\n")
-        md.append(raw_json)
-        md.append("\n</details>\n")
-    else:
-        md.append("\n\n## 原始 JSON\n\n")
-        md.append(raw_json)
-        md.append("\n")
-
-    return "\n\n".join(md)
 
 
 @app.get("/healthz")
@@ -646,10 +314,13 @@ def chat_completions(payload: ChatPayload, request: Request):
     try:
         # 0) 決定 session_key：優先用 header，否則用「第一個 user 訊息 hash」
         raw_header_session = (
-            request.headers.get("x-conversation-id")
+            request.headers.get("x-openwebui-chat-id")
+            or request.headers.get("x-conversation-id")  # 舊相容
             or request.headers.get("x-session-id")
             or ""
         )
+        #print("request.headers",request.headers)
+        #print("Conversation-ID",request.headers.get("x-openwebui-chat-id"))
         raw_header_session = (raw_header_session or "").strip()
         
         if raw_header_session:
@@ -895,19 +566,29 @@ def chat_completions(payload: ChatPayload, request: Request):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-'''
-ES_URL = os.getenv("ES_URL", "http://localhost:9200")
-#ES_URL = "http://192.168.0.228:9200"
-ES_INDEX = os.getenv("ES_INDEX", "news_test")
-ES = Elasticsearch(ES_URL)
-'''
-
-ES_URL = os.getenv("ES_URL", "http://localhost:9200")
+ES_URL = os.getenv("ES_URL")
+ES_USERNAME = os.getenv("ES_USERNAME")
+ES_PASSWORD = os.getenv("ES_PASSWORD")
+ES_INDEX_DEFAULT = os.getenv("ES_INDEX")
+CA_CERT = "agent/certs/http_ca.crt"
+ES_INDEX = ES_INDEX_DEFAULT  # 保留舊名稱，避免其他地方還有用到
 ES_INDEX_RAW = os.getenv("ES_INDEX", "news_test,mil_reports-01")
 
 # 允許用逗號分隔多個 index
 ES_INDEXES = [idx.strip() for idx in ES_INDEX_RAW.split(",") if idx.strip()]
-ES = Elasticsearch(ES_URL)
+
+ES = Elasticsearch(
+    ES_URL,ca_certs=CA_CERT,
+    #headers={"Authorization": f"Bearer {ES_SERVICE_TOKEN}"},
+    basic_auth=(ES_USERNAME, ES_PASSWORD),
+    ssl_assert_hostname=False,   # ★ 不檢查 hostname
+    #ssl_show_warn=False          # ★ 不一直跳警告（可選）
+    )
+print("Connecting to ES...")
+print(ES.info())
+
+
+
 
 def _get_doc_source_or_404(doc_id: str) -> dict:
     """
@@ -984,7 +665,6 @@ def _get_doc_source_or_404(doc_id: str) -> dict:
 @app.get("/v1/docs/{doc_id}")
 def get_doc(doc_id: str):
     return _get_doc_source_or_404(doc_id)
-    
 @app.get("/v1/docs/{doc_id}/fulltext")
 def get_fulltext_on_demand(
     doc_id: str,
@@ -1004,39 +684,76 @@ def get_fulltext_on_demand(
     """
     src = _get_doc_source_or_404(doc_id)
 
-    # 依實際 mapping 調整全文欄位
+    # 如果 _get_doc_source_or_404 回傳的是整個 ES hit，先把 _source 拉出來
+    if isinstance(src, dict) and "_source" in src:
+        src = src["_source"]
+
+    # ==== 1) 全文 ====
     full_text = (
         src.get("full_text")
-        or src.get("rawInfo", {}).get("content")
+        or (src.get("rawInfo") or {}).get("content")
         or src.get("content")
         or ""
     )
 
-    if not full_text.strip():
+    if not isinstance(full_text, str) or not full_text.strip():
         raise HTTPException(status_code=404, detail="文件存在，但沒有可用的全文內容。")
 
+    # ==== 2) 標題 ====
+    md = src.get("multidim_event_json") or {}
+    comm = src.get("communication") or {}
+
     title = (
-        src.get("article_title")
+        md.get("article_title")
+        or comm.get("subject")
         or src.get("title")
-        or src.get("rawInfo", {}).get("title")
+        or (src.get("rawInfo") or {}).get("title")
         or doc_id
     )
+
+    # ==== 3) 日期：優先用 Event.time_iso，再用 Event_Timeline 的最大 date_iso ====
+    def infer_article_date(src_doc: dict) -> str | None:
+        mdj = src_doc.get("multidim_event_json") or {}
+
+        evt = mdj.get("Event") or {}
+        if isinstance(evt, dict):
+            time_iso = evt.get("time_iso")
+            if isinstance(time_iso, str) and time_iso.strip():
+                return time_iso.strip()
+
+        tl = mdj.get("Event_Timeline") or []
+        dates: list[str] = []
+        for item in tl:
+            if not isinstance(item, dict):
+                continue
+            di = item.get("date_iso")
+            if isinstance(di, str) and di.strip():
+                dates.append(di.strip())
+        if dates:
+            return max(dates)
+        return None
+
     date = (
-        src.get("article_date_iso")
-        or src.get("date_iso")
-        or src.get("rawInfo", {}).get("date")
+        md.get("article_date_iso")
+        or infer_article_date(src)
+        or (src.get("rawInfo") or {}).get("date")
         or None
     )
+
+    # ==== 4) 主旨（subject）====
     subject = (
-        src.get("subject")
-        or src.get("rawInfo", {}).get("subject")
+        comm.get("subject")
+        or md.get("article_title")
+        or src.get("subject")
+        or (src.get("rawInfo") or {}).get("subject")
         or None
     )
 
     total_length = len(full_text)
 
     # === JSON 模式：meta + full_text 一起回 ===
-    if format.lower() == "json":
+    fmt = (format or "").lower()
+    if fmt == "json":
         return JSONResponse(
             {
                 "uuid": src.get("uuid", doc_id),
@@ -1051,85 +768,43 @@ def get_fulltext_on_demand(
     # === TXT 模式：單純吐出全文（可選擇是否附件下載） ===
     if format.lower() == "txt":
         headers = {}
+    
         if download:
-            safe_title = re.sub(r'[\\/:*?"<>|]+', "_", title)  # 簡單洗一下檔名
-            filename = f"{safe_title or doc_id}.txt"
-            headers["Content-Disposition"] = f'attachment; filename=\"{filename}\"'
-
+            from urllib.parse import quote
+    
+            # ===== 1) 日期（放最前面）=====
+            safe_date = (date or "unknown-date").replace(":", "-").replace("/", "-")
+    
+            # ===== 2) 標題（中間）=====
+            raw_title = str(title).strip() or "no-title"
+    
+            # 給 filename= 用的 ASCII 版本（舊瀏覽器）
+            ascii_title = re.sub(r'[\\/:*?"<>|]+', "_", raw_title)
+            ascii_title = re.sub(r"[^\x00-\x7F]+", "_", ascii_title).strip("_")
+            if not ascii_title:
+                ascii_title = "no-title"
+    
+            # 給 filename*= 用的 UTF-8 版本（新瀏覽器顯示中文）
+            utf8_title = quote(raw_title)
+    
+            # ===== 3) UUID（放最後）=====
+            safe_uuid = src.get("uuid", doc_id)
+    
+            # ===== 4) 組合檔名 =====
+            filename_ascii = f"{safe_date}_{ascii_title}_{safe_uuid}.txt"
+            filename_utf8  = f"{safe_date}_{utf8_title}_{safe_uuid}.txt"
+    
+            headers["Content-Disposition"] = (
+                f"attachment; "
+                f'filename="{filename_ascii}"; '
+                f"filename*=UTF-8''{filename_utf8}"
+            )
+    
         return PlainTextResponse(
             content=full_text,
             headers=headers,
+            media_type="text/plain; charset=utf-8",
         )
 
+
     raise HTTPException(status_code=400, detail="format 只支援 json 或 txt。")
-    
-'''
-@app.get("/v1/docs/{doc_id}")
-def get_doc(doc_id: str):
-    # 1) 逐一嘗試用 _id 直接抓（每個 index 都試）
-    for idx in ES_INDEXES:
-        try:
-            got = ES.get(index=idx, id=doc_id, _source=True)
-            src = got.get("_source", {}) or {}
-            src["_id"] = got.get("_id")
-            src["_index"] = got.get("_index")
-            return src
-        except NotFoundError:
-            continue
-        except Exception:
-            # 其他錯誤先忽略，稍後用 search fallback
-            continue
-
-    # 2) 用 uuid.keyword 精確比對（跨索引 search）
-    res = ES.search(
-        index=ES_INDEXES,
-        body={
-            "size": 1,
-            "_source": True,
-            "query": {"term": {"uuid.keyword": doc_id}}
-        },
-    )
-    hits = res.get("hits", {}).get("hits", []) or []
-    if hits:
-        hit = hits[0]
-        src = hit.get("_source", {}) or {}
-        src["_id"] = hit.get("_id")
-        src["_index"] = hit.get("_index")
-        return src
-
-    # 3) 再試一次 uuid（非 keyword 的情況）
-    res = ES.search(
-        index=ES_INDEXES,
-        body={
-            "size": 1,
-            "_source": True,
-            "query": {"term": {"uuid": doc_id}}
-        },
-    )
-    hits = res.get("hits", {}).get("hits", []) or []
-    if hits:
-        hit = hits[0]
-        src = hit.get("_source", {}) or {}
-        src["_id"] = hit.get("_id")
-        src["_index"] = hit.get("_index")
-        return src
-
-    # 4) 最後保底：wildcard 模糊比對
-    res = ES.search(
-        index=ES_INDEXES,
-        body={
-            "size": 1,
-            "_source": True,
-            "query": {"wildcard": {"uuid": {"value": f"*{doc_id}*"}}}
-        },
-    )
-    hits = res.get("hits", {}).get("hits", []) or []
-    if hits:
-        hit = hits[0]
-        src = hit.get("_source", {}) or {}
-        src["_id"] = hit.get("_id")
-        src["_index"] = hit.get("_index")
-        return src
-
-    raise HTTPException(status_code=404, detail="document not found")
-'''

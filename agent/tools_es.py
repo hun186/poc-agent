@@ -7,6 +7,7 @@
 
 import os
 import re
+import time
 import unicodedata
 import json
 from typing import Optional, List, Dict, Any
@@ -18,6 +19,30 @@ from elasticsearch import NotFoundError
 from smolagents import Tool
 from typing import Optional, List, Tuple  # 開頭已經有就不用再加
 from typing import Union, List, Optional  # 若上面已有則不用重複
+
+# ===== ES 連線 =====
+#ES_URL = os.getenv("ES_URL", "http://localhost:9200")
+#ES_INDEX_DEFAULT = os.getenv("ES_INDEX", "news_test")  # env 預設 index
+#ES_SERVICE_TOKEN = os.getenv("ES_SERVICE_TOKEN","AAEAAWVsYXN0aWMva2liYW5hL2tpYmFuYS10b2tlbi0xOnpnYTA4U2xuUlZHVkd4WDNHVk9aSWc")
+ES_URL = os.getenv("ES_URL")
+#ES_SERVICE_TOKEN = os.getenv("ES_SERVICE_TOKEN")
+ES_USERNAME = os.getenv("ES_USERNAME")
+ES_PASSWORD = os.getenv("ES_PASSWORD")
+ES_INDEX_DEFAULT = os.getenv("ES_INDEX")
+CA_CERT = "agent/certs/http_ca.crt"
+ES_INDEX = ES_INDEX_DEFAULT  # 保留舊名稱，避免其他地方還有用到
+#print(ES_URL,ES_SERVICE_TOKEN,ES_INDEX_DEFAULT)
+ES = Elasticsearch(
+    ES_URL,ca_certs=CA_CERT,
+    #headers={"Authorization": f"Bearer {ES_SERVICE_TOKEN}"},
+    basic_auth=(ES_USERNAME, ES_PASSWORD),
+    ssl_assert_hostname=False,   # ★ 不檢查 hostname
+    #ssl_show_warn=False          # ★ 不一直跳警告（可選）
+    )
+print("Connecting to ES...")
+print(ES.info())
+
+IndexType = Union[str, List[str]]
 
 # ===== 統一的搜尋小幫手（處理 highlight 超長容錯） =====
 ES_MAX_ANALYZED_OFFSET = int(os.getenv("ES_MAX_ANALYZED_OFFSET", "200000"))
@@ -551,6 +576,11 @@ def _safe_es_search(
 ):
     idx = index or ES_INDEX_DEFAULT
 
+    if not idx:
+        raise RuntimeError(
+            "ES_INDEX_DEFAULT 未設定，請在 .env 設定 ES_INDEX，例如 ES_INDEX=news_test"
+        )
+
     # ES client 支援 "a,b" 或 ["a","b"]，這邊統一成字串比較保險
     if isinstance(idx, list):
         es_index = ",".join(idx)
@@ -558,7 +588,9 @@ def _safe_es_search(
         es_index = idx
 
     try:
-        return ES.search(index=es_index, body=body, params={"error_trace": "true"})
+        return ES.search(index=es_index, body=body,
+                         request_timeout=int(os.getenv("ES_TIMEOUT", "30")),
+                         params={"error_trace": "true"})
     except BadRequestError as e:
         info = str(getattr(e, "info", e))
         if allow_highlight_retry and ("max_analyzed_offset" in info or "highlight" in info):
@@ -700,15 +732,6 @@ def _make_fallback_snippet(text: str, q: str, width: int = 180) -> str | None:
     start = max(0, pos - width // 2)
     end = min(len(text), start + width)
     return text[start:end]
-
-
-# ===== ES 連線 =====
-ES_URL = os.getenv("ES_URL", "http://localhost:9200")
-ES_INDEX_DEFAULT = os.getenv("ES_INDEX", "news_test")  # env 預設 index
-ES_INDEX = ES_INDEX_DEFAULT  # 保留舊名稱，避免其他地方還有用到
-ES = Elasticsearch(ES_URL)
-
-IndexType = Union[str, List[str]]
 
 def _resolve_es_index(hint: Optional[Union[str, List[str]]]) -> IndexType:
     """
@@ -1241,7 +1264,7 @@ class ESSearchNews(Tool):
             "_source": [
                 "uuid",
                 "communication.subject",
-                "rawInfo.content",
+                #"rawInfo.content",
                 "multidim_event_json.article_title",
                 "multidim_event_json.evidence_snippets",
                 "multidim_event_json.Event_Timeline",
@@ -1348,6 +1371,9 @@ class ESSearchNews(Tool):
     ):
         # 依 LLM 分流 or env 決定實際 index
         
+        # === T0: 整體開始時間 ===
+        t_start = time.perf_counter()
+        
         max_size = int(os.getenv("ES_MAX_SIZE", "10000"))
         try:
             req_size = int(size) if size is not None else max_size
@@ -1384,7 +1410,13 @@ class ESSearchNews(Tool):
         
         # 1) 抽核心主題詞 + 群組同義詞（含平台家族展開）
         #print("before _compute_effective_terms,raw_query",raw_query)
+
+        # === T1: 主題詞/同義詞抽取時間 ===
+        t_terms_start = time.perf_counter()
         core_terms, grouped_syns, is_platform_query = self._compute_effective_terms(raw_query)
+        t_terms_end = time.perf_counter()
+        print(f"[es_search_news][T1] _compute_effective_terms 花費 {t_terms_end - t_terms_start:.3f}s, "
+              f"core_terms={core_terms}, num_groups={len(grouped_syns)}")
         #print("after _compute_effective_terms,core_terms, grouped_syns, is_platform_query",core_terms, grouped_syns, is_platform_query)
 
         # 2) 扁平化同義詞，建立 ES / snippet 共用的 effective_terms & term_groups
@@ -1436,7 +1468,8 @@ class ESSearchNews(Tool):
         all_terms = list(effective_terms)
 
         es_query = raw_query
-
+        # === T2: 組 query body 時間 ===
+        t_body_start = time.perf_counter()
         body = self._build_query_body(
             es_query,
             must_high_value, must_selected, size, date_from, date_to,
@@ -1447,13 +1480,21 @@ class ESSearchNews(Tool):
             syn_terms=syn_terms_flat,          # 同義詞加分 match
             all_terms=all_terms,               # nested evidence_snippets 裡的 match_phrase
         )
+        t_body_end = time.perf_counter()
+        print(f"[es_search_news][T2] _build_query_body 花費 {t_body_end - t_body_start:.3f}s")
 
+        # === T3: ES 查詢時間（含網路 + ES 計算）===
+        t_es_start = time.perf_counter()
         try:
             #res = ES.search(index=ES_INDEX, body=body, params={"error_trace": "true"})
             res = _safe_es_search(body, index=index)
         except BadRequestError as e:
             print("ES BadRequestError (with_date=True):", getattr(e, "info", e))
             raise
+        t_es_end = time.perf_counter()
+        es_took = (res.get("took") if isinstance(res, dict) else None)
+        print(f"[es_search_news][T3] _safe_es_search 花費 {t_es_end - t_es_start:.3f}s, "
+              f"ES took={es_took} ms, index={index}, size={size}")
         hits = res.get("hits", {}).get("hits", [])
         '''
         #2) 拿掉日期再查 —— 若希望嚴格日期，可以註解掉整段
@@ -1493,6 +1534,9 @@ class ESSearchNews(Tool):
             hits = res.get("hits", {}).get("hits", [])
     
         # === parse（原邏輯，稍微加強 inner_hits 解析）===
+        
+        # === T4: Python 後處理時間（parse hits → evidence_snippets）===
+        t_post_start = time.perf_counter()
         out_hits = []
         for h in hits:
             src = h.get("_source", {}) or {}
@@ -1761,6 +1805,15 @@ class ESSearchNews(Tool):
             1 for ev in evidence_snippets
             if ev.get("synonym_hits")
         )
+        t_post_end = time.perf_counter()
+        print(f"[es_search_news][T4] Python 後處理（parse hits + evidence_snippets）花費 "
+              f"{t_post_end - t_post_start:.3f}s, "
+              f"hits={len(out_hits)}, evidence_snippets={len(evidence_snippets)}")
+
+        # === T5: 整體總時間 ===
+        t_end = time.perf_counter()
+        print(f"[es_search_news][TOTAL] query={raw_query!r}, total={t_end - t_start:.3f}s")
+
         print(
             f"[es_search_news] query={raw_query!r}, es_query={es_query!r}, "
             f"hits={len(out_hits)}, "
