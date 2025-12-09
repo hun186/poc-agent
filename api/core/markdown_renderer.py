@@ -124,12 +124,12 @@ def render_markdown(out: Any, request: Request) -> str:
             link = ""
             if isinstance(doc_id, str):
                 # 1) 原來的全文 JSON / 下載全文（維持現狀）
-                base_full = _abs_url(request, f"/v1/docs/{doc_id}/fulltext")
+                base_full = abs_url(request, f"/v1/docs/{doc_id}/fulltext")
                 url_json = base_full + "?format=json"
                 url_txt  = base_full + "?format=txt&download=1"
             
                 # 2) 額外：uuid 連結 → 原始 ES 完整文件
-                url_es = _abs_url(request, f"/v1/docs/{doc_id}")
+                url_es = abs_url(request, f"/v1/docs/{doc_id}")
                 uuid_link = f"[{doc_id}]({url_es})"
             
                 # 3) 組合成一段文字

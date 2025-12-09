@@ -476,7 +476,7 @@ def chat_completions(payload: ChatPayload, request: Request):
                 source_id = c.get("source_id")
                 # ★ 連結優先用 uuid，fallback 才用 source_id
                 doc_id = uuid_ or source_id or c.get("doc_id") or c.get("id")
-                href = _abs_url(request, f"/v1/docs/{doc_id}") if doc_id else None
+                href = abs_url(request, f"/v1/docs/{doc_id}") if doc_id else None
 
                 citations.append({
                     "text": c.get("text"),

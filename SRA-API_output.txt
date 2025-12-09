@@ -5,15 +5,14 @@ Connecting to ES...
 PUBLIC_API_BASE http://192.168.0.228:9002
 Connecting to ES...
 {'name': 'node-1', 'cluster_name': 'czj-es9-cluster', 'cluster_uuid': 'ds2D7IjeS_CKYZbBxB-zFw', 'version': {'number': '9.1.4', 'build_flavor': 'default', 'build_type': 'tar', 'build_hash': '0b7fe68d2e369469ff9e9f344ab6df64ab9c5293', 'build_date': '2025-09-16T22:05:19.073893347Z', 'build_snapshot': False, 'lucene_version': '10.2.2', 'minimum_wire_compatibility_version': '8.19.0', 'minimum_index_compatibility_version': '8.0.0'}, 'tagline': 'You Know, for Search'}
-INFO:     192.168.0.134:35142 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:53206 - "GET /v1/models HTTP/1.1" 200 OK
-[chat_completions] chosen session_key = 'b33dd5ff-2691-48c2-b4cc-09dbbed0165b'
+INFO:     192.168.0.134:34268 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'dc8f46f4-a449-4b5f-a527-92e6c5b9055b'
 [chat_completions] reuse_uuids = []
 [chat_completions] refno_uuid_map = None
 ==================================================
 [call_llm] sys_len=1581, user_len=81, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我想要知道052D在2025年1月的活動趨勢。'
 [call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
-[router] routed = {'mode': 'SRA_REPORT', 'reason': '使用者要求整理特定主題在指定時間內的活動趨勢，屬於分析/統計類需求', 'topic': 'mil_intel'}
+[router] routed = {'mode': 'SRA_REPORT', 'reason': '使用者要求針對特定軍事對象（052D）在特定時間段的活動趨勢進行整理與分析，屬於統計/趨勢需求', 'topic': 'mil_intel'}
 [agent] building CodeAgent: try model + instructions
 [agent] CodeAgent created with model+instructions
 ┌────────────────────────────────────────────────────── New run ──────────────────────────────────────────────────────┐
@@ -30,19 +29,20 @@ INFO:     192.168.0.134:53206 - "GET /v1/models HTTP/1.1" 200 OK
 └─ LiteLLMModel - ollama_chat/gpt-oss:120b-32k ───────────────────────────────────────────────────────────────────────┘
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  ─ Executing parsed code: ──────────────────────────────────────────────────────────────────────────────────────────── 
-  # 原始問題                                                                                                           
+  # 1. 原始問題                                                                                                        
   question = "我想要知道052D在2025年1月的活動趨勢。"                                                                   
                                                                                                                        
-  # 1. 解析核心關鍵字 (core_terms) 與時間範圍                                                                          
-  # - 移除所有時間相關字串，僅保留主題/地點/具體行為詞                                                                 
-  core_terms = ["052D"]                     # 只保留「052D」為核心主題                                                 
-  core_query = " ".join(core_terms)         # 用空白串接成搜尋字串                                                     
+  # 2. 從問題中抽取 core_terms（排除時間字串與分析用語）                                                               
+  core_terms = ["052D"]  # 只保留主題代號                                                                              
                                                                                                                        
-  # - 解析時間範圍 (date_from / date_to)                                                                               
+  # 3. 解析時間範圍                                                                                                    
   date_from = "2025-01-01"                                                                                             
-  date_to   = "2025-01-31"                                                                                             
+  date_to = "2025-01-31"                                                                                               
                                                                                                                        
-  # 2. 呼叫 Elasticsearch 搜尋                                                                                         
+  # 4. 組成搜尋 query                                                                                                  
+  core_query = " ".join(core_terms)                                                                                    
+                                                                                                                       
+  # 5. 呼叫 Elasticsearch 搜尋                                                                                         
   search_result = es_search_news(                                                                                      
       query=core_query,                                                                                                
       must_high_value=False,                                                                                           
@@ -58,22 +58,22 @@ INFO:     192.168.0.134:53206 - "GET /v1/models HTTP/1.1" 200 OK
       index_hint="mil_reports-01"                                                                                      
   )                                                                                                                    
                                                                                                                        
-  # 取得 evidence_snippets                                                                                             
+  # 6. 取得 evidence_snippets                                                                                          
   evidence_snippets = search_result.get("evidence_snippets", [])                                                       
                                                                                                                        
-  # 3. 進行月份/季節統計                                                                                               
+  # 7. 進行月份/季度統計                                                                                               
   aggregation = aggregate_month_quarter(evidence_snippets=evidence_snippets)                                           
                                                                                                                        
-  doc_count      = aggregation.get("doc_count", 0)                                                                     
-  snippet_count  = aggregation.get("snippet_count", 0)                                                                 
-  active_days    = aggregation.get("active_days", 0)                                                                   
-  day_counts     = aggregation.get("day_counts", {})                                                                   
-  month_counts   = aggregation.get("month_counts", {})                                                                 
+  doc_count = aggregation.get("doc_count", 0)                                                                          
+  snippet_count = aggregation.get("snippet_count", 0)                                                                  
+  active_days = aggregation.get("active_days", 0)                                                                      
+  day_counts = aggregation.get("day_counts", {})                                                                       
+  month_counts = aggregation.get("month_counts", {})                                                                   
   quarter_counts = aggregation.get("quarter_counts", {})                                                               
                                                                                                                        
-  # 4. 若有提供 date_from / date_to，進一步過濾統計結果                                                                
+  # 8. 若有時間範圍，過濾統計結果                                                                                      
   start_date = date_from                                                                                               
-  end_date   = date_to                                                                                                 
+  end_date = date_to                                                                                                   
                                                                                                                        
   if start_date or end_date:                                                                                           
       # 過濾 day_counts                                                                                                
@@ -88,11 +88,11 @@ INFO:     192.168.0.134:53206 - "GET /v1/models HTTP/1.1" 200 OK
                                                                                                                        
       # 過濾 month_counts（保留完全落在範圍內的月份）                                                                  
       filtered_month_counts = {}                                                                                       
-      for m, cnt in month_counts.items():   # m 格式如 "2025-01"                                                       
+      for m, cnt in month_counts.items():  # m 形如 "2025-01"                                                          
           m_year = m[0:4]                                                                                              
           m_month = m[5:7]                                                                                             
           m_first = f"{m_year}-{m_month}-01"                                                                           
-          m_last  = f"{m_year}-{m_month}-31"   # 簡化處理                                                              
+          m_last = f"{m_year}-{m_month}-31"                                                                            
           if start_date and m_last < start_date:                                                                       
               continue                                                                                                 
           if end_date and m_first > end_date:                                                                          
@@ -100,11 +100,11 @@ INFO:     192.168.0.134:53206 - "GET /v1/models HTTP/1.1" 200 OK
           filtered_month_counts[m] = cnt                                                                               
       month_counts = filtered_month_counts                                                                             
                                                                                                                        
-      # 過濾 quarter_counts（格式如 "2025-Q1"）                                                                        
+      # 過濾 quarter_counts（形如 "2025-Q1"）                                                                          
       filtered_quarter_counts = {}                                                                                     
       for q, cnt in quarter_counts.items():                                                                            
           q_year = q[0:4]                                                                                              
-          q_id   = q[-1]   # '1'..'4'                                                                                  
+          q_id = q[-1]  # '1'..'4'                                                                                     
           if q_id == "1":                                                                                              
               q_first, q_last = f"{q_year}-01-01", f"{q_year}-03-31"                                                   
           elif q_id == "2":                                                                                            
@@ -121,7 +121,7 @@ INFO:     192.168.0.134:53206 - "GET /v1/models HTTP/1.1" 200 OK
           filtered_quarter_counts[q] = cnt                                                                             
       quarter_counts = filtered_quarter_counts                                                                         
                                                                                                                        
-  # 5. 組成 payload                                                                                                    
+  # 9. 組成 payload                                                                                                    
   payload = {                                                                                                          
       "question": question,                                                                                            
       "time_range": {                                                                                                  
@@ -140,7 +140,7 @@ INFO:     192.168.0.134:53206 - "GET /v1/models HTTP/1.1" 200 OK
       "raw_search_result": search_result,                                                                              
   }                                                                                                                    
                                                                                                                        
-  # 6. 回傳結果給後續報告 LLM                                                                                          
+  # 10. 回傳結果                                                                                                       
   final_answer({                                                                                                       
       "payload": payload                                                                                               
   })                                                                                                                   
@@ -151,15 +151,15 @@ in ESSearchNews.forward, index = mil_reports-01 query = 052D
 [call_llm] sys_len=584, user_len=13, user_preview='使用者查詢如下： 052D'
 [call_llm] system_preview='你是一個「通用查詢關鍵字萃取器」。 使用者會給你一段查詢句子或自然語言描述，請只做一件事：  從內容中找出最重要的「關鍵詞 / 主題詞」，例如： - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構 - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱 - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰 - 產品 / 平台 / 型號：武器型號、船艦名、飛機型號、產品型號等  規則： 1. 僅輸出一個 JSON 陣列（array of string），不得有任何多餘文字。    例：["川普經濟學", "對等關稅", "美國就業", "物價", "宮古水道"] 2. 每個元素應是短語或名詞，不要整句話。 3. 優先挑選具體、可檢索的詞：    - 例如「川普經濟學」「宮古水道」「東風15型導彈」    - 比起「影響」「變化」「情勢」這種抽象詞更重要。 4. 不要輸出：'
 ==================================================
-[call_llm] sys_len=1366, user_len=103, user_preview='查詢句子（query）： 052D  核心關鍵詞（core_terms）： ["052D", "052D驅逐艦", "052D型", "052D型驅逐艦", "052D神盾艦", "052D型飛彈驅逐艦"]'
+[call_llm] sys_len=1366, user_len=103, user_preview='查詢句子（query）： 052D  核心關鍵詞（core_terms）： ["052D", "052D型飛彈驅逐艦", "052D型", "052D驅逐艦", "052D神盾艦", "052D型驅逐艦"]'
 [call_llm] system_preview='你是一個「文本檢索查詢關鍵詞同義詞擴充器」。  使用者會提供： - 一段查詢句子（query） - 一組核心關鍵詞（core_terms）  你的工作只有一件事： 1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。 2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），    請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 value 的陣列裡。  具體規則：  【輸出格式】 - 僅輸出一個 JSON 物件（object），不得有任何多餘文字。   key: 代表核心詞（string）   value: 該語意軸的同義詞陣列（array of string）  【語意軸合併規則】 1. 先觀察 core_terms 列表，思考是否有「其實是同一個概念」的核心詞：    例如：    - 「敘利亞」「Syrian Arab'
-[es_search_news][T1] _compute_effective_terms 花費 5.917s, core_terms=['052D'], num_groups=1
-[_build_query_body] q= 052D core_terms= ['052D'] syn_terms= ['052D驅逐艦', '052D型', '052D型驅逐艦', '052D神盾艦', '052D型飛彈驅逐艦', 'Type 052D destroyer', 'Luyang III class destroyer', 'Jiangdao II class'] num_all_terms= 9
+[es_search_news][T1] _compute_effective_terms 花費 6.307s, core_terms=['052D'], num_groups=1
+[_build_query_body] q= 052D core_terms= ['052D'] syn_terms= ['052D型飛彈驅逐艦', '052D型', '052D驅逐艦', '052D神盾艦', '052D型驅逐艦', 'Type 052D destroyer', 'Renhai-class destroyer'] num_all_terms= 8
 [es_search_news][T2] _build_query_body 花費 0.000s
-[es_search_news][T3] _safe_es_search 花費 0.607s, ES took=None ms, index=mil_reports-01, size=10000
+[es_search_news][T3] _safe_es_search 花費 0.558s, ES took=None ms, index=mil_reports-01, size=10000
 [es_search_news][T4] Python 後處理（parse hits + evidence_snippets）花費 0.009s, hits=1065, evidence_snippets=30
-[es_search_news][TOTAL] query='052D', total=6.532s
-[es_search_news] query='052D', es_query='052D', hits=1065, hits_after_filter=30, snippets_before_filter=30, snippets_after_filter=30, effective_terms=['052D', '052D驅逐艦', '052D型', '052D型驅逐艦', '052D神盾艦', '052D型飛彈驅逐艦', 'Type 052D destroyer', 'Luyang III class destroyer', 'Jiangdao II class'], synonym_hit_snippets=30
+[es_search_news][TOTAL] query='052D', total=6.875s
+[es_search_news] query='052D', es_query='052D', hits=1065, hits_after_filter=30, snippets_before_filter=30, snippets_after_filter=30, effective_terms=['052D', '052D型飛彈驅逐艦', '052D型', '052D驅逐艦', '052D神盾艦', '052D型驅逐艦', 'Type 052D destroyer', 'Renhai-class destroyer'], synonym_hit_snippets=30
 Final answer: {'payload': {'question': '我想要知道052D在2025年1月的活動趨勢。', 'time_range': {'date_from': 
 '2025-01-01', 'date_to': '2025-01-31'}, 'stats': {'doc_count': 30, 'snippet_count': 30, 'active_days': 10, 
 'day_counts': {'2025-01-06': 1, '2025-01-16': 4, '2025-01-17': 5, '2025-01-18': 3, '2025-01-19': 4, '2025-01-20': 3, 
@@ -167,110 +167,110 @@ Final answer: {'payload': {'question': '我想要知道052D在2025年1月的活�
 {'2025-Q1': 30}}, 'evidence_snippets': [{'uuid': 'e279efb556ccd67288da6bb66834b0d8bde10871', 'text': '0652 雷達偵獲 
 052D 驅逐艦 於 南海 出現，活動頻度略增。', 'date_iso': '2025-01-27', 'article_date_iso': '2025-01-27', 'subject': '052D
 驅逐艦_027_91', 'article_title': '(1) 114/01/27 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'f7d38c4ee2efcac532d08f065df26fcd76f83389', 'text': '0657 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'f7d38c4ee2efcac532d08f065df26fcd76f83389', 'text': '0657 雷達偵獲 
 052D 驅逐艦 於 東海 出現，活動頻度略增。', 'date_iso': '2025-01-20', 'article_date_iso': '2025-01-20', 'subject': '052D
 驅逐艦_020_66', 'article_title': '114/01/20 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'ffc471f8b3e05f88837c37bed7317140865c3fec', 'text': '0618 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'ffc471f8b3e05f88837c37bed7317140865c3fec', 'text': '0618 雷達偵獲 
 052D 驅逐艦 於 東海 出現，活動頻度略增。', 'date_iso': '2025-01-19', 'article_date_iso': '2025-01-19', 'subject': '052D
 驅逐艦_019_99', 'article_title': '(1) 114/01/19 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '9d96b0378aabd8e3628156a2ce1a63a9ffe130c1', 'text': '0616 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '9d96b0378aabd8e3628156a2ce1a63a9ffe130c1', 'text': '0616 雷達偵獲 
 052D 驅逐艦 於 福建外海 出現，活動頻度略增。', 'date_iso': '2025-01-28', 'article_date_iso': '2025-01-28', 'subject': 
 '052D 驅逐艦_028_76', 'article_title': '114/01/28 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'f5558a344b5cb97f88f84b45537cce17e33cb6a5', 'text': '0611 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'f5558a344b5cb97f88f84b45537cce17e33cb6a5', 'text': '0611 雷達偵獲 
 052D 驅逐艦 於 廣東沿岸 出現，活動頻度略增。', 'date_iso': '2025-01-27', 'article_date_iso': '2025-01-27', 'subject': 
 '052D 驅逐艦_027_96', 'article_title': '(1)114/01/27 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'cc0467c3a364a354c7b0a2afdc5ccf4a0b271945', 'text': '0627 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'cc0467c3a364a354c7b0a2afdc5ccf4a0b271945', 'text': '0627 雷達偵獲 
 052D 驅逐艦 於 台灣海峽 出現，活動頻度略增。', 'date_iso': '2025-01-27', 'article_date_iso': '2025-01-27', 'subject': 
 '052D 驅逐艦_027_98', 'article_title': '114/01/27 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '2037a3e82d24bc21d2543426e3268b12fdaaba72', 'text': '0621 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '2037a3e82d24bc21d2543426e3268b12fdaaba72', 'text': '0621 雷達偵獲 
 052D 驅逐艦 於 福建外海 出現，活動頻度略增。', 'date_iso': '2025-01-18', 'article_date_iso': '2025-01-18', 'subject': 
 '052D 驅逐艦_018_58', 'article_title': '(1)114/01/18 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '50df06c2baffdaeffc0157510caa2bf34e9b89c9', 'text': '0646 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '50df06c2baffdaeffc0157510caa2bf34e9b89c9', 'text': '0646 雷達偵獲 
 052D 驅逐艦 於 浙江外海 出現，活動頻度略增。', 'date_iso': '2025-01-17', 'article_date_iso': '2025-01-17', 'subject': 
 '052D 驅逐艦_017_16', 'article_title': '(1) 114/01/17 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '6d2ba3542162f9add89a23147dbd71229b753c07', 'text': '0610 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '6d2ba3542162f9add89a23147dbd71229b753c07', 'text': '0610 雷達偵獲 
 052D 驅逐艦 於 浙江外海 出現，活動頻度略增。', 'date_iso': '2025-01-17', 'article_date_iso': '2025-01-17', 'subject': 
 '052D 驅逐艦_017_4', 'article_title': '114/01/17 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'f3340f0d1d6056069681f4e19bf6da1bafffe3d6', 'text': '0653 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'f3340f0d1d6056069681f4e19bf6da1bafffe3d6', 'text': '0653 雷達偵獲 
 052D 驅逐艦 於 台灣海峽 出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': 
 '052D 驅逐艦_016_23', 'article_title': '(1) 114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '82dfc8c744e9cd2ccca269394a247cd3bdc1a163', 'text': '0634 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '82dfc8c744e9cd2ccca269394a247cd3bdc1a163', 'text': '0634 雷達偵獲 
 052D 驅逐艦 於 宮古水道 出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': 
 '052D 驅逐艦_016_26', 'article_title': '114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '1f66843c56c5dae964305b4cddeaae24a6ca18a7', 'text': '0650 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '1f66843c56c5dae964305b4cddeaae24a6ca18a7', 'text': '0650 雷達偵獲 
 052D 驅逐艦 於 浙江外海 出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': 
 '052D 驅逐艦_016_58', 'article_title': '（1）114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'b35cd7d5e589b50ca0b1a917dc2503b15649ae00', 'text': '0614 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'b35cd7d5e589b50ca0b1a917dc2503b15649ae00', 'text': '0614 雷達偵獲 
 052D 驅逐艦 於 福建外海 出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': 
 '052D 驅逐艦_016_59', 'article_title': '(1) 114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '79885f3ee0ddf8407420106aab2b18ec28729769', 'text': '0634 雷達偵獲 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '79885f3ee0ddf8407420106aab2b18ec28729769', 'text': '0634 雷達偵獲 
 052D 驅逐艦 於 宮古水道 出現，活動頻度略增。', 'date_iso': '2025-01-06', 'article_date_iso': '2025-01-06', 'subject': 
 '052D 驅逐艦_006_48', 'article_title': '114/01/06 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '380bcf26eda9aab3258fe9cd4ec989a3a045da91', 'text': '今日 0654 
+'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '380bcf26eda9aab3258fe9cd4ec989a3a045da91', 'text': '今日 0654 
 起，空偵站掌握對岸活動跡象，約 0734 時雷達偵獲 052D 驅逐艦 於 東海 
 一帶出現，航跡呈現S型巡弋特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-19', 'article_date_iso': 
 '2025-01-19', 'subject': '052D 驅逐艦_019_97', 'article_title': '114 年 01 月 19 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '363165442bb9562af7ffe02a967796585007a541', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '363165442bb9562af7ffe02a967796585007a541', 
 'text': '今日 0903 起，空偵站掌握對岸活動跡象，約 0757 時雷達偵獲 052D 驅逐艦 於 廣東沿岸 
 一帶出現，航跡呈現電子靜默特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-29', 'article_date_iso': 
 '2025-01-29', 'subject': '052D 驅逐艦_029_95', 'article_title': '（1）114 年 01 月 29 日情勢摘要', 'paragraph_id': 
-None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'a95cf126d5ca8719f0b9b559dd8308bae6b3cb27', 
+None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'a95cf126d5ca8719f0b9b559dd8308bae6b3cb27', 
 'text': '今日 0811 起，空偵站掌握對岸活動跡象，約 0711 時雷達偵獲 052D 驅逐艦 於 東海 
 一帶出現，航跡呈現雷達回波異常特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-27', 'article_date_iso': 
 '2025-01-27', 'subject': '052D 驅逐艦_027_52', 'article_title': '114 年 01 月 27 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'b116f154ebd3e34d73239b021d80b7a1fcb102dd', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'b116f154ebd3e34d73239b021d80b7a1fcb102dd', 
 'text': '今日 0604 起，空偵站掌握對岸活動跡象，約 0752 時雷達偵獲 052D 驅逐艦 於 東海 
 一帶出現，航跡呈現航速明顯提升特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-17', 'article_date_iso': 
 '2025-01-17', 'subject': '052D 驅逐艦_017_68', 'article_title': '(1)114 年 01 月 17 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '7fd720805d6077446d02d4acdd898c1fc561f889', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '7fd720805d6077446d02d4acdd898c1fc561f889', 
 'text': '今日 0710 起，空偵站掌握對岸活動跡象，約 0727 時雷達偵獲 052D 驅逐艦 於 東海 
 一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-28', 'article_date_iso': 
 '2025-01-28', 'subject': '052D 驅逐艦_028_9', 'article_title': '(1)114 年 01 月 28 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'c4103c44db15f8cda903fda05a819850bb5aa554', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'c4103c44db15f8cda903fda05a819850bb5aa554', 
 'text': '今日 0908 起，空偵站掌握對岸活動跡象，約 0723 時雷達偵獲 052D 驅逐艦 於 巴士海峽 
 一帶出現，航跡呈現通信頻率升高特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-27', 'article_date_iso': 
 '2025-01-27', 'subject': '052D 驅逐艦_027_51', 'article_title': '（1）114 年 01 月 27 日情勢摘要', 'paragraph_id': 
-None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '458e467b65bf4bd403ab5d6deb61347bb415408e', 
+None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '458e467b65bf4bd403ab5d6deb61347bb415408e', 
 'text': '今日 0716 起，空偵站掌握對岸活動跡象，約 0719 時雷達偵獲 052D 驅逐艦 於 宮古水道 
 一帶出現，航跡呈現通信頻率升高特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-26', 'article_date_iso': 
 '2025-01-26', 'subject': '052D 驅逐艦_026_72', 'article_title': '（1）114 年 01 月 26 日情勢摘要', 'paragraph_id': 
-None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'a3936fcf28665e725717dc79a4e065c26f0e6a2a', 
+None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'a3936fcf28665e725717dc79a4e065c26f0e6a2a', 
 'text': '今日 0813 起，空偵站掌握對岸活動跡象，約 0727 時雷達偵獲 052D 驅逐艦 於 福建外海 
 一帶出現，航跡呈現航速明顯提升特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-26', 'article_date_iso': 
 '2025-01-26', 'subject': '052D 驅逐艦_026_31', 'article_title': '（1）114 年 01 月 26 日情勢摘要', 'paragraph_id': 
-None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'da1c4947260ca1b71a6ac5a407bedab323ddde69', 
+None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'da1c4947260ca1b71a6ac5a407bedab323ddde69', 
 'text': '今日 0529 起，空偵站掌握對岸活動跡象，約 0718 時雷達偵獲 052D 驅逐艦 於 宮古水道 
 一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-20', 'article_date_iso': 
 '2025-01-20', 'subject': '052D 驅逐艦_020_72', 'article_title': '(1)114 年 01 月 20 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '38dd87f5102fce34f662ed3eec19df28420efcf7', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '38dd87f5102fce34f662ed3eec19df28420efcf7', 
 'text': '今日 0521 起，空偵站掌握對岸活動跡象，約 0747 時雷達偵獲 052D 驅逐艦 於 巴士海峽 
 一帶出現，航跡呈現高度快速變化特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-20', 'article_date_iso': 
 '2025-01-20', 'subject': '052D 驅逐艦_020_40', 'article_title': '(1)114 年 01 月 20 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '757d43e0b23fb59d4883189420f43665ced6fd55', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '757d43e0b23fb59d4883189420f43665ced6fd55', 
 'text': '今日 0832 起，空偵站掌握對岸活動跡象，約 0718 時雷達偵獲 052D 驅逐艦 於 巴士海峽 
 一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-19', 'article_date_iso': 
 '2025-01-19', 'subject': '052D 驅逐艦_019_38', 'article_title': '114 年 01 月 19 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '11954ed1b8ecf367e7471b7b0d05ca43d01be9f1', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '11954ed1b8ecf367e7471b7b0d05ca43d01be9f1', 
 'text': '今日 0838 起，空偵站掌握對岸活動跡象，約 0730 時雷達偵獲 052D 驅逐艦 於 宮古水道 
 一帶出現，\n航跡呈現航速明顯提升特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-19', 'article_date_iso': 
 '2025-01-19', 'subject': '052D 驅逐艦_019_4', 'article_title': '（1）114 年 01 月 19 日情勢摘要', 'paragraph_id': None,
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'bb0a9b8330299220261276f70f9e35895bc37e00', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'bb0a9b8330299220261276f70f9e35895bc37e00', 
 'text': '今日 0530 起，空偵站掌握對岸活動跡象，約 0730 時雷達偵獲 052D 驅逐艦 於 浙江外海 
 一帶出現，航跡呈現高度快速變化特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-18', 'article_date_iso': 
 '2025-01-18', 'subject': '052D 驅逐艦_018_94', 'article_title': '114 年 01 月 18 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '132d639085b5aae93026fde41b058f33b5d20e89', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '132d639085b5aae93026fde41b058f33b5d20e89', 
 'text': '今日 0932 起，空偵站掌握對岸活動跡象，約 0745 時雷達偵獲 052D 驅逐艦 於 廣東沿岸 
 一帶出現，航跡呈現通信頻率升高特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-18', 'article_date_iso': 
 '2025-01-18', 'subject': '052D 驅逐艦_018_31', 'article_title': '114 年 01 月 18 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'ae695a4c587d1833a033337835a503ff75815987', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 'ae695a4c587d1833a033337835a503ff75815987', 
 'text': '今日 0748 起，空偵站掌握對岸活動跡象，約 0751 時雷達偵獲 052D 驅逐艦 於 浙江外海 
 一帶出現，航跡呈現雷達回波異常特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-17', 'article_date_iso': 
 '2025-01-17', 'subject': '052D 驅逐艦_017_50', 'article_title': '114 年 01 月 17 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '8fd503e48273da96e64eaf893d3797ce74d25a9f', 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': '8fd503e48273da96e64eaf893d3797ce74d25a9f', 
 'text': '今日 0528 起，空偵站掌握對岸活動跡象，約 0753 時雷達偵獲 052D 驅逐艦 於 福建外海 
 一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-17', 'article_date_iso': 
 '2025-01-17', 'subject': '052D 驅逐艦_017_92', 'article_title': '114 年 01 月 17 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}], 'raw_search_result': {'hits': [{'uuid': 
+'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}], 'raw_search_result': {'hits': [{'uuid': 
 'e279efb556ccd67288da6bb66834b0d8bde10871', 'subject': '052D 驅逐艦_027_91', 'score': 102.8606, 'citations': [{'text': 
 '0652 雷達偵獲 052D 驅逐艦 於 南海 出現，活動頻度略增。', 'source_id': None, 'paragraph_id': None, 'uuid': 
 'e279efb556ccd67288da6bb66834b0d8bde10871', 'subject': '052D 驅逐艦_027_91'}], 'article_date_iso': '2025-01-27', 
@@ -439,112 +439,111 @@ None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'd
 01 月 17 日情勢摘要', 'selectedMessage': False, 'highValue': False}], 'evidence_snippets': [{'uuid': 
 'e279efb556ccd67288da6bb66834b0d8bde10871', 'text': '0652 雷達偵獲 052D 驅逐艦 於 南海 出現，活動頻度略增。', 
 'date_iso': '2025-01-27', 'article_date_iso': '2025-01-27', 'subject': '052D 驅逐艦_027_91', 'article_title': '(1) 
-114/01/27 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, 
+114/01/27 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, 
 {'uuid': 'f7d38c4ee2efcac532d08f065df26fcd76f83389', 'text': '0657 雷達偵獲 052D 驅逐艦 於 東海 出現，活動頻度略增。', 
 'date_iso': '2025-01-20', 'article_date_iso': '2025-01-20', 'subject': '052D 驅逐艦_020_66', 'article_title': 
-'114/01/20 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, 
+'114/01/20 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, 
 {'uuid': 'ffc471f8b3e05f88837c37bed7317140865c3fec', 'text': '0618 雷達偵獲 052D 驅逐艦 於 東海 出現，活動頻度略增。', 
 'date_iso': '2025-01-19', 'article_date_iso': '2025-01-19', 'subject': '052D 驅逐艦_019_99', 'article_title': '(1) 
-114/01/19 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, 
+114/01/19 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, 
 {'uuid': '9d96b0378aabd8e3628156a2ce1a63a9ffe130c1', 'text': '0616 雷達偵獲 052D 驅逐艦 於 福建外海 
 出現，活動頻度略增。', 'date_iso': '2025-01-28', 'article_date_iso': '2025-01-28', 'subject': '052D 驅逐艦_028_76', 
-'article_title': '114/01/28 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['052D驅逐艦', '052D']}, {'uuid': 'f5558a344b5cb97f88f84b45537cce17e33cb6a5', 'text': '0611 雷達偵獲 052D 驅逐艦 於 
-廣東沿岸 出現，活動頻度略增。', 'date_iso': '2025-01-27', 'article_date_iso': '2025-01-27', 'subject': '052D 
-驅逐艦_027_96', 'article_title': '(1)114/01/27 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'cc0467c3a364a354c7b0a2afdc5ccf4a0b271945', 'text': '0627 雷達偵獲 
-052D 驅逐艦 於 台灣海峽 出現，活動頻度略增。', 'date_iso': '2025-01-27', 'article_date_iso': '2025-01-27', 'subject': 
-'052D 驅逐艦_027_98', 'article_title': '114/01/27 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '2037a3e82d24bc21d2543426e3268b12fdaaba72', 'text': '0621 雷達偵獲 
-052D 驅逐艦 於 福建外海 出現，活動頻度略增。', 'date_iso': '2025-01-18', 'article_date_iso': '2025-01-18', 'subject': 
-'052D 驅逐艦_018_58', 'article_title': '(1)114/01/18 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '50df06c2baffdaeffc0157510caa2bf34e9b89c9', 'text': '0646 雷達偵獲 
-052D 驅逐艦 於 浙江外海 出現，活動頻度略增。', 'date_iso': '2025-01-17', 'article_date_iso': '2025-01-17', 'subject': 
-'052D 驅逐艦_017_16', 'article_title': '(1) 114/01/17 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '6d2ba3542162f9add89a23147dbd71229b753c07', 'text': '0610 雷達偵獲 
-052D 驅逐艦 於 浙江外海 出現，活動頻度略增。', 'date_iso': '2025-01-17', 'article_date_iso': '2025-01-17', 'subject': 
-'052D 驅逐艦_017_4', 'article_title': '114/01/17 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'f3340f0d1d6056069681f4e19bf6da1bafffe3d6', 'text': '0653 雷達偵獲 
-052D 驅逐艦 於 台灣海峽 出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': 
-'052D 驅逐艦_016_23', 'article_title': '(1) 114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '82dfc8c744e9cd2ccca269394a247cd3bdc1a163', 'text': '0634 雷達偵獲 
-052D 驅逐艦 於 宮古水道 出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': 
-'052D 驅逐艦_016_26', 'article_title': '114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '1f66843c56c5dae964305b4cddeaae24a6ca18a7', 'text': '0650 雷達偵獲 
-052D 驅逐艦 於 浙江外海 出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': 
-'052D 驅逐艦_016_58', 'article_title': '（1）114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'b35cd7d5e589b50ca0b1a917dc2503b15649ae00', 'text': '0614 雷達偵獲 
-052D 驅逐艦 於 福建外海 出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': 
-'052D 驅逐艦_016_59', 'article_title': '(1) 114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '79885f3ee0ddf8407420106aab2b18ec28729769', 'text': '0634 雷達偵獲 
-052D 驅逐艦 於 宮古水道 出現，活動頻度略增。', 'date_iso': '2025-01-06', 'article_date_iso': '2025-01-06', 'subject': 
-'052D 驅逐艦_006_48', 'article_title': '114/01/06 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 
-'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '380bcf26eda9aab3258fe9cd4ec989a3a045da91', 'text': '今日 0654 
-起，空偵站掌握對岸活動跡象，約 0734 時雷達偵獲 052D 驅逐艦 於 東海 
-一帶出現，航跡呈現S型巡弋特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-19', 'article_date_iso': 
-'2025-01-19', 'subject': '052D 驅逐艦_019_97', 'article_title': '114 年 01 月 19 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '363165442bb9562af7ffe02a967796585007a541', 
-'text': '今日 0903 起，空偵站掌握對岸活動跡象，約 0757 時雷達偵獲 052D 驅逐艦 於 廣東沿岸 
-一帶出現，航跡呈現電子靜默特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-29', 'article_date_iso': 
-'2025-01-29', 'subject': '052D 驅逐艦_029_95', 'article_title': '（1）114 年 01 月 29 日情勢摘要', 'paragraph_id': 
-None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'a95cf126d5ca8719f0b9b559dd8308bae6b3cb27', 
-'text': '今日 0811 起，空偵站掌握對岸活動跡象，約 0711 時雷達偵獲 052D 驅逐艦 於 東海 
-一帶出現，航跡呈現雷達回波異常特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-27', 'article_date_iso': 
-'2025-01-27', 'subject': '052D 驅逐艦_027_52', 'article_title': '114 年 01 月 27 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'b116f154ebd3e34d73239b021d80b7a1fcb102dd', 
-'text': '今日 0604 起，空偵站掌握對岸活動跡象，約 0752 時雷達偵獲 052D 驅逐艦 於 東海 
-一帶出現，航跡呈現航速明顯提升特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-17', 'article_date_iso': 
-'2025-01-17', 'subject': '052D 驅逐艦_017_68', 'article_title': '(1)114 年 01 月 17 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '7fd720805d6077446d02d4acdd898c1fc561f889', 
-'text': '今日 0710 起，空偵站掌握對岸活動跡象，約 0727 時雷達偵獲 052D 驅逐艦 於 東海 
-一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-28', 'article_date_iso': 
-'2025-01-28', 'subject': '052D 驅逐艦_028_9', 'article_title': '(1)114 年 01 月 28 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'c4103c44db15f8cda903fda05a819850bb5aa554', 
-'text': '今日 0908 起，空偵站掌握對岸活動跡象，約 0723 時雷達偵獲 052D 驅逐艦 於 巴士海峽 
-一帶出現，航跡呈現通信頻率升高特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-27', 'article_date_iso': 
-'2025-01-27', 'subject': '052D 驅逐艦_027_51', 'article_title': '（1）114 年 01 月 27 日情勢摘要', 'paragraph_id': 
-None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '458e467b65bf4bd403ab5d6deb61347bb415408e', 
-'text': '今日 0716 起，空偵站掌握對岸活動跡象，約 0719 時雷達偵獲 052D 驅逐艦 於 宮古水道 
-一帶出現，航跡呈現通信頻率升高特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-26', 'article_date_iso': 
-'2025-01-26', 'subject': '052D 驅逐艦_026_72', 'article_title': '（1）114 年 01 月 26 日情勢摘要', 'paragraph_id': 
-None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'a3936fcf28665e725717dc79a4e065c26f0e6a2a', 
-'text': '今日 0813 起，空偵站掌握對岸活動跡象，約 0727 時雷達偵獲 052D 驅逐艦 於 福建外海 
-一帶出現，航跡呈現航速明顯提升特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-26', 'article_date_iso': 
-'2025-01-26', 'subject': '052D 驅逐艦_026_31', 'article_title': '（1）114 年 01 月 26 日情勢摘要', 'paragraph_id': 
-None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'da1c4947260ca1b71a6ac5a407bedab323ddde69', 
-'text': '今日 0529 起，空偵站掌握對岸活動跡象，約 0718 時雷達偵獲 052D 驅逐艦 於 宮古水道 
-一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-20', 'article_date_iso': 
-'2025-01-20', 'subject': '052D 驅逐艦_020_72', 'article_title': '(1)114 年 01 月 20 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '38dd87f5102fce34f662ed3eec19df28420efcf7', 
-'text': '今日 0521 起，空偵站掌握對岸活動跡象，約 0747 時雷達偵獲 052D 驅逐艦 於 巴士海峽 
-一帶出現，航跡呈現高度快速變化特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-20', 'article_date_iso': 
-'2025-01-20', 'subject': '052D 驅逐艦_020_40', 'article_title': '(1)114 年 01 月 20 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '757d43e0b23fb59d4883189420f43665ced6fd55', 
-'text': '今日 0832 起，空偵站掌握對岸活動跡象，約 0718 時雷達偵獲 052D 驅逐艦 於 巴士海峽 
-一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-19', 'article_date_iso': 
-'2025-01-19', 'subject': '052D 驅逐艦_019_38', 'article_title': '114 年 01 月 19 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '11954ed1b8ecf367e7471b7b0d05ca43d01be9f1', 
-'text': '今日 0838 起，空偵站掌握對岸活動跡象，約 0730 時雷達偵獲 052D 驅逐艦 於 宮古水道 
-一帶出現，\n航跡呈現航速明顯提升特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-19', 'article_date_iso': 
-'2025-01-19', 'subject': '052D 驅逐艦_019_4', 'article_title': '（1）114 年 01 月 19 日情勢摘要', 'paragraph_id': None,
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'bb0a9b8330299220261276f70f9e35895bc37e00', 
-'text': '今日 0530 起，空偵站掌握對岸活動跡象，約 0730 時雷達偵獲 052D 驅逐艦 於 浙江外海 
-一帶出現，航跡呈現高度快速變化特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-18', 'article_date_iso': 
-'2025-01-18', 'subject': '052D 驅逐艦_018_94', 'article_title': '114 年 01 月 18 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '132d639085b5aae93026fde41b058f33b5d20e89', 
-'text': '今日 0932 起，空偵站掌握對岸活動跡象，約 0745 時雷達偵獲 052D 驅逐艦 於 廣東沿岸 
-一帶出現，航跡呈現通信頻率升高特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-18', 'article_date_iso': 
-'2025-01-18', 'subject': '052D 驅逐艦_018_31', 'article_title': '114 年 01 月 18 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'ae695a4c587d1833a033337835a503ff75815987', 
-'text': '今日 0748 起，空偵站掌握對岸活動跡象，約 0751 時雷達偵獲 052D 驅逐艦 於 浙江外海 
-一帶出現，航跡呈現雷達回波異常特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-17', 'article_date_iso': 
-'2025-01-17', 'subject': '052D 驅逐艦_017_50', 'article_title': '114 年 01 月 17 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': '8fd503e48273da96e64eaf893d3797ce74d25a9f', 
-'text': '今日 0528 起，空偵站掌握對岸活動跡象，約 0753 時雷達偵獲 052D 驅逐艦 於 福建外海 
-一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-17', 'article_date_iso': 
-'2025-01-17', 'subject': '052D 驅逐艦_017_92', 'article_title': '114 年 01 月 17 日情勢摘要', 'paragraph_id': None, 
-'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}]}}}
-[Step 1: Duration 33.09 seconds| Input tokens: 6,108 | Output tokens: 1,422]
+'article_title': '114/01/28 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', 
+'052D驅逐艦']}, {'uuid': 'f5558a344b5cb97f88f84b45537cce17e33cb6a5', 'text': '0611 雷達偵獲 052D 驅逐艦 於 廣東沿岸 
+出現，活動頻度略增。', 'date_iso': '2025-01-27', 'article_date_iso': '2025-01-27', 'subject': '052D 驅逐艦_027_96', 
+'article_title': '(1)114/01/27 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', 
+'052D驅逐艦']}, {'uuid': 'cc0467c3a364a354c7b0a2afdc5ccf4a0b271945', 'text': '0627 雷達偵獲 052D 驅逐艦 於 台灣海峽 
+出現，活動頻度略增。', 'date_iso': '2025-01-27', 'article_date_iso': '2025-01-27', 'subject': '052D 驅逐艦_027_98', 
+'article_title': '114/01/27 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', 
+'052D驅逐艦']}, {'uuid': '2037a3e82d24bc21d2543426e3268b12fdaaba72', 'text': '0621 雷達偵獲 052D 驅逐艦 於 福建外海 
+出現，活動頻度略增。', 'date_iso': '2025-01-18', 'article_date_iso': '2025-01-18', 'subject': '052D 驅逐艦_018_58', 
+'article_title': '(1)114/01/18 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', 
+'052D驅逐艦']}, {'uuid': '50df06c2baffdaeffc0157510caa2bf34e9b89c9', 'text': '0646 雷達偵獲 052D 驅逐艦 於 浙江外海 
+出現，活動頻度略增。', 'date_iso': '2025-01-17', 'article_date_iso': '2025-01-17', 'subject': '052D 驅逐艦_017_16', 
+'article_title': '(1) 114/01/17 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', 
+'052D驅逐艦']}, {'uuid': '6d2ba3542162f9add89a23147dbd71229b753c07', 'text': '0610 雷達偵獲 052D 驅逐艦 於 浙江外海 
+出現，活動頻度略增。', 'date_iso': '2025-01-17', 'article_date_iso': '2025-01-17', 'subject': '052D 驅逐艦_017_4', 
+'article_title': '114/01/17 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', 
+'052D驅逐艦']}, {'uuid': 'f3340f0d1d6056069681f4e19bf6da1bafffe3d6', 'text': '0653 雷達偵獲 052D 驅逐艦 於 台灣海峽 
+出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': '052D 驅逐艦_016_23', 
+'article_title': '(1) 114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', 
+'052D驅逐艦']}, {'uuid': '82dfc8c744e9cd2ccca269394a247cd3bdc1a163', 'text': '0634 雷達偵獲 052D 驅逐艦 於 宮古水道 
+出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': '052D 驅逐艦_016_26', 
+'article_title': '114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', 
+'052D驅逐艦']}, {'uuid': '1f66843c56c5dae964305b4cddeaae24a6ca18a7', 'text': '0650 雷達偵獲 052D 驅逐艦 於 浙江外海 
+出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': '052D 驅逐艦_016_58', 
+'article_title': '（1）114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D',
+'052D驅逐艦']}, {'uuid': 'b35cd7d5e589b50ca0b1a917dc2503b15649ae00', 'text': '0614 雷達偵獲 052D 驅逐艦 於 福建外海 
+出現，活動頻度略增。', 'date_iso': '2025-01-16', 'article_date_iso': '2025-01-16', 'subject': '052D 驅逐艦_016_59', 
+'article_title': '(1) 114/01/16 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', 
+'052D驅逐艦']}, {'uuid': '79885f3ee0ddf8407420106aab2b18ec28729769', 'text': '0634 雷達偵獲 052D 驅逐艦 於 宮古水道 
+出現，活動頻度略增。', 'date_iso': '2025-01-06', 'article_date_iso': '2025-01-06', 'subject': '052D 驅逐艦_006_48', 
+'article_title': '114/01/06 聯合情監偵綜整回報', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', 
+'052D驅逐艦']}, {'uuid': '380bcf26eda9aab3258fe9cd4ec989a3a045da91', 'text': '今日 0654 起，空偵站掌握對岸活動跡象，約 
+0734 時雷達偵獲 052D 驅逐艦 於 東海 一帶出現，航跡呈現S型巡弋特徵，速度與高度均較例行巡弋偏高。', 'date_iso': 
+'2025-01-19', 'article_date_iso': '2025-01-19', 'subject': '052D 驅逐艦_019_97', 'article_title': '114 年 01 月 19 
+日情勢摘要', 'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'363165442bb9562af7ffe02a967796585007a541', 'text': '今日 0903 起，空偵站掌握對岸活動跡象，約 0757 時雷達偵獲 052D 
+驅逐艦 於 廣東沿岸 一帶出現，航跡呈現電子靜默特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-29', 
+'article_date_iso': '2025-01-29', 'subject': '052D 驅逐艦_029_95', 'article_title': '（1）114 年 01 月 29 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'a95cf126d5ca8719f0b9b559dd8308bae6b3cb27', 'text': '今日 0811 起，空偵站掌握對岸活動跡象，約 0711 時雷達偵獲 052D 
+驅逐艦 於 東海 一帶出現，航跡呈現雷達回波異常特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-27', 
+'article_date_iso': '2025-01-27', 'subject': '052D 驅逐艦_027_52', 'article_title': '114 年 01 月 27 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'b116f154ebd3e34d73239b021d80b7a1fcb102dd', 'text': '今日 0604 起，空偵站掌握對岸活動跡象，約 0752 時雷達偵獲 052D 
+驅逐艦 於 東海 一帶出現，航跡呈現航速明顯提升特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-17', 
+'article_date_iso': '2025-01-17', 'subject': '052D 驅逐艦_017_68', 'article_title': '(1)114 年 01 月 17 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'7fd720805d6077446d02d4acdd898c1fc561f889', 'text': '今日 0710 起，空偵站掌握對岸活動跡象，約 0727 時雷達偵獲 052D 
+驅逐艦 於 東海 一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-28', 
+'article_date_iso': '2025-01-28', 'subject': '052D 驅逐艦_028_9', 'article_title': '(1)114 年 01 月 28 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'c4103c44db15f8cda903fda05a819850bb5aa554', 'text': '今日 0908 起，空偵站掌握對岸活動跡象，約 0723 時雷達偵獲 052D 
+驅逐艦 於 巴士海峽 一帶出現，航跡呈現通信頻率升高特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-27', 
+'article_date_iso': '2025-01-27', 'subject': '052D 驅逐艦_027_51', 'article_title': '（1）114 年 01 月 27 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'458e467b65bf4bd403ab5d6deb61347bb415408e', 'text': '今日 0716 起，空偵站掌握對岸活動跡象，約 0719 時雷達偵獲 052D 
+驅逐艦 於 宮古水道 一帶出現，航跡呈現通信頻率升高特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-26', 
+'article_date_iso': '2025-01-26', 'subject': '052D 驅逐艦_026_72', 'article_title': '（1）114 年 01 月 26 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'a3936fcf28665e725717dc79a4e065c26f0e6a2a', 'text': '今日 0813 起，空偵站掌握對岸活動跡象，約 0727 時雷達偵獲 052D 
+驅逐艦 於 福建外海 一帶出現，航跡呈現航速明顯提升特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-26', 
+'article_date_iso': '2025-01-26', 'subject': '052D 驅逐艦_026_31', 'article_title': '（1）114 年 01 月 26 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'da1c4947260ca1b71a6ac5a407bedab323ddde69', 'text': '今日 0529 起，空偵站掌握對岸活動跡象，約 0718 時雷達偵獲 052D 
+驅逐艦 於 宮古水道 一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-20', 
+'article_date_iso': '2025-01-20', 'subject': '052D 驅逐艦_020_72', 'article_title': '(1)114 年 01 月 20 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'38dd87f5102fce34f662ed3eec19df28420efcf7', 'text': '今日 0521 起，空偵站掌握對岸活動跡象，約 0747 時雷達偵獲 052D 
+驅逐艦 於 巴士海峽 一帶出現，航跡呈現高度快速變化特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-20', 
+'article_date_iso': '2025-01-20', 'subject': '052D 驅逐艦_020_40', 'article_title': '(1)114 年 01 月 20 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'757d43e0b23fb59d4883189420f43665ced6fd55', 'text': '今日 0832 起，空偵站掌握對岸活動跡象，約 0718 時雷達偵獲 052D 
+驅逐艦 於 巴士海峽 一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-19', 
+'article_date_iso': '2025-01-19', 'subject': '052D 驅逐艦_019_38', 'article_title': '114 年 01 月 19 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'11954ed1b8ecf367e7471b7b0d05ca43d01be9f1', 'text': '今日 0838 起，空偵站掌握對岸活動跡象，約 0730 時雷達偵獲 052D 
+驅逐艦 於 宮古水道 一帶出現，\n航跡呈現航速明顯提升特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-19', 
+'article_date_iso': '2025-01-19', 'subject': '052D 驅逐艦_019_4', 'article_title': '（1）114 年 01 月 19 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'bb0a9b8330299220261276f70f9e35895bc37e00', 'text': '今日 0530 起，空偵站掌握對岸活動跡象，約 0730 時雷達偵獲 052D 
+驅逐艦 於 浙江外海 一帶出現，航跡呈現高度快速變化特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-18', 
+'article_date_iso': '2025-01-18', 'subject': '052D 驅逐艦_018_94', 'article_title': '114 年 01 月 18 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'132d639085b5aae93026fde41b058f33b5d20e89', 'text': '今日 0932 起，空偵站掌握對岸活動跡象，約 0745 時雷達偵獲 052D 
+驅逐艦 於 廣東沿岸 一帶出現，航跡呈現通信頻率升高特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-18', 
+'article_date_iso': '2025-01-18', 'subject': '052D 驅逐艦_018_31', 'article_title': '114 年 01 月 18 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'ae695a4c587d1833a033337835a503ff75815987', 'text': '今日 0748 起，空偵站掌握對岸活動跡象，約 0751 時雷達偵獲 052D 
+驅逐艦 於 浙江外海 一帶出現，航跡呈現雷達回波異常特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-17', 
+'article_date_iso': '2025-01-17', 'subject': '052D 驅逐艦_017_50', 'article_title': '114 年 01 月 17 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}, {'uuid': 
+'8fd503e48273da96e64eaf893d3797ce74d25a9f', 'text': '今日 0528 起，空偵站掌握對岸活動跡象，約 0753 時雷達偵獲 052D 
+驅逐艦 於 福建外海 一帶出現，航跡呈現接近邊界後折返特徵，速度與高度均較例行巡弋偏高。', 'date_iso': '2025-01-17', 
+'article_date_iso': '2025-01-17', 'subject': '052D 驅逐艦_017_92', 'article_title': '114 年 01 月 17 日情勢摘要', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['052D', '052D驅逐艦']}]}}}
+[Step 1: Duration 32.32 seconds| Input tokens: 6,108 | Output tokens: 1,297]
 === DEBUG: EV (for LLM) ===
 {'ref_no': 1, 'id': '79885f3ee0ddf8407420106aab2b18ec28729769', 'd': '2025-01-06', 'title': '114/01/06 聯合情監偵綜整回報', 'note_preview': '0634 雷達偵獲 052D 驅逐艦 於 宮古水道 出現，活動頻度略增。'}
 {'ref_no': 2, 'id': '1f66843c56c5dae964305b4cddeaae24a6ca18a7', 'd': '2025-01-16', 'title': '（1）114/01/16 聯合情監偵綜整回報', 'note_preview': '0650 雷達偵獲 052D 驅逐艦 於 浙江外海 出現，活動頻度略增。'}
@@ -578,5 +577,16 @@ None, 'source_id': None, 'synonym_hits': ['052D驅逐艦', '052D']}, {'uuid': 'd
 ==================================================
 [call_llm] sys_len=1789, user_len=6225, user_preview='{"q":"我想要知道052D在2025年1月的活動趨勢。","t":["2025-01-01","2025-01-31"],"agg":{"docs":30,"snips":30,"active_days":10,"month":[["2025-01",30]],"quarter":[["2025-Q1",30]],"peak_days":[["2025-01-17",5],["2025-01-27",5],["2025-01-16",4],["2025-01-19",4],["2025-01-18",3]],"first_last":["2025-01-06","2025-01-29"]},"ev":[{"ref_no":1,"id":"79885f3ee0ddf8407420106aab2b18ec28729769","d":"2025-01-06","title":"114/01/06 聯合情監偵綜整回報","s":"052D 驅逐艦_006_48","note":"0634 雷達偵獲 052D 驅逐艦 於 宮古水道 出現，活動頻度略增。"},{"ref_no":2,"id":'
 [call_llm] system_preview=' 你是一個『資料驅動的分析助手』。  你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：  {   "q": "使用者原始問題",   "t": ["date_from 或 null", "date_to 或 null"],   "agg": {     "docs": 整體文件數,     "snips": 整體片段數,     "active_days": 有活動紀錄的天數,     "month": [ ["YYYY-MM", count], ... ],     "quarter": [ ["YYYY-Qx", count], ... ],     "peak_days": [ ["YYYY-MM-DD", count], ... ],   # 活動最集中的幾天     "first_last": ["第一天日期", "最後一天日期"]   },   "'
-=== /v1/chat/completions 發生例外 ===
-INFO:     192.168.0.134:53212 - "POST /v1/chat/completions HTTP/1.1" 500 Internal Server Error
+[render_markdown] json_line_count = 393 AUTO_COLLAPSE_JSON = True
+[render_markdown] json_line_count = 393 AUTO_COLLAPSE_JSON = True
+[chat_completions] saved _last_structured for 'dc8f46f4-a449-4b5f-a527-92e6c5b9055b' used_uuids = ['79885f3ee0ddf8407420106aab2b18ec28729769', '1f66843c56c5dae964305b4cddeaae24a6ca18a7', 'b35cd7d5e589b50ca0b1a917dc2503b15649ae00', 'f3340f0d1d6056069681f4e19bf6da1bafffe3d6', '50df06c2baffdaeffc0157510caa2bf34e9b89c9', '6d2ba3542162f9add89a23147dbd71229b753c07', '8fd503e48273da96e64eaf893d3797ce74d25a9f', 'ae695a4c587d1833a033337835a503ff75815987', 'b116f154ebd3e34d73239b021d80b7a1fcb102dd', '132d639085b5aae93026fde41b058f33b5d20e89', '2037a3e82d24bc21d2543426e3268b12fdaaba72', 'bb0a9b8330299220261276f70f9e35895bc37e00', '11954ed1b8ecf367e7471b7b0d05ca43d01be9f1', '380bcf26eda9aab3258fe9cd4ec989a3a045da91', '757d43e0b23fb59d4883189420f43665ced6fd55', 'ffc471f8b3e05f88837c37bed7317140865c3fec', '38dd87f5102fce34f662ed3eec19df28420efcf7', 'da1c4947260ca1b71a6ac5a407bedab323ddde69', 'f7d38c4ee2efcac532d08f065df26fcd76f83389', '458e467b65bf4bd403ab5d6deb61347bb415408e', 'a3936fcf28665e725717dc79a4e065c26f0e6a2a', 'a95cf126d5ca8719f0b9b559dd8308bae6b3cb27', 'c4103c44db15f8cda903fda05a819850bb5aa554', 'cc0467c3a364a354c7b0a2afdc5ccf4a0b271945', 'e279efb556ccd67288da6bb66834b0d8bde10871', 'f5558a344b5cb97f88f84b45537cce17e33cb6a5', '7fd720805d6077446d02d4acdd898c1fc561f889', '9d96b0378aabd8e3628156a2ce1a63a9ffe130c1', '363165442bb9562af7ffe02a967796585007a541']
+INFO:     192.168.0.134:38118 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:55286 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'dc8f46f4-a449-4b5f-a527-92e6c5b9055b'
+INFO:     192.168.0.134:55292 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:45420 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'dc8f46f4-a449-4b5f-a527-92e6c5b9055b'
+INFO:     192.168.0.134:45428 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:45440 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'dc8f46f4-a449-4b5f-a527-92e6c5b9055b'
+INFO:     192.168.0.134:45448 - "POST /v1/chat/completions HTTP/1.1" 200 OK
