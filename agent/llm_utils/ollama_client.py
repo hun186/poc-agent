@@ -1,7 +1,8 @@
 # agent/llm_utils/ollama_client.py
+#print("### LOADED ollama_client.py FROM:", __file__)
 
 import os
-import json
+#import json
 from typing import Optional, Dict, List, Any
 
 import requests
@@ -167,12 +168,15 @@ def call_llm(
     - 內部自動組成 /api/chat 的 messages
     - 有需要才另外傳 system_prompt
     """
+    #raise RuntimeError("### call_llm WAS CALLED ###")
     prompt = (prompt or "").strip()
     if not prompt:
         return ""
 
     # ==== 精簡版 debug log（不再印全文） ====
     debug = os.getenv("DEBUG_CALL_LLM", "1") == "1"   # 想完全關掉就設成 0
+    #debug = True
+    #print("debug in call_llm",debug)
     if debug:
         sp = (system_prompt or "").replace("\n", " ")
         up = prompt.replace("\n", " ")

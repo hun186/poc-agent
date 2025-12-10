@@ -1,0 +1,1 @@
+cd D:\shared\TopicClassification\poc-agent&& uvicorn api.min_main:app --host 0.0.0.0 --port 8001

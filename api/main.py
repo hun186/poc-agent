@@ -1,5 +1,8 @@
 #api/main.py
-#cd D:\shared\TopicClassification\poc-agent&& uvicorn api.main:app --host 0.0.0.0 --port 9001
+#cd D:\shared\TopicClassification\poc-agent&& uvicorn api.main:app --host 0.0.0.0 --port 9002
+#cd /mntCZJ/TopicClassification/poc-agent&& uvicorn api.main:app --host 0.0.0.0 --port 9002
+#http://192.168.0.228:9002/v1
+#http://192.168.0.133:9002/v1
 import os, json, time
 import re
 from typing import Any, Dict, List
@@ -23,9 +26,15 @@ import hashlib
 from agent.agent import answer_with_routing
 
 from agent.direct_llm_json import OpenAIStyleOllama, task_tags, task_title, task_followups
-from api.core.markdown_renderer import render_markdown
+from api.services.markdown_renderer import render_markdown
 from api.core.url_utils import abs_url
-
+from api.core.settings import json_llm,ES_INDEXES,ES
+from api.services.sessions import ChatMessage
+from api.services.sessions import pack_chat_history
+from api.services.sessions import infer_session_key_from_payload
+from api.services.sessions import choose_assistant_save
+from api.services.sessions import get_sessions,get_last_structured,MAX_SESSIONS
+'''
 #SRA模型代理人API
 PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE")
 print("PUBLIC_API_BASE",PUBLIC_API_BASE)
@@ -35,13 +44,7 @@ json_llm = OpenAIStyleOllama(
     model=os.getenv("MODEL_ID", "gpt-oss:120b-32k"),
     temperature=float(os.getenv("MODEL_TEMPERATURE", "0")),
 )
-
-
-
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-    format: str | None = "markdown"   # ← 新增
+'''
 
 class ChatPayload(BaseModel):
     model: str = "SRA-Structured Retrieval Agent"
@@ -50,14 +53,6 @@ class ChatPayload(BaseModel):
     format: str | None = "markdown"   # ← 新增
     
 
-# ===== Session store（簡易記憶）=====
-SESSION_MAX_TURNS = int(os.getenv("SESSION_MAX_TURNS", "20"))
-_sessions: dict[str, deque[ChatMessage]] = defaultdict(lambda: deque(maxlen=SESSION_MAX_TURNS))
-_last_structured: dict[str, dict] = {}     # 會話 -> 上一輪 out（answer/citations/reasoning）
-
-
-# ★ 最多保留多少個 session，超過就淘汰最舊的一個
-MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "100"))
 
 
 
@@ -80,126 +75,12 @@ def _strip_code_fences(s: str) -> str:
         s = re.sub(r"\s*```$", "", s)
     return s.strip()
 
-def _normalize_newlines_for_save(s: str) -> str:
-    # 把 \r\n → \n，並把「字面上的」\n 變成真正的換行
-    return (s or "").replace("\r\n", "\n").replace("\\n", "\n").strip()
 
 
-# 多輪對話：抽前文答覆的「主文」，避免把 citations / details 整坨塞回模型
-HISTORY_MAX_CHARS = int(os.getenv("HISTORY_MAX_CHARS", "12000"))
 
-# 允許 "# 回答" 或純文字 "回答" 開頭；
-# 主文擷取到「## 來源 / Citations」或「## 原始」或 <details> 或字串結尾 \Z 為止
-ANSWER_BLOCK_RE = re.compile(
-    r'(?su)^\s*(?:#\s*回答|回答)\s*\n'   # ^ 只錨定字串開頭，不要 multiline
-    r'(?P<body>.*?)'
-    r'(?=\n(?:'
-        r'##\s*(?:來源|来源)\b'           # ## 來源
-        r'|##\s*Citations\b'              # ## Citations
-        r'|來源\s*/?\s*Citations'         # 來源 / Citations（保險，不一定有 ##）
-        r'|##\s*(?:原始|原始\s*JSON)\b'   # ## 原始 / ## 原始 JSON
-        r'|<details>'                     # <details>（推理/原始JSON 可能用 details）
-        r'|\Z'                            # ✅ 僅匹配字串結尾（避免每行行尾）
-    r'))'
-)
 
-# 與上面白名單一致；無需 $，所以不受 multiline 影響
-_CUTOFF_RE = re.compile(
-    r'\n(?:##\s*(?:來源|来源|Citations|原始|原始\s*JSON)\b|來源\s*/?\s*Citations|<details>)',
-    re.I
-)
 
-def _strip_assistant_content(s: str) -> str:
-    # 先正規化換行，避免 CRLF 或字面 "\n" 影響邊界
-    s = _normalize_newlines_for_save((s or "").strip())
-    if not s:
-        return s
-    m = ANSWER_BLOCK_RE.search(s)
-    if m:
-        return m.group("body").strip()
-    # Fallback：找白名單分隔符直接截
-    return _CUTOFF_RE.split(s, 1)[0].strip()
 
-def pack_chat_history(messages: list[ChatMessage], *, max_chars: int = HISTORY_MAX_CHARS) -> str:
-    """
-    將過往 system/user/assistant 簡化為：
-      SYSTEM: ...
-      USER: ...
-      ASSISTANT: ...(只留主文)
-    並限制長度（保留最近 max_chars 字元）。
-    """
-    lines: list[str] = []
-    for m in messages:
-        role = (m.role or "").lower()
-        if role not in ("system", "user", "assistant"):
-            continue
-        content = (m.content or "").strip()
-        if not content:
-            continue
-        if role == "assistant":
-            #print("content before",content)
-            content = _strip_assistant_content(content)
-            #print("content after _strip_assistant_content",content)
-            content = _normalize_newlines_for_save(content)
-            #print("content after _normalize_newlines_for_save",content)
-        lines.append(f"{role.upper()}:\n{content}\n")
-    s = "".join(lines)
-    if len(s) > max_chars:
-        s = s[-max_chars:]   # 保留最近的上下文
-    return s
-
-def _infer_session_key_from_payload(messages: list[ChatMessage]) -> str:
-    """
-    若前端沒帶 header，就用「第一個 user 訊息」的內容做 hash 當 session_key。
-    同一個聊天室第一句不變 → session_key 穩定；不同聊天室 → 自然不同。
-    """
-    first_user = ""
-    for m in messages:
-        role = (m.role or "").lower()
-        if role == "user":
-            txt = (m.content or "").strip()
-            if txt:
-                first_user = txt
-                break
-
-    if not first_user:
-        # 沒有 user 訊息，就退回用遞增編號（很少發生）
-        return f"conv_{len(_sessions) + 1}"
-
-    h = hashlib.sha256(first_user.encode("utf-8")).hexdigest()[:16]
-    return f"conv_{h}"
-
-def _best_assistant_text(session_id: str, maybe_text_from_client: str) -> str:
-    """
-    優先使用我們剛剛保存的完整渲染文本；若無則用前端回傳的。
-    """
-    if session_id and session_id in _sessions:
-        # 在 deque 尾端尋找最近一則 assistant
-        for m in reversed(_sessions[session_id]):
-            if (getattr(m, "role", "") or "").lower() == "assistant":
-                return str(m.content or "").strip() or maybe_text_from_client
-    return maybe_text_from_client
-
-def _choose_assistant_save(out: Any, rendered_text: str) -> str:
-    """
-    優先使用 out['answer']；若太短或行數太少，回退渲染後 Markdown 的『純主文』。
-    返回前一律做換行正規化，避免把 '\\n' 存進 session。
-    """
-    def _is_rich(txt: str) -> bool:
-        txt = (txt or "").strip()
-        return len(txt) >= 80 or txt.count("\n") >= 2  # 足夠長或至少兩行
-
-    if isinstance(out, dict):
-        body = str(out.get("answer") or "")
-        if _is_rich(body):
-            return _normalize_newlines_for_save(body)
-        pure = _strip_assistant_content(str(rendered_text))
-        # 二選一取較長者，並正規化
-        better = pure if len(pure) > len(body) else body
-        return _normalize_newlines_for_save(better)
-
-    # out 不是 dict：直接抽純主文並正規化
-    return _normalize_newlines_for_save(_strip_assistant_content(str(rendered_text)))
 
 app = FastAPI(title="SRA-Structured Retrieval Agent (OpenAI-compatible)", version="1.0.0")
 app.add_middleware(
@@ -311,6 +192,8 @@ def list_models():
 
 @app.post("/v1/chat/completions")
 def chat_completions(payload: ChatPayload, request: Request):
+    sessions = get_sessions()
+    last_structured = get_last_structured()
     try:
         # 0) 決定 session_key：優先用 header，否則用「第一個 user 訊息 hash」
         raw_header_session = (
@@ -326,7 +209,7 @@ def chat_completions(payload: ChatPayload, request: Request):
         if raw_header_session:
             session_key = raw_header_session
         else:
-            session_key = _infer_session_key_from_payload(payload.messages or [])
+            session_key = infer_session_key_from_payload(payload.messages or [])
         
         print("[chat_completions] chosen session_key =", repr(session_key))
         # 1) 前置 system + 取最後一則 user（保持原本邏輯）
@@ -349,8 +232,8 @@ def chat_completions(payload: ChatPayload, request: Request):
         # >>> 新增：若是 WebUI 的 JSON 分析任務，直接用 json_llm 產生，繞開 CodeAgent <<<
         kind = _detect_meta_kind(query)
         if kind:
-            if session_key in _sessions and len(_sessions[session_key]) > 0:
-                base_history_msgs = list(_sessions[session_key])
+            if session_key in sessions and len(sessions[session_key]) > 0:
+                base_history_msgs = list(sessions[session_key])
             else:
                 base_history_msgs = list(payload.messages)
             
@@ -387,8 +270,8 @@ def chat_completions(payload: ChatPayload, request: Request):
             }
         # 2-2) 否則 → 多輪：把歷史一併送進 Agent
         # 構造可讀歷史：優先使用我們保存於 session 的乾淨主文
-        if session_key in _sessions and len(_sessions[session_key]) > 0:
-            history_msgs = list(_sessions[session_key])
+        if session_key in sessions and len(sessions[session_key]) > 0:
+            history_msgs = list(sessions[session_key])
         else:
             history_msgs = list(payload.messages[:-1])
 
@@ -421,8 +304,8 @@ def chat_completions(payload: ChatPayload, request: Request):
         refno_uuid_map: dict[int, str] | None = None
 
         # 2-1) 第一優先：這個 session 自己上一輪的 structured out
-        if session_key in _last_structured:
-            prev_out = _last_structured.get(session_key) or {}
+        if session_key in last_structured:
+            prev_out = last_structured.get(session_key) or {}
 
             # a) 撿可重用的 uuid（給 DOC_FOLLOWUP / ESFetchDocById）
             reuse_uuids = _collect_reuse_from(prev_out)
@@ -517,26 +400,26 @@ def chat_completions(payload: ChatPayload, request: Request):
         
         # 6) 保存本輪到會話歷史 & 更新通用記憶
         try:
-            _sessions[session_key].append(ChatMessage(role="user", content=user_msg))
+            sessions[session_key].append(ChatMessage(role="user", content=user_msg))
             rendered_full = render_markdown(out, request) if isinstance(out, dict) else str(out)
-            assistant_save = _choose_assistant_save(out, rendered_full)
-            _sessions[session_key].append(ChatMessage(role="assistant", content=assistant_save))
+            assistant_save = choose_assistant_save(out, rendered_full)
+            sessions[session_key].append(ChatMessage(role="assistant", content=assistant_save))
 
             if isinstance(out, dict):
                 mode = out.get("mode")
                 if mode in ("SRA_REPORT", "SRA_STYLE", "DOC_FOLLOWUP"):
-                   _last_structured[session_key] = out
+                   last_structured[session_key] = out
                 else:
                    # PURE_LLM 或其他模式就不要沿用 used_uuids，避免污染
-                   _last_structured.pop(session_key, None)
+                   last_structured.pop(session_key, None)
 
                 print(
-                    "[chat_completions] saved _last_structured for",
+                    "[chat_completions] saved last_structured for",
                    repr(session_key),
                     "used_uuids =", out.get("used_uuids")
                 )
 
-            tail_msgs = list(_sessions[session_key])[-6:]
+            tail_msgs = list(sessions[session_key])[-6:]
             tail_text = pack_chat_history(tail_msgs, max_chars=4000)
             _update_memory(session_key, tail_text, out if isinstance(out, dict) else None)
    
@@ -544,13 +427,13 @@ def chat_completions(payload: ChatPayload, request: Request):
 
 
             # ★★★ 新增：若 session 數量超過上限，就淘汰最舊的一個，避免一直堆記憶體
-            if len(_sessions) > MAX_SESSIONS:
-                victim_key = next(iter(_sessions))  # dict 有插入順序，抓第一個當最舊
+            if len(sessions) > MAX_SESSIONS:
+                victim_key = next(iter(sessions))  # dict 有插入順序，抓第一個當最舊
                 print("[chat_completions] evict session:", repr(victim_key))
 
-                _sessions.pop(victim_key, None)
+                sessions.pop(victim_key, None)
                 _memory.pop(victim_key, None)
-                _last_structured.pop(victim_key, None)
+                last_structured.pop(victim_key, None)
 
 
 
@@ -566,6 +449,7 @@ def chat_completions(payload: ChatPayload, request: Request):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+'''
 ES_URL = os.getenv("ES_URL")
 ES_USERNAME = os.getenv("ES_USERNAME")
 ES_PASSWORD = os.getenv("ES_PASSWORD")
@@ -586,7 +470,7 @@ ES = Elasticsearch(
     )
 print("Connecting to ES...")
 print(ES.info())
-
+'''
 
 
 

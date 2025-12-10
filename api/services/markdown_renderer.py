@@ -1,4 +1,4 @@
-#api/core/markdown_renderer.py
+#api/services/markdown_renderer.py
 import os
 import re
 import html

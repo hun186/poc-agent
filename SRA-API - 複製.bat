@@ -1,0 +1,1 @@
+cd D:\shared\TopicClassification\poc-agent&& del SRA-API_output.txt && uvicorn api.main:app --host 0.0.0.0 --port 9002 >> SRA-API_output.txt
