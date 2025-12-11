@@ -2,6 +2,7 @@
 import os
 from elasticsearch import Elasticsearch
 from agent.direct_llm_json import OpenAIStyleOllama
+from agent.config.index_loader import INDEX_CONFIG   # ★ 新增：跟 agent 共用 index 設定
 
 # ===== LLM / 模型設定 =====
 PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE")
@@ -16,10 +17,35 @@ json_llm = OpenAIStyleOllama(
 ES_URL = os.getenv("ES_URL")
 ES_USERNAME = os.getenv("ES_USERNAME")
 ES_PASSWORD = os.getenv("ES_PASSWORD")
-ES_INDEX_RAW = os.getenv("ES_INDEX", "news_test,mil_reports-01")
+#ES_INDEX_RAW = os.getenv("ES_INDEX", "news_test,mil_reports-01")
 CA_CERT = "agent/certs/http_ca.crt"
 
-ES_INDEXES = [idx.strip() for idx in ES_INDEX_RAW.split(",") if idx.strip()]
+#ES_INDEXES = [idx.strip() for idx in ES_INDEX_RAW.split(",") if idx.strip()]
+
+# ---- 1) 從 .env 讀 ES_INDEX（維持相容），如果沒設就用設定檔 default_index ----
+default_idx_from_cfg = INDEX_CONFIG.get("default_index", "news_test")
+ES_INDEX_RAW = os.getenv("ES_INDEX", default_idx_from_cfg)
+ES_INDEXES_ENV = [idx.strip() for idx in ES_INDEX_RAW.split(",") if idx.strip()]
+
+# ---- 2) 從 INDEX_CONFIG.topic_index_map 收集所有 index ----
+topic_map = INDEX_CONFIG.get("topic_index_map", {}) or {}
+cfg_indexes: list[str] = []
+for cfg in topic_map.values():
+    for idx in cfg.get("indexes") or []:
+        if idx and idx not in cfg_indexes:
+            cfg_indexes.append(idx)
+
+# ---- 3) 合併去重：環境變數優先，其次設定檔 ----
+ALL_INDEXES: list[str] = []
+for idx in ES_INDEXES_ENV + cfg_indexes:
+    if idx and idx not in ALL_INDEXES:
+        ALL_INDEXES.append(idx)
+
+# 為了向後相容：原本有在用 ES_INDEXES 的地方，直接等於 ALL_INDEXES
+ES_INDEXES = ALL_INDEXES
+
+
+
 
 ES = Elasticsearch(
     ES_URL,
@@ -30,3 +56,4 @@ ES = Elasticsearch(
 
 print("Connecting to ES...")
 print(ES.info())
+print("ALL_INDEXES =", ALL_INDEXES)  # ★ 看一下最後實際會查哪些 index
