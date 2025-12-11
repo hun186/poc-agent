@@ -1,0 +1,84 @@
+{
+  "session_id": "83a64f7b-fc9d-4af6-ac5f-513ca9d1deba",
+  "request_id": "f79bf185dd6e453a8d4493559d17b065",
+  "ts": "2025-12-11T18:00:40",
+  "user": {
+    "latest_question": "請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "SRA_REPORT",
+    "topic": "news_general",
+    "indexes": [
+      "news_test"
+    ],
+    "index_hint": "news_test",
+    "route_raw": {
+      "mode": "SRA_REPORT",
+      "reason": "使用者要求整理特定時間段的事件、引用來源、趨勢與SWOT分析，屬於彙整與分析報告的需求。",
+      "topic": "news_general"
+    }
+  },
+  "keywords": {
+    "q_for_agent": "[ES_INDEX_HINT=news_test]\n【對話歷史】\n\n\n【目前問題】\n請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 63.32003307342529,
+    "total_sec": 85.04524493217468
+  },
+  "llm": {},
+  "output": {
+    "answer_preview": "# 回答\n\n\n**敘利亞化學武器情況（2013 ~ 2017）綜合報告**  \n（約 2000 字）\n\n---\n\n## 一、資料概況  \n\n| 項目 | 數值 |\n|------|------|\n| 總文件數（docs） | 7 |\n| 片段數（snips） | 11 |\n| 活動天數（active_days） | 7 |\n| 觀測期間 | 2013‑03‑19　至　2017‑06‑01 |\n| ",
+    "answer_length": 19188
+  },
+  "data_agent": {
+    "runs": [
+      {
+        "mode": "report",
+        "elapsed_sec": 38.147,
+        "question": "請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。",
+        "time_range": {
+          "date_from": "2013-01-01",
+          "date_to": "2017-12-31"
+        },
+        "stats": {
+          "doc_count": 7,
+          "snippet_count": 11,
+          "active_days": 7
+        },
+        "query_meta": {
+          "core_terms": [
+            "敘利亞",
+            "化學武器"
+          ],
+          "topic_terms": [],
+          "core_query": "敘利亞 化學武器",
+          "syn_terms": [
+            "Syria",
+            "Syrian Arab Republic",
+            "敘利亞阿拉伯共和國",
+            "chemical weapons",
+            "化學兵器",
+            "化武",
+            "化學戰"
+          ],
+          "effective_terms": [
+            "敘利亞",
+            "化學武器",
+            "Syria",
+            "Syrian Arab Republic",
+            "敘利亞阿拉伯共和國",
+            "chemical weapons",
+            "化學兵器",
+            "化武",
+            "化學戰"
+          ],
+          "es_query": "敘利亞 化學武器",
+          "date_from": "2013-01-01",
+          "date_to": "2017-12-31"
+        }
+      }
+    ]
+  }
+}

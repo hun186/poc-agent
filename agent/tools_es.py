@@ -1823,9 +1823,35 @@ class ESSearchNews(Tool):
             f"effective_terms={effective_terms}, "
             f"synonym_hit_snippets={syn_snippets}"
         )
+        # ★ 統一把這輪查詢的關鍵字／同義詞／時間範圍整理成 query_meta
+        query_meta = {
+            # 原始使用者查詢
+            "query": raw_query,
+
+            # 實際 ES 用的查詢字串（目前就是 raw_query，你之後要加特殊語法也可以改這裡）
+            "es_query": es_query,
+
+            # 主題相關詞
+            "topic_terms": topic_terms,           # 規則抽出來的主題詞
+            "core_terms": core_terms,             # LLM + 平台家族合併後的代表詞
+            "syn_terms": syn_terms_flat,          # 扁平化的同義詞
+            "effective_terms": effective_terms,   # 核心 + 同義詞（給 snippet 過濾 / fallback 用）
+
+            # 查詢型態資訊
+            "platform_terms_in_q": platform_terms_in_q,
+            "is_platform_query": is_platform_query,
+            # term_groups 是 list[set]，轉成 list[list] 比較好序列化
+            "term_groups": [sorted(list(g)) for g in term_groups],
+
+            # 時間條件（和 aggregate 的 time_range 對應）
+            "date_from": date_from,
+            "date_to": date_to,
+        }
+
         return {
             "hits": filtered_hits,
-            "evidence_snippets": evidence_snippets
+            "evidence_snippets": evidence_snippets,
+            "query_meta": query_meta,   # ★ 新增
         }
 
 

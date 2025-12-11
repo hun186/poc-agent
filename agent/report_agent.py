@@ -1,6 +1,7 @@
 #agent/report_agent.py
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import json
+import time
 from .data_agent import _run_data_agent
 #from .tools_es import ESSearchNews, ESTimeline, ESFetchDocById
 #from .tools_stats import AggregateMonthQuarter
@@ -179,8 +180,15 @@ class ReportAgent:
         result = ask_with_report(query)
         return result.get("answer", "").strip() or "[系統沒有產生任何文字答案]"
     
-def ask_with_report(question: str) -> Dict[str, Any]:
-    payload = _run_data_agent(question, mode="report")
+#def ask_with_report_1211(question: str) -> Dict[str, Any]:
+def ask_with_report(
+    question: str,
+    trace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if trace is None:
+        trace = {}
+    #payload = _run_data_agent(question, mode="report")
+    payload = _run_data_agent(question, mode="report", trace=trace)
 
     # === 精簡版（給報告 LLM 用） ===
     compressed_for_llm = {
@@ -229,7 +237,7 @@ def ask_with_report(question: str) -> Dict[str, Any]:
         ensure_ascii=False,
         separators=(",", ":")
     )
-
+    
     ev_for_llm = ev_compact
     print("=== DEBUG: EV (for LLM) ===")
     for e in ev_for_llm:
@@ -240,14 +248,25 @@ def ask_with_report(question: str) -> Dict[str, Any]:
             "title": e.get("title"),
             "note_preview": (e.get("note") or "")[:100].replace("\n", " ")
         })
-
+    t0 = time.perf_counter()
     report_text = call_llm(
         user_prompt,
         system_prompt=REPORT_SYSTEM_PROMPT,
         extra_params={"options": {}},
         timeout=180.0,
     )
+    t1 = time.perf_counter()
 
+    # ★ 把這次報告 LLM 寫到 trace["llm"]["report"]
+    llm_root = trace.setdefault("llm", {})
+    report_logs: list[Dict[str, Any]] = llm_root.setdefault("report", [])
+    report_logs.append({
+        "system": "REPORT_SYSTEM_PROMPT",
+        "user": user_prompt,
+        "answer_preview": (report_text[:200] if isinstance(report_text, str) else str(report_text)[:200]),
+        "elapsed_sec": round(t1 - t0, 3),
+    })
+    
     # === evidence_snippets 仍可保留給其他用途（例如前端展開全文），但不再用來建 citations ===
     ev_for_frontend = payload.get("evidence_snippets") or []
     if len(ev_for_frontend) > 150:

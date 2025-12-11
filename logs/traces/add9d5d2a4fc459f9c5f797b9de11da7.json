@@ -1,0 +1,78 @@
+{
+  "session_id": "92b3c5c3-64ee-4426-a630-738ab4621deb",
+  "request_id": "add9d5d2a4fc459f9c5f797b9de11da7",
+  "ts": "2025-12-11T18:09:34",
+  "user": {
+    "latest_question": "我想要知道052D在2025年1月的活動趨勢。",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "SRA_REPORT",
+    "topic": "mil_intel",
+    "indexes": [
+      "mil_reports-01"
+    ],
+    "index_hint": "mil_reports-01",
+    "route_raw": {
+      "mode": "SRA_REPORT",
+      "reason": "使用者要求整理與分析 052D 在 2025 年 1 月的活動趨勢，屬於統計/趨勢分析需求",
+      "topic": "mil_intel"
+    }
+  },
+  "keywords": {
+    "q_for_agent": "[ES_INDEX_HINT=mil_reports-01]\n【對話歷史】\n\n\n【目前問題】\n我想要知道052D在2025年1月的活動趨勢。\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 113.12134552001953,
+    "total_sec": 139.39658045768738
+  },
+  "llm": {},
+  "output": {
+    "answer_preview": "# 回答\n\n\n**一、資料概況**  \n\n| 項目 | 數值 |\n|------|------|\n| 文件（docs）/ 片段（snips）總數 | 30 / 30 |\n| 活躍天數（active_days） | 10 天（2025‑01‑06 ~ 2025‑01‑29） |\n| 觀測月份 | 2025‑01（共 30 片段） |\n| 季度分布 | 2025‑Q1（30 片段） |\n| 高峰日（p",
+    "answer_length": 33823
+  },
+  "data_agent": {
+    "runs": [
+      {
+        "mode": "report",
+        "elapsed_sec": 38.505,
+        "question": "我想要知道052D在2025年1月的活動趨勢。",
+        "time_range": {
+          "date_from": "2025-01-01",
+          "date_to": "2025-01-31"
+        },
+        "stats": {
+          "doc_count": 30,
+          "snippet_count": 30,
+          "active_days": 10
+        },
+        "query_meta": {
+          "core_terms": [
+            "052D"
+          ],
+          "topic_terms": [],
+          "core_query": "052D",
+          "syn_terms": [
+            "052D型驅逐艦",
+            "052D驅逐艦",
+            "052D神盾艦",
+            "052D型",
+            "052D型飛彈驅逐艦"
+          ],
+          "effective_terms": [
+            "052D",
+            "052D型驅逐艦",
+            "052D驅逐艦",
+            "052D神盾艦",
+            "052D型",
+            "052D型飛彈驅逐艦"
+          ],
+          "es_query": "052D",
+          "date_from": "2025-01-01",
+          "date_to": "2025-01-31"
+        }
+      }
+    ]
+  }
+}

@@ -1,6 +1,7 @@
 # agent/data_agent.py
 import os
-from typing import Any, Dict
+import time  # ★ 檔案上方記得有這行，如果沒有就加
+from typing import Any, Dict, Optional
 from .tools_es import ESSearchNews, ESTimeline, ESFetchDocById
 from .tools_stats import AggregateMonthQuarter
 from smolagents import CodeAgent, LiteLLMModel, PythonInterpreterTool
@@ -582,6 +583,32 @@ REPORT_DATA_SYSTEM = """
 
 5. 把要給報告 LLM 用的內容組成 payload，至少包含：
 
+   # 從 ES 工具回傳裡抓出 query_meta（找不到就給空 dict）
+   search_qm = (search_result.get("query_meta") or {}) if isinstance(search_result, dict) else {}
+
+   # 先整理這一輪查詢的 meta 資訊，方便之後寫進 trace / log
+   query_meta = {
+       # 1) 本輪實際用來查 ES 的關鍵字 / 主題詞
+       "core_terms":   core_terms,                               # 你在 Agent 裡自己算的（如果有）
+       "topic_terms":  topic_terms if "topic_terms" in locals() else [],
+       "core_query":   core_query,                               # 你在前面定義的「核心查詢句」
+
+       # 2) 時間範圍（和 payload["time_range"] 對應）
+       "date_from": date_from,
+       "date_to":   date_to,
+
+       # 3) 從 es_search_news 傳回來的解析結果
+       "syn_terms":        search_qm.get("syn_terms"),
+       "effective_terms":  search_qm.get("effective_terms"),
+       "es_query":         search_qm.get("es_query"),
+
+       # 4) 其他想記錄的欄位（可選）
+       "platform_terms_in_q": search_qm.get("platform_terms_in_q"),
+       "is_platform_query":   search_qm.get("is_platform_query"),
+       "term_groups":         search_qm.get("term_groups"),
+       "raw_query":           search_qm.get("query"),
+   }
+
    payload = {
        "question": question,
        "time_range": {
@@ -589,15 +616,18 @@ REPORT_DATA_SYSTEM = """
            "date_to": date_to,
        },
        "stats": {
-           "doc_count": doc_count,
-           "snippet_count": snippet_count,
-           "active_days": active_days,
-           "day_counts": day_counts,
-           "month_counts": month_counts,
+           "doc_count":      doc_count,
+           "snippet_count":  snippet_count,
+           "active_days":    active_days,
+           "day_counts":     day_counts,
+           "month_counts":   month_counts,
            "quarter_counts": quarter_counts,
        },
        "evidence_snippets": evidence_snippets,
        "raw_search_result": search_result,
+
+       # 把這輪查詢用到的關鍵字 / 同義詞 / ES 實際 query 一起塞進來
+       "query_meta": query_meta,
    }
 
 6. 程式最後 **只做一件事**：呼叫 final_answer，回傳 payload，絕對不要在這裡寫完整報告文字。
@@ -1144,8 +1174,118 @@ def build_agent(mode: str = "report"):
 
     return _make_code_agent(tools, model, system_prompt=system_prompt)
 
+def _run_data_agent(
+    question: str,
+    mode: str = "report",
+    trace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    共用一個 CodeAgent 建立邏輯，只是 SYSTEM 不同：
+    - mode="report"：做 SRA_REPORT 的資料準備
+    - mode="style" ：做 SRA_STYLE 的風格語料準備
 
-def _run_data_agent(question: str, mode: str = "report") -> Dict[str, Any]:
+    ★ 新增：
+      - 若有傳入 trace，就在 trace["data_agent"] 底下記錄這次執行的摘要，
+        方便後續輸出 JSON / Excel 做分析。
+    """
+    # 確保 trace 至少是一個 dict（就算上游沒傳也不會炸）
+    if trace is None:
+        trace = {}
+
+    t0 = time.time()
+    code_agent = build_agent(mode=mode)
+    result = code_agent.run(question)
+    elapsed = time.time() - t0
+
+    # === 還原成 payload（維持原本行為） ===
+    if isinstance(result, dict) and "payload" in result:
+        payload = result["payload"]
+    elif isinstance(result, dict):
+        payload = result
+    else:
+        raise ValueError("資料代理人回傳格式非 dict，請檢查 CodeAgent 的 final_answer 使用方式。")
+
+    # === 新增：把這次 data_agent 的摘要寫進 trace ===
+    # 結構大致會是：
+    # trace["data_agent"] = {
+    #   "runs": [
+    #       {
+    #           "mode": "report",
+    #           "elapsed_sec": 1.234,
+    #           "question": "...",
+    #           "time_range": {...},
+    #           "stats": {...}
+    #       },
+    #       ...
+    #   ]
+    # }
+    try:
+        da_root = trace.setdefault("data_agent", {})
+        runs: list[Dict[str, Any]] = da_root.setdefault("runs", [])
+
+        run_info: Dict[str, Any] = {
+            "mode": mode,
+            "elapsed_sec": round(elapsed, 3),
+        }
+
+        # 問題文字（如果 payload 有 question 就記 payload 裡的，否則退回原始 question）
+        run_info["question"] = payload.get("question") or question
+
+        # 報表模式：記 time_range / stats
+        if mode == "report":
+            time_range = payload.get("time_range") or {}
+            stats = payload.get("stats") or {}
+            query_meta = payload.get("query_meta") or {}
+            
+            run_info["time_range"] = {
+                "date_from": time_range.get("date_from"),
+                "date_to": time_range.get("date_to"),
+            }
+            # 只收比較精簡的統計，避免 trace 過胖
+            run_info["stats"] = {
+                "doc_count": stats.get("doc_count"),
+                "snippet_count": stats.get("snippet_count"),
+                "active_days": stats.get("active_days"),
+            }
+            # ★ 新增：把關鍵字相關資訊也記到 log 裡
+            run_info["query_meta"] = {
+                "core_terms":      query_meta.get("core_terms"),
+                "topic_terms":     query_meta.get("topic_terms"),
+                "core_query":      query_meta.get("core_query"),
+                "syn_terms":       query_meta.get("syn_terms"),
+                "effective_terms": query_meta.get("effective_terms"),
+                "es_query":        query_meta.get("es_query"),
+                "date_from":       query_meta.get("date_from"),
+                "date_to":         query_meta.get("date_to"),
+            }
+
+        # 風格模式：記 style_query / stats
+        elif mode == "style":
+            stats = payload.get("stats") or {}
+
+            run_info["style_query"] = payload.get("style_query")
+            run_info["stats"] = {
+                "doc_count": stats.get("doc_count"),
+                "snippet_count": stats.get("snippet_count"),
+                "full_doc_count": stats.get("full_doc_count"),
+            }
+
+        # 其它 mode 先簡單記錄（之後如果擴充再加欄位）
+        else:
+            run_info["extra"] = {
+                "keys_in_payload": list(payload.keys()),
+            }
+
+        runs.append(run_info)
+
+    except Exception as e:
+        # 遙測寫失敗不要影響主流程
+        print("[data_agent] trace logging error:", e)
+
+    return payload
+
+
+def _run_data_agent_1211(question: str, mode: str = "report") -> Dict[str, Any]:
     """
     共用一個 CodeAgent 建立邏輯，只是 SYSTEM 不同：
     - mode="report"：做 SRA_REPORT 的資料準備
