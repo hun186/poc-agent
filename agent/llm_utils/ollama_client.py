@@ -1,8 +1,6 @@
 # agent/llm_utils/ollama_client.py
-#print("### LOADED ollama_client.py FROM:", __file__)
 
 import os
-#import json
 from typing import Optional, Dict, List, Any
 
 import requests
@@ -26,8 +24,8 @@ class LLMClient:
         model: Optional[str] = None,
         timeout: int = 60,
     ) -> None:
-        self.base_url = (base_url or os.getenv("TOPIC_LLM_URL") or "").rstrip("/")
-        self.model = model or os.getenv("TOPIC_LLM_MODEL", "llama3")
+        self.base_url = (base_url or os.getenv("MODEL_BASE_URL") or "").rstrip("/")
+        self.model = model or os.getenv("MODEL_ID", "gpt-oss:latest-32k")
         self.timeout = timeout
 
     # ===== URL helpers =====
@@ -161,7 +159,8 @@ def call_llm(
     *,
     system_prompt: Optional[str] = None,
     extra_params: Optional[Dict[str, Any]] = None,
-    timeout: Optional[float] = None,   # ★ 新增
+    timeout: Optional[float] = None,
+    model: Optional[str] = None,       # ★ 新增：可選 model 覆寫
 ) -> str:
     """
     最建議使用的入口：
@@ -175,8 +174,6 @@ def call_llm(
 
     # ==== 精簡版 debug log（不再印全文） ====
     debug = os.getenv("DEBUG_CALL_LLM", "1") == "1"   # 想完全關掉就設成 0
-    #debug = True
-    #print("debug in call_llm",debug)
     if debug:
         sp = (system_prompt or "").replace("\n", " ")
         up = prompt.replace("\n", " ")
@@ -196,12 +193,21 @@ def call_llm(
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
-    #print("full messages",messages)
+
+    
+    # ★ 整理實際要傳給 Ollama 的參數，確保不動到呼叫端的 dict
+    params: Dict[str, Any] = {}
+    if extra_params:
+        params.update(extra_params)
+    if model is not None:
+        # 這裡覆寫 payload["model"]，優先權高於 LLMClient 自己的 self.model
+        params["model"] = model
+
     try:
         return client.chat(
             messages,
             extra_params=extra_params or {},
-            timeout=timeout,  # ★ 這裡帶進去
+            timeout=timeout,
         )
     except Exception as e:
         print(f"[LLMClient] chat 呼叫失敗：{e}")

@@ -14,6 +14,8 @@ MODEL_ID = os.getenv("MODEL_ID", "ollama_chat/llama3.1:8b")
 MODEL_BASE_URL = os.getenv("MODEL_BASE_URL", "http://localhost:11434")
 MODEL_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE", "0"))
 
+# ★ 新增：資料代理人專用 model ID（優先使用 DATA_AGENT_MODEL_ID）
+DATA_AGENT_MODEL_ID = os.getenv("DATA_AGENT_MODEL_ID") or MODEL_ID
 
 # 小顆：專門幫 SRA_STYLE 抓「風格查詢關鍵字」
 STYLE_DATA_SYSTEM  = """
@@ -33,38 +35,6 @@ STYLE_DATA_SYSTEM  = """
 3. 如果問題沒有明確風格，就回傳空陣列：
    {"style_terms": []}
 """
-
-'''
-def _extract_style_terms_via_llm(question: str) -> list[str]:
-    """
-    用一顆很小的 LLM，把 question 轉成風格檢索用的 style_terms。
-    回傳 list[str]，失敗就給空陣列，後面再 fallback。
-    """
-    try:
-        raw = call_llm(
-            question,
-            system_prompt=STYLE_DATA_SYSTEM,
-            extra_params={"options": {}},
-            timeout=30.0,
-        )
-        # 預期 raw 是 JSON 字串
-        data = json.loads(raw)
-        terms = data.get("style_terms") or []
-        # 簡單清洗：去空白、去空字串、去重複
-        cleaned = []
-        for t in terms:
-            if not isinstance(t, str):
-                continue
-            t = t.strip()
-            if not t:
-                continue
-            if t not in cleaned:
-                cleaned.append(t)
-        return cleaned
-    except Exception:
-        # 任何錯誤都回空，讓上層決定 fallback
-        return []
-'''
 
 STYLE_DATA_CODE_SYSTEM = """
 你是一個『風格語料準備代理人』。
@@ -195,19 +165,53 @@ STYLE_DATA_CODE_SYSTEM = """
            "full_text": full_text,
        })
 
-6. 組成要給風格 LLM 用的 payload（不要塞 raw_search_result，只保留必要欄位），並另外加上前端可用的顯示資訊：
+6. 組成要給風格 LLM 用的 payload，並加上一份 query_meta，方便後台紀錄這一輪查詢的關鍵字與實際 ES 查詢內容：
+
+   # 從 ES 工具回傳裡抓出 query_meta（找不到就給空 dict）
+   search_qm = (search_result.get("query_meta") or {}) if isinstance(search_result, dict) else {}
+
+   # 風格模式的核心關鍵字，可以用 style_terms + topic_terms 組合
+   core_terms = style_terms + topic_terms
+
+   # 風格模式目前不解析時間範圍，統一記為 None
+   date_from = None
+   date_to   = None
+
+   # 整理這一輪查詢的 meta 資訊，結構盡量與報告模式一致
+   query_meta = {
+       # 1) 本輪實際用來查 ES 的關鍵字 / 主題詞
+       "core_terms":   core_terms,
+       "topic_terms":  topic_terms,
+       "core_query":   style_query,   # 實際採用的查詢字串（primary 或 fallback）
+
+       # 2) 時間範圍（風格模式固定為 None）
+       "date_from": date_from,
+       "date_to":   date_to,
+
+       # 3) 從 es_search_news 傳回來的解析結果
+       "syn_terms":        search_qm.get("syn_terms"),
+       "effective_terms":  search_qm.get("effective_terms"),
+       "es_query":         search_qm.get("es_query"),
+
+       # 4) 其他想記錄的欄位（可選）
+       "manual_terms_in_q": search_qm.get("manual_terms_in_q"),
+       "is_manual_entity_query":   search_qm.get("is_manual_entity_query"),
+       "term_groups":         search_qm.get("term_groups"),
+       "raw_query":           search_qm.get("query"),
+   }
 
    payload = {
        "question": question,
        "original_article": original_article,
        "style_query": style_query,           # 實際採用的查詢字串（可能是 primary_query 或 fallback_query）
        "stats": {
-           "doc_count": len(hits),
-           "snippet_count": len(evidence_snippets),
+           "doc_count":      len(hits),
+           "snippet_count":  len(evidence_snippets),
            "full_doc_count": len(style_docs),
        },
        "evidence_snippets": evidence_snippets,  # 可選：保留少量片段給後端壓縮使用
        "style_docs": style_docs,               # 重點：提供完整參考文本
+       "query_meta": query_meta,               # 讓後台可以記錄這一輪的查詢資訊
        "_display_info": {                      # 給前端用的非 LLM context 資訊
            "hits_preview": [
                {
@@ -225,144 +229,6 @@ STYLE_DATA_CODE_SYSTEM = """
    # 後續丟給風格 LLM 時，可以只挑選 payload 中需要的欄位（例如 question、style_docs 等）。
 
 7. 程式最後只做一件事：呼叫 final_answer 回傳 payload：
-
-   final_answer({
-       "payload": payload
-   })
-
-【嚴格規則】
-
-- 你必須輸出以下格式：
-
-  Thoughts: 先用一小段自然語言（繁體中文）說明你打算怎麼做。
-  <code>
-  # 這裡是完整的 Python 程式碼
-  # 注意：不要寫成函式定義，直接在頂層撰寫即可。
-  </code>
-
-- 所有工具呼叫都寫在 <code> 區塊裡。
-- 程式中嚴禁呼叫其他 LLM，只能用已註冊的工具（例如 es_search_news、es_fetch_doc_by_id）。
-- 不需要呼叫 aggregate_month_quarter，也不要做時間統計或趨勢分析。
-- 回答語系一律使用繁體中文，但因為你不寫報告，只要確保程式內的字串（如 question）是繁體即可。
-"""
-
-STYLE_DATA_CODE_SYSTEM_1127 = """
-你是一個『風格語料準備代理人』。
-
-你的任務只有一件事：
-- 產生一段 Python 程式碼，呼叫工具 `es_search_news` 先抓到「風格相近的文件列表」，
-  再用 `es_fetch_doc_by_id` 依 uuid 撈出「全文」，組成 payload（JSON），交給後續的「風格生成 LLM」使用。
-- 你自己不直接寫新文件，只準備語料。
-
-【基本流程】
-
-1. 把使用者問題字串存成 question，例如：
-
-   question = "我得到一個狀況，請以××機關公文的風格寫成一份正式通知。"
-   original_article = question
-
-2. 在程式裡，手動建立一個 style_terms list，裡面放 1～3 個「跟文種／風格／單位／報告類型」相關的關鍵詞，例如：
-
-   - 單位名稱：例如「行政院」「財政部」「某某局」「某某處」
-   - 報告／文件類型：例如「公文」「會議紀錄」「專案報告」「政策簡報」
-   - 風格／體例關鍵字：例如「正式公文格式」「政府公文」「政策說明」
-
-   【嚴格禁止】把以下資訊放進 style_terms：
-   - 具體時間：例如「2025年11月20日」「11月20日下午4點」
-   - 具體地點：例如「臺北市某路口」「高雄某工業區」
-   - 這次新事件的細節：例如「停電事故」「數據外洩」「防災演練」
-
-   ✅ 正確示範：
-   style_terms = ["行政院", "公文"]
-
-   或者（偏報告風格）：
-   style_terms = ["政策簡報", "專案報告"]
-
-   ❌ 錯誤示範：
-   style_terms = ["行政院", "臺北市某路口", "2025年11月20日"]
-
-   然後用空白把這些詞串起來：
-
-   style_query = " ".join(style_terms) if style_terms else "公文"
-
-3. 呼叫 `es_search_news` 取得風格語料（只用來找候選文件，不做時間統計）：
-
-   search_result = es_search_news(
-       query=style_query,      # 用 style_query 而不是原始 question
-       must_high_value=False,
-       must_selected=False,
-       size=20,               # 風格樣本不用太多，20 足夠
-       date_from=None,
-       date_to=None,
-       selected_boost=2.0,
-       high_value_boost=1.5,
-       recency_boost=False,
-       recency_field="importDT",
-       recency_scale="365d",
-   )
-
-   hits = search_result.get("hits") or []
-   evidence_snippets = search_result.get("evidence_snippets", [])
-
-4. 針對每一個 hit，用 `es_fetch_doc_by_id` 依 uuid 撈出全文，組成 style_docs，若系統有提供預設的 index_hint（例如 "news_test,mil_reports-01"），請在搜尋與撈全文時使用同一個 index_hint，以確保查詢及後續全文取得落在相同索引集合。：
-
-   style_docs = []
-   # 最多抓 8 篇全文當風格樣本
-   for h in hits[:8]:
-       uuid = h.get("uuid")
-       if not uuid:
-           continue
-
-       doc = es_fetch_doc_by_id(
-           uuid=uuid,
-           index_hint=None   # 如有需要，可改成實際 index_hint
-       )
-
-       full_text = (doc or {}).get("full_text") or ""
-       if not full_text:
-           continue
-       
-       # 最多只保留前 4000 字，避免 context 過長
-       if len(full_text) > 4000:
-           full_text = full_text[:4000]
-           
-       style_docs.append({
-           "uuid": uuid,
-           "subject": h.get("subject"),
-           "article_title": h.get("article_title"),
-           "full_text": full_text,
-       })
-
-5. 組成要給風格 LLM 用的 payload（不要塞 raw_search_result，只保留必要欄位），並另外加上前端可用的顯示資訊：
-
-   payload = {
-       "question": question,
-       "original_article": original_article,
-       "style_query": style_query,
-       "stats": {
-           "doc_count": len(hits),
-           "snippet_count": len(evidence_snippets),
-           "full_doc_count": len(style_docs),
-       },
-       "evidence_snippets": evidence_snippets,  # 可選：保留少量片段給後端壓縮使用
-       "style_docs": style_docs,               # 重點：提供完整參考文本
-       "_display_info": {                      # 給前端用的非 LLM context 資訊
-           "hits_preview": [
-               {
-                   "uuid": h.get("uuid"),
-                   "article_title": h.get("article_title"),
-                   "subject": h.get("subject"),
-                   "article_date_iso": h.get("article_date_iso"),
-               }
-               for h in hits[:20]
-           ]
-       }
-   }
-
-   # 注意：_display_info 是給前端顯示用的輕量資訊，
-   # 後續丟給風格 LLM 時，可以只挑選 payload 中需要的欄位（例如 question、style_docs 等）。
-
-6. 程式最後只做一件事：呼叫 final_answer 回傳 payload：
 
    final_answer({
        "payload": payload
@@ -603,8 +469,8 @@ REPORT_DATA_SYSTEM = """
        "es_query":         search_qm.get("es_query"),
 
        # 4) 其他想記錄的欄位（可選）
-       "platform_terms_in_q": search_qm.get("platform_terms_in_q"),
-       "is_platform_query":   search_qm.get("is_platform_query"),
+       "manual_terms_in_q": search_qm.get("manual_terms_in_q"),
+       "is_manual_entity_query":   search_qm.get("is_manual_entity_query"),
        "term_groups":         search_qm.get("term_groups"),
        "raw_query":           search_qm.get("query"),
    }
@@ -649,416 +515,7 @@ REPORT_DATA_SYSTEM = """
 - 回答語系一律使用繁體中文臺灣用語，但因為你不寫報告，只要確保程式內字串（如 question）是繁體即可。
 """
 
-
-REPORT_DATA_SYSTEM_1208_2 = """
-你是一個『新聞/情報/政策的資料準備代理人』。
-
-你的任務只有一件事：
-- 產生一段 Python 程式碼，呼叫工具把資料查回來、做完統計，組成 payload（JSON 結構），然後交給後續的「報告撰寫 LLM」使用。
-- 你自己不要撰寫長篇報告或結論，只負責準備乾淨的資料。
-
-【基本流程】
-
-1. 取得使用者問題字串，存在變數 question，例如：
-
-   question = "請整理 2025 年『拉拉隊』相關的重點事件，並做趨勢分析。"
-
-2. 在程式一開始，先依 question 萃取 3–8 個關鍵字（主題、地點），
-   並且 **嚴格禁止** 在 core_terms 中出現任何「時間相關字串」。
-
-   【core_terms 允許的內容】
-   core_terms 只允許放：
-   - 主題（人物、組織、武器型號、事件名稱、疾病名稱、政策名稱等）
-   - 地點（海域、國家、城市、海峽、水道等）
-   - 少量在原始素材中常見、與行動／措施直接相關的動作詞：
-     例如：「防治」「防控」「治理」「監測」「檢測」「打擊」「宣導」「管制」等。
-
-   【core_terms 禁止的內容（一）：所有時間相關字串】
-   時間相關字串一律不能出現在 core_terms，包括但不限於：
-   - 含有「年」「月」「日」「週」「星期」「季」「季度」「上半年」「下半年」的詞
-     例： "2025年", "2025年1月", "2025年1月15日", "今年1月", "第一季", "2025-Q1"
-   - 純年份或年份區間
-     例： "2024", "2024年～2025年"
-   - 年月格式
-     例： "2025-01", "2025/01"
-
-   【core_terms 禁止的內容（二）：報告語氣／分析用詞】
-   下列類型用詞只是在描述「要寫怎樣的報告」，而不是檢索主題，一律不得放入 core_terms：
-   - 報告工作相關：
-     「請整理」「綜整成」「分析」「探討」「研究」「案例」
-     「SWOT 分析」「趨勢分析」「目標長度為」「完整報告」等。
-   - 抽象分析詞：
-     「情況」「現況」「問題」「挑戰」「趨勢」「影響」「成效」
-     「優點」「缺點」「利弊」「背景」「現象」等。
-   - 抽象政策框架詞（沒有具體主題時）：
-     「政策」「措施」「工作」「作為」「行動」「對策」
-     「戰略」「策略」「機制」「制度」「政策面」「措施面」等。
-   這些字只保留給「報告撰寫 LLM」在生成文字時使用，不作為檢索關鍵字。
-
-    【主題＋行為詞的拆分規則（非常重要）】
-    
-    若某個候選關鍵字同時包含「具體主題」與「行為／措施」兩部分，請依下列規則判斷是否拆分為兩個關鍵字：
-    
-    一、可拆分為兩個關鍵字的情況（具備專有、技術或制度意涵）
-    當行為詞本身具有明確、專有、技術或制度層級的語意時，應拆分為：
-    - 一個「主題關鍵字」
-    - 一個「行為關鍵字」
-    
-    具體主題例如：
-    「愛滋病」「核廢料」「登革熱」「無人機」「拉拉隊」「臺灣」
-    「宮古水道」「東風15型導彈」等。
-    
-    可拆分的專有行為詞樣態例如：
-    「防治」「防控」「管制」「取締」
-    「監測」「檢測」「通報」「稽查」
-    「施打」「佈署」「封鎖」
-    「最終處置」「深層掩埋」「乾式貯存」等。
-    
-    上述僅為常見示例，實際判斷時，
-    必須以「是否具備明確、專有、技術或制度意涵」作為拆分依據，
-    而非僅憑是否為一般動詞。
-    
-    ✅ 正確示例：
-    - 「登革熱防治」→ ["登革熱", "防治"]
-    - 「無人機管制」→ ["無人機", "管制"]
-    - 「核廢料最終處置」→ ["核廢料", "最終處置"]
-    
-    二、不得拆分為獨立關鍵字的行為詞（過於泛用）
-    下列屬於泛用動詞或行政用語，不具備穩定專有語意，
-    即使與主題相連，也不得拆分為獨立關鍵字：
-    
-    「處理」「作業」「執行」「因應」「作為」「工程」
-    「計畫」「流程」「相關作業」「後續處理」等。
-    
-    這類詞彙若出現在句中：
-    - 不得作為核心關鍵字拆分出來
-    - 僅視為一般語句的一部分
-    
-    三、報告語氣詞一律不得參與拆分與關鍵字抽取
-    下列詞彙僅用於描述寫作或分析角度，與實際主題檢索無關：
-    「情況」「現況」「問題」「挑戰」
-    「趨勢」「影響」「成效」
-    「分析」「探討」「研究」「案例」等。
-    
-    上述詞彙即使與主題連在一起，也不得拆分為關鍵字。
-
-   【時間範圍解析】
-   - 所有時間資訊都必須另外解析成：
-     date_from = "YYYY-MM-DD" 或 None
-     date_to   = "YYYY-MM-DD" 或 None
-   - 若 question 中沒有明確時間，就把 date_from、date_to 都設為 None。
-   - 若 question 指定範圍為「2013 至 2017 年間」，則：
-     date_from = "2013-01-01"
-     date_to   = "2017-12-31"
-
-   【核心範例】
-   question = "給我劉德華在2024年1月在臺灣的活動情資。"
-   core_terms 必須是：
-   core_terms = ["劉德華", "臺灣"]
-   絕對禁止：
-   core_terms = ["劉德華", "臺灣", "2024年1月"]  # 錯誤示範
-
-   時間範圍必須另外解析為：
-   date_from = "2024-01-01"
-   date_to   = "2024-01-31"
-
-   【額外清理建議】
-   若你無法明確列出 terms，就至少先從 question 中移除：
-   「請整理」「綜整成」「趨勢分析」「SWOT 分析」「目標長度為」「完整報告」等片語，
-   並移除所有時間相關字串，只留下主題、地點與必要的行動詞，再形成 core_terms。
-
-   完成 core_terms 後，可以用空白串接成 core_query，作為 es_search_news 的 query 參數：
-   core_query = " ".join(core_terms)
-
-   然後用 core_query（而不是原始 question）當成 es_search_news 的 query 參數，
-   若成功解析出起訖時間，務必放入 date_from / date_to：
-
-   search_result = es_search_news(
-       query=core_query,
-       must_high_value=False,
-       must_selected=False,
-       size=10000,
-       date_from=...,   # 若使用者有指定日期，再改成 "YYYY-MM-DD"，如無則填None
-       date_to=...,     # 同上
-       selected_boost=6.0,
-       high_value_boost=2.5,
-       recency_boost=False,
-       recency_field="importDT",
-       recency_scale="30d",
-   )
-
-   # 從結果中取出 evidence_snippets：
-   evidence_snippets = search_result.get("evidence_snippets", [])
-
-3. 若需要做時間統計，請一律呼叫 aggregate_month_quarter：
-
-   aggregation = aggregate_month_quarter(evidence_snippets=evidence_snippets)
-   doc_count      = aggregation.get("doc_count", 0)
-   snippet_count  = aggregation.get("snippet_count", 0)
-   active_days    = aggregation.get("active_days", 0)
-   day_counts     = aggregation.get("day_counts", {})
-   month_counts   = aggregation.get("month_counts", {})
-   quarter_counts = aggregation.get("quarter_counts", {})
-
-4. 如果 es_search_news 有傳入 date_from / date_to，請再針對 day_counts / month_counts / quarter_counts 做一次日期過濾，只保留落在範圍內的 key，類似：
-
-   start_date = date_from  # 例如 "2025-05-01"；若沒有就設為 None
-   end_date   = date_to    # 例如 "2025-05-31"；若沒有就設為 None
-
-   if start_date or end_date:
-       # 過濾 day_counts
-       filtered_day_counts = {}
-       for d, cnt in day_counts.items():
-           if start_date and d < start_date:
-               continue
-           if end_date and d > end_date:
-               continue
-           filtered_day_counts[d] = cnt
-       day_counts = filtered_day_counts
-
-       # 過濾 month_counts（只保留完全落在範圍內的月份）
-       filtered_month_counts = {}
-       for m, cnt in month_counts.items():  # m 形式如 "2025-05"
-           m_year = m[0:4]
-           m_month = m[5:7]
-           m_first = f"{m_year}-{m_month}-01"
-           m_last  = f"{m_year}-{m_month}-31"   # 簡化處理即可
-           if start_date and m_last < start_date:
-               continue
-           if end_date and m_first > end_date:
-               continue
-           filtered_month_counts[m] = cnt
-       month_counts = filtered_month_counts
-
-       # 過濾 quarter_counts（例如 "2025-Q2"）
-       filtered_quarter_counts = {}
-       for q, cnt in quarter_counts.items():
-           q_year = q[0:4]
-           q_id = q[-1]   # '1'..'4'
-           if q_id == "1":
-               q_first, q_last = f"{q_year}-01-01", f"{q_year}-03-31"
-           elif q_id == "2":
-               q_first, q_last = f"{q_year}-04-01", f"{q_year}-06-30"
-           elif q_id == "3":
-               q_first, q_last = f"{q_year}-07-01", f"{q_year}-09-30"
-           else:
-               q_first, q_last = f"{q_year}-10-01", f"{q_year}-12-31"
-
-           if start_date and q_last < start_date:
-               continue
-           if end_date and q_first > end_date:
-               continue
-           filtered_quarter_counts[q] = cnt
-       quarter_counts = filtered_quarter_counts
-
-5. 把要給報告 LLM 用的內容組成 payload，至少包含：
-
-   payload = {
-       "question": question,
-       "time_range": {
-           "date_from": date_from,
-           "date_to": date_to,
-       },
-       "stats": {
-           "doc_count": doc_count,
-           "snippet_count": snippet_count,
-           "active_days": active_days,
-           "day_counts": day_counts,
-           "month_counts": month_counts,
-           "quarter_counts": quarter_counts,
-       },
-       "evidence_snippets": evidence_snippets,
-       "raw_search_result": search_result,
-   }
-
-6. 程式最後 **只做一件事**：呼叫 final_answer，回傳 payload，絕對不要在這裡寫完整報告文字。
-
-   final_answer({
-       "payload": payload
-   })
-
-【嚴格規則】
-
-- 程式必須包在單一 <code>...</code> 區塊中，內容是純 Python 程式。
-- 禁止在 <code> 區塊之外輸出任何 Markdown 或自然語言。
-- 呼叫工具時：
-    * 一律先拿到 search_result，再用 search_result.get("evidence_snippets", [])；
-      禁止寫成 evidence_snippets = es_search_news(...)
-    * es_search_news 的 size 一律設為 10000。
-- 不要在這一層寫「趨勢描述」「評估效果」「政策建議」等文字，
-  那些全部交給後續報告 LLM 根據 payload 來處理。
-- 回答語系一律使用繁體中文臺灣用語，但因為你不寫報告，只要確保程式內字串（如 question）是繁體即可。
-"""
-
-
-REPORT_DATA_SYSTEM_1208 = """
-你是一個『新聞/情報/政策的資料準備代理人』。
-
-你的任務只有一件事：
-- 產生一段 Python 程式碼，呼叫工具把資料查回來、做完統計，組成 payload（JSON 結構），然後交給後續的「報告撰寫 LLM」使用。
-- 你自己不要撰寫長篇報告或結論，只負責準備乾淨的資料。
-
-【基本流程】
-
-1. 取得使用者問題字串，存在變數 question，例如：
-
-   question = "請整理 2025 年『拉拉隊』相關的重點事件，並做趨勢分析。"
-
-2. 在程式一開始，先依 question 萃取 3–8 個關鍵字（主題、地點），
-   並且 **嚴格禁止** 在 core_terms 中出現任何「時間相關字串」。
-
-   core_terms 只允許放：
-   - 主題（人物、組織、武器型號、事件名稱…）
-   - 地點（海域、國家、城市、海峽、水道…）
-
-   時間相關字串一律不能出現在 core_terms，包括但不限於：
-   - 含有「年」「月」「日」「週」「星期」「季」「季度」「上半年」「下半年」的詞
-     例： "2025年", "2025年1月", "2025年1月15日", "今年1月", "第一季", "2025-Q1"
-   - 純年份或年份區間
-     例： "2024", "2024年～2025年"
-   - 年月格式
-     例： "2025-01", "2025/01"
-
-   ✅ 範例：
-   question = "給我劉德華在2024年1月在臺灣的活動情資。"
-
-   核心關鍵字（core_terms）必須是：
-   core_terms = ["劉德華", "臺灣"]
-
-   絕對禁止：
-   core_terms = ["劉德華", "臺灣", "2024年1月"]  # 這是錯誤示範
-
-   時間範圍必須另外解析為：
-   date_from = "2024-01-01"
-   date_to   = "2024-01-31"
-   
-   若你無法明確列出 terms，就至少把 question 中的「請整理」「綜整成」「趨勢分析」
-   「SWOT 分析」「目標長度為」「完整報告」等片語去掉，只留下主題與地點。
-   所有時間相關字串（含「年」「月」「日」「季」「2025-01」等）一律不得放入 core_terms，
-   只能用來推算 date_from / date_to。
-
-   如果你發現某個候選關鍵字裡包含「年」「月」「日」「季」或年份／年月格式，
-   必須視為時間資訊，從 core_terms 中移除；否則就違反規則。
-   
-   然後用 core_query 當成 es_search_news 的 query 參數，而不是原始 question，如果解析出起迄時間，務必放入query參數：
-
-   search_result = es_search_news(
-       query=core_query,
-       must_high_value=False,
-       must_selected=False,
-       size=10000,
-       date_from=...,   # 若使用者有指定日期，再改成 "YYYY-MM-DD"，如無則填None
-       date_to=...,     # 同上
-       selected_boost=6.0,
-       high_value_boost=2.5,
-       recency_boost=False,
-       recency_field="importDT",
-       recency_scale="30d",
-   )
-
-   # 從結果中取出 evidence_snippets：
-   evidence_snippets = search_result.get("evidence_snippets", [])
-
-3. 若需要做時間統計，請一律呼叫 aggregate_month_quarter：
-
-   aggregation = aggregate_month_quarter(evidence_snippets=evidence_snippets)
-   doc_count      = aggregation.get("doc_count", 0)
-   snippet_count  = aggregation.get("snippet_count", 0)
-   active_days    = aggregation.get("active_days", 0)
-   day_counts     = aggregation.get("day_counts", {})
-   month_counts   = aggregation.get("month_counts", {})
-   quarter_counts = aggregation.get("quarter_counts", {})
-
-4. 如果 es_search_news 有傳入 date_from / date_to，請再針對 day_counts / month_counts / quarter_counts 做一次日期過濾，只保留落在範圍內的 key，類似：
-
-   start_date = date_from  # 例如 "2025-05-01"；若沒有就設為 None
-   end_date   = date_to    # 例如 "2025-05-31"；若沒有就設為 None
-
-   if start_date or end_date:
-       # 過濾 day_counts
-       filtered_day_counts = {}
-       for d, cnt in day_counts.items():
-           if start_date and d < start_date:
-               continue
-           if end_date and d > end_date:
-               continue
-           filtered_day_counts[d] = cnt
-       day_counts = filtered_day_counts
-
-       # 過濾 month_counts（只保留完全落在範圍內的月份）
-       filtered_month_counts = {}
-       for m, cnt in month_counts.items():  # m 形式如 "2025-05"
-           m_year = m[0:4]
-           m_month = m[5:7]
-           m_first = f"{m_year}-{m_month}-01"
-           m_last  = f"{m_year}-{m_month}-31"   # 簡化處理即可
-           if start_date and m_last < start_date:
-               continue
-           if end_date and m_first > end_date:
-               continue
-           filtered_month_counts[m] = cnt
-       month_counts = filtered_month_counts
-
-       # 過濾 quarter_counts（例如 "2025-Q2"）
-       filtered_quarter_counts = {}
-       for q, cnt in quarter_counts.items():
-           q_year = q[0:4]
-           q_id = q[-1]   # '1'..'4'
-           if q_id == "1":
-               q_first, q_last = f"{q_year}-01-01", f"{q_year}-03-31"
-           elif q_id == "2":
-               q_first, q_last = f"{q_year}-04-01", f"{q_year}-06-30"
-           elif q_id == "3":
-               q_first, q_last = f"{q_year}-07-01", f"{q_year}-09-30"
-           else:
-               q_first, q_last = f"{q_year}-10-01", f"{q_year}-12-31"
-
-           if start_date and q_last < start_date:
-               continue
-           if end_date and q_first > end_date:
-               continue
-           filtered_quarter_counts[q] = cnt
-       quarter_counts = filtered_quarter_counts
-
-5. 把要給報告 LLM 用的內容組成 payload，至少包含：
-
-   payload = {
-       "question": question,
-       "time_range": {
-           "date_from": date_from,
-           "date_to": date_to,
-       },
-       "stats": {
-           "doc_count": doc_count,
-           "snippet_count": snippet_count,
-           "active_days": active_days,
-           "day_counts": day_counts,
-           "month_counts": month_counts,
-           "quarter_counts": quarter_counts,
-       },
-       "evidence_snippets": evidence_snippets,
-       "raw_search_result": search_result,
-   }
-
-6. 程式最後 **只做一件事**：呼叫 final_answer，回傳 payload，絕對不要在這裡寫完整報告文字。
-
-   final_answer({
-       "payload": payload
-   })
-
-【嚴格規則】
-
-- 程式必須包在單一 <code>...</code> 區塊中，內容是純 Python 程式。
-- 禁止在 <code> 區塊之外輸出任何 Markdown 或自然語言。
-- 呼叫工具時：
-    * 一律先拿到 search_result，再用 search_result.get("evidence_snippets", [])；
-      禁止寫成 evidence_snippets = es_search_news(...)
-    * es_search_news 的 size 一律設為 10000。
-- 不要在這一層寫「趨勢描述」「評估效果」「政策建議」等文字，
-  那些全部交給後續報告 LLM 根據 payload 來處理。
-- 回答語系一律使用繁體中文臺灣用語，但因為你不寫報告，只要確保程式內字串（如 question）是繁體即可。
-"""
-
+#LiteLLM / smolagents 裡的 LiteLLMModel 專用正規化
 def _normalize_model_id(mid: str) -> str:
     if "/" in mid:
         return mid
@@ -1131,7 +588,11 @@ def build_model():
     global _SHARED_MODEL
     if _SHARED_MODEL is not None:
         return _SHARED_MODEL
-    model_id = _normalize_model_id(MODEL_ID)
+    
+    # ★ 這裡改成用 DATA_AGENT_MODEL_ID，並做一次 normalize
+    raw_mid = DATA_AGENT_MODEL_ID
+    model_id = _normalize_model_id(raw_mid)
+    
     _SHARED_MODEL = LiteLLMModel(
         model_id=model_id,
         api_base=MODEL_BASE_URL,
@@ -1205,20 +666,6 @@ def _run_data_agent(
     else:
         raise ValueError("資料代理人回傳格式非 dict，請檢查 CodeAgent 的 final_answer 使用方式。")
 
-    # === 新增：把這次 data_agent 的摘要寫進 trace ===
-    # 結構大致會是：
-    # trace["data_agent"] = {
-    #   "runs": [
-    #       {
-    #           "mode": "report",
-    #           "elapsed_sec": 1.234,
-    #           "question": "...",
-    #           "time_range": {...},
-    #           "stats": {...}
-    #       },
-    #       ...
-    #   ]
-    # }
     try:
         da_root = trace.setdefault("data_agent", {})
         runs: list[Dict[str, Any]] = da_root.setdefault("runs", [])
@@ -1226,6 +673,10 @@ def _run_data_agent(
         run_info: Dict[str, Any] = {
             "mode": mode,
             "elapsed_sec": round(elapsed, 3),
+            #給人看的：記你 .env 裡實際填什麼（跟 router 那邊一致）
+            "model_id": DATA_AGENT_MODEL_ID,
+            #若之後要 debug LiteLLM 實際吃到什麼，再看這個
+            "model_id_effective": _normalize_model_id(DATA_AGENT_MODEL_ID),
         }
 
         # 問題文字（如果 payload 有 question 就記 payload 裡的，否則退回原始 question）
@@ -1235,28 +686,15 @@ def _run_data_agent(
         if mode == "report":
             time_range = payload.get("time_range") or {}
             stats = payload.get("stats") or {}
-            query_meta = payload.get("query_meta") or {}
-            
+
             run_info["time_range"] = {
                 "date_from": time_range.get("date_from"),
                 "date_to": time_range.get("date_to"),
             }
-            # 只收比較精簡的統計，避免 trace 過胖
             run_info["stats"] = {
-                "doc_count": stats.get("doc_count"),
-                "snippet_count": stats.get("snippet_count"),
-                "active_days": stats.get("active_days"),
-            }
-            # ★ 新增：把關鍵字相關資訊也記到 log 裡
-            run_info["query_meta"] = {
-                "core_terms":      query_meta.get("core_terms"),
-                "topic_terms":     query_meta.get("topic_terms"),
-                "core_query":      query_meta.get("core_query"),
-                "syn_terms":       query_meta.get("syn_terms"),
-                "effective_terms": query_meta.get("effective_terms"),
-                "es_query":        query_meta.get("es_query"),
-                "date_from":       query_meta.get("date_from"),
-                "date_to":         query_meta.get("date_to"),
+                "doc_count":      stats.get("doc_count"),
+                "snippet_count":  stats.get("snippet_count"),
+                "active_days":    stats.get("active_days"),
             }
 
         # 風格模式：記 style_query / stats
@@ -1265,16 +703,22 @@ def _run_data_agent(
 
             run_info["style_query"] = payload.get("style_query")
             run_info["stats"] = {
-                "doc_count": stats.get("doc_count"),
-                "snippet_count": stats.get("snippet_count"),
+                "doc_count":      stats.get("doc_count"),
+                "snippet_count":  stats.get("snippet_count"),
                 "full_doc_count": stats.get("full_doc_count"),
             }
 
-        # 其它 mode 先簡單記錄（之後如果擴充再加欄位）
+        # 其它 mode：先簡單記錄
         else:
             run_info["extra"] = {
                 "keys_in_payload": list(payload.keys()),
             }
+
+        # ★ 共用：只要 payload 有 query_meta，就整包塞進 trace
+        query_meta = payload.get("query_meta")
+        if isinstance(query_meta, dict):
+            # dict() 做淺拷貝，避免後續修改 payload 影響 log
+            run_info["query_meta"] = dict(query_meta)
 
         runs.append(run_info)
 
@@ -1284,22 +728,3 @@ def _run_data_agent(
 
     return payload
 
-
-def _run_data_agent_1211(question: str, mode: str = "report") -> Dict[str, Any]:
-    """
-    共用一個 CodeAgent 建立邏輯，只是 SYSTEM 不同：
-    - mode="report"：做 SRA_REPORT 的資料準備
-    - mode="style" ：做 SRA_STYLE 的風格語料準備
-    """
-    code_agent = build_agent(mode=mode)
-    result = code_agent.run(question)
-
-    # 預期 final_answer({"payload": payload})
-    if isinstance(result, dict) and "payload" in result:
-        return result["payload"]
-
-    if isinstance(result, dict):
-        return result
-
-    raise ValueError("資料代理人回傳格式非 dict，請檢查 CodeAgent 的 final_answer 使用方式。")
-    

@@ -1,16 +1,28 @@
 #agent/style_agent.py
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 import json
 import os
+import time
 # ★ 依你原本的位置調整 import
 from .data_agent import _run_data_agent         # 如果 _run_data_agent 還在 agent.py
-from agent.utils_citations import _build_citations_from_payload
+from agent.utils_citations import (
+    build_citations_from_ev,
+    compress_evidence,
+    build_refno_uuid_map,   # ★ 新增：如果之後要 ref_no → uuid 映射
+)
+#from agent.utils_citations import _build_citations_from_payload
 from agent.utils_citations import build_citations_from_ev
 from agent.utils_citations import compress_evidence
 from .llm_utils.ollama_client import call_llm           # 若 call_llm 在別的 util 模組
 
 MAX_STYLE_DOCS = int(os.getenv("STYLE_MAX_DOCS", "8"))
 MAX_STYLE_DOC_CHARS = int(os.getenv("STYLE_MAX_DOC_CHARS", "4000"))
+
+STYLE_MODEL_ID = (
+    os.getenv("STYLE_MODEL_ID")   # 若有指定就用這個
+    or os.getenv("MODEL_ID")      # 否則沿用主 MODEL_ID
+    or "gpt-oss:120b-32k"         # 最後給一個預設
+)
 
 STYLE_SYSTEM_PROMPT = """
 你是一個「風格模仿寫作助手」，主要任務是：
@@ -78,20 +90,30 @@ STYLE_SYSTEM_PROMPT = """
 DEFAULT_STYLE_INDEX_HINT = "mil_reports-01"
 
 
-def ask_with_style(question: str) -> Dict[str, Any]:
+def ask_with_style(
+    question: str,
+    trace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
     SRA_STYLE 模式：
     - 用 SRA_STYLE 資料代理人準備風格樣本與原文，
     - 再交給 STYLE_SYSTEM_PROMPT 做風格改寫。
     """
+    if trace is None:
+        trace = {}
     # 1) 用 SRA_STYLE 專用資料代理人拿「風格語料 payload」
-    payload = _run_data_agent(question, mode="style")
+    payload = _run_data_agent(question, mode="style", trace=trace)
 
     # 2) 壓成風格樣本，避免 context 被塞爆
-    ev = payload.get("evidence_snippets") or []
-    raw_style_docs = payload.get("style_docs") or []
+    #ev = payload.get("evidence_snippets") or []
+    #raw_style_docs = payload.get("style_docs") or []
+    ev_full = payload.get("evidence_snippets") or []
+    # ★ 用 compress_evidence 產生「有 ref_no 的精簡 ev」
+    #style_samples = compress_evidence(ev, max_samples=50)
+    style_samples = compress_evidence(ev_full, max_samples=50)
+    ev_compact = style_samples         # ★ 之後 citations / LLM 都用這一批
 
-    style_samples = compress_evidence(ev, max_samples=50)
+    raw_style_docs = payload.get("style_docs") or []
 
     # ★ 新增：限制「篇數」與「每篇長度」
     trimmed_style_docs = []
@@ -104,16 +126,19 @@ def ask_with_style(question: str) -> Dict[str, Any]:
         trimmed_style_docs.append(nd)
 
     style_docs = trimmed_style_docs
-    # ★ 新增：拆出「指令」與「要改寫的原始新聞」
+    
+    # ★ 拆出「指令」與「要改寫的原始新聞」
     instruction = payload.get("question") or question
     source_article = payload.get("original_article") or ""
 
-    # ★ 修改：傳給 LLM 的 payload 結構改成 instruction + source_article
+    # ★ 傳給 LLM 的 payload：帶上 ev_compact（有 ref_no）
     payload_for_llm = {
         "instruction": instruction,
         "source_article": source_article,
-        "style_samples": style_samples,
+        "style_samples": style_samples, # = ev_compact
         "style_docs": style_docs,  # 讓風格 LLM 可以看到部分全文參考
+        # 如果你想讓 LLM 顯式知道 ev/ref_no，可以加：
+        # "ev": ev_compact,
     }
 
     user_prompt = json.dumps(
@@ -123,17 +148,36 @@ def ask_with_style(question: str) -> Dict[str, Any]:
     )
 
     # 3) 交給風格生成 LLM
+    t0 = time.perf_counter()  # ★ 新增：計時開始
     style_text = call_llm(
         user_prompt,
         system_prompt=STYLE_SYSTEM_PROMPT,
         extra_params={"options": {}},
         timeout=180.0,
+        model=STYLE_MODEL_ID,  # ★ 新增：這次仿寫實際用的模型
     )
+    t1 = time.perf_counter()  # ★ 新增：計時結束
+
+    # ★ 新增：把這次風格 LLM 呼叫寫到 trace["llm"]["style"]
+    llm_root = trace.setdefault("llm", {})
+    style_logs: list[Dict[str, Any]] = llm_root.setdefault("style", [])
+    style_logs.append({
+        "system": "STYLE_SYSTEM_PROMPT",
+        "user": user_prompt,
+        "answer_preview": (
+            style_text[:200] if isinstance(style_text, str)
+            else str(style_text)[:200]
+        ),
+        "elapsed_sec": round(t1 - t0, 3),
+        "model_id": STYLE_MODEL_ID,  # ★ 這次仿寫用的 model id
+    })
 
     # 4) 引用 / reasoning
     #citations = _build_citations_from_payload(payload)
     # ★ citations：直接用 ev_compact
-    citations = build_citations_from_ev(ev)
+    #citations = build_citations_from_ev(ev)
+    citations = build_citations_from_ev(ev_compact)   # ★ 跟 report_agent 一樣
+    refno_uuid_map = build_refno_uuid_map(ev_compact) # ★ 有需要可以一併回傳
     reasoning = (
         "本回答參考資料庫中既有文本的語氣與格式，"
         "但所有事實僅來自使用者提供的原始文章內容，"
@@ -190,5 +234,6 @@ def ask_with_style(question: str) -> Dict[str, Any]:
         "citations": citations,
         "reasoning": reasoning,
         "style_references": style_docs,
-        "used_uuids": used_uuids,   # ★ 給前端帶去下一輪當 reuse_uuids
+        "used_uuids": used_uuids,       # 保留你原本給前端 reuse_uuids 的用途
+        "refno_uuid_map": refno_uuid_map,  # ★ 新增（若前端要用 ref_no → uuid）
     }

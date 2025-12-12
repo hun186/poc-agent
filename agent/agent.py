@@ -23,6 +23,14 @@ from .doc_followup_agent import ask_with_doc_followup
 
 DEBUG_ROUTER = os.getenv("DEBUG_ROUTER", "1") == "1"
 
+
+# ★ 新增：路由專用的模型 ID（可獨立於主 MODEL_ID）
+ROUTER_MODEL_ID = (
+    os.getenv("ROUTER_MODEL_ID")   # 若有指定就用這個
+    or os.getenv("MODEL_ID")       # 沒指定就沿用主模型
+    or "gpt-oss:120b-32k"          # 再不然就用一個預設
+)
+
 #print("finished load module")
 
 # === 模型設定（可用 .env 覆寫） ===
@@ -114,41 +122,6 @@ TASK_ROUTER_SYSTEM = (
 )
 
 
-TASK_ROUTER_SYSTEM_1128 = (
-    "你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。\n\n"
-    "你只能回傳一個 JSON 物件，格式如下：\n\n"
-    "{\n"
-    '  "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",\n'
-    '  "reason": "簡短說明為什麼這樣判斷",\n'
-    f'  "topic": "{TOPIC_ENUM_TEXT}"\n'
-    "}\n\n"
-    "三種模式定義：\n\n"
-    "1. SRA_REPORT\n"
-    "   - 用途是「整理 / 分析 / 彙整 / 統計」某段期間的事件或趨勢。\n"
-    "   - 需要查詢資料庫（例如新聞、軍情、政府文件）。\n"
-    "   - 常見語氣：整理重點、歷史彙整、趨勢分析、比較前後、統計變化、政策效果、供應鏈分析等。\n\n"
-    "2. SRA_STYLE\n"
-    "   - 使用者提供「新的事件 / 情境」，要求以某種現有文件的風格寫新內容。\n"
-    "   - 會用到資料庫內現有內容作為風格參考。\n\n"
-    "3. DOC_FOLLOWUP\n"
-    "   - 用途是針對「前幾輪已經引用過的參考文件」做後續處理。\n"
-    "   - 不會對事件本身再做新的關鍵字檢索，只用既有參考文件的全文來完成任務。\n"
-    "   - 常見語氣：\n"
-    "       - 把剛剛的第五篇參考全文翻成英文\n"
-    "       - 針對每一篇參考文件各寫一段摘要\n"
-    "       - 把第一篇參考全文列出來\n"
-    "       - 用上一輪的那些參考文件，再寫一版不同角度的說明\n\n"
-    "4. PURE_LLM\n"
-    "   - 模型自身即可回答，不需資料庫。\n"
-    "   - 包含教學、翻譯、改寫、故事、一般聊天等。\n\n"
-    "topic 定義（語義分類，由設定檔載入）：\n\n"
-    f"{TOPIC_DESC_TEXT}\n\n"
-    "請務必：\n"
-    "- 只輸出 JSON，不要有任何其他文字。\n"
-    "- 當【目前問題】與過去問題的要求衝突時，一律以【目前問題】為準，過去問題僅供理解上下文。\n"
-)
-
-#def _llm_route_task(user_msg: str) -> dict:
 def _llm_route_task(
     user_msg: str,
     trace: Optional[Dict[str, Any]] = None,
@@ -173,6 +146,7 @@ def _llm_route_task(
             system_prompt=TASK_ROUTER_SYSTEM,
             extra_params={"options": {}},
             timeout=60.0,
+            model=ROUTER_MODEL_ID,
         )
         t1 = time.perf_counter()
         result = json.loads(raw)
@@ -186,6 +160,7 @@ def _llm_route_task(
             "raw_response": raw,
             "parsed": result,
             "elapsed_sec": round(t1 - t0, 3),
+            "model_id": ROUTER_MODEL_ID,
         })
     except Exception as e:
         print("[router] LLM route failed:", e)
@@ -196,6 +171,7 @@ def _llm_route_task(
             "system": "TASK_ROUTER_SYSTEM",
             "user": user_prompt,
             "error": str(e),
+            "model_id": ROUTER_MODEL_ID,
         })
         return {"mode": "PURE_LLM", "reason": "router error", "topic": "none"}
 
@@ -271,42 +247,6 @@ def _build_router_input(
 
     return "\n\n".join(parts)
 
-def _build_router_input_1127(
-    current_user_msg: str,
-    recent_user_msgs: list[str] | None = None,
-    k: int = 2,  # 取「最近 k 個舊問題 + 目前問題」→ 總共最多 3 個
-) -> str:
-    """
-    給任務分流器用的輸入字串：
-    - 只包含 user 提過的問題，不包含任何 assistant 的回答
-    - 預設取最近 k 個舊問題 + 目前問題
-    - 格式：
-        【過去問題1】
-        ...
-        
-        【過去問題2】
-        ...
-        
-        【目前問題】
-        ...
-    """
-    current = (current_user_msg or "").strip()
-    if not recent_user_msgs:
-        return current
-
-    # 過去問題只保留非空白的
-    cleaned = [m.strip() for m in recent_user_msgs if m and m.strip()]
-    if not cleaned:
-        return current
-
-    # 取最後 k 個
-    tail = cleaned[-k:]
-
-    parts: list[str] = []
-    for i, m in enumerate(tail, 1):
-        parts.append(f"【過去問題{i}】\n{m}")
-    parts.append("【目前問題】\n" + current)
-    return "\n\n".join(parts)
 
 def answer_with_routing(
     user_msg: str,
@@ -459,8 +399,7 @@ def answer_with_routing(
         elif mode == "SRA_STYLE":
             style_query = index_hint_prefix + user_msg
             out = ask_with_style(
-                style_query,
-                # 同上，未改函式前先不要傳 trace
+                style_query, trace=trace,
             )
 
         # === PURE_LLM：不查 ES，直接用模型知識回答 ===
@@ -509,160 +448,6 @@ def answer_with_routing(
             out["route"]["actual_indexes"] = used_indexes
 
     return out
-
-def answer_with_routing_1211(
-    user_msg: str,
-    query_for_agent: str | None = None,
-    recent_user_msgs: list[str] | None = None,
-    reuse_uuids: list[str] | None = None,   # ★ 新增
-    refno_uuid_map: Optional[Dict[int, str]] = None,
-) -> Dict[str, Any]:
-    """
-    高層入口：
-    - 用 LLM 做任務分流（SRA_REPORT / SRA_STYLE / PURE_LLM）
-    - 視情況呼叫 ask_with_report / ask_with_style / 一般 call_llm
-    - 回傳統一格式：{ answer, citations, reasoning, mode, route }
-
-    recent_user_msgs:
-      - 可選；如果有傳進來，會拿「最近 k 個」來幫助任務判斷
-      - 只應該放 user 的提問內容，不要放 assistant 的回答
-    """
-    user_msg = (user_msg or "").strip()
-    if not user_msg:
-        return {
-            "answer": "目前沒有收到任何問題內容，請再輸入一次。",
-            "citations": [],
-            "reasoning": "空輸入，直接回覆提示。",
-            "mode": "PURE_LLM",
-            "route": {"mode": "PURE_LLM", "reason": "empty", "es_index_key": None},
-        }
-
-    # === 1) 準備任務分流器輸入 ===
-    router_input = _build_router_input(
-        current_user_msg=user_msg,
-        recent_user_msgs=recent_user_msgs,
-        k=2,   # ★ 最近 2 輪 + 目前這一輪
-    )
-
-    # === 2) LLM 任務分類 ===
-    route = route_task_mode(router_input)
-    mode = route.get("mode", "PURE_LLM")
-    topic = route.get("topic", "none")
-    
-    # === 2.5) 處理 uuid context ===
-    reuse_uuids = reuse_uuids or []
-    if reuse_uuids:
-        print("[answer_with_routing] DOC_FOLLOWUP reuse_uuids =", reuse_uuids)
-        
-    # === 3) 根據 topic 決定要查哪些 index（多 index 支援） ===
-    topic_cfg = INDEX_CONFIG.get("topic_index_map", {}).get(topic)
-    if topic_cfg:
-        indexes = topic_cfg.get("indexes") or []
-    else:
-        # 撐底：用 default_index
-        default_idx = INDEX_CONFIG.get("default_index")
-        indexes = [default_idx] if default_idx else []
-
-    if indexes:
-        # 給 CodeAgent / SRA_REPORT 用的提示前綴
-        index_hint_str = ",".join(indexes)
-        index_hint_prefix = f"[ES_INDEX_HINT={index_hint_str}]\n"
-        # 給 ESFetchDocById / DOC_FOLLOWUP 用的 index_hint
-        index_hint = index_hint_str
-    else:
-        index_hint_prefix = ""
-        index_hint = None
-    # ★ 新增：從 INDEX_CONFIG 整理所有已知 index，給 DOC_FOLLOWUP 當候選 ★
-    topic_map = INDEX_CONFIG.get("topic_index_map", {}) or {}
-    all_indexes: list[str] = []
-    for cfg in topic_map.values():
-        for idx in cfg.get("indexes") or []:
-            if idx and idx not in all_indexes:
-                all_indexes.append(idx)
-                
-    # === 4) 給 CodeAgent 的 query ===
-    q_for_agent = (query_for_agent or user_msg).strip()
-    q_for_agent = index_hint_prefix + q_for_agent
-
-    try:
-        # === DOC_FOLLOWUP：針對既有參考文件做後續處理，不再查新的 ES ===
-        if mode == "DOC_FOLLOWUP":
-            # ★ 永遠放行給 doc_followup_agent，讓它自己做 UUID/refno 判斷
-            # 將 refno_uuid_map key 轉成 int（必要防呆）
-            ref_map_int: Optional[Dict[int, str]] = None
-            if refno_uuid_map:
-                ref_map_int = {}
-                for k, v in refno_uuid_map.items():
-                    try:
-                        kk = int(k)
-                    except Exception:
-                        continue
-                    ref_map_int[kk] = v
-        
-            out = ask_with_doc_followup(
-                instruction=user_msg,
-                uuids=reuse_uuids or [],     # 允許空 → 會轉交給 uuid extractor 處理
-                index_hint=index_hint,
-                refno_uuid_map=ref_map_int,
-                index_candidates=all_indexes,  # ★ 把所有已知 index 丟下去做 fallback
-            )
-
-
-                
-        # === SRA_REPORT：產生資料 payload → 報告 LLM 寫結論 ===
-        elif mode == "SRA_REPORT":
-            out = ask_with_report(q_for_agent)
-
-        # === SRA_STYLE：用既有語料模仿風格 ===
-        elif mode == "SRA_STYLE":
-            style_query = index_hint_prefix + user_msg
-            out = ask_with_style(style_query)
-
-        # === PURE_LLM：不查 ES，直接用模型知識回答 ===
-        else:
-            generic_answer = call_llm(
-                user_msg,
-                system_prompt=(
-                    "你是一個一般用途的繁體中文助手。"
-                    "請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。"
-                ),
-                extra_params={"options": {}},
-                timeout=180.0,
-            )
-            out = {
-                "answer": generic_answer,
-                "citations": [],
-                "reasoning": "此回答由一般 LLM 直接生成，未查詢後端資料庫。",
-            }
-
-    except Exception as e:
-        print("[agent] answer_with_routing error:", e)
-        return {
-            "answer": "後端分析過程發生錯誤，請稍後再試或聯絡系統管理員。",
-            "citations": [],
-            "reasoning": f"後端例外：{e}",
-            "mode": mode,
-            "route": route,
-        }
-
-    # === 補上 routing info（前端要看） ===
-    out = out or {}
-    out.setdefault("answer", "")
-    out.setdefault("citations", [])
-    out.setdefault("reasoning", "")
-    out["mode"] = mode
-    out["route"] = route
-    
-    # ★ 如果是 DOC_FOLLOWUP，且底層有回傳 used_indexes，就加到 route
-    if mode == "DOC_FOLLOWUP":
-        used_indexes = out.get("used_indexes") or []
-        if used_indexes:
-            # 例如：actual_indexes = ["news_test"]
-            out["route"]["actual_indexes"] = used_indexes
-            
-    return out
-
-
 
 # 允許：python -m agent.agent 快速測試
 if __name__ == "__main__":

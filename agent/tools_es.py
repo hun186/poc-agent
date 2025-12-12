@@ -13,12 +13,10 @@ import json
 from typing import Optional, List, Dict, Any
 from agent.llm_utils.ollama_client import call_llm
 import textwrap
-import requests
 from elasticsearch import Elasticsearch, BadRequestError
 from elasticsearch import NotFoundError
 from smolagents import Tool
-from typing import Optional, List, Tuple  # 開頭已經有就不用再加
-from typing import Union, List, Optional  # 若上面已有則不用重複
+from typing import Optional, List, Tuple, Union
 
 # ===== ES 連線 =====
 #ES_URL = os.getenv("ES_URL", "http://localhost:9200")
@@ -46,37 +44,7 @@ IndexType = Union[str, List[str]]
 
 # ===== 統一的搜尋小幫手（處理 highlight 超長容錯） =====
 ES_MAX_ANALYZED_OFFSET = int(os.getenv("ES_MAX_ANALYZED_OFFSET", "200000"))
-'''
-def _parse_index_hint(query: str) -> tuple[Optional[List[str]], str]:
-    """
-    從 query 讀取 [ES_INDEX_HINT=index1,index2,...]
-    回傳 (indexes, cleaned_query)
 
-    - indexes: list[str] 或 None
-    - cleaned_query: 把 [ES_INDEX_HINT=...] 拿掉後的查詢字串
-    """
-    print("query in _parse_index_hint", query)
-    if not query:
-        return None, ""
-
-    m = re.search(r"\[ES_INDEX_HINT=([^\]]+)\]", query)
-    print("m", m)
-    if not m:
-        # 沒有 hint，直接回原 query
-        return None, query.strip()
-
-    raw = m.group(1).strip()
-    print("raw", raw)
-    indexes: List[str] = []
-    if raw:
-        indexes = [x.strip() for x in raw.split(",") if x.strip()]
-
-    # 把 [ES_INDEX_HINT=...] 那一段從 query 移除
-    cleaned_query = (query[:m.start()] + query[m.end():]).strip()
-    print("cleaned_query", cleaned_query)
-
-    return (indexes or None), cleaned_query
-'''
 def _as_blocks(md):
     """把 multidim_event_json 安全轉成 list[dict]。支援 str(json) / dict / list 三種情形。"""
     if not md:
@@ -93,10 +61,10 @@ def _as_blocks(md):
     return []
 
 
-# ================== 平台同義詞：支援外部 config 覆蓋 ==================
+# ================== 人工同義詞：支援外部 config 覆蓋（多檔案） ==================
 
 # 預設內建一份（防止沒給 config 也能用）
-_DEFAULT_PLATFORM_SYNONYMS: Dict[str, List[str]] = {
+_DEFAULT_MANUAL_SYNONYMS: Dict[str, List[str]] = {
   #"東風": ["東風", "東風飛彈", "東風導彈", "DF", "DF-"],
   #"DF-11": ["DF-11", "DF11", "東風11", "東風-11", "東風11型", "東風11型導彈"],
   #"DF-15": ["DF-15", "DF15", "東風15", "東風-15", "東風15型", "東風15型導彈"],
@@ -108,17 +76,89 @@ _DEFAULT_PLATFORM_SYNONYMS: Dict[str, List[str]] = {
     # "遼寧號": [...],
 }
 
-def _load_platform_synonyms() -> Dict[str, List[str]]:
-    path = os.getenv("PLATFORM_SYNONYMS_PATH")
+def _merge_syn_dict(
+    base: Dict[str, List[str]],
+    data: Any,
+    source_name: str = "<unknown>",
+) -> None:
+    """
+    把 data (dict) 內容 merge 進 base：
+    - 同一個 key，如果多個檔案都有，就把 list 做「去重後 append」，不會洗掉舊的。
+    """
+    if not isinstance(data, dict):
+        print(f"[ES tools] 同義詞來源 {source_name} 不是 dict，略過")
+        return
+
+    for k, v in data.items():
+        key = str(k)
+        if isinstance(v, list):
+            new_list = [str(x) for x in v]
+        else:
+            new_list = [str(v)]
+
+        old_list = base.get(key, [])
+        # 保留原有順序，把新來但沒出現過的詞 append 上去
+        merged = old_list + [x for x in new_list if x not in old_list]
+        base[key] = merged
+
+
+def _load_manual_synonyms() -> Dict[str, List[str]]:
+    """
+    載入人工同義詞（只有「目錄模式」）：
+
+    1) 先用 _DEFAULT_MANUAL_SYNONYMS 打底
+    2) 從 MANUAL_SYNONYMS_DIR（預設 config/synonyms）底下讀取所有 .json
+    3) 依序 merge 成一份 dict
+
+    若資料夾不存在或讀檔失敗，就只用預設表。
+    """
+    # 1) 先打底
+    base: Dict[str, List[str]] = {
+        k: list(v) for k, v in _DEFAULT_MANUAL_SYNONYMS.items()
+    }
+
+    # 2) 目錄設定（可用環境變數覆蓋）
+    dir_path = os.getenv("MANUAL_SYNONYMS_DIR", "config/synonyms")
+
+    if not os.path.isdir(dir_path):
+        print(f"[ES tools] 同義詞資料夾不存在：{dir_path}，只使用內建預設表（{len(base)} 組 key）")
+        return base
+
+    loaded_files = 0
+    for filename in os.listdir(dir_path):
+        if not filename.lower().endswith(".json"):
+            continue
+        full_path = os.path.join(dir_path, filename)
+        try:
+            with open(full_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            _merge_syn_dict(base, data, source_name=full_path)
+            loaded_files += 1
+        except Exception as e:
+            print(f"[ES tools] 讀取同義詞檔案失敗：{full_path}，錯誤：{e}")
+
+    print(
+        f"[ES tools] 已載入人工同義詞表，自資料夾 {dir_path} "
+        f"共 {loaded_files} 個檔案，合計 {len(base)} 組 key（含預設 + merge）"
+    )
+
+    return base
+
+
+# 實際使用的同義詞表
+MANUAL_SYNONYMS: Dict[str, List[str]] = _load_manual_synonyms()
+
+def _load_manual_synonyms_1212() -> Dict[str, List[str]]:
+    path = os.getenv("MANUAL_SYNONYMS_PATH")
     # 先用預設表打底
-    base: Dict[str, List[str]] = dict(_DEFAULT_PLATFORM_SYNONYMS)
+    base: Dict[str, List[str]] = dict(_DEFAULT_MANUAL_SYNONYMS)
 
     if not path:
         return base
 
     try:
         if not os.path.exists(path):
-            print(f"[ES tools] PLATFORM_SYNONYMS_PATH 不存在：{path}，改用內建預設表")
+            print(f"[ES tools] MANUAL_SYNONYMS_PATH 不存在：{path}，改用內建預設表")
             return base
 
         with open(path, "r", encoding="utf-8") as f:
@@ -131,21 +171,21 @@ def _load_platform_synonyms() -> Dict[str, List[str]]:
                 else:
                     base[str(k)] = [str(v)]
 
-        print(f"[ES tools] 已載入平台同義詞表，共 {len(base)} 組 key（含預設 + 覆蓋）")
+        print(f"[ES tools] 已載入人工同義詞表，共 {len(base)} 組 key（含預設 + 覆蓋）")
         return base
     except Exception as e:
-        print(f"[ES tools] 載入平台同義詞表失敗：{e}，改用內建預設表")
-        return _DEFAULT_PLATFORM_SYNONYMS
+        print(f"[ES tools] 載入人工同義詞表失敗：{e}，改用內建預設表")
+        return _DEFAULT_MANUAL_SYNONYMS
 
 
 # 實際使用的同義詞表（可被外部 JSON 覆蓋）
-PLATFORM_SYNONYMS: Dict[str, List[str]] = _load_platform_synonyms()
+#MANUAL_SYNONYMS: Dict[str, List[str]] = _load_manual_synonyms()
 
 
 
-def _expand_platform_terms(tokens: List[str]) -> List[str]:
+def _expand_manual_terms(tokens: List[str]) -> List[str]:
     """
-    根據輸入 tokens 決定要展開哪幾組 PLATFORM_SYNONYMS：
+    根據輸入 tokens 決定要展開哪幾組 MANUAL_SYNONYMS：
     - 若命中任何「特定型號 key」（key 名含數字，例如 DF-15）：
         → 只展開這些型號的同義詞，不把其他兄弟型號 / 家族詞一起帶進來。
     - 若沒有命中特定型號，而是只有「東風」這種泛稱：
@@ -162,7 +202,7 @@ def _expand_platform_terms(tokens: List[str]) -> List[str]:
         if not t:
             continue
 
-        for key, syns in PLATFORM_SYNONYMS.items():
+        for key, syns in MANUAL_SYNONYMS.items():
             if t == key or t in syns:
                 if _is_specific_model_key(key):
                     matched_model_keys.add(key)
@@ -180,16 +220,16 @@ def _expand_platform_terms(tokens: List[str]) -> List[str]:
     expanded: set[str] = set()
     for k in keys_to_use:
         expanded.add(k)
-        for v in PLATFORM_SYNONYMS.get(k, []):
+        for v in MANUAL_SYNONYMS.get(k, []):
             expanded.add(v)
 
     return list(expanded)
 
 
-def _extract_platform_terms_from_query(q: str) -> List[str]:
+def _extract_manual_terms_from_query(q: str) -> List[str]:
     """
-    直接在使用者 query 裡掃一遍 PLATFORM_SYNONYMS：
-    - 只要 query 字串中有出現 key 或 synonyms，就當成一個命中的平台詞。
+    直接在使用者 query 裡掃一遍 MANUAL_SYNONYMS：
+    - 只要 query 字串中有出現 key 或 synonyms，就當成一個命中的人工同義詞。
     - 例如 query="給我東風15型導彈的情資"
       → 命中 "東風15" / "東風15型導彈" 等，就能回推到 DF-15 那條家族。
     """
@@ -197,7 +237,7 @@ def _extract_platform_terms_from_query(q: str) -> List[str]:
         return []
     s = str(q)
     found: set[str] = set()
-    for key, syns in PLATFORM_SYNONYMS.items():
+    for key, syns in MANUAL_SYNONYMS.items():
         # key 本身也要判
         if key and key in s:
             found.add(key)
@@ -244,7 +284,7 @@ def _extract_topic_terms_llm(q: str) -> List[str]:
     - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構
     - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱
     - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰
-    - 產品 / 平台 / 型號：武器型號、船艦名、飛機型號、產品型號等
+    - 產品 / 人工同義詞 / 型號：武器型號、船艦名、飛機型號、產品型號等
 
     規則：
     1. 僅輸出一個 JSON 陣列（array of string），不得有任何多餘文字。
@@ -616,17 +656,6 @@ def _parse_article_date_iso(raw: str) -> str | None:
     if not m: return None
     return _norm_date(int(m.group('y')), int(m.group('m')), int(m.group('d')))
 
-'''
-def _collect_timeline_dates(src: dict) -> list[str]:
-    uniq, seen = [], set()
-    for blk in (src.get("multidim_event_json") or []):
-        for t in (blk or {}).get("Event_Timeline") or []:
-            di = t.get("date_iso")
-            if di and di not in seen:
-                seen.add(di); uniq.append(di)
-    return uniq
-'''
-
 def _collect_timeline_dates(src: dict) -> list[str]:
     uniq, seen = [], set()
     blocks = _as_blocks((src or {}).get("multidim_event_json"))
@@ -648,28 +677,6 @@ def _collect_timeline_dates(src: dict) -> list[str]:
                 seen.add(di)
                 uniq.append(di)
     return uniq
-
-'''
-def _collect_timeline_dates_1124(src: dict) -> list[str]:
-    uniq, seen = [], set()
-    blocks = _as_blocks((src or {}).get("multidim_event_json"))
-    for b in blocks:
-        ets = b.get("Event_Timeline") or []
-        if isinstance(ets, str):
-            try:
-                ets = json.loads(ets)
-            except Exception:
-                ets = []
-        if isinstance(ets, dict):
-            ets = [ets]
-        for t in ets:
-            if not isinstance(t, dict):
-                continue
-            di = t.get("date_iso")
-            if di and di not in seen:
-                seen.add(di); uniq.append(di)
-    return uniq
-'''
 
 def _normalize_iso_date(di) -> str | None:
     """把 ES 裡的 date_iso 轉成 YYYY-MM-DD 字串，容錯 list / 含時間 / 含 Z。"""
@@ -919,13 +926,13 @@ class ESSearchNews(Tool):
         回傳：
         - core_terms：合併語意軸後的核心主題詞（每一軸只留一個代表詞）
         - grouped_synonyms：{核心詞: [同義詞...]}，已在 LLM 端做語意軸合併
-        - is_platform_query：若有展開到平台家族即為 True（僅供後續邏輯需要）
+        - is_manual_entity_query：若有展開到人工同義詞家族即為 True（僅供後續邏輯需要）
         """
         q = (q or "").strip()
         if not q:
             return [], {}, False
     
-        # (1) LLM 抽主題詞（人名 / 地名 / 平台 / 重要概念等）
+        # (1) LLM 抽主題詞（人名 / 地名 / 人工同義詞 / 重要概念等）
         llm_terms_raw = _extract_topic_terms_llm(q)  # 沒 URL 會自動回 []
         llm_terms: List[str] = []
         seen: set[str] = set()
@@ -938,28 +945,28 @@ class ESSearchNews(Tool):
             seen.add(s)
             llm_terms.append(s)
     
-        # (2) 查 query 中直接出現的已知平台詞（靠 PLATFORM_SYNONYMS）
-        platform_terms_in_q = _extract_platform_terms_from_query(q)
+        # (2) 查 query 中直接出現的已知人工同義詞（靠 MANUAL_SYNONYMS）
+        manual_terms_in_q = _extract_manual_terms_from_query(q)
     
-        # (3) 平台家族展開（例如「東風-15」→ 各種 DF-15 寫法）
+        # (3) 人工同義詞家族展開（例如「東風-15」→ 各種 DF-15 寫法）
         base_terms_for_family: List[str] = []
         seen_base: set[str] = set()
-        for lst in (llm_terms, platform_terms_in_q):
+        for lst in (llm_terms, manual_terms_in_q):
             for t in lst:
                 t = (t or "").strip()
                 if t and t not in seen_base:
                     seen_base.add(t)
                     base_terms_for_family.append(t)
     
-        platform_family_terms: List[str] = _expand_platform_terms(base_terms_for_family) if base_terms_for_family else []
+        manual_family_terms: List[str] = _expand_manual_terms(base_terms_for_family) if base_terms_for_family else []
     
-        # 是否為「平台型」查詢（只當旗標用，不再給特權）
-        is_platform_query = bool(platform_family_terms)
+        # 是否為「人工同義詞型」查詢（只當旗標用，不再給特權）
+        is_manual_entity_query = bool(manual_family_terms)
     
-        # (4) 初步核心候選詞 = LLM 主題詞 + query 內平台詞 + 平台家族展開
+        # (4) 初步核心候選詞 = LLM 主題詞 + query 內人工同義詞 + 人工同義詞家族展開
         ordered_core_candidates: List[str] = []
         seen_core: set[str] = set()
-        for lst in (llm_terms, platform_terms_in_q, platform_family_terms):
+        for lst in (llm_terms, manual_terms_in_q, manual_family_terms):
             for t in lst:
                 t = (t or "").strip()
                 if t and t not in seen_core:
@@ -967,7 +974,7 @@ class ESSearchNews(Tool):
                     ordered_core_candidates.append(t)
     
         if not ordered_core_candidates:
-            return [], {}, is_platform_query
+            return [], {}, is_manual_entity_query
     
         # (5) 呼叫 LLM 做「同義詞擴充 + 語意軸合併」
         raw_grouped = _expand_synonyms_grouped_llm(q, ordered_core_candidates) or {}
@@ -1024,7 +1031,7 @@ class ESSearchNews(Tool):
         # grouped_synonyms 只保留在 core_terms 中有出現的 key
         grouped_synonyms = {k: v for k, v in grouped_synonyms.items() if k in core_terms}
     
-        return core_terms, grouped_synonyms, is_platform_query
+        return core_terms, grouped_synonyms, is_manual_entity_query
     
     def _build_query_body(
         self,
@@ -1208,19 +1215,19 @@ class ESSearchNews(Tool):
                     }
                 })
         
-        # ★ 4) 平台 / 主題詞加分：rawInfo / subject / title
+        # ★ 4) 人工同義詞 / 主題詞加分：rawInfo / subject / title
         if core_terms or syn_terms:
-            platform_shoulds: List[Dict[str, Any]] = []
+            entity_shoulds: List[Dict[str, Any]] = []
         
             # 核心主題詞：match_phrase（精準）
             for t in core_terms:
-                platform_shoulds.append({"match_phrase": {"rawInfo.content": t}})
-                platform_shoulds.append({"match_phrase": {"communication.subject": t}})
-                platform_shoulds.append({"match_phrase": {"multidim_event_json.article_title": t}})
+                entity_shoulds.append({"match_phrase": {"rawInfo.content": t}})
+                entity_shoulds.append({"match_phrase": {"communication.subject": t}})
+                entity_shoulds.append({"match_phrase": {"multidim_event_json.article_title": t}})
         
             # 同義詞：用 match（OR），當加分用
             for t in syn_terms:
-                platform_shoulds.append({
+                entity_shoulds.append({
                     "match": {
                         "rawInfo.content": {
                             "query": t,
@@ -1229,10 +1236,10 @@ class ESSearchNews(Tool):
                     }
                 })
         
-            if platform_shoulds:
+            if entity_shoulds:
                 shoulds.append({
                     "bool": {
-                        "should": platform_shoulds,
+                        "should": entity_shoulds,
                         "minimum_should_match": 1
                     }
                 })
@@ -1408,16 +1415,16 @@ class ESSearchNews(Tool):
     
         print("in ESSearchNews.forward, index =", index, "query =", query)
         
-        # 1) 抽核心主題詞 + 群組同義詞（含平台家族展開）
+        # 1) 抽核心主題詞 + 群組同義詞（含人工同義詞家族展開）
         #print("before _compute_effective_terms,raw_query",raw_query)
 
         # === T1: 主題詞/同義詞抽取時間 ===
         t_terms_start = time.perf_counter()
-        core_terms, grouped_syns, is_platform_query = self._compute_effective_terms(raw_query)
+        core_terms, grouped_syns, is_manual_entity_query = self._compute_effective_terms(raw_query)
         t_terms_end = time.perf_counter()
         print(f"[es_search_news][T1] _compute_effective_terms 花費 {t_terms_end - t_terms_start:.3f}s, "
               f"core_terms={core_terms}, num_groups={len(grouped_syns)}")
-        #print("after _compute_effective_terms,core_terms, grouped_syns, is_platform_query",core_terms, grouped_syns, is_platform_query)
+        #print("after _compute_effective_terms,core_terms, grouped_syns, is_manual_entity_query",core_terms, grouped_syns, is_manual_entity_query)
 
         # 2) 扁平化同義詞，建立 ES / snippet 共用的 effective_terms & term_groups
         # 2-1 扁平同義詞
@@ -1619,8 +1626,8 @@ class ESSearchNews(Tool):
         # (1) 原本 regex 版主題詞（較廣義，例如可能包含地名 / 角色）
         topic_terms = self._extract_topic_terms(query or "")
 
-        # (2) 直接從 query 字串中掃 PLATFORM_SYNONYMS（專門抓平台／型號）
-        platform_terms_in_q = _extract_platform_terms_from_query(query or "")
+        # (2) 直接從 query 字串中掃 MANUAL_SYNONYMS（專門抓人工同義詞／型號）
+        manual_terms_in_q = _extract_manual_terms_from_query(query or "")
 
         def _normalize_for_match(s: str) -> str:
             """
@@ -1647,7 +1654,7 @@ class ESSearchNews(Tool):
             - 若 term_groups 為空 → 不過濾（避免誤殺其他任務）
             - 先計算每一組群組是否命中（group_hits），以及整體命中的字串集合 hit_terms
         
-            判斷邏輯（平台 / 非平台一律相同）：
+            判斷邏輯（人工同義詞 / 非人工同義詞一律相同）：
             - 若只有一個語意群組（例如只查「052D驅逐艦」或只查「化學武器」）：
                 → 至少命中 1 組即可
             - 若有兩個以上語意群組（例如「東風15型導彈 宮古水道」）：
@@ -1714,7 +1721,7 @@ class ESSearchNews(Tool):
         
                 text = ev["text"]
 
-                # ★ 語意群組過濾：平台查詢 vs 非平台查詢
+                # ★ 語意群組過濾：人工同義詞查詢 vs 非人工同義詞查詢
                 ok, hit_terms = _match_topic(text, h_subject, h_title)
                 if not ok:
                     continue
@@ -1833,13 +1840,13 @@ class ESSearchNews(Tool):
 
             # 主題相關詞
             "topic_terms": topic_terms,           # 規則抽出來的主題詞
-            "core_terms": core_terms,             # LLM + 平台家族合併後的代表詞
+            "core_terms": core_terms,             # LLM + 人工同義詞家族合併後的代表詞
             "syn_terms": syn_terms_flat,          # 扁平化的同義詞
             "effective_terms": effective_terms,   # 核心 + 同義詞（給 snippet 過濾 / fallback 用）
 
             # 查詢型態資訊
-            "platform_terms_in_q": platform_terms_in_q,
-            "is_platform_query": is_platform_query,
+            "manual_terms_in_q": manual_terms_in_q,
+            "is_manual_entity_query": is_manual_entity_query,
             # term_groups 是 list[set]，轉成 list[list] 比較好序列化
             "term_groups": [sorted(list(g)) for g in term_groups],
 
@@ -1847,7 +1854,7 @@ class ESSearchNews(Tool):
             "date_from": date_from,
             "date_to": date_to,
         }
-
+        print("[es_search_news] query_meta =", json.dumps(query_meta, ensure_ascii=False))
         return {
             "hits": filtered_hits,
             "evidence_snippets": evidence_snippets,

@@ -1,0 +1,25 @@
+{
+  "session_id": "fd34c7a9-0f36-4202-a6ac-a7ed88067347",
+  "request_id": "73ca0813349141549be1a5ed2a0d90aa",
+  "ts": "2025-12-12T14:42:12",
+  "user": {
+    "latest_question": "### Task:\nGenerate a concise, 3-5 word title with an emoji summarizing the chat history.\n### Guidelines:\n- The title should clearly represent the main theme or subject of the conversation.\n- Use emojis that enhance understanding of the topic, but avoid quotation marks or special formatting.\n- Write the title in the chat's primary language; default to English if multilingual.\n- Prioritize accuracy over excessive creativity; keep it clear and simple.\n- Your entire response must consist solely of the JSON object, without any introductory or concluding text.\n- The output must be a single, raw JSON object, without any markdown code fences or other encapsulating text.\n- Ensure no conversational text, affirmations, or explanations precede or follow the raw JSON output, as this will cause direct parsing failure.\n### Output:\nJSON format: { \"title\": \"your concise title here\" }\n### Examples:\n- { \"title\": \"📉 Stock Market Trends\" },\n- { \"title\": \"🍪 Perfect Chocolate Chip Recipe\" },\n- { \"title\": \"Evolution of Music Streaming\" },\n- { \"title\": \"Remote Work Productivity Tips\" },\n- { \"title\": \"Artificial Intelligence in Healthcare\" },\n- { \"title\": \"🎮 Video Game Development Insights\" }\n### Chat History:\n<chat_history>\nUSER: 我得到一則情報指出2025年11月20日下午4點在馬達加斯加海域發現共軍D52大驅在進行護船，防海盜，請以聯合情監的風格寫成一則軍事情報。\nASSISTANT: # 回答\n\n\n（1）114/11/20 聯合情監偵綜整回報\n\n【海軍艦隊】  \n1600 於馬達加斯加海域觀測到共軍 D52 大驅執行護船任務，目的在防範海盜活動。\n\n【電偵站】  \n當日通聯監測顯示相關訊號活躍度提升，推測與上述海上護航行動相關。\n\n---\n以下為本次風格仿寫所參考的資料庫原文內容（已截斷），供對照與檢核風格：\n\n### 風格參考樣本 1：114/07/05 聯合情監偵綜整回報（uuid: fb778266a011a55fb246bf9e4da5a364a8f0de0a）\n\n> （1）114/07/05 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0634 雷達偵獲 通聯監測站 於 台灣海峽 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0822 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 2：114/07/02 聯合情監偵綜整回報（uuid: f6d16a531316e8166667469dd8dc2a25557084fb）\n\n> （1）114/07/02 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0650 雷達偵獲 通聯監測站 於 台灣海峽 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0857 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 3：114/08/25 聯合情監偵綜整回報（uuid: 426e4cf634af139989cf97392853a88c50a2d897）\n\n> （1）114/08/25 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0616 雷達偵獲 通聯監測站 於 南海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0843 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 4：（1）114/08/16 聯合情監偵綜整回報（uuid: 2892f92b03795901b1b271d23263b762c27dfd9e）\n\n> （1）114/08/16 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0613 雷達偵獲 通聯監測站 於 浙江外海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0852 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 5：（1）114/06/29 聯合情監偵綜整回報（uuid: 192978977709f851455f5793602e047a96a599ab）\n\n> （1）114/06/29 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0653 雷達偵獲 通聯監測站 於 浙江外海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0831 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 6：（1）114/02/17 聯合情監偵綜整回報（uuid: 006cafc6ac236303b1723f2d286bad67ae725fe2）\n\n> （1）114/02/17 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0622 雷達偵獲 通聯監測站 於 巴士海峽 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0821 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 7：（1）114/02/06 聯合情監偵綜整回報（uuid: e9578144b2bbc36d674d2efe403bc0f26d3e192b）\n\n> （1）114/02/06 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0644 雷達偵獲 通聯監測站 於 浙江外海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0854 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 8：（1）114/01/17 聯合情監偵綜整回報（uuid: 896378e89cd5383b77c9b4e29f7f02e4ad54146a）\n\n> （1）114/01/17 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0629 雷達偵獲 通聯監測站 於 南海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0858 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n</chat_history>",
+    "recent_history": [
+      "我得到一則情報指出2025年11月20日下午4點在馬達加斯加海域發現共軍D52大驅在進行護船，防海盜，請以聯合情監的風格寫成一則軍事情報。"
+    ]
+  },
+  "routing": {
+    "mode": "META_TASK",
+    "meta_kind": "title"
+  },
+  "keywords": {},
+  "es": {},
+  "timing": {
+    "total_sec": 3.1916041374206543
+  },
+  "llm": {},
+  "output": {
+    "answer_preview": "{\"title\": \"護航行動🚢\"}",
+    "answer_length": 18
+  }
+}

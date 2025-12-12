@@ -2,6 +2,7 @@
 from typing import Any, Dict, List, Optional
 import json
 import time
+import os
 from .data_agent import _run_data_agent
 #from .tools_es import ESSearchNews, ESTimeline, ESFetchDocById
 #from .tools_stats import AggregateMonthQuarter
@@ -10,6 +11,12 @@ from agent.utils_citations import _build_citations_from_payload
 from agent.utils_citations import build_citations_from_ev
 from agent.utils_citations import compress_evidence
 from agent.utils_citations import build_refno_uuid_map
+
+REPORT_MODEL_ID = (
+    os.getenv("REPORT_MODEL_ID")   # 有指定就用這個
+    or os.getenv("MODEL_ID")       # 沒有就沿用主 MODEL_ID
+    or "gpt-oss:120b-32k"          # 再不然給一個預設
+)
 
 REPORT_SYSTEM_PROMPT = """
 你是一個『資料驅動的分析助手』。
@@ -180,7 +187,6 @@ class ReportAgent:
         result = ask_with_report(query)
         return result.get("answer", "").strip() or "[系統沒有產生任何文字答案]"
     
-#def ask_with_report_1211(question: str) -> Dict[str, Any]:
 def ask_with_report(
     question: str,
     trace: Optional[Dict[str, Any]] = None,
@@ -254,6 +260,7 @@ def ask_with_report(
         system_prompt=REPORT_SYSTEM_PROMPT,
         extra_params={"options": {}},
         timeout=180.0,
+        model=REPORT_MODEL_ID,
     )
     t1 = time.perf_counter()
 
@@ -265,6 +272,7 @@ def ask_with_report(
         "user": user_prompt,
         "answer_preview": (report_text[:200] if isinstance(report_text, str) else str(report_text)[:200]),
         "elapsed_sec": round(t1 - t0, 3),
+        "model_id": REPORT_MODEL_ID,
     })
     
     # === evidence_snippets 仍可保留給其他用途（例如前端展開全文），但不再用來建 citations ===
@@ -299,110 +307,4 @@ def ask_with_report(
         "refno_uuid_map": refno_uuid_map,
     }
 
-
-def ask_with_report_1201(question: str) -> Dict[str, Any]:
-    # 第 1 階段：取得 payload（純資料）
-    payload = _run_data_agent(question, mode="report")
-
-    # === 精簡版（給報告 LLM 用） ===
-    compressed_for_llm = {
-        "q": payload.get("question"),
-        "t": [
-            payload.get("time_range", {}).get("date_from"),
-            payload.get("time_range", {}).get("date_to"),
-        ],
-        "agg": compress_stats(payload.get("stats") or {}),
-        "ev": compress_evidence(payload.get("evidence_snippets") or []),
-    }
-
-    payload["ev"] = compressed_for_llm["ev"]
-    
-    # === 仍然在原始 payload 上補充 related_articles（給前端 / citation 用） ===
-    ev_full = payload.get("evidence_snippets") or []
-    
-    # ★ 先給每一條 evidence 固定一個 ref_no：1, 2, 3, ...
-    #for i, s in enumerate(ev_full, start=1):
-    #    s["ref_no"] = i
-
-    related_map: Dict[str, Dict[str, Any]] = {}
-
-    for s in ev_full:
-        uuid_ = s.get("uuid")
-        if not uuid_:
-            continue
-        if uuid_ in related_map:
-            continue
-
-        related_map[uuid_] = {
-            "uuid": uuid_,
-            "article_title": s.get("article_title"),
-            "article_date_iso": s.get("article_date_iso") or s.get("date_iso"),
-            "subject": s.get("subject"),
-            "source_id": s.get("source_id"),
-        }
-
-    payload["related_articles"] = list(related_map.values())
-
-    # === 第 2 階段：用「精簡版」 payload 餵報告 LLM ===
-    #   不再用原本的 payload_for_llm / evidence_snippets
-    user_prompt = json.dumps(
-        compressed_for_llm,
-        ensure_ascii=False,
-        separators=(",", ":")   # 再瘦一點 JSON
-    )
-
-    #'''
-    # 偵錯：看實際給 LLM 的那一份 ev
-    ev_for_llm = compressed_for_llm.get("ev") or []
-    print("=== DEBUG: EV (for LLM) ===")
-    for e in ev_for_llm:
-        print({
-            "ref_no": e.get("ref_no"),
-            "id": e.get("id"),
-            "d": e.get("d"),
-            "title": e.get("title"),
-            "note_preview": (e.get("note") or "")[:100].replace("\n", " ")
-        })
-    #'''
-        
-    report_text = call_llm(
-        user_prompt,
-        system_prompt=REPORT_SYSTEM_PROMPT,
-        extra_params={
-            "options": {
-                #"num_ctx": 1024*32,             # 看你的模型上限調
-                #"num_predict": 1024*12,         # 限制生成長度，避免寫太長拖很久
-            }
-        },
-        timeout=180.0,
-    )
-
-    # === 控制前端要用的 evidence_snippets 數量 ===
-    ev_for_frontend = payload.get("evidence_snippets") or []
-    if len(ev_for_frontend) > 150:
-        ev_for_frontend = ev_for_frontend[:150]
-        payload["evidence_snippets"] = ev_for_frontend
-
-    # citations 從「含 ev 的 payload」來
-    citations = _build_citations_from_payload(payload)
-
-    reasoning = (
-        "本回答根據 es_search_news 的查詢結果與 aggregate_month_quarter 所提供的統計，"
-        "並綜整 evidence_snippets 及相關文章所做的資料驅動分析。"
-    )
-
-    # ★ 新增：整理本輪實際有用到的 uuid（順序照 evidence_snippets）
-    used_uuids: List[str] = []
-    for s in payload.get("evidence_snippets") or []:
-        u = s.get("uuid")
-        if u and u not in used_uuids:
-            used_uuids.append(u)
-
-    return {
-        "answer": report_text,
-        "citations": citations,
-        "reasoning": reasoning,
-        "used_uuids": used_uuids,          # ★ 給前端帶去下一輪當 reuse_uuids
-        # "debug_payload_for_llm": compressed_for_llm,
-    }
 
