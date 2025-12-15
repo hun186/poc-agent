@@ -61,6 +61,10 @@ def render_markdown(out: Any, request: Request) -> str:
     reasoning = _normalize_text(out.get("reasoning") or "")
     citations = out.get("citations") or []
 
+    # ★ 新增：資料整備代理人 log
+    data_agent = out.get("data_agent") or {}
+    da_runs = data_agent.get("runs") or []
+    
     # 把 citation 的 text 也處理（避免 <em> 顯示失敗）
     for c in citations:
         if isinstance(c.get("text"), str):
@@ -145,6 +149,110 @@ def render_markdown(out: Any, request: Request) -> str:
                 f"{label} **{display}**{pid_str}{link}{date_piece}\n\n   > {txt}"
             )
 
+    # === 資料整備紀錄（Data Agent）===
+    if da_runs:
+        last_run = da_runs[-1]  # 通常就是這次回答對應的那一輪
+        mode = last_run.get("mode") or out.get("mode")
+        elapsed = last_run.get("elapsed_sec")
+        question_raw = last_run.get("question") or out.get("question") or out.get("q")
+
+        stats = last_run.get("stats") or {}
+        query_meta = last_run.get("query_meta") or {}
+        time_range = last_run.get("time_range") or {}
+
+        md.append("\n\n## 資料整備紀錄（Data Agent）\n")
+        if mode:
+            md.append(f"- 模式：`{mode}`")
+        if elapsed is not None:
+            md.append(f"- 資料準備耗時：約 **{elapsed} 秒**")
+        if question_raw:
+            md.append(f"- 原始問題：{question_raw}")
+
+        # 時間範圍（report 模式常用；style 通常沒有就顯示 N/A）
+        dt_from = time_range.get("date_from") or query_meta.get("date_from")
+        dt_to = time_range.get("date_to") or query_meta.get("date_to")
+        if dt_from or dt_to:
+            md.append(f"- 查詢時間範圍：`{dt_from or 'N/A'}` ～ `{dt_to or 'N/A'}`")
+
+        # 統計資訊（按模式略有不同）
+        if stats:
+            doc_cnt = stats.get("doc_count")
+            snip_cnt = stats.get("snippet_count")
+            active_days = stats.get("active_days")
+            full_doc_count = stats.get("full_doc_count")  # 風格模式才會有
+
+            line_parts = []
+            if doc_cnt is not None:
+                line_parts.append(f"文件數：{doc_cnt}")
+            if snip_cnt is not None:
+                line_parts.append(f"片段數：{snip_cnt}")
+            if active_days is not None:
+                line_parts.append(f"有活動天數：{active_days}")
+            if full_doc_count is not None:
+                line_parts.append(f"風格樣本文檔數：{full_doc_count}")
+            if line_parts:
+                md.append("- 統計概況：" + "；".join(line_parts))
+
+        # === 關鍵字樣態：依 mode 分流 ===
+        core_terms = (
+            query_meta.get("core_terms")
+            or last_run.get("core_terms")
+            or []
+        )
+        topic_terms = (
+            query_meta.get("topic_terms")
+            or last_run.get("topic_terms")
+            or []
+        )
+        style_terms = (
+            query_meta.get("style_terms")
+            or last_run.get("style_terms")
+            or []
+        )
+
+        syn_terms = query_meta.get("syn_terms") or []
+        effective_terms = query_meta.get("effective_terms") or []
+
+        # report 模式：走「核心關鍵詞」語意
+        if mode == "report":
+            if core_terms:
+                md.append(f"- 核心關鍵詞：`{', '.join(core_terms)}`")
+            if topic_terms:
+                md.append(f"- 主題關鍵詞：`{', '.join(topic_terms)}`")
+
+        # style 模式：清楚分成風格關鍵詞 / 主題關鍵詞 / 合併後核心詞
+        elif mode == "style":
+            if style_terms:
+                md.append(f"- 風格關鍵詞（style_terms）：`{', '.join(style_terms)}`")
+            if topic_terms:
+                md.append(f"- 主題關鍵詞（topic_terms）：`{', '.join(topic_terms)}`")
+            if core_terms:
+                md.append(f"- 檢索核心關鍵詞（style_terms + topic_terms）：`{', '.join(core_terms)}`")
+
+        # 共同欄位：同義詞 / effective_terms / ES query
+        if syn_terms:
+            syn_str = ", ".join(syn_terms)
+            if len(syn_str) > 120:
+                syn_str = syn_str[:120] + "…"
+            md.append(f"- 同義／擴充關鍵詞：`{syn_str}`")
+
+        if effective_terms:
+            eff_str = ", ".join(effective_terms)
+            if len(eff_str) > 120:
+                eff_str = eff_str[:120] + "…"
+            md.append(f"- 實際使用關鍵詞（effective terms）：`{eff_str}`")
+
+        # ES 查詢字串：依模式選擇來源
+        es_query = (
+            query_meta.get("es_query")
+            or query_meta.get("core_query")
+        )
+        # 風格模式可以多退一步用 style_query
+        if mode == "style" and not es_query:
+            es_query = last_run.get("style_query")
+
+        if es_query:
+            md.append(f"- ES 查詢字串：`{es_query}`")
     # 推理（可收合 / fallback）
     if reasoning:
         if ALLOW_DETAILS:

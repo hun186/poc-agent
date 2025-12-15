@@ -3,11 +3,11 @@ from typing import Any, Dict, List, Optional
 import json
 import time
 import os
-from .data_agent import _run_data_agent
+from .data_agent import run_data_agent
 #from .tools_es import ESSearchNews, ESTimeline, ESFetchDocById
 #from .tools_stats import AggregateMonthQuarter
 from agent.llm_utils.ollama_client import call_llm  # 你既有的封裝
-from agent.utils_citations import _build_citations_from_payload
+#from agent.utils_citations import _build_citations_from_payload
 from agent.utils_citations import build_citations_from_ev
 from agent.utils_citations import compress_evidence
 from agent.utils_citations import build_refno_uuid_map
@@ -193,8 +193,8 @@ def ask_with_report(
 ) -> Dict[str, Any]:
     if trace is None:
         trace = {}
-    #payload = _run_data_agent(question, mode="report")
-    payload = _run_data_agent(question, mode="report", trace=trace)
+    #payload = run_data_agent(question, mode="report")
+    payload = run_data_agent(question, mode="report", trace=trace)
 
     # === 精簡版（給報告 LLM 用） ===
     compressed_for_llm = {
@@ -298,13 +298,20 @@ def ask_with_report(
             if doc_id not in used_uuids:
                 used_uuids.append(doc_id)
     refno_uuid_map = build_refno_uuid_map(ev_compact)
-    
-    return {
+
+    result: Dict[str, Any] = {
         "answer": report_text,
         "citations": citations,
         "reasoning": reasoning,
         "used_uuids": used_uuids,
         "refno_uuid_map": refno_uuid_map,
     }
+
+    # ★ 把資料整備代理人的 log 掛回給前端用
+    data_agent = trace.get("data_agent")
+    if data_agent:
+        result["data_agent"] = data_agent
+
+    return result
 
 

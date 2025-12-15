@@ -180,8 +180,9 @@ STYLE_DATA_CODE_SYSTEM = """
    # 整理這一輪查詢的 meta 資訊，結構盡量與報告模式一致
    query_meta = {
        # 1) 本輪實際用來查 ES 的關鍵字 / 主題詞
-       "core_terms":   core_terms,
+       "style_terms":  style_terms,
        "topic_terms":  topic_terms,
+       "core_terms":   core_terms,
        "core_query":   style_query,   # 實際採用的查詢字串（primary 或 fallback）
 
        # 2) 時間範圍（風格模式固定為 None）
@@ -204,6 +205,11 @@ STYLE_DATA_CODE_SYSTEM = """
        "question": question,
        "original_article": original_article,
        "style_query": style_query,           # 實際採用的查詢字串（可能是 primary_query 或 fallback_query）
+       "style_terms": style_terms,
+       "topic_terms": topic_terms,
+       "core_terms": core_terms,
+       "date_from": date_from,
+       "date_to": date_to,
        "stats": {
            "doc_count":      len(hits),
            "snippet_count":  len(evidence_snippets),
@@ -363,8 +369,8 @@ REPORT_DATA_SYSTEM = """
    「請整理」「綜整成」「趨勢分析」「SWOT 分析」「目標長度為」「完整報告」等片語，
    並移除所有時間相關字串，只留下主題、地點與必要的行動詞，再形成 core_terms。
 
-   完成 core_terms 後，可以用空白串接成 core_query，作為 es_search_news 的 query 參數：
-   core_query = " ".join(core_terms)
+   完成 core_terms 後，可用下列方式組成 core_query，作為 es_search_news 的 query 參數：
+   core_query = f"核心關鍵詞組如下：'、'.join(core_terms)"
 
    然後用 core_query（而不是原始 question）當成 es_search_news 的 query 參數，
    若成功解析出起訖時間，務必放入 date_from / date_to：
@@ -635,7 +641,7 @@ def build_agent(mode: str = "report"):
 
     return _make_code_agent(tools, model, system_prompt=system_prompt)
 
-def _run_data_agent(
+def run_data_agent(
     question: str,
     mode: str = "report",
     trace: Optional[Dict[str, Any]] = None,
@@ -666,6 +672,23 @@ def _run_data_agent(
     else:
         raise ValueError("資料代理人回傳格式非 dict，請檢查 CodeAgent 的 final_answer 使用方式。")
 
+    # === ★ 標準化 query_meta 來源，盡量「照實際樣態」保留下來 ===
+    # 1) 優先用 payload["query_meta"]
+    # 2) 如果沒有，退而求其次找 raw_search_result.query_meta
+    query_meta: Dict[str, Any] = {}
+    try:
+        qm = payload.get("query_meta")
+        if isinstance(qm, dict):
+            query_meta = dict(qm)  # 淺拷貝，避免後續被修改
+        else:
+            raw_search = payload.get("raw_search_result")
+            if isinstance(raw_search, dict):
+                qm2 = raw_search.get("query_meta")
+                if isinstance(qm2, dict):
+                    query_meta = dict(qm2)
+    except Exception as e:
+        print("[data_agent] query_meta normalize error:", e)
+        
     try:
         da_root = trace.setdefault("data_agent", {})
         runs: list[Dict[str, Any]] = da_root.setdefault("runs", [])
@@ -673,15 +696,17 @@ def _run_data_agent(
         run_info: Dict[str, Any] = {
             "mode": mode,
             "elapsed_sec": round(elapsed, 3),
-            #給人看的：記你 .env 裡實際填什麼（跟 router 那邊一致）
+            # 給人看的：記你 .env 裡實際填什麼（跟 router 那邊一致）
             "model_id": DATA_AGENT_MODEL_ID,
-            #若之後要 debug LiteLLM 實際吃到什麼，再看這個
+            # 若之後要 debug LiteLLM 實際吃到什麼，再看這個
             "model_id_effective": _normalize_model_id(DATA_AGENT_MODEL_ID),
+            "question": payload.get("question") or question,
         }
 
-        # 問題文字（如果 payload 有 question 就記 payload 裡的，否則退回原始 question）
-        run_info["question"] = payload.get("question") or question
-
+        # ★ 共用：把 query_meta 整包塞進 trace（不管是 report 還是 style）
+        if query_meta:
+            run_info["query_meta"] = query_meta
+            
         # 報表模式：記 time_range / stats
         if mode == "report":
             time_range = payload.get("time_range") or {}
@@ -697,10 +722,22 @@ def _run_data_agent(
                 "active_days":    stats.get("active_days"),
             }
 
+            # ★ 方便後端/渲染器直接讀：把常用關鍵字攤出來
+            if query_meta:
+                run_info["core_terms"] = query_meta.get("core_terms") or []
+                run_info["topic_terms"] = query_meta.get("topic_terms") or []
+                run_info["date_from"] = query_meta.get("date_from")
+                run_info["date_to"] = query_meta.get("date_to")
+                
         # 風格模式：記 style_query / stats
         elif mode == "style":
             stats = payload.get("stats") or {}
 
+            # 先嘗試從 payload 直接拿，沒有再退回 query_meta
+            style_terms = payload.get("style_terms") or query_meta.get("style_terms") or []
+            topic_terms = payload.get("topic_terms") or query_meta.get("topic_terms") or []
+            core_terms  = payload.get("core_terms")  or query_meta.get("core_terms")  or []
+            
             run_info["style_query"] = payload.get("style_query")
             run_info["stats"] = {
                 "doc_count":      stats.get("doc_count"),
@@ -708,17 +745,28 @@ def _run_data_agent(
                 "full_doc_count": stats.get("full_doc_count"),
             }
 
+            run_info["style_terms"] = style_terms
+            run_info["topic_terms"] = topic_terms
+            run_info["core_terms"]  = core_terms
+        
+            # 風格模式通常沒有時間，但如果有就記
+            run_info["date_from"] = payload.get("date_from") or query_meta.get("date_from")
+            run_info["date_to"]   = payload.get("date_to")   or query_meta.get("date_to")
+            
+            # ★ 風格專用：照實際樣態記錄 style_terms / topic_terms / core_terms
+            if query_meta:
+                run_info["style_terms"] = query_meta.get("style_terms") or []
+                run_info["topic_terms"] = query_meta.get("topic_terms") or []
+                run_info["core_terms"] = query_meta.get("core_terms") or []
+                # 風格通常沒有時間，但如果 LLM 有幫忙填，也一起留著
+                run_info["date_from"] = query_meta.get("date_from")
+                run_info["date_to"] = query_meta.get("date_to")
+                
         # 其它 mode：先簡單記錄
         else:
             run_info["extra"] = {
                 "keys_in_payload": list(payload.keys()),
             }
-
-        # ★ 共用：只要 payload 有 query_meta，就整包塞進 trace
-        query_meta = payload.get("query_meta")
-        if isinstance(query_meta, dict):
-            # dict() 做淺拷貝，避免後續修改 payload 影響 log
-            run_info["query_meta"] = dict(query_meta)
 
         runs.append(run_info)
 

@@ -4,7 +4,7 @@ import json
 import os
 import time
 # ★ 依你原本的位置調整 import
-from .data_agent import _run_data_agent         # 如果 _run_data_agent 還在 agent.py
+from .data_agent import run_data_agent
 from agent.utils_citations import (
     build_citations_from_ev,
     compress_evidence,
@@ -102,7 +102,7 @@ def ask_with_style(
     if trace is None:
         trace = {}
     # 1) 用 SRA_STYLE 專用資料代理人拿「風格語料 payload」
-    payload = _run_data_agent(question, mode="style", trace=trace)
+    payload = run_data_agent(question, mode="style", trace=trace)
 
     # 2) 壓成風格樣本，避免 context 被塞爆
     #ev = payload.get("evidence_snippets") or []
@@ -229,11 +229,18 @@ def ask_with_style(
         if u and u not in used_uuids:
             used_uuids.append(u)
 
-    return {
+    result: Dict[str, Any] = {
         "answer": style_text_with_refs,
         "citations": citations,
         "reasoning": reasoning,
         "style_references": style_docs,
-        "used_uuids": used_uuids,       # 保留你原本給前端 reuse_uuids 的用途
-        "refno_uuid_map": refno_uuid_map,  # ★ 新增（若前端要用 ref_no → uuid）
+        "used_uuids": used_uuids,
+        "refno_uuid_map": refno_uuid_map,
     }
+
+    # ★ 同樣把 data_agent 掛回
+    data_agent = trace.get("data_agent")
+    if data_agent:
+        result["data_agent"] = data_agent
+
+    return result

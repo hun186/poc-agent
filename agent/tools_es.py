@@ -269,6 +269,7 @@ def _extract_topic_terms_llm(q: str) -> List[str]:
     - 若無法判斷關鍵詞，回傳空陣列 []
     """
     q = (q or "").strip()
+    #print("query in _extract_topic_terms_llm", q)
     if not q:
         return []
 
@@ -323,6 +324,7 @@ def _extract_topic_terms_llm(q: str) -> List[str]:
                 if not s:
                     continue
                 out.append(s)
+        #print("out in _extract_topic_terms_llm", out)
         return out
     except Exception as e:
         print(f"[ES tools] LLM topic extractor 失敗：{e}")

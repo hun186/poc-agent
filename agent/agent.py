@@ -441,6 +441,11 @@ def answer_with_routing(
     out["mode"] = mode
     out["route"] = route
 
+    # ★ 從 trace 裡把 data_agent 掛回結果（若還沒掛）
+    data_agent = trace.get("data_agent")
+    if data_agent and "data_agent" not in out:
+        out["data_agent"] = data_agent
+        
     # ★ 如果是 DOC_FOLLOWUP，且底層有回傳 used_indexes，就加到 route
     if mode == "DOC_FOLLOWUP":
         used_indexes = out.get("used_indexes") or []
