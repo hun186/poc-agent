@@ -3,6 +3,7 @@ import os
 from elasticsearch import Elasticsearch
 from agent.direct_llm_json import OpenAIStyleOllama
 from agent.config.index_loader import INDEX_CONFIG   # ★ 新增：跟 agent 共用 index 設定
+from agent.es.es_client import ALL_INDEXES, ES_INDEX_DEFAULT
 
 # ===== LLM / 模型設定 =====
 PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE")
@@ -13,6 +14,7 @@ json_llm = OpenAIStyleOllama(
     temperature=float(os.getenv("MODEL_TEMPERATURE", "0")),
 )
 
+'''
 # ===== Elasticsearch 設定 =====
 ES_URL = os.getenv("ES_URL")
 ES_USERNAME = os.getenv("ES_USERNAME")
@@ -56,4 +58,7 @@ ES = Elasticsearch(
 
 print("Connecting to ES...")
 print(ES.info())
+'''
+print("[settings] ES client ready, default index =", ES_INDEX_DEFAULT)
 print("ALL_INDEXES =", ALL_INDEXES)  # ★ 看一下最後實際會查哪些 index
+

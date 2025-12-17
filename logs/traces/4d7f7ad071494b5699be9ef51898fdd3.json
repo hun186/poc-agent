@@ -1,0 +1,25 @@
+{
+  "session_id": "6a11e8c1-2425-4254-9f97-6c958cc3e5a0",
+  "request_id": "4d7f7ad071494b5699be9ef51898fdd3",
+  "ts": "2025-12-17T17:16:42",
+  "user": {
+    "latest_question": "### Task:\nGenerate a concise, 3-5 word title with an emoji summarizing the chat history.\n### Guidelines:\n- The title should clearly represent the main theme or subject of the conversation.\n- Use emojis that enhance understanding of the topic, but avoid quotation marks or special formatting.\n- Write the title in the chat's primary language; default to English if multilingual.\n- Prioritize accuracy over excessive creativity; keep it clear and simple.\n- Your entire response must consist solely of the JSON object, without any introductory or concluding text.\n- The output must be a single, raw JSON object, without any markdown code fences or other encapsulating text.\n- Ensure no conversational text, affirmations, or explanations precede or follow the raw JSON output, as this will cause direct parsing failure.\n### Output:\nJSON format: { \"title\": \"your concise title here\" }\n### Examples:\n- { \"title\": \"📉 Stock Market Trends\" },\n- { \"title\": \"🍪 Perfect Chocolate Chip Recipe\" },\n- { \"title\": \"Evolution of Music Streaming\" },\n- { \"title\": \"Remote Work Productivity Tips\" },\n- { \"title\": \"Artificial Intelligence in Healthcare\" },\n- { \"title\": \"🎮 Video Game Development Insights\" }\n### Chat History:\n<chat_history>\nUSER: 給我2025年052D的活動分析\nASSISTANT: # 回答\n\n\n**資料概況**  \n- 期間：2025‑01‑01 至 2025‑12‑31（由使用者指定）  \n- 文件數（docs）：0  \n- 片段數（snips）：0  \n- 有活動紀錄的天數（active_days）：0  \n- 月、季分布、峰值日與首末日期皆無資料（均為空或 null）  \n\n**分析結果**  \n目前資料庫中在 2025 年整年度內並未收錄任何相關文件、片段或活動紀錄，亦無月份、季度或特定高峰日的統計資訊。因缺乏任何實際事件或數據，**資料不足以判斷 2025 年 052D 的活動情形**，無法提供時間線、趨勢或 SWOT 分析。\n\n如未來補充了相關文件或事件資料，將能進一步進行具體的活動分析。\n\n\n\n## 資料整備紀錄（Data Agent）\n\n\n- 模式：`report`\n\n- 資料準備耗時：約 **46.993 秒**\n\n- 原始問題：給我2025年052D的活動分析\n\n- 查詢時間範圍：`2025-01-01` ～ `2025-12-31`\n\n- 統計概況：文件數：0；片段數：0；有活動天數：0\n\n- 核心關鍵詞：`052D`\n\n- 同義／擴充關鍵詞：`052D型, 052D神盾艦, 052D型驅逐艦, 052D驅逐艦, 052D型飛彈驅逐艦, Type 052D, Type 052D destroyer, Jiangdao class destroyer`\n\n- 實際使用關鍵詞（effective terms）：`052D, 052D型, 052D神盾艦, 052D型驅逐艦, 052D驅逐艦, 052D型飛彈驅逐艦, Type 052D, Type 052D destroyer, Jiangdao class destroyer`\n\n- ES 查詢字串：`核心關鍵詞組如下：052D`\n</chat_history>",
+    "recent_history": [
+      "給我2025年052D的活動分析"
+    ]
+  },
+  "routing": {
+    "mode": "META_TASK",
+    "meta_kind": "title"
+  },
+  "keywords": {},
+  "es": {},
+  "timing": {
+    "total_sec": 4.915642499923706
+  },
+  "llm": {},
+  "output": {
+    "answer_preview": "{\"title\": \"活動概覽📈\"}",
+    "answer_length": 18
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "session_id": "6a11e8c1-2425-4254-9f97-6c958cc3e5a0",
+  "request_id": "9a5d141ccdfd4353989d84e57acb69d3",
+  "ts": "2025-12-17T17:16:23",
+  "user": {
+    "latest_question": "### Task:\nSuggest 3-5 relevant follow-up questions or prompts that the user might naturally ask next in this conversation as a **user**, based on the chat history, to help continue or deepen the discussion.\n### Guidelines:\n- Write all follow-up questions from the user’s point of view, directed to the assistant.\n- Make questions concise, clear, and directly related to the discussed topic(s).\n- Only suggest follow-ups that make sense given the chat content and do not repeat what was already covered.\n- If the conversation is very short or not specific, suggest more general (but relevant) follow-ups the user might ask.\n- Use the conversation's primary language; default to English if multilingual.\n- Response must be a JSON array of strings, no extra text or formatting.\n### Output:\nJSON format: { \"follow_ups\": [\"Question 1?\", \"Question 2?\", \"Question 3?\"] }\n### Chat History:\n<chat_history>\nUSER: 給我2025年052D的活動分析\nASSISTANT: # 回答\n\n\n**資料概況**  \n- 期間：2025‑01‑01 至 2025‑12‑31（由使用者指定）  \n- 文件數（docs）：0  \n- 片段數（snips）：0  \n- 有活動紀錄的天數（active_days）：0  \n- 月、季分布、峰值日與首末日期皆無資料（均為空或 null）  \n\n**分析結果**  \n目前資料庫中在 2025 年整年度內並未收錄任何相關文件、片段或活動紀錄，亦無月份、季度或特定高峰日的統計資訊。因缺乏任何實際事件或數據，**資料不足以判斷 2025 年 052D 的活動情形**，無法提供時間線、趨勢或 SWOT 分析。\n\n如未來補充了相關文件或事件資料，將能進一步進行具體的活動分析。\n\n\n\n## 資料整備紀錄（Data Agent）\n\n\n- 模式：`report`\n\n- 資料準備耗時：約 **46.993 秒**\n\n- 原始問題：給我2025年052D的活動分析\n\n- 查詢時間範圍：`2025-01-01` ～ `2025-12-31`\n\n- 統計概況：文件數：0；片段數：0；有活動天數：0\n\n- 核心關鍵詞：`052D`\n\n- 同義／擴充關鍵詞：`052D型, 052D神盾艦, 052D型驅逐艦, 052D驅逐艦, 052D型飛彈驅逐艦, Type 052D, Type 052D destroyer, Jiangdao class destroyer`\n\n- 實際使用關鍵詞（effective terms）：`052D, 052D型, 052D神盾艦, 052D型驅逐艦, 052D驅逐艦, 052D型飛彈驅逐艦, Type 052D, Type 052D destroyer, Jiangdao class destroyer`\n\n- ES 查詢字串：`核心關鍵詞組如下：052D`\n</chat_history>",
+    "recent_history": [
+      "給我2025年052D的活動分析"
+    ]
+  },
+  "routing": {
+    "mode": "META_TASK",
+    "meta_kind": "followups"
+  },
+  "keywords": {},
+  "es": {},
+  "timing": {
+    "total_sec": 18.22534704208374
+  },
+  "llm": {},
+  "output": {
+    "answer_preview": "{\"follow_ups\": [\"您是否有具體的052D活動相關文件或報告可以提供？\", \"您希望分析的重點是活動的參與人數、地點分布，還是其他指標？\", \"是否有特定的時間段（例如某個月或季度）需要特別關注？\", \"您希望得到的分析形式是圖表、文字報告，還是結合兩者的綜合報告？\"]}",
+    "answer_length": 143
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "session_id": "d9863f34-e07e-4d94-831a-09d37ce9b504",
+  "request_id": "5f92b02573f34f4dba62c47b558676e7",
+  "ts": "2025-12-17T20:54:49",
+  "user": {
+    "latest_question": "告訴我０５２Ｄ在２０２５年的活動情況",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "SRA_REPORT",
+    "topic": "news_general",
+    "indexes": [
+      "news_test"
+    ],
+    "index_hint": "news_test",
+    "route_raw": {
+      "mode": "SRA_REPORT",
+      "reason": "使用者要求整理 052D 在 2025 年的活動情況，屬於對特定時間段內主題的彙整與分析，需要重新查詢資料庫",
+      "topic": "news_general"
+    }
+  },
+  "keywords": {
+    "q_for_agent": "[ES_INDEX_HINT=news_test]\n【對話歷史】\n\n\n【目前問題】\n告訴我０５２Ｄ在２０２５年的活動情況\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 67.5884120464325,
+    "total_sec": 86.89132809638977
+  },
+  "llm": {
+    "router": [
+      {
+        "system": "TASK_ROUTER_SYSTEM",
+        "user": "請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。\n\n【使用者請求】\n【目前問題】\n告訴我０５２Ｄ在２０２５年的活動情況",
+        "raw_response": "{\n  \"mode\": \"SRA_REPORT\",\n  \"reason\": \"使用者要求整理 052D 在 2025 年的活動情況，屬於對特定時間段內主題的彙整與分析，需要重新查詢資料庫\",\n  \"topic\": \"news_general\"\n}",
+        "parsed": {
+          "mode": "SRA_REPORT",
+          "reason": "使用者要求整理 052D 在 2025 年的活動情況，屬於對特定時間段內主題的彙整與分析，需要重新查詢資料庫",
+          "topic": "news_general"
+        },
+        "elapsed_sec": 2.98,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ],
+    "report": [
+      {
+        "system": "REPORT_SYSTEM_PROMPT",
+        "user": "{\"q\":\"告訴我０５２Ｄ在２０２５年的活動情況\",\"t\":[\"2025-01-01\",\"2025-12-31\"],\"agg\":{\"docs\":0,\"snips\":0,\"active_days\":0,\"month\":[],\"quarter\":[],\"peak_days\":[],\"first_last\":[null,null]},\"ev\":[]}",
+        "answer_preview": "**資料概況**  \n- 2025 年度的文件數 (docs) 為 0，片段數 (snips) 為 0。  \n- 期間內沒有任何活動天數 (active_days 為 0)。  \n- 月度、季度分布皆為空，亦無高峰日 (peak_days) 或首末日期可供參考。  \n- 事件清單 (ev) 為空，未提供任何具體片段或標題。  \n\n**結論**  \n根據目前提供的資料，2025 年內「０５２Ｄ」並未",
+        "elapsed_sec": 6.452,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ]
+  },
+  "output": {
+    "answer_preview": "# 回答\n\n\n**資料概況**  \n- 2025 年度的文件數 (docs) 為 0，片段數 (snips) 為 0。  \n- 期間內沒有任何活動天數 (active_days 為 0)。  \n- 月度、季度分布皆為空，亦無高峰日 (peak_days) 或首末日期可供參考。  \n- 事件清單 (ev) 為空，未提供任何具體片段或標題。  \n\n**結論**  \n根據目前提供的資料，2025 年內「",
+    "answer_length": 3053
+  },
+  "data_agent": {
+    "runs": [
+      {
+        "mode": "report",
+        "elapsed_sec": 58.157,
+        "model_id": "gpt-oss:120b-32k",
+        "model_id_effective": "ollama_chat/gpt-oss:120b-32k",
+        "question": "告訴我０５２Ｄ在２０２５年的活動情況",
+        "query_meta": {
+          "core_terms": [
+            "０５２Ｄ"
+          ],
+          "core_query": "核心關鍵詞組如下：０５２Ｄ",
+          "date_from": "2025-01-01",
+          "date_to": "2025-12-31",
+          "syn_terms": [
+            "052D",
+            "Type 052D",
+            "052D型驱逐舰",
+            "052D导弹驱逐舰"
+          ],
+          "effective_terms": [
+            "０５２Ｄ",
+            "052D",
+            "Type 052D",
+            "052D型驱逐舰",
+            "052D导弹驱逐舰"
+          ],
+          "es_query": "核心關鍵詞組如下：０５２Ｄ",
+          "manual_terms_in_q": [],
+          "is_manual_entity_query": false,
+          "term_groups": [
+            [
+              "052D",
+              "052D型驱逐舰",
+              "052D导弹驱逐舰",
+              "Type 052D",
+              "０５２Ｄ"
+            ]
+          ],
+          "raw_query": "核心關鍵詞組如下：０５２Ｄ"
+        },
+        "time_range": {
+          "date_from": "2025-01-01",
+          "date_to": "2025-12-31"
+        },
+        "stats": {
+          "doc_count": 0,
+          "snippet_count": 0,
+          "active_days": 0
+        },
+        "core_terms": [
+          "０５２Ｄ"
+        ],
+        "date_from": "2025-01-01",
+        "date_to": "2025-12-31"
+      }
+    ]
+  }
+}

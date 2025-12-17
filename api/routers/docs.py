@@ -3,7 +3,8 @@ import re
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import PlainTextResponse, JSONResponse
 from elasticsearch import NotFoundError
-from api.core.settings import ES, ALL_INDEXES
+#from api.core.settings import ES, ALL_INDEXES
+from agent.es.es_client import ES, ALL_INDEXES
 
 router = APIRouter()
 

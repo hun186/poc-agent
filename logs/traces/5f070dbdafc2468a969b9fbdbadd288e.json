@@ -1,0 +1,25 @@
+{
+  "session_id": "d9863f34-e07e-4d94-831a-09d37ce9b504",
+  "request_id": "5f070dbdafc2468a969b9fbdbadd288e",
+  "ts": "2025-12-17T20:56:35",
+  "user": {
+    "latest_question": "### Task:\nGenerate a concise, 3-5 word title with an emoji summarizing the chat history.\n### Guidelines:\n- The title should clearly represent the main theme or subject of the conversation.\n- Use emojis that enhance understanding of the topic, but avoid quotation marks or special formatting.\n- Write the title in the chat's primary language; default to English if multilingual.\n- Prioritize accuracy over excessive creativity; keep it clear and simple.\n- Your entire response must consist solely of the JSON object, without any introductory or concluding text.\n- The output must be a single, raw JSON object, without any markdown code fences or other encapsulating text.\n- Ensure no conversational text, affirmations, or explanations precede or follow the raw JSON output, as this will cause direct parsing failure.\n### Output:\nJSON format: { \"title\": \"your concise title here\" }\n### Examples:\n- { \"title\": \"📉 Stock Market Trends\" },\n- { \"title\": \"🍪 Perfect Chocolate Chip Recipe\" },\n- { \"title\": \"Evolution of Music Streaming\" },\n- { \"title\": \"Remote Work Productivity Tips\" },\n- { \"title\": \"Artificial Intelligence in Healthcare\" },\n- { \"title\": \"🎮 Video Game Development Insights\" }\n### Chat History:\n<chat_history>\nUSER: 告訴我０５２Ｄ在２０２５年的活動情況\nASSISTANT: # 回答\n\n\n**資料概況**  \n- 2025 年度的文件數 (docs) 為 0，片段數 (snips) 為 0。  \n- 期間內沒有任何活動天數 (active_days 為 0)。  \n- 月度、季度分布皆為空，亦無高峰日 (peak_days) 或首末日期可供參考。  \n- 事件清單 (ev) 為空，未提供任何具體片段或標題。  \n\n**結論**  \n根據目前提供的資料，2025 年內「０５２Ｄ」並未出現任何記錄或活動。資料庫中缺乏任何相關文件、片段或日期資訊，因而無法進一步描述其在該年度的行動、趨勢或影響。  \n\n**說明**  \n- 資料不足以覆蓋 2025 年的任何月份或具體事件。  \n- 如需更完整的分析，建議補充相關文件、片段或其他時間序列資料。\n\n\n\n## 資料整備紀錄（Data Agent）\n\n\n- 模式：`report`\n\n- 資料準備耗時：約 **58.157 秒**\n\n- 原始問題：告訴我０５２Ｄ在２０２５年的活動情況\n\n- 查詢時間範圍：`2025-01-01` ～ `2025-12-31`\n\n- 統計概況：文件數：0；片段數：0；有活動天數：0\n\n- 核心關鍵詞：`０５２Ｄ`\n\n- 同義／擴充關鍵詞：`052D, Type 052D, 052D型驱逐舰, 052D导弹驱逐舰`\n\n- 實際使用關鍵詞（effective terms）：`０５２Ｄ, 052D, Type 052D, 052D型驱逐舰, 052D导弹驱逐舰`\n\n- ES 查詢字串：`核心關鍵詞組如下：０５２Ｄ`\n</chat_history>",
+    "recent_history": [
+      "告訴我０５２Ｄ在２０２５年的活動情況"
+    ]
+  },
+  "routing": {
+    "mode": "META_TASK",
+    "meta_kind": "title"
+  },
+  "keywords": {},
+  "es": {},
+  "timing": {
+    "total_sec": 22.50778555870056
+  },
+  "llm": {},
+  "output": {
+    "answer_preview": "{\"title\": \"052D📈\"}",
+    "answer_length": 18
+  }
+}

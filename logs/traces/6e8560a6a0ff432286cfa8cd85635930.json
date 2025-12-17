@@ -1,0 +1,134 @@
+{
+  "session_id": "6a11e8c1-2425-4254-9f97-6c958cc3e5a0",
+  "request_id": "6e8560a6a0ff432286cfa8cd85635930",
+  "ts": "2025-12-17T17:14:18",
+  "user": {
+    "latest_question": "給我2025年052D的活動分析",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "SRA_REPORT",
+    "topic": "news_general",
+    "indexes": [
+      "news_test"
+    ],
+    "index_hint": "news_test",
+    "route_raw": {
+      "mode": "SRA_REPORT",
+      "reason": "使用者要求對特定代號 2025年052D 的活動進行分析，屬於整理/分析主題的報告需求",
+      "topic": "news_general"
+    }
+  },
+  "keywords": {
+    "q_for_agent": "[ES_INDEX_HINT=news_test]\n【對話歷史】\n\n\n【目前問題】\n給我2025年052D的活動分析\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 102.4663257598877,
+    "total_sec": 124.8097620010376
+  },
+  "llm": {
+    "router": [
+      {
+        "system": "TASK_ROUTER_SYSTEM",
+        "user": "請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。\n\n【使用者請求】\n【目前問題】\n給我2025年052D的活動分析",
+        "raw_response": "{\n  \"mode\": \"SRA_REPORT\",\n  \"reason\": \"使用者要求對特定代號 2025年052D 的活動進行分析，屬於整理/分析主題的報告需求\",\n  \"topic\": \"news_general\"\n}",
+        "parsed": {
+          "mode": "SRA_REPORT",
+          "reason": "使用者要求對特定代號 2025年052D 的活動進行分析，屬於整理/分析主題的報告需求",
+          "topic": "news_general"
+        },
+        "elapsed_sec": 19.417,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ],
+    "report": [
+      {
+        "system": "REPORT_SYSTEM_PROMPT",
+        "user": "{\"q\":\"給我2025年052D的活動分析\",\"t\":[\"2025-01-01\",\"2025-12-31\"],\"agg\":{\"docs\":0,\"snips\":0,\"active_days\":0,\"month\":[],\"quarter\":[],\"peak_days\":[],\"first_last\":[null,null]},\"ev\":[]}",
+        "answer_preview": "**資料概況**  \n- 期間：2025‑01‑01 至 2025‑12‑31（由使用者指定）  \n- 文件數（docs）：0  \n- 片段數（snips）：0  \n- 有活動紀錄的天數（active_days）：0  \n- 月、季分布、峰值日與首末日期皆無資料（均為空或 null）  \n\n**分析結果**  \n目前資料庫中在 2025 年整年度內並未收錄任何相關文件、片段或活動紀錄，亦無月份、季",
+        "elapsed_sec": 36.054,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ]
+  },
+  "output": {
+    "answer_preview": "# 回答\n\n\n**資料概況**  \n- 期間：2025‑01‑01 至 2025‑12‑31（由使用者指定）  \n- 文件數（docs）：0  \n- 片段數（snips）：0  \n- 有活動紀錄的天數（active_days）：0  \n- 月、季分布、峰值日與首末日期皆無資料（均為空或 null）  \n\n**分析結果**  \n目前資料庫中在 2025 年整年度內並未收錄任何相關文件、片段或活動紀錄",
+    "answer_length": 3591
+  },
+  "data_agent": {
+    "runs": [
+      {
+        "mode": "report",
+        "elapsed_sec": 46.993,
+        "model_id": "gpt-oss:120b-32k",
+        "model_id_effective": "ollama_chat/gpt-oss:120b-32k",
+        "question": "給我2025年052D的活動分析",
+        "query_meta": {
+          "core_terms": [
+            "052D"
+          ],
+          "topic_terms": [],
+          "core_query": "核心關鍵詞組如下：052D",
+          "date_from": "2025-01-01",
+          "date_to": "2025-12-31",
+          "syn_terms": [
+            "052D型",
+            "052D神盾艦",
+            "052D型驅逐艦",
+            "052D驅逐艦",
+            "052D型飛彈驅逐艦",
+            "Type 052D",
+            "Type 052D destroyer",
+            "Jiangdao class destroyer"
+          ],
+          "effective_terms": [
+            "052D",
+            "052D型",
+            "052D神盾艦",
+            "052D型驅逐艦",
+            "052D驅逐艦",
+            "052D型飛彈驅逐艦",
+            "Type 052D",
+            "Type 052D destroyer",
+            "Jiangdao class destroyer"
+          ],
+          "es_query": "核心關鍵詞組如下：052D",
+          "manual_terms_in_q": [
+            "052D"
+          ],
+          "is_manual_entity_query": true,
+          "term_groups": [
+            [
+              "052D",
+              "052D型",
+              "052D型飛彈驅逐艦",
+              "052D型驅逐艦",
+              "052D神盾艦",
+              "052D驅逐艦",
+              "Jiangdao class destroyer",
+              "Type 052D",
+              "Type 052D destroyer"
+            ]
+          ],
+          "raw_query": "核心關鍵詞組如下：052D"
+        },
+        "time_range": {
+          "date_from": "2025-01-01",
+          "date_to": "2025-12-31"
+        },
+        "stats": {
+          "doc_count": 0,
+          "snippet_count": 0,
+          "active_days": 0
+        },
+        "core_terms": [
+          "052D"
+        ],
+        "topic_terms": [],
+        "date_from": "2025-01-01",
+        "date_to": "2025-12-31"
+      }
+    ]
+  }
+}

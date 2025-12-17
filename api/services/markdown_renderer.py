@@ -217,8 +217,8 @@ def render_markdown(out: Any, request: Request) -> str:
         if mode == "report":
             if core_terms:
                 md.append(f"- 核心關鍵詞：`{', '.join(core_terms)}`")
-            if topic_terms:
-                md.append(f"- 主題關鍵詞：`{', '.join(topic_terms)}`")
+            #if topic_terms:
+            #    md.append(f"- 主題關鍵詞：`{', '.join(topic_terms)}`")
 
         # style 模式：清楚分成風格關鍵詞 / 主題關鍵詞 / 合併後核心詞
         elif mode == "style":

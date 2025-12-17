@@ -462,7 +462,6 @@ REPORT_DATA_SYSTEM = """
    query_meta = {
        # 1) 本輪實際用來查 ES 的關鍵字 / 主題詞
        "core_terms":   core_terms,                               # 你在 Agent 裡自己算的（如果有）
-       "topic_terms":  topic_terms if "topic_terms" in locals() else [],
        "core_query":   core_query,                               # 你在前面定義的「核心查詢句」
 
        # 2) 時間範圍（和 payload["time_range"] 對應）
@@ -725,7 +724,7 @@ def run_data_agent(
             # ★ 方便後端/渲染器直接讀：把常用關鍵字攤出來
             if query_meta:
                 run_info["core_terms"] = query_meta.get("core_terms") or []
-                run_info["topic_terms"] = query_meta.get("topic_terms") or []
+                #run_info["topic_terms"] = query_meta.get("topic_terms") or []
                 run_info["date_from"] = query_meta.get("date_from")
                 run_info["date_to"] = query_meta.get("date_to")
                 

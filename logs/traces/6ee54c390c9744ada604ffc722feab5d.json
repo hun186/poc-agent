@@ -1,0 +1,145 @@
+{
+  "session_id": "8ef3fd03-48c9-4ef7-aa68-293cb0a2ea9e",
+  "request_id": "6ee54c390c9744ada604ffc722feab5d",
+  "ts": "2025-12-17T19:56:15",
+  "user": {
+    "latest_question": "請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。核心關鍵詞新增大馬士革",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "SRA_REPORT",
+    "topic": "news_general",
+    "indexes": [
+      "news_test"
+    ],
+    "index_hint": "news_test",
+    "route_raw": {
+      "mode": "SRA_REPORT",
+      "reason": "使用者要求整理特定期間的事件、引用來源、趨勢與SWOT分析，屬於整理/分析主題的報告需求",
+      "topic": "news_general"
+    }
+  },
+  "keywords": {
+    "q_for_agent": "[ES_INDEX_HINT=news_test]\n【對話歷史】\n\n\n【目前問題】\n請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。核心關鍵詞新增大馬士革\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 158.59297227859497,
+    "total_sec": 206.69788908958435
+  },
+  "llm": {
+    "router": [
+      {
+        "system": "TASK_ROUTER_SYSTEM",
+        "user": "請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。\n\n【使用者請求】\n【目前問題】\n請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。核心關鍵詞新增大馬士革",
+        "raw_response": "{\n  \"mode\": \"SRA_REPORT\",\n  \"reason\": \"使用者要求整理特定期間的事件、引用來源、趨勢與SWOT分析，屬於整理/分析主題的報告需求\",\n  \"topic\": \"news_general\"\n}",
+        "parsed": {
+          "mode": "SRA_REPORT",
+          "reason": "使用者要求整理特定期間的事件、引用來源、趨勢與SWOT分析，屬於整理/分析主題的報告需求",
+          "topic": "news_general"
+        },
+        "elapsed_sec": 27.358,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ],
+    "report": [
+      {
+        "system": "REPORT_SYSTEM_PROMPT",
+        "user": "{\"q\":\"請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。核心關鍵詞新增大馬士革\",\"t\":[\"2013-01-01\",\"2017-12-31\"],\"agg\":{\"docs\":1,\"snips\":2,\"active_days\":1,\"month\":[[\"2013-03\",1]],\"quarter\":[[\"2013-Q1\",1]],\"peak_days\":[[\"2013-03-19\",1]],\"first_last\":[\"2013-03-19\",\"2013-03-19\"]},\"ev\":[{\"ref_no\":1,\"id\":\"a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0\",\"d\":\"2013-03-19\",\"title\":\"United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report\",\"s\":\"叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika\",\"note\":\"The United Nations Mission travelled to Damascus on 18 August 2013 and began its fact‑finding activities in the Syrian Arab Republic on 19 August 2013 ... the mission was intended to investigate the reported allegations of the use of chemical weapons in Khan Al Asal, Saraqueb and Sheik Maqsood.\"},{\"ref_no\":2,\"id\":\"a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0\",\"d\":\"2013-03-19\",\"title\":\"United Nations Mission to Investigate Allegations of the Use of Chemical Weapons in the Syrian Arab Republic – Final Report\",\"s\":\"叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika\",\"note\":\"On 28 August 2013, the Government of the Syrian Arab Republic reported to the Secretary‑General that at 1900 hours on 25 August 2013, cylindrical canisters were fired using a weapon that resembled a catapult at some soldiers in the Ashrafiah Sahnaya area in Damascus Rif.\"}]}",
+        "answer_preview": "**敘利亞化學武器情況（2013‑2017）總結報告**  \n（核心關鍵詞：大馬士革）  \n\n---\n\n### 一、資料概況\n- **文件與片段量**：本次分析共納入 **1 份文件**、**2 個片段**（`docs=1、snips=2`），活動天數為 **1 天**（`active_days=1`）。  \n- **時間範圍**：唯一可用的日期為 **2013‑03‑19**（`first_la",
+        "elapsed_sec": 58.865,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ]
+  },
+  "output": {
+    "answer_preview": "# 回答\n\n\n**敘利亞化學武器情況（2013‑2017）總結報告**  \n（核心關鍵詞：大馬士革）  \n\n---\n\n### 一、資料概況\n- **文件與片段量**：本次分析共納入 **1 份文件**、**2 個片段**（`docs=1、snips=2`），活動天數為 **1 天**（`active_days=1`）。  \n- **時間範圍**：唯一可用的日期為 **2013‑03‑19**（`f",
+    "answer_length": 12024
+  },
+  "data_agent": {
+    "runs": [
+      {
+        "mode": "report",
+        "elapsed_sec": 72.366,
+        "model_id": "gpt-oss:120b-32k",
+        "model_id_effective": "ollama_chat/gpt-oss:120b-32k",
+        "question": "請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。核心關鍵詞新增大馬士革",
+        "query_meta": {
+          "core_terms": [
+            "敘利亞",
+            "化學武器",
+            "大馬士革"
+          ],
+          "core_query": "核心關鍵詞組如下：敘利亞、化學武器、大馬士革",
+          "date_from": "2013-01-01",
+          "date_to": "2017-12-31",
+          "syn_terms": [
+            "Syria",
+            "Syrian Arab Republic",
+            "敘利亞阿拉伯共和國",
+            "chemical weapons",
+            "化學兵器",
+            "化武",
+            "Damascus",
+            "大馬士革市",
+            "Dimashq"
+          ],
+          "effective_terms": [
+            "敘利亞",
+            "化學武器",
+            "大馬士革",
+            "Syria",
+            "Syrian Arab Republic",
+            "敘利亞阿拉伯共和國",
+            "chemical weapons",
+            "化學兵器",
+            "化武",
+            "Damascus",
+            "大馬士革市",
+            "Dimashq"
+          ],
+          "es_query": "核心關鍵詞組如下：敘利亞、化學武器、大馬士革",
+          "manual_terms_in_q": [],
+          "is_manual_entity_query": false,
+          "term_groups": [
+            [
+              "Syria",
+              "Syrian Arab Republic",
+              "敘利亞",
+              "敘利亞阿拉伯共和國"
+            ],
+            [
+              "chemical weapons",
+              "化學兵器",
+              "化學武器",
+              "化武"
+            ],
+            [
+              "Damascus",
+              "Dimashq",
+              "大馬士革",
+              "大馬士革市"
+            ]
+          ],
+          "raw_query": "核心關鍵詞組如下：敘利亞、化學武器、大馬士革"
+        },
+        "time_range": {
+          "date_from": "2013-01-01",
+          "date_to": "2017-12-31"
+        },
+        "stats": {
+          "doc_count": 1,
+          "snippet_count": 2,
+          "active_days": 1
+        },
+        "core_terms": [
+          "敘利亞",
+          "化學武器",
+          "大馬士革"
+        ],
+        "date_from": "2013-01-01",
+        "date_to": "2017-12-31"
+      }
+    ]
+  }
+}
