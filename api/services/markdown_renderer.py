@@ -252,7 +252,7 @@ def render_markdown(out: Any, request: Request) -> str:
             es_query = last_run.get("style_query")
 
         if es_query:
-            md.append(f"- ES 查詢字串：`{es_query}`")
+            md.append(f"- 代理人ES文本查詢工具查詢字串：`{es_query}`")
     # 推理（可收合 / fallback）
     if reasoning:
         if ALLOW_DETAILS:

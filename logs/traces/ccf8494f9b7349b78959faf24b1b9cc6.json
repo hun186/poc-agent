@@ -1,0 +1,129 @@
+{
+  "session_id": "6d5d123f-c764-4624-8e85-6558e19723c4",
+  "request_id": "ccf8494f9b7349b78959faf24b1b9cc6",
+  "ts": "2025-12-18T10:06:16",
+  "user": {
+    "latest_question": "052D跟其他國家軍艦的能力對比如何?",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "SRA_REPORT",
+    "topic": "mil_intel",
+    "indexes": [
+      "mil_reports-01"
+    ],
+    "index_hint": "mil_reports-01",
+    "route_raw": {
+      "mode": "SRA_REPORT",
+      "reason": "使用者要求比較052D與其他國家軍艦的能力，需整理與分析多篇資料的比較資訊，屬於彙整與比較主題。",
+      "topic": "mil_intel"
+    }
+  },
+  "keywords": {
+    "q_for_agent": "[ES_INDEX_HINT=mil_reports-01]\n【對話歷史】\n\n\n【目前問題】\n052D跟其他國家軍艦的能力對比如何?\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 68.94751071929932,
+    "total_sec": 92.55118489265442
+  },
+  "llm": {
+    "router": [
+      {
+        "system": "TASK_ROUTER_SYSTEM",
+        "user": "請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。\n\n【使用者請求】\n【目前問題】\n052D跟其他國家軍艦的能力對比如何?",
+        "raw_response": "{\n  \"mode\": \"SRA_REPORT\",\n  \"reason\": \"使用者要求比較052D與其他國家軍艦的能力，需整理與分析多篇資料的比較資訊，屬於彙整與比較主題。\",\n  \"topic\": \"mil_intel\"\n}",
+        "parsed": {
+          "mode": "SRA_REPORT",
+          "reason": "使用者要求比較052D與其他國家軍艦的能力，需整理與分析多篇資料的比較資訊，屬於彙整與比較主題。",
+          "topic": "mil_intel"
+        },
+        "elapsed_sec": 15.238,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ],
+    "report": [
+      {
+        "system": "REPORT_SYSTEM_PROMPT",
+        "user": "{\"q\":\"052D跟其他國家軍艦的能力對比如何?\",\"t\":[null,null],\"agg\":{\"docs\":4,\"snips\":4,\"active_days\":4,\"month\":[[\"2025-02\",3],[\"2025-07\",1]],\"quarter\":[[\"2025-Q1\",3],[\"2025-Q3\",1]],\"peak_days\":[[\"2025-02-06\",1],[\"2025-02-16\",1],[\"2025-02-23\",1],[\"2025-07-22\",1]],\"first_last\":[\"2025-02-06\",\"2025-07-22\"]},\"ev\":[{\"ref_no\":1,\"id\":\"4f6ada4f0712eb59507798811b22b27918793ad7\",\"d\":\"2025-02-06\",\"title\":\"(1）114/02/06 聯合情監偵綜整回報\",\"s\":\"052D 驅逐艦_036_62\",\"note\":\"【海軍艦隊】 0848 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\"},{\"ref_no\":2,\"id\":\"8d6741cca7c850caf03e8bc8edb6a1b369c70dbb\",\"d\":\"2025-02-16\",\"title\":\"（1）114/02/16 聯合情監偵綜整回報\",\"s\":\"052D 驅逐艦_046_79\",\"note\":\"【海軍艦隊】\\n0833 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\"},{\"ref_no\":3,\"id\":\"752fac1d6e4e27505e6dc40d19f10111137c051a\",\"d\":\"2025-02-23\",\"title\":\"114/02/23 聯合情監偵綜整回報\",\"s\":\"052D 驅逐艦_053_16\",\"note\":\"【海軍艦隊】\\n0831 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\"},{\"ref_no\":4,\"id\":\"3123d5a1d76b88f5654481785007b24de3444d89\",\"d\":\"2025-07-22\",\"title\":\"（1）114/07/22 聯合情監偵綜整回報\",\"s\":\"052D 驅逐艦_202_79\",\"note\":\"【海軍艦隊】\\n0819 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\"}]}",
+        "answer_preview": "**一、資料概況**  \n- **文件與片段數**：共 4 份文件、4 個片段（`docs`:4、`snips`:4）。  \n- **活躍天數**：4 天（`active_days`:4），分別為 2025‑02‑06、2025‑02‑16、2025‑02‑23、2025‑07‑22。  \n- **時間範圍**：最早 2025‑02‑06，最晚 2025‑07‑22（`first_last`）。 ",
+        "elapsed_sec": 10.808,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ]
+  },
+  "output": {
+    "answer_preview": "# 回答\n\n\n**一、資料概況**  \n- **文件與片段數**：共 4 份文件、4 個片段（`docs`:4、`snips`:4）。  \n- **活躍天數**：4 天（`active_days`:4），分別為 2025‑02‑06、2025‑02‑16、2025‑02‑23、2025‑07‑22。  \n- **時間範圍**：最早 2025‑02‑06，最晚 2025‑07‑22（`first_l",
+    "answer_length": 9060
+  },
+  "data_agent": {
+    "runs": [
+      {
+        "mode": "report",
+        "elapsed_sec": 42.901,
+        "model_id": "gpt-oss:120b-32k",
+        "model_id_effective": "ollama_chat/gpt-oss:120b-32k",
+        "question": "052D跟其他國家軍艦的能力對比如何?",
+        "query_meta": {
+          "core_terms": [
+            "052D",
+            "軍艦"
+          ],
+          "core_query": "052D、軍艦",
+          "date_from": null,
+          "date_to": null,
+          "syn_terms": [
+            "052D驅逐艦",
+            "052D神盾艦",
+            "052D型驅逐艦",
+            "052D型",
+            "052D型飛彈驅逐艦"
+          ],
+          "effective_terms": [
+            "052D",
+            "軍艦",
+            "052D驅逐艦",
+            "052D神盾艦",
+            "052D型驅逐艦",
+            "052D型",
+            "052D型飛彈驅逐艦"
+          ],
+          "es_query": "052D、軍艦",
+          "manual_terms_in_q": [
+            "052D"
+          ],
+          "is_manual_entity_query": true,
+          "term_groups": [
+            [
+              "052D",
+              "052D型",
+              "052D型飛彈驅逐艦",
+              "052D型驅逐艦",
+              "052D神盾艦",
+              "052D驅逐艦"
+            ],
+            [
+              "軍艦"
+            ]
+          ],
+          "raw_query": "052D、軍艦"
+        },
+        "time_range": {
+          "date_from": null,
+          "date_to": null
+        },
+        "stats": {
+          "doc_count": 4,
+          "snippet_count": 4,
+          "active_days": 4
+        },
+        "core_terms": [
+          "052D",
+          "軍艦"
+        ],
+        "date_from": null,
+        "date_to": null
+      }
+    ]
+  }
+}

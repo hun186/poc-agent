@@ -1,6 +1,5 @@
 # agent/tools_es.py
 import os
-import re
 import time
 import json
 from typing import Optional, List, Dict, Any
@@ -19,6 +18,7 @@ from agent.es.query_body import (
     build_main_query_body,
     build_fallback_query_body,
 )
+from agent.utils.profiler import log_duration, log_total
 
 class ESSearchNews(Tool):
     name = "es_search_news"
@@ -99,16 +99,8 @@ class ESSearchNews(Tool):
             "nullable": True
         }
     }
-    #output_type = "string"
     # 讓代理拿到 Python dict（非字串），上層可直接 .get()
-    #output_type = "json"
     output_type = "any"
-    
-
-
-    
-
-
 
     def forward(
         self,
@@ -167,54 +159,17 @@ class ESSearchNews(Tool):
         # 1) 抽核心主題詞 + 群組同義詞（含人工同義詞家族展開）
 
         # === T1: 主題詞/同義詞抽取時間 ===
-        t_terms_start = time.perf_counter()
-        core_terms, grouped_syns, is_manual_entity_query, manual_terms_in_q, effective_terms, term_groups = compute_effective_terms(raw_query)
-        t_terms_end = time.perf_counter()
-        print(f"[es_search_news][T1] compute_effective_terms 花費 {t_terms_end - t_terms_start:.3f}s, "
-              f"core_terms={core_terms}, num_groups={len(grouped_syns)}")
+        #t_terms_start = time.perf_counter()
+        #core_terms, grouped_syns, is_manual_entity_query, manual_terms_in_q, effective_terms, term_groups = compute_effective_terms(raw_query)
+        #t_terms_end = time.perf_counter()
+        #print(f"[es_search_news][T1] compute_effective_terms 花費 {t_terms_end - t_terms_start:.3f}s, "
+        #      f"core_terms={core_terms}, num_groups={len(grouped_syns)}")
 
-        '''
-        # 2) 扁平化同義詞，建立 ES / snippet 共用的 effective_terms & term_groups
-        # 2-1 扁平同義詞
-        syn_terms_flat: List[str] = []
-        for syns in grouped_syns.values():
-            for s in syns:
-                s = s.strip()
-                if s and s not in syn_terms_flat:
-                    syn_terms_flat.append(s)
+        with log_duration("[es_search_news][T1] compute_effective_terms"):
+            core_terms, grouped_syns, is_manual_entity_query, manual_terms_in_q, effective_terms, term_groups = compute_effective_terms(raw_query)
+        
+        print(f"[es_search_news] core_terms={core_terms}, num_groups={len(grouped_syns)}")
 
-        # 2-2 effective_terms = 核心 + 扁平同義詞（給 snippet 過濾 / fallback 用）
-        effective_terms: List[str] = []
-        seen_all: set[str] = set()
-        for t in (core_terms or []) + syn_terms_flat:
-            t = (t or "").strip()
-            if t and t not in seen_all:
-                seen_all.add(t)
-                effective_terms.append(t)
-
-        # 2-3 term_groups = 每一個核心一組（核心 + 其同義詞），給 _match_topic 用
-        term_groups: List[set[str]] = []
-        if core_terms:
-            for core in core_terms:
-                core = (core or "").strip()
-                if not core:
-                    continue
-                g: set[str] = {core}
-                for s in grouped_syns.get(core, []):
-                    if isinstance(s, str):
-                        ss = s.strip()
-                        if ss:
-                            g.add(ss)
-                if g:
-                    term_groups.append(g)
-        else:
-            # 沒有核心時，退回一組：全部 effective_terms
-            if effective_terms:
-                term_groups = [set(effective_terms)]
-
-        # 2-4 ES nested evidence 用的 all_terms（= effective_terms）
-        all_terms = list(effective_terms)
-        '''
         # 2) 扁平化同義詞（僅供 ES 查詢加分用；effective_terms / term_groups 已由 compute_effective_terms 給出）
         syn_terms_flat: List[str] = []
         seen_syn: set[str] = set()
@@ -233,6 +188,7 @@ class ESSearchNews(Tool):
         
         es_query = raw_query
         # === T2: 組 query body 時間 ===
+        '''
         t_body_start = time.perf_counter()
         #body = self._build_query_body(
         body = build_main_query_body(
@@ -247,8 +203,21 @@ class ESSearchNews(Tool):
         )
         t_body_end = time.perf_counter()
         print(f"[es_search_news][T2] _build_query_body 花費 {t_body_end - t_body_start:.3f}s")
-
+        '''
+        with log_duration("[es_search_news][T2] build_main_query_body"):
+            body = build_main_query_body(
+                es_query,
+                must_high_value, must_selected, size, date_from, date_to,
+                selected_boost, high_value_boost, recency_boost, recency_field, recency_scale,
+                with_date=True,
+                effective_terms=effective_terms,
+                core_terms=core_terms,
+                syn_terms=syn_terms_flat,
+                all_terms=all_terms,
+            )
+            
         # === T3: ES 查詢時間（含網路 + ES 計算）===
+        '''
         t_es_start = time.perf_counter()
         try:
             #res = ES.search(index=ES_INDEX, body=body, params={"error_trace": "true"})
@@ -260,6 +229,17 @@ class ESSearchNews(Tool):
         es_took = (res.get("took") if isinstance(res, dict) else None)
         print(f"[es_search_news][T3] _safe_es_search 花費 {t_es_end - t_es_start:.3f}s, "
               f"ES took={es_took} ms, index={index}, size={size}")
+        '''
+        try:
+            with log_duration("[es_search_news][T3] _safe_es_search",
+                              extra={"index": index, "size": size}):
+                res = _safe_es_search(body, index=index)
+        except BadRequestError as e:
+            print("ES BadRequestError (with_date=True):", getattr(e, "info", e))
+            raise
+        
+        es_took = (res.get("took") if isinstance(res, dict) else None)
+        print(f"[es_search_news] ES took={es_took} ms, index={index}, size={size}")
         hits = res.get("hits", {}).get("hits", [])
         '''
         #2) 拿掉日期再查 —— 若希望嚴格日期，可以註解掉整段
@@ -287,7 +267,7 @@ class ESSearchNews(Tool):
                     "evidence_snippets": []
                 }
             print(">>>>>>>> [FALLBACK] using NON-SCRIPT query")
-            body = self._build_nonscript_fallback_body(
+            body = build_fallback_query_body(
                 es_query, must_high_value, must_selected, size
             )
             try:
@@ -301,9 +281,8 @@ class ESSearchNews(Tool):
         # === parse（原邏輯，稍微加強 inner_hits 解析）===
         
         # === T4: Python 後處理時間（parse hits + evidence_snippets）===
+        '''
         t_post_start = time.perf_counter()
-
-        # term_groups 本來是 list[set[str]]，build_hits_and_evidence 也吃這個格式
         filtered_hits, evidence_snippets, syn_snippets = build_hits_and_evidence(
             hits,
             date_from=date_from,
@@ -318,10 +297,31 @@ class ESSearchNews(Tool):
             f"{t_post_end - t_post_start:.3f}s, "
             f"hits={len(filtered_hits)}, evidence_snippets={len(evidence_snippets)}"
         )
+        '''
+        with log_duration("[es_search_news][T4] build_hits_and_evidence"):
+            filtered_hits, evidence_snippets, syn_snippets = build_hits_and_evidence(
+                hits,
+                date_from=date_from,
+                date_to=date_to,
+                effective_terms=effective_terms,
+                term_groups=term_groups,
+                query_for_snippet=query or "",
+            )
+        
+        print(
+            f"[es_search_news] hits={len(filtered_hits)}, "
+            f"evidence_snippets={len(evidence_snippets)}"
+        )
         # === T5: 整體總時間 ===
-        t_end = time.perf_counter()
-        print(f"[es_search_news][TOTAL] query={raw_query!r}, total={t_end - t_start:.3f}s")
+        #t_end = time.perf_counter()
+        #print(f"[es_search_news][TOTAL] query={raw_query!r}, total={t_end - t_start:.3f}s")
 
+        log_total(
+            "[es_search_news][TOTAL]",
+            t_start,
+            extra={"代理人ES文本查詢工具查詢字串": raw_query},
+        )
+        
         print(
             f"[es_search_news] query={raw_query!r}, es_query={es_query!r}, "
             f"hits={len(filtered_hits)}, "
