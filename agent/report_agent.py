@@ -200,6 +200,10 @@ def ask_with_report(
     with log_duration("[report] run_data_agent", extra={"mode": "report"}):
         payload = run_data_agent(question, mode="report", trace=trace)
 
+    # ★ 先確保 payload["question"] 永遠有值
+    payload_question = (payload.get("question") or question or "").strip()
+    payload["question"] = payload_question or "[未提供使用者提問]"
+
     # === 精簡版（給報告 LLM 用） ===
     compressed_for_llm = {
         "q": payload.get("question"),

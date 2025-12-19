@@ -27,7 +27,7 @@ def compress_evidence(snippets: list[dict], max_samples: int = 150) -> list[dict
         snippets,
         key=lambda s: (s.get("date_iso") or "", s.get("uuid") or "")
     )
-
+    '''
     # 1) 簡單去重：相同 text 只留一個
     seen_text = set()
     deduped = []
@@ -39,7 +39,25 @@ def compress_evidence(snippets: list[dict], max_samples: int = 150) -> list[dict
             continue
         seen_text.add(txt)
         deduped.append(s)
+    '''
+    seen = set()
+    deduped = []
+    for s in snippets_sorted:
+        raw_txt = (s.get("text") or "").strip()
+        if not raw_txt:
+            continue
 
+        uuid = str(s.get("uuid") or s.get("source_id") or "")
+        txt_norm = _normalize_snip_text(raw_txt)
+        if not uuid or not txt_norm:
+            continue
+
+        key = (uuid, txt_norm)          # ★ 避免不同文章因文字相同被誤去重
+        if key in seen:
+            continue
+        seen.add(key)
+
+        deduped.append(s)
     # 2) 若仍然太多，就等距取樣確保時間涵蓋
     if len(deduped) > max_samples:
         step = len(deduped) / max_samples

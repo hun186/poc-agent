@@ -166,6 +166,31 @@ def _add_markdown_to_doc(doc: Document, text: str):
         _add_bold_italic_runs(p, line)
         i += 1
 
+def _extract_user_question(out: dict) -> str:
+    """
+    盡量從 out 裡抽出這次回答對應的「使用者提問」。
+    優先：data_agent.runs[-1].question
+    次之：out.question / out.q
+    """
+    if not isinstance(out, dict):
+        return ""
+
+    # 1) data_agent
+    da = out.get("data_agent") or {}
+    runs = da.get("runs") or []
+    if runs:
+        last = runs[-1] or {}
+        q = last.get("question")
+        if isinstance(q, str) and q.strip():
+            return q.strip()
+
+    # 2) out 本體
+    for k in ("question", "q", "user_question", "prompt"):
+        v = out.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+    return ""
 
 def _add_data_agent_section(doc: Document, out: dict):
     """
@@ -259,17 +284,18 @@ def _add_data_agent_section(doc: Document, out: dict):
             p = doc.add_paragraph()
             p.add_run("統計概況：").bold = True
             p.add_run("；".join(items))
-
+            
+    mode_norm = (str(mode or "")).lower()
     # ==== 關鍵字樣態 ====
     # report 模式：核心關鍵詞
-    if mode == "report":
+    if mode_norm in ("report", "sra_report"):
         if core_terms:
             p = doc.add_paragraph(style="List Bullet")
             p.add_run("核心關鍵詞：").bold = True
             p.add_run(", ".join(core_terms))
 
     # style 模式：分風格 / 主題 / 合併核心
-    elif mode == "style":
+    elif mode_norm in ("style", "sra_style"):
         if style_terms:
             p = doc.add_paragraph(style="List Bullet")
             p.add_run("風格關鍵詞（style_terms）：").bold = True
@@ -335,6 +361,15 @@ def export_word(session_id: str = Query(..., description="會話 session_id")):
     style._element.rPr.rFonts.set(qn('w:eastAsia'), '標楷體')
     style.font.size = Pt(12)            # 可自行調整預設字級
     doc.add_heading("AI 代理人輸出報告", level=1)
+    
+    # === 使用者提問（放在最前面）===
+    user_q = _extract_user_question(out)
+    if user_q:
+        user_q = _normalize_hyphens_for_word(user_q)
+        #doc.add_paragraph()  # 空行
+        #p = doc.add_paragraph()
+        doc.add_heading("使用者提問", level=2)
+        p = doc.add_paragraph(user_q)
 
     # 回答主文（用簡易 Markdown → Word）
     if answer:
