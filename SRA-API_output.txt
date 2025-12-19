@@ -857,3 +857,4 @@ ALL_INDEXES ['news_test', 'mil_reports-01', 'govdocs_2024']
 INFO:     192.168.0.228:64060 - "GET /v1/docs/79885f3ee0ddf8407420106aab2b18ec28729769 HTTP/1.1" 200 OK
 INFO:     192.168.0.228:64060 - "GET /favicon.ico HTTP/1.1" 404 Not Found
 INFO:     192.168.0.228:56487 - "GET /v1/export/word?session_id=c4668da3-b7fd-4032-ae96-ef382877ba47 HTTP/1.1" 200 OK
+INFO:     192.168.0.134:53102 - "GET /v1/models HTTP/1.1" 200 OK
