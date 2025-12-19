@@ -1,0 +1,50 @@
+{
+  "session_id": "6c01df30-6e5d-43e3-93b5-21d45b559368",
+  "request_id": "b026aa4d8ae04ac6878bec2f3df3c06b",
+  "ts": "2025-12-18T15:03:04",
+  "user": {
+    "latest_question": "不要查資料庫，用你的背景能力回答052D跟其他國家軍艦的能力對比如何?",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "PURE_LLM",
+    "topic": "news_general",
+    "indexes": [
+      "news_test"
+    ],
+    "index_hint": "news_test",
+    "route_raw": {
+      "mode": "PURE_LLM",
+      "reason": "使用者明確要求不查資料庫、直接以模型的背景知識回答，屬於純模型回答。",
+      "topic": "news_general"
+    }
+  },
+  "keywords": {
+    "q_for_agent": "[ES_INDEX_HINT=news_test]\n【對話歷史】\n\n\n【目前問題】\n不要查資料庫，用你的背景能力回答052D跟其他國家軍艦的能力對比如何?\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 92.82986283302307,
+    "total_sec": 123.45440626144409
+  },
+  "llm": {
+    "router": [
+      {
+        "system": "TASK_ROUTER_SYSTEM",
+        "user": "請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。\n\n【使用者請求】\n【目前問題】\n不要查資料庫，用你的背景能力回答052D跟其他國家軍艦的能力對比如何?",
+        "raw_response": "{\n  \"mode\": \"PURE_LLM\",\n  \"reason\": \"使用者明確要求不查資料庫、直接以模型的背景知識回答，屬於純模型回答。\",\n  \"topic\": \"news_general\"\n}",
+        "parsed": {
+          "mode": "PURE_LLM",
+          "reason": "使用者明確要求不查資料庫、直接以模型的背景知識回答，屬於純模型回答。",
+          "topic": "news_general"
+        },
+        "elapsed_sec": 43.768,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ]
+  },
+  "output": {
+    "answer_preview": "[⬇ 下載為 Word](http://192.168.0.228:9002/v1/export/word?session_id=6c01df30-6e5d-43e3-93b5-21d45b559368)\n\n\n# 回答\n\n\n**052D 驅逐艦（中國）與其他國家主流驅逐艦/護衛艦的能力對比**  \n（以下資訊均根據公開的技術規格與公開文獻，未使用任何即時資料庫）\n\n| 項目 | 中國 052D 驅",
+    "answer_length": 10439
+  }
+}

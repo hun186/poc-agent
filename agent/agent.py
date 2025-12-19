@@ -5,21 +5,14 @@ load_dotenv()
 import os
 import json
 import time
-#from functools import lru_cache
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from telemetry import log_event  # 若之後想記 event 用得上，先匯進來
-from smolagents import CodeAgent, LiteLLMModel, PythonInterpreterTool
-#from .agent_utils import aggregate_month_quarter
-from .tools_es import ESSearchNews, ESTimeline, ESFetchDocById
-
-
+from agent.utils.profiler import log_duration, log_total
 from agent.llm_utils.ollama_client import call_llm  # 你既有的封裝
 from agent.config.index_loader import INDEX_CONFIG
-
 from .style_agent import ask_with_style
 from .report_agent import ask_with_report
 from .doc_followup_agent import ask_with_doc_followup
-#from agent.tools_es import _parse_index_hint
 
 DEBUG_ROUTER = os.getenv("DEBUG_ROUTER", "1") == "1"
 
@@ -30,13 +23,6 @@ ROUTER_MODEL_ID = (
     or os.getenv("MODEL_ID")       # 沒指定就沿用主模型
     or "gpt-oss:120b-32k"          # 再不然就用一個預設
 )
-
-#print("finished load module")
-
-# === 模型設定（可用 .env 覆寫） ===
-#MODEL_ID = os.getenv("MODEL_ID", "ollama_chat/llama3.1:8b")
-#MODEL_BASE_URL = os.getenv("MODEL_BASE_URL", "http://localhost:11434")
-#MODEL_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE", "0"))
 
 # === 動態組出 topic 列表 ===
 AVAILABLE_TOPICS = INDEX_CONFIG["topic_index_map"].keys()
@@ -141,13 +127,17 @@ def _llm_route_task(
 
     try:
         t0 = time.perf_counter()
-        raw = call_llm(
-            user_prompt,
-            system_prompt=TASK_ROUTER_SYSTEM,
-            extra_params={"options": {}},
-            timeout=60.0,
-            model=ROUTER_MODEL_ID,
-        )
+        with log_duration(
+            "[router] LLM route",
+            extra={"model_id": ROUTER_MODEL_ID},
+        ):
+            raw = call_llm(
+                user_prompt,
+                system_prompt=TASK_ROUTER_SYSTEM,
+                extra_params={"options": {}},
+                timeout=60.0,
+                model=ROUTER_MODEL_ID,
+            )
         t1 = time.perf_counter()
         result = json.loads(raw)
         
@@ -159,7 +149,7 @@ def _llm_route_task(
             "user": user_prompt,
             "raw_response": raw,
             "parsed": result,
-            "elapsed_sec": round(t1 - t0, 3),
+            "elapsed_sec": round(t1 - t0, 3),   # 保留給 trace 用
             "model_id": ROUTER_MODEL_ID,
         })
     except Exception as e:
@@ -270,7 +260,8 @@ def answer_with_routing(
     """
     # ★ 如果上游沒傳 trace 進來，就自己準備一個空的，避免 None
     trace = trace or {}
-
+    t_start = time.perf_counter()
+    
     user_msg = (user_msg or "").strip()
     if not user_msg:
         out = {
@@ -451,15 +442,17 @@ def answer_with_routing(
         used_indexes = out.get("used_indexes") or []
         if used_indexes:
             out["route"]["actual_indexes"] = used_indexes
-
+            
+    log_total(
+        "[answer_with_routing][TOTAL]",
+        t_start,
+        extra={"mode": mode, "topic": topic},
+    )
+    
     return out
 
 # 允許：python -m agent.agent 快速測試
 if __name__ == "__main__":
-    #a = get_agent()
-    #q = "請整理 2025/9/21–9/30 與『月薪5萬元免稅』、『家具關稅』相關的重點事件，並引述來源。綜整成一個總結，並進行趨勢分析。"
     q = "請整理2025年『拉拉隊』相關的重點事件，並引述來源。綜整成一個總結，並進行趨勢分析。"
-    #q = "請整理 2025/9/21–9/30 與『家具關稅』相關的重點事件，並引述來源。綜整成一個總結，並進行趨勢分析。"
-    #print(a.run(q))
     print(ask_with_report(q))
 

@@ -1,0 +1,50 @@
+{
+  "session_id": "f7110a84-25b2-42fe-ae96-296c46b8563b",
+  "request_id": "64b7f008e2b84c699e3f6cc4029a1308",
+  "ts": "2025-12-18T15:25:24",
+  "user": {
+    "latest_question": "不要查資料庫，用你的背景能力回答052D跟其他國家軍艦的能力對比如何?",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "PURE_LLM",
+    "topic": "mil_intel",
+    "indexes": [
+      "mil_reports-01"
+    ],
+    "index_hint": "mil_reports-01",
+    "route_raw": {
+      "mode": "PURE_LLM",
+      "reason": "使用者要求以模型的背景知識直接比較052D與其他國家軍艦，未涉及資料庫檢索或既有文件，屬於純模型回答。",
+      "topic": "mil_intel"
+    }
+  },
+  "keywords": {
+    "q_for_agent": "[ES_INDEX_HINT=mil_reports-01]\n【對話歷史】\n\n\n【目前問題】\n不要查資料庫，用你的背景能力回答052D跟其他國家軍艦的能力對比如何?\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 50.47696566581726,
+    "total_sec": 73.33925890922546
+  },
+  "llm": {
+    "router": [
+      {
+        "system": "TASK_ROUTER_SYSTEM",
+        "user": "請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。\n\n【使用者請求】\n【目前問題】\n不要查資料庫，用你的背景能力回答052D跟其他國家軍艦的能力對比如何?",
+        "raw_response": "{\n  \"mode\": \"PURE_LLM\",\n  \"reason\": \"使用者要求以模型的背景知識直接比較052D與其他國家軍艦，未涉及資料庫檢索或既有文件，屬於純模型回答。\",\n  \"topic\": \"mil_intel\"\n}",
+        "parsed": {
+          "mode": "PURE_LLM",
+          "reason": "使用者要求以模型的背景知識直接比較052D與其他國家軍艦，未涉及資料庫檢索或既有文件，屬於純模型回答。",
+          "topic": "mil_intel"
+        },
+        "elapsed_sec": 16.661,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ]
+  },
+  "output": {
+    "answer_preview": "[⬇ 下載為 Word](http://192.168.0.228:9002/v1/export/word?session_id=f7110a84-25b2-42fe-ae96-296c46b8563b)\n\n\n# 回答\n\n\n### 052D（中國人民解放軍海軍）概述  \n| 項目 | 主要規格 | 特色說明 |\n|------|----------|----------|\n| **排水量** | ",
+    "answer_length": 12110
+  }
+}

@@ -7,10 +7,10 @@ from .data_agent import run_data_agent
 #from .tools_es import ESSearchNews, ESTimeline, ESFetchDocById
 #from .tools_stats import AggregateMonthQuarter
 from agent.llm_utils.ollama_client import call_llm  # 你既有的封裝
-#from agent.utils_citations import _build_citations_from_payload
-from agent.utils_citations import build_citations_from_ev
-from agent.utils_citations import compress_evidence
-from agent.utils_citations import build_refno_uuid_map
+from agent.utils.citations import build_citations_from_ev
+from agent.utils.citations import compress_evidence
+from agent.utils.citations import build_refno_uuid_map
+from agent.utils.profiler import log_duration, log_total
 
 REPORT_MODEL_ID = (
     os.getenv("REPORT_MODEL_ID")   # 有指定就用這個
@@ -193,8 +193,12 @@ def ask_with_report(
 ) -> Dict[str, Any]:
     if trace is None:
         trace = {}
+    t_total_start = time.perf_counter()
     #payload = run_data_agent(question, mode="report")
-    payload = run_data_agent(question, mode="report", trace=trace)
+    #payload = run_data_agent(question, mode="report", trace=trace)
+    # ★ data_agent 區段時間
+    with log_duration("[report] run_data_agent", extra={"mode": "report"}):
+        payload = run_data_agent(question, mode="report", trace=trace)
 
     # === 精簡版（給報告 LLM 用） ===
     compressed_for_llm = {
@@ -255,13 +259,16 @@ def ask_with_report(
             "note_preview": (e.get("note") or "")[:100].replace("\n", " ")
         })
     t0 = time.perf_counter()
-    report_text = call_llm(
-        user_prompt,
-        system_prompt=REPORT_SYSTEM_PROMPT,
-        extra_params={"options": {}},
-        timeout=180.0,
-        model=REPORT_MODEL_ID,
-    )
+    with log_duration("[report] call_llm(report)",
+        extra={"model_id": REPORT_MODEL_ID},
+    ):
+        report_text = call_llm(
+            user_prompt,
+            system_prompt=REPORT_SYSTEM_PROMPT,
+            extra_params={"options": {}},
+            timeout=180.0,
+            model=REPORT_MODEL_ID,
+        )
     t1 = time.perf_counter()
 
     # ★ 把這次報告 LLM 寫到 trace["llm"]["report"]
@@ -312,6 +319,16 @@ def ask_with_report(
     if data_agent:
         result["data_agent"] = data_agent
 
+    # ★ 總耗時 log（報告管線整體）
+    log_total(
+        "[report] ask_with_report[TOTAL]",
+        t_total_start,
+        extra={
+            "ev_count": len(ev_compact),
+            "docs": compressed_for_llm.get("agg", {}).get("docs"),
+        },
+    )
+    
     return result
 
 

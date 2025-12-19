@@ -7,7 +7,8 @@ from typing import Any
 from fastapi import Request
 from api.core.url_utils import abs_url
 
-def render_markdown(out: Any, request: Request) -> str:
+#def render_markdown(out: Any, request: Request) -> str:
+def render_markdown(out: Any, request: Request, session_id: str | None = None) -> str:
     """
     把代理人輸出（dict 或 str）轉成排版好的 Markdown：
     - 回答主文（支援把 <em>/<i>/<strong>/<b>/<br>/<p> 轉成 Markdown）
@@ -72,6 +73,13 @@ def render_markdown(out: Any, request: Request) -> str:
 
     md: list[str] = []
 
+    # === 下載 Word 連結（開頭）===
+    # 用 GET /v1/export/word?session_id=xxx
+    if session_id:
+        download_url = abs_url(request, f"/v1/export/word?session_id={session_id}")
+        # 純 Markdown 連結，OpenWebUI 一定會變成可點的超連結
+        md.append(f"[⬇ 下載為 Word]({download_url})\n")
+        
     # 主文
     if answer:
         md.append("# 回答\n")
@@ -229,6 +237,18 @@ def render_markdown(out: Any, request: Request) -> str:
             if core_terms:
                 md.append(f"- 檢索核心關鍵詞（style_terms + topic_terms）：`{', '.join(core_terms)}`")
 
+        # ES 查詢字串：依模式選擇來源
+        es_query = (
+            query_meta.get("es_query")
+            or query_meta.get("core_query")
+        )
+        # 風格模式可以多退一步用 style_query
+        if mode == "style" and not es_query:
+            es_query = last_run.get("style_query")
+
+        if es_query:
+            md.append(f"- 代理人ES文本查詢工具查詢字串：`{es_query}`")
+            
         # 共同欄位：同義詞 / effective_terms / ES query
         if syn_terms:
             syn_str = ", ".join(syn_terms)
@@ -242,17 +262,7 @@ def render_markdown(out: Any, request: Request) -> str:
                 eff_str = eff_str[:120] + "…"
             md.append(f"- 實際使用關鍵詞（effective terms）：`{eff_str}`")
 
-        # ES 查詢字串：依模式選擇來源
-        es_query = (
-            query_meta.get("es_query")
-            or query_meta.get("core_query")
-        )
-        # 風格模式可以多退一步用 style_query
-        if mode == "style" and not es_query:
-            es_query = last_run.get("style_query")
 
-        if es_query:
-            md.append(f"- 代理人ES文本查詢工具查詢字串：`{es_query}`")
     # 推理（可收合 / fallback）
     if reasoning:
         if ALLOW_DETAILS:

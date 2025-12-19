@@ -87,8 +87,9 @@ STYLE_DATA_CODE_SYSTEM = """
 3. 組合兩階段查詢字串：
 
    primary_terms = style_terms + topic_terms
-   primary_query = " ".join(primary_terms) if primary_terms else "公文"
-   fallback_query = " ".join(style_terms) if style_terms else "公文"
+   #完成 primary_terms 後，用下列方式組成 primary_query跟fallback_query
+   primary_query = f"風格仿寫關鍵詞組如下：{'、'.join(primary_terms)}" if primary_terms else "公文"
+   fallback_query = f"風格仿寫關鍵詞組如下：{'、'.join(style_terms)}" if style_terms else "公文"
 
    # primary_query：優先使用「風格 + 主題」的組合，
    # fallback_query：只保留「風格」關鍵字，當 primary_query 命中太少時使用。
@@ -370,7 +371,7 @@ REPORT_DATA_SYSTEM = """
    並移除所有時間相關字串，只留下主題、地點與必要的行動詞，再形成 core_terms。
 
    完成 core_terms 後，可用下列方式組成 core_query，作為 es_search_news 的 query 參數：
-   core_query = f"核心關鍵詞組如下：'、'.join(core_terms)"
+   core_query = f"核心關鍵詞組如下：{'、'.join(core_terms)}"
 
    然後用 core_query（而不是原始 question）當成 es_search_news 的 query 參數，
    若成功解析出起訖時間，務必放入 date_from / date_to：

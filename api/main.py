@@ -11,7 +11,7 @@ init_proctitle(app_name="SRA-API")
 
 from fastapi import FastAPI  # , HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from api.routers import chat, docs
+from api.routers import chat, docs, export
 
 '''
 def _strip_code_fences(s: str) -> str:
@@ -38,3 +38,4 @@ app.add_middleware(
 
 app.include_router(chat.router)
 app.include_router(docs.router)
+app.include_router(export.router)

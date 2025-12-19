@@ -229,13 +229,14 @@ def _save_session_and_memory(
 ):
     try:
         sessions[session_key].append(ChatMessage(role="user", content=user_msg))
-        rendered_full = render_markdown(out, request) if isinstance(out, dict) else str(out)
+        #rendered_full = render_markdown(out, request) if isinstance(out, dict) else str(out)
+        rendered_full = render_markdown(out, request, session_key) if isinstance(out, dict) else str(out)
         assistant_save = choose_assistant_save(out, rendered_full)
         sessions[session_key].append(ChatMessage(role="assistant", content=assistant_save))
 
         if isinstance(out, dict):
             mode = out.get("mode")
-            if mode in ("SRA_REPORT", "SRA_STYLE", "DOC_FOLLOWUP"):
+            if mode in ("SRA_REPORT", "SRA_STYLE", "DOC_FOLLOWUP", "PURE_LLM"):
                 last_structured[session_key] = out
             else:
                 last_structured.pop(session_key, None)
@@ -424,7 +425,7 @@ def chat_completions(payload: ChatPayload, request: Request):
         if fmt == "json":
             text = json.dumps(out, ensure_ascii=False)
         else:
-            text = render_markdown(out, request)
+            text = render_markdown(out, request, session_key)
 
         trace["output"] = {
             "answer_preview": text[:200],

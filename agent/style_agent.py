@@ -5,15 +5,13 @@ import os
 import time
 # ★ 依你原本的位置調整 import
 from .data_agent import run_data_agent
-from agent.utils_citations import (
+from agent.utils.citations import (
     build_citations_from_ev,
     compress_evidence,
     build_refno_uuid_map,   # ★ 新增：如果之後要 ref_no → uuid 映射
 )
-#from agent.utils_citations import _build_citations_from_payload
-from agent.utils_citations import build_citations_from_ev
-from agent.utils_citations import compress_evidence
 from .llm_utils.ollama_client import call_llm           # 若 call_llm 在別的 util 模組
+from agent.utils.profiler import log_duration, log_total
 
 MAX_STYLE_DOCS = int(os.getenv("STYLE_MAX_DOCS", "8"))
 MAX_STYLE_DOC_CHARS = int(os.getenv("STYLE_MAX_DOC_CHARS", "4000"))
@@ -87,7 +85,7 @@ STYLE_SYSTEM_PROMPT = """
 """
 
 # 依你實際 index 命名改
-DEFAULT_STYLE_INDEX_HINT = "mil_reports-01"
+DEFAULT_STYLE_INDEX_HINT = "mil_reports-01"  # TODO: 若未來要固定 style 專用 index，再接到 data_agent
 
 
 def ask_with_style(
@@ -101,9 +99,12 @@ def ask_with_style(
     """
     if trace is None:
         trace = {}
+        
+    t_total_start = time.perf_counter()
+    
     # 1) 用 SRA_STYLE 專用資料代理人拿「風格語料 payload」
-    payload = run_data_agent(question, mode="style", trace=trace)
-
+    with log_duration("[style] run_data_agent", extra={"mode": "style"}):
+        payload = run_data_agent(question, mode="style", trace=trace)
     # 2) 壓成風格樣本，避免 context 被塞爆
     #ev = payload.get("evidence_snippets") or []
     #raw_style_docs = payload.get("style_docs") or []
@@ -149,13 +150,16 @@ def ask_with_style(
 
     # 3) 交給風格生成 LLM
     t0 = time.perf_counter()  # ★ 新增：計時開始
-    style_text = call_llm(
-        user_prompt,
-        system_prompt=STYLE_SYSTEM_PROMPT,
-        extra_params={"options": {}},
-        timeout=180.0,
-        model=STYLE_MODEL_ID,  # ★ 新增：這次仿寫實際用的模型
-    )
+    with log_duration("[style] call_llm(style)",
+        extra={"model_id": STYLE_MODEL_ID},
+    ):
+        style_text = call_llm(
+            user_prompt,
+            system_prompt=STYLE_SYSTEM_PROMPT,
+            extra_params={"options": {}},
+            timeout=180.0,
+            model=STYLE_MODEL_ID,
+        )
     t1 = time.perf_counter()  # ★ 新增：計時結束
 
     # ★ 新增：把這次風格 LLM 呼叫寫到 trace["llm"]["style"]
@@ -243,4 +247,14 @@ def ask_with_style(
     if data_agent:
         result["data_agent"] = data_agent
 
+    # ★ 總耗時 log（整個風格仿寫管線）
+    log_total(
+        "[style] ask_with_style[TOTAL]",
+        t_total_start,
+        extra={
+            "style_sample_count": len(style_samples),
+            "style_doc_count": len(style_docs),
+        },
+    )
+    
     return result
