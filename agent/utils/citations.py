@@ -1,6 +1,7 @@
 #agent/utils/citations.py
 from typing import Any, Dict, List
 import re
+from shared.citations.citation_id import pick_doc_id
 
 def _normalize_snip_text(s: str) -> str:
     """
@@ -47,7 +48,8 @@ def compress_evidence(snippets: list[dict], max_samples: int = 150) -> list[dict
         if not raw_txt:
             continue
 
-        uuid = str(s.get("uuid") or s.get("source_id") or "")
+        #uuid = str(s.get("uuid") or s.get("source_id") or "")
+        uuid = str(pick_doc_id(s) or "")
         txt_norm = _normalize_snip_text(raw_txt)
         if not uuid or not txt_norm:
             continue
@@ -77,7 +79,8 @@ def compress_evidence(snippets: list[dict], max_samples: int = 150) -> list[dict
 
         out.append({
             "ref_no": idx,  # 給 LLM 用來寫「來源①、②…」
-            "id": s.get("uuid"),
+            #"id": s.get("uuid"),
+            "id": pick_doc_id(s),
             "d": s.get("date_iso") or s.get("article_date_iso"),
             "title": s.get("article_title") or s.get("subject"),
             "s": s.get("subject"),
@@ -182,22 +185,26 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
 
         # 一律從 ref_map 對，不再信 snippet 自己的 ref_no
         ref_no = None
-
+        '''
         sid = (
             s.get("uuid")
             or s.get("source_id")
             or s.get("doc_id")
             or s.get("id")
         )
+        '''
+        sid = pick_doc_id(s)
         note = _normalize_snip_text(s.get("text") or "")
         if sid and note:
             key = (str(sid), note)
             ref_no = ref_map.get(key)
-
+        doc_id = sid  # 或 doc_id = pick_doc_id(s)
         citations.append({
             "text": s.get("text"),
-            "source_id": s.get("source_id") or s.get("uuid"),
-            "uuid": s.get("uuid"),
+            #"source_id": s.get("source_id") or s.get("uuid"),
+            #"uuid": s.get("uuid"),
+            "source_id": str(doc_id) if doc_id else None,
+            "uuid": str(doc_id) if doc_id else None,
             "paragraph_id": s.get("paragraph_id"),
             "date_iso": s.get("article_date_iso") or s.get("date_iso"),
             "subject": s.get("subject"),
@@ -249,7 +256,8 @@ def build_refno_uuid_map(ev: List[Dict[str, Any]]) -> Dict[int, str]:
     out: Dict[int, str] = {}
     for e in ev:
         ref_no = e.get("ref_no")
-        uuid = e.get("id") or e.get("uuid")
+        #uuid = e.get("id") or e.get("uuid")
+        uuid = pick_doc_id(e) or e.get("id") or e.get("uuid")
         if not isinstance(ref_no, int):
             continue
         if not uuid:

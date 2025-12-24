@@ -1,37 +1,38 @@
 # api/services/export_word_service.py
+from __future__ import annotations
 from io import BytesIO
+from typing import Optional, Tuple
 from docx import Document
 from docx.oxml.ns import qn
 from docx.shared import Pt
-
-# 先保留：Markdown-ish → Docx 的渲染（下一步再搬到 docx_presenter）
-from api.core.presenters.docx_helpers import _add_markdown_to_doc
-
-from api.core.presenters.sections import (
-    extract_citations,
-    extract_data_agent_section,
-    extract_user_question,
-)
-#from api.core.presenters.text_sanitize import normalize_hyphens_for_word
 from api.core.presenters.text_sanitize import normalize_text_for_docx
 from api.core.presenters.docx_helpers import (
     _add_markdown_to_doc,
     add_data_agent_section,
 )
-from api.core.presenters.sections import extract_presentation
+from api.core.presenters.extractors import extract_presentation
+from shared.citations.citation_view_core import build_citation_core_views
+from shared.http.download_filename import build_docx_filename_from_presentation
+
+# ----------------------------
+# Service
+# ----------------------------
 
 class ExportWordService:
-    def build_docx_bytes(self, out: dict, filename: str = "agent_output.docx") -> tuple[bytes, str]:
+    def build_docx_bytes(
+        self,
+        out: dict,
+        filename: Optional[str] = "agent_output.docx",
+    ) -> Tuple[bytes, str]:
         pres = extract_presentation(out)
-        
-        #answer = out.get("answer") or ""
-        #reasoning = out.get("reasoning") or ""
 
-        # ✅ 改用 sections 抽資料
-        #user_q = extract_user_question(out)
-        #citations = extract_citations(out)  # 已去重 + 修 text
-        #da_section = extract_data_agent_section(out)
-
+        # 若未特別指定檔名（或仍用預設），就用「可含中文」的檔名
+        if (not filename) or (filename == "agent_output.docx"):
+            filename = build_docx_filename_from_presentation(
+                pres,
+                fallback="agent_output.docx",
+                ext=".docx",
+            )
         doc = Document()
 
         # 預設字型
@@ -41,73 +42,51 @@ class ExportWordService:
         style.font.size = Pt(12)
 
         doc.add_heading("AI 代理人輸出報告", level=1)
-        '''
-        # 使用者提問
-        if user_q:
-            user_q = normalize_text_for_docx(user_q)
-            doc.add_heading("使用者提問", level=2)
-            doc.add_paragraph(user_q)
 
-        # 回答
-        if answer:
-            _add_markdown_to_doc(doc, answer)
-
-        # ✅ Data Agent
-        #write_data_agent_section_docx(doc, da_section)
-        add_data_agent_section(doc, da_section)
-
-        # ✅ 引用來源：用 extract_citations(out) 的結果
-        if citations:
-            doc.add_page_break()
-            doc.add_heading("引用來源 / Citations", level=2)
-            for c in citations:
-                txt = (c.get("text") or "").replace("\n", " ").strip()
-                txt = normalize_text_for_docx(txt)
-
-                uuid_ = c.get("uuid") or c.get("source_id") or c.get("doc_id") or c.get("id") or ""
-                if len(txt) > 300:
-                    txt = txt[:300] + "…"
-
-                p = doc.add_paragraph(style="List Number")
-                p.add_run(f"({uuid_}) {txt}")
-
-        # 推理內容
-        if reasoning:
-            doc.add_page_break()
-            doc.add_heading("附錄：推理內容", level=2)
-            _add_markdown_to_doc(doc, reasoning)
-        '''
         # 使用者提問
         if pres.user_question:
             doc.add_heading("使用者提問", level=2)
             doc.add_paragraph(normalize_text_for_docx(pres.user_question))
 
-        # 回答（pres.answer 已是 markdown-ish，docx parser 吃得下）
+        # 回答
         if pres.answer:
             _add_markdown_to_doc(doc, pres.answer)
 
         # Data Agent
         add_data_agent_section(doc, pres.da_section)
 
-        # 引用來源
+        # 引用來源（改成吃同一套 shared view core）
         if pres.citations:
             doc.add_page_break()
             doc.add_heading("引用來源 / Citations", level=2)
-            for c in pres.citations:
-                txt = (c.get("text") or "").replace("\n", " ").strip()
-                txt = normalize_text_for_docx(txt)
-                uuid_ = c.get("uuid") or c.get("source_id") or c.get("doc_id") or c.get("id") or ""
-                if len(txt) > 300:
-                    txt = txt[:300] + "…"
+
+            core_views = build_citation_core_views(pres.citations, text_limit=300)
+            for v in core_views:
+                doc_id = v.doc_id or ""
+
+                # 一些顯示補充（可選）
+                pid_str = f"（段落 {v.paragraph_id}）" if v.paragraph_id else ""
+                date_str = f" · {v.date_iso}" if v.date_iso else ""
+
+                # docx 文字清理（避免奇怪字元）
+                short_txt = normalize_text_for_docx(v.short_text or "")
+
+                # List Number 本身會編號，所以不用再塞 v.label
                 p = doc.add_paragraph(style="List Number")
-                p.add_run(f"({uuid_}) {txt}")
+                # 第一段：標題/主旨
+                p.add_run(f"{v.display}{pid_str}{date_str}")
+                # 第二段：doc_id + 引文
+                if doc_id:
+                    p.add_run(f"\n({doc_id}) {short_txt}")
+                else:
+                    p.add_run(f"\n{short_txt}")
 
         # 推理內容
         if pres.reasoning:
             doc.add_page_break()
             doc.add_heading("附錄：推理內容", level=2)
             _add_markdown_to_doc(doc, pres.reasoning)
-            
+
         buf = BytesIO()
         doc.save(buf)
         buf.seek(0)

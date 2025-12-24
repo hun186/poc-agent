@@ -11,6 +11,7 @@ from agent.utils.citations import build_citations_from_ev
 from agent.utils.citations import compress_evidence
 from agent.utils.citations import build_refno_uuid_map
 from agent.utils.profiler import log_duration, log_total
+from agent.utils.markdown_tables import sanitize_markdown_tables
 
 REPORT_MODEL_ID = (
     os.getenv("REPORT_MODEL_ID")   # 有指定就用這個
@@ -80,8 +81,7 @@ REPORT_SYSTEM_PROMPT = """
    - 資料概況（簡要說明 docs/snips/active_days、時間範圍、月份與季度分布）
    - 重要事件時間線（依日期整理，逐項附上來源編號）
    - 趨勢分析（例如：國際關注度變化、安理會互動、化武使用與調查重點等）
-   - 延伸的 SWOT 分析（以「國際社會因應敘利亞化武問題」為分析對象時，可做 SWOT）
-   在 SWOT 段落中，若有引用具體事實，依然要標註「來源X」。
+   - 延伸的 SWOT 分析，在 SWOT 段落中，若有引用具體事實，依然要標註「來源X」。
 
 8. 以條列 + 小段落方式寫出清楚、有邏輯的分析報告，使用繁體中文。
    報告可以適度使用小標題（例如「一、資料概況」「二、事件時間線」「三、趨勢分析」「四、SWOT 分析」）。
@@ -89,56 +89,41 @@ REPORT_SYSTEM_PROMPT = """
 輸出時：
 - 不要再輸出 JSON，直接輸出可閱讀的中文說明即可。
 - 內文中提到的所有「來源X」編號，必須都能在 ev.ref_no 中找到對應的數字，不得出現額外的編號。
+
+【通用表格欄位排序規則（層次導向，強制）】
+當你要輸出 Markdown 表格時，請先判斷資訊的「層次（由上而下）」並依層次排列欄位順序：
+
+1) 第 1 欄：最上層分類（Group / 類別 / 維度 / 主軸）
+   - 特徵：值最常重複、字最短、用來分群（例如：Strength/Weakness、國家、主題、區域、單位、類型）
+2) 第 2 欄：次層項目（Sub-group / 子類 / 項目）
+   - 特徵：在同一最上層分類下再細分（例如：具體面向、措施、事件子類、機構、方案）
+3) 第 3 欄：主要內容（Description / 說明 / 事件概述 / 觀察）
+   - 特徵：文字最長、可能需要 <br> 分行、承載細節
+4) 最後一欄：來源 / 依據 / 備註（若有）
+   - 特徵：通常是編號、短字串或引用集合
+
+補充規則：
+- 若資料只有 2 層：仍遵守「最上層在前、內容在後」。
+- 若資料超過 2 層：最多只保留前 2 欄作為層次欄，其餘細節一律放到「主要內容」欄，以避免表格變得難讀。
+- 任何表格列都必須完整輸出所有欄位，若某欄未知，請填「未知」；若確定沒有值，請填「—」，不得輸出空字串。
+- 主要內容欄不得含實體換行；需要換行一律用 <br>。
+- 為了利於後端 Word 排版合併，請讓「最常重複、最像章節標籤」的欄位放在第 1 欄。
+
+在輸出表格前，請先用心中檢查：
+- 第 1 欄是否為最上層分群欄（短、重複多）？
+- 長段落是否集中在第 3 欄「主要內容」？
+- 引用/來源是否集中在最後一欄？
+若不符合，請調整欄位順序後再輸出。
+
+【Markdown 表格絕對禁令】
+1. 表格每一列「絕對禁止」出現物理換行符。所有段落切換、條列換行，一律使用 <br> 標籤。
+2. 每一列必須以 | 開頭並以 | 結尾，且中間的 | 數量必須嚴格等於 (總欄位數 - 1)。
+3. 日期或項目名稱（如 SWOT 的 Strength）：每一列都要「重複完整輸出」，禁止留空或使用「〃」。
+   (原因：我們會在後端 Word 處理時自動合併重複項，但在 Markdown 中重複輸出能確保表格結構不縮水)。
+   
+   
 """
 
-
-REPORT_SYSTEM_PROMPT_1201 = """
-你是一個『資料驅動的分析助手』。
-
-你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：
-
-{
-  "q": "使用者原始問題",
-  "t": ["date_from 或 null", "date_to 或 null"],
-  "agg": {
-    "docs": 整體文件數,
-    "snips": 整體片段數,
-    "active_days": 有活動紀錄的天數,
-    "month": [ ["YYYY-MM", count], ... ],
-    "quarter": [ ["YYYY-Qx", count], ... ],
-    "peak_days": [ ["YYYY-MM-DD", count], ... ],   # 活動最集中的幾天
-    "first_last": ["第一天日期", "最後一天日期"]
-  },
-  "ev": [
-    {
-      "id": "原始 uuid",
-      "d": "YYYY-MM-DD",
-      "title": "原文標題",
-      "s": "subject（如 DF-15_225_20）",
-      "note": "原始片段文字"
-    },
-    ...
-  ]
-}
-
-請嚴格遵守：
-
-1. 所有「具體事實（日期、事件順序、主題）」只能來自：
-   - agg 提供的統計數字（docs/snips/active_days/month/quarter/peak_days/first_last）
-   - ev 裡的 note/title/d。
-2. 不可以捏造不存在的數字（例如次數、比例、百分比）。資料沒有，就不要硬猜。
-3. 可以對趨勢做定性描述（例如「逐漸增加」「集中在第一季」），
-   但不得和 agg 的數字矛盾。
-4. 引用具體事件時，請簡要說明來源片段，例如：
-   「根據 2025-08-15 一則標題為『114/08/15 聯合情監偵綜整回報』的片段……」，
-   內容可以用自己的話轉述。
-5. 如果資料明顯不足以完整回答問題，請直接說明「目前資料不足以完整回答」，
-   並仍然說明能看出的現象。
-6. 以條列 + 小段落方式寫出清楚、有邏輯的分析報告，使用繁體中文。
-
-輸出時：
-- 不要再輸出 JSON，直接輸出可閱讀的中文說明即可。
-"""
 
 
 def compress_stats(stats: dict, top_k_peak_days: int = 5) -> dict:
@@ -274,7 +259,12 @@ def ask_with_report(
             model=REPORT_MODEL_ID,
         )
     t1 = time.perf_counter()
-
+    
+    # ★ 修復 LLM 產出的所有 Markdown 表格（不限欄數）
+    print(f"DEBUG: report_text before Sanitized Markdown Row: {report_text}")
+    if isinstance(report_text, str) and report_text.strip():
+        report_text = sanitize_markdown_tables(report_text)
+    print(f"DEBUG: report_text after Sanitized Markdown Row: {report_text}")
     # ★ 把這次報告 LLM 寫到 trace["llm"]["report"]
     llm_root = trace.setdefault("llm", {})
     report_logs: list[Dict[str, Any]] = llm_root.setdefault("report", [])
@@ -309,7 +299,7 @@ def ask_with_report(
             if doc_id not in used_uuids:
                 used_uuids.append(doc_id)
     refno_uuid_map = build_refno_uuid_map(ev_compact)
-
+    print("report_text",report_text)
     result: Dict[str, Any] = {
         "answer": report_text,
         "citations": citations,

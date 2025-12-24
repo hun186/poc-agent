@@ -14,6 +14,22 @@ from .style_agent import ask_with_style
 from .report_agent import ask_with_report
 from .doc_followup_agent import ask_with_doc_followup
 
+from .session_store import FileSessionStore
+
+SESSION_STORE_ENABLED = os.getenv("SESSION_STORE_ENABLED", "1") == "1"
+SESSION_STORE_DIR = os.getenv("SESSION_STORE_DIR", ".agent_sessions")
+SESSION_MAX_TURNS = int(os.getenv("SESSION_MAX_TURNS", "60"))
+SESSION_MAX_CHARS = int(os.getenv("SESSION_MAX_CHARS", "8000"))
+SESSION_STORE_ASSISTANT = os.getenv("SESSION_STORE_ASSISTANT", "1") == "1"
+
+SESSION_STORE = FileSessionStore(
+    base_dir=SESSION_STORE_DIR,
+    enabled=SESSION_STORE_ENABLED,
+    max_turns=SESSION_MAX_TURNS,
+    max_chars_per_turn=SESSION_MAX_CHARS,
+    store_assistant=SESSION_STORE_ASSISTANT,
+)
+
 DEBUG_ROUTER = os.getenv("DEBUG_ROUTER", "1") == "1"
 
 
@@ -279,7 +295,45 @@ def answer_with_routing(
             "indexes": [],
         })
         return out
+    # === 0) session 持久化：從檔案補回多輪對話 / context ===
+    state = None
+    if session_id and SESSION_STORE_ENABLED:
+        state = SESSION_STORE.get(session_id)
 
+        # recent_user_msgs：只放 user 的提問（你的 docstring 也這樣要求）:contentReference[oaicite:4]{index=4}
+        #if recent_user_msgs is None:
+        #    recent_user_msgs = SESSION_STORE.recent_user_msgs(state, k=10)
+
+        if not recent_user_msgs:
+            recent_user_msgs = []
+        
+        file_recent = SESSION_STORE.recent_user_msgs(state, k=10)
+        
+        # 合併（檔案舊 → API 新），去重但保留順序
+        merged: list[str] = []
+        seen = set()
+        for x in (file_recent + recent_user_msgs):
+            if x and x not in seen:
+                seen.add(x)
+                merged.append(x)
+        
+        recent_user_msgs = merged[-10:]  # 最後只留 10 條
+
+        # reuse_uuids / refno_uuid_map：讓重啟後仍可 DOC_FOLLOWUP
+        if not reuse_uuids:
+            ctx_uuids = state.context.get("reuse_uuids")
+            if isinstance(ctx_uuids, list):
+                reuse_uuids = ctx_uuids
+
+        if not refno_uuid_map:
+            ctx_map = state.context.get("refno_uuid_map")
+            if isinstance(ctx_map, dict):
+                refno_uuid_map = ctx_map  # 先照存，後面你本來就會轉 int key :contentReference[oaicite:5]{index=5}
+
+        # 先把本輪 user 問題寫入 turn（即便後面路由/LLM 失敗也留得到）
+        SESSION_STORE.append_turn(state, "user", user_msg, meta={"request_id": request_id})
+        SESSION_STORE.save(state)
+        
     # === 1) 準備任務分流器輸入 ===
     router_input = _build_router_input(
         current_user_msg=user_msg,
@@ -443,11 +497,34 @@ def answer_with_routing(
         if used_indexes:
             out["route"]["actual_indexes"] = used_indexes
             
+    # === 9) session 持久化：寫回 assistant + 更新 context ===
+    if state is not None and SESSION_STORE_ENABLED:
+        try:
+            # 存 assistant 回覆（可用環境變數關掉）
+            SESSION_STORE.append_turn(
+                state,
+                "assistant",
+                (out.get("answer") or ""),
+                meta={
+                    "mode": out.get("mode"),
+                    "topic": (out.get("route") or {}).get("topic"),
+                    "request_id": request_id,
+                },
+            )
+
+            # 把 used_uuids / refno_uuid_map 存入 context，確保重啟後 DOC_FOLLOWUP 仍可用
+            SESSION_STORE.update_context_from_out(state, out)
+
+            SESSION_STORE.save(state)
+        except Exception as e:
+            print("[agent] session_store writeback error:", e)
+            
     log_total(
         "[answer_with_routing][TOTAL]",
         t_start,
         extra={"mode": mode, "topic": topic},
     )
+    
     
     return out
 

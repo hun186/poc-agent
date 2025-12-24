@@ -2,11 +2,15 @@
 import re
 from typing import Optional
 from docx import Document
+from docx.table import Table
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from api.core.presenters.text_sanitize import normalize_hyphens_for_word
 from api.core.presenters.text_sanitize import normalize_text_for_docx
 from api.core.presenters.sections import DataAgentSection
+
+#VMERGE_MARK = "\u2063"
+_NO_MERGE_VALUES = {"", "—", "N/A", "未知"}
 
 def _add_bold_italic_runs(paragraph, text: str):
     """
@@ -34,8 +38,250 @@ def _add_bold_italic_runs(paragraph, text: str):
                     run.italic = True
                 else:
                     paragraph.add_run(s)
+                    
+def _split_row_escaped(line: str) -> list[str]:
+    """
+    分割 markdown 表格列，支援跳脫 \|。
+    """
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
 
+    cells: list[str] = []
+    buf: list[str] = []
+    esc = False
+    for ch in s:
+        if esc:
+            buf.append(ch)
+            esc = False
+            continue
+        if ch == "\\":
+            esc = True
+            buf.append(ch)
+            continue
+        if ch == "|":
+            cells.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    cells.append("".join(buf).strip())
+
+    return cells
+
+def _set_cell_text_with_markdown(cell, text: str) -> None:
+    """
+    將文字寫入 table cell：
+    - 支援 **粗體** / *斜體*（沿用 _add_bold_italic_runs）
+    - 支援 <br> 換行（用 Word line break）
+    """
+    text = text or ""
+    # 把 markdown 的 <br> 轉成分行
+    parts = str(text).replace("\r\n", "\n").replace("\r", "\n").split("<br>")
+
+    # 清空原本內容
+    cell.text = ""
+    p = cell.paragraphs[0]
+
+    for idx, part in enumerate(parts):
+        part = part.strip()
+        if idx > 0:
+            p.add_run().add_break()  # Word 換行（同一格內）
+        if part:
+            _add_bold_italic_runs(p, part)
+
+
+def _norm_merge_key(s: str) -> str:
+    t = (s or "").strip()
+    # 統一將所有類型的橫線轉為標準減號，確保比對一致
+    t = t.replace("\u2011", "-").replace("—", "-").replace("–", "-")
+    # 把多空白壓成 1 個，避免「看起來一樣」但其實多空白造成不合併
+    t = re.sub(r"\s+", " ", t)
+    return t
+
+def merge_vertical_when_same_text(
+    table: Table,
+    col_idx: int,
+    start_row: int = 1,   # 1 = 略過表頭
+    min_run: int = 2,     # 至少連續 2 列才合併
+) -> None:
+    anchor_row = None
+    anchor_key = None
+    run_len = 0
+
+    def _clear_cell(cell) -> None:
+        # 這個最簡單也最穩：會清掉該 cell 所有段落/runs，避免 merge 後內容被拼上去
+        cell.text = ""
+
+    def _flush_run(end_row_exclusive: int):
+        nonlocal anchor_row, run_len
+        if anchor_row is None or run_len < min_run:
+            return
+
+        anchor_cell = table.cell(anchor_row, col_idx)
+
+        for r in range(anchor_row + 1, end_row_exclusive):
+            lower_cell = table.cell(r, col_idx)
+
+            # ★ 先清空「被合併」的儲存格，避免 merge 後重複
+            _clear_cell(lower_cell)
+
+            anchor_cell.merge(lower_cell)
+
+    for r in range(start_row, len(table.rows)):
+        cell = table.cell(r, col_idx)
+        key = _norm_merge_key(cell.text)
+
+        # 禁止合併的值：未知 / 空 / — / N/A
+        if key in _NO_MERGE_VALUES:
+            _flush_run(r)
+            anchor_row = None
+            anchor_key = None
+            run_len = 0
+            continue
+
+        if anchor_row is None:
+            anchor_row = r
+            anchor_key = key
+            run_len = 1
+            continue
+
+        if key == anchor_key:
+            run_len += 1
+        else:
+            _flush_run(r)
+            anchor_row = r
+            anchor_key = key
+            run_len = 1
+
+    _flush_run(len(table.rows))
+
+def beautify_table_merge_repeated_cells(
+    table: Table,
+    start_row: int = 1,
+) -> None:
+    # 套用全部欄位
+    for c in range(len(table.columns)):
+        merge_vertical_when_same_text(table, c, start_row=start_row)
+        
+'''
+def merge_vertical_all_columns_by_marker(table: Table, marker: str = VMERGE_MARK, start_row: int = 1) -> None:
+    col_count = len(table.columns)
+    for c in range(col_count):
+        anchor_row: int | None = None
+        for r in range(start_row, len(table.rows)):
+            txt = (table.cell(r, c).text or "")
+            txt_norm = txt.replace("\n", "").strip()
+
+            # 看到 marker → 向上合併
+            if txt_norm == marker:
+                if anchor_row is not None:
+                    table.cell(anchor_row, c).merge(table.cell(r, c))
+                # 若沒有 anchor（第一列就 marker），就放著；marker 不可見
+                continue
+
+            # 非 marker 且有內容 → 更新 anchor
+            if txt_norm:
+                anchor_row = r
+'''
+                
+'''
+def merge_vertical_when_hidden_marker(table: Table, col_idx: int, marker: str = "<!--ROWSPAN-->", start_row: int = 1) -> None:
+    anchor_row: int | None = None
+    for r in range(start_row, len(table.rows)):
+        cell = table.cell(r, col_idx)
+        txt = (cell.text or "").strip()
+
+        if txt and txt != marker:
+            anchor_row = r
+            continue
+
+        if txt == marker and anchor_row is not None:
+            table.cell(anchor_row, col_idx).merge(cell)
+'''
+'''
+def merge_vertical_when_marker(table: Table, col_idx: int, marker: str = "〃", start_row: int = 1) -> None:
+    anchor_row: int | None = None
+    for r in range(start_row, len(table.rows)):
+        cell = table.cell(r, col_idx)
+        txt = (cell.text or "").strip()
+
+        if txt and txt != marker:
+            anchor_row = r
+            continue
+
+        if txt == marker and anchor_row is not None:
+            table.cell(anchor_row, col_idx).merge(cell)
+'''
+'''
+def merge_vertical_when_blank(table: Table, col_idx: int, start_row: int = 1) -> None:
+    """
+    將指定欄位 col_idx 中，連續的空白儲存格向上合併到最近一個非空白儲存格。
+    start_row=1 代表略過表頭（第 0 列）。
+    """
+    anchor_row: int | None = None
+    for r in range(start_row, len(table.rows)):
+        cell = table.cell(r, col_idx)
+        txt = (cell.text or "").strip()
+
+        if txt:
+            anchor_row = r
+            continue
+
+        if anchor_row is not None:
+            table.cell(anchor_row, col_idx).merge(cell)
+'''
 def _add_markdown_table(doc, header_line: str, sep_line: str, body_lines: list[str]):
+    """
+    把 markdown 表格轉成 Word 表格。
+    header_line / body_lines 形如：| 日期 | 事件概述 | 來源 |
+    """
+    headers = _split_row_escaped(header_line)
+    rows = [_split_row_escaped(l) for l in body_lines if l.strip()]
+
+    if not headers:
+        return
+
+    col_count = len(headers)
+
+    # ★ 正規化每列欄位數：不足補空、過多合併到最後一欄（避免炸表）
+    norm_rows: list[list[str]] = []
+    for r in rows:
+        if len(r) < col_count:
+            r = r + [""] * (col_count - len(r))
+        elif len(r) > col_count:
+            r = r[:col_count - 1] + [" ".join([x for x in r[col_count - 1:] if x]).strip()]
+        norm_rows.append(r)
+
+    table = doc.add_table(rows=1 + len(norm_rows), cols=col_count)
+    table.style = "Table Grid"
+
+    # 表頭（支援 markdown，並加粗）
+    hdr_cells = table.rows[0].cells
+    for i, h in enumerate(headers):
+        _set_cell_text_with_markdown(hdr_cells[i], h)
+        # 表頭粗體：把該格全部 runs 設 bold（簡單作法）
+        for run in hdr_cells[i].paragraphs[0].runs:
+            run.bold = True
+
+    # 內容（支援 markdown / <br>）
+    for r_idx, row in enumerate(norm_rows, start=1):
+        cells = table.rows[r_idx].cells
+        for c_idx, cell_text in enumerate(row):
+            _set_cell_text_with_markdown(cells[c_idx], cell_text)
+
+    # ★ 關鍵：讓 Word 呈現「跨列合併」效果（以第 0 欄：日期 欄為例）
+    #merge_vertical_when_blank(table, col_idx=0, start_row=1)
+    #merge_vertical_when_marker(table, col_idx=0, start_row=1)
+    #merge_vertical_when_hidden_marker(table, col_idx=0, marker="<!--ROWSPAN-->", start_row=1)
+    #merge_vertical_all_columns_by_marker(table, marker=VMERGE_MARK, start_row=1)
+    beautify_table_merge_repeated_cells(table, start_row=1)
+
+    
+
+
+def _add_markdown_table_1224(doc, header_line: str, sep_line: str, body_lines: list[str]):
     """
     把 markdown 表格轉成 Word 表格。
     header_line / body_lines 形如：| 日期 | 宮古水道 | ...
