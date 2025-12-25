@@ -1,4 +1,5 @@
 # api/routers/chat.py
+#import os
 import json
 import time
 from typing import List, Tuple
@@ -22,10 +23,30 @@ from api.services.sessions import (
 )
 from api.services.memory import render_memory_text, update_memory, get_memory
 from telemetry import log_event, new_request_id, new_trace, save_trace
-import time
+#from api.services.api_state_store import APIStateStore
+from api.services.sessions import save_structured_snapshot
+
+from api.services.api_state_store import API_STORE
+from api.services.sessions import get_structured_history
+
 
 router = APIRouter()
 
+'''
+API_STORE_ENABLED = os.getenv("API_STORE_ENABLED", "1") == "1"
+API_STORE_DIR = os.getenv("API_STORE_DIR", ".api_state")
+API_STORE_FILE = os.getenv("API_STORE_FILE", "state.json")
+API_STORE_MIN_INTERVAL = float(os.getenv("API_STORE_MIN_INTERVAL", "1.0"))
+API_STORE_MAX_MSGS = int(os.getenv("API_STORE_MAX_MSGS", "200"))
+
+API_STORE = APIStateStore(
+    base_dir=API_STORE_DIR,
+    enabled=API_STORE_ENABLED,
+    filename=API_STORE_FILE,
+    save_min_interval_sec=API_STORE_MIN_INTERVAL,
+    max_messages_per_session=API_STORE_MAX_MSGS,
+)
+'''
 class ChatPayload(BaseModel):
     model: str = "SRA-Structured Retrieval Agent"
     messages: list[ChatMessage]
@@ -338,7 +359,10 @@ def list_models():
 def chat_completions(payload: ChatPayload, request: Request):
     sessions = get_sessions()
     last_structured = get_last_structured()
-
+    
+    #mem_all = get_memory()
+    #API_STORE.load_once(sessions=sessions, last_structured=last_structured, memory_all=mem_all)
+    
     request_id = new_request_id()
     t_start = time.time()
 
@@ -421,7 +445,19 @@ def chat_completions(payload: ChatPayload, request: Request):
         except Exception as e:
             print("answer_with_routing 發生錯誤：", e)
             raise HTTPException(status_code=500, detail="後端分析發生錯誤，請稍後再試")
-
+        # ✅ 5.3) 本輪 out 存快照（turn_id=request_id）
+        if isinstance(out, dict):
+            try:
+                # 讓後面 Markdown 下載連結用得到
+                out.setdefault("session_id", session_key)
+                out.setdefault("turn_id", str(request_id))
+                out.setdefault("request_id", str(request_id))
+        
+                mode = out.get("mode")
+                if mode in ("SRA_REPORT", "SRA_STYLE", "DOC_FOLLOWUP", "PURE_LLM"):
+                    save_structured_snapshot(session_key, request_id, out)
+            except Exception:
+                pass
         # 6) 產主文
         fmt = (payload.format or "markdown").lower()
         if fmt == "json":
@@ -460,6 +496,7 @@ def chat_completions(payload: ChatPayload, request: Request):
         }
 
         # 9) 儲存 session / memory
+        #save_structured_snapshot(session_key, request_id, out)
         _save_session_and_memory(
             sessions=sessions,
             last_structured=last_structured,
@@ -468,7 +505,27 @@ def chat_completions(payload: ChatPayload, request: Request):
             out=out,
             request=request,
         )
-
+        #'''
+        # 9.5) API 狀態落地（節流寫入）
+        # 序列化 sessions（deque[ChatMessage] -> list[dict]）
+        sessions_ser: dict[str, list[dict]] = {}
+        for sk, dq in sessions.items():
+            items: list[dict] = []
+            for m in list(dq):
+                items.append({
+                    "role": m.role,
+                    "content": m.content,
+                    "format": getattr(m, "format", None) or "markdown",
+                })
+            sessions_ser[sk] = items
+        
+        API_STORE.save_all_throttled(
+            sessions_ser=sessions_ser,
+            last_structured=last_structured,
+            memory_all=get_memory(),
+            structured_history=get_structured_history(),  # ✅ 關鍵：把快照存進去
+        )
+        #'''
         # 10) 總耗時 + 寫 trace
         trace.setdefault("timing", {})["total_sec"] = time.time() - t_start
         save_trace(trace)

@@ -262,6 +262,8 @@ def ask_with_report(
     
     # ★ 修復 LLM 產出的所有 Markdown 表格（不限欄數）
     print(f"DEBUG: report_text before Sanitized Markdown Row: {report_text}")
+    if "<br>\n" in report_text or "<br />\n" in report_text or "<br/>\n" in report_text:
+        print("FOUND br+newline inside output table!")
     if isinstance(report_text, str) and report_text.strip():
         report_text = sanitize_markdown_tables(report_text)
     print(f"DEBUG: report_text after Sanitized Markdown Row: {report_text}")

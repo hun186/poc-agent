@@ -1,5 +1,6 @@
 # api/core/presenters/docx_helpers.py
 import re
+import os
 from typing import Optional
 from docx import Document
 from docx.table import Table
@@ -9,9 +10,66 @@ from api.core.presenters.text_sanitize import normalize_hyphens_for_word
 from api.core.presenters.text_sanitize import normalize_text_for_docx
 from api.core.presenters.sections import DataAgentSection
 
+import math
+import statistics
+
 #VMERGE_MARK = "\u2063"
 _NO_MERGE_VALUES = {"", "—", "N/A", "未知"}
 
+def _parse_merge_cols(s: str) -> list[int]:
+    out: list[int] = []
+    for part in (s or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            out.append(int(part))
+        except Exception:
+            pass
+    return out
+
+'''
+def _apply_table_merge_policy(table: Table, headers: list[str], *, start_row: int = 1) -> None:
+    """
+    DOCX_TABLE_MERGE_MODE:
+      - none : 不合併（建議統計表用這個）
+      - first: 只合併第 0 欄（常見：日期/項目）
+      - first2: 合併第 0,1 欄（常見：類別+項目）
+      - cols : 依 DOCX_TABLE_MERGE_COLS 指定欄位，如 "0,1"
+      - auto : 欄位太多(>=6)就不合併，否則只合併第0欄
+    """
+    mode = (os.getenv("DOCX_TABLE_MERGE_MODE", "none") or "none").lower().strip()
+
+    if mode == "none":
+        return
+
+    col_count = len(table.columns)
+    if col_count <= 0:
+        return
+
+    if mode == "auto":
+        if len(headers) >= 6:
+            return
+        cols = [0]
+    elif mode == "first":
+        cols = [0]
+    elif mode == "first2":
+        cols = [0, 1] if col_count >= 2 else [0]
+    elif mode == "cols":
+        cols = _parse_merge_cols(os.getenv("DOCX_TABLE_MERGE_COLS", "0"))
+    else:
+        # 不認得就當 none
+        return
+
+    # 邊界保護
+    cols = [c for c in cols if isinstance(c, int) and 0 <= c < col_count]
+    if not cols:
+        return
+
+    for c in cols:
+        merge_vertical_when_same_text(table, c, start_row=start_row)
+'''
+        
 def _add_bold_italic_runs(paragraph, text: str):
     """
     處理 **粗體** / *斜體* 的簡單情況。
@@ -157,81 +215,105 @@ def merge_vertical_when_same_text(
 
     _flush_run(len(table.rows))
 
+def _estimate_wrap_width(col_count: int) -> int:
+    # 欄越多，每格越窄，越容易自動換行 → 列高越不一致
+    if col_count <= 4:
+        return 42
+    if col_count <= 6:
+        return 28
+    if col_count <= 8:
+        return 18
+    return 12
+
+def _estimate_cell_lines(txt: str, wrap_width: int) -> int:
+    txt = (txt or "").strip()
+    if not txt:
+        return 1
+    # 以「換行 + 粗估自動換行」估算行數
+    parts = txt.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    lines = 0
+    for p in parts:
+        p = p.strip()
+        if not p:
+            lines += 1
+            continue
+        lines += max(1, math.ceil(len(p) / max(1, wrap_width)))
+    return max(1, lines)
+
+def _estimate_lines_per_page(doc) -> int:
+    # 盡量用 section 尺寸估算一頁可容納的「行數」
+    # 12pt 字體約 0.17 inch/行，加上表格內距與框線，保守抓 0.22 inch/行
+    try:
+        sec = doc.sections[-1]
+        page_h = sec.page_height.inches
+        usable = page_h - sec.top_margin.inches - sec.bottom_margin.inches
+        return max(20, int(usable / 0.22))
+    except Exception:
+        return 40  # fallback
+
+def _table_sparsity_ratio(text_rows: list[list[str]]) -> float:
+    # 計算空白/0/—/N/A 比例，越高表示「空白大片」越嚴重
+    if not text_rows:
+        return 1.0
+    total = 0
+    empty = 0
+    for row in text_rows:
+        for v in row:
+            total += 1
+            t = (v or "").strip()
+            if (t == "") or (t == "0") or (t in _NO_MERGE_VALUES):
+                empty += 1
+    return empty / max(1, total)
+
+def _should_merge_table(doc, headers: list[str], body_rows: list[list[str]]) -> bool:
+    col_count = len(headers)
+    row_count = len(body_rows)
+
+    # 0) 太寬或太長：先直接判高風險（你也可改成「只合併前1欄」）
+    if col_count >= 9:
+        return False
+
+    wrap_w = _estimate_wrap_width(col_count)
+
+    # 1) 估算每列高度（用該列中「最長的格」的行數代表列高）
+    row_line_heights: list[int] = []
+    for r in body_rows:
+        est = 1
+        for cell in r:
+            est = max(est, _estimate_cell_lines(cell, wrap_w))
+        row_line_heights.append(est)
+
+    # 2) 跨頁風險：估算總行數 vs 一頁可容納行數
+    lines_per_page = _estimate_lines_per_page(doc)
+    total_lines = sum(row_line_heights) + 2  # +表頭/間距保守加
+    likely_spans_pages = total_lines > lines_per_page
+
+    # 3) 列高不一致：用變異係數（std/mean）判斷
+    mean_h = statistics.mean(row_line_heights) if row_line_heights else 1
+    stdev_h = statistics.pstdev(row_line_heights) if len(row_line_heights) >= 2 else 0
+    cv = (stdev_h / mean_h) if mean_h else 0
+    row_height_very_uneven = cv >= 0.60   # 門檻可調：越小越保守
+
+    # 4) 空白大片：稀疏度過高 → 合併後更像巨大空白塊
+    sparsity = _table_sparsity_ratio(body_rows)
+    very_sparse = sparsity >= 0.72
+
+    # 只要任一高風險成立，就不要合併（保守策略）
+    if likely_spans_pages or row_height_very_uneven or very_sparse:
+        return False
+
+    return True
+
 def beautify_table_merge_repeated_cells(
     table: Table,
     start_row: int = 1,
+    cols: list[int] | None = None,
 ) -> None:
-    # 套用全部欄位
-    for c in range(len(table.columns)):
+    if cols is None:
+        cols = list(range(len(table.columns)))
+    for c in cols:
         merge_vertical_when_same_text(table, c, start_row=start_row)
-        
-'''
-def merge_vertical_all_columns_by_marker(table: Table, marker: str = VMERGE_MARK, start_row: int = 1) -> None:
-    col_count = len(table.columns)
-    for c in range(col_count):
-        anchor_row: int | None = None
-        for r in range(start_row, len(table.rows)):
-            txt = (table.cell(r, c).text or "")
-            txt_norm = txt.replace("\n", "").strip()
-
-            # 看到 marker → 向上合併
-            if txt_norm == marker:
-                if anchor_row is not None:
-                    table.cell(anchor_row, c).merge(table.cell(r, c))
-                # 若沒有 anchor（第一列就 marker），就放著；marker 不可見
-                continue
-
-            # 非 marker 且有內容 → 更新 anchor
-            if txt_norm:
-                anchor_row = r
-'''
-                
-'''
-def merge_vertical_when_hidden_marker(table: Table, col_idx: int, marker: str = "<!--ROWSPAN-->", start_row: int = 1) -> None:
-    anchor_row: int | None = None
-    for r in range(start_row, len(table.rows)):
-        cell = table.cell(r, col_idx)
-        txt = (cell.text or "").strip()
-
-        if txt and txt != marker:
-            anchor_row = r
-            continue
-
-        if txt == marker and anchor_row is not None:
-            table.cell(anchor_row, col_idx).merge(cell)
-'''
-'''
-def merge_vertical_when_marker(table: Table, col_idx: int, marker: str = "〃", start_row: int = 1) -> None:
-    anchor_row: int | None = None
-    for r in range(start_row, len(table.rows)):
-        cell = table.cell(r, col_idx)
-        txt = (cell.text or "").strip()
-
-        if txt and txt != marker:
-            anchor_row = r
-            continue
-
-        if txt == marker and anchor_row is not None:
-            table.cell(anchor_row, col_idx).merge(cell)
-'''
-'''
-def merge_vertical_when_blank(table: Table, col_idx: int, start_row: int = 1) -> None:
-    """
-    將指定欄位 col_idx 中，連續的空白儲存格向上合併到最近一個非空白儲存格。
-    start_row=1 代表略過表頭（第 0 列）。
-    """
-    anchor_row: int | None = None
-    for r in range(start_row, len(table.rows)):
-        cell = table.cell(r, col_idx)
-        txt = (cell.text or "").strip()
-
-        if txt:
-            anchor_row = r
-            continue
-
-        if anchor_row is not None:
-            table.cell(anchor_row, col_idx).merge(cell)
-'''
+   
 def _add_markdown_table(doc, header_line: str, sep_line: str, body_lines: list[str]):
     """
     把 markdown 表格轉成 Word 表格。
@@ -276,9 +358,16 @@ def _add_markdown_table(doc, header_line: str, sep_line: str, body_lines: list[s
     #merge_vertical_when_marker(table, col_idx=0, start_row=1)
     #merge_vertical_when_hidden_marker(table, col_idx=0, marker="<!--ROWSPAN-->", start_row=1)
     #merge_vertical_all_columns_by_marker(table, marker=VMERGE_MARK, start_row=1)
-    beautify_table_merge_repeated_cells(table, start_row=1)
+    #beautify_table_merge_repeated_cells(table, start_row=1)
+    #_apply_table_merge_policy(table, headers, start_row=1)
 
-    
+    # ✅ 合併前先判斷風險
+    if _should_merge_table(doc, headers, norm_rows):
+        # 建議最多只合併前 1~2 欄，降低框線/跨頁風險
+        beautify_table_merge_repeated_cells(table, start_row=1, cols=[0, 1])
+    else:
+        # 不合併就維持原樣（可選：做底色分組/加粗第一欄等）
+        pass
 
 
 def _add_markdown_table_1224(doc, header_line: str, sep_line: str, body_lines: list[str]):

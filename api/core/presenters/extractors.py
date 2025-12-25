@@ -37,6 +37,7 @@ def extract_presentation(
             raw_json_line_count=line_count,
             auto_collapse_json=(line_count > json_collapse_threshold),
             raw_json_md=raw_json_md,
+            turn_id=None,  # ✅ 新增
         )
 
     user_question = extract_user_question(out)
@@ -50,7 +51,9 @@ def extract_presentation(
     line_count = raw_json_str.count("\n") + 1
     auto_collapse = line_count > json_collapse_threshold
     raw_json_md = f"```json\n{raw_json_str}\n```"
-
+    turn_id = out.get("turn_id") or out.get("request_id")
+    if turn_id is not None:
+        turn_id = str(turn_id)
     return AgentPresentation(
         user_question=user_question,
         answer=answer,
@@ -61,6 +64,7 @@ def extract_presentation(
         raw_json_line_count=line_count,
         auto_collapse_json=auto_collapse,
         raw_json_md=raw_json_md,
+        turn_id=turn_id,  # ✅ 新增
     )
 
 def extract_user_question(out: dict) -> str:

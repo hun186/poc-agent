@@ -2,10 +2,71 @@
 import re
 import os
 import hashlib
-from collections import defaultdict, deque
+from collections import defaultdict, deque, OrderedDict
 from typing import Deque, Dict
 from pydantic import BaseModel
+from api.services.api_state_store import API_STORE
 
+_persist_loaded = False
+
+def _ensure_loaded_from_disk() -> None:
+    global _persist_loaded
+    if _persist_loaded:
+        return
+    _persist_loaded = True
+
+    raw = API_STORE.load_raw_once() or {}
+    raw_sessions = raw.get("sessions") or {}
+    raw_last = raw.get("last_structured") or {}
+    raw_hist = raw.get("structured_history") or {}
+
+    # 1) 回填 sessions
+    if isinstance(raw_sessions, dict):
+        _sessions.clear()
+        for sk, items in raw_sessions.items():
+            if not isinstance(sk, str) or not isinstance(items, list):
+                continue
+            dq: Deque[ChatMessage] = deque(maxlen=SESSION_MAX_TURNS)
+            for it in items[-SESSION_MAX_TURNS:]:
+                if not isinstance(it, dict):
+                    continue
+                role = (it.get("role") or "").strip()
+                content = it.get("content") or ""
+                fmt = it.get("format") or "markdown"
+                if role and isinstance(content, str):
+                    dq.append(ChatMessage(role=role, content=content, format=fmt))
+            if len(dq) > 0:
+                _sessions[sk] = dq
+
+    # 2) 回填 last_structured
+    if isinstance(raw_last, dict):
+        _last_structured.clear()
+        for sk, out in raw_last.items():
+            if isinstance(sk, str) and isinstance(out, dict):
+                _last_structured[sk] = out
+
+    # 3) 回填 structured_history（每輪快照）
+    if isinstance(raw_hist, dict):
+        _structured_history.clear()
+        for sk, turns in raw_hist.items():
+            if not isinstance(sk, str) or not isinstance(turns, dict):
+                continue
+            od: "OrderedDict[str, dict]" = OrderedDict()
+
+            # turns: turn_id -> out
+            for tid, out in turns.items():
+                if not tid:
+                    continue
+                if isinstance(out, dict):
+                    od[str(tid)] = out
+
+            # 淘汰最舊，避免爆
+            while len(od) > MAX_EXPORTS_PER_SESSION:
+                od.popitem(last=False)
+
+            if len(od) > 0:
+                _structured_history[sk] = od
+                
 # ===== Session store（簡易記憶）=====
 SESSION_MAX_TURNS = int(os.getenv("SESSION_MAX_TURNS", "20"))
 
@@ -21,6 +82,11 @@ class ChatMessage(BaseModel):
 
 _sessions: dict[str, deque[ChatMessage]] = defaultdict(lambda: deque(maxlen=SESSION_MAX_TURNS))
 _last_structured: dict[str, dict] = {}     # 會話 -> 上一輪 out（answer/citations/reasoning）
+# 每個 session 存多輪 structured out（供每輪下載 Word）
+MAX_EXPORTS_PER_SESSION = int(os.getenv("MAX_EXPORTS_PER_SESSION", "50"))
+
+# session_id -> OrderedDict(turn_id -> out)
+_structured_history: dict[str, "OrderedDict[str, dict]"] = defaultdict(OrderedDict)
 
 # 多輪對話：抽前文答覆的「主文」，避免把 citations / details 整坨塞回模型
 HISTORY_MAX_CHARS = int(os.getenv("HISTORY_MAX_CHARS", "12000"))
@@ -137,8 +203,66 @@ def choose_assistant_save(out: dict | str, rendered_text: str) -> str:
         return _normalize_newlines_for_save(better)
     return _normalize_newlines_for_save(_strip_assistant_content(str(rendered_text)))
 
+
 def get_sessions():
+    _ensure_loaded_from_disk()
     return _sessions
 
 def get_last_structured():
+    _ensure_loaded_from_disk()
     return _last_structured
+
+
+def save_structured_snapshot(session_id: str, turn_id: str, out: dict) -> None:
+    """
+    存「某一輪」structured out（turn_id 建議用 request_id）。
+    同時也會更新 last_structured（保持舊功能不變）。
+    """
+    if not session_id or not turn_id or not isinstance(out, dict):
+        return
+
+    # ✅ 只存你允許的模式（避免垃圾 out 塞爆 structured_history）
+    mode = out.get("mode")
+    if mode not in ("SRA_REPORT", "SRA_STYLE", "DOC_FOLLOWUP", "PURE_LLM"):
+        return
+    
+    _ensure_loaded_from_disk()
+
+    # out 自己帶上 turn_id（之後 render 按鈕好用）
+    out.setdefault("session_id", session_id)
+    out.setdefault("turn_id", str(turn_id))
+    out.setdefault("request_id", str(turn_id))
+
+    _last_structured[session_id] = out
+
+    hist = _structured_history[session_id]
+    hist[str(turn_id)] = out
+
+    # 淘汰最舊
+    while len(hist) > MAX_EXPORTS_PER_SESSION:
+        hist.popitem(last=False)
+
+
+def get_structured_snapshot(session_id: str, turn_id: str | None = None) -> dict | None:
+    """
+    取指定輪 out；turn_id=None 則回傳最新一輪（相容舊行為）。
+    """
+    _ensure_loaded_from_disk()
+
+    if not session_id:
+        return None
+
+    if not turn_id:
+        out = _last_structured.get(session_id)
+        return out if isinstance(out, dict) else None
+
+    out = _structured_history.get(session_id, {}).get(str(turn_id))
+    return out if isinstance(out, dict) else None
+
+
+def get_structured_history():
+    """
+    給 API_STORE 存檔用：取整包 structured_history。
+    """
+    _ensure_loaded_from_disk()
+    return _structured_history

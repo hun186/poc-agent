@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-
 @dataclass(frozen=True)
 class DataAgentSection:
     mode: Optional[str]
@@ -22,6 +21,7 @@ class DataAgentSection:
 # ★ 新增：統一給 markdown / docx 共用的 presentation
 @dataclass(frozen=True)
 class AgentPresentation:
+    turn_id: Optional[str]
     user_question: str
     answer: str
     reasoning: str
@@ -32,3 +32,5 @@ class AgentPresentation:
     raw_json_line_count: int
     auto_collapse_json: bool
     raw_json_md: str  # 已包好 ```json 的 Markdown block
+    
+    

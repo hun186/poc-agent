@@ -2,7 +2,23 @@
 import json
 from typing import Dict
 from api.core.settings import json_llm
+from api.services.api_state_store import API_STORE
 
+_mem_loaded = False
+def _ensure_memory_loaded_from_disk() -> None:
+    global _mem_loaded
+    if _mem_loaded:
+        return
+    _mem_loaded = True
+
+    raw = API_STORE.load_raw_once() or {}
+    raw_mem = raw.get("memory") or {}
+    if isinstance(raw_mem, dict):
+        _memory.clear()
+        for sk, v in raw_mem.items():
+            if isinstance(sk, str) and isinstance(v, dict):
+                _memory[sk] = v
+                
 # ===== 通用多輪記憶（緊湊 JSON 狀態）=====
 _memory: dict[str, dict] = {}   # 會話 -> 濃縮記憶(JSON)
 
@@ -22,6 +38,7 @@ def render_memory_text(mem: dict | None) -> str:
 MEMORY_SYSTEM = "你是會話記憶壓縮器。請把對話濃縮成能幫助後續追問的一小段 JSON 狀態，保持簡潔、去重。"
 def update_memory(session_id: str, history_tail_text: str, last_out: dict | None):
     """用最近幾輪對話與上一輪輸出，產生/更新通用記憶(JSON)。"""
+    _ensure_memory_loaded_from_disk()
     prev = _memory.get(session_id) or {}
     last_answer = ""
     if isinstance(last_out, dict):
@@ -45,6 +62,7 @@ def update_memory(session_id: str, history_tail_text: str, last_out: dict | None
     except Exception:
         # 記憶更新失敗不影響主流程
         pass
-    
+
 def get_memory():
+    _ensure_memory_loaded_from_disk()
     return _memory

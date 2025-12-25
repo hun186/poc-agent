@@ -21,7 +21,7 @@ def build_markdown(
     allow_details = os.getenv("MD_ALLOW_DETAILS", "1") == "1"
 
     md: List[str] = []
-    md.extend(_render_download_link(request, session_id))
+    md.extend(_render_download_link(request, session_id, getattr(pres, "turn_id", None)))
     md.extend(_render_answer(pres))
     md.extend(_render_citations(pres, request))
     md.extend(_render_data_agent(pres.da_section))
@@ -30,12 +30,22 @@ def build_markdown(
     return "\n\n".join([x for x in md if x and x.strip()])
 
 
+def _render_download_link(request: Request, session_id: Optional[str], turn_id: Optional[str]) -> List[str]:
+    if not session_id:
+        return []
+    q = f"/v1/export/word?session_id={session_id}"
+    if turn_id:
+        q += f"&turn_id={turn_id}"
+    download_url = abs_url(request, q)
+    return [f"[⬇ 下載為 Word]({download_url})\n"]
+
+'''
 def _render_download_link(request: Request, session_id: Optional[str]) -> List[str]:
     if not session_id:
         return []
     download_url = abs_url(request, f"/v1/export/word?session_id={session_id}")
     return [f"[⬇ 下載為 Word]({download_url})\n"]
-
+'''
 
 def _render_answer(pres: AgentPresentation) -> List[str]:
     if not pres.answer:
