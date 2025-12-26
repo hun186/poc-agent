@@ -12,6 +12,7 @@ from agent.utils.citations import compress_evidence
 from agent.utils.citations import build_refno_uuid_map
 from agent.utils.profiler import log_duration, log_total
 from agent.utils.markdown_tables import sanitize_markdown_tables
+from agent.utils.markdown_tables import sanitize_markdown_tables, replace_table_cell_br
 
 REPORT_MODEL_ID = (
     os.getenv("REPORT_MODEL_ID")   # 有指定就用這個
@@ -120,7 +121,6 @@ REPORT_SYSTEM_PROMPT = """
 2. 每一列必須以 | 開頭並以 | 結尾，且中間的 | 數量必須嚴格等於 (總欄位數 - 1)。
 3. 日期或項目名稱（如 SWOT 的 Strength）：每一列都要「重複完整輸出」，禁止留空或使用「〃」。
    (原因：我們會在後端 Word 處理時自動合併重複項，但在 Markdown 中重複輸出能確保表格結構不縮水)。
-   
    
 """
 
@@ -266,6 +266,8 @@ def ask_with_report(
         print("FOUND br+newline inside output table!")
     if isinstance(report_text, str) and report_text.strip():
         report_text = sanitize_markdown_tables(report_text)
+        # ★ OpenWebUI 容易對 <br> 的表格渲染出問題：把表格 cell 內的 <br> 改成分隔符
+        report_text = replace_table_cell_br(report_text, sep="；")  # 你也可改成 " / "
     print(f"DEBUG: report_text after Sanitized Markdown Row: {report_text}")
     # ★ 把這次報告 LLM 寫到 trace["llm"]["report"]
     llm_root = trace.setdefault("llm", {})

@@ -1,0 +1,130 @@
+{
+  "session_id": "3408b449-ed9e-4a83-8bbc-c227d8aa7bda",
+  "request_id": "c7093b15222349aea033326468d5ef44",
+  "ts": "2025-12-26T11:29:17",
+  "user": {
+    "latest_question": "請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "SRA_REPORT",
+    "topic": "mil_intel",
+    "indexes": [
+      "mil_reports-01"
+    ],
+    "index_hint": "mil_reports-01",
+    "route_raw": {
+      "mode": "SRA_REPORT",
+      "reason": "使用者要求整理 2013–2017 年敘利亞化學武器情況、引用來源、趨勢與 SWOT 分析，屬於需要彙整與分析大量資料的報告需求",
+      "topic": "mil_intel"
+    }
+  },
+  "keywords": {
+    "q_for_agent": "[ES_INDEX_HINT=mil_reports-01]\n【對話歷史】\n\n\n【目前問題】\n請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 79.77624845504761,
+    "total_sec": 101.2423574924469
+  },
+  "llm": {
+    "router": [
+      {
+        "system": "TASK_ROUTER_SYSTEM",
+        "user": "請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。\n\n【使用者請求】\n【目前問題】\n請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。",
+        "raw_response": "{\n  \"mode\": \"SRA_REPORT\",\n  \"reason\": \"使用者要求整理 2013–2017 年敘利亞化學武器情況、引用來源、趨勢與 SWOT 分析，屬於需要彙整與分析大量資料的報告需求\",\n  \"topic\": \"mil_intel\"\n}",
+        "parsed": {
+          "mode": "SRA_REPORT",
+          "reason": "使用者要求整理 2013–2017 年敘利亞化學武器情況、引用來源、趨勢與 SWOT 分析，屬於需要彙整與分析大量資料的報告需求",
+          "topic": "mil_intel"
+        },
+        "elapsed_sec": 16.936,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ],
+    "report": [
+      {
+        "system": "REPORT_SYSTEM_PROMPT",
+        "user": "{\"q\":\"請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。\",\"t\":[\"2013-01-01\",\"2017-12-31\"],\"agg\":{\"docs\":0,\"snips\":0,\"active_days\":0,\"month\":[],\"quarter\":[],\"peak_days\":[],\"first_last\":[null,null]},\"ev\":[]}",
+        "answer_preview": "目前提供的資料中，**2013 年至 2017 年**期間的敘利亞化學武器相關文件、片段、活躍天數、月度／季度分布、峰值日期以及具體事件（`ev`）皆為 **空白**（`docs:0、snips:0、active_days:0、month:[]、quarter:[]、peak_days:[]、first_last:[null,null]、ev:[]`）。\n\n依照「資料驅動的分析助手」的使用規範：\n",
+        "elapsed_sec": 6.246,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ]
+  },
+  "output": {
+    "answer_preview": "[⬇ 下載為 Word](http://192.168.0.228:9002/v1/export/word?session_id=3408b449-ed9e-4a83-8bbc-c227d8aa7bda&turn_id=c7093b15222349aea033326468d5ef44)\n\n\n# 回答\n\n\n目前提供的資料中，**2013 年至 2017 年**期間的敘利亞化學武器相關文件、片段、活躍",
+    "answer_length": 4536
+  },
+  "data_agent": {
+    "runs": [
+      {
+        "mode": "report",
+        "elapsed_sec": 56.59,
+        "model_id": "gpt-oss:120b-32k",
+        "model_id_effective": "ollama_chat/gpt-oss:120b-32k",
+        "question": "請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。",
+        "query_meta": {
+          "core_terms": [
+            "敘利亞",
+            "化學武器"
+          ],
+          "core_query": "核心關鍵詞組如下：敘利亞、化學武器",
+          "date_from": "2013-01-01",
+          "date_to": "2017-12-31",
+          "syn_terms": [
+            "Syria",
+            "Syrian Arab Republic",
+            "敘利亞阿拉伯共和國",
+            "chemical weapons",
+            "化武",
+            "化學兵器"
+          ],
+          "effective_terms": [
+            "敘利亞",
+            "化學武器",
+            "Syria",
+            "Syrian Arab Republic",
+            "敘利亞阿拉伯共和國",
+            "chemical weapons",
+            "化武",
+            "化學兵器"
+          ],
+          "es_query": "核心關鍵詞組如下：敘利亞、化學武器",
+          "manual_terms_in_q": [],
+          "is_manual_entity_query": false,
+          "term_groups": [
+            [
+              "Syria",
+              "Syrian Arab Republic",
+              "敘利亞",
+              "敘利亞阿拉伯共和國"
+            ],
+            [
+              "chemical weapons",
+              "化學兵器",
+              "化學武器",
+              "化武"
+            ]
+          ],
+          "raw_query": "核心關鍵詞組如下：敘利亞、化學武器"
+        },
+        "time_range": {
+          "date_from": "2013-01-01",
+          "date_to": "2017-12-31"
+        },
+        "stats": {
+          "doc_count": 0,
+          "snippet_count": 0,
+          "active_days": 0
+        },
+        "core_terms": [
+          "敘利亞",
+          "化學武器"
+        ],
+        "date_from": "2013-01-01",
+        "date_to": "2017-12-31"
+      }
+    ]
+  }
+}
