@@ -1,0 +1,55 @@
+{
+  "session_id": "c0f62464-6ed7-4f2e-8509-62347f68d859",
+  "request_id": "3a19979844b943ee9ece467559a57e15",
+  "ts": "2025-12-29T20:24:13",
+  "user": {
+    "latest_question": "請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "SRA_REPORT",
+    "topic": "news_general",
+    "indexes": [
+      "news_test"
+    ],
+    "index_hint": "news_test",
+    "route_raw": {
+      "mode": "SRA_REPORT",
+      "reason": "使用者要求整理特定期間的事件、引用來源、趨勢分析與SWOT，屬於整理/分析/統計的需求",
+      "topic": "news_general",
+      "indexes": [
+        "news_test"
+      ],
+      "index_hint": "news_test"
+    },
+    "error": "refine_question_for_data_agent() got an unexpected keyword argument 'index_hint'"
+  },
+  "keywords": {
+    "q_for_agent": "【對話歷史】\n\n\n【目前問題】\n請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 2.5241565704345703,
+    "total_sec": 24.174970865249634
+  },
+  "llm": {
+    "router": [
+      {
+        "system": "TASK_ROUTER_SYSTEM",
+        "user": "請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。\n\n【使用者請求】\n【目前問題】\n請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。",
+        "raw_response": "{\n  \"mode\": \"SRA_REPORT\",\n  \"reason\": \"使用者要求整理特定期間的事件、引用來源、趨勢分析與SWOT，屬於整理/分析/統計的需求\",\n  \"topic\": \"news_general\"\n}",
+        "parsed": {
+          "mode": "SRA_REPORT",
+          "reason": "使用者要求整理特定期間的事件、引用來源、趨勢分析與SWOT，屬於整理/分析/統計的需求",
+          "topic": "news_general"
+        },
+        "elapsed_sec": 2.522,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ]
+  },
+  "output": {
+    "answer_preview": "[⬇ 下載為 Word](http://192.168.0.228:9002/v1/export/word?session_id=c0f62464-6ed7-4f2e-8509-62347f68d859&turn_id=3a19979844b943ee9ece467559a57e15)\n\n\n## 回答\n\n\n後端分析過程發生錯誤，請稍後再試或聯絡系統管理員。\n\n<details><summary>展",
+    "answer_length": 957
+  }
+}

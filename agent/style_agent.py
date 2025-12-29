@@ -91,6 +91,7 @@ DEFAULT_STYLE_INDEX_HINT = "mil_reports-01"  # TODO: 若未來要固定 style �
 def ask_with_style(
     question: str,
     trace: Optional[Dict[str, Any]] = None,
+    index_hint: str | None = None,
 ) -> Dict[str, Any]:
     """
     SRA_STYLE 模式：
@@ -102,9 +103,30 @@ def ask_with_style(
         
     t_total_start = time.perf_counter()
     
+    original_question = (question or "").strip()
+    
+    # ✅ 若你目前「不啟動 refined」，就明確用 None
+    refined_question = None
+    
     # 1) 用 SRA_STYLE 專用資料代理人拿「風格語料 payload」
+    #with log_duration("[style] run_data_agent", extra={"mode": "style"}):
+    #    payload = run_data_agent(question, mode="style", trace=trace)
     with log_duration("[style] run_data_agent", extra={"mode": "style"}):
-        payload = run_data_agent(question, mode="style", trace=trace)
+        payload = run_data_agent(
+            original_question,          # 目前不精煉就用原問句
+            mode="style",
+            trace=trace,
+            index_hint=index_hint,
+            question_raw=original_question,
+            refined_question=refined_question,  # 不啟動就傳 None
+        )
+        
+    # ✅ payload 內的 question 也固定成原問句（避免被 data_agent 覆蓋）
+    payload["question"] = original_question or "[未提供使用者提問]"
+    # ★ 先確保 payload["question"] 永遠有值
+    #payload_question = (payload.get("question") or question or "").strip()
+    #payload["question"] = payload_question or "[未提供使用者提問]"
+    
     # 2) 壓成風格樣本，避免 context 被塞爆
     #ev = payload.get("evidence_snippets") or []
     #raw_style_docs = payload.get("style_docs") or []
@@ -233,10 +255,23 @@ def ask_with_style(
         if u and u not in used_uuids:
             used_uuids.append(u)
 
+    # ✅ 可選但強烈建議：把 style_docs 寫回 trace 的最後一筆 run，讓 extractor 也能從 last_run 抽到
+    try:
+        da = trace.get("data_agent") or {}
+        runs = da.get("runs") or []
+        if runs:
+            runs[-1]["style_docs"] = style_docs
+            runs[-1]["used_uuids"] = used_uuids
+    except Exception:
+        pass
+    
     result: Dict[str, Any] = {
+        "question": original_question or "[未提供使用者提問]",  # ✅ 新增這行
         "answer": style_text_with_refs,
         "citations": citations,
         "reasoning": reasoning,
+        # ✅ 新增：讓 extractor / Word 能用一致欄位抓到
+        "style_docs": style_docs,
         "style_references": style_docs,
         "used_uuids": used_uuids,
         "refno_uuid_map": refno_uuid_map,

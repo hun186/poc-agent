@@ -1,6 +1,6 @@
 # api/core/presenters/extractors.py
 from __future__ import annotations
-
+import re
 import json
 from typing import Any, Dict, List, Optional
 
@@ -12,6 +12,14 @@ from api.core.presenters.sections import (
 
 from shared.citations.citation_id import pick_doc_id
 
+import unicodedata
+
+def _norm_q(s: str) -> str:
+    s = unicodedata.normalize("NFKC", s or "")
+    s = s.strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
+    
 def extract_presentation(
     out: Any,
     *,
@@ -126,6 +134,39 @@ def extract_citations(out: Dict[str, Any]) -> List[Dict[str, Any]]:
         normed.append(c2)
     return dedupe_citations(normed)
 
+def _extract_style_docs_from_out(out: Dict[str, Any], last_run: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    風格參考全文可能出現的位置不固定：依序嘗試多個路徑。
+    只要拿到 list 就回傳；否則回空 list。
+    """
+    cands = []
+
+    # 1) 最常見：直接在 out 根節點
+    cands.append(out.get("style_docs"))
+
+    # 2) 有些人會包 payload
+    payload = out.get("payload")
+    if isinstance(payload, dict):
+        cands.append(payload.get("style_docs"))
+
+    # 3) 也有人會叫 style_payload / data_agent_payload
+    style_payload = out.get("style_payload")
+    if isinstance(style_payload, dict):
+        cands.append(style_payload.get("style_docs"))
+
+    da_payload = out.get("data_agent_payload")
+    if isinstance(da_payload, dict):
+        cands.append(da_payload.get("style_docs"))
+
+    # 4) 最後才看 trace（通常不建議放太大，但以防萬一）
+    cands.append(last_run.get("style_docs"))
+
+    for v in cands:
+        if isinstance(v, list):
+            # 只保留 dict，避免怪型別把後面 docx renderer 弄炸
+            return [x for x in v if isinstance(x, dict)]
+    return []
+    
 def extract_data_agent_section(out: Dict[str, Any]) -> Optional[DataAgentSection]:
     data_agent = out.get("data_agent") or {}
     runs = data_agent.get("runs") or []
@@ -135,7 +176,16 @@ def extract_data_agent_section(out: Dict[str, Any]) -> Optional[DataAgentSection
     last_run = runs[-1] or {}
     mode = last_run.get("mode") or out.get("mode")
     elapsed = last_run.get("elapsed_sec")
-    question_raw = last_run.get("question") or out.get("question") or out.get("q")
+    #question_raw = last_run.get("question") or out.get("question") or out.get("q")
+    question_raw = (
+        last_run.get("question_raw")
+        or out.get("question_raw")
+        or last_run.get("user_question")
+        or out.get("user_question")
+        or last_run.get("question")
+        or out.get("question")
+        or out.get("q")
+    )
 
     stats = last_run.get("stats") or {}
     query_meta = last_run.get("query_meta") or {}
@@ -151,10 +201,22 @@ def extract_data_agent_section(out: Dict[str, Any]) -> Optional[DataAgentSection
     dt_from = time_range.get("date_from") or query_meta.get("date_from")
     dt_to = time_range.get("date_to") or query_meta.get("date_to")
 
+    # 檢索用 query：照舊（style_query/core_query 都放這邊）
     es_query = query_meta.get("es_query") or query_meta.get("core_query")
     if str(mode or "").lower() in ("style", "sra_style") and not es_query:
         es_query = last_run.get("style_query")
 
+    # ✅ 精煉提問：只接受「真的有 refined_question」才算
+    rq = last_run.get("refined_question") or out.get("refined_question")
+    refined_question = None
+    if isinstance(rq, str) and rq.strip():
+        # 可選：避免同句也顯示
+        if _norm_q(rq) != _norm_q(question_raw if isinstance(question_raw, str) else ""):
+            refined_question = rq.strip()
+    
+    # ✅ 新增：抽出 style_docs（只在 style / sra_style 時通常有）
+    style_docs = _extract_style_docs_from_out(out, last_run)
+    
     return DataAgentSection(
         mode=str(mode) if mode is not None else None,
         elapsed_sec=float(elapsed) if isinstance(elapsed, (int, float)) else None,
@@ -168,4 +230,9 @@ def extract_data_agent_section(out: Dict[str, Any]) -> Optional[DataAgentSection
         syn_terms=[str(x) for x in syn_terms if isinstance(x, str)],
         effective_terms=[str(x) for x in effective_terms if isinstance(x, str)],
         es_query=str(es_query) if isinstance(es_query, str) else None,
+        # ✅ 只在真的精煉時才有值；風格模式不會被 style_query 汙染
+        refined_question=refined_question,
+        
+        # ✅ 新增欄位
+        style_docs=style_docs,
     )

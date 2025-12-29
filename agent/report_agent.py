@@ -11,8 +11,8 @@ from agent.utils.citations import build_citations_from_ev
 from agent.utils.citations import compress_evidence
 from agent.utils.citations import build_refno_uuid_map
 from agent.utils.profiler import log_duration, log_total
-from agent.utils.markdown_tables import sanitize_markdown_tables
 from agent.utils.markdown_tables import sanitize_markdown_tables, replace_table_cell_br
+from agent.refiners.query_refiner import refine_question_for_data_agent
 
 REPORT_MODEL_ID = (
     os.getenv("REPORT_MODEL_ID")   # 有指定就用這個
@@ -26,7 +26,8 @@ REPORT_SYSTEM_PROMPT = """
 你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：
 
 {
-  "q": "使用者原始問題",
+  "q": "精煉後問句（用於檢索/統計與撰寫）",
+  "q0": "使用者原始問句（僅供展示/稽核，可不使用）",
   "t": ["date_from 或 null", "date_to 或 null"],
   "agg": {
     "docs": 整體文件數,
@@ -88,6 +89,7 @@ REPORT_SYSTEM_PROMPT = """
    報告可以適度使用小標題（例如「一、資料概況」「二、事件時間線」「三、趨勢分析」「四、SWOT 分析」）。
 
 輸出時：
+- 撰寫時以 q 為主；若 q0 有提供「額外但與任務相關的約束」（例如：受眾、分析框架、輸出順序），可採用。
 - 不要再輸出 JSON，直接輸出可閱讀的中文說明即可。
 - 內文中提到的所有「來源X」編號，必須都能在 ev.ref_no 中找到對應的數字，不得出現額外的編號。
 
@@ -175,23 +177,61 @@ class ReportAgent:
 def ask_with_report(
     question: str,
     trace: Optional[Dict[str, Any]] = None,
+    index_hint: str | None = None,
+    
 ) -> Dict[str, Any]:
     if trace is None:
         trace = {}
     t_total_start = time.perf_counter()
+    
+    original_question = (question or "").strip()
+
+    # ✅ 先精煉，再丟給 data_agent（只影響資料準備，不影響前端顯示的「使用者提問」）
+    refined_question = refine_question_for_data_agent(
+        original_question,
+        mode="report",
+        trace=trace,
+        index_hint=index_hint, # ★ 新增
+    )
+    
+    with log_duration("[report] run_data_agent", extra={"mode": "report"}):
+        #payload = run_data_agent(refined_question, mode="report", trace=trace)
+        payload = run_data_agent(
+            refined_question,
+            mode="report",
+            trace=trace,
+            question_raw=original_question,
+            refined_question=refined_question,
+        )
+        
+    # ✅ 對外仍保留原問句（你原本就強調「使用者提問一定要存在」）
+    payload["question"] = original_question or "[未提供使用者提問]"
+    payload["question_raw"] = original_question or "[未提供使用者提問]"
+    
+    # ✅ 把精煉結果也留著（debug/稽核很有用）
+    qm = payload.get("query_meta") or {}
+    if isinstance(qm, dict):
+        qm["refined_question"] = refined_question
+        payload["query_meta"] = qm
+        
     #payload = run_data_agent(question, mode="report")
     #payload = run_data_agent(question, mode="report", trace=trace)
     # ★ data_agent 區段時間
-    with log_duration("[report] run_data_agent", extra={"mode": "report"}):
-        payload = run_data_agent(question, mode="report", trace=trace)
+    #with log_duration("[report] run_data_agent", extra={"mode": "report"}):
+    #    payload = run_data_agent(question, mode="report", trace=trace)
 
     # ★ 先確保 payload["question"] 永遠有值
-    payload_question = (payload.get("question") or question or "").strip()
-    payload["question"] = payload_question or "[未提供使用者提問]"
+    #payload_question = (payload.get("question") or question or "").strip()
+    #payload["question"] = payload_question or "[未提供使用者提問]"
 
     # === 精簡版（給報告 LLM 用） ===
     compressed_for_llm = {
-        "q": payload.get("question"),
+        #"q": payload.get("question"),
+        # 給報告 LLM：用精煉問句（避免字數/格式碎念干擾）
+        "q": refined_question or payload.get("question"),
+    
+        # 若你希望報告內仍能提到「原問句」或做稽核：保留一份
+        "q0": payload.get("question"),
         "t": [
             payload.get("time_range", {}).get("date_from"),
             payload.get("time_range", {}).get("date_to"),
@@ -261,14 +301,14 @@ def ask_with_report(
     t1 = time.perf_counter()
     
     # ★ 修復 LLM 產出的所有 Markdown 表格（不限欄數）
-    print(f"DEBUG: report_text before Sanitized Markdown Row: {report_text}")
+    #print(f"DEBUG: report_text before Sanitized Markdown Row: {report_text}")
     if "<br>\n" in report_text or "<br />\n" in report_text or "<br/>\n" in report_text:
         print("FOUND br+newline inside output table!")
     if isinstance(report_text, str) and report_text.strip():
         report_text = sanitize_markdown_tables(report_text)
         # ★ OpenWebUI 容易對 <br> 的表格渲染出問題：把表格 cell 內的 <br> 改成分隔符
         report_text = replace_table_cell_br(report_text, sep="；")  # 你也可改成 " / "
-    print(f"DEBUG: report_text after Sanitized Markdown Row: {report_text}")
+    #print(f"DEBUG: report_text after Sanitized Markdown Row: {report_text}")
     # ★ 把這次報告 LLM 寫到 trace["llm"]["report"]
     llm_root = trace.setdefault("llm", {})
     report_logs: list[Dict[str, Any]] = llm_root.setdefault("report", [])
@@ -303,8 +343,11 @@ def ask_with_report(
             if doc_id not in used_uuids:
                 used_uuids.append(doc_id)
     refno_uuid_map = build_refno_uuid_map(ev_compact)
-    print("report_text",report_text)
+    #print("report_text",report_text)
     result: Dict[str, Any] = {
+        "question": original_question or "[未提供使用者提問]",   # ✅ 給匯出用（最重要）
+        "q": refined_question or (original_question or ""),      # ✅ 可選：給 debug 或一致性
+        "q0": original_question or "",                           # ✅ 可選：保留原問句
         "answer": report_text,
         "citations": citations,
         "reasoning": reasoning,

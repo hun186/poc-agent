@@ -1,0 +1,25 @@
+{
+  "session_id": "0974b818-755f-455a-ab14-5aaa95b60a07",
+  "request_id": "8337a600d255428c99310c03d9c13681",
+  "ts": "2025-12-29T20:09:10",
+  "user": {
+    "latest_question": "### Task:\nGenerate 1-3 broad tags categorizing the main themes of the chat history, along with 1-3 more specific subtopic tags.\n\n### Guidelines:\n- Start with high-level domains (e.g. Science, Technology, Philosophy, Arts, Politics, Business, Health, Sports, Entertainment, Education)\n- Consider including relevant subfields/subdomains if they are strongly represented throughout the conversation\n- If content is too short (less than 3 messages) or too diverse, use only [\"General\"]\n- Use the chat's primary language; default to English if multilingual\n- Prioritize accuracy over specificity\n\n### Output:\nJSON format: { \"tags\": [\"tag1\", \"tag2\", \"tag3\"] }\n\n### Chat History:\n<chat_history>\nUSER: 請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。\nASSISTANT: [⬇ 下載為 Word](http://192.168.0.228:9002/v1/export/word?session_id=0974b818-755f-455a-ab14-5aaa95b60a07&turn_id=dd1f296c9d7842cf950359d8db28548b)\n\n\n## 回答\n\n\n後端分析過程發生錯誤，請稍後再試或聯絡系統管理員。\n</chat_history>",
+    "recent_history": [
+      "請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。"
+    ]
+  },
+  "routing": {
+    "mode": "META_TASK",
+    "meta_kind": "tags"
+  },
+  "keywords": {},
+  "es": {},
+  "timing": {
+    "total_sec": 2.7882349491119385
+  },
+  "llm": {},
+  "output": {
+    "answer_preview": "{\"tags\": [\"政治\", \"國際關係\", \"化學武器\"]}",
+    "answer_length": 32
+  }
+}

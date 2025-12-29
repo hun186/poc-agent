@@ -1,0 +1,127 @@
+{
+  "session_id": "696411f2-d387-4b8f-9a89-fc92448f0925",
+  "request_id": "a3d5ca915dcc4d5b965b9bf4312dfb4e",
+  "ts": "2025-12-26T19:44:53",
+  "user": {
+    "latest_question": "給我2024年以巴衝突的趨勢變化報告。",
+    "recent_history": []
+  },
+  "routing": {
+    "mode": "SRA_REPORT",
+    "topic": "news_general",
+    "indexes": [
+      "news_test"
+    ],
+    "index_hint": "news_test",
+    "route_raw": {
+      "mode": "SRA_REPORT",
+      "reason": "使用者要求整理與分析2024年以巴衝突的趨勢變化，屬於彙整、分析主題的報告需求",
+      "topic": "news_general"
+    }
+  },
+  "keywords": {
+    "q_for_agent": "[ES_INDEX_HINT=news_test]\n【對話歷史】\n\n\n【目前問題】\n給我2024年以巴衝突的趨勢變化報告。\n\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+  },
+  "es": {},
+  "timing": {
+    "routing_sec": 107.55118703842163,
+    "total_sec": 152.12888741493225
+  },
+  "llm": {
+    "router": [
+      {
+        "system": "TASK_ROUTER_SYSTEM",
+        "user": "請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。\n\n【使用者請求】\n【目前問題】\n給我2024年以巴衝突的趨勢變化報告。",
+        "raw_response": "{\n  \"mode\": \"SRA_REPORT\",\n  \"reason\": \"使用者要求整理與分析2024年以巴衝突的趨勢變化，屬於彙整、分析主題的報告需求\",\n  \"topic\": \"news_general\"\n}",
+        "parsed": {
+          "mode": "SRA_REPORT",
+          "reason": "使用者要求整理與分析2024年以巴衝突的趨勢變化，屬於彙整、分析主題的報告需求",
+          "topic": "news_general"
+        },
+        "elapsed_sec": 2.641,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ],
+    "report": [
+      {
+        "system": "REPORT_SYSTEM_PROMPT",
+        "user": "{\"q\":\"給我2024年以巴衝突的趨勢變化報告。\",\"t\":[\"2024-01-01\",\"2024-12-31\"],\"agg\":{\"docs\":1,\"snips\":1,\"active_days\":1,\"month\":[[\"2024-11\",1]],\"quarter\":[[\"2024-Q4\",1]],\"peak_days\":[[\"2024-11-13\",1]],\"first_last\":[\"2024-11-13\",\"2024-11-13\"]},\"ev\":[{\"ref_no\":1,\"id\":\"5c4f9ce37c732f058405be3ac2f7a7457a73a1b4\",\"d\":\"2024-11-13\",\"title\":\"加沙食品市场不复存在  饥饿迫在眉睫\",\"s\":\"加沙食品市场不复存在_ 饥饿迫在眉睫\",\"note\":\"世衛組織指出，自去年10月巴以衝突爆發以來，加沙已有超過4萬3469人喪生，其中大部分是平民，至少有1萬人仍被埋在住所和避難所的廢墟之中。\"}]}",
+        "answer_preview": "**2024 年以巴衝突趨勢變化報告（資料截至 2024‑11‑13）**  \n\n---\n\n### 一、資料概況\n| 指標 | 數值 | 說明 |\n| --- | --- | --- |\n| 文件總數 (docs) | 1 | 本次查詢期間內僅有 1 份文件被收錄 |\n| 片段總數 (snips) | 1 | 1 片段包含具體敘述 |\n| 有活動紀錄天數 (active_days) | 1 | 只",
+        "elapsed_sec": 24.091,
+        "model_id": "gpt-oss:120b-32k"
+      }
+    ]
+  },
+  "output": {
+    "answer_preview": "[⬇ 下載為 Word](http://192.168.0.228:9002/v1/export/word?session_id=696411f2-d387-4b8f-9a89-fc92448f0925&turn_id=a3d5ca915dcc4d5b965b9bf4312dfb4e)\n\n\n# 回答\n\n\n**2024 年以巴衝突趨勢變化報告（資料截至 2024‑11‑13）**  \n\n---\n\n#",
+    "answer_length": 7945
+  },
+  "data_agent": {
+    "runs": [
+      {
+        "mode": "report",
+        "elapsed_sec": 80.812,
+        "model_id": "gpt-oss:120b-32k",
+        "model_id_effective": "ollama_chat/gpt-oss:120b-32k",
+        "question": "給我2024年以巴衝突的趨勢變化報告。",
+        "query_meta": {
+          "core_terms": [
+            "以巴衝突"
+          ],
+          "core_query": "核心關鍵詞組如下：以巴衝突",
+          "date_from": "2024-01-01",
+          "date_to": "2024-12-31",
+          "syn_terms": [
+            "巴以衝突",
+            "以色列-巴勒斯坦衝突",
+            "以色列與巴勒斯坦衝突",
+            "以巴戰爭",
+            "巴以戰爭",
+            "Israel-Palestine conflict",
+            "Israel–Palestine conflict"
+          ],
+          "effective_terms": [
+            "以巴衝突",
+            "巴以衝突",
+            "以色列-巴勒斯坦衝突",
+            "以色列與巴勒斯坦衝突",
+            "以巴戰爭",
+            "巴以戰爭",
+            "Israel-Palestine conflict",
+            "Israel–Palestine conflict"
+          ],
+          "es_query": "核心關鍵詞組如下：以巴衝突",
+          "manual_terms_in_q": [],
+          "is_manual_entity_query": false,
+          "term_groups": [
+            [
+              "Israel-Palestine conflict",
+              "Israel–Palestine conflict",
+              "以巴戰爭",
+              "以巴衝突",
+              "以色列-巴勒斯坦衝突",
+              "以色列與巴勒斯坦衝突",
+              "巴以戰爭",
+              "巴以衝突"
+            ]
+          ],
+          "raw_query": "核心關鍵詞組如下：以巴衝突"
+        },
+        "time_range": {
+          "date_from": "2024-01-01",
+          "date_to": "2024-12-31"
+        },
+        "stats": {
+          "doc_count": 1,
+          "snippet_count": 1,
+          "active_days": 1
+        },
+        "core_terms": [
+          "以巴衝突"
+        ],
+        "date_from": "2024-01-01",
+        "date_to": "2024-12-31"
+      }
+    ]
+  }
+}

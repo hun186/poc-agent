@@ -1,5 +1,6 @@
 # agent/data_agent.py
 import os
+import re
 import time  # ★ 檔案上方記得有這行，如果沒有就加
 from typing import Any, Dict, Optional
 from .tools_es import ESSearchNews, ESTimeline, ESFetchDocById
@@ -37,6 +38,15 @@ STYLE_DATA_SYSTEM  = """
 """
 
 STYLE_DATA_CODE_SYSTEM = """
+【系統參數】
+- 若輸入內容包含區塊「【系統參數（抽取關鍵字時請忽略本段）】」，可能會提供 index_hint，例如：
+  index_hint=news_test,mil_reports-01
+- 若有 index_hint，則你在呼叫下列工具時必須帶入同一個 index_hint：
+  - es_search_news(..., index_hint=index_hint)
+  - es_timeline(..., index_hint=index_hint)
+  - es_fetch_doc_by_id(..., index_hint=index_hint)
+- 抽取 core_terms / style_terms / topic_terms 時，必須忽略整段「【系統參數】」。
+
 你是一個『風格語料準備代理人』。
 
 你的任務只有一件事：
@@ -258,6 +268,15 @@ STYLE_DATA_CODE_SYSTEM = """
 """
 
 REPORT_DATA_SYSTEM = """
+【系統參數】
+- 若輸入內容包含區塊「【系統參數（抽取關鍵字時請忽略本段）】」，可能會提供 index_hint，例如：
+  index_hint=news_test,mil_reports-01
+- 若有 index_hint，則你在呼叫下列工具時必須帶入同一個 index_hint：
+  - es_search_news(..., index_hint=index_hint)
+  - es_timeline(..., index_hint=index_hint)
+  - es_fetch_doc_by_id(..., index_hint=index_hint)
+- 抽取 core_terms / style_terms / topic_terms 時，必須忽略整段「【系統參數】」。
+
 你是一個『新聞/情報/政策的資料準備代理人』。
 
 你的任務只有一件事：
@@ -645,6 +664,10 @@ def run_data_agent(
     question: str,
     mode: str = "report",
     trace: Optional[Dict[str, Any]] = None,
+    *,
+    question_raw: Optional[str] = None,         # ✅ 新增：原始長問句（前端顯示用）
+    refined_question: Optional[str] = None,     # ✅ 新增：精煉問句（檢索用，通常=question）
+    index_hint: Optional[str] = None,         # ★ 新增
 ) -> Dict[str, Any]:
     """
     共用一個 CodeAgent 建立邏輯，只是 SYSTEM 不同：
@@ -661,7 +684,16 @@ def run_data_agent(
 
     t0 = time.time()
     code_agent = build_agent(mode=mode)
-    result = code_agent.run(question)
+    # ★ 給 CodeAgent 的輸入：把 index_hint 放在「系統參數」區塊
+    sys_lines = []
+    if index_hint:
+        sys_lines.append(f"index_hint={index_hint}")
+    
+    question_for_agent = question
+    if sys_lines:
+        question_for_agent = "【系統參數（抽取關鍵字時請忽略本段）】\n" + "\n".join(sys_lines) + "\n\n【使用者問題】\n" + question
+    
+    result = code_agent.run(question_for_agent)
     elapsed = time.time() - t0
 
     # === 還原成 payload（維持原本行為） ===
@@ -689,6 +721,52 @@ def run_data_agent(
     except Exception as e:
         print("[data_agent] query_meta normalize error:", e)
         
+    # ---- 補齊 query_meta：原問句 / 精煉問句（方便後端一致取用） ----
+    q_used = (payload.get("question") or question or "").strip()
+    
+    q_raw = (question_raw or "").strip()
+    q_ref = (refined_question or "").strip()
+    '''
+    # 如果上游沒傳 refined_question，就把「實際跑 data_agent 的問句」當 refined
+    if not q_ref:
+        q_ref = q_used
+    '''
+    def _norm_q(s: str) -> str:
+        # 用來做「是否真的有變化」的比對（壓空白、統一標點即可）
+        s = (s or "").strip()
+        s = re.sub(r"\s+", " ", s)
+        s = s.replace("，", ",").replace("。", ".").replace("：", ":")
+        return s
+    
+    # ---- 補齊 query_meta：原問句 / 精煉問句（方便後端一致取用） ----
+    q_used = (payload.get("question") or question or "").strip()
+    
+    q_raw = (question_raw or "").strip()
+    
+    # ✅ refined：只信「上游明確傳入」或「agent 明確回傳」
+    q_ref = (refined_question or "").strip()
+    if not q_ref:
+        # 若 agent/工具真的有產出 refined_question，可以在這裡接；沒有就空
+        q_ref = (query_meta.get("refined_question") or payload.get("refined_question") or "").strip()
+    
+    # ✅ style：預設不開啟 refined（除非你未來真的想開，才在上游傳 refined_question）
+    mode_norm = str(mode or "").lower()
+    if mode_norm in ("style", "sra_style") and not (refined_question or "").strip():
+        q_ref = ""
+    
+    # ✅ 如果 refined 跟 raw 一樣，就不要顯示（設為空/None）
+    if q_ref and _norm_q(q_ref) == _norm_q(q_raw):
+        q_ref = ""
+    # 寫回 payload["query_meta"]（若不存在就建立）
+    if not isinstance(payload.get("query_meta"), dict):
+        payload["query_meta"] = {}
+    payload["query_meta"].setdefault("index_hint", index_hint)
+    payload["query_meta"].setdefault("question_raw", q_raw or None)
+    #payload["query_meta"].setdefault("refined_question", q_ref or None)
+    payload["query_meta"]["refined_question"] = (q_ref or None)   # ✅ 不要 setdefault，直接覆寫更安全
+    # 同步到你本地的 query_meta（trace 也用同一份）
+    query_meta = dict(payload["query_meta"])
+
     try:
         da_root = trace.setdefault("data_agent", {})
         runs: list[Dict[str, Any]] = da_root.setdefault("runs", [])
@@ -700,9 +778,14 @@ def run_data_agent(
             "model_id": DATA_AGENT_MODEL_ID,
             # 若之後要 debug LiteLLM 實際吃到什麼，再看這個
             "model_id_effective": _normalize_model_id(DATA_AGENT_MODEL_ID),
-            "question": payload.get("question") or question,
+            # ✅ 這三個建議都留下
+            "question_raw": q_raw or None,      # 前端要顯示的原始提問
+            #"refined_question": q_ref or None,  # 檢索用精煉問句
+            "refined_question": (q_ref or None),  # ✅ 沒有就 None
+            "question_used": q_used,            # 這次 CodeAgent 真正拿去跑的 question（保底）
         }
-
+        run_info["index_hint"] = index_hint
+        run_info["question_for_agent"] = question_for_agent 
         # ★ 共用：把 query_meta 整包塞進 trace（不管是 report 還是 style）
         if query_meta:
             run_info["query_meta"] = query_meta

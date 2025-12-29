@@ -4,6 +4,9 @@
 # http://192.168.0.228:9002/v1
 # http://192.168.0.133:9002/v1
 
+#cd D:\shared\TopicClassification\poc-agent&&python -m api.run_api --public --ssl --port 9002
+#cd /mntCZJ/TopicClassification/poc-agent&&python -m api.run_api --public --port 9002
+
 from api.core.proctitle import init_proctitle
 
 # 啟動時先設定 process title
@@ -12,16 +15,6 @@ init_proctitle(app_name="SRA-API")
 from fastapi import FastAPI  # , HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from api.routers import chat, docs, export
-
-'''
-def _strip_code_fences(s: str) -> str:
-    # 若模型不小心包了 ```json ... ```，幫忙剝掉
-    s = s.strip()
-    if s.startswith("```"):
-        s = re.sub(r"^```(?:json)?\s*", "", s)
-        s = re.sub(r"\s*```$", "", s)
-    return s.strip()
-'''
 
 app = FastAPI(
     title="SRA-Structured Retrieval Agent (OpenAI-compatible)",

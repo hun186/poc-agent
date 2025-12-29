@@ -98,6 +98,9 @@ echo "[run_sra_api] 啟動時清空舊主 log..."
 
 echo "[run_sra_api] 啟動 uvicorn..."
 
+#uvicorn api.main:app --host 0.0.0.0 --port "$PORT" 2>&1 | \
+#python -m api.run_api --public --ssl --port "$PORT" 2>&1 | \
+
 uvicorn api.main:app --host 0.0.0.0 --port "$PORT" 2>&1 | \
 while IFS= read -r line; do
 

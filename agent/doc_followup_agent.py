@@ -1,5 +1,5 @@
 # agent/doc_followup_agent.py
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 import json
 import os
 import re
@@ -15,7 +15,8 @@ DOC_FOLLOWUP_MAX_DOCS = int(os.getenv("DOC_FOLLOWUP_MAX_DOCS", "5"))
 # - 40 位 hex（你現在 ES 那串長 hash）
 # - 36 字元 UUID（帶 dash）
 #UUID_HEX_40 = re.compile(r"\b[0-9a-f]{40}\b", re.IGNORECASE)
-UUID_HEX_40 = re.compile(r"[0-9a-f]{40}", re.IGNORECASE)
+#UUID_HEX_40 = re.compile(r"[0-9a-f]{40}", re.IGNORECASE)
+UUID_HEX_40 = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])")
 UUID_HYPHEN = re.compile(
     r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
     re.IGNORECASE,
@@ -311,12 +312,38 @@ def _parse_char_range(instruction: str) -> tuple[int | None, int | None]:
     return None, None
 
 
+def _parse_char_range_1based(instruction: str) -> tuple[int | None, int | None]:
+    """
+    回傳 (start, end)，皆為 1-based 且 end 為「含」。
+    支援：
+    - 前26k個字 / 前 26000 字  → (1, 26000)
+    - 27k~56k個字 / 27001~56000字 / 27k 至 56k 字 → (27001, 56000)
+    """
+    text = instruction.replace(" ", "")
+
+    m = re.search(r"前(\d+)(k|K)?(個?字)?", text)
+    if m:
+        n = int(m.group(1)) * (1000 if m.group(2) else 1)
+        return (1, n) if n > 0 else (None, None)
+
+    m = re.search(r"(\d+)(k|K)?[~～\-至](\d+)(k|K)?(個?字)?", text)
+    if m:
+        s = int(m.group(1)) * (1000 if m.group(2) else 1)
+        e = int(m.group(3)) * (1000 if m.group(4) else 1)
+        if s <= 0 or e <= 0:
+            return None, None
+        if e < s:
+            # 異常：改成取 s 起的一段
+            return s, s + DOC_FOLLOWUP_MAX_TOTAL_CHARS - 1
+        return s, e
+
+    return None, None
 
 def fetch_docs_by_uuid(
     uuids: List[str],
     index_hint: str | None = None,
-    index_candidates: Optional[List[str]] = None,   # ★ 新增
-) -> List[Dict[str, Any]]:
+    index_candidates: Optional[List[str]] = None,
+) -> Tuple[List[Dict[str, Any]], Set[str]]:
     """
     根據 UUID 清單利用 ESFetchDocById 拉全文。
 
@@ -509,43 +536,13 @@ def _slice_docs_for_instruction(instruction: str, docs: List[Dict[str, Any]]) ->
 
     # ===== 2) LLM 失敗 → fallback: regex 版 =====
     target_idx = _parse_target_index(instruction)
-    start, end = _parse_char_range(instruction)
-    remaining = DOC_FOLLOWUP_MAX_TOTAL_CHARS
-    sliced = []
-
+    start_1, end_1 = _parse_char_range_1based(instruction)
+    
+    # 直接改用你上面已寫的 _apply_slice_by_range（planner 同款）
     def _apply_slice_regex(d: Dict[str, Any]) -> Dict[str, Any] | None:
-        nonlocal remaining
-        text = d.get("full_text") or ""
-        if not text:
-            return None
-        total_len = len(text)
-
-        if start is None and end is None:
-            s = 0
-            e = min(total_len, remaining)
-        else:
-            s = max(0, start or 0)
-            if s >= total_len:
-                return None
-            e_raw = end if end is not None else total_len
-            e = max(s + 1, min(e_raw, total_len))
-
-        seg_len = e - s
-        if seg_len <= 0 or remaining <= 0:
-            return None
-
-        if seg_len > remaining:
-            e = s + remaining
-            seg_len = remaining
-
-        segment_text = text[s:e]
-        remaining -= seg_len
-
-        new_d = dict(d)
-        new_d["full_text"] = segment_text
-        new_d["range"] = {"start": s + 1, "end": e}
-        new_d["total_length"] = total_len
-        return new_d
+        if start_1 is None and end_1 is None:
+            return _apply_slice_by_range(d, 1, DOC_FOLLOWUP_MAX_TOTAL_CHARS)
+        return _apply_slice_by_range(d, start_1, end_1)
 
     if target_idx is not None:
         for d in docs:
@@ -590,6 +587,13 @@ def ask_with_doc_followup(
     - 若 refno_uuid_map 為 None：維持舊行為，用 uuids + 指令裡抓到的 uuid。
     """
 
+    instruction = (instruction or "").strip()
+    # ✅ 統一補齊「使用者提問」與（可選）精煉提問欄位，讓 Word/Markdown 都不會漏
+    _base = {
+        "question": instruction,
+        "query_meta": {"refined_question": instruction},
+    }
+    
     # === 1) 根據模式決定要抓哪幾個 uuid，並組好 docs（含 index） ===
 
     docs: List[Dict[str, Any]] = []
@@ -620,6 +624,7 @@ def ask_with_doc_followup(
 
         if not fetch_uuids:
             return {
+                **_base,
                 "answer": "refno_uuid_map 中沒有對應可用的 UUID，無法進行文件後續處理。",
                 "citations": [],
                 "reasoning": f"refno_uuid_map={refno_uuid_map!r}，但沒有任何有效的 uuid。",
@@ -636,6 +641,7 @@ def ask_with_doc_followup(
 
         if not base_docs:
             return {
+                **_base,
                 "answer": "查無任何與指定 citation 對應的文件，請確認資料是否仍存在於索引中。",
                 "citations": [],
                 "reasoning": f"refno_uuid_map={refno_uuid_map!r}，但 ESFetchDocById 未回傳任何文件。",
@@ -670,6 +676,7 @@ def ask_with_doc_followup(
 
         if not clean_uuids:
             return {
+                **_base,
                 "answer": "目前沒有可用的參考文件或指定的 UUID，因此無法進行這一輪的指令。",
                 "citations": [],
                 "reasoning": "呼叫端未提供 reuse_uuids，且在指令中也未偵測到可用的 UUID/hash。",
@@ -685,6 +692,7 @@ def ask_with_doc_followup(
 
         if not base_docs_list:
             return {
+                **_base,
                 "answer": "查無任何與指定 UUID 對應的文件，請確認字串是否正確，或是否存在於目前的索引中。",
                 "citations": [],
                 "reasoning": f"指定的 UUID 列表為 {clean_uuids!r}，但 ESFetchDocById 未回傳任何文件。",
@@ -700,6 +708,7 @@ def ask_with_doc_followup(
     # === 若兩種模式都沒產生 docs，就直接收掉 ===
     if not docs:
         return {
+            **_base,
             "answer": "目前沒有可用的文件可供後續處理。",
             "citations": [],
             "reasoning": f"mode={mode!r}，但 docs 為空。",
@@ -723,7 +732,12 @@ def ask_with_doc_followup(
         timeout=180.0,
     )
 
-    used_uuids = sorted({d["uuid"] for d in docs if d.get("uuid")})
+    #used_uuids = sorted({d["uuid"] for d in docs if d.get("uuid")})
+    used_uuids: list[str] = []
+    for d in docs:
+        u = d.get("uuid")
+        if u and u not in used_uuids:
+            used_uuids.append(u)
     used_indexes_list = sorted(used_indexes) if "used_indexes" in locals() else []
 
     if mode == "refno":
@@ -732,6 +746,7 @@ def ask_with_doc_followup(
         reasoning = "僅依據呼叫端提供或在指令中偵測到的 UUID 所對應的文件全文（或片段）進行後續處理。"
 
     return {
+        **_base,
         "answer": answer,
         "citations": [],
         "reasoning": reasoning,

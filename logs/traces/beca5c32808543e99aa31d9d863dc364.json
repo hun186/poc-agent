@@ -1,0 +1,25 @@
+{
+  "session_id": "0974b818-755f-455a-ab14-5aaa95b60a07",
+  "request_id": "beca5c32808543e99aa31d9d863dc364",
+  "ts": "2025-12-29T20:08:52",
+  "user": {
+    "latest_question": "### Task:\nSuggest 3-5 relevant follow-up questions or prompts that the user might naturally ask next in this conversation as a **user**, based on the chat history, to help continue or deepen the discussion.\n### Guidelines:\n- Write all follow-up questions from the user’s point of view, directed to the assistant.\n- Make questions concise, clear, and directly related to the discussed topic(s).\n- Only suggest follow-ups that make sense given the chat content and do not repeat what was already covered.\n- If the conversation is very short or not specific, suggest more general (but relevant) follow-ups the user might ask.\n- Use the conversation's primary language; default to English if multilingual.\n- Response must be a JSON array of strings, no extra text or formatting.\n### Output:\nJSON format: { \"follow_ups\": [\"Question 1?\", \"Question 2?\", \"Question 3?\"] }\n### Chat History:\n<chat_history>\nUSER: 請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。\nASSISTANT: [⬇ 下載為 Word](http://192.168.0.228:9002/v1/export/word?session_id=0974b818-755f-455a-ab14-5aaa95b60a07&turn_id=dd1f296c9d7842cf950359d8db28548b)\n\n\n## 回答\n\n\n後端分析過程發生錯誤，請稍後再試或聯絡系統管理員。\n</chat_history>",
+    "recent_history": [
+      "請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。"
+    ]
+  },
+  "routing": {
+    "mode": "META_TASK",
+    "meta_kind": "followups"
+  },
+  "keywords": {},
+  "es": {},
+  "timing": {
+    "total_sec": 16.022057056427002
+  },
+  "llm": {},
+  "output": {
+    "answer_preview": "{\"follow_ups\": [\"您希望使用哪種引用格式（如APA、MLA或腳註）來標註來源？\", \"報告中是否需要加入對各國政府立場的比較分析？\", \"您希望在SWOT分析中著重於哪些面向（例如國際政治、軍事能力或人道影響）？\", \"是否需要加入對未來化學武器使用可能性的預測與政策建議？\", \"報告的目標讀者是學術研究者、政策制定者還是一般大眾？\"]}",
+    "answer_length": 178
+  }
+}

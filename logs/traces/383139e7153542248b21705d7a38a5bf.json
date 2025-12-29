@@ -1,0 +1,25 @@
+{
+  "session_id": "ee351b66-e4dc-400e-9441-5d9c35284331",
+  "request_id": "383139e7153542248b21705d7a38a5bf",
+  "ts": "2025-12-29T18:59:43",
+  "user": {
+    "latest_question": "### Task:\nSuggest 3-5 relevant follow-up questions or prompts that the user might naturally ask next in this conversation as a **user**, based on the chat history, to help continue or deepen the discussion.\n### Guidelines:\n- Write all follow-up questions from the user’s point of view, directed to the assistant.\n- Make questions concise, clear, and directly related to the discussed topic(s).\n- Only suggest follow-ups that make sense given the chat content and do not repeat what was already covered.\n- If the conversation is very short or not specific, suggest more general (but relevant) follow-ups the user might ask.\n- Use the conversation's primary language; default to English if multilingual.\n- Response must be a JSON array of strings, no extra text or formatting.\n### Output:\nJSON format: { \"follow_ups\": [\"Question 1?\", \"Question 2?\", \"Question 3?\"] }\n### Chat History:\n<chat_history>\nUSER: 我得到一則情報指出2025年11月20日下午4點在馬達加斯加海域發現共軍D52大驅在進行護船，防海盜，請以聯合情監的風格寫成一則軍事情報。\nASSISTANT: [⬇ 下載為 Word](http://192.168.0.228:9002/v1/export/word?session_id=ee351b66-e4dc-400e-9441-5d9c35284331&turn_id=4915edc6fe0c474090d9ab79bfd862e5)\n\n\n## 回答\n\n\n（1）114/11/20 聯合情監偵綜整回報  \n\n【空軍空情中心】  \n1650 雷達偵測於馬達加斯加海域出現中華人民共和國海軍 D52 型驅逐艦，航跡緩慢北向，雷達截面顯示防空與反潛系統持續運作，伴隨護船行動。\n\n【海軍艦隊】  \n1600 海上觀測站於同一海域觀測到 D52 大驅與兩艘商業船隻編隊同行，船隻間距約0.5 海浬，顯示執行護航與防海盜任務。燈號為藍白交替，符合海上護航作業規範。\n\n【電偵站】  \n1655 通訊監測捕捉到 D52 與編隊船隻之 VHF 交流，內容以「保持航向」與「防範海盜」等指令為主，通訊流量較平時提升，推測為臨時防海盜護航作業。\n\n以上情報供相關單位參考，建議持續監控該區域海上活動，以評估可能之安全風險。\n\n---\n以下為本次風格仿寫所參考的資料庫原文內容（已截斷），供對照與檢核風格：\n\n### 風格參考樣本 1：114/08/07 聯合情監偵綜整回報（uuid: d5a78b8f283027b77d2dd0bce6cac24f5db1e747）\n\n> （1）114/08/07 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0617 雷達偵獲 055 大驅 於 南海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0821 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 2：114/02/21 聯合情監偵綜整回報（uuid: 9c72ee2657ec987994d50a151683e0a105ed5473）\n\n> （1）114/02/21 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0613 雷達偵獲 055 大驅 於 浙江外海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0815 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 3：114/08/24 聯合情監偵綜整回報（uuid: 94e26cfb6ec6450d27867c528b4ebb6318817342）\n\n> （1）114/08/24 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0621 雷達偵獲 055 大驅 於 福建外海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0817 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 4：（1）114/08/24 聯合情監偵綜整回報（uuid: c96ffd47301201efd2f8d5f536f5ba194db0ebb4）\n\n> （1）114/08/24 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0648 雷達偵獲 055 大驅 於 東海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0818 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 5：114/08/21 聯合情監偵綜整回報（uuid: 2fd7f0a23c0690c3d976dbbdcc3d7f748168c4b2）\n\n> （1）114/08/21 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0656 雷達偵獲 055 大驅 於 浙江外海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0848 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 6：(1) 114/08/15 聯合情監偵綜整回報（uuid: 867a874722b8e5301f9ee060f03dfe3fba2cf8e1）\n\n> （1）114/08/15 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0631 雷達偵獲 055 大驅 於 福建外海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0829 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 7：（1）114/07/15 聯合情監偵綜整回報（uuid: f8d2423c1b195b20763aa8f634389ce0a212efc8）\n\n> （1）114/07/15 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0624 雷達偵獲 055 大驅 於 台灣海峽 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0835 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n\n\n### 風格參考樣本 8：（1）114/06/30 聯合情監偵綜整回報（uuid: b3c3f5bc0dcae17ff3f6794af4b08c3955e3a095）\n\n> （1）114/06/30 聯合情監偵綜整回報\n> \n> 【空軍空情中心】\n> 0637 雷達偵獲 055 大驅 於 南海 出現，活動頻度略增。\n> \n> 【海軍艦隊】\n> 0826 於海峽中段觀測到艦艇同步北上，通訊燈號短暫變化。\n> \n> 【電偵站】\n> 上午通聯監測顯示活躍度提高，推估與前述活動相關。\n</chat_history>",
+    "recent_history": [
+      "  \n我得到一則情報指出2025年11月20日下午4點在馬達加斯加海域發現共軍D52大驅在進行護船，防海盜，請以聯合情監的風格寫成一則軍事情報。"
+    ]
+  },
+  "routing": {
+    "mode": "META_TASK",
+    "meta_kind": "followups"
+  },
+  "keywords": {},
+  "es": {},
+  "timing": {
+    "total_sec": 26.53092670440674
+  },
+  "llm": {},
+  "output": {
+    "answer_preview": "{\"follow_ups\": [\"請提供此次護航任務的可能戰術意圖與區域安全影響評估。\", \"能否列出過去一年內在馬達加斯加海域出現的其他共軍艦艇活動紀錄？\", \"請說明該 D52 大驅的主要武裝與防海盜裝備配置。\", \"若我方需對此區域進行監控，建議使用哪些偵測平台與頻段？\", \"請提供此情報的來源驗證與可信度評估。\"]}",
+    "answer_length": 163
+  }
+}

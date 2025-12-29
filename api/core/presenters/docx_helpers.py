@@ -158,12 +158,48 @@ def _norm_merge_key(s: str) -> str:
     t = re.sub(r"\s+", " ", t)
     return t
 
+_NUMERIC_RE = re.compile(
+    r"""^\s*
+    [+-]?
+    (?:\d{1,3}(?:,\d{3})+|\d+)      # 123 or 1,234
+    (?:\.\d+)?                      # .45
+    (?:%|‰)?                        # % / ‰
+    \s*$""",
+    re.VERBOSE,
+)
+
+_CURRENCY_RE = re.compile(r"^\s*(?:NT\$|\$|USD|TWD|EUR|JPY|RMB|¥|€)\s*[\d,]+(?:\.\d+)?\s*$", re.IGNORECASE)
+
+def _looks_like_numeric_cell(text: str) -> bool:
+    if text is None:
+        return False
+    t = str(text).strip()
+    if not t:
+        return False
+    # 常見統計值：3、1,234、12.5、80%、$1,000
+    return bool(_NUMERIC_RE.match(t) or _CURRENCY_RE.match(t))
+
+def _is_forbidden_column_by_header(table: Table, col_idx: int) -> bool:
+    # 以表頭判斷更穩：Count / 數值 / 件數 / 次數 / 比例 等欄位通常不應合併
+    h = (table.cell(0, col_idx).text or "").strip().lower()
+    if not h:
+        return False
+    forbidden_keys = [
+        "count", "value", "num", "number", "total", "sum", "avg", "mean", "rate", "ratio", "percent", "%",
+        "數值", "件數", "次數", "總計", "合計", "平均", "比率", "比例", "百分比",
+    ]
+    return any(k in h for k in forbidden_keys)
+
 def merge_vertical_when_same_text(
     table: Table,
     col_idx: int,
     start_row: int = 1,   # 1 = 略過表頭
     min_run: int = 2,     # 至少連續 2 列才合併
 ) -> None:
+    
+    if _is_forbidden_column_by_header(table, col_idx):
+        return
+    
     anchor_row = None
     anchor_key = None
     run_len = 0
@@ -189,8 +225,16 @@ def merge_vertical_when_same_text(
 
     for r in range(start_row, len(table.rows)):
         cell = table.cell(r, col_idx)
+        raw_text = cell.text or ""
         key = _norm_merge_key(cell.text)
-
+        # ✅ 2) 數據型（統計值）一律不合併：遇到就先結束前一段 run，並重置
+        if _looks_like_numeric_cell(raw_text):
+            _flush_run(r)
+            anchor_row = None
+            anchor_key = None
+            run_len = 0
+            continue
+        
         # 禁止合併的值：未知 / 空 / — / N/A
         if key in _NO_MERGE_VALUES:
             _flush_run(r)
@@ -362,9 +406,13 @@ def _add_markdown_table(doc, header_line: str, sep_line: str, body_lines: list[s
     #_apply_table_merge_policy(table, headers, start_row=1)
 
     # ✅ 合併前先判斷風險
-    if _should_merge_table(doc, headers, norm_rows):
+    #if _should_merge_table(doc, headers, norm_rows):
         # 建議最多只合併前 1~2 欄，降低框線/跨頁風險
-        beautify_table_merge_repeated_cells(table, start_row=1, cols=[0, 1])
+        #beautify_table_merge_repeated_cells(table, start_row=1, cols=[0, 1])
+    if _should_merge_table(doc, headers, norm_rows):
+        safe_cols = [c for c in (0, 1) if c < len(headers)]
+        if safe_cols:
+            beautify_table_merge_repeated_cells(table, start_row=1, cols=safe_cols)
     else:
         # 不合併就維持原樣（可選：做底色分組/加粗第一欄等）
         pass
@@ -527,6 +575,12 @@ def add_data_agent_section(doc: Document, da_section: Optional[DataAgentSection]
         p.add_run("原始問題：").bold = True
         p.add_run(normalize_text_for_docx(question_raw))
 
+    refined_question = getattr(da_section, "refined_question", None)
+    if refined_question:
+        p = doc.add_paragraph()
+        p.add_run("精煉後問題（檢索用）：").bold = True
+        p.add_run(normalize_text_for_docx(refined_question))
+
     # ==== 時間範圍 ====
     if dt_from or dt_to:
         p = doc.add_paragraph()
@@ -587,16 +641,92 @@ def add_data_agent_section(doc: Document, da_section: Optional[DataAgentSection]
     # ==== 同義詞 / effective_terms ====
     if syn_terms:
         syn_str = ", ".join(syn_terms)
-        if len(syn_str) > 120:
-            syn_str = syn_str[:120] + "…"
+        if len(syn_str) > 1000:
+            syn_str = syn_str[:1000] + "…"
         p = doc.add_paragraph()
         p.add_run("同義／擴充關鍵詞：").bold = True
         p.add_run(normalize_text_for_docx(syn_str))
 
     if effective_terms:
         eff_str = ", ".join(effective_terms)
-        if len(eff_str) > 120:
-            eff_str = eff_str[:120] + "…"
+        if len(eff_str) > 1000:
+            eff_str = eff_str[:1000] + "…"
         p = doc.add_paragraph()
         p.add_run("實際使用關鍵詞（effective terms）：").bold = True
         p.add_run(normalize_text_for_docx(eff_str))
+
+    def _iter_style_refs(da_section):
+        """
+        兼容不同命名：盡量從 da_section 找到「風格參考文本」列表。
+        你可以在 data_agent 端固定成 style_refs，這裡先做兼容。
+        """
+        candidates = [
+            "style_refs",
+            "style_docs",
+            "style_samples",
+            "style_evidence",
+            "full_docs",          # 你 stats 裡有 full_doc_count，常見會配 full_docs
+            "style_full_docs",
+        ]
+        for name in candidates:
+            v = getattr(da_section, name, None)
+            if isinstance(v, list) and v:
+                return v
+        return []
+    
+    def _style_ref_get(d, key: str, default: str = "") -> str:
+        # 支援 dict / pydantic model / object
+        if d is None:
+            return default
+        if isinstance(d, dict):
+            return str(d.get(key) or default)
+        return str(getattr(d, key, default) or default)
+    
+    def _truncate_text(s: str, n: int) -> str:
+        s = (s or "").strip()
+        return s if len(s) <= n else (s[:n] + "…")
+    
+    # ====== 風格仿寫：把參考的風格文本寫進 Word ======
+    # 可用環境變數控制長度，避免 Word 爆肥
+    max_docs = int(os.getenv("DOCX_STYLE_REF_MAX_DOCS", "5"))
+    max_chars = int(os.getenv("DOCX_STYLE_REF_MAX_CHARS", "2000"))
+    
+    style_refs = _iter_style_refs(da_section)
+    if style_refs:
+        doc.add_paragraph("")  # 空行
+        doc.add_heading("風格參考文本（Style References）", level=3)
+    
+        for idx, ref in enumerate(style_refs[:max_docs], start=1):
+            title = _style_ref_get(ref, "title") or _style_ref_get(ref, "article_title")
+            date_iso = _style_ref_get(ref, "date_iso") or _style_ref_get(ref, "article_date_iso")
+            uuid_ = _style_ref_get(ref, "uuid") or _style_ref_get(ref, "id") or _style_ref_get(ref, "doc_id")
+            text = (
+                _style_ref_get(ref, "text")
+                or _style_ref_get(ref, "fulltext")
+                or _style_ref_get(ref, "content")
+                or _style_ref_get(ref, "note")
+                or _style_ref_get(ref, "snippet")
+            )
+    
+            # 標頭（第幾則 + 基本資訊）
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"參考 {idx}：").bold = True
+            if title:
+                p.add_run(normalize_text_for_docx(title))
+            if date_iso:
+                p.add_run("  ")
+                p.add_run(f"（{normalize_text_for_docx(date_iso)}）")
+            if uuid_:
+                p2 = doc.add_paragraph()
+                p2.add_run("UUID：").bold = True
+                p2.add_run(normalize_text_for_docx(uuid_))
+    
+            # 內容（截斷 + 正規化）
+            if text:
+                body = _truncate_text(text, max_chars)
+                body = normalize_text_for_docx(body)
+    
+                # 用引用樣式（如果有）更好看；沒有就用一般段落
+                quote_style = "Intense Quote" if "Intense Quote" in [s.name for s in doc.styles if s.type == WD_STYLE_TYPE.PARAGRAPH] else None
+                p3 = doc.add_paragraph(style=quote_style) if quote_style else doc.add_paragraph()
+                p3.add_run(body)

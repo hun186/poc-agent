@@ -485,8 +485,136 @@ class ESFetchDocById(Tool):
     def __init__(self):
         super().__init__()
         self.es = ES
-
     def forward(
+        self,
+        uuid: str,
+        index_hint: Optional[str] = None,
+        text_field: Optional[str] = "rawInfo.content",
+    ) -> Dict[str, Any]:
+        if not uuid:
+            return {
+                "uuid": "",
+                "index": "",
+                "full_text": "",
+                "source": {},
+                "error": "uuid is required",
+            }
+
+        # === 1) 決定要查的 index（支援多 index） ===
+        resolved = _resolve_es_index(index_hint)
+
+        def _split_indexes(x) -> List[str]:
+            if not x:
+                return []
+            if isinstance(x, (list, tuple)):
+                out = []
+                for it in x:
+                    s = (str(it) or "").strip()
+                    if s:
+                        out.append(s)
+                return out
+            s = str(x).strip()
+            if not s:
+                return []
+            # 支援 "a,b,c"
+            return [p.strip() for p in s.split(",") if p.strip()]
+
+        indexes = _split_indexes(resolved)
+        # 防呆：若真的還是空，就退回用原 resolved（避免 _resolve_es_index 回傳奇怪值）
+        if not indexes and resolved:
+            indexes = [str(resolved)]
+
+        src = None
+        hit_index = None
+
+        # === 2) GET：若多 index → 逐一嘗試（GET 只能單一 index） ===
+        for idx in indexes:
+            try:
+                resp = self.es.get(index=idx, id=uuid, _source=True)
+                if resp and resp.get("found"):
+                    src = resp.get("_source") or {}
+                    hit_index = resp.get("_index") or idx
+                    break
+            except NotFoundError:
+                # 可能是 doc 不存在或 index 不存在：都當成「這個 idx 沒中」，換下一個
+                continue
+            except Exception as e:
+                # 其他錯誤不要炸掉整個流程，繼續試下一個 idx
+                print(f"[ESFetchDocById] get(index={idx!r}, id=uuid) error: {e}")
+                continue
+
+        # === 3) fallback：跨多 index 一次 search(term uuid) ===
+        if src is None:
+            query = {
+                "term": {
+                    # 不用 uuid.keyword：避免 mapping 不一致時查不到
+                    "uuid": uuid
+                }
+            }
+            try:
+                search_index = ",".join(indexes) if indexes else resolved
+                resp = self.es.search(
+                    index=search_index,
+                    size=1,
+                    query=query,
+                    _source=True,
+                )
+                hits = (resp.get("hits") or {}).get("hits") or []
+                if hits:
+                    hit = hits[0]
+                    src = hit.get("_source") or {}
+                    hit_index = hit.get("_index") or (indexes[0] if indexes else str(resolved))
+            except Exception as e:
+                print(f"[ESFetchDocById] search(uuid) error: {e}")
+                return {
+                    "uuid": uuid,
+                    "index": ",".join(indexes) if indexes else str(resolved),
+                    "full_text": "",
+                    "source": {},
+                    "error": str(e),
+                }
+
+        # === 4) 仍然沒資料 ===
+        if not src:
+            return {
+                "uuid": uuid,
+                "index": ",".join(indexes) if indexes else str(resolved),
+                "full_text": "",
+                "source": {},
+            }
+
+        # === 5) 取主要內文 ===
+        tf = text_field or "rawInfo.content"
+
+        def _dot_get(d: dict, path: str):
+            cur = d
+            for p in path.split("."):
+                if not isinstance(cur, dict):
+                    return None
+                cur = cur.get(p)
+                if cur is None:
+                    return None
+            return cur
+
+        full_text = (
+            _dot_get(src, tf)
+            or _dot_get(src, "rawInfo.content")
+            or src.get("content")
+            or src.get("doc_text")
+            or ""
+        )
+
+        if not isinstance(full_text, str):
+            full_text = str(full_text)
+
+        return {
+            "uuid": uuid,
+            "index": hit_index or (",".join(indexes) if indexes else str(resolved)),
+            "full_text": full_text,
+            "source": src,
+        }
+        
+    def forward_1229(
         self,
         uuid: str,
         index_hint: Optional[str] = None,

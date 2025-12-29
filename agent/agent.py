@@ -217,7 +217,7 @@ def route_task_mode(
         return {
             "mode": "PURE_LLM",
             "reason": "empty message",
-            "es_index_key": None,
+            "topic": "none",
         }
 
     return _llm_route_task(text, trace=trace)
@@ -359,16 +359,18 @@ def answer_with_routing(
         # 撐底：用 default_index
         default_idx = INDEX_CONFIG.get("default_index")
         indexes = [default_idx] if default_idx else []
-
+        
     if indexes:
-        # 給 CodeAgent / SRA_REPORT 用的提示前綴
-        index_hint_str = ",".join(indexes)
-        index_hint_prefix = f"[ES_INDEX_HINT={index_hint_str}]\n"
-        # 給 ESFetchDocById / DOC_FOLLOWUP 用的 index_hint
-        index_hint = index_hint_str
+        index_hint = ",".join(indexes)
     else:
-        index_hint_prefix = ""
         index_hint = None
+        
+    # ★ 把「最終要用的索引資訊」補回 route，讓前端直接看到
+    route["topic"] = topic
+    route["indexes"] = indexes
+    route["index_hint"] = index_hint
+    
+    q_for_agent = (query_for_agent or user_msg).strip()
 
     # ★ 收集所有 index（給 DOC_FOLLOWUP 做 fallback）
     topic_map = INDEX_CONFIG.get("topic_index_map", {}) or {}
@@ -405,7 +407,7 @@ def answer_with_routing(
 
     # === 4) 給 CodeAgent 的 query ===
     q_for_agent = (query_for_agent or user_msg).strip()
-    q_for_agent = index_hint_prefix + q_for_agent
+    #q_for_agent = index_hint_prefix + q_for_agent
     # ★ 可選：把 query_for_agent 寫進 trace，方便 debug
     trace.setdefault("keywords", {}).update({
         "q_for_agent": q_for_agent,
@@ -437,14 +439,18 @@ def answer_with_routing(
             out = ask_with_report(
                 q_for_agent,
                 # 之後如果你有改 ask_with_report 支援 trace，再把 session_id / request_id / trace 傳進去
+                index_hint=index_hint,   # ★ 新增：用參數下傳
                 trace=trace
             )
 
         # === SRA_STYLE：用既有語料模仿風格 ===
         elif mode == "SRA_STYLE":
-            style_query = index_hint_prefix + user_msg
+            #style_query = index_hint_prefix + user_msg
             out = ask_with_style(
-                style_query, trace=trace,
+                #style_query,
+                user_msg,
+                index_hint=index_hint,   # ★ 新增：用參數下傳
+                trace=trace,
             )
 
         # === PURE_LLM：不查 ES，直接用模型知識回答 ===
@@ -486,6 +492,14 @@ def answer_with_routing(
     out["mode"] = mode
     out["route"] = route
 
+    # ✅ 統一保證每個模式都有「使用者提問」（Word / Markdown 都靠這個）
+    out.setdefault("question", user_msg)
+
+    # ✅ 可選：順手放 refined（若你後面有地方會用）
+    qm = out.setdefault("query_meta", {})
+    if isinstance(qm, dict):
+        qm.setdefault("refined_question", (query_for_agent or user_msg).strip())
+        
     # ★ 從 trace 裡把 data_agent 掛回結果（若還沒掛）
     data_agent = trace.get("data_agent")
     if data_agent and "data_agent" not in out:
