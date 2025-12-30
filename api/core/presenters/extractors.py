@@ -77,6 +77,55 @@ def extract_presentation(
 
 def extract_user_question(out: dict) -> str:
     """
+    抽出「展示用的使用者提問」（乾淨原始問句）。
+    優先：out.query_meta.question_raw
+    次之：out.question（上游應強制覆寫為本輪 user_msg）
+    再次：out.q（refined）
+    最後才退回 data_agent（避免抽到拼裝）
+    """
+    if not isinstance(out, dict):
+        return ""
+
+    # 1) query_meta.question_raw（最乾淨、最符合「原始問句」定義）
+    
+    qm = out.get("query_meta")
+    #print("query_meta in extract_user_question",qm)
+    if isinstance(qm, dict):
+        v = qm.get("question_raw")
+        if isinstance(v, str) and v.strip():
+            #print("return v.strip() in extract_user_question",v.strip())
+            return v.strip()
+    
+    # 2) out.question（你的 answer_with_routing 建議改成強制覆寫 out["question"]=user_msg）
+    v = out.get("question")
+    if isinstance(v, str) and v.strip():
+        return v.strip()
+
+    # 3) refined / 其他常見欄位（必要時才用）
+    for k in ("q", "user_question", "prompt"):
+        v = out.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+    # 4) 最後才退回 data_agent：優先用 question_used/refined_question，避免 question_raw（拼裝）
+    da = out.get("data_agent") or {}
+    runs = da.get("runs") or []
+    if runs:
+        last = runs[-1] or {}
+        for k in ("question_used", "refined_question"):
+            v = last.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+
+        # ⚠️ 真的沒辦法才用 question_raw（可能是拼裝）
+        v = last.get("question_raw") or last.get("question")
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+    return ""
+    
+def extract_user_question_1230(out: dict) -> str:
+    """
     盡量從 out 裡抽出這次回答對應的「使用者提問」。
     優先：data_agent.runs[-1].question
     次之：out.question / out.q

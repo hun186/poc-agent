@@ -417,11 +417,21 @@ def chat_completions(payload: ChatPayload, request: Request):
             return resp
 
         # 3) 一般任務 → 準備 query_for_agent
-        query_for_agent = _build_query_for_agent(
-            session_key=session_key,
-            history_msgs=history_msgs,
-            user_msg=user_msg,
-        )
+        #query_for_agent = _build_query_for_agent(
+        #    session_key=session_key,
+        #    history_msgs=history_msgs,
+        #    user_msg=user_msg,
+        #)
+        # 3) 不再拼裝，改傳原料
+        mem_all = get_memory()
+        mem_txt = render_memory_text(mem_all.get(session_key))
+        
+        history_items = [
+            {"role": (m.role or ""), "content": (m.content or "")}
+            for m in (history_msgs or [])
+        ]
+        
+        prev_out = (last_structured.get(session_key) or {}) if session_key in last_structured else {}
 
         # 4) 準備 reuse_uuids / refno_uuid_map
         reuse_uuids, refno_uuid_map = _prepare_reuse_info(session_key, last_structured)
@@ -429,6 +439,7 @@ def chat_completions(payload: ChatPayload, request: Request):
         # 5) 呼叫總路由（answer_with_routing）
         try:
             t_route_start = time.time()
+            '''
             out = answer_with_routing(
                 user_msg=user_msg,
                 query_for_agent=query_for_agent,
@@ -438,6 +449,19 @@ def chat_completions(payload: ChatPayload, request: Request):
                 session_id=session_key,
                 request_id=request_id,
                 trace=trace,  # 給報告代理 / ES 工具填 core_terms, ES 狀況
+            )
+            '''
+            out = answer_with_routing(
+                user_msg=user_msg,
+                history_msgs=history_items,
+                memory_text=mem_txt,
+                last_structured=prev_out,
+                recent_user_msgs=recent_user_msgs,
+                reuse_uuids=reuse_uuids,
+                refno_uuid_map=refno_uuid_map,
+                session_id=session_key,
+                request_id=request_id,
+                trace=trace,
             )
             t_route_end = time.time()
             trace.setdefault("timing", {})["routing_sec"] = t_route_end - t_route_start

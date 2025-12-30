@@ -29,14 +29,16 @@ def _wrap_long_section(title: str, body: str, *, allow_details: bool, codeblock:
     return [f"## {title}\n", body]
 
 def _render_question_block(pres: AgentPresentation, *, allow_details: bool) -> List[str]:
-    q_pres = _norm(getattr(pres, "question", "") or "")
+    q_pres = _norm(getattr(pres, "question_raw", "") or "")
     #print("pres in _render_question_block",pres)
     da = getattr(pres, "da_section", None)
     #print("da in _render_question_block",da)
     q_raw = _norm(getattr(da, "question_raw", "") or "")  # ✅ 真正原問句
     # ✅ 這裡改成先 raw 再 pres
-    q0 = q_raw or q_pres
-
+    print("q_pres in _render_question_block",q_pres)
+    print("q_raw in _render_question_block",q_raw)
+    q0 = q_pres or q_raw
+    print("q0 in _render_question_block",q0)
     query_meta = getattr(pres, "query_meta", None)
     q_ref = ""
     if isinstance(query_meta, dict):

@@ -5,11 +5,12 @@ load_dotenv()
 import os
 import json
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from telemetry import log_event  # 若之後想記 event 用得上，先匯進來
 from agent.utils.profiler import log_duration, log_total
 from agent.llm_utils.ollama_client import call_llm  # 你既有的封裝
 from agent.config.index_loader import INDEX_CONFIG
+from agent.agent_utils import _pack_chat_history_items,_build_query_for_agent_in_agent
 from .style_agent import ask_with_style
 from .report_agent import ask_with_report
 from .doc_followup_agent import ask_with_doc_followup
@@ -256,7 +257,10 @@ def _build_router_input(
 
 def answer_with_routing(
     user_msg: str,
-    query_for_agent: str | None = None,
+    query_for_agent: Optional[str] = None,          # 舊參數保留（相容）
+    history_msgs: Optional[List[dict]] = None,      # ✅ 新增
+    memory_text: Optional[str] = None,              # ✅ 新增
+    last_structured: Optional[Dict[str, Any]] = None,  # ✅ 新增
     recent_user_msgs: list[str] | None = None,
     reuse_uuids: list[str] | None = None,
     refno_uuid_map: Optional[Dict[int, str]] = None,
@@ -269,13 +273,57 @@ def answer_with_routing(
     - 用 LLM 做任務分流（SRA_REPORT / SRA_STYLE / PURE_LLM / DOC_FOLLOWUP）
     - 視情況呼叫 ask_with_report / ask_with_style / 一般 call_llm
     - 回傳統一格式：{ answer, citations, reasoning, mode, route }
-
+    
+    user_msg:使用者原始輸入
+    
+    query_for_agent = (
+        (f"【對話記憶】\n{mem_txt}\n\n" if mem_txt else "") +
+        f"【對話歷史】\n{history_text}\n\n"
+        f"【目前問題】\n{user_msg}\n\n"
+        "【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。"
+    )
+    
     recent_user_msgs:
       - 可選；如果有傳進來，會拿「最近 k 個」來幫助任務判斷
       - 只應該放 user 的提問內容，不要放 assistant 的回答
+      
     """
     # ★ 如果上游沒傳 trace 進來，就自己準備一個空的，避免 None
     trace = trace or {}
+    # ✅ 若 API 端沒給 query_for_agent，就由 agent 自己組
+    
+    print("In answer_with_routing, input user_msg",user_msg)
+    print("In answer_with_routing, input query_for_agent",query_for_agent)
+    if not query_for_agent:
+        query_for_agent = _build_query_for_agent_in_agent(
+            user_msg=user_msg,
+            history_msgs=history_msgs,
+            memory_text=memory_text,
+        )
+        print("In answer_with_routing, after running _build_query_for_agent_in_agent",query_for_agent)
+        
+    # ✅ carry_over：給後續精煉 / 延續定義用（先放著，Level 2 會用）
+    carry_over = {}
+    prev = last_structured or {}
+    if isinstance(prev, dict):
+        qm = prev.get("query_meta") or {}
+        if isinstance(qm, dict):
+            # 例：上輪時間範圍（如果你有）
+            tr = prev.get("time_range") or qm.get("time_range") or {}
+            if isinstance(tr, dict):
+                carry_over["time_range"] = tr
+            # 也可以帶 core_terms / 定義等
+            ct = prev.get("core_terms") or qm.get("core_terms")
+            if isinstance(ct, list):
+                carry_over["core_terms"] = ct
+
+    trace.setdefault("context", {})
+    trace["context"].update({
+        "has_history": bool(history_msgs),
+        "has_memory": bool((memory_text or "").strip()),
+        "has_last_structured": bool(prev),
+    })
+    
     t_start = time.perf_counter()
     
     user_msg = (user_msg or "").strip()
@@ -370,8 +418,6 @@ def answer_with_routing(
     route["indexes"] = indexes
     route["index_hint"] = index_hint
     
-    q_for_agent = (query_for_agent or user_msg).strip()
-
     # ★ 收集所有 index（給 DOC_FOLLOWUP 做 fallback）
     topic_map = INDEX_CONFIG.get("topic_index_map", {}) or {}
     all_indexes: list[str] = []
@@ -500,7 +546,7 @@ def answer_with_routing(
     #if isinstance(qm, dict):
     #    qm.setdefault("refined_question", (query_for_agent or user_msg).strip())
     # ✅ 統一保證每個模式都有「使用者提問」
-    out.setdefault("question", user_msg)
+    #out.setdefault("question", user_msg)
     
     qm = out.setdefault("query_meta", {})
     if isinstance(qm, dict):

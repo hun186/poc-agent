@@ -13,6 +13,7 @@ from agent.utils.citations import build_refno_uuid_map
 from agent.utils.profiler import log_duration, log_total
 from agent.utils.markdown_tables import sanitize_markdown_tables, replace_table_cell_br
 from agent.refiners.query_refiner import refine_question_for_data_agent
+from agent.config.query_refiner_settings import load_report_refiner_config
 
 REPORT_MODEL_ID = (
     os.getenv("REPORT_MODEL_ID")   # 有指定就用這個
@@ -183,9 +184,9 @@ def ask_with_report(
     if trace is None:
         trace = {}
     t_total_start = time.perf_counter()
-    
+    print("question in ask_with_report",question)
     original_question = (question or "").strip()
-
+    print("original_question in ask_with_report",original_question)
     # ✅ 先精煉，再丟給 data_agent（只影響資料準備，不影響前端顯示的「使用者提問」）
     refined_question = refine_question_for_data_agent(
         original_question,
@@ -215,19 +216,8 @@ def ask_with_report(
         qm["refined_question"] = refined_question
         payload["query_meta"] = qm
         
-    #payload = run_data_agent(question, mode="report")
-    #payload = run_data_agent(question, mode="report", trace=trace)
-    # ★ data_agent 區段時間
-    #with log_duration("[report] run_data_agent", extra={"mode": "report"}):
-    #    payload = run_data_agent(question, mode="report", trace=trace)
-
-    # ★ 先確保 payload["question"] 永遠有值
-    #payload_question = (payload.get("question") or question or "").strip()
-    #payload["question"] = payload_question or "[未提供使用者提問]"
-
     # === 精簡版（給報告 LLM 用） ===
     compressed_for_llm = {
-        #"q": payload.get("question"),
         # 給報告 LLM：用精煉問句（避免字數/格式碎念干擾）
         "q": refined_question or payload.get("question"),
     
