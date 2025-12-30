@@ -496,9 +496,25 @@ def answer_with_routing(
     out.setdefault("question", user_msg)
 
     # ✅ 可選：順手放 refined（若你後面有地方會用）
+    #qm = out.setdefault("query_meta", {})
+    #if isinstance(qm, dict):
+    #    qm.setdefault("refined_question", (query_for_agent or user_msg).strip())
+    # ✅ 統一保證每個模式都有「使用者提問」
+    out.setdefault("question", user_msg)
+    
     qm = out.setdefault("query_meta", {})
     if isinstance(qm, dict):
-        qm.setdefault("refined_question", (query_for_agent or user_msg).strip())
+        qm.setdefault("question_raw", user_msg)  # 原始問句（展示/稽核）
+        qm.setdefault("query_for_agent", (query_for_agent or user_msg).strip())  # 可能含上下文拼裝，僅供 debug
+    
+        # refined_question：交給下游（report_agent / refiner）來填
+        # 如果下游有回傳 q（report_agent 有），就用它補上
+        if not qm.get("refined_question"):
+            refined = out.get("q")
+            if not refined and isinstance(out.get("query_meta"), dict):
+                refined = out["query_meta"].get("refined_question")
+            if refined:
+                qm["refined_question"] = refined
         
     # ★ 從 trace 裡把 data_agent 掛回結果（若還沒掛）
     data_agent = trace.get("data_agent")

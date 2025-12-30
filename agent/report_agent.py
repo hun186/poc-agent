@@ -202,6 +202,7 @@ def ask_with_report(
             trace=trace,
             question_raw=original_question,
             refined_question=refined_question,
+            index_hint=index_hint,   # ✅ 補上
         )
         
     # ✅ 對外仍保留原問句（你原本就強調「使用者提問一定要存在」）
@@ -312,6 +313,7 @@ def ask_with_report(
     # ★ 把這次報告 LLM 寫到 trace["llm"]["report"]
     llm_root = trace.setdefault("llm", {})
     report_logs: list[Dict[str, Any]] = llm_root.setdefault("report", [])
+    #print("REPORT_SYSTEM_PROMPT",REPORT_SYSTEM_PROMPT)
     report_logs.append({
         "system": "REPORT_SYSTEM_PROMPT",
         "user": user_prompt,

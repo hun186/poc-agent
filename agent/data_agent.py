@@ -665,6 +665,192 @@ def run_data_agent(
     mode: str = "report",
     trace: Optional[Dict[str, Any]] = None,
     *,
+    question_raw: Optional[str] = None,         # ✅ 原始長問句（前端顯示用）
+    refined_question: Optional[str] = None,     # ✅ 精煉問句（檢索用，通常=question）
+    index_hint: Optional[str] = None,           # ✅ index 提示
+) -> Dict[str, Any]:
+    """
+    共用一個 CodeAgent 建立邏輯，只是 SYSTEM 不同：
+    - mode="report"：做 SRA_REPORT 的資料準備
+    - mode="style" ：做 SRA_STYLE 的風格語料準備
+
+    ★ 若有傳入 trace，就在 trace["data_agent"]["runs"] 記錄摘要，方便後續輸出分析。
+    """
+    if trace is None:
+        trace = {}
+
+    t0 = time.time()
+    code_agent = build_agent(mode=mode)
+
+    # ★ 給 CodeAgent 的輸入：把 index_hint 放在「系統參數」區塊
+    sys_lines = []
+    if index_hint:
+        sys_lines.append(f"index_hint={index_hint}")
+
+    question_for_agent = question or ""
+    if sys_lines:
+        question_for_agent = (
+            "【系統參數（抽取關鍵字時請忽略本段）】\n"
+            + "\n".join(sys_lines)
+            + "\n\n【使用者問題】\n"
+            + (question or "")
+        )
+
+    result = code_agent.run(question_for_agent)
+    elapsed = time.time() - t0
+
+    # === 還原成 payload（維持原本行為） ===
+    if isinstance(result, dict) and "payload" in result:
+        payload = result["payload"]
+    elif isinstance(result, dict):
+        payload = result
+    else:
+        raise ValueError("資料代理人回傳格式非 dict，請檢查 CodeAgent 的 final_answer 使用方式。")
+
+    # === ★ 標準化 query_meta 來源，盡量照實際樣態保留下來 ===
+    # 1) 優先用 payload["query_meta"]
+    # 2) 沒有就退而求其次找 raw_search_result.query_meta
+    query_meta: Dict[str, Any] = {}
+    try:
+        qm = payload.get("query_meta")
+        if isinstance(qm, dict):
+            query_meta = dict(qm)  # 淺拷貝
+        else:
+            raw_search = payload.get("raw_search_result")
+            if isinstance(raw_search, dict):
+                qm2 = raw_search.get("query_meta")
+                if isinstance(qm2, dict):
+                    query_meta = dict(qm2)
+    except Exception as e:
+        print("[data_agent] query_meta normalize error:", e)
+
+    # ---- 補齊 question_raw / refined_question 並寫回 payload["query_meta"] ----
+    def _norm_q(s: str) -> str:
+        s = (s or "").strip()
+        s = re.sub(r"\s+", " ", s)
+        s = s.replace("，", ",").replace("。", ".").replace("：", ":")
+        return s
+
+    mode_norm = str(mode or "").lower()
+
+    q_used = (payload.get("question") or question or "").strip()
+
+    # ✅ raw：上游沒傳也要保底，避免前端顯示空
+    q_raw = (question_raw or payload.get("question_raw") or question or "").strip()
+
+    # ✅ refined：只信「上游明確傳入」或「agent/工具明確回傳」
+    q_ref = (refined_question or "").strip()
+    if not q_ref:
+        q_ref = (query_meta.get("refined_question") or payload.get("refined_question") or "").strip()
+
+    # ✅ style：預設不開 refined（除非上游真的傳 refined_question）
+    if mode_norm in ("style", "sra_style") and not (refined_question or "").strip():
+        q_ref = ""
+
+    # ✅ refined 跟 raw 一樣就不顯示
+    if q_ref and _norm_q(q_ref) == _norm_q(q_raw):
+        q_ref = ""
+
+    # 寫回 payload["query_meta"]
+    if not isinstance(payload.get("query_meta"), dict):
+        payload["query_meta"] = {}
+
+    # index_hint：有給才補（避免你 payload 裡原本已經有別的值被覆寫）
+    if index_hint:
+        payload["query_meta"].setdefault("index_hint", index_hint)
+
+    # raw/refined：直接寫（確保一致）
+    payload["query_meta"]["question_raw"] = (q_raw or None)
+    payload["query_meta"]["refined_question"] = (q_ref or None)
+
+    # 同步本地 query_meta（後面 trace 用同一份）
+    query_meta = dict(payload["query_meta"])
+
+    # ---- trace 記錄（失敗不影響主流程） ----
+    try:
+        da_root = trace.setdefault("data_agent", {})
+        runs: list[Dict[str, Any]] = da_root.setdefault("runs", [])
+
+        run_info: Dict[str, Any] = {
+            "mode": mode,
+            "elapsed_sec": round(elapsed, 3),
+            "model_id": DATA_AGENT_MODEL_ID,
+            "model_id_effective": _normalize_model_id(DATA_AGENT_MODEL_ID),
+
+            "question_raw": q_raw or None,
+            "refined_question": (q_ref or None),
+            "question_used": q_used,
+
+            "index_hint": index_hint,
+            "question_for_agent": question_for_agent,
+        }
+
+        if query_meta:
+            run_info["query_meta"] = query_meta
+
+        # ===== report 模式 =====
+        if mode_norm in ("report", "sra_report"):
+            time_range = payload.get("time_range") or {}
+            stats = payload.get("stats") or {}
+
+            run_info["time_range"] = {
+                "date_from": time_range.get("date_from"),
+                "date_to": time_range.get("date_to"),
+            }
+            run_info["stats"] = {
+                "doc_count":     stats.get("doc_count"),
+                "snippet_count": stats.get("snippet_count"),
+                "active_days":   stats.get("active_days"),
+            }
+
+            # 常用欄位攤出來方便看
+            run_info["core_terms"] = query_meta.get("core_terms") or []
+            run_info["date_from"] = query_meta.get("date_from")
+            run_info["date_to"] = query_meta.get("date_to")
+
+        # ===== style 模式 =====
+        elif mode_norm in ("style", "sra_style"):
+            stats = payload.get("stats") or {}
+
+            # ✅ terms：payload 優先，其次 query_meta（不要再被後面覆寫）
+            style_terms = payload.get("style_terms") or query_meta.get("style_terms") or []
+            topic_terms = payload.get("topic_terms") or query_meta.get("topic_terms") or []
+            core_terms  = payload.get("core_terms")  or query_meta.get("core_terms")  or []
+
+            run_info["style_query"] = payload.get("style_query")
+            run_info["stats"] = {
+                "doc_count":      stats.get("doc_count"),
+                "snippet_count":  stats.get("snippet_count"),
+                "full_doc_count": stats.get("full_doc_count"),
+            }
+
+            run_info["style_terms"] = style_terms
+            run_info["topic_terms"] = topic_terms
+            run_info["core_terms"] = core_terms
+
+            # style 通常沒有時間，但若有就照實記
+            run_info["date_from"] = payload.get("date_from") or query_meta.get("date_from")
+            run_info["date_to"] = payload.get("date_to") or query_meta.get("date_to")
+
+        # ===== 其它模式 =====
+        else:
+            run_info["extra"] = {
+                "keys_in_payload": list(payload.keys()),
+            }
+
+        runs.append(run_info)
+
+    except Exception as e:
+        print("[data_agent] trace logging error:", e)
+
+    return payload
+
+
+def run_data_agent_1229(
+    question: str,
+    mode: str = "report",
+    trace: Optional[Dict[str, Any]] = None,
+    *,
     question_raw: Optional[str] = None,         # ✅ 新增：原始長問句（前端顯示用）
     refined_question: Optional[str] = None,     # ✅ 新增：精煉問句（檢索用，通常=question）
     index_hint: Optional[str] = None,         # ★ 新增
@@ -785,7 +971,7 @@ def run_data_agent(
             "question_used": q_used,            # 這次 CodeAgent 真正拿去跑的 question（保底）
         }
         run_info["index_hint"] = index_hint
-        run_info["question_for_agent"] = question_for_agent 
+        
         # ★ 共用：把 query_meta 整包塞進 trace（不管是 report 還是 style）
         if query_meta:
             run_info["query_meta"] = query_meta
