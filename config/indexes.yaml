@@ -7,6 +7,11 @@ topic_index_map:
     indexes:
       - mil_reports-01
     description: "本資料庫為較細節之軍事秘密情報細節相關，如果是國際公開軍事動態新聞則屬news_general"
+  satmeta:
+    indexes:
+      - satmeta
+    description: "本資料庫為衛照元數據管理資料庫"
+        
   gov_document:
     indexes:
       - govdocs_2024

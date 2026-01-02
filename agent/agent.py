@@ -550,7 +550,8 @@ def answer_with_routing(
     
     qm = out.setdefault("query_meta", {})
     if isinstance(qm, dict):
-        qm.setdefault("question_raw", user_msg)  # 原始問句（展示/稽核）
+        #qm.setdefault("question_raw", user_msg)  # 原始問句（展示/稽核）
+        qm.setdefault("user_question", user_msg)  # 原始問句（展示/稽核）
         qm.setdefault("query_for_agent", (query_for_agent or user_msg).strip())  # 可能含上下文拼裝，僅供 debug
     
         # refined_question：交給下游（report_agent / refiner）來填

@@ -8,4 +8,5 @@ from api.core.presenters.markdown_presenter import build_markdown
 
 def render_markdown(out: Any, request: Request, session_id: Optional[str] = None) -> str:
     pres = extract_presentation(out)
+    #print("pres.user_question", pres.user_question)
     return build_markdown(pres, request, session_id=session_id)

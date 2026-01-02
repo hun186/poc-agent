@@ -62,6 +62,7 @@ def extract_presentation(
     turn_id = out.get("turn_id") or out.get("request_id")
     if turn_id is not None:
         turn_id = str(turn_id)
+    #print("in extract_presentation, user_question", user_question)
     return AgentPresentation(
         user_question=user_question,
         answer=answer,
@@ -78,7 +79,7 @@ def extract_presentation(
 def extract_user_question(out: dict) -> str:
     """
     抽出「展示用的使用者提問」（乾淨原始問句）。
-    優先：out.query_meta.question_raw
+    優先：out.query_meta.user_question
     次之：out.question（上游應強制覆寫為本輪 user_msg）
     再次：out.q（refined）
     最後才退回 data_agent（避免抽到拼裝）
@@ -91,9 +92,9 @@ def extract_user_question(out: dict) -> str:
     qm = out.get("query_meta")
     #print("query_meta in extract_user_question",qm)
     if isinstance(qm, dict):
-        v = qm.get("question_raw")
+        v = qm.get("user_question")
         if isinstance(v, str) and v.strip():
-            #print("return v.strip() in extract_user_question",v.strip())
+            print("return v.strip() in extract_user_question",v.strip())
             return v.strip()
     
     # 2) out.question（你的 answer_with_routing 建議改成強制覆寫 out["question"]=user_msg）

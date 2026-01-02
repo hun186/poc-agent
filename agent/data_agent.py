@@ -665,7 +665,7 @@ def run_data_agent(
     mode: str = "report",
     trace: Optional[Dict[str, Any]] = None,
     *,
-    question_raw: Optional[str] = None,         # ✅ 原始長問句（前端顯示用）
+    question_raw: Optional[str] = None,         # ✅ 資料整備代理人原始長問句（前端顯示用）
     refined_question: Optional[str] = None,     # ✅ 精煉問句（檢索用，通常=question）
     index_hint: Optional[str] = None,           # ✅ index 提示
 ) -> Dict[str, Any]:
