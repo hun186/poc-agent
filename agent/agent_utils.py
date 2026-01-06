@@ -52,7 +52,7 @@ def _pack_chat_history_items(items: List[dict], max_chars: int = 8000) -> str:
         text = text[-max_chars:]
     return text
 
-def _build_query_for_agent_in_agent(
+def build_query_for_agent_in_agent(
     user_msg: str,
     history_msgs: Optional[List[dict]] = None,
     memory_text: Optional[str] = None,

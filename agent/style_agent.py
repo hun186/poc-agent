@@ -119,6 +119,7 @@ def ask_with_style(
             index_hint=index_hint,
             question_raw=original_question,
             refined_question=refined_question,  # 不啟動就傳 None
+            route=trace.get("route")  # 或你當下的 route 變數
         )
         
     # ✅ payload 內的 question 也固定成原問句（避免被 data_agent 覆蓋）

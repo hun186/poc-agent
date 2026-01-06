@@ -1,8 +1,16 @@
 # agent/es/evidence.py
 import json
 import re
+import os
 import unicodedata
 from typing import Any, Dict, List, Optional, Set, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 # ====== 小工具：處理 multidim_event_json ======
 
@@ -143,12 +151,14 @@ def _normalize_for_match(s: str) -> str:
     - 統一各種破折號、短橫為 '-'
     - 把所有空白拿掉（含全形空白）
     """
+    _PUNCT = re.compile(r"[^\w\u4e00-\u9fff\-]+", re.UNICODE)
     if not s:
         return ""
     s = unicodedata.normalize("NFKC", s)
     s = s.lower()
     s = re.sub(r"[‐-–—−]", "-", s)
     s = re.sub(r"\s+", "", s)
+    s = _PUNCT.sub("", s)   # ★ 新增：去掉標點/括號/斜線/點號等
     return s
 
 def _match_topic(
@@ -156,27 +166,37 @@ def _match_topic(
     subject: Optional[str],
     title: Optional[str],
     term_groups: List[Set[str]],
-) -> Tuple[bool, Set[str]]:
+    *,
+    min_groups_required: Optional[int] = None,   # ★ 新增
+) -> Tuple[bool, Set[str], str, int]:
     """
     語意群組版主題詞過濾：
 
     - term_groups: list[set[str]]，每一組是一個語意軸（例如「敘利亞」群、「化學武器」群）
     - 若 term_groups 為空 → 不過濾（避免誤殺其他任務）
 
-    判斷邏輯：
+    判斷邏輯（嚴格）：
     - 1 軸：命中 1 軸即可
     - 2 軸：兩軸都要命中
     - 3 軸：三軸都要命中
     - 4 軸以上：至少命中 3 軸
+    
+    寬鬆：
+    命中　min_groups_required 數量即可
     """
     if not term_groups:
-        return True, set()
+        return True, set(), "no_filter", 0
 
-    haystack_raw = (ev_text or "") + " " + (subject or "") + " " + (title or "")
-    haystack_norm = _normalize_for_match(haystack_raw)
-
+    #haystack_raw = (ev_text or "") + " " + (subject or "") + " " + (title or "")
+    #haystack_norm = _normalize_for_match(haystack_raw)
+    text_norm = _normalize_for_match(ev_text or "")
+    subj_norm = _normalize_for_match(subject or "")
+    title_norm = _normalize_for_match(title or "")
+    
     hit_terms: set[str] = set()
     group_hits = 0
+    hit_in_text = False
+    hit_in_meta = False
 
     for g in term_groups:
         if not g:
@@ -187,35 +207,62 @@ def _match_topic(
             if not t:
                 continue
             t_norm = _normalize_for_match(t)
-            if t_norm and t_norm in haystack_norm:
+            #if t_norm and t_norm in haystack_norm:
+            #    g_hit.add(t)
+            if not t_norm:
+                continue
+            
+            in_text = t_norm in text_norm
+            in_meta = (t_norm in subj_norm) or (t_norm in title_norm)
+            
+            if in_text or in_meta:
                 g_hit.add(t)
+                if in_text:
+                    hit_in_text = True
+                if in_meta:
+                    hit_in_meta = True
 
         if g_hit:
             group_hits += 1
             hit_terms |= g_hit
 
     if group_hits == 0:
-        return False, set()
+        return False, set(), "none", 0
 
+    if hit_in_text and hit_in_meta:
+        scope = "mixed"
+    elif hit_in_text:
+        scope = "text"
+    elif hit_in_meta:
+        scope = "meta"
+    else:
+        scope = "none"
+        
+    # ★ 若指定 min_groups_required：直接用門檻
+    if min_groups_required is not None:
+        #return (group_hits >= min_groups_required), hit_terms
+        return (group_hits >= min_groups_required), hit_terms, scope, group_hits
+    
     num_groups = len(term_groups)
 
     # 單一語意軸：命中至少一組就可
     if num_groups <= 1:
-        return True, hit_terms
+        #return True, hit_terms
+        return True, hit_terms, scope, group_hits
 
     # 兩軸：全部都要命中（等於 AND）
     if num_groups == 2:
-        return (group_hits == 2), hit_terms
+        return (group_hits == 2), hit_terms, scope, group_hits
 
     # 三軸：全部都要命中，避免「只中敘利亞+化武」卻沒「調查」也通過
     if num_groups == 3:
-        return (group_hits == 3), hit_terms
+        return (group_hits == 3), hit_terms, scope, group_hits
 
     # 四軸以上：至少命中 3 軸，避免太嚴格直接篩成 0
     if group_hits >= 3:
-        return True, hit_terms
+        return True, hit_terms, scope, group_hits
 
-    return False, hit_terms
+    return False, hit_terms, scope, group_hits
 
 def _build_ev_from_hit_and_citation(
     h: dict,
@@ -289,8 +336,63 @@ def build_hits_and_evidence(
     - evidence_snippets: 已處理好日期 / 主題詞 / fallback 的片段
     - syn_snippets_count: 其中有 synonym_hits 的片段數量（給 log 用）
     """
+    def _collect_snippets(min_groups_required: Optional[int] = None) -> List[Dict[str, Any]]:
+        snaps: List[Dict[str, Any]] = []
+        for h in out_hits:
+            h_subject = h.get("subject")
+            h_title = h.get("article_title")
+            for c in h.get("citations") or []:
+                ev = _build_ev_from_hit_and_citation(h, c, date_from, date_to)
+                if ev is None:
+                    continue
+    
+                # ★ 錨點
+                #haystack_raw = (ev["text"] or "") + " " + (h_subject or "") + " " + (h_title or "")
+                #haystack_norm = _normalize_for_match(haystack_raw)
+                #if core_terms and not _hit_any_terms(haystack_norm, core_terms):
+                #    continue
+                '''
+                ok, hit_terms = _match_topic(ev["text"], h_subject, h_title, term_groups,
+                                             min_groups_required=min_groups_required)
+                if not ok:
+                    continue
+    
+                if hit_terms:
+                    ev["synonym_hits"] = list(hit_terms)
+                ev["match_policy"] = "relaxed" if min_groups_required is not None else "strict"
+                snaps.append(ev)
+                '''
+                ok, hit_terms, scope, gh = _match_topic(
+                    ev["text"], h_subject, h_title, term_groups,
+                    min_groups_required=min_groups_required
+                )
+                if not ok:
+                    continue
+                
+                # 命中詞
+                if hit_terms:
+                    ev["synonym_hits"] = list(hit_terms)
+                
+                # 命中範圍（text / meta / mixed）
+                ev["match_scope"] = scope
+                ev["group_hits"] = gh  # 可選，但很常用來 debug
+                
+                # ✅ 只靠 subject/title 命中 → 標記 weak
+                if scope == "meta":
+                    ev["weak_evidence"] = True
+                
+                ev["match_policy"] = "relaxed" if min_groups_required is not None else "strict"
+                snaps.append(ev)
+        return snaps
+    
     out_hits: List[Dict[str, Any]] = []
 
+    # ===== 統計用（避免 log 太吵）=====
+    n_es_hits = len(es_hits or [])
+    n_inner_used = 0
+    n_fallback_used = 0
+    n_total_citations = 0
+    
     # 1) 先把 ES hit 整理成 out_hits（帶 citations / timeline / article_date_iso）
     for h in es_hits:
         src = h.get("_source", {}) or {}
@@ -299,6 +401,7 @@ def build_hits_and_evidence(
         ih = (h.get("inner_hits") or {}).get("evi") or {}
         ih_hits = (ih.get("hits") or {}).get("hits") or []
         if ih_hits:
+            #n_inner_used += 1
             for eh in ih_hits[:3]:
                 esrc = (eh.get("_source") or {})
                 txt = esrc.get("text")
@@ -316,6 +419,8 @@ def build_hits_and_evidence(
                     citations.append(
                         {"text": txt, "source_id": sid, "paragraph_id": pid}
                     )
+            if citations:
+                n_inner_used += 1
 
         raw_content = ((src.get("rawInfo") or {}).get("content") or "").strip()
 
@@ -323,10 +428,13 @@ def build_hits_and_evidence(
         if not citations:
             snippet = _make_fallback_snippet(raw_content, query_for_snippet or "", width=180)
             if snippet:
+                n_fallback_used += 1
                 citations.append(
                     {"text": snippet, "source_id": None, "paragraph_id": None}
                 )
-
+        
+        n_total_citations += len(citations)
+        
         article_date_iso = _parse_article_date_iso(raw_content)
         tl_dates = _collect_timeline_dates(src)
 
@@ -372,39 +480,55 @@ def build_hits_and_evidence(
             }
         )
 
+    # ✅ 重要：先 log 一次「輸入→整理後」概況（短、好查）
+    logger.info(
+        "build_hits_and_evidence: es_hits=%d out_hits=%d citations=%d inner_used=%d fallback_used=%d "
+        "term_groups=%d effective_terms=%d date_range=%s~%s",
+        n_es_hits, len(out_hits), n_total_citations, n_inner_used, n_fallback_used,
+        len(term_groups or []), len(effective_terms or []),
+        date_from or "N/A", date_to or "N/A",
+    )
+    
     # 2) 組 evidence_snippets（主題詞過濾 + 日期過濾）
     term_groups = term_groups or []
-    evidence_snippets: List[Dict[str, Any]] = []
 
-    for h in out_hits:
-        h_subject = h.get("subject")
-        h_title = h.get("article_title")
 
-        for c in h.get("citations") or []:
-            ev = _build_ev_from_hit_and_citation(h, c, date_from, date_to)
-            if ev is None:
-                continue
+    # 先嚴格
+    evidence_snippets = _collect_snippets(min_groups_required=None)
+    logger.info("build_hits_and_evidence: evidence strict=%d", len(evidence_snippets))
 
-            text = ev["text"]
-            ok, hit_terms = _match_topic(text, h_subject, h_title, term_groups)
-            if not ok:
-                continue
-
-            if hit_terms:
-                ev["synonym_hits"] = list(hit_terms)
-            evidence_snippets.append(ev)
-
+    # ✅ 逐步放寬：strict -> (strict_req-1 ... 1)
+    if not evidence_snippets and out_hits and term_groups:
+        n = len(term_groups)
+        strict_req = 1 if n <= 1 else (2 if n == 2 else (3 if n == 3 else 3))
+    
+        # 例如 n=3: 先試 2，再試 1
+        for req in range(strict_req - 1, 0, -1):
+            logger.warning(
+                "build_hits_and_evidence: strict evidence=0 -> relax try (groups=%d strict_req=%d try_req=%d)",
+                n, strict_req, req
+            )
+            tmp = _collect_snippets(min_groups_required=req)
+            logger.info("build_hits_and_evidence: evidence relaxed(req=%d)=%d", req, len(tmp))
+            if tmp:
+                evidence_snippets = tmp
+                break
+            
     # 3) fallback：沒有主題詞時，避免被全部過濾掉
     if not evidence_snippets and out_hits and not (effective_terms or []):
+        logger.warning("build_hits_and_evidence: evidence=0 and no effective_terms -> fallback pick first citation")
         for h in out_hits[:10000]:
             for c in (h.get("citations") or [])[:1]:
                 ev = _build_ev_from_hit_and_citation(h, c, date_from, date_to)
                 if ev is None:
                     continue
                 evidence_snippets.append(ev)
+        logger.info("build_hits_and_evidence: evidence fallback(no_terms)=%d", len(evidence_snippets))
+
 
     # 4) fallback：有主題詞但沒 snippet → 用「包含任一 effective_term」的寬鬆條件
     if not evidence_snippets and out_hits and (effective_terms or []):
+        logger.warning("build_hits_and_evidence: evidence=0 with effective_terms -> fallback contains-any-effective-term")
         new_snippets: List[Dict[str, Any]] = []
         eff = [t for t in (effective_terms or []) if t]
         for h in out_hits:
@@ -417,14 +541,19 @@ def build_hits_and_evidence(
                     continue
 
                 text = ev["text"]
-                haystack = (text or "") + " " + (h_subject or "") + " " + (h_title or "")
-                hit_terms = {t for t in eff if t and t in haystack}
+                #haystack = (text or "") + " " + (h_subject or "") + " " + (h_title or "")
+                #hit_terms = {t for t in eff if t and t in haystack}
+                haystack_norm = _normalize_for_match((text or "") + " " + (h_subject or "") + " " + (h_title or ""))
+                hit_terms = {t for t in eff if t and _normalize_for_match(t) in haystack_norm}
+                ev["match_scope"] = "fallback_any_term"
+                ev["weak_evidence"] = True  # 這條 fallback 本來就寬，通常視為弱證據
                 if not hit_terms:
                     continue
                 ev["synonym_hits"] = list(hit_terms)
                 new_snippets.append(ev)
         if new_snippets:
             evidence_snippets = new_snippets
+        logger.info("build_hits_and_evidence: evidence fallback(effective_terms)=%d", len(evidence_snippets))
 
     # 5) 只保留「至少有一段 evidence_snippet」的文件
     if evidence_snippets:
@@ -434,5 +563,12 @@ def build_hits_and_evidence(
         filtered_hits = out_hits
 
     syn_snippets = sum(1 for ev in evidence_snippets if ev.get("synonym_hits"))
-
+    weak_cnt = sum(1 for ev in evidence_snippets if ev.get("weak_evidence"))
+    
+    # ✅ 收尾總結：一行看懂產出
+    logger.info(
+        "build_hits_and_evidence: filtered_hits=%d evidence=%d syn_snippets=%d weak=%d",
+        len(filtered_hits), len(evidence_snippets), syn_snippets, weak_cnt
+    )
+    
     return filtered_hits, evidence_snippets, syn_snippets

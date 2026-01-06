@@ -3,17 +3,27 @@ topic_index_map:
     indexes:
       - news_test
     description: "一般新聞、社會事件、國際情勢、政策、趨勢分析"
+    
   mil_intel:
     indexes:
       - mil_reports-01
-    description: "本資料庫為較細節之軍事秘密情報細節相關，如果是國際公開軍事動態新聞則屬news_general"
-  satmeta:
-    indexes:
+      - nav_intel_sentences_synthetic_v1
       - satmeta
-    description: "本資料庫為衛照元數據管理資料庫"
+    description: "本主題為較細節之軍事秘密情報細節相關，包含航行情資（軍艦/執法船艦）以及衛照情報，如果是國際公開軍事動態新聞則屬news_general"
+    
+#  satmeta:
+#    indexes:
+#      - satmeta
+#    description: "本資料庫為衛照元數據管理資料庫"
         
   gov_document:
     indexes:
       - govdocs_2024
     description: "公文、行政文件、政府規定之撰寫或仿寫"
+    
+#  nav_intel:
+#    indexes:
+#      - nav_intel_sentences_synthetic_v1
+#    description: "航行情資（軍艦/執法船艦）句子型資料；本批為合成/PoC 測試用，不對應真實航跡"
+    
 default_index: news_test

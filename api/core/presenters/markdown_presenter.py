@@ -4,11 +4,7 @@ from typing import List, Optional
 from fastapi import Request
 from api.core.url_utils import abs_url
 from api.core.presenters.citation_views import build_citation_views
-
-#from api.core.presenters.extractors import extract_presentation
 from api.core.presenters.sections import AgentPresentation, DataAgentSection
-
-#from api.core.presenters.text_sanitize import normalize_text_for_markdown
 
 def _norm(s: str) -> str:
     return " ".join((s or "").strip().split())
@@ -35,11 +31,11 @@ def _render_question_block(pres: AgentPresentation, *, allow_details: bool) -> L
     #print("da in _render_question_block",da)
     q_raw = _norm(getattr(da, "question_raw", "") or "")  # ✅ 真正原問句
     # ✅ 這裡改成先 raw 再 pres
-    print("q_pres in _render_question_block",q_pres)
-    print("q_raw in _render_question_block",q_raw)
+    #print("q_pres in _render_question_block",q_pres)
+    #print("q_raw in _render_question_block",q_raw)
     q0 = q_pres or q_raw
     #q0 = q_raw or q_pres
-    print("q0 in _render_question_block",q0)
+    #print("q0 in _render_question_block",q0)
     query_meta = getattr(pres, "query_meta", None)
     q_ref = ""
     if isinstance(query_meta, dict):
@@ -60,43 +56,6 @@ def _render_question_block(pres: AgentPresentation, *, allow_details: bool) -> L
         out.append(f"- 精煉提問（檢索用）：{q_ref}")
 
     return out
-
-def _render_question_block_1229(pres: AgentPresentation, *, allow_details: bool) -> List[str]:
-    """
-    顯示「使用者提問」與「精煉提問」。
-    - 原問句：優先用 pres.question（你 payload["question"] 通常會映射到這）
-    - 精煉問句：優先找 pres.query_meta["refined_question"]，找不到就從 da_section 嘗試拿
-    """
-    q0 = (getattr(pres, "question", None) or "").strip()
-
-    query_meta = getattr(pres, "query_meta", None)
-    q_ref = ""
-    if isinstance(query_meta, dict):
-        q_ref = str(query_meta.get("refined_question") or "").strip()
-
-    if not q_ref:
-        da = getattr(pres, "da_section", None)
-        q_ref = str(getattr(da, "refined_question", "") or "").strip()
-
-    if not q0 and not q_ref:
-        return []
-
-    out: List[str] = ["## 使用者提問\n"]
-    #if q0:
-    #    out.append(f"- 原始提問：{q0}")
-
-    # 只有在「真的不同」時才顯示精煉（避免噪音）
-    if q_ref and q_ref != q0:
-        if allow_details:
-            out.extend([
-                "精煉後提問（檢索用）\n\n",
-                f"{q_ref}\n",
-            ])
-        else:
-            out.append(f"- 精煉提問：{q_ref}")
-
-    return out
-
 
 def build_markdown(
     pres: AgentPresentation,
@@ -131,44 +90,10 @@ def _render_download_link(request: Request, session_id: Optional[str], turn_id: 
     download_url = abs_url(request, q)
     return [f"[⬇ 下載為 Word]({download_url})\n"]
 
-'''
-def _render_download_link(request: Request, session_id: Optional[str]) -> List[str]:
-    if not session_id:
-        return []
-    download_url = abs_url(request, f"/v1/export/word?session_id={session_id}")
-    return [f"[⬇ 下載為 Word]({download_url})\n"]
-'''
-
-
 def _render_answer(pres: AgentPresentation) -> List[str]:
     if not pres.answer:
         return []
     return ["## 回答\n", pres.answer]
-
-'''
-def _render_citations(pres: AgentPresentation, request: Request, *, allow_details: bool = True) -> List[str]:
-    if not pres.citations:
-        return []
-
-    lines: List[str] = ["## 來源 / Citations\n"]
-    views = build_citation_views(pres.citations, request)
-
-    for v in views:
-        pid_str = f"（段落 {v.paragraph_id}）" if v.paragraph_id else ""
-        date_piece = f" · 🗓 {v.date_iso}" if v.date_iso else ""
-
-        link = ""
-        if v.doc_id and v.url_es and v.url_json and v.url_txt:
-            uuid_link = f"[{v.doc_id}]({v.url_es})"
-            link = f" · UUID: {uuid_link} · [JSON]({v.url_json}) · [下載全文]({v.url_txt})"
-
-        lines.append(f"{v.label} **{v.display}**{pid_str}{link}{date_piece}\n\n   > {v.short_text}")
-    if allow_details:
-        body = "\n\n".join(lines)
-        return _wrap_long_section("來源 / Citations", body, allow_details=allow_details)
-
-    return lines
-'''
 
 def _render_citations(pres: AgentPresentation, request: Request) -> List[str]:
     if not pres.citations:
@@ -211,6 +136,10 @@ def _render_data_agent(da_section: Optional[DataAgentSection], *, allow_details:
     effective_terms = da_section.effective_terms or []
     es_query = da_section.es_query
 
+    topic = getattr(da_section, "topic", None)
+    indexes = getattr(da_section, "indexes", None) or []
+    index_hint = getattr(da_section, "index_hint", None)
+    
     def _truncate(s: str, n: int = 1000) -> str:
         s = s or ""
         return s if len(s) <= n else (s[:n] + "…")
@@ -219,13 +148,23 @@ def _render_data_agent(da_section: Optional[DataAgentSection], *, allow_details:
 
     if mode:
         lines.append(f"- 模式：`{mode}`")
+    #if elapsed is not None:
+    #    lines.append(f"- 資料準備耗時：約 **{elapsed} 秒**")
     if elapsed is not None:
-        lines.append(f"- 資料準備耗時：約 **{elapsed} 秒**")
+        if isinstance(elapsed, (int, float)):
+            lines.append(f"- 資料準備耗時：約 **{elapsed:.2f} 秒**")
+        else:
+            lines.append(f"- 資料準備耗時：約 **{elapsed} 秒**")
     if question_raw:
         lines.append(f"- 資料代理人問題：{question_raw}")
     if refined_question:
         lines.append(f"- 精煉後問題（檢索用）：{refined_question}")
-
+    if topic:
+        lines.append(f"- 主題（topic）：`{topic}`")
+    if indexes:
+        lines.append(f"- 檢索索引（indexes）：`{'、'.join([str(x) for x in indexes if str(x).strip()])}`")
+    #if index_hint:
+    #    lines.append(f"- 索引提示（index_hint）：`{index_hint}`")
     if dt_from or dt_to:
         lines.append(f"- 查詢時間範圍：`{dt_from or 'N/A'}` ～ `{dt_to or 'N/A'}`")
 
@@ -408,12 +347,6 @@ def _render_data_agent_1229(da_section: Optional[DataAgentSection]) -> List[str]
 
     return md
 
-
-
-
-
-
-
 def _render_reasoning(pres: AgentPresentation, *, allow_details: bool) -> List[str]:
     if not pres.reasoning:
         return []
@@ -452,30 +385,3 @@ def _render_raw_json(pres: AgentPresentation, *, allow_details: bool) -> List[st
         pres.raw_json_md,
         "\n",
     ]
-'''
-def _render_reasoning(pres: AgentPresentation, *, allow_details: bool) -> List[str]:
-    if not pres.reasoning:
-        return []
-
-    # reasoning 是純文字步驟，適合用 code block 壓縮
-    return _wrap_long_section("推理 / 步驟", pres.reasoning, allow_details=allow_details, codeblock=True)
-
-
-
-def _render_raw_json(pres: AgentPresentation, *, allow_details: bool) -> List[str]:
-    """
-    raw json：pres.raw_json_md 通常已經是 Markdown（很可能包含 ```json）。
-    所以這裡不要再用 ```text 包一次，避免 code fence 套 code fence。
-    """
-    body = (pres.raw_json_md or "").strip()
-    if not body:
-        return []
-
-    # auto_collapse_json 以前是用 <details> 自動收合
-    # 現在改成：allow_details=True 用「標題 + 直接放內容」，視覺上仍可接受
-    title = "原始 JSON（內容較長）" if pres.auto_collapse_json else "原始 JSON"
-
-    # raw_json_md 已經是 markdown（通常含 ```json），不要再包 ```text
-    return _wrap_long_section(title, body, allow_details=allow_details, codeblock=False)
-
-'''

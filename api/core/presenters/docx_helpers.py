@@ -559,6 +559,11 @@ def add_data_agent_section(doc: Document, da_section: Optional[DataAgentSection]
 
     es_query = da_section.es_query
 
+    # ✅ 新增：路由/索引資訊（有值才顯示）
+    topic = getattr(da_section, "topic", None)
+    indexes = getattr(da_section, "indexes", None) or []
+    index_hint = getattr(da_section, "index_hint", None)
+    
     # ==== 基本資訊 ====
     if mode:
         p = doc.add_paragraph()
@@ -568,7 +573,8 @@ def add_data_agent_section(doc: Document, da_section: Optional[DataAgentSection]
     if elapsed is not None:
         p = doc.add_paragraph()
         p.add_run("資料準備耗時：").bold = True
-        p.add_run(f"約 {elapsed} 秒")
+        #p.add_run(f"約 {elapsed} 秒")
+        p.add_run(f"約 {elapsed:.2f} 秒" if isinstance(elapsed, (int, float)) else f"約 {elapsed} 秒")
 
     if question_raw:
         p = doc.add_paragraph()
@@ -581,6 +587,22 @@ def add_data_agent_section(doc: Document, da_section: Optional[DataAgentSection]
         p.add_run("精煉後問題（檢索用）：").bold = True
         p.add_run(normalize_text_for_docx(refined_question))
 
+    # ==== 路由 / 檢索標的 ====
+    if topic:
+        p = doc.add_paragraph()
+        p.add_run("主題（topic）：").bold = True
+        p.add_run(normalize_text_for_docx(str(topic)))
+
+    if indexes:
+        p = doc.add_paragraph()
+        p.add_run("檢索索引（indexes）：").bold = True
+        p.add_run(normalize_text_for_docx("、".join([str(x) for x in indexes if str(x).strip()])))
+
+    #if index_hint:
+    #    p = doc.add_paragraph()
+    #    p.add_run("索引提示（index_hint）：").bold = True
+    #    p.add_run(normalize_text_for_docx(str(index_hint)))
+        
     # ==== 時間範圍 ====
     if dt_from or dt_to:
         p = doc.add_paragraph()

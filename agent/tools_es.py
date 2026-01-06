@@ -188,22 +188,6 @@ class ESSearchNews(Tool):
         
         es_query = raw_query
         # === T2: 組 query body 時間 ===
-        '''
-        t_body_start = time.perf_counter()
-        #body = self._build_query_body(
-        body = build_main_query_body(
-            es_query,
-            must_high_value, must_selected, size, date_from, date_to,
-            selected_boost, high_value_boost, recency_boost, recency_field, recency_scale,
-            with_date=True,
-            effective_terms=effective_terms,   # 主要給後面 log / fallback 用
-            core_terms=core_terms,             # 精準加分 match_phrase
-            syn_terms=syn_terms_flat,          # 同義詞加分 match
-            all_terms=all_terms,               # nested evidence_snippets 裡的 match_phrase
-        )
-        t_body_end = time.perf_counter()
-        print(f"[es_search_news][T2] _build_query_body 花費 {t_body_end - t_body_start:.3f}s")
-        '''
         with log_duration("[es_search_news][T2] build_main_query_body"):
             body = build_main_query_body(
                 es_query,
@@ -217,19 +201,6 @@ class ESSearchNews(Tool):
             )
             
         # === T3: ES 查詢時間（含網路 + ES 計算）===
-        '''
-        t_es_start = time.perf_counter()
-        try:
-            #res = ES.search(index=ES_INDEX, body=body, params={"error_trace": "true"})
-            res = _safe_es_search(body, index=index)
-        except BadRequestError as e:
-            print("ES BadRequestError (with_date=True):", getattr(e, "info", e))
-            raise
-        t_es_end = time.perf_counter()
-        es_took = (res.get("took") if isinstance(res, dict) else None)
-        print(f"[es_search_news][T3] _safe_es_search 花費 {t_es_end - t_es_start:.3f}s, "
-              f"ES took={es_took} ms, index={index}, size={size}")
-        '''
         try:
             with log_duration("[es_search_news][T3] _safe_es_search",
                               extra={"index": index, "size": size}):
@@ -281,23 +252,6 @@ class ESSearchNews(Tool):
         # === parse（原邏輯，稍微加強 inner_hits 解析）===
         
         # === T4: Python 後處理時間（parse hits + evidence_snippets）===
-        '''
-        t_post_start = time.perf_counter()
-        filtered_hits, evidence_snippets, syn_snippets = build_hits_and_evidence(
-            hits,
-            date_from=date_from,
-            date_to=date_to,
-            effective_terms=effective_terms,
-            term_groups=term_groups,
-            query_for_snippet=query or "",
-        )
-        t_post_end = time.perf_counter()
-        print(
-            f"[es_search_news][T4] Python 後處理（parse hits + evidence_snippets）花費 "
-            f"{t_post_end - t_post_start:.3f}s, "
-            f"hits={len(filtered_hits)}, evidence_snippets={len(evidence_snippets)}"
-        )
-        '''
         with log_duration("[es_search_news][T4] build_hits_and_evidence"):
             filtered_hits, evidence_snippets, syn_snippets = build_hits_and_evidence(
                 hits,
@@ -312,10 +266,14 @@ class ESSearchNews(Tool):
             f"[es_search_news] hits={len(filtered_hits)}, "
             f"evidence_snippets={len(evidence_snippets)}"
         )
+        strong_snippets = [ev for ev in evidence_snippets if not ev.get("weak_evidence")]
+        weak_snippets   = [ev for ev in evidence_snippets if ev.get("weak_evidence")]
+        
+        print(
+            f"[es_search_news] strong={len(strong_snippets)} weak={len(weak_snippets)} "
+            f"(total={len(evidence_snippets)})"
+        )
         # === T5: 整體總時間 ===
-        #t_end = time.perf_counter()
-        #print(f"[es_search_news][TOTAL] query={raw_query!r}, total={t_end - t_start:.3f}s")
-
         log_total(
             "[es_search_news][TOTAL]",
             t_start,
@@ -357,6 +315,8 @@ class ESSearchNews(Tool):
         return {
             "hits": filtered_hits,
             "evidence_snippets": evidence_snippets,
+            "evidence_snippets_strong": strong_snippets,   # ★ 新增
+            "evidence_snippets_weak": weak_snippets,       # ★ 新增
             "query_meta": query_meta,   # ★ 新增
         }
 
@@ -614,108 +574,5 @@ class ESFetchDocById(Tool):
             "source": src,
         }
         
-    def forward_1229(
-        self,
-        uuid: str,
-        index_hint: Optional[str] = None,
-        text_field: Optional[str] = "rawInfo.content",
-    ) -> Dict[str, Any]:
-        if not uuid:
-            return {
-                "uuid": "",
-                "index": "",
-                "full_text": "",
-                "source": {},
-                "error": "uuid is required",
-            }
-
-        # 1) 決定要查的 index
-        index = _resolve_es_index(index_hint)
-
-        src = None
-        hit_index = None
-
-        # === 2) 優先嘗試：當 uuid 就是 _id，用 GET 直接拿 ===
-        try:
-            resp = self.es.get(index=index, id=uuid, _source=True)
-            if resp and resp.get("found"):
-                src = resp.get("_source") or {}
-                hit_index = resp.get("_index", str(index))
-        except NotFoundError:
-            # 找不到就當沒事，改用 term 查 uuid
-            pass
-        except Exception as e:
-            # 其他錯誤印出來，但不要整個炸掉
-            print(f"[ESFetchDocById] get(id=uuid) error: {e}")
-
-        # === 3) 若 GET 沒拿到，再 fallback 用 uuid 欄位 term 搜尋 ===
-        if src is None:
-            query = {
-                "term": {
-                    # ⚠ 關鍵：不用 uuid.keyword，只用 uuid，本身就適用 keyword / text 兩種 mapping
-                    "uuid": uuid
-                }
-            }
-            try:
-                resp = self.es.search(
-                    index=index,
-                    size=1,
-                    query=query,
-                    _source=True,
-                )
-                hits = (resp.get("hits") or {}).get("hits") or []
-                if hits:
-                    hit = hits[0]
-                    src = hit.get("_source") or {}
-                    hit_index = hit.get("_index", str(index))
-            except Exception as e:
-                print(f"[ESFetchDocById] search(uuid) error: {e}")
-                return {
-                    "uuid": uuid,
-                    "index": str(index),
-                    "full_text": "",
-                    "source": {},
-                    "error": str(e),
-                }
-
-        # 仍然沒資料
-        if not src:
-            return {
-                "uuid": uuid,
-                "index": str(index),
-                "full_text": "",
-                "source": {},
-            }
-
-        # === 4) 取主要內文 ===
-        tf = text_field or "rawInfo.content"
-
-        def _dot_get(d: dict, path: str):
-            cur = d
-            for p in path.split("."):
-                if not isinstance(cur, dict):
-                    return None
-                cur = cur.get(p)
-                if cur is None:
-                    return None
-            return cur
-
-        full_text = (
-            _dot_get(src, tf)
-            or _dot_get(src, "rawInfo.content")
-            or src.get("content")
-            or src.get("doc_text")
-            or ""
-        )
-
-        if not isinstance(full_text, str):
-            full_text = str(full_text)
-
-        return {
-            "uuid": uuid,
-            "index": hit_index or str(index),
-            "full_text": full_text,
-            "source": src,
-        }
     
     

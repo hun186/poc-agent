@@ -85,6 +85,13 @@ def compress_evidence(snippets: list[dict], max_samples: int = 150) -> list[dict
             "title": s.get("article_title") or s.get("subject"),
             "s": s.get("subject"),
             "note": s.get("text"),
+            
+            # ★ 新增：讓報告/聚合可區分強弱證據
+            "weak": bool(s.get("weak_evidence")),
+            "scope": s.get("match_scope") or "none",
+         
+            # （可選）debug 很好用
+            "group_hits": s.get("group_hits"),
         })
     return out
 
@@ -120,6 +127,9 @@ def build_citations_from_ev(ev_compact: List[Dict[str, Any]]) -> List[Dict[str, 
             "article_title": e.get("title"),
             "ref_no": ref_no,
             "snippet_index": ref_no,
+            # ★ 新增（可選）
+            "weak": bool(e.get("weak")),
+            "match_scope": e.get("scope"),
         })
 
     # 按 ref_no 排好，保險

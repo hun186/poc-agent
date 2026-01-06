@@ -241,6 +241,48 @@ def extract_data_agent_section(out: Dict[str, Any]) -> Optional[DataAgentSection
     query_meta = last_run.get("query_meta") or {}
     time_range = last_run.get("time_range") or {}
 
+    # ---- ✅ 新增：讀取路由/索引資訊（不要在 presenter 端推導） ----
+    # 優先：last_run.query_meta（由 run_data_agent 回填）
+    # 次之：out["route"]（你若依建議有放）
+    # 再次：out.query_meta（相容舊資料）
+    route = out.get("route") if isinstance(out.get("route"), dict) else {}
+    out_qm = out.get("query_meta") if isinstance(out.get("query_meta"), dict) else {}
+
+    topic = (
+        query_meta.get("topic")
+        or route.get("topic")
+        or out_qm.get("topic")
+    )
+
+    idxs = (
+        query_meta.get("indexes")
+        or route.get("indexes")
+        or out_qm.get("indexes")
+        or []
+    )
+    if isinstance(idxs, str):
+        # 允許 "a,b,c" 或 "a、b" 兩種
+        if "," in idxs:
+            idxs = [x.strip() for x in idxs.split(",") if x.strip()]
+        elif "、" in idxs:
+            idxs = [x.strip() for x in idxs.split("、") if x.strip()]
+        else:
+            idxs = [idxs.strip()] if idxs.strip() else []
+    elif isinstance(idxs, list):
+        idxs = [str(x).strip() for x in idxs if str(x).strip()]
+    else:
+        idxs = []
+
+    index_hint = (
+        query_meta.get("index_hint")
+        or route.get("index_hint")
+        or out_qm.get("index_hint")
+    )
+    if isinstance(index_hint, list):
+        index_hint = ",".join([str(x).strip() for x in index_hint if str(x).strip()])
+    if not isinstance(index_hint, str):
+        index_hint = None
+        
     core_terms = (query_meta.get("core_terms") or last_run.get("core_terms") or []) or []
     topic_terms = (query_meta.get("topic_terms") or last_run.get("topic_terms") or []) or []
     style_terms = (query_meta.get("style_terms") or last_run.get("style_terms") or []) or []
@@ -280,6 +322,11 @@ def extract_data_agent_section(out: Dict[str, Any]) -> Optional[DataAgentSection
         syn_terms=[str(x) for x in syn_terms if isinstance(x, str)],
         effective_terms=[str(x) for x in effective_terms if isinstance(x, str)],
         es_query=str(es_query) if isinstance(es_query, str) else None,
+        # ✅ 新增
+        topic=str(topic).strip() if isinstance(topic, str) and topic.strip() else None,
+        indexes=idxs,
+        index_hint=index_hint.strip() if isinstance(index_hint, str) and index_hint.strip() else None,
+
         # ✅ 只在真的精煉時才有值；風格模式不會被 style_query 汙染
         refined_question=refined_question,
         

@@ -17,6 +17,10 @@ class DataAgentSection:
     syn_terms: List[str]
     effective_terms: List[str]
     es_query: Optional[str]
+    # ✅ 新增：本輪檢索標的（由 router 決策 / data_agent 回填）
+    topic: Optional[str] = None
+    indexes: List[str] = field(default_factory=list)
+    index_hint: Optional[str] = None
     # ✅ 新增：精煉後問題（檢索用 / core_query 或 style_query）
     refined_question: Optional[str] = None
     # ✅ 新增：風格模式用的參考全文（對應 payload["style_docs"]）

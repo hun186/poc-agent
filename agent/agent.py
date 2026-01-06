@@ -10,7 +10,7 @@ from telemetry import log_event  # 若之後想記 event 用得上，先匯進�
 from agent.utils.profiler import log_duration, log_total
 from agent.llm_utils.ollama_client import call_llm  # 你既有的封裝
 from agent.config.index_loader import INDEX_CONFIG
-from agent.agent_utils import _pack_chat_history_items,_build_query_for_agent_in_agent
+from agent.agent_utils import build_query_for_agent_in_agent
 from .style_agent import ask_with_style
 from .report_agent import ask_with_report
 from .doc_followup_agent import ask_with_doc_followup
@@ -32,7 +32,6 @@ SESSION_STORE = FileSessionStore(
 )
 
 DEBUG_ROUTER = os.getenv("DEBUG_ROUTER", "1") == "1"
-
 
 # ★ 新增：路由專用的模型 ID（可獨立於主 MODEL_ID）
 ROUTER_MODEL_ID = (
@@ -125,7 +124,7 @@ TASK_ROUTER_SYSTEM = (
 )
 
 
-def _llm_route_task(
+def llm_route_task(
     user_msg: str,
     trace: Optional[Dict[str, Any]] = None,
 ) -> dict:
@@ -201,7 +200,6 @@ def _llm_route_task(
     print("[router] routed =", routed)
     return routed
 
-
 def route_task_mode(
     user_msg: str,
     query_for_agent: str | None = None,
@@ -221,9 +219,7 @@ def route_task_mode(
             "topic": "none",
         }
 
-    return _llm_route_task(text, trace=trace)
-
-
+    return llm_route_task(text, trace=trace)
 
 def _build_router_input(
     current_user_msg: str,
@@ -253,7 +249,6 @@ def _build_router_input(
         parts.append(f"【過去問題{i}（用來判斷主題與語境，若未提到新主題則視為延續）】\n{m}")
 
     return "\n\n".join(parts)
-
 
 def answer_with_routing(
     user_msg: str,
@@ -292,15 +287,15 @@ def answer_with_routing(
     trace = trace or {}
     # ✅ 若 API 端沒給 query_for_agent，就由 agent 自己組
     
-    print("In answer_with_routing, input user_msg",user_msg)
-    print("In answer_with_routing, input query_for_agent",query_for_agent)
+    #print("In answer_with_routing, input user_msg",user_msg)
+    #print("In answer_with_routing, input query_for_agent",query_for_agent)
     if not query_for_agent:
-        query_for_agent = _build_query_for_agent_in_agent(
+        query_for_agent = build_query_for_agent_in_agent(
             user_msg=user_msg,
             history_msgs=history_msgs,
             memory_text=memory_text,
         )
-        print("In answer_with_routing, after running _build_query_for_agent_in_agent",query_for_agent)
+        #print("In answer_with_routing, after running _build_query_for_agent_in_agent",query_for_agent)
         
     # ✅ carry_over：給後續精煉 / 延續定義用（先放著，Level 2 會用）
     carry_over = {}

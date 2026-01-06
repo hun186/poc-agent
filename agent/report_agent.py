@@ -184,9 +184,9 @@ def ask_with_report(
     if trace is None:
         trace = {}
     t_total_start = time.perf_counter()
-    print("question in ask_with_report",question)
+    #print("question in ask_with_report",question)
     original_question = (question or "").strip()
-    print("original_question in ask_with_report",original_question)
+    #print("original_question in ask_with_report",original_question)
     # ✅ 先精煉，再丟給 data_agent（只影響資料準備，不影響前端顯示的「使用者提問」）
     refined_question = refine_question_for_data_agent(
         original_question,
@@ -204,6 +204,7 @@ def ask_with_report(
             question_raw=original_question,
             refined_question=refined_question,
             index_hint=index_hint,   # ✅ 補上
+            route=trace.get("route")  # 或你當下的 route 變數
         )
         
     # ✅ 對外仍保留原問句（你原本就強調「使用者提問一定要存在」）
@@ -215,7 +216,31 @@ def ask_with_report(
     if isinstance(qm, dict):
         qm["refined_question"] = refined_question
         payload["query_meta"] = qm
+
         
+    # === 強/弱證據分流（強優先給報告 LLM）===
+    ev_all = payload.get("evidence_snippets") or []
+    ev_strong = [e for e in ev_all if not e.get("weak_evidence")]
+    ev_weak   = [e for e in ev_all if e.get("weak_evidence")]
+    
+    # 你可以用環境變數控管給 LLM 的最大片段數
+    MAX_EV_FOR_LLM = int(os.getenv("REPORT_MAX_EVIDENCE_SNIPS", "120"))
+    
+    # 強證據優先，不夠再補弱證據
+    picked_for_llm = ev_strong[:MAX_EV_FOR_LLM]
+    if len(picked_for_llm) < MAX_EV_FOR_LLM:
+        need = MAX_EV_FOR_LLM - len(picked_for_llm)
+        picked_for_llm += ev_weak[:need]
+    
+    # （可選）讓 payload 留個統計，方便 debug / 前端顯示
+    payload["evidence_meta"] = {
+        "total": len(ev_all),
+        "strong": len(ev_strong),
+        "weak": len(ev_weak),
+        "picked_for_llm": len(picked_for_llm),
+    }
+    print("[report] evidence_meta =", payload["evidence_meta"])
+
     # === 精簡版（給報告 LLM 用） ===
     compressed_for_llm = {
         # 給報告 LLM：用精煉問句（避免字數/格式碎念干擾）
@@ -228,7 +253,8 @@ def ask_with_report(
             payload.get("time_range", {}).get("date_to"),
         ],
         "agg": compress_stats(payload.get("stats") or {}),
-        "ev": compress_evidence(payload.get("evidence_snippets") or []),
+        #"ev": compress_evidence(payload.get("evidence_snippets") or []),
+        "ev": compress_evidence(picked_for_llm),
     }
 
     ev_compact = compressed_for_llm["ev"] or []
