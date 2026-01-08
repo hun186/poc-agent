@@ -6,12 +6,16 @@
 <title>Code Size Report @ poc-agent</title>
 <style>
   body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", Arial; margin: 18px; color: #111; }
-  .meta { color:#555; font-size: 13px; margin-bottom: 10px; }
-  .tip {
-    position: fixed; left: 0; top: 0; transform: translate(12px, 12px);
+  .meta { color:#555; font-size: 13px; margin-bottom: 10px; }  .tip {
+    position: fixed; left: 0; top: 0;
     background: rgba(20,20,20,0.92); color: #fff; padding: 10px 12px;
-    border-radius: 10px; white-space: pre; font-size: 12px; line-height: 1.35;
-    display: none; z-index: 9999; max-width: 56vw;
+    border-radius: 10px; font-size: 12px; line-height: 1.35;
+    white-space: pre-wrap; word-break: break-word;
+    display: none; z-index: 9999;
+    max-width: min(56vw, 560px);
+    max-height: 55vh;
+    overflow: auto;
+    pointer-events: none;
   }
   .legend { font-size: 13px; color:#444; margin: 8px 0 14px; }
   .box { border: 1px solid #e5e5e5; border-radius: 14px; padding: 14px; }
@@ -20,7 +24,7 @@
 </head>
 <body>
 <h2 style="margin:0 0 6px;">Code Size Report @ poc-agent</h2>
-<div class="meta">產生時間：2026-01-08 14:43:28　｜　點大小約等於 log(bytes)　｜　滑過泡泡看檔案資訊</div>
+<div class="meta">產生時間：2026-01-08 15:41:23　｜　點大小約等於 log(bytes)　｜　滑過泡泡看檔案資訊</div>
 <div class="legend">建議先看右上角（函式多、程式行也多）與「Y 很高但 X 很低」（巨型檔 / 巨型函式密度偏高）。</div>
 
 <div class="box">
@@ -282,8 +286,30 @@ lines/func=0.0, bytes=0" cx="60.00" cy="640.00" r="4.00" fill="#4C78A8" fill-opa
   function showTip(e, text) {
     tip.textContent = text;
     tip.style.display = 'block';
-    tip.style.left = (e.clientX + 12) + 'px';
-    tip.style.top  = (e.clientY + 12) + 'px';
+
+    const offset = 12;
+    // 先把位置歸零，確保量測正確
+    tip.style.left = '0px';
+    tip.style.top  = '0px';
+
+    // 量測 tooltip 尺寸
+    const rect = tip.getBoundingClientRect();
+    const vw = window.innerWidth || document.documentElement.clientWidth;
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+
+    let x = e.clientX + offset;
+    let y = e.clientY + offset;
+
+    // 右/下邊界：避免跑出畫面
+    x = Math.min(x, vw - rect.width  - offset);
+    y = Math.min(y, vh - rect.height - offset);
+
+    // 左/上邊界：避免負值
+    x = Math.max(offset, x);
+    y = Math.max(offset, y);
+
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
   }
   function hideTip() { tip.style.display = 'none'; }
   document.querySelectorAll('.pt').forEach(el => {
