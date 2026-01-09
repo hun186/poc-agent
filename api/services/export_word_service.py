@@ -7,9 +7,10 @@ from docx.oxml.ns import qn
 from docx.shared import Pt
 from api.core.presenters.text_sanitize import normalize_text_for_docx
 from api.core.presenters.docx_helpers import (
-    _add_markdown_to_doc,
+    add_markdown_to_doc,
     add_data_agent_section,
 )
+from api.core.presenters.docx.config import load_docx_config_from_env
 from api.core.presenters.extractors import extract_presentation
 from shared.citations.citation_view_core import build_citation_core_views
 from shared.http.download_filename import build_docx_filename_from_presentation
@@ -34,7 +35,8 @@ class ExportWordService:
                 ext=".docx",
             )
         doc = Document()
-
+        cfg = load_docx_config_from_env()
+        
         # 預設字型
         style = doc.styles["Normal"]
         style.font.name = "標楷體"
@@ -50,10 +52,7 @@ class ExportWordService:
 
         # 回答
         if pres.answer:
-            _add_markdown_to_doc(doc, pres.answer)
-
-        # Data Agent
-        add_data_agent_section(doc, pres.da_section)
+            add_markdown_to_doc(doc, pres.answer)
 
         # 引用來源（改成吃同一套 shared view core）
         if pres.citations:
@@ -81,11 +80,14 @@ class ExportWordService:
                 else:
                     p.add_run(f"\n{short_txt}")
 
+        # Data Agent
+        add_data_agent_section(doc, pres.da_section, cfg=cfg)
+
         # 推理內容
         if pres.reasoning:
             doc.add_page_break()
             doc.add_heading("附錄：推理內容", level=2)
-            _add_markdown_to_doc(doc, pres.reasoning)
+            add_markdown_to_doc(doc, pres.reasoning)
 
         buf = BytesIO()
         doc.save(buf)
