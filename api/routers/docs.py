@@ -4,7 +4,9 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import PlainTextResponse, JSONResponse
 from elasticsearch import NotFoundError
 #from api.core.settings import ES, ALL_INDEXES
-from agent.es.es_client import ES, ALL_INDEXES
+#from agent.es.es_client import ES, ALL_INDEXES
+
+from agent.es.es_client import get_es, init_index_cache, ALL_INDEXES
 
 router = APIRouter()
 
@@ -13,8 +15,12 @@ def _get_doc_source_or_404(doc_id: str) -> dict:
     共用：依 doc_id（可能是 _id 或 uuid）從多個 index 中找到一筆文件的 _source。
     找不到就丟 404。
     """
-    # 1) 逐一嘗試用 _id 直接抓（每個 index 都試）
+    # ✅ 確保 index 清單已可用（且最好是 ES 存在的）
+    init_index_cache(live_check=True)
+    ES = get_es()
     print("ALL_INDEXES",ALL_INDEXES)
+    
+    # 1) 逐一嘗試用 _id 直接抓（每個 index 都試）
     for idx in ALL_INDEXES:
         try:
             got = ES.get(index=idx, id=doc_id, _source=True)

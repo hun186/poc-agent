@@ -1,13 +1,23 @@
 # agent/es/es_client.py
+from __future__ import annotations
+
 import os
 from typing import Any, Dict, Optional, Union, List
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 from elasticsearch import Elasticsearch, BadRequestError
-from agent.config.index_loader import INDEX_CONFIG
 
-load_dotenv()
+from config.bootstrap import bootstrap_env
+from config.index_loader import INDEX_CONFIG
+
+#load_dotenv()
 
 IndexType = Union[str, List[str]]
+_ES: Elasticsearch | None = None
+
+# 對外相容（避免 settings.py 直接 import 會爆）
+ALL_INDEXES: List[str] = []      # 你可以選擇 raw 或 live（下面 init 控制）
+ES_INDEX_DEFAULT: str = ""       # 最終 default（可能會被 live index 修正）
+_INDEX_CACHE_READY: bool = False
 
 # -----------------------------
 # Index helpers
@@ -40,6 +50,10 @@ def _normalize_indexes(raw) -> List[str]:
                 out.append(p)
     return out
 
+def _project_root() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))               # .../agent/es
+    return os.path.abspath(os.path.join(here, "..", ".."))          # .../poc-agent
+
 
 def _filter_existing_indexes(es: Elasticsearch, indexes: List[str]) -> List[str]:
     """只保留 ES 真的存在的 index，避免 search 直接噴 404 index_not_found_exception。"""
@@ -61,6 +75,7 @@ def _filter_existing_indexes(es: Elasticsearch, indexes: List[str]) -> List[str]
 # -----------------------------
 # 2) Elasticsearch connection
 # -----------------------------
+'''
 ES_URL = os.getenv("ES_URL")
 ES_USERNAME = os.getenv("ES_USERNAME")
 ES_PASSWORD = os.getenv("ES_PASSWORD")
@@ -77,19 +92,183 @@ ES = Elasticsearch(
     ssl_assert_hostname=False,
     request_timeout=ES_TIMEOUT,
 )
+'''
+def _build_es() -> Elasticsearch:
+    bootstrap_env()
 
+    ES_URL = (os.getenv("ES_URL") or "").strip()
+    if not ES_URL:
+        raise RuntimeError(
+            "ES_URL 未設定或未載入（請檢查 .env 是否有 ES_URL=...，"
+            "以及 bootstrap_env() 是否真的有 load_dotenv）。"
+        )
+
+    ES_USERNAME = os.getenv("ES_USERNAME")
+    ES_PASSWORD = os.getenv("ES_PASSWORD")
+    ES_TIMEOUT = int(os.getenv("ES_TIMEOUT", "30"))
+
+    project_root = _project_root()
+    ca_cert = os.path.join(project_root, "agent", "certs", "http_ca.crt")
+
+    return Elasticsearch(
+        ES_URL,
+        ca_certs=ca_cert if os.path.exists(ca_cert) else None,
+        basic_auth=(ES_USERNAME, ES_PASSWORD),
+        ssl_assert_hostname=False,
+        request_timeout=ES_TIMEOUT,
+    )
+
+def get_es() -> Elasticsearch:
+    global _ES
+    if _ES is None:
+        _ES = _build_es()
+    return _ES
+
+def init_index_cache(*, live_check: bool = False, force: bool = False) -> None:
+    """
+    初始化 ALL_INDEXES / ES_INDEX_DEFAULT：
+    - live_check=False：不連 ES，不做 exists-check（最快、最不會在 import 時炸）
+    - live_check=True ：會連 ES 並過濾不存在的 index（給 UI/tools 用）
+    """
+    global _INDEX_CACHE_READY, ALL_INDEXES, ES_INDEX_DEFAULT
+
+    if _INDEX_CACHE_READY and not force:
+        return
+
+    bootstrap_env()
+
+    # 1) cfg default
+    default_list = _normalize_indexes(INDEX_CONFIG.get("default") or [])
+    default_one_from_cfg = default_list[0] if default_list else "news_test"
+
+    # 2) env index（優先）
+    es_index_raw = os.getenv("ES_INDEX", default_one_from_cfg)
+    es_indexes_env = _normalize_indexes(es_index_raw)
+
+    # 3) topic_index_map 收集
+    topic_map = INDEX_CONFIG.get("topic_index_map", {}) or {}
+    cfg_indexes: List[str] = []
+    for cfg in topic_map.values():
+        if isinstance(cfg, dict):
+            cfg_indexes.extend(_normalize_indexes(cfg.get("indexes") or []))
+    cfg_indexes = _normalize_indexes(cfg_indexes)
+
+    # 4) 全集（raw）
+    all_raw: List[str] = _normalize_indexes(es_indexes_env + cfg_indexes)
+
+    # 5) default 候選（env 第一個 > cfg default）
+    candidate_default = (es_indexes_env[0] if es_indexes_env else default_one_from_cfg)
+
+    if live_check:
+        # 需要 live index 時才連 ES
+        es = get_es()
+        all_live = _filter_existing_indexes(es, all_raw)
+
+        ALL_INDEXES = all_live
+        ES_INDEX_DEFAULT = candidate_default
+
+        # default 不存在 → 退回第一個 live
+        if ALL_INDEXES and ES_INDEX_DEFAULT not in ALL_INDEXES:
+            ES_INDEX_DEFAULT = ALL_INDEXES[0]
+    else:
+        # 不查 exists：維持宣告全集
+        ALL_INDEXES = all_raw
+        ES_INDEX_DEFAULT = candidate_default
+
+    _INDEX_CACHE_READY = True
+
+    if os.getenv("ES_CLIENT_VERBOSE", "0") == "1":
+        print("[es_client] ES_INDEX_RAW =", es_index_raw)
+        print("[es_client] ALL_INDEXES =", ALL_INDEXES)
+        print("[es_client] ES_INDEX_DEFAULT =", ES_INDEX_DEFAULT)
+
+def _calc_default_index() -> str:
+    init_index_cache(live_check=False)
+    return ES_INDEX_DEFAULT or "news_test"
+'''
+def _calc_default_index() -> str:
+    # ✅ 你 loader 現況：default 是 list
+    default_list = _normalize_indexes(INDEX_CONFIG.get("default") or [])
+    default_one = default_list[0] if default_list else "news_test"
+
+    env_raw = os.getenv("ES_INDEX", default_one)
+    env_indexes = _normalize_indexes(env_raw)
+
+    return env_indexes[0] if env_indexes else default_one
+'''
+def resolve_index(hint: Optional[Union[str, List[str]]]) -> IndexType:
+    default_idx = _calc_default_index()
+    if hint is None:
+        return default_idx
+
+    idx_list = _normalize_indexes(hint if isinstance(hint, list) else str(hint))
+    if not idx_list:
+        return default_idx
+    return idx_list[0] if len(idx_list) == 1 else idx_list
+
+def safe_search(
+    body: Dict[str, Any],
+    *,
+    index: Optional[IndexType] = None,
+    allow_highlight_retry: bool = True,
+):
+    es = get_es()
+    ES_TIMEOUT = int(os.getenv("ES_TIMEOUT", "30"))
+
+    # ✅ 先正確取得 idx（可能是 str 或 list）
+    idx: IndexType = index if index is not None else _calc_default_index()
+
+    # ✅ 修正：如果傳進來是空 list，就退回 default
+    if isinstance(idx, list) and not idx:
+        idx = _calc_default_index()
+
+    # ✅ 修正：如果傳進來是空字串，也退回 default
+    if isinstance(idx, str) and not idx.strip():
+        idx = _calc_default_index()
+        
+    es_index = ",".join(idx) if isinstance(idx, list) else (idx or _calc_default_index())
+
+    params = {
+        "error_trace": "true",
+        "ignore_unavailable": "true",
+        "allow_no_indices": "true",
+    }
+
+    try:
+        return es.search(
+            index=es_index,
+            body=body,
+            request_timeout=ES_TIMEOUT,
+            params=params,
+        )
+    except BadRequestError as e:
+        info = str(getattr(e, "info", e))
+        if allow_highlight_retry and ("max_analyzed_offset" in info or "highlight" in info):
+            body2 = dict(body)
+            body2.pop("highlight", None)
+            return es.search(
+                index=es_index,
+                body=body2,
+                request_timeout=ES_TIMEOUT,
+                params=params,
+            )
+        raise
+        
 # -----------------------------
 # 1) Index config integration (after ES is ready, so we can exists-check)
 # -----------------------------
 
 # ✅ 你 loader 回傳的是 "default": [...]，不是 default_index
+'''
 _default_list_from_cfg = _normalize_indexes(INDEX_CONFIG.get("default") or [])
 _default_one_from_cfg = _default_list_from_cfg[0] if _default_list_from_cfg else "news_test"
 
 # env 的 ES_INDEX 優先（但也要 normalize）
 ES_INDEX_RAW = os.getenv("ES_INDEX", _default_one_from_cfg)
 ES_INDEXES_ENV = _normalize_indexes(ES_INDEX_RAW)
+'''
 
+'''
 # topic map indexes
 topic_map = INDEX_CONFIG.get("topic_index_map", {}) or {}
 cfg_indexes: List[str] = []
@@ -125,11 +304,15 @@ if os.getenv("ES_CLIENT_VERBOSE", "0") == "1":
     except Exception as e:
         print("[es_client] ES.info() failed:", e)
 
+'''
 
+'''
 def get_es() -> Elasticsearch:
     return ES
+'''
 
 
+'''
 def resolve_index(hint: Optional[Union[str, List[str]]]) -> IndexType:
     """
     hint 支援：
@@ -148,8 +331,9 @@ def resolve_index(hint: Optional[Union[str, List[str]]]) -> IndexType:
     if not idx_list:
         return ES_INDEX_DEFAULT
     return idx_list[0] if len(idx_list) == 1 else idx_list
+'''
 
-
+'''
 def safe_search(
     body: Dict[str, Any],
     *,
@@ -190,3 +374,13 @@ def safe_search(
                 params=params,
             )
         raise
+'''
+# --- legacy exports (相容舊 import) ---
+# 讓 from agent.es.es_client import ES 不會爆
+#ES = get_es()
+# 模組載入時先用 raw 初始化，避免 import 後 ES_INDEX_DEFAULT/ALL_INDEXES 是空的
+try:
+    init_index_cache(live_check=False)
+except Exception:
+    # 不要因為初始化失敗就讓 import 爆掉
+    pass

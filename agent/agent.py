@@ -1,6 +1,9 @@
 # agent/agent.py
-from dotenv import load_dotenv
-load_dotenv()
+#from dotenv import load_dotenv
+#load_dotenv()
+
+from config.bootstrap import bootstrap_env
+bootstrap_env()  # 只做一次，讓全專案環境一致
 
 import os
 import json
@@ -9,7 +12,7 @@ from typing import Any, Dict, Optional, List
 from telemetry import log_event  # 若之後想記 event 用得上，先匯進來
 from agent.utils.profiler import log_duration, log_total
 from agent.llm_utils.ollama_client import call_llm  # 你既有的封裝
-from agent.config.index_loader import INDEX_CONFIG
+from config.index_loader import INDEX_CONFIG
 from agent.agent_utils import build_query_for_agent_in_agent
 from .style_agent import ask_with_style
 from .report_agent import ask_with_report

@@ -1,61 +1,366 @@
 ﻿[index_loader] loaded: {'topic_index_map': {'news_general': {'indexes': ['news_test'], 'description': '一般新聞、社會事件、國際情勢、政策、趨勢分析'}, 'mil_intel': {'indexes': ['mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'satmeta'], 'description': '本主題為較細節之軍事秘密情報細節相關，包含航行情資（軍艦/執法船艦）以及衛照情報，如果是國際公開軍事動態新聞則屬news_general'}, 'gov_document': {'indexes': ['govdocs_2024'], 'description': '公文、行政文件、政府規定之撰寫或仿寫'}}, 'default_index': 'news_test'}
 [ES tools] 已載入人工同義詞表，自資料夾 config/synonyms 共 1 個檔案，合計 58 組 key（含預設 + merge）
 [settings] ES client ready, default index = satmeta
-ALL_INDEXES = ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1']
-INFO:     Started server process [22960]
+ALL_INDEXES = ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+INFO:     Started server process [40924]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:9002 (Press CTRL+C to quit)
-INFO:     192.168.0.134:42896 - "GET /v1/models HTTP/1.1" 200 OK
-[chat_completions] chosen session_key = '3efb8b73-fac1-4c7b-83cb-67ad40f4359d'
-[chat_completions] reuse_uuids = ['ef5b2148d95a8c5090197c367d4afab32a2434bc', '021fae8cc721bd5f6fce848c5c009d729f6be556', '1014c508ab966d93a61f48886c2521837f114b94', 'f78c483e224e3aa64e3682cc09f6e47bfbe994ad', '855c3ac7e29c895d8848dd4fcecf06ba1b8b5770', 'f9ba1c0932a41f684df625f676e13fc8b5bcf606', 'caf34b0602076ac9518aae0dee4a6b8d5fcbe149', '32881407c114684d452a72921dc9c882e45525fa', 'd0c73c6fb2317fa0a977450b91438b913b414f9e', '75b543896270a1392a6490192de9621d6eeef3f8', '1fd906a98add227e35fab3ea5c395171b30d6770', '2d02fb0371cc5efaee751c64a5ea16925de91efa', 'f6f6020ff85a345f09089b103d703e2044cb84ee', 'bd6ec8b09595a2a44658f6b6eaba35de73d27e3c', 'c5fb22a69a49c446ce61747ad1684a13a5fed1a4']
-[chat_completions] refno_uuid_map = {1: 'ef5b2148d95a8c5090197c367d4afab32a2434bc', 2: '021fae8cc721bd5f6fce848c5c009d729f6be556', 3: '021fae8cc721bd5f6fce848c5c009d729f6be556', 4: '1014c508ab966d93a61f48886c2521837f114b94', 5: 'f78c483e224e3aa64e3682cc09f6e47bfbe994ad', 6: '855c3ac7e29c895d8848dd4fcecf06ba1b8b5770', 7: '855c3ac7e29c895d8848dd4fcecf06ba1b8b5770', 8: '855c3ac7e29c895d8848dd4fcecf06ba1b8b5770', 9: 'f9ba1c0932a41f684df625f676e13fc8b5bcf606', 10: 'caf34b0602076ac9518aae0dee4a6b8d5fcbe149', 11: '32881407c114684d452a72921dc9c882e45525fa', 12: 'd0c73c6fb2317fa0a977450b91438b913b414f9e', 13: '75b543896270a1392a6490192de9621d6eeef3f8', 14: '1fd906a98add227e35fab3ea5c395171b30d6770', 15: '2d02fb0371cc5efaee751c64a5ea16925de91efa', 16: 'f6f6020ff85a345f09089b103d703e2044cb84ee', 17: 'f6f6020ff85a345f09089b103d703e2044cb84ee', 18: 'bd6ec8b09595a2a44658f6b6eaba35de73d27e3c', 19: 'c5fb22a69a49c446ce61747ad1684a13a5fed1a4', 20: 'c5fb22a69a49c446ce61747ad1684a13a5fed1a4'}
+INFO:     192.168.0.134:60534 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:60544 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '86176e8c-1216-4160-b167-ef1e2ba51298'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
 ==================================================
-[call_llm] sys_len=1602, user_len=521, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題（務必以此為準）】 給我第三篇參考資料的全文及英文翻譯  【過去問題1（用來判斷主題與語境，若未提到新主題則視為延續）】 以資料情資組的角度來寫綜整報告，並針對每月的情資數量進行月分配統計，情資蒐集指導如下，時間範圍2023年： 俄烏戰爭使歐洲能源格局重組，天然氣供應改由美國、中東與北海替代，推升能源轉型速度；歐盟加大國防與科技自主投入，帶動軍工、資安、無人機、通訊設備等產業需求；同時，供應鏈外移加速東歐與新興市場的基建、製造布局。戰爭仍具不確定性，但中長期投資機會集中在能源替代、戰略科技、自主供應鏈與重建經濟等主題。 情資蒐集請依下列方向進行：宏觀組追蹤能源價格、天然氣儲備、水陸運輸成本及歐盟產業補貼政策；產業組聚焦軍工供應鏈、資安技術、半導體自主化、再生能源與電網投資；政策組研判制裁措施、軍援規模與外交動向對市場的影響；企業組關注歐洲與美國國防企業訂單量、能源公司資本支出規劃與重建相關標案；資料情資組負責戰場態勢、社群輿情與供應鏈異常的早期指標。所有情資須以投資風險與預期'
+[call_llm] sys_len=1602, user_len=142, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 請整理2016至2021年間中國毒品防治情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。'
 [call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
-[router] LLM route 花費 16.151s model_id=gpt-oss:120b-32k
-[router] routed = {'mode': 'DOC_FOLLOWUP', 'reason': '使用者要求取得已在對話中提及的第三篇參考資料全文並翻譯，屬於對已知文件的取出與翻譯操作，不涉及重新搜尋或整體趨勢分析。', 'topic': 'news_general'}
-[answer_with_routing] DOC_FOLLOWUP reuse_uuids = ['ef5b2148d95a8c5090197c367d4afab32a2434bc', '021fae8cc721bd5f6fce848c5c009d729f6be556', '1014c508ab966d93a61f48886c2521837f114b94', 'f78c483e224e3aa64e3682cc09f6e47bfbe994ad', '855c3ac7e29c895d8848dd4fcecf06ba1b8b5770', 'f9ba1c0932a41f684df625f676e13fc8b5bcf606', 'caf34b0602076ac9518aae0dee4a6b8d5fcbe149', '32881407c114684d452a72921dc9c882e45525fa', 'd0c73c6fb2317fa0a977450b91438b913b414f9e', '75b543896270a1392a6490192de9621d6eeef3f8', '1fd906a98add227e35fab3ea5c395171b30d6770', '2d02fb0371cc5efaee751c64a5ea16925de91efa', 'f6f6020ff85a345f09089b103d703e2044cb84ee', 'bd6ec8b09595a2a44658f6b6eaba35de73d27e3c', 'c5fb22a69a49c446ce61747ad1684a13a5fed1a4']
-[doc_followup] try fetch uuid='021fae8cc721bd5f6fce848c5c009d729f6be556', index_hint='news_test'
-2026-01-09 17:32:46,420 INFO elastic_transport.transport: GET https://192.168.0.133:9001/news_test/_doc/021fae8cc721bd5f6fce848c5c009d729f6be556?_source=true [status:200 duration:0.003s]
-[doc_followup] final docs count = 1
+[router] LLM route 花費 2.800s model_id=gpt-oss:120b-32k
+[router] routed = {'mode': 'SRA_REPORT', 'reason': '使用者要求整理特定期間（2016-2021）中國毒品防治情況，並進行趨勢與SWOT分析，屬於需重新搜尋與彙整多篇資料的報告需求。', 'topic': 'news_general'}
 ==================================================
-[call_llm] sys_len=1116, user_len=227, user_preview='{"instruction":"給我第三篇參考資料的全文及英文翻譯","docs_meta":[{"index":3,"uuid":"021fae8cc721bd5f6fce848c5c009d729f6be556","title":"国际可再生能源署举行全体大会，联合国呼吁加快公正转型","date":"2023-01-14","subject":"国际可再生能源署举行全体大会，联合国呼吁加快公正转型","total_length":1419}]}'
-[call_llm] system_preview='你是一個『文件後續處理規劃助手』（planner）。  任務：根據「使用者指令」與「文件列表（僅有基本資訊）」， 決定這一輪要處理哪幾篇文件、以及每一篇要讀取的字元範圍。  注意： - 你只能看到 docs_meta（不含全文），其中包含 index / uuid / title / date / subject / total_length。 - 切片上限：本輪所有文件加總的字元數，不可以超過 MAX_CHARS = 26000。 - 若使用者沒有指定區間，就預設從該篇的開頭開始，最多讀取 MAX_CHARS 字元。 - 若使用者說「前 26k / 前 26000 個字」，要解讀為從開頭開始，長度不超過 MAX_CHARS。 - 若使用者說「A~B 個字 / A 至 B 個字」，採 1-based，start=A，end=B（含），但仍不得超過 MAX_CHARS。 - 可理解自然語句如'
+[call_llm] sys_len=297, user_len=178, user_preview='請精煉下列使用者問句，只輸出 JSON。  【使用者問句】 【對話歷史】   【目前問題】 請整理2016至2021年間中國毒品防治情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。  【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。'
+[call_llm] system_preview='你是一個「問句精煉器」，只做一件事：把使用者問句改寫成更精要、可供檢索與統計的版本。  請輸出 JSON，格式： {   "refined_question": "..." }  規則： 1) 保留：主題/對象、地點、時間範圍、使用者要的輸出型態（整理/比較/趨勢/引用來源/SWOT 等），與資料庫檢索工具設定相關的指示。 2) 刪除：客套話、重複描述、長度要求（如 2000 字）、格式碎念（如「請用漂亮小標」）、與檢索無關的冗詞。 3) 不能新增新事實（例如新增年份、地點、人物）。 4) 若原問句本來就很精簡，refined_question 直接回傳原句即可。 5) 一律用繁體中文。'
+[agent] building CodeAgent: try model + instructions
+[agent] CodeAgent created with model+instructions
+┌────────────────────────────────── New run ──────────────────────────────────┐
+│                                                                             │
+│ 【系統參數（抽取關鍵字時請忽略本段）】                                      │
+│ index_hint=news_test                                                        │
+│                                                                             │
+│ 【使用者問題】                                                              │
+│ 整理2016至2021年間中國毒品防治情況，逐條引述並加註來源，製作總結報告，進行  │
+│ 趨勢分析與SWOT分析。                                                        │
+│                                                                             │
+└─ LiteLLMModel - ollama_chat/gpt-oss:120b-32k ───────────────────────────────┘
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[92m19:57:19 - LiteLLM:INFO[0m: utils.py:3386 - 
+LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
+2026-01-13 19:57:19,313 INFO LiteLLM: 
+LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
+[92m19:57:40 - LiteLLM:INFO[0m: utils.py:1295 - Wrapper: Completed Call, calling success_handler
+2026-01-13 19:57:40,750 INFO LiteLLM: Wrapper: Completed Call, calling success_handler
+ ─ Executing parsed code: ──────────────────────────────────────────────────── 
+  # 使用者問題                                                                 
+  question =                                                                   
+  "整理2016至2021年間中國毒品防治情況，逐條引述並加註來源，製作總結報告，進行  
+  趨勢分析與SWOT分析。"                                                        
+                                                                               
+  # 1. 解析核心關鍵字 (core_terms) 與時間範圍                                  
+  core_terms = ["中國", "毒品", "防治"]  # 主題與專業行為詞                    
+  core_query = f"核心關鍵詞組如下：{'、'.join(core_terms)}"                    
+                                                                               
+  date_from = "2016-01-01"                                                     
+  date_to   = "2021-12-31"                                                     
+                                                                               
+  # 2. 呼叫 ES 搜尋                                                            
+  search_result = es_search_news(                                              
+      query=core_query,                                                        
+      must_high_value=False,                                                   
+      must_selected=False,                                                     
+      size=10000,                                                              
+      date_from=date_from,                                                     
+      date_to=date_to,                                                         
+      selected_boost=6.0,                                                      
+      high_value_boost=2.5,                                                    
+      recency_boost=False,                                                     
+      recency_field="importDT",                                                
+      recency_scale="30d",                                                     
+      index_hint="news_test"                                                   
+  )                                                                            
+                                                                               
+  # 取得 evidence_snippets                                                     
+  evidence_snippets = search_result.get("evidence_snippets", [])               
+                                                                               
+  # 3. 時間統計聚合                                                            
+  aggregation = aggregate_month_quarter(evidence_snippets=evidence_snippets)   
+                                                                               
+  doc_count      = aggregation.get("doc_count", 0)                             
+  snippet_count  = aggregation.get("snippet_count", 0)                         
+  active_days    = aggregation.get("active_days", 0)                           
+  day_counts     = aggregation.get("day_counts", {})                           
+  month_counts   = aggregation.get("month_counts", {})                         
+  quarter_counts = aggregation.get("quarter_counts", {})                       
+                                                                               
+  # 4. 依時間範圍過濾統計結果                                                  
+  start_date = date_from                                                       
+  end_date   = date_to                                                         
+                                                                               
+  if start_date or end_date:                                                   
+      # 過濾 day_counts                                                        
+      filtered_day_counts = {}                                                 
+      for d, cnt in day_counts.items():                                        
+          if start_date and d < start_date:                                    
+              continue                                                         
+          if end_date and d > end_date:                                        
+              continue                                                         
+          filtered_day_counts[d] = cnt                                         
+      day_counts = filtered_day_counts                                         
+                                                                               
+      # 過濾 month_counts（保留完全落在範圍內的月份）                          
+      filtered_month_counts = {}                                               
+      for m, cnt in month_counts.items():  # m 形如 "YYYY-MM"                  
+          m_year = m[0:4]                                                      
+          m_month = m[5:7]                                                     
+          m_first = f"{m_year}-{m_month}-01"                                   
+          m_last  = f"{m_year}-{m_month}-31"                                   
+          if start_date and m_last < start_date:                               
+              continue                                                         
+          if end_date and m_first > end_date:                                  
+              continue                                                         
+          filtered_month_counts[m] = cnt                                       
+      month_counts = filtered_month_counts                                     
+                                                                               
+      # 過濾 quarter_counts（形如 "YYYY-Qn"）                                  
+      filtered_quarter_counts = {}                                             
+      for q, cnt in quarter_counts.items():                                    
+          q_year = q[0:4]                                                      
+          q_id = q[-1]  # 1..4                                                 
+          if q_id == "1":                                                      
+              q_first, q_last = f"{q_year}-01-01", f"{q_year}-03-31"           
+          elif q_id == "2":                                                    
+              q_first, q_last = f"{q_year}-04-01", f"{q_year}-06-30"           
+          elif q_id == "3":                                                    
+              q_first, q_last = f"{q_year}-07-01", f"{q_year}-09-30"           
+          else:                                                                
+              q_first, q_last = f"{q_year}-10-01", f"{q_year}-12-31"           
+                                                                               
+          if start_date and q_last < start_date:                               
+              continue                                                         
+          if end_date and q_first > end_date:                                  
+              continue                                                         
+          filtered_quarter_counts[q] = cnt                                     
+      quarter_counts = filtered_quarter_counts                                 
+                                                                               
+  # 5. 組成 query_meta                                                         
+  search_qm = (search_result.get("query_meta") or {}) if                       
+  isinstance(search_result, dict) else {}                                      
+                                                                               
+  query_meta = {                                                               
+      "core_terms": core_terms,                                                
+      "core_query": core_query,                                                
+      "date_from": date_from,                                                  
+      "date_to": date_to,                                                      
+      "syn_terms": search_qm.get("syn_terms"),                                 
+      "effective_terms": search_qm.get("effective_terms"),                     
+      "es_query": search_qm.get("es_query"),                                   
+      "manual_terms_in_q": search_qm.get("manual_terms_in_q"),                 
+      "is_manual_entity_query": search_qm.get("is_manual_entity_query"),       
+      "term_groups": search_qm.get("term_groups"),                             
+      "raw_query": search_qm.get("query"),                                     
+  }                                                                            
+                                                                               
+  # 6. 組成 payload                                                            
+  payload = {                                                                  
+      "question": question,                                                    
+      "time_range": {                                                          
+          "date_from": date_from,                                              
+          "date_to": date_to,                                                  
+      },                                                                       
+      "stats": {                                                               
+          "doc_count": doc_count,                                              
+          "snippet_count": snippet_count,                                      
+          "active_days": active_days,                                          
+          "day_counts": day_counts,                                            
+          "month_counts": month_counts,                                        
+          "quarter_counts": quarter_counts,                                    
+      },                                                                       
+      "evidence_snippets": evidence_snippets,                                  
+      "raw_search_result": search_result,                                      
+      "query_meta": query_meta,                                                
+  }                                                                            
+                                                                               
+  # 7. 回傳結果                                                                
+  final_answer({                                                               
+      "payload": payload                                                       
+  })                                                                           
+ ───────────────────────────────────────────────────────────────────────────── 
+in ESSearchNews.forward, index = news_test query = 核心關鍵詞組如下：中國、毒品、防治
 ==================================================
-[call_llm] sys_len=746, user_len=1737, user_preview='{"instruction":"給我第三篇參考資料的全文及英文翻譯","docs":[{"uuid":"021fae8cc721bd5f6fce848c5c009d729f6be556","title":"国际可再生能源署举行全体大会，联合国呼吁加快公正转型","date":"2023-01-14","subject":"国际可再生能源署举行全体大会，联合国呼吁加快公正转型","full_text":"国际可再生能源署举行全体大会，联合国呼吁加快公正转型\\n\\n2023年1月14日\\n\\n气候变化与环境\\n\\n在今天向国际可再生能源署第十三届全体大会发表的视频致辞中，联合国秘书长古特雷斯号召发起一场可再生能源革命，为所有人创造一个更加光明的未来。联合国大会第77届会议主席克勒希也向与会者强调，现在急需大胆且具有变革意义的行动来限制气候变化，实现公正转型。\\n\\n1月14日至15日，国际可再生能源署第十三届全体大会在阿联酋阿布扎比举行。作为2023年全球能源日程上的首个重大节点，本次大会有超过1500名高级别人士参加。与会者将共同确定能源转型的优先事项，为今年晚些时候由阿联酋主办的第28'
-[call_llm] system_preview='你是一個『文件後續處理助手』。  所有可用資訊都來自 docs 陣列，不能查新的資料庫。  你可以做的任務包含但不限於： - 把指定篇章翻譯成英文 - 給我第一篇的全文（或某一段全文） - 幫我逐篇摘要 - 比較第一篇與第二篇差異 - 基於這些文件做新的說明  輸入 JSON： {   "instruction": "使用者目前這一輪的指令",   "docs": [     {       "index": 1,       "uuid": "...",       "title": "...",       "date": "...",       "subject": "...",       "full_text": "這次實際提供的文字片段（可能是全文的一部分）",       "range": { "start": 1, "end": 26000 },       "total'
-[answer_with_routing][TOTAL] total=37.344s mode=DOC_FOLLOWUP topic=news_general
-return v.strip() in extract_user_question 給我第三篇參考資料的全文及英文翻譯
-return v.strip() in extract_user_question 給我第三篇參考資料的全文及英文翻譯
-[chat_completions] saved last_structured for '3efb8b73-fac1-4c7b-83cb-67ad40f4359d' used_uuids = ['021fae8cc721bd5f6fce848c5c009d729f6be556']
-INFO:     192.168.0.134:42912 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:57916 - "GET /v1/models HTTP/1.1" 200 OK
-[chat_completions] chosen session_key = '3efb8b73-fac1-4c7b-83cb-67ad40f4359d'
-INFO:     192.168.0.134:57924 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:51126 - "GET /v1/models HTTP/1.1" 200 OK
-[chat_completions] chosen session_key = 'abe9f65c-d1d3-404f-af12-2681389efb7f'
-[chat_completions] reuse_uuids = ['a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', '4740342279fbe8be75a7aa28dc81190b35a19df0', '031400c3e9b56024b49af25dc838126905d778d5', '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', '82ef3d4f1056eda20429217f925f822cc6bd4e37', '936524fd6dd4c370fad2313dd8d55fe07d1a5e25']
-[chat_completions] refno_uuid_map = {1: 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 2: 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 3: 'a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 4: 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 5: 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', 6: '4740342279fbe8be75a7aa28dc81190b35a19df0', 7: '031400c3e9b56024b49af25dc838126905d778d5', 8: '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 9: '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', 10: '82ef3d4f1056eda20429217f925f822cc6bd4e37', 11: '936524fd6dd4c370fad2313dd8d55fe07d1a5e25'}
+[call_llm] sys_len=587, user_len=26, user_preview='使用者查詢如下： 核心關鍵詞組如下：中國、毒品、防治'
+[call_llm] system_preview='你是一個「通用查詢關鍵字萃取器」。 使用者會給你一段查詢句子或自然語言描述，請只做一件事：  從內容中找出最重要的「關鍵詞 / 主題詞」，例如： - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構 - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱 - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰 - 產品 / 人工同義詞 / 型號：武器型號、船艦名、飛機型號、產品型號等  規則： 1. 僅輸出一個 JSON 陣列（array of string），不得有任何多餘文字。    例：["川普經濟學", "對等關稅", "美國就業", "物價", "宮古水道"] 2. 每個元素應是短語或名詞，不要整句話。 3. 優先挑選具體、可檢索的詞：    - 例如「川普經濟學」「宮古水道」「東風15型導彈」    - 比起「影響」「變化」「情勢」這種抽象詞更重要。 4. 不要'
 ==================================================
-[call_llm] sys_len=1602, user_len=201, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題（務必以此為準）】 給我第二篇的全文及中文翻譯。  【過去問題1（用來判斷主題與語境，若未提到新主題則視為延續）】 請整理2013至2017年間關於敘利亞化學武器情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。'
-[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
-[router] LLM route 花費 3.559s model_id=gpt-oss:120b-32k
-[router] routed = {'mode': 'DOC_FOLLOWUP', 'reason': 'User requests the full text and Chinese translation of the second article previously referenced, which is a follow‑up on a specific known document rather than a new analysis or report.', 'topic': 'news_general'}
-[answer_with_routing] DOC_FOLLOWUP reuse_uuids = ['a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', 'b0516432109bcbe9c5b43bc1df5d82e48fe088be', '4740342279fbe8be75a7aa28dc81190b35a19df0', '031400c3e9b56024b49af25dc838126905d778d5', '82df656f2dc93b270f5dd6ae4dd2ee7689c669f8', '82ef3d4f1056eda20429217f925f822cc6bd4e37', '936524fd6dd4c370fad2313dd8d55fe07d1a5e25']
-[doc_followup] try fetch uuid='a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0', index_hint='news_test'
-2026-01-09 17:35:25,525 INFO elastic_transport.transport: GET https://192.168.0.133:9001/news_test/_doc/a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0?_source=true [status:200 duration:0.007s]
-[doc_followup] final docs count = 1
+[call_llm] sys_len=1366, user_len=69, user_preview='查詢句子（query）： 核心關鍵詞組如下：中國、毒品、防治  核心關鍵詞（core_terms）： ["中國", "毒品", "防治"]'
+[call_llm] system_preview='你是一個「文本檢索查詢關鍵詞同義詞擴充器」。  使用者會提供： - 一段查詢句子（query） - 一組核心關鍵詞（core_terms）  你的工作只有一件事： 1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。 2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），    請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 value 的陣列裡。  具體規則：  【輸出格式】 - 僅輸出一個 JSON 物件（object），不得有任何多餘文字。   key: 代表核心詞（string）   value: 該語意軸的同義詞陣列（array of string）  【語意軸合併規則】 1. 先觀察 core_terms 列表，思考是否有「其實是同一個概念」的核心詞：    例如：    - 「敘利亞」「Syrian Arab'
+[es_search_news][T1] compute_effective_terms 花費 3.812s
+[es_search_news] core_terms=['中國', '毒品', '防治'], num_groups=3
+[_build_query_body] q= 核心關鍵詞組如下：中國、毒品、防治 core_terms= ['中國', '毒品', '防治'] syn_terms= ['China', '中华', '中華人民共和國', '違禁品', '麻醉品', '非法藥物', '防控', '預防與治療', '防止與治療'] num_all_terms= 12
+[es_search_news][T2] build_main_query_body 花費 0.000s
+2026-01-13 19:57:54,314 INFO elastic_transport.transport: POST https://192.168.0.133:9001/news_test/_search?allow_no_indices=true&error_trace=true&ignore_unavailable=true [status:200 duration:0.867s]
+[es_search_news][T3] _safe_es_search 花費 1.720s index=news_test size=10000
+[es_search_news] ES took=None ms, index=news_test, size=10000
+2026-01-13 19:57:54,453 INFO agent.es.evidence: build_hits_and_evidence: es_hits=1761 out_hits=1761 citations=133 inner_used=85 fallback_used=0 term_groups=3 effective_terms=12 date_range=2016-01-01~2021-12-31
+2026-01-13 19:57:54,461 INFO agent.es.evidence: build_hits_and_evidence: evidence strict=0
+2026-01-13 19:57:54,461 WARNING agent.es.evidence: build_hits_and_evidence: strict evidence=0 -> relax try (groups=3 strict_req=3 try_req=2)
+2026-01-13 19:57:54,468 INFO agent.es.evidence: build_hits_and_evidence: evidence relaxed(req=2)=3
+2026-01-13 19:57:54,469 INFO agent.es.evidence: build_hits_and_evidence: filtered_hits=1 evidence=3 syn_snippets=3 weak=0
+[es_search_news][T4] build_hits_and_evidence 花費 0.029s
+[es_search_news] hits=1, evidence_snippets=3
+[es_search_news] strong=3 weak=0 (total=3)
+[es_search_news][TOTAL] total=5.561s 代理人ES文本查詢工具查詢字串=核心關鍵詞組如下：中國、毒品、防治
+[es_search_news] query='核心關鍵詞組如下：中國、毒品、防治', es_query='核心關鍵詞組如下：中國、毒品、防治', hits=1, snippets_after_filter=3, effective_terms=['中國', '毒品', '防治', 'China', '中华', '中華人民共和國', '違禁品', '麻醉品', '非法藥物', '防控', '預防與治療', '防止與治療'], synonym_hit_snippets=3
+[es_search_news] query_meta = {"query": "核心關鍵詞組如下：中國、毒品、防治", "es_query": "核心關鍵詞組如下：中國、毒品、防治", "core_terms": ["中國", "毒品", "防治"], "syn_terms": ["China", "中华", "中華人民共和國", "違禁品", "麻醉品", "非法藥物", "防控", "預防與治療", "防止與治療"], "effective_terms": ["中國", "毒品", "防治", "China", "中华", "中華人民共和國", "違禁品", "麻醉品", "非法藥物", "防控", "預防與治療", "防止與治療"], "manual_terms_in_q": [], "is_manual_entity_query": false, "term_groups": [["China", "中华", "中國", "中華人民共和國"], ["毒品", "違禁品", "非法藥物", "麻醉品"], ["防控", "防止與治療", "防治", "預防與治療"]], "date_from": "2016-01-01", "date_to": "2021-12-31"}
+Final answer: {'payload': {'question': 
+'整理2016至2021年間中國毒品防治情況，逐條引述並加註來源，製作總結報告，進行趨勢
+分析與SWOT分析。', 'time_range': {'date_from': '2016-01-01', 'date_to': 
+'2021-12-31'}, 'stats': {'doc_count': 1, 'snippet_count': 3, 'active_days': 1, 
+'day_counts': {'2016-05-01': 1}, 'month_counts': {'2016-05': 1}, 
+'quarter_counts': {'2016-Q2': 1}}, 'evidence_snippets': [{'uuid': 
+'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'Central Registry of Drug 
+Abuse China, Macau SAR 2006 15 -2 5 0.', 'date_iso': '2016-05-01', 
+'article_date_iso': '2016-05-01', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
+Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'the 
+peak in methamphetamine use in the United States happened between 1995-2002, 
+while in China methamphetamine use is a more recent occurrence', 'date_iso': 
+'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
+Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 
+'Global seizures of synthetic cathinones have been steadily increasing since 
+they were first reported in 2010. Those seizures tripled between 2013 and 2014,
+reaching 1.3\u202ftons. Most synthetic cathinones were seized in Eastern Europe
+(692\u202fkg were seized in the Russian Federation), in Western and Central 
+Europe (312\u202fkg were seized in England and Wales) and in East and 
+South‑East Asia (226\u202fkg were seized in Hong Kong, China).', 'date_iso': 
+'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
+Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}], 'raw_search_result': {'hits': [{'uuid': 
+'b2dfb775b133f7245807d4b96a091142a4574c3d', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'score': 65.612854, 
+'citations': [{'text': 'Central Registry of Drug Abuse China, Macau SAR 2006 15
+-2 5 0.', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'b2dfb775b133f7245807d4b96a091142a4574c3d', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika'}, {'text': 'the peak in 
+methamphetamine use in the United States happened between 1995-2002, while in 
+China methamphetamine use is a more recent occurrence', 'source_id': None, 
+'paragraph_id': None, 'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 
+'subject': '《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika'}, {'text': 'Global seizures 
+of synthetic cathinones have been steadily increasing since they were first 
+reported in 2010. Those seizures tripled between 2013 and 2014, reaching 
+1.3\u202ftons. Most synthetic cathinones were seized in Eastern Europe 
+(692\u202fkg were seized in the Russian Federation), in Western and Central 
+Europe (312\u202fkg were seized in England and Wales) and in East and 
+South‑East Asia (226\u202fkg were seized in Hong Kong, China).', 'source_id': 
+None, 'paragraph_id': None, 'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d',
+'subject': '《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika'}], 'article_date_iso': 
+'2016-05-01', 'event_dates': ['2016-05-01', '2015-01-01', '2014-01-01', 
+'2008-01-01', '2006-01-01', '2007-01-01', '2009-01-01', '2011-01-01', 
+'2013-01-01', '2003-01-01', '2016-01-01', '2015-11-01', '2010-01-01', 
+'2013-10-01', '2014-11-01', '2015-08-01', '2015-11-10', '2014-10-01', 
+'2016-04-08', '2005-01-01'], 'event_date_span': {'min': '1996-01-01', 'max': 
+'2030-01-01'}, 'article_title': 'World Drug Report 2016', 'selectedMessage': 
+False, 'highValue': False}], 'evidence_snippets': [{'uuid': 
+'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'Central Registry of Drug 
+Abuse China, Macau SAR 2006 15 -2 5 0.', 'date_iso': '2016-05-01', 
+'article_date_iso': '2016-05-01', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
+Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'the 
+peak in methamphetamine use in the United States happened between 1995-2002, 
+while in China methamphetamine use is a more recent occurrence', 'date_iso': 
+'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
+Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 
+'Global seizures of synthetic cathinones have been steadily increasing since 
+they were first reported in 2010. Those seizures tripled between 2013 and 2014,
+reaching 1.3\u202ftons. Most synthetic cathinones were seized in Eastern Europe
+(692\u202fkg were seized in the Russian Federation), in Western and Central 
+Europe (312\u202fkg were seized in England and Wales) and in East and 
+South‑East Asia (226\u202fkg were seized in Hong Kong, China).', 'date_iso': 
+'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
+Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}], 'evidence_snippets_strong': [{'uuid': 
+'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'Central Registry of Drug 
+Abuse China, Macau SAR 2006 15 -2 5 0.', 'date_iso': '2016-05-01', 
+'article_date_iso': '2016-05-01', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
+Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'the 
+peak in methamphetamine use in the United States happened between 1995-2002, 
+while in China methamphetamine use is a more recent occurrence', 'date_iso': 
+'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
+Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 
+'Global seizures of synthetic cathinones have been steadily increasing since 
+they were first reported in 2010. Those seizures tripled between 2013 and 2014,
+reaching 1.3\u202ftons. Most synthetic cathinones were seized in Eastern Europe
+(692\u202fkg were seized in the Russian Federation), in Western and Central 
+Europe (312\u202fkg were seized in England and Wales) and in East and 
+South‑East Asia (226\u202fkg were seized in Hong Kong, China).', 'date_iso': 
+'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
+'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
+之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
+Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}], 'evidence_snippets_weak': [], 'query_meta': {'query': 
+'核心關鍵詞組如下：中國、毒品、防治', 'es_query': 
+'核心關鍵詞組如下：中國、毒品、防治', 'core_terms': ['中國', '毒品', '防治'], 
+'syn_terms': ['China', '中华', '中華人民共和國', '違禁品', '麻醉品', 
+'非法藥物', '防控', '預防與治療', '防止與治療'], 'effective_terms': ['中國', 
+'毒品', '防治', 'China', '中华', '中華人民共和國', '違禁品', '麻醉品', 
+'非法藥物', '防控', '預防與治療', '防止與治療'], 'manual_terms_in_q': [], 
+'is_manual_entity_query': False, 'term_groups': [['China', '中华', '中國', 
+'中華人民共和國'], ['毒品', '違禁品', '非法藥物', '麻醉品'], ['防控', 
+'防止與治療', '防治', '預防與治療']], 'date_from': '2016-01-01', 'date_to': 
+'2021-12-31'}}, 'query_meta': {'core_terms': ['中國', '毒品', '防治'], 
+'core_query': '核心關鍵詞組如下：中國、毒品、防治', 'date_from': '2016-01-01', 
+'date_to': '2021-12-31', 'syn_terms': ['China', '中华', '中華人民共和國', 
+'違禁品', '麻醉品', '非法藥物', '防控', '預防與治療', '防止與治療'], 
+'effective_terms': ['中國', '毒品', '防治', 'China', '中华', '中華人民共和國', 
+'違禁品', '麻醉品', '非法藥物', '防控', '預防與治療', '防止與治療'], 
+'es_query': '核心關鍵詞組如下：中國、毒品、防治', 'manual_terms_in_q': [], 
+'is_manual_entity_query': False, 'term_groups': [['China', '中华', '中國', 
+'中華人民共和國'], ['毒品', '違禁品', '非法藥物', '麻醉品'], ['防控', 
+'防止與治療', '防治', '預防與治療']], 'raw_query': 
+'核心關鍵詞組如下：中國、毒品、防治'}}}
+[Step 1: Duration 35.21 seconds| Input tokens: 6,627 | Output tokens: 1,758]
+[report] run_data_agent 花費 41.878s mode=report
+[report] evidence_meta = {'total': 3, 'strong': 3, 'weak': 0, 'picked_for_llm': 3}
+=== DEBUG: EV (for LLM) ===
+{'ref_no': 1, 'id': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'd': '2016-05-01', 'title': 'World Drug Report 2016', 'note_preview': 'Central Registry of Drug Abuse China, Macau SAR 2006 15 -2 5 0.'}
+{'ref_no': 2, 'id': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'd': '2016-05-01', 'title': 'World Drug Report 2016', 'note_preview': 'the peak in methamphetamine use in the United States happened between 1995-2002, while in China meth'}
+{'ref_no': 3, 'id': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'd': '2016-05-01', 'title': 'World Drug Report 2016', 'note_preview': 'Global seizures of synthetic cathinones have been steadily increasing since they were first reported'}
 ==================================================
-[call_llm] sys_len=1116, user_len=314, user_preview='{"instruction":"給我第二篇的全文及中文翻譯。","docs_meta":[{"index":2,"uuid":"a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0","title":"叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika","date":"2013-03-19","subject":"叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika","total_length":160241}]}'
-[call_llm] system_preview='你是一個『文件後續處理規劃助手』（planner）。  任務：根據「使用者指令」與「文件列表（僅有基本資訊）」， 決定這一輪要處理哪幾篇文件、以及每一篇要讀取的字元範圍。  注意： - 你只能看到 docs_meta（不含全文），其中包含 index / uuid / title / date / subject / total_length。 - 切片上限：本輪所有文件加總的字元數，不可以超過 MAX_CHARS = 26000。 - 若使用者沒有指定區間，就預設從該篇的開頭開始，最多讀取 MAX_CHARS 字元。 - 若使用者說「前 26k / 前 26000 個字」，要解讀為從開頭開始，長度不超過 MAX_CHARS。 - 若使用者說「A~B 個字 / A 至 B 個字」，採 1-based，start=A，end=B（含），但仍不得超過 MAX_CHARS。 - 可理解自然語句如'
-==================================================
-[call_llm] sys_len=746, user_len=26677, user_preview='{"instruction":"給我第二篇的全文及中文翻譯。","docs":[{"uuid":"a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0","title":"叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika","date":"2013-03-19","subject":"叙利亚化学武器调查小组向潘基文秘书长递交最终调查报告之附件：https___unoda-web.s3.amazonaws.com__tika","full_text":"\\nReport on\\nUnited Nations Mission to Investigate Allegations \\nof the Use of Chemical Weapons in the Syrian Arab Republic \\nFinal report \\nContents \\nI. .........................................................'
-[call_llm] system_preview='你是一個『文件後續處理助手』。  所有可用資訊都來自 docs 陣列，不能查新的資料庫。  你可以做的任務包含但不限於： - 把指定篇章翻譯成英文 - 給我第一篇的全文（或某一段全文） - 幫我逐篇摘要 - 比較第一篇與第二篇差異 - 基於這些文件做新的說明  輸入 JSON： {   "instruction": "使用者目前這一輪的指令",   "docs": [     {       "index": 1,       "uuid": "...",       "title": "...",       "date": "...",       "subject": "...",       "full_text": "這次實際提供的文字片段（可能是全文的一部分）",       "range": { "start": 1, "end": 26000 },       "total'
-[answer_with_routing][TOTAL] total=53.474s mode=DOC_FOLLOWUP topic=news_general
-return v.strip() in extract_user_question 給我第二篇的全文及中文翻譯。
-return v.strip() in extract_user_question 給我第二篇的全文及中文翻譯。
-[chat_completions] saved last_structured for 'abe9f65c-d1d3-404f-af12-2681389efb7f' used_uuids = ['a2ce2c0eea8f923acc1362d7744a82c8e9ad70e0']
-INFO:     192.168.0.134:51142 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:49866 - "GET /v1/models HTTP/1.1" 200 OK
-[chat_completions] chosen session_key = 'abe9f65c-d1d3-404f-af12-2681389efb7f'
+[call_llm] sys_len=2782, user_len=1795, user_preview='{"q":"整理2016至2021年間中國毒品防治情況，逐條引述並加註來源，製作總結報告，進行趨勢分析與SWOT分析。","q0":"【對話歷史】\\n\\n\\n【目前問題】\\n請整理2016至2021年間中國毒品防治情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。\\n\\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。","t":["2016-01-01","2021-12-31"],"agg":{"docs":1,"snips":3,"active_days":1,"month":[["2016-05",1]],"quarter":[["2016-Q2",1]],"peak_days":[["2016-05-01",1]],"first_last":["2016-05-01","2016-05-01"]},"ev":[{"ref_no":1,"id":"b2dfb775b133f7245807d4b96a091142a4574c3d","d":"2016-05-0'
+[call_llm] system_preview=' 你是一個『資料驅動的分析助手』。  你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：  {   "q": "精煉後問句（用於檢索/統計與撰寫）",   "q0": "使用者原始問句（僅供展示/稽核，可不使用）",   "t": ["date_from 或 null", "date_to 或 null"],   "agg": {     "docs": 整體文件數,     "snips": 整體片段數,     "active_days": 有活動紀錄的天數,     "month": [ ["YYYY-MM", count], ... ],     "quarter": [ ["YYYY-Qx", count], ... ],     "peak_days": [ ["YYYY-MM-DD", count], ... ],   # 活動最集中的幾天    '
+[report] call_llm(report) 花費 16.167s model_id=gpt-oss:120b-32k
+[report] ask_with_report[TOTAL] total=60.450s ev_count=3 docs=1
+[answer_with_routing][TOTAL] total=63.254s mode=SRA_REPORT topic=news_general
+return v.strip() in extract_user_question 請整理2016至2021年間中國毒品防治情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。
+return v.strip() in extract_user_question 請整理2016至2021年間中國毒品防治情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。
+[chat_completions] saved last_structured for '86176e8c-1216-4160-b167-ef1e2ba51298' used_uuids = ['b2dfb775b133f7245807d4b96a091142a4574c3d']
+[chat_completions] evict session: '4028652e-fadb-49ab-9858-7283ceefcf5f'
+INFO:     192.168.0.134:60546 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:54956 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '86176e8c-1216-4160-b167-ef1e2ba51298'
+INFO:     192.168.0.134:54964 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:50082 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '86176e8c-1216-4160-b167-ef1e2ba51298'
+INFO:     192.168.0.134:50090 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:59624 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '86176e8c-1216-4160-b167-ef1e2ba51298'
+INFO:     192.168.0.134:59634 - "POST /v1/chat/completions HTTP/1.1" 200 OK

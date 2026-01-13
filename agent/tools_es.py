@@ -7,7 +7,8 @@ from elasticsearch import BadRequestError
 from elasticsearch import NotFoundError
 from smolagents import Tool
 from agent.es.es_client import (
-    ES,
+    #ES,
+    get_es,
     safe_search as _safe_es_search,
     resolve_index as _resolve_es_index,
 )
@@ -444,7 +445,14 @@ class ESFetchDocById(Tool):
 
     def __init__(self):
         super().__init__()
-        self.es = ES
+        #self.es = ES
+        self._es = None   # 先不連線
+    @property
+    def es(self):
+        if self._es is None:
+            self._es = get_es()
+        return self._es
+    
     def forward(
         self,
         uuid: str,

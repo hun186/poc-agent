@@ -1,6 +1,7 @@
 # agent/es/ingest_txt.py
 #cd /d D:\shared\TopicClassification\poc-agent
 #python -m agent.es.ingest_txt -d "D:\shared\TopicClassification\poc-agent\data\軍事情報文本\mil_30k_300days"
+#python -m agent.es.ingest_txt -d "D:\shared\TopicClassification\TopicTextCrawler\Books\新聞網\聯合國新聞網\UnTagged\最新消息"
 
 #跨路徑去重：
 #python -m agent.es.ingest_txt -d "D:\path\to\txt_dir" --dedup-by-content

@@ -181,3 +181,4 @@ cython_debug/
 .cursorindexingignore
 /.agent_sessions
 /logs
+.env.dev

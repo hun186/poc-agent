@@ -2,8 +2,9 @@
 import os
 from elasticsearch import Elasticsearch
 from agent.direct_llm_json import OpenAIStyleOllama
-from agent.config.index_loader import INDEX_CONFIG   # ★ 新增：跟 agent 共用 index 設定
-from agent.es.es_client import ALL_INDEXES, ES_INDEX_DEFAULT
+from config.index_loader import INDEX_CONFIG   # ★ 新增：跟 agent 共用 index 設定
+#from agent.es.es_client import ALL_INDEXES, ES_INDEX_DEFAULT
+from agent.es.es_client import init_index_cache, ALL_INDEXES, ES_INDEX_DEFAULT
 
 # ===== LLM / 模型設定 =====
 PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE")
@@ -59,6 +60,9 @@ ES = Elasticsearch(
 print("Connecting to ES...")
 print(ES.info())
 '''
+#init_index_cache(live_check=True)  # ✅ 這裡需要列出存在的 index，就用 True
+# 預設不要在 import 階段連 ES，避免任何環境變數/憑證還沒就緒就爆
+init_index_cache(live_check=os.getenv("ES_LIVE_CHECK", "0") == "1")
 print("[settings] ES client ready, default index =", ES_INDEX_DEFAULT)
 print("ALL_INDEXES =", ALL_INDEXES)  # ★ 看一下最後實際會查哪些 index
 
