@@ -2,56 +2,1413 @@
 [ES tools] 已載入人工同義詞表，自資料夾 config/synonyms 共 1 個檔案，合計 58 組 key（含預設 + merge）
 [settings] ES client ready, default index = satmeta
 ALL_INDEXES = ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
-INFO:     Started server process [40924]
+INFO:     Started server process [46356]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:9002 (Press CTRL+C to quit)
-INFO:     192.168.0.134:60534 - "GET /v1/models HTTP/1.1" 200 OK
-INFO:     192.168.0.134:60544 - "GET /v1/models HTTP/1.1" 200 OK
-[chat_completions] chosen session_key = '86176e8c-1216-4160-b167-ef1e2ba51298'
+INFO:     192.168.0.134:38850 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '8c47f7b5-32d5-4f9a-8436-98b48df2aae0'
 [chat_completions] reuse_uuids = []
 [chat_completions] refno_uuid_map = None
 ==================================================
-[call_llm] sys_len=1602, user_len=142, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 請整理2016至2021年間中國毒品防治情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。'
+[call_llm] sys_len=1602, user_len=394, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 中東市場近年在地緣衝突、能源轉型與國家策略調整下快速變動。以色列與哈瑪斯衝突持續影響航運安全與油價預期；沙烏地推動「願景 2030」進行大規模基建與科技投資，吸引全球資金；阿聯強化綠能、金融科技與自由貿易區布局；伊朗制裁、紅海航道安全與產油政策仍是左右市場風險的重要因素。該區域具成長動能，但政策不確定性高，需建立即時監測。 情資蒐集請依下列方向執行：宏觀組追蹤油價、OPEC+ 決策、區域利率政策與匯率波動；產業組掌握能源、基建、科技、新能源專案與大型國家基金投資動向；政策分析組研判地緣衝突、制裁政策與航運局勢；企業組蒐集該區大型企業財報、合作案與國家級採購專案；資料情資組負責開源情報、社群輿情與早期預警訊號。所有資料需以影響度排序，形成可供投資決策使用的精要摘要。'
 [call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
-[router] LLM route 花費 2.800s model_id=gpt-oss:120b-32k
-[router] routed = {'mode': 'SRA_REPORT', 'reason': '使用者要求整理特定期間（2016-2021）中國毒品防治情況，並進行趨勢與SWOT分析，屬於需重新搜尋與彙整多篇資料的報告需求。', 'topic': 'news_general'}
+[router] LLM route 花費 16.093s model_id=gpt-oss:120b-32k
+[router] routed = {'mode': 'SRA_REPORT', 'reason': '使用者要求整理、分析並彙整中東市場的多面向情資，形成精要摘要，屬於趨勢與報告類需求', 'topic': 'news_general'}
 ==================================================
-[call_llm] sys_len=297, user_len=178, user_preview='請精煉下列使用者問句，只輸出 JSON。  【使用者問句】 【對話歷史】   【目前問題】 請整理2016至2021年間中國毒品防治情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。  【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。'
+[call_llm] sys_len=297, user_len=430, user_preview='請精煉下列使用者問句，只輸出 JSON。  【使用者問句】 【對話歷史】   【目前問題】 中東市場近年在地緣衝突、能源轉型與國家策略調整下快速變動。以色列與哈瑪斯衝突持續影響航運安全與油價預期；沙烏地推動「願景 2030」進行大規模基建與科技投資，吸引全球資金；阿聯強化綠能、金融科技與自由貿易區布局；伊朗制裁、紅海航道安全與產油政策仍是左右市場風險的重要因素。該區域具成長動能，但政策不確定性高，需建立即時監測。 情資蒐集請依下列方向執行：宏觀組追蹤油價、OPEC+ 決策、區域利率政策與匯率波動；產業組掌握能源、基建、科技、新能源專案與大型國家基金投資動向；政策分析組研判地緣衝突、制裁政策與航運局勢；企業組蒐集該區大型企業財報、合作案與國家級採購專案；資料情資組負責開源情報、社群輿情與早期預警訊號。所有資料需以影響度排序，形成可供投資決策使用的精要摘要。  【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。'
 [call_llm] system_preview='你是一個「問句精煉器」，只做一件事：把使用者問句改寫成更精要、可供檢索與統計的版本。  請輸出 JSON，格式： {   "refined_question": "..." }  規則： 1) 保留：主題/對象、地點、時間範圍、使用者要的輸出型態（整理/比較/趨勢/引用來源/SWOT 等），與資料庫檢索工具設定相關的指示。 2) 刪除：客套話、重複描述、長度要求（如 2000 字）、格式碎念（如「請用漂亮小標」）、與檢索無關的冗詞。 3) 不能新增新事實（例如新增年份、地點、人物）。 4) 若原問句本來就很精簡，refined_question 直接回傳原句即可。 5) 一律用繁體中文。'
-[agent] building CodeAgent: try model + instructions
-[agent] CodeAgent created with model+instructions
 ┌────────────────────────────────── New run ──────────────────────────────────┐
 │                                                                             │
 │ 【系統參數（抽取關鍵字時請忽略本段）】                                      │
 │ index_hint=news_test                                                        │
 │                                                                             │
 │ 【使用者問題】                                                              │
-│ 整理2016至2021年間中國毒品防治情況，逐條引述並加註來源，製作總結報告，進行  │
-│ 趨勢分析與SWOT分析。                                                        │
+│ 請依宏觀、產業、政策分析、企業及資料情資五組，蒐集近年中東（包括以色列、哈  │
+│ 瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁）之油價、OPEC+、利率、匯率、能 │
+│ 源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報與社  │
+│ 群輿情等情資，依影響度排序，提供投資決策精要摘要。                          │
 │                                                                             │
 └─ LiteLLMModel - ollama_chat/gpt-oss:120b-32k ───────────────────────────────┘
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[92m19:57:19 - LiteLLM:INFO[0m: utils.py:3386 - 
+[92m17:30:41 - LiteLLM:INFO[0m: utils.py:3386 - 
 LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
-2026-01-13 19:57:19,313 INFO LiteLLM: 
+2026-01-16 17:30:41,143 INFO LiteLLM: 
 LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
-[92m19:57:40 - LiteLLM:INFO[0m: utils.py:1295 - Wrapper: Completed Call, calling success_handler
-2026-01-13 19:57:40,750 INFO LiteLLM: Wrapper: Completed Call, calling success_handler
+[92m17:31:01 - LiteLLM:INFO[0m: utils.py:1295 - Wrapper: Completed Call, calling success_handler
+2026-01-16 17:31:01,124 INFO LiteLLM: Wrapper: Completed Call, calling success_handler
  ─ Executing parsed code: ──────────────────────────────────────────────────── 
   # 使用者問題                                                                 
   question =                                                                   
-  "整理2016至2021年間中國毒品防治情況，逐條引述並加註來源，製作總結報告，進行  
-  趨勢分析與SWOT分析。"                                                        
+  "請依宏觀、產業、政策分析、企業及資料情資五組，蒐集近年中東（包括以色列、哈  
+  瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁）之油價、OPEC+、利率、匯率、能  
+  源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報與社   
+  群輿情等情資，依影響度排序，提供投資決策精要摘要。"                          
                                                                                
-  # 1. 解析核心關鍵字 (core_terms) 與時間範圍                                  
-  core_terms = ["中國", "毒品", "防治"]  # 主題與專業行為詞                    
+  # 1. 核心關鍵字抽取（不含時間相關字串）                                      
+  core_terms = [                                                               
+      "油價", "OPEC+", "利率", "匯率", "能源", "基建", "科技", "新能源",       
+      "國家基金", "企業財報", "合作案", "國家採購", "開源情報", "社群輿情",    
+      "中東", "以色列", "哈瑪斯衝突", "沙烏地願景2030", "阿聯綠能",            
+  "伊朗制裁"                                                                   
+  ]                                                                            
+                                                                               
+  # 2. 組成核心查詢句                                                          
   core_query = f"核心關鍵詞組如下：{'、'.join(core_terms)}"                    
                                                                                
-  date_from = "2016-01-01"                                                     
-  date_to   = "2021-12-31"                                                     
+  # 3. 取得搜尋結果（無時間範圍）                                              
+  search_result = es_search_news(                                              
+      query=core_query,                                                        
+      must_high_value=False,                                                   
+      must_selected=False,                                                     
+      size=10000,                                                              
+      date_from=None,                                                          
+      date_to=None,                                                            
+      selected_boost=6.0,                                                      
+      high_value_boost=2.5,                                                    
+      recency_boost=False,                                                     
+      recency_field="importDT",                                                
+      recency_scale="30d",                                                     
+      index_hint="news_test"                                                   
+  )                                                                            
                                                                                
-  # 2. 呼叫 ES 搜尋                                                            
+  # 4. 取出 evidence_snippets                                                  
+  evidence_snippets = search_result.get("evidence_snippets", [])               
+                                                                               
+  # 5. 時間統計（若有時間範圍，此處會在後續過濾）                              
+  aggregation = aggregate_month_quarter(evidence_snippets=evidence_snippets)   
+                                                                               
+  doc_count = aggregation.get("doc_count", 0)                                  
+  snippet_count = aggregation.get("snippet_count", 0)                          
+  active_days = aggregation.get("active_days", 0)                              
+  day_counts = aggregation.get("day_counts", {})                               
+  month_counts = aggregation.get("month_counts", {})                           
+  quarter_counts = aggregation.get("quarter_counts", {})                       
+                                                                               
+  # 6. 組成 query_meta                                                         
+  search_qm = (search_result.get("query_meta") or {}) if                       
+  isinstance(search_result, dict) else {}                                      
+                                                                               
+  query_meta = {                                                               
+      "core_terms": core_terms,                                                
+      "core_query": core_query,                                                
+      "date_from": None,                                                       
+      "date_to": None,                                                         
+      "syn_terms": search_qm.get("syn_terms"),                                 
+      "effective_terms": search_qm.get("effective_terms"),                     
+      "es_query": search_qm.get("es_query"),                                   
+      "manual_terms_in_q": search_qm.get("manual_terms_in_q"),                 
+      "is_manual_entity_query": search_qm.get("is_manual_entity_query"),       
+      "term_groups": search_qm.get("term_groups"),                             
+      "raw_query": search_qm.get("query"),                                     
+  }                                                                            
+                                                                               
+  # 7. 組成最終 payload                                                        
+  payload = {                                                                  
+      "question": question,                                                    
+      "time_range": {                                                          
+          "date_from": None,                                                   
+          "date_to": None,                                                     
+      },                                                                       
+      "stats": {                                                               
+          "doc_count": doc_count,                                              
+          "snippet_count": snippet_count,                                      
+          "active_days": active_days,                                          
+          "day_counts": day_counts,                                            
+          "month_counts": month_counts,                                        
+          "quarter_counts": quarter_counts,                                    
+      },                                                                       
+      "evidence_snippets": evidence_snippets,                                  
+      "raw_search_result": search_result,                                      
+      "query_meta": query_meta,                                                
+  }                                                                            
+                                                                               
+  # 8. 回傳 payload                                                            
+  final_answer({                                                               
+      "payload": payload                                                       
+  })                                                                           
+ ───────────────────────────────────────────────────────────────────────────── 
+[es_search_news] index = news_test query = 核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁
+==================================================
+[call_llm] sys_len=587, user_len=107, user_preview='使用者查詢如下： 核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁'
+[call_llm] system_preview='你是一個「通用查詢關鍵字萃取器」。 使用者會給你一段查詢句子或自然語言描述，請只做一件事：  從內容中找出最重要的「關鍵詞 / 主題詞」，例如： - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構 - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱 - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰 - 產品 / 人工同義詞 / 型號：武器型號、船艦名、飛機型號、產品型號等  規則： 1. 僅輸出一個 JSON 陣列（array of string），不得有任何多餘文字。    例：["川普經濟學", "對等關稅", "美國就業", "物價", "宮古水道"] 2. 每個元素應是短語或名詞，不要整句話。 3. 優先挑選具體、可檢索的詞：    - 例如「川普經濟學」「宮古水道」「東風15型導彈」    - 比起「影響」「變化」「情勢」這種抽象詞更重要。 4. 不要'
+==================================================
+[call_llm] sys_len=1366, user_len=187, user_preview='查詢句子（query）： 核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁  核心關鍵詞（core_terms）： ["油價", "OPEC+", "利率", "匯率", "能源", "新能源", "中東", "哈瑪斯衝突"]'
+[call_llm] system_preview='你是一個「文本檢索查詢關鍵詞同義詞擴充器」。  使用者會提供： - 一段查詢句子（query） - 一組核心關鍵詞（core_terms）  你的工作只有一件事： 1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。 2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），    請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 value 的陣列裡。  具體規則：  【輸出格式】 - 僅輸出一個 JSON 物件（object），不得有任何多餘文字。   key: 代表核心詞（string）   value: 該語意軸的同義詞陣列（array of string）  【語意軸合併規則】 1. 先觀察 core_terms 列表，思考是否有「其實是同一個概念」的核心詞：    例如：    - 「敘利亞」「Syrian Arab'
+[es_search_news][T1] compute_effective_terms 花費 10.129s
+[es_search_news][T2] build_main_query_body 花費 0.000s
+[es_search_news] body = {"size": 10000, "_source": ["uuid", "communication.subject", "multidim_event_json.article_title", "multidim_event_json.evidence_snippets", "multidim_event_json.Event_Timeline", "selectedMessage", "ai.classLabels.highValue", "importDT", "update_time_ai"], "query": {"function_score": {"query": {"bool": {"should": [{"multi_match": {"query": "核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁", "fields": ["multidim_event_json.Event.subject^8", "multidim_event_json.Event.object^7", "multidim_event_json.Event.location^7", "multidim_event_json.core_entities^7", "multidim_event_json.locations^7", "multidim_event_json.Event_Timeline.description^5", "multidim_event_json.Person.name^5", "multidim_event_json.Person.role^4", "multidim_event_json.Involved_Parties.party_name^4", "multidim_event_json.article_title^4", "communication.subject^4", "multidim_event_json.evidence_snippets.text^3"], "type": "best_fields", "operator": "or"}}, {"simple_query_string": {"query": "核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁", "fields": ["multidim_event_json.Event.subject^5", "multidim_event_json.Event.object^4", "multidim_event_json.Event.location^4", "multidim_event_json.core_entities^4", "multidim_event_json.locations^4", "multidim_event_json.Event_Timeline.description^3", "multidim_event_json.Person.name^3", "multidim_event_json.Person.role^2", "multidim_event_json.Involved_Parties.party_name^2", "multidim_event_json.article_title^3", "communication.subject^3", "multidim_event_json.evidence_snippets.text^2"], "default_operator": "and"}}, {"wildcard": {"communication.subject.keyword": {"value": "*核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁*"}}}, {"wildcard": {"multidim_event_json.article_title.raw": {"value": "*核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁*"}}}, {"bool": {"should": [{"match_phrase": {"rawInfo.content": "油價"}}, {"match_phrase": {"communication.subject": "油價"}}, {"match_phrase": {"multidim_event_json.article_title": "油價"}}, {"match_phrase": {"rawInfo.content": "OPEC+"}}, {"match_phrase": {"communication.subject": "OPEC+"}}, {"match_phrase": {"multidim_event_json.article_title": "OPEC+"}}, {"match_phrase": {"rawInfo.content": "利率"}}, {"match_phrase": {"communication.subject": "利率"}}, {"match_phrase": {"multidim_event_json.article_title": "利率"}}, {"match_phrase": {"rawInfo.content": "匯率"}}, {"match_phrase": {"communication.subject": "匯率"}}, {"match_phrase": {"multidim_event_json.article_title": "匯率"}}, {"match_phrase": {"rawInfo.content": "能源"}}, {"match_phrase": {"communication.subject": "能源"}}, {"match_phrase": {"multidim_event_json.article_title": "能源"}}, {"match_phrase": {"rawInfo.content": "新能源"}}, {"match_phrase": {"communication.subject": "新能源"}}, {"match_phrase": {"multidim_event_json.article_title": "新能源"}}, {"match_phrase": {"rawInfo.content": "中東"}}, {"match_phrase": {"communication.subject": "中東"}}, {"match_phrase": {"multidim_event_json.article_title": "中東"}}, {"match_phrase": {"rawInfo.content": "哈瑪斯衝突"}}, {"match_phrase": {"communication.subject": "哈瑪斯衝突"}}, {"match_phrase": {"multidim_event_json.article_title": "哈瑪斯衝突"}}, {"match": {"rawInfo.content": {"query": "原油價格", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "石油價格", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "Crude oil price", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "原油价", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "欧佩克+", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "OPEC Plus", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "石油输出国组织+", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "石油輸出國組織+", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "interest rate", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "利息率", "operato
+2026-01-16 17:31:20,557 INFO elastic_transport.transport: POST https://192.168.0.133:9001/news_test/_search?allow_no_indices=true&error_trace=true&ignore_unavailable=true [status:200 duration:0.405s]
+[es_search_news] index_type= <class 'str'> index= news_test
+[es_search_news] _shards= {'total': 1, 'successful': 1, 'skipped': 0, 'failed': 0}
+[es_search_news][T3] _safe_es_search 花費 1.278s index=news_test size=10000
+2026-01-16 17:31:20,660 INFO agent.es.evidence: build_hits_and_evidence: es_hits=269 out_hits=269 citations=65 inner_used=31 fallback_used=0 term_groups=8 effective_terms=37 date_range=N/A~N/A
+2026-01-16 17:31:20,671 INFO agent.es.evidence: build_hits_and_evidence: evidence strict=0
+2026-01-16 17:31:20,671 WARNING agent.es.evidence: build_hits_and_evidence: strict evidence=0 -> relax try (groups=8 strict_req=3 try_req=2)
+2026-01-16 17:31:20,681 INFO agent.es.evidence: build_hits_and_evidence: evidence relaxed(req=2)=27
+2026-01-16 17:31:20,682 INFO agent.es.evidence: build_hits_and_evidence: filtered_hits=16 evidence=27 syn_snippets=27 weak=0
+[es_search_news][T4] build_hits_and_evidence 花費 0.025s
+[es_search_news][TOTAL] total=11.433s 代理人ES文本查詢工具查詢字串=核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁
+[es_search_news] query='核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁', es_query='核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁', hits=16, snippets_after_filter=27, effective_terms=['油價', 'OPEC+', '利率', '匯率', '能源', '新能源', '中東', '哈瑪斯衝突', '原油價格', '石油價格', 'Crude oil price', '原油价', '欧佩克+', 'OPEC Plus', '石油输出国组织+', '石油輸出國組織+', 'interest rate', '利息率', '利率水平', 'exchange rate', '外汇率', '外匯匯率', '汇率', 'energy', '能源行业', '能源资源', '能源业', 'renewable energy', '再生能源', '绿色能源', '新能', '中东', 'Middle East', '中东地区', '哈马斯冲突', 'Hamas conflict', '巴勒斯坦-以色列冲突'], synonym_hit_snippets=27
+[es_tools] query_meta = {"query": "核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁", "es_query": "核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁", "core_terms": ["油價", "OPEC+", "利率", "匯率", "能源", "新能源", "中東", "哈瑪斯衝突"], "syn_terms": ["原油價格", "石油價格", "Crude oil price", "原油价", "欧佩克+", "OPEC Plus", "石油输出国组织+", "石油輸出國組織+", "interest rate", "利息率", "利率水平", "exchange rate", "外汇率", "外匯匯率", "汇率", "energy", "能源行业", "能源资源", "能源业", "renewable energy", "再生能源", "绿色能源", "新能", "中东", "Middle East", "中东地区", "哈马斯冲突", "Hamas conflict", "巴勒斯坦-以色列冲突"], "effective_terms": ["油價", "OPEC+", "利率", "匯率", "能源", "新能源", "中東", "哈瑪斯衝突", "原油價格", "石油價格", "Crude oil price", "原油价", "欧佩克+", "OPEC Plus", "石油输出国组织+", "石油輸出國組織+", "interest rate", "利息率", "利率水平", "exchange rate", "外汇率", "外匯匯率", "汇率", "energy", "能源行业", "能源资源", "能源业", "renewable energy", "再生能源", "绿色能源", "新能", "中东", "Middle East", "中东地区", "哈马斯冲突", "Hamas conflict", "巴勒斯坦-以色列冲突"], "manual_terms_in_q": [], "is_manual_entity_query": false, "term_groups": [["Crude oil price", "原油价", "原油價格", "油價", "石油價格"], ["OPEC Plus", "OPEC+", "欧佩克+", "石油輸出國組織+", "石油输出国组织+"], ["interest rate", "利息率", "利率", "利率水平"], ["exchange rate", "匯率", "外匯匯率", "外汇率", "汇率"], ["energy", "能源", "能源业", "能源行业", "能源资源"], ["renewable energy", "再生能源", "新能", "新能源", "绿色能源"], ["Middle East", "中东", "中东地区", "中東"], ["Hamas conflict", "哈瑪斯衝突", "哈马斯冲突", "巴勒斯坦-以色列冲突"]], "date_from": null, "date_to": null}
+[es_search_news] hits=16, snippets=27, syn_hit_snippets=27
+Final answer: {'payload': {'question': 
+'請依宏觀、產業、政策分析、企業及資料情資五組，蒐集近年中東（包括以色列、哈瑪斯
+衝突、沙烏地願景2030、阿聯綠能、伊朗制裁）之油價、OPEC+、利率、匯率、能源、基建
+、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報與社群輿情等情資
+，依影響度排序，提供投資決策精要摘要。', 'time_range': {'date_from': None, 
+'date_to': None}, 'stats': {'doc_count': 16, 'snippet_count': 27, 
+'active_days': 15, 'day_counts': {'2008-05-01': 1, '2010-04-19': 1, 
+'2013-12-20': 1, '2015-05-21': 1, '2015-09-25': 1, '2015-11-20': 1, 
+'2015-12-01': 1, '2016-10-20': 2, '2019-01-01': 1, '2020-01-01': 1, 
+'2022-05-04': 1, '2022-09-18': 1, '2023-01-01': 1, '2023-12-02': 1, 
+'2024-04-23': 1}, 'month_counts': {'2008-05': 1, '2010-04': 1, '2013-12': 1, 
+'2015-05': 1, '2015-09': 1, '2015-11': 1, '2015-12': 1, '2016-10': 2, 
+'2019-01': 1, '2020-01': 1, '2022-05': 1, '2022-09': 1, '2023-01': 1, 
+'2023-12': 1, '2024-04': 1}, 'quarter_counts': {'2008-Q2': 1, '2010-Q2': 1, 
+'2013-Q4': 1, '2015-Q2': 1, '2015-Q3': 1, '2015-Q4': 2, '2016-Q4': 2, 
+'2019-Q1': 1, '2020-Q1': 1, '2022-Q2': 1, '2022-Q3': 1, '2023-Q1': 1, 
+'2023-Q4': 1, '2024-Q2': 1}}, 'evidence_snippets': [{'uuid': 
+'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 'text': 
+'出席联合国亚洲及太平洋经济社会委员会第64届会议的各国代表达成一致，今后将在发展
+可再生能源方面积极合作，以降低整个区域对于化石能源的依赖性，提高长期的能源安全
+。', 'date_iso': '2008-05-01', 'article_date_iso': '2008-05-01', 'subject': 
+'亚太国家将就发展可再生能源加强合作', 'article_title': 
+'亚太国家将就发展可再生能源加强合作', 'paragraph_id': None, 'source_id': '', 
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 'text': 
+'亚太经社会在会议期间推出的一份报告指出，以目前的速度计算，到2030年时，亚太地区
+的能源需求将达到世界总量的一半，其中80%以上是对石油、煤炭等化石燃料的需求，这种
+状况不仅将使亚太国家更容易受到能源价格波动的冲击，也将增加这一地区的碳排放量。'
+, 'date_iso': '2008-05-01', 'article_date_iso': '2008-05-01', 'subject': 
+'亚太国家将就发展可再生能源加强合作', 'article_title': 
+'亚太国家将就发展可再生能源加强合作', 'paragraph_id': None, 'source_id': '', 
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'edbc016c8c86640ef30c84387e80c4daa4a71f14', 'text': 
+'在国际可再生能源署，我们一直在与肯尼亚总统威廉·鲁托合作，建立伙伴关系，加快可
+再生能源在非洲的部署。“非洲可再生能源加速伙伴关系”（Accelerated Partnership for
+Renewables in Africa, 
+APRA）这一倡议是去年在内罗毕举行的首届非洲气候峰会期间发起的，倡议领导人在第28
+届气候变化大会(COP28)期间签署了一份联合声明以推动可再生能源转型，将其作为确保非
+洲能源可及、能源安全和绿色发展的战略解决方案。', 'date_iso': '2024-04-23', 
+'article_date_iso': '2024-04-23', 'subject': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'article_title': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'edbc016c8c86640ef30c84387e80c4daa4a71f14', 'text': 
+'可再生能源的重要作用在当今世界中绝对不容忽视，它是向更清洁、更高效能源体系转型
+的关键。', 'date_iso': '2024-04-23', 'article_date_iso': '2024-04-23', 
+'subject': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'article_title': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'text': 
+'他说：“我们需要确保从化石燃料向可再生能源的过渡是公正、公平和平等的。这关乎在
+座一些国家的生死存亡。”', 'date_iso': '2023-12-02', 'article_date_iso': 
+'2023-12-02', 'subject': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'article_title': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'text': 
+'他强调，各国必须在本届气候大会上承诺到2030年将可再生能源产能增加两倍，能源效率
+提高一倍，并为所有人带来清洁能源；必须承诺逐步淘汰化石燃料，并根据1.5℃升温限制
+来设定明确的时间框架。', 'date_iso': '2023-12-02', 'article_date_iso': 
+'2023-12-02', 'subject': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'article_title': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'text': 
+'正在阿联酋迪拜出席第28届联合国气候变化大会的秘书长古特雷斯今天宣布，他计划成立
+一个小组，旨在确保从化石燃料向可再生能源的过渡是公正和可持续的，并使所有国家受
+益。', 'date_iso': '2023-12-02', 'article_date_iso': '2023-12-02', 'subject': 
+'古特雷斯：必须确保可再生能源转型的公正和可持续性', 'article_title': 
+'古特雷斯：必须确保可再生能源转型的公正和可持续性', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 
+'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'e090e37141386791572302eaf4f6a83ea7a24108', 'text': 
+'２０１１年，潘基文秘书长发起“人人享有可持续能源”倡议，提出全球力争在２０３０年
+实现三大目标，即全球普及现代能源服务、能源利用效率翻番和可再生能源在全球能源消
+费中所占比例翻番。', 'date_iso': '2015-05-21', 'article_date_iso': 
+'2015-05-21', 'subject': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'article_title': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'paragraph_id': None, 'source_id': '', 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'e090e37141386791572302eaf4f6a83ea7a24108', 'text': 
+'为期四天的第二届“ 
+联合国人人享有可持续能源论坛”今天进入最后一天。联合国负责经济和社会事务的副秘书
+长吴红波在当天的讨论会上发表讲话指出，融资、投资及大力增强能源效率、可再生能源
+以及普及能源使用非常重要。他呼吁所有利用攸关方慷慨做出承诺，以实现人人享有可持
+续能源的全球目标。', 'date_iso': '2015-05-21', 'article_date_iso': 
+'2015-05-21', 'subject': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'article_title': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'paragraph_id': None, 'source_id': '', 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', 'text': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 'date_iso': 
+'2022-09-18', 'article_date_iso': '2022-09-18', 'subject': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'article_title': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', 'text': 
+'他说：“如果我们过去在可再生能源上进行了大量投资，我们现在就不会陷入气候紧急状
+态”。', 'date_iso': '2022-09-18', 'article_date_iso': '2022-09-18', 'subject': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'article_title': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 'text': 
+'世界银行4月19日发布的一份报告指出，通过提高能效和发展可再生能源，东亚六个能源
+消耗大国到2025年可以在不牺牲经济增长的情况下稳定其温室气体排放；不过，要实现这
+一点，这些国家需要获得大量优惠融资。', 'date_iso': '2010-04-19', 
+'article_date_iso': '2010-04-19', 'subject': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'article_title': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 
+'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 'text': 
+'报告指出，在过去30年中，东亚的GDP增长了十倍，致使能源消耗增加了两倍，未来20年
+随着城市人口增加50%以及工业化进程的继续，能耗预计还会翻一番。', 'date_iso': 
+'2010-04-19', 'article_date_iso': '2010-04-19', 'subject': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'article_title': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['中东', '能源'], 'match_scope': 'mixed', 
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'text': 
+'我们的业务是从2016年成立的。能链的发展其实就是中国在交通、能源和新能源领域飞速
+发展的一个缩影。', 'date_iso': '2023-01-01', 'article_date_iso': '2023-01-01', 
+'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'article_title': 
+'前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['新能源', '能源', 
+'新能'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, 
+{'uuid': '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'text': 
+'我们今年这个项目的名称叫做“新能源充电，不止于城市”。我们希望能够拓展新能源基础
+设施发展的一个边界，不单单在城市里能够看到有非常丰富的网络和充电多样化的选择，
+在乡村地区也能有更多的这些基础设施。', 'date_iso': '2023-01-01', 
+'article_date_iso': '2023-01-01', 'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'article_title': 
+'前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['新能源', '能源', 
+'新能'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, 
+{'uuid': '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'text': 
+'目前，在整个乡村地区去开展新能源建设，其实遇到的问题还是比较多的，原因是资金或
+者说金融支持还是比较少，因为相较于城市地区，它要长期才能够获得收益。', 
+'date_iso': '2023-01-01', 'article_date_iso': '2023-01-01', 'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'article_title': 
+'前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['新能源', '能源', 
+'新能'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, 
+{'uuid': '55278d7f2d0abfe1d8adfacb7d1d56a4955b285c', 'text': 
+'比如说可再生能源占一次能源消费的20%。', 'date_iso': '2015-11-20', 
+'article_date_iso': '2015-11-20', 'subject': 
+'中国“国家自主减排贡献方案”解析——访中国减排问题专家姜克隽', 'article_title': 
+'“国家自主减排贡献方案”解析——访中国减排问题专家姜克隽', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text',
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'c07f41f9e3f30b522f7d32d1290297c6d48ffa2a', 'text': 
+'我们将大幅增加可再生能源的份额，把全球能源效率和节能的比例提高一倍，从而确保所
+有人到 2030 年普遍获得可负担、可靠的现代和可持续的能源服务。', 'date_iso': 
+'2013-12-20', 'article_date_iso': '2013-12-20', 'subject': '交付资金的时间到了_
+联合国峰会推动发展融资取得突破之附件：《亚的斯亚贝巴行动议程》_tika', 
+'article_title': '第三次发展筹资问题国际会议亚的斯亚贝巴行动议程', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'d2021f8b7ca61d10c5a549b442b2b444b543a1bf', 'text': 
+'我们现在的可再生能源的装机总量是7.26亿千瓦，这是什么概念呢？这是中国总发电装机
+容量的38%，是全球可再生能源装机容量的30%，在（全球）增量这一部分我们占了44%。',
+ 'date_iso': '2015-12-01', 'article_date_iso': '2015-12-01', 'subject': 
+'【专题报道】应对气候变化    中国在行动——专访中国气候变化事务特别代表解振华', 
+'article_title': '专题报道】应对气候变化', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text', 
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'b9f67b8993be2bfae982e71864c670fdd2718d3d', 'text': 
+'我们确认，凭借规模经济和集聚经济的效应，并通过促进能效、可再生能源、复原力、生
+产力、环境保护和城市经济可持续增长，城市形态、基础设施和建筑设计可在提高成本和
+资源效益方面发挥最重要的推动作用。', 'date_iso': '2016-10-20', 
+'article_date_iso': '2016-10-20', 'subject': 
+'【专题报道】不爱“饭局”爱“书局”？—— 
+也说教科文组织新晋之附件：《新城市议程》_tika', 'article_title': '新城市议程', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'3969582a6e43efc221ad0746aec1dfa09ea721f7', 'text': 
+'7.2到2030年，大幅增加可再生能源在全球能源结构中的比例', 'date_iso': 
+'2015-09-25', 'article_date_iso': '2015-09-25', 'subject': 
+'麦当劳加入国际劳工组织倡议__ 
+___致力于促进全球青年体面之附件：2030年可持续发展议程_tika', 'article_title': 
+'Microsoft Word - 2030 Agenda for ODS replacement-as agreed with Mission 
+1-5-2016.doc', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'text': '3 4 .
+我 们 承 诺 增 进 人 人 不 受 歧 视 地 平 等 取 用 负 担 得 起 、 可 持 续 和 
+基 本 的 有 形 
+和社会基础设施的机会，包括负担得起的基础设施配套的用地、住房、现代和可再生能源
+、安全饮用水和环境卫生。', 'date_iso': '2016-10-20', 'article_date_iso': 
+'2016-10-20', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《新城市议程》
+_tika', 'article_title': '新城市议程', 'paragraph_id': None, 'source_id': None,
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'text': 
+'我们确认，凭借规模经济和集聚经济的效应，并通过促进能效、可再生能源、复原力、生
+产力、环境保护和城市经济可持续增长，城市形态、基础设施和建筑设计可在提高成本和
+资源效益方面发挥最重要的推动作用。', 'date_iso': '2016-10-20', 
+'article_date_iso': '2016-10-20', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《新城市议程》
+_tika', 'article_title': '新城市议程', 'paragraph_id': None, 'source_id': None,
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'a3f8ac60174ddf29ec2b77e28cb6dbf03a55fd32', 'text': 'Progress for a Goal can 
+mask individual declines. Whilst a Goal can show good progress, within a Goal 
+there are sub-sectors that require wholesale reversal, for example, the 
+declining use of renewable energy (Goal 7), or insufficient resource 
+mobilization to end poverty (Goal 1) and substance abuse which threatens to 
+derail impressive gains under Goal 3.', 'date_iso': '2019-01-01', 
+'article_date_iso': '2019-01-01', 'subject': 
+'【专题报道】到2030年实现17个可持续发展目标 
+亚太地区将之附件：《亚太地区可持续发展进展报告》_tika', 'article_title': 'Asia 
+and the Pacific SDG Progress Report 2019', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['energy', 'renewable energy'], 'match_scope': 'text', 
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f4db661f6688cad000da6c02ed57df289eb30a93', 'text': 
+'包括“联合国能源机制”在内的大约30个主要组织今天启动一项行动计划，旨在到2025年将
+全球可再生能源翻一番，为5亿人提供电力，为10亿人提供清洁烹饪。', 'date_iso': 
+'2022-05-04', 'article_date_iso': '2022-05-04', 'subject': 
+'30个国际组织启动行动计划 为5亿人提供电力 为10亿人提供清洁烹饪手段', 
+'article_title': '', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'd931f1da842f933a644eb6dbe9e4b96555285e6c', 'text': 
+'Global investment in renewable energy in 2018 totalled US$288.9 billion.', 
+'date_iso': '2020-01-01', 'article_date_iso': '2020-01-01', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《2020年世界城
+市报告》_tika', 'article_title': 'World Cities Report 2020', 'paragraph_id': 
+None, 'source_id': None, 'synonym_hits': ['energy', 'renewable energy'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'d931f1da842f933a644eb6dbe9e4b96555285e6c', 'text': 'In 2017, for instance, 158
+city authorities, businesses, non-governmental organizations and research 
+institutions signed the Nagano Declaration, committing to increase cooperation 
+and accelerating the transition to 100 per cent renewable energy.', 'date_iso':
+'2020-01-01', 'article_date_iso': '2020-01-01', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《2020年世界城
+市报告》_tika', 'article_title': 'World Cities Report 2020', 'paragraph_id': 
+None, 'source_id': None, 'synonym_hits': ['energy', 'renewable energy'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}], 
+'raw_search_result': {'hits': [{'uuid': 
+'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 'subject': 
+'亚太国家将就发展可再生能源加强合作', 'score': 260.7857, 'citations': [{'text':
+'出席联合国亚洲及太平洋经济社会委员会第64届会议的各国代表达成一致，今后将在发展
+可再生能源方面积极合作，以降低整个区域对于化石能源的依赖性，提高长期的能源安全
+。', 'source_id': '', 'paragraph_id': None, 'uuid': 
+'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 'subject': 
+'亚太国家将就发展可再生能源加强合作'}, {'text': 
+'亚太经社会在会议期间推出的一份报告指出，以目前的速度计算，到2030年时，亚太地区
+的能源需求将达到世界总量的一半，其中80%以上是对石油、煤炭等化石燃料的需求，这种
+状况不仅将使亚太国家更容易受到能源价格波动的冲击，也将增加这一地区的碳排放量。'
+, 'source_id': '', 'paragraph_id': None, 'uuid': 
+'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 'subject': 
+'亚太国家将就发展可再生能源加强合作'}], 'article_date_iso': '2008-05-01', 
+'event_dates': ['2008-05-01', '2030-01-01'], 'event_date_span': {'min': 
+'2008-05-01', 'max': '2030-01-01'}, 'article_title': 
+'亚太国家将就发展可再生能源加强合作', 'selectedMessage': False, 'highValue': 
+False}, {'uuid': 'edbc016c8c86640ef30c84387e80c4daa4a71f14', 'subject': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'score': 246.285, 'citations': [{'text': 
+'在国际可再生能源署，我们一直在与肯尼亚总统威廉·鲁托合作，建立伙伴关系，加快可
+再生能源在非洲的部署。“非洲可再生能源加速伙伴关系”（Accelerated Partnership for
+Renewables in Africa, 
+APRA）这一倡议是去年在内罗毕举行的首届非洲气候峰会期间发起的，倡议领导人在第28
+届气候变化大会(COP28)期间签署了一份联合声明以推动可再生能源转型，将其作为确保非
+洲能源可及、能源安全和绿色发展的战略解决方案。', 'source_id': None, 
+'paragraph_id': None, 'uuid': 'edbc016c8c86640ef30c84387e80c4daa4a71f14', 
+'subject': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉'}, 
+{'text': 
+'可再生能源的重要作用在当今世界中绝对不容忽视，它是向更清洁、更高效能源体系转型
+的关键。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'edbc016c8c86640ef30c84387e80c4daa4a71f14', 'subject': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉'}], 
+'article_date_iso': '2024-04-23', 'event_dates': ['2024-04-23', '2024-01-26', 
+'2030-01-01'], 'event_date_span': {'min': '2024-01-26', 'max': '2030-01-01'}, 
+'article_title': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'selectedMessage': False, 'highValue': False}, {'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'subject': 
+'古特雷斯：必须确保可再生能源转型的公正和可持续性', 'score': 227.79529, 
+'citations': [{'text': 
+'他说：“我们需要确保从化石燃料向可再生能源的过渡是公正、公平和平等的。这关乎在
+座一些国家的生死存亡。”', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'subject': 
+'古特雷斯：必须确保可再生能源转型的公正和可持续性'}, {'text': 
+'他强调，各国必须在本届气候大会上承诺到2030年将可再生能源产能增加两倍，能源效率
+提高一倍，并为所有人带来清洁能源；必须承诺逐步淘汰化石燃料，并根据1.5℃升温限制
+来设定明确的时间框架。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'subject': 
+'古特雷斯：必须确保可再生能源转型的公正和可持续性'}, {'text': 
+'正在阿联酋迪拜出席第28届联合国气候变化大会的秘书长古特雷斯今天宣布，他计划成立
+一个小组，旨在确保从化石燃料向可再生能源的过渡是公正和可持续的，并使所有国家受
+益。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'subject': 
+'古特雷斯：必须确保可再生能源转型的公正和可持续性'}], 'article_date_iso': 
+'2023-12-02', 'event_dates': ['2023-12-02', '2030-01-01', '2024-04-01'], 
+'event_date_span': {'min': '2023-12-02', 'max': '2030-01-01'}, 'article_title':
+'古特雷斯：必须确保可再生能源转型的公正和可持续性', 'selectedMessage': False, 
+'highValue': False}, {'uuid': 'e090e37141386791572302eaf4f6a83ea7a24108', 
+'subject': '人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'score': 219.0813, 'citations': [{'text': 
+'２０１１年，潘基文秘书长发起“人人享有可持续能源”倡议，提出全球力争在２０３０年
+实现三大目标，即全球普及现代能源服务、能源利用效率翻番和可再生能源在全球能源消
+费中所占比例翻番。', 'source_id': '', 'paragraph_id': None, 'uuid': 
+'e090e37141386791572302eaf4f6a83ea7a24108', 'subject': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标'}, {'text': '为期四天的第二届“ 
+联合国人人享有可持续能源论坛”今天进入最后一天。联合国负责经济和社会事务的副秘书
+长吴红波在当天的讨论会上发表讲话指出，融资、投资及大力增强能源效率、可再生能源
+以及普及能源使用非常重要。他呼吁所有利用攸关方慷慨做出承诺，以实现人人享有可持
+续能源的全球目标。', 'source_id': '', 'paragraph_id': None, 'uuid': 
+'e090e37141386791572302eaf4f6a83ea7a24108', 'subject': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标'}, {'text': 
+'在此次论坛会议期间，欧盟承诺在2014年至2020年间投入35亿美元资金，此举将会带来发
+电、输电和用电方面总额多达300亿美元的投资。此外，中国在2015年使全国所有人都能用
+上电的计划将有望实现，中国还承诺，在2020年前，在其能源消费中增加15%的非化石燃料
+份额，在2030年达到20%。', 'source_id': '', 'paragraph_id': None, 'uuid': 
+'e090e37141386791572302eaf4f6a83ea7a24108', 'subject': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标'}], 'article_date_iso': '2015-05-21', 'event_dates': 
+['2015-05-21', '2015-01-01', '2020-01-01', '2030-01-01', '2011-01-01'], 
+'event_date_span': {'min': '2011-01-01', 'max': '2030-01-01'}, 'article_title':
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'selectedMessage': False, 'highValue': False}, {'uuid': 
+'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', 'subject': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 'score': 
+209.10663, 'citations': [{'text': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 'source_id': 
+None, 'paragraph_id': None, 'uuid': 'b9e179360d58d86b3b1fe288bb316cb9575bfc2b',
+'subject': '古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动'}, 
+{'text': 
+'他说：“如果我们过去在可再生能源上进行了大量投资，我们现在就不会陷入气候紧急状
+态”。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', 'subject': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动'}], 
+'article_date_iso': '2022-09-18', 'event_dates': ['2022-09-18', '2030-01-01', 
+'2050-01-01'], 'event_date_span': {'min': '2022-09-18', 'max': '2050-01-01'}, 
+'article_title': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'selectedMessage': False, 'highValue': False}, {'uuid': 
+'76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 'subject': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'score': 206.41454, 
+'citations': [{'text': 
+'世界银行4月19日发布的一份报告指出，通过提高能效和发展可再生能源，东亚六个能源
+消耗大国到2025年可以在不牺牲经济增长的情况下稳定其温室气体排放；不过，要实现这
+一点，这些国家需要获得大量优惠融资。', 'source_id': None, 'paragraph_id': None,
+'date_iso': '2010-04-19', 'uuid': '76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 
+'subject': '世行报告：东亚可以实现能源转型但需克服融资障碍'}, {'text': 
+'报告指出，在过去30年中，东亚的GDP增长了十倍，致使能源消耗增加了两倍，未来20年
+随着城市人口增加50%以及工业化进程的继续，能耗预计还会翻一番。', 'source_id': 
+None, 'paragraph_id': None, 'uuid': '76499dd1e7bb39a42bb3ccc87f791112ef95bbb5',
+'subject': '世行报告：东亚可以实现能源转型但需克服融资障碍'}, {'text': 
+'不过，融资被认为是东亚步入可持续能源增长轨道的主要障碍。报告估计，要转变发展模
+式，东亚地区每年需要净投入800亿美元的追加投资。', 'source_id': None, 
+'paragraph_id': None, 'uuid': '76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 
+'subject': '世行报告：东亚可以实现能源转型但需克服融资障碍'}], 
+'article_date_iso': '2010-04-19', 'event_dates': ['2010-04-19', '2025-01-01', 
+'2030-01-01'], 'event_date_span': {'min': '2010-04-19', 'max': '2030-01-01'}, 
+'article_title': '世行报告：东亚可以实现能源转型但需克服融资障碍', 
+'selectedMessage': False, 'highValue': False}, {'uuid': 
+'5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'score': 177.91498, 'citations': [{'text': 
+'我们的业务是从2016年成立的。能链的发展其实就是中国在交通、能源和新能源领域飞速
+发展的一个缩影。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博'}, 
+{'text': 
+'我们今年这个项目的名称叫做“新能源充电，不止于城市”。我们希望能够拓展新能源基础
+设施发展的一个边界，不单单在城市里能够看到有非常丰富的网络和充电多样化的选择，
+在乡村地区也能有更多的这些基础设施。', 'source_id': None, 'paragraph_id': None,
+'uuid': '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博'}, 
+{'text': 
+'目前，在整个乡村地区去开展新能源建设，其实遇到的问题还是比较多的，原因是资金或
+者说金融支持还是比较少，因为相较于城市地区，它要长期才能够获得收益。', 
+'source_id': None, 'paragraph_id': None, 'uuid': 
+'5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博'}], 
+'article_date_iso': '2023-01-01', 'event_dates': ['2023-01-01', '2024-01-01', 
+'2021-01-01', '2030-01-01', '2045-01-01', '2016-01-01'], 'event_date_span': 
+{'min': '2016-01-01', 'max': '2045-01-01'}, 'article_title': 
+'前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'selectedMessage': False, 'highValue': False}, {'uuid': 
+'55278d7f2d0abfe1d8adfacb7d1d56a4955b285c', 'subject': 
+'中国“国家自主减排贡献方案”解析——访中国减排问题专家姜克隽', 'score': 164.29054,
+'citations': [{'text': '比如说可再生能源占一次能源消费的20%。', 'source_id': 
+None, 'paragraph_id': None, 'uuid': '55278d7f2d0abfe1d8adfacb7d1d56a4955b285c',
+'subject': '中国“国家自主减排贡献方案”解析——访中国减排问题专家姜克隽'}], 
+'article_date_iso': '2015-11-20', 'event_dates': ['2015-11-20', '2015-06-30', 
+'2030-01-01', '2005-01-01', '2009-01-01', '2020-01-01', '2050-01-01', 
+'1994-01-01'], 'event_date_span': {'min': '1994-01-01', 'max': '2050-01-01'}, 
+'article_title': '“国家自主减排贡献方案”解析——访中国减排问题专家姜克隽', 
+'selectedMessage': False, 'highValue': False}, {'uuid': 
+'c07f41f9e3f30b522f7d32d1290297c6d48ffa2a', 'subject': '交付资金的时间到了_ 
+联合国峰会推动发展融资取得突破之附件：《亚的斯亚贝巴行动议程》_tika', 'score': 
+142.1459, 'citations': [{'text': 
+'我们将大幅增加可再生能源的份额，把全球能源效率和节能的比例提高一倍，从而确保所
+有人到 2030 年普遍获得可负担、可靠的现代和可持续的能源服务。', 'source_id': 
+None, 'paragraph_id': None, 'uuid': 'c07f41f9e3f30b522f7d32d1290297c6d48ffa2a',
+'subject': '交付资金的时间到了_ 
+联合国峰会推动发展融资取得突破之附件：《亚的斯亚贝巴行动议程》_tika'}], 
+'article_date_iso': '2013-12-20', 'event_dates': ['2013-12-20', '2014-06-30', 
+'2015-05-08', '2015-07-13', '2015-07-27', '2015-09-01', '2015-01-01', 
+'2020-01-01', '2030-01-01', '2016-01-01', '2016-05-23', '2013-01-01', 
+'2011-01-01', '2012-01-01', '2013-06-01', '2008-01-01', '2010-01-01', 
+'2017-01-01', '2019-01-01'], 'event_date_span': {'min': '2008-01-01', 'max': 
+'2030-01-01'}, 'article_title': 
+'第三次发展筹资问题国际会议亚的斯亚贝巴行动议程', 'selectedMessage': False, 
+'highValue': False}, {'uuid': 'd2021f8b7ca61d10c5a549b442b2b444b543a1bf', 
+'subject': '【专题报道】应对气候变化    
+中国在行动——专访中国气候变化事务特别代表解振华', 'score': 130.00339, 
+'citations': [{'text': 
+'我们现在的可再生能源的装机总量是7.26亿千瓦，这是什么概念呢？这是中国总发电装机
+容量的38%，是全球可再生能源装机容量的30%，在（全球）增量这一部分我们占了44%。',
+ 'source_id': None, 'paragraph_id': None, 'uuid': 
+'d2021f8b7ca61d10c5a549b442b2b444b543a1bf', 'subject': 
+'【专题报道】应对气候变化    中国在行动——专访中国气候变化事务特别代表解振华'}, 
+{'text': 
+'解振华：“我们已经非常明确地提出来要在能源生产和消费领域进行一场革命。”', 
+'source_id': None, 'paragraph_id': None, 'uuid': 
+'d2021f8b7ca61d10c5a549b442b2b444b543a1bf', 'subject': 
+'【专题报道】应对气候变化    中国在行动——专访中国气候变化事务特别代表解振华'}, 
+{'text': 
+'要真正实现这一目标，不光是能源领域，各个领域都得转型…基于自然的解决方案为实现
+碳中和的目标可以贡献30%多，也就是说要实现目标三分之一靠基于自然的解决方案。', 
+'source_id': None, 'paragraph_id': None, 'uuid': 
+'d2021f8b7ca61d10c5a549b442b2b444b543a1bf', 'subject': 
+'【专题报道】应对气候变化    中国在行动——专访中国气候变化事务特别代表解振华'}],
+'article_date_iso': '2015-12-01', 'event_dates': ['2015-12-01', '2018-12-01', 
+'2030-01-01'], 'event_date_span': {'min': '2015-12-01', 'max': '2030-01-01'}, 
+'article_title': '专题报道】应对气候变化', 'selectedMessage': False, 
+'highValue': False}, {'uuid': 'b9f67b8993be2bfae982e71864c670fdd2718d3d', 
+'subject': '【专题报道】不爱“饭局”爱“书局”？—— 
+也说教科文组织新晋之附件：《新城市议程》_tika', 'score': 123.218666, 
+'citations': [{'text': 
+'我们确认，凭借规模经济和集聚经济的效应，并通过促进能效、可再生能源、复原力、生
+产力、环境保护和城市经济可持续增长，城市形态、基础设施和建筑设计可在提高成本和
+资源效益方面发挥最重要的推动作用。', 'source_id': None, 'paragraph_id': None, 
+'uuid': 'b9f67b8993be2bfae982e71864c670fdd2718d3d', 'subject': 
+'【专题报道】不爱“饭局”爱“书局”？—— 
+也说教科文组织新晋之附件：《新城市议程》_tika'}], 'article_date_iso': 
+'2016-10-20', 'event_dates': ['2016-10-20', '2016-12-23', '2050-01-01', 
+'2016-05-01', '2007-01-01', '2009-01-01', '2015-04-01', '2030-01-01', 
+'1996-12-16', '2001-12-21', '1976-12-16', '1977-12-19', '2026-01-01', 
+'2036-01-01'], 'event_date_span': {'min': '1976-12-16', 'max': '2050-01-01'}, 
+'article_title': '新城市议程', 'selectedMessage': False, 'highValue': False}, 
+{'uuid': '3969582a6e43efc221ad0746aec1dfa09ea721f7', 'subject': 
+'麦当劳加入国际劳工组织倡议__ 
+___致力于促进全球青年体面之附件：2030年可持续发展议程_tika', 'score': 
+116.91248, 'citations': [{'text': 
+'7.2到2030年，大幅增加可再生能源在全球能源结构中的比例', 'source_id': None, 
+'paragraph_id': None, 'uuid': '3969582a6e43efc221ad0746aec1dfa09ea721f7', 
+'subject': '麦当劳加入国际劳工组织倡议__ 
+___致力于促进全球青年体面之附件：2030年可持续发展议程_tika'}, {'text': 
+'17.8促成最不發達國家的技術庫和科學、技術和創新能力建設機制到2017年全面投入運行
+', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'3969582a6e43efc221ad0746aec1dfa09ea721f7', 'subject': 
+'麦当劳加入国际劳工组织倡议__ 
+___致力于促进全球青年体面之附件：2030年可持续发展议程_tika'}], 
+'article_date_iso': '2015-09-25', 'event_dates': ['2015-09-25', '2014-12-01', 
+'2016-01-01', '2030-01-01', '2020-01-01', '2015-07-13', '2025-01-01', 
+'2017-01-01', '2016-03-01', '2019-01-01'], 'event_date_span': {'min': 
+'2014-12-01', 'max': '2030-01-01'}, 'article_title': 'Microsoft Word - 2030 
+Agenda for ODS replacement-as agreed with Mission 1-5-2016.doc', 
+'selectedMessage': False, 'highValue': False}, {'uuid': 
+'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《新城市议程》
+_tika', 'score': 113.0357, 'citations': [{'text': '3 4 . 我 们 承 诺 增 进 人 
+人 不 受 歧 视 地 平 等 取 用 负 担 得 起 、 可 持 续 和 基 本 的 有 形 
+和社会基础设施的机会，包括负担得起的基础设施配套的用地、住房、现代和可再生能源
+、安全饮用水和环境卫生。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《新城市议程》
+_tika'}, {'text': 
+'我们确认，凭借规模经济和集聚经济的效应，并通过促进能效、可再生能源、复原力、生
+产力、环境保护和城市经济可持续增长，城市形态、基础设施和建筑设计可在提高成本和
+资源效益方面发挥最重要的推动作用。', 'source_id': None, 'paragraph_id': None, 
+'uuid': 'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《新城市议程》
+_tika'}, {'text': 
+'我们承诺使用智能城市办法，利用数字化、清洁能源和技术以及创新交通技术所带来的机
+会，为居民作出更有益环境的选择和提振可持续经济增长提供备选方案。', 'source_id':
+None, 'paragraph_id': None, 'uuid': 'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09',
+'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《新城市议程》
+_tika'}], 'article_date_iso': '2016-10-20', 'event_dates': ['2016-10-20', 
+'2016-12-23', '2016-05-01', '2007-01-01', '2009-01-01', '2015-04-01', 
+'2030-01-01', '1996-12-16', '2001-12-21', '2026-01-01', '2036-01-01'], 
+'event_date_span': {'min': '1996-12-16', 'max': '2036-01-01'}, 'article_title':
+'新城市议程', 'selectedMessage': False, 'highValue': False}, {'uuid': 
+'a3f8ac60174ddf29ec2b77e28cb6dbf03a55fd32', 'subject': 
+'【专题报道】到2030年实现17个可持续发展目标 
+亚太地区将之附件：《亚太地区可持续发展进展报告》_tika', 'score': 101.35714, 
+'citations': [{'text': 'Progress for a Goal can mask individual declines. 
+Whilst a Goal can show good progress, within a Goal there are sub-sectors that 
+require wholesale reversal, for example, the declining use of renewable energy 
+(Goal 7), or insufficient resource mobilization to end poverty (Goal 1) and 
+substance abuse which threatens to derail impressive gains under Goal 3.', 
+'source_id': None, 'paragraph_id': None, 'uuid': 
+'a3f8ac60174ddf29ec2b77e28cb6dbf03a55fd32', 'subject': 
+'【专题报道】到2030年实现17个可持续发展目标 
+亚太地区将之附件：《亚太地区可持续发展进展报告》_tika'}, {'text': 'Asia-Pacific
+has made some but still insufficient progress on poverty, health, education, 
+gender equality and energy.', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'a3f8ac60174ddf29ec2b77e28cb6dbf03a55fd32', 'subject': 
+'【专题报道】到2030年实现17个可持续发展目标 
+亚太地区将之附件：《亚太地区可持续发展进展报告》_tika'}, {'text': 'All 
+subregions are advancing in the right direction for six Goals ... no poverty 
+(Goal 1), good health and well‑being (Goal 3), quality education (Goal 4), 
+affordable and clean energy (Goal 7), reduced inequalities (Goal 10) and 
+partnerships for the goals (Goal\xa017).', 'source_id': None, 'paragraph_id': 
+None, 'uuid': 'a3f8ac60174ddf29ec2b77e28cb6dbf03a55fd32', 'subject': 
+'【专题报道】到2030年实现17个可持续发展目标 
+亚太地区将之附件：《亚太地区可持续发展进展报告》_tika'}], 'article_date_iso': 
+'2019-01-01', 'event_dates': ['2019-01-01', '2000-01-01', '2018-01-01', 
+'2030-01-01', '2018-12-31', '2017-01-01', '2017-07-06'], 'event_date_span': 
+{'min': '2000-01-01', 'max': '2030-01-01'}, 'article_title': 'Asia and the 
+Pacific SDG Progress Report 2019', 'selectedMessage': False, 'highValue': 
+False}, {'uuid': 'f4db661f6688cad000da6c02ed57df289eb30a93', 'subject': 
+'30个国际组织启动行动计划 为5亿人提供电力 为10亿人提供清洁烹饪手段', 'score': 
+95.12381, 'citations': [{'text': 
+'包括“联合国能源机制”在内的大约30个主要组织今天启动一项行动计划，旨在到2025年将
+全球可再生能源翻一番，为5亿人提供电力，为10亿人提供清洁烹饪。', 'source_id': 
+None, 'paragraph_id': None, 'uuid': 'f4db661f6688cad000da6c02ed57df289eb30a93',
+'subject': '30个国际组织启动行动计划 为5亿人提供电力 
+为10亿人提供清洁烹饪手段'}, {'text': 
+'今天启动的能源契约行动网络将得到联合国能源机制的支持，它汇集了近200个对能源契
+约作出自愿承诺的政府、企业和其他民间社会伙伴，以便引导投资、专门知识和资源，帮
+助实现所作的承诺。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'f4db661f6688cad000da6c02ed57df289eb30a93', 'subject': 
+'30个国际组织启动行动计划 为5亿人提供电力 为10亿人提供清洁烹饪手段'}, {'text': 
+'人人享有可持续能源、开发署和谷壳电力系统公司等合作伙伴宣布，他们正在响应尼日利
+亚的呼吁，支持实现其能源契约承诺，即到2023年使用太阳能家用系统和微型电网向2500
+万人供电。', 'source_id': None, 'paragraph_id': None, 'uuid': 
+'f4db661f6688cad000da6c02ed57df289eb30a93', 'subject': 
+'30个国际组织启动行动计划 为5亿人提供电力 为10亿人提供清洁烹饪手段'}], 
+'article_date_iso': '2022-05-04', 'event_dates': ['2022-05-04', '2025-01-01', 
+'2023-01-01', '2030-01-01'], 'event_date_span': {'min': '2022-05-04', 'max': 
+'2030-01-01'}, 'article_title': '', 'selectedMessage': False, 'highValue': 
+False}, {'uuid': 'd931f1da842f933a644eb6dbe9e4b96555285e6c', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《2020年世界城
+市报告》_tika', 'score': 68.45183, 'citations': [{'text': 'Global investment in
+renewable energy in 2018 totalled US$288.9 billion.', 'source_id': None, 
+'paragraph_id': None, 'uuid': 'd931f1da842f933a644eb6dbe9e4b96555285e6c', 
+'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《2020年世界城
+市报告》_tika'}, {'text': 'In 2017, for instance, 158 city authorities, 
+businesses, non-governmental organizations and research institutions signed the
+Nagano Declaration, committing to increase cooperation and accelerating the 
+transition to 100 per cent renewable energy.', 'source_id': None, 
+'paragraph_id': None, 'uuid': 'd931f1da842f933a644eb6dbe9e4b96555285e6c', 
+'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《2020年世界城
+市报告》_tika'}, {'text': 'Informal employment comprises more than half of 
+non‑agricultural employment in most regions of the developing world: 82 per 
+cent in South Asia, 66 per cent in Sub‑Sahara Africa, 65 per cent in East and 
+South‑East Asia, 51 per cent in Latin America and the Caribbean and 45 per cent
+in the Middle East and North Africa.', 'source_id': None, 'paragraph_id': None,
+'uuid': 'd931f1da842f933a644eb6dbe9e4b96555285e6c', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《2020年世界城
+市报告》_tika'}], 'article_date_iso': '2020-01-01', 'event_dates': 
+['2020-01-01', '2019-01-01', '2030-01-01', '2036-01-01', '2016-01-01', 
+'2019-10-01', '2018-01-01', '2000-01-01', '2019-11-04', '2018-08-01', 
+'2019-09-01', '2020-03-11', '2020-07-01', '2020-05-02', '2020-04-01', 
+'2020-08-01', '2020-03-01', '2017-01-01', '2018-03-01', '2001-01-01'], 
+'event_date_span': {'min': '1990-01-01', 'max': '2036-01-01'}, 'article_title':
+'World Cities Report 2020', 'selectedMessage': False, 'highValue': False}], 
+'evidence_snippets': [{'uuid': 'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 
+'text': 
+'出席联合国亚洲及太平洋经济社会委员会第64届会议的各国代表达成一致，今后将在发展
+可再生能源方面积极合作，以降低整个区域对于化石能源的依赖性，提高长期的能源安全
+。', 'date_iso': '2008-05-01', 'article_date_iso': '2008-05-01', 'subject': 
+'亚太国家将就发展可再生能源加强合作', 'article_title': 
+'亚太国家将就发展可再生能源加强合作', 'paragraph_id': None, 'source_id': '', 
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 'text': 
+'亚太经社会在会议期间推出的一份报告指出，以目前的速度计算，到2030年时，亚太地区
+的能源需求将达到世界总量的一半，其中80%以上是对石油、煤炭等化石燃料的需求，这种
+状况不仅将使亚太国家更容易受到能源价格波动的冲击，也将增加这一地区的碳排放量。'
+, 'date_iso': '2008-05-01', 'article_date_iso': '2008-05-01', 'subject': 
+'亚太国家将就发展可再生能源加强合作', 'article_title': 
+'亚太国家将就发展可再生能源加强合作', 'paragraph_id': None, 'source_id': '', 
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'edbc016c8c86640ef30c84387e80c4daa4a71f14', 'text': 
+'在国际可再生能源署，我们一直在与肯尼亚总统威廉·鲁托合作，建立伙伴关系，加快可
+再生能源在非洲的部署。“非洲可再生能源加速伙伴关系”（Accelerated Partnership for
+Renewables in Africa, 
+APRA）这一倡议是去年在内罗毕举行的首届非洲气候峰会期间发起的，倡议领导人在第28
+届气候变化大会(COP28)期间签署了一份联合声明以推动可再生能源转型，将其作为确保非
+洲能源可及、能源安全和绿色发展的战略解决方案。', 'date_iso': '2024-04-23', 
+'article_date_iso': '2024-04-23', 'subject': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'article_title': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'edbc016c8c86640ef30c84387e80c4daa4a71f14', 'text': 
+'可再生能源的重要作用在当今世界中绝对不容忽视，它是向更清洁、更高效能源体系转型
+的关键。', 'date_iso': '2024-04-23', 'article_date_iso': '2024-04-23', 
+'subject': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'article_title': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'text': 
+'他说：“我们需要确保从化石燃料向可再生能源的过渡是公正、公平和平等的。这关乎在
+座一些国家的生死存亡。”', 'date_iso': '2023-12-02', 'article_date_iso': 
+'2023-12-02', 'subject': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'article_title': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'text': 
+'他强调，各国必须在本届气候大会上承诺到2030年将可再生能源产能增加两倍，能源效率
+提高一倍，并为所有人带来清洁能源；必须承诺逐步淘汰化石燃料，并根据1.5℃升温限制
+来设定明确的时间框架。', 'date_iso': '2023-12-02', 'article_date_iso': 
+'2023-12-02', 'subject': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'article_title': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'text': 
+'正在阿联酋迪拜出席第28届联合国气候变化大会的秘书长古特雷斯今天宣布，他计划成立
+一个小组，旨在确保从化石燃料向可再生能源的过渡是公正和可持续的，并使所有国家受
+益。', 'date_iso': '2023-12-02', 'article_date_iso': '2023-12-02', 'subject': 
+'古特雷斯：必须确保可再生能源转型的公正和可持续性', 'article_title': 
+'古特雷斯：必须确保可再生能源转型的公正和可持续性', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 
+'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'e090e37141386791572302eaf4f6a83ea7a24108', 'text': 
+'２０１１年，潘基文秘书长发起“人人享有可持续能源”倡议，提出全球力争在２０３０年
+实现三大目标，即全球普及现代能源服务、能源利用效率翻番和可再生能源在全球能源消
+费中所占比例翻番。', 'date_iso': '2015-05-21', 'article_date_iso': 
+'2015-05-21', 'subject': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'article_title': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'paragraph_id': None, 'source_id': '', 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'e090e37141386791572302eaf4f6a83ea7a24108', 'text': 
+'为期四天的第二届“ 
+联合国人人享有可持续能源论坛”今天进入最后一天。联合国负责经济和社会事务的副秘书
+长吴红波在当天的讨论会上发表讲话指出，融资、投资及大力增强能源效率、可再生能源
+以及普及能源使用非常重要。他呼吁所有利用攸关方慷慨做出承诺，以实现人人享有可持
+续能源的全球目标。', 'date_iso': '2015-05-21', 'article_date_iso': 
+'2015-05-21', 'subject': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'article_title': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'paragraph_id': None, 'source_id': '', 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', 'text': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 'date_iso': 
+'2022-09-18', 'article_date_iso': '2022-09-18', 'subject': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'article_title': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', 'text': 
+'他说：“如果我们过去在可再生能源上进行了大量投资，我们现在就不会陷入气候紧急状
+态”。', 'date_iso': '2022-09-18', 'article_date_iso': '2022-09-18', 'subject': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'article_title': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 'text': 
+'世界银行4月19日发布的一份报告指出，通过提高能效和发展可再生能源，东亚六个能源
+消耗大国到2025年可以在不牺牲经济增长的情况下稳定其温室气体排放；不过，要实现这
+一点，这些国家需要获得大量优惠融资。', 'date_iso': '2010-04-19', 
+'article_date_iso': '2010-04-19', 'subject': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'article_title': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 
+'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 'text': 
+'报告指出，在过去30年中，东亚的GDP增长了十倍，致使能源消耗增加了两倍，未来20年
+随着城市人口增加50%以及工业化进程的继续，能耗预计还会翻一番。', 'date_iso': 
+'2010-04-19', 'article_date_iso': '2010-04-19', 'subject': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'article_title': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['中东', '能源'], 'match_scope': 'mixed', 
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'text': 
+'我们的业务是从2016年成立的。能链的发展其实就是中国在交通、能源和新能源领域飞速
+发展的一个缩影。', 'date_iso': '2023-01-01', 'article_date_iso': '2023-01-01', 
+'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'article_title': 
+'前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['新能源', '能源', 
+'新能'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, 
+{'uuid': '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'text': 
+'我们今年这个项目的名称叫做“新能源充电，不止于城市”。我们希望能够拓展新能源基础
+设施发展的一个边界，不单单在城市里能够看到有非常丰富的网络和充电多样化的选择，
+在乡村地区也能有更多的这些基础设施。', 'date_iso': '2023-01-01', 
+'article_date_iso': '2023-01-01', 'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'article_title': 
+'前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['新能源', '能源', 
+'新能'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, 
+{'uuid': '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'text': 
+'目前，在整个乡村地区去开展新能源建设，其实遇到的问题还是比较多的，原因是资金或
+者说金融支持还是比较少，因为相较于城市地区，它要长期才能够获得收益。', 
+'date_iso': '2023-01-01', 'article_date_iso': '2023-01-01', 'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'article_title': 
+'前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['新能源', '能源', 
+'新能'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, 
+{'uuid': '55278d7f2d0abfe1d8adfacb7d1d56a4955b285c', 'text': 
+'比如说可再生能源占一次能源消费的20%。', 'date_iso': '2015-11-20', 
+'article_date_iso': '2015-11-20', 'subject': 
+'中国“国家自主减排贡献方案”解析——访中国减排问题专家姜克隽', 'article_title': 
+'“国家自主减排贡献方案”解析——访中国减排问题专家姜克隽', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text',
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'c07f41f9e3f30b522f7d32d1290297c6d48ffa2a', 'text': 
+'我们将大幅增加可再生能源的份额，把全球能源效率和节能的比例提高一倍，从而确保所
+有人到 2030 年普遍获得可负担、可靠的现代和可持续的能源服务。', 'date_iso': 
+'2013-12-20', 'article_date_iso': '2013-12-20', 'subject': '交付资金的时间到了_
+联合国峰会推动发展融资取得突破之附件：《亚的斯亚贝巴行动议程》_tika', 
+'article_title': '第三次发展筹资问题国际会议亚的斯亚贝巴行动议程', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'d2021f8b7ca61d10c5a549b442b2b444b543a1bf', 'text': 
+'我们现在的可再生能源的装机总量是7.26亿千瓦，这是什么概念呢？这是中国总发电装机
+容量的38%，是全球可再生能源装机容量的30%，在（全球）增量这一部分我们占了44%。',
+ 'date_iso': '2015-12-01', 'article_date_iso': '2015-12-01', 'subject': 
+'【专题报道】应对气候变化    中国在行动——专访中国气候变化事务特别代表解振华', 
+'article_title': '专题报道】应对气候变化', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text', 
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'b9f67b8993be2bfae982e71864c670fdd2718d3d', 'text': 
+'我们确认，凭借规模经济和集聚经济的效应，并通过促进能效、可再生能源、复原力、生
+产力、环境保护和城市经济可持续增长，城市形态、基础设施和建筑设计可在提高成本和
+资源效益方面发挥最重要的推动作用。', 'date_iso': '2016-10-20', 
+'article_date_iso': '2016-10-20', 'subject': 
+'【专题报道】不爱“饭局”爱“书局”？—— 
+也说教科文组织新晋之附件：《新城市议程》_tika', 'article_title': '新城市议程', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'3969582a6e43efc221ad0746aec1dfa09ea721f7', 'text': 
+'7.2到2030年，大幅增加可再生能源在全球能源结构中的比例', 'date_iso': 
+'2015-09-25', 'article_date_iso': '2015-09-25', 'subject': 
+'麦当劳加入国际劳工组织倡议__ 
+___致力于促进全球青年体面之附件：2030年可持续发展议程_tika', 'article_title': 
+'Microsoft Word - 2030 Agenda for ODS replacement-as agreed with Mission 
+1-5-2016.doc', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'text': '3 4 .
+我 们 承 诺 增 进 人 人 不 受 歧 视 地 平 等 取 用 负 担 得 起 、 可 持 续 和 
+基 本 的 有 形 
+和社会基础设施的机会，包括负担得起的基础设施配套的用地、住房、现代和可再生能源
+、安全饮用水和环境卫生。', 'date_iso': '2016-10-20', 'article_date_iso': 
+'2016-10-20', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《新城市议程》
+_tika', 'article_title': '新城市议程', 'paragraph_id': None, 'source_id': None,
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'text': 
+'我们确认，凭借规模经济和集聚经济的效应，并通过促进能效、可再生能源、复原力、生
+产力、环境保护和城市经济可持续增长，城市形态、基础设施和建筑设计可在提高成本和
+资源效益方面发挥最重要的推动作用。', 'date_iso': '2016-10-20', 
+'article_date_iso': '2016-10-20', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《新城市议程》
+_tika', 'article_title': '新城市议程', 'paragraph_id': None, 'source_id': None,
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'a3f8ac60174ddf29ec2b77e28cb6dbf03a55fd32', 'text': 'Progress for a Goal can 
+mask individual declines. Whilst a Goal can show good progress, within a Goal 
+there are sub-sectors that require wholesale reversal, for example, the 
+declining use of renewable energy (Goal 7), or insufficient resource 
+mobilization to end poverty (Goal 1) and substance abuse which threatens to 
+derail impressive gains under Goal 3.', 'date_iso': '2019-01-01', 
+'article_date_iso': '2019-01-01', 'subject': 
+'【专题报道】到2030年实现17个可持续发展目标 
+亚太地区将之附件：《亚太地区可持续发展进展报告》_tika', 'article_title': 'Asia 
+and the Pacific SDG Progress Report 2019', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['energy', 'renewable energy'], 'match_scope': 'text', 
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f4db661f6688cad000da6c02ed57df289eb30a93', 'text': 
+'包括“联合国能源机制”在内的大约30个主要组织今天启动一项行动计划，旨在到2025年将
+全球可再生能源翻一番，为5亿人提供电力，为10亿人提供清洁烹饪。', 'date_iso': 
+'2022-05-04', 'article_date_iso': '2022-05-04', 'subject': 
+'30个国际组织启动行动计划 为5亿人提供电力 为10亿人提供清洁烹饪手段', 
+'article_title': '', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'd931f1da842f933a644eb6dbe9e4b96555285e6c', 'text': 
+'Global investment in renewable energy in 2018 totalled US$288.9 billion.', 
+'date_iso': '2020-01-01', 'article_date_iso': '2020-01-01', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《2020年世界城
+市报告》_tika', 'article_title': 'World Cities Report 2020', 'paragraph_id': 
+None, 'source_id': None, 'synonym_hits': ['energy', 'renewable energy'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'d931f1da842f933a644eb6dbe9e4b96555285e6c', 'text': 'In 2017, for instance, 158
+city authorities, businesses, non-governmental organizations and research 
+institutions signed the Nagano Declaration, committing to increase cooperation 
+and accelerating the transition to 100 per cent renewable energy.', 'date_iso':
+'2020-01-01', 'article_date_iso': '2020-01-01', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《2020年世界城
+市报告》_tika', 'article_title': 'World Cities Report 2020', 'paragraph_id': 
+None, 'source_id': None, 'synonym_hits': ['energy', 'renewable energy'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}], 
+'evidence_snippets_strong': [{'uuid': 
+'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 'text': 
+'出席联合国亚洲及太平洋经济社会委员会第64届会议的各国代表达成一致，今后将在发展
+可再生能源方面积极合作，以降低整个区域对于化石能源的依赖性，提高长期的能源安全
+。', 'date_iso': '2008-05-01', 'article_date_iso': '2008-05-01', 'subject': 
+'亚太国家将就发展可再生能源加强合作', 'article_title': 
+'亚太国家将就发展可再生能源加强合作', 'paragraph_id': None, 'source_id': '', 
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 'text': 
+'亚太经社会在会议期间推出的一份报告指出，以目前的速度计算，到2030年时，亚太地区
+的能源需求将达到世界总量的一半，其中80%以上是对石油、煤炭等化石燃料的需求，这种
+状况不仅将使亚太国家更容易受到能源价格波动的冲击，也将增加这一地区的碳排放量。'
+, 'date_iso': '2008-05-01', 'article_date_iso': '2008-05-01', 'subject': 
+'亚太国家将就发展可再生能源加强合作', 'article_title': 
+'亚太国家将就发展可再生能源加强合作', 'paragraph_id': None, 'source_id': '', 
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'edbc016c8c86640ef30c84387e80c4daa4a71f14', 'text': 
+'在国际可再生能源署，我们一直在与肯尼亚总统威廉·鲁托合作，建立伙伴关系，加快可
+再生能源在非洲的部署。“非洲可再生能源加速伙伴关系”（Accelerated Partnership for
+Renewables in Africa, 
+APRA）这一倡议是去年在内罗毕举行的首届非洲气候峰会期间发起的，倡议领导人在第28
+届气候变化大会(COP28)期间签署了一份联合声明以推动可再生能源转型，将其作为确保非
+洲能源可及、能源安全和绿色发展的战略解决方案。', 'date_iso': '2024-04-23', 
+'article_date_iso': '2024-04-23', 'subject': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'article_title': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'edbc016c8c86640ef30c84387e80c4daa4a71f14', 'text': 
+'可再生能源的重要作用在当今世界中绝对不容忽视，它是向更清洁、更高效能源体系转型
+的关键。', 'date_iso': '2024-04-23', 'article_date_iso': '2024-04-23', 
+'subject': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'article_title': 
+'【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'text': 
+'他说：“我们需要确保从化石燃料向可再生能源的过渡是公正、公平和平等的。这关乎在
+座一些国家的生死存亡。”', 'date_iso': '2023-12-02', 'article_date_iso': 
+'2023-12-02', 'subject': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'article_title': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'text': 
+'他强调，各国必须在本届气候大会上承诺到2030年将可再生能源产能增加两倍，能源效率
+提高一倍，并为所有人带来清洁能源；必须承诺逐步淘汰化石燃料，并根据1.5℃升温限制
+来设定明确的时间框架。', 'date_iso': '2023-12-02', 'article_date_iso': 
+'2023-12-02', 'subject': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'article_title': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f6f6020ff85a345f09089b103d703e2044cb84ee', 'text': 
+'正在阿联酋迪拜出席第28届联合国气候变化大会的秘书长古特雷斯今天宣布，他计划成立
+一个小组，旨在确保从化石燃料向可再生能源的过渡是公正和可持续的，并使所有国家受
+益。', 'date_iso': '2023-12-02', 'article_date_iso': '2023-12-02', 'subject': 
+'古特雷斯：必须确保可再生能源转型的公正和可持续性', 'article_title': 
+'古特雷斯：必须确保可再生能源转型的公正和可持续性', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 
+'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'e090e37141386791572302eaf4f6a83ea7a24108', 'text': 
+'２０１１年，潘基文秘书长发起“人人享有可持续能源”倡议，提出全球力争在２０３０年
+实现三大目标，即全球普及现代能源服务、能源利用效率翻番和可再生能源在全球能源消
+费中所占比例翻番。', 'date_iso': '2015-05-21', 'article_date_iso': 
+'2015-05-21', 'subject': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'article_title': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'paragraph_id': None, 'source_id': '', 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'e090e37141386791572302eaf4f6a83ea7a24108', 'text': 
+'为期四天的第二届“ 
+联合国人人享有可持续能源论坛”今天进入最后一天。联合国负责经济和社会事务的副秘书
+长吴红波在当天的讨论会上发表讲话指出，融资、投资及大力增强能源效率、可再生能源
+以及普及能源使用非常重要。他呼吁所有利用攸关方慷慨做出承诺，以实现人人享有可持
+续能源的全球目标。', 'date_iso': '2015-05-21', 'article_date_iso': 
+'2015-05-21', 'subject': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'article_title': 
+'人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 
+以实现可持续能源目标', 'paragraph_id': None, 'source_id': '', 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', 'text': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 'date_iso': 
+'2022-09-18', 'article_date_iso': '2022-09-18', 'subject': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'article_title': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', 'text': 
+'他说：“如果我们过去在可再生能源上进行了大量投资，我们现在就不会陷入气候紧急状
+态”。', 'date_iso': '2022-09-18', 'article_date_iso': '2022-09-18', 'subject': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'article_title': 
+'古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 'text': 
+'世界银行4月19日发布的一份报告指出，通过提高能效和发展可再生能源，东亚六个能源
+消耗大国到2025年可以在不牺牲经济增长的情况下稳定其温室气体排放；不过，要实现这
+一点，这些国家需要获得大量优惠融资。', 'date_iso': '2010-04-19', 
+'article_date_iso': '2010-04-19', 'subject': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'article_title': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 
+'mixed', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 'text': 
+'报告指出，在过去30年中，东亚的GDP增长了十倍，致使能源消耗增加了两倍，未来20年
+随着城市人口增加50%以及工业化进程的继续，能耗预计还会翻一番。', 'date_iso': 
+'2010-04-19', 'article_date_iso': '2010-04-19', 'subject': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'article_title': 
+'世行报告：东亚可以实现能源转型但需克服融资障碍', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['中东', '能源'], 'match_scope': 'mixed', 
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'text': 
+'我们的业务是从2016年成立的。能链的发展其实就是中国在交通、能源和新能源领域飞速
+发展的一个缩影。', 'date_iso': '2023-01-01', 'article_date_iso': '2023-01-01', 
+'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'article_title': 
+'前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['新能源', '能源', 
+'新能'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, 
+{'uuid': '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'text': 
+'我们今年这个项目的名称叫做“新能源充电，不止于城市”。我们希望能够拓展新能源基础
+设施发展的一个边界，不单单在城市里能够看到有非常丰富的网络和充电多样化的选择，
+在乡村地区也能有更多的这些基础设施。', 'date_iso': '2023-01-01', 
+'article_date_iso': '2023-01-01', 'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'article_title': 
+'前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['新能源', '能源', 
+'新能'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, 
+{'uuid': '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'text': 
+'目前，在整个乡村地区去开展新能源建设，其实遇到的问题还是比较多的，原因是资金或
+者说金融支持还是比较少，因为相较于城市地区，它要长期才能够获得收益。', 
+'date_iso': '2023-01-01', 'article_date_iso': '2023-01-01', 'subject': 
+'【前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'article_title': 
+'前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['新能源', '能源', 
+'新能'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, 
+{'uuid': '55278d7f2d0abfe1d8adfacb7d1d56a4955b285c', 'text': 
+'比如说可再生能源占一次能源消费的20%。', 'date_iso': '2015-11-20', 
+'article_date_iso': '2015-11-20', 'subject': 
+'中国“国家自主减排贡献方案”解析——访中国减排问题专家姜克隽', 'article_title': 
+'“国家自主减排贡献方案”解析——访中国减排问题专家姜克隽', 'paragraph_id': None, 
+'source_id': None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text',
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'c07f41f9e3f30b522f7d32d1290297c6d48ffa2a', 'text': 
+'我们将大幅增加可再生能源的份额，把全球能源效率和节能的比例提高一倍，从而确保所
+有人到 2030 年普遍获得可负担、可靠的现代和可持续的能源服务。', 'date_iso': 
+'2013-12-20', 'article_date_iso': '2013-12-20', 'subject': '交付资金的时间到了_
+联合国峰会推动发展融资取得突破之附件：《亚的斯亚贝巴行动议程》_tika', 
+'article_title': '第三次发展筹资问题国际会议亚的斯亚贝巴行动议程', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'d2021f8b7ca61d10c5a549b442b2b444b543a1bf', 'text': 
+'我们现在的可再生能源的装机总量是7.26亿千瓦，这是什么概念呢？这是中国总发电装机
+容量的38%，是全球可再生能源装机容量的30%，在（全球）增量这一部分我们占了44%。',
+ 'date_iso': '2015-12-01', 'article_date_iso': '2015-12-01', 'subject': 
+'【专题报道】应对气候变化    中国在行动——专访中国气候变化事务特别代表解振华', 
+'article_title': '专题报道】应对气候变化', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text', 
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'b9f67b8993be2bfae982e71864c670fdd2718d3d', 'text': 
+'我们确认，凭借规模经济和集聚经济的效应，并通过促进能效、可再生能源、复原力、生
+产力、环境保护和城市经济可持续增长，城市形态、基础设施和建筑设计可在提高成本和
+资源效益方面发挥最重要的推动作用。', 'date_iso': '2016-10-20', 
+'article_date_iso': '2016-10-20', 'subject': 
+'【专题报道】不爱“饭局”爱“书局”？—— 
+也说教科文组织新晋之附件：《新城市议程》_tika', 'article_title': '新城市议程', 
+'paragraph_id': None, 'source_id': None, 'synonym_hits': ['再生能源', '能源'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'3969582a6e43efc221ad0746aec1dfa09ea721f7', 'text': 
+'7.2到2030年，大幅增加可再生能源在全球能源结构中的比例', 'date_iso': 
+'2015-09-25', 'article_date_iso': '2015-09-25', 'subject': 
+'麦当劳加入国际劳工组织倡议__ 
+___致力于促进全球青年体面之附件：2030年可持续发展议程_tika', 'article_title': 
+'Microsoft Word - 2030 Agenda for ODS replacement-as agreed with Mission 
+1-5-2016.doc', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'text': '3 4 .
+我 们 承 诺 增 进 人 人 不 受 歧 视 地 平 等 取 用 负 担 得 起 、 可 持 续 和 
+基 本 的 有 形 
+和社会基础设施的机会，包括负担得起的基础设施配套的用地、住房、现代和可再生能源
+、安全饮用水和环境卫生。', 'date_iso': '2016-10-20', 'article_date_iso': 
+'2016-10-20', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《新城市议程》
+_tika', 'article_title': '新城市议程', 'paragraph_id': None, 'source_id': None,
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'text': 
+'我们确认，凭借规模经济和集聚经济的效应，并通过促进能效、可再生能源、复原力、生
+产力、环境保护和城市经济可持续增长，城市形态、基础设施和建筑设计可在提高成本和
+资源效益方面发挥最重要的推动作用。', 'date_iso': '2016-10-20', 
+'article_date_iso': '2016-10-20', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《新城市议程》
+_tika', 'article_title': '新城市议程', 'paragraph_id': None, 'source_id': None,
+'synonym_hits': ['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 
+'match_policy': 'relaxed'}, {'uuid': 
+'a3f8ac60174ddf29ec2b77e28cb6dbf03a55fd32', 'text': 'Progress for a Goal can 
+mask individual declines. Whilst a Goal can show good progress, within a Goal 
+there are sub-sectors that require wholesale reversal, for example, the 
+declining use of renewable energy (Goal 7), or insufficient resource 
+mobilization to end poverty (Goal 1) and substance abuse which threatens to 
+derail impressive gains under Goal 3.', 'date_iso': '2019-01-01', 
+'article_date_iso': '2019-01-01', 'subject': 
+'【专题报道】到2030年实现17个可持续发展目标 
+亚太地区将之附件：《亚太地区可持续发展进展报告》_tika', 'article_title': 'Asia 
+and the Pacific SDG Progress Report 2019', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['energy', 'renewable energy'], 'match_scope': 'text', 
+'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'f4db661f6688cad000da6c02ed57df289eb30a93', 'text': 
+'包括“联合国能源机制”在内的大约30个主要组织今天启动一项行动计划，旨在到2025年将
+全球可再生能源翻一番，为5亿人提供电力，为10亿人提供清洁烹饪。', 'date_iso': 
+'2022-05-04', 'article_date_iso': '2022-05-04', 'subject': 
+'30个国际组织启动行动计划 为5亿人提供电力 为10亿人提供清洁烹饪手段', 
+'article_title': '', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
+['再生能源', '能源'], 'match_scope': 'text', 'group_hits': 2, 'match_policy': 
+'relaxed'}, {'uuid': 'd931f1da842f933a644eb6dbe9e4b96555285e6c', 'text': 
+'Global investment in renewable energy in 2018 totalled US$288.9 billion.', 
+'date_iso': '2020-01-01', 'article_date_iso': '2020-01-01', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《2020年世界城
+市报告》_tika', 'article_title': 'World Cities Report 2020', 'paragraph_id': 
+None, 'source_id': None, 'synonym_hits': ['energy', 'renewable energy'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}, {'uuid': 
+'d931f1da842f933a644eb6dbe9e4b96555285e6c', 'text': 'In 2017, for instance, 158
+city authorities, businesses, non-governmental organizations and research 
+institutions signed the Nagano Declaration, committing to increase cooperation 
+and accelerating the transition to 100 per cent renewable energy.', 'date_iso':
+'2020-01-01', 'article_date_iso': '2020-01-01', 'subject': 
+'2020年世界城市报告：城市是从新冠危机中恢复和全球经济复苏之附件：《2020年世界城
+市报告》_tika', 'article_title': 'World Cities Report 2020', 'paragraph_id': 
+None, 'source_id': None, 'synonym_hits': ['energy', 'renewable energy'], 
+'match_scope': 'text', 'group_hits': 2, 'match_policy': 'relaxed'}], 
+'evidence_snippets_weak': [], 'query_meta': {'query': 
+'核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金
+、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙
+烏地願景2030、阿聯綠能、伊朗制裁', 'es_query': 
+'核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金
+、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙
+烏地願景2030、阿聯綠能、伊朗制裁', 'core_terms': ['油價', 'OPEC+', '利率', 
+'匯率', '能源', '新能源', '中東', '哈瑪斯衝突'], 'syn_terms': ['原油價格', 
+'石油價格', 'Crude oil price', '原油价', '欧佩克+', 'OPEC Plus', 
+'石油输出国组织+', '石油輸出國組織+', 'interest rate', '利息率', '利率水平', 
+'exchange rate', '外汇率', '外匯匯率', '汇率', 'energy', '能源行业', 
+'能源资源', '能源业', 'renewable energy', '再生能源', '绿色能源', '新能', 
+'中东', 'Middle East', '中东地区', '哈马斯冲突', 'Hamas conflict', 
+'巴勒斯坦-以色列冲突'], 'effective_terms': ['油價', 'OPEC+', '利率', '匯率', 
+'能源', '新能源', '中東', '哈瑪斯衝突', '原油價格', '石油價格', 'Crude oil 
+price', '原油价', '欧佩克+', 'OPEC Plus', '石油输出国组织+', '石油輸出國組織+',
+'interest rate', '利息率', '利率水平', 'exchange rate', '外汇率', '外匯匯率', 
+'汇率', 'energy', '能源行业', '能源资源', '能源业', 'renewable energy', 
+'再生能源', '绿色能源', '新能', '中东', 'Middle East', '中东地区', 
+'哈马斯冲突', 'Hamas conflict', '巴勒斯坦-以色列冲突'], 'manual_terms_in_q': 
+[], 'is_manual_entity_query': False, 'term_groups': [['Crude oil price', 
+'原油价', '原油價格', '油價', '石油價格'], ['OPEC Plus', 'OPEC+', '欧佩克+', 
+'石油輸出國組織+', '石油输出国组织+'], ['interest rate', '利息率', '利率', 
+'利率水平'], ['exchange rate', '匯率', '外匯匯率', '外汇率', '汇率'], 
+['energy', '能源', '能源业', '能源行业', '能源资源'], ['renewable energy', 
+'再生能源', '新能', '新能源', '绿色能源'], ['Middle East', '中东', '中东地区', 
+'中東'], ['Hamas conflict', '哈瑪斯衝突', '哈马斯冲突', 
+'巴勒斯坦-以色列冲突']], 'date_from': None, 'date_to': None}}, 'query_meta': 
+{'core_terms': ['油價', 'OPEC+', '利率', '匯率', '能源', '基建', '科技', 
+'新能源', '國家基金', '企業財報', '合作案', '國家採購', '開源情報', '社群輿情',
+'中東', '以色列', '哈瑪斯衝突', '沙烏地願景2030', '阿聯綠能', '伊朗制裁'], 
+'core_query': 
+'核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金
+、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙
+烏地願景2030、阿聯綠能、伊朗制裁', 'date_from': None, 'date_to': None, 
+'syn_terms': ['原油價格', '石油價格', 'Crude oil price', '原油价', '欧佩克+', 
+'OPEC Plus', '石油输出国组织+', '石油輸出國組織+', 'interest rate', '利息率', 
+'利率水平', 'exchange rate', '外汇率', '外匯匯率', '汇率', 'energy', 
+'能源行业', '能源资源', '能源业', 'renewable energy', '再生能源', '绿色能源', 
+'新能', '中东', 'Middle East', '中东地区', '哈马斯冲突', 'Hamas conflict', 
+'巴勒斯坦-以色列冲突'], 'effective_terms': ['油價', 'OPEC+', '利率', '匯率', 
+'能源', '新能源', '中東', '哈瑪斯衝突', '原油價格', '石油價格', 'Crude oil 
+price', '原油价', '欧佩克+', 'OPEC Plus', '石油输出国组织+', '石油輸出國組織+',
+'interest rate', '利息率', '利率水平', 'exchange rate', '外汇率', '外匯匯率', 
+'汇率', 'energy', '能源行业', '能源资源', '能源业', 'renewable energy', 
+'再生能源', '绿色能源', '新能', '中东', 'Middle East', '中东地区', 
+'哈马斯冲突', 'Hamas conflict', '巴勒斯坦-以色列冲突'], 'es_query': 
+'核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金
+、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙
+烏地願景2030、阿聯綠能、伊朗制裁', 'manual_terms_in_q': [], 
+'is_manual_entity_query': False, 'term_groups': [['Crude oil price', '原油价', 
+'原油價格', '油價', '石油價格'], ['OPEC Plus', 'OPEC+', '欧佩克+', 
+'石油輸出國組織+', '石油输出国组织+'], ['interest rate', '利息率', '利率', 
+'利率水平'], ['exchange rate', '匯率', '外匯匯率', '外汇率', '汇率'], 
+['energy', '能源', '能源业', '能源行业', '能源资源'], ['renewable energy', 
+'再生能源', '新能', '新能源', '绿色能源'], ['Middle East', '中东', '中东地区', 
+'中東'], ['Hamas conflict', '哈瑪斯衝突', '哈马斯冲突', 
+'巴勒斯坦-以色列冲突']], 'raw_query': 
+'核心關鍵詞組如下：油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金
+、企業財報、合作案、國家採購、開源情報、社群輿情、中東、以色列、哈瑪斯衝突、沙
+烏地願景2030、阿聯綠能、伊朗制裁'}}}
+[Step 1: Duration 40.01 seconds| Input tokens: 6,712 | Output tokens: 1,567]
+[report] run_data_agent 花費 46.835s mode=report
+[report] evidence_meta = {'total': 27, 'strong': 27, 'weak': 0, 'picked_for_llm': 27}
+=== DEBUG: EV (for LLM) ===
+{'ref_no': 1, 'id': 'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 'd': '2008-05-01', 'title': '亚太国家将就发展可再生能源加强合作', 'note_preview': '出席联合国亚洲及太平洋经济社会委员会第64届会议的各国代表达成一致，今后将在发展可再生能源方面积极合作，以降低整个区域对于化石能源的依赖性，提高长期的能源安全。'}
+{'ref_no': 2, 'id': 'fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', 'd': '2008-05-01', 'title': '亚太国家将就发展可再生能源加强合作', 'note_preview': '亚太经社会在会议期间推出的一份报告指出，以目前的速度计算，到2030年时，亚太地区的能源需求将达到世界总量的一半，其中80%以上是对石油、煤炭等化石燃料的需求，这种状况不仅将使亚太国家更容易受到能源价'}
+{'ref_no': 3, 'id': '76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 'd': '2010-04-19', 'title': '世行报告：东亚可以实现能源转型但需克服融资障碍', 'note_preview': '世界银行4月19日发布的一份报告指出，通过提高能效和发展可再生能源，东亚六个能源消耗大国到2025年可以在不牺牲经济增长的情况下稳定其温室气体排放；不过，要实现这一点，这些国家需要获得大量优惠融资。'}
+{'ref_no': 4, 'id': '76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 'd': '2010-04-19', 'title': '世行报告：东亚可以实现能源转型但需克服融资障碍', 'note_preview': '报告指出，在过去30年中，东亚的GDP增长了十倍，致使能源消耗增加了两倍，未来20年随着城市人口增加50%以及工业化进程的继续，能耗预计还会翻一番。'}
+{'ref_no': 5, 'id': 'c07f41f9e3f30b522f7d32d1290297c6d48ffa2a', 'd': '2013-12-20', 'title': '第三次发展筹资问题国际会议亚的斯亚贝巴行动议程', 'note_preview': '我们将大幅增加可再生能源的份额，把全球能源效率和节能的比例提高一倍，从而确保所有人到 2030 年普遍获得可负担、可靠的现代和可持续的能源服务。'}
+{'ref_no': 6, 'id': 'e090e37141386791572302eaf4f6a83ea7a24108', 'd': '2015-05-21', 'title': '人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 以实现可持续能源目标', 'note_preview': '２０１１年，潘基文秘书长发起“人人享有可持续能源”倡议，提出全球力争在２０３０年实现三大目标，即全球普及现代能源服务、能源利用效率翻番和可再生能源在全球能源消费中所占比例翻番。'}
+{'ref_no': 7, 'id': 'e090e37141386791572302eaf4f6a83ea7a24108', 'd': '2015-05-21', 'title': '人人享有能源论坛：吴红波副秘书长呼吁各方加大行动并做出慷慨承诺 以实现可持续能源目标', 'note_preview': '为期四天的第二届“ 联合国人人享有可持续能源论坛”今天进入最后一天。联合国负责经济和社会事务的副秘书长吴红波在当天的讨论会上发表讲话指出，融资、投资及大力增强能源效率、可再生能源以及普及能源使用非常重'}
+{'ref_no': 8, 'id': '3969582a6e43efc221ad0746aec1dfa09ea721f7', 'd': '2015-09-25', 'title': 'Microsoft Word - 2030 Agenda for ODS replacement-as agreed with Mission 1-5-2016.doc', 'note_preview': '7.2到2030年，大幅增加可再生能源在全球能源结构中的比例'}
+{'ref_no': 9, 'id': '55278d7f2d0abfe1d8adfacb7d1d56a4955b285c', 'd': '2015-11-20', 'title': '“国家自主减排贡献方案”解析——访中国减排问题专家姜克隽', 'note_preview': '比如说可再生能源占一次能源消费的20%。'}
+{'ref_no': 10, 'id': 'd2021f8b7ca61d10c5a549b442b2b444b543a1bf', 'd': '2015-12-01', 'title': '专题报道】应对气候变化', 'note_preview': '我们现在的可再生能源的装机总量是7.26亿千瓦，这是什么概念呢？这是中国总发电装机容量的38%，是全球可再生能源装机容量的30%，在（全球）增量这一部分我们占了44%。'}
+{'ref_no': 11, 'id': 'b9f67b8993be2bfae982e71864c670fdd2718d3d', 'd': '2016-10-20', 'title': '新城市议程', 'note_preview': '我们确认，凭借规模经济和集聚经济的效应，并通过促进能效、可再生能源、复原力、生产力、环境保护和城市经济可持续增长，城市形态、基础设施和建筑设计可在提高成本和资源效益方面发挥最重要的推动作用。'}
+{'ref_no': 12, 'id': 'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'd': '2016-10-20', 'title': '新城市议程', 'note_preview': '3 4 . 我 们 承 诺 增 进 人 人 不 受 歧 视 地 平 等 取 用 负 担 得 起 、 可 持 续 和 基 本 的 有 形 和社会基础设施的机会，包括负担得起的基础设施配套的用地、住房、现'}
+{'ref_no': 13, 'id': 'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'd': '2016-10-20', 'title': '新城市议程', 'note_preview': '我们确认，凭借规模经济和集聚经济的效应，并通过促进能效、可再生能源、复原力、生产力、环境保护和城市经济可持续增长，城市形态、基础设施和建筑设计可在提高成本和资源效益方面发挥最重要的推动作用。'}
+{'ref_no': 14, 'id': 'a3f8ac60174ddf29ec2b77e28cb6dbf03a55fd32', 'd': '2019-01-01', 'title': 'Asia and the Pacific SDG Progress Report 2019', 'note_preview': 'Progress for a Goal can mask individual declines. Whilst a Goal can show good progress, within a Goa'}
+{'ref_no': 15, 'id': 'd931f1da842f933a644eb6dbe9e4b96555285e6c', 'd': '2020-01-01', 'title': 'World Cities Report 2020', 'note_preview': 'Global investment in renewable energy in 2018 totalled US$288.9 billion.'}
+{'ref_no': 16, 'id': 'd931f1da842f933a644eb6dbe9e4b96555285e6c', 'd': '2020-01-01', 'title': 'World Cities Report 2020', 'note_preview': 'In 2017, for instance, 158 city authorities, businesses, non-governmental organizations and research'}
+{'ref_no': 17, 'id': 'f4db661f6688cad000da6c02ed57df289eb30a93', 'd': '2022-05-04', 'title': '30个国际组织启动行动计划 为5亿人提供电力 为10亿人提供清洁烹饪手段', 'note_preview': '包括“联合国能源机制”在内的大约30个主要组织今天启动一项行动计划，旨在到2025年将全球可再生能源翻一番，为5亿人提供电力，为10亿人提供清洁烹饪。'}
+{'ref_no': 18, 'id': 'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', 'd': '2022-09-18', 'title': '古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 'note_preview': '古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动'}
+{'ref_no': 19, 'id': 'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', 'd': '2022-09-18', 'title': '古特雷斯：全球对化石燃料的依赖必须结束，可再生能源革命必须启动', 'note_preview': '他说：“如果我们过去在可再生能源上进行了大量投资，我们现在就不会陷入气候紧急状态”。'}
+{'ref_no': 20, 'id': '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'd': '2023-01-01', 'title': '前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 'note_preview': '我们的业务是从2016年成立的。能链的发展其实就是中国在交通、能源和新能源领域飞速发展的一个缩影。'}
+{'ref_no': 21, 'id': '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'd': '2023-01-01', 'title': '前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 'note_preview': '我们今年这个项目的名称叫做“新能源充电，不止于城市”。我们希望能够拓展新能源基础设施发展的一个边界，不单单在城市里能够看到有非常丰富的网络和充电多样化的选择，在乡村地区也能有更多的这些基础设施。'}
+{'ref_no': 22, 'id': '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'd': '2023-01-01', 'title': '前方视野】在低碳经济之路上“充电前行”——专访能链碳中和事业部总经理翟宇博', 'note_preview': '目前，在整个乡村地区去开展新能源建设，其实遇到的问题还是比较多的，原因是资金或者说金融支持还是比较少，因为相较于城市地区，它要长期才能够获得收益。'}
+{'ref_no': 23, 'id': 'f6f6020ff85a345f09089b103d703e2044cb84ee', 'd': '2023-12-02', 'title': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 'note_preview': '他说：“我们需要确保从化石燃料向可再生能源的过渡是公正、公平和平等的。这关乎在座一些国家的生死存亡。”'}
+{'ref_no': 24, 'id': 'f6f6020ff85a345f09089b103d703e2044cb84ee', 'd': '2023-12-02', 'title': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 'note_preview': '他强调，各国必须在本届气候大会上承诺到2030年将可再生能源产能增加两倍，能源效率提高一倍，并为所有人带来清洁能源；必须承诺逐步淘汰化石燃料，并根据1.5℃升温限制来设定明确的时间框架。'}
+{'ref_no': 25, 'id': 'f6f6020ff85a345f09089b103d703e2044cb84ee', 'd': '2023-12-02', 'title': '古特雷斯：必须确保可再生能源转型的公正和可持续性', 'note_preview': '正在阿联酋迪拜出席第28届联合国气候变化大会的秘书长古特雷斯今天宣布，他计划成立一个小组，旨在确保从化石燃料向可再生能源的过渡是公正和可持续的，并使所有国家受益。'}
+{'ref_no': 26, 'id': 'edbc016c8c86640ef30c84387e80c4daa4a71f14', 'd': '2024-04-23', 'title': '【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 'note_preview': '在国际可再生能源署，我们一直在与肯尼亚总统威廉·鲁托合作，建立伙伴关系，加快可再生能源在非洲的部署。“非洲可再生能源加速伙伴关系”（Accelerated Partnership for Renewa'}
+{'ref_no': 27, 'id': 'edbc016c8c86640ef30c84387e80c4daa4a71f14', 'd': '2024-04-23', 'title': '【人物专访】可再生能源正在改变世界格局——国际可再生能源署总干事拉·卡梅拉', 'note_preview': '可再生能源的重要作用在当今世界中绝对不容忽视，它是向更清洁、更高效能源体系转型的关键。'}
+==================================================
+[call_llm] sys_len=2782, user_len=9660, user_preview='{"q":"請依宏觀、產業、政策分析、企業及資料情資五組，蒐集近年中東（包括以色列、哈瑪斯衝突、沙烏地願景2030、阿聯綠能、伊朗制裁）之油價、OPEC+、利率、匯率、能源、基建、科技、新能源、國家基金、企業財報、合作案、國家採購、開源情報與社群輿情等情資，依影響度排序，提供投資決策精要摘要。","q0":"【對話歷史】\\n\\n\\n【目前問題】\\n中東市場近年在地緣衝突、能源轉型與國家策略調整下快速變動。以色列與哈瑪斯衝突持續影響航運安全與油價預期；沙烏地推動「願景 2030」進行大規模基建與科技投資，吸引全球資金；阿聯強化綠能、金融科技與自由貿易區布局；伊朗制裁、紅海航道安全與產油政策仍是左右市場風險的重要因素。該區域具成長動能，但政策不確定性高，需建立即時監測。\\n情資蒐集請依下列方向執行：宏觀組追蹤油價、OPEC+ 決策、區域利率政策與匯率波動；產業組掌握能源、基建、科技、新能源專案與大型國家基金投資動向；政策分析組研判地緣衝突、制裁政策與航運局勢；企業組蒐集該區大型企業財報、合作案與國家級採購專案；資料情資組負責開源情報、社群輿情與早期預警訊號。所有資料需以影響度排序，形成可供'
+[call_llm] system_preview=' 你是一個『資料驅動的分析助手』。  你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：  {   "q": "精煉後問句（用於檢索/統計與撰寫）",   "q0": "使用者原始問句（僅供展示/稽核，可不使用）",   "t": ["date_from 或 null", "date_to 或 null"],   "agg": {     "docs": 整體文件數,     "snips": 整體片段數,     "active_days": 有活動紀錄的天數,     "month": [ ["YYYY-MM", count], ... ],     "quarter": [ ["YYYY-Qx", count], ... ],     "peak_days": [ ["YYYY-MM-DD", count], ... ],   # 活動最集中的幾天    '
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+2026-01-16 17:31:39,842 INFO elastic_transport.transport: GET https://192.168.0.133:9001/satmeta/_doc/11920cd404ad403c72044a03cc898900a7e08380?_source=true [status:404 duration:0.003s]
+2026-01-16 17:31:39,845 INFO elastic_transport.transport: GET https://192.168.0.133:9001/news_test/_doc/11920cd404ad403c72044a03cc898900a7e08380?_source=true [status:404 duration:0.003s]
+2026-01-16 17:31:39,848 INFO elastic_transport.transport: GET https://192.168.0.133:9001/mil_reports-01/_doc/11920cd404ad403c72044a03cc898900a7e08380?_source=true [status:200 duration:0.003s]
+INFO:     192.168.0.228:55644 - "GET /v1/docs/11920cd404ad403c72044a03cc898900a7e08380 HTTP/1.1" 200 OK
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+2026-01-16 17:31:47,106 INFO elastic_transport.transport: GET https://192.168.0.133:9001/satmeta/_doc/11920cd404ad403c72044a03cc898900a7e08380?_source=true [status:404 duration:0.004s]
+2026-01-16 17:31:47,109 INFO elastic_transport.transport: GET https://192.168.0.133:9001/news_test/_doc/11920cd404ad403c72044a03cc898900a7e08380?_source=true [status:404 duration:0.003s]
+2026-01-16 17:31:47,113 INFO elastic_transport.transport: GET https://192.168.0.133:9001/mil_reports-01/_doc/11920cd404ad403c72044a03cc898900a7e08380?_source=true [status:200 duration:0.003s]
+INFO:     192.168.0.228:60298 - "GET /v1/docs/11920cd404ad403c72044a03cc898900a7e08380/fulltext?format=json HTTP/1.1" 200 OK
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+2026-01-16 17:31:51,596 INFO elastic_transport.transport: GET https://192.168.0.133:9001/satmeta/_doc/11920cd404ad403c72044a03cc898900a7e08380?_source=true [status:404 duration:0.002s]
+2026-01-16 17:31:51,604 INFO elastic_transport.transport: GET https://192.168.0.133:9001/news_test/_doc/11920cd404ad403c72044a03cc898900a7e08380?_source=true [status:404 duration:0.007s]
+2026-01-16 17:31:51,607 INFO elastic_transport.transport: GET https://192.168.0.133:9001/mil_reports-01/_doc/11920cd404ad403c72044a03cc898900a7e08380?_source=true [status:200 duration:0.002s]
+INFO:     192.168.0.228:60298 - "GET /v1/docs/11920cd404ad403c72044a03cc898900a7e08380/fulltext?format=txt&download=1 HTTP/1.1" 200 OK
+[report] call_llm(report) 花費 32.230s model_id=gpt-oss:120b-32k
+[report] ask_with_report[TOTAL] total=82.821s ev_count=27 docs=16
+[answer_with_routing][TOTAL] total=98.921s mode=SRA_REPORT topic=news_general
+[chat_completions] saved last_structured for '8c47f7b5-32d5-4f9a-8436-98b48df2aae0' used_uuids = ['fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb', '76499dd1e7bb39a42bb3ccc87f791112ef95bbb5', 'c07f41f9e3f30b522f7d32d1290297c6d48ffa2a', 'e090e37141386791572302eaf4f6a83ea7a24108', '3969582a6e43efc221ad0746aec1dfa09ea721f7', '55278d7f2d0abfe1d8adfacb7d1d56a4955b285c', 'd2021f8b7ca61d10c5a549b442b2b444b543a1bf', 'b9f67b8993be2bfae982e71864c670fdd2718d3d', 'eab7d0d905b48cdbc210d4b3a8a4e05a6a70ab09', 'a3f8ac60174ddf29ec2b77e28cb6dbf03a55fd32', 'd931f1da842f933a644eb6dbe9e4b96555285e6c', 'f4db661f6688cad000da6c02ed57df289eb30a93', 'b9e179360d58d86b3b1fe288bb316cb9575bfc2b', '5b14b1e367afea5b917a4807c3a416d1b14bbcd4', 'f6f6020ff85a345f09089b103d703e2044cb84ee', 'edbc016c8c86640ef30c84387e80c4daa4a71f14']
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+2026-01-16 17:31:57,661 INFO elastic_transport.transport: GET https://192.168.0.133:9001/satmeta/_doc/426e4cf634af139989cf97392853a88c50a2d897?_source=true [status:404 duration:0.003s]
+2026-01-16 17:31:57,664 INFO elastic_transport.transport: GET https://192.168.0.133:9001/news_test/_doc/426e4cf634af139989cf97392853a88c50a2d897?_source=true [status:404 duration:0.003s]
+2026-01-16 17:31:57,668 INFO elastic_transport.transport: GET https://192.168.0.133:9001/mil_reports-01/_doc/426e4cf634af139989cf97392853a88c50a2d897?_source=true [status:200 duration:0.003s]
+INFO:     192.168.0.228:50537 - "GET /v1/docs/426e4cf634af139989cf97392853a88c50a2d897 HTTP/1.1" 200 OK
+[chat_completions] evict session: 'f8b4a179-56a2-4255-88f6-be6acecbad4d'
+INFO:     192.168.0.134:38856 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:34508 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '8c47f7b5-32d5-4f9a-8436-98b48df2aae0'
+INFO:     192.168.0.134:34510 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:40100 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '8c47f7b5-32d5-4f9a-8436-98b48df2aae0'
+INFO:     192.168.0.134:40114 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:40128 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '8c47f7b5-32d5-4f9a-8436-98b48df2aae0'
+INFO:     192.168.0.134:40136 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+2026-01-16 17:35:00,803 INFO elastic_transport.transport: GET https://192.168.0.133:9001/satmeta/_doc/fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb?_source=true [status:404 duration:0.003s]
+2026-01-16 17:35:00,807 INFO elastic_transport.transport: GET https://192.168.0.133:9001/news_test/_doc/fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb?_source=true [status:200 duration:0.003s]
+INFO:     192.168.0.228:54328 - "GET /v1/docs/fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb/fulltext?format=json HTTP/1.1" 200 OK
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+2026-01-16 17:35:08,227 INFO elastic_transport.transport: GET https://192.168.0.133:9001/satmeta/_doc/fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb?_source=true [status:404 duration:0.003s]
+2026-01-16 17:35:08,231 INFO elastic_transport.transport: GET https://192.168.0.133:9001/news_test/_doc/fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb?_source=true [status:200 duration:0.003s]
+INFO:     192.168.0.228:61721 - "GET /v1/docs/fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb HTTP/1.1" 200 OK
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+2026-01-16 17:35:13,800 INFO elastic_transport.transport: GET https://192.168.0.133:9001/satmeta/_doc/fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb?_source=true [status:404 duration:0.002s]
+2026-01-16 17:35:13,803 INFO elastic_transport.transport: GET https://192.168.0.133:9001/news_test/_doc/fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb?_source=true [status:200 duration:0.003s]
+INFO:     192.168.0.228:57328 - "GET /v1/docs/fb0e22be74630de8ed1c5d16374fad0a5a8fe1cb/fulltext?format=txt&download=1 HTTP/1.1" 200 OK
+INFO:     192.168.0.228:49524 - "GET /v1/export/word?session_id=8c47f7b5-32d5-4f9a-8436-98b48df2aae0&turn_id=fd166657054a42aa8a4acdb127cb8cae HTTP/1.1" 200 OK
+INFO:     192.168.0.134:50054 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '16dfdb0a-74f8-4787-914e-e7817f95f391'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=121, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 綜整BM-30的2024年1至3月衛照掌握動態，並以烏克蘭防守角度進行SWOT分析；並產製縱軸日期跟橫軸活動的二維樞紐統計表。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 24.243s model_id=gpt-oss:120b-32k
+[router] routed = {'mode': 'SRA_REPORT', 'reason': '使用者要求綜整特定期間的軍事衛星影像動態並進行SWOT分析與製作樞紐統計表，屬於整理與分析整體主題的需求', 'topic': 'mil_intel'}
+==================================================
+[call_llm] sys_len=297, user_len=157, user_preview='請精煉下列使用者問句，只輸出 JSON。  【使用者問句】 【對話歷史】   【目前問題】 綜整BM-30的2024年1至3月衛照掌握動態，並以烏克蘭防守角度進行SWOT分析；並產製縱軸日期跟橫軸活動的二維樞紐統計表。  【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。'
+[call_llm] system_preview='你是一個「問句精煉器」，只做一件事：把使用者問句改寫成更精要、可供檢索與統計的版本。  請輸出 JSON，格式： {   "refined_question": "..." }  規則： 1) 保留：主題/對象、地點、時間範圍、使用者要的輸出型態（整理/比較/趨勢/引用來源/SWOT 等），與資料庫檢索工具設定相關的指示。 2) 刪除：客套話、重複描述、長度要求（如 2000 字）、格式碎念（如「請用漂亮小標」）、與檢索無關的冗詞。 3) 不能新增新事實（例如新增年份、地點、人物）。 4) 若原問句本來就很精簡，refined_question 直接回傳原句即可。 5) 一律用繁體中文。'
+┌────────────────────────────────── New run ──────────────────────────────────┐
+│                                                                             │
+│ 【系統參數（抽取關鍵字時請忽略本段）】                                      │
+│ index_hint=mil_reports-01,nav_intel_sentences_synthetic_v1,satmeta          │
+│                                                                             │
+│ 【使用者問題】                                                              │
+│ 綜整BM-30的2024年1至3月衛照掌握動態，並以烏克蘭防守角度進行SWOT分析；產製縱 │
+│ 軸日期與橫軸活動的二維樞紐統計表。                                          │
+│                                                                             │
+└─ LiteLLMModel - ollama_chat/gpt-oss:120b-32k ───────────────────────────────┘
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[92m18:19:30 - LiteLLM:INFO[0m: utils.py:3386 - 
+LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
+2026-01-19 18:19:30,785 INFO LiteLLM: 
+LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
+[92m18:21:50 - LiteLLM:INFO[0m: utils.py:1295 - Wrapper: Completed Call, calling success_handler
+2026-01-19 18:21:50,172 INFO LiteLLM: Wrapper: Completed Call, calling success_handler
+ ─ Executing parsed code: ──────────────────────────────────────────────────── 
+  # 使用者問題                                                                 
+  question =                                                                   
+  "綜整BM-30的2024年1至3月衛照掌握動態，並以烏克蘭防守角度進行SWOT分析；產製   
+  縱軸日期與橫軸活動的二維樞紐統計表。"                                        
+                                                                               
+  # 1. 解析核心關鍵字 (core_terms) 與時間範圍                                  
+  core_terms = ["BM-30", "烏克蘭"]                     #                       
+  依規則排除時間與報告語氣詞                                                   
+  core_query = f"核心關鍵詞組如下：{'、'.join(core_terms)}"                    
+                                                                               
+  # 時間範圍：2024年1至3月                                                     
+  date_from = "2024-01-01"                                                     
+  date_to   = "2024-03-31"                                                     
+                                                                               
+  # 2. 取得系統提供的 index_hint                                               
+  index_hint = "mil_reports-01,nav_intel_sentences_synthetic_v1,satmeta"       
+                                                                               
+  # 3. 呼叫 Elasticsearch 搜尋                                                 
   search_result = es_search_news(                                              
       query=core_query,                                                        
       must_high_value=False,                                                   
@@ -64,13 +1421,13 @@ LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
       recency_boost=False,                                                     
       recency_field="importDT",                                                
       recency_scale="30d",                                                     
-      index_hint="news_test"                                                   
+      index_hint=index_hint,                                                   
   )                                                                            
                                                                                
-  # 取得 evidence_snippets                                                     
+  # 4. 取出 evidence_snippets                                                  
   evidence_snippets = search_result.get("evidence_snippets", [])               
                                                                                
-  # 3. 時間統計聚合                                                            
+  # 5. 進行月份/季度統計                                                       
   aggregation = aggregate_month_quarter(evidence_snippets=evidence_snippets)   
                                                                                
   doc_count      = aggregation.get("doc_count", 0)                             
@@ -80,7 +1437,7 @@ LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
   month_counts   = aggregation.get("month_counts", {})                         
   quarter_counts = aggregation.get("quarter_counts", {})                       
                                                                                
-  # 4. 依時間範圍過濾統計結果                                                  
+  # 6. 若有時間範圍，過濾統計結果                                              
   start_date = date_from                                                       
   end_date   = date_to                                                         
                                                                                
@@ -97,11 +1454,11 @@ LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
                                                                                
       # 過濾 month_counts（保留完全落在範圍內的月份）                          
       filtered_month_counts = {}                                               
-      for m, cnt in month_counts.items():  # m 形如 "YYYY-MM"                  
+      for m, cnt in month_counts.items():  # m 形如 "2024-02"                  
           m_year = m[0:4]                                                      
           m_month = m[5:7]                                                     
           m_first = f"{m_year}-{m_month}-01"                                   
-          m_last  = f"{m_year}-{m_month}-31"                                   
+          m_last  = f"{m_year}-{m_month}-31"   # 簡化處理                      
           if start_date and m_last < start_date:                               
               continue                                                         
           if end_date and m_first > end_date:                                  
@@ -109,11 +1466,11 @@ LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
           filtered_month_counts[m] = cnt                                       
       month_counts = filtered_month_counts                                     
                                                                                
-      # 過濾 quarter_counts（形如 "YYYY-Qn"）                                  
+      # 過濾 quarter_counts（形如 "2024-Q1"）                                  
       filtered_quarter_counts = {}                                             
       for q, cnt in quarter_counts.items():                                    
           q_year = q[0:4]                                                      
-          q_id = q[-1]  # 1..4                                                 
+          q_id   = q[-1]   # 1~4                                               
           if q_id == "1":                                                      
               q_first, q_last = f"{q_year}-01-01", f"{q_year}-03-31"           
           elif q_id == "2":                                                    
@@ -130,7 +1487,7 @@ LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
           filtered_quarter_counts[q] = cnt                                     
       quarter_counts = filtered_quarter_counts                                 
                                                                                
-  # 5. 組成 query_meta                                                         
+  # 7. 組合 query_meta                                                         
   search_qm = (search_result.get("query_meta") or {}) if                       
   isinstance(search_result, dict) else {}                                      
                                                                                
@@ -148,7 +1505,7 @@ LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
       "raw_query": search_qm.get("query"),                                     
   }                                                                            
                                                                                
-  # 6. 組成 payload                                                            
+  # 8. 建立 payload                                                            
   payload = {                                                                  
       "question": question,                                                    
       "time_range": {                                                          
@@ -168,199 +1525,151 @@ LiteLLM completion() model= gpt-oss:120b-32k; provider = ollama_chat
       "query_meta": query_meta,                                                
   }                                                                            
                                                                                
-  # 7. 回傳結果                                                                
+  # 9. 回傳結果                                                                
   final_answer({                                                               
       "payload": payload                                                       
   })                                                                           
  ───────────────────────────────────────────────────────────────────────────── 
-in ESSearchNews.forward, index = news_test query = 核心關鍵詞組如下：中國、毒品、防治
+[es_search_news] index = mil_reports-01,nav_intel_sentences_synthetic_v1,satmeta query = 核心關鍵詞組如下：BM-30、烏克蘭
 ==================================================
-[call_llm] sys_len=587, user_len=26, user_preview='使用者查詢如下： 核心關鍵詞組如下：中國、毒品、防治'
+[call_llm] sys_len=587, user_len=27, user_preview='使用者查詢如下： 核心關鍵詞組如下：BM-30、烏克蘭'
 [call_llm] system_preview='你是一個「通用查詢關鍵字萃取器」。 使用者會給你一段查詢句子或自然語言描述，請只做一件事：  從內容中找出最重要的「關鍵詞 / 主題詞」，例如： - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構 - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱 - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰 - 產品 / 人工同義詞 / 型號：武器型號、船艦名、飛機型號、產品型號等  規則： 1. 僅輸出一個 JSON 陣列（array of string），不得有任何多餘文字。    例：["川普經濟學", "對等關稅", "美國就業", "物價", "宮古水道"] 2. 每個元素應是短語或名詞，不要整句話。 3. 優先挑選具體、可檢索的詞：    - 例如「川普經濟學」「宮古水道」「東風15型導彈」    - 比起「影響」「變化」「情勢」這種抽象詞更重要。 4. 不要'
 ==================================================
-[call_llm] sys_len=1366, user_len=69, user_preview='查詢句子（query）： 核心關鍵詞組如下：中國、毒品、防治  核心關鍵詞（core_terms）： ["中國", "毒品", "防治"]'
+[call_llm] sys_len=1366, user_len=68, user_preview='查詢句子（query）： 核心關鍵詞組如下：BM-30、烏克蘭  核心關鍵詞（core_terms）： ["BM-30", "烏克蘭"]'
 [call_llm] system_preview='你是一個「文本檢索查詢關鍵詞同義詞擴充器」。  使用者會提供： - 一段查詢句子（query） - 一組核心關鍵詞（core_terms）  你的工作只有一件事： 1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。 2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），    請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 value 的陣列裡。  具體規則：  【輸出格式】 - 僅輸出一個 JSON 物件（object），不得有任何多餘文字。   key: 代表核心詞（string）   value: 該語意軸的同義詞陣列（array of string）  【語意軸合併規則】 1. 先觀察 core_terms 列表，思考是否有「其實是同一個概念」的核心詞：    例如：    - 「敘利亞」「Syrian Arab'
-[es_search_news][T1] compute_effective_terms 花費 3.812s
-[es_search_news] core_terms=['中國', '毒品', '防治'], num_groups=3
-[_build_query_body] q= 核心關鍵詞組如下：中國、毒品、防治 core_terms= ['中國', '毒品', '防治'] syn_terms= ['China', '中华', '中華人民共和國', '違禁品', '麻醉品', '非法藥物', '防控', '預防與治療', '防止與治療'] num_all_terms= 12
+[es_search_news][T1] compute_effective_terms 花費 27.636s
 [es_search_news][T2] build_main_query_body 花費 0.000s
-2026-01-13 19:57:54,314 INFO elastic_transport.transport: POST https://192.168.0.133:9001/news_test/_search?allow_no_indices=true&error_trace=true&ignore_unavailable=true [status:200 duration:0.867s]
-[es_search_news][T3] _safe_es_search 花費 1.720s index=news_test size=10000
-[es_search_news] ES took=None ms, index=news_test, size=10000
-2026-01-13 19:57:54,453 INFO agent.es.evidence: build_hits_and_evidence: es_hits=1761 out_hits=1761 citations=133 inner_used=85 fallback_used=0 term_groups=3 effective_terms=12 date_range=2016-01-01~2021-12-31
-2026-01-13 19:57:54,461 INFO agent.es.evidence: build_hits_and_evidence: evidence strict=0
-2026-01-13 19:57:54,461 WARNING agent.es.evidence: build_hits_and_evidence: strict evidence=0 -> relax try (groups=3 strict_req=3 try_req=2)
-2026-01-13 19:57:54,468 INFO agent.es.evidence: build_hits_and_evidence: evidence relaxed(req=2)=3
-2026-01-13 19:57:54,469 INFO agent.es.evidence: build_hits_and_evidence: filtered_hits=1 evidence=3 syn_snippets=3 weak=0
-[es_search_news][T4] build_hits_and_evidence 花費 0.029s
-[es_search_news] hits=1, evidence_snippets=3
-[es_search_news] strong=3 weak=0 (total=3)
-[es_search_news][TOTAL] total=5.561s 代理人ES文本查詢工具查詢字串=核心關鍵詞組如下：中國、毒品、防治
-[es_search_news] query='核心關鍵詞組如下：中國、毒品、防治', es_query='核心關鍵詞組如下：中國、毒品、防治', hits=1, snippets_after_filter=3, effective_terms=['中國', '毒品', '防治', 'China', '中华', '中華人民共和國', '違禁品', '麻醉品', '非法藥物', '防控', '預防與治療', '防止與治療'], synonym_hit_snippets=3
-[es_search_news] query_meta = {"query": "核心關鍵詞組如下：中國、毒品、防治", "es_query": "核心關鍵詞組如下：中國、毒品、防治", "core_terms": ["中國", "毒品", "防治"], "syn_terms": ["China", "中华", "中華人民共和國", "違禁品", "麻醉品", "非法藥物", "防控", "預防與治療", "防止與治療"], "effective_terms": ["中國", "毒品", "防治", "China", "中华", "中華人民共和國", "違禁品", "麻醉品", "非法藥物", "防控", "預防與治療", "防止與治療"], "manual_terms_in_q": [], "is_manual_entity_query": false, "term_groups": [["China", "中华", "中國", "中華人民共和國"], ["毒品", "違禁品", "非法藥物", "麻醉品"], ["防控", "防止與治療", "防治", "預防與治療"]], "date_from": "2016-01-01", "date_to": "2021-12-31"}
+[es_search_news] body = {"size": 10000, "_source": ["uuid", "communication.subject", "multidim_event_json.article_title", "multidim_event_json.evidence_snippets", "multidim_event_json.Event_Timeline", "selectedMessage", "ai.classLabels.highValue", "importDT", "update_time_ai"], "query": {"function_score": {"query": {"bool": {"should": [{"multi_match": {"query": "核心關鍵詞組如下：BM-30、烏克蘭", "fields": ["multidim_event_json.Event.subject^8", "multidim_event_json.Event.object^7", "multidim_event_json.Event.location^7", "multidim_event_json.core_entities^7", "multidim_event_json.locations^7", "multidim_event_json.Event_Timeline.description^5", "multidim_event_json.Person.name^5", "multidim_event_json.Person.role^4", "multidim_event_json.Involved_Parties.party_name^4", "multidim_event_json.article_title^4", "communication.subject^4", "multidim_event_json.evidence_snippets.text^3"], "type": "best_fields", "operator": "or"}}, {"simple_query_string": {"query": "核心關鍵詞組如下：BM-30、烏克蘭", "fields": ["multidim_event_json.Event.subject^5", "multidim_event_json.Event.object^4", "multidim_event_json.Event.location^4", "multidim_event_json.core_entities^4", "multidim_event_json.locations^4", "multidim_event_json.Event_Timeline.description^3", "multidim_event_json.Person.name^3", "multidim_event_json.Person.role^2", "multidim_event_json.Involved_Parties.party_name^2", "multidim_event_json.article_title^3", "communication.subject^3", "multidim_event_json.evidence_snippets.text^2"], "default_operator": "and"}}, {"wildcard": {"communication.subject.keyword": {"value": "*核心關鍵詞組如下：BM-30、烏克蘭*"}}}, {"wildcard": {"multidim_event_json.article_title.raw": {"value": "*核心關鍵詞組如下：BM-30、烏克蘭*"}}}, {"bool": {"should": [{"match_phrase": {"rawInfo.content": "BM-30"}}, {"match_phrase": {"communication.subject": "BM-30"}}, {"match_phrase": {"multidim_event_json.article_title": "BM-30"}}, {"match_phrase": {"rawInfo.content": "烏克蘭"}}, {"match_phrase": {"communication.subject": "烏克蘭"}}, {"match_phrase": {"multidim_event_json.article_title": "烏克蘭"}}, {"match": {"rawInfo.content": {"query": "BM-30 Smerch", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "Smerch", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "9A52-2", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "9A52-2 Smerch", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "Ukraine", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "Ukrainian", "operator": "or"}}}, {"match": {"rawInfo.content": {"query": "Україна", "operator": "or"}}}], "minimum_should_match": 1}}, {"nested": {"path": "multidim_event_json.evidence_snippets", "query": {"bool": {"should": [{"match_phrase": {"multidim_event_json.evidence_snippets.text": "核心關鍵詞組如下：BM-30、烏克蘭"}}, {"match": {"multidim_event_json.evidence_snippets.text": {"query": "核心關鍵詞組如下：BM-30、烏克蘭", "operator": "and"}}}, {"match_phrase": {"multidim_event_json.evidence_snippets.text": "BM-30"}}, {"match_phrase": {"multidim_event_json.evidence_snippets.text": "烏克蘭"}}, {"match_phrase": {"multidim_event_json.evidence_snippets.text": "BM-30 Smerch"}}, {"match_phrase": {"multidim_event_json.evidence_snippets.text": "Smerch"}}, {"match_phrase": {"multidim_event_json.evidence_snippets.text": "9A52-2"}}, {"match_phrase": {"multidim_event_json.evidence_snippets.text": "9A52-2 Smerch"}}, {"match_phrase": {"multidim_event_json.evidence_snippets.text": "Ukraine"}}, {"match_phrase": {"multidim_event_json.evidence_snippets.text": "Ukrainian"}}, {"match_phrase": {"multidim_event_json.evidence_snippets.text": "Україна"}}], "minimum_should_match": 1}}, "score_mode": "avg", "inner_hits": {"name": "evi", "size": 3, "_source": ["multidim_event_json.evidence_snippets.text", "multidim_event_json.evidence_snippets.source_id", "multidim_event_json.evidence_snippets.paragraph_id"], "highlight": {"fields": {"multidim_event_json.evidence_snippets.text": {"fragment_size": 180, "number_of_fragments": 1}}}}}}], "minimum_should_match": 1, "filter": [{"nested": {"path": "multidim_event_j
+2026-01-19 18:22:45,125 INFO elastic_transport.transport: POST https://192.168.0.133:9001/mil_reports-01,nav_intel_sentences_synthetic_v1,satmeta/_search?allow_no_indices=true&error_trace=true&ignore_unavailable=true [status:N/A duration:19.108s]
+2026-01-19 18:22:45,126 WARNING elastic_transport.node_pool: Node <Urllib3HttpNode(https://192.168.0.133:9001)> has failed for 1 times in a row, putting on 1 second timeout
+2026-01-19 18:22:45,126 WARNING elastic_transport.transport: Retrying request after failure (attempt 0 of 3)
+Traceback (most recent call last):
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_transport.py", line 328, in perform_request
+    meta, raw_data = node.perform_request(
+                     ^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_node\_http_urllib3.py", line 202, in perform_request
+    raise err from None
+elastic_transport.ConnectionError: Connection error caused by: ProtocolError(('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))
+2026-01-19 18:22:45,278 INFO elastic_transport.transport: POST https://192.168.0.133:9001/mil_reports-01,nav_intel_sentences_synthetic_v1,satmeta/_search?allow_no_indices=true&error_trace=true&ignore_unavailable=true [status:200 duration:0.150s]
+2026-01-19 18:22:45,297 WARNING elastic_transport.node_pool: Node <Urllib3HttpNode(https://192.168.0.133:9001)> has been marked alive after a successful request
+[es_search_news] index_type= <class 'str'> index= mil_reports-01,nav_intel_sentences_synthetic_v1,satmeta
+[es_search_news] _shards= {'total': 3, 'successful': 3, 'skipped': 0, 'failed': 0}
+[es_search_news][T3] _safe_es_search 花費 19.310s index=mil_reports-01,nav_intel_sentences_synthetic_v1,satmeta size=10000
+2026-01-19 18:22:45,303 INFO agent.es.evidence: build_hits_and_evidence: es_hits=641 out_hits=641 citations=2 inner_used=2 fallback_used=0 term_groups=2 effective_terms=9 date_range=2024-01-01~2024-03-31
+2026-01-19 18:22:45,305 INFO agent.es.evidence: build_hits_and_evidence: evidence strict=0
+2026-01-19 18:22:45,305 WARNING agent.es.evidence: build_hits_and_evidence: strict evidence=0 -> relax try (groups=2 strict_req=2 try_req=1)
+2026-01-19 18:22:45,306 INFO agent.es.evidence: build_hits_and_evidence: evidence relaxed(req=1)=2
+2026-01-19 18:22:45,306 INFO agent.es.evidence: build_hits_and_evidence: filtered_hits=2 evidence=2 syn_snippets=2 weak=0
+[es_search_news][T4] build_hits_and_evidence 花費 0.008s
+[es_search_news][TOTAL] total=46.955s 代理人ES文本查詢工具查詢字串=核心關鍵詞組如下：BM-30、烏克蘭
+[es_search_news] query='核心關鍵詞組如下：BM-30、烏克蘭', es_query='核心關鍵詞組如下：BM-30、烏克蘭', hits=2, snippets_after_filter=2, effective_terms=['BM-30', '烏克蘭', 'BM-30 Smerch', 'Smerch', '9A52-2', '9A52-2 Smerch', 'Ukraine', 'Ukrainian', 'Україна'], synonym_hit_snippets=2
+[es_tools] query_meta = {"query": "核心關鍵詞組如下：BM-30、烏克蘭", "es_query": "核心關鍵詞組如下：BM-30、烏克蘭", "core_terms": ["BM-30", "烏克蘭"], "syn_terms": ["BM-30 Smerch", "Smerch", "9A52-2", "9A52-2 Smerch", "Ukraine", "Ukrainian", "Україна"], "effective_terms": ["BM-30", "烏克蘭", "BM-30 Smerch", "Smerch", "9A52-2", "9A52-2 Smerch", "Ukraine", "Ukrainian", "Україна"], "manual_terms_in_q": [], "is_manual_entity_query": false, "term_groups": [["9A52-2", "9A52-2 Smerch", "BM-30", "BM-30 Smerch", "Smerch"], ["Ukraine", "Ukrainian", "Україна", "烏克蘭"]], "date_from": "2024-01-01", "date_to": "2024-03-31"}
+[es_search_news] hits=2, snippets=2, syn_hit_snippets=2
 Final answer: {'payload': {'question': 
-'整理2016至2021年間中國毒品防治情況，逐條引述並加註來源，製作總結報告，進行趨勢
-分析與SWOT分析。', 'time_range': {'date_from': '2016-01-01', 'date_to': 
-'2021-12-31'}, 'stats': {'doc_count': 1, 'snippet_count': 3, 'active_days': 1, 
-'day_counts': {'2016-05-01': 1}, 'month_counts': {'2016-05': 1}, 
-'quarter_counts': {'2016-Q2': 1}}, 'evidence_snippets': [{'uuid': 
-'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'Central Registry of Drug 
-Abuse China, Macau SAR 2006 15 -2 5 0.', 'date_iso': '2016-05-01', 
-'article_date_iso': '2016-05-01', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
-Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
-'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'the 
-peak in methamphetamine use in the United States happened between 1995-2002, 
-while in China methamphetamine use is a more recent occurrence', 'date_iso': 
-'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
-Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
-'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 
-'Global seizures of synthetic cathinones have been steadily increasing since 
-they were first reported in 2010. Those seizures tripled between 2013 and 2014,
-reaching 1.3\u202ftons. Most synthetic cathinones were seized in Eastern Europe
-(692\u202fkg were seized in the Russian Federation), in Western and Central 
-Europe (312\u202fkg were seized in England and Wales) and in East and 
-South‑East Asia (226\u202fkg were seized in Hong Kong, China).', 'date_iso': 
-'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
-Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
-'relaxed'}], 'raw_search_result': {'hits': [{'uuid': 
-'b2dfb775b133f7245807d4b96a091142a4574c3d', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'score': 65.612854, 
-'citations': [{'text': 'Central Registry of Drug Abuse China, Macau SAR 2006 15
--2 5 0.', 'source_id': None, 'paragraph_id': None, 'uuid': 
-'b2dfb775b133f7245807d4b96a091142a4574c3d', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika'}, {'text': 'the peak in 
-methamphetamine use in the United States happened between 1995-2002, while in 
-China methamphetamine use is a more recent occurrence', 'source_id': None, 
-'paragraph_id': None, 'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 
-'subject': '《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika'}, {'text': 'Global seizures 
-of synthetic cathinones have been steadily increasing since they were first 
-reported in 2010. Those seizures tripled between 2013 and 2014, reaching 
-1.3\u202ftons. Most synthetic cathinones were seized in Eastern Europe 
-(692\u202fkg were seized in the Russian Federation), in Western and Central 
-Europe (312\u202fkg were seized in England and Wales) and in East and 
-South‑East Asia (226\u202fkg were seized in Hong Kong, China).', 'source_id': 
-None, 'paragraph_id': None, 'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d',
-'subject': '《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika'}], 'article_date_iso': 
-'2016-05-01', 'event_dates': ['2016-05-01', '2015-01-01', '2014-01-01', 
-'2008-01-01', '2006-01-01', '2007-01-01', '2009-01-01', '2011-01-01', 
-'2013-01-01', '2003-01-01', '2016-01-01', '2015-11-01', '2010-01-01', 
-'2013-10-01', '2014-11-01', '2015-08-01', '2015-11-10', '2014-10-01', 
-'2016-04-08', '2005-01-01'], 'event_date_span': {'min': '1996-01-01', 'max': 
-'2030-01-01'}, 'article_title': 'World Drug Report 2016', 'selectedMessage': 
-False, 'highValue': False}], 'evidence_snippets': [{'uuid': 
-'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'Central Registry of Drug 
-Abuse China, Macau SAR 2006 15 -2 5 0.', 'date_iso': '2016-05-01', 
-'article_date_iso': '2016-05-01', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
-Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
-'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'the 
-peak in methamphetamine use in the United States happened between 1995-2002, 
-while in China methamphetamine use is a more recent occurrence', 'date_iso': 
-'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
-Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
-'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 
-'Global seizures of synthetic cathinones have been steadily increasing since 
-they were first reported in 2010. Those seizures tripled between 2013 and 2014,
-reaching 1.3\u202ftons. Most synthetic cathinones were seized in Eastern Europe
-(692\u202fkg were seized in the Russian Federation), in Western and Central 
-Europe (312\u202fkg were seized in England and Wales) and in East and 
-South‑East Asia (226\u202fkg were seized in Hong Kong, China).', 'date_iso': 
-'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
-Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
-'relaxed'}], 'evidence_snippets_strong': [{'uuid': 
-'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'Central Registry of Drug 
-Abuse China, Macau SAR 2006 15 -2 5 0.', 'date_iso': '2016-05-01', 
-'article_date_iso': '2016-05-01', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
-Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
-'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 'the 
-peak in methamphetamine use in the United States happened between 1995-2002, 
-while in China methamphetamine use is a more recent occurrence', 'date_iso': 
-'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
-Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
-'relaxed'}, {'uuid': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'text': 
-'Global seizures of synthetic cathinones have been steadily increasing since 
-they were first reported in 2010. Those seizures tripled between 2013 and 2014,
-reaching 1.3\u202ftons. Most synthetic cathinones were seized in Eastern Europe
-(692\u202fkg were seized in the Russian Federation), in Western and Central 
-Europe (312\u202fkg were seized in England and Wales) and in East and 
-South‑East Asia (226\u202fkg were seized in Hong Kong, China).', 'date_iso': 
-'2016-05-01', 'article_date_iso': '2016-05-01', 'subject': 
-'《2016年世界毒品报告》：依赖毒品成人数量六年来首次攀升 
-之附件：http___www.unodc.org_doc_wdr2016_WO_tika', 'article_title': 'World Drug
-Report 2016', 'paragraph_id': None, 'source_id': None, 'synonym_hits': 
-['China', '毒品'], 'match_scope': 'mixed', 'group_hits': 2, 'match_policy': 
-'relaxed'}], 'evidence_snippets_weak': [], 'query_meta': {'query': 
-'核心關鍵詞組如下：中國、毒品、防治', 'es_query': 
-'核心關鍵詞組如下：中國、毒品、防治', 'core_terms': ['中國', '毒品', '防治'], 
-'syn_terms': ['China', '中华', '中華人民共和國', '違禁品', '麻醉品', 
-'非法藥物', '防控', '預防與治療', '防止與治療'], 'effective_terms': ['中國', 
-'毒品', '防治', 'China', '中华', '中華人民共和國', '違禁品', '麻醉品', 
-'非法藥物', '防控', '預防與治療', '防止與治療'], 'manual_terms_in_q': [], 
-'is_manual_entity_query': False, 'term_groups': [['China', '中华', '中國', 
-'中華人民共和國'], ['毒品', '違禁品', '非法藥物', '麻醉品'], ['防控', 
-'防止與治療', '防治', '預防與治療']], 'date_from': '2016-01-01', 'date_to': 
-'2021-12-31'}}, 'query_meta': {'core_terms': ['中國', '毒品', '防治'], 
-'core_query': '核心關鍵詞組如下：中國、毒品、防治', 'date_from': '2016-01-01', 
-'date_to': '2021-12-31', 'syn_terms': ['China', '中华', '中華人民共和國', 
-'違禁品', '麻醉品', '非法藥物', '防控', '預防與治療', '防止與治療'], 
-'effective_terms': ['中國', '毒品', '防治', 'China', '中华', '中華人民共和國', 
-'違禁品', '麻醉品', '非法藥物', '防控', '預防與治療', '防止與治療'], 
-'es_query': '核心關鍵詞組如下：中國、毒品、防治', 'manual_terms_in_q': [], 
-'is_manual_entity_query': False, 'term_groups': [['China', '中华', '中國', 
-'中華人民共和國'], ['毒品', '違禁品', '非法藥物', '麻醉品'], ['防控', 
-'防止與治療', '防治', '預防與治療']], 'raw_query': 
-'核心關鍵詞組如下：中國、毒品、防治'}}}
-[Step 1: Duration 35.21 seconds| Input tokens: 6,627 | Output tokens: 1,758]
-[report] run_data_agent 花費 41.878s mode=report
-[report] evidence_meta = {'total': 3, 'strong': 3, 'weak': 0, 'picked_for_llm': 3}
+'綜整BM-30的2024年1至3月衛照掌握動態，並以烏克蘭防守角度進行SWOT分析；產製縱軸
+日期與橫軸活動的二維樞紐統計表。', 'time_range': {'date_from': '2024-01-01', 
+'date_to': '2024-03-31'}, 'stats': {'doc_count': 2, 'snippet_count': 2, 
+'active_days': 2, 'day_counts': {'2024-03-13': 1, '2024-03-14': 1}, 
+'month_counts': {'2024-03': 2}, 'quarter_counts': {'2024-Q1': 2}}, 
+'evidence_snippets': [{'uuid': '8dc639ed6e4871c62e55959e5dacefea18cc53a7', 
+'text': '平台/系統名稱：BM-30龍捲風（Smerch）', 'date_iso': '2024-03-14', 
+'article_date_iso': '2024-03-14', 'subject': 
+'KN10000141_20240314_205644_補給_D22_IR-1.5m_C90', 'article_title': 
+'BM-30龍捲風（Smerch）｜補給/靠泊作業', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['Smerch', 'BM-30'], 'match_scope': 'mixed', 
+'group_hits': 1, 'match_policy': 'relaxed'}, {'uuid': 
+'7f5288ec33d6ff3488ac9e33021fd1b59921d075', 'text': 
+'標題：BM-30龍捲風（Smerch）｜補給/靠泊作業', 'date_iso': '2024-03-13', 
+'article_date_iso': '2024-03-13', 'subject': 
+'KN10000008_20240313_071229_補給_C14_SIGINT-Scan_C62', 'article_title': 
+'BM-30龍捲風（Smerch）｜補給/靠泊作業', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['Smerch', 'BM-30'], 'match_scope': 'mixed', 
+'group_hits': 1, 'match_policy': 'relaxed'}], 'raw_search_result': {'hits': 
+[{'uuid': '8dc639ed6e4871c62e55959e5dacefea18cc53a7', 'subject': 
+'KN10000141_20240314_205644_補給_D22_IR-1.5m_C90', 'score': 40.807182, 
+'citations': [{'text': '平台/系統名稱：BM-30龍捲風（Smerch）', 'source_id': 
+None, 'paragraph_id': None, 'uuid': '8dc639ed6e4871c62e55959e5dacefea18cc53a7',
+'subject': 'KN10000141_20240314_205644_補給_D22_IR-1.5m_C90'}], 
+'article_date_iso': '2024-03-14', 'event_dates': ['2024-03-14'], 
+'event_date_span': {'min': '2024-03-14', 'max': '2024-03-14'}, 'article_title':
+'BM-30龍捲風（Smerch）｜補給/靠泊作業', 'selectedMessage': False, 'highValue': 
+False}, {'uuid': '7f5288ec33d6ff3488ac9e33021fd1b59921d075', 'subject': 
+'KN10000008_20240313_071229_補給_C14_SIGINT-Scan_C62', 'score': 39.75872, 
+'citations': [{'text': '標題：BM-30龍捲風（Smerch）｜補給/靠泊作業', 
+'source_id': None, 'paragraph_id': None, 'uuid': 
+'7f5288ec33d6ff3488ac9e33021fd1b59921d075', 'subject': 
+'KN10000008_20240313_071229_補給_C14_SIGINT-Scan_C62'}], 'article_date_iso': 
+'2024-03-13', 'event_dates': ['2024-03-13'], 'event_date_span': {'min': 
+'2024-03-13', 'max': '2024-03-13'}, 'article_title': 
+'BM-30龍捲風（Smerch）｜補給/靠泊作業', 'selectedMessage': False, 'highValue': 
+False}], 'evidence_snippets': [{'uuid': 
+'8dc639ed6e4871c62e55959e5dacefea18cc53a7', 'text': 
+'平台/系統名稱：BM-30龍捲風（Smerch）', 'date_iso': '2024-03-14', 
+'article_date_iso': '2024-03-14', 'subject': 
+'KN10000141_20240314_205644_補給_D22_IR-1.5m_C90', 'article_title': 
+'BM-30龍捲風（Smerch）｜補給/靠泊作業', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['Smerch', 'BM-30'], 'match_scope': 'mixed', 
+'group_hits': 1, 'match_policy': 'relaxed'}, {'uuid': 
+'7f5288ec33d6ff3488ac9e33021fd1b59921d075', 'text': 
+'標題：BM-30龍捲風（Smerch）｜補給/靠泊作業', 'date_iso': '2024-03-13', 
+'article_date_iso': '2024-03-13', 'subject': 
+'KN10000008_20240313_071229_補給_C14_SIGINT-Scan_C62', 'article_title': 
+'BM-30龍捲風（Smerch）｜補給/靠泊作業', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['Smerch', 'BM-30'], 'match_scope': 'mixed', 
+'group_hits': 1, 'match_policy': 'relaxed'}], 'evidence_snippets_strong': 
+[{'uuid': '8dc639ed6e4871c62e55959e5dacefea18cc53a7', 'text': 
+'平台/系統名稱：BM-30龍捲風（Smerch）', 'date_iso': '2024-03-14', 
+'article_date_iso': '2024-03-14', 'subject': 
+'KN10000141_20240314_205644_補給_D22_IR-1.5m_C90', 'article_title': 
+'BM-30龍捲風（Smerch）｜補給/靠泊作業', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['Smerch', 'BM-30'], 'match_scope': 'mixed', 
+'group_hits': 1, 'match_policy': 'relaxed'}, {'uuid': 
+'7f5288ec33d6ff3488ac9e33021fd1b59921d075', 'text': 
+'標題：BM-30龍捲風（Smerch）｜補給/靠泊作業', 'date_iso': '2024-03-13', 
+'article_date_iso': '2024-03-13', 'subject': 
+'KN10000008_20240313_071229_補給_C14_SIGINT-Scan_C62', 'article_title': 
+'BM-30龍捲風（Smerch）｜補給/靠泊作業', 'paragraph_id': None, 'source_id': 
+None, 'synonym_hits': ['Smerch', 'BM-30'], 'match_scope': 'mixed', 
+'group_hits': 1, 'match_policy': 'relaxed'}], 'evidence_snippets_weak': [], 
+'query_meta': {'query': '核心關鍵詞組如下：BM-30、烏克蘭', 'es_query': 
+'核心關鍵詞組如下：BM-30、烏克蘭', 'core_terms': ['BM-30', '烏克蘭'], 
+'syn_terms': ['BM-30 Smerch', 'Smerch', '9A52-2', '9A52-2 Smerch', 'Ukraine', 
+'Ukrainian', 'Україна'], 'effective_terms': ['BM-30', '烏克蘭', 'BM-30 Smerch',
+'Smerch', '9A52-2', '9A52-2 Smerch', 'Ukraine', 'Ukrainian', 'Україна'], 
+'manual_terms_in_q': [], 'is_manual_entity_query': False, 'term_groups': 
+[['9A52-2', '9A52-2 Smerch', 'BM-30', 'BM-30 Smerch', 'Smerch'], ['Ukraine', 
+'Ukrainian', 'Україна', '烏克蘭']], 'date_from': '2024-01-01', 'date_to': 
+'2024-03-31'}}, 'query_meta': {'core_terms': ['BM-30', '烏克蘭'], 'core_query':
+'核心關鍵詞組如下：BM-30、烏克蘭', 'date_from': '2024-01-01', 'date_to': 
+'2024-03-31', 'syn_terms': ['BM-30 Smerch', 'Smerch', '9A52-2', '9A52-2 
+Smerch', 'Ukraine', 'Ukrainian', 'Україна'], 'effective_terms': ['BM-30', 
+'烏克蘭', 'BM-30 Smerch', 'Smerch', '9A52-2', '9A52-2 Smerch', 'Ukraine', 
+'Ukrainian', 'Україна'], 'es_query': '核心關鍵詞組如下：BM-30、烏克蘭', 
+'manual_terms_in_q': [], 'is_manual_entity_query': False, 'term_groups': 
+[['9A52-2', '9A52-2 Smerch', 'BM-30', 'BM-30 Smerch', 'Smerch'], ['Ukraine', 
+'Ukrainian', 'Україна', '烏克蘭']], 'raw_query': 
+'核心關鍵詞組如下：BM-30、烏克蘭'}}}
+[Step 1: Duration 194.55 seconds| Input tokens: 6,661 | Output tokens: 1,826]
+[report] run_data_agent 花費 194.604s mode=report
+[report] evidence_meta = {'total': 2, 'strong': 2, 'weak': 0, 'picked_for_llm': 2}
 === DEBUG: EV (for LLM) ===
-{'ref_no': 1, 'id': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'd': '2016-05-01', 'title': 'World Drug Report 2016', 'note_preview': 'Central Registry of Drug Abuse China, Macau SAR 2006 15 -2 5 0.'}
-{'ref_no': 2, 'id': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'd': '2016-05-01', 'title': 'World Drug Report 2016', 'note_preview': 'the peak in methamphetamine use in the United States happened between 1995-2002, while in China meth'}
-{'ref_no': 3, 'id': 'b2dfb775b133f7245807d4b96a091142a4574c3d', 'd': '2016-05-01', 'title': 'World Drug Report 2016', 'note_preview': 'Global seizures of synthetic cathinones have been steadily increasing since they were first reported'}
+{'ref_no': 1, 'id': '7f5288ec33d6ff3488ac9e33021fd1b59921d075', 'd': '2024-03-13', 'title': 'BM-30龍捲風（Smerch）｜補給/靠泊作業', 'note_preview': '標題：BM-30龍捲風（Smerch）｜補給/靠泊作業'}
+{'ref_no': 2, 'id': '8dc639ed6e4871c62e55959e5dacefea18cc53a7', 'd': '2024-03-14', 'title': 'BM-30龍捲風（Smerch）｜補給/靠泊作業', 'note_preview': '平台/系統名稱：BM-30龍捲風（Smerch）'}
 ==================================================
-[call_llm] sys_len=2782, user_len=1795, user_preview='{"q":"整理2016至2021年間中國毒品防治情況，逐條引述並加註來源，製作總結報告，進行趨勢分析與SWOT分析。","q0":"【對話歷史】\\n\\n\\n【目前問題】\\n請整理2016至2021年間中國毒品防治情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。\\n\\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。","t":["2016-01-01","2021-12-31"],"agg":{"docs":1,"snips":3,"active_days":1,"month":[["2016-05",1]],"quarter":[["2016-Q2",1]],"peak_days":[["2016-05-01",1]],"first_last":["2016-05-01","2016-05-01"]},"ev":[{"ref_no":1,"id":"b2dfb775b133f7245807d4b96a091142a4574c3d","d":"2016-05-0'
+[call_llm] sys_len=2782, user_len=925, user_preview='{"q":"綜整BM-30的2024年1至3月衛照掌握動態，並以烏克蘭防守角度進行SWOT分析；產製縱軸日期與橫軸活動的二維樞紐統計表。","q0":"【對話歷史】\\n\\n\\n【目前問題】\\n綜整BM-30的2024年1至3月衛照掌握動態，並以烏克蘭防守角度進行SWOT分析；並產製縱軸日期跟橫軸活動的二維樞紐統計表。\\n\\n【要求】如果是有對話歷史的多輪對話，那麼延續上文已確立的主題/時間範圍/定義；避免過度衍伸。","t":["2024-01-01","2024-03-31"],"agg":{"docs":2,"snips":2,"active_days":2,"month":[["2024-03",2]],"quarter":[["2024-Q1",2]],"peak_days":[["2024-03-13",1],["2024-03-14",1]],"first_last":["2024-03-13","2024-03-14"]},"ev":[{"ref_no":1,"id":"7f5288ec33d6ff3488ac9e33021fd1b59921d075","d":"2024'
 [call_llm] system_preview=' 你是一個『資料驅動的分析助手』。  你會收到一個 JSON 物件 payload，格式大致如下（key 已簡化）：  {   "q": "精煉後問句（用於檢索/統計與撰寫）",   "q0": "使用者原始問句（僅供展示/稽核，可不使用）",   "t": ["date_from 或 null", "date_to 或 null"],   "agg": {     "docs": 整體文件數,     "snips": 整體片段數,     "active_days": 有活動紀錄的天數,     "month": [ ["YYYY-MM", count], ... ],     "quarter": [ ["YYYY-Qx", count], ... ],     "peak_days": [ ["YYYY-MM-DD", count], ... ],   # 活動最集中的幾天    '
-[report] call_llm(report) 花費 16.167s model_id=gpt-oss:120b-32k
-[report] ask_with_report[TOTAL] total=60.450s ev_count=3 docs=1
-[answer_with_routing][TOTAL] total=63.254s mode=SRA_REPORT topic=news_general
-return v.strip() in extract_user_question 請整理2016至2021年間中國毒品防治情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。
-return v.strip() in extract_user_question 請整理2016至2021年間中國毒品防治情況，並逐條引述及加註來源。綜整成一個總結報告，並進行趨勢分析。再加上一些延伸的SWOT分析。目標長度為 2000字的完整報告。
-[chat_completions] saved last_structured for '86176e8c-1216-4160-b167-ef1e2ba51298' used_uuids = ['b2dfb775b133f7245807d4b96a091142a4574c3d']
-[chat_completions] evict session: '4028652e-fadb-49ab-9858-7283ceefcf5f'
-INFO:     192.168.0.134:60546 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:54956 - "GET /v1/models HTTP/1.1" 200 OK
-[chat_completions] chosen session_key = '86176e8c-1216-4160-b167-ef1e2ba51298'
-INFO:     192.168.0.134:54964 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:50082 - "GET /v1/models HTTP/1.1" 200 OK
-[chat_completions] chosen session_key = '86176e8c-1216-4160-b167-ef1e2ba51298'
-INFO:     192.168.0.134:50090 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     192.168.0.134:59624 - "GET /v1/models HTTP/1.1" 200 OK
-[chat_completions] chosen session_key = '86176e8c-1216-4160-b167-ef1e2ba51298'
-INFO:     192.168.0.134:59634 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[report] call_llm(report) 花費 61.657s model_id=gpt-oss:120b-32k
+[report] ask_with_report[TOTAL] total=267.701s ev_count=2 docs=2
+[answer_with_routing][TOTAL] total=291.950s mode=SRA_REPORT topic=mil_intel
+[chat_completions] saved last_structured for '16dfdb0a-74f8-4787-914e-e7817f95f391' used_uuids = ['7f5288ec33d6ff3488ac9e33021fd1b59921d075', '8dc639ed6e4871c62e55959e5dacefea18cc53a7']
+[chat_completions] evict session: 'a81c65dc-defe-4bb1-bd9a-d92fc2164e7e'
+INFO:     192.168.0.134:50060 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:55886 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '16dfdb0a-74f8-4787-914e-e7817f95f391'
+INFO:     192.168.0.134:55888 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:34250 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '16dfdb0a-74f8-4787-914e-e7817f95f391'
+INFO:     192.168.0.134:34264 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:35926 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '16dfdb0a-74f8-4787-914e-e7817f95f391'
+INFO:     192.168.0.134:35932 - "POST /v1/chat/completions HTTP/1.1" 200 OK

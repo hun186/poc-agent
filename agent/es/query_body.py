@@ -275,10 +275,12 @@ def build_main_query_body(
         ],
         "track_total_hits": True
     }
+    '''
     print("[_build_query_body] q=", q,
           "core_terms=", core_terms,
           "syn_terms=", syn_terms,
           "num_all_terms=", len(all_terms))
+    '''
     return body
 
 def build_fallback_query_body(

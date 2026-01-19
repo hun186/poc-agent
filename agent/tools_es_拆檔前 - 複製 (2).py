@@ -131,26 +131,12 @@ class ESSearchNews(Tool):
         size = max(1, min(req_size, max_size))
         if not query:
             return {"hits": [], "error": "query is required"}
-        '''
-        # 🔴 這一段是關鍵：強制統一實際使用的 size
-        max_size = int(os.getenv("ES_MAX_SIZE", "10000"))  # 你可以改成 100、200 等
-        try:
-            req_size = int(size) if size is not None else max_size
-        except Exception:
-            req_size = max_size
-        # clamp 到 [1, max_size]
-        size = max(1, min(req_size, max_size))
-        '''
-        #print("in forward, query at begining", query)
+
         raw_query = (query or "").strip()
-        #print("in forward, raw_query at begining", raw_query)
         
         # 這裡不再從 query 抽 ES_INDEX_HINT，完全靠參數分流
-        #print("index_hint",index_hint)
         final_hint = index_hint  # 可以是 None 或 "a,b,c"
-        #print("final_hint",final_hint)
         index = _resolve_es_index(final_hint)
-        #print("[ESSearchNews.forward] index =", index, "query =", raw_query)
         
         # 乾淨 query 就是原本的 raw_query
         query = raw_query
@@ -160,12 +146,6 @@ class ESSearchNews(Tool):
         # 1) 抽核心主題詞 + 群組同義詞（含人工同義詞家族展開）
 
         # === T1: 主題詞/同義詞抽取時間 ===
-        #t_terms_start = time.perf_counter()
-        #core_terms, grouped_syns, is_manual_entity_query, manual_terms_in_q, effective_terms, term_groups = compute_effective_terms(raw_query)
-        #t_terms_end = time.perf_counter()
-        #print(f"[es_search_news][T1] compute_effective_terms 花費 {t_terms_end - t_terms_start:.3f}s, "
-        #      f"core_terms={core_terms}, num_groups={len(grouped_syns)}")
-
         with log_duration("[es_search_news][T1] compute_effective_terms"):
             core_terms, grouped_syns, is_manual_entity_query, manual_terms_in_q, effective_terms, term_groups = compute_effective_terms(raw_query)
         
@@ -346,8 +326,6 @@ class ESTimeline(Tool):
             "nullable": True
         },
     }
-    #output_type = "string"
-    #output_type = "json"
     output_type = "any"
 
     def forward(

@@ -5,7 +5,7 @@ import os
 from typing import Any, Dict, Optional, Union, List
 #from dotenv import load_dotenv
 from elasticsearch import Elasticsearch, BadRequestError
-
+from elastic_transport import ObjectApiResponse
 from config.bootstrap import bootstrap_env
 from config.index_loader import INDEX_CONFIG
 
@@ -206,6 +206,18 @@ def resolve_index(hint: Optional[Union[str, List[str]]]) -> IndexType:
         return default_idx
     return idx_list[0] if len(idx_list) == 1 else idx_list
 
+def _unwrap_es(res: Any) -> Dict[str, Any]:
+    # ES 8.x 常見：ObjectApiResponse，資料在 .body
+    if isinstance(res, ObjectApiResponse):
+        return res.body or {}
+    # 保底：如果剛好就是 dict
+    if isinstance(res, dict):
+        return res
+    # 再保底：有些情況會有 .body
+    if hasattr(res, "body") and isinstance(getattr(res, "body"), dict):
+        return res.body
+    return {}
+
 def safe_search(
     body: Dict[str, Any],
     *,
@@ -235,146 +247,48 @@ def safe_search(
     }
 
     try:
+        '''
         return es.search(
             index=es_index,
             body=body,
             request_timeout=ES_TIMEOUT,
             params=params,
         )
+        '''
+        res = es.search(
+            index=es_index,
+            body=body,
+            request_timeout=ES_TIMEOUT,
+            params=params,
+        )
+        #print("[safe_search] res type:", type(res))
+        #if hasattr(res, "body"):
+        #    print("[safe_search] has .body type:", type(res.body))
+        #return res
+        return _unwrap_es(res)
+    
     except BadRequestError as e:
         info = str(getattr(e, "info", e))
         if allow_highlight_retry and ("max_analyzed_offset" in info or "highlight" in info):
             body2 = dict(body)
             body2.pop("highlight", None)
+            '''
             return es.search(
                 index=es_index,
                 body=body2,
                 request_timeout=ES_TIMEOUT,
                 params=params,
             )
-        raise
-        
-# -----------------------------
-# 1) Index config integration (after ES is ready, so we can exists-check)
-# -----------------------------
-
-# ✅ 你 loader 回傳的是 "default": [...]，不是 default_index
-'''
-_default_list_from_cfg = _normalize_indexes(INDEX_CONFIG.get("default") or [])
-_default_one_from_cfg = _default_list_from_cfg[0] if _default_list_from_cfg else "news_test"
-
-# env 的 ES_INDEX 優先（但也要 normalize）
-ES_INDEX_RAW = os.getenv("ES_INDEX", _default_one_from_cfg)
-ES_INDEXES_ENV = _normalize_indexes(ES_INDEX_RAW)
-'''
-
-'''
-# topic map indexes
-topic_map = INDEX_CONFIG.get("topic_index_map", {}) or {}
-cfg_indexes: List[str] = []
-for cfg in topic_map.values():
-    if isinstance(cfg, dict):
-        cfg_indexes.extend(_normalize_indexes(cfg.get("indexes") or []))
-cfg_indexes = _normalize_indexes(cfg_indexes)
-
-# ALL_INDEXES_RAW：設定宣告的全集（未做 exists 檢查）
-ALL_INDEXES_RAW: List[str] = _normalize_indexes(ES_INDEXES_ENV + cfg_indexes)
-
-# ALL_INDEXES：只保留存在的 index（給 API / tools 用）
-ALL_INDEXES: List[str] = _filter_existing_indexes(ES, ALL_INDEXES_RAW)
-
-# ✅ 預設 index：優先 env 第一個，其次 cfg default，最後才 fallback
-_candidate_default = (ES_INDEXES_ENV[0] if ES_INDEXES_ENV else _default_one_from_cfg)
-ES_INDEX_DEFAULT: str = _candidate_default
-
-# 若 default 不存在，退回第一個 live index
-if ALL_INDEXES and (ES_INDEX_DEFAULT not in ALL_INDEXES):
-    ES_INDEX_DEFAULT = ALL_INDEXES[0]
-
-# 若完全沒有 live index，就仍保留 candidate（但查詢時會 allow_no_indices）
-# 這樣至少服務不會 import 就爆
-if os.getenv("ES_CLIENT_VERBOSE", "0") == "1":
-    print("[es_client] ES_INDEX_RAW =", ES_INDEX_RAW)
-    print("[es_client] ES_INDEXES_ENV =", ES_INDEXES_ENV)
-    print("[es_client] ALL_INDEXES_RAW =", ALL_INDEXES_RAW)
-    print("[es_client] ALL_INDEXES(LIVE) =", ALL_INDEXES)
-    print("[es_client] ES_INDEX_DEFAULT =", ES_INDEX_DEFAULT)
-    try:
-        print("[es_client] ES.info() =", ES.info())
-    except Exception as e:
-        print("[es_client] ES.info() failed:", e)
-
-'''
-
-'''
-def get_es() -> Elasticsearch:
-    return ES
-'''
-
-
-'''
-def resolve_index(hint: Optional[Union[str, List[str]]]) -> IndexType:
-    """
-    hint 支援：
-    - None → default
-    - "a,b,c" → ["a","b","c"]（但若只剩 1 個就回傳字串）
-    - ["a","b"] → 同上
-    """
-    if hint is None:
-        return ES_INDEX_DEFAULT
-
-    if isinstance(hint, list):
-        idx_list = _normalize_indexes(hint)
-    else:
-        idx_list = _normalize_indexes(str(hint))
-
-    if not idx_list:
-        return ES_INDEX_DEFAULT
-    return idx_list[0] if len(idx_list) == 1 else idx_list
-'''
-
-'''
-def safe_search(
-    body: Dict[str, Any],
-    *,
-    index: Optional[IndexType] = None,
-    allow_highlight_retry: bool = True,
-):
-    """
-    安全版 search：
-    - 自動 ignore_unavailable / allow_no_indices，避免缺 index 就 404 → 500
-    - highlight 造成 max_analyzed_offset 時自動降級重查
-    """
-    idx = index or ES_INDEX_DEFAULT
-    es_index = ",".join(idx) if isinstance(idx, list) else (idx or ES_INDEX_DEFAULT)
-
-    # ✅ 最後一道保險：永遠不要因缺 index 就炸
-    params = {
-        "error_trace": "true",
-        "ignore_unavailable": "true",
-        "allow_no_indices": "true",
-    }
-
-    try:
-        return ES.search(
-            index=es_index,
-            body=body,
-            request_timeout=ES_TIMEOUT,
-            params=params,
-        )
-    except BadRequestError as e:
-        info = str(getattr(e, "info", e))
-        if allow_highlight_retry and ("max_analyzed_offset" in info or "highlight" in info):
-            body2 = dict(body)
-            body2.pop("highlight", None)
-            return ES.search(
+            '''
+            res = es.search(
                 index=es_index,
                 body=body2,
                 request_timeout=ES_TIMEOUT,
                 params=params,
             )
+            return _unwrap_es(res)
         raise
-'''
+
 # --- legacy exports (相容舊 import) ---
 # 讓 from agent.es.es_client import ES 不會爆
 #ES = get_es()

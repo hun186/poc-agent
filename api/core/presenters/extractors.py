@@ -94,7 +94,7 @@ def extract_user_question(out: dict) -> str:
     if isinstance(qm, dict):
         v = qm.get("user_question")
         if isinstance(v, str) and v.strip():
-            print("return v.strip() in extract_user_question",v.strip())
+            #print("return v.strip() in extract_user_question",v.strip())
             return v.strip()
     
     # 2) out.question（你的 answer_with_routing 建議改成強制覆寫 out["question"]=user_msg）
