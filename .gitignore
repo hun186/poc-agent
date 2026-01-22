@@ -182,3 +182,5 @@ cython_debug/
 /.agent_sessions
 /logs
 .env.dev
+/logs
+SRA-API_output.txt
