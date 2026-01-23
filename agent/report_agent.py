@@ -217,14 +217,19 @@ def ask_with_report(
         qm["refined_question"] = refined_question
         payload["query_meta"] = qm
 
+    # 你可以用環境變數控管給 LLM 的最大片段數
+    MAX_EV_FOR_LLM = int(os.getenv("REPORT_MAX_EVIDENCE_SNIPS", "120"))
+
+    # 新增：前端回傳上限
+    MAX_EV_FOR_FRONTEND_CFG = int(os.getenv("REPORT_MAX_EVIDENCE_SNIPS_FRONTEND", "150"))
+
+    # 保底：前端至少 >= LLM（避免使用者覺得「前端比報告引用更少」）
+    MAX_EV_FOR_FRONTEND = max(MAX_EV_FOR_FRONTEND_CFG, MAX_EV_FOR_LLM)
         
     # === 強/弱證據分流（強優先給報告 LLM）===
     ev_all = payload.get("evidence_snippets") or []
     ev_strong = [e for e in ev_all if not e.get("weak_evidence")]
     ev_weak   = [e for e in ev_all if e.get("weak_evidence")]
-    
-    # 你可以用環境變數控管給 LLM 的最大片段數
-    MAX_EV_FOR_LLM = int(os.getenv("REPORT_MAX_EVIDENCE_SNIPS", "120"))
     
     # 強證據優先，不夠再補弱證據
     picked_for_llm = ev_strong[:MAX_EV_FOR_LLM]
@@ -237,7 +242,15 @@ def ask_with_report(
         "total": len(ev_all),
         "strong": len(ev_strong),
         "weak": len(ev_weak),
+        
+        # LLM 相關
+        "max_for_llm": MAX_EV_FOR_LLM,
         "picked_for_llm": len(picked_for_llm),
+        
+        # 前端相關（配置值 vs 實際生效值）
+        "max_for_frontend_cfg": MAX_EV_FOR_FRONTEND_CFG,
+        "max_for_frontend": MAX_EV_FOR_FRONTEND,
+    
     }
     print("[report] evidence_meta =", payload["evidence_meta"])
 
@@ -312,7 +325,8 @@ def ask_with_report(
             user_prompt,
             system_prompt=REPORT_SYSTEM_PROMPT,
             extra_params={"options": {}},
-            timeout=180.0,
+            #timeout=180.0,
+            timeout=300.0,
             model=REPORT_MODEL_ID,
         )
     t1 = time.perf_counter()
@@ -340,10 +354,15 @@ def ask_with_report(
     
     # === evidence_snippets 仍可保留給其他用途（例如前端展開全文），但不再用來建 citations ===
     ev_for_frontend = payload.get("evidence_snippets") or []
-    if len(ev_for_frontend) > 150:
-        ev_for_frontend = ev_for_frontend[:150]
+    if len(ev_for_frontend) > MAX_EV_FOR_FRONTEND:
+        ev_for_frontend = ev_for_frontend[:MAX_EV_FOR_FRONTEND]
         payload["evidence_snippets"] = ev_for_frontend
 
+    # ✅ 寫入實際前端回傳數量
+    em = payload.get("evidence_meta")
+    if isinstance(em, dict):
+        em["frontend_returned"] = len(ev_for_frontend)
+    
     # ★ citations：直接用 ev_compact
     citations = build_citations_from_ev(ev_compact)
 

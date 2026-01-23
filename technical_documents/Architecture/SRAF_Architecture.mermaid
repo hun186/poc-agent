@@ -1,0 +1,45 @@
+graph TD
+    %% Define Styles
+    classDef client fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef api fill:#bbf,stroke:#333,stroke-width:2px;
+    classDef core fill:#dfd,stroke:#333,stroke-width:2px;
+    classDef subagent fill:#ffd,stroke:#333,stroke-width:2px;
+    classDef db fill:#eee,stroke:#333,stroke-width:2px;
+
+    Client[Client / WebUI] -->|POST /v1/chat/completions| API[API Layer<br>api/routers/chat.py]:::api
+    
+    subgraph "API Layer"
+        API -->|Extract History & Context| Session[Session & Memory Manager]
+        API -->|Forward Request| MainAgent[Core Agent<br>agent/agent.py]:::core
+    end
+
+    subgraph "Core Agent Logic"
+        MainAgent -->|Call LLM| Router[Router LLM<br>llm_route_task]:::core
+        Router -- Classify Mode & Topic --> ModeDistributor{Mode Dispatcher}
+    end
+
+    subgraph "Sub-Agents"
+        ModeDistributor -->|SRA_REPORT| ReportAgent[Report Agent<br>agent/report_agent.py]:::subagent
+        ModeDistributor -->|SRA_STYLE| StyleAgent[Style Agent<br>agent/style_agent.py]:::subagent
+        ModeDistributor -->|DOC_FOLLOWUP| DocAgent[Doc Followup Agent<br>agent/doc_followup_agent.py]:::subagent
+        ModeDistributor -->|PURE_LLM| PureLLM[Pure LLM Chat]:::subagent
+    end
+
+    subgraph "Data & Retrieval"
+        ReportAgent -->|Refine Query| DataAgent[Data Agent]:::subagent
+        DataAgent -->|Query| ES[(Elasticsearch)]:::db
+        DocAgent -->|Fetch by ID| ES
+        
+        ES -->|Return Docs & Aggregations| DataAgent
+        DataAgent -->|Return Evidence Payload| ReportAgent
+    end
+
+    subgraph "Response Generation"
+        ReportAgent -->|Context + Evidence| ReportLLM[Report Generation LLM]
+        ReportLLM -->|Markdown Report| MainAgent
+        StyleAgent -->|Style Input| StyleLLM[Style Generation LLM]
+        StyleLLM -->|Styled Text| MainAgent
+    end
+
+    MainAgent -->|Final Response| API
+    API -->|JSON Response| Client

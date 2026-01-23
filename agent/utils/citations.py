@@ -19,7 +19,7 @@ def _normalize_snip_text(s: str) -> str:
 
 
 
-def compress_evidence(snippets: list[dict], max_samples: int = 150) -> list[dict]:
+def compress_evidence(snippets: list[dict], max_samples: int = 300) -> list[dict]:
     if not snippets:
         return []
 

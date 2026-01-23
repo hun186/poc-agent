@@ -8,7 +8,7 @@ from elasticsearch import BadRequestError
 from smolagents import Tool
 
 from agent.es.es_client import safe_search as _safe_es_search
-from agent.es.evidence import _as_blocks
+from agent.es.evidence_core.json_utils import as_blocks
 
 from .common import resolve_index, dbg
 
@@ -66,7 +66,7 @@ class ESTimeline(Tool):
         hits = ((res.get("hits") or {}).get("hits") or []) if isinstance(res, dict) else []
         if hits:
             src0 = hits[0].get("_source") or {}
-            blocks = _as_blocks(src0.get("multidim_event_json"))
+            blocks = as_blocks(src0.get("multidim_event_json"))
             for b in blocks:
                 ets = b.get("Event_Timeline") or []
                 if isinstance(ets, str):
