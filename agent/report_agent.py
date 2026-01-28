@@ -10,10 +10,13 @@ from agent.llm_utils.ollama_client import call_llm  # 你既有的封裝
 from agent.utils.citations import build_citations_from_ev
 from agent.utils.citations import compress_evidence
 from agent.utils.citations import build_refno_uuid_map
+from agent.utils.evidence_pack import pack_ev_for_llm
+from agent.utils.evidence_pack import filter_ev_fields
+from agent.utils.evidence_pack import guess_report_need_fields
 from agent.utils.profiler import log_duration, log_total
 from agent.utils.markdown_tables import sanitize_markdown_tables, replace_table_cell_br
 from agent.refiners.query_refiner import refine_question_for_data_agent
-from agent.config.query_refiner_settings import load_report_refiner_config
+#from agent.config.query_refiner_settings import load_report_refiner_config
 
 REPORT_MODEL_ID = (
     os.getenv("REPORT_MODEL_ID")   # 有指定就用這個
@@ -41,16 +44,20 @@ REPORT_SYSTEM_PROMPT = """
   },
   "ev": [
     {
-      "id": "原始 uuid",
-      "ref_no": 1,                      # ★ 這是此片段的固定編號（1-based）
-      "d": "YYYY-MM-DD",
-      "title": "原文標題",
-      "s": "subject（如 DF-15_225_20）",
-      "note": "原始片段文字"
+      "ref_no": 1,          # 必填：引用編號（1-based），只能用這個標註來源
+      "note": "片段文字",    # 必填：事實只能來自 note
+      "d": "YYYY-MM-DD",    # 選填：若有，代表片段日期
+      "title": "原文標題",   # 選填：若有，代表片段標題
+      "s": "subject",       # 選填：若有，代表主題/標籤
+      "id": "uuid"          # 選填：若有，代表文件識別
     },
     ...
   ]
 }
+
+重要：ev 欄位可能缺少（例如沒有 d/title/s/id）。
+你必須只根據「實際收到的欄位」分析與撰寫，不得假設缺欄位存在。
+不得在內文提到未提供的欄位（缺 title 就不能寫「標題為…」；缺 d 就不能寫具體日期）。
 
 請嚴格遵守：
 
@@ -270,34 +277,123 @@ def ask_with_report(
         "ev": compress_evidence(picked_for_llm),
     }
 
+
+
     ev_compact = compressed_for_llm["ev"] or []
     payload["ev"] = ev_compact
 
+    # === (止血) 單片 note 字元上限：避免 token 爆掉 ===
+    NOTE_CHAR_LIMIT = int(os.getenv("REPORT_EV_NOTE_CHAR_LIMIT", "0"))  # 0=不限制
+    TITLE_CHAR_LIMIT = int(os.getenv("REPORT_EV_TITLE_CHAR_LIMIT", "0"))  # 0=不限制（可選）
+
+    truncated_notes = 0
+    truncated_titles = 0
+    note_truncated_chars_total = 0
+    title_truncated_chars_total = 0
+
+    if NOTE_CHAR_LIMIT > 0:
+        for e in ev_compact:
+            note = e.get("note")
+            if isinstance(note, str) and len(note) > NOTE_CHAR_LIMIT:
+                note_truncated_chars_total += (len(note) - NOTE_CHAR_LIMIT)
+                e["note"] = note[:NOTE_CHAR_LIMIT] + "…"
+                truncated_notes += 1
+
+    # （可選）標題也可能很長，通常不太會，但加了更保險
+    if TITLE_CHAR_LIMIT > 0:
+        for e in ev_compact:
+            title = e.get("title")
+            if isinstance(title, str) and len(title) > TITLE_CHAR_LIMIT:
+                title_truncated_chars_total += (len(title) - TITLE_CHAR_LIMIT)
+                e["title"] = title[:TITLE_CHAR_LIMIT] + "…"
+                truncated_titles += 1
+
+    # === (可選) 整體 note 總字元預算：再加一道硬上限 ===
+    NOTE_TOTAL_BUDGET = int(os.getenv("REPORT_EV_NOTE_TOTAL_BUDGET", "0"))  # 0=不限制
+    if NOTE_TOTAL_BUDGET > 0:
+        total = 0
+        for e in ev_compact:
+            note = e.get("note")
+            if not isinstance(note, str):
+                continue
+            if total >= NOTE_TOTAL_BUDGET:
+                # 超過預算後，直接把後面的 note 清空或改成極短提示（更省）
+                e["note"] = "…"
+                continue
+
+            remain = NOTE_TOTAL_BUDGET - total
+            if len(note) > remain:
+                e["note"] = note[:remain] + "…"
+                total = NOTE_TOTAL_BUDGET
+            else:
+                total += len(note)
+                
+    em = payload.get("evidence_meta")
+    if isinstance(em, dict):
+        em["note_char_limit"] = NOTE_CHAR_LIMIT
+        em["title_char_limit"] = TITLE_CHAR_LIMIT
+        em["truncated_notes"] = truncated_notes
+        em["truncated_titles"] = truncated_titles
+        em["note_truncated_chars_total"] = note_truncated_chars_total
+        em["title_truncated_chars_total"] = title_truncated_chars_total
+        em["note_total_budget"] = NOTE_TOTAL_BUDGET
+        
+    try:
+        packed = pack_ev_for_llm(
+            ev_compact,
+            refined_question or payload.get("question") or "",
+            mode=os.getenv("REPORT_EV_FIELD_SELECTOR_MODE", "rules"),
+            call_llm_fn=call_llm,
+            llm_model=os.getenv("REPORT_FIELD_SELECTOR_MODEL_ID") or REPORT_MODEL_ID,
+            llm_timeout=float(os.getenv("REPORT_FIELD_SELECTOR_TIMEOUT", "60")),
+            llm_max_fields=int(os.getenv("REPORT_FIELD_SELECTOR_MAX_FIELDS", "10")),
+        )
+    except Exception as ex:
+        # 保底：任何錯誤都不要影響主流程
+        packed = {
+            "ev_slim": filter_ev_fields(ev_compact, guess_report_need_fields(refined_question or "")),
+            "meta": {"mode": "rules", "llm_used": False, "llm_error": f"{type(ex).__name__}: {ex}", "allow_fields": [], "fields_count": 0}
+        }
+    compressed_for_llm["ev"] = packed["ev_slim"]
+    
+    em = payload.get("evidence_meta")
+    if isinstance(em, dict):
+        em["llm_ev_fields"] = packed["meta"].get("allow_fields")
+        em["llm_ev_fields_count"] = packed["meta"].get("fields_count")
+        em["llm_ev_field_selector"] = {
+            "mode": packed["meta"].get("mode"),
+            "llm_used": packed["meta"].get("llm_used"),
+            "llm_error": packed["meta"].get("llm_error"),
+        }
+        em["llm_ev_returned"] = len(compressed_for_llm["ev"])
+        
     # === related_articles：建議只列出 LLM 有用到的這些 doc ===
     ev_full = payload.get("evidence_snippets") or []
+    
+    # 取用於對齊的 doc_id（與 ev_compact 的 id 同概念）
+    def _doc_id_from_full_snip(s: Dict[str, Any]) -> str:
+        return str(s.get("uuid") or s.get("source_id") or "")
+    
     used_ids = {str(e.get("id")) for e in ev_compact if e.get("id")}
-
+    
     related_map: Dict[str, Dict[str, Any]] = {}
     for s in ev_full:
-        uuid_ = s.get("uuid")
-        if not uuid_:
+        doc_id = _doc_id_from_full_snip(s)
+        if not doc_id:
             continue
-
-        # ★ 只保留有出現在 ev_compact 的那些文章
-        if used_ids and str(uuid_) not in used_ids:
+        if used_ids and doc_id not in used_ids:
             continue
-
-        if uuid_ in related_map:
+        if doc_id in related_map:
             continue
-
-        related_map[uuid_] = {
-            "uuid": uuid_,
+    
+        related_map[doc_id] = {
+            "uuid": s.get("uuid"),
+            "source_id": s.get("source_id"),
             "article_title": s.get("article_title"),
             "article_date_iso": s.get("article_date_iso") or s.get("date_iso"),
             "subject": s.get("subject"),
-            "source_id": s.get("source_id"),
         }
-
+    
     payload["related_articles"] = list(related_map.values())
 
     # === 給 LLM 的 JSON ===
@@ -306,8 +402,11 @@ def ask_with_report(
         ensure_ascii=False,
         separators=(",", ":")
     )
-    
-    ev_for_llm = ev_compact
+    em = payload.get("evidence_meta")
+    if isinstance(em, dict):
+        em["llm_user_prompt_chars"] = len(user_prompt)  # ★ 可選但很實用
+    #ev_for_llm = ev_compact
+    ev_for_llm = compressed_for_llm["ev"]  # ★ 改成真的送進去那份
     print("=== DEBUG: EV (for LLM) ===")
     for e in ev_for_llm:
         print({
@@ -315,7 +414,8 @@ def ask_with_report(
             "id": e.get("id"),
             "d": e.get("d"),
             "title": e.get("title"),
-            "note_preview": (e.get("note") or "")[:100].replace("\n", " ")
+            "note_preview": (e.get("note") or "")[:100].replace("\n", " "),
+            "keys": list(e.keys()),  # 這行對診斷欄位精簡很有用
         })
     t0 = time.perf_counter()
     with log_duration("[report] call_llm(report)",
