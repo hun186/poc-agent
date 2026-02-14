@@ -57806,3 +57806,1289 @@ INFO:     192.168.0.134:57340 - "POST /v1/chat/completions HTTP/1.1" 200 OK
 INFO:     192.168.0.134:57350 - "GET /v1/models HTTP/1.1" 200 OK
 [chat_completions] chosen session_key = 'fdea05e3-a309-4b30-acd2-2f8f720690f6'
 INFO:     192.168.0.134:57358 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+INFO:     192.168.0.228:60580 - "GET /v1/docs/1c6db5869fd23fa33da9631464494eeb6155d8e2 HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "d:\ProgramData\anaconda3\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 426, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 84, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\applications.py", line 1106, in __call__
+    await super().__call__(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\applications.py", line 122, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\errors.py", line 184, in __call__
+    raise exc
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\cors.py", line 83, in __call__
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\exceptions.py", line 79, in __call__
+    raise exc
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 20, in __call__
+    raise e
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 17, in __call__
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 66, in app
+    response = await func(request)
+               ^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\routing.py", line 274, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\routing.py", line 193, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\concurrency.py", line 41, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\to_thread.py", line 33, in run_sync
+    return await get_asynclib().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\_backends\_asyncio.py", line 877, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\_backends\_asyncio.py", line 807, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shared\TopicClassification\poc-agent\api\routers\docs.py", line 92, in get_doc
+    return _get_doc_source_or_404(doc_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shared\TopicClassification\poc-agent\api\routers\docs.py", line 38, in _get_doc_source_or_404
+    res = ES.search(
+          ^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\utils.py", line 402, in wrapped
+    return api(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\__init__.py", line 3733, in search
+    return self.perform_request(  # type: ignore[return-value]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\_base.py", line 285, in perform_request
+    meta, resp_body = self.transport.perform_request(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_transport.py", line 328, in perform_request
+    meta, raw_data = node.perform_request(
+                     ^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_node\_http_urllib3.py", line 202, in perform_request
+    raise err from None
+elastic_transport.ConnectionError: Connection error caused by: ConnectionError(Connection error caused by: NewConnectionError(<elastic_transport._node._urllib3_chain_certs.HTTPSConnection object at 0x00000186E27B2650>: Failed to establish a new connection: [WinError 10061] 無法連線，因為目標電腦拒絕連線。))
+INFO:     192.168.0.134:34028 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:43422 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '4050c49d-f1d9-41d7-a699-5350762e5268'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=204, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我有一頁簡報文字內容，想要用AI繪圖畫一個插圖放在旁邊，給我合適的正向提詞，簡報文字如下: 中國人民解放軍概覽 成立於1927年8月1日，起於南昌起義 現行名稱於1947年10月10日正式啟用 指揮體系由中央軍事委員會負責，實行黨、國雙重領導 指揮體系由中央軍事委員會負責，實行黨、國雙重領導'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 16.321s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者只要求產生 AI 繪圖的正向提詞，無需檢索文件或分析統計，純粹由模型生成。', 'topic': 'mil_intel'}
+==================================================
+[call_llm] sys_len=43, user_len=146, user_preview='我有一頁簡報文字內容，想要用AI繪圖畫一個插圖放在旁邊，給我合適的正向提詞，簡報文字如下: 中國人民解放軍概覽 成立於1927年8月1日，起於南昌起義 現行名稱於1947年10月10日正式啟用 指揮體系由中央軍事委員會負責，實行黨、國雙重領導 指揮體系由中央軍事委員會負責，實行黨、國雙重領導'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=26.836s mode=PURE_LLM topic=mil_intel
+[chat_completions] saved last_structured for '4050c49d-f1d9-41d7-a699-5350762e5268' used_uuids = None
+[chat_completions] evict session: '1da778ed-ac31-46af-b48d-2970f61b3c57'
+INFO:     192.168.0.134:43438 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:44380 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '4050c49d-f1d9-41d7-a699-5350762e5268'
+INFO:     192.168.0.134:44390 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:47262 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '4050c49d-f1d9-41d7-a699-5350762e5268'
+INFO:     192.168.0.134:47264 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:52024 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '4050c49d-f1d9-41d7-a699-5350762e5268'
+INFO:     192.168.0.134:52038 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:49576 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '4050c49d-f1d9-41d7-a699-5350762e5268'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=297, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題（務必以此為準）】 我是用stable diffusion來畫，你這些畫不太出來，我想要畫幾個不同軍種的解放軍人物在圖中。  【過去問題1（用來判斷主題與語境，若未提到新主題則視為延續）】 我有一頁簡報文字內容，想要用AI繪圖畫一個插圖放在旁邊，給我合適的正向提詞，簡報文字如下: 中國人民解放軍概覽 成立於1927年8月1日，起於南昌起義 現行名稱於1947年10月10日正式啟用 指揮體系由中央軍事委員會負責，實行黨、國雙重領導 指揮體系由中央軍事委員會負責，實行黨、國雙重領導'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 3.496s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者僅要求提供 stable diffusion 提詞以繪製解放軍人物，屬於模型自行生成內容，不需查詢或操作既有文件，也不涉及整理分析', 'topic': 'news_general'}
+==================================================
+[call_llm] sys_len=43, user_len=51, user_preview='我是用stable diffusion來畫，你這些畫不太出來，我想要畫幾個不同軍種的解放軍人物在圖中。'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+INFO:     192.168.0.134:48280 - "GET /v1/models HTTP/1.1" 200 OK
+[answer_with_routing][TOTAL] total=19.059s mode=PURE_LLM topic=news_general
+[chat_completions] saved last_structured for '4050c49d-f1d9-41d7-a699-5350762e5268' used_uuids = None
+INFO:     192.168.0.134:49580 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:54808 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '4050c49d-f1d9-41d7-a699-5350762e5268'
+INFO:     192.168.0.134:54824 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:39034 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '7fbf2380-f144-4bf2-b335-f0eb75e41080'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=130, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個插圖放在旁邊，畫幾個不同軍種的解放軍人物在圖中，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 2.928s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者只要求提供 stable diffusion 的正向提詞，屬於純文字生成，無需查詢資料庫或既有文件。', 'topic': 'none'}
+==================================================
+[call_llm] sys_len=43, user_len=72, user_preview='我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個插圖放在旁邊，畫幾個不同軍種的解放軍人物在圖中，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=17.304s mode=PURE_LLM topic=none
+[chat_completions] saved last_structured for '7fbf2380-f144-4bf2-b335-f0eb75e41080' used_uuids = None
+[chat_completions] evict session: '425e7233-a2be-491b-9ab3-32084604ff66'
+INFO:     192.168.0.134:41704 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:54020 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '7fbf2380-f144-4bf2-b335-f0eb75e41080'
+INFO:     192.168.0.134:54026 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:40786 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.228:60533 - "GET /v1/export/word?session_id=7fbf2380-f144-4bf2-b335-f0eb75e41080&turn_id=913a9cadb3e4426db98adf036fa61377 HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '7fbf2380-f144-4bf2-b335-f0eb75e41080'
+INFO:     192.168.0.134:40802 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:40806 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '7fbf2380-f144-4bf2-b335-f0eb75e41080'
+INFO:     192.168.0.134:40818 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+INFO:     192.168.0.228:52677 - "GET /v1/docs/1c6db5869fd23fa33da9631464494eeb6155d8e2 HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "d:\ProgramData\anaconda3\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 426, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 84, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\applications.py", line 1106, in __call__
+    await super().__call__(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\applications.py", line 122, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\errors.py", line 184, in __call__
+    raise exc
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\cors.py", line 83, in __call__
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\exceptions.py", line 79, in __call__
+    raise exc
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 20, in __call__
+    raise e
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 17, in __call__
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 66, in app
+    response = await func(request)
+               ^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\routing.py", line 274, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\routing.py", line 193, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\concurrency.py", line 41, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\to_thread.py", line 33, in run_sync
+    return await get_asynclib().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\_backends\_asyncio.py", line 877, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\_backends\_asyncio.py", line 807, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shared\TopicClassification\poc-agent\api\routers\docs.py", line 92, in get_doc
+    return _get_doc_source_or_404(doc_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shared\TopicClassification\poc-agent\api\routers\docs.py", line 38, in _get_doc_source_or_404
+    res = ES.search(
+          ^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\utils.py", line 402, in wrapped
+    return api(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\__init__.py", line 3733, in search
+    return self.perform_request(  # type: ignore[return-value]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\_base.py", line 285, in perform_request
+    meta, resp_body = self.transport.perform_request(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_transport.py", line 328, in perform_request
+    meta, raw_data = node.perform_request(
+                     ^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_node\_http_urllib3.py", line 202, in perform_request
+    raise err from None
+elastic_transport.ConnectionError: Connection error caused by: ConnectionError(Connection error caused by: NewConnectionError(<elastic_transport._node._urllib3_chain_certs.HTTPSConnection object at 0x00000186E4BCAD50>: Failed to establish a new connection: [WinError 10061] 無法連線，因為目標電腦拒絕連線。))
+INFO:     192.168.0.228:54879 - "GET /v1/docs/27437cf17edec2cb26ee569a4f6ded6638ba10f8/fulltext?format=json HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "d:\ProgramData\anaconda3\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 426, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 84, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\applications.py", line 1106, in __call__
+    await super().__call__(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\applications.py", line 122, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\errors.py", line 184, in __call__
+    raise exc
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\cors.py", line 83, in __call__
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\exceptions.py", line 79, in __call__
+    raise exc
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 20, in __call__
+    raise e
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 17, in __call__
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 66, in app
+    response = await func(request)
+               ^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\routing.py", line 274, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\routing.py", line 193, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\concurrency.py", line 41, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\to_thread.py", line 33, in run_sync
+    return await get_asynclib().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\_backends\_asyncio.py", line 877, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\_backends\_asyncio.py", line 807, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shared\TopicClassification\poc-agent\api\routers\docs.py", line 110, in get_fulltext_on_demand
+    src = _get_doc_source_or_404(doc_id)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shared\TopicClassification\poc-agent\api\routers\docs.py", line 38, in _get_doc_source_or_404
+    res = ES.search(
+          ^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\utils.py", line 402, in wrapped
+    return api(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\__init__.py", line 3733, in search
+    return self.perform_request(  # type: ignore[return-value]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\_base.py", line 285, in perform_request
+    meta, resp_body = self.transport.perform_request(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_transport.py", line 328, in perform_request
+    meta, raw_data = node.perform_request(
+                     ^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_node\_http_urllib3.py", line 202, in perform_request
+    raise err from None
+elastic_transport.ConnectionError: Connection error caused by: ConnectionError(Connection error caused by: NewConnectionError(<elastic_transport._node._urllib3_chain_certs.HTTPSConnection object at 0x00000186E6FEBD50>: Failed to establish a new connection: [WinError 10061] 無法連線，因為目標電腦拒絕連線。))
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+ALL_INDEXES ['satmeta', 'news_test', 'mil_reports-01', 'nav_intel_sentences_synthetic_v1', 'govdocs_2024']
+INFO:     192.168.0.134:33668 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:33684 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.228:58401 - "GET /v1/export/word?session_id=7fbf2380-f144-4bf2-b335-f0eb75e41080&turn_id=913a9cadb3e4426db98adf036fa61377 HTTP/1.1" 200 OK
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "d:\ProgramData\anaconda3\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 426, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 84, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\applications.py", line 1106, in __call__
+    await super().__call__(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\applications.py", line 122, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\errors.py", line 184, in __call__
+    raise exc
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\cors.py", line 83, in __call__
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\exceptions.py", line 79, in __call__
+    raise exc
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 20, in __call__
+    raise e
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 17, in __call__
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 66, in app
+    response = await func(request)
+               ^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\routing.py", line 274, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\routing.py", line 193, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\concurrency.py", line 41, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\to_thread.py", line 33, in run_sync
+    return await get_asynclib().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\_backends\_asyncio.py", line 877, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\_backends\_asyncio.py", line 807, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shared\TopicClassification\poc-agent\api\routers\docs.py", line 110, in get_fulltext_on_demand
+    src = _get_doc_source_or_404(doc_id)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shared\TopicClassification\poc-agent\api\routers\docs.py", line 38, in _get_doc_source_or_404
+    res = ES.search(
+          ^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\utils.py", line 402, in wrapped
+    return api(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\__init__.py", line 3733, in search
+    return self.perform_request(  # type: ignore[return-value]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\_base.py", line 285, in perform_request
+    meta, resp_body = self.transport.perform_request(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_transport.py", line 328, in perform_request
+    meta, raw_data = node.perform_request(
+                     ^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_node\_http_urllib3.py", line 202, in perform_request
+    raise err from None
+elastic_transport.ConnectionError: Connection error caused by: ConnectionError(Connection error caused by: NewConnectionError(<elastic_transport._node._urllib3_chain_certs.HTTPSConnection object at 0x00000186E9670690>: Failed to establish a new connection: [WinError 10061] 無法連線，因為目標電腦拒絕連線。))
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "d:\ProgramData\anaconda3\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 426, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 84, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\applications.py", line 1106, in __call__
+    await super().__call__(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\applications.py", line 122, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\errors.py", line 184, in __call__
+    raise exc
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\cors.py", line 83, in __call__
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\exceptions.py", line 79, in __call__
+    raise exc
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\middleware\exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 20, in __call__
+    raise e
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 17, in __call__
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\routing.py", line 66, in app
+    response = await func(request)
+               ^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\routing.py", line 274, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\fastapi\routing.py", line 193, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\starlette\concurrency.py", line 41, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\to_thread.py", line 33, in run_sync
+    return await get_asynclib().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\_backends\_asyncio.py", line 877, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\anyio\_backends\_asyncio.py", line 807, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shared\TopicClassification\poc-agent\api\routers\docs.py", line 92, in get_doc
+    return _get_doc_source_or_404(doc_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shared\TopicClassification\poc-agent\api\routers\docs.py", line 38, in _get_doc_source_or_404
+    res = ES.search(
+          ^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\utils.py", line 402, in wrapped
+    return api(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\__init__.py", line 3733, in search
+    return self.perform_request(  # type: ignore[return-value]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elasticsearch\_sync\client\_base.py", line 285, in perform_request
+    meta, resp_body = self.transport.perform_request(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_transport.py", line 328, in perform_request
+    meta, raw_data = node.perform_request(
+                     ^^^^^^^^^^^^^^^^^^^^^
+  File "d:\ProgramData\anaconda3\Lib\site-packages\elastic_transport\_node\_http_urllib3.py", line 202, in perform_request
+    raise err from None
+elastic_transport.ConnectionError: Connection error caused by: ConnectionError(Connection error caused by: NewConnectionError(<elastic_transport._node._urllib3_chain_certs.HTTPSConnection object at 0x00000186E04A9A10>: Failed to establish a new connection: [WinError 10061] 無法連線，因為目標電腦拒絕連線。))
+INFO:     192.168.0.134:49394 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:39846 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:56484 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '33f052fd-bf21-4c99-9252-9b31b0574021'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=335, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我有一頁簡報文字內容，介紹解放軍歷史沿革，想要用stable diffusion AI繪圖畫一個插圖放在旁邊，畫幾個不同軍種的解放軍人物在圖中，給我合適的正向提詞。 *   1927‑08‑01 南昌起義：武裝革命起點      *   1947‑10‑10 《中國人民解放軍宣言》正式啟用現名      *   1949‑10‑01 中華人民共和國成立，解放軍約550萬人      *   1950‑1955 大規模裁減至約320萬      *   1966 成立第二炮兵（後更名為火箭軍）      *   2015‑12‑31 陸      *'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 17.244s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者僅要求生成 stable diffusion 的正向提詞，屬於模型自行可完成的文字創作，不需資料庫或已存在文件，也不涉及整理分析或文件風格改寫。', 'topic': 'news_general'}
+==================================================
+[call_llm] sys_len=43, user_len=277, user_preview='我有一頁簡報文字內容，介紹解放軍歷史沿革，想要用stable diffusion AI繪圖畫一個插圖放在旁邊，畫幾個不同軍種的解放軍人物在圖中，給我合適的正向提詞。 *   1927‑08‑01 南昌起義：武裝革命起點      *   1947‑10‑10 《中國人民解放軍宣言》正式啟用現名      *   1949‑10‑01 中華人民共和國成立，解放軍約550萬人      *   1950‑1955 大規模裁減至約320萬      *   1966 成立第二炮兵（後更名為火箭軍）      *   2015‑12‑31 陸      *'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=32.934s mode=PURE_LLM topic=news_general
+[chat_completions] saved last_structured for '33f052fd-bf21-4c99-9252-9b31b0574021' used_uuids = None
+[chat_completions] evict session: 'f9bca42b-7eae-41e7-a717-0e0c002422df'
+INFO:     192.168.0.134:56494 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:60366 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '33f052fd-bf21-4c99-9252-9b31b0574021'
+INFO:     192.168.0.134:60372 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:50106 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '33f052fd-bf21-4c99-9252-9b31b0574021'
+INFO:     192.168.0.134:50112 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:50114 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '33f052fd-bf21-4c99-9252-9b31b0574021'
+INFO:     192.168.0.134:50120 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:49666 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:54424 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:39742 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:57326 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:33138 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:50038 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '42173efc-ce95-4a02-8ec6-5f30ab59bb5a'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=321, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我有一頁簡報文字內容，介紹解放軍歷史沿革，想要用stable diffusion AI繪圖畫一個插圖放在旁邊，畫幾個不同軍種的解放軍人物在圖中，給我合適的正向提詞。 陸軍概況與裝備 *   人員約 1,000,000（佔總兵力 40%）      *   主戰坦克 99A、96B（≈6,000 輛）      *   步兵戰車 ZBD‑04、08式；自走炮 PLZ‑05、PGZ‑09      *   武裝直升機 直‑10、直‑19 提供空中支援      *   目標 2035 年完成全機械化與信息化升級      *'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 16.224s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者僅要求產生 stable diffusion 的正向提詞，屬於純文字生成，不需資料庫查詢，也不是文件後續操作或報告整理', 'topic': 'mil_intel'}
+==================================================
+[call_llm] sys_len=43, user_len=263, user_preview='我有一頁簡報文字內容，介紹解放軍歷史沿革，想要用stable diffusion AI繪圖畫一個插圖放在旁邊，畫幾個不同軍種的解放軍人物在圖中，給我合適的正向提詞。 陸軍概況與裝備 *   人員約 1,000,000（佔總兵力 40%）      *   主戰坦克 99A、96B（≈6,000 輛）      *   步兵戰車 ZBD‑04、08式；自走炮 PLZ‑05、PGZ‑09      *   武裝直升機 直‑10、直‑19 提供空中支援      *   目標 2035 年完成全機械化與信息化升級      *'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=32.120s mode=PURE_LLM topic=mil_intel
+[chat_completions] saved last_structured for '42173efc-ce95-4a02-8ec6-5f30ab59bb5a' used_uuids = None
+[chat_completions] evict session: 'cc0b24bb-796a-4540-9f9c-99fbb193315f'
+INFO:     192.168.0.134:50044 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:41336 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '42173efc-ce95-4a02-8ec6-5f30ab59bb5a'
+INFO:     192.168.0.134:41338 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:57744 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '42173efc-ce95-4a02-8ec6-5f30ab59bb5a'
+INFO:     192.168.0.134:57756 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:57758 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '42173efc-ce95-4a02-8ec6-5f30ab59bb5a'
+INFO:     192.168.0.134:57772 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:36758 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:53824 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:44282 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:41706 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'b5d56849-e344-423b-963c-1de9b262c423'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=260, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。 海軍概況與艦隊規模 約 25 萬人員，維持海上作戰與支援能力。 艦艇總量 500+ 艘，包括 3 艘航空母艦、55 艘驅逐艦、100+ 護衛艦。 代表性艦型 **001 型航空母艦（山東號）**、**055 大型導彈驅逐艦**（30+ 艘）及 **094 核潛艇**（配備洲際彈道導彈）。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 16.267s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者僅要求生成 stable diffusion 的正向提詞，屬於文字生成，不需檢索或處理已有文件，也不是整理統計或文件後續操作', 'topic': 'news_general'}
+==================================================
+[call_llm] sys_len=43, user_len=202, user_preview='我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。 海軍概況與艦隊規模 約 25 萬人員，維持海上作戰與支援能力。 艦艇總量 500+ 艘，包括 3 艘航空母艦、55 艘驅逐艦、100+ 護衛艦。 代表性艦型 **001 型航空母艦（山東號）**、**055 大型導彈驅逐艦**（30+ 艘）及 **094 核潛艇**（配備洲際彈道導彈）。'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=22.697s mode=PURE_LLM topic=news_general
+[chat_completions] saved last_structured for 'b5d56849-e344-423b-963c-1de9b262c423' used_uuids = None
+[chat_completions] evict session: '2652d525-26b6-4812-9d00-3e8be892a64b'
+INFO:     192.168.0.134:41712 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:46320 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'b5d56849-e344-423b-963c-1de9b262c423'
+INFO:     192.168.0.134:46328 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:47298 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'b5d56849-e344-423b-963c-1de9b262c423'
+INFO:     192.168.0.134:47312 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:50628 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'b5d56849-e344-423b-963c-1de9b262c423'
+INFO:     192.168.0.134:50630 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:33718 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '127ca531-a86f-4ea3-9343-b9a698687570'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=281, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。 未來發展與挑戰 未來十年軍事發展藍圖與面臨的主要挑戰 *   **建軍百年目標（2027）**：打造世界一流軍隊，涵蓋資訊化、機械化、智能化。      *   **戰略重點**：海空遠征、太空作戰、網路與資訊戰、核威懾三位一體。      *   **政策方向**：提升國防科研投入、推動產學研協同、深化軍民融合。      *'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 3.323s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者只要求產生 stable diffusion 的正向提詞，屬純文字生成，無需檢索或處理已存在文件', 'topic': 'news_general'}
+==================================================
+[call_llm] sys_len=43, user_len=223, user_preview='我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。 未來發展與挑戰 未來十年軍事發展藍圖與面臨的主要挑戰 *   **建軍百年目標（2027）**：打造世界一流軍隊，涵蓋資訊化、機械化、智能化。      *   **戰略重點**：海空遠征、太空作戰、網路與資訊戰、核威懾三位一體。      *   **政策方向**：提升國防科研投入、推動產學研協同、深化軍民融合。      *'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=9.372s mode=PURE_LLM topic=news_general
+[chat_completions] saved last_structured for '127ca531-a86f-4ea3-9343-b9a698687570' used_uuids = None
+[chat_completions] evict session: '21b9f6f9-9fae-4e3e-aea4-def46ddb40a4'
+INFO:     192.168.0.134:33720 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:48844 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '127ca531-a86f-4ea3-9343-b9a698687570'
+INFO:     192.168.0.134:48846 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:32770 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '127ca531-a86f-4ea3-9343-b9a698687570'
+INFO:     192.168.0.134:32786 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:32788 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '127ca531-a86f-4ea3-9343-b9a698687570'
+INFO:     192.168.0.134:32794 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:46656 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'e3bc125c-d66d-4b5d-8788-7f413f1ace87'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=198, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。   未來發展與挑戰   未來十年軍事發展藍圖與面臨的主要挑戰 *   **建軍百年目標（2027）**：打造世界一流軍隊，涵蓋資訊化、機械化、智能化。      *'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 17.114s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者僅請求生成 Stable Diffusion 的正向提詞，屬純文字產出，不涉及資料檢索、文件追蹤或報告整理。', 'topic': 'news_general'}
+==================================================
+[call_llm] sys_len=43, user_len=140, user_preview='我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。   未來發展與挑戰   未來十年軍事發展藍圖與面臨的主要挑戰 *   **建軍百年目標（2027）**：打造世界一流軍隊，涵蓋資訊化、機械化、智能化。      *'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=23.679s mode=PURE_LLM topic=news_general
+[chat_completions] saved last_structured for 'e3bc125c-d66d-4b5d-8788-7f413f1ace87' used_uuids = None
+[chat_completions] evict session: 'f7e664a9-a64b-4ab1-9765-f0df60cdb393'
+INFO:     192.168.0.134:46662 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:43600 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'e3bc125c-d66d-4b5d-8788-7f413f1ace87'
+INFO:     192.168.0.134:43606 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:51950 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'e3bc125c-d66d-4b5d-8788-7f413f1ace87'
+INFO:     192.168.0.134:51960 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:51972 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'e3bc125c-d66d-4b5d-8788-7f413f1ace87'
+INFO:     192.168.0.134:51986 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:50314 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:46060 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bea94e44-1c48-4ac3-8574-faef8d4336e5'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=184, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。   未來發展與挑戰   未來十年軍事發展藍圖與面臨的主要挑戰 *   **政策方向**：提升國防科研投入、推動產學研協同、深化軍民融合。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 15.736s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者僅請求生成 stable diffusion 的正向提詞，屬於純粹的文字生成，不需檢索資料庫或處理已存在文件。', 'topic': 'news_general'}
+==================================================
+[call_llm] sys_len=43, user_len=126, user_preview='我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。   未來發展與挑戰   未來十年軍事發展藍圖與面臨的主要挑戰 *   **政策方向**：提升國防科研投入、推動產學研協同、深化軍民融合。'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=25.520s mode=PURE_LLM topic=news_general
+[chat_completions] saved last_structured for 'bea94e44-1c48-4ac3-8574-faef8d4336e5' used_uuids = None
+[chat_completions] evict session: '66bb45ef-2108-405e-a8ec-0d0ffbcf6e3e'
+INFO:     192.168.0.134:46068 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:42712 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bea94e44-1c48-4ac3-8574-faef8d4336e5'
+INFO:     192.168.0.134:42720 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:49714 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bea94e44-1c48-4ac3-8574-faef8d4336e5'
+INFO:     192.168.0.134:49730 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:49742 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bea94e44-1c48-4ac3-8574-faef8d4336e5'
+INFO:     192.168.0.134:49744 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:43690 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bea94e44-1c48-4ac3-8574-faef8d4336e5'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=231, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題（務必以此為準）】 合成一張圖  【過去問題1（用來判斷主題與語境，若未提到新主題則視為延續）】 我有一頁簡報文字內容，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。   未來發展與挑戰   未來十年軍事發展藍圖與面臨的主要挑戰 *   **政策方向**：提升國防科研投入、推動產學研協同、深化軍民融合。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 16.194s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者僅要求合成圖片，屬於模型直接可回應的任務，未涉及文件檢索、分析或風格改寫。', 'topic': 'news_general'}
+==================================================
+[call_llm] sys_len=43, user_len=5, user_preview='合成一張圖'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=19.351s mode=PURE_LLM topic=news_general
+[chat_completions] saved last_structured for 'bea94e44-1c48-4ac3-8574-faef8d4336e5' used_uuids = None
+INFO:     192.168.0.134:43702 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:55980 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bea94e44-1c48-4ac3-8574-faef8d4336e5'
+INFO:     192.168.0.134:55988 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:56994 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:35588 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:40888 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bf17dd48-83fd-4217-83e8-19c522bf85da'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=131, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我要畫一張女性行政總監的標示圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 14.993s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者要求提供 stable diffusion 的正向提詞，僅需模型生成文字，不涉及資料庫查詢、文件整理或風格改寫。', 'topic': 'none'}
+==================================================
+[call_llm] sys_len=43, user_len=73, user_preview='我要畫一張女性行政總監的標示圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+INFO:     192.168.0.134:47266 - "GET /v1/models HTTP/1.1" 200 OK
+[answer_with_routing][TOTAL] total=20.835s mode=PURE_LLM topic=none
+[chat_completions] saved last_structured for 'bf17dd48-83fd-4217-83e8-19c522bf85da' used_uuids = None
+[chat_completions] evict session: '6058c204-8523-4f00-91fc-1a8e5d342fb1'
+INFO:     192.168.0.134:40890 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:55466 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bf17dd48-83fd-4217-83e8-19c522bf85da'
+INFO:     192.168.0.134:55478 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:47196 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bf17dd48-83fd-4217-83e8-19c522bf85da'
+INFO:     192.168.0.134:47198 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:47206 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bf17dd48-83fd-4217-83e8-19c522bf85da'
+INFO:     192.168.0.134:47220 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:36834 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bf17dd48-83fd-4217-83e8-19c522bf85da'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=186, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題（務必以此為準）】 英文提示詞會不會效果更好？  【過去問題1（用來判斷主題與語境，若未提到新主題則視為延續）】 我要畫一張女性行政總監的標示圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 2.604s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者詢問英文提示詞效果，僅需模型回覆，無需檢索或處理已存在文件', 'topic': 'none'}
+==================================================
+[call_llm] sys_len=43, user_len=13, user_preview='英文提示詞會不會效果更好？'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=10.398s mode=PURE_LLM topic=none
+[chat_completions] saved last_structured for 'bf17dd48-83fd-4217-83e8-19c522bf85da' used_uuids = None
+INFO:     192.168.0.134:36838 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:35698 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'bf17dd48-83fd-4217-83e8-19c522bf85da'
+INFO:     192.168.0.134:60582 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:35714 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:56046 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:34968 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:47552 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'ee8cc051-bb80-4806-a3c9-c1953dc7c7f9'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=3156, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 Message to the U.S. Department of State & AIT Subject: Urgent Appeal: Recognizing the Strategic Threat of CCP-Infiltrated Opposition in Taiwan The U.S. Government must stop viewing the current legislative obstruction in Taiwan by the KMT-TPP alliance as mere "partisan politics." In reality, the Kuomintang (KMT) has been deeply infiltrated by the Chinese Communist Party (CCP) for over 23 years, effectively acting as a vehicle for Beijing’s'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 16.621s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者僅要求將英文內容翻譯成中文，屬於模型自行完成的翻譯任務，不涉及資料檢索或文件處理。', 'topic': 'none'}
+==================================================
+[call_llm] sys_len=43, user_len=3098, user_preview='Message to the U.S. Department of State & AIT Subject: Urgent Appeal: Recognizing the Strategic Threat of CCP-Infiltrated Opposition in Taiwan The U.S. Government must stop viewing the current legislative obstruction in Taiwan by the KMT-TPP alliance as mere "partisan politics." In reality, the Kuomintang (KMT) has been deeply infiltrated by the Chinese Communist Party (CCP) for over 23 years, effectively acting as a vehicle for Beijing’s will. Although the Taiwanese people used their votes to s'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=25.156s mode=PURE_LLM topic=none
+[chat_completions] saved last_structured for 'ee8cc051-bb80-4806-a3c9-c1953dc7c7f9' used_uuids = None
+[chat_completions] evict session: '217cc7e2-b453-4a18-a350-e869bd4747ea'
+INFO:     192.168.0.134:47560 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:57574 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'ee8cc051-bb80-4806-a3c9-c1953dc7c7f9'
+INFO:     192.168.0.134:57590 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:52316 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'ee8cc051-bb80-4806-a3c9-c1953dc7c7f9'
+INFO:     192.168.0.134:52328 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:52336 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'ee8cc051-bb80-4806-a3c9-c1953dc7c7f9'
+INFO:     192.168.0.134:52344 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:58202 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:47860 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '2ffb955f-b14d-41c9-9382-390d7a0bd7b3'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=150, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我的簽名檔是AI實務應用架構師，創新AI，賦能未來，我要畫一張標示圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 15.405s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者僅要求生成 stable diffusion 的正向提詞，屬於模型自行回應的創意需求，不涉及資料庫檢索或文件操作。', 'topic': 'none'}
+==================================================
+[call_llm] sys_len=43, user_len=92, user_preview='我的簽名檔是AI實務應用架構師，創新AI，賦能未來，我要畫一張標示圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=27.660s mode=PURE_LLM topic=none
+[chat_completions] saved last_structured for '2ffb955f-b14d-41c9-9382-390d7a0bd7b3' used_uuids = None
+[chat_completions] evict session: '355bd0b3-1241-4619-a29b-26250c3c87cb'
+INFO:     192.168.0.134:47870 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:35028 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '2ffb955f-b14d-41c9-9382-390d7a0bd7b3'
+INFO:     192.168.0.134:38422 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:35030 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:38432 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '2ffb955f-b14d-41c9-9382-390d7a0bd7b3'
+INFO:     192.168.0.134:38448 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:38654 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '2ffb955f-b14d-41c9-9382-390d7a0bd7b3'
+INFO:     192.168.0.134:38660 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:59022 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:58060 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'da2eb7d7-f01a-457b-a128-18c049a3d4a4'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=149, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我的簽名檔是行政總監，卓越治理，成就未來，我是女性，要畫一張標示圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 15.597s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者要求提供 stable diffusion 的正向提詞，屬於純文字生成，不涉及資料庫檢索、報告整理或既有文件的後續操作。', 'topic': 'none'}
+==================================================
+[call_llm] sys_len=43, user_len=91, user_preview='我的簽名檔是行政總監，卓越治理，成就未來，我是女性，要畫一張標示圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+INFO:     192.168.0.134:42914 - "GET /v1/models HTTP/1.1" 200 OK
+[answer_with_routing][TOTAL] total=27.430s mode=PURE_LLM topic=none
+[chat_completions] saved last_structured for 'da2eb7d7-f01a-457b-a128-18c049a3d4a4' used_uuids = None
+[chat_completions] evict session: '25b3a645-2e35-4641-ac1c-ea480f5946e7'
+INFO:     192.168.0.134:58068 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:46880 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'da2eb7d7-f01a-457b-a128-18c049a3d4a4'
+INFO:     192.168.0.134:46888 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:55960 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'da2eb7d7-f01a-457b-a128-18c049a3d4a4'
+INFO:     192.168.0.134:55974 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:55976 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'da2eb7d7-f01a-457b-a128-18c049a3d4a4'
+INFO:     192.168.0.134:55982 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:53774 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '1c2927c7-4ea3-45aa-bf74-eec2b6984813'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=159, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我的簽名檔是傳輸系統及人員權限管理工程師，安全相連，管理無憂，我是男性，要畫一張標示圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 15.684s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者僅要求提供 stable diffusion 的正向提詞，屬於純文字生成，不需檢索或文件操作', 'topic': 'none'}
+==================================================
+[call_llm] sys_len=43, user_len=101, user_preview='我的簽名檔是傳輸系統及人員權限管理工程師，安全相連，管理無憂，我是男性，要畫一張標示圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念插圖放在旁邊，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+INFO:     192.168.0.134:42848 - "GET /v1/models HTTP/1.1" 200 OK
+[answer_with_routing][TOTAL] total=26.940s mode=PURE_LLM topic=none
+[chat_completions] saved last_structured for '1c2927c7-4ea3-45aa-bf74-eec2b6984813' used_uuids = None
+[chat_completions] evict session: 'd02a495a-db15-4f4b-a675-282de9b07bc3'
+INFO:     192.168.0.134:53790 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:57908 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '1c2927c7-4ea3-45aa-bf74-eec2b6984813'
+INFO:     192.168.0.134:57914 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:56284 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '1c2927c7-4ea3-45aa-bf74-eec2b6984813'
+INFO:     192.168.0.134:56292 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:56306 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = '1c2927c7-4ea3-45aa-bf74-eec2b6984813'
+INFO:     192.168.0.134:56316 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:35728 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:44534 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'b547f959-5c90-4726-9ac9-4da83d110e56'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=157, user_preview='請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題】 我的簽名檔是傳輸系統及人員權限管理工程師，安全相連，管理無憂，我是男性，要畫一張個人圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念個人圖片，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 15.024s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'PURE_LLM', 'reason': '使用者要求生成 stable diffusion 的正向提詞，屬於純文字生成，不涉及資料庫檢索或文件後續操作，也不是統計分析或風格改寫', 'topic': 'none'}
+==================================================
+[call_llm] sys_len=43, user_len=99, user_preview='我的簽名檔是傳輸系統及人員權限管理工程師，安全相連，管理無憂，我是男性，要畫一張個人圖片貼在櫃子上，以供識別，想要用stable diffusion AI繪圖畫一個概念個人圖片，給我合適的正向提詞。'
+[call_llm] system_preview='你是一個一般用途的繁體中文助手。請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。'
+[answer_with_routing][TOTAL] total=30.387s mode=PURE_LLM topic=none
+[chat_completions] saved last_structured for 'b547f959-5c90-4726-9ac9-4da83d110e56' used_uuids = None
+[chat_completions] evict session: 'f41ee69c-9f7f-4306-bb8a-7a1198641e26'
+INFO:     192.168.0.134:44548 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:36706 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'b547f959-5c90-4726-9ac9-4da83d110e56'
+INFO:     192.168.0.134:36712 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:37296 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'b547f959-5c90-4726-9ac9-4da83d110e56'
+INFO:     192.168.0.134:37298 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:37300 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'b547f959-5c90-4726-9ac9-4da83d110e56'
+INFO:     192.168.0.134:37304 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:51288 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:53320 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:57134 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     192.168.0.134:45024 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'b547f959-5c90-4726-9ac9-4da83d110e56'
+[chat_completions] reuse_uuids = []
+[chat_completions] refno_uuid_map = None
+==================================================
+[call_llm] sys_len=1602, user_len=670, user_preview="請依說明判斷下列使用者請求屬於哪一種模式，只輸出 JSON 物件，不要有其他文字。  【使用者請求】 【目前問題（務必以此為準）】 我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet id"
+[call_llm] system_preview='你是一個「任務分類器」，負責判斷使用者目前的請求屬於哪一種模式，並回傳其語義上的主題分類（topic），後端會根據 topic 自行決定查哪些 Elasticsearch index。  你只能回傳一個 JSON 物件，格式如下：  {   "mode": "SRA_REPORT | SRA_STYLE | DOC_FOLLOWUP | PURE_LLM",   "reason": "簡短說明為什麼這樣判斷",   "topic": "news_general | mil_intel | gov_document | none" }  四種模式定義（請特別注意 SRA_REPORT 與 DOC_FOLLOWUP 的差異）：  1. SRA_REPORT    - 重點是「整理 / 分析 / 彙整 / 統計」一段期間或一個主題的事件。通常會：        * 問『某個主題在某段時間的趨勢如'
+[router] LLM route 花費 17.411s model_id=gpt-oss:120b-128k
+[router] routed = {'mode': 'SRA_STYLE', 'reason': '使用者提供現有的圖像生成提示，要求加入科技感風格，屬於內容改寫/風格調整的請求，符合 SRA_STYLE 定義。', 'topic': 'none'}
+┌────────────────────────────────── New run ──────────────────────────────────┐
+│                                                                             │
+│ 我目前用這個”A male engineer wearing a white shirt and dark‑blue tie,       │
+│ standing in front of a backdrop of data‑transfer hardware and network       │
+│ cables. He holds a tablet displaying a security‑management interface,       │
+│ smiling confidently. Behind him floats a glowing security shield emblem     │
+│ with the slogan 'Secure Connection, Worry‑Free Management' in Chinese.      │
+│ Realistic style with subtle sci‑fi lighting, high resolution, suitable for  │
+│ a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？         │
+│                                                                             │
+└─ LiteLLMModel - ollama_chat/gpt-oss:120b-128k ──────────────────────────────┘
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ─ Executing parsed code: ──────────────────────────────────────────────────── 
+  # 1. 保存使用者問題                                                          
+  question = "我目前用這個”A male engineer wearing a white shirt and           
+  dark‑blue tie, standing in front of a backdrop of data‑transfer hardware     
+  and network cables. He holds a tablet displaying a security‑management       
+  interface, smiling confidently. Behind him floats a glowing security shield  
+  emblem with the slogan 'Secure Connection, Worry‑Free Management' in       INFO:     192.168.0.134:50130 - "GET /v1/models HTTP/1.1" 200 OK
+  
+  Chinese. Realistic style with subtle sci‑fi lighting, high resolution,       
+  suitable for a cabinet identification                                        
+  sign.”，可以再加一些，變成科技感的風格嗎？"                                  
+  original_article = question                                                  
+                                                                               
+  # 2. 手動設定風格關鍵詞 (style_terms)                                        
+  style_terms = ["科技感", "未來感", "科幻風格", "高科技", "數位化"]           
+                                                                               
+  # 3. 從問題中抽取主題關鍵詞 (topic_terms)，排除時間相關字詞                  
+  def extract_topic_terms(text):                                               
+      import re                                                                
+      # 先把標點、引號等替換成空格，然後切詞                                   
+      tokens = re.split(r"[\\s,，。;；:：!！?？\"'‘’“”\\[\\]\\(\\)<>]+",       
+  text)                                                                        
+      # 定義時間相關的關鍵字模式                                               
+      time_patterns =                                                          
+  re.compile(r"(\\d{4}|\\d{2})[年/-]|[年月日季週]|[0-9]{1,2}月|[0-9]{1,2}日|Q  
+  [1-4]|[0-9]{4}年|[0-9]{4}[-/][0-9]{1,2}")                                    
+      topic = []                                                               
+      for t in tokens:                                                         
+          if not t:                                                            
+              continue                                                         
+          # 排除全為數字或含時間關鍵字的詞                                     
+          if time_patterns.search(t):                                          
+              continue                                                         
+          # 只保留中文或英文關鍵詞，且長度大於1                                
+          if len(t) > 1:                                                       
+              topic.append(t)                                                  
+      # 取前 4 個不重複的關鍵詞                                                
+      uniq = []                                                                
+      for w in topic:                                                          
+          if w not in uniq:                                                    
+              uniq.append(w)                                                   
+          if len(uniq) >= 4:                                                   
+              break                                                            
+      return uniq                                                              
+                                                                               
+  topic_terms = extract_topic_terms(question)                                  
+                                                                               
+  # 4. 組合查詢字串                                                            
+  primary_terms = style_terms + topic_terms                                    
+  primary_query = f"風格仿寫關鍵詞組如下：{'、'.join(primary_terms)}" if       
+  primary_terms else "公文"                                                    
+  fallback_query = f"風格仿寫關鍵詞組如下：{'、'.join(style_terms)}" if        
+  style_terms else "公文"                                                      
+                                                                               
+  # 5. 先用 primary_query 搜尋                                                 
+  search_result = es_search_news(                                              
+      query=primary_query,                                                     
+      must_high_value=False,                                                   
+      must_selected=False,                                                     
+      size=20,                                                                 
+      date_from=None,                                                          
+      date_to=None,                                                            
+      selected_boost=2.0,                                                      
+      high_value_boost=1.5,                                                    
+      recency_boost=False,                                                     
+      recency_field="importDT",                                                
+      recency_scale="365d",                                                    
+      index_hint=None                                                          
+  )                                                                            
+                                                                               
+  hits = search_result.get("hits") or []                                       
+  evidence_snippets = search_result.get("evidence_snippets") or []             
+                                                                               
+  # 若命中文件太少，改用 fallback_query                                        
+  if len(hits) < 5:                                                            
+      search_result = es_search_news(                                          
+          query=fallback_query,                                                
+          must_high_value=False,                                               
+          must_selected=False,                                                 
+          size=20,                                                             
+          date_from=None,                                                      
+          date_to=None,                                                        
+          selected_boost=2.0,                                                  
+          high_value_boost=1.5,                                                
+          recency_boost=False,                                                 
+          recency_field="importDT",                                            
+          recency_scale="365d",                                                
+          index_hint=None                                                      
+      )                                                                        
+      hits = search_result.get("hits") or []                                   
+      evidence_snippets = search_result.get("evidence_snippets") or []         
+                                                                               
+  style_query = primary_query if len(hits) >= 5 else fallback_query            
+                                                                               
+  # 6. 取得全文 (style_docs)                                                   
+  style_docs = []                                                              
+  for h in hits[:8]:                                                           
+      uuid = h.get("uuid")                                                     
+      if not uuid:                                                             
+          continue                                                             
+      doc = es_fetch_doc_by_id(                                                
+          uuid=uuid,                                                           
+          index_hint=None,                                                     
+          text_field="full_text"                                               
+      )                                                                        
+      full_text = (doc or {}).get("full_text") or ""                           
+      if not full_text:                                                        
+          continue                                                             
+      # 限制長度避免過長                                                       
+      if len(full_text) > 4000:                                                
+          full_text = full_text[:4000]                                         
+      style_docs.append({                                                      
+          "uuid": uuid,                                                        
+          "subject": h.get("subject"),                                         
+          "article_title": h.get("article_title"),                             
+          "full_text": full_text,                                              
+      })                                                                       
+                                                                               
+  # 7. 組成 payload                                                            
+  search_qm = (search_result.get("query_meta") or {}) if                       
+  isinstance(search_result, dict) else {}                                      
+                                                                               
+  core_terms = style_terms + topic_terms                                       
+  date_from = None                                                             
+  date_to = None                                                               
+                                                                               
+  query_meta = {                                                               
+      "style_terms": style_terms,                                              
+      "topic_terms": topic_terms,                                              
+      "core_terms": core_terms,                                                
+      "core_query": style_query,                                               
+      "date_from": date_from,                                                  
+      "date_to": date_to,                                                      
+      "syn_terms": search_qm.get("syn_terms"),                                 
+      "effective_terms": search_qm.get("effective_terms"),                     
+      "es_query": search_qm.get("es_query"),                                   
+      "manual_terms_in_q": search_qm.get("manual_terms_in_q"),                 
+      "is_manual_entity_query": search_qm.get("is_manual_entity_query"),       
+      "term_groups": search_qm.get("term_groups"),                             
+      "raw_query": search_qm.get("query"),                                     
+  }                                                                            
+                                                                               
+  payload = {                                                                  
+      "question": question,                                                    
+      "original_article": original_article,                                    
+      "style_query": style_query,                                              
+      "style_terms": style_terms,                                              
+      "topic_terms": topic_terms,                                              
+      "core_terms": core_terms,                                                
+      "date_from": date_from,                                                  
+      "date_to": date_to,                                                      
+      "stats": {                                                               
+          "doc_count": len(hits),                                              
+          "snippet_count": len(evidence_snippets),                             
+          "full_doc_count": len(style_docs),                                   
+      },                                                                       
+      "evidence_snippets": evidence_snippets,                                  
+      "style_docs": style_docs,                                                
+      "query_meta": query_meta,                                                
+      "_display_info": {                                                       
+          "hits_preview": [                                                    
+              {                                                                
+                  "uuid": h.get("uuid"),                                       
+                  "article_title": h.get("article_title"),                     
+                  "subject": h.get("subject"),                                 
+                  "article_date_iso": h.get("article_date_iso"),               
+              }                                                                
+              for h in hits[:20]                                               
+          ]                                                                    
+      }                                                                        
+  }                                                                            
+                                                                               
+  final_answer({                                                               
+      "payload": payload                                                       
+  })                                                                           
+ ───────────────────────────────────────────────────────────────────────────── 
+[es_search_news] index = satmeta query = 風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？
+==================================================
+[call_llm] sys_len=587, user_len=512, user_preview="使用者查詢如下： 風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一"
+[call_llm] system_preview='你是一個「通用查詢關鍵字萃取器」。 使用者會給你一段查詢句子或自然語言描述，請只做一件事：  從內容中找出最重要的「關鍵詞 / 主題詞」，例如： - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構 - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱 - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰 - 產品 / 人工同義詞 / 型號：武器型號、船艦名、飛機型號、產品型號等  規則： 1. 僅輸出一個 JSON 陣列（array of string），不得有任何多餘文字。    例：["川普經濟學", "對等關稅", "美國就業", "物價", "宮古水道"] 2. 每個元素應是短語或名詞，不要整句話。 3. 優先挑選具體、可檢索的詞：    - 例如「川普經濟學」「宮古水道」「東風15型導彈」    - 比起「影響」「變化」「情勢」這種抽象詞更重要。 4. 不要'
+==================================================
+[call_llm] sys_len=1366, user_len=594, user_preview="查詢句子（query）： 風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可"
+[call_llm] system_preview='你是一個「文本檢索查詢關鍵詞同義詞擴充器」。  使用者會提供： - 一段查詢句子（query） - 一組核心關鍵詞（core_terms）  你的工作只有一件事： 1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。 2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），    請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 value 的陣列裡。  具體規則：  【輸出格式】 - 僅輸出一個 JSON 物件（object），不得有任何多餘文字。   key: 代表核心詞（string）   value: 該語意軸的同義詞陣列（array of string）  【語意軸合併規則】 1. 先觀察 core_terms 列表，思考是否有「其實是同一個概念」的核心詞：    例如：    - 「敘利亞」「Syrian Arab'
+[es_search_news][T1] compute_effective_terms 花費 10.596s
+[es_search_news][T2] build_main_query_body 花費 0.008s
+[es_search_news] body = {"size": 20, "_source": ["uuid", "communication.subject", "multidim_event_json.article_title", "multidim_event_json.evidence_snippets", "multidim_event_json.Event_Timeline", "selectedMessage", "ai.classLabels.highValue", "importDT", "update_time_ai"], "query": {"function_score": {"query": {"bool": {"should": [{"multi_match": {"query": "風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？", "fields": ["multidim_event_json.Event.subject^8", "multidim_event_json.Event.object^7", "multidim_event_json.Event.location^7", "multidim_event_json.core_entities^7", "multidim_event_json.locations^7", "multidim_event_json.Event_Timeline.description^5", "multidim_event_json.Person.name^5", "multidim_event_json.Person.role^4", "multidim_event_json.Involved_Parties.party_name^4", "multidim_event_json.article_title^4", "communication.subject^4", "multidim_event_json.evidence_snippets.text^3"], "type": "best_fields", "operator": "or"}}, {"simple_query_string": {"query": "風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？", "fields": ["multidim_event_json.Event.subject^5", "multidim_event_json.Event.object^4", "multidim_event_json.Event.location^4", "multidim_event_json.core_entities^4", "multidim_event_json.locations^4", "multidim_event_json.Event_Timeline.description^3", "multidim_event_json.Person.name^3", "multidim_event_json.Person.role^2", "multidim_event_json.Involved_Parties.party_name^2", "multidim_event_json.article_title^3", "communication.subject^3", "multidim_event_json.evidence_snippets.text^2"], "default_operator": "and"}}, {"wildcard": {"communication.subject.keyword": {"value": "*風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？*"}}}, {"wildcard": {"multidim_event_json.article_title.raw": {"value": "*風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？*"}}}, {"bool": {"should": [{"match_phrase": {"rawInfo.content": "科技感"}}, {"match_phrase": {"communication.subject": "科技感"}}, {"match_phrase": {"multidim_event_json.article_title": "科技感"}}, {"match_phrase": {"rawInfo.content": "科幻風格"}}, {"match_phrase": {"communication.subject": "科幻風格"}}, {"match_phrase": {"multidim_event_json.article_title": "科幻風格"}}, {"match_phrase": {"rawInfo.content": "高科技"}}, {"match_phr
+[es_search_news] index_type= <class 'str'> index= satmeta
+[es_search_news] _shards= {'total': 1, 'successful': 1, 'skipped': 0, 'failed': 0}
+[es_search_news][T3] _safe_es_search 花費 0.840s index=satmeta size=20
+build_hits_and_evidence: strict evidence=0 -> relax try (groups=7 strict_req=3 try_req=2)
+build_hits_and_evidence: strict evidence=0 -> relax try (groups=7 strict_req=3 try_req=1)
+build_hits_and_evidence: evidence=0 with effective_terms -> fallback contains-any-effective-term
+[es_search_news][T4] build_hits_and_evidence 花費 0.002s
+[es_search_news][TOTAL] total=11.457s 代理人ES文本查詢工具查詢字串=風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？
+[es_search_news] query="風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？", es_query="風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？", hits=20, snippets_after_filter=0, effective_terms=['科技感', '科幻風格', '高科技', '數位化', '安全管理介面', '安全盾牌標誌', '高解析度', '科技氛圍', '科技風格', '科技感覺', '未來感', 'tech vibe', '科幻風', '科幻樣式', '科幻主題', '科幻氛圍', 'Science fiction style', '先進科技', '尖端技術', '先進技術', '先進高科技', 'cutting‑edge technology', '數字化', '數位化轉型', '數位化過程', 'digitalization', '安全管理界面', '安全控制介面', '安全管理面板', 'Security Management Interface', '安全盾標誌', '防護盾牌標誌', 'Security Shield Logo', '高分辨率', '高解析度影像', 'high resolution'], synonym_hit_snippets=0
+[es_tools] query_meta = {"query": "風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？", "es_query": "風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？", "core_terms": ["科技感", "科幻風格", "高科技", "數位化", "安全管理介面", "安全盾牌標誌", "高解析度"], "syn_terms": ["科技氛圍", "科技風格", "科技感覺", "未來感", "tech vibe", "科幻風", "科幻樣式", "科幻主題", "科幻氛圍", "Science fiction style", "先進科技", "尖端技術", "先進技術", "先進高科技", "cutting‑edge technology", "數字化", "數位化轉型", "數位化過程", "digitalization", "安全管理界面", "安全控制介面", "安全管理面板", "Security Management Interface", "安全盾標誌", "防護盾牌標誌", "Security Shield Logo", "高分辨率", "高解析度影像", "high resolution"], "effective_terms": ["科技感", "科幻風格", "高科技", "數位化", "安全管理介面", "安全盾牌標誌", "高解析度", "科技氛圍", "科技風格", "科技感覺", "未來感", "tech vibe", "科幻風", "科幻樣式", "科幻主題", "科幻氛圍", "Science fiction style", "先進科技", "尖端技術", "先進技術", "先進高科技", "cutting‑edge technology", "數字化", "數位化轉型", "數位化過程", "digitalization", "安全管理界面", "安全控制介面", "安全管理面板", "Security Management Interface", "安全盾標誌", "防護盾牌標誌", "Security Shield Logo", "高分辨率", "高解析度影像", "high resolution"], "manual_terms_in_q": [], "is_manual_entity_query": false, "term_groups": [["tech vibe", "未來感", "科技感", "科技感覺", "科技氛圍", "科技風格"], ["Science fiction style", "科幻主題", "科幻樣式", "科幻氛圍", "科幻風", "科幻風格"], ["cutting‑edge technology", "先進技術", "先進科技", "先進高科技", "尖端技術", "高科技"], ["digitalization", "數位化", "數位化轉型", "數位化過程", "數字化"], ["Security Management Interface", "安全控制介面", "安全管理介面", "安全管理界面", "安全管理面板"], ["Security Shield Logo", "安全盾標誌", "安全盾牌標誌", "防護盾牌標誌"], ["high resolution", "高分辨率", "高解析度", "高解析度影像"]], "date_from": null, "date_to": null}
+[es_search_news] hits=20, snippets=0, syn_hit_snippets=0
+[es_fetch_doc_by_id] indexes = ['satmeta'] uuid = ae30f221129fae14e188772511b99fae0bad8466
+[es_fetch_doc_by_id] indexes = ['satmeta'] uuid = 8b3f73b93effa433eb136cced511d9c6289dcb6e
+[es_fetch_doc_by_id] indexes = ['satmeta'] uuid = 80521726f235eb90e9a9785cf0996eb9d145e3fb
+[es_fetch_doc_by_id] indexes = ['satmeta'] uuid = 9d2ae46762b93c708ecb7071905c00ac78a50c16
+[es_fetch_doc_by_id] indexes = ['satmeta'] uuid = 9eeaa81e7fd095e2822f30a7f5a475b079c9d46e
+[es_fetch_doc_by_id] indexes = ['satmeta'] uuid = 0a9f6c91636959bd3ba45ce86595312e74baa5cb
+[es_fetch_doc_by_id] indexes = ['satmeta'] uuid = 88d5e3c5cc094d5b8b2122030669f1811d7cb649
+[es_fetch_doc_by_id] indexes = ['satmeta'] uuid = 4a5c16be3693bb9736c9b34830d8055fbc63b76f
+Final answer: {'payload': {'question': "我目前用這個”A male engineer wearing a 
+white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer
+hardware and network cables. He holds a tablet displaying a security‑management
+interface, smiling confidently. Behind him floats a glowing security shield 
+emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. 
+Realistic style with subtle sci‑fi lighting, high resolution, suitable for a 
+cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？", 
+'original_article': "我目前用這個”A male engineer wearing a white shirt and 
+dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and 
+network cables. He holds a tablet displaying a security‑management interface, 
+smiling confidently. Behind him floats a glowing security shield emblem with 
+the slogan 'Secure Connection, Worry‑Free Management' in Chinese. Realistic 
+style with subtle sci‑fi lighting, high resolution, suitable for a cabinet 
+identification sign.”，可以再加一些，變成科技感的風格嗎？", 'style_query': 
+"風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A
+male engineer wearing a white shirt and dark‑blue tie, standing in front of a 
+backdrop of data‑transfer hardware and network cables. He holds a tablet 
+displaying a security‑management interface, smiling confidently. Behind him 
+floats a glowing security shield emblem with the slogan 'Secure Connection, 
+Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting,
+high resolution, suitable for a cabinet identification 
+sign.”，可以再加一些，變成科技感的風格嗎？", 'style_terms': ['科技感', 
+'未來感', '科幻風格', '高科技', '數位化'], 'topic_terms': ["我目前用這個”A male
+engineer wearing a white shirt and dark‑blue tie, standing in front of a 
+backdrop of data‑transfer hardware and network cables. He holds a tablet 
+displaying a security‑management interface, smiling confidently. Behind him 
+floats a glowing security shield emblem with the slogan 'Secure Connection, 
+Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting,
+high resolution, suitable for a cabinet identification 
+sign.”，可以再加一些，變成科技感的風格嗎？"], 'core_terms': ['科技感', 
+'未來感', '科幻風格', '高科技', '數位化', "我目前用這個”A male engineer wearing
+a white shirt and dark‑blue tie, standing in front of a backdrop of 
+data‑transfer hardware and network cables. He holds a tablet displaying a 
+security‑management interface, smiling confidently. Behind him floats a glowing
+security shield emblem with the slogan 'Secure Connection, Worry‑Free 
+Management' in Chinese. Realistic style with subtle sci‑fi lighting, high 
+resolution, suitable for a cabinet identification 
+sign.”，可以再加一些，變成科技感的風格嗎？"], 'date_from': None, 'date_to': 
+None, 'stats': {'doc_count': 20, 'snippet_count': 0, 'full_doc_count': 8}, 
+'evidence_snippets': [], 'style_docs': [{'uuid': 
+'ae30f221129fae14e188772511b99fae0bad8466', 'subject': 
+'KN10001801_20230401_074351_掃描_P05_Optical-0.5m_C81', 'article_title': None, 
+'full_text': '【模擬衛照元數據（測試用）】\n註：以下為虛擬/合成資料，用於 PoC 
+與代理人測試，不對應任何真實行動。\n\n事件序號：KN10001801\n傳送時間：2023-04-0
+1 
+07:43:51\n標題：M142高機動火箭系統（HIMARS）｜雷達/感測掃描\n平台類型：地面\n平
+台/系統名稱：M142高機動火箭系統（HIMARS）\n活動類型：掃描\n地點代碼：P05\n座標
+（度分）：北緯：50°12.2556′ 東經：35°44.9769′\n活動開始時間：2023-04-01 
+07:34:56\n活動結束時間：2023-04-01 
+07:40:04\n衛星/感測器：Optical-0.5m\n影像解析度（m）：0.5\n雲量（%）：18\n入射
+角（deg）：39.4\n可信度（0-100）：81\n備註：甲板燈光模式切換；熱源往返\n'}, 
+{'uuid': '8b3f73b93effa433eb136cced511d9c6289dcb6e', 'subject': 
+'KN10002899_20200710_005110_掃描_L11_Optical-0.8m_C69', 'article_title': None, 
+'full_text': '【模擬衛照元數據（測試用）】\n註：以下為虛擬/合成資料，用於 PoC 
+與代理人測試，不對應任何真實行動。\n\n事件序號：KN10002899\n傳送時間：2020-07-1
+0 
+00:51:10\n標題：M142高機動火箭系統（HIMARS）｜雷達/感測掃描\n平台類型：地面\n平
+台/系統名稱：M142高機動火箭系統（HIMARS）\n活動類型：掃描\n地點代碼：L11\n座標
+（度分）：北緯：50°20.4511′ 東經：36°34.1379′\n活動開始時間：2020-07-10 
+00:39:48\n活動結束時間：2020-07-10 
+00:49:23\n衛星/感測器：Optical-0.8m\n影像解析度（m）：0.8\n雲量（%）：79\n入射
+角（deg）：15.1\n可信度（0-100）：69\n備註：甲板燈光模式切換；熱源往返\n'}, 
+{'uuid': '80521726f235eb90e9a9785cf0996eb9d145e3fb', 'subject': 
+'KN10003069_20210722_035625_掃描_Q21_SAR-1.0m_C81', 'article_title': None, 
+'full_text': '【模擬衛照元數據（測試用）】\n註：以下為虛擬/合成資料，用於 PoC 
+與代理人測試，不對應任何真實行動。\n\n事件序號：KN10003069\n傳送時間：2021-07-2
+2 
+03:56:25\n標題：M142高機動火箭系統（HIMARS）｜雷達/感測掃描\n平台類型：地面\n平
+台/系統名稱：M142高機動火箭系統（HIMARS）\n活動類型：掃描\n地點代碼：Q21\n座標
+（度分）：北緯：49°45.8604′ 東經：35°35.3733′\n活動開始時間：2021-07-22 
+03:42:45\n活動結束時間：2021-07-22 
+03:55:01\n衛星/感測器：SAR-1.0m\n影像解析度（m）：1.0\n雲量（%）：—\n入射角（de
+g）：20.1\n可信度（0-100）：81\n備註：甲板燈光模式切換；熱源往返\n'}, {'uuid': 
+'9d2ae46762b93c708ecb7071905c00ac78a50c16', 'subject': 
+'KN10003201_20240606_042635_掃描_A07_Optical-0.3m_C57', 'article_title': None, 
+'full_text': '【模擬衛照元數據（測試用）】\n註：以下為虛擬/合成資料，用於 PoC 
+與代理人測試，不對應任何真實行動。\n\n事件序號：KN10003201\n傳送時間：2024-06-0
+6 
+04:26:35\n標題：M142高機動火箭系統（HIMARS）｜雷達/感測掃描\n平台類型：地面\n平
+台/系統名稱：M142高機動火箭系統（HIMARS）\n活動類型：掃描\n地點代碼：A07\n座標
+（度分）：北緯：50°12.6174′ 東經：35°23.9021′\n活動開始時間：2024-06-06 
+04:02:12\n活動結束時間：2024-06-06 
+04:25:19\n衛星/感測器：Optical-0.3m\n影像解析度（m）：0.3\n雲量（%）：38\n入射
+角（deg）：36.4\n可信度（0-100）：57\n備註：甲板燈光模式切換；熱源往返\n'}, 
+{'uuid': '9eeaa81e7fd095e2822f30a7f5a475b079c9d46e', 'subject': 
+'KN10003894_20230811_135256_掃描_T31_Optical-0.3m_C73', 'article_title': None, 
+'full_text': '【模擬衛照元數據（測試用）】\n註：以下為虛擬/合成資料，用於 PoC 
+與代理人測試，不對應任何真實行動。\n\n事件序號：KN10003894\n傳送時間：2023-08-1
+1 
+13:52:56\n標題：M142高機動火箭系統（HIMARS）｜雷達/感測掃描\n平台類型：地面\n平
+台/系統名稱：M142高機動火箭系統（HIMARS）\n活動類型：掃描\n地點代碼：T31\n座標
+（度分）：北緯：48°32.4709′ 東經：36°1.0614′\n活動開始時間：2023-08-11 
+13:17:41\n活動結束時間：2023-08-11 
+13:51:20\n衛星/感測器：Optical-0.3m\n影像解析度（m）：0.3\n雲量（%）：68\n入射
+角（deg）：24.7\n可信度（0-100）：73\n備註：甲板燈光模式切換；熱源往返\n'}, 
+{'uuid': '0a9f6c91636959bd3ba45ce86595312e74baa5cb', 'subject': 
+'KN10004090_20221031_143533_掃描_R17_IR-2.0m_C91', 'article_title': None, 
+'full_text': '【模擬衛照元數據（測試用）】\n註：以下為虛擬/合成資料，用於 PoC 
+與代理人測試，不對應任何真實行動。\n\n事件序號：KN10004090\n傳送時間：2022-10-3
+1 
+14:35:33\n標題：M142高機動火箭系統（HIMARS）｜雷達/感測掃描\n平台類型：地面\n平
+台/系統名稱：M142高機動火箭系統（HIMARS）\n活動類型：掃描\n地點代碼：R17\n座標
+（度分）：北緯：49°14.3526′ 東經：36°25.0210′\n活動開始時間：2022-10-31 
+13:58:26\n活動結束時間：2022-10-31 
+14:31:11\n衛星/感測器：IR-2.0m\n影像解析度（m）：2.0\n雲量（%）：37\n入射角（de
+g）：13.0\n可信度（0-100）：91\n備註：甲板燈光模式切換；熱源往返\n'}, {'uuid': 
+'88d5e3c5cc094d5b8b2122030669f1811d7cb649', 'subject': 
+'KN10004959_20231118_130551_掃描_J09_SAR-1.0m_C87', 'article_title': None, 
+'full_text': '【模擬衛照元數據（測試用）】\n註：以下為虛擬/合成資料，用於 PoC 
+與代理人測試，不對應任何真實行動。\n\n事件序號：KN10004959\n傳送時間：2023-11-1
+8 
+13:05:51\n標題：M142高機動火箭系統（HIMARS）｜雷達/感測掃描\n平台類型：地面\n平
+台/系統名稱：M142高機動火箭系統（HIMARS）\n活動類型：掃描\n地點代碼：J09\n座標
+（度分）：北緯：48°49.9042′ 東經：37°14.6740′\n活動開始時間：2023-11-18 
+12:52:04\n活動結束時間：2023-11-18 
+13:02:38\n衛星/感測器：SAR-1.0m\n影像解析度（m）：1.0\n雲量（%）：—\n入射角（de
+g）：25.6\n可信度（0-100）：87\n備註：甲板燈光模式切換；熱源往返\n'}, {'uuid': 
+'4a5c16be3693bb9736c9b34830d8055fbc63b76f', 'subject': 
+'KN10004965_20200808_065332_掃描_U05_IR-1.5m_C62', 'article_title': None, 
+'full_text': '【模擬衛照元數據（測試用）】\n註：以下為虛擬/合成資料，用於 PoC 
+與代理人測試，不對應任何真實行動。\n\n事件序號：KN10004965\n傳送時間：2020-08-0
+8 
+06:53:32\n標題：M142高機動火箭系統（HIMARS）｜雷達/感測掃描\n平台類型：地面\n平
+台/系統名稱：M142高機動火箭系統（HIMARS）\n活動類型：掃描\n地點代碼：U05\n座標
+（度分）：北緯：49°55.1689′ 東經：37°14.4248′\n活動開始時間：2020-08-08 
+06:07:09\n活動結束時間：2020-08-08 
+06:50:30\n衛星/感測器：IR-1.5m\n影像解析度（m）：1.5\n雲量（%）：41\n入射角（de
+g）：35.6\n可信度（0-100）：62\n備註：甲板燈光模式切換；熱源往返\n'}], 
+'query_meta': {'style_terms': ['科技感', '未來感', '科幻風格', '高科技', 
+'數位化'], 'topic_terms': ["我目前用這個”A male engineer wearing a white shirt 
+and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware 
+and network cables. He holds a tablet displaying a security‑management 
+interface, smiling confidently. Behind him floats a glowing security shield 
+emblem with the slogan 'Secure Connection, Worry‑Free Management' in Chinese. 
+Realistic style with subtle sci‑fi lighting, high resolution, suitable for a 
+cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？"], 
+'core_terms': ['科技感', '未來感', '科幻風格', '高科技', '數位化', 
+"我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing
+in front of a backdrop of data‑transfer hardware and network cables. He holds a
+tablet displaying a security‑management interface, smiling confidently. Behind 
+him floats a glowing security shield emblem with the slogan 'Secure Connection,
+Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting,
+high resolution, suitable for a cabinet identification 
+sign.”，可以再加一些，變成科技感的風格嗎？"], 'core_query': 
+"風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A
+male engineer wearing a white shirt and dark‑blue tie, standing in front of a 
+backdrop of data‑transfer hardware and network cables. He holds a tablet 
+displaying a security‑management interface, smiling confidently. Behind him 
+floats a glowing security shield emblem with the slogan 'Secure Connection, 
+Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting,
+high resolution, suitable for a cabinet identification 
+sign.”，可以再加一些，變成科技感的風格嗎？", 'date_from': None, 'date_to': 
+None, 'syn_terms': ['科技氛圍', '科技風格', '科技感覺', '未來感', 'tech vibe', 
+'科幻風', '科幻樣式', '科幻主題', '科幻氛圍', 'Science fiction style', 
+'先進科技', '尖端技術', '先進技術', '先進高科技', 'cutting‑edge technology', 
+'數字化', '數位化轉型', '數位化過程', 'digitalization', '安全管理界面', 
+'安全控制介面', '安全管理面板', 'Security Management Interface', '安全盾標誌', 
+'防護盾牌標誌', 'Security Shield Logo', '高分辨率', '高解析度影像', 'high 
+resolution'], 'effective_terms': ['科技感', '科幻風格', '高科技', '數位化', 
+'安全管理介面', '安全盾牌標誌', '高解析度', '科技氛圍', '科技風格', '科技感覺',
+'未來感', 'tech vibe', '科幻風', '科幻樣式', '科幻主題', '科幻氛圍', 'Science 
+fiction style', '先進科技', '尖端技術', '先進技術', '先進高科技', 'cutting‑edge
+technology', '數字化', '數位化轉型', '數位化過程', 'digitalization', 
+'安全管理界面', '安全控制介面', '安全管理面板', 'Security Management 
+Interface', '安全盾標誌', '防護盾牌標誌', 'Security Shield Logo', '高分辨率', 
+'高解析度影像', 'high resolution'], 'es_query': 
+"風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A
+male engineer wearing a white shirt and dark‑blue tie, standing in front of a 
+backdrop of data‑transfer hardware and network cables. He holds a tablet 
+displaying a security‑management interface, smiling confidently. Behind him 
+floats a glowing security shield emblem with the slogan 'Secure Connection, 
+Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting,
+high resolution, suitable for a cabinet identification 
+sign.”，可以再加一些，變成科技感的風格嗎？", 'manual_terms_in_q': [], 
+'is_manual_entity_query': False, 'term_groups': [['tech vibe', '未來感', 
+'科技感', '科技感覺', '科技氛圍', '科技風格'], ['Science fiction style', 
+'科幻主題', '科幻樣式', '科幻氛圍', '科幻風', '科幻風格'], ['cutting‑edge 
+technology', '先進技術', '先進科技', '先進高科技', '尖端技術', '高科技'], 
+['digitalization', '數位化', '數位化轉型', '數位化過程', '數字化'], ['Security 
+Management Interface', '安全控制介面', '安全管理介面', '安全管理界面', 
+'安全管理面板'], ['Security Shield Logo', '安全盾標誌', '安全盾牌標誌', 
+'防護盾牌標誌'], ['high resolution', '高分辨率', '高解析度', '高解析度影像']], 
+'raw_query': 
+"風格仿寫關鍵詞組如下：科技感、未來感、科幻風格、高科技、數位化、我目前用這個”A
+male engineer wearing a white shirt and dark‑blue tie, standing in front of a 
+backdrop of data‑transfer hardware and network cables. He holds a tablet 
+displaying a security‑management interface, smiling confidently. Behind him 
+floats a glowing security shield emblem with the slogan 'Secure Connection, 
+Worry‑Free Management' in Chinese. Realistic style with subtle sci‑fi lighting,
+high resolution, suitable for a cabinet identification 
+sign.”，可以再加一些，變成科技感的風格嗎？"}, '_display_info': {'hits_preview':
+[{'uuid': 'ae30f221129fae14e188772511b99fae0bad8466', 'article_title': None, 
+'subject': 'KN10001801_20230401_074351_掃描_P05_Optical-0.5m_C81', 
+'article_date_iso': None}, {'uuid': '8b3f73b93effa433eb136cced511d9c6289dcb6e',
+'article_title': None, 'subject': 
+'KN10002899_20200710_005110_掃描_L11_Optical-0.8m_C69', 'article_date_iso': 
+None}, {'uuid': '80521726f235eb90e9a9785cf0996eb9d145e3fb', 'article_title': 
+None, 'subject': 'KN10003069_20210722_035625_掃描_Q21_SAR-1.0m_C81', 
+'article_date_iso': None}, {'uuid': '9d2ae46762b93c708ecb7071905c00ac78a50c16',
+'article_title': None, 'subject': 
+'KN10003201_20240606_042635_掃描_A07_Optical-0.3m_C57', 'article_date_iso': 
+None}, {'uuid': '9eeaa81e7fd095e2822f30a7f5a475b079c9d46e', 'article_title': 
+None, 'subject': 'KN10003894_20230811_135256_掃描_T31_Optical-0.3m_C73', 
+'article_date_iso': None}, {'uuid': '0a9f6c91636959bd3ba45ce86595312e74baa5cb',
+'article_title': None, 'subject': 
+'KN10004090_20221031_143533_掃描_R17_IR-2.0m_C91', 'article_date_iso': None}, 
+{'uuid': '88d5e3c5cc094d5b8b2122030669f1811d7cb649', 'article_title': None, 
+'subject': 'KN10004959_20231118_130551_掃描_J09_SAR-1.0m_C87', 
+'article_date_iso': None}, {'uuid': '4a5c16be3693bb9736c9b34830d8055fbc63b76f',
+'article_title': None, 'subject': 
+'KN10004965_20200808_065332_掃描_U05_IR-1.5m_C62', 'article_date_iso': None}, 
+{'uuid': '9e7b28880747c97d5ebf37799482ded4ff17b2c1', 'article_title': None, 
+'subject': 'KN10005831_20230911_041259_掃描_C14_SAR-1.0m_C62', 
+'article_date_iso': None}, {'uuid': 'fbbba847346fb2744ff3e5ca6f00fce4f71971e1',
+'article_title': None, 'subject': 
+'KN10006990_20230306_134019_掃描_H14_SAR-1.0m_C82', 'article_date_iso': None}, 
+{'uuid': '9597634e9c80522a06a569acd3edd791c8e23abb', 'article_title': None, 
+'subject': 'KN10007921_20200107_133952_掃描_T31_IR-1.5m_C88', 
+'article_date_iso': None}, {'uuid': '10997d48a90e0f4cd183acd7b90d8ed3f45aba8e',
+'article_title': None, 'subject': 
+'KN10008044_20240630_064437_掃描_C14_Optical-0.3m_C80', 'article_date_iso': 
+None}, {'uuid': 'ff94e0401228977e1595ee456d7f2c1b507cbec2', 'article_title': 
+None, 'subject': 'KN10008470_20230702_205105_掃描_D22_Optical-0.5m_C69', 
+'article_date_iso': None}, {'uuid': '0d4879982503c572dc2ce75d7dc16c48fe255d75',
+'article_title': None, 'subject': 
+'KN10009859_20210421_124435_掃描_M03_Optical-0.8m_C89', 'article_date_iso': 
+None}, {'uuid': '5e32aa0cc9d4f36f9fc5d16b78ef9dc25785f6cf', 'article_title': 
+None, 'subject': 'KN10010017_20201021_170054_掃描_P05_SAR-1.0m_C61', 
+'article_date_iso': None}, {'uuid': 'e4c644ac1c5e9f0e8306f8d71f085f662fdda80c',
+'article_title': None, 'subject': 
+'KN10010544_20230617_114653_掃描_E27_SIGINT-Scan_C56', 'article_date_iso': 
+None}, {'uuid': '1b7a3fa0e59967c3ccea901cd53fc7e73e229400', 'article_title': 
+None, 'subject': 'KN10010557_20220408_085017_掃描_R17_Optical-0.3m_C74', 
+'article_date_iso': None}, {'uuid': 'de71528e5ac1edcd16bf1948128a5caa32ea757d',
+'article_title': None, 'subject': 
+'KN10011368_20241116_235920_掃描_E27_IR-1.5m_C73', 'article_date_iso': None}, 
+{'uuid': 'fb62907655f7a9e9e120ee1efd966c28d101552b', 'article_title': None, 
+'subject': 'KN10011696_20220618_044009_掃描_N12_Optical-0.5m_C79', 
+'article_date_iso': None}, {'uuid': 'bdb48bdabd041d8471f2232a4cb2c7b285d70f0f',
+'article_title': None, 'subject': 
+'KN10012250_20220306_032002_掃描_Q21_IR-1.5m_C56', 'article_date_iso': 
+None}]}}}
+[Step 1: Duration 44.34 seconds| Input tokens: 5,708 | Output tokens: 1,945]
+[style] run_data_agent 花費 45.390s mode=style
+==================================================
+[call_llm] sys_len=1472, user_len=5191, user_preview='{"instruction":"我目前用這個”A male engineer wearing a white shirt and dark‑blue tie, standing in front of a backdrop of data‑transfer hardware and network cables. He holds a tablet displaying a security‑management interface, smiling confidently. Behind him floats a glowing security shield emblem with the slogan \'Secure Connection, Worry‑Free Management\' in Chinese. Realistic style with subtle sci‑fi lighting, high resolution, suitable for a cabinet identification sign.”，可以再加一些，變成科技感的風格嗎？","source_art'
+[call_llm] system_preview=' 你是一個「風格模仿寫作助手」，主要任務是：  - 觀察資料庫中既有文本（style_samples, style_docs）的語氣、格式與用詞； - 但是「所有事實內容」只能來自使用者提供的 source_article； - 依照 instruction 的要求，把 source_article 重新寫成指定風格的新聞或公文。  你會收到一個 JSON 物件 payload，格式大致如下：  {   "instruction": "使用者的要求（例如：以聯合國新聞的風格改寫下列新聞⋯）",   "source_article": "要改寫的原始新聞全文（包含標題、內文等）",   "style_samples": [     {       "d": "YYYY-MM-DD",       "title": "資料庫原文標題",       "note": "資料庫原文片段（聯合國新聞'
+[style] call_llm(style) 花費 8.196s model_id=gpt-oss:120b-128k
+[style] ask_with_style[TOTAL] total=53.587s style_sample_count=0 style_doc_count=8
+[answer_with_routing][TOTAL] total=71.031s mode=SRA_STYLE topic=none
+[chat_completions] saved last_structured for 'b547f959-5c90-4726-9ac9-4da83d110e56' used_uuids = ['ae30f221129fae14e188772511b99fae0bad8466', '8b3f73b93effa433eb136cced511d9c6289dcb6e', '80521726f235eb90e9a9785cf0996eb9d145e3fb', '9d2ae46762b93c708ecb7071905c00ac78a50c16', '9eeaa81e7fd095e2822f30a7f5a475b079c9d46e', '0a9f6c91636959bd3ba45ce86595312e74baa5cb', '88d5e3c5cc094d5b8b2122030669f1811d7cb649', '4a5c16be3693bb9736c9b34830d8055fbc63b76f']
+INFO:     192.168.0.134:45030 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:41158 - "GET /v1/models HTTP/1.1" 200 OK
+[chat_completions] chosen session_key = 'b547f959-5c90-4726-9ac9-4da83d110e56'
+INFO:     192.168.0.134:35580 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     192.168.0.134:51198 - "GET /v1/models HTTP/1.1" 200 OK

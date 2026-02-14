@@ -9,6 +9,7 @@ topic_index_map:
       - mil_reports-01
       - nav_intel_sentences_synthetic_v1
       - satmeta
+      - shipsprite
     description: "本主題為較細節之軍事秘密情報細節相關，包含航行情資（軍艦/執法船艦）以及衛照情報，如果是國際公開軍事動態新聞則屬news_general"
     
 #  satmeta:
