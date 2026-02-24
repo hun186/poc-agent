@@ -232,7 +232,7 @@ def ask_with_report(
 
     # 保底：前端至少 >= LLM（避免使用者覺得「前端比報告引用更少」）
     MAX_EV_FOR_FRONTEND = max(MAX_EV_FOR_FRONTEND_CFG, MAX_EV_FOR_LLM)
-        
+    
     # === 強/弱證據分流（強優先給報告 LLM）===
     ev_all = payload.get("evidence_snippets") or []
     ev_strong = [e for e in ev_all if not e.get("weak_evidence")]
@@ -274,7 +274,7 @@ def ask_with_report(
         ],
         "agg": compress_stats(payload.get("stats") or {}),
         #"ev": compress_evidence(payload.get("evidence_snippets") or []),
-        "ev": compress_evidence(picked_for_llm),
+        "ev": compress_evidence(picked_for_llm, max_samples=MAX_EV_FOR_LLM),
     }
 
 
@@ -407,6 +407,9 @@ def ask_with_report(
         em["llm_user_prompt_chars"] = len(user_prompt)  # ★ 可選但很實用
     #ev_for_llm = ev_compact
     ev_for_llm = compressed_for_llm["ev"]  # ★ 改成真的送進去那份
+    
+    print(f"MAX_EV_FOR_LLM:{MAX_EV_FOR_LLM}")
+    print(f"MAX_EV_FOR_FRONTEND_CFG:{MAX_EV_FOR_FRONTEND_CFG}")
     print("=== DEBUG: EV (for LLM) ===")
     for e in ev_for_llm:
         print({

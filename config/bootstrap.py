@@ -51,6 +51,8 @@ def bootstrap_env(
             os.environ[k] = v
 
     _BOOTSTRAPPED = True
+    print(f"env:{env}"
+    print(f"loaded env files:{loaded}"
     return env, loaded
 
 

@@ -7,8 +7,8 @@ from typing import Any, List, Optional
 
 @dataclass(frozen=True)
 class EvidenceBuildConfig:
-    inner_hit_topk: int = 3
-    citations_per_doc: int = 8
+    inner_hit_topk: int = 35
+    citations_per_doc: int = 20
     fallback_width: int = 180
     max_docs_for_fallback: int = 10000
     timeline_dates_topk: int = 20
