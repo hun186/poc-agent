@@ -166,16 +166,36 @@ def bulk_insert_txt_dir(
             yield {"_op_type": op_type, "_index": index_name, "_id": doc_id, "_source": src}
 
     total_success = 0
+    total_dup = 0
+    total_fail = 0
     for batch in chunked(gen_actions(), batch_size):
         try:
-            success, _ = helpers.bulk(es, batch, raise_on_error=False)
+            success, errors = helpers.bulk(es, batch, raise_on_error=False)
+    
+            dup = 0
+            fail = 0
+    
+            if errors:
+                for e in errors:
+                    op, info = next(iter(e.items()))
+                    status = info.get("status")
+                    if status == 409:
+                        dup += 1
+                    else:
+                        fail += 1
+    
             total_success += success
-            print(f"✅ 批次完成，本批 {success} 筆，累計 {total_success} 筆")
+            total_dup += dup
+            total_fail += fail
+            # dup 主要會在 --op create 時出現（已存在 -> 409）
+            print(f"✅ 批次完成：成功 {success} 筆，跳過(已存在) {dup} 筆，失敗 {fail} 筆，累計成功 {total_success} 筆")
+    
         except Exception as e:
             print(f"⚠️ 批次寫入失敗：{e}")
-
-    print(f"🎯 全部完成，成功寫入/覆寫：{total_success} 筆")
-    return total_success
+    verb = "新增" if op_type == "create" else "寫入/覆寫"
+    print(f"🎯 全部完成：成功{verb} {total_success} 筆，跳過(已存在) {total_dup} 筆，失敗 {total_fail} 筆")
+    #print(f"🎯 全部完成，成功寫入/覆寫：{total_success} 筆")
+    return total_success,total_dup,total_fail
 
 
 def main():
