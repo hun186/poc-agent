@@ -1,0 +1,36 @@
+{
+  "index_name": "srp_test",
+  "db": {
+    "driver": "ODBC Driver 17 for SQL Server",
+    "server": "192.168.0.136",
+    "database": "Test_SRP",
+    "trusted_connection": false,
+    "user": "sa",
+    "password": "@k05sys g3",
+    "encrypt": false,
+    "trust_server_certificate": false
+  },
+  "source": {
+    "table": "dbo.Table_SRP",
+    "columns": {
+      "id": "AUTO",
+      "title": "SUBJ",
+      "content": "TEXT",
+      "row_dt": "CrtDt"
+    },
+    "query": {
+      "where": "",
+      "order_by": "[CrtDt] DESC",
+      "top": 0
+    }
+  },
+  "import": {
+    "batch_size": 500,
+    "lang_code": "C",
+    "user_name": "sql_importer",
+    "op_type": "create",
+    "dedup_by_content": false,
+    "selector_name": "SQLImport",
+    "raw_type_code": "05"
+  }
+}
