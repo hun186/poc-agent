@@ -45,12 +45,13 @@ def _split_paths(raw: str) -> List[Path]:
     return [Path(p).expanduser().resolve() for p in normalized.split(os.pathsep) if p.strip()]
 
 
-def _merge_index_configs(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_index_configs(base: Dict[str, Any], override: Dict[str, Any]):
     """後面的檔案覆蓋前面的設定（類似 .env.* 優先序）。"""
     merged = {
         "topic_index_map": dict(base.get("topic_index_map", {})),
         "default_indexes": list(base.get("default_indexes", [])),
     }
+    merge_actions: List[str] = []
 
     if isinstance(override.get("topic_index_map"), dict):
         for topic, override_topic_cfg in override["topic_index_map"].items():
@@ -65,15 +66,35 @@ def _merge_index_configs(base: Dict[str, Any], override: Dict[str, Any]) -> Dict
                 override_indexes = _normalize_indexes(override_topic_cfg.get("indexes", []))
                 if base_indexes or override_indexes:
                     topic_cfg["indexes"] = _normalize_indexes(base_indexes + override_indexes)
+                    if override_indexes:
+                        merge_actions.append(
+                            f"topic={topic} indexes add {override_indexes} (base={base_indexes} -> merged={topic_cfg['indexes']})"
+                        )
+
+                for key, new_value in override_topic_cfg.items():
+                    if key == "indexes":
+                        continue
+                    old_value = base_topic_cfg.get(key)
+                    if old_value != new_value:
+                        merge_actions.append(
+                            f"topic={topic} field={key} overwrite {old_value!r} -> {new_value!r}"
+                        )
 
                 merged["topic_index_map"][topic] = topic_cfg
             else:
                 merged["topic_index_map"][topic] = override_topic_cfg
+                merge_actions.append(f"topic={topic} replaced by override config")
 
     if "default_indexes" in override:
+        base_default_indexes = _normalize_indexes(merged.get("default_indexes", []))
         merged["default_indexes"] = _normalize_indexes(override.get("default_indexes", []))
+        override_default_indexes = merged["default_indexes"]
+        if base_default_indexes != override_default_indexes:
+            merge_actions.append(
+                f"default_indexes overwrite {base_default_indexes} -> {override_default_indexes}"
+            )
 
-    return merged
+    return merged, merge_actions
 
 
 def _candidate_config_paths() -> List[Path]:
@@ -120,7 +141,11 @@ def load_index_mapping():
         with open(cfg_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
-        merged = _merge_index_configs(merged, data)
+        merged, merge_actions = _merge_index_configs(merged, data)
+        if merge_actions:
+            print(f"[index_loader] merge actions ({cfg_path}):")
+            for action in merge_actions:
+                print(f"[index_loader]   - {action}")
         loaded_paths.append(str(cfg_path))
 
     if not loaded_paths:
