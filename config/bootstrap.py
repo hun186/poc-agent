@@ -50,6 +50,11 @@ def bootstrap_env(
         if k not in os.environ:
             os.environ[k] = v
 
+    # 若外部未提供 APP_ENV，至少回填成目前推導出的 env，
+    # 讓後續模組（如 index_loader 讀 os.getenv("APP_ENV")）有一致值可用。
+    if env_key not in os.environ and env:
+        os.environ[env_key] = env
+
     _BOOTSTRAPPED = True
     print(f"env:{env}")
     print(f"loaded env files:{loaded}")
