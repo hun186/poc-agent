@@ -130,7 +130,7 @@ def quote_object_path(name: str) -> str:
 
 
 def build_conn_str_from_config(cfg: Dict[str, Any]) -> str:
-    driver = get_nested(cfg, "db.driver", "ODBC Driver 17 for SQL Server")
+    driver = get_nested(cfg, "db.driver", "ODBC Driver 18 for SQL Server")
     server = require_nested(cfg, "db.server")
     database = require_nested(cfg, "db.database")
     trusted_connection = bool(get_nested(cfg, "db.trusted_connection", False))
