@@ -132,3 +132,56 @@ python -m agent.es.ingest_sql --config config/sql_import/srp_import.json
 - 找不到設定檔：請確認路徑是 `config/sql_import/srp_import.json`（不是 `config/srp_import.json`）。
 - 連線 SQL 失敗：確認 ODBC driver、帳密、網路、防火牆與 SQL Server 權限。
 - 寫入 ES 失敗：確認 `.env` 的 `ES_URL` / `ES_USERNAME` / `ES_PASSWORD` 已正確設定。
+
+
+## 環境變數（.env）與 Index 多環境設定
+
+### .env 載入優先順序
+專案使用 `config/bootstrap.py` 的 `bootstrap_env()` 載入環境變數，優先順序如下（高 → 低）：
+
+1. OS 環境變數（系統已注入）
+2. `.env.local`
+3. `.env.{APP_ENV}`（例如 `.env.dev`、`.env.local`、`.env.prod`）
+4. `.env`
+
+> `APP_ENV` 若未設定，預設為 `dev`。
+
+### Index 設定檔載入順序
+`config/index_loader.py` 支援多種方式指定設定檔：
+
+1. `INDEXES_CONFIG` 或 `INDEX_CONFIG`（向後相容）
+   - 可填單一路徑，或多路徑（用 `,` 或 `:` 分隔；Windows 可用 `;`）
+2. `INDEXES_CONFIGS`
+   - 多路徑清單，後者優先
+3. 若都未指定：
+   - 先載入 `config/indexes.yaml`
+   - 再載入 `config/indexes.{APP_ENV}.yaml`（若存在）
+
+### 合併規則（重要）
+- `topic_index_map.<topic>.indexes`：**擴增式覆蓋**（base + override，去重、保序）
+- 其他欄位（例如 `description`）：**後者覆蓋前者**（last-file-wins）
+- `default_indexes`：若後者有提供，則覆蓋前者
+
+### 建議用法範例
+
+`.env`（共用）
+```env
+APP_ENV=local
+```
+
+`config/indexes.yaml`（共用基礎）
+```yaml
+topic_index_map:
+  mil_intel:
+    indexes: [mil_reports-01, nav_intel_sentences_synthetic_v1, satmeta]
+```
+
+`config/indexes.local.yaml`（本機擴增）
+```yaml
+topic_index_map:
+  mil_intel:
+    indexes: [shipsprite_sql]
+```
+
+最終 `mil_intel.indexes` 會是：
+`[mil_reports-01, nav_intel_sentences_synthetic_v1, satmeta, shipsprite_sql]`
