@@ -1,7 +1,12 @@
 # config/index_loader.py
-import yaml
 import os
 from pathlib import Path
+from typing import Any, Dict, List
+
+import yaml
+
+from config.bootstrap import bootstrap_env
+
 
 def _normalize_indexes(raw):
     """
@@ -30,53 +35,110 @@ def _normalize_indexes(raw):
                 seen.add(p)
                 out.append(p)
     return out
-    
-# 尋找 config/indexes.yaml（建議放在 repo_root/config/indexes.yaml）
-'''
-DEFAULT_CONFIG_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "config",
-    "indexes.yaml"
-)
 
-CONFIG_PATH = os.getenv("INDEX_CONFIG", DEFAULT_CONFIG_PATH)
-'''
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "indexes.yaml"
-CONFIG_PATH = Path(
-    os.getenv("INDEXES_CONFIG") or os.getenv("INDEX_CONFIG") or str(DEFAULT_CONFIG_PATH)
-).resolve()
+
+def _split_paths(raw: str) -> List[Path]:
+    """支援用逗號或 os.pathsep 分隔多個檔案路徑。"""
+    if not raw:
+        return []
+    normalized = raw.replace(",", os.pathsep)
+    return [Path(p).expanduser().resolve() for p in normalized.split(os.pathsep) if p.strip()]
+
+
+def _merge_index_configs(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """後面的檔案覆蓋前面的設定（類似 .env.* 優先序）。"""
+    merged = {
+        "topic_index_map": dict(base.get("topic_index_map", {})),
+        "default_indexes": list(base.get("default_indexes", [])),
+    }
+
+    if isinstance(override.get("topic_index_map"), dict):
+        for topic, override_topic_cfg in override["topic_index_map"].items():
+            base_topic_cfg = merged["topic_index_map"].get(topic, {})
+
+            if isinstance(base_topic_cfg, dict) and isinstance(override_topic_cfg, dict):
+                topic_cfg = dict(base_topic_cfg)
+                topic_cfg.update(override_topic_cfg)
+
+                # indexes 採擴增式覆蓋：保留前者 + 追加後者（去重、保序）
+                base_indexes = _normalize_indexes(base_topic_cfg.get("indexes", []))
+                override_indexes = _normalize_indexes(override_topic_cfg.get("indexes", []))
+                if base_indexes or override_indexes:
+                    topic_cfg["indexes"] = _normalize_indexes(base_indexes + override_indexes)
+
+                merged["topic_index_map"][topic] = topic_cfg
+            else:
+                merged["topic_index_map"][topic] = override_topic_cfg
+
+    if "default_indexes" in override:
+        merged["default_indexes"] = _normalize_indexes(override.get("default_indexes", []))
+
+    return merged
+
+
+def _candidate_config_paths() -> List[Path]:
+    # 讓 index_loader 即使被單獨 import，也能吃到 .env/.env.<env>/.env.local
+    #（bootstrap_env 內部有 one-time guard，不會重複做重活）
+    bootstrap_env()
+
+    current_dir = Path(__file__).resolve().parent
+    app_env = os.getenv("APP_ENV") or os.getenv("ENV") or os.getenv("PY_ENV") or ""
+
+    base_candidates: List[Path] = [
+        current_dir / "indexes.yaml",
+    ]
+    if app_env:
+        base_candidates.append(current_dir / f"indexes.{app_env}.yaml")
+
+    # 向後相容：單一路徑
+    single_config = os.getenv("INDEXES_CONFIG") or os.getenv("INDEX_CONFIG")
+    if single_config:
+        return _split_paths(single_config)
+
+    # 新增：多設定檔優先序，後者優先
+    multi_configs = os.getenv("INDEXES_CONFIGS")
+    if multi_configs:
+        return _split_paths(multi_configs)
+
+    return [p.resolve() for p in base_candidates]
+
 
 def load_index_mapping():
-    if not os.path.exists(CONFIG_PATH):
-        print(f"[index_loader] config file not found: {CONFIG_PATH}")
+    candidate_paths = _candidate_config_paths()
+    print("[index_loader] merge policy: topic_index_map.<topic>.indexes = additive merge (base + override, dedup, keep-order); other fields last-file-wins")
+
+    merged: Dict[str, Any] = {
+        "topic_index_map": {},
+        "default_indexes": [],
+    }
+    loaded_paths: List[str] = []
+
+    for cfg_path in candidate_paths:
+        if not cfg_path.exists():
+            continue
+
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+
+        merged = _merge_index_configs(merged, data)
+        loaded_paths.append(str(cfg_path))
+
+    if not loaded_paths:
+        print(f"[index_loader] config file not found, checked: {candidate_paths}")
         return {
             "topic_index_map": {},
             "default": [],
         }
 
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+    default_indexes = _normalize_indexes(merged.get("default_indexes", []))
+    print(f"[index_loader] loaded from {loaded_paths}")
 
-    # ★ 與 agent.py 使用方式保持一致
-    topic_index_map = data.get("topic_index_map", {})   # ← 你 YAML 裡要用這個 key
-    '''
-    default_indexes = data.get("default", {}).get("indexes", []) \
-                      if isinstance(data.get("default"), dict) \
-                      else data.get("default", [])
-    '''
-    #default_raw = data.get("default", [])
-    #if isinstance(default_raw, dict):
-    #    default_indexes = default_raw.get("indexes", [])
-    #else:
-    #    default_indexes = default_raw
-    default_indexes = data.get("default_indexes", [])       
-    default_indexes = _normalize_indexes(default_indexes)
-    print("[index_loader] loaded:", data)
-
-    return {
-        "topic_index_map": topic_index_map,
+    merged_config = {
+        "topic_index_map": merged.get("topic_index_map", {}),
         "default": default_indexes,
     }
+    print("[index_loader] merged config:", merged_config)
+    return merged_config
 
 
 # singleton
