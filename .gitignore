@@ -184,3 +184,6 @@ cython_debug/
 .env.dev
 /logs
 SRA-API_output.txt
+# SRA editor auth secrets
+/config/auth/bootstrap_superusers.json
+/.sra_users.json

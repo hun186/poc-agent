@@ -1,0 +1,8 @@
+{
+  "superusers": [
+    {
+      "username": "admin",
+      "password": "change-this-password"
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "default_schema": "sra_structured_document",
+  "index_schema_map": {},
+  "schemas": {
+    "sra_structured_document": {
+      "label": "SRA 結構化文件",
+      "description": "預設 SRA 文件結構；可用表單修改常用結構化欄位與證據片段，並保留進階 JSON 模式。",
+      "search_fields": [
+        "title^3",
+        "subject^3",
+        "uuid^2",
+        "content",
+        "full_text",
+        "rawInfo.content",
+        "communication.subject^3",
+        "multidim_event_json.article_title^3",
+        "multidim_event_json.evidence_snippets.text^2"
+      ],
+      "search_source_fields": [
+        "uuid",
+        "title",
+        "subject",
+        "communication.subject",
+        "rawInfo.title",
+        "rawInfo.date",
+        "multidim_event_json.article_title"
+      ],
+      "normalizers": {
+        "json_object_paths": ["multidim_event_json"],
+        "array_paths": [
+          "multidim_event_json.evidence_snippets",
+          "multidim_event_json.core_entities",
+          "multidim_event_json.locations"
+        ]
+      },
+      "sections": [
+        {
+          "title": "文件基本資料",
+          "description": "文件層級標題與來源資料。",
+          "fields": [
+            {
+              "path": "multidim_event_json.article_title",
+              "label": "文章標題",
+              "type": "text",
+              "placeholder": "LLM 擷取或人工校正後的文章標題",
+              "help": "寫入 multidim_event_json.article_title。"
+            },
+            {
+              "path": "communication.subject",
+              "label": "主旨 / 標題",
+              "type": "text",
+              "placeholder": "使用者可讀的主旨",
+              "help": "寫入 communication.subject。"
+            },
+            {
+              "path": "rawInfo.title",
+              "label": "原始標題",
+              "type": "text",
+              "help": "來源資料原本的標題，寫入 rawInfo.title。"
+            },
+            {
+              "path": "rawInfo.date",
+              "label": "原始日期",
+              "type": "text",
+              "placeholder": "YYYY-MM-DD 或原始日期字串",
+              "help": "來源資料日期，寫入 rawInfo.date。"
+            }
+          ]
+        },
+        {
+          "title": "主要事件",
+          "description": "事件五要素與描述。",
+          "fields": [
+            {
+              "path": "multidim_event_json.Event.time_iso",
+              "label": "事件時間",
+              "type": "text",
+              "placeholder": "YYYY-MM-DD",
+              "help": "寫入 multidim_event_json.Event.time_iso。"
+            },
+            {
+              "path": "multidim_event_json.Event.location",
+              "label": "地點",
+              "type": "text",
+              "help": "寫入 multidim_event_json.Event.location。"
+            },
+            {
+              "path": "multidim_event_json.Event.subject",
+              "label": "主體",
+              "type": "text",
+              "help": "事件主體，寫入 multidim_event_json.Event.subject。"
+            },
+            {
+              "path": "multidim_event_json.Event.object",
+              "label": "客體 / 目標",
+              "type": "text",
+              "help": "事件客體或目標，寫入 multidim_event_json.Event.object。"
+            },
+            {
+              "path": "multidim_event_json.Event.description",
+              "label": "事件描述",
+              "type": "textarea",
+              "help": "事件摘要或校正後描述，寫入 multidim_event_json.Event.description。"
+            },
+            {
+              "path": "multidim_event_json.core_entities",
+              "label": "核心實體",
+              "type": "csv",
+              "placeholder": "entity A, entity B",
+              "help": "以逗號分隔，儲存為陣列。"
+            },
+            {
+              "path": "multidim_event_json.locations",
+              "label": "地點清單",
+              "type": "csv",
+              "placeholder": "location A, location B",
+              "help": "以逗號分隔，儲存為陣列。"
+            }
+          ]
+        },
+        {
+          "title": "證據片段",
+          "description": "可新增、刪除或修改證據文字、來源 ID 與段落 ID。",
+          "type": "array",
+          "path": "multidim_event_json.evidence_snippets",
+          "item_label": "證據片段",
+          "add_label": "新增證據片段",
+          "fields": [
+            {
+              "path": "source_id",
+              "label": "來源 ID",
+              "type": "text",
+              "help": "片段來源識別碼。"
+            },
+            {
+              "path": "paragraph_id",
+              "label": "段落 ID",
+              "type": "text",
+              "help": "片段所屬段落或句子識別。"
+            },
+            {
+              "path": "text",
+              "label": "證據文字",
+              "type": "textarea",
+              "help": "實際證據片段文字。"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
