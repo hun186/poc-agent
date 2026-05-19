@@ -185,3 +185,123 @@ topic_index_map:
 
 最終 `mil_intel.indexes` 會是：
 `[mil_reports-01, nav_intel_sentences_synthetic_v1, satmeta, shipsprite_sql]`
+
+## ES 結構化資料人工編輯介面與帳號設定
+
+本專案提供一個人工校正 Elasticsearch 結構化文件的網頁介面：啟動 API 後開啟 `/editor`。
+
+### 功能
+
+- 使用者可登入後搜尋指定 Elasticsearch index 中的文件。
+- 載入文件後可用表單修改常用結構化欄位（標題、主旨、日期、事件主體/客體/地點/描述、核心實體、地點清單）。
+- 可用表單新增、刪除或修改證據片段（`multidim_event_json.evidence_snippets` 的文字、來源 ID、段落 ID），不需要一般使用者直接編輯 JSON。
+- 進階使用者仍可切換到 JSON 檢視完整 `_source`，並在儲存前套用表單到 JSON。
+- 每次實際寫入 Elasticsearch 的修改都會記錄稽核 log，預設位置為 `logs/editor_audit.jsonl`，可用 `SRA_EDITOR_AUDIT_LOG` 覆寫。
+- 帳號具備 `pending` / `active` / `rejected` 狀態。
+- 新使用者可自行建立帳號；新帳號預設為 `pending`，需由超級使用者核准為 `user` 或 `superuser` 後才可登入。
+- `superuser` 可在同一介面中審核、拒絕新帳號。
+
+
+### 表單欄位設定檔
+
+編輯器表單不是寫死在前端；預設會讀取 `config/editor_form.default.json`。此檔即為目前 SRA 結構化文件的套用範例，定義：
+
+- `schemas.<schema_name>.sections`：表單區塊、使用者看見的欄位名稱、欄位說明、輸入型態。
+- `compact_hide: true`：可標記欄位在「簡要顯示模式」下隱藏，便於大量欄位時的美觀編排。
+- `fields[].path`：實際要寫回 Elasticsearch `_source` 的 doc 欄位路徑，例如 `multidim_event_json.Event.subject`。
+- `type: "array"` 的 section：可編輯陣列型資料，例如 `multidim_event_json.evidence_snippets`。
+- `search_fields` / `search_source_fields`：該 schema 搜尋時使用的 ES 欄位與列表摘要欄位。
+- `index_schema_map`：可依不同 index 名稱或 wildcard pattern 指定不同 schema；未指定時使用 `default_schema`。
+
+如未特別設定，系統會使用 `config/editor_form.default.json`。目前預設已納入 `Event.consequence`、`Event_Timeline`、`Involved_Parties`、`Event_Summary`、`Event.time_precision`、`article_date_precision`、`Impact`、`Event.subject`、`Event.object`、`Event.time_raw`、`Event.action`、`Event.source`、`Event.aspect`、`article_title`、`article_date_iso`、`Event.medium`、`core_entities`、`Person`、`facet`、`rawInfo.content` 等欄位。
+
+此外 UI 新增「簡要顯示模式」開關，會隱藏標記 `compact_hide: true` 的欄位與說明文字，讓大量欄位時更易讀。
+
+若其他應用需要不同資料庫結構，可另外建立 JSON 設定檔，並在專案根目錄的 `.env`、`.env.{APP_ENV}` 或 `.env.local` 設定：
+
+```env
+# 例如：/workspace/poc-agent/.env.local
+SRA_EDITOR_FORM_CONFIG=/secure/path/editor_form.my_app.json
+```
+
+此專案的 env 載入順序是 OS 環境變數優先，其次 `.env.local`、`.env.{APP_ENV}`、`.env`；因此正式部署可用系統環境變數覆蓋 `.env` 內的值。
+
+最小 schema 範例：
+
+```json
+{
+  "version": 1,
+  "default_schema": "my_app",
+  "index_schema_map": {
+    "my-index-*": "my_app"
+  },
+  "schemas": {
+    "my_app": {
+      "label": "我的應用資料",
+      "sections": [
+        {
+          "title": "基本欄位",
+          "fields": [
+            {"path": "title", "label": "標題", "type": "text", "help": "寫入 _source.title"},
+            {"path": "summary", "label": "摘要", "type": "textarea"}
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+### Audit log 儲存位置
+
+目前修改 audit **不會寫在 Elasticsearch 原本同一筆 doc 裡**，也不會修改 `_source` 增加 audit 欄位；這樣可避免稽核資料污染原始情資文件，並避免使用者編輯文件時順手覆蓋或刪除稽核紀錄。
+
+每次成功儲存且內容真的有變更時，後端會把一筆 JSONL 紀錄 append 到獨立檔案：
+
+- 預設路徑：`logs/editor_audit.jsonl`
+- 可用 `.env` / `.env.local` 設定覆寫：`SRA_EDITOR_AUDIT_LOG=/secure/path/editor_audit.jsonl`
+
+每筆 audit 會記錄 `ts`、`username`、`role`、`index`、`id`、ES 寫入結果、`changed_paths` 與每個欄位的 before/after 摘要。因此雖然 audit 不放在 ES 同 doc 下面，仍可透過 `index + id` 對回被修改的 Elasticsearch 文件。
+
+### 初始超級使用者設定
+
+建議將初始超級使用者帳密放在固定位置 `config/auth/bootstrap_superusers.json`（此檔已被 `.gitignore` 排除，避免誤提交真實密碼）。可複製 `config/auth/bootstrap_superusers.example.json` 後修改：
+
+```json
+{
+  "superusers": [
+    {
+      "username": "admin",
+      "password": "change-this-password"
+    }
+  ]
+}
+```
+
+如需改用其他路徑，可設定：
+
+```env
+SRA_BOOTSTRAP_SUPERUSERS_FILE=/secure/path/bootstrap_superusers.json
+```
+
+也可使用單一帳號環境變數：
+
+```env
+SRA_BOOTSTRAP_SUPERUSER_USERNAME=admin
+SRA_BOOTSTRAP_SUPERUSER_PASSWORD=change-this-password
+```
+
+也可使用 JSON 設定多組初始超級使用者：
+
+```env
+SRA_BOOTSTRAP_SUPERUSERS=[{"username":"admin","password":"change-this-password"},{"username":"reviewer","password":"change-this-too"}]
+```
+
+建議正式部署時另行設定 token 簽章密鑰與帳號資料檔位置：
+
+```env
+SRA_AUTH_SECRET=replace-with-a-long-random-secret
+SRA_AUTH_USERS_FILE=/secure/path/sra_users.json
+SRA_EDITOR_AUDIT_LOG=/secure/path/editor_audit.jsonl
+SRA_EDITOR_FORM_CONFIG=/secure/path/editor_form.my_app.json
+```

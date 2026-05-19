@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SRA ES 結構化資料編輯器</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; background: #f6f7fb; color: #172033; }
+    header { background: #111827; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    header h1 { font-size: 20px; margin: 0; }
+    main { max-width: 1240px; margin: 24px auto; padding: 0 18px 48px; }
+    .grid { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 18px; align-items: start; }
+    .card { background: white; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 8px 20px rgba(15,23,42,.05); padding: 18px; margin-bottom: 18px; }
+    .card h2 { font-size: 18px; margin: 0 0 14px; }
+    .section-title { font-weight: 800; margin: 18px 0 8px; color: #0f172a; }
+    .section-desc, .field-help { color: #64748b; font-size: 13px; margin: 4px 0 8px; }
+    .field-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap:10px 14px; }
+    .field-card { border:1px solid #eef2f7; border-radius:10px; padding:8px 10px; background:#fff; }
+    .compact .compact-hide { display:none !important; }
+    .compact .field-help { display:none; }
+    label { display: block; font-weight: 650; margin: 12px 0 6px; }
+    input, select, textarea, button { font: inherit; }
+    input, select, textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; background: white; }
+    input[type="checkbox"] { width: auto; }
+    textarea { min-height: 90px; resize: vertical; }
+    textarea.mono { min-height: 360px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.45; }
+    button { border: 0; border-radius: 10px; padding: 10px 14px; background: #2563eb; color: white; font-weight: 700; cursor: pointer; }
+    button.secondary { background: #475569; }
+    button.danger { background: #dc2626; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .row > * { flex: 1; }
+    .status { border-radius: 10px; padding: 10px 12px; background: #eef2ff; color: #3730a3; margin: 10px 0; white-space: pre-wrap; }
+    .status.error { background: #fee2e2; color: #991b1b; }
+    .status.ok { background: #dcfce7; color: #166534; }
+    .hit, .user, .array-item { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; margin: 8px 0; background: #fbfdff; }
+    .hit button, .user button, .array-item button { padding: 7px 10px; margin-top: 8px; }
+    .muted { color: #64748b; font-size: 13px; }
+    .hidden { display: none !important; }
+    .tabs { display: flex; gap: 8px; margin: 12px 0; }
+    .tab { background: #e2e8f0; color: #0f172a; }
+    .tab.active { background: #2563eb; color: white; }
+    code { background: #f1f5f9; padding: 2px 5px; border-radius: 5px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } textarea.mono { min-height: 320px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SRA ES 結構化資料編輯器</h1>
+    <div class="row" style="justify-content:flex-end; gap:8px;"><div id="whoami" class="muted">未登入</div><button id="headerLogoutBtn" class="secondary hidden" style="padding:6px 10px;">登出</button></div>
+  </header>
+  <main>
+    <section id="auth" class="card">
+      <h2>登入 / 申請帳號</h2>
+      <p class="muted">新帳號建立後會先是 <code>pending</code>，需由超級使用者核准為普通帳號或超級使用者後才能登入。</p>
+      <div class="row">
+        <div><label>帳號</label><input id="authUsername" autocomplete="username" /></div>
+        <div><label>密碼</label><input id="authPassword" type="password" autocomplete="current-password" /></div>
+      </div>
+      <div class="row" style="margin-top: 12px;">
+        <button id="loginBtn">登入</button>
+        <button id="registerBtn" class="secondary">建立 pending 帳號</button>
+      </div>
+      <div id="authStatus" class="status hidden"></div>
+    </section>
+
+    <section id="app" class="hidden">
+      <div class="grid">
+        <aside>
+          <div class="card">
+            <h2>搜尋文件</h2>
+            <label>Index</label><select id="indexSelect"></select>
+            <label>關鍵字</label><input id="query" placeholder="輸入 title、uuid、內文關鍵字；留空列出文件" />
+            <div class="row" style="margin-top: 12px;">
+              <button id="searchBtn">搜尋</button>
+              <button id="logoutBtn" class="secondary">登出</button>
+            </div>
+            <div id="searchStatus" class="status hidden"></div>
+            <div id="hits"></div>
+          </div>
+
+          <div id="adminCard" class="card hidden">
+            <h2>帳號審核</h2>
+            <button id="refreshUsersBtn" class="secondary">重新整理帳號</button>
+            <div id="users"></div>
+          </div>
+        </aside>
+
+        <section class="card">
+          <h2>編輯結構化欄位</h2>
+          <p id="schemaDescription" class="muted">表單欄位由設定檔載入；一般使用者可使用表單修改資料，進階使用者可切換完整 JSON。</p>
+          <div class="row">
+            <div><label>目前 index</label><input id="docIndex" readonly /></div>
+            <div><label>目前文件 ID</label><input id="docId" readonly /></div>
+          </div>
+
+          <div class="tabs">
+            <button id="formTabBtn" class="tab active">表單編輯</button>
+            <button id="jsonTabBtn" class="tab">進階 JSON</button>
+            <label class="muted" style="display:flex;align-items:center;gap:6px;margin-left:auto;"><input id="compactModeToggle" type="checkbox" />簡要顯示模式</label>
+          </div>
+
+          <div id="formPane">
+            <div id="formSections"></div>
+          </div>
+
+          <div id="jsonPane" class="hidden">
+            <label>_source JSON</label>
+            <textarea id="jsonEditor" class="mono" spellcheck="false" placeholder="請先搜尋並載入文件"></textarea>
+            <div class="row" style="margin-top: 12px;">
+              <button id="formatBtn" class="secondary">格式化 JSON</button>
+              <button id="reloadFormBtn" class="secondary">由 JSON 重新載入表單</button>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top: 16px;">
+            <button id="syncJsonBtn" class="secondary">套用表單到 JSON</button>
+            <button id="saveBtn">儲存到 ES</button>
+          </div>
+          <div id="saveStatus" class="status hidden"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+<script>
+const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null };
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+function setStatus(id, message, kind='') {
+  const el = $(id); el.textContent = message || ''; el.className = 'status' + (message ? '' : ' hidden') + (kind ? ' ' + kind : '');
+}
+function attrSelectorValue(value) { return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
+function getPath(obj, path) { return String(path || '').split('.').filter(Boolean).reduce((cur, key) => (cur && typeof cur === 'object') ? cur[key] : undefined, obj); }
+function setPath(obj, path, value) {
+  const keys = String(path || '').split('.').filter(Boolean); if (!keys.length) return;
+  let cur = obj;
+  keys.slice(0, -1).forEach(k => { if (!cur[k] || typeof cur[k] !== 'object' || Array.isArray(cur[k])) cur[k] = {}; cur = cur[k]; });
+  cur[keys[keys.length - 1]] = value;
+}
+function csvToArray(value) { return String(value || '').split(',').map(v => v.trim()).filter(Boolean); }
+function arrayToCsv(value) { return Array.isArray(value) ? value.join(', ') : ''; }
+async function api(path, opts={}) {
+  const headers = Object.assign({'Content-Type': 'application/json'}, opts.headers || {});
+  if (state.token) headers.Authorization = 'Bearer ' + state.token;
+  const res = await fetch(path, Object.assign({}, opts, {headers}));
+  const text = await res.text();
+  let data = {}; try { data = text ? JSON.parse(text) : {}; } catch { data = {detail: text}; }
+  if (!res.ok) throw new Error(data.detail || data.message || res.statusText);
+  return data;
+}
+function titleFromSource(src) {
+  return src.title || src.subject || (src.communication && src.communication.subject) || (src.rawInfo && (src.rawInfo.title || src.rawInfo.date)) || (src.multidim_event_json && src.multidim_event_json.article_title) || src.uuid || '(無標題)';
+}
+function schemaSections() { return (state.schema && Array.isArray(state.schema.sections)) ? state.schema.sections : []; }
+function renderField(field, value, attrs) {
+  const type = field.type || 'text';
+  const common = `${attrs} data-field-type="${esc(type)}" placeholder="${esc(field.placeholder || '')}"`;
+  const valueText = value ?? '';
+  let control = '';
+  if (type === 'textarea') {
+    control = `<textarea ${common}>${esc(valueText)}</textarea>`;
+  } else if (type === 'select') {
+    const options = Array.isArray(field.options) ? field.options : [];
+    control = `<select ${attrs} data-field-type="select">${options.map(opt => {
+      const val = typeof opt === 'object' ? opt.value : opt;
+      const label = typeof opt === 'object' ? (opt.label || opt.value) : opt;
+      return `<option value="${esc(val)}" ${String(val) === String(valueText) ? 'selected' : ''}>${esc(label)}</option>`;
+    }).join('')}</select>`;
+  } else if (type === 'boolean') {
+    control = `<input type="checkbox" ${attrs} data-field-type="boolean" ${value ? 'checked' : ''} />`;
+  } else {
+    const inputType = type === 'number' ? 'number' : (type === 'date' ? 'date' : 'text');
+    control = `<input type="${inputType}" ${common} value="${esc(type === 'csv' ? arrayToCsv(value) : valueText)}" />`;
+  }
+  return `<div class="field-card ${field.compact_hide ? "compact-hide" : ""}"><label>${esc(field.label || field.path || "")}</label>${control}${field.help ? `<div class="field-help">${esc(field.help)}</div>` : ""}</div>`;
+}
+function renderConfiguredForm() {
+  const sections = schemaSections();
+  $('schemaDescription').textContent = state.schema ? `${state.schema.label || state.schema.name}：${state.schema.description || ''}` : '表單設定尚未載入。';
+  $('formSections').innerHTML = sections.map((section, sidx) => {
+    const desc = section.description ? `<div class="section-desc">${esc(section.description)}</div>` : '';
+    if (section.type === 'array') {
+      return `<div class="form-section" data-section-index="${sidx}"><div class="section-title">${esc(section.title || section.path || '清單')}</div>${desc}<div data-array-list="${esc(section.path)}"></div><button class="secondary" data-add-array="${esc(section.path)}">${esc(section.add_label || '新增')}</button></div>`;
+    }
+    return `<div class="form-section" data-section-index="${sidx}"><div class="section-title">${esc(section.title || '')}</div>${desc}<div class="field-grid">${(section.fields || []).map(field => renderField(field, getPath(state.source || {}, field.path), `data-doc-path="${esc(field.path)}"`)).join("")}</div></div>`;
+  }).join('');
+  renderArraySections();
+  document.querySelectorAll('[data-add-array]').forEach(btn => btn.onclick = () => addArrayItem(btn.dataset.addArray));
+}
+function renderArraySections() {
+  schemaSections().filter(section => section.type === 'array').forEach(section => {
+    const list = document.querySelector(`[data-array-list="${attrSelectorValue(section.path)}"]`);
+    if (!list) return;
+    const items = getPath(state.source || {}, section.path) || [];
+    list.innerHTML = items.map((item, idx) => `<div class="array-item" data-array-path="${esc(section.path)}" data-array-index="${idx}"><strong>${esc(section.item_label || '項目')} #${idx + 1}</strong><div class="field-grid">${(section.fields || []).map(field => renderField(field, getPath(item, field.path), `data-array-field="${esc(field.path)}"`)).join("")}</div><button class="danger" data-remove-array="${esc(section.path)}" data-remove-index="${idx}">刪除此項目</button></div>`).join('');
+  });
+  document.querySelectorAll('[data-remove-array]').forEach(btn => btn.onclick = () => removeArrayItem(btn.dataset.removeArray, Number(btn.dataset.removeIndex)));
+}
+function normalizeSource(source) {
+  const out = JSON.parse(JSON.stringify(source || {}));
+  const normalizers = (state.schema && state.schema.normalizers) || {};
+  (normalizers.json_object_paths || []).forEach(path => {
+    const value = getPath(out, path);
+    if (typeof value === 'string') {
+      try { setPath(out, path, JSON.parse(value)); } catch { setPath(out, path, {}); }
+    }
+    const normalized = getPath(out, path);
+    if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) setPath(out, path, {});
+  });
+  const arrayPaths = new Set(normalizers.array_paths || []);
+  schemaSections().filter(section => section.type === 'array').forEach(section => arrayPaths.add(section.path));
+  schemaSections().flatMap(section => section.fields || []).filter(field => field.type === 'csv').forEach(field => arrayPaths.add(field.path));
+  arrayPaths.forEach(path => { if (!Array.isArray(getPath(out, path))) setPath(out, path, []); });
+  schemaSections().filter(section => section.type === 'array').forEach(section => {
+    const items = getPath(out, section.path) || [];
+    setPath(out, section.path, items.map(item => typeof item === 'object' && item !== null ? item : {text: String(item || '')}));
+  });
+  return out;
+}
+function populateForm(source) {
+  state.source = normalizeSource(source);
+  renderConfiguredForm();
+  applyCompactMode();
+  $('jsonEditor').value = JSON.stringify(state.source, null, 2);
+}
+function readFieldValue(el) {
+  const type = el.dataset.fieldType || 'text';
+  if (type === 'boolean') return el.checked;
+  if (type === 'number') return el.value === '' ? null : Number(el.value);
+  if (type === 'csv') return csvToArray(el.value);
+  return el.value;
+}
+function collectFormToSource() {
+  if (!state.source) state.source = {};
+  document.querySelectorAll('[data-doc-path]').forEach(el => setPath(state.source, el.dataset.docPath, readFieldValue(el)));
+  schemaSections().filter(section => section.type === 'array').forEach(section => {
+    const items = Array.from(document.querySelectorAll(`[data-array-path="${attrSelectorValue(section.path)}"]`)).map(box => {
+      const out = {};
+      box.querySelectorAll('[data-array-field]').forEach(el => setPath(out, el.dataset.arrayField, readFieldValue(el)));
+      return out;
+    });
+    setPath(state.source, section.path, items);
+  });
+  $('jsonEditor').value = JSON.stringify(state.source, null, 2);
+  return state.source;
+}
+function addArrayItem(path) {
+  collectFormToSource();
+  const section = schemaSections().find(s => s.type === 'array' && s.path === path);
+  const item = {};
+  (section && section.fields || []).forEach(field => setPath(item, field.path, field.type === 'csv' ? [] : ''));
+  const arr = getPath(state.source, path) || [];
+  arr.push(item); setPath(state.source, path, arr); populateForm(state.source);
+}
+function removeArrayItem(path, idx) {
+  collectFormToSource();
+  const arr = getPath(state.source, path) || [];
+  arr.splice(idx, 1); setPath(state.source, path, arr); populateForm(state.source);
+}
+
+function applyCompactMode() {
+  const on = $('compactModeToggle').checked;
+  $('formPane').classList.toggle('compact', on);
+}
+
+async function loadFormConfig(index) {
+  const qs = new URLSearchParams(); if (index) qs.set('index', index);
+  state.formConfig = await api('/v1/editor/form-config' + (qs.toString() ? '?' + qs.toString() : ''));
+  state.schema = state.formConfig.schema;
+  populateForm(state.source || {});
+}
+async function login() {
+  setStatus('authStatus', '登入中...');
+  try {
+    const data = await api('/v1/auth/login', {method: 'POST', body: JSON.stringify({username: $('authUsername').value, password: $('authPassword').value})});
+    state.token = data.access_token; state.user = data.user; localStorage.setItem('sra_editor_token', state.token);
+    await bootAuthed(); setStatus('authStatus', '登入成功', 'ok');
+  } catch (err) { setStatus('authStatus', err.message, 'error'); }
+}
+async function register() {
+  setStatus('authStatus', '建立帳號中...');
+  try {
+    const data = await api('/v1/auth/register', {method: 'POST', body: JSON.stringify({username: $('authUsername').value, password: $('authPassword').value})});
+    setStatus('authStatus', data.message, 'ok');
+  } catch (err) { setStatus('authStatus', err.message, 'error'); }
+}
+async function bootAuthed() {
+  const me = await api('/v1/auth/me'); state.user = me.user;
+  $('auth').classList.add('hidden'); $('app').classList.remove('hidden'); $('headerLogoutBtn').classList.remove('hidden');
+  $('whoami').textContent = `${state.user.username} (${state.user.role})`;
+  const indexes = await api('/v1/editor/indexes');
+  $('indexSelect').innerHTML = indexes.indexes.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
+  if (indexes.default_index) $('indexSelect').value = indexes.default_index;
+  await loadFormConfig($('indexSelect').value);
+  if (state.user.role === 'superuser') { $('adminCard').classList.remove('hidden'); await refreshUsers(); }
+}
+async function searchDocs() {
+  setStatus('searchStatus', '搜尋中...'); $('hits').innerHTML = '';
+  try {
+    const qs = new URLSearchParams({index: $('indexSelect').value, q: $('query').value, size: '20'});
+    const data = await api('/v1/editor/search?' + qs.toString(), {headers: {'Content-Type': 'application/json'}});
+    setStatus('searchStatus', `找到 ${data.hits.length} 筆`, 'ok');
+    $('hits').innerHTML = data.hits.map((h, idx) => `<div class="hit"><strong>${esc(titleFromSource(h.source))}</strong><div class="muted">${esc(h.index)} / ${esc(h.id)}</div><button data-hit="${idx}">載入</button></div>`).join('');
+    document.querySelectorAll('[data-hit]').forEach(btn => btn.onclick = () => loadDoc(data.hits[Number(btn.dataset.hit)].index, data.hits[Number(btn.dataset.hit)].id));
+  } catch (err) { setStatus('searchStatus', err.message, 'error'); }
+}
+async function loadDoc(index, id) {
+  setStatus('saveStatus', '載入文件中...');
+  try {
+    if (index !== $('indexSelect').value) $('indexSelect').value = index;
+    await loadFormConfig(index);
+    const qs = new URLSearchParams({index, id});
+    const data = await api('/v1/editor/doc?' + qs.toString());
+    $('docIndex').value = data.index; $('docId').value = data.id;
+    populateForm(data.source);
+    setStatus('saveStatus', '文件已載入，可用設定檔定義的表單修改欄位。', 'ok');
+  } catch (err) { setStatus('saveStatus', err.message, 'error'); }
+}
+function formatJson() {
+  try { $('jsonEditor').value = JSON.stringify(JSON.parse($('jsonEditor').value), null, 2); setStatus('saveStatus', 'JSON 格式正確', 'ok'); }
+  catch (err) { setStatus('saveStatus', 'JSON 格式錯誤：' + err.message, 'error'); }
+}
+function reloadFormFromJson() {
+  try { populateForm(JSON.parse($('jsonEditor').value)); setStatus('saveStatus', '已由 JSON 重新載入表單', 'ok'); }
+  catch (err) { setStatus('saveStatus', 'JSON 格式錯誤：' + err.message, 'error'); }
+}
+async function saveDoc() {
+  if (!$('docIndex').value || !$('docId').value) return setStatus('saveStatus', '請先載入文件', 'error');
+  let source; try { source = collectFormToSource(); } catch (err) { return setStatus('saveStatus', '表單資料錯誤：' + err.message, 'error'); }
+  setStatus('saveStatus', '儲存中...');
+  try {
+    const data = await api('/v1/editor/doc', {method: 'PUT', body: JSON.stringify({index: $('docIndex').value, id: $('docId').value, source})});
+    const changed = data.changed_paths && data.changed_paths.length ? `\n異動欄位：${data.changed_paths.join(', ')}` : '';
+    setStatus('saveStatus', `儲存成功：${data.result || 'updated'}${changed}`, 'ok');
+  } catch (err) { setStatus('saveStatus', err.message, 'error'); }
+}
+async function refreshUsers() {
+  try {
+    const data = await api('/v1/auth/users');
+    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="row"><button data-approve-user="${esc(u.username)}" data-role="user">核准普通</button><button data-approve-user="${esc(u.username)}" data-role="superuser" class="secondary">核准超級</button><button data-reject-user="${esc(u.username)}" class="danger">拒絕</button></div></div>`).join('');
+    document.querySelectorAll('[data-approve-user]').forEach(btn => btn.onclick = () => approveUser(btn.dataset.approveUser, btn.dataset.role));
+    document.querySelectorAll('[data-reject-user]').forEach(btn => btn.onclick = () => rejectUser(btn.dataset.rejectUser));
+  } catch (err) { $('users').innerHTML = `<div class="status error">${esc(err.message)}</div>`; }
+}
+async function approveUser(username, role) { await api(`/v1/auth/users/${encodeURIComponent(username)}/approve`, {method:'POST', body: JSON.stringify({role})}); await refreshUsers(); }
+async function rejectUser(username) { await api(`/v1/auth/users/${encodeURIComponent(username)}/reject`, {method:'POST'}); await refreshUsers(); }
+function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
+function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
+$('loginBtn').onclick = login; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('logoutBtn').onclick = logout; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers;
+$('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
+$('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
+$('indexSelect').onchange = () => loadFormConfig($('indexSelect').value).catch(err => setStatus('saveStatus', err.message, 'error'));
+if (state.token) bootAuthed().catch(err => { localStorage.removeItem('sra_editor_token'); setStatus('authStatus', err.message, 'error'); });
+</script>
+</body>
+</html>

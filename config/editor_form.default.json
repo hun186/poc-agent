@@ -1,0 +1,265 @@
+{
+  "version": 1,
+  "default_schema": "sra_structured_document",
+  "index_schema_map": {},
+  "schemas": {
+    "sra_structured_document": {
+      "label": "SRA 結構化文件",
+      "description": "預設 SRA 文件結構；可用表單修改常用結構化欄位與證據片段，並保留進階 JSON 模式。",
+      "search_fields": [
+        "title^3",
+        "subject^3",
+        "uuid^2",
+        "content",
+        "full_text",
+        "rawInfo.content",
+        "communication.subject^3",
+        "multidim_event_json.article_title^3",
+        "multidim_event_json.evidence_snippets.text^2"
+      ],
+      "search_source_fields": [
+        "uuid",
+        "title",
+        "subject",
+        "communication.subject",
+        "rawInfo.title",
+        "rawInfo.date",
+        "multidim_event_json.article_title"
+      ],
+      "normalizers": {
+        "json_object_paths": [
+          "multidim_event_json"
+        ],
+        "array_paths": [
+          "multidim_event_json.evidence_snippets",
+          "multidim_event_json.locations",
+          "multidim_event_json.Person",
+          "multidim_event_json.facet",
+          "multidim_event_json.Event_Timeline",
+          "multidim_event_json.Involved_Parties",
+          "multidim_event_json.core_entities"
+        ]
+      },
+      "sections": [
+        {
+          "title": "文章資訊",
+          "description": "文章標題、日期與精度。",
+          "fields": [
+            {
+              "path": "multidim_event_json.article_title",
+              "label": "article_title",
+              "type": "text"
+            },
+            {
+              "path": "multidim_event_json.article_date_iso",
+              "label": "article_date_iso",
+              "type": "text",
+              "placeholder": "YYYY-MM-DD"
+            },
+            {
+              "path": "multidim_event_json.article_date_precision",
+              "label": "article_date_precision",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event_Summary",
+              "label": "Event_Summary",
+              "type": "textarea",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Impact",
+              "label": "Impact",
+              "type": "textarea",
+              "compact_hide": true
+            },
+            {
+              "path": "rawInfo.content",
+              "label": "rawInfo.content",
+              "type": "textarea",
+              "compact_hide": true
+            }
+          ]
+        },
+        {
+          "title": "核心事件 Event",
+          "description": "事件主欄位。",
+          "fields": [
+            {
+              "path": "multidim_event_json.Event.subject",
+              "label": "Event.subject",
+              "type": "text"
+            },
+            {
+              "path": "multidim_event_json.Event.object",
+              "label": "Event.object",
+              "type": "text"
+            },
+            {
+              "path": "multidim_event_json.Event.action",
+              "label": "Event.action",
+              "type": "text"
+            },
+            {
+              "path": "multidim_event_json.Event.consequence",
+              "label": "Event.consequence",
+              "type": "textarea",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event.aspect",
+              "label": "Event.aspect",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event.medium",
+              "label": "Event.medium",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event.source",
+              "label": "Event.source",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event.time_iso",
+              "label": "Event.time_iso",
+              "type": "text"
+            },
+            {
+              "path": "multidim_event_json.Event.time_raw",
+              "label": "Event.time_raw",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event.time_precision",
+              "label": "Event.time_precision",
+              "type": "text",
+              "compact_hide": true
+            }
+          ]
+        },
+        {
+          "title": "分類與實體",
+          "fields": [
+            {
+              "path": "multidim_event_json.core_entities",
+              "label": "core_entities",
+              "type": "csv"
+            },
+            {
+              "path": "multidim_event_json.facet",
+              "label": "facet",
+              "type": "csv",
+              "compact_hide": true
+            }
+          ]
+        },
+        {
+          "title": "Event_Timeline",
+          "type": "array",
+          "path": "multidim_event_json.Event_Timeline",
+          "item_label": "Timeline",
+          "add_label": "新增 Timeline",
+          "fields": [
+            {
+              "path": "date_iso",
+              "label": "date_iso",
+              "type": "text"
+            },
+            {
+              "path": "description",
+              "label": "description",
+              "type": "textarea"
+            },
+            {
+              "path": "time_precision",
+              "label": "time_precision",
+              "type": "text",
+              "compact_hide": true
+            }
+          ]
+        },
+        {
+          "title": "Involved_Parties",
+          "type": "array",
+          "path": "multidim_event_json.Involved_Parties",
+          "item_label": "Party",
+          "add_label": "新增 Party",
+          "fields": [
+            {
+              "path": "party_name",
+              "label": "party_name",
+              "type": "text"
+            },
+            {
+              "path": "role",
+              "label": "role",
+              "type": "text"
+            },
+            {
+              "path": "stance",
+              "label": "stance",
+              "type": "text",
+              "compact_hide": true
+            }
+          ]
+        },
+        {
+          "title": "Person",
+          "type": "array",
+          "path": "multidim_event_json.Person",
+          "item_label": "Person",
+          "add_label": "新增 Person",
+          "fields": [
+            {
+              "path": "name",
+              "label": "name",
+              "type": "text"
+            },
+            {
+              "path": "role",
+              "label": "role",
+              "type": "text"
+            },
+            {
+              "path": "affiliation",
+              "label": "affiliation",
+              "type": "text",
+              "compact_hide": true
+            }
+          ]
+        },
+        {
+          "title": "證據片段",
+          "type": "array",
+          "path": "multidim_event_json.evidence_snippets",
+          "item_label": "證據片段",
+          "add_label": "新增證據片段",
+          "fields": [
+            {
+              "path": "source_id",
+              "label": "source_id",
+              "type": "text"
+            },
+            {
+              "path": "paragraph_id",
+              "label": "paragraph_id",
+              "type": "text"
+            },
+            {
+              "path": "text",
+              "label": "text",
+              "type": "textarea"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
