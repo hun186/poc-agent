@@ -113,23 +113,27 @@ def reject_user(username: str, user: AuthUser = Depends(require_superuser)) -> d
 
 
 def _current_indexes() -> list[str]:
-    """Return union of declared indexes (config/env) and currently-live indexes."""
-    es_client.init_index_cache(live_check=False, force=True)
-    declared = list(es_client.ALL_INDEXES)
-    default_declared = es_client.ES_INDEX_DEFAULT
-
+    """Return currently-live ES indexes for editor dropdown (excluding hidden/system indexes)."""
     es_client.init_index_cache(live_check=True, force=True)
-    live = list(es_client.ALL_INDEXES)
+    live_from_cache = list(es_client.ALL_INDEXES)
     default_live = es_client.ES_INDEX_DEFAULT
 
-    merged: list[str] = []
-    for idx in declared + live:
-        if idx and idx not in merged:
-            merged.append(idx)
+    try:
+        alias_map = es_client.get_es().indices.get_alias(index="*")
+        raw_indexes = list((alias_map or {}).keys())
+    except Exception:
+        raw_indexes = live_from_cache
 
-    default_idx = default_live or default_declared
-    if default_idx and default_idx not in merged:
-        merged.insert(0, default_idx)
+    merged: list[str] = []
+    for idx in raw_indexes:
+        s = str(idx or "").strip()
+        if not s or s.startswith("."):
+            continue
+        if s not in merged:
+            merged.append(s)
+
+    if default_live and default_live not in merged:
+        merged.insert(0, default_live)
 
     return merged
 
