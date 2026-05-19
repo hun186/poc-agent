@@ -113,8 +113,25 @@ def reject_user(username: str, user: AuthUser = Depends(require_superuser)) -> d
 
 
 def _current_indexes() -> list[str]:
+    """Return union of declared indexes (config/env) and currently-live indexes."""
+    es_client.init_index_cache(live_check=False, force=True)
+    declared = list(es_client.ALL_INDEXES)
+    default_declared = es_client.ES_INDEX_DEFAULT
+
     es_client.init_index_cache(live_check=True, force=True)
-    return list(es_client.ALL_INDEXES)
+    live = list(es_client.ALL_INDEXES)
+    default_live = es_client.ES_INDEX_DEFAULT
+
+    merged: list[str] = []
+    for idx in declared + live:
+        if idx and idx not in merged:
+            merged.append(idx)
+
+    default_idx = default_live or default_declared
+    if default_idx and default_idx not in merged:
+        merged.insert(0, default_idx)
+
+    return merged
 
 
 def _ensure_allowed_index(index: str) -> None:
@@ -125,7 +142,9 @@ def _ensure_allowed_index(index: str) -> None:
 
 @router.get("/v1/editor/indexes")
 def list_indexes(_: AuthUser = Depends(current_user)) -> dict[str, Any]:
-    return {"indexes": _current_indexes(), "default_index": es_client.ES_INDEX_DEFAULT}
+    indexes = _current_indexes()
+    default_index = es_client.ES_INDEX_DEFAULT or (indexes[0] if indexes else "")
+    return {"indexes": indexes, "default_index": default_index}
 
 
 @router.get("/v1/editor/form-config")

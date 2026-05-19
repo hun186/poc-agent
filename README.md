@@ -207,12 +207,17 @@ topic_index_map:
 編輯器表單不是寫死在前端；預設會讀取 `config/editor_form.default.json`。此檔即為目前 SRA 結構化文件的套用範例，定義：
 
 - `schemas.<schema_name>.sections`：表單區塊、使用者看見的欄位名稱、欄位說明、輸入型態。
+- `compact_hide: true`：可標記欄位在「簡要顯示模式」下隱藏，便於大量欄位時的美觀編排。
 - `fields[].path`：實際要寫回 Elasticsearch `_source` 的 doc 欄位路徑，例如 `multidim_event_json.Event.subject`。
 - `type: "array"` 的 section：可編輯陣列型資料，例如 `multidim_event_json.evidence_snippets`。
 - `search_fields` / `search_source_fields`：該 schema 搜尋時使用的 ES 欄位與列表摘要欄位。
 - `index_schema_map`：可依不同 index 名稱或 wildcard pattern 指定不同 schema；未指定時使用 `default_schema`。
 
-如未特別設定，系統會使用 `config/editor_form.default.json`。若其他應用需要不同資料庫結構，可另外建立 JSON 設定檔，並在專案根目錄的 `.env`、`.env.{APP_ENV}` 或 `.env.local` 設定：
+如未特別設定，系統會使用 `config/editor_form.default.json`。目前預設已納入 `Event.consequence`、`Event_Timeline`、`Involved_Parties`、`Event_Summary`、`Event.time_precision`、`article_date_precision`、`Impact`、`Event.subject`、`Event.object`、`Event.time_raw`、`Event.action`、`Event.source`、`Event.aspect`、`article_title`、`article_date_iso`、`Event.medium`、`core_entities`、`Person`、`facet`、`rawInfo.content` 等欄位。
+
+此外 UI 新增「簡要顯示模式」開關，會隱藏標記 `compact_hide: true` 的欄位與說明文字，讓大量欄位時更易讀。
+
+若其他應用需要不同資料庫結構，可另外建立 JSON 設定檔，並在專案根目錄的 `.env`、`.env.{APP_ENV}` 或 `.env.local` 設定：
 
 ```env
 # 例如：/workspace/poc-agent/.env.local

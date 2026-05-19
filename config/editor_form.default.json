@@ -27,101 +27,216 @@
         "multidim_event_json.article_title"
       ],
       "normalizers": {
-        "json_object_paths": ["multidim_event_json"],
+        "json_object_paths": [
+          "multidim_event_json"
+        ],
         "array_paths": [
           "multidim_event_json.evidence_snippets",
-          "multidim_event_json.core_entities",
-          "multidim_event_json.locations"
+          "multidim_event_json.locations",
+          "multidim_event_json.Person",
+          "multidim_event_json.facet",
+          "multidim_event_json.Event_Timeline",
+          "multidim_event_json.Involved_Parties",
+          "multidim_event_json.core_entities"
         ]
       },
       "sections": [
         {
-          "title": "文件基本資料",
-          "description": "文件層級標題與來源資料。",
+          "title": "文章資訊",
+          "description": "文章標題、日期與精度。",
           "fields": [
             {
               "path": "multidim_event_json.article_title",
-              "label": "文章標題",
-              "type": "text",
-              "placeholder": "LLM 擷取或人工校正後的文章標題",
-              "help": "寫入 multidim_event_json.article_title。"
+              "label": "article_title",
+              "type": "text"
             },
             {
-              "path": "communication.subject",
-              "label": "主旨 / 標題",
+              "path": "multidim_event_json.article_date_iso",
+              "label": "article_date_iso",
               "type": "text",
-              "placeholder": "使用者可讀的主旨",
-              "help": "寫入 communication.subject。"
+              "placeholder": "YYYY-MM-DD"
             },
             {
-              "path": "rawInfo.title",
-              "label": "原始標題",
+              "path": "multidim_event_json.article_date_precision",
+              "label": "article_date_precision",
               "type": "text",
-              "help": "來源資料原本的標題，寫入 rawInfo.title。"
+              "compact_hide": true
             },
             {
-              "path": "rawInfo.date",
-              "label": "原始日期",
-              "type": "text",
-              "placeholder": "YYYY-MM-DD 或原始日期字串",
-              "help": "來源資料日期，寫入 rawInfo.date。"
+              "path": "multidim_event_json.Event_Summary",
+              "label": "Event_Summary",
+              "type": "textarea",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Impact",
+              "label": "Impact",
+              "type": "textarea",
+              "compact_hide": true
+            },
+            {
+              "path": "rawInfo.content",
+              "label": "rawInfo.content",
+              "type": "textarea",
+              "compact_hide": true
             }
           ]
         },
         {
-          "title": "主要事件",
-          "description": "事件五要素與描述。",
+          "title": "核心事件 Event",
+          "description": "事件主欄位。",
           "fields": [
             {
-              "path": "multidim_event_json.Event.time_iso",
-              "label": "事件時間",
-              "type": "text",
-              "placeholder": "YYYY-MM-DD",
-              "help": "寫入 multidim_event_json.Event.time_iso。"
-            },
-            {
-              "path": "multidim_event_json.Event.location",
-              "label": "地點",
-              "type": "text",
-              "help": "寫入 multidim_event_json.Event.location。"
-            },
-            {
               "path": "multidim_event_json.Event.subject",
-              "label": "主體",
-              "type": "text",
-              "help": "事件主體，寫入 multidim_event_json.Event.subject。"
+              "label": "Event.subject",
+              "type": "text"
             },
             {
               "path": "multidim_event_json.Event.object",
-              "label": "客體 / 目標",
-              "type": "text",
-              "help": "事件客體或目標，寫入 multidim_event_json.Event.object。"
+              "label": "Event.object",
+              "type": "text"
             },
             {
-              "path": "multidim_event_json.Event.description",
-              "label": "事件描述",
-              "type": "textarea",
-              "help": "事件摘要或校正後描述，寫入 multidim_event_json.Event.description。"
+              "path": "multidim_event_json.Event.action",
+              "label": "Event.action",
+              "type": "text"
             },
+            {
+              "path": "multidim_event_json.Event.consequence",
+              "label": "Event.consequence",
+              "type": "textarea",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event.aspect",
+              "label": "Event.aspect",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event.medium",
+              "label": "Event.medium",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event.source",
+              "label": "Event.source",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event.time_iso",
+              "label": "Event.time_iso",
+              "type": "text"
+            },
+            {
+              "path": "multidim_event_json.Event.time_raw",
+              "label": "Event.time_raw",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "multidim_event_json.Event.time_precision",
+              "label": "Event.time_precision",
+              "type": "text",
+              "compact_hide": true
+            }
+          ]
+        },
+        {
+          "title": "分類與實體",
+          "fields": [
             {
               "path": "multidim_event_json.core_entities",
-              "label": "核心實體",
-              "type": "csv",
-              "placeholder": "entity A, entity B",
-              "help": "以逗號分隔，儲存為陣列。"
+              "label": "core_entities",
+              "type": "csv"
             },
             {
-              "path": "multidim_event_json.locations",
-              "label": "地點清單",
+              "path": "multidim_event_json.facet",
+              "label": "facet",
               "type": "csv",
-              "placeholder": "location A, location B",
-              "help": "以逗號分隔，儲存為陣列。"
+              "compact_hide": true
+            }
+          ]
+        },
+        {
+          "title": "Event_Timeline",
+          "type": "array",
+          "path": "multidim_event_json.Event_Timeline",
+          "item_label": "Timeline",
+          "add_label": "新增 Timeline",
+          "fields": [
+            {
+              "path": "date_iso",
+              "label": "date_iso",
+              "type": "text"
+            },
+            {
+              "path": "description",
+              "label": "description",
+              "type": "textarea"
+            },
+            {
+              "path": "time_precision",
+              "label": "time_precision",
+              "type": "text",
+              "compact_hide": true
+            }
+          ]
+        },
+        {
+          "title": "Involved_Parties",
+          "type": "array",
+          "path": "multidim_event_json.Involved_Parties",
+          "item_label": "Party",
+          "add_label": "新增 Party",
+          "fields": [
+            {
+              "path": "party_name",
+              "label": "party_name",
+              "type": "text"
+            },
+            {
+              "path": "role",
+              "label": "role",
+              "type": "text"
+            },
+            {
+              "path": "stance",
+              "label": "stance",
+              "type": "text",
+              "compact_hide": true
+            }
+          ]
+        },
+        {
+          "title": "Person",
+          "type": "array",
+          "path": "multidim_event_json.Person",
+          "item_label": "Person",
+          "add_label": "新增 Person",
+          "fields": [
+            {
+              "path": "name",
+              "label": "name",
+              "type": "text"
+            },
+            {
+              "path": "role",
+              "label": "role",
+              "type": "text"
+            },
+            {
+              "path": "affiliation",
+              "label": "affiliation",
+              "type": "text",
+              "compact_hide": true
             }
           ]
         },
         {
           "title": "證據片段",
-          "description": "可新增、刪除或修改證據文字、來源 ID 與段落 ID。",
           "type": "array",
           "path": "multidim_event_json.evidence_snippets",
           "item_label": "證據片段",
@@ -129,21 +244,18 @@
           "fields": [
             {
               "path": "source_id",
-              "label": "來源 ID",
-              "type": "text",
-              "help": "片段來源識別碼。"
+              "label": "source_id",
+              "type": "text"
             },
             {
               "path": "paragraph_id",
-              "label": "段落 ID",
-              "type": "text",
-              "help": "片段所屬段落或句子識別。"
+              "label": "paragraph_id",
+              "type": "text"
             },
             {
               "path": "text",
-              "label": "證據文字",
-              "type": "textarea",
-              "help": "實際證據片段文字。"
+              "label": "text",
+              "type": "textarea"
             }
           ]
         }

@@ -15,6 +15,10 @@
     .card h2 { font-size: 18px; margin: 0 0 14px; }
     .section-title { font-weight: 800; margin: 18px 0 8px; color: #0f172a; }
     .section-desc, .field-help { color: #64748b; font-size: 13px; margin: 4px 0 8px; }
+    .field-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap:10px 14px; }
+    .field-card { border:1px solid #eef2f7; border-radius:10px; padding:8px 10px; background:#fff; }
+    .compact .compact-hide { display:none !important; }
+    .compact .field-help { display:none; }
     label { display: block; font-weight: 650; margin: 12px 0 6px; }
     input, select, textarea, button { font: inherit; }
     input, select, textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; background: white; }
@@ -44,7 +48,7 @@
 <body>
   <header>
     <h1>SRA ES 結構化資料編輯器</h1>
-    <div id="whoami" class="muted">未登入</div>
+    <div class="row" style="justify-content:flex-end; gap:8px;"><div id="whoami" class="muted">未登入</div><button id="headerLogoutBtn" class="secondary hidden" style="padding:6px 10px;">登出</button></div>
   </header>
   <main>
     <section id="auth" class="card">
@@ -94,6 +98,7 @@
           <div class="tabs">
             <button id="formTabBtn" class="tab active">表單編輯</button>
             <button id="jsonTabBtn" class="tab">進階 JSON</button>
+            <label class="muted" style="display:flex;align-items:center;gap:6px;margin-left:auto;"><input id="compactModeToggle" type="checkbox" />簡要顯示模式</label>
           </div>
 
           <div id="formPane">
@@ -168,7 +173,7 @@ function renderField(field, value, attrs) {
     const inputType = type === 'number' ? 'number' : (type === 'date' ? 'date' : 'text');
     control = `<input type="${inputType}" ${common} value="${esc(type === 'csv' ? arrayToCsv(value) : valueText)}" />`;
   }
-  return `<label>${esc(field.label || field.path || '')}</label>${control}${field.help ? `<div class="field-help">${esc(field.help)}</div>` : ''}`;
+  return `<div class="field-card ${field.compact_hide ? "compact-hide" : ""}"><label>${esc(field.label || field.path || "")}</label>${control}${field.help ? `<div class="field-help">${esc(field.help)}</div>` : ""}</div>`;
 }
 function renderConfiguredForm() {
   const sections = schemaSections();
@@ -178,7 +183,7 @@ function renderConfiguredForm() {
     if (section.type === 'array') {
       return `<div class="form-section" data-section-index="${sidx}"><div class="section-title">${esc(section.title || section.path || '清單')}</div>${desc}<div data-array-list="${esc(section.path)}"></div><button class="secondary" data-add-array="${esc(section.path)}">${esc(section.add_label || '新增')}</button></div>`;
     }
-    return `<div class="form-section" data-section-index="${sidx}"><div class="section-title">${esc(section.title || '')}</div>${desc}${(section.fields || []).map(field => renderField(field, getPath(state.source || {}, field.path), `data-doc-path="${esc(field.path)}"`)).join('')}</div>`;
+    return `<div class="form-section" data-section-index="${sidx}"><div class="section-title">${esc(section.title || '')}</div>${desc}<div class="field-grid">${(section.fields || []).map(field => renderField(field, getPath(state.source || {}, field.path), `data-doc-path="${esc(field.path)}"`)).join("")}</div></div>`;
   }).join('');
   renderArraySections();
   document.querySelectorAll('[data-add-array]').forEach(btn => btn.onclick = () => addArrayItem(btn.dataset.addArray));
@@ -188,7 +193,7 @@ function renderArraySections() {
     const list = document.querySelector(`[data-array-list="${attrSelectorValue(section.path)}"]`);
     if (!list) return;
     const items = getPath(state.source || {}, section.path) || [];
-    list.innerHTML = items.map((item, idx) => `<div class="array-item" data-array-path="${esc(section.path)}" data-array-index="${idx}"><strong>${esc(section.item_label || '項目')} #${idx + 1}</strong>${(section.fields || []).map(field => renderField(field, getPath(item, field.path), `data-array-field="${esc(field.path)}"`)).join('')}<button class="danger" data-remove-array="${esc(section.path)}" data-remove-index="${idx}">刪除此項目</button></div>`).join('');
+    list.innerHTML = items.map((item, idx) => `<div class="array-item" data-array-path="${esc(section.path)}" data-array-index="${idx}"><strong>${esc(section.item_label || '項目')} #${idx + 1}</strong><div class="field-grid">${(section.fields || []).map(field => renderField(field, getPath(item, field.path), `data-array-field="${esc(field.path)}"`)).join("")}</div><button class="danger" data-remove-array="${esc(section.path)}" data-remove-index="${idx}">刪除此項目</button></div>`).join('');
   });
   document.querySelectorAll('[data-remove-array]').forEach(btn => btn.onclick = () => removeArrayItem(btn.dataset.removeArray, Number(btn.dataset.removeIndex)));
 }
@@ -216,6 +221,7 @@ function normalizeSource(source) {
 function populateForm(source) {
   state.source = normalizeSource(source);
   renderConfiguredForm();
+  applyCompactMode();
   $('jsonEditor').value = JSON.stringify(state.source, null, 2);
 }
 function readFieldValue(el) {
@@ -252,6 +258,12 @@ function removeArrayItem(path, idx) {
   const arr = getPath(state.source, path) || [];
   arr.splice(idx, 1); setPath(state.source, path, arr); populateForm(state.source);
 }
+
+function applyCompactMode() {
+  const on = $('compactModeToggle').checked;
+  $('formPane').classList.toggle('compact', on);
+}
+
 async function loadFormConfig(index) {
   const qs = new URLSearchParams(); if (index) qs.set('index', index);
   state.formConfig = await api('/v1/editor/form-config' + (qs.toString() ? '?' + qs.toString() : ''));
@@ -275,7 +287,7 @@ async function register() {
 }
 async function bootAuthed() {
   const me = await api('/v1/auth/me'); state.user = me.user;
-  $('auth').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('auth').classList.add('hidden'); $('app').classList.remove('hidden'); $('headerLogoutBtn').classList.remove('hidden');
   $('whoami').textContent = `${state.user.username} (${state.user.role})`;
   const indexes = await api('/v1/editor/indexes');
   $('indexSelect').innerHTML = indexes.indexes.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
@@ -333,11 +345,11 @@ async function refreshUsers() {
 }
 async function approveUser(username, role) { await api(`/v1/auth/users/${encodeURIComponent(username)}/approve`, {method:'POST', body: JSON.stringify({role})}); await refreshUsers(); }
 async function rejectUser(username) { await api(`/v1/auth/users/${encodeURIComponent(username)}/reject`, {method:'POST'}); await refreshUsers(); }
-function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); location.reload(); }
+function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
-$('loginBtn').onclick = login; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('logoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers;
+$('loginBtn').onclick = login; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('logoutBtn').onclick = logout; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers;
 $('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
-$('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json');
+$('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
 $('indexSelect').onchange = () => loadFormConfig($('indexSelect').value).catch(err => setStatus('saveStatus', err.message, 'error'));
 if (state.token) bootAuthed().catch(err => { localStorage.removeItem('sra_editor_token'); setStatus('authStatus', err.message, 'error'); });
 </script>
