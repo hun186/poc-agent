@@ -31,6 +31,59 @@ class SaveDocumentPayload(BaseModel):
     source: dict[str, Any]
 
 
+def _mapping_object_paths(properties: dict[str, Any], prefix: str = "") -> set[str]:
+    paths: set[str] = set()
+    for name, definition in (properties or {}).items():
+        if not isinstance(definition, dict):
+            continue
+        path = f"{prefix}.{name}" if prefix else name
+        field_type = str(definition.get("type") or "")
+        child_props = definition.get("properties")
+        if field_type in {"object", "nested"} or isinstance(child_props, dict):
+            paths.add(path)
+            if isinstance(child_props, dict):
+                paths |= _mapping_object_paths(child_props, path)
+    return paths
+
+
+def _get_index_object_paths(index: str) -> set[str]:
+    try:
+        mapping = es_client.get_es().indices.get_mapping(index=index)
+    except Exception:
+        return set()
+
+    object_paths: set[str] = set()
+    for _, body in (mapping or {}).items():
+        m = body.get("mappings") if isinstance(body, dict) else {}
+        props = m.get("properties") if isinstance(m, dict) else {}
+        if isinstance(props, dict):
+            object_paths |= _mapping_object_paths(props)
+    return object_paths
+
+
+def _coerce_source_by_mapping(source: dict[str, Any], object_paths: set[str]) -> dict[str, Any]:
+    patched = dict(source)
+    for path in sorted(object_paths):
+        parts = path.split(".")
+        node: Any = patched
+        ok = True
+        for part in parts[:-1]:
+            if not isinstance(node, dict) or part not in node:
+                ok = False
+                break
+            node = node.get(part)
+        if not ok or not isinstance(node, dict):
+            continue
+        leaf = parts[-1]
+        if leaf not in node:
+            continue
+        value = node.get(leaf)
+        if value is None or isinstance(value, dict) or isinstance(value, list):
+            continue
+        node[leaf] = {"value": value}
+    return patched
+
+
 def _static_path(filename: str) -> Path:
     return Path(__file__).resolve().parents[1] / "static" / filename
 
@@ -235,7 +288,9 @@ def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current
     except Exception:
         before_source = {}
 
-    changes = diff_values(before_source, payload.source)
+    object_paths = _get_index_object_paths(payload.index)
+    source_to_save = _coerce_source_by_mapping(payload.source, object_paths)
+    changes = diff_values(before_source, source_to_save)
     if not changes:
         return {"ok": True, "result": "noop", "index": payload.index, "id": payload.id, "updated_by": user.username, "changes": []}
 
@@ -243,7 +298,7 @@ def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current
         res = es.index(
             index=payload.index,
             id=payload.id,
-            document=payload.source,
+            document=source_to_save,
             refresh="wait_for",
         )
     except Exception as exc:
