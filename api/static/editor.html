@@ -91,7 +91,8 @@
           <p id="schemaDescription" class="muted">表單欄位由設定檔載入；一般使用者可使用表單修改資料，進階使用者可切換完整 JSON。</p>
           <div class="row">
             <div><label>目前 index</label><input id="docIndex" readonly /></div>
-            <div><label>目前文件 ID</label><input id="docId" readonly /></div>
+            <div><label>目前文件 ID</label><input id="docId" placeholder="可留空；將優先用 source.uuid，否則自動產生 sha1 uuid" /></div>
+            <div style="display:flex;align-items:flex-end;"><button id="newDocBtn" class="secondary">新增文件</button></div>
           </div>
 
           <div class="tabs">
@@ -333,13 +334,15 @@ function reloadFormFromJson() {
   catch (err) { setStatus('saveStatus', 'JSON 格式錯誤：' + err.message, 'error'); }
 }
 async function saveDoc() {
-  if (!$('docIndex').value || !$('docId').value) return setStatus('saveStatus', '請先載入文件', 'error');
+  if (!$('docIndex').value) return setStatus('saveStatus', '請先選擇 index', 'error');
   let source; try { source = collectFormToSource(); } catch (err) { return setStatus('saveStatus', '表單資料錯誤：' + err.message, 'error'); }
   setStatus('saveStatus', '儲存中...');
   try {
-    const data = await api('/v1/editor/doc', {method: 'PUT', body: JSON.stringify({index: $('docIndex').value, id: $('docId').value, source})});
+    const docId = $('docId').value.trim();
+    const data = await api('/v1/editor/doc', {method: 'PUT', body: JSON.stringify({index: $('docIndex').value, id: docId || null, source})});
     const changed = data.changed_paths && data.changed_paths.length ? `\n異動欄位：${data.changed_paths.join(', ')}` : '';
-    setStatus('saveStatus', `儲存成功：${data.result || 'updated'}${changed}`, 'ok');
+    $('docId').value = data.id || docId;
+    setStatus('saveStatus', `儲存成功：${data.result || 'updated'} / ID: ${$('docId').value || '(自動產生失敗)'}${changed}`, 'ok');
   } catch (err) { setStatus('saveStatus', err.message, 'error'); }
 }
 async function refreshUsers() {
@@ -377,9 +380,20 @@ async function uploadRawContentFile() {
     setStatus('saveStatus', `已抽取 ${file.name}，可再按「儲存到 ES」`, 'ok');
   } catch (err) { setStatus('saveStatus', err.message, 'error'); }
 }
+
+function newDoc() {
+  const index = $('indexSelect').value;
+  if (!index) return setStatus('saveStatus', '請先選擇 index', 'error');
+  $('docIndex').value = index;
+  $('docId').value = '';
+  state.source = {};
+  populateForm(state.source);
+  setStatus('saveStatus', '已切換為新增模式：可留空 ID。儲存時會優先使用 source.uuid，若沒有則自動產生 sha1 uuid。', 'ok');
+}
+
 function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
-$('loginBtn').onclick = login; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('extractTextBtn').onclick = uploadRawContentFile;
+$('loginBtn').onclick = login; $('newDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('extractTextBtn').onclick = uploadRawContentFile;
 $('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
 $('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
 $('indexSelect').onchange = () => loadFormConfig($('indexSelect').value).catch(err => setStatus('saveStatus', err.message, 'error'));
