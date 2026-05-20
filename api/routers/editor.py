@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status
@@ -27,8 +29,26 @@ class ApprovePayload(BaseModel):
 
 class SaveDocumentPayload(BaseModel):
     index: str = Field(..., min_length=1)
-    id: str = Field(..., min_length=1)
+    id: str | None = Field(default=None, min_length=1)
     source: dict[str, Any]
+
+
+
+
+def _make_uuid_from_source(source: dict[str, Any]) -> str:
+    """Generate deterministic sha1 id from source payload (similar to ingest_txt hashing concept)."""
+    basis = json.dumps(source, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha1(basis.encode("utf-8")).hexdigest()
+
+def _pick_source_uuid(source: dict[str, Any]) -> str | None:
+    value = source.get("uuid")
+    if isinstance(value, list) and value:
+        candidate = str(value[0] or "").strip()
+        return candidate or None
+    if isinstance(value, str):
+        candidate = value.strip()
+        return candidate or None
+    return None
 
 
 def _extract_text_from_upload(filename: str, content: bytes) -> str:
@@ -336,41 +356,51 @@ def get_document(
 @router.put("/v1/editor/doc")
 def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current_user)) -> dict[str, Any]:
     _ensure_allowed_index(payload.index)
+    is_create = not (payload.id and payload.id.strip())
     if any(k.startswith("_") for k in payload.source.keys()):
         raise HTTPException(status_code=400, detail="source 不可包含 _ 開頭的 Elasticsearch metadata 欄位。")
     es = es_client.get_es()
     before_source: dict[str, Any] = {}
-    try:
-        before = es.get(index=payload.index, id=payload.id, _source=True)
-        before_body = es_client._unwrap_es(before)
-        before_source = before_body.get("_source") or {}
-    except Exception:
-        before_source = {}
+    doc_id = payload.id.strip() if isinstance(payload.id, str) and payload.id.strip() else None
+    if not doc_id:
+        doc_id = _pick_source_uuid(payload.source)
+    if not doc_id:
+        doc_id = _make_uuid_from_source(payload.source)
+        payload.source["uuid"] = doc_id
+
+    if doc_id:
+        try:
+            before = es.get(index=payload.index, id=doc_id, _source=True)
+            before_body = es_client._unwrap_es(before)
+            before_source = before_body.get("_source") or {}
+        except Exception:
+            before_source = {}
 
     object_paths = _get_index_object_paths(payload.index)
     source_to_save = _coerce_source_by_mapping(payload.source, object_paths)
     changes = diff_values(before_source, source_to_save)
     if not changes:
-        return {"ok": True, "result": "noop", "index": payload.index, "id": payload.id, "updated_by": user.username, "changes": []}
+        return {"ok": True, "result": "noop", "index": payload.index, "id": doc_id, "updated_by": user.username, "changes": []}
 
     try:
         res = es.index(
             index=payload.index,
-            id=payload.id,
+            id=doc_id,
             document=source_to_save,
             refresh="wait_for",
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"寫入 Elasticsearch 失敗：{exc}") from exc
     body = es_client._unwrap_es(res)
+    final_id = body.get("_id") or doc_id or ""
     append_audit_event({
-        "action": "editor.save_document",
+        "action": "editor.create_document" if is_create else "editor.save_document",
         "username": user.username,
         "role": user.role,
         "index": payload.index,
-        "id": payload.id,
+        "id": final_id,
         "result": body.get("result"),
         "changed_paths": [item.get("path") for item in changes],
         "changes": changes,
     })
-    return {"ok": True, "result": body.get("result"), "index": payload.index, "id": payload.id, "updated_by": user.username, "changed_paths": [item.get("path") for item in changes]}
+    return {"ok": True, "result": body.get("result"), "index": payload.index, "id": final_id, "updated_by": user.username, "changed_paths": [item.get("path") for item in changes]}
