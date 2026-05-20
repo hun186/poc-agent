@@ -290,6 +290,17 @@ class AuthStore:
         self._write(data)
         return self.public_user(user)
 
+    def delete_user(self, username: str) -> dict[str, Any]:
+        data = self._read()
+        users = data.get("users", {})
+        user = users.get(username)
+        if not isinstance(user, dict):
+            raise KeyError("帳號不存在。")
+        removed = dict(user)
+        del users[username]
+        self._write(data)
+        return self.public_user(removed)
+
     @staticmethod
     def public_user(user: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in user.items() if k != "password_hash"}

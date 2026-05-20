@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,44 @@ class SaveDocumentPayload(BaseModel):
     index: str = Field(..., min_length=1)
     id: str = Field(..., min_length=1)
     source: dict[str, Any]
+
+
+def _extract_text_from_upload(filename: str, content: bytes) -> str:
+    ext = Path(filename or "").suffix.lower()
+    if ext in {".txt", ".md", ".csv"}:
+        return content.decode("utf-8", errors="ignore")
+    if ext == ".pdf":
+        try:
+            from pypdf import PdfReader  # type: ignore
+            import io
+            reader = PdfReader(io.BytesIO(content))
+            return "\n".join((p.extract_text() or "") for p in reader.pages)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"PDF 文字擷取失敗：{exc}") from exc
+    if ext in {".docx"}:
+        try:
+            import docx  # type: ignore
+            import io
+            doc = docx.Document(io.BytesIO(content))
+            return "\n".join(p.text for p in doc.paragraphs)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Word 文字擷取失敗：{exc}") from exc
+    if ext in {".xlsx"}:
+        try:
+            import io
+            import openpyxl  # type: ignore
+            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+            lines: list[str] = []
+            for ws in wb.worksheets:
+                lines.append(f"# {ws.title}")
+                for row in ws.iter_rows(values_only=True):
+                    vals = [str(c).strip() for c in row if c is not None and str(c).strip()]
+                    if vals:
+                        lines.append(" | ".join(vals))
+            return "\n".join(lines)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Excel 文字擷取失敗：{exc}") from exc
+    raise HTTPException(status_code=400, detail="不支援的檔案格式，請上傳 txt、md、csv、pdf、docx、xlsx。")
 
 
 def _mapping_object_paths(properties: dict[str, Any], prefix: str = "") -> set[str]:
@@ -163,6 +201,27 @@ def reject_user(username: str, user: AuthUser = Depends(require_superuser)) -> d
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"user": rejected}
+
+
+@router.delete("/v1/auth/users/{username}")
+def delete_user(username: str, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
+    if username == user.username:
+        raise HTTPException(status_code=400, detail="不可刪除目前登入的超級使用者。")
+    try:
+        deleted = AUTH_STORE.delete_user(username)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"user": deleted}
+
+
+@router.post("/v1/editor/extract-text")
+async def extract_text_from_file(
+    file: UploadFile = File(...),
+    _: AuthUser = Depends(current_user),
+) -> dict[str, Any]:
+    content = await file.read()
+    text = _extract_text_from_upload(file.filename or "", content)
+    return {"filename": file.filename, "text": text}
 
 
 def _current_indexes() -> list[str]:

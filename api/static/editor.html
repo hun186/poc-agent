@@ -74,7 +74,6 @@
             <label>關鍵字</label><input id="query" placeholder="輸入 title、uuid、內文關鍵字；留空列出文件" />
             <div class="row" style="margin-top: 12px;">
               <button id="searchBtn">搜尋</button>
-              <button id="logoutBtn" class="secondary">登出</button>
             </div>
             <div id="searchStatus" class="status hidden"></div>
             <div id="hits"></div>
@@ -102,6 +101,14 @@
           </div>
 
           <div id="formPane">
+            <div class="card" style="background:#f8fafc;border-color:#e2e8f0;">
+              <h3 style="margin:0 0 8px;">rawInfo.content 檔案匯入</h3>
+              <p class="muted">可上傳 Word/PDF/Excel，自動抽文字並附加到 rawInfo.content。</p>
+              <div class="row">
+                <input id="contentFileInput" type="file" accept=".txt,.md,.csv,.pdf,.docx,.xlsx" />
+                <button id="extractTextBtn" class="secondary">上傳並抽文字</button>
+              </div>
+            </div>
             <div id="formSections"></div>
           </div>
 
@@ -338,16 +345,41 @@ async function saveDoc() {
 async function refreshUsers() {
   try {
     const data = await api('/v1/auth/users');
-    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="row"><button data-approve-user="${esc(u.username)}" data-role="user">核准普通</button><button data-approve-user="${esc(u.username)}" data-role="superuser" class="secondary">核准超級</button><button data-reject-user="${esc(u.username)}" class="danger">拒絕</button></div></div>`).join('');
+    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="row"><button data-approve-user="${esc(u.username)}" data-role="user">核准普通</button><button data-approve-user="${esc(u.username)}" data-role="superuser" class="secondary">核准超級</button><button data-reject-user="${esc(u.username)}" class="danger">拒絕</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
     document.querySelectorAll('[data-approve-user]').forEach(btn => btn.onclick = () => approveUser(btn.dataset.approveUser, btn.dataset.role));
     document.querySelectorAll('[data-reject-user]').forEach(btn => btn.onclick = () => rejectUser(btn.dataset.rejectUser));
+    document.querySelectorAll('[data-delete-user]').forEach(btn => btn.onclick = () => deleteUser(btn.dataset.deleteUser));
   } catch (err) { $('users').innerHTML = `<div class="status error">${esc(err.message)}</div>`; }
 }
 async function approveUser(username, role) { await api(`/v1/auth/users/${encodeURIComponent(username)}/approve`, {method:'POST', body: JSON.stringify({role})}); await refreshUsers(); }
 async function rejectUser(username) { await api(`/v1/auth/users/${encodeURIComponent(username)}/reject`, {method:'POST'}); await refreshUsers(); }
+async function deleteUser(username) {
+  if (!confirm(`確定刪除帳號 ${username}？`)) return;
+  await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method:'DELETE'});
+  await refreshUsers();
+}
+async function uploadRawContentFile() {
+  const file = $('contentFileInput').files && $('contentFileInput').files[0];
+  if (!file) return setStatus('saveStatus', '請先選擇檔案', 'error');
+  const formData = new FormData();
+  formData.append('file', file);
+  setStatus('saveStatus', '抽取文字中...');
+  try {
+    const headers = state.token ? { Authorization: 'Bearer ' + state.token } : {};
+    const res = await fetch('/v1/editor/extract-text', { method: 'POST', headers, body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '文字擷取失敗');
+    collectFormToSource();
+    const original = String(getPath(state.source, 'rawInfo.content') || '');
+    const merged = original ? `${original}\n\n${data.text || ''}` : String(data.text || '');
+    setPath(state.source, 'rawInfo.content', merged);
+    populateForm(state.source);
+    setStatus('saveStatus', `已抽取 ${file.name}，可再按「儲存到 ES」`, 'ok');
+  } catch (err) { setStatus('saveStatus', err.message, 'error'); }
+}
 function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
-$('loginBtn').onclick = login; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('logoutBtn').onclick = logout; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers;
+$('loginBtn').onclick = login; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('extractTextBtn').onclick = uploadRawContentFile;
 $('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
 $('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
 $('indexSelect').onchange = () => loadFormConfig($('indexSelect').value).catch(err => setStatus('saveStatus', err.message, 'error'));
