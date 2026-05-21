@@ -74,6 +74,7 @@
             <label>關鍵字</label><input id="query" placeholder="輸入 title、uuid、內文關鍵字；留空列出文件" />
             <div class="row" style="margin-top: 12px;">
               <button id="searchBtn">搜尋</button>
+              <button id="deleteSelectedBtn" class="danger">刪除勾選</button>
             </div>
             <div id="searchStatus" class="status hidden"></div>
             <div id="hits"></div>
@@ -132,7 +133,7 @@
     </section>
   </main>
 <script>
-const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null };
+const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [] };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function setStatus(id, message, kind='') {
@@ -308,9 +309,38 @@ async function searchDocs() {
   try {
     const qs = new URLSearchParams({index: $('indexSelect').value, q: $('query').value, size: '20'});
     const data = await api('/v1/editor/search?' + qs.toString(), {headers: {'Content-Type': 'application/json'}});
+    state.latestHits = data.hits || [];
     setStatus('searchStatus', `找到 ${data.hits.length} 筆`, 'ok');
-    $('hits').innerHTML = data.hits.map((h, idx) => `<div class="hit"><strong>${esc(titleFromSource(h.source))}</strong><div class="muted">${esc(h.index)} / ${esc(h.id)}</div><button data-hit="${idx}">載入</button></div>`).join('');
+    $('hits').innerHTML = data.hits.map((h, idx) => `<div class="hit"><div class="row" style="align-items:flex-start;"><div style="flex:0 0 auto;"><input type="checkbox" data-hit-check="${idx}" /></div><div style="flex:1;"><strong>${esc(titleFromSource(h.source))}</strong><div class="muted">${esc(h.index)} / ${esc(h.id)}</div><div class="row"><button data-hit="${idx}">載入</button><button class="danger" data-delete-hit="${idx}">刪除</button></div></div></div></div>`).join('');
     document.querySelectorAll('[data-hit]').forEach(btn => btn.onclick = () => loadDoc(data.hits[Number(btn.dataset.hit)].index, data.hits[Number(btn.dataset.hit)].id));
+    document.querySelectorAll('[data-delete-hit]').forEach(btn => btn.onclick = () => deleteSingleHit(Number(btn.dataset.deleteHit)));
+  } catch (err) { setStatus('searchStatus', err.message, 'error'); }
+}
+async function deleteSingleHit(hitIdx) {
+  const hit = state.latestHits[hitIdx];
+  if (!hit) return;
+  if (!confirm(`確定刪除文件 ${hit.id}？`)) return;
+  try {
+    const qs = new URLSearchParams({index: hit.index, id: hit.id});
+    await api('/v1/editor/doc?' + qs.toString(), {method: 'DELETE'});
+    setStatus('searchStatus', `已刪除 ${hit.id}`, 'ok');
+    await searchDocs();
+  } catch (err) { setStatus('searchStatus', err.message, 'error'); }
+}
+async function deleteSelectedHits() {
+  const checked = Array.from(document.querySelectorAll('[data-hit-check]:checked'));
+  if (!checked.length) return setStatus('searchStatus', '請先勾選要刪除的文件', 'error');
+  const ids = checked.map(el => {
+    const hit = state.latestHits[Number(el.dataset.hitCheck)];
+    return hit ? hit.id : '';
+  }).filter(Boolean);
+  if (!ids.length) return setStatus('searchStatus', '勾選資料無效，請重新搜尋', 'error');
+  if (!confirm(`確定批次刪除 ${ids.length} 筆文件？`)) return;
+  try {
+    const index = $('indexSelect').value;
+    const result = await api('/v1/editor/docs', {method: 'DELETE', body: JSON.stringify({index, ids})});
+    setStatus('searchStatus', `批次刪除完成：成功 ${result.deleted_ids.length} 筆，未找到 ${result.not_found_ids.length} 筆`, 'ok');
+    await searchDocs();
   } catch (err) { setStatus('searchStatus', err.message, 'error'); }
 }
 async function loadDoc(index, id) {
@@ -400,6 +430,7 @@ function newDoc() {
 function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
 $('loginBtn').onclick = login; $('newDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('extractTextBtn').onclick = uploadRawContentFile;
+$('deleteSelectedBtn').onclick = deleteSelectedHits;
 $('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
 $('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
 $('indexSelect').onchange = () => loadFormConfig($('indexSelect').value).catch(err => setStatus('saveStatus', err.message, 'error'));

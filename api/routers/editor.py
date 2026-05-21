@@ -33,12 +33,20 @@ class SaveDocumentPayload(BaseModel):
     id: str | None = Field(default=None, min_length=1)
     source: dict[str, Any]
 
+class DeleteDocumentsPayload(BaseModel):
+    index: str = Field(..., min_length=1)
+    ids: list[str] = Field(..., min_length=1)
 
 
 
 def _make_uuid_from_source(source: dict[str, Any]) -> str:
-    """Generate deterministic sha1 id from source payload (similar to ingest_txt hashing concept)."""
-    basis = json.dumps(source, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    """Generate deterministic sha1 id from source payload.
+
+    `importDT` is runtime metadata and should not affect duplicate detection.
+    """
+    normalized = dict(source)
+    normalized.pop("importDT", None)
+    basis = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha1(basis.encode("utf-8")).hexdigest()
 
 def _pick_source_uuid(source: dict[str, Any]) -> str | None:
@@ -421,3 +429,57 @@ def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current
         "changes": changes,
     })
     return {"ok": True, "result": body.get("result"), "index": payload.index, "id": final_id, "updated_by": user.username, "changed_paths": [item.get("path") for item in changes]}
+
+
+@router.delete("/v1/editor/doc")
+def delete_document(
+    index: str = Query(...),
+    id: str = Query(...),
+    user: AuthUser = Depends(current_user),
+) -> dict[str, Any]:
+    _ensure_allowed_index(index)
+    try:
+        res = es_client.get_es().delete(index=index, id=id, refresh="wait_for")
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="文件不存在或無法刪除。") from exc
+    body = es_client._unwrap_es(res)
+    append_audit_event({
+        "action": "editor.delete_document",
+        "username": user.username,
+        "role": user.role,
+        "index": index,
+        "id": id,
+        "result": body.get("result"),
+        "changed_paths": [],
+        "changes": [],
+    })
+    return {"ok": True, "index": index, "id": id, "result": body.get("result")}
+
+
+@router.delete("/v1/editor/docs")
+def delete_documents(payload: DeleteDocumentsPayload, user: AuthUser = Depends(current_user)) -> dict[str, Any]:
+    _ensure_allowed_index(payload.index)
+    ids = [str(i).strip() for i in payload.ids if str(i).strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="ids 不可為空。")
+
+    deleted: list[str] = []
+    not_found: list[str] = []
+    for doc_id in ids:
+        try:
+            res = es_client.get_es().delete(index=payload.index, id=doc_id, refresh="wait_for")
+            body = es_client._unwrap_es(res)
+            deleted.append(doc_id)
+            append_audit_event({
+                "action": "editor.delete_document",
+                "username": user.username,
+                "role": user.role,
+                "index": payload.index,
+                "id": doc_id,
+                "result": body.get("result"),
+                "changed_paths": [],
+                "changes": [],
+            })
+        except Exception:
+            not_found.append(doc_id)
+    return {"ok": True, "index": payload.index, "deleted_ids": deleted, "not_found_ids": not_found}
