@@ -342,6 +342,12 @@ async function saveDoc() {
     const data = await api('/v1/editor/doc', {method: 'PUT', body: JSON.stringify({index: $('docIndex').value, id: docId || null, source})});
     const changed = data.changed_paths && data.changed_paths.length ? `\n異動欄位：${data.changed_paths.join(', ')}` : '';
     $('docId').value = data.id || docId;
+    if (data.result === 'noop' && data.id) {
+      await loadDoc(data.index || $('docIndex').value, data.id);
+      const explain = data.message || '內容無異動（noop）';
+      setStatus('saveStatus', `${explain}，已切換為既有文件編輯模式 / ID: ${data.id}`, 'ok');
+      return;
+    }
     setStatus('saveStatus', `儲存成功：${data.result || 'updated'} / ID: ${$('docId').value || '(自動產生失敗)'}${changed}`, 'ok');
   } catch (err) { setStatus('saveStatus', err.message, 'error'); }
 }
