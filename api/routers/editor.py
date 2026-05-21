@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import hashlib
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status
@@ -49,6 +50,10 @@ def _pick_source_uuid(source: dict[str, Any]) -> str | None:
         candidate = value.strip()
         return candidate or None
     return None
+
+
+def _utc_now_iso_z() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _extract_text_from_upload(filename: str, content: bytes) -> str:
@@ -361,6 +366,9 @@ def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current
         raise HTTPException(status_code=400, detail="source 不可包含 _ 開頭的 Elasticsearch metadata 欄位。")
     es = es_client.get_es()
     before_source: dict[str, Any] = {}
+    import_dt = payload.source.get("importDT")
+    if is_create and not (isinstance(import_dt, str) and import_dt.strip()):
+        payload.source["importDT"] = _utc_now_iso_z()
     doc_id = payload.id.strip() if isinstance(payload.id, str) and payload.id.strip() else None
     if not doc_id:
         doc_id = _pick_source_uuid(payload.source)
@@ -380,7 +388,16 @@ def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current
     source_to_save = _coerce_source_by_mapping(payload.source, object_paths)
     changes = diff_values(before_source, source_to_save)
     if not changes:
-        return {"ok": True, "result": "noop", "index": payload.index, "id": doc_id, "updated_by": user.username, "changes": []}
+        return {
+            "ok": True,
+            "result": "noop",
+            "index": payload.index,
+            "id": doc_id,
+            "updated_by": user.username,
+            "changes": [],
+            "message": "No changes detected; existing document loaded.",
+            "mode": "edit_existing",
+        }
 
     try:
         res = es.index(
