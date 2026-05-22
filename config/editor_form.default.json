@@ -46,6 +46,12 @@
           "description": "文章標題、日期與精度。",
           "fields": [
             {
+              "path": "communication.subject",
+              "label": "communication.subject",
+              "type": "text",
+              "help": "對話主題"
+            },
+            {
               "path": "multidim_event_json.article_title",
               "label": "article_title",
               "type": "text"
