@@ -140,12 +140,23 @@ function setStatus(id, message, kind='') {
   const el = $(id); el.textContent = message || ''; el.className = 'status' + (message ? '' : ' hidden') + (kind ? ' ' + kind : '');
 }
 function attrSelectorValue(value) { return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
-function getPath(obj, path) { return String(path || '').split('.').filter(Boolean).reduce((cur, key) => (cur && typeof cur === 'object') ? cur[key] : undefined, obj); }
+function getPath(obj, path) {
+  const p = String(path || '');
+  if (!p) return undefined;
+  if (obj && typeof obj === 'object' && Object.prototype.hasOwnProperty.call(obj, p)) return obj[p];
+  return p.split('.').filter(Boolean).reduce((cur, key) => {
+    if (!cur || typeof cur !== 'object') return undefined;
+    if (Object.prototype.hasOwnProperty.call(cur, key)) return cur[key];
+    return undefined;
+  }, obj);
+}
 function setPath(obj, path, value) {
-  const keys = String(path || '').split('.').filter(Boolean); if (!keys.length) return;
+  const p = String(path || '');
+  const keys = p.split('.').filter(Boolean); if (!keys.length) return;
   let cur = obj;
   keys.slice(0, -1).forEach(k => { if (!cur[k] || typeof cur[k] !== 'object' || Array.isArray(cur[k])) cur[k] = {}; cur = cur[k]; });
   cur[keys[keys.length - 1]] = value;
+  if (obj && typeof obj === 'object' && Object.prototype.hasOwnProperty.call(obj, p) && keys.length > 1) obj[p] = value;
 }
 function csvToArray(value) { return String(value || '').split(',').map(v => v.trim()).filter(Boolean); }
 function arrayToCsv(value) { return Array.isArray(value) ? value.join(', ') : ''; }
