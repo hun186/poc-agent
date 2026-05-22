@@ -75,8 +75,8 @@
               "compact_hide": true
             },
             {
-              "path": "multidim_event_json.Impact",
-              "label": "Impact",
+              "path": "multidim_event_json.Impact.impact_description",
+              "label": "Impact.impact_description",
               "type": "textarea",
               "compact_hide": true
             },
