@@ -77,6 +77,7 @@
           <div id="mainNav" class="card hidden">
             <h2>功能導航</h2>
             <div class="row">
+              <button class="secondary" id="navNewDocBtn">新增文件</button>
               <button class="secondary" data-main-tab="search">搜尋文件</button>
               <button class="secondary" data-main-tab="stats">使用統計</button>
               <button class="secondary hidden" id="mainReviewTab" data-main-tab="review">帳號審核</button>
@@ -137,10 +138,10 @@
         <section class="card">
           <h2>編輯結構化欄位</h2>
           <p id="schemaDescription" class="muted">表單欄位由設定檔載入；一般使用者可使用表單修改資料，進階使用者可切換完整 JSON。</p>
+          <div id="editorModeBanner" class="status" style="margin-bottom:12px;">目前模式：新增文件模式（可選 index）</div>
           <div class="row">
-            <div><label>目前 index</label><input id="docIndex" readonly /></div>
+            <div><label>目前 index</label><select id="docIndex" disabled></select><div id="docIndexHint" class="muted">編輯既有文件時會鎖定 index；按「新增文件」可切換要寫入的 index。</div></div>
             <div><label>目前文件 ID</label><input id="docId" placeholder="可留空；將優先用 source.uuid，否則自動產生 sha1 uuid" /></div>
-            <div style="display:flex;align-items:flex-end;"><button id="newDocBtn" class="secondary">新增文件</button></div>
           </div>
 
           <div class="tabs">
@@ -173,6 +174,7 @@
           <div class="row" style="margin-top: 16px;">
             <button id="syncJsonBtn" class="secondary">套用表單到 JSON</button>
             <button id="saveBtn">儲存到 ES</button>
+            <button id="saveAsNewBtn" class="secondary">另存新文件</button>
           </div>
           <div id="saveStatus" class="status hidden"></div>
         </section>
@@ -180,11 +182,28 @@
     </section>
   </main>
 <script>
-const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [] };
+const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '' };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function setStatus(id, message, kind='') {
   const el = $(id); el.textContent = message || ''; el.className = 'status' + (message ? '' : ' hidden') + (kind ? ' ' + kind : '');
+}
+function setEditorMode(mode) {
+  state.editorMode = mode === 'edit' ? 'edit' : 'new';
+  const lock = state.editorMode === 'edit';
+  $('docIndex').disabled = lock;
+  $('editorModeBanner').textContent = lock
+    ? '目前模式：編輯既有文件模式（index 已鎖定）'
+    : '目前模式：新增文件模式（可選 index）';
+  $('editorModeBanner').className = 'status ' + (lock ? 'ok' : '');
+  $('docIndexHint').textContent = lock
+    ? '目前為編輯既有文件模式，index 已鎖定以避免誤寫到其他索引。'
+    : '目前為新增文件模式，可先選擇要寫入的 index。';
+}
+function syncDocIndexOptions(selected) {
+  $('docIndex').innerHTML = $('indexSelect').innerHTML || '';
+  if (selected) $('docIndex').value = selected;
+  if (!$('docIndex').value && $('indexSelect').value) $('docIndex').value = $('indexSelect').value;
 }
 function attrSelectorValue(value) { return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
 function getPath(obj, path) {
@@ -378,6 +397,8 @@ async function bootAuthed() {
   const indexes = await api('/v1/editor/indexes');
   $('indexSelect').innerHTML = indexes.indexes.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
   if (indexes.default_index) $('indexSelect').value = indexes.default_index;
+  syncDocIndexOptions($('indexSelect').value);
+  setEditorMode('new');
   await loadFormConfig($('indexSelect').value);
   $('mainNav').classList.remove('hidden');
   document.querySelectorAll('[data-main-tab]').forEach(btn => btn.onclick = () => switchMainTab(btn.dataset.mainTab));
@@ -538,7 +559,9 @@ async function loadDoc(index, id) {
     await loadFormConfig(index);
     const qs = new URLSearchParams({index, id});
     const data = await api('/v1/editor/doc?' + qs.toString());
-    $('docIndex').value = data.index; $('docId').value = data.id;
+    syncDocIndexOptions(data.index); $('docId').value = data.id;
+    state.loadedDocId = data.id || '';
+    setEditorMode('edit');
     populateForm(data.source);
     setStatus('saveStatus', '文件已載入，可用設定檔定義的表單修改欄位。', 'ok');
   } catch (err) { setStatus('saveStatus', err.message, 'error'); }
@@ -567,6 +590,32 @@ async function saveDoc() {
       return;
     }
     setStatus('saveStatus', `儲存成功：${data.result || 'updated'} / ID: ${$('docId').value || '(自動產生失敗)'}${changed}`, 'ok');
+  } catch (err) { setStatus('saveStatus', err.message, 'error'); }
+}
+async function saveAsNewDoc() {
+  if (!$('docIndex').value) return setStatus('saveStatus', '請先選擇 index', 'error');
+  let source;
+  try { source = collectFormToSource(); } catch (err) { return setStatus('saveStatus', '表單資料錯誤：' + err.message, 'error'); }
+  const cloned = JSON.parse(JSON.stringify(source || {}));
+  const currentId = $('docId').value.trim();
+  const loadedId = String(state.loadedDocId || '').trim();
+  const unchangedLoadedId = loadedId && currentId && currentId === loadedId;
+  if (unchangedLoadedId) {
+    const ok = confirm('目前文件 ID 仍是原文件 ID。\n若你要指定新的文件 ID，請先修改「目前文件 ID」。\n\n按「確定」：自動產生新 ID 另存\n按「取消」：返回先改 ID');
+    if (!ok) return setStatus('saveStatus', '已取消另存，請先修改文件 ID 後再另存', 'error');
+  }
+  if (currentId) delete cloned.uuid;
+  setStatus('saveStatus', '另存新文件中...');
+  try {
+    const targetId = unchangedLoadedId ? null : (currentId || null);
+    const data = await api('/v1/editor/doc', {method: 'PUT', body: JSON.stringify({index: $('docIndex').value, id: targetId, source: cloned})});
+    if (data.id) {
+      await loadDoc(data.index || $('docIndex').value, data.id);
+      const uuidHint = currentId ? '（已忽略原文件 uuid，避免覆蓋）' : '';
+      setStatus('saveStatus', `另存成功：新 ID ${data.id}${uuidHint}`, 'ok');
+      return;
+    }
+    setStatus('saveStatus', '另存完成，但未取得新 ID', 'error');
   } catch (err) { setStatus('saveStatus', err.message, 'error'); }
 }
 async function refreshUsers() {
@@ -608,8 +657,10 @@ async function uploadRawContentFile() {
 function newDoc() {
   const index = $('indexSelect').value;
   if (!index) return setStatus('saveStatus', '請先選擇 index', 'error');
-  $('docIndex').value = index;
+  syncDocIndexOptions(index);
+  setEditorMode('new');
   $('docId').value = '';
+  state.loadedDocId = '';
   state.source = {};
   populateForm(state.source);
   setStatus('saveStatus', '已切換為新增模式：可留空 ID。儲存時會優先使用 source.uuid，若沒有則自動產生 sha1 uuid。', 'ok');
@@ -617,13 +668,19 @@ function newDoc() {
 
 function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
-$('loginBtn').onclick = login; $('newDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('refreshStatsBtn').onclick = refreshUsageStats; $('extractTextBtn').onclick = uploadRawContentFile;
+$('loginBtn').onclick = login; $('navNewDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('saveAsNewBtn').onclick = saveAsNewDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('refreshStatsBtn').onclick = refreshUsageStats; $('extractTextBtn').onclick = uploadRawContentFile;
 $('searchAuditBtn').onclick = searchAuditLogs;
 $('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); };
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
 $('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
 $('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
-$('indexSelect').onchange = () => loadFormConfig($('indexSelect').value).catch(err => setStatus('saveStatus', err.message, 'error'));
+$('indexSelect').onchange = () => {
+  if (state.editorMode === 'new') syncDocIndexOptions($('indexSelect').value);
+  loadFormConfig($('indexSelect').value).catch(err => setStatus('saveStatus', err.message, 'error'));
+};
+$('docIndex').onchange = () => {
+  if (state.editorMode === 'new') loadFormConfig($('docIndex').value).catch(err => setStatus('saveStatus', err.message, 'error'));
+};
 if (state.token) bootAuthed().catch(err => { localStorage.removeItem('sra_editor_token'); setStatus('authStatus', err.message, 'error'); });
 </script>
 </body>
