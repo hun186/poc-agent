@@ -224,7 +224,7 @@ class AuthStore:
         if changed:
             self._write(data)
 
-    def register(self, username: str, password: str) -> dict[str, Any]:
+    def register(self, username: str, password: str, *, full_name: str | None = None, department: str | None = None, note: str | None = None) -> dict[str, Any]:
         username = username.strip()
         if not username or len(username) > 64:
             raise ValueError("帳號不可為空，且長度需小於 64。")
@@ -242,6 +242,9 @@ class AuthStore:
             "created_at": _utc_now(),
             "approved_at": None,
             "approved_by": None,
+            "full_name": (full_name or "").strip() or None,
+            "department": (department or "").strip() or None,
+            "note": (note or "").strip() or None,
         }
         self._write(data)
         return self.public_user(users[username])

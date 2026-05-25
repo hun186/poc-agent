@@ -22,6 +22,9 @@ router = APIRouter(tags=["editor"])
 class AuthPayload(BaseModel):
     username: str = Field(..., min_length=1, max_length=64)
     password: str = Field(..., min_length=1)
+    full_name: str | None = Field(default=None, max_length=120)
+    department: str | None = Field(default=None, max_length=120)
+    note: str | None = Field(default=None, max_length=500)
 
 
 class ApprovePayload(BaseModel):
@@ -207,6 +210,12 @@ def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
 
 def require_superuser(user: AuthUser = Depends(current_user)) -> AuthUser:
     if user.role != "superuser":
+        append_audit_event({
+            "action": "authz.denied",
+            "username": user.username,
+            "role": user.role,
+            "reason": "require_superuser",
+        })
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要超級使用者權限。")
     return user
 
@@ -214,7 +223,13 @@ def require_superuser(user: AuthUser = Depends(current_user)) -> AuthUser:
 @router.post("/v1/auth/register")
 def register(payload: AuthPayload) -> dict[str, Any]:
     try:
-        user = AUTH_STORE.register(payload.username, payload.password)
+        user = AUTH_STORE.register(
+            payload.username,
+            payload.password,
+            full_name=payload.full_name,
+            department=payload.department,
+            note=payload.note,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"user": user, "message": "帳號已建立，狀態為 pending；請等待超級使用者審核。"}
@@ -508,6 +523,39 @@ def delete_documents(payload: DeleteDocumentsPayload, user: AuthUser = Depends(c
             not_found.append(doc_id)
     return {"ok": True, "index": payload.index, "deleted_ids": deleted, "not_found_ids": not_found}
 
+
+
+
+@router.get("/v1/editor/usage-stats")
+def usage_stats(user: AuthUser = Depends(current_user)) -> dict[str, Any]:
+    records = _load_audit_records(limit=20000)
+    mine = [r for r in records if str(r.get("username") or "") == user.username]
+
+    def build(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        by_action: dict[str, int] = {}
+        by_index: dict[str, int] = {}
+        by_user: dict[str, int] = {}
+        changed_paths_total = 0
+        for r in rows:
+            action = str(r.get("action") or "unknown")
+            idx = str(r.get("index") or "-")
+            uname = str(r.get("username") or "-")
+            by_action[action] = by_action.get(action, 0) + 1
+            by_index[idx] = by_index.get(idx, 0) + 1
+            by_user[uname] = by_user.get(uname, 0) + 1
+            changed_paths_total += len(r.get("changed_paths") or [])
+        return {
+            "total_events": len(rows),
+            "changed_paths_total": changed_paths_total,
+            "by_action": by_action,
+            "by_index": by_index,
+            "by_user": by_user,
+        }
+
+    out = {"me": build(mine)}
+    if user.role == "superuser":
+        out["all"] = build(records)
+    return out
 
 @router.get("/v1/editor/audit-logs")
 def list_audit_logs(

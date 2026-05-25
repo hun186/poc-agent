@@ -59,6 +59,11 @@
         <div><label>帳號</label><input id="authUsername" autocomplete="username" /></div>
         <div><label>密碼</label><input id="authPassword" type="password" autocomplete="current-password" /></div>
       </div>
+      <div class="row">
+        <div><label>姓名（選填）</label><input id="authFullName" /></div>
+        <div><label>單位（選填）</label><input id="authDepartment" /></div>
+      </div>
+      <label>備註（選填）</label><input id="authNote" placeholder="例如用途/聯絡方式" />
       <div class="row" style="margin-top: 12px;">
         <button id="loginBtn">登入</button>
         <button id="registerBtn" class="secondary">建立 pending 帳號</button>
@@ -69,7 +74,17 @@
     <section id="app" class="hidden">
       <div class="grid">
         <aside>
-          <div class="card">
+          <div id="mainNav" class="card hidden">
+            <h2>功能導航</h2>
+            <div class="row">
+              <button class="secondary" data-main-tab="search">搜尋文件</button>
+              <button class="secondary" data-main-tab="stats">使用統計</button>
+              <button class="secondary hidden" id="mainReviewTab" data-main-tab="review">帳號審核</button>
+              <button class="secondary hidden" id="mainAuditTab" data-main-tab="audit">修改紀錄</button>
+            </div>
+          </div>
+
+          <div id="searchCard" class="card">
             <h2>搜尋文件</h2>
             <label>Index</label><select id="indexSelect"></select>
             <label>關鍵字</label><input id="query" placeholder="輸入 title、uuid、內文關鍵字；留空列出文件" />
@@ -81,6 +96,17 @@
             <div id="hits"></div>
           </div>
 
+          <div id="statsCard" class="card hidden">
+            <h2>使用統計</h2>
+            <div class="row">
+              <button id="statsMineTabBtn" class="secondary">我的使用統計</button>
+              <button id="statsAllTabBtn" class="secondary hidden">全體使用統計</button>
+              <button id="refreshStatsBtn" class="secondary">重新整理統計</button>
+            </div>
+            <div id="myStats"></div>
+            <div id="adminStats" class="hidden"></div>
+          </div>
+
           <div id="adminCard" class="card hidden">
             <h2>帳號審核</h2>
             <button id="refreshUsersBtn" class="secondary">重新整理帳號</button>
@@ -90,14 +116,14 @@
           <div id="auditCard" class="card hidden">
             <h2>修改紀錄查詢</h2>
             <div class="field-grid">
-              <div><label>操作者</label><input id="auditUsername" placeholder="username" /></div>
+              <div><label>操作者</label><select id="auditUsername"><option value="">全部</option></select></div>
               <div><label>動作</label><select id="auditAction"><option value="">全部</option><option value="editor.create_document">create</option><option value="editor.save_document">save</option><option value="editor.delete_document">delete</option></select></div>
-              <div><label>Index</label><input id="auditIndex" placeholder="index name" /></div>
+              <div><label>Index</label><select id="auditIndex"><option value="">全部</option></select></div>
               <div><label>文件 ID</label><input id="auditDocId" placeholder="document id" /></div>
-              <div><label>異動欄位路徑</label><input id="auditPath" placeholder="例如 rawInfo.content" /></div>
+              <div><label>異動欄位路徑</label><select id="auditPath"><option value="">全部</option></select></div>
               <div><label>最多筆數</label><input id="auditLimit" type="number" min="1" max="500" value="100" /></div>
-              <div><label>起始時間 (ISO)</label><input id="auditStartTs" placeholder="2026-05-01T00:00:00Z" /></div>
-              <div><label>結束時間 (ISO)</label><input id="auditEndTs" placeholder="2026-05-25T23:59:59Z" /></div>
+              <div><label>起始時間</label><input id="auditStartTs" type="datetime-local" /></div>
+              <div><label>結束時間</label><input id="auditEndTs" type="datetime-local" /></div>
             </div>
             <div class="row" style="margin-top: 12px;">
               <button id="searchAuditBtn">查詢紀錄</button>
@@ -340,24 +366,87 @@ async function login() {
 async function register() {
   setStatus('authStatus', '建立帳號中...');
   try {
-    const data = await api('/v1/auth/register', {method: 'POST', body: JSON.stringify({username: $('authUsername').value, password: $('authPassword').value})});
+    const data = await api('/v1/auth/register', {method: 'POST', body: JSON.stringify({username: $('authUsername').value, password: $('authPassword').value, full_name: $('authFullName').value.trim(), department: $('authDepartment').value.trim(), note: $('authNote').value.trim()})});
     setStatus('authStatus', data.message, 'ok');
   } catch (err) { setStatus('authStatus', err.message, 'error'); }
 }
 async function bootAuthed() {
   const me = await api('/v1/auth/me'); state.user = me.user;
+  const isSuperuser = state.user && state.user.role === 'superuser';
   $('auth').classList.add('hidden'); $('app').classList.remove('hidden'); $('headerLogoutBtn').classList.remove('hidden');
   $('whoami').textContent = `${state.user.username} (${state.user.role})`;
   const indexes = await api('/v1/editor/indexes');
   $('indexSelect').innerHTML = indexes.indexes.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
   if (indexes.default_index) $('indexSelect').value = indexes.default_index;
   await loadFormConfig($('indexSelect').value);
-  if (state.user.role === 'superuser') {
+  $('mainNav').classList.remove('hidden');
+  document.querySelectorAll('[data-main-tab]').forEach(btn => btn.onclick = () => switchMainTab(btn.dataset.mainTab));
+  if (isSuperuser) {
     $('adminCard').classList.remove('hidden');
     $('auditCard').classList.remove('hidden');
+    $('statsAllTabBtn').classList.remove('hidden');
+    $('mainReviewTab').classList.remove('hidden');
+    $('mainAuditTab').classList.remove('hidden');
     await refreshUsers();
     await searchAuditLogs();
+  } else {
+    $('adminCard').classList.add('hidden');
+    $('auditCard').classList.add('hidden');
   }
+  await refreshUsageStats();
+  switchMainTab('search');
+  $('statsMineTabBtn').onclick = () => switchStatsView('mine');
+  $('statsAllTabBtn').onclick = () => switchStatsView('all');
+  switchStatsView('mine');
+}
+function toIsoOrEmpty(localValue) {
+  if (!localValue) return '';
+  const d = new Date(localValue);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+}
+function updateAuditSelectOptions(id, values) {
+  const el = $(id);
+  const current = el.value;
+  const opts = ['<option value="">全部</option>'].concat((values || []).map(v => `<option value="${esc(v)}">${esc(v)}</option>`));
+  el.innerHTML = opts.join('');
+  if (current && values.includes(current)) el.value = current;
+}
+function refreshAuditFilterOptions(hits) {
+  const usernames = [...new Set((hits||[]).map(h => String(h.username||'').trim()).filter(Boolean))].sort();
+  const indexes = [...new Set((hits||[]).map(h => String(h.index||'').trim()).filter(Boolean))].sort();
+  const paths = [...new Set((hits||[]).flatMap(h => Array.isArray(h.changed_paths) ? h.changed_paths : []).map(v => String(v||'').trim()).filter(Boolean))].sort();
+  updateAuditSelectOptions('auditUsername', usernames);
+  updateAuditSelectOptions('auditIndex', indexes);
+  updateAuditSelectOptions('auditPath', paths);
+}
+function renderUsageStats(targetId, stats) {
+  if (!stats) {
+    $(targetId).innerHTML = '<div class="muted">暫無資料</div>';
+    return;
+  }
+  const block = (title, obj) => `<div class="user"><strong>${esc(title)}</strong>${Object.entries(obj || {}).map(([k, v]) => `<div class="muted">${esc(k)}: ${esc(v)}</div>`).join('')}</div>`;
+  $(targetId).innerHTML = `<div class="user"><strong>總操作次數</strong><div class="muted">${esc(stats.total_events || 0)}</div><div class="muted">異動欄位總數：${esc(stats.changed_paths_total || 0)}</div></div>${block('依動作', stats.by_action)}${block('依索引', stats.by_index)}${block('依使用者', stats.by_user)}`;
+}
+async function refreshUsageStats() {
+  try {
+    const data = await api('/v1/editor/usage-stats');
+    renderUsageStats('myStats', data.me);
+    if (state.user && state.user.role === 'superuser') renderUsageStats('adminStats', data.all);
+  } catch (err) {
+    $('myStats').innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+    $('adminStats').innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+  }
+}
+function switchMainTab(tab) {
+  $('searchCard').classList.toggle('hidden', tab !== 'search');
+  $('statsCard').classList.toggle('hidden', tab !== 'stats');
+  $('adminCard').classList.toggle('hidden', tab !== 'review');
+  $('auditCard').classList.toggle('hidden', tab !== 'audit');
+}
+function switchStatsView(view) {
+  const mine = view !== 'all';
+  $('myStats').classList.toggle('hidden', !mine);
+  $('adminStats').classList.toggle('hidden', mine);
 }
 function collectAuditQuery() {
   const qs = new URLSearchParams();
@@ -367,8 +456,8 @@ function collectAuditQuery() {
     index: $('auditIndex').value.trim(),
     id: $('auditDocId').value.trim(),
     changed_path: $('auditPath').value.trim(),
-    start_ts: $('auditStartTs').value.trim(),
-    end_ts: $('auditEndTs').value.trim(),
+    start_ts: toIsoOrEmpty($('auditStartTs').value.trim()),
+    end_ts: toIsoOrEmpty($('auditEndTs').value.trim()),
     limit: String(Math.max(1, Math.min(500, Number($('auditLimit').value || 100))))
   };
   Object.entries(mapping).forEach(([k, v]) => { if (v) qs.set(k, v); });
@@ -390,7 +479,9 @@ async function searchAuditLogs() {
   try {
     const qs = collectAuditQuery();
     const data = await api('/v1/editor/audit-logs?' + qs.toString(), {headers: {'Content-Type': 'application/json'}});
-    renderAuditHits(data.hits || []);
+    const hits = data.hits || [];
+    renderAuditHits(hits);
+    refreshAuditFilterOptions(hits);
     setStatus('auditStatus', `共符合 ${data.total} 筆，顯示 ${Math.min(data.limit, (data.hits || []).length)} 筆`, 'ok');
   } catch (err) {
     setStatus('auditStatus', err.message, 'error');
@@ -481,7 +572,7 @@ async function saveDoc() {
 async function refreshUsers() {
   try {
     const data = await api('/v1/auth/users');
-    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="row"><button data-approve-user="${esc(u.username)}" data-role="user">核准普通</button><button data-approve-user="${esc(u.username)}" data-role="superuser" class="secondary">核准超級</button><button data-reject-user="${esc(u.username)}" class="danger">拒絕</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
+    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><button data-approve-user="${esc(u.username)}" data-role="user">核准普通</button><button data-approve-user="${esc(u.username)}" data-role="superuser" class="secondary">核准超級</button><button data-reject-user="${esc(u.username)}" class="danger">拒絕</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
     document.querySelectorAll('[data-approve-user]').forEach(btn => btn.onclick = () => approveUser(btn.dataset.approveUser, btn.dataset.role));
     document.querySelectorAll('[data-reject-user]').forEach(btn => btn.onclick = () => rejectUser(btn.dataset.rejectUser));
     document.querySelectorAll('[data-delete-user]').forEach(btn => btn.onclick = () => deleteUser(btn.dataset.deleteUser));
@@ -526,7 +617,7 @@ function newDoc() {
 
 function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
-$('loginBtn').onclick = login; $('newDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('extractTextBtn').onclick = uploadRawContentFile;
+$('loginBtn').onclick = login; $('newDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('refreshStatsBtn').onclick = refreshUsageStats; $('extractTextBtn').onclick = uploadRawContentFile;
 $('searchAuditBtn').onclick = searchAuditLogs;
 $('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); };
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
