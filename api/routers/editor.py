@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import hashlib
 import json
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -17,6 +18,8 @@ from api.services.editor_audit import append_audit_event, diff_values
 from api.services.editor_form_config import get_editor_schema, public_editor_form_config
 
 router = APIRouter(tags=["editor"])
+_MAPPING_FIELD_PATHS_CACHE_TTL_SEC = 60.0
+_mapping_field_paths_cache: dict[str, tuple[float, set[str], bool]] = {}
 
 
 class AuthPayload(BaseModel):
@@ -157,6 +160,40 @@ def _get_index_object_paths(index: str) -> set[str]:
         if isinstance(props, dict):
             object_paths |= _mapping_object_paths(props)
     return object_paths
+
+
+def _get_index_field_paths(index: str) -> tuple[set[str], bool]:
+    now = time.time()
+    cached = _mapping_field_paths_cache.get(index)
+    if cached and now - cached[0] <= _MAPPING_FIELD_PATHS_CACHE_TTL_SEC:
+        return cached[1], cached[2]
+
+    try:
+        mapping = es_client.get_es().indices.get_mapping(index=index)
+    except Exception:
+        _mapping_field_paths_cache[index] = (now, set(), False)
+        return set(), False
+
+    paths: set[str] = set()
+
+    def _walk(props: dict[str, Any], prefix: str = "") -> None:
+        for name, definition in (props or {}).items():
+            if not isinstance(definition, dict):
+                continue
+            path = f"{prefix}.{name}" if prefix else name
+            paths.add(path)
+            child_props = definition.get("properties")
+            if isinstance(child_props, dict):
+                _walk(child_props, path)
+
+    for _, body in (mapping or {}).items():
+        m = body.get("mappings") if isinstance(body, dict) else {}
+        props = m.get("properties") if isinstance(m, dict) else {}
+        if isinstance(props, dict):
+            _walk(props)
+
+    _mapping_field_paths_cache[index] = (now, paths, True)
+    return paths, True
 
 
 def _get_index_field_type_map(index: str, targets: list[str]) -> dict[str, str]:
@@ -427,6 +464,12 @@ def search_documents(
     schema = get_editor_schema(index=index)
     filters: list[dict[str, Any]] = []
     date_field = str(schema.get("search_date_field") or "importDT")
+    mapping_field_paths, mapping_ok = _get_index_field_paths(index)
+    warnings: list[str] = []
+    if not mapping_ok:
+        warnings.append("無法讀取 index mapping，已略過日期欄位存在性檢查。")
+    elif date_field not in mapping_field_paths:
+        warnings.append(f"日期篩選欄位 `{date_field}` 不存在於 index mapping；套用日期區間可能查不到結果。")
     range_filter: dict[str, str] = {}
     if start_ts.strip():
         range_filter["gte"] = start_ts.strip()
@@ -478,7 +521,14 @@ def search_documents(
         })
     total_obj = (body.get("hits", {}) or {}).get("total", 0)
     total = total_obj.get("value", 0) if isinstance(total_obj, dict) else int(total_obj or 0)
-    return {"hits": hits, "total": total, "size": size, "page": page, "has_more": (offset + len(hits)) < total}
+    return {
+        "hits": hits,
+        "total": total,
+        "size": size,
+        "page": page,
+        "has_more": (offset + len(hits)) < total,
+        "warnings": warnings,
+    }
 
 
 @router.get("/v1/editor/doc")
@@ -488,12 +538,43 @@ def get_document(
     _: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
     _ensure_allowed_index(index)
+    schema = get_editor_schema(index=index)
     try:
         got = es_client.get_es().get(index=index, id=id, _source=True)
     except Exception as exc:
         raise HTTPException(status_code=404, detail="文件不存在或無法讀取。") from exc
     body = es_client._unwrap_es(got)
-    return {"index": body.get("_index", index), "id": body.get("_id", id), "source": body.get("_source") or {}}
+    mapping_field_paths, mapping_ok = _get_index_field_paths(index)
+    expected_paths: set[str] = set()
+    for sec in (schema.get("sections") or []):
+        if not isinstance(sec, dict):
+            continue
+        sec_path = sec.get("path")
+        if isinstance(sec_path, str) and sec_path.strip():
+            expected_paths.add(sec_path.strip())
+        for field in (sec.get("fields") or []):
+            if not isinstance(field, dict):
+                continue
+            p = field.get("path")
+            if isinstance(p, str) and p.strip():
+                if isinstance(sec_path, str) and sec.get("type") == "array" and "." not in p:
+                    expected_paths.add(f"{sec_path.strip()}.{p.strip()}")
+                else:
+                    expected_paths.add(p.strip())
+    missing_paths = sorted([p for p in expected_paths if p not in mapping_field_paths]) if mapping_ok else []
+    warnings: list[str] = []
+    if not mapping_ok:
+        warnings.append("無法讀取 index mapping，已略過 schema 欄位存在性檢查。")
+    elif missing_paths:
+        preview = ", ".join(missing_paths[:20])
+        suffix = " ..." if len(missing_paths) > 20 else ""
+        warnings.append(f"Schema 欄位有 {len(missing_paths)} 個不存在於 index mapping：{preview}{suffix}")
+    return {
+        "index": body.get("_index", index),
+        "id": body.get("_id", id),
+        "source": body.get("_source") or {},
+        "warnings": warnings,
+    }
 
 
 @router.put("/v1/editor/doc")
