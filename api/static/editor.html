@@ -35,6 +35,7 @@
     .status.error { background: #fee2e2; color: #991b1b; }
     .status.ok { background: #dcfce7; color: #166534; }
     .hit, .user, .array-item { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; margin: 8px 0; background: #fbfdff; }
+    .audit { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; margin: 8px 0; background: #f8fafc; }
     .hit button, .user button, .array-item button { padding: 7px 10px; margin-top: 8px; }
     .muted { color: #64748b; font-size: 13px; }
     .hidden { display: none !important; }
@@ -84,6 +85,26 @@
             <h2>帳號審核</h2>
             <button id="refreshUsersBtn" class="secondary">重新整理帳號</button>
             <div id="users"></div>
+          </div>
+
+          <div id="auditCard" class="card hidden">
+            <h2>修改紀錄查詢</h2>
+            <div class="field-grid">
+              <div><label>操作者</label><input id="auditUsername" placeholder="username" /></div>
+              <div><label>動作</label><select id="auditAction"><option value="">全部</option><option value="editor.create_document">create</option><option value="editor.save_document">save</option><option value="editor.delete_document">delete</option></select></div>
+              <div><label>Index</label><input id="auditIndex" placeholder="index name" /></div>
+              <div><label>文件 ID</label><input id="auditDocId" placeholder="document id" /></div>
+              <div><label>異動欄位路徑</label><input id="auditPath" placeholder="例如 rawInfo.content" /></div>
+              <div><label>最多筆數</label><input id="auditLimit" type="number" min="1" max="500" value="100" /></div>
+              <div><label>起始時間 (ISO)</label><input id="auditStartTs" placeholder="2026-05-01T00:00:00Z" /></div>
+              <div><label>結束時間 (ISO)</label><input id="auditEndTs" placeholder="2026-05-25T23:59:59Z" /></div>
+            </div>
+            <div class="row" style="margin-top: 12px;">
+              <button id="searchAuditBtn">查詢紀錄</button>
+              <button id="clearAuditBtn" class="secondary">清空篩選</button>
+            </div>
+            <div id="auditStatus" class="status hidden"></div>
+            <div id="auditHits"></div>
           </div>
         </aside>
 
@@ -331,7 +352,54 @@ async function bootAuthed() {
   $('indexSelect').innerHTML = indexes.indexes.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
   if (indexes.default_index) $('indexSelect').value = indexes.default_index;
   await loadFormConfig($('indexSelect').value);
-  if (state.user.role === 'superuser') { $('adminCard').classList.remove('hidden'); await refreshUsers(); }
+  if (state.user.role === 'superuser') {
+    $('adminCard').classList.remove('hidden');
+    $('auditCard').classList.remove('hidden');
+    await refreshUsers();
+    await searchAuditLogs();
+  }
+}
+function collectAuditQuery() {
+  const qs = new URLSearchParams();
+  const mapping = {
+    username: $('auditUsername').value.trim(),
+    action: $('auditAction').value.trim(),
+    index: $('auditIndex').value.trim(),
+    id: $('auditDocId').value.trim(),
+    changed_path: $('auditPath').value.trim(),
+    start_ts: $('auditStartTs').value.trim(),
+    end_ts: $('auditEndTs').value.trim(),
+    limit: String(Math.max(1, Math.min(500, Number($('auditLimit').value || 100))))
+  };
+  Object.entries(mapping).forEach(([k, v]) => { if (v) qs.set(k, v); });
+  return qs;
+}
+function renderAuditHits(hits) {
+  $('auditHits').innerHTML = (hits || []).map((h) => {
+    const paths = Array.isArray(h.changed_paths) ? h.changed_paths.filter(Boolean) : [];
+    return `<div class="audit">
+      <div><strong>${esc(h.action || '(unknown action)')}</strong></div>
+      <div class="muted">${esc(h.ts || '')}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
+      <div class="muted">index=${esc(h.index || '-')} / id=${esc(h.id || '-')} / result=${esc(h.result || '-')}</div>
+      <div class="muted">異動欄位：${paths.length ? esc(paths.join(', ')) : '(無)'}</div>
+    </div>`;
+  }).join('');
+}
+async function searchAuditLogs() {
+  setStatus('auditStatus', '查詢修改紀錄中...');
+  try {
+    const qs = collectAuditQuery();
+    const data = await api('/v1/editor/audit-logs?' + qs.toString(), {headers: {'Content-Type': 'application/json'}});
+    renderAuditHits(data.hits || []);
+    setStatus('auditStatus', `共符合 ${data.total} 筆，顯示 ${Math.min(data.limit, (data.hits || []).length)} 筆`, 'ok');
+  } catch (err) {
+    setStatus('auditStatus', err.message, 'error');
+    $('auditHits').innerHTML = '';
+  }
+}
+function clearAuditFilters() {
+  ['auditUsername','auditAction','auditIndex','auditDocId','auditPath','auditStartTs','auditEndTs'].forEach(id => { $(id).value = ''; });
+  $('auditLimit').value = 100;
 }
 async function searchDocs() {
   setStatus('searchStatus', '搜尋中...'); $('hits').innerHTML = '';
@@ -459,6 +527,8 @@ function newDoc() {
 function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
 $('loginBtn').onclick = login; $('newDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('extractTextBtn').onclick = uploadRawContentFile;
+$('searchAuditBtn').onclick = searchAuditLogs;
+$('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); };
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
 $('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
 $('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
