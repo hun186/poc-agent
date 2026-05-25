@@ -38,6 +38,30 @@ class DeleteDocumentsPayload(BaseModel):
     ids: list[str] = Field(..., min_length=1)
 
 
+def _load_audit_records(limit: int = 5000) -> list[dict[str, Any]]:
+    from api.services.editor_audit import audit_log_path
+
+    path = audit_log_path()
+    if not path.exists():
+        return []
+
+    records: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                obj = json.loads(text)
+            except Exception:
+                continue
+            if isinstance(obj, dict):
+                records.append(obj)
+    if len(records) > limit:
+        return records[-limit:]
+    return records
+
+
 
 def _make_uuid_from_source(source: dict[str, Any]) -> str:
     """Generate deterministic sha1 id from source payload.
@@ -483,3 +507,70 @@ def delete_documents(payload: DeleteDocumentsPayload, user: AuthUser = Depends(c
         except Exception:
             not_found.append(doc_id)
     return {"ok": True, "index": payload.index, "deleted_ids": deleted, "not_found_ids": not_found}
+
+
+@router.get("/v1/editor/audit-logs")
+def list_audit_logs(
+    username: str | None = Query(None, description="依操作者帳號篩選"),
+    action: str | None = Query(None, description="依操作類型篩選"),
+    index: str | None = Query(None, description="依 index 篩選"),
+    id: str | None = Query(None, description="依文件 ID 篩選"),
+    changed_path: str | None = Query(None, description="依異動欄位路徑篩選（部分比對）"),
+    start_ts: str | None = Query(None, description="起始時間（ISO 8601）"),
+    end_ts: str | None = Query(None, description="結束時間（ISO 8601）"),
+    limit: int = Query(100, ge=1, le=500),
+    _: AuthUser = Depends(require_superuser),
+) -> dict[str, Any]:
+    records = _load_audit_records(limit=5000)
+    username_q = (username or "").strip().lower()
+    action_q = (action or "").strip().lower()
+    index_q = (index or "").strip()
+    id_q = (id or "").strip()
+    path_q = (changed_path or "").strip().lower()
+    start_q = (start_ts or "").strip()
+    end_q = (end_ts or "").strip()
+
+    def in_range(ts_text: str) -> bool:
+        if not (start_q or end_q):
+            return True
+        try:
+            ts = datetime.fromisoformat(ts_text.replace("Z", "+00:00"))
+        except Exception:
+            return False
+        if start_q:
+            try:
+                start = datetime.fromisoformat(start_q.replace("Z", "+00:00"))
+                if ts < start:
+                    return False
+            except Exception:
+                raise HTTPException(status_code=400, detail="start_ts 格式錯誤，請使用 ISO 8601。")
+        if end_q:
+            try:
+                end = datetime.fromisoformat(end_q.replace("Z", "+00:00"))
+                if ts > end:
+                    return False
+            except Exception:
+                raise HTTPException(status_code=400, detail="end_ts 格式錯誤，請使用 ISO 8601。")
+        return True
+
+    filtered: list[dict[str, Any]] = []
+    for r in records:
+        if username_q and username_q not in str(r.get("username") or "").lower():
+            continue
+        if action_q and action_q not in str(r.get("action") or "").lower():
+            continue
+        if index_q and index_q != str(r.get("index") or ""):
+            continue
+        if id_q and id_q != str(r.get("id") or ""):
+            continue
+        if path_q:
+            paths = r.get("changed_paths") or []
+            if not any(path_q in str(p or "").lower() for p in paths):
+                continue
+        if not in_range(str(r.get("ts") or "")):
+            continue
+        filtered.append(r)
+
+    filtered.sort(key=lambda x: str(x.get("ts") or ""), reverse=True)
+    sliced = filtered[:limit]
+    return {"total": len(filtered), "limit": limit, "hits": sliced}
