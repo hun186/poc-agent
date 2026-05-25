@@ -125,7 +125,13 @@ def get_fulltext_on_demand(
         raise HTTPException(status_code=404, detail="文件存在，但沒有可用的全文內容。")
 
     # ==== 2) 標題 ====
-    md = src.get("multidim_event_json") or {}
+    md_raw = src.get("multidim_event_json")
+    if isinstance(md_raw, list):
+        md = md_raw[0] if md_raw and isinstance(md_raw[0], dict) else {}
+    elif isinstance(md_raw, dict):
+        md = md_raw
+    else:
+        md = {}
     comm = src.get("communication") or {}
 
     title = (
@@ -138,7 +144,13 @@ def get_fulltext_on_demand(
 
     # ==== 3) 日期：優先用 Event.time_iso，再用 Event_Timeline 的最大 date_iso ====
     def infer_article_date(src_doc: dict) -> str | None:
-        mdj = src_doc.get("multidim_event_json") or {}
+        mdj_raw = src_doc.get("multidim_event_json")
+        if isinstance(mdj_raw, list):
+            mdj = mdj_raw[0] if mdj_raw and isinstance(mdj_raw[0], dict) else {}
+        elif isinstance(mdj_raw, dict):
+            mdj = mdj_raw
+        else:
+            mdj = {}
 
         evt = mdj.get("Event") or {}
         if isinstance(evt, dict):

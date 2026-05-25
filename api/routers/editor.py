@@ -159,6 +159,35 @@ def _get_index_object_paths(index: str) -> set[str]:
     return object_paths
 
 
+def _get_index_field_type_map(index: str, targets: list[str]) -> dict[str, str]:
+    try:
+        mapping = es_client.get_es().indices.get_mapping(index=index)
+    except Exception:
+        return {}
+
+    out: dict[str, str] = {}
+
+    def _walk(props: dict[str, Any], prefix: str = "") -> None:
+        for name, definition in (props or {}).items():
+            if not isinstance(definition, dict):
+                continue
+            path = f"{prefix}.{name}" if prefix else name
+            ftype = str(definition.get("type") or "")
+            if path in targets and ftype:
+                out[path] = ftype
+            child_props = definition.get("properties")
+            if isinstance(child_props, dict):
+                _walk(child_props, path)
+
+    for _, body in (mapping or {}).items():
+        m = body.get("mappings") if isinstance(body, dict) else {}
+        props = m.get("properties") if isinstance(m, dict) else {}
+        if isinstance(props, dict):
+            _walk(props)
+
+    return out
+
+
 def _coerce_source_by_mapping(source: dict[str, Any], object_paths: set[str]) -> dict[str, Any]:
     patched = dict(source)
     for path in sorted(object_paths):
@@ -181,6 +210,43 @@ def _coerce_source_by_mapping(source: dict[str, Any], object_paths: set[str]) ->
         node[leaf] = {"value": value}
     return patched
 
+
+
+
+def _normalize_sra_source_shapes(source: dict[str, Any], field_type_map: dict[str, str]) -> dict[str, Any]:
+    """Normalize known SRP fields based on Elasticsearch mapping types.
+
+    - nested  -> list[dict]
+    - object  -> dict
+    """
+    normalized = dict(source)
+
+    def _to_list_of_dict(value: Any) -> list[dict[str, Any]]:
+        if isinstance(value, list):
+            return [v for v in value if isinstance(v, dict)]
+        if isinstance(value, dict):
+            return [value]
+        return []
+
+    def _to_dict(value: Any) -> dict[str, Any]:
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    return item
+        return {}
+
+    for key in ("multidim_event_json", "route_audit_json"):
+        if key not in normalized:
+            continue
+        ftype = (field_type_map.get(key) or "").lower()
+        if ftype == "nested":
+            normalized[key] = _to_list_of_dict(normalized.get(key))
+        elif ftype == "object":
+            normalized[key] = _to_dict(normalized.get(key))
+
+    return normalized
 
 def _static_path(filename: str) -> Path:
     return Path(__file__).resolve().parents[1] / "static" / filename
@@ -431,8 +497,10 @@ def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current
         except Exception:
             before_source = {}
 
+    field_type_map = _get_index_field_type_map(payload.index, ["multidim_event_json", "route_audit_json"])
+    normalized_source = _normalize_sra_source_shapes(payload.source, field_type_map)
     object_paths = _get_index_object_paths(payload.index)
-    source_to_save = _coerce_source_by_mapping(payload.source, object_paths)
+    source_to_save = _coerce_source_by_mapping(normalized_source, object_paths)
     changes = diff_values(before_source, source_to_save)
     if not changes:
         return {
