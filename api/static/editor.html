@@ -30,6 +30,8 @@
     button.danger { background: #dc2626; }
     button:disabled { opacity: .55; cursor: not-allowed; }
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .nav-row { display:flex; gap:8px; flex-wrap:wrap; }
+    .nav-row button { flex: 1 1 120px; }
     .row > * { flex: 1; }
     .status { border-radius: 10px; padding: 10px 12px; background: #eef2ff; color: #3730a3; margin: 10px 0; white-space: pre-wrap; }
     .status.error { background: #fee2e2; color: #991b1b; }
@@ -76,7 +78,7 @@
         <aside>
           <div id="mainNav" class="card hidden">
             <h2>功能導航</h2>
-            <div class="row">
+            <div class="nav-row">
               <button class="secondary" id="navNewDocBtn">新增文件</button>
               <button class="secondary" data-main-tab="search">搜尋文件</button>
               <button class="secondary" data-main-tab="stats">使用統計</button>
@@ -89,8 +91,15 @@
             <h2>搜尋文件</h2>
             <label>Index</label><select id="indexSelect"></select>
             <label>關鍵字</label><input id="query" placeholder="輸入 title、uuid、內文關鍵字；留空列出文件" />
+            <div class="field-grid">
+              <div><label>起始時間</label><input id="searchStartTs" type="datetime-local" /></div>
+              <div><label>結束時間</label><input id="searchEndTs" type="datetime-local" /></div>
+              <div><label>每頁筆數</label><input id="searchSize" type="number" min="1" max="200" value="20" /></div>
+            </div>
             <div class="row" style="margin-top: 12px;">
               <button id="searchBtn">搜尋</button>
+              <button id="searchPrevBtn" class="secondary">上一頁</button>
+              <button id="searchNextBtn" class="secondary">下一頁</button>
               <button id="deleteSelectedBtn" class="danger">刪除勾選</button>
             </div>
             <div id="searchStatus" class="status hidden"></div>
@@ -182,7 +191,7 @@
     </section>
   </main>
 <script>
-const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '' };
+const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function setStatus(id, message, kind='') {
@@ -509,21 +518,43 @@ async function searchAuditLogs() {
     $('auditHits').innerHTML = '';
   }
 }
+
+function collectSearchQuery(pageOverride) {
+  const size = Math.max(1, Math.min(200, Number($('searchSize').value || 20)));
+  const page = Math.max(1, Number(pageOverride || state.searchPage || 1));
+  return new URLSearchParams({
+    index: $('indexSelect').value,
+    q: $('query').value,
+    size: String(size),
+    page: String(page),
+    start_ts: toIsoOrEmpty($('searchStartTs').value.trim()),
+    end_ts: toIsoOrEmpty($('searchEndTs').value.trim()),
+  });
+}
+function updateSearchPagerButtons() {
+  $('searchPrevBtn').disabled = state.searchPage <= 1;
+  $('searchNextBtn').disabled = !state.searchHasMore;
+}
+
 function clearAuditFilters() {
   ['auditUsername','auditAction','auditIndex','auditDocId','auditPath','auditStartTs','auditEndTs'].forEach(id => { $(id).value = ''; });
   $('auditLimit').value = 100;
 }
-async function searchDocs() {
+async function searchDocs(pageOverride=null) {
+  if (pageOverride !== null) state.searchPage = Math.max(1, Number(pageOverride || 1));
   setStatus('searchStatus', '搜尋中...'); $('hits').innerHTML = '';
   try {
-    const qs = new URLSearchParams({index: $('indexSelect').value, q: $('query').value, size: '20'});
+    const qs = collectSearchQuery(state.searchPage);
     const data = await api('/v1/editor/search?' + qs.toString(), {headers: {'Content-Type': 'application/json'}});
     state.latestHits = data.hits || [];
-    setStatus('searchStatus', `找到 ${data.hits.length} 筆`, 'ok');
+    state.searchPage = Number(data.page || state.searchPage || 1);
+    state.searchHasMore = Boolean(data.has_more);
+    updateSearchPagerButtons();
+    setStatus('searchStatus', `共 ${data.total || 0} 筆，目前第 ${state.searchPage} 頁，顯示 ${data.hits.length} 筆`, 'ok');
     $('hits').innerHTML = data.hits.map((h, idx) => `<div class="hit"><div class="row" style="align-items:flex-start;"><div style="flex:0 0 auto;"><input type="checkbox" data-hit-check="${idx}" /></div><div style="flex:1;"><strong>${esc(titleFromSource(h.source))}</strong><div class="muted">${esc(h.index)} / ${esc(h.id)}</div><div class="row"><button data-hit="${idx}">載入</button><button class="danger" data-delete-hit="${idx}">刪除</button></div></div></div></div>`).join('');
     document.querySelectorAll('[data-hit]').forEach(btn => btn.onclick = () => loadDoc(data.hits[Number(btn.dataset.hit)].index, data.hits[Number(btn.dataset.hit)].id));
     document.querySelectorAll('[data-delete-hit]').forEach(btn => btn.onclick = () => deleteSingleHit(Number(btn.dataset.deleteHit)));
-  } catch (err) { setStatus('searchStatus', err.message, 'error'); }
+  } catch (err) { state.searchHasMore = false; updateSearchPagerButtons(); setStatus('searchStatus', err.message, 'error'); }
 }
 async function deleteSingleHit(hitIdx) {
   const hit = state.latestHits[hitIdx];
@@ -534,7 +565,7 @@ async function deleteSingleHit(hitIdx) {
     await api('/v1/editor/doc?' + qs.toString(), {method: 'DELETE'});
     setStatus('searchStatus', `已刪除 ${hit.id}`, 'ok');
     await searchDocs();
-  } catch (err) { setStatus('searchStatus', err.message, 'error'); }
+  } catch (err) { state.searchHasMore = false; updateSearchPagerButtons(); setStatus('searchStatus', err.message, 'error'); }
 }
 async function deleteSelectedHits() {
   const checked = Array.from(document.querySelectorAll('[data-hit-check]:checked'));
@@ -550,7 +581,7 @@ async function deleteSelectedHits() {
     const result = await api('/v1/editor/docs', {method: 'DELETE', body: JSON.stringify({index, ids})});
     setStatus('searchStatus', `批次刪除完成：成功 ${result.deleted_ids.length} 筆，未找到 ${result.not_found_ids.length} 筆`, 'ok');
     await searchDocs();
-  } catch (err) { setStatus('searchStatus', err.message, 'error'); }
+  } catch (err) { state.searchHasMore = false; updateSearchPagerButtons(); setStatus('searchStatus', err.message, 'error'); }
 }
 async function loadDoc(index, id) {
   setStatus('saveStatus', '載入文件中...');
@@ -668,12 +699,13 @@ function newDoc() {
 
 function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
-$('loginBtn').onclick = login; $('navNewDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = searchDocs; $('saveBtn').onclick = saveDoc; $('saveAsNewBtn').onclick = saveAsNewDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('refreshStatsBtn').onclick = refreshUsageStats; $('extractTextBtn').onclick = uploadRawContentFile;
+$('loginBtn').onclick = login; $('searchPrevBtn').onclick = () => { if (state.searchPage > 1) searchDocs(state.searchPage - 1); }; $('searchNextBtn').onclick = () => { if (state.searchHasMore) searchDocs(state.searchPage + 1); }; $('navNewDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = () => searchDocs(1); $('saveBtn').onclick = saveDoc; $('saveAsNewBtn').onclick = saveAsNewDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('refreshStatsBtn').onclick = refreshUsageStats; $('extractTextBtn').onclick = uploadRawContentFile;
 $('searchAuditBtn').onclick = searchAuditLogs;
 $('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); };
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
 $('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
 $('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
+updateSearchPagerButtons();
 $('indexSelect').onchange = () => {
   if (state.editorMode === 'new') syncDocIndexOptions($('indexSelect').value);
   loadFormConfig($('indexSelect').value).catch(err => setStatus('saveStatus', err.message, 'error'));

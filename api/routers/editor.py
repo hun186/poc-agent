@@ -417,14 +417,27 @@ def editor_form_config(
 def search_documents(
     index: str = Query(..., description="要查詢的 Elasticsearch index"),
     q: str = Query("", description="關鍵字；空白時列出最近文件"),
-    size: int = Query(10, ge=1, le=50),
+    size: int = Query(20, ge=1, le=200),
+    page: int = Query(1, ge=1),
+    start_ts: str = Query("", description="起始時間（ISO8601）"),
+    end_ts: str = Query("", description="結束時間（ISO8601）"),
     _: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
     _ensure_allowed_index(index)
     schema = get_editor_schema(index=index)
-    query: dict[str, Any]
+    filters: list[dict[str, Any]] = []
+    date_field = str(schema.get("search_date_field") or "importDT")
+    range_filter: dict[str, str] = {}
+    if start_ts.strip():
+        range_filter["gte"] = start_ts.strip()
+    if end_ts.strip():
+        range_filter["lte"] = end_ts.strip()
+    if range_filter:
+        filters.append({"range": {date_field: range_filter}})
+
+    text_query: dict[str, Any]
     if q.strip():
-        query = {
+        text_query = {
             "simple_query_string": {
                 "query": q.strip(),
                 "fields": schema.get("search_fields") or ["title^3", "subject^3", "uuid^2", "content", "full_text", "rawInfo.content"],
@@ -432,15 +445,25 @@ def search_documents(
             }
         }
     else:
-        query = {"match_all": {}}
+        text_query = {"match_all": {}}
 
+    query: dict[str, Any] = {"bool": {"must": [text_query]}}
+    if filters:
+        query["bool"]["filter"] = filters
+
+    offset = (page - 1) * size
     res = es_client.get_es().search(
         index=index,
         body={
+            "from": offset,
             "size": size,
+            "track_total_hits": True,
             "query": query,
-            "sort": ["_score"],
-            "_source": schema.get("search_source_fields") or ["uuid", "title", "subject", "communication.subject", "rawInfo.title", "rawInfo.date"],
+            "sort": [
+                {date_field: {"order": "desc", "unmapped_type": "date", "missing": "_last"}},
+                {"_score": {"order": "desc"}},
+            ],
+            "_source": schema.get("search_source_fields") or ["uuid", "title", "subject", "communication.subject", "rawInfo.title", "rawInfo.date", "importDT"],
         },
     )
     body = es_client._unwrap_es(res)
@@ -453,7 +476,9 @@ def search_documents(
             "score": hit.get("_score"),
             "source": src,
         })
-    return {"hits": hits}
+    total_obj = (body.get("hits", {}) or {}).get("total", 0)
+    total = total_obj.get("value", 0) if isinstance(total_obj, dict) else int(total_obj or 0)
+    return {"hits": hits, "total": total, "size": size, "page": page, "has_more": (offset + len(hits)) < total}
 
 
 @router.get("/v1/editor/doc")
