@@ -9,6 +9,8 @@ from agent.es.synonyms import (
     expand_manual_terms,
     extract_manual_terms_from_query,
 )
+from agent.es.zh_variants import expand_zh_script_variants
+
 
 # ===== LLM：抽主題詞 =====
 
@@ -340,6 +342,29 @@ def compute_effective_terms(q: str) -> Tuple[
             clean_syns.append(s)
         if clean_syns:
             grouped_synonyms[k] = clean_syns
+
+    # 5.1) 補上中文關鍵詞的簡繁變體（含沒有 LLM 同義詞的核心詞）
+    zh_augmented: Dict[str, List[str]] = {}
+    # 來源同時包含：
+    # - grouped_synonyms（LLM 已分組）
+    # - ordered_core_candidates（LLM 未分組或無同義詞的核心詞）
+    seed_items: List[Tuple[str, List[str]]] = []
+    for k, syns in grouped_synonyms.items():
+        seed_items.append((k, syns))
+    for core in ordered_core_candidates:
+        if core not in grouped_synonyms:
+            seed_items.append((core, []))
+
+    for k, syns in seed_items:
+        expanded: List[str] = []
+        for t in [k, *syns]:
+            for v in expand_zh_script_variants(t):
+                if v != k and v not in expanded:
+                    expanded.append(v)
+        if expanded:
+            zh_augmented[k] = expanded
+
+    grouped_synonyms = zh_augmented
 
     rep_keys = list(grouped_synonyms.keys())
     rep_key_set = set(rep_keys)
