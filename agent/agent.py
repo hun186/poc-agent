@@ -154,7 +154,7 @@ def llm_route_task(
                 user_prompt,
                 system_prompt=TASK_ROUTER_SYSTEM,
                 extra_params={"options": {}},
-                timeout=60.0,
+                timeout=120.0,
                 model=ROUTER_MODEL_ID,
             )
         t1 = time.perf_counter()
