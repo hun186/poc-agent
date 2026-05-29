@@ -24,6 +24,27 @@ REPORT_MODEL_ID = (
     or "gpt-oss:120b-32k"          # 再不然給一個預設
 )
 
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        print(f"[report] invalid {name}={raw!r}; fallback to {default}")
+        return default
+    if value <= 0:
+        print(f"[report] invalid {name}={raw!r}; fallback to {default}")
+        return default
+    return value
+
+
+REPORT_LLM_TIMEOUT = _env_float(
+    "REPORT_LLM_TIMEOUT",
+    _env_float("REPORT_TIMEOUT", 300.0),
+)
+
 REPORT_SYSTEM_PROMPT = """
 你是一個『資料驅動的分析助手』。
 
@@ -507,14 +528,14 @@ def ask_with_report(
         })
     t0 = time.perf_counter()
     with log_duration("[report] call_llm(report)",
-        extra={"model_id": REPORT_MODEL_ID},
+        extra={"model_id": REPORT_MODEL_ID, "timeout_sec": REPORT_LLM_TIMEOUT},
     ):
         report_text = call_llm(
             user_prompt,
             system_prompt=REPORT_SYSTEM_PROMPT,
             extra_params={"options": {}},
-            #timeout=180.0,
-            timeout=300.0,
+            # 可用 REPORT_LLM_TIMEOUT（或舊名 REPORT_TIMEOUT）延長大型報告生成等待秒數
+            timeout=REPORT_LLM_TIMEOUT,
             model=REPORT_MODEL_ID,
         )
     t1 = time.perf_counter()

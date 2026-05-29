@@ -146,6 +146,17 @@ python -m agent.es.ingest_sql --config config/sql_import/srp_import.json
 
 > `APP_ENV` 若未設定，預設為 `dev`。
 
+### 報告生成逾時設定
+
+模型收到 ES 檢索結果後，若需要較長時間進行綜整、統計表或 SWOT 報告撰寫，可透過環境變數延長等待時間：
+
+```env
+# 單位：秒；預設 300 秒。大型報告可先調整為 600 或更高。
+REPORT_LLM_TIMEOUT=600
+```
+
+`REPORT_TIMEOUT` 仍保留為向後相容別名；若同時設定，`REPORT_LLM_TIMEOUT` 優先。
+
 ### Index 設定檔載入順序
 `config/index_loader.py` 支援多種方式指定設定檔：
 
