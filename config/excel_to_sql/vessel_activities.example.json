@@ -1,6 +1,6 @@
 {
   "db": {
-    "driver": "ODBC Driver 18 for SQL Server",
+    "driver": "auto",
     "server": "192.168.0.136",
     "database": "AIDB",
     "trusted_connection": false,
@@ -30,7 +30,8 @@
     {
       "source_column": "日期",
       "dest_field": "activity_date",
-      "required": true
+      "required": true,
+      "value_type": "date"
     },
     {
       "source_column": "地點",
@@ -60,6 +61,10 @@
     "skip_empty_rows": true,
     "truncate_before_load": false,
     "fast_executemany": true
+  },
+  "retry": {
+    "max_attempts": 3,
+    "interval_seconds": 60
   },
   "archive": {
     "enabled": true,

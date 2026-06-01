@@ -152,7 +152,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
 ```json
 {
   "db": {
-    "driver": "ODBC Driver 17 for SQL Server",
+    "driver": "auto",
     "server": "192.168.0.136",
     "database": "AIDB",
     "trusted_connection": false,
@@ -179,7 +179,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
     "create_hash_index": true
   },
   "mappings": [
-    { "source_column": "日期", "dest_field": "activity_date", "required": true },
+    { "source_column": "日期", "dest_field": "activity_date", "required": true, "value_type": "date" },
     { "source_column": "地點", "dest_field": "location" },
     { "source_column": "數量", "dest_field": "vessel_count" },
     { "source_column": "船名", "match": "prefix", "dest_field": "vessel_names" },
@@ -190,6 +190,10 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
     "skip_empty_rows": true,
     "truncate_before_load": false,
     "fast_executemany": true
+  },
+  "retry": {
+    "max_attempts": 3,
+    "interval_seconds": 60
   },
   "archive": {
     "enabled": true,
@@ -211,6 +215,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
 ### 3) 各欄位設定重點
 
 - `db.*`：與 SQL 匯入 Elasticsearch 工具相同，設定 SQL Server ODBC 連線。
+- `db.driver`：可填明確 driver 名稱，也可填 `auto`（或留空）讓程式依本機已安裝清單自動挑選；會優先使用 `ODBC Driver 18 for SQL Server`，若未安裝則自動退回 `ODBC Driver 17 for SQL Server` 等可用 SQL Server driver。若設定檔指定的 driver 不存在，程式也會嘗試自動改用本機已安裝版本，避免不同環境安裝 18/17 造成 `IM002` 錯誤。
 - `source.directory`：來源目錄；若有設定，程式會抓此目錄下符合 `source.file_pattern` 的 Excel 逐檔匯入，適合使用者定期把新增 Excel 丟到固定資料夾的情境。
 - `source.file_pattern`：來源目錄檔名 pattern，預設可用 `*.xlsx`；程式會略過 Excel 暫存檔 `~$...`。
 - `source.recursive`：是否遞迴掃描來源目錄子資料夾。
@@ -232,10 +237,13 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
   - `dest_field`：目的 SQL 欄位名稱。
   - `required`：設為 `true` 時，該欄在資料列為空會記錄該列失敗、寫入 audit/log，且不匯入該列。
   - `default`：來源值空白時要寫入的預設值。
+  - `value_type` / `data_type` / `type`：可設為 `date`，透過 `python-dateutil` 解析並把 Excel 日期儲存格或日期字串正規化為 Python `date` 物件後交給 pyodbc 寫入 SQL Server `date` / `datetime` 欄位；支援西元 `YYYY-MM-DD`、`YYYY/MM/DD`、`YYYYMMDD`，以及民國年 `114/07/04`（會轉為 `2025-07-04`）。若欄名為「日期」或目的欄位為 `*_date`，未明確設定時也會自動套用日期正規化。
 - `import.batch_size`：每批 `executemany` 寫入筆數。
 - `import.skip_empty_rows`：是否跳過所有對應欄位皆為空的列。
 - `import.truncate_before_load`：寫入前是否先 `TRUNCATE TABLE`；預設 `false`，開啟前請確認權限與資料保留需求。若是長期增量匯入，通常不建議開啟。
 - `import.fast_executemany`：啟用 pyodbc 批次寫入最佳化。
+- `retry.max_attempts`：單一 Excel 檔案匯入失敗或仍有失敗列時，最多嘗試次數；預設為 `1`（不重試）。
+- `retry.interval_seconds`：兩次重試之間等待秒數；預設為 `0`。在達到 `retry.max_attempts` 前，檔案不會被搬到 `archive.fail_dir`。
 - `archive.enabled`：是否在檔案處理後搬移來源 Excel；目錄模式預設啟用。
 - `archive.success_dir` / `archive.fail_dir`：成功檔案備份目錄與失敗待確認目錄。
 - `archive.log_dir`：JSONL log 輸出目錄，檔名格式為 `excel_to_sql_YYYYMMDD.jsonl`。
@@ -257,14 +265,15 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
 
 - 腳本會以唯讀模式開啟 Excel，並以 `data_only=true` 讀取公式儲存值。
 - 寫入 SQL Server 時會自動為 table 與 field 加上 SQL Server 方括號引用，降低保留字或特殊字元造成的問題。
+- 日期欄位會先正規化再寫入 SQL，例如 `2025-07-04`、`2025/07/04` 與 `114/07/04` 都會以一致的 SQL 日期值匯入。
 - 匯入過程會逐批輸出新增筆數、重複略過筆數與失敗筆數，並在 log 檔留下批次與檔案處理事件。
-- 若檔案處理成功，會搬到 `archive.success_dir`；若檔案或資料處理失敗，會搬到 `archive.fail_dir` 等待人工確認。
+- 若檔案處理成功，會搬到 `archive.success_dir`；若檔案或資料處理失敗，會依 `retry.max_attempts` / `retry.interval_seconds` 先等待並重試，達到上限後仍失敗才搬到 `archive.fail_dir` 等待人工確認。
 
 ### 6) 常見問題
 
 - 找不到 Excel 檔案：確認 `source.directory` 或 `source.excel_path` 路徑；相對路徑會先以設定檔所在目錄解析，找不到才改以專案根目錄解析。
 - 找不到工作表或欄名：確認 `source.sheet` 與 `mappings[].source_column` 是否與 Excel 完全一致；有重複欄名時請改用 `source_column_letter` 或 `source_column_index`。
-- 寫入 SQL 失敗：確認目的資料表欄位型別、必要欄位、ODBC driver、帳密、網路、防火牆與 SQL Server 權限。
+- 寫入 SQL 失敗：確認目的資料表欄位型別、必要欄位、ODBC driver、帳密、網路、防火牆與 SQL Server 權限。若錯誤為 `IM002` 找不到 driver，可將 `db.driver` 設為 `auto`，讓程式自動偵測本機 ODBC Driver 18/17。
 - 去重欄位錯誤：預設會自動在目的 table 新增 `hash_value`（或 `destination.hash_field` 指定的欄位）並建立 unique index；若 SQL 帳號沒有 `ALTER TABLE` / `CREATE INDEX` 權限，請由 DBA 手動新增 `CHAR(64)` 或 `NVARCHAR(64)` 欄位，或把 `destination.create_hash_index` 設為 `false`。
 
 
