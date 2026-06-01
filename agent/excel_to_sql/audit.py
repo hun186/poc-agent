@@ -9,6 +9,27 @@ from .sql_utils import quote_object_path
 from .utils import json_safe
 
 
+def _executemany_without_fast_mode(cursor, sql: str, params: Sequence[tuple[Any, ...]]):
+    """Run audit inserts without pyodbc fast_executemany.
+
+    Some ODBC driver/pyodbc combinations can terminate the interpreter while
+    binding Unicode/large-text audit payloads with ``fast_executemany=True``.
+    The destination data import can still opt in to fast batching, but audit
+    rows are intentionally small and safety is more important than speed here.
+    """
+
+    original_fast_executemany = getattr(cursor, "fast_executemany", None)
+    should_restore = original_fast_executemany is not None
+
+    if should_restore and original_fast_executemany:
+        cursor.fast_executemany = False
+    try:
+        cursor.executemany(sql, params)
+    finally:
+        if should_restore and original_fast_executemany:
+            cursor.fast_executemany = original_fast_executemany
+
+
 def ensure_audit_table(cursor, audit_table: str):
     object_name = audit_table.replace("'", "''")
     sql = f"""
@@ -63,7 +84,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         )
         for result in row_results
     ]
-    cursor.executemany(sql, params)
+    _executemany_without_fast_mode(cursor, sql, params)
 
 
 def build_header_audit_results(mappings: Sequence[Dict[str, Any]], header_row: int) -> List[RowResult]:

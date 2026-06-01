@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import shutil
+import sys
 import time
 import uuid
 from datetime import datetime
@@ -58,6 +59,26 @@ DEFAULT_HASH_FIELD = "hash_value"
 DEFAULT_HASH_ALGORITHM = "SHA-256"
 DEFAULT_HASH_HEX_LENGTH = 64
 DEFAULT_HASH_FIELD_TYPE = "CHAR(64)"
+
+
+def enable_native_crash_tracebacks():
+    """Ask Python to print a traceback if a native extension segfaults.
+
+    A bare ``Segmentation fault (core dumped)`` is emitted by the OS after the
+    interpreter dies in native code, so normal Python exceptions/retry handling
+    cannot report the failing line. ``faulthandler`` gives the next crash a
+    best-effort Python stack trace without changing import behavior.
+    """
+
+    try:
+        import faulthandler
+
+        if not faulthandler.is_enabled():
+            faulthandler.enable(file=sys.stderr, all_threads=True)
+    except Exception:
+        # Diagnostics must never make ingestion fail on platforms where stderr
+        # cannot be used with faulthandler.
+        return
 
 
 def parse_excel_column_ref(column_ref: str) -> int:
@@ -609,6 +630,7 @@ def process_excel_file(
                 },
             )
         if audit_enabled:
+            print("ℹ️ 準備寫入欄名智慧比對 audit rows", flush=True)
             insert_audit_rows(
                 cursor,
                 audit_table=audit_table,
@@ -619,6 +641,7 @@ def process_excel_file(
                 row_results=header_audit_results,
             )
             conn.commit()
+            print("ℹ️ 欄名智慧比對 audit rows 寫入完成", flush=True)
 
     try:
         row_iter = iter_excel_rows(
@@ -697,6 +720,7 @@ def process_excel_file(
                 batch_results.extend(insert_results)
 
             if audit_enabled:
+                print(f"ℹ️ 準備寫入批次 audit rows：{len(batch_results)} 筆", flush=True)
                 insert_audit_rows(
                     cursor,
                     audit_table=audit_table,
@@ -706,6 +730,7 @@ def process_excel_file(
                     destination_table=table,
                     row_results=batch_results,
                 )
+                print("ℹ️ 批次 audit rows 寫入完成", flush=True)
 
             conn.commit()
 
@@ -845,6 +870,7 @@ def process_excel_file_with_retries(
 
 
 def bulk_insert_excel_to_sql_from_config(config_path: str, cfg: Dict[str, Any]) -> tuple[int, int, int]:
+    enable_native_crash_tracebacks()
     run_id = uuid.uuid4().hex
     files = discover_excel_files(config_path, cfg)
     log_dir = get_log_dir(config_path, cfg)
@@ -946,6 +972,8 @@ def bulk_insert_excel_to_sql_from_config(config_path: str, cfg: Dict[str, Any]) 
 
 
 def main():
+    enable_native_crash_tracebacks()
+
     parser = argparse.ArgumentParser(description="依設定檔從 Excel 或來源目錄匯入資料到 SQL Server")
     parser.add_argument("--config", required=True, help="JSON 設定檔路徑")
     args = parser.parse_args()
