@@ -9,25 +9,38 @@ from .sql_utils import quote_object_path
 from .utils import json_safe
 
 
-def _executemany_without_fast_mode(cursor, sql: str, params: Sequence[tuple[Any, ...]]):
-    """Run audit inserts without pyodbc fast_executemany.
+def _execute_audit_rows_without_fast_mode(cursor, sql: str, params: Sequence[tuple[Any, ...]]):
+    """Run audit inserts one row at a time without pyodbc fast mode.
 
     Some ODBC driver/pyodbc combinations can terminate the interpreter while
-    binding Unicode/large-text audit payloads with ``fast_executemany=True``.
+    binding Unicode/large-text audit payloads with ``fast_executemany=True`` or
+    even when ``executemany`` is called after fast mode was used on the cursor.
     The destination data import can still opt in to fast batching, but audit
-    rows are intentionally small and safety is more important than speed here.
+    rows are written through a fresh non-fast cursor and individual ``execute``
+    calls so driver errors stay in the normal Python exception path instead of
+    crashing the process in native code.
     """
 
-    original_fast_executemany = getattr(cursor, "fast_executemany", None)
+    audit_cursor = cursor
+    should_close = False
+    connection = getattr(cursor, "connection", None)
+    if connection is not None and hasattr(connection, "cursor"):
+        audit_cursor = connection.cursor()
+        should_close = True
+
+    original_fast_executemany = getattr(audit_cursor, "fast_executemany", None)
     should_restore = original_fast_executemany is not None
 
     if should_restore and original_fast_executemany:
-        cursor.fast_executemany = False
+        audit_cursor.fast_executemany = False
     try:
-        cursor.executemany(sql, params)
+        for row_params in params:
+            audit_cursor.execute(sql, row_params)
     finally:
         if should_restore and original_fast_executemany:
-            cursor.fast_executemany = original_fast_executemany
+            audit_cursor.fast_executemany = original_fast_executemany
+        if should_close:
+            audit_cursor.close()
 
 
 def ensure_audit_table(cursor, audit_table: str):
@@ -84,7 +97,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         )
         for result in row_results
     ]
-    _executemany_without_fast_mode(cursor, sql, params)
+    _execute_audit_rows_without_fast_mode(cursor, sql, params)
 
 
 def build_header_audit_results(mappings: Sequence[Dict[str, Any]], header_row: int) -> List[RowResult]:
