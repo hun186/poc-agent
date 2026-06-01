@@ -21,7 +21,10 @@
   },
   "destination": {
     "table": "vessel_activities",
-    "hash_field": "hash_value"
+    "hash_field": "hash_value",
+    "auto_create_hash_field": true,
+    "hash_field_type": "CHAR(64)",
+    "create_hash_index": true
   },
   "mappings": [
     {

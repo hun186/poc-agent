@@ -173,7 +173,10 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
   },
   "destination": {
     "table": "vessel_activities",
-    "hash_field": "hash_value"
+    "hash_field": "hash_value",
+    "auto_create_hash_field": true,
+    "hash_field_type": "CHAR(64)",
+    "create_hash_index": true
   },
   "mappings": [
     { "source_column": "日期", "dest_field": "activity_date", "required": true },
@@ -217,7 +220,10 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
 - `source.start_row`：資料起始列號，預設為 `header_row + 1`。
 - `source.end_row`：資料結束列號；`0` 代表讀到工作表最後一列。
 - `destination.table`：目的 SQL Server 資料表（可含 schema，例如 `dbo.Table_SRP`）。範例使用 `vessel_activities`；其 `auto` primary key 由 SQL Server 自動填入，設定檔不需對應。
-- `destination.hash_field`：目的資料表用來存放去重 hash 的欄位，預設 `hash_value`。請先在目的 table 建立此欄位，建議型別 `CHAR(64)` 或 `NVARCHAR(64)`，並建立 unique index 以強化防重。
+- `destination.hash_field`：目的資料表用來存放去重 hash 的欄位，預設 `hash_value`；內容是 SHA-256 的十六進位 digest，固定 64 個 ASCII 字元（256-bit），所以 `CHAR(64)` / `VARCHAR(64)` 足夠完整存放，不會截斷。
+- `destination.auto_create_hash_field`：是否在目的 table 缺少去重欄位時自動執行 `ALTER TABLE ... ADD`，預設 `true`；若 SQL 帳號沒有 DDL 權限，可設為 `false` 並由 DBA 手動建立欄位。
+- `destination.hash_field_type`：自動新增去重欄位時使用的型別，預設 `CHAR(64)`；為避免 SQL 注入，僅允許 `CHAR(64)`、`NCHAR(64)`、`VARCHAR(64)`、`NVARCHAR(64)`。
+- `destination.create_hash_index`：自動新增去重欄位後是否建立 filtered unique index（`WHERE hash_value IS NOT NULL`）以強化防重，預設 `true`。
 - `mappings`：Excel 欄位與 SQL 欄位對應表。
   - `source_column`：以 Excel 標題列欄名指定來源欄位；預設 `match: "smart"`，會先精準比對，再做正規化比對與前綴比對。
   - `match`：可設 `exact`、`smart`、`normalized`、`prefix`、`contains`。例如 Excel 欄名可能是「船名(多艘)」或「船名...」時，可設定 `source_column: "船名"` 搭配 `match: "prefix"`。
@@ -234,16 +240,17 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
 - `archive.success_dir` / `archive.fail_dir`：成功檔案備份目錄與失敗待確認目錄。
 - `archive.log_dir`：JSONL log 輸出目錄，檔名格式為 `excel_to_sql_YYYYMMDD.jsonl`。
 - `audit.enabled`：是否寫入 SQL audit table。
-- `audit.table`：audit table 名稱；若不存在，程式會自動建立預設欄位結構。
+- `audit.table`：audit table 名稱；不是依目的資料表自動命名，而是由設定檔指定；若省略，系統使用預設 `dbo.ExcelImportAudit`。若該 audit table 不存在，程式會自動建立預設欄位結構。
 - `dashboard.enabled`：是否讓此設定檔出現在 `/excel-to-sql-dashboard` 的任務下拉選單；儀表板只會掃描並顯示此值為 `true` 的設定檔。
 - `dashboard.name`：儀表板顯示名稱；未填時會退回使用 `destination.table` 或設定檔檔名。
 
 ### 4) 去重與 audit 機制
 
 - 每一列會以「來源欄名 + 來源內容」組成穩定字串，再計算 SHA-256，寫入 `destination.hash_field`（預設 `hash_value`）。
+- SHA-256 輸出是 256-bit；以十六進位表示時固定為 64 個字元，因此欄位長度 64 是剛好完整存放，不是截短版 hash。若使用 `NCHAR(64)` / `NVARCHAR(64)` 也可存放，但會使用較多儲存空間。
 - 寫入前會先查目的 table 的 `hash_value`；若已存在，就將該列標示為 `duplicate` 並略過，不會重複導入。
 - 同一次執行中若不同檔案或不同列產生相同 hash，也會略過後續重複列。
-- 每一筆資料列的處理結果都會寫入 SQL audit table，包含 `run_id`、來源檔案、工作表、列號、hash、目的 table、狀態、訊息、row payload 與處理時間，方便後續儀表板彙整每天收到資料與處理結果。
+- 每一筆資料列的處理結果都會寫入 SQL audit table，包含 `run_id`、來源檔案、工作表、列號、hash、目的 table、狀態、訊息、row payload 與處理時間，方便後續儀表板彙整每天收到資料與處理結果。audit table 名稱由 `audit.table` 控制；未設定時使用 `dbo.ExcelImportAudit`，不是依 `destination.table` 自動產生不同名稱。
 - 若欄位採用智慧比對（例如「船名」前綴比對到「船名...」或「敘述」前綴比對到「敘述補充」），也會以 `header_smart_match` 狀態寫入 audit table 與 JSONL log，方便事後檢查欄名浮動是否符合預期。
 
 ### 5) 匯入行為與輸出
@@ -258,18 +265,23 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
 - 找不到 Excel 檔案：確認 `source.directory` 或 `source.excel_path` 路徑；相對路徑會先以設定檔所在目錄解析，找不到才改以專案根目錄解析。
 - 找不到工作表或欄名：確認 `source.sheet` 與 `mappings[].source_column` 是否與 Excel 完全一致；有重複欄名時請改用 `source_column_letter` 或 `source_column_index`。
 - 寫入 SQL 失敗：確認目的資料表欄位型別、必要欄位、ODBC driver、帳密、網路、防火牆與 SQL Server 權限。
-- 去重欄位錯誤：確認目的 table 已有 `hash_value`（或 `destination.hash_field` 指定的欄位），建議建立 unique index。
+- 去重欄位錯誤：預設會自動在目的 table 新增 `hash_value`（或 `destination.hash_field` 指定的欄位）並建立 unique index；若 SQL 帳號沒有 `ALTER TABLE` / `CREATE INDEX` 權限，請由 DBA 手動新增 `CHAR(64)` 或 `NVARCHAR(64)` 欄位，或把 `destination.create_hash_index` 設為 `false`。
 
 
 ### 7) 自動化監控儀表板
 
-啟動 API 後，可開啟：
+啟動 API 後，可先進管理頁面登入，再開 Excel→SQL 儀表板：
 
-```text
-/excel-to-sql-dashboard
+```bash
+uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
 
-此頁會沿用 `/editor` 登入後儲存在瀏覽器的 `sra_editor_token`。進入方式：先到 `/editor` 登入，再開 `/excel-to-sql-dashboard`。頁面會先呼叫 `/v1/excel-to-sql/dashboard-tasks` 掃描 `config/excel_to_sql/*.json`，只列出 `dashboard.enabled=true` 的匯入任務；選定任務後再呼叫 `/v1/excel-to-sql/dashboard` 讀取該任務設定的 SQL audit table，呈現：
+```text
+http://localhost:8000/editor
+http://localhost:8000/excel-to-sql-dashboard
+```
+
+管理頁面是 `/editor`，Excel→SQL 儀表板是 `/excel-to-sql-dashboard`。儀表板會沿用 `/editor` 登入後儲存在瀏覽器的 `sra_editor_token`，所以進入方式是：先到 `/editor` 登入，再開 `/excel-to-sql-dashboard`。頁面會先呼叫 `/v1/excel-to-sql/dashboard-tasks` 掃描 `config/excel_to_sql/*.json`，只列出 `dashboard.enabled=true` 的匯入任務；選定任務後再呼叫 `/v1/excel-to-sql/dashboard` 讀取該任務設定的 SQL audit table，呈現：
 
 - 指定天數內的總事件、新增、重複略過、失敗、欄名智慧比對數。
 - 每日各狀態筆數，方便監控每天收到資料與處理結果。
