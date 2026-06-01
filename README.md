@@ -134,6 +134,159 @@ python -m agent.es.ingest_sql --config config/sql_import/srp_import.json
 - 寫入 ES 失敗：確認 `.env` 的 `ES_URL` / `ES_USERNAME` / `ES_PASSWORD` 已正確設定。
 
 
+
+## Excel 匯入 SQL Server 使用說明
+
+本專案將 Excel→SQL 匯入獨立成 `agent/excel_to_sql/` 小模組，不再放在 `agent/es/`，避免與既有 SQL→ES ingestion 混淆；操作概念沿用 SQL 匯入工具：以 JSON 設定檔描述連線、來源與批次匯入參數。此工具可讀取單一 Excel，也可監看一個來源目錄，批次抓取目錄下的 Excel 檔，依欄位對應寫入 SQL Server 目的資料表，並提供去重、檔案歸檔、JSONL log 與 SQL audit table，方便後續做匯入監控儀表板。
+
+### 1) 執行指令
+
+在專案根目錄執行：
+
+```bash
+python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activities.example.json
+```
+
+### 2) JSON 設定檔結構（範例：`config/excel_to_sql/vessel_activities.example.json`）
+
+```json
+{
+  "db": {
+    "driver": "ODBC Driver 17 for SQL Server",
+    "server": "192.168.0.136",
+    "database": "AIDB",
+    "trusted_connection": false,
+    "user": "aiapp",
+    "password": "1qaz@WSX",
+    "encrypt": false,
+    "trust_server_certificate": false
+  },
+  "source": {
+    "directory": "./data/excel_inbox",
+    "file_pattern": "*.xlsx",
+    "recursive": false,
+    "excel_path": "./data/source.xlsx",
+    "sheet": "Sheet1",
+    "header_row": 1,
+    "start_row": 2,
+    "end_row": 0
+  },
+  "destination": {
+    "table": "vessel_activities",
+    "hash_field": "hash_value"
+  },
+  "mappings": [
+    { "source_column": "日期", "dest_field": "activity_date", "required": true },
+    { "source_column": "地點", "dest_field": "location" },
+    { "source_column": "數量", "dest_field": "vessel_count" },
+    { "source_column": "船名", "match": "prefix", "dest_field": "vessel_names" },
+    { "source_column": "敘述", "match": "prefix", "dest_field": "activity_description" }
+  ],
+  "import": {
+    "batch_size": 500,
+    "skip_empty_rows": true,
+    "truncate_before_load": false,
+    "fast_executemany": true
+  },
+  "archive": {
+    "enabled": true,
+    "success_dir": "./data/excel_archive/success",
+    "fail_dir": "./data/excel_archive/failed",
+    "log_dir": "./logs/excel_to_sql"
+  },
+  "audit": {
+    "enabled": true,
+    "table": "dbo.ExcelImportAudit"
+  },
+  "dashboard": {
+    "enabled": true,
+    "name": "船舶活動 Excel 匯入監控"
+  }
+}
+```
+
+### 3) 各欄位設定重點
+
+- `db.*`：與 SQL 匯入 Elasticsearch 工具相同，設定 SQL Server ODBC 連線。
+- `source.directory`：來源目錄；若有設定，程式會抓此目錄下符合 `source.file_pattern` 的 Excel 逐檔匯入，適合使用者定期把新增 Excel 丟到固定資料夾的情境。
+- `source.file_pattern`：來源目錄檔名 pattern，預設可用 `*.xlsx`；程式會略過 Excel 暫存檔 `~$...`。
+- `source.recursive`：是否遞迴掃描來源目錄子資料夾。
+- `source.excel_path`：單檔模式使用；若未設定 `source.directory`，就會改讀此 Excel 檔案。相對路徑會先以設定檔所在目錄解析，找不到才改以專案根目錄解析。
+- `source.sheet`：來源工作表名稱。
+- `source.header_row`：欄名所在列號，預設為 `1`。
+- `source.start_row`：資料起始列號，預設為 `header_row + 1`。
+- `source.end_row`：資料結束列號；`0` 代表讀到工作表最後一列。
+- `destination.table`：目的 SQL Server 資料表（可含 schema，例如 `dbo.Table_SRP`）。範例使用 `vessel_activities`；其 `auto` primary key 由 SQL Server 自動填入，設定檔不需對應。
+- `destination.hash_field`：目的資料表用來存放去重 hash 的欄位，預設 `hash_value`。請先在目的 table 建立此欄位，建議型別 `CHAR(64)` 或 `NVARCHAR(64)`，並建立 unique index 以強化防重。
+- `mappings`：Excel 欄位與 SQL 欄位對應表。
+  - `source_column`：以 Excel 標題列欄名指定來源欄位；預設 `match: "smart"`，會先精準比對，再做正規化比對與前綴比對。
+  - `match`：可設 `exact`、`smart`、`normalized`、`prefix`、`contains`。例如 Excel 欄名可能是「船名(多艘)」或「船名...」時，可設定 `source_column: "船名"` 搭配 `match: "prefix"`。
+  - `aliases`：可提供來源欄位別名清單，降低欄名浮動造成的失敗。
+  - 也可改用 `source_column_letter`（例如 `A`）或 `source_column_index`（例如 `1`），適合標題列重複或沒有穩定欄名時使用。
+  - `dest_field`：目的 SQL 欄位名稱。
+  - `required`：設為 `true` 時，該欄在資料列為空會記錄該列失敗、寫入 audit/log，且不匯入該列。
+  - `default`：來源值空白時要寫入的預設值。
+- `import.batch_size`：每批 `executemany` 寫入筆數。
+- `import.skip_empty_rows`：是否跳過所有對應欄位皆為空的列。
+- `import.truncate_before_load`：寫入前是否先 `TRUNCATE TABLE`；預設 `false`，開啟前請確認權限與資料保留需求。若是長期增量匯入，通常不建議開啟。
+- `import.fast_executemany`：啟用 pyodbc 批次寫入最佳化。
+- `archive.enabled`：是否在檔案處理後搬移來源 Excel；目錄模式預設啟用。
+- `archive.success_dir` / `archive.fail_dir`：成功檔案備份目錄與失敗待確認目錄。
+- `archive.log_dir`：JSONL log 輸出目錄，檔名格式為 `excel_to_sql_YYYYMMDD.jsonl`。
+- `audit.enabled`：是否寫入 SQL audit table。
+- `audit.table`：audit table 名稱；若不存在，程式會自動建立預設欄位結構。
+- `dashboard.enabled`：是否讓此設定檔出現在 `/excel-to-sql-dashboard` 的任務下拉選單；儀表板只會掃描並顯示此值為 `true` 的設定檔。
+- `dashboard.name`：儀表板顯示名稱；未填時會退回使用 `destination.table` 或設定檔檔名。
+
+### 4) 去重與 audit 機制
+
+- 每一列會以「來源欄名 + 來源內容」組成穩定字串，再計算 SHA-256，寫入 `destination.hash_field`（預設 `hash_value`）。
+- 寫入前會先查目的 table 的 `hash_value`；若已存在，就將該列標示為 `duplicate` 並略過，不會重複導入。
+- 同一次執行中若不同檔案或不同列產生相同 hash，也會略過後續重複列。
+- 每一筆資料列的處理結果都會寫入 SQL audit table，包含 `run_id`、來源檔案、工作表、列號、hash、目的 table、狀態、訊息、row payload 與處理時間，方便後續儀表板彙整每天收到資料與處理結果。
+- 若欄位採用智慧比對（例如「船名」前綴比對到「船名...」或「敘述」前綴比對到「敘述補充」），也會以 `header_smart_match` 狀態寫入 audit table 與 JSONL log，方便事後檢查欄名浮動是否符合預期。
+
+### 5) 匯入行為與輸出
+
+- 腳本會以唯讀模式開啟 Excel，並以 `data_only=true` 讀取公式儲存值。
+- 寫入 SQL Server 時會自動為 table 與 field 加上 SQL Server 方括號引用，降低保留字或特殊字元造成的問題。
+- 匯入過程會逐批輸出新增筆數、重複略過筆數與失敗筆數，並在 log 檔留下批次與檔案處理事件。
+- 若檔案處理成功，會搬到 `archive.success_dir`；若檔案或資料處理失敗，會搬到 `archive.fail_dir` 等待人工確認。
+
+### 6) 常見問題
+
+- 找不到 Excel 檔案：確認 `source.directory` 或 `source.excel_path` 路徑；相對路徑會先以設定檔所在目錄解析，找不到才改以專案根目錄解析。
+- 找不到工作表或欄名：確認 `source.sheet` 與 `mappings[].source_column` 是否與 Excel 完全一致；有重複欄名時請改用 `source_column_letter` 或 `source_column_index`。
+- 寫入 SQL 失敗：確認目的資料表欄位型別、必要欄位、ODBC driver、帳密、網路、防火牆與 SQL Server 權限。
+- 去重欄位錯誤：確認目的 table 已有 `hash_value`（或 `destination.hash_field` 指定的欄位），建議建立 unique index。
+
+
+### 7) 自動化監控儀表板
+
+啟動 API 後，可開啟：
+
+```text
+/excel-to-sql-dashboard
+```
+
+此頁會沿用 `/editor` 登入後儲存在瀏覽器的 `sra_editor_token`。進入方式：先到 `/editor` 登入，再開 `/excel-to-sql-dashboard`。頁面會先呼叫 `/v1/excel-to-sql/dashboard-tasks` 掃描 `config/excel_to_sql/*.json`，只列出 `dashboard.enabled=true` 的匯入任務；選定任務後再呼叫 `/v1/excel-to-sql/dashboard` 讀取該任務設定的 SQL audit table，呈現：
+
+- 指定天數內的總事件、新增、重複略過、失敗、欄名智慧比對數。
+- 每日各狀態筆數，方便監控每天收到資料與處理結果。
+- 各 Excel 檔案處理彙總。
+- 最近 audit 事件與 row payload，方便追查失敗列或欄名智慧比對。
+- 對有 `hash_value` 的事件提供「刪除SQL列」操作，可用既有登入帳號刪除目的 SQL table 中對應列，並寫入 `sql_deleted` / `sql_delete_not_found` audit 記錄。若資料已進 ES，仍需到 ES 編輯介面另行處理。
+
+可在頁面上選擇監控任務，或手動調整設定檔路徑、回看天數與列數上限。若 audit table 尚未建立，儀表板會提示目前無 audit table。
+
+### 8) 模組區塊化
+
+Excel→SQL 匯入已從 `agent/es/` 拉出到 `agent/excel_to_sql/`，不再保留 `agent/es/ingest_excel_sql.py` wrapper，避免新功能與 ES ingestion 混在一起：
+
+- `agent/excel_to_sql/ingest.py`：匯入 CLI、欄名比對、去重、archive、audit 寫入。
+- `agent/excel_to_sql/dashboard.py`：監控儀表板的任務掃描、audit table 查詢與彙總邏輯。
+- `agent/excel_to_sql/README.md`：此 Excel→SQL 前置流程的獨立說明文件。
+
 ## 環境變數（.env）與 Index 多環境設定
 
 ### .env 載入優先順序
