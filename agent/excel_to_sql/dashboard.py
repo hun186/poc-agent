@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,18 +33,94 @@ def _connect(cfg: dict[str, Any]):
 
 
 def _audit_table(cfg: dict[str, Any]) -> str:
-    return str(get_nested(cfg, "audit.table", DEFAULT_AUDIT_TABLE) or DEFAULT_AUDIT_TABLE)
+    return str(
+        get_nested(cfg, "audit.table", DEFAULT_AUDIT_TABLE) or DEFAULT_AUDIT_TABLE
+    )
 
 
 def _table_exists(cursor, table: str) -> bool:
-    cursor.execute("SELECT CASE WHEN OBJECT_ID(?, N'U') IS NULL THEN 0 ELSE 1 END", table)
+    cursor.execute(
+        "SELECT CASE WHEN OBJECT_ID(?, N'U') IS NULL THEN 0 ELSE 1 END", table
+    )
     row = cursor.fetchone()
     return bool(row and row[0])
 
 
-def _fetch_all_dicts(cursor, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+def _fetch_all_dicts(
+    cursor, sql: str, params: tuple[Any, ...] = ()
+) -> list[dict[str, Any]]:
     cursor.execute(sql, params)
     return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+
+
+def _coerce_utc_datetime(
+    value: str | datetime | date | None, *, end_of_day: bool = False
+) -> datetime | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, date):
+        dt = datetime.combine(value, time.max if end_of_day else time.min)
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            if len(text) == 10:
+                dt = datetime.combine(
+                    date.fromisoformat(text), time.max if end_of_day else time.min
+                )
+            else:
+                dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("時間格式錯誤，請使用 ISO 8601 或 YYYY-MM-DD。") from exc
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _audit_time_window(
+    days: int,
+    start_ts: str | datetime | date | None,
+    end_ts: str | datetime | date | None,
+) -> tuple[int, datetime | None, datetime | None]:
+    days = max(1, min(int(days), 365))
+    start_dt = _coerce_utc_datetime(start_ts)
+    end_dt = _coerce_utc_datetime(end_ts, end_of_day=True)
+    if start_dt and end_dt and start_dt > end_dt:
+        raise ValueError("起始時間不可晚於結束時間。")
+    return days, start_dt, end_dt
+
+
+def _append_time_filters(
+    conditions: list[str],
+    params: list[Any],
+    *,
+    days: int,
+    start_dt: datetime | None,
+    end_dt: datetime | None,
+):
+    if start_dt or end_dt:
+        if start_dt:
+            conditions.append("processed_at >= ?")
+            params.append(start_dt)
+        if end_dt:
+            conditions.append("processed_at <= ?")
+            params.append(end_dt)
+    else:
+        conditions.append("processed_at >= DATEADD(day, -?, SYSUTCDATETIME())")
+        params.append(days)
+
+
+def _where_clause(conditions: list[str]) -> str:
+    if not conditions:
+        return ""
+    return "WHERE " + " AND ".join(conditions)
+
+
+def _contains_filter(value: str | None) -> str:
+    return f"%{str(value or '').strip()}%"
 
 
 def _parse_payload(value: Any) -> Any:
@@ -54,8 +130,6 @@ def _parse_payload(value: Any) -> Any:
         return json.loads(value)
     except json.JSONDecodeError:
         return value
-
-
 
 
 def _dashboard_enabled(cfg: dict[str, Any]) -> bool:
@@ -70,7 +144,9 @@ def _dashboard_name(cfg: dict[str, Any], config_path: Path) -> str:
     return table or config_path.stem
 
 
-def discover_dashboard_tasks(config_dir: str | Path = "config/excel_to_sql") -> list[dict[str, Any]]:
+def discover_dashboard_tasks(
+    config_dir: str | Path = "config/excel_to_sql",
+) -> list[dict[str, Any]]:
     root = Path(config_dir)
     if not root.exists():
         return []
@@ -88,19 +164,33 @@ def discover_dashboard_tasks(config_dir: str | Path = "config/excel_to_sql") -> 
                 "name": _dashboard_name(cfg, path),
                 "config_path": str(path),
                 "audit_table": _audit_table(cfg),
-                "destination_table": str(get_nested(cfg, "destination.table", "") or ""),
+                "destination_table": str(
+                    get_nested(cfg, "destination.table", "") or ""
+                ),
                 "source_directory": str(get_nested(cfg, "source.directory", "") or ""),
             }
         )
     return tasks
 
 
-def dashboard_payload(config_path: str, *, days: int = 14, limit: int = 100) -> dict[str, Any]:
+def dashboard_payload(
+    config_path: str,
+    *,
+    days: int = 14,
+    limit: int = 100,
+    start_ts: str | datetime | date | None = None,
+    end_ts: str | datetime | date | None = None,
+    status_filter: str | None = None,
+    source_file_filter: str | None = None,
+    row_no_filter: int | None = None,
+    message_filter: str | None = None,
+    hash_value_filter: str | None = None,
+) -> dict[str, Any]:
     cfg = load_json_config(config_path)
     task_name = _dashboard_name(cfg, Path(config_path))
     table = _audit_table(cfg)
     quoted_table = quote_object_path(table)
-    days = max(1, min(int(days), 365))
+    days, start_dt, end_dt = _audit_time_window(days, start_ts, end_ts)
     limit = max(1, min(int(limit), 1000))
 
     conn = _connect(cfg)
@@ -113,6 +203,9 @@ def dashboard_payload(config_path: str, *, days: int = 14, limit: int = 100) -> 
                     "audit_table": table,
                     "task_name": task_name,
                     "days": days,
+                    "start_ts": start_dt.isoformat() if start_dt else None,
+                    "end_ts": end_dt.isoformat() if end_dt else None,
+                    "audit_time_basis": "UTC (SQL Server SYSUTCDATETIME)",
                     "exists": False,
                     "summary": [],
                     "daily": [],
@@ -120,16 +213,27 @@ def dashboard_payload(config_path: str, *, days: int = 14, limit: int = 100) -> 
                     "recent": [],
                 }
 
+            time_conditions: list[str] = []
+            time_params: list[Any] = []
+            _append_time_filters(
+                time_conditions,
+                time_params,
+                days=days,
+                start_dt=start_dt,
+                end_dt=end_dt,
+            )
+            time_where = _where_clause(time_conditions)
+
             summary = _fetch_all_dicts(
                 cursor,
                 f"""
 SELECT status, COUNT(1) AS count
 FROM {quoted_table}
-WHERE processed_at >= DATEADD(day, -?, SYSUTCDATETIME())
+{time_where}
 GROUP BY status
 ORDER BY status
 """,
-                (days,),
+                tuple(time_params),
             )
 
             daily = _fetch_all_dicts(
@@ -137,11 +241,11 @@ ORDER BY status
                 f"""
 SELECT CONVERT(date, processed_at) AS day, status, COUNT(1) AS count
 FROM {quoted_table}
-WHERE processed_at >= DATEADD(day, -?, SYSUTCDATETIME())
+{time_where}
 GROUP BY CONVERT(date, processed_at), status
 ORDER BY day DESC, status
 """,
-                (days,),
+                tuple(time_params),
             )
 
             files = _fetch_all_dicts(
@@ -156,12 +260,31 @@ SELECT TOP (?)
     SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_rows,
     SUM(CASE WHEN status = 'header_smart_match' THEN 1 ELSE 0 END) AS header_smart_matches
 FROM {quoted_table}
-WHERE processed_at >= DATEADD(day, -?, SYSUTCDATETIME())
+{time_where}
 GROUP BY source_file
 ORDER BY MAX(processed_at) DESC
 """,
-                (limit, days),
+                (limit, *time_params),
             )
+
+            recent_conditions = list(time_conditions)
+            recent_params = list(time_params)
+            if status_filter:
+                recent_conditions.append("status = ?")
+                recent_params.append(str(status_filter).strip())
+            if source_file_filter:
+                recent_conditions.append("source_file LIKE ?")
+                recent_params.append(_contains_filter(source_file_filter))
+            if row_no_filter is not None:
+                recent_conditions.append("row_no = ?")
+                recent_params.append(int(row_no_filter))
+            if message_filter:
+                recent_conditions.append("message LIKE ?")
+                recent_params.append(_contains_filter(message_filter))
+            if hash_value_filter:
+                recent_conditions.append("hash_value LIKE ?")
+                recent_params.append(_contains_filter(hash_value_filter))
+            recent_where = _where_clause(recent_conditions)
 
             recent = _fetch_all_dicts(
                 cursor,
@@ -179,10 +302,10 @@ SELECT TOP (?)
     row_payload,
     processed_at
 FROM {quoted_table}
-WHERE processed_at >= DATEADD(day, -?, SYSUTCDATETIME())
+{recent_where}
 ORDER BY processed_at DESC, audit_id DESC
 """,
-                (limit, days),
+                (limit, *recent_params),
             )
             for item in recent:
                 item["row_payload"] = _parse_payload(item.get("row_payload"))
@@ -192,6 +315,16 @@ ORDER BY processed_at DESC, audit_id DESC
                 "audit_table": table,
                 "task_name": task_name,
                 "days": days,
+                "start_ts": start_dt.isoformat() if start_dt else None,
+                "end_ts": end_dt.isoformat() if end_dt else None,
+                "audit_time_basis": "UTC (SQL Server SYSUTCDATETIME)",
+                "recent_filters": {
+                    "status": status_filter or "",
+                    "source_file": source_file_filter or "",
+                    "row_no": row_no_filter,
+                    "message": message_filter or "",
+                    "hash_value": hash_value_filter or "",
+                },
                 "exists": True,
                 "summary": summary,
                 "daily": daily,
@@ -216,7 +349,9 @@ def delete_imported_sql_row(
     if not destination_table:
         raise ValueError("設定檔缺少 destination.table，無法刪除 SQL 資料列。")
 
-    hash_field = str(get_nested(cfg, "destination.hash_field", "hash_value") or "hash_value").strip()
+    hash_field = str(
+        get_nested(cfg, "destination.hash_field", "hash_value") or "hash_value"
+    ).strip()
     if not hash_field:
         raise ValueError("destination.hash_field 不可為空。")
 

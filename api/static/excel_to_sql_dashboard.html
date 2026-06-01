@@ -10,8 +10,8 @@
     header { padding:20px 28px; background:#111827; color:white; display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
     h1 { margin:0; font-size:22px; }
     main { padding:24px; max-width:1400px; margin:0 auto; }
-    .controls, .cards, .grid { display:grid; gap:16px; }
-    .controls { grid-template-columns: minmax(220px, .8fr) minmax(320px, 1fr) 120px 120px auto; align-items:end; margin-bottom:18px; }
+    .controls, .filters, .cards, .grid { display:grid; gap:16px; }
+    .controls, .filters { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items:end; margin-bottom:18px; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:0 1px 2px rgba(16,24,40,.05); }
     .cards { grid-template-columns: repeat(5, minmax(140px, 1fr)); margin-bottom:16px; }
     .metric { font-size:28px; font-weight:700; margin-top:6px; }
@@ -20,6 +20,7 @@
     input, select { width:100%; box-sizing:border-box; padding:10px 11px; border:1px solid var(--line); border-radius:10px; font-size:14px; background:white; }
     button { padding:10px 14px; border:0; border-radius:10px; background:#2563eb; color:white; font-weight:700; cursor:pointer; }
     button.secondary { background:#475467; }
+    button.ghost { background:#e2e8f0; color:#172033; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th, td { border-bottom:1px solid var(--line); padding:9px 8px; text-align:left; vertical-align:top; }
     th { color:#344054; font-size:12px; background:#f9fafb; position:sticky; top:0; }
@@ -49,9 +50,21 @@
     <section class="card controls">
       <div><label>監控任務</label><select id="task" onchange="onTaskChange()"><option value="">載入中...</option></select></div>
       <div><label>設定檔路徑</label><input id="config" value="config/excel_to_sql/vessel_activities.example.json" /></div>
-      <div><label>回看天數</label><input id="days" type="number" min="1" max="365" value="14" /></div>
+      <div><label>起始時間（本機）</label><input id="startTs" type="datetime-local" /></div>
+      <div><label>結束時間（本機）</label><input id="endTs" type="datetime-local" /></div>
+      <div><label>回看天數（未填起迄時）</label><input id="days" type="number" min="1" max="365" value="14" /></div>
       <div><label>列數上限</label><input id="limit" type="number" min="1" max="1000" value="100" /></div>
       <button onclick="loadDashboard()">重新整理</button>
+      <button class="ghost" onclick="resetDefaultWindow()">預設近14天</button>
+    </section>
+
+    <section class="card filters">
+      <div><label>audit 狀態</label><select id="statusFilter"><option value="">全部</option><option value="inserted">inserted</option><option value="duplicate">duplicate</option><option value="failed">failed</option><option value="header_smart_match">header_smart_match</option><option value="sql_deleted">sql_deleted</option><option value="sql_delete_not_found">sql_delete_not_found</option></select></div>
+      <div><label>來源檔包含</label><input id="sourceFileFilter" placeholder="例如 .xlsx 或檔名片段" /></div>
+      <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
+      <div><label>訊息包含</label><input id="messageFilter" placeholder="錯誤訊息 / 智慧比對" /></div>
+      <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
+      <button class="secondary" onclick="clearAuditFilters()">清空 audit 篩選</button>
     </section>
 
     <div id="msg" class="error hidden"></div>
@@ -71,7 +84,8 @@
 
     <section class="card" style="margin-top:16px;">
       <h2>最近 audit 事件</h2>
-      <div class="table-wrap"><table id="recent"><thead><tr><th>時間</th><th>狀態</th><th>檔案</th><th>列號</th><th>訊息</th><th>操作</th><th>payload</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted" id="timeBasis">audit 時間以本機時間顯示；UTC 原始值會以灰字附註。</p>
+      <div class="table-wrap"><table id="recent"><thead><tr><th>時間（本機）</th><th>狀態</th><th>檔案</th><th>列號</th><th>訊息</th><th>操作</th><th>payload</th></tr></thead><tbody></tbody></table></div>
     </section>
   </main>
 <script>
@@ -93,6 +107,31 @@ function renderCards(data) {
 }
 function fillTable(id, rows, render) { document.querySelector(`#${id} tbody`).innerHTML = rows.map(render).join('') || '<tr><td colspan="99" class="muted">無資料</td></tr>'; }
 function authToken() { return localStorage.getItem(tokenKey) || ''; }
+function pad2(v) { return String(v).padStart(2, '0'); }
+function toLocalInputValue(d) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+function resetDefaultWindow() {
+  const end = new Date();
+  const start = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000);
+  $('startTs').value = toLocalInputValue(start);
+  $('endTs').value = toLocalInputValue(end);
+  $('days').value = 14;
+}
+function localInputToUtcIso(id) { const v = $(id).value; return v ? new Date(v).toISOString() : ''; }
+function normalizeAuditUtc(text) {
+  const raw = String(text || '');
+  if (!raw) return null;
+  const trimmed = raw.replace(/(\.\d{3})\d+/, '$1');
+  return /[zZ]|[+-]\d\d:?\d\d$/.test(trimmed) ? trimmed : trimmed + 'Z';
+}
+function formatAuditTime(value) {
+  const raw = String(value || '');
+  const normalized = normalizeAuditUtc(raw);
+  if (!normalized) return '';
+  const local = new Date(normalized);
+  if (Number.isNaN(local.getTime())) return escapeHtml(raw);
+  return `<div>${escapeHtml(local.toLocaleString())}</div><div class="muted">UTC：${escapeHtml(raw)}</div>`;
+}
+function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter'].forEach(id => { $(id).value = ''; }); loadDashboard(); }
 function onTaskChange() { if ($('task').value) $('config').value = $('task').value; loadDashboard(); }
 async function loadTasks() {
   const token = authToken();
@@ -134,17 +173,24 @@ async function loadDashboard() {
   const token = authToken();
   if (!token) { showError('請先到 /editor 登入；本儀表板會沿用 sra_editor_token。'); return; }
   const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: $('limit').value });
+  const startIso = localInputToUtcIso('startTs');
+  const endIso = localInputToUtcIso('endTs');
+  if (startIso) params.set('start_ts', startIso);
+  if (endIso) params.set('end_ts', endIso);
+  const filters = { status_filter: $('statusFilter').value, source_file_filter: $('sourceFileFilter').value, row_no_filter: $('rowNoFilter').value, message_filter: $('messageFilter').value, hash_value_filter: $('hashFilter').value };
+  Object.entries(filters).forEach(([key, value]) => { if (String(value || '').trim()) params.set(key, value); });
   const res = await fetch('/v1/excel-to-sql/dashboard?' + params.toString(), { headers: { Authorization: 'Bearer ' + token } });
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
   const data = await res.json();
   document.title = (data.task_name || 'Excel→SQL 匯入 SQL') + ' - 監控儀表板';
   if (!data.exists) showError(`audit table 尚不存在：${data.audit_table}`);
+  $('timeBasis').textContent = `audit 時間以本機時間顯示（${Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'}）；起迄時間輸入也是本機時間，系統會轉成 ${data.audit_time_basis || 'UTC'} 查詢。`;
   renderCards(data);
   fillTable('daily', data.daily, r => `<tr><td>${escapeHtml(r.day)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.count)}</td></tr>`);
   fillTable('files', data.files, r => `<tr><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.last_processed_at)}</td><td>${escapeHtml(r.inserted_rows)}</td><td>${escapeHtml(r.duplicate_rows)}</td><td>${escapeHtml(r.failed_rows)}</td><td>${escapeHtml(r.header_smart_matches)}</td></tr>`);
-  fillTable('recent', data.recent, r => `<tr><td>${escapeHtml(r.processed_at)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.row_no ?? '')}</td><td>${escapeHtml(r.message || '')}</td><td>${actionCell(r)}</td><td><pre>${escapeHtml(JSON.stringify(r.row_payload ?? '', null, 2))}</pre></td></tr>`);
+  fillTable('recent', data.recent, r => `<tr><td>${formatAuditTime(r.processed_at)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.row_no ?? '')}</td><td>${escapeHtml(r.message || '')}</td><td>${actionCell(r)}</td><td><pre>${escapeHtml(JSON.stringify(r.row_payload ?? '', null, 2))}</pre></td></tr>`);
 }
-(async () => { await loadTasks(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
+(async () => { resetDefaultWindow(); await loadTasks(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
 </script>
 </body>
 </html>

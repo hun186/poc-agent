@@ -82,6 +82,7 @@
               <button class="secondary" id="navNewDocBtn">新增文件</button>
               <button class="secondary" data-main-tab="search">搜尋文件</button>
               <button class="secondary" data-main-tab="stats">使用統計</button>
+              <button class="secondary" id="excelDashboardBtn">Excel→SQL 監控</button>
               <button class="secondary hidden" id="mainReviewTab" data-main-tab="review">帳號審核</button>
               <button class="secondary hidden" id="mainAuditTab" data-main-tab="audit">修改紀錄</button>
             </div>
@@ -700,6 +701,7 @@ function newDoc() {
 function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
 $('loginBtn').onclick = login; $('searchPrevBtn').onclick = () => { if (state.searchPage > 1) searchDocs(state.searchPage - 1); }; $('searchNextBtn').onclick = () => { if (state.searchHasMore) searchDocs(state.searchPage + 1); }; $('navNewDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = () => searchDocs(1); $('saveBtn').onclick = saveDoc; $('saveAsNewBtn').onclick = saveAsNewDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('refreshStatsBtn').onclick = refreshUsageStats; $('extractTextBtn').onclick = uploadRawContentFile;
+$('excelDashboardBtn').onclick = () => { location.href = '/excel-to-sql-dashboard'; };
 $('searchAuditBtn').onclick = searchAuditLogs;
 $('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); };
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
