@@ -1,13 +1,13 @@
 {
   "db": {
-    "driver": "ODBC Driver 17 for SQL Server",
+    "driver": "ODBC Driver 18 for SQL Server",
     "server": "192.168.0.136",
     "database": "AIDB",
     "trusted_connection": false,
     "user": "aiapp",
     "password": "1qaz@WSX",
-    "encrypt": false,
-    "trust_server_certificate": false
+    "encrypt": true,
+    "trust_server_certificate": true
   },
   "source": {
     "directory": "./data/excel_inbox",
