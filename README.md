@@ -173,6 +173,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
   },
   "destination": {
     "table": "vessel_activities",
+    "auto_create_table": true,
     "auto_create_missing_fields": true,
     "default_field_type": "NVARCHAR(MAX)",
     "hash_field": "hash_value",
@@ -227,6 +228,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
 - `source.start_row`：資料起始列號，預設為 `header_row + 1`。
 - `source.end_row`：資料結束列號；`0` 代表讀到工作表最後一列。
 - `destination.table`：目的 SQL Server 資料表（可含 schema，例如 `dbo.Table_SRP`）。範例使用 `vessel_activities`；其 `auto` primary key 由 SQL Server 自動填入，設定檔不需對應。
+- `destination.auto_create_table`：是否在目的 table 不存在時自動執行 `CREATE TABLE`，預設 `true`；欄位會依 `mappings[*].dest_field` 與 `dest_field_type` / `destination.default_field_type` 建立，並會一併建立去重欄位與 filtered unique index（若 `destination.create_hash_index=true`）。若 SQL 帳號沒有 `CREATE TABLE` / `CREATE INDEX` 權限，可設為 `false` 並由 DBA 手動建立資料表。
 - `destination.auto_create_missing_fields`：是否在目的 table 缺少 `mappings[*].dest_field` 欄位時自動執行 `ALTER TABLE ... ADD`，預設 `true`；例如缺少 `vessel_names` 時會在匯入前自動補欄位，避免整批資料因「無效的資料行名稱」失敗。若 SQL 帳號沒有 DDL 權限，可設為 `false` 並由 DBA 手動建立欄位。
 - `destination.default_field_type`：自動新增一般目的欄位時的預設型別，預設 `NVARCHAR(MAX)`；建議在個別 mapping 使用 `dest_field_type` 明確指定重要欄位型別。
 - `destination.hash_field`：目的資料表用來存放去重 hash 的欄位，預設 `hash_value`；內容是 SHA-256 的十六進位 digest，固定 64 個 ASCII 字元（256-bit），所以 `CHAR(64)` / `VARCHAR(64)` 足夠完整存放，不會截斷。

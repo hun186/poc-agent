@@ -21,6 +21,7 @@
   },
   "destination": {
     "table": "vessel_activities",
+    "auto_create_table": true,
     "auto_create_missing_fields": true,
     "default_field_type": "NVARCHAR(MAX)",
     "hash_field": "hash_value",

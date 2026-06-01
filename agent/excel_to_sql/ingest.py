@@ -33,6 +33,7 @@ from .sql_utils import (
     detect_odbc_driver,
     ensure_destination_columns,
     ensure_destination_hash_field,
+    ensure_destination_table,
     quote_ident,
     quote_object_path,
     sql_string_literal,
@@ -539,6 +540,7 @@ def process_excel_file(
     hash_field = str(get_nested(cfg, "destination.hash_field", DEFAULT_HASH_FIELD) or DEFAULT_HASH_FIELD)
     auto_create_hash_field = bool(get_nested(cfg, "destination.auto_create_hash_field", True))
     auto_create_missing_fields = bool(get_nested(cfg, "destination.auto_create_missing_fields", True))
+    auto_create_table = bool(get_nested(cfg, "destination.auto_create_table", True))
     default_field_type = str(get_nested(cfg, "destination.default_field_type", "NVARCHAR(MAX)") or "NVARCHAR(MAX)")
     hash_field_type = str(
         get_nested(cfg, "destination.hash_field_type", DEFAULT_HASH_FIELD_TYPE)
@@ -569,6 +571,22 @@ def process_excel_file(
     cursor = conn.cursor()
     if fast_executemany:
         cursor.fast_executemany = True
+
+    if auto_create_table:
+        created_table_fields = ensure_destination_table(
+            cursor,
+            table=table,
+            mappings=mappings,
+            default_field_type=default_field_type,
+            hash_field=hash_field,
+            hash_field_type=hash_field_type,
+            create_hash_index=create_hash_index,
+        )
+        if created_table_fields:
+            conn.commit()
+            created_text = ", ".join(f"{field} {field_type}" for field, field_type in created_table_fields.items())
+            index_message = "，並建立去重唯一索引" if create_hash_index and hash_field in created_table_fields else ""
+            print(f"🛠️ 已自動建立目的資料表：{table}；{created_text}{index_message}")
 
     if auto_create_missing_fields:
         created_fields = ensure_destination_columns(
