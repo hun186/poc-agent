@@ -162,6 +162,33 @@ def destination_column_exists(cursor, *, table: str, field: str) -> bool:
     return bool(row and row[0] is not None)
 
 
+def destination_table_exists(cursor, *, table: str) -> bool:
+    cursor.execute(f"SELECT OBJECT_ID({sql_string_literal(table)}, N'U')")
+    row = cursor.fetchone()
+    return bool(row and row[0] is not None)
+
+
+def create_destination_hash_index(cursor, *, table: str, hash_field: str) -> None:
+    index_name = safe_index_name(table, hash_field)
+    index_literal = sql_string_literal(index_name)
+    table_literal = sql_string_literal(table)
+    cursor.execute(
+        f"""
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = {index_literal}
+      AND object_id = OBJECT_ID({table_literal})
+)
+BEGIN
+    CREATE UNIQUE INDEX {quote_ident(index_name)}
+    ON {quote_object_path(table)} ({quote_ident(hash_field)})
+    WHERE {quote_ident(hash_field)} IS NOT NULL;
+END
+"""
+    )
+
+
 def validate_auto_created_field_type(field_type: str) -> str:
     normalized = " ".join(str(field_type or DEFAULT_AUTO_CREATED_FIELD_TYPE).strip().upper().split())
     normalized = normalized.replace(" (", "(").replace(" ,", ",").replace(", ", ",")
@@ -210,6 +237,51 @@ def infer_auto_created_field_type(mapping: Dict[str, Any], default_field_type: s
     if str(mapping.get("value_type", "")).strip().lower() in {"date", "sql_date"}:
         return "DATE"
     return validate_auto_created_field_type(default_field_type)
+
+
+def ensure_destination_table(
+    cursor,
+    *,
+    table: str,
+    mappings: Sequence[Dict[str, Any]],
+    default_field_type: str = DEFAULT_AUTO_CREATED_FIELD_TYPE,
+    hash_field: str | None = None,
+    hash_field_type: str = DEFAULT_HASH_FIELD_TYPE,
+    create_hash_index: bool = True,
+) -> Dict[str, str]:
+    """Ensure the destination table exists; return created columns and SQL types."""
+
+    if destination_table_exists(cursor, table=table):
+        return {}
+
+    columns: Dict[str, str] = {}
+    for mapping in mappings:
+        field = str(mapping.get("dest_field", "")).strip()
+        if not field or field in columns:
+            continue
+        columns[field] = infer_auto_created_field_type(mapping, default_field_type)
+
+    clean_hash_field = str(hash_field or "").strip()
+    if clean_hash_field and clean_hash_field not in columns:
+        columns[clean_hash_field] = validate_hash_field_type(hash_field_type)
+
+    if not columns:
+        raise ValueError("無法自動建立目的資料表：沒有可建立的目的欄位。")
+
+    column_sql = ",\n    ".join(
+        f"{quote_ident(field)} {field_type} NULL"
+        for field, field_type in columns.items()
+    )
+    cursor.execute(
+        f"CREATE TABLE {quote_object_path(table)} (\n"
+        f"    {column_sql}\n"
+        ")"
+    )
+
+    if clean_hash_field and create_hash_index and clean_hash_field in columns:
+        create_destination_hash_index(cursor, table=table, hash_field=clean_hash_field)
+
+    return columns
 
 
 def ensure_destination_columns(
@@ -263,23 +335,6 @@ def ensure_destination_hash_field(
     )
 
     if create_unique_index:
-        index_name = safe_index_name(table, hash_field)
-        index_literal = sql_string_literal(index_name)
-        table_literal = sql_string_literal(table)
-        cursor.execute(
-            f"""
-IF NOT EXISTS (
-    SELECT 1
-    FROM sys.indexes
-    WHERE name = {index_literal}
-      AND object_id = OBJECT_ID({table_literal})
-)
-BEGIN
-    CREATE UNIQUE INDEX {quote_ident(index_name)}
-    ON {quote_object_path(table)} ({quote_ident(hash_field)})
-    WHERE {quote_ident(hash_field)} IS NOT NULL;
-END
-"""
-        )
+        create_destination_hash_index(cursor, table=table, hash_field=hash_field)
 
     return True

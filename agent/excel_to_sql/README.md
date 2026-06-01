@@ -15,6 +15,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
 - 透過 `python-dateutil` 將常見西元/民國年日期字串正規化成 SQL 可接收的日期物件。
 - 支援欄名浮動比對：`exact`、`smart`、`normalized`、`prefix`、`contains`、`aliases`。
 - 以來源欄名與內容計算 SHA-256，寫入 `hash_value` 避免重複導入。
+- 目的資料表不存在時可依設定檔 mapping 自動建立 table、欄位與去重索引。
 - 每列處理結果寫入 SQL audit table。
 - 可自動偵測本機已安裝的 SQL Server ODBC Driver 18/17，降低不同環境 driver 名稱差異造成的連線失敗。
 - 支援檔案匯入失敗後依設定間隔重試，達到上限後才搬到 failed archive。
