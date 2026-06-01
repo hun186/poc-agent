@@ -11,7 +11,8 @@
     h1 { margin:0; font-size:22px; }
     main { padding:24px; max-width:1400px; margin:0 auto; }
     .controls, .filters, .cards, .grid { display:grid; gap:16px; }
-    .controls, .filters { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items:end; margin-bottom:18px; }
+    .controls { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items:end; margin-bottom:18px; }
+    .filters { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items:end; margin:12px 0 14px; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:0 1px 2px rgba(16,24,40,.05); }
     .cards { grid-template-columns: repeat(5, minmax(140px, 1fr)); margin-bottom:16px; }
     .metric { font-size:28px; font-weight:700; margin-top:6px; }
@@ -32,7 +33,25 @@
     .status.failed { background:#fef3f2; color:var(--bad); }
     .error { background:#fef3f2; border:1px solid #fecdca; color:var(--bad); padding:12px; border-radius:12px; margin:12px 0; white-space:pre-wrap; }
     .hidden { display:none; }
-    pre { white-space:pre-wrap; word-break:break-word; margin:0; max-width:520px; }
+    .chart-card { border:1px solid var(--line); border-radius:12px; padding:12px; background:#f8fafc; margin:8px 0 14px; }
+    .chart-title { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+    .audit-chart { width:100%; min-height:240px; display:block; }
+    .chart-axis { stroke:#cbd5e1; stroke-width:1; }
+    .chart-grid { stroke:#e2e8f0; stroke-width:1; }
+    .chart-line { fill:none; stroke:#2563eb; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; }
+    .chart-point { fill:#2563eb; stroke:white; stroke-width:2; }
+    .chart-label { fill:#475467; font-size:11px; }
+    .chart-empty { color:var(--muted); padding:48px 0; text-align:center; }
+    .recent-toolbar { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin:10px 0 12px; }
+    .pager { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .pager button { padding:7px 10px; }
+    #recent th.payload-col, #recent td.payload-col { width:46%; min-width:460px; }
+    .json-view { white-space:pre-wrap; word-break:break-word; margin:0; min-width:420px; max-width:none; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.5; }
+    .json-key { color:#7c3aed; font-weight:700; }
+    .json-string { color:#047857; }
+    .json-number, .json-boolean { color:#b45309; }
+    .json-null { color:#64748b; font-style:italic; }
+    pre { white-space:pre-wrap; word-break:break-word; margin:0; }
     @media (max-width: 900px) { .controls, .cards, .grid { grid-template-columns:1fr; } }
   </style>
 </head>
@@ -58,15 +77,6 @@
       <button class="ghost" onclick="resetDefaultWindow()">預設近14天</button>
     </section>
 
-    <section class="card filters">
-      <div><label>audit 狀態</label><select id="statusFilter"><option value="">全部</option><option value="inserted">inserted</option><option value="duplicate">duplicate</option><option value="failed">failed</option><option value="header_smart_match">header_smart_match</option><option value="sql_deleted">sql_deleted</option><option value="sql_delete_not_found">sql_delete_not_found</option></select></div>
-      <div><label>來源檔包含</label><input id="sourceFileFilter" placeholder="例如 .xlsx 或檔名片段" /></div>
-      <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
-      <div><label>訊息包含</label><input id="messageFilter" placeholder="錯誤訊息 / 智慧比對" /></div>
-      <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
-      <button class="secondary" onclick="clearAuditFilters()">清空 audit 篩選</button>
-    </section>
-
     <div id="msg" class="error hidden"></div>
 
     <section class="cards" id="cards"></section>
@@ -85,11 +95,36 @@
     <section class="card" style="margin-top:16px;">
       <h2>最近 audit 事件</h2>
       <p class="muted" id="timeBasis">audit 時間以本機時間顯示；UTC 原始值會以灰字附註。</p>
-      <div class="table-wrap"><table id="recent"><thead><tr><th>時間（本機）</th><th>狀態</th><th>檔案</th><th>列號</th><th>訊息</th><th>操作</th><th>payload</th></tr></thead><tbody></tbody></table></div>
+      <section class="filters" aria-label="最近 audit 事件篩選">
+        <div><label>audit 狀態</label><select id="statusFilter"><option value="">全部</option><option value="inserted">inserted</option><option value="duplicate">duplicate</option><option value="failed">failed</option><option value="header_smart_match">header_smart_match</option><option value="sql_deleted">sql_deleted</option><option value="sql_delete_not_found">sql_delete_not_found</option></select></div>
+        <div><label>來源檔包含</label><input id="sourceFileFilter" placeholder="例如 .xlsx 或檔名片段" /></div>
+        <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
+        <div><label>訊息包含</label><input id="messageFilter" placeholder="錯誤訊息 / 智慧比對" /></div>
+        <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
+        <div><label>payload 關鍵字</label><input id="payloadFilter" placeholder="payload JSON 文字" /></div>
+        <button onclick="applyAuditFilters()">套用篩選</button>
+        <button class="secondary" onclick="clearAuditFilters()">清空 audit 篩選</button>
+      </section>
+      <div class="chart-card">
+        <div class="chart-title">
+          <strong>每日 audit 筆數（套用目前篩選）</strong>
+          <span class="muted" id="filteredDailySummary">尚未載入</span>
+        </div>
+        <div id="filteredDailyChart" class="chart-empty">尚未載入圖表</div>
+      </div>
+      <div class="recent-toolbar">
+        <div class="muted" id="recentPageInfo">第 1 頁</div>
+        <div class="pager">
+          <button class="ghost" id="recentPrevBtn" onclick="changeRecentPage(-1)">上一頁</button>
+          <button class="ghost" id="recentNextBtn" onclick="changeRecentPage(1)">下一頁</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table id="recent"><thead><tr><th>時間（本機）</th><th>狀態</th><th>檔案</th><th>列號</th><th>訊息</th><th>操作</th><th class="payload-col">payload</th></tr></thead><tbody></tbody></table></div>
     </section>
   </main>
 <script>
 const tokenKey = 'sra_editor_token';
+const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100 };
 function $(id) { return document.getElementById(id); }
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function statusBadge(s) { return `<span class="status ${escapeHtml(s)}">${escapeHtml(s || '(empty)')}</span>`; }
@@ -131,8 +166,84 @@ function formatAuditTime(value) {
   if (Number.isNaN(local.getTime())) return escapeHtml(raw);
   return `<div>${escapeHtml(local.toLocaleString())}</div><div class="muted">UTC：${escapeHtml(raw)}</div>`;
 }
-function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter'].forEach(id => { $(id).value = ''; }); loadDashboard(); }
-function onTaskChange() { if ($('task').value) $('config').value = $('task').value; loadDashboard(); }
+function resetRecentPage() { state.recentPage = 1; }
+function applyAuditFilters() { resetRecentPage(); loadDashboard(); }
+function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); applyAuditFilters(); }
+function changeRecentPage(delta) {
+  const next = state.recentPage + delta;
+  const maxPage = Math.max(1, Math.ceil(state.recentTotal / Math.max(state.recentPageSize, 1)));
+  if (next < 1 || next > maxPage) return;
+  state.recentPage = next;
+  loadDashboard();
+}
+function updateRecentPager(data) {
+  const paging = data.recent_paging || {};
+  state.recentPage = Number(paging.page || state.recentPage || 1);
+  state.recentPageSize = Number(paging.page_size || $('limit').value || 100);
+  state.recentTotal = Number(paging.total || (data.recent || []).length || 0);
+  const totalPages = Math.max(1, Math.ceil(state.recentTotal / Math.max(state.recentPageSize, 1)));
+  const start = state.recentTotal ? ((state.recentPage - 1) * state.recentPageSize + 1) : 0;
+  const end = Math.min(state.recentTotal, state.recentPage * state.recentPageSize);
+  $('recentPageInfo').textContent = `第 ${state.recentPage} / ${totalPages} 頁，顯示 ${start}-${end} 筆，共 ${state.recentTotal} 筆`;
+  $('recentPrevBtn').disabled = state.recentPage <= 1;
+  $('recentNextBtn').disabled = state.recentPage >= totalPages;
+}
+function renderJson(value, level = 0) {
+  const indent = '  '.repeat(level);
+  const nextIndent = '  '.repeat(level + 1);
+  if (value === null) return '<span class="json-null">null</span>';
+  if (Array.isArray(value)) {
+    if (!value.length) return '[]';
+    return '[\n' + value.map(item => nextIndent + renderJson(item, level + 1)).join(',\n') + '\n' + indent + ']';
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value);
+    if (!entries.length) return '{}';
+    return '{\n' + entries.map(([key, val]) => `${nextIndent}<span class="json-key">"${escapeHtml(key)}"</span>: ${renderJson(val, level + 1)}`).join(',\n') + '\n' + indent + '}';
+  }
+  if (typeof value === 'string') return `<span class="json-string">${escapeHtml(JSON.stringify(value))}</span>`;
+  if (typeof value === 'number' || typeof value === 'boolean') return `<span class="json-number">${escapeHtml(value)}</span>`;
+  return escapeHtml(JSON.stringify(value));
+}
+function payloadCell(payload) {
+  const value = (payload === undefined || payload === '') ? {} : payload;
+  return `<pre class="json-view">${renderJson(value)}</pre>`;
+}
+function normalizeDayLabel(day) { return String(day || '').slice(0, 10); }
+function renderFilteredDailyChart(rows) {
+  const data = (rows || []).map(row => ({ day: normalizeDayLabel(row.day), count: Number(row.count || 0) })).filter(row => row.day);
+  const total = data.reduce((sum, row) => sum + row.count, 0);
+  $('filteredDailySummary').textContent = data.length ? `${data.length} 天，共 ${total} 筆` : '無符合篩選的 audit 事件';
+  if (!data.length) {
+    $('filteredDailyChart').className = 'chart-empty';
+    $('filteredDailyChart').textContent = '目前篩選條件下無資料';
+    return;
+  }
+  const width = 920;
+  const height = 260;
+  const margin = { top: 18, right: 22, bottom: 46, left: 52 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+  const maxCount = Math.max(...data.map(row => row.count), 1);
+  const x = index => margin.left + (data.length === 1 ? innerWidth / 2 : (index * innerWidth) / (data.length - 1));
+  const y = count => margin.top + innerHeight - (count / maxCount) * innerHeight;
+  const points = data.map((row, index) => `${x(index)},${y(row.count)}`).join(' ');
+  const yTicks = [0, Math.ceil(maxCount / 2), maxCount].filter((value, index, arr) => arr.indexOf(value) === index);
+  const maxLabels = 7;
+  const labelEvery = Math.max(1, Math.ceil(data.length / maxLabels));
+  const grid = yTicks.map(value => {
+    const yy = y(value);
+    return `<line class="chart-grid" x1="${margin.left}" y1="${yy}" x2="${width - margin.right}" y2="${yy}"></line><text class="chart-label" x="${margin.left - 8}" y="${yy + 4}" text-anchor="end">${escapeHtml(value)}</text>`;
+  }).join('');
+  const labels = data.map((row, index) => {
+    if (index % labelEvery !== 0 && index !== data.length - 1) return '';
+    return `<text class="chart-label" x="${x(index)}" y="${height - 18}" text-anchor="middle">${escapeHtml(row.day.slice(5))}</text>`;
+  }).join('');
+  const circles = data.map((row, index) => `<circle class="chart-point" cx="${x(index)}" cy="${y(row.count)}" r="4"><title>${escapeHtml(row.day)}：${escapeHtml(row.count)} 筆</title></circle>`).join('');
+  $('filteredDailyChart').className = '';
+  $('filteredDailyChart').innerHTML = `<svg class="audit-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="每日 audit 筆數曲線圖" preserveAspectRatio="none">${grid}<line class="chart-axis" x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${width - margin.right}" y2="${margin.top + innerHeight}"></line><line class="chart-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line><polyline class="chart-line" points="${points}"></polyline>${circles}${labels}</svg>`;
+}
+function onTaskChange() { if ($('task').value) $('config').value = $('task').value; applyAuditFilters(); }
 async function loadTasks() {
   const token = authToken();
   if (!token) { showError('請先到 /editor 登入；本儀表板會沿用 sra_editor_token。'); return; }
@@ -172,12 +283,13 @@ async function loadDashboard() {
   showError('');
   const token = authToken();
   if (!token) { showError('請先到 /editor 登入；本儀表板會沿用 sra_editor_token。'); return; }
-  const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: $('limit').value });
+  const pageSize = Math.max(1, Math.min(Number($('limit').value || 100), 1000));
+  const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: pageSize, page: state.recentPage });
   const startIso = localInputToUtcIso('startTs');
   const endIso = localInputToUtcIso('endTs');
   if (startIso) params.set('start_ts', startIso);
   if (endIso) params.set('end_ts', endIso);
-  const filters = { status_filter: $('statusFilter').value, source_file_filter: $('sourceFileFilter').value, row_no_filter: $('rowNoFilter').value, message_filter: $('messageFilter').value, hash_value_filter: $('hashFilter').value };
+  const filters = { status_filter: $('statusFilter').value, source_file_filter: $('sourceFileFilter').value, row_no_filter: $('rowNoFilter').value, message_filter: $('messageFilter').value, hash_value_filter: $('hashFilter').value, payload_filter: $('payloadFilter').value };
   Object.entries(filters).forEach(([key, value]) => { if (String(value || '').trim()) params.set(key, value); });
   const res = await fetch('/v1/excel-to-sql/dashboard?' + params.toString(), { headers: { Authorization: 'Bearer ' + token } });
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
@@ -188,8 +300,19 @@ async function loadDashboard() {
   renderCards(data);
   fillTable('daily', data.daily, r => `<tr><td>${escapeHtml(r.day)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.count)}</td></tr>`);
   fillTable('files', data.files, r => `<tr><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.last_processed_at)}</td><td>${escapeHtml(r.inserted_rows)}</td><td>${escapeHtml(r.duplicate_rows)}</td><td>${escapeHtml(r.failed_rows)}</td><td>${escapeHtml(r.header_smart_matches)}</td></tr>`);
-  fillTable('recent', data.recent, r => `<tr><td>${formatAuditTime(r.processed_at)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.row_no ?? '')}</td><td>${escapeHtml(r.message || '')}</td><td>${actionCell(r)}</td><td><pre>${escapeHtml(JSON.stringify(r.row_payload ?? '', null, 2))}</pre></td></tr>`);
+  renderFilteredDailyChart(data.filtered_daily || []);
+  updateRecentPager(data);
+  fillTable('recent', data.recent, r => `<tr><td>${formatAuditTime(r.processed_at)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.row_no ?? '')}</td><td>${escapeHtml(r.message || '')}</td><td>${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
 }
+function bindAuditFilterEvents() {
+  ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {
+    const el = $(id);
+    el.addEventListener('change', applyAuditFilters);
+    el.addEventListener('keydown', event => { if (event.key === 'Enter') applyAuditFilters(); });
+  });
+  $('limit').addEventListener('change', applyAuditFilters);
+}
+bindAuditFilterEvents();
 (async () => { resetDefaultWindow(); await loadTasks(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
 </script>
 </body>

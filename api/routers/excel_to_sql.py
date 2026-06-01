@@ -80,7 +80,8 @@ def excel_to_sql_dashboard_data(
     end_ts: str | None = Query(
         None, description="結束時間（ISO 8601；會以 UTC 比對 audit.processed_at）"
     ),
-    limit: int = Query(100, ge=1, le=1000, description="最近事件與檔案列數上限"),
+    limit: int = Query(100, ge=1, le=1000, description="最近事件每頁筆數與檔案列數上限"),
+    page: int = Query(1, ge=1, description="最近 audit 事件頁碼"),
     status_filter: str | None = Query(None, description="最近 audit 事件：狀態篩選"),
     source_file_filter: str | None = Query(
         None, description="最近 audit 事件：來源檔名部分比對"
@@ -93,6 +94,9 @@ def excel_to_sql_dashboard_data(
     ),
     hash_value_filter: str | None = Query(
         None, description="最近 audit 事件：hash 部分比對"
+    ),
+    payload_filter: str | None = Query(
+        None, description="最近 audit 事件：payload JSON 文字部分比對"
     ),
     _: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
@@ -108,6 +112,8 @@ def excel_to_sql_dashboard_data(
             row_no_filter=row_no_filter,
             message_filter=message_filter,
             hash_value_filter=hash_value_filter,
+            payload_filter=payload_filter,
+            page=page,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

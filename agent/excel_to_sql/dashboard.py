@@ -185,6 +185,8 @@ def dashboard_payload(
     row_no_filter: int | None = None,
     message_filter: str | None = None,
     hash_value_filter: str | None = None,
+    payload_filter: str | None = None,
+    page: int = 1,
 ) -> dict[str, Any]:
     cfg = load_json_config(config_path)
     task_name = _dashboard_name(cfg, Path(config_path))
@@ -192,6 +194,7 @@ def dashboard_payload(
     quoted_table = quote_object_path(table)
     days, start_dt, end_dt = _audit_time_window(days, start_ts, end_ts)
     limit = max(1, min(int(limit), 1000))
+    page = max(1, int(page))
 
     conn = _connect(cfg)
     try:
@@ -211,6 +214,7 @@ def dashboard_payload(
                     "daily": [],
                     "files": [],
                     "recent": [],
+                    "recent_paging": {"page": page, "page_size": limit, "total": 0},
                 }
 
             time_conditions: list[str] = []
@@ -269,27 +273,78 @@ ORDER BY MAX(processed_at) DESC
 
             recent_conditions = list(time_conditions)
             recent_params = list(time_params)
-            if status_filter:
+            clean_status = str(status_filter or "").strip()
+            clean_source_file = str(source_file_filter or "").strip()
+            clean_message = str(message_filter or "").strip()
+            clean_hash = str(hash_value_filter or "").strip()
+            clean_payload = str(payload_filter or "").strip()
+            if clean_status:
                 recent_conditions.append("status = ?")
-                recent_params.append(str(status_filter).strip())
-            if source_file_filter:
+                recent_params.append(clean_status)
+            if clean_source_file:
                 recent_conditions.append("source_file LIKE ?")
-                recent_params.append(_contains_filter(source_file_filter))
+                recent_params.append(_contains_filter(clean_source_file))
             if row_no_filter is not None:
                 recent_conditions.append("row_no = ?")
                 recent_params.append(int(row_no_filter))
-            if message_filter:
+            if clean_message:
                 recent_conditions.append("message LIKE ?")
-                recent_params.append(_contains_filter(message_filter))
-            if hash_value_filter:
+                recent_params.append(_contains_filter(clean_message))
+            if clean_hash:
                 recent_conditions.append("hash_value LIKE ?")
-                recent_params.append(_contains_filter(hash_value_filter))
+                recent_params.append(_contains_filter(clean_hash))
+            if clean_payload:
+                recent_conditions.append("row_payload LIKE ?")
+                recent_params.append(_contains_filter(clean_payload))
             recent_where = _where_clause(recent_conditions)
+
+            filtered_daily = _fetch_all_dicts(
+                cursor,
+                f"""
+SELECT CONVERT(date, processed_at) AS day, COUNT(1) AS count
+FROM {quoted_table}
+{recent_where}
+GROUP BY CONVERT(date, processed_at)
+ORDER BY day ASC
+""",
+                tuple(recent_params),
+            )
+
+            total_rows = _fetch_all_dicts(
+                cursor,
+                f"""
+SELECT COUNT(1) AS total
+FROM {quoted_table}
+{recent_where}
+""",
+                tuple(recent_params),
+            )
+            recent_total = int(total_rows[0].get("total") or 0) if total_rows else 0
+            max_page = max(1, (recent_total + limit - 1) // limit)
+            page = min(page, max_page)
+            offset = (page - 1) * limit
 
             recent = _fetch_all_dicts(
                 cursor,
                 f"""
-SELECT TOP (?)
+WITH ordered_recent AS (
+    SELECT
+        audit_id,
+        run_id,
+        source_file,
+        sheet_name,
+        row_no,
+        hash_value,
+        destination_table,
+        status,
+        message,
+        row_payload,
+        processed_at,
+        ROW_NUMBER() OVER (ORDER BY processed_at DESC, audit_id DESC) AS rn
+    FROM {quoted_table}
+    {recent_where}
+)
+SELECT
     audit_id,
     run_id,
     source_file,
@@ -301,11 +356,11 @@ SELECT TOP (?)
     message,
     row_payload,
     processed_at
-FROM {quoted_table}
-{recent_where}
-ORDER BY processed_at DESC, audit_id DESC
+FROM ordered_recent
+WHERE rn > ? AND rn <= ?
+ORDER BY rn
 """,
-                (limit, *recent_params),
+                (*recent_params, offset, offset + limit),
             )
             for item in recent:
                 item["row_payload"] = _parse_payload(item.get("row_payload"))
@@ -319,12 +374,15 @@ ORDER BY processed_at DESC, audit_id DESC
                 "end_ts": end_dt.isoformat() if end_dt else None,
                 "audit_time_basis": "UTC (SQL Server SYSUTCDATETIME)",
                 "recent_filters": {
-                    "status": status_filter or "",
-                    "source_file": source_file_filter or "",
+                    "status": clean_status,
+                    "source_file": clean_source_file,
                     "row_no": row_no_filter,
-                    "message": message_filter or "",
-                    "hash_value": hash_value_filter or "",
+                    "message": clean_message,
+                    "hash_value": clean_hash,
+                    "payload": clean_payload,
                 },
+                "filtered_daily": filtered_daily,
+                "recent_paging": {"page": page, "page_size": limit, "total": recent_total},
                 "exists": True,
                 "summary": summary,
                 "daily": daily,
