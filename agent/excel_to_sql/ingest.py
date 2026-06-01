@@ -8,12 +8,46 @@ import argparse
 import hashlib
 import json
 import shutil
+import time
 import uuid
-from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
-from decimal import Decimal
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Sequence, Tuple
+
+from .audit import build_header_audit_results, ensure_audit_table, insert_audit_rows
+from .models import FileResult, RowResult
+from .date_utils import (
+    is_date_mapping,
+    normalize_cell_value,
+    normalize_date_text_for_parser,
+    normalize_mapping_value,
+    normalize_sql_date_value,
+)
+from .sql_utils import (
+    build_conn_str_from_config,
+    build_insert_sql,
+    build_select_existing_hashes_sql,
+    destination_hash_field_exists,
+    detect_odbc_driver,
+    ensure_destination_hash_field,
+    quote_ident,
+    quote_object_path,
+    sql_string_literal,
+    validate_hash_field_type,
+)
+from .utils import (
+    as_list,
+    chunked,
+    get_nested,
+    is_empty_value,
+    json_safe,
+    load_json_config,
+    normalize_header,
+    normalize_header_key,
+    require_nested,
+    resolve_excel_path,
+    resolve_path,
+)
 
 
 EXCEL_SUFFIXES = {".xlsx", ".xlsm"}
@@ -22,154 +56,6 @@ DEFAULT_HASH_FIELD = "hash_value"
 DEFAULT_HASH_ALGORITHM = "SHA-256"
 DEFAULT_HASH_HEX_LENGTH = 64
 DEFAULT_HASH_FIELD_TYPE = "CHAR(64)"
-
-
-def get_nested(cfg: Dict[str, Any], path: str, default=None):
-    cur = cfg
-    for key in path.split("."):
-        if not isinstance(cur, dict) or key not in cur:
-            return default
-        cur = cur[key]
-    return cur
-
-
-def require_nested(cfg: Dict[str, Any], path: str):
-    val = get_nested(cfg, path, default=None)
-    if val is None or (isinstance(val, str) and not val.strip()):
-        raise ValueError(f"設定檔缺少必要欄位：{path}")
-    return val
-
-
-def chunked(iterable, size: int):
-    buf = []
-    for item in iterable:
-        buf.append(item)
-        if len(buf) >= size:
-            yield buf
-            buf = []
-    if buf:
-        yield buf
-
-
-def quote_ident(name: str) -> str:
-    if not name:
-        raise ValueError("欄位名稱不可為空")
-    return f"[{name.replace(']', ']]')}]"
-
-
-def quote_object_path(name: str) -> str:
-    parts = [part.strip() for part in name.split(".") if part.strip()]
-    if not parts:
-        raise ValueError(f"無效物件名稱: {name}")
-    return ".".join(quote_ident(part) for part in parts)
-
-
-def build_conn_str_from_config(cfg: Dict[str, Any]) -> str:
-    driver = get_nested(cfg, "db.driver", "ODBC Driver 18 for SQL Server")
-    server = require_nested(cfg, "db.server")
-    database = require_nested(cfg, "db.database")
-    trusted_connection = bool(get_nested(cfg, "db.trusted_connection", False))
-    user = get_nested(cfg, "db.user", "")
-    password = get_nested(cfg, "db.password", "")
-    encrypt = bool(get_nested(cfg, "db.encrypt", False))
-    trust_cert = bool(get_nested(cfg, "db.trust_server_certificate", False))
-
-    parts = [
-        f"DRIVER={{{driver}}}",
-        f"SERVER={server}",
-        f"DATABASE={database}",
-    ]
-
-    if trusted_connection:
-        parts.append("Trusted_Connection=yes")
-    else:
-        if not user:
-            raise ValueError("設定檔缺少 db.user")
-        if not password:
-            raise ValueError("設定檔缺少 db.password")
-        parts.append(f"UID={user}")
-        parts.append(f"PWD={password}")
-
-    if encrypt:
-        parts.append("Encrypt=yes")
-    if trust_cert:
-        parts.append("TrustServerCertificate=yes")
-
-    return ";".join(parts)
-
-
-@dataclass
-class RowResult:
-    row_no: int
-    hash_value: str
-    status: str
-    message: str = ""
-    row_payload: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class FileResult:
-    file_path: Path
-    success: int = 0
-    duplicate: int = 0
-    failed: int = 0
-    skipped: int = 0
-    error: str = ""
-
-    @property
-    def ok(self) -> bool:
-        return not self.error and self.failed == 0
-
-
-def load_json_config(path: str) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as fp:
-        return json.load(fp)
-
-
-def resolve_path(config_path: str, raw_path: str) -> Path:
-    path = Path(raw_path).expanduser()
-    if path.is_absolute():
-        return path
-
-    config_relative = (Path(config_path).resolve().parent / path).resolve()
-    if config_relative.exists():
-        return config_relative
-
-    return (Path.cwd() / path).resolve()
-
-
-def resolve_excel_path(config_path: str, excel_path: str) -> Path:
-    return resolve_path(config_path, excel_path)
-
-
-def normalize_header(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def normalize_cell_value(value: Any) -> Any:
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            return value
-        return value.astimezone(timezone.utc).replace(tzinfo=None)
-    if isinstance(value, Decimal):
-        return value
-    if isinstance(value, str):
-        return value.strip()
-    return value
-
-
-def is_empty_value(value: Any) -> bool:
-    return value is None or (isinstance(value, str) and not value.strip())
-
-
-def json_safe(value: Any) -> Any:
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-    if isinstance(value, Decimal):
-        return str(value)
-    return value
 
 
 def parse_excel_column_ref(column_ref: str) -> int:
@@ -359,16 +245,27 @@ def read_column_mappings(cfg: Dict[str, Any], header_map: Dict[str, int]) -> Lis
                 "source_column_index 或 source_column_letter"
             )
 
+        dest_field_text = str(dest_field).strip()
+        value_type = str(
+            mapping.get("value_type")
+            or mapping.get("data_type")
+            or mapping.get("type")
+            or ("date" if is_date_mapping(source_label, dest_field_text) else "")
+        ).strip().lower()
+        if value_type and value_type not in {"date", "sql_date"}:
+            raise ValueError(f"mappings[{index}] value_type 不支援：{value_type}")
+
         resolved.append(
             {
                 "source_label": source_label,
                 "actual_source_label": actual_source_label,
                 "source_index": excel_index,
-                "dest_field": str(dest_field).strip(),
+                "dest_field": dest_field_text,
                 "required": bool(mapping.get("required", False)),
                 "default": mapping.get("default", None),
                 "match_type": match_type,
                 "header_message": header_message,
+                "value_type": value_type,
             }
         )
 
@@ -434,6 +331,15 @@ def iter_excel_rows(
                 if is_empty_value(value) and mapping.get("default") is not None:
                     value = mapping.get("default")
 
+                if not is_empty_value(value):
+                    try:
+                        value = normalize_mapping_value(value, mapping)
+                    except ValueError as exc:
+                        invalid_message = (
+                            f"Excel 第 {row_no} 列欄位日期格式錯誤："
+                            f"{mapping['source_label']} -> {mapping['dest_field']}；{exc}"
+                        )
+
                 if bool(mapping.get("required", False)) and is_empty_value(value):
                     invalid_message = (
                         f"Excel 第 {row_no} 列必要欄位為空："
@@ -452,102 +358,6 @@ def iter_excel_rows(
             yield row_no, record, source_values, make_hash_value(source_values), invalid_message
     finally:
         wb.close()
-
-
-def build_insert_sql(table: str, dest_fields: Sequence[str]) -> str:
-    if not dest_fields:
-        raise ValueError("目的欄位不可為空")
-    columns_sql = ", ".join(quote_ident(field) for field in dest_fields)
-    params_sql = ", ".join("?" for _ in dest_fields)
-    return f"INSERT INTO {quote_object_path(table)} ({columns_sql}) VALUES ({params_sql})"
-
-
-def build_select_existing_hashes_sql(table: str, hash_field: str, count: int) -> str:
-    params_sql = ", ".join("?" for _ in range(count))
-    return (
-        f"SELECT {quote_ident(hash_field)} FROM {quote_object_path(table)} "
-        f"WHERE {quote_ident(hash_field)} IN ({params_sql})"
-    )
-
-
-def _sql_string_literal(value: str) -> str:
-    return "N'" + str(value).replace("'", "''") + "'"
-
-
-def _safe_index_name(table: str, hash_field: str) -> str:
-    cleaned = "".join(char if char.isalnum() else "_" for char in f"UX_{table}_{hash_field}")
-    cleaned = "_".join(part for part in cleaned.split("_") if part)
-    if not cleaned:
-        cleaned = f"UX_{hash_field}"
-    return cleaned[:128]
-
-
-def validate_hash_field_type(field_type: str) -> str:
-    normalized = " ".join(str(field_type or DEFAULT_HASH_FIELD_TYPE).strip().upper().split())
-    allowed = {
-        "CHAR(64)",
-        "NCHAR(64)",
-        "VARCHAR(64)",
-        "NVARCHAR(64)",
-    }
-    if normalized not in allowed:
-        raise ValueError(
-            "destination.hash_field_type 僅支援 CHAR(64)、NCHAR(64)、"
-            "VARCHAR(64) 或 NVARCHAR(64)，避免 ALTER TABLE 注入風險。"
-        )
-    return normalized
-
-
-def destination_hash_field_exists(cursor, *, table: str, hash_field: str) -> bool:
-    cursor.execute(
-        f"SELECT COL_LENGTH({_sql_string_literal(table)}, {_sql_string_literal(hash_field)})"
-    )
-    row = cursor.fetchone()
-    return bool(row and row[0] is not None)
-
-
-def ensure_destination_hash_field(
-    cursor,
-    *,
-    table: str,
-    hash_field: str,
-    field_type: str = DEFAULT_HASH_FIELD_TYPE,
-    create_unique_index: bool = True,
-) -> bool:
-    """Ensure the destination table has the configured hash column.
-
-    Returns True when the column was created during this call.
-    """
-    if destination_hash_field_exists(cursor, table=table, hash_field=hash_field):
-        return False
-
-    safe_field_type = validate_hash_field_type(field_type)
-    cursor.execute(
-        f"ALTER TABLE {quote_object_path(table)} "
-        f"ADD {quote_ident(hash_field)} {safe_field_type} NULL"
-    )
-
-    if create_unique_index:
-        index_name = _safe_index_name(table, hash_field)
-        index_literal = _sql_string_literal(index_name)
-        table_literal = _sql_string_literal(table)
-        cursor.execute(
-            f"""
-IF NOT EXISTS (
-    SELECT 1
-    FROM sys.indexes
-    WHERE name = {index_literal}
-      AND object_id = OBJECT_ID({table_literal})
-)
-BEGIN
-    CREATE UNIQUE INDEX {quote_ident(index_name)}
-    ON {quote_object_path(table)} ({quote_ident(hash_field)})
-    WHERE {quote_ident(hash_field)} IS NOT NULL;
-END
-"""
-        )
-
-    return True
 
 
 def open_workbook_header(config_path: str, cfg: Dict[str, Any], excel_path: Optional[Path] = None) -> Tuple[Path, str, int, Dict[str, int]]:
@@ -573,101 +383,6 @@ def open_workbook_header(config_path: str, cfg: Dict[str, Any], excel_path: Opti
         wb.close()
 
     return excel_path, sheet_name, header_row, header_map
-
-
-def ensure_audit_table(cursor, audit_table: str):
-    object_name = audit_table.replace("'", "''")
-    sql = f"""
-IF OBJECT_ID(N'{object_name}', N'U') IS NULL
-BEGIN
-    CREATE TABLE {quote_object_path(audit_table)} (
-        audit_id BIGINT IDENTITY(1,1) PRIMARY KEY,
-        run_id NVARCHAR(64) NOT NULL,
-        source_file NVARCHAR(1024) NOT NULL,
-        sheet_name NVARCHAR(255) NULL,
-        row_no INT NULL,
-        hash_value CHAR(64) NULL,
-        destination_table NVARCHAR(512) NOT NULL,
-        status NVARCHAR(32) NOT NULL,
-        message NVARCHAR(MAX) NULL,
-        row_payload NVARCHAR(MAX) NULL,
-        processed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-    );
-END
-"""
-    cursor.execute(sql)
-
-
-def insert_audit_rows(
-    cursor,
-    *,
-    audit_table: str,
-    run_id: str,
-    source_file: Path,
-    sheet_name: str,
-    destination_table: str,
-    row_results: Sequence[RowResult],
-):
-    if not row_results:
-        return
-
-    sql = build_insert_sql(
-        audit_table,
-        [
-            "run_id",
-            "source_file",
-            "sheet_name",
-            "row_no",
-            "hash_value",
-            "destination_table",
-            "status",
-            "message",
-            "row_payload",
-        ],
-    )
-    params = [
-        (
-            run_id,
-            str(source_file),
-            sheet_name,
-            result.row_no,
-            result.hash_value,
-            destination_table,
-            result.status,
-            result.message,
-            json.dumps(result.row_payload, ensure_ascii=False, default=json_safe),
-        )
-        for result in row_results
-    ]
-    cursor.executemany(sql, params)
-
-
-def build_header_audit_results(mappings: Sequence[Dict[str, Any]], header_row: int) -> List[RowResult]:
-    results: List[RowResult] = []
-    for mapping in mappings:
-        match_type = str(mapping.get("match_type", ""))
-        if match_type in {"exact", "index", "letter"}:
-            continue
-
-        expected = str(mapping.get("source_label", ""))
-        actual = str(mapping.get("actual_source_label", ""))
-        message = mapping.get("header_message") or f"設定欄名 {expected} 智慧比對到 Excel 欄名 {actual}"
-        results.append(
-            RowResult(
-                row_no=header_row,
-                hash_value="",
-                status="header_smart_match",
-                message=str(message),
-                row_payload={
-                    "expected_source_column": expected,
-                    "actual_source_column": actual,
-                    "dest_field": mapping.get("dest_field"),
-                    "match_type": match_type,
-                    "source_index": mapping.get("source_index"),
-                },
-            )
-        )
-    return results
 
 
 def write_log(log_dir: Path, event: Dict[str, Any]):
@@ -1002,6 +717,104 @@ def get_log_dir(config_path: str, cfg: Dict[str, Any]) -> Path:
     return resolve_path(config_path, raw)
 
 
+def get_import_retry_config(cfg: Dict[str, Any]) -> Tuple[int, float]:
+    max_attempts = int(
+        get_nested(
+            cfg,
+            "retry.max_attempts",
+            get_nested(cfg, "import.retry_max_attempts", get_nested(cfg, "import.max_attempts", 1)),
+        )
+        or 1
+    )
+    interval_seconds = float(
+        get_nested(
+            cfg,
+            "retry.interval_seconds",
+            get_nested(cfg, "import.retry_interval_seconds", get_nested(cfg, "import.retry_delay_seconds", 0)),
+        )
+        or 0
+    )
+    if max_attempts <= 0:
+        raise ValueError("retry.max_attempts 必須大於 0")
+    if interval_seconds < 0:
+        raise ValueError("retry.interval_seconds 不可小於 0")
+    return max_attempts, interval_seconds
+
+
+def process_excel_file_with_retries(
+    *,
+    config_path: str,
+    cfg: Dict[str, Any],
+    excel_path: Path,
+    conn,
+    run_id: str,
+    log_dir: Path,
+    max_attempts: int,
+    interval_seconds: float,
+) -> FileResult:
+    last_result = FileResult(file_path=excel_path)
+    for attempt in range(1, max_attempts + 1):
+        try:
+            if attempt > 1:
+                print(f"🔁 第 {attempt}/{max_attempts} 次重試匯入：{excel_path}")
+            file_result = process_excel_file(
+                config_path=config_path,
+                cfg=cfg,
+                excel_path=excel_path,
+                conn=conn,
+                run_id=run_id,
+                log_dir=log_dir,
+            )
+            if file_result.ok or attempt >= max_attempts:
+                return file_result
+
+            last_result = file_result
+            print(
+                f"⚠️ 檔案匯入仍有失敗列：{excel_path}；"
+                f"第 {attempt}/{max_attempts} 次，{interval_seconds:g} 秒後重試"
+            )
+            write_log(
+                log_dir,
+                {
+                    "event": "file_retry_scheduled",
+                    "run_id": run_id,
+                    "source_file": str(excel_path),
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "interval_seconds": interval_seconds,
+                    "failed": file_result.failed,
+                    "error": file_result.error,
+                },
+            )
+        except Exception as exc:
+            conn.rollback()
+            last_result = FileResult(file_path=excel_path, failed=1, error=str(exc))
+            if attempt >= max_attempts:
+                return last_result
+
+            print(
+                f"⚠️ 檔案處理失敗：{excel_path}；第 {attempt}/{max_attempts} 次；"
+                f"{interval_seconds:g} 秒後重試；錯誤：{exc}"
+            )
+            write_log(
+                log_dir,
+                {
+                    "event": "file_retry_scheduled",
+                    "run_id": run_id,
+                    "source_file": str(excel_path),
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "interval_seconds": interval_seconds,
+                    "error": str(exc),
+                },
+            )
+
+        if interval_seconds > 0:
+            time.sleep(interval_seconds)
+
+    return last_result
+
+
 def bulk_insert_excel_to_sql_from_config(config_path: str, cfg: Dict[str, Any]) -> tuple[int, int, int]:
     run_id = uuid.uuid4().hex
     files = discover_excel_files(config_path, cfg)
@@ -1036,31 +849,37 @@ def bulk_insert_excel_to_sql_from_config(config_path: str, cfg: Dict[str, Any]) 
     success_dir = resolve_path(config_path, str(get_nested(cfg, "archive.success_dir", "archive/success") or "archive/success"))
     fail_dir = resolve_path(config_path, str(get_nested(cfg, "archive.fail_dir", "archive/failed") or "archive/failed"))
 
+    retry_max_attempts, retry_interval_seconds = get_import_retry_config(cfg)
+    if retry_max_attempts > 1:
+        print(
+            f"ℹ️ 匯入重試：最多嘗試 {retry_max_attempts} 次；"
+            f"每次間隔 {retry_interval_seconds:g} 秒"
+        )
+
     totals = {"success": 0, "duplicate": 0, "failed": 0}
     try:
         for excel_path in files:
-            file_result = FileResult(file_path=excel_path)
-            try:
-                file_result = process_excel_file(
-                    config_path=config_path,
-                    cfg=cfg,
-                    excel_path=excel_path,
-                    conn=conn,
-                    run_id=run_id,
-                    log_dir=log_dir,
-                )
-            except Exception as exc:
-                conn.rollback()
-                file_result.error = str(exc)
-                file_result.failed += 1
-                print(f"❌ 檔案處理失敗：{excel_path}；{exc}")
+            file_result = process_excel_file_with_retries(
+                config_path=config_path,
+                cfg=cfg,
+                excel_path=excel_path,
+                conn=conn,
+                run_id=run_id,
+                log_dir=log_dir,
+                max_attempts=retry_max_attempts,
+                interval_seconds=retry_interval_seconds,
+            )
+            if not file_result.ok:
+                print(f"❌ 檔案達重試上限後仍失敗：{excel_path}；{file_result.error}")
                 write_log(
                     log_dir,
                     {
                         "event": "file_failed",
                         "run_id": run_id,
                         "source_file": str(excel_path),
-                        "error": str(exc),
+                        "attempts": retry_max_attempts,
+                        "failed": file_result.failed,
+                        "error": file_result.error,
                     },
                 )
 
