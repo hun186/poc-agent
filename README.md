@@ -173,17 +173,19 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
   },
   "destination": {
     "table": "vessel_activities",
+    "auto_create_missing_fields": true,
+    "default_field_type": "NVARCHAR(MAX)",
     "hash_field": "hash_value",
     "auto_create_hash_field": true,
     "hash_field_type": "CHAR(64)",
     "create_hash_index": true
   },
   "mappings": [
-    { "source_column": "日期", "dest_field": "activity_date", "required": true, "value_type": "date" },
-    { "source_column": "地點", "dest_field": "location" },
-    { "source_column": "數量", "dest_field": "vessel_count" },
-    { "source_column": "船名", "match": "prefix", "dest_field": "vessel_names" },
-    { "source_column": "敘述", "match": "prefix", "dest_field": "activity_description" }
+    { "source_column": "日期", "dest_field": "activity_date", "required": true, "value_type": "date", "dest_field_type": "DATE" },
+    { "source_column": "地點", "dest_field": "location", "dest_field_type": "NVARCHAR(255)" },
+    { "source_column": "數量", "dest_field": "vessel_count", "dest_field_type": "INT" },
+    { "source_column": "船名", "match": "prefix", "dest_field": "vessel_names", "dest_field_type": "NVARCHAR(MAX)" },
+    { "source_column": "敘述", "match": "prefix", "dest_field": "activity_description", "dest_field_type": "NVARCHAR(MAX)" }
   ],
   "import": {
     "batch_size": 500,
@@ -225,6 +227,8 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
 - `source.start_row`：資料起始列號，預設為 `header_row + 1`。
 - `source.end_row`：資料結束列號；`0` 代表讀到工作表最後一列。
 - `destination.table`：目的 SQL Server 資料表（可含 schema，例如 `dbo.Table_SRP`）。範例使用 `vessel_activities`；其 `auto` primary key 由 SQL Server 自動填入，設定檔不需對應。
+- `destination.auto_create_missing_fields`：是否在目的 table 缺少 `mappings[*].dest_field` 欄位時自動執行 `ALTER TABLE ... ADD`，預設 `true`；例如缺少 `vessel_names` 時會在匯入前自動補欄位，避免整批資料因「無效的資料行名稱」失敗。若 SQL 帳號沒有 DDL 權限，可設為 `false` 並由 DBA 手動建立欄位。
+- `destination.default_field_type`：自動新增一般目的欄位時的預設型別，預設 `NVARCHAR(MAX)`；建議在個別 mapping 使用 `dest_field_type` 明確指定重要欄位型別。
 - `destination.hash_field`：目的資料表用來存放去重 hash 的欄位，預設 `hash_value`；內容是 SHA-256 的十六進位 digest，固定 64 個 ASCII 字元（256-bit），所以 `CHAR(64)` / `VARCHAR(64)` 足夠完整存放，不會截斷。
 - `destination.auto_create_hash_field`：是否在目的 table 缺少去重欄位時自動執行 `ALTER TABLE ... ADD`，預設 `true`；若 SQL 帳號沒有 DDL 權限，可設為 `false` 並由 DBA 手動建立欄位。
 - `destination.hash_field_type`：自動新增去重欄位時使用的型別，預設 `CHAR(64)`；為避免 SQL 注入，僅允許 `CHAR(64)`、`NCHAR(64)`、`VARCHAR(64)`、`NVARCHAR(64)`。
@@ -235,6 +239,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
   - `aliases`：可提供來源欄位別名清單，降低欄名浮動造成的失敗。
   - 也可改用 `source_column_letter`（例如 `A`）或 `source_column_index`（例如 `1`），適合標題列重複或沒有穩定欄名時使用。
   - `dest_field`：目的 SQL 欄位名稱。
+  - `dest_field_type` / `destination_field_type` / `sql_type`：自動新增目的欄位時使用的 SQL Server 型別；支援常見純量型別（例如 `NVARCHAR(255)`、`NVARCHAR(MAX)`、`INT`、`BIGINT`、`DECIMAL(18,2)`、`DATE`、`DATETIME2`）。未設定時，日期 mapping 使用 `DATE`，其他欄位使用 `destination.default_field_type`。
   - `required`：設為 `true` 時，該欄在資料列為空會記錄該列失敗、寫入 audit/log，且不匯入該列。
   - `default`：來源值空白時要寫入的預設值。
   - `value_type` / `data_type` / `type`：可設為 `date`，透過 `python-dateutil` 解析並把 Excel 日期儲存格或日期字串正規化為 Python `date` 物件後交給 pyodbc 寫入 SQL Server `date` / `datetime` 欄位；支援西元 `YYYY-MM-DD`、`YYYY/MM/DD`、`YYYYMMDD`，以及民國年 `114/07/04`（會轉為 `2025-07-04`）。若欄名為「日期」或目的欄位為 `*_date`，未明確設定時也會自動套用日期正規化。

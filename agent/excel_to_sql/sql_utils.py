@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Sequence
 
 from .utils import get_nested, require_nested
 
 DEFAULT_HASH_FIELD_TYPE = "CHAR(64)"
+DEFAULT_AUTO_CREATED_FIELD_TYPE = "NVARCHAR(MAX)"
+
+_NUMERIC_TYPE_RE = re.compile(r"^(?:DECIMAL|NUMERIC)\((\d{1,2})\s*,\s*(\d{1,2})\)$")
+_TEXT_TYPE_RE = re.compile(r"^(?:N?VARCHAR|N?CHAR)\((?:MAX|\d{1,4})\)$")
+_DATETIME2_TYPE_RE = re.compile(r"^DATETIME2(?:\([0-7]\))?$")
 
 
 def quote_ident(name: str) -> str:
@@ -150,12 +156,89 @@ def validate_hash_field_type(field_type: str) -> str:
     return normalized
 
 
-def destination_hash_field_exists(cursor, *, table: str, hash_field: str) -> bool:
-    cursor.execute(
-        f"SELECT COL_LENGTH({sql_string_literal(table)}, {sql_string_literal(hash_field)})"
-    )
+def destination_column_exists(cursor, *, table: str, field: str) -> bool:
+    cursor.execute(f"SELECT COL_LENGTH({sql_string_literal(table)}, {sql_string_literal(field)})")
     row = cursor.fetchone()
     return bool(row and row[0] is not None)
+
+
+def validate_auto_created_field_type(field_type: str) -> str:
+    normalized = " ".join(str(field_type or DEFAULT_AUTO_CREATED_FIELD_TYPE).strip().upper().split())
+    normalized = normalized.replace(" (", "(").replace(" ,", ",").replace(", ", ",")
+    simple_allowed = {
+        "BIT",
+        "TINYINT",
+        "SMALLINT",
+        "INT",
+        "BIGINT",
+        "FLOAT",
+        "REAL",
+        "DATE",
+        "DATETIME",
+        "SMALLDATETIME",
+        "DATETIMEOFFSET",
+        "TIME",
+        "UNIQUEIDENTIFIER",
+        "MONEY",
+        "SMALLMONEY",
+    }
+    if normalized in simple_allowed or _TEXT_TYPE_RE.match(normalized) or _DATETIME2_TYPE_RE.match(normalized):
+        return normalized
+
+    numeric_match = _NUMERIC_TYPE_RE.match(normalized)
+    if numeric_match:
+        precision = int(numeric_match.group(1))
+        scale = int(numeric_match.group(2))
+        if 1 <= precision <= 38 and 0 <= scale <= precision:
+            return normalized
+
+    raise ValueError(
+        "SQL 欄位型別不在安全允許清單中；請使用常見純量型別，例如 "
+        "NVARCHAR(255)、NVARCHAR(MAX)、INT、BIGINT、DECIMAL(18,2)、DATE 或 DATETIME2。"
+    )
+
+
+def infer_auto_created_field_type(mapping: Dict[str, Any], default_field_type: str = DEFAULT_AUTO_CREATED_FIELD_TYPE) -> str:
+    configured_type = (
+        mapping.get("dest_field_type")
+        or mapping.get("destination_field_type")
+        or mapping.get("sql_type")
+        or mapping.get("data_type")
+    )
+    if configured_type:
+        return validate_auto_created_field_type(str(configured_type))
+    if str(mapping.get("value_type", "")).strip().lower() in {"date", "sql_date"}:
+        return "DATE"
+    return validate_auto_created_field_type(default_field_type)
+
+
+def ensure_destination_columns(
+    cursor,
+    *,
+    table: str,
+    mappings: Sequence[Dict[str, Any]],
+    default_field_type: str = DEFAULT_AUTO_CREATED_FIELD_TYPE,
+) -> Dict[str, str]:
+    """Ensure mapped destination columns exist; return created columns and SQL types."""
+
+    created: Dict[str, str] = {}
+    for mapping in mappings:
+        field = str(mapping.get("dest_field", "")).strip()
+        if not field or field in created:
+            continue
+        if destination_column_exists(cursor, table=table, field=field):
+            continue
+        field_type = infer_auto_created_field_type(mapping, default_field_type)
+        cursor.execute(
+            f"ALTER TABLE {quote_object_path(table)} "
+            f"ADD {quote_ident(field)} {field_type} NULL"
+        )
+        created[field] = field_type
+    return created
+
+
+def destination_hash_field_exists(cursor, *, table: str, hash_field: str) -> bool:
+    return destination_column_exists(cursor, table=table, field=hash_field)
 
 
 def ensure_destination_hash_field(

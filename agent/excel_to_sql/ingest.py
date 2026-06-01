@@ -27,8 +27,10 @@ from .sql_utils import (
     build_conn_str_from_config,
     build_insert_sql,
     build_select_existing_hashes_sql,
+    destination_column_exists,
     destination_hash_field_exists,
     detect_odbc_driver,
+    ensure_destination_columns,
     ensure_destination_hash_field,
     quote_ident,
     quote_object_path,
@@ -255,19 +257,21 @@ def read_column_mappings(cfg: Dict[str, Any], header_map: Dict[str, int]) -> Lis
         if value_type and value_type not in {"date", "sql_date"}:
             raise ValueError(f"mappings[{index}] value_type 不支援：{value_type}")
 
-        resolved.append(
-            {
-                "source_label": source_label,
-                "actual_source_label": actual_source_label,
-                "source_index": excel_index,
-                "dest_field": dest_field_text,
-                "required": bool(mapping.get("required", False)),
-                "default": mapping.get("default", None),
-                "match_type": match_type,
-                "header_message": header_message,
-                "value_type": value_type,
-            }
-        )
+        resolved_mapping = {
+            "source_label": source_label,
+            "actual_source_label": actual_source_label,
+            "source_index": excel_index,
+            "dest_field": dest_field_text,
+            "required": bool(mapping.get("required", False)),
+            "default": mapping.get("default", None),
+            "match_type": match_type,
+            "header_message": header_message,
+            "value_type": value_type,
+        }
+        for type_key in ("dest_field_type", "destination_field_type", "sql_type"):
+            if mapping.get(type_key):
+                resolved_mapping[type_key] = mapping[type_key]
+        resolved.append(resolved_mapping)
 
     return resolved
 
@@ -498,6 +502,8 @@ def process_excel_file(
     table = str(require_nested(cfg, "destination.table"))
     hash_field = str(get_nested(cfg, "destination.hash_field", DEFAULT_HASH_FIELD) or DEFAULT_HASH_FIELD)
     auto_create_hash_field = bool(get_nested(cfg, "destination.auto_create_hash_field", True))
+    auto_create_missing_fields = bool(get_nested(cfg, "destination.auto_create_missing_fields", True))
+    default_field_type = str(get_nested(cfg, "destination.default_field_type", "NVARCHAR(MAX)") or "NVARCHAR(MAX)")
     hash_field_type = str(
         get_nested(cfg, "destination.hash_field_type", DEFAULT_HASH_FIELD_TYPE)
         or DEFAULT_HASH_FIELD_TYPE
@@ -527,6 +533,29 @@ def process_excel_file(
     cursor = conn.cursor()
     if fast_executemany:
         cursor.fast_executemany = True
+
+    if auto_create_missing_fields:
+        created_fields = ensure_destination_columns(
+            cursor,
+            table=table,
+            mappings=mappings,
+            default_field_type=default_field_type,
+        )
+        if created_fields:
+            conn.commit()
+            created_text = ", ".join(f"{field} {field_type}" for field, field_type in created_fields.items())
+            print(f"🛠️ 已自動新增目的欄位：{table}；{created_text}")
+    else:
+        missing_fields = [
+            field
+            for field in dest_fields
+            if field != hash_field and not destination_column_exists(cursor, table=table, field=field)
+        ]
+        if missing_fields:
+            raise ValueError(
+                f"目的資料表 {table} 缺少欄位：{', '.join(missing_fields)}；"
+                "請手動新增，或在設定檔 destination.auto_create_missing_fields 設為 true。"
+            )
 
     if auto_create_hash_field:
         created_hash_field = ensure_destination_hash_field(

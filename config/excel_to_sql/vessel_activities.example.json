@@ -21,6 +21,8 @@
   },
   "destination": {
     "table": "vessel_activities",
+    "auto_create_missing_fields": true,
+    "default_field_type": "NVARCHAR(MAX)",
     "hash_field": "hash_value",
     "auto_create_hash_field": true,
     "hash_field_type": "CHAR(64)",
@@ -31,29 +33,34 @@
       "source_column": "日期",
       "dest_field": "activity_date",
       "required": true,
-      "value_type": "date"
+      "value_type": "date",
+      "dest_field_type": "DATE"
     },
     {
       "source_column": "地點",
       "dest_field": "location",
-      "required": false
+      "required": false,
+      "dest_field_type": "NVARCHAR(255)"
     },
     {
       "source_column": "數量",
       "dest_field": "vessel_count",
-      "required": false
+      "required": false,
+      "dest_field_type": "INT"
     },
     {
       "source_column": "船名",
       "match": "prefix",
       "dest_field": "vessel_names",
-      "required": false
+      "required": false,
+      "dest_field_type": "NVARCHAR(MAX)"
     },
     {
       "source_column": "敘述",
       "match": "prefix",
       "dest_field": "activity_description",
-      "required": false
+      "required": false,
+      "dest_field_type": "NVARCHAR(MAX)"
     }
   ],
   "import": {
