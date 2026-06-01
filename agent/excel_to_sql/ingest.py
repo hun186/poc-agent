@@ -487,23 +487,38 @@ def insert_batch_with_fallback(
         cursor.connection.rollback()
         results: List[RowResult] = []
         inserted_rows: List[Tuple[str, Tuple[Any, ...]]] = []
-        for row_values, (row_no, hash_value, payload) in zip(rows, row_contexts):
-            try:
-                cursor.execute(insert_sql, row_values)
-                cursor.connection.commit()
-                inserted_rows.append((hash_value, row_values))
-                results.append(RowResult(row_no=row_no, hash_value=hash_value, status="inserted", row_payload=payload))
-            except Exception as row_exc:
-                cursor.connection.rollback()
-                results.append(
-                    RowResult(
-                        row_no=row_no,
-                        hash_value=hash_value,
-                        status="failed",
-                        message=f"批次失敗後逐筆重試仍失敗：{row_exc}; 原批次錯誤：{exc}",
-                        row_payload=payload,
+
+        # A failed pyodbc fast_executemany call can leave the cursor in an
+        # unsafe state for subsequent single-row execute calls.  Retrying on
+        # the same fast cursor has been observed to terminate Python in native
+        # code instead of raising a catchable exception.  Use a fresh, non-fast
+        # cursor for the slower row-by-row diagnostic fallback so bad rows are
+        # reported without risking a process crash.
+        fallback_cursor = cursor.connection.cursor()
+        try:
+            if hasattr(fallback_cursor, "fast_executemany"):
+                fallback_cursor.fast_executemany = False
+
+            for row_values, (row_no, hash_value, payload) in zip(rows, row_contexts):
+                try:
+                    fallback_cursor.execute(insert_sql, row_values)
+                    fallback_cursor.connection.commit()
+                    inserted_rows.append((hash_value, row_values))
+                    results.append(RowResult(row_no=row_no, hash_value=hash_value, status="inserted", row_payload=payload))
+                except Exception as row_exc:
+                    fallback_cursor.connection.rollback()
+                    results.append(
+                        RowResult(
+                            row_no=row_no,
+                            hash_value=hash_value,
+                            status="failed",
+                            message=f"批次失敗後逐筆重試仍失敗：{row_exc}; 原批次錯誤：{exc}",
+                            row_payload=payload,
+                        )
                     )
-                )
+        finally:
+            fallback_cursor.close()
+
         return results, inserted_rows
 
 
