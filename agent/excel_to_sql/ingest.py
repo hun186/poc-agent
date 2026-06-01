@@ -19,6 +19,9 @@ from typing import Any, Dict, Generator, List, Optional, Sequence, Tuple
 EXCEL_SUFFIXES = {".xlsx", ".xlsm"}
 DEFAULT_AUDIT_TABLE = "dbo.ExcelImportAudit"
 DEFAULT_HASH_FIELD = "hash_value"
+DEFAULT_HASH_ALGORITHM = "SHA-256"
+DEFAULT_HASH_HEX_LENGTH = 64
+DEFAULT_HASH_FIELD_TYPE = "CHAR(64)"
 
 
 def get_nested(cfg: Dict[str, Any], path: str, default=None):
@@ -378,7 +381,13 @@ def make_hash_value(row_source_values: Dict[str, Any]) -> str:
         value = json_safe(row_source_values[key])
         parts.append(f"{key}={'' if value is None else value}")
     basis = "|".join(parts)
-    return hashlib.sha256(basis.encode("utf-8", errors="ignore")).hexdigest()
+    digest = hashlib.sha256(basis.encode("utf-8", errors="ignore")).hexdigest()
+    if len(digest) != DEFAULT_HASH_HEX_LENGTH:
+        raise ValueError(
+            f"{DEFAULT_HASH_ALGORITHM} hex digest 長度應為 "
+            f"{DEFAULT_HASH_HEX_LENGTH}，實際為 {len(digest)}"
+        )
+    return digest
 
 
 def iter_excel_rows(
@@ -455,7 +464,90 @@ def build_insert_sql(table: str, dest_fields: Sequence[str]) -> str:
 
 def build_select_existing_hashes_sql(table: str, hash_field: str, count: int) -> str:
     params_sql = ", ".join("?" for _ in range(count))
-    return f"SELECT {quote_ident(hash_field)} FROM {quote_object_path(table)} WHERE {quote_ident(hash_field)} IN ({params_sql})"
+    return (
+        f"SELECT {quote_ident(hash_field)} FROM {quote_object_path(table)} "
+        f"WHERE {quote_ident(hash_field)} IN ({params_sql})"
+    )
+
+
+def _sql_string_literal(value: str) -> str:
+    return "N'" + str(value).replace("'", "''") + "'"
+
+
+def _safe_index_name(table: str, hash_field: str) -> str:
+    cleaned = "".join(char if char.isalnum() else "_" for char in f"UX_{table}_{hash_field}")
+    cleaned = "_".join(part for part in cleaned.split("_") if part)
+    if not cleaned:
+        cleaned = f"UX_{hash_field}"
+    return cleaned[:128]
+
+
+def validate_hash_field_type(field_type: str) -> str:
+    normalized = " ".join(str(field_type or DEFAULT_HASH_FIELD_TYPE).strip().upper().split())
+    allowed = {
+        "CHAR(64)",
+        "NCHAR(64)",
+        "VARCHAR(64)",
+        "NVARCHAR(64)",
+    }
+    if normalized not in allowed:
+        raise ValueError(
+            "destination.hash_field_type 僅支援 CHAR(64)、NCHAR(64)、"
+            "VARCHAR(64) 或 NVARCHAR(64)，避免 ALTER TABLE 注入風險。"
+        )
+    return normalized
+
+
+def destination_hash_field_exists(cursor, *, table: str, hash_field: str) -> bool:
+    cursor.execute(
+        f"SELECT COL_LENGTH({_sql_string_literal(table)}, {_sql_string_literal(hash_field)})"
+    )
+    row = cursor.fetchone()
+    return bool(row and row[0] is not None)
+
+
+def ensure_destination_hash_field(
+    cursor,
+    *,
+    table: str,
+    hash_field: str,
+    field_type: str = DEFAULT_HASH_FIELD_TYPE,
+    create_unique_index: bool = True,
+) -> bool:
+    """Ensure the destination table has the configured hash column.
+
+    Returns True when the column was created during this call.
+    """
+    if destination_hash_field_exists(cursor, table=table, hash_field=hash_field):
+        return False
+
+    safe_field_type = validate_hash_field_type(field_type)
+    cursor.execute(
+        f"ALTER TABLE {quote_object_path(table)} "
+        f"ADD {quote_ident(hash_field)} {safe_field_type} NULL"
+    )
+
+    if create_unique_index:
+        index_name = _safe_index_name(table, hash_field)
+        index_literal = _sql_string_literal(index_name)
+        table_literal = _sql_string_literal(table)
+        cursor.execute(
+            f"""
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = {index_literal}
+      AND object_id = OBJECT_ID({table_literal})
+)
+BEGIN
+    CREATE UNIQUE INDEX {quote_ident(index_name)}
+    ON {quote_object_path(table)} ({quote_ident(hash_field)})
+    WHERE {quote_ident(hash_field)} IS NOT NULL;
+END
+"""
+        )
+
+    return True
 
 
 def open_workbook_header(config_path: str, cfg: Dict[str, Any], excel_path: Optional[Path] = None) -> Tuple[Path, str, int, Dict[str, int]]:
@@ -690,6 +782,12 @@ def process_excel_file(
 
     table = str(require_nested(cfg, "destination.table"))
     hash_field = str(get_nested(cfg, "destination.hash_field", DEFAULT_HASH_FIELD) or DEFAULT_HASH_FIELD)
+    auto_create_hash_field = bool(get_nested(cfg, "destination.auto_create_hash_field", True))
+    hash_field_type = str(
+        get_nested(cfg, "destination.hash_field_type", DEFAULT_HASH_FIELD_TYPE)
+        or DEFAULT_HASH_FIELD_TYPE
+    )
+    create_hash_index = bool(get_nested(cfg, "destination.create_hash_index", True))
     dest_fields = [mapping["dest_field"] for mapping in mappings]
     if hash_field not in dest_fields:
         dest_fields.append(hash_field)
@@ -715,10 +813,42 @@ def process_excel_file(
     if fast_executemany:
         cursor.fast_executemany = True
 
+    if auto_create_hash_field:
+        created_hash_field = ensure_destination_hash_field(
+            cursor,
+            table=table,
+            hash_field=hash_field,
+            field_type=hash_field_type,
+            create_unique_index=create_hash_index,
+        )
+        if created_hash_field:
+            conn.commit()
+            index_message = "，並建立唯一索引" if create_hash_index else ""
+            print(
+                f"🛠️ 已自動新增去重欄位：{table}.{hash_field} "
+                f"{validate_hash_field_type(hash_field_type)}{index_message}"
+            )
+    elif not destination_hash_field_exists(cursor, table=table, hash_field=hash_field):
+        raise ValueError(
+            f"目的資料表 {table} 缺少去重欄位 {hash_field}；"
+            "請手動新增，或在設定檔 destination.auto_create_hash_field 設為 true。"
+        )
+
     print(f"ℹ️ Excel: {excel_path}")
     print(f"ℹ️ Sheet: {sheet_name}")
     print(f"ℹ️ SQL: {insert_sql}")
-    print(f"ℹ️ 去重機制：以來源欄名與內容組成字串後計算 SHA-256，寫入 {hash_field}，匯入前會檢查避免重複導入。")
+    print(
+        f"ℹ️ 去重機制：以來源欄名與內容組成字串後計算 {DEFAULT_HASH_ALGORITHM} "
+        f"hex digest（固定 {DEFAULT_HASH_HEX_LENGTH} 字元 / 256-bit），寫入 {hash_field}，"
+        "匯入前會檢查避免重複導入。"
+    )
+    if audit_enabled:
+        print(
+            f"ℹ️ Audit table：{audit_table}（由 audit.table 設定；"
+            f"未設定時使用預設值 {DEFAULT_AUDIT_TABLE}）"
+        )
+    else:
+        print("ℹ️ Audit table：已停用（audit.enabled=false）")
 
     header_audit_results = build_header_audit_results(mappings, header_row)
     if header_audit_results:
