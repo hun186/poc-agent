@@ -6,7 +6,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent.excel_to_sql.dashboard import _audit_time_window, _append_time_filters
+from agent.excel_to_sql.dashboard import (
+    _audit_chart_bucket,
+    _audit_time_window,
+    _append_time_filters,
+)
 
 
 def test_audit_time_window_converts_aware_timestamps_to_naive_utc():
@@ -54,3 +58,16 @@ def test_append_time_filters_falls_back_to_days():
 
     assert conditions == ["processed_at >= DATEADD(day, -?, SYSUTCDATETIME())"]
     assert params == [14]
+
+
+def test_audit_chart_bucket_accepts_common_interval_aliases():
+    bucket, label, sql = _audit_chart_bucket("6h")
+
+    assert bucket == "6_hours"
+    assert label == "每 6 小時"
+    assert "DATEDIFF(hour" in sql
+
+
+def test_audit_chart_bucket_rejects_unknown_interval():
+    with pytest.raises(ValueError, match="不支援的 audit 統計區間"):
+        _audit_chart_bucket("quarter")

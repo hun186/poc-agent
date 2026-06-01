@@ -73,6 +73,7 @@
       <div><label>結束時間（本機）</label><input id="endTs" type="datetime-local" /></div>
       <div><label>回看天數（未填起迄時）</label><input id="days" type="number" min="1" max="365" value="14" /></div>
       <div><label>列數上限</label><input id="limit" type="number" min="1" max="1000" value="100" /></div>
+      <div><label>統計曲線區間</label><select id="chartBucket"><option value="hour">每小時</option><option value="6_hours">每 6 小時</option><option value="12_hours">每 12 小時</option><option value="day" selected>每日</option><option value="week">每週</option><option value="month">每月</option></select></div>
       <button onclick="loadDashboard()">重新整理</button>
       <button class="ghost" onclick="resetDefaultWindow()">預設近14天</button>
     </section>
@@ -107,7 +108,7 @@
       </section>
       <div class="chart-card">
         <div class="chart-title">
-          <strong>每日 audit 筆數（套用目前篩選）</strong>
+          <strong id="filteredSeriesTitle">audit 筆數統計曲線（套用目前篩選）</strong>
           <span class="muted" id="filteredDailySummary">尚未載入</span>
         </div>
         <div id="filteredDailyChart" class="chart-empty">尚未載入圖表</div>
@@ -150,6 +151,7 @@ function resetDefaultWindow() {
   $('startTs').value = toLocalInputValue(start);
   $('endTs').value = toLocalInputValue(end);
   $('days').value = 14;
+  $('chartBucket').value = 'day';
 }
 function localInputToUtcIso(id) { const v = $(id).value; return v ? new Date(v).toISOString() : ''; }
 function normalizeAuditUtc(text) {
@@ -209,11 +211,23 @@ function payloadCell(payload) {
   const value = (payload === undefined || payload === '') ? {} : payload;
   return `<pre class="json-view">${renderJson(value)}</pre>`;
 }
-function normalizeDayLabel(day) { return String(day || '').slice(0, 10); }
-function renderFilteredDailyChart(rows) {
-  const data = (rows || []).map(row => ({ day: normalizeDayLabel(row.day), count: Number(row.count || 0) })).filter(row => row.day);
+function normalizeBucketLabel(value, bucket) {
+  const text = String(value || '');
+  if (!text) return '';
+  if (bucket === 'hour' || bucket === '6_hours' || bucket === '12_hours') return text.replace('T', ' ').slice(0, 16);
+  if (bucket === 'month') return text.slice(0, 7);
+  return text.slice(0, 10);
+}
+function compactBucketLabel(label, bucket) {
+  if (bucket === 'hour' || bucket === '6_hours' || bucket === '12_hours') return label.slice(5, 16);
+  if (bucket === 'month') return label;
+  return label.slice(5);
+}
+function renderFilteredDailyChart(rows, bucket = 'day', bucketLabel = '每日') {
+  const data = (rows || []).map(row => ({ bucket: normalizeBucketLabel(row.bucket_start ?? row.day, bucket), count: Number(row.count || 0) })).filter(row => row.bucket);
   const total = data.reduce((sum, row) => sum + row.count, 0);
-  $('filteredDailySummary').textContent = data.length ? `${data.length} 天，共 ${total} 筆` : '無符合篩選的 audit 事件';
+  $('filteredSeriesTitle').textContent = `${bucketLabel || '每日'} audit 筆數（套用目前篩選）`;
+  $('filteredDailySummary').textContent = data.length ? `${data.length} 個區間，共 ${total} 筆` : '無符合篩選的 audit 事件';
   if (!data.length) {
     $('filteredDailyChart').className = 'chart-empty';
     $('filteredDailyChart').textContent = '目前篩選條件下無資料';
@@ -237,11 +251,11 @@ function renderFilteredDailyChart(rows) {
   }).join('');
   const labels = data.map((row, index) => {
     if (index % labelEvery !== 0 && index !== data.length - 1) return '';
-    return `<text class="chart-label" x="${x(index)}" y="${height - 18}" text-anchor="middle">${escapeHtml(row.day.slice(5))}</text>`;
+    return `<text class="chart-label" x="${x(index)}" y="${height - 18}" text-anchor="middle">${escapeHtml(compactBucketLabel(row.bucket, bucket))}</text>`;
   }).join('');
-  const circles = data.map((row, index) => `<circle class="chart-point" cx="${x(index)}" cy="${y(row.count)}" r="4"><title>${escapeHtml(row.day)}：${escapeHtml(row.count)} 筆</title></circle>`).join('');
+  const circles = data.map((row, index) => `<circle class="chart-point" cx="${x(index)}" cy="${y(row.count)}" r="4"><title>${escapeHtml(row.bucket)}：${escapeHtml(row.count)} 筆</title></circle>`).join('');
   $('filteredDailyChart').className = '';
-  $('filteredDailyChart').innerHTML = `<svg class="audit-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="每日 audit 筆數曲線圖" preserveAspectRatio="none">${grid}<line class="chart-axis" x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${width - margin.right}" y2="${margin.top + innerHeight}"></line><line class="chart-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line><polyline class="chart-line" points="${points}"></polyline>${circles}${labels}</svg>`;
+  $('filteredDailyChart').innerHTML = `<svg class="audit-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(bucketLabel || '每日')} audit 筆數曲線圖" preserveAspectRatio="none">${grid}<line class="chart-axis" x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${width - margin.right}" y2="${margin.top + innerHeight}"></line><line class="chart-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line><polyline class="chart-line" points="${points}"></polyline>${circles}${labels}</svg>`;
 }
 function onTaskChange() { if ($('task').value) $('config').value = $('task').value; applyAuditFilters(); }
 async function loadTasks() {
@@ -284,7 +298,7 @@ async function loadDashboard() {
   const token = authToken();
   if (!token) { showError('請先到 /editor 登入；本儀表板會沿用 sra_editor_token。'); return; }
   const pageSize = Math.max(1, Math.min(Number($('limit').value || 100), 1000));
-  const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: pageSize, page: state.recentPage });
+  const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: pageSize, page: state.recentPage, chart_bucket: $('chartBucket').value });
   const startIso = localInputToUtcIso('startTs');
   const endIso = localInputToUtcIso('endTs');
   if (startIso) params.set('start_ts', startIso);
@@ -300,7 +314,8 @@ async function loadDashboard() {
   renderCards(data);
   fillTable('daily', data.daily, r => `<tr><td>${escapeHtml(r.day)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.count)}</td></tr>`);
   fillTable('files', data.files, r => `<tr><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.last_processed_at)}</td><td>${escapeHtml(r.inserted_rows)}</td><td>${escapeHtml(r.duplicate_rows)}</td><td>${escapeHtml(r.failed_rows)}</td><td>${escapeHtml(r.header_smart_matches)}</td></tr>`);
-  renderFilteredDailyChart(data.filtered_daily || []);
+  if (data.chart_bucket && $('chartBucket').value !== data.chart_bucket) $('chartBucket').value = data.chart_bucket;
+  renderFilteredDailyChart(data.filtered_series || data.filtered_daily || [], data.chart_bucket || $('chartBucket').value, data.chart_bucket_label || $('chartBucket').selectedOptions[0]?.textContent || '每日');
   updateRecentPager(data);
   fillTable('recent', data.recent, r => `<tr><td>${formatAuditTime(r.processed_at)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.row_no ?? '')}</td><td>${escapeHtml(r.message || '')}</td><td>${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
 }
@@ -311,6 +326,7 @@ function bindAuditFilterEvents() {
     el.addEventListener('keydown', event => { if (event.key === 'Enter') applyAuditFilters(); });
   });
   $('limit').addEventListener('change', applyAuditFilters);
+  $('chartBucket').addEventListener('change', applyAuditFilters);
 }
 bindAuditFilterEvents();
 (async () => { resetDefaultWindow(); await loadTasks(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));

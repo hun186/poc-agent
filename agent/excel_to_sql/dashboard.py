@@ -14,6 +14,57 @@ from agent.excel_to_sql.ingest import (
     quote_object_path,
 )
 
+_AUDIT_CHART_BUCKETS: dict[str, dict[str, str]] = {
+    "hour": {
+        "label": "每小時",
+        "sql": "DATEADD(hour, DATEDIFF(hour, 0, processed_at), 0)",
+    },
+    "6_hours": {
+        "label": "每 6 小時",
+        "sql": "DATEADD(hour, (DATEDIFF(hour, 0, processed_at) / 6) * 6, 0)",
+    },
+    "12_hours": {
+        "label": "每 12 小時",
+        "sql": "DATEADD(hour, (DATEDIFF(hour, 0, processed_at) / 12) * 12, 0)",
+    },
+    "day": {
+        "label": "每日",
+        "sql": "CONVERT(datetime2, CONVERT(date, processed_at))",
+    },
+    "week": {
+        "label": "每週",
+        "sql": (
+            "DATEADD(day, "
+            "-(DATEDIFF(day, CAST('19000101' AS date), CONVERT(date, processed_at)) % 7), "
+            "CONVERT(datetime2, CONVERT(date, processed_at)))"
+        ),
+    },
+    "month": {
+        "label": "每月",
+        "sql": "CONVERT(datetime2, DATEFROMPARTS(YEAR(processed_at), MONTH(processed_at), 1))",
+    },
+}
+
+
+def _audit_chart_bucket(bucket: str | None) -> tuple[str, str, str]:
+    normalized = str(bucket or "day").strip().lower().replace("-", "_")
+    aliases = {
+        "daily": "day",
+        "date": "day",
+        "hourly": "hour",
+        "6h": "6_hours",
+        "six_hours": "6_hours",
+        "12h": "12_hours",
+        "weekly": "week",
+        "monthly": "month",
+    }
+    normalized = aliases.get(normalized, normalized)
+    meta = _AUDIT_CHART_BUCKETS.get(normalized)
+    if not meta:
+        allowed = "、".join(_AUDIT_CHART_BUCKETS)
+        raise ValueError(f"不支援的 audit 統計區間：{bucket}；可用值：{allowed}")
+    return normalized, meta["label"], meta["sql"]
+
 
 def _json_safe(value: Any) -> Any:
     if isinstance(value, (datetime, date)):
@@ -187,12 +238,16 @@ def dashboard_payload(
     hash_value_filter: str | None = None,
     payload_filter: str | None = None,
     page: int = 1,
+    chart_bucket: str | None = "day",
 ) -> dict[str, Any]:
     cfg = load_json_config(config_path)
     task_name = _dashboard_name(cfg, Path(config_path))
     table = _audit_table(cfg)
     quoted_table = quote_object_path(table)
     days, start_dt, end_dt = _audit_time_window(days, start_ts, end_ts)
+    chart_bucket, chart_bucket_label, chart_bucket_sql = _audit_chart_bucket(
+        chart_bucket
+    )
     limit = max(1, min(int(limit), 1000))
     page = max(1, int(page))
 
@@ -209,6 +264,8 @@ def dashboard_payload(
                     "start_ts": start_dt.isoformat() if start_dt else None,
                     "end_ts": end_dt.isoformat() if end_dt else None,
                     "audit_time_basis": "UTC (SQL Server SYSUTCDATETIME)",
+                    "chart_bucket": chart_bucket,
+                    "chart_bucket_label": chart_bucket_label,
                     "exists": False,
                     "summary": [],
                     "daily": [],
@@ -301,11 +358,11 @@ ORDER BY MAX(processed_at) DESC
             filtered_daily = _fetch_all_dicts(
                 cursor,
                 f"""
-SELECT CONVERT(date, processed_at) AS day, COUNT(1) AS count
+SELECT {chart_bucket_sql} AS bucket_start, COUNT(1) AS count
 FROM {quoted_table}
 {recent_where}
-GROUP BY CONVERT(date, processed_at)
-ORDER BY day ASC
+GROUP BY {chart_bucket_sql}
+ORDER BY bucket_start ASC
 """,
                 tuple(recent_params),
             )
@@ -373,6 +430,8 @@ ORDER BY rn
                 "start_ts": start_dt.isoformat() if start_dt else None,
                 "end_ts": end_dt.isoformat() if end_dt else None,
                 "audit_time_basis": "UTC (SQL Server SYSUTCDATETIME)",
+                "chart_bucket": chart_bucket,
+                "chart_bucket_label": chart_bucket_label,
                 "recent_filters": {
                     "status": clean_status,
                     "source_file": clean_source_file,
@@ -382,7 +441,12 @@ ORDER BY rn
                     "payload": clean_payload,
                 },
                 "filtered_daily": filtered_daily,
-                "recent_paging": {"page": page, "page_size": limit, "total": recent_total},
+                "filtered_series": filtered_daily,
+                "recent_paging": {
+                    "page": page,
+                    "page_size": limit,
+                    "total": recent_total,
+                },
                 "exists": True,
                 "summary": summary,
                 "daily": daily,
