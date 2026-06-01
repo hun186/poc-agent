@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Excel→SQL 匯入 SQL 監控儀表板</title>
+  <style>
+    :root { color-scheme: light; --bg:#f6f7fb; --card:#fff; --line:#d9deea; --text:#172033; --muted:#667085; --ok:#027a48; --warn:#b54708; --bad:#b42318; --info:#175cd3; }
+    body { margin:0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:20px 28px; background:#111827; color:white; display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    h1 { margin:0; font-size:22px; }
+    main { padding:24px; max-width:1400px; margin:0 auto; }
+    .controls, .cards, .grid { display:grid; gap:16px; }
+    .controls { grid-template-columns: minmax(220px, .8fr) minmax(320px, 1fr) 120px 120px auto; align-items:end; margin-bottom:18px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:0 1px 2px rgba(16,24,40,.05); }
+    .cards { grid-template-columns: repeat(5, minmax(140px, 1fr)); margin-bottom:16px; }
+    .metric { font-size:28px; font-weight:700; margin-top:6px; }
+    .muted { color:var(--muted); font-size:13px; }
+    label { font-weight:600; font-size:13px; display:block; margin-bottom:6px; }
+    input, select { width:100%; box-sizing:border-box; padding:10px 11px; border:1px solid var(--line); border-radius:10px; font-size:14px; background:white; }
+    button { padding:10px 14px; border:0; border-radius:10px; background:#2563eb; color:white; font-weight:700; cursor:pointer; }
+    button.secondary { background:#475467; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { border-bottom:1px solid var(--line); padding:9px 8px; text-align:left; vertical-align:top; }
+    th { color:#344054; font-size:12px; background:#f9fafb; position:sticky; top:0; }
+    .table-wrap { overflow:auto; max-height:520px; border:1px solid var(--line); border-radius:12px; }
+    .grid { grid-template-columns: 1fr 1.5fr; }
+    .status { display:inline-block; border-radius:999px; padding:2px 8px; font-weight:700; font-size:12px; background:#eef4ff; color:var(--info); }
+    .status.inserted { background:#ecfdf3; color:var(--ok); }
+    .status.duplicate, .status.header_smart_match { background:#fffaeb; color:var(--warn); }
+    .status.failed { background:#fef3f2; color:var(--bad); }
+    .error { background:#fef3f2; border:1px solid #fecdca; color:var(--bad); padding:12px; border-radius:12px; margin:12px 0; white-space:pre-wrap; }
+    .hidden { display:none; }
+    pre { white-space:pre-wrap; word-break:break-word; margin:0; max-width:520px; }
+    @media (max-width: 900px) { .controls, .cards, .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Excel→SQL 匯入 SQL 監控儀表板</h1>
+      <div class="muted" style="color:#cbd5e1;">追蹤 Excel→SQL 匯入批次、去重、欄名智慧比對與失敗資料列</div>
+    </div>
+    <div>
+      <button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
+    </div>
+  </header>
+  <main>
+    <section class="card controls">
+      <div><label>監控任務</label><select id="task" onchange="onTaskChange()"><option value="">載入中...</option></select></div>
+      <div><label>設定檔路徑</label><input id="config" value="config/excel_to_sql/vessel_activities.example.json" /></div>
+      <div><label>回看天數</label><input id="days" type="number" min="1" max="365" value="14" /></div>
+      <div><label>列數上限</label><input id="limit" type="number" min="1" max="1000" value="100" /></div>
+      <button onclick="loadDashboard()">重新整理</button>
+    </section>
+
+    <div id="msg" class="error hidden"></div>
+
+    <section class="cards" id="cards"></section>
+
+    <section class="grid">
+      <div class="card">
+        <h2>每日狀態</h2>
+        <div class="table-wrap"><table id="daily"><thead><tr><th>日期</th><th>狀態</th><th>筆數</th></tr></thead><tbody></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>檔案處理彙總</h2>
+        <div class="table-wrap"><table id="files"><thead><tr><th>來源檔</th><th>最後處理</th><th>新增</th><th>重複</th><th>失敗</th><th>欄名比對</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:16px;">
+      <h2>最近 audit 事件</h2>
+      <div class="table-wrap"><table id="recent"><thead><tr><th>時間</th><th>狀態</th><th>檔案</th><th>列號</th><th>訊息</th><th>操作</th><th>payload</th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </main>
+<script>
+const tokenKey = 'sra_editor_token';
+function $(id) { return document.getElementById(id); }
+function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function statusBadge(s) { return `<span class="status ${escapeHtml(s)}">${escapeHtml(s || '(empty)')}</span>`; }
+function showError(text) { const el=$('msg'); if (!text) { el.classList.add('hidden'); el.textContent=''; } else { el.classList.remove('hidden'); el.textContent=text; } }
+function metric(summary, status) { const row = summary.find(x => x.status === status); return Number(row?.count || 0); }
+function renderCards(data) {
+  const inserted = metric(data.summary, 'inserted');
+  const duplicate = metric(data.summary, 'duplicate');
+  const failed = metric(data.summary, 'failed');
+  const smart = metric(data.summary, 'header_smart_match');
+  const total = data.summary.reduce((a, x) => a + Number(x.count || 0), 0);
+  $('cards').innerHTML = [
+    ['總事件', total, 'audit rows'], ['新增', inserted, 'inserted'], ['重複略過', duplicate, 'duplicate'], ['失敗', failed, 'failed'], ['欄名智慧比對', smart, 'header_smart_match']
+  ].map(([label, value, cls]) => `<div class="card"><div class="muted">${label}</div><div class="metric ${cls}">${value}</div></div>`).join('');
+}
+function fillTable(id, rows, render) { document.querySelector(`#${id} tbody`).innerHTML = rows.map(render).join('') || '<tr><td colspan="99" class="muted">無資料</td></tr>'; }
+function authToken() { return localStorage.getItem(tokenKey) || ''; }
+function onTaskChange() { if ($('task').value) $('config').value = $('task').value; loadDashboard(); }
+async function loadTasks() {
+  const token = authToken();
+  if (!token) { showError('請先到 /editor 登入；本儀表板會沿用 sra_editor_token。'); return; }
+  const res = await fetch('/v1/excel-to-sql/dashboard-tasks', { headers: { Authorization: 'Bearer ' + token } });
+  if (!res.ok) return;
+  const data = await res.json();
+  const tasks = data.tasks || [];
+  $('task').innerHTML = tasks.length
+    ? tasks.map(t => `<option value="${escapeHtml(t.config_path)}">${escapeHtml(t.name)} (${escapeHtml(t.config_path)})</option>`).join('')
+    : '<option value="">未找到 dashboard.enabled=true 的任務</option>';
+  if (tasks.length) $('config').value = tasks[0].config_path;
+}
+
+async function deleteImportedRow(hashValue) {
+  if (!hashValue) return;
+  const reason = prompt('請輸入刪除原因（會寫入 audit）：', '資料列內容錯誤，人工刪除');
+  if (reason === null) return;
+  if (!confirm(`確定要從 SQL 目的表刪除 hash_value=${hashValue} 的資料列？
+注意：若資料已進 ES，仍需到 ES 編輯介面另外處理。`)) return;
+  const token = authToken();
+  const res = await fetch('/v1/excel-to-sql/delete-row', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify({ config: $('config').value, hash_value: hashValue, reason })
+  });
+  if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
+  const data = await res.json();
+  showError(`已執行：${data.status}，刪除 ${data.deleted_rows} 筆。`);
+  await loadDashboard();
+}
+function actionCell(r) {
+  if (!r.hash_value || r.status === 'sql_deleted') return '';
+  return `<button class="secondary" onclick="deleteImportedRow('${escapeHtml(r.hash_value)}')">刪除SQL列</button>`;
+}
+
+async function loadDashboard() {
+  showError('');
+  const token = authToken();
+  if (!token) { showError('請先到 /editor 登入；本儀表板會沿用 sra_editor_token。'); return; }
+  const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: $('limit').value });
+  const res = await fetch('/v1/excel-to-sql/dashboard?' + params.toString(), { headers: { Authorization: 'Bearer ' + token } });
+  if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
+  const data = await res.json();
+  document.title = (data.task_name || 'Excel→SQL 匯入 SQL') + ' - 監控儀表板';
+  if (!data.exists) showError(`audit table 尚不存在：${data.audit_table}`);
+  renderCards(data);
+  fillTable('daily', data.daily, r => `<tr><td>${escapeHtml(r.day)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.count)}</td></tr>`);
+  fillTable('files', data.files, r => `<tr><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.last_processed_at)}</td><td>${escapeHtml(r.inserted_rows)}</td><td>${escapeHtml(r.duplicate_rows)}</td><td>${escapeHtml(r.failed_rows)}</td><td>${escapeHtml(r.header_smart_matches)}</td></tr>`);
+  fillTable('recent', data.recent, r => `<tr><td>${escapeHtml(r.processed_at)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.row_no ?? '')}</td><td>${escapeHtml(r.message || '')}</td><td>${actionCell(r)}</td><td><pre>${escapeHtml(JSON.stringify(r.row_payload ?? '', null, 2))}</pre></td></tr>`);
+}
+(async () => { await loadTasks(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
+</script>
+</body>
+</html>

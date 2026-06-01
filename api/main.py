@@ -14,7 +14,7 @@ init_proctitle(app_name="SRA-API")
 
 from fastapi import FastAPI  # , HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from api.routers import chat, docs, export, editor
+from api.routers import chat, docs, export, editor, excel_to_sql
 
 app = FastAPI(
     title="SRA-Structured Retrieval Agent (OpenAI-compatible)",
@@ -33,3 +33,4 @@ app.include_router(chat.router)
 app.include_router(docs.router)
 app.include_router(export.router)
 app.include_router(editor.router)
+app.include_router(excel_to_sql.router)

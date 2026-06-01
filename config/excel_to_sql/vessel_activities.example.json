@@ -1,0 +1,75 @@
+{
+  "db": {
+    "driver": "ODBC Driver 17 for SQL Server",
+    "server": "192.168.0.136",
+    "database": "AIDB",
+    "trusted_connection": false,
+    "user": "aiapp",
+    "password": "1qaz@WSX",
+    "encrypt": false,
+    "trust_server_certificate": false
+  },
+  "source": {
+    "directory": "./data/excel_inbox",
+    "file_pattern": "*.xlsx",
+    "recursive": false,
+    "excel_path": "./data/source.xlsx",
+    "sheet": "Sheet1",
+    "header_row": 1,
+    "start_row": 2,
+    "end_row": 0
+  },
+  "destination": {
+    "table": "vessel_activities",
+    "hash_field": "hash_value"
+  },
+  "mappings": [
+    {
+      "source_column": "日期",
+      "dest_field": "activity_date",
+      "required": true
+    },
+    {
+      "source_column": "地點",
+      "dest_field": "location",
+      "required": false
+    },
+    {
+      "source_column": "數量",
+      "dest_field": "vessel_count",
+      "required": false
+    },
+    {
+      "source_column": "船名",
+      "match": "prefix",
+      "dest_field": "vessel_names",
+      "required": false
+    },
+    {
+      "source_column": "敘述",
+      "match": "prefix",
+      "dest_field": "activity_description",
+      "required": false
+    }
+  ],
+  "import": {
+    "batch_size": 500,
+    "skip_empty_rows": true,
+    "truncate_before_load": false,
+    "fast_executemany": true
+  },
+  "archive": {
+    "enabled": true,
+    "success_dir": "./data/excel_archive/success",
+    "fail_dir": "./data/excel_archive/failed",
+    "log_dir": "./logs/excel_import"
+  },
+  "audit": {
+    "enabled": true,
+    "table": "dbo.ExcelImportAudit"
+  },
+  "dashboard": {
+    "enabled": true,
+    "name": "船舶活動 Excel 匯入監控"
+  }
+}
