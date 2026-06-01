@@ -14,7 +14,7 @@
     "file_pattern": "*.xlsx",
     "recursive": false,
     "excel_path": "./data/source.xlsx",
-    "sheet": "Sheet1",
+    "sheet": "漁業活動紀錄",
     "header_row": 1,
     "start_row": 2,
     "end_row": 0
