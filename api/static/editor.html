@@ -30,6 +30,9 @@
     button.danger { background: #dc2626; }
     button:disabled { opacity: .55; cursor: not-allowed; }
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .nav-groups { display: grid; gap: 14px; }
+    .nav-group { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; background: #f8fafc; }
+    .nav-group-title { margin: 0 0 8px; color: #334155; font-size: 13px; font-weight: 800; letter-spacing: .02em; }
     .nav-row { display:flex; gap:8px; flex-wrap:wrap; }
     .nav-row button { flex: 1 1 120px; }
     .row > * { flex: 1; }
@@ -78,13 +81,28 @@
         <aside>
           <div id="mainNav" class="card hidden">
             <h2>功能導航</h2>
-            <div class="nav-row">
-              <button class="secondary" id="navNewDocBtn">新增文件</button>
-              <button class="secondary" data-main-tab="search">搜尋文件</button>
-              <button class="secondary" data-main-tab="stats">使用統計</button>
-              <button class="secondary" id="excelDashboardBtn">Excel→SQL 監控</button>
-              <button class="secondary hidden" id="mainReviewTab" data-main-tab="review">帳號審核</button>
-              <button class="secondary hidden" id="mainAuditTab" data-main-tab="audit">修改紀錄</button>
+            <div class="nav-groups">
+              <div class="nav-group">
+                <p class="nav-group-title">ES 資料庫管理</p>
+                <div class="nav-row">
+                  <button class="secondary" id="navNewDocBtn">新增文件</button>
+                  <button class="secondary" data-main-tab="search">搜尋文件</button>
+                  <button class="secondary" data-main-tab="stats">使用統計</button>
+                </div>
+              </div>
+              <div class="nav-group">
+                <p class="nav-group-title">Excel 匯入流程管理</p>
+                <div class="nav-row">
+                  <button class="secondary" id="excelDashboardBtn">Excel→SQL 監控</button>
+                </div>
+              </div>
+              <div class="nav-group hidden" id="adminNavGroup">
+                <p class="nav-group-title">系統管理與稽核</p>
+                <div class="nav-row">
+                  <button class="secondary hidden" id="mainReviewTab" data-main-tab="review">帳號審核</button>
+                  <button class="secondary hidden" id="mainAuditTab" data-main-tab="audit">修改紀錄</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -416,6 +434,7 @@ async function bootAuthed() {
     $('adminCard').classList.remove('hidden');
     $('auditCard').classList.remove('hidden');
     $('statsAllTabBtn').classList.remove('hidden');
+    $('adminNavGroup').classList.remove('hidden');
     $('mainReviewTab').classList.remove('hidden');
     $('mainAuditTab').classList.remove('hidden');
     await refreshUsers();
@@ -423,6 +442,7 @@ async function bootAuthed() {
   } else {
     $('adminCard').classList.add('hidden');
     $('auditCard').classList.add('hidden');
+    $('adminNavGroup').classList.add('hidden');
   }
   await refreshUsageStats();
   switchMainTab('search');
