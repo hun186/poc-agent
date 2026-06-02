@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent.excel_to_sql.sql_utils import (
+from data_ingestion.excel_to_sql.sql_utils import (
     ensure_destination_columns,
     ensure_destination_table,
     infer_auto_created_field_type,

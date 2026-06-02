@@ -1,6 +1,6 @@
-# agent/es/ingest_sql.py
+# data_ingestion/sql_to_es/ingest_sql.py
 # cd /d D:\shared\TopicClassification\poc-agent
-# python -m agent.es.ingest_sql --config config/sql_import/srp_import.json
+# python -m data_ingestion.sql_to_es.ingest_sql --config config/sql_import/srp_import.json
 
 from __future__ import annotations
 

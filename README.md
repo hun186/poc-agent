@@ -41,14 +41,14 @@
 
 ## SQL 匯入 Elasticsearch 使用說明
 
-本專案提供 `agent/es/ingest_sql.py`，可依 JSON 設定檔，從遠端 SQL Server 讀取資料後 bulk 寫入 Elasticsearch。
+本專案提供 `data_ingestion/sql_to_es/ingest_sql.py`，可依 JSON 設定檔，從遠端 SQL Server 讀取資料後 bulk 寫入 Elasticsearch。
 
 ### 1) 執行指令
 
 在專案根目錄執行：
 
 ```bash
-python -m agent.es.ingest_sql --config config/sql_import/srp_import.json
+python -m data_ingestion.sql_to_es.ingest_sql --config config/sql_import/srp_import.json
 ```
 
 ### 2) JSON 設定檔結構（範例：`config/sql_import/srp_import.json`）
@@ -137,14 +137,14 @@ python -m agent.es.ingest_sql --config config/sql_import/srp_import.json
 
 ## Excel 匯入 SQL Server 使用說明
 
-本專案將 Excel→SQL 匯入獨立成 `agent/excel_to_sql/` 小模組，不再放在 `agent/es/`，避免與既有 SQL→ES ingestion 混淆；操作概念沿用 SQL 匯入工具：以 JSON 設定檔描述連線、來源與批次匯入參數。此工具可讀取單一 Excel，也可監看一個來源目錄，批次抓取目錄下的 Excel 檔，依欄位對應寫入 SQL Server 目的資料表，並提供去重、檔案歸檔、JSONL log 與 SQL audit table，方便後續做匯入監控儀表板。
+本專案將 Excel→SQL 匯入獨立成 `data_ingestion/excel_to_sql/` 小模組，並將 SQL→ES 匯入放在 `data_ingestion/sql_to_es/`，避免資料處理流程與 agent runtime 混淆；操作概念沿用 SQL 匯入工具：以 JSON 設定檔描述連線、來源與批次匯入參數。此工具可讀取單一 Excel，也可監看一個來源目錄，批次抓取目錄下的 Excel 檔，依欄位對應寫入 SQL Server 目的資料表，並提供去重、檔案歸檔、JSONL log 與 SQL audit table，方便後續做匯入監控儀表板。
 
 ### 1) 執行指令
 
 在專案根目錄執行：
 
 ```bash
-python -m agent.excel_to_sql.ingest --config config/excel_to_sql/git_ignore/vessel_activities.example.json
+python -m data_ingestion.excel_to_sql.ingest --config config/excel_to_sql/git_ignore/vessel_activities.example.json
 ```
 
 ### 2) JSON 設定檔結構（範例：`config/excel_to_sql/vessel_activities.example.json`）
@@ -318,11 +318,12 @@ http://localhost:8000/excel-to-sql-dashboard
 
 ### 8) 模組區塊化
 
-Excel→SQL 匯入已從 `agent/es/` 拉出到 `agent/excel_to_sql/`，不再保留 `agent/es/ingest_excel_sql.py` wrapper，避免新功能與 ES ingestion 混在一起：
+Excel→SQL 匯入已移到 `data_ingestion/excel_to_sql/`，SQL→ES 匯入已移到 `data_ingestion/sql_to_es/`，讓資料處理流程與 agent runtime 分離：
 
-- `agent/excel_to_sql/ingest.py`：匯入 CLI、欄名比對、去重、archive、audit 寫入。
-- `agent/excel_to_sql/dashboard.py`：監控儀表板的任務掃描、audit table 查詢與彙總邏輯。
-- `agent/excel_to_sql/README.md`：此 Excel→SQL 前置流程的獨立說明文件。
+- `data_ingestion/excel_to_sql/ingest.py`：匯入 CLI、欄名比對、去重、archive、audit 寫入。
+- `data_ingestion/excel_to_sql/dashboard.py`：監控儀表板的任務掃描、audit table 查詢與彙總邏輯。
+- `data_ingestion/excel_to_sql/README.md`：此 Excel→SQL 前置流程的獨立說明文件。
+- `data_ingestion/sql_to_es/ingest_sql.py`：SQL Server 匯入 Elasticsearch CLI。
 
 ## 環境變數（.env）與 Index 多環境設定
 

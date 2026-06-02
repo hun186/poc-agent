@@ -3,8 +3,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent.excel_to_sql.audit import insert_audit_rows
-from agent.excel_to_sql.models import RowResult
+from data_ingestion.excel_to_sql.audit import insert_audit_rows
+from data_ingestion.excel_to_sql.models import RowResult
 
 
 class FastExecutemanyCursor:

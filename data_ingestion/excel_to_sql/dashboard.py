@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Any
 
-from agent.excel_to_sql.ingest import (
+from data_ingestion.excel_to_sql.ingest import (
     DEFAULT_AUDIT_TABLE,
     build_conn_str_from_config,
     get_nested,

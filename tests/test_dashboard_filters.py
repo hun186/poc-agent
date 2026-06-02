@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent.excel_to_sql.dashboard import (
+from data_ingestion.excel_to_sql.dashboard import (
     _audit_chart_bucket,
     _audit_time_window,
     _append_time_filters,
