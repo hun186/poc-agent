@@ -193,3 +193,59 @@ def test_file_retry_still_retries_file_level_exceptions(monkeypatch, tmp_path):
     assert connection.rollbacks == 1
     assert result.success == 8
     assert result.failed == 0
+
+
+def test_bulk_import_prints_separator_between_excel_files(monkeypatch, tmp_path, capsys):
+    class BulkCursor:
+        def close(self):
+            pass
+
+    class BulkConnection:
+        def cursor(self):
+            return BulkCursor()
+
+        def close(self):
+            pass
+
+    class PyodbcModule:
+        @staticmethod
+        def connect(_conn_str):
+            return BulkConnection()
+
+    files = [tmp_path / "first.xlsx", tmp_path / "second.xlsx"]
+
+    def fake_process_excel_file_with_retries(**kwargs):
+        excel_path = kwargs["excel_path"]
+        print(f"ℹ️ Excel: {excel_path}")
+        return FileResult(file_path=excel_path, success=1)
+
+    monkeypatch.setitem(sys.modules, "pyodbc", PyodbcModule)
+    monkeypatch.setattr(ingest_module, "discover_excel_files", lambda _config_path, _cfg: files)
+    monkeypatch.setattr(ingest_module, "build_conn_str_from_config", lambda _cfg: "DRIVER=fake")
+    monkeypatch.setattr(ingest_module, "process_excel_file_with_retries", fake_process_excel_file_with_retries)
+    monkeypatch.setattr(
+        ingest_module,
+        "move_to_archive",
+        lambda source_file, _target_dir: tmp_path / "archive" / source_file.name,
+    )
+    monkeypatch.setattr(ingest_module, "write_log", lambda *_args, **_kwargs: None)
+
+    result = ingest_module.bulk_insert_excel_to_sql_from_config(
+        str(tmp_path / "config.json"),
+        {
+            "audit": {"enabled": False},
+            "archive": {"enabled": True},
+            "db": {},
+            "import": {"truncate_before_load": False},
+        },
+    )
+
+    output = capsys.readouterr().out
+
+    assert result == (2, 0, 0)
+    assert output.count("────────────────────────────────────────") == 1
+    assert (
+        f"📦 已移動檔案到：{tmp_path / 'archive' / 'first.xlsx'}\n"
+        "────────────────────────────────────────\n"
+        f"ℹ️ Excel: {files[1]}"
+    ) in output

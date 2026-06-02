@@ -537,7 +537,9 @@ def bulk_insert_excel_to_sql_from_config(config_path: str, cfg: Dict[str, Any]) 
 
     totals = {"success": 0, "duplicate": 0, "failed": 0}
     try:
-        for excel_path in files:
+        for file_index, excel_path in enumerate(files, start=1):
+            if file_index > 1:
+                print("────────────────────────────────────────")
             file_result = process_excel_file_with_retries(
                 config_path=config_path,
                 cfg=cfg,
