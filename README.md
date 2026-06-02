@@ -153,20 +153,21 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/git_ignore/vess
 {
   "db": {
     "driver": "auto",
-    "server": "192.168.0.136",
-    "database": "AIDB",
+    "server": "192.168.0.10",
+    "database": "mydatabase",
     "trusted_connection": false,
-    "user": "aiapp",
-    "password": "1qaz@WSX",
-    "encrypt": false,
-    "trust_server_certificate": false
+    "user": "myuser",
+    "password": "mypwd",
+    "encrypt": true,
+    "trust_server_certificate": true
   },
   "source": {
     "directory": "./data/excel_inbox",
     "file_pattern": "*.xlsx",
     "recursive": false,
     "excel_path": "./data/source.xlsx",
-    "sheet": "Sheet1",
+    "sheet": ["漁業活動紀錄", "漁業活動資料"],
+    "sheet_match": "smart",
     "header_row": 1,
     "start_row": 2,
     "end_row": 0
@@ -223,7 +224,14 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/git_ignore/vess
 - `source.file_pattern`：來源目錄檔名 pattern，預設可用 `*.xlsx`；程式會略過 Excel 暫存檔 `~$...`。
 - `source.recursive`：是否遞迴掃描來源目錄子資料夾。
 - `source.excel_path`：單檔模式使用；若未設定 `source.directory`，就會改讀此 Excel 檔案。相對路徑會先以設定檔所在目錄解析，找不到才改以專案根目錄解析。
-- `source.sheet`：來源工作表名稱。
+- `source.sheet`：來源工作表名稱；可填單一字串（例如 `"漁業活動紀錄"`），也可填字串陣列（例如 `["漁業活動紀錄", "漁業活動資料"]`）讓同一個 JSON 設定檔一次匯入同一 Excel 內多個工作表。JSON 不允許同一層出現兩個 `sheet` key；若要多個工作表，請把 `sheet` 改成陣列，或使用同義設定 `source.sheets` / `source.sheet_names`。
+- `source.sheet_aliases`：工作表名稱別名清單，會與 `source.sheet` / `source.sheets` 一起參與比對；適合把「正式設定名稱」與「實際 Excel 常見名稱」都放進同一份設定。
+- `source.sheet_match`：工作表名稱比對模式，預設為 `smart`。支援：
+  - `exact`：只接受完全相同的工作表名稱。
+  - `normalized`：先去除前後空白、忽略大小寫並移除名稱中的空白後再比對，例如 `Sheet 1` 可比對到 `sheet1`。
+  - `prefix`：接受設定名稱與實際工作表名稱互為前綴，例如設定 `漁業活動資料` 可比對到 `漁業活動資料_A` / `漁業活動資料_B`。
+  - `contains`：接受設定名稱與實際工作表名稱互相包含；比 `prefix` 更寬鬆，工作表很多時請謹慎使用。
+  - `smart`：先做 `exact`，再做 `normalized`，再做 `prefix`；另外若兩個名稱有明顯共同前綴也會接受，例如設定 `漁業活動紀錄` 可比對到實際工作表 `漁業活動資料`，因為兩者共同前綴為「漁業活動」。若單一 Excel 內有多個工作表符合，會全部依 Excel 原本工作表順序匯入。
 - `source.header_row`：欄名所在列號，預設為 `1`。
 - `source.start_row`：資料起始列號，預設為 `header_row + 1`。
 - `source.end_row`：資料結束列號；`0` 代表讀到工作表最後一列。
@@ -266,6 +274,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/git_ignore/vess
 - 寫入前會先查目的 table 的 `hash_value`；若已存在，就將該列標示為 `duplicate` 並略過，不會重複導入。
 - 同一次執行中若不同檔案或不同列產生相同 hash，也會略過後續重複列。
 - 每一筆資料列的處理結果都會寫入 SQL audit table，包含 `run_id`、來源檔案、工作表、列號、hash、目的 table、狀態、訊息、row payload 與處理時間，方便後續儀表板彙整每天收到資料與處理結果。audit table 名稱由 `audit.table` 控制；未設定時使用 `dbo.ExcelImportAudit`，不是依 `destination.table` 自動產生不同名稱。
+- 若工作表名稱採用智慧比對（例如設定「漁業活動紀錄」比對到實際工作表「漁業活動資料」），會以 `sheet_smart_match` 狀態寫入 audit table 與 JSONL log，方便事後檢查工作表名稱浮動是否符合預期。
 - 若欄位採用智慧比對（例如「船名」前綴比對到「船名...」或「敘述」前綴比對到「敘述補充」），也會以 `header_smart_match` 狀態寫入 audit table 與 JSONL log，方便事後檢查欄名浮動是否符合預期。
 
 ### 5) 匯入行為與輸出
@@ -279,7 +288,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/git_ignore/vess
 ### 6) 常見問題
 
 - 找不到 Excel 檔案：確認 `source.directory` 或 `source.excel_path` 路徑；相對路徑會先以設定檔所在目錄解析，找不到才改以專案根目錄解析。
-- 找不到工作表或欄名：確認 `source.sheet` 與 `mappings[].source_column` 是否與 Excel 完全一致；有重複欄名時請改用 `source_column_letter` 或 `source_column_index`。
+- 找不到工作表或欄名：確認 `source.sheet`（或 `source.sheets`）與 `mappings[].source_column` 是否與 Excel 一致；若工作表只是名稱略有差異，可將 `source.sheet_match` 設為 `smart`、`prefix` 或 `contains`，或加入 `source.sheet_aliases`。有重複欄名時請改用 `source_column_letter` 或 `source_column_index`。
 - 寫入 SQL 失敗：確認目的資料表欄位型別、必要欄位、ODBC driver、帳密、網路、防火牆與 SQL Server 權限。若錯誤為 `IM002` 找不到 driver，可將 `db.driver` 設為 `auto`，讓程式自動偵測本機 ODBC Driver 18/17。
 - 去重欄位錯誤：預設會自動在目的 table 新增 `hash_value`（或 `destination.hash_field` 指定的欄位）並建立 unique index；若 SQL 帳號沒有 `ALTER TABLE` / `CREATE INDEX` 權限，請由 DBA 手動新增 `CHAR(64)` 或 `NVARCHAR(64)` 欄位，或把 `destination.create_hash_index` 設為 `false`。
 

@@ -56,12 +56,64 @@ from .workbook import (
     discover_excel_files,
     iter_excel_rows,
     make_hash_value,
-    open_workbook_header,
+    open_workbook_headers,
     parse_excel_column_ref,
     read_column_mappings,
     read_header_map,
     resolve_header_candidate,
 )
+
+def _write_sheet_smart_match_audit(
+    *,
+    cursor,
+    audit_enabled: bool,
+    audit_table: str,
+    run_id: str,
+    excel_path: Path,
+    sheet_name: str,
+    table: str,
+    message: str,
+    match_type: str,
+    log_dir: Path,
+):
+    if not message:
+        return
+
+    print(f"⚠️ 工作表智慧比對：{message}")
+    payload = {
+        "event": "sheet_smart_match",
+        "run_id": run_id,
+        "source_file": str(excel_path),
+        "sheet_name": sheet_name,
+        "match_type": match_type,
+        "message": message,
+    }
+    write_log(log_dir, payload)
+    if audit_enabled:
+        insert_audit_rows(
+            cursor,
+            audit_table=audit_table,
+            run_id=run_id,
+            source_file=excel_path,
+            sheet_name=sheet_name,
+            destination_table=table,
+            row_results=[
+                RowResult(
+                    row_no=0,
+                    hash_value="",
+                    status="sheet_smart_match",
+                    message=message,
+                    row_payload={
+                        "actual_sheet_name": sheet_name,
+                        "match_type": match_type,
+                    },
+                )
+            ],
+        )
+        conn = getattr(cursor, "connection", None)
+        if conn is not None:
+            conn.commit()
+
 
 def process_excel_file(
     *,
@@ -73,8 +125,9 @@ def process_excel_file(
     log_dir: Path,
 ) -> FileResult:
     result = FileResult(file_path=excel_path)
-    excel_path, sheet_name, header_row, header_map = open_workbook_header(config_path, cfg, excel_path)
-    mappings = read_column_mappings(cfg, header_map)
+    sheet_headers = open_workbook_headers(config_path, cfg, excel_path)
+    first_sheet = sheet_headers[0]
+    first_mappings = read_column_mappings(cfg, first_sheet.header_map)
 
     table = str(require_nested(cfg, "destination.table"))
     hash_field = str(get_nested(cfg, "destination.hash_field", DEFAULT_HASH_FIELD) or DEFAULT_HASH_FIELD)
@@ -87,7 +140,7 @@ def process_excel_file(
         or DEFAULT_HASH_FIELD_TYPE
     )
     create_hash_index = bool(get_nested(cfg, "destination.create_hash_index", True))
-    dest_fields = [mapping["dest_field"] for mapping in mappings]
+    dest_fields = [mapping["dest_field"] for mapping in first_mappings]
     if hash_field not in dest_fields:
         dest_fields.append(hash_field)
     insert_sql = build_insert_sql(table, dest_fields)
@@ -96,6 +149,7 @@ def process_excel_file(
     if batch_size <= 0:
         raise ValueError("import.batch_size 必須大於 0")
 
+    header_row = first_sheet.header_row
     start_row = int(get_nested(cfg, "source.start_row", header_row + 1) or (header_row + 1))
     end_row = int(get_nested(cfg, "source.end_row", 0) or 0)
     if start_row <= header_row:
@@ -116,7 +170,7 @@ def process_excel_file(
         created_table_fields = ensure_destination_table(
             cursor,
             table=table,
-            mappings=mappings,
+            mappings=first_mappings,
             default_field_type=default_field_type,
             hash_field=hash_field,
             hash_field_type=hash_field_type,
@@ -132,7 +186,7 @@ def process_excel_file(
         created_fields = ensure_destination_columns(
             cursor,
             table=table,
-            mappings=mappings,
+            mappings=first_mappings,
             default_field_type=default_field_type,
         )
         if created_fields:
@@ -173,7 +227,7 @@ def process_excel_file(
         )
 
     print(f"ℹ️ Excel: {excel_path}")
-    print(f"ℹ️ Sheet: {sheet_name}")
+    print(f"ℹ️ Sheets: {', '.join(sheet.sheet_name for sheet in sheet_headers)}")
     print(f"ℹ️ SQL: {insert_sql}")
     print(
         f"ℹ️ 去重機制：以來源欄名與內容組成字串後計算 {DEFAULT_HASH_ALGORITHM} "
@@ -188,156 +242,176 @@ def process_excel_file(
     else:
         print("ℹ️ Audit table：已停用（audit.enabled=false）")
 
-    header_audit_results = build_header_audit_results(mappings, header_row)
-    if header_audit_results:
-        for header_result in header_audit_results:
-            print(f"⚠️ 欄名智慧比對：{header_result.message}")
-            write_log(
-                log_dir,
-                {
-                    "event": "header_smart_match",
-                    "run_id": run_id,
-                    "source_file": str(excel_path),
-                    "message": header_result.message,
-                    "payload": header_result.row_payload,
-                },
-            )
-        if audit_enabled:
-            print("ℹ️ 準備寫入欄名智慧比對 audit rows", flush=True)
-            insert_audit_rows(
-                cursor,
+    try:
+        seen_in_run: set[str] = set()
+        for sheet in sheet_headers:
+            sheet_name = sheet.sheet_name
+            header_row = sheet.header_row
+            mappings = read_column_mappings(cfg, sheet.header_map)
+
+            _write_sheet_smart_match_audit(
+                cursor=cursor,
+                audit_enabled=audit_enabled,
                 audit_table=audit_table,
                 run_id=run_id,
-                source_file=excel_path,
+                excel_path=excel_path,
                 sheet_name=sheet_name,
-                destination_table=table,
-                row_results=header_audit_results,
-            )
-            conn.commit()
-            print("ℹ️ 欄名智慧比對 audit rows 寫入完成", flush=True)
-
-    try:
-        row_iter = iter_excel_rows(
-            excel_path=excel_path,
-            sheet_name=sheet_name,
-            header_row=header_row,
-            start_row=start_row,
-            end_row=end_row,
-            mappings=mappings,
-            skip_empty_rows=skip_empty_rows,
-        )
-
-        seen_in_run: set[str] = set()
-        for raw_batch in chunked(row_iter, batch_size):
-            batch_results: List[RowResult] = []
-            candidates: List[Tuple[int, Dict[str, Any], str]] = []
-
-            existing_hashes = get_existing_hashes(
-                cursor,
                 table=table,
-                hash_field=hash_field,
-                hash_values=[hash_value for _row_no, _record, _source_values, hash_value, _invalid in raw_batch],
+                message=sheet.match_message,
+                match_type=sheet.match_type,
+                log_dir=log_dir,
             )
 
-            for row_no, record, source_values, hash_value, invalid_message in raw_batch:
-                payload = {"source": source_values, "destination": record}
-                if invalid_message:
-                    batch_results.append(
-                        RowResult(
-                            row_no=row_no,
-                            hash_value=hash_value,
-                            status="failed",
-                            message=invalid_message,
-                            row_payload=payload,
-                        )
+            print(f"ℹ️ Sheet: {sheet_name}")
+            header_audit_results = build_header_audit_results(mappings, header_row)
+            if header_audit_results:
+                for header_result in header_audit_results:
+                    print(f"⚠️ 欄名智慧比對：{header_result.message}")
+                    write_log(
+                        log_dir,
+                        {
+                            "event": "header_smart_match",
+                            "run_id": run_id,
+                            "source_file": str(excel_path),
+                            "sheet_name": sheet_name,
+                            "message": header_result.message,
+                            "payload": header_result.row_payload,
+                        },
                     )
-                    continue
-                if hash_value in existing_hashes:
-                    batch_results.append(
-                        RowResult(
-                            row_no=row_no,
-                            hash_value=hash_value,
-                            status="duplicate",
-                            message=f"hash_value 已存在於 {table}.{hash_field}，略過匯入",
-                            row_payload=payload,
-                        )
+                if audit_enabled:
+                    print("ℹ️ 準備寫入欄名智慧比對 audit rows", flush=True)
+                    insert_audit_rows(
+                        cursor,
+                        audit_table=audit_table,
+                        run_id=run_id,
+                        source_file=excel_path,
+                        sheet_name=sheet_name,
+                        destination_table=table,
+                        row_results=header_audit_results,
                     )
-                    continue
-                if hash_value in seen_in_run:
-                    batch_results.append(
-                        RowResult(
-                            row_no=row_no,
-                            hash_value=hash_value,
-                            status="duplicate",
-                            message="同次執行中已有相同來源欄名與內容的資料列，略過匯入",
-                            row_payload=payload,
-                        )
-                    )
-                    continue
-                seen_in_run.add(hash_value)
-                record[hash_field] = hash_value
-                candidates.append((row_no, record, hash_value))
+                    conn.commit()
+                    print("ℹ️ 欄名智慧比對 audit rows 寫入完成", flush=True)
 
-            if candidates:
-                rows = [tuple(record.get(field) for field in dest_fields) for _row_no, record, _hash_value in candidates]
-                contexts = [
-                    (row_no, hash_value, {"destination": record})
-                    for row_no, record, hash_value in candidates
-                ]
-                insert_results, _inserted_rows = insert_batch_with_fallback(
+            row_iter = iter_excel_rows(
+                excel_path=excel_path,
+                sheet_name=sheet_name,
+                header_row=header_row,
+                start_row=start_row,
+                end_row=end_row,
+                mappings=mappings,
+                skip_empty_rows=skip_empty_rows,
+            )
+
+            for raw_batch in chunked(row_iter, batch_size):
+                batch_results: List[RowResult] = []
+                candidates: List[Tuple[int, Dict[str, Any], str]] = []
+
+                existing_hashes = get_existing_hashes(
                     cursor,
-                    insert_sql=insert_sql,
-                    rows=rows,
-                    row_contexts=contexts,
+                    table=table,
+                    hash_field=hash_field,
+                    hash_values=[hash_value for _row_no, _record, _source_values, hash_value, _invalid in raw_batch],
                 )
-                batch_results.extend(insert_results)
 
-            if audit_enabled:
-                print(f"ℹ️ 準備寫入批次 audit rows：{len(batch_results)} 筆", flush=True)
-                insert_audit_rows(
-                    cursor,
-                    audit_table=audit_table,
-                    run_id=run_id,
-                    source_file=excel_path,
-                    sheet_name=sheet_name,
-                    destination_table=table,
-                    row_results=batch_results,
+                for row_no, record, source_values, hash_value, invalid_message in raw_batch:
+                    payload = {"source": source_values, "destination": record}
+                    if invalid_message:
+                        batch_results.append(
+                            RowResult(
+                                row_no=row_no,
+                                hash_value=hash_value,
+                                status="failed",
+                                message=invalid_message,
+                                row_payload=payload,
+                            )
+                        )
+                        continue
+                    if hash_value in existing_hashes:
+                        batch_results.append(
+                            RowResult(
+                                row_no=row_no,
+                                hash_value=hash_value,
+                                status="duplicate",
+                                message=f"hash_value 已存在於 {table}.{hash_field}，略過匯入",
+                                row_payload=payload,
+                            )
+                        )
+                        continue
+                    if hash_value in seen_in_run:
+                        batch_results.append(
+                            RowResult(
+                                row_no=row_no,
+                                hash_value=hash_value,
+                                status="duplicate",
+                                message="同次執行中已有相同來源欄名與內容的資料列，略過匯入",
+                                row_payload=payload,
+                            )
+                        )
+                        continue
+                    seen_in_run.add(hash_value)
+                    record[hash_field] = hash_value
+                    candidates.append((row_no, record, hash_value))
+
+                if candidates:
+                    rows = [tuple(record.get(field) for field in dest_fields) for _row_no, record, _hash_value in candidates]
+                    contexts = [
+                        (row_no, hash_value, {"destination": record})
+                        for row_no, record, hash_value in candidates
+                    ]
+                    insert_results, _inserted_rows = insert_batch_with_fallback(
+                        cursor,
+                        insert_sql=insert_sql,
+                        rows=rows,
+                        row_contexts=contexts,
+                    )
+                    batch_results.extend(insert_results)
+
+                if audit_enabled:
+                    print(f"ℹ️ 準備寫入批次 audit rows：{len(batch_results)} 筆", flush=True)
+                    insert_audit_rows(
+                        cursor,
+                        audit_table=audit_table,
+                        run_id=run_id,
+                        source_file=excel_path,
+                        sheet_name=sheet_name,
+                        destination_table=table,
+                        row_results=batch_results,
+                    )
+                    print("ℹ️ 批次 audit rows 寫入完成", flush=True)
+
+                conn.commit()
+
+                inserted = sum(1 for item in batch_results if item.status == "inserted")
+                duplicate = sum(1 for item in batch_results if item.status == "duplicate")
+                failed = sum(1 for item in batch_results if item.status == "failed")
+                result.success += inserted
+                result.duplicate += duplicate
+                result.failed += failed
+
+                print(
+                    f"✅ 批次完成：{sheet_name} 新增 {inserted} 筆，重複略過 {duplicate} 筆，"
+                    f"失敗 {failed} 筆，累計新增 {result.success} 筆"
                 )
-                print("ℹ️ 批次 audit rows 寫入完成", flush=True)
-
-            conn.commit()
-
-            inserted = sum(1 for item in batch_results if item.status == "inserted")
-            duplicate = sum(1 for item in batch_results if item.status == "duplicate")
-            failed = sum(1 for item in batch_results if item.status == "failed")
-            result.success += inserted
-            result.duplicate += duplicate
-            result.failed += failed
-
-            print(
-                f"✅ 批次完成：新增 {inserted} 筆，重複略過 {duplicate} 筆，"
-                f"失敗 {failed} 筆，累計新增 {result.success} 筆"
-            )
-            write_log(
-                log_dir,
-                {
-                    "event": "batch_done",
-                    "run_id": run_id,
-                    "source_file": str(excel_path),
-                    "inserted": inserted,
-                    "duplicate": duplicate,
-                    "failed": failed,
-                },
-            )
+                write_log(
+                    log_dir,
+                    {
+                        "event": "batch_done",
+                        "run_id": run_id,
+                        "source_file": str(excel_path),
+                        "sheet_name": sheet_name,
+                        "inserted": inserted,
+                        "duplicate": duplicate,
+                        "failed": failed,
+                    },
+                )
     finally:
         cursor.close()
 
     print(
-        f"🎯 檔案完成：{excel_path.name}，成功新增 {result.success} 筆，"
-        f"重複略過 {result.duplicate} 筆，失敗 {result.failed} 筆"
+        f"🎯 檔案完成：{excel_path.name}，已處理工作表 {len(sheet_headers)} 個，"
+        f"成功新增 {result.success} 筆，重複略過 {result.duplicate} 筆，失敗 {result.failed} 筆"
     )
     return result
-
 
 
 def process_excel_file_with_retries(
