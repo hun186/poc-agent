@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import sys
 
@@ -10,6 +11,7 @@ from agent.excel_to_sql.dashboard import (
     _audit_chart_bucket,
     _audit_time_window,
     _append_time_filters,
+    discover_dashboard_tasks,
 )
 
 
@@ -71,3 +73,39 @@ def test_audit_chart_bucket_accepts_common_interval_aliases():
 def test_audit_chart_bucket_rejects_unknown_interval():
     with pytest.raises(ValueError, match="不支援的 audit 統計區間"):
         _audit_chart_bucket("quarter")
+
+
+def _write_dashboard_config(path: Path, *, enabled: bool = True, name: str = ""):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    dashboard = {"enabled": enabled}
+    if name:
+        dashboard["name"] = name
+    path.write_text(
+        json.dumps(
+            {
+                "dashboard": dashboard,
+                "audit": {"table": "dbo.ExcelAudit"},
+                "destination": {"table": "dbo.Target"},
+                "source": {"directory": "data/incoming"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_discover_dashboard_tasks_recursively_loads_enabled_json(tmp_path):
+    _write_dashboard_config(tmp_path / "root_task.json", name="Root task")
+    _write_dashboard_config(tmp_path / "nested" / "child_task.json", name="Nested task")
+    _write_dashboard_config(
+        tmp_path / "nested" / "disabled_task.json", enabled=False, name="Disabled task"
+    )
+    (tmp_path / "nested" / "not_json.txt").write_text("{}", encoding="utf-8")
+
+    tasks = discover_dashboard_tasks(tmp_path)
+
+    assert [task["name"] for task in tasks] == ["Nested task", "Root task"]
+    assert {Path(task["config_path"]).name for task in tasks} == {
+        "child_task.json",
+        "root_task.json",
+    }
