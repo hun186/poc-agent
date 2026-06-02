@@ -72,11 +72,11 @@
     <section class="card controls">
       <div><label>監控任務</label><select id="task" onchange="onTaskChange()"><option value="">載入中...</option></select></div>
       <div><label>設定檔路徑</label><input id="config" value="config/excel_to_sql/vessel_activities.example.json" /></div>
-      <div><label>起始時間（本機）</label><input id="startTs" type="datetime-local" /></div>
-      <div><label>結束時間（本機）</label><input id="endTs" type="datetime-local" /></div>
+      <div><label>起始時間（本機）</label><input id="startTs" type="datetime-local" step="1" /></div>
+      <div><label>結束時間（本機）</label><input id="endTs" type="datetime-local" step="1" /></div>
       <div><label>回看天數（未填起迄時）</label><input id="days" type="number" min="1" max="365" value="14" /></div>
       <div><label>列數上限</label><input id="limit" type="number" min="1" max="1000" value="100" /></div>
-      <button onclick="loadDashboard()">重新整理</button>
+      <button onclick="refreshDashboardNow()">重新整理</button>
       <button class="ghost" onclick="resetDefaultWindow()">預設近14天</button>
     </section>
 
@@ -161,7 +161,7 @@ function renderCards(data) {
 function fillTable(id, rows, render) { document.querySelector(`#${id} tbody`).innerHTML = rows.map(render).join('') || '<tr><td colspan="99" class="muted">無資料</td></tr>'; }
 function authToken() { return localStorage.getItem(tokenKey) || ''; }
 function pad2(v) { return String(v).padStart(2, '0'); }
-function toLocalInputValue(d) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+function toLocalInputValue(d) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; }
 function resetDefaultWindow() {
   const end = new Date();
   const start = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000);
@@ -171,6 +171,15 @@ function resetDefaultWindow() {
   $('chartBucket').value = 'day';
 }
 function localInputToUtcIso(id) { const v = $(id).value; return v ? new Date(v).toISOString() : ''; }
+function updateEndTsToNow() {
+  const endInput = $('endTs');
+  const now = new Date(Date.now() + 60 * 1000);
+  const current = endInput.value ? new Date(endInput.value) : null;
+  if (!current || Number.isNaN(current.getTime()) || current.getTime() < now.getTime()) {
+    endInput.value = toLocalInputValue(now);
+  }
+}
+function refreshDashboardNow() { updateEndTsToNow(); loadDashboard(); }
 function normalizeAuditUtc(text) {
   const raw = String(text || '');
   if (!raw) return null;
@@ -186,7 +195,7 @@ function formatAuditTime(value) {
   return `<div>${escapeHtml(local.toLocaleString())}</div><div class="muted">UTC：${escapeHtml(raw)}</div>`;
 }
 function resetRecentPage() { state.recentPage = 1; }
-function applyAuditFilters() { resetRecentPage(); loadDashboard(); }
+function applyAuditFilters() { resetRecentPage(); updateEndTsToNow(); loadDashboard(); }
 function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); applyAuditFilters(); }
 function changeRecentPage(delta) {
   const next = state.recentPage + delta;
@@ -303,6 +312,7 @@ async function deleteImportedRow(hashValue) {
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
   const data = await res.json();
   showError(`已執行：${data.status}，刪除 ${data.deleted_rows} 筆。`);
+  updateEndTsToNow();
   await loadDashboard();
 }
 function actionCell(r) {
