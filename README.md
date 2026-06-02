@@ -187,7 +187,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/git_ignore/vess
     { "source_column": "地點", "dest_field": "location", "dest_field_type": "NVARCHAR(255)" },
     { "source_column": "數量", "dest_field": "vessel_count", "dest_field_type": "INT" },
     { "source_column": "船名", "match": "prefix", "dest_field": "vessel_names", "dest_field_type": "NVARCHAR(MAX)" },
-    { "source_column": "敘述", "match": "prefix", "dest_field": "activity_description", "dest_field_type": "NVARCHAR(MAX)" }
+    { "source_column": "敘述", "match": "contains", "dest_field": "activity_description", "dest_field_type": "NVARCHAR(MAX)" }
   ],
   "import": {
     "batch_size": 500,
@@ -244,8 +244,8 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/git_ignore/vess
 - `destination.hash_field_type`：自動新增去重欄位時使用的型別，預設 `CHAR(64)`；為避免 SQL 注入，僅允許 `CHAR(64)`、`NCHAR(64)`、`VARCHAR(64)`、`NVARCHAR(64)`。
 - `destination.create_hash_index`：自動新增去重欄位後是否建立 filtered unique index（`WHERE hash_value IS NOT NULL`）以強化防重，預設 `true`。
 - `mappings`：Excel 欄位與 SQL 欄位對應表。
-  - `source_column`：以 Excel 標題列欄名指定來源欄位；預設 `match: "smart"`，會先精準比對，再做正規化比對與前綴比對。
-  - `match`：可設 `exact`、`smart`、`normalized`、`prefix`、`contains`。例如 Excel 欄名可能是「船名(多艘)」或「船名...」時，可設定 `source_column: "船名"` 搭配 `match: "prefix"`。
+  - `source_column`：以 Excel 標題列欄名指定來源欄位；預設 `match: "smart"`，會先精準比對，再做正規化、前綴與唯一包含比對。
+  - `match`：可設 `exact`、`smart`、`normalized`、`prefix`、`contains`。`smart` 會先做精準比對，再做正規化、前綴與唯一包含比對；例如設定 `source_column: "敘述"` 可比對到 Excel 欄名「作業敘述」。若要明確允許欄名包含關係，可設定 `match: "contains"`；若主要是欄名前綴浮動，例如「船名(多艘)」或「船名...」，可設定 `match: "prefix"`，且目前 `prefix` 在找不到前綴時也會退回唯一包含比對，避免「敘述」遇到「作業敘述」這類欄名時整檔失敗。
   - `aliases`：可提供來源欄位別名清單，降低欄名浮動造成的失敗。
   - 也可改用 `source_column_letter`（例如 `A`）或 `source_column_index`（例如 `1`），適合標題列重複或沒有穩定欄名時使用。
   - `dest_field`：目的 SQL 欄位名稱。
@@ -275,7 +275,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/git_ignore/vess
 - 同一次執行中若不同檔案或不同列產生相同 hash，也會略過後續重複列。
 - 每一筆資料列的處理結果都會寫入 SQL audit table，包含 `run_id`、來源檔案、工作表、列號、hash、目的 table、狀態、訊息、row payload 與處理時間，方便後續儀表板彙整每天收到資料與處理結果。audit table 名稱由 `audit.table` 控制；未設定時使用 `dbo.ExcelImportAudit`，不是依 `destination.table` 自動產生不同名稱。
 - 若工作表名稱採用智慧比對（例如設定「漁業活動紀錄」比對到實際工作表「漁業活動資料」），會以 `sheet_smart_match` 狀態寫入 audit table 與 JSONL log，方便事後檢查工作表名稱浮動是否符合預期。
-- 若欄位採用智慧比對（例如「船名」前綴比對到「船名...」或「敘述」前綴比對到「敘述補充」），也會以 `header_smart_match` 狀態寫入 audit table 與 JSONL log，方便事後檢查欄名浮動是否符合預期。
+- 若欄位採用智慧比對（例如「船名」前綴比對到「船名...」，或「敘述」以包含關係比對到「作業敘述」），也會以 `header_smart_match` 狀態寫入 audit table 與 JSONL log，方便事後檢查欄名浮動是否符合預期。
 
 ### 5) 匯入行為與輸出
 

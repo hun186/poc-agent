@@ -14,7 +14,7 @@ python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activiti
 - 依 JSON 設定檔將 Excel 欄位對應到 SQL Server field。
 - 透過 `python-dateutil` 將常見西元/民國年日期字串正規化成 SQL 可接收的日期物件。
 - 支援單一設定檔匯入同一 Excel 內多個工作表，並支援工作表名稱智慧比對。
-- 支援欄名浮動比對：`exact`、`smart`、`normalized`、`prefix`、`contains`、`aliases`。
+- 支援欄名浮動比對：`exact`、`smart`、`normalized`、`prefix`、`contains`、`aliases`；`smart` 也會在前綴比對後嘗試唯一包含比對，例如「敘述」可比對到「作業敘述」。
 - 以來源欄名與內容計算 SHA-256，寫入 `hash_value` 避免重複導入。
 - 目的資料表不存在時可依設定檔 mapping 自動建立 table、欄位與去重索引。
 - 每列處理結果寫入 SQL audit table。

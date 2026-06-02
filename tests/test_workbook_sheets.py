@@ -5,7 +5,11 @@ from openpyxl import Workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent.excel_to_sql.workbook import open_workbook_headers, resolve_sheet_candidates
+from agent.excel_to_sql.workbook import (
+    open_workbook_headers,
+    resolve_header_candidate,
+    resolve_sheet_candidates,
+)
 
 
 def _save_workbook(path: Path, sheet_names):
@@ -68,3 +72,23 @@ def test_sheet_aliases_are_used_for_smart_matching(tmp_path):
 
     assert [sheet.sheet_name for sheet in sheets] == ["漁業活動資料"]
     assert sheets[0].match_type == "exact"
+
+
+def test_smart_and_prefix_header_matching_fall_back_to_unique_contains_match():
+    for match_mode in ("smart", "prefix"):
+        idx, actual, match_type, message = resolve_header_candidate(
+            mapping_index=5,
+            header_map={
+                "日期": 1,
+                "地點": 2,
+                "船名_登記編號": 4,
+                "作業敘述": 5,
+            },
+            expected_names=["敘述"],
+            match_mode=match_mode,
+        )
+
+        assert idx == 5
+        assert actual == "作業敘述"
+        assert match_type == "contains"
+        assert "包含關係" in message

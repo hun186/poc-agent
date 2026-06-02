@@ -62,7 +62,7 @@
     },
     {
       "source_column": "敘述",
-      "match": "prefix",
+      "match": "contains",
       "dest_field": "activity_description",
       "required": false,
       "dest_field_type": "NVARCHAR(MAX)"

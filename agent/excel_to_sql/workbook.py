@@ -134,14 +134,15 @@ def resolve_header_candidate(
                 f"設定欄名 {expected} 前綴比對符合多個欄名，已選用第 {idx} 欄 {header}；請檢查設定",
             )
 
-    if match_mode == "contains":
+    if match_mode in {"smart", "prefix", "contains"}:
         contains_matches: List[Tuple[str, int, str]] = []
         for expected in candidates_to_try:
             expected_key = normalize_header_key(expected)
             if not expected_key:
                 continue
             for header, idx in header_map.items():
-                if expected_key in normalize_header_key(header):
+                header_key = normalize_header_key(header)
+                if expected_key in header_key or header_key in expected_key:
                     contains_matches.append((header, idx, expected))
         if len(contains_matches) == 1:
             header, idx, expected = contains_matches[0]
