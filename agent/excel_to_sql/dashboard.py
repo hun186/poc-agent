@@ -203,7 +203,7 @@ def discover_dashboard_tasks(
         return []
 
     tasks: list[dict[str, Any]] = []
-    for path in sorted(root.glob("*.json")):
+    for path in sorted(root.rglob("*.json")):
         try:
             cfg = load_json_config(str(path))
         except Exception:

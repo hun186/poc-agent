@@ -35,6 +35,9 @@
     .hidden { display:none; }
     .chart-card { border:1px solid var(--line); border-radius:12px; padding:12px; background:#f8fafc; margin:8px 0 14px; }
     .chart-title { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+    .chart-controls { display:flex; gap:10px; align-items:end; flex-wrap:wrap; }
+    .chart-controls label { margin-bottom:4px; }
+    .chart-controls select { min-width:150px; }
     .audit-chart { width:100%; min-height:240px; display:block; }
     .chart-axis { stroke:#cbd5e1; stroke-width:1; }
     .chart-grid { stroke:#e2e8f0; stroke-width:1; }
@@ -73,7 +76,6 @@
       <div><label>結束時間（本機）</label><input id="endTs" type="datetime-local" /></div>
       <div><label>回看天數（未填起迄時）</label><input id="days" type="number" min="1" max="365" value="14" /></div>
       <div><label>列數上限</label><input id="limit" type="number" min="1" max="1000" value="100" /></div>
-      <div><label>統計曲線區間</label><select id="chartBucket"><option value="hour">每小時</option><option value="6_hours">每 6 小時</option><option value="12_hours">每 12 小時</option><option value="day" selected>每日</option><option value="week">每週</option><option value="month">每月</option></select></div>
       <button onclick="loadDashboard()">重新整理</button>
       <button class="ghost" onclick="resetDefaultWindow()">預設近14天</button>
     </section>
@@ -108,8 +110,23 @@
       </section>
       <div class="chart-card">
         <div class="chart-title">
-          <strong id="filteredSeriesTitle">audit 筆數統計曲線（套用目前篩選）</strong>
-          <span class="muted" id="filteredDailySummary">尚未載入</span>
+          <div>
+            <strong id="filteredSeriesTitle">audit 筆數統計曲線（套用目前篩選）</strong>
+            <div class="muted" id="filteredDailySummary">尚未載入</div>
+          </div>
+          <div class="chart-controls" aria-label="曲線圖時間區間設定">
+            <div>
+              <label for="chartBucket">曲線圖時間區間</label>
+              <select id="chartBucket">
+                <option value="hour">每小時</option>
+                <option value="6_hours">每 6 小時</option>
+                <option value="12_hours">每 12 小時</option>
+                <option value="day" selected>每日</option>
+                <option value="week">每週</option>
+                <option value="month">每月</option>
+              </select>
+            </div>
+          </div>
         </div>
         <div id="filteredDailyChart" class="chart-empty">尚未載入圖表</div>
       </div>
