@@ -14,10 +14,14 @@
     "file_pattern": "*.xlsx",
     "recursive": false,
     "excel_path": "./data/source.xlsx",
-    "sheet": "漁業活動紀錄",
+    "sheet": [
+      "漁業活動紀錄",
+      "漁業活動資料"
+    ],
     "header_row": 1,
     "start_row": 2,
-    "end_row": 0
+    "end_row": 0,
+    "sheet_match": "smart"
   },
   "destination": {
     "table": "vessel_activities",
@@ -58,7 +62,7 @@
     },
     {
       "source_column": "敘述",
-      "match": "prefix",
+      "match": "contains",
       "dest_field": "activity_description",
       "required": false,
       "dest_field_type": "NVARCHAR(MAX)"
