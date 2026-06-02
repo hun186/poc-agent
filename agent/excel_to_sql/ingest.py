@@ -387,7 +387,9 @@ def process_excel_file(
                 result.success += inserted
                 result.duplicate += duplicate
                 result.failed += failed
-
+                for item in batch_results:
+                    if item.status == "failed":
+                        result.record_failure(item.message)
                 print(
                     f"✅ 批次完成：{sheet_name} 新增 {inserted} 筆，重複略過 {duplicate} 筆，"
                     f"失敗 {failed} 筆，累計新增 {result.success} 筆"
@@ -438,27 +440,29 @@ def process_excel_file_with_retries(
                 run_id=run_id,
                 log_dir=log_dir,
             )
-            if file_result.ok or attempt >= max_attempts:
-                return file_result
-
-            last_result = file_result
-            print(
-                f"⚠️ 檔案匯入仍有失敗列：{excel_path}；"
-                f"第 {attempt}/{max_attempts} 次，{interval_seconds:g} 秒後重試"
-            )
-            write_log(
-                log_dir,
-                {
-                    "event": "file_retry_scheduled",
-                    "run_id": run_id,
-                    "source_file": str(excel_path),
-                    "attempt": attempt,
-                    "max_attempts": max_attempts,
-                    "interval_seconds": interval_seconds,
-                    "failed": file_result.failed,
-                    "error": file_result.error,
-                },
-            )
+            if file_result.failed:
+                print(
+                    f"⚠️ 檔案匯入完成但有資料列失敗：{excel_path}；"
+                    "資料列層級錯誤不會自動重試，請修正資料後重新匯入"
+                )
+                if file_result.failure_summary:
+                    print("ℹ️ 資料列錯誤種類統計：")
+                    for message, count in sorted(
+                        file_result.failure_summary.items(),
+                        key=lambda item: (-item[1], item[0]),
+                    ):
+                        print(f"   - {message}：{count} 筆")
+                write_log(
+                    log_dir,
+                    {
+                        "event": "file_row_failures_not_retried",
+                        "run_id": run_id,
+                        "source_file": str(excel_path),
+                        "failed": file_result.failed,
+                        "failure_summary": file_result.failure_summary,
+                    },
+                )
+            return file_result
         except Exception as exc:
             conn.rollback()
             last_result = FileResult(file_path=excel_path, failed=1, error=str(exc))

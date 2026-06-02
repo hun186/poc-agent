@@ -8,6 +8,37 @@ from .models import RowResult
 from .sql_utils import build_select_existing_hashes_sql
 from .utils import chunked
 
+TRANSIENT_DATABASE_ERROR_KEYWORDS = (
+    "08s01",
+    "08001",
+    "08003",
+    "08006",
+    "hyt00",
+    "hyt01",
+    "timeout",
+    "timed out",
+    "connection",
+    "disconnect",
+    "communication link failure",
+    "connection is busy",
+    "server did not respond",
+    "temporarily unavailable",
+    "連線",
+    "斷線",
+    "中斷",
+    "逾時",
+    "無回應",
+)
+
+
+def is_transient_database_error(exc: Exception) -> bool:
+    """Return True when an exception likely came from connection/availability issues."""
+    error_text = " ".join(str(arg) for arg in getattr(exc, "args", ()) if arg)
+    if not error_text:
+        error_text = str(exc)
+    normalized = error_text.lower()
+    return any(keyword in normalized for keyword in TRANSIENT_DATABASE_ERROR_KEYWORDS)
+
 
 def get_existing_hashes(cursor, *, table: str, hash_field: str, hash_values: Sequence[str]) -> set[str]:
     hashes = sorted({value for value in hash_values if value})
@@ -36,6 +67,9 @@ def insert_batch_with_fallback(
         ], []
     except Exception as exc:
         cursor.connection.rollback()
+        if is_transient_database_error(exc):
+            raise
+
         results: List[RowResult] = []
         inserted_rows: List[Tuple[str, Tuple[Any, ...]]] = []
 
@@ -58,6 +92,8 @@ def insert_batch_with_fallback(
                     results.append(RowResult(row_no=row_no, hash_value=hash_value, status="inserted", row_payload=payload))
                 except Exception as row_exc:
                     fallback_cursor.connection.rollback()
+                    if is_transient_database_error(row_exc):
+                        raise
                     results.append(
                         RowResult(
                             row_no=row_no,

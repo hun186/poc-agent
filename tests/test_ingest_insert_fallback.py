@@ -3,7 +3,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from agent.excel_to_sql import ingest as ingest_module
+from agent.excel_to_sql.db_ops import is_transient_database_error
 from agent.excel_to_sql.ingest import insert_batch_with_fallback
+from agent.excel_to_sql.models import FileResult
 
 
 class FakeConnection:
@@ -23,14 +26,15 @@ class FakeConnection:
 
 
 class FastCursor:
-    def __init__(self, connection):
+    def __init__(self, connection, error=None):
         self.connection = connection
+        self.error = error or RuntimeError("batch failed")
         self.fast_executemany = True
         self.executemany_calls = []
 
     def executemany(self, sql, rows):
         self.executemany_calls.append((sql, rows, self.fast_executemany))
-        raise RuntimeError("batch failed")
+        raise self.error
 
 
 class FallbackCursor:
@@ -39,11 +43,12 @@ class FallbackCursor:
         self.fast_executemany = True
         self.execute_calls = []
         self.closed = False
+        self.row_errors = {("bad",): RuntimeError("row failed")}
 
     def execute(self, sql, row):
         self.execute_calls.append((sql, row, self.fast_executemany))
-        if row == ("bad",):
-            raise RuntimeError("row failed")
+        if row in self.row_errors:
+            raise self.row_errors[row]
 
     def close(self):
         self.closed = True
@@ -74,3 +79,117 @@ def test_insert_batch_fallback_uses_fresh_non_fast_cursor_for_row_retries():
     assert inserted_rows == [("hash-good", ("good",))]
     assert [result.status for result in results] == ["inserted", "failed"]
     assert "原批次錯誤：batch failed" in results[1].message
+
+
+def test_transient_batch_error_is_raised_for_file_level_retry():
+    connection = FakeConnection()
+    cursor = FastCursor(connection, error=TimeoutError("SQL Server did not respond"))
+
+    try:
+        insert_batch_with_fallback(
+            cursor,
+            insert_sql="INSERT INTO t (c) VALUES (?)",
+            rows=[("good",)],
+            row_contexts=[(2, "hash-good", {"destination": {"c": "good"}})],
+        )
+    except TimeoutError as exc:
+        assert is_transient_database_error(exc)
+    else:
+        raise AssertionError("transient database errors should propagate to file-level retry")
+
+    assert connection.rollbacks == 1
+    assert connection.fallback_cursor.execute_calls == []
+
+
+def test_transient_row_fallback_error_is_raised_for_file_level_retry():
+    connection = FakeConnection()
+    connection.fallback_cursor.row_errors = {("bad",): RuntimeError("08S01 communication link failure")}
+    cursor = FastCursor(connection)
+
+    try:
+        insert_batch_with_fallback(
+            cursor,
+            insert_sql="INSERT INTO t (c) VALUES (?)",
+            rows=[("good",), ("bad",)],
+            row_contexts=[
+                (2, "hash-good", {"destination": {"c": "good"}}),
+                (3, "hash-bad", {"destination": {"c": "bad"}}),
+            ],
+        )
+    except RuntimeError as exc:
+        assert is_transient_database_error(exc)
+    else:
+        raise AssertionError("transient row fallback errors should propagate to file-level retry")
+
+    assert connection.rollbacks == 2
+    assert connection.commits == 1
+    assert connection.fallback_cursor.closed is True
+
+
+def test_file_retry_does_not_retry_completed_row_failures(monkeypatch, tmp_path, capsys):
+    calls = 0
+
+    def fake_process_excel_file(**kwargs):
+        nonlocal calls
+        calls += 1
+        result = FileResult(file_path=tmp_path / "sample.xlsx", success=8, failed=2)
+        result.record_failure(
+            "Excel 第 9981 列欄位日期格式錯誤：日期 -> activity_date；"
+            "不支援或無效日期格式：02/25/2026"
+        )
+        result.record_failure(
+            "Excel 第 9982 列欄位日期格式錯誤：日期 -> activity_date；"
+            "不支援或無效日期格式：02/26/2026"
+        )
+        return result
+
+    monkeypatch.setattr(ingest_module, "process_excel_file", fake_process_excel_file)
+
+    result = ingest_module.process_excel_file_with_retries(
+        config_path="config.json",
+        cfg={},
+        excel_path=tmp_path / "sample.xlsx",
+        conn=object(),
+        run_id="run-1",
+        log_dir=tmp_path,
+        max_attempts=3,
+        interval_seconds=0,
+    )
+
+    output = capsys.readouterr().out
+
+    assert calls == 1
+    assert result.success == 8
+    assert result.failed == 2
+    assert "資料列錯誤種類統計" in output
+    assert "Excel 第 * 列欄位日期格式錯誤：日期 -> activity_date：2 筆" in output
+
+
+def test_file_retry_still_retries_file_level_exceptions(monkeypatch, tmp_path):
+    calls = 0
+
+    def fake_process_excel_file(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TimeoutError("SQL Server did not respond")
+        return FileResult(file_path=tmp_path / "sample.xlsx", success=8, failed=0)
+
+    monkeypatch.setattr(ingest_module, "process_excel_file", fake_process_excel_file)
+    connection = FakeConnection()
+
+    result = ingest_module.process_excel_file_with_retries(
+        config_path="config.json",
+        cfg={},
+        excel_path=tmp_path / "sample.xlsx",
+        conn=connection,
+        run_id="run-1",
+        log_dir=tmp_path,
+        max_attempts=3,
+        interval_seconds=0,
+    )
+
+    assert calls == 2
+    assert connection.rollbacks == 1
+    assert result.success == 8
+    assert result.failed == 0
