@@ -16,12 +16,18 @@ topic_index_map:
 #    indexes:
 #      - satmeta
 #    description: "本資料庫為衛照元數據管理資料庫"
+
+  news_general:
+    indexes:
+      - fishing_test
+    description: "漁業動態分析"
         
   gov_document:
     indexes:
       - govdocs_2024
     description: "公文、行政文件、政府規定之撰寫或仿寫"
     
+
 #  nav_intel:
 #    indexes:
 #      - nav_intel_sentences_synthetic_v1
