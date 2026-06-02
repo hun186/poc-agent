@@ -1,11 +1,11 @@
 {
   "db": {
     "driver": "auto",
-    "server": "192.168.0.136",
-    "database": "AIDB",
+    "server": "192.168.0.10",
+    "database": "mydatabase",
     "trusted_connection": false,
-    "user": "aiapp",
-    "password": "1qaz@WSX",
+    "user": "myuser",
+    "password": "mypwd",
     "encrypt": true,
     "trust_server_certificate": true
   },

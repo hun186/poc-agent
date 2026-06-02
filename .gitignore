@@ -187,3 +187,5 @@ SRA-API_output.txt
 # SRA editor auth secrets
 /config/auth/bootstrap_superusers.json
 /.sra_users.json
+*.xlsx#
+/config/excel_to_sql/git_ignore
