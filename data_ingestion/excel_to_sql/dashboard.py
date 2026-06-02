@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, time, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -67,9 +68,17 @@ def _audit_chart_bucket(bucket: str | None) -> tuple[str, str, str]:
 
 
 def _json_safe(value: Any) -> Any:
-    if isinstance(value, (datetime, date)):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (datetime, date, time)):
         return value.isoformat()
-    return value
+    if isinstance(value, Decimal):
+        if value == value.to_integral_value():
+            return int(value)
+        return float(value)
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
 
 
 def _row_to_dict(cursor, row) -> dict[str, Any]:
@@ -486,6 +495,15 @@ def delete_imported_sql_row(
     try:
         cursor = conn.cursor()
         try:
+            select_sql = (
+                f"SELECT * FROM {quote_object_path(destination_table)} "
+                f"WHERE {quote_ident(hash_field)} = ?"
+            )
+            cursor.execute(select_sql, clean_hash)
+            deleted_row_payloads = [
+                _row_to_dict(cursor, row) for row in cursor.fetchall()
+            ]
+
             delete_sql = (
                 f"DELETE FROM {quote_object_path(destination_table)} "
                 f"WHERE {quote_ident(hash_field)} = ?"
@@ -514,6 +532,7 @@ def delete_imported_sql_row(
                     "destination_table": destination_table,
                     "hash_field": hash_field,
                     "deleted_rows": deleted_rows,
+                    "deleted_row_payloads": deleted_row_payloads,
                 }
                 cursor.execute(
                     audit_sql,

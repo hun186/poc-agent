@@ -109,3 +109,100 @@ def test_discover_dashboard_tasks_recursively_loads_enabled_json(tmp_path):
         "child_task.json",
         "root_task.json",
     }
+
+
+def test_delete_imported_sql_row_records_deleted_row_payloads(monkeypatch):
+    from data_ingestion.excel_to_sql import dashboard as dashboard_module
+
+    cfg = {
+        "audit": {"table": "dbo.ExcelAudit"},
+        "destination": {"table": "dbo.Target", "hash_field": "hash_value"},
+    }
+    deleted_at = datetime(2026, 6, 2, 9, 25, 10)
+
+    class FakeCursor:
+        def __init__(self):
+            self.description = []
+            self.rowcount = -1
+            self.calls = []
+            self.audit_payload = None
+
+        def execute(self, sql, *params):
+            self.calls.append((sql, params))
+            normalized = " ".join(sql.split())
+            if normalized.startswith("SELECT * FROM"):
+                self.description = [
+                    ("id",),
+                    ("name",),
+                    ("amount",),
+                    ("deleted_at",),
+                    ("hash_value",),
+                ]
+                self._rows = [(7, "錯誤資料", 12.5, deleted_at, "abc123")]
+            elif normalized.startswith("DELETE FROM"):
+                self.rowcount = 1
+            elif "OBJECT_ID" in normalized:
+                self._one = (1,)
+            elif normalized.startswith("INSERT INTO"):
+                self.audit_payload = json.loads(params[-1])
+            return self
+
+        def fetchall(self):
+            return self._rows
+
+        def fetchone(self):
+            return self._one
+
+        def close(self):
+            pass
+
+    class FakeConnection:
+        def __init__(self):
+            self.cursor_obj = FakeCursor()
+            self.commits = 0
+            self.rollbacks = 0
+
+        def cursor(self):
+            return self.cursor_obj
+
+        def commit(self):
+            self.commits += 1
+
+        def rollback(self):
+            self.rollbacks += 1
+
+        def close(self):
+            pass
+
+    conn = FakeConnection()
+    monkeypatch.setattr(dashboard_module, "load_json_config", lambda path: cfg)
+    monkeypatch.setattr(dashboard_module, "_connect", lambda cfg: conn)
+
+    result = dashboard_module.delete_imported_sql_row(
+        "config/excel_to_sql/task.json",
+        hash_value="abc123",
+        actor="test",
+        reason="資料列內容錯誤，人工刪除",
+    )
+
+    assert result["status"] == "sql_deleted"
+    assert result["deleted_rows"] == 1
+    assert conn.commits == 1
+    assert conn.rollbacks == 0
+    payload = conn.cursor_obj.audit_payload
+    assert payload["deleted_rows"] == 1
+    assert payload["deleted_row_payloads"] == [
+        {
+            "id": 7,
+            "name": "錯誤資料",
+            "amount": 12.5,
+            "deleted_at": "2026-06-02T09:25:10",
+            "hash_value": "abc123",
+        }
+    ]
+    select_sql, select_params = conn.cursor_obj.calls[0]
+    delete_sql, delete_params = conn.cursor_obj.calls[1]
+    assert select_sql.startswith("SELECT * FROM")
+    assert delete_sql.startswith("DELETE FROM")
+    assert select_params == ("abc123",)
+    assert delete_params == ("abc123",)
