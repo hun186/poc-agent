@@ -144,7 +144,7 @@ python -m agent.es.ingest_sql --config config/sql_import/srp_import.json
 在專案根目錄執行：
 
 ```bash
-python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activities.example.json
+python -m agent.excel_to_sql.ingest --config config/excel_to_sql/git_ignore/vessel_activities.example.json
 ```
 
 ### 2) JSON 設定檔結構（範例：`config/excel_to_sql/vessel_activities.example.json`）
