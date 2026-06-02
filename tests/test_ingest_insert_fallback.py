@@ -3,10 +3,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent.excel_to_sql import ingest as ingest_module
-from agent.excel_to_sql.db_ops import is_transient_database_error
-from agent.excel_to_sql.ingest import insert_batch_with_fallback
-from agent.excel_to_sql.models import FileResult
+from data_ingestion.excel_to_sql import ingest as ingest_module
+from data_ingestion.excel_to_sql.db_ops import is_transient_database_error
+from data_ingestion.excel_to_sql.ingest import insert_batch_with_fallback
+from data_ingestion.excel_to_sql.models import FileResult
 
 
 class FakeConnection:

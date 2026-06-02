@@ -5,7 +5,7 @@ from openpyxl import Workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent.excel_to_sql.workbook import (
+from data_ingestion.excel_to_sql.workbook import (
     open_workbook_headers,
     resolve_header_candidate,
     resolve_sheet_candidates,

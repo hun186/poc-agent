@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent.excel_to_sql.ingest import enable_native_crash_tracebacks
+from data_ingestion.excel_to_sql.ingest import enable_native_crash_tracebacks
 
 
 class FakeFaulthandler:

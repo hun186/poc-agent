@@ -10,6 +10,7 @@ User / Client
   -> API routers (`api/routers/`)
   -> services / session / state (`api/services/`)
   -> agent routing / retrieval / generation (`agent/`)
+  -> data ingestion / ETL (`data_ingestion/`) when importing source data
   -> Elasticsearch or SQL Server
   -> presenters / static UI / API response
 ```
@@ -24,8 +25,9 @@ User / Client
 | Presenters | `api/core/presenters/` | Markdown、DOCX、section、citation 等輸出格式整理 |
 | Core agents | `agent/` | 任務路由、報告生成、風格改寫、文件追問與工具協調 |
 | Data agent | `agent/data_agent/` | Elasticsearch retrieval runtime、prompt 與資料型別 |
-| ES utilities | `agent/es/` | ES client、query body、evidence parsing、SQL/TXT ingestion |
-| Excel import | `agent/excel_to_sql/` | Excel 讀取、欄位比對、SQL 寫入、audit、dashboard 資料彙整 |
+| ES utilities | `agent/es/` | ES client、query body、evidence parsing、TXT ingestion |
+| Data ingestion | `data_ingestion/` | SQL→ES 與 Excel→SQL 等資料匯入/ETL 流程 |
+| Excel import | `data_ingestion/excel_to_sql/` | Excel 讀取、欄位比對、SQL 寫入、audit、dashboard 資料彙整 |
 | Config | `config/` | index、auth、editor、SQL import、Excel import 設定 |
 | Tests | `tests/` | 單元測試與 dashboard static 檢查 |
 
@@ -46,9 +48,9 @@ User / Client
 
 ### Excel 匯入 SQL 與監控
 
-1. 匯入流程入口：`agent/excel_to_sql/ingest.py`。
-2. 共用工具：`agent/excel_to_sql/utils.py`, `date_utils.py`, `sql_utils.py`, `audit.py`。
-3. dashboard 資料彙整：`agent/excel_to_sql/dashboard.py`。
+1. 匯入流程入口：`data_ingestion/excel_to_sql/ingest.py`。
+2. 共用工具：`data_ingestion/excel_to_sql/utils.py`, `date_utils.py`, `sql_utils.py`, `audit.py`。
+3. dashboard 資料彙整：`data_ingestion/excel_to_sql/dashboard.py`。
 4. dashboard API：`api/routers/excel_to_sql.py`。
 5. dashboard UI：`api/static/excel_to_sql_dashboard.html`。
 

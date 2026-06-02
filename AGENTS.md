@@ -6,7 +6,7 @@
 
 - 本專案是 FastAPI + Elasticsearch 的 RAG / agent 系統。
 - API 與 HTTP endpoint 主要在 `api/`。
-- Agent、retrieval、evidence、SQL/ES ingestion 主要在 `agent/`。
+- Agent、retrieval、evidence 主要在 `agent/`；資料匯入與 ETL 主要在 `data_ingestion/`。
 - 設定檔主要在 `config/`。
 - 測試主要在 `tests/`。
 
@@ -17,9 +17,9 @@
 | Chat completion / 對話 API | `api/routers/chat.py`, `api/services/sessions.py`, `agent/` |
 | FastAPI app 啟動、middleware、路由掛載 | `api/main.py`, `api/routers/` |
 | Elasticsearch 查詢、證據整理 | `agent/es/`, `agent/data_agent/` |
-| SQL Server 匯入 Elasticsearch | `agent/es/ingest_sql.py`, `config/sql_import/` |
-| Excel 匯入 SQL Server | `agent/excel_to_sql/`, `config/excel_to_sql/` |
-| Excel 匯入監控 dashboard | `agent/excel_to_sql/dashboard.py`, `api/routers/excel_to_sql.py`, `api/static/excel_to_sql_dashboard.html` |
+| SQL Server 匯入 Elasticsearch | `data_ingestion/sql_to_es/ingest_sql.py`, `config/sql_import/` |
+| Excel 匯入 SQL Server | `data_ingestion/excel_to_sql/`, `config/excel_to_sql/` |
+| Excel 匯入監控 dashboard | `data_ingestion/excel_to_sql/dashboard.py`, `api/routers/excel_to_sql.py`, `api/static/excel_to_sql_dashboard.html` |
 | Word / DOCX 匯出 | `api/services/export_word_service.py`, `api/core/presenters/docx/` |
 | Editor 表單與稽核 | `api/routers/editor.py`, `api/services/editor_form_config.py`, `api/services/editor_audit.py`, `config/editor_form.default.json` |
 

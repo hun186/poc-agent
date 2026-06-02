@@ -1,6 +1,6 @@
-# agent/excel_to_sql/ingest.py
+# data_ingestion/excel_to_sql/ingest.py
 # cd /d D:\shared\TopicClassification\poc-agent
-# python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activities.example.json
+# python -m data_ingestion.excel_to_sql.ingest --config config/excel_to_sql/vessel_activities.example.json
 
 from __future__ import annotations
 

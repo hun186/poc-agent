@@ -5,7 +5,7 @@
 ## 入口
 
 ```bash
-python -m agent.excel_to_sql.ingest --config config/excel_to_sql/vessel_activities.example.json
+python -m data_ingestion.excel_to_sql.ingest --config config/excel_to_sql/vessel_activities.example.json
 ```
 
 ## 主要能力
