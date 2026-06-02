@@ -95,7 +95,7 @@ python -m data_ingestion.sql_to_es.ingest_sql --config config/sql_import/srp_imp
 ### 3) 各欄位設定重點
 
 - `index_name`：目標 ES index 名稱；若未填，會回退讀取 `.env` 的 `ES_INDEX`。
-- `db.driver`：ODBC driver 名稱（常見為 `ODBC Driver 17 for SQL Server`）。
+- `db.driver`：ODBC driver 名稱（常見為 `ODBC Driver 17 for SQL Server`）；也可設為 `auto`（或留空）讓程式依本機已安裝清單自動挑選 SQL Server ODBC driver，優先使用 `ODBC Driver 18 for SQL Server`，再依序退回 17/13、Native Client 或 `SQL Server`。若指定的 driver 未安裝，程式會嘗試改用本機可用版本。
 - `db.server` / `db.database`：SQL Server 連線位址與資料庫名稱。
 - `db.trusted_connection`：
   - `true`：使用整合驗證（Windows auth）。
