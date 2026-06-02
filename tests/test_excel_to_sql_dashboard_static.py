@@ -14,3 +14,14 @@ def test_chart_bucket_selector_is_visible_in_chart_card_and_sent_to_api():
     assert 'aria-label="曲線圖時間區間設定"' in html
     assert "chart_bucket: $('chartBucket').value" in html
     assert "$('chartBucket').addEventListener('change', applyAuditFilters)" in html
+
+
+def test_dashboard_refresh_and_audit_filters_extend_end_time_to_now():
+    html = DASHBOARD_HTML.read_text(encoding="utf-8")
+
+    assert 'id="endTs" type="datetime-local" step="1"' in html
+    assert 'function updateEndTsToNow()' in html
+    assert 'Date.now() + 60 * 1000' in html
+    assert '<button onclick="refreshDashboardNow()">重新整理</button>' in html
+    assert 'function applyAuditFilters() { resetRecentPage(); updateEndTsToNow(); loadDashboard(); }' in html
+    assert 'updateEndTsToNow();\n  await loadDashboard();' in html
