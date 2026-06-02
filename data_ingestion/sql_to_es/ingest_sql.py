@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 
 from agent.es.es_client import get_es, ES_INDEX_DEFAULT
 from agent.es.ingest_txt import INDEX_MAPPINGS
+from data_ingestion.excel_to_sql.sql_utils import detect_odbc_driver
 
 
 SQL_INDEX_MAPPINGS: Dict = deepcopy(INDEX_MAPPINGS)
@@ -130,7 +131,7 @@ def quote_object_path(name: str) -> str:
 
 
 def build_conn_str_from_config(cfg: Dict[str, Any]) -> str:
-    driver = get_nested(cfg, "db.driver", "ODBC Driver 18 for SQL Server")
+    driver = detect_odbc_driver(get_nested(cfg, "db.driver", "auto"))
     server = require_nested(cfg, "db.server")
     database = require_nested(cfg, "db.database")
     trusted_connection = bool(get_nested(cfg, "db.trusted_connection", False))
