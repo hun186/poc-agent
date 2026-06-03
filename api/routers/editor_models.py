@@ -1,0 +1,28 @@
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class AuthPayload(BaseModel):
+    username: str = Field(..., min_length=1, max_length=64)
+    password: str = Field(..., min_length=1)
+    full_name: str | None = Field(default=None, max_length=120)
+    department: str | None = Field(default=None, max_length=120)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class ApprovePayload(BaseModel):
+    role: str = Field(...)
+
+
+class SaveDocumentPayload(BaseModel):
+    index: str = Field(..., min_length=1)
+    id: str | None = Field(default=None, min_length=1)
+    source: dict[str, Any]
+
+
+class DeleteDocumentsPayload(BaseModel):
+    index: str = Field(..., min_length=1)
+    ids: list[str] = Field(..., min_length=1)

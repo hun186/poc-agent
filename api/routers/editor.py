@@ -1,326 +1,38 @@
 # api/routers/editor.py
 from __future__ import annotations
 
-from pathlib import Path
-import hashlib
-import json
-import time
-from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
 
 from agent.es import es_client
-from api.services.auth_store import AUTH_STORE, AuthUser, create_token, parse_token
+from api.routers.editor_dependencies import current_user, require_superuser, static_path
+from api.routers.editor_models import AuthPayload, ApprovePayload, DeleteDocumentsPayload, SaveDocumentPayload
+from api.services.auth_store import AUTH_STORE, AuthUser, create_token
 from api.services.editor_audit import append_audit_event, diff_values
+from api.services.editor_audit_queries import build_usage_stats, filter_audit_records, load_audit_records
+from api.services.editor_files import extract_text_from_upload
 from api.services.editor_form_config import get_editor_schema, public_editor_form_config
+from api.services.editor_index_utils import (
+    coerce_source_by_mapping,
+    current_indexes,
+    ensure_allowed_index,
+    get_index_field_paths,
+    get_index_field_type_map,
+    get_index_object_paths,
+    make_uuid_from_source,
+    normalize_sra_source_shapes,
+    pick_source_uuid,
+    utc_now_iso_z,
+)
 
 router = APIRouter(tags=["editor"])
-_MAPPING_FIELD_PATHS_CACHE_TTL_SEC = 60.0
-_mapping_field_paths_cache: dict[str, tuple[float, set[str], bool]] = {}
-
-
-class AuthPayload(BaseModel):
-    username: str = Field(..., min_length=1, max_length=64)
-    password: str = Field(..., min_length=1)
-    full_name: str | None = Field(default=None, max_length=120)
-    department: str | None = Field(default=None, max_length=120)
-    note: str | None = Field(default=None, max_length=500)
-
-
-class ApprovePayload(BaseModel):
-    role: str = Field(...)
-
-
-class SaveDocumentPayload(BaseModel):
-    index: str = Field(..., min_length=1)
-    id: str | None = Field(default=None, min_length=1)
-    source: dict[str, Any]
-
-class DeleteDocumentsPayload(BaseModel):
-    index: str = Field(..., min_length=1)
-    ids: list[str] = Field(..., min_length=1)
-
-
-def _load_audit_records(limit: int = 5000) -> list[dict[str, Any]]:
-    from api.services.editor_audit import audit_log_path
-
-    path = audit_log_path()
-    if not path.exists():
-        return []
-
-    records: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as f:
-        for line in f:
-            text = line.strip()
-            if not text:
-                continue
-            try:
-                obj = json.loads(text)
-            except Exception:
-                continue
-            if isinstance(obj, dict):
-                records.append(obj)
-    if len(records) > limit:
-        return records[-limit:]
-    return records
-
-
-
-def _make_uuid_from_source(source: dict[str, Any]) -> str:
-    """Generate deterministic sha1 id from source payload.
-
-    `importDT` is runtime metadata and should not affect duplicate detection.
-    """
-    normalized = dict(source)
-    normalized.pop("importDT", None)
-    basis = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha1(basis.encode("utf-8")).hexdigest()
-
-def _pick_source_uuid(source: dict[str, Any]) -> str | None:
-    value = source.get("uuid")
-    if isinstance(value, list) and value:
-        candidate = str(value[0] or "").strip()
-        return candidate or None
-    if isinstance(value, str):
-        candidate = value.strip()
-        return candidate or None
-    return None
-
-
-def _utc_now_iso_z() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _extract_text_from_upload(filename: str, content: bytes) -> str:
-    ext = Path(filename or "").suffix.lower()
-    if ext in {".txt", ".md", ".csv"}:
-        return content.decode("utf-8", errors="ignore")
-    if ext == ".pdf":
-        try:
-            from pypdf import PdfReader  # type: ignore
-            import io
-            reader = PdfReader(io.BytesIO(content))
-            return "\n".join((p.extract_text() or "") for p in reader.pages)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"PDF 文字擷取失敗：{exc}") from exc
-    if ext in {".docx"}:
-        try:
-            import docx  # type: ignore
-            import io
-            doc = docx.Document(io.BytesIO(content))
-            return "\n".join(p.text for p in doc.paragraphs)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Word 文字擷取失敗：{exc}") from exc
-    if ext in {".xlsx"}:
-        try:
-            import io
-            import openpyxl  # type: ignore
-            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-            lines: list[str] = []
-            for ws in wb.worksheets:
-                lines.append(f"# {ws.title}")
-                for row in ws.iter_rows(values_only=True):
-                    vals = [str(c).strip() for c in row if c is not None and str(c).strip()]
-                    if vals:
-                        lines.append(" | ".join(vals))
-            return "\n".join(lines)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Excel 文字擷取失敗：{exc}") from exc
-    raise HTTPException(status_code=400, detail="不支援的檔案格式，請上傳 txt、md、csv、pdf、docx、xlsx。")
-
-
-def _mapping_object_paths(properties: dict[str, Any], prefix: str = "") -> set[str]:
-    paths: set[str] = set()
-    for name, definition in (properties or {}).items():
-        if not isinstance(definition, dict):
-            continue
-        path = f"{prefix}.{name}" if prefix else name
-        field_type = str(definition.get("type") or "")
-        child_props = definition.get("properties")
-        if field_type in {"object", "nested"} or isinstance(child_props, dict):
-            paths.add(path)
-            if isinstance(child_props, dict):
-                paths |= _mapping_object_paths(child_props, path)
-    return paths
-
-
-def _get_index_object_paths(index: str) -> set[str]:
-    try:
-        mapping = es_client.get_es().indices.get_mapping(index=index)
-    except Exception:
-        return set()
-
-    object_paths: set[str] = set()
-    for _, body in (mapping or {}).items():
-        m = body.get("mappings") if isinstance(body, dict) else {}
-        props = m.get("properties") if isinstance(m, dict) else {}
-        if isinstance(props, dict):
-            object_paths |= _mapping_object_paths(props)
-    return object_paths
-
-
-def _get_index_field_paths(index: str) -> tuple[set[str], bool]:
-    now = time.time()
-    cached = _mapping_field_paths_cache.get(index)
-    if cached and now - cached[0] <= _MAPPING_FIELD_PATHS_CACHE_TTL_SEC:
-        return cached[1], cached[2]
-
-    try:
-        mapping = es_client.get_es().indices.get_mapping(index=index)
-    except Exception:
-        _mapping_field_paths_cache[index] = (now, set(), False)
-        return set(), False
-
-    paths: set[str] = set()
-
-    def _walk(props: dict[str, Any], prefix: str = "") -> None:
-        for name, definition in (props or {}).items():
-            if not isinstance(definition, dict):
-                continue
-            path = f"{prefix}.{name}" if prefix else name
-            paths.add(path)
-            child_props = definition.get("properties")
-            if isinstance(child_props, dict):
-                _walk(child_props, path)
-
-    for _, body in (mapping or {}).items():
-        m = body.get("mappings") if isinstance(body, dict) else {}
-        props = m.get("properties") if isinstance(m, dict) else {}
-        if isinstance(props, dict):
-            _walk(props)
-
-    _mapping_field_paths_cache[index] = (now, paths, True)
-    return paths, True
-
-
-def _get_index_field_type_map(index: str, targets: list[str]) -> dict[str, str]:
-    try:
-        mapping = es_client.get_es().indices.get_mapping(index=index)
-    except Exception:
-        return {}
-
-    out: dict[str, str] = {}
-
-    def _walk(props: dict[str, Any], prefix: str = "") -> None:
-        for name, definition in (props or {}).items():
-            if not isinstance(definition, dict):
-                continue
-            path = f"{prefix}.{name}" if prefix else name
-            ftype = str(definition.get("type") or "")
-            if path in targets and ftype:
-                out[path] = ftype
-            child_props = definition.get("properties")
-            if isinstance(child_props, dict):
-                _walk(child_props, path)
-
-    for _, body in (mapping or {}).items():
-        m = body.get("mappings") if isinstance(body, dict) else {}
-        props = m.get("properties") if isinstance(m, dict) else {}
-        if isinstance(props, dict):
-            _walk(props)
-
-    return out
-
-
-def _coerce_source_by_mapping(source: dict[str, Any], object_paths: set[str]) -> dict[str, Any]:
-    patched = dict(source)
-    for path in sorted(object_paths):
-        parts = path.split(".")
-        node: Any = patched
-        ok = True
-        for part in parts[:-1]:
-            if not isinstance(node, dict) or part not in node:
-                ok = False
-                break
-            node = node.get(part)
-        if not ok or not isinstance(node, dict):
-            continue
-        leaf = parts[-1]
-        if leaf not in node:
-            continue
-        value = node.get(leaf)
-        if value is None or isinstance(value, dict) or isinstance(value, list):
-            continue
-        node[leaf] = {"value": value}
-    return patched
-
-
-
-
-def _normalize_sra_source_shapes(source: dict[str, Any], field_type_map: dict[str, str]) -> dict[str, Any]:
-    """Normalize known SRP fields based on Elasticsearch mapping types.
-
-    - nested  -> list[dict]
-    - object  -> dict
-    """
-    normalized = dict(source)
-
-    def _to_list_of_dict(value: Any) -> list[dict[str, Any]]:
-        if isinstance(value, list):
-            return [v for v in value if isinstance(v, dict)]
-        if isinstance(value, dict):
-            return [value]
-        return []
-
-    def _to_dict(value: Any) -> dict[str, Any]:
-        if isinstance(value, dict):
-            return value
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    return item
-        return {}
-
-    for key in ("multidim_event_json", "route_audit_json"):
-        if key not in normalized:
-            continue
-        ftype = (field_type_map.get(key) or "").lower()
-        if ftype == "nested":
-            normalized[key] = _to_list_of_dict(normalized.get(key))
-        elif ftype == "object":
-            normalized[key] = _to_dict(normalized.get(key))
-
-    return normalized
-
-def _static_path(filename: str) -> Path:
-    return Path(__file__).resolve().parents[1] / "static" / filename
 
 
 @router.get("/editor", include_in_schema=False)
 def editor_page() -> FileResponse:
-    return FileResponse(_static_path("editor.html"))
-
-
-def _bearer_token(authorization: str | None) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="請先登入。")
-    return authorization.split(" ", 1)[1].strip()
-
-
-def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
-    payload = parse_token(_bearer_token(authorization))
-    if not payload:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。")
-    username = str(payload.get("sub") or "")
-    stored = AUTH_STORE.get_user(username)
-    if not stored or stored.get("status") != "active":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="帳號尚未啟用。")
-    return AuthUser(username=username, role=str(stored.get("role") or "user"), status="active")
-
-
-def require_superuser(user: AuthUser = Depends(current_user)) -> AuthUser:
-    if user.role != "superuser":
-        append_audit_event({
-            "action": "authz.denied",
-            "username": user.username,
-            "role": user.role,
-            "reason": "require_superuser",
-        })
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要超級使用者權限。")
-    return user
+    return FileResponse(static_path("editor.html"))
 
 
 @router.post("/v1/auth/register")
@@ -395,45 +107,13 @@ async def extract_text_from_file(
     _: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
     content = await file.read()
-    text = _extract_text_from_upload(file.filename or "", content)
+    text = extract_text_from_upload(file.filename or "", content)
     return {"filename": file.filename, "text": text}
-
-
-def _current_indexes() -> list[str]:
-    """Return currently-live ES indexes for editor dropdown (excluding hidden/system indexes)."""
-    es_client.init_index_cache(live_check=True, force=True)
-    live_from_cache = list(es_client.ALL_INDEXES)
-    default_live = es_client.ES_INDEX_DEFAULT
-
-    try:
-        alias_map = es_client.get_es().indices.get_alias(index="*")
-        raw_indexes = list((alias_map or {}).keys())
-    except Exception:
-        raw_indexes = live_from_cache
-
-    merged: list[str] = []
-    for idx in raw_indexes:
-        s = str(idx or "").strip()
-        if not s or s.startswith("."):
-            continue
-        if s not in merged:
-            merged.append(s)
-
-    if default_live and default_live not in merged:
-        merged.insert(0, default_live)
-
-    return merged
-
-
-def _ensure_allowed_index(index: str) -> None:
-    indexes = _current_indexes()
-    if index not in indexes:
-        raise HTTPException(status_code=400, detail=f"不允許或不存在的 index：{index}")
 
 
 @router.get("/v1/editor/indexes")
 def list_indexes(_: AuthUser = Depends(current_user)) -> dict[str, Any]:
-    indexes = _current_indexes()
+    indexes = current_indexes()
     default_index = es_client.ES_INDEX_DEFAULT or (indexes[0] if indexes else "")
     return {"indexes": indexes, "default_index": default_index}
 
@@ -460,11 +140,11 @@ def search_documents(
     end_ts: str = Query("", description="結束時間（ISO8601）"),
     _: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
-    _ensure_allowed_index(index)
+    ensure_allowed_index(index)
     schema = get_editor_schema(index=index)
     filters: list[dict[str, Any]] = []
     date_field = str(schema.get("search_date_field") or "importDT")
-    mapping_field_paths, mapping_ok = _get_index_field_paths(index)
+    mapping_field_paths, mapping_ok = get_index_field_paths(index)
     warnings: list[str] = []
     if not mapping_ok:
         warnings.append("無法讀取 index mapping，已略過日期欄位存在性檢查。")
@@ -537,14 +217,14 @@ def get_document(
     id: str = Query(...),
     _: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
-    _ensure_allowed_index(index)
+    ensure_allowed_index(index)
     schema = get_editor_schema(index=index)
     try:
         got = es_client.get_es().get(index=index, id=id, _source=True)
     except Exception as exc:
         raise HTTPException(status_code=404, detail="文件不存在或無法讀取。") from exc
     body = es_client._unwrap_es(got)
-    mapping_field_paths, mapping_ok = _get_index_field_paths(index)
+    mapping_field_paths, mapping_ok = get_index_field_paths(index)
     expected_paths: set[str] = set()
     for sec in (schema.get("sections") or []):
         if not isinstance(sec, dict):
@@ -579,7 +259,7 @@ def get_document(
 
 @router.put("/v1/editor/doc")
 def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current_user)) -> dict[str, Any]:
-    _ensure_allowed_index(payload.index)
+    ensure_allowed_index(payload.index)
     is_create = not (payload.id and payload.id.strip())
     if any(k.startswith("_") for k in payload.source.keys()):
         raise HTTPException(status_code=400, detail="source 不可包含 _ 開頭的 Elasticsearch metadata 欄位。")
@@ -587,12 +267,12 @@ def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current
     before_source: dict[str, Any] = {}
     import_dt = payload.source.get("importDT")
     if is_create and not (isinstance(import_dt, str) and import_dt.strip()):
-        payload.source["importDT"] = _utc_now_iso_z()
+        payload.source["importDT"] = utc_now_iso_z()
     doc_id = payload.id.strip() if isinstance(payload.id, str) and payload.id.strip() else None
     if not doc_id:
-        doc_id = _pick_source_uuid(payload.source)
+        doc_id = pick_source_uuid(payload.source)
     if not doc_id:
-        doc_id = _make_uuid_from_source(payload.source)
+        doc_id = make_uuid_from_source(payload.source)
         payload.source["uuid"] = doc_id
 
     if doc_id:
@@ -603,10 +283,10 @@ def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current
         except Exception:
             before_source = {}
 
-    field_type_map = _get_index_field_type_map(payload.index, ["multidim_event_json", "route_audit_json"])
-    normalized_source = _normalize_sra_source_shapes(payload.source, field_type_map)
-    object_paths = _get_index_object_paths(payload.index)
-    source_to_save = _coerce_source_by_mapping(normalized_source, object_paths)
+    field_type_map = get_index_field_type_map(payload.index, ["multidim_event_json", "route_audit_json"])
+    normalized_source = normalize_sra_source_shapes(payload.source, field_type_map)
+    object_paths = get_index_object_paths(payload.index)
+    source_to_save = coerce_source_by_mapping(normalized_source, object_paths)
     changes = diff_values(before_source, source_to_save)
     if not changes:
         return {
@@ -650,7 +330,7 @@ def delete_document(
     id: str = Query(...),
     user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
-    _ensure_allowed_index(index)
+    ensure_allowed_index(index)
     try:
         res = es_client.get_es().delete(index=index, id=id, refresh="wait_for")
     except Exception as exc:
@@ -671,7 +351,7 @@ def delete_document(
 
 @router.delete("/v1/editor/docs")
 def delete_documents(payload: DeleteDocumentsPayload, user: AuthUser = Depends(current_user)) -> dict[str, Any]:
-    _ensure_allowed_index(payload.index)
+    ensure_allowed_index(payload.index)
     ids = [str(i).strip() for i in payload.ids if str(i).strip()]
     if not ids:
         raise HTTPException(status_code=400, detail="ids 不可為空。")
@@ -702,33 +382,11 @@ def delete_documents(payload: DeleteDocumentsPayload, user: AuthUser = Depends(c
 
 @router.get("/v1/editor/usage-stats")
 def usage_stats(user: AuthUser = Depends(current_user)) -> dict[str, Any]:
-    records = _load_audit_records(limit=20000)
+    records = load_audit_records(limit=20000)
     mine = [r for r in records if str(r.get("username") or "") == user.username]
-
-    def build(rows: list[dict[str, Any]]) -> dict[str, Any]:
-        by_action: dict[str, int] = {}
-        by_index: dict[str, int] = {}
-        by_user: dict[str, int] = {}
-        changed_paths_total = 0
-        for r in rows:
-            action = str(r.get("action") or "unknown")
-            idx = str(r.get("index") or "-")
-            uname = str(r.get("username") or "-")
-            by_action[action] = by_action.get(action, 0) + 1
-            by_index[idx] = by_index.get(idx, 0) + 1
-            by_user[uname] = by_user.get(uname, 0) + 1
-            changed_paths_total += len(r.get("changed_paths") or [])
-        return {
-            "total_events": len(rows),
-            "changed_paths_total": changed_paths_total,
-            "by_action": by_action,
-            "by_index": by_index,
-            "by_user": by_user,
-        }
-
-    out = {"me": build(mine)}
+    out = {"me": build_usage_stats(mine)}
     if user.role == "superuser":
-        out["all"] = build(records)
+        out["all"] = build_usage_stats(records)
     return out
 
 @router.get("/v1/editor/audit-logs")
@@ -743,56 +401,15 @@ def list_audit_logs(
     limit: int = Query(100, ge=1, le=500),
     _: AuthUser = Depends(require_superuser),
 ) -> dict[str, Any]:
-    records = _load_audit_records(limit=5000)
-    username_q = (username or "").strip().lower()
-    action_q = (action or "").strip().lower()
-    index_q = (index or "").strip()
-    id_q = (id or "").strip()
-    path_q = (changed_path or "").strip().lower()
-    start_q = (start_ts or "").strip()
-    end_q = (end_ts or "").strip()
-
-    def in_range(ts_text: str) -> bool:
-        if not (start_q or end_q):
-            return True
-        try:
-            ts = datetime.fromisoformat(ts_text.replace("Z", "+00:00"))
-        except Exception:
-            return False
-        if start_q:
-            try:
-                start = datetime.fromisoformat(start_q.replace("Z", "+00:00"))
-                if ts < start:
-                    return False
-            except Exception:
-                raise HTTPException(status_code=400, detail="start_ts 格式錯誤，請使用 ISO 8601。")
-        if end_q:
-            try:
-                end = datetime.fromisoformat(end_q.replace("Z", "+00:00"))
-                if ts > end:
-                    return False
-            except Exception:
-                raise HTTPException(status_code=400, detail="end_ts 格式錯誤，請使用 ISO 8601。")
-        return True
-
-    filtered: list[dict[str, Any]] = []
-    for r in records:
-        if username_q and username_q not in str(r.get("username") or "").lower():
-            continue
-        if action_q and action_q not in str(r.get("action") or "").lower():
-            continue
-        if index_q and index_q != str(r.get("index") or ""):
-            continue
-        if id_q and id_q != str(r.get("id") or ""):
-            continue
-        if path_q:
-            paths = r.get("changed_paths") or []
-            if not any(path_q in str(p or "").lower() for p in paths):
-                continue
-        if not in_range(str(r.get("ts") or "")):
-            continue
-        filtered.append(r)
-
-    filtered.sort(key=lambda x: str(x.get("ts") or ""), reverse=True)
-    sliced = filtered[:limit]
-    return {"total": len(filtered), "limit": limit, "hits": sliced}
+    records = load_audit_records(limit=5000)
+    filtered = filter_audit_records(
+        records,
+        username=username,
+        action=action,
+        index=index,
+        id=id,
+        changed_path=changed_path,
+        start_ts=start_ts,
+        end_ts=end_ts,
+    )
+    return {"total": len(filtered), "limit": limit, "hits": filtered[:limit]}
