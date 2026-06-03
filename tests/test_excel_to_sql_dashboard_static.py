@@ -30,8 +30,10 @@ def test_dashboard_refresh_and_audit_filters_extend_end_time_to_now():
 def test_recent_audit_filters_include_destination_table():
     html = DASHBOARD_HTML.read_text(encoding="utf-8")
 
-    assert '<label>目的地 table</label><select id="destinationTableFilter" multiple size="4">' in html
-    assert '可按 Ctrl / Command 複選' in html
+    assert '<label for="destinationTableSummary">目的地 table</label><details id="destinationTableDropdown" class="multi-select">' in html
+    assert '點開選單選擇 table；選取後會自動收合' in html
+    assert 'function updateDestinationTableSummary()' in html
+    assert 'function closeDestinationTableDropdown()' in html
     assert "selectedValues('destinationTableFilter').forEach" in html
     assert "params.append('destination_table_filter', value)" in html
     assert 'function renderDestinationTableOptions(options)' in html
