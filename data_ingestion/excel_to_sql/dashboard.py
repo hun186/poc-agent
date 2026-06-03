@@ -183,6 +183,19 @@ def _contains_filter(value: str | None) -> str:
     return f"%{str(value or '').strip()}%"
 
 
+def _normalize_destination_table_filters(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    raw_values = [value] if isinstance(value, str) else value
+    cleaned: list[str] = []
+    for raw_value in raw_values:
+        for table in str(raw_value or "").split(","):
+            table = table.strip()
+            if table and table not in cleaned:
+                cleaned.append(table)
+    return cleaned
+
+
 def _parse_payload(value: Any) -> Any:
     if not isinstance(value, str) or not value.strip():
         return value
@@ -242,6 +255,7 @@ def dashboard_payload(
     end_ts: str | datetime | date | None = None,
     status_filter: str | None = None,
     source_file_filter: str | None = None,
+    destination_table_filter: str | list[str] | None = None,
     row_no_filter: int | None = None,
     message_filter: str | None = None,
     hash_value_filter: str | None = None,
@@ -279,6 +293,7 @@ def dashboard_payload(
                     "summary": [],
                     "daily": [],
                     "files": [],
+                    "destination_table_options": [],
                     "recent": [],
                     "recent_paging": {"page": page, "page_size": limit, "total": 0},
                 }
@@ -337,10 +352,35 @@ ORDER BY MAX(processed_at) DESC
                 (limit, *time_params),
             )
 
+            destination_table_option_conditions = list(time_conditions)
+            destination_table_option_conditions.extend(
+                [
+                    "destination_table IS NOT NULL",
+                    "LTRIM(RTRIM(destination_table)) <> ''",
+                ]
+            )
+            destination_table_options = [
+                str(row.get("destination_table") or "").strip()
+                for row in _fetch_all_dicts(
+                    cursor,
+                    f"""
+SELECT DISTINCT TOP (200) destination_table
+FROM {quoted_table}
+{_where_clause(destination_table_option_conditions)}
+ORDER BY destination_table
+""",
+                    tuple(time_params),
+                )
+                if str(row.get("destination_table") or "").strip()
+            ]
+
             recent_conditions = list(time_conditions)
             recent_params = list(time_params)
             clean_status = str(status_filter or "").strip()
             clean_source_file = str(source_file_filter or "").strip()
+            clean_destination_tables = _normalize_destination_table_filters(
+                destination_table_filter
+            )
             clean_message = str(message_filter or "").strip()
             clean_hash = str(hash_value_filter or "").strip()
             clean_payload = str(payload_filter or "").strip()
@@ -350,6 +390,10 @@ ORDER BY MAX(processed_at) DESC
             if clean_source_file:
                 recent_conditions.append("source_file LIKE ?")
                 recent_params.append(_contains_filter(clean_source_file))
+            if clean_destination_tables:
+                placeholders = ", ".join("?" for _ in clean_destination_tables)
+                recent_conditions.append(f"destination_table IN ({placeholders})")
+                recent_params.extend(clean_destination_tables)
             if row_no_filter is not None:
                 recent_conditions.append("row_no = ?")
                 recent_params.append(int(row_no_filter))
@@ -444,6 +488,7 @@ ORDER BY rn
                 "recent_filters": {
                     "status": clean_status,
                     "source_file": clean_source_file,
+                    "destination_table": clean_destination_tables,
                     "row_no": row_no_filter,
                     "message": clean_message,
                     "hash_value": clean_hash,
@@ -460,6 +505,7 @@ ORDER BY rn
                 "summary": summary,
                 "daily": daily,
                 "files": files,
+                "destination_table_options": destination_table_options,
                 "recent": recent,
             }
         finally:
