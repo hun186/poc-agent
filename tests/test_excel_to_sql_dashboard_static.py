@@ -25,3 +25,15 @@ def test_dashboard_refresh_and_audit_filters_extend_end_time_to_now():
     assert '<button onclick="refreshDashboardNow()">重新整理</button>' in html
     assert 'function applyAuditFilters() { resetRecentPage(); updateEndTsToNow(); loadDashboard(); }' in html
     assert 'updateEndTsToNow();\n  await loadDashboard();' in html
+
+
+def test_recent_audit_filters_include_destination_table():
+    html = DASHBOARD_HTML.read_text(encoding="utf-8")
+
+    assert '<label>目的地 table</label><select id="destinationTableFilter" multiple size="4">' in html
+    assert '可按 Ctrl / Command 複選' in html
+    assert "selectedValues('destinationTableFilter').forEach" in html
+    assert "params.append('destination_table_filter', value)" in html
+    assert 'function renderDestinationTableOptions(options)' in html
+    assert "renderDestinationTableOptions(data.destination_table_options || [])" in html
+    assert "'destinationTableFilter'" in html

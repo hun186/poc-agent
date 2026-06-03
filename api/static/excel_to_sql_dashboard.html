@@ -101,6 +101,7 @@
       <section class="filters" aria-label="最近 audit 事件篩選">
         <div><label>audit 狀態</label><select id="statusFilter"><option value="">全部</option><option value="inserted">inserted</option><option value="duplicate">duplicate</option><option value="failed">failed</option><option value="header_smart_match">header_smart_match</option><option value="sql_deleted">sql_deleted</option><option value="sql_delete_not_found">sql_delete_not_found</option></select></div>
         <div><label>來源檔包含</label><input id="sourceFileFilter" placeholder="例如 .xlsx 或檔名片段" /></div>
+        <div><label>目的地 table</label><select id="destinationTableFilter" multiple size="4"><option value="" disabled>載入後可複選</option></select><div class="muted">可按 Ctrl / Command 複選</div></div>
         <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
         <div><label>訊息包含</label><input id="messageFilter" placeholder="錯誤訊息 / 智慧比對" /></div>
         <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
@@ -196,7 +197,16 @@ function formatAuditTime(value) {
 }
 function resetRecentPage() { state.recentPage = 1; }
 function applyAuditFilters() { resetRecentPage(); updateEndTsToNow(); loadDashboard(); }
-function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); applyAuditFilters(); }
+function selectedValues(id) { return Array.from($(id).selectedOptions || []).map(option => option.value).filter(Boolean); }
+function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); Array.from($('destinationTableFilter').options).forEach(option => { option.selected = false; }); applyAuditFilters(); }
+function renderDestinationTableOptions(options) {
+  const el = $('destinationTableFilter');
+  const selected = new Set(selectedValues('destinationTableFilter'));
+  const values = Array.from(new Set((options || []).map(value => String(value || '').trim()).filter(Boolean)));
+  selected.forEach(value => { if (value && !values.includes(value)) values.push(value); });
+  if (!values.length) { el.innerHTML = '<option value="" disabled>無可選 table</option>'; return; }
+  el.innerHTML = values.map(value => `<option value="${escapeHtml(value)}"${selected.has(value) ? ' selected' : ''}>${escapeHtml(value)}</option>`).join('');
+}
 function changeRecentPage(delta) {
   const next = state.recentPage + delta;
   const maxPage = Math.max(1, Math.ceil(state.recentTotal / Math.max(state.recentPageSize, 1)));
@@ -332,6 +342,7 @@ async function loadDashboard() {
   if (endIso) params.set('end_ts', endIso);
   const filters = { status_filter: $('statusFilter').value, source_file_filter: $('sourceFileFilter').value, row_no_filter: $('rowNoFilter').value, message_filter: $('messageFilter').value, hash_value_filter: $('hashFilter').value, payload_filter: $('payloadFilter').value };
   Object.entries(filters).forEach(([key, value]) => { if (String(value || '').trim()) params.set(key, value); });
+  selectedValues('destinationTableFilter').forEach(value => params.append('destination_table_filter', value));
   const res = await fetch('/v1/excel-to-sql/dashboard?' + params.toString(), { headers: { Authorization: 'Bearer ' + token } });
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
   const data = await res.json();
@@ -341,13 +352,14 @@ async function loadDashboard() {
   renderCards(data);
   fillTable('daily', data.daily, r => `<tr><td>${escapeHtml(r.day)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.count)}</td></tr>`);
   fillTable('files', data.files, r => `<tr><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.last_processed_at)}</td><td>${escapeHtml(r.inserted_rows)}</td><td>${escapeHtml(r.duplicate_rows)}</td><td>${escapeHtml(r.failed_rows)}</td><td>${escapeHtml(r.header_smart_matches)}</td></tr>`);
+  renderDestinationTableOptions(data.destination_table_options || []);
   if (data.chart_bucket && $('chartBucket').value !== data.chart_bucket) $('chartBucket').value = data.chart_bucket;
   renderFilteredDailyChart(data.filtered_series || data.filtered_daily || [], data.chart_bucket || $('chartBucket').value, data.chart_bucket_label || $('chartBucket').selectedOptions[0]?.textContent || '每日');
   updateRecentPager(data);
   fillTable('recent', data.recent, r => `<tr><td>${formatAuditTime(r.processed_at)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.row_no ?? '')}</td><td>${escapeHtml(r.message || '')}</td><td>${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
 }
 function bindAuditFilterEvents() {
-  ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {
+  ['statusFilter','sourceFileFilter','destinationTableFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {
     const el = $(id);
     el.addEventListener('change', applyAuditFilters);
     el.addEventListener('keydown', event => { if (event.key === 'Enter') applyAuditFilters(); });

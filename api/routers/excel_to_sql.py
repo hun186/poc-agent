@@ -88,6 +88,9 @@ def excel_to_sql_dashboard_data(
     source_file_filter: str | None = Query(
         None, description="最近 audit 事件：來源檔名部分比對"
     ),
+    destination_table_filter: list[str] | None = Query(
+        None, description="最近 audit 事件：目的地 table，可重複提供以複選"
+    ),
     row_no_filter: int | None = Query(
         None, ge=1, description="最近 audit 事件：Excel 列號"
     ),
@@ -115,6 +118,7 @@ def excel_to_sql_dashboard_data(
             end_ts=end_ts,
             status_filter=status_filter,
             source_file_filter=source_file_filter,
+            destination_table_filter=destination_table_filter,
             row_no_filter=row_no_filter,
             message_filter=message_filter,
             hash_value_filter=hash_value_filter,
