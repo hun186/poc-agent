@@ -74,10 +74,12 @@ python -m data_ingestion.excel_to_sql.ingest --config config/excel_to_sql/vessel
 - `date_utils.py`：Excel/字串日期正規化與 mapping 值轉換。
 - `sql_utils.py`：SQL Server 連線字串、ODBC driver 偵測、SQL identifier 與 hash 欄位 DDL 工具。
 - `audit.py`：audit table 建表、寫入與欄名智慧比對 audit 結果產生。
+- `file_processor.py`：單一 Excel 檔的工作表解析、欄位比對、去重、SQL 寫入與 audit/log 寫入。
 
 ## 檔案分工
 
-- `ingest.py`：CLI、Excel 讀取、欄位比對、去重、SQL 寫入、archive、audit 寫入。
+- `ingest.py`：CLI、整批匯入 orchestration、重試、truncate 與 archive。
+- `file_processor.py`：單檔 Excel 匯入流程，包含 Excel 讀取、欄位比對、去重、SQL 寫入與 audit 寫入。
 - `models.py` / `utils.py` / `date_utils.py` / `sql_utils.py` / `audit.py`：匯入流程共用工具模組。
 - `dashboard.py`：掃描可監控任務、查詢 audit table、彙整監控資料。
 - `api/routers/excel_to_sql.py`：提供儀表板頁面與 JSON API。
