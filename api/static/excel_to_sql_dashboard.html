@@ -239,6 +239,7 @@ function closeDestinationTableDropdown(applyPending = false) {
     applyAuditFilters();
   }
 }
+function closeDestinationTableDropdown() { $('destinationTableDropdown').open = false; }
 function changeRecentPage(delta) {
   const next = state.recentPage + delta;
   const maxPage = Math.max(1, Math.ceil(state.recentTotal / Math.max(state.recentPageSize, 1)));
