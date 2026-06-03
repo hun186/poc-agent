@@ -18,7 +18,7 @@ from elasticsearch import helpers
 from dotenv import load_dotenv
 
 from agent.es.es_client import get_es, ES_INDEX_DEFAULT
-from agent.es.ingest_txt import INDEX_MAPPINGS
+from data_ingestion.txt_to_es.ingest_txt import INDEX_MAPPINGS
 from data_ingestion.excel_to_sql.sql_utils import detect_odbc_driver
 
 

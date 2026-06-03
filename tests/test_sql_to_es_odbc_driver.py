@@ -17,9 +17,9 @@ def import_ingest_sql(monkeypatch):
     es_client.get_es = lambda: None
     monkeypatch.setitem(sys.modules, "agent.es.es_client", es_client)
 
-    ingest_txt = types.ModuleType("agent.es.ingest_txt")
+    ingest_txt = types.ModuleType("data_ingestion.txt_to_es.ingest_txt")
     ingest_txt.INDEX_MAPPINGS = {"properties": {}}
-    monkeypatch.setitem(sys.modules, "agent.es.ingest_txt", ingest_txt)
+    monkeypatch.setitem(sys.modules, "data_ingestion.txt_to_es.ingest_txt", ingest_txt)
 
     sys.modules.pop("data_ingestion.sql_to_es.ingest_sql", None)
     return importlib.import_module("data_ingestion.sql_to_es.ingest_sql")
