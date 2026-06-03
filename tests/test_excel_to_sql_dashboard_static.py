@@ -30,8 +30,16 @@ def test_dashboard_refresh_and_audit_filters_extend_end_time_to_now():
 def test_recent_audit_filters_include_destination_table():
     html = DASHBOARD_HTML.read_text(encoding="utf-8")
 
-    assert '<label>目的地 table</label><select id="destinationTableFilter" multiple size="4">' in html
-    assert '可按 Ctrl / Command 複選' in html
+    assert '<div class="field-label-row"><label for="destinationTableSummary">目的地 table</label><span class="help-tip"' in html
+    assert '點選多個項目後，點選選單外側會自動套用並收合。' in html
+    assert '<details id="destinationTableDropdown" class="multi-select">' in html
+    assert 'function updateDestinationTableSummary()' in html
+    assert 'function applyDestinationTablePendingFilters()' in html
+    assert 'function closeDestinationTableDropdown(applyPending = false)' in html
+    assert 'state.destinationTableDirty = true; updateDestinationTableSummary();' in html
+    assert "destinationDropdown.addEventListener('toggle', () => { if (!destinationDropdown.open) applyDestinationTablePendingFilters(); });" in html
+    assert "destinationDropdown.addEventListener('focusout'" in html
+    assert "closeDestinationTableDropdown(true)" in html
     assert "selectedValues('destinationTableFilter').forEach" in html
     assert "params.append('destination_table_filter', value)" in html
     assert 'function renderDestinationTableOptions(options)' in html

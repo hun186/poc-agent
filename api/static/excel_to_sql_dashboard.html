@@ -19,6 +19,21 @@
     .muted { color:var(--muted); font-size:13px; }
     label { font-weight:600; font-size:13px; display:block; margin-bottom:6px; }
     input, select { width:100%; box-sizing:border-box; padding:10px 11px; border:1px solid var(--line); border-radius:10px; font-size:14px; background:white; }
+    .dropdown-filter { position:relative; }
+    .multi-select { position:relative; }
+    .multi-select summary { list-style:none; width:100%; box-sizing:border-box; padding:10px 36px 10px 11px; border:1px solid var(--line); border-radius:10px; font-size:14px; background:white; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .multi-select summary::-webkit-details-marker { display:none; }
+    .multi-select summary::after { content:'▾'; position:absolute; right:12px; top:10px; color:var(--muted); }
+    .multi-select[open] summary { border-bottom-left-radius:0; border-bottom-right-radius:0; }
+    .multi-select-menu { position:absolute; z-index:20; top:100%; left:0; right:0; max-height:260px; overflow:auto; padding:8px; border:1px solid var(--line); border-top:0; border-radius:0 0 10px 10px; background:white; box-shadow:0 10px 24px rgba(16,24,40,.16); }
+    .multi-select-option { display:flex; gap:8px; align-items:flex-start; padding:7px 6px; border-radius:8px; font-size:13px; line-height:1.35; cursor:pointer; word-break:break-word; }
+    .multi-select-option:hover { background:#f8fafc; }
+    .multi-select-option input { width:auto; margin-top:2px; flex:0 0 auto; }
+    .field-label-row { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+    .field-label-row label { margin-bottom:0; }
+    .help-tip { position:relative; display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border:1px solid var(--line); border-radius:999px; color:var(--muted); background:white; font-size:12px; font-weight:700; cursor:help; }
+    .help-tip::after { content:attr(data-tip); display:none; position:absolute; z-index:30; left:50%; bottom:calc(100% + 8px); transform:translateX(-50%); width:max-content; max-width:260px; padding:8px 10px; border-radius:8px; background:#111827; color:white; font-size:12px; font-weight:500; line-height:1.4; box-shadow:0 10px 24px rgba(16,24,40,.18); }
+    .help-tip:hover::after, .help-tip:focus::after { display:block; }
     button { padding:10px 14px; border:0; border-radius:10px; background:#2563eb; color:white; font-weight:700; cursor:pointer; }
     button.secondary { background:#475467; }
     button.ghost { background:#e2e8f0; color:#172033; }
@@ -101,7 +116,7 @@
       <section class="filters" aria-label="最近 audit 事件篩選">
         <div><label>audit 狀態</label><select id="statusFilter"><option value="">全部</option><option value="inserted">inserted</option><option value="duplicate">duplicate</option><option value="failed">failed</option><option value="header_smart_match">header_smart_match</option><option value="sql_deleted">sql_deleted</option><option value="sql_delete_not_found">sql_delete_not_found</option></select></div>
         <div><label>來源檔包含</label><input id="sourceFileFilter" placeholder="例如 .xlsx 或檔名片段" /></div>
-        <div><label>目的地 table</label><select id="destinationTableFilter" multiple size="4"><option value="" disabled>載入後可複選</option></select><div class="muted">可按 Ctrl / Command 複選</div></div>
+        <div class="dropdown-filter"><div class="field-label-row"><label for="destinationTableSummary">目的地 table</label><span class="help-tip" tabindex="0" data-tip="點開選單選擇 table；點選多個項目後，點選選單外側會自動套用並收合。" aria-label="目的地 table 篩選說明">?</span></div><details id="destinationTableDropdown" class="multi-select"><summary id="destinationTableSummary">全部目的地 table</summary><div id="destinationTableFilter" class="multi-select-menu" role="listbox" aria-label="目的地 table 篩選"><div class="muted">載入後可選擇</div></div></details></div>
         <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
         <div><label>訊息包含</label><input id="messageFilter" placeholder="錯誤訊息 / 智慧比對" /></div>
         <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
@@ -143,7 +158,7 @@
   </main>
 <script>
 const tokenKey = 'sra_editor_token';
-const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100 };
+const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false };
 function $(id) { return document.getElementById(id); }
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function statusBadge(s) { return `<span class="status ${escapeHtml(s)}">${escapeHtml(s || '(empty)')}</span>`; }
@@ -197,15 +212,34 @@ function formatAuditTime(value) {
 }
 function resetRecentPage() { state.recentPage = 1; }
 function applyAuditFilters() { resetRecentPage(); updateEndTsToNow(); loadDashboard(); }
-function selectedValues(id) { return Array.from($(id).selectedOptions || []).map(option => option.value).filter(Boolean); }
-function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); Array.from($('destinationTableFilter').options).forEach(option => { option.selected = false; }); applyAuditFilters(); }
+function selectedValues(id) {
+  const el = $(id);
+  if (el.selectedOptions) return Array.from(el.selectedOptions).map(option => option.value).filter(Boolean);
+  return Array.from(el.querySelectorAll('input[type="checkbox"]:checked')).map(input => input.value).filter(Boolean);
+}
+function updateDestinationTableSummary() {
+  const values = selectedValues('destinationTableFilter');
+  $('destinationTableSummary').textContent = values.length ? `已選 ${values.length} 個 table：${values.join(', ')}` : '全部目的地 table';
+}
+function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); $('destinationTableFilter').querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; }); updateDestinationTableSummary(); applyAuditFilters(); }
 function renderDestinationTableOptions(options) {
   const el = $('destinationTableFilter');
   const selected = new Set(selectedValues('destinationTableFilter'));
   const values = Array.from(new Set((options || []).map(value => String(value || '').trim()).filter(Boolean)));
   selected.forEach(value => { if (value && !values.includes(value)) values.push(value); });
-  if (!values.length) { el.innerHTML = '<option value="" disabled>無可選 table</option>'; return; }
-  el.innerHTML = values.map(value => `<option value="${escapeHtml(value)}"${selected.has(value) ? ' selected' : ''}>${escapeHtml(value)}</option>`).join('');
+  if (!values.length) { el.innerHTML = '<div class="muted">無可選 table</div>'; updateDestinationTableSummary(); return; }
+  el.innerHTML = values.map((value, index) => `<label class="multi-select-option"><input type="checkbox" value="${escapeHtml(value)}"${selected.has(value) ? ' checked' : ''} aria-label="目的地 table ${index + 1}"><span>${escapeHtml(value)}</span></label>`).join('');
+  updateDestinationTableSummary();
+}
+function applyDestinationTablePendingFilters() {
+  if (!state.destinationTableDirty) return;
+  state.destinationTableDirty = false;
+  applyAuditFilters();
+}
+function closeDestinationTableDropdown(applyPending = false) {
+  const dropdown = $('destinationTableDropdown');
+  if (dropdown.open) dropdown.open = false;
+  if (applyPending) applyDestinationTablePendingFilters();
 }
 function changeRecentPage(delta) {
   const next = state.recentPage + delta;
@@ -359,11 +393,17 @@ async function loadDashboard() {
   fillTable('recent', data.recent, r => `<tr><td>${formatAuditTime(r.processed_at)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.row_no ?? '')}</td><td>${escapeHtml(r.message || '')}</td><td>${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
 }
 function bindAuditFilterEvents() {
-  ['statusFilter','sourceFileFilter','destinationTableFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {
+  ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {
     const el = $(id);
     el.addEventListener('change', applyAuditFilters);
     el.addEventListener('keydown', event => { if (event.key === 'Enter') applyAuditFilters(); });
   });
+  const destinationDropdown = $('destinationTableDropdown');
+  $('destinationTableFilter').addEventListener('change', () => { state.destinationTableDirty = true; updateDestinationTableSummary(); });
+  $('destinationTableFilter').addEventListener('keydown', event => { if (event.key === 'Enter') closeDestinationTableDropdown(true); });
+  destinationDropdown.addEventListener('toggle', () => { if (!destinationDropdown.open) applyDestinationTablePendingFilters(); });
+  destinationDropdown.addEventListener('focusout', () => { setTimeout(() => { if (!destinationDropdown.contains(document.activeElement)) closeDestinationTableDropdown(true); }, 0); });
+  document.addEventListener('click', event => { if (!destinationDropdown.contains(event.target)) closeDestinationTableDropdown(true); });
   $('limit').addEventListener('change', applyAuditFilters);
   $('chartBucket').addEventListener('change', applyAuditFilters);
 }
