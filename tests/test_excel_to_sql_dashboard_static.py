@@ -34,8 +34,11 @@ def test_recent_audit_filters_include_destination_table():
     assert '點選多個項目後，點選選單外側會自動套用並收合。' in html
     assert '<details id="destinationTableDropdown" class="multi-select">' in html
     assert 'function updateDestinationTableSummary()' in html
+    assert 'function applyDestinationTablePendingFilters()' in html
     assert 'function closeDestinationTableDropdown(applyPending = false)' in html
     assert 'state.destinationTableDirty = true; updateDestinationTableSummary();' in html
+    assert "destinationDropdown.addEventListener('toggle', () => { if (!destinationDropdown.open) applyDestinationTablePendingFilters(); });" in html
+    assert "destinationDropdown.addEventListener('focusout'" in html
     assert "closeDestinationTableDropdown(true)" in html
     assert "selectedValues('destinationTableFilter').forEach" in html
     assert "params.append('destination_table_filter', value)" in html

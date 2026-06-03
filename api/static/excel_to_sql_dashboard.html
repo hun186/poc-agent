@@ -231,13 +231,15 @@ function renderDestinationTableOptions(options) {
   el.innerHTML = values.map((value, index) => `<label class="multi-select-option"><input type="checkbox" value="${escapeHtml(value)}"${selected.has(value) ? ' checked' : ''} aria-label="目的地 table ${index + 1}"><span>${escapeHtml(value)}</span></label>`).join('');
   updateDestinationTableSummary();
 }
+function applyDestinationTablePendingFilters() {
+  if (!state.destinationTableDirty) return;
+  state.destinationTableDirty = false;
+  applyAuditFilters();
+}
 function closeDestinationTableDropdown(applyPending = false) {
   const dropdown = $('destinationTableDropdown');
   if (dropdown.open) dropdown.open = false;
-  if (applyPending && state.destinationTableDirty) {
-    state.destinationTableDirty = false;
-    applyAuditFilters();
-  }
+  if (applyPending) applyDestinationTablePendingFilters();
 }
 function closeDestinationTableDropdown() { $('destinationTableDropdown').open = false; }
 function changeRecentPage(delta) {
@@ -397,9 +399,12 @@ function bindAuditFilterEvents() {
     el.addEventListener('change', applyAuditFilters);
     el.addEventListener('keydown', event => { if (event.key === 'Enter') applyAuditFilters(); });
   });
+  const destinationDropdown = $('destinationTableDropdown');
   $('destinationTableFilter').addEventListener('change', () => { state.destinationTableDirty = true; updateDestinationTableSummary(); });
   $('destinationTableFilter').addEventListener('keydown', event => { if (event.key === 'Enter') closeDestinationTableDropdown(true); });
-  document.addEventListener('click', event => { if (!$('destinationTableDropdown').contains(event.target)) closeDestinationTableDropdown(true); });
+  destinationDropdown.addEventListener('toggle', () => { if (!destinationDropdown.open) applyDestinationTablePendingFilters(); });
+  destinationDropdown.addEventListener('focusout', () => { setTimeout(() => { if (!destinationDropdown.contains(document.activeElement)) closeDestinationTableDropdown(true); }, 0); });
+  document.addEventListener('click', event => { if (!destinationDropdown.contains(event.target)) closeDestinationTableDropdown(true); });
   $('limit').addEventListener('change', applyAuditFilters);
   $('chartBucket').addEventListener('change', applyAuditFilters);
 }
