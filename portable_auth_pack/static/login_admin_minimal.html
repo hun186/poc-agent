@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FastAPI Auth Pack</title>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; background: #f8fafc; color: #0f172a; }
+    main { max-width: 920px; margin: auto; display: grid; gap: 1rem; }
+    section { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; box-shadow: 0 8px 20px rgba(15,23,42,.05); }
+    label { display: block; margin: .7rem 0 .25rem; font-weight: 700; }
+    input, select, button { font: inherit; padding: .65rem .75rem; border-radius: 9px; border: 1px solid #cbd5e1; }
+    button { border: 0; background: #2563eb; color: white; font-weight: 800; cursor: pointer; margin: .25rem .25rem .25rem 0; }
+    button.secondary { background: #475569; }
+    button.danger { background: #dc2626; }
+    pre { white-space: pre-wrap; background: #0f172a; color: #e2e8f0; padding: 1rem; border-radius: 10px; }
+    .row { display: flex; gap: .75rem; flex-wrap: wrap; align-items: end; }
+    .row > div { flex: 1 1 180px; }
+  </style>
+</head>
+<body>
+<main>
+  <section>
+    <h1>FastAPI Auth Pack</h1>
+    <p>這是可直接改造的最小登入 / 註冊 / 帳號審核頁面。Token 存在 <code>localStorage.auth_token</code>。</p>
+    <div class="row">
+      <div><label>帳號</label><input id="username" autocomplete="username" /></div>
+      <div><label>密碼</label><input id="password" type="password" autocomplete="current-password" /></div>
+    </div>
+    <div class="row">
+      <div><label>姓名（選填）</label><input id="fullName" /></div>
+      <div><label>單位（選填）</label><input id="department" /></div>
+    </div>
+    <label>備註（選填）</label><input id="note" />
+    <button onclick="login()">登入</button>
+    <button class="secondary" onclick="registerUser()">建立 pending 帳號</button>
+    <button class="secondary" onclick="me()">我是誰</button>
+    <button class="danger" onclick="logout()">登出</button>
+  </section>
+  <section>
+    <h2>Superuser 帳號審核</h2>
+    <button onclick="refreshUsers()">重新整理帳號</button>
+    <div id="users"></div>
+  </section>
+  <section>
+    <h2>輸出</h2>
+    <pre id="output">尚未執行</pre>
+  </section>
+</main>
+<script>
+const tokenKey = 'auth_token';
+const out = (data) => document.getElementById('output').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+async function api(path, opts = {}) {
+  const headers = Object.assign({'Content-Type': 'application/json'}, opts.headers || {});
+  const token = localStorage.getItem(tokenKey);
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const res = await fetch(path, Object.assign({}, opts, {headers}));
+  const text = await res.text();
+  let data = {}; try { data = text ? JSON.parse(text) : {}; } catch { data = {detail: text}; }
+  if (!res.ok) throw new Error(data.detail || data.message || res.statusText);
+  return data;
+}
+function payload() {
+  return {
+    username: document.getElementById('username').value,
+    password: document.getElementById('password').value,
+    full_name: document.getElementById('fullName').value,
+    department: document.getElementById('department').value,
+    note: document.getElementById('note').value,
+  };
+}
+async function login() {
+  try {
+    const data = await api('/v1/auth/login', {method: 'POST', body: JSON.stringify(payload())});
+    localStorage.setItem(tokenKey, data.access_token);
+    out(data);
+  } catch (err) { out(String(err.message || err)); }
+}
+async function registerUser() {
+  try { out(await api('/v1/auth/register', {method: 'POST', body: JSON.stringify(payload())})); }
+  catch (err) { out(String(err.message || err)); }
+}
+async function me() {
+  try { out(await api('/v1/auth/me')); }
+  catch (err) { out(String(err.message || err)); }
+}
+function logout() { localStorage.removeItem(tokenKey); out('已登出'); }
+async function refreshUsers() {
+  try {
+    const data = await api('/v1/auth/users');
+    document.getElementById('users').innerHTML = data.users.map(u => `<div><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <button onclick="approveUser('${esc(u.username)}','user')">核准 user</button><button class="secondary" onclick="approveUser('${esc(u.username)}','superuser')">核准 superuser</button><button class="danger" onclick="rejectUser('${esc(u.username)}')">拒絕</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('');
+    out(data);
+  } catch (err) { out(String(err.message || err)); }
+}
+async function approveUser(username, role) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}/approve`, {method: 'POST', body: JSON.stringify({role})})); await refreshUsers(); }
+async function rejectUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}/reject`, {method: 'POST'})); await refreshUsers(); }
+async function deleteUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method: 'DELETE'})); await refreshUsers(); }
+</script>
+</body>
+</html>
