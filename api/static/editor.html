@@ -72,6 +72,14 @@
       <div class="row" style="margin-top: 12px;">
         <button id="loginBtn">登入</button>
         <button id="registerBtn" class="secondary">建立 pending 帳號</button>
+        <button id="forgotPasswordBtn" class="secondary">忘記密碼</button>
+      </div>
+      <div class="field-grid" style="margin-top: 12px;">
+        <div><label>一次性重設 token</label><input id="forgotResetToken" autocomplete="one-time-code" placeholder="忘記密碼後取得的 token" /></div>
+        <div><label>新密碼</label><input id="forgotNewPassword" type="password" autocomplete="new-password" placeholder="至少 8 字元" /></div>
+      </div>
+      <div class="row" style="margin-top: 12px;">
+        <button id="recoverPasswordBtn" class="secondary">用 token 重設密碼</button>
       </div>
       <div id="authStatus" class="status hidden"></div>
     </section>
@@ -88,6 +96,7 @@
                   <button class="secondary" id="navNewDocBtn">新增文件</button>
                   <button class="secondary" data-main-tab="search">搜尋文件</button>
                   <button class="secondary" data-main-tab="stats">使用統計</button>
+                  <button class="secondary" data-main-tab="account">帳號安全</button>
                 </div>
               </div>
               <div class="nav-group">
@@ -136,6 +145,19 @@
             <div id="adminStats" class="hidden"></div>
           </div>
 
+          <div id="accountCard" class="card hidden">
+            <h2>帳號安全</h2>
+            <p class="muted">變更密碼後，此帳號既有 token 會立即失效，請用新密碼重新登入。</p>
+            <div class="field-grid">
+              <div><label>目前密碼</label><input id="currentPassword" type="password" autocomplete="current-password" /></div>
+              <div><label>新密碼</label><input id="newPassword" type="password" autocomplete="new-password" placeholder="至少 8 字元" /></div>
+            </div>
+            <div class="row" style="margin-top: 12px;">
+              <button id="changePasswordBtn">變更密碼</button>
+            </div>
+            <div id="accountStatus" class="status hidden"></div>
+          </div>
+
           <div id="adminCard" class="card hidden">
             <h2>帳號審核</h2>
             <button id="refreshUsersBtn" class="secondary">重新整理帳號</button>
@@ -160,6 +182,15 @@
             </div>
             <div id="auditStatus" class="status hidden"></div>
             <div id="auditHits"></div>
+            <hr style="border:0;border-top:1px solid #e5e7eb;margin:18px 0;" />
+            <h2>登入稽核</h2>
+            <p class="muted">記錄登入成功、密碼錯誤與帳號尚未啟用等事件。</p>
+            <div class="row" style="margin-top: 12px;">
+              <div><label>最多筆數</label><input id="loginAuditLimit" type="number" min="1" max="1000" value="100" /></div>
+              <button id="refreshLoginAuditBtn" class="secondary">查詢登入稽核</button>
+            </div>
+            <div id="loginAuditStatus" class="status hidden"></div>
+            <div id="loginAuditHits"></div>
           </div>
         </aside>
 
@@ -417,6 +448,43 @@ async function register() {
     setStatus('authStatus', data.message, 'ok');
   } catch (err) { setStatus('authStatus', err.message, 'error'); }
 }
+async function forgotPassword() {
+  const username = $('authUsername').value.trim();
+  if (!username) return setStatus('authStatus', '請先輸入帳號。', 'error');
+  setStatus('authStatus', '建立重設 token 中...');
+  try {
+    const data = await api('/v1/auth/forgot-password', {method: 'POST', body: JSON.stringify({username})});
+    if (data.reset_token) $('forgotResetToken').value = data.reset_token;
+    setStatus('authStatus', data.reset_token ? `${data.message}
+reset_token: ${data.reset_token}` : data.message, 'ok');
+  } catch (err) { setStatus('authStatus', err.message, 'error'); }
+}
+async function recoverPassword() {
+  const username = $('authUsername').value.trim();
+  const reset_token = $('forgotResetToken').value.trim();
+  const new_password = $('forgotNewPassword').value;
+  if (!username || !reset_token || !new_password) return setStatus('authStatus', '請輸入帳號、reset token 與新密碼。', 'error');
+  setStatus('authStatus', '重設密碼中...');
+  try {
+    const data = await api('/v1/auth/reset-password', {method: 'POST', body: JSON.stringify({username, reset_token, new_password})});
+    $('authPassword').value = '';
+    $('forgotNewPassword').value = '';
+    setStatus('authStatus', data.message, 'ok');
+  } catch (err) { setStatus('authStatus', err.message, 'error'); }
+}
+async function changePassword() {
+  const current_password = $('currentPassword').value;
+  const new_password = $('newPassword').value;
+  if (!current_password || !new_password) return setStatus('accountStatus', '請輸入目前密碼與新密碼。', 'error');
+  setStatus('accountStatus', '變更密碼中...');
+  try {
+    const data = await api('/v1/auth/change-password', {method: 'POST', body: JSON.stringify({current_password, new_password})});
+    $('currentPassword').value = '';
+    $('newPassword').value = '';
+    setStatus('accountStatus', data.message, 'ok');
+    setTimeout(() => logout({skipRemote: true}), 900);
+  } catch (err) { setStatus('accountStatus', err.message, 'error'); }
+}
 async function bootAuthed() {
   const me = await api('/v1/auth/me'); state.user = me.user;
   const isSuperuser = state.user && state.user.role === 'superuser';
@@ -439,6 +507,7 @@ async function bootAuthed() {
     $('mainAuditTab').classList.remove('hidden');
     await refreshUsers();
     await searchAuditLogs();
+    await refreshLoginAudit();
   } else {
     $('adminCard').classList.add('hidden');
     $('auditCard').classList.add('hidden');
@@ -491,6 +560,7 @@ async function refreshUsageStats() {
 function switchMainTab(tab) {
   $('searchCard').classList.toggle('hidden', tab !== 'search');
   $('statsCard').classList.toggle('hidden', tab !== 'stats');
+  $('accountCard').classList.toggle('hidden', tab !== 'account');
   $('adminCard').classList.toggle('hidden', tab !== 'review');
   $('auditCard').classList.toggle('hidden', tab !== 'audit');
 }
@@ -673,14 +743,31 @@ async function saveAsNewDoc() {
 async function refreshUsers() {
   try {
     const data = await api('/v1/auth/users');
-    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><button data-approve-user="${esc(u.username)}" data-role="user">核准普通</button><button data-approve-user="${esc(u.username)}" data-role="superuser" class="secondary">核准超級</button><button data-reject-user="${esc(u.username)}" class="danger">拒絕</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
+    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><button data-approve-user="${esc(u.username)}" data-role="user">核准普通</button><button data-approve-user="${esc(u.username)}" data-role="superuser" class="secondary">核准超級</button><button data-reset-user="${esc(u.username)}" class="secondary">重設密碼</button><button data-reject-user="${esc(u.username)}" class="danger">拒絕</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
     document.querySelectorAll('[data-approve-user]').forEach(btn => btn.onclick = () => approveUser(btn.dataset.approveUser, btn.dataset.role));
+    document.querySelectorAll('[data-reset-user]').forEach(btn => btn.onclick = () => resetUserPassword(btn.dataset.resetUser));
     document.querySelectorAll('[data-reject-user]').forEach(btn => btn.onclick = () => rejectUser(btn.dataset.rejectUser));
     document.querySelectorAll('[data-delete-user]').forEach(btn => btn.onclick = () => deleteUser(btn.dataset.deleteUser));
   } catch (err) { $('users').innerHTML = `<div class="status error">${esc(err.message)}</div>`; }
 }
 async function approveUser(username, role) { await api(`/v1/auth/users/${encodeURIComponent(username)}/approve`, {method:'POST', body: JSON.stringify({role})}); await refreshUsers(); }
 async function rejectUser(username) { await api(`/v1/auth/users/${encodeURIComponent(username)}/reject`, {method:'POST'}); await refreshUsers(); }
+async function resetUserPassword(username) {
+  const new_password = prompt(`請輸入 ${username} 的新密碼（至少 8 字元）：`);
+  if (!new_password) return;
+  await api(`/v1/auth/users/${encodeURIComponent(username)}/reset-password`, {method:'POST', body: JSON.stringify({new_password})});
+  await refreshUsers();
+}
+async function refreshLoginAudit() {
+  if (!state.user || state.user.role !== 'superuser') return;
+  setStatus('loginAuditStatus', '讀取登入稽核中...');
+  try {
+    const limit = Math.max(1, Math.min(1000, parseInt($('loginAuditLimit').value || '100', 10)));
+    const data = await api(`/v1/auth/login-audit?limit=${encodeURIComponent(limit)}`);
+    $('loginAuditHits').innerHTML = (data.events || []).slice().reverse().map(ev => `<div class="audit"><strong>${esc(ev.username || '-')}</strong><div class="muted">${esc(ev.ts || '')} success=${esc(ev.success)} reason=${esc(ev.reason || '-')} role=${esc(ev.role || '-')} status=${esc(ev.status || '-')}</div><div class="muted">client=${esc(ev.client_host || '-')} user_agent=${esc(ev.user_agent || '-')}</div></div>`).join('') || '<p class="muted">尚無登入稽核紀錄。</p>';
+    setStatus('loginAuditStatus', `已載入 ${(data.events || []).length} 筆登入稽核`, 'ok');
+  } catch (err) { setStatus('loginAuditStatus', err.message, 'error'); }
+}
 async function deleteUser(username) {
   if (!confirm(`確定刪除帳號 ${username}？`)) return;
   await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method:'DELETE'});
@@ -718,12 +805,17 @@ function newDoc() {
   setStatus('saveStatus', '已切換為新增模式：可留空 ID。儲存時會優先使用 source.uuid，若沒有則自動產生 sha1 uuid。', 'ok');
 }
 
-function logout() { state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload(); }
+async function logout(opts = {}) {
+  if (state.token && !opts.skipRemote) {
+    try { await api('/v1/auth/logout', {method:'POST'}); } catch (_) { /* local cleanup still applies */ }
+  }
+  state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload();
+}
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
-$('loginBtn').onclick = login; $('searchPrevBtn').onclick = () => { if (state.searchPage > 1) searchDocs(state.searchPage - 1); }; $('searchNextBtn').onclick = () => { if (state.searchHasMore) searchDocs(state.searchPage + 1); }; $('navNewDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = () => searchDocs(1); $('saveBtn').onclick = saveDoc; $('saveAsNewBtn').onclick = saveAsNewDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('refreshStatsBtn').onclick = refreshUsageStats; $('extractTextBtn').onclick = uploadRawContentFile;
+$('loginBtn').onclick = login; $('forgotPasswordBtn').onclick = forgotPassword; $('recoverPasswordBtn').onclick = recoverPassword; $('changePasswordBtn').onclick = changePassword; $('searchPrevBtn').onclick = () => { if (state.searchPage > 1) searchDocs(state.searchPage - 1); }; $('searchNextBtn').onclick = () => { if (state.searchHasMore) searchDocs(state.searchPage + 1); }; $('navNewDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = () => searchDocs(1); $('saveBtn').onclick = saveDoc; $('saveAsNewBtn').onclick = saveAsNewDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('refreshStatsBtn').onclick = refreshUsageStats; $('extractTextBtn').onclick = uploadRawContentFile;
 $('excelDashboardBtn').onclick = () => { location.href = '/excel-to-sql-dashboard'; };
 $('searchAuditBtn').onclick = searchAuditLogs;
-$('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); };
+$('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); }; $('refreshLoginAuditBtn').onclick = refreshLoginAudit;
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
 $('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
 $('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
