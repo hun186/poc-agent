@@ -19,6 +19,10 @@ def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
     stored = AUTH_STORE.get_user(username)
     if not stored or stored.get("status") != "active":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="帳號尚未啟用。")
+    if AUTH_STORE.is_token_denied(str(payload.get("jti") or "")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。")
+    if not AUTH_STORE.is_token_current(username, int(payload.get("ver") or 0)):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。")
     return AuthUser(username=username, role=str(stored.get("role") or "user"), status="active")
 
 

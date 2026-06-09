@@ -3,13 +3,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 
 from agent.es import es_client
-from api.routers.editor_dependencies import current_user, require_superuser, static_path
-from api.routers.editor_models import AuthPayload, ApprovePayload, DeleteDocumentsPayload, SaveDocumentPayload
-from api.services.auth_store import AUTH_STORE, AuthUser, create_token
+from api.routers.editor_dependencies import bearer_token, current_user, require_superuser, static_path
+from api.routers.editor_models import (
+    ApprovePayload,
+    AuthPayload,
+    ChangePasswordPayload,
+    DeleteDocumentsPayload,
+    ForgotPasswordPayload,
+    RecoverPasswordPayload,
+    ResetPasswordPayload,
+    SaveDocumentPayload,
+)
+from api.services.auth_store import AUTH_STORE, AuthUser, create_token, parse_token
 from api.services.editor_audit import append_audit_event, diff_values
 from api.services.editor_audit_queries import build_usage_stats, filter_audit_records, load_audit_records
 from api.services.editor_files import extract_text_from_upload
@@ -51,13 +60,84 @@ def register(payload: AuthPayload) -> dict[str, Any]:
 
 
 @router.post("/v1/auth/login")
-def login(payload: AuthPayload) -> dict[str, Any]:
+def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
+    client_host = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
     user = AUTH_STORE.authenticate(payload.username, payload.password)
     if user is None:
+        AUTH_STORE.record_login_audit(
+            payload.username,
+            success=False,
+            reason="invalid_credentials",
+            client_host=client_host,
+            user_agent=user_agent,
+        )
+        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "invalid_credentials"})
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="帳號或密碼錯誤。")
     if user.status != "active":
+        AUTH_STORE.record_login_audit(
+            payload.username,
+            success=False,
+            reason="inactive_account",
+            role=user.role,
+            status_value=user.status,
+            client_host=client_host,
+            user_agent=user_agent,
+        )
+        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "inactive_account", "status": user.status})
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"帳號狀態為 {user.status}，尚不可使用。")
+    AUTH_STORE.record_login_audit(
+        payload.username,
+        success=True,
+        reason="ok",
+        role=user.role,
+        status_value=user.status,
+        client_host=client_host,
+        user_agent=user_agent,
+    )
+    append_audit_event({"action": "auth.login", "username": payload.username, "success": True, "role": user.role})
     return {"access_token": create_token(user), "token_type": "bearer", "user": user.__dict__}
+
+
+@router.post("/v1/auth/logout")
+def logout(
+    user: AuthUser = Depends(current_user),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    payload = parse_token(bearer_token(authorization))
+    if payload:
+        AUTH_STORE.deny_token(payload)
+    append_audit_event({"action": "auth.logout", "username": user.username})
+    return {"message": "已登出；此 token 已失效。"}
+
+
+@router.post("/v1/auth/change-password")
+def change_password(payload: ChangePasswordPayload, user: AuthUser = Depends(current_user)) -> dict[str, Any]:
+    try:
+        updated = AUTH_STORE.change_password(user.username, payload.current_password, payload.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    append_audit_event({"action": "auth.password_changed", "username": user.username})
+    return {"user": updated, "message": "密碼已變更，既有 token 已失效；請重新登入。"}
+
+
+@router.post("/v1/auth/forgot-password")
+def forgot_password(payload: ForgotPasswordPayload) -> dict[str, Any]:
+    reset_token = AUTH_STORE.request_password_reset(payload.username)
+    response: dict[str, Any] = {"message": "若帳號存在且已啟用，系統已建立一次性重設密碼 token；請依部署流程交付給使用者。"}
+    if reset_token:
+        response["reset_token"] = reset_token
+    return response
+
+
+@router.post("/v1/auth/reset-password")
+def recover_password(payload: RecoverPasswordPayload) -> dict[str, Any]:
+    try:
+        updated = AUTH_STORE.recover_password(payload.username, payload.reset_token, payload.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    append_audit_event({"action": "auth.password_recovered", "username": payload.username})
+    return {"user": updated, "message": "密碼已重設，既有 token 已失效；請重新登入。"}
 
 
 @router.get("/v1/auth/me")
@@ -99,6 +179,23 @@ def delete_user(username: str, user: AuthUser = Depends(require_superuser)) -> d
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"user": deleted}
+
+
+@router.post("/v1/auth/users/{username}/reset-password")
+def reset_user_password(username: str, payload: ResetPasswordPayload, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
+    try:
+        updated = AUTH_STORE.reset_user_password(username, payload.new_password, reset_by=user.username)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    append_audit_event({"action": "auth.password_reset_by_superuser", "username": username, "actor": user.username})
+    return {"user": updated, "message": "密碼已由超級使用者重設，該帳號既有 token 已失效。"}
+
+
+@router.get("/v1/auth/login-audit")
+def list_login_audit(limit: int = Query(100, ge=1, le=1000), _: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
+    return {"events": AUTH_STORE.list_login_audit(limit)}
 
 
 @router.post("/v1/editor/extract-text")
