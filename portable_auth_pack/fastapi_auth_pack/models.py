@@ -13,3 +13,22 @@ class AuthPayload(BaseModel):
 
 class ApprovePayload(BaseModel):
     role: str = Field(...)
+
+
+class ChangePasswordPayload(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+
+class ResetPasswordPayload(BaseModel):
+    new_password: str = Field(..., min_length=8)
+
+
+class ForgotPasswordPayload(BaseModel):
+    username: str = Field(..., min_length=1, max_length=64)
+
+
+class RecoverPasswordPayload(BaseModel):
+    username: str = Field(..., min_length=1, max_length=64)
+    reset_token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
