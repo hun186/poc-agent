@@ -2,6 +2,110 @@
 
 此檔提供 Codex / agent 修改本 repo 時的優先參考資訊。目標是減少不必要的全專案探索、降低 token 用量，並讓修改更快聚焦。
 
+## 專案上下文載入（Project Context Loading）
+
+在開始任何任務前，必須依序閱讀：
+
+1. AGENTS.md
+2. .codex/memory.md
+3. .codex/known_issues.md
+4. .codex/decisions.md
+5. .codex/backlog.md
+
+若上述檔案或目錄不存在：
+
+1. 建立 `.codex/` 目錄
+2. 建立缺少的檔案
+3. 以適當標題初始化內容
+
+上述檔案視為本專案的長期記憶（Persistent Project Memory）。
+
+若文件內容與目前程式碼不一致：
+
+* 以程式碼為準
+* 更新相關記錄文件
+
+---
+
+## 專案記憶維護（Memory Maintenance）
+
+每次完成任務後，必須同步更新專案記憶：
+
+1. 更新 `.codex/memory.md`
+2. 若發現新的環境限制、錯誤或已知問題，更新 `.codex/known_issues.md`
+3. 若產生新的設計決策或架構決策，更新 `.codex/decisions.md`
+4. 若發現後續待辦事項或改善建議，更新 `.codex/backlog.md`
+
+不得略過記憶更新步驟。
+
+專案記憶更新屬於任務的一部分。
+
+在完成專案記憶更新前，不得視為任務已完成。
+
+---
+
+## 記錄原則
+
+### memory.md
+
+記錄：
+
+* 任務目的
+* 主要修改內容
+* 驗證結果
+* 重要結論
+
+避免記錄：
+
+* 大量重複日誌
+* 無意義執行細節
+
+---
+
+### known_issues.md
+
+記錄：
+
+* 已知錯誤
+* 環境限制
+* 外部服務限制
+* Sandbox 限制
+* Playwright、Docker、資料庫等問題
+
+---
+
+### decisions.md
+
+記錄：
+
+* 架構決策
+* 技術選型原因
+* 不採用方案及理由
+* 長期維護考量
+
+---
+
+### backlog.md
+
+記錄：
+
+* 尚未完成事項
+* 後續優化建議
+* 技術債
+* 預計改善項目
+
+---
+
+禁止將以下資訊寫入任何記憶檔案：
+
+* API Key
+* Access Token
+* Password
+* Cookie
+* 憑證內容
+* 個人敏感資料
+* 機密資訊
+
 ## 專案概覽
 
 - 本專案是 FastAPI + Elasticsearch 的 RAG / agent 系統。
