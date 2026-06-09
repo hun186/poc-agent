@@ -88,12 +88,13 @@ app.include_router(auth_router)
 | `GET` | `/v1/auth/me` | 查詢目前登入者 |
 | `POST` | `/v1/auth/logout` | 登出並將目前 token 加入 denylist |
 | `POST` | `/v1/auth/change-password` | 已登入使用者變更自己的密碼；既有 token 失效 |
-| `POST` | `/v1/auth/forgot-password` | 忘記密碼補救：建立一次性 reset token（請依部署流程交付） |
+| `POST` | `/v1/auth/forgot-password` | 忘記密碼申請；不公開回傳 reset token |
 | `POST` | `/v1/auth/reset-password` | 使用一次性 reset token 重設密碼；既有 token 失效 |
 | `GET` | `/v1/auth/users` | superuser 列出帳號 |
 | `POST` | `/v1/auth/users/{username}/approve` | superuser 核准帳號 |
 | `POST` | `/v1/auth/users/{username}/reject` | superuser 拒絕帳號 |
-| `POST` | `/v1/auth/users/{username}/reset-password` | superuser 重設使用者密碼；該帳號既有 token 失效 |
+| `POST` | `/v1/auth/users/{username}/password-reset-token` | superuser 產生一次性 reset token，供核身後安全交付 |
+| `POST` | `/v1/auth/users/{username}/reset-password` | superuser 直接重設使用者密碼；該帳號既有 token 失效 |
 | `DELETE` | `/v1/auth/users/{username}` | superuser 刪除帳號 |
 | `GET` | `/v1/auth/login-audit` | superuser 查詢登入稽核紀錄 |
 
@@ -212,4 +213,4 @@ curl -s -X POST http://127.0.0.1:8000/v1/auth/login \
 - 請把 `runtime/`、`.auth_users.json`、正式 `bootstrap_superusers.json` 加到 `.gitignore`。
 - 這個 pack 使用本機 JSON 檔，適合 PoC / 小型內部服務；高併發或多副本部署建議改接資料庫或集中式 session/token 系統。
 - 若前端使用 localStorage 存 token，請特別注意 XSS 防護。
-- `/v1/auth/forgot-password` 在此 PoC pack 會回傳一次性 reset token，正式環境應改為寄送 email、簡訊或由 help desk out-of-band 交付，避免公開回傳。
+- `/v1/auth/forgot-password` 只受理申請，不公開回傳 reset token；請由 superuser 在 `/v1/auth/users/{username}/password-reset-token` 產生 token，核身後用 email、簡訊或 help desk out-of-band 安全交付。

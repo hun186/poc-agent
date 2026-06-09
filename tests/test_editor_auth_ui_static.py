@@ -27,7 +27,9 @@ def test_editor_auth_ui_exposes_logout_reset_and_login_audit_controls() -> None:
     html = _editor_html()
 
     assert "'/v1/auth/logout'" in html
+    assert 'data-issue-reset-token=' in html
     assert 'data-reset-user=' in html
+    assert '/password-reset-token`' in html
     assert '/reset-password`' in html
     assert 'id="refreshLoginAuditBtn"' in html
     assert 'id="loginAuditHits"' in html

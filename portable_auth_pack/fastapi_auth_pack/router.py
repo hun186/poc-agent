@@ -67,11 +67,9 @@ def change_password(payload: ChangePasswordPayload, user: AuthUser = Depends(cur
 
 @router.post("/v1/auth/forgot-password")
 def forgot_password(payload: ForgotPasswordPayload) -> dict[str, Any]:
-    reset_token = AUTH_STORE.request_password_reset(payload.username)
-    response: dict[str, Any] = {"message": "若帳號存在且已啟用，系統已建立一次性重設密碼 token；請依部署流程交付給使用者。"}
-    if reset_token:
-        response["reset_token"] = reset_token
-    return response
+    # Do not issue or return a reset token from the public endpoint. Returning a token
+    # here would let anyone who knows a username take over that account.
+    return {"message": "若帳號存在，已收到忘記密碼申請；請聯絡系統管理員核身後取得一次性重設 token。"}
 
 
 @router.post("/v1/auth/reset-password")
@@ -122,6 +120,14 @@ def delete_user(username: str, user: AuthUser = Depends(require_superuser)) -> d
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"user": deleted}
+
+
+@router.post("/v1/auth/users/{username}/password-reset-token")
+def issue_password_reset_token(username: str, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
+    reset_token = AUTH_STORE.request_password_reset(username)
+    if not reset_token:
+        raise HTTPException(status_code=404, detail="帳號不存在或尚未啟用，無法建立重設 token。")
+    return {"username": username, "reset_token": reset_token, "message": "一次性重設 token 已建立；請用安全管道交付給該使用者。"}
 
 
 @router.post("/v1/auth/users/{username}/reset-password")

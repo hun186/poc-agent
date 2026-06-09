@@ -117,8 +117,12 @@ def main() -> int:
 
         forgot_res = client.post("/v1/auth/forgot-password", json={"username": "alice"})
         assert forgot_res.status_code == 200, forgot_res.text
-        recovery_token = forgot_res.json().get("reset_token")
-        assert recovery_token, forgot_res.text
+        assert "reset_token" not in forgot_res.json(), forgot_res.text
+
+        token_res = client.post("/v1/auth/users/alice/password-reset-token", headers=headers)
+        assert token_res.status_code == 200, token_res.text
+        recovery_token = token_res.json().get("reset_token")
+        assert recovery_token, token_res.text
         recover_res = client.post(
             "/v1/auth/reset-password",
             json={"username": "alice", "reset_token": recovery_token, "new_password": "AlicePass!2029"},
