@@ -3,8 +3,10 @@
 這個子目錄是一包可搬移的 **FastAPI 帳號管理套用素材包**。目標是讓你把整個 `portable_auth_pack/` 複製到另一個網頁服務專案後，讓 Codex 或開發者用「嵌入既有程式」的方式導入帳密管理能力：
 
 - 帳號註冊：新帳號預設為 `pending`
-- 帳密登入：回傳 Bearer token
+- 帳密登入：回傳 Bearer token，並記錄登入稽核
 - `/v1/auth/me`：查詢目前登入者
+- 密碼安全：使用者可變更密碼、superuser 可重設密碼、忘記密碼可建立一次性 reset token
+- Token 失效：logout 會加入 token denylist；變更/重設密碼會讓該帳號既有 token 失效
 - 使用者審核：superuser 可核准、拒絕、刪除帳號
 - 權限 dependency：`current_user` 與 `require_superuser`
 - 本機 JSON user store：不需要資料庫即可快速試用
@@ -84,10 +86,17 @@ app.include_router(auth_router)
 | `POST` | `/v1/auth/register` | 建立 pending 帳號 |
 | `POST` | `/v1/auth/login` | 登入並取得 Bearer token |
 | `GET` | `/v1/auth/me` | 查詢目前登入者 |
+| `POST` | `/v1/auth/logout` | 登出並將目前 token 加入 denylist |
+| `POST` | `/v1/auth/change-password` | 已登入使用者變更自己的密碼；既有 token 失效 |
+| `POST` | `/v1/auth/forgot-password` | 忘記密碼申請；不公開回傳 reset token |
+| `POST` | `/v1/auth/reset-password` | 使用一次性 reset token 重設密碼；既有 token 失效 |
 | `GET` | `/v1/auth/users` | superuser 列出帳號 |
 | `POST` | `/v1/auth/users/{username}/approve` | superuser 核准帳號 |
 | `POST` | `/v1/auth/users/{username}/reject` | superuser 拒絕帳號 |
+| `POST` | `/v1/auth/users/{username}/password-reset-token` | superuser 產生一次性 reset token，供核身後安全交付 |
+| `POST` | `/v1/auth/users/{username}/reset-password` | superuser 直接重設使用者密碼；該帳號既有 token 失效 |
 | `DELETE` | `/v1/auth/users/{username}` | superuser 刪除帳號 |
+| `GET` | `/v1/auth/login-audit` | superuser 查詢登入稽核紀錄 |
 
 ### 3. 保護你的既有 API
 
@@ -186,10 +195,11 @@ curl -s -X POST http://127.0.0.1:8000/v1/auth/login \
 
 `static/login_admin_minimal.html` 是一個最小可改造頁面，包含：
 
-- 登入
+- 登入 / logout token 失效
 - 註冊 pending 帳號
 - 查詢 `/v1/auth/me`
-- superuser 帳號審核
+- 使用者變更密碼、忘記密碼 reset token 補救
+- superuser 帳號審核、重設密碼與登入稽核查詢
 - 將 Bearer token 存在 `localStorage.auth_token`
 
 你可以把它改成目標專案的登入頁，或只抽取其中的 JavaScript helper。
@@ -203,3 +213,4 @@ curl -s -X POST http://127.0.0.1:8000/v1/auth/login \
 - 請把 `runtime/`、`.auth_users.json`、正式 `bootstrap_superusers.json` 加到 `.gitignore`。
 - 這個 pack 使用本機 JSON 檔，適合 PoC / 小型內部服務；高併發或多副本部署建議改接資料庫或集中式 session/token 系統。
 - 若前端使用 localStorage 存 token，請特別注意 XSS 防護。
+- `/v1/auth/forgot-password` 只受理申請，不公開回傳 reset token；請由 superuser 在 `/v1/auth/users/{username}/password-reset-token` 產生 token，核身後用 email、簡訊或 help desk out-of-band 安全交付。

@@ -22,7 +22,7 @@
 <main>
   <section>
     <h1>FastAPI Auth Pack</h1>
-    <p>這是可直接改造的最小登入 / 註冊 / 帳號審核頁面。Token 存在 <code>localStorage.auth_token</code>。</p>
+    <p>這是可直接改造的最小登入 / 註冊 / 密碼補救 / 帳號審核頁面。Token 存在 <code>localStorage.auth_token</code>。</p>
     <div class="row">
       <div><label>帳號</label><input id="username" autocomplete="username" /></div>
       <div><label>密碼</label><input id="password" type="password" autocomplete="current-password" /></div>
@@ -35,7 +35,19 @@
     <button onclick="login()">登入</button>
     <button class="secondary" onclick="registerUser()">建立 pending 帳號</button>
     <button class="secondary" onclick="me()">我是誰</button>
-    <button class="danger" onclick="logout()">登出</button>
+    <button class="danger" onclick="logout()">登出並讓 token 失效</button>
+  </section>
+  <section>
+    <h2>密碼管理 / 忘記密碼補救</h2>
+    <div class="row">
+      <div><label>目前密碼</label><input id="currentPassword" type="password" autocomplete="current-password" /></div>
+      <div><label>新密碼</label><input id="newPassword" type="password" autocomplete="new-password" /></div>
+      <div><label>一次性 reset token（管理員提供）</label><input id="resetToken" /></div>
+    </div>
+    <button onclick="changePassword()">變更自己的密碼</button>
+    <button class="secondary" onclick="forgotPassword()">忘記密碼：送出申請</button>
+    <button class="secondary" onclick="recoverPassword()">用 reset token 重設密碼</button>
+    <button class="secondary" onclick="loginAudit()">查詢登入稽核</button>
   </section>
   <section>
     <h2>Superuser 帳號審核</h2>
@@ -51,6 +63,12 @@
 const tokenKey = 'auth_token';
 const out = (data) => document.getElementById('output').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+function formatApiError(data, fallback='') {
+  const detail = data && (data.detail || data.message || data.error);
+  if (Array.isArray(detail)) return detail.map(item => item.msg || JSON.stringify(item)).join('\n');
+  if (detail && typeof detail === 'object') return JSON.stringify(detail, null, 2);
+  return String(detail || fallback || '請求失敗');
+}
 async function api(path, opts = {}) {
   const headers = Object.assign({'Content-Type': 'application/json'}, opts.headers || {});
   const token = localStorage.getItem(tokenKey);
@@ -58,7 +76,7 @@ async function api(path, opts = {}) {
   const res = await fetch(path, Object.assign({}, opts, {headers}));
   const text = await res.text();
   let data = {}; try { data = text ? JSON.parse(text) : {}; } catch { data = {detail: text}; }
-  if (!res.ok) throw new Error(data.detail || data.message || res.statusText);
+  if (!res.ok) throw new Error(formatApiError(data, res.statusText));
   return data;
 }
 function payload() {
@@ -85,16 +103,56 @@ async function me() {
   try { out(await api('/v1/auth/me')); }
   catch (err) { out(String(err.message || err)); }
 }
-function logout() { localStorage.removeItem(tokenKey); out('已登出'); }
+async function logout() {
+  try { out(await api('/v1/auth/logout', {method: 'POST'})); }
+  catch (err) { out(String(err.message || err)); }
+  finally { localStorage.removeItem(tokenKey); }
+}
+async function changePassword() {
+  try {
+    out(await api('/v1/auth/change-password', {method: 'POST', body: JSON.stringify({
+      current_password: document.getElementById('currentPassword').value,
+      new_password: document.getElementById('newPassword').value,
+    })}));
+  } catch (err) { out(String(err.message || err)); }
+}
+async function forgotPassword() {
+  try { out(await api('/v1/auth/forgot-password', {method: 'POST', body: JSON.stringify({username: document.getElementById('username').value})})); }
+  catch (err) { out(String(err.message || err)); }
+}
+async function recoverPassword() {
+  try {
+    out(await api('/v1/auth/reset-password', {method: 'POST', body: JSON.stringify({
+      username: document.getElementById('username').value,
+      reset_token: document.getElementById('resetToken').value,
+      new_password: document.getElementById('newPassword').value,
+    })}));
+  } catch (err) { out(String(err.message || err)); }
+}
+async function loginAudit() {
+  try { out(await api('/v1/auth/login-audit')); }
+  catch (err) { out(String(err.message || err)); }
+}
 async function refreshUsers() {
   try {
     const data = await api('/v1/auth/users');
-    document.getElementById('users').innerHTML = data.users.map(u => `<div><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <button onclick="approveUser('${esc(u.username)}','user')">核准 user</button><button class="secondary" onclick="approveUser('${esc(u.username)}','superuser')">核准 superuser</button><button class="danger" onclick="rejectUser('${esc(u.username)}')">拒絕</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('');
+    document.getElementById('users').innerHTML = data.users.map(u => `<div><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <button onclick="approveUser('${esc(u.username)}','user')">核准 user</button><button class="secondary" onclick="approveUser('${esc(u.username)}','superuser')">核准 superuser</button><button class="secondary" onclick="issuePasswordResetToken('${esc(u.username)}')">產生 reset token</button><button class="danger" onclick="rejectUser('${esc(u.username)}')">拒絕</button><button class="danger" onclick="resetUserPassword('${esc(u.username)}')">直接重設密碼</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('');
     out(data);
   } catch (err) { out(String(err.message || err)); }
 }
 async function approveUser(username, role) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}/approve`, {method: 'POST', body: JSON.stringify({role})})); await refreshUsers(); }
 async function rejectUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}/reject`, {method: 'POST'})); await refreshUsers(); }
+async function issuePasswordResetToken(username) {
+  const data = await api(`/v1/auth/users/${encodeURIComponent(username)}/password-reset-token`, {method: 'POST'});
+  out(data);
+  alert(`請用安全管道交付給 ${username}：\n\n${data.reset_token}`);
+}
+async function resetUserPassword(username) {
+  const new_password = prompt(`請輸入 ${username} 的新密碼（至少 8 字元）`);
+  if (!new_password) return;
+  out(await api(`/v1/auth/users/${encodeURIComponent(username)}/reset-password`, {method: 'POST', body: JSON.stringify({new_password})}));
+  await refreshUsers();
+}
 async function deleteUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method: 'DELETE'})); await refreshUsers(); }
 </script>
 </body>

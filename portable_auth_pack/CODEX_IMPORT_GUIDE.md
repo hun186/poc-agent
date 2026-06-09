@@ -47,6 +47,9 @@
      - pending user 登入回 403。
      - superuser 可 approve user。
      - approved user 可呼叫 protected API。
+     - logout 後同一 token 呼叫 protected API 回 401。
+     - change/reset password 後舊 token 回 401，且新密碼可登入。
+     - forgot-password 不公開回傳 reset token；superuser 產生 reset token 後，使用者可用 token 重設密碼，且登入稽核可被 superuser 查詢。
 
 ## Codex 修改注意事項
 
@@ -69,7 +72,9 @@
 
 - `router.py`
   - 改 response schema。
-  - 加 password reset / change password / logout denylist。
+  - 維持 public forgot-password 不回傳 token；依目標專案調整 superuser 產生 reset token 後的交付方式。
+  - 依目標專案調整 login audit 儲存位置、保留期限與查詢權限。
+  - 若已有 session/JWT 系統，將 logout denylist 與 token_version 失效機制接到既有儲存層。
 
 - `static/login_admin_minimal.html`
   - 抽出 `api()` helper 與 login/register/admin user management 函式。
