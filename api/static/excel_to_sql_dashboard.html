@@ -156,6 +156,7 @@
       <div class="table-wrap"><table id="recent"><thead><tr><th>時間（本機）</th><th>狀態</th><th>檔案</th><th>列號</th><th>訊息</th><th>操作</th><th class="payload-col">payload</th></tr></thead><tbody></tbody></table></div>
     </section>
   </main>
+<script src="/static/audit_tools.js"></script>
 <script>
 const tokenKey = 'sra_editor_token';
 const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false };
@@ -282,51 +283,17 @@ function payloadCell(payload) {
   const value = (payload === undefined || payload === '') ? {} : payload;
   return `<pre class="json-view">${renderJson(value)}</pre>`;
 }
-function normalizeBucketLabel(value, bucket) {
-  const text = String(value || '');
-  if (!text) return '';
-  if (bucket === 'hour' || bucket === '6_hours' || bucket === '12_hours') return text.replace('T', ' ').slice(0, 16);
-  if (bucket === 'month') return text.slice(0, 7);
-  return text.slice(0, 10);
-}
-function compactBucketLabel(label, bucket) {
-  if (bucket === 'hour' || bucket === '6_hours' || bucket === '12_hours') return label.slice(5, 16);
-  if (bucket === 'month') return label;
-  return label.slice(5);
-}
 function renderFilteredDailyChart(rows, bucket = 'day', bucketLabel = '每日') {
-  const data = (rows || []).map(row => ({ bucket: normalizeBucketLabel(row.bucket_start ?? row.day, bucket), count: Number(row.count || 0) })).filter(row => row.bucket);
-  const total = data.reduce((sum, row) => sum + row.count, 0);
-  $('filteredSeriesTitle').textContent = `${bucketLabel || '每日'} audit 筆數（套用目前篩選）`;
-  $('filteredDailySummary').textContent = data.length ? `${data.length} 個區間，共 ${total} 筆` : '無符合篩選的 audit 事件';
-  if (!data.length) {
-    $('filteredDailyChart').className = 'chart-empty';
-    $('filteredDailyChart').textContent = '目前篩選條件下無資料';
-    return;
-  }
-  const width = 920;
-  const height = 260;
-  const margin = { top: 18, right: 22, bottom: 46, left: 52 };
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
-  const maxCount = Math.max(...data.map(row => row.count), 1);
-  const x = index => margin.left + (data.length === 1 ? innerWidth / 2 : (index * innerWidth) / (data.length - 1));
-  const y = count => margin.top + innerHeight - (count / maxCount) * innerHeight;
-  const points = data.map((row, index) => `${x(index)},${y(row.count)}`).join(' ');
-  const yTicks = [0, Math.ceil(maxCount / 2), maxCount].filter((value, index, arr) => arr.indexOf(value) === index);
-  const maxLabels = 7;
-  const labelEvery = Math.max(1, Math.ceil(data.length / maxLabels));
-  const grid = yTicks.map(value => {
-    const yy = y(value);
-    return `<line class="chart-grid" x1="${margin.left}" y1="${yy}" x2="${width - margin.right}" y2="${yy}"></line><text class="chart-label" x="${margin.left - 8}" y="${yy + 4}" text-anchor="end">${escapeHtml(value)}</text>`;
-  }).join('');
-  const labels = data.map((row, index) => {
-    if (index % labelEvery !== 0 && index !== data.length - 1) return '';
-    return `<text class="chart-label" x="${x(index)}" y="${height - 18}" text-anchor="middle">${escapeHtml(compactBucketLabel(row.bucket, bucket))}</text>`;
-  }).join('');
-  const circles = data.map((row, index) => `<circle class="chart-point" cx="${x(index)}" cy="${y(row.count)}" r="4"><title>${escapeHtml(row.bucket)}：${escapeHtml(row.count)} 筆</title></circle>`).join('');
-  $('filteredDailyChart').className = '';
-  $('filteredDailyChart').innerHTML = `<svg class="audit-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(bucketLabel || '每日')} audit 筆數曲線圖" preserveAspectRatio="none">${grid}<line class="chart-axis" x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${width - margin.right}" y2="${margin.top + innerHeight}"></line><line class="chart-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line><polyline class="chart-line" points="${points}"></polyline>${circles}${labels}</svg>`;
+  SraAuditTools.renderTimeSeriesChart({
+    rows,
+    bucket,
+    bucketLabel,
+    titleEl: $('filteredSeriesTitle'),
+    summaryEl: $('filteredDailySummary'),
+    chartEl: $('filteredDailyChart'),
+    seriesName: 'audit 筆數',
+    emptyText: '目前篩選條件下無資料',
+  });
 }
 function onTaskChange() { if ($('task').value) $('config').value = $('task').value; applyAuditFilters(); }
 async function loadTasks() {
