@@ -194,3 +194,20 @@
 
 - 桌機滑鼠環境會使用 hover progressive nav；手機 / 觸控環境不依賴 hover，而是保留 click / details 原生點按展開收合。
 - Audit 統計曲線前端渲染已由 Editor、Excel→SQL dashboard、portable auth pack 共用同一模組。
+
+---
+
+## 2026-06-11 Editor 導航第二層選單修復
+
+Task Purpose:
+- 修復電腦版 Editor 標題列可看到第一層功能，但點擊 / hover 後無法叫出第二層子選項的問題。
+
+Main Changes:
+- 修正 `api/static/editor.html` 的 `bindHeaderNav()`，將 `SraAuditTools.bindProgressiveNav()` 的 `setActiveRoot` callback 正確綁到既有 `setActiveNavRoot()`，避免瀏覽器執行到未定義變數 `setActiveRoot` 後導致導航事件沒有完成初始化。
+- 更新 `tests/test_editor_auth_ui_static.py`，加入防回歸檢查，確認 Editor 靜態頁不再使用未定義的 shorthand callback。
+
+Verification:
+- `pytest tests/test_editor_auth_ui_static.py` 通過，10 passed。
+
+Conclusion:
+- Editor 導航第二層選單失效原因是前端 callback 名稱錯誤，不涉及後端 API contract 或資料模型變更。
