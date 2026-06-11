@@ -26,3 +26,11 @@
 - [ ] 修正 `data_ingestion/excel_to_sql/file_ops.py` 的 `datetime.utcnow()` deprecation warnings，改用 timezone-aware datetime。
 
 ---
+
+---
+
+## 2026-06-11 標題列導航後續改善建議
+
+- [ ] 將 Editor 與 portable auth pack 的多層導航資料結構抽成可重用設定，降低兩份靜態 HTML 長期分岔風險。
+- [ ] 在具備 Playwright / browser runtime 的環境補上標題列多層導航截圖或互動式 E2E 測試。
+

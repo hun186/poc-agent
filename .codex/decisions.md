@@ -63,3 +63,30 @@ Long-term Consideration:
 - 若導航項目持續增加，可再改為分層 dropdown 或 command palette。
 
 ---
+
+---
+
+## 2026-06-11 第一層導航放入標題列並以多層選單承載子功能
+
+Decision:
+
+- 將 Editor 與 portable auth pack 的第一層功能入口放入標題列，以大型按鈕呈現；子功能以可逐層展開的選單承載，並在選取功能、點擊外部或按 Escape 時自動收合。
+
+Reason:
+
+- 標題列第一層入口可讓主要系統區塊常駐且清楚；逐層選單可避免一次展開所有子功能造成版面擁擠。
+
+Implementation:
+
+- 使用 `data-nav-root` 管理第一層 active 狀態，使用 `data-nav-menu` 顯示對應子選單，使用 `<details class="nav-level">` 提供逐層進入與收合。
+- 導航子功能仍呼叫既有前端函式與 API，不新增後端 contract。
+
+Rejected Alternatives:
+
+- 延續登入後內容區 card 導航：不符合「第一層大按鈕做在標題列內」需求。
+- 一次性 mega menu 展開所有子功能：不符合多層逐層進入需求，且在小螢幕更擁擠。
+
+Long-term Consideration:
+
+- 若功能數量持續增加，可把導航結構抽成資料陣列或共用元件，降低 Editor 與 portable auth pack 的靜態 HTML 重複。
+

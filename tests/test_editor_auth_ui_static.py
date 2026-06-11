@@ -48,14 +48,20 @@ def test_editor_auth_ui_reset_token_dialog_is_copyable() -> None:
     assert 'alert(`請用安全管道交付給 ${username}' not in html
 
 
-def test_editor_navigation_is_top_collapsible() -> None:
+def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     html = _editor_html()
 
-    assert 'class="card top-nav hidden"' in html
-    assert 'id="mainNavDetails" open' in html
-    assert '.top-nav { position: sticky; top: 0;' in html
+    assert 'id="mainNav" class="header-nav hidden"' in html
+    assert 'class="nav-root-btn" type="button" data-nav-root="content"' in html
+    assert 'id="adminNavGroup" data-nav-root="system"' in html
+    assert 'id="navSubPanel" class="nav-subpanel hidden"' in html
+    assert 'class="nav-menu" data-nav-menu="content"' in html
+    assert 'class="nav-level" open' in html
+    assert 'function setActiveNavRoot(root)' in html
     assert 'function collapseMainNav()' in html
+    assert "setAttribute('aria-expanded', active ? 'true' : 'false')" in html
     assert 'switchMainTab(btn.dataset.mainTab); collapseMainNav();' in html
+    assert 'id="mainNavDetails"' not in html
 
 
 def test_portable_auth_pack_reset_token_dialog_is_copyable() -> None:
@@ -67,3 +73,18 @@ def test_portable_auth_pack_reset_token_dialog_is_copyable() -> None:
     assert 'navigator.clipboard.writeText' in html
     assert 'showResetTokenDialog(username, data.reset_token)' in html
     assert 'alert(`請用安全管道交付給 ${username}' not in html
+
+
+def test_portable_auth_pack_navigation_is_header_multilevel_and_collapsible() -> None:
+    html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+
+    assert 'id="authPackNav" class="header-nav"' in html
+    assert 'data-nav-root="identity"' in html
+    assert 'data-nav-root="password"' in html
+    assert 'data-nav-root="admin"' in html
+    assert 'id="navSubPanel" class="nav-subpanel hidden"' in html
+    assert 'class="nav-menu" data-nav-menu="identity"' in html
+    assert 'class="nav-level" open' in html
+    assert 'function setActiveAuthPackNavRoot(root)' in html
+    assert 'function collapseAuthPackNav()' in html
+    assert "setAttribute('aria-expanded', active ? 'true' : 'false')" in html
