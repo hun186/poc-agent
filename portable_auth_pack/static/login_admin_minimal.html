@@ -26,7 +26,9 @@
     .nav-level { border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: hidden; }
     .nav-level summary { cursor: pointer; padding: .75rem .9rem; font-weight: 800; list-style: none; display: flex; justify-content: space-between; }
     .nav-level summary::-webkit-details-marker { display: none; }
-    .nav-level summary::after { content: "進入"; color: #64748b; font-size: .8rem; }
+    .nav-level summary::before { content: "▸"; color: #2563eb; margin-right: .25rem; transition: transform .16s ease; }
+    .nav-level[open] summary::before { transform: rotate(90deg); }
+    .nav-level summary::after { content: "展開"; color: #64748b; font-size: .8rem; margin-left: auto; }
     .nav-level[open] summary::after { content: "收合"; }
     .nav-actions { display: flex; gap: .45rem; flex-wrap: wrap; padding: 0 .75rem .75rem; }
     .nav-actions button { margin: 0; }
@@ -49,14 +51,14 @@
       <button class="nav-root-btn secondary" type="button" data-nav-root="password" aria-expanded="false">密碼補救</button>
       <button class="nav-root-btn secondary" type="button" data-nav-root="admin" aria-expanded="false">帳號審核</button>
     </div>
-    <div id="navSubPanel" class="nav-subpanel hidden">
+    <div id="navSubPanel" class="nav-subpanel hidden" aria-label="第二層功能選單">
       <div class="nav-menu" data-nav-menu="identity">
         <p class="nav-menu-title">登入 / 註冊</p>
         <details class="nav-level" open><summary>身分操作</summary><div class="nav-actions"><button type="button" onclick="jumpToSection('identitySection')">登入表單</button><button class="secondary" type="button" onclick="me(); collapseAuthPackNav();">我是誰</button></div></details>
       </div>
       <div class="nav-menu" data-nav-menu="password">
         <p class="nav-menu-title">密碼管理</p>
-        <details class="nav-level" open><summary>重設與稽核</summary><div class="nav-actions"><button type="button" onclick="jumpToSection('passwordSection')">密碼管理</button><button class="secondary" type="button" onclick="loginAudit(); collapseAuthPackNav();">登入稽核</button></div></details>
+        <details class="nav-level" open><summary>重設與稽核</summary><div class="nav-actions"><button type="button" onclick="jumpToSection('passwordSection')">密碼管理</button><button class="secondary" type="button" onclick="loginAudit(); collapseAuthPackNav();">登入稽核</button><button class="secondary" type="button" onclick="jumpToSection('accountStatsSection')">帳號統計</button></div></details>
       </div>
       <div class="nav-menu" data-nav-menu="admin">
         <p class="nav-menu-title">Superuser</p>
@@ -99,6 +101,22 @@
     <button onclick="refreshUsers()">重新整理帳號</button>
     <div id="users"></div>
   </section>
+  <section id="accountStatsSection">
+    <h2>帳號操作統計</h2>
+    <p>範例包可直接呼叫共用 audit chart module，篩選 auth.* 帳號操作並繪製統計曲線。</p>
+    <div class="row">
+      <div><label>帳號</label><input id="accountStatsUsername" placeholder="留空代表全部（需 superuser）" /></div>
+      <div><label>動作包含</label><input id="accountStatsAction" placeholder="例如 password 或 login" /></div>
+      <div><label>曲線區間</label><select id="accountStatsBucket"><option value="hour">每小時</option><option value="6_hours">每 6 小時</option><option value="12_hours">每 12 小時</option><option value="day" selected>每日</option><option value="week">每週</option><option value="month">每月</option></select></div>
+    </div>
+    <button onclick="loadAccountStats()">查詢帳號操作統計</button>
+    <div id="accountStatsCards" class="stat-cards"></div>
+    <div class="chart-card">
+      <strong id="accountStatsTitle">帳號操作統計曲線</strong>
+      <div id="accountStatsSummary"></div>
+      <div id="accountStatsChart" class="chart-empty">尚未載入圖表</div>
+    </div>
+  </section>
   <section id="resetTokenModal" class="copy-modal hidden" role="dialog" aria-modal="true" aria-labelledby="resetTokenModalTitle">
     <div class="copy-dialog">
       <h2 id="resetTokenModalTitle">一次性 reset token</h2>
@@ -116,6 +134,7 @@
     <pre id="output">尚未執行</pre>
   </section>
 </main>
+<script src="audit_tools.js"></script>
 <script>
 const tokenKey = 'auth_token';
 const navState = { activeRoot: '' };
@@ -136,8 +155,11 @@ function jumpToSection(id) {
   document.getElementById(id).scrollIntoView({behavior: 'smooth', block: 'start'});
   collapseAuthPackNav();
 }
-document.querySelectorAll('[data-nav-root]').forEach(btn => {
-  btn.onclick = () => setActiveAuthPackNavRoot(navState.activeRoot === btn.dataset.navRoot ? '' : btn.dataset.navRoot);
+SraAuditTools.bindProgressiveNav({
+  nav: document.getElementById('authPackNav'),
+  getActiveRoot: () => navState.activeRoot,
+  setActiveRoot: setActiveAuthPackNavRoot,
+  collapse: collapseAuthPackNav,
 });
 document.addEventListener('click', (ev) => { if (!document.getElementById('authPackNav').contains(ev.target)) collapseAuthPackNav(); });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') collapseAuthPackNav(); });
@@ -210,6 +232,32 @@ async function recoverPassword() {
 async function loginAudit() {
   try { out(await api('/v1/auth/login-audit')); }
   catch (err) { out(String(err.message || err)); }
+}
+async function loadAccountStats() {
+  try {
+    const params = new URLSearchParams({category: 'account', chart_bucket: document.getElementById('accountStatsBucket').value});
+    const username = document.getElementById('accountStatsUsername').value.trim();
+    const action = document.getElementById('accountStatsAction').value.trim();
+    if (username) params.set('username', username);
+    if (action) params.set('action', action);
+    const data = await api('/v1/editor/usage-stats?' + params.toString());
+    const stats = data.filtered?.stats || {};
+    SraAuditTools.renderSummaryCards(document.getElementById('accountStatsCards'), [
+      {label: '帳號操作數', value: stats.total_events || 0, hint: data.filtered?.is_restricted_to_self ? '限定自己' : '目前篩選'},
+      {label: '動作種類', value: Object.keys(stats.by_action || {}).length, hint: 'auth.*'},
+      {label: '使用者數', value: Object.keys(stats.by_user || {}).length, hint: '依目前篩選'},
+    ]);
+    SraAuditTools.renderTimeSeriesChart({
+      rows: data.filtered?.series || [],
+      bucket: data.filtered?.chart_bucket || document.getElementById('accountStatsBucket').value,
+      bucketLabel: data.filtered?.chart_bucket_label || '每日',
+      titleEl: document.getElementById('accountStatsTitle'),
+      summaryEl: document.getElementById('accountStatsSummary'),
+      chartEl: document.getElementById('accountStatsChart'),
+      seriesName: '帳號操作筆數',
+    });
+    out(data.filtered || data);
+  } catch (err) { out(String(err.message || err)); }
 }
 async function refreshUsers() {
   try {

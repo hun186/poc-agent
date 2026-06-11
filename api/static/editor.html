@@ -12,6 +12,9 @@
     .brand { display: flex; align-items: center; gap: 12px; min-width: max-content; }
     main { max-width: 1240px; margin: 24px auto; padding: 0 18px 48px; }
     .grid { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 18px; align-items: start; }
+    .grid.single-pane { grid-template-columns: minmax(0, 1fr); }
+    .grid.single-pane aside { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+    .grid.single-pane .card { margin-bottom: 0; }
     .card { background: white; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 8px 20px rgba(15,23,42,.05); padding: 18px; margin-bottom: 18px; }
     .card h2 { font-size: 18px; margin: 0 0 14px; }
     .section-title { font-weight: 800; margin: 18px 0 8px; color: #0f172a; }
@@ -42,9 +45,12 @@
     .nav-menu.active { display: grid; }
     .nav-menu-title { margin: 2px 4px 8px; color: #334155; font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
     .nav-level { border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: hidden; }
+    .nav-level + .nav-level { margin-top: 8px; }
     .nav-level summary { cursor: pointer; padding: 12px 14px; font-weight: 800; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
     .nav-level summary::-webkit-details-marker { display: none; }
-    .nav-level summary::after { content: "進入"; color: #64748b; font-size: 12px; }
+    .nav-level summary::before { content: "▸"; color: #2563eb; margin-right: 4px; transition: transform .16s ease; }
+    .nav-level[open] summary::before { transform: rotate(90deg); }
+    .nav-level summary::after { content: "展開"; color: #64748b; font-size: 12px; margin-left: auto; }
     .nav-level[open] summary::after { content: "收合"; }
     .nav-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 0 12px 12px; }
     .nav-actions button, .nav-actions a { display: inline-flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; border-radius: 10px; padding: 10px 12px; font-weight: 800; color: #fff; background: #475569; border: 0; }
@@ -65,6 +71,18 @@
     .muted { color: #64748b; font-size: 13px; }
     .hidden { display: none !important; }
     .tabs { display: flex; gap: 8px; margin: 12px 0; }
+    .stat-cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin:12px 0; }
+    .stat-card { border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; padding:12px; }
+    .stat-metric { font-size:26px; font-weight:800; color:#1d4ed8; margin:4px 0; }
+    .chart-card { border:1px solid #e2e8f0; border-radius:12px; padding:12px; background:#f8fafc; margin:12px 0; }
+    .chart-title { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+    .audit-chart { width:100%; min-height:240px; display:block; }
+    .chart-axis { stroke:#cbd5e1; stroke-width:1; }
+    .chart-grid { stroke:#e2e8f0; stroke-width:1; }
+    .chart-line { fill:none; stroke:#2563eb; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; }
+    .chart-point { fill:#2563eb; stroke:white; stroke-width:2; }
+    .chart-label { fill:#475569; font-size:11px; }
+    .chart-empty { color:#64748b; padding:44px 0; text-align:center; }
     .tab { background: #e2e8f0; color: #0f172a; }
     .tab.active { background: #2563eb; color: white; }
     code { background: #f1f5f9; padding: 2px 5px; border-radius: 5px; }
@@ -81,14 +99,14 @@
         <button class="nav-root-btn secondary hidden" type="button" id="adminNavGroup" data-nav-root="system" aria-expanded="false">系統管理</button>
         <button class="nav-root-btn secondary" type="button" data-nav-root="account" aria-expanded="false">帳號安全</button>
       </div>
-      <div id="navSubPanel" class="nav-subpanel hidden">
+      <div id="navSubPanel" class="nav-subpanel hidden" aria-label="第二層功能選單">
         <div class="nav-menu" data-nav-menu="content">
           <p class="nav-menu-title">ES 資料庫管理</p>
           <details class="nav-level" open>
-            <summary>文件管理</summary>
+            <summary>文件編修</summary>
             <div class="nav-actions">
               <button class="primary-action" type="button" id="navNewDocBtn">新增文件</button>
-              <button type="button" data-main-tab="search">搜尋文件</button>
+              <button type="button" data-main-tab="search">搜尋與編輯文件</button>
             </div>
           </details>
           <details class="nav-level">
@@ -110,8 +128,8 @@
             <div class="nav-actions"><button type="button" id="mainReviewTab" data-main-tab="review">帳號審核</button></div>
           </details>
           <details class="nav-level">
-            <summary>稽核與統計</summary>
-            <div class="nav-actions"><button type="button" id="mainAuditTab" data-main-tab="audit">修改紀錄</button><button type="button" data-main-tab="stats">全體使用統計</button></div>
+            <summary>紀錄查詢</summary>
+            <div class="nav-actions"><button type="button" id="mainAuditTab" data-main-tab="audit">文件異動紀錄</button><button type="button" data-main-tab="account-audit">帳號操作紀錄</button><button type="button" data-main-tab="stats">全體使用統計</button></div>
           </details>
         </div>
         <div class="nav-menu" data-nav-menu="account">
@@ -166,7 +184,7 @@
           </div>
         </div>
       </div>
-      <div class="grid">
+      <div id="workspaceGrid" class="grid">
         <aside>
           <div id="searchCard" class="card">
             <h2>搜尋文件</h2>
@@ -188,7 +206,8 @@
           </div>
 
           <div id="statsCard" class="card hidden">
-            <h2>使用統計</h2>
+            <h2>使用統計與檢核曲線</h2>
+            <p class="muted">可用同一組檢核元件篩選文件使用統計與帳號操作統計，曲線圖會套用目前篩選條件。</p>
             <div class="row">
               <button id="statsMineTabBtn" class="secondary">我的使用統計</button>
               <button id="statsAllTabBtn" class="secondary hidden">全體使用統計</button>
@@ -196,6 +215,31 @@
             </div>
             <div id="myStats"></div>
             <div id="adminStats" class="hidden"></div>
+            <hr style="border:0;border-top:1px solid #e5e7eb;margin:18px 0;" />
+            <section class="field-grid" aria-label="使用統計篩選">
+              <div><label>統計類別</label><select id="usageStatsCategory"><option value="document">文件使用統計</option><option value="account">帳號操作統計</option><option value="all">全部操作</option></select></div>
+              <div><label>使用者</label><input id="usageStatsUsername" placeholder="superuser 可輸入帳號；一般使用者固定自己" /></div>
+              <div><label>動作包含</label><input id="usageStatsAction" placeholder="例如 save_document 或 password" /></div>
+              <div><label>Index</label><select id="usageStatsIndex"><option value="">全部</option></select></div>
+              <div><label>起始時間</label><input id="usageStatsStartTs" type="datetime-local" /></div>
+              <div><label>結束時間</label><input id="usageStatsEndTs" type="datetime-local" /></div>
+              <div><label>曲線圖時間區間</label><select id="usageStatsBucket"><option value="hour">每小時</option><option value="6_hours">每 6 小時</option><option value="12_hours">每 12 小時</option><option value="day" selected>每日</option><option value="week">每週</option><option value="month">每月</option></select></div>
+            </section>
+            <div class="row" style="margin-top: 12px;">
+              <button id="applyUsageStatsFiltersBtn">套用統計篩選</button>
+              <button id="clearUsageStatsFiltersBtn" class="secondary">清空統計篩選</button>
+            </div>
+            <div id="usageStatsStatus" class="status hidden"></div>
+            <div id="usageStatsSummaryCards" class="stat-cards"></div>
+            <div class="chart-card">
+              <div class="chart-title">
+                <div>
+                  <strong id="usageStatsSeriesTitle">使用統計曲線</strong>
+                  <div id="usageStatsSeriesSummary" class="muted">尚未載入</div>
+                </div>
+              </div>
+              <div id="usageStatsChart" class="chart-empty">尚未載入圖表</div>
+            </div>
           </div>
 
           <div id="accountCard" class="card hidden">
@@ -218,10 +262,10 @@
           </div>
 
           <div id="auditCard" class="card hidden">
-            <h2>修改紀錄查詢</h2>
+            <h2>文件異動紀錄查詢</h2>
             <div class="field-grid">
               <div><label>操作者</label><select id="auditUsername"><option value="">全部</option></select></div>
-              <div><label>動作</label><select id="auditAction"><option value="">全部</option><option value="editor.create_document">create</option><option value="editor.save_document">save</option><option value="editor.delete_document">delete</option></select></div>
+              <div><label>文件動作</label><select id="auditAction"><option value="">全部文件動作</option><option value="editor.create_document">新增文件</option><option value="editor.save_document">儲存文件</option><option value="editor.delete_document">刪除文件</option></select></div>
               <div><label>Index</label><select id="auditIndex"><option value="">全部</option></select></div>
               <div><label>文件 ID</label><input id="auditDocId" placeholder="document id" /></div>
               <div><label>異動欄位路徑</label><select id="auditPath"><option value="">全部</option></select></div>
@@ -230,11 +274,27 @@
               <div><label>結束時間</label><input id="auditEndTs" type="datetime-local" /></div>
             </div>
             <div class="row" style="margin-top: 12px;">
-              <button id="searchAuditBtn">查詢紀錄</button>
+              <button id="searchAuditBtn">查詢文件異動</button>
               <button id="clearAuditBtn" class="secondary">清空篩選</button>
             </div>
             <div id="auditStatus" class="status hidden"></div>
             <div id="auditHits"></div>
+          </div>
+
+          <div id="accountAuditCard" class="card hidden">
+            <h2>帳號操作紀錄查詢</h2>
+            <p class="muted">帳號密碼、登入登出、reset token 與 superuser 帳號處理紀錄在此查詢，避免與 ES 文件異動混在一起。</p>
+            <div class="field-grid">
+              <div><label>帳號</label><select id="accountAuditUsername"><option value="">全部</option></select></div>
+              <div><label>帳號動作</label><select id="accountAuditAction"><option value="">全部帳號動作</option><option value="auth.login">登入</option><option value="auth.logout">登出</option><option value="auth.password_changed">變更密碼</option><option value="auth.password_reset_requested">忘記密碼申請</option><option value="auth.password_recovered">Token 重設密碼</option><option value="auth.password_reset_token_issued">管理員發 token</option><option value="auth.password_reset_by_superuser">管理員重設密碼</option><option value="auth.user_registered">建立 pending 帳號</option><option value="auth.user_approved">核准帳號</option><option value="auth.user_rejected">拒絕帳號</option><option value="auth.user_deleted">刪除帳號</option></select></div>
+              <div><label>最多筆數</label><input id="accountAuditLimit" type="number" min="1" max="500" value="100" /></div>
+            </div>
+            <div class="row" style="margin-top: 12px;">
+              <button id="searchAccountAuditBtn">查詢帳號操作</button>
+              <button id="clearAccountAuditBtn" class="secondary">清空篩選</button>
+            </div>
+            <div id="accountAuditStatus" class="status hidden"></div>
+            <div id="accountAuditHits"></div>
             <hr style="border:0;border-top:1px solid #e5e7eb;margin:18px 0;" />
             <h2>登入稽核</h2>
             <p class="muted">記錄登入成功、密碼錯誤與帳號尚未啟用等事件。</p>
@@ -247,7 +307,7 @@
           </div>
         </aside>
 
-        <section class="card">
+        <section id="editorCard" class="card">
           <h2>編輯結構化欄位</h2>
           <p id="schemaDescription" class="muted">表單欄位由設定檔載入；一般使用者可使用表單修改資料，進階使用者可切換完整 JSON。</p>
           <div id="editorModeBanner" class="status" style="margin-bottom:12px;">目前模式：新增文件模式（可選 index）</div>
@@ -293,6 +353,7 @@
       </div>
     </section>
   </main>
+<script src="/static/audit_tools.js"></script>
 <script>
 const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '' };
 const $ = (id) => document.getElementById(id);
@@ -555,8 +616,11 @@ function setActiveNavRoot(root) {
 }
 function collapseMainNav() { setActiveNavRoot(''); }
 function bindHeaderNav() {
-  document.querySelectorAll('[data-nav-root]').forEach(btn => {
-    btn.onclick = () => setActiveNavRoot(state.activeNavRoot === btn.dataset.navRoot ? '' : btn.dataset.navRoot);
+  SraAuditTools.bindProgressiveNav({
+    nav: $('mainNav'),
+    getActiveRoot: () => state.activeNavRoot,
+    setActiveRoot,
+    collapse: collapseMainNav,
   });
 }
 async function bootAuthed() {
@@ -567,6 +631,7 @@ async function bootAuthed() {
   const indexes = await api('/v1/editor/indexes');
   $('indexSelect').innerHTML = indexes.indexes.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
   if (indexes.default_index) $('indexSelect').value = indexes.default_index;
+  $('usageStatsIndex').innerHTML = '<option value="">全部</option>' + indexes.indexes.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
   syncDocIndexOptions($('indexSelect').value);
   setEditorMode('new');
   await loadFormConfig($('indexSelect').value);
@@ -576,14 +641,17 @@ async function bootAuthed() {
   if (isSuperuser) {
     $('adminCard').classList.remove('hidden');
     $('auditCard').classList.remove('hidden');
+    $('accountAuditCard').classList.remove('hidden');
     $('statsAllTabBtn').classList.remove('hidden');
     $('adminNavGroup').classList.remove('hidden');
     await refreshUsers();
     await searchAuditLogs();
+    await searchAccountAuditLogs();
     await refreshLoginAudit();
   } else {
     $('adminCard').classList.add('hidden');
     $('auditCard').classList.add('hidden');
+    $('accountAuditCard').classList.add('hidden');
     $('adminNavGroup').classList.add('hidden');
   }
   await refreshUsageStats();
@@ -622,13 +690,71 @@ function renderUsageStats(targetId, stats) {
 }
 async function refreshUsageStats() {
   try {
-    const data = await api('/v1/editor/usage-stats');
+    const data = await api('/v1/editor/usage-stats?' + collectUsageStatsQuery().toString());
     renderUsageStats('myStats', data.me);
     if (state.user && state.user.role === 'superuser') renderUsageStats('adminStats', data.all);
+    renderFilteredUsageStats(data.filtered);
+    setStatus('usageStatsStatus', data.filtered?.is_restricted_to_self ? '已載入自己的使用統計；superuser 可查詢全體帳號。' : '已載入使用統計。', 'ok');
   } catch (err) {
     $('myStats').innerHTML = `<div class="status error">${esc(err.message)}</div>`;
     $('adminStats').innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+    setStatus('usageStatsStatus', err.message, 'error');
   }
+}
+function collectUsageStatsQuery() {
+  const params = new URLSearchParams({
+    category: $('usageStatsCategory').value,
+    chart_bucket: $('usageStatsBucket').value,
+  });
+  const mapping = {
+    username: $('usageStatsUsername').value.trim(),
+    action: $('usageStatsAction').value.trim(),
+    index: $('usageStatsIndex').value.trim(),
+    start_ts: toIsoOrEmpty($('usageStatsStartTs').value.trim()),
+    end_ts: toIsoOrEmpty($('usageStatsEndTs').value.trim()),
+  };
+  Object.entries(mapping).forEach(([key, value]) => { if (value) params.set(key, value); });
+  return params;
+}
+function renderFilteredUsageStats(filtered) {
+  if (!filtered) return;
+  const stats = filtered.stats || {};
+  SraAuditTools.renderSummaryCards($('usageStatsSummaryCards'), [
+    {label: '總操作次數', value: stats.total_events || 0, hint: filtered.category || 'all'},
+    {label: '異動欄位總數', value: stats.changed_paths_total || 0, hint: '文件類動作會累計欄位'},
+    {label: '動作種類', value: Object.keys(stats.by_action || {}).length, hint: '依目前篩選'},
+    {label: '使用者數', value: Object.keys(stats.by_user || {}).length, hint: '依目前篩選'},
+  ]);
+  SraAuditTools.renderTimeSeriesChart({
+    rows: filtered.series || [],
+    bucket: filtered.chart_bucket || $('usageStatsBucket').value,
+    bucketLabel: filtered.chart_bucket_label || '每日',
+    titleEl: $('usageStatsSeriesTitle'),
+    summaryEl: $('usageStatsSeriesSummary'),
+    chartEl: $('usageStatsChart'),
+    seriesName: '使用統計筆數',
+  });
+}
+async function loadFilteredUsageStats() {
+  setStatus('usageStatsStatus', '查詢使用統計中...');
+  try {
+    const data = await api('/v1/editor/usage-stats?' + collectUsageStatsQuery().toString());
+    renderUsageStats('myStats', data.me);
+    if (state.user && state.user.role === 'superuser') renderUsageStats('adminStats', data.all);
+    renderFilteredUsageStats(data.filtered);
+    setStatus('usageStatsStatus', data.filtered?.is_restricted_to_self ? '已套用篩選（一般使用者限定自己的紀錄）。' : '已套用統計篩選。', 'ok');
+  } catch (err) {
+    setStatus('usageStatsStatus', err.message, 'error');
+  }
+}
+function clearUsageStatsFilters() {
+  $('usageStatsCategory').value = 'document';
+  $('usageStatsUsername').value = '';
+  $('usageStatsAction').value = '';
+  $('usageStatsIndex').value = '';
+  $('usageStatsStartTs').value = '';
+  $('usageStatsEndTs').value = '';
+  $('usageStatsBucket').value = 'day';
 }
 function switchMainTab(tab) {
   $('searchCard').classList.toggle('hidden', tab !== 'search');
@@ -636,6 +762,10 @@ function switchMainTab(tab) {
   $('accountCard').classList.toggle('hidden', tab !== 'account');
   $('adminCard').classList.toggle('hidden', tab !== 'review');
   $('auditCard').classList.toggle('hidden', tab !== 'audit');
+  $('accountAuditCard').classList.toggle('hidden', tab !== 'account-audit');
+  const showEditor = tab === 'search';
+  $('editorCard').classList.toggle('hidden', !showEditor);
+  $('workspaceGrid').classList.toggle('single-pane', !showEditor);
 }
 function switchStatsView(view) {
   const mine = view !== 'all';
@@ -657,30 +787,91 @@ function collectAuditQuery() {
   Object.entries(mapping).forEach(([k, v]) => { if (v) qs.set(k, v); });
   return qs;
 }
+const auditActionLabels = {
+  'editor.create_document': '新增文件',
+  'editor.save_document': '儲存文件',
+  'editor.delete_document': '刪除文件',
+  'auth.user_registered': '建立 pending 帳號',
+  'auth.login': '登入',
+  'auth.logout': '登出',
+  'auth.password_changed': '變更密碼',
+  'auth.password_reset_requested': '忘記密碼申請',
+  'auth.password_recovered': 'Token 重設密碼',
+  'auth.password_reset_token_issued': '管理員發 token',
+  'auth.password_reset_by_superuser': '管理員重設密碼',
+  'auth.user_approved': '核准帳號',
+  'auth.user_rejected': '拒絕帳號',
+  'auth.user_deleted': '刪除帳號'
+};
+function auditActionLabel(action) { return auditActionLabels[action] || action || '(unknown action)'; }
 function renderAuditHits(hits) {
   $('auditHits').innerHTML = (hits || []).map((h) => {
     const paths = Array.isArray(h.changed_paths) ? h.changed_paths.filter(Boolean) : [];
     return `<div class="audit">
-      <div><strong>${esc(h.action || '(unknown action)')}</strong></div>
+      <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
       <div class="muted">${esc(h.ts || '')}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
       <div class="muted">index=${esc(h.index || '-')} / id=${esc(h.id || '-')} / result=${esc(h.result || '-')}</div>
       <div class="muted">異動欄位：${paths.length ? esc(paths.join(', ')) : '(無)'}</div>
     </div>`;
   }).join('');
 }
+function renderAccountAuditHits(hits) {
+  $('accountAuditHits').innerHTML = (hits || []).map((h) => {
+    const actor = h.actor ? `｜執行者：${esc(h.actor)}` : '';
+    const detail = h.reason || h.status || h.role || h.result || '';
+    return `<div class="audit">
+      <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
+      <div class="muted">${esc(h.ts || '')}｜帳號：${esc(h.username || '-')}${actor}</div>
+      ${detail ? `<div class="muted">補充：${esc(detail)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
 async function searchAuditLogs() {
-  setStatus('auditStatus', '查詢修改紀錄中...');
+  setStatus('auditStatus', '查詢文件異動紀錄中...');
   try {
     const qs = collectAuditQuery();
+    qs.set('action_prefix', 'editor.');
     const data = await api('/v1/editor/audit-logs?' + qs.toString(), {headers: {'Content-Type': 'application/json'}});
     const hits = data.hits || [];
     renderAuditHits(hits);
     refreshAuditFilterOptions(hits);
-    setStatus('auditStatus', `共符合 ${data.total} 筆，顯示 ${Math.min(data.limit, (data.hits || []).length)} 筆`, 'ok');
+    setStatus('auditStatus', `文件異動共符合 ${hits.length} 筆，顯示 ${hits.length} 筆`, 'ok');
   } catch (err) {
     setStatus('auditStatus', err.message, 'error');
     $('auditHits').innerHTML = '';
   }
+}
+function collectAccountAuditQuery() {
+  const qs = new URLSearchParams({limit: String(Math.max(1, Math.min(500, Number($('accountAuditLimit').value || 100))))});
+  const username = $('accountAuditUsername').value.trim();
+  const action = $('accountAuditAction').value.trim();
+  if (username) qs.set('username', username);
+  if (action) qs.set('action', action);
+  qs.set('action_prefix', 'auth.');
+  return qs;
+}
+function refreshAccountAuditFilterOptions(hits) {
+  const usernames = [...new Set((hits||[]).map(h => String(h.username||'').trim()).filter(Boolean))].sort();
+  updateAuditSelectOptions('accountAuditUsername', usernames);
+}
+async function searchAccountAuditLogs() {
+  setStatus('accountAuditStatus', '查詢帳號操作紀錄中...');
+  try {
+    const qs = collectAccountAuditQuery();
+    const data = await api('/v1/editor/audit-logs?' + qs.toString(), {headers: {'Content-Type': 'application/json'}});
+    const hits = data.hits || [];
+    renderAccountAuditHits(hits);
+    refreshAccountAuditFilterOptions(hits);
+    setStatus('accountAuditStatus', `帳號操作共符合 ${hits.length} 筆，顯示 ${hits.length} 筆`, 'ok');
+  } catch (err) {
+    setStatus('accountAuditStatus', err.message, 'error');
+    $('accountAuditHits').innerHTML = '';
+  }
+}
+function clearAccountAuditFilters() {
+  $('accountAuditUsername').value = '';
+  $('accountAuditAction').value = '';
+  $('accountAuditLimit').value = '100';
 }
 
 function collectSearchQuery(pageOverride) {
@@ -920,7 +1111,7 @@ $('excelDashboardBtn').onclick = () => { collapseMainNav(); location.href = '/ex
 document.addEventListener('click', (ev) => { if ($('mainNav') && !$('mainNav').classList.contains('hidden') && !$('mainNav').contains(ev.target)) collapseMainNav(); });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') collapseMainNav(); });
 $('searchAuditBtn').onclick = searchAuditLogs;
-$('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); }; $('refreshLoginAuditBtn').onclick = refreshLoginAudit;
+$('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); }; $('searchAccountAuditBtn').onclick = searchAccountAuditLogs; $('clearAccountAuditBtn').onclick = () => { clearAccountAuditFilters(); searchAccountAuditLogs(); }; $('applyUsageStatsFiltersBtn').onclick = loadFilteredUsageStats; $('clearUsageStatsFiltersBtn').onclick = () => { clearUsageStatsFilters(); loadFilteredUsageStats(); }; $('usageStatsBucket').onchange = loadFilteredUsageStats; $('usageStatsCategory').onchange = loadFilteredUsageStats; $('refreshLoginAuditBtn').onclick = refreshLoginAudit;
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
 $('copyResetTokenBtn').onclick = async () => { try { await copyTextToClipboard($('resetTokenModalValue').value); setStatus('resetTokenCopyStatus', '已複製 token。', 'ok'); } catch (err) { setStatus('resetTokenCopyStatus', err.message, 'error'); } };
 $('closeResetTokenModalBtn').onclick = closeResetTokenDialog;

@@ -78,3 +78,63 @@ Open
 
 -
 
+
+---
+
+## 2026-06-11 本次 UI 調整仍無法截圖驗證
+
+首次發現：2026-06-11
+
+問題：
+
+- 本次調整 Editor 靜態 UI 後，再次以 Python 檢查 `playwright` 模組，環境仍回報 `No module named 'playwright'`。
+
+影響：
+
+- 無法在目前環境提供瀏覽器截圖驗證；不影響靜態 DOM / JS 字串測試與完整 pytest 結果。
+
+暫時解法：
+
+- 使用 `pytest tests/test_editor_auth_ui_static.py` 驗證導航、工作區分離與紀錄分流標記。
+- 使用 `pytest tests` 驗證完整既有測試。
+
+根本原因：
+
+- 測試環境缺少 Playwright / browser runtime。
+
+狀態：
+Open
+
+負責人：
+
+-
+
+---
+
+## 2026-06-11 共用統計 UI 仍無法截圖驗證
+
+首次發現：2026-06-11
+
+問題：
+
+- 本次新增共用 audit chart 與 hover/touch 導航後，再次檢查 Python `playwright` 模組，仍顯示 `No module named 'playwright'`。
+
+影響：
+
+- 無法在目前環境提供桌機 hover 展開、手機點按展開或統計曲線的瀏覽器截圖 / E2E 證據。
+
+暫時解法：
+
+- 使用靜態 UI 測試驗證 `SraAuditTools.bindProgressiveNav()`、`matchMedia('(hover: hover) and (pointer: fine)')`、pointerType 判斷、統計篩選 DOM 與共用 chart module 引用。
+- 使用 `tests/test_editor_audit_queries.py` 驗證後端 action_prefix 與 chart bucket 統計。
+
+根本原因：
+
+- 測試環境缺少 Playwright / browser runtime。
+
+狀態：
+Open
+
+負責人：
+
+-

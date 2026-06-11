@@ -90,3 +90,66 @@ Long-term Consideration:
 
 - 若功能數量持續增加，可把導航結構抽成資料陣列或共用元件，降低 Editor 與 portable auth pack 的靜態 HTML 重複。
 
+
+---
+
+## 2026-06-11 Editor 功能頁面以導航狀態做單一工作區切換
+
+Decision:
+
+- 保留既有靜態 HTML / vanilla JS 架構，不引入前端框架；由 `switchMainTab()` 統一控制左側功能卡與右側 ES 編輯器是否顯示。
+- 只有文件搜尋 / 編修頁顯示 ES 編輯器；其餘功能以單欄工作區呈現。
+- 文件異動與帳號操作共用既有 audit log API，但前端依 action prefix 分成 `editor.*` 與 `auth.*` 兩個頁面。
+
+Reason:
+
+- 使用者已具備標題列導航，因此內容區應專注於當下功能，不應在帳號管理時混放 ES 文件編修。
+- 文件異動與帳號操作在實務上屬於不同稽核語境，分頁與命名可降低誤解。
+- 沿用既有 API 可降低後端 contract 變更與相容性風險。
+
+Implementation:
+
+- `#workspaceGrid.single-pane` 將工作區改成單欄；`#editorCard` 由 `switchMainTab()` 在非文件頁隱藏。
+- `#auditCard` 查詢並顯示 `editor.*`；`#accountAuditCard` 查詢並顯示 `auth.*`。
+- 帳號管理變更補寫入 `auth.user_*` audit event，避免帳號核准 / 拒絕 / 刪除沒有可查紀錄。
+
+Rejected Alternatives:
+
+- 新增獨立 account audit API：目前既有 audit log 已能承載事件，短期沒有必要增加 API contract。
+- 在同一「修改紀錄」頁用篩選下拉混合文件與帳號動作：不符合使用者希望分開處理的需求。
+
+Long-term Consideration:
+
+- 若 audit event 數量大幅增加，可在後端為 `/v1/editor/audit-logs` 增加 category / action_prefix 篩選，避免前端取 500 筆後再分流。
+
+---
+
+## 2026-06-11 共用 audit chart module 與漸進式導航互動
+
+Decision:
+
+- 新增 `api/static/audit_tools.js` 作為輕量 vanilla JS 共用模組，不導入前端框架。
+- 導航互動採桌機 hover、觸控 click 的雙模式：只有 `matchMedia('(hover: hover) and (pointer: fine)')` 且 pointerType 為 mouse 時才啟用移入展開 / 移出收合。
+- Editor 使用統計、Excel→SQL audit chart、portable auth pack 帳號操作統計共用同一個 SVG chart renderer。
+
+Reason:
+
+- 使用者明確期待一般文件工具常見的 hover 展開體驗，但手機沒有穩定 hover 語意，必須保留點按模式。
+- Audit / usage 統計曲線至少出現在三處，抽成共用模組可降低重複與長期分岔。
+- 保持單檔靜態頁 + vanilla JS 可延續現有架構，避免過度引入建置流程。
+
+Implementation:
+
+- `bindProgressiveNav()` 同時綁定 click、pointerenter、pointerleave；touch / pen 不觸發 hover 展開邏輯。
+- `/v1/editor/usage-stats` 回傳 filtered stats 與 time series，前端只負責呈現與篩選參數組裝。
+- Excel dashboard 原 chart function 改為轉呼叫 `SraAuditTools.renderTimeSeriesChart()`。
+
+Rejected Alternatives:
+
+- 純 hover 導航：手機與觸控裝置體驗不可靠。
+- 將 chart renderer 分別複製在三個頁面：短期可行但會產生重複維護。
+- 立即導入前端框架或 build pipeline：與目前靜態頁架構不一致，超出本次需求。
+
+Long-term Consideration:
+
+- 若共用前端模組持續增加，可再建立正式 `/static/` 掛載或 asset pipeline，並將 portable auth pack 的共用檔納入打包同步流程。

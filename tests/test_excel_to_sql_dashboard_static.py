@@ -14,6 +14,8 @@ def test_chart_bucket_selector_is_visible_in_chart_card_and_sent_to_api():
     assert 'aria-label="曲線圖時間區間設定"' in html
     assert "chart_bucket: $('chartBucket').value" in html
     assert "$('chartBucket').addEventListener('change', applyAuditFilters)" in html
+    assert '<script src="/static/audit_tools.js"></script>' in html
+    assert 'SraAuditTools.renderTimeSeriesChart' in html
 
 
 def test_dashboard_refresh_and_audit_filters_extend_end_time_to_now():
