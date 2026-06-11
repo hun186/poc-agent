@@ -211,3 +211,33 @@ Verification:
 
 Conclusion:
 - Editor 導航第二層選單失效原因是前端 callback 名稱錯誤，不涉及後端 API contract 或資料模型變更。
+
+---
+
+## 2026-06-11 專案記憶濃縮機制文件化
+
+### 任務目的
+
+- 回應長期記憶隨多次編修持續膨脹、導致後續 Agent 必須讀取過時冗長內容並浪費 token 的問題。
+- 在 `AGENTS.md` 中建立明確的記憶濃縮觸發條件、歸檔流程與濃縮後載入規則。
+
+### 主要修改內容
+
+- `AGENTS.md`：將「僅追加 / 不得覆蓋」調整為一般任務規則，明確允許記憶濃縮作為唯一例外。
+- `AGENTS.md`：新增「記憶濃縮機制（Memory Compaction）」章節，定義行數、大小、區塊數、過時內容與重複內容等觸發條件。
+- `AGENTS.md`：規範濃縮前全文需保存到 `.codex/archive/`，active memory 重寫為 current summary、recent changes、archived history 等精簡結構。
+- `AGENTS.md`：規範一般任務不需讀取 `.codex/archive/`，只有追溯歷史或 active memory 指向特定歸檔時才讀取，以降低 token 消耗。
+
+### 驗證結果
+
+- `git diff --check` 通過。
+- 使用 Python 檢查 `AGENTS.md` 已包含記憶濃縮章節與 `.codex/archive/` 歸檔規則。
+
+### 相關檔案
+
+- `AGENTS.md`
+- `.codex/memory.md`
+
+### 重要結論
+
+- 專案記憶現在具備可追溯的濃縮例外：一般更新仍採追加；超過門檻或內容過時時，可先歸檔全文再重寫 active memory，避免後續任務重複讀取低價值歷史細節。
