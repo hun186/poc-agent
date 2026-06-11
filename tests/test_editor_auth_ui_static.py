@@ -62,6 +62,8 @@ def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     assert "setAttribute('aria-expanded', active ? 'true' : 'false')" in html
     assert 'SraAuditTools.bindProgressiveNav' in html
     assert 'getActiveRoot: () => state.activeNavRoot' in html
+    assert 'setActiveRoot: setActiveNavRoot' in html
+    assert 'setActiveRoot,\n    collapse: collapseMainNav' not in html
     assert 'id="mainNavDetails"' not in html
 
 
