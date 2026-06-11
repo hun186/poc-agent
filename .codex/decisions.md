@@ -153,3 +153,31 @@ Rejected Alternatives:
 Long-term Consideration:
 
 - 若共用前端模組持續增加，可再建立正式 `/static/` 掛載或 asset pipeline，並將 portable auth pack 的共用檔納入打包同步流程。
+
+---
+
+## 2026-06-11 長期記憶採 active summary + archive 濃縮模式
+
+Decision:
+
+- 長期記憶平時維持 append-only；當 active memory 超過指定門檻或內容明顯過時、重複時，允許以「先全文歸檔、再重寫 active memory 摘要」作為唯一覆寫例外。
+- `.codex/archive/` 不列入例行專案上下文載入，只有追溯歷史或 active memory 指向特定歸檔時才讀取。
+
+Reason:
+
+- 原本要求每次讀取所有長期記憶且只能追加，會讓多次任務後的記憶檔持續膨脹，增加 token 消耗並提高讀到過時資訊的機率。
+- active summary 可保留當前有效知識；archive 可保留追溯能力，兼顧效率與可稽核性。
+
+Implementation:
+
+- 在 `AGENTS.md` 新增記憶濃縮觸發條件、歸檔流程、active memory 建議結構與濃縮後載入規則。
+- 濃縮前需保存原文到 `.codex/archive/<原檔名>-YYYYMMDD-HHMMSS.md`，並在 active memory 中留下 archived history 索引。
+
+Rejected Alternatives:
+
+- 永久只追加、不濃縮：可追溯性最高，但長期 token 成本會越來越高。
+- 直接刪除舊記錄：token 成本最低，但失去追溯與稽核能力。
+
+Long-term Consideration:
+
+- 若記憶檔持續增加，可再建立自動化檢查腳本，在任務結束時提醒哪些 active memory 已超過濃縮門檻。
