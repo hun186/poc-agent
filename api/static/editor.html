@@ -30,11 +30,22 @@
     button.danger { background: #dc2626; }
     button:disabled { opacity: .55; cursor: not-allowed; }
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .nav-groups { display: grid; gap: 14px; }
+    .top-nav { position: sticky; top: 0; z-index: 20; margin: 0 0 18px; padding: 0; overflow: hidden; }
+    .top-nav details { padding: 0; }
+    .top-nav summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; cursor: pointer; font-weight: 800; list-style: none; }
+    .top-nav summary::-webkit-details-marker { display: none; }
+    .top-nav summary::after { content: "收合"; color: #64748b; font-size: 13px; font-weight: 700; }
+    .top-nav details:not([open]) summary::after { content: "展開"; }
+    .nav-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; padding: 0 18px 18px; }
     .nav-group { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; background: #f8fafc; }
     .nav-group-title { margin: 0 0 8px; color: #334155; font-size: 13px; font-weight: 800; letter-spacing: .02em; }
     .nav-row { display:flex; gap:8px; flex-wrap:wrap; }
     .nav-row button { flex: 1 1 120px; }
+    .copy-modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15, 23, 42, .55); }
+    .copy-dialog { width: min(760px, 100%); background: #fff; border-radius: 16px; box-shadow: 0 24px 60px rgba(15,23,42,.28); padding: 20px; }
+    .copy-dialog h3 { margin: 0 0 8px; font-size: 18px; }
+    .copy-dialog textarea { min-height: 140px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+    .copy-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; flex-wrap: wrap; }
     .row > * { flex: 1; }
     .status { border-radius: 10px; padding: 10px 12px; background: #eef2ff; color: #3730a3; margin: 10px 0; white-space: pre-wrap; }
     .status.error { background: #fee2e2; color: #991b1b; }
@@ -85,36 +96,49 @@
     </section>
 
     <section id="app" class="hidden">
-      <div class="grid">
-        <aside>
-          <div id="mainNav" class="card hidden">
-            <h2>功能導航</h2>
-            <div class="nav-groups">
-              <div class="nav-group">
-                <p class="nav-group-title">ES 資料庫管理</p>
-                <div class="nav-row">
-                  <button class="secondary" id="navNewDocBtn">新增文件</button>
-                  <button class="secondary" data-main-tab="search">搜尋文件</button>
-                  <button class="secondary" data-main-tab="stats">使用統計</button>
-                  <button class="secondary" data-main-tab="account">帳號安全</button>
-                </div>
+      <div id="mainNav" class="card top-nav hidden">
+        <details id="mainNavDetails" open>
+          <summary>功能導航</summary>
+          <div class="nav-groups">
+            <div class="nav-group">
+              <p class="nav-group-title">ES 資料庫管理</p>
+              <div class="nav-row">
+                <button class="secondary" id="navNewDocBtn">新增文件</button>
+                <button class="secondary" data-main-tab="search">搜尋文件</button>
+                <button class="secondary" data-main-tab="stats">使用統計</button>
+                <button class="secondary" data-main-tab="account">帳號安全</button>
               </div>
-              <div class="nav-group">
-                <p class="nav-group-title">Excel 匯入流程管理</p>
-                <div class="nav-row">
-                  <button class="secondary" id="excelDashboardBtn">Excel→SQL 監控</button>
-                </div>
+            </div>
+            <div class="nav-group">
+              <p class="nav-group-title">Excel 匯入流程管理</p>
+              <div class="nav-row">
+                <button class="secondary" id="excelDashboardBtn">Excel→SQL 監控</button>
               </div>
-              <div class="nav-group hidden" id="adminNavGroup">
-                <p class="nav-group-title">系統管理與稽核</p>
-                <div class="nav-row">
-                  <button class="secondary hidden" id="mainReviewTab" data-main-tab="review">帳號審核</button>
-                  <button class="secondary hidden" id="mainAuditTab" data-main-tab="audit">修改紀錄</button>
-                </div>
+            </div>
+            <div class="nav-group hidden" id="adminNavGroup">
+              <p class="nav-group-title">系統管理與稽核</p>
+              <div class="nav-row">
+                <button class="secondary hidden" id="mainReviewTab" data-main-tab="review">帳號審核</button>
+                <button class="secondary hidden" id="mainAuditTab" data-main-tab="audit">修改紀錄</button>
               </div>
             </div>
           </div>
-
+        </details>
+      </div>
+      <div id="resetTokenModal" class="copy-modal hidden" role="dialog" aria-modal="true" aria-labelledby="resetTokenModalTitle">
+        <div class="copy-dialog">
+          <h3 id="resetTokenModalTitle">一次性 reset token</h3>
+          <p id="resetTokenModalHelp" class="muted"></p>
+          <textarea id="resetTokenModalValue" readonly></textarea>
+          <div id="resetTokenCopyStatus" class="status hidden"></div>
+          <div class="copy-actions">
+            <button id="copyResetTokenBtn">複製 token</button>
+            <button id="closeResetTokenModalBtn" class="secondary">關閉</button>
+          </div>
+        </div>
+      </div>
+      <div class="grid">
+        <aside>
           <div id="searchCard" class="card">
             <h2>搜尋文件</h2>
             <label>Index</label><select id="indexSelect"></select>
@@ -489,6 +513,7 @@ async function changePassword() {
     setTimeout(() => logout({skipRemote: true}), 900);
   } catch (err) { setStatus('accountStatus', err.message, 'error'); }
 }
+function collapseMainNav() { const details = $('mainNavDetails'); if (details) details.open = false; }
 async function bootAuthed() {
   const me = await api('/v1/auth/me'); state.user = me.user;
   const isSuperuser = state.user && state.user.role === 'superuser';
@@ -501,7 +526,7 @@ async function bootAuthed() {
   setEditorMode('new');
   await loadFormConfig($('indexSelect').value);
   $('mainNav').classList.remove('hidden');
-  document.querySelectorAll('[data-main-tab]').forEach(btn => btn.onclick = () => switchMainTab(btn.dataset.mainTab));
+  document.querySelectorAll('[data-main-tab]').forEach(btn => btn.onclick = () => { switchMainTab(btn.dataset.mainTab); collapseMainNav(); });
   if (isSuperuser) {
     $('adminCard').classList.remove('hidden');
     $('auditCard').classList.remove('hidden');
@@ -757,11 +782,34 @@ async function refreshUsers() {
 }
 async function approveUser(username, role) { await api(`/v1/auth/users/${encodeURIComponent(username)}/approve`, {method:'POST', body: JSON.stringify({role})}); await refreshUsers(); }
 async function rejectUser(username) { await api(`/v1/auth/users/${encodeURIComponent(username)}/reject`, {method:'POST'}); await refreshUsers(); }
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  const ok = document.execCommand('copy');
+  ta.remove();
+  if (!ok) throw new Error('瀏覽器不允許自動複製，請手動選取文字複製。');
+}
+function showResetTokenDialog(username, token) {
+  $('resetTokenModalHelp').textContent = `請用安全管道交付給 ${username}。token 只會顯示這一次，請直接複製保存。`;
+  $('resetTokenModalValue').value = token || '';
+  $('resetTokenCopyStatus').classList.add('hidden');
+  $('resetTokenModal').classList.remove('hidden');
+  $('resetTokenModalValue').focus();
+  $('resetTokenModalValue').select();
+}
+function closeResetTokenDialog() { $('resetTokenModal').classList.add('hidden'); }
 async function issuePasswordResetToken(username) {
   const data = await api(`/v1/auth/users/${encodeURIComponent(username)}/password-reset-token`, {method:'POST'});
-  alert(`請用安全管道交付給 ${username}：
-
-${data.reset_token}`);
+  showResetTokenDialog(username, data.reset_token);
 }
 async function resetUserPassword(username) {
   const new_password = prompt(`請輸入 ${username} 的新密碼（至少 8 字元）：`);
@@ -823,11 +871,14 @@ async function logout(opts = {}) {
   state.token = ''; state.user = null; localStorage.removeItem('sra_editor_token'); $('headerLogoutBtn').classList.add('hidden'); location.reload();
 }
 function showPane(which) { $('formPane').classList.toggle('hidden', which !== 'form'); $('jsonPane').classList.toggle('hidden', which !== 'json'); $('formTabBtn').classList.toggle('active', which === 'form'); $('jsonTabBtn').classList.toggle('active', which === 'json'); }
-$('loginBtn').onclick = login; $('forgotPasswordBtn').onclick = forgotPassword; $('recoverPasswordBtn').onclick = recoverPassword; $('changePasswordBtn').onclick = changePassword; $('searchPrevBtn').onclick = () => { if (state.searchPage > 1) searchDocs(state.searchPage - 1); }; $('searchNextBtn').onclick = () => { if (state.searchHasMore) searchDocs(state.searchPage + 1); }; $('navNewDocBtn').onclick = newDoc; $('registerBtn').onclick = register; $('searchBtn').onclick = () => searchDocs(1); $('saveBtn').onclick = saveDoc; $('saveAsNewBtn').onclick = saveAsNewDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('refreshStatsBtn').onclick = refreshUsageStats; $('extractTextBtn').onclick = uploadRawContentFile;
-$('excelDashboardBtn').onclick = () => { location.href = '/excel-to-sql-dashboard'; };
+$('loginBtn').onclick = login; $('forgotPasswordBtn').onclick = forgotPassword; $('recoverPasswordBtn').onclick = recoverPassword; $('changePasswordBtn').onclick = changePassword; $('searchPrevBtn').onclick = () => { if (state.searchPage > 1) searchDocs(state.searchPage - 1); }; $('searchNextBtn').onclick = () => { if (state.searchHasMore) searchDocs(state.searchPage + 1); }; $('navNewDocBtn').onclick = () => { newDoc(); collapseMainNav(); }; $('registerBtn').onclick = register; $('searchBtn').onclick = () => searchDocs(1); $('saveBtn').onclick = saveDoc; $('saveAsNewBtn').onclick = saveAsNewDoc; $('formatBtn').onclick = formatJson; $('headerLogoutBtn').onclick = logout; $('refreshUsersBtn').onclick = refreshUsers; $('refreshStatsBtn').onclick = refreshUsageStats; $('extractTextBtn').onclick = uploadRawContentFile;
+$('excelDashboardBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-dashboard'; };
 $('searchAuditBtn').onclick = searchAuditLogs;
 $('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); }; $('refreshLoginAuditBtn').onclick = refreshLoginAudit;
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
+$('copyResetTokenBtn').onclick = async () => { try { await copyTextToClipboard($('resetTokenModalValue').value); setStatus('resetTokenCopyStatus', '已複製 token。', 'ok'); } catch (err) { setStatus('resetTokenCopyStatus', err.message, 'error'); } };
+$('closeResetTokenModalBtn').onclick = closeResetTokenDialog;
+$('resetTokenModal').onclick = (ev) => { if (ev.target === $('resetTokenModal')) closeResetTokenDialog(); };
 $('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
 $('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
 updateSearchPagerButtons();

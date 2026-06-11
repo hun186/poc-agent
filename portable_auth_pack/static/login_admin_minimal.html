@@ -14,6 +14,11 @@
     button.secondary { background: #475569; }
     button.danger { background: #dc2626; }
     pre { white-space: pre-wrap; background: #0f172a; color: #e2e8f0; padding: 1rem; border-radius: 10px; }
+    .hidden { display: none !important; }
+    .copy-modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15,23,42,.55); }
+    .copy-dialog { width: min(720px, 100%); background: white; border-radius: 14px; box-shadow: 0 24px 60px rgba(15,23,42,.28); padding: 18px; }
+    .copy-dialog textarea { min-height: 130px; width: 100%; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+    .copy-actions { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; margin-top:10px; }
     .row { display: flex; gap: .75rem; flex-wrap: wrap; align-items: end; }
     .row > div { flex: 1 1 180px; }
   </style>
@@ -53,6 +58,18 @@
     <h2>Superuser 帳號審核</h2>
     <button onclick="refreshUsers()">重新整理帳號</button>
     <div id="users"></div>
+  </section>
+  <section id="resetTokenModal" class="copy-modal hidden" role="dialog" aria-modal="true" aria-labelledby="resetTokenModalTitle">
+    <div class="copy-dialog">
+      <h2 id="resetTokenModalTitle">一次性 reset token</h2>
+      <p id="resetTokenModalHelp"></p>
+      <textarea id="resetTokenModalValue" readonly></textarea>
+      <p id="resetTokenCopyStatus"></p>
+      <div class="copy-actions">
+        <button id="copyResetTokenBtn">複製 token</button>
+        <button id="closeResetTokenModalBtn" class="secondary">關閉</button>
+      </div>
+    </div>
   </section>
   <section>
     <h2>輸出</h2>
@@ -142,10 +159,35 @@ async function refreshUsers() {
 }
 async function approveUser(username, role) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}/approve`, {method: 'POST', body: JSON.stringify({role})})); await refreshUsers(); }
 async function rejectUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}/reject`, {method: 'POST'})); await refreshUsers(); }
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  const ok = document.execCommand('copy');
+  ta.remove();
+  if (!ok) throw new Error('瀏覽器不允許自動複製，請手動選取文字複製。');
+}
+function showResetTokenDialog(username, token) {
+  document.getElementById('resetTokenModalHelp').textContent = `請用安全管道交付給 ${username}。token 只會顯示這一次，請直接複製保存。`;
+  document.getElementById('resetTokenModalValue').value = token || '';
+  document.getElementById('resetTokenCopyStatus').textContent = '';
+  document.getElementById('resetTokenModal').classList.remove('hidden');
+  document.getElementById('resetTokenModalValue').focus();
+  document.getElementById('resetTokenModalValue').select();
+}
+function closeResetTokenDialog() { document.getElementById('resetTokenModal').classList.add('hidden'); }
 async function issuePasswordResetToken(username) {
   const data = await api(`/v1/auth/users/${encodeURIComponent(username)}/password-reset-token`, {method: 'POST'});
   out(data);
-  alert(`請用安全管道交付給 ${username}：\n\n${data.reset_token}`);
+  showResetTokenDialog(username, data.reset_token);
 }
 async function resetUserPassword(username) {
   const new_password = prompt(`請輸入 ${username} 的新密碼（至少 8 字元）`);
@@ -154,6 +196,16 @@ async function resetUserPassword(username) {
   await refreshUsers();
 }
 async function deleteUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method: 'DELETE'})); await refreshUsers(); }
+document.getElementById('copyResetTokenBtn').onclick = async () => {
+  try {
+    await copyTextToClipboard(document.getElementById('resetTokenModalValue').value);
+    document.getElementById('resetTokenCopyStatus').textContent = '已複製 token。';
+  } catch (err) {
+    document.getElementById('resetTokenCopyStatus').textContent = String(err.message || err);
+  }
+};
+document.getElementById('closeResetTokenModalBtn').onclick = closeResetTokenDialog;
+document.getElementById('resetTokenModal').onclick = (ev) => { if (ev.target === document.getElementById('resetTokenModal')) closeResetTokenDialog(); };
 </script>
 </body>
 </html>
