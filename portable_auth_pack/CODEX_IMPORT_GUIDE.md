@@ -27,7 +27,7 @@
    ```
 
 4. **設定環境變數**
-   - 必設正式 secret：`AUTH_SECRET`。
+   - 必設正式 secret：`AUTH_SECRET`（正式環境至少 32 bytes；`AUTH_ENV` / `APP_ENV` / `ENV` / `PY_ENV` 為 `prod` 或 `production` 時會 fail fast）。
    - 建議設定：`AUTH_USERS_FILE` 與 `AUTH_BOOTSTRAP_SUPERUSERS_FILE`。
    - 若是測試環境，可複製 `examples/bootstrap_superusers.test.json` 到目標專案 `config/auth/bootstrap_superusers.json`。
 
@@ -44,12 +44,13 @@
    - 在目標專案新增至少以下測試：
      - bootstrap superuser 可登入。
      - 未帶 token 呼叫 protected API 回 401。
-     - pending user 登入回 403。
+     - pending user 登入回泛用 401，不暴露帳號狀態。
      - superuser 可 approve user。
      - approved user 可呼叫 protected API。
      - logout 後同一 token 呼叫 protected API 回 401。
      - change/reset password 後舊 token 回 401，且新密碼可登入。
      - forgot-password 不公開回傳 reset token；superuser 產生 reset token 後，使用者可用 token 重設密碼，且登入稽核可被 superuser 查詢。
+     - 不存在帳號登入仍走 dummy password hash verification；重複登入 / reset-password 失敗會回 429 與 `Retry-After`。
 
 ## Codex 修改注意事項
 
@@ -63,7 +64,8 @@
 
 - `auth_store.py`
   - 改 `_auth_file()`：接目標專案設定系統。
-  - 改 `_token_secret()`：接 secret manager。
+  - 改 `_token_secret()`：接 secret manager，並保留 production secret fail-fast。
+  - 若多 worker / 多副本部署，將 in-memory throttle 改接 Redis、資料庫、API gateway 或 WAF。
   - 改 `AuthStore`：改為 SQLAlchemy / Redis / 既有 user table。
 
 - `dependencies.py`

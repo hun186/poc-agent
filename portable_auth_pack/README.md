@@ -3,7 +3,7 @@
 這個子目錄是一包可搬移的 **FastAPI 帳號管理套用素材包**。目標是讓你把整個 `portable_auth_pack/` 複製到另一個網頁服務專案後，讓 Codex 或開發者用「嵌入既有程式」的方式導入帳密管理能力：
 
 - 帳號註冊：新帳號預設為 `pending`
-- 帳密登入：回傳 Bearer token，並記錄登入稽核
+- 帳密登入：回傳 Bearer token，記錄登入稽核，並以泛用錯誤訊息與節流降低帳號列舉 / 暴力嘗試風險
 - `/v1/auth/me`：查詢目前登入者
 - 密碼安全：使用者可變更密碼、superuser 可重設密碼、忘記密碼可建立一次性 reset token
 - Token 失效：logout 會加入 token denylist；變更/重設密碼會讓該帳號既有 token 失效
@@ -130,13 +130,14 @@ def rebuild(user: AuthUser = Depends(require_superuser)):
 
 | 環境變數 | 必要 | 預設 | 說明 |
 |---|---:|---|---|
-| `AUTH_SECRET` | 正式環境必要 | development fallback | token 簽章密鑰；正式環境請用長隨機字串 |
+| `AUTH_SECRET` | 正式環境必要 | development fallback | token 簽章密鑰；正式環境請用至少 32 bytes 的長隨機字串 |
 | `AUTH_USERS_FILE` | 否 | `./.auth_users.json` | 使用者資料 JSON 檔位置 |
 | `AUTH_BOOTSTRAP_SUPERUSERS_FILE` | 否 | `./config/auth/bootstrap_superusers.json` | 初始 superuser JSON 檔位置 |
 | `AUTH_BOOTSTRAP_SUPERUSERS` | 否 | 空 | 直接用 JSON 字串設定 superusers |
 | `AUTH_BOOTSTRAP_SUPERUSER_USERNAME` | 否 | 空 | 單一初始 superuser 帳號 |
 | `AUTH_BOOTSTRAP_SUPERUSER_PASSWORD` | 否 | 空 | 單一初始 superuser 密碼 |
 | `AUTH_TOKEN_TTL_SECONDS` | 否 | `43200` | token 有效秒數，預設 12 小時 |
+| `AUTH_ENV` / `APP_ENV` / `ENV` / `PY_ENV` | 否 | 空 | 任一值為 `prod` 或 `production` 時，會要求 `AUTH_SECRET` / `SECRET_KEY` 必須存在且至少 32 bytes |
 | `AUTH_PROJECT_ROOT` | 否 | 目前工作目錄 | 控制預設 config/user file 的根目錄 |
 
 產生正式環境 secret 範例：
@@ -208,7 +209,9 @@ curl -s -X POST http://127.0.0.1:8000/v1/auth/login \
 
 ## 安全注意事項
 
-- 正式環境必須設定 `AUTH_SECRET`，且要保持穩定；換 secret 會讓既有 token 失效。
+- 密碼使用 PBKDF2-HMAC-SHA256、per-password salt 與 `hmac.compare_digest()`；登入時不存在帳號也會執行固定 dummy hash 驗證，以降低 timing account enumeration 風險。
+- 登入與 reset-password 失敗會依 `scope:username:client_host` 在 process-local memory 內節流；達 5 次失敗會暫時回 HTTP 429 與 `Retry-After`。多 worker / 多副本正式環境請改接 Redis、資料庫、API gateway 或 WAF rate limiting。
+- 正式環境必須設定 `AUTH_SECRET`，且要保持穩定；換 secret 會讓既有 token 失效。當 `AUTH_ENV` / `APP_ENV` / `ENV` / `PY_ENV` 為 `prod` 或 `production` 時，secret 不可缺漏且至少需 32 bytes。
 - `*.json` user store 請放在非公開路徑，不要放在靜態檔目錄。
 - 請把 `runtime/`、`.auth_users.json`、正式 `bootstrap_superusers.json` 加到 `.gitignore`。
 - 這個 pack 使用本機 JSON 檔，適合 PoC / 小型內部服務；高併發或多副本部署建議改接資料庫或集中式 session/token 系統。

@@ -33,7 +33,43 @@ def main() -> int:
 
         from fastapi.testclient import TestClient
 
+        import fastapi_auth_pack.auth_store as auth_store_module
         from examples.main import app
+
+        original_verify_password = auth_store_module._verify_password
+        verify_calls: list[str] = []
+
+        def fake_verify_password(password: str, password_hash: str) -> bool:
+            verify_calls.append(password_hash)
+            return False
+
+        auth_store_module._verify_password = fake_verify_password
+        try:
+            assert auth_store_module.AUTH_STORE.authenticate("missing-user", "anything") is None
+            assert verify_calls == [auth_store_module.DUMMY_PASSWORD_HASH]
+        finally:
+            auth_store_module._verify_password = original_verify_password
+
+        original_auth_secret = os.environ.pop("AUTH_SECRET", None)
+        os.environ["AUTH_ENV"] = "production"
+        try:
+            try:
+                auth_store_module._token_secret()
+                raise AssertionError("production AUTH_SECRET requirement was not enforced")
+            except RuntimeError as exc:
+                assert "production" in str(exc)
+            os.environ["AUTH_SECRET"] = "short"
+            try:
+                auth_store_module._token_secret()
+                raise AssertionError("production AUTH_SECRET length requirement was not enforced")
+            except RuntimeError as exc:
+                assert "32 bytes" in str(exc)
+        finally:
+            if original_auth_secret is not None:
+                os.environ["AUTH_SECRET"] = original_auth_secret
+            else:
+                os.environ.pop("AUTH_SECRET", None)
+            os.environ.pop("AUTH_ENV", None)
 
         client = TestClient(app)
         login_res = client.post(
@@ -60,7 +96,8 @@ def main() -> int:
             "/v1/auth/login",
             json={"username": "alice", "password": "AlicePass!2026"},
         )
-        assert pending_login_res.status_code == 403, pending_login_res.text
+        assert pending_login_res.status_code == 401, pending_login_res.text
+        assert pending_login_res.json()["detail"] == "帳號或密碼錯誤，或帳號尚未啟用。"
 
         approve_res = client.post(
             "/v1/auth/users/alice/approve",
@@ -128,6 +165,32 @@ def main() -> int:
             json={"username": "alice", "reset_token": recovery_token, "new_password": "AlicePass!2029"},
         )
         assert recover_res.status_code == 200, recover_res.text
+
+        for _ in range(auth_store_module.AUTH_THROTTLE_FAILURE_LIMIT - 1):
+            bad_login_res = client.post(
+                "/v1/auth/login",
+                json={"username": "codex_admin", "password": "wrong-password"},
+            )
+            assert bad_login_res.status_code == 401, bad_login_res.text
+        throttled_login_res = client.post(
+            "/v1/auth/login",
+            json={"username": "codex_admin", "password": "wrong-password"},
+        )
+        assert throttled_login_res.status_code == 429, throttled_login_res.text
+        assert int(throttled_login_res.headers["retry-after"]) > 0
+
+        for _ in range(auth_store_module.AUTH_THROTTLE_FAILURE_LIMIT - 1):
+            bad_reset_res = client.post(
+                "/v1/auth/reset-password",
+                json={"username": "alice", "reset_token": "bad-token", "new_password": "AlicePass!2030"},
+            )
+            assert bad_reset_res.status_code == 400, bad_reset_res.text
+        throttled_reset_res = client.post(
+            "/v1/auth/reset-password",
+            json={"username": "alice", "reset_token": "bad-token", "new_password": "AlicePass!2030"},
+        )
+        assert throttled_reset_res.status_code == 429, throttled_reset_res.text
+        assert int(throttled_reset_res.headers["retry-after"]) > 0
 
     print("portable_auth_pack verification passed")
     return 0

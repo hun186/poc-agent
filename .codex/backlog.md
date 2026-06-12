@@ -49,3 +49,11 @@
 - 建立正式 static assets 掛載或簡易同步腳本，確保 `api/static/audit_tools.js` 與 `portable_auth_pack/static/audit_tools.js` 不會長期分岔。
 - 在具備 Playwright / browser runtime 的環境補上桌機 hover navigation、觸控 click navigation、Editor 使用統計曲線與 portable auth pack 帳號統計曲線的 E2E 測試。
 - 若 usage stats 篩選需求持續擴充，可加入 action 多選、使用者多選與匯出功能。
+
+---
+
+## 2026-06-12 Auth 資安後續改善建議
+
+- 多 worker / 多 instance 部署時，將目前 process-local auth throttle 改為 Redis、database、API gateway 或 WAF 層級的共享 rate limiting。
+- 為 superuser 加入 MFA 或高風險操作 re-authentication，例如發 reset token、直接重設密碼、刪除帳號。
+- 補強前端 token 儲存安全性：評估 CSP、XSS hardening，或改用 HttpOnly Secure SameSite cookie 並同步設計 CSRF 防護。

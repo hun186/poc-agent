@@ -31,3 +31,20 @@
 - `api/routers/editor.py` 以 `/static/audit_tools.js` 對 Editor 與 Excel→SQL dashboard 提供共用 script。
 - `api/static/editor.html`、`api/static/excel_to_sql_dashboard.html` 都載入 `/static/audit_tools.js`；`portable_auth_pack/static/login_admin_minimal.html` 則載入同目錄 `audit_tools.js`，便於範例包外帶。
 - Editor 使用統計資料流：前端收集類別、帳號、動作、index、起迄時間與 bucket → 呼叫 `GET /v1/editor/usage-stats` → 後端用 `filter_audit_records()` 與 `build_audit_time_series()` 回傳摘要與曲線資料 → 前端用共用 chart renderer 顯示。
+
+---
+
+## 2026-06-12 Auth 密碼安全架構補強
+
+- `api/services/auth_store.py` 的密碼驗證維持 PBKDF2-HMAC-SHA256 + per-password salt + `hmac.compare_digest()`；不存在帳號登入改走固定 dummy PBKDF2 hash 驗證，避免直接快速返回造成明顯 timing account enumeration。
+- `AuthStore` 內含 process-local in-memory auth failure throttle，key 為 `scope:username:client_host`，目前用於 `login` 與 `password_reset` scope；達門檻時由 router 回傳 HTTP 429 與 `Retry-After`。
+- `api/routers/editor.py` 的登入流程先檢查 throttle，再執行密碼驗證；無效帳密與未啟用帳號對外回同一泛用 401 訊息，詳細 reason 僅保留於 audit log。
+- token secret 仍由 `SRA_AUTH_SECRET` 優先、`SECRET_KEY` 次之；`APP_ENV` / `ENV` / `PY_ENV` 為 `prod` 或 `production` 時，不允許使用 development fallback，且 secret 至少需 32 bytes。
+
+---
+
+## 2026-06-12 portable_auth_pack Auth 安全同步
+
+- `portable_auth_pack/fastapi_auth_pack` 維持可外帶 FastAPI auth 素材包定位，但已同步主系統的密碼安全行為：PBKDF2 + constant-time digest compare、missing user dummy hash verification、process-local auth throttle、production secret fail-fast。
+- 外帶 router 的 `/v1/auth/login` 與 `/v1/auth/reset-password` 會在同一 process 內依 `scope:username:client_host` 節流；導入多 worker / 多 instance 專案時，文件要求改接集中式 rate limiting。
+- 外帶文件與 verify script 是 portable auth pack 的契約與驗證入口；主系統 API 不直接依賴 portable auth pack runtime。

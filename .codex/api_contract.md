@@ -29,3 +29,20 @@
   - `chart_bucket`: `hour`、`6_hours`、`12_hours`、`day`、`week`、`month`。
 - `GET /v1/editor/usage-stats` response 新增 `filtered`：包含 `category`、`stats`、`series`、`chart_bucket`、`chart_bucket_label`、`is_restricted_to_self`。
 - `GET /v1/editor/audit-logs` 新增可選 query `action_prefix`，例如 `editor.` 或 `auth.`，用於後端分流文件異動與帳號操作紀錄。
+
+---
+
+## 2026-06-12 Auth 安全回應契約更新
+
+- `POST /v1/auth/login` request / success response shape 不變。
+- `POST /v1/auth/login` 對無效帳密與未啟用帳號統一回 HTTP 401，detail 為「帳號或密碼錯誤，或帳號尚未啟用。」；詳細失敗原因僅寫入 audit / login audit。
+- `POST /v1/auth/login` 與 `POST /v1/auth/reset-password` 若同一 username + client host 在 auth throttle window 內失敗達門檻，回 HTTP 429，detail 為「登入或密碼重設嘗試次數過多，請稍後再試。」，並帶 `Retry-After` header。
+- `POST /v1/auth/reset-password` success response shape 不變；audit event 會額外包含 `success`，失敗 audit event 會包含 `success: false` 與 `reason`。
+
+---
+
+## 2026-06-12 portable_auth_pack Auth 安全契約同步
+
+- `portable_auth_pack` 的 `POST /v1/auth/login` success response shape 不變；無效帳密與未啟用帳號統一回 HTTP 401，detail 為「帳號或密碼錯誤，或帳號尚未啟用。」。
+- `portable_auth_pack` 的 `POST /v1/auth/login` 與 `POST /v1/auth/reset-password` 若同一 username + client host 在 throttle window 內失敗達門檻，回 HTTP 429，detail 為「登入或密碼重設嘗試次數過多，請稍後再試。」，並帶 `Retry-After` header。
+- 此契約只描述外帶範例包；主系統 API 已於 2026-06-12 Auth 安全回應契約更新記錄。
