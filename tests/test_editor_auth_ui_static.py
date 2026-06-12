@@ -24,7 +24,7 @@ def test_editor_auth_ui_exposes_password_recovery_and_change_controls() -> None:
     assert "'/v1/auth/reset-password'" in html
 
 
-def test_editor_auth_ui_exposes_logout_reset_and_login_audit_controls() -> None:
+def test_editor_auth_ui_exposes_logout_reset_controls_without_duplicate_login_audit_panel() -> None:
     html = _editor_html()
 
     assert "'/v1/auth/logout'" in html
@@ -32,9 +32,11 @@ def test_editor_auth_ui_exposes_logout_reset_and_login_audit_controls() -> None:
     assert 'data-reset-user=' in html
     assert '/password-reset-token`' in html
     assert '/reset-password`' in html
-    assert 'id="refreshLoginAuditBtn"' in html
-    assert 'id="loginAuditHits"' in html
-    assert '/v1/auth/login-audit?limit=' in html
+    assert '<option value="auth.login">登入</option>' in html
+    assert 'id="refreshLoginAuditBtn"' not in html
+    assert 'id="loginAuditHits"' not in html
+    assert '/v1/auth/login-audit?limit=' not in html
+    assert '登入稽核' not in html
 
 
 
@@ -200,7 +202,6 @@ def test_editor_audit_views_are_client_paginated_after_sorting() -> None:
     for element_id in (
         'auditPageInfo', 'auditFirstBtn', 'auditPrevBtn', 'auditPageInput', 'auditGotoBtn', 'auditNextBtn', 'auditLastBtn',
         'accountAuditPageInfo', 'accountAuditFirstBtn', 'accountAuditPrevBtn', 'accountAuditPageInput', 'accountAuditGotoBtn', 'accountAuditNextBtn', 'accountAuditLastBtn',
-        'loginAuditPageInfo', 'loginAuditFirstBtn', 'loginAuditPrevBtn', 'loginAuditPageInput', 'loginAuditGotoBtn', 'loginAuditNextBtn', 'loginAuditLastBtn',
         'usageStatsAuditPageInfo', 'usageStatsAuditFirstBtn', 'usageStatsAuditPrevBtn', 'usageStatsAuditPageInput', 'usageStatsAuditGotoBtn', 'usageStatsAuditNextBtn', 'usageStatsAuditLastBtn',
     ):
         assert f'id="{element_id}"' in html

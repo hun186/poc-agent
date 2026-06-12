@@ -17,7 +17,7 @@
 
 - `api/static/editor.html` 的登入後工作區以 `#workspaceGrid` 管理版面；`switchMainTab()` 會依目前功能切換 `.single-pane`。
 - `#editorCard` 僅在 `search` 文件搜尋 / 編修頁顯示；帳號安全、帳號審核、文件異動紀錄、帳號操作紀錄與使用統計頁改為單欄工作區，避免功能混雜。
-- 稽核 UI 分成 `#auditCard`（文件異動紀錄，前端只呈現 `editor.*` actions）與 `#accountAuditCard`（帳號操作紀錄，前端只呈現 `auth.*` actions，並保留登入稽核查詢）。
+- 稽核 UI 分成 `#auditCard`（文件異動紀錄，前端只呈現 `editor.*` actions）與 `#accountAuditCard`（帳號操作紀錄，前端只呈現 `auth.*` actions）；主系統不再另設重複的登入稽核區塊，登入 / 登出 / 密碼與帳號管理紀錄統一由帳號操作紀錄查詢篩選。
 - Auth 管理動作由 `api/routers/editor.py` 寫入 `api.services.editor_audit.append_audit_event()`；帳號註冊、核准、拒絕、刪除與既有密碼 / 登入動作都以 `auth.*` action 進入同一 audit log，再由前端分流呈現。
 
 ---

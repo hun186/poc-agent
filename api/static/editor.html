@@ -322,16 +322,6 @@
             <div id="accountAuditStatus" class="status hidden"></div>
             <div class="pager" aria-label="帳號操作紀錄分頁"><span id="accountAuditPageInfo" class="muted">第 1 頁</span><button id="accountAuditFirstBtn" class="secondary" type="button">首頁</button><button id="accountAuditPrevBtn" class="secondary" type="button">上一頁</button><span class="pager-jump"><label class="sr-only" for="accountAuditPageInput">帳號操作紀錄頁數</label><input id="accountAuditPageInput" type="number" min="1" value="1" inputmode="numeric" /><button id="accountAuditGotoBtn" class="secondary" type="button">跳至頁數</button></span><button id="accountAuditNextBtn" class="secondary" type="button">下一頁</button><button id="accountAuditLastBtn" class="secondary" type="button">末頁</button></div>
             <div id="accountAuditHits"></div>
-            <hr style="border:0;border-top:1px solid #e5e7eb;margin:18px 0;" />
-            <h2>登入稽核</h2>
-            <p class="muted">記錄登入成功、密碼錯誤與帳號尚未啟用等事件。</p>
-            <div class="row" style="margin-top: 12px;">
-              <div><label>最多筆數</label><input id="loginAuditLimit" type="number" min="1" max="1000" value="100" /></div>
-              <button id="refreshLoginAuditBtn" class="secondary">查詢登入稽核</button>
-            </div>
-            <div id="loginAuditStatus" class="status hidden"></div>
-            <div class="pager" aria-label="登入稽核分頁"><span id="loginAuditPageInfo" class="muted">第 1 頁</span><button id="loginAuditFirstBtn" class="secondary" type="button">首頁</button><button id="loginAuditPrevBtn" class="secondary" type="button">上一頁</button><span class="pager-jump"><label class="sr-only" for="loginAuditPageInput">登入稽核頁數</label><input id="loginAuditPageInput" type="number" min="1" value="1" inputmode="numeric" /><button id="loginAuditGotoBtn" class="secondary" type="button">跳至頁數</button></span><button id="loginAuditNextBtn" class="secondary" type="button">下一頁</button><button id="loginAuditLastBtn" class="secondary" type="button">末頁</button></div>
-            <div id="loginAuditHits"></div>
           </div>
         </aside>
 
@@ -383,7 +373,7 @@
   </main>
 <script src="/static/audit_tools.js?v=20260612-paginate"></script>
 <script>
-const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '', auditRows: [], auditPage: 1, accountAuditRows: [], accountAuditPage: 1, loginAuditRows: [], loginAuditPage: 1, usageStatsAuditRows: [], usageStatsAuditPage: 1 };
+const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '', auditRows: [], auditPage: 1, accountAuditRows: [], accountAuditPage: 1, usageStatsAuditRows: [], usageStatsAuditPage: 1 };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function formatApiError(data, fallback='') {
@@ -675,7 +665,6 @@ async function bootAuthed() {
     await refreshUsers();
     await searchAuditLogs();
     await searchAccountAuditLogs();
-    await refreshLoginAudit();
   } else {
     $('adminCard').classList.add('hidden');
     $('auditCard').classList.add('hidden');
@@ -958,16 +947,6 @@ function renderAccountAuditHitsPage() {
   state.accountAuditPage = page.page;
   $('accountAuditHits').innerHTML = page.rows.map(renderAccountAuditCard).join('') || '<p class="muted">目前篩選條件下無帳號操作紀錄。</p>';
 }
-function renderLoginAuditHits(events) {
-  state.loginAuditRows = sortAuditRows(events || []);
-  state.loginAuditPage = 1;
-  renderLoginAuditHitsPage();
-}
-function renderLoginAuditHitsPage() {
-  const page = updateClientPager({rows: state.loginAuditRows, page: state.loginAuditPage, pageSize: 25, infoId: 'loginAuditPageInfo', prevId: 'loginAuditPrevBtn', nextId: 'loginAuditNextBtn'});
-  state.loginAuditPage = page.page;
-  $('loginAuditHits').innerHTML = page.rows.map(ev => `<div class="audit"><strong>${esc(ev.username || '-')}</strong><div class="muted">${esc(ev.ts || '')} success=${esc(ev.success)} reason=${esc(ev.reason || '-')} role=${esc(ev.role || '-')} status=${esc(ev.status || '-')}</div><div class="muted">client=${esc(ev.client_host || '-')} user_agent=${esc(ev.user_agent || '-')}</div></div>`).join('') || '<p class="muted">尚無登入稽核紀錄。</p>';
-}
 async function searchAuditLogs() {
   setStatus('auditStatus', '查詢文件異動紀錄中...');
   try {
@@ -1208,16 +1187,6 @@ async function resetUserPassword(username) {
   await api(`/v1/auth/users/${encodeURIComponent(username)}/reset-password`, {method:'POST', body: JSON.stringify({new_password})});
   await refreshUsers();
 }
-async function refreshLoginAudit() {
-  if (!state.user || state.user.role !== 'superuser') return;
-  setStatus('loginAuditStatus', '讀取登入稽核中...');
-  try {
-    const limit = Math.max(1, Math.min(1000, parseInt($('loginAuditLimit').value || '100', 10)));
-    const data = await api(`/v1/auth/login-audit?limit=${encodeURIComponent(limit)}`);
-    renderLoginAuditHits(data.events || []);
-    setStatus('loginAuditStatus', `已載入 ${(data.events || []).length} 筆登入稽核；已依時間排序後分頁顯示。`, 'ok');
-  } catch (err) { setStatus('loginAuditStatus', err.message, 'error'); }
-}
 async function deleteUser(username) {
   if (!confirm(`確定刪除帳號 ${username}？`)) return;
   await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method:'DELETE'});
@@ -1277,9 +1246,7 @@ $('usageStatsBucket').onchange = loadFilteredUsageStats;
 $('usageStatsCategory').onchange = loadFilteredUsageStats;
 $('usageStatsEventsLimit').onchange = loadFilteredUsageStats;
 bindClientPagerActions('accountAudit', () => state.accountAuditPage, (page) => { state.accountAuditPage = page; }, renderAccountAuditHitsPage);
-bindClientPagerActions('loginAudit', () => state.loginAuditPage, (page) => { state.loginAuditPage = page; }, renderLoginAuditHitsPage);
 bindClientPagerActions('usageStatsAudit', () => state.usageStatsAuditPage, (page) => { state.usageStatsAuditPage = page; }, renderUsageStatsAuditEventsPage);
-$('refreshLoginAuditBtn').onclick = refreshLoginAudit;
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
 $('copyResetTokenBtn').onclick = async () => { try { await copyTextToClipboard($('resetTokenModalValue').value); setStatus('resetTokenCopyStatus', '已複製 token。', 'ok'); } catch (err) { setStatus('resetTokenCopyStatus', err.message, 'error'); } };
 $('closeResetTokenModalBtn').onclick = closeResetTokenDialog;
