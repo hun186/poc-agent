@@ -102,3 +102,11 @@ Conclusion:
 - 主要修改：`api/static/editor.html` 的文件異動、帳號操作、登入稽核與使用統計 audit 事件分頁，以及 `portable_auth_pack/static/login_admin_minimal.html` 的帳號清單與登入稽核分頁，皆加入「首頁」、「末頁」、頁碼輸入與「跳至頁數」；Enter 也可從頁碼輸入框直接跳頁。分頁更新時會同步禁用不可用的首頁 / 上一頁 / 下一頁 / 末頁按鈕，並將輸入框 max/value 更新為目前頁資訊。
 - 驗證：執行 `pytest tests/test_editor_auth_ui_static.py` 通過 14 項；執行 `pytest tests` 通過 64 項，僅有既有 warning。
 - 截圖限制：本次為可視 UI 變更，但 `python -m playwright --version` 顯示環境未安裝 Playwright，無法補互動式截圖；已以靜態 UI 測試驗證新增控制元件與綁定邏輯。
+
+
+## 2026-06-12 移除主系統重複登入稽核區塊
+
+- 目的：系統管理的帳號操作紀錄查詢已可透過帳號動作篩選 `auth.login` 等帳號事件，因此移除同頁下方重複的「登入稽核」查詢 UI，避免使用者在兩個區塊查同類紀錄。
+- 主要修改：`api/static/editor.html` 移除登入稽核標題、limit input、查詢按鈕、結果列表、分頁與相關前端狀態 / render / API 呼叫；保留帳號操作紀錄查詢作為主系統帳號事件入口。`tests/test_editor_auth_ui_static.py` 改驗證主系統不再出現重複登入稽核控制，且帳號操作動作篩選仍包含登入。
+- 驗證：執行 `pytest tests/test_editor_auth_ui_static.py` 通過；執行 `pytest tests` 通過（64 passed，僅既有 warnings）；執行 `node --check /tmp/editor.html.js` 通過（由 `api/static/editor.html` script block 抽出後檢查語法）；嘗試 `python -m playwright --version` 確認目前環境未安裝 Playwright，無法補瀏覽器截圖，已記錄於 known issues。
+- 結論：主系統帳號相關查詢集中在帳號操作紀錄查詢；portable_auth_pack 的獨立登入稽核頁面未變更。

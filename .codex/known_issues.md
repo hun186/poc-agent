@@ -177,3 +177,8 @@ Open
 
 - 本次新增首頁、末頁與直接輸入頁數等可視 UI 控制；環境執行 `python -m playwright --version` 回傳 `No module named playwright`，因此無法進行瀏覽器截圖驗證。
 - 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查 Editor / portable auth pack 分頁控制元件、跳頁 Enter 綁定與末頁跳轉邏輯，並執行完整 `pytest tests`。
+
+## 2026-06-12 主系統登入稽核區塊移除截圖限制
+
+- 本次移除主系統重複登入稽核區塊屬於可視 UI 變更；環境執行 `python -m playwright --version` 回傳 `No module named playwright`，因此無法提供瀏覽器截圖驗證。
+- 替代驗證：以 `pytest tests/test_editor_auth_ui_static.py` 驗證 DOM / JS 不再包含主系統登入稽核控制，並以 `node --check /tmp/editor.html.js` 驗證抽出的前端 script 語法。
