@@ -7,7 +7,7 @@
 - `/v1/auth/me`：查詢目前登入者
 - 密碼安全：使用者可變更密碼、superuser 可重設密碼、忘記密碼可建立一次性 reset token
 - Token 失效：logout 會加入 token denylist；變更/重設密碼會讓該帳號既有 token 失效
-- 使用者審核：最高級全能者（`superuser`）可核准、拒絕、刪除帳號，核准時可用角色下拉選單指定層級
+- 使用者審核：最高級全能者（`superuser`）可核准、拒絕申請／停權、刪除帳號，核准時可用角色下拉選單指定層級
 - 四層權限：`superuser`（帳號維管 + 全權限）、`db_operator`（資料庫維管 + 以下權限）、`data_editor`（編修與查閱資料）、`data_reader`（查閱資料）
 - 權限 dependency：`current_user`、`require_data_editor`、`require_db_operator` 與 `require_superuser`
 - 本機 JSON user store：不需要資料庫即可快速試用
@@ -93,7 +93,7 @@ app.include_router(auth_router)
 | `POST` | `/v1/auth/reset-password` | 使用一次性 reset token 重設密碼；既有 token 失效 |
 | `GET` | `/v1/auth/users` | superuser 列出帳號與可用角色選項 |
 | `POST` | `/v1/auth/users/{username}/approve` | superuser 核准帳號並設定 `superuser` / `db_operator` / `data_editor` / `data_reader` |
-| `POST` | `/v1/auth/users/{username}/reject` | superuser 拒絕帳號 |
+| `POST` | `/v1/auth/users/{username}/reject` | superuser 拒絕 pending 申請或停權 active 帳號；帳號資料保留、既有 token 失效 |
 | `POST` | `/v1/auth/users/{username}/password-reset-token` | superuser 產生一次性 reset token，供核身後安全交付 |
 | `POST` | `/v1/auth/users/{username}/reset-password` | superuser 直接重設使用者密碼；該帳號既有 token 失效 |
 | `DELETE` | `/v1/auth/users/{username}` | superuser 刪除帳號 |

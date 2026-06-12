@@ -31,7 +31,7 @@
     .nav-level[open] summary::before { transform: none; }
     .nav-level summary::after { content: "展開"; color: #64748b; font-size: .8rem; margin-left: auto; }
     .nav-level[open] summary::after { content: "右側"; }
-    .nav-actions { position: absolute; top: 0; left: calc(100% + .6rem); width: min(420px, calc(100vw - 320px)); min-width: 230px; display: flex; gap: .45rem; flex-wrap: wrap; padding: .65rem; background: white; border: 1px solid #dbe4ef; border-radius: 12px; box-shadow: 0 16px 42px rgba(15,23,42,.16); z-index: 2; }
+    .nav-actions { position: absolute; top: 0; left: calc(100% + .6rem); width: min(420px, calc(100vw - 320px)); min-width: 230px; display: flex; flex-direction: column; gap: .45rem; flex-wrap: nowrap; padding: .65rem; background: white; border: 1px solid #dbe4ef; border-radius: 12px; box-shadow: 0 16px 42px rgba(15,23,42,.16); z-index: 2; }
     .nav-level:not([open]) .nav-actions { display: none; }
     .nav-actions button { margin: 0; }
     @media (max-width: 720px) {
@@ -281,7 +281,7 @@ async function refreshUsers() {
   try {
     const data = await api('/v1/auth/users');
     const roleOptions = data.role_options || [];
-    document.getElementById('users').innerHTML = data.users.map(u => `<div><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select> <button onclick="approveSelectedUser('${esc(u.username)}')">核准 / 更新層級</button><button class="secondary" onclick="issuePasswordResetToken('${esc(u.username)}')">產生 reset token</button><button class="danger" onclick="rejectUser('${esc(u.username)}')">拒絕</button><button class="danger" onclick="resetUserPassword('${esc(u.username)}')">直接重設密碼</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('');
+    document.getElementById('users').innerHTML = data.users.map(u => `<div><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select> <button onclick="approveSelectedUser('${esc(u.username)}')">核准 / 更新層級</button><button class="secondary" onclick="issuePasswordResetToken('${esc(u.username)}')">產生 reset token</button><button class="danger" title="pending 帳號會被拒絕申請；active 帳號會被停權並讓既有 token 失效。" onclick="rejectUser('${esc(u.username)}')">拒絕申請／停權</button><button class="danger" onclick="resetUserPassword('${esc(u.username)}')">直接重設密碼</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('');
     out(data);
   } catch (err) { out(String(err.message || err)); }
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -59,6 +60,8 @@ def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     assert 'class="nav-level" open' in html
     assert 'grid-template-columns: minmax(180px, 230px) minmax(240px, 1fr)' in html
     assert '.nav-actions { position: absolute; top: 0; left: calc(100% + 10px)' in html
+    assert 'grid-template-columns: minmax(0, 1fr)' in html
+    assert not re.search(r'\.nav-actions \{[^}]*repeat\(auto-fit, minmax\(150px, 1fr\)\)', html)
     assert '.nav-level:not([open]) .nav-actions { display: none; }' in html
     assert '.nav-level[open] summary::after { content: "右側"; }' in html
     assert '@media (max-width: 720px)' in html
@@ -131,6 +134,8 @@ def test_account_management_uses_role_dropdowns() -> None:
         assert 'data_reader' in html
         assert '核准 user' not in html
         assert '核准 superuser' not in html
+        assert '拒絕申請／停權' in html
+        assert '拒絕</button>' not in html
 
 
 def test_portable_auth_pack_reset_token_dialog_is_copyable() -> None:
@@ -166,6 +171,8 @@ def test_portable_auth_pack_navigation_is_header_multilevel_and_collapsible() ->
     assert 'class="nav-level" open' in html
     assert 'grid-template-columns: minmax(170px, 220px) minmax(230px, 1fr)' in html
     assert '.nav-actions { position: absolute; top: 0; left: calc(100% + .6rem)' in html
+    assert 'flex-direction: column' in html
+    assert 'flex-wrap: nowrap' in html
     assert '.nav-level:not([open]) .nav-actions { display: none; }' in html
     assert '.nav-level[open] summary::after { content: "右側"; }' in html
     assert '@media (max-width: 720px)' in html

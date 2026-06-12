@@ -53,7 +53,7 @@
     .nav-level[open] summary::before { transform: none; }
     .nav-level summary::after { content: "展開"; color: #64748b; font-size: 12px; margin-left: auto; }
     .nav-level[open] summary::after { content: "右側"; }
-    .nav-actions { position: absolute; top: 0; left: calc(100% + 10px); width: min(470px, calc(100vw - 340px)); min-width: 240px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 10px; background: #fff; border: 1px solid #dbe4ef; border-radius: 12px; box-shadow: 0 16px 42px rgba(15,23,42,.16); z-index: 2; }
+    .nav-actions { position: absolute; top: 0; left: calc(100% + 10px); width: min(470px, calc(100vw - 340px)); min-width: 240px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px; background: #fff; border: 1px solid #dbe4ef; border-radius: 12px; box-shadow: 0 16px 42px rgba(15,23,42,.16); z-index: 2; }
     .nav-level:not([open]) .nav-actions { display: none; }
     .nav-actions button, .nav-actions a { display: inline-flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; border-radius: 10px; padding: 10px 12px; font-weight: 800; color: #fff; background: #475569; border: 0; }
     .nav-actions button.primary-action { background: #2563eb; }
@@ -303,7 +303,7 @@
             <p class="muted">帳號密碼、登入登出、reset token 與 superuser 帳號處理紀錄在此查詢，避免與 ES 文件異動混在一起。</p>
             <div class="field-grid">
               <div><label>帳號</label><select id="accountAuditUsername"><option value="">全部</option></select></div>
-              <div><label>帳號動作</label><select id="accountAuditAction"><option value="">全部帳號動作</option><option value="auth.login">登入</option><option value="auth.logout">登出</option><option value="auth.password_changed">變更密碼</option><option value="auth.password_reset_requested">忘記密碼申請</option><option value="auth.password_recovered">Token 重設密碼</option><option value="auth.password_reset_token_issued">管理員發 token</option><option value="auth.password_reset_by_superuser">管理員重設密碼</option><option value="auth.user_registered">建立 pending 帳號</option><option value="auth.user_approved">核准帳號</option><option value="auth.user_rejected">拒絕帳號</option><option value="auth.user_deleted">刪除帳號</option></select></div>
+              <div><label>帳號動作</label><select id="accountAuditAction"><option value="">全部帳號動作</option><option value="auth.login">登入</option><option value="auth.logout">登出</option><option value="auth.password_changed">變更密碼</option><option value="auth.password_reset_requested">忘記密碼申請</option><option value="auth.password_recovered">Token 重設密碼</option><option value="auth.password_reset_token_issued">管理員發 token</option><option value="auth.password_reset_by_superuser">管理員重設密碼</option><option value="auth.user_registered">建立 pending 帳號</option><option value="auth.user_approved">核准帳號</option><option value="auth.user_rejected">拒絕申請／停權</option><option value="auth.user_deleted">刪除帳號</option></select></div>
               <div><label>最多筆數</label><input id="accountAuditLimit" type="number" min="1" max="500" value="100" /></div>
             </div>
             <div class="row" style="margin-top: 12px;">
@@ -837,7 +837,7 @@ const auditActionLabels = {
   'auth.password_reset_token_issued': '管理員發 token',
   'auth.password_reset_by_superuser': '管理員重設密碼',
   'auth.user_approved': '核准帳號',
-  'auth.user_rejected': '拒絕帳號',
+  'auth.user_rejected': '拒絕申請／停權',
   'auth.user_deleted': '刪除帳號'
 };
 function auditActionLabel(action) { return auditActionLabels[action] || action || '(unknown action)'; }
@@ -1054,7 +1054,7 @@ async function refreshUsers() {
   try {
     const data = await api('/v1/auth/users');
     const roleOptions = data.role_options || [];
-    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><label class="inline-label">帳號層級<select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select></label><button data-approve-user="${esc(u.username)}">核准 / 更新層級</button><button data-issue-reset-token="${esc(u.username)}" class="secondary">產生 reset token</button><button data-reset-user="${esc(u.username)}" class="secondary">直接重設密碼</button><button data-reject-user="${esc(u.username)}" class="danger">拒絕</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
+    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><label class="inline-label">帳號層級<select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select></label><button data-approve-user="${esc(u.username)}">核准 / 更新層級</button><button data-issue-reset-token="${esc(u.username)}" class="secondary">產生 reset token</button><button data-reset-user="${esc(u.username)}" class="secondary">直接重設密碼</button><button data-reject-user="${esc(u.username)}" class="danger" title="pending 帳號會被拒絕申請；active 帳號會被停權並讓既有 token 失效。">拒絕申請／停權</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
     document.querySelectorAll('[data-approve-user]').forEach(btn => btn.onclick = () => approveSelectedUser(btn.dataset.approveUser));
     document.querySelectorAll('[data-issue-reset-token]').forEach(btn => btn.onclick = () => issuePasswordResetToken(btn.dataset.issueResetToken));
     document.querySelectorAll('[data-reset-user]').forEach(btn => btn.onclick = () => resetUserPassword(btn.dataset.resetUser));

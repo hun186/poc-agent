@@ -65,3 +65,8 @@
 - Query：`events_limit`（int，1～500，預設 100），控制回傳套用同一統計篩選條件的 audit event 條目數。
 - Response：`filtered.events` 回傳依目前 `category`、`username`、`action`、`index`、`start_ts`、`end_ts` 篩選後的最近 audit event 條目；非 superuser 仍固定限制為目前登入者自己的紀錄。
 - Response：`filtered.events_total` 為套用篩選後的總事件數；`filtered.events_limit` 為本次條目上限。
+
+## 2026-06-12 Reject Label Clarification
+
+- `POST /v1/auth/users/{username}/reject` route、request 與 response shape 不變；本次僅釐清前端與文件語意：此操作用於拒絕 pending 申請或停權 active 帳號，帳號資料會保留且既有 token 失效。
+- `portable_auth_pack` 同步上述 reject 操作語意說明。
