@@ -94,7 +94,7 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     html = _editor_html()
     tools = Path("api/static/audit_tools.js").read_text(encoding="utf-8")
 
-    assert '<script src="/static/audit_tools.js"></script>' in html
+    assert '<script src="/static/audit_tools.js?v=20260612-paginate"></script>' in html
     assert 'id="usageStatsCategory"' in html
     assert '文件使用統計' in html
     assert '帳號操作統計' in html
@@ -152,7 +152,7 @@ def test_portable_auth_pack_reset_token_dialog_is_copyable() -> None:
 def test_portable_auth_pack_exposes_account_stats_with_shared_module() -> None:
     html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
 
-    assert '<script src="audit_tools.js"></script>' in html
+    assert '<script src="audit_tools.js?v=20260612-paginate"></script>' in html
     assert 'id="accountStatsSection"' in html
     assert 'SraAuditTools.renderTimeSeriesChart' in html
     assert "category: 'account'" in html
@@ -198,16 +198,21 @@ def test_editor_audit_views_are_client_paginated_after_sorting() -> None:
     tools = Path("api/static/audit_tools.js").read_text(encoding="utf-8")
 
     for element_id in (
-        'auditPageInfo', 'auditPrevBtn', 'auditNextBtn',
-        'accountAuditPageInfo', 'accountAuditPrevBtn', 'accountAuditNextBtn',
-        'loginAuditPageInfo', 'loginAuditPrevBtn', 'loginAuditNextBtn',
-        'usageStatsAuditPageInfo', 'usageStatsAuditPrevBtn', 'usageStatsAuditNextBtn',
+        'auditPageInfo', 'auditFirstBtn', 'auditPrevBtn', 'auditPageInput', 'auditGotoBtn', 'auditNextBtn', 'auditLastBtn',
+        'accountAuditPageInfo', 'accountAuditFirstBtn', 'accountAuditPrevBtn', 'accountAuditPageInput', 'accountAuditGotoBtn', 'accountAuditNextBtn', 'accountAuditLastBtn',
+        'loginAuditPageInfo', 'loginAuditFirstBtn', 'loginAuditPrevBtn', 'loginAuditPageInput', 'loginAuditGotoBtn', 'loginAuditNextBtn', 'loginAuditLastBtn',
+        'usageStatsAuditPageInfo', 'usageStatsAuditFirstBtn', 'usageStatsAuditPrevBtn', 'usageStatsAuditPageInput', 'usageStatsAuditGotoBtn', 'usageStatsAuditNextBtn', 'usageStatsAuditLastBtn',
     ):
         assert f'id="{element_id}"' in html
     assert 'function sortAuditRows(rows)' in html
     assert 'function updateClientPager(config)' in html
+    assert 'function bindClientPagerActions(prefix, getPage, setPage, renderPage)' in html
+    assert "jumpTo(Number.MAX_SAFE_INTEGER)" in html
+    assert "if (ev.key === 'Enter') jumpTo(Number(ev.currentTarget.value || 1));" in html
     assert '先篩選、依時間排序，再分頁顯示' in html
-    assert 'SraAuditTools.paginateRows' in html
+    assert 'function paginateAuditRows(rows, page, pageSize)' in html
+    assert "typeof sharedPaginator === \'function\' ? sharedPaginator(rows, page, pageSize) : localPaginateRows(rows, page, pageSize)" in html
+    assert '<script src="/static/audit_tools.js?v=20260612-paginate"></script>' in html
     assert 'function paginateRows(rows, page, pageSize)' in tools
 
 
@@ -215,13 +220,18 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
     html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
 
     for element_id in (
-        'usersPageInfo', 'usersPrevBtn', 'usersNextBtn',
-        'loginAuditPageInfo', 'loginAuditPrevBtn', 'loginAuditNextBtn',
+        'usersPageInfo', 'usersFirstBtn', 'usersPrevBtn', 'usersPageInput', 'usersGotoBtn', 'usersNextBtn', 'usersLastBtn',
+        'loginAuditPageInfo', 'loginAuditFirstBtn', 'loginAuditPrevBtn', 'loginAuditPageInput', 'loginAuditGotoBtn', 'loginAuditNextBtn', 'loginAuditLastBtn',
         'loginAuditHits',
     ):
         assert f'id="{element_id}"' in html
     assert 'const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1 };' in html
     assert 'function updatePager(rows, page, infoId, prevId, nextId)' in html
-    assert 'SraAuditTools.paginateRows(rows, page, 25)' in html
+    assert 'function bindPagerActions(prefix, getPage, setPage, renderPage)' in html
+    assert "jumpTo(Number.MAX_SAFE_INTEGER)" in html
+    assert "if (ev.key === 'Enter') jumpTo(Number(ev.currentTarget.value || 1));" in html
+    assert 'function paginateAuditRows(rows, page, pageSize)' in html
+    assert "typeof sharedPaginator === \'function\' ? sharedPaginator(rows, page, pageSize) : localPaginateRows(rows, page, pageSize)" in html
+    assert '<script src="audit_tools.js?v=20260612-paginate"></script>' in html
     assert 'pageState.usersRows = (data.users || []).slice().sort' in html
     assert 'pageState.loginAuditRows = (data.events || []).slice().sort' in html

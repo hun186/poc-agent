@@ -172,3 +172,8 @@ Open
 - 替代驗證：使用 `pytest tests/test_editor_auth_ui_static.py` 驗證主系統與 portable auth pack 都含有「拒絕申請／停權」，且不再顯示舊的「拒絕」按鈕文案。
 
 狀態：Open
+
+## 2026-06-12 分頁導航 UI 截圖限制
+
+- 本次新增首頁、末頁與直接輸入頁數等可視 UI 控制；環境執行 `python -m playwright --version` 回傳 `No module named playwright`，因此無法進行瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查 Editor / portable auth pack 分頁控制元件、跳頁 Enter 綁定與末頁跳轉邏輯，並執行完整 `pytest tests`。

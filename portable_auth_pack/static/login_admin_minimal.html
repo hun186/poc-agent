@@ -55,6 +55,9 @@
     .audit, .user { border: 1px solid #e5e7eb; border-radius: 10px; padding: .75rem; margin: .5rem 0; background: #fbfdff; }
     .pager { display:flex; gap:.5rem; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin:.75rem 0; }
     .pager button { padding:.45rem .7rem; }
+    .pager input { width: 5.5rem; padding: .45rem .55rem; }
+    .pager .pager-jump { display: inline-flex; gap: .35rem; align-items: center; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   </style>
 </head>
 <body>
@@ -110,13 +113,13 @@
     <button class="secondary" onclick="forgotPassword()">忘記密碼：送出申請</button>
     <button class="secondary" onclick="recoverPassword()">用 reset token 重設密碼</button>
     <button class="secondary" onclick="loginAudit()">查詢登入稽核</button>
-    <div class="pager" aria-label="登入稽核分頁"><span id="loginAuditPageInfo" class="muted">第 1 頁</span><button id="loginAuditPrevBtn" class="secondary" type="button">上一頁</button><button id="loginAuditNextBtn" class="secondary" type="button">下一頁</button></div>
+    <div class="pager" aria-label="登入稽核分頁"><span id="loginAuditPageInfo" class="muted">第 1 頁</span><button id="loginAuditFirstBtn" class="secondary" type="button">首頁</button><button id="loginAuditPrevBtn" class="secondary" type="button">上一頁</button><span class="pager-jump"><label class="sr-only" for="loginAuditPageInput">登入稽核頁數</label><input id="loginAuditPageInput" type="number" min="1" value="1" inputmode="numeric" /><button id="loginAuditGotoBtn" class="secondary" type="button">跳至頁數</button></span><button id="loginAuditNextBtn" class="secondary" type="button">下一頁</button><button id="loginAuditLastBtn" class="secondary" type="button">末頁</button></div>
     <div id="loginAuditHits"></div>
   </section>
   <section id="adminSection">
     <h2>Superuser 帳號審核</h2>
     <button onclick="refreshUsers()">重新整理帳號</button>
-    <div class="pager" aria-label="帳號清單分頁"><span id="usersPageInfo" class="muted">第 1 頁</span><button id="usersPrevBtn" class="secondary" type="button">上一頁</button><button id="usersNextBtn" class="secondary" type="button">下一頁</button></div>
+    <div class="pager" aria-label="帳號清單分頁"><span id="usersPageInfo" class="muted">第 1 頁</span><button id="usersFirstBtn" class="secondary" type="button">首頁</button><button id="usersPrevBtn" class="secondary" type="button">上一頁</button><span class="pager-jump"><label class="sr-only" for="usersPageInput">帳號清單頁數</label><input id="usersPageInput" type="number" min="1" value="1" inputmode="numeric" /><button id="usersGotoBtn" class="secondary" type="button">跳至頁數</button></span><button id="usersNextBtn" class="secondary" type="button">下一頁</button><button id="usersLastBtn" class="secondary" type="button">末頁</button></div>
     <div id="users"></div>
   </section>
   <section id="accountStatsSection">
@@ -152,7 +155,7 @@
     <pre id="output">尚未執行</pre>
   </section>
 </main>
-<script src="audit_tools.js"></script>
+<script src="audit_tools.js?v=20260612-paginate"></script>
 <script>
 const tokenKey = 'auth_token';
 const navState = { activeRoot: '' };
@@ -252,12 +255,57 @@ function tsValue(row) {
   const value = row && row.ts ? Date.parse(row.ts) : NaN;
   return Number.isNaN(value) ? 0 : value;
 }
+function localPaginateRows(rows, page, pageSize) {
+  const allRows = Array.isArray(rows) ? rows : [];
+  const size = Math.max(1, Number(pageSize || 25));
+  const total = allRows.length;
+  const totalPages = Math.max(1, Math.ceil(total / size));
+  const currentPage = Math.min(Math.max(1, Number(page || 1)), totalPages);
+  const startIndex = (currentPage - 1) * size;
+  return {
+    rows: allRows.slice(startIndex, startIndex + size),
+    page: currentPage,
+    pageSize: size,
+    total,
+    totalPages,
+    start: total ? startIndex + 1 : 0,
+    end: Math.min(total, startIndex + size),
+  };
+}
+function paginateAuditRows(rows, page, pageSize) {
+  const sharedPaginator = window.SraAuditTools && window.SraAuditTools.paginateRows;
+  return typeof sharedPaginator === 'function' ? sharedPaginator(rows, page, pageSize) : localPaginateRows(rows, page, pageSize);
+}
+function pagerElementId(prevId, suffix) {
+  const base = String(prevId || '').replace(/PrevBtn$/, '');
+  return base ? `${base}${suffix}` : '';
+}
 function updatePager(rows, page, infoId, prevId, nextId) {
-  const pageData = SraAuditTools.paginateRows(rows, page, 25);
+  const pageData = paginateAuditRows(rows, page, 25);
+  const first = document.getElementById(pagerElementId(prevId, 'FirstBtn'));
+  const prev = document.getElementById(prevId);
+  const next = document.getElementById(nextId);
+  const last = document.getElementById(pagerElementId(prevId, 'LastBtn'));
+  const input = document.getElementById(pagerElementId(prevId, 'PageInput'));
   document.getElementById(infoId).textContent = `第 ${pageData.page} / ${pageData.totalPages} 頁，顯示 ${pageData.start}-${pageData.end} 筆，共 ${pageData.total} 筆`;
-  document.getElementById(prevId).disabled = pageData.page <= 1;
-  document.getElementById(nextId).disabled = pageData.page >= pageData.totalPages;
+  if (first) first.disabled = pageData.page <= 1;
+  if (prev) prev.disabled = pageData.page <= 1;
+  if (next) next.disabled = pageData.page >= pageData.totalPages;
+  if (last) last.disabled = pageData.page >= pageData.totalPages;
+  if (input) {
+    input.value = String(pageData.page);
+    input.max = String(pageData.totalPages);
+  }
   return pageData;
+}
+function bindPagerActions(prefix, getPage, setPage, renderPage) {
+  const jumpTo = (page) => { setPage(page); renderPage(); };
+  document.getElementById(`${prefix}FirstBtn`).onclick = () => jumpTo(1);
+  document.getElementById(`${prefix}PrevBtn`).onclick = () => jumpTo(getPage() - 1);
+  document.getElementById(`${prefix}NextBtn`).onclick = () => jumpTo(getPage() + 1);
+  document.getElementById(`${prefix}LastBtn`).onclick = () => jumpTo(Number.MAX_SAFE_INTEGER);
+  document.getElementById(`${prefix}GotoBtn`).onclick = () => jumpTo(Number(document.getElementById(`${prefix}PageInput`).value || 1));
+  document.getElementById(`${prefix}PageInput`).onkeydown = (ev) => { if (ev.key === 'Enter') jumpTo(Number(ev.currentTarget.value || 1)); };
 }
 function renderLoginAuditPage() {
   const page = updatePager(pageState.loginAuditRows, pageState.loginAuditPage, 'loginAuditPageInfo', 'loginAuditPrevBtn', 'loginAuditNextBtn');
@@ -369,10 +417,8 @@ async function resetUserPassword(username) {
   await refreshUsers();
 }
 async function deleteUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method: 'DELETE'})); await refreshUsers(); }
-document.getElementById('usersPrevBtn').onclick = () => { pageState.usersPage -= 1; renderUsersPage(); };
-document.getElementById('usersNextBtn').onclick = () => { pageState.usersPage += 1; renderUsersPage(); };
-document.getElementById('loginAuditPrevBtn').onclick = () => { pageState.loginAuditPage -= 1; renderLoginAuditPage(); };
-document.getElementById('loginAuditNextBtn').onclick = () => { pageState.loginAuditPage += 1; renderLoginAuditPage(); };
+bindPagerActions('users', () => pageState.usersPage, (page) => { pageState.usersPage = page; }, renderUsersPage);
+bindPagerActions('loginAudit', () => pageState.loginAuditPage, (page) => { pageState.loginAuditPage = page; }, renderLoginAuditPage);
 document.getElementById('copyResetTokenBtn').onclick = async () => {
   try {
     await copyTextToClipboard(document.getElementById('resetTokenModalValue').value);
