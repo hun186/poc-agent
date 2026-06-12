@@ -53,6 +53,7 @@
     .nav-level[open] summary::before { transform: none; }
     .nav-level summary::after { content: "展開"; color: #64748b; font-size: 12px; margin-left: auto; }
     .nav-level[open] summary::after { content: "右側"; }
+    .nav-level[open]::after { content: ""; position: absolute; top: 0; left: 100%; width: 10px; height: 100%; }
     .nav-actions { position: absolute; top: 0; left: calc(100% + 10px); width: min(470px, calc(100vw - 340px)); min-width: 240px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px; background: #fff; border: 1px solid #dbe4ef; border-radius: 12px; box-shadow: 0 16px 42px rgba(15,23,42,.16); z-index: 2; }
     .nav-level:not([open]) .nav-actions { display: none; }
     .nav-actions button, .nav-actions a { display: inline-flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; border-radius: 10px; padding: 10px 12px; font-weight: 800; color: #fff; background: #475569; border: 0; }
@@ -63,6 +64,7 @@
       .nav-subpanel::before { left: 24px; transform: rotate(45deg); }
       .nav-menu { grid-template-columns: 1fr; }
       .nav-menu-title, .nav-level { grid-column: 1; }
+      .nav-level[open]::after { display: none; }
       .nav-actions { position: static; width: auto; min-width: 0; margin: 0 10px 10px; box-shadow: none; }
       .nav-level[open] summary::before { transform: rotate(90deg); }
       .nav-level[open] summary::after { content: "收合"; }
@@ -88,6 +90,8 @@
     .chart-card { border:1px solid #e2e8f0; border-radius:12px; padding:12px; background:#f8fafc; margin:12px 0; }
     .chart-title { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
     .audit-chart { width:100%; min-height:240px; display:block; }
+    .pager { display:flex; gap:8px; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin:10px 0; }
+    .pager button { padding:7px 10px; }
     .chart-axis { stroke:#cbd5e1; stroke-width:1; }
     .chart-grid { stroke:#e2e8f0; stroke-width:1; }
     .chart-line { fill:none; stroke:#2563eb; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; }
@@ -255,6 +259,7 @@
             <section aria-label="使用統計 audit 事件條目">
               <h3>最近 audit 事件</h3>
               <p class="muted">下方條目套用與曲線圖相同的篩選條件，可直接看到實際修改事件。</p>
+              <div class="pager" aria-label="使用統計 audit 事件分頁"><span id="usageStatsAuditPageInfo" class="muted">第 1 頁</span><button id="usageStatsAuditPrevBtn" class="secondary" type="button">上一頁</button><button id="usageStatsAuditNextBtn" class="secondary" type="button">下一頁</button></div>
               <div id="usageStatsAuditEvents"></div>
             </section>
           </div>
@@ -295,6 +300,7 @@
               <button id="clearAuditBtn" class="secondary">清空篩選</button>
             </div>
             <div id="auditStatus" class="status hidden"></div>
+            <div class="pager" aria-label="文件異動紀錄分頁"><span id="auditPageInfo" class="muted">第 1 頁</span><button id="auditPrevBtn" class="secondary" type="button">上一頁</button><button id="auditNextBtn" class="secondary" type="button">下一頁</button></div>
             <div id="auditHits"></div>
           </div>
 
@@ -311,6 +317,7 @@
               <button id="clearAccountAuditBtn" class="secondary">清空篩選</button>
             </div>
             <div id="accountAuditStatus" class="status hidden"></div>
+            <div class="pager" aria-label="帳號操作紀錄分頁"><span id="accountAuditPageInfo" class="muted">第 1 頁</span><button id="accountAuditPrevBtn" class="secondary" type="button">上一頁</button><button id="accountAuditNextBtn" class="secondary" type="button">下一頁</button></div>
             <div id="accountAuditHits"></div>
             <hr style="border:0;border-top:1px solid #e5e7eb;margin:18px 0;" />
             <h2>登入稽核</h2>
@@ -320,6 +327,7 @@
               <button id="refreshLoginAuditBtn" class="secondary">查詢登入稽核</button>
             </div>
             <div id="loginAuditStatus" class="status hidden"></div>
+            <div class="pager" aria-label="登入稽核分頁"><span id="loginAuditPageInfo" class="muted">第 1 頁</span><button id="loginAuditPrevBtn" class="secondary" type="button">上一頁</button><button id="loginAuditNextBtn" class="secondary" type="button">下一頁</button></div>
             <div id="loginAuditHits"></div>
           </div>
         </aside>
@@ -372,7 +380,7 @@
   </main>
 <script src="/static/audit_tools.js"></script>
 <script>
-const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '' };
+const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '', auditRows: [], auditPage: 1, accountAuditRows: [], accountAuditPage: 1, loginAuditRows: [], loginAuditPage: 1, usageStatsAuditRows: [], usageStatsAuditPage: 1 };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function formatApiError(data, fallback='') {
@@ -734,11 +742,35 @@ function collectUsageStatsQuery() {
   Object.entries(mapping).forEach(([key, value]) => { if (value) params.set(key, value); });
   return params;
 }
+function auditTimestampValue(row) {
+  const ts = row && (row.ts || row.processed_at || row.created_at);
+  const value = ts ? Date.parse(ts) : NaN;
+  return Number.isNaN(value) ? 0 : value;
+}
+function sortAuditRows(rows) { return (rows || []).slice().sort((a, b) => auditTimestampValue(b) - auditTimestampValue(a)); }
+function updateClientPager(config) {
+  const page = SraAuditTools.paginateRows(config.rows, config.page, config.pageSize || 25);
+  const info = $(config.infoId);
+  const prev = $(config.prevId);
+  const next = $(config.nextId);
+  if (info) info.textContent = `第 ${page.page} / ${page.totalPages} 頁，顯示 ${page.start}-${page.end} 筆，共 ${page.total} 筆`;
+  if (prev) prev.disabled = page.page <= 1;
+  if (next) next.disabled = page.page >= page.totalPages;
+  return page;
+}
 function renderUsageStatsAuditEvents(filtered) {
-  const events = (filtered && filtered.events) || [];
+  const events = sortAuditRows((filtered && filtered.events) || []);
   const total = filtered?.events_total ?? events.length;
   const limit = filtered?.events_limit ?? events.length;
-  $('usageStatsAuditEvents').innerHTML = events.map((h) => {
+  state.usageStatsAuditRows = events;
+  state.usageStatsAuditPage = 1;
+  state.usageStatsAuditMeta = { total, limit };
+  renderUsageStatsAuditEventsPage();
+}
+function renderUsageStatsAuditEventsPage() {
+  const page = updateClientPager({rows: state.usageStatsAuditRows, page: state.usageStatsAuditPage, pageSize: 25, infoId: 'usageStatsAuditPageInfo', prevId: 'usageStatsAuditPrevBtn', nextId: 'usageStatsAuditNextBtn'});
+  state.usageStatsAuditPage = page.page;
+  $('usageStatsAuditEvents').innerHTML = page.rows.map((h) => {
     const paths = Array.isArray(h.changed_paths) ? h.changed_paths.filter(Boolean) : [];
     return `<div class="audit">
       <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
@@ -747,8 +779,9 @@ function renderUsageStatsAuditEvents(filtered) {
       <div class="muted">異動欄位：${paths.length ? esc(paths.join(', ')) : '(無)'}</div>
     </div>`;
   }).join('') || '<p class="muted">目前篩選條件下無 audit 事件。</p>';
-  if (events.length && total > events.length) {
-    $('usageStatsAuditEvents').insertAdjacentHTML('afterbegin', `<p class="muted">顯示最近 ${esc(events.length)} / ${esc(total)} 筆（上限 ${esc(limit)} 筆）。</p>`);
+  const meta = state.usageStatsAuditMeta || {};
+  if (state.usageStatsAuditRows.length && Number(meta.total || 0) > state.usageStatsAuditRows.length) {
+    $('usageStatsAuditEvents').insertAdjacentHTML('afterbegin', `<p class="muted">先套用統計篩選與時間排序，再分頁顯示；目前載入最近 ${esc(state.usageStatsAuditRows.length)} / ${esc(meta.total)} 筆（上限 ${esc(meta.limit)} 筆）。</p>`);
   }
 }
 function renderFilteredUsageStats(filtered) {
@@ -841,27 +874,53 @@ const auditActionLabels = {
   'auth.user_deleted': '刪除帳號'
 };
 function auditActionLabel(action) { return auditActionLabels[action] || action || '(unknown action)'; }
+function renderAuditCard(h) {
+  const paths = Array.isArray(h.changed_paths) ? h.changed_paths.filter(Boolean) : [];
+  return `<div class="audit">
+    <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
+    <div class="muted">${esc(h.ts || '')}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
+    <div class="muted">index=${esc(h.index || '-')} / id=${esc(h.id || '-')} / result=${esc(h.result || '-')}</div>
+    <div class="muted">異動欄位：${paths.length ? esc(paths.join(', ')) : '(無)'}</div>
+  </div>`;
+}
+function renderAccountAuditCard(h) {
+  const actor = h.actor ? `｜執行者：${esc(h.actor)}` : '';
+  const detail = h.reason || h.status || h.role || h.result || '';
+  return `<div class="audit">
+    <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
+    <div class="muted">${esc(h.ts || '')}｜帳號：${esc(h.username || '-')}${actor}</div>
+    ${detail ? `<div class="muted">補充：${esc(detail)}</div>` : ''}
+  </div>`;
+}
 function renderAuditHits(hits) {
-  $('auditHits').innerHTML = (hits || []).map((h) => {
-    const paths = Array.isArray(h.changed_paths) ? h.changed_paths.filter(Boolean) : [];
-    return `<div class="audit">
-      <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
-      <div class="muted">${esc(h.ts || '')}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
-      <div class="muted">index=${esc(h.index || '-')} / id=${esc(h.id || '-')} / result=${esc(h.result || '-')}</div>
-      <div class="muted">異動欄位：${paths.length ? esc(paths.join(', ')) : '(無)'}</div>
-    </div>`;
-  }).join('');
+  state.auditRows = sortAuditRows(hits || []);
+  state.auditPage = 1;
+  renderAuditHitsPage();
+}
+function renderAuditHitsPage() {
+  const page = updateClientPager({rows: state.auditRows, page: state.auditPage, pageSize: 25, infoId: 'auditPageInfo', prevId: 'auditPrevBtn', nextId: 'auditNextBtn'});
+  state.auditPage = page.page;
+  $('auditHits').innerHTML = page.rows.map(renderAuditCard).join('') || '<p class="muted">目前篩選條件下無文件異動紀錄。</p>';
 }
 function renderAccountAuditHits(hits) {
-  $('accountAuditHits').innerHTML = (hits || []).map((h) => {
-    const actor = h.actor ? `｜執行者：${esc(h.actor)}` : '';
-    const detail = h.reason || h.status || h.role || h.result || '';
-    return `<div class="audit">
-      <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
-      <div class="muted">${esc(h.ts || '')}｜帳號：${esc(h.username || '-')}${actor}</div>
-      ${detail ? `<div class="muted">補充：${esc(detail)}</div>` : ''}
-    </div>`;
-  }).join('');
+  state.accountAuditRows = sortAuditRows(hits || []);
+  state.accountAuditPage = 1;
+  renderAccountAuditHitsPage();
+}
+function renderAccountAuditHitsPage() {
+  const page = updateClientPager({rows: state.accountAuditRows, page: state.accountAuditPage, pageSize: 25, infoId: 'accountAuditPageInfo', prevId: 'accountAuditPrevBtn', nextId: 'accountAuditNextBtn'});
+  state.accountAuditPage = page.page;
+  $('accountAuditHits').innerHTML = page.rows.map(renderAccountAuditCard).join('') || '<p class="muted">目前篩選條件下無帳號操作紀錄。</p>';
+}
+function renderLoginAuditHits(events) {
+  state.loginAuditRows = sortAuditRows(events || []);
+  state.loginAuditPage = 1;
+  renderLoginAuditHitsPage();
+}
+function renderLoginAuditHitsPage() {
+  const page = updateClientPager({rows: state.loginAuditRows, page: state.loginAuditPage, pageSize: 25, infoId: 'loginAuditPageInfo', prevId: 'loginAuditPrevBtn', nextId: 'loginAuditNextBtn'});
+  state.loginAuditPage = page.page;
+  $('loginAuditHits').innerHTML = page.rows.map(ev => `<div class="audit"><strong>${esc(ev.username || '-')}</strong><div class="muted">${esc(ev.ts || '')} success=${esc(ev.success)} reason=${esc(ev.reason || '-')} role=${esc(ev.role || '-')} status=${esc(ev.status || '-')}</div><div class="muted">client=${esc(ev.client_host || '-')} user_agent=${esc(ev.user_agent || '-')}</div></div>`).join('') || '<p class="muted">尚無登入稽核紀錄。</p>';
 }
 async function searchAuditLogs() {
   setStatus('auditStatus', '查詢文件異動紀錄中...');
@@ -872,7 +931,7 @@ async function searchAuditLogs() {
     const hits = data.hits || [];
     renderAuditHits(hits);
     refreshAuditFilterOptions(hits);
-    setStatus('auditStatus', `文件異動共符合 ${hits.length} 筆，顯示 ${hits.length} 筆`, 'ok');
+    setStatus('auditStatus', `文件異動共符合 ${hits.length} 筆；已先篩選、依時間排序，再分頁顯示。`, 'ok');
   } catch (err) {
     setStatus('auditStatus', err.message, 'error');
     $('auditHits').innerHTML = '';
@@ -899,7 +958,7 @@ async function searchAccountAuditLogs() {
     const hits = data.hits || [];
     renderAccountAuditHits(hits);
     refreshAccountAuditFilterOptions(hits);
-    setStatus('accountAuditStatus', `帳號操作共符合 ${hits.length} 筆，顯示 ${hits.length} 筆`, 'ok');
+    setStatus('accountAuditStatus', `帳號操作共符合 ${hits.length} 筆；已先篩選、依時間排序，再分頁顯示。`, 'ok');
   } catch (err) {
     setStatus('accountAuditStatus', err.message, 'error');
     $('accountAuditHits').innerHTML = '';
@@ -1109,8 +1168,8 @@ async function refreshLoginAudit() {
   try {
     const limit = Math.max(1, Math.min(1000, parseInt($('loginAuditLimit').value || '100', 10)));
     const data = await api(`/v1/auth/login-audit?limit=${encodeURIComponent(limit)}`);
-    $('loginAuditHits').innerHTML = (data.events || []).slice().reverse().map(ev => `<div class="audit"><strong>${esc(ev.username || '-')}</strong><div class="muted">${esc(ev.ts || '')} success=${esc(ev.success)} reason=${esc(ev.reason || '-')} role=${esc(ev.role || '-')} status=${esc(ev.status || '-')}</div><div class="muted">client=${esc(ev.client_host || '-')} user_agent=${esc(ev.user_agent || '-')}</div></div>`).join('') || '<p class="muted">尚無登入稽核紀錄。</p>';
-    setStatus('loginAuditStatus', `已載入 ${(data.events || []).length} 筆登入稽核`, 'ok');
+    renderLoginAuditHits(data.events || []);
+    setStatus('loginAuditStatus', `已載入 ${(data.events || []).length} 筆登入稽核；已依時間排序後分頁顯示。`, 'ok');
   } catch (err) { setStatus('loginAuditStatus', err.message, 'error'); }
 }
 async function deleteUser(username) {
@@ -1162,7 +1221,7 @@ $('excelDashboardBtn').onclick = () => { collapseMainNav(); location.href = '/ex
 document.addEventListener('click', (ev) => { if ($('mainNav') && !$('mainNav').classList.contains('hidden') && !$('mainNav').contains(ev.target)) collapseMainNav(); });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') collapseMainNav(); });
 $('searchAuditBtn').onclick = searchAuditLogs;
-$('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); }; $('searchAccountAuditBtn').onclick = searchAccountAuditLogs; $('clearAccountAuditBtn').onclick = () => { clearAccountAuditFilters(); searchAccountAuditLogs(); }; $('applyUsageStatsFiltersBtn').onclick = loadFilteredUsageStats; $('clearUsageStatsFiltersBtn').onclick = () => { clearUsageStatsFilters(); loadFilteredUsageStats(); }; $('usageStatsBucket').onchange = loadFilteredUsageStats; $('usageStatsCategory').onchange = loadFilteredUsageStats; $('usageStatsEventsLimit').onchange = loadFilteredUsageStats; $('refreshLoginAuditBtn').onclick = refreshLoginAudit;
+$('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); }; $('auditPrevBtn').onclick = () => { state.auditPage -= 1; renderAuditHitsPage(); }; $('auditNextBtn').onclick = () => { state.auditPage += 1; renderAuditHitsPage(); }; $('searchAccountAuditBtn').onclick = searchAccountAuditLogs; $('clearAccountAuditBtn').onclick = () => { clearAccountAuditFilters(); searchAccountAuditLogs(); }; $('applyUsageStatsFiltersBtn').onclick = loadFilteredUsageStats; $('clearUsageStatsFiltersBtn').onclick = () => { clearUsageStatsFilters(); loadFilteredUsageStats(); }; $('usageStatsBucket').onchange = loadFilteredUsageStats; $('usageStatsCategory').onchange = loadFilteredUsageStats; $('usageStatsEventsLimit').onchange = loadFilteredUsageStats; $('accountAuditPrevBtn').onclick = () => { state.accountAuditPage -= 1; renderAccountAuditHitsPage(); }; $('accountAuditNextBtn').onclick = () => { state.accountAuditPage += 1; renderAccountAuditHitsPage(); }; $('loginAuditPrevBtn').onclick = () => { state.loginAuditPage -= 1; renderLoginAuditHitsPage(); }; $('loginAuditNextBtn').onclick = () => { state.loginAuditPage += 1; renderLoginAuditHitsPage(); }; $('usageStatsAuditPrevBtn').onclick = () => { state.usageStatsAuditPage -= 1; renderUsageStatsAuditEventsPage(); }; $('usageStatsAuditNextBtn').onclick = () => { state.usageStatsAuditPage += 1; renderUsageStatsAuditEventsPage(); }; $('refreshLoginAuditBtn').onclick = refreshLoginAudit;
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
 $('copyResetTokenBtn').onclick = async () => { try { await copyTextToClipboard($('resetTokenModalValue').value); setStatus('resetTokenCopyStatus', '已複製 token。', 'ok'); } catch (err) { setStatus('resetTokenCopyStatus', err.message, 'error'); } };
 $('closeResetTokenModalBtn').onclick = closeResetTokenDialog;
