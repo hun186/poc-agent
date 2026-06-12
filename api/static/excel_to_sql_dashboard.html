@@ -37,6 +37,8 @@
     button { padding:10px 14px; border:0; border-radius:10px; background:#2563eb; color:white; font-weight:700; cursor:pointer; }
     button.secondary { background:#475467; }
     button.ghost { background:#e2e8f0; color:#172033; }
+    .header-actions { display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
+    .header-user { color:#cbd5e1; font-size:13px; font-weight:700; white-space:nowrap; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th, td { border-bottom:1px solid var(--line); padding:9px 8px; text-align:left; vertical-align:top; }
     th { color:#344054; font-size:12px; background:#f9fafb; position:sticky; top:0; }
@@ -79,7 +81,8 @@
       <h1>Excel→SQL 匯入 SQL 監控儀表板</h1>
       <div class="muted" style="color:#cbd5e1;">追蹤 Excel→SQL 匯入批次、去重、欄名智慧比對與失敗資料列</div>
     </div>
-    <div>
+    <div class="header-actions">
+      <div id="whoami" class="header-user">未登入</div>
       <button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
     </div>
   </header>
@@ -177,6 +180,19 @@ function renderCards(data) {
 }
 function fillTable(id, rows, render) { document.querySelector(`#${id} tbody`).innerHTML = rows.map(render).join('') || '<tr><td colspan="99" class="muted">無資料</td></tr>'; }
 function authToken() { return localStorage.getItem(tokenKey) || ''; }
+async function loadCurrentUser() {
+  const token = authToken();
+  if (!token) { $('whoami').textContent = '未登入'; return; }
+  try {
+    const res = await fetch('/v1/auth/me', { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) throw new Error('unauthorized');
+    const data = await res.json();
+    const user = data.user || {};
+    $('whoami').textContent = user.username ? `${user.username} (${user.role || '-'})` : '未登入';
+  } catch (_) {
+    $('whoami').textContent = '登入已失效';
+  }
+}
 function pad2(v) { return String(v).padStart(2, '0'); }
 function toLocalInputValue(d) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; }
 function resetDefaultWindow() {
@@ -242,7 +258,6 @@ function closeDestinationTableDropdown(applyPending = false) {
   if (dropdown.open) dropdown.open = false;
   if (applyPending) applyDestinationTablePendingFilters();
 }
-function closeDestinationTableDropdown() { $('destinationTableDropdown').open = false; }
 function changeRecentPage(delta) {
   const next = state.recentPage + delta;
   const maxPage = Math.max(1, Math.ceil(state.recentTotal / Math.max(state.recentPageSize, 1)));
@@ -376,7 +391,7 @@ function bindAuditFilterEvents() {
   $('chartBucket').addEventListener('change', applyAuditFilters);
 }
 bindAuditFilterEvents();
-(async () => { resetDefaultWindow(); await loadTasks(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
+(async () => { resetDefaultWindow(); await loadCurrentUser(); await loadTasks(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
 </script>
 </body>
 </html>

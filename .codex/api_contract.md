@@ -57,3 +57,11 @@
 - `PUT /v1/editor/doc`、`DELETE /v1/editor/doc`、`DELETE /v1/editor/docs` 現在需要 `data_editor` 以上權限；`data_reader` 只可查閱資料。
 - `POST /v1/excel-to-sql/delete-row` 現在需要 `db_operator` 以上權限；dashboard 查閱 endpoint 仍允許所有 active user。
 - `portable_auth_pack` 同步上述 role values、`/v1/auth/me` / `/v1/auth/users` 的 `role_options` response 與 approve role contract。
+
+## 2026-06-12 Usage Stats Audit Event Entries
+
+`GET /v1/editor/usage-stats` 新增 query 與 response 欄位：
+
+- Query：`events_limit`（int，1～500，預設 100），控制回傳套用同一統計篩選條件的 audit event 條目數。
+- Response：`filtered.events` 回傳依目前 `category`、`username`、`action`、`index`、`start_ts`、`end_ts` 篩選後的最近 audit event 條目；非 superuser 仍固定限制為目前登入者自己的紀錄。
+- Response：`filtered.events_total` 為套用篩選後的總事件數；`filtered.events_limit` 為本次條目上限。

@@ -563,6 +563,7 @@ def usage_stats(
     start_ts: str | None = Query(None, description="起始時間（ISO 8601）"),
     end_ts: str | None = Query(None, description="結束時間（ISO 8601）"),
     chart_bucket: str = Query("day", description="統計曲線區間：hour、6_hours、12_hours、day、week、month"),
+    events_limit: int = Query(100, ge=1, le=500, description="回傳套用同一篩選條件的 audit 事件筆數"),
     user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
     records = load_audit_records(limit=20000)
@@ -595,6 +596,9 @@ def usage_stats(
         "category": category_value,
         "stats": build_usage_stats(filtered),
         "series": build_audit_time_series(filtered, normalized_bucket),
+        "events": filtered[:events_limit],
+        "events_total": len(filtered),
+        "events_limit": events_limit,
         "chart_bucket": normalized_bucket,
         "chart_bucket_label": bucket_label,
         "is_restricted_to_self": user.role != "superuser",

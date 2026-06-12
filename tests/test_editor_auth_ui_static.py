@@ -57,6 +57,11 @@ def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     assert 'id="navSubPanel" class="nav-subpanel hidden" aria-label="第二層功能選單"' in html
     assert 'class="nav-menu" data-nav-menu="content"' in html
     assert 'class="nav-level" open' in html
+    assert 'grid-template-columns: minmax(180px, 230px) minmax(240px, 1fr)' in html
+    assert '.nav-actions { position: absolute; top: 0; left: calc(100% + 10px)' in html
+    assert '.nav-level:not([open]) .nav-actions { display: none; }' in html
+    assert '.nav-level[open] summary::after { content: "右側"; }' in html
+    assert '@media (max-width: 720px)' in html
     assert 'function setActiveNavRoot(root)' in html
     assert 'function collapseMainNav()' in html
     assert "setAttribute('aria-expanded', active ? 'true' : 'false')" in html
@@ -91,6 +96,12 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     assert '文件使用統計' in html
     assert '帳號操作統計' in html
     assert 'id="usageStatsChart"' in html
+    assert 'id="usageStatsEventsLimit"' in html
+    assert 'id="usageStatsAuditEvents"' in html
+    assert 'aria-label="使用統計 audit 事件條目"' in html
+    assert "events_limit: String(Math.max(1, Math.min(500, Number($('usageStatsEventsLimit').value || 100))))" in html
+    assert 'function renderUsageStatsAuditEvents(filtered)' in html
+    assert 'renderUsageStatsAuditEvents(filtered);' in html
     assert "'/v1/editor/usage-stats?'" in html
     assert 'SraAuditTools.renderTimeSeriesChart' in html
     assert 'function bindProgressiveNav(options)' in tools
@@ -153,6 +164,11 @@ def test_portable_auth_pack_navigation_is_header_multilevel_and_collapsible() ->
     assert 'id="navSubPanel" class="nav-subpanel hidden" aria-label="第二層功能選單"' in html
     assert 'class="nav-menu" data-nav-menu="identity"' in html
     assert 'class="nav-level" open' in html
+    assert 'grid-template-columns: minmax(170px, 220px) minmax(230px, 1fr)' in html
+    assert '.nav-actions { position: absolute; top: 0; left: calc(100% + .6rem)' in html
+    assert '.nav-level:not([open]) .nav-actions { display: none; }' in html
+    assert '.nav-level[open] summary::after { content: "右側"; }' in html
+    assert '@media (max-width: 720px)' in html
     assert 'function setActiveAuthPackNavRoot(root)' in html
     assert 'function collapseAuthPackNav()' in html
     assert 'SraAuditTools.bindProgressiveNav' in html

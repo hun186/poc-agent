@@ -148,3 +148,11 @@ Open
 
 - 本次帳號審核 UI 已改為角色下拉選單，但環境未安裝 Playwright（`python - <<'PY' ... import playwright ...` 輸出 `playwright-not-installed`），因此未執行瀏覽器截圖驗證。
 - 已改以靜態 UI 測試檢查主系統與 portable auth pack 皆包含 `roleOptionsHtml`、`data-role-select` 與四層 role values。
+
+## 2026-06-12 Dashboard / 使用統計 UI 截圖限制
+
+- 本次調整 Excel→SQL dashboard 標題列與 Editor 使用統計 audit 條目區塊，屬可視 UI 變更；環境再次檢查 `playwright` 時仍輸出 `No module named 'playwright'`。
+- 因目前環境缺少 Playwright / browser runtime，未能提供瀏覽器截圖驗證。
+- 替代驗證：使用 `pytest tests` 完整測試（61 passed）與靜態 UI 測試確認 DOM、API query 參數與渲染函式存在。
+
+狀態：Open

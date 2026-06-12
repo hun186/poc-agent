@@ -40,3 +40,47 @@ def test_build_audit_time_series_groups_by_bucket() -> None:
 
 def test_normalize_chart_bucket_accepts_alias() -> None:
     assert normalize_chart_bucket("6h") == ("6_hours", "每 6 小時")
+
+
+def test_usage_stats_returns_filtered_audit_events(monkeypatch) -> None:
+    from api.routers import editor as editor_router
+    from api.services.auth_store import AuthUser
+
+    records = [
+        {
+            "ts": "2026-06-01T01:00:00+00:00",
+            "action": "editor.save_document",
+            "username": "alice",
+            "role": "data_editor",
+            "index": "idx",
+            "id": "doc-1",
+            "changed_paths": ["title"],
+        },
+        {
+            "ts": "2026-06-01T02:00:00+00:00",
+            "action": "editor.delete_document",
+            "username": "bob",
+            "role": "data_editor",
+            "index": "idx",
+            "id": "doc-2",
+            "changed_paths": [],
+        },
+    ]
+    monkeypatch.setattr(editor_router, "load_audit_records", lambda limit=20000: records)
+
+    data = editor_router.usage_stats(
+        category="document",
+        username=None,
+        action=None,
+        index=None,
+        start_ts=None,
+        end_ts=None,
+        chart_bucket="day",
+        events_limit=1,
+        user=AuthUser(username="alice", role="data_editor", status="active"),
+    )
+
+    assert data["filtered"]["is_restricted_to_self"] is True
+    assert data["filtered"]["events_total"] == 1
+    assert data["filtered"]["events_limit"] == 1
+    assert [event["id"] for event in data["filtered"]["events"]] == ["doc-1"]

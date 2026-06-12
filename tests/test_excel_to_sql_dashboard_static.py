@@ -47,3 +47,14 @@ def test_recent_audit_filters_include_destination_table():
     assert 'function renderDestinationTableOptions(options)' in html
     assert "renderDestinationTableOptions(data.destination_table_options || [])" in html
     assert "'destinationTableFilter'" in html
+
+
+def test_dashboard_header_shows_current_logged_in_user():
+    html = DASHBOARD_HTML.read_text(encoding="utf-8")
+
+    assert '<div id="whoami" class="header-user">未登入</div>' in html
+    assert 'async function loadCurrentUser()' in html
+    assert "fetch('/v1/auth/me', { headers: { Authorization: 'Bearer ' + token } })" in html
+    assert "`${user.username} (${user.role || '-'})`" in html
+    assert 'await loadCurrentUser(); await loadTasks(); await loadDashboard();' in html
+    assert html.count('function closeDestinationTableDropdown(') == 1
