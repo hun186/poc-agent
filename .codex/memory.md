@@ -241,3 +241,54 @@ Conclusion:
 ### 重要結論
 
 - 專案記憶現在具備可追溯的濃縮例外：一般更新仍採追加；超過門檻或內容過時時，可先歸檔全文再重寫 active memory，避免後續任務重複讀取低價值歷史細節。
+
+---
+
+## 2026-06-12 密碼驗證資安補強
+
+Task:
+
+- 依資安檢視結果補強 Auth 密碼驗證、登入失敗防護、reset token 嘗試限制與 production secret 設定防呆。
+
+Changes:
+
+- `api/services/auth_store.py`：新增固定 dummy PBKDF2 password hash，讓不存在帳號登入也會執行 `_verify_password()`，降低帳號存在與否造成的 timing 差異。
+- `api/services/auth_store.py`：新增 in-memory auth failure throttle，依 scope + username + client host 記錄登入 / reset-password 失敗，達 5 次後封鎖 5 分鐘並可清除成功登入後的失敗狀態。
+- `api/services/auth_store.py`：production 環境若未設定 `SRA_AUTH_SECRET` / `SECRET_KEY`，或 secret 少於 32 bytes，建立 / 驗證 token 時會 fail fast。
+- `api/routers/editor.py`：登入 endpoint 會先檢查 throttle；無效帳密與未啟用帳號都回覆相同泛用 401 訊息；登入與 reset-password 達限制時回 429 並帶 `Retry-After`。
+- `api/routers/editor.py`：reset-password endpoint 對失敗 token 嘗試套用相同 throttle，成功後清除該 scope 的失敗狀態，並在 audit event 補上 success / reason。
+- `tests/test_auth_store_security.py`：新增 dummy hash timing regression、throttle、production secret、login 429 與 inactive generic response 測試。
+
+Validation:
+
+- `pytest tests/test_auth_store_security.py` 通過（8 passed，3 warnings：既有 TestClient / invalid escape warnings）。
+- `pytest tests` 通過（55 passed，5 warnings：既有 TestClient deprecation 與 excel import datetime.utcnow warnings）。
+
+Conclusion:
+
+- 密碼 digest 比對原本已使用 `hmac.compare_digest()`；本次補齊登入流程外層不存在帳號快速返回的 timing 風險，並加入暴力嘗試節流與 production secret 防呆。
+
+---
+
+## 2026-06-12 portable_auth_pack 密碼資安補強
+
+Task:
+
+- 將主系統 Auth 密碼資安補強同步到 `portable_auth_pack` 外帶範例包，避免範例包長期保留舊的 timing / account enumeration 與暴力嘗試風險。
+
+Changes:
+
+- `portable_auth_pack/fastapi_auth_pack/auth_store.py`：新增固定 dummy PBKDF2 hash、production secret fail-fast 與 in-memory auth throttle。
+- `portable_auth_pack/fastapi_auth_pack/router.py`：登入與 reset-password 套用 throttle；無效帳密與 pending / inactive 帳號統一回泛用 401；達限制時回 429 與 `Retry-After`。
+- `portable_auth_pack/scripts/verify_auth_pack.py`：補驗 dummy hash、production secret、pending 泛用 401、login 429 與 reset-password 429。
+- `portable_auth_pack/README.md`、`CODEX_IMPORT_GUIDE.md`、`examples/env.example`：更新外帶導入文件，說明正式環境 secret 要求、dummy hash timing 防護、process-local throttle 與多副本部署注意事項。
+
+Validation:
+
+- `python portable_auth_pack/scripts/verify_auth_pack.py` 通過（顯示 portable_auth_pack verification passed；warning 為既有 FastAPI TestClient / Starlette deprecation）。
+- `pytest tests/test_editor_auth_ui_static.py tests/test_auth_store_security.py` 通過（18 passed，3 warnings：既有 TestClient 與 invalid escape warnings）。
+- `pytest tests` 通過（55 passed，5 warnings：既有 TestClient deprecation 與 excel import datetime.utcnow warnings）。
+
+Conclusion:
+
+- 外帶 FastAPI Auth Pack 現已與主系統 Auth 安全行為一致：不存在帳號仍走 KDF 驗證、登入 / reset token 暴力嘗試有節流、production secret 有 fail-fast，且外部登入失敗訊息不再洩漏帳號狀態。

@@ -20,6 +20,10 @@ PBKDF2_ITERATIONS = 260_000
 TOKEN_TTL_SECONDS = 60 * 60 * 12
 PASSWORD_RESET_TTL_SECONDS = 60 * 60
 LOGIN_AUDIT_LIMIT = 1000
+AUTH_THROTTLE_WINDOW_SECONDS = 15 * 60
+AUTH_THROTTLE_BLOCK_SECONDS = 5 * 60
+AUTH_THROTTLE_FAILURE_LIMIT = 5
+PRODUCTION_ENVS = {"prod", "production"}
 
 
 @dataclass(frozen=True)
@@ -61,12 +65,27 @@ def _auth_file() -> Path:
     return _project_root() / ".auth_users.json"
 
 
+def _is_production_env() -> bool:
+    app_env = (
+        os.getenv("AUTH_ENV")
+        or os.getenv("APP_ENV")
+        or os.getenv("ENV")
+        or os.getenv("PY_ENV")
+        or ""
+    ).strip().lower()
+    return app_env in PRODUCTION_ENVS
+
+
 def _token_secret() -> bytes:
 
     secret = (os.getenv("AUTH_SECRET") or os.getenv("SECRET_KEY") or "").strip()
     if not secret:
+        if _is_production_env():
+            raise RuntimeError("AUTH_SECRET 或 SECRET_KEY 必須在 production 環境設定。")
         # Development fallback. Deployments should set a stable auth secret so tokens survive restarts.
         secret = "portable-auth-pack-development-secret-change-me"
+    if _is_production_env() and len(secret.encode("utf-8")) < 32:
+        raise RuntimeError("production 環境的 AUTH_SECRET/SECRET_KEY 長度至少需要 32 bytes。")
     return secret.encode("utf-8")
 
 
@@ -112,6 +131,20 @@ def _verify_password(password: str, password_hash: str) -> bool:
         return hmac.compare_digest(digest, expected)
     except Exception:
         return False
+
+
+DUMMY_PASSWORD_HASH = _hash_password(
+    "portable-auth-dummy-password-for-timing-balance",
+    salt="0" * 32,
+)
+
+
+def _normalize_throttle_part(value: str | None) -> str:
+    return (value or "").strip().lower() or "unknown"
+
+
+def _throttle_key(scope: str, username: str | None, client_host: str | None = None) -> str:
+    return ":".join([scope, _normalize_throttle_part(username), _normalize_throttle_part(client_host)])
 
 
 def _sha256(value: str) -> str:
@@ -176,6 +209,8 @@ def _load_bootstrap_superusers() -> list[dict[str, str]]:
 class AuthStore:
     def __init__(self) -> None:
         self._lock = RLock()
+        self._throttle_lock = RLock()
+        self._auth_failures: dict[str, dict[str, int]] = {}
         self.path = _auth_file()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_file()
@@ -305,9 +340,9 @@ class AuthStore:
     def authenticate(self, username: str, password: str) -> AuthUser | None:
         data = self._read()
         user = data.get("users", {}).get(username)
-        if not isinstance(user, dict):
-            return None
-        if not _verify_password(password, str(user.get("password_hash") or "")):
+        password_hash = str(user.get("password_hash") or DUMMY_PASSWORD_HASH) if isinstance(user, dict) else DUMMY_PASSWORD_HASH
+        password_ok = _verify_password(password, password_hash)
+        if not isinstance(user, dict) or not password_ok:
             return None
         if user.get("status") != "active":
             return AuthUser(username=username, role=str(user.get("role") or "user"), status=str(user.get("status") or "pending"))
@@ -474,6 +509,39 @@ class AuthStore:
             return []
         limit = max(1, min(limit, LOGIN_AUDIT_LIMIT))
         return [item for item in audit[-limit:] if isinstance(item, dict)]
+
+    def throttle_retry_after(self, scope: str, username: str | None, client_host: str | None = None) -> int:
+        key = _throttle_key(scope, username, client_host)
+        now = _now_ts()
+        with self._throttle_lock:
+            state = self._auth_failures.get(key)
+            if not state:
+                return 0
+            blocked_until = int(state.get("blocked_until") or 0)
+            if blocked_until <= now:
+                if int(state.get("first_failed_at") or 0) + AUTH_THROTTLE_WINDOW_SECONDS <= now:
+                    self._auth_failures.pop(key, None)
+                return 0
+            return blocked_until - now
+
+    def record_auth_failure(self, scope: str, username: str | None, client_host: str | None = None) -> int:
+        key = _throttle_key(scope, username, client_host)
+        now = _now_ts()
+        with self._throttle_lock:
+            state = self._auth_failures.get(key)
+            if not state or int(state.get("first_failed_at") or 0) + AUTH_THROTTLE_WINDOW_SECONDS <= now:
+                state = {"first_failed_at": now, "failures": 0, "blocked_until": 0}
+                self._auth_failures[key] = state
+            state["failures"] = int(state.get("failures") or 0) + 1
+            if state["failures"] >= AUTH_THROTTLE_FAILURE_LIMIT:
+                state["blocked_until"] = now + AUTH_THROTTLE_BLOCK_SECONDS
+                return AUTH_THROTTLE_BLOCK_SECONDS
+            return 0
+
+    def clear_auth_failures(self, scope: str, username: str | None, client_host: str | None = None) -> None:
+        key = _throttle_key(scope, username, client_host)
+        with self._throttle_lock:
+            self._auth_failures.pop(key, None)
 
     @staticmethod
     def public_user(user: dict[str, Any]) -> dict[str, Any]:
