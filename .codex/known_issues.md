@@ -156,3 +156,19 @@ Open
 - 替代驗證：使用 `pytest tests` 完整測試（61 passed）與靜態 UI 測試確認 DOM、API query 參數與渲染函式存在。
 
 狀態：Open
+
+## 2026-06-12 多層選單方向調整截圖限制
+
+- 本次調整主系統與 `portable_auth_pack` 標題列多層選單方向，屬可視 UI 變更；再次檢查 Python `playwright` 模組時輸出 `No module named 'playwright'`。
+- 因目前環境缺少 Playwright / browser runtime，未能提供瀏覽器截圖驗證。
+- 替代驗證：使用 `pytest tests/test_editor_auth_ui_static.py` 驗證主系統 nav-actions 為單欄 grid，portable auth pack nav-actions 為 column / nowrap，並保留右側展開定位。
+
+狀態：Open
+
+## 2026-06-12 帳號拒絕文案截圖限制
+
+- 本次將帳號審核「拒絕」文案改為「拒絕申請／停權」，屬可視 UI 文字調整；再次檢查 Python `playwright` 模組時輸出 `No module named 'playwright'`。
+- 因目前環境缺少 Playwright / browser runtime，未能提供瀏覽器截圖驗證。
+- 替代驗證：使用 `pytest tests/test_editor_auth_ui_static.py` 驗證主系統與 portable auth pack 都含有「拒絕申請／停權」，且不再顯示舊的「拒絕」按鈕文案。
+
+狀態：Open
