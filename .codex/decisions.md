@@ -258,3 +258,27 @@ Implementation:
 - Editor dependencies 新增 `require_data_editor` / `require_db_operator` / `require_superuser`；portable pack 同步輸出對應 dependencies。
 - 文件寫入 / 刪除改需 `data_editor` 以上；Excel→SQL delete-row 改需 `db_operator` 以上；帳號管理仍需 `superuser`。
 - 帳號審核 UI 改以 role dropdown + 單一「核准 / 更新層級」按鈕送出。
+
+---
+
+## 2026-06-12 多層導航 hover grace 與前端分頁
+
+Decision:
+
+- 多層導航採 CSS hover bridge 搭配 JS 延遲收合，而非立即在 `pointerleave` 關閉 details 子選單。
+- audit / 帳號清單在現有 API 回傳範圍內加入前端分頁；流程為後端既有條件篩選 → 前端依時間或帳號排序 → 前端分頁顯示。
+
+Reason:
+
+- 使用者從目前層級移往右側下一層時會經過一小段空白；立即收合導致需要快速移動滑鼠，操作不友善。
+- 既有 API 已提供 limit / prefix / filter 能力；本次需求重點是 UI 在大量資料時不要一次渲染過長清單，因此先採低風險 client-side pagination。
+
+Implementation:
+
+- `SraAuditTools.bindProgressiveNav()` 保留 hover-only 行為，但預設 close delay 改為 360ms，並針對每個 `.nav-level` 以 WeakMap 管理延遲收合 timer。
+- `.nav-level[open]::after` 補上層級間的透明 hover bridge；手機版停用 bridge，維持原本垂直展開操作。
+- `SraAuditTools.paginateRows()` 提供主系統與 portable_auth_pack 共用的分頁資料切片與頁碼資訊。
+
+Long-term Consideration:
+
+- 若 audit 總量超過單次 API limit 仍需要完整跨頁，可進一步把 Editor audit API 擴充成 server-side total/page/page_size，與 Excel→SQL dashboard 的 `recent_paging` 模式一致。

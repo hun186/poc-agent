@@ -31,12 +31,14 @@
     .nav-level[open] summary::before { transform: none; }
     .nav-level summary::after { content: "展開"; color: #64748b; font-size: .8rem; margin-left: auto; }
     .nav-level[open] summary::after { content: "右側"; }
+    .nav-level[open]::after { content: ""; position: absolute; top: 0; left: 100%; width: .6rem; height: 100%; }
     .nav-actions { position: absolute; top: 0; left: calc(100% + .6rem); width: min(420px, calc(100vw - 320px)); min-width: 230px; display: flex; flex-direction: column; gap: .45rem; flex-wrap: nowrap; padding: .65rem; background: white; border: 1px solid #dbe4ef; border-radius: 12px; box-shadow: 0 16px 42px rgba(15,23,42,.16); z-index: 2; }
     .nav-level:not([open]) .nav-actions { display: none; }
     .nav-actions button { margin: 0; }
     @media (max-width: 720px) {
       .nav-menu { grid-template-columns: 1fr; }
       .nav-menu-title, .nav-level { grid-column: 1; }
+      .nav-level[open]::after { display: none; }
       .nav-actions { position: static; width: auto; min-width: 0; margin: 0 .65rem .65rem; box-shadow: none; }
       .nav-level[open] summary::before { transform: rotate(90deg); }
       .nav-level[open] summary::after { content: "收合"; }
@@ -49,6 +51,10 @@
     .copy-actions { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; margin-top:10px; }
     .row { display: flex; gap: .75rem; flex-wrap: wrap; align-items: end; }
     .row > div { flex: 1 1 180px; }
+    .muted { color: #64748b; font-size: .9rem; }
+    .audit, .user { border: 1px solid #e5e7eb; border-radius: 10px; padding: .75rem; margin: .5rem 0; background: #fbfdff; }
+    .pager { display:flex; gap:.5rem; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin:.75rem 0; }
+    .pager button { padding:.45rem .7rem; }
   </style>
 </head>
 <body>
@@ -104,10 +110,13 @@
     <button class="secondary" onclick="forgotPassword()">忘記密碼：送出申請</button>
     <button class="secondary" onclick="recoverPassword()">用 reset token 重設密碼</button>
     <button class="secondary" onclick="loginAudit()">查詢登入稽核</button>
+    <div class="pager" aria-label="登入稽核分頁"><span id="loginAuditPageInfo" class="muted">第 1 頁</span><button id="loginAuditPrevBtn" class="secondary" type="button">上一頁</button><button id="loginAuditNextBtn" class="secondary" type="button">下一頁</button></div>
+    <div id="loginAuditHits"></div>
   </section>
   <section id="adminSection">
     <h2>Superuser 帳號審核</h2>
     <button onclick="refreshUsers()">重新整理帳號</button>
+    <div class="pager" aria-label="帳號清單分頁"><span id="usersPageInfo" class="muted">第 1 頁</span><button id="usersPrevBtn" class="secondary" type="button">上一頁</button><button id="usersNextBtn" class="secondary" type="button">下一頁</button></div>
     <div id="users"></div>
   </section>
   <section id="accountStatsSection">
@@ -147,6 +156,7 @@
 <script>
 const tokenKey = 'auth_token';
 const navState = { activeRoot: '' };
+const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1 };
 const out = (data) => document.getElementById('output').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function setActiveAuthPackNavRoot(root) {
@@ -238,8 +248,30 @@ async function recoverPassword() {
     })}));
   } catch (err) { out(String(err.message || err)); }
 }
+function tsValue(row) {
+  const value = row && row.ts ? Date.parse(row.ts) : NaN;
+  return Number.isNaN(value) ? 0 : value;
+}
+function updatePager(rows, page, infoId, prevId, nextId) {
+  const pageData = SraAuditTools.paginateRows(rows, page, 25);
+  document.getElementById(infoId).textContent = `第 ${pageData.page} / ${pageData.totalPages} 頁，顯示 ${pageData.start}-${pageData.end} 筆，共 ${pageData.total} 筆`;
+  document.getElementById(prevId).disabled = pageData.page <= 1;
+  document.getElementById(nextId).disabled = pageData.page >= pageData.totalPages;
+  return pageData;
+}
+function renderLoginAuditPage() {
+  const page = updatePager(pageState.loginAuditRows, pageState.loginAuditPage, 'loginAuditPageInfo', 'loginAuditPrevBtn', 'loginAuditNextBtn');
+  pageState.loginAuditPage = page.page;
+  document.getElementById('loginAuditHits').innerHTML = page.rows.map(ev => `<div class="audit"><strong>${esc(ev.username || '-')}</strong><div class="muted">${esc(ev.ts || '')} success=${esc(ev.success)} reason=${esc(ev.reason || '-')} role=${esc(ev.role || '-')} status=${esc(ev.status || '-')}</div><div class="muted">client=${esc(ev.client_host || '-')} user_agent=${esc(ev.user_agent || '-')}</div></div>`).join('') || '<p class="muted">尚無登入稽核紀錄。</p>';
+}
 async function loginAudit() {
-  try { out(await api('/v1/auth/login-audit')); }
+  try {
+    const data = await api('/v1/auth/login-audit');
+    pageState.loginAuditRows = (data.events || []).slice().sort((a, b) => tsValue(b) - tsValue(a));
+    pageState.loginAuditPage = 1;
+    renderLoginAuditPage();
+    out(data);
+  }
   catch (err) { out(String(err.message || err)); }
 }
 async function loadAccountStats() {
@@ -281,9 +313,18 @@ async function refreshUsers() {
   try {
     const data = await api('/v1/auth/users');
     const roleOptions = data.role_options || [];
-    document.getElementById('users').innerHTML = data.users.map(u => `<div><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select> <button onclick="approveSelectedUser('${esc(u.username)}')">核准 / 更新層級</button><button class="secondary" onclick="issuePasswordResetToken('${esc(u.username)}')">產生 reset token</button><button class="danger" title="pending 帳號會被拒絕申請；active 帳號會被停權並讓既有 token 失效。" onclick="rejectUser('${esc(u.username)}')">拒絕申請／停權</button><button class="danger" onclick="resetUserPassword('${esc(u.username)}')">直接重設密碼</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('');
+    pageState.usersRows = (data.users || []).slice().sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')));
+    pageState.usersRoleOptions = roleOptions;
+    pageState.usersPage = 1;
+    renderUsersPage();
     out(data);
   } catch (err) { out(String(err.message || err)); }
+}
+function renderUsersPage() {
+  const roleOptions = pageState.usersRoleOptions || [];
+  const page = updatePager(pageState.usersRows, pageState.usersPage, 'usersPageInfo', 'usersPrevBtn', 'usersNextBtn');
+  pageState.usersPage = page.page;
+  document.getElementById('users').innerHTML = page.rows.map(u => `<div class="user"><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select> <button onclick="approveSelectedUser('${esc(u.username)}')">核准 / 更新層級</button><button class="secondary" onclick="issuePasswordResetToken('${esc(u.username)}')">產生 reset token</button><button class="danger" title="pending 帳號會被拒絕申請；active 帳號會被停權並讓既有 token 失效。" onclick="rejectUser('${esc(u.username)}')">拒絕申請／停權</button><button class="danger" onclick="resetUserPassword('${esc(u.username)}')">直接重設密碼</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('') || '<p class="muted">尚無帳號。</p>';
 }
 async function approveSelectedUser(username) {
   const select = Array.from(document.querySelectorAll('[data-role-select]')).find(el => el.dataset.roleSelect === username);
@@ -328,6 +369,10 @@ async function resetUserPassword(username) {
   await refreshUsers();
 }
 async function deleteUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method: 'DELETE'})); await refreshUsers(); }
+document.getElementById('usersPrevBtn').onclick = () => { pageState.usersPage -= 1; renderUsersPage(); };
+document.getElementById('usersNextBtn').onclick = () => { pageState.usersPage += 1; renderUsersPage(); };
+document.getElementById('loginAuditPrevBtn').onclick = () => { pageState.loginAuditPage -= 1; renderLoginAuditPage(); };
+document.getElementById('loginAuditNextBtn').onclick = () => { pageState.loginAuditPage += 1; renderLoginAuditPage(); };
 document.getElementById('copyResetTokenBtn').onclick = async () => {
   try {
     await copyTextToClipboard(document.getElementById('resetTokenModalValue').value);

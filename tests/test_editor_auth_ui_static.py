@@ -180,3 +180,48 @@ def test_portable_auth_pack_navigation_is_header_multilevel_and_collapsible() ->
     assert 'function collapseAuthPackNav()' in html
     assert 'SraAuditTools.bindProgressiveNav' in html
     assert "setAttribute('aria-expanded', active ? 'true' : 'false')" in html
+
+
+def test_navigation_hover_has_bridge_and_delayed_level_close() -> None:
+    editor_html = _editor_html()
+    portable_html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+    tools = Path("api/static/audit_tools.js").read_text(encoding="utf-8")
+
+    assert '.nav-level[open]::after { content: ""; position: absolute; top: 0; left: 100%; width: 10px; height: 100%; }' in editor_html
+    assert '.nav-level[open]::after { content: ""; position: absolute; top: 0; left: 100%; width: .6rem; height: 100%; }' in portable_html
+    assert 'const levelCloseDelayMs = Number(options.levelCloseDelayMs || 360);' in tools
+    assert 'levelCloseTimers.set(details, window.setTimeout(() => { details.open = false; }, levelCloseDelayMs));' in tools
+
+
+def test_editor_audit_views_are_client_paginated_after_sorting() -> None:
+    html = _editor_html()
+    tools = Path("api/static/audit_tools.js").read_text(encoding="utf-8")
+
+    for element_id in (
+        'auditPageInfo', 'auditPrevBtn', 'auditNextBtn',
+        'accountAuditPageInfo', 'accountAuditPrevBtn', 'accountAuditNextBtn',
+        'loginAuditPageInfo', 'loginAuditPrevBtn', 'loginAuditNextBtn',
+        'usageStatsAuditPageInfo', 'usageStatsAuditPrevBtn', 'usageStatsAuditNextBtn',
+    ):
+        assert f'id="{element_id}"' in html
+    assert 'function sortAuditRows(rows)' in html
+    assert 'function updateClientPager(config)' in html
+    assert '先篩選、依時間排序，再分頁顯示' in html
+    assert 'SraAuditTools.paginateRows' in html
+    assert 'function paginateRows(rows, page, pageSize)' in tools
+
+
+def test_portable_auth_pack_lists_are_client_paginated() -> None:
+    html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+
+    for element_id in (
+        'usersPageInfo', 'usersPrevBtn', 'usersNextBtn',
+        'loginAuditPageInfo', 'loginAuditPrevBtn', 'loginAuditNextBtn',
+        'loginAuditHits',
+    ):
+        assert f'id="{element_id}"' in html
+    assert 'const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1 };' in html
+    assert 'function updatePager(rows, page, infoId, prevId, nextId)' in html
+    assert 'SraAuditTools.paginateRows(rows, page, 25)' in html
+    assert 'pageState.usersRows = (data.users || []).slice().sort' in html
+    assert 'pageState.loginAuditRows = (data.events || []).slice().sort' in html

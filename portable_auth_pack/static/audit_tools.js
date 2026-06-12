@@ -79,9 +79,16 @@
     const setActiveRoot = options.setActiveRoot;
     const collapse = options.collapse || (() => setActiveRoot && setActiveRoot(''));
     const openDelayMs = Number(options.openDelayMs || 80);
-    const closeDelayMs = Number(options.closeDelayMs || 160);
+    const closeDelayMs = Number(options.closeDelayMs || 360);
+    const levelCloseDelayMs = Number(options.levelCloseDelayMs || 360);
     let closeTimer = 0;
     let openTimer = 0;
+    const levelCloseTimers = new WeakMap();
+    const clearLevelCloseTimer = (details) => {
+      const timer = levelCloseTimers.get(details);
+      if (timer) window.clearTimeout(timer);
+      levelCloseTimers.delete(details);
+    };
     const clearTimers = () => { window.clearTimeout(closeTimer); window.clearTimeout(openTimer); };
     nav.querySelectorAll(rootSelector).forEach((btn) => {
       btn.addEventListener('click', () => setActiveRoot(getActiveRoot() === btn.dataset.navRoot ? '' : btn.dataset.navRoot));
@@ -101,12 +108,33 @@
     });
     nav.querySelectorAll(levelSelector).forEach((details) => {
       details.addEventListener('pointerenter', (event) => {
-        if (event.pointerType === 'mouse' && supportsHoverNav()) details.open = true;
+        if (event.pointerType !== 'mouse' || !supportsHoverNav()) return;
+        clearLevelCloseTimer(details);
+        details.open = true;
       });
       details.addEventListener('pointerleave', (event) => {
-        if (event.pointerType === 'mouse' && supportsHoverNav()) details.open = false;
+        if (event.pointerType !== 'mouse' || !supportsHoverNav()) return;
+        clearLevelCloseTimer(details);
+        levelCloseTimers.set(details, window.setTimeout(() => { details.open = false; }, levelCloseDelayMs));
       });
     });
+  }
+  function paginateRows(rows, page, pageSize) {
+    const allRows = Array.isArray(rows) ? rows : [];
+    const size = Math.max(1, Number(pageSize || 25));
+    const total = allRows.length;
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.min(Math.max(1, Number(page || 1)), totalPages);
+    const startIndex = (currentPage - 1) * size;
+    return {
+      rows: allRows.slice(startIndex, startIndex + size),
+      page: currentPage,
+      pageSize: size,
+      total,
+      totalPages,
+      start: total ? startIndex + 1 : 0,
+      end: Math.min(total, startIndex + size),
+    };
   }
   window.SraAuditTools = {
     escapeHtml,
@@ -115,5 +143,6 @@
     renderTimeSeriesChart,
     renderSummaryCards,
     bindProgressiveNav,
+    paginateRows,
   };
 }());
