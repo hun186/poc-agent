@@ -237,3 +237,24 @@ Implementation:
 Long-term Consideration:
 
 - 若 portable auth pack 日後成為正式可安裝套件，應提供可插拔 throttle backend 介面，而不是只內建 process-local memory。
+
+## 2026-06-12 Auth 採四層階層式 Role
+
+Decision:
+
+- 將原本 `user` / `superuser` 二分擴充為 `data_reader`、`data_editor`、`db_operator`、`superuser` 四層階層式 role。
+- 新註冊帳號預設為 `data_reader` pending；superuser 核准時透過下拉選單指定 role。
+- 舊 `user` role 僅作為相容輸入與既有資料 alias，正規化為 `data_editor`，以保留原本普通 user 可編修資料的行為。
+
+Reason:
+
+- 使用者需求明確要求一般場景有「全能者、資料庫操作者、資料修改者、資料閱讀者」四層權限。
+- 階層式比較可重用於 endpoint dependency，避免每個 endpoint 寫死 role list。
+- 保留 legacy `user` alias 可降低既有 `.sra_users.json` 或外帶範例包使用者資料的升級風險。
+
+Implementation:
+
+- 主系統與 portable auth pack 各自加入 role constants、`normalize_role()`、`has_role_at_least()`、`public_role_options()`。
+- Editor dependencies 新增 `require_data_editor` / `require_db_operator` / `require_superuser`；portable pack 同步輸出對應 dependencies。
+- 文件寫入 / 刪除改需 `data_editor` 以上；Excel→SQL delete-row 改需 `db_operator` 以上；帳號管理仍需 `superuser`。
+- 帳號審核 UI 改以 role dropdown + 單一「核准 / 更新層級」按鈕送出。

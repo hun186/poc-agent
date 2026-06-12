@@ -259,12 +259,26 @@ async function loadAccountStats() {
     out(data.filtered || data);
   } catch (err) { out(String(err.message || err)); }
 }
+function roleOptionsHtml(selectedRole, roleOptions) {
+  const options = roleOptions && roleOptions.length ? roleOptions : [
+    {value: 'superuser', label: '最高級全能者'},
+    {value: 'db_operator', label: '資料庫操作者'},
+    {value: 'data_editor', label: '資料修改者'},
+    {value: 'data_reader', label: '資料閱讀者'},
+  ];
+  return options.map(opt => `<option value="${esc(opt.value)}" ${opt.value === selectedRole ? 'selected' : ''}>${esc(opt.label)} (${esc(opt.value)})</option>`).join('');
+}
 async function refreshUsers() {
   try {
     const data = await api('/v1/auth/users');
-    document.getElementById('users').innerHTML = data.users.map(u => `<div><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <button onclick="approveUser('${esc(u.username)}','user')">核准 user</button><button class="secondary" onclick="approveUser('${esc(u.username)}','superuser')">核准 superuser</button><button class="secondary" onclick="issuePasswordResetToken('${esc(u.username)}')">產生 reset token</button><button class="danger" onclick="rejectUser('${esc(u.username)}')">拒絕</button><button class="danger" onclick="resetUserPassword('${esc(u.username)}')">直接重設密碼</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('');
+    const roleOptions = data.role_options || [];
+    document.getElementById('users').innerHTML = data.users.map(u => `<div><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select> <button onclick="approveSelectedUser('${esc(u.username)}')">核准 / 更新層級</button><button class="secondary" onclick="issuePasswordResetToken('${esc(u.username)}')">產生 reset token</button><button class="danger" onclick="rejectUser('${esc(u.username)}')">拒絕</button><button class="danger" onclick="resetUserPassword('${esc(u.username)}')">直接重設密碼</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('');
     out(data);
   } catch (err) { out(String(err.message || err)); }
+}
+async function approveSelectedUser(username) {
+  const select = Array.from(document.querySelectorAll('[data-role-select]')).find(el => el.dataset.roleSelect === username);
+  await approveUser(username, select ? select.value : 'data_reader');
 }
 async function approveUser(username, role) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}/approve`, {method: 'POST', body: JSON.stringify({role})})); await refreshUsers(); }
 async function rejectUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}/reject`, {method: 'POST'})); await refreshUsers(); }

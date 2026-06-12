@@ -25,6 +25,35 @@ AUTH_THROTTLE_BLOCK_SECONDS = 5 * 60
 AUTH_THROTTLE_FAILURE_LIMIT = 5
 PRODUCTION_ENVS = {"prod", "production"}
 
+ROLE_SUPERUSER = "superuser"
+ROLE_DB_OPERATOR = "db_operator"
+ROLE_DATA_EDITOR = "data_editor"
+ROLE_DATA_READER = "data_reader"
+LEGACY_ROLE_ALIASES = {"user": ROLE_DATA_EDITOR}
+ROLE_HIERARCHY = [ROLE_DATA_READER, ROLE_DATA_EDITOR, ROLE_DB_OPERATOR, ROLE_SUPERUSER]
+ROLE_LABELS = {
+    ROLE_SUPERUSER: "最高級全能者",
+    ROLE_DB_OPERATOR: "資料庫操作者",
+    ROLE_DATA_EDITOR: "資料修改者",
+    ROLE_DATA_READER: "資料閱讀者",
+}
+VALID_ROLES = set(ROLE_HIERARCHY)
+ROLE_LEVELS = {role: level for level, role in enumerate(ROLE_HIERARCHY)}
+
+
+def normalize_role(role: str | None) -> str:
+    value = (role or "").strip().lower()
+    value = LEGACY_ROLE_ALIASES.get(value, value)
+    return value if value in VALID_ROLES else ROLE_DATA_READER
+
+
+def has_role_at_least(role: str | None, minimum_role: str) -> bool:
+    return ROLE_LEVELS.get(normalize_role(role), -1) >= ROLE_LEVELS[minimum_role]
+
+
+def public_role_options() -> list[dict[str, str]]:
+    return [{"value": role, "label": ROLE_LABELS[role]} for role in reversed(ROLE_HIERARCHY)]
+
 
 @dataclass(frozen=True)
 class AuthUser:
@@ -324,7 +353,7 @@ class AuthStore:
         users[username] = {
             "username": username,
             "password_hash": _hash_password(password),
-            "role": "user",
+            "role": ROLE_DATA_READER,
             "status": "pending",
             "token_version": 0,
             "created_at": _utc_now(),
@@ -345,8 +374,8 @@ class AuthStore:
         if not isinstance(user, dict) or not password_ok:
             return None
         if user.get("status") != "active":
-            return AuthUser(username=username, role=str(user.get("role") or "user"), status=str(user.get("status") or "pending"))
-        return AuthUser(username=username, role=str(user.get("role") or "user"), status="active")
+            return AuthUser(username=username, role=normalize_role(str(user.get("role") or "")), status=str(user.get("status") or "pending"))
+        return AuthUser(username=username, role=normalize_role(str(user.get("role") or "")), status="active")
 
     def get_user(self, username: str) -> dict[str, Any] | None:
         user = self._read().get("users", {}).get(username)
@@ -357,8 +386,10 @@ class AuthStore:
         return [self.public_user(user) for user in users.values() if isinstance(user, dict)]
 
     def approve_user(self, username: str, role: str, approved_by: str) -> dict[str, Any]:
-        if role not in {"user", "superuser"}:
-            raise ValueError("role 必須是 user 或 superuser。")
+        requested_role = (role or "").strip().lower()
+        if requested_role not in VALID_ROLES and requested_role not in LEGACY_ROLE_ALIASES:
+            raise ValueError("role 必須是 superuser、db_operator、data_editor 或 data_reader。")
+        role = normalize_role(requested_role)
         data = self._read()
         user = data.get("users", {}).get(username)
         if not isinstance(user, dict):
@@ -545,7 +576,9 @@ class AuthStore:
 
     @staticmethod
     def public_user(user: dict[str, Any]) -> dict[str, Any]:
-        return {k: v for k, v in user.items() if k != "password_hash"}
+        public = {k: v for k, v in user.items() if k != "password_hash"}
+        public["role"] = normalize_role(str(public.get("role") or ""))
+        return public
 
 
 def create_token(user: AuthUser) -> str:

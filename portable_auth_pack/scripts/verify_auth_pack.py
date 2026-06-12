@@ -101,7 +101,7 @@ def main() -> int:
 
         approve_res = client.post(
             "/v1/auth/users/alice/approve",
-            json={"role": "user"},
+            json={"role": "data_editor"},
             headers=headers,
         )
         assert approve_res.status_code == 200, approve_res.text
@@ -113,6 +113,10 @@ def main() -> int:
         assert user_login_res.status_code == 200, user_login_res.text
         user_token = user_login_res.json()["access_token"]
         user_headers = {"Authorization": f"Bearer {user_token}"}
+        edit_res = client.post("/v1/documents/ping", headers=user_headers)
+        assert edit_res.status_code == 200, edit_res.text
+        db_denied_res = client.post("/v1/database/ping", headers=user_headers)
+        assert db_denied_res.status_code == 403, db_denied_res.text
         denied_res = client.get("/v1/admin/ping", headers=user_headers)
         assert denied_res.status_code == 403, denied_res.text
 

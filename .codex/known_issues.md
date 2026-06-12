@@ -138,3 +138,13 @@ Open
 負責人：
 
 -
+
+## 2026-06-12 FastAPI TestClient StarletteDeprecationWarning
+
+- 執行 `pytest tests` 或 `python portable_auth_pack/scripts/verify_auth_pack.py` 時，`fastapi/testclient.py` 會出現 `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.`。
+- 目前測試仍全部通過；此為相依套件版本相容性警告，非本次 Auth role 變更造成的功能失敗。
+
+## 2026-06-12 Screenshot 驗證限制
+
+- 本次帳號審核 UI 已改為角色下拉選單，但環境未安裝 Playwright（`python - <<'PY' ... import playwright ...` 輸出 `playwright-not-installed`），因此未執行瀏覽器截圖驗證。
+- 已改以靜態 UI 測試檢查主系統與 portable auth pack 皆包含 `roleOptionsHtml`、`data-role-select` 與四層 role values。

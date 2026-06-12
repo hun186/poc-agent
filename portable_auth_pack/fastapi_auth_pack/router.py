@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Query, status
 
-from .auth_store import AUTH_STORE, AuthUser, create_token, parse_token
+from .auth_store import AUTH_STORE, AuthUser, create_token, parse_token, public_role_options
 from .dependencies import bearer_token, current_user, require_superuser
 from .models import (
     ApprovePayload,
@@ -112,12 +112,12 @@ def recover_password(payload: RecoverPasswordPayload, request: Request) -> dict[
 
 @router.get("/v1/auth/me")
 def me(user: AuthUser = Depends(current_user)) -> dict[str, Any]:
-    return {"user": user.__dict__}
+    return {"user": user.__dict__, "role_options": public_role_options()}
 
 
 @router.get("/v1/auth/users")
 def list_users(_: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
-    return {"users": AUTH_STORE.list_users()}
+    return {"users": AUTH_STORE.list_users(), "role_options": public_role_options()}
 
 
 @router.post("/v1/auth/users/{username}/approve")

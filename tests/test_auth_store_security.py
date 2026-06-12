@@ -5,7 +5,7 @@ import json
 import secrets
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 
@@ -148,3 +148,75 @@ def test_inactive_login_uses_generic_failure_response(monkeypatch, tmp_path):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "帳號或密碼錯誤，或帳號尚未啟用。"
+
+
+def test_role_hierarchy_approval_and_role_options(monkeypatch, tmp_path):
+    client, auth_store = _load_editor_client(monkeypatch, tmp_path)
+
+    auth_store.AUTH_STORE.register("reader", "ReaderPass!2026")
+    auth_store.AUTH_STORE.approve_user("reader", "data_reader", approved_by="admin")
+    auth_store.AUTH_STORE.register("editor", "EditorPass!2026")
+    approved_editor = auth_store.AUTH_STORE.approve_user("editor", "data_editor", approved_by="admin")
+    auth_store.AUTH_STORE.register("operator", "OperatorPass!2026")
+    approved_operator = auth_store.AUTH_STORE.approve_user("operator", "db_operator", approved_by="admin")
+
+    assert approved_editor["role"] == "data_editor"
+    assert approved_operator["role"] == "db_operator"
+    assert auth_store.has_role_at_least("db_operator", "data_editor")
+    assert not auth_store.has_role_at_least("data_reader", "data_editor")
+
+    login = client.post("/v1/auth/login", json={"username": "admin", "password": "AdminPass!2026"})
+    assert login.status_code == 200
+    response = client.get("/v1/auth/users", headers={"Authorization": f"Bearer {login.json()['access_token']}"})
+    assert response.status_code == 200
+    role_values = [item["value"] for item in response.json()["role_options"]]
+    assert role_values == ["superuser", "db_operator", "data_editor", "data_reader"]
+
+
+def test_legacy_user_role_maps_to_data_editor(monkeypatch, tmp_path):
+    auth_store = _load_auth_store(monkeypatch, tmp_path)
+
+    registered = auth_store.AUTH_STORE.register("legacy", "LegacyPass!2026")
+    assert registered["role"] == "data_reader"
+
+    approved = auth_store.AUTH_STORE.approve_user("legacy", "user", approved_by="admin")
+
+    assert approved["role"] == "data_editor"
+
+
+def test_role_dependencies_enforce_reader_editor_operator_boundaries(monkeypatch, tmp_path):
+    auth_store = _load_auth_store(monkeypatch, tmp_path)
+    import api.routers.editor_dependencies as deps
+
+    deps = importlib.reload(deps)
+    app = FastAPI()
+
+    @app.post("/edit")
+    def edit(user=Depends(deps.require_data_editor)):
+        return {"role": user.role}
+
+    @app.post("/operate-db")
+    def operate_db(user=Depends(deps.require_db_operator)):
+        return {"role": user.role}
+
+    auth_store.AUTH_STORE.register("reader2", "ReaderPass!2026")
+    auth_store.AUTH_STORE.approve_user("reader2", "data_reader", approved_by="admin")
+    auth_store.AUTH_STORE.register("editor2", "EditorPass!2026")
+    auth_store.AUTH_STORE.approve_user("editor2", "data_editor", approved_by="admin")
+    auth_store.AUTH_STORE.register("operator2", "OperatorPass!2026")
+    auth_store.AUTH_STORE.approve_user("operator2", "db_operator", approved_by="admin")
+
+    def token(username: str, password: str) -> str:
+        user = auth_store.AUTH_STORE.authenticate(username, password)
+        assert user is not None
+        return auth_store.create_token(user)
+
+    client = TestClient(app)
+    reader_headers = {"Authorization": f"Bearer {token('reader2', 'ReaderPass!2026')}"}
+    editor_headers = {"Authorization": f"Bearer {token('editor2', 'EditorPass!2026')}"}
+    operator_headers = {"Authorization": f"Bearer {token('operator2', 'OperatorPass!2026')}"}
+
+    assert client.post("/edit", headers=reader_headers).status_code == 403
+    assert client.post("/edit", headers=editor_headers).status_code == 200
+    assert client.post("/operate-db", headers=editor_headers).status_code == 403
+    assert client.post("/operate-db", headers=operator_headers).status_code == 200

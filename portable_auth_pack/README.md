@@ -7,8 +7,9 @@
 - `/v1/auth/me`：查詢目前登入者
 - 密碼安全：使用者可變更密碼、superuser 可重設密碼、忘記密碼可建立一次性 reset token
 - Token 失效：logout 會加入 token denylist；變更/重設密碼會讓該帳號既有 token 失效
-- 使用者審核：superuser 可核准、拒絕、刪除帳號
-- 權限 dependency：`current_user` 與 `require_superuser`
+- 使用者審核：最高級全能者（`superuser`）可核准、拒絕、刪除帳號，核准時可用角色下拉選單指定層級
+- 四層權限：`superuser`（帳號維管 + 全權限）、`db_operator`（資料庫維管 + 以下權限）、`data_editor`（編修與查閱資料）、`data_reader`（查閱資料）
+- 權限 dependency：`current_user`、`require_data_editor`、`require_db_operator` 與 `require_superuser`
 - 本機 JSON user store：不需要資料庫即可快速試用
 
 > 適用情境：內部工具、PoC、測試環境、受控網路環境、或作為 Codex 導入其他專案時的修改基礎。
@@ -85,13 +86,13 @@ app.include_router(auth_router)
 |---|---|---|
 | `POST` | `/v1/auth/register` | 建立 pending 帳號 |
 | `POST` | `/v1/auth/login` | 登入並取得 Bearer token |
-| `GET` | `/v1/auth/me` | 查詢目前登入者 |
+| `GET` | `/v1/auth/me` | 查詢目前登入者與可用角色選項 |
 | `POST` | `/v1/auth/logout` | 登出並將目前 token 加入 denylist |
 | `POST` | `/v1/auth/change-password` | 已登入使用者變更自己的密碼；既有 token 失效 |
 | `POST` | `/v1/auth/forgot-password` | 忘記密碼申請；不公開回傳 reset token |
 | `POST` | `/v1/auth/reset-password` | 使用一次性 reset token 重設密碼；既有 token 失效 |
-| `GET` | `/v1/auth/users` | superuser 列出帳號 |
-| `POST` | `/v1/auth/users/{username}/approve` | superuser 核准帳號 |
+| `GET` | `/v1/auth/users` | superuser 列出帳號與可用角色選項 |
+| `POST` | `/v1/auth/users/{username}/approve` | superuser 核准帳號並設定 `superuser` / `db_operator` / `data_editor` / `data_reader` |
 | `POST` | `/v1/auth/users/{username}/reject` | superuser 拒絕帳號 |
 | `POST` | `/v1/auth/users/{username}/password-reset-token` | superuser 產生一次性 reset token，供核身後安全交付 |
 | `POST` | `/v1/auth/users/{username}/reset-password` | superuser 直接重設使用者密碼；該帳號既有 token 失效 |
@@ -111,15 +112,23 @@ def private_api(user: AuthUser = Depends(current_user)):
     return {"hello": user.username}
 ```
 
-只有 superuser 可使用：
+依權限層級保護：
 
 ```python
 from fastapi import Depends
-from fastapi_auth_pack import AuthUser, require_superuser
+from fastapi_auth_pack import AuthUser, require_data_editor, require_db_operator, require_superuser
 
-@app.post("/v1/admin/rebuild")
-def rebuild(user: AuthUser = Depends(require_superuser)):
+@app.post("/v1/documents")
+def save_document(user: AuthUser = Depends(require_data_editor)):
+    return {"saved_by": user.username}
+
+@app.post("/v1/database/rebuild")
+def rebuild_database(user: AuthUser = Depends(require_db_operator)):
     return {"started_by": user.username}
+
+@app.post("/v1/admin/accounts")
+def manage_accounts(user: AuthUser = Depends(require_superuser)):
+    return {"managed_by": user.username}
 ```
 
 ---

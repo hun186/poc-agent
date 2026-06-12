@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,8 @@ from data_ingestion.excel_to_sql.dashboard import (
     delete_imported_sql_row,
     discover_dashboard_tasks,
 )
-from api.services.auth_store import AUTH_STORE, AuthUser, parse_token
+from api.routers.editor_dependencies import current_user, require_db_operator
+from api.services.auth_store import AuthUser
 
 router = APIRouter(tags=["excel-to-sql"])
 
@@ -31,30 +32,6 @@ def _static_path(filename: str) -> Path:
 def excel_to_sql_dashboard_page() -> FileResponse:
     return FileResponse(_static_path("excel_to_sql_dashboard.html"))
 
-
-def _bearer_token(authorization: str | None) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="請先登入。"
-        )
-    return authorization.split(" ", 1)[1].strip()
-
-
-def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
-    payload = parse_token(_bearer_token(authorization))
-    if not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。"
-        )
-    username = str(payload.get("sub") or "")
-    stored = AUTH_STORE.get_user(username)
-    if not stored or stored.get("status") != "active":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="帳號尚未啟用。"
-        )
-    return AuthUser(
-        username=username, role=str(stored.get("role") or "user"), status="active"
-    )
 
 
 @router.get("/v1/excel-to-sql/dashboard-tasks")
@@ -139,7 +116,7 @@ def excel_to_sql_dashboard_data(
 @router.post("/v1/excel-to-sql/delete-row")
 def excel_to_sql_delete_row(
     payload: DeleteImportedRowPayload,
-    user: AuthUser = Depends(current_user),
+    user: AuthUser = Depends(require_db_operator),
 ) -> dict[str, Any]:
     try:
         return delete_imported_sql_row(
