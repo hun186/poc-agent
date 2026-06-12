@@ -41,21 +41,32 @@
     .nav-root-btn.active { outline: 3px solid rgba(147,197,253,.55); background: #1d4ed8; }
     .nav-subpanel { position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%); width: min(760px, calc(100vw - 36px)); background: #fff; color: #0f172a; border: 1px solid #dbe4ef; border-radius: 16px; box-shadow: 0 24px 70px rgba(15,23,42,.28); padding: 12px; }
     .nav-subpanel::before { content: ""; position: absolute; top: -9px; left: 50%; width: 18px; height: 18px; transform: translateX(-50%) rotate(45deg); background: #fff; border-left: 1px solid #dbe4ef; border-top: 1px solid #dbe4ef; }
-    .nav-menu { display: none; gap: 10px; }
+    .nav-menu { display: none; gap: 10px; grid-template-columns: minmax(180px, 230px) minmax(240px, 1fr); align-items: start; }
     .nav-menu.active { display: grid; }
-    .nav-menu-title { margin: 2px 4px 8px; color: #334155; font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-    .nav-level { border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: hidden; }
-    .nav-level + .nav-level { margin-top: 8px; }
-    .nav-level summary { cursor: pointer; padding: 12px 14px; font-weight: 800; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+    .nav-menu-title { grid-column: 1 / -1; margin: 2px 4px 0; color: #334155; font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .nav-level { grid-column: 1; position: relative; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: visible; }
+    .nav-level + .nav-level { margin-top: 0; }
+    .nav-level summary { cursor: pointer; padding: 12px 14px; font-weight: 800; list-style: none; display: flex; justify-content: space-between; gap: 12px; border-radius: 12px; }
+    .nav-level[open] summary { background: #eff6ff; color: #1d4ed8; }
     .nav-level summary::-webkit-details-marker { display: none; }
     .nav-level summary::before { content: "▸"; color: #2563eb; margin-right: 4px; transition: transform .16s ease; }
-    .nav-level[open] summary::before { transform: rotate(90deg); }
+    .nav-level[open] summary::before { transform: none; }
     .nav-level summary::after { content: "展開"; color: #64748b; font-size: 12px; margin-left: auto; }
-    .nav-level[open] summary::after { content: "收合"; }
-    .nav-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 0 12px 12px; }
+    .nav-level[open] summary::after { content: "右側"; }
+    .nav-actions { position: absolute; top: 0; left: calc(100% + 10px); width: min(470px, calc(100vw - 340px)); min-width: 240px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 10px; background: #fff; border: 1px solid #dbe4ef; border-radius: 12px; box-shadow: 0 16px 42px rgba(15,23,42,.16); z-index: 2; }
+    .nav-level:not([open]) .nav-actions { display: none; }
     .nav-actions button, .nav-actions a { display: inline-flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; border-radius: 10px; padding: 10px 12px; font-weight: 800; color: #fff; background: #475569; border: 0; }
     .nav-actions button.primary-action { background: #2563eb; }
     .nav-actions a { background: #475569; }
+    @media (max-width: 720px) {
+      .nav-subpanel { left: 0; right: 0; transform: none; width: calc(100vw - 36px); }
+      .nav-subpanel::before { left: 24px; transform: rotate(45deg); }
+      .nav-menu { grid-template-columns: 1fr; }
+      .nav-menu-title, .nav-level { grid-column: 1; }
+      .nav-actions { position: static; width: auto; min-width: 0; margin: 0 10px 10px; box-shadow: none; }
+      .nav-level[open] summary::before { transform: rotate(90deg); }
+      .nav-level[open] summary::after { content: "收合"; }
+    }
     .copy-modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15, 23, 42, .55); }
     .copy-dialog { width: min(760px, 100%); background: #fff; border-radius: 16px; box-shadow: 0 24px 60px rgba(15,23,42,.28); padding: 20px; }
     .copy-dialog h3 { margin: 0 0 8px; font-size: 18px; }
@@ -224,6 +235,7 @@
               <div><label>起始時間</label><input id="usageStatsStartTs" type="datetime-local" /></div>
               <div><label>結束時間</label><input id="usageStatsEndTs" type="datetime-local" /></div>
               <div><label>曲線圖時間區間</label><select id="usageStatsBucket"><option value="hour">每小時</option><option value="6_hours">每 6 小時</option><option value="12_hours">每 12 小時</option><option value="day" selected>每日</option><option value="week">每週</option><option value="month">每月</option></select></div>
+              <div><label>audit 事件筆數</label><input id="usageStatsEventsLimit" type="number" min="1" max="500" value="100" /></div>
             </section>
             <div class="row" style="margin-top: 12px;">
               <button id="applyUsageStatsFiltersBtn">套用統計篩選</button>
@@ -240,6 +252,11 @@
               </div>
               <div id="usageStatsChart" class="chart-empty">尚未載入圖表</div>
             </div>
+            <section aria-label="使用統計 audit 事件條目">
+              <h3>最近 audit 事件</h3>
+              <p class="muted">下方條目套用與曲線圖相同的篩選條件，可直接看到實際修改事件。</p>
+              <div id="usageStatsAuditEvents"></div>
+            </section>
           </div>
 
           <div id="accountCard" class="card hidden">
@@ -705,6 +722,7 @@ function collectUsageStatsQuery() {
   const params = new URLSearchParams({
     category: $('usageStatsCategory').value,
     chart_bucket: $('usageStatsBucket').value,
+    events_limit: String(Math.max(1, Math.min(500, Number($('usageStatsEventsLimit').value || 100)))),
   });
   const mapping = {
     username: $('usageStatsUsername').value.trim(),
@@ -715,6 +733,23 @@ function collectUsageStatsQuery() {
   };
   Object.entries(mapping).forEach(([key, value]) => { if (value) params.set(key, value); });
   return params;
+}
+function renderUsageStatsAuditEvents(filtered) {
+  const events = (filtered && filtered.events) || [];
+  const total = filtered?.events_total ?? events.length;
+  const limit = filtered?.events_limit ?? events.length;
+  $('usageStatsAuditEvents').innerHTML = events.map((h) => {
+    const paths = Array.isArray(h.changed_paths) ? h.changed_paths.filter(Boolean) : [];
+    return `<div class="audit">
+      <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
+      <div class="muted">${esc(h.ts || '')}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
+      <div class="muted">index=${esc(h.index || '-')} / id=${esc(h.id || '-')} / result=${esc(h.result || '-')}</div>
+      <div class="muted">異動欄位：${paths.length ? esc(paths.join(', ')) : '(無)'}</div>
+    </div>`;
+  }).join('') || '<p class="muted">目前篩選條件下無 audit 事件。</p>';
+  if (events.length && total > events.length) {
+    $('usageStatsAuditEvents').insertAdjacentHTML('afterbegin', `<p class="muted">顯示最近 ${esc(events.length)} / ${esc(total)} 筆（上限 ${esc(limit)} 筆）。</p>`);
+  }
 }
 function renderFilteredUsageStats(filtered) {
   if (!filtered) return;
@@ -734,6 +769,7 @@ function renderFilteredUsageStats(filtered) {
     chartEl: $('usageStatsChart'),
     seriesName: '使用統計筆數',
   });
+  renderUsageStatsAuditEvents(filtered);
 }
 async function loadFilteredUsageStats() {
   setStatus('usageStatsStatus', '查詢使用統計中...');
@@ -755,6 +791,7 @@ function clearUsageStatsFilters() {
   $('usageStatsStartTs').value = '';
   $('usageStatsEndTs').value = '';
   $('usageStatsBucket').value = 'day';
+  $('usageStatsEventsLimit').value = '100';
 }
 function switchMainTab(tab) {
   $('searchCard').classList.toggle('hidden', tab !== 'search');
@@ -1125,7 +1162,7 @@ $('excelDashboardBtn').onclick = () => { collapseMainNav(); location.href = '/ex
 document.addEventListener('click', (ev) => { if ($('mainNav') && !$('mainNav').classList.contains('hidden') && !$('mainNav').contains(ev.target)) collapseMainNav(); });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') collapseMainNav(); });
 $('searchAuditBtn').onclick = searchAuditLogs;
-$('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); }; $('searchAccountAuditBtn').onclick = searchAccountAuditLogs; $('clearAccountAuditBtn').onclick = () => { clearAccountAuditFilters(); searchAccountAuditLogs(); }; $('applyUsageStatsFiltersBtn').onclick = loadFilteredUsageStats; $('clearUsageStatsFiltersBtn').onclick = () => { clearUsageStatsFilters(); loadFilteredUsageStats(); }; $('usageStatsBucket').onchange = loadFilteredUsageStats; $('usageStatsCategory').onchange = loadFilteredUsageStats; $('refreshLoginAuditBtn').onclick = refreshLoginAudit;
+$('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); }; $('searchAccountAuditBtn').onclick = searchAccountAuditLogs; $('clearAccountAuditBtn').onclick = () => { clearAccountAuditFilters(); searchAccountAuditLogs(); }; $('applyUsageStatsFiltersBtn').onclick = loadFilteredUsageStats; $('clearUsageStatsFiltersBtn').onclick = () => { clearUsageStatsFilters(); loadFilteredUsageStats(); }; $('usageStatsBucket').onchange = loadFilteredUsageStats; $('usageStatsCategory').onchange = loadFilteredUsageStats; $('usageStatsEventsLimit').onchange = loadFilteredUsageStats; $('refreshLoginAuditBtn').onclick = refreshLoginAudit;
 $('deleteSelectedBtn').onclick = deleteSelectedHits;
 $('copyResetTokenBtn').onclick = async () => { try { await copyTextToClipboard($('resetTokenModalValue').value); setStatus('resetTokenCopyStatus', '已複製 token。', 'ok'); } catch (err) { setStatus('resetTokenCopyStatus', err.message, 'error'); } };
 $('closeResetTokenModalBtn').onclick = closeResetTokenDialog;

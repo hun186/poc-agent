@@ -20,18 +20,27 @@
     .nav-root-btn { min-width: 120px; padding: .8rem 1rem; border: 1px solid rgba(255,255,255,.18); box-shadow: 0 8px 20px rgba(0,0,0,.16); }
     .nav-root-btn.active { outline: 3px solid rgba(147,197,253,.55); background: #1d4ed8; }
     .nav-subpanel { position: absolute; top: calc(100% + .75rem); left: 0; width: min(680px, calc(100vw - 2.5rem)); background: white; color: #0f172a; border: 1px solid #dbe4ef; border-radius: 14px; box-shadow: 0 24px 70px rgba(15,23,42,.28); padding: .75rem; }
-    .nav-menu { display: none; }
-    .nav-menu.active { display: grid; gap: .6rem; }
-    .nav-menu-title { margin: .2rem .25rem; color: #334155; font-size: .8rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-    .nav-level { border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: hidden; }
-    .nav-level summary { cursor: pointer; padding: .75rem .9rem; font-weight: 800; list-style: none; display: flex; justify-content: space-between; }
+    .nav-menu { display: none; gap: .6rem; grid-template-columns: minmax(170px, 220px) minmax(230px, 1fr); align-items: start; }
+    .nav-menu.active { display: grid; }
+    .nav-menu-title { grid-column: 1 / -1; margin: .2rem .25rem 0; color: #334155; font-size: .8rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .nav-level { grid-column: 1; position: relative; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: visible; }
+    .nav-level summary { cursor: pointer; padding: .75rem .9rem; font-weight: 800; list-style: none; display: flex; justify-content: space-between; border-radius: 12px; }
+    .nav-level[open] summary { background: #eff6ff; color: #1d4ed8; }
     .nav-level summary::-webkit-details-marker { display: none; }
     .nav-level summary::before { content: "▸"; color: #2563eb; margin-right: .25rem; transition: transform .16s ease; }
-    .nav-level[open] summary::before { transform: rotate(90deg); }
+    .nav-level[open] summary::before { transform: none; }
     .nav-level summary::after { content: "展開"; color: #64748b; font-size: .8rem; margin-left: auto; }
-    .nav-level[open] summary::after { content: "收合"; }
-    .nav-actions { display: flex; gap: .45rem; flex-wrap: wrap; padding: 0 .75rem .75rem; }
+    .nav-level[open] summary::after { content: "右側"; }
+    .nav-actions { position: absolute; top: 0; left: calc(100% + .6rem); width: min(420px, calc(100vw - 320px)); min-width: 230px; display: flex; gap: .45rem; flex-wrap: wrap; padding: .65rem; background: white; border: 1px solid #dbe4ef; border-radius: 12px; box-shadow: 0 16px 42px rgba(15,23,42,.16); z-index: 2; }
+    .nav-level:not([open]) .nav-actions { display: none; }
     .nav-actions button { margin: 0; }
+    @media (max-width: 720px) {
+      .nav-menu { grid-template-columns: 1fr; }
+      .nav-menu-title, .nav-level { grid-column: 1; }
+      .nav-actions { position: static; width: auto; min-width: 0; margin: 0 .65rem .65rem; box-shadow: none; }
+      .nav-level[open] summary::before { transform: rotate(90deg); }
+      .nav-level[open] summary::after { content: "收合"; }
+    }
     pre { white-space: pre-wrap; background: #0f172a; color: #e2e8f0; padding: 1rem; border-radius: 10px; }
     .hidden { display: none !important; }
     .copy-modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15,23,42,.55); }

@@ -313,3 +313,51 @@ Validation:
 - `pytest tests`：59 passed，5 warnings（既有 StarletteDeprecationWarning 與 datetime.utcnow deprecation warnings）。
 - `python portable_auth_pack/scripts/verify_auth_pack.py`：passed，出現既有 FastAPI TestClient / StarletteDeprecationWarning。
 - `python - <<'PY' ... import playwright ...`：輸出 `playwright-not-installed`；因此未做瀏覽器截圖，改以靜態 UI 測試驗證下拉選單。
+
+## 2026-06-12 多層選單右側展開調整
+
+Task:
+
+- 依使用者回饋，將標題列多層選單改成類似 Word：上一層選項仍向下排列，下一層內容在右側展開，避免展開 / 收合時推動上一層選項造成視覺跳動。
+
+Changes:
+
+- `api/static/editor.html`：調整 Editor 標題列選單 CSS，第二層 `.nav-level` 固定在左欄向下排列，第三層 `.nav-actions` 改為 absolute 定位於右側；關閉狀態不佔版面，桌機展開不再改變上一層項目位置。
+- `api/static/editor.html`：保留窄螢幕 fallback，720px 以下改回垂直展開，避免右側面板超出可視範圍。
+- `portable_auth_pack/static/login_admin_minimal.html`：同步 Auth Pack 外帶頁的多層選單右側展開樣式，維持兩份靜態 UI 行為一致。
+- `tests/test_editor_auth_ui_static.py`：新增靜態斷言，驗證主系統與 portable auth pack 都使用左右欄、多層右側 absolute 展開、關閉不顯示內容與窄螢幕 fallback。
+
+Validation:
+
+- `pytest tests/test_editor_auth_ui_static.py` 通過（11 passed）。
+- `python - <<'PY' ... import playwright ...` 顯示 `No module named 'playwright'`；目前環境仍無法提供瀏覽器截圖，已用靜態 UI 測試驗證 CSS 與 DOM 行為標記。
+
+Conclusion:
+
+- 桌機多層選單現在採「上一層向下列出、下一層向右展開」的 Word 式視覺模式，展開 / 收合下一層不會改變上一層選項位置；小螢幕仍維持可用的垂直展開。
+
+
+## 2026-06-12 Dashboard 登入人員與使用統計 audit 條目
+
+Task:
+
+- Excel→SQL 匯入 SQL 監控儀表板標題列需比照入口 / Editor 標題列顯示目前登入人員。
+- ES 文件修改統計頁面除了曲線圖，也需在下方顯示套用相同篩選條件的 audit 事件條目，方便直接查看實際修改事件。
+
+Changes:
+
+- `api/static/excel_to_sql_dashboard.html`：標題列新增 `whoami` 顯示區，啟動時使用既有 `sra_editor_token` 呼叫 `/v1/auth/me` 顯示 `username (role)`，失效時顯示登入已失效；並移除重複的 `closeDestinationTableDropdown()` 覆寫，保留可套用 pending 篩選的版本。
+- `api/routers/editor.py`：`GET /v1/editor/usage-stats` 新增 `events_limit` query，於 `filtered` 回傳 `events`、`events_total`、`events_limit`，且沿用既有權限規則：非 superuser 只看自己的 audit events。
+- `api/static/editor.html`：使用統計區新增 audit 事件筆數輸入與「最近 audit 事件」區塊，曲線圖下方會列出同一篩選條件的事件條目。
+- `tests/test_excel_to_sql_dashboard_static.py`、`tests/test_editor_auth_ui_static.py`、`tests/test_editor_audit_queries.py`：補上儀表板登入人員、使用統計事件 UI 與 usage-stats response events 的驗證。
+- `.codex/api_contract.md`：記錄 `/v1/editor/usage-stats` 新增 query / response contract。
+
+Validation:
+
+- `pytest tests/test_excel_to_sql_dashboard_static.py tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（19 passed）。
+- `pytest tests` 通過（61 passed，5 warnings：既有 FastAPI TestClient / datetime.utcnow deprecation warnings）。
+- `python - <<'PY' ... import playwright ...` 顯示 `No module named 'playwright'`；本次可視 UI 變更無法截圖，已同步記錄於 `.codex/known_issues.md` 並以靜態 UI 測試替代。
+
+Conclusion:
+
+- Excel→SQL dashboard 現在可直接在標題列辨識目前登入人員；ES 文件 / 使用統計曲線下方也能看到對應 audit 條目，不必切到另一個紀錄查詢頁才能確認實際修改事件。
