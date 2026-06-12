@@ -88,3 +88,17 @@ Conclusion:
 
 - 主系統與 portable_auth_pack 的 hover 子選單現在對游標移動較寬容，不需刻意快速移動到下一層。
 - 大量 audit / 帳號清單可在前端分頁瀏覽；既有後端查詢負責篩選，前端再排序與切頁。
+
+## 2026-06-12 使用統計分頁工具相容性修正
+
+- 目的：修正 Editor 使用統計 / audit 分頁在瀏覽器載入舊版 `audit_tools.js` 時出現 `SraAuditTools.paginateRows is not a function` 的前端錯誤。
+- 主要修改：`api/static/editor.html` 與 `portable_auth_pack/static/login_admin_minimal.html` 的共用工具 script 加入版本 query 以避開舊快取；分頁呼叫改經由 `paginateAuditRows()`，當共享 `SraAuditTools.paginateRows` 尚未載入或為舊版缺少函式時，回退到同 shape 的本地 `localPaginateRows()`。
+- 驗證：執行 `pytest tests/test_editor_auth_ui_static.py tests/test_excel_to_sql_dashboard_static.py` 通過 18 項；執行 `pytest tests` 通過 64 項，僅保留既有 Starlette / SyntaxWarning / datetime.utcnow deprecation warnings。
+- 結論：使用統計曲線與 audit 條目分頁仍優先使用共用工具；舊瀏覽器快取或部署期間短暫資產不同步時不會再因 `paginateRows` 缺失中斷頁面操作。
+
+## 2026-06-12 前端分頁加入首頁、末頁與跳頁
+
+- 目的：改善 audit / 使用統計 / 帳號清單前端分頁，避免頁數很多時只能反覆點「下一頁」才能到目標頁。
+- 主要修改：`api/static/editor.html` 的文件異動、帳號操作、登入稽核與使用統計 audit 事件分頁，以及 `portable_auth_pack/static/login_admin_minimal.html` 的帳號清單與登入稽核分頁，皆加入「首頁」、「末頁」、頁碼輸入與「跳至頁數」；Enter 也可從頁碼輸入框直接跳頁。分頁更新時會同步禁用不可用的首頁 / 上一頁 / 下一頁 / 末頁按鈕，並將輸入框 max/value 更新為目前頁資訊。
+- 驗證：執行 `pytest tests/test_editor_auth_ui_static.py` 通過 14 項；執行 `pytest tests` 通過 64 項，僅有既有 warning。
+- 截圖限制：本次為可視 UI 變更，但 `python -m playwright --version` 顯示環境未安裝 Playwright，無法補互動式截圖；已以靜態 UI 測試驗證新增控制元件與綁定邏輯。
