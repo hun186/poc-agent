@@ -107,6 +107,21 @@ def test_auth_account_management_actions_are_written_to_account_audit() -> None:
     assert '"action": "auth.user_deleted"' in source
 
 
+def test_account_management_uses_role_dropdowns() -> None:
+    editor_html = _editor_html()
+    portable_html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+
+    for html in (editor_html, portable_html):
+        assert 'function roleOptionsHtml(selectedRole, roleOptions)' in html
+        assert 'data-role-select=' in html
+        assert 'approveSelectedUser' in html
+        assert 'db_operator' in html
+        assert 'data_editor' in html
+        assert 'data_reader' in html
+        assert '核准 user' not in html
+        assert '核准 superuser' not in html
+
+
 def test_portable_auth_pack_reset_token_dialog_is_copyable() -> None:
     html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
 

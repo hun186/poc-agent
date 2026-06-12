@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Requ
 from fastapi.responses import FileResponse
 
 from agent.es import es_client
-from api.routers.editor_dependencies import bearer_token, current_user, require_superuser, static_path
+from api.routers.editor_dependencies import bearer_token, current_user, require_data_editor, require_superuser, static_path
 from api.routers.editor_models import (
     ApprovePayload,
     AuthPayload,
@@ -18,7 +18,7 @@ from api.routers.editor_models import (
     ResetPasswordPayload,
     SaveDocumentPayload,
 )
-from api.services.auth_store import AUTH_STORE, AuthUser, create_token, parse_token
+from api.services.auth_store import AUTH_STORE, AuthUser, create_token, parse_token, public_role_options
 from api.services.editor_audit import append_audit_event, diff_values
 from api.services.editor_audit_queries import (
     build_audit_time_series,
@@ -194,12 +194,12 @@ def recover_password(payload: RecoverPasswordPayload, request: Request) -> dict[
 
 @router.get("/v1/auth/me")
 def me(user: AuthUser = Depends(current_user)) -> dict[str, Any]:
-    return {"user": user.__dict__}
+    return {"user": user.__dict__, "role_options": public_role_options()}
 
 
 @router.get("/v1/auth/users")
 def list_users(_: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
-    return {"users": AUTH_STORE.list_users()}
+    return {"users": AUTH_STORE.list_users(), "role_options": public_role_options()}
 
 
 @router.post("/v1/auth/users/{username}/approve")
@@ -432,7 +432,7 @@ def get_document(
 
 
 @router.put("/v1/editor/doc")
-def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current_user)) -> dict[str, Any]:
+def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(require_data_editor)) -> dict[str, Any]:
     ensure_allowed_index(payload.index)
     is_create = not (payload.id and payload.id.strip())
     if any(k.startswith("_") for k in payload.source.keys()):
@@ -502,7 +502,7 @@ def save_document(payload: SaveDocumentPayload, user: AuthUser = Depends(current
 def delete_document(
     index: str = Query(...),
     id: str = Query(...),
-    user: AuthUser = Depends(current_user),
+    user: AuthUser = Depends(require_data_editor),
 ) -> dict[str, Any]:
     ensure_allowed_index(index)
     try:
@@ -524,7 +524,7 @@ def delete_document(
 
 
 @router.delete("/v1/editor/docs")
-def delete_documents(payload: DeleteDocumentsPayload, user: AuthUser = Depends(current_user)) -> dict[str, Any]:
+def delete_documents(payload: DeleteDocumentsPayload, user: AuthUser = Depends(require_data_editor)) -> dict[str, Any]:
     ensure_allowed_index(payload.index)
     ids = [str(i).strip() for i in payload.ids if str(i).strip()]
     if not ids:

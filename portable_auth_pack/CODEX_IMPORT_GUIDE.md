@@ -4,7 +4,7 @@
 
 ## 任務目標
 
-把 `portable_auth_pack/fastapi_auth_pack` 作為素材嵌入目標 FastAPI 專案，依照目標專案既有架構整合 router、設定、測試與前端登入流程，並用 `current_user` / `require_superuser` 保護目標專案既有 endpoint。
+把 `portable_auth_pack/fastapi_auth_pack` 作為素材嵌入目標 FastAPI 專案，依照目標專案既有架構整合 router、設定、測試與前端登入流程，並用 `current_user` / `require_data_editor` / `require_db_operator` / `require_superuser` 保護目標專案既有 endpoint。
 
 ## 建議導入步驟
 
@@ -32,8 +32,10 @@
    - 若是測試環境，可複製 `examples/bootstrap_superusers.test.json` 到目標專案 `config/auth/bootstrap_superusers.json`。
 
 5. **保護 endpoint**
-   - 一般登入：`Depends(current_user)`。
-   - 管理者：`Depends(require_superuser)`。
+   - 資料閱讀：`Depends(current_user)`。
+   - 資料編修：`Depends(require_data_editor)`。
+   - 資料庫維管：`Depends(require_db_operator)`。
+   - 帳號維管 / 最高級全能者：`Depends(require_superuser)`。
 
 6. **前端導入**
    - 參考 `static/login_admin_minimal.html`。
@@ -45,7 +47,7 @@
      - bootstrap superuser 可登入。
      - 未帶 token 呼叫 protected API 回 401。
      - pending user 登入回泛用 401，不暴露帳號狀態。
-     - superuser 可 approve user。
+     - superuser 可用 `superuser` / `db_operator` / `data_editor` / `data_reader` approve 使用者。
      - approved user 可呼叫 protected API。
      - logout 後同一 token 呼叫 protected API 回 401。
      - change/reset password 後舊 token 回 401，且新密碼可登入。
@@ -70,7 +72,7 @@
 
 - `dependencies.py`
   - 在 `current_user()` 加入更多使用者欄位。
-  - 在 `require_superuser()` 改成 role list 或 permission-based access control。
+  - 依目標專案調整 `require_data_editor()`、`require_db_operator()`、`require_superuser()` 或改成 permission-based access control。
 
 - `router.py`
   - 改 response schema。
@@ -79,4 +81,4 @@
   - 若已有 session/JWT 系統，將 logout denylist 與 token_version 失效機制接到既有儲存層。
 
 - `static/login_admin_minimal.html`
-  - 抽出 `api()` helper 與 login/register/admin user management 函式。
+  - 抽出 `api()` helper、login/register/admin user management 函式與帳號層級下拉選單。

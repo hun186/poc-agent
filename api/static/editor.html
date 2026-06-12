@@ -1004,16 +1004,30 @@ async function saveAsNewDoc() {
     setStatus('saveStatus', '另存完成，但未取得新 ID', 'error');
   } catch (err) { setStatus('saveStatus', err.message, 'error'); }
 }
+function roleOptionsHtml(selectedRole, roleOptions) {
+  const options = roleOptions && roleOptions.length ? roleOptions : [
+    {value: 'superuser', label: '最高級全能者'},
+    {value: 'db_operator', label: '資料庫操作者'},
+    {value: 'data_editor', label: '資料修改者'},
+    {value: 'data_reader', label: '資料閱讀者'},
+  ];
+  return options.map(opt => `<option value="${esc(opt.value)}" ${opt.value === selectedRole ? 'selected' : ''}>${esc(opt.label)} (${esc(opt.value)})</option>`).join('');
+}
 async function refreshUsers() {
   try {
     const data = await api('/v1/auth/users');
-    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><button data-approve-user="${esc(u.username)}" data-role="user">核准普通</button><button data-approve-user="${esc(u.username)}" data-role="superuser" class="secondary">核准超級</button><button data-issue-reset-token="${esc(u.username)}" class="secondary">產生 reset token</button><button data-reset-user="${esc(u.username)}" class="secondary">直接重設密碼</button><button data-reject-user="${esc(u.username)}" class="danger">拒絕</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
-    document.querySelectorAll('[data-approve-user]').forEach(btn => btn.onclick = () => approveUser(btn.dataset.approveUser, btn.dataset.role));
+    const roleOptions = data.role_options || [];
+    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><label class="inline-label">帳號層級<select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select></label><button data-approve-user="${esc(u.username)}">核准 / 更新層級</button><button data-issue-reset-token="${esc(u.username)}" class="secondary">產生 reset token</button><button data-reset-user="${esc(u.username)}" class="secondary">直接重設密碼</button><button data-reject-user="${esc(u.username)}" class="danger">拒絕</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
+    document.querySelectorAll('[data-approve-user]').forEach(btn => btn.onclick = () => approveSelectedUser(btn.dataset.approveUser));
     document.querySelectorAll('[data-issue-reset-token]').forEach(btn => btn.onclick = () => issuePasswordResetToken(btn.dataset.issueResetToken));
     document.querySelectorAll('[data-reset-user]').forEach(btn => btn.onclick = () => resetUserPassword(btn.dataset.resetUser));
     document.querySelectorAll('[data-reject-user]').forEach(btn => btn.onclick = () => rejectUser(btn.dataset.rejectUser));
     document.querySelectorAll('[data-delete-user]').forEach(btn => btn.onclick = () => deleteUser(btn.dataset.deleteUser));
   } catch (err) { $('users').innerHTML = `<div class="status error">${esc(err.message)}</div>`; }
+}
+async function approveSelectedUser(username) {
+  const select = Array.from(document.querySelectorAll('[data-role-select]')).find(el => el.dataset.roleSelect === username);
+  await approveUser(username, select ? select.value : 'data_reader');
 }
 async function approveUser(username, role) { await api(`/v1/auth/users/${encodeURIComponent(username)}/approve`, {method:'POST', body: JSON.stringify({role})}); await refreshUsers(); }
 async function rejectUser(username) { await api(`/v1/auth/users/${encodeURIComponent(username)}/reject`, {method:'POST'}); await refreshUsers(); }

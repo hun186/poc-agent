@@ -48,3 +48,11 @@
 - `portable_auth_pack/fastapi_auth_pack` 維持可外帶 FastAPI auth 素材包定位，但已同步主系統的密碼安全行為：PBKDF2 + constant-time digest compare、missing user dummy hash verification、process-local auth throttle、production secret fail-fast。
 - 外帶 router 的 `/v1/auth/login` 與 `/v1/auth/reset-password` 會在同一 process 內依 `scope:username:client_host` 節流；導入多 worker / 多 instance 專案時，文件要求改接集中式 rate limiting。
 - 外帶文件與 verify script 是 portable auth pack 的契約與驗證入口；主系統 API 不直接依賴 portable auth pack runtime。
+
+## 2026-06-12 四層 Auth Role 與權限邊界
+
+- 主系統與 `portable_auth_pack` 的 auth store 共享四層 role model：`data_reader` < `data_editor` < `db_operator` < `superuser`。
+- `api/services/auth_store.py` 提供 role 正規化、階層比較與前端公開 role options；`user` legacy role 會正規化為 `data_editor`，避免舊資料立即失效。
+- `api/routers/editor_dependencies.py` 集中提供 `current_user`、`require_data_editor`、`require_db_operator`、`require_superuser`；權限不足會寫入 `authz.denied` audit event。
+- Editor 文件查閱仍使用 active user；文件寫入 / 刪除使用 `require_data_editor`；Excel→SQL dashboard 查閱仍使用 active user，刪除匯入 SQL row 使用 `require_db_operator`；帳號維管仍只允許 `superuser`。
+- `api/static/editor.html` 與 `portable_auth_pack/static/login_admin_minimal.html` 的帳號審核 UI 改用 role 下拉選單，從 `/v1/auth/users` 的 `role_options` 生成，避免每個 role 各一顆核准按鈕。

@@ -292,3 +292,24 @@ Validation:
 Conclusion:
 
 - 外帶 FastAPI Auth Pack 現已與主系統 Auth 安全行為一致：不存在帳號仍走 KDF 驗證、登入 / reset token 暴力嘗試有節流、production secret 有 fail-fast，且外部登入失敗訊息不再洩漏帳號狀態。
+
+## 2026-06-12 Auth 四層身份分級擴充
+
+Task:
+
+- 將主系統與 `portable_auth_pack` 從 `user` / `superuser` 二級身份擴充為四層：`superuser`、`db_operator`、`data_editor`、`data_reader`。
+- 帳號審核 UI 改用下拉式選單設定帳號層級，避免每個層級各一顆按鈕。
+
+Changes:
+
+- `api/services/auth_store.py` 與 `portable_auth_pack/fastapi_auth_pack/auth_store.py` 新增 role hierarchy、role 正規化、role options，註冊預設 `data_reader`；legacy `user` alias 正規化為 `data_editor`。
+- `api/routers/editor_dependencies.py` 與 portable dependencies 新增 `require_data_editor`、`require_db_operator`、`require_superuser` 階層式權限檢查。
+- 主系統 Editor 文件寫入 / 刪除需 `data_editor` 以上；Excel→SQL delete-row 需 `db_operator` 以上；帳號維管維持 `superuser`。
+- `GET /v1/auth/me` 與 `GET /v1/auth/users` 回傳 `role_options`；主系統與 portable auth pack 管理 UI 使用下拉選單送出 approve role。
+- 更新 portable auth pack README、導入指南、example app 與 verify script；新增測試涵蓋 role hierarchy、legacy role alias、dependency 邊界與下拉 UI 靜態檢查。
+
+Validation:
+
+- `pytest tests`：59 passed，5 warnings（既有 StarletteDeprecationWarning 與 datetime.utcnow deprecation warnings）。
+- `python portable_auth_pack/scripts/verify_auth_pack.py`：passed，出現既有 FastAPI TestClient / StarletteDeprecationWarning。
+- `python - <<'PY' ... import playwright ...`：輸出 `playwright-not-installed`；因此未做瀏覽器截圖，改以靜態 UI 測試驗證下拉選單。

@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi import Depends, Header, HTTPException, status
 
-from .auth_store import AUTH_STORE, AuthUser, parse_token
+from .auth_store import (
+    AUTH_STORE,
+    ROLE_DATA_EDITOR,
+    ROLE_DB_OPERATOR,
+    ROLE_SUPERUSER,
+    AuthUser,
+    has_role_at_least,
+    normalize_role,
+    parse_token,
+)
 
 
 def bearer_token(authorization: str | None) -> str:
@@ -23,10 +34,18 @@ def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。")
     if not AUTH_STORE.is_token_current(username, int(payload.get("ver") or 0)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。")
-    return AuthUser(username=username, role=str(stored.get("role") or "user"), status="active")
+    return AuthUser(username=username, role=normalize_role(str(stored.get("role") or "")), status="active")
 
 
-def require_superuser(user: AuthUser = Depends(current_user)) -> AuthUser:
-    if user.role != "superuser":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要超級使用者權限。")
-    return user
+def require_role(minimum_role: str, detail: str) -> Callable[[AuthUser], AuthUser]:
+    def dependency(user: AuthUser = Depends(current_user)) -> AuthUser:
+        if not has_role_at_least(user.role, minimum_role):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+        return user
+
+    return dependency
+
+
+require_data_editor = require_role(ROLE_DATA_EDITOR, "需要資料修改者以上權限。")
+require_db_operator = require_role(ROLE_DB_OPERATOR, "需要資料庫操作者以上權限。")
+require_superuser = require_role(ROLE_SUPERUSER, "需要最高級全能者權限。")
