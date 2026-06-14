@@ -111,3 +111,8 @@
 - 本次僅拆分後端 router 檔案職責，未新增、移除或變更 API path、request 格式或 response 格式。
 - `/v1/auth/*` 仍由主 app include `api.routers.editor.router` 後提供；實作檔移至 `api/routers/editor_auth.py`。
 - `GET /v1/editor/usage-stats` 與 `GET /v1/editor/audit-logs` contract 不變；實作檔移至 `api/routers/editor_usage.py`。
+
+## 2026-06-14 portable_auth_pack router backend split
+
+- 本次僅拆分 `portable_auth_pack` router 實作檔，未新增、移除或變更 API path、request 格式或 response 格式。
+- 外部導入仍使用 `from fastapi_auth_pack import router` 後 `app.include_router(router)`；`/v1/auth/*`、`GET /v1/auth/login-audit` 與 portable `GET /v1/editor/usage-stats` contract 不變。

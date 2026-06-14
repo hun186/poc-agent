@@ -103,3 +103,9 @@
 - `api/routers/editor_auth.py` 承載原本在 Editor router 內的 `/v1/auth/*` route：註冊、登入、登出、密碼變更 / 重設、帳號審核與 login audit。
 - `api/routers/editor_usage.py` 承載 audit / usage 查詢 route：`GET /v1/editor/usage-stats` 與 `GET /v1/editor/audit-logs`。
 - 為降低拆檔對既有單元測試或內部腳本的衝擊，`api.routers.editor` 仍保留對 usage route handler 的相容 wrapper；正式 FastAPI route registration 則來自子 router。
+
+## 2026-06-14 portable_auth_pack router backend split
+
+- `portable_auth_pack/fastapi_auth_pack/router.py` 現在只做聚合 router，include `auth_routes.router` 與 `usage_routes.router`，維持 `from fastapi_auth_pack import router` 的外部入口。
+- `portable_auth_pack/fastapi_auth_pack/auth_routes.py` 承載帳號註冊、登入、登出、密碼流程、帳號審核與 `GET /v1/auth/login-audit`。
+- `portable_auth_pack/fastapi_auth_pack/usage_routes.py` 承載 portable pack 的 `GET /v1/editor/usage-stats` 帳號操作統計相容 endpoint 與其 helper。

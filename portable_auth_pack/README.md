@@ -24,10 +24,12 @@ portable_auth_pack/
 ├── CODEX_IMPORT_GUIDE.md
 ├── fastapi_auth_pack/
 │   ├── __init__.py
+│   ├── auth_routes.py
 │   ├── auth_store.py
 │   ├── dependencies.py
 │   ├── models.py
-│   └── router.py
+│   ├── router.py
+│   └── usage_routes.py
 ├── examples/
 │   ├── bootstrap_superusers.test.json
 │   ├── env.example
@@ -45,7 +47,7 @@ portable_auth_pack/
 這包可以整包複製到目標專案，作為 Codex 導入時的參考素材；但對於已經有既有架構、router、設定系統或啟動流程的專案，**建議不要長期用外掛子目錄 + `PYTHONPATH` 的方式運作**。較穩定的做法是：
 
 1. 先把 `portable_auth_pack/` 整包放進目標專案，讓 Codex 有完整上下文與範例。
-2. 再由 Codex 依照目標專案慣例，把 `fastapi_auth_pack/` 內的 auth store、models、dependencies、router 嵌入到既有 app package，例如 `app/auth/`、`api/auth/` 或既有 `users/` 模組。
+2. 再由 Codex 依照目標專案慣例，把 `fastapi_auth_pack/` 內的 auth store、models、dependencies、router / route modules 嵌入到既有 app package，例如 `app/auth/`、`api/auth/` 或既有 `users/` 模組。
 3. 掛 router 時沿用目標專案原本的 `app.include_router(...)`、prefix、dependency、設定載入與測試風格。
 4. 前端只抽取 `static/login_admin_minimal.html` 裡的登入、token header、帳號審核邏輯，不必照搬整頁。
 

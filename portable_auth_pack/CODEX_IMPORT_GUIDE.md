@@ -75,10 +75,16 @@
   - 依目標專案調整 `require_data_editor()`、`require_db_operator()`、`require_superuser()` 或改成 permission-based access control。
 
 - `router.py`
+  - 保持為聚合 router；若目標專案有既有 router 組織，可只 include 需要的子 router。
+
+- `auth_routes.py`
   - 改 response schema。
   - 維持 public forgot-password 不回傳 token；依目標專案調整 superuser 產生 reset token 後的交付方式。
   - 依目標專案調整 login audit 儲存位置、保留期限與查詢權限。
   - 若已有 session/JWT 系統，將 logout denylist 與 token_version 失效機制接到既有儲存層。
+
+- `usage_routes.py`
+  - 若目標專案需要帳號操作統計，依既有 audit source 調整 `/v1/editor/usage-stats` 相容 endpoint。
 
 - `static/login_admin_minimal.html`
   - 抽出 `api()` helper、login/register/admin user management 函式與帳號層級下拉選單。
