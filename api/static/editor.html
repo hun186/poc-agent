@@ -101,6 +101,14 @@
     .chart-point { fill:#2563eb; stroke:white; stroke-width:2; }
     .chart-label { fill:#475569; font-size:11px; }
     .chart-empty { color:#64748b; padding:44px 0; text-align:center; }
+    .multi-filter { position: relative; }
+    .multi-filter summary { cursor:pointer; border:1px solid #cbd5e1; border-radius:8px; padding:9px 10px; background:#fff; list-style:none; }
+    .multi-filter summary::-webkit-details-marker { display:none; }
+    .multi-filter-panel { position:absolute; z-index:20; left:0; right:0; min-width:280px; max-height:360px; overflow:auto; border:1px solid #cbd5e1; border-radius:10px; padding:10px; margin-top:6px; background:#fff; box-shadow:0 12px 28px rgba(15,23,42,.16); }
+    .multi-filter-panel input[type=search] { margin-bottom:8px; }
+    .multi-filter-actions { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+    .multi-filter-option { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; }
+    .multi-filter-option:hover { background:#f1f5f9; }
     .tab { background: #e2e8f0; color: #0f172a; }
     .tab.active { background: #2563eb; color: white; }
     code { background: #f1f5f9; padding: 2px 5px; border-radius: 5px; }
@@ -232,7 +240,7 @@
             <hr style="border:0;border-top:1px solid #e5e7eb;margin:18px 0;" />
             <section class="field-grid" aria-label="使用統計篩選">
               <div><label>統計類別</label><select id="usageStatsCategory"><option value="document">ES 文件異動紀錄使用統計</option><option value="account">帳號操作記錄使用統計</option></select></div>
-              <div><label>使用者</label><input id="usageStatsUsername" placeholder="superuser 可輸入帳號；一般使用者固定自己" /></div>
+              <div><label>使用者</label><details id="usageStatsUsernamePicker" class="multi-filter"><summary id="usageStatsUsernameSummary">目前顯示我的紀錄</summary><div class="multi-filter-panel"><input id="usageStatsUsernameSearch" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="usageStatsSelectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="usageStatsClearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="usageStatsClearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="usageStatsUsernameOptions" role="group" aria-label="使用者清單"></div></div></details><input id="usageStatsUsername" type="hidden" /></div>
               <div><label>動作包含</label><input id="usageStatsAction" placeholder="例如 save_document 或 password" /></div>
               <div id="usageStatsIndexField"><label>Index</label><select id="usageStatsIndex"><option value="">全部</option></select></div>
               <div><label>起始時間</label><input id="usageStatsStartTs" type="datetime-local" /></div>
@@ -372,7 +380,7 @@
   </main>
 <script src="/static/audit_tools.js?v=20260612-paginate"></script>
 <script>
-const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '', auditRows: [], auditPage: 1, accountAuditRows: [], accountAuditPage: 1, usageStatsAuditRows: [], usageStatsAuditPage: 1, usageStatsSource: 'document', usageStatsView: 'mine' };
+const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '', auditRows: [], auditPage: 1, accountAuditRows: [], accountAuditPage: 1, usageStatsAuditRows: [], usageStatsAuditPage: 1, usageStatsSource: 'document', usageStatsView: 'mine', usageStatsUserOptions: [], usageStatsSelectedUsers: [] };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function formatApiError(data, fallback='') {
@@ -684,6 +692,10 @@ async function bootAuthed() {
   }
   await refreshUsageStats();
   switchMainTab('search');
+  $('usageStatsUsernameSearch').oninput = renderUsageStatsUserPicker;
+  $('usageStatsSelectVisibleUsersBtn').onclick = () => setVisibleUsageStatsUsers(true);
+  $('usageStatsClearVisibleUsersBtn').onclick = () => setVisibleUsageStatsUsers(false);
+  $('usageStatsClearAllUsersBtn').onclick = () => { state.usageStatsSelectedUsers = []; renderUsageStatsUserPicker(); };
   $('statsMineTabBtn').onclick = () => switchStatsView('mine');
   $('statsAllTabBtn').onclick = () => switchStatsView('all');
   switchStatsView('mine');
@@ -699,6 +711,43 @@ function formatLocalTimestamp(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return new Intl.DateTimeFormat(undefined, {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit'}).format(d);
+}
+function setUsageStatsUserOptions(values) {
+  state.usageStatsUserOptions = [...new Set((values || []).map(v => String(v || '').trim()).filter(Boolean))].sort();
+  if (state.user && !state.usageStatsUserOptions.includes(state.user.username)) state.usageStatsUserOptions.unshift(state.user.username);
+  state.usageStatsSelectedUsers = state.usageStatsSelectedUsers.filter(v => state.usageStatsUserOptions.includes(v));
+  renderUsageStatsUserPicker();
+}
+function visibleUsageStatsUserOptions() {
+  const q = $('usageStatsUsernameSearch') ? $('usageStatsUsernameSearch').value.trim().toLowerCase() : '';
+  return state.usageStatsUserOptions.filter(v => !q || v.toLowerCase().includes(q));
+}
+function renderUsageStatsUserPicker() {
+  const box = $('usageStatsUsernameOptions');
+  if (!box) return;
+  const visible = visibleUsageStatsUserOptions();
+  const selected = new Set(state.usageStatsSelectedUsers);
+  box.innerHTML = visible.map(v => `<label class="multi-filter-option"><input type="checkbox" data-usage-stats-user="${esc(v)}" ${selected.has(v) ? 'checked' : ''} /> <span>${esc(v)}</span></label>`).join('') || '<p class="muted">沒有符合關鍵字的使用者。</p>';
+  box.querySelectorAll('[data-usage-stats-user]').forEach(input => input.onchange = () => {
+    const value = input.dataset.usageStatsUser;
+    state.usageStatsSelectedUsers = input.checked ? [...new Set(state.usageStatsSelectedUsers.concat([value]))] : state.usageStatsSelectedUsers.filter(v => v !== value);
+    updateUsageStatsUserSummary();
+  });
+  updateUsageStatsUserSummary();
+}
+function updateUsageStatsUserSummary() {
+  const selected = state.usageStatsSelectedUsers;
+  $('usageStatsUsername').value = selected.join(',');
+  const summary = $('usageStatsUsernameSummary');
+  if (!summary) return;
+  if (state.usageStatsView === 'mine') summary.textContent = state.user ? `目前顯示：${state.user.username}` : '目前顯示我的紀錄';
+  else if (!selected.length) summary.textContent = '全體使用者';
+  else summary.textContent = selected.length <= 2 ? selected.join(', ') : `已選 ${selected.length} 位使用者`;
+}
+function setVisibleUsageStatsUsers(checked) {
+  const visible = visibleUsageStatsUserOptions();
+  state.usageStatsSelectedUsers = checked ? [...new Set(state.usageStatsSelectedUsers.concat(visible))] : state.usageStatsSelectedUsers.filter(v => !visible.includes(v));
+  renderUsageStatsUserPicker();
 }
 function updateAuditSelectOptions(id, values) {
   const el = $(id);
@@ -761,7 +810,7 @@ function collectUsageStatsQuery() {
     timezone_offset_minutes: String(localTimezoneOffsetMinutes()),
   });
   const mapping = {
-    username: state.usageStatsView === 'mine' && state.user ? state.user.username : $('usageStatsUsername').value.trim(),
+    username: state.usageStatsView === 'mine' && state.user ? state.user.username : state.usageStatsSelectedUsers.join(','),
     action: $('usageStatsAction').value.trim(),
     index: state.usageStatsSource === 'account' ? '' : $('usageStatsIndex').value.trim(),
     start_ts: toIsoOrEmpty($('usageStatsStartTs').value.trim()),
@@ -889,7 +938,9 @@ async function loadFilteredUsageStats() {
 }
 function clearUsageStatsFilters() {
   configureUsageStatsSource(state.usageStatsSource || 'document');
-  $('usageStatsUsername').value = '';
+  state.usageStatsSelectedUsers = [];
+  $('usageStatsUsernameSearch').value = '';
+  renderUsageStatsUserPicker();
   $('usageStatsAction').value = '';
   $('usageStatsIndex').value = '';
   $('usageStatsStartTs').value = '';
@@ -918,8 +969,9 @@ function switchStatsView(view) {
   const canViewAll = state.user && state.user.role === 'superuser';
   state.usageStatsView = view === 'all' && canViewAll ? 'all' : 'mine';
   const mine = state.usageStatsView === 'mine';
-  $('usageStatsUsername').disabled = mine;
-  $('usageStatsUsername').placeholder = mine ? '目前顯示我的紀錄' : '留空代表全體；也可輸入帳號篩選';
+  $('usageStatsUsernamePicker').classList.toggle('disabled', mine);
+  if (mine) $('usageStatsUsernamePicker').removeAttribute('open');
+  updateUsageStatsUserSummary();
   $('myStats').classList.toggle('hidden', !mine);
   $('adminStats').classList.toggle('hidden', mine);
   updateStatsViewLabels();

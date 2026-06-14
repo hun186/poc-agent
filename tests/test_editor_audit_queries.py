@@ -23,6 +23,17 @@ def test_filter_audit_records_accepts_action_prefix() -> None:
     assert [row["action"] for row in filtered] == ["auth.login"]
 
 
+
+def test_filter_audit_records_username_filter_is_exact_and_allows_comma_list() -> None:
+    records = [
+        {"ts": "2026-06-01T01:00:00+00:00", "action": "auth.login", "username": "A"},
+        {"ts": "2026-06-01T02:00:00+00:00", "action": "auth.login", "username": "BA"},
+        {"ts": "2026-06-01T03:00:00+00:00", "action": "auth.login", "username": "C"},
+    ]
+
+    assert [row["username"] for row in filter_audit_records(records, username="A")] == ["A"]
+    assert [row["username"] for row in filter_audit_records(records, username="A,C")] == ["C", "A"]
+
 def test_build_audit_time_series_groups_by_bucket() -> None:
     records = [
         {"ts": "2026-06-01T01:10:00+00:00", "action": "editor.save_document"},

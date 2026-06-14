@@ -214,3 +214,11 @@ Open
 - 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查「我的帳號操作紀錄」/「全體帳號操作紀錄」按鈕、一般使用者自我範圍限制與 portable auth pack 同步標記；以 `node --check` 驗證抽出的前端 script 語法，並以 `pytest tests` 與 portable verify script 驗證行為。
 
 狀態：Open
+
+## 2026-06-14 統計使用者多選 UI 截圖限制
+
+- 本次將主系統統計儀表板與 `portable_auth_pack` 帳號操作統計的帳號篩選改為可搜尋多選清單，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回報 `No module named playwright`，未能執行瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_editor_auth_ui_static.py` 檢查多選清單、關鍵字搜尋、勾選 / 清除目前篩選的 DOM 與 JS 標記；以 `node --check` 驗證抽出的前端 script 語法；以 `pytest tests` 與 `portable_auth_pack/scripts/verify_auth_pack.py` 驗證功能行為。
+
+狀態：Open
