@@ -76,7 +76,7 @@
       </div>
       <div class="nav-menu" data-nav-menu="password">
         <p class="nav-menu-title">密碼管理</p>
-        <details class="nav-level" open><summary>重設與稽核</summary><div class="nav-actions"><button type="button" onclick="jumpToSection('passwordSection')">密碼管理</button><button class="secondary" type="button" onclick="loginAudit(); collapseAuthPackNav();">登入稽核</button><button class="secondary" type="button" onclick="jumpToSection('accountStatsSection')">帳號統計</button></div></details>
+        <details class="nav-level" open><summary>重設與稽核</summary><div class="nav-actions"><button type="button" onclick="jumpToSection('passwordSection')">密碼管理</button><button class="secondary" type="button" onclick="loginAudit(); collapseAuthPackNav();">我的登入稽核</button><button class="secondary" type="button" onclick="jumpToSection('accountStatsSection')">帳號統計</button></div></details>
       </div>
       <div class="nav-menu" data-nav-menu="admin">
         <p class="nav-menu-title">Superuser</p>
@@ -112,7 +112,7 @@
     <button onclick="changePassword()">變更自己的密碼</button>
     <button class="secondary" onclick="forgotPassword()">忘記密碼：送出申請</button>
     <button class="secondary" onclick="recoverPassword()">用 reset token 重設密碼</button>
-    <button class="secondary" onclick="loginAudit()">查詢登入稽核</button>
+    <button class="secondary" onclick="loginAudit()">查詢我的登入稽核</button>
     <div class="pager" aria-label="登入稽核分頁"><span id="loginAuditPageInfo" class="muted">第 1 頁</span><button id="loginAuditFirstBtn" class="secondary" type="button">首頁</button><button id="loginAuditPrevBtn" class="secondary" type="button">上一頁</button><span class="pager-jump"><label class="sr-only" for="loginAuditPageInput">登入稽核頁數</label><input id="loginAuditPageInput" type="number" min="1" value="1" inputmode="numeric" /><button id="loginAuditGotoBtn" class="secondary" type="button">跳至頁數</button></span><button id="loginAuditNextBtn" class="secondary" type="button">下一頁</button><button id="loginAuditLastBtn" class="secondary" type="button">末頁</button></div>
     <div id="loginAuditHits"></div>
   </section>
@@ -124,9 +124,9 @@
   </section>
   <section id="accountStatsSection">
     <h2>帳號操作統計</h2>
-    <p>範例包可直接呼叫共用 audit chart module，篩選 auth.* 帳號操作並繪製統計曲線。</p>
+    <p>範例包示範以共用 audit chart module 呈現 auth.* 帳號操作統計；一般使用者只看自己的統計，若移植到其他專案請接到該專案等效的 usage-stats endpoint。</p>
     <div class="row">
-      <div><label>帳號</label><input id="accountStatsUsername" placeholder="留空代表全部（需 superuser）" /></div>
+      <div><label>帳號</label><input id="accountStatsUsername" placeholder="留空代表自己；superuser 可輸入帳號或留空看全體" /></div>
       <div><label>動作包含</label><input id="accountStatsAction" placeholder="例如 password 或 login" /></div>
       <div><label>曲線區間</label><select id="accountStatsBucket"><option value="hour">每小時</option><option value="6_hours">每 6 小時</option><option value="12_hours">每 12 小時</option><option value="day" selected>每日</option><option value="week">每週</option><option value="month">每月</option></select></div>
     </div>
@@ -255,6 +255,13 @@ function tsValue(row) {
   const value = row && row.ts ? Date.parse(row.ts) : NaN;
   return Number.isNaN(value) ? 0 : value;
 }
+function localTimezoneOffsetMinutes() { return -new Date().getTimezoneOffset(); }
+function formatLocalTimestamp(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return new Intl.DateTimeFormat(undefined, {year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", second:"2-digit"}).format(d);
+}
 function localPaginateRows(rows, page, pageSize) {
   const allRows = Array.isArray(rows) ? rows : [];
   const size = Math.max(1, Number(pageSize || 25));
@@ -310,7 +317,7 @@ function bindPagerActions(prefix, getPage, setPage, renderPage) {
 function renderLoginAuditPage() {
   const page = updatePager(pageState.loginAuditRows, pageState.loginAuditPage, 'loginAuditPageInfo', 'loginAuditPrevBtn', 'loginAuditNextBtn');
   pageState.loginAuditPage = page.page;
-  document.getElementById('loginAuditHits').innerHTML = page.rows.map(ev => `<div class="audit"><strong>${esc(ev.username || '-')}</strong><div class="muted">${esc(ev.ts || '')} success=${esc(ev.success)} reason=${esc(ev.reason || '-')} role=${esc(ev.role || '-')} status=${esc(ev.status || '-')}</div><div class="muted">client=${esc(ev.client_host || '-')} user_agent=${esc(ev.user_agent || '-')}</div></div>`).join('') || '<p class="muted">尚無登入稽核紀錄。</p>';
+  document.getElementById('loginAuditHits').innerHTML = page.rows.map(ev => `<div class="audit"><strong>${esc(ev.username || '-')}</strong><div class="muted">${esc(formatLocalTimestamp(ev.ts))} success=${esc(ev.success)} reason=${esc(ev.reason || '-')} role=${esc(ev.role || '-')} status=${esc(ev.status || '-')}</div><div class="muted">client=${esc(ev.client_host || '-')} user_agent=${esc(ev.user_agent || '-')}</div></div>`).join('') || '<p class="muted">尚無登入稽核紀錄。</p>';
 }
 async function loginAudit() {
   try {
@@ -324,7 +331,7 @@ async function loginAudit() {
 }
 async function loadAccountStats() {
   try {
-    const params = new URLSearchParams({category: 'account', chart_bucket: document.getElementById('accountStatsBucket').value});
+    const params = new URLSearchParams({category: 'account', chart_bucket: document.getElementById('accountStatsBucket').value, timezone_offset_minutes: String(localTimezoneOffsetMinutes())});
     const username = document.getElementById('accountStatsUsername').value.trim();
     const action = document.getElementById('accountStatsAction').value.trim();
     if (username) params.set('username', username);

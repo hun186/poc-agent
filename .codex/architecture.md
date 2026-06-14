@@ -56,3 +56,20 @@
 - `api/routers/editor_dependencies.py` 集中提供 `current_user`、`require_data_editor`、`require_db_operator`、`require_superuser`；權限不足會寫入 `authz.denied` audit event。
 - Editor 文件查閱仍使用 active user；文件寫入 / 刪除使用 `require_data_editor`；Excel→SQL dashboard 查閱仍使用 active user，刪除匯入 SQL row 使用 `require_db_operator`；帳號維管仍只允許 `superuser`。
 - `api/static/editor.html` 與 `portable_auth_pack/static/login_admin_minimal.html` 的帳號審核 UI 改用 role 下拉選單，從 `/v1/auth/users` 的 `role_options` 生成，避免每個 role 各一顆核准按鈕。
+
+## 2026-06-14 Editor Audit / Usage Navigation Consolidation
+
+- Editor 前端導覽調整為：`ES 資料庫 → 文件異動紀錄 → 使用統計` 作為文件異動統計入口，不再透過 `系統管理 → 紀錄查詢` 提供重複的文件紀錄入口。
+- 帳號操作相關功能集中於 `帳號安全`：一般使用者可進入「我的使用統計」（後端強制限定本人），superuser 可額外進入「帳號操作紀錄」與「全體使用統計」。
+- 使用統計頁沿用既有 `/v1/editor/usage-stats` 與共用 `audit_tools.js` 曲線 renderer；前端新增本地時間格式化與 `timezone_offset_minutes` query，後端依偏移量做曲線分桶。
+
+## 2026-06-14 Account Audit Self-Service Boundary
+
+- `api/routers/editor.py` 的 `/v1/editor/audit-logs` 現在同時服務 superuser 全體 audit 查詢與一般使用者自助帳號操作查詢。
+- 權限邊界在後端強制：非 superuser 只能查 `auth.` prefix，且 username 固定為目前登入者；前端的「我的帳號操作紀錄」只是入口便利性，不作為安全邊界。
+- 文件異動紀錄查詢仍需 superuser；一般使用者若直接以 `action_prefix=editor.` 呼叫 audit logs endpoint 會收到 HTTP 403。
+
+## 2026-06-14 portable_auth_pack Audit Reference Sync
+
+- `portable_auth_pack` 現在示範與主系統一致的「一般使用者可看自己的帳號稽核、superuser 可看全體」邊界。
+- `login_admin_minimal.html` 的稽核時間顯示改為瀏覽器本地時間，帳號統計示範呼叫 usage stats 時傳入 `timezone_offset_minutes`；此統計 endpoint 仍是宿主專案需提供的整合點，README / import guide 已提醒移植時要接到等效 endpoint。

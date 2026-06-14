@@ -68,8 +68,8 @@ def normalize_chart_bucket(bucket: str | None) -> tuple[str, str]:
     return normalized, labels[normalized]
 
 
-def _bucket_start(dt: datetime, bucket: str) -> datetime:
-    dt = dt.astimezone(timezone.utc)
+def _bucket_start(dt: datetime, bucket: str, timezone_offset_minutes: int = 0) -> datetime:
+    dt = dt.astimezone(timezone.utc) + timedelta(minutes=timezone_offset_minutes)
     if bucket == 'hour':
         return dt.replace(minute=0, second=0, microsecond=0)
     if bucket == '6_hours':
@@ -84,13 +84,13 @@ def _bucket_start(dt: datetime, bucket: str) -> datetime:
     return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def build_audit_time_series(rows: list[dict[str, Any]], bucket: str = 'day') -> list[dict[str, Any]]:
+def build_audit_time_series(rows: list[dict[str, Any]], bucket: str = 'day', timezone_offset_minutes: int = 0) -> list[dict[str, Any]]:
     counts: dict[str, int] = {}
     for row in rows:
         dt = _parse_ts(str(row.get('ts') or ''))
         if not dt:
             continue
-        key = _bucket_start(dt, bucket).isoformat().replace('+00:00', 'Z')
+        key = _bucket_start(dt, bucket, timezone_offset_minutes).isoformat().replace('+00:00', 'Z')
         counts[key] = counts.get(key, 0) + 1
     return [{'bucket_start': key, 'count': counts[key]} for key in sorted(counts)]
 

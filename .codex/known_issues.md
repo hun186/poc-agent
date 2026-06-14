@@ -182,3 +182,18 @@ Open
 
 - 本次移除主系統重複登入稽核區塊屬於可視 UI 變更；環境執行 `python -m playwright --version` 回傳 `No module named playwright`，因此無法提供瀏覽器截圖驗證。
 - 替代驗證：以 `pytest tests/test_editor_auth_ui_static.py` 驗證 DOM / JS 不再包含主系統登入稽核控制，並以 `node --check /tmp/editor.html.js` 驗證抽出的前端 script 語法。
+
+## 2026-06-14 導覽與本地時間 UI 調整截圖限制
+
+- 本次調整 Editor 導覽文字、入口位置與紀錄時間顯示，屬可視 UI 變更。
+- 目前環境缺少 Playwright / browser runtime，未執行瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查導覽入口、權限標記、本地時間格式化函式與 timezone offset query；以 `node --check /tmp/editor.html.js` 檢查抽出的前端 script 語法。
+
+狀態：Open
+
+## 2026-06-14 portable_auth_pack UI 截圖限制
+
+- 本次同步 `portable_auth_pack/static/login_admin_minimal.html` 的可視文字與本地時間顯示；目前環境缺少 Playwright / browser runtime，未執行瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查 portable auth pack UI 標記，以 `node --check /tmp/login_admin_minimal.html.js` 檢查抽出的前端 script 語法，並執行 `python portable_auth_pack/scripts/verify_auth_pack.py` 驗證 API 行為。
+
+狀態：Open
