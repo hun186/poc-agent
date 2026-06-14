@@ -82,7 +82,8 @@ function renderUsageStats(targetId, stats) {
     return;
   }
   const block = (title, obj) => `<div class="user"><strong>${esc(title)}</strong>${Object.entries(obj || {}).map(([k, v]) => `<div class="muted">${esc(k)}: ${esc(v)}</div>`).join('')}</div>`;
-  $(targetId).innerHTML = `<div class="user"><strong>總操作次數</strong><div class="muted">${esc(stats.total_events || 0)}</div><div class="muted">異動欄位總數：${esc(stats.changed_paths_total || 0)}</div></div>${block('依動作', stats.by_action)}${block('依索引', stats.by_index)}${block('依使用者', stats.by_user)}`;
+  const clientHostBlock = stats.by_client_host ? block('依 client_host IP', stats.by_client_host) : '';
+  $(targetId).innerHTML = `<div class="user"><strong>總操作次數</strong><div class="muted">${esc(stats.total_events || 0)}</div><div class="muted">異動欄位總數：${esc(stats.changed_paths_total || 0)}</div></div>${block('依動作', stats.by_action)}${block('依索引', stats.by_index)}${block('依使用者', stats.by_user)}${clientHostBlock}`;
 }
 async function refreshUsageStats() {
   try {
@@ -206,7 +207,7 @@ function renderUsageStatsAuditEventsPage() {
     const paths = Array.isArray(h.changed_paths) ? h.changed_paths.filter(Boolean) : [];
     return `<div class="audit">
       <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
-      <div class="muted">${esc(formatLocalTimestamp(h.ts))}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
+      <div class="muted">${esc(formatLocalTimestamp(h.ts))}｜${esc(h.username || '-') } (${esc(h.role || '-')})｜IP：${esc(h.client_host || '-')}</div>
       <div class="muted">index=${esc(h.index || '-')} / id=${esc(h.id || '-')} / result=${esc(h.result || '-')}</div>
       <div class="muted">異動欄位：${paths.length ? esc(paths.join(', ')) : '(無)'}</div>
     </div>`;
@@ -224,6 +225,7 @@ function renderFilteredUsageStats(filtered) {
     {label: '異動欄位總數', value: stats.changed_paths_total || 0, hint: '文件類動作會累計欄位'},
     {label: '動作種類', value: Object.keys(stats.by_action || {}).length, hint: '依目前篩選'},
     {label: '使用者數', value: Object.keys(stats.by_user || {}).length, hint: '依目前篩選'},
+    {label: 'IP 數', value: Object.keys(stats.by_client_host || {}).length, hint: 'client_host'},
   ]);
   SraAuditTools.renderTimeSeriesChart({
     rows: filtered.series || [],

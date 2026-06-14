@@ -124,3 +124,9 @@
 - `POST /v1/auth/register` 新增 process-local per-IP 節流：同一 `client_host` 在現有 auth throttle window 內達門檻後，後續註冊嘗試回 HTTP 429，detail 為「嘗試次數過多，請稍後再試。」並帶 `Retry-After` header。
 - 主系統帳號操作 audit event（註冊、登入、登出、變更密碼、忘記密碼、reset-password、核准、拒絕／停權、刪除、發 reset token、superuser 重設密碼）新增 `client_host` 欄位，供資安檢核追蹤來源 IP / client host。
 - `portable_auth_pack` 的註冊、登入與註冊節流事件會在 login audit 中保留 `client_host` / `user_agent`；註冊事件的內部 reason 使用 `registered`、`register_duplicate_username`、`register_invalid_request`、`register_rate_limited`。
+
+## 2026-06-14 Usage Stats client_host 統計
+
+- 主系統 `GET /v1/editor/usage-stats` 的 `me`、`all`（superuser only）與 `filtered.stats` 現在包含 `by_client_host`，格式為 `{client_host: count}`；缺少 `client_host` 的歷史 event 會歸入 `"-"`。
+- `filtered.events[*]` 保留既有 audit event shape，若事件有 `client_host` / `user_agent`，前端帳號操作紀錄與統計事件清單會直接顯示；API 不會為歷史事件補假 IP。
+- `portable_auth_pack` 相容 `GET /v1/editor/usage-stats` 的 stats response 同步新增 `by_client_host`，供帳號操作統計儀表板顯示 IP 數。
