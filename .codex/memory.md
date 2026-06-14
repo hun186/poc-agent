@@ -148,3 +148,10 @@ Conclusion:
 - 主要修改：`api/static/editor.html` 的使用統計儀表板依來源切換按鈕文字，帳號來源會固定統計類別為 `account`，切到「我的」時強制以目前登入帳號作為 username query；「全體」仍只對 superuser 顯示 / 生效。
 - `portable_auth_pack` 同步新增帳號操作統計切換按鈕與 `/v1/editor/usage-stats` 相容 endpoint，統計來源為 login audit，且一般使用者一律限制自己的紀錄，superuser 才可查全體或指定帳號。
 - 驗證：`node --check /tmp/editor.js && node --check /tmp/portable.js && python -m py_compile portable_auth_pack/fastapi_auth_pack/router.py` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（21 passed）；`pytest tests` 通過（67 passed，既有 5 warnings）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（僅既有 StarletteDeprecationWarning）。
+
+## 2026-06-14 統計儀表板使用者清單篩選
+
+- 目的：將「統計與檢核曲線儀表板」的使用者篩選由單一關鍵字輸入改為清單勾選，避免 A 帳號 ID 是 B 帳號 ID 子字串時，被部分比對一起帶入。
+- 主要修改：`api/static/editor.html` 新增使用者多選清單、關鍵字篩選、勾選目前篩選、清除目前篩選與清除全部；`portable_auth_pack/static/login_admin_minimal.html` 同步帳號操作統計的帳號多選清單；`api/services/editor_audit_queries.py` 將 username filter 改為 exact match，並支援逗號分隔多帳號。
+- 驗證：`node --check /tmp/editor.js`、`node --check /tmp/portable.js` 通過；`pytest tests/test_editor_audit_queries.py tests/test_editor_auth_ui_static.py` 通過（22 passed）；`pytest tests` 通過（68 passed，既有 warnings）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過。
+- 截圖限制：本次屬可視 UI 變更；環境執行 `python -m playwright --version` 仍回報 `No module named playwright`，因此未提供瀏覽器截圖，沿用既有 known issue 與靜態測試替代。

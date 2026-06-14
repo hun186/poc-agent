@@ -125,7 +125,12 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     assert 'SraAuditTools.renderTimeSeriesChart' in html
     assert "$('statsMineTabBtn').textContent = isAccount ? '我的帳號操作紀錄' : '我的 ES 文件異動紀錄';" in html
     assert "$('statsAllTabBtn').textContent = isAccount ? '全體帳號操作紀錄' : '全體 ES 文件異動紀錄';" in html
-    assert "username: state.usageStatsView === 'mine' && state.user ? state.user.username : $('usageStatsUsername').value.trim()" in html
+    assert 'id="usageStatsUsernamePicker"' in html
+    assert 'id="usageStatsUsernameSearch"' in html
+    assert '勾選目前篩選' in html
+    assert '清除目前篩選' in html
+    assert 'data-usage-stats-user' in html
+    assert "username: state.usageStatsView === 'mine' && state.user ? state.user.username : state.usageStatsSelectedUsers.join(',')" in html
     assert 'function bindProgressiveNav(options)' in tools
     assert "matchMedia('(hover: hover) and (pointer: fine)')" in tools
     assert "event.pointerType !== 'mouse'" in tools
@@ -251,7 +256,7 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
         'loginAuditHits',
     ):
         assert f'id="{element_id}"' in html
-    assert "const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1, accountStatsView: 'mine', currentUser: null };" in html
+    assert "const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1, accountStatsView: 'mine', currentUser: null, accountStatsUserOptions: [], accountStatsSelectedUsers: [] };" in html
     assert 'function updatePager(rows, page, infoId, prevId, nextId)' in html
     assert 'function bindPagerActions(prefix, getPage, setPage, renderPage)' in html
     assert "jumpTo(Number.MAX_SAFE_INTEGER)" in html
@@ -259,6 +264,10 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
     assert 'function paginateAuditRows(rows, page, pageSize)' in html
     assert "typeof sharedPaginator === \'function\' ? sharedPaginator(rows, page, pageSize) : localPaginateRows(rows, page, pageSize)" in html
     assert '<script src="audit_tools.js?v=20260612-paginate"></script>' in html
+    assert 'id="accountStatsUsernamePicker"' in html
+    assert 'id="accountStatsUsernameSearch"' in html
+    assert 'data-account-stats-user' in html
+    assert "pageState.accountStatsSelectedUsers.join(',')" in html
     assert 'pageState.usersRows = (data.users || []).slice().sort' in html
     assert 'pageState.loginAuditRows = (data.events || []).slice().sort' in html
     assert 'id="accountStatsMineBtn"' in html

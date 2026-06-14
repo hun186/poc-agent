@@ -129,7 +129,7 @@ def filter_audit_records(
     start_ts: str | None = None,
     end_ts: str | None = None,
 ) -> list[dict[str, Any]]:
-    username_q = (username or "").strip().lower()
+    username_values = [part.strip().lower() for part in (username or "").split(',') if part.strip()]
     action_q = (action or "").strip().lower()
     action_prefix_q = (action_prefix or "").strip().lower()
     index_q = (index or "").strip()
@@ -163,7 +163,7 @@ def filter_audit_records(
 
     filtered: list[dict[str, Any]] = []
     for r in records:
-        if username_q and username_q not in str(r.get("username") or "").lower():
+        if username_values and str(r.get("username") or "").lower() not in username_values:
             continue
         action_value = str(r.get("action") or "").lower()
         if action_q and action_q not in action_value:

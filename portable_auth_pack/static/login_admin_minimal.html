@@ -54,6 +54,7 @@
     .row > div { flex: 1 1 180px; }
     .muted { color: #64748b; font-size: .9rem; }
     .audit, .user { border: 1px solid #e5e7eb; border-radius: 10px; padding: .75rem; margin: .5rem 0; background: #fbfdff; }
+    .multi-filter { position:relative; min-width:280px; } .multi-filter summary { cursor:pointer; border:1px solid #cbd5e1; border-radius:8px; padding:.55rem; background:#fff; list-style:none; } .multi-filter summary::-webkit-details-marker{display:none;} .multi-filter-panel{position:absolute;z-index:20;left:0;right:0;max-height:340px;overflow:auto;border:1px solid #cbd5e1;border-radius:10px;padding:.6rem;margin-top:.35rem;background:white;box-shadow:0 12px 28px rgba(15,23,42,.16);} .multi-filter-actions{display:flex;gap:.35rem;flex-wrap:wrap;margin:.4rem 0;} .multi-filter-option{display:flex;gap:.45rem;align-items:center;padding:.3rem;border-radius:6px;} .multi-filter-option:hover{background:#f1f5f9;}
     .pager { display:flex; gap:.5rem; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin:.75rem 0; }
     .pager button { padding:.45rem .7rem; }
     .pager input { width: 5.5rem; padding: .45rem .55rem; }
@@ -127,7 +128,7 @@
     <h2>帳號操作統計</h2>
     <p>範例包示範以共用 audit chart module 呈現 auth.* 帳號操作統計；一般使用者只看自己的統計，若移植到其他專案請接到該專案等效的 usage-stats endpoint。</p>
     <div class="row">
-      <div><label>帳號</label><input id="accountStatsUsername" placeholder="留空代表自己；superuser 可輸入帳號或留空看全體" /></div>
+      <div><label>帳號</label><details id="accountStatsUsernamePicker" class="multi-filter"><summary id="accountStatsUsernameSummary">目前顯示我的帳號操作紀錄</summary><div class="multi-filter-panel"><input id="accountStatsUsernameSearch" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="accountStatsSelectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="accountStatsClearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="accountStatsClearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="accountStatsUsernameOptions" role="group" aria-label="帳號清單"></div></div></details><input id="accountStatsUsername" type="hidden" /></div>
       <div><label>動作包含</label><input id="accountStatsAction" placeholder="例如 password 或 login" /></div>
       <div><label>曲線區間</label><select id="accountStatsBucket"><option value="hour">每小時</option><option value="6_hours">每 6 小時</option><option value="12_hours">每 12 小時</option><option value="day" selected>每日</option><option value="week">每週</option><option value="month">每月</option></select></div>
     </div>
@@ -160,7 +161,7 @@
 <script>
 const tokenKey = 'auth_token';
 const navState = { activeRoot: '' };
-const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1, accountStatsView: 'mine', currentUser: null };
+const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1, accountStatsView: 'mine', currentUser: null, accountStatsUserOptions: [], accountStatsSelectedUsers: [] };
 const out = (data) => document.getElementById('output').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function setActiveAuthPackNavRoot(root) {
@@ -342,18 +343,24 @@ async function loginAudit() {
   }
   catch (err) { out(String(err.message || err)); }
 }
+function setAccountStatsUserOptions(values) { pageState.accountStatsUserOptions = [...new Set((values || []).map(v => String(v || '').trim()).filter(Boolean))].sort(); if (pageState.currentUser && !pageState.accountStatsUserOptions.includes(pageState.currentUser.username)) pageState.accountStatsUserOptions.unshift(pageState.currentUser.username); pageState.accountStatsSelectedUsers = pageState.accountStatsSelectedUsers.filter(v => pageState.accountStatsUserOptions.includes(v)); renderAccountStatsUserPicker(); }
+function visibleAccountStatsUserOptions() { const q = document.getElementById('accountStatsUsernameSearch') ? document.getElementById('accountStatsUsernameSearch').value.trim().toLowerCase() : ''; return pageState.accountStatsUserOptions.filter(v => !q || v.toLowerCase().includes(q)); }
+function renderAccountStatsUserPicker() { const box = document.getElementById('accountStatsUsernameOptions'); if (!box) return; const selected = new Set(pageState.accountStatsSelectedUsers); const visible = visibleAccountStatsUserOptions(); box.innerHTML = visible.map(v => `<label class="multi-filter-option"><input type="checkbox" data-account-stats-user="${esc(v)}" ${selected.has(v) ? 'checked' : ''} /> <span>${esc(v)}</span></label>`).join('') || '<p class="muted">沒有符合關鍵字的帳號。</p>'; box.querySelectorAll('[data-account-stats-user]').forEach(input => input.onchange = () => { const value = input.dataset.accountStatsUser; pageState.accountStatsSelectedUsers = input.checked ? [...new Set(pageState.accountStatsSelectedUsers.concat([value]))] : pageState.accountStatsSelectedUsers.filter(v => v !== value); updateAccountStatsUserSummary(); }); updateAccountStatsUserSummary(); }
+function updateAccountStatsUserSummary() { const selected = pageState.accountStatsSelectedUsers; document.getElementById('accountStatsUsername').value = selected.join(','); const summary = document.getElementById('accountStatsUsernameSummary'); if (!summary) return; if (pageState.accountStatsView === 'mine') summary.textContent = pageState.currentUser ? `目前顯示：${pageState.currentUser.username}` : '目前顯示我的帳號操作紀錄'; else if (!selected.length) summary.textContent = '全體帳號'; else summary.textContent = selected.length <= 2 ? selected.join(', ') : `已選 ${selected.length} 個帳號`; }
+function setVisibleAccountStatsUsers(checked) { const visible = visibleAccountStatsUserOptions(); pageState.accountStatsSelectedUsers = checked ? [...new Set(pageState.accountStatsSelectedUsers.concat(visible))] : pageState.accountStatsSelectedUsers.filter(v => !visible.includes(v)); renderAccountStatsUserPicker(); }
 function setAccountStatsView(view) {
   const canViewAll = pageState.currentUser && pageState.currentUser.role === 'superuser';
   pageState.accountStatsView = view === 'all' && canViewAll ? 'all' : 'mine';
   const input = document.getElementById('accountStatsUsername');
-  input.disabled = pageState.accountStatsView === 'mine';
-  input.placeholder = pageState.accountStatsView === 'mine' ? '目前顯示我的帳號操作紀錄' : '留空代表全體；也可輸入帳號篩選';
+  document.getElementById('accountStatsUsernamePicker').classList.toggle('disabled', pageState.accountStatsView === 'mine');
+  if (pageState.accountStatsView === 'mine') document.getElementById('accountStatsUsernamePicker').removeAttribute('open');
+  updateAccountStatsUserSummary();
   loadAccountStats();
 }
 async function loadAccountStats() {
   try {
     const params = new URLSearchParams({category: 'account', chart_bucket: document.getElementById('accountStatsBucket').value, timezone_offset_minutes: String(localTimezoneOffsetMinutes())});
-    const username = pageState.accountStatsView === 'mine' && pageState.currentUser ? pageState.currentUser.username : document.getElementById('accountStatsUsername').value.trim();
+    const username = pageState.accountStatsView === 'mine' && pageState.currentUser ? pageState.currentUser.username : pageState.accountStatsSelectedUsers.join(',');
     const action = document.getElementById('accountStatsAction').value.trim();
     if (username) params.set('username', username);
     if (action) params.set('action', action);
@@ -391,6 +398,7 @@ async function refreshUsers() {
     const roleOptions = data.role_options || [];
     pageState.usersRows = (data.users || []).slice().sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')));
     pageState.usersRoleOptions = roleOptions;
+    setAccountStatsUserOptions((data.users || []).map(u => u.username));
     pageState.usersPage = 1;
     renderUsersPage();
     out(data);
@@ -445,6 +453,10 @@ async function resetUserPassword(username) {
   await refreshUsers();
 }
 async function deleteUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method: 'DELETE'})); await refreshUsers(); }
+document.getElementById('accountStatsUsernameSearch').oninput = renderAccountStatsUserPicker;
+document.getElementById('accountStatsSelectVisibleUsersBtn').onclick = () => setVisibleAccountStatsUsers(true);
+document.getElementById('accountStatsClearVisibleUsersBtn').onclick = () => setVisibleAccountStatsUsers(false);
+document.getElementById('accountStatsClearAllUsersBtn').onclick = () => { pageState.accountStatsSelectedUsers = []; renderAccountStatsUserPicker(); };
 bindPagerActions('users', () => pageState.usersPage, (page) => { pageState.usersPage = page; }, renderUsersPage);
 bindPagerActions('loginAudit', () => pageState.loginAuditPage, (page) => { pageState.loginAuditPage = page; }, renderLoginAuditPage);
 document.getElementById('copyResetTokenBtn').onclick = async () => {

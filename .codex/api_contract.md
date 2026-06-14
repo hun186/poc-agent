@@ -93,3 +93,10 @@
 - 主系統 `GET /v1/editor/usage-stats` 既有 `category=account` contract 保持：統計 `auth.*` 帳號操作紀錄，response 的 `filtered.is_restricted_to_self` 指出是否受限於目前登入者；非 superuser 即使送出 `username` 也會被強制改為目前登入帳號。
 - `portable_auth_pack` 新增相容 `GET /v1/editor/usage-stats` endpoint，支援 `category=account|all`、`username`、`action`、`chart_bucket`、`events_limit`；資料來源為 `/v1/auth/login-audit` 的 login audit events，回傳 `me`、`filtered`，superuser 額外回傳 `all`。
 - `portable_auth_pack` 的此 endpoint 僅提供帳號操作記錄統計；若 category 非 `account` / `all`，回 HTTP 400。
+
+## 2026-06-14 usage-stats username 精準多選篩選
+
+- `GET /v1/editor/usage-stats` 的 `username` query 仍為字串參數，但現在可接受逗號分隔的多個帳號，例如 `username=alice,bob`。
+- `username` 篩選語意由原本的 case-insensitive substring match 改為 case-insensitive exact match；若指定 `alice`，不再匹配 `malice` 或 `alice2`。
+- 非 superuser 呼叫時仍忽略外部指定 username，固定限定目前登入者。
+- 同一 exact-match / comma-list 語意也適用於共用的 audit record filtering helper，因此使用該 helper 的 audit 查詢會避免帳號子字串誤匹配。
