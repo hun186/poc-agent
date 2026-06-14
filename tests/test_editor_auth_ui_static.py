@@ -273,7 +273,7 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
 
 
 def test_auth_account_management_actions_are_written_to_account_audit() -> None:
-    source = Path("api/routers/editor.py").read_text(encoding="utf-8")
+    source = Path("api/routers/editor_auth.py").read_text(encoding="utf-8")
 
     assert '"action": "auth.user_registered"' in source
     assert '"action": "auth.user_approved"' in source

@@ -226,3 +226,19 @@ Conclusion:
 - 主要修改：`api/routers/editor.py` 新增 `EDITOR_STATIC_ASSETS` 白名單與 `/static/{filename}` route，允許服務 `editor.css`、`audit_tools.js` 與所有拆分後的 Editor JS；未知檔名仍回 404。`tests/test_editor_auth_ui_static.py` 新增 TestClient 驗證拆分 assets 可由 router 取得。
 - 驗證：執行 `pytest tests/test_editor_auth_ui_static.py` 通過（18 passed，僅既有 warnings）。
 - 結論：拆分後的 Editor CSS / JS 不只存在於檔案系統，也會透過既有 FastAPI router 正確對外提供，避免瀏覽器 404。
+
+## 2026-06-14 Editor router auth / usage 拆檔
+
+- 目的：檢查肥大單檔並優先拆分目前最大的可維護 Python route 檔 `api/routers/editor.py`。
+- 主要修改：將 `/v1/auth/*` 帳號與登入相關 route 移至 `api/routers/editor_auth.py`，將 `/v1/editor/usage-stats` 與 `/v1/editor/audit-logs` 移至 `api/routers/editor_usage.py`；`api/routers/editor.py` 保留 Editor shell/static/documents routes 並 include 子 router。
+- 相容性：`api.routers.editor` 保留 `usage_stats()`、`list_audit_logs()` 與 `load_audit_records` wrapper / alias，支援既有測試或腳本直接 import route handler。
+- 驗證：`python -m py_compile api/routers/editor.py api/routers/editor_auth.py api/routers/editor_usage.py` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（26 passed，1 個既有 Starlette warning）；`pytest tests` 通過（72 passed，5 個既有 warnings）。
+- 結論：`api/routers/editor.py` 由 663 行降至約 365 行，新增 auth / usage 子 router 分攤職責，API path 與 response contract 不變。
+
+## 2026-06-14 portable_auth_pack router 對應拆檔
+
+- 目的：回應主系統 Editor router 拆檔後，確認 `portable_auth_pack` 是否有對應需要同步的 router 組織調整。
+- 主要修改：將 `portable_auth_pack/fastapi_auth_pack/router.py` 改為聚合 router；新增 `auth_routes.py` 承載 `/v1/auth/*` 與 login-audit route，新增 `usage_routes.py` 承載 portable 的 `/v1/editor/usage-stats` 帳號操作統計相容 endpoint。
+- 文件同步：更新 `portable_auth_pack/README.md` 與 `CODEX_IMPORT_GUIDE.md`，補上 `auth_routes.py` / `usage_routes.py` 的目錄與導入說明。
+- 驗證：`python -m py_compile portable_auth_pack/fastapi_auth_pack/router.py portable_auth_pack/fastapi_auth_pack/auth_routes.py portable_auth_pack/fastapi_auth_pack/usage_routes.py` 通過；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（26 passed）；`pytest tests` 通過（72 passed，既有 warnings）。
+- 結論：portable auth pack 與主系統後端 router 拆檔方向同步，外部仍可 `from fastapi_auth_pack import router` 並維持 API contract 不變。
