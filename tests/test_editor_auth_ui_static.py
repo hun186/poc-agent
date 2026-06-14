@@ -219,6 +219,7 @@ def test_editor_workspace_separates_document_and_account_work_areas() -> None:
     assert 'id="accountAuditStatsBtn"' in html
     assert "qs.set('action_prefix', 'editor.')" in html
     assert "qs.set('action_prefix', 'auth.')" in html
+    assert 'clientHost = h.client_host ? `｜IP：${esc(h.client_host)}`' in html
 
 
 def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
@@ -244,6 +245,8 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     assert 'renderUsageStatsAuditEvents(filtered);' in html
     assert "'/v1/editor/usage-stats?'" in html
     assert 'SraAuditTools.renderTimeSeriesChart' in html
+    assert "{label: 'IP 數', value: Object.keys(stats.by_client_host || {}).length, hint: 'client_host'}" in html
+    assert "block('依 client_host IP', stats.by_client_host)" in html
     assert "$('statsMineTabBtn').textContent = isAccount ? '我的帳號操作紀錄' : '我的 ES 文件異動紀錄';" in html
     assert "$('statsAllTabBtn').textContent = isAccount ? '全體帳號操作紀錄' : '全體 ES 文件異動紀錄';" in html
     assert 'id="usageStatsCurrentScopeNote"' in html
@@ -325,6 +328,7 @@ def test_portable_auth_pack_exposes_account_stats_with_shared_module() -> None:
     assert '<script src="audit_tools.js?v=20260612-paginate"></script>' in html
     assert 'id="accountStatsSection"' in html
     assert 'SraAuditTools.renderTimeSeriesChart' in html
+    assert "{label: 'IP 數', value: Object.keys(stats.by_client_host || {}).length, hint: 'client_host'}" in html
     assert "category: 'account'" in html
     assert 'id="accountStatsMineBtn"' in html
     assert 'id="accountStatsAllBtn" class="secondary hidden"' in html

@@ -99,14 +99,17 @@ def build_usage_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
     by_action: dict[str, int] = {}
     by_index: dict[str, int] = {}
     by_user: dict[str, int] = {}
+    by_client_host: dict[str, int] = {}
     changed_paths_total = 0
     for r in rows:
         action = str(r.get("action") or "unknown")
         idx = str(r.get("index") or "-")
         uname = str(r.get("username") or "-")
+        client_host = str(r.get("client_host") or "-")
         by_action[action] = by_action.get(action, 0) + 1
         by_index[idx] = by_index.get(idx, 0) + 1
         by_user[uname] = by_user.get(uname, 0) + 1
+        by_client_host[client_host] = by_client_host.get(client_host, 0) + 1
         changed_paths_total += len(r.get("changed_paths") or [])
     return {
         "total_events": len(rows),
@@ -114,6 +117,7 @@ def build_usage_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "by_action": by_action,
         "by_index": by_index,
         "by_user": by_user,
+        "by_client_host": by_client_host,
     }
 
 

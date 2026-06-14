@@ -27,6 +27,7 @@ async function loadAccountStats() {
       {label: '帳號操作數', value: stats.total_events || 0, hint: data.filtered?.is_restricted_to_self ? '限定自己' : '目前篩選'},
       {label: '動作種類', value: Object.keys(stats.by_action || {}).length, hint: 'auth.*'},
       {label: '使用者數', value: Object.keys(stats.by_user || {}).length, hint: '依目前篩選'},
+      {label: 'IP 數', value: Object.keys(stats.by_client_host || {}).length, hint: 'client_host'},
     ]);
     SraAuditTools.renderTimeSeriesChart({
       rows: data.filtered?.series || [],

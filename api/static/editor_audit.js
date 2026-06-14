@@ -42,10 +42,13 @@ function renderAuditCard(h) {
 function renderAccountAuditCard(h) {
   const actor = h.actor ? `｜執行者：${esc(h.actor)}` : '';
   const detail = h.reason || h.status || h.role || h.result || '';
+  const clientHost = h.client_host ? `｜IP：${esc(h.client_host)}` : '';
+  const userAgent = h.user_agent ? `<div class="muted">User-Agent：${esc(h.user_agent)}</div>` : '';
   return `<div class="audit">
     <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
-    <div class="muted">${esc(formatLocalTimestamp(h.ts))}｜帳號：${esc(h.username || '-')}${actor}</div>
+    <div class="muted">${esc(formatLocalTimestamp(h.ts))}｜帳號：${esc(h.username || '-')}${actor}${clientHost}</div>
     ${detail ? `<div class="muted">補充：${esc(detail)}</div>` : ''}
+    ${userAgent}
   </div>`;
 }
 function renderAuditHits(hits) {

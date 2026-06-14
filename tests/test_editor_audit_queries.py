@@ -7,10 +7,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api.services.editor_audit_queries import (
     build_audit_time_series,
+    build_usage_stats,
     filter_audit_records,
     normalize_chart_bucket,
 )
 
+
+
+def test_build_usage_stats_counts_client_host() -> None:
+    records = [
+        {"action": "auth.login", "username": "alice", "client_host": "10.0.0.1"},
+        {"action": "auth.logout", "username": "alice", "client_host": "10.0.0.1"},
+        {"action": "auth.login", "username": "bob", "client_host": "10.0.0.2"},
+        {"action": "editor.save_document", "username": "bob"},
+    ]
+
+    stats = build_usage_stats(records)
+
+    assert stats["by_client_host"] == {"10.0.0.1": 2, "10.0.0.2": 1, "-": 1}
 
 def test_filter_audit_records_accepts_action_prefix() -> None:
     records = [
