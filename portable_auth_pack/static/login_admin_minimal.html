@@ -131,7 +131,7 @@
       <div><label>動作包含</label><input id="accountStatsAction" placeholder="例如 password 或 login" /></div>
       <div><label>曲線區間</label><select id="accountStatsBucket"><option value="hour">每小時</option><option value="6_hours">每 6 小時</option><option value="12_hours">每 12 小時</option><option value="day" selected>每日</option><option value="week">每週</option><option value="month">每月</option></select></div>
     </div>
-    <button onclick="loadAccountStats()">查詢帳號操作統計</button><button class="secondary" onclick="loadAccountStats()">全體 / 我的統計由本頁篩選設定</button>
+    <button onclick="loadAccountStats()">查詢帳號操作統計</button><button id="accountStatsMineBtn" class="secondary" onclick="setAccountStatsView('mine')">我的帳號操作紀錄</button><button id="accountStatsAllBtn" class="secondary hidden" onclick="setAccountStatsView('all')">全體帳號操作紀錄</button>
     <div id="accountStatsCards" class="stat-cards"></div>
     <div class="chart-card">
       <strong id="accountStatsTitle">帳號操作統計曲線</strong>
@@ -160,7 +160,7 @@
 <script>
 const tokenKey = 'auth_token';
 const navState = { activeRoot: '' };
-const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1 };
+const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1, accountStatsView: 'mine', currentUser: null };
 const out = (data) => document.getElementById('output').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function setActiveAuthPackNavRoot(root) {
@@ -218,10 +218,15 @@ function payload() {
     note: document.getElementById('note').value,
   };
 }
+function updateCurrentUser(user) {
+  pageState.currentUser = user || null;
+  document.getElementById('accountStatsAllBtn').classList.toggle('hidden', !pageState.currentUser || pageState.currentUser.role !== 'superuser');
+}
 async function login() {
   try {
     const data = await api('/v1/auth/login', {method: 'POST', body: JSON.stringify(payload())});
     localStorage.setItem(tokenKey, data.access_token);
+    updateCurrentUser(data.user || null);
     out(data);
   } catch (err) { out(String(err.message || err)); }
 }
@@ -230,7 +235,7 @@ async function registerUser() {
   catch (err) { out(String(err.message || err)); }
 }
 async function me() {
-  try { out(await api('/v1/auth/me')); }
+  try { const data = await api('/v1/auth/me'); updateCurrentUser(data.user || null); out(data); }
   catch (err) { out(String(err.message || err)); }
 }
 async function logout() {
@@ -337,10 +342,18 @@ async function loginAudit() {
   }
   catch (err) { out(String(err.message || err)); }
 }
+function setAccountStatsView(view) {
+  const canViewAll = pageState.currentUser && pageState.currentUser.role === 'superuser';
+  pageState.accountStatsView = view === 'all' && canViewAll ? 'all' : 'mine';
+  const input = document.getElementById('accountStatsUsername');
+  input.disabled = pageState.accountStatsView === 'mine';
+  input.placeholder = pageState.accountStatsView === 'mine' ? '目前顯示我的帳號操作紀錄' : '留空代表全體；也可輸入帳號篩選';
+  loadAccountStats();
+}
 async function loadAccountStats() {
   try {
     const params = new URLSearchParams({category: 'account', chart_bucket: document.getElementById('accountStatsBucket').value, timezone_offset_minutes: String(localTimezoneOffsetMinutes())});
-    const username = document.getElementById('accountStatsUsername').value.trim();
+    const username = pageState.accountStatsView === 'mine' && pageState.currentUser ? pageState.currentUser.username : document.getElementById('accountStatsUsername').value.trim();
     const action = document.getElementById('accountStatsAction').value.trim();
     if (username) params.set('username', username);
     if (action) params.set('action', action);

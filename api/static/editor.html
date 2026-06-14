@@ -372,7 +372,7 @@
   </main>
 <script src="/static/audit_tools.js?v=20260612-paginate"></script>
 <script>
-const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '', auditRows: [], auditPage: 1, accountAuditRows: [], accountAuditPage: 1, usageStatsAuditRows: [], usageStatsAuditPage: 1, usageStatsSource: 'document' };
+const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '', auditRows: [], auditPage: 1, accountAuditRows: [], accountAuditPage: 1, usageStatsAuditRows: [], usageStatsAuditPage: 1, usageStatsSource: 'document', usageStatsView: 'mine' };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function formatApiError(data, fallback='') {
@@ -746,6 +746,12 @@ function configureUsageStatsSource(source) {
   category.value = options[0].value;
   $('usageStatsIndexField').classList.toggle('hidden', state.usageStatsSource === 'account');
   if (state.usageStatsSource === 'account') $('usageStatsIndex').value = '';
+  updateStatsViewLabels();
+}
+function updateStatsViewLabels() {
+  const isAccount = state.usageStatsSource === 'account';
+  $('statsMineTabBtn').textContent = isAccount ? '我的帳號操作紀錄' : '我的 ES 文件異動紀錄';
+  $('statsAllTabBtn').textContent = isAccount ? '全體帳號操作紀錄' : '全體 ES 文件異動紀錄';
 }
 function collectUsageStatsQuery() {
   const params = new URLSearchParams({
@@ -755,7 +761,7 @@ function collectUsageStatsQuery() {
     timezone_offset_minutes: String(localTimezoneOffsetMinutes()),
   });
   const mapping = {
-    username: $('usageStatsUsername').value.trim(),
+    username: state.usageStatsView === 'mine' && state.user ? state.user.username : $('usageStatsUsername').value.trim(),
     action: $('usageStatsAction').value.trim(),
     index: state.usageStatsSource === 'account' ? '' : $('usageStatsIndex').value.trim(),
     start_ts: toIsoOrEmpty($('usageStatsStartTs').value.trim()),
@@ -896,7 +902,7 @@ function switchMainTab(tab, opts={}) {
     configureUsageStatsSource(opts.source || opts.category || state.usageStatsSource || 'document');
     if (opts.category) $('usageStatsCategory').value = opts.category;
     if (opts.view) switchStatsView(opts.view);
-    loadFilteredUsageStats();
+    else loadFilteredUsageStats();
   }
   $('searchCard').classList.toggle('hidden', tab !== 'search');
   $('statsCard').classList.toggle('hidden', tab !== 'stats');
@@ -910,9 +916,14 @@ function switchMainTab(tab, opts={}) {
 }
 function switchStatsView(view) {
   const canViewAll = state.user && state.user.role === 'superuser';
-  const mine = view !== 'all' || !canViewAll;
+  state.usageStatsView = view === 'all' && canViewAll ? 'all' : 'mine';
+  const mine = state.usageStatsView === 'mine';
+  $('usageStatsUsername').disabled = mine;
+  $('usageStatsUsername').placeholder = mine ? '目前顯示我的紀錄' : '留空代表全體；也可輸入帳號篩選';
   $('myStats').classList.toggle('hidden', !mine);
   $('adminStats').classList.toggle('hidden', mine);
+  updateStatsViewLabels();
+  loadFilteredUsageStats();
 }
 function collectAuditQuery() {
   const qs = new URLSearchParams();

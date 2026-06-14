@@ -87,3 +87,9 @@
 
 - `portable_auth_pack` 的 `GET /v1/auth/login-audit` 權限調整：active user 可查詢自己的登入稽核，superuser 可查全體或透過 `username` query 篩選指定帳號。
 - Response 新增 `is_restricted_to_self`，一般使用者為 `true`；superuser 為 `false`。
+
+## 2026-06-14 帳號操作紀錄統計儀表板 contract
+
+- 主系統 `GET /v1/editor/usage-stats` 既有 `category=account` contract 保持：統計 `auth.*` 帳號操作紀錄，response 的 `filtered.is_restricted_to_self` 指出是否受限於目前登入者；非 superuser 即使送出 `username` 也會被強制改為目前登入帳號。
+- `portable_auth_pack` 新增相容 `GET /v1/editor/usage-stats` endpoint，支援 `category=account|all`、`username`、`action`、`chart_bucket`、`events_limit`；資料來源為 `/v1/auth/login-audit` 的 login audit events，回傳 `me`、`filtered`，superuser 額外回傳 `all`。
+- `portable_auth_pack` 的此 endpoint 僅提供帳號操作記錄統計；若 category 非 `account` / `all`，回 HTTP 400。
