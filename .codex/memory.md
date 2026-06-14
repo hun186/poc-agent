@@ -190,3 +190,32 @@ Conclusion:
 - 主要修改：`api/static/editor.html` 與 `portable_auth_pack/static/login_admin_minimal.html` 將 `title` 改為頁面內 `role="tooltip"` 說明泡泡，透過 `.scope-help:hover` 與 `.scope-help:focus-within` 顯示；點擊 `?` 後按鈕取得 focus，說明仍可停留顯示。
 - 驗證：`node --check /tmp/editor.html.js && node --check /tmp/login_admin_minimal.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py -q` 通過（23 passed，2 個既有 SyntaxWarning）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（既有 Starlette/httpx warning）；`pytest tests -q` 通過（69 passed，5 個既有 warning）。
 - 截圖限制：本次為 hover / focus 可視 UI 互動改善；目前環境仍未安裝 Playwright（`python -m playwright --version` 回報 `No module named playwright`），以靜態 UI 測試與 JS 語法檢查替代。
+
+## 2026-06-14 Editor 靜態頁拆檔重構
+
+- 目的：盤點肥大單檔並優先拆分 `api/static/editor.html`，降低單一 HTML 檔案維護成本。
+- 主要修改：將原本內嵌於 `api/static/editor.html` 的 CSS / JavaScript 分別抽出到 `api/static/editor.css` 與 `api/static/editor.js`；HTML shell 保留 DOM 與載入外部 assets。`tests/test_editor_auth_ui_static.py` 改以 HTML + split assets 組合內容做既有靜態斷言，並新增 asset 載入檢查。
+- 驗證：執行 `node --check api/static/editor.js` 通過；執行 `pytest tests/test_editor_auth_ui_static.py` 通過（16 passed）；執行 `pytest tests` 通過（70 passed，僅既有 warnings）。
+- 結論：`api/static/editor.html` 從約 1398 行降為約 275 行；行為不變，CSS / JS 可獨立維護與語法檢查。
+
+## 2026-06-14 portable_auth_pack 靜態頁同步拆檔
+
+- 目的：回應前次 Editor 拆檔後，`portable_auth_pack/static/login_admin_minimal.html` 仍有對應的內嵌 CSS / JS 單檔膨脹問題。
+- 主要修改：將 `portable_auth_pack/static/login_admin_minimal.html` 的內嵌 CSS / JavaScript 分別抽出到 `login_admin_minimal.css` 與 `login_admin_minimal.js`；HTML shell 保留 DOM 與載入外部 assets。`tests/test_editor_auth_ui_static.py` 新增 portable shell asset 載入檢查，並改以 shell + split assets 做既有 portable 靜態斷言。
+- 驗證：執行 `node --check api/static/editor.js && node --check portable_auth_pack/static/login_admin_minimal.js` 通過；執行 `pytest tests/test_editor_auth_ui_static.py` 通過（17 passed）；執行 `python portable_auth_pack/scripts/verify_auth_pack.py` 通過（僅既有 Starlette/httpx warning）；執行 `pytest tests` 通過（71 passed，僅既有 warnings）。
+- 結論：主系統 Editor 與 portable auth pack 的靜態頁現在採一致的 shell + CSS + JS 拆檔模式。
+
+
+## 2026-06-14 Editor JS 責任導向再拆分
+
+- 目的：回應 `api/static/editor.js` 仍有 1007 行、只是從 HTML 搬到另一個大型單檔的問題。
+- 主要修改：移除單一 `editor.js`，改拆為 `editor_core.js`、`editor_form.js`、`editor_auth_nav.js`、`editor_stats.js`、`editor_audit.js`、`editor_documents.js`、`editor_bootstrap.js`；`api/static/editor.html` 依序載入上述 classic scripts。`tests/test_editor_auth_ui_static.py` 新增 `EDITOR_SCRIPT_FILES`，驗證 shell 不再載入 `editor.js` 且每個 Editor JS 檔低於 350 行。
+- 驗證：執行 `for f in api/static/editor_*.js portable_auth_pack/static/login_admin_minimal.js; do node --check "$f" || exit 1; done` 通過；執行 `pytest tests/test_editor_auth_ui_static.py` 通過（17 passed）。
+- 結論：Editor JavaScript 從 1007 行單檔改為最大約 292 行的責任導向小檔，仍不導入 build pipeline。
+
+## 2026-06-14 portable_auth_pack JS 責任導向再拆分
+
+- 目的：回應 Editor JS 再拆分後，`portable_auth_pack` 也應有對應責任導向拆檔，而不是保留單一 `login_admin_minimal.js`。
+- 主要修改：移除單一 `login_admin_minimal.js`，改拆為 `login_admin_core.js`、`login_admin_auth.js`、`login_admin_audit.js`、`login_admin_stats.js`、`login_admin_admin.js`、`login_admin_bootstrap.js`；`login_admin_minimal.html` 依序載入上述 classic scripts。`tests/test_editor_auth_ui_static.py` 新增 `PORTABLE_AUTH_PACK_SCRIPT_FILES`，驗證 shell 不再載入 `login_admin_minimal.js` 且每個 portable JS 檔低於 200 行。
+- 驗證：執行 `for f in api/static/editor_*.js portable_auth_pack/static/login_admin_*.js; do node --check "$f" || exit 1; done` 通過；執行 `pytest tests/test_editor_auth_ui_static.py` 通過（17 passed）。
+- 結論：主系統 Editor 與 portable auth pack 的 JS 都已從單一行為檔改為責任導向小檔，且仍不導入 build pipeline。

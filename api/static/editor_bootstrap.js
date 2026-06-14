@@ -1,0 +1,31 @@
+$('excelDashboardBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-dashboard'; };
+document.addEventListener('click', (ev) => { if ($('mainNav') && !$('mainNav').classList.contains('hidden') && !$('mainNav').contains(ev.target)) collapseMainNav(); });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') collapseMainNav(); });
+$('searchAuditBtn').onclick = searchAuditLogs;
+$('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); };
+bindClientPagerActions('audit', () => state.auditPage, (page) => { state.auditPage = page; }, renderAuditHitsPage);
+$('searchAccountAuditBtn').onclick = searchAccountAuditLogs;
+$('clearAccountAuditBtn').onclick = () => { clearAccountAuditFilters(); searchAccountAuditLogs(); };
+$('accountAuditStatsBtn').onclick = () => switchMainTab('stats', {source: 'account', category: 'account', view: 'mine'});
+$('applyUsageStatsFiltersBtn').onclick = loadFilteredUsageStats;
+$('clearUsageStatsFiltersBtn').onclick = () => { clearUsageStatsFilters(); loadFilteredUsageStats(); };
+$('usageStatsBucket').onchange = loadFilteredUsageStats;
+$('usageStatsCategory').onchange = loadFilteredUsageStats;
+$('usageStatsEventsLimit').onchange = loadFilteredUsageStats;
+bindClientPagerActions('accountAudit', () => state.accountAuditPage, (page) => { state.accountAuditPage = page; }, renderAccountAuditHitsPage);
+bindClientPagerActions('usageStatsAudit', () => state.usageStatsAuditPage, (page) => { state.usageStatsAuditPage = page; }, renderUsageStatsAuditEventsPage);
+$('deleteSelectedBtn').onclick = deleteSelectedHits;
+$('copyResetTokenBtn').onclick = async () => { try { await copyTextToClipboard($('resetTokenModalValue').value); setStatus('resetTokenCopyStatus', '已複製 token。', 'ok'); } catch (err) { setStatus('resetTokenCopyStatus', err.message, 'error'); } };
+$('closeResetTokenModalBtn').onclick = closeResetTokenDialog;
+$('resetTokenModal').onclick = (ev) => { if (ev.target === $('resetTokenModal')) closeResetTokenDialog(); };
+$('syncJsonBtn').onclick = () => { collectFormToSource(); setStatus('saveStatus', '已套用表單到 JSON', 'ok'); };
+$('reloadFormBtn').onclick = reloadFormFromJson; $('formTabBtn').onclick = () => showPane('form'); $('jsonTabBtn').onclick = () => showPane('json'); $('compactModeToggle').onchange = applyCompactMode;
+updateSearchPagerButtons();
+$('indexSelect').onchange = () => {
+  if (state.editorMode === 'new') syncDocIndexOptions($('indexSelect').value);
+  loadFormConfig($('indexSelect').value).catch(err => setStatus('saveStatus', err.message, 'error'));
+};
+$('docIndex').onchange = () => {
+  if (state.editorMode === 'new') loadFormConfig($('docIndex').value).catch(err => setStatus('saveStatus', err.message, 'error'));
+};
+if (state.token) bootAuthed().catch(err => { localStorage.removeItem('sra_editor_token'); setStatus('authStatus', err.message, 'error'); });

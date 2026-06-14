@@ -282,3 +282,104 @@ Implementation:
 Long-term Consideration:
 
 - 若 audit 總量超過單次 API limit 仍需要完整跨頁，可進一步把 Editor audit API 擴充成 server-side total/page/page_size，與 Excel→SQL dashboard 的 `recent_paging` 模式一致。
+
+## 2026-06-14 Editor HTML 拆分為 shell + static assets
+
+Decision:
+
+- 將肥大的 `api/static/editor.html` 拆成 HTML shell、`api/static/editor.css` 與多個依責任切分的 Editor JS（`editor_core.js`、`editor_form.js`、`editor_auth_nav.js`、`editor_stats.js`、`editor_audit.js`、`editor_documents.js`、`editor_bootstrap.js`），但維持既有 vanilla HTML / CSS / JS 架構與 API contract 不變。
+
+Reason:
+
+- 原單檔接近 1400 行，混合 DOM、樣式與行為，後續修改容易產生大範圍衝突且不利於獨立語法檢查。
+- 專案目前沒有前端 build pipeline；直接拆成 FastAPI static assets 是最小風險重構。
+
+Implementation:
+
+- HTML shell 以 cache-busting query 載入 `/static/editor.css?v=20260614-split` 與多個 `/static/editor_*.js?v=20260614-split` script；script 以 classic script 順序載入，避免引入 build step。
+- 靜態 UI 測試 helper 將 HTML、CSS、JS 合併後執行既有字串斷言，並新增 shell asset reference 測試。
+
+Rejected Alternatives:
+
+- 導入 bundler 或前端框架：超出本次拆檔重構需求，且與現有靜態頁架構不一致。
+- 僅整理同一 HTML 檔內區塊：無法實質降低單檔大小。
+
+Long-term Consideration:
+
+- 若 portable auth pack 與主系統靜態頁持續膨脹，可比照此模式逐步拆出 CSS / JS，並建立簡易 asset 同步或檢查腳本。
+
+## 2026-06-14 portable_auth_pack 同步採用 shell + static assets
+
+Decision:
+
+- 在拆分主系統 Editor 靜態頁後，同步將 `portable_auth_pack/static/login_admin_minimal.html` 拆成 HTML shell、`login_admin_minimal.css` 與 `login_admin_minimal.js`。
+
+Reason:
+
+- portable auth pack 與主系統 Editor 有相同的靜態頁膨脹與長期分岔風險；只拆主系統會讓兩邊維護模式不一致。
+- portable pack 不應引入 build pipeline；相對路徑 static assets 可維持可攜式部署方式。
+
+Implementation:
+
+- portable HTML shell 以相對路徑載入 `login_admin_minimal.css?v=20260614-split` 與 `login_admin_minimal.js?v=20260614-split`。
+- 靜態 UI 測試新增 `_portable_auth_pack_html()` helper，將 portable shell、CSS、JS 合併後驗證既有行為字串，並新增 shell asset reference 測試。
+
+Rejected Alternatives:
+
+- 保留 portable auth pack 單檔：會與 Editor 拆檔決策不一致，且無法獨立檢查 portable JS。
+- 改用與主系統共用同一個 CSS / JS 檔：portable pack 需保持可獨立搬移，直接共用主系統 asset 會降低可攜性。
+
+Long-term Consideration:
+
+- 後續若兩邊 navigation / pagination helper 繼續重複，可評估抽出可同步的共用 source，再由簡單腳本複製到 portable pack。
+
+
+## 2026-06-14 Editor JS 再拆分為責任導向小檔
+
+Decision:
+
+- 不保留 1007 行的單一 `api/static/editor.js`；改依功能切分為 `editor_core.js`、`editor_form.js`、`editor_auth_nav.js`、`editor_stats.js`、`editor_audit.js`、`editor_documents.js`、`editor_bootstrap.js`，並由 HTML shell 依相依順序載入。
+
+Reason:
+
+- 只把 inline JS 移到單一 `editor.js` 雖可獨立語法檢查，但仍是大型單檔，未充分降低維護與 review 成本。
+- 專案仍維持無 build pipeline；多個 classic script 是目前最小變更且瀏覽器相容的拆分方式。
+
+Implementation:
+
+- `editor_core.js` 提供 shared state / helpers / API wrapper；`editor_form.js` 管表單 schema/render/collect；`editor_auth_nav.js` 管 auth、header nav 與 boot；`editor_stats.js` 管 usage stats、多選與 pager；`editor_audit.js` 管 audit logs；`editor_documents.js` 管搜尋、文件 CRUD、帳號管理與檔案抽文；`editor_bootstrap.js` 管 DOM event binding。
+- `tests/test_editor_auth_ui_static.py` 驗證 HTML shell 載入所有 `EDITOR_SCRIPT_FILES`，確認不再載入 `editor.js`，並檢查每個 Editor JS 檔低於 350 行。
+
+Rejected Alternatives:
+
+- 直接導入 ES modules：需調整全域函式互相引用方式與可能的載入語意，超出本次小範圍拆檔。
+- 使用 bundler：目前沒有前端建置流程，導入成本高於收益。
+
+Long-term Consideration:
+
+- 若後續需要更嚴格邊界，可再把 classic scripts 漸進轉成 ES modules，並新增瀏覽器層級 smoke test 驗證載入順序。
+
+## 2026-06-14 portable_auth_pack JS 同步責任導向拆分
+
+Decision:
+
+- 不保留單一 `portable_auth_pack/static/login_admin_minimal.js`；改依功能切分為 `login_admin_core.js`、`login_admin_auth.js`、`login_admin_audit.js`、`login_admin_stats.js`、`login_admin_admin.js`、`login_admin_bootstrap.js`，並由 portable HTML shell 依相依順序載入。
+
+Reason:
+
+- Editor JS 已從單一大型檔改為責任導向小檔；portable auth pack 若仍保留單一行為檔，兩邊維護模式會再次分岔。
+- portable pack 仍需保持可直接搬移與無 build pipeline，因此採相對路徑 classic scripts。
+
+Implementation:
+
+- `login_admin_core.js` 提供 state、navigation、API wrapper 與 payload helpers；`login_admin_auth.js` 管登入 / 註冊 / 密碼流程；`login_admin_audit.js` 管 login audit 與 pager；`login_admin_stats.js` 管帳號統計與使用者多選；`login_admin_admin.js` 管帳號管理、角色下拉與 reset token modal；`login_admin_bootstrap.js` 管 DOM event binding。
+- `tests/test_editor_auth_ui_static.py` 新增 `PORTABLE_AUTH_PACK_SCRIPT_FILES`，驗證 shell 載入所有 portable JS 檔、確認不再載入 `login_admin_minimal.js`，並檢查每個 portable JS 檔低於 200 行。
+
+Rejected Alternatives:
+
+- 保留 `login_admin_minimal.js`：雖然目前行數不如 Editor 大，但與新拆分模式不一致。
+- 導入 ES modules 或 bundler：會增加 portable pack 移植成本。
+
+Long-term Consideration:
+
+- 後續可評估將 Editor / portable 的共用 pager、multi-filter、navigation helper 以 source-of-truth + copy script 管理，減少兩邊手動同步。
