@@ -222,3 +222,11 @@ Open
 - 替代驗證：以 `tests/test_editor_auth_ui_static.py` 檢查多選清單、關鍵字搜尋、勾選 / 清除目前篩選的 DOM 與 JS 標記；以 `node --check` 驗證抽出的前端 script 語法；以 `pytest tests` 與 `portable_auth_pack/scripts/verify_auth_pack.py` 驗證功能行為。
 
 狀態：Open
+
+## 2026-06-14 多選窗格外點擊收合截圖限制
+
+- 本次調整主系統與 `portable_auth_pack` 使用者 / 帳號多選窗格的外部點擊收合行為，屬可視 UI 互動改善。
+- 目前環境仍缺少 Playwright / browser runtime，`python -m playwright --version` 回報 `No module named playwright`，因此未執行瀏覽器截圖或互動式 E2E 驗證。
+- 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查 outside dismiss 綁定、窗格內點擊不收合、外部點擊只移除 `open` 而不清除選取狀態；以 `node --check` 驗證抽出的前端 script 語法。
+
+狀態：Open

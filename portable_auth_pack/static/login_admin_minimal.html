@@ -221,6 +221,7 @@ function payload() {
 }
 function updateCurrentUser(user) {
   pageState.currentUser = user || null;
+  setAccountStatsUserOptions(pageState.accountStatsUserOptions);
   document.getElementById('accountStatsAllBtn').classList.toggle('hidden', !pageState.currentUser || pageState.currentUser.role !== 'superuser');
 }
 async function login() {
@@ -343,6 +344,8 @@ async function loginAudit() {
   }
   catch (err) { out(String(err.message || err)); }
 }
+
+function bindMultiFilterOutsideDismiss(id) { const picker = document.getElementById(id); if (!picker || picker.dataset.outsideDismissBound === 'true') return; picker.dataset.outsideDismissBound = 'true'; document.addEventListener('click', (ev) => { if (!picker.open || picker.contains(ev.target)) return; picker.removeAttribute('open'); }); }
 function setAccountStatsUserOptions(values) { pageState.accountStatsUserOptions = [...new Set((values || []).map(v => String(v || '').trim()).filter(Boolean))].sort(); if (pageState.currentUser && !pageState.accountStatsUserOptions.includes(pageState.currentUser.username)) pageState.accountStatsUserOptions.unshift(pageState.currentUser.username); pageState.accountStatsSelectedUsers = pageState.accountStatsSelectedUsers.filter(v => pageState.accountStatsUserOptions.includes(v)); renderAccountStatsUserPicker(); }
 function visibleAccountStatsUserOptions() { const q = document.getElementById('accountStatsUsernameSearch') ? document.getElementById('accountStatsUsernameSearch').value.trim().toLowerCase() : ''; return pageState.accountStatsUserOptions.filter(v => !q || v.toLowerCase().includes(q)); }
 function renderAccountStatsUserPicker() { const box = document.getElementById('accountStatsUsernameOptions'); if (!box) return; const selected = new Set(pageState.accountStatsSelectedUsers); const visible = visibleAccountStatsUserOptions(); box.innerHTML = visible.map(v => `<label class="multi-filter-option"><input type="checkbox" data-account-stats-user="${esc(v)}" ${selected.has(v) ? 'checked' : ''} /> <span>${esc(v)}</span></label>`).join('') || '<p class="muted">沒有符合關鍵字的帳號。</p>'; box.querySelectorAll('[data-account-stats-user]').forEach(input => input.onchange = () => { const value = input.dataset.accountStatsUser; pageState.accountStatsSelectedUsers = input.checked ? [...new Set(pageState.accountStatsSelectedUsers.concat([value]))] : pageState.accountStatsSelectedUsers.filter(v => v !== value); updateAccountStatsUserSummary(); }); updateAccountStatsUserSummary(); }
@@ -453,6 +456,7 @@ async function resetUserPassword(username) {
   await refreshUsers();
 }
 async function deleteUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method: 'DELETE'})); await refreshUsers(); }
+bindMultiFilterOutsideDismiss('accountStatsUsernamePicker');
 document.getElementById('accountStatsUsernameSearch').oninput = renderAccountStatsUserPicker;
 document.getElementById('accountStatsSelectVisibleUsersBtn').onclick = () => setVisibleAccountStatsUsers(true);
 document.getElementById('accountStatsClearVisibleUsersBtn').onclick = () => setVisibleAccountStatsUsers(false);

@@ -130,6 +130,11 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     assert '勾選目前篩選' in html
     assert '清除目前篩選' in html
     assert 'data-usage-stats-user' in html
+    assert "bindMultiFilterOutsideDismiss('usageStatsUsernamePicker');" in html
+    assert "function bindMultiFilterOutsideDismiss(id)" in html
+    assert "if (!picker.open || picker.contains(ev.target)) return;" in html
+    assert "picker.removeAttribute('open');" in html
+    assert 'setUsageStatsUserOptions((data.users || []).map(u => u.username));' in html
     assert "username: state.usageStatsView === 'mine' && state.user ? state.user.username : state.usageStatsSelectedUsers.join(',')" in html
     assert 'function bindProgressiveNav(options)' in tools
     assert "matchMedia('(hover: hover) and (pointer: fine)')" in tools
@@ -160,6 +165,16 @@ def test_account_management_uses_role_dropdowns() -> None:
         assert '核准 superuser' not in html
         assert '拒絕申請／停權' in html
         assert '拒絕</button>' not in html
+
+
+def test_usage_stats_user_picker_is_seeded_from_current_user_and_user_list() -> None:
+    editor_html = _editor_html()
+    portable_html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+
+    assert "if (state.user && !state.usageStatsUserOptions.includes(state.user.username)) state.usageStatsUserOptions.unshift(state.user.username);" in editor_html
+    assert "setUsageStatsUserOptions((data.users || []).map(u => u.username));" in editor_html
+    assert "if (pageState.currentUser && !pageState.accountStatsUserOptions.includes(pageState.currentUser.username)) pageState.accountStatsUserOptions.unshift(pageState.currentUser.username);" in portable_html
+    assert "setAccountStatsUserOptions(pageState.accountStatsUserOptions);" in portable_html
 
 
 def test_portable_auth_pack_reset_token_dialog_is_copyable() -> None:
@@ -267,6 +282,10 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
     assert 'id="accountStatsUsernamePicker"' in html
     assert 'id="accountStatsUsernameSearch"' in html
     assert 'data-account-stats-user' in html
+    assert "bindMultiFilterOutsideDismiss('accountStatsUsernamePicker');" in html
+    assert "function bindMultiFilterOutsideDismiss(id)" in html
+    assert "if (!picker.open || picker.contains(ev.target)) return;" in html
+    assert "picker.removeAttribute('open');" in html
     assert "pageState.accountStatsSelectedUsers.join(',')" in html
     assert 'pageState.usersRows = (data.users || []).slice().sort' in html
     assert 'pageState.loginAuditRows = (data.events || []).slice().sort' in html

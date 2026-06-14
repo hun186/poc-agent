@@ -692,6 +692,7 @@ async function bootAuthed() {
   }
   await refreshUsageStats();
   switchMainTab('search');
+  bindMultiFilterOutsideDismiss('usageStatsUsernamePicker');
   $('usageStatsUsernameSearch').oninput = renderUsageStatsUserPicker;
   $('usageStatsSelectVisibleUsersBtn').onclick = () => setVisibleUsageStatsUsers(true);
   $('usageStatsClearVisibleUsersBtn').onclick = () => setVisibleUsageStatsUsers(false);
@@ -711,6 +712,16 @@ function formatLocalTimestamp(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return new Intl.DateTimeFormat(undefined, {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit'}).format(d);
+}
+
+function bindMultiFilterOutsideDismiss(id) {
+  const picker = $(id);
+  if (!picker || picker.dataset.outsideDismissBound === 'true') return;
+  picker.dataset.outsideDismissBound = 'true';
+  document.addEventListener('click', (ev) => {
+    if (!picker.open || picker.contains(ev.target)) return;
+    picker.removeAttribute('open');
+  });
 }
 function setUsageStatsUserOptions(values) {
   state.usageStatsUserOptions = [...new Set((values || []).map(v => String(v || '').trim()).filter(Boolean))].sort();
@@ -1245,6 +1256,7 @@ async function refreshUsers() {
   try {
     const data = await api('/v1/auth/users');
     const roleOptions = data.role_options || [];
+    setUsageStatsUserOptions((data.users || []).map(u => u.username));
     $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><label class="inline-label">帳號層級<select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select></label><button data-approve-user="${esc(u.username)}">核准 / 更新層級</button><button data-issue-reset-token="${esc(u.username)}" class="secondary">產生 reset token</button><button data-reset-user="${esc(u.username)}" class="secondary">直接重設密碼</button><button data-reject-user="${esc(u.username)}" class="danger" title="pending 帳號會被拒絕申請；active 帳號會被停權並讓既有 token 失效。">拒絕申請／停權</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
     document.querySelectorAll('[data-approve-user]').forEach(btn => btn.onclick = () => approveSelectedUser(btn.dataset.approveUser));
     document.querySelectorAll('[data-issue-reset-token]').forEach(btn => btn.onclick = () => issuePasswordResetToken(btn.dataset.issueResetToken));
