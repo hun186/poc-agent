@@ -17,34 +17,78 @@ from .models import (
 
 router = APIRouter(tags=["auth"])
 AUTH_FAILURE_MESSAGE = "帳號或密碼錯誤，或帳號尚未啟用。"
+REGISTER_SUCCESS_MESSAGE = "若資料符合申請條件，帳號申請已送出；請等待系統管理員審核。"
+REGISTER_THROTTLE_SCOPE = "register"
+
+
+def _client_host(request: Request) -> str | None:
+    return request.client.host if request.client else None
 
 
 def _rate_limit_exception(retry_after: int) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail="登入或密碼重設嘗試次數過多，請稍後再試。",
+        detail="嘗試次數過多，請稍後再試。",
         headers={"Retry-After": str(max(1, retry_after))},
     )
 
 
 @router.post("/v1/auth/register")
-def register(payload: AuthPayload) -> dict[str, Any]:
+def register(payload: AuthPayload, request: Request) -> dict[str, Any]:
+    client_host = _client_host(request)
+    retry_after = AUTH_STORE.throttle_retry_after(REGISTER_THROTTLE_SCOPE, None, client_host)
+    if retry_after:
+        AUTH_STORE.record_login_audit(
+            payload.username,
+            success=False,
+            reason="register_rate_limited",
+            client_host=client_host,
+            user_agent=request.headers.get("user-agent"),
+        )
+        raise _rate_limit_exception(retry_after)
+
     try:
-        user = AUTH_STORE.register(
+        AUTH_STORE.register(
             payload.username,
             payload.password,
             full_name=payload.full_name,
             department=payload.department,
             note=payload.note,
         )
+        AUTH_STORE.record_login_audit(
+            payload.username,
+            success=True,
+            reason="registered",
+            role="data_reader",
+            status_value="pending",
+            client_host=client_host,
+            user_agent=request.headers.get("user-agent"),
+        )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"user": user, "message": "帳號已建立，狀態為 pending；請等待超級使用者審核。"}
+        if str(exc) != "帳號已存在。":
+            AUTH_STORE.record_login_audit(
+                payload.username,
+                success=False,
+                reason="register_invalid_request",
+                client_host=client_host,
+                user_agent=request.headers.get("user-agent"),
+            )
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        AUTH_STORE.record_login_audit(
+            payload.username,
+            success=False,
+            reason="register_duplicate_username",
+            client_host=client_host,
+            user_agent=request.headers.get("user-agent"),
+        )
+
+    AUTH_STORE.record_auth_failure(REGISTER_THROTTLE_SCOPE, None, client_host)
+    return {"message": REGISTER_SUCCESS_MESSAGE}
 
 
 @router.post("/v1/auth/login")
 def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
-    client_host = request.client.host if request.client else None
+    client_host = _client_host(request)
     user_agent = request.headers.get("user-agent")
     retry_after = AUTH_STORE.throttle_retry_after("login", payload.username, client_host)
     if retry_after:
@@ -95,7 +139,7 @@ def forgot_password(payload: ForgotPasswordPayload) -> dict[str, Any]:
 
 @router.post("/v1/auth/reset-password")
 def recover_password(payload: RecoverPasswordPayload, request: Request) -> dict[str, Any]:
-    client_host = request.client.host if request.client else None
+    client_host = _client_host(request)
     retry_after = AUTH_STORE.throttle_retry_after("password_reset", payload.username, client_host)
     if retry_after:
         raise _rate_limit_exception(retry_after)

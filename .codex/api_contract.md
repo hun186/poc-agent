@@ -116,3 +116,11 @@
 
 - 本次僅拆分 `portable_auth_pack` router 實作檔，未新增、移除或變更 API path、request 格式或 response 格式。
 - 外部導入仍使用 `from fastapi_auth_pack import router` 後 `app.include_router(router)`；`/v1/auth/*`、`GET /v1/auth/login-audit` 與 portable `GET /v1/editor/usage-stats` contract 不變。
+
+## 2026-06-14 Auth 註冊防列舉、IP 稽核與註冊節流
+
+- 主系統與 `portable_auth_pack` 的 `POST /v1/auth/register` 對「新帳號申請成功」與「帳號已存在」改回相同 HTTP 200 response：`{"message": "若資料符合申請條件，帳號申請已送出；請等待系統管理員審核。"}`，避免公開 response 直接揭露帳號是否存在；真正的 `duplicate_username` 只寫入內部 audit / login audit。
+- `POST /v1/auth/register` 對格式錯誤或密碼長度不足仍回 HTTP 400，因這類錯誤不代表帳號存在性。
+- `POST /v1/auth/register` 新增 process-local per-IP 節流：同一 `client_host` 在現有 auth throttle window 內達門檻後，後續註冊嘗試回 HTTP 429，detail 為「嘗試次數過多，請稍後再試。」並帶 `Retry-After` header。
+- 主系統帳號操作 audit event（註冊、登入、登出、變更密碼、忘記密碼、reset-password、核准、拒絕／停權、刪除、發 reset token、superuser 重設密碼）新增 `client_host` 欄位，供資安檢核追蹤來源 IP / client host。
+- `portable_auth_pack` 的註冊、登入與註冊節流事件會在 login audit 中保留 `client_host` / `user_agent`；註冊事件的內部 reason 使用 `registered`、`register_duplicate_username`、`register_invalid_request`、`register_rate_limited`。

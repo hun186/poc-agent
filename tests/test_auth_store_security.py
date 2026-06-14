@@ -220,3 +220,36 @@ def test_role_dependencies_enforce_reader_editor_operator_boundaries(monkeypatch
     assert client.post("/edit", headers=editor_headers).status_code == 200
     assert client.post("/operate-db", headers=editor_headers).status_code == 403
     assert client.post("/operate-db", headers=operator_headers).status_code == 200
+
+def test_register_duplicate_uses_generic_response_and_audits_ip(monkeypatch, tmp_path):
+    client, _ = _load_editor_client(monkeypatch, tmp_path)
+
+    first = client.post("/v1/auth/register", json={"username": "enum-target", "password": "EnumPass!2026"})
+    duplicate = client.post("/v1/auth/register", json={"username": "enum-target", "password": "EnumPass!2026"})
+
+    assert first.status_code == 200
+    assert duplicate.status_code == 200
+    assert first.json() == duplicate.json() == {"message": "若資料符合申請條件，帳號申請已送出；請等待系統管理員審核。"}
+
+    records = [json.loads(line) for line in (tmp_path / "editor_audit.jsonl").read_text(encoding="utf-8").splitlines()]
+    register_events = [record for record in records if record.get("action") == "auth.user_registered"]
+    assert register_events[-2]["success"] is True
+    assert register_events[-2]["client_host"] == "testclient"
+    assert register_events[-1]["success"] is False
+    assert register_events[-1]["reason"] == "duplicate_username"
+    assert register_events[-1]["client_host"] == "testclient"
+
+
+def test_register_endpoint_rate_limits_by_ip(monkeypatch, tmp_path):
+    client, auth_store = _load_editor_client(monkeypatch, tmp_path)
+
+    for idx in range(auth_store.AUTH_THROTTLE_FAILURE_LIMIT):
+        response = client.post(
+            "/v1/auth/register",
+            json={"username": f"bulk-{idx}", "password": "BulkPass!2026"},
+        )
+        assert response.status_code == 200
+
+    throttled = client.post("/v1/auth/register", json={"username": "bulk-blocked", "password": "BulkPass!2026"})
+    assert throttled.status_code == 429
+    assert int(throttled.headers["retry-after"]) > 0

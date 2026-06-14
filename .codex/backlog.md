@@ -57,3 +57,8 @@
 - 多 worker / 多 instance 部署時，將目前 process-local auth throttle 改為 Redis、database、API gateway 或 WAF 層級的共享 rate limiting。
 - 為 superuser 加入 MFA 或高風險操作 re-authentication，例如發 reset token、直接重設密碼、刪除帳號。
 - 補強前端 token 儲存安全性：評估 CSP、XSS hardening，或改用 HttpOnly Secure SameSite cookie 並同步設計 CSRF 防護。
+
+## 2026-06-14 Auth 註冊安全後續改善
+
+- 多 worker / 多 instance 部署時，將註冊 per-IP 節流與既有 login / reset-password throttle 一併改為集中式 Redis、database、API gateway 或 WAF rate limiting。
+- 評估是否對註冊加入 CAPTCHA、email / help desk 驗證或管理員邀請碼，以進一步降低自動化濫用。

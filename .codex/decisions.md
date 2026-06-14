@@ -383,3 +383,32 @@ Rejected Alternatives:
 Long-term Consideration:
 
 - 後續可評估將 Editor / portable 的共用 pager、multi-filter、navigation helper 以 source-of-truth + copy script 管理，減少兩邊手動同步。
+
+## 2026-06-14 註冊防帳號列舉與 IP 節流
+
+Decision:
+
+- `POST /v1/auth/register` 對外不再回「帳號已存在」，改以成功與重複帳號相同的泛用 200 訊息回應。
+- 註冊申請新增 process-local per-IP 節流，並將帳號操作 audit event 補上 `client_host`。
+- 主系統與 `portable_auth_pack` 同步上述安全行為。
+
+Reason:
+
+- 明確的「帳號已存在」可被攻擊者用於 account enumeration；泛用回應能降低公開 API 洩漏帳號存在性的風險。
+- 創帳號無頻率限制會增加濫用、撞帳號名稱與資源消耗風險；輕量 per-IP 節流可先降低 PoC / 小型部署風險。
+- IP / client host 是帳號操作資安檢核與事件追查的必要欄位。
+
+Implementation:
+
+- 主系統註冊 route 捕捉 duplicate username，寫入 `auth.user_registered` audit event 的 `reason=duplicate_username`，但 response 與成功申請一致。
+- `portable_auth_pack` 註冊 route 將成功 / duplicate / invalid / rate-limited 註冊結果寫入 login audit reason，並保留 `client_host` / `user_agent`。
+- 註冊節流復用現有 in-memory auth throttle state，以 `scope=register`、`username=None`、`client_host` 作為 key。
+
+Rejected Alternatives:
+
+- 對 duplicate username 回 HTTP 409：語意清楚但會直接暴露帳號存在性。
+- 立即導入 Redis / database-backed distributed register limiter：較適合多 instance production，但超出本次小範圍補強。
+
+Long-term Consideration:
+
+- 多 worker / 多 instance production 仍應使用 Redis、database、API gateway 或 WAF 做集中式 rate limiting，避免各 process 計數分散。

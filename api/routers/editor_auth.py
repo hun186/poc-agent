@@ -20,39 +20,77 @@ from api.services.editor_audit import append_audit_event
 
 router = APIRouter(tags=["editor"])
 AUTH_FAILURE_MESSAGE = "帳號或密碼錯誤，或帳號尚未啟用。"
+REGISTER_SUCCESS_MESSAGE = "若資料符合申請條件，帳號申請已送出；請等待系統管理員審核。"
+REGISTER_THROTTLE_SCOPE = "register"
+
+
+def _client_host(request: Request) -> str | None:
+    return request.client.host if request.client else None
 
 
 def _rate_limit_exception(retry_after: int) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail="登入或密碼重設嘗試次數過多，請稍後再試。",
+        detail="嘗試次數過多，請稍後再試。",
         headers={"Retry-After": str(max(1, retry_after))},
     )
 
 
 
 @router.post("/v1/auth/register")
-def register(payload: AuthPayload) -> dict[str, Any]:
+def register(payload: AuthPayload, request: Request) -> dict[str, Any]:
+    client_host = _client_host(request)
+    retry_after = auth_store.AUTH_STORE.throttle_retry_after(REGISTER_THROTTLE_SCOPE, None, client_host)
+    if retry_after:
+        append_audit_event({
+            "action": "auth.user_registered",
+            "username": payload.username,
+            "success": False,
+            "reason": "rate_limited",
+            "client_host": client_host,
+        })
+        raise _rate_limit_exception(retry_after)
+
+    success = False
+    reason = "ok"
     try:
-        user = auth_store.AUTH_STORE.register(
+        auth_store.AUTH_STORE.register(
             payload.username,
             payload.password,
             full_name=payload.full_name,
             department=payload.department,
             note=payload.note,
         )
+        success = True
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        reason = "duplicate_username" if str(exc) == "帳號已存在。" else "invalid_request"
+        if reason != "duplicate_username":
+            append_audit_event({
+                "action": "auth.user_registered",
+                "username": payload.username,
+                "success": False,
+                "reason": reason,
+                "client_host": client_host,
+            })
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     append_audit_event({
         "action": "auth.user_registered",
         "username": payload.username,
+        "success": success,
+        "reason": reason,
+        "client_host": client_host,
     })
-    return {"user": user, "message": "帳號已建立，狀態為 pending；請等待超級使用者審核。"}
+    retry_after = auth_store.AUTH_STORE.record_auth_failure(REGISTER_THROTTLE_SCOPE, None, client_host)
+    if retry_after:
+        # Apply the block to following attempts while preserving the generic response for this one.
+        pass
+    return {"message": REGISTER_SUCCESS_MESSAGE}
 
 
 @router.post("/v1/auth/login")
 def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
-    client_host = request.client.host if request.client else None
+    client_host = _client_host(request)
     user_agent = request.headers.get("user-agent")
     retry_after = auth_store.AUTH_STORE.throttle_retry_after("login", payload.username, client_host)
     if retry_after:
@@ -63,7 +101,7 @@ def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
             client_host=client_host,
             user_agent=user_agent,
         )
-        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "rate_limited"})
+        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "rate_limited", "client_host": client_host})
         raise _rate_limit_exception(retry_after)
 
     user = auth_store.AUTH_STORE.authenticate(payload.username, payload.password)
@@ -76,7 +114,7 @@ def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
             client_host=client_host,
             user_agent=user_agent,
         )
-        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "invalid_credentials"})
+        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "invalid_credentials", "client_host": client_host})
         if retry_after:
             raise _rate_limit_exception(retry_after)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AUTH_FAILURE_MESSAGE)
@@ -91,7 +129,7 @@ def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
             client_host=client_host,
             user_agent=user_agent,
         )
-        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "inactive_account", "status": user.status})
+        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "inactive_account", "status": user.status, "client_host": client_host})
         if retry_after:
             raise _rate_limit_exception(retry_after)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AUTH_FAILURE_MESSAGE)
@@ -105,57 +143,58 @@ def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
         client_host=client_host,
         user_agent=user_agent,
     )
-    append_audit_event({"action": "auth.login", "username": payload.username, "success": True, "role": user.role})
+    append_audit_event({"action": "auth.login", "username": payload.username, "success": True, "role": user.role, "client_host": client_host})
     return {"access_token": auth_store.create_token(user), "token_type": "bearer", "user": user.__dict__}
 
 
 @router.post("/v1/auth/logout")
 def logout(
+    request: Request,
     user: AuthUser = Depends(current_user),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     payload = auth_store.parse_token(bearer_token(authorization))
     if payload:
         auth_store.AUTH_STORE.deny_token(payload)
-    append_audit_event({"action": "auth.logout", "username": user.username})
+    append_audit_event({"action": "auth.logout", "username": user.username, "client_host": _client_host(request)})
     return {"message": "已登出；此 token 已失效。"}
 
 
 @router.post("/v1/auth/change-password")
-def change_password(payload: ChangePasswordPayload, user: AuthUser = Depends(current_user)) -> dict[str, Any]:
+def change_password(payload: ChangePasswordPayload, request: Request, user: AuthUser = Depends(current_user)) -> dict[str, Any]:
     try:
         updated = auth_store.AUTH_STORE.change_password(user.username, payload.current_password, payload.new_password)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    append_audit_event({"action": "auth.password_changed", "username": user.username})
+    append_audit_event({"action": "auth.password_changed", "username": user.username, "client_host": _client_host(request)})
     return {"user": updated, "message": "密碼已變更，既有 token 已失效；請重新登入。"}
 
 
 @router.post("/v1/auth/forgot-password")
-def forgot_password(payload: ForgotPasswordPayload) -> dict[str, Any]:
+def forgot_password(payload: ForgotPasswordPayload, request: Request) -> dict[str, Any]:
     # Do not issue or return a reset token from the public endpoint. Returning a token
     # here would let anyone who knows a username take over that account.
-    append_audit_event({"action": "auth.password_reset_requested", "username": payload.username})
+    append_audit_event({"action": "auth.password_reset_requested", "username": payload.username, "client_host": _client_host(request)})
     return {"message": "若帳號存在，已收到忘記密碼申請；請聯絡系統管理員核身後取得一次性重設 token。"}
 
 
 @router.post("/v1/auth/reset-password")
 def recover_password(payload: RecoverPasswordPayload, request: Request) -> dict[str, Any]:
-    client_host = request.client.host if request.client else None
+    client_host = _client_host(request)
     retry_after = auth_store.AUTH_STORE.throttle_retry_after("password_reset", payload.username, client_host)
     if retry_after:
-        append_audit_event({"action": "auth.password_recovered", "username": payload.username, "success": False, "reason": "rate_limited"})
+        append_audit_event({"action": "auth.password_recovered", "username": payload.username, "success": False, "reason": "rate_limited", "client_host": client_host})
         raise _rate_limit_exception(retry_after)
     try:
         updated = auth_store.AUTH_STORE.recover_password(payload.username, payload.reset_token, payload.new_password)
     except ValueError as exc:
         retry_after = auth_store.AUTH_STORE.record_auth_failure("password_reset", payload.username, client_host)
-        append_audit_event({"action": "auth.password_recovered", "username": payload.username, "success": False, "reason": "invalid_or_expired_token"})
+        append_audit_event({"action": "auth.password_recovered", "username": payload.username, "success": False, "reason": "invalid_or_expired_token", "client_host": client_host})
         if retry_after:
             raise _rate_limit_exception(retry_after)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     auth_store.AUTH_STORE.clear_auth_failures("password_reset", payload.username, client_host)
-    append_audit_event({"action": "auth.password_recovered", "username": payload.username, "success": True})
+    append_audit_event({"action": "auth.password_recovered", "username": payload.username, "success": True, "client_host": client_host})
     return {"user": updated, "message": "密碼已重設，既有 token 已失效；請重新登入。"}
 
 
@@ -170,7 +209,7 @@ def list_users(_: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
 
 
 @router.post("/v1/auth/users/{username}/approve")
-def approve_user(username: str, payload: ApprovePayload, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
+def approve_user(username: str, payload: ApprovePayload, request: Request, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
     try:
         approved = auth_store.AUTH_STORE.approve_user(username, payload.role, approved_by=user.username)
     except KeyError as exc:
@@ -182,12 +221,13 @@ def approve_user(username: str, payload: ApprovePayload, user: AuthUser = Depend
         "username": username,
         "actor": user.username,
         "role": payload.role,
+        "client_host": _client_host(request),
     })
     return {"user": approved}
 
 
 @router.post("/v1/auth/users/{username}/reject")
-def reject_user(username: str, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
+def reject_user(username: str, request: Request, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
     try:
         rejected = auth_store.AUTH_STORE.reject_user(username, rejected_by=user.username)
     except KeyError as exc:
@@ -196,12 +236,13 @@ def reject_user(username: str, user: AuthUser = Depends(require_superuser)) -> d
         "action": "auth.user_rejected",
         "username": username,
         "actor": user.username,
+        "client_host": _client_host(request),
     })
     return {"user": rejected}
 
 
 @router.delete("/v1/auth/users/{username}")
-def delete_user(username: str, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
+def delete_user(username: str, request: Request, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
     if username == user.username:
         raise HTTPException(status_code=400, detail="不可刪除目前登入的超級使用者。")
     try:
@@ -212,28 +253,29 @@ def delete_user(username: str, user: AuthUser = Depends(require_superuser)) -> d
         "action": "auth.user_deleted",
         "username": username,
         "actor": user.username,
+        "client_host": _client_host(request),
     })
     return {"user": deleted}
 
 
 @router.post("/v1/auth/users/{username}/password-reset-token")
-def issue_password_reset_token(username: str, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
+def issue_password_reset_token(username: str, request: Request, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
     reset_token = auth_store.AUTH_STORE.request_password_reset(username)
     if not reset_token:
         raise HTTPException(status_code=404, detail="帳號不存在或尚未啟用，無法建立重設 token。")
-    append_audit_event({"action": "auth.password_reset_token_issued", "username": username, "actor": user.username})
+    append_audit_event({"action": "auth.password_reset_token_issued", "username": username, "actor": user.username, "client_host": _client_host(request)})
     return {"username": username, "reset_token": reset_token, "message": "一次性重設 token 已建立；請用安全管道交付給該使用者。"}
 
 
 @router.post("/v1/auth/users/{username}/reset-password")
-def reset_user_password(username: str, payload: ResetPasswordPayload, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
+def reset_user_password(username: str, payload: ResetPasswordPayload, request: Request, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
     try:
         updated = auth_store.AUTH_STORE.reset_user_password(username, payload.new_password, reset_by=user.username)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    append_audit_event({"action": "auth.password_reset_by_superuser", "username": username, "actor": user.username})
+    append_audit_event({"action": "auth.password_reset_by_superuser", "username": username, "actor": user.username, "client_host": _client_host(request)})
     return {"user": updated, "message": "密碼已由超級使用者重設，該帳號既有 token 已失效。"}
 
 
