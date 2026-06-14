@@ -155,3 +155,17 @@ Conclusion:
 - 主要修改：`api/static/editor.html` 新增使用者多選清單、關鍵字篩選、勾選目前篩選、清除目前篩選與清除全部；`portable_auth_pack/static/login_admin_minimal.html` 同步帳號操作統計的帳號多選清單；`api/services/editor_audit_queries.py` 將 username filter 改為 exact match，並支援逗號分隔多帳號。
 - 驗證：`node --check /tmp/editor.js`、`node --check /tmp/portable.js` 通過；`pytest tests/test_editor_audit_queries.py tests/test_editor_auth_ui_static.py` 通過（22 passed）；`pytest tests` 通過（68 passed，既有 warnings）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過。
 - 截圖限制：本次屬可視 UI 變更；環境執行 `python -m playwright --version` 仍回報 `No module named playwright`，因此未提供瀏覽器截圖，沿用既有 known issue 與靜態測試替代。
+
+## 2026-06-14 統計使用者關鍵字篩選清單修正
+
+- 目的：修正主系統「統計與檢核曲線儀表板」與 `portable_auth_pack` 帳號操作統計的使用者 / 帳號關鍵字篩選清單顯示「沒有符合關鍵字」或「找不到使用者」的問題。
+- 主要修改：主系統 superuser 重新整理帳號清單時同步呼叫 `setUsageStatsUserOptions()`，讓統計儀表板的使用者多選清單以真實帳號清單建立；`portable_auth_pack` 在更新目前登入者時重新 seed 帳號統計選項，確保至少包含目前使用者，後續 superuser 重新整理帳號後仍會納入全體帳號清單。
+- 驗證：`node --check /tmp/editor.html.js && node --check /tmp/login_admin_minimal.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py -q` 通過（23 passed，2 個既有 SyntaxWarning）；`pytest tests -q` 通過（69 passed，5 個既有 warning）。
+- 結論：統計曲線儀表板的關鍵字篩選不再因使用者選項未初始化而顯示找不到使用者；清單會從帳號資料或目前登入者補齊。
+
+## 2026-06-14 使用者多選窗格外點擊收合
+
+- 目的：改善主系統「統計與檢核曲線儀表板」與 `portable_auth_pack` 帳號操作統計的使用者 / 帳號多選窗格互動；點擊窗格外部時自動收合，但保留已勾選狀態與 hidden username 值，避免誤點造成篩選狀態遺失。
+- 主要修改：新增 `bindMultiFilterOutsideDismiss()`，只在 click target 不屬於目前 `<details>` picker 且 picker 已開啟時移除 `open`；主系統綁定 `usageStatsUsernamePicker`，portable auth pack 綁定 `accountStatsUsernamePicker`。
+- 驗證：`node --check /tmp/editor.html.js && node --check /tmp/login_admin_minimal.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py -q` 通過（23 passed，2 個既有 SyntaxWarning）；`pytest tests -q` 通過（69 passed，5 個既有 warning）。
+- 截圖限制：本次為可視 UI 互動改善；目前環境仍未安裝 Playwright（`python -m playwright --version` 回報 `No module named playwright`），因此以靜態 UI 測試與 JS 語法檢查替代。
