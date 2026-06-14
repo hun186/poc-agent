@@ -105,3 +105,9 @@
 
 - `GET /static/{filename}`：服務 Editor 頁面允許的靜態資產白名單，包含 `editor.css`、`audit_tools.js`、`editor_core.js`、`editor_form.js`、`editor_auth_nav.js`、`editor_stats.js`、`editor_audit.js`、`editor_documents.js`、`editor_bootstrap.js`。
 - Response：檔案存在且在白名單內時回 200 與對應 `text/css` 或 `application/javascript`；未知檔名或檔案不存在時回 404。
+
+## 2026-06-14 Editor router backend split
+
+- 本次僅拆分後端 router 檔案職責，未新增、移除或變更 API path、request 格式或 response 格式。
+- `/v1/auth/*` 仍由主 app include `api.routers.editor.router` 後提供；實作檔移至 `api/routers/editor_auth.py`。
+- `GET /v1/editor/usage-stats` 與 `GET /v1/editor/audit-logs` contract 不變；實作檔移至 `api/routers/editor_usage.py`。
