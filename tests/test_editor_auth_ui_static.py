@@ -70,6 +70,7 @@ def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     assert 'function setActiveNavRoot(root)' in html
     assert 'function collapseMainNav()' in html
     assert "setAttribute('aria-expanded', active ? 'true' : 'false')" in html
+    assert "panel.style.setProperty('--nav-panel-left'" in html
     assert 'SraAuditTools.bindProgressiveNav' in html
     assert 'getActiveRoot: () => state.activeNavRoot' in html
     assert 'setActiveRoot: setActiveNavRoot' in html
@@ -90,8 +91,11 @@ def test_editor_workspace_separates_document_and_account_work_areas() -> None:
     assert '<summary>紀錄查詢</summary>' not in html
     assert '<summary>文件異動紀錄</summary>' in html
     assert 'data-stats-category="document"' in html
-    assert 'data-main-tab="account-audit">我的帳號操作紀錄' in html
-    assert 'data-main-tab="stats" data-stats-category="account" data-stats-view="all" data-superuser-only="true"' in html
+    assert 'data-main-tab="account-audit">帳號操作記錄' in html
+    assert 'data-stats-category="account" data-stats-view="all"' not in html
+    assert 'id="accountAuditStartTs" type="datetime-local"' in html
+    assert 'id="accountAuditEndTs" type="datetime-local"' in html
+    assert 'id="accountAuditStatsBtn"' in html
     assert "qs.set('action_prefix', 'editor.')" in html
     assert "qs.set('action_prefix', 'auth.')" in html
 
@@ -103,7 +107,10 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     assert '<script src="/static/audit_tools.js?v=20260612-paginate"></script>' in html
     assert 'id="usageStatsCategory"' in html
     assert 'ES 文件異動紀錄使用統計' in html
-    assert '帳號操作紀錄使用統計' in html
+    assert '帳號操作記錄使用統計' in html
+    assert '全部操作使用統計' not in html
+    assert 'id="usageStatsIndexField"' in html
+    assert "$('usageStatsIndexField').classList.toggle('hidden', state.usageStatsSource === 'account');" in html
     assert '統計與檢核曲線儀表板' in html
     assert 'id="usageStatsChart"' in html
     assert 'id="usageStatsEventsLimit"' in html
@@ -182,6 +189,7 @@ def test_portable_auth_pack_navigation_is_header_multilevel_and_collapsible() ->
     assert 'class="nav-menu" data-nav-menu="identity"' in html
     assert 'class="nav-level" open' in html
     assert 'grid-template-columns: minmax(170px, 220px) minmax(230px, 1fr)' in html
+    assert '.nav-subpanel { position: absolute; top: calc(100% + .75rem); left: var(--nav-panel-left, 0px); transform: translateX(-50%);' in html
     assert '.nav-actions { position: absolute; top: 0; left: calc(100% + .6rem)' in html
     assert 'flex-direction: column' in html
     assert 'flex-wrap: nowrap' in html
@@ -192,6 +200,7 @@ def test_portable_auth_pack_navigation_is_header_multilevel_and_collapsible() ->
     assert 'function collapseAuthPackNav()' in html
     assert 'SraAuditTools.bindProgressiveNav' in html
     assert "setAttribute('aria-expanded', active ? 'true' : 'false')" in html
+    assert "panel.style.setProperty('--nav-panel-left'" in html
 
 
 def test_navigation_hover_has_bridge_and_delayed_level_close() -> None:

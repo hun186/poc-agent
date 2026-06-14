@@ -39,8 +39,8 @@
     .nav-root-btn { min-width: 128px; padding: 12px 18px; border: 1px solid rgba(255,255,255,.18); background: rgba(37,99,235,.95); box-shadow: 0 8px 20px rgba(0,0,0,.16); }
     .nav-root-btn.secondary { background: rgba(71,85,105,.92); }
     .nav-root-btn.active { outline: 3px solid rgba(147,197,253,.55); background: #1d4ed8; }
-    .nav-subpanel { position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%); width: min(760px, calc(100vw - 36px)); background: #fff; color: #0f172a; border: 1px solid #dbe4ef; border-radius: 16px; box-shadow: 0 24px 70px rgba(15,23,42,.28); padding: 12px; }
-    .nav-subpanel::before { content: ""; position: absolute; top: -9px; left: 50%; width: 18px; height: 18px; transform: translateX(-50%) rotate(45deg); background: #fff; border-left: 1px solid #dbe4ef; border-top: 1px solid #dbe4ef; }
+    .nav-subpanel { position: absolute; top: calc(100% + 12px); left: var(--nav-panel-left, 50%); transform: translateX(-50%); width: min(760px, calc(100vw - 36px)); background: #fff; color: #0f172a; border: 1px solid #dbe4ef; border-radius: 16px; box-shadow: 0 24px 70px rgba(15,23,42,.28); padding: 12px; }
+    .nav-subpanel::before { content: ""; position: absolute; top: -9px; left: var(--nav-panel-arrow-left, 50%); width: 18px; height: 18px; transform: translateX(-50%) rotate(45deg); background: #fff; border-left: 1px solid #dbe4ef; border-top: 1px solid #dbe4ef; }
     .nav-menu { display: none; gap: 10px; grid-template-columns: minmax(180px, 230px) minmax(240px, 1fr); align-items: start; }
     .nav-menu.active { display: grid; }
     .nav-menu-title { grid-column: 1 / -1; margin: 2px 4px 0; color: #334155; font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
@@ -129,7 +129,7 @@
           </details>
           <details class="nav-level">
             <summary>文件異動紀錄</summary>
-            <div class="nav-actions"><button type="button" data-main-tab="stats" data-stats-category="document" data-stats-view="mine">使用統計</button></div>
+            <div class="nav-actions"><button type="button" data-main-tab="stats" data-stats-source="document" data-stats-category="document" data-stats-view="mine">統計與檢核曲線儀表板</button></div>
           </details>
         </div>
         <div class="nav-menu" data-nav-menu="pipeline">
@@ -150,7 +150,7 @@
           <p class="nav-menu-title">個人帳號</p>
           <details class="nav-level" open>
             <summary>密碼與登入</summary>
-            <div class="nav-actions"><button type="button" data-main-tab="account">變更密碼</button><button type="button" data-main-tab="account-audit">我的帳號操作紀錄</button><button type="button" data-main-tab="stats" data-stats-category="account" data-stats-view="mine">我的使用統計</button><button type="button" data-main-tab="stats" data-stats-category="account" data-stats-view="all" data-superuser-only="true">全體使用統計</button></div>
+            <div class="nav-actions"><button type="button" data-main-tab="account">變更密碼</button><button type="button" data-main-tab="account-audit">帳號操作記錄</button></div>
           </details>
         </div>
       </div>
@@ -221,7 +221,7 @@
 
           <div id="statsCard" class="card hidden">
             <h2>統計與檢核曲線儀表板</h2>
-            <p class="muted">可用同一組檢核元件篩選 ES 文件異動紀錄與帳號操作紀錄；一般使用者只會看到自己的使用統計，具備帳號處理權限的 superuser 才能查看全體統計。</p>
+            <p class="muted">可依導覽來源顯示對應的統計類別與篩選條件；一般使用者只會看到自己的使用統計，superuser 可用頁面內按鈕切換自己的或全體統計。</p>
             <div class="row">
               <button id="statsMineTabBtn" class="secondary">我的使用統計</button>
               <button id="statsAllTabBtn" class="secondary hidden">全體使用統計</button>
@@ -231,10 +231,10 @@
             <div id="adminStats" class="hidden"></div>
             <hr style="border:0;border-top:1px solid #e5e7eb;margin:18px 0;" />
             <section class="field-grid" aria-label="使用統計篩選">
-              <div><label>統計類別</label><select id="usageStatsCategory"><option value="document">ES 文件異動紀錄使用統計</option><option value="account">帳號操作紀錄使用統計</option><option value="all">全部操作使用統計</option></select></div>
+              <div><label>統計類別</label><select id="usageStatsCategory"><option value="document">ES 文件異動紀錄使用統計</option><option value="account">帳號操作記錄使用統計</option></select></div>
               <div><label>使用者</label><input id="usageStatsUsername" placeholder="superuser 可輸入帳號；一般使用者固定自己" /></div>
               <div><label>動作包含</label><input id="usageStatsAction" placeholder="例如 save_document 或 password" /></div>
-              <div><label>Index</label><select id="usageStatsIndex"><option value="">全部</option></select></div>
+              <div id="usageStatsIndexField"><label>Index</label><select id="usageStatsIndex"><option value="">全部</option></select></div>
               <div><label>起始時間</label><input id="usageStatsStartTs" type="datetime-local" /></div>
               <div><label>結束時間</label><input id="usageStatsEndTs" type="datetime-local" /></div>
               <div><label>曲線圖時間區間</label><select id="usageStatsBucket"><option value="hour">每小時</option><option value="6_hours">每 6 小時</option><option value="12_hours">每 12 小時</option><option value="day" selected>每日</option><option value="week">每週</option><option value="month">每月</option></select></div>
@@ -309,11 +309,14 @@
             <div class="field-grid">
               <div><label>帳號</label><select id="accountAuditUsername"><option value="">全部</option></select></div>
               <div><label>帳號動作</label><select id="accountAuditAction"><option value="">全部帳號動作</option><option value="auth.login">登入</option><option value="auth.logout">登出</option><option value="auth.password_changed">變更密碼</option><option value="auth.password_reset_requested">忘記密碼申請</option><option value="auth.password_recovered">Token 重設密碼</option><option value="auth.password_reset_token_issued">管理員發 token</option><option value="auth.password_reset_by_superuser">管理員重設密碼</option><option value="auth.user_registered">建立 pending 帳號</option><option value="auth.user_approved">核准帳號</option><option value="auth.user_rejected">拒絕申請／停權</option><option value="auth.user_deleted">刪除帳號</option></select></div>
+              <div><label>起始時間</label><input id="accountAuditStartTs" type="datetime-local" /></div>
+              <div><label>結束時間</label><input id="accountAuditEndTs" type="datetime-local" /></div>
               <div><label>最多筆數</label><input id="accountAuditLimit" type="number" min="1" max="500" value="100" /></div>
             </div>
             <div class="row" style="margin-top: 12px;">
               <button id="searchAccountAuditBtn">查詢帳號操作</button>
               <button id="clearAccountAuditBtn" class="secondary">清空篩選</button>
+              <button id="accountAuditStatsBtn" class="secondary" type="button">統計與檢核曲線儀表板</button>
             </div>
             <div id="accountAuditStatus" class="status hidden"></div>
             <div class="pager" aria-label="帳號操作紀錄分頁"><span id="accountAuditPageInfo" class="muted">第 1 頁</span><button id="accountAuditFirstBtn" class="secondary" type="button">首頁</button><button id="accountAuditPrevBtn" class="secondary" type="button">上一頁</button><span class="pager-jump"><label class="sr-only" for="accountAuditPageInput">帳號操作紀錄頁數</label><input id="accountAuditPageInput" type="number" min="1" value="1" inputmode="numeric" /><button id="accountAuditGotoBtn" class="secondary" type="button">跳至頁數</button></span><button id="accountAuditNextBtn" class="secondary" type="button">下一頁</button><button id="accountAuditLastBtn" class="secondary" type="button">末頁</button></div>
@@ -369,7 +372,7 @@
   </main>
 <script src="/static/audit_tools.js?v=20260612-paginate"></script>
 <script>
-const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '', auditRows: [], auditPage: 1, accountAuditRows: [], accountAuditPage: 1, usageStatsAuditRows: [], usageStatsAuditPage: 1 };
+const state = { token: localStorage.getItem('sra_editor_token') || '', user: null, source: null, formConfig: null, schema: null, latestHits: [], editorMode: 'new', loadedDocId: '', searchPage: 1, searchHasMore: false, activeNavRoot: '', auditRows: [], auditPage: 1, accountAuditRows: [], accountAuditPage: 1, usageStatsAuditRows: [], usageStatsAuditPage: 1, usageStatsSource: 'document' };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function formatApiError(data, fallback='') {
@@ -626,7 +629,17 @@ function setActiveNavRoot(root) {
     btn.setAttribute('aria-expanded', active ? 'true' : 'false');
   });
   document.querySelectorAll('[data-nav-menu]').forEach(menu => menu.classList.toggle('active', menu.dataset.navMenu === state.activeNavRoot));
-  if (panel) panel.classList.toggle('hidden', !state.activeNavRoot);
+  if (panel) {
+    panel.classList.toggle('hidden', !state.activeNavRoot);
+    const activeBtn = document.querySelector(`[data-nav-root="${CSS.escape(state.activeNavRoot)}"]`);
+    if (activeBtn && state.activeNavRoot) {
+      const navRect = $('mainNav').getBoundingClientRect();
+      const btnRect = activeBtn.getBoundingClientRect();
+      const center = btnRect.left + btnRect.width / 2 - navRect.left;
+      panel.style.setProperty('--nav-panel-left', `${center}px`);
+      panel.style.setProperty('--nav-panel-arrow-left', '50%');
+    }
+  }
 }
 function collapseMainNav() { setActiveNavRoot(''); }
 function bindHeaderNav() {
@@ -651,7 +664,7 @@ async function bootAuthed() {
   await loadFormConfig($('indexSelect').value);
   $('mainNav').classList.remove('hidden');
   bindHeaderNav();
-  document.querySelectorAll('[data-main-tab]').forEach(btn => btn.onclick = () => { switchMainTab(btn.dataset.mainTab, {category: btn.dataset.statsCategory || '', view: btn.dataset.statsView || ''}); collapseMainNav(); });
+  document.querySelectorAll('[data-main-tab]').forEach(btn => btn.onclick = () => { switchMainTab(btn.dataset.mainTab, {category: btn.dataset.statsCategory || '', view: btn.dataset.statsView || '', source: btn.dataset.statsSource || ''}); collapseMainNav(); });
   if (isSuperuser) {
     $('adminCard').classList.remove('hidden');
     $('auditCard').classList.remove('hidden');
@@ -723,6 +736,17 @@ async function refreshUsageStats() {
     setStatus('usageStatsStatus', err.message, 'error');
   }
 }
+function configureUsageStatsSource(source) {
+  state.usageStatsSource = source === 'account' ? 'account' : 'document';
+  const category = $('usageStatsCategory');
+  const options = state.usageStatsSource === 'account'
+    ? [{value: 'account', label: '帳號操作記錄使用統計'}]
+    : [{value: 'document', label: 'ES 文件異動紀錄使用統計'}];
+  category.innerHTML = options.map(opt => `<option value="${esc(opt.value)}">${esc(opt.label)}</option>`).join('');
+  category.value = options[0].value;
+  $('usageStatsIndexField').classList.toggle('hidden', state.usageStatsSource === 'account');
+  if (state.usageStatsSource === 'account') $('usageStatsIndex').value = '';
+}
 function collectUsageStatsQuery() {
   const params = new URLSearchParams({
     category: $('usageStatsCategory').value,
@@ -733,7 +757,7 @@ function collectUsageStatsQuery() {
   const mapping = {
     username: $('usageStatsUsername').value.trim(),
     action: $('usageStatsAction').value.trim(),
-    index: $('usageStatsIndex').value.trim(),
+    index: state.usageStatsSource === 'account' ? '' : $('usageStatsIndex').value.trim(),
     start_ts: toIsoOrEmpty($('usageStatsStartTs').value.trim()),
     end_ts: toIsoOrEmpty($('usageStatsEndTs').value.trim()),
   };
@@ -858,7 +882,7 @@ async function loadFilteredUsageStats() {
   }
 }
 function clearUsageStatsFilters() {
-  $('usageStatsCategory').value = 'document';
+  configureUsageStatsSource(state.usageStatsSource || 'document');
   $('usageStatsUsername').value = '';
   $('usageStatsAction').value = '';
   $('usageStatsIndex').value = '';
@@ -869,6 +893,7 @@ function clearUsageStatsFilters() {
 }
 function switchMainTab(tab, opts={}) {
   if (tab === 'stats') {
+    configureUsageStatsSource(opts.source || opts.category || state.usageStatsSource || 'document');
     if (opts.category) $('usageStatsCategory').value = opts.category;
     if (opts.view) switchStatsView(opts.view);
     loadFilteredUsageStats();
@@ -978,8 +1003,12 @@ function collectAccountAuditQuery() {
   const qs = new URLSearchParams({limit: String(Math.max(1, Math.min(500, Number($('accountAuditLimit').value || 100))))});
   const username = $('accountAuditUsername').value.trim();
   const action = $('accountAuditAction').value.trim();
+  const startTs = toIsoOrEmpty($('accountAuditStartTs').value.trim());
+  const endTs = toIsoOrEmpty($('accountAuditEndTs').value.trim());
   if (username) qs.set('username', username);
   if (action) qs.set('action', action);
+  if (startTs) qs.set('start_ts', startTs);
+  if (endTs) qs.set('end_ts', endTs);
   qs.set('action_prefix', 'auth.');
   return qs;
 }
@@ -1005,6 +1034,8 @@ async function searchAccountAuditLogs() {
 function clearAccountAuditFilters() {
   $('accountAuditUsername').value = '';
   $('accountAuditAction').value = '';
+  $('accountAuditStartTs').value = '';
+  $('accountAuditEndTs').value = '';
   $('accountAuditLimit').value = '100';
 }
 
@@ -1253,6 +1284,7 @@ $('clearAuditBtn').onclick = () => { clearAuditFilters(); searchAuditLogs(); };
 bindClientPagerActions('audit', () => state.auditPage, (page) => { state.auditPage = page; }, renderAuditHitsPage);
 $('searchAccountAuditBtn').onclick = searchAccountAuditLogs;
 $('clearAccountAuditBtn').onclick = () => { clearAccountAuditFilters(); searchAccountAuditLogs(); };
+$('accountAuditStatsBtn').onclick = () => switchMainTab('stats', {source: 'account', category: 'account', view: 'mine'});
 $('applyUsageStatsFiltersBtn').onclick = loadFilteredUsageStats;
 $('clearUsageStatsFiltersBtn').onclick = () => { clearUsageStatsFilters(); loadFilteredUsageStats(); };
 $('usageStatsBucket').onchange = loadFilteredUsageStats;

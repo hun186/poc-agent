@@ -197,3 +197,12 @@ Open
 - 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查 portable auth pack UI 標記，以 `node --check /tmp/login_admin_minimal.html.js` 檢查抽出的前端 script 語法，並執行 `python portable_auth_pack/scripts/verify_auth_pack.py` 驗證 API 行為。
 
 狀態：Open
+
+
+## 2026-06-14 帳號導航與統計儀表板 UI 截圖限制
+
+- 本次調整帳號操作記錄導航、統計儀表板來源分流與第二層選單動態定位，屬可視 UI 變更。
+- 目前環境缺少 Playwright / browser runtime，未執行瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查導航入口、統計類別限制、帳號日期篩選、Index 隱藏邏輯與 portable auth pack 導航同步；以 `node --check` 檢查抽出的前端 script 語法。
+
+狀態：Open

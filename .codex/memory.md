@@ -132,3 +132,12 @@ Conclusion:
 - 主要修改：`portable_auth_pack/fastapi_auth_pack/router.py` 的 `GET /v1/auth/login-audit` 改為 active user 可查；一般使用者固定只能查自己的 login audit，superuser 可查全體或用 `username` 篩選。`portable_auth_pack/static/login_admin_minimal.html` 改為「我的登入稽核」，登入稽核時間以瀏覽器本地時間顯示，帳號統計示範也帶 `timezone_offset_minutes`。
 - 文件 / 驗證：更新 `portable_auth_pack/README.md` 與 `CODEX_IMPORT_GUIDE.md`；`portable_auth_pack/scripts/verify_auth_pack.py` 新增一般使用者自查登入稽核驗證。
 - 驗證：`pytest tests/test_editor_auth_ui_static.py` 通過；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（僅既有 Starlette/httpx warning）；`node --check /tmp/login_admin_minimal.html.js && node --check /tmp/editor.html.js` 通過；`pytest tests` 通過（67 passed，既有 warnings）。
+
+
+## 2026-06-14 帳號操作記錄導航與統計儀表板分流
+
+- 目的：整理帳號安全導航，移除導覽層級中的「我的使用統計 / 全體使用統計」重複入口，讓帳號操作記錄保留為單一入口，並由頁面內按鈕切換我的 / 全體統計。
+- 主要修改：`api/static/editor.html` 的帳號安全 → 密碼與登入只保留「變更密碼」與「帳號操作記錄」；帳號操作記錄查詢新增起始 / 結束日期篩選與「統計與檢核曲線儀表板」頁內入口。統計儀表板依導覽來源限制統計類別：帳號來源只顯示帳號操作記錄使用統計並隱藏 Index；ES 文件來源只顯示 ES 文件異動紀錄使用統計，移除全部操作使用統計。
+- `api/static/editor.html` 與 `portable_auth_pack/static/login_admin_minimal.html` 的第二層選單面板會依目前第一層按鈕位置設定 `--nav-panel-left`，不再固定於同一位置。
+- `portable_auth_pack/static/login_admin_minimal.html` 同步將密碼管理導覽中的「我的登入稽核 / 帳號統計」整理為「帳號操作記錄」，並保留統計區頁內篩選按鈕。
+- 驗證：`node --check api/static/audit_tools.js`、`node --check /tmp/editor.html.js`、`node --check /tmp/login_admin_minimal.html.js`、`pytest tests/test_editor_auth_ui_static.py`、`pytest tests` 通過；可視截圖仍受 Playwright 未安裝限制。
