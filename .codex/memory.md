@@ -141,3 +141,10 @@ Conclusion:
 - `api/static/editor.html` 與 `portable_auth_pack/static/login_admin_minimal.html` 的第二層選單面板會依目前第一層按鈕位置設定 `--nav-panel-left`，不再固定於同一位置。
 - `portable_auth_pack/static/login_admin_minimal.html` 同步將密碼管理導覽中的「我的登入稽核 / 帳號統計」整理為「帳號操作記錄」，並保留統計區頁內篩選按鈕。
 - 驗證：`node --check api/static/audit_tools.js`、`node --check /tmp/editor.html.js`、`node --check /tmp/login_admin_minimal.html.js`、`pytest tests/test_editor_auth_ui_static.py`、`pytest tests` 通過；可視截圖仍受 Playwright 未安裝限制。
+
+## 2026-06-14 帳號操作紀錄儀表板與 portable_auth_pack 同步
+
+- 目的：比照 ES 文件異動紀錄查詢，讓帳號操作紀錄查詢可進入統計與檢核曲線儀表板，並用頁面內「我的帳號操作紀錄」與「全體帳號操作紀錄」切換統計範圍；一般使用者不得查看全體帳號操作紀錄。
+- 主要修改：`api/static/editor.html` 的使用統計儀表板依來源切換按鈕文字，帳號來源會固定統計類別為 `account`，切到「我的」時強制以目前登入帳號作為 username query；「全體」仍只對 superuser 顯示 / 生效。
+- `portable_auth_pack` 同步新增帳號操作統計切換按鈕與 `/v1/editor/usage-stats` 相容 endpoint，統計來源為 login audit，且一般使用者一律限制自己的紀錄，superuser 才可查全體或指定帳號。
+- 驗證：`node --check /tmp/editor.js && node --check /tmp/portable.js && python -m py_compile portable_auth_pack/fastapi_auth_pack/router.py` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（21 passed）；`pytest tests` 通過（67 passed，既有 5 warnings）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（僅既有 StarletteDeprecationWarning）。

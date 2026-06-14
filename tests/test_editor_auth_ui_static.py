@@ -123,6 +123,9 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     assert 'renderUsageStatsAuditEvents(filtered);' in html
     assert "'/v1/editor/usage-stats?'" in html
     assert 'SraAuditTools.renderTimeSeriesChart' in html
+    assert "$('statsMineTabBtn').textContent = isAccount ? '我的帳號操作紀錄' : '我的 ES 文件異動紀錄';" in html
+    assert "$('statsAllTabBtn').textContent = isAccount ? '全體帳號操作紀錄' : '全體 ES 文件異動紀錄';" in html
+    assert "username: state.usageStatsView === 'mine' && state.user ? state.user.username : $('usageStatsUsername').value.trim()" in html
     assert 'function bindProgressiveNav(options)' in tools
     assert "matchMedia('(hover: hover) and (pointer: fine)')" in tools
     assert "event.pointerType !== 'mouse'" in tools
@@ -172,6 +175,9 @@ def test_portable_auth_pack_exposes_account_stats_with_shared_module() -> None:
     assert 'id="accountStatsSection"' in html
     assert 'SraAuditTools.renderTimeSeriesChart' in html
     assert "category: 'account'" in html
+    assert 'id="accountStatsMineBtn"' in html
+    assert 'id="accountStatsAllBtn" class="secondary hidden"' in html
+    assert "function setAccountStatsView(view)" in html
     assert 'timezone_offset_minutes: String(localTimezoneOffsetMinutes())' in html
     assert 'function formatLocalTimestamp(value)' in html
     assert '我的登入稽核' in html
@@ -245,7 +251,7 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
         'loginAuditHits',
     ):
         assert f'id="{element_id}"' in html
-    assert 'const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1 };' in html
+    assert "const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1, accountStatsView: 'mine', currentUser: null };" in html
     assert 'function updatePager(rows, page, infoId, prevId, nextId)' in html
     assert 'function bindPagerActions(prefix, getPage, setPage, renderPage)' in html
     assert "jumpTo(Number.MAX_SAFE_INTEGER)" in html
@@ -255,3 +261,9 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
     assert '<script src="audit_tools.js?v=20260612-paginate"></script>' in html
     assert 'pageState.usersRows = (data.users || []).slice().sort' in html
     assert 'pageState.loginAuditRows = (data.events || []).slice().sort' in html
+    assert 'id="accountStatsMineBtn"' in html
+    assert 'id="accountStatsAllBtn" class="secondary hidden"' in html
+    assert '我的帳號操作紀錄' in html
+    assert '全體帳號操作紀錄' in html
+    assert "function setAccountStatsView(view)" in html
+    assert "pageState.accountStatsView === 'mine'" in html
