@@ -109,6 +109,11 @@
     .multi-filter-actions { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
     .multi-filter-option { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; }
     .multi-filter-option:hover { background:#f1f5f9; }
+    .scope-note { border:1px solid #bfdbfe; border-radius:10px; background:#eff6ff; color:#1e3a8a; padding:9px 10px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .scope-help { position:relative; flex:0 0 auto; }
+    .scope-help-btn { width:28px; height:28px; border-radius:999px; padding:0; display:inline-flex; align-items:center; justify-content:center; background:#2563eb; color:#fff; }
+    .scope-help-tooltip { display:none; position:absolute; right:0; top:calc(100% + 8px); z-index:30; width:min(320px, calc(100vw - 48px)); border:1px solid #bfdbfe; border-radius:12px; background:#fff; color:#1e3a8a; box-shadow:0 14px 32px rgba(15,23,42,.18); padding:10px 12px; font-size:13px; line-height:1.45; }
+    .scope-help:hover .scope-help-tooltip, .scope-help:focus-within .scope-help-tooltip { display:block; }
     .tab { background: #e2e8f0; color: #0f172a; }
     .tab.active { background: #2563eb; color: white; }
     code { background: #f1f5f9; padding: 2px 5px; border-radius: 5px; }
@@ -240,7 +245,7 @@
             <hr style="border:0;border-top:1px solid #e5e7eb;margin:18px 0;" />
             <section class="field-grid" aria-label="使用統計篩選">
               <div><label>統計類別</label><select id="usageStatsCategory"><option value="document">ES 文件異動紀錄使用統計</option><option value="account">帳號操作記錄使用統計</option></select></div>
-              <div><label>使用者</label><details id="usageStatsUsernamePicker" class="multi-filter"><summary id="usageStatsUsernameSummary">目前顯示我的紀錄</summary><div class="multi-filter-panel"><input id="usageStatsUsernameSearch" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="usageStatsSelectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="usageStatsClearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="usageStatsClearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="usageStatsUsernameOptions" role="group" aria-label="使用者清單"></div></div></details><input id="usageStatsUsername" type="hidden" /></div>
+              <div><label>使用者</label><div id="usageStatsCurrentScopeNote" class="scope-note"><span id="usageStatsCurrentScopeText">目前顯示個人記錄</span><span class="scope-help"><button id="usageStatsScopeHelpBtn" class="scope-help-btn" type="button" aria-label="使用者篩選說明" aria-describedby="usageStatsScopeHelpText">?</button><span id="usageStatsScopeHelpText" class="scope-help-tooltip" role="tooltip">查詢自己的紀錄時不會套用其他使用者勾選。若要查詢他人或全部記錄，請切換到全體記錄模式，再勾選其他使用者或全部列出；此功能需要 superuser 權限層級。</span></span></div><details id="usageStatsUsernamePicker" class="multi-filter hidden"><summary id="usageStatsUsernameSummary">全體使用者</summary><div class="multi-filter-panel"><input id="usageStatsUsernameSearch" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="usageStatsSelectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="usageStatsClearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="usageStatsClearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="usageStatsUsernameOptions" role="group" aria-label="使用者清單"></div></div></details><input id="usageStatsUsername" type="hidden" /></div>
               <div><label>動作包含</label><input id="usageStatsAction" placeholder="例如 save_document 或 password" /></div>
               <div id="usageStatsIndexField"><label>Index</label><select id="usageStatsIndex"><option value="">全部</option></select></div>
               <div><label>起始時間</label><input id="usageStatsStartTs" type="datetime-local" /></div>
@@ -751,8 +756,12 @@ function updateUsageStatsUserSummary() {
   $('usageStatsUsername').value = selected.join(',');
   const summary = $('usageStatsUsernameSummary');
   if (!summary) return;
-  if (state.usageStatsView === 'mine') summary.textContent = state.user ? `目前顯示：${state.user.username}` : '目前顯示我的紀錄';
-  else if (!selected.length) summary.textContent = '全體使用者';
+  const note = $('usageStatsCurrentScopeText');
+  if (state.usageStatsView === 'mine') {
+    const text = state.user ? `目前顯示個人記錄：${state.user.username}` : '目前顯示個人記錄';
+    summary.textContent = text;
+    if (note) note.textContent = text;
+  } else if (!selected.length) summary.textContent = '全體使用者';
   else summary.textContent = selected.length <= 2 ? selected.join(', ') : `已選 ${selected.length} 位使用者`;
 }
 function setVisibleUsageStatsUsers(checked) {
@@ -980,7 +989,8 @@ function switchStatsView(view) {
   const canViewAll = state.user && state.user.role === 'superuser';
   state.usageStatsView = view === 'all' && canViewAll ? 'all' : 'mine';
   const mine = state.usageStatsView === 'mine';
-  $('usageStatsUsernamePicker').classList.toggle('disabled', mine);
+  $('usageStatsUsernamePicker').classList.toggle('hidden', mine);
+  $('usageStatsCurrentScopeNote').classList.toggle('hidden', !mine);
   if (mine) $('usageStatsUsernamePicker').removeAttribute('open');
   updateUsageStatsUserSummary();
   $('myStats').classList.toggle('hidden', !mine);

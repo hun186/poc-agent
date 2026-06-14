@@ -169,3 +169,24 @@ Conclusion:
 - 主要修改：新增 `bindMultiFilterOutsideDismiss()`，只在 click target 不屬於目前 `<details>` picker 且 picker 已開啟時移除 `open`；主系統綁定 `usageStatsUsernamePicker`，portable auth pack 綁定 `accountStatsUsernamePicker`。
 - 驗證：`node --check /tmp/editor.html.js && node --check /tmp/login_admin_minimal.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py -q` 通過（23 passed，2 個既有 SyntaxWarning）；`pytest tests -q` 通過（69 passed，5 個既有 warning）。
 - 截圖限制：本次為可視 UI 互動改善；目前環境仍未安裝 Playwright（`python -m playwright --version` 回報 `No module named playwright`），因此以靜態 UI 測試與 JS 語法檢查替代。
+
+## 2026-06-14 統計儀表板個人紀錄使用者篩選提示
+
+- 目的：避免統計與檢核曲線儀表板在「我的使用統計」模式仍可展開使用者多選清單，造成使用者誤以為勾選其他帳號會生效。
+- 主要修改：`api/static/editor.html` 在個人記錄模式改顯示固定的「目前顯示個人記錄」提示與問號說明按鈕；使用者多選清單預設隱藏，只有 superuser 切到全體記錄模式時才顯示並可勾選其他使用者或全部列出。統計查詢參數仍維持個人模式強制帶目前登入者、全體模式才套用多選使用者。
+- 驗證：`node --check /tmp/editor.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（23 passed，2 個既有 SyntaxWarning）；`pytest tests` 通過（69 passed，5 個既有 warning）。
+- 截圖限制：本次為可視 UI 調整，但 `python -m playwright --version` 仍回報 `No module named playwright`，因此未提供瀏覽器截圖；以靜態 UI 測試與 JS 語法檢查替代。
+
+## 2026-06-14 portable_auth_pack 個人帳號統計篩選提示同步
+
+- 目的：依回饋將主系統統計儀表板個人記錄提示行為同步到 `portable_auth_pack`，避免範例包的帳號操作統計仍在個人模式展開帳號多選清單。
+- 主要修改：`portable_auth_pack/static/login_admin_minimal.html` 在「我的帳號操作紀錄」模式顯示固定的個人帳號操作紀錄提示與問號說明按鈕；帳號多選清單預設隱藏，只有 superuser 切到「全體帳號操作紀錄」時才顯示並套用選取帳號。
+- 驗證：`node --check /tmp/editor.html.js && node --check /tmp/login_admin_minimal.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py -q` 通過（23 passed，2 個既有 SyntaxWarning）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（既有 Starlette/httpx warning）；`pytest tests -q` 通過（69 passed，5 個既有 warning）。
+- 截圖限制：可視 UI 變更仍受目前環境未安裝 Playwright 影響，`python -m playwright --version` 回報 `No module named playwright`，已以靜態 UI 測試與 JS 語法檢查替代。
+
+## 2026-06-14 個人範圍問號說明改為 focus-stable tooltip
+
+- 目的：修正個人紀錄 / 個人帳號操作紀錄模式的問號說明若使用者移到 `?` 上點擊，原生 `title` tooltip 可能消失，造成新手看不到提示。
+- 主要修改：`api/static/editor.html` 與 `portable_auth_pack/static/login_admin_minimal.html` 將 `title` 改為頁面內 `role="tooltip"` 說明泡泡，透過 `.scope-help:hover` 與 `.scope-help:focus-within` 顯示；點擊 `?` 後按鈕取得 focus，說明仍可停留顯示。
+- 驗證：`node --check /tmp/editor.html.js && node --check /tmp/login_admin_minimal.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py -q` 通過（23 passed，2 個既有 SyntaxWarning）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（既有 Starlette/httpx warning）；`pytest tests -q` 通過（69 passed，5 個既有 warning）。
+- 截圖限制：本次為 hover / focus 可視 UI 互動改善；目前環境仍未安裝 Playwright（`python -m playwright --version` 回報 `No module named playwright`），以靜態 UI 測試與 JS 語法檢查替代。

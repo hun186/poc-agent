@@ -125,7 +125,15 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     assert 'SraAuditTools.renderTimeSeriesChart' in html
     assert "$('statsMineTabBtn').textContent = isAccount ? '我的帳號操作紀錄' : '我的 ES 文件異動紀錄';" in html
     assert "$('statsAllTabBtn').textContent = isAccount ? '全體帳號操作紀錄' : '全體 ES 文件異動紀錄';" in html
-    assert 'id="usageStatsUsernamePicker"' in html
+    assert 'id="usageStatsCurrentScopeNote"' in html
+    assert '目前顯示個人記錄' in html
+    assert 'id="usageStatsScopeHelpBtn"' in html
+    assert 'aria-describedby="usageStatsScopeHelpText"' in html
+    assert 'id="usageStatsScopeHelpText" class="scope-help-tooltip" role="tooltip"' in html
+    assert '.scope-help:hover .scope-help-tooltip, .scope-help:focus-within .scope-help-tooltip { display:block; }' in html
+    assert 'title="查詢自己的紀錄' not in html
+    assert '此功能需要 superuser 權限層級' in html
+    assert 'id="usageStatsUsernamePicker" class="multi-filter hidden"' in html
     assert 'id="usageStatsUsernameSearch"' in html
     assert '勾選目前篩選' in html
     assert '清除目前篩選' in html
@@ -134,6 +142,8 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     assert "function bindMultiFilterOutsideDismiss(id)" in html
     assert "if (!picker.open || picker.contains(ev.target)) return;" in html
     assert "picker.removeAttribute('open');" in html
+    assert "$('usageStatsUsernamePicker').classList.toggle('hidden', mine);" in html
+    assert "$('usageStatsCurrentScopeNote').classList.toggle('hidden', !mine);" in html
     assert 'setUsageStatsUserOptions((data.users || []).map(u => u.username));' in html
     assert "username: state.usageStatsView === 'mine' && state.user ? state.user.username : state.usageStatsSelectedUsers.join(',')" in html
     assert 'function bindProgressiveNav(options)' in tools
@@ -279,13 +289,23 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
     assert 'function paginateAuditRows(rows, page, pageSize)' in html
     assert "typeof sharedPaginator === \'function\' ? sharedPaginator(rows, page, pageSize) : localPaginateRows(rows, page, pageSize)" in html
     assert '<script src="audit_tools.js?v=20260612-paginate"></script>' in html
-    assert 'id="accountStatsUsernamePicker"' in html
+    assert 'id="accountStatsCurrentScopeNote"' in html
+    assert '目前顯示個人帳號操作紀錄' in html
+    assert 'id="accountStatsScopeHelpBtn"' in html
+    assert 'aria-describedby="accountStatsScopeHelpText"' in html
+    assert 'id="accountStatsScopeHelpText" class="scope-help-tooltip" role="tooltip"' in html
+    assert '.scope-help:hover .scope-help-tooltip,.scope-help:focus-within .scope-help-tooltip{display:block;}' in html
+    assert 'title="查詢自己的帳號操作紀錄' not in html
+    assert '此功能需要 superuser 權限層級' in html
+    assert 'id="accountStatsUsernamePicker" class="multi-filter hidden"' in html
     assert 'id="accountStatsUsernameSearch"' in html
     assert 'data-account-stats-user' in html
     assert "bindMultiFilterOutsideDismiss('accountStatsUsernamePicker');" in html
     assert "function bindMultiFilterOutsideDismiss(id)" in html
     assert "if (!picker.open || picker.contains(ev.target)) return;" in html
     assert "picker.removeAttribute('open');" in html
+    assert "document.getElementById('accountStatsUsernamePicker').classList.toggle('hidden', mine);" in html
+    assert "document.getElementById('accountStatsCurrentScopeNote').classList.toggle('hidden', !mine);" in html
     assert "pageState.accountStatsSelectedUsers.join(',')" in html
     assert 'pageState.usersRows = (data.users || []).slice().sort' in html
     assert 'pageState.loginAuditRows = (data.events || []).slice().sort' in html
