@@ -3,30 +3,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from agent.es import es_client
-from api.routers.editor_dependencies import bearer_token, current_user, require_data_editor, require_superuser, static_path
-from api.routers.editor_models import (
-    ApprovePayload,
-    AuthPayload,
-    ChangePasswordPayload,
-    DeleteDocumentsPayload,
-    ForgotPasswordPayload,
-    RecoverPasswordPayload,
-    ResetPasswordPayload,
-    SaveDocumentPayload,
-)
-from api.services.auth_store import AUTH_STORE, AuthUser, create_token, parse_token, public_role_options
+from api.routers.editor_auth import router as auth_router
+from api.routers import editor_usage as editor_usage_routes
+from api.routers.editor_usage import router as usage_router
+from api.routers.editor_dependencies import current_user, require_data_editor, static_path
+from api.routers.editor_models import DeleteDocumentsPayload, SaveDocumentPayload
+from api.services.auth_store import AuthUser
 from api.services.editor_audit import append_audit_event, diff_values
-from api.services.editor_audit_queries import (
-    build_audit_time_series,
-    build_usage_stats,
-    filter_audit_records,
-    load_audit_records,
-    normalize_chart_bucket,
-)
 from api.services.editor_files import extract_text_from_upload
 from api.services.editor_form_config import get_editor_schema, public_editor_form_config
 from api.services.editor_index_utils import (
@@ -43,7 +30,24 @@ from api.services.editor_index_utils import (
 )
 
 router = APIRouter(tags=["editor"])
-AUTH_FAILURE_MESSAGE = "帳號或密碼錯誤，或帳號尚未啟用。"
+router.include_router(auth_router)
+router.include_router(usage_router)
+
+# Compatibility wrappers for tests and scripts that import these route handlers
+# from api.routers.editor directly. The real route registrations live in
+# api.routers.editor_usage after the file split.
+load_audit_records = editor_usage_routes.load_audit_records
+
+
+def usage_stats(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    editor_usage_routes.load_audit_records = load_audit_records
+    return editor_usage_routes.usage_stats(*args, **kwargs)
+
+
+def list_audit_logs(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    editor_usage_routes.load_audit_records = load_audit_records
+    return editor_usage_routes.list_audit_logs(*args, **kwargs)
+
 
 EDITOR_STATIC_ASSETS: dict[str, str] = {
     "audit_tools.js": "application/javascript",
@@ -57,13 +61,6 @@ EDITOR_STATIC_ASSETS: dict[str, str] = {
     "editor_bootstrap.js": "application/javascript",
 }
 
-
-def _rate_limit_exception(retry_after: int) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail="登入或密碼重設嘗試次數過多，請稍後再試。",
-        headers={"Retry-After": str(max(1, retry_after))},
-    )
 
 
 @router.get("/editor", include_in_schema=False)
@@ -85,217 +82,6 @@ def editor_static_asset(filename: str) -> FileResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Static asset not found")
     return FileResponse(path, media_type=media_type)
-
-
-@router.post("/v1/auth/register")
-def register(payload: AuthPayload) -> dict[str, Any]:
-    try:
-        user = AUTH_STORE.register(
-            payload.username,
-            payload.password,
-            full_name=payload.full_name,
-            department=payload.department,
-            note=payload.note,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    append_audit_event({
-        "action": "auth.user_registered",
-        "username": payload.username,
-    })
-    return {"user": user, "message": "帳號已建立，狀態為 pending；請等待超級使用者審核。"}
-
-
-@router.post("/v1/auth/login")
-def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
-    client_host = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    retry_after = AUTH_STORE.throttle_retry_after("login", payload.username, client_host)
-    if retry_after:
-        AUTH_STORE.record_login_audit(
-            payload.username,
-            success=False,
-            reason="rate_limited",
-            client_host=client_host,
-            user_agent=user_agent,
-        )
-        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "rate_limited"})
-        raise _rate_limit_exception(retry_after)
-
-    user = AUTH_STORE.authenticate(payload.username, payload.password)
-    if user is None:
-        retry_after = AUTH_STORE.record_auth_failure("login", payload.username, client_host)
-        AUTH_STORE.record_login_audit(
-            payload.username,
-            success=False,
-            reason="invalid_credentials",
-            client_host=client_host,
-            user_agent=user_agent,
-        )
-        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "invalid_credentials"})
-        if retry_after:
-            raise _rate_limit_exception(retry_after)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AUTH_FAILURE_MESSAGE)
-    if user.status != "active":
-        retry_after = AUTH_STORE.record_auth_failure("login", payload.username, client_host)
-        AUTH_STORE.record_login_audit(
-            payload.username,
-            success=False,
-            reason="inactive_account",
-            role=user.role,
-            status_value=user.status,
-            client_host=client_host,
-            user_agent=user_agent,
-        )
-        append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "inactive_account", "status": user.status})
-        if retry_after:
-            raise _rate_limit_exception(retry_after)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AUTH_FAILURE_MESSAGE)
-    AUTH_STORE.clear_auth_failures("login", payload.username, client_host)
-    AUTH_STORE.record_login_audit(
-        payload.username,
-        success=True,
-        reason="ok",
-        role=user.role,
-        status_value=user.status,
-        client_host=client_host,
-        user_agent=user_agent,
-    )
-    append_audit_event({"action": "auth.login", "username": payload.username, "success": True, "role": user.role})
-    return {"access_token": create_token(user), "token_type": "bearer", "user": user.__dict__}
-
-
-@router.post("/v1/auth/logout")
-def logout(
-    user: AuthUser = Depends(current_user),
-    authorization: str | None = Header(default=None),
-) -> dict[str, Any]:
-    payload = parse_token(bearer_token(authorization))
-    if payload:
-        AUTH_STORE.deny_token(payload)
-    append_audit_event({"action": "auth.logout", "username": user.username})
-    return {"message": "已登出；此 token 已失效。"}
-
-
-@router.post("/v1/auth/change-password")
-def change_password(payload: ChangePasswordPayload, user: AuthUser = Depends(current_user)) -> dict[str, Any]:
-    try:
-        updated = AUTH_STORE.change_password(user.username, payload.current_password, payload.new_password)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    append_audit_event({"action": "auth.password_changed", "username": user.username})
-    return {"user": updated, "message": "密碼已變更，既有 token 已失效；請重新登入。"}
-
-
-@router.post("/v1/auth/forgot-password")
-def forgot_password(payload: ForgotPasswordPayload) -> dict[str, Any]:
-    # Do not issue or return a reset token from the public endpoint. Returning a token
-    # here would let anyone who knows a username take over that account.
-    append_audit_event({"action": "auth.password_reset_requested", "username": payload.username})
-    return {"message": "若帳號存在，已收到忘記密碼申請；請聯絡系統管理員核身後取得一次性重設 token。"}
-
-
-@router.post("/v1/auth/reset-password")
-def recover_password(payload: RecoverPasswordPayload, request: Request) -> dict[str, Any]:
-    client_host = request.client.host if request.client else None
-    retry_after = AUTH_STORE.throttle_retry_after("password_reset", payload.username, client_host)
-    if retry_after:
-        append_audit_event({"action": "auth.password_recovered", "username": payload.username, "success": False, "reason": "rate_limited"})
-        raise _rate_limit_exception(retry_after)
-    try:
-        updated = AUTH_STORE.recover_password(payload.username, payload.reset_token, payload.new_password)
-    except ValueError as exc:
-        retry_after = AUTH_STORE.record_auth_failure("password_reset", payload.username, client_host)
-        append_audit_event({"action": "auth.password_recovered", "username": payload.username, "success": False, "reason": "invalid_or_expired_token"})
-        if retry_after:
-            raise _rate_limit_exception(retry_after)
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    AUTH_STORE.clear_auth_failures("password_reset", payload.username, client_host)
-    append_audit_event({"action": "auth.password_recovered", "username": payload.username, "success": True})
-    return {"user": updated, "message": "密碼已重設，既有 token 已失效；請重新登入。"}
-
-
-@router.get("/v1/auth/me")
-def me(user: AuthUser = Depends(current_user)) -> dict[str, Any]:
-    return {"user": user.__dict__, "role_options": public_role_options()}
-
-
-@router.get("/v1/auth/users")
-def list_users(_: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
-    return {"users": AUTH_STORE.list_users(), "role_options": public_role_options()}
-
-
-@router.post("/v1/auth/users/{username}/approve")
-def approve_user(username: str, payload: ApprovePayload, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
-    try:
-        approved = AUTH_STORE.approve_user(username, payload.role, approved_by=user.username)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    append_audit_event({
-        "action": "auth.user_approved",
-        "username": username,
-        "actor": user.username,
-        "role": payload.role,
-    })
-    return {"user": approved}
-
-
-@router.post("/v1/auth/users/{username}/reject")
-def reject_user(username: str, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
-    try:
-        rejected = AUTH_STORE.reject_user(username, rejected_by=user.username)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    append_audit_event({
-        "action": "auth.user_rejected",
-        "username": username,
-        "actor": user.username,
-    })
-    return {"user": rejected}
-
-
-@router.delete("/v1/auth/users/{username}")
-def delete_user(username: str, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
-    if username == user.username:
-        raise HTTPException(status_code=400, detail="不可刪除目前登入的超級使用者。")
-    try:
-        deleted = AUTH_STORE.delete_user(username)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    append_audit_event({
-        "action": "auth.user_deleted",
-        "username": username,
-        "actor": user.username,
-    })
-    return {"user": deleted}
-
-
-@router.post("/v1/auth/users/{username}/password-reset-token")
-def issue_password_reset_token(username: str, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
-    reset_token = AUTH_STORE.request_password_reset(username)
-    if not reset_token:
-        raise HTTPException(status_code=404, detail="帳號不存在或尚未啟用，無法建立重設 token。")
-    append_audit_event({"action": "auth.password_reset_token_issued", "username": username, "actor": user.username})
-    return {"username": username, "reset_token": reset_token, "message": "一次性重設 token 已建立；請用安全管道交付給該使用者。"}
-
-
-@router.post("/v1/auth/users/{username}/reset-password")
-def reset_user_password(username: str, payload: ResetPasswordPayload, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
-    try:
-        updated = AUTH_STORE.reset_user_password(username, payload.new_password, reset_by=user.username)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    append_audit_event({"action": "auth.password_reset_by_superuser", "username": username, "actor": user.username})
-    return {"user": updated, "message": "密碼已由超級使用者重設，該帳號既有 token 已失效。"}
-
-
-@router.get("/v1/auth/login-audit")
-def list_login_audit(limit: int = Query(100, ge=1, le=1000), _: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
-    return {"events": AUTH_STORE.list_login_audit(limit)}
 
 
 @router.post("/v1/editor/extract-text")
@@ -577,87 +363,3 @@ def delete_documents(payload: DeleteDocumentsPayload, user: AuthUser = Depends(r
 
 
 
-@router.get("/v1/editor/usage-stats")
-def usage_stats(
-    category: str = Query("all", description="統計類別：all、document、account"),
-    username: str | None = Query(None, description="依使用者篩選；非 superuser 一律限定自己"),
-    action: str | None = Query(None, description="依操作類型篩選"),
-    index: str | None = Query(None, description="依 index 篩選"),
-    start_ts: str | None = Query(None, description="起始時間（ISO 8601）"),
-    end_ts: str | None = Query(None, description="結束時間（ISO 8601）"),
-    chart_bucket: str = Query("day", description="統計曲線區間：hour、6_hours、12_hours、day、week、month"),
-    events_limit: int = Query(100, ge=1, le=500, description="回傳套用同一篩選條件的 audit 事件筆數"),
-    timezone_offset_minutes: int = 0,
-    user: AuthUser = Depends(current_user),
-) -> dict[str, Any]:
-    records = load_audit_records(limit=20000)
-    mine = [r for r in records if str(r.get("username") or "") == user.username]
-    out = {"me": build_usage_stats(mine)}
-    if user.role == "superuser":
-        out["all"] = build_usage_stats(records)
-
-    normalized_bucket, bucket_label = normalize_chart_bucket(chart_bucket)
-    category_value = (category or "all").strip().lower()
-    action_prefix = ""
-    if category_value == "document":
-        action_prefix = "editor."
-    elif category_value == "account":
-        action_prefix = "auth."
-    elif category_value != "all":
-        raise HTTPException(status_code=400, detail="category 僅支援 all、document、account。")
-
-    filtered_username = username if user.role == "superuser" else user.username
-    filtered = filter_audit_records(
-        records,
-        username=filtered_username,
-        action=action,
-        action_prefix=action_prefix or None,
-        index=index,
-        start_ts=start_ts,
-        end_ts=end_ts,
-    )
-    out["filtered"] = {
-        "category": category_value,
-        "stats": build_usage_stats(filtered),
-        "series": build_audit_time_series(filtered, normalized_bucket, timezone_offset_minutes),
-        "events": filtered[:events_limit],
-        "events_total": len(filtered),
-        "events_limit": events_limit,
-        "chart_bucket": normalized_bucket,
-        "chart_bucket_label": bucket_label,
-        "timezone_offset_minutes": timezone_offset_minutes,
-        "is_restricted_to_self": user.role != "superuser",
-    }
-    return out
-
-
-@router.get("/v1/editor/audit-logs")
-def list_audit_logs(
-    username: str | None = Query(None, description="依操作者帳號篩選"),
-    action: str | None = Query(None, description="依操作類型篩選"),
-    action_prefix: str | None = Query(None, description="依操作類型 prefix 篩選，例如 editor. 或 auth."),
-    index: str | None = Query(None, description="依 index 篩選"),
-    id: str | None = Query(None, description="依文件 ID 篩選"),
-    changed_path: str | None = Query(None, description="依異動欄位路徑篩選（部分比對）"),
-    start_ts: str | None = Query(None, description="起始時間（ISO 8601）"),
-    end_ts: str | None = Query(None, description="結束時間（ISO 8601）"),
-    limit: int = Query(100, ge=1, le=500),
-    user: AuthUser = Depends(current_user),
-) -> dict[str, Any]:
-    action_prefix_value = (action_prefix or "").strip().lower()
-    if user.role != "superuser" and not action_prefix_value.startswith("auth."):
-        raise HTTPException(status_code=403, detail="一般使用者只能查詢自己的帳號操作紀錄。")
-    effective_username = username if user.role == "superuser" else user.username
-    records = load_audit_records(limit=5000)
-    filtered = filter_audit_records(
-        records,
-        username=effective_username,
-        action=action,
-        action_prefix=action_prefix,
-        index=index,
-        id=id,
-        changed_path=changed_path,
-        start_ts=start_ts,
-        end_ts=end_ts,
-    )
-    return {"total": len(filtered), "limit": limit, "hits": filtered[:limit]}

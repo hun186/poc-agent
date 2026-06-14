@@ -96,3 +96,10 @@
 
 - Editor HTML shell 透過 `/static/<asset>` 載入拆分後 assets；`api/routers/editor.py` 使用 `EDITOR_STATIC_ASSETS` 白名單服務 `editor.css`、`audit_tools.js` 與所有 `editor_*.js`。
 - 不在白名單內的 `/static/{filename}` 仍回 404，避免把整個 `api/static/` 任意檔案暴露出去。
+
+## 2026-06-14 Editor router backend split
+
+- `api/routers/editor.py` 現在是 Editor backend 的主聚合 router，負責 `/editor` shell、白名單 `/static/{filename}`、文件 extract/search/get/save/delete 等 ES 文件操作，並 include 子 router。
+- `api/routers/editor_auth.py` 承載原本在 Editor router 內的 `/v1/auth/*` route：註冊、登入、登出、密碼變更 / 重設、帳號審核與 login audit。
+- `api/routers/editor_usage.py` 承載 audit / usage 查詢 route：`GET /v1/editor/usage-stats` 與 `GET /v1/editor/audit-logs`。
+- 為降低拆檔對既有單元測試或內部腳本的衝擊，`api.routers.editor` 仍保留對 usage route handler 的相容 wrapper；正式 FastAPI route registration 則來自子 router。
