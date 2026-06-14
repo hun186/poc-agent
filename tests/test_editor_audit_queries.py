@@ -26,6 +26,16 @@ def test_build_usage_stats_counts_client_host() -> None:
 
     assert stats["by_client_host"] == {"10.0.0.1": 2, "10.0.0.2": 1, "-": 1}
 
+
+def test_filter_audit_records_accepts_client_host_comma_list() -> None:
+    records = [
+        {"ts": "2026-06-01T01:00:00+00:00", "action": "auth.login", "username": "alice", "client_host": "10.0.0.1"},
+        {"ts": "2026-06-01T02:00:00+00:00", "action": "auth.login", "username": "alice", "client_host": "10.0.0.2"},
+        {"ts": "2026-06-01T03:00:00+00:00", "action": "auth.login", "username": "alice"},
+    ]
+
+    assert [row.get("client_host", "-") for row in filter_audit_records(records, client_host="10.0.0.1,-")] == ["-", "10.0.0.1"]
+
 def test_filter_audit_records_accepts_action_prefix() -> None:
     records = [
         {"ts": "2026-06-01T00:00:00+00:00", "action": "editor.save_document", "username": "alice"},
@@ -108,6 +118,7 @@ def test_usage_stats_returns_filtered_audit_events(monkeypatch) -> None:
         username=None,
         action=None,
         index=None,
+        client_host=None,
         start_ts=None,
         end_ts=None,
         chart_bucket="day",
@@ -120,6 +131,33 @@ def test_usage_stats_returns_filtered_audit_events(monkeypatch) -> None:
     assert data["filtered"]["events_limit"] == 1
     assert [event["id"] for event in data["filtered"]["events"]] == ["doc-1"]
 
+
+
+def test_usage_stats_filters_client_host_for_superuser(monkeypatch) -> None:
+    from api.routers import editor as editor_router
+    from api.services.auth_store import AuthUser
+
+    records = [
+        {"ts": "2026-06-01T01:00:00+00:00", "action": "auth.login", "username": "alice", "client_host": "10.0.0.1"},
+        {"ts": "2026-06-01T02:00:00+00:00", "action": "auth.login", "username": "bob", "client_host": "10.0.0.2"},
+    ]
+    monkeypatch.setattr(editor_router, "load_audit_records", lambda limit=20000: records)
+
+    data = editor_router.usage_stats(
+        category="account",
+        username=None,
+        action=None,
+        index=None,
+        client_host="10.0.0.2",
+        start_ts=None,
+        end_ts=None,
+        chart_bucket="day",
+        events_limit=100,
+        user=AuthUser(username="admin", role="superuser", status="active"),
+    )
+
+    assert data["filtered"]["events_total"] == 1
+    assert data["filtered"]["stats"]["by_client_host"] == {"10.0.0.2": 1}
 
 def test_list_audit_logs_allows_regular_user_own_account_events(monkeypatch) -> None:
     from api.routers import editor as editor_router
@@ -139,6 +177,7 @@ def test_list_audit_logs_allows_regular_user_own_account_events(monkeypatch) -> 
         index=None,
         id=None,
         changed_path=None,
+        client_host=None,
         start_ts=None,
         end_ts=None,
         limit=100,

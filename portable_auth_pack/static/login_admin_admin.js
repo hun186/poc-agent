@@ -69,3 +69,4 @@ async function resetUserPassword(username) {
 }
 async function deleteUser(username) { out(await api(`/v1/auth/users/${encodeURIComponent(username)}`, {method: 'DELETE'})); await refreshUsers(); }
 bindMultiFilterOutsideDismiss('accountStatsUsernamePicker');
+bindMultiFilterOutsideDismiss('accountStatsClientHostPicker');

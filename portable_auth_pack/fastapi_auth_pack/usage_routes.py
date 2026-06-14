@@ -68,6 +68,7 @@ def account_usage_stats(
     category: str = Query("account"),
     username: str | None = Query(None),
     action: str | None = Query(None),
+    client_host: str | None = Query(None),
     chart_bucket: str = Query("day"),
     events_limit: int = Query(100, ge=1, le=500),
     user: AuthUser = Depends(current_user),
@@ -84,6 +85,9 @@ def account_usage_stats(
     if action:
         needle = action.lower()
         events = [event for event in events if needle in str(event.get("action") or "auth.login").lower() or needle in str(event.get("reason") or "").lower()]
+    client_host_values = [part.strip().lower() for part in (client_host or "").split(",") if part.strip()]
+    if client_host_values:
+        events = [event for event in events if str(event.get("client_host") or "-").lower() in client_host_values]
     events = sorted(events, key=lambda event: _parse_audit_ts(event.get("ts")), reverse=True)
     counts: dict[str, int] = {}
     for event in events:

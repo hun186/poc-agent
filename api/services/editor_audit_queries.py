@@ -130,10 +130,12 @@ def filter_audit_records(
     index: str | None = None,
     id: str | None = None,
     changed_path: str | None = None,
+    client_host: str | None = None,
     start_ts: str | None = None,
     end_ts: str | None = None,
 ) -> list[dict[str, Any]]:
     username_values = [part.strip().lower() for part in (username or "").split(',') if part.strip()]
+    client_host_values = [part.strip().lower() for part in (client_host or "").split(',') if part.strip()]
     action_q = (action or "").strip().lower()
     action_prefix_q = (action_prefix or "").strip().lower()
     index_q = (index or "").strip()
@@ -168,6 +170,8 @@ def filter_audit_records(
     filtered: list[dict[str, Any]] = []
     for r in records:
         if username_values and str(r.get("username") or "").lower() not in username_values:
+            continue
+        if client_host_values and str(r.get("client_host") or "-").lower() not in client_host_values:
             continue
         action_value = str(r.get("action") or "").lower()
         if action_q and action_q not in action_value:

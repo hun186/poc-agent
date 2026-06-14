@@ -130,3 +130,9 @@
 - 主系統 `GET /v1/editor/usage-stats` 的 `me`、`all`（superuser only）與 `filtered.stats` 現在包含 `by_client_host`，格式為 `{client_host: count}`；缺少 `client_host` 的歷史 event 會歸入 `"-"`。
 - `filtered.events[*]` 保留既有 audit event shape，若事件有 `client_host` / `user_agent`，前端帳號操作紀錄與統計事件清單會直接顯示；API 不會為歷史事件補假 IP。
 - `portable_auth_pack` 相容 `GET /v1/editor/usage-stats` 的 stats response 同步新增 `by_client_host`，供帳號操作統計儀表板顯示 IP 數。
+
+## 2026-06-14 Usage Stats client_host 篩選
+
+- 主系統 `GET /v1/editor/usage-stats` 新增 `client_host` query，可接受單一 IP / client host 或逗號分隔多個值，例如 `client_host=10.0.0.1,10.0.0.2`；比對語意為 case-insensitive exact match，缺少 `client_host` 的歷史 event 可用 `-` 篩選。
+- 主系統 `GET /v1/editor/audit-logs` 同步支援 `client_host` query；非 superuser 仍只能查自己的 `auth.*` 帳號操作紀錄。
+- `portable_auth_pack` 相容 `GET /v1/editor/usage-stats` endpoint 同步支援 `client_host` query，供帳號操作統計儀表板依 IP 多選篩選。

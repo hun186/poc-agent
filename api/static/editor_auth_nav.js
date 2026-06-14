@@ -113,10 +113,15 @@ async function bootAuthed() {
   await refreshUsageStats();
   switchMainTab('search');
   bindMultiFilterOutsideDismiss('usageStatsUsernamePicker');
+  bindMultiFilterOutsideDismiss('usageStatsClientHostPicker');
   $('usageStatsUsernameSearch').oninput = renderUsageStatsUserPicker;
   $('usageStatsSelectVisibleUsersBtn').onclick = () => setVisibleUsageStatsUsers(true);
   $('usageStatsClearVisibleUsersBtn').onclick = () => setVisibleUsageStatsUsers(false);
   $('usageStatsClearAllUsersBtn').onclick = () => { state.usageStatsSelectedUsers = []; renderUsageStatsUserPicker(); };
+  $('usageStatsClientHostSearch').oninput = renderUsageStatsClientHostPicker;
+  $('usageStatsSelectVisibleClientHostsBtn').onclick = () => setVisibleUsageStatsClientHosts(true);
+  $('usageStatsClearVisibleClientHostsBtn').onclick = () => setVisibleUsageStatsClientHosts(false);
+  $('usageStatsClearAllClientHostsBtn').onclick = () => { state.usageStatsSelectedClientHosts = []; renderUsageStatsClientHostPicker(); };
   $('statsMineTabBtn').onclick = () => switchStatsView('mine');
   $('statsAllTabBtn').onclick = () => switchStatsView('all');
   switchStatsView('mine');

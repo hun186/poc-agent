@@ -63,6 +63,42 @@
     chartEl.className = '';
     chartEl.innerHTML = `<svg class="audit-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(bucketLabel)} ${escapeHtml(seriesName)}曲線圖" preserveAspectRatio="none">${grid}<line class="chart-axis" x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${width - margin.right}" y2="${margin.top + innerHeight}"></line><line class="chart-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line><polyline class="chart-line" points="${points}"></polyline>${circles}${labels}</svg>`;
   }
+  function uniqueSortedValues(values) {
+    return [...new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean))].sort();
+  }
+  function visibleMultiFilterOptions(values, searchEl) {
+    const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
+    return uniqueSortedValues(values).filter((value) => !q || value.toLowerCase().includes(q));
+  }
+  function renderMultiFilterOptions(options) {
+    const box = options.optionsEl;
+    if (!box) return;
+    const selected = new Set(options.selectedValues || []);
+    const visible = visibleMultiFilterOptions(options.values || [], options.searchEl);
+    const attr = options.dataAttr || 'data-multi-filter-value';
+    box.innerHTML = visible.map((value) => `<label class="multi-filter-option"><input type="checkbox" ${attr}="${escapeHtml(value)}" ${selected.has(value) ? 'checked' : ''} /> <span>${escapeHtml(value)}</span></label>`).join('') || `<p class="muted">${escapeHtml(options.emptyText || '沒有符合關鍵字的選項。')}</p>`;
+    box.querySelectorAll(`[${attr}]`).forEach((input) => {
+      input.onchange = () => {
+        const value = input.getAttribute(attr);
+        const current = new Set(options.getSelectedValues ? options.getSelectedValues() : options.selectedValues || []);
+        if (input.checked) current.add(value); else current.delete(value);
+        if (options.onSelectionChange) options.onSelectionChange([...current]);
+      };
+    });
+  }
+  function summarizeMultiFilterSelection(options) {
+    const selected = options.selectedValues || [];
+    if (options.hiddenInput) options.hiddenInput.value = selected.join(',');
+    if (!options.summaryEl) return;
+    if (!selected.length) options.summaryEl.textContent = options.allLabel || '全部';
+    else options.summaryEl.textContent = selected.length <= 2 ? selected.join(', ') : `已選 ${selected.length} ${options.unitLabel || '個項目'}`;
+  }
+  function setVisibleMultiFilterSelection(options) {
+    const visible = visibleMultiFilterOptions(options.values || [], options.searchEl);
+    const selected = new Set(options.selectedValues || []);
+    visible.forEach((value) => { if (options.checked) selected.add(value); else selected.delete(value); });
+    return [...selected];
+  }
   function renderSummaryCards(targetEl, cards) {
     if (!targetEl) return;
     targetEl.innerHTML = (cards || []).map((card) => `<div class="stat-card"><div class="muted">${escapeHtml(card.label)}</div><div class="stat-metric">${escapeHtml(card.value)}</div><div class="muted">${escapeHtml(card.hint || '')}</div></div>`).join('');
@@ -142,6 +178,11 @@
     compactBucketLabel,
     renderTimeSeriesChart,
     renderSummaryCards,
+    uniqueSortedValues,
+    visibleMultiFilterOptions,
+    renderMultiFilterOptions,
+    summarizeMultiFilterSelection,
+    setVisibleMultiFilterSelection,
     bindProgressiveNav,
     paginateRows,
   };

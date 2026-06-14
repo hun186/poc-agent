@@ -254,3 +254,11 @@ Open
 - 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查 `role="tooltip"`、`aria-describedby`、`:focus-within` 顯示規則與移除原生 `title`；以 `node --check` 驗證抽出的前端 script 語法。
 
 狀態：Open
+
+## 2026-06-14 IP 多選篩選 UI 截圖限制
+
+- 本次新增帳號操作統計儀表板的 IP / client_host 多選篩選，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回報 `No module named playwright`，無法進行瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查主系統與 portable auth pack 的 IP 多選 DOM、共用 multi-filter helper 與 `client_host` query 組裝；以 `node --check` 驗證相關 JS 語法。
+
+狀態：Open

@@ -226,7 +226,7 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     html = _editor_html()
     tools = Path("api/static/audit_tools.js").read_text(encoding="utf-8")
 
-    assert '<script src="/static/audit_tools.js?v=20260612-paginate"></script>' in html
+    assert '<script src="/static/audit_tools.js?v=20260614-multifilter"></script>' in html
     assert 'id="usageStatsCategory"' in html
     assert 'ES 文件異動紀錄使用統計' in html
     assert '帳號操作記錄使用統計' in html
@@ -258,6 +258,11 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     assert 'title="查詢自己的紀錄' not in html
     assert '此功能需要 superuser 權限層級' in html
     assert 'id="usageStatsUsernamePicker" class="multi-filter hidden"' in html
+    assert 'id="usageStatsClientHostField"' in html
+    assert 'id="usageStatsClientHostPicker" class="multi-filter"' in html
+    assert 'data-usage-stats-client-host' in html
+    assert "client_host: state.usageStatsSelectedClientHosts.join(',')" in html
+    assert "$('usageStatsClientHostField').classList.toggle('hidden', state.usageStatsSource !== 'account');" in html
     assert 'id="usageStatsUsernameSearch"' in html
     assert '勾選目前篩選' in html
     assert '清除目前篩選' in html
@@ -325,11 +330,14 @@ def test_portable_auth_pack_reset_token_dialog_is_copyable() -> None:
 def test_portable_auth_pack_exposes_account_stats_with_shared_module() -> None:
     html = _portable_auth_pack_html()
 
-    assert '<script src="audit_tools.js?v=20260612-paginate"></script>' in html
+    assert '<script src="audit_tools.js?v=20260614-multifilter"></script>' in html
     assert 'id="accountStatsSection"' in html
     assert 'SraAuditTools.renderTimeSeriesChart' in html
     assert "{label: 'IP 數', value: Object.keys(stats.by_client_host || {}).length, hint: 'client_host'}" in html
     assert "category: 'account'" in html
+    assert 'id="accountStatsClientHostPicker" class="multi-filter"' in html
+    assert 'data-account-stats-client-host' in html
+    assert "params.set('client_host', clientHost)" in html
     assert 'id="accountStatsMineBtn"' in html
     assert 'id="accountStatsAllBtn" class="secondary hidden"' in html
     assert "function setAccountStatsView(view)" in html
@@ -393,7 +401,7 @@ def test_editor_audit_views_are_client_paginated_after_sorting() -> None:
     assert '先篩選、依時間排序，再分頁顯示' in html
     assert 'function paginateAuditRows(rows, page, pageSize)' in html
     assert "typeof sharedPaginator === \'function\' ? sharedPaginator(rows, page, pageSize) : localPaginateRows(rows, page, pageSize)" in html
-    assert '<script src="/static/audit_tools.js?v=20260612-paginate"></script>' in html
+    assert '<script src="/static/audit_tools.js?v=20260614-multifilter"></script>' in html
     assert 'function paginateRows(rows, page, pageSize)' in tools
 
 
@@ -406,14 +414,14 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
         'loginAuditHits',
     ):
         assert f'id="{element_id}"' in html
-    assert "const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1, accountStatsView: 'mine', currentUser: null, accountStatsUserOptions: [], accountStatsSelectedUsers: [] };" in html
+    assert "const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1, accountStatsView: 'mine', currentUser: null, accountStatsUserOptions: [], accountStatsSelectedUsers: [], accountStatsClientHostOptions: [], accountStatsSelectedClientHosts: [] };" in html
     assert 'function updatePager(rows, page, infoId, prevId, nextId)' in html
     assert 'function bindPagerActions(prefix, getPage, setPage, renderPage)' in html
     assert "jumpTo(Number.MAX_SAFE_INTEGER)" in html
     assert "if (ev.key === 'Enter') jumpTo(Number(ev.currentTarget.value || 1));" in html
     assert 'function paginateAuditRows(rows, page, pageSize)' in html
     assert "typeof sharedPaginator === \'function\' ? sharedPaginator(rows, page, pageSize) : localPaginateRows(rows, page, pageSize)" in html
-    assert '<script src="audit_tools.js?v=20260612-paginate"></script>' in html
+    assert '<script src="audit_tools.js?v=20260614-multifilter"></script>' in html
     assert 'id="accountStatsCurrentScopeNote"' in html
     assert '目前顯示個人帳號操作紀錄' in html
     assert 'id="accountStatsScopeHelpBtn"' in html
@@ -434,6 +442,9 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
     assert "pageState.accountStatsSelectedUsers.join(',')" in html
     assert 'pageState.usersRows = (data.users || []).slice().sort' in html
     assert 'pageState.loginAuditRows = (data.events || []).slice().sort' in html
+    assert 'id="accountStatsClientHostPicker" class="multi-filter"' in html
+    assert 'data-account-stats-client-host' in html
+    assert "params.set('client_host', clientHost)" in html
     assert 'id="accountStatsMineBtn"' in html
     assert 'id="accountStatsAllBtn" class="secondary hidden"' in html
     assert '我的帳號操作紀錄' in html
