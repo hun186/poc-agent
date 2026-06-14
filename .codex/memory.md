@@ -242,3 +242,10 @@ Conclusion:
 - 文件同步：更新 `portable_auth_pack/README.md` 與 `CODEX_IMPORT_GUIDE.md`，補上 `auth_routes.py` / `usage_routes.py` 的目錄與導入說明。
 - 驗證：`python -m py_compile portable_auth_pack/fastapi_auth_pack/router.py portable_auth_pack/fastapi_auth_pack/auth_routes.py portable_auth_pack/fastapi_auth_pack/usage_routes.py` 通過；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（26 passed）；`pytest tests` 通過（72 passed，既有 warnings）。
 - 結論：portable auth pack 與主系統後端 router 拆檔方向同步，外部仍可 `from fastapi_auth_pack import router` 並維持 API contract 不變。
+
+## 2026-06-14 Auth 註冊防列舉、IP 稽核與頻率限制
+
+- 目的：帳號操作紀錄補上來源 IP / client host；避免註冊 API 以「帳號已存在」暴露帳號存在性；對註冊申請加入 per-IP process-local 頻率限制；並同步 `portable_auth_pack`。
+- 主要修改：主系統 `POST /v1/auth/register` 對成功申請與 duplicate username 回相同泛用 200 訊息，duplicate 只寫入 `auth.user_registered` audit reason；帳號操作 audit event 補 `client_host`；註冊申請以 `scope=register` + `client_host` 復用既有 in-memory throttle。`portable_auth_pack` 同步泛用註冊回應、註冊節流與 login audit `client_host` / reason 記錄。
+- 驗證：`pytest tests/test_auth_store_security.py -q` 通過（13 passed，既有 warnings）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（僅既有 StarletteDeprecationWarning）。
+- 結論：公開註冊 API 不再直接提供帳號存在性 oracle，帳號資安檢核可從 audit 中追蹤 client host；正式多副本環境仍建議改集中式 rate limiting。

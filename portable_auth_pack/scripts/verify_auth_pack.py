@@ -92,6 +92,19 @@ def main() -> int:
             json={"username": "alice", "password": "AlicePass!2026"},
         )
         assert register_res.status_code == 200, register_res.text
+        duplicate_register_res = client.post(
+            "/v1/auth/register",
+            json={"username": "alice", "password": "AlicePass!2026"},
+        )
+        assert duplicate_register_res.status_code == 200, duplicate_register_res.text
+        assert duplicate_register_res.json() == register_res.json()
+        register_audit = auth_store_module.AUTH_STORE.list_login_audit(10)
+        assert any(
+            event.get("username") == "alice"
+            and event.get("reason") == "register_duplicate_username"
+            and event.get("client_host") == "testclient"
+            for event in register_audit
+        )
         pending_login_res = client.post(
             "/v1/auth/login",
             json={"username": "alice", "password": "AlicePass!2026"},
@@ -189,6 +202,20 @@ def main() -> int:
         )
         assert throttled_login_res.status_code == 429, throttled_login_res.text
         assert int(throttled_login_res.headers["retry-after"]) > 0
+
+        auth_store_module.AUTH_STORE.clear_auth_failures("register", None, "testclient")
+        for idx in range(auth_store_module.AUTH_THROTTLE_FAILURE_LIMIT):
+            register_attempt_res = client.post(
+                "/v1/auth/register",
+                json={"username": f"bulk-{idx}", "password": "BulkPass!2026"},
+            )
+            assert register_attempt_res.status_code == 200, register_attempt_res.text
+        throttled_register_res = client.post(
+            "/v1/auth/register",
+            json={"username": "bulk-blocked", "password": "BulkPass!2026"},
+        )
+        assert throttled_register_res.status_code == 429, throttled_register_res.text
+        assert int(throttled_register_res.headers["retry-after"]) > 0
 
         for _ in range(auth_store_module.AUTH_THROTTLE_FAILURE_LIMIT - 1):
             bad_reset_res = client.post(
