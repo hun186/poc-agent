@@ -230,3 +230,19 @@ Open
 - 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查 outside dismiss 綁定、窗格內點擊不收合、外部點擊只移除 `open` 而不清除選取狀態；以 `node --check` 驗證抽出的前端 script 語法。
 
 狀態：Open
+
+## 2026-06-14 統計儀表板個人紀錄提示 UI 截圖限制
+
+- 本次將統計與檢核曲線儀表板的個人記錄模式改為固定提示與問號說明，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回報 `No module named playwright`，無法提供瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查提示文案、問號說明、個人模式隱藏使用者多選窗格與切換邏輯；以 `node --check /tmp/editor.html.js` 檢查抽出的前端 script 語法，並執行完整 `pytest tests`。
+
+狀態：Open
+
+## 2026-06-14 portable_auth_pack 個人帳號統計提示 UI 截圖限制
+
+- 本次同步 `portable_auth_pack` 帳號操作統計的個人模式固定提示與問號說明，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回報 `No module named playwright`，無法提供 portable auth pack 瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查 portable auth pack 的提示文案、問號說明、個人模式隱藏帳號多選窗格與切換邏輯；以 `node --check /tmp/login_admin_minimal.html.js` 檢查抽出的前端 script 語法，並執行 `python portable_auth_pack/scripts/verify_auth_pack.py`。
+
+狀態：Open
