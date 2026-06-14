@@ -219,3 +219,10 @@ Conclusion:
 - 主要修改：移除單一 `login_admin_minimal.js`，改拆為 `login_admin_core.js`、`login_admin_auth.js`、`login_admin_audit.js`、`login_admin_stats.js`、`login_admin_admin.js`、`login_admin_bootstrap.js`；`login_admin_minimal.html` 依序載入上述 classic scripts。`tests/test_editor_auth_ui_static.py` 新增 `PORTABLE_AUTH_PACK_SCRIPT_FILES`，驗證 shell 不再載入 `login_admin_minimal.js` 且每個 portable JS 檔低於 200 行。
 - 驗證：執行 `for f in api/static/editor_*.js portable_auth_pack/static/login_admin_*.js; do node --check "$f" || exit 1; done` 通過；執行 `pytest tests/test_editor_auth_ui_static.py` 通過（17 passed）。
 - 結論：主系統 Editor 與 portable auth pack 的 JS 都已從單一行為檔改為責任導向小檔，且仍不導入 build pipeline。
+
+## 2026-06-14 Editor split assets 404 修正
+
+- 目的：修正拆檔後 Editor 頁面載入 `/static/editor.css` 與 `/static/editor_*.js` 時回 404，導致 UI 樣式與互動消失。
+- 主要修改：`api/routers/editor.py` 新增 `EDITOR_STATIC_ASSETS` 白名單與 `/static/{filename}` route，允許服務 `editor.css`、`audit_tools.js` 與所有拆分後的 Editor JS；未知檔名仍回 404。`tests/test_editor_auth_ui_static.py` 新增 TestClient 驗證拆分 assets 可由 router 取得。
+- 驗證：執行 `pytest tests/test_editor_auth_ui_static.py` 通過（18 passed，僅既有 warnings）。
+- 結論：拆分後的 Editor CSS / JS 不只存在於檔案系統，也會透過既有 FastAPI router 正確對外提供，避免瀏覽器 404。

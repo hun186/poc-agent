@@ -91,3 +91,8 @@
 - `portable_auth_pack/static/login_admin_minimal.html` 除了載入 `login_admin_minimal.css`，也依序載入 `login_admin_core.js`、`login_admin_auth.js`、`login_admin_audit.js`、`login_admin_stats.js`、`login_admin_admin.js`、`login_admin_bootstrap.js`。
 - portable JS 依責任拆分為 core/nav/API helpers、auth flows、login audit、account stats、admin account management 與 bootstrap event binding；單檔目前皆低於 200 行。
 - portable 靜態測試需合併 shell + CSS + `PORTABLE_AUTH_PACK_SCRIPT_FILES` 後執行行為字串斷言。
+
+## 2026-06-14 Editor static asset routing
+
+- Editor HTML shell 透過 `/static/<asset>` 載入拆分後 assets；`api/routers/editor.py` 使用 `EDITOR_STATIC_ASSETS` 白名單服務 `editor.css`、`audit_tools.js` 與所有 `editor_*.js`。
+- 不在白名單內的 `/static/{filename}` 仍回 404，避免把整個 `api/static/` 任意檔案暴露出去。

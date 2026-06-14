@@ -100,3 +100,8 @@
 - `username` 篩選語意由原本的 case-insensitive substring match 改為 case-insensitive exact match；若指定 `alice`，不再匹配 `malice` 或 `alice2`。
 - 非 superuser 呼叫時仍忽略外部指定 username，固定限定目前登入者。
 - 同一 exact-match / comma-list 語意也適用於共用的 audit record filtering helper，因此使用該 helper 的 audit 查詢會避免帳號子字串誤匹配。
+
+## 2026-06-14 Editor static assets
+
+- `GET /static/{filename}`：服務 Editor 頁面允許的靜態資產白名單，包含 `editor.css`、`audit_tools.js`、`editor_core.js`、`editor_form.js`、`editor_auth_nav.js`、`editor_stats.js`、`editor_audit.js`、`editor_documents.js`、`editor_bootstrap.js`。
+- Response：檔案存在且在白名單內時回 200 與對應 `text/css` 或 `application/javascript`；未知檔名或檔案不存在時回 404。
