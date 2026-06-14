@@ -183,3 +183,10 @@ Conclusion:
 - 主要修改：`portable_auth_pack/static/login_admin_minimal.html` 在「我的帳號操作紀錄」模式顯示固定的個人帳號操作紀錄提示與問號說明按鈕；帳號多選清單預設隱藏，只有 superuser 切到「全體帳號操作紀錄」時才顯示並套用選取帳號。
 - 驗證：`node --check /tmp/editor.html.js && node --check /tmp/login_admin_minimal.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py -q` 通過（23 passed，2 個既有 SyntaxWarning）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（既有 Starlette/httpx warning）；`pytest tests -q` 通過（69 passed，5 個既有 warning）。
 - 截圖限制：可視 UI 變更仍受目前環境未安裝 Playwright 影響，`python -m playwright --version` 回報 `No module named playwright`，已以靜態 UI 測試與 JS 語法檢查替代。
+
+## 2026-06-14 個人範圍問號說明改為 focus-stable tooltip
+
+- 目的：修正個人紀錄 / 個人帳號操作紀錄模式的問號說明若使用者移到 `?` 上點擊，原生 `title` tooltip 可能消失，造成新手看不到提示。
+- 主要修改：`api/static/editor.html` 與 `portable_auth_pack/static/login_admin_minimal.html` 將 `title` 改為頁面內 `role="tooltip"` 說明泡泡，透過 `.scope-help:hover` 與 `.scope-help:focus-within` 顯示；點擊 `?` 後按鈕取得 focus，說明仍可停留顯示。
+- 驗證：`node --check /tmp/editor.html.js && node --check /tmp/login_admin_minimal.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py -q` 通過（23 passed，2 個既有 SyntaxWarning）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（既有 Starlette/httpx warning）；`pytest tests -q` 通過（69 passed，5 個既有 warning）。
+- 截圖限制：本次為 hover / focus 可視 UI 互動改善；目前環境仍未安裝 Playwright（`python -m playwright --version` 回報 `No module named playwright`），以靜態 UI 測試與 JS 語法檢查替代。

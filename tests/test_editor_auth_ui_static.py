@@ -128,6 +128,10 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     assert 'id="usageStatsCurrentScopeNote"' in html
     assert '目前顯示個人記錄' in html
     assert 'id="usageStatsScopeHelpBtn"' in html
+    assert 'aria-describedby="usageStatsScopeHelpText"' in html
+    assert 'id="usageStatsScopeHelpText" class="scope-help-tooltip" role="tooltip"' in html
+    assert '.scope-help:hover .scope-help-tooltip, .scope-help:focus-within .scope-help-tooltip { display:block; }' in html
+    assert 'title="查詢自己的紀錄' not in html
     assert '此功能需要 superuser 權限層級' in html
     assert 'id="usageStatsUsernamePicker" class="multi-filter hidden"' in html
     assert 'id="usageStatsUsernameSearch"' in html
@@ -288,6 +292,10 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
     assert 'id="accountStatsCurrentScopeNote"' in html
     assert '目前顯示個人帳號操作紀錄' in html
     assert 'id="accountStatsScopeHelpBtn"' in html
+    assert 'aria-describedby="accountStatsScopeHelpText"' in html
+    assert 'id="accountStatsScopeHelpText" class="scope-help-tooltip" role="tooltip"' in html
+    assert '.scope-help:hover .scope-help-tooltip,.scope-help:focus-within .scope-help-tooltip{display:block;}' in html
+    assert 'title="查詢自己的帳號操作紀錄' not in html
     assert '此功能需要 superuser 權限層級' in html
     assert 'id="accountStatsUsernamePicker" class="multi-filter hidden"' in html
     assert 'id="accountStatsUsernameSearch"' in html

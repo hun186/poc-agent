@@ -246,3 +246,11 @@ Open
 - 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查 portable auth pack 的提示文案、問號說明、個人模式隱藏帳號多選窗格與切換邏輯；以 `node --check /tmp/login_admin_minimal.html.js` 檢查抽出的前端 script 語法，並執行 `python portable_auth_pack/scripts/verify_auth_pack.py`。
 
 狀態：Open
+
+## 2026-06-14 個人範圍問號 tooltip 截圖限制
+
+- 本次將主系統與 `portable_auth_pack` 的個人範圍問號說明改為 hover / focus 皆會顯示的頁面內 tooltip，屬可視互動 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回報 `No module named playwright`，無法提供 tooltip hover / click 截圖或 E2E 驗證。
+- 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查 `role="tooltip"`、`aria-describedby`、`:focus-within` 顯示規則與移除原生 `title`；以 `node --check` 驗證抽出的前端 script 語法。
+
+狀態：Open
