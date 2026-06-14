@@ -99,14 +99,17 @@ def build_usage_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
     by_action: dict[str, int] = {}
     by_index: dict[str, int] = {}
     by_user: dict[str, int] = {}
+    by_client_host: dict[str, int] = {}
     changed_paths_total = 0
     for r in rows:
         action = str(r.get("action") or "unknown")
         idx = str(r.get("index") or "-")
         uname = str(r.get("username") or "-")
+        client_host = str(r.get("client_host") or "-")
         by_action[action] = by_action.get(action, 0) + 1
         by_index[idx] = by_index.get(idx, 0) + 1
         by_user[uname] = by_user.get(uname, 0) + 1
+        by_client_host[client_host] = by_client_host.get(client_host, 0) + 1
         changed_paths_total += len(r.get("changed_paths") or [])
     return {
         "total_events": len(rows),
@@ -114,6 +117,7 @@ def build_usage_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "by_action": by_action,
         "by_index": by_index,
         "by_user": by_user,
+        "by_client_host": by_client_host,
     }
 
 
@@ -126,10 +130,12 @@ def filter_audit_records(
     index: str | None = None,
     id: str | None = None,
     changed_path: str | None = None,
+    client_host: str | None = None,
     start_ts: str | None = None,
     end_ts: str | None = None,
 ) -> list[dict[str, Any]]:
     username_values = [part.strip().lower() for part in (username or "").split(',') if part.strip()]
+    client_host_values = [part.strip().lower() for part in (client_host or "").split(',') if part.strip()]
     action_q = (action or "").strip().lower()
     action_prefix_q = (action_prefix or "").strip().lower()
     index_q = (index or "").strip()
@@ -164,6 +170,8 @@ def filter_audit_records(
     filtered: list[dict[str, Any]] = []
     for r in records:
         if username_values and str(r.get("username") or "").lower() not in username_values:
+            continue
+        if client_host_values and str(r.get("client_host") or "-").lower() not in client_host_values:
             continue
         action_value = str(r.get("action") or "").lower()
         if action_q and action_q not in action_value:

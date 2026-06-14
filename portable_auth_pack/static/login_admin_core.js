@@ -1,6 +1,6 @@
 const tokenKey = 'auth_token';
 const navState = { activeRoot: '' };
-const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1, accountStatsView: 'mine', currentUser: null, accountStatsUserOptions: [], accountStatsSelectedUsers: [] };
+const pageState = { usersRows: [], usersPage: 1, usersRoleOptions: [], loginAuditRows: [], loginAuditPage: 1, accountStatsView: 'mine', currentUser: null, accountStatsUserOptions: [], accountStatsSelectedUsers: [], accountStatsClientHostOptions: [], accountStatsSelectedClientHosts: [] };
 const out = (data) => document.getElementById('output').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
 const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function setActiveAuthPackNavRoot(root) {

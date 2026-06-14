@@ -133,6 +133,7 @@
               <div><label>統計類別</label><select id="usageStatsCategory"><option value="document">ES 文件異動紀錄使用統計</option><option value="account">帳號操作記錄使用統計</option></select></div>
               <div><label>使用者</label><div id="usageStatsCurrentScopeNote" class="scope-note"><span id="usageStatsCurrentScopeText">目前顯示個人記錄</span><span class="scope-help"><button id="usageStatsScopeHelpBtn" class="scope-help-btn" type="button" aria-label="使用者篩選說明" aria-describedby="usageStatsScopeHelpText">?</button><span id="usageStatsScopeHelpText" class="scope-help-tooltip" role="tooltip">查詢自己的紀錄時不會套用其他使用者勾選。若要查詢他人或全部記錄，請切換到全體記錄模式，再勾選其他使用者或全部列出；此功能需要 superuser 權限層級。</span></span></div><details id="usageStatsUsernamePicker" class="multi-filter hidden"><summary id="usageStatsUsernameSummary">全體使用者</summary><div class="multi-filter-panel"><input id="usageStatsUsernameSearch" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="usageStatsSelectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="usageStatsClearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="usageStatsClearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="usageStatsUsernameOptions" role="group" aria-label="使用者清單"></div></div></details><input id="usageStatsUsername" type="hidden" /></div>
               <div><label>動作包含</label><input id="usageStatsAction" placeholder="例如 save_document 或 password" /></div>
+              <div id="usageStatsClientHostField"><label>IP / client_host</label><details id="usageStatsClientHostPicker" class="multi-filter"><summary id="usageStatsClientHostSummary">全部 IP</summary><div class="multi-filter-panel"><input id="usageStatsClientHostSearch" type="search" placeholder="輸入 IP 關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="usageStatsSelectVisibleClientHostsBtn" class="secondary" type="button">勾選目前篩選</button><button id="usageStatsClearVisibleClientHostsBtn" class="secondary" type="button">清除目前篩選</button><button id="usageStatsClearAllClientHostsBtn" class="secondary" type="button">清除全部</button></div><div id="usageStatsClientHostOptions" role="group" aria-label="IP / client_host 清單"></div></div></details><input id="usageStatsClientHost" type="hidden" /></div>
               <div id="usageStatsIndexField"><label>Index</label><select id="usageStatsIndex"><option value="">全部</option></select></div>
               <div><label>起始時間</label><input id="usageStatsStartTs" type="datetime-local" /></div>
               <div><label>結束時間</label><input id="usageStatsEndTs" type="datetime-local" /></div>
@@ -269,7 +270,7 @@
       </div>
     </section>
   </main>
-<script src="/static/audit_tools.js?v=20260612-paginate"></script>
+<script src="/static/audit_tools.js?v=20260614-multifilter"></script>
 <script src="/static/editor_core.js?v=20260614-split"></script>
 <script src="/static/editor_form.js?v=20260614-split"></script>
 <script src="/static/editor_auth_nav.js?v=20260614-split"></script>

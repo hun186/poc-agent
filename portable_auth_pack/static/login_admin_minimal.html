@@ -74,6 +74,7 @@
     <div class="row">
       <div><label>帳號</label><div id="accountStatsCurrentScopeNote" class="scope-note"><span id="accountStatsCurrentScopeText">目前顯示個人帳號操作紀錄</span><span class="scope-help"><button id="accountStatsScopeHelpBtn" class="scope-help-btn" type="button" aria-label="帳號篩選說明" aria-describedby="accountStatsScopeHelpText">?</button><span id="accountStatsScopeHelpText" class="scope-help-tooltip" role="tooltip">查詢自己的帳號操作紀錄時不會套用其他帳號勾選。若要查詢他人或全部記錄，請切換到全體帳號操作紀錄模式，再勾選其他帳號或全部列出；此功能需要 superuser 權限層級。</span></span></div><details id="accountStatsUsernamePicker" class="multi-filter hidden"><summary id="accountStatsUsernameSummary">全體帳號</summary><div class="multi-filter-panel"><input id="accountStatsUsernameSearch" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="accountStatsSelectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="accountStatsClearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="accountStatsClearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="accountStatsUsernameOptions" role="group" aria-label="帳號清單"></div></div></details><input id="accountStatsUsername" type="hidden" /></div>
       <div><label>動作包含</label><input id="accountStatsAction" placeholder="例如 password 或 login" /></div>
+      <div><label>IP / client_host</label><details id="accountStatsClientHostPicker" class="multi-filter"><summary id="accountStatsClientHostSummary">全部 IP</summary><div class="multi-filter-panel"><input id="accountStatsClientHostSearch" type="search" placeholder="輸入 IP 關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="accountStatsSelectVisibleClientHostsBtn" class="secondary" type="button">勾選目前篩選</button><button id="accountStatsClearVisibleClientHostsBtn" class="secondary" type="button">清除目前篩選</button><button id="accountStatsClearAllClientHostsBtn" class="secondary" type="button">清除全部</button></div><div id="accountStatsClientHostOptions" role="group" aria-label="IP / client_host 清單"></div></div></details><input id="accountStatsClientHost" type="hidden" /></div>
       <div><label>曲線區間</label><select id="accountStatsBucket"><option value="hour">每小時</option><option value="6_hours">每 6 小時</option><option value="12_hours">每 12 小時</option><option value="day" selected>每日</option><option value="week">每週</option><option value="month">每月</option></select></div>
     </div>
     <button onclick="loadAccountStats()">查詢帳號操作統計</button><button id="accountStatsMineBtn" class="secondary" onclick="setAccountStatsView('mine')">我的帳號操作紀錄</button><button id="accountStatsAllBtn" class="secondary hidden" onclick="setAccountStatsView('all')">全體帳號操作紀錄</button>
@@ -101,7 +102,7 @@
     <pre id="output">尚未執行</pre>
   </section>
 </main>
-<script src="audit_tools.js?v=20260612-paginate"></script>
+<script src="audit_tools.js?v=20260614-multifilter"></script>
 <script src="login_admin_core.js?v=20260614-split"></script>
 <script src="login_admin_auth.js?v=20260614-split"></script>
 <script src="login_admin_audit.js?v=20260614-split"></script>

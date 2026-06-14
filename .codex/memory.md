@@ -249,3 +249,17 @@ Conclusion:
 - 主要修改：主系統 `POST /v1/auth/register` 對成功申請與 duplicate username 回相同泛用 200 訊息，duplicate 只寫入 `auth.user_registered` audit reason；帳號操作 audit event 補 `client_host`；註冊申請以 `scope=register` + `client_host` 復用既有 in-memory throttle。`portable_auth_pack` 同步泛用註冊回應、註冊節流與 login audit `client_host` / reason 記錄。
 - 驗證：`pytest tests/test_auth_store_security.py -q` 通過（13 passed，既有 warnings）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（僅既有 StarletteDeprecationWarning）。
 - 結論：公開註冊 API 不再直接提供帳號存在性 oracle，帳號資安檢核可從 audit 中追蹤 client host；正式多副本環境仍建議改集中式 rate limiting。
+
+## 2026-06-14 帳號操作 client_host 顯示與統計
+
+- 目的：修正帳號操作記錄管理頁面已記錄 client_host 但未顯示來源 IP，且帳號操作統計儀表板未呈現 client_host 統計的問題；同步保持 portable_auth_pack 相容 endpoint 的統計欄位。
+- 主要修改：`api/static/editor_audit.js` 的帳號操作紀錄卡片顯示 `IP：client_host` 與可用的 User-Agent；`api/services/editor_audit_queries.py` 的 `build_usage_stats()` 新增 `by_client_host`；`api/static/editor_stats.js` 在摘要卡新增 IP 數，並於既有統計區塊列出「依 client_host IP」。`portable_auth_pack/fastapi_auth_pack/usage_routes.py` 與 `portable_auth_pack/static/login_admin_stats.js` 同步 `by_client_host` 與 IP 數卡片。
+- 驗證：`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（27 passed，3 個既有 warnings）；`python -m py_compile api/services/editor_audit_queries.py api/routers/editor_usage.py portable_auth_pack/fastapi_auth_pack/usage_routes.py` 通過；`node --check api/static/editor_audit.js && node --check api/static/editor_stats.js && node --check portable_auth_pack/static/login_admin_stats.js` 通過。
+- 記憶維護：因 `.codex/decisions.md` 超過 400 行，已先歸檔至 `.codex/archive/decisions.md-20260614-125305.md`，再濃縮為 current summary / recent changes / archived history。
+
+## 2026-06-14 帳號操作統計儀表板 IP 多選篩選
+
+- 目的：依使用者回饋，帳號操作記錄儀表板除了使用者多選，也要能以相同互動方式多選 IP / client_host 篩選。
+- 主要修改：`api/static/audit_tools.js` 與 `portable_auth_pack/static/audit_tools.js` 新增共用 multi-filter helper；主系統 `api/static/editor.html` / `editor_stats.js` 與 `portable_auth_pack/static/login_admin_minimal.html` / `login_admin_stats.js` 新增 IP / client_host 多選清單、搜尋、勾選目前篩選、清除目前篩選與清除全部。`GET /v1/editor/usage-stats` 與 `GET /v1/editor/audit-logs` 支援 `client_host` query，portable usage-stats 相容 endpoint 也同步支援。
+- 驗證：`for f in api/static/audit_tools.js api/static/editor_*.js portable_auth_pack/static/audit_tools.js portable_auth_pack/static/login_admin_*.js; do node --check "$f" || exit 1; done` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（29 passed，1 個既有 warning）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過；`pytest tests` 通過（77 passed，5 個既有 warnings）。
+- 截圖限制：本次為可視 UI 變更，但 `python -m playwright --version` 回報 `No module named playwright`，目前仍無法提供瀏覽器截圖；已以靜態 UI 測試與 JS 語法檢查替代。

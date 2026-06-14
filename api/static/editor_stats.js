@@ -21,27 +21,29 @@ function bindMultiFilterOutsideDismiss(id) {
   });
 }
 function setUsageStatsUserOptions(values) {
-  state.usageStatsUserOptions = [...new Set((values || []).map(v => String(v || '').trim()).filter(Boolean))].sort();
+  state.usageStatsUserOptions = SraAuditTools.uniqueSortedValues(values);
   if (state.user && !state.usageStatsUserOptions.includes(state.user.username)) state.usageStatsUserOptions.unshift(state.user.username);
   state.usageStatsSelectedUsers = state.usageStatsSelectedUsers.filter(v => state.usageStatsUserOptions.includes(v));
   renderUsageStatsUserPicker();
 }
-function visibleUsageStatsUserOptions() {
-  const q = $('usageStatsUsernameSearch') ? $('usageStatsUsernameSearch').value.trim().toLowerCase() : '';
-  return state.usageStatsUserOptions.filter(v => !q || v.toLowerCase().includes(q));
+function setUsageStatsClientHostOptions(values) {
+  state.usageStatsClientHostOptions = SraAuditTools.uniqueSortedValues(values);
+  renderUsageStatsClientHostPicker();
+}
+function renderUsageStatsMultiPicker(config) {
+  SraAuditTools.renderMultiFilterOptions({
+    values: config.values, selectedValues: config.selected, getSelectedValues: config.getSelected,
+    searchEl: $(config.searchId), optionsEl: $(config.optionsId), dataAttr: config.dataAttr, emptyText: config.emptyText,
+    onSelectionChange: config.onChange,
+  });
+  SraAuditTools.summarizeMultiFilterSelection({selectedValues: config.selected, hiddenInput: $(config.hiddenId), summaryEl: $(config.summaryId), allLabel: config.allLabel, unitLabel: config.unitLabel});
 }
 function renderUsageStatsUserPicker() {
-  const box = $('usageStatsUsernameOptions');
-  if (!box) return;
-  const visible = visibleUsageStatsUserOptions();
-  const selected = new Set(state.usageStatsSelectedUsers);
-  box.innerHTML = visible.map(v => `<label class="multi-filter-option"><input type="checkbox" data-usage-stats-user="${esc(v)}" ${selected.has(v) ? 'checked' : ''} /> <span>${esc(v)}</span></label>`).join('') || '<p class="muted">沒有符合關鍵字的使用者。</p>';
-  box.querySelectorAll('[data-usage-stats-user]').forEach(input => input.onchange = () => {
-    const value = input.dataset.usageStatsUser;
-    state.usageStatsSelectedUsers = input.checked ? [...new Set(state.usageStatsSelectedUsers.concat([value]))] : state.usageStatsSelectedUsers.filter(v => v !== value);
-    updateUsageStatsUserSummary();
-  });
+  renderUsageStatsMultiPicker({values: state.usageStatsUserOptions, selected: state.usageStatsSelectedUsers, getSelected: () => state.usageStatsSelectedUsers, searchId: 'usageStatsUsernameSearch', optionsId: 'usageStatsUsernameOptions', hiddenId: 'usageStatsUsername', summaryId: 'usageStatsUsernameSummary', dataAttr: 'data-usage-stats-user', emptyText: '沒有符合關鍵字的使用者。', allLabel: '全體使用者', unitLabel: '位使用者', onChange: values => { state.usageStatsSelectedUsers = values; updateUsageStatsUserSummary(); renderUsageStatsUserPicker(); }});
   updateUsageStatsUserSummary();
+}
+function renderUsageStatsClientHostPicker() {
+  renderUsageStatsMultiPicker({values: state.usageStatsClientHostOptions, selected: state.usageStatsSelectedClientHosts, getSelected: () => state.usageStatsSelectedClientHosts, searchId: 'usageStatsClientHostSearch', optionsId: 'usageStatsClientHostOptions', hiddenId: 'usageStatsClientHost', summaryId: 'usageStatsClientHostSummary', dataAttr: 'data-usage-stats-client-host', emptyText: '沒有符合關鍵字的 IP。', allLabel: '全部 IP', unitLabel: '個 IP', onChange: values => { state.usageStatsSelectedClientHosts = values; renderUsageStatsClientHostPicker(); }});
 }
 function updateUsageStatsUserSummary() {
   const selected = state.usageStatsSelectedUsers;
@@ -53,13 +55,15 @@ function updateUsageStatsUserSummary() {
     const text = state.user ? `目前顯示個人記錄：${state.user.username}` : '目前顯示個人記錄';
     summary.textContent = text;
     if (note) note.textContent = text;
-  } else if (!selected.length) summary.textContent = '全體使用者';
-  else summary.textContent = selected.length <= 2 ? selected.join(', ') : `已選 ${selected.length} 位使用者`;
+  } else SraAuditTools.summarizeMultiFilterSelection({selectedValues: selected, hiddenInput: $('usageStatsUsername'), summaryEl: summary, allLabel: '全體使用者', unitLabel: '位使用者'});
 }
 function setVisibleUsageStatsUsers(checked) {
-  const visible = visibleUsageStatsUserOptions();
-  state.usageStatsSelectedUsers = checked ? [...new Set(state.usageStatsSelectedUsers.concat(visible))] : state.usageStatsSelectedUsers.filter(v => !visible.includes(v));
+  state.usageStatsSelectedUsers = SraAuditTools.setVisibleMultiFilterSelection({values: state.usageStatsUserOptions, selectedValues: state.usageStatsSelectedUsers, searchEl: $('usageStatsUsernameSearch'), checked});
   renderUsageStatsUserPicker();
+}
+function setVisibleUsageStatsClientHosts(checked) {
+  state.usageStatsSelectedClientHosts = SraAuditTools.setVisibleMultiFilterSelection({values: state.usageStatsClientHostOptions, selectedValues: state.usageStatsSelectedClientHosts, searchEl: $('usageStatsClientHostSearch'), checked});
+  renderUsageStatsClientHostPicker();
 }
 function updateAuditSelectOptions(id, values) {
   const el = $(id);
@@ -82,7 +86,8 @@ function renderUsageStats(targetId, stats) {
     return;
   }
   const block = (title, obj) => `<div class="user"><strong>${esc(title)}</strong>${Object.entries(obj || {}).map(([k, v]) => `<div class="muted">${esc(k)}: ${esc(v)}</div>`).join('')}</div>`;
-  $(targetId).innerHTML = `<div class="user"><strong>總操作次數</strong><div class="muted">${esc(stats.total_events || 0)}</div><div class="muted">異動欄位總數：${esc(stats.changed_paths_total || 0)}</div></div>${block('依動作', stats.by_action)}${block('依索引', stats.by_index)}${block('依使用者', stats.by_user)}`;
+  const clientHostBlock = stats.by_client_host ? block('依 client_host IP', stats.by_client_host) : '';
+  $(targetId).innerHTML = `<div class="user"><strong>總操作次數</strong><div class="muted">${esc(stats.total_events || 0)}</div><div class="muted">異動欄位總數：${esc(stats.changed_paths_total || 0)}</div></div>${block('依動作', stats.by_action)}${block('依索引', stats.by_index)}${block('依使用者', stats.by_user)}${clientHostBlock}`;
 }
 async function refreshUsageStats() {
   try {
@@ -106,7 +111,9 @@ function configureUsageStatsSource(source) {
   category.innerHTML = options.map(opt => `<option value="${esc(opt.value)}">${esc(opt.label)}</option>`).join('');
   category.value = options[0].value;
   $('usageStatsIndexField').classList.toggle('hidden', state.usageStatsSource === 'account');
+  $('usageStatsClientHostField').classList.toggle('hidden', state.usageStatsSource !== 'account');
   if (state.usageStatsSource === 'account') $('usageStatsIndex').value = '';
+  else { state.usageStatsSelectedClientHosts = []; renderUsageStatsClientHostPicker(); }
   updateStatsViewLabels();
 }
 function updateStatsViewLabels() {
@@ -124,6 +131,7 @@ function collectUsageStatsQuery() {
   const mapping = {
     username: state.usageStatsView === 'mine' && state.user ? state.user.username : state.usageStatsSelectedUsers.join(','),
     action: $('usageStatsAction').value.trim(),
+    client_host: state.usageStatsSelectedClientHosts.join(','),
     index: state.usageStatsSource === 'account' ? '' : $('usageStatsIndex').value.trim(),
     start_ts: toIsoOrEmpty($('usageStatsStartTs').value.trim()),
     end_ts: toIsoOrEmpty($('usageStatsEndTs').value.trim()),
@@ -206,7 +214,7 @@ function renderUsageStatsAuditEventsPage() {
     const paths = Array.isArray(h.changed_paths) ? h.changed_paths.filter(Boolean) : [];
     return `<div class="audit">
       <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
-      <div class="muted">${esc(formatLocalTimestamp(h.ts))}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
+      <div class="muted">${esc(formatLocalTimestamp(h.ts))}｜${esc(h.username || '-') } (${esc(h.role || '-')})｜IP：${esc(h.client_host || '-')}</div>
       <div class="muted">index=${esc(h.index || '-')} / id=${esc(h.id || '-')} / result=${esc(h.result || '-')}</div>
       <div class="muted">異動欄位：${paths.length ? esc(paths.join(', ')) : '(無)'}</div>
     </div>`;
@@ -219,11 +227,13 @@ function renderUsageStatsAuditEventsPage() {
 function renderFilteredUsageStats(filtered) {
   if (!filtered) return;
   const stats = filtered.stats || {};
+  setUsageStatsClientHostOptions(Object.keys(stats.by_client_host || {}));
   SraAuditTools.renderSummaryCards($('usageStatsSummaryCards'), [
     {label: '總操作次數', value: stats.total_events || 0, hint: filtered.category || 'all'},
     {label: '異動欄位總數', value: stats.changed_paths_total || 0, hint: '文件類動作會累計欄位'},
     {label: '動作種類', value: Object.keys(stats.by_action || {}).length, hint: '依目前篩選'},
     {label: '使用者數', value: Object.keys(stats.by_user || {}).length, hint: '依目前篩選'},
+    {label: 'IP 數', value: Object.keys(stats.by_client_host || {}).length, hint: 'client_host'},
   ]);
   SraAuditTools.renderTimeSeriesChart({
     rows: filtered.series || [],
@@ -251,8 +261,11 @@ async function loadFilteredUsageStats() {
 function clearUsageStatsFilters() {
   configureUsageStatsSource(state.usageStatsSource || 'document');
   state.usageStatsSelectedUsers = [];
+  state.usageStatsSelectedClientHosts = [];
   $('usageStatsUsernameSearch').value = '';
+  $('usageStatsClientHostSearch').value = '';
   renderUsageStatsUserPicker();
+  renderUsageStatsClientHostPicker();
   $('usageStatsAction').value = '';
   $('usageStatsIndex').value = '';
   $('usageStatsStartTs').value = '';

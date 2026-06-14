@@ -51,13 +51,16 @@ def _bucket_key(ts: str, bucket: str) -> str:
 def _account_usage_stats(events: list[dict[str, Any]]) -> dict[str, Any]:
     by_action: dict[str, int] = {}
     by_user: dict[str, int] = {}
+    by_client_host: dict[str, int] = {}
     for event in events:
         action = str(event.get("action") or "auth.login")
         username = str(event.get("username") or "")
+        client_host = str(event.get("client_host") or "-")
         by_action[action] = by_action.get(action, 0) + 1
+        by_client_host[client_host] = by_client_host.get(client_host, 0) + 1
         if username:
             by_user[username] = by_user.get(username, 0) + 1
-    return {"total_events": len(events), "changed_paths_total": 0, "by_action": by_action, "by_index": {}, "by_user": by_user}
+    return {"total_events": len(events), "changed_paths_total": 0, "by_action": by_action, "by_index": {}, "by_user": by_user, "by_client_host": by_client_host}
 
 
 @router.get("/v1/editor/usage-stats")
@@ -65,6 +68,7 @@ def account_usage_stats(
     category: str = Query("account"),
     username: str | None = Query(None),
     action: str | None = Query(None),
+    client_host: str | None = Query(None),
     chart_bucket: str = Query("day"),
     events_limit: int = Query(100, ge=1, le=500),
     user: AuthUser = Depends(current_user),
@@ -81,6 +85,9 @@ def account_usage_stats(
     if action:
         needle = action.lower()
         events = [event for event in events if needle in str(event.get("action") or "auth.login").lower() or needle in str(event.get("reason") or "").lower()]
+    client_host_values = [part.strip().lower() for part in (client_host or "").split(",") if part.strip()]
+    if client_host_values:
+        events = [event for event in events if str(event.get("client_host") or "-").lower() in client_host_values]
     events = sorted(events, key=lambda event: _parse_audit_ts(event.get("ts")), reverse=True)
     counts: dict[str, int] = {}
     for event in events:

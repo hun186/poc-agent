@@ -24,6 +24,7 @@ def usage_stats(
     username: str | None = Query(None, description="依使用者篩選；非 superuser 一律限定自己"),
     action: str | None = Query(None, description="依操作類型篩選"),
     index: str | None = Query(None, description="依 index 篩選"),
+    client_host: str | None = Query(None, description="依 client_host / IP 篩選，可用逗號分隔多個值"),
     start_ts: str | None = Query(None, description="起始時間（ISO 8601）"),
     end_ts: str | None = Query(None, description="結束時間（ISO 8601）"),
     chart_bucket: str = Query("day", description="統計曲線區間：hour、6_hours、12_hours、day、week、month"),
@@ -54,6 +55,7 @@ def usage_stats(
         action=action,
         action_prefix=action_prefix or None,
         index=index,
+        client_host=client_host,
         start_ts=start_ts,
         end_ts=end_ts,
     )
@@ -80,6 +82,7 @@ def list_audit_logs(
     index: str | None = Query(None, description="依 index 篩選"),
     id: str | None = Query(None, description="依文件 ID 篩選"),
     changed_path: str | None = Query(None, description="依異動欄位路徑篩選（部分比對）"),
+    client_host: str | None = Query(None, description="依 client_host / IP 篩選，可用逗號分隔多個值"),
     start_ts: str | None = Query(None, description="起始時間（ISO 8601）"),
     end_ts: str | None = Query(None, description="結束時間（ISO 8601）"),
     limit: int = Query(100, ge=1, le=500),
@@ -98,6 +101,7 @@ def list_audit_logs(
         index=index,
         id=id,
         changed_path=changed_path,
+        client_host=client_host,
         start_ts=start_ts,
         end_ts=end_ts,
     )

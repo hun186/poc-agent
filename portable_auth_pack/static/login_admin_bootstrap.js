@@ -2,6 +2,10 @@ document.getElementById('accountStatsUsernameSearch').oninput = renderAccountSta
 document.getElementById('accountStatsSelectVisibleUsersBtn').onclick = () => setVisibleAccountStatsUsers(true);
 document.getElementById('accountStatsClearVisibleUsersBtn').onclick = () => setVisibleAccountStatsUsers(false);
 document.getElementById('accountStatsClearAllUsersBtn').onclick = () => { pageState.accountStatsSelectedUsers = []; renderAccountStatsUserPicker(); };
+document.getElementById('accountStatsClientHostSearch').oninput = renderAccountStatsClientHostPicker;
+document.getElementById('accountStatsSelectVisibleClientHostsBtn').onclick = () => setVisibleAccountStatsClientHosts(true);
+document.getElementById('accountStatsClearVisibleClientHostsBtn').onclick = () => setVisibleAccountStatsClientHosts(false);
+document.getElementById('accountStatsClearAllClientHostsBtn').onclick = () => { pageState.accountStatsSelectedClientHosts = []; renderAccountStatsClientHostPicker(); };
 bindPagerActions('users', () => pageState.usersPage, (page) => { pageState.usersPage = page; }, renderUsersPage);
 bindPagerActions('loginAudit', () => pageState.loginAuditPage, (page) => { pageState.loginAuditPage = page; }, renderLoginAuditPage);
 document.getElementById('copyResetTokenBtn').onclick = async () => {
