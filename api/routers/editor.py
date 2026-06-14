@@ -45,6 +45,18 @@ from api.services.editor_index_utils import (
 router = APIRouter(tags=["editor"])
 AUTH_FAILURE_MESSAGE = "帳號或密碼錯誤，或帳號尚未啟用。"
 
+EDITOR_STATIC_ASSETS: dict[str, str] = {
+    "audit_tools.js": "application/javascript",
+    "editor.css": "text/css",
+    "editor_core.js": "application/javascript",
+    "editor_form.js": "application/javascript",
+    "editor_auth_nav.js": "application/javascript",
+    "editor_stats.js": "application/javascript",
+    "editor_audit.js": "application/javascript",
+    "editor_documents.js": "application/javascript",
+    "editor_bootstrap.js": "application/javascript",
+}
+
 
 def _rate_limit_exception(retry_after: int) -> HTTPException:
     return HTTPException(
@@ -62,6 +74,17 @@ def editor_page() -> FileResponse:
 @router.get("/static/audit_tools.js", include_in_schema=False)
 def audit_tools_script() -> FileResponse:
     return FileResponse(static_path("audit_tools.js"), media_type="application/javascript")
+
+
+@router.get("/static/{filename}", include_in_schema=False)
+def editor_static_asset(filename: str) -> FileResponse:
+    media_type = EDITOR_STATIC_ASSETS.get(filename)
+    if not media_type:
+        raise HTTPException(status_code=404, detail="Static asset not found")
+    path = static_path(filename)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Static asset not found")
+    return FileResponse(path, media_type=media_type)
 
 
 @router.post("/v1/auth/register")

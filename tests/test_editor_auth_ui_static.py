@@ -3,10 +3,96 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+
+EDITOR_SCRIPT_FILES = [
+    "api/static/editor_core.js",
+    "api/static/editor_form.js",
+    "api/static/editor_auth_nav.js",
+    "api/static/editor_stats.js",
+    "api/static/editor_audit.js",
+    "api/static/editor_documents.js",
+    "api/static/editor_bootstrap.js",
+]
+
+PORTABLE_AUTH_PACK_SCRIPT_FILES = [
+    "portable_auth_pack/static/login_admin_core.js",
+    "portable_auth_pack/static/login_admin_auth.js",
+    "portable_auth_pack/static/login_admin_audit.js",
+    "portable_auth_pack/static/login_admin_stats.js",
+    "portable_auth_pack/static/login_admin_admin.js",
+    "portable_auth_pack/static/login_admin_bootstrap.js",
+]
+
 
 def _editor_html() -> str:
-    return Path("api/static/editor.html").read_text(encoding="utf-8")
+    """Return the editor shell plus split static assets for static assertions."""
+    return "\n".join([
+        Path("api/static/editor.html").read_text(encoding="utf-8"),
+        Path("api/static/editor.css").read_text(encoding="utf-8"),
+        *(Path(path).read_text(encoding="utf-8") for path in EDITOR_SCRIPT_FILES),
+    ])
 
+
+
+def _portable_auth_pack_html() -> str:
+    """Return the portable auth pack shell plus split static assets for static assertions."""
+    return "\n".join([
+        Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8"),
+        Path("portable_auth_pack/static/login_admin_minimal.css").read_text(encoding="utf-8"),
+        *(Path(path).read_text(encoding="utf-8") for path in PORTABLE_AUTH_PACK_SCRIPT_FILES),
+    ])
+
+
+def test_editor_static_shell_loads_split_assets() -> None:
+    html = Path("api/static/editor.html").read_text(encoding="utf-8")
+
+    assert '<link rel="stylesheet" href="/static/editor.css?v=20260614-split" />' in html
+    for path in EDITOR_SCRIPT_FILES:
+        asset_name = Path(path).name
+        assert f'<script src="/static/{asset_name}?v=20260614-split"></script>' in html
+        assert Path(path).exists()
+        assert sum(1 for _ in Path(path).open(encoding="utf-8")) < 350
+    assert 'editor.js?v=20260614-split' not in html
+    assert '<style>' not in html
+    assert '<script>\n' not in html
+    assert Path("api/static/editor.css").exists()
+    assert not Path("api/static/editor.js").exists()
+
+
+
+def test_editor_static_assets_are_served_by_router() -> None:
+    from api.routers import editor
+
+    app = FastAPI()
+    app.include_router(editor.router)
+    client = TestClient(app)
+
+    assets = ["editor.css"] + [Path(path).name for path in EDITOR_SCRIPT_FILES]
+    for asset in assets:
+        response = client.get(f"/static/{asset}")
+        assert response.status_code == 200
+        assert response.text.strip()
+
+    missing = client.get("/static/not_allowed.js")
+    assert missing.status_code == 404
+
+def test_portable_auth_pack_shell_loads_split_assets() -> None:
+    html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+
+    assert '<link rel="stylesheet" href="login_admin_minimal.css?v=20260614-split" />' in html
+    for path in PORTABLE_AUTH_PACK_SCRIPT_FILES:
+        asset_name = Path(path).name
+        assert f'<script src="{asset_name}?v=20260614-split"></script>' in html
+        assert Path(path).exists()
+        assert sum(1 for _ in Path(path).open(encoding="utf-8")) < 200
+    assert 'login_admin_minimal.js?v=20260614-split' not in html
+    assert '<style>' not in html
+    assert '<script>\n' not in html
+    assert Path("portable_auth_pack/static/login_admin_minimal.css").exists()
+    assert not Path("portable_auth_pack/static/login_admin_minimal.js").exists()
 
 def test_editor_auth_ui_exposes_password_recovery_and_change_controls() -> None:
     html = _editor_html()
@@ -162,7 +248,7 @@ def test_auth_account_management_actions_are_written_to_account_audit() -> None:
 
 def test_account_management_uses_role_dropdowns() -> None:
     editor_html = _editor_html()
-    portable_html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+    portable_html = _portable_auth_pack_html()
 
     for html in (editor_html, portable_html):
         assert 'function roleOptionsHtml(selectedRole, roleOptions)' in html
@@ -179,7 +265,7 @@ def test_account_management_uses_role_dropdowns() -> None:
 
 def test_usage_stats_user_picker_is_seeded_from_current_user_and_user_list() -> None:
     editor_html = _editor_html()
-    portable_html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+    portable_html = _portable_auth_pack_html()
 
     assert "if (state.user && !state.usageStatsUserOptions.includes(state.user.username)) state.usageStatsUserOptions.unshift(state.user.username);" in editor_html
     assert "setUsageStatsUserOptions((data.users || []).map(u => u.username));" in editor_html
@@ -188,7 +274,7 @@ def test_usage_stats_user_picker_is_seeded_from_current_user_and_user_list() -> 
 
 
 def test_portable_auth_pack_reset_token_dialog_is_copyable() -> None:
-    html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+    html = _portable_auth_pack_html()
 
     assert 'id="resetTokenModal"' in html
     assert 'id="resetTokenModalValue" readonly' in html
@@ -199,7 +285,7 @@ def test_portable_auth_pack_reset_token_dialog_is_copyable() -> None:
 
 
 def test_portable_auth_pack_exposes_account_stats_with_shared_module() -> None:
-    html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+    html = _portable_auth_pack_html()
 
     assert '<script src="audit_tools.js?v=20260612-paginate"></script>' in html
     assert 'id="accountStatsSection"' in html
@@ -215,7 +301,7 @@ def test_portable_auth_pack_exposes_account_stats_with_shared_module() -> None:
 
 
 def test_portable_auth_pack_navigation_is_header_multilevel_and_collapsible() -> None:
-    html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+    html = _portable_auth_pack_html()
 
     assert 'id="authPackNav" class="header-nav"' in html
     assert 'data-nav-root="identity"' in html
@@ -241,7 +327,7 @@ def test_portable_auth_pack_navigation_is_header_multilevel_and_collapsible() ->
 
 def test_navigation_hover_has_bridge_and_delayed_level_close() -> None:
     editor_html = _editor_html()
-    portable_html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+    portable_html = _portable_auth_pack_html()
     tools = Path("api/static/audit_tools.js").read_text(encoding="utf-8")
 
     assert '.nav-level[open]::after { content: ""; position: absolute; top: 0; left: 100%; width: 10px; height: 100%; }' in editor_html
@@ -273,7 +359,7 @@ def test_editor_audit_views_are_client_paginated_after_sorting() -> None:
 
 
 def test_portable_auth_pack_lists_are_client_paginated() -> None:
-    html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+    html = _portable_auth_pack_html()
 
     for element_id in (
         'usersPageInfo', 'usersFirstBtn', 'usersPrevBtn', 'usersPageInput', 'usersGotoBtn', 'usersNextBtn', 'usersLastBtn',

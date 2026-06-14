@@ -73,3 +73,26 @@
 
 - `portable_auth_pack` 現在示範與主系統一致的「一般使用者可看自己的帳號稽核、superuser 可看全體」邊界。
 - `login_admin_minimal.html` 的稽核時間顯示改為瀏覽器本地時間，帳號統計示範呼叫 usage stats 時傳入 `timezone_offset_minutes`；此統計 endpoint 仍是宿主專案需提供的整合點，README / import guide 已提醒移植時要接到等效 endpoint。
+
+## 2026-06-14 Editor static asset split
+
+- `api/static/editor.html` 現在是 Editor 的靜態 HTML shell，負責 DOM 結構與載入 `/static/audit_tools.js`、`/static/editor.css` 以及多個拆分後的 Editor JS：`editor_core.js`、`editor_form.js`、`editor_auth_nav.js`、`editor_stats.js`、`editor_audit.js`、`editor_documents.js`、`editor_bootstrap.js`。
+- `api/static/editor.css` 承載原 Editor 頁面的樣式規則；Editor JS 依責任拆分為 core utilities、form rendering、auth/nav boot、stats、audit、documents/admin actions 與 bootstrap wiring，單檔目前皆低於 350 行。
+- Editor 靜態測試需同時讀取 HTML shell 與 split CSS / JS assets，避免只檢查 shell 時漏掉外部化後的行為字串。
+
+## 2026-06-14 portable_auth_pack static asset split
+
+- `portable_auth_pack/static/login_admin_minimal.html` 現在是 portable auth pack 管理頁 HTML shell，負責 DOM 結構與載入 `audit_tools.js`、`login_admin_minimal.css`、`login_admin_minimal.js`。
+- `login_admin_minimal.css` 承載 portable 管理頁樣式；`login_admin_minimal.js` 承載登入、帳號管理、稽核、統計與導航互動。
+- 主系統 Editor 與 portable auth pack 的靜態測試都需合併 shell + split assets 後執行行為字串斷言。
+
+## 2026-06-14 portable_auth_pack JS responsibility split
+
+- `portable_auth_pack/static/login_admin_minimal.html` 除了載入 `login_admin_minimal.css`，也依序載入 `login_admin_core.js`、`login_admin_auth.js`、`login_admin_audit.js`、`login_admin_stats.js`、`login_admin_admin.js`、`login_admin_bootstrap.js`。
+- portable JS 依責任拆分為 core/nav/API helpers、auth flows、login audit、account stats、admin account management 與 bootstrap event binding；單檔目前皆低於 200 行。
+- portable 靜態測試需合併 shell + CSS + `PORTABLE_AUTH_PACK_SCRIPT_FILES` 後執行行為字串斷言。
+
+## 2026-06-14 Editor static asset routing
+
+- Editor HTML shell 透過 `/static/<asset>` 載入拆分後 assets；`api/routers/editor.py` 使用 `EDITOR_STATIC_ASSETS` 白名單服務 `editor.css`、`audit_tools.js` 與所有 `editor_*.js`。
+- 不在白名單內的 `/static/{filename}` 仍回 404，避免把整個 `api/static/` 任意檔案暴露出去。
