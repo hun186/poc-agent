@@ -97,7 +97,7 @@ app.include_router(auth_router)
 | `POST` | `/v1/auth/users/{username}/password-reset-token` | superuser 產生一次性 reset token，供核身後安全交付 |
 | `POST` | `/v1/auth/users/{username}/reset-password` | superuser 直接重設使用者密碼；該帳號既有 token 失效 |
 | `DELETE` | `/v1/auth/users/{username}` | superuser 刪除帳號 |
-| `GET` | `/v1/auth/login-audit` | superuser 查詢登入稽核紀錄 |
+| `GET` | `/v1/auth/login-audit` | 已登入使用者查自己的登入稽核；superuser 可查全體或用 `username` 篩選 |
 
 ### 3. 保護你的既有 API
 

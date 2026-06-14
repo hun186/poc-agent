@@ -564,6 +564,7 @@ def usage_stats(
     end_ts: str | None = Query(None, description="結束時間（ISO 8601）"),
     chart_bucket: str = Query("day", description="統計曲線區間：hour、6_hours、12_hours、day、week、month"),
     events_limit: int = Query(100, ge=1, le=500, description="回傳套用同一篩選條件的 audit 事件筆數"),
+    timezone_offset_minutes: int = 0,
     user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
     records = load_audit_records(limit=20000)
@@ -595,12 +596,13 @@ def usage_stats(
     out["filtered"] = {
         "category": category_value,
         "stats": build_usage_stats(filtered),
-        "series": build_audit_time_series(filtered, normalized_bucket),
+        "series": build_audit_time_series(filtered, normalized_bucket, timezone_offset_minutes),
         "events": filtered[:events_limit],
         "events_total": len(filtered),
         "events_limit": events_limit,
         "chart_bucket": normalized_bucket,
         "chart_bucket_label": bucket_label,
+        "timezone_offset_minutes": timezone_offset_minutes,
         "is_restricted_to_self": user.role != "superuser",
     }
     return out
@@ -617,12 +619,16 @@ def list_audit_logs(
     start_ts: str | None = Query(None, description="起始時間（ISO 8601）"),
     end_ts: str | None = Query(None, description="結束時間（ISO 8601）"),
     limit: int = Query(100, ge=1, le=500),
-    _: AuthUser = Depends(require_superuser),
+    user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
+    action_prefix_value = (action_prefix or "").strip().lower()
+    if user.role != "superuser" and not action_prefix_value.startswith("auth."):
+        raise HTTPException(status_code=403, detail="一般使用者只能查詢自己的帳號操作紀錄。")
+    effective_username = username if user.role == "superuser" else user.username
     records = load_audit_records(limit=5000)
     filtered = filter_audit_records(
         records,
-        username=username,
+        username=effective_username,
         action=action,
         action_prefix=action_prefix,
         index=index,

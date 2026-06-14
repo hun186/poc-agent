@@ -87,7 +87,11 @@ def test_editor_workspace_separates_document_and_account_work_areas() -> None:
     assert 'id="accountAuditCard" class="card hidden"' in html
     assert '文件異動紀錄查詢' in html
     assert '帳號操作紀錄查詢' in html
-    assert 'data-main-tab="account-audit"' in html
+    assert '<summary>紀錄查詢</summary>' not in html
+    assert '<summary>文件異動紀錄</summary>' in html
+    assert 'data-stats-category="document"' in html
+    assert 'data-main-tab="account-audit">我的帳號操作紀錄' in html
+    assert 'data-main-tab="stats" data-stats-category="account" data-stats-view="all" data-superuser-only="true"' in html
     assert "qs.set('action_prefix', 'editor.')" in html
     assert "qs.set('action_prefix', 'auth.')" in html
 
@@ -98,13 +102,16 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
 
     assert '<script src="/static/audit_tools.js?v=20260612-paginate"></script>' in html
     assert 'id="usageStatsCategory"' in html
-    assert '文件使用統計' in html
-    assert '帳號操作統計' in html
+    assert 'ES 文件異動紀錄使用統計' in html
+    assert '帳號操作紀錄使用統計' in html
+    assert '統計與檢核曲線儀表板' in html
     assert 'id="usageStatsChart"' in html
     assert 'id="usageStatsEventsLimit"' in html
     assert 'id="usageStatsAuditEvents"' in html
     assert 'aria-label="使用統計 audit 事件條目"' in html
     assert "events_limit: String(Math.max(1, Math.min(500, Number($('usageStatsEventsLimit').value || 100))))" in html
+    assert 'timezone_offset_minutes: String(localTimezoneOffsetMinutes())' in html
+    assert 'function formatLocalTimestamp(value)' in html
     assert 'function renderUsageStatsAuditEvents(filtered)' in html
     assert 'renderUsageStatsAuditEvents(filtered);' in html
     assert "'/v1/editor/usage-stats?'" in html
@@ -158,6 +165,9 @@ def test_portable_auth_pack_exposes_account_stats_with_shared_module() -> None:
     assert 'id="accountStatsSection"' in html
     assert 'SraAuditTools.renderTimeSeriesChart' in html
     assert "category: 'account'" in html
+    assert 'timezone_offset_minutes: String(localTimezoneOffsetMinutes())' in html
+    assert 'function formatLocalTimestamp(value)' in html
+    assert '我的登入稽核' in html
     assert Path("portable_auth_pack/static/audit_tools.js").exists()
 
 

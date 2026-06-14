@@ -122,7 +122,14 @@ def main() -> int:
 
         audit_res = client.get("/v1/auth/login-audit", headers=headers)
         assert audit_res.status_code == 200, audit_res.text
+        assert audit_res.json()["is_restricted_to_self"] is False
         assert any(event["username"] == "alice" for event in audit_res.json()["events"])
+
+        user_audit_res = client.get("/v1/auth/login-audit", headers=user_headers)
+        assert user_audit_res.status_code == 200, user_audit_res.text
+        assert user_audit_res.json()["is_restricted_to_self"] is True
+        assert user_audit_res.json()["events"]
+        assert all(event["username"] == "alice" for event in user_audit_res.json()["events"])
 
         changed_res = client.post(
             "/v1/auth/change-password",

@@ -51,7 +51,7 @@
      - approved user 可呼叫 protected API。
      - logout 後同一 token 呼叫 protected API 回 401。
      - change/reset password 後舊 token 回 401，且新密碼可登入。
-     - forgot-password 不公開回傳 reset token；superuser 產生 reset token 後，使用者可用 token 重設密碼，且登入稽核可被 superuser 查詢。
+     - forgot-password 不公開回傳 reset token；superuser 產生 reset token 後，使用者可用 token 重設密碼，且登入稽核可由使用者查自己的紀錄，superuser 可查全體或指定帳號。
      - 不存在帳號登入仍走 dummy password hash verification；重複登入 / reset-password 失敗會回 429 與 `Retry-After`。
 
 ## Codex 修改注意事項

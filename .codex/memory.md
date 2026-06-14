@@ -110,3 +110,25 @@ Conclusion:
 - 主要修改：`api/static/editor.html` 移除登入稽核標題、limit input、查詢按鈕、結果列表、分頁與相關前端狀態 / render / API 呼叫；保留帳號操作紀錄查詢作為主系統帳號事件入口。`tests/test_editor_auth_ui_static.py` 改驗證主系統不再出現重複登入稽核控制，且帳號操作動作篩選仍包含登入。
 - 驗證：執行 `pytest tests/test_editor_auth_ui_static.py` 通過；執行 `pytest tests` 通過（64 passed，僅既有 warnings）；執行 `node --check /tmp/editor.html.js` 通過（由 `api/static/editor.html` script block 抽出後檢查語法）；嘗試 `python -m playwright --version` 確認目前環境未安裝 Playwright，無法補瀏覽器截圖，已記錄於 known issues。
 - 結論：主系統帳號相關查詢集中在帳號操作紀錄查詢；portable_auth_pack 的獨立登入稽核頁面未變更。
+
+## 2026-06-14 本地時間顯示與紀錄查詢導覽調整
+
+- 目的：將紀錄 / 統計的時間呈現改為瀏覽器本地時間，並整理重複的「系統管理 → 紀錄查詢」導覽。
+- 主要修改：`api/static/editor.html` 將 ES 資料庫導覽改為「文件異動紀錄 → 使用統計」，移除系統管理下的「紀錄查詢」入口；帳號安全下新增帳號操作紀錄、我的使用統計與 superuser 專屬全體使用統計入口。使用統計頁標題改為「統計與檢核曲線儀表板」，並以本地時間顯示事件時間。
+- 後端契約：`GET /v1/editor/usage-stats` 接受 `timezone_offset_minutes`，統計曲線分桶可依用戶端本地時區偏移計算；一般使用者仍限定自己的紀錄，superuser 可看全體統計。
+- 驗證：`node --check /tmp/editor.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（19 passed，2 個既有 SyntaxWarning）；`pytest tests` 通過（65 passed，既有 Starlette / datetime.utcnow warnings）。
+- 截圖限制：本次為可視 UI 導覽與文字調整，但目前環境仍缺少 Playwright / browser runtime，未執行截圖驗證；以靜態 UI 測試與 JS 語法檢查替代。
+
+## 2026-06-14 一般使用者自己的帳號操作紀錄
+
+- 目的：回覆並修正「一般使用者是否能看自己的帳號操作紀錄」的權限落差。
+- 主要修改：`GET /v1/editor/audit-logs` 改為 active user 可呼叫；非 superuser 僅允許查詢 `auth.` 帳號操作紀錄，且後端強制 `username` 為目前登入者，無法透過 query 讀取他人或文件異動紀錄。superuser 維持原本可查全體紀錄。
+- 前端調整：`帳號安全` 導覽下的帳號操作入口改為「我的帳號操作紀錄」並開放一般使用者；「全體使用統計」仍保留 `data-superuser-only`。
+- 驗證：`node --check /tmp/editor.html.js` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（21 passed，2 個既有 SyntaxWarning）；`pytest tests` 通過（67 passed，既有 Starlette / datetime.utcnow warnings）。
+
+## 2026-06-14 portable_auth_pack 帳號稽核同步
+
+- 目的：同步主系統帳號操作自助查詢與本地時間顯示，避免 `portable_auth_pack` 作為其他專案參考時仍保留「登入稽核僅 superuser 可查」或 UTC 顯示的舊示範。
+- 主要修改：`portable_auth_pack/fastapi_auth_pack/router.py` 的 `GET /v1/auth/login-audit` 改為 active user 可查；一般使用者固定只能查自己的 login audit，superuser 可查全體或用 `username` 篩選。`portable_auth_pack/static/login_admin_minimal.html` 改為「我的登入稽核」，登入稽核時間以瀏覽器本地時間顯示，帳號統計示範也帶 `timezone_offset_minutes`。
+- 文件 / 驗證：更新 `portable_auth_pack/README.md` 與 `CODEX_IMPORT_GUIDE.md`；`portable_auth_pack/scripts/verify_auth_pack.py` 新增一般使用者自查登入稽核驗證。
+- 驗證：`pytest tests/test_editor_auth_ui_static.py` 通過；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過（僅既有 Starlette/httpx warning）；`node --check /tmp/login_admin_minimal.html.js && node --check /tmp/editor.html.js` 通過；`pytest tests` 通過（67 passed，既有 warnings）。

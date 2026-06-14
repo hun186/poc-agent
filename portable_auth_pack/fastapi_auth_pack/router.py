@@ -171,5 +171,13 @@ def reset_user_password(username: str, payload: ResetPasswordPayload, user: Auth
 
 
 @router.get("/v1/auth/login-audit")
-def list_login_audit(limit: int = Query(100, ge=1, le=1000), _: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
-    return {"events": AUTH_STORE.list_login_audit(limit)}
+def list_login_audit(
+    limit: int = Query(100, ge=1, le=1000),
+    username: str | None = Query(None, description="superuser 可指定帳號；一般使用者固定自己"),
+    user: AuthUser = Depends(current_user),
+) -> dict[str, Any]:
+    events = AUTH_STORE.list_login_audit(limit)
+    effective_username = username if user.role == "superuser" else user.username
+    if effective_username:
+        events = [event for event in events if str(event.get("username") or "") == effective_username]
+    return {"events": events, "is_restricted_to_self": user.role != "superuser"}

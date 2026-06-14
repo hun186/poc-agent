@@ -128,8 +128,8 @@
             </div>
           </details>
           <details class="nav-level">
-            <summary>資料使用狀態</summary>
-            <div class="nav-actions"><button type="button" data-main-tab="stats">使用統計</button></div>
+            <summary>文件異動紀錄</summary>
+            <div class="nav-actions"><button type="button" data-main-tab="stats" data-stats-category="document" data-stats-view="mine">使用統計</button></div>
           </details>
         </div>
         <div class="nav-menu" data-nav-menu="pipeline">
@@ -145,16 +145,12 @@
             <summary>帳號管理</summary>
             <div class="nav-actions"><button type="button" id="mainReviewTab" data-main-tab="review">帳號審核</button></div>
           </details>
-          <details class="nav-level">
-            <summary>紀錄查詢</summary>
-            <div class="nav-actions"><button type="button" id="mainAuditTab" data-main-tab="audit">文件異動紀錄</button><button type="button" data-main-tab="account-audit">帳號操作紀錄</button><button type="button" data-main-tab="stats">全體使用統計</button></div>
-          </details>
         </div>
         <div class="nav-menu" data-nav-menu="account">
           <p class="nav-menu-title">個人帳號</p>
           <details class="nav-level" open>
             <summary>密碼與登入</summary>
-            <div class="nav-actions"><button type="button" data-main-tab="account">變更密碼</button></div>
+            <div class="nav-actions"><button type="button" data-main-tab="account">變更密碼</button><button type="button" data-main-tab="account-audit">我的帳號操作紀錄</button><button type="button" data-main-tab="stats" data-stats-category="account" data-stats-view="mine">我的使用統計</button><button type="button" data-main-tab="stats" data-stats-category="account" data-stats-view="all" data-superuser-only="true">全體使用統計</button></div>
           </details>
         </div>
       </div>
@@ -224,8 +220,8 @@
           </div>
 
           <div id="statsCard" class="card hidden">
-            <h2>使用統計與檢核曲線</h2>
-            <p class="muted">可用同一組檢核元件篩選文件使用統計與帳號操作統計，曲線圖會套用目前篩選條件。</p>
+            <h2>統計與檢核曲線儀表板</h2>
+            <p class="muted">可用同一組檢核元件篩選 ES 文件異動紀錄與帳號操作紀錄；一般使用者只會看到自己的使用統計，具備帳號處理權限的 superuser 才能查看全體統計。</p>
             <div class="row">
               <button id="statsMineTabBtn" class="secondary">我的使用統計</button>
               <button id="statsAllTabBtn" class="secondary hidden">全體使用統計</button>
@@ -235,7 +231,7 @@
             <div id="adminStats" class="hidden"></div>
             <hr style="border:0;border-top:1px solid #e5e7eb;margin:18px 0;" />
             <section class="field-grid" aria-label="使用統計篩選">
-              <div><label>統計類別</label><select id="usageStatsCategory"><option value="document">文件使用統計</option><option value="account">帳號操作統計</option><option value="all">全部操作</option></select></div>
+              <div><label>統計類別</label><select id="usageStatsCategory"><option value="document">ES 文件異動紀錄使用統計</option><option value="account">帳號操作紀錄使用統計</option><option value="all">全部操作使用統計</option></select></div>
               <div><label>使用者</label><input id="usageStatsUsername" placeholder="superuser 可輸入帳號；一般使用者固定自己" /></div>
               <div><label>動作包含</label><input id="usageStatsAction" placeholder="例如 save_document 或 password" /></div>
               <div><label>Index</label><select id="usageStatsIndex"><option value="">全部</option></select></div>
@@ -260,8 +256,8 @@
               <div id="usageStatsChart" class="chart-empty">尚未載入圖表</div>
             </div>
             <section aria-label="使用統計 audit 事件條目">
-              <h3>最近 audit 事件</h3>
-              <p class="muted">下方條目套用與曲線圖相同的篩選條件，可直接看到實際修改事件。</p>
+              <h3>最近紀錄事件</h3>
+              <p class="muted">下方條目套用與曲線圖相同的篩選條件，時間會依瀏覽器本地時區顯示。</p>
               <div class="pager" aria-label="使用統計 audit 事件分頁"><span id="usageStatsAuditPageInfo" class="muted">第 1 頁</span><button id="usageStatsAuditFirstBtn" class="secondary" type="button">首頁</button><button id="usageStatsAuditPrevBtn" class="secondary" type="button">上一頁</button><span class="pager-jump"><label class="sr-only" for="usageStatsAuditPageInput">使用統計 audit 事件頁數</label><input id="usageStatsAuditPageInput" type="number" min="1" value="1" inputmode="numeric" /><button id="usageStatsAuditGotoBtn" class="secondary" type="button">跳至頁數</button></span><button id="usageStatsAuditNextBtn" class="secondary" type="button">下一頁</button><button id="usageStatsAuditLastBtn" class="secondary" type="button">末頁</button></div>
               <div id="usageStatsAuditEvents"></div>
             </section>
@@ -655,11 +651,12 @@ async function bootAuthed() {
   await loadFormConfig($('indexSelect').value);
   $('mainNav').classList.remove('hidden');
   bindHeaderNav();
-  document.querySelectorAll('[data-main-tab]').forEach(btn => btn.onclick = () => { switchMainTab(btn.dataset.mainTab); collapseMainNav(); });
+  document.querySelectorAll('[data-main-tab]').forEach(btn => btn.onclick = () => { switchMainTab(btn.dataset.mainTab, {category: btn.dataset.statsCategory || '', view: btn.dataset.statsView || ''}); collapseMainNav(); });
   if (isSuperuser) {
     $('adminCard').classList.remove('hidden');
     $('auditCard').classList.remove('hidden');
     $('accountAuditCard').classList.remove('hidden');
+    document.querySelectorAll('[data-superuser-only]').forEach(el => el.classList.remove('hidden'));
     $('statsAllTabBtn').classList.remove('hidden');
     $('adminNavGroup').classList.remove('hidden');
     await refreshUsers();
@@ -670,6 +667,7 @@ async function bootAuthed() {
     $('auditCard').classList.add('hidden');
     $('accountAuditCard').classList.add('hidden');
     $('adminNavGroup').classList.add('hidden');
+    document.querySelectorAll('[data-superuser-only]').forEach(el => el.classList.add('hidden'));
   }
   await refreshUsageStats();
   switchMainTab('search');
@@ -681,6 +679,13 @@ function toIsoOrEmpty(localValue) {
   if (!localValue) return '';
   const d = new Date(localValue);
   return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+}
+function localTimezoneOffsetMinutes() { return -new Date().getTimezoneOffset(); }
+function formatLocalTimestamp(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return new Intl.DateTimeFormat(undefined, {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit'}).format(d);
 }
 function updateAuditSelectOptions(id, values) {
   const el = $(id);
@@ -723,6 +728,7 @@ function collectUsageStatsQuery() {
     category: $('usageStatsCategory').value,
     chart_bucket: $('usageStatsBucket').value,
     events_limit: String(Math.max(1, Math.min(500, Number($('usageStatsEventsLimit').value || 100)))),
+    timezone_offset_minutes: String(localTimezoneOffsetMinutes()),
   });
   const mapping = {
     username: $('usageStatsUsername').value.trim(),
@@ -809,7 +815,7 @@ function renderUsageStatsAuditEventsPage() {
     const paths = Array.isArray(h.changed_paths) ? h.changed_paths.filter(Boolean) : [];
     return `<div class="audit">
       <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
-      <div class="muted">${esc(h.ts || '')}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
+      <div class="muted">${esc(formatLocalTimestamp(h.ts))}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
       <div class="muted">index=${esc(h.index || '-')} / id=${esc(h.id || '-')} / result=${esc(h.result || '-')}</div>
       <div class="muted">異動欄位：${paths.length ? esc(paths.join(', ')) : '(無)'}</div>
     </div>`;
@@ -861,7 +867,12 @@ function clearUsageStatsFilters() {
   $('usageStatsBucket').value = 'day';
   $('usageStatsEventsLimit').value = '100';
 }
-function switchMainTab(tab) {
+function switchMainTab(tab, opts={}) {
+  if (tab === 'stats') {
+    if (opts.category) $('usageStatsCategory').value = opts.category;
+    if (opts.view) switchStatsView(opts.view);
+    loadFilteredUsageStats();
+  }
   $('searchCard').classList.toggle('hidden', tab !== 'search');
   $('statsCard').classList.toggle('hidden', tab !== 'stats');
   $('accountCard').classList.toggle('hidden', tab !== 'account');
@@ -873,7 +884,8 @@ function switchMainTab(tab) {
   $('workspaceGrid').classList.toggle('single-pane', !showEditor);
 }
 function switchStatsView(view) {
-  const mine = view !== 'all';
+  const canViewAll = state.user && state.user.role === 'superuser';
+  const mine = view !== 'all' || !canViewAll;
   $('myStats').classList.toggle('hidden', !mine);
   $('adminStats').classList.toggle('hidden', mine);
 }
@@ -913,7 +925,7 @@ function renderAuditCard(h) {
   const paths = Array.isArray(h.changed_paths) ? h.changed_paths.filter(Boolean) : [];
   return `<div class="audit">
     <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
-    <div class="muted">${esc(h.ts || '')}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
+    <div class="muted">${esc(formatLocalTimestamp(h.ts))}｜${esc(h.username || '-') } (${esc(h.role || '-')})</div>
     <div class="muted">index=${esc(h.index || '-')} / id=${esc(h.id || '-')} / result=${esc(h.result || '-')}</div>
     <div class="muted">異動欄位：${paths.length ? esc(paths.join(', ')) : '(無)'}</div>
   </div>`;
@@ -923,7 +935,7 @@ function renderAccountAuditCard(h) {
   const detail = h.reason || h.status || h.role || h.result || '';
   return `<div class="audit">
     <div><strong>${esc(auditActionLabel(h.action))}</strong><span class="muted"> ｜${esc(h.action || '')}</span></div>
-    <div class="muted">${esc(h.ts || '')}｜帳號：${esc(h.username || '-')}${actor}</div>
+    <div class="muted">${esc(formatLocalTimestamp(h.ts))}｜帳號：${esc(h.username || '-')}${actor}</div>
     ${detail ? `<div class="muted">補充：${esc(detail)}</div>` : ''}
   </div>`;
 }
@@ -983,7 +995,8 @@ async function searchAccountAuditLogs() {
     const hits = data.hits || [];
     renderAccountAuditHits(hits);
     refreshAccountAuditFilterOptions(hits);
-    setStatus('accountAuditStatus', `帳號操作共符合 ${hits.length} 筆；已先篩選、依時間排序，再分頁顯示。`, 'ok');
+    const scopeText = state.user && state.user.role === 'superuser' ? '帳號操作' : '我的帳號操作';
+    setStatus('accountAuditStatus', `${scopeText}共符合 ${hits.length} 筆；已先篩選、依時間排序，再分頁顯示。`, 'ok');
   } catch (err) {
     setStatus('accountAuditStatus', err.message, 'error');
     $('accountAuditHits').innerHTML = '';

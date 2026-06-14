@@ -70,3 +70,20 @@
 
 - `POST /v1/auth/users/{username}/reject` route、request 與 response shape 不變；本次僅釐清前端與文件語意：此操作用於拒絕 pending 申請或停權 active 帳號，帳號資料會保留且既有 token 失效。
 - `portable_auth_pack` 同步上述 reject 操作語意說明。
+
+## 2026-06-14 Usage Stats Local Timezone Offset
+
+- `GET /v1/editor/usage-stats` 新增 query：`timezone_offset_minutes`（int，預設 0）。前端會傳入瀏覽器本地時區相對 UTC 的分鐘偏移，用於 `filtered.series` 的 hour / day / week / month 等統計曲線分桶。
+- 權限限制不變：非 superuser 仍強制以目前登入帳號作為 `filtered` 篩選對象；superuser 可查詢全體統計與指定帳號。
+- Response `filtered.timezone_offset_minutes` 回傳實際套用的偏移值，供前端或除錯確認。
+
+## 2026-06-14 Audit Logs Self Account Access
+
+- `GET /v1/editor/audit-logs` 權限調整：active user 可呼叫此 endpoint，但非 superuser 僅允許 `action_prefix=auth.` 的帳號操作紀錄查詢。
+- 非 superuser 傳入的 `username` 會被後端忽略並強制改為目前登入帳號；若嘗試查詢非 `auth.` 類別（例如 `editor.` 文件異動），回 HTTP 403。
+- superuser 行為不變，可依 `username`、`action_prefix`、`index`、`id`、`changed_path` 與時間範圍查詢全體 audit logs。
+
+## 2026-06-14 portable_auth_pack Login Audit Self Access
+
+- `portable_auth_pack` 的 `GET /v1/auth/login-audit` 權限調整：active user 可查詢自己的登入稽核，superuser 可查全體或透過 `username` query 篩選指定帳號。
+- Response 新增 `is_restricted_to_self`，一般使用者為 `true`；superuser 為 `false`。
