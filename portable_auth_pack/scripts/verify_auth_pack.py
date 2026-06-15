@@ -202,6 +202,14 @@ def main() -> int:
         )
         assert throttled_login_res.status_code == 429, throttled_login_res.text
         assert int(throttled_login_res.headers["retry-after"]) > 0
+        failed_login_audit = auth_store_module.AUTH_STORE.list_login_audit(20)
+        assert any(
+            event.get("username") == "codex_admin"
+            and event.get("success") is False
+            and event.get("reason") in {"invalid_credentials", "rate_limited"}
+            and event.get("client_host") == "testclient"
+            for event in failed_login_audit
+        )
 
         auth_store_module.AUTH_STORE.clear_auth_failures("register", None, "testclient")
         for idx in range(auth_store_module.AUTH_THROTTLE_FAILURE_LIMIT):
