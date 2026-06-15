@@ -24,7 +24,7 @@
 </head>
 <body>
 <h2 style="margin:0 0 6px;">Code Size Report @ poc-agent</h2>
-<div class="meta">產生時間：2026-01-20 15:26:25　｜　點大小約等於 log(bytes)　｜　滑過泡泡看檔案資訊</div>
+<div class="meta">產生時間：2026-06-15 18:50:34　｜　點大小約等於 log(bytes)　｜　滑過泡泡看檔案資訊</div>
 <div class="legend">建議先看右上角（函式多、程式行也多）與「Y 很高但 X 很低」（巨型檔 / 巨型函式密度偏高）。</div>
 
 <div class="box">
@@ -33,303 +33,579 @@
 <line x1="60" y1="60" x2="60" y2="640" stroke="#999" />
 <line x1="60.0" y1="640" x2="60.0" y2="646" stroke="#999" />
 <text x="60.0" y="662" font-size="12" text-anchor="middle" fill="#333">0</text>
-<line x1="200.0" y1="640" x2="200.0" y2="646" stroke="#999" />
-<text x="200.0" y="662" font-size="12" text-anchor="middle" fill="#333">2</text>
-<line x1="340.0" y1="640" x2="340.0" y2="646" stroke="#999" />
-<text x="340.0" y="662" font-size="12" text-anchor="middle" fill="#333">4</text>
-<line x1="480.0" y1="640" x2="480.0" y2="646" stroke="#999" />
-<text x="480.0" y="662" font-size="12" text-anchor="middle" fill="#333">6</text>
-<line x1="620.0" y1="640" x2="620.0" y2="646" stroke="#999" />
-<text x="620.0" y="662" font-size="12" text-anchor="middle" fill="#333">8</text>
-<line x1="760.0" y1="640" x2="760.0" y2="646" stroke="#999" />
-<text x="760.0" y="662" font-size="12" text-anchor="middle" fill="#333">10</text>
+<line x1="238.1818181818182" y1="640" x2="238.1818181818182" y2="646" stroke="#999" />
+<text x="238.1818181818182" y="662" font-size="12" text-anchor="middle" fill="#333">6</text>
+<line x1="416.3636363636364" y1="640" x2="416.3636363636364" y2="646" stroke="#999" />
+<text x="416.3636363636364" y="662" font-size="12" text-anchor="middle" fill="#333">12</text>
+<line x1="594.5454545454545" y1="640" x2="594.5454545454545" y2="646" stroke="#999" />
+<text x="594.5454545454545" y="662" font-size="12" text-anchor="middle" fill="#333">18</text>
+<line x1="772.7272727272727" y1="640" x2="772.7272727272727" y2="646" stroke="#999" />
+<text x="772.7272727272727" y="662" font-size="12" text-anchor="middle" fill="#333">24</text>
+<line x1="950.9090909090909" y1="640" x2="950.9090909090909" y2="646" stroke="#999" />
+<text x="950.9090909090909" y="662" font-size="12" text-anchor="middle" fill="#333">30</text>
 <line x1="54" y1="640.0" x2="60" y2="640.0" stroke="#999" />
 <text x="50" y="644.0" font-size="12" text-anchor="end" fill="#333">0</text>
-<line x1="54" y1="524.2516268980477" x2="60" y2="524.2516268980477" stroke="#999" />
-<text x="50" y="528.2516268980477" font-size="12" text-anchor="end" fill="#333">92</text>
-<line x1="54" y1="408.50325379609546" x2="60" y2="408.50325379609546" stroke="#999" />
-<text x="50" y="412.50325379609546" font-size="12" text-anchor="end" fill="#333">184</text>
-<line x1="54" y1="292.75488069414314" x2="60" y2="292.75488069414314" stroke="#999" />
-<text x="50" y="296.75488069414314" font-size="12" text-anchor="end" fill="#333">276</text>
-<line x1="54" y1="177.00650759219087" x2="60" y2="177.00650759219087" stroke="#999" />
-<text x="50" y="181.00650759219087" font-size="12" text-anchor="end" fill="#333">368</text>
-<line x1="54" y1="61.258134490238604" x2="60" y2="61.258134490238604" stroke="#999" />
-<text x="50" y="65.2581344902386" font-size="12" text-anchor="end" fill="#333">460</text>
+<line x1="54" y1="524.9115913555992" x2="60" y2="524.9115913555992" stroke="#999" />
+<text x="50" y="528.9115913555992" font-size="12" text-anchor="end" fill="#333">101</text>
+<line x1="54" y1="409.82318271119846" x2="60" y2="409.82318271119846" stroke="#999" />
+<text x="50" y="413.82318271119846" font-size="12" text-anchor="end" fill="#333">202</text>
+<line x1="54" y1="294.7347740667977" x2="60" y2="294.7347740667977" stroke="#999" />
+<text x="50" y="298.7347740667977" font-size="12" text-anchor="end" fill="#333">303</text>
+<line x1="54" y1="179.64636542239685" x2="60" y2="179.64636542239685" stroke="#999" />
+<text x="50" y="183.64636542239685" font-size="12" text-anchor="end" fill="#333">404</text>
+<line x1="54" y1="64.55795677799608" x2="60" y2="64.55795677799608" stroke="#999" />
+<text x="50" y="68.55795677799608" font-size="12" text-anchor="end" fill="#333">505</text>
 <text x="550.0" y="685" font-size="14" text-anchor="middle" fill="#111">functions（函式數）</text>
 <text x="18" y="350.0" font-size="14" text-anchor="middle" fill="#111" transform="rotate(-90 18 350.0)">code_lines（有效程式行）</text>
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\telemetry.py
 code_lines=79, functions=6, classes=0
-lines/func=13.2, bytes=2558" cx="480.00" cy="540.61" r="14.22" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=13.2, bytes=2558" cx="238.18" cy="549.98" r="14.22" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\__init__.py
 code_lines=0, functions=0, classes=0
 lines/func=0.0, bytes=0" cx="60.00" cy="640.00" r="4.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\agent.py
-code_lines=459, functions=5, classes=0
-lines/func=91.8, bytes=25017" cx="410.00" cy="62.52" r="17.19" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+code_lines=280, functions=1, classes=0
+lines/func=280.0, bytes=15679" cx="89.70" cy="320.94" r="16.59" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\agent_utils.py
 code_lines=59, functions=2, classes=0
-lines/func=29.5, bytes=2450" cx="200.00" cy="565.77" r="14.17" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=29.5, bytes=2450" cx="119.39" cy="572.77" r="14.17" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\direct_llm_json.py
 code_lines=127, functions=7, classes=1
-lines/func=18.1, bytes=6567" cx="550.00" cy="480.22" r="15.45" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=18.1, bytes=6567" cx="267.88" cy="495.28" r="15.45" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\doc_followup_agent.py
 code_lines=2, functions=0, classes=0
-lines/func=inf, bytes=127" cx="60.00" cy="637.48" r="10.31" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=127" cx="60.00" cy="637.72" r="10.31" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es_test.py
 code_lines=197, functions=0, classes=0
-lines/func=inf, bytes=7545" cx="60.00" cy="392.15" r="15.63" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=7545" cx="60.00" cy="415.52" r="15.63" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\min_agent.py
 code_lines=200, functions=6, classes=3
-lines/func=33.3, bytes=9969" cx="480.00" cy="388.37" r="16.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=33.3, bytes=9969" cx="238.18" cy="412.10" r="16.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\report_agent.py
-code_lines=294, functions=4, classes=1
-lines/func=73.5, bytes=17120" cx="340.00" cy="270.11" r="16.70" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+code_lines=272, functions=4, classes=1
+lines/func=68.0, bytes=15491" cx="178.79" cy="330.06" r="16.57" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\report_config.py
+code_lines=23, functions=1, classes=0
+lines/func=23.0, bytes=810" cx="89.70" cy="613.79" r="12.73" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\report_prompt.py
+code_lines=161, functions=0, classes=0
+lines/func=inf, bytes=9595" cx="60.00" cy="456.54" r="15.95" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\report_stats.py
+code_lines=22, functions=1, classes=0
+lines/func=22.0, bytes=1164" cx="89.70" cy="614.93" r="13.20" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\routing.py
+code_lines=174, functions=4, classes=0
+lines/func=43.5, bytes=8711" cx="178.79" cy="441.73" r="15.82" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\session_store.py
 code_lines=139, functions=13, classes=2
-lines/func=10.7, bytes=6372" cx="970.00" cy="465.12" r="15.41" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=10.7, bytes=6372" cx="446.06" cy="481.61" r="15.41" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\style_agent.py
 code_lines=216, functions=2, classes=0
-lines/func=108.0, bytes=12191" cx="200.00" cy="368.24" r="16.26" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
-<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\tools_es_拆檔前.py
-code_lines=461, functions=7, classes=3
-lines/func=65.9, bytes=22181" cx="550.00" cy="60.00" r="17.04" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=108.0, bytes=12191" cx="119.39" cy="393.87" r="16.26" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\tools_stats.py
 code_lines=123, functions=4, classes=1
-lines/func=30.8, bytes=6372" cx="340.00" cy="485.25" r="15.41" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=30.8, bytes=6372" cx="178.79" cy="499.84" r="15.41" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\__init__.py
 code_lines=0, functions=0, classes=0
 lines/func=0.0, bytes=0" cx="60.00" cy="640.00" r="4.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\config\query_refiner_settings.py
 code_lines=41, functions=4, classes=1
-lines/func=10.2, bytes=1524" cx="340.00" cy="588.42" r="13.55" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=10.2, bytes=1524" cx="178.79" cy="593.28" r="13.55" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\data_agent\builder.py
 code_lines=77, functions=5, classes=0
-lines/func=15.4, bytes=3155" cx="410.00" cy="543.12" r="14.50" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=15.4, bytes=3155" cx="208.48" cy="552.26" r="14.50" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\data_agent\prompts.py
 code_lines=394, functions=0, classes=0
-lines/func=inf, bytes=23996" cx="60.00" cy="144.30" r="17.14" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=23996" cx="60.00" cy="191.04" r="17.14" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\data_agent\runtime.py
 code_lines=215, functions=8, classes=0
-lines/func=26.9, bytes=9404" cx="620.00" cy="369.50" r="15.92" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=26.9, bytes=9404" cx="297.58" cy="395.01" r="15.92" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\data_agent\types.py
 code_lines=28, functions=1, classes=1
-lines/func=28.0, bytes=1327" cx="130.00" cy="604.77" r="13.37" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=28.0, bytes=1327" cx="89.70" cy="608.09" r="13.37" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\data_agent\__init__.py
 code_lines=7, functions=0, classes=0
-lines/func=inf, bytes=197" cx="60.00" cy="631.19" r="10.88" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=197" cx="60.00" cy="632.02" r="10.88" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\doc_followup\config.py
 code_lines=51, functions=6, classes=1
-lines/func=8.5, bytes=1971" cx="480.00" cy="575.84" r="13.88" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=8.5, bytes=1971" cx="238.18" cy="581.89" r="13.88" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\doc_followup\fetcher.py
 code_lines=102, functions=3, classes=0
-lines/func=34.0, bytes=4644" cx="270.00" cy="511.67" r="15.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=34.0, bytes=4644" cx="149.09" cy="523.77" r="15.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\doc_followup\parsing.py
 code_lines=73, functions=3, classes=0
-lines/func=24.3, bytes=2699" cx="270.00" cy="548.16" r="14.29" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=24.3, bytes=2699" cx="149.09" cy="556.82" r="14.29" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\doc_followup\planner.py
 code_lines=68, functions=1, classes=0
-lines/func=68.0, bytes=2573" cx="130.00" cy="554.45" r="14.23" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=68.0, bytes=2573" cx="89.70" cy="562.51" r="14.23" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\doc_followup\prompts.py
 code_lines=87, functions=2, classes=0
-lines/func=43.5, bytes=3845" cx="200.00" cy="530.54" r="14.75" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=43.5, bytes=3845" cx="119.39" cy="540.86" r="14.75" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\doc_followup\service.py
 code_lines=151, functions=1, classes=0
-lines/func=151.0, bytes=6503" cx="130.00" cy="450.02" r="15.44" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=151.0, bytes=6503" cx="89.70" cy="467.94" r="15.44" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\doc_followup\slicer.py
 code_lines=83, functions=3, classes=0
-lines/func=27.7, bytes=3598" cx="270.00" cy="535.57" r="14.67" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=27.7, bytes=3598" cx="149.09" cy="545.42" r="14.67" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\doc_followup\__init__.py
 code_lines=2, functions=0, classes=0
-lines/func=inf, bytes=115" cx="60.00" cy="637.48" r="10.18" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=115" cx="60.00" cy="637.72" r="10.18" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\es_client.py
 code_lines=221, functions=10, classes=0
-lines/func=22.1, bytes=10004" cx="760.00" cy="361.95" r="16.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=22.1, bytes=10004" cx="356.97" cy="388.17" r="16.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence.py
+code_lines=3, functions=0, classes=0
+lines/func=inf, bytes=165" cx="60.00" cy="636.58" r="10.65" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_重構前.py
 code_lines=441, functions=13, classes=0
-lines/func=33.9, bytes=21554" cx="970.00" cy="85.16" r="17.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=33.9, bytes=21554" cx="446.06" cy="137.49" r="17.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_重構後_拆檔前.py
+code_lines=509, functions=15, classes=4
+lines/func=33.9, bytes=21604" cx="505.45" cy="60.00" r="17.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\ingest_txt.py
-code_lines=164, functions=10, classes=0
-lines/func=16.4, bytes=7343" cx="760.00" cy="433.67" r="15.60" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+code_lines=8, functions=0, classes=0
+lines/func=inf, bytes=413" cx="60.00" cy="630.88" r="11.85" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\query_body.py
 code_lines=284, functions=4, classes=0
-lines/func=71.0, bytes=11748" cx="340.00" cy="282.69" r="16.21" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=71.0, bytes=11748" cx="178.79" cy="316.39" r="16.21" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\query_terms.py
-code_lines=319, functions=4, classes=0
-lines/func=79.8, bytes=15037" cx="340.00" cy="238.66" r="16.53" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+code_lines=336, functions=4, classes=0
+lines/func=84.0, bytes=15991" cx="178.79" cy="257.13" r="16.61" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\zh_variants.py
+code_lines=50, functions=3, classes=0
+lines/func=16.7, bytes=1545" cx="149.09" cy="583.03" r="13.57" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\__init__.py
+code_lines=6, functions=1, classes=0
+lines/func=6.0, bytes=320" cx="89.70" cy="633.16" r="11.52" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_core\builder.py
+code_lines=165, functions=2, classes=0
+lines/func=82.5, bytes=7687" cx="119.39" cy="451.98" r="15.66" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_core\date_utils.py
+code_lines=91, functions=6, classes=0
+lines/func=15.2, bytes=3605" cx="238.18" cy="536.31" r="14.67" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_core\json_utils.py
+code_lines=22, functions=2, classes=0
+lines/func=11.0, bytes=666" cx="119.39" cy="614.93" r="12.47" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_core\models.py
+code_lines=45, functions=0, classes=4
+lines/func=inf, bytes=1459" cx="60.00" cy="588.72" r="13.49" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_core\parser.py
+code_lines=81, functions=1, classes=0
+lines/func=81.0, bytes=3794" cx="89.70" cy="547.70" r="14.74" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_core\snippet.py
+code_lines=55, functions=2, classes=0
+lines/func=27.5, bytes=2019" cx="119.39" cy="577.33" r="13.92" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_core\text_norm.py
+code_lines=13, functions=1, classes=0
+lines/func=13.0, bytes=424" cx="89.70" cy="625.19" r="11.88" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_core\topic_match.py
+code_lines=72, functions=1, classes=0
+lines/func=72.0, bytes=2645" cx="89.70" cy="557.96" r="14.27" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\evidence_core\__init__.py
 code_lines=2, functions=0, classes=0
-lines/func=inf, bytes=380" cx="60.00" cy="637.48" r="11.74" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=120" cx="60.00" cy="637.72" r="10.24" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\synonyms\manual.py
 code_lines=121, functions=6, classes=0
-lines/func=20.2, bytes=5996" cx="480.00" cy="487.77" r="15.33" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=20.2, bytes=5996" cx="238.18" cy="502.12" r="15.33" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\es\synonyms\__init__.py
 code_lines=12, functions=0, classes=0
-lines/func=inf, bytes=311" cx="60.00" cy="624.90" r="11.48" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=311" cx="60.00" cy="626.33" r="11.48" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\llm_utils\ollama_client.py
 code_lines=162, functions=7, classes=1
-lines/func=23.1, bytes=6787" cx="550.00" cy="436.18" r="15.50" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=23.1, bytes=6787" cx="267.88" cy="455.40" r="15.50" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\llm_utils\ollama_client_backup_0326.py
+code_lines=162, functions=7, classes=1
+lines/func=23.1, bytes=6787" cx="267.88" cy="455.40" r="15.50" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\llm_utils\__init__.py
 code_lines=0, functions=0, classes=0
 lines/func=0.0, bytes=0" cx="60.00" cy="640.00" r="4.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\refiners\query_refiner.py
 code_lines=134, functions=3, classes=0
-lines/func=44.7, bytes=5713" cx="270.00" cy="471.41" r="15.27" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=44.7, bytes=5827" cx="149.09" cy="487.31" r="15.30" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\tools_es\common.py
 code_lines=110, functions=8, classes=0
-lines/func=13.8, bytes=4168" cx="620.00" cy="501.61" r="14.86" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=13.8, bytes=4168" cx="297.58" cy="514.66" r="14.86" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\tools_es\fetch_doc.py
 code_lines=115, functions=3, classes=1
-lines/func=38.3, bytes=5135" cx="270.00" cy="495.31" r="15.13" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=38.3, bytes=5135" cx="149.09" cy="508.96" r="15.13" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\tools_es\search_news.py
 code_lines=244, functions=1, classes=1
-lines/func=244.0, bytes=12275" cx="130.00" cy="333.02" r="16.27" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=244.0, bytes=12275" cx="89.70" cy="361.96" r="16.27" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\tools_es\timeline.py
 code_lines=77, functions=1, classes=1
-lines/func=77.0, bytes=3323" cx="130.00" cy="543.12" r="14.56" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=77.0, bytes=3337" cx="89.70" cy="552.26" r="14.57" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\tools_es\__init__.py
 code_lines=8, functions=0, classes=0
-lines/func=inf, bytes=223" cx="60.00" cy="629.93" r="11.04" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=223" cx="60.00" cy="630.88" r="11.04" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\utils\citations.py
 code_lines=219, functions=5, classes=0
-lines/func=43.8, bytes=9301" cx="410.00" cy="364.47" r="15.91" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=43.8, bytes=9301" cx="208.48" cy="390.45" r="15.91" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\utils\evidence_pack.py
+code_lines=211, functions=5, classes=0
+lines/func=42.2, bytes=8972" cx="208.48" cy="399.57" r="15.86" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\utils\markdown_tables.py
 code_lines=190, functions=8, classes=0
-lines/func=23.8, bytes=11042" cx="620.00" cy="400.95" r="16.13" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=23.8, bytes=11042" cx="297.58" cy="423.50" r="16.13" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\agent\utils\profiler.py
 code_lines=53, functions=3, classes=0
-lines/func=17.7, bytes=1790" cx="270.00" cy="573.32" r="13.76" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=17.7, bytes=1790" cx="149.09" cy="579.61" r="13.76" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\main.py
-code_lines=19, functions=0, classes=0
-lines/func=inf, bytes=1085" cx="60.00" cy="616.10" r="13.11" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+code_lines=21, functions=0, classes=0
+lines/func=inf, bytes=1185" cx="60.00" cy="616.07" r="13.22" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\min_main.py
 code_lines=45, functions=2, classes=0
-lines/func=22.5, bytes=2480" cx="200.00" cy="583.38" r="14.18" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=22.5, bytes=2480" cx="119.39" cy="588.72" r="14.18" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\run_api.py
 code_lines=31, functions=1, classes=0
-lines/func=31.0, bytes=1152" cx="130.00" cy="601.00" r="13.18" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=31.0, bytes=1152" cx="89.70" cy="604.68" r="13.18" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\test.py
 code_lines=13, functions=1, classes=0
-lines/func=13.0, bytes=591" cx="130.00" cy="623.64" r="12.31" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=13.0, bytes=591" cx="89.70" cy="625.19" r="12.31" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\adhoc_ssl.py
 code_lines=82, functions=3, classes=1
-lines/func=27.3, bytes=2564" cx="270.00" cy="536.83" r="14.23" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=27.3, bytes=2564" cx="149.09" cy="546.56" r="14.23" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\proctitle.py
 code_lines=36, functions=1, classes=0
-lines/func=36.0, bytes=1331" cx="130.00" cy="594.71" r="13.37" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=36.0, bytes=1331" cx="89.70" cy="598.98" r="13.37" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\settings.py
 code_lines=42, functions=0, classes=0
-lines/func=inf, bytes=2573" cx="60.00" cy="587.16" r="14.23" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=2573" cx="60.00" cy="592.14" r="14.23" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\url_utils.py
 code_lines=8, functions=1, classes=0
-lines/func=8.0, bytes=397" cx="130.00" cy="629.93" r="11.80" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=8.0, bytes=397" cx="89.70" cy="630.88" r="11.80" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\citation_views.py
 code_lines=107, functions=1, classes=1
-lines/func=107.0, bytes=4107" cx="130.00" cy="505.38" r="14.84" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=107.0, bytes=4107" cx="89.70" cy="518.07" r="14.84" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\docx_helpers.py
 code_lines=4, functions=0, classes=0
-lines/func=inf, bytes=349" cx="60.00" cy="634.97" r="11.63" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=349" cx="60.00" cy="635.44" r="11.63" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\extractors.py
 code_lines=259, functions=8, classes=0
-lines/func=32.4, bytes=12611" cx="620.00" cy="314.14" r="16.30" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=32.4, bytes=12611" cx="297.58" cy="344.87" r="16.30" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\markdown_presenter.py
 code_lines=283, functions=14, classes=0
-lines/func=20.2, bytes=14428" cx="1040.00" cy="283.95" r="16.48" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=20.2, bytes=14428" cx="475.76" cy="317.52" r="16.48" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\sections.py
 code_lines=34, functions=0, classes=2
-lines/func=inf, bytes=1491" cx="60.00" cy="597.22" r="13.52" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=1491" cx="60.00" cy="601.26" r="13.52" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\text_sanitize.py
 code_lines=60, functions=5, classes=0
-lines/func=12.0, bytes=2418" cx="410.00" cy="564.51" r="14.15" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=12.0, bytes=2418" cx="208.48" cy="571.63" r="14.15" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\__init__.py
 code_lines=0, functions=0, classes=0
 lines/func=0.0, bytes=0" cx="60.00" cy="640.00" r="4.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\docx\config.py
 code_lines=16, functions=1, classes=1
-lines/func=16.0, bytes=806" cx="130.00" cy="619.87" r="12.72" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=16.0, bytes=806" cx="89.70" cy="621.77" r="12.72" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\docx\data_agent_section.py
 code_lines=165, functions=4, classes=0
-lines/func=41.2, bytes=8364" cx="340.00" cy="432.41" r="15.77" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=41.2, bytes=8364" cx="178.79" cy="451.98" r="15.77" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\docx\inline.py
 code_lines=24, functions=1, classes=0
-lines/func=24.0, bytes=938" cx="130.00" cy="609.80" r="12.92" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=24.0, bytes=938" cx="89.70" cy="612.65" r="12.92" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\docx\markdown.py
 code_lines=85, functions=2, classes=0
-lines/func=42.5, bytes=3918" cx="200.00" cy="533.06" r="14.78" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=42.5, bytes=3918" cx="119.39" cy="543.14" r="14.78" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\docx\merge_policy.py
 code_lines=115, functions=11, classes=0
-lines/func=10.5, bytes=5960" cx="830.00" cy="495.31" r="15.33" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=10.5, bytes=5960" cx="386.67" cy="508.96" r="15.33" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\docx\table.py
 code_lines=108, functions=5, classes=0
-lines/func=21.6, bytes=4162" cx="410.00" cy="504.12" r="14.86" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=21.6, bytes=4162" cx="208.48" cy="516.94" r="14.86" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\core\presenters\docx\__init__.py
 code_lines=0, functions=0, classes=0
 lines/func=0.0, bytes=0" cx="60.00" cy="640.00" r="4.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\chat.py
 code_lines=446, functions=12, classes=1
-lines/func=37.2, bytes=19130" cx="900.00" cy="78.87" r="16.85" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=37.2, bytes=19130" cx="416.36" cy="131.79" r="16.85" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\docs.py
-code_lines=180, functions=4, classes=0
-lines/func=45.0, bytes=7652" cx="340.00" cy="413.54" r="15.65" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+code_lines=192, functions=4, classes=0
+lines/func=48.0, bytes=8067" cx="178.79" cy="421.22" r="15.72" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\editor.py
+code_lines=316, functions=13, classes=0
+lines/func=24.3, bytes=14579" cx="446.06" cy="279.92" r="16.49" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\editor_auth.py
+code_lines=244, functions=16, classes=0
+lines/func=15.2, bytes=14020" cx="535.15" cy="361.96" r="16.44" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\editor_auth_logging.py
+code_lines=22, functions=1, classes=0
+lines/func=22.0, bytes=709" cx="89.70" cy="614.93" r="12.55" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\editor_dependencies.py
+code_lines=49, functions=5, classes=0
+lines/func=9.8, bytes=2770" cx="208.48" cy="584.17" r="14.33" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\editor_models.py
+code_lines=29, functions=0, classes=8
+lines/func=inf, bytes=1363" cx="60.00" cy="606.95" r="13.40" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\editor_usage.py
+code_lines=97, functions=2, classes=0
+lines/func=48.5, bytes=4914" cx="119.39" cy="529.47" r="15.07" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\excel_to_sql.py
+code_lines=118, functions=5, classes=1
+lines/func=23.6, bytes=5086" cx="208.48" cy="505.54" r="15.12" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\export.py
 code_lines=53, functions=2, classes=0
-lines/func=26.5, bytes=2481" cx="200.00" cy="573.32" r="14.18" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=26.5, bytes=2481" cx="119.39" cy="579.61" r="14.18" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\routers\__init__.py
 code_lines=2, functions=0, classes=0
-lines/func=inf, bytes=72" cx="60.00" cy="637.48" r="9.57" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=72" cx="60.00" cy="637.72" r="9.57" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\api_state_store.py
 code_lines=169, functions=9, classes=1
-lines/func=18.8, bytes=7011" cx="690.00" cy="427.38" r="15.54" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=18.8, bytes=7011" cx="327.27" cy="447.43" r="15.54" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\auth_store.py
+code_lines=362, functions=29, classes=1
+lines/func=12.5, bytes=16672" cx="921.21" cy="227.50" r="16.67" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\auth_support.py
+code_lines=172, functions=22, classes=1
+lines/func=7.8, bytes=7304" cx="713.33" cy="444.01" r="15.59" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\auth_tokens.py
+code_lines=36, functions=2, classes=0
+lines/func=18.0, bytes=1633" cx="119.39" cy="598.98" r="13.64" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\editor_audit.py
+code_lines=89, functions=9, classes=0
+lines/func=9.9, bytes=4314" cx="327.27" cy="538.59" r="14.90" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\editor_audit_queries.py
+code_lines=173, functions=8, classes=0
+lines/func=21.6, bytes=7224" cx="297.58" cy="442.87" r="15.58" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\editor_files.py
+code_lines=39, functions=1, classes=0
+lines/func=39.0, bytes=1932" cx="89.70" cy="595.56" r="13.86" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\editor_form_config.py
+code_lines=76, functions=8, classes=0
+lines/func=9.5, bytes=3424" cx="297.58" cy="553.40" r="14.60" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\editor_index_utils.py
+code_lines=178, functions=15, classes=0
+lines/func=11.9, bytes=7719" cx="505.45" cy="437.17" r="15.66" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\export_word_service.py
 code_lines=64, functions=1, classes=1
-lines/func=64.0, bytes=3514" cx="130.00" cy="559.48" r="14.64" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=64.0, bytes=3514" cx="89.70" cy="567.07" r="14.64" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\markdown_renderer.py
 code_lines=7, functions=1, classes=0
-lines/func=7.0, bytes=486" cx="130.00" cy="631.19" r="12.06" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=7.0, bytes=486" cx="89.70" cy="632.02" r="12.06" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\memory.py
 code_lines=59, functions=4, classes=0
-lines/func=14.8, bytes=3027" cx="340.00" cy="565.77" r="14.44" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=14.8, bytes=3027" cx="178.79" cy="572.77" r="14.44" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\services\sessions.py
 code_lines=195, functions=13, classes=1
-lines/func=15.0, bytes=9937" cx="970.00" cy="394.66" r="15.99" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=15.0, bytes=9937" cx="446.06" cy="417.80" r="15.99" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\audit_tools.js
+code_lines=189, functions=17, classes=0
+lines/func=11.1, bytes=10399" cx="564.85" cy="424.64" r="16.05" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\editor_audit.js
+code_lines=127, functions=11, classes=0
+lines/func=11.5, bytes=6429" cx="386.67" cy="495.28" r="15.42" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\editor_auth_nav.js
+code_lines=128, functions=3, classes=0
+lines/func=42.7, bytes=7367" cx="149.09" cy="494.15" r="15.60" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\editor_bootstrap.js
+code_lines=31, functions=0, classes=0
+lines/func=inf, bytes=2931" cx="60.00" cy="604.68" r="14.40" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\editor_core.js
+code_lines=63, functions=12, classes=0
+lines/func=5.2, bytes=4228" cx="416.36" cy="568.21" r="14.88" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\editor_documents.js
+code_lines=235, functions=10, classes=0
+lines/func=23.5, bytes=15927" cx="356.97" cy="372.22" r="16.61" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\editor_form.js
+code_lines=133, functions=11, classes=0
+lines/func=12.1, bytes=7791" cx="386.67" cy="488.45" r="15.67" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\editor_stats.js
+code_lines=304, functions=33, classes=0
+lines/func=9.2, bytes=18110" cx="1040.00" cy="293.60" r="16.77" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\swagger-initializer.js
 code_lines=15, functions=0, classes=0
-lines/func=inf, bytes=539" cx="60.00" cy="621.13" r="12.19" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=539" cx="60.00" cy="622.91" r="12.19" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\swagger-ui-bundle.js
 code_lines=4, functions=0, classes=0
-lines/func=inf, bytes=1415052" cx="60.00" cy="634.97" r="22.45" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=1415052" cx="60.00" cy="635.44" r="22.45" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\swagger-ui-es-bundle-core.js
 code_lines=1, functions=0, classes=0
-lines/func=inf, bytes=498060" cx="60.00" cy="638.74" r="21.09" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=498060" cx="60.00" cy="638.86" r="21.09" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\swagger-ui-es-bundle.js
 code_lines=4, functions=0, classes=0
-lines/func=inf, bytes=1414842" cx="60.00" cy="634.97" r="22.45" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=1414842" cx="60.00" cy="635.44" r="22.45" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\swagger-ui-standalone-preset.js
 code_lines=4, functions=0, classes=0
-lines/func=inf, bytes=246440" cx="60.00" cy="634.97" r="20.18" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=246440" cx="60.00" cy="635.44" r="20.18" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\api\static\swagger-ui.js
 code_lines=1, functions=0, classes=0
-lines/func=inf, bytes=383182" cx="60.00" cy="638.74" r="20.75" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=inf, bytes=383182" cx="60.00" cy="638.86" r="20.75" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\config\bootstrap.py
-code_lines=52, functions=4, classes=0
-lines/func=13.0, bytes=2038" cx="340.00" cy="574.58" r="13.93" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+code_lines=56, functions=4, classes=0
+lines/func=14.0, bytes=2352" cx="178.79" cy="576.19" r="14.11" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\config\index_loader.py
-code_lines=64, functions=2, classes=0
-lines/func=32.0, bytes=2398" cx="200.00" cy="559.48" r="14.14" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+code_lines=129, functions=5, classes=0
+lines/func=25.8, bytes=6161" cx="208.48" cy="493.01" r="15.37" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\__init__.py
+code_lines=5, functions=0, classes=0
+lines/func=inf, bytes=236" cx="60.00" cy="634.30" r="11.12" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\audit.py
+code_lines=113, functions=4, classes=0
+lines/func=28.2, bytes=4515" cx="178.79" cy="511.24" r="14.96" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\constants.py
+code_lines=7, functions=0, classes=0
+lines/func=inf, bytes=276" cx="60.00" cy="632.02" r="11.32" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\dashboard.py
+code_lines=401, functions=3, classes=0
+lines/func=133.7, bytes=14749" cx="149.09" cy="183.06" r="16.51" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\dashboard_config.py
+code_lines=12, functions=2, classes=0
+lines/func=6.0, bytes=575" cx="119.39" cy="626.33" r="12.28" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\dashboard_filters.py
+code_lines=130, functions=8, classes=0
+lines/func=16.2, bytes=4732" cx="297.58" cy="491.87" r="15.03" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\dashboard_sql.py
+code_lines=42, functions=6, classes=0
+lines/func=7.0, bytes=1632" cx="238.18" cy="592.14" r="13.64" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\date_utils.py
+code_lines=68, functions=5, classes=0
+lines/func=13.6, bytes=2978" cx="208.48" cy="562.51" r="14.42" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\db_ops.py
+code_lines=88, functions=3, classes=0
+lines/func=29.3, bytes=4083" cx="149.09" cy="539.72" r="14.83" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\diagnostics.py
+code_lines=17, functions=1, classes=0
+lines/func=17.0, bytes=902" cx="89.70" cy="620.63" r="12.87" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\file_ops.py
+code_lines=52, functions=5, classes=0
+lines/func=10.4, bytes=2377" cx="208.48" cy="580.75" r="14.13" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\file_processor.py
+code_lines=367, functions=2, classes=0
+lines/func=183.5, bytes=16474" cx="119.39" cy="221.81" r="16.65" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\ingest.py
+code_lines=196, functions=3, classes=0
+lines/func=65.3, bytes=8874" cx="149.09" cy="416.66" r="15.84" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\models.py
+code_lines=34, functions=3, classes=2
+lines/func=11.3, bytes=1176" cx="149.09" cy="601.26" r="13.21" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\sql_utils.py
+code_lines=275, functions=18, classes=0
+lines/func=15.3, bytes=12231" cx="594.55" cy="326.64" r="16.26" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\utils.py
+code_lines=61, functions=11, classes=0
+lines/func=5.5, bytes=2297" cx="386.67" cy="570.49" r="14.08" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\workbook.py
+code_lines=453, functions=14, classes=1
+lines/func=32.4, bytes=21448" cx="475.76" cy="123.81" r="16.99" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\excel_to_sql\__init__.py
+code_lines=5, functions=0, classes=0
+lines/func=inf, bytes=190" cx="60.00" cy="634.30" r="10.84" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\sql_to_es\ingest_sql.py
+code_lines=330, functions=19, classes=0
+lines/func=17.4, bytes=13159" cx="624.24" cy="263.97" r="16.36" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\sql_to_es\__init__.py
+code_lines=1, functions=0, classes=0
+lines/func=inf, bytes=54" cx="60.00" cy="638.86" r="9.20" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\txt_to_es\ingest_txt.py
+code_lines=179, functions=10, classes=0
+lines/func=17.9, bytes=8252" cx="356.97" cy="436.03" r="15.75" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\data_ingestion\txt_to_es\__init__.py
+code_lines=2, functions=0, classes=0
+lines/func=inf, bytes=80" cx="60.00" cy="637.72" r="9.71" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\examples\main.py
+code_lines=17, functions=4, classes=0
+lines/func=4.2, bytes=984" cx="178.79" cy="620.63" r="12.98" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\fastapi_auth_pack\auth_logging.py
+code_lines=22, functions=1, classes=0
+lines/func=22.0, bytes=671" cx="89.70" cy="614.93" r="12.48" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\fastapi_auth_pack\auth_routes.py
+code_lines=190, functions=16, classes=0
+lines/func=11.9, bytes=11150" cx="535.15" cy="423.50" r="16.14" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\fastapi_auth_pack\auth_store.py
+code_lines=362, functions=29, classes=1
+lines/func=12.5, bytes=16696" cx="921.21" cy="227.50" r="16.67" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\fastapi_auth_pack\auth_support.py
+code_lines=172, functions=22, classes=1
+lines/func=7.8, bytes=7212" cx="713.33" cy="444.01" r="15.57" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\fastapi_auth_pack\auth_tokens.py
+code_lines=36, functions=2, classes=0
+lines/func=18.0, bytes=1633" cx="119.39" cy="598.98" r="13.64" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\fastapi_auth_pack\dependencies.py
+code_lines=39, functions=4, classes=0
+lines/func=9.8, bytes=2271" cx="178.79" cy="595.56" r="14.07" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\fastapi_auth_pack\models.py
+code_lines=21, functions=0, classes=6
+lines/func=inf, bytes=1031" cx="60.00" cy="616.07" r="13.04" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\fastapi_auth_pack\router.py
+code_lines=20, functions=0, classes=0
+lines/func=inf, bytes=517" cx="60.00" cy="617.21" r="12.14" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\fastapi_auth_pack\usage_routes.py
+code_lines=98, functions=4, classes=0
+lines/func=24.5, bytes=4974" cx="178.79" cy="528.33" r="15.09" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\fastapi_auth_pack\__init__.py
+code_lines=17, functions=0, classes=0
+lines/func=inf, bytes=544" cx="60.00" cy="620.63" r="12.21" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\scripts\verify_auth_pack.py
+code_lines=217, functions=2, classes=0
+lines/func=108.5, bytes=11115" cx="119.39" cy="392.73" r="16.14" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\static\audit_tools.js
+code_lines=189, functions=17, classes=0
+lines/func=11.1, bytes=10399" cx="564.85" cy="424.64" r="16.05" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\static\login_admin_admin.js
+code_lines=72, functions=4, classes=0
+lines/func=18.0, bytes=4817" cx="178.79" cy="557.96" r="15.05" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\static\login_admin_audit.js
+code_lines=79, functions=11, classes=0
+lines/func=7.2, bytes=4702" cx="386.67" cy="549.98" r="15.02" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\static\login_admin_auth.js
+code_lines=42, functions=0, classes=0
+lines/func=inf, bytes=1839" cx="60.00" cy="592.14" r="13.79" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\static\login_admin_bootstrap.js
+code_lines=20, functions=0, classes=0
+lines/func=inf, bytes=1863" cx="60.00" cy="617.21" r="13.81" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\static\login_admin_core.js
+code_lines=65, functions=8, classes=0
+lines/func=8.1, bytes=3788" cx="297.58" cy="565.93" r="14.74" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\portable_auth_pack\static\login_admin_stats.js
+code_lines=42, functions=9, classes=0
+lines/func=4.7, bytes=6753" cx="327.27" cy="592.14" r="15.49" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\shared\__init__.py
 code_lines=0, functions=0, classes=0
 lines/func=0.0, bytes=0" cx="60.00" cy="640.00" r="4.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\shared\citations\citation_id.py
 code_lines=19, functions=1, classes=0
-lines/func=19.0, bytes=598" cx="130.00" cy="616.10" r="12.33" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=19.0, bytes=598" cx="89.70" cy="618.35" r="12.33" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\shared\citations\citation_view_core.py
 code_lines=64, functions=4, classes=1
-lines/func=16.0, bytes=2359" cx="340.00" cy="559.48" r="14.12" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=16.0, bytes=2359" cx="178.79" cy="567.07" r="14.12" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\shared\http\download_filename.py
 code_lines=121, functions=8, classes=1
-lines/func=15.1, bytes=5134" cx="620.00" cy="487.77" r="15.13" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+lines/func=15.1, bytes=5134" cx="297.58" cy="502.12" r="15.13" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
 <circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\shared\http\__init__.py
 code_lines=0, functions=0, classes=0
 lines/func=0.0, bytes=0" cx="60.00" cy="640.00" r="4.00" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_audit.py
+code_lines=72, functions=9, classes=3
+lines/func=8.0, bytes=2851" cx="327.27" cy="557.96" r="14.36" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_auth_store_security.py
+code_lines=206, functions=20, classes=0
+lines/func=10.3, bytes=13000" cx="653.94" cy="405.27" r="16.34" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_dashboard_filters.py
+code_lines=256, functions=29, classes=4
+lines/func=8.8, bytes=10577" cx="921.21" cy="348.29" r="16.07" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_editor_audit_queries.py
+code_lines=169, functions=11, classes=0
+lines/func=15.4, bytes=7888" cx="386.67" cy="447.43" r="15.69" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_editor_auth_ui_static.py
+code_lines=382, functions=21, classes=0
+lines/func=18.2, bytes=24128" cx="683.64" cy="204.72" r="17.15" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_excel_to_sql_dashboard_static.py
+code_lines=46, functions=4, classes=0
+lines/func=11.5, bytes=3227" cx="178.79" cy="587.58" r="14.53" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_ingest_diagnostics.py
+code_lines=26, functions=5, classes=1
+lines/func=5.2, bytes=1188" cx="208.48" cy="610.37" r="13.22" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_ingest_insert_fallback.py
+code_lines=201, functions=22, classes=6
+lines/func=9.1, bytes=8753" cx="713.33" cy="410.96" r="15.83" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_sql_to_es_odbc_driver.py
+code_lines=54, functions=6, classes=0
+lines/func=9.0, bytes=2523" cx="238.18" cy="578.47" r="14.21" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_sql_utils.py
+code_lines=98, functions=8, classes=1
+lines/func=12.2, bytes=4862" cx="297.58" cy="528.33" r="15.06" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
+<circle class="pt" data-tip="D:\shared\TopicClassification\poc-agent\tests\test_workbook_sheets.py
+code_lines=73, functions=5, classes=0
+lines/func=14.6, bytes=3093" cx="208.48" cy="556.82" r="14.47" fill="#4C78A8" fill-opacity="0.35" stroke="#4C78A8" stroke-opacity="0.6" />
   </svg>
 </div>
 
