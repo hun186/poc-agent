@@ -122,3 +122,9 @@
 - `agent/agent.py` 現在聚焦於高層對話 orchestration：組合 query context、讀寫 `FileSessionStore`、呼叫任務分流結果、分派到 report / style / doc follow-up / pure LLM，並補齊統一 response shape。
 - `agent/routing.py` 集中管理任務分類器相關設定與 helper：router model id、topic enum / descriptions、`TASK_ROUTER_SYSTEM`、`topic_to_index_hint()`、`llm_route_task()`、`route_task_mode()` 與 `build_router_input()`。
 - 為降低拆檔對既有呼叫端的衝擊，`agent.agent` 仍 re-export `topic_to_index_hint`，主要 API `answer_with_routing()` 不變。
+
+## 2026-06-15 Auth Store 模組邊界
+
+- 主系統 auth storage 邊界拆為：`api/services/auth_store.py`（`AuthStore` 狀態讀寫、使用者生命週期、denylist / audit / throttle 狀態）、`api/services/auth_support.py`（角色常數、`AuthUser`、密碼雜湊、token secret、時間 / path / bootstrap helper）、`api/services/auth_tokens.py`（token payload、簽章與解析）。
+- `portable_auth_pack/fastapi_auth_pack/` 採相同拆分：`auth_store.py`、`auth_support.py`、`auth_tokens.py`，維持可攜套件與主系統 auth 行為同步。
+- 外部呼叫仍可從 `auth_store` import `AUTH_STORE`、`AuthStore`、`AuthUser`、role constants、`normalize_role()`、`has_role_at_least()`、`public_role_options()`、`create_token()` 與 `parse_token()`；拆檔未改變 API 路由或 response shape。
