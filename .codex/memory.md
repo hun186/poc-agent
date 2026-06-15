@@ -285,3 +285,17 @@ Conclusion:
 - 驗證：`pytest tests/test_auth_store_security.py tests/test_editor_audit_queries.py` 通過（24 passed，僅既有 StarletteDeprecationWarning）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過；`python -m py_compile api/services/auth_store.py api/services/auth_support.py api/services/auth_tokens.py portable_auth_pack/fastapi_auth_pack/auth_store.py portable_auth_pack/fastapi_auth_pack/auth_support.py portable_auth_pack/fastapi_auth_pack/auth_tokens.py` 通過。
 - 結論：主系統與 portable auth pack 的 auth store 從約 611 / 616 行降至各 400 行，helper 與 token 邏輯各自獨立，既有 API / route contract 未變更。
 - 補充驗證：`pytest tests` 通過（77 passed，5 warnings；warnings 為既有 Starlette/httpx 與 `datetime.utcnow()` deprecation）。
+
+## 2026-06-15 登入失敗即時警示記錄
+
+- 目的：使用者指出登入失敗不容易即時發現，需讓有人嘗試偷試密碼時可透過記錄快速察覺，且主系統與 `portable_auth_pack` 同步。
+- 主要修改：主系統 `POST /v1/auth/login` 在 `rate_limited`、`invalid_credentials`、`inactive_account` 三種失敗路徑保留既有 login audit / editor audit，並新增 `auth.login.failed` warning log；log 包含 username、reason、client_host、user_agent、role/status（若有），不寫入密碼。`portable_auth_pack` 同步在相同登入失敗路徑新增 warning log，且持續寫入 login audit。
+- 驗證：執行 `pytest tests/test_auth_store_security.py` 通過（14 passed，僅既有 Starlette / SyntaxWarning warnings）；執行 `python portable_auth_pack/scripts/verify_auth_pack.py` 通過並可看到 `auth.login.failed ...` warning log。
+- 結論：登入失敗現在同時具備持久 audit 查詢與應用程式 warning log，可供日誌監控 / alerting 更即時偵測暴力嘗試。
+
+## 2026-06-15 登入失敗記錄拆檔修正
+
+- 目的：回應 review 意見，避免為新增 `auth.login.failed` warning log 讓 `api/routers/editor_auth.py` 與 `portable_auth_pack/fastapi_auth_pack/auth_routes.py` 變得更肥大，並移除上一版因格式化造成的大量無關 diff。
+- 主要修改：主系統新增 `api/routers/editor_auth_logging.py`，portable auth pack 新增 `portable_auth_pack/fastapi_auth_pack/auth_logging.py`，集中保存 password-free failed-login warning log helper；兩個 route 檔只保留登入流程呼叫點。`api/routers/editor_auth.py` 回到約 288 行，`portable_auth_pack/fastapi_auth_pack/auth_routes.py` 回到約 231 行，新增 logging helper 檔各低於 30 行。
+- 驗證：`python -m py_compile api/routers/editor_auth.py api/routers/editor_auth_logging.py portable_auth_pack/fastapi_auth_pack/auth_routes.py portable_auth_pack/fastapi_auth_pack/auth_logging.py tests/test_auth_store_security.py portable_auth_pack/scripts/verify_auth_pack.py` 通過；`pytest tests/test_auth_store_security.py` 通過（14 passed，既有 warnings）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過。
+- 結論：保留登入失敗即時警示與 audit 行為，但將共用記錄責任從 route orchestration 檔拆出，降低肥大與無關格式化 diff。

@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
 from api.routers.editor_dependencies import bearer_token, current_user, require_superuser
+from api.routers.editor_auth_logging import log_failed_login_attempt
 from api.routers.editor_models import (
     ApprovePayload,
     AuthPayload,
@@ -101,6 +102,7 @@ def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
             client_host=client_host,
             user_agent=user_agent,
         )
+        log_failed_login_attempt(payload.username, reason="rate_limited", client_host=client_host, user_agent=user_agent)
         append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "rate_limited", "client_host": client_host})
         raise _rate_limit_exception(retry_after)
 
@@ -114,6 +116,7 @@ def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
             client_host=client_host,
             user_agent=user_agent,
         )
+        log_failed_login_attempt(payload.username, reason="invalid_credentials", client_host=client_host, user_agent=user_agent)
         append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "invalid_credentials", "client_host": client_host})
         if retry_after:
             raise _rate_limit_exception(retry_after)
@@ -129,6 +132,7 @@ def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
             client_host=client_host,
             user_agent=user_agent,
         )
+        log_failed_login_attempt(payload.username, reason="inactive_account", client_host=client_host, user_agent=user_agent, role=user.role, status_value=user.status)
         append_audit_event({"action": "auth.login", "username": payload.username, "success": False, "reason": "inactive_account", "status": user.status, "client_host": client_host})
         if retry_after:
             raise _rate_limit_exception(retry_after)

@@ -128,3 +128,8 @@
 - 主系統 auth storage 邊界拆為：`api/services/auth_store.py`（`AuthStore` 狀態讀寫、使用者生命週期、denylist / audit / throttle 狀態）、`api/services/auth_support.py`（角色常數、`AuthUser`、密碼雜湊、token secret、時間 / path / bootstrap helper）、`api/services/auth_tokens.py`（token payload、簽章與解析）。
 - `portable_auth_pack/fastapi_auth_pack/` 採相同拆分：`auth_store.py`、`auth_support.py`、`auth_tokens.py`，維持可攜套件與主系統 auth 行為同步。
 - 外部呼叫仍可從 `auth_store` import `AUTH_STORE`、`AuthStore`、`AuthUser`、role constants、`normalize_role()`、`has_role_at_least()`、`public_role_options()`、`create_token()` 與 `parse_token()`；拆檔未改變 API 路由或 response shape。
+
+## 2026-06-15 Auth Failed Login Logging Boundary
+
+- 主系統 `api/routers/editor_auth_logging.py` 與 portable auth pack `portable_auth_pack/fastapi_auth_pack/auth_logging.py` 各自提供 `log_failed_login_attempt()`，統一輸出 password-free `auth.login.failed` warning log。
+- `editor_auth.py` / `auth_routes.py` 仍負責 HTTP login orchestration、throttle、audit persistence 與 response；即時 warning log 格式與敏感資訊控制由 logging helper 模組管理。

@@ -38,3 +38,14 @@
 
 - 對正在使用且超過 600 行的 auth store，優先依責任拆出 support / token 小模組，而不是改變 route 或 storage contract。
 - 為降低呼叫端遷移風險，`api.services.auth_store` 與 `portable_auth_pack.fastapi_auth_pack.auth_store` 保留原本 public symbols；新模組只承接內部 helper 與 token 實作。
+
+## 2026-06-15 登入失敗記錄決策
+
+- 登入失敗不只寫入持久 audit，也同步輸出 `auth.login.failed` warning log，方便部署環境以 stdout / file log / log aggregator 即時告警。
+- 記錄內容限於 username、失敗 reason、client_host、user_agent 與 role/status（若已知）；不得記錄密碼、token 或其他敏感內容。
+- 主系統與 `portable_auth_pack` 的登入失敗記錄語意需同步維護，涵蓋 `invalid_credentials`、`inactive_account` 與 `rate_limited`。
+
+## 2026-06-15 Auth Route Logging Helper 拆檔決策
+
+- Auth route 檔應聚焦 HTTP 流程與 response；登入失敗 warning log 這類可重用且安全敏感的記錄格式放到同 package 的 `auth_logging.py` / `editor_auth_logging.py`。
+- 新增安全記錄時應避免對整個 route 檔做大規模格式化，降低 review 噪音與 merge 風險。

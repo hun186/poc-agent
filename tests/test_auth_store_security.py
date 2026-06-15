@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import logging
 import secrets
 
 import pytest
@@ -138,6 +139,30 @@ def test_login_endpoint_rate_limits_repeated_failures(monkeypatch, tmp_path):
     assert response.status_code == 429
     assert int(response.headers["retry-after"]) > 0
 
+
+
+def test_login_failure_writes_audit_and_warning_log(monkeypatch, tmp_path, caplog):
+    client, auth_store = _load_editor_client(monkeypatch, tmp_path)
+
+    with caplog.at_level(logging.WARNING, logger="api.routers.editor_auth_logging"):
+        response = client.post(
+            "/v1/auth/login",
+            json={"username": "admin", "password": "wrong-password"},
+            headers={"user-agent": "pytest-agent"},
+        )
+
+    assert response.status_code == 401
+    login_audit = auth_store.AUTH_STORE.list_login_audit()
+    assert login_audit[-1]["username"] == "admin"
+    assert login_audit[-1]["success"] is False
+    assert login_audit[-1]["reason"] == "invalid_credentials"
+    assert login_audit[-1]["client_host"] == "testclient"
+    records = [json.loads(line) for line in (tmp_path / "editor_audit.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert records[-1]["action"] == "auth.login"
+    assert records[-1]["success"] is False
+    assert records[-1]["reason"] == "invalid_credentials"
+    assert "auth.login.failed username=admin reason=invalid_credentials client_host=testclient" in caplog.text
+    assert "wrong-password" not in caplog.text
 
 def test_inactive_login_uses_generic_failure_response(monkeypatch, tmp_path):
     client, _ = _load_editor_client(monkeypatch, tmp_path)

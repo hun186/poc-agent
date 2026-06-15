@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Query, status
 
+from .auth_logging import log_failed_login_attempt
 from .auth_store import AUTH_STORE, AuthUser, create_token, parse_token, public_role_options
 from .dependencies import bearer_token, current_user, require_superuser
 from .models import (
@@ -93,18 +94,21 @@ def login(payload: AuthPayload, request: Request) -> dict[str, Any]:
     retry_after = AUTH_STORE.throttle_retry_after("login", payload.username, client_host)
     if retry_after:
         AUTH_STORE.record_login_audit(payload.username, success=False, reason="rate_limited", client_host=client_host, user_agent=user_agent)
+        log_failed_login_attempt(payload.username, reason="rate_limited", client_host=client_host, user_agent=user_agent)
         raise _rate_limit_exception(retry_after)
 
     user = AUTH_STORE.authenticate(payload.username, payload.password)
     if user is None:
         retry_after = AUTH_STORE.record_auth_failure("login", payload.username, client_host)
         AUTH_STORE.record_login_audit(payload.username, success=False, reason="invalid_credentials", client_host=client_host, user_agent=user_agent)
+        log_failed_login_attempt(payload.username, reason="invalid_credentials", client_host=client_host, user_agent=user_agent)
         if retry_after:
             raise _rate_limit_exception(retry_after)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AUTH_FAILURE_MESSAGE)
     if user.status != "active":
         retry_after = AUTH_STORE.record_auth_failure("login", payload.username, client_host)
         AUTH_STORE.record_login_audit(payload.username, success=False, reason="inactive_account", role=user.role, status_value=user.status, client_host=client_host, user_agent=user_agent)
+        log_failed_login_attempt(payload.username, reason="inactive_account", client_host=client_host, user_agent=user_agent, role=user.role, status_value=user.status)
         if retry_after:
             raise _rate_limit_exception(retry_after)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AUTH_FAILURE_MESSAGE)
