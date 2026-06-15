@@ -109,3 +109,10 @@
 - `portable_auth_pack/fastapi_auth_pack/router.py` 現在只做聚合 router，include `auth_routes.router` 與 `usage_routes.router`，維持 `from fastapi_auth_pack import router` 的外部入口。
 - `portable_auth_pack/fastapi_auth_pack/auth_routes.py` 承載帳號註冊、登入、登出、密碼流程、帳號審核與 `GET /v1/auth/login-audit`。
 - `portable_auth_pack/fastapi_auth_pack/usage_routes.py` 承載 portable pack 的 `GET /v1/editor/usage-stats` 帳號操作統計相容 endpoint 與其 helper。
+
+## 2026-06-15 Report Agent 模組拆分
+
+- `agent/report_agent.py` 現在聚焦於 report mode 的 orchestration：問題精煉、呼叫 data agent、整理 evidence、呼叫 LLM、產生 citations 與回傳結果。
+- `agent/report_prompt.py` 集中保存報告 LLM 的大型 `REPORT_SYSTEM_PROMPT`，避免流程檔混入長篇提示詞。
+- `agent/report_config.py` 集中解析 report LLM model id 與 timeout 相關環境變數。
+- `agent/report_stats.py` 提供 `compress_stats()`，負責將 data agent 統計壓縮成報告 LLM payload 所需格式。

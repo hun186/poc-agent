@@ -263,3 +263,10 @@ Conclusion:
 - 主要修改：`api/static/audit_tools.js` 與 `portable_auth_pack/static/audit_tools.js` 新增共用 multi-filter helper；主系統 `api/static/editor.html` / `editor_stats.js` 與 `portable_auth_pack/static/login_admin_minimal.html` / `login_admin_stats.js` 新增 IP / client_host 多選清單、搜尋、勾選目前篩選、清除目前篩選與清除全部。`GET /v1/editor/usage-stats` 與 `GET /v1/editor/audit-logs` 支援 `client_host` query，portable usage-stats 相容 endpoint 也同步支援。
 - 驗證：`for f in api/static/audit_tools.js api/static/editor_*.js portable_auth_pack/static/audit_tools.js portable_auth_pack/static/login_admin_*.js; do node --check "$f" || exit 1; done` 通過；`pytest tests/test_editor_auth_ui_static.py tests/test_editor_audit_queries.py` 通過（29 passed，1 個既有 warning）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過；`pytest tests` 通過（77 passed，5 個既有 warnings）。
 - 截圖限制：本次為可視 UI 變更，但 `python -m playwright --version` 回報 `No module named playwright`，目前仍無法提供瀏覽器截圖；已以靜態 UI 測試與 JS 語法檢查替代。
+
+## 2026-06-15 report_agent 拆檔重構
+
+- 目的：檢查專案中單檔過肥問題，優先處理主要可執行模組中超過 600 行的 `agent/report_agent.py`。
+- 主要修改：將報告 LLM 系統提示詞移至 `agent/report_prompt.py`，將報告模型 / timeout 環境設定移至 `agent/report_config.py`，將統計壓縮 helper 移至 `agent/report_stats.py`；`agent/report_agent.py` 保留報告流程 orchestration，行數由 621 行降至 367 行。
+- 驗證：`python -m py_compile agent/report_agent.py agent/report_prompt.py agent/report_config.py agent/report_stats.py` 通過；`pytest tests/test_chat_api.py tests/test_export_word.py` 因指定測試檔不存在而未執行（collected 0）；改以 `pytest tests` 完整測試通過（77 passed，僅既有 warnings）。
+- 結論：本次拆檔未變更 API contract 或報告資料流程，只降低單檔負擔並讓 prompt / config / stats helper 有明確模組邊界。
