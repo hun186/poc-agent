@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import json
 from pathlib import Path
 import sys
 
@@ -14,11 +15,11 @@ def _patch_store(monkeypatch, tmp_path: Path) -> None:
     root = tmp_path / "imports"
     monkeypatch.setattr(user_import_storage, "ROOT", root)
     monkeypatch.setattr(user_import_storage, "ACTIVE_DIR", root / "active")
-    monkeypatch.setattr(user_import_storage, "DELETED_DIR", root / "deleted")
+    monkeypatch.setattr(user_import_storage, "RECORDS_DIR", root / "records")
     monkeypatch.setattr(user_import_storage, "REGISTRY", root / "records.json")
 
 
-def test_save_list_and_delete_upload_record(monkeypatch, tmp_path):
+def test_save_and_list_upload_record_uses_compact_registry(monkeypatch, tmp_path):
     _patch_store(monkeypatch, tmp_path)
     config = tmp_path / "cfg.json"
     config.write_text(
@@ -42,17 +43,40 @@ def test_save_list_and_delete_upload_record(monkeypatch, tmp_path):
     )
     assert user_imports.list_import_records(username="bob", is_superuser=False) == []
 
-    result = user_imports.delete_records(
-        [record["id"]], username="alice", is_superuser=False, reason="cleanup"
-    )
+    registry = (tmp_path / "imports" / "records.json").read_text(encoding="utf-8")
+    assert '"record_ids"' in registry
+    assert '"original_filename"' not in registry
+    record_path = tmp_path / "imports" / "records" / f"{record['id']}.json"
+    assert record_path.exists()
+    assert '"original_filename"' in record_path.read_text(encoding="utf-8")
 
-    assert result == {"deleted": [record["id"]], "skipped": []}
-    deleted = user_imports.list_import_records(
-        username="alice", is_superuser=False, status="deleted"
-    )[0]
-    assert deleted["status"] == "deleted"
-    assert deleted["deleted_by"] == "alice"
-    assert (tmp_path / "imports" / "deleted" / f"{record['id']}.xlsx").exists()
+
+def test_legacy_records_json_migrates_to_per_record_files(monkeypatch, tmp_path):
+    _patch_store(monkeypatch, tmp_path)
+    root = tmp_path / "imports"
+    root.mkdir(parents=True)
+    legacy = {
+        "records": [
+            {
+                "id": "legacy-1",
+                "original_filename": "legacy.xlsx",
+                "stored_path": str(root / "active" / "legacy-1.xlsx"),
+                "config_path": "cfg.json",
+                "username": "alice",
+                "created_at": "2026-06-15T00:00:00+00:00",
+                "status": "uploaded",
+            }
+        ]
+    }
+    (root / "records.json").write_text(json.dumps(legacy), encoding="utf-8")
+
+    data = user_import_storage.read_registry()
+
+    assert data["records"][0]["id"] == "legacy-1"
+    compact = (root / "records.json").read_text(encoding="utf-8")
+    assert '"record_ids"' in compact
+    assert '"records"' not in compact
+    assert (root / "records" / "legacy-1.json").exists()
 
 
 def test_import_center_static_contains_user_import_controls():
@@ -68,8 +92,11 @@ def test_import_center_static_contains_user_import_controls():
     assert "/static/excel_to_sql_import_records.js?v=20260615-center" in html
     assert "/v1/excel-to-sql/import-records" in script
     assert "previewImportRecord" in script
-    assert "deleteSelectedImportRecords" in script
-    assert "recordSelectAll" in html
+    assert "刪除記錄" not in script
+    assert "deleteSelectedImportRecords" not in script
+    assert "deleteSingleImportRecord" not in script
+    assert "recordSelectAll" not in html
+    assert "批次刪除勾選記錄" not in html
     assert "錯誤診斷" in html
     assert 'class="table-wrap import-records-wrap"' in html
     assert 'class="import-records-table"' in html
@@ -79,10 +106,16 @@ def test_import_center_static_contains_user_import_controls():
     assert 'content:attr(data-label)' in html
     assert "function importRecordDiagnostics" in script
     assert 'data-label="操作"' in script
-    assert 'aria-label="選取匯入記錄' in script
+    assert 'aria-label="選取匯入記錄' not in script
     assets = Path("api/routers/editor.py").read_text(encoding="utf-8")
+    router = Path("api/routers/excel_to_sql.py").read_text(encoding="utf-8")
+    facade = Path("data_ingestion/excel_to_sql/user_imports.py").read_text(encoding="utf-8")
+    storage = Path("data_ingestion/excel_to_sql/user_import_storage.py").read_text(encoding="utf-8")
     assert "excel_to_sql_import_records.js" in assets
     assert "excel_to_sql_dashboard.js" in assets
+    assert "@router.delete(\"/v1/excel-to-sql/import-records\")" not in router
+    assert "def delete_records" not in storage
+    assert "delete_records" not in facade
 
 
 def test_preview_auto_creates_missing_destination_table(monkeypatch, tmp_path):
@@ -153,3 +186,59 @@ def test_preview_auto_creates_missing_destination_table(monkeypatch, tmp_path):
     assert result["will_insert"] == 1
     assert any("CREATE TABLE [dbo].[vessel_activities]" in sql for sql in fake_conn.cursor_obj.statements)
     assert fake_conn.commits == 1
+
+def test_confirm_import_ensures_audit_table_before_processing(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import sys
+    from data_ingestion.excel_to_sql import user_import_runner
+
+    _patch_store(monkeypatch, tmp_path)
+    config = tmp_path / "cfg.json"
+    config.write_text(
+        '{"source":{"sheet":"Sheet1"},"destination":{"table":"dbo.t"},"audit":{"enabled":true,"table":"dbo.ExcelImportAudit"},"mappings":[{"source_column":"A","dest_field":"a"}],"db":{"driver":"x","server":"s","database":"d","user":"u","password":"p"}}',
+        encoding="utf-8",
+    )
+    record = user_imports.save_upload(
+        fileobj=BytesIO(b"excel-bytes"),
+        filename="sample.xlsx",
+        username="alice",
+        config_path=str(config),
+    )
+
+    class FakeCursor:
+        def __init__(self):
+            self.statements = []
+            self.closed = False
+        def execute(self, sql, *params):
+            self.statements.append(str(sql))
+            return self
+        def close(self):
+            self.closed = True
+
+    class FakeConn:
+        def __init__(self):
+            self.cursor_obj = FakeCursor()
+            self.commits = 0
+            self.closed = False
+        def cursor(self):
+            return self.cursor_obj
+        def commit(self):
+            self.commits += 1
+        def close(self):
+            self.closed = True
+
+    fake_conn = FakeConn()
+    monkeypatch.setitem(sys.modules, "pyodbc", SimpleNamespace(connect=lambda conn_str: fake_conn))
+    monkeypatch.setattr(
+        user_import_runner,
+        "process_excel_file",
+        lambda **kwargs: SimpleNamespace(success=1, duplicate=0, failed=0, ok=True, failure_summary={}),
+    )
+
+    result = user_import_runner.import_record(record["id"], username="alice", is_superuser=False)
+
+    assert result["import_result"]["inserted_rows"] == 1
+    assert fake_conn.closed is True
+    assert fake_conn.cursor_obj.closed is True
+    assert any("CREATE TABLE [dbo].[ExcelImportAudit]" in sql for sql in fake_conn.cursor_obj.statements)
+    assert fake_conn.commits >= 1

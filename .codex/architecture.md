@@ -167,5 +167,5 @@
 ## 2026-06-15 Excel 匯入作業中心頁面分流
 
 - `/excel-to-sql-dashboard` 現在定位為 Excel→SQL SQL audit 監控儀表板，負責任務選擇、audit summary / daily / file / recent event 查詢、目的地 table 與 audit 欄位篩選、SQL row delete 操作。
-- `/excel-to-sql-import-center` 新增為使用者匯入作業頁，負責 Excel 上傳、預掃描、確認匯入 SQL、匯入記錄查詢與軟刪除。此頁重用既有 `/v1/excel-to-sql/import-records*` API，不新增後端資料模型。
+- `/excel-to-sql-import-center` 新增為使用者匯入作業頁，負責 Excel 上傳、預掃描、確認匯入 SQL 與匯入記錄查詢；不再提供匯入記錄刪除操作。匯入記錄儲存採 compact `records.json` ID index 搭配 `records/<id>.json` per-record payload，避免單一 registry 隨 preview/import payload 長期膨脹。
 - 靜態 JS 責任分流：`excel_to_sql_dashboard.js` 僅處理監控儀表板；`excel_to_sql_import_records.js` 可在匯入作業中心獨立啟動，包含登入者顯示、任務載入、記錄列表與錯誤診斷渲染。

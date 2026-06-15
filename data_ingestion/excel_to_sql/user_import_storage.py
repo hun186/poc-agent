@@ -11,7 +11,7 @@ from .ingest import load_json_config
 
 ROOT = Path("data/excel_to_sql_user_imports")
 ACTIVE_DIR = ROOT / "active"
-DELETED_DIR = ROOT / "deleted"
+RECORDS_DIR = ROOT / "records"
 REGISTRY = ROOT / "records.json"
 ALLOWED_SUFFIXES = {".xlsx", ".xlsm", ".xltx", ".xltm"}
 
@@ -22,32 +22,78 @@ def utc_now() -> str:
 
 def ensure_dirs() -> None:
     ACTIVE_DIR.mkdir(parents=True, exist_ok=True)
-    DELETED_DIR.mkdir(parents=True, exist_ok=True)
+    RECORDS_DIR.mkdir(parents=True, exist_ok=True)
     REGISTRY.parent.mkdir(parents=True, exist_ok=True)
     if not REGISTRY.exists():
         REGISTRY.write_text(
-            json.dumps({"records": []}, ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps({"record_ids": []}, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
 
-def read_registry() -> dict[str, Any]:
-    ensure_dirs()
+def _record_path(record_id: str) -> Path:
+    return RECORDS_DIR / f"{record_id}.json"
+
+
+def _read_json(path: Path, fallback: dict[str, Any]) -> dict[str, Any]:
     try:
-        data = json.loads(REGISTRY.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        data = {"records": []}
-    if not isinstance(data.get("records"), list):
-        data["records"] = []
-    return data
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return fallback
+    return data if isinstance(data, dict) else fallback
+
+
+def _write_json_atomic(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+    tmp.replace(path)
+
+
+def read_registry() -> dict[str, Any]:
+    """Load import records from a compact index plus per-record JSON files.
+
+    Older deployments stored all records directly in ``records.json``.  When
+    that format is seen, it is migrated lazily so the active registry only keeps
+    IDs while larger preview/import payloads live in one JSON file per record.
+    """
+
+    ensure_dirs()
+    data = _read_json(REGISTRY, {"record_ids": []})
+    legacy_records = data.get("records")
+    if isinstance(legacy_records, list):
+        write_registry({"records": [r for r in legacy_records if isinstance(r, dict)]})
+        data = _read_json(REGISTRY, {"record_ids": []})
+
+    record_ids = data.get("record_ids")
+    if not isinstance(record_ids, list):
+        record_ids = []
+    records = []
+    missing_ids = set()
+    for record_id in record_ids:
+        if not isinstance(record_id, str) or not record_id:
+            continue
+        record = _read_json(_record_path(record_id), {})
+        if record.get("id") == record_id:
+            records.append(record)
+        else:
+            missing_ids.add(record_id)
+
+    if missing_ids:
+        write_registry({"records": records})
+    return {"records": records}
 
 
 def write_registry(data: dict[str, Any]) -> None:
     ensure_dirs()
-    tmp = REGISTRY.with_suffix(".tmp")
-    tmp.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
-    )
-    tmp.replace(REGISTRY)
+    records = [r for r in data.get("records", []) if isinstance(r, dict) and r.get("id")]
+    record_ids: list[str] = []
+    for record in records:
+        record_id = str(record["id"])
+        record_ids.append(record_id)
+        _write_json_atomic(_record_path(record_id), record)
+    _write_json_atomic(REGISTRY, {"record_ids": record_ids})
 
 
 def public_record(record: dict[str, Any]) -> dict[str, Any]:
@@ -128,39 +174,3 @@ def save_upload(
     data["records"].append(record)
     write_registry(data)
     return public_record(record)
-
-
-def delete_records(
-    record_ids: list[str], *, username: str, is_superuser: bool, reason: str = ""
-) -> dict[str, Any]:
-    data = read_registry()
-    deleted = []
-    skipped = []
-    for record in data["records"]:
-        if record.get("id") not in record_ids:
-            continue
-        if not is_superuser and record.get("username") != username:
-            skipped.append({"id": record.get("id"), "reason": "forbidden"})
-            continue
-        if record.get("status") == "deleted":
-            skipped.append({"id": record.get("id"), "reason": "already_deleted"})
-            continue
-        src = Path(str(record.get("stored_path") or ""))
-        suffix = src.suffix or Path(str(record.get("stored_filename", ""))).suffix
-        target = DELETED_DIR / f"{record['id']}{suffix}"
-        if src.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(src), str(target))
-            record["deleted_path"] = str(target)
-        record.update(
-            {
-                "status": "deleted",
-                "deleted_at": utc_now(),
-                "deleted_by": username,
-                "delete_reason": reason,
-                "updated_at": utc_now(),
-            }
-        )
-        deleted.append(record.get("id"))
-    write_registry(data)
-    return {"deleted": deleted, "skipped": skipped}

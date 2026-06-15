@@ -6,9 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from .file_ops import get_log_dir
+from .audit import ensure_audit_table
+from .constants import DEFAULT_AUDIT_TABLE
 from .file_processor import process_excel_file
 from .ingest import load_json_config
 from .sql_utils import build_conn_str_from_config
+from .utils import get_nested
 from .user_import_storage import public_record, read_registry, utc_now, write_registry
 
 
@@ -34,6 +37,16 @@ def import_record(
 
             conn = pyodbc.connect(build_conn_str_from_config(cfg))
             try:
+                audit_enabled = bool(get_nested(cfg, "audit.enabled", True))
+                audit_table = str(get_nested(cfg, "audit.table", DEFAULT_AUDIT_TABLE) or DEFAULT_AUDIT_TABLE)
+                if audit_enabled:
+                    cursor = conn.cursor()
+                    try:
+                        ensure_audit_table(cursor, audit_table)
+                        conn.commit()
+                    finally:
+                        cursor.close()
+
                 result = process_excel_file(
                     config_path=str(record["config_path"]),
                     cfg=cfg,

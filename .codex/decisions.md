@@ -81,3 +81,9 @@
 - 使用者上傳 / 預掃描 / 確認匯入 SQL / 匯入記錄管理屬於「操作型流程」，SQL audit dashboard 屬於「監控型查詢」，兩者放同頁會讓日期篩選與操作記錄語意混淆；因此拆成「Excel 匯入作業中心」與「Excel→SQL 匯入 SQL 監控儀表板」。
 - 監控儀表板的 `days` 只在未提供 explicit start/end 時生效；前端預設不填起迄，避免永遠帶起迄導致回看天數無法被使用。
 - 不在前端硬編特定錯誤原因；imported_with_errors 一律顯示後端真實 `failure_summary` / samples，維持 Real Functionality First。
+
+## 2026-06-15 Excel 匯入記錄儲存拆分決策
+
+- Excel 匯入記錄不再提供 UI 或 API 刪除能力；保留查詢、預掃描與確認匯入作為主要操作。
+- 匯入記錄 storage 從「單一 `records.json` 存所有 payload」改為「compact `records.json` ID index + `records/<id>.json` per-record payload」，降低單檔無界成長風險並保留 JSON 檔案式部署簡單性。
+- 為兼容既有部署，讀取到舊版 `records.json` 的 `records` array 時採 lazy migration，不需要一次性手動搬遷。

@@ -355,3 +355,16 @@ Conclusion:
 - 主要修改：`api/static/excel_to_sql_import_center.html` 將匯入記錄表改為 fixed table layout、加入 colgroup 欄寬、縮小操作按鈕排列並保留可換行文字；手機寬度下隱藏表頭、每筆記錄以卡片呈現，欄位用 `data-label` 顯示標籤，操作按鈕改為單欄滿寬。`api/static/excel_to_sql_import_records.js` 為每個儲存格輸出 `data-label` 與勾選 checkbox aria-label，提升手機版可讀性與可操作性。
 - 驗證：`node --check api/static/excel_to_sql_import_records.js` 通過；`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py` 通過（7 passed）；`pytest tests` 通過（81 passed，既有 Starlette / SyntaxWarning / datetime.utcnow warnings）。`python -m playwright --version` 仍因環境未安裝 Playwright 無法提供截圖。
 - 結論：桌機版應更能在 1500px 內容寬度內呈現完整操作欄；手機版不再依賴水平捲動檢閱欄位與操作按鈕。
+
+## 2026-06-15 Excel 匯入確認時自動建立 audit table 與移除刪除記錄 UI
+
+- 目的：修正 Excel 匯入作業中心確認匯入 SQL 時，若 `dbo.ExcelImportAudit` 尚未存在會因 `42S02 無效的物件名稱` 寫入 audit 失敗；並依需求移除「Excel 匯入記錄管理」的刪除記錄操作入口。
+- 主要修改：`data_ingestion/excel_to_sql/user_import_runner.py` 在使用者確認匯入前，依 `audit.enabled` / `audit.table` 呼叫 `ensure_audit_table()` 並 commit，讓使用者匯入流程與既有批次匯入流程一致。`api/static/excel_to_sql_import_center.html` 與 `api/static/excel_to_sql_import_records.js` 移除批次刪除按鈕、單筆「刪除記錄」按鈕、刪除用 checkbox 與前端 DELETE 呼叫。
+- 驗證：`node --check api/static/excel_to_sql_import_records.js` 通過；`pytest tests/test_excel_to_sql_user_imports.py tests/test_audit.py -q` 通過（6 passed）；`pytest tests -q` 通過（82 passed，7 warnings：既有 StarletteDeprecationWarning、SyntaxWarning、datetime.utcnow DeprecationWarning）。
+- 截圖限制：本次包含可視 UI 操作移除，但 `python -m playwright --version` 回報 `No module named playwright`，因此以靜態測試與 JS 語法檢查替代。
+
+## 2026-06-15 匯入記錄刪除後端移除與記錄儲存拆分
+
+- 目的：回應 review，完整移除 Excel 匯入記錄管理的批次刪除 / 單筆刪除能力，並避免單一 `records.json` 隨記錄數與 preview/import payload 長期膨脹。
+- 主要修改：移除 `DELETE /v1/excel-to-sql/import-records` route、`DeleteImportRecordsPayload`、`user_imports.delete_records` export 與 storage 內 `delete_records()` 後端函式。`records.json` 改為 compact `record_ids` index，完整記錄改寫入 `data/excel_to_sql_user_imports/records/<id>.json`；讀取舊版 `{"records": [...]}` 時會 lazy migrate 成新格式。
+- 驗證：`node --check api/static/excel_to_sql_import_records.js` 通過；`pytest tests/test_excel_to_sql_user_imports.py tests/test_audit.py -q` 通過；`pytest tests -q` 通過（82 passed，既有 warnings）。
