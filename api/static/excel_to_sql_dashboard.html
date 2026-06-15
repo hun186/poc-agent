@@ -102,17 +102,10 @@
       <div><label>回看天數（起迄皆空時才生效）</label><input id="days" type="number" min="1" max="365" value="14" /></div>
       <div><label>列數上限</label><input id="limit" type="number" min="1" max="1000" value="100" /></div>
       <button onclick="refreshDashboardNow()">重新整理</button>
-      <button class="ghost" onclick="resetDefaultWindow(); refreshDashboardNow();">使用回看天數</button>
       <button class="ghost" onclick="fillRecentWindow(); refreshDashboardNow();">填入近14天起迄</button>
     </section>
 
     <div id="msg" class="error hidden"></div>
-
-    <section class="card" style="margin-bottom:16px;">
-      <h2>Excel 匯入作業中心</h2>
-      <p class="muted">使用者 Excel 上傳、預掃描、確認匯入 SQL 與匯入記錄管理已移至獨立頁面，避免與 SQL audit 監控篩選混在同一頁。</p>
-      <button onclick="location.href='/excel-to-sql-import-center'">前往 Excel 匯入作業中心</button>
-    </section>
 
     <section class="cards" id="cards"></section>
 

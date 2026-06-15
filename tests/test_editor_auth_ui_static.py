@@ -178,9 +178,15 @@ def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     assert 'id="mainNav" class="header-nav hidden"' in html
     assert 'class="nav-root-btn" type="button" data-nav-root="content"' in html
     assert 'id="adminNavGroup" data-nav-root="system"' in html
+    assert 'data-nav-root="pipeline" aria-expanded="false">匯入管理</button>' in html
+    assert '<summary>Excel 匯入流程管理</summary>' in html
+    assert 'id="excelDashboardBtn">監控 Dashboard</button>' in html
+    assert 'id="excelImportCenterBtn">Excel 匯入作業中心</button>' in html
     assert 'id="navSubPanel" class="nav-subpanel hidden" aria-label="第二層功能選單"' in html
     assert 'class="nav-menu" data-nav-menu="content"' in html
     assert 'class="nav-level" open' in html
+    assert '.nav-root-btn { min-width: 128px; padding: 12px 18px; border: 1px solid rgba(255,255,255,.18); background: rgba(71,85,105,.92);' in html
+    assert '.nav-root-btn.active { outline: 3px solid rgba(147,197,253,.55); background: #1d4ed8; }' in html
     assert 'grid-template-columns: minmax(180px, 230px) minmax(240px, 1fr)' in html
     assert '.nav-actions { position: absolute; top: 0; left: calc(100% + 10px)' in html
     assert 'grid-template-columns: minmax(0, 1fr)' in html

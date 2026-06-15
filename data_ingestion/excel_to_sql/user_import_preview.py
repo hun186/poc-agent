@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .constants import DEFAULT_HASH_FIELD
+from .constants import DEFAULT_HASH_FIELD, DEFAULT_HASH_FIELD_TYPE
 from .db_ops import get_existing_hashes
 from .ingest import load_json_config
-from .sql_utils import build_conn_str_from_config
+from .sql_utils import build_conn_str_from_config, ensure_destination_table
 from .user_import_storage import public_record, read_registry, utc_now, write_registry
 from .utils import get_nested, require_nested
 from .workbook import iter_excel_rows, open_workbook_headers, read_column_mappings
@@ -22,6 +22,16 @@ def _preview_file(
     )
     batch_size = max(1, int(get_nested(cfg, "import.batch_size", 500) or 500))
     skip_empty_rows = bool(get_nested(cfg, "import.skip_empty_rows", True))
+    auto_create_table = bool(get_nested(cfg, "destination.auto_create_table", True))
+    default_field_type = str(
+        get_nested(cfg, "destination.default_field_type", "NVARCHAR(MAX)")
+        or "NVARCHAR(MAX)"
+    )
+    hash_field_type = str(
+        get_nested(cfg, "destination.hash_field_type", DEFAULT_HASH_FIELD_TYPE)
+        or DEFAULT_HASH_FIELD_TYPE
+    )
+    create_hash_index = bool(get_nested(cfg, "destination.create_hash_index", True))
     sheet_headers = open_workbook_headers(config_path, cfg, excel_path)
     header_row = sheet_headers[0].header_row
     start_row = int(
@@ -33,6 +43,19 @@ def _preview_file(
 
     conn = pyodbc.connect(build_conn_str_from_config(cfg))
     cursor = conn.cursor()
+    if auto_create_table:
+        first_mappings = read_column_mappings(cfg, sheet_headers[0].header_map)
+        created_table_fields = ensure_destination_table(
+            cursor,
+            table=table,
+            mappings=first_mappings,
+            default_field_type=default_field_type,
+            hash_field=hash_field,
+            hash_field_type=hash_field_type,
+            create_hash_index=create_hash_index,
+        )
+        if created_table_fields:
+            conn.commit()
     totals = {"will_insert": 0, "duplicate": 0, "failed": 0, "total_rows": 0}
     samples: list[dict[str, Any]] = []
     failure_summary: dict[str, int] = {}
