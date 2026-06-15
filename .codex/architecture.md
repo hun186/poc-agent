@@ -133,3 +133,9 @@
 
 - 主系統 `api/routers/editor_auth_logging.py` 與 portable auth pack `portable_auth_pack/fastapi_auth_pack/auth_logging.py` 各自提供 `log_failed_login_attempt()`，統一輸出 password-free `auth.login.failed` warning log。
 - `editor_auth.py` / `auth_routes.py` 仍負責 HTTP login orchestration、throttle、audit persistence 與 response；即時 warning log 格式與敏感資訊控制由 logging helper 模組管理。
+
+## 2026-06-15 Excel→SQL Dashboard backend helper split
+
+- `data_ingestion/excel_to_sql/dashboard.py` 仍是 Excel→SQL dashboard backend 的 public module，保留 `discover_dashboard_tasks()`、`dashboard_payload()` 與 `delete_imported_sql_row()`，避免影響既有 route、測試 monkeypatch 與外部 import。
+- Dashboard helper 依功能面向拆為三個同 package module：`dashboard_config.py` 管理 dashboard enable/name config helper；`dashboard_filters.py` 管理 chart bucket、時間窗、WHERE/filter normalization 與 row payload parsing；`dashboard_sql.py` 管理 JSON-safe conversion、cursor row conversion、SQL connection、audit table、table existence 與 fetch helpers。
+- 此次拆檔只調整內部模組邊界；Excel→SQL dashboard HTTP contract、SQL audit table contract 與刪除匯入列 audit 行為不變。
