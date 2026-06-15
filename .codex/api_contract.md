@@ -136,3 +136,11 @@
 - 主系統 `GET /v1/editor/usage-stats` 新增 `client_host` query，可接受單一 IP / client host 或逗號分隔多個值，例如 `client_host=10.0.0.1,10.0.0.2`；比對語意為 case-insensitive exact match，缺少 `client_host` 的歷史 event 可用 `-` 篩選。
 - 主系統 `GET /v1/editor/audit-logs` 同步支援 `client_host` query；非 superuser 仍只能查自己的 `auth.*` 帳號操作紀錄。
 - `portable_auth_pack` 相容 `GET /v1/editor/usage-stats` endpoint 同步支援 `client_host` query，供帳號操作統計儀表板依 IP 多選篩選。
+
+## 2026-06-15 Excel→SQL 使用者匯入記錄 API
+
+- `POST /v1/excel-to-sql/import-records?config=<path>`：`multipart/form-data` 上傳 `file`。需要 `db_operator` 以上權限。Response：`{"record": {...}}`，record 包含 `id`、`original_filename`、`config_path`、`username`、`created_at`、`status`、`file_size`、`preview`、`import_result` 等，不包含內部 `stored_path`。
+- `POST /v1/excel-to-sql/import-records/{record_id}/preview`：需要 `db_operator` 以上權限；一般使用者只能操作自己的記錄。Response：`{"record": {...}, "preview": {"total_rows": int, "will_insert": int, "duplicate": int, "failed": int, "sheets": list, "failure_summary": object, "samples": list, "scanned_at": str}}`。
+- `POST /v1/excel-to-sql/import-records/{record_id}/confirm`：需要 `db_operator` 以上權限；一般使用者只能操作自己的記錄。Response：`{"record": {...}, "import_result": {"run_id": str, "inserted_rows": int, "duplicate_rows": int, "failed_rows": int, "ok": bool, "failure_summary": object, "imported_at": str}}`。
+- `GET /v1/excel-to-sql/import-records`：登入使用者可查；一般使用者只看自己的記錄，superuser 可看全部。Query filters：`config`、`status`、`filename`、`actor`、`start_ts`、`end_ts`。Response：`{"records": [...]}`。
+- `DELETE /v1/excel-to-sql/import-records`：需要 `db_operator` 以上權限。Request JSON：`{"record_ids": [str], "reason": str}`。Response：`{"deleted": [str], "skipped": [{"id": str, "reason": str}]}`；被刪除記錄的原 Excel 會移到使用者不可見的 deleted storage。

@@ -55,3 +55,23 @@
 - 對仍在使用且超過 600 行的 dashboard backend，優先抽出無狀態 helper 至同 package 的功能導向小模組，保留原 public function 所在檔案與名稱。
 - 避免建立籠統 `dashboard_support.py` 長期累積不同責任；helper 依 config、filter/time/chart、SQL/serialization 三類拆分，讓後續變更有明確落點。
 - `delete_imported_sql_row()` 暫時保留在 `dashboard.py`，原因是既有測試與呼叫端會 monkeypatch `dashboard.load_json_config` / `dashboard._connect`；若未來拆出刪除流程，需先設計 dependency injection 或相容 wrapper。
+
+## 2026-06-15 Excel→SQL 使用者匯入決策
+
+- 使用者上傳匯入採「先保存原檔與記錄、再預掃描、最後確認匯入」三階段，避免上傳即寫入 SQL。
+- 預掃描必須重用既有 Excel mapping / hash 邏輯與 SQL 去重查詢，確保預估新增 / 重複 / 錯誤列數接近實際匯入，不使用假結果。
+- 刪除匯入記錄採軟刪除語意：記錄保留為 `deleted`，原 Excel 移至內部 `deleted/` 備查目錄，而不是直接刪除檔案。
+- 記錄 API 不回傳內部檔案路徑，避免使用者透過 UI 看到伺服器 filesystem layout。
+
+## 2026-06-15 Excel→SQL 使用者匯入拆檔決策
+
+- 使用者匯入流程雖仍是單一功能，但 storage、preview scan 與 confirmed import 依賴不同且變更頻率不同，應拆成小模組並由 `user_imports.py` facade 維持對外相容。
+- Dashboard 新增的使用者匯入 JS 不繼續塞入既有 HTML inline script；新增功能 JS 以獨立靜態檔管理，避免 dashboard HTML 因後續操作功能擴充而持續膨脹。
+- 本次不改 API contract、不改資料存放語意、不重構既有 workbook / dashboard 監控核心，避免在 review 修正中擴大風險。
+
+## 2026-06-15 Excel→SQL 肥大檔案二次拆分決策
+
+- Excel→SQL 功能檔若超過或接近 400 行，優先以 facade / wrapper 保留既有 import path 與 monkeypatch seam，再把明確子責任拆出。
+- Workbook 拆分選擇把 row/mapping/hash helper 移到 `workbook_rows.py`，而不是改動 sheet discovery API；既有 `from ...workbook import read_column_mappings` 等呼叫維持可用。
+- Dashboard 刪除 SQL row 流程移出 `dashboard.py`，但 wrapper 仍在原檔載入 config 並注入 `_connect` / `_table_exists`，降低既有測試與呼叫端風險。
+- Dashboard HTML 不再承載大量 inline JS；監控 dashboard JS 與使用者匯入記錄 JS 分別以獨立靜態檔管理。

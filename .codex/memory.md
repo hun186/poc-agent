@@ -313,3 +313,24 @@ Conclusion:
 - 主要修改：移除 `data_ingestion/excel_to_sql/dashboard_support.py`；新增 `dashboard_config.py`（dashboard enable/name helper）、`dashboard_filters.py`（chart bucket、時間窗、WHERE/filter normalization、payload parsing）、`dashboard_sql.py`（JSON-safe conversion、row conversion、SQL connection、audit table/table exists/fetch helper）；`dashboard.py` 改為直接從這些功能模組匯入 helper，public entry points 不變。
 - 驗證：`python -m py_compile data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/dashboard_config.py data_ingestion/excel_to_sql/dashboard_filters.py data_ingestion/excel_to_sql/dashboard_sql.py` 通過；Excel→SQL dashboard 相關 pytest 通過（29 passed，既有 `datetime.utcnow()` warnings）；完整 `pytest tests` 通過（78 passed，7 warnings）。
 - 結論：dashboard helper 不再集中於單一 support 檔；目前各拆分模組皆小於 150 行，dashboard public API 與 SQL 查詢語意維持不變。
+
+## 2026-06-15 Excel→SQL 使用者匯入操作界面
+
+- 目的：新增 Excel→SQL 使用者操作界面，支援上傳 Excel、選擇匯入規格、預掃描確認、實際匯入、匯入記錄查詢、條件篩選與批次刪除。
+- 主要修改：新增 `data_ingestion/excel_to_sql/user_imports.py` 管理使用者上傳檔、`data/excel_to_sql_user_imports/records.json` 記錄、預掃描、確認匯入與刪除移藏；`api/routers/excel_to_sql.py` 新增 import-records API；`api/static/excel_to_sql_dashboard.html` 加入操作 UI 與記錄管理表格。
+- 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.py tests/test_ingest_diagnostics.py tests/test_ingest_insert_fallback.py tests/test_excel_to_sql_user_imports.py` 通過（24 passed；既有 datetime.utcnow warnings）；`node --check /tmp/excel_dashboard.js` 通過；`python - <<'PY' ... import api.routers.excel_to_sql ...` 通過（僅既有 SyntaxWarning / 設定載入輸出）；`python -m playwright --version` 仍顯示環境未安裝 Playwright。
+- 結論：使用者匯入流程不以 mock data 宣稱完成；預掃描會實際讀 Excel 並連 SQL 檢查 hash 去重，確認後重用既有 `process_excel_file()` 進行真實匯入。
+
+## 2026-06-15 Excel→SQL 使用者匯入拆檔
+
+- 目的：依 review 要求，檢查 Excel→SQL 功能新增後是否有太肥大的程式檔，並將前次新增的使用者匯入流程拆成更小的責任模組。
+- 主要修改：`data_ingestion/excel_to_sql/user_imports.py` 改為 facade；新增 `user_import_storage.py`（registry / active-deleted storage / list-save-delete）、`user_import_preview.py`（Excel 預掃描與 hash 去重估算）、`user_import_runner.py`（確認後重用 `process_excel_file()` 實際匯入）。前端新增的匯入記錄操作 JS 從 dashboard HTML 拆到 `api/static/excel_to_sql_import_records.js`，並加入靜態資產白名單。
+- 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py` 通過；`node --check /tmp/excel_dashboard_inline.js` 與 `node --check api/static/excel_to_sql_import_records.js` 通過。
+- 結論：使用者匯入相關 Python 檔目前分散為 34 / 61 / 157 / 166 行的小模組，保留既有 public import path 與 API contract。
+
+## 2026-06-15 Excel→SQL 肥大檔案二次拆分
+
+- 目的：再次檢查 Excel→SQL 功能是否仍有太肥大的程式或 HTML 檔，並對超過約 400 行或接近上限的檔案進一步拆分。
+- 主要修改：`api/static/excel_to_sql_dashboard.html` 的 dashboard inline JS 拆到 `api/static/excel_to_sql_dashboard.js`；`data_ingestion/excel_to_sql/workbook.py` 的欄位 mapping、hash 與 row iteration 拆到 `workbook_rows.py` 並由原模組 re-export；`data_ingestion/excel_to_sql/dashboard.py` 的人工刪除 SQL row 流程拆到 `dashboard_delete.py`，原 public function 保留 wrapper 以維持 monkeypatch 相容性。
+- 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py tests/test_workbook_sheets.py tests/test_dashboard_filters.py` 通過（20 passed）；`node --check api/static/excel_to_sql_dashboard.js && node --check api/static/excel_to_sql_import_records.js` 通過；`python -m py_compile ...` 通過。
+- 結論：Excel→SQL 相關 Python / HTML / JS 檔目前最大者約 399 行，已無超過 400 行的 Excel→SQL 功能檔。
