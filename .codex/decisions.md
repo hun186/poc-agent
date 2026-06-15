@@ -75,3 +75,9 @@
 - Workbook 拆分選擇把 row/mapping/hash helper 移到 `workbook_rows.py`，而不是改動 sheet discovery API；既有 `from ...workbook import read_column_mappings` 等呼叫維持可用。
 - Dashboard 刪除 SQL row 流程移出 `dashboard.py`，但 wrapper 仍在原檔載入 config 並注入 `_connect` / `_table_exists`，降低既有測試與呼叫端風險。
 - Dashboard HTML 不再承載大量 inline JS；監控 dashboard JS 與使用者匯入記錄 JS 分別以獨立靜態檔管理。
+
+## 2026-06-15 Excel 匯入操作與 SQL 監控頁面分流決策
+
+- 使用者上傳 / 預掃描 / 確認匯入 SQL / 匯入記錄管理屬於「操作型流程」，SQL audit dashboard 屬於「監控型查詢」，兩者放同頁會讓日期篩選與操作記錄語意混淆；因此拆成「Excel 匯入作業中心」與「Excel→SQL 匯入 SQL 監控儀表板」。
+- 監控儀表板的 `days` 只在未提供 explicit start/end 時生效；前端預設不填起迄，避免永遠帶起迄導致回看天數無法被使用。
+- 不在前端硬編特定錯誤原因；imported_with_errors 一律顯示後端真實 `failure_summary` / samples，維持 Real Functionality First。

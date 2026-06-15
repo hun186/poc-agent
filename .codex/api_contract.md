@@ -144,3 +144,9 @@
 - `POST /v1/excel-to-sql/import-records/{record_id}/confirm`：需要 `db_operator` 以上權限；一般使用者只能操作自己的記錄。Response：`{"record": {...}, "import_result": {"run_id": str, "inserted_rows": int, "duplicate_rows": int, "failed_rows": int, "ok": bool, "failure_summary": object, "imported_at": str}}`。
 - `GET /v1/excel-to-sql/import-records`：登入使用者可查；一般使用者只看自己的記錄，superuser 可看全部。Query filters：`config`、`status`、`filename`、`actor`、`start_ts`、`end_ts`。Response：`{"records": [...]}`。
 - `DELETE /v1/excel-to-sql/import-records`：需要 `db_operator` 以上權限。Request JSON：`{"record_ids": [str], "reason": str}`。Response：`{"deleted": [str], "skipped": [{"id": str, "reason": str}]}`；被刪除記錄的原 Excel 會移到使用者不可見的 deleted storage。
+
+## 2026-06-15 Excel→SQL 匯入作業中心頁面
+
+- `GET /excel-to-sql-import-center`：回傳「Excel 匯入作業中心」靜態頁，供登入使用者進行 Excel 上傳、預掃描、確認匯入 SQL 與匯入記錄管理。
+- 既有 `/v1/excel-to-sql/import-records*` API contract 不變；前端新增顯示 `preview.failure_summary`、`preview.samples`、`import_result.failure_summary` 等既有 response 欄位。
+- `GET /excel-to-sql-dashboard` contract 不變，但頁面語意調整為 SQL audit 監控；使用者匯入操作改由 `/excel-to-sql-import-center` 承接。

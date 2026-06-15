@@ -270,3 +270,11 @@ Open
 - 替代驗證：以 `tests/test_excel_to_sql_user_imports.py` 靜態檢查 UI 控制與後端 registry 行為，以 `node --check /tmp/excel_dashboard.js` 驗證抽出的前端 script 語法，並執行 Excel→SQL 相關 pytest。
 
 狀態：Open
+
+## 2026-06-15 Excel 匯入作業中心 UI 截圖限制
+
+- 本次新增「Excel 匯入作業中心」並調整 SQL 監控儀表板日期控制，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回傳 `No module named playwright`，因此無法提供瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_excel_to_sql_dashboard_static.py` 與 `tests/test_excel_to_sql_user_imports.py` 靜態檢查頁面導覽、拆頁、日期篩選文案與錯誤診斷 DOM / JS，並以 `node --check` 驗證相關 JS 語法。
+
+狀態：Open

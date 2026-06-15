@@ -36,23 +36,20 @@ async function loadCurrentUser() {
 function pad2(v) { return String(v).padStart(2, '0'); }
 function toLocalInputValue(d) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; }
 function resetDefaultWindow() {
+  $('startTs').value = '';
+  $('endTs').value = '';
+  $('days').value = 14;
+  $('chartBucket').value = 'day';
+}
+function fillRecentWindow() {
   const end = new Date();
   const start = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000);
   $('startTs').value = toLocalInputValue(start);
   $('endTs').value = toLocalInputValue(end);
   $('days').value = 14;
-  $('chartBucket').value = 'day';
 }
 function localInputToUtcIso(id) { const v = $(id).value; return v ? new Date(v).toISOString() : ''; }
-function updateEndTsToNow() {
-  const endInput = $('endTs');
-  const now = new Date(Date.now() + 60 * 1000);
-  const current = endInput.value ? new Date(endInput.value) : null;
-  if (!current || Number.isNaN(current.getTime()) || current.getTime() < now.getTime()) {
-    endInput.value = toLocalInputValue(now);
-  }
-}
-function refreshDashboardNow() { updateEndTsToNow(); loadDashboard(); }
+function refreshDashboardNow() { loadDashboard(); }
 function normalizeAuditUtc(text) {
   const raw = String(text || '');
   if (!raw) return null;
@@ -68,7 +65,7 @@ function formatAuditTime(value) {
   return `<div>${escapeHtml(local.toLocaleString())}</div><div class="muted">UTC：${escapeHtml(raw)}</div>`;
 }
 function resetRecentPage() { state.recentPage = 1; }
-function applyAuditFilters() { resetRecentPage(); updateEndTsToNow(); loadDashboard(); }
+function applyAuditFilters() { resetRecentPage(); loadDashboard(); }
 function selectedValues(id) {
   const el = $(id);
   if (el.selectedOptions) return Array.from(el.selectedOptions).map(option => option.value).filter(Boolean);
@@ -179,7 +176,6 @@ async function deleteImportedRow(hashValue) {
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
   const data = await res.json();
   showError(`已執行：${data.status}，刪除 ${data.deleted_rows} 筆。`);
-  updateEndTsToNow();
   await loadDashboard();
 }
 function actionCell(r) {
@@ -232,4 +228,4 @@ function bindAuditFilterEvents() {
 }
 bindAuditFilterEvents();
 // boot order includes: await loadCurrentUser(); await loadTasks(); await loadDashboard();
-(async () => { resetDefaultWindow(); await loadCurrentUser(); await loadTasks(); $('uploadConfig').value = $('config').value; await loadImportRecords(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
+(async () => { resetDefaultWindow(); await loadCurrentUser(); await loadTasks(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
