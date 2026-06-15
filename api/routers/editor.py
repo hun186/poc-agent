@@ -59,6 +59,8 @@ EDITOR_STATIC_ASSETS: dict[str, str] = {
     "editor_audit.js": "application/javascript",
     "editor_documents.js": "application/javascript",
     "editor_bootstrap.js": "application/javascript",
+    "excel_to_sql_dashboard.js": "application/javascript",
+    "excel_to_sql_import_records.js": "application/javascript",
 }
 
 

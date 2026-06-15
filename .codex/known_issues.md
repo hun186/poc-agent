@@ -262,3 +262,11 @@ Open
 - 替代驗證：以 `tests/test_editor_auth_ui_static.py` 靜態檢查主系統與 portable auth pack 的 IP 多選 DOM、共用 multi-filter helper 與 `client_host` query 組裝；以 `node --check` 驗證相關 JS 語法。
 
 狀態：Open
+
+## 2026-06-15 Excel→SQL 使用者匯入 UI 截圖限制
+
+- 本次新增 Excel→SQL 使用者上傳、預掃描、匯入確認與記錄批次刪除 UI，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 仍回傳 `No module named playwright`，無法執行瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_excel_to_sql_user_imports.py` 靜態檢查 UI 控制與後端 registry 行為，以 `node --check /tmp/excel_dashboard.js` 驗證抽出的前端 script 語法，並執行 Excel→SQL 相關 pytest。
+
+狀態：Open
