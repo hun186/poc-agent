@@ -25,18 +25,19 @@ def test_chart_bucket_selector_is_visible_in_chart_card_and_sent_to_api():
     assert "SraAuditTools.renderTimeSeriesChart" in html
 
 
-def test_dashboard_refresh_and_audit_filters_extend_end_time_to_now():
+def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     html = dashboard_source()
 
     assert 'id="endTs" type="datetime-local" step="1"' in html
-    assert "function updateEndTsToNow()" in html
-    assert "Date.now() + 60 * 1000" in html
+    assert "function fillRecentWindow()" in html
+    assert "function resetDefaultWindow()" in html
     assert '<button onclick="refreshDashboardNow()">重新整理</button>' in html
     assert (
-        "function applyAuditFilters() { resetRecentPage(); updateEndTsToNow(); loadDashboard(); }"
+        "function applyAuditFilters() { resetRecentPage(); loadDashboard(); }"
         in html
     )
-    assert "updateEndTsToNow();\n  await loadDashboard();" in html
+    assert "function refreshDashboardNow() { loadDashboard(); }" in html
+    assert "回看天數（起迄皆空時才生效）" in html
 
 
 def test_recent_audit_filters_include_destination_table():

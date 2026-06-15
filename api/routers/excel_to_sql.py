@@ -49,6 +49,11 @@ def excel_to_sql_dashboard_page() -> FileResponse:
     return FileResponse(_static_path("excel_to_sql_dashboard.html"))
 
 
+@router.get("/excel-to-sql-import-center", include_in_schema=False)
+def excel_to_sql_import_center_page() -> FileResponse:
+    return FileResponse(_static_path("excel_to_sql_import_center.html"))
+
+
 @router.get("/v1/excel-to-sql/dashboard-tasks")
 def excel_to_sql_dashboard_tasks(
     config_dir: str = Query(

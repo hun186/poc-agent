@@ -334,3 +334,10 @@ Conclusion:
 - 主要修改：`api/static/excel_to_sql_dashboard.html` 的 dashboard inline JS 拆到 `api/static/excel_to_sql_dashboard.js`；`data_ingestion/excel_to_sql/workbook.py` 的欄位 mapping、hash 與 row iteration 拆到 `workbook_rows.py` 並由原模組 re-export；`data_ingestion/excel_to_sql/dashboard.py` 的人工刪除 SQL row 流程拆到 `dashboard_delete.py`，原 public function 保留 wrapper 以維持 monkeypatch 相容性。
 - 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py tests/test_workbook_sheets.py tests/test_dashboard_filters.py` 通過（20 passed）；`node --check api/static/excel_to_sql_dashboard.js && node --check api/static/excel_to_sql_import_records.js` 通過；`python -m py_compile ...` 通過。
 - 結論：Excel→SQL 相關 Python / HTML / JS 檔目前最大者約 399 行，已無超過 400 行的 Excel→SQL 功能檔。
+
+## 2026-06-15 Excel 匯入作業中心拆頁與日期篩選修正
+
+- 目的：將使用者 Excel 上傳 / 預掃描 / 確認匯入 SQL / 匯入記錄管理從 SQL audit 監控儀表板拆出，並修正監控儀表板起迄時間因自動延展結束時間導致歷史日期區間看似無效的問題。
+- 主要修改：新增 `/excel-to-sql-import-center` 靜態頁作為「Excel 匯入作業中心」；原 `/excel-to-sql-dashboard` 僅保留 SQL audit 監控並提供導覽按鈕。匯入記錄 JS 改為可獨立啟動，記錄篩選起迄改用本機 datetime-local 後送 UTC ISO，並在 imported_with_errors / preview 結果顯示 failure_summary 與失敗樣本。監控儀表板「回看天數」改為起迄皆空時才生效，不再於重新整理 / 套用篩選時自動把結束時間推到現在；另提供「填入近14天起迄」按鈕。
+- 使用者案例分析：本次未連線到使用者 SQL Server，也未寫入使用者提供的 DB 密碼；針對 imported_with_errors，UI 現在會顯示實際匯入或預掃描回傳的錯誤摘要，方便判斷是日期格式、必填欄位、SQL 寫入或其他資料列問題。
+- 驗證：`node --check api/static/excel_to_sql_dashboard.js`、`node --check api/static/excel_to_sql_import_records.js` 通過；`pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py tests/test_ingest_insert_fallback.py tests/test_workbook_sheets.py` 通過（26 passed，既有 datetime.utcnow deprecation warnings）。

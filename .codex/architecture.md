@@ -163,3 +163,9 @@
 - `data_ingestion/excel_to_sql/workbook.py`：保留 workbook discovery、sheet matching 與對外 re-export。
 - `data_ingestion/excel_to_sql/workbook_rows.py`：負責欄位 mapping、header resolution、row normalization、hash 計算與 Excel row iteration。
 - `data_ingestion/excel_to_sql/dashboard_delete.py`：負責 dashboard 人工刪除 SQL row 與 audit 寫入；`dashboard.py` 保留 `delete_imported_sql_row()` wrapper 以沿用既有測試 monkeypatch 點。
+
+## 2026-06-15 Excel 匯入作業中心頁面分流
+
+- `/excel-to-sql-dashboard` 現在定位為 Excel→SQL SQL audit 監控儀表板，負責任務選擇、audit summary / daily / file / recent event 查詢、目的地 table 與 audit 欄位篩選、SQL row delete 操作。
+- `/excel-to-sql-import-center` 新增為使用者匯入作業頁，負責 Excel 上傳、預掃描、確認匯入 SQL、匯入記錄查詢與軟刪除。此頁重用既有 `/v1/excel-to-sql/import-records*` API，不新增後端資料模型。
+- 靜態 JS 責任分流：`excel_to_sql_dashboard.js` 僅處理監控儀表板；`excel_to_sql_import_records.js` 可在匯入作業中心獨立啟動，包含登入者顯示、任務載入、記錄列表與錯誤診斷渲染。

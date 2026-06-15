@@ -55,17 +55,23 @@ def test_save_list_and_delete_upload_record(monkeypatch, tmp_path):
     assert (tmp_path / "imports" / "deleted" / f"{record['id']}.xlsx").exists()
 
 
-def test_dashboard_static_contains_user_import_controls():
-    html = Path("api/static/excel_to_sql_dashboard.html").read_text(encoding="utf-8")
-    assert "使用者 Excel 匯入操作" in html
+def test_import_center_static_contains_user_import_controls():
+    dashboard_html = Path("api/static/excel_to_sql_dashboard.html").read_text(encoding="utf-8")
+    html = Path("api/static/excel_to_sql_import_center.html").read_text(encoding="utf-8")
     script = Path("api/static/excel_to_sql_import_records.js").read_text(
         encoding="utf-8"
     )
-    assert "/static/excel_to_sql_import_records.js?v=20260615-split" in html
+    assert "Excel 匯入作業中心" in dashboard_html
+    assert "/excel-to-sql-import-center" in dashboard_html
+    assert "使用者 Excel 匯入操作" not in dashboard_html
+    assert "使用者 Excel 匯入操作" in html
+    assert "/static/excel_to_sql_import_records.js?v=20260615-center" in html
     assert "/v1/excel-to-sql/import-records" in script
     assert "previewImportRecord" in script
     assert "deleteSelectedImportRecords" in script
     assert "recordSelectAll" in html
+    assert "錯誤診斷" in html
+    assert "function importRecordDiagnostics" in script
     assets = Path("api/routers/editor.py").read_text(encoding="utf-8")
     assert "excel_to_sql_import_records.js" in assets
     assert "excel_to_sql_dashboard.js" in assets

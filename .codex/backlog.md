@@ -62,3 +62,8 @@
 
 - 多 worker / 多 instance 部署時，將註冊 per-IP 節流與既有 login / reset-password throttle 一併改為集中式 Redis、database、API gateway 或 WAF rate limiting。
 - 評估是否對註冊加入 CAPTCHA、email / help desk 驗證或管理員邀請碼，以進一步降低自動化濫用。
+
+## 2026-06-15 Excel 匯入後續改善建議
+
+- 若使用者仍常遇到 `imported_with_errors`，可在匯入記錄中心增加「下載錯誤列 CSV / JSON」功能，讓使用者取得完整失敗資料列而不只看前幾筆樣本。
+- 可考慮在設定檔檢查頁提示常見欄名差異，例如「敘述」與「作業敘述」，並建議使用 `aliases` 或 `match: contains` 明確描述來源欄位。
