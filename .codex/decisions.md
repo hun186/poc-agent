@@ -33,3 +33,8 @@
 
 - 當 orchestration 檔案同時包含大型 prompt、分類 helper 與 session / dispatch 流程時，優先將 prompt + router helper 拆到同 package 小模組，讓主入口維持薄 orchestration。
 - `answer_with_routing()` 的外部入口維持在 `agent/agent.py`；router 相關 public helper 則以 `agent/routing.py` 作為後續維護位置，並於必要時在 `agent.agent` 保留 re-export 相容。
+
+## 2026-06-15 Auth Store 拆檔決策
+
+- 對正在使用且超過 600 行的 auth store，優先依責任拆出 support / token 小模組，而不是改變 route 或 storage contract。
+- 為降低呼叫端遷移風險，`api.services.auth_store` 與 `portable_auth_pack.fastapi_auth_pack.auth_store` 保留原本 public symbols；新模組只承接內部 helper 與 token 實作。

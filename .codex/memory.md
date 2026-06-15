@@ -277,3 +277,11 @@ Conclusion:
 - 主要修改：新增 `agent/routing.py` 承載 router prompt、topic/index helper 與 LLM 任務分類流程；`agent/agent.py` 改為只負責 session、context 組裝、路由結果分派與統一輸出，行數由 610 行降至 392 行。
 - 驗證：`python -m compileall agent/agent.py agent/routing.py` 通過；`python - <<'PY' ... import agent.agent ...` 通過；`pytest tests` 通過（77 passed，僅既有 StarletteDeprecationWarning、SyntaxWarning 與 datetime.utcnow deprecation warnings）。
 - 結論：`answer_with_routing()` 外部入口與主要 response contract 不變；router helper 後續集中維護於 `agent/routing.py`。
+
+## 2026-06-15 Auth Store 肥大檔案拆檔
+
+- 目的：盤點單檔程式碼行數，優先處理非備份、仍在使用且超過約 600 行的 Auth Store 模組。
+- 主要修改：`api/services/auth_store.py` 與 `portable_auth_pack/fastapi_auth_pack/auth_store.py` 保留 `AuthStore` 與既有 public import path；角色 / 密碼雜湊 / token secret / bootstrap / throttle helper 拆至各自 package 的 `auth_support.py`；JWT create / parse 實作拆至 `auth_tokens.py`，原 `auth_store.create_token()` / `parse_token()` 維持相容。
+- 驗證：`pytest tests/test_auth_store_security.py tests/test_editor_audit_queries.py` 通過（24 passed，僅既有 StarletteDeprecationWarning）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過；`python -m py_compile api/services/auth_store.py api/services/auth_support.py api/services/auth_tokens.py portable_auth_pack/fastapi_auth_pack/auth_store.py portable_auth_pack/fastapi_auth_pack/auth_support.py portable_auth_pack/fastapi_auth_pack/auth_tokens.py` 通過。
+- 結論：主系統與 portable auth pack 的 auth store 從約 611 / 616 行降至各 400 行，helper 與 token 邏輯各自獨立，既有 API / route contract 未變更。
+- 補充驗證：`pytest tests` 通過（77 passed，5 warnings；warnings 為既有 Starlette/httpx 與 `datetime.utcnow()` deprecation）。
