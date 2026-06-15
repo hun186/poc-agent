@@ -299,3 +299,17 @@ Conclusion:
 - 主要修改：主系統新增 `api/routers/editor_auth_logging.py`，portable auth pack 新增 `portable_auth_pack/fastapi_auth_pack/auth_logging.py`，集中保存 password-free failed-login warning log helper；兩個 route 檔只保留登入流程呼叫點。`api/routers/editor_auth.py` 回到約 288 行，`portable_auth_pack/fastapi_auth_pack/auth_routes.py` 回到約 231 行，新增 logging helper 檔各低於 30 行。
 - 驗證：`python -m py_compile api/routers/editor_auth.py api/routers/editor_auth_logging.py portable_auth_pack/fastapi_auth_pack/auth_routes.py portable_auth_pack/fastapi_auth_pack/auth_logging.py tests/test_auth_store_security.py portable_auth_pack/scripts/verify_auth_pack.py` 通過；`pytest tests/test_auth_store_security.py` 通過（14 passed，既有 warnings）；`python portable_auth_pack/scripts/verify_auth_pack.py` 通過。
 - 結論：保留登入失敗即時警示與 audit 行為，但將共用記錄責任從 route orchestration 檔拆出，降低肥大與無關格式化 diff。
+
+## 2026-06-15 Excel→SQL Dashboard 拆檔重構
+
+- 目的：檢查單檔程式碼行數，避開備份檔後選定目前仍在使用且超過 600 行的 `data_ingestion/excel_to_sql/dashboard.py` 進行小範圍拆檔。
+- 主要修改：將 dashboard 的 chart bucket、JSON-safe conversion、SQL cursor row conversion、audit table / table exists、time window、filter normalization、payload parsing 與 dashboard config helper 抽至 `data_ingestion/excel_to_sql/dashboard_support.py`；`dashboard.py` 保留 public entry points `discover_dashboard_tasks()`、`dashboard_payload()`、`delete_imported_sql_row()`，以維持既有 monkeypatch 測試與呼叫相容性。
+- 驗證：`python -m py_compile data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/dashboard_support.py` 通過；Excel→SQL dashboard 相關 pytest 通過（29 passed，僅既有 `datetime.utcnow()` warnings）；完整 `pytest tests` 通過（78 passed，7 warnings：既有 StarletteDeprecationWarning、SyntaxWarning、datetime.utcnow deprecation）。
+- 結論：`dashboard.py` 由 611 行降至 419 行，新增 helper module 217 行；未改變 API response shape、SQL 查詢語意或 dashboard public function names。
+
+## 2026-06-15 Excel→SQL Dashboard helper 功能面向再拆分
+
+- 目的：回應 review，避免新抽出的 `dashboard_support.py` 變成另一個籠統 support 檔，改依功能面向拆成更小模組。
+- 主要修改：移除 `data_ingestion/excel_to_sql/dashboard_support.py`；新增 `dashboard_config.py`（dashboard enable/name helper）、`dashboard_filters.py`（chart bucket、時間窗、WHERE/filter normalization、payload parsing）、`dashboard_sql.py`（JSON-safe conversion、row conversion、SQL connection、audit table/table exists/fetch helper）；`dashboard.py` 改為直接從這些功能模組匯入 helper，public entry points 不變。
+- 驗證：`python -m py_compile data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/dashboard_config.py data_ingestion/excel_to_sql/dashboard_filters.py data_ingestion/excel_to_sql/dashboard_sql.py` 通過；Excel→SQL dashboard 相關 pytest 通過（29 passed，既有 `datetime.utcnow()` warnings）；完整 `pytest tests` 通過（78 passed，7 warnings）。
+- 結論：dashboard helper 不再集中於單一 support 檔；目前各拆分模組皆小於 150 行，dashboard public API 與 SQL 查詢語意維持不變。
