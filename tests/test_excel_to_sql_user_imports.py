@@ -61,8 +61,8 @@ def test_import_center_static_contains_user_import_controls():
     script = Path("api/static/excel_to_sql_import_records.js").read_text(
         encoding="utf-8"
     )
-    assert "Excel 匯入作業中心" in dashboard_html
-    assert "/excel-to-sql-import-center" in dashboard_html
+    assert "使用者 Excel 上傳、預掃描、確認匯入 SQL 與匯入記錄管理已移至獨立頁面" not in dashboard_html
+    assert "前往 Excel 匯入作業中心" not in dashboard_html
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
     assert "/static/excel_to_sql_import_records.js?v=20260615-center" in html
@@ -71,7 +71,85 @@ def test_import_center_static_contains_user_import_controls():
     assert "deleteSelectedImportRecords" in script
     assert "recordSelectAll" in html
     assert "錯誤診斷" in html
+    assert 'class="table-wrap import-records-wrap"' in html
+    assert 'class="import-records-table"' in html
+    assert "table-layout:fixed" in html
+    assert "#importRecords .actions-col { width:14%; }" in html
+    assert "@media (max-width: 760px)" in html
+    assert 'content:attr(data-label)' in html
     assert "function importRecordDiagnostics" in script
+    assert 'data-label="操作"' in script
+    assert 'aria-label="選取匯入記錄' in script
     assets = Path("api/routers/editor.py").read_text(encoding="utf-8")
     assert "excel_to_sql_import_records.js" in assets
     assert "excel_to_sql_dashboard.js" in assets
+
+
+def test_preview_auto_creates_missing_destination_table(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import sys
+    from data_ingestion.excel_to_sql import user_import_preview
+
+    class FakeCursor:
+        def __init__(self):
+            self.statements = []
+            self.closed = False
+        def execute(self, sql, *params):
+            self.statements.append(str(sql))
+            return self
+        def fetchone(self):
+            # destination_table_exists returns false for the missing table.
+            return None
+        def close(self):
+            self.closed = True
+
+    class FakeConn:
+        def __init__(self):
+            self.cursor_obj = FakeCursor()
+            self.commits = 0
+            self.closed = False
+        def cursor(self):
+            return self.cursor_obj
+        def commit(self):
+            self.commits += 1
+        def close(self):
+            self.closed = True
+
+    fake_conn = FakeConn()
+    monkeypatch.setitem(
+        sys.modules,
+        "pyodbc",
+        SimpleNamespace(connect=lambda conn_str: fake_conn),
+    )
+    monkeypatch.setattr(
+        user_import_preview,
+        "open_workbook_headers",
+        lambda config_path, cfg, excel_path: [
+            SimpleNamespace(sheet_name="Sheet1", header_row=1, header_map={"A": "名稱"})
+        ],
+    )
+    monkeypatch.setattr(
+        user_import_preview,
+        "read_column_mappings",
+        lambda cfg, header_map: [{"source_column": "名稱", "dest_field": "name"}],
+    )
+    monkeypatch.setattr(
+        user_import_preview,
+        "iter_excel_rows",
+        lambda **kwargs: iter([(2, {"name": "A"}, {"名稱": "A"}, "hash-a", "")]),
+    )
+    monkeypatch.setattr(user_import_preview, "get_existing_hashes", lambda *args, **kwargs: set())
+
+    result = user_import_preview._preview_file(
+        "cfg.json",
+        {
+            "destination": {"table": "dbo.vessel_activities", "auto_create_table": True},
+            "db": {"driver": "x", "server": "s", "database": "d", "user": "u", "password": "p"},
+            "source": {},
+        },
+        tmp_path / "sample.xlsx",
+    )
+
+    assert result["will_insert"] == 1
+    assert any("CREATE TABLE [dbo].[vessel_activities]" in sql for sql in fake_conn.cursor_obj.statements)
+    assert fake_conn.commits == 1

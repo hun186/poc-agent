@@ -31,6 +31,7 @@ def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     assert 'id="endTs" type="datetime-local" step="1"' in html
     assert "function fillRecentWindow()" in html
     assert "function resetDefaultWindow()" in html
+    assert "使用回看天數" not in html
     assert '<button onclick="refreshDashboardNow()">重新整理</button>' in html
     assert (
         "function applyAuditFilters() { resetRecentPage(); loadDashboard(); }"
@@ -38,6 +39,7 @@ def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     )
     assert "function refreshDashboardNow() { loadDashboard(); }" in html
     assert "回看天數（起迄皆空時才生效）" in html
+    assert "前往 Excel 匯入作業中心" not in html
 
 
 def test_recent_audit_filters_include_destination_table():
