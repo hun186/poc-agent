@@ -23,3 +23,8 @@
 ## Archived History
 
 - `decisions.md-20260614-125305.md`：歸檔 2026-06-14 前完整 technical decisions，包含 reset token modal、導航架構、工作區切換、共用 audit tools、Auth security、長期記憶濃縮、角色層級與近期拆檔 / 註冊安全決策。
+
+## 2026-06-15 Report Agent 拆檔決策
+
+- 當 Python orchestration 檔案主要因大型 prompt 或純 helper 過長時，優先拆成同 package 的小模組，避免改動既有 public import path 與 runtime behavior。
+- `ReportAgent` 與 `ask_with_report()` 的外部入口維持在 `agent/report_agent.py`，降低呼叫端遷移成本；prompt / config / stats helper 則使用相對 import 管理。
