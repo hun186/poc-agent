@@ -116,3 +116,9 @@
 - `agent/report_prompt.py` 集中保存報告 LLM 的大型 `REPORT_SYSTEM_PROMPT`，避免流程檔混入長篇提示詞。
 - `agent/report_config.py` 集中解析 report LLM model id 與 timeout 相關環境變數。
 - `agent/report_stats.py` 提供 `compress_stats()`，負責將 data agent 統計壓縮成報告 LLM payload 所需格式。
+
+## 2026-06-15 Agent router 模組拆分
+
+- `agent/agent.py` 現在聚焦於高層對話 orchestration：組合 query context、讀寫 `FileSessionStore`、呼叫任務分流結果、分派到 report / style / doc follow-up / pure LLM，並補齊統一 response shape。
+- `agent/routing.py` 集中管理任務分類器相關設定與 helper：router model id、topic enum / descriptions、`TASK_ROUTER_SYSTEM`、`topic_to_index_hint()`、`llm_route_task()`、`route_task_mode()` 與 `build_router_input()`。
+- 為降低拆檔對既有呼叫端的衝擊，`agent.agent` 仍 re-export `topic_to_index_hint`，主要 API `answer_with_routing()` 不變。
