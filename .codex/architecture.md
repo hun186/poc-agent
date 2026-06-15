@@ -139,3 +139,27 @@
 - `data_ingestion/excel_to_sql/dashboard.py` 仍是 Excel→SQL dashboard backend 的 public module，保留 `discover_dashboard_tasks()`、`dashboard_payload()` 與 `delete_imported_sql_row()`，避免影響既有 route、測試 monkeypatch 與外部 import。
 - Dashboard helper 依功能面向拆為三個同 package module：`dashboard_config.py` 管理 dashboard enable/name config helper；`dashboard_filters.py` 管理 chart bucket、時間窗、WHERE/filter normalization 與 row payload parsing；`dashboard_sql.py` 管理 JSON-safe conversion、cursor row conversion、SQL connection、audit table、table existence 與 fetch helpers。
 - 此次拆檔只調整內部模組邊界；Excel→SQL dashboard HTTP contract、SQL audit table contract 與刪除匯入列 audit 行為不變。
+
+## 2026-06-15 Excel→SQL 使用者匯入界面架構
+
+- 使用者上傳 / 預掃描 / 確認匯入 / 記錄刪除邏輯集中於 `data_ingestion/excel_to_sql/user_imports.py`。
+- 上傳 Excel 存於 `data/excel_to_sql_user_imports/active/`，刪除記錄時原檔移至 `data/excel_to_sql_user_imports/deleted/`；前端與 API response 不暴露內部檔案路徑。
+- 記錄 metadata 以 JSON registry `data/excel_to_sql_user_imports/records.json` 保存，包含檔名、使用者、設定檔、狀態、預掃描結果、匯入結果與刪除資訊。
+- 預掃描使用既有 workbook/header/mapping/hash helper 與 SQL existing hash 查詢，僅統計 `will_insert`、`duplicate`、`failed` 等預估結果，不寫入目的表或 audit table。
+- 確認匯入會將上傳檔作為單一 `source.excel_path`，關閉既有 archive move，並重用 `process_excel_file()` 寫入 SQL 與 audit。
+
+## 2026-06-15 Excel→SQL 使用者匯入拆檔後模組邊界
+
+- `data_ingestion/excel_to_sql/user_imports.py`：保留為 public facade，re-export 使用者匯入工作流程對外函式。
+- `data_ingestion/excel_to_sql/user_import_storage.py`：負責 registry JSON、active/deleted 檔案存放、記錄查詢、上傳保存與軟刪除。
+- `data_ingestion/excel_to_sql/user_import_preview.py`：負責預掃描 Excel、依 mapping 產生 hash、查 SQL existing hash 並統計預估新增 / 重複 / 錯誤。
+- `data_ingestion/excel_to_sql/user_import_runner.py`：負責確認匯入時載入設定、覆寫為單一上傳檔來源並呼叫既有 `process_excel_file()`。
+- `api/static/excel_to_sql_import_records.js`：負責 dashboard 上使用者匯入記錄操作；`excel_to_sql_dashboard.html` 保留 layout 與既有監控 dashboard script。
+
+## 2026-06-15 Excel→SQL 二次拆分後模組邊界
+
+- `api/static/excel_to_sql_dashboard.html`：保留 dashboard layout 與 script include，不再承載大量 inline dashboard JS。
+- `api/static/excel_to_sql_dashboard.js`：負責 Excel→SQL 監控 dashboard 的任務載入、audit 篩選、圖表、表格與分頁等既有監控互動。
+- `data_ingestion/excel_to_sql/workbook.py`：保留 workbook discovery、sheet matching 與對外 re-export。
+- `data_ingestion/excel_to_sql/workbook_rows.py`：負責欄位 mapping、header resolution、row normalization、hash 計算與 Excel row iteration。
+- `data_ingestion/excel_to_sql/dashboard_delete.py`：負責 dashboard 人工刪除 SQL row 與 audit 寫入；`dashboard.py` 保留 `delete_imported_sql_row()` wrapper 以沿用既有測試 monkeypatch 點。
