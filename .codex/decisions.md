@@ -49,3 +49,9 @@
 
 - Auth route 檔應聚焦 HTTP 流程與 response；登入失敗 warning log 這類可重用且安全敏感的記錄格式放到同 package 的 `auth_logging.py` / `editor_auth_logging.py`。
 - 新增安全記錄時應避免對整個 route 檔做大規模格式化，降低 review 噪音與 merge 風險。
+
+## 2026-06-15 Excel→SQL Dashboard 拆檔決策
+
+- 對仍在使用且超過 600 行的 dashboard backend，優先抽出無狀態 helper 至同 package 的功能導向小模組，保留原 public function 所在檔案與名稱。
+- 避免建立籠統 `dashboard_support.py` 長期累積不同責任；helper 依 config、filter/time/chart、SQL/serialization 三類拆分，讓後續變更有明確落點。
+- `delete_imported_sql_row()` 暫時保留在 `dashboard.py`，原因是既有測試與呼叫端會 monkeypatch `dashboard.load_json_config` / `dashboard._connect`；若未來拆出刪除流程，需先設計 dependency injection 或相容 wrapper。
