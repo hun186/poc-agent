@@ -341,3 +341,17 @@ Conclusion:
 - 主要修改：新增 `/excel-to-sql-import-center` 靜態頁作為「Excel 匯入作業中心」；原 `/excel-to-sql-dashboard` 僅保留 SQL audit 監控並提供導覽按鈕。匯入記錄 JS 改為可獨立啟動，記錄篩選起迄改用本機 datetime-local 後送 UTC ISO，並在 imported_with_errors / preview 結果顯示 failure_summary 與失敗樣本。監控儀表板「回看天數」改為起迄皆空時才生效，不再於重新整理 / 套用篩選時自動把結束時間推到現在；另提供「填入近14天起迄」按鈕。
 - 使用者案例分析：本次未連線到使用者 SQL Server，也未寫入使用者提供的 DB 密碼；針對 imported_with_errors，UI 現在會顯示實際匯入或預掃描回傳的錯誤摘要，方便判斷是日期格式、必填欄位、SQL 寫入或其他資料列問題。
 - 驗證：`node --check api/static/excel_to_sql_dashboard.js`、`node --check api/static/excel_to_sql_import_records.js` 通過；`pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py tests/test_ingest_insert_fallback.py tests/test_workbook_sheets.py` 通過（26 passed，既有 datetime.utcnow deprecation warnings）。
+
+## 2026-06-15 Excel 匯入導航、監控 UI 與預掃描建表修正
+
+- 目的：修正 Editor 第一層「ES 資料庫」未選取時仍呈藍色、整理 Excel→SQL 導航層級、移除監控 dashboard 上方回看天數按鈕與匯入作業中心說明區塊，並修正 SQL 目的表被刪除後使用者匯入預掃描因 table missing 失敗。
+- 主要修改：Editor 第一層導航按鈕預設改為灰色，只有 active root 使用藍色；「匯入流程」改為「匯入管理 → Excel 匯入流程管理」，提供「監控 Dashboard」與「Excel 匯入作業中心」兩個入口。監控 dashboard 保留 header 作業中心入口，但移除內容區說明卡與「使用回看天數」按鈕。使用者匯入預掃描在 `destination.auto_create_table` 啟用時會先依 mappings / hash field 確保目的表存在，再查詢既有 hash，避免 table 被刪除後直接拋出 42S02。
+- 驗證：`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py tests/test_editor_auth_ui_static.py` 通過（25 passed）；`pytest tests` 通過（81 passed，僅既有 Starlette / datetime.utcnow warnings）；`node --check api/static/editor_bootstrap.js && node --check api/static/excel_to_sql_dashboard.js` 通過；`python -m playwright --version` 仍因環境未安裝 Playwright 無法截圖。
+- 結論：Excel 匯入操作與監控入口層級更清楚，監控 dashboard 不再混入作業中心說明；目的 SQL table 被刪除後，預掃描可在自動建表設定開啟時重建 table 並繼續估算新增 / 重複 / 錯誤列數。
+
+## 2026-06-15 Excel 匯入記錄管理表格響應式版面修正
+
+- 目的：改善「Excel 匯入作業中心」的匯入記錄管理表格；在大型桌機螢幕避免操作按鈕被擠到水平捲軸右側，在手機螢幕改成較容易檢閱與操作的卡片式列表。
+- 主要修改：`api/static/excel_to_sql_import_center.html` 將匯入記錄表改為 fixed table layout、加入 colgroup 欄寬、縮小操作按鈕排列並保留可換行文字；手機寬度下隱藏表頭、每筆記錄以卡片呈現，欄位用 `data-label` 顯示標籤，操作按鈕改為單欄滿寬。`api/static/excel_to_sql_import_records.js` 為每個儲存格輸出 `data-label` 與勾選 checkbox aria-label，提升手機版可讀性與可操作性。
+- 驗證：`node --check api/static/excel_to_sql_import_records.js` 通過；`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py` 通過（7 passed）；`pytest tests` 通過（81 passed，既有 Starlette / SyntaxWarning / datetime.utcnow warnings）。`python -m playwright --version` 仍因環境未安裝 Playwright 無法提供截圖。
+- 結論：桌機版應更能在 1500px 內容寬度內呈現完整操作欄；手機版不再依賴水平捲動檢閱欄位與操作按鈕。

@@ -9,7 +9,7 @@
     body { margin:0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
     header { padding:20px 28px; background:#111827; color:white; display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
     h1 { margin:0; font-size:22px; }
-    main { padding:24px; max-width:1400px; margin:0 auto; }
+    main { padding:24px; max-width:1500px; margin:0 auto; }
     .controls, .filters { display:grid; gap:16px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items:end; margin:12px 0 14px; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:0 1px 2px rgba(16,24,40,.05); margin-bottom:16px; }
     .muted { color:var(--muted); font-size:13px; }
@@ -18,22 +18,59 @@
     button { padding:10px 14px; border:0; border-radius:10px; background:#2563eb; color:white; font-weight:700; cursor:pointer; }
     button.secondary { background:#475467; }
     button.ghost { background:#e2e8f0; color:#172033; }
-    .header-actions, .upload-actions, .record-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .header-actions, .upload-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .record-actions { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:6px; min-width:190px; }
+    .record-actions button { padding:7px 9px; font-size:12px; white-space:nowrap; }
+    .record-actions button:nth-child(2) { grid-column: 1 / -1; }
     .header-user { color:#cbd5e1; font-size:13px; font-weight:700; white-space:nowrap; }
     .preview-box { margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:12px; background:#f8fafc; }
     .error { background:#fef3f2; border:1px solid #fecdca; color:var(--bad); padding:12px; border-radius:12px; margin:12px 0; white-space:pre-wrap; }
     .hidden { display:none; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
+    .import-records-table { table-layout:fixed; }
     th, td { border-bottom:1px solid var(--line); padding:9px 8px; text-align:left; vertical-align:top; }
+    #importRecords th, #importRecords td { overflow-wrap:anywhere; word-break:break-word; }
     th { color:#344054; font-size:12px; background:#f9fafb; position:sticky; top:0; }
     .table-wrap { overflow:auto; max-height:620px; border:1px solid var(--line); border-radius:12px; }
     .status { display:inline-block; border-radius:999px; padding:2px 8px; font-weight:700; font-size:12px; background:#eef4ff; color:var(--info); }
     .status.imported { background:#ecfdf3; color:var(--ok); }
     .status.imported_with_errors { background:#fef3f2; color:var(--bad); }
     .status.deleted { background:#f2f4f7; color:#344054; }
-    .diagnostics { min-width:280px; }
+    .diagnostics { min-width:0; }
     .diagnostics ul { margin:6px 0 0 18px; padding:0; }
+    .record-mobile-summary { display:none; }
     @media (max-width: 900px) { .controls, .filters { grid-template-columns:1fr; } }
+    @media (min-width: 901px) {
+      #importRecords .select-col { width:3%; }
+      #importRecords .date-col { width:12%; }
+      #importRecords .user-col { width:7%; }
+      #importRecords .file-col { width:14%; }
+      #importRecords .config-col { width:10%; }
+      #importRecords .status-col { width:9%; }
+      #importRecords .count-col { width:4%; }
+      #importRecords .size-col { width:5%; }
+      #importRecords .diagnostics-col { width:14%; }
+      #importRecords .actions-col { width:14%; }
+    }
+    @media (max-width: 760px) {
+      main { padding:14px; }
+      header { padding:16px; align-items:flex-start; }
+      .header-actions, .upload-actions { width:100%; justify-content:stretch; }
+      .header-actions button, .upload-actions button { flex:1 1 100%; }
+      .table-wrap.import-records-wrap { overflow:visible; max-height:none; border:0; }
+      .import-records-table, .import-records-table thead, .import-records-table tbody, .import-records-table tr, .import-records-table th, .import-records-table td { display:block; width:100%; box-sizing:border-box; }
+      .import-records-table thead { display:none; }
+      .import-records-table tr { margin:12px 0; border:1px solid var(--line); border-radius:14px; background:white; box-shadow:0 1px 2px rgba(16,24,40,.05); overflow:hidden; }
+      .import-records-table td { display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid #eef2f7; padding:10px 12px; }
+      .import-records-table td::before { content:attr(data-label); flex:0 0 7.5em; color:var(--muted); font-weight:700; }
+      .import-records-table td[data-label="選取"] { justify-content:flex-start; align-items:center; }
+      .import-records-table td[data-label="操作"] { display:block; }
+      .import-records-table td[data-label="操作"]::before { display:block; margin-bottom:8px; }
+      .record-actions { min-width:0; grid-template-columns:1fr; }
+      .record-actions button:nth-child(2) { grid-column:auto; }
+      .record-actions button { width:100%; padding:10px 12px; font-size:14px; }
+      .diagnostics { width:100%; }
+    }
   </style>
 </head>
 <body>
@@ -72,7 +109,7 @@
       <button onclick="loadImportRecords()">套用記錄篩選</button>
       <button class="secondary" onclick="deleteSelectedImportRecords()">批次刪除勾選記錄</button>
     </section>
-    <div class="table-wrap"><table id="importRecords"><thead><tr><th><input id="recordSelectAll" type="checkbox" onchange="toggleAllImportRecords(this.checked)" /></th><th>日期</th><th>使用者</th><th>檔名</th><th>設定檔</th><th>狀態</th><th>新增</th><th>重複</th><th>錯誤</th><th>大小</th><th>錯誤診斷</th><th>操作</th></tr></thead><tbody></tbody></table></div>
+    <div class="table-wrap import-records-wrap"><table id="importRecords" class="import-records-table"><colgroup><col class="select-col" /><col class="date-col" /><col class="user-col" /><col class="file-col" /><col class="config-col" /><col class="status-col" /><col class="count-col" /><col class="count-col" /><col class="count-col" /><col class="size-col" /><col class="diagnostics-col" /><col class="actions-col" /></colgroup><thead><tr><th><input id="recordSelectAll" type="checkbox" onchange="toggleAllImportRecords(this.checked)" /></th><th>日期</th><th>使用者</th><th>檔名</th><th>設定檔</th><th>狀態</th><th>新增</th><th>重複</th><th>錯誤</th><th>大小</th><th>錯誤診斷</th><th>操作</th></tr></thead><tbody></tbody></table></div>
   </section>
 </main>
 <script src="/static/excel_to_sql_import_records.js?v=20260615-center"></script>

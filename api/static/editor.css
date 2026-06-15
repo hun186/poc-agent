@@ -29,7 +29,7 @@
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .header-nav { flex: 1 1 auto; min-width: 280px; position: relative; }
     .nav-primary { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
-    .nav-root-btn { min-width: 128px; padding: 12px 18px; border: 1px solid rgba(255,255,255,.18); background: rgba(37,99,235,.95); box-shadow: 0 8px 20px rgba(0,0,0,.16); }
+    .nav-root-btn { min-width: 128px; padding: 12px 18px; border: 1px solid rgba(255,255,255,.18); background: rgba(71,85,105,.92); box-shadow: 0 8px 20px rgba(0,0,0,.16); }
     .nav-root-btn.secondary { background: rgba(71,85,105,.92); }
     .nav-root-btn.active { outline: 3px solid rgba(147,197,253,.55); background: #1d4ed8; }
     .nav-subpanel { position: absolute; top: calc(100% + 12px); left: var(--nav-panel-left, 50%); transform: translateX(-50%); width: min(760px, calc(100vw - 36px)); background: #fff; color: #0f172a; border: 1px solid #dbe4ef; border-radius: 16px; box-shadow: 0 24px 70px rgba(15,23,42,.28); padding: 12px; }
