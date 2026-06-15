@@ -270,3 +270,10 @@ Conclusion:
 - 主要修改：將報告 LLM 系統提示詞移至 `agent/report_prompt.py`，將報告模型 / timeout 環境設定移至 `agent/report_config.py`，將統計壓縮 helper 移至 `agent/report_stats.py`；`agent/report_agent.py` 保留報告流程 orchestration，行數由 621 行降至 367 行。
 - 驗證：`python -m py_compile agent/report_agent.py agent/report_prompt.py agent/report_config.py agent/report_stats.py` 通過；`pytest tests/test_chat_api.py tests/test_export_word.py` 因指定測試檔不存在而未執行（collected 0）；改以 `pytest tests` 完整測試通過（77 passed，僅既有 warnings）。
 - 結論：本次拆檔未變更 API contract 或報告資料流程，只降低單檔負擔並讓 prompt / config / stats helper 有明確模組邊界。
+
+## 2026-06-15 Agent router 單檔拆分
+
+- 目的：檢查大型檔案並進行低風險拆檔重構；排除資料、輸出、技術文件與備份檔後，優先處理 `agent/agent.py` 這類核心 orchestration 檔案。
+- 主要修改：新增 `agent/routing.py` 承載 router prompt、topic/index helper 與 LLM 任務分類流程；`agent/agent.py` 改為只負責 session、context 組裝、路由結果分派與統一輸出，行數由 610 行降至 392 行。
+- 驗證：`python -m compileall agent/agent.py agent/routing.py` 通過；`python - <<'PY' ... import agent.agent ...` 通過；`pytest tests` 通過（77 passed，僅既有 StarletteDeprecationWarning、SyntaxWarning 與 datetime.utcnow deprecation warnings）。
+- 結論：`answer_with_routing()` 外部入口與主要 response contract 不變；router helper 後續集中維護於 `agent/routing.py`。

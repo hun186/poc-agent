@@ -28,3 +28,8 @@
 
 - 當 Python orchestration 檔案主要因大型 prompt 或純 helper 過長時，優先拆成同 package 的小模組，避免改動既有 public import path 與 runtime behavior。
 - `ReportAgent` 與 `ask_with_report()` 的外部入口維持在 `agent/report_agent.py`，降低呼叫端遷移成本；prompt / config / stats helper 則使用相對 import 管理。
+
+## 2026-06-15 Agent Router 拆檔決策
+
+- 當 orchestration 檔案同時包含大型 prompt、分類 helper 與 session / dispatch 流程時，優先將 prompt + router helper 拆到同 package 小模組，讓主入口維持薄 orchestration。
+- `answer_with_routing()` 的外部入口維持在 `agent/agent.py`；router 相關 public helper 則以 `agent/routing.py` 作為後續維護位置，並於必要時在 `agent.agent` 保留 re-export 相容。
