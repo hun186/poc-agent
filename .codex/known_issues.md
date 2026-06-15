@@ -278,3 +278,19 @@ Open
 - 替代驗證：以 `tests/test_excel_to_sql_dashboard_static.py` 與 `tests/test_excel_to_sql_user_imports.py` 靜態檢查頁面導覽、拆頁、日期篩選文案與錯誤診斷 DOM / JS，並以 `node --check` 驗證相關 JS 語法。
 
 狀態：Open
+
+## 2026-06-15 Excel 匯入記錄管理 UI 截圖限制
+
+- 本次移除 Excel 匯入記錄管理的刪除記錄操作入口，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回報 `No module named playwright`，無法提供瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_excel_to_sql_user_imports.py` 靜態檢查刪除按鈕、批次刪除入口、刪除 JS 函式與選取 checkbox 已移除，並以 `node --check api/static/excel_to_sql_import_records.js` 檢查前端語法。
+
+狀態：Open
+
+## 2026-06-15 匯入記錄刪除功能移除後 UI 截圖限制
+
+- 本次再次調整 Excel 匯入記錄管理 UI，移除批次刪除與後端刪除能力相關入口。
+- 目前環境執行 `python -m playwright --version` 回報 `No module named playwright`，無法提供瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_excel_to_sql_user_imports.py` 靜態檢查批次刪除按鈕、單筆刪除按鈕、選取 checkbox、刪除 JS 函式、刪除 route 與後端 `delete_records()` 均已移除；並以 `node --check api/static/excel_to_sql_import_records.js` 檢查前端語法。
+
+狀態：Open

@@ -12,10 +12,9 @@ from .user_import_runner import import_record
 from .user_import_storage import (
     ACTIVE_DIR,
     ALLOWED_SUFFIXES,
-    DELETED_DIR,
+    RECORDS_DIR,
     REGISTRY,
     ROOT,
-    delete_records,
     list_import_records,
     save_upload,
 )
@@ -23,10 +22,9 @@ from .user_import_storage import (
 __all__ = [
     "ACTIVE_DIR",
     "ALLOWED_SUFFIXES",
-    "DELETED_DIR",
+    "RECORDS_DIR",
     "REGISTRY",
     "ROOT",
-    "delete_records",
     "import_record",
     "list_import_records",
     "preview_record",

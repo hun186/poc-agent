@@ -13,7 +13,6 @@ from data_ingestion.excel_to_sql.dashboard import (
     discover_dashboard_tasks,
 )
 from data_ingestion.excel_to_sql.user_imports import (
-    delete_records,
     import_record,
     list_import_records,
     preview_record,
@@ -28,11 +27,6 @@ router = APIRouter(tags=["excel-to-sql"])
 class DeleteImportedRowPayload(BaseModel):
     config: str = Field(default="config/excel_to_sql/vessel_activities.example.json")
     hash_value: str = Field(..., min_length=1, max_length=128)
-    reason: str = Field(default="", max_length=500)
-
-
-class DeleteImportRecordsPayload(BaseModel):
-    record_ids: list[str] = Field(..., min_length=1, max_length=100)
     reason: str = Field(default="", max_length=500)
 
 
@@ -243,16 +237,3 @@ def excel_to_sql_import_records(
             end_ts=end_ts,
         )
     }
-
-
-@router.delete("/v1/excel-to-sql/import-records")
-def excel_to_sql_delete_import_records(
-    payload: DeleteImportRecordsPayload,
-    user: AuthUser = Depends(require_db_operator),
-) -> dict[str, Any]:
-    return delete_records(
-        payload.record_ids,
-        username=user.username,
-        is_superuser=_is_superuser(user),
-        reason=payload.reason,
-    )

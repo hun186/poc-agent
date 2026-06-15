@@ -63,7 +63,6 @@
       .import-records-table tr { margin:12px 0; border:1px solid var(--line); border-radius:14px; background:white; box-shadow:0 1px 2px rgba(16,24,40,.05); overflow:hidden; }
       .import-records-table td { display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid #eef2f7; padding:10px 12px; }
       .import-records-table td::before { content:attr(data-label); flex:0 0 7.5em; color:var(--muted); font-weight:700; }
-      .import-records-table td[data-label="選取"] { justify-content:flex-start; align-items:center; }
       .import-records-table td[data-label="操作"] { display:block; }
       .import-records-table td[data-label="操作"]::before { display:block; margin-bottom:8px; }
       .record-actions { min-width:0; grid-template-columns:1fr; }
@@ -107,9 +106,8 @@
       <div><label>起始時間（本機）</label><input id="recordStartFilter" type="datetime-local" step="1" /></div>
       <div><label>結束時間（本機）</label><input id="recordEndFilter" type="datetime-local" step="1" /></div>
       <button onclick="loadImportRecords()">套用記錄篩選</button>
-      <button class="secondary" onclick="deleteSelectedImportRecords()">批次刪除勾選記錄</button>
     </section>
-    <div class="table-wrap import-records-wrap"><table id="importRecords" class="import-records-table"><colgroup><col class="select-col" /><col class="date-col" /><col class="user-col" /><col class="file-col" /><col class="config-col" /><col class="status-col" /><col class="count-col" /><col class="count-col" /><col class="count-col" /><col class="size-col" /><col class="diagnostics-col" /><col class="actions-col" /></colgroup><thead><tr><th><input id="recordSelectAll" type="checkbox" onchange="toggleAllImportRecords(this.checked)" /></th><th>日期</th><th>使用者</th><th>檔名</th><th>設定檔</th><th>狀態</th><th>新增</th><th>重複</th><th>錯誤</th><th>大小</th><th>錯誤診斷</th><th>操作</th></tr></thead><tbody></tbody></table></div>
+    <div class="table-wrap import-records-wrap"><table id="importRecords" class="import-records-table"><colgroup><col class="date-col" /><col class="user-col" /><col class="file-col" /><col class="config-col" /><col class="status-col" /><col class="count-col" /><col class="count-col" /><col class="count-col" /><col class="size-col" /><col class="diagnostics-col" /><col class="actions-col" /></colgroup><thead><tr><th>日期</th><th>使用者</th><th>檔名</th><th>設定檔</th><th>狀態</th><th>新增</th><th>重複</th><th>錯誤</th><th>大小</th><th>錯誤診斷</th><th>操作</th></tr></thead><tbody></tbody></table></div>
   </section>
 </main>
 <script src="/static/excel_to_sql_import_records.js?v=20260615-center"></script>
