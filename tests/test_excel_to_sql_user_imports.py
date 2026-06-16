@@ -35,10 +35,19 @@ def test_save_and_list_upload_record_uses_compact_registry(monkeypatch, tmp_path
     )
 
     assert record["original_filename"] == "sample.xlsx"
+    assert record["stored_filename"] == f"{record['id']}.xlsx"
     assert record["status"] == "uploaded"
     assert "stored_path" not in record
     assert (
         user_imports.list_import_records(username="alice", is_superuser=False)[0]["id"]
+        == record["id"]
+    )
+    assert (
+        user_imports.list_import_records(
+            username="alice",
+            is_superuser=False,
+            filename=record["stored_filename"],
+        )[0]["id"]
         == record["id"]
     )
     assert user_imports.list_import_records(username="bob", is_superuser=False) == []
@@ -80,16 +89,23 @@ def test_legacy_records_json_migrates_to_per_record_files(monkeypatch, tmp_path)
 
 
 def test_import_center_static_contains_user_import_controls():
-    dashboard_html = Path("api/static/excel_to_sql_dashboard.html").read_text(encoding="utf-8")
-    html = Path("api/static/excel_to_sql_import_center.html").read_text(encoding="utf-8")
+    dashboard_html = Path("api/static/excel_to_sql_dashboard.html").read_text(
+        encoding="utf-8"
+    )
+    html = Path("api/static/excel_to_sql_import_center.html").read_text(
+        encoding="utf-8"
+    )
     script = Path("api/static/excel_to_sql_import_records.js").read_text(
         encoding="utf-8"
     )
-    assert "使用者 Excel 上傳、預掃描、確認匯入 SQL 與匯入記錄管理已移至獨立頁面" not in dashboard_html
+    assert (
+        "使用者 Excel 上傳、預掃描、確認匯入 SQL 與匯入記錄管理已移至獨立頁面"
+        not in dashboard_html
+    )
     assert "前往 Excel 匯入作業中心" not in dashboard_html
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
-    assert "/static/excel_to_sql_import_records.js?v=20260615-center" in html
+    assert "/static/excel_to_sql_import_records.js?v=20260616-audit-link" in html
     assert "/v1/excel-to-sql/import-records" in script
     assert "previewImportRecord" in script
     assert "刪除記錄" not in script
@@ -98,22 +114,34 @@ def test_import_center_static_contains_user_import_controls():
     assert "recordSelectAll" not in html
     assert "批次刪除勾選記錄" not in html
     assert "錯誤診斷" in html
+    assert "原始檔名" in html
+    assert "導入檔名" in html
     assert 'class="table-wrap import-records-wrap"' in html
     assert 'class="import-records-table"' in html
     assert "table-layout:fixed" in html
-    assert "#importRecords .actions-col { width:14%; }" in html
+    assert "#importRecords .stored-file-col { width:9%; }" in html
+    assert "#importRecords .actions-col { width:15%; }" in html
     assert "@media (max-width: 760px)" in html
-    assert 'content:attr(data-label)' in html
+    assert "content:attr(data-label)" in html
     assert "function importRecordDiagnostics" in script
+    assert "function openAuditForImportRecord" in script
+    assert "source_file_filter" in script
+    assert "查詢已匯入條目" in script
+    assert "window.__importRecordById" in script
+    assert 'data-label="導入檔名"' in script
     assert 'data-label="操作"' in script
     assert 'aria-label="選取匯入記錄' not in script
     assets = Path("api/routers/editor.py").read_text(encoding="utf-8")
     router = Path("api/routers/excel_to_sql.py").read_text(encoding="utf-8")
-    facade = Path("data_ingestion/excel_to_sql/user_imports.py").read_text(encoding="utf-8")
-    storage = Path("data_ingestion/excel_to_sql/user_import_storage.py").read_text(encoding="utf-8")
+    facade = Path("data_ingestion/excel_to_sql/user_imports.py").read_text(
+        encoding="utf-8"
+    )
+    storage = Path("data_ingestion/excel_to_sql/user_import_storage.py").read_text(
+        encoding="utf-8"
+    )
     assert "excel_to_sql_import_records.js" in assets
     assert "excel_to_sql_dashboard.js" in assets
-    assert "@router.delete(\"/v1/excel-to-sql/import-records\")" not in router
+    assert '@router.delete("/v1/excel-to-sql/import-records")' not in router
     assert "def delete_records" not in storage
     assert "delete_records" not in facade
 
@@ -127,12 +155,15 @@ def test_preview_auto_creates_missing_destination_table(monkeypatch, tmp_path):
         def __init__(self):
             self.statements = []
             self.closed = False
+
         def execute(self, sql, *params):
             self.statements.append(str(sql))
             return self
+
         def fetchone(self):
             # destination_table_exists returns false for the missing table.
             return None
+
         def close(self):
             self.closed = True
 
@@ -141,10 +172,13 @@ def test_preview_auto_creates_missing_destination_table(monkeypatch, tmp_path):
             self.cursor_obj = FakeCursor()
             self.commits = 0
             self.closed = False
+
         def cursor(self):
             return self.cursor_obj
+
         def commit(self):
             self.commits += 1
+
         def close(self):
             self.closed = True
 
@@ -171,21 +205,36 @@ def test_preview_auto_creates_missing_destination_table(monkeypatch, tmp_path):
         "iter_excel_rows",
         lambda **kwargs: iter([(2, {"name": "A"}, {"名稱": "A"}, "hash-a", "")]),
     )
-    monkeypatch.setattr(user_import_preview, "get_existing_hashes", lambda *args, **kwargs: set())
+    monkeypatch.setattr(
+        user_import_preview, "get_existing_hashes", lambda *args, **kwargs: set()
+    )
 
     result = user_import_preview._preview_file(
         "cfg.json",
         {
-            "destination": {"table": "dbo.vessel_activities", "auto_create_table": True},
-            "db": {"driver": "x", "server": "s", "database": "d", "user": "u", "password": "p"},
+            "destination": {
+                "table": "dbo.vessel_activities",
+                "auto_create_table": True,
+            },
+            "db": {
+                "driver": "x",
+                "server": "s",
+                "database": "d",
+                "user": "u",
+                "password": "p",
+            },
             "source": {},
         },
         tmp_path / "sample.xlsx",
     )
 
     assert result["will_insert"] == 1
-    assert any("CREATE TABLE [dbo].[vessel_activities]" in sql for sql in fake_conn.cursor_obj.statements)
+    assert any(
+        "CREATE TABLE [dbo].[vessel_activities]" in sql
+        for sql in fake_conn.cursor_obj.statements
+    )
     assert fake_conn.commits == 1
+
 
 def test_confirm_import_ensures_audit_table_before_processing(monkeypatch, tmp_path):
     from types import SimpleNamespace
@@ -209,9 +258,11 @@ def test_confirm_import_ensures_audit_table_before_processing(monkeypatch, tmp_p
         def __init__(self):
             self.statements = []
             self.closed = False
+
         def execute(self, sql, *params):
             self.statements.append(str(sql))
             return self
+
         def close(self):
             self.closed = True
 
@@ -220,25 +271,37 @@ def test_confirm_import_ensures_audit_table_before_processing(monkeypatch, tmp_p
             self.cursor_obj = FakeCursor()
             self.commits = 0
             self.closed = False
+
         def cursor(self):
             return self.cursor_obj
+
         def commit(self):
             self.commits += 1
+
         def close(self):
             self.closed = True
 
     fake_conn = FakeConn()
-    monkeypatch.setitem(sys.modules, "pyodbc", SimpleNamespace(connect=lambda conn_str: fake_conn))
+    monkeypatch.setitem(
+        sys.modules, "pyodbc", SimpleNamespace(connect=lambda conn_str: fake_conn)
+    )
     monkeypatch.setattr(
         user_import_runner,
         "process_excel_file",
-        lambda **kwargs: SimpleNamespace(success=1, duplicate=0, failed=0, ok=True, failure_summary={}),
+        lambda **kwargs: SimpleNamespace(
+            success=1, duplicate=0, failed=0, ok=True, failure_summary={}
+        ),
     )
 
-    result = user_import_runner.import_record(record["id"], username="alice", is_superuser=False)
+    result = user_import_runner.import_record(
+        record["id"], username="alice", is_superuser=False
+    )
 
     assert result["import_result"]["inserted_rows"] == 1
     assert fake_conn.closed is True
     assert fake_conn.cursor_obj.closed is True
-    assert any("CREATE TABLE [dbo].[ExcelImportAudit]" in sql for sql in fake_conn.cursor_obj.statements)
+    assert any(
+        "CREATE TABLE [dbo].[ExcelImportAudit]" in sql
+        for sql in fake_conn.cursor_obj.statements
+    )
     assert fake_conn.commits >= 1

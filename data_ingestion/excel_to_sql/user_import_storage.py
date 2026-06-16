@@ -26,7 +26,8 @@ def ensure_dirs() -> None:
     REGISTRY.parent.mkdir(parents=True, exist_ok=True)
     if not REGISTRY.exists():
         REGISTRY.write_text(
-            json.dumps({"record_ids": []}, ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps({"record_ids": []}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
 
 
@@ -87,7 +88,9 @@ def read_registry() -> dict[str, Any]:
 
 def write_registry(data: dict[str, Any]) -> None:
     ensure_dirs()
-    records = [r for r in data.get("records", []) if isinstance(r, dict) and r.get("id")]
+    records = [
+        r for r in data.get("records", []) if isinstance(r, dict) and r.get("id")
+    ]
     record_ids: list[str] = []
     for record in records:
         record_id = str(record["id"])
@@ -124,7 +127,8 @@ def list_import_records(
             continue
         if (
             filename
-            and filename.lower() not in str(record.get("original_filename", "")).lower()
+            and filename.lower()
+            not in f'{record.get("original_filename", "")} {record.get("stored_filename", "")}'.lower()
         ):
             continue
         if actor and actor.lower() not in str(record.get("username", "")).lower():

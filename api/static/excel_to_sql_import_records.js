@@ -76,7 +76,22 @@ async function confirmImportRecord(id) {
   await loadImportRecords();
 }
 function importRecordCounts(r) { return r.import_result || r.preview || {}; }
-function importRecordActions(r) { if (r.status === 'deleted') return '<span class="muted">—</span>'; return `<div class="record-actions"><button class="ghost" onclick="previewImportRecord('${escapeHtml(r.id)}')">預掃描</button><button onclick="confirmImportRecord('${escapeHtml(r.id)}')">確認匯入SQL</button></div>`; }
+function openAuditForImportRecord(id) {
+  const row = window.__importRecordById?.[id];
+  if (!row) return;
+  const params = new URLSearchParams();
+  if (row.config_path) params.set('config', row.config_path);
+  const storedName = row.stored_filename || '';
+  if (storedName) params.set('source_file_filter', storedName);
+  params.set('days', '365');
+  params.set('page', '1');
+  location.href = '/excel-to-sql-dashboard?' + params.toString();
+}
+function importRecordActions(r) {
+  if (r.status === 'deleted') return '<span class="muted">—</span>';
+  const auditDisabled = r.stored_filename ? '' : ' disabled title="此記錄缺少導入檔名，無法快速篩選 audit"';
+  return `<div class="record-actions"><button class="ghost" onclick="previewImportRecord('${escapeHtml(r.id)}')">預掃描</button><button class="secondary" onclick="openAuditForImportRecord('${escapeHtml(r.id)}')"${auditDisabled}>查詢已匯入條目</button><button onclick="confirmImportRecord('${escapeHtml(r.id)}')">確認匯入SQL</button></div>`;
+}
 async function loadImportRecords() {
   const params = new URLSearchParams();
   const map = { filename:'recordFilenameFilter', status:'recordStatusFilter', actor:'recordActorFilter' };
@@ -86,7 +101,9 @@ async function loadImportRecords() {
   const res = await fetch('/v1/excel-to-sql/import-records?' + params.toString(), { headers:{ Authorization:'Bearer ' + authToken() } });
   if (!res.ok) return;
   const data = await res.json();
-  fillTable('importRecords', data.records || [], r => { const c=importRecordCounts(r); return `<tr><td data-label="日期">${formatAuditTime(r.created_at)}</td><td data-label="使用者">${escapeHtml(r.username)}</td><td data-label="檔名">${escapeHtml(r.original_filename)}</td><td data-label="設定檔">${escapeHtml(r.config_path)}</td><td data-label="狀態">${statusBadge(r.status)}</td><td data-label="新增">${escapeHtml(c.inserted_rows ?? c.will_insert ?? '')}</td><td data-label="重複">${escapeHtml(c.duplicate_rows ?? c.duplicate ?? '')}</td><td data-label="錯誤">${escapeHtml(c.failed_rows ?? c.failed ?? '')}</td><td data-label="大小">${escapeHtml(r.file_size || 0)}</td><td data-label="錯誤診斷">${importRecordDiagnostics(r)}</td><td data-label="操作">${importRecordActions(r)}</td></tr>`; });
+  const rows = data.records || [];
+  window.__importRecordById = Object.fromEntries(rows.map(row => [String(row.id), row]));
+  fillTable('importRecords', rows, r => { const c=importRecordCounts(r); return `<tr><td data-label="日期">${formatAuditTime(r.created_at)}</td><td data-label="使用者">${escapeHtml(r.username)}</td><td data-label="原始檔名">${escapeHtml(r.original_filename)}</td><td data-label="導入檔名"><code>${escapeHtml(r.stored_filename || '')}</code></td><td data-label="設定檔">${escapeHtml(r.config_path)}</td><td data-label="狀態">${statusBadge(r.status)}</td><td data-label="新增">${escapeHtml(c.inserted_rows ?? c.will_insert ?? '')}</td><td data-label="重複">${escapeHtml(c.duplicate_rows ?? c.duplicate ?? '')}</td><td data-label="錯誤">${escapeHtml(c.failed_rows ?? c.failed ?? '')}</td><td data-label="大小">${escapeHtml(r.file_size || 0)}</td><td data-label="錯誤診斷">${importRecordDiagnostics(r)}</td><td data-label="操作">${importRecordActions(r)}</td></tr>`; });
 }
 if (document.getElementById('importRecords')) {
   (async () => { await loadCurrentUser(); await loadTasks(); await loadImportRecords(); })().catch(err => showError(err.message || String(err)));

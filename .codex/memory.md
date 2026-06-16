@@ -62,3 +62,9 @@
 
 - 目的：補強主系統與 portable auth pack 使用說明，明確描述 `SRA_AUTH_USERS_FILE` / `SRA_LOGIN_AUDIT_FILE` 與 `AUTH_USERS_FILE` / `AUTH_LOGIN_AUDIT_FILE` 的角色、建議路徑、產物與不要指到同一檔案的注意事項。
 - 驗證：本次為文件補強，使用 `rg "SRA_AUTH_USERS_FILE|SRA_LOGIN_AUDIT_FILE|AUTH_USERS_FILE|AUTH_LOGIN_AUDIT_FILE" README.md portable_auth_pack/README.md portable_auth_pack/CODEX_IMPORT_GUIDE.md portable_auth_pack/examples/env.example -n` 檢查相關說明存在。
+
+## 2026-06-16 Excel 匯入記錄導入檔名與 audit 快速查詢
+
+- 目的：讓 Excel 匯入作業中心可直接對應原始上傳檔名與實際寫入 audit 的磁碟導入檔名，並提供一鍵跳轉至 SQL 監控儀表板查詢該檔 audit 條目。
+- 主要修改：匯入記錄列表新增「導入檔名」欄位顯示 `stored_filename`；檔名篩選同步比對原始檔名與導入檔名；操作欄新增「查詢已匯入條目」按鈕，帶入 `config`、`source_file_filter` 與較長回看天數跳轉至 `/excel-to-sql-dashboard`；監控儀表板啟動時可讀取 URL query 並套用篩選。
+- 驗證：`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（10 passed）；`node --check api/static/excel_to_sql_import_records.js` 與 `node --check api/static/excel_to_sql_dashboard.js` 通過；`pytest tests/test_dashboard_filters.py tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（20 passed）；`pytest tests -q` 通過（90 passed，5 個既有 warning）。

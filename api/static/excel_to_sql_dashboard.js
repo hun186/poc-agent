@@ -41,6 +41,11 @@ function resetDefaultWindow() {
   $('days').value = 14;
   $('chartBucket').value = 'day';
 }
+function applyInitialQueryParams() {
+  const query = new URLSearchParams(window.location.search || '');
+  const map = { config: 'config', days: 'days', source_file_filter: 'sourceFileFilter', status_filter: 'statusFilter', row_no_filter: 'rowNoFilter', message_filter: 'messageFilter', hash_value_filter: 'hashFilter', payload_filter: 'payloadFilter', chart_bucket: 'chartBucket' };
+  Object.entries(map).forEach(([param, id]) => { const value = query.get(param); if (value !== null && $(id)) $(id).value = value; });
+}
 function fillRecentWindow() {
   const end = new Date();
   const start = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000);
@@ -228,4 +233,4 @@ function bindAuditFilterEvents() {
 }
 bindAuditFilterEvents();
 // boot order includes: await loadCurrentUser(); await loadTasks(); await loadDashboard();
-(async () => { resetDefaultWindow(); await loadCurrentUser(); await loadTasks(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
+(async () => { resetDefaultWindow(); applyInitialQueryParams(); await loadCurrentUser(); await loadTasks(); applyInitialQueryParams(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
