@@ -34,8 +34,7 @@ def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     assert "使用回看天數" not in html
     assert '<button onclick="refreshDashboardNow()">重新整理</button>' in html
     assert (
-        "function applyAuditFilters() { resetRecentPage(); loadDashboard(); }"
-        in html
+        "function applyAuditFilters() { resetRecentPage(); loadDashboard(); }" in html
     )
     assert "function refreshDashboardNow() { loadDashboard(); }" in html
     assert "回看天數（起迄皆空時才生效）" in html
@@ -82,3 +81,16 @@ def test_dashboard_header_shows_current_logged_in_user():
     assert "`${user.username} (${user.role || '-'})`" in html
     assert "await loadCurrentUser(); await loadTasks(); await loadDashboard();" in html
     assert html.count("function closeDestinationTableDropdown(") == 1
+
+
+def test_dashboard_accepts_import_record_deep_link_filters():
+    html = dashboard_source()
+
+    assert "function applyInitialQueryParams()" in html
+    assert "new URLSearchParams(window.location.search || '')" in html
+    assert "source_file_filter: 'sourceFileFilter'" in html
+    assert "config: 'config'" in html
+    assert (
+        "resetDefaultWindow(); applyInitialQueryParams(); await loadCurrentUser(); await loadTasks(); applyInitialQueryParams(); await loadDashboard();"
+        in html
+    )

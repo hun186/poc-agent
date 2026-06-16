@@ -294,3 +294,11 @@ Open
 - 替代驗證：以 `tests/test_excel_to_sql_user_imports.py` 靜態檢查批次刪除按鈕、單筆刪除按鈕、選取 checkbox、刪除 JS 函式、刪除 route 與後端 `delete_records()` 均已移除；並以 `node --check api/static/excel_to_sql_import_records.js` 檢查前端語法。
 
 狀態：Open
+
+## 2026-06-16 Excel 匯入記錄 UI 截圖限制
+
+- 本次新增 Excel 匯入作業中心「導入檔名」欄位與「查詢已匯入條目」快速按鈕，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回傳 `No module named playwright`，因此無法進行瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_excel_to_sql_user_imports.py` / `tests/test_excel_to_sql_dashboard_static.py` 靜態檢查 DOM、欄寬、deep-link query 與按鈕邏輯；以 `node --check` 驗證相關 JS 語法；並執行完整 `pytest tests -q`。
+
+狀態：Open
