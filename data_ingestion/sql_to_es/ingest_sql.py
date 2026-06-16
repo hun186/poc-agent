@@ -342,8 +342,36 @@ def bulk_insert_sql_from_config(cfg: Dict[str, Any]) -> tuple[int, int, int, int
         raise RuntimeError("未指定 index_name，且 .env 也沒有 ES_INDEX")
 
     batch_size = int(get_nested(cfg, "import.batch_size", 500) or 500)
-    op_type = get_nested(cfg, "import.op_type", "index")
-
+    op_type = get_nested(cfg, "import.op_type", "create")
+    yes = bool(get_nested(cfg, "import.yes", False))
+    
+    if op_type == "index" and not yes:
+        print("")
+        print("⚠️ 危險操作：目前使用 import.op_type = index")
+        print(f"⚠️ 目標 Index：{index_name}")
+        print("⚠️ Elasticsearch 中已存在的文件將被覆寫。")
+        print("⚠️ 若文件已經做過分類、摘要、標註、人工修正或其他分析結果，可能會被還原成原始匯入狀態。")
+        print("")
+        print("建議：")
+        print("  create = 僅新增不存在的文件（推薦）")
+        print("  index  = 新增或覆寫既有文件")
+        print("")
+        print("若要無人值守自動執行，可在設定檔加入：")
+        print("")
+        print('  "import": {')
+        print('      "op_type": "index",')
+        print('      "yes": true')
+        print('  }')
+        print("")
+    
+        confirm = input(
+            f"請輸入 YES-{index_name} 以確認覆寫："
+        ).strip()
+        
+        if confirm != f"YES-{index_name}":
+            print("❌ 已取消匯入。若只是想跳過已存在資料，請使用 import.op_type = create。")
+            return 0, 0, 0, 0
+        
     ensure_index(es, index_name=index_name)
 
     conn_str = build_conn_str_from_config(cfg)

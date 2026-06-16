@@ -2,6 +2,7 @@
 #cd /d D:\shared\TopicClassification\poc-agent
 #python -m data_ingestion.txt_to_es.ingest_txt -d "D:\shared\TopicClassification\poc-agent\data\軍事情報文本\mil_30k_300days"
 #python -m data_ingestion.txt_to_es.ingest_txt -d "D:\shared\TopicClassification\TopicTextCrawler\Books\新聞網\聯合國新聞網\UnTagged\最新消息" -i news_test
+#python -m data_ingestion.txt_to_es.ingest_txt -d "D:\shared\TopicClassification\poc-agent\data\資料庫條目測試" -i srp_test
 
 #跨路徑去重：
 #python -m data_ingestion.txt_to_es.ingest_txt -d "D:\path\to\txt_dir" --dedup-by-content
@@ -207,11 +208,26 @@ def main():
     parser.add_argument("--batch", type=int, default=500)
     parser.add_argument("--lang", default="C")
     parser.add_argument("--user", default="crawler")
-    parser.add_argument("--op", choices=["index", "create"], default="index")
+    parser.add_argument(
+        "--op",
+        choices=["index", "create"],
+        default="create",
+        help="create=只新增不存在的 doc，已存在則跳過；index=新增或覆寫既有 doc，可能清掉分析結果",
+    )
+    parser.add_argument("--yes", action="store_true", help="略過危險操作確認")
     parser.add_argument("--dedup-by-content", action="store_true")
 
     args = parser.parse_args()
 
+    if args.op == "index" and not args.yes:
+        print("⚠️ 你選擇了 --op index，這會覆寫已存在的 ES doc。")
+        print("⚠️ 若 doc 已經做過分類、摘要、標註或其他分析，可能會被還原成原始未分析狀態。")
+        confirm = input("請輸入 YES 才繼續覆寫：").strip()
+    
+        if confirm != "YES":
+            print("❌ 已取消匯入。若只是想跳過已存在資料，請使用預設 create 模式。")
+            return
+        
     index_name = (args.index or os.getenv("ES_INDEX") or ES_INDEX_DEFAULT).strip()
     if not index_name:
         raise RuntimeError("未指定 index：請用 -i 指定，或在 .env 設定 ES_INDEX")
