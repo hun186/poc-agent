@@ -95,6 +95,15 @@ def _auth_file() -> Path:
     return _project_root() / ".sra_users.json"
 
 
+def _login_audit_file() -> Path:
+    bootstrap_env()
+    configured = (os.getenv("SRA_LOGIN_AUDIT_FILE") or "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    auth_path = _auth_file()
+    return auth_path.with_name(f"{auth_path.stem}.login_audit.json")
+
+
 def _is_production_env() -> bool:
     app_env = (os.getenv("APP_ENV") or os.getenv("ENV") or os.getenv("PY_ENV") or "").strip().lower()
     return app_env in PRODUCTION_ENVS

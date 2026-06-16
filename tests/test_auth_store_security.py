@@ -278,3 +278,107 @@ def test_register_endpoint_rate_limits_by_ip(monkeypatch, tmp_path):
     throttled = client.post("/v1/auth/register", json={"username": "bulk-blocked", "password": "BulkPass!2026"})
     assert throttled.status_code == 429
     assert int(throttled.headers["retry-after"]) > 0
+
+
+def test_login_audit_uses_separate_file_and_keeps_users_file_small(monkeypatch, tmp_path):
+    audit_file = tmp_path / "login_audit.json"
+    monkeypatch.setenv("SRA_LOGIN_AUDIT_FILE", str(audit_file))
+    auth_store = _load_auth_store(monkeypatch, tmp_path)
+
+    auth_store.AUTH_STORE.record_login_audit("admin", success=True, reason="ok", role="superuser", status_value="active")
+
+    users_data = json.loads((tmp_path / "users.json").read_text(encoding="utf-8"))
+    audit_manifest = json.loads(audit_file.read_text(encoding="utf-8"))
+    audit_shards = sorted(audit_file.with_suffix(audit_file.suffix + ".d").glob("login_audit-*.json"))
+    assert "login_audit" not in users_data
+    assert audit_manifest["storage"] == "sharded"
+    assert audit_shards
+    assert json.loads(audit_shards[-1].read_text(encoding="utf-8"))["events"][-1]["username"] == "admin"
+    assert auth_store.AUTH_STORE.list_login_audit()[-1]["reason"] == "ok"
+
+
+def test_login_audit_is_split_into_monthly_shards(monkeypatch, tmp_path):
+    audit_file = tmp_path / "login_audit.json"
+    monkeypatch.setenv("SRA_LOGIN_AUDIT_FILE", str(audit_file))
+    auth_store = _load_auth_store(monkeypatch, tmp_path)
+
+    import api.services.auth_login_audit_store as auth_login_audit_store
+
+    monkeypatch.setattr(auth_login_audit_store, "_utc_now", lambda: "2026-01-05T00:00:00+00:00")
+    auth_store.AUTH_STORE.record_login_audit("admin", success=True, reason="jan")
+    monkeypatch.setattr(auth_login_audit_store, "_utc_now", lambda: "2026-02-05T00:00:00+00:00")
+    auth_store.AUTH_STORE.record_login_audit("admin", success=True, reason="feb")
+
+    shard_dir = audit_file.with_suffix(audit_file.suffix + ".d")
+    assert (shard_dir / "login_audit-202601.json").exists()
+    assert (shard_dir / "login_audit-202602.json").exists()
+    assert [event["reason"] for event in auth_store.AUTH_STORE.list_login_audit(2)] == ["jan", "feb"]
+
+
+def test_auth_store_recovers_users_file_from_backup(monkeypatch, tmp_path):
+    auth_store = _load_auth_store(monkeypatch, tmp_path)
+    users_file = tmp_path / "users.json"
+    backup_file = users_file.with_suffix(users_file.suffix + ".bak")
+    healthy_data = json.loads(users_file.read_text(encoding="utf-8"))
+    backup_file.write_text(json.dumps(healthy_data), encoding="utf-8")
+    users_file.write_text("{broken json", encoding="utf-8")
+
+    users = auth_store.AUTH_STORE.list_users()
+
+    assert any(user["username"] == "admin" for user in users)
+    assert json.loads(users_file.read_text(encoding="utf-8"))["users"]["admin"]["role"] == "superuser"
+
+
+def test_legacy_login_audit_is_migrated_to_separate_file(monkeypatch, tmp_path):
+    users_file = tmp_path / "users.json"
+    users_file.write_text(
+        json.dumps({"users": {}, "login_audit": [{"username": "legacy", "success": True, "reason": "ok"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SRA_LOGIN_AUDIT_FILE", str(tmp_path / "audit.json"))
+    auth_store = _load_auth_store(monkeypatch, tmp_path)
+
+    assert auth_store.AUTH_STORE.list_login_audit()[-1]["username"] == "legacy"
+
+
+def test_json_store_keeps_daily_backup_once_and_recovers_from_history(tmp_path, caplog):
+    from api.services.auth_json_store import JsonFileStore
+
+    caplog.set_level(logging.WARNING)
+    store = JsonFileStore(max_backup_versions=20)
+    path = tmp_path / "store.json"
+    for idx in range(5):
+        store.write(path, {"version": idx}, prefix=".test_store.")
+
+    versioned_backups = sorted(tmp_path.glob("store.json.bak.*"), reverse=True)
+    assert len(versioned_backups) == 1
+    assert json.loads(versioned_backups[0].read_text(encoding="utf-8"))["version"] == 0
+    assert json.loads(path.with_suffix(path.suffix + ".bak").read_text(encoding="utf-8"))["version"] == 3
+
+    path.with_suffix(path.suffix + ".bak").write_text("{broken backup", encoding="utf-8")
+    path.write_text("{broken current", encoding="utf-8")
+
+    recovered = store.read(path, {"version": "default"})
+
+    assert recovered["version"] == 0
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == 0
+    recovery_events = [json.loads(line) for line in path.with_suffix(path.suffix + ".recovery.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["action"] == "backup_unusable" for event in recovery_events)
+    assert recovery_events[-1]["action"] == "recovered_from_backup"
+    assert "auth_json_recovered_from_backup" in caplog.text
+
+
+def test_json_store_prunes_daily_backups_to_configured_limit(tmp_path):
+    from api.services.auth_json_store import JsonFileStore
+
+    store = JsonFileStore(max_backup_versions=20)
+    path = tmp_path / "store.json"
+    for day in range(1, 23):
+        (tmp_path / f"store.json.bak.202601{day:02d}").write_text('{"ok": true}', encoding="utf-8")
+
+    store.prune_backups(path)
+
+    versioned_backups = sorted(tmp_path.glob("store.json.bak.*"), reverse=True)
+    assert len(versioned_backups) == 20
+    assert versioned_backups[0].name == "store.json.bak.20260122"
+    assert versioned_backups[-1].name == "store.json.bak.20260103"

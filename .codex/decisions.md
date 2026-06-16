@@ -87,3 +87,35 @@
 - Excel 匯入記錄不再提供 UI 或 API 刪除能力；保留查詢、預掃描與確認匯入作為主要操作。
 - 匯入記錄 storage 從「單一 `records.json` 存所有 payload」改為「compact `records.json` ID index + `records/<id>.json` per-record payload」，降低單檔無界成長風險並保留 JSON 檔案式部署簡單性。
 - 為兼容既有部署，讀取到舊版 `records.json` 的 `records` array 時採 lazy migration，不需要一次性手動搬遷。
+
+## 2026-06-16 Auth JSON Store 與初始管理者決策
+
+- 登入稽核不可再長期寫入帳號管理 JSON 檔；帳號檔只保存帳號、token denylist 與 reset token 等登入必要狀態，登入稽核使用獨立 audit JSON 檔，降低無界成長與壞檔 blast radius。
+- JSON 檔案式 auth store 保留簡單部署優點，但必須有最低限度壞檔保護：atomic replace + 寫入前 `.bak` + JSON decode 失敗時嘗試還原。
+- 不採用「第一個註冊帳號自動升為 superuser」；初始管理者必須透過受控 bootstrap 檔、環境變數或 secret manager 注入，避免部署後公開註冊視窗被搶註冊造成最高權限接管。
+
+## 2026-06-16 Login Audit 分片決策
+
+- 單純把登入稽核從帳號檔拆到另一個 JSON 單檔仍會有 audit 單檔無界成長與壞檔風險，因此 audit 應採 manifest + time-based shard。
+- 目前以月份作為 shard key（`login_audit-YYYYMM.json`），因為查詢需求主要取最近 N 筆，月份 shard 可保持檔案數量少且避免每日過度碎片化。
+- `SRA_LOGIN_AUDIT_FILE` / `AUTH_LOGIN_AUDIT_FILE` 保留為設定入口與 manifest path，避免再次新增目錄型設定造成導入成本；實際事件目錄由 manifest path 派生。
+
+## 2026-06-16 Auth Store 拆檔決策補充
+
+- auth store 不應同時承擔帳號 domain 流程、低階 JSON IO 與 login audit sharding；當檔案接近 500 行且責任明確可分時，優先拆出可測的小 helper module。
+- 保留 `AuthStore` public API（`record_login_audit()` / `list_login_audit()` 等）以避免 route 與測試呼叫端改動；內部以 composition 委派給 `JsonFileStore` 與 `LoginAuditStore`。
+
+## 2026-06-16 JSON Store 多版本備份決策
+
+- 單一 `.bak` 只能處理「正式檔壞、上一版仍好」的狀況；為提高檔案式部署的基本韌性，JSON store 每天第一次改寫時保留 1 個 dated historical backup，預設保留 20 天版本。
+- 保留 `.bak` 作為最新備份相容入口，同時新增 `.bak.<YYYYMMDD>` 歷史版本；還原順序為最新 `.bak` 優先，再往每日歷史版本回溯。
+
+## 2026-06-16 JSON Store daily backup cadence
+
+- 多版本備份改採「每天第一次改寫時建立歷史備份」，避免高頻登入 audit 寫入造成版本爆量。
+- 最新 `.bak` 仍每次寫入前更新，作為最近一次寫入失敗的快速復原點；`.bak.<YYYYMMDD>` 則保存較長時間跨度，預設保留 20 天版本。
+
+## 2026-06-16 JSON Recovery Alerting
+
+- 檔案式 auth store 自動還原不應靜默發生；還原成功、備份不可用與還原失敗都需寫入 application log，並附帶 JSONL recovery record，方便管理者後續追查壞檔時間與使用的備份版本。
+- Recovery record 採 sidecar `<file>.recovery.jsonl`，避免寫回正在復原的 JSON 檔而造成遞迴或二次損壞。

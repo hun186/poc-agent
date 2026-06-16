@@ -94,6 +94,15 @@ def _auth_file() -> Path:
     return _project_root() / ".auth_users.json"
 
 
+def _login_audit_file() -> Path:
+
+    configured = (os.getenv("AUTH_LOGIN_AUDIT_FILE") or "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    auth_path = _auth_file()
+    return auth_path.with_name(f"{auth_path.stem}.login_audit.json")
+
+
 def _is_production_env() -> bool:
     app_env = (
         os.getenv("AUTH_ENV")

@@ -150,3 +150,14 @@
 - `GET /excel-to-sql-import-center`：回傳「Excel 匯入作業中心」靜態頁，供登入使用者進行 Excel 上傳、預掃描、確認匯入 SQL 與匯入記錄管理。
 - 既有 `/v1/excel-to-sql/import-records*` 上傳、查詢、預掃描與確認匯入 contract 不變；前端新增顯示 `preview.failure_summary`、`preview.samples`、`import_result.failure_summary` 等既有 response 欄位。
 - `GET /excel-to-sql-dashboard` contract 不變，但頁面語意調整為 SQL audit 監控；使用者匯入操作改由 `/excel-to-sql-import-center` 承接。
+
+## 2026-06-16 Auth Storage Configuration
+
+- API route shape 未變更。
+- 主系統新增可選環境變數 `SRA_LOGIN_AUDIT_FILE`，用於指定登入稽核 JSON 檔位置；未指定時依 `SRA_AUTH_USERS_FILE` 派生。
+- `portable_auth_pack` 新增可選環境變數 `AUTH_LOGIN_AUDIT_FILE`，用於指定登入稽核 JSON 檔位置；未指定時依 `AUTH_USERS_FILE` 派生。
+
+## 2026-06-16 Auth Login Audit Shards
+
+- API route shape 未變更。
+- `SRA_LOGIN_AUDIT_FILE` / `AUTH_LOGIN_AUDIT_FILE` 仍是可選設定，但語意調整為 login audit manifest path；實際登入事件依月份寫入同旁路徑的 `<audit_file>.d/login_audit-YYYYMM.json` shards。

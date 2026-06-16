@@ -427,6 +427,23 @@ topic_index_map:
 SRA_EDITOR_FORM_CONFIG=/secure/path/editor_form.my_app.json
 ```
 
+登入稽核已和帳號資料分檔；若未設定 `SRA_LOGIN_AUDIT_FILE`，預設會放在 `SRA_AUTH_USERS_FILE` 同目錄、同檔名前綴的 `.login_audit.json` manifest。實際登入事件會再依月份寫入旁邊的 shard 目錄（例如 `.sra_users.login_audit.json.d/login_audit-202606.json`），避免單一 audit JSON 日積月累肥大。帳號檔與每個 audit shard 每次寫入前都會更新最新 `.bak`；另在每天第一次改寫該檔案時保留 1 份 `.bak.<YYYYMMDD>` 歷史備份，預設保留 20 天版本；讀取遇到 JSON 損壞時會從最新備份一路嘗試到歷史備份還原；還原成功、備份不可用或無法還原時會輸出 warning/error log，並在同目錄寫入 `<file>.recovery.jsonl` 供管理者追蹤。
+
+#### Auth 檔案路徑設定與產物說明
+
+- `SRA_AUTH_USERS_FILE` 指定帳號管理主檔，內容包含 users、token denylist、password reset token 等登入必要狀態；建議正式部署放在 repo 外的持久化目錄，例如 `/var/lib/sra-auth/sra_users.json`。
+- `SRA_LOGIN_AUDIT_FILE` 指定登入稽核 manifest；若未設定，會依 `SRA_AUTH_USERS_FILE` 派生，例如 `/var/lib/sra-auth/sra_users.login_audit.json`。manifest 不保存大量事件，只描述 sharded storage。
+- 實際登入稽核事件會寫入 `<SRA_LOGIN_AUDIT_FILE>.d/login_audit-YYYYMM.json`，例如 `/var/lib/sra-auth/sra_login_audit.json.d/login_audit-202606.json`。
+- 建議將 `SRA_AUTH_USERS_FILE` 與 `SRA_LOGIN_AUDIT_FILE` 指到同一個受備份 / 監控的 runtime 目錄，但不要指到同一個檔案。
+- 備份與還原產物包含：`<file>.bak`、`<file>.bak.<YYYYMMDD>` 與 `<file>.recovery.jsonl`；管理者可監控 application log 中的 `auth_json_*` 訊息與 recovery JSONL。
+
+設定範例：
+
+```env
+SRA_AUTH_USERS_FILE=/var/lib/sra-auth/sra_users.json
+SRA_LOGIN_AUDIT_FILE=/var/lib/sra-auth/sra_login_audit.json
+```
+
 此專案的 env 載入順序是 OS 環境變數優先，其次 `.env.local`、`.env.{APP_ENV}`、`.env`；因此正式部署可用系統環境變數覆蓋 `.env` 內的值。
 
 最小 schema 範例：
@@ -505,6 +522,9 @@ SRA_BOOTSTRAP_SUPERUSERS=[{"username":"admin","password":"change-this-password"}
 ```env
 SRA_AUTH_SECRET=replace-with-a-long-random-secret
 SRA_AUTH_USERS_FILE=/secure/path/sra_users.json
+SRA_LOGIN_AUDIT_FILE=/secure/path/sra_login_audit.json
 SRA_EDITOR_AUDIT_LOG=/secure/path/editor_audit.jsonl
 SRA_EDITOR_FORM_CONFIG=/secure/path/editor_form.my_app.json
 ```
+
+登入稽核已和帳號資料分檔；若未設定 `SRA_LOGIN_AUDIT_FILE`，預設會放在 `SRA_AUTH_USERS_FILE` 同目錄、同檔名前綴的 `.login_audit.json` manifest。實際登入事件會再依月份寫入旁邊的 shard 目錄（例如 `.sra_users.login_audit.json.d/login_audit-202606.json`），避免單一 audit JSON 日積月累肥大。帳號檔與每個 audit shard 每次寫入前都會更新最新 `.bak`；另在每天第一次改寫該檔案時保留 1 份 `.bak.<YYYYMMDD>` 歷史備份，預設保留 20 天版本；讀取遇到 JSON 損壞時會從最新備份一路嘗試到歷史備份還原；還原成功、備份不可用或無法還原時會輸出 warning/error log，並在同目錄寫入 `<file>.recovery.jsonl` 供管理者追蹤。

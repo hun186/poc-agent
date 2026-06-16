@@ -169,3 +169,33 @@
 - `/excel-to-sql-dashboard` 現在定位為 Excel→SQL SQL audit 監控儀表板，負責任務選擇、audit summary / daily / file / recent event 查詢、目的地 table 與 audit 欄位篩選、SQL row delete 操作。
 - `/excel-to-sql-import-center` 新增為使用者匯入作業頁，負責 Excel 上傳、預掃描、確認匯入 SQL 與匯入記錄查詢；不再提供匯入記錄刪除操作。匯入記錄儲存採 compact `records.json` ID index 搭配 `records/<id>.json` per-record payload，避免單一 registry 隨 preview/import payload 長期膨脹。
 - 靜態 JS 責任分流：`excel_to_sql_dashboard.js` 僅處理監控儀表板；`excel_to_sql_import_records.js` 可在匯入作業中心獨立啟動，包含登入者顯示、任務載入、記錄列表與錯誤診斷渲染。
+
+## 2026-06-16 Auth Store 檔案分工
+
+- 主系統 auth store 的帳號 / token 狀態仍存於 `SRA_AUTH_USERS_FILE`（預設 `.sra_users.json`），登入稽核改存於 `SRA_LOGIN_AUDIT_FILE`；未指定時以帳號檔同目錄、同檔名前綴產生 `.login_audit.json`。
+- `portable_auth_pack` 採相同架構：`AUTH_USERS_FILE` 保存帳號 / token 狀態，`AUTH_LOGIN_AUDIT_FILE` 保存登入稽核。
+- 兩個 JSON store 寫入皆採 temp file + atomic replace；寫入前保留同檔名 `.bak`，讀取遇到 JSON decode 失敗時嘗試以 `.bak` 還原。
+
+## 2026-06-16 Login Audit 分片儲存
+
+- `SRA_LOGIN_AUDIT_FILE` / `AUTH_LOGIN_AUDIT_FILE` 現在是 login audit manifest，不再是事件單檔；實際事件放在旁邊的 `<audit_file>.d/login_audit-YYYYMM.json`。
+- `record_login_audit()` 依事件 timestamp 選擇月份 shard 寫入；`list_login_audit()` 從最新 shard 往回讀取直到滿足 limit。
+- 每個 shard 仍使用 atomic replace + `.bak` 還原機制，降低單一月份 shard 損壞對其他月份紀錄的影響。
+
+## 2026-06-16 Auth Store 模組拆分
+
+- 主系統 auth persistence 拆為三層：`auth_store.py` 負責帳號 / 密碼 / token / throttle orchestration；`auth_json_store.py` 負責 atomic JSON IO 與 `.bak` 還原；`auth_login_audit_store.py` 負責 login audit manifest + 月份 shard。
+- `portable_auth_pack/fastapi_auth_pack/` 採同名模組與同等責任分工，保持可攜素材包與主系統行為一致。
+
+## 2026-06-16 JSON Store Backup Layout
+
+- `JsonFileStore` 寫入時保留最新 `<file>.bak` 與最多 20 個 `<file>.bak.<YYYYMMDD>` 歷史版本；讀取正式檔壞掉時依序嘗試這些備份還原。
+
+## 2026-06-16 JSON Store Daily Backup Layout
+
+- JSON store 備份布局為 `<file>.bak`（每次寫入前更新）與 `<file>.bak.<YYYYMMDD>`（每天第一次改寫時建立，預設保留 20 個日期版本）。
+- 還原正式檔時先嘗試最新 `.bak`，若不可解析則依日期版本由新到舊嘗試。
+
+## 2026-06-16 JSON Recovery Records
+
+- `JsonFileStore` 的壞檔還原流程會輸出 warning/error log，並追加 sidecar `<file>.recovery.jsonl`。紀錄包含 `action`、`path`、`backup`、`message` 與 `ts`。
