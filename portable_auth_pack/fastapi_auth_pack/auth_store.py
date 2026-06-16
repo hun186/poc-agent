@@ -1,15 +1,12 @@
 # portable_auth_pack/fastapi_auth_pack/auth_store.py
 from __future__ import annotations
 
-import copy
-import json
-import os
 import secrets
-import tempfile
-from pathlib import Path
 from threading import RLock
 from typing import Any
 
+from .auth_json_store import JsonFileStore
+from .auth_login_audit_store import LoginAuditStore
 from .auth_support import (
     AUTH_THROTTLE_BLOCK_SECONDS,
     AUTH_THROTTLE_FAILURE_LIMIT,
@@ -29,6 +26,7 @@ from .auth_support import (
     _b64url_decode,
     _hash_password,
     _load_bootstrap_superusers,
+    _login_audit_file,
     _now_ts,
     _sha256,
     _throttle_key,
@@ -49,8 +47,11 @@ class AuthStore:
         self._throttle_lock = RLock()
         self._auth_failures: dict[str, dict[str, int]] = {}
         self.path = _auth_file()
+        self._json_store = JsonFileStore()
+        self.login_audit = LoginAuditStore(_login_audit_file(), self.path, self._json_store)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_file()
+        self.login_audit.ensure()
         self.ensure_bootstrap_superusers()
 
     def _ensure_file(self) -> None:
@@ -65,34 +66,24 @@ class AuthStore:
             data["token_denylist"] = {}
         if not isinstance(data.get("password_reset_tokens"), dict):
             data["password_reset_tokens"] = {}
-        if not isinstance(data.get("login_audit"), list):
-            data["login_audit"] = []
+        data.pop("login_audit", None)
         return data
+
+    def _json_read(self, path, default: dict[str, Any]) -> dict[str, Any]:
+        return self._json_store.read(path, default)
+
+    def _json_write(self, path, data: dict[str, Any], *, prefix: str) -> None:
+        self._json_store.write(path, data, prefix=prefix)
 
     def _read(self) -> dict[str, Any]:
         with self._lock:
-            try:
-                with self.path.open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except FileNotFoundError:
-                data = {"users": {}}
-            if not isinstance(data, dict):
-                data = {"users": {}}
+            data = self._json_read(self.path, {"users": {}})
             return self._normalize_data(data)
 
     def _write(self, data: dict[str, Any]) -> None:
         with self._lock:
             data = self._normalize_data(data)
-            data["updated_at"] = _utc_now()
-            fd, tmp_name = tempfile.mkstemp(prefix=".auth_users.", suffix=".json", dir=str(self.path.parent))
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2, sort_keys=True)
-                    f.write("\n")
-                os.replace(tmp_name, self.path)
-            finally:
-                if os.path.exists(tmp_name):
-                    os.unlink(tmp_name)
+            self._json_write(self.path, data, prefix=".auth_users.")
 
     def _prune_token_denylist(self, data: dict[str, Any]) -> bool:
         now = _now_ts()
@@ -326,28 +317,19 @@ class AuthStore:
         return int(user.get("token_version") or 0) == token_version
 
     def record_login_audit(self, username: str, *, success: bool, reason: str, role: str | None = None, status_value: str | None = None, client_host: str | None = None, user_agent: str | None = None) -> None:
-        data = self._read()
-        audit = data.setdefault("login_audit", [])
-        audit.append({
-            "ts": _utc_now(),
-            "username": username,
-            "success": success,
-            "reason": reason,
-            "role": role,
-            "status": status_value,
-            "client_host": client_host,
-            "user_agent": user_agent,
-        })
-        if len(audit) > LOGIN_AUDIT_LIMIT:
-            del audit[:-LOGIN_AUDIT_LIMIT]
-        self._write(data)
+        with self._lock:
+            self.login_audit.record(
+                username,
+                success=success,
+                reason=reason,
+                role=role,
+                status_value=status_value,
+                client_host=client_host,
+                user_agent=user_agent,
+            )
 
     def list_login_audit(self, limit: int = 100) -> list[dict[str, Any]]:
-        audit = self._read().get("login_audit", [])
-        if not isinstance(audit, list):
-            return []
-        limit = max(1, min(limit, LOGIN_AUDIT_LIMIT))
-        return [item for item in audit[-limit:] if isinstance(item, dict)]
+        return self.login_audit.list(limit)
 
     def throttle_retry_after(self, scope: str, username: str | None, client_host: str | None = None) -> int:
         key = _throttle_key(scope, username, client_host)

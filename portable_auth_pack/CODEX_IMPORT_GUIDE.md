@@ -28,7 +28,7 @@
 
 4. **設定環境變數**
    - 必設正式 secret：`AUTH_SECRET`（正式環境至少 32 bytes；`AUTH_ENV` / `APP_ENV` / `ENV` / `PY_ENV` 為 `prod` 或 `production` 時會 fail fast）。
-   - 建議設定：`AUTH_USERS_FILE` 與 `AUTH_BOOTSTRAP_SUPERUSERS_FILE`。
+   - 建議設定：`AUTH_USERS_FILE`、`AUTH_LOGIN_AUDIT_FILE` 與 `AUTH_BOOTSTRAP_SUPERUSERS_FILE`。`AUTH_USERS_FILE` 是帳號主檔；`AUTH_LOGIN_AUDIT_FILE` 是 login audit manifest，實際事件會寫到 `<AUTH_LOGIN_AUDIT_FILE>.d/login_audit-YYYYMM.json`。
    - 若是測試環境，可複製 `examples/bootstrap_superusers.test.json` 到目標專案 `config/auth/bootstrap_superusers.json`。
 
 5. **保護 endpoint**
