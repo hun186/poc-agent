@@ -105,7 +105,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "前往 Excel 匯入作業中心" not in dashboard_html
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
-    assert "/static/excel_to_sql_import_records.js?v=20260618-audit-row-link" in html
+    assert "/static/excel_to_sql_import_records.js?v=20260618-action-stack" in html
     assert "/v1/excel-to-sql/import-records" in script
     assert "previewImportRecord" in script
     assert "刪除記錄" not in script
@@ -120,7 +120,11 @@ def test_import_center_static_contains_user_import_controls():
     assert 'class="import-records-table"' in html
     assert "table-layout:fixed" in html
     assert "#importRecords .stored-file-col { width:9%; }" in html
-    assert "#importRecords .actions-col { width:15%; }" in html
+    assert "#importRecords .actions-col { width:10%; }" in html
+    assert ".record-actions { display:grid; grid-template-columns: minmax(0, 1fr);" in html
+    assert "min-width:128px" in html
+    assert ".record-actions button:nth-child(2)" not in html
+    assert "repeat(3, minmax(0, 1fr))" not in html
     assert "@media (max-width: 760px)" in html
     assert "content:attr(data-label)" in html
     assert "function importRecordDiagnostics" in script

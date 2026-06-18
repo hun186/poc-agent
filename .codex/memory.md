@@ -98,3 +98,17 @@
 - 目的：依使用者回饋，查詢特定匯入檔案已匯入列時已有明確檔名標的，不應再預設加上回看天數限制。
 - 主要修改：移除「查詢已匯入列」深連結中的 `days=365` query；保留 `config`、`source_file_filter`、`page=1` 與 `#recentAuditSection`。同時恢復先前非必要的 dashboard JS cache-busting token 與操作欄 CSS，避免把與需求無直接關係的版面調整混入修正。
 - 驗證：`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（10 passed）；`node --check api/static/excel_to_sql_import_records.js` 與 `node --check api/static/excel_to_sql_dashboard.js` 通過。
+
+
+## 2026-06-18 Excel 匯入作業中心操作欄按鈕等寬
+
+- 目的：改善 Excel 匯入作業中心匯入記錄操作欄三個按鈕併列時寬度不一致，避免「確認匯入SQL」因跨欄而特別寬。
+- 主要修改：操作欄改為三欄等寬 grid，三個按鈕同列同寬；手機版維持單欄直排。
+- 驗證：`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（10 passed）；`node --check api/static/excel_to_sql_import_records.js` 通過；目前環境仍缺少 Playwright，無法執行瀏覽器截圖。
+
+
+## 2026-06-18 Excel 匯入作業中心操作欄改為窄版直排
+
+- 目的：回應使用者回饋，電腦版三顆操作按鈕同列等寬仍會占用過多表格欄寬；因前方欄位本就可能多列顯示，操作欄改採窄版直排以節省水平空間。
+- 主要修改：操作欄由三欄等寬 grid 改為單欄直排，縮小操作欄桌機欄寬比例；保留三顆按鈕等欄寬但不佔用額外水平空間。
+- 驗證：`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（10 passed）；`node --check api/static/excel_to_sql_import_records.js` 通過；目前環境仍缺少 Playwright，無法執行瀏覽器截圖。

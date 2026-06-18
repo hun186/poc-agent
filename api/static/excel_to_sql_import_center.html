@@ -19,9 +19,8 @@
     button.secondary { background:#475467; }
     button.ghost { background:#e2e8f0; color:#172033; }
     .header-actions, .upload-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .record-actions { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:6px; min-width:210px; }
-    .record-actions button { padding:7px 9px; font-size:12px; white-space:nowrap; }
-    .record-actions button:nth-child(2) { grid-column: 1 / -1; }
+    .record-actions { display:grid; grid-template-columns: minmax(0, 1fr); gap:6px; min-width:128px; }
+    .record-actions button { width:100%; padding:7px 9px; font-size:12px; white-space:normal; line-height:1.25; }
     .header-user { color:#cbd5e1; font-size:13px; font-weight:700; white-space:nowrap; }
     .preview-box { margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:12px; background:#f8fafc; }
     .error { background:#fef3f2; border:1px solid #fecdca; color:var(--bad); padding:12px; border-radius:12px; margin:12px 0; white-space:pre-wrap; }
@@ -51,7 +50,7 @@
       #importRecords .count-col { width:4%; }
       #importRecords .size-col { width:5%; }
       #importRecords .diagnostics-col { width:13%; }
-      #importRecords .actions-col { width:15%; }
+      #importRecords .actions-col { width:10%; }
     }
     @media (max-width: 760px) {
       main { padding:14px; }
@@ -67,7 +66,6 @@
       .import-records-table td[data-label="操作"] { display:block; }
       .import-records-table td[data-label="操作"]::before { display:block; margin-bottom:8px; }
       .record-actions { min-width:0; grid-template-columns:1fr; }
-      .record-actions button:nth-child(2) { grid-column:auto; }
       .record-actions button { width:100%; padding:10px 12px; font-size:14px; }
       .diagnostics { width:100%; }
     }
@@ -111,6 +109,6 @@
     <div class="table-wrap import-records-wrap"><table id="importRecords" class="import-records-table"><colgroup><col class="date-col" /><col class="user-col" /><col class="original-file-col" /><col class="stored-file-col" /><col class="config-col" /><col class="status-col" /><col class="count-col" /><col class="count-col" /><col class="count-col" /><col class="size-col" /><col class="diagnostics-col" /><col class="actions-col" /></colgroup><thead><tr><th>日期</th><th>使用者</th><th>原始檔名</th><th>導入檔名</th><th>設定檔</th><th>狀態</th><th>新增</th><th>重複</th><th>錯誤</th><th>大小</th><th>錯誤診斷</th><th>操作</th></tr></thead><tbody></tbody></table></div>
   </section>
 </main>
-<script src="/static/excel_to_sql_import_records.js?v=20260618-audit-row-link"></script>
+<script src="/static/excel_to_sql_import_records.js?v=20260618-action-stack"></script>
 </body>
 </html>

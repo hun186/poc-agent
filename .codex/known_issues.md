@@ -302,3 +302,21 @@ Open
 - 替代驗證：以 `tests/test_excel_to_sql_user_imports.py` / `tests/test_excel_to_sql_dashboard_static.py` 靜態檢查 DOM、欄寬、deep-link query 與按鈕邏輯；以 `node --check` 驗證相關 JS 語法；並執行完整 `pytest tests -q`。
 
 狀態：Open
+
+
+## 2026-06-18 Excel 匯入操作欄按鈕等寬 UI 截圖限制
+
+- 本次調整 Excel 匯入作業中心匯入記錄操作欄三個按鈕等寬併列，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回報 `No module named playwright`，無法提供瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_excel_to_sql_user_imports.py` 靜態檢查三欄等寬 grid 與移除第二顆按鈕跨欄規則；以 `node --check api/static/excel_to_sql_import_records.js` 檢查前端 JS 語法。
+
+狀態：Open
+
+
+## 2026-06-18 Excel 匯入操作欄窄版直排 UI 截圖限制
+
+- 本次將 Excel 匯入作業中心匯入記錄操作欄由電腦版同列改為窄版直排，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回報 `No module named playwright`，無法提供瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_excel_to_sql_user_imports.py` 靜態檢查操作欄使用單欄 grid、縮小 actions 欄寬並移除三欄 grid；以 `node --check api/static/excel_to_sql_import_records.js` 檢查前端 JS 語法。
+
+狀態：Open
