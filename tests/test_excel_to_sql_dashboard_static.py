@@ -90,6 +90,7 @@ def test_dashboard_accepts_import_record_deep_link_filters():
     assert "new URLSearchParams(window.location.search || '')" in html
     assert "source_file_filter: 'sourceFileFilter'" in html
     assert "config: 'config'" in html
+    assert 'id="recentAuditSection"' in html
     assert (
         "resetDefaultWindow(); applyInitialQueryParams(); await loadCurrentUser(); await loadTasks(); applyInitialQueryParams(); await loadDashboard();"
         in html
