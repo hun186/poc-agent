@@ -93,7 +93,7 @@ def _render_download_link(request: Request, session_id: Optional[str], turn_id: 
 def _render_answer(pres: AgentPresentation) -> List[str]:
     if not pres.answer:
         return []
-    return ["## 回答\n", pres.answer]
+    return ["## AI代理人回答\n", pres.answer]
 
 def _render_citations(pres: AgentPresentation, request: Request) -> List[str]:
     if not pres.citations:
