@@ -292,6 +292,7 @@ WITH ordered_recent AS (
         status,
         message,
         row_payload,
+        {user_expr} AS username,
         processed_at,
         ROW_NUMBER() OVER (ORDER BY processed_at DESC, audit_id DESC) AS rn
     FROM {quoted_table}
@@ -308,6 +309,7 @@ SELECT
     status,
     message,
     row_payload,
+    username,
     processed_at
 FROM ordered_recent
 WHERE rn > ? AND rn <= ?
