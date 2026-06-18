@@ -136,3 +136,9 @@
 - 目的：回覆並補強 Excel→SQL 使用者匯入的每列 audit 使用者紀錄，以及調整最近 audit 事件表格欄寬，讓 payload 取得更多顯示空間。
 - 主要修改：確認匯入流程會將匯入記錄的 `username` 傳入處理設定 `_audit_actor`，後續每列 audit payload 會寫入 `audit_actor`；最近 audit 表格將檔案欄設為窄欄、固定最近事件表格版面，並提高 payload 欄寬。
 - 驗證：`pytest tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py -q` 通過（22 passed）；`node --check api/static/excel_to_sql_dashboard.js` 通過；`python -m playwright --version` 仍因未安裝 Playwright 無法截圖。
+
+## 2026-06-18 最近 audit 事件表欄寬調整
+
+- 目的：修正 Excel→SQL 監控儀表板「最近 audit 事件」表格中檔案欄換行與鄰欄擠壓、時間欄過窄，以及 payload 欄未使用寬螢幕空間導致過早換行的問題。
+- 主要修改：監控儀表板主內容不再限制 1400px；最近 audit 表格改為 100% 使用可用寬度並提高最小表寬；時間欄新增固定欄位 class 與較寬 min-width；檔案欄改用 normal word-break + anywhere overflow wrap，避免長檔名壓到旁邊欄；payload JSON 移除不必要 min-width 並允許在 payload 欄內換行。
+- 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（7 passed）；`node --check api/static/excel_to_sql_dashboard.js` 通過；嘗試 `python -m playwright --version` 失敗（No module named playwright），本環境仍無法做瀏覽器截圖。

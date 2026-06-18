@@ -9,7 +9,7 @@
     body { margin:0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
     header { padding:20px 28px; background:#111827; color:white; display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
     h1 { margin:0; font-size:22px; }
-    main { padding:24px; max-width:1400px; margin:0 auto; }
+    main { padding:24px; max-width:none; margin:0 auto; }
     .controls, .filters, .cards, .grid { display:grid; gap:16px; }
     .controls { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items:end; margin-bottom:18px; }
     .filters { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items:end; margin:12px 0 14px; }
@@ -74,11 +74,16 @@
     .recent-toolbar { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin:10px 0 12px; }
     .pager { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .pager button { padding:7px 10px; }
-    #recent { table-layout:fixed; min-width:1100px; }
-    #recent th.file-col, #recent td.file-col { width:12%; max-width:220px; }
-    #recent td.file-col { word-break:break-all; overflow-wrap:anywhere; }
-    #recent th.payload-col, #recent td.payload-col { width:52%; min-width:520px; }
-    .json-view { white-space:pre-wrap; word-break:break-word; margin:0; min-width:420px; max-width:none; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.5; }
+    #recent { table-layout:fixed; width:100%; min-width:1400px; }
+    #recent th.time-col, #recent td.time-col { width:15%; min-width:190px; }
+    #recent th.status-col, #recent td.status-col { width:7%; }
+    #recent th.file-col, #recent td.file-col { width:13%; max-width:240px; white-space:normal; word-break:normal; overflow-wrap:anywhere; }
+    #recent th.user-col, #recent td.user-col { width:8%; }
+    #recent th.row-col, #recent td.row-col { width:5%; }
+    #recent th.message-col, #recent td.message-col { width:13%; overflow-wrap:anywhere; }
+    #recent th.action-col, #recent td.action-col { width:7%; }
+    #recent th.payload-col, #recent td.payload-col { width:32%; min-width:520px; }
+    .json-view { white-space:pre-wrap; overflow-wrap:anywhere; word-break:normal; margin:0; min-width:0; max-width:none; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.5; }
     .json-key { color:#7c3aed; font-weight:700; }
     .json-string { color:#047857; }
     .json-number, .json-boolean { color:#b45309; }
@@ -170,7 +175,7 @@
           <button class="ghost" id="recentNextBtn" onclick="changeRecentPage(1)">下一頁</button>
         </div>
       </div>
-      <div class="table-wrap"><table id="recent"><thead><tr><th>時間（本機）</th><th>狀態</th><th class="file-col">檔案</th><th>使用者</th><th>列號</th><th>訊息</th><th>操作</th><th class="payload-col">payload</th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table id="recent"><thead><tr><th class="time-col">時間（本機）</th><th class="status-col">狀態</th><th class="file-col">檔案</th><th class="user-col">使用者</th><th class="row-col">列號</th><th class="message-col">訊息</th><th class="action-col">操作</th><th class="payload-col">payload</th></tr></thead><tbody></tbody></table></div>
     </section>
   </main>
 <script src="/static/audit_tools.js"></script>
