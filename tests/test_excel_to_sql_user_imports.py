@@ -105,7 +105,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "前往 Excel 匯入作業中心" not in dashboard_html
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
-    assert "/static/excel_to_sql_import_records.js?v=20260616-audit-link" in html
+    assert "/static/excel_to_sql_import_records.js?v=20260618-audit-row-link" in html
     assert "/v1/excel-to-sql/import-records" in script
     assert "previewImportRecord" in script
     assert "刪除記錄" not in script
@@ -126,7 +126,11 @@ def test_import_center_static_contains_user_import_controls():
     assert "function importRecordDiagnostics" in script
     assert "function openAuditForImportRecord" in script
     assert "source_file_filter" in script
-    assert "查詢已匯入條目" in script
+    assert "#recentAuditSection" in script
+    assert "params.set('days'" not in script
+    assert "查詢已匯入條目" not in script
+    assert script.index("預掃描") < script.index("確認匯入SQL") < script.index("查詢已匯入列")
+    assert "查詢已匯入列" in script
     assert "window.__importRecordById" in script
     assert 'data-label="導入檔名"' in script
     assert 'data-label="操作"' in script

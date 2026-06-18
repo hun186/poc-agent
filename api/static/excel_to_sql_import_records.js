@@ -83,14 +83,13 @@ function openAuditForImportRecord(id) {
   if (row.config_path) params.set('config', row.config_path);
   const storedName = row.stored_filename || '';
   if (storedName) params.set('source_file_filter', storedName);
-  params.set('days', '365');
   params.set('page', '1');
-  location.href = '/excel-to-sql-dashboard?' + params.toString();
+  location.href = '/excel-to-sql-dashboard?' + params.toString() + '#recentAuditSection';
 }
 function importRecordActions(r) {
   if (r.status === 'deleted') return '<span class="muted">—</span>';
   const auditDisabled = r.stored_filename ? '' : ' disabled title="此記錄缺少導入檔名，無法快速篩選 audit"';
-  return `<div class="record-actions"><button class="ghost" onclick="previewImportRecord('${escapeHtml(r.id)}')">預掃描</button><button class="secondary" onclick="openAuditForImportRecord('${escapeHtml(r.id)}')"${auditDisabled}>查詢已匯入條目</button><button onclick="confirmImportRecord('${escapeHtml(r.id)}')">確認匯入SQL</button></div>`;
+  return `<div class="record-actions"><button class="ghost" onclick="previewImportRecord('${escapeHtml(r.id)}')">預掃描</button><button onclick="confirmImportRecord('${escapeHtml(r.id)}')">確認匯入SQL</button><button class="secondary" onclick="openAuditForImportRecord('${escapeHtml(r.id)}')"${auditDisabled}>查詢已匯入列</button></div>`;
 }
 async function loadImportRecords() {
   const params = new URLSearchParams();

@@ -86,3 +86,15 @@
 - 目的：確認新增 `AI 代理人回答` heading 後，回答 Markdown 內的表格仍會進入既有 DOCX table renderer，並保留智慧垂直合併重複儲存格功能。
 - 主要修改：補上 DOCX 匯出回歸測試，使用活動時間線 Markdown 表格驗證 Word 仍產生表格，且重複的「船名」「海域」欄位會合併，日期欄位不會被錯誤合併。
 - 驗證：`pytest tests/test_export_word_service.py -q` 通過（3 passed）；`python -m py_compile api/services/export_word_service.py` 通過。
+
+## 2026-06-18 Excel 匯入記錄查詢已匯入列跳轉
+
+- 目的：調整 Excel 匯入作業中心的匯入記錄操作欄文案與排序，並讓「查詢已匯入列」可直接跳到 SQL 監控儀表板的最近 audit 事件區塊，以導入檔名快速篩選。
+- 主要修改：操作按鈕順序改為「預掃描」、「確認匯入SQL」、「查詢已匯入列」；深連結加入 `#recentAuditSection`，並保留以 `stored_filename` 帶入 `source_file_filter`、`config` 與 `page=1` 的快速查詢行為（不額外限制 days）；監控儀表板最近 audit 事件區塊新增 anchor id。
+- 驗證：`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（10 passed）；`node --check api/static/excel_to_sql_import_records.js` 與 `node --check api/static/excel_to_sql_dashboard.js` 通過。
+
+## 2026-06-18 Excel 匯入記錄查詢 days 限制移除
+
+- 目的：依使用者回饋，查詢特定匯入檔案已匯入列時已有明確檔名標的，不應再預設加上回看天數限制。
+- 主要修改：移除「查詢已匯入列」深連結中的 `days=365` query；保留 `config`、`source_file_filter`、`page=1` 與 `#recentAuditSection`。同時恢復先前非必要的 dashboard JS cache-busting token 與操作欄 CSS，避免把與需求無直接關係的版面調整混入修正。
+- 驗證：`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（10 passed）；`node --check api/static/excel_to_sql_import_records.js` 與 `node --check api/static/excel_to_sql_dashboard.js` 通過。
