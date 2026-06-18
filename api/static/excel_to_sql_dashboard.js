@@ -251,7 +251,7 @@ async function loadDashboard() {
   if (data.chart_bucket && $('chartBucket').value !== data.chart_bucket) $('chartBucket').value = data.chart_bucket;
   renderFilteredDailyChart(data.filtered_series || data.filtered_daily || [], data.chart_bucket || $('chartBucket').value, data.chart_bucket_label || $('chartBucket').selectedOptions[0]?.textContent || '每日');
   updateRecentPager(data);
-  fillTable('recent', data.recent, r => `<tr><td>${formatAuditTime(r.processed_at)}</td><td>${statusBadge(r.status)}</td><td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.username || '')}</td><td>${escapeHtml(r.row_no ?? '')}</td><td>${escapeHtml(r.message || '')}</td><td>${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
+  fillTable('recent', data.recent, r => `<tr><td class="time-col">${formatAuditTime(r.processed_at)}</td><td class="status-col">${statusBadge(r.status)}</td><td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td><td class="user-col">${escapeHtml(r.username || '')}</td><td class="row-col">${escapeHtml(r.row_no ?? '')}</td><td class="message-col">${escapeHtml(r.message || '')}</td><td class="action-col">${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
 }
 function bindAuditFilterEvents() {
   ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {

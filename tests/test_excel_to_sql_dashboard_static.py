@@ -84,17 +84,21 @@ def test_recent_audit_filters_include_shared_username_picker():
     assert "state.usernameOptions = SraAuditTools.uniqueSortedValues" in html
     assert "renderUsernameFilter()" in html
     assert "closeUsernameDropdown(true)" in html
-    assert "<th>使用者</th>" in html
-    assert "<td>${escapeHtml(r.username || '')}</td>" in html
+    assert '<th class="user-col">使用者</th>' in html
+    assert '<td class="user-col">${escapeHtml(r.username || \'\')}</td>' in html
 
 
 def test_recent_audit_table_gives_payload_more_width_than_file_column():
     html = dashboard_source()
 
-    assert "#recent { table-layout:fixed; min-width:1100px; }" in html
-    assert "#recent th.file-col, #recent td.file-col { width:12%; max-width:220px; }" in html
-    assert "#recent th.payload-col, #recent td.payload-col { width:52%; min-width:520px; }" in html
+    assert "main { padding:24px; max-width:none; margin:0 auto; }" in html
+    assert "#recent { table-layout:fixed; width:100%; min-width:1400px; }" in html
+    assert "#recent th.time-col, #recent td.time-col { width:15%; min-width:190px; }" in html
+    assert "#recent th.file-col, #recent td.file-col { width:13%; max-width:240px; white-space:normal; word-break:normal; overflow-wrap:anywhere; }" in html
+    assert "#recent th.payload-col, #recent td.payload-col { width:32%; min-width:520px; }" in html
+    assert '<th class="time-col">時間（本機）</th>' in html
     assert '<th class="file-col">檔案</th>' in html
+    assert '<td class="time-col">${formatAuditTime(r.processed_at)}</td>' in html
     assert '<td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td>' in html
 
 
