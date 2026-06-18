@@ -52,6 +52,7 @@ class ExportWordService:
 
         # 回答
         if pres.answer:
+            doc.add_heading("AI 代理人回答", level=2)
             add_markdown_to_doc(doc, pres.answer)
 
         # 引用來源（改成吃同一套 shared view core）
