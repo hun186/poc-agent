@@ -68,3 +68,21 @@
 - 目的：讓 Excel 匯入作業中心可直接對應原始上傳檔名與實際寫入 audit 的磁碟導入檔名，並提供一鍵跳轉至 SQL 監控儀表板查詢該檔 audit 條目。
 - 主要修改：匯入記錄列表新增「導入檔名」欄位顯示 `stored_filename`；檔名篩選同步比對原始檔名與導入檔名；操作欄新增「查詢已匯入條目」按鈕，帶入 `config`、`source_file_filter` 與較長回看天數跳轉至 `/excel-to-sql-dashboard`；監控儀表板啟動時可讀取 URL query 並套用篩選。
 - 驗證：`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（10 passed）；`node --check api/static/excel_to_sql_import_records.js` 與 `node --check api/static/excel_to_sql_dashboard.js` 通過；`pytest tests/test_dashboard_filters.py tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（20 passed）；`pytest tests -q` 通過（90 passed，5 個既有 warning）。
+
+## 2026-06-18 Word 匯出回答標題
+
+- 目的：讓下載的 Word 報告在「使用者提問」之後，於 AI 代理人回答前也有明確 heading，避免提問與回答界線不清。
+- 主要修改：`ExportWordService.build_docx_bytes()` 在 `pres.answer` 存在時先加入 `AI 代理人回答` level 2 heading，再渲染回答 Markdown。
+- 驗證：`pytest tests/test_export_word_service.py -q` 通過（1 passed，1 個既有 docx table escape warning）；`python -m py_compile api/services/export_word_service.py` 通過。
+
+## 2026-06-18 Word 匯出區塊段落編號確認
+
+- 目的：確認新增 `AI 代理人回答` heading 不會移除或改變回答內既有 `一、資料概況`、`二、活動時間線（依日期排列）`、`三、趨勢分析` 等區塊段落標題。
+- 主要修改：補上 DOCX 匯出回歸測試，使用回答 Markdown 中的粗體區塊標題驗證其仍會由既有 markdown renderer 轉成 `Heading 2`，且出現在 `AI 代理人回答` heading 之後。
+- 驗證：`pytest tests/test_export_word_service.py -q` 通過（2 passed）；`python -m py_compile api/services/export_word_service.py` 通過。
+
+## 2026-06-18 Word 匯出智慧合併表格確認
+
+- 目的：確認新增 `AI 代理人回答` heading 後，回答 Markdown 內的表格仍會進入既有 DOCX table renderer，並保留智慧垂直合併重複儲存格功能。
+- 主要修改：補上 DOCX 匯出回歸測試，使用活動時間線 Markdown 表格驗證 Word 仍產生表格，且重複的「船名」「海域」欄位會合併，日期欄位不會被錯誤合併。
+- 驗證：`pytest tests/test_export_word_service.py -q` 通過（3 passed）；`python -m py_compile api/services/export_word_service.py` 通過。
