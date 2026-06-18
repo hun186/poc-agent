@@ -142,3 +142,9 @@
 - 目的：修正 Excel→SQL 監控儀表板「最近 audit 事件」表格中檔案欄換行與鄰欄擠壓、時間欄過窄，以及 payload 欄未使用寬螢幕空間導致過早換行的問題。
 - 主要修改：監控儀表板主內容不再限制 1400px；最近 audit 表格改為 100% 使用可用寬度並提高最小表寬；時間欄新增固定欄位 class 與較寬 min-width；檔案欄改用 normal word-break + anywhere overflow wrap，避免長檔名壓到旁邊欄；payload JSON 移除不必要 min-width 並允許在 payload 欄內換行。
 - 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（7 passed）；`node --check api/static/excel_to_sql_dashboard.js` 通過；嘗試 `python -m playwright --version` 失敗（No module named playwright），本環境仍無法做瀏覽器截圖。
+
+## 2026-06-18 Excel→SQL audit 事件表欄寬修正
+
+- 目的：依使用者回饋，縮減最近 audit 事件表時間欄寬、修正部分欄位文字溢出與欄位對不齊，並讓下方表格與 payload 欄更充分使用水平寬度。
+- 主要修改：最近 audit 事件表加入 `colgroup` 固定欄位對應；時間欄由 15% 調整為 10%（約三分之二）並降低最小寬度；整體表格最小寬度提高至 1700px；payload 欄提高至 40% / 680px；所有欄位套用 `box-sizing` 與 `overflow-wrap:anywhere` 以避免文字跑出格子。
+- 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（7 passed）；`node --check api/static/excel_to_sql_dashboard.js` 通過；截圖驗證因環境缺少 Playwright 無法執行，已以靜態 UI 測試與 JS 語法檢查替代。

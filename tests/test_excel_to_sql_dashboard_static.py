@@ -92,10 +92,12 @@ def test_recent_audit_table_gives_payload_more_width_than_file_column():
     html = dashboard_source()
 
     assert "main { padding:24px; max-width:none; margin:0 auto; }" in html
-    assert "#recent { table-layout:fixed; width:100%; min-width:1400px; }" in html
-    assert "#recent th.time-col, #recent td.time-col { width:15%; min-width:190px; }" in html
-    assert "#recent th.file-col, #recent td.file-col { width:13%; max-width:240px; white-space:normal; word-break:normal; overflow-wrap:anywhere; }" in html
-    assert "#recent th.payload-col, #recent td.payload-col { width:32%; min-width:520px; }" in html
+    assert "#recent { table-layout:fixed; width:100%; min-width:1700px; }" in html
+    assert "#recent th, #recent td { box-sizing:border-box; overflow-wrap:anywhere; }" in html
+    assert "#recent th.time-col, #recent td.time-col { width:10%; min-width:128px; }" in html
+    assert "#recent th.file-col, #recent td.file-col { width:12%; max-width:260px; white-space:normal; word-break:normal; overflow-wrap:anywhere; }" in html
+    assert "#recent th.payload-col, #recent td.payload-col { width:40%; min-width:680px; }" in html
+    assert '<colgroup><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="action-col"><col class="payload-col"></colgroup>' in html
     assert '<th class="time-col">時間（本機）</th>' in html
     assert '<th class="file-col">檔案</th>' in html
     assert '<td class="time-col">${formatAuditTime(r.processed_at)}</td>' in html
