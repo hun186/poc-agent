@@ -328,3 +328,11 @@ Open
 - 替代驗證：以 `pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 靜態檢查 DOM / 文案 / JS 標記，並以 `node --check api/static/excel_to_sql_import_records.js` 驗證前端 JS 語法。
 
 狀態：Open
+
+## 2026-06-18 Excel audit 使用者篩選 UI 截圖限制
+
+- 本次在 Excel→SQL 匯入查詢儀表板「最近 audit 事件」新增使用者多選篩選，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回報 `No module named playwright`，無法進行瀏覽器截圖驗證。
+- 替代驗證：以 `tests/test_excel_to_sql_dashboard_static.py` 靜態檢查使用者多選 DOM、共用 `SraAuditTools` helper 與 `username_filter` query 組裝；以 `node --check api/static/excel_to_sql_dashboard.js` 驗證前端 JS 語法；並執行 Excel→SQL dashboard 相關 pytest。
+
+狀態：Open

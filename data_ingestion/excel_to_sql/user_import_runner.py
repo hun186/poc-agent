@@ -29,6 +29,7 @@ def import_record(
             cfg.setdefault("source", {})["excel_path"] = str(
                 Path(str(record["stored_path"])).resolve()
             )
+            cfg["_audit_actor"] = str(record.get("username") or username)
             cfg["source"].pop("directory", None)
             cfg.setdefault("archive", {})["enabled"] = False
             run_id = uuid.uuid4().hex

@@ -161,3 +161,9 @@
 
 - API route shape 未變更。
 - `SRA_LOGIN_AUDIT_FILE` / `AUTH_LOGIN_AUDIT_FILE` 仍是可選設定，但語意調整為 login audit manifest path；實際登入事件依月份寫入同旁路徑的 `<audit_file>.d/login_audit-YYYYMM.json` shards。
+
+## 2026-06-18 Excel→SQL dashboard recent audit username filter
+
+- `GET /v1/excel-to-sql/dashboard` 新增可重複 query 參數 `username_filter`，用於「最近 audit 事件」與套用目前篩選的統計曲線。
+- `username_filter` 以 exact match 比對 audit row payload 的 `audit_actor`，並相容既有刪除 audit payload 的 `actor`。
+- Response 新增 `username_options: string[]`，提供前端使用者多選篩選清單；`recent_filters.username` 會回傳已正規化的使用者篩選值。

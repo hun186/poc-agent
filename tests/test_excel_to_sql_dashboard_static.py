@@ -72,6 +72,20 @@ def test_recent_audit_filters_include_destination_table():
     assert "'destinationTableFilter'" in html
 
 
+def test_recent_audit_filters_include_shared_username_picker():
+    html = dashboard_source()
+
+    assert '<label for="usernameSummary">使用者</label>' in html
+    assert '<details id="usernameDropdown" class="multi-select">' in html
+    assert "SraAuditTools.renderMultiFilterOptions" in html
+    assert "SraAuditTools.summarizeMultiFilterSelection" in html
+    assert "SraAuditTools.setVisibleMultiFilterSelection" in html
+    assert "params.append('username_filter', value)" in html
+    assert "state.usernameOptions = SraAuditTools.uniqueSortedValues" in html
+    assert "renderUsernameFilter()" in html
+    assert "closeUsernameDropdown(true)" in html
+
+
 def test_dashboard_header_shows_current_logged_in_user():
     html = dashboard_source()
 

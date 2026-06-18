@@ -45,6 +45,14 @@ from .workbook import (
 )
 
 
+def _attach_audit_metadata(row_results: list[RowResult], cfg: dict[str, Any]) -> None:
+    actor = str(cfg.get("_audit_actor") or "").strip()
+    if not actor:
+        return
+    for result in row_results:
+        result.row_payload.setdefault("audit_actor", actor)
+
+
 def _write_sheet_smart_match_audit(
     *,
     cursor,
@@ -57,6 +65,7 @@ def _write_sheet_smart_match_audit(
     message: str,
     match_type: str,
     log_dir: Path,
+    cfg: dict[str, Any],
 ):
     if not message:
         return
@@ -72,6 +81,19 @@ def _write_sheet_smart_match_audit(
     }
     write_log(log_dir, payload)
     if audit_enabled:
+        row_results = [
+            RowResult(
+                row_no=0,
+                hash_value="",
+                status="sheet_smart_match",
+                message=message,
+                row_payload={
+                    "actual_sheet_name": sheet_name,
+                    "match_type": match_type,
+                },
+            )
+        ]
+        _attach_audit_metadata(row_results, cfg)
         insert_audit_rows(
             cursor,
             audit_table=audit_table,
@@ -79,18 +101,7 @@ def _write_sheet_smart_match_audit(
             source_file=excel_path,
             sheet_name=sheet_name,
             destination_table=table,
-            row_results=[
-                RowResult(
-                    row_no=0,
-                    hash_value="",
-                    status="sheet_smart_match",
-                    message=message,
-                    row_payload={
-                        "actual_sheet_name": sheet_name,
-                        "match_type": match_type,
-                    },
-                )
-            ],
+            row_results=row_results,
         )
         conn = getattr(cursor, "connection", None)
         if conn is not None:
@@ -242,6 +253,7 @@ def process_excel_file(
                 message=sheet.match_message,
                 match_type=sheet.match_type,
                 log_dir=log_dir,
+                cfg=cfg,
             )
 
             print(f"ℹ️ Sheet: {sheet_name}")
@@ -262,6 +274,7 @@ def process_excel_file(
                     )
                 if audit_enabled:
                     print("ℹ️ 準備寫入欄名智慧比對 audit rows", flush=True)
+                    _attach_audit_metadata(header_audit_results, cfg)
                     insert_audit_rows(
                         cursor,
                         audit_table=audit_table,
@@ -350,6 +363,7 @@ def process_excel_file(
 
                 if audit_enabled:
                     print(f"ℹ️ 準備寫入批次 audit rows：{len(batch_results)} 筆", flush=True)
+                    _attach_audit_metadata(batch_results, cfg)
                     insert_audit_rows(
                         cursor,
                         audit_table=audit_table,
@@ -396,4 +410,3 @@ def process_excel_file(
         f"成功新增 {result.success} 筆，重複略過 {result.duplicate} 筆，失敗 {result.failed} 筆"
     )
     return result
-

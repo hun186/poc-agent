@@ -71,6 +71,7 @@ def dashboard_payload(
     end_ts: str | datetime | date | None = None,
     status_filter: str | None = None,
     source_file_filter: str | None = None,
+    username_filter: str | list[str] | None = None,
     destination_table_filter: str | list[str] | None = None,
     row_no_filter: int | None = None,
     message_filter: str | None = None,
@@ -110,6 +111,7 @@ def dashboard_payload(
                     "daily": [],
                     "files": [],
                     "destination_table_options": [],
+                    "username_options": [],
                     "recent": [],
                     "recent_paging": {"page": page, "page_size": limit, "total": 0},
                 }
@@ -189,11 +191,32 @@ ORDER BY destination_table
                 )
                 if str(row.get("destination_table") or "").strip()
             ]
+            user_expr = (
+                "COALESCE(NULLIF(JSON_VALUE(row_payload, '$.audit_actor'), ''), "
+                "NULLIF(JSON_VALUE(row_payload, '$.actor'), ''))"
+            )
+            user_option_conditions = list(time_conditions)
+            user_option_conditions.append(f"{user_expr} IS NOT NULL")
+            user_options = [
+                str(row.get("username") or "").strip()
+                for row in _fetch_all_dicts(
+                    cursor,
+                    f"""
+SELECT DISTINCT TOP (200) {user_expr} AS username
+FROM {quoted_table}
+{_where_clause(user_option_conditions)}
+ORDER BY username
+""",
+                    tuple(time_params),
+                )
+                if str(row.get("username") or "").strip()
+            ]
 
             recent_conditions = list(time_conditions)
             recent_params = list(time_params)
             clean_status = str(status_filter or "").strip()
             clean_source_file = str(source_file_filter or "").strip()
+            clean_usernames = _normalize_destination_table_filters(username_filter)
             clean_destination_tables = _normalize_destination_table_filters(
                 destination_table_filter
             )
@@ -206,6 +229,10 @@ ORDER BY destination_table
             if clean_source_file:
                 recent_conditions.append("source_file LIKE ?")
                 recent_params.append(_contains_filter(clean_source_file))
+            if clean_usernames:
+                placeholders = ", ".join("?" for _ in clean_usernames)
+                recent_conditions.append(f"{user_expr} IN ({placeholders})")
+                recent_params.extend(clean_usernames)
             if clean_destination_tables:
                 placeholders = ", ".join("?" for _ in clean_destination_tables)
                 recent_conditions.append(f"destination_table IN ({placeholders})")
@@ -304,6 +331,7 @@ ORDER BY rn
                 "recent_filters": {
                     "status": clean_status,
                     "source_file": clean_source_file,
+                    "username": clean_usernames,
                     "destination_table": clean_destination_tables,
                     "row_no": row_no_filter,
                     "message": clean_message,
@@ -322,6 +350,7 @@ ORDER BY rn
                 "daily": daily,
                 "files": files,
                 "destination_table_options": destination_table_options,
+                "username_options": user_options,
                 "recent": recent,
             }
         finally:

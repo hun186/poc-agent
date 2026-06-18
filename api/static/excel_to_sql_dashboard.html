@@ -35,6 +35,9 @@
     .multi-select-option { display:flex; gap:8px; align-items:flex-start; padding:7px 6px; border-radius:8px; font-size:13px; line-height:1.35; cursor:pointer; word-break:break-word; }
     .multi-select-option:hover { background:#f8fafc; }
     .multi-select-option input { width:auto; margin-top:2px; flex:0 0 auto; }
+    .multi-filter-search { margin:4px 0 8px; padding:8px 9px; }
+    .multi-filter-actions { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
+    .multi-filter-actions button { padding:6px 8px; font-size:12px; }
     .field-label-row { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
     .field-label-row label { margin-bottom:0; }
     .help-tip { position:relative; display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border:1px solid var(--line); border-radius:999px; color:var(--muted); background:white; font-size:12px; font-weight:700; cursor:help; }
@@ -126,6 +129,7 @@
       <section class="filters" aria-label="最近 audit 事件篩選">
         <div><label>audit 狀態</label><select id="statusFilter"><option value="">全部</option><option value="inserted">inserted</option><option value="duplicate">duplicate</option><option value="failed">failed</option><option value="header_smart_match">header_smart_match</option><option value="sql_deleted">sql_deleted</option><option value="sql_delete_not_found">sql_delete_not_found</option></select></div>
         <div><label>來源檔包含</label><input id="sourceFileFilter" placeholder="例如 .xlsx 或檔名片段" /></div>
+        <div class="dropdown-filter"><div class="field-label-row"><label for="usernameSummary">使用者</label><span class="help-tip" tabindex="0" data-tip="點開選單勾選一位或多位使用者；操作方式與統計與檢核曲線儀表板的使用者篩選相同。" aria-label="使用者篩選說明">?</span></div><details id="usernameDropdown" class="multi-select"><summary id="usernameSummary">全體使用者</summary><div class="multi-select-menu"><input id="usernameSearch" class="multi-filter-search" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="selectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="clearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="clearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="usernameFilter" role="group" aria-label="使用者清單"><div class="muted">載入後可選擇</div></div></div></details><input id="usernameFilterValue" type="hidden" /></div>
         <div class="dropdown-filter"><div class="field-label-row"><label for="destinationTableSummary">目的地 table</label><span class="help-tip" tabindex="0" data-tip="點開選單選擇 table；點選多個項目後，點選選單外側會自動套用並收合。" aria-label="目的地 table 篩選說明">?</span></div><details id="destinationTableDropdown" class="multi-select"><summary id="destinationTableSummary">全部目的地 table</summary><div id="destinationTableFilter" class="multi-select-menu" role="listbox" aria-label="目的地 table 篩選"><div class="muted">載入後可選擇</div></div></details></div>
         <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
         <div><label>訊息包含</label><input id="messageFilter" placeholder="錯誤訊息 / 智慧比對" /></div>
