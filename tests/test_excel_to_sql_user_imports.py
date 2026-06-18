@@ -295,15 +295,19 @@ def test_confirm_import_ensures_audit_table_before_processing(monkeypatch, tmp_p
             self.closed = True
 
     fake_conn = FakeConn()
+    captured_process_kwargs = {}
+
+    def fake_process_excel_file(**kwargs):
+        captured_process_kwargs.update(kwargs)
+        return SimpleNamespace(
+            success=1, duplicate=0, failed=0, ok=True, failure_summary={}
+        )
+
     monkeypatch.setitem(
         sys.modules, "pyodbc", SimpleNamespace(connect=lambda conn_str: fake_conn)
     )
     monkeypatch.setattr(
-        user_import_runner,
-        "process_excel_file",
-        lambda **kwargs: SimpleNamespace(
-            success=1, duplicate=0, failed=0, ok=True, failure_summary={}
-        ),
+        user_import_runner, "process_excel_file", fake_process_excel_file
     )
 
     result = user_import_runner.import_record(
@@ -311,6 +315,7 @@ def test_confirm_import_ensures_audit_table_before_processing(monkeypatch, tmp_p
     )
 
     assert result["import_result"]["inserted_rows"] == 1
+    assert captured_process_kwargs["cfg"]["_audit_actor"] == "alice"
     assert fake_conn.closed is True
     assert fake_conn.cursor_obj.closed is True
     assert any(

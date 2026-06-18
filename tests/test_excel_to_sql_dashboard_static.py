@@ -84,6 +84,18 @@ def test_recent_audit_filters_include_shared_username_picker():
     assert "state.usernameOptions = SraAuditTools.uniqueSortedValues" in html
     assert "renderUsernameFilter()" in html
     assert "closeUsernameDropdown(true)" in html
+    assert "<th>使用者</th>" in html
+    assert "<td>${escapeHtml(r.username || '')}</td>" in html
+
+
+def test_recent_audit_table_gives_payload_more_width_than_file_column():
+    html = dashboard_source()
+
+    assert "#recent { table-layout:fixed; min-width:1100px; }" in html
+    assert "#recent th.file-col, #recent td.file-col { width:12%; max-width:220px; }" in html
+    assert "#recent th.payload-col, #recent td.payload-col { width:52%; min-width:520px; }" in html
+    assert '<th class="file-col">檔案</th>' in html
+    assert '<td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td>' in html
 
 
 def test_dashboard_header_shows_current_logged_in_user():
