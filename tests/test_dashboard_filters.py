@@ -133,6 +133,9 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
             elif "SELECT DISTINCT TOP (200) destination_table" in normalized:
                 self.description = [("destination_table",)]
                 self._rows = [("dbo.Target",), ("dbo.OtherTarget",)]
+            elif "SELECT DISTINCT TOP (200) COALESCE(NULLIF(JSON_VALUE(row_payload, '$.audit_actor'), ''), NULLIF(JSON_VALUE(row_payload, '$.actor'), '')) AS username" in normalized:
+                self.description = [("username",)]
+                self._rows = [("alice",), ("bob",)]
             elif "AS bucket_start, COUNT(1) AS count" in normalized:
                 self.description = [("bucket_start",), ("count",)]
                 self._rows = []
@@ -183,6 +186,7 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
         "config/excel_to_sql/task.json",
         days=7,
         destination_table_filter=["dbo.Target", "dbo.OtherTarget"],
+        username_filter=["alice", "bob"],
     )
 
     filtered_calls = [
@@ -196,10 +200,12 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
         for _, call_params in filtered_calls
     )
     assert result["destination_table_options"] == ["dbo.Target", "dbo.OtherTarget"]
+    assert result["username_options"] == ["alice", "bob"]
     assert result["recent_filters"]["destination_table"] == [
         "dbo.Target",
         "dbo.OtherTarget",
     ]
+    assert result["recent_filters"]["username"] == ["alice", "bob"]
 
 
 def test_discover_dashboard_tasks_recursively_loads_enabled_json(tmp_path):

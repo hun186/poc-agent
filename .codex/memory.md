@@ -118,3 +118,9 @@
 - 目的：避免 Excel 匯入記錄管理表格的「錯誤診斷」欄因長錯誤摘要撐高版面，並將「監控任務」等較不直覺文案改為操作語境較清楚的「匯入任務」。
 - 主要修改：匯入記錄錯誤診斷改用可點擊展開 / 收合的 `<details>`；匯入作業中心與匯入查詢儀表板的任務選擇 label 改為「匯入任務」；頁首與儀表板標題改為「Excel→SQL 匯入查詢儀表板」；範例設定任務名稱改為「船舶活動 Excel 匯入任務」。
 - 驗證：`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（10 passed）；`node --check api/static/excel_to_sql_import_records.js` 通過；目前環境仍缺少 Playwright，無法執行瀏覽器截圖。
+
+## 2026-06-18 Excel audit 最近事件使用者篩選
+
+- 目的：在 Excel→SQL 匯入查詢儀表板「最近 audit 事件」加入「使用者」篩選，操作方式與既有統計 / 檢核曲線儀表板的使用者多選篩選一致，並重用共用 `SraAuditTools` multi-filter helper。
+- 主要修改：使用者匯入確認流程會把匯入者寫入 audit row payload 的 `audit_actor`；dashboard 後端支援 `username_filter` 複選查詢，從 `audit_actor` / legacy `actor` 萃取可選使用者；前端最近 audit 篩選新增使用者搜尋、多選、勾選目前篩選、清除目前篩選與清除全部。
+- 驗證：`python -m py_compile data_ingestion/excel_to_sql/file_processor.py data_ingestion/excel_to_sql/user_import_runner.py data_ingestion/excel_to_sql/dashboard.py api/routers/excel_to_sql.py` 通過；`node --check api/static/excel_to_sql_dashboard.js` 通過；`pytest tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.py -q` 通過（16 passed）；`pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.py tests/test_audit.py -q` 通過（23 passed）。

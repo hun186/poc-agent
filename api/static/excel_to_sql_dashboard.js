@@ -1,5 +1,5 @@
 const tokenKey = 'sra_editor_token';
-const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false };
+const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false, usernameOptions: [], selectedUsers: [], usernameDirty: false };
 function $(id) { return document.getElementById(id); }
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function statusBadge(s) { return `<span class="status ${escapeHtml(s)}">${escapeHtml(s || '(empty)')}</span>`; }
@@ -45,6 +45,8 @@ function applyInitialQueryParams() {
   const query = new URLSearchParams(window.location.search || '');
   const map = { config: 'config', days: 'days', source_file_filter: 'sourceFileFilter', status_filter: 'statusFilter', row_no_filter: 'rowNoFilter', message_filter: 'messageFilter', hash_value_filter: 'hashFilter', payload_filter: 'payloadFilter', chart_bucket: 'chartBucket' };
   Object.entries(map).forEach(([param, id]) => { const value = query.get(param); if (value !== null && $(id)) $(id).value = value; });
+  const users = query.getAll('username_filter').map(value => String(value || '').trim()).filter(Boolean);
+  if (users.length) state.selectedUsers = users;
 }
 function fillRecentWindow() {
   const end = new Date();
@@ -80,7 +82,39 @@ function updateDestinationTableSummary() {
   const values = selectedValues('destinationTableFilter');
   $('destinationTableSummary').textContent = values.length ? `已選 ${values.length} 個 table：${values.join(', ')}` : '全部目的地 table';
 }
-function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); $('destinationTableFilter').querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; }); updateDestinationTableSummary(); applyAuditFilters(); }
+function renderUsernameFilter() {
+  SraAuditTools.renderMultiFilterOptions({
+    values: state.usernameOptions,
+    selectedValues: state.selectedUsers,
+    getSelectedValues: () => state.selectedUsers,
+    searchEl: $('usernameSearch'),
+    optionsEl: $('usernameFilter'),
+    dataAttr: 'data-audit-username',
+    emptyText: '沒有符合關鍵字的使用者。',
+    onSelectionChange: values => { state.selectedUsers = values; state.usernameDirty = true; updateUsernameSummary(); },
+  });
+  updateUsernameSummary();
+}
+function updateUsernameSummary() {
+  SraAuditTools.summarizeMultiFilterSelection({
+    selectedValues: state.selectedUsers,
+    hiddenInput: $('usernameFilterValue'),
+    summaryEl: $('usernameSummary'),
+    allLabel: '全體使用者',
+    unitLabel: '位使用者',
+  });
+}
+function applyUsernamePendingFilters() {
+  if (!state.usernameDirty) return;
+  state.usernameDirty = false;
+  applyAuditFilters();
+}
+function closeUsernameDropdown(applyPending = false) {
+  const dropdown = $('usernameDropdown');
+  if (dropdown.open) dropdown.open = false;
+  if (applyPending) applyUsernamePendingFilters();
+}
+function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); $('destinationTableFilter').querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; }); updateDestinationTableSummary(); applyAuditFilters(); }
 function renderDestinationTableOptions(options) {
   const el = $('destinationTableFilter');
   const selected = new Set(selectedValues('destinationTableFilter'));
@@ -201,6 +235,7 @@ async function loadDashboard() {
   const filters = { status_filter: $('statusFilter').value, source_file_filter: $('sourceFileFilter').value, row_no_filter: $('rowNoFilter').value, message_filter: $('messageFilter').value, hash_value_filter: $('hashFilter').value, payload_filter: $('payloadFilter').value };
   Object.entries(filters).forEach(([key, value]) => { if (String(value || '').trim()) params.set(key, value); });
   selectedValues('destinationTableFilter').forEach(value => params.append('destination_table_filter', value));
+  state.selectedUsers.forEach(value => params.append('username_filter', value));
   const res = await fetch('/v1/excel-to-sql/dashboard?' + params.toString(), { headers: { Authorization: 'Bearer ' + token } });
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
   const data = await res.json();
@@ -211,6 +246,8 @@ async function loadDashboard() {
   fillTable('daily', data.daily, r => `<tr><td>${escapeHtml(r.day)}</td><td>${statusBadge(r.status)}</td><td>${escapeHtml(r.count)}</td></tr>`);
   fillTable('files', data.files, r => `<tr><td>${escapeHtml(r.source_file)}</td><td>${escapeHtml(r.last_processed_at)}</td><td>${escapeHtml(r.inserted_rows)}</td><td>${escapeHtml(r.duplicate_rows)}</td><td>${escapeHtml(r.failed_rows)}</td><td>${escapeHtml(r.header_smart_matches)}</td></tr>`);
   renderDestinationTableOptions(data.destination_table_options || []);
+  state.usernameOptions = SraAuditTools.uniqueSortedValues([...(data.username_options || []), ...state.selectedUsers]);
+  renderUsernameFilter();
   if (data.chart_bucket && $('chartBucket').value !== data.chart_bucket) $('chartBucket').value = data.chart_bucket;
   renderFilteredDailyChart(data.filtered_series || data.filtered_daily || [], data.chart_bucket || $('chartBucket').value, data.chart_bucket_label || $('chartBucket').selectedOptions[0]?.textContent || '每日');
   updateRecentPager(data);
@@ -223,6 +260,15 @@ function bindAuditFilterEvents() {
     el.addEventListener('keydown', event => { if (event.key === 'Enter') applyAuditFilters(); });
   });
   const destinationDropdown = $('destinationTableDropdown');
+  const usernameDropdown = $('usernameDropdown');
+  $('usernameSearch').addEventListener('input', renderUsernameFilter);
+  $('selectVisibleUsersBtn').addEventListener('click', () => { state.selectedUsers = SraAuditTools.setVisibleMultiFilterSelection({values: state.usernameOptions, selectedValues: state.selectedUsers, searchEl: $('usernameSearch'), checked: true}); state.usernameDirty = true; renderUsernameFilter(); });
+  $('clearVisibleUsersBtn').addEventListener('click', () => { state.selectedUsers = SraAuditTools.setVisibleMultiFilterSelection({values: state.usernameOptions, selectedValues: state.selectedUsers, searchEl: $('usernameSearch'), checked: false}); state.usernameDirty = true; renderUsernameFilter(); });
+  $('clearAllUsersBtn').addEventListener('click', () => { state.selectedUsers = []; state.usernameDirty = true; renderUsernameFilter(); });
+  $('usernameFilter').addEventListener('keydown', event => { if (event.key === 'Enter') closeUsernameDropdown(true); });
+  usernameDropdown.addEventListener('toggle', () => { if (!usernameDropdown.open) applyUsernamePendingFilters(); });
+  usernameDropdown.addEventListener('focusout', () => { setTimeout(() => { if (!usernameDropdown.contains(document.activeElement)) closeUsernameDropdown(true); }, 0); });
+  document.addEventListener('click', event => { if (!usernameDropdown.contains(event.target)) closeUsernameDropdown(true); });
   $('destinationTableFilter').addEventListener('change', () => { state.destinationTableDirty = true; updateDestinationTableSummary(); });
   $('destinationTableFilter').addEventListener('keydown', event => { if (event.key === 'Enter') closeDestinationTableDropdown(true); });
   destinationDropdown.addEventListener('toggle', () => { if (!destinationDropdown.open) applyDestinationTablePendingFilters(); });
