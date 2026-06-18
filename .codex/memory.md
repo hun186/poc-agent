@@ -130,3 +130,9 @@
 - 目的：釐清並補強 Excel→SQL 匯入查詢儀表板最近 audit 事件的使用者可見性；使用者篩選來源是 audit `row_payload` 內的 `audit_actor` / `actor`，既有 UI 未在最近事件表格直接顯示使用者。
 - 主要修改：最近 audit 事件查詢回傳 `username` 欄位，來源與使用者篩選一致；最近 audit 事件表格新增「使用者」欄，讓每筆列級 audit 可直接看到匯入使用者。若舊資料或 CLI 匯入未寫入 actor，該欄會是空白，使用者篩選也不會產生可選項。
 - 驗證：`pytest tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（16 passed）；`node --check api/static/excel_to_sql_dashboard.js` 通過。
+
+## 2026-06-18 Excel audit 欄寬與匯入者確認
+
+- 目的：回覆並補強 Excel→SQL 使用者匯入的每列 audit 使用者紀錄，以及調整最近 audit 事件表格欄寬，讓 payload 取得更多顯示空間。
+- 主要修改：確認匯入流程會將匯入記錄的 `username` 傳入處理設定 `_audit_actor`，後續每列 audit payload 會寫入 `audit_actor`；最近 audit 表格將檔案欄設為窄欄、固定最近事件表格版面，並提高 payload 欄寬。
+- 驗證：`pytest tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py -q` 通過（22 passed）；`node --check api/static/excel_to_sql_dashboard.js` 通過；`python -m playwright --version` 仍因未安裝 Playwright 無法截圖。
