@@ -148,3 +148,9 @@
 - 目的：依使用者回饋，縮減最近 audit 事件表時間欄寬、修正部分欄位文字溢出與欄位對不齊，並讓下方表格與 payload 欄更充分使用水平寬度。
 - 主要修改：最近 audit 事件表加入 `colgroup` 固定欄位對應；時間欄由 15% 調整為 10%（約三分之二）並降低最小寬度；整體表格最小寬度提高至 1700px；payload 欄提高至 40% / 680px；所有欄位套用 `box-sizing` 與 `overflow-wrap:anywhere` 以避免文字跑出格子。
 - 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（7 passed）；`node --check api/static/excel_to_sql_dashboard.js` 通過；截圖驗證因環境缺少 Playwright 無法執行，已以靜態 UI 測試與 JS 語法檢查替代。
+
+## 2026-06-18 Excel audit username 實體欄位
+
+- 目的：修正 Excel→SQL 最近 audit 事件「使用者」顯示未讀到使用者資訊，並讓 SQL audit 表以一般欄位保存 username，避免只依賴 `row_payload` JSON 解析。
+- 主要修改：`ExcelImportAudit` 建表與既有表升級流程新增 nullable `username NVARCHAR(255)`；audit insert 會由 `row_payload.audit_actor` / `audit_user` / `actor` 擷取 username 寫入實體欄位；dashboard 查詢優先讀 `username` 欄，並保留 JSON fallback 以相容舊資料或刪除 audit。
+- 驗證：`pytest tests/test_audit.py tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（21 passed）；`python -m py_compile data_ingestion/excel_to_sql/audit.py data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/dashboard_sql.py` 通過。

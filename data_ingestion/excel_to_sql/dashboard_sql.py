@@ -50,6 +50,16 @@ def _table_exists(cursor, table: str) -> bool:
     return bool(row and row[0])
 
 
+def _column_exists(cursor, table: str, column: str) -> bool:
+    cursor.execute(
+        "SELECT CASE WHEN COL_LENGTH(?, ?) IS NULL THEN 0 ELSE 1 END",
+        table,
+        column,
+    )
+    row = cursor.fetchone()
+    return bool(row and row[0])
+
+
 def _fetch_all_dicts(
     cursor, sql: str, params: tuple[Any, ...] = ()
 ) -> list[dict[str, Any]]:

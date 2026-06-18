@@ -114,6 +114,10 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
                 self._one = (1,)
                 self.description = []
                 self._rows = []
+            elif "COL_LENGTH" in normalized:
+                self._one = (1,)
+                self.description = []
+                self._rows = []
             elif "SELECT status, COUNT(1) AS count" in normalized:
                 self.description = [("status",), ("count",)]
                 self._rows = []
@@ -133,7 +137,7 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
             elif "SELECT DISTINCT TOP (200) destination_table" in normalized:
                 self.description = [("destination_table",)]
                 self._rows = [("dbo.Target",), ("dbo.OtherTarget",)]
-            elif "SELECT DISTINCT TOP (200) COALESCE(NULLIF(JSON_VALUE(row_payload, '$.audit_actor'), ''), NULLIF(JSON_VALUE(row_payload, '$.actor'), '')) AS username" in normalized:
+            elif "SELECT DISTINCT TOP (200) COALESCE(NULLIF(username, ''), NULLIF(JSON_VALUE(row_payload, '$.audit_actor'), ''), NULLIF(JSON_VALUE(row_payload, '$.audit_user'), ''), NULLIF(JSON_VALUE(row_payload, '$.actor'), '')) AS username" in normalized:
                 self.description = [("username",)]
                 self._rows = [("alice",), ("bob",)]
             elif "AS bucket_start, COUNT(1) AS count" in normalized:

@@ -22,6 +22,7 @@ from data_ingestion.excel_to_sql.dashboard_filters import (
 )
 from data_ingestion.excel_to_sql.dashboard_sql import (
     _audit_table,
+    _column_exists,
     _connect,
     _fetch_all_dicts,
     _table_exists,
@@ -115,6 +116,7 @@ def dashboard_payload(
                     "recent": [],
                     "recent_paging": {"page": page, "page_size": limit, "total": 0},
                 }
+            has_username_column = _column_exists(cursor, table, "username")
 
             time_conditions: list[str] = []
             time_params: list[Any] = []
@@ -191,10 +193,17 @@ ORDER BY destination_table
                 )
                 if str(row.get("destination_table") or "").strip()
             ]
-            user_expr = (
-                "COALESCE(NULLIF(JSON_VALUE(row_payload, '$.audit_actor'), ''), "
-                "NULLIF(JSON_VALUE(row_payload, '$.actor'), ''))"
+            user_expr_parts = []
+            if has_username_column:
+                user_expr_parts.append("NULLIF(username, '')")
+            user_expr_parts.extend(
+                [
+                    "NULLIF(JSON_VALUE(row_payload, '$.audit_actor'), '')",
+                    "NULLIF(JSON_VALUE(row_payload, '$.audit_user'), '')",
+                    "NULLIF(JSON_VALUE(row_payload, '$.actor'), '')",
+                ]
             )
+            user_expr = f"COALESCE({', '.join(user_expr_parts)})"
             user_option_conditions = list(time_conditions)
             user_option_conditions.append(f"{user_expr} IS NOT NULL")
             user_options = [
