@@ -84,6 +84,8 @@ def test_recent_audit_filters_include_shared_username_picker():
     assert "state.usernameOptions = SraAuditTools.uniqueSortedValues" in html
     assert "renderUsernameFilter()" in html
     assert "closeUsernameDropdown(true)" in html
+    assert "<th>使用者</th>" in html
+    assert "<td>${escapeHtml(r.username || '')}</td>" in html
 
 
 def test_dashboard_header_shows_current_logged_in_user():

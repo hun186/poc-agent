@@ -167,3 +167,8 @@
 - `GET /v1/excel-to-sql/dashboard` 新增可重複 query 參數 `username_filter`，用於「最近 audit 事件」與套用目前篩選的統計曲線。
 - `username_filter` 以 exact match 比對 audit row payload 的 `audit_actor`，並相容既有刪除 audit payload 的 `actor`。
 - Response 新增 `username_options: string[]`，提供前端使用者多選篩選清單；`recent_filters.username` 會回傳已正規化的使用者篩選值。
+
+## 2026-06-18 Excel→SQL dashboard recent audit username
+
+- `GET /v1/excel-to-sql/dashboard` 的 `recent[]` 事件物件新增 `username` 欄位，值由 audit `row_payload` 的 `audit_actor` 優先，其次 `actor` 解析而來，與 `username_filter` / `username_options` 使用相同來源。
+- 舊 audit rows 若沒有 `audit_actor` 或 `actor`，`recent[].username` 會是空值；這類資料也不會出現在 `username_options`。

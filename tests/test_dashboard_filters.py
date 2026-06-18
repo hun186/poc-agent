@@ -154,9 +154,11 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
                     ("status",),
                     ("message",),
                     ("row_payload",),
+                    ("username",),
                     ("processed_at",),
                 ]
                 self._rows = []
+                assert "AS username" in sql
             return self
 
         def fetchall(self):
