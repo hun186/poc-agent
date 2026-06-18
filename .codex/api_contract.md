@@ -172,3 +172,9 @@
 
 - `GET /v1/excel-to-sql/dashboard` 的 `recent[]` 事件物件新增 `username` 欄位，值由 audit `row_payload` 的 `audit_actor` 優先，其次 `actor` 解析而來，與 `username_filter` / `username_options` 使用相同來源。
 - 舊 audit rows 若沒有 `audit_actor` 或 `actor`，`recent[].username` 會是空值；這類資料也不會出現在 `username_options`。
+
+## 2026-06-18 ExcelImportAudit username 欄位
+
+- SQL audit table contract 更新：`ExcelImportAudit` 新增 nullable `username NVARCHAR(255)` 欄位；`ensure_audit_table()` 會在既有表缺少此欄位時執行 `ALTER TABLE ... ADD username NVARCHAR(255) NULL`。
+- 新寫入的 audit rows 會將使用者資訊寫入 `username` 欄位；來源優先序為 `row_payload.audit_actor`、`row_payload.audit_user`、`row_payload.actor`。
+- `GET /v1/excel-to-sql/dashboard` HTTP response shape 不變；`recent[].username` 改為優先使用 SQL `username` 欄，並保留 JSON payload fallback 以相容舊資料。

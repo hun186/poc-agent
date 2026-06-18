@@ -9,6 +9,21 @@ from .sql_utils import quote_object_path
 from .utils import json_safe
 
 
+def _audit_username(row_payload: Dict[str, Any]) -> str | None:
+    """Extract the audit actor stored in a row payload.
+
+    ``audit_actor`` is used by the user-driven Excel import flow. ``audit_user``
+    is accepted for compatibility with older/manual payloads, and ``actor`` is
+    used by delete audit rows.
+    """
+
+    for key in ("audit_actor", "audit_user", "actor"):
+        username = str(row_payload.get(key) or "").strip()
+        if username:
+            return username
+    return None
+
+
 def _execute_audit_rows_without_fast_mode(cursor, sql: str, params: Sequence[tuple[Any, ...]]):
     """Run audit inserts one row at a time without pyodbc fast mode.
 
@@ -58,9 +73,15 @@ BEGIN
         destination_table NVARCHAR(512) NOT NULL,
         status NVARCHAR(32) NOT NULL,
         message NVARCHAR(MAX) NULL,
+        username NVARCHAR(255) NULL,
         row_payload NVARCHAR(MAX) NULL,
         processed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
     );
+END
+IF COL_LENGTH(N'{object_name}', N'username') IS NULL
+BEGIN
+    ALTER TABLE {quote_object_path(audit_table)}
+    ADD username NVARCHAR(255) NULL;
 END
 """
     cursor.execute(sql)
@@ -80,8 +101,8 @@ def insert_audit_rows(
         return
     sql = f"""
 INSERT INTO {quote_object_path(audit_table)}
-(run_id, source_file, sheet_name, row_no, hash_value, destination_table, status, message, row_payload)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+(run_id, source_file, sheet_name, row_no, hash_value, destination_table, status, message, username, row_payload)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
     params = [
         (
@@ -93,6 +114,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             destination_table,
             result.status,
             result.message,
+            _audit_username(result.row_payload),
             json.dumps(result.row_payload, ensure_ascii=False, default=json_safe),
         )
         for result in row_results
