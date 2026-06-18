@@ -344,3 +344,11 @@ Open
 - 替代驗證：以 `pytest tests/test_excel_to_sql_dashboard_static.py -q` 檢查 DOM / CSS / render template；以 `node --check api/static/excel_to_sql_dashboard.js` 檢查前端 JS 語法。
 
 狀態：Open
+
+## 2026-06-18 Excel→SQL audit 表格截圖限制
+
+- 本次調整 SQL 監控儀表板最近 audit 事件表欄寬與換行，屬可視 UI 變更。
+- 目前環境執行 `python -m playwright --version` 回傳 `No module named playwright`，因此無法提供瀏覽器截圖驗證。
+- 替代驗證：以 `pytest tests/test_excel_to_sql_dashboard_static.py -q` 檢查欄寬 CSS、`colgroup` 與表格欄位 class；以 `node --check api/static/excel_to_sql_dashboard.js` 檢查 dashboard JS 語法。
+
+狀態：Open
