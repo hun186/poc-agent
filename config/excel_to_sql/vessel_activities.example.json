@@ -86,6 +86,6 @@
   },
   "dashboard": {
     "enabled": true,
-    "name": "船舶活動 Excel 匯入監控"
+    "name": "船舶活動 Excel 匯入任務"
   }
 }

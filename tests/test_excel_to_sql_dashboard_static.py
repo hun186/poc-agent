@@ -39,6 +39,9 @@ def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     assert "function refreshDashboardNow() { loadDashboard(); }" in html
     assert "回看天數（起迄皆空時才生效）" in html
     assert "前往 Excel 匯入作業中心" not in html
+    assert "Excel→SQL 匯入查詢儀表板" in html
+    assert "匯入任務" in html
+    assert "監控任務" not in html
 
 
 def test_recent_audit_filters_include_destination_table():

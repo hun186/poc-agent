@@ -24,7 +24,7 @@ function importRecordDiagnostics(r) {
   const result = r.import_result || r.preview || {};
   const failed = Number(result.failed_rows ?? result.failed ?? 0);
   if (!failed) return '<span class="muted">—</span>';
-  return `<div class="diagnostics"><strong>失敗 ${escapeHtml(failed)} 筆</strong>${summarizeFailures(result.failure_summary)}${sampleDiagnostics(result.samples)}</div>`;
+  return `<div class="diagnostics"><strong>失敗 ${escapeHtml(failed)} 筆</strong><details><summary>展開 / 收合錯誤診斷</summary>${summarizeFailures(result.failure_summary)}${sampleDiagnostics(result.samples)}</details></div>`;
 }
 async function loadCurrentUser() {
   const token = authToken();

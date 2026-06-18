@@ -204,7 +204,7 @@ async function loadDashboard() {
   const res = await fetch('/v1/excel-to-sql/dashboard?' + params.toString(), { headers: { Authorization: 'Bearer ' + token } });
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
   const data = await res.json();
-  document.title = (data.task_name || 'Excel→SQL 匯入 SQL') + ' - 監控儀表板';
+  document.title = (data.task_name || 'Excel→SQL 匯入 SQL') + ' - 匯入查詢儀表板';
   if (!data.exists) showError(`audit table 尚不存在：${data.audit_table}`);
   $('timeBasis').textContent = `audit 時間以本機時間顯示（${Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'}）；起迄時間輸入也是本機時間，系統會轉成 ${data.audit_time_basis || 'UTC'} 查詢。`;
   renderCards(data);

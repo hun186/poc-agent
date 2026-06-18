@@ -36,6 +36,9 @@
     .status.imported_with_errors { background:#fef3f2; color:var(--bad); }
     .status.deleted { background:#f2f4f7; color:#344054; }
     .diagnostics { min-width:0; }
+    .diagnostics details { margin-top:6px; }
+    .diagnostics summary { color:var(--info); cursor:pointer; font-weight:700; list-style-position:inside; }
+    .diagnostics summary:hover { text-decoration:underline; }
     .diagnostics ul { margin:6px 0 0 18px; padding:0; }
     .record-mobile-summary { display:none; }
     @media (max-width: 900px) { .controls, .filters { grid-template-columns:1fr; } }
@@ -79,7 +82,7 @@
   </div>
   <div class="header-actions">
     <div id="whoami" class="header-user">未登入</div>
-    <button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL SQL 監控儀表板</button>
+    <button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button>
     <button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
   </div>
 </header>
@@ -89,7 +92,7 @@
     <h2>使用者 Excel 匯入操作</h2>
     <p class="muted">上傳 Excel 後會先存入備查區；請先執行預掃描，確認預估新增、重複與錯誤列數後，再按「確認匯入 SQL」。若狀態為 imported_with_errors，請查看「錯誤診斷」欄與預掃描樣本。</p>
     <div class="controls">
-      <div><label>監控任務</label><select id="task" onchange="onTaskChange()"><option value="">載入中...</option></select></div>
+      <div><label>匯入任務</label><select id="task" onchange="onTaskChange()"><option value="">載入中...</option></select></div>
       <div><label>匯入設定檔</label><input id="uploadConfig" value="config/excel_to_sql/vessel_activities.example.json" /></div>
       <div><label>Excel 檔案</label><input id="uploadExcel" type="file" accept=".xlsx,.xlsm,.xltx,.xltm" /></div>
       <div class="upload-actions"><button onclick="uploadExcelRecord()">上傳並建立記錄</button><button class="secondary" onclick="loadImportRecords()">重新查詢記錄</button></div>
@@ -109,6 +112,6 @@
     <div class="table-wrap import-records-wrap"><table id="importRecords" class="import-records-table"><colgroup><col class="date-col" /><col class="user-col" /><col class="original-file-col" /><col class="stored-file-col" /><col class="config-col" /><col class="status-col" /><col class="count-col" /><col class="count-col" /><col class="count-col" /><col class="size-col" /><col class="diagnostics-col" /><col class="actions-col" /></colgroup><thead><tr><th>日期</th><th>使用者</th><th>原始檔名</th><th>導入檔名</th><th>設定檔</th><th>狀態</th><th>新增</th><th>重複</th><th>錯誤</th><th>大小</th><th>錯誤診斷</th><th>操作</th></tr></thead><tbody></tbody></table></div>
   </section>
 </main>
-<script src="/static/excel_to_sql_import_records.js?v=20260618-action-stack"></script>
+<script src="/static/excel_to_sql_import_records.js?v=20260618-diagnostics-toggle"></script>
 </body>
 </html>
