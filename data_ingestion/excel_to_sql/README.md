@@ -59,7 +59,7 @@ python -m data_ingestion.excel_to_sql.ingest --config config/excel_to_sql/vessel
 ```json
 "dashboard": {
   "enabled": true,
-  "name": "船舶活動 Excel 匯入監控"
+  "name": "船舶活動 Excel 匯入任務"
 }
 ```
 
@@ -81,6 +81,6 @@ python -m data_ingestion.excel_to_sql.ingest --config config/excel_to_sql/vessel
 - `ingest.py`：CLI、整批匯入 orchestration、重試、truncate 與 archive。
 - `file_processor.py`：單檔 Excel 匯入流程，包含 Excel 讀取、欄位比對、去重、SQL 寫入與 audit 寫入。
 - `models.py` / `utils.py` / `date_utils.py` / `sql_utils.py` / `audit.py`：匯入流程共用工具模組。
-- `dashboard.py`：掃描可監控任務、查詢 audit table、彙整監控資料。
+- `dashboard.py`：掃描可匯入任務、查詢 audit table、彙整監控資料。
 - `api/routers/excel_to_sql.py`：提供儀表板頁面與 JSON API。
 - `api/static/excel_to_sql_dashboard.html`：瀏覽器儀表板。

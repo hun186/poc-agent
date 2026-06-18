@@ -320,3 +320,11 @@ Open
 - 替代驗證：以 `tests/test_excel_to_sql_user_imports.py` 靜態檢查操作欄使用單欄 grid、縮小 actions 欄寬並移除三欄 grid；以 `node --check api/static/excel_to_sql_import_records.js` 檢查前端 JS 語法。
 
 狀態：Open
+
+## 2026-06-18 Excel 匯入作業中心 UI 截圖限制
+
+- 本次調整錯誤診斷欄開合、匯入任務文案與匯入查詢儀表板標題，屬可視 UI 變更。
+- 環境執行 `python -m playwright --version` 回傳 `No module named playwright`，因此無法提供瀏覽器截圖驗證。
+- 替代驗證：以 `pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 靜態檢查 DOM / 文案 / JS 標記，並以 `node --check api/static/excel_to_sql_import_records.js` 驗證前端 JS 語法。
+
+狀態：Open

@@ -105,7 +105,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "前往 Excel 匯入作業中心" not in dashboard_html
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
-    assert "/static/excel_to_sql_import_records.js?v=20260618-action-stack" in html
+    assert "/static/excel_to_sql_import_records.js?v=20260618-diagnostics-toggle" in html
     assert "/v1/excel-to-sql/import-records" in script
     assert "previewImportRecord" in script
     assert "刪除記錄" not in script
@@ -114,6 +114,10 @@ def test_import_center_static_contains_user_import_controls():
     assert "recordSelectAll" not in html
     assert "批次刪除勾選記錄" not in html
     assert "錯誤診斷" in html
+    assert "匯入任務" in html
+    assert "監控任務" not in html
+    assert "Excel→SQL 匯入查詢儀表板" in html
+    assert "船舶活動 Excel 匯入任務" in Path("config/excel_to_sql/vessel_activities.example.json").read_text(encoding="utf-8")
     assert "原始檔名" in html
     assert "導入檔名" in html
     assert 'class="table-wrap import-records-wrap"' in html
@@ -128,6 +132,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "@media (max-width: 760px)" in html
     assert "content:attr(data-label)" in html
     assert "function importRecordDiagnostics" in script
+    assert "<details><summary>展開 / 收合錯誤診斷</summary>" in script
     assert "function openAuditForImportRecord" in script
     assert "source_file_filter" in script
     assert "#recentAuditSection" in script

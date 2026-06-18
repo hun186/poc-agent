@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Excel→SQL 匯入 SQL 監控儀表板</title>
+  <title>Excel→SQL 匯入查詢儀表板</title>
   <style>
     :root { color-scheme: light; --bg:#f6f7fb; --card:#fff; --line:#d9deea; --text:#172033; --muted:#667085; --ok:#027a48; --warn:#b54708; --bad:#b42318; --info:#175cd3; }
     body { margin:0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
@@ -84,7 +84,7 @@
 <body>
   <header>
     <div>
-      <h1>Excel→SQL 匯入 SQL 監控儀表板</h1>
+      <h1>Excel→SQL 匯入查詢儀表板</h1>
       <div class="muted" style="color:#cbd5e1;">追蹤 Excel→SQL 匯入批次、去重、欄名智慧比對與失敗資料列</div>
     </div>
     <div class="header-actions">
@@ -95,7 +95,7 @@
   </header>
   <main>
     <section class="card controls">
-      <div><label>監控任務</label><select id="task" onchange="onTaskChange()"><option value="">載入中...</option></select></div>
+      <div><label>匯入任務</label><select id="task" onchange="onTaskChange()"><option value="">載入中...</option></select></div>
       <div><label>設定檔路徑</label><input id="config" value="config/excel_to_sql/vessel_activities.example.json" /></div>
       <div><label>起始時間（本機）</label><input id="startTs" type="datetime-local" step="1" /></div>
       <div><label>結束時間（本機）</label><input id="endTs" type="datetime-local" step="1" /></div>
