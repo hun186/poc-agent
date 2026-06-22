@@ -12,12 +12,12 @@ def test_vercel_entrypoint_reuses_api_main_app():
     assert not Path("api/app.py").exists()
 
 
-def test_vercel_json_routes_to_python_entrypoint():
+def test_vercel_json_uses_zero_config_fastapi_discovery():
     config = json.loads(Path("vercel.json").read_text(encoding="utf-8"))
 
-    assert config["version"] == 2
-    assert config["builds"] == [{"src": "app.py", "use": "@vercel/python"}]
-    assert config["routes"] == [{"src": "/(.*)", "dest": "app.py"}]
+    assert "version" not in config
+    assert "builds" not in config
+    assert "routes" not in config
     assert "functions" not in config
     assert "rewrites" not in config
     assert config["env"]["SRA_VERCEL_MOCK_MODE"] == "auto"
@@ -40,8 +40,40 @@ def test_env_example_documents_vercel_mock_defaults():
     assert "API_STORE_ENABLED=0" in env_example
 
 
-def test_vercel_hobby_plan_uses_single_explicit_python_build():
+def test_vercel_hobby_plan_does_not_use_legacy_builds_or_api_entrypoint():
     config = json.loads(Path("vercel.json").read_text(encoding="utf-8"))
 
-    python_builds = [build for build in config["builds"] if build.get("use") == "@vercel/python"]
-    assert python_builds == [{"src": "app.py", "use": "@vercel/python"}]
+    assert Path("app.py").exists()
+    assert not Path("api/app.py").exists()
+    assert "builds" not in config
+    assert "routes" not in config
+
+
+def test_vercel_entrypoint_imports_under_vercel_environment():
+    import os
+    import subprocess
+    import sys
+
+    env = {
+        **os.environ,
+        "PYTHONPATH": ".",
+        "VERCEL": "1",
+        "VERCEL_ENV": "production",
+        "APP_ENV": "production",
+    }
+    code = (
+        "from fastapi.testclient import TestClient\n"
+        "from app import app\n"
+        "response = TestClient(app).get('/healthz')\n"
+        "assert response.status_code == 200, response.text\n"
+        "print(response.json())\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert "'ok': True" in result.stdout or '"ok": true' in result.stdout

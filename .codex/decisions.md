@@ -149,4 +149,9 @@
 ## 2026-06-22 Vercel Single Function 決策
 
 - 因本專案既有 application package 名稱就是 `api/`，若把 Vercel entrypoint 放在 `api/app.py` 並採 zero-config discovery，Vercel 可能把 `api/` 底下多個 Python 模組視為多個 Serverless Functions，超過 Hobby plan 12 functions 限制。
-- Vercel 部署改採根目錄 `app.py` + explicit `@vercel/python` build / route，讓部署只產生單一 Python function，同時保留內部 `api.main.app` 與落地部署 import path。
+- 曾改採根目錄 `app.py` + explicit `@vercel/python` build / route；此決策已被 2026-06-22 zero-config FastAPI 決策取代，現行保留 root `app.py` 但移除 legacy `builds/routes`。
+
+## 2026-06-22 Vercel Zero-config FastAPI 決策
+
+- 根目錄 `app.py` 保留為唯一 FastAPI ASGI entrypoint，但 `vercel.json` 不再使用 legacy `builds` / `routes` 強制 `@vercel/python`，避免繞過 Vercel FastAPI framework preset 後發生 runtime function crash。
+- 現行 Vercel 策略：root `app.py` + zero-config framework discovery + `.vercelignore` 控制 bundle footprint；不使用 `api/app.py`、`functions`、`rewrites`、legacy `builds/routes`。

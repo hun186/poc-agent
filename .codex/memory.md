@@ -227,3 +227,9 @@
 - 目的：處理 Vercel Hobby plan build failed：`No more than 12 Serverless Functions can be added to a Deployment`。
 - 主要修改：恢復根目錄 `app.py` 作為唯一 Vercel Python build entrypoint，刪除 `api/app.py`，並將 `vercel.json` 改為 explicit `version: 2` / `builds: [{src: "app.py", use: "@vercel/python"}]` / routes 到 `app.py`。此設定避免 Vercel 把既有 `api/` 應用套件底下多個 `.py` 模組當成多個 serverless functions。
 - 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py` 通過。
+
+## 2026-06-22 Vercel function invocation crash 修正
+
+- 目的：處理 Vercel runtime `FUNCTION_INVOCATION_FAILED` 500 crash，前一版使用 legacy `builds` / `routes` 強制 `@vercel/python` build 可能繞過 FastAPI framework preset。
+- 主要修改：保留根目錄 `app.py` re-export `api.main.app`，但移除 `vercel.json` 的 `version` / `builds` / `routes`，只保留非機密 env defaults；讓 Vercel zero-config Python FastAPI preset discovery root `app.py` 作為單一 ASGI app。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`VERCEL=1 VERCEL_ENV=production APP_ENV=production PYTHONPATH=. python - <<'PY' ... import app ... PY` 可成功 import app；`PYTHONPATH=. python -m py_compile app.py api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py` 通過。

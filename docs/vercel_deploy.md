@@ -7,10 +7,11 @@ Elasticsearch / SQL Server services are not reachable from Vercel.
 ## Files used by Vercel
 
 - Root `app.py` exports the FastAPI `app` object and reuses `api.main.app`.
-- `vercel.json` uses an explicit single `@vercel/python` build for `app.py` and
-  routes all requests to that file. This avoids Vercel treating every Python
-  module under this repository's existing `api/` application package as a
-  separate Hobby-plan Serverless Function.
+- `vercel.json` intentionally does not define legacy `builds`, `routes`,
+  `functions`, or `rewrites`. Vercel's Python FastAPI framework preset should
+  discover root `app.py` as the single ASGI app entrypoint; keeping routing/build
+  overrides out avoids legacy runtime crashes and avoids treating this repo's
+  existing `api/` application package as multiple Hobby-plan functions.
 - `requirements.txt` remains the Python dependency source installed by Vercel.
 
 ## Bundle size controls
