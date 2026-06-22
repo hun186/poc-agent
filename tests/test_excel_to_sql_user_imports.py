@@ -89,13 +89,13 @@ def test_legacy_records_json_migrates_to_per_record_files(monkeypatch, tmp_path)
 
 
 def test_import_center_static_contains_user_import_controls():
-    dashboard_html = Path("api/static/excel_to_sql_dashboard.html").read_text(
+    dashboard_html = Path("sra_api/static/excel_to_sql_dashboard.html").read_text(
         encoding="utf-8"
     )
-    html = Path("api/static/excel_to_sql_import_center.html").read_text(
+    html = Path("sra_api/static/excel_to_sql_import_center.html").read_text(
         encoding="utf-8"
     )
-    script = Path("api/static/excel_to_sql_import_records.js").read_text(
+    script = Path("sra_api/static/excel_to_sql_import_records.js").read_text(
         encoding="utf-8"
     )
     assert (
@@ -144,8 +144,8 @@ def test_import_center_static_contains_user_import_controls():
     assert 'data-label="導入檔名"' in script
     assert 'data-label="操作"' in script
     assert 'aria-label="選取匯入記錄' not in script
-    assets = Path("api/routers/editor.py").read_text(encoding="utf-8")
-    router = Path("api/routers/excel_to_sql.py").read_text(encoding="utf-8")
+    assets = Path("sra_api/routers/editor.py").read_text(encoding="utf-8")
+    router = Path("sra_api/routers/excel_to_sql.py").read_text(encoding="utf-8")
     facade = Path("data_ingestion/excel_to_sql/user_imports.py").read_text(
         encoding="utf-8"
     )

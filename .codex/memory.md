@@ -233,3 +233,9 @@
 - 目的：處理 Vercel runtime `FUNCTION_INVOCATION_FAILED` 500 crash，前一版使用 legacy `builds` / `routes` 強制 `@vercel/python` build 可能繞過 FastAPI framework preset。
 - 主要修改：保留根目錄 `app.py` re-export `api.main.app`，但移除 `vercel.json` 的 `version` / `builds` / `routes`，只保留非機密 env defaults；讓 Vercel zero-config Python FastAPI preset discovery root `app.py` 作為單一 ASGI app。
 - 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`VERCEL=1 VERCEL_ENV=production APP_ENV=production PYTHONPATH=. python - <<'PY' ... import app ... PY` 可成功 import app；`PYTHONPATH=. python -m py_compile app.py api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py` 通過。
+
+## 2026-06-22 Vercel api package relocation
+
+- 目的：處理 Vercel Hobby plan 仍將 top-level `api/` 目錄內多個 Python 檔視為多個 Serverless Functions 的問題。
+- 主要修改：將實際 FastAPI source tree 從 top-level `api/` 移至 `sra_api/`；保留 top-level `api/__init__.py` compatibility package，將 `api.*` import path 指向 `sra_api/`，因此 `from api.main import app` 與既有程式 import 可繼續運作，但 Vercel 只會看到 `api/__init__.py`，不再看到 49 個 `api/**/*.py` functions。
+- 驗證：`find api -type f -name '*.py' | wc -l` 確認 top-level `api/` 僅 1 個 Python shim；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py tests/test_editor_auth_ui_static.py tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/__init__.py sra_api/services/vercel_mock_runtime.py sra_api/routers/editor.py sra_api/routers/excel_to_sql.py` 通過。

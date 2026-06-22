@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC_ROOT = ROOT / "api" / "static"
+STATIC_ROOT = ROOT / "sra_api" / "static"
 VERCELIGNORE = ROOT / ".vercelignore"
 
 
@@ -20,17 +20,17 @@ def test_vercel_excludes_unused_swagger_ui_js_stem_conflict() -> None:
 
     assert 'href="./swagger-ui.css"' in index_html
     assert "swagger-ui.js" not in index_html
-    assert "api/static/swagger-ui.js" in ignored
-    assert "api/static/swagger-ui.js.map" in ignored
+    assert "sra_api/static/swagger-ui.js" in ignored
+    assert "sra_api/static/swagger-ui.js.map" in ignored
 
 
 def test_vercel_keeps_required_swagger_ui_assets() -> None:
     ignored = _vercelignore_entries()
 
     required_assets = {
-        "api/static/swagger-ui.css",
-        "api/static/swagger-ui-bundle.js",
-        "api/static/swagger-ui-standalone-preset.js",
+        "sra_api/static/swagger-ui.css",
+        "sra_api/static/swagger-ui-bundle.js",
+        "sra_api/static/swagger-ui-standalone-preset.js",
     }
     assert required_assets.isdisjoint(ignored)
 
@@ -56,6 +56,7 @@ def test_vercel_keeps_runtime_source_directories() -> None:
 
     runtime_source_dirs = {
         "api/",
+        "sra_api/",
         "agent/",
         "config/",
         "data_ingestion/",

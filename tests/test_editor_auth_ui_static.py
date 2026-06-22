@@ -8,13 +8,13 @@ from fastapi.testclient import TestClient
 
 
 EDITOR_SCRIPT_FILES = [
-    "api/static/editor_core.js",
-    "api/static/editor_form.js",
-    "api/static/editor_auth_nav.js",
-    "api/static/editor_stats.js",
-    "api/static/editor_audit.js",
-    "api/static/editor_documents.js",
-    "api/static/editor_bootstrap.js",
+    "sra_api/static/editor_core.js",
+    "sra_api/static/editor_form.js",
+    "sra_api/static/editor_auth_nav.js",
+    "sra_api/static/editor_stats.js",
+    "sra_api/static/editor_audit.js",
+    "sra_api/static/editor_documents.js",
+    "sra_api/static/editor_bootstrap.js",
 ]
 
 PORTABLE_AUTH_PACK_SCRIPT_FILES = [
@@ -28,13 +28,13 @@ PORTABLE_AUTH_PACK_SCRIPT_FILES = [
 
 
 EDITOR_SCRIPT_FILES = [
-    "api/static/editor_core.js",
-    "api/static/editor_form.js",
-    "api/static/editor_auth_nav.js",
-    "api/static/editor_stats.js",
-    "api/static/editor_audit.js",
-    "api/static/editor_documents.js",
-    "api/static/editor_bootstrap.js",
+    "sra_api/static/editor_core.js",
+    "sra_api/static/editor_form.js",
+    "sra_api/static/editor_auth_nav.js",
+    "sra_api/static/editor_stats.js",
+    "sra_api/static/editor_audit.js",
+    "sra_api/static/editor_documents.js",
+    "sra_api/static/editor_bootstrap.js",
 ]
 
 PORTABLE_AUTH_PACK_SCRIPT_FILES = [
@@ -50,8 +50,8 @@ PORTABLE_AUTH_PACK_SCRIPT_FILES = [
 def _editor_html() -> str:
     """Return the editor shell plus split static assets for static assertions."""
     return "\n".join([
-        Path("api/static/editor.html").read_text(encoding="utf-8"),
-        Path("api/static/editor.css").read_text(encoding="utf-8"),
+        Path("sra_api/static/editor.html").read_text(encoding="utf-8"),
+        Path("sra_api/static/editor.css").read_text(encoding="utf-8"),
         *(Path(path).read_text(encoding="utf-8") for path in EDITOR_SCRIPT_FILES),
     ])
 
@@ -67,7 +67,7 @@ def _portable_auth_pack_html() -> str:
 
 
 def test_editor_static_shell_loads_split_assets() -> None:
-    html = Path("api/static/editor.html").read_text(encoding="utf-8")
+    html = Path("sra_api/static/editor.html").read_text(encoding="utf-8")
 
     assert '<link rel="stylesheet" href="/static/editor.css?v=20260614-split" />' in html
     for path in EDITOR_SCRIPT_FILES:
@@ -78,8 +78,8 @@ def test_editor_static_shell_loads_split_assets() -> None:
     assert 'editor.js?v=20260614-split' not in html
     assert '<style>' not in html
     assert '<script>\n' not in html
-    assert Path("api/static/editor.css").exists()
-    assert not Path("api/static/editor.js").exists()
+    assert Path("sra_api/static/editor.css").exists()
+    assert not Path("sra_api/static/editor.js").exists()
 
 
 
@@ -235,7 +235,7 @@ def test_editor_workspace_separates_document_and_account_work_areas() -> None:
 
 def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
     html = _editor_html()
-    tools = Path("api/static/audit_tools.js").read_text(encoding="utf-8")
+    tools = Path("sra_api/static/audit_tools.js").read_text(encoding="utf-8")
 
     assert '<script src="/static/audit_tools.js?v=20260614-multifilter"></script>' in html
     assert 'id="usageStatsCategory"' in html
@@ -292,7 +292,7 @@ def test_editor_usage_stats_filters_use_shared_chart_module() -> None:
 
 
 def test_auth_account_management_actions_are_written_to_account_audit() -> None:
-    source = Path("api/routers/editor_auth.py").read_text(encoding="utf-8")
+    source = Path("sra_api/routers/editor_auth.py").read_text(encoding="utf-8")
 
     assert '"action": "auth.user_registered"' in source
     assert '"action": "auth.user_approved"' in source
@@ -386,7 +386,7 @@ def test_portable_auth_pack_navigation_is_header_multilevel_and_collapsible() ->
 def test_navigation_hover_has_bridge_and_delayed_level_close() -> None:
     editor_html = _editor_html()
     portable_html = _portable_auth_pack_html()
-    tools = Path("api/static/audit_tools.js").read_text(encoding="utf-8")
+    tools = Path("sra_api/static/audit_tools.js").read_text(encoding="utf-8")
 
     assert '.nav-level[open]::after { content: ""; position: absolute; top: 0; left: 100%; width: 10px; height: 100%; }' in editor_html
     assert '.nav-level[open]::after { content: ""; position: absolute; top: 0; left: 100%; width: .6rem; height: 100%; }' in portable_html
@@ -396,7 +396,7 @@ def test_navigation_hover_has_bridge_and_delayed_level_close() -> None:
 
 def test_editor_audit_views_are_client_paginated_after_sorting() -> None:
     html = _editor_html()
-    tools = Path("api/static/audit_tools.js").read_text(encoding="utf-8")
+    tools = Path("sra_api/static/audit_tools.js").read_text(encoding="utf-8")
 
     for element_id in (
         'auditPageInfo', 'auditFirstBtn', 'auditPrevBtn', 'auditPageInput', 'auditGotoBtn', 'auditNextBtn', 'auditLastBtn',

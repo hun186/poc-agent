@@ -49,7 +49,7 @@ def test_vercel_hobby_plan_does_not_use_legacy_builds_or_api_entrypoint():
     assert "routes" not in config
 
 
-def test_vercel_entrypoint_imports_under_vercel_environment():
+def test_vercel_entrypoint_imports_under_vercel_environment(tmp_path):
     import os
     import subprocess
     import sys
@@ -60,6 +60,8 @@ def test_vercel_entrypoint_imports_under_vercel_environment():
         "VERCEL": "1",
         "VERCEL_ENV": "production",
         "APP_ENV": "production",
+        "SRA_AUTH_USERS_FILE": str(tmp_path / "users.json"),
+        "SRA_LOGIN_AUDIT_FILE": str(tmp_path / "login_audit.json"),
     }
     code = (
         "from fastapi.testclient import TestClient\n"
@@ -77,3 +79,12 @@ def test_vercel_entrypoint_imports_under_vercel_environment():
         check=True,
     )
     assert "'ok': True" in result.stdout or '"ok": true' in result.stdout
+
+
+def test_vercel_api_compat_package_contains_only_shim():
+    api_py_files = sorted(Path("api").rglob("*.py"))
+
+    assert api_py_files == [Path("api/__init__.py")]
+    shim = Path("api/__init__.py").read_text(encoding="utf-8")
+    assert '"sra_api"' in shim
+    assert "__path__" in shim
