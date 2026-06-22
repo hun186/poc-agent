@@ -161,3 +161,9 @@
 - `portable_auth_pack` 範例包同步提供 Vercel mock preview reader login，但使用獨立環境變數 `AUTH_VERCEL_MOCK_MODE`，避免與主系統 `SRA_VERCEL_MOCK_MODE` 混淆。
 - mock preview 帳號固定為最低權限 `data_reader` 且無固定密碼；正式部署若不需要 preview shortcut，應設定 `AUTH_VERCEL_MOCK_MODE=never`。
 - Vercel/NOW 環境未指定 `AUTH_USERS_FILE` 時，portable auth pack 預設將 runtime auth state 放在 `/tmp/portable-auth-pack/`，避免 serverless read-only filesystem 寫入失敗。
+
+## 2026-06-22 Legacy api path conflict-resolution mirrors
+
+- 為讓 GitHub 能自動合併 base branch 對舊 `api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 的修改，暫時保留 legacy mirror files；它們不是 runtime source of truth。
+- Runtime import 順序以 `sra_api/` 優先，top-level `api/` shim 只保留 `api.index` Vercel entrypoint；Vercel deployment 透過 `.vercelignore` 排除 legacy `api/routers/` 與 `api/static/`，避免重新引入多 function discovery 或 static stem conflict。
+- `.codex/memory.md` 屬 append-only project memory，設定 `merge=union` 以降低 PR merge conflict；若 union merge 產生重複紀錄，後續 memory compaction 再整理。

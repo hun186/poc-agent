@@ -24,6 +24,11 @@ the preview runtime. `.vercelignore` excludes those local-only directories from
 Vercel uploads so the deployed bundle contains the app source and required
 static assets instead of the full local data workspace.
 
+`.vercelignore` also excludes legacy conflict-resolution mirrors under
+`api/routers/` and `api/static/`. They remain in git only to make GitHub merges
+with older base branches non-conflicting; runtime imports prefer `sra_api/`, and
+Vercel only needs `api/index.py` plus the small `api/__init__.py` shim.
+
 ## Required Vercel environment variables
 
 For a mock-only preview deployment, set these in Vercel Project Settings or keep

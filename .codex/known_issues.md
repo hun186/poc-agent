@@ -367,3 +367,9 @@ Open
 - 狀態：Resolved。
 - 修正：Vercel/NOW 環境未設定 `SRA_EDITOR_AUDIT_LOG` 時，Editor audit log 預設改寫入 `/tmp/sra-auth/editor_audit.jsonl`；落地部署預設路徑維持 `logs/editor_audit.jsonl`。
 - 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py -q` 通過，且 mock preview login 測試確認 audit 寫入 `/tmp`。
+
+## 2026-06-22 GitHub PR conflict too complex for web editor
+
+- 現象：GitHub PR merge 顯示 `.codex/memory.md`、`api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 衝突，且因衝突過於複雜無法用 web editor 解。
+- 狀態：Mitigated。
+- 修正：保留 legacy api/static mirror files 以避免 delete/modify conflicts；runtime source 仍以 `sra_api/` 優先，且 Vercel 忽略 legacy dirs；`.codex/memory.md` 使用 union merge。

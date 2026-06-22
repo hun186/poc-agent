@@ -82,16 +82,26 @@ def test_vercel_entrypoint_imports_under_vercel_environment(tmp_path):
     assert "'ok': True" in result.stdout or '"ok": true' in result.stdout
 
 
-def test_vercel_api_folder_contains_only_shim_and_single_entrypoint():
+def test_vercel_api_folder_keeps_only_shim_and_entrypoint_in_deployment():
     api_py_files = sorted(Path("api").rglob("*.py"))
+    vercelignore = Path(".vercelignore").read_text(encoding="utf-8")
 
-    assert api_py_files == [Path("api/__init__.py"), Path("api/index.py")]
+    assert Path("api/__init__.py") in api_py_files
+    assert Path("api/index.py") in api_py_files
+    assert "api/routers/" in vercelignore
+    assert "api/static/" in vercelignore
     shim = Path("api/__init__.py").read_text(encoding="utf-8")
     entrypoint = Path("api/index.py").read_text(encoding="utf-8")
     assert '"sra_api"' in shim
     assert "_API_SHIM_DIR" in shim
-    assert "__path__" in shim
+    assert "__path__ = [str(_SOURCE_DIR), str(_API_SHIM_DIR)]" in shim
     assert "from api.main import app" in entrypoint
+
+
+def test_api_imports_prefer_relocated_sra_api_source():
+    import api.routers.editor as editor_router
+
+    assert "sra_api/routers/editor.py" in editor_router.__file__.replace("\\", "/")
 
 
 def test_vercel_default_auth_state_uses_tmp_directory(monkeypatch):

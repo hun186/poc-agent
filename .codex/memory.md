@@ -281,3 +281,9 @@
 - 目的：將主系統 Vercel mock preview reader 帳號機制同步到 `portable_auth_pack` 範例包，讓範例頁在 Vercel preview 上也能不建立正式 admin 即測試登入流程。
 - 主要修改：portable auth pack 新增 `AUTH_VERCEL_MOCK_MODE`、`/v1/auth/vercel-preview-login-enabled`、`/v1/auth/vercel-preview-login`、`AuthStore.ensure_mock_preview_user()` 與範例 UI「Vercel mock 閱讀者登入」按鈕；mock 帳號為 process-local `portable_mock_reader`，role 為 `data_reader`，無固定密碼。Vercel/NOW 環境未設定 `AUTH_USERS_FILE` 時，預設 runtime state 改放 `/tmp/portable-auth-pack/`。
 - 驗證：新增 `tests/test_portable_auth_pack_vercel_mock.py` 覆蓋 enabled / login / disabled 端點；更新 portable static UI 測試；執行 portable auth pack verify script 通過。
+
+## 2026-06-22 GitHub PR conflict mitigation for legacy api paths
+
+- 目的：處理 GitHub PR 顯示 `.codex/memory.md`、`api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 衝突且網頁 editor 無法解決的狀況。
+- 主要修改：恢復 legacy `api/routers/editor.py` 與 `api/static/excel_to_sql_dashboard.html` 為 conflict-resolution mirror，避免與 base branch 對舊路徑的修改形成 delete/modify conflict；`api.__path__` 改為優先搜尋 `sra_api/`，確保 runtime imports 使用 relocated source；`.vercelignore` 排除 legacy `api/routers/` 與 `api/static/`，避免 Vercel function discovery/static upload 重新看到舊路徑；`.gitattributes` 對 `.codex/memory.md` 使用 union merge，降低 append-only project memory 的 GitHub merge conflict。
+- 驗證：更新 Vercel config/static conflict tests，確認 Vercel 仍保留 `api/index.py` 入口但忽略 legacy dirs，且 `api.routers.editor` import 實際解析到 `sra_api/routers/editor.py`。

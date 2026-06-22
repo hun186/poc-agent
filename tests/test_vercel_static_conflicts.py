@@ -55,7 +55,6 @@ def test_vercel_keeps_runtime_source_directories() -> None:
     ignored = _vercelignore_entries()
 
     runtime_source_dirs = {
-        "api/",
         "sra_api/",
         "agent/",
         "config/",
@@ -63,3 +62,7 @@ def test_vercel_keeps_runtime_source_directories() -> None:
         "portable_auth_pack/",
     }
     assert runtime_source_dirs.isdisjoint(ignored)
+    assert "api/" not in ignored
+    assert "api/index.py" not in ignored
+    assert "api/routers/" in ignored
+    assert "api/static/" in ignored
