@@ -93,7 +93,7 @@ def register(payload: AuthPayload, request: Request) -> dict[str, Any]:
 @router.get("/v1/auth/vercel-preview-login-enabled")
 def vercel_preview_login_enabled() -> dict[str, Any]:
     enabled = should_prefer_mock_runtime()
-    return {"enabled": enabled, "username": "vercel_mock_editor" if enabled else None}
+    return {"enabled": enabled, "username": "vercel_mock_reader" if enabled else None}
 
 
 @router.post("/v1/auth/vercel-preview-login")

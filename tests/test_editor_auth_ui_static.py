@@ -470,7 +470,7 @@ def test_editor_exposes_vercel_mock_preview_login_button():
     bootstrap = Path("sra_api/static/editor_bootstrap.js").read_text(encoding="utf-8")
 
     assert 'id="vercelPreviewLoginBtn"' in html
-    assert 'Vercel mock 預覽登入' in html
+    assert 'Vercel mock 閱讀者登入' in html
     assert '/v1/auth/vercel-preview-login-enabled' in script
     assert '/v1/auth/vercel-preview-login' in script
     assert 'vercelPreviewLoginBtn' in bootstrap

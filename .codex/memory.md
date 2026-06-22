@@ -261,5 +261,11 @@
 ## 2026-06-22 Vercel mock preview login
 
 - 目的：讓 Vercel preview deployment 在無法預先設定落地端 admin 帳號時，仍可登入 Editor 測試 mock 資料流程。
-- 主要修改：新增僅在 `should_prefer_mock_runtime()` 啟用時可用的 mock preview login API，會在 `/tmp` auth store 建立 process-local `vercel_mock_editor` superuser 並發 token；Editor 登入區會偵測可用性後顯示「Vercel mock 預覽登入」按鈕。此帳號不使用固定密碼，且 mock mode 關閉時 API 回 404。
+- 主要修改：新增僅在 `should_prefer_mock_runtime()` 啟用時可用的 mock preview login API，會在 `/tmp` auth store 建立 process-local `vercel_mock_reader` data_reader 並發 token；Editor 登入區會偵測可用性後顯示「Vercel mock 閱讀者登入」按鈕。此帳號不使用固定密碼，且 mock mode 關閉時 API 回 404。
 - 驗證：新增 Vercel-like tests 覆蓋 enabled endpoint、mock preview login token 與一般環境 404；靜態 UI 測試確認按鈕與 JS handler 存在。
+
+## 2026-06-22 Vercel mock preview reader role
+
+- 目的：降低 Vercel mock preview 登入風險，避免公開 preview 預設取得 superuser 權限。
+- 主要修改：mock preview login 改為建立 process-local `vercel_mock_reader`，role 為 `data_reader`；Editor 按鈕文案改為「Vercel mock 閱讀者登入」。此帳號可用於 mock 查詢預覽，不提供 superuser 管理權限。
+- 驗證：更新 Vercel mock preview login test，確認 token user role 為 `data_reader`；靜態 UI 測試確認新按鈕文案。

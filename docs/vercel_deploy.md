@@ -57,7 +57,7 @@ Do not commit real secrets to the repository.
 ## Vercel mock preview login
 
 For Vercel preview deployments running in mock mode, open `/editor` and click
-`Vercel mock 預覽登入`. The button calls a mock-only endpoint that creates a
+`Vercel mock 閱讀者登入`. The button calls a mock-only endpoint that creates a
 process-local preview user in `/tmp` and returns a normal Editor bearer token.
 No fixed password is committed to the repository, and the endpoint returns 404
 when mock runtime is disabled, for example with `SRA_VERCEL_MOCK_MODE=never`.
