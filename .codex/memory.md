@@ -179,3 +179,21 @@
 - 主要修改：新增根目錄 `app.py` re-export `api.main.app`；新增 `vercel.json`，將所有路由 rewrite 到 `/app.py`，設定 function maxDuration 與非機密 mock preview 預設環境變數；新增 `docs/vercel_deploy.md` 說明 Vercel mock / real-data 環境變數與部署注意事項；新增靜態測試驗證 Vercel 設定檔。
 - 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py -q` 通過（3 passed）；`PYTHONPATH=. python -m py_compile app.py api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py` 通過；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_mock_runtime.py -q` 通過（6 passed）。
 - 補充：`.env.example` 也新增 Vercel Preview / Mock Runtime 區塊，列出 `SRA_VERCEL_MOCK_MODE=auto` 與 `API_STORE_ENABLED=0`。
+
+## 2026-06-22 Vercel static filename conflict fix
+
+- 目的：修正 Vercel 部署時對同目錄「去除副檔名後檔名不可重複」的限制，避免 `api/static/excel_to_sql_dashboard.js` 與 `api/static/excel_to_sql_dashboard.html` 產生路徑衝突。
+- 主要修改：將 Excel→SQL dashboard JS 改名為 `excel_to_sql_dashboard_app.js` 並同步更新 HTML、router 靜態資產白名單與測試；同時移除 `api/static` 其他已知同 stem 靜態檔衝突（`editor`、`index`、`swagger-ui`）。
+- 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py tests/test_editor_auth_ui_static.py -q` 通過（30 passed，3 個既有 warning）；`node --check api/static/excel_to_sql_dashboard_app.js` 通過；自訂 Python 檢查確認 `api/static` 無同 stem 檔名衝突。
+
+## 2026-06-22 Vercel static conflict scope reduction
+
+- 目的：回應落地部署相容性疑慮，將上一版為了預防 Vercel 同 stem 衝突而做的 `editor`、`index`、`swagger-ui` 靜態檔改名復原，避免影響既有落地部署或外部快取 / 文件引用。
+- 主要修改：僅保留實際造成 Vercel 錯誤的 Excel→SQL dashboard JS 改名（`excel_to_sql_dashboard_app.js`）；其餘既有靜態檔名維持原狀。
+- 驗證：執行 Excel dashboard 與 Editor 靜態測試、dashboard JS 語法檢查；另用限定檢查確認 `excel_to_sql_dashboard.html` / `excel_to_sql_dashboard_app.js` 不再同 stem。
+
+## 2026-06-22 Excel dashboard JS legacy static alias
+
+- 目的：降低 `excel_to_sql_dashboard.js` 改名為 `excel_to_sql_dashboard_app.js` 對落地部署、舊快取 HTML 或外部固定 URL 的相容性風險。
+- 主要修改：保留新實體檔名以避開 Vercel 同 stem 限制，但在 FastAPI `/static/{filename}` route 中新增舊檔名 alias，讓 `/static/excel_to_sql_dashboard.js` 仍回傳新版 JS 內容；不在檔案系統恢復舊檔，避免 Vercel 再次衝突。
+- 驗證：新增靜態 route 測試確認舊 URL 與新 URL 回傳相同內容；執行相關 pytest 與 JS 語法檢查。

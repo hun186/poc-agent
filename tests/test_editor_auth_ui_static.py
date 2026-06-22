@@ -96,6 +96,11 @@ def test_editor_static_assets_are_served_by_router() -> None:
         assert response.status_code == 200
         assert response.text.strip()
 
+    legacy_dashboard_response = client.get("/static/excel_to_sql_dashboard.js")
+    current_dashboard_response = client.get("/static/excel_to_sql_dashboard_app.js")
+    assert legacy_dashboard_response.status_code == 200
+    assert legacy_dashboard_response.text == current_dashboard_response.text
+
     missing = client.get("/static/not_allowed.js")
     assert missing.status_code == 404
 

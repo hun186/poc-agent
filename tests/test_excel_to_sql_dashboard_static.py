@@ -2,7 +2,7 @@ from pathlib import Path
 
 STATIC_ROOT = Path(__file__).resolve().parents[1] / "api" / "static"
 DASHBOARD_HTML = STATIC_ROOT / "excel_to_sql_dashboard.html"
-DASHBOARD_JS = STATIC_ROOT / "excel_to_sql_dashboard.js"
+DASHBOARD_JS = STATIC_ROOT / "excel_to_sql_dashboard_app.js"
 
 
 def dashboard_source() -> str:

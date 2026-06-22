@@ -153,7 +153,7 @@ def test_import_center_static_contains_user_import_controls():
         encoding="utf-8"
     )
     assert "excel_to_sql_import_records.js" in assets
-    assert "excel_to_sql_dashboard.js" in assets
+    assert "excel_to_sql_dashboard_app.js" in assets
     assert '@router.delete("/v1/excel-to-sql/import-records")' not in router
     assert "def delete_records" not in storage
     assert "delete_records" not in facade
