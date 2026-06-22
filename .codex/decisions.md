@@ -155,3 +155,9 @@
 
 - 根目錄 `app.py` 保留為唯一 FastAPI ASGI entrypoint，但 `vercel.json` 不再使用 legacy `builds` / `routes` 強制 `@vercel/python`，避免繞過 Vercel FastAPI framework preset 後發生 runtime function crash。
 - 現行 Vercel 策略：root `app.py` + zero-config framework discovery + `.vercelignore` 控制 bundle footprint；不使用 `api/app.py`、`functions`、`rewrites`、legacy `builds/routes`。
+
+## 2026-06-22 Portable auth pack Vercel mock preview 決策
+
+- `portable_auth_pack` 範例包同步提供 Vercel mock preview reader login，但使用獨立環境變數 `AUTH_VERCEL_MOCK_MODE`，避免與主系統 `SRA_VERCEL_MOCK_MODE` 混淆。
+- mock preview 帳號固定為最低權限 `data_reader` 且無固定密碼；正式部署若不需要 preview shortcut，應設定 `AUTH_VERCEL_MOCK_MODE=never`。
+- Vercel/NOW 環境未指定 `AUTH_USERS_FILE` 時，portable auth pack 預設將 runtime auth state 放在 `/tmp/portable-auth-pack/`，避免 serverless read-only filesystem 寫入失敗。

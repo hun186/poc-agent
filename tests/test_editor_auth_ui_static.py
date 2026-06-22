@@ -474,3 +474,15 @@ def test_editor_exposes_vercel_mock_preview_login_button():
     assert '/v1/auth/vercel-preview-login-enabled' in script
     assert '/v1/auth/vercel-preview-login' in script
     assert 'vercelPreviewLoginBtn' in bootstrap
+
+
+def test_portable_auth_pack_exposes_vercel_mock_preview_login_button():
+    html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
+    script = Path("portable_auth_pack/static/login_admin_auth.js").read_text(encoding="utf-8")
+    bootstrap = Path("portable_auth_pack/static/login_admin_bootstrap.js").read_text(encoding="utf-8")
+
+    assert 'id="vercelPreviewLoginBtn"' in html
+    assert 'Vercel mock 閱讀者登入' in html
+    assert '/v1/auth/vercel-preview-login-enabled' in script
+    assert '/v1/auth/vercel-preview-login' in script
+    assert 'setupVercelPreviewLogin' in bootstrap

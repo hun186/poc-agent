@@ -194,5 +194,10 @@
 
 ## 2026-06-22 Vercel Deployment routing
 
-- Vercel 部署透過 `app.py` 匯出同一個 `api.main.app` FastAPI instance；HTTP API path / request / response contract 不因 Vercel entrypoint 改變。
-- `vercel.json` 使用 rewrite 將 `/(.*)` 導向 `/app.py`，因此 `/editor`、`/excel-to-sql-dashboard`、`/excel-to-sql-import-center` 與 `/v1/*` 在 Vercel 上仍由既有 FastAPI router 處理。
+- Vercel 部署透過 `api/index.py` 匯出同一個 `api.main.app` FastAPI instance；HTTP API path / request / response contract 不因 Vercel entrypoint 改變。
+- `vercel.json` 使用 rewrite 將 `/(.*)` 導向 `/api/index.py`，因此 `/editor`、`/excel-to-sql-dashboard`、`/excel-to-sql-import-center` 與 `/v1/*` 在 Vercel 上仍由既有 FastAPI router 處理。
+
+## 2026-06-22 Portable auth pack Vercel mock preview endpoints
+
+- `GET /v1/auth/vercel-preview-login-enabled`（portable auth pack）：回傳 `{ "enabled": bool, "username": "portable_mock_reader" | null }`；由 `AUTH_VERCEL_MOCK_MODE` 控制，預設 `auto` 僅在 Vercel/NOW 環境啟用。
+- `POST /v1/auth/vercel-preview-login`（portable auth pack）：僅在 mock preview enabled 時建立 / 更新 process-local `portable_mock_reader` data_reader 帳號並回傳 `{ access_token, token_type, user }`；disabled 時回 404。此帳號不具備 superuser 權限且不使用固定密碼。

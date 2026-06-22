@@ -275,3 +275,9 @@
 - 目的：修正 Vercel mock reader 登入時，`append_audit_event()` 嘗試建立 `/var/task/logs` 而觸發 read-only filesystem，導致 `/v1/auth/vercel-preview-login` 500。
 - 主要修改：`api.services.editor_audit.audit_log_path()` 未設定 `SRA_EDITOR_AUDIT_LOG` 且偵測到 Vercel/NOW 環境時，預設改寫入 `/tmp/sra-auth/editor_audit.jsonl`；本地 / 落地部署仍預設使用 repo `logs/editor_audit.jsonl`。
 - 驗證：新增 Vercel 預設 editor audit path 測試，並在 Vercel-like mock preview login subprocess 中確認登入後 audit log 寫入 `/tmp` 且含 `vercel_mock_preview` 事件。
+
+## 2026-06-22 Portable auth pack Vercel mock preview login
+
+- 目的：將主系統 Vercel mock preview reader 帳號機制同步到 `portable_auth_pack` 範例包，讓範例頁在 Vercel preview 上也能不建立正式 admin 即測試登入流程。
+- 主要修改：portable auth pack 新增 `AUTH_VERCEL_MOCK_MODE`、`/v1/auth/vercel-preview-login-enabled`、`/v1/auth/vercel-preview-login`、`AuthStore.ensure_mock_preview_user()` 與範例 UI「Vercel mock 閱讀者登入」按鈕；mock 帳號為 process-local `portable_mock_reader`，role 為 `data_reader`，無固定密碼。Vercel/NOW 環境未設定 `AUTH_USERS_FILE` 時，預設 runtime state 改放 `/tmp/portable-auth-pack/`。
+- 驗證：新增 `tests/test_portable_auth_pack_vercel_mock.py` 覆蓋 enabled / login / disabled 端點；更新 portable static UI 測試；執行 portable auth pack verify script 通過。
