@@ -462,3 +462,15 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
     assert '全體帳號操作紀錄' in html
     assert "function setAccountStatsView(view)" in html
     assert "pageState.accountStatsView === 'mine'" in html
+
+
+def test_editor_exposes_vercel_mock_preview_login_button():
+    html = Path("sra_api/static/editor.html").read_text(encoding="utf-8")
+    script = Path("sra_api/static/editor_auth_nav.js").read_text(encoding="utf-8")
+    bootstrap = Path("sra_api/static/editor_bootstrap.js").read_text(encoding="utf-8")
+
+    assert 'id="vercelPreviewLoginBtn"' in html
+    assert 'Vercel mock 預覽登入' in html
+    assert '/v1/auth/vercel-preview-login-enabled' in script
+    assert '/v1/auth/vercel-preview-login' in script
+    assert 'vercelPreviewLoginBtn' in bootstrap

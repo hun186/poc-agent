@@ -6,6 +6,30 @@ async function login() {
     await bootAuthed(); setStatus('authStatus', '登入成功', 'ok');
   } catch (err) { setStatus('authStatus', err.message, 'error'); }
 }
+
+async function vercelPreviewLogin() {
+  setStatus('authStatus', 'Vercel mock preview 登入中...');
+  try {
+    const data = await api('/v1/auth/vercel-preview-login', {method: 'POST'});
+    state.token = data.access_token; state.user = data.user; localStorage.setItem('sra_editor_token', state.token);
+    await bootAuthed(); setStatus('authStatus', 'Vercel mock preview 已登入', 'ok');
+  } catch (err) { setStatus('authStatus', err.message, 'error'); }
+}
+async function setupVercelPreviewLogin() {
+  const btn = $('vercelPreviewLoginBtn');
+  const hint = $('vercelPreviewLoginHint');
+  if (!btn || !hint) return;
+  try {
+    const data = await api('/v1/auth/vercel-preview-login-enabled');
+    if (data.enabled) {
+      btn.classList.remove('hidden');
+      hint.classList.remove('hidden');
+    }
+  } catch (err) {
+    btn.classList.add('hidden');
+    hint.classList.add('hidden');
+  }
+}
 async function register() {
   setStatus('authStatus', '建立帳號中...');
   try {

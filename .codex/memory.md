@@ -257,3 +257,9 @@
 - 目的：處理使用者連到 Vercel deployment root `/` 時看到 `{"detail":"Not Found"}`；目前主要入口是資料庫 Editor 頁 `/editor`。
 - 主要修改：在 FastAPI app 新增 root route `GET /`，以 redirect response 導向 `/editor`，讓直接開部署網址會進入現有 Editor 入口。
 - 驗證：新增 Vercel-like subprocess test 確認 `/` 回 307/308 且 `Location: /editor`；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py -q` 通過。
+
+## 2026-06-22 Vercel mock preview login
+
+- 目的：讓 Vercel preview deployment 在無法預先設定落地端 admin 帳號時，仍可登入 Editor 測試 mock 資料流程。
+- 主要修改：新增僅在 `should_prefer_mock_runtime()` 啟用時可用的 mock preview login API，會在 `/tmp` auth store 建立 process-local `vercel_mock_editor` superuser 並發 token；Editor 登入區會偵測可用性後顯示「Vercel mock 預覽登入」按鈕。此帳號不使用固定密碼，且 mock mode 關閉時 API 回 404。
+- 驗證：新增 Vercel-like tests 覆蓋 enabled endpoint、mock preview login token 與一般環境 404；靜態 UI 測試確認按鈕與 JS handler 存在。

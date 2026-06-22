@@ -143,3 +143,75 @@ def test_root_redirects_to_editor_under_vercel_environment(tmp_path):
         capture_output=True,
         check=True,
     )
+
+
+def test_vercel_mock_preview_login_returns_usable_token(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {
+        **os.environ,
+        "PYTHONPATH": ".",
+        "VERCEL": "1",
+        "VERCEL_ENV": "preview",
+        "APP_ENV": "dev",
+        "SRA_AUTH_USERS_FILE": str(tmp_path / "users.json"),
+        "SRA_LOGIN_AUDIT_FILE": str(tmp_path / "login_audit.json"),
+    }
+    code = (
+        "from fastapi.testclient import TestClient\n"
+        "from api.index import app\n"
+        "client = TestClient(app)\n"
+        "enabled = client.get('/v1/auth/vercel-preview-login-enabled')\n"
+        "assert enabled.status_code == 200, enabled.text\n"
+        "assert enabled.json()['enabled'] is True, enabled.text\n"
+        "login = client.post('/v1/auth/vercel-preview-login')\n"
+        "assert login.status_code == 200, login.text\n"
+        "payload = login.json()\n"
+        "assert payload['user']['username'] == 'vercel_mock_editor'\n"
+        "assert payload['user']['role'] == 'superuser'\n"
+        "me = client.get('/v1/auth/me', headers={'Authorization': 'Bearer ' + payload['access_token']})\n"
+        "assert me.status_code == 200, me.text\n"
+        "print(payload['user'])\n"
+    )
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+
+def test_vercel_mock_preview_login_disabled_without_mock_runtime(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {
+        **os.environ,
+        "PYTHONPATH": ".",
+        "SRA_VERCEL_MOCK_MODE": "never",
+        "SRA_AUTH_USERS_FILE": str(tmp_path / "users.json"),
+        "SRA_LOGIN_AUDIT_FILE": str(tmp_path / "login_audit.json"),
+    }
+    code = (
+        "from fastapi.testclient import TestClient\n"
+        "from api.index import app\n"
+        "client = TestClient(app)\n"
+        "enabled = client.get('/v1/auth/vercel-preview-login-enabled')\n"
+        "assert enabled.status_code == 200, enabled.text\n"
+        "assert enabled.json()['enabled'] is False, enabled.text\n"
+        "login = client.post('/v1/auth/vercel-preview-login')\n"
+        "assert login.status_code == 404, login.text\n"
+    )
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )

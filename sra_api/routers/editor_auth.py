@@ -18,6 +18,7 @@ from api.routers.editor_models import (
 from api.services import auth_store
 from api.services.auth_store import AuthUser
 from api.services.editor_audit import append_audit_event
+from api.services.vercel_mock_runtime import should_prefer_mock_runtime
 
 router = APIRouter(tags=["editor"])
 AUTH_FAILURE_MESSAGE = "帳號或密碼錯誤，或帳號尚未啟用。"
@@ -87,6 +88,39 @@ def register(payload: AuthPayload, request: Request) -> dict[str, Any]:
         # Apply the block to following attempts while preserving the generic response for this one.
         pass
     return {"message": REGISTER_SUCCESS_MESSAGE}
+
+
+@router.get("/v1/auth/vercel-preview-login-enabled")
+def vercel_preview_login_enabled() -> dict[str, Any]:
+    enabled = should_prefer_mock_runtime()
+    return {"enabled": enabled, "username": "vercel_mock_editor" if enabled else None}
+
+
+@router.post("/v1/auth/vercel-preview-login")
+def vercel_preview_login(request: Request) -> dict[str, Any]:
+    if not should_prefer_mock_runtime():
+        raise HTTPException(status_code=404, detail="Vercel mock preview login is not enabled.")
+    user = auth_store.AUTH_STORE.ensure_mock_preview_user()
+    client_host = _client_host(request)
+    user_agent = request.headers.get("user-agent")
+    auth_store.AUTH_STORE.record_login_audit(
+        user.username,
+        success=True,
+        reason="vercel_mock_preview",
+        role=user.role,
+        status_value=user.status,
+        client_host=client_host,
+        user_agent=user_agent,
+    )
+    append_audit_event({
+        "action": "auth.login",
+        "username": user.username,
+        "success": True,
+        "role": user.role,
+        "reason": "vercel_mock_preview",
+        "client_host": client_host,
+    })
+    return {"access_token": auth_store.create_token(user), "token_type": "bearer", "user": user.__dict__}
 
 
 @router.post("/v1/auth/login")
