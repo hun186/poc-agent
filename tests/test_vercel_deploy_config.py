@@ -113,6 +113,21 @@ def test_vercel_default_auth_state_uses_tmp_directory(monkeypatch):
     assert audit_file.name == ".sra_users.login_audit.json"
 
 
+def test_vercel_default_editor_audit_uses_tmp_directory(monkeypatch):
+    import tempfile
+
+    from api.services.editor_audit import audit_log_path
+
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("SRA_EDITOR_AUDIT_LOG", raising=False)
+
+    tmp_root = Path(tempfile.gettempdir()).resolve()
+    path = audit_log_path()
+
+    assert path.resolve().is_relative_to(tmp_root)
+    assert path.name == "editor_audit.jsonl"
+
+
 def test_root_redirects_to_editor_under_vercel_environment(tmp_path):
     import os
     import subprocess
@@ -160,8 +175,11 @@ def test_vercel_mock_preview_login_returns_usable_token(tmp_path):
         "SRA_LOGIN_AUDIT_FILE": str(tmp_path / "login_audit.json"),
     }
     code = (
+        "from pathlib import Path\n"
+        "import tempfile\n"
         "from fastapi.testclient import TestClient\n"
         "from api.index import app\n"
+        "from api.services.editor_audit import audit_log_path\n"
         "client = TestClient(app)\n"
         "enabled = client.get('/v1/auth/vercel-preview-login-enabled')\n"
         "assert enabled.status_code == 200, enabled.text\n"
@@ -173,6 +191,10 @@ def test_vercel_mock_preview_login_returns_usable_token(tmp_path):
         "assert payload['user']['role'] == 'data_reader'\n"
         "me = client.get('/v1/auth/me', headers={'Authorization': 'Bearer ' + payload['access_token']})\n"
         "assert me.status_code == 200, me.text\n"
+        "audit_path = audit_log_path()\n"
+        "assert audit_path.resolve().is_relative_to(Path(tempfile.gettempdir()).resolve())\n"
+        "assert audit_path.exists(), audit_path\n"
+        "assert 'vercel_mock_preview' in audit_path.read_text(encoding='utf-8')\n"
         "print(payload['user'])\n"
     )
     subprocess.run(

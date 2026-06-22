@@ -269,3 +269,9 @@
 - 目的：降低 Vercel mock preview 登入風險，避免公開 preview 預設取得 superuser 權限。
 - 主要修改：mock preview login 改為建立 process-local `vercel_mock_reader`，role 為 `data_reader`；Editor 按鈕文案改為「Vercel mock 閱讀者登入」。此帳號可用於 mock 查詢預覽，不提供 superuser 管理權限。
 - 驗證：更新 Vercel mock preview login test，確認 token user role 為 `data_reader`；靜態 UI 測試確認新按鈕文案。
+
+## 2026-06-22 Vercel editor audit writable path
+
+- 目的：修正 Vercel mock reader 登入時，`append_audit_event()` 嘗試建立 `/var/task/logs` 而觸發 read-only filesystem，導致 `/v1/auth/vercel-preview-login` 500。
+- 主要修改：`api.services.editor_audit.audit_log_path()` 未設定 `SRA_EDITOR_AUDIT_LOG` 且偵測到 Vercel/NOW 環境時，預設改寫入 `/tmp/sra-auth/editor_audit.jsonl`；本地 / 落地部署仍預設使用 repo `logs/editor_audit.jsonl`。
+- 驗證：新增 Vercel 預設 editor audit path 測試，並在 Vercel-like mock preview login subprocess 中確認登入後 audit log 寫入 `/tmp` 且含 `vercel_mock_preview` 事件。

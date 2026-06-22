@@ -190,3 +190,5 @@ SRA-API_output.txt
 *.xlsx#
 /config/excel_to_sql/git_ignore
 /config/sql_import/github_ignore
+/.sra_users.login_audit.json
+/.sra_users.login_audit.json.d/
