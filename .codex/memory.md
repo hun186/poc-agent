@@ -203,3 +203,9 @@
 - 目的：修正 Vercel 回報 `api/static/swagger-ui.js` 與 `api/static/swagger-ui.css` 去副檔名後同 stem 衝突，同時避免改動落地部署檔名。
 - 主要修改：新增 `.vercelignore`，只在 Vercel 部署時排除未被 `api/static/index.html` 引用的 `swagger-ui.js` 與其 source map；保留 `swagger-ui.css`、`swagger-ui-bundle.js` 與 `swagger-ui-standalone-preset.js` 等實際 Swagger UI 頁面使用的資產。
 - 驗證：新增 Vercel 靜態衝突測試確認被排除的是未引用的 ESM bundle，且必要 Swagger UI 資產未被排除。
+
+## 2026-06-22 Vercel function entrypoint moved under api
+
+- 目的：修正 Vercel 回報 `functions` 中的 `app.py` pattern 不符合 `/api` 目錄內 Serverless Functions 的錯誤。
+- 主要修改：將 Vercel entrypoint 從根目錄 `app.py` 改為 `api/app.py`，由該檔 re-export `api.main.app`；`vercel.json` 的 rewrite 與 `functions` maxDuration pattern 同步改為 `/api/app.py` / `api/app.py`。
+- 驗證：更新 Vercel config 測試與部署文件，並執行 Vercel config 相關 pytest 與 py_compile。
