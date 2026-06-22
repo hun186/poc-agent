@@ -1,0 +1,5 @@
+# Vercel treats extensionless static paths as unique. The Swagger UI ESM bundle
+# is not referenced by api/static/index.html; exclude it so it does not collide
+# with the required swagger-ui.css asset during Vercel deployment.
+api/static/swagger-ui.js
+api/static/swagger-ui.js.map
