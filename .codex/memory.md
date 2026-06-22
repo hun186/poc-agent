@@ -154,3 +154,9 @@
 - 目的：修正 Excel→SQL 最近 audit 事件「使用者」顯示未讀到使用者資訊，並讓 SQL audit 表以一般欄位保存 username，避免只依賴 `row_payload` JSON 解析。
 - 主要修改：`ExcelImportAudit` 建表與既有表升級流程新增 nullable `username NVARCHAR(255)`；audit insert 會由 `row_payload.audit_actor` / `audit_user` / `actor` 擷取 username 寫入實體欄位；dashboard 查詢優先讀 `username` 欄，並保留 JSON fallback 以相容舊資料或刪除 audit。
 - 驗證：`pytest tests/test_audit.py tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（21 passed）；`python -m py_compile data_ingestion/excel_to_sql/audit.py data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/dashboard_sql.py` 通過。
+
+## 2026-06-22 Excel→SQL 最近 audit 表欄寬微調
+
+- 目的：依使用者回饋，縮窄 Excel→SQL 匯入查詢儀表板「最近 audit 事件」表格中的「狀態」與「使用者」欄，節省橫向版面。
+- 主要修改：將 recent audit table 的狀態欄寬由 7% 調整為 5%、使用者欄寬由 8% 調整為 6%，釋出的寬度補到 payload 欄（40% → 44%）；同步更新靜態 UI 測試檢查欄寬設定。
+- 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（7 passed）；`node --check api/static/excel_to_sql_dashboard.js` 通過；`python -m playwright --version` 因目前環境缺少 Playwright module 無法截圖，沿用靜態 UI 測試與 JS 語法檢查作為替代驗證。
