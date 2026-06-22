@@ -215,7 +215,18 @@
 
 ## 2026-06-22 Vercel Deployment Entry
 
-- 根目錄 `app.py` 是 Vercel Python / FastAPI runtime entrypoint，只負責 `from api.main import app`，避免搬移既有 `api/main.py` 或改變 local uvicorn 啟動方式。
-- `vercel.json` 將所有 request rewrite 到 `/app.py`，並設定 `SRA_VERCEL_MOCK_MODE=auto` 與 `API_STORE_ENABLED=0` 作為 preview deployment 的非機密預設值。
+- 根目錄 `app.py` 是 Vercel Python / FastAPI runtime entrypoint，只負責 `from api.main import app`；`api.main` 由 compatibility package 導向 `sra_api/main.py`。
+- `vercel.json` 不設定 legacy `builds`、`routes`、`functions` 或 `rewrites`，僅保留 `SRA_VERCEL_MOCK_MODE=auto` 與 `API_STORE_ENABLED=0` 作為 preview deployment 的非機密預設值。
 - Vercel 部署說明集中在 `docs/vercel_deploy.md`，列出 mock-only preview 與 real-data deployment 需要的環境變數。
 - `.env.example` 同步列出 Vercel preview mock defaults，讓本地 `.env` 與 Vercel Project Settings 有同一份變數參考。
+
+## 2026-06-22 Vercel-compatible source layout
+
+- 實際 FastAPI application source tree 已移至 `sra_api/`，包含 `sra_api/main.py`、`sra_api/routers/`、`sra_api/services/`、`sra_api/core/` 與 `sra_api/static/`。
+- Top-level `api/` 僅保留 `api/__init__.py` compatibility package；它把 `api.__path__` 指向 `sra_api/`，所以既有 `from api.main import app`、`api.routers.*`、`api.services.*` import path 仍可運作。
+- 此 layout 是為了避免 Vercel Hobby plan 將 top-level `api/**/*.py` 視為多個 Serverless Functions；Vercel 只需 root `app.py` + compatibility `api/__init__.py`，實際 runtime modules 由 Python import path 載入 `sra_api/`。
+
+## 2026-06-22 Vercel routed function entrypoint
+
+- Vercel runtime entrypoint 改為 `api/index.py`，它只負責 `from api.main import app`；`vercel.json` 將所有 request rewrite 到 `/api/index.py`。
+- Top-level `api/` 目前僅包含 `api/__init__.py` compatibility shim 與 `api/index.py` Vercel function entrypoint，避免 Vercel Hobby plan 掃描出超過 12 個 functions。

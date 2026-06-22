@@ -140,6 +140,42 @@ class AuthStore:
         if changed:
             self._write(data)
 
+
+    def ensure_mock_preview_user(self) -> AuthUser:
+        username = "vercel_mock_reader"
+        data = self._read()
+        users = data.setdefault("users", {})
+        existing = users.get(username)
+        changed = False
+        if not isinstance(existing, dict):
+            users[username] = {
+                "username": username,
+                "password_hash": _hash_password("disabled-" + secrets.token_urlsafe(32)),
+                "role": ROLE_DATA_READER,
+                "status": "active",
+                "token_version": 0,
+                "created_at": _utc_now(),
+                "approved_at": _utc_now(),
+                "approved_by": "vercel_mock_preview",
+                "full_name": "Vercel Mock Reader Preview",
+                "department": "preview",
+                "note": "Process-local mock preview account; no password login.",
+            }
+            changed = True
+        else:
+            if existing.get("role") != ROLE_DATA_READER or existing.get("status") != "active":
+                existing["role"] = ROLE_DATA_READER
+                existing["status"] = "active"
+                existing["approved_at"] = _utc_now()
+                existing["approved_by"] = "vercel_mock_preview"
+                changed = True
+            if "token_version" not in existing:
+                existing["token_version"] = 0
+                changed = True
+        if changed:
+            self._write(data)
+        return AuthUser(username=username, role=ROLE_DATA_READER, status="active")
+
     def register(self, username: str, password: str, *, full_name: str | None = None, department: str | None = None, note: str | None = None) -> dict[str, Any]:
         username = username.strip()
         if not username or len(username) > 64:

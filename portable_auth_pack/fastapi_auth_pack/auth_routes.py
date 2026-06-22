@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Query, s
 
 from .auth_logging import log_failed_login_attempt
 from .auth_store import AUTH_STORE, AuthUser, create_token, parse_token, public_role_options
+from .auth_support import should_enable_mock_preview_login
 from .dependencies import bearer_token, current_user, require_superuser
 from .models import (
     ApprovePayload,
@@ -85,6 +86,31 @@ def register(payload: AuthPayload, request: Request) -> dict[str, Any]:
 
     AUTH_STORE.record_auth_failure(REGISTER_THROTTLE_SCOPE, None, client_host)
     return {"message": REGISTER_SUCCESS_MESSAGE}
+
+
+@router.get("/v1/auth/vercel-preview-login-enabled")
+def vercel_preview_login_enabled() -> dict[str, Any]:
+    enabled = should_enable_mock_preview_login()
+    return {"enabled": enabled, "username": "portable_mock_reader" if enabled else None}
+
+
+@router.post("/v1/auth/vercel-preview-login")
+def vercel_preview_login(request: Request) -> dict[str, Any]:
+    if not should_enable_mock_preview_login():
+        raise HTTPException(status_code=404, detail="Portable auth pack Vercel mock preview login is not enabled.")
+    user = AUTH_STORE.ensure_mock_preview_user()
+    client_host = _client_host(request)
+    user_agent = request.headers.get("user-agent")
+    AUTH_STORE.record_login_audit(
+        user.username,
+        success=True,
+        reason="vercel_mock_preview",
+        role=user.role,
+        status_value=user.status,
+        client_host=client_host,
+        user_agent=user_agent,
+    )
+    return {"access_token": create_token(user), "token_type": "bearer", "user": user.__dict__}
 
 
 @router.post("/v1/auth/login")

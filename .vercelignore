@@ -1,0 +1,22 @@
+# Vercel treats extensionless static paths as unique. The Swagger UI ESM bundle
+# is not referenced by sra_api/static/index.html; exclude it so it does not collide
+# with the required swagger-ui.css asset during Vercel deployment.
+sra_api/static/swagger-ui.js
+sra_api/static/swagger-ui.js.map
+
+# Preview deployment should ship only runnable app source and required static
+# assets. Exclude local corpora, generated runtime state, logs, and repository
+# documentation/samples so the Serverless Function bundle stays below Vercel's
+# default 245 MB limit without changing on-premise deployments.
+data/
+technical_documents/
+logs/
+.api_state/
+sample_question/
+docs/
+tests/
+.codex/
+
+# Legacy conflict-resolution mirrors kept only to make GitHub merges with older base branches non-conflicting.
+api/routers/
+api/static/

@@ -79,6 +79,16 @@ def _auth_config_dir() -> Path:
     return _project_root() / "config" / "auth"
 
 
+def _is_vercel_environment() -> bool:
+    return bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("NOW_REGION"))
+
+
+def _runtime_state_dir() -> Path:
+    if _is_vercel_environment():
+        return Path(tempfile.gettempdir()) / "sra-auth"
+    return _project_root()
+
+
 def _bootstrap_superusers_file() -> Path:
     bootstrap_env()
     configured = (os.getenv("SRA_BOOTSTRAP_SUPERUSERS_FILE") or "").strip()
@@ -92,7 +102,7 @@ def _auth_file() -> Path:
     configured = (os.getenv("SRA_AUTH_USERS_FILE") or "").strip()
     if configured:
         return Path(configured).expanduser().resolve()
-    return _project_root() / ".sra_users.json"
+    return _runtime_state_dir() / ".sra_users.json"
 
 
 def _login_audit_file() -> Path:

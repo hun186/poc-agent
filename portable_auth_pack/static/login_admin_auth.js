@@ -6,6 +6,30 @@ async function login() {
     out(data);
   } catch (err) { out(String(err.message || err)); }
 }
+async function vercelPreviewLogin() {
+  try {
+    const data = await api('/v1/auth/vercel-preview-login', {method: 'POST'});
+    localStorage.setItem(tokenKey, data.access_token);
+    updateCurrentUser(data.user || null);
+    out(data);
+  } catch (err) { out(String(err.message || err)); }
+}
+async function setupVercelPreviewLogin() {
+  const btn = document.getElementById('vercelPreviewLoginBtn');
+  const hint = document.getElementById('vercelPreviewLoginHint');
+  if (!btn || !hint) return;
+  try {
+    const data = await api('/v1/auth/vercel-preview-login-enabled');
+    if (data.enabled) {
+      btn.classList.remove('hidden');
+      hint.classList.remove('hidden');
+    }
+  } catch (err) {
+    btn.classList.add('hidden');
+    hint.classList.add('hidden');
+  }
+}
+
 async function registerUser() {
   try { out(await api('/v1/auth/register', {method: 'POST', body: JSON.stringify(payload())})); }
   catch (err) { out(String(err.message || err)); }

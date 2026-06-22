@@ -28,7 +28,7 @@
 
 4. **設定環境變數**
    - 必設正式 secret：`AUTH_SECRET`（正式環境至少 32 bytes；`AUTH_ENV` / `APP_ENV` / `ENV` / `PY_ENV` 為 `prod` 或 `production` 時會 fail fast）。
-   - 建議設定：`AUTH_USERS_FILE`、`AUTH_LOGIN_AUDIT_FILE` 與 `AUTH_BOOTSTRAP_SUPERUSERS_FILE`。`AUTH_USERS_FILE` 是帳號主檔；`AUTH_LOGIN_AUDIT_FILE` 是 login audit manifest，實際事件會寫到 `<AUTH_LOGIN_AUDIT_FILE>.d/login_audit-YYYYMM.json`。
+   - 建議設定：`AUTH_USERS_FILE`、`AUTH_LOGIN_AUDIT_FILE` 與 `AUTH_BOOTSTRAP_SUPERUSERS_FILE`。`AUTH_USERS_FILE` 是帳號主檔；`AUTH_LOGIN_AUDIT_FILE` 是 login audit manifest，實際事件會寫到 `<AUTH_LOGIN_AUDIT_FILE>.d/login_audit-YYYYMM.json`。Vercel preview 若要使用範例 mock reader，可設定 `AUTH_VERCEL_MOCK_MODE=auto`；正式部署不需要 mock preview login 時設定 `AUTH_VERCEL_MOCK_MODE=never`。
    - 若是測試環境，可複製 `examples/bootstrap_superusers.test.json` 到目標專案 `config/auth/bootstrap_superusers.json`。
 
 5. **保護 endpoint**
@@ -38,7 +38,7 @@
    - 帳號維管 / 最高級全能者：`Depends(require_superuser)`。
 
 6. **前端導入**
-   - 參考 `static/login_admin_minimal.html`。
+   - 參考 `static/login_admin_minimal.html`；此範例頁包含 Vercel mock preview reader 登入按鈕，只有 mock preview endpoint enabled 時才會顯示。
    - 將 token 存放 key、API base path 與 UI 文案改成目標專案慣例。
 
 7. **測試導入**

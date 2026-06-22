@@ -1,8 +1,10 @@
 """Vercel Python runtime entrypoint.
 
-Vercel's FastAPI preset looks for an `app` object in root-level entrypoints
-such as `app.py`.  Keep the real application in `api.main` so local uvicorn
-and existing imports continue to use the same FastAPI instance.
+Keep the actual FastAPI application import path at ``api.main`` so local uvicorn
+usage and existing imports continue to share the same application instance. The
+``api`` package is now a small compatibility shim that points at ``sra_api``;
+this keeps Vercel from treating the historical top-level ``api/`` source tree as
+a directory full of Hobby-plan Serverless Functions.
 """
 
 from api.main import app

@@ -133,5 +133,37 @@
 
 ## 2026-06-22 Vercel Config 決策
 
-- Vercel entrypoint 採根目錄 `app.py` re-export `api.main.app`，而不是複製或移動 `api/main.py`，以維持本地部署、測試與既有 import path 不變。
-- `vercel.json` 只放非機密預設值；正式 ES / auth secret 等敏感設定必須由 Vercel Project Settings 注入，不寫入 repo。
+- Vercel entrypoint 曾採根目錄 `app.py` re-export `api.main.app`；此決策已被後續 `api/app.py` entrypoint 與移除 `functions` override 的設定取代。
+- `vercel.json` 只放非機密預設值與必要 rewrite；正式 ES / auth secret 等敏感設定必須由 Vercel Project Settings 注入，不寫入 repo。
+
+## 2026-06-22 Vercel Functions Override Removal
+
+- `vercel.json` 不再設定 `functions` / `maxDuration` pattern，因 Vercel build 曾回報 `app.py` 與 `api/app.py` patterns 無法匹配已發現的 Serverless Functions。
+- 曾短暫採用 `api/app.py` 讓 Vercel Python framework preset 自行 discovery；此決策已被 2026-06-22 single function 決策取代，現行設定改用根目錄 `app.py` + explicit `@vercel/python` build / route。
+
+## 2026-06-22 Vercel Bundle Footprint 決策
+
+- Vercel preview deployment 不上傳本地語料、技術文件、logs、runtime state、sample、docs、tests 與 `.codex` 記憶檔；這些內容對 on-premise / 開發有用，但不屬於 Vercel runtime 必需資產。
+- 優先用 `.vercelignore` 降低 bundle footprint，而不是啟用較大的 Vercel function limit，因為 preview runtime 已有 mock mode，不應把大型本地資料 workspace 一起打包。
+
+## 2026-06-22 Vercel Single Function 決策
+
+- 因本專案既有 application package 名稱就是 `api/`，若把 Vercel entrypoint 放在 `api/app.py` 並採 zero-config discovery，Vercel 可能把 `api/` 底下多個 Python 模組視為多個 Serverless Functions，超過 Hobby plan 12 functions 限制。
+- 曾改採根目錄 `app.py` + explicit `@vercel/python` build / route；此決策已被 2026-06-22 zero-config FastAPI 決策取代，現行保留 root `app.py` 但移除 legacy `builds/routes`。
+
+## 2026-06-22 Vercel Zero-config FastAPI 決策
+
+- 根目錄 `app.py` 保留為唯一 FastAPI ASGI entrypoint，但 `vercel.json` 不再使用 legacy `builds` / `routes` 強制 `@vercel/python`，避免繞過 Vercel FastAPI framework preset 後發生 runtime function crash。
+- 現行 Vercel 策略：root `app.py` + zero-config framework discovery + `.vercelignore` 控制 bundle footprint；不使用 `api/app.py`、`functions`、`rewrites`、legacy `builds/routes`。
+
+## 2026-06-22 Portable auth pack Vercel mock preview 決策
+
+- `portable_auth_pack` 範例包同步提供 Vercel mock preview reader login，但使用獨立環境變數 `AUTH_VERCEL_MOCK_MODE`，避免與主系統 `SRA_VERCEL_MOCK_MODE` 混淆。
+- mock preview 帳號固定為最低權限 `data_reader` 且無固定密碼；正式部署若不需要 preview shortcut，應設定 `AUTH_VERCEL_MOCK_MODE=never`。
+- Vercel/NOW 環境未指定 `AUTH_USERS_FILE` 時，portable auth pack 預設將 runtime auth state 放在 `/tmp/portable-auth-pack/`，避免 serverless read-only filesystem 寫入失敗。
+
+## 2026-06-22 Legacy api path conflict-resolution mirrors
+
+- 為讓 GitHub 能自動合併 base branch 對舊 `api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 的修改，暫時保留 legacy mirror files；它們不是 runtime source of truth。
+- Runtime import 順序以 `sra_api/` 優先，top-level `api/` shim 只保留 `api.index` Vercel entrypoint；Vercel deployment 透過 `.vercelignore` 排除 legacy `api/routers/` 與 `api/static/`，避免重新引入多 function discovery 或 static stem conflict。
+- `.codex/memory.md` 屬 append-only project memory，設定 `merge=union` 以降低 PR merge conflict；若 union merge 產生重複紀錄，後續 memory compaction 再整理。

@@ -197,3 +197,93 @@
 - 目的：降低 `excel_to_sql_dashboard.js` 改名為 `excel_to_sql_dashboard_app.js` 對落地部署、舊快取 HTML 或外部固定 URL 的相容性風險。
 - 主要修改：保留新實體檔名以避開 Vercel 同 stem 限制，但在 FastAPI `/static/{filename}` route 中新增舊檔名 alias，讓 `/static/excel_to_sql_dashboard.js` 仍回傳新版 JS 內容；不在檔案系統恢復舊檔，避免 Vercel 再次衝突。
 - 驗證：新增靜態 route 測試確認舊 URL 與新 URL 回傳相同內容；執行相關 pytest 與 JS 語法檢查。
+
+## 2026-06-22 Vercel Swagger UI static conflict exclusion
+
+- 目的：修正 Vercel 回報 `api/static/swagger-ui.js` 與 `api/static/swagger-ui.css` 去副檔名後同 stem 衝突，同時避免改動落地部署檔名。
+- 主要修改：新增 `.vercelignore`，只在 Vercel 部署時排除未被 `api/static/index.html` 引用的 `swagger-ui.js` 與其 source map；保留 `swagger-ui.css`、`swagger-ui-bundle.js` 與 `swagger-ui-standalone-preset.js` 等實際 Swagger UI 頁面使用的資產。
+- 驗證：新增 Vercel 靜態衝突測試確認被排除的是未引用的 ESM bundle，且必要 Swagger UI 資產未被排除。
+
+## 2026-06-22 Vercel function entrypoint moved under api
+
+- 目的：修正 Vercel 回報 `functions` 中的 `app.py` pattern 不符合 `/api` 目錄內 Serverless Functions 的錯誤。
+- 主要修改：將 Vercel entrypoint 從根目錄 `app.py` 改為 `api/app.py`，由該檔 re-export `api.main.app`；`vercel.json` 的 rewrite 與 `functions` maxDuration pattern 同步改為 `/api/app.py` / `api/app.py`。
+- 驗證：更新 Vercel config 測試與部署文件，並執行 Vercel config 相關 pytest 與 py_compile。
+
+## 2026-06-22 Vercel functions pattern 修正
+
+- 目的：處理 Vercel build failed：`The pattern "api/app.py" defined in functions doesn't match any Serverless Functions inside the api directory.`
+- 主要修改：移除 `vercel.json` 的 `functions` override / `maxDuration` 設定，保留 rewrite 到 `api/app.py`，讓 Vercel Python framework preset 自行 discovery FastAPI ASGI app，避免手動 function pattern 在 build discovery 階段失配。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`PYTHONPATH=. python -m py_compile api/app.py` 通過。
+
+## 2026-06-22 Vercel bundle size 修正
+
+- 目的：處理 Vercel build failed：bundle size 433.35 MB 超過預設 245 MB limit。
+- 主要修改：擴充 `.vercelignore`，排除 Vercel preview runtime 不需要的本地語料、技術文件、logs、runtime state、sample、docs、tests 與 `.codex` 記憶檔；保留 `api/`、`agent/`、`config/`、`data_ingestion/` 與 `portable_auth_pack/` runtime source。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_static_conflicts.py tests/test_vercel_deploy_config.py -q` 通過；以 `du -sh` 確認被排除的本地資料目錄包含 `data/` 362 MB、`technical_documents/` 256 MB、`logs/` 34 MB、`.api_state/` 19 MB。
+
+## 2026-06-22 Vercel Hobby function count 修正
+
+- 目的：處理 Vercel Hobby plan build failed：`No more than 12 Serverless Functions can be added to a Deployment`。
+- 主要修改：恢復根目錄 `app.py` 作為唯一 Vercel Python build entrypoint，刪除 `api/app.py`，並將 `vercel.json` 改為 explicit `version: 2` / `builds: [{src: "app.py", use: "@vercel/python"}]` / routes 到 `app.py`。此設定避免 Vercel 把既有 `api/` 應用套件底下多個 `.py` 模組當成多個 serverless functions。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py` 通過。
+
+## 2026-06-22 Vercel function invocation crash 修正
+
+- 目的：處理 Vercel runtime `FUNCTION_INVOCATION_FAILED` 500 crash，前一版使用 legacy `builds` / `routes` 強制 `@vercel/python` build 可能繞過 FastAPI framework preset。
+- 主要修改：保留根目錄 `app.py` re-export `api.main.app`，但移除 `vercel.json` 的 `version` / `builds` / `routes`，只保留非機密 env defaults；讓 Vercel zero-config Python FastAPI preset discovery root `app.py` 作為單一 ASGI app。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`VERCEL=1 VERCEL_ENV=production APP_ENV=production PYTHONPATH=. python - <<'PY' ... import app ... PY` 可成功 import app；`PYTHONPATH=. python -m py_compile app.py api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py` 通過。
+
+## 2026-06-22 Vercel api package relocation
+
+- 目的：處理 Vercel Hobby plan 仍將 top-level `api/` 目錄內多個 Python 檔視為多個 Serverless Functions 的問題。
+- 主要修改：將實際 FastAPI source tree 從 top-level `api/` 移至 `sra_api/`；保留 top-level `api/__init__.py` compatibility package，將 `api.*` import path 指向 `sra_api/`，因此 `from api.main import app` 與既有程式 import 可繼續運作，但 Vercel 只會看到 `api/__init__.py`，不再看到 49 個 `api/**/*.py` functions。
+- 驗證：`find api -type f -name '*.py' | wc -l` 確認 top-level `api/` 僅 1 個 Python shim；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py tests/test_editor_auth_ui_static.py tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/__init__.py sra_api/services/vercel_mock_runtime.py sra_api/routers/editor.py sra_api/routers/excel_to_sql.py` 通過。
+
+## 2026-06-22 Vercel api/index entrypoint 修正
+
+- 目的：處理 Vercel build 成功但連線仍 `FUNCTION_INVOCATION_FAILED` 的情況；推定 root `app.py` zero-config 在此部署未被 Vercel Python runtime 正確作為 FastAPI function 服務。
+- 主要修改：新增 `api/index.py` 作為 Vercel-routed Python function entrypoint，並在 `vercel.json` 將所有 request rewrite 到 `/api/index.py`；top-level `api/` 仍只有 `__init__.py` shim 與 `index.py` 單一 entrypoint，不再包含完整 source tree，因此符合 Hobby plan function 數量限制。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/__init__.py api/index.py sra_api/services/vercel_mock_runtime.py sra_api/routers/editor.py sra_api/routers/excel_to_sql.py` 通過；`find api -type f -name '*.py' | wc -l` 輸出 2。
+
+## 2026-06-22 Vercel auth storage read-only 修正
+
+- 目的：處理 Vercel runtime crash：`OSError: [Errno 30] Read-only file system: '/var/task/.sra_users.login_audit.json.d'`。
+- 主要修改：`auth_support._auth_file()` 在偵測到 Vercel 環境且未顯式設定 `SRA_AUTH_USERS_FILE` 時，改用 `/tmp/sra-auth/.sra_users.json` 作為 process-local auth state；login audit 預設隨 auth file 派生到 `/tmp`，避免 import `AUTH_STORE` 時嘗試在 read-only `/var/task` 建立 audit shard 目錄。
+- 驗證：新增 Vercel config test 確認 Vercel 預設 auth / login audit 路徑都在 `tempfile.gettempdir()`；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_auth_store_security.py -q` 通過；Vercel-like subprocess 使用 `/healthz` 驗證 app import 與路由可用。
+
+## 2026-06-22 Vercel root editor redirect
+
+- 目的：處理使用者連到 Vercel deployment root `/` 時看到 `{"detail":"Not Found"}`；目前主要入口是資料庫 Editor 頁 `/editor`。
+- 主要修改：在 FastAPI app 新增 root route `GET /`，以 redirect response 導向 `/editor`，讓直接開部署網址會進入現有 Editor 入口。
+- 驗證：新增 Vercel-like subprocess test 確認 `/` 回 307/308 且 `Location: /editor`；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py -q` 通過。
+
+## 2026-06-22 Vercel mock preview login
+
+- 目的：讓 Vercel preview deployment 在無法預先設定落地端 admin 帳號時，仍可登入 Editor 測試 mock 資料流程。
+- 主要修改：新增僅在 `should_prefer_mock_runtime()` 啟用時可用的 mock preview login API，會在 `/tmp` auth store 建立 process-local `vercel_mock_reader` data_reader 並發 token；Editor 登入區會偵測可用性後顯示「Vercel mock 閱讀者登入」按鈕。此帳號不使用固定密碼，且 mock mode 關閉時 API 回 404。
+- 驗證：新增 Vercel-like tests 覆蓋 enabled endpoint、mock preview login token 與一般環境 404；靜態 UI 測試確認按鈕與 JS handler 存在。
+
+## 2026-06-22 Vercel mock preview reader role
+
+- 目的：降低 Vercel mock preview 登入風險，避免公開 preview 預設取得 superuser 權限。
+- 主要修改：mock preview login 改為建立 process-local `vercel_mock_reader`，role 為 `data_reader`；Editor 按鈕文案改為「Vercel mock 閱讀者登入」。此帳號可用於 mock 查詢預覽，不提供 superuser 管理權限。
+- 驗證：更新 Vercel mock preview login test，確認 token user role 為 `data_reader`；靜態 UI 測試確認新按鈕文案。
+
+## 2026-06-22 Vercel editor audit writable path
+
+- 目的：修正 Vercel mock reader 登入時，`append_audit_event()` 嘗試建立 `/var/task/logs` 而觸發 read-only filesystem，導致 `/v1/auth/vercel-preview-login` 500。
+- 主要修改：`api.services.editor_audit.audit_log_path()` 未設定 `SRA_EDITOR_AUDIT_LOG` 且偵測到 Vercel/NOW 環境時，預設改寫入 `/tmp/sra-auth/editor_audit.jsonl`；本地 / 落地部署仍預設使用 repo `logs/editor_audit.jsonl`。
+- 驗證：新增 Vercel 預設 editor audit path 測試，並在 Vercel-like mock preview login subprocess 中確認登入後 audit log 寫入 `/tmp` 且含 `vercel_mock_preview` 事件。
+
+## 2026-06-22 Portable auth pack Vercel mock preview login
+
+- 目的：將主系統 Vercel mock preview reader 帳號機制同步到 `portable_auth_pack` 範例包，讓範例頁在 Vercel preview 上也能不建立正式 admin 即測試登入流程。
+- 主要修改：portable auth pack 新增 `AUTH_VERCEL_MOCK_MODE`、`/v1/auth/vercel-preview-login-enabled`、`/v1/auth/vercel-preview-login`、`AuthStore.ensure_mock_preview_user()` 與範例 UI「Vercel mock 閱讀者登入」按鈕；mock 帳號為 process-local `portable_mock_reader`，role 為 `data_reader`，無固定密碼。Vercel/NOW 環境未設定 `AUTH_USERS_FILE` 時，預設 runtime state 改放 `/tmp/portable-auth-pack/`。
+- 驗證：新增 `tests/test_portable_auth_pack_vercel_mock.py` 覆蓋 enabled / login / disabled 端點；更新 portable static UI 測試；執行 portable auth pack verify script 通過。
+
+## 2026-06-22 GitHub PR conflict mitigation for legacy api paths
+
+- 目的：處理 GitHub PR 顯示 `.codex/memory.md`、`api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 衝突且網頁 editor 無法解決的狀況。
+- 主要修改：恢復 legacy `api/routers/editor.py` 與 `api/static/excel_to_sql_dashboard.html` 為 conflict-resolution mirror，避免與 base branch 對舊路徑的修改形成 delete/modify conflict；`api.__path__` 改為優先搜尋 `sra_api/`，確保 runtime imports 使用 relocated source；`.vercelignore` 排除 legacy `api/routers/` 與 `api/static/`，避免 Vercel function discovery/static upload 重新看到舊路徑；`.gitattributes` 對 `.codex/memory.md` 使用 union merge，降低 append-only project memory 的 GitHub merge conflict。
+- 驗證：更新 Vercel config/static conflict tests，確認 Vercel 仍保留 `api/index.py` 入口但忽略 legacy dirs，且 `api.routers.editor` import 實際解析到 `sra_api/routers/editor.py`。

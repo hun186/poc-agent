@@ -44,7 +44,9 @@
     </div>
     <label>備註（選填）</label><input id="note" />
     <button onclick="login()">登入</button>
+    <button id="vercelPreviewLoginBtn" class="secondary hidden" type="button">Vercel mock 閱讀者登入</button>
     <button class="secondary" onclick="registerUser()">建立 pending 帳號</button>
+    <p id="vercelPreviewLoginHint" class="muted hidden">Vercel mock preview 使用暫時資料閱讀者帳號登入，只供 portable auth pack 預覽流程。</p>
     <button class="secondary" onclick="me()">我是誰</button>
     <button class="danger" onclick="logout()">登出並讓 token 失效</button>
   </section>

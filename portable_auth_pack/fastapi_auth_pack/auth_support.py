@@ -78,6 +78,29 @@ def _auth_config_dir() -> Path:
     return _project_root() / "config" / "auth"
 
 
+def _is_vercel_environment() -> bool:
+    return bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("NOW_REGION"))
+
+
+def _runtime_state_dir() -> Path:
+    if _is_vercel_environment():
+        return Path(tempfile.gettempdir()) / "portable-auth-pack"
+    return _project_root()
+
+
+def mock_preview_mode_requested() -> str:
+    return (os.getenv("AUTH_VERCEL_MOCK_MODE") or "auto").strip().lower()
+
+
+def should_enable_mock_preview_login() -> bool:
+    mode = mock_preview_mode_requested()
+    if mode in {"1", "true", "yes", "on", "always", "force"}:
+        return True
+    if mode in {"0", "false", "no", "off", "never", "disabled"}:
+        return False
+    return _is_vercel_environment()
+
+
 def _bootstrap_superusers_file() -> Path:
 
     configured = (os.getenv("AUTH_BOOTSTRAP_SUPERUSERS_FILE") or "").strip()
@@ -91,7 +114,7 @@ def _auth_file() -> Path:
     configured = (os.getenv("AUTH_USERS_FILE") or "").strip()
     if configured:
         return Path(configured).expanduser().resolve()
-    return _project_root() / ".auth_users.json"
+    return _runtime_state_dir() / ".auth_users.json"
 
 
 def _login_audit_file() -> Path:

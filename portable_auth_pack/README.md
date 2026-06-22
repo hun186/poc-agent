@@ -142,13 +142,14 @@ def manage_accounts(user: AuthUser = Depends(require_superuser)):
 | 環境變數 | 必要 | 預設 | 說明 |
 |---|---:|---|---|
 | `AUTH_SECRET` | 正式環境必要 | development fallback | token 簽章密鑰；正式環境請用至少 32 bytes 的長隨機字串 |
-| `AUTH_USERS_FILE` | 否 | `./.auth_users.json` | 使用者資料 JSON 檔位置 |
+| `AUTH_USERS_FILE` | 否 | `./.auth_users.json`；Vercel/NOW 環境未設定時為 `/tmp/portable-auth-pack/.auth_users.json` | 使用者資料 JSON 檔位置 |
 | `AUTH_LOGIN_AUDIT_FILE` | 否 | 與 `AUTH_USERS_FILE` 同目錄、同前綴的 `.login_audit.json` | 登入稽核 manifest 位置；實際事件依月份寫入旁邊 `.d/login_audit-YYYYMM.json` shards，避免 audit 單檔肥大；JSON 寫入保留最新 `.bak`，並在每天第一次改寫時保留 `.bak.<YYYYMMDD>` 歷史備份，預設保留 20 天版本；JSON 壞檔還原會輸出 warning/error log 並寫入 `<file>.recovery.jsonl` |
 | `AUTH_BOOTSTRAP_SUPERUSERS_FILE` | 否 | `./config/auth/bootstrap_superusers.json` | 初始 superuser JSON 檔位置 |
 | `AUTH_BOOTSTRAP_SUPERUSERS` | 否 | 空 | 直接用 JSON 字串設定 superusers |
 | `AUTH_BOOTSTRAP_SUPERUSER_USERNAME` | 否 | 空 | 單一初始 superuser 帳號 |
 | `AUTH_BOOTSTRAP_SUPERUSER_PASSWORD` | 否 | 空 | 單一初始 superuser 密碼 |
 | `AUTH_TOKEN_TTL_SECONDS` | 否 | `43200` | token 有效秒數，預設 12 小時 |
+| `AUTH_VERCEL_MOCK_MODE` | 否 | `auto` | portable auth pack 範例用 Vercel mock preview login；`auto` 僅在 Vercel/NOW 環境顯示「Vercel mock 閱讀者登入」，`never`/`disabled` 關閉，`force`/`always` 強制開啟 |
 | `AUTH_ENV` / `APP_ENV` / `ENV` / `PY_ENV` | 否 | 空 | 任一值為 `prod` 或 `production` 時，會要求 `AUTH_SECRET` / `SECRET_KEY` 必須存在且至少 32 bytes |
 | `AUTH_PROJECT_ROOT` | 否 | 目前工作目錄 | 控制預設 config/user file 的根目錄 |
 
@@ -159,6 +160,7 @@ def manage_accounts(user: AuthUser = Depends(require_superuser)):
 - 實際登入事件會寫入 `<AUTH_LOGIN_AUDIT_FILE>.d/login_audit-YYYYMM.json` 月份 shard。
 - 建議 `AUTH_USERS_FILE` 與 `AUTH_LOGIN_AUDIT_FILE` 使用同一個 runtime 目錄，但不要設定成同一個檔案。
 - 備份 / 還原產物包含 `<file>.bak`、`<file>.bak.<YYYYMMDD>` 與 `<file>.recovery.jsonl`；可監控 application log 的 `auth_json_*` 訊息提醒管理者。
+- Vercel/NOW 環境若未指定 `AUTH_USERS_FILE`，帳號與登入稽核預設會寫入 `/tmp/portable-auth-pack/`，避免 serverless read-only filesystem 寫入失敗。
 
 設定範例：
 
@@ -175,6 +177,16 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
 ---
+
+
+### Vercel mock preview login
+
+若把 portable auth pack 範例頁放到 Vercel preview 上測試，可保持
+`AUTH_VERCEL_MOCK_MODE=auto`。在 Vercel/NOW 環境中，
+`static/login_admin_minimal.html` 會顯示「Vercel mock 閱讀者登入」按鈕，
+呼叫 `/v1/auth/vercel-preview-login` 建立 process-local `portable_mock_reader`
+資料閱讀者帳號並回傳一般 Bearer token。此帳號不使用固定密碼，也不具備
+superuser 權限；若正式部署不需要此入口，設定 `AUTH_VERCEL_MOCK_MODE=never`。
 
 ## 測試用初始 superuser
 

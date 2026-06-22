@@ -360,3 +360,16 @@ Open
 - 替代驗證：以 `pytest tests/test_excel_to_sql_dashboard_static.py -q` 靜態檢查欄寬 CSS，並以 `node --check api/static/excel_to_sql_dashboard.js` 確認 dashboard JS 語法。
 
 狀態：Open
+
+## 2026-06-22 Vercel mock preview login editor audit read-only filesystem
+
+- 現象：Vercel 點擊「Vercel mock 閱讀者登入」後，`append_audit_event()` 預設寫入 `/var/task/logs/editor_audit.jsonl`，在 Vercel read-only filesystem 上建立 `/var/task/logs` 時觸發 `OSError: [Errno 30] Read-only file system`，導致 500。
+- 狀態：Resolved。
+- 修正：Vercel/NOW 環境未設定 `SRA_EDITOR_AUDIT_LOG` 時，Editor audit log 預設改寫入 `/tmp/sra-auth/editor_audit.jsonl`；落地部署預設路徑維持 `logs/editor_audit.jsonl`。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py -q` 通過，且 mock preview login 測試確認 audit 寫入 `/tmp`。
+
+## 2026-06-22 GitHub PR conflict too complex for web editor
+
+- 現象：GitHub PR merge 顯示 `.codex/memory.md`、`api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 衝突，且因衝突過於複雜無法用 web editor 解。
+- 狀態：Mitigated。
+- 修正：保留 legacy api/static mirror files 以避免 delete/modify conflicts；runtime source 仍以 `sra_api/` 優先，且 Vercel 忽略 legacy dirs；`.codex/memory.md` 使用 union merge。

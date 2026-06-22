@@ -19,12 +19,22 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _is_vercel_environment() -> bool:
+    return bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("NOW_REGION"))
+
+
+def _runtime_audit_dir() -> Path:
+    if _is_vercel_environment():
+        return Path(tempfile.gettempdir()) / "sra-auth"
+    return _project_root() / "logs"
+
+
 def audit_log_path() -> Path:
     bootstrap_env()
     configured = (os.getenv("SRA_EDITOR_AUDIT_LOG") or "").strip()
     if configured:
         return Path(configured).expanduser().resolve()
-    return _project_root() / "logs" / "editor_audit.jsonl"
+    return _runtime_audit_dir() / "editor_audit.jsonl"
 
 
 def _utc_now() -> str:

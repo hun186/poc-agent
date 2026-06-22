@@ -73,7 +73,9 @@
         <button id="loginBtn">登入</button>
         <button id="registerBtn" class="secondary">建立 pending 帳號</button>
         <button id="forgotPasswordBtn" class="secondary">忘記密碼</button>
+        <button id="vercelPreviewLoginBtn" class="secondary hidden" type="button">Vercel mock 閱讀者登入</button>
       </div>
+      <p id="vercelPreviewLoginHint" class="muted hidden">Vercel mock preview 使用暫時資料閱讀者帳號登入，只供預覽查詢與 mock 資料流程。</p>
       <div class="field-grid" style="margin-top: 12px;">
         <div><label>一次性重設 token（管理員提供）</label><input id="forgotResetToken" autocomplete="one-time-code" placeholder="核身後由管理員提供的 token" /></div>
         <div><label>新密碼</label><input id="forgotNewPassword" type="password" autocomplete="new-password" placeholder="至少 8 字元" /></div>

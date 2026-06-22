@@ -18,3 +18,6 @@ document.getElementById('copyResetTokenBtn').onclick = async () => {
 };
 document.getElementById('closeResetTokenModalBtn').onclick = closeResetTokenDialog;
 document.getElementById('resetTokenModal').onclick = (ev) => { if (ev.target === document.getElementById('resetTokenModal')) closeResetTokenDialog(); };
+
+document.getElementById('vercelPreviewLoginBtn').onclick = vercelPreviewLogin;
+setupVercelPreviewLogin().catch(() => {});
