@@ -15,7 +15,7 @@ def test_vercel_json_routes_to_python_entrypoint():
     config = json.loads(Path("vercel.json").read_text(encoding="utf-8"))
 
     assert config["rewrites"] == [{"source": "/(.*)", "destination": "/api/app.py"}]
-    assert config["functions"]["api/app.py"]["maxDuration"] == 60
+    assert "functions" not in config
     assert config["env"]["SRA_VERCEL_MOCK_MODE"] == "auto"
     assert config["env"]["API_STORE_ENABLED"] == "0"
 

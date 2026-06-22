@@ -6,11 +6,6 @@
       "destination": "/api/app.py"
     }
   ],
-  "functions": {
-    "api/app.py": {
-      "maxDuration": 60
-    }
-  },
   "env": {
     "SRA_VERCEL_MOCK_MODE": "auto",
     "API_STORE_ENABLED": "0"

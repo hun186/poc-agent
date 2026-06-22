@@ -209,3 +209,9 @@
 - 目的：修正 Vercel 回報 `functions` 中的 `app.py` pattern 不符合 `/api` 目錄內 Serverless Functions 的錯誤。
 - 主要修改：將 Vercel entrypoint 從根目錄 `app.py` 改為 `api/app.py`，由該檔 re-export `api.main.app`；`vercel.json` 的 rewrite 與 `functions` maxDuration pattern 同步改為 `/api/app.py` / `api/app.py`。
 - 驗證：更新 Vercel config 測試與部署文件，並執行 Vercel config 相關 pytest 與 py_compile。
+
+## 2026-06-22 Vercel functions pattern 修正
+
+- 目的：處理 Vercel build failed：`The pattern "api/app.py" defined in functions doesn't match any Serverless Functions inside the api directory.`
+- 主要修改：移除 `vercel.json` 的 `functions` override / `maxDuration` 設定，保留 rewrite 到 `api/app.py`，讓 Vercel Python framework preset 自行 discovery FastAPI ASGI app，避免手動 function pattern 在 build discovery 階段失配。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`PYTHONPATH=. python -m py_compile api/app.py` 通過。

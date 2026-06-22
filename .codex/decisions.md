@@ -133,5 +133,10 @@
 
 ## 2026-06-22 Vercel Config 決策
 
-- Vercel entrypoint 採根目錄 `app.py` re-export `api.main.app`，而不是複製或移動 `api/main.py`，以維持本地部署、測試與既有 import path 不變。
-- `vercel.json` 只放非機密預設值；正式 ES / auth secret 等敏感設定必須由 Vercel Project Settings 注入，不寫入 repo。
+- Vercel entrypoint 曾採根目錄 `app.py` re-export `api.main.app`；此決策已被後續 `api/app.py` entrypoint 與移除 `functions` override 的設定取代。
+- `vercel.json` 只放非機密預設值與必要 rewrite；正式 ES / auth secret 等敏感設定必須由 Vercel Project Settings 注入，不寫入 repo。
+
+## 2026-06-22 Vercel Functions Override Removal
+
+- `vercel.json` 不再設定 `functions` / `maxDuration` pattern，因 Vercel build 連續回報 `app.py` 與 `api/app.py` patterns 無法匹配已發現的 Serverless Functions。
+- 保留 `api/app.py` 作為 FastAPI `app` entrypoint，並讓 Vercel Python framework preset 自行 discovery；避免手動 pattern 在 build discovery 階段阻斷部署。

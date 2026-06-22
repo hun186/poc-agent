@@ -8,8 +8,11 @@ Elasticsearch / SQL Server services are not reachable from Vercel.
 
 - `api/app.py` exports the FastAPI `app` object from Vercel's `/api`
   serverless functions directory and reuses `api.main.app`.
-- `vercel.json` rewrites all routes to `api/app.py`, sets a 60 second function
-  duration, and enables safe non-secret defaults for preview deployments.
+- `vercel.json` rewrites all routes to `api/app.py` and enables safe
+  non-secret defaults for preview deployments. It intentionally omits a
+  `functions` override so Vercel can use its Python framework preset discovery
+  without failing on a pattern that has not been materialized as a Serverless
+  Function during build discovery.
 - `requirements.txt` remains the Python dependency source installed by Vercel.
 
 ## Required Vercel environment variables
