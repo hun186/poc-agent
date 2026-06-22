@@ -215,3 +215,9 @@
 - 目的：處理 Vercel build failed：`The pattern "api/app.py" defined in functions doesn't match any Serverless Functions inside the api directory.`
 - 主要修改：移除 `vercel.json` 的 `functions` override / `maxDuration` 設定，保留 rewrite 到 `api/app.py`，讓 Vercel Python framework preset 自行 discovery FastAPI ASGI app，避免手動 function pattern 在 build discovery 階段失配。
 - 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`PYTHONPATH=. python -m py_compile api/app.py` 通過。
+
+## 2026-06-22 Vercel bundle size 修正
+
+- 目的：處理 Vercel build failed：bundle size 433.35 MB 超過預設 245 MB limit。
+- 主要修改：擴充 `.vercelignore`，排除 Vercel preview runtime 不需要的本地語料、技術文件、logs、runtime state、sample、docs、tests 與 `.codex` 記憶檔；保留 `api/`、`agent/`、`config/`、`data_ingestion/` 與 `portable_auth_pack/` runtime source。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_static_conflicts.py tests/test_vercel_deploy_config.py -q` 通過；以 `du -sh` 確認被排除的本地資料目錄包含 `data/` 362 MB、`technical_documents/` 256 MB、`logs/` 34 MB、`.api_state/` 19 MB。

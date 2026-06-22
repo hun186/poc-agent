@@ -33,3 +33,32 @@ def test_vercel_keeps_required_swagger_ui_assets() -> None:
         "api/static/swagger-ui-standalone-preset.js",
     }
     assert required_assets.isdisjoint(ignored)
+
+
+def test_vercel_excludes_large_local_only_directories() -> None:
+    ignored = _vercelignore_entries()
+
+    large_local_only_dirs = {
+        "data/",
+        "technical_documents/",
+        "logs/",
+        ".api_state/",
+        "sample_question/",
+        "docs/",
+        "tests/",
+        ".codex/",
+    }
+    assert large_local_only_dirs.issubset(ignored)
+
+
+def test_vercel_keeps_runtime_source_directories() -> None:
+    ignored = _vercelignore_entries()
+
+    runtime_source_dirs = {
+        "api/",
+        "agent/",
+        "config/",
+        "data_ingestion/",
+        "portable_auth_pack/",
+    }
+    assert runtime_source_dirs.isdisjoint(ignored)

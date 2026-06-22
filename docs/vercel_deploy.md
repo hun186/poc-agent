@@ -15,6 +15,15 @@ Elasticsearch / SQL Server services are not reachable from Vercel.
   Function during build discovery.
 - `requirements.txt` remains the Python dependency source installed by Vercel.
 
+## Bundle size controls
+
+Vercel's default Serverless Function bundle limit is 245 MB. The repository
+contains local corpora, generated runtime state, logs, sample files, and
+documentation that are useful for on-premise development but are not required by
+the preview runtime. `.vercelignore` excludes those local-only directories from
+Vercel uploads so the deployed bundle contains the app source and required
+static assets instead of the full local data workspace.
+
 ## Required Vercel environment variables
 
 For a mock-only preview deployment, set these in Vercel Project Settings or keep

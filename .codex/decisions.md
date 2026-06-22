@@ -140,3 +140,8 @@
 
 - `vercel.json` 不再設定 `functions` / `maxDuration` pattern，因 Vercel build 連續回報 `app.py` 與 `api/app.py` patterns 無法匹配已發現的 Serverless Functions。
 - 保留 `api/app.py` 作為 FastAPI `app` entrypoint，並讓 Vercel Python framework preset 自行 discovery；避免手動 pattern 在 build discovery 階段阻斷部署。
+
+## 2026-06-22 Vercel Bundle Footprint 決策
+
+- Vercel preview deployment 不上傳本地語料、技術文件、logs、runtime state、sample、docs、tests 與 `.codex` 記憶檔；這些內容對 on-premise / 開發有用，但不屬於 Vercel runtime 必需資產。
+- 優先用 `.vercelignore` 降低 bundle footprint，而不是啟用較大的 Vercel function limit，因為 preview runtime 已有 mock mode，不應把大型本地資料 workspace 一起打包。
