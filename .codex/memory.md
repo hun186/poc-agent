@@ -221,3 +221,9 @@
 - 目的：處理 Vercel build failed：bundle size 433.35 MB 超過預設 245 MB limit。
 - 主要修改：擴充 `.vercelignore`，排除 Vercel preview runtime 不需要的本地語料、技術文件、logs、runtime state、sample、docs、tests 與 `.codex` 記憶檔；保留 `api/`、`agent/`、`config/`、`data_ingestion/` 與 `portable_auth_pack/` runtime source。
 - 驗證：`PYTHONPATH=. pytest tests/test_vercel_static_conflicts.py tests/test_vercel_deploy_config.py -q` 通過；以 `du -sh` 確認被排除的本地資料目錄包含 `data/` 362 MB、`technical_documents/` 256 MB、`logs/` 34 MB、`.api_state/` 19 MB。
+
+## 2026-06-22 Vercel Hobby function count 修正
+
+- 目的：處理 Vercel Hobby plan build failed：`No more than 12 Serverless Functions can be added to a Deployment`。
+- 主要修改：恢復根目錄 `app.py` 作為唯一 Vercel Python build entrypoint，刪除 `api/app.py`，並將 `vercel.json` 改為 explicit `version: 2` / `builds: [{src: "app.py", use: "@vercel/python"}]` / routes 到 `app.py`。此設定避免 Vercel 把既有 `api/` 應用套件底下多個 `.py` 模組當成多個 serverless functions。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py` 通過。

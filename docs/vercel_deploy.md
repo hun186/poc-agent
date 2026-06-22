@@ -6,13 +6,11 @@ Elasticsearch / SQL Server services are not reachable from Vercel.
 
 ## Files used by Vercel
 
-- `api/app.py` exports the FastAPI `app` object from Vercel's `/api`
-  serverless functions directory and reuses `api.main.app`.
-- `vercel.json` rewrites all routes to `api/app.py` and enables safe
-  non-secret defaults for preview deployments. It intentionally omits a
-  `functions` override so Vercel can use its Python framework preset discovery
-  without failing on a pattern that has not been materialized as a Serverless
-  Function during build discovery.
+- Root `app.py` exports the FastAPI `app` object and reuses `api.main.app`.
+- `vercel.json` uses an explicit single `@vercel/python` build for `app.py` and
+  routes all requests to that file. This avoids Vercel treating every Python
+  module under this repository's existing `api/` application package as a
+  separate Hobby-plan Serverless Function.
 - `requirements.txt` remains the Python dependency source installed by Vercel.
 
 ## Bundle size controls
@@ -72,6 +70,6 @@ cold starts or instances. The mock dataset is for review only.
 ## Local verification before pushing
 
 ```bash
-PYTHONPATH=. python -m py_compile api/app.py api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py
+PYTHONPATH=. python -m py_compile app.py api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py
 PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_mock_runtime.py -q
 ```

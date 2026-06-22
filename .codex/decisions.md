@@ -138,10 +138,15 @@
 
 ## 2026-06-22 Vercel Functions Override Removal
 
-- `vercel.json` 不再設定 `functions` / `maxDuration` pattern，因 Vercel build 連續回報 `app.py` 與 `api/app.py` patterns 無法匹配已發現的 Serverless Functions。
-- 保留 `api/app.py` 作為 FastAPI `app` entrypoint，並讓 Vercel Python framework preset 自行 discovery；避免手動 pattern 在 build discovery 階段阻斷部署。
+- `vercel.json` 不再設定 `functions` / `maxDuration` pattern，因 Vercel build 曾回報 `app.py` 與 `api/app.py` patterns 無法匹配已發現的 Serverless Functions。
+- 曾短暫採用 `api/app.py` 讓 Vercel Python framework preset 自行 discovery；此決策已被 2026-06-22 single function 決策取代，現行設定改用根目錄 `app.py` + explicit `@vercel/python` build / route。
 
 ## 2026-06-22 Vercel Bundle Footprint 決策
 
 - Vercel preview deployment 不上傳本地語料、技術文件、logs、runtime state、sample、docs、tests 與 `.codex` 記憶檔；這些內容對 on-premise / 開發有用，但不屬於 Vercel runtime 必需資產。
 - 優先用 `.vercelignore` 降低 bundle footprint，而不是啟用較大的 Vercel function limit，因為 preview runtime 已有 mock mode，不應把大型本地資料 workspace 一起打包。
+
+## 2026-06-22 Vercel Single Function 決策
+
+- 因本專案既有 application package 名稱就是 `api/`，若把 Vercel entrypoint 放在 `api/app.py` 並採 zero-config discovery，Vercel 可能把 `api/` 底下多個 Python 模組視為多個 Serverless Functions，超過 Hobby plan 12 functions 限制。
+- Vercel 部署改採根目錄 `app.py` + explicit `@vercel/python` build / route，讓部署只產生單一 Python function，同時保留內部 `api.main.app` 與落地部署 import path。
