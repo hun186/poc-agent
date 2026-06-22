@@ -111,3 +111,35 @@ def test_vercel_default_auth_state_uses_tmp_directory(monkeypatch):
     assert audit_file.resolve().is_relative_to(tmp_root)
     assert auth_file.name == ".sra_users.json"
     assert audit_file.name == ".sra_users.login_audit.json"
+
+
+def test_root_redirects_to_editor_under_vercel_environment(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {
+        **os.environ,
+        "PYTHONPATH": ".",
+        "VERCEL": "1",
+        "VERCEL_ENV": "production",
+        "APP_ENV": "production",
+        "SRA_AUTH_USERS_FILE": str(tmp_path / "users.json"),
+        "SRA_LOGIN_AUDIT_FILE": str(tmp_path / "login_audit.json"),
+    }
+    code = (
+        "from fastapi.testclient import TestClient\n"
+        "from api.index import app\n"
+        "response = TestClient(app, follow_redirects=False).get('/')\n"
+        "assert response.status_code in {307, 308}, response.text\n"
+        "assert response.headers['location'] == '/editor'\n"
+        "print(response.status_code, response.headers['location'])\n"
+    )
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )

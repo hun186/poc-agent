@@ -251,3 +251,9 @@
 - 目的：處理 Vercel runtime crash：`OSError: [Errno 30] Read-only file system: '/var/task/.sra_users.login_audit.json.d'`。
 - 主要修改：`auth_support._auth_file()` 在偵測到 Vercel 環境且未顯式設定 `SRA_AUTH_USERS_FILE` 時，改用 `/tmp/sra-auth/.sra_users.json` 作為 process-local auth state；login audit 預設隨 auth file 派生到 `/tmp`，避免 import `AUTH_STORE` 時嘗試在 read-only `/var/task` 建立 audit shard 目錄。
 - 驗證：新增 Vercel config test 確認 Vercel 預設 auth / login audit 路徑都在 `tempfile.gettempdir()`；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_auth_store_security.py -q` 通過；Vercel-like subprocess 使用 `/healthz` 驗證 app import 與路由可用。
+
+## 2026-06-22 Vercel root editor redirect
+
+- 目的：處理使用者連到 Vercel deployment root `/` 時看到 `{"detail":"Not Found"}`；目前主要入口是資料庫 Editor 頁 `/editor`。
+- 主要修改：在 FastAPI app 新增 root route `GET /`，以 redirect response 導向 `/editor`，讓直接開部署網址會進入現有 Editor 入口。
+- 驗證：新增 Vercel-like subprocess test 確認 `/` 回 307/308 且 `Location: /editor`；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py -q` 通過。

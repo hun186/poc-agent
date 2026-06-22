@@ -14,6 +14,7 @@ init_proctitle(app_name="SRA-API")
 
 from fastapi import FastAPI  # , HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from api.routers import chat, docs, export, editor, excel_to_sql
 
 app = FastAPI(
@@ -28,6 +29,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/", include_in_schema=False)
+def root_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/editor")
+
 
 app.include_router(chat.router)
 app.include_router(docs.router)
