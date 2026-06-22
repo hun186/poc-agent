@@ -119,3 +119,19 @@
 
 - 檔案式 auth store 自動還原不應靜默發生；還原成功、備份不可用與還原失敗都需寫入 application log，並附帶 JSONL recovery record，方便管理者後續追查壞檔時間與使用的備份版本。
 - Recovery record 採 sidecar `<file>.recovery.jsonl`，避免寫回正在復原的 JSON 檔而造成遞迴或二次損壞。
+
+## 2026-06-22 Vercel Mock Runtime 決策
+
+- Mock runtime 只用於 Vercel / 唯讀 / 明確強制 mock 的檢閱情境；若正式 ES `ping()` 成功，即使在 Vercel 也優先使用真實 ES，避免 mock 掩蓋可用的正式資料。
+- Mock 資料必須透過 `mock_mode` response 欄位與 warning 明確揭露，不以假成功冒充正式 ES / SQL Server 寫入。
+- Vercel mock Excel 匯入採 in-memory process-local registry，不嘗試在 serverless 唯讀檔案系統落盤；此功能定位為檢閱流程，不保證跨 instance / cold start 持久化。
+
+## 2026-06-22 Vercel Mock SQL 決策
+
+- Excel→SQL mock 不只涵蓋上傳 / 預掃描 / 確認匯入，也必須涵蓋目的地 SQL Server audit dashboard 與刪除列操作，因使用者檢閱流程會從匯入記錄跳到 SQL audit 查詢。
+- Mock delete-row 採 no-op 並明確回傳 `deleted: false`，避免以假刪除冒充正式 SQL Server 異動。
+
+## 2026-06-22 Vercel Config 決策
+
+- Vercel entrypoint 採根目錄 `app.py` re-export `api.main.app`，而不是複製或移動 `api/main.py`，以維持本地部署、測試與既有 import path 不變。
+- `vercel.json` 只放非機密預設值；正式 ES / auth secret 等敏感設定必須由 Vercel Project Settings 注入，不寫入 repo。

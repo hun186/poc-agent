@@ -7,7 +7,13 @@ from .constants import DEFAULT_HASH_FIELD, DEFAULT_HASH_FIELD_TYPE
 from .db_ops import get_existing_hashes
 from .ingest import load_json_config
 from .sql_utils import build_conn_str_from_config, ensure_destination_table
-from .user_import_storage import public_record, read_registry, utc_now, write_registry
+from .user_import_storage import (
+    public_record,
+    read_registry,
+    using_mock_import_store,
+    utc_now,
+    write_registry,
+)
 from .utils import get_nested, require_nested
 from .workbook import iter_excel_rows, open_workbook_headers, read_column_mappings
 
@@ -168,10 +174,31 @@ def preview_record(
                 raise PermissionError("不可檢視其他使用者的匯入記錄。")
             if record.get("status") == "deleted":
                 raise ValueError("已刪除的匯入記錄不可預掃描。")
-            cfg = load_json_config(str(record["config_path"]))
-            preview = _preview_file(
-                str(record["config_path"]), cfg, Path(str(record["stored_path"]))
-            )
+            if using_mock_import_store():
+                preview = {
+                    "total_rows": 3,
+                    "will_insert": 2,
+                    "duplicate": 1,
+                    "failed": 0,
+                    "sheets": ["Vercel Mock Sheet"],
+                    "failure_summary": {},
+                    "samples": [
+                        {
+                            "sheet_name": "Vercel Mock Sheet",
+                            "row_no": 3,
+                            "status": "duplicate",
+                            "message": "mock duplicate row",
+                            "hash_value": "mock-hash-duplicate",
+                        }
+                    ],
+                    "scanned_at": utc_now(),
+                    "mock_mode": True,
+                }
+            else:
+                cfg = load_json_config(str(record["config_path"]))
+                preview = _preview_file(
+                    str(record["config_path"]), cfg, Path(str(record["stored_path"]))
+                )
             record["preview"] = preview
             record["status"] = "previewed"
             record["updated_at"] = utc_now()

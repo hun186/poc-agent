@@ -160,3 +160,22 @@
 - 目的：依使用者回饋，縮窄 Excel→SQL 匯入查詢儀表板「最近 audit 事件」表格中的「狀態」與「使用者」欄，節省橫向版面。
 - 主要修改：將 recent audit table 的狀態欄寬由 7% 調整為 5%、使用者欄寬由 8% 調整為 6%，釋出的寬度補到 payload 欄（40% → 44%）；同步更新靜態 UI 測試檢查欄寬設定。
 - 驗證：`pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（7 passed）；`node --check api/static/excel_to_sql_dashboard.js` 通過；`python -m playwright --version` 因目前環境缺少 Playwright module 無法截圖，沿用靜態 UI 測試與 JS 語法檢查作為替代驗證。
+
+## 2026-06-22 Vercel Mock Runtime
+
+- 目的：讓部署在 Vercel 這類唯讀 / 無法連內網 ES 的環境時，可自動切換到可檢閱的測試 mock 資料集，減少手動從 GitHub 下載後搬到開發環境才能實測的成本。
+- 主要修改：新增 `SRA_VERCEL_MOCK_MODE` 控制的 runtime 偵測；在 Vercel / 唯讀環境優先嘗試正式 ES ping，失敗才啟用 in-memory mock Elasticsearch。Excel 匯入記錄在 mock runtime 改用 in-memory registry，預掃描與確認匯入回傳清楚標示 `mock_mode` 的測試結果，不寫入磁碟或 SQL Server。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_mock_runtime.py -q` 通過（2 passed）；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_vercel_mock_runtime.py -q` 通過（7 passed）；`PYTHONPATH=. python -m py_compile api/services/vercel_mock_runtime.py agent/es/mock_es_client.py agent/es/es_client.py data_ingestion/excel_to_sql/user_import_storage.py data_ingestion/excel_to_sql/user_import_preview.py data_ingestion/excel_to_sql/user_import_runner.py` 通過。
+
+## 2026-06-22 Vercel Mock SQL Dashboard
+
+- 目的：回應 Excel 匯入會牽連目的地 SQL Server 與 audit dashboard 的問題，補齊前次僅 mock upload / preview / confirm 流程但未提供 dashboard SQL audit mock 的缺口。
+- 主要修改：新增 `data_ingestion/excel_to_sql/mock_sql.py`，提供 Vercel mock SQL audit rows、dashboard payload 與 delete-row mock response；`dashboard_payload()` / `delete_imported_sql_row()` 在 mock runtime 不連 SQL Server，改回傳 `mock_mode: true` 與 warning。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_mock_runtime.py -q` 通過（3 passed）；`PYTHONPATH=. pytest tests/test_dashboard_filters.py tests/test_excel_to_sql_user_imports.py tests/test_vercel_mock_runtime.py -q` 通過（18 passed）；`PYTHONPATH=. pytest tests -q` 通過（100 passed，7 個既有 warning）。
+
+## 2026-06-22 Vercel Deployment Config
+
+- 目的：補齊部署到 Vercel 所需的入口與設定檔，避免只有 mock runtime 實作但缺少 Vercel 可辨識的 FastAPI entrypoint / route config。
+- 主要修改：新增根目錄 `app.py` re-export `api.main.app`；新增 `vercel.json`，將所有路由 rewrite 到 `/app.py`，設定 function maxDuration 與非機密 mock preview 預設環境變數；新增 `docs/vercel_deploy.md` 說明 Vercel mock / real-data 環境變數與部署注意事項；新增靜態測試驗證 Vercel 設定檔。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py -q` 通過（3 passed）；`PYTHONPATH=. python -m py_compile app.py api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py` 通過；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_mock_runtime.py -q` 通過（6 passed）。
+- 補充：`.env.example` 也新增 Vercel Preview / Mock Runtime 區塊，列出 `SRA_VERCEL_MOCK_MODE=auto` 與 `API_STORE_ENABLED=0`。
