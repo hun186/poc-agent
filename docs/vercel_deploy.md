@@ -6,15 +6,13 @@ Elasticsearch / SQL Server services are not reachable from Vercel.
 
 ## Files used by Vercel
 
-- Root `app.py` exports the FastAPI `app` object and reuses `api.main.app`.
+- `api/index.py` is the Vercel-routed Python function and reuses `api.main.app`; root `app.py` remains a local/import convenience wrapper.
 - The real application source lives under `sra_api/`; top-level `api/` is only a
-  compatibility shim so existing `api.*` imports still work while Vercel does
-  not scan dozens of `api/**/*.py` files as separate functions.
-- `vercel.json` intentionally does not define legacy `builds`, `routes`,
-  `functions`, or `rewrites`. Vercel's Python FastAPI framework preset should
-  discover root `app.py` as the single ASGI app entrypoint; keeping routing/build
-  overrides out avoids legacy runtime crashes and avoids treating this repo's
-  existing `api/` application package as multiple Hobby-plan functions.
+  compatibility shim so existing `api.*` imports still work while Vercel sees
+  only `api/__init__.py` and `api/index.py`, not dozens of `api/**/*.py` files as separate functions.
+- `vercel.json` intentionally does not define legacy `builds`, `routes`, or
+  `functions`; it only rewrites all traffic to `/api/index.py`, the single
+  FastAPI function entrypoint supported by Vercel's Python runtime.
 - `requirements.txt` remains the Python dependency source installed by Vercel.
 
 ## Bundle size controls
@@ -74,6 +72,6 @@ cold starts or instances. The mock dataset is for review only.
 ## Local verification before pushing
 
 ```bash
-PYTHONPATH=. python -m py_compile app.py sra_api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py
+PYTHONPATH=. python -m py_compile app.py api/index.py sra_api/services/vercel_mock_runtime.py agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py
 PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_mock_runtime.py -q
 ```

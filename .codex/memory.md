@@ -239,3 +239,9 @@
 - 目的：處理 Vercel Hobby plan 仍將 top-level `api/` 目錄內多個 Python 檔視為多個 Serverless Functions 的問題。
 - 主要修改：將實際 FastAPI source tree 從 top-level `api/` 移至 `sra_api/`；保留 top-level `api/__init__.py` compatibility package，將 `api.*` import path 指向 `sra_api/`，因此 `from api.main import app` 與既有程式 import 可繼續運作，但 Vercel 只會看到 `api/__init__.py`，不再看到 49 個 `api/**/*.py` functions。
 - 驗證：`find api -type f -name '*.py' | wc -l` 確認 top-level `api/` 僅 1 個 Python shim；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py tests/test_editor_auth_ui_static.py tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_user_imports.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/__init__.py sra_api/services/vercel_mock_runtime.py sra_api/routers/editor.py sra_api/routers/excel_to_sql.py` 通過。
+
+## 2026-06-22 Vercel api/index entrypoint 修正
+
+- 目的：處理 Vercel build 成功但連線仍 `FUNCTION_INVOCATION_FAILED` 的情況；推定 root `app.py` zero-config 在此部署未被 Vercel Python runtime 正確作為 FastAPI function 服務。
+- 主要修改：新增 `api/index.py` 作為 Vercel-routed Python function entrypoint，並在 `vercel.json` 將所有 request rewrite 到 `/api/index.py`；top-level `api/` 仍只有 `__init__.py` shim 與 `index.py` 單一 entrypoint，不再包含完整 source tree，因此符合 Hobby plan function 數量限制。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/__init__.py api/index.py sra_api/services/vercel_mock_runtime.py sra_api/routers/editor.py sra_api/routers/excel_to_sql.py` 通過；`find api -type f -name '*.py' | wc -l` 輸出 2。

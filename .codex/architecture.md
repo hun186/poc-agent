@@ -225,3 +225,8 @@
 - 實際 FastAPI application source tree 已移至 `sra_api/`，包含 `sra_api/main.py`、`sra_api/routers/`、`sra_api/services/`、`sra_api/core/` 與 `sra_api/static/`。
 - Top-level `api/` 僅保留 `api/__init__.py` compatibility package；它把 `api.__path__` 指向 `sra_api/`，所以既有 `from api.main import app`、`api.routers.*`、`api.services.*` import path 仍可運作。
 - 此 layout 是為了避免 Vercel Hobby plan 將 top-level `api/**/*.py` 視為多個 Serverless Functions；Vercel 只需 root `app.py` + compatibility `api/__init__.py`，實際 runtime modules 由 Python import path 載入 `sra_api/`。
+
+## 2026-06-22 Vercel routed function entrypoint
+
+- Vercel runtime entrypoint 改為 `api/index.py`，它只負責 `from api.main import app`；`vercel.json` 將所有 request rewrite 到 `/api/index.py`。
+- Top-level `api/` 目前僅包含 `api/__init__.py` compatibility shim 與 `api/index.py` Vercel function entrypoint，避免 Vercel Hobby plan 掃描出超過 12 個 functions。

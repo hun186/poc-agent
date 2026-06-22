@@ -19,7 +19,7 @@ def test_vercel_json_uses_zero_config_fastapi_discovery():
     assert "builds" not in config
     assert "routes" not in config
     assert "functions" not in config
-    assert "rewrites" not in config
+    assert config["rewrites"] == [{"source": "/(.*)", "destination": "/api/index.py"}]
     assert config["env"]["SRA_VERCEL_MOCK_MODE"] == "auto"
     assert config["env"]["API_STORE_ENABLED"] == "0"
 
@@ -45,6 +45,7 @@ def test_vercel_hobby_plan_does_not_use_legacy_builds_or_api_entrypoint():
 
     assert Path("app.py").exists()
     assert not Path("api/app.py").exists()
+    assert Path("api/index.py").exists()
     assert "builds" not in config
     assert "routes" not in config
 
@@ -81,10 +82,13 @@ def test_vercel_entrypoint_imports_under_vercel_environment(tmp_path):
     assert "'ok': True" in result.stdout or '"ok": true' in result.stdout
 
 
-def test_vercel_api_compat_package_contains_only_shim():
+def test_vercel_api_folder_contains_only_shim_and_single_entrypoint():
     api_py_files = sorted(Path("api").rglob("*.py"))
 
-    assert api_py_files == [Path("api/__init__.py")]
+    assert api_py_files == [Path("api/__init__.py"), Path("api/index.py")]
     shim = Path("api/__init__.py").read_text(encoding="utf-8")
+    entrypoint = Path("api/index.py").read_text(encoding="utf-8")
     assert '"sra_api"' in shim
+    assert "_API_SHIM_DIR" in shim
     assert "__path__" in shim
+    assert "from api.main import app" in entrypoint
