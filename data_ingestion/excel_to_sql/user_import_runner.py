@@ -12,7 +12,13 @@ from .file_processor import process_excel_file
 from .ingest import load_json_config
 from .sql_utils import build_conn_str_from_config
 from .utils import get_nested
-from .user_import_storage import public_record, read_registry, utc_now, write_registry
+from .user_import_storage import (
+    public_record,
+    read_registry,
+    using_mock_import_store,
+    utc_now,
+    write_registry,
+)
 
 
 def import_record(
@@ -25,6 +31,24 @@ def import_record(
                 raise PermissionError("不可匯入其他使用者的 Excel。")
             if record.get("status") == "deleted":
                 raise ValueError("已刪除的匯入記錄不可匯入。")
+            if using_mock_import_store():
+                run_id = uuid.uuid4().hex
+                payload = {
+                    "run_id": run_id,
+                    "inserted_rows": 2,
+                    "duplicate_rows": 1,
+                    "failed_rows": 0,
+                    "ok": True,
+                    "failure_summary": {},
+                    "imported_at": utc_now(),
+                    "mock_mode": True,
+                }
+                record["import_result"] = payload
+                record["status"] = "imported"
+                record["updated_at"] = utc_now()
+                write_registry(data)
+                return {"record": public_record(record), "import_result": payload}
+
             cfg = copy.deepcopy(load_json_config(str(record["config_path"])))
             cfg.setdefault("source", {})["excel_path"] = str(
                 Path(str(record["stored_path"])).resolve()

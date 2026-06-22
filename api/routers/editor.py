@@ -101,7 +101,11 @@ async def extract_text_from_file(
 def list_indexes(_: AuthUser = Depends(current_user)) -> dict[str, Any]:
     indexes = current_indexes()
     default_index = es_client.ES_INDEX_DEFAULT or (indexes[0] if indexes else "")
-    return {"indexes": indexes, "default_index": default_index}
+    return {
+        "indexes": indexes,
+        "default_index": default_index,
+        "mock_mode": es_client.using_mock_es(),
+    }
 
 
 @router.get("/v1/editor/form-config")
@@ -193,7 +197,9 @@ def search_documents(
         "size": size,
         "page": page,
         "has_more": (offset + len(hits)) < total,
-        "warnings": warnings,
+        "warnings": warnings
+        + (["目前使用 Vercel mock Elasticsearch 測試資料，未連線正式 ES。"] if es_client.using_mock_es() else []),
+        "mock_mode": es_client.using_mock_es(),
     }
 
 

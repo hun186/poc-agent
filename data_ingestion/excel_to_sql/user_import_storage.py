@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from api.services.vercel_mock_runtime import should_prefer_mock_runtime
+
 from .ingest import load_json_config
 
 ROOT = Path("data/excel_to_sql_user_imports")
@@ -14,13 +16,20 @@ ACTIVE_DIR = ROOT / "active"
 RECORDS_DIR = ROOT / "records"
 REGISTRY = ROOT / "records.json"
 ALLOWED_SUFFIXES = {".xlsx", ".xlsm", ".xltx", ".xltm"}
+_MOCK_RECORDS: list[dict[str, Any]] = []
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def using_mock_import_store() -> bool:
+    return should_prefer_mock_runtime()
+
+
 def ensure_dirs() -> None:
+    if using_mock_import_store():
+        return
     ACTIVE_DIR.mkdir(parents=True, exist_ok=True)
     RECORDS_DIR.mkdir(parents=True, exist_ok=True)
     REGISTRY.parent.mkdir(parents=True, exist_ok=True)
@@ -60,6 +69,9 @@ def read_registry() -> dict[str, Any]:
     IDs while larger preview/import payloads live in one JSON file per record.
     """
 
+    if using_mock_import_store():
+        return {"records": [dict(r) for r in _MOCK_RECORDS]}
+
     ensure_dirs()
     data = _read_json(REGISTRY, {"record_ids": []})
     legacy_records = data.get("records")
@@ -87,6 +99,16 @@ def read_registry() -> dict[str, Any]:
 
 
 def write_registry(data: dict[str, Any]) -> None:
+    if using_mock_import_store():
+        _MOCK_RECORDS.clear()
+        _MOCK_RECORDS.extend(
+            [
+                dict(r)
+                for r in data.get("records", [])
+                if isinstance(r, dict) and r.get("id")
+            ]
+        )
+        return
     ensure_dirs()
     records = [
         r for r in data.get("records", []) if isinstance(r, dict) and r.get("id")
@@ -155,8 +177,14 @@ def save_upload(
     record_id = uuid.uuid4().hex
     safe_name = Path(filename).name or f"upload{suffix}"
     stored_path = ACTIVE_DIR / f"{record_id}{suffix}"
-    with stored_path.open("wb") as fh:
-        shutil.copyfileobj(fileobj, fh)
+    file_size = 0
+    if using_mock_import_store():
+        data_bytes = fileobj.read()
+        file_size = len(data_bytes or b"")
+    else:
+        with stored_path.open("wb") as fh:
+            shutil.copyfileobj(fileobj, fh)
+        file_size = stored_path.stat().st_size
     record = {
         "id": record_id,
         "original_filename": safe_name,
@@ -167,7 +195,8 @@ def save_upload(
         "created_at": utc_now(),
         "updated_at": utc_now(),
         "status": "uploaded",
-        "file_size": stored_path.stat().st_size,
+        "file_size": file_size,
+        "mock_mode": using_mock_import_store(),
         "preview": None,
         "import_result": None,
         "deleted_at": None,

@@ -178,3 +178,21 @@
 - SQL audit table contract 更新：`ExcelImportAudit` 新增 nullable `username NVARCHAR(255)` 欄位；`ensure_audit_table()` 會在既有表缺少此欄位時執行 `ALTER TABLE ... ADD username NVARCHAR(255) NULL`。
 - 新寫入的 audit rows 會將使用者資訊寫入 `username` 欄位；來源優先序為 `row_payload.audit_actor`、`row_payload.audit_user`、`row_payload.actor`。
 - `GET /v1/excel-to-sql/dashboard` HTTP response shape 不變；`recent[].username` 改為優先使用 SQL `username` 欄，並保留 JSON payload fallback 以相容舊資料。
+
+## 2026-06-22 Vercel Mock Runtime response 標記
+
+- `GET /v1/editor/indexes` response 新增 `mock_mode: bool`，表示目前是否使用 in-memory mock Elasticsearch。
+- `GET /v1/editor/search` response 新增 `mock_mode: bool`；mock 啟用時 `warnings[]` 會包含「目前使用 Vercel mock Elasticsearch 測試資料，未連線正式 ES。」。
+- `POST /v1/excel-to-sql/import-records` 在 mock runtime 回傳的 `record` 會包含 `mock_mode: true`，且不保存上傳檔到磁碟。
+- `POST /v1/excel-to-sql/import-records/{record_id}/preview` 在 mock runtime 回傳的 `preview` 會包含 `mock_mode: true` 與示範統計。
+- `POST /v1/excel-to-sql/import-records/{record_id}/confirm` 在 mock runtime 回傳的 `import_result` 會包含 `mock_mode: true` 與示範匯入結果；不連 SQL Server。
+
+## 2026-06-22 Vercel Mock SQL Dashboard contract
+
+- `GET /v1/excel-to-sql/dashboard` 在 mock runtime 不連 SQL Server；response 新增 / 保留 `mock_mode: true`、`warnings[]`，並回傳可檢閱的 `summary`、`daily`、`files`、`destination_table_options`、`username_options`、`recent` 與 `recent_paging`。
+- `POST /v1/excel-to-sql/delete-row` 在 mock runtime 不刪 SQL Server row；response 包含 `ok: true`、`deleted: false`、`mock_mode: true` 與說明訊息。
+
+## 2026-06-22 Vercel Deployment routing
+
+- Vercel 部署透過 `app.py` 匯出同一個 `api.main.app` FastAPI instance；HTTP API path / request / response contract 不因 Vercel entrypoint 改變。
+- `vercel.json` 使用 rewrite 將 `/(.*)` 導向 `/app.py`，因此 `/editor`、`/excel-to-sql-dashboard`、`/excel-to-sql-import-center` 與 `/v1/*` 在 Vercel 上仍由既有 FastAPI router 處理。

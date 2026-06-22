@@ -8,11 +8,14 @@ from elasticsearch import Elasticsearch, BadRequestError
 from elastic_transport import ObjectApiResponse
 from config.bootstrap import bootstrap_env
 from config.index_loader import INDEX_CONFIG
+from api.services.vercel_mock_runtime import should_prefer_mock_runtime
+from agent.es.mock_es_client import MOCK_INDEX, MockElasticsearch
 
 #load_dotenv()
 
 IndexType = Union[str, List[str]]
-_ES: Elasticsearch | None = None
+_ES: Elasticsearch | MockElasticsearch | None = None
+_USING_MOCK_ES: bool = False
 
 # 對外相容（避免 settings.py 直接 import 會爆）
 ALL_INDEXES: List[str] = []      # 你可以選擇 raw 或 live（下面 init 控制）
@@ -118,11 +121,30 @@ def _build_es() -> Elasticsearch:
         request_timeout=ES_TIMEOUT,
     )
 
-def get_es() -> Elasticsearch:
-    global _ES
+def get_es() -> Elasticsearch | MockElasticsearch:
+    global _ES, _USING_MOCK_ES
     if _ES is None:
-        _ES = _build_es()
+        if should_prefer_mock_runtime():
+            try:
+                real = _build_es()
+                if real.ping():
+                    _ES = real
+                    _USING_MOCK_ES = False
+                else:
+                    raise RuntimeError("Elasticsearch ping failed")
+            except Exception as exc:
+                if os.getenv("ES_CLIENT_VERBOSE", "0") == "1":
+                    print(f"[es_client] using Vercel mock Elasticsearch: {exc}")
+                _ES = MockElasticsearch()
+                _USING_MOCK_ES = True
+        else:
+            _ES = _build_es()
+            _USING_MOCK_ES = False
     return _ES
+
+
+def using_mock_es() -> bool:
+    return bool(_USING_MOCK_ES or isinstance(_ES, MockElasticsearch))
 
 def init_index_cache(*, live_check: bool = False, force: bool = False) -> None:
     """
@@ -136,6 +158,17 @@ def init_index_cache(*, live_check: bool = False, force: bool = False) -> None:
         return
 
     bootstrap_env()
+
+    if should_prefer_mock_runtime():
+        try:
+            es = get_es()
+            if isinstance(es, MockElasticsearch):
+                ALL_INDEXES = [MOCK_INDEX]
+                ES_INDEX_DEFAULT = MOCK_INDEX
+                _INDEX_CACHE_READY = True
+                return
+        except Exception:
+            pass
 
     # 1) cfg default
     default_list = _normalize_indexes(INDEX_CONFIG.get("default") or [])

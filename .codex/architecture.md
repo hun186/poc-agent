@@ -199,3 +199,23 @@
 ## 2026-06-16 JSON Recovery Records
 
 - `JsonFileStore` 的壞檔還原流程會輸出 warning/error log，並追加 sidecar `<file>.recovery.jsonl`。紀錄包含 `action`、`path`、`backup`、`message` 與 `ts`。
+
+## 2026-06-22 Vercel Mock Runtime 架構
+
+- `api/services/vercel_mock_runtime.py` 集中判斷 mock runtime：`SRA_VERCEL_MOCK_MODE=force/always/on` 可強制啟用，`never/off` 可停用，預設 `auto` 會在 Vercel 環境變數或檔案系統不可寫時偏好 mock。
+- `agent/es/es_client.py` 在 mock runtime 會先建立正式 Elasticsearch client 並執行 `ping()`；若正式 ES 可連線則繼續使用真實 ES，否則改用 `agent/es/mock_es_client.py` 的 in-memory `MockElasticsearch`。
+- `MockElasticsearch` 提供 editor 目前需要的 `indices.exists()`、`indices.get_alias()`、`indices.get_mapping()`、`search()`、`get()`、`index()`、`delete()`，內建 `vercel_mock_vessel_activities` 測試 index 與少量示範文件。
+- Excel→SQL 使用者匯入流程在 mock runtime 由 `data_ingestion/excel_to_sql/user_import_storage.py` 改用 process-local in-memory registry；preview / confirm 不讀寫 SQL Server 或磁碟 Excel，只回傳清楚標示 `mock_mode` 的示範統計。
+
+## 2026-06-22 Vercel Mock SQL Dashboard 補強
+
+- `data_ingestion/excel_to_sql/mock_sql.py` 是 Excel→SQL 在 Vercel mock runtime 的目的地 SQL Server / audit table 替身，提供固定的 process-local mock audit rows、dashboard summary/recent/files/options payload 與 delete-row no-op response。
+- `data_ingestion/excel_to_sql/dashboard.py` 在 `should_prefer_mock_runtime()` 為 true 時，`dashboard_payload()` 不呼叫 `_connect()` / `pyodbc`，改由 `mock_dashboard_payload()` 回傳資料；`delete_imported_sql_row()` 也改為 mock no-op，不刪正式 SQL row。
+- Mock SQL dashboard response 會標示 `mock_mode: true` 並提供 warning，避免使用者誤以為已連線正式 SQL Server。
+
+## 2026-06-22 Vercel Deployment Entry
+
+- 根目錄 `app.py` 是 Vercel Python / FastAPI runtime entrypoint，只負責 `from api.main import app`，避免搬移既有 `api/main.py` 或改變 local uvicorn 啟動方式。
+- `vercel.json` 將所有 request rewrite 到 `/app.py`，並設定 `SRA_VERCEL_MOCK_MODE=auto` 與 `API_STORE_ENABLED=0` 作為 preview deployment 的非機密預設值。
+- Vercel 部署說明集中在 `docs/vercel_deploy.md`，列出 mock-only preview 與 real-data deployment 需要的環境變數。
+- `.env.example` 同步列出 Vercel preview mock defaults，讓本地 `.env` 與 Vercel Project Settings 有同一份變數參考。

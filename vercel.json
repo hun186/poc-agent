@@ -1,0 +1,18 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/app.py"
+    }
+  ],
+  "functions": {
+    "app.py": {
+      "maxDuration": 60
+    }
+  },
+  "env": {
+    "SRA_VERCEL_MOCK_MODE": "auto",
+    "API_STORE_ENABLED": "0"
+  }
+}

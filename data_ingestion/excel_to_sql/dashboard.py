@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from api.services.vercel_mock_runtime import should_prefer_mock_runtime
 from data_ingestion.excel_to_sql.dashboard_config import (
     _dashboard_enabled,
     _dashboard_name,
@@ -19,6 +20,10 @@ from data_ingestion.excel_to_sql.dashboard_filters import (
     _normalize_destination_table_filters,
     _parse_payload,
     _where_clause,
+)
+from data_ingestion.excel_to_sql.mock_sql import (
+    mock_dashboard_payload,
+    mock_delete_imported_sql_row,
 )
 from data_ingestion.excel_to_sql.dashboard_sql import (
     _audit_table,
@@ -81,6 +86,25 @@ def dashboard_payload(
     page: int = 1,
     chart_bucket: str | None = "day",
 ) -> dict[str, Any]:
+    if should_prefer_mock_runtime():
+        return mock_dashboard_payload(
+            config_path,
+            days=days,
+            limit=limit,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            status_filter=status_filter,
+            source_file_filter=source_file_filter,
+            username_filter=username_filter,
+            destination_table_filter=destination_table_filter,
+            row_no_filter=row_no_filter,
+            message_filter=message_filter,
+            hash_value_filter=hash_value_filter,
+            payload_filter=payload_filter,
+            page=page,
+            chart_bucket=chart_bucket,
+        )
+
     cfg = load_json_config(config_path)
     task_name = _dashboard_name(cfg, Path(config_path))
     table = _audit_table(cfg)
@@ -377,6 +401,11 @@ def delete_imported_sql_row(
     actor: str,
     reason: str = "",
 ) -> dict[str, Any]:
+    if should_prefer_mock_runtime():
+        return mock_delete_imported_sql_row(
+            config_path, hash_value=hash_value, actor=actor, reason=reason
+        )
+
     cfg = load_json_config(config_path)
     return delete_imported_sql_row_with_config(
         cfg=cfg,
