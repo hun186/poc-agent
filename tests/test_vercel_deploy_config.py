@@ -92,3 +92,22 @@ def test_vercel_api_folder_contains_only_shim_and_single_entrypoint():
     assert "_API_SHIM_DIR" in shim
     assert "__path__" in shim
     assert "from api.main import app" in entrypoint
+
+
+def test_vercel_default_auth_state_uses_tmp_directory(monkeypatch):
+    import tempfile
+
+    from api.services.auth_support import _auth_file, _login_audit_file
+
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("SRA_AUTH_USERS_FILE", raising=False)
+    monkeypatch.delenv("SRA_LOGIN_AUDIT_FILE", raising=False)
+
+    tmp_root = Path(tempfile.gettempdir()).resolve()
+    auth_file = _auth_file()
+    audit_file = _login_audit_file()
+
+    assert auth_file.resolve().is_relative_to(tmp_root)
+    assert audit_file.resolve().is_relative_to(tmp_root)
+    assert auth_file.name == ".sra_users.json"
+    assert audit_file.name == ".sra_users.login_audit.json"

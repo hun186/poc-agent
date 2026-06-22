@@ -245,3 +245,9 @@
 - 目的：處理 Vercel build 成功但連線仍 `FUNCTION_INVOCATION_FAILED` 的情況；推定 root `app.py` zero-config 在此部署未被 Vercel Python runtime 正確作為 FastAPI function 服務。
 - 主要修改：新增 `api/index.py` 作為 Vercel-routed Python function entrypoint，並在 `vercel.json` 將所有 request rewrite 到 `/api/index.py`；top-level `api/` 仍只有 `__init__.py` shim 與 `index.py` 單一 entrypoint，不再包含完整 source tree，因此符合 Hobby plan function 數量限制。
 - 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_vercel_static_conflicts.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/__init__.py api/index.py sra_api/services/vercel_mock_runtime.py sra_api/routers/editor.py sra_api/routers/excel_to_sql.py` 通過；`find api -type f -name '*.py' | wc -l` 輸出 2。
+
+## 2026-06-22 Vercel auth storage read-only 修正
+
+- 目的：處理 Vercel runtime crash：`OSError: [Errno 30] Read-only file system: '/var/task/.sra_users.login_audit.json.d'`。
+- 主要修改：`auth_support._auth_file()` 在偵測到 Vercel 環境且未顯式設定 `SRA_AUTH_USERS_FILE` 時，改用 `/tmp/sra-auth/.sra_users.json` 作為 process-local auth state；login audit 預設隨 auth file 派生到 `/tmp`，避免 import `AUTH_STORE` 時嘗試在 read-only `/var/task` 建立 audit shard 目錄。
+- 驗證：新增 Vercel config test 確認 Vercel 預設 auth / login audit 路徑都在 `tempfile.gettempdir()`；`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_auth_store_security.py -q` 通過；Vercel-like subprocess 使用 `/healthz` 驗證 app import 與路由可用。
