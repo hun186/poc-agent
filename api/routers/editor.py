@@ -59,9 +59,15 @@ EDITOR_STATIC_ASSETS: dict[str, str] = {
     "editor_audit.js": "application/javascript",
     "editor_documents.js": "application/javascript",
     "editor_bootstrap.js": "application/javascript",
-    "excel_to_sql_dashboard.js": "application/javascript",
+    "excel_to_sql_dashboard_app.js": "application/javascript",
     "excel_to_sql_import_records.js": "application/javascript",
     "excel_to_sql_import_center.html": "text/html",
+}
+
+EDITOR_STATIC_ASSET_ALIASES: dict[str, str] = {
+    # Keep old on-premise/cached HTML references working without restoring the
+    # physical same-stem file that Vercel rejects.
+    "excel_to_sql_dashboard.js": "excel_to_sql_dashboard_app.js",
 }
 
 
@@ -78,10 +84,11 @@ def audit_tools_script() -> FileResponse:
 
 @router.get("/static/{filename}", include_in_schema=False)
 def editor_static_asset(filename: str) -> FileResponse:
-    media_type = EDITOR_STATIC_ASSETS.get(filename)
+    asset_filename = EDITOR_STATIC_ASSET_ALIASES.get(filename, filename)
+    media_type = EDITOR_STATIC_ASSETS.get(asset_filename)
     if not media_type:
         raise HTTPException(status_code=404, detail="Static asset not found")
-    path = static_path(filename)
+    path = static_path(asset_filename)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Static asset not found")
     return FileResponse(path, media_type=media_type)
@@ -368,7 +375,6 @@ def delete_documents(payload: DeleteDocumentsPayload, user: AuthUser = Depends(r
         except Exception:
             not_found.append(doc_id)
     return {"ok": True, "index": payload.index, "deleted_ids": deleted, "not_found_ids": not_found}
-
 
 
 
