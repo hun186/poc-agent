@@ -16,7 +16,3 @@ sample_question/
 docs/
 tests/
 .codex/
-
-# Legacy conflict-resolution mirrors kept only to make GitHub merges with older base branches non-conflicting.
-api/routers/
-api/static/

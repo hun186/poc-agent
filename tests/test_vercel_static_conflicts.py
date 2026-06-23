@@ -64,5 +64,13 @@ def test_vercel_keeps_runtime_source_directories() -> None:
     assert runtime_source_dirs.isdisjoint(ignored)
     assert "api/" not in ignored
     assert "api/index.py" not in ignored
-    assert "api/routers/" in ignored
-    assert "api/static/" in ignored
+    assert "api/routers/" not in ignored
+    assert "api/static/" not in ignored
+
+
+def test_legacy_api_mirror_directories_are_removed() -> None:
+    assert not Path("api/routers").exists()
+    assert not Path("api/static").exists()
+    assert Path("sra_api/routers/editor.py").exists()
+    assert Path("sra_api/static/excel_to_sql_dashboard.html").exists()
+    assert Path("sra_api/static/excel_to_sql_dashboard_app.js").exists()

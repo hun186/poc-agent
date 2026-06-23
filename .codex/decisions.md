@@ -164,6 +164,6 @@
 
 ## 2026-06-22 Legacy api path conflict-resolution mirrors
 
-- 為讓 GitHub 能自動合併 base branch 對舊 `api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 的修改，暫時保留 legacy mirror files；它們不是 runtime source of truth。
-- Runtime import 順序以 `sra_api/` 優先，top-level `api/` shim 只保留 `api.index` Vercel entrypoint；Vercel deployment 透過 `.vercelignore` 排除 legacy `api/routers/` 與 `api/static/`，避免重新引入多 function discovery 或 static stem conflict。
+- Legacy `api/routers/` 與 `api/static/` mirror files 僅曾作為短期 GitHub conflict mitigation；衝突解除後應移除，避免 Vercel 或維護者誤認其為 runtime source。
+- Runtime import 順序仍以 `sra_api/` 優先，top-level `api/` 只保留 `api.index` Vercel entrypoint 與 compatibility shim。
 - `.codex/memory.md` 屬 append-only project memory，設定 `merge=union` 以降低 PR merge conflict；若 union merge 產生重複紀錄，後續 memory compaction 再整理。

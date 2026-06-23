@@ -370,6 +370,6 @@ Open
 
 ## 2026-06-22 GitHub PR conflict too complex for web editor
 
-- 現象：GitHub PR merge 顯示 `.codex/memory.md`、`api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 衝突，且因衝突過於複雜無法用 web editor 解。
-- 狀態：Mitigated。
-- 修正：保留 legacy api/static mirror files 以避免 delete/modify conflicts；runtime source 仍以 `sra_api/` 優先，且 Vercel 忽略 legacy dirs；`.codex/memory.md` 使用 union merge。
+- 現象：GitHub PR merge 曾顯示 `.codex/memory.md`、`api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 衝突，且因衝突過於複雜無法用 web editor 解。
+- 狀態：Resolved。
+- 修正：衝突緩解後移除 legacy `api/routers/` 與 `api/static/` mirror files；runtime source 維持 `sra_api/`，top-level `api/` 只保留 shim 與 Vercel entrypoint；`.codex/memory.md` 保留 union merge。
