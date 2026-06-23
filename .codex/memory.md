@@ -325,3 +325,21 @@
 - 目的：依使用者要求，替 `AUTH_VERCEL_PREVIEW_LOGIN_SECRET` 補上可直接參考的範例套用方式，同步補主系統 `SRA_VERCEL_PREVIEW_LOGIN_SECRET` 範例。
 - 主要修改：`.env.example` 使用 `SRA_VERCEL_PREVIEW_LOGIN_SECRET=replace-with-random-preview-secret`；`portable_auth_pack/examples/env.example` 使用 `AUTH_VERCEL_PREVIEW_LOGIN_SECRET=replace-with-random-portable-preview-secret`；文件明確標註這些是 placeholder，公開部署需在 Vercel Project Settings 換成隨機值，不可當真 secret。
 - 驗證：更新測試檢查主系統與 portable env example 皆包含 placeholder。
+
+## 2026-06-23 Portable auth preview secret header rename
+
+- 目的：回應 `portable_auth_pack` 範例包不應暴露主系統專用 `SRA` 字樣的疑慮，降低複製到其他專案時的命名干擾。
+- 主要修改：portable preview login 對外文件、前端與測試改用通用 `X-Auth-Preview-Login-Secret`；後端保留 `X-SRA-Preview-Login-Secret` 作為相容 fallback，避免既有 preview 環境立即失效。
+- 驗證：`PYTHONPATH=. pytest tests/test_portable_auth_pack_vercel_mock.py -q` 通過（5 passed）；`python -m py_compile portable_auth_pack/fastapi_auth_pack/auth_routes.py` 通過；`node --check portable_auth_pack/static/login_admin_auth.js` 通過；`rg "X-SRA-Preview-Login-Secret|X-Auth-Preview-Login-Secret|x_sra_preview_login_secret|x_auth_preview_login_secret" portable_auth_pack tests/test_portable_auth_pack_vercel_mock.py` 確認 portable 對外文件 / 前端 / 測試使用通用 header，legacy SRA header 僅保留在 route 相容 fallback。
+
+## 2026-06-23 Portable auth SRA naming cleanup follow-up
+
+- 目的：依 review 回饋，`portable_auth_pack` 範例包不需保留主系統 `SRA` header 相容分支，避免複製到其他專案時仍看到專有命名。
+- 主要修改：移除 portable preview login route 的 `X-SRA-Preview-Login-Secret` / `x_sra_preview_login_secret` fallback，只接受通用 `X-Auth-Preview-Login-Secret`；另以 `rg` 檢查 portable auth pack 與相關測試已無 `SRA` / `sra` / `X-SRA` 等主系統專有字樣。
+- 驗證：`PYTHONPATH=. pytest tests/test_portable_auth_pack_vercel_mock.py -q` 通過（5 passed）；`python -m py_compile portable_auth_pack/fastapi_auth_pack/auth_routes.py` 通過；`node --check portable_auth_pack/static/login_admin_auth.js` 通過；`rg -n "SRA|sra|X-SRA|\\.sra|SRA_" portable_auth_pack tests/test_portable_auth_pack_vercel_mock.py || true` 無輸出。
+
+## 2026-06-23 Auth password verification refactor
+
+- 目的：檢查密碼驗證相關程式碼是否集中在過大的單檔；發現主系統與 portable auth pack 的 auth store / support 同時承擔密碼 hash、verify、變更與 reset-password 流程，導致 `auth_store.py` 超過 400 行。
+- 主要修改：主系統與 portable auth pack 各新增 `auth_passwords.py` 承接 PBKDF2 hash / verify / password validation / dummy hash；新增 `auth_password_flows.py` 承接 change-password、superuser reset、request reset token、recover password 流程；`AuthStore` 改以 mixin 保留原 public methods，讓 route / tests 呼叫介面不變。
+- 驗證：`PYTHONPATH=. pytest tests/test_auth_store_security.py tests/test_portable_auth_pack_vercel_mock.py -q` 通過（25 passed，1 個既有 StarletteDeprecationWarning）；`PYTHONPATH=. python portable_auth_pack/scripts/verify_auth_pack.py` 通過（含既有預期 auth.login.failed log）；`python -m py_compile sra_api/services/auth_passwords.py sra_api/services/auth_password_flows.py sra_api/services/auth_support.py sra_api/services/auth_store.py portable_auth_pack/fastapi_auth_pack/auth_passwords.py portable_auth_pack/fastapi_auth_pack/auth_password_flows.py portable_auth_pack/fastapi_auth_pack/auth_support.py portable_auth_pack/fastapi_auth_pack/auth_store.py` 通過。

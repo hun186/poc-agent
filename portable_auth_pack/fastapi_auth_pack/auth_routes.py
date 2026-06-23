@@ -106,7 +106,10 @@ def vercel_preview_login_enabled() -> dict[str, Any]:
 @router.post("/v1/auth/vercel-preview-login")
 def vercel_preview_login(
     request: Request,
-    x_sra_preview_login_secret: str | None = Header(default=None),
+    x_auth_preview_login_secret: str | None = Header(
+        default=None,
+        alias="X-Auth-Preview-Login-Secret",
+    ),
 ) -> dict[str, Any]:
     if not should_enable_mock_preview_login():
         raise HTTPException(status_code=404, detail="Portable auth pack Vercel mock preview login is not enabled.")
@@ -122,7 +125,7 @@ def vercel_preview_login(
             user_agent=user_agent,
         )
         raise _rate_limit_exception(retry_after)
-    if not verify_preview_login_secret(x_sra_preview_login_secret):
+    if not verify_preview_login_secret(x_auth_preview_login_secret):
         retry_after = AUTH_STORE.record_auth_failure(VERCEL_PREVIEW_LOGIN_THROTTLE_SCOPE, None, client_host)
         AUTH_STORE.record_login_audit(
             "portable_mock_reader",

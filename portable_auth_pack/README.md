@@ -150,7 +150,7 @@ def manage_accounts(user: AuthUser = Depends(require_superuser)):
 | `AUTH_BOOTSTRAP_SUPERUSER_PASSWORD` | 否 | 空 | 單一初始 superuser 密碼 |
 | `AUTH_TOKEN_TTL_SECONDS` | 否 | `43200` | token 有效秒數，預設 12 小時 |
 | `AUTH_VERCEL_MOCK_MODE` | 否 | `auto` | portable auth pack 範例用 Vercel mock preview login；`auto` 僅在非 production 的 Vercel/NOW 環境顯示「Vercel mock 閱讀者登入」，`never`/`disabled` 關閉，`force`/`always` 強制開啟 |
-| `AUTH_VERCEL_PREVIEW_LOGIN_SECRET` | 否 | 空 | 設定後 `/v1/auth/vercel-preview-login` 需提供 `X-SRA-Preview-Login-Secret`，建議公開 preview 使用 |
+| `AUTH_VERCEL_PREVIEW_LOGIN_SECRET` | 否 | 空 | 設定後 `/v1/auth/vercel-preview-login` 需提供 `X-Auth-Preview-Login-Secret`，建議公開 preview 使用 |
 | `AUTH_ENV` / `APP_ENV` / `ENV` / `PY_ENV` | 否 | 空 | 任一值為 `prod` 或 `production` 時，會要求 `AUTH_SECRET` / `SECRET_KEY` 必須存在且至少 32 bytes |
 | `AUTH_PROJECT_ROOT` | 否 | 目前工作目錄 | 控制預設 config/user file 的根目錄 |
 

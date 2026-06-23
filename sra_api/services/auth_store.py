@@ -7,14 +7,14 @@ from typing import Any
 
 from .auth_json_store import JsonFileStore
 from .auth_login_audit_store import LoginAuditStore
+from .auth_password_flows import AuthPasswordMixin
+from .auth_passwords import DUMMY_PASSWORD_HASH, _hash_password, _validate_password, _verify_password
 from .auth_support import (
     AUTH_THROTTLE_BLOCK_SECONDS,
     AUTH_THROTTLE_FAILURE_LIMIT,
     AUTH_THROTTLE_WINDOW_SECONDS,
-    DUMMY_PASSWORD_HASH,
     LEGACY_ROLE_ALIASES,
     LOGIN_AUDIT_LIMIT,
-    PASSWORD_RESET_TTL_SECONDS,
     ROLE_DATA_EDITOR,
     ROLE_DATA_READER,
     ROLE_DB_OPERATOR,
@@ -24,24 +24,20 @@ from .auth_support import (
     _auth_file,
     _b64url,
     _b64url_decode,
-    _hash_password,
     _load_bootstrap_superusers,
     _login_audit_file,
     _now_ts,
-    _sha256,
     _throttle_key,
     _token_secret,
     _token_ttl_seconds,
     _utc_now,
-    _validate_password,
-    _verify_password,
     has_role_at_least,
     normalize_role,
     public_role_options,
 )
 
 
-class AuthStore:
+class AuthStore(AuthPasswordMixin):
     def __init__(self) -> None:
         self._lock = RLock()
         self._throttle_lock = RLock()
@@ -258,70 +254,6 @@ class AuthStore:
         del users[username]
         self._write(data)
         return self.public_user(removed)
-
-    def change_password(self, username: str, current_password: str, new_password: str) -> dict[str, Any]:
-        _validate_password(new_password)
-        data = self._read()
-        user = data.get("users", {}).get(username)
-        if not isinstance(user, dict):
-            raise KeyError("帳號不存在。")
-        if not _verify_password(current_password, str(user.get("password_hash") or "")):
-            raise ValueError("目前密碼不正確。")
-        user["password_hash"] = _hash_password(new_password)
-        user["password_changed_at"] = _utc_now()
-        self._invalidate_user_tokens(user)
-        self._write(data)
-        return self.public_user(user)
-
-    def reset_user_password(self, username: str, new_password: str, reset_by: str) -> dict[str, Any]:
-        _validate_password(new_password)
-        data = self._read()
-        user = data.get("users", {}).get(username)
-        if not isinstance(user, dict):
-            raise KeyError("帳號不存在。")
-        user["password_hash"] = _hash_password(new_password)
-        user["password_reset_at"] = _utc_now()
-        user["password_reset_by"] = reset_by
-        self._invalidate_user_tokens(user)
-        self._write(data)
-        return self.public_user(user)
-
-    def request_password_reset(self, username: str) -> str | None:
-        data = self._read()
-        user = data.get("users", {}).get(username)
-        if not isinstance(user, dict) or user.get("status") != "active":
-            return None
-        token = secrets.token_urlsafe(32)
-        tokens = data.setdefault("password_reset_tokens", {})
-        tokens[_sha256(token)] = {
-            "username": username,
-            "created_at": _utc_now(),
-            "expires_at": _now_ts() + PASSWORD_RESET_TTL_SECONDS,
-            "used_at": None,
-        }
-        self._write(data)
-        return token
-
-    def recover_password(self, username: str, reset_token: str, new_password: str) -> dict[str, Any]:
-        _validate_password(new_password)
-        data = self._read()
-        token_hash = _sha256(reset_token)
-        token_record = data.setdefault("password_reset_tokens", {}).get(token_hash)
-        if not isinstance(token_record, dict):
-            raise ValueError("重設密碼連結已失效。")
-        if token_record.get("used_at") or int(token_record.get("expires_at") or 0) < _now_ts():
-            raise ValueError("重設密碼連結已失效。")
-        if token_record.get("username") != username:
-            raise ValueError("重設密碼連結已失效。")
-        user = data.get("users", {}).get(username)
-        if not isinstance(user, dict) or user.get("status") != "active":
-            raise ValueError("重設密碼連結已失效。")
-        user["password_hash"] = _hash_password(new_password)
-        user["password_recovered_at"] = _utc_now()
-        self._invalidate_user_tokens(user)
-        token_record["used_at"] = _utc_now()
-        self._write(data)
-        return self.public_user(user)
 
     def deny_token(self, payload: dict[str, Any]) -> None:
         jti = str(payload.get("jti") or "")

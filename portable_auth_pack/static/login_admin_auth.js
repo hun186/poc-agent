@@ -12,7 +12,7 @@ async function vercelPreviewLogin() {
     if (window.portableVercelPreviewSecretRequired) {
       const secret = window.prompt('請輸入 Vercel mock preview login secret');
       if (!secret) return out('已取消 Vercel mock preview 登入');
-      options.headers = {'X-SRA-Preview-Login-Secret': secret};
+      options.headers = {'X-Auth-Preview-Login-Secret': secret};
     }
     const data = await api('/v1/auth/vercel-preview-login', options);
     localStorage.setItem(tokenKey, data.access_token);

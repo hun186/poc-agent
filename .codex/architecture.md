@@ -230,3 +230,8 @@
 
 - Vercel runtime entrypoint 改為 `api/index.py`，它只負責 `from api.main import app`；`vercel.json` 將所有 request rewrite 到 `/api/index.py`。
 - Top-level `api/` 僅保留 `api/__init__.py` compatibility shim 與 `api/index.py` Vercel function entrypoint；先前為 GitHub conflict mitigation 暫留的 `api/routers/` 與 `api/static/` legacy mirrors 已移除，避免再次被誤判為 Vercel functions 或上傳資產。
+
+## 2026-06-23 Auth password module split
+
+- 主系統與 `portable_auth_pack` 的密碼相關責任拆分為：`auth_passwords.py` 管理 PBKDF2-HMAC-SHA256 hash、verify、password validation 與 dummy password hash；`auth_password_flows.py` 管理 change-password、superuser reset、request reset token 與 recover password flows。
+- `auth_store.py` 保留 `AuthStore` public API 與帳號 / token / audit orchestration；密碼流程透過 `AuthPasswordMixin` 混入，route 層與既有測試不需更改呼叫介面。
