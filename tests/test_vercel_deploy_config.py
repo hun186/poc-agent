@@ -88,8 +88,16 @@ def test_vercel_api_folder_keeps_only_shim_and_entrypoint_in_deployment():
 
     assert Path("api/__init__.py") in api_py_files
     assert Path("api/index.py") in api_py_files
-    assert "api/routers/" in vercelignore
-    assert "api/static/" in vercelignore
+    ignored = {
+        line.strip()
+        for line in vercelignore.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert Path("api/routers").exists() is False
+    assert Path("api/static").exists() is False
+    assert "api/routers/" not in ignored
+    assert "api/static/" not in ignored
     shim = Path("api/__init__.py").read_text(encoding="utf-8")
     entrypoint = Path("api/index.py").read_text(encoding="utf-8")
     assert '"sra_api"' in shim

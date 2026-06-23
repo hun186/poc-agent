@@ -285,5 +285,12 @@
 ## 2026-06-22 GitHub PR conflict mitigation for legacy api paths
 
 - 目的：處理 GitHub PR 顯示 `.codex/memory.md`、`api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 衝突且網頁 editor 無法解決的狀況。
-- 主要修改：恢復 legacy `api/routers/editor.py` 與 `api/static/excel_to_sql_dashboard.html` 為 conflict-resolution mirror，避免與 base branch 對舊路徑的修改形成 delete/modify conflict；`api.__path__` 改為優先搜尋 `sra_api/`，確保 runtime imports 使用 relocated source；`.vercelignore` 排除 legacy `api/routers/` 與 `api/static/`，避免 Vercel function discovery/static upload 重新看到舊路徑；`.gitattributes` 對 `.codex/memory.md` 使用 union merge，降低 append-only project memory 的 GitHub merge conflict。
+- 主要修改：曾短暫恢復 legacy `api/routers/editor.py` 與 `api/static/excel_to_sql_dashboard.html` 為 conflict-resolution mirror，避免與 base branch 對舊路徑的修改形成 delete/modify conflict；`api.__path__` 改為優先搜尋 `sra_api/`，確保 runtime imports 使用 relocated source；`.gitattributes` 對 `.codex/memory.md` 使用 union merge，降低 append-only project memory 的 GitHub merge conflict。
 - 驗證：更新 Vercel config/static conflict tests，確認 Vercel 仍保留 `api/index.py` 入口但忽略 legacy dirs，且 `api.routers.editor` import 實際解析到 `sra_api/routers/editor.py`。
+
+
+## 2026-06-23 Remove legacy api mirror files after conflict mitigation
+
+- 目的：依使用者要求，在 GitHub 上傳 / merge 衝突緩解後移除多餘 legacy mirror files，避免它們再次影響 Vercel upload / function discovery 或造成 source-of-truth 混淆。
+- 主要修改：刪除 `api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html`、`api/static/excel_to_sql_dashboard_app.js`，移除 `.vercelignore` 中 legacy mirror 排除項；`api/` 目前只剩 `__init__.py` shim 與 `index.py` entrypoint，runtime source 維持 `sra_api/`。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_static_conflicts.py tests/test_vercel_deploy_config.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/__init__.py api/index.py sra_api/routers/editor.py` 通過；`find api -maxdepth 3 -type f | sort` 確認 top-level `api/` 只保留 shim 與 entrypoint。

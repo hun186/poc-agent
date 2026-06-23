@@ -12,6 +12,5 @@ _API_SHIM_DIR = Path(__file__).resolve().parent
 _SOURCE_DIR = _API_SHIM_DIR.parents[0] / "sra_api"
 
 # Prefer the relocated runtime source. Keep the shim directory second so
-# Vercel can still import api.index without letting legacy conflict-resolution
-# files shadow sra_api modules.
+# Vercel can still import api.index while api.* runtime imports resolve from sra_api.
 __path__ = [str(_SOURCE_DIR), str(_API_SHIM_DIR)]
