@@ -294,3 +294,9 @@
 - 目的：依使用者要求，在 GitHub 上傳 / merge 衝突緩解後移除多餘 legacy mirror files，避免它們再次影響 Vercel upload / function discovery 或造成 source-of-truth 混淆。
 - 主要修改：刪除 `api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html`、`api/static/excel_to_sql_dashboard_app.js`，移除 `.vercelignore` 中 legacy mirror 排除項；`api/` 目前只剩 `__init__.py` shim 與 `index.py` entrypoint，runtime source 維持 `sra_api/`。
 - 驗證：`PYTHONPATH=. pytest tests/test_vercel_static_conflicts.py tests/test_vercel_deploy_config.py -q` 通過；`PYTHONPATH=. python -m py_compile app.py api/__init__.py api/index.py sra_api/routers/editor.py` 通過；`find api -maxdepth 3 -type f | sort` 確認 top-level `api/` 只保留 shim 與 entrypoint。
+
+## 2026-06-23 Editor array add buttons on Vercel
+
+- 目的：回應 Vercel 上 ES 編修界面「新增證據片段 / 新增 Timeline」按鈕點擊無反應的回饋；此行為不正常，按鈕應新增一個可輸入的 array item 格子。
+- 主要修改：`editor_form.js` 將 array 新增 / 刪除按鈕明確設為 `type="button"`，事件綁定改用 `getAttribute()` 讀取完整路徑，並新增 `ensureArrayAtPath()` 與錯誤 status，避免既有文件中該 path 暫時不是 array 時點擊靜默失敗。
+- 驗證：`node --check sra_api/static/editor_form.js` 通過；`pytest tests/test_editor_auth_ui_static.py -q` 通過（21 passed，3 個既有 warning）。

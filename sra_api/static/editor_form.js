@@ -26,21 +26,21 @@ function renderConfiguredForm() {
   $('formSections').innerHTML = sections.map((section, sidx) => {
     const desc = section.description ? `<div class="section-desc">${esc(section.description)}</div>` : '';
     if (section.type === 'array') {
-      return `<div class="form-section" data-section-index="${sidx}"><div class="section-title">${esc(section.title || section.path || '清單')}</div>${desc}<div data-array-list="${esc(section.path)}"></div><button class="secondary" data-add-array="${esc(section.path)}">${esc(section.add_label || '新增')}</button></div>`;
+      return `<div class="form-section" data-section-index="${sidx}"><div class="section-title">${esc(section.title || section.path || '清單')}</div>${desc}<div data-array-list="${esc(section.path)}"></div><button class="secondary" type="button" data-add-array="${esc(section.path)}">${esc(section.add_label || '新增')}</button></div>`;
     }
     return `<div class="form-section" data-section-index="${sidx}"><div class="section-title">${esc(section.title || '')}</div>${desc}<div class="field-grid">${(section.fields || []).map(field => renderField(field, getPath(state.source || {}, field.path), `data-doc-path="${esc(field.path)}"`)).join("")}</div></div>`;
   }).join('');
   renderArraySections();
-  document.querySelectorAll('[data-add-array]').forEach(btn => btn.onclick = () => addArrayItem(btn.dataset.addArray));
+  document.querySelectorAll('[data-add-array]').forEach(btn => btn.onclick = () => addArrayItem(btn.getAttribute('data-add-array')));
 }
 function renderArraySections() {
   schemaSections().filter(section => section.type === 'array').forEach(section => {
     const list = document.querySelector(`[data-array-list="${attrSelectorValue(section.path)}"]`);
     if (!list) return;
     const items = getPath(state.source || {}, section.path) || [];
-    list.innerHTML = items.map((item, idx) => `<div class="array-item" data-array-path="${esc(section.path)}" data-array-index="${idx}"><strong>${esc(section.item_label || '項目')} #${idx + 1}</strong><div class="field-grid">${(section.fields || []).map(field => renderField(field, getPath(item, field.path), `data-array-field="${esc(field.path)}"`)).join("")}</div><button class="danger" data-remove-array="${esc(section.path)}" data-remove-index="${idx}">刪除此項目</button></div>`).join('');
+    list.innerHTML = items.map((item, idx) => `<div class="array-item" data-array-path="${esc(section.path)}" data-array-index="${idx}"><strong>${esc(section.item_label || '項目')} #${idx + 1}</strong><div class="field-grid">${(section.fields || []).map(field => renderField(field, getPath(item, field.path), `data-array-field="${esc(field.path)}"`)).join("")}</div><button class="danger" type="button" data-remove-array="${esc(section.path)}" data-remove-index="${idx}">刪除此項目</button></div>`).join('');
   });
-  document.querySelectorAll('[data-remove-array]').forEach(btn => btn.onclick = () => removeArrayItem(btn.dataset.removeArray, Number(btn.dataset.removeIndex)));
+  document.querySelectorAll('[data-remove-array]').forEach(btn => btn.onclick = () => removeArrayItem(btn.getAttribute('data-remove-array'), Number(btn.getAttribute('data-remove-index'))));
 }
 function normalizeLeaf(value) {
   if (Array.isArray(value)) {
@@ -108,18 +108,30 @@ function collectFormToSource() {
   $('jsonEditor').value = JSON.stringify(state.source, null, 2);
   return state.source;
 }
+function ensureArrayAtPath(path) {
+  const current = getPath(state.source || {}, path);
+  if (Array.isArray(current)) return current;
+  const next = current === undefined || current === null || current === '' ? [] : [current];
+  setPath(state.source, path, next);
+  return next;
+}
 function addArrayItem(path) {
-  collectFormToSource();
-  const section = schemaSections().find(s => s.type === 'array' && s.path === path);
-  const item = {};
-  (section && section.fields || []).forEach(field => setPath(item, field.path, field.type === 'csv' ? [] : ''));
-  const arr = getPath(state.source, path) || [];
-  arr.push(item); setPath(state.source, path, arr); populateForm(state.source);
+  try {
+    collectFormToSource();
+    const section = schemaSections().find(s => s.type === 'array' && s.path === path);
+    const item = {};
+    (section && section.fields || []).forEach(field => setPath(item, field.path, field.type === 'csv' ? [] : ''));
+    const arr = ensureArrayAtPath(path);
+    arr.push(item); setPath(state.source, path, arr); populateForm(state.source);
+    setStatus('saveStatus', `已新增 ${section && (section.item_label || section.title) || '項目'}，可在新格子輸入內容。`, 'ok');
+  } catch (err) { setStatus('saveStatus', '新增欄位失敗：' + err.message, 'error'); }
 }
 function removeArrayItem(path, idx) {
-  collectFormToSource();
-  const arr = getPath(state.source, path) || [];
-  arr.splice(idx, 1); setPath(state.source, path, arr); populateForm(state.source);
+  try {
+    collectFormToSource();
+    const arr = ensureArrayAtPath(path);
+    arr.splice(idx, 1); setPath(state.source, path, arr); populateForm(state.source);
+  } catch (err) { setStatus('saveStatus', '刪除欄位失敗：' + err.message, 'error'); }
 }
 
 function applyCompactMode() {
