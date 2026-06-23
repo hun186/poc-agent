@@ -70,9 +70,13 @@ def test_editor_static_shell_loads_split_assets() -> None:
     html = Path("sra_api/static/editor.html").read_text(encoding="utf-8")
 
     assert '<link rel="stylesheet" href="/static/editor.css?v=20260614-split" />' in html
+    expected_versions = {
+        "editor_form.js": "20260623-array-schema",
+    }
     for path in EDITOR_SCRIPT_FILES:
         asset_name = Path(path).name
-        assert f'<script src="/static/{asset_name}?v=20260614-split"></script>' in html
+        version = expected_versions.get(asset_name, "20260614-split")
+        assert f'<script src="/static/{asset_name}?v={version}"></script>' in html
         assert Path(path).exists()
         assert sum(1 for _ in Path(path).open(encoding="utf-8")) < 350
     assert 'editor.js?v=20260614-split' not in html

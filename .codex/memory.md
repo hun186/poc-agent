@@ -51,3 +51,9 @@
 - 目的：依使用者補充的兩筆 Kibana 參考文件，讓 Vercel/mock ES demo 清單更美觀且更接近實際新聞與 SQL import 文件混合情境。
 - 主要修改：新增聯大/埃博拉/氣候峰會事件 mock doc 與福隆88號漁獲 SQL import mock doc；保留敏感資訊排除原則，未寫入參考資料中的 API key、內網 server IP 或本機檔案路徑。
 - 驗證：`python -m py_compile agent/es/mock_es_client.py data_ingestion/excel_to_sql/mock_sql.py` 通過；`node --check sra_api/static/editor_form.js` 通過；`PYTHONPATH=. pytest tests/test_vercel_mock_runtime.py tests/test_editor_form_static.py -q` 通過（5 passed）。
+
+### 2026-06-23 Editor form asset cache bust for schema-based array add
+
+- 目的：回應文件編修頁在原文件缺少 evidence / Timeline / Party / Person 陣列時，新增按鈕看似成功但使用者可能仍載入舊版 `editor_form.js` 而看不到新格子的問題。
+- 主要修改：Editor HTML 將 `editor_form.js` query version 更新為 `20260623-array-schema`，強制瀏覽器重新抓取已改為依表單 schema 建立 array item 的前端程式；並新增靜態回歸測試確認新增 array item 由 schema fields 決定，不依賴既有文件樣本列。
+- 驗證：`node --check sra_api/static/editor_form.js` 通過；`PYTHONPATH=. pytest tests/test_editor_form_static.py tests/test_editor_auth_ui_static.py -q` 通過（25 passed, 3 warnings；warnings 為既有 Starlette / Python invalid escape deprecation 訊息）。
