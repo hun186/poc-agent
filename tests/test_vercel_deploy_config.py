@@ -28,6 +28,8 @@ def test_vercel_deploy_doc_lists_mock_and_secret_settings():
     doc = Path("docs/vercel_deploy.md").read_text(encoding="utf-8")
 
     assert "SRA_VERCEL_MOCK_MODE=auto" in doc
+    assert "VERCEL_ENV" in doc
+    assert "SRA_VERCEL_PREVIEW_LOGIN_SECRET" in doc
     assert "SRA_AUTH_SECRET" in doc
     assert "Excel→SQL dashboard" in doc
     assert "Do not commit real secrets" in doc
@@ -37,6 +39,7 @@ def test_env_example_documents_vercel_mock_defaults():
     env_example = Path(".env.example").read_text(encoding="utf-8")
 
     assert "SRA_VERCEL_MOCK_MODE=auto" in env_example
+    assert "SRA_VERCEL_PREVIEW_LOGIN_SECRET=replace-with-random-preview-secret" in env_example
     assert "API_STORE_ENABLED=0" in env_example
 
 
@@ -202,11 +205,13 @@ def test_vercel_mock_preview_login_returns_usable_token(tmp_path):
         "enabled = client.get('/v1/auth/vercel-preview-login-enabled')\n"
         "assert enabled.status_code == 200, enabled.text\n"
         "assert enabled.json()['enabled'] is True, enabled.text\n"
+        "assert enabled.json()['secret_required'] is False, enabled.text\n"
         "login = client.post('/v1/auth/vercel-preview-login')\n"
         "assert login.status_code == 200, login.text\n"
         "payload = login.json()\n"
         "assert payload['user']['username'] == 'vercel_mock_reader'\n"
         "assert payload['user']['role'] == 'data_reader'\n"
+        "assert payload['user']['mock_preview'] is True\n"
         "me = client.get('/v1/auth/me', headers={'Authorization': 'Bearer ' + payload['access_token']})\n"
         "assert me.status_code == 200, me.text\n"
         "audit_path = audit_log_path()\n"
@@ -214,6 +219,82 @@ def test_vercel_mock_preview_login_returns_usable_token(tmp_path):
         "assert audit_path.exists(), audit_path\n"
         "assert 'vercel_mock_preview' in audit_path.read_text(encoding='utf-8')\n"
         "print(payload['user'])\n"
+    )
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+
+def test_vercel_mock_preview_login_requires_configured_secret(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {
+        **os.environ,
+        "PYTHONPATH": ".",
+        "VERCEL": "1",
+        "VERCEL_ENV": "preview",
+        "APP_ENV": "dev",
+        "SRA_VERCEL_PREVIEW_LOGIN_SECRET": "preview-secret",
+        "SRA_AUTH_USERS_FILE": str(tmp_path / "users.json"),
+        "SRA_LOGIN_AUDIT_FILE": str(tmp_path / "login_audit.json"),
+    }
+    code = (
+        "from fastapi.testclient import TestClient\n"
+        "from api.index import app\n"
+        "client = TestClient(app)\n"
+        "enabled = client.get('/v1/auth/vercel-preview-login-enabled')\n"
+        "assert enabled.status_code == 200, enabled.text\n"
+        "assert enabled.json()['enabled'] is True, enabled.text\n"
+        "assert enabled.json()['secret_required'] is True, enabled.text\n"
+        "missing = client.post('/v1/auth/vercel-preview-login')\n"
+        "assert missing.status_code == 403, missing.text\n"
+        "wrong = client.post('/v1/auth/vercel-preview-login', headers={'X-SRA-Preview-Login-Secret': 'wrong'})\n"
+        "assert wrong.status_code == 403, wrong.text\n"
+        "login = client.post('/v1/auth/vercel-preview-login', headers={'X-SRA-Preview-Login-Secret': 'preview-secret'})\n"
+        "assert login.status_code == 200, login.text\n"
+        "assert login.json()['user']['mock_preview'] is True\n"
+    )
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+
+def test_vercel_mock_preview_login_auto_disabled_in_production(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {
+        **os.environ,
+        "PYTHONPATH": ".",
+        "VERCEL": "1",
+        "VERCEL_ENV": "production",
+        "APP_ENV": "production",
+        "SRA_AUTH_SECRET": "x" * 48,
+        "SRA_AUTH_USERS_FILE": str(tmp_path / "users.json"),
+        "SRA_LOGIN_AUDIT_FILE": str(tmp_path / "login_audit.json"),
+    }
+    code = (
+        "from fastapi.testclient import TestClient\n"
+        "from api.index import app\n"
+        "client = TestClient(app)\n"
+        "enabled = client.get('/v1/auth/vercel-preview-login-enabled')\n"
+        "assert enabled.status_code == 200, enabled.text\n"
+        "assert enabled.json()['enabled'] is False, enabled.text\n"
+        "login = client.post('/v1/auth/vercel-preview-login')\n"
+        "assert login.status_code == 404, login.text\n"
     )
     subprocess.run(
         [sys.executable, "-c", code],

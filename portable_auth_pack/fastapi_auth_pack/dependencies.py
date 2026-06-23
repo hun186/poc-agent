@@ -14,6 +14,7 @@ from .auth_store import (
     normalize_role,
     parse_token,
 )
+from .auth_support import should_enable_mock_preview_login
 
 
 def bearer_token(authorization: str | None) -> str:
@@ -34,7 +35,10 @@ def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。")
     if not AUTH_STORE.is_token_current(username, int(payload.get("ver") or 0)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。")
-    return AuthUser(username=username, role=normalize_role(str(stored.get("role") or "")), status="active")
+    mock_preview = bool(payload.get("mock_preview"))
+    if mock_preview and not should_enable_mock_preview_login():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Vercel mock preview token 已停用。")
+    return AuthUser(username=username, role=normalize_role(str(stored.get("role") or "")), status="active", mock_preview=mock_preview)
 
 
 def require_role(minimum_role: str, detail: str) -> Callable[[AuthUser], AuthUser]:

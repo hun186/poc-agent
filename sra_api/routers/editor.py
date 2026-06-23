@@ -49,6 +49,14 @@ def list_audit_logs(*args: Any, **kwargs: Any) -> dict[str, Any]:
     return editor_usage_routes.list_audit_logs(*args, **kwargs)
 
 
+def _ensure_mock_preview_es_access(user: AuthUser) -> None:
+    if user.mock_preview and not es_client.using_mock_es():
+        raise HTTPException(
+            status_code=403,
+            detail="Vercel mock preview 帳號只能讀取 mock Elasticsearch 資料。",
+        )
+
+
 EDITOR_STATIC_ASSETS: dict[str, str] = {
     "audit_tools.js": "application/javascript",
     "editor.css": "text/css",
@@ -107,6 +115,7 @@ async def extract_text_from_file(
 @router.get("/v1/editor/indexes")
 def list_indexes(_: AuthUser = Depends(current_user)) -> dict[str, Any]:
     indexes = current_indexes()
+    _ensure_mock_preview_es_access(_)
     default_index = es_client.ES_INDEX_DEFAULT or (indexes[0] if indexes else "")
     return {
         "indexes": indexes,
@@ -119,8 +128,9 @@ def list_indexes(_: AuthUser = Depends(current_user)) -> dict[str, Any]:
 def editor_form_config(
     index: str | None = Query(None, description="用 index 選擇對應表單 schema"),
     schema: str | None = Query(None, description="明確指定 schema 名稱"),
-    _: AuthUser = Depends(current_user),
+    user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
+    _ensure_mock_preview_es_access(user)
     try:
         return public_editor_form_config(index=index, schema_name=schema)
     except Exception as exc:
@@ -135,9 +145,10 @@ def search_documents(
     page: int = Query(1, ge=1),
     start_ts: str = Query("", description="起始時間（ISO8601）"),
     end_ts: str = Query("", description="結束時間（ISO8601）"),
-    _: AuthUser = Depends(current_user),
+    user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
     ensure_allowed_index(index)
+    _ensure_mock_preview_es_access(user)
     schema = get_editor_schema(index=index)
     filters: list[dict[str, Any]] = []
     date_field = str(schema.get("search_date_field") or "importDT")
@@ -214,9 +225,10 @@ def search_documents(
 def get_document(
     index: str = Query(...),
     id: str = Query(...),
-    _: AuthUser = Depends(current_user),
+    user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
     ensure_allowed_index(index)
+    _ensure_mock_preview_es_access(user)
     schema = get_editor_schema(index=index)
     try:
         got = es_client.get_es().get(index=index, id=id, _source=True)
@@ -375,6 +387,5 @@ def delete_documents(payload: DeleteDocumentsPayload, user: AuthUser = Depends(r
         except Exception:
             not_found.append(doc_id)
     return {"ok": True, "index": payload.index, "deleted_ids": deleted, "not_found_ids": not_found}
-
 
 

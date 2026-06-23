@@ -173,7 +173,7 @@ class AuthStore:
                 changed = True
         if changed:
             self._write(data)
-        return AuthUser(username=username, role=ROLE_DATA_READER, status="active")
+        return AuthUser(username=username, role=ROLE_DATA_READER, status="active", mock_preview=True)
 
     def register(self, username: str, password: str, *, full_name: str | None = None, department: str | None = None, note: str | None = None) -> dict[str, Any]:
         username = username.strip()

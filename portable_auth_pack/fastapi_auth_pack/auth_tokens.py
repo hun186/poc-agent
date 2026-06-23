@@ -22,6 +22,8 @@ def create_token(user: AuthUser, get_user: Callable[[str], dict[str, Any] | None
         "jti": secrets.token_urlsafe(24),
         "ver": token_version,
     }
+    if user.mock_preview:
+        payload["mock_preview"] = True
     payload_b64 = _b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     sig = hmac.new(_token_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest()
     return f"{payload_b64}.{_b64url(sig)}"

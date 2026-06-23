@@ -61,6 +61,7 @@ class AuthUser:
     username: str
     role: str
     status: str
+    mock_preview: bool = False
 
 
 def _utc_now() -> str:
