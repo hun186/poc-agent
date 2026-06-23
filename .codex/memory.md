@@ -300,3 +300,28 @@
 - 目的：回應 Vercel 上 ES 編修界面「新增證據片段 / 新增 Timeline」按鈕點擊無反應的回饋；此行為不正常，按鈕應新增一個可輸入的 array item 格子。
 - 主要修改：`editor_form.js` 將 array 新增 / 刪除按鈕明確設為 `type="button"`，事件綁定改用 `getAttribute()` 讀取完整路徑，並新增 `ensureArrayAtPath()` 與錯誤 status，避免既有文件中該 path 暫時不是 array 時點擊靜默失敗。
 - 驗證：`node --check sra_api/static/editor_form.js` 通過；`pytest tests/test_editor_auth_ui_static.py -q` 通過（21 passed，3 個既有 warning）。
+
+## 2026-06-23 Vercel mock preview login hardening
+
+- 目的：降低 Vercel demo 用 mock preview reader login 被誤帶到 production 或被公開濫用的風險。
+- 主要修改：主系統與 portable auth pack 的 mock preview login 在 `auto` 模式下遇到 production-like 環境（`APP_ENV` / `ENV` / `PY_ENV` 或 `VERCEL_ENV` 為 production）會停用；新增可選 `SRA_VERCEL_PREVIEW_LOGIN_SECRET` / `AUTH_VERCEL_PREVIEW_LOGIN_SECRET` header secret；preview login 加入 per-client-host process-local throttle；mock preview token / user response 標記 `mock_preview: true`；主系統 Editor ES 讀取 endpoint 會拒絕 mock preview token 讀取非 mock ES 資料。
+- 文件更新：`.env.example`、`docs/vercel_deploy.md`、`portable_auth_pack/README.md` 與 portable env example 已說明 production fail-safe、preview secret 與正式部署應關閉 mock preview login。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_portable_auth_pack_vercel_mock.py tests/test_vercel_mock_runtime.py -q` 通過（22 passed）；`node --check sra_api/static/editor_auth_nav.js`、`node --check portable_auth_pack/static/login_admin_auth.js` 與相關 Python `py_compile` 通過；`PYTHONPATH=. python portable_auth_pack/scripts/verify_auth_pack.py` 通過（有既有 StarletteDeprecationWarning 與預期 auth.login.failed 測試 log）。
+
+## 2026-06-23 Vercel mock mode env reliance clarification
+
+- 目的：回應使用者疑慮「在 Vercel 上不一定能用環境變數設定 mock mode」，避免 production 安全邊界依賴手動設定 `SRA_VERCEL_MOCK_MODE`。
+- 主要修改：移除 `vercel.json` 內的 `SRA_VERCEL_MOCK_MODE=auto`；mock mode 仍由程式預設 `auto` 與 Vercel 內建 `VERCEL_ENV` 判斷，production-like 環境自動停用 mock preview login，不需使用者在 Vercel 手動設定此變數。`vercel.json` 僅保留非機密 `API_STORE_ENABLED=0`。
+- 驗證：`PYTHONPATH=. pytest tests/test_vercel_deploy_config.py tests/test_portable_auth_pack_vercel_mock.py tests/test_vercel_mock_runtime.py -q` 通過；`python -m json.tool vercel.json` 通過。
+
+## 2026-06-23 Restore Vercel mock mode env in vercel.json
+
+- 目的：依使用者更正，Vercel 可透過 `vercel.json` 控制環境變數，因此恢復將 `SRA_VERCEL_MOCK_MODE=auto` 放在 `vercel.json` 作為 preview-friendly 非機密預設值。
+- 主要修改：`vercel.json` 重新加入 `SRA_VERCEL_MOCK_MODE=auto`；文件改回說明 Vercel 支援此設定，但 production 安全仍由程式讀取內建 `VERCEL_ENV=production` 後自動停用 mock preview login，而不是單靠手動設定。
+- 驗證：更新 `tests/test_vercel_deploy_config.py` 檢查 `vercel.json` 包含 `SRA_VERCEL_MOCK_MODE=auto` 與文件說明。
+
+## 2026-06-23 Preview login secret example placeholders
+
+- 目的：依使用者要求，替 `AUTH_VERCEL_PREVIEW_LOGIN_SECRET` 補上可直接參考的範例套用方式，同步補主系統 `SRA_VERCEL_PREVIEW_LOGIN_SECRET` 範例。
+- 主要修改：`.env.example` 使用 `SRA_VERCEL_PREVIEW_LOGIN_SECRET=replace-with-random-preview-secret`；`portable_auth_pack/examples/env.example` 使用 `AUTH_VERCEL_PREVIEW_LOGIN_SECRET=replace-with-random-portable-preview-secret`；文件明確標註這些是 placeholder，公開部署需在 Vercel Project Settings 換成隨機值，不可當真 secret。
+- 驗證：更新測試檢查主系統與 portable env example 皆包含 placeholder。

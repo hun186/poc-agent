@@ -6,7 +6,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Query, s
 
 from .auth_logging import log_failed_login_attempt
 from .auth_store import AUTH_STORE, AuthUser, create_token, parse_token, public_role_options
-from .auth_support import should_enable_mock_preview_login
+from .auth_support import (
+    is_preview_login_secret_required,
+    should_enable_mock_preview_login,
+    verify_preview_login_secret,
+)
 from .dependencies import bearer_token, current_user, require_superuser
 from .models import (
     ApprovePayload,
@@ -21,6 +25,7 @@ router = APIRouter(tags=["auth"])
 AUTH_FAILURE_MESSAGE = "帳號或密碼錯誤，或帳號尚未啟用。"
 REGISTER_SUCCESS_MESSAGE = "若資料符合申請條件，帳號申請已送出；請等待系統管理員審核。"
 REGISTER_THROTTLE_SCOPE = "register"
+VERCEL_PREVIEW_LOGIN_THROTTLE_SCOPE = "vercel_preview_login"
 
 
 def _client_host(request: Request) -> str | None:
@@ -91,16 +96,46 @@ def register(payload: AuthPayload, request: Request) -> dict[str, Any]:
 @router.get("/v1/auth/vercel-preview-login-enabled")
 def vercel_preview_login_enabled() -> dict[str, Any]:
     enabled = should_enable_mock_preview_login()
-    return {"enabled": enabled, "username": "portable_mock_reader" if enabled else None}
+    return {
+        "enabled": enabled,
+        "username": "portable_mock_reader" if enabled else None,
+        "secret_required": enabled and is_preview_login_secret_required(),
+    }
 
 
 @router.post("/v1/auth/vercel-preview-login")
-def vercel_preview_login(request: Request) -> dict[str, Any]:
+def vercel_preview_login(
+    request: Request,
+    x_sra_preview_login_secret: str | None = Header(default=None),
+) -> dict[str, Any]:
     if not should_enable_mock_preview_login():
         raise HTTPException(status_code=404, detail="Portable auth pack Vercel mock preview login is not enabled.")
-    user = AUTH_STORE.ensure_mock_preview_user()
     client_host = _client_host(request)
     user_agent = request.headers.get("user-agent")
+    retry_after = AUTH_STORE.throttle_retry_after(VERCEL_PREVIEW_LOGIN_THROTTLE_SCOPE, None, client_host)
+    if retry_after:
+        AUTH_STORE.record_login_audit(
+            "portable_mock_reader",
+            success=False,
+            reason="vercel_mock_preview_rate_limited",
+            client_host=client_host,
+            user_agent=user_agent,
+        )
+        raise _rate_limit_exception(retry_after)
+    if not verify_preview_login_secret(x_sra_preview_login_secret):
+        retry_after = AUTH_STORE.record_auth_failure(VERCEL_PREVIEW_LOGIN_THROTTLE_SCOPE, None, client_host)
+        AUTH_STORE.record_login_audit(
+            "portable_mock_reader",
+            success=False,
+            reason="vercel_mock_preview_secret_invalid",
+            client_host=client_host,
+            user_agent=user_agent,
+        )
+        if retry_after:
+            raise _rate_limit_exception(retry_after)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Vercel mock preview login secret 不正確。")
+    user = AUTH_STORE.ensure_mock_preview_user()
+    AUTH_STORE.clear_auth_failures(VERCEL_PREVIEW_LOGIN_THROTTLE_SCOPE, None, client_host)
     AUTH_STORE.record_login_audit(
         user.username,
         success=True,

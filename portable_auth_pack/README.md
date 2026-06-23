@@ -149,7 +149,8 @@ def manage_accounts(user: AuthUser = Depends(require_superuser)):
 | `AUTH_BOOTSTRAP_SUPERUSER_USERNAME` | 否 | 空 | 單一初始 superuser 帳號 |
 | `AUTH_BOOTSTRAP_SUPERUSER_PASSWORD` | 否 | 空 | 單一初始 superuser 密碼 |
 | `AUTH_TOKEN_TTL_SECONDS` | 否 | `43200` | token 有效秒數，預設 12 小時 |
-| `AUTH_VERCEL_MOCK_MODE` | 否 | `auto` | portable auth pack 範例用 Vercel mock preview login；`auto` 僅在 Vercel/NOW 環境顯示「Vercel mock 閱讀者登入」，`never`/`disabled` 關閉，`force`/`always` 強制開啟 |
+| `AUTH_VERCEL_MOCK_MODE` | 否 | `auto` | portable auth pack 範例用 Vercel mock preview login；`auto` 僅在非 production 的 Vercel/NOW 環境顯示「Vercel mock 閱讀者登入」，`never`/`disabled` 關閉，`force`/`always` 強制開啟 |
+| `AUTH_VERCEL_PREVIEW_LOGIN_SECRET` | 否 | 空 | 設定後 `/v1/auth/vercel-preview-login` 需提供 `X-SRA-Preview-Login-Secret`，建議公開 preview 使用 |
 | `AUTH_ENV` / `APP_ENV` / `ENV` / `PY_ENV` | 否 | 空 | 任一值為 `prod` 或 `production` 時，會要求 `AUTH_SECRET` / `SECRET_KEY` 必須存在且至少 32 bytes |
 | `AUTH_PROJECT_ROOT` | 否 | 目前工作目錄 | 控制預設 config/user file 的根目錄 |
 
@@ -187,6 +188,11 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 呼叫 `/v1/auth/vercel-preview-login` 建立 process-local `portable_mock_reader`
 資料閱讀者帳號並回傳一般 Bearer token。此帳號不使用固定密碼，也不具備
 superuser 權限；若正式部署不需要此入口，設定 `AUTH_VERCEL_MOCK_MODE=never`。
+`APP_ENV` / `ENV` / `PY_ENV` 或 `VERCEL_ENV` 為 production 時，`auto` 會關閉
+mock preview login；公開 preview 建議再設定 `AUTH_VERCEL_PREVIEW_LOGIN_SECRET`
+要求 header secret，並套用內建 client host 節流。`examples/env.example` 已放入
+`AUTH_VERCEL_PREVIEW_LOGIN_SECRET=replace-with-random-portable-preview-secret`
+作為範例 placeholder；公開部署請在 Vercel Project Settings 換成隨機值，不要直接沿用。
 
 ## 測試用初始 superuser
 

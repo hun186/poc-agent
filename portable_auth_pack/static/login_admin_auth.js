@@ -8,7 +8,13 @@ async function login() {
 }
 async function vercelPreviewLogin() {
   try {
-    const data = await api('/v1/auth/vercel-preview-login', {method: 'POST'});
+    const options = {method: 'POST'};
+    if (window.portableVercelPreviewSecretRequired) {
+      const secret = window.prompt('請輸入 Vercel mock preview login secret');
+      if (!secret) return out('已取消 Vercel mock preview 登入');
+      options.headers = {'X-SRA-Preview-Login-Secret': secret};
+    }
+    const data = await api('/v1/auth/vercel-preview-login', options);
     localStorage.setItem(tokenKey, data.access_token);
     updateCurrentUser(data.user || null);
     out(data);
@@ -20,9 +26,11 @@ async function setupVercelPreviewLogin() {
   if (!btn || !hint) return;
   try {
     const data = await api('/v1/auth/vercel-preview-login-enabled');
+    window.portableVercelPreviewSecretRequired = Boolean(data.secret_required);
     if (data.enabled) {
       btn.classList.remove('hidden');
       hint.classList.remove('hidden');
+      if (data.secret_required) hint.textContent = 'Vercel mock preview 需要輸入 preview login secret，且只供 portable auth pack 預覽流程。';
     }
   } catch (err) {
     btn.classList.add('hidden');

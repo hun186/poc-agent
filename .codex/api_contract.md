@@ -201,3 +201,24 @@
 
 - `GET /v1/auth/vercel-preview-login-enabled`（portable auth pack）：回傳 `{ "enabled": bool, "username": "portable_mock_reader" | null }`；由 `AUTH_VERCEL_MOCK_MODE` 控制，預設 `auto` 僅在 Vercel/NOW 環境啟用。
 - `POST /v1/auth/vercel-preview-login`（portable auth pack）：僅在 mock preview enabled 時建立 / 更新 process-local `portable_mock_reader` data_reader 帳號並回傳 `{ access_token, token_type, user }`；disabled 時回 404。此帳號不具備 superuser 權限且不使用固定密碼。
+
+## 2026-06-23 Vercel mock preview login hardening contract
+
+- `GET /v1/auth/vercel-preview-login-enabled` response 新增 `secret_required: bool`，表示 mock preview login 是否需要額外 header secret。
+- `POST /v1/auth/vercel-preview-login` 在設定 `SRA_VERCEL_PREVIEW_LOGIN_SECRET` 時需要 request header `X-SRA-Preview-Login-Secret`；缺少或錯誤時回 HTTP 403；多次失敗會依既有 auth throttle window 回 HTTP 429。
+- `POST /v1/auth/vercel-preview-login` success response 的 `user` 物件新增 `mock_preview: true`；token payload 同步帶 `mock_preview` claim。
+- `SRA_VERCEL_MOCK_MODE=auto` 在 production-like 環境（`APP_ENV` / `ENV` / `PY_ENV` 或 `VERCEL_ENV` 為 `prod` / `production`）不啟用 mock preview login；需明確 `force` 才會覆寫。
+- 主系統 mock preview token 只允許讀取 mock Elasticsearch；若 backend 正在使用真實 ES，Editor ES 讀取 endpoint 回 HTTP 403。
+- `portable_auth_pack` 同步上述 preview login response/header/throttle/production auto-disabled 契約，環境變數名稱為 `AUTH_VERCEL_MOCK_MODE` 與 `AUTH_VERCEL_PREVIEW_LOGIN_SECRET`。
+
+## 2026-06-23 Vercel mock mode env reliance clarification
+
+- HTTP API contract 不變。
+- `SRA_VERCEL_MOCK_MODE` 不再由 `vercel.json` 設定；未設定時仍由程式預設為 `auto`。
+- Production preview-login 防護不依賴使用者手動設定 `SRA_VERCEL_MOCK_MODE=never`，而是透過 Vercel 內建 `VERCEL_ENV=production` 或 `APP_ENV` / `ENV` / `PY_ENV` production-like 判斷自動停用。
+
+## 2026-06-23 Restore Vercel mock mode env in vercel.json
+
+- HTTP API contract 不變。
+- `vercel.json` 重新提供非機密預設環境變數 `SRA_VERCEL_MOCK_MODE=auto`，讓 Vercel preview 預設走 mock-friendly 模式。
+- Production 防護仍由 `should_prefer_mock_runtime()` 讀取 `VERCEL_ENV=production` / production-like env 後停用 `auto` mock preview login；因此即使 `vercel.json` 設為 `auto`，production-like 環境仍不會開啟 mock preview login，除非明確設定 force。

@@ -10,7 +10,13 @@ async function login() {
 async function vercelPreviewLogin() {
   setStatus('authStatus', 'Vercel mock preview 登入中...');
   try {
-    const data = await api('/v1/auth/vercel-preview-login', {method: 'POST'});
+    const options = {method: 'POST'};
+    if (state.vercelPreviewSecretRequired) {
+      const secret = window.prompt('請輸入 Vercel mock preview login secret');
+      if (!secret) return setStatus('authStatus', '已取消 Vercel mock preview 登入', 'error');
+      options.headers = {'X-SRA-Preview-Login-Secret': secret};
+    }
+    const data = await api('/v1/auth/vercel-preview-login', options);
     state.token = data.access_token; state.user = data.user; localStorage.setItem('sra_editor_token', state.token);
     await bootAuthed(); setStatus('authStatus', 'Vercel mock preview 已登入', 'ok');
   } catch (err) { setStatus('authStatus', err.message, 'error'); }
@@ -21,9 +27,11 @@ async function setupVercelPreviewLogin() {
   if (!btn || !hint) return;
   try {
     const data = await api('/v1/auth/vercel-preview-login-enabled');
+    state.vercelPreviewSecretRequired = Boolean(data.secret_required);
     if (data.enabled) {
       btn.classList.remove('hidden');
       hint.classList.remove('hidden');
+      if (data.secret_required) hint.textContent = 'Vercel mock preview 需要輸入 preview login secret，且只供 mock 資料預覽。';
     }
   } catch (err) {
     btn.classList.add('hidden');

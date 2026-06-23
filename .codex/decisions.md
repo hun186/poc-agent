@@ -167,3 +167,20 @@
 - Legacy `api/routers/` 與 `api/static/` mirror files 僅曾作為短期 GitHub conflict mitigation；衝突解除後應移除，避免 Vercel 或維護者誤認其為 runtime source。
 - Runtime import 順序仍以 `sra_api/` 優先，top-level `api/` 只保留 `api.index` Vercel entrypoint 與 compatibility shim。
 - `.codex/memory.md` 屬 append-only project memory，設定 `merge=union` 以降低 PR merge conflict；若 union merge 產生重複紀錄，後續 memory compaction 再整理。
+
+## 2026-06-23 Vercel mock preview login hardening 決策
+
+- Mock preview login 是 demo 便利入口，不應成為 production 預設可用的免密登入；因此 `auto` 模式在 production-like 環境預設關閉，只有明確 `force` 才能啟用。
+- 公開 preview 若仍要保留一鍵 reader login，應用獨立 preview-only secret 降低任意訪客直接領 token 的風險；secret 只由環境變數提供，不寫入 repo。
+- Mock preview token 使用 `mock_preview` claim 與 user response 標記，讓後端可以把 preview token 與一般 `data_reader` 區分；主系統 ES 讀取 endpoint 對 mock preview token 採 mock-only 資料邊界。
+- 節流仍沿用現有 process-local auth throttle，適合單 instance demo；多 instance production 若強制啟用 preview login，仍需外部 WAF / gateway / Redis rate limit。
+
+## 2026-06-23 Vercel mock mode env reliance 決策
+
+- Vercel production 安全邊界不應要求使用者一定能在 Vercel UI 手動設定 `SRA_VERCEL_MOCK_MODE=never`；程式需用 Vercel 內建 `VERCEL_ENV` 與內部預設 `auto` 自行判斷。
+- `vercel.json` 不再設定 `SRA_VERCEL_MOCK_MODE`，降低部署設定混淆；若需要特殊覆寫（例如 staging 強制 mock），才由使用者在部署環境明確設定 `force` / `never`。
+
+## 2026-06-23 Restore Vercel mock mode env 決策
+
+- Vercel 支援在 `vercel.json` 設定非機密 env，因此 `SRA_VERCEL_MOCK_MODE=auto` 可保留於 repo 內，降低 preview demo 設定步驟。
+- 安全邊界仍必須在程式碼層處理：`auto` 在 `VERCEL_ENV=production` 或 production-like env 時自動關閉，避免 checked-in preview default 變成 production 免密入口。

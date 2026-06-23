@@ -31,19 +31,36 @@ Vercel only needs `api/index.py` plus the small `api/__init__.py` shim.
 
 ## Required Vercel environment variables
 
-For a mock-only preview deployment, set these in Vercel Project Settings or keep
-the non-secret defaults from `vercel.json`:
+For a mock-only preview deployment, keep the non-secret defaults in
+`vercel.json`. Vercel supports environment variables in this file, so
+`SRA_VERCEL_MOCK_MODE=auto` is checked in as a preview-friendly default while
+the application still reads Vercel's built-in `VERCEL_ENV` to keep production
+safe:
 
 ```text
 SRA_VERCEL_MOCK_MODE=auto
 API_STORE_ENABLED=0
 ```
 
+Optional but recommended for public preview deployments:
+
+```text
+SRA_VERCEL_PREVIEW_LOGIN_SECRET=<long random preview-only secret>
+```
+
+Example placeholder in `.env.example`:
+`SRA_VERCEL_PREVIEW_LOGIN_SECRET=replace-with-random-preview-secret`. Do not
+reuse that placeholder on public deployments; generate a unique value in Vercel
+Project Settings.
+
 `auto` means:
 
-1. If Vercel can reach the real Elasticsearch configured by `ES_URL`, the app
+1. Production-like environments (`APP_ENV=production`, `ENV=production`,
+   `PY_ENV=production`, or `VERCEL_ENV=production`) keep mock runtime and mock
+   preview login disabled unless `SRA_VERCEL_MOCK_MODE=force` is set.
+2. If Vercel can reach the real Elasticsearch configured by `ES_URL`, the app
    will use the real Elasticsearch.
-2. If Vercel is read-only or cannot reach Elasticsearch, the app switches to the
+3. If Vercel is read-only or cannot reach Elasticsearch, the app switches to the
    in-memory mock Elasticsearch and mock Excel→SQL dataset.
 
 For a real-data deployment, additionally configure the normal service variables
@@ -68,6 +85,10 @@ Editor audit events also default to `/tmp` on Vercel so mock login does not
 write under the read-only `/var/task/logs` directory. No fixed password is
 committed to the repository, and the endpoint returns 404
 when mock runtime is disabled, for example with `SRA_VERCEL_MOCK_MODE=never`.
+If `SRA_VERCEL_PREVIEW_LOGIN_SECRET` is configured, the UI prompts for that
+secret and the backend requires it in `X-SRA-Preview-Login-Secret` before
+issuing a token. The endpoint is rate-limited per client host, and tokens issued
+by this endpoint are marked as mock-preview tokens.
 
 ## Mock runtime behavior on Vercel
 
