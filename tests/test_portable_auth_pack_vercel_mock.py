@@ -78,7 +78,7 @@ def test_portable_auth_pack_vercel_mock_preview_login_requires_secret(tmp_path):
         "assert enabled.json()['secret_required'] is True, enabled.text\n"
         "missing = client.post('/v1/auth/vercel-preview-login')\n"
         "assert missing.status_code == 403, missing.text\n"
-        "login = client.post('/v1/auth/vercel-preview-login', headers={'X-SRA-Preview-Login-Secret': 'portable-secret'})\n"
+        "login = client.post('/v1/auth/vercel-preview-login', headers={'X-Auth-Preview-Login-Secret': 'portable-secret'})\n"
         "assert login.status_code == 200, login.text\n"
         "assert login.json()['user']['mock_preview'] is True\n"
     )

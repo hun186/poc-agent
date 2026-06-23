@@ -184,3 +184,8 @@
 
 - Vercel 支援在 `vercel.json` 設定非機密 env，因此 `SRA_VERCEL_MOCK_MODE=auto` 可保留於 repo 內，降低 preview demo 設定步驟。
 - 安全邊界仍必須在程式碼層處理：`auto` 在 `VERCEL_ENV=production` 或 production-like env 時自動關閉，避免 checked-in preview default 變成 production 免密入口。
+
+## 2026-06-23 Auth password responsibility split
+
+- 密碼 hash / verify helper 與密碼變更 / reset 流程不應長期留在 `auth_support.py` 或 `auth_store.py` 內，避免 auth store 再次膨脹成超過 400 行的多責任檔案。
+- 保留 `AuthStore` public methods（`change_password()`、`reset_user_password()`、`request_password_reset()`、`recover_password()`）以降低 route、tests 與 portable auth pack 導入者的遷移成本；內部用 mixin 拆分責任。
