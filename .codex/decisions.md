@@ -189,3 +189,7 @@
 
 - 密碼 hash / verify helper 與密碼變更 / reset 流程不應長期留在 `auth_support.py` 或 `auth_store.py` 內，避免 auth store 再次膨脹成超過 400 行的多責任檔案。
 - 保留 `AuthStore` public methods（`change_password()`、`reset_user_password()`、`request_password_reset()`、`recover_password()`）以降低 route、tests 與 portable auth pack 導入者的遷移成本；內部用 mixin 拆分責任。
+
+## 2026-06-23 Editor array item schema decision
+
+- Editor add-item behavior must use the configured form schema as the source of truth for array item shape. Existing ES documents may omit optional arrays, so UI rendering and add-item defaults cannot depend on the loaded document already containing a sample row.

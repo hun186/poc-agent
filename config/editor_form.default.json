@@ -179,6 +179,11 @@
               "type": "text"
             },
             {
+              "path": "date_raw",
+              "label": "date_raw",
+              "type": "text"
+            },
+            {
               "path": "description",
               "label": "description",
               "type": "textarea"
@@ -186,6 +191,12 @@
             {
               "path": "time_precision",
               "label": "time_precision",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "date_precision",
+              "label": "date_precision",
               "type": "text",
               "compact_hide": true
             }
@@ -201,6 +212,11 @@
             {
               "path": "party_name",
               "label": "party_name",
+              "type": "text"
+            },
+            {
+              "path": "party_role",
+              "label": "party_role",
               "type": "text"
             },
             {
@@ -238,6 +254,30 @@
               "label": "affiliation",
               "type": "text",
               "compact_hide": true
+            },
+            {
+              "path": "quote",
+              "label": "quote",
+              "type": "textarea",
+              "compact_hide": true
+            },
+            {
+              "path": "action",
+              "label": "action",
+              "type": "textarea",
+              "compact_hide": true
+            },
+            {
+              "path": "stance",
+              "label": "stance",
+              "type": "text",
+              "compact_hide": true
+            },
+            {
+              "path": "relation",
+              "label": "relation",
+              "type": "text",
+              "compact_hide": true
             }
           ]
         },
@@ -262,6 +302,12 @@
               "path": "text",
               "label": "text",
               "type": "textarea"
+            },
+            {
+              "path": "confidence",
+              "label": "confidence",
+              "type": "number",
+              "compact_hide": true
             }
           ]
         }
