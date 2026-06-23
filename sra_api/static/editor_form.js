@@ -37,7 +37,11 @@ function renderArraySections() {
   schemaSections().filter(section => section.type === 'array').forEach(section => {
     const list = document.querySelector(`[data-array-list="${attrSelectorValue(section.path)}"]`);
     if (!list) return;
-    const items = getPath(state.source || {}, section.path) || [];
+    // Always derive array containers from the schema section path, not only from
+    // values already present in the loaded ES document.  Documents can omit an
+    // array field entirely, but the configured editor schema still defines the
+    // item shape needed by the "新增..." buttons.
+    const items = ensureArrayAtPath(section.path);
     list.innerHTML = items.map((item, idx) => `<div class="array-item" data-array-path="${esc(section.path)}" data-array-index="${idx}"><strong>${esc(section.item_label || '項目')} #${idx + 1}</strong><div class="field-grid">${(section.fields || []).map(field => renderField(field, getPath(item, field.path), `data-array-field="${esc(field.path)}"`)).join("")}</div><button class="danger" type="button" data-remove-array="${esc(section.path)}" data-remove-index="${idx}">刪除此項目</button></div>`).join('');
   });
   document.querySelectorAll('[data-remove-array]').forEach(btn => btn.onclick = () => removeArrayItem(btn.getAttribute('data-remove-array'), Number(btn.getAttribute('data-remove-index'))));
@@ -115,12 +119,19 @@ function ensureArrayAtPath(path) {
   setPath(state.source, path, next);
   return next;
 }
+function defaultArrayFieldValue(field) {
+  if (!field) return '';
+  if (field.type === 'csv') return [];
+  if (field.type === 'number') return null;
+  if (field.type === 'boolean') return false;
+  return '';
+}
 function addArrayItem(path) {
   try {
     collectFormToSource();
     const section = schemaSections().find(s => s.type === 'array' && s.path === path);
     const item = {};
-    (section && section.fields || []).forEach(field => setPath(item, field.path, field.type === 'csv' ? [] : ''));
+    (section && section.fields || []).forEach(field => setPath(item, field.path, defaultArrayFieldValue(field)));
     const arr = ensureArrayAtPath(path);
     arr.push(item); setPath(state.source, path, arr); populateForm(state.source);
     setStatus('saveStatus', `已新增 ${section && (section.item_label || section.title) || '項目'}，可在新格子輸入內容。`, 'ok');

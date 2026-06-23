@@ -222,3 +222,11 @@
 - HTTP API contract 不變。
 - `vercel.json` 重新提供非機密預設環境變數 `SRA_VERCEL_MOCK_MODE=auto`，讓 Vercel preview 預設走 mock-friendly 模式。
 - Production 防護仍由 `should_prefer_mock_runtime()` 讀取 `VERCEL_ENV=production` / production-like env 後停用 `auto` mock preview login；因此即使 `vercel.json` 設為 `auto`，production-like 環境仍不會開啟 mock preview login，除非明確設定 force。
+
+## 2026-06-23 Mock response data shape note
+
+- No production API path changed. Mock Elasticsearch responses under Vercel/mock runtime now include richer `multidim_event_json` structures (`Event_Timeline`, `Involved_Parties`, `Person`, `evidence_snippets`) and mock SQL dashboard audit rows include event/person/evidence payload fields for demo realism.
+
+## 2026-06-23 Mock ES demo document expansion
+
+- No production API path changed. Mock Elasticsearch data now includes additional demo documents for UN General Assembly / Ebola / climate summit coverage and a SQL-imported fishing vessel activity, with sensitive source credentials and internal host/path details intentionally omitted.

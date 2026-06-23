@@ -22,8 +22,20 @@ def test_vercel_mock_es_activates_when_forced(monkeypatch):
     assert getattr(es, "is_sra_mock", False) is True
     assert es_client.using_mock_es() is True
     assert es_client.ALL_INDEXES == [MOCK_INDEX]
-    result = es.search(index=MOCK_INDEX, body={"query": {"bool": {"must": [{"simple_query_string": {"query": "港口"}}]}}, "size": 10})
+    all_result = es.search(index=MOCK_INDEX, body={"query": {"bool": {"must": []}}, "size": 10})
+    assert all_result["hits"]["total"]["value"] == 4
+    result = es.search(index=MOCK_INDEX, body={"query": {"bool": {"must": [{"simple_query_string": {"query": "随时准备"}}]}}, "size": 10})
     assert result["hits"]["total"]["value"] == 1
+    source = result["hits"]["hits"][0]["_source"]
+    event = source["multidim_event_json"][0]
+    assert event["evidence_snippets"][0]["confidence"] == 90
+    summit = es.search(index=MOCK_INDEX, body={"query": {"bool": {"must": [{"simple_query_string": {"query": "埃博拉"}}]}}, "size": 10})
+    assert summit["hits"]["total"]["value"] == 1
+    fishing = es.get(index=MOCK_INDEX, id="mock-fishing-fulong-88-003")["_source"]["multidim_event_json"][0]
+    assert fishing["Involved_Parties"][0]["party_role"] == "漁船"
+    assert fishing["evidence_snippets"][0]["char_end"] == 140
+    empty = es.get(index=MOCK_INDEX, id="mock-empty-arrays-002")["_source"]["multidim_event_json"][0]
+    assert "evidence_snippets" not in empty
 
 
 def test_vercel_mock_excel_import_store_uses_memory(monkeypatch):
@@ -55,7 +67,7 @@ def test_vercel_mock_sql_dashboard_and_delete(monkeypatch):
     )
     deleted = delete_imported_sql_row(
         "config/excel_to_sql/vessel_activities.example.json",
-        hash_value="mock-hash-001",
+        hash_value="mock-hash-indonesia-001",
         actor="tester",
         reason="vercel smoke test",
     )
@@ -64,5 +76,7 @@ def test_vercel_mock_sql_dashboard_and_delete(monkeypatch):
     assert payload["exists"] is True
     assert payload["recent_paging"]["total"] == 3
     assert payload["destination_table_options"] == ["MockVesselActivities"]
+    assert payload["files"][0]["source_file"] == "印尼災害援助事件_mock.xlsx"
+    assert "event_subject" in payload["recent"][-1]["row_payload"]
     assert deleted["mock_mode"] is True
     assert deleted["deleted"] is False

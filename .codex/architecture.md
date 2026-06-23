@@ -235,3 +235,8 @@
 
 - 主系統與 `portable_auth_pack` 的密碼相關責任拆分為：`auth_passwords.py` 管理 PBKDF2-HMAC-SHA256 hash、verify、password validation 與 dummy password hash；`auth_password_flows.py` 管理 change-password、superuser reset、request reset token 與 recover password flows。
 - `auth_store.py` 保留 `AuthStore` public API 與帳號 / token / audit orchestration；密碼流程透過 `AuthPasswordMixin` 混入，route 層與既有測試不需更改呼叫介面。
+
+## 2026-06-23 Editor schema-driven array rendering
+
+- Editor array sections are rendered from `config/editor_form.default.json` schema definitions rather than inferred from existing document examples. Missing ES array fields such as `multidim_event_json.evidence_snippets`, `Event_Timeline`, `Involved_Parties`, and `Person` are initialized as empty arrays so the first "新增..." action can create a visible item.
+- Vercel mock ES now includes one rich multidimensional event document and one sparse document that intentionally omits array sections to cover the empty-array editor workflow.
