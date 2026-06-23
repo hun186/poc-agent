@@ -486,3 +486,16 @@ def test_portable_auth_pack_exposes_vercel_mock_preview_login_button():
     assert '/v1/auth/vercel-preview-login-enabled' in script
     assert '/v1/auth/vercel-preview-login' in script
     assert 'setupVercelPreviewLogin' in bootstrap
+
+
+def test_editor_array_buttons_are_real_buttons_and_report_add_status() -> None:
+    html = _editor_html()
+
+    assert 'data-add-array="${esc(section.path)}"' in html
+    assert '<button class="secondary" type="button" data-add-array="${esc(section.path)}">' in html
+    assert '<button class="danger" type="button" data-remove-array="${esc(section.path)}" data-remove-index="${idx}">' in html
+    assert "btn.getAttribute('data-add-array')" in html
+    assert "btn.getAttribute('data-remove-array')" in html
+    assert 'function ensureArrayAtPath(path)' in html
+    assert "setStatus('saveStatus', `已新增 ${section && (section.item_label || section.title) || '項目'}，可在新格子輸入內容。`, 'ok');" in html
+    assert "setStatus('saveStatus', '新增欄位失敗：' + err.message, 'error');" in html
