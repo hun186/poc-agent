@@ -119,3 +119,16 @@
 
 - 因 `.codex/known_issues.md` 超過 400 行，已將濃縮前全文歸檔至 `.codex/archive/known_issues.md-20260625-130126.md`，並將 active known issues 重寫為目前仍有效摘要、近期 resolved / open items 與歸檔索引。
 - 驗證：`wc -l .codex/known_issues.md .codex/memory.md` 確認 known issues 濃縮後低於 200 行。
+
+### 2026-06-25 Excel→SQL 任務 JSON 子目錄與連線來源修正
+
+- 目的：修正任務設定檔檔名不支援 `config/excel_to_sql` 下子目錄完整路徑，以及直接輸入 DB 帳密時需確認生成 JSON 會保存；同時降低業務使用者接觸資料庫帳密的需求。
+- 主要修改：任務 JSON 檔名改支援如 `business/monthly_task.json` 的安全相對子路徑；新增 `connection_source_config`，可從既有任務 JSON 複製完整 `db` 區塊（server、database、user/password、encrypt、trust_server_certificate、driver 等）；前端新增「資料庫連線來源任務」下拉並優先建議沿用既有 DB 連線。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 完成（pip upgrade 查詢套件索引仍遇 403 retry，但 requirements 已滿足）；`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q` 通過（20 passed）。
+
+### 2026-06-25 Excel→SQL 任務 pending 審核與 SQL 型別輔助
+
+- 目的：降低非資訊背景業務人員設定 SQL 型別與欄位比對方式的門檻，並避免具 `db_operator` 權限者建立任務後立刻啟用可上傳資料、影響 SQL schema 的任務。
+- 主要修改：欄位對應的 SQL 型別輸入改提供常見 datalist 選項且保留手動輸入；新增欄位比對方式說明浮窗；新建任務改為 `dashboard.enabled=false` / `status=pending`，不出現在可上傳任務清單；新增 superuser-only `POST /v1/excel-to-sql/task-configs/approve` 將待審任務啟用為 active。
+- 設計決策：已記錄「db_operator 建草稿、superuser 審核啟用」的雙人覆核原則於 `.codex/decisions.md`。
+- 驗證：`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q` 通過（21 passed）。

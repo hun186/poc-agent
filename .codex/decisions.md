@@ -206,3 +206,9 @@
 - Editor 是 ES 文件編修介面，因此欄位資料型別與 object/nested 結構應以 Elasticsearch mapping metadata 為權威來源。
 - `config/editor_form.default.json` 不應承擔完整資料模型定義；它的主要責任是 UI layout、顯示哪些欄位、label/help/compact 行為與 schema selection。
 - 為保留離線 / mapping 暫時不可讀情境的可用性，form-config 會在 mapping 可用時合併 metadata；mapping 不可用時保留既有 UI schema 並明確以 `mapping_ok=false` 揭露。
+
+## 2026-06-25 Excel→SQL 任務建立審核決策
+
+- `db_operator` 可以建立 Excel→SQL 任務 JSON 草稿，但新建任務預設為 `dashboard.status=pending` 且 `dashboard.enabled=false`，避免資料庫管理權限本身就能立即開放一個會上傳資料並可能 auto-create SQL schema 的任務。
+- 啟用任務需由 `superuser` 呼叫專用審核 endpoint，將任務切為 `active` / `enabled=true`；此分離讓任務設計與正式開放有第二人覆核。
+- 業務使用者若不熟 SQL 型別，UI 提供常見型別選項但保留手動輸入；比對方式以說明浮窗補充 exact / prefix / contains 差異。

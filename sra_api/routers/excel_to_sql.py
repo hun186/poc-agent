@@ -12,14 +12,21 @@ from data_ingestion.excel_to_sql.dashboard import (
     delete_imported_sql_row,
     discover_dashboard_tasks,
 )
-from data_ingestion.excel_to_sql.task_configs import create_task_config
+from data_ingestion.excel_to_sql.task_configs import (
+    approve_task_config,
+    create_task_config,
+)
 from data_ingestion.excel_to_sql.user_imports import (
     import_record,
     list_import_records,
     preview_record,
     save_upload,
 )
-from api.routers.editor_dependencies import current_user, require_db_operator
+from api.routers.editor_dependencies import (
+    current_user,
+    require_db_operator,
+    require_superuser,
+)
 from api.services.auth_store import ROLE_SUPERUSER, AuthUser
 
 router = APIRouter(tags=["excel-to-sql"])
@@ -31,12 +38,17 @@ class DeleteImportedRowPayload(BaseModel):
     reason: str = Field(default="", max_length=500)
 
 
+class ApproveTaskConfigPayload(BaseModel):
+    config: str = Field(..., min_length=6, max_length=240)
+
+
 class ExcelToSqlTaskConfigPayload(BaseModel):
-    filename: str = Field(..., min_length=6, max_length=120)
+    filename: str = Field(..., min_length=6, max_length=240)
     task_name: str = Field(..., min_length=1, max_length=120)
+    connection_source_config: str = Field(default="", max_length=240)
     db_driver: str = Field(default="auto", max_length=128)
-    db_server: str = Field(..., min_length=1, max_length=255)
-    db_database: str = Field(..., min_length=1, max_length=128)
+    db_server: str = Field(default="", max_length=255)
+    db_database: str = Field(default="", max_length=128)
     db_trusted_connection: bool = False
     db_user: str = Field(default="", max_length=128)
     db_password: str = Field(default="", max_length=500)
@@ -208,11 +220,31 @@ def excel_to_sql_create_task_config(
         return {"task": created}
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"建立 Excel→SQL 任務設定檔失敗：{exc}"
+        ) from exc
+
+
+@router.post("/v1/excel-to-sql/task-configs/approve")
+def excel_to_sql_approve_task_config(
+    payload: ApproveTaskConfigPayload,
+    user: AuthUser = Depends(require_superuser),
+) -> dict[str, Any]:
+    try:
+        approved = approve_task_config(payload.config, actor=user.username)
+        return {"task": approved}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"啟用 Excel→SQL 任務設定檔失敗：{exc}"
         ) from exc
 
 

@@ -255,3 +255,19 @@
   - `audit_table`、`overwrite` 等進階設定。
 - Response：`{"task": {"config_path": "config/excel_to_sql/<filename>", "name": "<task_name>", "created_by": "<username>"}}`。
 - 錯誤：檔名或欄位不合法回 400；同名檔案且未 `overwrite` 回 409；未達資料庫管理權限回 403。
+
+### 2026-06-25 Excel→SQL task config creation update
+
+- `filename` now supports nested relative paths under `config/excel_to_sql`, for example `business/monthly_task.json`; absolute paths and `..` segments remain forbidden.
+- Request body adds optional `connection_source_config`. When provided, the backend loads that existing task JSON under `config/excel_to_sql` and copies its `db` block into the new task config, allowing business users to create import tasks without seeing or retyping DB server, credentials, encryption, certificate, or ODBC driver settings.
+- Direct DB connection fields remain supported for DB managers; when `connection_source_config` is empty and `db_trusted_connection=false`, generated JSON includes `db.user` and `db.password` from the request.
+- Missing `connection_source_config` file returns 404; invalid path / missing `db` block returns 400.
+- `filename` and `connection_source_config` may be provided either as paths relative to `config/excel_to_sql` or with the `config/excel_to_sql/` prefix; both resolve inside the same root.
+
+### 2026-06-25 Excel→SQL pending task approval update
+
+- `POST /v1/excel-to-sql/task-configs` now creates configs with `dashboard.enabled=false` and `dashboard.status="pending"`; pending configs do not appear in dashboard task discovery and cannot be selected for upload until approved.
+- Response includes `task.status` and `task.enabled` so the UI can tell the creator to notify a superuser.
+- Added `POST /v1/excel-to-sql/task-configs/approve` requiring `superuser` permission. Request body: `{ "config": "relative/or/config/excel_to_sql/prefixed.json" }`. It sets `dashboard.enabled=true`, `dashboard.status="active"`, and records `dashboard.approved_by`.
+- Missing config returns 404; invalid config path or malformed dashboard section returns 400; non-superuser callers receive 403 from auth dependencies.
+- UI mapping rows now expose common SQL type options (`NVARCHAR(255)`, `NVARCHAR(MAX)`, `INT`, `BIGINT`, `DECIMAL(18,2)`, `FLOAT`, `DATE`, `DATETIME2`, `BIT`) while still allowing manual input.
