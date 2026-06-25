@@ -2,7 +2,7 @@ topic_index_map:
   news_general:
     indexes:
       - news_test
-    description: "一般新聞、社會事件、國際情勢、政策、趨勢分析"；若涉及具體軍事情報、艦艇、軍機、海空活動掌握，應優先歸入 mil_intel"
+    description: "一般新聞、社會事件、國際情勢、政策、趨勢分析；若涉及具體軍事情報、艦艇、軍機、海空活動掌握，應優先歸入 mil_intel"
     
   mil_intel:
     indexes:
