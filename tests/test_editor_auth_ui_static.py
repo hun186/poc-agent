@@ -51,7 +51,7 @@ def test_editor_static_shell_loads_split_assets() -> None:
 
     assert '<link rel="stylesheet" href="/static/editor.css?v=20260614-split" />' in html
     expected_versions = {
-        "editor_form.js": "20260625-array-schema-render",
+        "editor_form.js": "20260625-array-preserve-single",
     }
     for path in EDITOR_SCRIPT_FILES:
         asset_name = Path(path).name

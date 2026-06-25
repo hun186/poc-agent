@@ -100,3 +100,10 @@
 - 目的：回應 Editor 是 ES 資料庫編修介面，欄位型別與資料結構應自然連動 Elasticsearch mapping；`config/editor_form.default.json` 應偏向 UI 顯示哪些欄位，而不是唯一資料型別來源。
 - 主要修改：`public_editor_form_config()` 在有 index 時讀取 ES live mapping metadata，將 mapping type / mapping_path 合併到 schema sections 與 fields；對 date / number / boolean / text 類 mapping 會推導 UI input type，讓新增空白陣列項目與表單欄位格式跟 ES mapping 保持一致。
 - 驗證：`python -m py_compile sra_api/services/editor_form_config.py sra_api/services/editor_index_utils.py tests/test_editor_form_config_mapping.py` 通過；`PYTHONPATH=. pytest tests/test_editor_form_config_mapping.py tests/test_editor_form_static.py tests/test_editor_auth_ui_static.py tests/test_multidim_shape_normalization.py -q` 通過（31 passed, 1 warning；warning 為既有 Starlette/httpx deprecation）。
+
+### 2026-06-25 Editor single-item array normalize 修正
+
+- 目的：修正部署後新增第一筆 Involved_Parties / evidence / Timeline / Person 時，狀態列顯示 `已更新資料但未成功渲染新增格子` 的問題。
+- 根本原因：`normalizeLeaf()` 會把所有單元素 array 壓平成單一 object；新增第一筆 array item 後，`populateForm()` 重新 normalize 時把 `[item]` 壓成 `item`，後續 array path normalizer 又把非 array 重設成 `[]`，導致 render guard 發現資料有新增但 DOM 沒格子。已有 item 的文件按新增後 array 長度通常變成 2，因此不會觸發單元素壓平。
+- 主要修改：`normalizeLeaf()` 改為 path-aware，對 schema array paths / normalizers.array_paths / csv paths 保留 array 形狀，即使只有一個 item 也不壓平；同步更新 `editor_form.js` cache-busting 版本，避免瀏覽器沿用舊 normalize 邏輯。
+- 驗證：`node --check sra_api/static/editor_form.js` 通過；`PYTHONPATH=. pytest tests/test_editor_form_static.py tests/test_editor_auth_ui_static.py tests/test_editor_form_config_mapping.py tests/test_multidim_shape_normalization.py -q` 通過（32 passed, 1 warning；warning 為既有 Starlette/httpx deprecation）。
