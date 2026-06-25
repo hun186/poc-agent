@@ -134,6 +134,47 @@ def get_index_field_type_map(index: str, targets: list[str]) -> dict[str, str]:
     return out
 
 
+def get_index_field_metadata_map(index: str) -> tuple[dict[str, dict[str, Any]], bool]:
+    """Return field metadata from the live Elasticsearch mapping.
+
+    The Editor form config decides which fields are shown, while this mapping
+    metadata is the authoritative source for ES field properties such as type.
+    """
+    try:
+        mapping = es_client.get_es().indices.get_mapping(index=index)
+    except Exception:
+        return {}, False
+
+    out: dict[str, dict[str, Any]] = {}
+
+    def _walk(props: dict[str, Any], prefix: str = "") -> None:
+        for name, definition in (props or {}).items():
+            if not isinstance(definition, dict):
+                continue
+            path = f"{prefix}.{name}" if prefix else name
+            meta: dict[str, Any] = {}
+            field_type = str(definition.get("type") or "")
+            if field_type:
+                meta["type"] = field_type
+            if isinstance(definition.get("fields"), dict):
+                meta["fields"] = sorted(definition["fields"].keys())
+            if isinstance(definition.get("properties"), dict):
+                meta["has_properties"] = True
+            if meta:
+                out[path] = meta
+            child_props = definition.get("properties")
+            if isinstance(child_props, dict):
+                _walk(child_props, path)
+
+    for _, body in (mapping or {}).items():
+        m = body.get("mappings") if isinstance(body, dict) else {}
+        props = m.get("properties") if isinstance(m, dict) else {}
+        if isinstance(props, dict):
+            _walk(props)
+
+    return out, True
+
+
 def coerce_source_by_mapping(source: dict[str, Any], object_paths: set[str]) -> dict[str, Any]:
     patched = dict(source)
     for path in sorted(object_paths):
