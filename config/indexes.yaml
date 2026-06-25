@@ -2,7 +2,7 @@ topic_index_map:
   news_general:
     indexes:
       - news_test
-    description: "一般新聞、社會事件、國際情勢、政策、趨勢分析"
+    description: "一般新聞、社會事件、國際情勢、政策、趨勢分析"；若涉及具體軍事情報、艦艇、軍機、海空活動掌握，應優先歸入 mil_intel"
     
   mil_intel:
     indexes:
@@ -10,17 +10,17 @@ topic_index_map:
       - nav_intel_sentences_synthetic_v1
       - srp_test
       #- satmeta
-    description: "本主題為較細節之軍事秘密情報細節相關，包含航行情資（軍艦/執法船艦）以及衛照情報，如果是國際公開軍事動態新聞則屬news_general"
+    description: "本主題為較細節之軍事秘密情報細節相關，包含軍事情報、海空軍事動態、東亞海空活動、軍艦、執法船艦、軍機、航行情資、衛照情報、軍事掌握動態。如果是國際公開軍事動態新聞綜整則屬news_general"，只要問題要求整理海空軍事活動、軍艦軍機動態、臺灣防守角度分析，應歸入本主題"。
     
 #  satmeta:
 #    indexes:
 #      - satmeta
 #    description: "本資料庫為衛照元數據管理資料庫"
 
-  news_general:
+  fishing:
     indexes:
       - fishing_test
-    description: "漁業動態分析"
+    description: "漁業動態、漁船、漁獲、漁業政策、漁場活動分析"
         
   gov_document:
     indexes:
