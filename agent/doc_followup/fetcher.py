@@ -72,17 +72,19 @@ def fetch_docs_by_uuid(
         if not _has_full_text(doc):
             print(f"[doc_followup] give up uuid={u!r}, no full_text from any index")
             continue
-
+        
+        #print("doc in fetch_docs_by_uuid:", doc)
         hit_index = doc.get("index") or doc.get("_index") or ""
         if isinstance(hit_index, str) and hit_index:
             used_indexes.add(hit_index)
-
+        #print("hit_index in fetch_docs_by_uuid:", hit_index)
         src = doc.get("source") or {}
         full_text = doc.get("full_text") or ""
 
         # ===== 強化欄位抽取：multidim_event_json + communication =====
         md = (src.get("multidim_event_json") or {}) if isinstance(src, dict) else {}
         ev = (md.get("Event") or {}) if isinstance(md, dict) else {}
+        print("md in fetch_docs_by_uuid:", md)
         timeline = md.get("Event_Timeline") or []
         if not isinstance(timeline, list):
             timeline = []

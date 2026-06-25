@@ -50,7 +50,7 @@ def ask_with_doc_followup(
         ref_pairs: List[Tuple[int, str]] = []
         seen_uuid: set[str] = set()
         fetch_uuids: List[str] = []
-
+        #print("refno_uuid_map in ask_with_doc_followup", refno_uuid_map)
         for ref_no in ref_nos:
             u = refno_uuid_map.get(ref_no)
             if not u:
@@ -68,12 +68,13 @@ def ask_with_doc_followup(
                 "reasoning": f"refno_uuid_map={refno_uuid_map!r}，但沒有任何有效的 uuid。",
                 "used_uuids": [],
             }
-
+        #print("start to call fetch_docs_by_uuid in ask_with_doc_followup")
         base_docs_list, used_indexes = fetch_docs_by_uuid(
             fetch_uuids,
             index_hint=index_hint,
             index_candidates=index_candidates,
         )
+        #print("base_docs_list in ask_with_doc_followup", ask_with_doc_followup)
         base_docs = {d.get("uuid"): d for d in base_docs_list if d.get("uuid")}
 
         if not base_docs:

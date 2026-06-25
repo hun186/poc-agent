@@ -250,7 +250,7 @@ def answer_with_routing(
                     except Exception:
                         continue
                     ref_map_int[kk] = v
-
+            print("start to call ask_with_doc_followup")
             out = ask_with_doc_followup(
                 instruction=user_msg,
                 uuids=reuse_uuids or [],
@@ -259,6 +259,7 @@ def answer_with_routing(
                 index_candidates=all_indexes,
                 # ★ 這裡先不要傳 session_id / trace，避免子函式 signature 不合
             )
+            #print("out in DOC_FOLLOWUP mode:",out)
 
         # === SRA_REPORT：產生資料 payload → 報告 LLM 寫結論 ===
         elif mode == "SRA_REPORT":
