@@ -6,9 +6,19 @@ from typing import Any, Dict, Optional
 from elasticsearch import NotFoundError
 from smolagents import Tool
 
-from agent.es.es_client import get_es
+from agent.es.es_client import get_es, safe_search as _safe_es_search
 
 from .common import resolve_index, split_indexes, dot_get, dbg
+
+
+def _as_dict(value: Any) -> Dict[str, Any]:
+    """Normalize Elasticsearch client responses to a plain dict."""
+    if isinstance(value, dict):
+        return value
+    body = getattr(value, "body", None)
+    if isinstance(body, dict):
+        return body
+    return {}
 
 
 class ESFetchDocById(Tool):
@@ -77,8 +87,11 @@ class ESFetchDocById(Tool):
         # 1) 逐一 GET（GET 只能單一 index）
         for idx in indexes:
             try:
-                resp = self.es.get(index=idx, id=uuid, _source=True)
-                if resp and resp.get("found"):
+                resp = _as_dict(self.es.get(index=idx, id=uuid, _source=True))
+                # Elasticsearch 8.x get() responses may omit a truthy ``found`` when
+                # a document is found, and the local mock client returns only
+                # _index/_id/_source. Treat a non-empty _source as a successful hit.
+                if resp and (resp.get("found") is not False) and isinstance(resp.get("_source"), dict):
                     src = resp.get("_source") or {}
                     hit_index = resp.get("_index") or idx
                     break
@@ -92,17 +105,21 @@ class ESFetchDocById(Tool):
         if src is None:
             try:
                 search_index = ",".join(indexes) if indexes else str(resolved)
-                resp = self.es.search(
+                resp = _safe_es_search(
+                    {
+                        "size": 1,
+                        "query": {"term": {"uuid": uuid}},  # 不用 uuid.keyword，避免 mapping 不一致
+                        "_source": True,
+                    },
                     index=search_index,
-                    size=1,
-                    query={"term": {"uuid": uuid}},  # 不用 uuid.keyword，避免 mapping 不一致
-                    _source=True,
                 )
-                hits = (resp.get("hits") or {}).get("hits") or []
+                hits_obj = (resp.get("hits") or {}) if isinstance(resp, dict) else {}
+                hits = hits_obj.get("hits") if isinstance(hits_obj, dict) else []
                 if hits:
                     hit = hits[0]
-                    src = hit.get("_source") or {}
-                    hit_index = hit.get("_index") or (indexes[0] if indexes else str(resolved))
+                    if isinstance(hit, dict):
+                        src = hit.get("_source") or {}
+                        hit_index = hit.get("_index") or (indexes[0] if indexes else str(resolved))
             except Exception as e:
                 print(f"[ESFetchDocById] search(uuid) error: {e}")
                 return {
