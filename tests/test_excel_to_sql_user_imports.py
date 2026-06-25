@@ -105,7 +105,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "前往 Excel 匯入作業中心" not in dashboard_html
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
-    assert "/static/excel_to_sql_import_records.js?v=20260618-diagnostics-toggle" in html
+    assert "/static/excel_to_sql_import_records.js?v=20260625-task-config-ui" in html
     assert "/v1/excel-to-sql/import-records" in script
     assert "previewImportRecord" in script
     assert "刪除記錄" not in script
@@ -115,9 +115,15 @@ def test_import_center_static_contains_user_import_controls():
     assert "批次刪除勾選記錄" not in html
     assert "錯誤診斷" in html
     assert "匯入任務" in html
+    assert "建立 Excel→SQL 任務設定檔" in html
+    assert "taskMappings" in html
+    assert "/v1/excel-to-sql/task-configs" in script
+    assert "function createTaskConfig" in script
     assert "監控任務" not in html
     assert "Excel→SQL 匯入查詢儀表板" in html
-    assert "船舶活動 Excel 匯入任務" in Path("config/excel_to_sql/vessel_activities.example.json").read_text(encoding="utf-8")
+    assert "船舶活動 Excel 匯入任務" in Path(
+        "config/excel_to_sql/vessel_activities.example.json"
+    ).read_text(encoding="utf-8")
     assert "原始檔名" in html
     assert "導入檔名" in html
     assert 'class="table-wrap import-records-wrap"' in html
@@ -125,7 +131,9 @@ def test_import_center_static_contains_user_import_controls():
     assert "table-layout:fixed" in html
     assert "#importRecords .stored-file-col { width:9%; }" in html
     assert "#importRecords .actions-col { width:10%; }" in html
-    assert ".record-actions { display:grid; grid-template-columns: minmax(0, 1fr);" in html
+    assert (
+        ".record-actions { display:grid; grid-template-columns: minmax(0, 1fr);" in html
+    )
     assert "min-width:128px" in html
     assert ".record-actions button:nth-child(2)" not in html
     assert "repeat(3, minmax(0, 1fr))" not in html
@@ -138,7 +146,11 @@ def test_import_center_static_contains_user_import_controls():
     assert "#recentAuditSection" in script
     assert "params.set('days'" not in script
     assert "查詢已匯入條目" not in script
-    assert script.index("預掃描") < script.index("確認匯入SQL") < script.index("查詢已匯入列")
+    assert (
+        script.index("預掃描")
+        < script.index("確認匯入SQL")
+        < script.index("查詢已匯入列")
+    )
     assert "查詢已匯入列" in script
     assert "window.__importRecordById" in script
     assert 'data-label="導入檔名"' in script
@@ -323,3 +335,65 @@ def test_confirm_import_ensures_audit_table_before_processing(monkeypatch, tmp_p
         for sql in fake_conn.cursor_obj.statements
     )
     assert fake_conn.commits >= 1
+
+
+def test_create_excel_to_sql_task_config_writes_enabled_dashboard_json(tmp_path):
+    from data_ingestion.excel_to_sql.task_configs import create_task_config
+
+    payload = {
+        "filename": "new_task.json",
+        "task_name": "新 Excel 匯入任務",
+        "db_server": "sql.local",
+        "db_database": "OpsDb",
+        "db_user": "operator",
+        "db_password": "secret-value",
+        "source_sheet": "Sheet1",
+        "destination_table": "dbo.ImportTarget",
+        "mappings": [
+            {
+                "source_column": "日期",
+                "dest_field": "event_date",
+                "dest_field_type": "DATE",
+                "required": True,
+                "value_type": "date",
+            },
+            {
+                "source_column": "敘述",
+                "dest_field": "description",
+                "dest_field_type": "NVARCHAR(MAX)",
+                "match": "prefix",
+            },
+        ],
+    }
+
+    created = create_task_config(payload, actor="operator", root=tmp_path)
+
+    config_path = Path(created["config_path"])
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    assert data["dashboard"] == {"enabled": True, "name": "新 Excel 匯入任務"}
+    assert data["db"]["server"] == "sql.local"
+    assert data["destination"]["table"] == "dbo.ImportTarget"
+    assert data["mappings"][0]["dest_field"] == "event_date"
+
+
+def test_create_excel_to_sql_task_config_rejects_unsafe_filename(tmp_path):
+    from data_ingestion.excel_to_sql.task_configs import create_task_config
+
+    payload = {
+        "filename": "../bad.json",
+        "task_name": "Bad",
+        "db_server": "sql.local",
+        "db_database": "OpsDb",
+        "db_user": "operator",
+        "db_password": "secret-value",
+        "source_sheet": "Sheet1",
+        "destination_table": "dbo.ImportTarget",
+        "mappings": [{"source_column": "A", "dest_field": "a"}],
+    }
+
+    try:
+        create_task_config(payload, actor="operator", root=tmp_path)
+    except ValueError as exc:
+        assert "設定檔檔名" in str(exc)
+    else:
+        raise AssertionError("unsafe filename should be rejected")

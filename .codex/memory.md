@@ -107,3 +107,15 @@
 - 根本原因：`normalizeLeaf()` 會把所有單元素 array 壓平成單一 object；新增第一筆 array item 後，`populateForm()` 重新 normalize 時把 `[item]` 壓成 `item`，後續 array path normalizer 又把非 array 重設成 `[]`，導致 render guard 發現資料有新增但 DOM 沒格子。已有 item 的文件按新增後 array 長度通常變成 2，因此不會觸發單元素壓平。
 - 主要修改：`normalizeLeaf()` 改為 path-aware，對 schema array paths / normalizers.array_paths / csv paths 保留 array 形狀，即使只有一個 item 也不壓平；同步更新 `editor_form.js` cache-busting 版本，避免瀏覽器沿用舊 normalize 邏輯。
 - 驗證：`node --check sra_api/static/editor_form.js` 通過；`PYTHONPATH=. pytest tests/test_editor_form_static.py tests/test_editor_auth_ui_static.py tests/test_editor_form_config_mapping.py tests/test_multidim_shape_normalization.py -q` 通過（32 passed, 1 warning；warning 為既有 Starlette/httpx deprecation）。
+
+### 2026-06-25 Excel→SQL 任務 JSON UI 建立功能
+
+- 目的：讓具資料庫管理權限的使用者可在「Excel 匯入作業中心」透過 UI 建立真正的 Excel→SQL 任務 JSON 設定檔，而不是手動編輯 `config/excel_to_sql/*.json`。
+- 主要修改：新增 `POST /v1/excel-to-sql/task-configs`（需 `db_operator` / `superuser`），後端以白名單檔名、SQL table/field/type 驗證與 atomic replace 產生 dashboard-enabled 設定檔；作業中心新增任務建立表單與欄位對應 UI，建立後重新載入任務清單並可直接用於上傳匯入。
+- API Contract：已追加記錄 `POST /v1/excel-to-sql/task-configs` request/response 與錯誤語意。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 完成（pip upgrade 查詢套件索引遇 403 retry，但既有環境套件已滿足）；`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q` 通過（17 passed）。
+
+### 2026-06-25 Known issues memory compaction
+
+- 因 `.codex/known_issues.md` 超過 400 行，已將濃縮前全文歸檔至 `.codex/archive/known_issues.md-20260625-130126.md`，並將 active known issues 重寫為目前仍有效摘要、近期 resolved / open items 與歸檔索引。
+- 驗證：`wc -l .codex/known_issues.md .codex/memory.md` 確認 known issues 濃縮後低於 200 行。
