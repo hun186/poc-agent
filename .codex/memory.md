@@ -81,3 +81,9 @@
 - 目的：依使用者說明，為第一年開發階段的 LLM 文章萃取成果建立查閱用概要，說明 `multidim_event_json` 架構、欄位語意與已完成 / 預期支援的應用目標。
 - 主要修改：新增 `docs/multidim_event_json_overview.md`，摘要 `docs/taskSetting_Enrichment.py` 的輸出結構、事件聚合原則、證據優先原則、日期時間設計、ES / RAG / Editor / 多維分析應用與後續擴充注意事項。
 - 驗證：`python - <<'PY' ... PY` 檢查文件存在必要標題與 `evidence_snippets` 關鍵內容，並輸出文件行數與字元數。
+
+### 2026-06-25 multidim_event_json 多頂層事件 TODO 文件
+
+- 目的：回應多維度事件應用情境中，長文切片合併可能把不同事件合成單一大字典，以及 agent / Editor 仍偏向單一事件物件的長期風險。
+- 主要修改：新增 `docs/multidim_event_json_multi_event_todo.md`，記錄未來 event-cluster merge、multi-event agent selector、Editor 事件列表 UI 與 event-level index 的分階段建議；本次僅文件化待辦，不調整通用 LLM 抽取框架與 merge slice 程式。
+- 驗證：`python - <<'PY' ... PY` 檢查 TODO 文件存在必要標題與關鍵內容；`git diff --check` 通過。

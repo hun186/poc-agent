@@ -67,3 +67,10 @@
 
 - 若使用者仍常遇到 `imported_with_errors`，可在匯入記錄中心增加「下載錯誤列 CSV / JSON」功能，讓使用者取得完整失敗資料列而不只看前幾筆樣本。
 - 可考慮在設定檔檢查頁提示常見欄名差異，例如「敘述」與「作業敘述」，並建議使用 `aliases` 或 `match: contains` 明確描述來源欄位。
+
+## 2026-06-25 multidim_event_json 多頂層事件後續改善
+
+- 參考 `docs/multidim_event_json_multi_event_todo.md`，未來在排程允許時評估將切片合併從單一大字典 merge 改為 event-cluster merge。
+- 建立 multi-event helper / selector，逐步移除 agent 內直接取 `multidim_event_json` 第一個 dict 的隱含假設。
+- 評估 Editor 是否改為事件列表 + 單事件表單，以支援新增、編修、合併與拆分多個頂層事件物件。
+- 若多維度分析需求提升，評估新增 event-level index 或 nested mapping，降低跨事件欄位誤配風險。
