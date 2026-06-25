@@ -104,6 +104,43 @@ async function loadImportRecords() {
   window.__importRecordById = Object.fromEntries(rows.map(row => [String(row.id), row]));
   fillTable('importRecords', rows, r => { const c=importRecordCounts(r); return `<tr><td data-label="日期">${formatAuditTime(r.created_at)}</td><td data-label="使用者">${escapeHtml(r.username)}</td><td data-label="原始檔名">${escapeHtml(r.original_filename)}</td><td data-label="導入檔名"><code>${escapeHtml(r.stored_filename || '')}</code></td><td data-label="設定檔">${escapeHtml(r.config_path)}</td><td data-label="狀態">${statusBadge(r.status)}</td><td data-label="新增">${escapeHtml(c.inserted_rows ?? c.will_insert ?? '')}</td><td data-label="重複">${escapeHtml(c.duplicate_rows ?? c.duplicate ?? '')}</td><td data-label="錯誤">${escapeHtml(c.failed_rows ?? c.failed ?? '')}</td><td data-label="大小">${escapeHtml(r.file_size || 0)}</td><td data-label="錯誤診斷">${importRecordDiagnostics(r)}</td><td data-label="操作">${importRecordActions(r)}</td></tr>`; });
 }
+function mappingRowTemplate(index) {
+  return `<div class="mapping-row" data-mapping-row="1"><div><label>來源欄位</label><input class="mapping-source" placeholder="Excel 欄名" /></div><div><label>目的欄位</label><input class="mapping-dest" placeholder="sql_field" /></div><div><label>SQL 型別</label><input class="mapping-type" value="NVARCHAR(MAX)" /></div><div><label>比對</label><select class="mapping-match"><option value="">預設</option><option value="exact">exact</option><option value="prefix">prefix</option><option value="contains">contains</option></select></div><div><label>必填</label><select class="mapping-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeTaskMappingRow(this)" type="button">移除</button></div>`;
+}
+function addTaskMappingRow() { const box = $('taskMappings'); if (box) box.insertAdjacentHTML('beforeend', mappingRowTemplate(box.children.length)); }
+function removeTaskMappingRow(button) { button.closest('[data-mapping-row]')?.remove(); }
+function taskValue(id) { return ($(id)?.value || '').trim(); }
+function taskNumber(id, fallback) { const raw = taskValue(id); return raw ? Number(raw) : fallback; }
+function collectTaskMappings() {
+  return Array.from(document.querySelectorAll('[data-mapping-row]')).map(row => ({
+    source_column: row.querySelector('.mapping-source')?.value.trim() || '',
+    dest_field: row.querySelector('.mapping-dest')?.value.trim() || '',
+    dest_field_type: row.querySelector('.mapping-type')?.value.trim() || 'NVARCHAR(MAX)',
+    match: row.querySelector('.mapping-match')?.value || '',
+    required: row.querySelector('.mapping-required')?.value === 'true',
+  })).filter(item => item.source_column || item.dest_field);
+}
+async function createTaskConfig() {
+  showError(''); setPreview('');
+  const payload = {
+    filename: taskValue('taskFilename'), task_name: taskValue('taskName'), db_driver: taskValue('taskDbDriver') || 'auto',
+    db_server: taskValue('taskDbServer'), db_database: taskValue('taskDbDatabase'), db_user: taskValue('taskDbUser'), db_password: taskValue('taskDbPassword'),
+    db_trusted_connection: $('taskTrustedConnection')?.checked || false, source_directory: taskValue('taskSourceDirectory') || './data/excel_inbox', file_pattern: taskValue('taskFilePattern') || '*.xlsx',
+    source_sheet: taskValue('taskSourceSheet'), header_row: taskNumber('taskHeaderRow', 1), start_row: taskNumber('taskStartRow', 2),
+    destination_table: taskValue('taskDestinationTable'), audit_table: taskValue('taskAuditTable') || 'dbo.ExcelImportAudit', default_field_type: taskValue('taskDefaultFieldType') || 'NVARCHAR(MAX)',
+    hash_field: taskValue('taskHashField') || 'hash_value', overwrite: $('taskOverwrite')?.checked || false, mappings: collectTaskMappings(),
+  };
+  if (!payload.mappings.length) { showError('請至少新增一筆 Excel 欄位對應。'); return; }
+  const res = await fetch('/v1/excel-to-sql/task-configs', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + authToken() }, body: JSON.stringify(payload) });
+  if (!res.ok) { let text=await res.text(); try{text=JSON.parse(text).detail||text;}catch(_){} showError(text); return; }
+  const data = await res.json();
+  const task = data.task || {};
+  setPreview(`<strong>已建立任務設定檔：</strong>${escapeHtml(task.config_path || '')}`);
+  if ($('uploadConfig') && task.config_path) $('uploadConfig').value = task.config_path;
+  await loadTasks();
+}
+
 if (document.getElementById('importRecords')) {
+  addTaskMappingRow();
   (async () => { await loadCurrentUser(); await loadTasks(); await loadImportRecords(); })().catch(err => showError(err.message || String(err)));
 }
