@@ -57,3 +57,9 @@
 - 目的：回應文件編修頁在原文件缺少 evidence / Timeline / Party / Person 陣列時，新增按鈕看似成功但使用者可能仍載入舊版 `editor_form.js` 而看不到新格子的問題。
 - 主要修改：Editor HTML 將 `editor_form.js` query version 更新為 `20260623-array-schema`，強制瀏覽器重新抓取已改為依表單 schema 建立 array item 的前端程式；並新增靜態回歸測試確認新增 array item 由 schema fields 決定，不依賴既有文件樣本列。
 - 驗證：`node --check sra_api/static/editor_form.js` 通過；`PYTHONPATH=. pytest tests/test_editor_form_static.py tests/test_editor_auth_ui_static.py -q` 通過（25 passed, 3 warnings；warnings 為既有 Starlette / Python invalid escape deprecation 訊息）。
+
+### 2026-06-25 肥大程式檔拆分重構
+
+- 目的：檢查主要程式 / 靜態 / 測試檔案是否有單檔過於肥大的情況，並優先以不改 API contract 的方式拆分責任。
+- 主要修改：`sra_api/routers/chat.py` 保留 FastAPI route orchestration，將 Chat payload、session/history、meta task、citation、session/memory 保存等 helper 拆到 `sra_api/routers/chat_support.py`；`agent/data_agent/prompts.py` 改為相容 facade，將風格與報告 prompt 分別拆到 `style_prompts.py` / `report_prompts.py`；移除 `tests/test_editor_auth_ui_static.py` 中重複的常數與重複測試。
+- 驗證：`python -m py_compile sra_api/routers/chat.py sra_api/routers/chat_support.py agent/data_agent/prompts.py agent/data_agent/style_prompts.py agent/data_agent/report_prompts.py tests/test_editor_auth_ui_static.py` 通過；掃描 `api/ sra_api/ agent/ data_ingestion/ config/ tests/ portable_auth_pack/` 的 `.py/.js/.html/.css` 後已無單檔 >= 500 行（排除 swagger / 複製檔）；`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py tests/test_vercel_mock_runtime.py -q` 通過（24 passed, 3 warnings；warnings 為既有 Starlette / invalid escape deprecation）。

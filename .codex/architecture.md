@@ -240,3 +240,9 @@
 
 - Editor array sections are rendered from `config/editor_form.default.json` schema definitions rather than inferred from existing document examples. Missing ES array fields such as `multidim_event_json.evidence_snippets`, `Event_Timeline`, `Involved_Parties`, and `Person` are initialized as empty arrays so the first "新增..." action can create a visible item.
 - Vercel mock ES now includes one rich multidimensional event document and one sparse document that intentionally omits array sections to cover the empty-array editor workflow.
+
+## 2026-06-25 Chat Router 與 Data Agent Prompt 拆分
+
+- `sra_api/routers/chat.py` 現在聚焦 FastAPI OpenAI-compatible route orchestration：建立 request / trace、呼叫 `answer_with_routing()`、組 OpenAI-compatible response、落地 API state。
+- `sra_api/routers/chat_support.py` 承接 chat route 的純 helper 與 request model：`ChatPayload`、meta task 判斷與處理、session key / history 解析、reuse uuid / refno map 準備、citation link 建立、session 與 memory 保存。
+- `agent/data_agent/prompts.py` 保留原 import contract，改為 re-export facade；風格資料準備 prompt 位於 `agent/data_agent/style_prompts.py`，報告資料準備 prompt 位於 `agent/data_agent/report_prompts.py`。
