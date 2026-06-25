@@ -63,9 +63,3 @@
 - 目的：檢查主要程式 / 靜態 / 測試檔案是否有單檔過於肥大的情況，並優先以不改 API contract 的方式拆分責任。
 - 主要修改：`sra_api/routers/chat.py` 保留 FastAPI route orchestration，將 Chat payload、session/history、meta task、citation、session/memory 保存等 helper 拆到 `sra_api/routers/chat_support.py`；`agent/data_agent/prompts.py` 改為相容 facade，將風格與報告 prompt 分別拆到 `style_prompts.py` / `report_prompts.py`；移除 `tests/test_editor_auth_ui_static.py` 中重複的常數與重複測試。
 - 驗證：`python -m py_compile sra_api/routers/chat.py sra_api/routers/chat_support.py agent/data_agent/prompts.py agent/data_agent/style_prompts.py agent/data_agent/report_prompts.py tests/test_editor_auth_ui_static.py` 通過；掃描 `api/ sra_api/ agent/ data_ingestion/ config/ tests/ portable_auth_pack/` 的 `.py/.js/.html/.css` 後已無單檔 >= 500 行（排除 swagger / 複製檔）；`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py tests/test_vercel_mock_runtime.py -q` 通過（24 passed, 3 warnings；warnings 為既有 Starlette / invalid escape deprecation）。
-
-### 2026-06-25 DOC_FOLLOWUP 單篇全文錯誤修正
-
-- 目的：修正多輪對話中使用者要求「給我第二篇的全文」並進入 `DOC_FOLLOWUP` 時，`ESFetchDocById` 在處理 ES get/search response shape 差異時可能拋出 `'list' object has no attribute 'get'` 或漏判 mock get 成功的問題。
-- 主要修改：`agent/tools_es/fetch_doc.py` 將 ES get response 正規化為 dict，允許沒有 `found` flag 但含 `_source` 的成功回應；fallback search 改用既有 `safe_search` body 介面並防禦非 dict hits shape。
-- 驗證：`python -m py_compile agent/tools_es/fetch_doc.py tests/test_es_fetch_doc_by_id.py` 通過；`PYTHONPATH=. pytest tests/test_es_fetch_doc_by_id.py -q` 通過（2 passed）。
