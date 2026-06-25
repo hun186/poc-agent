@@ -75,3 +75,9 @@
 - 目的：回應 DOC_FOLLOWUP 修正後的追問，檢查專案其他使用 `multidim_event_json` 的流程是否仍假設固定 dict 形狀。
 - 主要修改：修正全文下載 API、evidence parser inner_hits fallback、Editor mapping shape normalizer 與 Editor 清單標題顯示，讓 `multidim_event_json` 可安全處理 dict、list[dict] 與 JSON 字串；並補上跨模組回歸測試。
 - 驗證：`python -m py_compile agent/doc_followup/fetcher.py agent/es/evidence_core/parser.py sra_api/routers/docs.py sra_api/services/editor_index_utils.py tests/test_doc_followup_fetcher.py tests/test_multidim_shape_normalization.py` 通過；`PYTHONPATH=. pytest tests/test_doc_followup_fetcher.py tests/test_multidim_shape_normalization.py -q` 通過（5 passed）；`node --check sra_api/static/editor_core.js` 通過。
+
+### 2026-06-25 multidim_event_json 概要文件
+
+- 目的：依使用者說明，為第一年開發階段的 LLM 文章萃取成果建立查閱用概要，說明 `multidim_event_json` 架構、欄位語意與已完成 / 預期支援的應用目標。
+- 主要修改：新增 `docs/multidim_event_json_overview.md`，摘要 `docs/taskSetting_Enrichment.py` 的輸出結構、事件聚合原則、證據優先原則、日期時間設計、ES / RAG / Editor / 多維分析應用與後續擴充注意事項。
+- 驗證：`python - <<'PY' ... PY` 檢查文件存在必要標題與 `evidence_snippets` 關鍵內容，並輸出文件行數與字元數。
