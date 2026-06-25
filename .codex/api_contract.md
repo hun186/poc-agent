@@ -241,3 +241,33 @@
   - `schema.sections[*].fields[*].mapping_path`：表單欄位對應到 ES mapping 的完整 dot path；array section 內相對欄位會展開為 `<section.path>.<field.path>`。
   - `schema.sections[*].fields[*].mapping`：欄位的 ES mapping metadata，例如 `{"type": "date"}` 或 `{"type": "integer"}`。
 - `config/editor_form.default.json` 仍負責 UI layout / 顯示欄位；ES mapping metadata 是欄位型別與資料結構的輔助權威來源。
+
+## 2026-06-25 Excel→SQL task config creation API
+
+- 新增 `POST /v1/excel-to-sql/task-configs`，需 `db_operator` 或 `superuser` 權限。
+- Request body 用於建立 `config/excel_to_sql/*.json` 任務設定檔，主要欄位包含：
+  - `filename`：安全 JSON 檔名，僅允許英數、底線、連字號、句點並以 `.json` 結尾。
+  - `task_name`：dashboard 顯示名稱。
+  - `db_driver`、`db_server`、`db_database`、`db_trusted_connection`、`db_user`、`db_password`、`db_encrypt`、`db_trust_server_certificate`：SQL Server 連線設定；非 trusted connection 時需提供 user/password。
+  - `source_directory`、`file_pattern`、`recursive`、`source_sheet`、`header_row`、`start_row`、`end_row`：Excel 來源設定。
+  - `destination_table`、`auto_create_table`、`auto_create_missing_fields`、`default_field_type`、`hash_field`、`hash_field_type`、`create_hash_index`：SQL 目的表與 hash 欄位設定。
+  - `mappings`：至少一筆 `{source_column, dest_field, dest_field_type, required, match?, value_type?}`。
+  - `audit_table`、`overwrite` 等進階設定。
+- Response：`{"task": {"config_path": "config/excel_to_sql/<filename>", "name": "<task_name>", "created_by": "<username>"}}`。
+- 錯誤：檔名或欄位不合法回 400；同名檔案且未 `overwrite` 回 409；未達資料庫管理權限回 403。
+
+### 2026-06-25 Excel→SQL task config creation update
+
+- `filename` now supports nested relative paths under `config/excel_to_sql`, for example `business/monthly_task.json`; absolute paths and `..` segments remain forbidden.
+- Request body adds optional `connection_source_config`. When provided, the backend loads that existing task JSON under `config/excel_to_sql` and copies its `db` block into the new task config, allowing business users to create import tasks without seeing or retyping DB server, credentials, encryption, certificate, or ODBC driver settings.
+- Direct DB connection fields remain supported for DB managers; when `connection_source_config` is empty and `db_trusted_connection=false`, generated JSON includes `db.user` and `db.password` from the request.
+- Missing `connection_source_config` file returns 404; invalid path / missing `db` block returns 400.
+- `filename` and `connection_source_config` may be provided either as paths relative to `config/excel_to_sql` or with the `config/excel_to_sql/` prefix; both resolve inside the same root.
+
+### 2026-06-25 Excel→SQL pending task approval update
+
+- `POST /v1/excel-to-sql/task-configs` now creates configs with `dashboard.enabled=false` and `dashboard.status="pending"`; pending configs do not appear in dashboard task discovery and cannot be selected for upload until approved.
+- Response includes `task.status` and `task.enabled` so the UI can tell the creator to notify a superuser.
+- Added `POST /v1/excel-to-sql/task-configs/approve` requiring `superuser` permission. Request body: `{ "config": "relative/or/config/excel_to_sql/prefixed.json" }`. It sets `dashboard.enabled=true`, `dashboard.status="active"`, and records `dashboard.approved_by`.
+- Missing config returns 404; invalid config path or malformed dashboard section returns 400; non-superuser callers receive 403 from auth dependencies.
+- UI mapping rows now expose common SQL type options (`NVARCHAR(255)`, `NVARCHAR(MAX)`, `INT`, `BIGINT`, `DECIMAL(18,2)`, `FLOAT`, `DATE`, `DATETIME2`, `BIT`) while still allowing manual input.

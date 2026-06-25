@@ -18,6 +18,10 @@
     button { padding:10px 14px; border:0; border-radius:10px; background:#2563eb; color:white; font-weight:700; cursor:pointer; }
     button.secondary { background:#475467; }
     button.ghost { background:#e2e8f0; color:#172033; }
+    .mapping-row { display:grid; grid-template-columns: 1.2fr 1.2fr 1fr .7fr .7fr auto; gap:10px; align-items:end; margin:8px 0; }
+    .mapping-row button { padding:9px 10px; }
+    .checkbox-line { display:flex; gap:8px; align-items:center; font-size:13px; font-weight:600; }
+    .checkbox-line input { width:auto; }
     .header-actions, .upload-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .record-actions { display:grid; grid-template-columns: minmax(0, 1fr); gap:6px; min-width:128px; }
     .record-actions button { width:100%; padding:7px 9px; font-size:12px; white-space:normal; line-height:1.25; }
@@ -41,7 +45,7 @@
     .diagnostics summary:hover { text-decoration:underline; }
     .diagnostics ul { margin:6px 0 0 18px; padding:0; }
     .record-mobile-summary { display:none; }
-    @media (max-width: 900px) { .controls, .filters { grid-template-columns:1fr; } }
+    @media (max-width: 900px) { .controls, .filters, .mapping-row { grid-template-columns:1fr; } }
     @media (min-width: 901px) {
       #importRecords .select-col { width:3%; }
       #importRecords .date-col { width:11%; }
@@ -99,6 +103,41 @@
     </div>
     <div id="previewBox" class="preview-box hidden"></div>
   </section>
+
+  <section class="card" id="taskConfigCard">
+    <h2>建立 Excel→SQL 任務設定檔</h2>
+    <p class="muted">提供資料庫管理權限（db_operator / superuser）的使用者可在此建立真正的 <code>config/excel_to_sql/*.json</code> 任務設定檔。建議優先選擇既有任務作為資料庫連線來源，系統會沿用其 DB 位址、帳密、加密與 ODBC driver 設定，避免業務使用者接觸敏感帳密。</p>
+    <div class="controls">
+      <div><label>設定檔檔名</label><input id="taskFilename" placeholder="department/new_task.json" /></div>
+      <div><label>任務名稱</label><input id="taskName" placeholder="例：每月銷售 Excel 匯入" /></div>
+      <div><label>資料庫連線來源任務</label><select id="taskConnectionSource"><option value="">直接填寫下方 DB 連線資訊</option></select></div>
+      <div><label>資料庫 Server</label><input id="taskDbServer" placeholder="SQL Server host" /></div>
+      <div><label>資料庫名稱</label><input id="taskDbDatabase" placeholder="database" /></div>
+      <div><label>DB 使用者</label><input id="taskDbUser" autocomplete="username" /></div>
+      <div><label>DB 密碼</label><input id="taskDbPassword" type="password" autocomplete="new-password" /></div>
+      <div><label>ODBC Driver</label><input id="taskDbDriver" value="auto" /></div>
+      <div><label>工作表名稱</label><input id="taskSourceSheet" placeholder="Sheet1" /></div>
+      <div><label>來源目錄</label><input id="taskSourceDirectory" value="./data/excel_inbox" /></div>
+      <div><label>檔案樣式</label><input id="taskFilePattern" value="*.xlsx" /></div>
+      <div><label>標題列</label><input id="taskHeaderRow" type="number" min="1" value="1" /></div>
+      <div><label>資料起始列</label><input id="taskStartRow" type="number" min="1" value="2" /></div>
+      <div><label>目的資料表</label><input id="taskDestinationTable" placeholder="dbo.TargetTable" /></div>
+      <div><label>Audit Table</label><input id="taskAuditTable" value="dbo.ExcelImportAudit" /></div>
+      <div><label>預設欄位型別</label><input id="taskDefaultFieldType" value="NVARCHAR(MAX)" /></div>
+      <div><label>Hash 欄位</label><input id="taskHashField" value="hash_value" /></div>
+      <label class="checkbox-line"><input id="taskTrustedConnection" type="checkbox" /> 使用 trusted connection</label>
+      <label class="checkbox-line"><input id="taskOverwrite" type="checkbox" /> 覆蓋同名設定檔</label>
+    </div>
+    <h3>Excel 欄位對應</h3>
+    <div id="taskMappings"></div>
+    <datalist id="sqlTypeOptions"><option value="NVARCHAR(255)"></option><option value="NVARCHAR(MAX)"></option><option value="INT"></option><option value="BIGINT"></option><option value="DECIMAL(18,2)"></option><option value="FLOAT"></option><option value="DATE"></option><option value="DATETIME2"></option><option value="BIT"></option></datalist>
+    <div class="upload-actions"><button class="ghost" onclick="addTaskMappingRow()">新增欄位對應</button><button class="ghost" onclick="showMatchHelp()">比對方式說明</button><button onclick="createTaskConfig()">建立待審任務 JSON</button></div>
+    <div class="preview-box"><strong>安全提醒：</strong>新建任務預設為 pending，不會出現在上傳任務清單；必須由 superuser 審核啟用後才能正式上傳影響 SQL。</div>
+    <h3>Superuser 啟用待審任務</h3>
+    <div class="controls"><div><label>待審設定檔路徑</label><input id="approveTaskConfigPath" placeholder="department/new_task.json" /></div><div class="upload-actions"><button class="secondary" onclick="approveTaskConfig()">啟用任務</button></div></div>
+    <dialog id="matchHelpDialog"><h3>欄位比對方式說明</h3><ul><li><strong>預設 / exact</strong>：Excel 標題必須與來源欄位完全相同，適合欄名穩定的表格。</li><li><strong>prefix</strong>：Excel 標題以指定文字開頭即可，例如「船名1」「船名2」。</li><li><strong>contains</strong>：Excel 標題包含指定文字即可，適合欄名前後常有附註文字時使用。</li></ul><button onclick="closeMatchHelp()">關閉</button></dialog>
+  </section>
+
   <section class="card">
     <h2>Excel 匯入記錄管理</h2>
     <section class="filters" aria-label="Excel 匯入記錄篩選">
@@ -112,6 +151,6 @@
     <div class="table-wrap import-records-wrap"><table id="importRecords" class="import-records-table"><colgroup><col class="date-col" /><col class="user-col" /><col class="original-file-col" /><col class="stored-file-col" /><col class="config-col" /><col class="status-col" /><col class="count-col" /><col class="count-col" /><col class="count-col" /><col class="size-col" /><col class="diagnostics-col" /><col class="actions-col" /></colgroup><thead><tr><th>日期</th><th>使用者</th><th>原始檔名</th><th>導入檔名</th><th>設定檔</th><th>狀態</th><th>新增</th><th>重複</th><th>錯誤</th><th>大小</th><th>錯誤診斷</th><th>操作</th></tr></thead><tbody></tbody></table></div>
   </section>
 </main>
-<script src="/static/excel_to_sql_import_records.js?v=20260618-diagnostics-toggle"></script>
+<script src="/static/excel_to_sql_import_records.js?v=20260625-pending-task-review"></script>
 </body>
 </html>
