@@ -63,3 +63,15 @@
 - 目的：檢查主要程式 / 靜態 / 測試檔案是否有單檔過於肥大的情況，並優先以不改 API contract 的方式拆分責任。
 - 主要修改：`sra_api/routers/chat.py` 保留 FastAPI route orchestration，將 Chat payload、session/history、meta task、citation、session/memory 保存等 helper 拆到 `sra_api/routers/chat_support.py`；`agent/data_agent/prompts.py` 改為相容 facade，將風格與報告 prompt 分別拆到 `style_prompts.py` / `report_prompts.py`；移除 `tests/test_editor_auth_ui_static.py` 中重複的常數與重複測試。
 - 驗證：`python -m py_compile sra_api/routers/chat.py sra_api/routers/chat_support.py agent/data_agent/prompts.py agent/data_agent/style_prompts.py agent/data_agent/report_prompts.py tests/test_editor_auth_ui_static.py` 通過；掃描 `api/ sra_api/ agent/ data_ingestion/ config/ tests/ portable_auth_pack/` 的 `.py/.js/.html/.css` 後已無單檔 >= 500 行（排除 swagger / 複製檔）；`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py tests/test_vercel_mock_runtime.py -q` 通過（24 passed, 3 warnings；warnings 為既有 Starlette / invalid escape deprecation）。
+
+### 2026-06-25 DOC_FOLLOWUP multidim_event_json list 修正
+
+- 目的：修正多輪對話中使用者要求「給我第二篇的全文」並進入 DOC_FOLLOWUP 時，文件來源的 `multidim_event_json` 為 `list[dict]` 造成 `list` 沒有 `.get()` 而後端例外。
+- 主要修改：`agent/doc_followup/fetcher.py` 改用既有 `as_blocks()` 正規化 `multidim_event_json`，支援 dict、list[dict] 與 JSON 字串後再抽取 Event / Event_Timeline / article_title。
+- 驗證：`python -m py_compile agent/doc_followup/fetcher.py tests/test_doc_followup_fetcher.py` 通過；`PYTHONPATH=. pytest tests/test_doc_followup_fetcher.py -q` 通過（1 passed）。執行 `python -m pip install --upgrade pip` 時套件索引回覆 403 retry，但目前環境已有所需套件，`python -m pip install -r requirements.txt` 顯示 requirements 已滿足。
+
+### 2026-06-25 multidim_event_json 型別適應性擴大檢查
+
+- 目的：回應 DOC_FOLLOWUP 修正後的追問，檢查專案其他使用 `multidim_event_json` 的流程是否仍假設固定 dict 形狀。
+- 主要修改：修正全文下載 API、evidence parser inner_hits fallback、Editor mapping shape normalizer 與 Editor 清單標題顯示，讓 `multidim_event_json` 可安全處理 dict、list[dict] 與 JSON 字串；並補上跨模組回歸測試。
+- 驗證：`python -m py_compile agent/doc_followup/fetcher.py agent/es/evidence_core/parser.py sra_api/routers/docs.py sra_api/services/editor_index_utils.py tests/test_doc_followup_fetcher.py tests/test_multidim_shape_normalization.py` 通過；`PYTHONPATH=. pytest tests/test_doc_followup_fetcher.py tests/test_multidim_shape_normalization.py -q` 通過（5 passed）；`node --check sra_api/static/editor_core.js` 通過。

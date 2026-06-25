@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from agent.es import es_client
+from agent.es.evidence_core.json_utils import json_load_maybe
 
 _MAPPING_FIELD_PATHS_CACHE_TTL_SEC = 60.0
 _mapping_field_paths_cache: dict[str, tuple[float, set[str], bool]] = {}
@@ -165,6 +166,7 @@ def normalize_sra_source_shapes(source: dict[str, Any], field_type_map: dict[str
     normalized = dict(source)
 
     def _to_list_of_dict(value: Any) -> list[dict[str, Any]]:
+        value = json_load_maybe(value)
         if isinstance(value, list):
             return [v for v in value if isinstance(v, dict)]
         if isinstance(value, dict):
@@ -172,6 +174,7 @@ def normalize_sra_source_shapes(source: dict[str, Any], field_type_map: dict[str
         return []
 
     def _to_dict(value: Any) -> dict[str, Any]:
+        value = json_load_maybe(value)
         if isinstance(value, dict):
             return value
         if isinstance(value, list):

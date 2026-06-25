@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from ..es.evidence_core.json_utils import as_blocks
 from ..tools_es import ESFetchDocById
 
 _fetch_doc_tool = ESFetchDocById()
@@ -82,7 +83,10 @@ def fetch_docs_by_uuid(
         full_text = doc.get("full_text") or ""
 
         # ===== 強化欄位抽取：multidim_event_json + communication =====
-        md = (src.get("multidim_event_json") or {}) if isinstance(src, dict) else {}
+        # multidim_event_json 在 ES 中可能是 dict、list[dict]，或 JSON 字串；
+        # 統一轉為 blocks 後取第一個 dict，避免 list 沒有 .get() 而中斷 DOC_FOLLOWUP。
+        md_blocks = as_blocks(src.get("multidim_event_json") if isinstance(src, dict) else None)
+        md = md_blocks[0] if md_blocks else {}
         ev = (md.get("Event") or {}) if isinstance(md, dict) else {}
         print("md in fetch_docs_by_uuid:", md)
         timeline = md.get("Event_Timeline") or []

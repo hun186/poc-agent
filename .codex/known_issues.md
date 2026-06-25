@@ -373,3 +373,9 @@ Open
 - 現象：GitHub PR merge 曾顯示 `.codex/memory.md`、`api/routers/editor.py`、`api/static/excel_to_sql_dashboard.html` 衝突，且因衝突過於複雜無法用 web editor 解。
 - 狀態：Resolved。
 - 修正：衝突緩解後移除 legacy `api/routers/` 與 `api/static/` mirror files；runtime source 維持 `sra_api/`，top-level `api/` 只保留 shim 與 Vercel entrypoint；`.codex/memory.md` 保留 union merge。
+
+## 2026-06-25 pip index 403 retry
+
+- 現象：在目前執行環境跑 `python -m pip install --upgrade pip` 時，pip 嘗試連線套件索引出現 `Tunnel connection failed: 403 Forbidden` retry。
+- 影響：本次所需套件已安裝，`python -m pip install -r requirements.txt` 顯示 requirements satisfied，pytest 可執行；但未來若需要下載新套件，可能受網路 / proxy 限制影響。
+- 替代驗證：使用既有已安裝相依套件執行 py_compile、pytest 與 node 靜態檢查。

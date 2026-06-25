@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from .models import EvidenceBuildConfig, HitDoc, Citation
-from .json_utils import as_blocks
+from .json_utils import as_blocks, json_load_maybe
 from .date_utils import (
     parse_article_date_iso,
     collect_timeline_dates,
@@ -57,7 +57,16 @@ def parse_es_hits(
                 pid = esrc.get("paragraph_id")
 
                 if not txt:
-                    nested = (esrc.get("multidim_event_json", {}) or {}).get("evidence_snippets", {}) or {}
+                    nested = {}
+                    for block in as_blocks(esrc.get("multidim_event_json")):
+                        snippets = json_load_maybe(block.get("evidence_snippets") or [])
+                        if isinstance(snippets, dict):
+                            snippets = [snippets]
+                        if not isinstance(snippets, list):
+                            snippets = []
+                        nested = next((item for item in snippets if isinstance(item, dict)), {})
+                        if nested:
+                            break
                     txt = nested.get("text")
                     sid = nested.get("source_id")
                     pid = nested.get("paragraph_id")
