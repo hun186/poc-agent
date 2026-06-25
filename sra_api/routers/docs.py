@@ -7,6 +7,7 @@ from elasticsearch import NotFoundError
 #from agent.es.es_client import ES, ALL_INDEXES
 
 from agent.es.es_client import get_es, init_index_cache, ALL_INDEXES
+from agent.es.evidence_core.json_utils import as_blocks, json_load_maybe
 
 router = APIRouter()
 
@@ -125,13 +126,8 @@ def get_fulltext_on_demand(
         raise HTTPException(status_code=404, detail="文件存在，但沒有可用的全文內容。")
 
     # ==== 2) 標題 ====
-    md_raw = src.get("multidim_event_json")
-    if isinstance(md_raw, list):
-        md = md_raw[0] if md_raw and isinstance(md_raw[0], dict) else {}
-    elif isinstance(md_raw, dict):
-        md = md_raw
-    else:
-        md = {}
+    md_blocks = as_blocks(src.get("multidim_event_json"))
+    md = md_blocks[0] if md_blocks else {}
     comm = src.get("communication") or {}
 
     title = (
@@ -144,28 +140,26 @@ def get_fulltext_on_demand(
 
     # ==== 3) 日期：優先用 Event.time_iso，再用 Event_Timeline 的最大 date_iso ====
     def infer_article_date(src_doc: dict) -> str | None:
-        mdj_raw = src_doc.get("multidim_event_json")
-        if isinstance(mdj_raw, list):
-            mdj = mdj_raw[0] if mdj_raw and isinstance(mdj_raw[0], dict) else {}
-        elif isinstance(mdj_raw, dict):
-            mdj = mdj_raw
-        else:
-            mdj = {}
-
-        evt = mdj.get("Event") or {}
-        if isinstance(evt, dict):
-            time_iso = evt.get("time_iso")
-            if isinstance(time_iso, str) and time_iso.strip():
-                return time_iso.strip()
-
-        tl = mdj.get("Event_Timeline") or []
+        mdj_blocks = as_blocks(src_doc.get("multidim_event_json") if isinstance(src_doc, dict) else None)
         dates: list[str] = []
-        for item in tl:
-            if not isinstance(item, dict):
-                continue
-            di = item.get("date_iso")
-            if isinstance(di, str) and di.strip():
-                dates.append(di.strip())
+        for mdj in mdj_blocks:
+            evt = mdj.get("Event") or {}
+            if isinstance(evt, dict):
+                time_iso = evt.get("time_iso")
+                if isinstance(time_iso, str) and time_iso.strip():
+                    return time_iso.strip()
+
+            tl = json_load_maybe(mdj.get("Event_Timeline") or [])
+            if isinstance(tl, dict):
+                tl = [tl]
+            if not isinstance(tl, list):
+                tl = []
+            for item in tl:
+                if not isinstance(item, dict):
+                    continue
+                di = item.get("date_iso")
+                if isinstance(di, str) and di.strip():
+                    dates.append(di.strip())
         if dates:
             return max(dates)
         return None

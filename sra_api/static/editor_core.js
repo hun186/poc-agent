@@ -58,6 +58,9 @@ async function api(path, opts={}) {
   return data;
 }
 function titleFromSource(src) {
-  return src.title || src.subject || (src.communication && src.communication.subject) || (src.rawInfo && (src.rawInfo.title || src.rawInfo.date)) || (src.multidim_event_json && src.multidim_event_json.article_title) || src.uuid || '(無標題)';
+  const md = Array.isArray(src.multidim_event_json)
+    ? src.multidim_event_json.find(item => item && typeof item === 'object' && !Array.isArray(item))
+    : (src.multidim_event_json && typeof src.multidim_event_json === 'object' ? src.multidim_event_json : null);
+  return src.title || src.subject || (src.communication && src.communication.subject) || (src.rawInfo && (src.rawInfo.title || src.rawInfo.date)) || (md && md.article_title) || src.uuid || '(無標題)';
 }
 function schemaSections() { return (state.schema && Array.isArray(state.schema.sections)) ? state.schema.sections : []; }
