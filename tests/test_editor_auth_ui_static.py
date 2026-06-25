@@ -27,26 +27,6 @@ PORTABLE_AUTH_PACK_SCRIPT_FILES = [
 ]
 
 
-EDITOR_SCRIPT_FILES = [
-    "sra_api/static/editor_core.js",
-    "sra_api/static/editor_form.js",
-    "sra_api/static/editor_auth_nav.js",
-    "sra_api/static/editor_stats.js",
-    "sra_api/static/editor_audit.js",
-    "sra_api/static/editor_documents.js",
-    "sra_api/static/editor_bootstrap.js",
-]
-
-PORTABLE_AUTH_PACK_SCRIPT_FILES = [
-    "portable_auth_pack/static/login_admin_core.js",
-    "portable_auth_pack/static/login_admin_auth.js",
-    "portable_auth_pack/static/login_admin_audit.js",
-    "portable_auth_pack/static/login_admin_stats.js",
-    "portable_auth_pack/static/login_admin_admin.js",
-    "portable_auth_pack/static/login_admin_bootstrap.js",
-]
-
-
 def _editor_html() -> str:
     """Return the editor shell plus split static assets for static assertions."""
     return "\n".join([
@@ -107,21 +87,6 @@ def test_editor_static_assets_are_served_by_router() -> None:
 
     missing = client.get("/static/not_allowed.js")
     assert missing.status_code == 404
-
-def test_portable_auth_pack_shell_loads_split_assets() -> None:
-    html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
-
-    assert '<link rel="stylesheet" href="login_admin_minimal.css?v=20260614-split" />' in html
-    for path in PORTABLE_AUTH_PACK_SCRIPT_FILES:
-        asset_name = Path(path).name
-        assert f'<script src="{asset_name}?v=20260614-split"></script>' in html
-        assert Path(path).exists()
-        assert sum(1 for _ in Path(path).open(encoding="utf-8")) < 200
-    assert 'login_admin_minimal.js?v=20260614-split' not in html
-    assert '<style>' not in html
-    assert '<script>\n' not in html
-    assert Path("portable_auth_pack/static/login_admin_minimal.css").exists()
-    assert not Path("portable_auth_pack/static/login_admin_minimal.js").exists()
 
 def test_portable_auth_pack_shell_loads_split_assets() -> None:
     html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")

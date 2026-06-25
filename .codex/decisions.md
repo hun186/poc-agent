@@ -193,3 +193,9 @@
 ## 2026-06-23 Editor array item schema decision
 
 - Editor add-item behavior must use the configured form schema as the source of truth for array item shape. Existing ES documents may omit optional arrays, so UI rendering and add-item defaults cannot depend on the loaded document already containing a sample row.
+
+## 2026-06-25 肥大檔案拆分決策
+
+- 對 route 檔拆分時，優先保留原 HTTP endpoint 與 response shape，不改 API contract；把無狀態或低耦合 helper 移到同 package support module。
+- 對 prompt 常數檔拆分時，保留原 `agent.data_agent.prompts` 匯入路徑作為 facade，避免既有 builder / tests / 外部引用需同步遷移。
+- 掃描肥大檔案時以 500 行作為本次重構門檻；測試檔若只是重複常數或重複測試造成膨脹，優先去重而非拆出新 helper。
