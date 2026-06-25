@@ -230,3 +230,14 @@
 ## 2026-06-23 Mock ES demo document expansion
 
 - No production API path changed. Mock Elasticsearch data now includes additional demo documents for UN General Assembly / Ebola / climate summit coverage and a SQL-imported fishing vessel activity, with sensitive source credentials and internal host/path details intentionally omitted.
+
+
+## 2026-06-25 Editor form-config mapping metadata
+
+- `GET /v1/editor/form-config` response 新增：
+  - `mapping_ok: boolean`：是否成功讀取指定 index 的 Elasticsearch mapping metadata。
+  - `mapping_field_count: number`：後端從 mapping 擷取到的欄位 metadata 數量。
+  - `schema.sections[*].mapping`：若 section path 對應 ES object/nested 欄位，包含 mapping metadata，例如 `{"type": "nested", "has_properties": true}`。
+  - `schema.sections[*].fields[*].mapping_path`：表單欄位對應到 ES mapping 的完整 dot path；array section 內相對欄位會展開為 `<section.path>.<field.path>`。
+  - `schema.sections[*].fields[*].mapping`：欄位的 ES mapping metadata，例如 `{"type": "date"}` 或 `{"type": "integer"}`。
+- `config/editor_form.default.json` 仍負責 UI layout / 顯示欄位；ES mapping metadata 是欄位型別與資料結構的輔助權威來源。

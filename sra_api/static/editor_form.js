@@ -46,22 +46,29 @@ function renderArraySections() {
   });
   document.querySelectorAll('[data-remove-array]').forEach(btn => btn.onclick = () => removeArrayItem(btn.getAttribute('data-remove-array'), Number(btn.getAttribute('data-remove-index'))));
 }
-function normalizeLeaf(value) {
+function normalizeLeaf(value, path = '', preserveArrayPaths = new Set()) {
   if (Array.isArray(value)) {
+    if (preserveArrayPaths.has(path)) return value.map(item => normalizeLeaf(item, path, preserveArrayPaths));
     if (value.length === 0) return [];
-    if (value.length === 1) return normalizeLeaf(value[0]);
-    return value.map(normalizeLeaf);
+    if (value.length === 1) return normalizeLeaf(value[0], path, preserveArrayPaths);
+    return value.map(item => normalizeLeaf(item, path, preserveArrayPaths));
   }
   if (value && typeof value === 'object') {
     const out = {};
-    Object.entries(value).forEach(([k, v]) => { out[k] = normalizeLeaf(v); });
+    Object.entries(value).forEach(([k, v]) => {
+      const childPath = path ? `${path}.${k}` : k;
+      out[k] = normalizeLeaf(v, childPath, preserveArrayPaths);
+    });
     return out;
   }
   return value;
 }
 function normalizeSource(source) {
-  const out = normalizeLeaf(JSON.parse(JSON.stringify(source || {})));
   const normalizers = (state.schema && state.schema.normalizers) || {};
+  const arrayPaths = new Set(normalizers.array_paths || []);
+  schemaSections().filter(section => section.type === 'array').forEach(section => arrayPaths.add(section.path));
+  schemaSections().flatMap(section => section.fields || []).filter(field => field.type === 'csv').forEach(field => arrayPaths.add(field.path));
+  const out = normalizeLeaf(JSON.parse(JSON.stringify(source || {})), '', arrayPaths);
   (normalizers.json_object_paths || []).forEach(path => {
     let value = getPath(out, path);
     if (typeof value === 'string') {
@@ -75,9 +82,6 @@ function normalizeSource(source) {
     const normalized = getPath(out, path);
     if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) setPath(out, path, {});
   });
-  const arrayPaths = new Set(normalizers.array_paths || []);
-  schemaSections().filter(section => section.type === 'array').forEach(section => arrayPaths.add(section.path));
-  schemaSections().flatMap(section => section.fields || []).filter(field => field.type === 'csv').forEach(field => arrayPaths.add(field.path));
   arrayPaths.forEach(path => { if (!Array.isArray(getPath(out, path))) setPath(out, path, []); });
   schemaSections().filter(section => section.type === 'array').forEach(section => {
     const items = getPath(out, section.path) || [];
@@ -130,11 +134,19 @@ function addArrayItem(path) {
   try {
     collectFormToSource();
     const section = schemaSections().find(s => s.type === 'array' && s.path === path);
+    if (!section) throw new Error(`找不到表單設定中的陣列欄位：${path}`);
     const item = {};
-    (section && section.fields || []).forEach(field => setPath(item, field.path, defaultArrayFieldValue(field)));
+    // Use the configured section fields as the authoritative item shape.
+    // A loaded ES document may not contain the first evidence/timeline/party/person
+    // row yet, so the add button must never rely on a document sample row.
+    (section.fields || []).forEach(field => setPath(item, field.path, defaultArrayFieldValue(field)));
     const arr = ensureArrayAtPath(path);
-    arr.push(item); setPath(state.source, path, arr); populateForm(state.source);
-    setStatus('saveStatus', `已新增 ${section && (section.item_label || section.title) || '項目'}，可在新格子輸入內容。`, 'ok');
+    arr.push(item);
+    setPath(state.source, path, arr);
+    populateForm(state.source);
+    const rendered = document.querySelectorAll(`[data-array-path="${attrSelectorValue(path)}"]`).length;
+    if (rendered < arr.length) throw new Error(`已更新資料但未成功渲染新增格子：${path}`);
+    setStatus('saveStatus', `已新增 ${section.item_label || section.title || '項目'}，可在新格子輸入內容。`, 'ok');
   } catch (err) { setStatus('saveStatus', '新增欄位失敗：' + err.message, 'error'); }
 }
 function removeArrayItem(path, idx) {

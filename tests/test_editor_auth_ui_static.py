@@ -51,7 +51,7 @@ def test_editor_static_shell_loads_split_assets() -> None:
 
     assert '<link rel="stylesheet" href="/static/editor.css?v=20260614-split" />' in html
     expected_versions = {
-        "editor_form.js": "20260623-array-schema",
+        "editor_form.js": "20260625-array-preserve-single",
     }
     for path in EDITOR_SCRIPT_FILES:
         asset_name = Path(path).name
@@ -466,5 +466,6 @@ def test_editor_array_buttons_are_real_buttons_and_report_add_status() -> None:
     assert "btn.getAttribute('data-add-array')" in html
     assert "btn.getAttribute('data-remove-array')" in html
     assert 'function ensureArrayAtPath(path)' in html
-    assert "setStatus('saveStatus', `已新增 ${section && (section.item_label || section.title) || '項目'}，可在新格子輸入內容。`, 'ok');" in html
+    assert "setStatus('saveStatus', `已新增 ${section.item_label || section.title || '項目'}，可在新格子輸入內容。`, 'ok');" in html
+    assert "if (rendered < arr.length) throw new Error" in html
     assert "setStatus('saveStatus', '新增欄位失敗：' + err.message, 'error');" in html
