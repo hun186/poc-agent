@@ -379,3 +379,30 @@ Open
 - 現象：在目前執行環境跑 `python -m pip install --upgrade pip` 時，pip 嘗試連線套件索引出現 `Tunnel connection failed: 403 Forbidden` retry。
 - 影響：本次所需套件已安裝，`python -m pip install -r requirements.txt` 顯示 requirements satisfied，pytest 可執行；但未來若需要下載新套件，可能受網路 / proxy 限制影響。
 - 替代驗證：使用既有已安裝相依套件執行 py_compile、pytest 與 node 靜態檢查。
+
+## 2026-06-25 Editor mapping metadata UI 截圖限制
+
+首次發現：2026-06-25
+
+問題：
+
+- 本次讓 Editor form-config 依 ES mapping metadata 推導部分欄位 input type，屬可能影響表單呈現的 UI 行為；目前環境再次檢查 Playwright 時仍回報 `No module named 'playwright'`。
+
+影響：
+
+- 無法在目前環境提供瀏覽器截圖驗證 mapping metadata 合併後的表單呈現。
+
+暫時解法：
+
+- 使用 `tests/test_editor_form_config_mapping.py` 驗證 form-config response 已合併 mapping metadata，並用既有靜態 UI 測試與 JS syntax check 驗證前端 assets。
+
+根本原因：
+
+- 測試環境缺少 Playwright / browser runtime。
+
+狀態：
+Open
+
+負責人：
+
+-

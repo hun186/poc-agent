@@ -199,3 +199,10 @@
 - 對 route 檔拆分時，優先保留原 HTTP endpoint 與 response shape，不改 API contract；把無狀態或低耦合 helper 移到同 package support module。
 - 對 prompt 常數檔拆分時，保留原 `agent.data_agent.prompts` 匯入路徑作為 facade，避免既有 builder / tests / 外部引用需同步遷移。
 - 掃描肥大檔案時以 500 行作為本次重構門檻；測試檔若只是重複常數或重複測試造成膨脹，優先去重而非拆出新 helper。
+
+
+## 2026-06-25 Editor form config 與 ES mapping 分工決策
+
+- Editor 是 ES 文件編修介面，因此欄位資料型別與 object/nested 結構應以 Elasticsearch mapping metadata 為權威來源。
+- `config/editor_form.default.json` 不應承擔完整資料模型定義；它的主要責任是 UI layout、顯示哪些欄位、label/help/compact 行為與 schema selection。
+- 為保留離線 / mapping 暫時不可讀情境的可用性，form-config 會在 mapping 可用時合併 metadata；mapping 不可用時保留既有 UI schema 並明確以 `mapping_ok=false` 揭露。

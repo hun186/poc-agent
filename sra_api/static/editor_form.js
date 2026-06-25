@@ -130,11 +130,19 @@ function addArrayItem(path) {
   try {
     collectFormToSource();
     const section = schemaSections().find(s => s.type === 'array' && s.path === path);
+    if (!section) throw new Error(`找不到表單設定中的陣列欄位：${path}`);
     const item = {};
-    (section && section.fields || []).forEach(field => setPath(item, field.path, defaultArrayFieldValue(field)));
+    // Use the configured section fields as the authoritative item shape.
+    // A loaded ES document may not contain the first evidence/timeline/party/person
+    // row yet, so the add button must never rely on a document sample row.
+    (section.fields || []).forEach(field => setPath(item, field.path, defaultArrayFieldValue(field)));
     const arr = ensureArrayAtPath(path);
-    arr.push(item); setPath(state.source, path, arr); populateForm(state.source);
-    setStatus('saveStatus', `已新增 ${section && (section.item_label || section.title) || '項目'}，可在新格子輸入內容。`, 'ok');
+    arr.push(item);
+    setPath(state.source, path, arr);
+    populateForm(state.source);
+    const rendered = document.querySelectorAll(`[data-array-path="${attrSelectorValue(path)}"]`).length;
+    if (rendered < arr.length) throw new Error(`已更新資料但未成功渲染新增格子：${path}`);
+    setStatus('saveStatus', `已新增 ${section.item_label || section.title || '項目'}，可在新格子輸入內容。`, 'ok');
   } catch (err) { setStatus('saveStatus', '新增欄位失敗：' + err.message, 'error'); }
 }
 function removeArrayItem(path, idx) {

@@ -3,7 +3,7 @@
 ## Current Summary
 
 - 本專案是 FastAPI + Elasticsearch 的 RAG / agent 系統；API 在 `sra_api/`（另有相容 shim），agent / retrieval / evidence 在 `agent/`，資料匯入與 ETL 在 `data_ingestion/`，設定在 `config/`，測試在 `tests/`。
-- Editor 表單由 `config/editor_form.default.json` 驅動，前端在 `sra_api/static/editor_form.js` 依 schema sections 渲染一般欄位與 array 欄位；array 新增不應依賴載入文件本身已有第一筆範例。
+- Editor 表單由 `config/editor_form.default.json` 選擇 UI 顯示欄位，並在載入特定 index 時用 Elasticsearch live mapping metadata 補上欄位型別與 mapping_path；前端在 `sra_api/static/editor_form.js` 依 schema sections 渲染一般欄位與 array 欄位；array 新增不應依賴載入文件本身已有第一筆範例。
 - Vercel / mock runtime 只用於檢閱或唯讀環境，正式 ES / SQL 可用時仍應優先使用真實服務；mock response 必須透過 `mock_mode` 與 warnings 明確揭露。
 - Excel→SQL 使用者匯入採上傳保存、預掃描、確認匯入 SQL 三階段；mock SQL dashboard 覆蓋 audit 查詢與 no-op delete，避免在 Vercel preview 假裝寫入正式 SQL Server。
 - Auth 採四層 role：`data_reader`、`data_editor`、`db_operator`、`superuser`；legacy `user` 正規化為 `data_editor`。新註冊帳號預設 `data_reader` + `pending`。
@@ -87,3 +87,16 @@
 - 目的：回應多維度事件應用情境中，長文切片合併可能把不同事件合成單一大字典，以及 agent / Editor 仍偏向單一事件物件的長期風險。
 - 主要修改：新增 `docs/multidim_event_json_multi_event_todo.md`，記錄未來 event-cluster merge、multi-event agent selector、Editor 事件列表 UI 與 event-level index 的分階段建議；本次僅文件化待辦，不調整通用 LLM 抽取框架與 merge slice 程式。
 - 驗證：`python - <<'PY' ... PY` 檢查 TODO 文件存在必要標題與關鍵內容；`git diff --check` 通過。
+
+### 2026-06-25 Editor array add rendering guard
+
+- 目的：回應 Editor 文件編修頁在文件原本沒有 evidence / Timeline / Party / Person 陣列時，按新增按鈕只看到成功訊息但未看到新輸入格的回報。
+- 主要修改：`sra_api/static/editor_form.js` 的新增陣列項目流程明確以表單設定 schema section fields 建立新 item，不依賴已載入文件中既有樣本列；新增後會檢查 DOM 是否實際渲染對應 array item，若未渲染改顯示錯誤，避免只有成功訊息。`editor.html` 同步更新 `editor_form.js` cache-busting 版本，避免瀏覽器沿用舊版前端資產。
+- 驗證：`node --check sra_api/static/editor_form.js` 通過；`PYTHONPATH=. pytest tests/test_editor_form_static.py tests/test_editor_auth_ui_static.py -q` 通過（25 passed, 1 warning；warning 為既有 Starlette/httpx deprecation）。執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 時 pip index 曾回覆 403 retry，但目前環境 requirements 已滿足。
+
+
+### 2026-06-25 Editor form config 與 ES mapping 連動
+
+- 目的：回應 Editor 是 ES 資料庫編修介面，欄位型別與資料結構應自然連動 Elasticsearch mapping；`config/editor_form.default.json` 應偏向 UI 顯示哪些欄位，而不是唯一資料型別來源。
+- 主要修改：`public_editor_form_config()` 在有 index 時讀取 ES live mapping metadata，將 mapping type / mapping_path 合併到 schema sections 與 fields；對 date / number / boolean / text 類 mapping 會推導 UI input type，讓新增空白陣列項目與表單欄位格式跟 ES mapping 保持一致。
+- 驗證：`python -m py_compile sra_api/services/editor_form_config.py sra_api/services/editor_index_utils.py tests/test_editor_form_config_mapping.py` 通過；`PYTHONPATH=. pytest tests/test_editor_form_config_mapping.py tests/test_editor_form_static.py tests/test_editor_auth_ui_static.py tests/test_multidim_shape_normalization.py -q` 通過（31 passed, 1 warning；warning 為既有 Starlette/httpx deprecation）。

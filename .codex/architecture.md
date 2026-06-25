@@ -246,3 +246,11 @@
 - `sra_api/routers/chat.py` 現在聚焦 FastAPI OpenAI-compatible route orchestration：建立 request / trace、呼叫 `answer_with_routing()`、組 OpenAI-compatible response、落地 API state。
 - `sra_api/routers/chat_support.py` 承接 chat route 的純 helper 與 request model：`ChatPayload`、meta task 判斷與處理、session key / history 解析、reuse uuid / refno map 準備、citation link 建立、session 與 memory 保存。
 - `agent/data_agent/prompts.py` 保留原 import contract，改為 re-export facade；風格資料準備 prompt 位於 `agent/data_agent/style_prompts.py`，報告資料準備 prompt 位於 `agent/data_agent/report_prompts.py`。
+
+
+## 2026-06-25 Editor form schema 與 ES mapping metadata
+
+- Editor 表單的 UI 顯示範圍仍由 `config/editor_form.default.json` 控制：決定哪些 section / field 顯示、標籤、說明與版面。
+- `GET /v1/editor/form-config?index=...` 會在選定 schema 後讀取該 index 的 Elasticsearch live mapping metadata，將 mapping type、multi-field keys 與 nested/object hints 合併到 schema section / field。
+- 前端 `editor_form.js` 仍只消費 form-config response；新增 array item 時使用合併後 schema fields，因此 evidence / Timeline / Party / Person 第一筆新增也能使用 mapping 推導的欄位型別。
+- 若 ES mapping 無法讀取，form-config 仍回傳 UI schema 並標記 `mapping_ok=false`，避免編修 UI 因 mapping 暫時不可用而完全無法載入。
