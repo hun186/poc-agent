@@ -175,3 +175,22 @@
 - 目的：當建立 Excel→SQL 任務設定檔時，若使用者選擇既有任務作為資料庫連線來源，前端同步帶入該任務的 ODBC Driver 與 trusted connection 勾選狀態，避免 UI 顯示仍停留在預設值造成誤解。
 - 主要修改：`excel_to_sql_import_records.js` 新增 `applyConnectionSourceDefaults()`，在載入連線來源選項與使用者切換來源時，從 `review_summary.db` 套用 `driver` 與 `trusted_connection` 到表單。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` requirements 已滿足但 pip upgrade 索引查詢遇 403 retry；`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py tests/test_excel_to_sql_user_imports.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（22 passed, 1 warning）；`git diff --check` 通過。
+
+### 2026-06-26 Excel→SQL 導航與任務連線來源調整
+
+- 目的：調整 Editor / Excel→SQL 三頁導航文案與對稱性，移除匯入作業中心的重複任務管理區塊，並讓建立 Excel→SQL 任務設定檔時可從既有任務帶入 DB 連線資訊。
+- 主要修改：Editor 導航「監控 Dashboard」改為「SQL條目匯入情況監控Dashboard」；Excel 匯入作業中心移除「任務設定檔管理」卡片；Excel→SQL 匯入查詢儀表板新增「任務 JSON 管理」按鈕；任務設定檔頁的資料庫連線來源候選改為合併 dashboard active 任務與使用者可見的既有任務 JSON，選取後帶入 server、database、user、driver 與 trusted connection 顯示值，建立 payload 仍以 connection_source_config 沿用來源任務 DB 設定。
+- 驗證：`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py tests/test_editor_auth_ui_static.py -q` 通過（43 passed, 3 warnings；warnings 為既有 Starlette / invalid escape deprecation）。依規定先執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt`，pip upgrade 遭套件索引 403 retry 但結束碼 0，requirements 均已 satisfied。
+
+### 2026-06-26 Excel→SQL audit 批次刪除與報告
+
+- 目的：依 review 回饋將 Editor 匯入管理導航與目標頁標題一致，並改善 Excel→SQL 匯入查詢儀表板中最近 audit 事件的時間篩選、批次 SQL row 刪除與刪除報告下載。
+- 主要修改：Editor 導航文字改為「Excel→SQL 匯入查詢儀表板」；最近 audit 事件篩選新增本機起訖時間欄位並共用 datetime-local 轉 UTC helper；recent table 增加可刪除列勾選欄、批次刪除按鈕、批次刪除報告 Excel（HTML .xls）下載；新增 `POST /v1/excel-to-sql/delete-rows`，逐一呼叫既有單筆刪除流程並彙整報告，單筆刪除 response 也回傳刪除前 payload 供報告使用。
+- 設計結論：只刪 SQL 不應直接硬刪 ES。已在 decisions/backlog 記錄建議後續採 lineage metadata + SQL delete outbox/tombstone + ES soft-delete/supersede 或人工審核補償流程，避免跨系統交易與誤刪。
+- 驗證：`node --check sra_api/static/excel_to_sql_dashboard_app.js` 通過；`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/dashboard_delete.py data_ingestion/excel_to_sql/mock_sql.py tests/test_dashboard_filters.py` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.py tests/test_editor_auth_ui_static.py tests/test_vercel_mock_runtime.py -q` 通過（43 passed, 1 warning）；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（15 passed, 1 warning）。依規定先執行套件安裝前置指令，pip upgrade 仍遇索引 403 retry 但 requirements 均已 satisfied。
+
+### 2026-06-26 Excel→SQL 批次刪除確認機制強化
+
+- 目的：回應批次刪除 SQL 條目需避免誤按造成事故的疑慮。
+- 主要修改：批次刪除前端流程改為多階段確認：必填刪除原因、顯示批次筆數與前 5 筆 hash、要求輸入精確確認字串 `DELETE <筆數>`，最後再顯示 browser confirm；確認字串不符合時不呼叫批次刪除 API。
+- 驗證：`node --check sra_api/static/excel_to_sql_dashboard_app.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.py tests/test_editor_auth_ui_static.py tests/test_vercel_mock_runtime.py tests/test_excel_to_sql_user_imports.py -q` 通過（58 passed, 1 warning）；`git diff --check` 通過。依規定先執行套件安裝前置指令，pip upgrade 仍遇索引 403 retry 但 requirements 均已 satisfied。

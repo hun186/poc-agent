@@ -125,7 +125,7 @@ def test_import_center_static_contains_user_import_controls():
     config_html = Path("sra_api/static/excel_to_sql_task_configs.html").read_text(
         encoding="utf-8"
     )
-    assert "建立 / 管理待審任務 JSON" in html
+    assert "建立 / 管理待審任務 JSON" not in html
     assert "建立 Excel→SQL 任務設定檔" in config_html
     assert "我建立的任務清單 / 審核進度" in config_html
     assert "資料庫連線來源任務" in config_html
@@ -176,6 +176,12 @@ def test_import_center_static_contains_user_import_controls():
     assert "taskConnectionSource" in script
     assert "function createTaskConfig" in script
     assert "function applyConnectionSourceDefaults" in script
+    assert "function loadTaskConfigSourceCandidates" in script
+    assert "mergeTasksByConfigPath" in script
+    assert "connectionSourceTasks" in script
+    assert "taskDbServer" in script
+    assert "taskDbDatabase" in script
+    assert "taskDbUser" in script
     assert "taskDbDriver" in script
     assert "taskTrustedConnection" in script
     assert "function setTaskConfigStatus" in script
@@ -187,6 +193,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "監控任務" not in html
     assert "Excel→SQL 匯入查詢儀表板" in html
     assert "任務 JSON 管理" in html
+    assert "任務設定檔管理" not in html
     assert "船舶活動 Excel 匯入任務" in Path(
         "config/excel_to_sql/vessel_activities.example.json"
     ).read_text(encoding="utf-8")

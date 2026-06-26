@@ -78,3 +78,9 @@
 ## 2026-06-26 Excel→SQL 後續改善
 
 - 設計真正的 SQL View 自動建立流程：需定義 view name、schema、CREATE OR ALTER 權限、既有 view 更新策略、欄位引用安全檢查與審核 UI；避免只產生未執行的 view 規格。
+
+## 2026-06-26 SQL / ES 刪除一致性後續改善
+
+- 為 Excel→SQL 匯入與外部 LLM→ES 寫入設計正式 lineage contract，至少包含 source_config_path、hash_value、run_id、audit_id、source_file、sheet_name、row_no。
+- 新增 SQL delete outbox / tombstone table 或事件檔，讓 ES 同步工作可依刪除 audit 事件執行 soft-delete / supersede / 人工審核，而不是在 dashboard request 內直接硬刪 ES doc。
+- 在 Editor 或管理頁新增「依 SQL hash 查找 ES doc」與「確認同步刪除 / 標記停用」操作，降低跨系統誤刪風險。

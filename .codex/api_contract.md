@@ -318,3 +318,11 @@
   - Request：`{"config": "config/excel_to_sql/example.json"}`。
   - `db_operator` 只能刪除自己建立的任務；`superuser` 可刪除任務設定檔。
   - Response：`{"task": {"config_path", "deleted", "created_by", "deleted_by"}}`。
+
+## 2026-06-26 Excel→SQL batch SQL row deletion API
+
+- Added `POST /v1/excel-to-sql/delete-rows`, requiring `db_operator` permission.
+- Request body: `{ "config": "config/excel_to_sql/task.json", "hash_values": ["..."], "reason": "復原錯誤 Excel 匯入" }`; `hash_values` accepts 1-500 values and is de-duplicated server-side.
+- Response body: `{ "ok": true, "processed": number, "deleted_rows": number, "report": { "generated_at", "actor", "config_path", "reason", "rows": [...] } }`.
+- Each report row includes at least `deleted_at`, `actor`, `config_path`, `hash_value`, `status`, `deleted_rows`, `destination_table`, `hash_field`, `reason`, optional `error`, and `deleted_row_payloads` captured before SQL deletion.
+- The existing single-row `POST /v1/excel-to-sql/delete-row` remains supported; its response now also includes `deleted_row_payloads` for report generation.
