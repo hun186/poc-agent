@@ -15,6 +15,8 @@ from data_ingestion.excel_to_sql.dashboard import (
 from data_ingestion.excel_to_sql.task_configs import (
     approve_task_config,
     create_task_config,
+    list_task_configs,
+    set_task_config_enabled,
 )
 from data_ingestion.excel_to_sql.user_imports import (
     import_record,
@@ -40,6 +42,11 @@ class DeleteImportedRowPayload(BaseModel):
 
 class ApproveTaskConfigPayload(BaseModel):
     config: str = Field(..., min_length=6, max_length=240)
+
+
+class TaskConfigStatusPayload(BaseModel):
+    config: str = Field(..., min_length=6, max_length=240)
+    enabled: bool
 
 
 class ExcelToSqlTaskConfigPayload(BaseModel):
@@ -69,6 +76,7 @@ class ExcelToSqlTaskConfigPayload(BaseModel):
     hash_field_type: str = Field(default="CHAR(64)", max_length=80)
     create_hash_index: bool = True
     mappings: list[dict[str, Any]] = Field(default_factory=list)
+    composite_mappings: list[dict[str, Any]] = Field(default_factory=list)
     batch_size: int = Field(default=500, ge=1, le=10000)
     skip_empty_rows: bool = True
     truncate_before_load: bool = False
@@ -208,6 +216,13 @@ def excel_to_sql_delete_row(
         ) from exc
 
 
+
+@router.get("/v1/excel-to-sql/task-configs")
+def excel_to_sql_list_task_configs(
+    _: AuthUser = Depends(require_superuser),
+) -> dict[str, Any]:
+    return {"tasks": list_task_configs()}
+
 @router.post("/v1/excel-to-sql/task-configs")
 def excel_to_sql_create_task_config(
     payload: ExcelToSqlTaskConfigPayload,
@@ -247,6 +262,27 @@ def excel_to_sql_approve_task_config(
             status_code=500, detail=f"啟用 Excel→SQL 任務設定檔失敗：{exc}"
         ) from exc
 
+
+
+
+@router.post("/v1/excel-to-sql/task-configs/status")
+def excel_to_sql_set_task_config_status(
+    payload: TaskConfigStatusPayload,
+    user: AuthUser = Depends(require_superuser),
+) -> dict[str, Any]:
+    try:
+        task = set_task_config_enabled(
+            payload.config, enabled=payload.enabled, actor=user.username
+        )
+        return {"task": task}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"更新 Excel→SQL 任務設定檔狀態失敗：{exc}"
+        ) from exc
 
 @router.post("/v1/excel-to-sql/import-records")
 def excel_to_sql_upload_import_record(

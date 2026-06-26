@@ -106,7 +106,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
     assert (
-        "/static/excel_to_sql_import_records.js?v=20260625-pending-task-review" in html
+        "/static/excel_to_sql_import_records.js?v=20260626-composite-template" in html
     )
     assert "/v1/excel-to-sql/import-records" in script
     assert "previewImportRecord" in script
@@ -117,19 +117,57 @@ def test_import_center_static_contains_user_import_controls():
     assert "批次刪除勾選記錄" not in html
     assert "錯誤診斷" in html
     assert "匯入任務" in html
+    assert "uploadTaskDetails" in html
+    assert "目前匯入任務的 Excel→SQL 欄位轉換" in script
+    assert "dashboardTasks" in script
+    assert "renderUploadTaskDetails" in script
     assert "建立 Excel→SQL 任務設定檔" in html
     assert "資料庫連線來源任務" in html
     assert "department/new_task.json" in html
     assert "taskMappings" in html
     assert "sqlTypeOptions" in html
+    assert 'id="taskDefaultFieldType" list="sqlTypeOptions"' in html
+    assert "常用 SQL 型別小提醒" in html
+    assert "預設欄位型別與欄位對應 SQL 型別都可選擇或手動輸入" in html
+    assert "NVARCHAR(255)" in html
+    assert "DECIMAL(18,2)" in html
+    assert "DATE / DATETIME2" in html
+    assert "BIT" in html
     assert "比對方式說明" in html
+    assert "多欄位拼裝成 SQL 新欄位" in html
+    assert "taskCompositeMappings" in html
+    assert "addCompositeMappingRow" in script
+    assert "collectCompositeMappings" in script
+    assert "composite_mappings" in script
+    assert "composite-template" in script
+    assert "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" in html
+    assert "complete_description" in html + script
+    assert "每個拼裝欄位都需要至少兩個來源欄位" in script
     assert "pending" in html
+    assert "superuserTaskReview" in html
     assert "approveTaskConfigPath" in html
+    assert "taskReviewEnabled" in html
+    assert "taskReviewDetails" in html
+    assert "review-details" in html
+    assert "JSON 任務轉換細節" in script
+    assert "密碼欄位已遮蔽" in script
+    assert "function renderTaskReviewDetails" in script
+    assert "config_preview" in script
+    assert "review_summary" in script
+    assert "config-grid" in html
+    assert "config-group" in html
+    assert "基本資訊" in html
+    assert "資料庫連線" in html
+    assert "Excel 來源" in html
+    assert "SQL 目的地" in html
     assert "/v1/excel-to-sql/task-configs" in script
     assert "connection_source_config" in script
     assert "taskConnectionSource" in script
     assert "function createTaskConfig" in script
-    assert "function approveTaskConfig" in script
+    assert "function setTaskConfigStatus" in script
+    assert "function loadTaskConfigReviewOptions" in script
+    assert "currentUserRole !== ROLE_SUPERUSER" in script
+    assert "function approveTaskConfig" not in script
     assert "showMatchHelp" in script
     assert 'list="sqlTypeOptions"' in script
     assert "監控任務" not in html
@@ -485,10 +523,12 @@ def test_create_excel_to_sql_task_config_accepts_root_prefixed_subpath(tmp_path)
     assert (tmp_path / "group" / "root_prefixed.json").exists()
 
 
-def test_approve_excel_to_sql_task_config_enables_pending_task(tmp_path):
+def test_task_config_review_summary_masks_password_and_status_toggles(tmp_path):
     from data_ingestion.excel_to_sql.task_configs import (
         approve_task_config,
         create_task_config,
+        list_task_configs,
+        set_task_config_enabled,
     )
 
     payload = {
@@ -504,6 +544,14 @@ def test_approve_excel_to_sql_task_config_enables_pending_task(tmp_path):
     }
     create_task_config(payload, actor="operator", root=tmp_path)
 
+    listed = list_task_configs(root=tmp_path)
+    assert listed[0]["review_summary"]["source"]["sheet"] == "Sheet1"
+    assert listed[0]["review_summary"]["destination"]["table"] == "dbo.ImportTarget"
+    assert listed[0]["review_summary"]["mappings"][0]["source_column"] == "A"
+    assert listed[0]["review_summary"]["mappings"][0]["dest_field"] == "a"
+    assert listed[0]["config_preview"]["db"]["password"] == "********"
+    assert listed[0]["config_preview"]["db"]["user"] == "operator"
+
     approved = approve_task_config("pending.json", actor="admin", root=tmp_path)
 
     data = json.loads((tmp_path / "pending.json").read_text(encoding="utf-8"))
@@ -512,6 +560,140 @@ def test_approve_excel_to_sql_task_config_enables_pending_task(tmp_path):
     assert data["dashboard"]["enabled"] is True
     assert data["dashboard"]["status"] == "active"
     assert data["dashboard"]["approved_by"] == "admin"
+
+    disabled = set_task_config_enabled(
+        "pending.json", enabled=False, actor="admin", root=tmp_path
+    )
+    data = json.loads((tmp_path / "pending.json").read_text(encoding="utf-8"))
+    assert disabled["enabled"] is False
+    assert disabled["status"] == "pending"
+    assert data["dashboard"]["enabled"] is False
+    assert data["dashboard"]["status"] == "pending"
+    assert data["dashboard"]["disabled_by"] == "admin"
+
+
+def test_excel_to_sql_composite_mapping_combines_multiple_excel_columns(tmp_path):
+    from openpyxl import Workbook
+    from data_ingestion.excel_to_sql.task_configs import create_task_config
+    from data_ingestion.excel_to_sql.workbook import (
+        iter_excel_rows,
+        open_workbook_headers,
+        read_column_mappings,
+    )
+
+    workbook = Workbook()
+    ws = workbook.active
+    ws.title = "Sheet1"
+    ws.append(["縣市", "地址", "姓名"])
+    ws.append(["台北市", "中正路 1 號", "王小明"])
+    excel_path = tmp_path / "sample.xlsx"
+    workbook.save(excel_path)
+
+    create_task_config(
+        {
+            "filename": "composite.json",
+            "task_name": "Composite",
+            "db_server": "sql.local",
+            "db_database": "OpsDb",
+            "db_user": "operator",
+            "db_password": "secret-value",
+            "source_sheet": "Sheet1",
+            "destination_table": "dbo.ImportTarget",
+            "mappings": [{"source_column": "姓名", "dest_field": "name"}],
+            "composite_mappings": [
+                {
+                    "source_columns": ["縣市", "地址"],
+                    "dest_field": "full_address",
+                    "separator": " ",
+                    "dest_field_type": "NVARCHAR(255)",
+                }
+            ],
+        },
+        actor="operator",
+        root=tmp_path,
+    )
+    cfg_path = tmp_path / "composite.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    headers = open_workbook_headers(str(cfg_path), cfg, excel_path)[0]
+    mappings = read_column_mappings(cfg, headers.header_map)
+
+    assert cfg["mappings"][1]["compose"]["source_columns"] == ["縣市", "地址"]
+    assert mappings[1]["dest_field"] == "full_address"
+    rows = list(
+        iter_excel_rows(
+            excel_path=excel_path,
+            sheet_name="Sheet1",
+            header_row=1,
+            start_row=2,
+            end_row=0,
+            mappings=mappings,
+            skip_empty_rows=True,
+        )
+    )
+
+    assert rows[0][1]["full_address"] == "台北市 中正路 1 號"
+    assert rows[0][1]["name"] == "王小明"
+
+
+def test_excel_to_sql_composite_mapping_template_substitutes_excel_values(tmp_path):
+    from openpyxl import Workbook
+    from data_ingestion.excel_to_sql.task_configs import create_task_config
+    from data_ingestion.excel_to_sql.workbook import (
+        iter_excel_rows,
+        open_workbook_headers,
+        read_column_mappings,
+    )
+
+    workbook = Workbook()
+    ws = workbook.active
+    ws.title = "Sheet1"
+    ws.append(["日期", "地點", "敘述"])
+    ws.append(["2026-06-26", "台北", "例行巡檢完成"])
+    excel_path = tmp_path / "sample-template.xlsx"
+    workbook.save(excel_path)
+
+    create_task_config(
+        {
+            "filename": "composite-template.json",
+            "task_name": "Composite Template",
+            "db_server": "sql.local",
+            "db_database": "OpsDb",
+            "db_user": "operator",
+            "db_password": "secret-value",
+            "source_sheet": "Sheet1",
+            "destination_table": "dbo.ImportTarget",
+            "mappings": [{"source_column": "日期", "dest_field": "event_date"}],
+            "composite_mappings": [
+                {
+                    "source_columns": ["日期", "地點", "敘述"],
+                    "dest_field": "complete_description",
+                    "template": "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}",
+                    "separator": " ",
+                    "dest_field_type": "NVARCHAR(MAX)",
+                }
+            ],
+        },
+        actor="operator",
+        root=tmp_path,
+    )
+    cfg_path = tmp_path / "composite-template.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    headers = open_workbook_headers(str(cfg_path), cfg, excel_path)[0]
+    mappings = read_column_mappings(cfg, headers.header_map)
+    rows = list(
+        iter_excel_rows(
+            excel_path=excel_path,
+            sheet_name="Sheet1",
+            header_row=1,
+            start_row=2,
+            end_row=0,
+            mappings=mappings,
+            skip_empty_rows=True,
+        )
+    )
+
+    assert cfg["mappings"][1]["compose"]["template"] == "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}"
+    assert rows[0][1]["complete_description"] == "日期是2026-06-26，發生地點是台北，當天的敘述是例行巡檢完成"
 
 
 def test_create_excel_to_sql_task_config_rejects_unsafe_filename(tmp_path):
@@ -535,3 +717,33 @@ def test_create_excel_to_sql_task_config_rejects_unsafe_filename(tmp_path):
         assert "設定檔檔名" in str(exc)
     else:
         raise AssertionError("unsafe filename should be rejected")
+
+
+def test_excel_to_sql_task_review_api_requires_superuser(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers import editor_dependencies
+    from api.services.auth_store import AuthUser
+    import sra_api.routers.excel_to_sql as excel_router
+
+    app = FastAPI()
+    app.include_router(excel_router.router)
+
+    def db_operator_user():
+        return AuthUser(username="operator", role="db_operator", status="active")
+
+    app.dependency_overrides[editor_dependencies.current_user] = db_operator_user
+    client = TestClient(app)
+
+    list_response = client.get("/v1/excel-to-sql/task-configs")
+    status_response = client.post(
+        "/v1/excel-to-sql/task-configs/status",
+        json={"config": "pending.json", "enabled": True},
+    )
+    approve_response = client.post(
+        "/v1/excel-to-sql/task-configs/approve", json={"config": "pending.json"}
+    )
+
+    assert list_response.status_code == 403
+    assert status_response.status_code == 403
+    assert approve_response.status_code == 403

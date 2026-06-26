@@ -1,4 +1,8 @@
 const tokenKey = 'sra_editor_token';
+let currentUserRole = '';
+let taskConfigReviewTasks = [];
+let dashboardTasks = [];
+const ROLE_SUPERUSER = 'superuser';
 function $(id) { return document.getElementById(id); }
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function authToken() { return localStorage.getItem(tokenKey) || ''; }
@@ -33,7 +37,9 @@ async function loadCurrentUser() {
     const res = await fetch('/v1/auth/me', { headers: { Authorization: 'Bearer ' + token } });
     if (!res.ok) throw new Error('unauthorized');
     const data = await res.json(); const user = data.user || {};
+    currentUserRole = user.role || '';
     $('whoami').textContent = user.username ? `${user.username} (${user.role || '-'})` : '未登入';
+    updateSuperuserTaskReviewVisibility();
   } catch (_) { $('whoami').textContent = '登入已失效'; }
 }
 async function loadTasks() {
@@ -42,15 +48,17 @@ async function loadTasks() {
   if (!token) { showError('請先到 /editor 登入；本頁會沿用 sra_editor_token。'); return; }
   const res = await fetch('/v1/excel-to-sql/dashboard-tasks', { headers: { Authorization: 'Bearer ' + token } });
   if (!res.ok) return;
-  const tasks = (await res.json()).tasks || [];
-  const taskOptions = tasks.map(t => `<option value="${escapeHtml(t.config_path)}">${escapeHtml(t.name)} (${escapeHtml(t.config_path)})</option>`).join('');
-  $('task').innerHTML = tasks.length ? taskOptions : '<option value="">未找到 dashboard.enabled=true 的任務</option>';
+  dashboardTasks = (await res.json()).tasks || [];
+  const taskOptions = dashboardTasks.map(t => `<option value="${escapeHtml(t.config_path)}">${escapeHtml(t.name)} (${escapeHtml(t.config_path)})</option>`).join('');
+  $('task').innerHTML = dashboardTasks.length ? taskOptions : '<option value="">未找到 dashboard.enabled=true 的任務</option>';
   if ($('taskConnectionSource')) {
     $('taskConnectionSource').innerHTML = '<option value="">直接填寫下方 DB 連線資訊</option>' + taskOptions;
   }
-  if (tasks.length && $('uploadConfig')) $('uploadConfig').value = tasks[0].config_path;
+  if (dashboardTasks.length && $('uploadConfig')) $('uploadConfig').value = dashboardTasks[0].config_path;
+  renderUploadTaskDetails();
+  if (currentUserRole === ROLE_SUPERUSER) await loadTaskConfigReviewOptions();
 }
-function onTaskChange() { if ($('task').value) $('uploadConfig').value = $('task').value; }
+function onTaskChange() { if ($('task').value) $('uploadConfig').value = $('task').value; renderUploadTaskDetails(); }
 async function uploadExcelRecord() {
   showError(''); setPreview('');
   const input = $('uploadExcel');
@@ -111,8 +119,13 @@ async function loadImportRecords() {
 function mappingRowTemplate(index) {
   return `<div class="mapping-row" data-mapping-row="1"><div><label>來源欄位</label><input class="mapping-source" placeholder="Excel 欄名" /></div><div><label>目的欄位</label><input class="mapping-dest" placeholder="sql_field" /></div><div><label>SQL 型別</label><input class="mapping-type" list="sqlTypeOptions" value="NVARCHAR(MAX)" placeholder="選擇或手動輸入" /></div><div><label>比對 <button class="ghost" onclick="showMatchHelp()" type="button">?</button></label><select class="mapping-match"><option value="">預設</option><option value="exact">exact</option><option value="prefix">prefix</option><option value="contains">contains</option></select></div><div><label>必填</label><select class="mapping-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeTaskMappingRow(this)" type="button">移除</button></div>`;
 }
+function compositeRowTemplate(index) {
+  return `<div class="composite-row" data-composite-row="1"><div><label>來源欄位（逗號分隔）</label><input class="composite-sources" placeholder="日期, 地點, 敘述" /></div><div><label>SQL 新欄位</label><input class="composite-dest" placeholder="complete_description" /></div><div><label>模板（可選）</label><input class="composite-template" placeholder="日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" /></div><div><label>分隔字串</label><input class="composite-separator" value=" " /></div><div><label>SQL 型別</label><input class="composite-type" list="sqlTypeOptions" value="NVARCHAR(MAX)" /></div><div><label>必填</label><select class="composite-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeCompositeMappingRow(this)" type="button">移除</button></div>`;
+}
 function addTaskMappingRow() { const box = $('taskMappings'); if (box) box.insertAdjacentHTML('beforeend', mappingRowTemplate(box.children.length)); }
 function removeTaskMappingRow(button) { button.closest('[data-mapping-row]')?.remove(); }
+function addCompositeMappingRow() { const box = $('taskCompositeMappings'); if (box) box.insertAdjacentHTML('beforeend', compositeRowTemplate(box.children.length)); }
+function removeCompositeMappingRow(button) { button.closest('[data-composite-row]')?.remove(); }
 function taskValue(id) { return ($(id)?.value || '').trim(); }
 function taskNumber(id, fallback) { const raw = taskValue(id); return raw ? Number(raw) : fallback; }
 function collectTaskMappings() {
@@ -124,6 +137,16 @@ function collectTaskMappings() {
     required: row.querySelector('.mapping-required')?.value === 'true',
   })).filter(item => item.source_column || item.dest_field);
 }
+function collectCompositeMappings() {
+  return Array.from(document.querySelectorAll('[data-composite-row]')).map(row => ({
+    source_columns: (row.querySelector('.composite-sources')?.value || '').split(',').map(v => v.trim()).filter(Boolean),
+    dest_field: row.querySelector('.composite-dest')?.value.trim() || '',
+    template: row.querySelector('.composite-template')?.value.trim() || '',
+    separator: row.querySelector('.composite-separator')?.value ?? ' ',
+    dest_field_type: row.querySelector('.composite-type')?.value.trim() || 'NVARCHAR(MAX)',
+    required: row.querySelector('.composite-required')?.value === 'true',
+  })).filter(item => item.source_columns.length || item.dest_field);
+}
 async function createTaskConfig() {
   showError(''); setPreview('');
   const payload = {
@@ -132,9 +155,10 @@ async function createTaskConfig() {
     db_trusted_connection: $('taskTrustedConnection')?.checked || false, db_encrypt: true, db_trust_server_certificate: true, source_directory: taskValue('taskSourceDirectory') || './data/excel_inbox', file_pattern: taskValue('taskFilePattern') || '*.xlsx',
     source_sheet: taskValue('taskSourceSheet'), header_row: taskNumber('taskHeaderRow', 1), start_row: taskNumber('taskStartRow', 2),
     destination_table: taskValue('taskDestinationTable'), audit_table: taskValue('taskAuditTable') || 'dbo.ExcelImportAudit', default_field_type: taskValue('taskDefaultFieldType') || 'NVARCHAR(MAX)',
-    hash_field: taskValue('taskHashField') || 'hash_value', overwrite: $('taskOverwrite')?.checked || false, mappings: collectTaskMappings(),
+    hash_field: taskValue('taskHashField') || 'hash_value', overwrite: $('taskOverwrite')?.checked || false, mappings: collectTaskMappings(), composite_mappings: collectCompositeMappings(),
   };
   if (!payload.mappings.length) { showError('請至少新增一筆 Excel 欄位對應。'); return; }
+  if (payload.composite_mappings.some(item => item.source_columns.length < 2 || !item.dest_field)) { showError('每個拼裝欄位都需要至少兩個來源欄位與一個 SQL 新欄位。'); return; }
   const res = await fetch('/v1/excel-to-sql/task-configs', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + authToken() }, body: JSON.stringify(payload) });
   if (!res.ok) { let text=await res.text(); try{text=JSON.parse(text).detail||text;}catch(_){} showError(text); return; }
   const data = await res.json();
@@ -143,16 +167,63 @@ async function createTaskConfig() {
   if ($('approveTaskConfigPath') && task.config_path) $('approveTaskConfigPath').value = task.config_path;
   await loadTasks();
 }
-async function approveTaskConfig() {
+function updateSuperuserTaskReviewVisibility() {
+  const box = $('superuserTaskReview');
+  if (!box) return;
+  box.classList.toggle('hidden', currentUserRole !== ROLE_SUPERUSER);
+}
+function reviewListItems(items) {
+  return Object.entries(items || {}).map(([key, value]) => `<li><strong>${escapeHtml(key)}：</strong>${escapeHtml(value ?? '')}</li>`).join('');
+}
+function formatMappingSource(item) {
+  const compose = item.compose || {};
+  const template = compose.template ? `；模板：${compose.template}` : '';
+  return `${item.source_column || ''}${template}`;
+}
+function renderMappingsForReview(mappings) {
+  const rows = (mappings || []).map(item => `${escapeHtml(formatMappingSource(item))} → ${escapeHtml(item.dest_field || '')} <span class="muted">(${escapeHtml(item.dest_field_type || '')}${item.required ? '，必填' : ''}，${escapeHtml(item.match || 'exact')})</span>`);
+  return rows.length ? `<ul>${rows.map(row => `<li>${row}</li>`).join('')}</ul>` : '<span class="muted">未設定欄位對應</span>';
+}
+function renderUploadTaskDetails() {
+  const box = $('uploadTaskDetails');
+  if (!box) return;
+  const config = taskValue('task') || taskValue('uploadConfig');
+  const task = dashboardTasks.find(item => item.config_path === config);
+  if (!task?.review_summary) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  const summary = task.review_summary || {};
+  box.classList.remove('hidden');
+  box.innerHTML = `<strong>目前匯入任務的 Excel→SQL 欄位轉換</strong><div class="muted">資料庫管理者可在上傳前先確認此任務會把哪些 Excel 欄位寫入哪些 SQL 欄位。</div><div class="review-card"><h4>Excel 欄位 → SQL 欄位</h4>${renderMappingsForReview(summary.mappings)}</div>`;
+}
+function renderTaskReviewDetails() {
+  const box = $('taskReviewDetails');
+  const config = taskValue('approveTaskConfigPath');
+  if (!box || !config) { if (box) box.classList.add('hidden'); return; }
+  const task = taskConfigReviewTasks.find(item => item.config_path === config);
+  if (!task) { box.classList.add('hidden'); return; }
+  const summary = task.review_summary || {};
+  box.classList.remove('hidden');
+  box.innerHTML = `<strong>JSON 任務轉換細節</strong><div class="muted">審核前請確認資料來源、目的資料表、欄位對應與自動建表 / 建欄設定；密碼欄位已遮蔽。</div><div class="review-grid"><div class="review-card"><h4>資料庫連線</h4><ul>${reviewListItems(summary.db)}</ul></div><div class="review-card"><h4>Excel 來源</h4><ul>${reviewListItems(summary.source)}</ul></div><div class="review-card"><h4>SQL 目的地</h4><ul>${reviewListItems(summary.destination)}</ul></div><div class="review-card"><h4>Audit / 匯入設定</h4><ul>${reviewListItems({ audit_table: summary.audit?.table, audit_enabled: summary.audit?.enabled, batch_size: summary.import?.batch_size, skip_empty_rows: summary.import?.skip_empty_rows, retry_max_attempts: summary.retry?.max_attempts })}</ul></div></div><div class="review-card"><h4>Excel 欄位 → SQL 欄位</h4>${renderMappingsForReview(summary.mappings)}</div><details><summary>查看遮蔽敏感資訊後的 JSON</summary><pre class="review-json">${escapeHtml(JSON.stringify(task.config_preview || {}, null, 2))}</pre></details>`;
+}
+async function loadTaskConfigReviewOptions() {
+  const select = $('approveTaskConfigPath');
+  if (!select || currentUserRole !== ROLE_SUPERUSER) return;
+  const res = await fetch('/v1/excel-to-sql/task-configs', { headers:{ Authorization:'Bearer ' + authToken() } });
+  if (!res.ok) return;
+  taskConfigReviewTasks = (await res.json()).tasks || [];
+  select.innerHTML = taskConfigReviewTasks.length ? taskConfigReviewTasks.map(t => `<option value="${escapeHtml(t.config_path)}">${escapeHtml(t.status || '')}｜${escapeHtml(t.name || '')}｜${escapeHtml(t.config_path || '')}</option>`).join('') : '<option value="">沒有可審核任務設定檔</option>';
+  renderTaskReviewDetails();
+}
+async function setTaskConfigStatus() {
   showError(''); setPreview('');
   const config = taskValue('approveTaskConfigPath');
-  if (!config) { showError('請輸入要啟用的待審設定檔路徑。'); return; }
-  const res = await fetch('/v1/excel-to-sql/task-configs/approve', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + authToken() }, body: JSON.stringify({ config }) });
+  const enabled = $('taskReviewEnabled')?.value !== 'false';
+  if (!config) { showError('請先選擇任務設定檔。'); return; }
+  const res = await fetch('/v1/excel-to-sql/task-configs/status', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + authToken() }, body: JSON.stringify({ config, enabled }) });
   if (!res.ok) { let text=await res.text(); try{text=JSON.parse(text).detail||text;}catch(_){} showError(text); return; }
   const data = await res.json(); const task = data.task || {};
-  setPreview(`<strong>已啟用任務：</strong>${escapeHtml(task.config_path || config)}`);
+  setPreview(`<strong>已${enabled ? '啟用' : '停用'}任務：</strong>${escapeHtml(task.config_path || config)}<br><span class="muted">狀態：${escapeHtml(task.status || '')}</span>`);
   await loadTasks();
-  if ($('uploadConfig') && task.config_path) $('uploadConfig').value = task.config_path;
+  if (enabled && $('uploadConfig') && task.config_path) $('uploadConfig').value = task.config_path;
 }
 function showMatchHelp() { const dialog = $('matchHelpDialog'); if (dialog?.showModal) dialog.showModal(); }
 function closeMatchHelp() { $('matchHelpDialog')?.close(); }

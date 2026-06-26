@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any, Dict, Generator, List, Sequence, Tuple
 from pathlib import Path
 
@@ -186,6 +187,7 @@ def read_column_mappings(
         if not dest_field or not str(dest_field).strip():
             raise ValueError(f"mappings[{index}] 缺少 dest_field")
 
+        compose = mapping.get("compose") if isinstance(mapping.get("compose"), dict) else None
         source_name = (
             mapping.get("source_column")
             or mapping.get("excel_column")
@@ -200,7 +202,34 @@ def read_column_mappings(
             raise ValueError(f"mappings[{index}] match 不支援：{match_mode}")
 
         source_label = ""
-        if source_index is not None:
+        compose_sources: List[Dict[str, Any]] = []
+        if compose:
+            source_columns = compose.get("source_columns") or []
+            if not isinstance(source_columns, list) or len(source_columns) < 2:
+                raise ValueError(f"mappings[{index}] compose.source_columns 至少需要兩個來源欄位")
+            for source_pos, source in enumerate(source_columns, start=1):
+                source_text = normalize_header(source)
+                excel_idx, actual_label, match_type, header_message = resolve_header_candidate(
+                    mapping_index=index,
+                    header_map=header_map,
+                    expected_names=[source_text],
+                    match_mode=match_mode,
+                )
+                compose_sources.append({
+                    "source_label": source_text,
+                    "actual_source_label": actual_label,
+                    "source_index": excel_idx,
+                    "match_type": match_type,
+                    "header_message": header_message,
+                })
+            source_label = ", ".join(item["source_label"] for item in compose_sources)
+            actual_source_label = ", ".join(item["actual_source_label"] for item in compose_sources)
+            excel_index = max(int(item["source_index"]) for item in compose_sources)
+            match_type = "compose"
+            header_message = "; ".join(
+                str(item.get("header_message") or "") for item in compose_sources if item.get("header_message")
+            )
+        elif source_index is not None:
             excel_index = parse_excel_column_ref(str(source_index))
             source_label = str(source_index)
             actual_source_label = source_label
@@ -254,6 +283,13 @@ def read_column_mappings(
             "header_message": header_message,
             "value_type": value_type,
         }
+        if compose:
+            resolved_mapping["compose"] = {
+                "sources": compose_sources,
+                "separator": str(compose.get("separator") if compose.get("separator") is not None else " "),
+                "skip_empty": bool(compose.get("skip_empty", True)),
+                "template": str(compose.get("template") or ""),
+            }
         for type_key in ("dest_field_type", "destination_field_type", "sql_type"):
             if mapping.get(type_key):
                 resolved_mapping[type_key] = mapping[type_key]
@@ -316,9 +352,38 @@ def iter_excel_rows(
             invalid_message = ""
 
             for mapping in mappings:
+                compose = mapping.get("compose") if isinstance(mapping.get("compose"), dict) else None
                 source_idx = int(mapping["source_index"])
-                raw_value = row[source_idx - 1] if source_idx - 1 < len(row) else None
-                value = normalize_cell_value(raw_value)
+                if compose:
+                    pieces = []
+                    raw_values = []
+                    template_values = {}
+                    for source in compose.get("sources", []):
+                        idx = int(source["source_index"])
+                        raw = row[idx - 1] if idx - 1 < len(row) else None
+                        val = normalize_cell_value(raw)
+                        text_value = "" if val is None else str(val)
+                        configured_label = str(source.get("source_label") or "")
+                        actual_label = str(source.get("actual_source_label") or configured_label)
+                        raw_values.append((configured_label, val))
+                        template_values[configured_label] = text_value
+                        template_values[actual_label] = text_value
+                        if not (compose.get("skip_empty", True) and is_empty_value(val)):
+                            pieces.append(text_value)
+                    template = str(compose.get("template") or "")
+                    if template:
+                        value = re.sub(
+                            r"\{([^{}]+)\}",
+                            lambda match: template_values.get(match.group(1), match.group(0)),
+                            template,
+                        )
+                    else:
+                        value = str(compose.get("separator", " ")).join(pieces)
+                        if not pieces:
+                            value = None
+                else:
+                    raw_value = row[source_idx - 1] if source_idx - 1 < len(row) else None
+                    value = normalize_cell_value(raw_value)
 
                 if is_empty_value(value) and mapping.get("default") is not None:
                     value = mapping.get("default")
@@ -342,7 +407,11 @@ def iter_excel_rows(
                     non_empty = True
 
                 record[str(mapping["dest_field"])] = value
-                source_values[str(mapping["source_label"])] = value
+                if compose:
+                    for source_label, source_value in raw_values:
+                        source_values[str(source_label)] = source_value
+                else:
+                    source_values[str(mapping["source_label"])] = value
 
             if skip_empty_rows and not non_empty:
                 continue

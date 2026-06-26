@@ -212,3 +212,21 @@
 - `db_operator` 可以建立 Excel→SQL 任務 JSON 草稿，但新建任務預設為 `dashboard.status=pending` 且 `dashboard.enabled=false`，避免資料庫管理權限本身就能立即開放一個會上傳資料並可能 auto-create SQL schema 的任務。
 - 啟用任務需由 `superuser` 呼叫專用審核 endpoint，將任務切為 `active` / `enabled=true`；此分離讓任務設計與正式開放有第二人覆核。
 - 業務使用者若不熟 SQL 型別，UI 提供常見型別選項但保留手動輸入；比對方式以說明浮窗補充 exact / prefix / contains 差異。
+
+## 2026-06-25 Excel→SQL 任務審核 UI 與停用決策
+
+- Superuser 任務審核區塊只在 `/v1/auth/me` 回傳 role 為 `superuser` 後於前端顯示；非 superuser 不顯示待審任務清單與啟用 / 停用操作，降低誤觸與資訊曝露。
+- 前端隱藏不是安全邊界；任務審核清單、啟用與停用 API 全部仍使用 `require_superuser`，確保 db_operator 或其他角色即使直接呼叫 API 也只能得到 403。
+- 任務停用採回到 `dashboard.status=pending` 且 `dashboard.enabled=false`，讓設定檔保留但不再出現在可上傳匯入任務清單；未來若需要永久封存可再新增 archived 狀態。
+
+## 2026-06-26 Excel→SQL 多欄位拼裝決策
+
+- 多欄位拼裝先實作「實際新增 / 寫入 SQL 欄位」路徑，而不是先產生未執行的 view 規格，避免用 UI 暗示 view 已自動建立但後端沒有真實功能。
+- 已啟用任務的 `dashboard-tasks` 回傳非敏感 `review_summary`，讓 db_operator 在上傳前也能看到欄位轉換；密碼等敏感設定仍不在此 endpoint 回傳。
+- SQL View 自動建立需要明確 view 命名、更新策略與權限控管，先列為後續設計，不在本次以 stub 形式提供。
+
+## 2026-06-26 Excel→SQL composite template 決策
+
+- 多欄位拼裝先採「實際寫入一個 SQL 欄位」而非自動建立 SQL View；View 需要額外的命名、權限、CREATE OR ALTER 策略與審核流程，暫列 backlog。
+- composite mapping 支援可選模板 placeholder（`{Excel欄名}`），讓使用者可明確控制輸出句型；若未提供模板，維持既有 separator 串接行為以相容舊設定。
+- `dest_field` 維持 SQL-safe identifier 限制，避免自動建欄與 SQL 組語句時引入空白、特殊字元或 quoting 差異造成的安全與維護風險。

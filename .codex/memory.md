@@ -132,3 +132,33 @@
 - 主要修改：欄位對應的 SQL 型別輸入改提供常見 datalist 選項且保留手動輸入；新增欄位比對方式說明浮窗；新建任務改為 `dashboard.enabled=false` / `status=pending`，不出現在可上傳任務清單；新增 superuser-only `POST /v1/excel-to-sql/task-configs/approve` 將待審任務啟用為 active。
 - 設計決策：已記錄「db_operator 建草稿、superuser 審核啟用」的雙人覆核原則於 `.codex/decisions.md`。
 - 驗證：`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q` 通過（21 passed）。
+
+### 2026-06-25 Excel→SQL 任務設定版面與 superuser 審核強化
+
+- 目的：優化 Excel 匯入作業中心的建立任務設定區塊，將設定分成基本資訊、資料庫連線、Excel 來源與 SQL 目的地群組；並讓 superuser 審核改用選單、支援啟用與停用 pending 狀態。
+- 主要修改：新增 superuser-only task config list/status API；前端僅於 `/v1/auth/me` 回傳 `superuser` 時顯示審核區，且後端 list / approve / status endpoint 均強制 `require_superuser`，避免非 superuser 直接打 API 啟用或停用任務。
+- 驗證：`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py tests/test_excel_to_sql_user_imports.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q` 通過（22 passed, 3 warnings；warnings 為既有 Starlette/httpx 與 invalid escape deprecation）。套件安裝前置指令執行時 pip index 仍有 403 retry，但 requirements 已滿足。
+
+### 2026-06-26 Excel→SQL superuser 審核轉換細節
+
+- 目的：讓 superuser 在審核待審 Excel→SQL 任務前，可直接檢視任務 JSON 的資料來源、目的資料表、欄位對應、自動建表 / 建欄、audit、匯入、retry 與封存設定，降低只看檔名就啟用的風險。
+- 主要修改：`GET /v1/excel-to-sql/task-configs` 對 superuser 回傳 `review_summary` 與遮蔽密碼後的 `config_preview`；前端審核下拉選定任務後即顯示「JSON 任務轉換細節」卡片與可展開的遮蔽 JSON。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 執行時 pip index 仍有 403 retry 但 requirements 已滿足；`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py tests/test_excel_to_sql_user_imports.py`、`node --check sra_api/static/excel_to_sql_import_records.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q` 均通過（22 passed, 3 warnings；warnings 為既有 Starlette/httpx 與 invalid escape deprecation）。
+
+### 2026-06-26 Excel→SQL SQL 型別選單與說明補強
+
+- 目的：讓「預設欄位型別」與「Excel 欄位對應」的 SQL 型別輸入一致，都可用常用型別選單並保留手動輸入；同時為不熟 SQL 型別的使用者補充簡短用途說明。
+- 主要修改：`taskDefaultFieldType` 改用 `list="sqlTypeOptions"`，與欄位對應列共用 `NVARCHAR(255)`、`NVARCHAR(MAX)`、`INT`、`BIGINT`、`DECIMAL(18,2)`、`FLOAT`、`DATE`、`DATETIME2`、`BIT` 選項；新增「常用 SQL 型別小提醒」說明區塊並更新前端 asset version。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 執行時 pip index 仍有 403 retry 但 requirements 已滿足；`python -m py_compile tests/test_excel_to_sql_user_imports.py`、`node --check sra_api/static/excel_to_sql_import_records.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q` 均通過（22 passed, 3 warnings；warnings 為既有 Starlette/httpx 與 invalid escape deprecation）。
+
+### 2026-06-26 Excel→SQL 匯入任務欄位轉換檢視與多欄位拼裝
+
+- 目的：讓資料庫管理者在「使用者 Excel 匯入操作」選擇任務時能看到該任務的 Excel→SQL 欄位轉換方式，並提供多個 Excel 欄位拼裝成一個 SQL 新欄位的實際匯入功能。
+- 主要修改：`GET /v1/excel-to-sql/dashboard-tasks` 對啟用任務回傳非敏感 `review_summary`；作業中心會在上傳前顯示目前任務的欄位轉換。任務建立 UI 新增「多欄位拼裝成 SQL 新欄位」，後端 `composite_mappings` 會轉成帶 `compose` 的 mapping，匯入時將多個來源欄位依分隔字串組合後寫入新 SQL 欄位並參與自動建欄。View 自動建立未以 stub 提供，已記錄為後續設計。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 執行時 pip index 仍有 403 retry 但 requirements 已滿足；`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/workbook_rows.py tests/test_excel_to_sql_user_imports.py`、`node --check sra_api/static/excel_to_sql_import_records.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q` 均通過（23 passed, 3 warnings；warnings 為既有 Starlette/httpx 與 invalid escape deprecation）。
+
+### 2026-06-26 Excel→SQL composite template and task summary visibility
+
+- 目的：確認資料修改者 / 閱讀者在「使用者 Excel 匯入操作」選擇任務時可看到 Excel→SQL 欄位轉換摘要，並補足 composite mappings 的模板式拼裝能力。
+- 主要修改：`dashboard-tasks` 保持登入即可讀取 active 任務並含 `review_summary`；匯入作業中心會在任務選單下顯示欄位轉換摘要。`composite_mappings` 新增可選 `template`，支援 `{Excel欄名}` placeholder，以每列來源值組成 SQL 新欄位；未填模板時仍使用 separator 串接。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 執行時 pip index 仍有 403 retry 但 requirements 已滿足；`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/workbook_rows.py tests/test_excel_to_sql_user_imports.py`、`node --check sra_api/static/excel_to_sql_import_records.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q`、`git diff --check` 均通過（24 passed, 3 warnings；warnings 為既有 Starlette/httpx 與 invalid escape deprecation）。
