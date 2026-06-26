@@ -128,24 +128,34 @@ def build_task_config(
         source_columns = item.get("source_columns") or []
         if isinstance(source_columns, str):
             source_columns = [part.strip() for part in source_columns.split(",")]
-        source_columns = [str(part or "").strip() for part in source_columns if str(part or "").strip()]
+        source_columns = [
+            str(part or "").strip()
+            for part in source_columns
+            if str(part or "").strip()
+        ]
         if len(source_columns) < 2:
             raise ValueError(f"第 {index} 筆組合欄位至少需要兩個來源欄位")
         compose_config = {
             "source_columns": source_columns,
-            "separator": str(item.get("separator") if item.get("separator") is not None else " "),
+            "separator": str(
+                item.get("separator") if item.get("separator") is not None else " "
+            ),
             "skip_empty": bool(item.get("skip_empty", True)),
         }
         template = str(item.get("template") or "").strip()
         if template:
             compose_config["template"] = template
         seen_dest_fields.add(dest_field.lower())
-        mappings.append({
-            "dest_field": dest_field,
-            "required": bool(item.get("required", False)),
-            "dest_field_type": _clean_sql_type(item.get("dest_field_type"), "NVARCHAR(MAX)"),
-            "compose": compose_config,
-        })
+        mappings.append(
+            {
+                "dest_field": dest_field,
+                "required": bool(item.get("required", False)),
+                "dest_field_type": _clean_sql_type(
+                    item.get("dest_field_type"), "NVARCHAR(MAX)"
+                ),
+                "compose": compose_config,
+            }
+        )
 
     table = _clean_string(
         payload.get("destination_table"), "目的資料表", max_length=128
@@ -356,7 +366,8 @@ def task_review_summary(cfg: dict[str, Any]) -> dict[str, Any]:
         "audit": {"enabled": bool(audit.get("enabled")), "table": audit.get("table")},
         "mappings": [
             {
-                "source_column": item.get("source_column") or ", ".join((item.get("compose") or {}).get("source_columns", [])),
+                "source_column": item.get("source_column")
+                or ", ".join((item.get("compose") or {}).get("source_columns", [])),
                 "dest_field": item.get("dest_field"),
                 "dest_field_type": item.get("dest_field_type"),
                 "required": bool(item.get("required")),
@@ -386,7 +397,9 @@ def task_review_summary(cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def list_task_configs(*, root: Path = CONFIG_ROOT) -> list[dict[str, Any]]:
+def list_task_configs(
+    *, root: Path = CONFIG_ROOT, created_by: str | None = None
+) -> list[dict[str, Any]]:
     root_path = root.resolve()
     if not root_path.exists():
         return []
@@ -404,6 +417,8 @@ def list_task_configs(*, root: Path = CONFIG_ROOT) -> list[dict[str, Any]]:
             if root == CONFIG_ROOT
             else str(path)
         )
+        if created_by is not None and dashboard.get("created_by") != created_by:
+            continue
         status = dashboard.get("status") or (
             "active" if dashboard.get("enabled") else "pending"
         )
@@ -462,3 +477,34 @@ def approve_task_config(
     config_path: str, *, actor: str, root: Path = CONFIG_ROOT
 ) -> dict[str, Any]:
     return set_task_config_enabled(config_path, enabled=True, actor=actor, root=root)
+
+
+def delete_task_config(
+    config_path: str,
+    *,
+    actor: str,
+    is_superuser: bool = False,
+    root: Path = CONFIG_ROOT,
+) -> dict[str, Any]:
+    target = resolve_task_config_path(config_path, root=root)
+    if not target.exists():
+        raise FileNotFoundError(f"任務設定檔不存在：{target}")
+    cfg = load_json_config(str(target))
+    dashboard = cfg.get("dashboard") if isinstance(cfg, dict) else None
+    if not isinstance(dashboard, dict):
+        raise ValueError("任務設定檔 dashboard 區塊格式錯誤")
+    created_by = dashboard.get("created_by")
+    if not is_superuser and created_by != actor:
+        raise PermissionError("只能刪除自己建立的任務設定檔")
+    display_path = (
+        str(CONFIG_ROOT / target.relative_to(root.resolve()))
+        if root == CONFIG_ROOT
+        else str(target)
+    )
+    target.unlink()
+    return {
+        "config_path": display_path,
+        "deleted": True,
+        "created_by": created_by,
+        "deleted_by": actor,
+    }

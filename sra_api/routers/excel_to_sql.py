@@ -15,6 +15,7 @@ from data_ingestion.excel_to_sql.dashboard import (
 from data_ingestion.excel_to_sql.task_configs import (
     approve_task_config,
     create_task_config,
+    delete_task_config,
     list_task_configs,
     set_task_config_enabled,
 )
@@ -47,6 +48,10 @@ class ApproveTaskConfigPayload(BaseModel):
 class TaskConfigStatusPayload(BaseModel):
     config: str = Field(..., min_length=6, max_length=240)
     enabled: bool
+
+
+class DeleteTaskConfigPayload(BaseModel):
+    config: str = Field(..., min_length=6, max_length=240)
 
 
 class ExcelToSqlTaskConfigPayload(BaseModel):
@@ -109,6 +114,11 @@ def excel_to_sql_dashboard_page() -> FileResponse:
 @router.get("/excel-to-sql-import-center", include_in_schema=False)
 def excel_to_sql_import_center_page() -> FileResponse:
     return FileResponse(_static_path("excel_to_sql_import_center.html"))
+
+
+@router.get("/excel-to-sql-task-configs", include_in_schema=False)
+def excel_to_sql_task_configs_page() -> FileResponse:
+    return FileResponse(_static_path("excel_to_sql_task_configs.html"))
 
 
 @router.get("/v1/excel-to-sql/dashboard-tasks")
@@ -216,12 +226,23 @@ def excel_to_sql_delete_row(
         ) from exc
 
 
-
 @router.get("/v1/excel-to-sql/task-configs")
 def excel_to_sql_list_task_configs(
-    _: AuthUser = Depends(require_superuser),
+    scope: str = Query(
+        "mine", description="mine 只列出自己建立的任務；all 僅 superuser 可用"
+    ),
+    user: AuthUser = Depends(require_db_operator),
 ) -> dict[str, Any]:
-    return {"tasks": list_task_configs()}
+    if scope == "all":
+        if not _is_superuser(user):
+            raise HTTPException(
+                status_code=403, detail="只有 superuser 可以查看全部任務設定檔"
+            )
+        return {"tasks": list_task_configs()}
+    if scope != "mine":
+        raise HTTPException(status_code=400, detail="scope 僅支援 mine 或 all")
+    return {"tasks": list_task_configs(created_by=user.username)}
+
 
 @router.post("/v1/excel-to-sql/task-configs")
 def excel_to_sql_create_task_config(
@@ -263,13 +284,19 @@ def excel_to_sql_approve_task_config(
         ) from exc
 
 
-
-
 @router.post("/v1/excel-to-sql/task-configs/status")
 def excel_to_sql_set_task_config_status(
     payload: TaskConfigStatusPayload,
-    user: AuthUser = Depends(require_superuser),
+    user: AuthUser = Depends(require_db_operator),
 ) -> dict[str, Any]:
+    if payload.enabled and not _is_superuser(user):
+        raise HTTPException(status_code=403, detail="只有 superuser 可以啟用任務設定檔")
+    if not _is_superuser(user):
+        mine = {
+            item["config_path"] for item in list_task_configs(created_by=user.username)
+        }
+        if payload.config not in mine:
+            raise HTTPException(status_code=404, detail="找不到自己建立的任務設定檔")
     try:
         task = set_task_config_enabled(
             payload.config, enabled=payload.enabled, actor=user.username
@@ -283,6 +310,29 @@ def excel_to_sql_set_task_config_status(
         raise HTTPException(
             status_code=500, detail=f"更新 Excel→SQL 任務設定檔狀態失敗：{exc}"
         ) from exc
+
+
+@router.delete("/v1/excel-to-sql/task-configs")
+def excel_to_sql_delete_task_config(
+    payload: DeleteTaskConfigPayload,
+    user: AuthUser = Depends(require_db_operator),
+) -> dict[str, Any]:
+    try:
+        deleted = delete_task_config(
+            payload.config, actor=user.username, is_superuser=_is_superuser(user)
+        )
+        return {"task": deleted}
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"刪除 Excel→SQL 任務設定檔失敗：{exc}"
+        ) from exc
+
 
 @router.post("/v1/excel-to-sql/import-records")
 def excel_to_sql_upload_import_record(

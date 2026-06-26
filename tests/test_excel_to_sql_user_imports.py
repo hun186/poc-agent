@@ -106,7 +106,8 @@ def test_import_center_static_contains_user_import_controls():
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
     assert (
-        "/static/excel_to_sql_import_records.js?v=20260626-composite-template" in html
+        "/static/excel_to_sql_import_records.js?v=20260626-task-config-management"
+        in html
     )
     assert "/v1/excel-to-sql/import-records" in script
     assert "previewImportRecord" in script
@@ -121,49 +122,62 @@ def test_import_center_static_contains_user_import_controls():
     assert "目前匯入任務的 Excel→SQL 欄位轉換" in script
     assert "dashboardTasks" in script
     assert "renderUploadTaskDetails" in script
-    assert "建立 Excel→SQL 任務設定檔" in html
-    assert "資料庫連線來源任務" in html
-    assert "department/new_task.json" in html
-    assert "taskMappings" in html
-    assert "sqlTypeOptions" in html
-    assert 'id="taskDefaultFieldType" list="sqlTypeOptions"' in html
-    assert "常用 SQL 型別小提醒" in html
-    assert "預設欄位型別與欄位對應 SQL 型別都可選擇或手動輸入" in html
-    assert "NVARCHAR(255)" in html
-    assert "DECIMAL(18,2)" in html
-    assert "DATE / DATETIME2" in html
-    assert "BIT" in html
-    assert "比對方式說明" in html
-    assert "多欄位拼裝成 SQL 新欄位" in html
-    assert "taskCompositeMappings" in html
+    config_html = Path("sra_api/static/excel_to_sql_task_configs.html").read_text(
+        encoding="utf-8"
+    )
+    assert "建立 / 管理待審任務 JSON" in html
+    assert "建立 Excel→SQL 任務設定檔" in config_html
+    assert "我建立的任務清單 / 審核進度" in config_html
+    assert "資料庫連線來源任務" in config_html
+    assert "department/new_task.json" in config_html
+    assert "taskMappings" in config_html
+    assert "sqlTypeOptions" in config_html
+    assert 'id="taskDefaultFieldType" list="sqlTypeOptions"' in config_html
+    assert (
+        'id="taskDefaultFieldType" list="sqlTypeOptions" value="NVARCHAR(MAX)"'
+        not in config_html
+    )
+    assert "常用 SQL 型別小提醒" in config_html
+    assert "預設欄位型別與欄位對應 SQL 型別都可選擇或手動輸入" in config_html
+    assert "NVARCHAR(255)" in config_html
+    assert "DECIMAL(18,2)" in config_html
+    assert "DATE / DATETIME2" in config_html
+    assert "BIT" in config_html
+    assert "比對方式說明" in config_html
+    assert "多欄位拼裝成 SQL 新欄位" in config_html
+    assert "taskCompositeMappings" in config_html
     assert "addCompositeMappingRow" in script
     assert "collectCompositeMappings" in script
     assert "composite_mappings" in script
     assert "composite-template" in script
-    assert "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" in html
-    assert "complete_description" in html + script
+    assert "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" in config_html
+    assert "complete_description" in config_html + script
     assert "每個拼裝欄位都需要至少兩個來源欄位" in script
-    assert "pending" in html
-    assert "superuserTaskReview" in html
-    assert "approveTaskConfigPath" in html
-    assert "taskReviewEnabled" in html
-    assert "taskReviewDetails" in html
-    assert "review-details" in html
+    assert "pending" in config_html
+    assert "superuserTaskReview" in config_html
+    assert "approveTaskConfigPath" in config_html
+    assert "taskReviewEnabled" in config_html
+    assert "taskReviewDetails" in config_html
+    assert "review-details" in config_html
     assert "JSON 任務轉換細節" in script
     assert "密碼欄位已遮蔽" in script
     assert "function renderTaskReviewDetails" in script
     assert "config_preview" in script
     assert "review_summary" in script
-    assert "config-grid" in html
-    assert "config-group" in html
-    assert "基本資訊" in html
-    assert "資料庫連線" in html
-    assert "Excel 來源" in html
-    assert "SQL 目的地" in html
+    assert "config-grid" in config_html
+    assert "config-group" in config_html
+    assert "基本資訊" in config_html
+    assert "資料庫連線" in config_html
+    assert "Excel 來源" in config_html
+    assert "來源目錄是批次匯入時伺服器掃描 Excel 的資料夾" in config_html
+    assert "SQL 目的地" in config_html
     assert "/v1/excel-to-sql/task-configs" in script
     assert "connection_source_config" in script
     assert "taskConnectionSource" in script
     assert "function createTaskConfig" in script
+    assert "function applyConnectionSourceDefaults" in script
+    assert "taskDbDriver" in script
+    assert "taskTrustedConnection" in script
     assert "function setTaskConfigStatus" in script
     assert "function loadTaskConfigReviewOptions" in script
     assert "currentUserRole !== ROLE_SUPERUSER" in script
@@ -172,6 +186,7 @@ def test_import_center_static_contains_user_import_controls():
     assert 'list="sqlTypeOptions"' in script
     assert "監控任務" not in html
     assert "Excel→SQL 匯入查詢儀表板" in html
+    assert "任務 JSON 管理" in html
     assert "船舶活動 Excel 匯入任務" in Path(
         "config/excel_to_sql/vessel_activities.example.json"
     ).read_text(encoding="utf-8")
@@ -692,8 +707,14 @@ def test_excel_to_sql_composite_mapping_template_substitutes_excel_values(tmp_pa
         )
     )
 
-    assert cfg["mappings"][1]["compose"]["template"] == "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}"
-    assert rows[0][1]["complete_description"] == "日期是2026-06-26，發生地點是台北，當天的敘述是例行巡檢完成"
+    assert (
+        cfg["mappings"][1]["compose"]["template"]
+        == "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}"
+    )
+    assert (
+        rows[0][1]["complete_description"]
+        == "日期是2026-06-26，發生地點是台北，當天的敘述是例行巡檢完成"
+    )
 
 
 def test_create_excel_to_sql_task_config_rejects_unsafe_filename(tmp_path):
@@ -744,6 +765,60 @@ def test_excel_to_sql_task_review_api_requires_superuser(monkeypatch):
         "/v1/excel-to-sql/task-configs/approve", json={"config": "pending.json"}
     )
 
-    assert list_response.status_code == 403
+    assert list_response.status_code == 200
+    assert client.get("/v1/excel-to-sql/task-configs?scope=all").status_code == 403
     assert status_response.status_code == 403
     assert approve_response.status_code == 403
+
+
+def test_task_config_owner_scoped_list_disable_and_delete(tmp_path):
+    from data_ingestion.excel_to_sql.task_configs import (
+        create_task_config,
+        delete_task_config,
+        list_task_configs,
+        set_task_config_enabled,
+    )
+
+    base_payload = {
+        "task_name": "Owner Task",
+        "db_server": "sql.local",
+        "db_database": "OpsDb",
+        "db_user": "operator",
+        "db_password": "secret-value",
+        "source_sheet": "Sheet1",
+        "destination_table": "dbo.ImportTarget",
+        "mappings": [{"source_column": "A", "dest_field": "a"}],
+    }
+    create_task_config(
+        {**base_payload, "filename": "alice.json"}, actor="alice", root=tmp_path
+    )
+    create_task_config(
+        {**base_payload, "filename": "bob.json"}, actor="bob", root=tmp_path
+    )
+
+    alice_tasks = list_task_configs(root=tmp_path, created_by="alice")
+    assert [task["created_by"] for task in alice_tasks] == ["alice"]
+    assert alice_tasks[0]["config_path"].endswith("alice.json")
+
+    disabled = set_task_config_enabled(
+        alice_tasks[0]["config_path"], enabled=False, actor="alice", root=tmp_path
+    )
+    assert disabled["enabled"] is False
+    assert disabled["status"] == "pending"
+
+    try:
+        delete_task_config(
+            alice_tasks[0]["config_path"].replace("alice", "bob"),
+            actor="alice",
+            root=tmp_path,
+        )
+    except PermissionError as exc:
+        assert "只能刪除自己建立" in str(exc)
+    else:
+        raise AssertionError("operator must not delete another actor's task config")
+
+    deleted = delete_task_config(
+        alice_tasks[0]["config_path"], actor="alice", root=tmp_path
+    )
+    assert deleted["deleted"] is True
+    assert list_task_configs(root=tmp_path, created_by="alice") == []

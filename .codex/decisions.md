@@ -230,3 +230,10 @@
 - 多欄位拼裝先採「實際寫入一個 SQL 欄位」而非自動建立 SQL View；View 需要額外的命名、權限、CREATE OR ALTER 策略與審核流程，暫列 backlog。
 - composite mapping 支援可選模板 placeholder（`{Excel欄名}`），讓使用者可明確控制輸出句型；若未提供模板，維持既有 separator 串接行為以相容舊設定。
 - `dest_field` 維持 SQL-safe identifier 限制，避免自動建欄與 SQL 組語句時引入空白、特殊字元或 quoting 差異造成的安全與維護風險。
+
+## 2026-06-26 Excel→SQL 任務設定檔自助管理決策
+
+- 任務 JSON 建立流程從 Excel 匯入作業中心拆成獨立頁，避免低頻管理功能干擾日常上傳 / 預掃描 / 確認匯入操作。
+- db_operator 的任務管理邊界以 `dashboard.created_by` 為準：只能列出、停用、刪除自己建立的設定檔；不能看到其他建立者的任務，也不能自行啟用 pending 任務。
+- superuser 審核仍使用 `scope=all` 取得全站任務清單，啟用權限不下放，維持任務設計與正式開放的第二人覆核。
+- `source.directory` 保留於 JSON，定位為伺服器端批次掃描 Excel 目錄；使用者上傳流程不依賴該本機路徑存在，而是另由 upload/import-record storage 保存檔案。
