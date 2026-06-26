@@ -243,3 +243,9 @@
 - Excel→SQL dashboard 的刪除操作目前權責是 SQL 目的表控制，不應直接假設可安全刪除 ES 文件，因 ES doc 可能由另一個 LLM 結構化專案寫入，且可能一個 SQL row 對應多個 ES doc 或多個事件片段。
 - 建議後續採「可追蹤 lineage + 補償工作流」：LLM 寫入 ES 時保存 `source_system=excel_to_sql`、`source_config_path`、`source_hash_value`、`source_run_id`、`source_audit_id`、`source_file`、`source_row_no` 等 metadata；SQL 刪除 audit 寫入 outbox / tombstone event，由背景 worker 或外部專案消費後對 ES 執行 soft-delete、標記 superseded，或提交人工審核佇列。
 - 不建議在 SQL dashboard 批次刪除時同步硬刪 ES：會擴大交易範圍、跨系統失敗難 rollback，也可能誤刪仍被其他來源引用的 ES doc。
+
+## 2026-06-26 Excel→SQL 連線來源敏感欄位遮蔽決策
+
+- 選擇既有任務作為資料庫連線來源時，UI 不應把來源設定檔內的 Server、資料庫名稱、DB 使用者或 DB 密碼回填到頁面；只提示會讀取套用該 JSON 連線資訊，降低非技術使用者誤複製或外洩敏感連線資料的風險。
+- ODBC Driver 與 trusted connection 被視為較低敏感度設定，仍可在頁面顯示 / 帶入，協助使用者理解目前會用哪種 driver 與驗證模式。
+- 任務清單 / 審核資料雖仍需要呈現任務可審資訊，但 DB 連線摘要與遮蔽 JSON 也應遮蔽 server、database、user、password，避免只修前端回填而由 review 區塊再次洩漏。

@@ -160,7 +160,10 @@ def test_import_center_static_contains_user_import_controls():
     assert "taskReviewDetails" in config_html
     assert "review-details" in config_html
     assert "JSON 任務轉換細節" in script
-    assert "密碼欄位已遮蔽" in script
+    assert "Server、資料庫名稱、DB 使用者與密碼等敏感欄位已遮蔽" in script
+    assert "connectionSourceNotice" in config_html
+    assert "setSensitiveConnectionFieldsVisible" in script
+    assert "input.disabled = !visible" in script
     assert "function renderTaskReviewDetails" in script
     assert "config_preview" in script
     assert "review_summary" in script
@@ -178,6 +181,8 @@ def test_import_center_static_contains_user_import_controls():
     assert "function applyConnectionSourceDefaults" in script
     assert "function loadTaskConfigSourceCandidates" in script
     assert "mergeTasksByConfigPath" in script
+    assert "isActiveConnectionSourceTask" in script
+    assert ".filter(isActiveConnectionSourceTask)" in script
     assert "connectionSourceTasks" in script
     assert "taskDbServer" in script
     assert "taskDbDatabase" in script
@@ -545,6 +550,31 @@ def test_create_excel_to_sql_task_config_accepts_root_prefixed_subpath(tmp_path)
     assert (tmp_path / "group" / "root_prefixed.json").exists()
 
 
+def test_list_task_configs_treats_enabled_dashboard_as_active(tmp_path):
+    from data_ingestion.excel_to_sql.task_configs import list_task_configs
+
+    config = {
+        "dashboard": {"enabled": True, "status": "pending", "name": "SSH active task"},
+        "source": {"sheet": "Sheet1"},
+        "destination": {"table": "dbo.ImportTarget"},
+        "mappings": [{"source_column": "A", "dest_field": "a"}],
+        "db": {
+            "driver": "ODBC Driver 18 for SQL Server",
+            "server": "sql.local",
+            "database": "OpsDb",
+            "trusted_connection": True,
+        },
+    }
+    (tmp_path / "ssh_active.json").write_text(
+        json.dumps(config, ensure_ascii=False), encoding="utf-8"
+    )
+
+    listed = list_task_configs(root=tmp_path)
+
+    assert listed[0]["enabled"] is True
+    assert listed[0]["status"] == "active"
+
+
 def test_task_config_review_summary_masks_password_and_status_toggles(tmp_path):
     from data_ingestion.excel_to_sql.task_configs import (
         approve_task_config,
@@ -572,7 +602,14 @@ def test_task_config_review_summary_masks_password_and_status_toggles(tmp_path):
     assert listed[0]["review_summary"]["mappings"][0]["source_column"] == "A"
     assert listed[0]["review_summary"]["mappings"][0]["dest_field"] == "a"
     assert listed[0]["config_preview"]["db"]["password"] == "********"
-    assert listed[0]["config_preview"]["db"]["user"] == "operator"
+    assert listed[0]["config_preview"]["db"]["user"] == "********"
+    assert listed[0]["config_preview"]["db"]["server"] == "********"
+    assert listed[0]["config_preview"]["db"]["database"] == "********"
+    assert listed[0]["review_summary"]["db"]["driver"] == "auto"
+    assert listed[0]["review_summary"]["db"]["trusted_connection"] is False
+    assert listed[0]["review_summary"]["db"]["server"] == "********"
+    assert listed[0]["review_summary"]["db"]["database"] == "********"
+    assert listed[0]["review_summary"]["db"]["user"] == "********"
 
     approved = approve_task_config("pending.json", actor="admin", root=tmp_path)
 
