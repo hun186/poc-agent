@@ -2,6 +2,7 @@ const tokenKey = 'sra_editor_token';
 let currentUserRole = '';
 let taskConfigReviewTasks = [];
 let dashboardTasks = [];
+let connectionSourceTasks = [];
 const ROLE_SUPERUSER = 'superuser';
 function $(id) { return document.getElementById(id); }
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -42,29 +43,58 @@ async function loadCurrentUser() {
     updateSuperuserTaskReviewVisibility();
   } catch (_) { $('whoami').textContent = '登入已失效'; }
 }
+function taskOptionLabel(t) {
+  const status = t.status || (t.enabled ? 'active' : 'pending');
+  const suffix = status ? ` / ${status}` : '';
+  return `${t.name || t.config_path} (${t.config_path}${suffix})`;
+}
+function mergeTasksByConfigPath(...groups) {
+  const map = new Map();
+  groups.flat().forEach(task => {
+    if (!task?.config_path || map.has(task.config_path)) return;
+    map.set(task.config_path, task);
+  });
+  return Array.from(map.values());
+}
+async function loadTaskConfigSourceCandidates(token) {
+  if (!$('taskConnectionSource')) return dashboardTasks;
+  const scope = currentUserRole === ROLE_SUPERUSER ? 'all' : 'mine';
+  const res = await fetch(`/v1/excel-to-sql/task-configs?scope=${scope}`, { headers: { Authorization: 'Bearer ' + token } });
+  if (!res.ok) return dashboardTasks;
+  const taskConfigs = (await res.json()).tasks || [];
+  return mergeTasksByConfigPath(dashboardTasks, taskConfigs);
+}
 async function loadTasks() {
-  if (!$('task')) return;
+  const needsUploadTasks = Boolean($('task'));
+  const needsConnectionSources = Boolean($('taskConnectionSource'));
+  if (!needsUploadTasks && !needsConnectionSources) return;
   const token = authToken();
   if (!token) { showError('請先到 /editor 登入；本頁會沿用 sra_editor_token。'); return; }
   const res = await fetch('/v1/excel-to-sql/dashboard-tasks', { headers: { Authorization: 'Bearer ' + token } });
   if (!res.ok) return;
   dashboardTasks = (await res.json()).tasks || [];
   const taskOptions = dashboardTasks.map(t => `<option value="${escapeHtml(t.config_path)}">${escapeHtml(t.name)} (${escapeHtml(t.config_path)})</option>`).join('');
-  $('task').innerHTML = dashboardTasks.length ? taskOptions : '<option value="">未找到 dashboard.enabled=true 的任務</option>';
+  if ($('task')) $('task').innerHTML = dashboardTasks.length ? taskOptions : '<option value="">未找到 dashboard.enabled=true 的任務</option>';
   if ($('taskConnectionSource')) {
-    $('taskConnectionSource').innerHTML = '<option value="">直接填寫下方 DB 連線資訊</option>' + taskOptions;
-    applyConnectionSourceDefaults();
+    connectionSourceTasks = await loadTaskConfigSourceCandidates(token);
+    const sourceTasks = connectionSourceTasks;
+    const sourceOptions = sourceTasks.map(t => `<option value="${escapeHtml(t.config_path)}">${escapeHtml(taskOptionLabel(t))}</option>`).join('');
+    $('taskConnectionSource').innerHTML = '<option value="">直接填寫下方 DB 連線資訊</option>' + sourceOptions;
+    applyConnectionSourceDefaults(sourceTasks);
   }
   if (dashboardTasks.length && $('uploadConfig')) $('uploadConfig').value = dashboardTasks[0].config_path;
   renderUploadTaskDetails();
   if (currentUserRole === ROLE_SUPERUSER) await loadTaskConfigReviewOptions();
 }
 function onTaskChange() { if ($('task').value) $('uploadConfig').value = $('task').value; renderUploadTaskDetails(); }
-function applyConnectionSourceDefaults() {
+function applyConnectionSourceDefaults(sourceTasks = dashboardTasks) {
   const select = $('taskConnectionSource');
   if (!select?.value) return;
-  const task = dashboardTasks.find(item => item.config_path === select.value);
+  const task = sourceTasks.find(item => item.config_path === select.value);
   const db = task?.review_summary?.db || {};
+  if ($('taskDbServer') && db.server) $('taskDbServer').value = db.server;
+  if ($('taskDbDatabase') && db.database) $('taskDbDatabase').value = db.database;
+  if ($('taskDbUser') && db.user) $('taskDbUser').value = db.user;
   if ($('taskDbDriver') && db.driver) $('taskDbDriver').value = db.driver;
   if ($('taskTrustedConnection')) $('taskTrustedConnection').checked = Boolean(db.trusted_connection);
 }
@@ -273,7 +303,7 @@ function closeMatchHelp() { $('matchHelpDialog')?.close(); }
 if (document.getElementById('importRecords') || document.getElementById('taskConfigCard')) {
   if (document.getElementById('taskConfigCard')) {
     addTaskMappingRow();
-    if ($('taskConnectionSource')) $('taskConnectionSource').onchange = applyConnectionSourceDefaults;
+    if ($('taskConnectionSource')) $('taskConnectionSource').onchange = () => applyConnectionSourceDefaults(connectionSourceTasks);
   }
   (async () => { await loadCurrentUser(); await loadTasks(); await loadMyTaskConfigs(); if (document.getElementById('importRecords')) await loadImportRecords(); })().catch(err => showError(err.message || String(err)));
 }

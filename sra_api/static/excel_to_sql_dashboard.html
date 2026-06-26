@@ -82,8 +82,9 @@
     #recent th.user-col, #recent td.user-col { width:6%; }
     #recent th.row-col, #recent td.row-col { width:4%; }
     #recent th.message-col, #recent td.message-col { width:13%; overflow-wrap:anywhere; }
-    #recent th.action-col, #recent td.action-col { width:6%; }
-    #recent th.payload-col, #recent td.payload-col { width:44%; min-width:680px; }
+    #recent th.select-col, #recent td.select-col { width:3%; text-align:center; }
+    #recent th.action-col, #recent td.action-col { width:7%; }
+    #recent th.payload-col, #recent td.payload-col { width:41%; min-width:680px; }
     .json-view { white-space:pre-wrap; overflow-wrap:anywhere; word-break:normal; margin:0; min-width:0; max-width:none; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.5; }
     .json-key { color:#7c3aed; font-weight:700; }
     .json-string { color:#047857; }
@@ -102,6 +103,7 @@
     <div class="header-actions">
       <div id="whoami" class="header-user">未登入</div>
       <button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button>
+      <button onclick="location.href='/excel-to-sql-task-configs'">任務 JSON 管理</button>
       <button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
     </div>
   </header>
@@ -140,6 +142,8 @@
         <div><label>來源檔包含</label><input id="sourceFileFilter" placeholder="例如 .xlsx 或檔名片段" /></div>
         <div class="dropdown-filter"><div class="field-label-row"><label for="usernameSummary">使用者</label><span class="help-tip" tabindex="0" data-tip="點開選單勾選一位或多位使用者；操作方式與統計與檢核曲線儀表板的使用者篩選相同。" aria-label="使用者篩選說明">?</span></div><details id="usernameDropdown" class="multi-select"><summary id="usernameSummary">全體使用者</summary><div class="multi-select-menu"><input id="usernameSearch" class="multi-filter-search" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="selectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="clearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="clearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="usernameFilter" role="group" aria-label="使用者清單"><div class="muted">載入後可選擇</div></div></div></details><input id="usernameFilterValue" type="hidden" /></div>
         <div class="dropdown-filter"><div class="field-label-row"><label for="destinationTableSummary">目的地 table</label><span class="help-tip" tabindex="0" data-tip="點開選單選擇 table；點選多個項目後，點選選單外側會自動套用並收合。" aria-label="目的地 table 篩選說明">?</span></div><details id="destinationTableDropdown" class="multi-select"><summary id="destinationTableSummary">全部目的地 table</summary><div id="destinationTableFilter" class="multi-select-menu" role="listbox" aria-label="目的地 table 篩選"><div class="muted">載入後可選擇</div></div></details></div>
+        <div><label>起始時間（本機）</label><input id="auditStartTs" type="datetime-local" step="1" /></div>
+        <div><label>結束時間（本機）</label><input id="auditEndTs" type="datetime-local" step="1" /></div>
         <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
         <div><label>訊息包含</label><input id="messageFilter" placeholder="錯誤訊息 / 智慧比對" /></div>
         <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
@@ -170,13 +174,14 @@
         <div id="filteredDailyChart" class="chart-empty">尚未載入圖表</div>
       </div>
       <div class="recent-toolbar">
+        <div class="upload-actions"><button class="secondary" onclick="deleteSelectedImportedRows()">批次刪除勾選 SQL 列</button><button class="ghost" id="downloadBatchDeleteReportBtn" onclick="downloadBatchDeleteReport()" disabled>下載批次刪除報告 Excel</button></div>
         <div class="muted" id="recentPageInfo">第 1 頁</div>
         <div class="pager">
           <button class="ghost" id="recentPrevBtn" onclick="changeRecentPage(-1)">上一頁</button>
           <button class="ghost" id="recentNextBtn" onclick="changeRecentPage(1)">下一頁</button>
         </div>
       </div>
-      <div class="table-wrap"><table id="recent"><colgroup><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="action-col"><col class="payload-col"></colgroup><thead><tr><th class="time-col">時間（本機）</th><th class="status-col">狀態</th><th class="file-col">檔案</th><th class="user-col">使用者</th><th class="row-col">列號</th><th class="message-col">訊息</th><th class="action-col">操作</th><th class="payload-col">payload</th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table id="recent"><colgroup><col class="select-col"><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="action-col"><col class="payload-col"></colgroup><thead><tr><th class="select-col"><input type="checkbox" id="recentSelectAll" aria-label="勾選本頁可刪除 SQL 列" onchange="toggleRecentSelection(this.checked)"></th><th class="time-col">時間（本機）</th><th class="status-col">狀態</th><th class="file-col">檔案</th><th class="user-col">使用者</th><th class="row-col">列號</th><th class="message-col">訊息</th><th class="action-col">操作</th><th class="payload-col">payload</th></tr></thead><tbody></tbody></table></div>
     </section>
   </main>
 <script src="/static/audit_tools.js"></script>

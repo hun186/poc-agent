@@ -237,3 +237,9 @@
 - db_operator 的任務管理邊界以 `dashboard.created_by` 為準：只能列出、停用、刪除自己建立的設定檔；不能看到其他建立者的任務，也不能自行啟用 pending 任務。
 - superuser 審核仍使用 `scope=all` 取得全站任務清單，啟用權限不下放，維持任務設計與正式開放的第二人覆核。
 - `source.directory` 保留於 JSON，定位為伺服器端批次掃描 Excel 目錄；使用者上傳流程不依賴該本機路徑存在，而是另由 upload/import-record storage 保存檔案。
+
+## 2026-06-26 SQL / ES 同步刪除一致性建議
+
+- Excel→SQL dashboard 的刪除操作目前權責是 SQL 目的表控制，不應直接假設可安全刪除 ES 文件，因 ES doc 可能由另一個 LLM 結構化專案寫入，且可能一個 SQL row 對應多個 ES doc 或多個事件片段。
+- 建議後續採「可追蹤 lineage + 補償工作流」：LLM 寫入 ES 時保存 `source_system=excel_to_sql`、`source_config_path`、`source_hash_value`、`source_run_id`、`source_audit_id`、`source_file`、`source_row_no` 等 metadata；SQL 刪除 audit 寫入 outbox / tombstone event，由背景 worker 或外部專案消費後對 ES 執行 soft-delete、標記 superseded，或提交人工審核佇列。
+- 不建議在 SQL dashboard 批次刪除時同步硬刪 ES：會擴大交易範圍、跨系統失敗難 rollback，也可能誤刪仍被其他來源引用的 ES doc。

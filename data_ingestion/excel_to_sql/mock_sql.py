@@ -181,6 +181,9 @@ def mock_delete_imported_sql_row(config_path: str, *, hash_value: str, actor: st
     return {
         "ok": True,
         "deleted": False,
+        "deleted_rows": 0,
+        "status": "mock_sql_delete_skipped",
+        "deleted_row_payloads": [],
         "mock_mode": True,
         "hash_value": hash_value,
         "actor": actor,

@@ -1,5 +1,5 @@
 const tokenKey = 'sra_editor_token';
-const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false, usernameOptions: [], selectedUsers: [], usernameDirty: false };
+const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false, usernameOptions: [], selectedUsers: [], usernameDirty: false, batchDeleteReport: null };
 function $(id) { return document.getElementById(id); }
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function statusBadge(s) { return `<span class="status ${escapeHtml(s)}">${escapeHtml(s || '(empty)')}</span>`; }
@@ -55,7 +55,9 @@ function fillRecentWindow() {
   $('endTs').value = toLocalInputValue(end);
   $('days').value = 14;
 }
-function localInputToUtcIso(id) { const v = $(id).value; return v ? new Date(v).toISOString() : ''; }
+function localInputToUtcIso(id) { const el = $(id); const v = el?.value || ''; return v ? new Date(v).toISOString() : ''; }
+function auditRangeStartIso() { return localInputToUtcIso('auditStartTs') || localInputToUtcIso('startTs'); }
+function auditRangeEndIso() { return localInputToUtcIso('auditEndTs') || localInputToUtcIso('endTs'); }
 function refreshDashboardNow() { loadDashboard(); }
 function normalizeAuditUtc(text) {
   const raw = String(text || '');
@@ -114,7 +116,7 @@ function closeUsernameDropdown(applyPending = false) {
   if (dropdown.open) dropdown.open = false;
   if (applyPending) applyUsernamePendingFilters();
 }
-function clearAuditFilters() { ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); $('destinationTableFilter').querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; }); updateDestinationTableSummary(); applyAuditFilters(); }
+function clearAuditFilters() { ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); $('destinationTableFilter').querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; }); updateDestinationTableSummary(); applyAuditFilters(); }
 function renderDestinationTableOptions(options) {
   const el = $('destinationTableFilter');
   const selected = new Set(selectedValues('destinationTableFilter'));
@@ -222,14 +224,99 @@ function actionCell(r) {
   return `<button class="secondary" onclick="deleteImportedRow('${escapeHtml(r.hash_value)}')">刪除SQL列</button>`;
 }
 
+function selectedDeletableRows() {
+  return Array.from(document.querySelectorAll('[data-recent-delete-check]:checked')).map(input => ({
+    hash_value: input.value,
+    audit_id: input.dataset.auditId || '',
+    source_file: input.dataset.sourceFile || '',
+    row_no: input.dataset.rowNo || '',
+  })).filter(item => item.hash_value);
+}
+function toggleRecentSelection(checked) {
+  document.querySelectorAll('[data-recent-delete-check]').forEach(input => { input.checked = checked; });
+}
+function batchDeleteConfirmationPhrase(rowCount) { return `DELETE ${rowCount}`; }
+function confirmBatchDeleteRows(rows) {
+  const rowCount = rows.length;
+  const sampleHashes = rows.slice(0, 5).map(item => item.hash_value).join('\n');
+  const phrase = batchDeleteConfirmationPhrase(rowCount);
+  const typed = prompt(
+    `高風險操作確認：即將批次刪除 ${rowCount} 筆 SQL 條目。\n` +
+    `前 ${Math.min(rowCount, 5)} 筆 hash：\n${sampleHashes}\n\n` +
+    `若確認要刪除，請完整輸入：${phrase}`,
+    ''
+  );
+  return typed === phrase;
+}
+async function deleteSelectedImportedRows() {
+  const rows = selectedDeletableRows();
+  if (!rows.length) { showError('請先勾選至少一筆可刪除的 SQL 列。'); return; }
+  const reason = prompt('請輸入批次刪除原因（會寫入 audit 與報告）：', '復原錯誤 Excel 匯入，批次刪除');
+  if (reason === null) return;
+  if (!reason.trim()) { showError('批次刪除需要填寫原因，避免事後無法追溯。'); return; }
+  if (!confirmBatchDeleteRows(rows)) { showError('批次刪除已取消：確認文字不符合。'); return; }
+  if (!confirm(`最後確認：確定要從 SQL 目的表刪除 ${rows.length} 筆資料？\n此操作會逐筆寫入 audit，且不會自動刪除 ES 文件。`)) return;
+  const token = authToken();
+  const res = await fetch('/v1/excel-to-sql/delete-rows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify({ config: $('config').value, hash_values: rows.map(item => item.hash_value), reason: reason.trim() })
+  });
+  if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
+  const data = await res.json();
+  state.batchDeleteReport = data.report || null;
+  if ($('downloadBatchDeleteReportBtn')) $('downloadBatchDeleteReportBtn').disabled = !state.batchDeleteReport;
+  showError(`批次刪除完成：成功刪除 ${data.deleted_rows || 0} 筆，處理 ${data.processed || 0} 個 hash。可下載批次刪除報告 Excel。`);
+  await loadDashboard();
+}
+function flattenReportRow(row) {
+  return {
+    deleted_at: row.deleted_at || '',
+    actor: row.actor || '',
+    config_path: row.config_path || '',
+    hash_value: row.hash_value || '',
+    status: row.status || '',
+    deleted_rows: row.deleted_rows ?? '',
+    destination_table: row.destination_table || '',
+    hash_field: row.hash_field || '',
+    reason: row.reason || '',
+    source_file: row.source_file || '',
+    row_no: row.row_no || '',
+    error: row.error || '',
+    deleted_row_payloads: JSON.stringify(row.deleted_row_payloads || [], null, 2),
+  };
+}
+function downloadBatchDeleteReport() {
+  const report = state.batchDeleteReport;
+  if (!report?.rows?.length) { showError('目前沒有可下載的批次刪除報告。'); return; }
+  const headers = ['deleted_at','actor','config_path','hash_value','status','deleted_rows','destination_table','hash_field','reason','source_file','row_no','error','deleted_row_payloads'];
+  const bodyRows = report.rows.map(flattenReportRow);
+  const htmlRows = [headers, ...bodyRows.map(row => headers.map(header => row[header] ?? ''))]
+    .map(cells => '<tr>' + cells.map(cell => `<td>${escapeHtml(cell)}</td>`).join('') + '</tr>').join('');
+  const html = `<html><head><meta charset="utf-8" /></head><body><table>${htmlRows}</table></body></html>`;
+  const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `excel_sql_batch_delete_report_${new Date().toISOString().replace(/[:.]/g, '-')}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+function selectionCell(r) {
+  if (!r.hash_value || r.status === 'sql_deleted') return '';
+  return `<input type="checkbox" data-recent-delete-check value="${escapeHtml(r.hash_value)}" data-audit-id="${escapeHtml(r.audit_id || '')}" data-source-file="${escapeHtml(r.source_file || '')}" data-row-no="${escapeHtml(r.row_no ?? '')}" aria-label="勾選刪除 hash ${escapeHtml(r.hash_value)}">`;
+}
+
 async function loadDashboard() {
   showError('');
   const token = authToken();
   if (!token) { showError('請先到 /editor 登入；本儀表板會沿用 sra_editor_token。'); return; }
   const pageSize = Math.max(1, Math.min(Number($('limit').value || 100), 1000));
   const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: pageSize, page: state.recentPage, chart_bucket: $('chartBucket').value });
-  const startIso = localInputToUtcIso('startTs');
-  const endIso = localInputToUtcIso('endTs');
+  const startIso = auditRangeStartIso();
+  const endIso = auditRangeEndIso();
   if (startIso) params.set('start_ts', startIso);
   if (endIso) params.set('end_ts', endIso);
   const filters = { status_filter: $('statusFilter').value, source_file_filter: $('sourceFileFilter').value, row_no_filter: $('rowNoFilter').value, message_filter: $('messageFilter').value, hash_value_filter: $('hashFilter').value, payload_filter: $('payloadFilter').value };
@@ -251,10 +338,11 @@ async function loadDashboard() {
   if (data.chart_bucket && $('chartBucket').value !== data.chart_bucket) $('chartBucket').value = data.chart_bucket;
   renderFilteredDailyChart(data.filtered_series || data.filtered_daily || [], data.chart_bucket || $('chartBucket').value, data.chart_bucket_label || $('chartBucket').selectedOptions[0]?.textContent || '每日');
   updateRecentPager(data);
-  fillTable('recent', data.recent, r => `<tr><td class="time-col">${formatAuditTime(r.processed_at)}</td><td class="status-col">${statusBadge(r.status)}</td><td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td><td class="user-col">${escapeHtml(r.username || '')}</td><td class="row-col">${escapeHtml(r.row_no ?? '')}</td><td class="message-col">${escapeHtml(r.message || '')}</td><td class="action-col">${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
+  if ($('recentSelectAll')) $('recentSelectAll').checked = false;
+  fillTable('recent', data.recent, r => `<tr><td class="select-col">${selectionCell(r)}</td><td class="time-col">${formatAuditTime(r.processed_at)}</td><td class="status-col">${statusBadge(r.status)}</td><td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td><td class="user-col">${escapeHtml(r.username || '')}</td><td class="row-col">${escapeHtml(r.row_no ?? '')}</td><td class="message-col">${escapeHtml(r.message || '')}</td><td class="action-col">${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
 }
 function bindAuditFilterEvents() {
-  ['statusFilter','sourceFileFilter','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {
+  ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {
     const el = $(id);
     el.addEventListener('change', applyAuditFilters);
     el.addEventListener('keydown', event => { if (event.key === 'Enter') applyAuditFilters(); });

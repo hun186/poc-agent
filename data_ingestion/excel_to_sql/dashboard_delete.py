@@ -87,6 +87,7 @@ def delete_imported_sql_row_with_config(
                 "hash_value": clean_hash,
                 "destination_table": destination_table,
                 "hash_field": hash_field,
+                "deleted_row_payloads": deleted_row_payloads,
             }
         except Exception:
             conn.rollback()

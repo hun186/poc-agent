@@ -39,6 +39,10 @@ def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     assert "function refreshDashboardNow() { loadDashboard(); }" in html
     assert "回看天數（起迄皆空時才生效）" in html
     assert "前往 Excel 匯入作業中心" not in html
+    assert 'id="auditStartTs" type="datetime-local" step="1"' in html
+    assert 'id="auditEndTs" type="datetime-local" step="1"' in html
+    assert "function auditRangeStartIso()" in html
+    assert "function auditRangeEndIso()" in html
     assert "Excel→SQL 匯入查詢儀表板" in html
     assert "匯入任務" in html
     assert "監控任務" not in html
@@ -98,10 +102,13 @@ def test_recent_audit_table_gives_payload_more_width_than_file_column():
     assert "#recent th.status-col, #recent td.status-col { width:5%; }" in html
     assert "#recent th.file-col, #recent td.file-col { width:12%; max-width:260px; white-space:normal; word-break:normal; overflow-wrap:anywhere; }" in html
     assert "#recent th.user-col, #recent td.user-col { width:6%; }" in html
-    assert "#recent th.payload-col, #recent td.payload-col { width:44%; min-width:680px; }" in html
-    assert '<colgroup><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="action-col"><col class="payload-col"></colgroup>' in html
+    assert "#recent th.select-col, #recent td.select-col { width:3%; text-align:center; }" in html
+    assert "#recent th.payload-col, #recent td.payload-col { width:41%; min-width:680px; }" in html
+    assert '<colgroup><col class="select-col"><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="action-col"><col class="payload-col"></colgroup>' in html
+    assert 'id="recentSelectAll"' in html
     assert '<th class="time-col">時間（本機）</th>' in html
     assert '<th class="file-col">檔案</th>' in html
+    assert '<td class="select-col">${selectionCell(r)}</td>' in html
     assert '<td class="time-col">${formatAuditTime(r.processed_at)}</td>' in html
     assert '<td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td>' in html
 
@@ -132,3 +139,23 @@ def test_dashboard_accepts_import_record_deep_link_filters():
         "resetDefaultWindow(); applyInitialQueryParams(); await loadCurrentUser(); await loadTasks(); applyInitialQueryParams(); await loadDashboard();"
         in html
     )
+
+
+def test_recent_audit_batch_delete_and_report_download_controls():
+    html = dashboard_source()
+
+    assert "批次刪除勾選 SQL 列" in html
+    assert "下載批次刪除報告 Excel" in html
+    assert "function selectedDeletableRows()" in html
+    assert "function batchDeleteConfirmationPhrase(rowCount)" in html
+    assert "function confirmBatchDeleteRows(rows)" in html
+    assert "請完整輸入" in html
+    assert "DELETE ${rowCount}" in html
+    assert "批次刪除需要填寫原因" in html
+    assert "最後確認" in html
+    assert "function deleteSelectedImportedRows()" in html
+    assert "function downloadBatchDeleteReport()" in html
+    assert "data-recent-delete-check" in html
+    assert "/v1/excel-to-sql/delete-rows" in html
+    assert "application/vnd.ms-excel" in html
+    assert "deleted_row_payloads" in html

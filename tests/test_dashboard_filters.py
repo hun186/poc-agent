@@ -307,6 +307,7 @@ def test_delete_imported_sql_row_records_deleted_row_payloads(monkeypatch):
 
     assert result["status"] == "sql_deleted"
     assert result["deleted_rows"] == 1
+    assert result["deleted_row_payloads"][0]["hash_value"] == "abc123"
     assert conn.commits == 1
     assert conn.rollbacks == 0
     payload = conn.cursor_obj.audit_payload
@@ -326,3 +327,40 @@ def test_delete_imported_sql_row_records_deleted_row_payloads(monkeypatch):
     assert delete_sql.startswith("DELETE FROM")
     assert select_params == ("abc123",)
     assert delete_params == ("abc123",)
+
+def test_batch_delete_imported_sql_rows_collects_report(monkeypatch):
+    from data_ingestion.excel_to_sql import dashboard as dashboard_module
+
+    calls = []
+
+    def fake_delete(config_path, *, hash_value, actor, reason=""):
+        calls.append((config_path, hash_value, actor, reason))
+        return {
+            "ok": True,
+            "status": "sql_deleted",
+            "deleted_rows": 1,
+            "hash_value": hash_value,
+            "destination_table": "dbo.Target",
+            "hash_field": "hash_value",
+            "deleted_row_payloads": [{"hash_value": hash_value, "name": "row"}],
+        }
+
+    monkeypatch.setattr(dashboard_module, "delete_imported_sql_row", fake_delete)
+
+    result = dashboard_module.delete_imported_sql_rows(
+        "config/excel_to_sql/task.json",
+        hash_values=["abc", "abc", "def"],
+        actor="alice",
+        reason="rollback bad import",
+    )
+
+    assert result["processed"] == 2
+    assert result["deleted_rows"] == 2
+    assert [row["hash_value"] for row in result["report"]["rows"]] == ["abc", "def"]
+    assert result["report"]["rows"][0]["deleted_row_payloads"] == [
+        {"hash_value": "abc", "name": "row"}
+    ]
+    assert calls == [
+        ("config/excel_to_sql/task.json", "abc", "alice", "rollback bad import"),
+        ("config/excel_to_sql/task.json", "def", "alice", "rollback bad import"),
+    ]

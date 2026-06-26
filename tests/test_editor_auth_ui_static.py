@@ -154,7 +154,7 @@ def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     assert 'id="adminNavGroup" data-nav-root="system"' in html
     assert 'data-nav-root="pipeline" aria-expanded="false">匯入管理</button>' in html
     assert '<summary>Excel 匯入流程管理</summary>' in html
-    assert 'id="excelDashboardBtn">監控 Dashboard</button>' in html
+    assert 'id="excelDashboardBtn">Excel→SQL 匯入查詢儀表板</button>' in html
     assert 'id="excelImportCenterBtn">Excel 匯入作業中心</button>' in html
     assert 'id="navSubPanel" class="nav-subpanel hidden" aria-label="第二層功能選單"' in html
     assert 'class="nav-menu" data-nav-menu="content"' in html

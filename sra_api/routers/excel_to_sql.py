@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from data_ingestion.excel_to_sql.dashboard import (
     dashboard_payload,
     delete_imported_sql_row,
+    delete_imported_sql_rows,
     discover_dashboard_tasks,
 )
 from data_ingestion.excel_to_sql.task_configs import (
@@ -38,6 +39,12 @@ router = APIRouter(tags=["excel-to-sql"])
 class DeleteImportedRowPayload(BaseModel):
     config: str = Field(default="config/excel_to_sql/vessel_activities.example.json")
     hash_value: str = Field(..., min_length=1, max_length=128)
+    reason: str = Field(default="", max_length=500)
+
+
+class DeleteImportedRowsPayload(BaseModel):
+    config: str = Field(default="config/excel_to_sql/vessel_activities.example.json")
+    hash_values: list[str] = Field(..., min_length=1, max_length=500)
     reason: str = Field(default="", max_length=500)
 
 
@@ -223,6 +230,30 @@ def excel_to_sql_delete_row(
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"刪除已匯入 SQL 資料列失敗：{exc}"
+        ) from exc
+
+
+
+
+@router.post("/v1/excel-to-sql/delete-rows")
+def excel_to_sql_delete_rows(
+    payload: DeleteImportedRowsPayload,
+    user: AuthUser = Depends(require_db_operator),
+) -> dict[str, Any]:
+    try:
+        return delete_imported_sql_rows(
+            payload.config,
+            hash_values=payload.hash_values,
+            actor=user.username,
+            reason=payload.reason,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"批次刪除已匯入 SQL 資料列失敗：{exc}"
         ) from exc
 
 
