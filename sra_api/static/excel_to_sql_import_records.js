@@ -56,13 +56,16 @@ function mergeTasksByConfigPath(...groups) {
   });
   return Array.from(map.values());
 }
+function isActiveConnectionSourceTask(task) {
+  return Boolean(task?.enabled) || String(task?.status || '').toLowerCase() === 'active';
+}
 async function loadTaskConfigSourceCandidates(token) {
   if (!$('taskConnectionSource')) return dashboardTasks;
   const scope = currentUserRole === ROLE_SUPERUSER ? 'all' : 'mine';
   const res = await fetch(`/v1/excel-to-sql/task-configs?scope=${scope}`, { headers: { Authorization: 'Bearer ' + token } });
   if (!res.ok) return dashboardTasks;
   const taskConfigs = (await res.json()).tasks || [];
-  return mergeTasksByConfigPath(dashboardTasks, taskConfigs);
+  return mergeTasksByConfigPath(dashboardTasks, taskConfigs).filter(isActiveConnectionSourceTask);
 }
 async function loadTasks() {
   const needsUploadTasks = Boolean($('task'));

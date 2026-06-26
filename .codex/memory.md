@@ -200,3 +200,15 @@
 - 目的：建立 Excel→SQL 任務設定檔時，選擇既有 JSON 作為資料庫連線來源後，不再把 Server、資料庫名稱、DB 使用者與 DB 密碼顯示在頁面上，只提示後端會讀取套用該設定檔連線資訊。
 - 主要修改：任務設定頁新增連線來源提示與敏感欄位 hide/disabled/clear 行為；既有來源只帶入較不敏感的 ODBC Driver 與 trusted connection；任務清單 / 審核摘要與遮蔽 JSON 也同步遮蔽 db server、database、user、password。
 - 驗證：`python -m pip install --upgrade pip` 遇到套件索引 403 retry，但環境已有 pip；`python -m pip install -r requirements.txt` 顯示相依套件已滿足；`python -m py_compile data_ingestion/excel_to_sql/task_configs.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（15 passed, 1 warning；warning 為既有 Starlette / httpx deprecation）。
+
+### 2026-06-26 Excel→SQL SSH active config status display fix
+
+- 目的：修正以 SSH 直接放到伺服器、已可導入 Excel 的 `dashboard.enabled=true` 任務，在「資料庫連線來源任務」選項被標示為 pending 的問題。
+- 主要修改：dashboard 任務探索現在對所有可上傳任務回傳 `enabled=true` 與 `status=active`；任務設定檔清單也以 `dashboard.enabled=true` 作為 active 顯示權威，即使舊 JSON 仍留有 `dashboard.status=pending` 也不再顯示 pending。
+- 驗證：`python -m pip install --upgrade pip` 遇到套件索引 403 retry，但環境已有 pip；`python -m pip install -r requirements.txt` 顯示相依套件已滿足；`python -m py_compile data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/task_configs.py` 通過；`PYTHONPATH=. pytest tests/test_dashboard_filters.py tests/test_excel_to_sql_user_imports.py -q` 通過（27 passed, 1 warning；warning 為既有 Starlette / httpx deprecation）；`git diff --check` 通過。
+
+### 2026-06-26 Excel→SQL connection source excludes pending tasks
+
+- 目的：回應「建立 Excel→SQL 任務設定檔」的資料庫連線來源選單不應列出尚未 active、仍為 pending 的任務。
+- 主要修改：前端合併 dashboard active 任務與 task-config list 後，新增 `isActiveConnectionSourceTask()` 過濾，只保留 `enabled=true` 或 `status=active` 的設定檔作為連線來源候選；pending 任務仍可留在我的任務清單 / superuser 審核區，不再出現在連線來源下拉。
+- 驗證：`python -m pip install --upgrade pip` 遇到套件索引 403 retry，但環境已有 pip；`python -m pip install -r requirements.txt` 顯示相依套件已滿足；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q` 通過（27 passed, 3 warnings；warnings 為既有 Starlette / Python invalid escape deprecation）；`git diff --check` 通過。

@@ -332,3 +332,8 @@
 - `GET /v1/excel-to-sql/task-configs` response shape 不變，但 `tasks[*].review_summary.db` 與 `tasks[*].config_preview.db` 的敏感值顯示策略更嚴格：`server`、`database`、`user`、`password` 若存在會以 `********` 回傳。
 - `driver`、`trusted_connection`、`encrypt`、`trust_server_certificate` 仍保留於 summary / preview，供前端在使用既有連線來源時提示與帶入較不敏感設定。
 - `POST /v1/excel-to-sql/task-configs` request / response shape 不變；當 `connection_source_config` 有值時，後端仍讀取套用該 JSON 的真實 db 區塊，前端不需要也不應送出來源設定檔的 Server / DB / user / password。
+
+## 2026-06-26 Excel→SQL enabled task status normalization
+
+- `GET /v1/excel-to-sql/dashboard-tasks` response 的任務物件新增 / 明確回傳 `enabled: true` 與 `status: "active"`，因該 endpoint 只列出 `dashboard.enabled=true`、可用於上傳導入的任務。
+- `GET /v1/excel-to-sql/task-configs` response shape 不變；當設定檔 `dashboard.enabled=true` 時，`tasks[*].status` 以 `active` 顯示，即使舊版或手動上傳 JSON 仍留有 `dashboard.status=pending`。

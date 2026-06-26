@@ -428,8 +428,10 @@ def list_task_configs(
         )
         if created_by is not None and dashboard.get("created_by") != created_by:
             continue
-        status = dashboard.get("status") or (
-            "active" if dashboard.get("enabled") else "pending"
+        status = (
+            "active"
+            if dashboard.get("enabled")
+            else (dashboard.get("status") or "pending")
         )
         tasks.append(
             {

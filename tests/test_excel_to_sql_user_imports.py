@@ -181,6 +181,8 @@ def test_import_center_static_contains_user_import_controls():
     assert "function applyConnectionSourceDefaults" in script
     assert "function loadTaskConfigSourceCandidates" in script
     assert "mergeTasksByConfigPath" in script
+    assert "isActiveConnectionSourceTask" in script
+    assert ".filter(isActiveConnectionSourceTask)" in script
     assert "connectionSourceTasks" in script
     assert "taskDbServer" in script
     assert "taskDbDatabase" in script
@@ -546,6 +548,31 @@ def test_create_excel_to_sql_task_config_accepts_root_prefixed_subpath(tmp_path)
     create_task_config(payload, actor="operator", root=tmp_path)
 
     assert (tmp_path / "group" / "root_prefixed.json").exists()
+
+
+def test_list_task_configs_treats_enabled_dashboard_as_active(tmp_path):
+    from data_ingestion.excel_to_sql.task_configs import list_task_configs
+
+    config = {
+        "dashboard": {"enabled": True, "status": "pending", "name": "SSH active task"},
+        "source": {"sheet": "Sheet1"},
+        "destination": {"table": "dbo.ImportTarget"},
+        "mappings": [{"source_column": "A", "dest_field": "a"}],
+        "db": {
+            "driver": "ODBC Driver 18 for SQL Server",
+            "server": "sql.local",
+            "database": "OpsDb",
+            "trusted_connection": True,
+        },
+    }
+    (tmp_path / "ssh_active.json").write_text(
+        json.dumps(config, ensure_ascii=False), encoding="utf-8"
+    )
+
+    listed = list_task_configs(root=tmp_path)
+
+    assert listed[0]["enabled"] is True
+    assert listed[0]["status"] == "active"
 
 
 def test_task_config_review_summary_masks_password_and_status_toggles(tmp_path):

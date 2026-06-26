@@ -64,6 +64,8 @@ def discover_dashboard_tasks(
                     get_nested(cfg, "destination.table", "") or ""
                 ),
                 "source_directory": str(get_nested(cfg, "source.directory", "") or ""),
+                "enabled": True,
+                "status": "active",
                 "review_summary": task_review_summary(cfg),
             }
         )

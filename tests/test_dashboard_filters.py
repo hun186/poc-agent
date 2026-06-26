@@ -76,11 +76,15 @@ def test_audit_chart_bucket_rejects_unknown_interval():
         _audit_chart_bucket("quarter")
 
 
-def _write_dashboard_config(path: Path, *, enabled: bool = True, name: str = ""):
+def _write_dashboard_config(
+    path: Path, *, enabled: bool = True, name: str = "", status: str = ""
+):
     path.parent.mkdir(parents=True, exist_ok=True)
     dashboard = {"enabled": enabled}
     if name:
         dashboard["name"] = name
+    if status:
+        dashboard["status"] = status
     path.write_text(
         json.dumps(
             {
@@ -216,7 +220,9 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
 
 def test_discover_dashboard_tasks_recursively_loads_enabled_json(tmp_path):
     _write_dashboard_config(tmp_path / "root_task.json", name="Root task")
-    _write_dashboard_config(tmp_path / "nested" / "child_task.json", name="Nested task")
+    _write_dashboard_config(
+        tmp_path / "nested" / "child_task.json", name="Nested task", status="pending"
+    )
     _write_dashboard_config(
         tmp_path / "nested" / "disabled_task.json", enabled=False, name="Disabled task"
     )
@@ -229,6 +235,8 @@ def test_discover_dashboard_tasks_recursively_loads_enabled_json(tmp_path):
         "child_task.json",
         "root_task.json",
     }
+    assert all(task["enabled"] is True for task in tasks)
+    assert all(task["status"] == "active" for task in tasks)
 
 
 def test_delete_imported_sql_row_records_deleted_row_payloads(monkeypatch):
