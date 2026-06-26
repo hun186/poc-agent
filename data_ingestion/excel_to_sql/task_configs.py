@@ -314,11 +314,19 @@ def create_task_config(
     }
 
 
+def _sanitize_db_config_for_display(db_cfg: dict[str, Any]) -> dict[str, Any]:
+    sanitized = dict(db_cfg)
+    for key in ("server", "database", "user", "password"):
+        if key in sanitized and sanitized.get(key) not in {None, ""}:
+            sanitized[key] = "********"
+    return sanitized
+
+
 def _sanitized_config_for_review(cfg: dict[str, Any]) -> dict[str, Any]:
     sanitized = json.loads(json.dumps(cfg, ensure_ascii=False))
     db_cfg = sanitized.get("db")
-    if isinstance(db_cfg, dict) and "password" in db_cfg:
-        db_cfg["password"] = "********"
+    if isinstance(db_cfg, dict):
+        sanitized["db"] = _sanitize_db_config_for_display(db_cfg)
     return sanitized
 
 
@@ -336,10 +344,11 @@ def task_review_summary(cfg: dict[str, Any]) -> dict[str, Any]:
     return {
         "db": {
             "driver": db_cfg.get("driver"),
-            "server": db_cfg.get("server"),
-            "database": db_cfg.get("database"),
+            "server": "********" if db_cfg.get("server") else None,
+            "database": "********" if db_cfg.get("database") else None,
             "trusted_connection": bool(db_cfg.get("trusted_connection")),
-            "user": db_cfg.get("user"),
+            "user": "********" if db_cfg.get("user") else None,
+            "password": "********" if db_cfg.get("password") else None,
             "encrypt": db_cfg.get("encrypt"),
             "trust_server_certificate": db_cfg.get("trust_server_certificate"),
         },
