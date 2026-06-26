@@ -87,14 +87,25 @@ async function loadTasks() {
   if (currentUserRole === ROLE_SUPERUSER) await loadTaskConfigReviewOptions();
 }
 function onTaskChange() { if ($('task').value) $('uploadConfig').value = $('task').value; renderUploadTaskDetails(); }
+function setSensitiveConnectionFieldsVisible(visible) {
+  const fields = $('connectionSensitiveFields');
+  const notice = $('connectionSourceNotice');
+  if (fields) fields.classList.toggle('hidden', !visible);
+  if (notice) notice.classList.toggle('hidden', visible);
+  ['taskDbServer', 'taskDbDatabase', 'taskDbUser', 'taskDbPassword'].forEach(id => {
+    const input = $(id);
+    if (!input) return;
+    input.disabled = !visible;
+    if (!visible) input.value = '';
+  });
+}
 function applyConnectionSourceDefaults(sourceTasks = dashboardTasks) {
   const select = $('taskConnectionSource');
-  if (!select?.value) return;
+  const usingSource = Boolean(select?.value);
+  setSensitiveConnectionFieldsVisible(!usingSource);
+  if (!usingSource) return;
   const task = sourceTasks.find(item => item.config_path === select.value);
   const db = task?.review_summary?.db || {};
-  if ($('taskDbServer') && db.server) $('taskDbServer').value = db.server;
-  if ($('taskDbDatabase') && db.database) $('taskDbDatabase').value = db.database;
-  if ($('taskDbUser') && db.user) $('taskDbUser').value = db.user;
   if ($('taskDbDriver') && db.driver) $('taskDbDriver').value = db.driver;
   if ($('taskTrustedConnection')) $('taskTrustedConnection').checked = Boolean(db.trusted_connection);
 }
@@ -243,7 +254,7 @@ function renderTaskReviewDetails() {
   if (!task) { box.classList.add('hidden'); return; }
   const summary = task.review_summary || {};
   box.classList.remove('hidden');
-  box.innerHTML = `<strong>JSON 任務轉換細節</strong><div class="muted">審核前請確認資料來源、目的資料表、欄位對應與自動建表 / 建欄設定；密碼欄位已遮蔽。</div><div class="review-grid"><div class="review-card"><h4>資料庫連線</h4><ul>${reviewListItems(summary.db)}</ul></div><div class="review-card"><h4>Excel 來源</h4><ul>${reviewListItems(summary.source)}</ul></div><div class="review-card"><h4>SQL 目的地</h4><ul>${reviewListItems(summary.destination)}</ul></div><div class="review-card"><h4>Audit / 匯入設定</h4><ul>${reviewListItems({ audit_table: summary.audit?.table, audit_enabled: summary.audit?.enabled, batch_size: summary.import?.batch_size, skip_empty_rows: summary.import?.skip_empty_rows, retry_max_attempts: summary.retry?.max_attempts })}</ul></div></div><div class="review-card"><h4>Excel 欄位 → SQL 欄位</h4>${renderMappingsForReview(summary.mappings)}</div><details><summary>查看遮蔽敏感資訊後的 JSON</summary><pre class="review-json">${escapeHtml(JSON.stringify(task.config_preview || {}, null, 2))}</pre></details>`;
+  box.innerHTML = `<strong>JSON 任務轉換細節</strong><div class="muted">審核前請確認資料來源、目的資料表、欄位對應與自動建表 / 建欄設定；Server、資料庫名稱、DB 使用者與密碼等敏感欄位已遮蔽。</div><div class="review-grid"><div class="review-card"><h4>資料庫連線</h4><ul>${reviewListItems(summary.db)}</ul></div><div class="review-card"><h4>Excel 來源</h4><ul>${reviewListItems(summary.source)}</ul></div><div class="review-card"><h4>SQL 目的地</h4><ul>${reviewListItems(summary.destination)}</ul></div><div class="review-card"><h4>Audit / 匯入設定</h4><ul>${reviewListItems({ audit_table: summary.audit?.table, audit_enabled: summary.audit?.enabled, batch_size: summary.import?.batch_size, skip_empty_rows: summary.import?.skip_empty_rows, retry_max_attempts: summary.retry?.max_attempts })}</ul></div></div><div class="review-card"><h4>Excel 欄位 → SQL 欄位</h4>${renderMappingsForReview(summary.mappings)}</div><details><summary>查看遮蔽敏感資訊後的 JSON</summary><pre class="review-json">${escapeHtml(JSON.stringify(task.config_preview || {}, null, 2))}</pre></details>`;
 }
 async function loadTaskConfigReviewOptions() {
   const select = $('approveTaskConfigPath');

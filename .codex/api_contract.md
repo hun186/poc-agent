@@ -326,3 +326,9 @@
 - Response body: `{ "ok": true, "processed": number, "deleted_rows": number, "report": { "generated_at", "actor", "config_path", "reason", "rows": [...] } }`.
 - Each report row includes at least `deleted_at`, `actor`, `config_path`, `hash_value`, `status`, `deleted_rows`, `destination_table`, `hash_field`, `reason`, optional `error`, and `deleted_row_payloads` captured before SQL deletion.
 - The existing single-row `POST /v1/excel-to-sql/delete-row` remains supported; its response now also includes `deleted_row_payloads` for report generation.
+
+## 2026-06-26 Excel→SQL task config DB summary redaction
+
+- `GET /v1/excel-to-sql/task-configs` response shape 不變，但 `tasks[*].review_summary.db` 與 `tasks[*].config_preview.db` 的敏感值顯示策略更嚴格：`server`、`database`、`user`、`password` 若存在會以 `********` 回傳。
+- `driver`、`trusted_connection`、`encrypt`、`trust_server_certificate` 仍保留於 summary / preview，供前端在使用既有連線來源時提示與帶入較不敏感設定。
+- `POST /v1/excel-to-sql/task-configs` request / response shape 不變；當 `connection_source_config` 有值時，後端仍讀取套用該 JSON 的真實 db 區塊，前端不需要也不應送出來源設定檔的 Server / DB / user / password。
