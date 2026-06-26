@@ -11,6 +11,21 @@
     h1 { margin:0; font-size:22px; }
     main { padding:24px; max-width:1500px; margin:0 auto; }
     .controls, .filters { display:grid; gap:16px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items:end; margin:12px 0 14px; }
+    .config-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin:14px 0; }
+    .config-group { border:1px solid #e4e7ec; border-radius:14px; padding:14px; background:#fbfcff; }
+    .config-group h3 { margin:0 0 4px; font-size:16px; color:#1d4ed8; display:flex; align-items:center; gap:8px; }
+    .config-group h3::before { content:""; width:8px; height:20px; border-radius:999px; background:#2563eb; display:inline-block; }
+    .config-group .controls { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom:0; }
+    .section-title { margin:18px 0 8px; padding-top:12px; border-top:1px dashed #cbd5e1; color:#344054; }
+    .review-details { margin-top:12px; border:1px solid #dbeafe; border-radius:14px; background:#f8fbff; padding:12px; }
+    .review-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin:10px 0; }
+    .review-card { border:1px solid #e4e7ec; border-radius:12px; background:white; padding:10px; }
+    .review-card h4 { margin:0 0 6px; font-size:13px; color:#175cd3; }
+    .review-card ul { margin:0; padding-left:18px; }
+    .review-json { max-height:280px; overflow:auto; background:#0f172a; color:#e2e8f0; border-radius:12px; padding:12px; font-size:12px; line-height:1.5; }
+    .type-help { margin-top:10px; border:1px solid #fde68a; background:#fffbeb; border-radius:12px; padding:10px; }
+    .type-help summary { cursor:pointer; font-weight:800; color:#92400e; }
+    .type-help ul { margin:8px 0 0 18px; padding:0; color:#475467; font-size:13px; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:0 1px 2px rgba(16,24,40,.05); margin-bottom:16px; }
     .muted { color:var(--muted); font-size:13px; }
     label { font-weight:600; font-size:13px; display:block; margin-bottom:6px; }
@@ -19,6 +34,7 @@
     button.secondary { background:#475467; }
     button.ghost { background:#e2e8f0; color:#172033; }
     .mapping-row { display:grid; grid-template-columns: 1.2fr 1.2fr 1fr .7fr .7fr auto; gap:10px; align-items:end; margin:8px 0; }
+    .composite-row { display:grid; grid-template-columns: 1.2fr 1fr 1.6fr .7fr 1fr .6fr auto; gap:10px; align-items:end; margin:8px 0; }
     .mapping-row button { padding:9px 10px; }
     .checkbox-line { display:flex; gap:8px; align-items:center; font-size:13px; font-weight:600; }
     .checkbox-line input { width:auto; }
@@ -101,40 +117,35 @@
       <div><label>Excel 檔案</label><input id="uploadExcel" type="file" accept=".xlsx,.xlsm,.xltx,.xltm" /></div>
       <div class="upload-actions"><button onclick="uploadExcelRecord()">上傳並建立記錄</button><button class="secondary" onclick="loadImportRecords()">重新查詢記錄</button></div>
     </div>
+    <div id="uploadTaskDetails" class="review-details hidden"></div>
     <div id="previewBox" class="preview-box hidden"></div>
   </section>
 
   <section class="card" id="taskConfigCard">
     <h2>建立 Excel→SQL 任務設定檔</h2>
     <p class="muted">提供資料庫管理權限（db_operator / superuser）的使用者可在此建立真正的 <code>config/excel_to_sql/*.json</code> 任務設定檔。建議優先選擇既有任務作為資料庫連線來源，系統會沿用其 DB 位址、帳密、加密與 ODBC driver 設定，避免業務使用者接觸敏感帳密。</p>
-    <div class="controls">
-      <div><label>設定檔檔名</label><input id="taskFilename" placeholder="department/new_task.json" /></div>
-      <div><label>任務名稱</label><input id="taskName" placeholder="例：每月銷售 Excel 匯入" /></div>
-      <div><label>資料庫連線來源任務</label><select id="taskConnectionSource"><option value="">直接填寫下方 DB 連線資訊</option></select></div>
-      <div><label>資料庫 Server</label><input id="taskDbServer" placeholder="SQL Server host" /></div>
-      <div><label>資料庫名稱</label><input id="taskDbDatabase" placeholder="database" /></div>
-      <div><label>DB 使用者</label><input id="taskDbUser" autocomplete="username" /></div>
-      <div><label>DB 密碼</label><input id="taskDbPassword" type="password" autocomplete="new-password" /></div>
-      <div><label>ODBC Driver</label><input id="taskDbDriver" value="auto" /></div>
-      <div><label>工作表名稱</label><input id="taskSourceSheet" placeholder="Sheet1" /></div>
-      <div><label>來源目錄</label><input id="taskSourceDirectory" value="./data/excel_inbox" /></div>
-      <div><label>檔案樣式</label><input id="taskFilePattern" value="*.xlsx" /></div>
-      <div><label>標題列</label><input id="taskHeaderRow" type="number" min="1" value="1" /></div>
-      <div><label>資料起始列</label><input id="taskStartRow" type="number" min="1" value="2" /></div>
-      <div><label>目的資料表</label><input id="taskDestinationTable" placeholder="dbo.TargetTable" /></div>
-      <div><label>Audit Table</label><input id="taskAuditTable" value="dbo.ExcelImportAudit" /></div>
-      <div><label>預設欄位型別</label><input id="taskDefaultFieldType" value="NVARCHAR(MAX)" /></div>
-      <div><label>Hash 欄位</label><input id="taskHashField" value="hash_value" /></div>
-      <label class="checkbox-line"><input id="taskTrustedConnection" type="checkbox" /> 使用 trusted connection</label>
-      <label class="checkbox-line"><input id="taskOverwrite" type="checkbox" /> 覆蓋同名設定檔</label>
+    <div class="config-grid">
+      <div class="config-group"><h3>基本資訊</h3><p class="muted">檔名可使用安全子目錄，建立後會先進入待審。</p><div class="controls"><div><label>設定檔檔名</label><input id="taskFilename" placeholder="department/new_task.json" /></div><div><label>任務名稱</label><input id="taskName" placeholder="例：每月銷售 Excel 匯入" /></div><label class="checkbox-line"><input id="taskOverwrite" type="checkbox" /> 覆蓋同名設定檔</label></div></div>
+      <div class="config-group"><h3>資料庫連線</h3><p class="muted">建議沿用既有任務連線；若直接填寫，JSON 會保存 DB 帳密。</p><div class="controls"><div><label>資料庫連線來源任務</label><select id="taskConnectionSource"><option value="">直接填寫下方 DB 連線資訊</option></select></div><div><label>資料庫 Server</label><input id="taskDbServer" placeholder="SQL Server host" /></div><div><label>資料庫名稱</label><input id="taskDbDatabase" placeholder="database" /></div><div><label>DB 使用者</label><input id="taskDbUser" autocomplete="username" /></div><div><label>DB 密碼</label><input id="taskDbPassword" type="password" autocomplete="new-password" /></div><div><label>ODBC Driver</label><input id="taskDbDriver" value="auto" /></div><label class="checkbox-line"><input id="taskTrustedConnection" type="checkbox" /> 使用 trusted connection</label></div></div>
+      <div class="config-group"><h3>Excel 來源</h3><p class="muted">指定工作表、檔案樣式與標題 / 資料列位置。</p><div class="controls"><div><label>工作表名稱</label><input id="taskSourceSheet" placeholder="Sheet1" /></div><div><label>來源目錄</label><input id="taskSourceDirectory" value="./data/excel_inbox" /></div><div><label>檔案樣式</label><input id="taskFilePattern" value="*.xlsx" /></div><div><label>標題列</label><input id="taskHeaderRow" type="number" min="1" value="1" /></div><div><label>資料起始列</label><input id="taskStartRow" type="number" min="1" value="2" /></div></div></div>
+      <div class="config-group"><h3>SQL 目的地</h3><p class="muted">設定目的資料表、audit table 與自動建欄預設型別。</p><div class="controls"><div><label>目的資料表</label><input id="taskDestinationTable" placeholder="dbo.TargetTable" /></div><div><label>Audit Table</label><input id="taskAuditTable" value="dbo.ExcelImportAudit" /></div><div><label>預設欄位型別</label><input id="taskDefaultFieldType" list="sqlTypeOptions" value="NVARCHAR(MAX)" placeholder="選擇或手動輸入 SQL 型別" /></div><div><label>Hash 欄位</label><input id="taskHashField" value="hash_value" /></div></div></div>
     </div>
-    <h3>Excel 欄位對應</h3>
+    <h3 class="section-title">Excel 欄位對應</h3>
     <div id="taskMappings"></div>
     <datalist id="sqlTypeOptions"><option value="NVARCHAR(255)"></option><option value="NVARCHAR(MAX)"></option><option value="INT"></option><option value="BIGINT"></option><option value="DECIMAL(18,2)"></option><option value="FLOAT"></option><option value="DATE"></option><option value="DATETIME2"></option><option value="BIT"></option></datalist>
-    <div class="upload-actions"><button class="ghost" onclick="addTaskMappingRow()">新增欄位對應</button><button class="ghost" onclick="showMatchHelp()">比對方式說明</button><button onclick="createTaskConfig()">建立待審任務 JSON</button></div>
+    <details class="type-help"><summary>常用 SQL 型別小提醒（預設欄位型別與欄位對應 SQL 型別都可選擇或手動輸入）</summary><ul><li><strong>NVARCHAR(255)</strong>：短文字，例如名稱、代碼、狀態。</li><li><strong>NVARCHAR(MAX)</strong>：長文字，例如備註、描述、原文內容。</li><li><strong>INT / BIGINT</strong>：整數；BIGINT 適合很大的流水號或計數。</li><li><strong>DECIMAL(18,2)</strong>：精確小數，例如金額、重量、比例；括號可依需求調整。</li><li><strong>FLOAT</strong>：近似小數，例如科學量測；不建議用於金額。</li><li><strong>DATE / DATETIME2</strong>：日期 / 日期時間。</li><li><strong>BIT</strong>：是 / 否、true / false 類欄位。</li></ul></details>
+    <div class="upload-actions"><button class="ghost" onclick="addTaskMappingRow()">新增欄位對應</button><button class="ghost" onclick="showMatchHelp()">比對方式說明</button></div>
+    <h3 class="section-title">多欄位拼裝成 SQL 新欄位</h3>
+    <p class="muted">可把多個 Excel 欄位拼成實際 SQL 欄位；模板可使用 <code>{Excel欄名}</code> 代入每列值，例如 <code>日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}</code>。若不填模板，會用分隔字串串接來源欄位。SQL 新欄位請使用安全命名，例如 <code>complete_description</code>，不要使用空白。View 模式需待資料庫 view 管理流程確認後再開放。</p>
+    <div id="taskCompositeMappings"></div>
+    <div class="upload-actions"><button class="ghost" onclick="addCompositeMappingRow()">新增拼裝欄位</button><button onclick="createTaskConfig()">建立待審任務 JSON</button></div>
     <div class="preview-box"><strong>安全提醒：</strong>新建任務預設為 pending，不會出現在上傳任務清單；必須由 superuser 審核啟用後才能正式上傳影響 SQL。</div>
-    <h3>Superuser 啟用待審任務</h3>
-    <div class="controls"><div><label>待審設定檔路徑</label><input id="approveTaskConfigPath" placeholder="department/new_task.json" /></div><div class="upload-actions"><button class="secondary" onclick="approveTaskConfig()">啟用任務</button></div></div>
+    <div id="superuserTaskReview" class="hidden">
+      <h3 class="section-title">Superuser 任務審核 / 停用</h3>
+      <p class="muted">只有 superuser 會看到此區塊；後端 API 也會強制檢查 superuser 權限。</p>
+      <div class="controls"><div><label>任務設定檔</label><select id="approveTaskConfigPath" onchange="renderTaskReviewDetails()"><option value="">載入待審任務中...</option></select></div><div><label>啟用狀態</label><select id="taskReviewEnabled"><option value="true">啟用 active</option><option value="false">停用回 pending</option></select></div><div class="upload-actions"><button class="secondary" onclick="setTaskConfigStatus()">套用狀態</button></div></div>
+      <div id="taskReviewDetails" class="review-details hidden"></div>
+    </div>
     <dialog id="matchHelpDialog"><h3>欄位比對方式說明</h3><ul><li><strong>預設 / exact</strong>：Excel 標題必須與來源欄位完全相同，適合欄名穩定的表格。</li><li><strong>prefix</strong>：Excel 標題以指定文字開頭即可，例如「船名1」「船名2」。</li><li><strong>contains</strong>：Excel 標題包含指定文字即可，適合欄名前後常有附註文字時使用。</li></ul><button onclick="closeMatchHelp()">關閉</button></dialog>
   </section>
 
@@ -151,6 +162,6 @@
     <div class="table-wrap import-records-wrap"><table id="importRecords" class="import-records-table"><colgroup><col class="date-col" /><col class="user-col" /><col class="original-file-col" /><col class="stored-file-col" /><col class="config-col" /><col class="status-col" /><col class="count-col" /><col class="count-col" /><col class="count-col" /><col class="size-col" /><col class="diagnostics-col" /><col class="actions-col" /></colgroup><thead><tr><th>日期</th><th>使用者</th><th>原始檔名</th><th>導入檔名</th><th>設定檔</th><th>狀態</th><th>新增</th><th>重複</th><th>錯誤</th><th>大小</th><th>錯誤診斷</th><th>操作</th></tr></thead><tbody></tbody></table></div>
   </section>
 </main>
-<script src="/static/excel_to_sql_import_records.js?v=20260625-pending-task-review"></script>
+<script src="/static/excel_to_sql_import_records.js?v=20260626-composite-template"></script>
 </body>
 </html>

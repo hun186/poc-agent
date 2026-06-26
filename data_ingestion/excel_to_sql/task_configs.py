@@ -114,6 +114,39 @@ def build_task_config(
             mapping["value_type"] = value_type
         mappings.append(mapping)
 
+    composite_payload = payload.get("composite_mappings") or []
+    if not isinstance(composite_payload, list):
+        raise ValueError("composite_mappings 必須是陣列")
+    for index, item in enumerate(composite_payload, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"第 {index} 筆組合欄位格式錯誤")
+        dest_field = _clean_string(item.get("dest_field"), f"第 {index} 筆組合目的欄位")
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", dest_field):
+            raise ValueError(f"第 {index} 筆組合目的欄位只能使用 SQL 欄位安全命名")
+        if dest_field.lower() in seen_dest_fields:
+            raise ValueError(f"目的欄位重複：{dest_field}")
+        source_columns = item.get("source_columns") or []
+        if isinstance(source_columns, str):
+            source_columns = [part.strip() for part in source_columns.split(",")]
+        source_columns = [str(part or "").strip() for part in source_columns if str(part or "").strip()]
+        if len(source_columns) < 2:
+            raise ValueError(f"第 {index} 筆組合欄位至少需要兩個來源欄位")
+        compose_config = {
+            "source_columns": source_columns,
+            "separator": str(item.get("separator") if item.get("separator") is not None else " "),
+            "skip_empty": bool(item.get("skip_empty", True)),
+        }
+        template = str(item.get("template") or "").strip()
+        if template:
+            compose_config["template"] = template
+        seen_dest_fields.add(dest_field.lower())
+        mappings.append({
+            "dest_field": dest_field,
+            "required": bool(item.get("required", False)),
+            "dest_field_type": _clean_sql_type(item.get("dest_field_type"), "NVARCHAR(MAX)"),
+            "compose": compose_config,
+        })
+
     table = _clean_string(
         payload.get("destination_table"), "目的資料表", max_length=128
     )
@@ -271,8 +304,126 @@ def create_task_config(
     }
 
 
-def approve_task_config(
-    config_path: str, *, actor: str, root: Path = CONFIG_ROOT
+def _sanitized_config_for_review(cfg: dict[str, Any]) -> dict[str, Any]:
+    sanitized = json.loads(json.dumps(cfg, ensure_ascii=False))
+    db_cfg = sanitized.get("db")
+    if isinstance(db_cfg, dict) and "password" in db_cfg:
+        db_cfg["password"] = "********"
+    return sanitized
+
+
+def task_review_summary(cfg: dict[str, Any]) -> dict[str, Any]:
+    db_cfg = cfg.get("db") if isinstance(cfg.get("db"), dict) else {}
+    source = cfg.get("source") if isinstance(cfg.get("source"), dict) else {}
+    destination = (
+        cfg.get("destination") if isinstance(cfg.get("destination"), dict) else {}
+    )
+    audit = cfg.get("audit") if isinstance(cfg.get("audit"), dict) else {}
+    import_cfg = cfg.get("import") if isinstance(cfg.get("import"), dict) else {}
+    retry = cfg.get("retry") if isinstance(cfg.get("retry"), dict) else {}
+    archive = cfg.get("archive") if isinstance(cfg.get("archive"), dict) else {}
+    mappings = cfg.get("mappings") if isinstance(cfg.get("mappings"), list) else []
+    return {
+        "db": {
+            "driver": db_cfg.get("driver"),
+            "server": db_cfg.get("server"),
+            "database": db_cfg.get("database"),
+            "trusted_connection": bool(db_cfg.get("trusted_connection")),
+            "user": db_cfg.get("user"),
+            "encrypt": db_cfg.get("encrypt"),
+            "trust_server_certificate": db_cfg.get("trust_server_certificate"),
+        },
+        "source": {
+            "directory": source.get("directory"),
+            "file_pattern": source.get("file_pattern"),
+            "recursive": bool(source.get("recursive")),
+            "sheet": source.get("sheet"),
+            "header_row": source.get("header_row"),
+            "start_row": source.get("start_row"),
+            "end_row": source.get("end_row"),
+        },
+        "destination": {
+            "table": destination.get("table"),
+            "auto_create_table": bool(destination.get("auto_create_table")),
+            "auto_create_missing_fields": bool(
+                destination.get("auto_create_missing_fields")
+            ),
+            "default_field_type": destination.get("default_field_type"),
+            "hash_field": destination.get("hash_field"),
+            "hash_field_type": destination.get("hash_field_type"),
+            "create_hash_index": bool(destination.get("create_hash_index")),
+        },
+        "audit": {"enabled": bool(audit.get("enabled")), "table": audit.get("table")},
+        "mappings": [
+            {
+                "source_column": item.get("source_column") or ", ".join((item.get("compose") or {}).get("source_columns", [])),
+                "dest_field": item.get("dest_field"),
+                "dest_field_type": item.get("dest_field_type"),
+                "required": bool(item.get("required")),
+                "match": item.get("match") or "exact",
+                "value_type": item.get("value_type"),
+                "compose": item.get("compose"),
+            }
+            for item in mappings
+            if isinstance(item, dict)
+        ],
+        "import": {
+            "batch_size": import_cfg.get("batch_size"),
+            "skip_empty_rows": bool(import_cfg.get("skip_empty_rows")),
+            "truncate_before_load": bool(import_cfg.get("truncate_before_load")),
+            "fast_executemany": bool(import_cfg.get("fast_executemany")),
+        },
+        "retry": {
+            "max_attempts": retry.get("max_attempts"),
+            "interval_seconds": retry.get("interval_seconds"),
+        },
+        "archive": {
+            "enabled": bool(archive.get("enabled")),
+            "success_dir": archive.get("success_dir"),
+            "fail_dir": archive.get("fail_dir"),
+            "log_dir": archive.get("log_dir"),
+        },
+    }
+
+
+def list_task_configs(*, root: Path = CONFIG_ROOT) -> list[dict[str, Any]]:
+    root_path = root.resolve()
+    if not root_path.exists():
+        return []
+    tasks: list[dict[str, Any]] = []
+    for path in sorted(root_path.rglob("*.json")):
+        try:
+            cfg = load_json_config(str(path))
+        except Exception:
+            continue
+        dashboard = cfg.get("dashboard") if isinstance(cfg, dict) else None
+        if not isinstance(dashboard, dict):
+            continue
+        display_path = (
+            str(CONFIG_ROOT / path.resolve().relative_to(root_path))
+            if root == CONFIG_ROOT
+            else str(path)
+        )
+        status = dashboard.get("status") or (
+            "active" if dashboard.get("enabled") else "pending"
+        )
+        tasks.append(
+            {
+                "config_path": display_path,
+                "name": dashboard.get("name") or path.stem,
+                "status": status,
+                "enabled": bool(dashboard.get("enabled")),
+                "created_by": dashboard.get("created_by"),
+                "approved_by": dashboard.get("approved_by"),
+                "review_summary": task_review_summary(cfg),
+                "config_preview": _sanitized_config_for_review(cfg),
+            }
+        )
+    return tasks
+
+
+def set_task_config_enabled(
+    config_path: str, *, enabled: bool, actor: str, root: Path = CONFIG_ROOT
 ) -> dict[str, Any]:
     target = resolve_task_config_path(config_path, root=root)
     if not target.exists():
@@ -281,9 +432,12 @@ def approve_task_config(
     dashboard = cfg.setdefault("dashboard", {})
     if not isinstance(dashboard, dict):
         raise ValueError("任務設定檔 dashboard 區塊格式錯誤")
-    dashboard["enabled"] = True
-    dashboard["status"] = "active"
-    dashboard["approved_by"] = actor
+    dashboard["enabled"] = bool(enabled)
+    dashboard["status"] = "active" if enabled else "pending"
+    if enabled:
+        dashboard["approved_by"] = actor
+    else:
+        dashboard["disabled_by"] = actor
     temp = target.with_suffix(target.suffix + ".tmp")
     temp.write_text(
         json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -297,7 +451,14 @@ def approve_task_config(
     return {
         "config_path": display_path,
         "name": dashboard.get("name") or target.stem,
-        "status": "active",
-        "enabled": True,
-        "approved_by": actor,
+        "status": dashboard["status"],
+        "enabled": bool(enabled),
+        "approved_by": dashboard.get("approved_by"),
+        "disabled_by": dashboard.get("disabled_by"),
     }
+
+
+def approve_task_config(
+    config_path: str, *, actor: str, root: Path = CONFIG_ROOT
+) -> dict[str, Any]:
+    return set_task_config_enabled(config_path, enabled=True, actor=actor, root=root)

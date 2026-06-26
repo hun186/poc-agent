@@ -271,3 +271,33 @@
 - Added `POST /v1/excel-to-sql/task-configs/approve` requiring `superuser` permission. Request body: `{ "config": "relative/or/config/excel_to_sql/prefixed.json" }`. It sets `dashboard.enabled=true`, `dashboard.status="active"`, and records `dashboard.approved_by`.
 - Missing config returns 404; invalid config path or malformed dashboard section returns 400; non-superuser callers receive 403 from auth dependencies.
 - UI mapping rows now expose common SQL type options (`NVARCHAR(255)`, `NVARCHAR(MAX)`, `INT`, `BIGINT`, `DECIMAL(18,2)`, `FLOAT`, `DATE`, `DATETIME2`, `BIT`) while still allowing manual input.
+
+### 2026-06-25 Excel→SQL task config superuser review list/status update
+
+- Added `GET /v1/excel-to-sql/task-configs`, requiring `superuser`, to list task JSON files with dashboard metadata for review UI. Response: `{ "tasks": [{ "config_path", "name", "status", "enabled", "created_by", "approved_by" }] }`.
+- Added `POST /v1/excel-to-sql/task-configs/status`, requiring `superuser`, with request body `{ "config": "relative/or/config/excel_to_sql/prefixed.json", "enabled": boolean }`. `enabled=true` sets `dashboard.enabled=true` / `dashboard.status="active"`; `enabled=false` sets `dashboard.enabled=false` / `dashboard.status="pending"` and records `dashboard.disabled_by`.
+- Existing `POST /v1/excel-to-sql/task-configs/approve` remains as a compatibility alias for enabling a task and still requires `superuser`.
+- Non-superuser callers receive 403 for list, approve, and status endpoints; this is the backend security boundary even though the UI hides review controls from non-superusers.
+
+### 2026-06-26 Excel→SQL task config review details
+
+- `GET /v1/excel-to-sql/task-configs` response `tasks[]` now includes `review_summary` and `config_preview` for superuser review.
+- `review_summary` groups the generated JSON into `db`, `source`, `destination`, `audit`, `mappings`, `import`, `retry`, and `archive` sections so superusers can inspect Excel→SQL conversion details before enabling a task.
+- `config_preview` returns the generated task JSON with sensitive `db.password` masked as `********`; the backend still requires `superuser` for this endpoint.
+
+### 2026-06-26 Excel→SQL dashboard task review summary and composite mappings
+
+- `GET /v1/excel-to-sql/dashboard-tasks` response `tasks[]` now includes `review_summary` so db_operator / superuser users can inspect enabled task Excel→SQL field mappings before uploading.
+- `POST /v1/excel-to-sql/task-configs` request body adds optional `composite_mappings: [{ source_columns: string[], dest_field: string, separator?: string, dest_field_type?: string, required?: boolean }]`.
+- Composite mappings materialize a new SQL destination field during import by concatenating multiple Excel source columns with `separator`; they participate in auto-create table / missing-field logic like regular mappings.
+- View-based composite fields are not yet created automatically by the importer; this release implements the real materialized SQL field path first.
+
+## 2026-06-26 Excel→SQL composite template update
+
+- `POST /v1/excel-to-sql/task-configs` 的 `composite_mappings[]` 仍用於把多個 Excel 來源欄位寫入一個實際 SQL 欄位；物件欄位包含：
+  - `source_columns: string[]`：至少兩個 Excel 欄名，會依既有欄名比對流程解析。
+  - `dest_field: string`：SQL 欄位安全命名，只允許英文字母、數字與底線且不可用數字開頭；例如應使用 `complete_description`，不要使用 `complete description`。
+  - `template?: string`：可選模板。若提供，支援 `{Excel欄名}` placeholder，以每列來源欄位值替換；例如 `日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}`。
+  - `separator?: string`：未提供 `template` 時才用於串接來源欄位；預設空白。
+  - `dest_field_type?: string`、`required?: boolean`：與一般 mapping 相同。
+- `GET /v1/excel-to-sql/dashboard-tasks` 仍只要求已登入使用者，會回傳 active dashboard tasks 的 `review_summary`。因此資料閱讀者 / 資料修改者可在「使用者 Excel 匯入操作」選擇任務時看到欄位轉換摘要；真正上傳、預掃描與確認匯入仍由各操作 API 自行執行權限檢查。

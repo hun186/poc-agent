@@ -74,3 +74,7 @@
 - 建立 multi-event helper / selector，逐步移除 agent 內直接取 `multidim_event_json` 第一個 dict 的隱含假設。
 - 評估 Editor 是否改為事件列表 + 單事件表單，以支援新增、編修、合併與拆分多個頂層事件物件。
 - 若多維度分析需求提升，評估新增 event-level index 或 nested mapping，降低跨事件欄位誤配風險。
+
+## 2026-06-26 Excel→SQL 後續改善
+
+- 設計真正的 SQL View 自動建立流程：需定義 view name、schema、CREATE OR ALTER 權限、既有 view 更新策略、欄位引用安全檢查與審核 UI；避免只產生未執行的 view 規格。

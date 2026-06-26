@@ -37,6 +37,7 @@ from data_ingestion.excel_to_sql.ingest import (
     load_json_config,
     quote_object_path,
 )
+from data_ingestion.excel_to_sql.task_configs import task_review_summary
 
 
 def discover_dashboard_tasks(
@@ -63,6 +64,7 @@ def discover_dashboard_tasks(
                     get_nested(cfg, "destination.table", "") or ""
                 ),
                 "source_directory": str(get_nested(cfg, "source.directory", "") or ""),
+                "review_summary": task_review_summary(cfg),
             }
         )
     return tasks
