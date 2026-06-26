@@ -2,6 +2,7 @@ $('vercelPreviewLoginBtn').onclick = vercelPreviewLogin;
 setupVercelPreviewLogin().catch(() => {});
 $('excelDashboardBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-dashboard'; };
 $('excelImportCenterBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-import-center'; };
+$('excelTaskConfigBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-task-configs'; };
 document.addEventListener('click', (ev) => { if ($('mainNav') && !$('mainNav').classList.contains('hidden') && !$('mainNav').contains(ev.target)) collapseMainNav(); });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') collapseMainNav(); });
 $('searchAuditBtn').onclick = searchAuditLogs;

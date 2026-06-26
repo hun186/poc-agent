@@ -301,3 +301,20 @@
   - `separator?: string`：未提供 `template` 時才用於串接來源欄位；預設空白。
   - `dest_field_type?: string`、`required?: boolean`：與一般 mapping 相同。
 - `GET /v1/excel-to-sql/dashboard-tasks` 仍只要求已登入使用者，會回傳 active dashboard tasks 的 `review_summary`。因此資料閱讀者 / 資料修改者可在「使用者 Excel 匯入操作」選擇任務時看到欄位轉換摘要；真正上傳、預掃描與確認匯入仍由各操作 API 自行執行權限檢查。
+
+## 2026-06-26 Excel→SQL 任務設定檔管理權限
+
+- `GET /v1/excel-to-sql/task-configs?scope=mine|all`
+  - Auth：`db_operator` / `superuser`。
+  - 預設 `scope=mine`：只回傳目前登入使用者建立的任務設定檔。
+  - `scope=all`：僅 `superuser` 可用，回傳所有 dashboard 任務設定檔供審核。
+  - Response：`{"tasks": [{"config_path", "name", "status", "enabled", "created_by", "approved_by", "review_summary", "config_preview"}]}`。
+- `POST /v1/excel-to-sql/task-configs/status`
+  - Auth：`db_operator` / `superuser`。
+  - Request：`{"config": "config/excel_to_sql/example.json", "enabled": false}`。
+  - `db_operator` 只能將自己建立的任務停用；啟用任務仍僅限 `superuser`。
+- `DELETE /v1/excel-to-sql/task-configs`
+  - Auth：`db_operator` / `superuser`。
+  - Request：`{"config": "config/excel_to_sql/example.json"}`。
+  - `db_operator` 只能刪除自己建立的任務；`superuser` 可刪除任務設定檔。
+  - Response：`{"task": {"config_path", "deleted", "created_by", "deleted_by"}}`。

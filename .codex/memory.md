@@ -162,3 +162,16 @@
 - 目的：確認資料修改者 / 閱讀者在「使用者 Excel 匯入操作」選擇任務時可看到 Excel→SQL 欄位轉換摘要，並補足 composite mappings 的模板式拼裝能力。
 - 主要修改：`dashboard-tasks` 保持登入即可讀取 active 任務並含 `review_summary`；匯入作業中心會在任務選單下顯示欄位轉換摘要。`composite_mappings` 新增可選 `template`，支援 `{Excel欄名}` placeholder，以每列來源值組成 SQL 新欄位；未填模板時仍使用 separator 串接。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 執行時 pip index 仍有 403 retry 但 requirements 已滿足；`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/workbook_rows.py tests/test_excel_to_sql_user_imports.py`、`node --check sra_api/static/excel_to_sql_import_records.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q`、`git diff --check` 均通過（24 passed, 3 warnings；warnings 為既有 Starlette/httpx 與 invalid escape deprecation）。
+
+### 2026-06-26 Excel→SQL 任務 JSON 管理分頁與建立者權限
+
+- 目的：讓 db_operator 建立待審任務 JSON 後，可查看自己建立的任務清單與審核進度，並只能停用 / 刪除自己建立的任務；同時將較少使用且較獨立的任務 JSON 建立流程移出 Excel 匯入作業中心。
+- 主要修改：新增 `/excel-to-sql-task-configs` 獨立頁與 Editor 導航按鈕；`GET /v1/excel-to-sql/task-configs` 預設 `scope=mine`，`scope=all` 僅 superuser 可用；db_operator 可停用自己的任務但不能啟用任務；新增 `DELETE /v1/excel-to-sql/task-configs` 刪除自己建立的任務設定檔。
+- UI 調整：SQL 型別欄位不再預填 `NVARCHAR(MAX)`，改用 placeholder 與 datalist 提示；常用 SQL 型別提示與下方按鈕增加間距；Excel 來源目錄說明補充其為伺服器批次掃描資料夾，上傳 Excel 不依賴使用者本機存在該目錄。
+- 驗證：`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（14 passed, 1 warning；warning 為既有 StarletteDeprecationWarning）。執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 時 pip upgrade 查詢套件索引遇 403 retry，但目前 requirements 已滿足。
+
+### 2026-06-26 Excel→SQL 連線來源 UI 帶入 ODBC / trusted connection
+
+- 目的：當建立 Excel→SQL 任務設定檔時，若使用者選擇既有任務作為資料庫連線來源，前端同步帶入該任務的 ODBC Driver 與 trusted connection 勾選狀態，避免 UI 顯示仍停留在預設值造成誤解。
+- 主要修改：`excel_to_sql_import_records.js` 新增 `applyConnectionSourceDefaults()`，在載入連線來源選項與使用者切換來源時，從 `review_summary.db` 套用 `driver` 與 `trusted_connection` 到表單。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` requirements 已滿足但 pip upgrade 索引查詢遇 403 retry；`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/task_configs.py tests/test_excel_to_sql_user_imports.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（22 passed, 1 warning）；`git diff --check` 通過。

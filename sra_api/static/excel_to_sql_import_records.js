@@ -53,12 +53,21 @@ async function loadTasks() {
   $('task').innerHTML = dashboardTasks.length ? taskOptions : '<option value="">未找到 dashboard.enabled=true 的任務</option>';
   if ($('taskConnectionSource')) {
     $('taskConnectionSource').innerHTML = '<option value="">直接填寫下方 DB 連線資訊</option>' + taskOptions;
+    applyConnectionSourceDefaults();
   }
   if (dashboardTasks.length && $('uploadConfig')) $('uploadConfig').value = dashboardTasks[0].config_path;
   renderUploadTaskDetails();
   if (currentUserRole === ROLE_SUPERUSER) await loadTaskConfigReviewOptions();
 }
 function onTaskChange() { if ($('task').value) $('uploadConfig').value = $('task').value; renderUploadTaskDetails(); }
+function applyConnectionSourceDefaults() {
+  const select = $('taskConnectionSource');
+  if (!select?.value) return;
+  const task = dashboardTasks.find(item => item.config_path === select.value);
+  const db = task?.review_summary?.db || {};
+  if ($('taskDbDriver') && db.driver) $('taskDbDriver').value = db.driver;
+  if ($('taskTrustedConnection')) $('taskTrustedConnection').checked = Boolean(db.trusted_connection);
+}
 async function uploadExcelRecord() {
   showError(''); setPreview('');
   const input = $('uploadExcel');
@@ -117,10 +126,10 @@ async function loadImportRecords() {
   fillTable('importRecords', rows, r => { const c=importRecordCounts(r); return `<tr><td data-label="日期">${formatAuditTime(r.created_at)}</td><td data-label="使用者">${escapeHtml(r.username)}</td><td data-label="原始檔名">${escapeHtml(r.original_filename)}</td><td data-label="導入檔名"><code>${escapeHtml(r.stored_filename || '')}</code></td><td data-label="設定檔">${escapeHtml(r.config_path)}</td><td data-label="狀態">${statusBadge(r.status)}</td><td data-label="新增">${escapeHtml(c.inserted_rows ?? c.will_insert ?? '')}</td><td data-label="重複">${escapeHtml(c.duplicate_rows ?? c.duplicate ?? '')}</td><td data-label="錯誤">${escapeHtml(c.failed_rows ?? c.failed ?? '')}</td><td data-label="大小">${escapeHtml(r.file_size || 0)}</td><td data-label="錯誤診斷">${importRecordDiagnostics(r)}</td><td data-label="操作">${importRecordActions(r)}</td></tr>`; });
 }
 function mappingRowTemplate(index) {
-  return `<div class="mapping-row" data-mapping-row="1"><div><label>來源欄位</label><input class="mapping-source" placeholder="Excel 欄名" /></div><div><label>目的欄位</label><input class="mapping-dest" placeholder="sql_field" /></div><div><label>SQL 型別</label><input class="mapping-type" list="sqlTypeOptions" value="NVARCHAR(MAX)" placeholder="選擇或手動輸入" /></div><div><label>比對 <button class="ghost" onclick="showMatchHelp()" type="button">?</button></label><select class="mapping-match"><option value="">預設</option><option value="exact">exact</option><option value="prefix">prefix</option><option value="contains">contains</option></select></div><div><label>必填</label><select class="mapping-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeTaskMappingRow(this)" type="button">移除</button></div>`;
+  return `<div class="mapping-row" data-mapping-row="1"><div><label>來源欄位</label><input class="mapping-source" placeholder="Excel 欄名" /></div><div><label>目的欄位</label><input class="mapping-dest" placeholder="sql_field" /></div><div><label>SQL 型別</label><input class="mapping-type" list="sqlTypeOptions" placeholder="選擇或手動輸入，例如 NVARCHAR(255)" /></div><div><label>比對 <button class="ghost" onclick="showMatchHelp()" type="button">?</button></label><select class="mapping-match"><option value="">預設</option><option value="exact">exact</option><option value="prefix">prefix</option><option value="contains">contains</option></select></div><div><label>必填</label><select class="mapping-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeTaskMappingRow(this)" type="button">移除</button></div>`;
 }
 function compositeRowTemplate(index) {
-  return `<div class="composite-row" data-composite-row="1"><div><label>來源欄位（逗號分隔）</label><input class="composite-sources" placeholder="日期, 地點, 敘述" /></div><div><label>SQL 新欄位</label><input class="composite-dest" placeholder="complete_description" /></div><div><label>模板（可選）</label><input class="composite-template" placeholder="日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" /></div><div><label>分隔字串</label><input class="composite-separator" value=" " /></div><div><label>SQL 型別</label><input class="composite-type" list="sqlTypeOptions" value="NVARCHAR(MAX)" /></div><div><label>必填</label><select class="composite-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeCompositeMappingRow(this)" type="button">移除</button></div>`;
+  return `<div class="composite-row" data-composite-row="1"><div><label>來源欄位（逗號分隔）</label><input class="composite-sources" placeholder="日期, 地點, 敘述" /></div><div><label>SQL 新欄位</label><input class="composite-dest" placeholder="complete_description" /></div><div><label>模板（可選）</label><input class="composite-template" placeholder="日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" /></div><div><label>分隔字串</label><input class="composite-separator" value=" " /></div><div><label>SQL 型別</label><input class="composite-type" list="sqlTypeOptions" placeholder="選擇或手動輸入，例如 NVARCHAR(MAX)" /></div><div><label>必填</label><select class="composite-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeCompositeMappingRow(this)" type="button">移除</button></div>`;
 }
 function addTaskMappingRow() { const box = $('taskMappings'); if (box) box.insertAdjacentHTML('beforeend', mappingRowTemplate(box.children.length)); }
 function removeTaskMappingRow(button) { button.closest('[data-mapping-row]')?.remove(); }
@@ -166,7 +175,9 @@ async function createTaskConfig() {
   setPreview(`<strong>已建立待審任務設定檔：</strong>${escapeHtml(task.config_path || '')}<br><span class="muted">狀態：${escapeHtml(task.status || 'pending')}。請通知 superuser 審核啟用後再上傳匯入。</span>`);
   if ($('approveTaskConfigPath') && task.config_path) $('approveTaskConfigPath').value = task.config_path;
   await loadTasks();
+  await loadMyTaskConfigs();
 }
+
 function updateSuperuserTaskReviewVisibility() {
   const box = $('superuserTaskReview');
   if (!box) return;
@@ -207,7 +218,7 @@ function renderTaskReviewDetails() {
 async function loadTaskConfigReviewOptions() {
   const select = $('approveTaskConfigPath');
   if (!select || currentUserRole !== ROLE_SUPERUSER) return;
-  const res = await fetch('/v1/excel-to-sql/task-configs', { headers:{ Authorization:'Bearer ' + authToken() } });
+  const res = await fetch('/v1/excel-to-sql/task-configs?scope=all', { headers:{ Authorization:'Bearer ' + authToken() } });
   if (!res.ok) return;
   taskConfigReviewTasks = (await res.json()).tasks || [];
   select.innerHTML = taskConfigReviewTasks.length ? taskConfigReviewTasks.map(t => `<option value="${escapeHtml(t.config_path)}">${escapeHtml(t.status || '')}｜${escapeHtml(t.name || '')}｜${escapeHtml(t.config_path || '')}</option>`).join('') : '<option value="">沒有可審核任務設定檔</option>';
@@ -225,10 +236,44 @@ async function setTaskConfigStatus() {
   await loadTasks();
   if (enabled && $('uploadConfig') && task.config_path) $('uploadConfig').value = task.config_path;
 }
+
+function taskConfigStatusBadge(status, enabled) {
+  const text = status || (enabled ? 'active' : 'pending');
+  return `<span class="status ${escapeHtml(text)}">${escapeHtml(text)}</span>`;
+}
+function myTaskConfigActions(task) {
+  const config = escapeHtml(task.config_path || '');
+  return `<div class="record-actions"><button class="secondary" onclick="disableMyTaskConfig('${config}')">停用</button><button class="ghost" onclick="deleteMyTaskConfig('${config}')">刪除</button></div>`;
+}
+async function loadMyTaskConfigs() {
+  const table = $('myTaskConfigs');
+  if (!table) return;
+  const res = await fetch('/v1/excel-to-sql/task-configs?scope=mine', { headers:{ Authorization:'Bearer ' + authToken() } });
+  if (!res.ok) return;
+  const rows = (await res.json()).tasks || [];
+  fillTable('myTaskConfigs', rows, task => `<tr><td>${escapeHtml(task.name || '')}</td><td><code>${escapeHtml(task.config_path || '')}</code></td><td>${taskConfigStatusBadge(task.status, task.enabled)}</td><td>${escapeHtml(task.approved_by || '')}</td><td>${myTaskConfigActions(task)}</td></tr>`);
+}
+async function disableMyTaskConfig(config) {
+  if (!config) return;
+  const res = await fetch('/v1/excel-to-sql/task-configs/status', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + authToken() }, body: JSON.stringify({ config, enabled:false }) });
+  if (!res.ok) { let text=await res.text(); try{text=JSON.parse(text).detail||text;}catch(_){} showError(text); return; }
+  setPreview(`<strong>已停用任務：</strong>${escapeHtml(config)}`);
+  await loadMyTaskConfigs(); await loadTasks();
+}
+async function deleteMyTaskConfig(config) {
+  if (!config || !confirm('確定刪除自己建立的任務設定檔？此動作會移除 JSON 檔。')) return;
+  const res = await fetch('/v1/excel-to-sql/task-configs', { method:'DELETE', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + authToken() }, body: JSON.stringify({ config }) });
+  if (!res.ok) { let text=await res.text(); try{text=JSON.parse(text).detail||text;}catch(_){} showError(text); return; }
+  setPreview(`<strong>已刪除任務：</strong>${escapeHtml(config)}`);
+  await loadMyTaskConfigs(); await loadTasks();
+}
 function showMatchHelp() { const dialog = $('matchHelpDialog'); if (dialog?.showModal) dialog.showModal(); }
 function closeMatchHelp() { $('matchHelpDialog')?.close(); }
 
-if (document.getElementById('importRecords')) {
-  addTaskMappingRow();
-  (async () => { await loadCurrentUser(); await loadTasks(); await loadImportRecords(); })().catch(err => showError(err.message || String(err)));
+if (document.getElementById('importRecords') || document.getElementById('taskConfigCard')) {
+  if (document.getElementById('taskConfigCard')) {
+    addTaskMappingRow();
+    if ($('taskConnectionSource')) $('taskConnectionSource').onchange = applyConnectionSourceDefaults;
+  }
+  (async () => { await loadCurrentUser(); await loadTasks(); await loadMyTaskConfigs(); if (document.getElementById('importRecords')) await loadImportRecords(); })().catch(err => showError(err.message || String(err)));
 }
