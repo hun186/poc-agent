@@ -212,3 +212,21 @@
 - 目的：回應「建立 Excel→SQL 任務設定檔」的資料庫連線來源選單不應列出尚未 active、仍為 pending 的任務。
 - 主要修改：前端合併 dashboard active 任務與 task-config list 後，新增 `isActiveConnectionSourceTask()` 過濾，只保留 `enabled=true` 或 `status=active` 的設定檔作為連線來源候選；pending 任務仍可留在我的任務清單 / superuser 審核區，不再出現在連線來源下拉。
 - 驗證：`python -m pip install --upgrade pip` 遇到套件索引 403 retry，但環境已有 pip；`python -m pip install -r requirements.txt` 顯示相依套件已滿足；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_dashboard_filters.py -q` 通過（27 passed, 3 warnings；warnings 為既有 Starlette / Python invalid escape deprecation）；`git diff --check` 通過。
+
+### 2026-06-29 Excel→SQL SQL 型別提示文案調整
+
+- 目的：回應 JSON 任務設定頁的 SQL 欄位型態灰底提示使用 `NVARCHAR(255)` 可能讓業務使用者誤以為長文字也適用，造成較長描述或 JSON 欄位匯入 SQL 時被拒絕或截斷風險。
+- 主要修改：任務設定頁的預設欄位型別與欄位對應提示改為「長文字建議 NVARCHAR(MAX)，短代碼才用 NVARCHAR(255)」，並在 SQL 目的地說明與常用型別提醒中明確說明 `NVARCHAR(255)` 最多 255 字元、不適合描述 / JSON / 可能很長的欄位；前端 JS asset version 已更新以避免瀏覽器快取舊提示。
+- 驗證：`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（16 passed, 3 warnings；warnings 為既有 Starlette / Python invalid escape deprecation）。執行 `python -m pip install --upgrade pip` 時套件索引回覆 403 retry，但目前環境已有所需套件，`python -m pip install -r requirements.txt` 顯示 requirements 已滿足。
+
+### 2026-06-29 Editor 登入冷卻與輸入提示改善
+
+- 目的：回應使用者詢問登入密碼因大小寫、全半型或中英輸入錯誤導致多次失敗後被暫時鎖定的冷卻時間、superuser 是否可解鎖，以及是否能提示常見輸入錯誤。
+- 主要修改：登入冷卻維持 15 分鐘失敗觀察窗、5 次失敗門檻與 5 分鐘冷卻，但 429 訊息會顯示約略剩餘時間；新增 `POST /v1/auth/users/{username}/unlock-login` 供 superuser 清除該帳號目前記憶體中的 login throttle；Editor 帳號管理 UI 增加「解除登入冷卻」按鈕；登入前後偵測帳號非 ASCII、密碼全形、中文、前後空白與 Caps Lock 並提示使用者。
+- 驗證：`python -m py_compile sra_api/routers/editor_auth.py sra_api/services/auth_store.py` 通過；`node --check sra_api/static/editor_auth_nav.js` 與 `node --check sra_api/static/editor_documents.js` 通過；`PYTHONPATH=. pytest tests/test_auth_store_security.py tests/test_editor_auth_ui_static.py -q` 通過（43 passed, 1 warning；warning 為既有 Starlette TestClient deprecation）。執行 `python -m pip install --upgrade pip` 時套件索引回覆 403 retry，但 `python -m pip install -r requirements.txt` 顯示相依套件已滿足。
+
+### 2026-06-29 portable_auth_pack 登入冷卻功能同步
+
+- 目的：將主系統 Editor 帳密登入冷卻剩餘時間、superuser 解除登入冷卻與登入輸入提示同步加入 `portable_auth_pack` 範例包，避免範例包與主系統功能分岔。
+- 主要修改：portable auth route 的 429 detail 會顯示約略剩餘時間；新增 `POST /v1/auth/users/{username}/unlock-login`；auth store 增加跨 client host 清除特定帳號 login throttle 的 helper；portable minimal admin UI 新增登入輸入提示、Caps Lock 提醒與「解除登入冷卻」按鈕；README / import guide / API contract 已同步說明。
+- 驗證：`python -m py_compile portable_auth_pack/fastapi_auth_pack/auth_routes.py portable_auth_pack/fastapi_auth_pack/auth_store.py portable_auth_pack/scripts/verify_auth_pack.py` 通過；`node --check portable_auth_pack/static/login_admin_auth.js` 與 `node --check portable_auth_pack/static/login_admin_admin.js` 通過；`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py -q` 通過（22 passed, 1 warning）；`PYTHONPATH=. python portable_auth_pack/scripts/verify_auth_pack.py` 通過。執行 `python -m pip install --upgrade pip` 時套件索引回覆 403 retry，但 `python -m pip install -r requirements.txt` 顯示相依套件已滿足。

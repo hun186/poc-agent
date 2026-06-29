@@ -139,7 +139,9 @@ def test_import_center_static_contains_user_import_controls():
     )
     assert "常用 SQL 型別小提醒" in config_html
     assert "預設欄位型別與欄位對應 SQL 型別都可選擇或手動輸入" in config_html
-    assert "NVARCHAR(255)" in config_html
+    assert "若不確定欄位長度，建議保留預設 NVARCHAR(MAX)" in config_html
+    assert "最多 255 個字元的短文字" in config_html
+    assert "長文字建議 NVARCHAR(MAX)，短代碼才用 NVARCHAR(255)" in config_html
     assert "DECIMAL(18,2)" in config_html
     assert "DATE / DATETIME2" in config_html
     assert "BIT" in config_html
@@ -153,6 +155,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" in config_html
     assert "complete_description" in config_html + script
     assert "每個拼裝欄位都需要至少兩個來源欄位" in script
+    assert "長文字建議 NVARCHAR(MAX)，短代碼才用 NVARCHAR(255)" in script
     assert "pending" in config_html
     assert "superuserTaskReview" in config_html
     assert "approveTaskConfigPath" in config_html

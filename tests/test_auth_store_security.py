@@ -280,6 +280,30 @@ def test_register_endpoint_rate_limits_by_ip(monkeypatch, tmp_path):
     assert int(throttled.headers["retry-after"]) > 0
 
 
+def test_superuser_can_clear_login_throttle(monkeypatch, tmp_path):
+    client, auth_store = _load_editor_client(monkeypatch, tmp_path)
+    auth_store.AUTH_STORE.register("locked", "LockedPass!2026")
+    auth_store.AUTH_STORE.approve_user("locked", "data_reader", approved_by="admin")
+
+    for _ in range(auth_store.AUTH_THROTTLE_FAILURE_LIMIT):
+        response = client.post("/v1/auth/login", json={"username": "locked", "password": "wrong"})
+    assert response.status_code == 429
+    assert "剩餘約" in response.json()["detail"]
+
+    admin_login = client.post("/v1/auth/login", json={"username": "admin", "password": "AdminPass!2026"})
+    assert admin_login.status_code == 200
+    token = admin_login.json()["access_token"]
+
+    unlocked = client.post(
+        "/v1/auth/users/locked/unlock-login",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert unlocked.status_code == 200
+    assert unlocked.json()["cleared"] >= 1
+    assert auth_store.AUTH_STORE.throttle_retry_after("login", "locked", "testclient") == 0
+    assert client.post("/v1/auth/login", json={"username": "locked", "password": "LockedPass!2026"}).status_code == 200
+
 def test_login_audit_uses_separate_file_and_keeps_users_file_small(monkeypatch, tmp_path):
     audit_file = tmp_path / "login_audit.json"
     monkeypatch.setenv("SRA_LOGIN_AUDIT_FILE", str(audit_file))

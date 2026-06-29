@@ -247,7 +247,7 @@ curl -s -X POST http://127.0.0.1:8000/v1/auth/login \
 - 註冊 pending 帳號
 - 查詢 `/v1/auth/me`
 - 使用者變更密碼、忘記密碼 reset token 補救
-- superuser 帳號審核、重設密碼與登入稽核查詢
+- superuser 帳號審核、解除登入冷卻、重設密碼與登入稽核查詢
 - 將 Bearer token 存在 `localStorage.auth_token`
 
 你可以把它改成目標專案的登入頁，或只抽取其中的 JavaScript helper。
@@ -257,7 +257,7 @@ curl -s -X POST http://127.0.0.1:8000/v1/auth/login \
 ## 安全注意事項
 
 - 密碼使用 PBKDF2-HMAC-SHA256、per-password salt 與 `hmac.compare_digest()`；登入時不存在帳號也會執行固定 dummy hash 驗證，以降低 timing account enumeration 風險。
-- 登入與 reset-password 失敗會依 `scope:username:client_host` 在 process-local memory 內節流；註冊申請另依 `client_host` 做 process-local 頻率限制；達 5 次會暫時回 HTTP 429 與 `Retry-After`。多 worker / 多副本正式環境請改接 Redis、資料庫、API gateway 或 WAF rate limiting。
+- 登入與 reset-password 失敗會依 `scope:username:client_host` 在 process-local memory 內節流；註冊申請另依 `client_host` 做 process-local 頻率限制；15 分鐘觀察窗內達 5 次會暫時回 HTTP 429、`Retry-After` 與約略剩餘時間。superuser 可用 `POST /v1/auth/users/{username}/unlock-login` 清除目前 process-local login 冷卻紀錄。多 worker / 多副本正式環境請改接 Redis、資料庫、API gateway 或 WAF rate limiting。
 - 註冊 API 對成功送出與帳號已存在回相同泛用訊息，避免被用來測試帳號是否存在；實際結果只保留在內部 login audit reason。login audit 會記錄 `client_host` / `user_agent`，供資安檢核。
 - 正式環境必須設定 `AUTH_SECRET`，且要保持穩定；換 secret 會讓既有 token 失效。當 `AUTH_ENV` / `APP_ENV` / `ENV` / `PY_ENV` 為 `prod` 或 `production` 時，secret 不可缺漏且至少需 32 bytes。
 - `*.json` user store 請放在非公開路徑，不要放在靜態檔目錄。

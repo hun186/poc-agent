@@ -142,9 +142,10 @@ async function refreshUsers() {
     const data = await api('/v1/auth/users');
     const roleOptions = data.role_options || [];
     setUsageStatsUserOptions((data.users || []).map(u => u.username));
-    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><label class="inline-label">帳號層級<select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select></label><button data-approve-user="${esc(u.username)}">核准 / 更新層級</button><button data-issue-reset-token="${esc(u.username)}" class="secondary">產生 reset token</button><button data-reset-user="${esc(u.username)}" class="secondary">直接重設密碼</button><button data-reject-user="${esc(u.username)}" class="danger" title="pending 帳號會被拒絕申請；active 帳號會被停權並讓既有 token 失效。">拒絕申請／停權</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
+    $('users').innerHTML = data.users.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><label class="inline-label">帳號層級<select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select></label><button data-approve-user="${esc(u.username)}">核准 / 更新層級</button><button data-issue-reset-token="${esc(u.username)}" class="secondary">產生 reset token</button><button data-unlock-login="${esc(u.username)}" class="secondary" title="清除該帳號目前記憶體中的登入冷卻紀錄。">解除登入冷卻</button><button data-reset-user="${esc(u.username)}" class="secondary">直接重設密碼</button><button data-reject-user="${esc(u.username)}" class="danger" title="pending 帳號會被拒絕申請；active 帳號會被停權並讓既有 token 失效。">拒絕申請／停權</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
     document.querySelectorAll('[data-approve-user]').forEach(btn => btn.onclick = () => approveSelectedUser(btn.dataset.approveUser));
     document.querySelectorAll('[data-issue-reset-token]').forEach(btn => btn.onclick = () => issuePasswordResetToken(btn.dataset.issueResetToken));
+    document.querySelectorAll('[data-unlock-login]').forEach(btn => btn.onclick = () => unlockUserLogin(btn.dataset.unlockLogin));
     document.querySelectorAll('[data-reset-user]').forEach(btn => btn.onclick = () => resetUserPassword(btn.dataset.resetUser));
     document.querySelectorAll('[data-reject-user]').forEach(btn => btn.onclick = () => rejectUser(btn.dataset.rejectUser));
     document.querySelectorAll('[data-delete-user]').forEach(btn => btn.onclick = () => deleteUser(btn.dataset.deleteUser));
@@ -184,6 +185,11 @@ function closeResetTokenDialog() { $('resetTokenModal').classList.add('hidden');
 async function issuePasswordResetToken(username) {
   const data = await api(`/v1/auth/users/${encodeURIComponent(username)}/password-reset-token`, {method:'POST'});
   showResetTokenDialog(username, data.reset_token);
+}
+async function unlockUserLogin(username) {
+  const data = await api(`/v1/auth/users/${encodeURIComponent(username)}/unlock-login`, {method:'POST'});
+  setStatus('accountStatus', data.message || `已解除 ${username} 的登入冷卻。`, 'ok');
+  await refreshUsers();
 }
 async function resetUserPassword(username) {
   const new_password = prompt(`請輸入 ${username} 的新密碼（至少 8 字元）：`);

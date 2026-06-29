@@ -1,10 +1,26 @@
+function loginInputHints(username, password) {
+  const hints = [];
+  if (/[^\x00-\x7F]/.test(username)) hints.push('帳號含有非半形英文/數字字元，請確認是否切到中文或全形輸入。');
+  if (/[\uFF01-\uFF5E]/.test(password)) hints.push('密碼含全形字元，請確認英數與符號是否為半形。');
+  if (/[\u4E00-\u9FFF]/.test(password)) hints.push('密碼含中文，請確認目前輸入法是否正確。');
+  if (password !== password.trim()) hints.push('密碼前後有空白；如果不是刻意設定，請刪除空白後再試。');
+  return hints;
+}
+function loginFailureHintMessage(baseMessage, username, password) {
+  const hints = loginInputHints(username, password);
+  if (!hints.length) return baseMessage;
+  return `${baseMessage}\n提醒：${hints.join(' ')}`;
+}
 async function login() {
-  setStatus('authStatus', '登入中...');
+  const username = $('authUsername').value;
+  const password = $('authPassword').value;
+  const hints = loginInputHints(username, password);
+  setStatus('authStatus', hints.length ? `登入中...提醒：${hints.join(' ')}` : '登入中...');
   try {
-    const data = await api('/v1/auth/login', {method: 'POST', body: JSON.stringify({username: $('authUsername').value, password: $('authPassword').value})});
+    const data = await api('/v1/auth/login', {method: 'POST', body: JSON.stringify({username, password})});
     state.token = data.access_token; state.user = data.user; localStorage.setItem('sra_editor_token', state.token);
     await bootAuthed(); setStatus('authStatus', '登入成功', 'ok');
-  } catch (err) { setStatus('authStatus', err.message, 'error'); }
+  } catch (err) { setStatus('authStatus', loginFailureHintMessage(err.message, username, password), 'error'); }
 }
 
 async function vercelPreviewLogin() {
@@ -158,3 +174,14 @@ async function bootAuthed() {
   $('statsAllTabBtn').onclick = () => switchStatsView('all');
   switchStatsView('mine');
 }
+
+function setupLoginInputGuards() {
+  const password = $('authPassword');
+  if (!password) return;
+  password.addEventListener('keyup', event => {
+    if (event.getModifierState && event.getModifierState('CapsLock')) {
+      setStatus('authStatus', '提醒：Caps Lock 目前開啟，密碼大小寫可能輸錯。', 'error');
+    }
+  });
+}
+setupLoginInputGuards();

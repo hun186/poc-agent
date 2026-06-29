@@ -52,6 +52,8 @@ def test_editor_static_shell_loads_split_assets() -> None:
     assert '<link rel="stylesheet" href="/static/editor.css?v=20260614-split" />' in html
     expected_versions = {
         "editor_form.js": "20260625-array-preserve-single",
+        "editor_auth_nav.js": "20260629-login-hints",
+        "editor_documents.js": "20260629-login-unlock",
     }
     for path in EDITOR_SCRIPT_FILES:
         asset_name = Path(path).name
@@ -92,9 +94,14 @@ def test_portable_auth_pack_shell_loads_split_assets() -> None:
     html = Path("portable_auth_pack/static/login_admin_minimal.html").read_text(encoding="utf-8")
 
     assert '<link rel="stylesheet" href="login_admin_minimal.css?v=20260614-split" />' in html
+    expected_versions = {
+        "login_admin_auth.js": "20260629-login-hints",
+        "login_admin_admin.js": "20260629-login-unlock",
+    }
     for path in PORTABLE_AUTH_PACK_SCRIPT_FILES:
         asset_name = Path(path).name
-        assert f'<script src="{asset_name}?v=20260614-split"></script>' in html
+        version = expected_versions.get(asset_name, "20260614-split")
+        assert f'<script src="{asset_name}?v={version}"></script>' in html
         assert Path(path).exists()
         assert sum(1 for _ in Path(path).open(encoding="utf-8")) < 200
     assert 'login_admin_minimal.js?v=20260614-split' not in html
@@ -119,13 +126,25 @@ def test_editor_auth_ui_exposes_password_recovery_and_change_controls() -> None:
     assert "'/v1/auth/reset-password'" in html
 
 
+def test_editor_auth_ui_exposes_login_typo_hints() -> None:
+    html = _editor_html()
+
+    assert 'loginInputHints' in html
+    assert 'Caps Lock 目前開啟' in html
+    assert '密碼含全形字元' in html
+    assert '密碼前後有空白' in html
+
+
 def test_editor_auth_ui_exposes_logout_reset_controls_without_duplicate_login_audit_panel() -> None:
     html = _editor_html()
 
     assert "'/v1/auth/logout'" in html
     assert 'data-issue-reset-token=' in html
     assert 'data-reset-user=' in html
+    assert 'data-unlock-login=' in html
+    assert '解除登入冷卻' in html
     assert '/password-reset-token`' in html
+    assert '/unlock-login`' in html
     assert '/reset-password`' in html
     assert '<option value="auth.login">登入</option>' in html
     assert 'id="refreshLoginAuditBtn"' not in html
@@ -311,6 +330,12 @@ def test_portable_auth_pack_exposes_account_stats_with_shared_module() -> None:
     html = _portable_auth_pack_html()
 
     assert '<script src="audit_tools.js?v=20260614-multifilter"></script>' in html
+    assert '<script src="login_admin_auth.js?v=20260629-login-hints"></script>' in html
+    assert '<script src="login_admin_admin.js?v=20260629-login-unlock"></script>' in html
+    assert 'loginInputHints' in html
+    assert 'Caps Lock 目前開啟' in html
+    assert '解除登入冷卻' in html
+    assert '/unlock-login`' in html
     assert 'id="accountStatsSection"' in html
     assert 'SraAuditTools.renderTimeSeriesChart' in html
     assert "{label: 'IP 數', value: Object.keys(stats.by_client_host || {}).length, hint: 'client_host'}" in html
@@ -402,6 +427,12 @@ def test_portable_auth_pack_lists_are_client_paginated() -> None:
     assert 'function paginateAuditRows(rows, page, pageSize)' in html
     assert "typeof sharedPaginator === \'function\' ? sharedPaginator(rows, page, pageSize) : localPaginateRows(rows, page, pageSize)" in html
     assert '<script src="audit_tools.js?v=20260614-multifilter"></script>' in html
+    assert '<script src="login_admin_auth.js?v=20260629-login-hints"></script>' in html
+    assert '<script src="login_admin_admin.js?v=20260629-login-unlock"></script>' in html
+    assert 'loginInputHints' in html
+    assert 'Caps Lock 目前開啟' in html
+    assert '解除登入冷卻' in html
+    assert '/unlock-login`' in html
     assert 'id="accountStatsCurrentScopeNote"' in html
     assert '目前顯示個人帳號操作紀錄' in html
     assert 'id="accountStatsScopeHelpBtn"' in html

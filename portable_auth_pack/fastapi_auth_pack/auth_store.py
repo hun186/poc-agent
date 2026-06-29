@@ -27,6 +27,7 @@ from .auth_support import (
     _load_bootstrap_superusers,
     _login_audit_file,
     _now_ts,
+    _normalize_throttle_part,
     _throttle_key,
     _token_secret,
     _token_ttl_seconds,
@@ -330,6 +331,15 @@ class AuthStore(AuthPasswordMixin):
         key = _throttle_key(scope, username, client_host)
         with self._throttle_lock:
             self._auth_failures.pop(key, None)
+
+    def clear_auth_failures_for_user(self, scope: str, username: str) -> int:
+        """Clear all in-memory throttle records for a user across client hosts."""
+        prefix = f"{scope}:{_normalize_throttle_part(username)}:"
+        with self._throttle_lock:
+            keys = [key for key in self._auth_failures if key.startswith(prefix)]
+            for key in keys:
+                self._auth_failures.pop(key, None)
+            return len(keys)
 
     @staticmethod
     def public_user(user: dict[str, Any]) -> dict[str, Any]:

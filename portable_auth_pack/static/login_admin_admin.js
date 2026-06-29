@@ -23,7 +23,7 @@ function renderUsersPage() {
   const roleOptions = pageState.usersRoleOptions || [];
   const page = updatePager(pageState.usersRows, pageState.usersPage, 'usersPageInfo', 'usersPrevBtn', 'usersNextBtn');
   pageState.usersPage = page.page;
-  document.getElementById('users').innerHTML = page.rows.map(u => `<div class="user"><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select> <button onclick="approveSelectedUser('${esc(u.username)}')">核准 / 更新層級</button><button class="secondary" onclick="issuePasswordResetToken('${esc(u.username)}')">產生 reset token</button><button class="danger" title="pending 帳號會被拒絕申請；active 帳號會被停權並讓既有 token 失效。" onclick="rejectUser('${esc(u.username)}')">拒絕申請／停權</button><button class="danger" onclick="resetUserPassword('${esc(u.username)}')">直接重設密碼</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('') || '<p class="muted">尚無帳號。</p>';
+  document.getElementById('users').innerHTML = page.rows.map(u => `<div class="user"><strong>${esc(u.username)}</strong> status=${esc(u.status)} role=${esc(u.role)} <select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select> <button onclick="approveSelectedUser('${esc(u.username)}')">核准 / 更新層級</button><button class="secondary" onclick="issuePasswordResetToken('${esc(u.username)}')">產生 reset token</button><button class="secondary" title="清除該帳號目前記憶體中的登入冷卻紀錄。" onclick="unlockUserLogin('${esc(u.username)}')">解除登入冷卻</button><button class="danger" title="pending 帳號會被拒絕申請；active 帳號會被停權並讓既有 token 失效。" onclick="rejectUser('${esc(u.username)}')">拒絕申請／停權</button><button class="danger" onclick="resetUserPassword('${esc(u.username)}')">直接重設密碼</button><button class="danger" onclick="deleteUser('${esc(u.username)}')">刪除</button></div>`).join('') || '<p class="muted">尚無帳號。</p>';
 }
 async function approveSelectedUser(username) {
   const select = Array.from(document.querySelectorAll('[data-role-select]')).find(el => el.dataset.roleSelect === username);
@@ -60,6 +60,11 @@ async function issuePasswordResetToken(username) {
   const data = await api(`/v1/auth/users/${encodeURIComponent(username)}/password-reset-token`, {method: 'POST'});
   out(data);
   showResetTokenDialog(username, data.reset_token);
+}
+async function unlockUserLogin(username) {
+  const data = await api(`/v1/auth/users/${encodeURIComponent(username)}/unlock-login`, {method: 'POST'});
+  out(data);
+  await refreshUsers();
 }
 async function resetUserPassword(username) {
   const new_password = prompt(`請輸入 ${username} 的新密碼（至少 8 字元）`);
