@@ -4,6 +4,7 @@ let taskConfigReviewTasks = [];
 let dashboardTasks = [];
 let connectionSourceTasks = [];
 const ROLE_SUPERUSER = 'superuser';
+const ROLE_DB_OPERATOR = 'db_operator';
 function $(id) { return document.getElementById(id); }
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function authToken() { return localStorage.getItem(tokenKey) || ''; }
@@ -56,6 +57,7 @@ function mergeTasksByConfigPath(...groups) {
   });
   return Array.from(map.values());
 }
+function canReviewTaskMappings() { return currentUserRole === ROLE_DB_OPERATOR || currentUserRole === ROLE_SUPERUSER; }
 function isActiveConnectionSourceTask(task) {
   return Boolean(task?.enabled) || String(task?.status || '').toLowerCase() === 'active';
 }
@@ -247,6 +249,7 @@ function renderUploadTaskDetails() {
   if (!task?.review_summary) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   const summary = task.review_summary || {};
   box.classList.remove('hidden');
+  if (!canReviewTaskMappings()) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   box.innerHTML = `<strong>目前匯入任務的 Excel→SQL 欄位轉換</strong><div class="muted">資料庫管理者可在上傳前先確認此任務會把哪些 Excel 欄位寫入哪些 SQL 欄位。</div><div class="review-card"><h4>Excel 欄位 → SQL 欄位</h4>${renderMappingsForReview(summary.mappings)}</div>`;
 }
 function renderTaskReviewDetails() {

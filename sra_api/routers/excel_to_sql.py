@@ -31,7 +31,7 @@ from api.routers.editor_dependencies import (
     require_db_operator,
     require_superuser,
 )
-from api.services.auth_store import ROLE_SUPERUSER, AuthUser
+from api.services.auth_store import ROLE_DB_OPERATOR, ROLE_SUPERUSER, AuthUser, has_role_at_least
 
 router = APIRouter(tags=["excel-to-sql"])
 
@@ -109,6 +109,20 @@ def _is_superuser(user: AuthUser) -> bool:
     return user.role == ROLE_SUPERUSER
 
 
+def _can_review_task_mappings(user: AuthUser) -> bool:
+    return has_role_at_least(user.role, ROLE_DB_OPERATOR)
+
+
+def _dashboard_tasks_for_user(user: AuthUser, config_dir: str) -> list[dict[str, Any]]:
+    tasks = discover_dashboard_tasks(config_dir)
+    if _can_review_task_mappings(user):
+        return tasks
+    return [
+        {key: value for key, value in task.items() if key != "review_summary"}
+        for task in tasks
+    ]
+
+
 def _static_path(filename: str) -> Path:
     return Path(__file__).resolve().parents[1] / "static" / filename
 
@@ -133,9 +147,9 @@ def excel_to_sql_dashboard_tasks(
     config_dir: str = Query(
         "config/excel_to_sql", description="掃描 dashboard.enabled=true 的設定檔目錄"
     ),
-    _: AuthUser = Depends(current_user),
+    user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
-    return {"tasks": discover_dashboard_tasks(config_dir)}
+    return {"tasks": _dashboard_tasks_for_user(user, config_dir)}
 
 
 @router.get("/v1/excel-to-sql/dashboard")

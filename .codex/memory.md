@@ -230,3 +230,10 @@
 - 目的：將主系統 Editor 帳密登入冷卻剩餘時間、superuser 解除登入冷卻與登入輸入提示同步加入 `portable_auth_pack` 範例包，避免範例包與主系統功能分岔。
 - 主要修改：portable auth route 的 429 detail 會顯示約略剩餘時間；新增 `POST /v1/auth/users/{username}/unlock-login`；auth store 增加跨 client host 清除特定帳號 login throttle 的 helper；portable minimal admin UI 新增登入輸入提示、Caps Lock 提醒與「解除登入冷卻」按鈕；README / import guide / API contract 已同步說明。
 - 驗證：`python -m py_compile portable_auth_pack/fastapi_auth_pack/auth_routes.py portable_auth_pack/fastapi_auth_pack/auth_store.py portable_auth_pack/scripts/verify_auth_pack.py` 通過；`node --check portable_auth_pack/static/login_admin_auth.js` 與 `node --check portable_auth_pack/static/login_admin_admin.js` 通過；`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py -q` 通過（22 passed, 1 warning）；`PYTHONPATH=. python portable_auth_pack/scripts/verify_auth_pack.py` 通過。執行 `python -m pip install --upgrade pip` 時套件索引回覆 403 retry，但 `python -m pip install -r requirements.txt` 顯示相依套件已滿足。
+
+### 2026-06-29 Excel→SQL 任務欄位轉換權限控制
+
+- 目的：修正資料修改者（data_editor）可在 Excel 匯入作業中心看到任務 Excel→SQL 欄位轉換細節的問題。
+- 主要修改：`GET /v1/excel-to-sql/dashboard-tasks` 依使用者角色回傳任務資訊；`db_operator` / `superuser` 保留 `review_summary`，低於資料庫操作者權限的角色會移除欄位轉換摘要。前端同步加上 `db_operator` / `superuser` 檢查，非資料庫管理權限不渲染欄位轉換說明。
+- 範例包修正：`config/excel_to_sql/vessel_activities.example.json` 的 DB 連線欄位改為 placeholder，避免範例檔看起來像真實內網連線資訊。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt && python -m py_compile sra_api/routers/excel_to_sql.py && node --check sra_api/static/excel_to_sql_import_records.js && PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（18 passed, 3 warnings；pip upgrade 查詢套件索引仍出現既有 403 retry，但 requirements 已滿足）。
