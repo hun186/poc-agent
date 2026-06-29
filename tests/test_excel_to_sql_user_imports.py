@@ -106,7 +106,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
     assert (
-        "/static/excel_to_sql_import_records.js?v=20260626-task-config-management"
+        "/static/excel_to_sql_import_records.js?v=20260629-task-review-permission"
         in html
     )
     assert "/v1/excel-to-sql/import-records" in script
@@ -122,6 +122,8 @@ def test_import_center_static_contains_user_import_controls():
     assert "目前匯入任務的 Excel→SQL 欄位轉換" in script
     assert "dashboardTasks" in script
     assert "renderUploadTaskDetails" in script
+    assert "canReviewTaskMappings" in script
+    assert "ROLE_DB_OPERATOR" in script
     config_html = Path("sra_api/static/excel_to_sql_task_configs.html").read_text(
         encoding="utf-8"
     )
@@ -786,6 +788,79 @@ def test_create_excel_to_sql_task_config_rejects_unsafe_filename(tmp_path):
     else:
         raise AssertionError("unsafe filename should be rejected")
 
+
+
+def test_dashboard_tasks_hides_review_summary_below_db_operator(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers import editor_dependencies
+    from api.services.auth_store import AuthUser
+    import sra_api.routers.excel_to_sql as excel_router
+
+    app = FastAPI()
+    app.include_router(excel_router.router)
+    monkeypatch.setattr(
+        excel_router,
+        "discover_dashboard_tasks",
+        lambda config_dir: [
+            {
+                "name": "Task",
+                "config_path": "config/excel_to_sql/task.json",
+                "review_summary": {
+                    "mappings": [{"source_column": "日期", "dest_field": "activity_date"}]
+                },
+            }
+        ],
+    )
+
+    def data_editor_user():
+        return AuthUser(username="editor", role="data_editor", status="active")
+
+    app.dependency_overrides[editor_dependencies.current_user] = data_editor_user
+    client = TestClient(app)
+
+    response = client.get("/v1/excel-to-sql/dashboard-tasks")
+
+    assert response.status_code == 200
+    task = response.json()["tasks"][0]
+    assert task["name"] == "Task"
+    assert "review_summary" not in task
+
+
+def test_dashboard_tasks_keeps_review_summary_for_db_operator(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers import editor_dependencies
+    from api.services.auth_store import AuthUser
+    import sra_api.routers.excel_to_sql as excel_router
+
+    app = FastAPI()
+    app.include_router(excel_router.router)
+    monkeypatch.setattr(
+        excel_router,
+        "discover_dashboard_tasks",
+        lambda config_dir: [
+            {
+                "name": "Task",
+                "config_path": "config/excel_to_sql/task.json",
+                "review_summary": {
+                    "mappings": [{"source_column": "日期", "dest_field": "activity_date"}]
+                },
+            }
+        ],
+    )
+
+    def db_operator_user():
+        return AuthUser(username="operator", role="db_operator", status="active")
+
+    app.dependency_overrides[editor_dependencies.current_user] = db_operator_user
+    client = TestClient(app)
+
+    response = client.get("/v1/excel-to-sql/dashboard-tasks")
+
+    assert response.status_code == 200
+    task = response.json()["tasks"][0]
+    assert task["review_summary"]["mappings"][0]["source_column"] == "日期"
 
 def test_excel_to_sql_task_review_api_requires_superuser(monkeypatch):
     from fastapi import FastAPI
