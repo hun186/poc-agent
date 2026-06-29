@@ -10,6 +10,29 @@ function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'
 function authToken() { return localStorage.getItem(tokenKey) || ''; }
 function statusBadge(s) { return `<span class="status ${escapeHtml(s)}">${escapeHtml(s || '(empty)')}</span>`; }
 function showError(text) { const el=$('msg'); if (!el) return; if (!text) { el.classList.add('hidden'); el.textContent=''; } else { el.classList.remove('hidden'); el.textContent=text; } }
+function notifyImportant(message) { if (message) window.alert(message); }
+function formatApiErrorDetail(detail) {
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(item => {
+      if (typeof item === 'string') return item;
+      const loc = Array.isArray(item?.loc) ? item.loc.filter(part => part !== 'body').join('.') : '';
+      const msg = item?.msg || item?.message || JSON.stringify(item);
+      return loc ? `${loc}：${msg}` : msg;
+    }).join('\n');
+  }
+  if (detail && typeof detail === 'object') return detail.message || detail.msg || JSON.stringify(detail);
+  return String(detail || '');
+}
+async function responseErrorText(res) {
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text);
+    return formatApiErrorDetail(data.detail ?? data);
+  } catch (_) {
+    return text;
+  }
+}
 function fillTable(id, rows, render) { document.querySelector(`#${id} tbody`).innerHTML = rows.map(render).join('') || '<tr><td colspan="99" class="muted">無資料</td></tr>'; }
 function pad2(v) { return String(v).padStart(2, '0'); }
 function normalizeAuditUtc(text) { const raw = String(text || ''); if (!raw) return null; const trimmed = raw.replace(/(\.\d{3})\d+/, '$1'); return /[zZ]|[+-]\d\d:?\d\d$/.test(trimmed) ? trimmed : trimmed + 'Z'; }
@@ -192,6 +215,14 @@ function addCompositeMappingRow() { const box = $('taskCompositeMappings'); if (
 function removeCompositeMappingRow(button) { button.closest('[data-composite-row]')?.remove(); }
 function taskValue(id) { return ($(id)?.value || '').trim(); }
 function taskNumber(id, fallback) { const raw = taskValue(id); return raw ? Number(raw) : fallback; }
+function normalizeTaskFilename() {
+  const input = $('taskFilename');
+  const raw = (input?.value || '').trim();
+  if (!raw || raw.toLowerCase().endsWith('.json')) return { filename: raw, changed: false };
+  const filename = `${raw}.json`;
+  if (input) input.value = filename;
+  return { filename, changed: true };
+}
 function collectTaskMappings() {
   return Array.from(document.querySelectorAll('[data-mapping-row]')).map(row => ({
     source_column: row.querySelector('.mapping-source')?.value.trim() || '',
@@ -241,22 +272,29 @@ function validateTaskConfigPayload(payload) {
 
 async function createTaskConfig() {
   showError(''); setPreview('');
+  const normalizedFilename = normalizeTaskFilename();
+  if (normalizedFilename.changed) {
+    showError(`已自動補上 .json 副檔名：${normalizedFilename.filename}`);
+  }
   const payload = {
-    filename: taskValue('taskFilename'), task_name: taskValue('taskName'), connection_source_config: taskValue('taskConnectionSource'), db_driver: taskValue('taskDbDriver') || 'auto',
+    filename: normalizedFilename.filename, task_name: taskValue('taskName'), connection_source_config: taskValue('taskConnectionSource'), db_driver: taskValue('taskDbDriver') || 'auto',
     db_server: taskValue('taskDbServer'), db_database: taskValue('taskDbDatabase'), db_user: taskValue('taskDbUser'), db_password: taskValue('taskDbPassword'),
     db_trusted_connection: $('taskTrustedConnection')?.checked || false, db_encrypt: true, db_trust_server_certificate: true, source_directory: taskValue('taskSourceDirectory') || './data/excel_inbox', file_pattern: taskValue('taskFilePattern') || '*.xlsx',
     source_sheet: taskValue('taskSourceSheet'), header_row: taskNumber('taskHeaderRow', 1), start_row: taskNumber('taskStartRow', 2),
     destination_table: taskValue('taskDestinationTable'), audit_table: taskValue('taskAuditTable') || 'dbo.ExcelImportAudit', default_field_type: taskValue('taskDefaultFieldType') || 'NVARCHAR(MAX)',
     hash_field: taskValue('taskHashField') || 'hash_value', overwrite: $('taskOverwrite')?.checked || false, mappings: collectTaskMappings(), composite_mappings: collectCompositeMappings(),
   };
+  if (!payload.task_name) { showError('請輸入任務名稱。'); return; }
   if (!payload.mappings.length) { showError('請至少新增一筆 Excel 欄位對應。'); return; }
   const validationErrors = validateTaskConfigPayload(payload);
   if (validationErrors.length) { showError('智慧檢查發現設定問題：\n' + validationErrors.join('\n')); return; }
   const res = await fetch('/v1/excel-to-sql/task-configs', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + authToken() }, body: JSON.stringify(payload) });
-  if (!res.ok) { let text=await res.text(); try{text=JSON.parse(text).detail||text;}catch(_){} showError(text); return; }
+  if (!res.ok) { showError(await responseErrorText(res)); return; }
   const data = await res.json();
   const task = data.task || {};
+  const successMessage = `已建立待審任務設定檔：${task.config_path || ''}\n狀態：${task.status || 'pending'}。\n請通知 superuser 審核啟用後再上傳匯入。`;
   setPreview(`<strong>已建立待審任務設定檔：</strong>${escapeHtml(task.config_path || '')}<br><span class="muted">狀態：${escapeHtml(task.status || 'pending')}。請通知 superuser 審核啟用後再上傳匯入。</span>`);
+  notifyImportant(successMessage);
   if ($('approveTaskConfigPath') && task.config_path) $('approveTaskConfigPath').value = task.config_path;
   await loadTasks();
   await loadMyTaskConfigs();

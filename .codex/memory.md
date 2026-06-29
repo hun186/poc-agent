@@ -262,3 +262,9 @@
 - 目的：回應 `editor_auth_nav.js`、`task_configs.py`、`excel_to_sql_import_records.js` 是否過於肥大。實測行數：`editor_auth_nav.js` 194 行、`excel_to_sql_import_records.js` 364 行、`task_configs.py` 525 行；依既有 500 行門檻，優先拆分 `task_configs.py`。
 - 主要修改：新增 `data_ingestion/excel_to_sql/task_config_builder.py`，承接任務 JSON build / validation；`task_configs.py` 保留路徑解析、檔案建立、審核摘要、列表、啟停與刪除 facade。拆分後 `task_configs.py` 約 299 行，builder 約 236 行；兩個 JS 檔目前低於門檻，先保留避免前端 script 載入順序與全域函式風險。
 - 驗證：`python -m py_compile data_ingestion/excel_to_sql/task_configs.py data_ingestion/excel_to_sql/task_config_builder.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 與 `node --check sra_api/static/editor_auth_nav.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_editor_auth_ui_static.py -q` 通過（40 passed, 3 warnings）。
+
+### 2026-06-29 Excel→SQL 任務 JSON 建立回饋改善
+
+- 目的：改善 Excel→SQL 任務 JSON 管理頁建立待審任務時的使用者回饋，避免成功訊息只出現在頁面上方而被忽略，並修正未輸入任務名稱時顯示 `[object Object]` 的不明錯誤。
+- 主要修改：任務建立成功後除頁面訊息外會以瀏覽器對話框提示；前端新增 API error detail formatter，將 FastAPI validation list/object 轉成可讀文字；送出前若任務名稱空白會直接提示「請輸入任務名稱。」；設定檔檔名未以 `.json` 結尾時會自動補上副檔名並在頁面提示使用者。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt && node --check sra_api/static/excel_to_sql_import_records.js && PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（18 passed, 3 warnings；pip upgrade 查詢套件索引仍出現既有 403 retry，但 requirements 已滿足）。
