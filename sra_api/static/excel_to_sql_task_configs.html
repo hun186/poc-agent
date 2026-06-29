@@ -36,7 +36,7 @@
     button.secondary { background:#475467; }
     button.ghost { background:#e2e8f0; color:#172033; }
     .mapping-row { display:grid; grid-template-columns: 1.2fr 1.2fr 1fr .7fr .7fr auto; gap:10px; align-items:end; margin:8px 0; }
-    .composite-row { display:grid; grid-template-columns: 1.2fr 1fr 1.6fr .7fr .7fr 1fr .6fr auto; gap:10px; align-items:end; margin:8px 0; }
+    .composite-row { display:grid; grid-template-columns: 1.2fr 1fr 1.6fr .7fr 1fr .6fr auto; gap:10px; align-items:end; margin:8px 0; }
     .mapping-row button { padding:9px 10px; }
     .checkbox-line { display:flex; gap:8px; align-items:center; font-size:13px; font-weight:600; }
     .checkbox-line input { width:auto; }
@@ -126,25 +126,25 @@
     <details class="type-help"><summary>常用 SQL 型別小提醒（預設欄位型別與欄位對應 SQL 型別都可選擇或手動輸入）</summary><ul><li><strong>NVARCHAR(MAX)</strong>：長文字或不確定長度的文字，例如備註、描述、原文內容；系統未填寫時也會使用這個較安全的預設。</li><li><strong>NVARCHAR(255)</strong>：最多 255 個字元的短文字，例如名稱、代碼、狀態；不適合描述、JSON 或可能很長的欄位。</li><li><strong>INT / BIGINT</strong>：整數；BIGINT 適合很大的流水號或計數。</li><li><strong>DECIMAL(18,2)</strong>：精確小數，例如金額、重量、比例；括號可依需求調整。</li><li><strong>FLOAT</strong>：近似小數，例如科學量測；不建議用於金額。</li><li><strong>DATE / DATETIME2</strong>：日期 / 日期時間。</li><li><strong>BIT</strong>：是 / 否、true / false 類欄位。</li></ul></details>
     <div class="upload-actions"><button class="ghost" onclick="addTaskMappingRow()">新增欄位對應</button><button class="ghost" onclick="showMatchHelp()">比對方式說明</button></div>
     <h3 class="section-title">多欄位拼裝成 SQL 新欄位</h3>
-    <p class="muted">可把多個 Excel 欄位拼成實際 SQL 欄位；模板可使用 <code>{Excel欄名}</code> 代入每列值，例如 <code>日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}</code>。若不填模板，會用分隔字串串接來源欄位。拼裝來源欄位可以使用 exact、prefix 或 contains；預設 exact。建立 JSON 時不會因為選 prefix / contains 而被擋下，因為此時尚無法知道未來上傳的 Excel 標題列。prefix / contains 是否命中多個欄位，會在預掃描或確認匯入讀到實際 Excel 後才檢查；若當時命中多個 Excel 欄名，匯入解析會選用排序後最短且最前面的欄位並在診斷中標示 ambiguous。欄名可能不唯一時，建議改用 exact 或調整來源欄位。SQL 新欄位請使用安全命名，例如 <code>complete_description</code>，不要使用空白。View 模式需待資料庫 view 管理流程確認後再開放。</p>
+    <p class="muted">目前「多欄位拼裝成 SQL 新欄位」是實體欄位模式：匯入時會在目的資料表新增 / 寫入一個 SQL 欄位，將拼裝後完整文字保存一份；優點是查詢與後續匯出簡單，缺點是會多佔用資料庫空間。可把多個 Excel 欄位拼成實際 SQL 欄位；模板可使用 <code>{Excel欄名}</code> 代入每列值，例如 <code>日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}</code>。若不填模板，會用分隔字串串接來源欄位。拼裝來源欄位不再另外選比對方式；系統會依「Excel 欄位對應」中相同來源欄位設定的 exact / prefix / contains 逐欄套用，沒有在單欄對應出現的拼裝來源則預設 exact。需要實際 Excel 標題列才能判斷的不唯一問題，會留到預掃描或確認匯入時診斷。若希望不存重複文字，可改用 SQL View / computed expression 的設計，但目前任務建立頁尚未開放真正建 View，需先定義 view 名稱、欄位引用安全檢查、CREATE OR ALTER 權限與審核流程。</p>
     <div id="taskCompositeMappings"></div>
     <div class="upload-actions"><button class="ghost" onclick="addCompositeMappingRow()">新增拼裝欄位</button><button onclick="createTaskConfig()">建立待審任務 JSON</button></div>
-    <div class="preview-box"><strong>安全提醒：</strong>新建任務預設為 pending，不會出現在上傳任務清單；必須由 superuser 審核啟用後才能正式上傳影響 SQL。送出前會執行只依目前表單內容即可判斷的智慧檢查，攔截目的欄位重複、拼裝來源不足、來源欄位重複、模板 placeholder 未列入來源欄位等常見錯誤；可以使用 prefix / contains 作為拼裝來源比對方式；需要實際 Excel 標題列才能判斷的不唯一問題，會留到預掃描或確認匯入時診斷。</div>
+    <div class="preview-box"><strong>安全提醒：</strong>新建任務預設為 pending，不會出現在上傳任務清單；必須由 superuser 審核啟用後才能正式上傳影響 SQL。送出前會執行只依目前表單內容即可判斷的智慧檢查，攔截目的欄位重複、拼裝來源不足、來源欄位重複、模板 placeholder 未列入來源欄位等常見錯誤；拼裝來源會沿用上方相同來源欄位的比對方式；需要實際 Excel 標題列才能判斷的不唯一問題，會留到預掃描或確認匯入時診斷。</div>
 
     <h3 class="section-title">我建立的任務清單 / 審核進度</h3>
     <p class="muted">資料庫管理者只能看到與處理自己建立的任務；superuser 的全站審核區塊另列於下方。</p>
     <div class="upload-actions"><button class="secondary" onclick="loadMyTaskConfigs()">重新整理我的任務</button></div>
     <div class="table-wrap"><table id="myTaskConfigs"><thead><tr><th>任務名稱</th><th>設定檔</th><th>狀態</th><th>審核者</th><th>操作</th></tr></thead><tbody></tbody></table></div>
     <div id="superuserTaskReview" class="hidden">
-      <h3 class="section-title">Superuser 任務審核 / 停用</h3>
-      <p class="muted">只有 superuser 會看到此區塊；後端 API 也會強制檢查 superuser 權限。</p>
-      <div class="controls"><div><label>任務設定檔</label><select id="approveTaskConfigPath" onchange="renderTaskReviewDetails()"><option value="">載入待審任務中...</option></select></div><div><label>啟用狀態</label><select id="taskReviewEnabled"><option value="true">啟用 active</option><option value="false">停用回 pending</option></select></div><div class="upload-actions"><button class="secondary" onclick="setTaskConfigStatus()">套用狀態</button></div></div>
+      <h3 class="section-title">Superuser 任務審核 / 停用 / 刪除</h3>
+      <p class="muted">只有 superuser 會看到此區塊；後端 API 也會強制檢查 superuser 權限。刪除會直接移除任務 JSON，請先確認遮蔽 JSON 與欄位轉換內容。</p>
+      <div class="controls"><div><label>任務設定檔</label><select id="approveTaskConfigPath" onchange="renderTaskReviewDetails()"><option value="">載入待審任務中...</option></select></div><div><label>啟用狀態</label><select id="taskReviewEnabled"><option value="true">啟用 active</option><option value="false">停用回 pending</option></select></div><div class="upload-actions"><button class="secondary" onclick="setTaskConfigStatus()">套用狀態</button><button class="ghost" onclick="deleteReviewedTaskConfig()">刪除任務設定檔</button></div></div>
       <div id="taskReviewDetails" class="review-details hidden"></div>
     </div>
     <dialog id="matchHelpDialog"><h3>欄位比對方式說明</h3><ul><li><strong>預設 / exact</strong>：Excel 標題必須與來源欄位完全相同，適合欄名穩定的表格。</li><li><strong>prefix</strong>：Excel 標題以指定文字開頭即可，例如「船名1」「船名2」。</li><li><strong>contains</strong>：Excel 標題包含指定文字即可，適合欄名前後常有附註文字時使用。</li></ul><button onclick="closeMatchHelp()">關閉</button></dialog>
   </section>
 
 </main>
-<script src="/static/excel_to_sql_import_records.js?v=20260629-composite-non-exact-allowed"></script>
+<script src="/static/excel_to_sql_import_records.js?v=20260629-compose-storage-note"></script>
 </body>
 </html>

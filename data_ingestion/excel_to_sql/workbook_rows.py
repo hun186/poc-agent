@@ -207,18 +207,37 @@ def read_column_mappings(
             source_columns = compose.get("source_columns") or []
             if not isinstance(source_columns, list) or len(source_columns) < 2:
                 raise ValueError(f"mappings[{index}] compose.source_columns 至少需要兩個來源欄位")
+            source_matches = compose.get("source_matches") or {}
+            if not isinstance(source_matches, dict):
+                source_matches = {}
             for source_pos, source in enumerate(source_columns, start=1):
                 source_text = normalize_header(source)
+                source_match_mode = str(
+                    source_matches.get(source_text) or match_mode
+                ).strip().lower()
+                if source_match_mode not in {
+                    "exact",
+                    "smart",
+                    "normalized",
+                    "prefix",
+                    "contains",
+                }:
+                    raise ValueError(
+                        "mappings[{}] compose.source_matches 不支援：{}".format(
+                            index, source_match_mode
+                        )
+                    )
                 excel_idx, actual_label, match_type, header_message = resolve_header_candidate(
                     mapping_index=index,
                     header_map=header_map,
                     expected_names=[source_text],
-                    match_mode=match_mode,
+                    match_mode=source_match_mode,
                 )
                 compose_sources.append({
                     "source_label": source_text,
                     "actual_source_label": actual_label,
                     "source_index": excel_idx,
+                    "configured_match": source_match_mode,
                     "match_type": match_type,
                     "header_message": header_message,
                 })
@@ -290,6 +309,9 @@ def read_column_mappings(
                 "skip_empty": bool(compose.get("skip_empty", True)),
                 "template": str(compose.get("template") or ""),
             }
+            source_matches = compose.get("source_matches")
+            if isinstance(source_matches, dict) and source_matches:
+                resolved_mapping["compose"]["source_matches"] = dict(source_matches)
         for type_key in ("dest_field_type", "destination_field_type", "sql_type"):
             if mapping.get(type_key):
                 resolved_mapping[type_key] = mapping[type_key]
@@ -358,6 +380,7 @@ def iter_excel_rows(
                     pieces = []
                     raw_values = []
                     template_values = {}
+                    has_non_empty_source = False
                     for source in compose.get("sources", []):
                         idx = int(source["source_index"])
                         raw = row[idx - 1] if idx - 1 < len(row) else None
@@ -368,15 +391,19 @@ def iter_excel_rows(
                         raw_values.append((configured_label, val))
                         template_values[configured_label] = text_value
                         template_values[actual_label] = text_value
+                        if not is_empty_value(val):
+                            has_non_empty_source = True
                         if not (compose.get("skip_empty", True) and is_empty_value(val)):
                             pieces.append(text_value)
                     template = str(compose.get("template") or "")
-                    if template:
+                    if template and has_non_empty_source:
                         value = re.sub(
                             r"\{([^{}]+)\}",
                             lambda match: template_values.get(match.group(1), match.group(0)),
                             template,
                         )
+                    elif template:
+                        value = None
                     else:
                         value = str(compose.get("separator", " ")).join(pieces)
                         if not pieces:

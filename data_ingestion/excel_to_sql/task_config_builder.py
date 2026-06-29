@@ -33,6 +33,7 @@ def build_task_config(
 
     mappings: list[dict[str, Any]] = []
     seen_dest_fields: set[str] = set()
+    source_match_by_column: dict[str, str] = {}
     for index, item in enumerate(mappings_payload, start=1):
         if not isinstance(item, dict):
             raise ValueError(f"第 {index} 筆欄位對應格式錯誤")
@@ -58,6 +59,7 @@ def build_task_config(
             if match not in {"exact", "prefix", "contains"}:
                 raise ValueError(f"第 {index} 筆 match 僅支援 exact、prefix、contains")
             mapping["match"] = match
+        source_match_by_column[source_column] = match or "exact"
         value_type = str(item.get("value_type") or "").strip()
         if value_type:
             if value_type not in {"text", "int", "float", "date", "datetime", "bool"}:
@@ -86,11 +88,13 @@ def build_task_config(
         ]
         if len(source_columns) < 2:
             raise ValueError(f"第 {index} 筆組合欄位至少需要兩個來源欄位")
-        match = str(item.get("match") or "exact").strip()
-        if match not in {"exact", "prefix", "contains"}:
-            raise ValueError(f"第 {index} 筆組合欄位 match 僅支援 exact、prefix、contains")
+        source_matches = {
+            source: source_match_by_column.get(source, "exact")
+            for source in source_columns
+        }
         compose_config = {
             "source_columns": source_columns,
+            "source_matches": source_matches,
             "separator": str(
                 item.get("separator") if item.get("separator") is not None else " "
             ),
@@ -107,7 +111,7 @@ def build_task_config(
                 "dest_field_type": _clean_sql_type(
                     item.get("dest_field_type"), "NVARCHAR(MAX)"
                 ),
-                "match": match,
+                "match": "exact",
                 "compose": compose_config,
             }
         )

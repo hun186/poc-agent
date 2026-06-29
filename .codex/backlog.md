@@ -84,3 +84,10 @@
 - 為 Excel→SQL 匯入與外部 LLM→ES 寫入設計正式 lineage contract，至少包含 source_config_path、hash_value、run_id、audit_id、source_file、sheet_name、row_no。
 - 新增 SQL delete outbox / tombstone table 或事件檔，讓 ES 同步工作可依刪除 audit 事件執行 soft-delete / supersede / 人工審核，而不是在 dashboard request 內直接硬刪 ES doc。
 - 在 Editor 或管理頁新增「依 SQL hash 查找 ES doc」與「確認同步刪除 / 標記停用」操作，降低跨系統誤刪風險。
+
+## 2026-06-29 Excel→SQL 拼裝欄位 View 模式後續改善
+
+- 目前多欄位拼裝是實體欄位模式，會把拼裝後完整文字寫入目的資料表；優點是匯入 audit、查詢、匯出與 ES 後續消費都能直接使用同一欄位，缺點是會增加 SQL 儲存空間。
+- 後續若要支援 View 模式，應新增明確任務設定，例如 `compose_storage_mode: physical_column | sql_view`、`view_name`、view schema / owner、CREATE OR ALTER 權限需求、既有 view 更新策略、欄位引用白名單與 SQL injection 防護。
+- View 模式需決定 audit payload 是否仍記錄拼裝結果、hash 去重是否使用原始欄位或 view expression、ES / downstream 匯出是否讀 base table 還是 view，避免只在 UI 切換但資料流不一致。
+- 在上述設計完成前，不應以 STUB 或只產生文字規格的方式宣稱已支援 View 模式。
