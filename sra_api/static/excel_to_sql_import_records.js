@@ -15,7 +15,7 @@ function pad2(v) { return String(v).padStart(2, '0'); }
 function normalizeAuditUtc(text) { const raw = String(text || ''); if (!raw) return null; const trimmed = raw.replace(/(\.\d{3})\d+/, '$1'); return /[zZ]|[+-]\d\d:?\d\d$/.test(trimmed) ? trimmed : trimmed + 'Z'; }
 function formatAuditTime(value) { const raw = String(value || ''); const normalized = normalizeAuditUtc(raw); if (!normalized) return ''; const local = new Date(normalized); if (Number.isNaN(local.getTime())) return escapeHtml(raw); return `<div>${escapeHtml(local.toLocaleString())}</div><div class="muted">UTC：${escapeHtml(raw)}</div>`; }
 function localInputToUtcIso(id) { const el = $(id); const v = el?.value || ''; return v ? new Date(v).toISOString() : ''; }
-function setPreview(html) { const box = $('previewBox'); if (!html) { box.classList.add('hidden'); box.innerHTML=''; } else { box.classList.remove('hidden'); box.innerHTML=html; } }
+function setPreview(html) { const box = $('previewBox') || $('msg'); if (!box) return; if (!html) { box.classList.add('hidden'); if (box.id === 'previewBox') box.innerHTML=''; return; } box.classList.remove('hidden'); if (box.id === 'previewBox') box.innerHTML=html; else box.innerHTML=html; }
 function summarizeFailures(summary) {
   const entries = Object.entries(summary || {}).sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 3);
   if (!entries.length) return '<span class="muted">無錯誤摘要</span>';
@@ -42,6 +42,7 @@ async function loadCurrentUser() {
     currentUserRole = user.role || '';
     $('whoami').textContent = user.username ? `${user.username} (${user.role || '-'})` : '未登入';
     updateSuperuserTaskReviewVisibility();
+    updateTaskConfigPermissionVisibility();
   } catch (_) { $('whoami').textContent = '登入已失效'; }
 }
 function taskOptionLabel(t) {
@@ -58,6 +59,14 @@ function mergeTasksByConfigPath(...groups) {
   return Array.from(map.values());
 }
 function canReviewTaskMappings() { return currentUserRole === ROLE_DB_OPERATOR || currentUserRole === ROLE_SUPERUSER; }
+function updateTaskConfigPermissionVisibility() {
+  const card = $('taskConfigCard');
+  if (!card) return;
+  const allowed = canReviewTaskMappings();
+  card.classList.toggle('hidden', !allowed);
+  if (!allowed) showError('建立 Excel→SQL 任務設定檔需要資料庫管理權限（db_operator / superuser）。你可以從編輯器導航關閉或避免進入此頁。');
+}
+
 function isActiveConnectionSourceTask(task) {
   return Boolean(task?.enabled) || String(task?.status || '').toLowerCase() === 'active';
 }
@@ -175,7 +184,7 @@ function mappingRowTemplate(index) {
   return `<div class="mapping-row" data-mapping-row="1"><div><label>來源欄位</label><input class="mapping-source" placeholder="Excel 欄名" /></div><div><label>目的欄位</label><input class="mapping-dest" placeholder="sql_field" /></div><div><label>SQL 型別</label><input class="mapping-type" list="sqlTypeOptions" placeholder="長文字建議 NVARCHAR(MAX)，短代碼才用 NVARCHAR(255)" /></div><div><label>比對 <button class="ghost" onclick="showMatchHelp()" type="button">?</button></label><select class="mapping-match"><option value="">預設</option><option value="exact">exact</option><option value="prefix">prefix</option><option value="contains">contains</option></select></div><div><label>必填</label><select class="mapping-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeTaskMappingRow(this)" type="button">移除</button></div>`;
 }
 function compositeRowTemplate(index) {
-  return `<div class="composite-row" data-composite-row="1"><div><label>來源欄位（逗號分隔）</label><input class="composite-sources" placeholder="日期, 地點, 敘述" /></div><div><label>SQL 新欄位</label><input class="composite-dest" placeholder="complete_description" /></div><div><label>模板（可選）</label><input class="composite-template" placeholder="日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" /></div><div><label>分隔字串</label><input class="composite-separator" value=" " /></div><div><label>SQL 型別</label><input class="composite-type" list="sqlTypeOptions" placeholder="選擇或手動輸入，例如 NVARCHAR(MAX)" /></div><div><label>必填</label><select class="composite-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeCompositeMappingRow(this)" type="button">移除</button></div>`;
+  return `<div class="composite-row" data-composite-row="1"><div><label>來源欄位（逗號分隔）</label><input class="composite-sources" placeholder="日期, 地點, 敘述" /></div><div><label>SQL 新欄位</label><input class="composite-dest" placeholder="complete_description" /></div><div><label>模板（可選）</label><input class="composite-template" placeholder="日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" /></div><div><label>比對</label><select class="composite-match"><option value="exact">exact</option><option value="prefix">prefix</option><option value="contains">contains</option></select></div><div><label>分隔字串</label><input class="composite-separator" value=" " /></div><div><label>SQL 型別</label><input class="composite-type" list="sqlTypeOptions" placeholder="選擇或手動輸入，例如 NVARCHAR(MAX)" /></div><div><label>必填</label><select class="composite-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeCompositeMappingRow(this)" type="button">移除</button></div>`;
 }
 function addTaskMappingRow() { const box = $('taskMappings'); if (box) box.insertAdjacentHTML('beforeend', mappingRowTemplate(box.children.length)); }
 function removeTaskMappingRow(button) { button.closest('[data-mapping-row]')?.remove(); }
@@ -197,11 +206,39 @@ function collectCompositeMappings() {
     source_columns: (row.querySelector('.composite-sources')?.value || '').split(',').map(v => v.trim()).filter(Boolean),
     dest_field: row.querySelector('.composite-dest')?.value.trim() || '',
     template: row.querySelector('.composite-template')?.value.trim() || '',
+    match: row.querySelector('.composite-match')?.value || 'exact',
     separator: row.querySelector('.composite-separator')?.value ?? ' ',
     dest_field_type: row.querySelector('.composite-type')?.value.trim() || 'NVARCHAR(MAX)',
     required: row.querySelector('.composite-required')?.value === 'true',
   })).filter(item => item.source_columns.length || item.dest_field);
 }
+
+function findTemplatePlaceholders(template) {
+  return Array.from(String(template || '').matchAll(/\{([^{}]+)\}/g)).map(match => match[1].trim()).filter(Boolean);
+}
+function validateTaskConfigPayload(payload) {
+  const errors = [];
+  const dests = new Set();
+  payload.mappings.forEach((item, idx) => {
+    if (!item.source_column || !item.dest_field) errors.push(`第 ${idx + 1} 筆欄位對應需同時填來源欄位與目的欄位。`);
+    const key = String(item.dest_field || '').toLowerCase();
+    if (key && dests.has(key)) errors.push(`目的欄位重複：${item.dest_field}`);
+    if (key) dests.add(key);
+  });
+  payload.composite_mappings.forEach((item, idx) => {
+    if (item.source_columns.length < 2 || !item.dest_field) errors.push(`第 ${idx + 1} 筆拼裝欄位錯誤：每個拼裝欄位都需要至少兩個來源欄位與一個 SQL 新欄位。`);
+    const uniqueSources = new Set(item.source_columns.map(v => v.toLowerCase()));
+    if (uniqueSources.size !== item.source_columns.length) errors.push(`第 ${idx + 1} 筆拼裝欄位的來源欄位重複。`);
+    const key = String(item.dest_field || '').toLowerCase();
+    if (key && dests.has(key)) errors.push(`目的欄位重複：${item.dest_field}`);
+    if (key) dests.add(key);
+    const placeholders = findTemplatePlaceholders(item.template);
+    const sourceSet = new Set(item.source_columns);
+    placeholders.filter(name => !sourceSet.has(name)).forEach(name => errors.push(`第 ${idx + 1} 筆拼裝模板使用了未列入來源欄位的 {${name}}。`));
+  });
+  return errors;
+}
+
 async function createTaskConfig() {
   showError(''); setPreview('');
   const payload = {
@@ -213,7 +250,8 @@ async function createTaskConfig() {
     hash_field: taskValue('taskHashField') || 'hash_value', overwrite: $('taskOverwrite')?.checked || false, mappings: collectTaskMappings(), composite_mappings: collectCompositeMappings(),
   };
   if (!payload.mappings.length) { showError('請至少新增一筆 Excel 欄位對應。'); return; }
-  if (payload.composite_mappings.some(item => item.source_columns.length < 2 || !item.dest_field)) { showError('每個拼裝欄位都需要至少兩個來源欄位與一個 SQL 新欄位。'); return; }
+  const validationErrors = validateTaskConfigPayload(payload);
+  if (validationErrors.length) { showError('智慧檢查發現設定問題：\n' + validationErrors.join('\n')); return; }
   const res = await fetch('/v1/excel-to-sql/task-configs', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + authToken() }, body: JSON.stringify(payload) });
   if (!res.ok) { let text=await res.text(); try{text=JSON.parse(text).detail||text;}catch(_){} showError(text); return; }
   const data = await res.json();

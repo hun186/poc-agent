@@ -36,7 +36,7 @@
     button.secondary { background:#475467; }
     button.ghost { background:#e2e8f0; color:#172033; }
     .mapping-row { display:grid; grid-template-columns: 1.2fr 1.2fr 1fr .7fr .7fr auto; gap:10px; align-items:end; margin:8px 0; }
-    .composite-row { display:grid; grid-template-columns: 1.2fr 1fr 1.6fr .7fr 1fr .6fr auto; gap:10px; align-items:end; margin:8px 0; }
+    .composite-row { display:grid; grid-template-columns: 1.2fr 1fr 1.6fr .7fr .7fr 1fr .6fr auto; gap:10px; align-items:end; margin:8px 0; }
     .mapping-row button { padding:9px 10px; }
     .checkbox-line { display:flex; gap:8px; align-items:center; font-size:13px; font-weight:600; }
     .checkbox-line input { width:auto; }
@@ -126,10 +126,10 @@
     <details class="type-help"><summary>常用 SQL 型別小提醒（預設欄位型別與欄位對應 SQL 型別都可選擇或手動輸入）</summary><ul><li><strong>NVARCHAR(MAX)</strong>：長文字或不確定長度的文字，例如備註、描述、原文內容；系統未填寫時也會使用這個較安全的預設。</li><li><strong>NVARCHAR(255)</strong>：最多 255 個字元的短文字，例如名稱、代碼、狀態；不適合描述、JSON 或可能很長的欄位。</li><li><strong>INT / BIGINT</strong>：整數；BIGINT 適合很大的流水號或計數。</li><li><strong>DECIMAL(18,2)</strong>：精確小數，例如金額、重量、比例；括號可依需求調整。</li><li><strong>FLOAT</strong>：近似小數，例如科學量測；不建議用於金額。</li><li><strong>DATE / DATETIME2</strong>：日期 / 日期時間。</li><li><strong>BIT</strong>：是 / 否、true / false 類欄位。</li></ul></details>
     <div class="upload-actions"><button class="ghost" onclick="addTaskMappingRow()">新增欄位對應</button><button class="ghost" onclick="showMatchHelp()">比對方式說明</button></div>
     <h3 class="section-title">多欄位拼裝成 SQL 新欄位</h3>
-    <p class="muted">可把多個 Excel 欄位拼成實際 SQL 欄位；模板可使用 <code>{Excel欄名}</code> 代入每列值，例如 <code>日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}</code>。若不填模板，會用分隔字串串接來源欄位。SQL 新欄位請使用安全命名，例如 <code>complete_description</code>，不要使用空白。View 模式需待資料庫 view 管理流程確認後再開放。</p>
+    <p class="muted">可把多個 Excel 欄位拼成實際 SQL 欄位；模板可使用 <code>{Excel欄名}</code> 代入每列值，例如 <code>日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}</code>。若不填模板，會用分隔字串串接來源欄位。拼裝來源欄位可以使用 exact、prefix 或 contains；預設 exact。建立 JSON 時不會因為選 prefix / contains 而被擋下，因為此時尚無法知道未來上傳的 Excel 標題列。prefix / contains 是否命中多個欄位，會在預掃描或確認匯入讀到實際 Excel 後才檢查；若當時命中多個 Excel 欄名，匯入解析會選用排序後最短且最前面的欄位並在診斷中標示 ambiguous。欄名可能不唯一時，建議改用 exact 或調整來源欄位。SQL 新欄位請使用安全命名，例如 <code>complete_description</code>，不要使用空白。View 模式需待資料庫 view 管理流程確認後再開放。</p>
     <div id="taskCompositeMappings"></div>
     <div class="upload-actions"><button class="ghost" onclick="addCompositeMappingRow()">新增拼裝欄位</button><button onclick="createTaskConfig()">建立待審任務 JSON</button></div>
-    <div class="preview-box"><strong>安全提醒：</strong>新建任務預設為 pending，不會出現在上傳任務清單；必須由 superuser 審核啟用後才能正式上傳影響 SQL。</div>
+    <div class="preview-box"><strong>安全提醒：</strong>新建任務預設為 pending，不會出現在上傳任務清單；必須由 superuser 審核啟用後才能正式上傳影響 SQL。送出前會執行只依目前表單內容即可判斷的智慧檢查，攔截目的欄位重複、拼裝來源不足、來源欄位重複、模板 placeholder 未列入來源欄位等常見錯誤；可以使用 prefix / contains 作為拼裝來源比對方式；需要實際 Excel 標題列才能判斷的不唯一問題，會留到預掃描或確認匯入時診斷。</div>
 
     <h3 class="section-title">我建立的任務清單 / 審核進度</h3>
     <p class="muted">資料庫管理者只能看到與處理自己建立的任務；superuser 的全站審核區塊另列於下方。</p>
@@ -145,6 +145,6 @@
   </section>
 
 </main>
-<script src="/static/excel_to_sql_import_records.js?v=20260629-sql-type-help"></script>
+<script src="/static/excel_to_sql_import_records.js?v=20260629-composite-non-exact-allowed"></script>
 </body>
 </html>

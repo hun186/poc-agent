@@ -237,3 +237,28 @@
 - 主要修改：`GET /v1/excel-to-sql/dashboard-tasks` 依使用者角色回傳任務資訊；`db_operator` / `superuser` 保留 `review_summary`，低於資料庫操作者權限的角色會移除欄位轉換摘要。前端同步加上 `db_operator` / `superuser` 檢查，非資料庫管理權限不渲染欄位轉換說明。
 - 範例包修正：`config/excel_to_sql/vessel_activities.example.json` 的 DB 連線欄位改為 placeholder，避免範例檔看起來像真實內網連線資訊。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt && python -m py_compile sra_api/routers/excel_to_sql.py && node --check sra_api/static/excel_to_sql_import_records.js && PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（18 passed, 3 warnings；pip upgrade 查詢套件索引仍出現既有 403 retry，但 requirements 已滿足）。
+
+### 2026-06-29 Excel→SQL 任務設定頁權限與拼裝檢查
+
+- 目的：修正資料管理帳號在「建立待審任務 JSON」按下後無反應，並降低無權限使用者誤入 Excel→SQL 任務設定檔建立頁的機率。
+- 主要修改：任務設定頁共用 JS 的 preview 顯示改為支援沒有 `previewBox` 的頁面，避免成功建立後前端例外；Editor 導航會依角色隱藏 / 停用「任務 JSON 管理」按鈕，任務設定頁本身也會對非 `db_operator` / `superuser` 顯示權限提示並隱藏建立表單。
+- 拼裝欄位：新增拼裝欄位比對方式選項並寫入 JSON；後端接受 composite mapping 的 `match`（exact / prefix / contains）。現行匯入解析若 prefix / contains 命中多個欄位，會選用排序後最短且最前面的欄位並留下 ambiguous 診斷訊息；因此 UI 送出前智慧檢查會攔截拼裝欄位使用非 exact、目的欄位重複、拼裝來源不足、來源重複與模板 placeholder 未列入來源欄位等常見問題。
+- 驗證：`python -m pip install --upgrade pip` 因套件索引 403 retry 但本機 pip 已存在；`python -m pip install -r requirements.txt` 顯示 requirements 已滿足；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`node --check sra_api/static/editor_auth_nav.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_editor_auth_ui_static.py -q` 通過（40 passed, 1 warning）。
+
+### 2026-06-29 Excel→SQL 拼裝欄位 ambiguity 檢查時機修正
+
+- 目的：修正前次說明與 UI 檢查過度保守的問題；建立任務 JSON 時尚未讀取使用者未來會上傳的 Excel，因此無法判斷 `prefix` / `contains` 是否會命中多個實際標題欄位。
+- 主要修改：任務設定頁文案改為明確說明 ambiguity 只會在預掃描或確認匯入讀到實際 Excel 標題列時檢查並進入診斷；前端智慧檢查只攔截目前表單內容即可判斷的錯誤（目的欄位重複、拼裝來源不足、來源重複、模板 placeholder 不在來源欄位），不再把拼裝欄位使用非 `exact` 當成建立 JSON 時的阻擋錯誤。
+- 驗證：`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過。
+
+### 2026-06-29 Excel→SQL 拼裝欄位非 exact 比對允許說明
+
+- 目的：釐清「不再把拼裝欄位使用非 exact 當成建立 JSON 時的阻擋錯誤」不代表不能使用非 exact；拼裝來源欄位可使用 `exact`、`prefix` 或 `contains`。
+- 主要修改：任務設定頁文案改為明確說明建立 JSON 時不會因為選 `prefix` / `contains` 而被擋下；只有需要實際 Excel 標題列的不唯一問題會延後到預掃描或確認匯入時診斷。
+- 驗證：`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過。
+
+### 2026-06-29 Excel→SQL task_configs 拆檔評估與重構
+
+- 目的：回應 `editor_auth_nav.js`、`task_configs.py`、`excel_to_sql_import_records.js` 是否過於肥大。實測行數：`editor_auth_nav.js` 194 行、`excel_to_sql_import_records.js` 364 行、`task_configs.py` 525 行；依既有 500 行門檻，優先拆分 `task_configs.py`。
+- 主要修改：新增 `data_ingestion/excel_to_sql/task_config_builder.py`，承接任務 JSON build / validation；`task_configs.py` 保留路徑解析、檔案建立、審核摘要、列表、啟停與刪除 facade。拆分後 `task_configs.py` 約 299 行，builder 約 236 行；兩個 JS 檔目前低於門檻，先保留避免前端 script 載入順序與全域函式風險。
+- 驗證：`python -m py_compile data_ingestion/excel_to_sql/task_configs.py data_ingestion/excel_to_sql/task_config_builder.py` 通過；`node --check sra_api/static/excel_to_sql_import_records.js` 與 `node --check sra_api/static/editor_auth_nav.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py tests/test_editor_auth_ui_static.py -q` 通過（40 passed, 3 warnings）。

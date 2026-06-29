@@ -156,6 +156,10 @@ def test_import_center_static_contains_user_import_controls():
     assert "composite-template" in script
     assert "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" in config_html
     assert "complete_description" in config_html + script
+    assert "拼裝來源欄位可以使用 exact、prefix 或 contains" in config_html
+    assert "建立 JSON 時不會因為選 prefix / contains 而被擋下" in config_html
+    assert "預掃描或確認匯入" in config_html
+    assert "item.match !== 'exact'" not in script
     assert "每個拼裝欄位都需要至少兩個來源欄位" in script
     assert "長文字建議 NVARCHAR(MAX)，短代碼才用 NVARCHAR(255)" in script
     assert "pending" in config_html
