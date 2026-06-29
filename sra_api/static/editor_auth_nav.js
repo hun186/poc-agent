@@ -129,8 +129,15 @@ function bindHeaderNav() {
 async function bootAuthed() {
   const me = await api('/v1/auth/me'); state.user = me.user;
   const isSuperuser = state.user && state.user.role === 'superuser';
+  const canManageDbTasks = state.user && ['db_operator', 'superuser'].includes(state.user.role);
   $('auth').classList.add('hidden'); $('app').classList.remove('hidden'); $('headerLogoutBtn').classList.remove('hidden');
   $('whoami').textContent = `${state.user.username} (${state.user.role})`;
+  const excelTaskConfigBtn = $('excelTaskConfigBtn');
+  if (excelTaskConfigBtn) {
+    excelTaskConfigBtn.classList.toggle('hidden', !canManageDbTasks);
+    excelTaskConfigBtn.disabled = !canManageDbTasks;
+    excelTaskConfigBtn.title = canManageDbTasks ? '' : '建立 Excel→SQL 任務設定檔需要 db_operator / superuser 權限';
+  }
   const indexes = await api('/v1/editor/indexes');
   $('indexSelect').innerHTML = indexes.indexes.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
   if (indexes.default_index) $('indexSelect').value = indexes.default_index;

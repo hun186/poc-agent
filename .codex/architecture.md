@@ -254,3 +254,9 @@
 - `GET /v1/editor/form-config?index=...` 會在選定 schema 後讀取該 index 的 Elasticsearch live mapping metadata，將 mapping type、multi-field keys 與 nested/object hints 合併到 schema section / field。
 - 前端 `editor_form.js` 仍只消費 form-config response；新增 array item 時使用合併後 schema fields，因此 evidence / Timeline / Party / Person 第一筆新增也能使用 mapping 推導的欄位型別。
 - 若 ES mapping 無法讀取，form-config 仍回傳 UI schema 並標記 `mapping_ok=false`，避免編修 UI 因 mapping 暫時不可用而完全無法載入。
+
+## 2026-06-29 Excel→SQL task config module boundary
+
+- `data_ingestion/excel_to_sql/task_configs.py` now acts as the task-config file lifecycle facade: safe path resolution, connection-source loading, create/list/status/delete operations, and review-summary sanitization.
+- `data_ingestion/excel_to_sql/task_config_builder.py` owns task JSON construction and validation for fields, SQL types, standard mappings, composite mappings, DB/source/destination/import/retry/archive/audit/dashboard sections.
+- Public callers can continue importing `build_task_config` from `task_configs.py` because it is re-exported via module import, preserving the previous API surface while reducing single-file size.
