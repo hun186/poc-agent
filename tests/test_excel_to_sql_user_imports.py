@@ -160,10 +160,14 @@ def test_import_center_static_contains_user_import_controls():
     assert "會多佔用資料庫空間" in config_html
     assert "SQL View / computed expression" in config_html
     assert "尚未開放真正建 View" in config_html
+    assert "展開 / 收合拼裝欄位說明" in config_html
+    assert "智慧比對 smart" in config_html
     assert "拼裝來源欄位不再另外選比對方式" in config_html
     assert "相同來源欄位設定的 exact / prefix / contains 逐欄套用" in config_html
     assert "拼裝來源會沿用上方相同來源欄位的比對方式" in config_html
     assert "預掃描或確認匯入" in config_html
+    assert "showTaskConfigMessage('智慧檢查發現設定問題：" in script
+    assert "notifyImportant(text)" in script
     assert "composite-match" not in script
     assert "item.match !== 'exact'" not in script
     assert "每個拼裝欄位都需要至少兩個來源欄位" in script
@@ -826,7 +830,7 @@ def test_excel_to_sql_composite_mapping_inherits_single_column_match_modes(tmp_p
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
 
     assert cfg["mappings"][3]["compose"]["source_matches"] == {
-        "日期": "exact",
+        "日期": "smart",
         "地點": "prefix",
         "敘述": "contains",
     }
@@ -846,6 +850,75 @@ def test_excel_to_sql_composite_mapping_inherits_single_column_match_modes(tmp_p
     )
 
     assert rows[0][1]["complete_description"] == "日期是2026-06-26，發生地點是台北，當天的敘述是例行巡檢完成"
+
+
+def test_excel_to_sql_composite_mapping_preserves_legacy_match_for_unmapped_sources(tmp_path):
+    from openpyxl import Workbook
+    from data_ingestion.excel_to_sql.task_configs import create_task_config
+    from data_ingestion.excel_to_sql.workbook import (
+        iter_excel_rows,
+        open_workbook_headers,
+        read_column_mappings,
+    )
+
+    workbook = Workbook()
+    ws = workbook.active
+    ws.title = "Sheet1"
+    ws.append(["日期", "地點（中文）", "敘述內容"])
+    ws.append(["2026-06-26", "台北", "例行巡檢完成"])
+    excel_path = tmp_path / "sample-legacy-composite-match.xlsx"
+    workbook.save(excel_path)
+
+    create_task_config(
+        {
+            "filename": "legacy-composite-match.json",
+            "task_name": "Legacy Composite Match",
+            "db_server": "sql.local",
+            "db_database": "OpsDb",
+            "db_user": "operator",
+            "db_password": "secret-value",
+            "source_sheet": "Sheet1",
+            "destination_table": "dbo.ImportTarget",
+            "mappings": [
+                {"source_column": "日期", "dest_field": "event_date"},
+            ],
+            "composite_mappings": [
+                {
+                    "source_columns": ["地點", "敘述"],
+                    "dest_field": "complete_description",
+                    "match": "prefix",
+                    "template": "地點：{地點}；敘述：{敘述}",
+                }
+            ],
+        },
+        actor="operator",
+        root=tmp_path,
+    )
+    cfg_path = tmp_path / "legacy-composite-match.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+
+    assert cfg["mappings"][1]["match"] == "prefix"
+    assert cfg["mappings"][1]["compose"]["source_matches"] == {
+        "地點": "prefix",
+        "敘述": "prefix",
+    }
+
+    headers = open_workbook_headers(str(cfg_path), cfg, excel_path)[0]
+    mappings = read_column_mappings(cfg, headers.header_map)
+    rows = list(
+        iter_excel_rows(
+            excel_path=excel_path,
+            sheet_name="Sheet1",
+            header_row=1,
+            start_row=2,
+            end_row=0,
+            mappings=mappings,
+            skip_empty_rows=True,
+        )
+    )
+
+    assert rows[0][1]["complete_description"] == "地點：台北；敘述：例行巡檢完成"
+
 
 def test_create_excel_to_sql_task_config_rejects_unsafe_filename(tmp_path):
     from data_ingestion.excel_to_sql.task_configs import create_task_config

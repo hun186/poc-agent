@@ -287,3 +287,15 @@
 - 目的：回應使用者詢問多欄位拼裝是否會建立新欄並重複保存完整資料、是否浪費空間，以及能否改用 SQL View。
 - 主要修改：任務 JSON 管理頁說明目前拼裝欄位為實體欄位模式，會多佔 SQL 空間但查詢 / 匯出 / 下游消費簡單；同步說明 View / computed expression 可降低重複儲存，但目前尚未開放真正建 View，需補齊 view name、CREATE OR ALTER 權限、欄位引用安全檢查、audit/hash/downstream 資料流設計。
 - 後續：已在 `.codex/backlog.md` 追加 View 模式設計待辦；本次未新增 STUB 或假 View 功能。
+
+### 2026-06-29 Excel→SQL composite source match preservation
+
+- 目的：回應 Codex Review 指出多欄位拼裝來源欄位未填 match 時被強制記為 `exact`，導致 runtime 原本可用的 `smart` / legacy composite match 無法解析如 `地點（中文）` 這類標題。
+- 主要修改：任務設定 builder 對一般欄位未填 match 時記錄為 runtime 預設 `smart`；composite mapping 支援並保留自身 `match` 作為未列於一般 mappings 來源欄位的 fallback；`compose.source_matches` 不再把未指定來源一律降成 `exact`。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 完成（pip upgrade 索引仍有 403 retry，但 requirements 均已滿足）；`python -m py_compile data_ingestion/excel_to_sql/task_config_builder.py tests/test_excel_to_sql_user_imports.py` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（21 passed, 3 warnings，warnings 為既有 Starlette / invalid escape 訊息）。
+
+### 2026-06-29 Excel→SQL 任務 JSON UI 回饋與拼裝說明收合
+
+- 目的：避免任務 JSON 管理頁建立失敗訊息只顯示在頁面上方、使用者未往上捲動而誤以為系統無反應；並降低「多欄位拼裝成 SQL 新欄位」長篇說明佔用版面。
+- 主要修改：建立任務時的前端驗證錯誤、缺少任務名稱 / 欄位對應與 API 錯誤除頁面訊息外，也會用瀏覽器 alert 跳窗提示；拼裝欄位說明改為可展開 / 收合的 details 區塊，並分成實體欄位模式、拼裝規則、欄名比對與診斷、未來 View 模式四段條列。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 完成（pip upgrade 索引仍有 403 retry，但 requirements 均已滿足）；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（21 passed, 1 warning，warning 為既有 Starlette TestClient deprecation）；`git diff --check` 通過。

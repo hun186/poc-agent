@@ -126,7 +126,15 @@
     <details class="type-help"><summary>常用 SQL 型別小提醒（預設欄位型別與欄位對應 SQL 型別都可選擇或手動輸入）</summary><ul><li><strong>NVARCHAR(MAX)</strong>：長文字或不確定長度的文字，例如備註、描述、原文內容；系統未填寫時也會使用這個較安全的預設。</li><li><strong>NVARCHAR(255)</strong>：最多 255 個字元的短文字，例如名稱、代碼、狀態；不適合描述、JSON 或可能很長的欄位。</li><li><strong>INT / BIGINT</strong>：整數；BIGINT 適合很大的流水號或計數。</li><li><strong>DECIMAL(18,2)</strong>：精確小數，例如金額、重量、比例；括號可依需求調整。</li><li><strong>FLOAT</strong>：近似小數，例如科學量測；不建議用於金額。</li><li><strong>DATE / DATETIME2</strong>：日期 / 日期時間。</li><li><strong>BIT</strong>：是 / 否、true / false 類欄位。</li></ul></details>
     <div class="upload-actions"><button class="ghost" onclick="addTaskMappingRow()">新增欄位對應</button><button class="ghost" onclick="showMatchHelp()">比對方式說明</button></div>
     <h3 class="section-title">多欄位拼裝成 SQL 新欄位</h3>
-    <p class="muted">目前「多欄位拼裝成 SQL 新欄位」是實體欄位模式：匯入時會在目的資料表新增 / 寫入一個 SQL 欄位，將拼裝後完整文字保存一份；優點是查詢與後續匯出簡單，缺點是會多佔用資料庫空間。可把多個 Excel 欄位拼成實際 SQL 欄位；模板可使用 <code>{Excel欄名}</code> 代入每列值，例如 <code>日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}</code>。若不填模板，會用分隔字串串接來源欄位。拼裝來源欄位不再另外選比對方式；系統會依「Excel 欄位對應」中相同來源欄位設定的 exact / prefix / contains 逐欄套用，沒有在單欄對應出現的拼裝來源則預設 exact。需要實際 Excel 標題列才能判斷的不唯一問題，會留到預掃描或確認匯入時診斷。若希望不存重複文字，可改用 SQL View / computed expression 的設計，但目前任務建立頁尚未開放真正建 View，需先定義 view 名稱、欄位引用安全檢查、CREATE OR ALTER 權限與審核流程。</p>
+    <details class="type-help composite-help">
+      <summary>展開 / 收合拼裝欄位說明（實體欄位、模板、比對方式與 View 模式）</summary>
+      <div class="review-grid">
+        <div class="review-card"><h4>目前模式：實體欄位模式</h4><ul><li>匯入時會在目的資料表新增 / 寫入一個 SQL 欄位，將拼裝後完整文字保存一份。</li><li>優點是查詢、匯出與後續下游消費簡單；缺點是會多佔用資料庫空間。</li></ul></div>
+        <div class="review-card"><h4>拼裝規則</h4><ul><li>可把多個 Excel 欄位拼成實際 SQL 欄位。</li><li>模板可使用 <code>{Excel欄名}</code> 代入每列值，例如 <code>日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}</code>。</li><li>若不填模板，會用分隔字串串接來源欄位。</li></ul></div>
+        <div class="review-card"><h4>欄名比對與診斷</h4><ul><li>拼裝來源欄位不再另外選比對方式；系統會依「Excel 欄位對應」中相同來源欄位設定的 exact / prefix / contains 逐欄套用。</li><li>沒有在單欄對應出現的拼裝來源會使用智慧比對 smart，避免把可解析的標題強制降成 exact。</li><li>需要實際 Excel 標題列才能判斷的不唯一問題，會留到預掃描或確認匯入時診斷。</li></ul></div>
+        <div class="review-card"><h4>未來 View 模式</h4><ul><li>若希望不存重複文字，可改用 SQL View / computed expression 的設計。</li><li>目前任務建立頁尚未開放真正建 View；需先定義 view 名稱、欄位引用安全檢查、CREATE OR ALTER 權限與審核流程。</li></ul></div>
+      </div>
+    </details>
     <div id="taskCompositeMappings"></div>
     <div class="upload-actions"><button class="ghost" onclick="addCompositeMappingRow()">新增拼裝欄位</button><button onclick="createTaskConfig()">建立待審任務 JSON</button></div>
     <div class="preview-box"><strong>安全提醒：</strong>新建任務預設為 pending，不會出現在上傳任務清單；必須由 superuser 審核啟用後才能正式上傳影響 SQL。送出前會執行只依目前表單內容即可判斷的智慧檢查，攔截目的欄位重複、拼裝來源不足、來源欄位重複、模板 placeholder 未列入來源欄位等常見錯誤；拼裝來源會沿用上方相同來源欄位的比對方式；需要實際 Excel 標題列才能判斷的不唯一問題，會留到預掃描或確認匯入時診斷。</div>
@@ -145,6 +153,6 @@
   </section>
 
 </main>
-<script src="/static/excel_to_sql_import_records.js?v=20260629-compose-storage-note"></script>
+<script src="/static/excel_to_sql_import_records.js?v=20260629-compose-help-alerts"></script>
 </body>
 </html>

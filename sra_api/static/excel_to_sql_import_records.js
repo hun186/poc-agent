@@ -11,6 +11,10 @@ function authToken() { return localStorage.getItem(tokenKey) || ''; }
 function statusBadge(s) { return `<span class="status ${escapeHtml(s)}">${escapeHtml(s || '(empty)')}</span>`; }
 function showError(text) { const el=$('msg'); if (!el) return; if (!text) { el.classList.add('hidden'); el.textContent=''; } else { el.classList.remove('hidden'); el.textContent=text; } }
 function notifyImportant(message) { if (message) window.alert(message); }
+function showTaskConfigMessage(text, options = {}) {
+  showError(text);
+  if (options.alert !== false && text) notifyImportant(text);
+}
 function formatApiErrorDetail(detail) {
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail)) {
@@ -283,12 +287,12 @@ async function createTaskConfig() {
     destination_table: taskValue('taskDestinationTable'), audit_table: taskValue('taskAuditTable') || 'dbo.ExcelImportAudit', default_field_type: taskValue('taskDefaultFieldType') || 'NVARCHAR(MAX)',
     hash_field: taskValue('taskHashField') || 'hash_value', overwrite: $('taskOverwrite')?.checked || false, mappings: collectTaskMappings(), composite_mappings: collectCompositeMappings(),
   };
-  if (!payload.task_name) { showError('請輸入任務名稱。'); return; }
-  if (!payload.mappings.length) { showError('請至少新增一筆 Excel 欄位對應。'); return; }
+  if (!payload.task_name) { showTaskConfigMessage('請輸入任務名稱。'); return; }
+  if (!payload.mappings.length) { showTaskConfigMessage('請至少新增一筆 Excel 欄位對應。'); return; }
   const validationErrors = validateTaskConfigPayload(payload);
-  if (validationErrors.length) { showError('智慧檢查發現設定問題：\n' + validationErrors.join('\n')); return; }
+  if (validationErrors.length) { showTaskConfigMessage('智慧檢查發現設定問題：\n' + validationErrors.join('\n')); return; }
   const res = await fetch('/v1/excel-to-sql/task-configs', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + authToken() }, body: JSON.stringify(payload) });
-  if (!res.ok) { showError(await responseErrorText(res)); return; }
+  if (!res.ok) { showTaskConfigMessage(await responseErrorText(res)); return; }
   const data = await res.json();
   const task = data.task || {};
   const successMessage = `已建立待審任務設定檔：${task.config_path || ''}\n狀態：${task.status || 'pending'}。\n請通知 superuser 審核啟用後再上傳匯入。`;
