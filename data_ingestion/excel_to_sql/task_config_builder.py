@@ -59,7 +59,7 @@ def build_task_config(
             if match not in {"exact", "prefix", "contains"}:
                 raise ValueError(f"第 {index} 筆 match 僅支援 exact、prefix、contains")
             mapping["match"] = match
-        source_match_by_column[source_column] = match or "exact"
+        source_match_by_column[source_column] = match or "smart"
         value_type = str(item.get("value_type") or "").strip()
         if value_type:
             if value_type not in {"text", "int", "float", "date", "datetime", "bool"}:
@@ -88,8 +88,13 @@ def build_task_config(
         ]
         if len(source_columns) < 2:
             raise ValueError(f"第 {index} 筆組合欄位至少需要兩個來源欄位")
+        composite_match = str(item.get("match") or "smart").strip().lower()
+        if composite_match not in {"exact", "smart", "normalized", "prefix", "contains"}:
+            raise ValueError(
+                f"第 {index} 筆組合欄位 match 僅支援 exact、smart、normalized、prefix、contains"
+            )
         source_matches = {
-            source: source_match_by_column.get(source, "exact")
+            source: source_match_by_column.get(source, composite_match)
             for source in source_columns
         }
         compose_config = {
@@ -111,7 +116,7 @@ def build_task_config(
                 "dest_field_type": _clean_sql_type(
                     item.get("dest_field_type"), "NVARCHAR(MAX)"
                 ),
-                "match": "exact",
+                "match": composite_match,
                 "compose": compose_config,
             }
         )
@@ -237,4 +242,3 @@ def build_task_config(
             payload.get("db_password"), "資料庫密碼", max_length=500
         )
     return config
-

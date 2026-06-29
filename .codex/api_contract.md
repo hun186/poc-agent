@@ -349,3 +349,8 @@
 - `portable_auth_pack` 同步主系統 login throttle UX：HTTP 429 `detail` 會包含約略剩餘時間，並保留 `Retry-After` header。
 - `portable_auth_pack` 新增 `POST /v1/auth/users/{username}/unlock-login`，需要 `superuser` 權限，清除該 username 目前 process-local 記憶體中的 login throttle records，response 為 `{username, cleared, message}`。
 - `portable_auth_pack/static/login_admin_minimal.html` 範例頁同步登入輸入提示與「解除登入冷卻」superuser 操作。
+
+## 2026-06-29 Excel→SQL composite mapping match preservation
+
+- `POST /v1/excel-to-sql/task-configs` 的 `composite_mappings[].match` 可作為拼裝來源欄位未列在一般 `mappings[]` 時的 fallback 比對方式；支援 `exact`、`smart`、`normalized`、`prefix`、`contains`。
+- 一般 `mappings[]` 來源欄位若未指定 `match`，建立出的 `compose.source_matches` 會保留 runtime 預設 `smart`，避免把可由智慧比對解析的 Excel 標題強制降為完全相等比對。
