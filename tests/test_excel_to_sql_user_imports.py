@@ -156,9 +156,15 @@ def test_import_center_static_contains_user_import_controls():
     assert "composite-template" in script
     assert "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" in config_html
     assert "complete_description" in config_html + script
-    assert "拼裝來源欄位可以使用 exact、prefix 或 contains" in config_html
-    assert "建立 JSON 時不會因為選 prefix / contains 而被擋下" in config_html
+    assert "實體欄位模式" in config_html
+    assert "會多佔用資料庫空間" in config_html
+    assert "SQL View / computed expression" in config_html
+    assert "尚未開放真正建 View" in config_html
+    assert "拼裝來源欄位不再另外選比對方式" in config_html
+    assert "相同來源欄位設定的 exact / prefix / contains 逐欄套用" in config_html
+    assert "拼裝來源會沿用上方相同來源欄位的比對方式" in config_html
     assert "預掃描或確認匯入" in config_html
+    assert "composite-match" not in script
     assert "item.match !== 'exact'" not in script
     assert "每個拼裝欄位都需要至少兩個來源欄位" in script
     assert "長文字建議 NVARCHAR(MAX)，短代碼才用 NVARCHAR(255)" in script
@@ -166,6 +172,8 @@ def test_import_center_static_contains_user_import_controls():
     assert "superuserTaskReview" in config_html
     assert "approveTaskConfigPath" in config_html
     assert "taskReviewEnabled" in config_html
+    assert "刪除任務設定檔" in config_html
+    assert "deleteReviewedTaskConfig" in script
     assert "taskReviewDetails" in config_html
     assert "review-details" in config_html
     assert "JSON 任務轉換細節" in script
@@ -770,6 +778,75 @@ def test_excel_to_sql_composite_mapping_template_substitutes_excel_values(tmp_pa
     )
 
 
+
+def test_excel_to_sql_composite_mapping_inherits_single_column_match_modes(tmp_path):
+    from openpyxl import Workbook
+    from data_ingestion.excel_to_sql.task_configs import create_task_config
+    from data_ingestion.excel_to_sql.workbook import (
+        iter_excel_rows,
+        open_workbook_headers,
+        read_column_mappings,
+    )
+
+    workbook = Workbook()
+    ws = workbook.active
+    ws.title = "Sheet1"
+    ws.append(["日期", "地點（中文）", "完整敘述內容"])
+    ws.append(["2026-06-26", "台北", "例行巡檢完成"])
+    excel_path = tmp_path / "sample-inherit-match.xlsx"
+    workbook.save(excel_path)
+
+    create_task_config(
+        {
+            "filename": "inherit-match.json",
+            "task_name": "Composite Inherit Match",
+            "db_server": "sql.local",
+            "db_database": "OpsDb",
+            "db_user": "operator",
+            "db_password": "secret-value",
+            "source_sheet": "Sheet1",
+            "destination_table": "dbo.ImportTarget",
+            "mappings": [
+                {"source_column": "日期", "dest_field": "event_date"},
+                {"source_column": "地點", "dest_field": "loc", "match": "prefix"},
+                {"source_column": "敘述", "dest_field": "description", "match": "contains"},
+            ],
+            "composite_mappings": [
+                {
+                    "source_columns": ["日期", "地點", "敘述"],
+                    "dest_field": "complete_description",
+                    "template": "日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}",
+                }
+            ],
+        },
+        actor="operator",
+        root=tmp_path,
+    )
+    cfg_path = tmp_path / "inherit-match.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+
+    assert cfg["mappings"][3]["compose"]["source_matches"] == {
+        "日期": "exact",
+        "地點": "prefix",
+        "敘述": "contains",
+    }
+
+    headers = open_workbook_headers(str(cfg_path), cfg, excel_path)[0]
+    mappings = read_column_mappings(cfg, headers.header_map)
+    rows = list(
+        iter_excel_rows(
+            excel_path=excel_path,
+            sheet_name="Sheet1",
+            header_row=1,
+            start_row=2,
+            end_row=0,
+            mappings=mappings,
+            skip_empty_rows=True,
+        )
+    )
+
+    assert rows[0][1]["complete_description"] == "日期是2026-06-26，發生地點是台北，當天的敘述是例行巡檢完成"
+
 def test_create_excel_to_sql_task_config_rejects_unsafe_filename(tmp_path):
     from data_ingestion.excel_to_sql.task_configs import create_task_config
 
@@ -932,9 +1009,10 @@ def test_task_config_owner_scoped_list_disable_and_delete(tmp_path):
     assert disabled["enabled"] is False
     assert disabled["status"] == "pending"
 
+    bob_config = alice_tasks[0]["config_path"].replace("alice", "bob")
     try:
         delete_task_config(
-            alice_tasks[0]["config_path"].replace("alice", "bob"),
+            bob_config,
             actor="alice",
             root=tmp_path,
         )
@@ -943,8 +1021,62 @@ def test_task_config_owner_scoped_list_disable_and_delete(tmp_path):
     else:
         raise AssertionError("operator must not delete another actor's task config")
 
+    superuser_deleted = delete_task_config(
+        bob_config, actor="root", is_superuser=True, root=tmp_path
+    )
+    assert superuser_deleted["deleted"] is True
+    assert superuser_deleted["deleted_by"] == "root"
+
     deleted = delete_task_config(
         alice_tasks[0]["config_path"], actor="alice", root=tmp_path
     )
     assert deleted["deleted"] is True
     assert list_task_configs(root=tmp_path, created_by="alice") == []
+
+def test_excel_to_sql_composite_template_does_not_keep_empty_rows(tmp_path):
+    from openpyxl import Workbook
+    from data_ingestion.excel_to_sql.workbook import iter_excel_rows, read_column_mappings
+
+    workbook = Workbook()
+    ws = workbook.active
+    ws.title = "Sheet1"
+    ws.append(["日期", "地", "敘"])
+    ws.append(["2026-06-26", "台北", "例行巡檢完成"])
+    ws.append([None, None, None])
+    excel_path = tmp_path / "sample-template-empty-row.xlsx"
+    workbook.save(excel_path)
+
+    cfg = {
+        "mappings": [
+            {"source_column": "日期", "dest_field": "dat", "dest_field_type": "DATE"},
+            {"source_column": "地", "dest_field": "loc", "dest_field_type": "NVARCHAR(255)"},
+            {"source_column": "敘", "dest_field": "des", "dest_field_type": "NVARCHAR(MAX)"},
+            {
+                "dest_field": "cdes",
+                "dest_field_type": "NVARCHAR(MAX)",
+                "compose": {
+                    "source_columns": ["日期", "地", "敘"],
+                    "separator": " ",
+                    "skip_empty": True,
+                    "template": "日期是{日期}，發生地點是{地}，當天的敘述是{敘}",
+                },
+            },
+        ]
+    }
+    mappings = read_column_mappings(cfg, {"日期": 1, "地": 2, "敘": 3})
+
+    rows = list(
+        iter_excel_rows(
+            excel_path=excel_path,
+            sheet_name="Sheet1",
+            header_row=1,
+            start_row=2,
+            end_row=3,
+            mappings=mappings,
+            skip_empty_rows=True,
+        )
+    )
+
+    assert len(rows) == 1
+    assert rows[0][0] == 2
+    assert rows[0][1]["cdes"] == "日期是2026-06-26，發生地點是台北，當天的敘述是例行巡檢完成"

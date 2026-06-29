@@ -207,7 +207,7 @@ function mappingRowTemplate(index) {
   return `<div class="mapping-row" data-mapping-row="1"><div><label>來源欄位</label><input class="mapping-source" placeholder="Excel 欄名" /></div><div><label>目的欄位</label><input class="mapping-dest" placeholder="sql_field" /></div><div><label>SQL 型別</label><input class="mapping-type" list="sqlTypeOptions" placeholder="長文字建議 NVARCHAR(MAX)，短代碼才用 NVARCHAR(255)" /></div><div><label>比對 <button class="ghost" onclick="showMatchHelp()" type="button">?</button></label><select class="mapping-match"><option value="">預設</option><option value="exact">exact</option><option value="prefix">prefix</option><option value="contains">contains</option></select></div><div><label>必填</label><select class="mapping-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeTaskMappingRow(this)" type="button">移除</button></div>`;
 }
 function compositeRowTemplate(index) {
-  return `<div class="composite-row" data-composite-row="1"><div><label>來源欄位（逗號分隔）</label><input class="composite-sources" placeholder="日期, 地點, 敘述" /></div><div><label>SQL 新欄位</label><input class="composite-dest" placeholder="complete_description" /></div><div><label>模板（可選）</label><input class="composite-template" placeholder="日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" /></div><div><label>比對</label><select class="composite-match"><option value="exact">exact</option><option value="prefix">prefix</option><option value="contains">contains</option></select></div><div><label>分隔字串</label><input class="composite-separator" value=" " /></div><div><label>SQL 型別</label><input class="composite-type" list="sqlTypeOptions" placeholder="選擇或手動輸入，例如 NVARCHAR(MAX)" /></div><div><label>必填</label><select class="composite-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeCompositeMappingRow(this)" type="button">移除</button></div>`;
+  return `<div class="composite-row" data-composite-row="1"><div><label>來源欄位（逗號分隔）</label><input class="composite-sources" placeholder="日期, 地點, 敘述" /></div><div><label>SQL 新欄位</label><input class="composite-dest" placeholder="complete_description" /></div><div><label>模板（可選）</label><input class="composite-template" placeholder="日期是{日期}，發生地點是{地點}，當天的敘述是{敘述}" /></div><div><label>分隔字串</label><input class="composite-separator" value=" " /></div><div><label>SQL 型別</label><input class="composite-type" list="sqlTypeOptions" placeholder="選擇或手動輸入，例如 NVARCHAR(MAX)" /></div><div><label>必填</label><select class="composite-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeCompositeMappingRow(this)" type="button">移除</button></div>`;
 }
 function addTaskMappingRow() { const box = $('taskMappings'); if (box) box.insertAdjacentHTML('beforeend', mappingRowTemplate(box.children.length)); }
 function removeTaskMappingRow(button) { button.closest('[data-mapping-row]')?.remove(); }
@@ -237,7 +237,6 @@ function collectCompositeMappings() {
     source_columns: (row.querySelector('.composite-sources')?.value || '').split(',').map(v => v.trim()).filter(Boolean),
     dest_field: row.querySelector('.composite-dest')?.value.trim() || '',
     template: row.querySelector('.composite-template')?.value.trim() || '',
-    match: row.querySelector('.composite-match')?.value || 'exact',
     separator: row.querySelector('.composite-separator')?.value ?? ' ',
     dest_field_type: row.querySelector('.composite-type')?.value.trim() || 'NVARCHAR(MAX)',
     required: row.querySelector('.composite-required')?.value === 'true',
@@ -311,7 +310,9 @@ function reviewListItems(items) {
 function formatMappingSource(item) {
   const compose = item.compose || {};
   const template = compose.template ? `；模板：${compose.template}` : '';
-  return `${item.source_column || ''}${template}`;
+  const sources = Array.isArray(compose.source_columns) ? compose.source_columns.join(', ') : (item.source_column || '');
+  const sourceMatches = compose.source_matches ? `；來源比對：${Object.entries(compose.source_matches).map(([key, value]) => `${key}=${value}`).join(', ')}` : '';
+  return `${sources}${sourceMatches}${template}`;
 }
 function renderMappingsForReview(mappings) {
   const rows = (mappings || []).map(item => `${escapeHtml(formatMappingSource(item))} → ${escapeHtml(item.dest_field || '')} <span class="muted">(${escapeHtml(item.dest_field_type || '')}${item.required ? '，必填' : ''}，${escapeHtml(item.match || 'exact')})</span>`);
@@ -358,6 +359,17 @@ async function setTaskConfigStatus() {
   setPreview(`<strong>已${enabled ? '啟用' : '停用'}任務：</strong>${escapeHtml(task.config_path || config)}<br><span class="muted">狀態：${escapeHtml(task.status || '')}</span>`);
   await loadTasks();
   if (enabled && $('uploadConfig') && task.config_path) $('uploadConfig').value = task.config_path;
+}
+async function deleteReviewedTaskConfig() {
+  showError(''); setPreview('');
+  const config = taskValue('approveTaskConfigPath');
+  if (!config) { showError('請先選擇任務設定檔。'); return; }
+  if (!confirm(`確定刪除任務設定檔 ${config}？此動作會移除 JSON 檔。`)) return;
+  const res = await fetch('/v1/excel-to-sql/task-configs', { method:'DELETE', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + authToken() }, body: JSON.stringify({ config }) });
+  if (!res.ok) { let text=await res.text(); try{text=JSON.parse(text).detail||text;}catch(_){} showError(text); return; }
+  setPreview(`<strong>已刪除任務：</strong>${escapeHtml(config)}`);
+  await loadTasks();
+  await loadMyTaskConfigs();
 }
 
 function taskConfigStatusBadge(status, enabled) {

@@ -268,3 +268,22 @@
 - 目的：改善 Excel→SQL 任務 JSON 管理頁建立待審任務時的使用者回饋，避免成功訊息只出現在頁面上方而被忽略，並修正未輸入任務名稱時顯示 `[object Object]` 的不明錯誤。
 - 主要修改：任務建立成功後除頁面訊息外會以瀏覽器對話框提示；前端新增 API error detail formatter，將 FastAPI validation list/object 轉成可讀文字；送出前若任務名稱空白會直接提示「請輸入任務名稱。」；設定檔檔名未以 `.json` 結尾時會自動補上副檔名並在頁面提示使用者。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt && node --check sra_api/static/excel_to_sql_import_records.js && PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（18 passed, 3 warnings；pip upgrade 查詢套件索引仍出現既有 403 retry，但 requirements 已滿足）。
+
+### 2026-06-29 Excel 匯入 compose template 空列跳過修正
+
+- 任務目的：修正 Excel 匯入任務使用 compose.template 時，空白列會被模板固定文字組成非空 payload，導致 `skip_empty_rows=true` 無法跳過空列的問題。
+- 主要修改：`data_ingestion/excel_to_sql/workbook_rows.py` 在 compose 欄位處理時新增來源欄位是否有實際值的判斷；若模板來源全為空，compose 產出改為 `None`，避免固定模板文字讓空列被視為有效資料列。
+- 測試：已執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（環境套件已存在，但 pip index 連線顯示 403 retry 警告）；已執行 `pytest tests/test_excel_to_sql_user_imports.py -q`，結果 19 passed、3 warnings。
+- 重要結論：空列判定應以 Excel 來源值為準，compose.template 僅在至少一個來源欄位有值時產生描述文字。
+
+### 2026-06-29 Excel→SQL superuser 刪除任務與拼裝欄位比對簡化
+
+- 目的：回應任務 JSON 管理頁 superuser 全站審核區缺少刪除任務設定檔操作，以及多欄位拼裝另外選比對方式造成使用者混淆。
+- 主要修改：superuser 審核區新增「刪除任務設定檔」按鈕，沿用既有後端 DELETE `/v1/excel-to-sql/task-configs` superuser 權限；拼裝欄位 UI 移除獨立比對選項，建立 JSON 時會從上方單欄欄位對應中相同來源欄位繼承 exact / prefix / contains，並寫入 `compose.source_matches` 供匯入解析逐來源欄位套用。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（requirements 已存在，pip index 仍有 403 retry 警告）；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`python -m py_compile data_ingestion/excel_to_sql/workbook_rows.py data_ingestion/excel_to_sql/task_config_builder.py tests/test_excel_to_sql_user_imports.py` 通過；`pytest tests/test_excel_to_sql_user_imports.py -q` 通過（20 passed, 1 warning）；`git diff --check` 通過。
+
+### 2026-06-29 Excel→SQL 拼裝欄位實體儲存與 View 模式說明
+
+- 目的：回應使用者詢問多欄位拼裝是否會建立新欄並重複保存完整資料、是否浪費空間，以及能否改用 SQL View。
+- 主要修改：任務 JSON 管理頁說明目前拼裝欄位為實體欄位模式，會多佔 SQL 空間但查詢 / 匯出 / 下游消費簡單；同步說明 View / computed expression 可降低重複儲存，但目前尚未開放真正建 View，需補齊 view name、CREATE OR ALTER 權限、欄位引用安全檢查、audit/hash/downstream 資料流設計。
+- 後續：已在 `.codex/backlog.md` 追加 View 模式設計待辦；本次未新增 STUB 或假 View 功能。
