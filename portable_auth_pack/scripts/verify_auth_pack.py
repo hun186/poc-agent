@@ -202,6 +202,11 @@ def main() -> int:
         )
         assert throttled_login_res.status_code == 429, throttled_login_res.text
         assert int(throttled_login_res.headers["retry-after"]) > 0
+        assert "剩餘約" in throttled_login_res.json().get("detail", ""), throttled_login_res.text
+        unlock_res = client.post("/v1/auth/users/codex_admin/unlock-login", headers=headers)
+        assert unlock_res.status_code == 200, unlock_res.text
+        assert unlock_res.json().get("cleared", 0) >= 1, unlock_res.text
+        assert auth_store_module.AUTH_STORE.throttle_retry_after("login", "codex_admin", "testclient") == 0
         failed_login_audit = auth_store_module.AUTH_STORE.list_login_audit(20)
         assert any(
             event.get("username") == "codex_admin"

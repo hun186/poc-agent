@@ -1,10 +1,26 @@
+function loginInputHints(username, password) {
+  const hints = [];
+  if (/[^\x00-\x7F]/.test(username)) hints.push('帳號含有非半形英文/數字字元，請確認是否切到中文或全形輸入。');
+  if (/[\uFF01-\uFF5E]/.test(password)) hints.push('密碼含全形字元，請確認英數與符號是否為半形。');
+  if (/[\u4E00-\u9FFF]/.test(password)) hints.push('密碼含中文，請確認目前輸入法是否正確。');
+  if (password !== password.trim()) hints.push('密碼前後有空白；如果不是刻意設定，請刪除空白後再試。');
+  return hints;
+}
+function loginFailureHintMessage(baseMessage, username, password) {
+  const hints = loginInputHints(username, password);
+  if (!hints.length) return baseMessage;
+  return `${baseMessage}\n提醒：${hints.join(' ')}`;
+}
 async function login() {
+  const body = payload();
+  const hints = loginInputHints(body.username, body.password);
+  if (hints.length) out(`登入中...提醒：${hints.join(' ')}`);
   try {
-    const data = await api('/v1/auth/login', {method: 'POST', body: JSON.stringify(payload())});
+    const data = await api('/v1/auth/login', {method: 'POST', body: JSON.stringify(body)});
     localStorage.setItem(tokenKey, data.access_token);
     updateCurrentUser(data.user || null);
     out(data);
-  } catch (err) { out(String(err.message || err)); }
+  } catch (err) { out(loginFailureHintMessage(String(err.message || err), body.username, body.password)); }
 }
 async function vercelPreviewLogin() {
   try {
@@ -72,3 +88,14 @@ async function recoverPassword() {
     })}));
   } catch (err) { out(String(err.message || err)); }
 }
+
+function setupLoginInputGuards() {
+  const password = document.getElementById('password');
+  if (!password) return;
+  password.addEventListener('keyup', event => {
+    if (event.getModifierState && event.getModifierState('CapsLock')) {
+      out('提醒：Caps Lock 目前開啟，密碼大小寫可能輸錯。');
+    }
+  });
+}
+setupLoginInputGuards();

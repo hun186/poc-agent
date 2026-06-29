@@ -52,7 +52,7 @@
      - logout 後同一 token 呼叫 protected API 回 401。
      - change/reset password 後舊 token 回 401，且新密碼可登入。
      - forgot-password 不公開回傳 reset token；superuser 產生 reset token 後，使用者可用 token 重設密碼，且登入稽核可由使用者查自己的紀錄，superuser 可查全體或指定帳號。
-     - 不存在帳號登入仍走 dummy password hash verification；重複登入 / reset-password 失敗會回 429 與 `Retry-After`。
+     - 不存在帳號登入仍走 dummy password hash verification；重複登入 / reset-password 失敗會回 429、`Retry-After` 與約略剩餘時間，superuser 可呼叫 `/v1/auth/users/{username}/unlock-login` 解除目前 process-local login 冷卻。
 
 ## Codex 修改注意事項
 

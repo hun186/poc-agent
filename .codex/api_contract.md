@@ -337,3 +337,15 @@
 
 - `GET /v1/excel-to-sql/dashboard-tasks` response 的任務物件新增 / 明確回傳 `enabled: true` 與 `status: "active"`，因該 endpoint 只列出 `dashboard.enabled=true`、可用於上傳導入的任務。
 - `GET /v1/excel-to-sql/task-configs` response shape 不變；當設定檔 `dashboard.enabled=true` 時，`tasks[*].status` 以 `active` 顯示，即使舊版或手動上傳 JSON 仍留有 `dashboard.status=pending`。
+
+## 2026-06-29 Editor login throttle unlock contract
+
+- `POST /v1/auth/login` throttle 行為維持同一 `username + client_host` 在 15 分鐘觀察窗內失敗達 5 次後暫停 5 分鐘；HTTP 429 response 仍帶 `Retry-After` header，`detail` 會包含約略剩餘時間，例如「嘗試次數過多，請稍後再試（剩餘約 5 分鐘）。」。
+- `POST /v1/auth/users/{username}/unlock-login` 需要 `superuser` 權限；會清除該 username 目前 process-local 記憶體中的 login throttle records，response 為 `{username, cleared, message}`，並寫入 `auth.login_unlocked` audit event。
+
+
+## 2026-06-29 portable_auth_pack login throttle unlock contract
+
+- `portable_auth_pack` 同步主系統 login throttle UX：HTTP 429 `detail` 會包含約略剩餘時間，並保留 `Retry-After` header。
+- `portable_auth_pack` 新增 `POST /v1/auth/users/{username}/unlock-login`，需要 `superuser` 權限，清除該 username 目前 process-local 記憶體中的 login throttle records，response 為 `{username, cleared, message}`。
+- `portable_auth_pack/static/login_admin_minimal.html` 範例頁同步登入輸入提示與「解除登入冷卻」superuser 操作。

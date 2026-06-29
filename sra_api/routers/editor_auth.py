@@ -35,10 +35,16 @@ def _client_host(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+def _format_retry_after(retry_after: int) -> str:
+    seconds = max(1, int(retry_after or 1))
+    minutes = max(1, (seconds + 59) // 60)
+    return f"約 {minutes} 分鐘" if seconds >= 60 else f"約 {seconds} 秒"
+
+
 def _rate_limit_exception(retry_after: int) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail="嘗試次數過多，請稍後再試。",
+        detail=f"嘗試次數過多，請稍後再試（剩餘{_format_retry_after(retry_after)}）。",
         headers={"Retry-After": str(max(1, retry_after))},
     )
 
@@ -360,6 +366,19 @@ def issue_password_reset_token(username: str, request: Request, user: AuthUser =
         raise HTTPException(status_code=404, detail="帳號不存在或尚未啟用，無法建立重設 token。")
     append_audit_event({"action": "auth.password_reset_token_issued", "username": username, "actor": user.username, "client_host": _client_host(request)})
     return {"username": username, "reset_token": reset_token, "message": "一次性重設 token 已建立；請用安全管道交付給該使用者。"}
+
+
+@router.post("/v1/auth/users/{username}/unlock-login")
+def unlock_user_login(username: str, request: Request, user: AuthUser = Depends(require_superuser)) -> dict[str, Any]:
+    cleared = auth_store.AUTH_STORE.clear_auth_failures_for_user("login", username)
+    append_audit_event({
+        "action": "auth.login_unlocked",
+        "username": username,
+        "actor": user.username,
+        "cleared": cleared,
+        "client_host": _client_host(request),
+    })
+    return {"username": username, "cleared": cleared, "message": "已清除該帳號目前記憶體中的登入冷卻紀錄。"}
 
 
 @router.post("/v1/auth/users/{username}/reset-password")
