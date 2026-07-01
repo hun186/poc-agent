@@ -103,9 +103,9 @@ def test_recent_audit_table_gives_payload_more_width_than_file_column():
     assert "#recent th.file-col, #recent td.file-col { width:12%; max-width:260px; white-space:normal; word-break:normal; overflow-wrap:anywhere; }" in html
     assert "#recent th.user-col, #recent td.user-col { width:6%; }" in html
     assert "#recent th.select-col, #recent td.select-col { width:3%; text-align:center; }" in html
-    assert "#recent th.op-col, #recent td.op-col { width:10%; max-width:260px; overflow-wrap:anywhere; }" in html
+    assert "#recent th.op-col, #recent td.op-col { width:5%; max-width:130px; overflow-wrap:anywhere; }" in html
     assert "#recent th.action-col, #recent td.action-col { width:7%; }" in html
-    assert "#recent th.payload-col, #recent td.payload-col { width:31%; min-width:560px; }" in html
+    assert "#recent th.payload-col, #recent td.payload-col { width:36%; min-width:560px; }" in html
     assert '<colgroup><col class="select-col"><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="op-col"><col class="action-col"><col class="payload-col"></colgroup>' in html
     assert 'id="recentSelectAll"' in html
     assert '<th class="time-col">時間（本機）</th>' in html
@@ -115,6 +115,10 @@ def test_recent_audit_table_gives_payload_more_width_than_file_column():
     assert '<td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td>' in html
     assert '<th class="op-col">操作來源</th>' in html
     assert '<td class="op-col">${operatorSourceCell(r)}</td>' in html
+    assert '#recent.operator-source-hidden col.op-col, #recent.operator-source-hidden th.op-col, #recent.operator-source-hidden td.op-col { display:none; }' in html
+    assert "function syncOperatorSourceVisibility()" in html
+    assert "table.classList.toggle('operator-source-hidden', !state.canDelete)" in html
+    assert "syncOperatorSourceVisibility();" in html
 
 
 def test_dashboard_header_shows_current_logged_in_user():
