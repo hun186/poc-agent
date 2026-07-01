@@ -354,3 +354,26 @@
 
 - `POST /v1/excel-to-sql/task-configs` 的 `composite_mappings[].match` 可作為拼裝來源欄位未列在一般 `mappings[]` 時的 fallback 比對方式；支援 `exact`、`smart`、`normalized`、`prefix`、`contains`。
 - 一般 `mappings[]` 來源欄位若未指定 `match`，建立出的 `compose.source_matches` 會保留 runtime 預設 `smart`，避免把可由智慧比對解析的 Excel 標題強制降為完全相等比對。
+
+## 2026-07-01 Excel→SQL delete-row response / audit metadata 補充
+
+- `POST /v1/excel-to-sql/delete-row` 仍以 `{ config, hash_value, reason }` 呼叫；成功 response 補充 `config_path`，讓前端顯示實際用於定位 SQL destination table 的來源任務設定檔。
+- Excel→SQL 匯入寫入 audit row 的 `row_payload` 會補上 `config_path` 與 `source_config_path`（若流程已提供 config path），供 dashboard 在單筆 / 批次刪除 SQL 列時使用 audit row 自身來源任務，而不是依賴頁面上方目前選取的任務。
+- 刪除 audit 的 `message` / `row_payload` 會包含 `config_path` 與 `destination_table`，方便使用者在最近 audit 事件內追溯刪除操作實際來源任務檔與目的 table。
+
+## 2026-07-01 Excel→SQL dashboard operational metadata 權限邊界修正
+
+- `GET /v1/excel-to-sql/dashboard` 對 `db_operator` 以上角色回傳 `can_delete=true`，recent row 可包含 top-level `source_config_path` 供刪除 SQL 列時定位來源任務；此值由 server-side user import registry 依 `source_file` 對應，不寫入通用 `row_payload`。
+- 對低於 `db_operator` 的角色，dashboard response 會回傳 `can_delete=false`，並移除操作型 metadata：`destination_table_options` 置空、recent row 不提供 `destination_table` 與 `source_config_path`。前端應依 `can_delete` 隱藏刪除 checkbox 與「刪除SQL列」操作。
+- Excel→SQL audit `row_payload` 不應承載任務設定檔路徑或 SQL table 等操作型資訊；payload 保留資料內容與 actor 等必要稽核資訊，避免資料閱讀者透過 payload 看到 SQL 實體結構。
+
+## 2026-07-01 Excel→SQL dashboard 操作來源 UI 補充
+
+- `GET /v1/excel-to-sql/dashboard` 的 `can_delete=true` response 既有 top-level `recent[*].source_config_path` 與 `recent[*].destination_table` 會供前端「操作來源」欄顯示，方便 `db_operator` 以上角色快速確認 row 來源任務與 SQL table。
+- `can_delete=false` response 仍不提供上述操作型 metadata；前端操作來源欄不得顯示敏感任務路徑或 SQL table。
+
+## 2026-07-01 Excel→SQL dashboard selected-task audit scope
+
+- `GET /v1/excel-to-sql/dashboard?config=...` 現在會以 `config` 指定的匯入任務建立 audit source scope，讓 summary / chart / files / recent rows / options 預設只反映選定任務相關 audit rows。
+- Source scope 來源包含：user import registry 中 `config_path` 等於目前 config 的 `stored_path`、設定檔 `source.excel_path`、以及 `source.directory` / `source.excel_dir` 下的檔案前綴。若設定檔缺少可推導來源，會維持既有 audit table 查詢行為。
+- 目的地 table 篩選與使用者篩選是在 selected-task scope 內再套用，避免不同任務共用 audit table 時互相混入查詢結果。

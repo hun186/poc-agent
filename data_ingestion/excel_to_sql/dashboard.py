@@ -30,10 +30,135 @@ from data_ingestion.excel_to_sql.dashboard_sql import (
     _table_exists,
 )
 from data_ingestion.excel_to_sql.ingest import load_json_config, quote_object_path
+from data_ingestion.excel_to_sql.utils import get_nested, resolve_path
 from data_ingestion.excel_to_sql.dashboard_batch_delete import (
     delete_imported_sql_rows_batch,
 )
 from data_ingestion.excel_to_sql.dashboard_tasks import discover_dashboard_tasks
+from data_ingestion.excel_to_sql.user_import_storage import read_registry
+
+
+def _source_config_lookup_from_registry() -> dict[str, str]:
+    try:
+        records = read_registry().get("records", [])
+    except Exception:
+        return {}
+    lookup: dict[str, str] = {}
+    for record in records:
+        config_path = str(record.get("config_path") or "").strip()
+        stored_path = str(record.get("stored_path") or "").strip()
+        if not config_path or not stored_path:
+            continue
+        lookup[stored_path] = config_path
+        lookup[str(Path(stored_path))] = config_path
+        try:
+            lookup[str(Path(stored_path).resolve())] = config_path
+        except Exception:
+            pass
+    return lookup
+
+def _annotate_recent_source_configs(
+    recent: list[dict[str, Any]], *, fallback_config_path: str
+) -> None:
+    lookup = _source_config_lookup_from_registry()
+    for item in recent:
+        source_file = str(item.get("source_file") or "").strip()
+        source_config_path = lookup.get(source_file)
+        if not source_config_path:
+            try:
+                source_config_path = lookup.get(str(Path(source_file).resolve()))
+            except Exception:
+                source_config_path = None
+        if source_config_path:
+            item["source_config_path"] = source_config_path
+        else:
+            item["source_config_path"] = str(Path(fallback_config_path))
+
+def _strip_operational_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    payload["destination_table_options"] = []
+    for item in payload.get("recent", []):
+        item.pop("destination_table", None)
+        item.pop("source_config_path", None)
+        row_payload = item.get("row_payload")
+        if isinstance(row_payload, dict):
+            row_payload.pop("config_path", None)
+            row_payload.pop("source_config_path", None)
+            row_payload.pop("destination_table", None)
+    return payload
+
+
+def _path_keys(path: str) -> set[str]:
+    raw = str(path or "").strip()
+    if not raw:
+        return set()
+    keys = {raw, str(Path(raw))}
+    try:
+        keys.add(str(Path(raw).resolve()))
+    except Exception:
+        pass
+    return {key for key in keys if key}
+
+def _config_path_matches(record_config_path: str, selected_config_path: str) -> bool:
+    return bool(_path_keys(record_config_path) & _path_keys(selected_config_path))
+
+def _registry_source_files_for_config(config_path: str) -> tuple[set[str], set[str]]:
+    try:
+        records = read_registry().get("records", [])
+    except Exception:
+        return set(), set()
+    selected: set[str] = set()
+    all_sources: set[str] = set()
+    for record in records:
+        stored_path = str(record.get("stored_path") or "").strip()
+        if not stored_path:
+            continue
+        stored_keys = _path_keys(stored_path)
+        all_sources.update(stored_keys)
+        if _config_path_matches(str(record.get("config_path") or ""), config_path):
+            selected.update(stored_keys)
+    return selected, all_sources
+
+def _configured_source_scope(config_path: str, cfg: dict[str, Any]) -> tuple[set[str], list[str]]:
+    exact: set[str] = set()
+    prefixes: list[str] = []
+    excel_path = str(get_nested(cfg, "source.excel_path", "") or "").strip()
+    if excel_path:
+        try:
+            exact.update(_path_keys(str(resolve_path(config_path, excel_path))))
+        except Exception:
+            exact.update(_path_keys(excel_path))
+    source_dir = str(
+        get_nested(cfg, "source.directory", "")
+        or get_nested(cfg, "source.excel_dir", "")
+        or ""
+    ).strip()
+    if source_dir:
+        try:
+            source_dir_path = str(resolve_path(config_path, source_dir))
+        except Exception:
+            source_dir_path = source_dir
+        prefixes.extend(sorted(_path_keys(source_dir_path)))
+    return exact, prefixes
+
+def _audit_source_scope_conditions(
+    config_path: str, cfg: dict[str, Any]
+) -> tuple[list[str], list[Any]]:
+    registry_selected, _registry_all = _registry_source_files_for_config(config_path)
+    configured_exact, configured_prefixes = _configured_source_scope(config_path, cfg)
+    exact_values = sorted(registry_selected | configured_exact)
+    prefix_values = sorted({prefix.rstrip("/\\") for prefix in configured_prefixes if prefix})
+    clauses: list[str] = []
+    params: list[Any] = []
+    if exact_values:
+        placeholders = ", ".join("?" for _ in exact_values)
+        clauses.append(f"source_file IN ({placeholders})")
+        params.extend(exact_values)
+    for prefix in prefix_values:
+        clauses.append("source_file LIKE ?")
+        params.append(prefix + "%")
+    if not clauses:
+        return [], []
+    return ["(" + " OR ".join(clauses) + ")"], params
 
 def dashboard_payload(
     config_path: str,
@@ -52,6 +177,7 @@ def dashboard_payload(
     payload_filter: str | None = None,
     page: int = 1,
     chart_bucket: str | None = "day",
+    expose_operational_metadata: bool = True,
 ) -> dict[str, Any]:
     if should_prefer_mock_runtime():
         return mock_dashboard_payload(
@@ -105,6 +231,7 @@ def dashboard_payload(
                     "destination_table_options": [],
                     "username_options": [],
                     "recent": [],
+                    "can_delete": expose_operational_metadata,
                     "recent_paging": {"page": page, "page_size": limit, "total": 0},
                 }
             has_username_column = _column_exists(cursor, table, "username")
@@ -118,7 +245,10 @@ def dashboard_payload(
                 start_dt=start_dt,
                 end_dt=end_dt,
             )
-            time_where = _where_clause(time_conditions)
+            scope_conditions, scope_params = _audit_source_scope_conditions(config_path, cfg)
+            base_conditions = [*time_conditions, *scope_conditions]
+            base_params = [*time_params, *scope_params]
+            time_where = _where_clause(base_conditions)
 
             summary = _fetch_all_dicts(
                 cursor,
@@ -129,7 +259,7 @@ FROM {quoted_table}
 GROUP BY status
 ORDER BY status
 """,
-                tuple(time_params),
+                tuple(base_params),
             )
 
             daily = _fetch_all_dicts(
@@ -141,7 +271,7 @@ FROM {quoted_table}
 GROUP BY CONVERT(date, processed_at), status
 ORDER BY day DESC, status
 """,
-                tuple(time_params),
+                tuple(base_params),
             )
 
             files = _fetch_all_dicts(
@@ -160,10 +290,10 @@ FROM {quoted_table}
 GROUP BY source_file
 ORDER BY MAX(processed_at) DESC
 """,
-                (limit, *time_params),
+                (limit, *base_params),
             )
 
-            destination_table_option_conditions = list(time_conditions)
+            destination_table_option_conditions = list(base_conditions)
             destination_table_option_conditions.extend(
                 [
                     "destination_table IS NOT NULL",
@@ -180,7 +310,7 @@ FROM {quoted_table}
 {_where_clause(destination_table_option_conditions)}
 ORDER BY destination_table
 """,
-                    tuple(time_params),
+                    tuple(base_params),
                 )
                 if str(row.get("destination_table") or "").strip()
             ]
@@ -195,7 +325,7 @@ ORDER BY destination_table
                 ]
             )
             user_expr = f"COALESCE({', '.join(user_expr_parts)})"
-            user_option_conditions = list(time_conditions)
+            user_option_conditions = list(base_conditions)
             user_option_conditions.append(f"{user_expr} IS NOT NULL")
             user_options = [
                 str(row.get("username") or "").strip()
@@ -207,13 +337,13 @@ FROM {quoted_table}
 {_where_clause(user_option_conditions)}
 ORDER BY username
 """,
-                    tuple(time_params),
+                    tuple(base_params),
                 )
                 if str(row.get("username") or "").strip()
             ]
 
-            recent_conditions = list(time_conditions)
-            recent_params = list(time_params)
+            recent_conditions = list(base_conditions)
+            recent_params = list(base_params)
             clean_status = str(status_filter or "").strip()
             clean_source_file = str(source_file_filter or "").strip()
             clean_usernames = _normalize_destination_table_filters(username_filter)
@@ -319,8 +449,10 @@ ORDER BY rn
             )
             for item in recent:
                 item["row_payload"] = _parse_payload(item.get("row_payload"))
+            if expose_operational_metadata:
+                _annotate_recent_source_configs(recent, fallback_config_path=config_path)
 
-            return {
+            payload = {
                 "config_path": str(Path(config_path)),
                 "audit_table": table,
                 "task_name": task_name,
@@ -347,6 +479,7 @@ ORDER BY rn
                     "page_size": limit,
                     "total": recent_total,
                 },
+                "can_delete": expose_operational_metadata,
                 "exists": True,
                 "summary": summary,
                 "daily": daily,
@@ -355,6 +488,9 @@ ORDER BY rn
                 "username_options": user_options,
                 "recent": recent,
             }
+            if not expose_operational_metadata:
+                return _strip_operational_metadata(payload)
+            return payload
         finally:
             cursor.close()
     finally:

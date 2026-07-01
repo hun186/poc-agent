@@ -83,8 +83,9 @@
     #recent th.row-col, #recent td.row-col { width:4%; }
     #recent th.message-col, #recent td.message-col { width:13%; overflow-wrap:anywhere; }
     #recent th.select-col, #recent td.select-col { width:3%; text-align:center; }
+    #recent th.op-col, #recent td.op-col { width:10%; max-width:260px; overflow-wrap:anywhere; }
     #recent th.action-col, #recent td.action-col { width:7%; }
-    #recent th.payload-col, #recent td.payload-col { width:41%; min-width:680px; }
+    #recent th.payload-col, #recent td.payload-col { width:31%; min-width:560px; }
     .json-view { white-space:pre-wrap; overflow-wrap:anywhere; word-break:normal; margin:0; min-width:0; max-width:none; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.5; }
     .json-key { color:#7c3aed; font-weight:700; }
     .json-string { color:#047857; }
@@ -181,7 +182,7 @@
           <button class="ghost" id="recentNextBtn" onclick="changeRecentPage(1)">下一頁</button>
         </div>
       </div>
-      <div class="table-wrap"><table id="recent"><colgroup><col class="select-col"><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="action-col"><col class="payload-col"></colgroup><thead><tr><th class="select-col"><input type="checkbox" id="recentSelectAll" aria-label="勾選本頁可刪除 SQL 列" onchange="toggleRecentSelection(this.checked)"></th><th class="time-col">時間（本機）</th><th class="status-col">狀態</th><th class="file-col">檔案</th><th class="user-col">使用者</th><th class="row-col">列號</th><th class="message-col">訊息</th><th class="action-col">操作</th><th class="payload-col">payload</th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table id="recent"><colgroup><col class="select-col"><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="op-col"><col class="action-col"><col class="payload-col"></colgroup><thead><tr><th class="select-col"><input type="checkbox" id="recentSelectAll" aria-label="勾選本頁可刪除 SQL 列" onchange="toggleRecentSelection(this.checked)"></th><th class="time-col">時間（本機）</th><th class="status-col">狀態</th><th class="file-col">檔案</th><th class="user-col">使用者</th><th class="row-col">列號</th><th class="message-col">訊息</th><th class="op-col">操作來源</th><th class="action-col">操作</th><th class="payload-col">payload</th></tr></thead><tbody></tbody></table></div>
     </section>
   </main>
 <script src="/static/audit_tools.js"></script>

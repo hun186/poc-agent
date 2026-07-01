@@ -60,6 +60,7 @@ def delete_imported_sql_row_with_config(
             status = "sql_deleted" if deleted_rows else "sql_delete_not_found"
             message = (
                 f"user={actor}; deleted_rows={deleted_rows}; "
+                f"config_path={Path(config_path)}; destination_table={destination_table}; "
                 f"hash_field={hash_field}; reason={reason or '(empty)'}"
             )
 
@@ -85,6 +86,7 @@ def delete_imported_sql_row_with_config(
                 "status": status,
                 "deleted_rows": deleted_rows,
                 "hash_value": clean_hash,
+                "config_path": str(Path(config_path)),
                 "destination_table": destination_table,
                 "hash_field": hash_field,
                 "deleted_row_payloads": deleted_row_payloads,

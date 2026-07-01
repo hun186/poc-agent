@@ -103,14 +103,18 @@ def test_recent_audit_table_gives_payload_more_width_than_file_column():
     assert "#recent th.file-col, #recent td.file-col { width:12%; max-width:260px; white-space:normal; word-break:normal; overflow-wrap:anywhere; }" in html
     assert "#recent th.user-col, #recent td.user-col { width:6%; }" in html
     assert "#recent th.select-col, #recent td.select-col { width:3%; text-align:center; }" in html
-    assert "#recent th.payload-col, #recent td.payload-col { width:41%; min-width:680px; }" in html
-    assert '<colgroup><col class="select-col"><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="action-col"><col class="payload-col"></colgroup>' in html
+    assert "#recent th.op-col, #recent td.op-col { width:10%; max-width:260px; overflow-wrap:anywhere; }" in html
+    assert "#recent th.action-col, #recent td.action-col { width:7%; }" in html
+    assert "#recent th.payload-col, #recent td.payload-col { width:31%; min-width:560px; }" in html
+    assert '<colgroup><col class="select-col"><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="op-col"><col class="action-col"><col class="payload-col"></colgroup>' in html
     assert 'id="recentSelectAll"' in html
     assert '<th class="time-col">時間（本機）</th>' in html
     assert '<th class="file-col">檔案</th>' in html
     assert '<td class="select-col">${selectionCell(r)}</td>' in html
     assert '<td class="time-col">${formatAuditTime(r.processed_at)}</td>' in html
     assert '<td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td>' in html
+    assert '<th class="op-col">操作來源</th>' in html
+    assert '<td class="op-col">${operatorSourceCell(r)}</td>' in html
 
 
 def test_dashboard_header_shows_current_logged_in_user():
@@ -159,3 +163,25 @@ def test_recent_audit_batch_delete_and_report_download_controls():
     assert "/v1/excel-to-sql/delete-rows" in html
     assert "application/vnd.ms-excel" in html
     assert "deleted_row_payloads" in html
+
+
+def test_delete_row_uses_audit_row_config_and_alerts_messages():
+    html = dashboard_source()
+
+    assert "function showError(text)" in html
+    assert "alert(text)" in html
+    assert "function rowConfigPath(row)" in html
+    assert "function operatorSourceCell(r)" in html
+    assert "來源任務：${escapeHtml(sourceConfig" in html
+    assert "SQL table：${escapeHtml(destination" in html
+    assert "⚠ 與上方任務不同" in html
+    assert "row?.source_config_path" in html
+    assert "row?.row_payload?.config_path" not in html
+    assert "這筆 audit 事件的來源任務設定檔是" in html
+    assert "將改用 audit 事件的來源任務刪除對應 SQL table" in html
+    assert "body: JSON.stringify({ config: deleteConfig || $('config').value, hash_value: hashValue, reason })" in html
+    assert "data-config-path" in html
+    assert "data-destination-table" in html
+    assert "state.canDelete = Boolean(data.can_delete)" in html
+    assert "批次刪除只能勾選同一個來源任務設定檔" in html
+    assert "body: JSON.stringify({ config: deleteConfig, hash_values: rows.map(item => item.hash_value), reason: reason.trim() })" in html
