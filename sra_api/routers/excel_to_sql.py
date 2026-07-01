@@ -13,6 +13,10 @@ from data_ingestion.excel_to_sql.dashboard import (
     delete_imported_sql_rows,
     discover_dashboard_tasks,
 )
+from data_ingestion.excel_to_sql.table_editor import (
+    list_sql_source_rows,
+    update_sql_source_row,
+)
 from data_ingestion.excel_to_sql.task_configs import (
     approve_task_config,
     create_task_config,
@@ -28,6 +32,7 @@ from data_ingestion.excel_to_sql.user_imports import (
 )
 from api.routers.editor_dependencies import (
     current_user,
+    require_data_editor,
     require_db_operator,
     require_superuser,
 )
@@ -46,6 +51,13 @@ class DeleteImportedRowsPayload(BaseModel):
     config: str = Field(default="config/excel_to_sql/vessel_activities.example.json")
     hash_values: list[str] = Field(..., min_length=1, max_length=500)
     reason: str = Field(default="", max_length=500)
+
+
+class UpdateSqlSourceRowPayload(BaseModel):
+    config: str = Field(default="config/excel_to_sql/vessel_activities.example.json")
+    hash_value: str = Field(..., min_length=1, max_length=128)
+    changes: dict[str, Any] = Field(default_factory=dict)
+    reason: str = Field(..., min_length=1, max_length=500)
 
 
 class ApproveTaskConfigPayload(BaseModel):
@@ -123,6 +135,23 @@ def _dashboard_tasks_for_user(user: AuthUser, config_dir: str) -> list[dict[str,
     ]
 
 
+def _normalize_config_path(value: str) -> str:
+    return str(Path(str(value or "")).as_posix())
+
+
+def _ensure_source_editor_config_allowed(user: AuthUser, config: str, config_dir: str) -> None:
+    requested = _normalize_config_path(config)
+    allowed = {
+        _normalize_config_path(str(task.get("config_path") or ""))
+        for task in _dashboard_tasks_for_user(user, config_dir)
+    }
+    if requested not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="SQL 來源資料編輯器只能操作已啟用 Excel→SQL 任務清單中的 destination.table。",
+        )
+
+
 def _static_path(filename: str) -> Path:
     return Path(__file__).resolve().parents[1] / "static" / filename
 
@@ -140,6 +169,11 @@ def excel_to_sql_import_center_page() -> FileResponse:
 @router.get("/excel-to-sql-task-configs", include_in_schema=False)
 def excel_to_sql_task_configs_page() -> FileResponse:
     return FileResponse(_static_path("excel_to_sql_task_configs.html"))
+
+
+@router.get("/excel-to-sql-source-editor", include_in_schema=False)
+def excel_to_sql_source_editor_page() -> FileResponse:
+    return FileResponse(_static_path("excel_to_sql_source_editor.html"))
 
 
 @router.get("/v1/excel-to-sql/dashboard-tasks")
@@ -224,6 +258,56 @@ def excel_to_sql_dashboard_data(
         raise HTTPException(
             status_code=500, detail=f"讀取 Excel 匯入監控資料失敗：{exc}"
         ) from exc
+
+
+@router.get("/v1/excel-to-sql/source-rows")
+def excel_to_sql_source_rows(
+    config: str = Query(
+        "config/excel_to_sql/vessel_activities.example.json",
+        description="Excel 匯入設定檔路徑；只能讀取該任務的 destination.table",
+    ),
+    q: str = Query("", max_length=200, description="跨欄位關鍵字搜尋"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    config_dir: str = Query(
+        "config/excel_to_sql", description="白名單來源：已啟用 Excel→SQL 任務設定檔目錄"
+    ),
+    user: AuthUser = Depends(require_data_editor),
+) -> dict[str, Any]:
+    _ensure_source_editor_config_allowed(user, config, config_dir)
+    try:
+        return list_sql_source_rows(config, q=q, page=page, limit=limit)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"讀取 SQL 來源資料列失敗：{exc}") from exc
+
+
+@router.patch("/v1/excel-to-sql/source-row")
+def excel_to_sql_update_source_row(
+    payload: UpdateSqlSourceRowPayload,
+    config_dir: str = Query(
+        "config/excel_to_sql", description="白名單來源：已啟用 Excel→SQL 任務設定檔目錄"
+    ),
+    user: AuthUser = Depends(require_data_editor),
+) -> dict[str, Any]:
+    _ensure_source_editor_config_allowed(user, payload.config, config_dir)
+    try:
+        return update_sql_source_row(
+            payload.config,
+            hash_value=payload.hash_value,
+            changes=payload.changes,
+            actor=user.username,
+            reason=payload.reason,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"更新 SQL 來源資料列失敗：{exc}") from exc
 
 
 @router.post("/v1/excel-to-sql/delete-row")

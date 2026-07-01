@@ -260,3 +260,10 @@
 - `data_ingestion/excel_to_sql/task_configs.py` now acts as the task-config file lifecycle facade: safe path resolution, connection-source loading, create/list/status/delete operations, and review-summary sanitization.
 - `data_ingestion/excel_to_sql/task_config_builder.py` owns task JSON construction and validation for fields, SQL types, standard mappings, composite mappings, DB/source/destination/import/retry/archive/audit/dashboard sections.
 - Public callers can continue importing `build_task_config` from `task_configs.py` because it is re-exported via module import, preserving the previous API surface while reducing single-file size.
+
+## 2026-07-01 SQL 來源資料編輯器
+
+- 在 Excel 匯入流程管理底下新增 SQL 來源資料編輯器，定位為 Excel→SQL 任務目的資料表的受控瀏覽與單列修正工具，不是任意 SQL client。
+- 後端 `data_ingestion/excel_to_sql/table_editor.py` 依任務設定檔取得 `destination.table` 與 `destination.hash_field`，提供分頁查詢與單列更新；SQL identifier 仍走既有 `quote_ident` / `quote_object_path`。
+- API 掛在 `sra_api/routers/excel_to_sql.py`：`GET /v1/excel-to-sql/source-rows`、`PATCH /v1/excel-to-sql/source-row`；靜態頁為 `sra_api/static/excel_to_sql_source_editor.html` + `excel_to_sql_source_editor_app.js`。
+- 權限分工：`data_editor` 可讀取與單列編輯 SQL 來源資料；刪除與批次刪除仍沿用既有 dashboard 的 `db_operator` 權限與二次確認，避免低階資料修改者執行高破壞性操作。

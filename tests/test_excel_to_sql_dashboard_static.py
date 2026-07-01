@@ -189,3 +189,18 @@ def test_delete_row_uses_audit_row_config_and_alerts_messages():
     assert "state.canDelete = Boolean(data.can_delete)" in html
     assert "批次刪除只能勾選同一個來源任務設定檔" in html
     assert "body: JSON.stringify({ config: deleteConfig, hash_values: rows.map(item => item.hash_value), reason: reason.trim() })" in html
+
+
+def test_sql_source_editor_page_and_navigation_are_wired():
+    editor_html = (STATIC_ROOT / "editor.html").read_text(encoding="utf-8")
+    bootstrap_js = (STATIC_ROOT / "editor_bootstrap.js").read_text(encoding="utf-8")
+    source_html = (STATIC_ROOT / "excel_to_sql_source_editor.html").read_text(encoding="utf-8")
+    source_js = (STATIC_ROOT / "excel_to_sql_source_editor_app.js").read_text(encoding="utf-8")
+
+    assert "SQL 來源資料編輯器" in editor_html
+    assert "excelSourceEditorBtn" in editor_html
+    assert "location.href = '/excel-to-sql-source-editor'" in bootstrap_js
+    assert "受控 SQL 來源資料表" in source_html
+    assert "/v1/excel-to-sql/source-rows" in source_js
+    assert "/v1/excel-to-sql/source-row" in source_js
+    assert "此操作不會自動同步 ES" in source_html

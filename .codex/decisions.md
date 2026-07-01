@@ -255,3 +255,10 @@
 - `data_ingestion/excel_to_sql/dashboard.py` 持續作為對外 facade，避免 route、測試與外部 import path 因拆檔需要同步遷移。
 - dashboard task discovery 與批次刪除報表組裝屬於低耦合子責任，可拆成小模組；SQL 查詢 payload 主流程暫留原檔，避免一次重構過多 SQL 與 filter 邏輯。
 - 批次刪除 helper 必須透過注入的 `delete_one` 呼叫單筆刪除，以保留既有測試 monkeypatch `dashboard.delete_imported_sql_row` 的 seam。
+
+## 2026-07-01 SQL 來源資料編輯器權限決策
+
+- SQL 來源資料編輯器放在「Excel 匯入流程管理」底下，因 SQL 是 Excel 資料進 ES 前的來源 / 中繼資料層，ES Editor 仍是首層主檢索資料庫編輯器。
+- `data_editor` 已可編修 ES 最終文件，因此第一版允許 `data_editor` 讀取並單列編輯 Excel→SQL 任務目的表，但採受控 table 白名單（只能由任務設定檔取得 destination.table）、必填 reason、禁止修改 hash / 系統欄位，並寫入 SQL audit。
+- SQL row 刪除與批次刪除維持 `db_operator` 以上並保留高風險二次確認；不提升到 superuser，避免日常資料修復過度集中於少數最高權限者，但仍不下放給一般資料修改者。
+- 第一版不提供任意 SQL query / arbitrary table name / 批次更新，避免把流程管理工具變成通用 SQL client 而擴大資安與誤操作風險。

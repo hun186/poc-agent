@@ -377,3 +377,23 @@
 - `GET /v1/excel-to-sql/dashboard?config=...` 現在會以 `config` 指定的匯入任務建立 audit source scope，讓 summary / chart / files / recent rows / options 預設只反映選定任務相關 audit rows。
 - Source scope 來源包含：user import registry 中 `config_path` 等於目前 config 的 `stored_path`、設定檔 `source.excel_path`、以及 `source.directory` / `source.excel_dir` 下的檔案前綴。若設定檔缺少可推導來源，會維持既有 audit table 查詢行為。
 - 目的地 table 篩選與使用者篩選是在 selected-task scope 內再套用，避免不同任務共用 audit table 時互相混入查詢結果。
+
+## 2026-07-01 SQL 來源資料編輯器 API
+
+- `GET /excel-to-sql-source-editor`：回傳 SQL 來源資料編輯器靜態頁。
+- `GET /v1/excel-to-sql/source-rows`
+  - 權限：`data_editor` 以上。
+  - Query：`config`（Excel→SQL 任務設定檔路徑）、`q`（跨前 12 欄關鍵字搜尋）、`page`、`limit`（1～200）。
+  - 行為：只依任務設定檔的 `destination.table` 查詢資料列，不接受任意 SQL 或任意 table name。
+  - Response：`ok`、`config_path`、`destination_table`、`hash_field`、`columns`、`editable_columns`、`rows`、`total`、`page`、`limit`、`has_more`。
+- `PATCH /v1/excel-to-sql/source-row`
+  - 權限：`data_editor` 以上。
+  - Request：`config`、`hash_value`、`changes`、`reason`。
+  - 行為：以任務設定檔的 `destination.hash_field` 定位單列；禁止修改 hash 欄位與常見系統欄位；必須填寫 `reason`；成功後若 audit table 存在，寫入 `sql_source_editor.update_row` audit payload（含 before / after / changes）。
+  - Response：`ok`、`status`、`updated_rows`、`hash_value`、`config_path`、`destination_table`、`hash_field`、`blocked_columns`、`row`。
+
+### 2026-07-01 SQL 來源資料編輯器白名單補充
+
+- `GET /v1/excel-to-sql/source-rows` 與 `PATCH /v1/excel-to-sql/source-row` 新增/使用 `config_dir` query（預設 `config/excel_to_sql`）作為已啟用任務清單來源。
+- 後端會先確認 `config` 存在於 `discover_dashboard_tasks(config_dir)` 回傳的已啟用任務清單；未列入清單時回傳 403，不會讀取任意 config path 或任意 SQL table。
+- SQL 來源資料編輯器 audit 寫入同一個 Excel→SQL audit table schema；人工編輯事件以 `status/action = sql_source_editor.update_row` 與 `source_file = sql-source-editor` 區分於一般匯入列事件。
