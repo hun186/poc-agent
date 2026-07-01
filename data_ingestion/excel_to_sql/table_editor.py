@@ -23,6 +23,10 @@ SYSTEM_COLUMNS = {
     "source_file",
     "sheet_name",
     "row_no",
+    "username",
+    "audit_actor",
+    "audit_user",
+    "actor",
 }
 
 
@@ -73,6 +77,42 @@ def _load_columns(cursor, table: str) -> list[dict[str, Any]]:
 def _editable_column_names(columns: list[dict[str, Any]], hash_field: str) -> list[str]:
     blocked = {hash_field.lower(), *SYSTEM_COLUMNS}
     return [str(col["name"]) for col in columns if str(col.get("name") or "").lower() not in blocked]
+
+
+def _normalize_filter_values(value: str | list[str] | None) -> list[str]:
+    if value is None:
+        return []
+    raw_values = value if isinstance(value, list) else [value]
+    result: list[str] = []
+    for raw in raw_values:
+        for part in str(raw or "").split(","):
+            clean = part.strip()
+            if clean and clean not in result:
+                result.append(clean)
+    return result
+
+
+def _username_columns(columns: list[dict[str, Any]]) -> list[str]:
+    available = {str(col.get("name") or "").lower(): str(col.get("name") or "") for col in columns}
+    return [available[name] for name in ("username", "audit_actor", "audit_user", "actor") if name in available]
+
+
+def _load_username_options(cursor, table: str, username_cols: list[str]) -> list[str]:
+    if not username_cols:
+        return []
+    expr = "COALESCE(" + ", ".join(f"NULLIF(CAST({quote_ident(col)} AS NVARCHAR(255)), '')" for col in username_cols) + ")"
+    cursor.execute(
+        f"SELECT DISTINCT TOP (200) {expr} AS username "
+        f"FROM {quote_object_path(table)} "
+        f"WHERE {expr} IS NOT NULL ORDER BY username"
+    )
+    values: list[str] = []
+    for row in cursor.fetchall():
+        data = _row_to_dict(cursor, row)
+        username = str(data.get("username") or "").strip()
+        if username and username not in values:
+            values.append(username)
+    return values
 
 
 def _write_editor_audit(
@@ -135,6 +175,11 @@ def list_sql_source_rows(
     config_path: str,
     *,
     q: str = "",
+    source_file_filter: str = "",
+    row_no_filter: int | None = None,
+    hash_value_filter: str = "",
+    payload_filter: str = "",
+    username_filter: str | list[str] | None = None,
     page: int = 1,
     limit: int = 50,
     connect: Callable[[dict[str, Any]], Any] = _connect,
@@ -153,15 +198,42 @@ def list_sql_source_rows(
             if not columns:
                 raise ValueError(f"找不到 SQL table 欄位資訊：{table}")
             search_cols = [col["name"] for col in columns[:12]]
+            username_cols = _username_columns(columns)
+            username_options = _load_username_options(cursor, table, username_cols)
             params: list[Any] = []
-            where_sql = ""
+            conditions: list[str] = []
+            available = {str(col["name"]).lower(): str(col["name"]) for col in columns}
             clean_q = str(q or "").strip()
             if clean_q:
                 like = f"%{clean_q}%"
-                where_sql = " WHERE " + " OR ".join(
+                conditions.append("(" + " OR ".join(
                     f"CAST({quote_ident(col)} AS NVARCHAR(MAX)) LIKE ?" for col in search_cols
-                )
-                params = [like for _ in search_cols]
+                ) + ")")
+                params.extend([like for _ in search_cols])
+            clean_source_file = str(source_file_filter or "").strip()
+            if clean_source_file and "source_file" in available:
+                conditions.append(f"CAST({quote_ident(available['source_file'])} AS NVARCHAR(MAX)) LIKE ?")
+                params.append(f"%{clean_source_file}%")
+            if row_no_filter is not None and "row_no" in available:
+                conditions.append(f"{quote_ident(available['row_no'])} = ?")
+                params.append(int(row_no_filter))
+            clean_hash_filter = str(hash_value_filter or "").strip()
+            if clean_hash_filter and hash_field.lower() in available:
+                conditions.append(f"CAST({quote_ident(available[hash_field.lower()])} AS NVARCHAR(MAX)) LIKE ?")
+                params.append(f"%{clean_hash_filter}%")
+            clean_usernames = _normalize_filter_values(username_filter)
+            if clean_usernames and username_cols:
+                user_expr = "COALESCE(" + ", ".join(f"NULLIF(CAST({quote_ident(col)} AS NVARCHAR(255)), '')" for col in username_cols) + ")"
+                placeholders = ", ".join("?" for _ in clean_usernames)
+                conditions.append(f"{user_expr} IN ({placeholders})")
+                params.extend(clean_usernames)
+            clean_payload = str(payload_filter or "").strip()
+            if clean_payload:
+                payload_cols = [col["name"] for col in columns if str(col.get("name") or "").lower() not in {"source_file", "row_no", hash_field.lower(), *SYSTEM_COLUMNS}]
+                if payload_cols:
+                    conditions.append("(" + " OR ".join(f"CAST({quote_ident(col)} AS NVARCHAR(MAX)) LIKE ?" for col in payload_cols[:24]) + ")")
+                    params.extend([f"%{clean_payload}%" for _ in payload_cols[:24]])
+            where_sql = " WHERE " + " AND ".join(conditions) if conditions else ""
             count_sql = f"SELECT COUNT(*) AS total FROM {quote_object_path(table)}{where_sql}"
             cursor.execute(count_sql, tuple(params))
             count_row = cursor.fetchone()
@@ -180,6 +252,7 @@ def list_sql_source_rows(
                 "hash_field": hash_field,
                 "columns": columns,
                 "editable_columns": _editable_column_names(columns, hash_field),
+                "username_options": username_options,
                 "rows": rows,
                 "total": total,
                 "page": page,

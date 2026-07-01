@@ -33,16 +33,20 @@ class FakeCursor:
                 ("title", "nvarchar", "YES"),
                 ("content", "nvarchar", "YES"),
                 ("row_no", "int", "YES"),
+                ("username", "nvarchar", "YES"),
             ]
+        elif normalized.startswith("SELECT DISTINCT TOP (200)"):
+            self.description = [("username",)]
+            self._rows = [("alice",), ("bob",)]
         elif normalized.startswith("SELECT COUNT(*) AS total"):
             self.description = [("total",)]
             self._one = (1,)
         elif "ORDER BY" in normalized and "OFFSET" in normalized:
-            self.description = [("hash_value",), ("title",), ("content",), ("row_no",)]
-            self._rows = [("h1", self.current_row["title"], self.current_row["content"], 9)]
+            self.description = [("hash_value",), ("title",), ("content",), ("row_no",), ("username",)]
+            self._rows = [("h1", self.current_row["title"], self.current_row["content"], 9, "alice")]
         elif normalized.startswith("SELECT * FROM"):
-            self.description = [("hash_value",), ("title",), ("content",), ("row_no",)]
-            self._one = ("h1", self.current_row["title"], self.current_row["content"], 9)
+            self.description = [("hash_value",), ("title",), ("content",), ("row_no",), ("username",)]
+            self._one = ("h1", self.current_row["title"], self.current_row["content"], 9, "alice")
         elif normalized.startswith("UPDATE"):
             self.current_row["title"] = params[0][0]
             self.rowcount = 1
@@ -93,8 +97,23 @@ def test_list_sql_source_rows_uses_task_destination_and_blocks_system_columns(mo
     assert result["hash_field"] == "hash_value"
     assert result["total"] == 1
     assert result["rows"][0]["title"] == "舊標題"
+    assert result["username_options"] == ["alice", "bob"]
     assert result["editable_columns"] == ["title", "content"]
     assert any("CAST([title] AS NVARCHAR(MAX)) LIKE ?" in sql for sql, _ in conn.cursor_obj.calls)
+
+
+def test_list_sql_source_rows_filters_by_username_with_available_user_column(monkeypatch):
+    conn = FakeConnection()
+    monkeypatch.setattr(table_editor, "load_json_config", lambda path: CFG)
+
+    table_editor.list_sql_source_rows(
+        "config/excel_to_sql/task.json", username_filter=["alice", "bob"], connect=lambda cfg: conn
+    )
+
+    count_calls = [call for call in conn.cursor_obj.calls if call[0].strip().startswith("SELECT COUNT(*) AS total")]
+    assert count_calls
+    assert "COALESCE(NULLIF(CAST([username] AS NVARCHAR(255)), '')) IN (?, ?)" in count_calls[-1][0]
+    assert count_calls[-1][1] == (("alice", "bob"),)
 
 
 def test_update_sql_source_row_writes_audit_and_rejects_system_columns(monkeypatch):
