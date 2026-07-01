@@ -249,3 +249,9 @@
 - 選擇既有任務作為資料庫連線來源時，UI 不應把來源設定檔內的 Server、資料庫名稱、DB 使用者或 DB 密碼回填到頁面；只提示會讀取套用該 JSON 連線資訊，降低非技術使用者誤複製或外洩敏感連線資料的風險。
 - ODBC Driver 與 trusted connection 被視為較低敏感度設定，仍可在頁面顯示 / 帶入，協助使用者理解目前會用哪種 driver 與驗證模式。
 - 任務清單 / 審核資料雖仍需要呈現任務可審資訊，但 DB 連線摘要與遮蔽 JSON 也應遮蔽 server、database、user、password，避免只修前端回填而由 review 區塊再次洩漏。
+
+## 2026-07-01 Excel→SQL dashboard 拆檔決策
+
+- `data_ingestion/excel_to_sql/dashboard.py` 持續作為對外 facade，避免 route、測試與外部 import path 因拆檔需要同步遷移。
+- dashboard task discovery 與批次刪除報表組裝屬於低耦合子責任，可拆成小模組；SQL 查詢 payload 主流程暫留原檔，避免一次重構過多 SQL 與 filter 邏輯。
+- 批次刪除 helper 必須透過注入的 `delete_one` 呼叫單筆刪除，以保留既有測試 monkeypatch `dashboard.delete_imported_sql_row` 的 seam。

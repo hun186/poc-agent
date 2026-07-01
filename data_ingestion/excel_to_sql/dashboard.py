@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from api.services.vercel_mock_runtime import should_prefer_mock_runtime
-from data_ingestion.excel_to_sql.dashboard_config import (
-    _dashboard_enabled,
-    _dashboard_name,
-)
+from data_ingestion.excel_to_sql.dashboard_config import _dashboard_name
 from data_ingestion.excel_to_sql.dashboard_delete import (
     delete_imported_sql_row_with_config,
 )
@@ -32,45 +29,11 @@ from data_ingestion.excel_to_sql.dashboard_sql import (
     _fetch_all_dicts,
     _table_exists,
 )
-from data_ingestion.excel_to_sql.ingest import (
-    get_nested,
-    load_json_config,
-    quote_object_path,
+from data_ingestion.excel_to_sql.ingest import load_json_config, quote_object_path
+from data_ingestion.excel_to_sql.dashboard_batch_delete import (
+    delete_imported_sql_rows_batch,
 )
-from data_ingestion.excel_to_sql.task_configs import task_review_summary
-
-
-def discover_dashboard_tasks(
-    config_dir: str | Path = "config/excel_to_sql",
-) -> list[dict[str, Any]]:
-    root = Path(config_dir)
-    if not root.exists():
-        return []
-
-    tasks: list[dict[str, Any]] = []
-    for path in sorted(root.rglob("*.json")):
-        try:
-            cfg = load_json_config(str(path))
-        except Exception:
-            continue
-        if not _dashboard_enabled(cfg):
-            continue
-        tasks.append(
-            {
-                "name": _dashboard_name(cfg, path),
-                "config_path": str(path),
-                "audit_table": _audit_table(cfg),
-                "destination_table": str(
-                    get_nested(cfg, "destination.table", "") or ""
-                ),
-                "source_directory": str(get_nested(cfg, "source.directory", "") or ""),
-                "enabled": True,
-                "status": "active",
-                "review_summary": task_review_summary(cfg),
-            }
-        )
-    return tasks
-
+from data_ingestion.excel_to_sql.dashboard_tasks import discover_dashboard_tasks
 
 def dashboard_payload(
     config_path: str,
@@ -397,7 +360,6 @@ ORDER BY rn
     finally:
         conn.close()
 
-
 def delete_imported_sql_row(
     config_path: str,
     *,
@@ -422,7 +384,6 @@ def delete_imported_sql_row(
         table_exists=_table_exists,
     )
 
-
 def delete_imported_sql_rows(
     config_path: str,
     *,
@@ -430,47 +391,10 @@ def delete_imported_sql_rows(
     actor: str,
     reason: str = "",
 ) -> dict[str, Any]:
-    cleaned = []
-    seen = set()
-    for value in hash_values:
-        clean = str(value or "").strip()
-        if clean and clean not in seen:
-            cleaned.append(clean)
-            seen.add(clean)
-    if not cleaned:
-        raise ValueError("至少需要一筆 hash_value 才能批次刪除。")
-    if len(cleaned) > 500:
-        raise ValueError("單次批次刪除最多支援 500 筆 hash_value。")
-
-    deleted_at = datetime.now(timezone.utc).isoformat()
-    report_rows = []
-    total_deleted = 0
-    for hash_value in cleaned:
-        row = {
-            "deleted_at": deleted_at,
-            "actor": actor,
-            "config_path": str(Path(config_path)),
-            "hash_value": hash_value,
-            "reason": reason,
-        }
-        try:
-            result = delete_imported_sql_row(
-                config_path, hash_value=hash_value, actor=actor, reason=reason
-            )
-            row.update(result)
-            total_deleted += int(result.get("deleted_rows") or 0)
-        except Exception as exc:
-            row.update({"ok": False, "status": "error", "error": str(exc), "deleted_rows": 0})
-        report_rows.append(row)
-    return {
-        "ok": True,
-        "processed": len(report_rows),
-        "deleted_rows": total_deleted,
-        "report": {
-            "generated_at": deleted_at,
-            "actor": actor,
-            "config_path": str(Path(config_path)),
-            "reason": reason,
-            "rows": report_rows,
-        },
-    }
+    return delete_imported_sql_rows_batch(
+        config_path,
+        hash_values=hash_values,
+        actor=actor,
+        reason=reason,
+        delete_one=delete_imported_sql_row,
+    )

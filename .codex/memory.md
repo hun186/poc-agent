@@ -299,3 +299,10 @@
 - 目的：避免任務 JSON 管理頁建立失敗訊息只顯示在頁面上方、使用者未往上捲動而誤以為系統無反應；並降低「多欄位拼裝成 SQL 新欄位」長篇說明佔用版面。
 - 主要修改：建立任務時的前端驗證錯誤、缺少任務名稱 / 欄位對應與 API 錯誤除頁面訊息外，也會用瀏覽器 alert 跳窗提示；拼裝欄位說明改為可展開 / 收合的 details 區塊，並分成實體欄位模式、拼裝規則、欄名比對與診斷、未來 View 模式四段條列。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 完成（pip upgrade 索引仍有 403 retry，但 requirements 均已滿足）；`node --check sra_api/static/excel_to_sql_import_records.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q` 通過（21 passed, 1 warning，warning 為既有 Starlette TestClient deprecation）；`git diff --check` 通過。
+
+### 2026-07-01 Excel→SQL dashboard 肥大檔案拆分
+
+- 目的：依使用者要求掃描單檔過大的程式 / HTML / JS / CSS，優先針對接近 500 行且職責可拆的 Excel→SQL dashboard 後端檔案進行小範圍重構。
+- 主要修改：`data_ingestion/excel_to_sql/dashboard.py` 保留既有 facade 與 API 呼叫相容性，將 dashboard task discovery 拆至 `dashboard_tasks.py`，將批次刪除報表組裝拆至 `dashboard_batch_delete.py`；保留 monkeypatch seam，既有測試可繼續 patch `dashboard.delete_imported_sql_row`。
+- 掃描結果：排除 vendored Swagger 與檔名含複製的檔案後，仍有 `tests/test_excel_to_sql_user_imports.py`、`sra_api/routers/excel_to_sql.py`、`data_ingestion/sql_to_es/ingest_sql.py`、`data_ingestion/excel_to_sql/workbook_rows.py` 等較大檔案可列為後續拆分候選；本次未擴大改動以降低風險。
+- 驗證：`python -m py_compile data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/dashboard_tasks.py data_ingestion/excel_to_sql/dashboard_batch_delete.py` 通過；`PYTHONPATH=. pytest tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（19 passed）。`python -m pip install --upgrade pip` 因套件索引 tunnel 403 未能升級，但 `python -m pip install -r requirements.txt` 顯示需求已滿足。
