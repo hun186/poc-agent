@@ -348,3 +348,16 @@
 
 - 回應使用者詢問：SQL 來源資料編輯器的 audit 使用同一個 Excel→SQL audit table schema，但以 `sql_source_editor.update_row` action/status 與 `source_file=sql-source-editor` 區分人工編輯事件；「table 白名單」補強為只能操作 `discover_dashboard_tasks(config_dir)` 已啟用任務清單中的設定檔與其 `destination.table`，避免任意 config path / table name。
 - 驗證：`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py -q` 通過（4 passed, 1 existing Starlette TestClient warning）。
+
+### 2026-07-01 SQL 來源資料編輯器 UI / 篩選 / 導航修正
+
+- 目的：改善 SQL 來源資料編輯器頁面空間、登入狀態與二層 Excel→SQL 導航一致性，並加入接近 Excel→SQL audit dashboard 的常用篩選操作。
+- 主要修改：將受控資料表長說明改為點擊展開的 tooltip / popover；來源編輯器 header 改用與 Excel→SQL dashboard 相同的深色列與按鈕風格，補齊 Excel 匯入作業中心、任務 JSON 管理與登入 / 編輯器導航；Excel→SQL dashboard、匯入作業中心與任務 JSON 管理頁皆補上 SQL 來源資料編輯器按鈕。
+- 後端：`GET /v1/excel-to-sql/source-rows` 增加 source_file、row_no、hash 與資料欄位 payload 關鍵字篩選，仍只操作已啟用任務設定檔的 `destination.table`。
+- 驗證：`node --check sra_api/static/excel_to_sql_source_editor_app.js` 通過；`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/table_editor.py` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（14 passed, 1 warning）。執行 `python -m pip install --upgrade pip` 時套件索引更新檢查遭 403，但 `python -m pip install -r requirements.txt` 顯示需求已安裝。
+
+### 2026-07-01 SQL 來源資料編輯器使用者篩選補強
+
+- 目的：回應 review 問題，讓 SQL 來源資料編輯器也提供與 Excel→SQL audit dashboard 相同操作風格的使用者多選篩選。
+- 主要修改：來源編輯器頁面載入 `/static/audit_tools.js`，使用既有 `SraAuditTools.renderMultiFilterOptions` / `summarizeMultiFilterSelection` / `setVisibleMultiFilterSelection` helper 呈現使用者多選；後端 `source-rows` 支援 `username_filter` 並回傳 `username_options`，只在目的資料表存在 `username` / `audit_actor` / `audit_user` / `actor` 欄位時套用。
+- 驗證：`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`python -m py_compile sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/table_editor.py`、`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_dashboard_static.py -q` 均通過（15 passed, 1 warning）。

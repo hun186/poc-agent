@@ -267,6 +267,11 @@ def excel_to_sql_source_rows(
         description="Excel 匯入設定檔路徑；只能讀取該任務的 destination.table",
     ),
     q: str = Query("", max_length=200, description="跨欄位關鍵字搜尋"),
+    source_file_filter: str = Query("", max_length=200, description="來源檔名部分比對"),
+    row_no_filter: int | None = Query(None, ge=1, description="Excel 列號"),
+    hash_value_filter: str = Query("", max_length=200, description="hash 部分比對"),
+    payload_filter: str = Query("", max_length=200, description="資料欄位文字部分比對"),
+    username_filter: list[str] | None = Query(None, description="使用者，可重複提供以複選"),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     config_dir: str = Query(
@@ -276,7 +281,12 @@ def excel_to_sql_source_rows(
 ) -> dict[str, Any]:
     _ensure_source_editor_config_allowed(user, config, config_dir)
     try:
-        return list_sql_source_rows(config, q=q, page=page, limit=limit)
+        try:
+            return list_sql_source_rows(config, q=q, source_file_filter=source_file_filter, row_no_filter=row_no_filter, hash_value_filter=hash_value_filter, payload_filter=payload_filter, username_filter=username_filter, page=page, limit=limit)
+        except TypeError:
+            if any([source_file_filter, row_no_filter, hash_value_filter, payload_filter, username_filter]):
+                raise
+            return list_sql_source_rows(config, q=q, page=page, limit=limit)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

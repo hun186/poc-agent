@@ -203,4 +203,8 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "受控 SQL 來源資料表" in source_html
     assert "/v1/excel-to-sql/source-rows" in source_js
     assert "/v1/excel-to-sql/source-row" in source_js
+    assert '<label for="usernameSummary">使用者</label>' in source_html
+    assert '<script src="/static/audit_tools.js"></script>' in source_html
+    assert "SraAuditTools.renderMultiFilterOptions" in source_js
+    assert "params.append('username_filter', value)" in source_js
     assert "此操作不會自動同步 ES" in source_html
