@@ -330,3 +330,9 @@
 - 目的：修正儀表板上方選擇「匯入任務」後，下方 audit 仍混合顯示同一 audit table 中其他任務資料列，導致使用者需要依 row 來源判斷刪除目標的反直覺行為。
 - 主要修改：dashboard 查詢會依目前選定 config 建立 source_file scope，包含 user import registry 中該 config 的上傳檔、設定檔 `source.excel_path` 與 `source.directory` / `source.excel_dir` 前綴；summary、daily、files、destination table options、username options 與 recent audit 都套用相同 scope。操作來源欄仍保留用於 db_operator 快速確認與 legacy / fallback 情境。
 - 驗證：`python -m pip install -r requirements.txt` 通過；`python -m py_compile data_ingestion/excel_to_sql/dashboard.py sra_api/routers/excel_to_sql.py tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py` 通過；`node --check sra_api/static/excel_to_sql_dashboard_app.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.py tests/test_ingest_diagnostics.py tests/test_ingest_insert_fallback.py tests/test_audit.py tests/test_sql_utils.py tests/test_vercel_mock_runtime.py -q` 通過（43 passed, 4 warnings；warnings 為既有 `datetime.utcnow()` deprecation）。
+
+### 2026-07-01 Excel→SQL dashboard 操作來源欄位權限顯示
+
+- 目的：調整 Excel→SQL 匯入查詢儀表板最近 audit 事件表格，避免沒有刪除權限 / 無法查看操作來源的使用者看到空白「操作來源」欄位，並縮減該欄寬度以節省水平空間。
+- 主要修改：`excel_to_sql_dashboard.html` 將 `op-col` 欄寬由 10% / 260px 改為 5% / 130px，payload 欄寬同步增加；新增 `operator-source-hidden` CSS 讓無權限時隱藏 `col/th/td.op-col`。`excel_to_sql_dashboard_app.js` 在 dashboard payload 的 `can_delete` 權限狀態更新後同步切換表格 class。
+- 驗證：`python -m pip install --upgrade pip` 因既有 package index 403 retry 未能升級至最新 pip，但目前套件已安裝；`python -m pip install -r requirements.txt` 顯示 requirements 已滿足；`node --check sra_api/static/excel_to_sql_dashboard_app.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（9 passed）。

@@ -227,6 +227,10 @@ async function deleteImportedRow(hashValue, rowConfig = '', rowDestination = '')
   await loadDashboard();
 }
 
+function syncOperatorSourceVisibility() {
+  const table = $('recent');
+  if (table) table.classList.toggle('operator-source-hidden', !state.canDelete);
+}
 function operatorSourceCell(r) {
   if (!state.canDelete) return '';
   const sourceConfig = rowConfigPath(r);
@@ -351,6 +355,7 @@ async function loadDashboard() {
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
   const data = await res.json();
   state.canDelete = Boolean(data.can_delete);
+  syncOperatorSourceVisibility();
   document.title = (data.task_name || 'Excel→SQL 匯入 SQL') + ' - 匯入查詢儀表板';
   if (!data.exists) showError(`audit table 尚不存在：${data.audit_table}`);
   $('timeBasis').textContent = `audit 時間以本機時間顯示（${Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'}）；起迄時間輸入也是本機時間，系統會轉成 ${data.audit_time_basis || 'UTC'} 查詢。`;
