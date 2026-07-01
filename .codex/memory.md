@@ -306,3 +306,27 @@
 - 主要修改：`data_ingestion/excel_to_sql/dashboard.py` 保留既有 facade 與 API 呼叫相容性，將 dashboard task discovery 拆至 `dashboard_tasks.py`，將批次刪除報表組裝拆至 `dashboard_batch_delete.py`；保留 monkeypatch seam，既有測試可繼續 patch `dashboard.delete_imported_sql_row`。
 - 掃描結果：排除 vendored Swagger 與檔名含複製的檔案後，仍有 `tests/test_excel_to_sql_user_imports.py`、`sra_api/routers/excel_to_sql.py`、`data_ingestion/sql_to_es/ingest_sql.py`、`data_ingestion/excel_to_sql/workbook_rows.py` 等較大檔案可列為後續拆分候選；本次未擴大改動以降低風險。
 - 驗證：`python -m py_compile data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/dashboard_tasks.py data_ingestion/excel_to_sql/dashboard_batch_delete.py` 通過；`PYTHONPATH=. pytest tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py -q` 通過（19 passed）。`python -m pip install --upgrade pip` 因套件索引 tunnel 403 未能升級，但 `python -m pip install -r requirements.txt` 顯示需求已滿足。
+
+### 2026-07-01 Excel→SQL 刪除 SQL 列來源任務修正
+
+- 目的：修正匯入查詢儀表板刪除 SQL 列時，使用上方目前選取的匯入任務定位 table，若 audit 列實際來源任務不同會刪錯 table 或找不到資料，且錯誤只出現在畫面上方不易察覺的問題。
+- 主要修改：刪除按鈕改從 audit row payload 的 `config_path` / `source_config_path` 取得來源任務設定檔，與上方選項不同時跳出確認；批次刪除限制同批必須同一來源任務；訊息區同步呼叫瀏覽器 alert；匯入 audit payload 補寫來源任務設定檔，刪除 API 回傳與刪除 audit message 也包含 config_path / destination_table。
+- 驗證：`python -m py_compile data_ingestion/excel_to_sql/file_processor.py data_ingestion/excel_to_sql/dashboard_delete.py tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py tests/test_audit.py` 通過；`node --check sra_api/static/excel_to_sql_dashboard_app.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.py tests/test_ingest_diagnostics.py tests/test_ingest_insert_fallback.py tests/test_audit.py tests/test_sql_utils.py -q` 通過（38 passed, 4 warnings；warnings 為既有 `datetime.utcnow()` deprecation）。
+
+### 2026-07-01 Excel→SQL 刪除來源任務資訊權限修正
+
+- 目的：回應 dashboard audit payload 內未顯示 `config_path` 的疑問與 SQL table / 任務設定檔對低權限讀者可見的資安顧慮；前次做法若把任務路徑寫入每筆 `row_payload`，會讓所有可看 audit payload 的使用者看到操作型 metadata。
+- 主要修改：不再把 `config_path` / `source_config_path` 寫入通用 audit `row_payload`；dashboard 改於查詢時只對 `db_operator` 以上角色，透過使用者匯入 registry 由 `source_file` 對應回來源任務設定檔並加到 top-level `source_config_path`，供刪除操作使用。非 db_operator 會移除 `destination_table_options`、recent row 的 `destination_table` 與 `source_config_path`，且前端不顯示刪除勾選 / 按鈕。
+- 驗證：`python -m py_compile data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/file_processor.py sra_api/routers/excel_to_sql.py tests/test_dashboard_filters.py tests/test_audit.py tests/test_excel_to_sql_dashboard_static.py` 通過；`node --check sra_api/static/excel_to_sql_dashboard_app.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.py tests/test_ingest_diagnostics.py tests/test_ingest_insert_fallback.py tests/test_audit.py tests/test_sql_utils.py tests/test_vercel_mock_runtime.py -q` 通過（42 passed, 4 warnings；warnings 為既有 `datetime.utcnow()` deprecation）。
+
+### 2026-07-01 Excel→SQL db_operator 操作來源欄位
+
+- 目的：回應 db_operator 以上使用者雖可刪除，但表格中缺少一眼辨識該 audit row 來源任務與 SQL table 的資訊。
+- 主要修改：最近 audit 事件表格新增「操作來源」欄；只有 `can_delete=true`（db_operator 以上）時顯示來源任務檔名、目的 SQL table，且當 row 的來源任務與上方目前選取任務不同時顯示警示。低權限使用者仍不取得後端操作 metadata，因此該欄不顯示敏感內容。
+- 驗證：`python -m pip install -r requirements.txt` 通過；`python -m py_compile data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/file_processor.py sra_api/routers/excel_to_sql.py tests/test_dashboard_filters.py tests/test_audit.py tests/test_excel_to_sql_dashboard_static.py` 通過；`node --check sra_api/static/excel_to_sql_dashboard_app.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.py tests/test_ingest_diagnostics.py tests/test_ingest_insert_fallback.py tests/test_audit.py tests/test_sql_utils.py tests/test_vercel_mock_runtime.py -q` 通過（42 passed, 4 warnings；warnings 為既有 `datetime.utcnow()` deprecation）。
+
+### 2026-07-01 Excel→SQL dashboard 依選定任務篩選 audit
+
+- 目的：修正儀表板上方選擇「匯入任務」後，下方 audit 仍混合顯示同一 audit table 中其他任務資料列，導致使用者需要依 row 來源判斷刪除目標的反直覺行為。
+- 主要修改：dashboard 查詢會依目前選定 config 建立 source_file scope，包含 user import registry 中該 config 的上傳檔、設定檔 `source.excel_path` 與 `source.directory` / `source.excel_dir` 前綴；summary、daily、files、destination table options、username options 與 recent audit 都套用相同 scope。操作來源欄仍保留用於 db_operator 快速確認與 legacy / fallback 情境。
+- 驗證：`python -m pip install -r requirements.txt` 通過；`python -m py_compile data_ingestion/excel_to_sql/dashboard.py sra_api/routers/excel_to_sql.py tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py` 通過；`node --check sra_api/static/excel_to_sql_dashboard_app.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.py tests/test_ingest_diagnostics.py tests/test_ingest_insert_fallback.py tests/test_audit.py tests/test_sql_utils.py tests/test_vercel_mock_runtime.py -q` 通過（43 passed, 4 warnings；warnings 為既有 `datetime.utcnow()` deprecation）。

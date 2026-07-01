@@ -1,9 +1,9 @@
 const tokenKey = 'sra_editor_token';
-const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false, usernameOptions: [], selectedUsers: [], usernameDirty: false, batchDeleteReport: null };
+const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false, usernameOptions: [], selectedUsers: [], usernameDirty: false, batchDeleteReport: null, canDelete: false };
 function $(id) { return document.getElementById(id); }
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function statusBadge(s) { return `<span class="status ${escapeHtml(s)}">${escapeHtml(s || '(empty)')}</span>`; }
-function showError(text) { const el=$('msg'); if (!text) { el.classList.add('hidden'); el.textContent=''; } else { el.classList.remove('hidden'); el.textContent=text; } }
+function showError(text) { const el=$('msg'); if (!text) { el.classList.add('hidden'); el.textContent=''; } else { el.classList.remove('hidden'); el.textContent=text; alert(text); } }
 function metric(summary, status) { const row = summary.find(x => x.status === status); return Number(row?.count || 0); }
 
 
@@ -202,8 +202,15 @@ async function loadTasks() {
   if (tasks.length) $('config').value = tasks[0].config_path;
 }
 
-async function deleteImportedRow(hashValue) {
+function rowConfigPath(row) { return String(row?.source_config_path || $('config').value || '').trim(); }
+function rowDestinationTable(row) { return String(row?.destination_table || row?.row_payload?.destination_table || '').trim(); }
+async function deleteImportedRow(hashValue, rowConfig = '', rowDestination = '') {
   if (!hashValue) return;
+  const deleteConfig = String(rowConfig || $('config').value || '').trim();
+  const currentConfig = String($('config').value || '').trim();
+  if (deleteConfig && currentConfig && deleteConfig !== currentConfig) {
+    if (!confirm(`這筆 audit 事件的來源任務設定檔是：${deleteConfig}\n目前上方選取的是：${currentConfig}\n\n將改用 audit 事件的來源任務刪除對應 SQL table，是否繼續？`)) return;
+  }
   const reason = prompt('請輸入刪除原因（會寫入 audit）：', '資料列內容錯誤，人工刪除');
   if (reason === null) return;
   if (!confirm(`確定要從 SQL 目的表刪除 hash_value=${hashValue} 的資料列？
@@ -212,16 +219,28 @@ async function deleteImportedRow(hashValue) {
   const res = await fetch('/v1/excel-to-sql/delete-row', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-    body: JSON.stringify({ config: $('config').value, hash_value: hashValue, reason })
+    body: JSON.stringify({ config: deleteConfig || $('config').value, hash_value: hashValue, reason })
   });
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
   const data = await res.json();
-  showError(`已執行：${data.status}，刪除 ${data.deleted_rows} 筆。`);
+  showError(`已執行：${data.status}，刪除 ${data.deleted_rows} 筆。來源任務：${data.config_path || deleteConfig || '(未提供)'}；目的地 table：${data.destination_table || rowDestination || '(未提供)'}`);
   await loadDashboard();
 }
+
+function operatorSourceCell(r) {
+  if (!state.canDelete) return '';
+  const sourceConfig = rowConfigPath(r);
+  const destination = rowDestinationTable(r);
+  const selected = String($('config').value || '').trim();
+  const mismatch = sourceConfig && selected && sourceConfig !== selected;
+  const sourceLabel = sourceConfig ? sourceConfig.split('/').pop() : '(未解析)';
+  const tableLabel = destination || '(未提供 table)';
+  const warning = mismatch ? '<div class="muted">⚠ 與上方任務不同</div>' : '';
+  return `<div title="來源任務：${escapeHtml(sourceConfig || '(未解析)')}&#10;SQL table：${escapeHtml(destination || '(未提供)')}"><strong>${escapeHtml(sourceLabel)}</strong><div class="muted">${escapeHtml(tableLabel)}</div>${warning}</div>`;
+}
 function actionCell(r) {
-  if (!r.hash_value || r.status === 'sql_deleted') return '';
-  return `<button class="secondary" onclick="deleteImportedRow('${escapeHtml(r.hash_value)}')">刪除SQL列</button>`;
+  if (!state.canDelete || !r.hash_value || r.status === 'sql_deleted') return '';
+  return `<button class="secondary" onclick="deleteImportedRow('${escapeHtml(r.hash_value)}', '${escapeHtml(rowConfigPath(r))}', '${escapeHtml(rowDestinationTable(r))}')">刪除SQL列</button>`;
 }
 
 function selectedDeletableRows() {
@@ -230,6 +249,8 @@ function selectedDeletableRows() {
     audit_id: input.dataset.auditId || '',
     source_file: input.dataset.sourceFile || '',
     row_no: input.dataset.rowNo || '',
+    config_path: input.dataset.configPath || '',
+    destination_table: input.dataset.destinationTable || '',
   })).filter(item => item.hash_value);
 }
 function toggleRecentSelection(checked) {
@@ -256,11 +277,14 @@ async function deleteSelectedImportedRows() {
   if (!reason.trim()) { showError('批次刪除需要填寫原因，避免事後無法追溯。'); return; }
   if (!confirmBatchDeleteRows(rows)) { showError('批次刪除已取消：確認文字不符合。'); return; }
   if (!confirm(`最後確認：確定要從 SQL 目的表刪除 ${rows.length} 筆資料？\n此操作會逐筆寫入 audit，且不會自動刪除 ES 文件。`)) return;
+  const configPaths = Array.from(new Set(rows.map(item => String(item.config_path || $('config').value || '').trim()).filter(Boolean)));
+  if (configPaths.length > 1) { showError(`批次刪除只能勾選同一個來源任務設定檔的 SQL 列；目前包含：${configPaths.join(', ')}`); return; }
+  const deleteConfig = configPaths[0] || $('config').value;
   const token = authToken();
   const res = await fetch('/v1/excel-to-sql/delete-rows', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-    body: JSON.stringify({ config: $('config').value, hash_values: rows.map(item => item.hash_value), reason: reason.trim() })
+    body: JSON.stringify({ config: deleteConfig, hash_values: rows.map(item => item.hash_value), reason: reason.trim() })
   });
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
   const data = await res.json();
@@ -305,8 +329,8 @@ function downloadBatchDeleteReport() {
   URL.revokeObjectURL(url);
 }
 function selectionCell(r) {
-  if (!r.hash_value || r.status === 'sql_deleted') return '';
-  return `<input type="checkbox" data-recent-delete-check value="${escapeHtml(r.hash_value)}" data-audit-id="${escapeHtml(r.audit_id || '')}" data-source-file="${escapeHtml(r.source_file || '')}" data-row-no="${escapeHtml(r.row_no ?? '')}" aria-label="勾選刪除 hash ${escapeHtml(r.hash_value)}">`;
+  if (!state.canDelete || !r.hash_value || r.status === 'sql_deleted') return '';
+  return `<input type="checkbox" data-recent-delete-check value="${escapeHtml(r.hash_value)}" data-audit-id="${escapeHtml(r.audit_id || '')}" data-source-file="${escapeHtml(r.source_file || '')}" data-row-no="${escapeHtml(r.row_no ?? '')}" data-config-path="${escapeHtml(rowConfigPath(r))}" data-destination-table="${escapeHtml(rowDestinationTable(r))}" aria-label="勾選刪除 hash ${escapeHtml(r.hash_value)}">`;
 }
 
 async function loadDashboard() {
@@ -326,6 +350,7 @@ async function loadDashboard() {
   const res = await fetch('/v1/excel-to-sql/dashboard?' + params.toString(), { headers: { Authorization: 'Bearer ' + token } });
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} showError(text); return; }
   const data = await res.json();
+  state.canDelete = Boolean(data.can_delete);
   document.title = (data.task_name || 'Excel→SQL 匯入 SQL') + ' - 匯入查詢儀表板';
   if (!data.exists) showError(`audit table 尚不存在：${data.audit_table}`);
   $('timeBasis').textContent = `audit 時間以本機時間顯示（${Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'}）；起迄時間輸入也是本機時間，系統會轉成 ${data.audit_time_basis || 'UTC'} 查詢。`;
@@ -339,7 +364,7 @@ async function loadDashboard() {
   renderFilteredDailyChart(data.filtered_series || data.filtered_daily || [], data.chart_bucket || $('chartBucket').value, data.chart_bucket_label || $('chartBucket').selectedOptions[0]?.textContent || '每日');
   updateRecentPager(data);
   if ($('recentSelectAll')) $('recentSelectAll').checked = false;
-  fillTable('recent', data.recent, r => `<tr><td class="select-col">${selectionCell(r)}</td><td class="time-col">${formatAuditTime(r.processed_at)}</td><td class="status-col">${statusBadge(r.status)}</td><td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td><td class="user-col">${escapeHtml(r.username || '')}</td><td class="row-col">${escapeHtml(r.row_no ?? '')}</td><td class="message-col">${escapeHtml(r.message || '')}</td><td class="action-col">${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
+  fillTable('recent', data.recent, r => `<tr><td class="select-col">${selectionCell(r)}</td><td class="time-col">${formatAuditTime(r.processed_at)}</td><td class="status-col">${statusBadge(r.status)}</td><td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td><td class="user-col">${escapeHtml(r.username || '')}</td><td class="row-col">${escapeHtml(r.row_no ?? '')}</td><td class="message-col">${escapeHtml(r.message || '')}</td><td class="op-col">${operatorSourceCell(r)}</td><td class="action-col">${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
 }
 function bindAuditFilterEvents() {
   ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {

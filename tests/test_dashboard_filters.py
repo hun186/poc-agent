@@ -315,11 +315,13 @@ def test_delete_imported_sql_row_records_deleted_row_payloads(monkeypatch):
 
     assert result["status"] == "sql_deleted"
     assert result["deleted_rows"] == 1
+    assert result["config_path"] == "config/excel_to_sql/task.json"
     assert result["deleted_row_payloads"][0]["hash_value"] == "abc123"
     assert conn.commits == 1
     assert conn.rollbacks == 0
     payload = conn.cursor_obj.audit_payload
     assert payload["deleted_rows"] == 1
+    assert payload["config_path"] == "config/excel_to_sql/task.json"
     assert payload["deleted_row_payloads"] == [
         {
             "id": 7,
@@ -372,3 +374,77 @@ def test_batch_delete_imported_sql_rows_collects_report(monkeypatch):
         ("config/excel_to_sql/task.json", "abc", "alice", "rollback bad import"),
         ("config/excel_to_sql/task.json", "def", "alice", "rollback bad import"),
     ]
+
+def test_dashboard_operational_metadata_uses_import_registry_and_can_be_stripped(monkeypatch, tmp_path):
+    from data_ingestion.excel_to_sql import dashboard as dashboard_module
+
+    stored = tmp_path / "active" / "upload.xlsx"
+    stored.parent.mkdir()
+    stored.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(
+        dashboard_module,
+        "read_registry",
+        lambda: {"records": [{"stored_path": str(stored), "config_path": "config/excel_to_sql/source_task.json"}]},
+    )
+    recent = [
+        {
+            "source_file": str(stored),
+            "destination_table": "dbo.SecretTarget",
+            "row_payload": {
+                "destination": {"name": "row"},
+                "config_path": "legacy-leak.json",
+                "source_config_path": "legacy-leak.json",
+                "destination_table": "dbo.SecretTarget",
+            },
+        }
+    ]
+
+    dashboard_module._annotate_recent_source_configs(
+        recent, fallback_config_path="config/excel_to_sql/current.json"
+    )
+    assert recent[0]["source_config_path"] == "config/excel_to_sql/source_task.json"
+
+    payload = {"destination_table_options": ["dbo.SecretTarget"], "recent": recent}
+    stripped = dashboard_module._strip_operational_metadata(payload)
+    assert stripped["destination_table_options"] == []
+    assert "destination_table" not in stripped["recent"][0]
+    assert "source_config_path" not in stripped["recent"][0]
+    assert "config_path" not in stripped["recent"][0]["row_payload"]
+    assert "source_config_path" not in stripped["recent"][0]["row_payload"]
+    assert "destination_table" not in stripped["recent"][0]["row_payload"]
+
+def test_dashboard_source_scope_filters_selected_task_registry_and_configured_sources(monkeypatch, tmp_path):
+    from data_ingestion.excel_to_sql import dashboard as dashboard_module
+
+    selected_file = tmp_path / "active" / "selected.xlsx"
+    other_file = tmp_path / "active" / "other.xlsx"
+    configured_file = tmp_path / "configured.xlsx"
+    inbox = tmp_path / "inbox"
+    for path in [selected_file, other_file, configured_file]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x", encoding="utf-8")
+    inbox.mkdir()
+
+    monkeypatch.setattr(
+        dashboard_module,
+        "read_registry",
+        lambda: {
+            "records": [
+                {"stored_path": str(selected_file), "config_path": "config/excel_to_sql/selected.json"},
+                {"stored_path": str(other_file), "config_path": "config/excel_to_sql/other.json"},
+            ]
+        },
+    )
+    cfg = {"source": {"excel_path": str(configured_file), "directory": str(inbox)}}
+
+    conditions, params = dashboard_module._audit_source_scope_conditions(
+        "config/excel_to_sql/selected.json", cfg
+    )
+
+    assert conditions
+    assert "source_file IN" in conditions[0]
+    assert "source_file LIKE" in conditions[0]
+    assert str(selected_file) in params
+    assert str(configured_file) in params
+    assert str(other_file) not in params
+    assert any(str(value).startswith(str(inbox)) for value in params)

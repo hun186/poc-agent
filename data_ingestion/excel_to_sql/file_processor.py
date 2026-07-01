@@ -51,6 +51,7 @@ def _attach_audit_metadata(row_results: list[RowResult], cfg: dict[str, Any]) ->
         return
     for result in row_results:
         result.row_payload.setdefault("audit_actor", actor)
+        result.row_payload.setdefault("audit_user", actor)
 
 
 def _write_sheet_smart_match_audit(

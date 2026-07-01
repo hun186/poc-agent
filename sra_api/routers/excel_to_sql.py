@@ -195,7 +195,7 @@ def excel_to_sql_dashboard_data(
         "day",
         description="audit 統計曲線區間：hour、6_hours、12_hours、day、week、month",
     ),
-    _: AuthUser = Depends(current_user),
+    user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
     try:
         return dashboard_payload(
@@ -214,6 +214,7 @@ def excel_to_sql_dashboard_data(
             payload_filter=payload_filter,
             page=page,
             chart_bucket=chart_bucket,
+            expose_operational_metadata=has_role_at_least(user.role, ROLE_DB_OPERATOR),
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

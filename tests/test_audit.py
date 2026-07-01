@@ -126,3 +126,23 @@ def test_ensure_audit_table_adds_username_column_for_existing_tables():
     assert "username NVARCHAR(255) NULL" in sql
     assert "IF COL_LENGTH(N'dbo.ExcelImportAudit', N'username') IS NULL" in sql
     assert "ADD username NVARCHAR(255) NULL" in sql
+
+
+def test_attach_audit_metadata_keeps_operational_config_out_of_row_payload():
+    from data_ingestion.excel_to_sql.file_processor import _attach_audit_metadata
+    from data_ingestion.excel_to_sql.models import RowResult
+
+    rows = [RowResult(row_no=1, status="inserted", message="ok", row_payload={}, hash_value="abc")]
+
+    _attach_audit_metadata(
+        rows,
+        {
+            "_audit_actor": "alice",
+            "_audit_config_path": "config/excel_to_sql/task.json",
+        },
+    )
+
+    assert rows[0].row_payload["audit_actor"] == "alice"
+    assert rows[0].row_payload["audit_user"] == "alice"
+    assert "config_path" not in rows[0].row_payload
+    assert "source_config_path" not in rows[0].row_payload
