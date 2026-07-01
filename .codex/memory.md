@@ -336,3 +336,15 @@
 - 目的：調整 Excel→SQL 匯入查詢儀表板最近 audit 事件表格，避免沒有刪除權限 / 無法查看操作來源的使用者看到空白「操作來源」欄位，並縮減該欄寬度以節省水平空間。
 - 主要修改：`excel_to_sql_dashboard.html` 將 `op-col` 欄寬由 10% / 260px 改為 5% / 130px，payload 欄寬同步增加；新增 `operator-source-hidden` CSS 讓無權限時隱藏 `col/th/td.op-col`。`excel_to_sql_dashboard_app.js` 在 dashboard payload 的 `can_delete` 權限狀態更新後同步切換表格 class。
 - 驗證：`python -m pip install --upgrade pip` 因既有 package index 403 retry 未能升級至最新 pip，但目前套件已安裝；`python -m pip install -r requirements.txt` 顯示 requirements 已滿足；`node --check sra_api/static/excel_to_sql_dashboard_app.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（9 passed）。
+
+### 2026-07-01 SQL 來源資料編輯器第一版
+
+- 目的：在 Excel 匯入流程管理底下新增像資料表 UI 的 SQL 來源資料編輯器，讓使用者可直接瀏覽與單列修正 Excel→SQL 任務目的資料表，而不只能從 audit 事件刪除列。
+- 主要修改：新增 `data_ingestion/excel_to_sql/table_editor.py`，以任務設定檔白名單方式查詢 `destination.table`、提供分頁搜尋與單列更新；新增 `GET /excel-to-sql-source-editor`、`GET /v1/excel-to-sql/source-rows`、`PATCH /v1/excel-to-sql/source-row`；新增 `excel_to_sql_source_editor.html/js` 並在 Editor 匯入管理導航加入「SQL 來源資料編輯器」。
+- 權限決策：`data_editor` 可讀與單列編輯，需 reason、禁止改 hash / 系統欄位並寫 audit；刪除 / 批次刪除維持 `db_operator` 以上與二次確認，不要求 superuser。
+- 驗證：`python -m py_compile data_ingestion/excel_to_sql/table_editor.py sra_api/routers/excel_to_sql.py` 通過；`node --check sra_api/static/excel_to_sql_source_editor_app.js sra_api/static/editor_bootstrap.js` 通過；`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_dashboard_static.py::test_sql_source_editor_page_and_navigation_are_wired -q` 通過。
+
+### 2026-07-01 SQL 來源資料編輯器白名單說明補強
+
+- 回應使用者詢問：SQL 來源資料編輯器的 audit 使用同一個 Excel→SQL audit table schema，但以 `sql_source_editor.update_row` action/status 與 `source_file=sql-source-editor` 區分人工編輯事件；「table 白名單」補強為只能操作 `discover_dashboard_tasks(config_dir)` 已啟用任務清單中的設定檔與其 `destination.table`，避免任意 config path / table name。
+- 驗證：`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py -q` 通過（4 passed, 1 existing Starlette TestClient warning）。

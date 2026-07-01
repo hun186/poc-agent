@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SQL 來源資料編輯器</title>
+  <link rel="stylesheet" href="/static/editor.css?v=20260614-split" />
+  <style>
+    main { max-width: 1440px; margin: 0 auto; }
+    .source-table-wrap { overflow:auto; border:1px solid #e5e7eb; border-radius:12px; }
+    table.source-table { width:100%; border-collapse:collapse; font-size:13px; background:white; }
+    .source-table th, .source-table td { border-bottom:1px solid #e5e7eb; padding:8px; vertical-align:top; max-width:280px; }
+    .source-table th { position:sticky; top:0; background:#f8fafc; z-index:1; text-align:left; }
+    .source-table td pre { white-space:pre-wrap; word-break:break-word; margin:0; font-family:inherit; }
+    .edit-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+    textarea.sql-edit { min-height:72px; }
+    .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>SQL 來源資料編輯器</h1></div>
+  <div class="row" style="justify-content:flex-end; gap:8px; flex:0 0 auto;">
+    <a href="/editor">回 ES 編輯器</a>
+    <a href="/excel-to-sql-dashboard">匯入查詢儀表板</a>
+    <a href="/excel-to-sql-import-center">Excel 匯入作業中心</a>
+    <div id="whoami" class="muted">未登入</div>
+  </div>
+</header>
+<main>
+  <section class="card">
+    <h2>受控 SQL 來源資料表</h2>
+    <p class="muted">此頁只會操作已啟用 Excel→SQL 任務清單中的設定檔，並由該設定檔讀取對應的 <code>destination.table</code>；使用者不能自行輸入任意 SQL 或任意 table name。資料修改者可單列編輯並需填寫原因；修改會寫入同一張 Excel→SQL audit table，但 action 會標記為 <code>sql_source_editor.update_row</code>。刪除與批次刪除仍請使用 db_operator 權限的匯入查詢儀表板。</p>
+    <div class="toolbar">
+      <div><label>任務</label><select id="task"></select></div>
+      <div style="min-width:360px"><label>設定檔</label><input id="config" value="config/excel_to_sql/vessel_activities.example.json" /></div>
+      <div><label>關鍵字</label><input id="query" placeholder="跨前 12 個欄位搜尋" /></div>
+      <div><label>每頁筆數</label><input id="limit" type="number" min="1" max="200" value="50" /></div>
+      <button id="loadBtn">載入資料列</button>
+      <button id="prevBtn" class="secondary">上一頁</button>
+      <button id="nextBtn" class="secondary">下一頁</button>
+    </div>
+    <div id="status" class="status hidden"></div>
+    <p id="summary" class="muted"></p>
+    <div id="tableWrap" class="source-table-wrap"></div>
+  </section>
+  <section id="editCard" class="card hidden">
+    <h2>編輯 SQL row</h2>
+    <p class="muted">系統欄位與 hash 欄位不可在此修改。送出後會寫入 SQL audit table；此操作不會自動同步 ES。</p>
+    <div id="editMeta" class="muted"></div>
+    <div id="editFields" class="edit-grid"></div>
+    <label>修改原因</label><input id="editReason" placeholder="必填，例如：修正 Excel 匯入後欄位內容" />
+    <div class="row" style="margin-top:12px"><button id="saveBtn">儲存單列修改</button><button id="cancelEditBtn" class="secondary">取消</button></div>
+    <div id="editStatus" class="status hidden"></div>
+  </section>
+</main>
+<script src="/static/excel_to_sql_source_editor_app.js?v=20260701-source-editor"></script>
+</body>
+</html>
