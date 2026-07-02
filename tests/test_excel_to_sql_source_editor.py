@@ -106,7 +106,7 @@ def test_list_sql_source_rows_uses_task_destination_and_blocks_system_columns(mo
     assert result["username_options"] == ["importer_alice", "importer_bob"]
     assert result["rows"][0]["_import_username"] == "importer_alice"
     assert {col["name"] for col in result["columns"]} >= {"username", "_import_username"}
-    assert result["editable_columns"] == ["title", "content"]
+    assert result["editable_columns"] == ["title", "content", "username"]
     assert any("CAST([title] AS NVARCHAR(MAX)) LIKE ?" in sql for sql, _ in conn.cursor_obj.calls)
 
 

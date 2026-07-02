@@ -267,3 +267,9 @@
 - 後端 `data_ingestion/excel_to_sql/table_editor.py` 依任務設定檔取得 `destination.table` 與 `destination.hash_field`，提供分頁查詢與單列更新；SQL identifier 仍走既有 `quote_ident` / `quote_object_path`。
 - API 掛在 `sra_api/routers/excel_to_sql.py`：`GET /v1/excel-to-sql/source-rows`、`PATCH /v1/excel-to-sql/source-row`；靜態頁為 `sra_api/static/excel_to_sql_source_editor.html` + `excel_to_sql_source_editor_app.js`。
 - 權限分工：`data_editor` 可讀取與單列編輯 SQL 來源資料；刪除與批次刪除仍沿用既有 dashboard 的 `db_operator` 權限與二次確認，避免低階資料修改者執行高破壞性操作。
+
+## 2026-07-02 Excel→SQL 匯入使用者欄位資料流
+
+- Excel→SQL 使用者匯入的操作者仍由 `_audit_actor` 傳入；匯入流程會把該值寫入目的資料表的 `_import_username` 系統欄位，類似 `hash_value` 由程式於匯入時填入。
+- 目的資料表若原本有 `username` 欄位，該欄位屬於業務資料，不再代表匯入操作者，也不應被 SQL 來源資料編輯器當成系統欄位攔截。
+- SQL 來源資料編輯器的 `_import_username` 顯示仍相容舊資料：優先從 Excel→SQL audit table 依 `hash_value` 補回匯入者，若沒有 audit 對應則使用目的資料表中已落地的 `_import_username` 欄位值。

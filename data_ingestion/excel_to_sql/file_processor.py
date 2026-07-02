@@ -34,6 +34,10 @@ from .sql_utils import (
     validate_hash_field_type,
 )
 from .utils import chunked, get_nested, normalize_header_key, require_nested
+
+IMPORT_USERNAME_FIELD = "_import_username"
+IMPORT_USERNAME_FIELD_TYPE = "NVARCHAR(255)"
+
 from .workbook import (
     iter_excel_rows,
     make_hash_value,
@@ -45,8 +49,24 @@ from .workbook import (
 )
 
 
+def _import_username_actor(cfg: dict[str, Any]) -> str:
+    return str(cfg.get("_audit_actor") or "").strip()
+
+
+def _import_username_mapping(cfg: dict[str, Any]) -> dict[str, str] | None:
+    if not _import_username_actor(cfg):
+        return None
+    return {"dest_field": IMPORT_USERNAME_FIELD, "dest_field_type": IMPORT_USERNAME_FIELD_TYPE}
+
+
+def _attach_import_username(record: dict[str, Any], cfg: dict[str, Any]) -> None:
+    actor = _import_username_actor(cfg)
+    if actor:
+        record[IMPORT_USERNAME_FIELD] = actor
+
+
 def _attach_audit_metadata(row_results: list[RowResult], cfg: dict[str, Any]) -> None:
-    actor = str(cfg.get("_audit_actor") or "").strip()
+    actor = _import_username_actor(cfg)
     if not actor:
         return
     for result in row_results:
@@ -134,7 +154,9 @@ def process_excel_file(
         or DEFAULT_HASH_FIELD_TYPE
     )
     create_hash_index = bool(get_nested(cfg, "destination.create_hash_index", True))
-    dest_fields = [mapping["dest_field"] for mapping in first_mappings]
+    system_mapping = _import_username_mapping(cfg)
+    effective_first_mappings = first_mappings + ([system_mapping] if system_mapping else [])
+    dest_fields = [mapping["dest_field"] for mapping in effective_first_mappings]
     if hash_field not in dest_fields:
         dest_fields.append(hash_field)
     insert_sql = build_insert_sql(table, dest_fields)
@@ -164,7 +186,7 @@ def process_excel_file(
         created_table_fields = ensure_destination_table(
             cursor,
             table=table,
-            mappings=first_mappings,
+            mappings=effective_first_mappings,
             default_field_type=default_field_type,
             hash_field=hash_field,
             hash_field_type=hash_field_type,
@@ -180,7 +202,7 @@ def process_excel_file(
         created_fields = ensure_destination_columns(
             cursor,
             table=table,
-            mappings=first_mappings,
+            mappings=effective_first_mappings,
             default_field_type=default_field_type,
         )
         if created_fields:
@@ -346,6 +368,7 @@ def process_excel_file(
                         continue
                     seen_in_run.add(hash_value)
                     record[hash_field] = hash_value
+                    _attach_import_username(record, cfg)
                     candidates.append((row_no, record, hash_value))
 
                 if candidates:
