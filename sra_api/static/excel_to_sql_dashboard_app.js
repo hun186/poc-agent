@@ -136,24 +136,13 @@ function closeDestinationTableDropdown(applyPending = false) {
   if (dropdown.open) dropdown.open = false;
   if (applyPending) applyDestinationTablePendingFilters();
 }
-function changeRecentPage(delta) {
-  const next = state.recentPage + delta;
-  const maxPage = Math.max(1, Math.ceil(state.recentTotal / Math.max(state.recentPageSize, 1)));
-  if (next < 1 || next > maxPage) return;
-  state.recentPage = next;
-  loadDashboard();
-}
 function updateRecentPager(data) {
   const paging = data.recent_paging || {};
   state.recentPage = Number(paging.page || state.recentPage || 1);
   state.recentPageSize = Number(paging.page_size || $('limit').value || 100);
   state.recentTotal = Number(paging.total || (data.recent || []).length || 0);
-  const totalPages = Math.max(1, Math.ceil(state.recentTotal / Math.max(state.recentPageSize, 1)));
-  const start = state.recentTotal ? ((state.recentPage - 1) * state.recentPageSize + 1) : 0;
-  const end = Math.min(state.recentTotal, state.recentPage * state.recentPageSize);
-  $('recentPageInfo').textContent = `第 ${state.recentPage} / ${totalPages} 頁，顯示 ${start}-${end} 筆，共 ${state.recentTotal} 筆`;
-  $('recentPrevBtn').disabled = state.recentPage <= 1;
-  $('recentNextBtn').disabled = state.recentPage >= totalPages;
+  const page = SraAuditTools.updatePager({page: state.recentPage, pageSize: state.recentPageSize, total: state.recentTotal, infoId: 'recentPageInfo', firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', inputLabel: '最近 audit 事件頁數'});
+  state.recentPage = page.page;
 }
 function renderJson(value, level = 0) {
   const indent = '  '.repeat(level);
@@ -396,5 +385,6 @@ function bindAuditFilterEvents() {
   $('chartBucket').addEventListener('change', applyAuditFilters);
 }
 bindAuditFilterEvents();
+SraAuditTools.bindPager({firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', getPage: () => state.recentPage, setPage: page => { state.recentPage = page; }, renderPage: loadDashboard});
 // boot order includes: await loadCurrentUser(); await loadTasks(); await loadDashboard();
 (async () => { resetDefaultWindow(); applyInitialQueryParams(); await loadCurrentUser(); await loadTasks(); applyInitialQueryParams(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
