@@ -74,6 +74,9 @@
     .recent-toolbar { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin:10px 0 12px; }
     .pager { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .pager button { padding:7px 10px; }
+    .pager input { width:78px; padding:7px 9px; }
+    .pager-jump { display:inline-flex; gap:6px; align-items:center; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     #recent { table-layout:fixed; width:100%; min-width:1700px; }
     #recent th, #recent td { box-sizing:border-box; overflow-wrap:anywhere; }
     #recent th.time-col, #recent td.time-col { width:10%; min-width:128px; }
@@ -179,15 +182,18 @@
       <div class="recent-toolbar">
         <div class="upload-actions"><button class="secondary" onclick="deleteSelectedImportedRows()">批次刪除勾選 SQL 列</button><button class="ghost" id="downloadBatchDeleteReportBtn" onclick="downloadBatchDeleteReport()" disabled>下載批次刪除報告 Excel</button></div>
         <div class="muted" id="recentPageInfo">第 1 頁</div>
-        <div class="pager">
-          <button class="ghost" id="recentPrevBtn" onclick="changeRecentPage(-1)">上一頁</button>
-          <button class="ghost" id="recentNextBtn" onclick="changeRecentPage(1)">下一頁</button>
+        <div class="pager" aria-label="最近 audit 事件分頁">
+          <button class="ghost" id="recentFirstBtn" type="button">首頁</button>
+          <button class="ghost" id="recentPrevBtn" type="button">上一頁</button>
+          <span class="pager-jump"><label class="sr-only" for="recentPageInput">最近 audit 事件頁數</label><input id="recentPageInput" type="number" min="1" value="1" inputmode="numeric" /><button class="ghost" id="recentGotoBtn" type="button">跳至頁數</button></span>
+          <button class="ghost" id="recentNextBtn" type="button">下一頁</button>
+          <button class="ghost" id="recentLastBtn" type="button">末頁</button>
         </div>
       </div>
       <div class="table-wrap"><table id="recent"><colgroup><col class="select-col"><col class="time-col"><col class="status-col"><col class="file-col"><col class="user-col"><col class="row-col"><col class="message-col"><col class="op-col"><col class="action-col"><col class="payload-col"></colgroup><thead><tr><th class="select-col"><input type="checkbox" id="recentSelectAll" aria-label="勾選本頁可刪除 SQL 列" onchange="toggleRecentSelection(this.checked)"></th><th class="time-col">時間（本機）</th><th class="status-col">狀態</th><th class="file-col">檔案</th><th class="user-col">使用者</th><th class="row-col">列號</th><th class="message-col">訊息</th><th class="op-col">操作來源</th><th class="action-col">操作</th><th class="payload-col">payload</th></tr></thead><tbody></tbody></table></div>
     </section>
   </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_dashboard_app.js?v=20260615-split"></script>
+<script src="/static/excel_to_sql_dashboard_app.js?v=20260702-shared-pager"></script>
 </body>
 </html>

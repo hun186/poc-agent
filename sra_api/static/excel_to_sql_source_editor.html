@@ -56,6 +56,11 @@
     .edit-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
     textarea.sql-edit { min-height:72px; }
     .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+    .pager { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:10px 0; }
+    .pager button { padding:7px 10px; }
+    .pager input { width:78px; padding:7px 9px; }
+    .pager-jump { display:inline-flex; gap:6px; align-items:center; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   </style>
 </head>
 <body>
@@ -78,12 +83,10 @@
       <div><label>關鍵字</label><input id="query" placeholder="跨前 12 個欄位搜尋" /></div>
       <div><label>每頁筆數</label><input id="limit" type="number" min="1" max="200" value="50" /></div>
       <button id="loadBtn">載入資料列</button>
-      <button id="prevBtn" class="secondary">上一頁</button>
-      <button id="nextBtn" class="secondary">下一頁</button>
     </div>
     <section class="filters" aria-label="SQL 來源資料列篩選">
       <div><label>來源檔包含</label><input id="sourceFileFilter" placeholder="source_file 檔名片段" /></div>
-      <div class="dropdown-filter"><div class="field-label-row"><label for="usernameSummary">使用者</label><span class="help-tip" tabindex="0" data-tip="點開選單勾選一位或多位使用者；操作方式與 Excel→SQL audit dashboard 的使用者篩選相同。" aria-label="使用者篩選說明">?</span></div><details id="usernameDropdown" class="multi-select"><summary id="usernameSummary">全體使用者</summary><div class="multi-select-menu"><input id="usernameSearch" class="multi-filter-search" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="selectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="clearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="clearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="usernameFilter" role="group" aria-label="使用者清單"><div class="muted">載入後可選擇</div></div></div></details><input id="usernameFilterValue" type="hidden" /></div>
+      <div class="dropdown-filter"><div class="field-label-row"><label for="usernameSummary">匯入使用者</label><span class="help-tip" tabindex="0" data-tip="此處篩選的是執行 Excel→SQL 匯入的使用者，來源固定為 audit 記錄，不讀取 SQL 資料列自身可能存在的 username 情報欄位。" aria-label="匯入使用者篩選說明">?</span></div><details id="usernameDropdown" class="multi-select"><summary id="usernameSummary">全體匯入使用者</summary><div class="multi-select-menu"><input id="usernameSearch" class="multi-filter-search" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="selectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="clearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="clearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="usernameFilter" role="group" aria-label="使用者清單"><div class="muted">載入後可選擇</div></div></div></details><input id="usernameFilterValue" type="hidden" /></div>
       <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
       <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
       <div><label>資料欄位關鍵字</label><input id="payloadFilter" placeholder="資料欄位文字" /></div>
@@ -92,6 +95,7 @@
     </section>
     <div id="status" class="status hidden"></div>
     <p id="summary" class="muted"></p>
+    <div class="pager" aria-label="SQL 來源資料列分頁"><span id="sourcePageInfo" class="muted">第 1 頁</span><button id="sourceFirstBtn" class="secondary" type="button">首頁</button><button id="sourcePrevBtn" class="secondary" type="button">上一頁</button><span class="pager-jump"><label class="sr-only" for="sourcePageInput">SQL 來源資料列頁數</label><input id="sourcePageInput" type="number" min="1" value="1" inputmode="numeric" /><button id="sourceGotoBtn" class="secondary" type="button">跳至頁數</button></span><button id="sourceNextBtn" class="secondary" type="button">下一頁</button><button id="sourceLastBtn" class="secondary" type="button">末頁</button></div>
     <div id="tableWrap" class="source-table-wrap"></div>
   </section>
   <section id="editCard" class="card hidden">
@@ -105,6 +109,6 @@
   </section>
 </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_source_editor_app.js?v=20260702-source-editor-local-auth"></script>
+<script src="/static/excel_to_sql_source_editor_app.js?v=20260702-shared-pager"></script>
 </body>
 </html>

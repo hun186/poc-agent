@@ -35,9 +35,15 @@ class FakeCursor:
                 ("row_no", "int", "YES"),
                 ("username", "nvarchar", "YES"),
             ]
+        elif normalized.startswith("SELECT DISTINCT TOP (200)") and "FROM [dbo].[ExcelAudit]" in normalized:
+            self.description = [("username",)]
+            self._rows = [("importer_alice",), ("importer_bob",)]
+        elif normalized.startswith("SELECT hash_value, MAX") and "FROM [dbo].[ExcelAudit]" in normalized:
+            self.description = [("hash_value",), ("username",)]
+            self._rows = [("h1", "importer_alice")]
         elif normalized.startswith("SELECT DISTINCT TOP (200)"):
             self.description = [("username",)]
-            self._rows = [("alice",), ("bob",)]
+            self._rows = [("source_username_should_not_be_used",)]
         elif normalized.startswith("SELECT COUNT(*) AS total"):
             self.description = [("total",)]
             self._one = (1,)
@@ -97,12 +103,14 @@ def test_list_sql_source_rows_uses_task_destination_and_blocks_system_columns(mo
     assert result["hash_field"] == "hash_value"
     assert result["total"] == 1
     assert result["rows"][0]["title"] == "舊標題"
-    assert result["username_options"] == ["alice", "bob"]
+    assert result["username_options"] == ["importer_alice", "importer_bob"]
+    assert result["rows"][0]["_import_username"] == "importer_alice"
+    assert {col["name"] for col in result["columns"]} >= {"username", "_import_username"}
     assert result["editable_columns"] == ["title", "content"]
     assert any("CAST([title] AS NVARCHAR(MAX)) LIKE ?" in sql for sql, _ in conn.cursor_obj.calls)
 
 
-def test_list_sql_source_rows_filters_by_username_with_available_user_column(monkeypatch):
+def test_list_sql_source_rows_filters_by_import_username_from_audit_even_with_available_user_column(monkeypatch):
     conn = FakeConnection()
     monkeypatch.setattr(table_editor, "load_json_config", lambda path: CFG)
 
@@ -112,8 +120,10 @@ def test_list_sql_source_rows_filters_by_username_with_available_user_column(mon
 
     count_calls = [call for call in conn.cursor_obj.calls if call[0].strip().startswith("SELECT COUNT(*) AS total")]
     assert count_calls
-    assert "COALESCE(NULLIF(CAST([username] AS NVARCHAR(255)), '')) IN (?, ?)" in count_calls[-1][0]
-    assert count_calls[-1][1] == (("alice", "bob"),)
+    assert "FROM [dbo].[ExcelAudit] aud" in count_calls[-1][0]
+    assert "aud.hash_value = [dbo].[Target].[hash_value]" in count_calls[-1][0]
+    assert "aud.username" in count_calls[-1][0]
+    assert count_calls[-1][1] == (("dbo.Target", "alice", "bob"),)
 
 
 def test_update_sql_source_row_writes_audit_and_rejects_system_columns(monkeypatch):

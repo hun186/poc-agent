@@ -22,7 +22,7 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         html = (STATIC_ROOT / filename).read_text(encoding="utf-8")
         script_urls.update(re.findall(r'<script src="([^"]+)"', html))
 
-    assert "/static/excel_to_sql_source_editor_app.js?v=20260702-source-editor-local-auth" in script_urls
+    assert "/static/excel_to_sql_source_editor_app.js?v=20260702-shared-pager" in script_urls
     for script_url in sorted(script_urls):
         response = TestClient(app).get(script_url)
 
@@ -232,7 +232,7 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "受控 SQL 來源資料表" in source_html
     assert "scope-help-tooltip" in source_html
     assert "sourceEditorScopeHelpText" in source_html
-    assert "20260702-source-editor-local-auth" in source_html
+    assert "20260702-shared-pager" in source_html
     assert "/v1/excel-to-sql/source-rows" in source_js
     assert "/v1/excel-to-sql/source-row" in source_js
     assert "function authToken()" in source_js
@@ -240,7 +240,7 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "sessionStorage.getItem(tokenKey)" not in source_js
     assert "const loadMe = loadCurrentUser" in source_js
     assert "sra_token" not in source_js
-    assert '<label for="usernameSummary">使用者</label>' in source_html
+    assert '<label for="usernameSummary">匯入使用者</label>' in source_html
     assert '<script src="/static/audit_tools.js"></script>' in source_html
     assert "SraAuditTools.renderMultiFilterOptions" in source_js
     assert "params.append('username_filter', value)" in source_js

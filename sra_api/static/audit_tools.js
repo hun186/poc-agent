@@ -172,6 +172,55 @@
       end: Math.min(total, startIndex + size),
     };
   }
+
+  function updatePager(options) {
+    const pageData = options.pageData || {};
+    const currentPage = Math.max(1, Number(pageData.page || options.page || 1));
+    const pageSize = Math.max(1, Number(pageData.pageSize || pageData.page_size || options.pageSize || 25));
+    const total = Math.max(0, Number(pageData.total || options.total || 0));
+    const totalPages = Math.max(1, Number(pageData.totalPages || Math.ceil(total / pageSize) || 1));
+    const start = total ? Number(pageData.start || ((currentPage - 1) * pageSize + 1)) : 0;
+    const end = total ? Number(pageData.end || Math.min(total, currentPage * pageSize)) : 0;
+    const info = options.infoEl || (options.infoId ? document.getElementById(options.infoId) : null);
+    const first = options.firstEl || (options.firstId ? document.getElementById(options.firstId) : null);
+    const prev = options.prevEl || (options.prevId ? document.getElementById(options.prevId) : null);
+    const input = options.inputEl || (options.inputId ? document.getElementById(options.inputId) : null);
+    const goto = options.gotoEl || (options.gotoId ? document.getElementById(options.gotoId) : null);
+    const next = options.nextEl || (options.nextId ? document.getElementById(options.nextId) : null);
+    const last = options.lastEl || (options.lastId ? document.getElementById(options.lastId) : null);
+    if (info) info.textContent = options.label || `第 ${currentPage} / ${totalPages} 頁，顯示 ${start}-${end} 筆，共 ${total} 筆`;
+    [first, prev].forEach((el) => { if (el) el.disabled = currentPage <= 1; });
+    [next, last].forEach((el) => { if (el) el.disabled = currentPage >= totalPages; });
+    if (input) {
+      input.value = String(currentPage);
+      input.min = '1';
+      input.max = String(totalPages);
+      input.setAttribute('aria-label', options.inputLabel || '頁數');
+    }
+    if (goto) goto.disabled = totalPages <= 1 && currentPage === 1;
+    return { page: currentPage, pageSize, total, totalPages, start, end };
+  }
+  function bindPager(options) {
+    const getPage = options.getPage || (() => 1);
+    const setPage = options.setPage || (() => {});
+    const renderPage = options.renderPage || (() => {});
+    const jumpTo = (page) => { setPage(page); renderPage(); };
+    const bind = (idOrEl, handler) => {
+      const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+      if (el) el.onclick = handler;
+    };
+    bind(options.firstId || options.firstEl, () => jumpTo(1));
+    bind(options.prevId || options.prevEl, () => jumpTo(getPage() - 1));
+    bind(options.nextId || options.nextEl, () => jumpTo(getPage() + 1));
+    bind(options.lastId || options.lastEl, () => jumpTo(Number.MAX_SAFE_INTEGER));
+    bind(options.gotoId || options.gotoEl, () => {
+      const input = typeof options.inputId === 'string' ? document.getElementById(options.inputId) : options.inputEl;
+      jumpTo(Number(input?.value || 1));
+    });
+    const input = typeof options.inputId === 'string' ? document.getElementById(options.inputId) : options.inputEl;
+    if (input) input.onkeydown = (ev) => { if (ev.key === 'Enter') jumpTo(Number(ev.currentTarget.value || 1)); };
+  }
+
   window.SraAuditTools = {
     escapeHtml,
     normalizeBucketLabel,
@@ -185,5 +234,7 @@
     setVisibleMultiFilterSelection,
     bindProgressiveNav,
     paginateRows,
+    updatePager,
+    bindPager,
   };
 }());

@@ -27,6 +27,7 @@ SYSTEM_COLUMNS = {
     "audit_actor",
     "audit_user",
     "actor",
+    "_import_username",
 }
 
 
@@ -92,19 +93,23 @@ def _normalize_filter_values(value: str | list[str] | None) -> list[str]:
     return result
 
 
-def _username_columns(columns: list[dict[str, Any]]) -> list[str]:
-    available = {str(col.get("name") or "").lower(): str(col.get("name") or "") for col in columns}
-    return [available[name] for name in ("username", "audit_actor", "audit_user", "actor") if name in available]
+def _audit_username_expr(alias: str = '') -> str:
+    prefix = f'{alias}.' if alias else ''
+    return (
+        f"COALESCE(NULLIF({prefix}username, ''), "
+        f"NULLIF(JSON_VALUE({prefix}row_payload, '$.audit_actor'), ''), "
+        f"NULLIF(JSON_VALUE({prefix}row_payload, '$.audit_user'), ''), "
+        f"NULLIF(JSON_VALUE({prefix}row_payload, '$.actor'), ''))"
+    )
 
 
-def _load_username_options(cursor, table: str, username_cols: list[str]) -> list[str]:
-    if not username_cols:
-        return []
-    expr = "COALESCE(" + ", ".join(f"NULLIF(CAST({quote_ident(col)} AS NVARCHAR(255)), '')" for col in username_cols) + ")"
+def _load_audit_username_options(cursor, audit_table: str, destination_table: str) -> list[str]:
+    expr = _audit_username_expr()
     cursor.execute(
         f"SELECT DISTINCT TOP (200) {expr} AS username "
-        f"FROM {quote_object_path(table)} "
-        f"WHERE {expr} IS NOT NULL ORDER BY username"
+        f"FROM {quote_object_path(audit_table)} "
+        "WHERE destination_table = ? AND " + expr + " IS NOT NULL ORDER BY username",
+        destination_table,
     )
     values: list[str] = []
     for row in cursor.fetchall():
@@ -113,6 +118,28 @@ def _load_username_options(cursor, table: str, username_cols: list[str]) -> list
         if username and username not in values:
             values.append(username)
     return values
+
+
+def _audit_usernames_by_hash(cursor, audit_table: str, destination_table: str, hash_values: list[str]) -> dict[str, str]:
+    clean_hashes = [str(value or "").strip() for value in hash_values if str(value or "").strip()]
+    if not clean_hashes:
+        return {}
+    expr = _audit_username_expr()
+    placeholders = ", ".join("?" for _ in clean_hashes)
+    cursor.execute(
+        f"SELECT hash_value, MAX({expr}) AS username FROM {quote_object_path(audit_table)} "
+        f"WHERE destination_table = ? AND hash_value IN ({placeholders}) GROUP BY hash_value",
+        destination_table,
+        *clean_hashes,
+    )
+    result: dict[str, str] = {}
+    for row in cursor.fetchall():
+        data = _row_to_dict(cursor, row)
+        hash_value = str(data.get("hash_value") or "").strip()
+        username = str(data.get("username") or "").strip()
+        if hash_value and username:
+            result[hash_value] = username
+    return result
 
 
 def _write_editor_audit(
@@ -198,8 +225,8 @@ def list_sql_source_rows(
             if not columns:
                 raise ValueError(f"找不到 SQL table 欄位資訊：{table}")
             search_cols = [col["name"] for col in columns[:12]]
-            username_cols = _username_columns(columns)
-            username_options = _load_username_options(cursor, table, username_cols)
+            audit_table = _audit_table(cfg)
+            username_options = _load_audit_username_options(cursor, audit_table, table)
             params: list[Any] = []
             conditions: list[str] = []
             available = {str(col["name"]).lower(): str(col["name"]) for col in columns}
@@ -222,10 +249,15 @@ def list_sql_source_rows(
                 conditions.append(f"CAST({quote_ident(available[hash_field.lower()])} AS NVARCHAR(MAX)) LIKE ?")
                 params.append(f"%{clean_hash_filter}%")
             clean_usernames = _normalize_filter_values(username_filter)
-            if clean_usernames and username_cols:
-                user_expr = "COALESCE(" + ", ".join(f"NULLIF(CAST({quote_ident(col)} AS NVARCHAR(255)), '')" for col in username_cols) + ")"
+            if clean_usernames:
+                audit_user_expr = _audit_username_expr("aud")
                 placeholders = ", ".join("?" for _ in clean_usernames)
-                conditions.append(f"{user_expr} IN ({placeholders})")
+                conditions.append(
+                    f"EXISTS (SELECT 1 FROM {quote_object_path(audit_table)} aud "
+                    f"WHERE aud.destination_table = ? AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)} "
+                    f"AND {audit_user_expr} IN ({placeholders}))"
+                )
+                params.append(table)
                 params.extend(clean_usernames)
             clean_payload = str(payload_filter or "").strip()
             if clean_payload:
@@ -245,6 +277,11 @@ def list_sql_source_rows(
             )
             cursor.execute(data_sql, tuple(params + [offset, limit]))
             rows = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+            audit_usernames = _audit_usernames_by_hash(cursor, audit_table, table, [row.get(hash_field) for row in rows])
+            for row in rows:
+                row["_import_username"] = audit_usernames.get(str(row.get(hash_field) or "").strip(), "")
+            if not any(str(col.get("name") or "").lower() == "_import_username" for col in columns):
+                columns.append({"name": "_import_username", "data_type": "nvarchar", "nullable": True})
             return {
                 "ok": True,
                 "config_path": str(Path(config_path)),

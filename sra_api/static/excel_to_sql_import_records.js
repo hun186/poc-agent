@@ -3,6 +3,8 @@ let currentUserRole = '';
 let taskConfigReviewTasks = [];
 let dashboardTasks = [];
 let connectionSourceTasks = [];
+const importRecordsPager = { page: 1, pageSize: 25, rows: [] };
+const myTaskConfigsPager = { page: 1, pageSize: 25, rows: [] };
 const ROLE_SUPERUSER = 'superuser';
 const ROLE_DB_OPERATOR = 'db_operator';
 function $(id) { return document.getElementById(id); }
@@ -38,6 +40,16 @@ async function responseErrorText(res) {
   }
 }
 function fillTable(id, rows, render) { document.querySelector(`#${id} tbody`).innerHTML = rows.map(render).join('') || '<tr><td colspan="99" class="muted">無資料</td></tr>'; }
+function renderPagedTable(tableId, pager, render, prefix) {
+  const page = SraAuditTools.paginateRows(pager.rows, pager.page, pager.pageSize);
+  pager.page = page.page;
+  fillTable(tableId, page.rows, render);
+  SraAuditTools.updatePager({pageData: page, infoId: `${prefix}PageInfo`, firstId: `${prefix}FirstBtn`, prevId: `${prefix}PrevBtn`, inputId: `${prefix}PageInput`, gotoId: `${prefix}GotoBtn`, nextId: `${prefix}NextBtn`, lastId: `${prefix}LastBtn`, inputLabel: `${prefix} 頁數`});
+}
+function bindPagedTable(prefix, pager, renderPage) {
+  if (!document.getElementById(`${prefix}PageInfo`)) return;
+  SraAuditTools.bindPager({firstId: `${prefix}FirstBtn`, prevId: `${prefix}PrevBtn`, inputId: `${prefix}PageInput`, gotoId: `${prefix}GotoBtn`, nextId: `${prefix}NextBtn`, lastId: `${prefix}LastBtn`, getPage: () => pager.page, setPage: page => { pager.page = page; }, renderPage});
+}
 function pad2(v) { return String(v).padStart(2, '0'); }
 function normalizeAuditUtc(text) { const raw = String(text || ''); if (!raw) return null; const trimmed = raw.replace(/(\.\d{3})\d+/, '$1'); return /[zZ]|[+-]\d\d:?\d\d$/.test(trimmed) ? trimmed : trimmed + 'Z'; }
 function formatAuditTime(value) { const raw = String(value || ''); const normalized = normalizeAuditUtc(raw); if (!normalized) return ''; const local = new Date(normalized); if (Number.isNaN(local.getTime())) return escapeHtml(raw); return `<div>${escapeHtml(local.toLocaleString())}</div><div class="muted">UTC：${escapeHtml(raw)}</div>`; }
@@ -205,7 +217,12 @@ async function loadImportRecords() {
   const data = await res.json();
   const rows = data.records || [];
   window.__importRecordById = Object.fromEntries(rows.map(row => [String(row.id), row]));
-  fillTable('importRecords', rows, r => { const c=importRecordCounts(r); return `<tr><td data-label="日期">${formatAuditTime(r.created_at)}</td><td data-label="使用者">${escapeHtml(r.username)}</td><td data-label="原始檔名">${escapeHtml(r.original_filename)}</td><td data-label="導入檔名"><code>${escapeHtml(r.stored_filename || '')}</code></td><td data-label="設定檔">${escapeHtml(r.config_path)}</td><td data-label="狀態">${statusBadge(r.status)}</td><td data-label="新增">${escapeHtml(c.inserted_rows ?? c.will_insert ?? '')}</td><td data-label="重複">${escapeHtml(c.duplicate_rows ?? c.duplicate ?? '')}</td><td data-label="錯誤">${escapeHtml(c.failed_rows ?? c.failed ?? '')}</td><td data-label="大小">${escapeHtml(r.file_size || 0)}</td><td data-label="錯誤診斷">${importRecordDiagnostics(r)}</td><td data-label="操作">${importRecordActions(r)}</td></tr>`; });
+  importRecordsPager.rows = rows;
+  importRecordsPager.page = 1;
+  renderImportRecordsPage();
+}
+function renderImportRecordsPage() {
+  renderPagedTable('importRecords', importRecordsPager, r => { const c=importRecordCounts(r); return `<tr><td data-label="日期">${formatAuditTime(r.created_at)}</td><td data-label="使用者">${escapeHtml(r.username)}</td><td data-label="原始檔名">${escapeHtml(r.original_filename)}</td><td data-label="導入檔名"><code>${escapeHtml(r.stored_filename || '')}</code></td><td data-label="設定檔">${escapeHtml(r.config_path)}</td><td data-label="狀態">${statusBadge(r.status)}</td><td data-label="新增">${escapeHtml(c.inserted_rows ?? c.will_insert ?? '')}</td><td data-label="重複">${escapeHtml(c.duplicate_rows ?? c.duplicate ?? '')}</td><td data-label="錯誤">${escapeHtml(c.failed_rows ?? c.failed ?? '')}</td><td data-label="大小">${escapeHtml(r.file_size || 0)}</td><td data-label="錯誤診斷">${importRecordDiagnostics(r)}</td><td data-label="操作">${importRecordActions(r)}</td></tr>`; }, 'importRecords');
 }
 function mappingRowTemplate(index) {
   return `<div class="mapping-row" data-mapping-row="1"><div><label>來源欄位</label><input class="mapping-source" placeholder="Excel 欄名" /></div><div><label>目的欄位</label><input class="mapping-dest" placeholder="sql_field" /></div><div><label>SQL 型別</label><input class="mapping-type" list="sqlTypeOptions" placeholder="長文字建議 NVARCHAR(MAX)，短代碼才用 NVARCHAR(255)" /></div><div><label>比對 <button class="ghost" onclick="showMatchHelp()" type="button">?</button></label><select class="mapping-match"><option value="">預設</option><option value="exact">exact</option><option value="prefix">prefix</option><option value="contains">contains</option></select></div><div><label>必填</label><select class="mapping-required"><option value="false">否</option><option value="true">是</option></select></div><button class="secondary" onclick="removeTaskMappingRow(this)" type="button">移除</button></div>`;
@@ -390,7 +407,12 @@ async function loadMyTaskConfigs() {
   const res = await fetch('/v1/excel-to-sql/task-configs?scope=mine', { headers:{ Authorization:'Bearer ' + authToken() } });
   if (!res.ok) return;
   const rows = (await res.json()).tasks || [];
-  fillTable('myTaskConfigs', rows, task => `<tr><td>${escapeHtml(task.name || '')}</td><td><code>${escapeHtml(task.config_path || '')}</code></td><td>${taskConfigStatusBadge(task.status, task.enabled)}</td><td>${escapeHtml(task.approved_by || '')}</td><td>${myTaskConfigActions(task)}</td></tr>`);
+  myTaskConfigsPager.rows = rows;
+  myTaskConfigsPager.page = 1;
+  renderMyTaskConfigsPage();
+}
+function renderMyTaskConfigsPage() {
+  renderPagedTable('myTaskConfigs', myTaskConfigsPager, task => `<tr><td>${escapeHtml(task.name || '')}</td><td><code>${escapeHtml(task.config_path || '')}</code></td><td>${taskConfigStatusBadge(task.status, task.enabled)}</td><td>${escapeHtml(task.approved_by || '')}</td><td>${myTaskConfigActions(task)}</td></tr>`, 'myTaskConfigs');
 }
 async function disableMyTaskConfig(config) {
   if (!config) return;
@@ -414,5 +436,5 @@ if (document.getElementById('importRecords') || document.getElementById('taskCon
     addTaskMappingRow();
     if ($('taskConnectionSource')) $('taskConnectionSource').onchange = () => applyConnectionSourceDefaults(connectionSourceTasks);
   }
-  (async () => { await loadCurrentUser(); await loadTasks(); await loadMyTaskConfigs(); if (document.getElementById('importRecords')) await loadImportRecords(); })().catch(err => showError(err.message || String(err)));
+  (async () => { bindPagedTable('importRecords', importRecordsPager, renderImportRecordsPage); bindPagedTable('myTaskConfigs', myTaskConfigsPager, renderMyTaskConfigsPage); await loadCurrentUser(); await loadTasks(); await loadMyTaskConfigs(); if (document.getElementById('importRecords')) await loadImportRecords(); })().catch(err => showError(err.message || String(err)));
 }

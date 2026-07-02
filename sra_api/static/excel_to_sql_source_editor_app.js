@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 const tokenKey = 'sra_editor_token';
-const state = { page: 1, data: null, editing: null, usernameOptions: [], selectedUsers: [], usernameDirty: false };
+const state = { page: 1, data: null, editing: null, usernameOptions: [], selectedUsers: [], usernameDirty: false, pageSize: 50, total: 0 };
 function authToken() { return localStorage.getItem(tokenKey) || ''; }
 function token() { return authToken(); }
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -54,7 +54,7 @@ function updateUsernameSummary() {
     selectedValues: state.selectedUsers,
     hiddenInput: $('usernameFilterValue'),
     summaryEl: $('usernameSummary'),
-    allLabel: '全體使用者',
+    allLabel: '全體匯入使用者',
     unitLabel: '位使用者',
   });
 }
@@ -87,8 +87,10 @@ function renderTable() {
   }).join('') || `<tr><td colspan="${cols.length + 1}" class="muted">沒有資料列</td></tr>`;
   $('tableWrap').innerHTML = `<table class="source-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
   document.querySelectorAll('[data-edit-index]').forEach(btn => btn.onclick = () => startEdit(Number(btn.dataset.editIndex)));
-  $('prevBtn').disabled = data.page <= 1;
-  $('nextBtn').disabled = !data.has_more;
+  state.page = Number(data.page || state.page || 1);
+  state.pageSize = Number(data.limit || $('limit').value || 50);
+  state.total = Number(data.total || rows.length || 0);
+  SraAuditTools.updatePager({page: state.page, pageSize: state.pageSize, total: state.total, infoId: 'sourcePageInfo', firstId: 'sourceFirstBtn', prevId: 'sourcePrevBtn', inputId: 'sourcePageInput', gotoId: 'sourceGotoBtn', nextId: 'sourceNextBtn', lastId: 'sourceLastBtn', inputLabel: 'SQL 來源資料列頁數'});
 }
 async function loadRows(page=1) {
   if (!token()) { show('status', '請先到 /editor 登入；本頁會沿用 sra_editor_token。', 'error'); return; }
@@ -129,8 +131,7 @@ $('task').onchange = () => { if ($('task').value) $('config').value = $('task').
 $('loadBtn').onclick = () => loadRows(1);
 $('applyFiltersBtn').onclick = () => loadRows(1);
 $('clearFiltersBtn').onclick = () => { ['query','sourceFileFilter','rowNoFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); loadRows(1); };
-$('prevBtn').onclick = () => loadRows(Math.max(1, state.page - 1));
-$('nextBtn').onclick = () => loadRows(state.page + 1);
+SraAuditTools.bindPager({firstId: 'sourceFirstBtn', prevId: 'sourcePrevBtn', inputId: 'sourcePageInput', gotoId: 'sourceGotoBtn', nextId: 'sourceNextBtn', lastId: 'sourceLastBtn', getPage: () => state.page, setPage: page => { state.page = page; }, renderPage: () => loadRows(state.page)});
 $('saveBtn').onclick = saveEdit;
 $('cancelEditBtn').onclick = () => { $('editCard').classList.add('hidden'); state.editing = null; };
 

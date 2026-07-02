@@ -71,3 +71,15 @@
 
 - 結論：目前 SQL 來源資料編輯器與 Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、JSON 任務管理皆使用同一個 localStorage key `sra_editor_token`，並呼叫 `/v1/auth/me` 驗證身份；使用者看到唯獨 SQL 來源資料編輯器顯示未登入，是因該頁專用 JS 檔被 `/static/{filename}` 白名單擋下而 404，導致身份驗證程式完全沒有執行，不是 token 傳遞流程不同。
 - 主要修改：回歸測試從只檢查單一 SQL 來源資料編輯器 JS，改為掃描四個 Excel→SQL HTML 頁面引用的 `/static/*.js`，逐一用 FastAPI `TestClient` 確認都能被 static route 服務，避免同類白名單漏列問題再次發生。
+
+### 2026-07-02 SQL 來源資料編輯器使用者欄位與共用分頁 helper
+
+- 目的：修正 SQL 來源資料編輯器使用者篩選無選項、資料列缺少使用者欄位，並將文件異動記錄使用的完整分頁導航體驗推廣到多個容易累積大量資料的管理區塊。
+- 主要修改：`data_ingestion/excel_to_sql/table_editor.py` 在目的資料表沒有 `username` / `audit_actor` / `audit_user` / `actor` 欄位時，改從 Excel→SQL audit table 依 `destination_table` 與 `hash_value` 補回使用者選項與 `_audit_username` 虛擬欄位；`sra_api/static/audit_tools.js` 新增 `updatePager()` / `bindPager()` 共用 helper；套用到 Excel→SQL audit 最近事件、Excel 匯入記錄管理、SQL 來源資料編輯器、任務 JSON「我建立的任務清單 / 審核進度」、Editor 帳號審核等分頁區塊，補上首頁 / 上一頁 / 頁碼輸入跳轉 / 下一頁 / 末頁。
+- 驗證：`node --check sra_api/static/audit_tools.js && node --check sra_api/static/excel_to_sql_source_editor_app.js && node --check sra_api/static/excel_to_sql_dashboard_app.js && node --check sra_api/static/excel_to_sql_import_records.js`；`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_dashboard_static.py tests/test_editor_auth_ui_static.py -q`。依專案要求也先執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt`；pip index 仍有 403 retry，但 requirements 已滿足。
+
+### 2026-07-02 SQL 來源資料編輯器匯入使用者語意修正
+
+- 目的：依使用者回饋，SQL 來源資料編輯器的「使用者」篩選應精確代表「執行 Excel→SQL 匯入的使用者」，不得讀取目的資料表自身可能存在的 `username` 情報欄位，以免特殊資料表欄位語意混淆。
+- 主要修改：`data_ingestion/excel_to_sql/table_editor.py` 的 `username_options`、`username_filter` 與回傳列上的使用者欄位一律從 Excel→SQL audit table 取得；目的資料列即使有 native `username` 欄位，也只當一般資料欄位顯示，不再作為匯入使用者篩選來源。SQL 來源資料編輯器 UI 文案改為「匯入使用者」，回傳列補 `_import_username` 虛擬欄位表示匯入操作者。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍有 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js && node --check sra_api/static/excel_to_sql_source_editor_app.js && node --check sra_api/static/excel_to_sql_dashboard_app.js && node --check sra_api/static/excel_to_sql_import_records.js && node --check sra_api/static/editor_documents.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_dashboard_static.py tests/test_editor_auth_ui_static.py -q`。

@@ -143,6 +143,7 @@
     <h3 class="section-title">我建立的任務清單 / 審核進度</h3>
     <p class="muted">資料庫管理者只能看到與處理自己建立的任務；superuser 的全站審核區塊另列於下方。</p>
     <div class="upload-actions"><button class="secondary" onclick="loadMyTaskConfigs()">重新整理我的任務</button></div>
+    <div class="pager" aria-label="我建立的任務清單分頁"><span id="myTaskConfigsPageInfo" class="muted">第 1 頁</span><button id="myTaskConfigsFirstBtn" class="secondary" type="button">首頁</button><button id="myTaskConfigsPrevBtn" class="secondary" type="button">上一頁</button><span class="pager-jump"><label class="sr-only" for="myTaskConfigsPageInput">我建立的任務清單頁數</label><input id="myTaskConfigsPageInput" type="number" min="1" value="1" inputmode="numeric" /><button id="myTaskConfigsGotoBtn" class="secondary" type="button">跳至頁數</button></span><button id="myTaskConfigsNextBtn" class="secondary" type="button">下一頁</button><button id="myTaskConfigsLastBtn" class="secondary" type="button">末頁</button></div>
     <div class="table-wrap"><table id="myTaskConfigs"><thead><tr><th>任務名稱</th><th>設定檔</th><th>狀態</th><th>審核者</th><th>操作</th></tr></thead><tbody></tbody></table></div>
     <div id="superuserTaskReview" class="hidden">
       <h3 class="section-title">Superuser 任務審核 / 停用 / 刪除</h3>
@@ -154,6 +155,7 @@
   </section>
 
 </main>
-<script src="/static/excel_to_sql_import_records.js?v=20260629-compose-help-alerts"></script>
+<script src="/static/audit_tools.js"></script>
+<script src="/static/excel_to_sql_import_records.js?v=20260702-shared-pager"></script>
 </body>
 </html>
