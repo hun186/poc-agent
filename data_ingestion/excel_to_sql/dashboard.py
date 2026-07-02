@@ -156,8 +156,8 @@ def _audit_source_scope_conditions(
     for prefix in prefix_values:
         clauses.append("source_file LIKE ?")
         params.append(prefix + "%")
-    if not clauses:
-        return [], []
+    clauses.append("(run_id = ? AND JSON_VALUE(row_payload, '$.config_path') = ?)")
+    params.extend(["manual-control", str(Path(config_path))])
     return ["(" + " OR ".join(clauses) + ")"], params
 
 def dashboard_payload(

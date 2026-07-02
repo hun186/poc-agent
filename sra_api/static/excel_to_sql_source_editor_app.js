@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 const tokenKey = 'sra_editor_token';
-const state = { page: 1, data: null, editing: null, usernameOptions: [], selectedUsers: [], usernameDirty: false, pageSize: 50, total: 0 };
+const state = { page: 1, data: null, editing: null, usernameOptions: [], selectedUsers: [], usernameDirty: false, pageSize: 50, total: 0, role: '', canEdit: false, canDelete: false, canBatchDelete: false };
 function authToken() { return localStorage.getItem(tokenKey) || ''; }
 function token() { return authToken(); }
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -20,7 +20,8 @@ async function loadCurrentUser() {
     if (!res.ok) throw new Error('unauthorized');
     const data = await res.json();
     const user = data.user || {};
-    $('whoami').textContent = user.username ? `${user.username} (${user.role || '-'})` : '未登入';
+    state.role = user.role || '';
+    $('whoami').textContent = user.username ? `${user.username} (${state.role || '-'})` : '未登入';
     return true;
   } catch (_) {
     $('whoami').textContent = '登入已失效';
@@ -73,6 +74,19 @@ function cellValue(value) {
   if (value && typeof value === 'object') return JSON.stringify(value, null, 2);
   return String(value ?? '');
 }
+function localInputToUtcIso(id) { const el = $(id); const v = el?.value || ''; return v ? new Date(v).toISOString() : ''; }
+function normalizeAuditUtc(text) { const raw = String(text || ''); if (!raw) return null; const trimmed = raw.replace(/(\.\d{3})\d+/, '$1'); return /[zZ]|[+-]\d\d:?\d\d$/.test(trimmed) ? trimmed : trimmed + 'Z'; }
+function formatSourceTime(value) { const raw = String(value || ''); const normalized = normalizeAuditUtc(raw); if (!normalized) return ''; const local = new Date(normalized); if (Number.isNaN(local.getTime())) return raw; return `${local.toLocaleString()}\nUTC：${raw}`; }
+function displayColumnName(name) { return ({_import_username:'匯入使用者', _imported_at:'匯入執行時間', _source_excel:'來源 Excel'}[name] || name); }
+function sourceColumnClass(name) { return name === '_import_username' ? 'col-import-user' : (name === '_source_excel' ? 'col-source-excel' : ''); }
+function sourceCellClass(name, isEditable) { return `${isEditable ? '' : 'muted'} ${sourceColumnClass(name)}`.trim(); }
+function formatSourceCell(name, value) { return name === '_imported_at' ? formatSourceTime(value) : cellValue(value); }
+function rowActions(index, hashValue) {
+  const checkbox = state.canBatchDelete && hashValue ? `<label class="row-check"><input type="checkbox" data-source-delete-check value="${esc(hashValue)}" />批刪</label>` : '';
+  const editBtn = state.canEdit ? `<button class="secondary" data-edit-index="${index}">編輯</button>` : '';
+  const deleteBtn = state.canDelete && hashValue ? `<button class="ghost danger" data-delete-hash="${esc(hashValue)}">刪除</button>` : '';
+  return `<div class="source-actions">${checkbox}${editBtn}${deleteBtn || '<span class="muted">唯讀</span>'}</div>`;
+}
 function renderTable() {
   const data = state.data;
   if (!data) return;
@@ -80,22 +94,30 @@ function renderTable() {
   const cols = data.columns || [];
   const rows = data.rows || [];
   const editable = new Set(data.editable_columns || []);
-  const head = '<tr><th>操作</th>' + cols.map(c => `<th title="${esc(c.data_type || '')}${c.nullable ? '; nullable' : ''}">${esc(c.name)}</th>`).join('') + '</tr>';
+  const canEdit = Boolean(data.can_edit);
+  const canDelete = Boolean(data.can_delete);
+  const canBatchDelete = Boolean(data.can_batch_delete);
+  state.canEdit = canEdit; state.canDelete = canDelete; state.canBatchDelete = canBatchDelete;
+  const head = '<tr><th>操作</th>' + cols.map(c => `<th class="${sourceColumnClass(c.name)}" title="${esc(c.data_type || '')}${c.nullable ? '; nullable' : ''}">${esc(displayColumnName(c.name))}</th>`).join('') + '</tr>';
   const body = rows.map((r, idx) => {
-    const tds = cols.map(c => `<td class="${editable.has(c.name) ? '' : 'muted'}"><pre>${esc(cellValue(r[c.name]))}</pre></td>`).join('');
-    return `<tr><td><button class="secondary" data-edit-index="${idx}">編輯</button></td>${tds}</tr>`;
+    const hashValue = r[data.hash_field] || '';
+    const tds = cols.map(c => `<td class="${sourceCellClass(c.name, editable.has(c.name))}"><pre>${esc(formatSourceCell(c.name, r[c.name]))}</pre></td>`).join('');
+    return `<tr><td>${rowActions(idx, hashValue)}</td>${tds}</tr>`;
   }).join('') || `<tr><td colspan="${cols.length + 1}" class="muted">沒有資料列</td></tr>`;
   $('tableWrap').innerHTML = `<table class="source-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
   document.querySelectorAll('[data-edit-index]').forEach(btn => btn.onclick = () => startEdit(Number(btn.dataset.editIndex)));
+  document.querySelectorAll('[data-delete-hash]').forEach(btn => btn.onclick = () => deleteSourceRow(btn.dataset.deleteHash));
+  document.querySelectorAll('[data-source-delete-check]').forEach(input => input.onchange = updateBatchDeleteSummary);
+  updateBatchDeleteControls();
   state.page = Number(data.page || state.page || 1);
-  state.pageSize = Number(data.limit || $('limit').value || 50);
+  state.pageSize = Number(data.limit || state.pageSize || 50);
   state.total = Number(data.total || rows.length || 0);
   SraAuditTools.updatePager({page: state.page, pageSize: state.pageSize, total: state.total, infoId: 'sourcePageInfo', firstId: 'sourceFirstBtn', prevId: 'sourcePrevBtn', inputId: 'sourcePageInput', gotoId: 'sourceGotoBtn', nextId: 'sourceNextBtn', lastId: 'sourceLastBtn', inputLabel: 'SQL 來源資料列頁數'});
 }
 async function loadRows(page=1) {
   if (!token()) { show('status', '請先到 /editor 登入；本頁會沿用 sra_editor_token。', 'error'); return; }
   state.page = page;
-  const params = new URLSearchParams({config: $('config').value.trim(), q: $('query').value.trim(), source_file_filter: $('sourceFileFilter').value.trim(), hash_value_filter: $('hashFilter').value.trim(), payload_filter: $('payloadFilter').value.trim(), page: String(state.page), limit: String($('limit').value || 50)});
+  const params = new URLSearchParams({config: $('config').value.trim(), q: $('query').value.trim(), source_file_filter: $('sourceFileFilter').value.trim(), hash_value_filter: $('hashFilter').value.trim(), payload_filter: $('payloadFilter').value.trim(), import_start_ts: localInputToUtcIso('importStartFilter'), import_end_ts: localInputToUtcIso('importEndFilter'), page: String(state.page), limit: String(state.pageSize || 50)});
   if ($('rowNoFilter').value) params.set('row_no_filter', $('rowNoFilter').value);
   state.selectedUsers.forEach(value => params.append('username_filter', value));
   show('status', '載入中...');
@@ -130,10 +152,36 @@ async function saveEdit() {
 $('task').onchange = () => { if ($('task').value) $('config').value = $('task').value; loadRows(1); };
 $('loadBtn').onclick = () => loadRows(1);
 $('applyFiltersBtn').onclick = () => loadRows(1);
-$('clearFiltersBtn').onclick = () => { ['query','sourceFileFilter','rowNoFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); loadRows(1); };
-SraAuditTools.bindPager({firstId: 'sourceFirstBtn', prevId: 'sourcePrevBtn', inputId: 'sourcePageInput', gotoId: 'sourceGotoBtn', nextId: 'sourceNextBtn', lastId: 'sourceLastBtn', getPage: () => state.page, setPage: page => { state.page = page; }, renderPage: () => loadRows(state.page)});
+$('clearFiltersBtn').onclick = () => { ['query','sourceFileFilter','importStartFilter','importEndFilter','rowNoFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); loadRows(1); };
+SraAuditTools.bindPager({firstId: 'sourceFirstBtn', prevId: 'sourcePrevBtn', inputId: 'sourcePageInput', gotoId: 'sourceGotoBtn', nextId: 'sourceNextBtn', lastId: 'sourceLastBtn', getPage: () => state.page, setPage: page => { state.page = page; }, getPageSize: () => state.pageSize, setPageSize: size => { state.pageSize = size; state.page = 1; }, pageSizeOptions: [10, 25, 50, 100, 200], renderPage: () => loadRows(state.page)});
 $('saveBtn').onclick = saveEdit;
 $('cancelEditBtn').onclick = () => { $('editCard').classList.add('hidden'); state.editing = null; };
+function selectedDeleteHashes() { return Array.from(document.querySelectorAll('[data-source-delete-check]:checked')).map(input => input.value).filter(Boolean); }
+function updateBatchDeleteSummary() { const count = selectedDeleteHashes().length; const el = $('batchDeleteSummary'); if (el) el.textContent = count ? `已勾選 ${count} 筆` : '尚未勾選資料列'; }
+function updateBatchDeleteControls() { const box = $('batchDeleteBar'); if (box) box.classList.toggle('hidden', !state.canBatchDelete); updateBatchDeleteSummary(); }
+function batchDeleteConfirmationPhrase(rowCount) { return `DELETE ${rowCount}`; }
+function confirmBatchDeleteRows(hashes) { const phrase = batchDeleteConfirmationPhrase(hashes.length); const typed = prompt(`高風險操作確認：即將批次刪除 ${hashes.length} 筆 SQL 條目。\n前 ${Math.min(hashes.length, 5)} 筆 hash：\n${hashes.slice(0, 5).join('\n')}\n\n若確認要刪除，請完整輸入：${phrase}`, ''); return typed === phrase; }
+async function deleteSourceRow(hashValue) {
+  if (!hashValue) return;
+  const reason = prompt('請輸入刪除原因（會寫入 audit）：', '資料列內容錯誤，人工刪除');
+  if (reason === null) return;
+  if (!reason.trim()) { show('status', '刪除需要填寫原因，避免事後無法追溯。', 'error'); return; }
+  if (!confirm(`高風險操作確認：確定要從 SQL 目的表刪除 hash_value=${hashValue} 的資料列？\n此操作會寫入 audit，且不會自動刪除 ES 文件。`)) return;
+  try { const data = await api('/v1/excel-to-sql/delete-row', {method:'POST', body: JSON.stringify({config: $('config').value.trim(), hash_value: hashValue, reason: reason.trim()})}); show('status', `已刪除 ${data.deleted_rows || 0} 筆；狀態：${data.status || ''}`, 'ok'); await loadRows(state.page); }
+  catch (err) { show('status', err.message, 'error'); }
+}
+async function deleteSelectedSourceRows() {
+  const hashes = selectedDeleteHashes();
+  if (!hashes.length) { show('status', '請先勾選至少一筆資料列。', 'error'); return; }
+  const reason = prompt('請輸入批次刪除原因（會寫入 audit 與報告）：', '復原錯誤 Excel 匯入，批次刪除');
+  if (reason === null) return;
+  if (!reason.trim()) { show('status', '批次刪除需要填寫原因，避免事後無法追溯。', 'error'); return; }
+  if (!confirmBatchDeleteRows(hashes)) { show('status', '批次刪除已取消：確認文字不符合。', 'error'); return; }
+  if (!confirm(`最後確認：確定要從 SQL 目的表刪除 ${hashes.length} 筆資料？\n此操作會逐筆寫入 audit，且不會自動刪除 ES 文件。`)) return;
+  try { const data = await api('/v1/excel-to-sql/delete-rows', {method:'POST', body: JSON.stringify({config: $('config').value.trim(), hash_values: hashes, reason: reason.trim()})}); show('status', `批次刪除完成：成功刪除 ${data.deleted_rows || 0} 筆，處理 ${data.processed || 0} 個 hash。`, 'ok'); await loadRows(1); }
+  catch (err) { show('status', err.message, 'error'); }
+}
+$('batchDeleteBtn').onclick = deleteSelectedSourceRows;
 
 $('usernameSearch').addEventListener('input', renderUsernameFilter);
 $('selectVisibleUsersBtn').addEventListener('click', () => { state.selectedUsers = SraAuditTools.setVisibleMultiFilterSelection({values: state.usernameOptions, selectedValues: state.selectedUsers, searchEl: $('usernameSearch'), checked: true}); state.usernameDirty = true; renderUsernameFilter(); });

@@ -54,6 +54,7 @@ def test_editor_static_shell_loads_split_assets() -> None:
         "editor_form.js": "20260625-array-preserve-single",
         "editor_auth_nav.js": "20260629-login-hints",
         "editor_documents.js": "20260629-login-unlock",
+        "editor_audit.js": "20260702-account-audit-limit-warning",
         "editor_bootstrap.js": "20260702-source-editor-local-auth",
     }
     for path in EDITOR_SCRIPT_FILES:
@@ -216,6 +217,10 @@ def test_editor_workspace_separates_document_and_account_work_areas() -> None:
     assert 'data-stats-category="account" data-stats-view="all"' not in html
     assert 'id="accountAuditStartTs" type="datetime-local"' in html
     assert 'id="accountAuditEndTs" type="datetime-local"' in html
+    assert 'id="accountAuditLimit"' not in html
+    assert "const ACCOUNT_AUDIT_FETCH_LIMIT = 5000" in html
+    assert "const qs = new URLSearchParams({limit: String(ACCOUNT_AUDIT_FETCH_LIMIT)});" in html
+    assert "alert(`帳號操作紀錄可能未全部載入" in html
     assert 'id="accountAuditStatsBtn"' in html
     assert "qs.set('action_prefix', 'editor.')" in html
     assert "qs.set('action_prefix', 'auth.')" in html
