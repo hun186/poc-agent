@@ -60,3 +60,14 @@
 - 目的：前次修正仍讓 SQL 來源資料編輯器讀取 sessionStorage，可能被舊或無效的同分頁 token 壓過有效 localStorage token；依使用者回饋，改成與 Excel→SQL dashboard、Excel 匯入作業中心、JSON 任務管理相同的身份讀取流程。
 - 主要修改：SQL 來源資料編輯器 `authToken()` 改為只讀 localStorage；Editor 導航到 SQL 來源資料編輯器時不再寫入 sessionStorage handoff，四個 Excel→SQL 入口都只靠同源 localStorage token 承接登入身份；同步更新 cache-busting 版本與靜態測試。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`、`node --check sra_api/static/editor_bootstrap.js`、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_editor_auth_ui_static.py -q`。
+
+### 2026-07-02 SQL 來源資料編輯器靜態 JS 404 修正
+
+- 目的：修正使用者回報 `/static/excel_to_sql_source_editor_app.js?v=20260702-source-editor-local-auth` 回傳 404，導致 SQL 來源資料編輯器前端 JS 未載入、登入狀態停留在「未登入」。
+- 主要修改：將 `excel_to_sql_source_editor_app.js` 加入 Editor `/static/{filename}` 白名單，因目前 FastAPI 先掛載 `editor.router`，`/static/...` 會由 Editor static route 處理；未列入白名單會直接 404，即使檔案存在於 `sra_api/static/`。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_sql_source_editor_static_asset_is_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_sql_source_editor_page_and_navigation_are_wired -q`。
+
+### 2026-07-02 SQL 來源資料編輯器身份取得差異釐清
+
+- 結論：目前 SQL 來源資料編輯器與 Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、JSON 任務管理皆使用同一個 localStorage key `sra_editor_token`，並呼叫 `/v1/auth/me` 驗證身份；使用者看到唯獨 SQL 來源資料編輯器顯示未登入，是因該頁專用 JS 檔被 `/static/{filename}` 白名單擋下而 404，導致身份驗證程式完全沒有執行，不是 token 傳遞流程不同。
+- 主要修改：回歸測試從只檢查單一 SQL 來源資料編輯器 JS，改為掃描四個 Excel→SQL HTML 頁面引用的 `/static/*.js`，逐一用 FastAPI `TestClient` 確認都能被 static route 服務，避免同類白名單漏列問題再次發生。

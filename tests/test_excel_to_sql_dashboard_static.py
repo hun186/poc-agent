@@ -1,8 +1,33 @@
+import re
 from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from api.main import app
 
 STATIC_ROOT = Path(__file__).resolve().parents[1] / "sra_api" / "static"
 DASHBOARD_HTML = STATIC_ROOT / "excel_to_sql_dashboard.html"
 DASHBOARD_JS = STATIC_ROOT / "excel_to_sql_dashboard_app.js"
+
+
+def test_excel_pages_static_scripts_are_served_by_static_route():
+    html_files = [
+        "excel_to_sql_dashboard.html",
+        "excel_to_sql_import_center.html",
+        "excel_to_sql_task_configs.html",
+        "excel_to_sql_source_editor.html",
+    ]
+    script_urls = set()
+    for filename in html_files:
+        html = (STATIC_ROOT / filename).read_text(encoding="utf-8")
+        script_urls.update(re.findall(r'<script src="([^"]+)"', html))
+
+    assert "/static/excel_to_sql_source_editor_app.js?v=20260702-source-editor-local-auth" in script_urls
+    for script_url in sorted(script_urls):
+        response = TestClient(app).get(script_url)
+
+        assert response.status_code == 200, script_url
+        assert "application/javascript" in response.headers.get("content-type", ""), script_url
 
 
 def dashboard_source() -> str:
