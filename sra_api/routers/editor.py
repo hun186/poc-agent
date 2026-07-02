@@ -69,6 +69,7 @@ EDITOR_STATIC_ASSETS: dict[str, str] = {
     "editor_bootstrap.js": "application/javascript",
     "excel_to_sql_dashboard_app.js": "application/javascript",
     "excel_to_sql_import_records.js": "application/javascript",
+    "excel_to_sql_source_editor_app.js": "application/javascript",
     "excel_to_sql_import_center.html": "text/html",
 }
 
