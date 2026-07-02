@@ -1,7 +1,11 @@
 $('vercelPreviewLoginBtn').onclick = vercelPreviewLogin;
 setupVercelPreviewLogin().catch(() => {});
+function rememberEditorTokenForNavigation() {
+  const token = state.token || localStorage.getItem('sra_editor_token') || '';
+  if (token) sessionStorage.setItem('sra_editor_token', token);
+}
 $('excelDashboardBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-dashboard'; };
-$('excelSourceEditorBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-source-editor'; };
+$('excelSourceEditorBtn').onclick = () => { collapseMainNav(); rememberEditorTokenForNavigation(); location.href = '/excel-to-sql-source-editor'; };
 $('excelImportCenterBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-import-center'; };
 $('excelTaskConfigBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-task-configs'; };
 document.addEventListener('click', (ev) => { if ($('mainNav') && !$('mainNav').classList.contains('hidden') && !$('mainNav').contains(ev.target)) collapseMainNav(); });
