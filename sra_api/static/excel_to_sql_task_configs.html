@@ -151,11 +151,12 @@
       <div class="controls"><div><label>任務設定檔</label><select id="approveTaskConfigPath" onchange="renderTaskReviewDetails()"><option value="">載入待審任務中...</option></select></div><div><label>啟用狀態</label><select id="taskReviewEnabled"><option value="true">啟用 active</option><option value="false">停用回 pending</option></select></div><div class="upload-actions"><button class="secondary" onclick="setTaskConfigStatus()">套用狀態</button><button class="ghost" onclick="deleteReviewedTaskConfig()">刪除任務設定檔</button></div></div>
       <div id="taskReviewDetails" class="review-details hidden"></div>
     </div>
+    <dialog id="myTaskConfigDetailsDialog"><h3>我建立的任務 JSON 任務轉換細節</h3><div id="myTaskConfigDetailsBody" class="review-details"></div><div class="upload-actions" style="margin-top:12px;"><button onclick="closeMyTaskConfigDetails()">關閉</button></div></dialog>
     <dialog id="matchHelpDialog"><h3>欄位比對方式說明</h3><ul><li><strong>預設 / exact</strong>：Excel 標題必須與來源欄位完全相同，適合欄名穩定的表格。</li><li><strong>prefix</strong>：Excel 標題以指定文字開頭即可，例如「船名1」「船名2」。</li><li><strong>contains</strong>：Excel 標題包含指定文字即可，適合欄名前後常有附註文字時使用。</li></ul><button onclick="closeMatchHelp()">關閉</button></dialog>
   </section>
 
 </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_import_records.js?v=20260702-shared-pager"></script>
+<script src="/static/excel_to_sql_import_records.js?v=20260702-shared-page-size"></script>
 </body>
 </html>

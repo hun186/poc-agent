@@ -14,6 +14,7 @@
     button { padding:10px 14px; border:0; border-radius:10px; background:#2563eb; color:white; font-weight:700; cursor:pointer; }
     button.secondary { background:#475467; }
     button.ghost { background:#e2e8f0; color:#172033; }
+    button.danger { background:#fee4e2; color:#b42318; }
     main { max-width: 1440px; margin: 0 auto; padding:24px; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:0 1px 2px rgba(16,24,40,.05); margin-bottom:16px; }
     .muted { color:var(--muted); font-size:13px; }
@@ -51,6 +52,14 @@
     .source-table-wrap { overflow:auto; border:1px solid #e5e7eb; border-radius:12px; }
     table.source-table { width:100%; border-collapse:collapse; font-size:13px; background:white; }
     .source-table th, .source-table td { border-bottom:1px solid #e5e7eb; padding:8px; vertical-align:top; max-width:280px; }
+    .source-table .col-import-user { max-width:140px; width:140px; }
+    .source-table .col-source-excel { max-width:220px; }
+    .source-actions { display:grid; grid-template-columns:1fr; gap:6px; min-width:92px; }
+    .source-actions button { padding:7px 9px; font-size:12px; }
+    .row-check { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; }
+    .row-check input { width:auto; }
+    .batch-delete-bar { margin:10px 0; padding:10px; border:1px solid #fecaca; background:#fff5f5; border-radius:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .batch-delete-bar.hidden { display:none; }
     .source-table th { position:sticky; top:0; background:#f8fafc; z-index:1; text-align:left; }
     .source-table td pre { white-space:pre-wrap; word-break:break-word; margin:0; font-family:inherit; }
     .edit-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
@@ -76,16 +85,17 @@
 </header>
 <main>
   <section class="card">
-    <div class="heading-row"><h2>受控 SQL 來源資料表</h2><span class="scope-help"><button class="scope-help-btn" type="button" aria-label="查看 SQL 來源資料編輯器說明" aria-describedby="sourceEditorScopeHelpText">?</button><span id="sourceEditorScopeHelpText" class="scope-help-tooltip" role="tooltip">此頁只會操作已啟用 Excel→SQL 任務清單中的設定檔，並由該設定檔讀取對應的 <code>destination.table</code>；使用者不能自行輸入任意 SQL 或任意 table name。資料修改者可單列編輯並需填寫原因；修改會寫入同一張 Excel→SQL audit table，但 action 會標記為 <code>sql_source_editor.update_row</code>。刪除與批次刪除仍請使用 db_operator 權限的匯入查詢儀表板。</span></span></div>
+    <div class="heading-row"><h2>受控 SQL 來源資料表</h2><span class="scope-help"><button class="scope-help-btn" type="button" aria-label="查看 SQL 來源資料編輯器說明" aria-describedby="sourceEditorScopeHelpText">?</button><span id="sourceEditorScopeHelpText" class="scope-help-tooltip" role="tooltip">此頁只會操作已啟用 Excel→SQL 任務清單中的設定檔，並由該設定檔讀取對應的 <code>destination.table</code>；使用者不能自行輸入任意 SQL 或任意 table name。資料閱讀者可唯讀檢視；資料修改者可單列編輯 / 單篇刪除並需填寫原因；資料庫操作者可進一步批次刪除。修改與刪除都會寫入同一張 Excel→SQL audit table，並分別標記操作 action。</span></span></div>
     <div class="toolbar">
       <div><label>任務</label><select id="task"></select></div>
       <div style="min-width:360px"><label>設定檔</label><input id="config" value="config/excel_to_sql/vessel_activities.example.json" /></div>
       <div><label>關鍵字</label><input id="query" placeholder="跨前 12 個欄位搜尋" /></div>
-      <div><label>每頁筆數</label><input id="limit" type="number" min="1" max="200" value="50" /></div>
       <button id="loadBtn">載入資料列</button>
     </div>
     <section class="filters" aria-label="SQL 來源資料列篩選">
-      <div><label>來源檔包含</label><input id="sourceFileFilter" placeholder="source_file 檔名片段" /></div>
+      <div><label>來源 Excel 包含</label><input id="sourceFileFilter" placeholder="audit source_file 檔名片段" /></div>
+      <div><label>匯入執行起</label><input id="importStartFilter" type="datetime-local" /></div>
+      <div><label>匯入執行迄</label><input id="importEndFilter" type="datetime-local" /></div>
       <div class="dropdown-filter"><div class="field-label-row"><label for="usernameSummary">匯入使用者</label><span class="help-tip" tabindex="0" data-tip="此處篩選的是執行 Excel→SQL 匯入的使用者，來源固定為 audit 記錄，不讀取 SQL 資料列自身可能存在的 username 情報欄位。" aria-label="匯入使用者篩選說明">?</span></div><details id="usernameDropdown" class="multi-select"><summary id="usernameSummary">全體匯入使用者</summary><div class="multi-select-menu"><input id="usernameSearch" class="multi-filter-search" type="search" placeholder="輸入關鍵字篩選清單" autocomplete="off" /><div class="multi-filter-actions"><button id="selectVisibleUsersBtn" class="secondary" type="button">勾選目前篩選</button><button id="clearVisibleUsersBtn" class="secondary" type="button">清除目前篩選</button><button id="clearAllUsersBtn" class="secondary" type="button">清除全部</button></div><div id="usernameFilter" role="group" aria-label="使用者清單"><div class="muted">載入後可選擇</div></div></div></details><input id="usernameFilterValue" type="hidden" /></div>
       <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
       <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
@@ -96,6 +106,7 @@
     <div id="status" class="status hidden"></div>
     <p id="summary" class="muted"></p>
     <div class="pager" aria-label="SQL 來源資料列分頁"><span id="sourcePageInfo" class="muted">第 1 頁</span><button id="sourceFirstBtn" class="secondary" type="button">首頁</button><button id="sourcePrevBtn" class="secondary" type="button">上一頁</button><span class="pager-jump"><label class="sr-only" for="sourcePageInput">SQL 來源資料列頁數</label><input id="sourcePageInput" type="number" min="1" value="1" inputmode="numeric" /><button id="sourceGotoBtn" class="secondary" type="button">跳至頁數</button></span><button id="sourceNextBtn" class="secondary" type="button">下一頁</button><button id="sourceLastBtn" class="secondary" type="button">末頁</button></div>
+    <div id="batchDeleteBar" class="batch-delete-bar hidden"><strong>批次刪除</strong><span id="batchDeleteSummary" class="muted">尚未勾選資料列</span><button id="batchDeleteBtn" class="danger" type="button">批次刪除勾選 SQL 列</button><span class="muted">高風險操作：送出前需輸入確認文字，且會逐筆寫入 audit。</span></div>
     <div id="tableWrap" class="source-table-wrap"></div>
   </section>
   <section id="editCard" class="card hidden">
@@ -109,6 +120,6 @@
   </section>
 </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_source_editor_app.js?v=20260702-shared-pager"></script>
+<script src="/static/excel_to_sql_source_editor_app.js?v=20260702-shared-page-size"></script>
 </body>
 </html>

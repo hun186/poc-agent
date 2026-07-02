@@ -44,11 +44,11 @@ function renderPagedTable(tableId, pager, render, prefix) {
   const page = SraAuditTools.paginateRows(pager.rows, pager.page, pager.pageSize);
   pager.page = page.page;
   fillTable(tableId, page.rows, render);
-  SraAuditTools.updatePager({pageData: page, infoId: `${prefix}PageInfo`, firstId: `${prefix}FirstBtn`, prevId: `${prefix}PrevBtn`, inputId: `${prefix}PageInput`, gotoId: `${prefix}GotoBtn`, nextId: `${prefix}NextBtn`, lastId: `${prefix}LastBtn`, inputLabel: `${prefix} 頁數`});
+  SraAuditTools.updatePager({pageData: page, infoId: `${prefix}PageInfo`, firstId: `${prefix}FirstBtn`, prevId: `${prefix}PrevBtn`, inputId: `${prefix}PageInput`, gotoId: `${prefix}GotoBtn`, nextId: `${prefix}NextBtn`, lastId: `${prefix}LastBtn`, inputLabel: `${prefix} 頁數`, pageSizeOptions: [10, 25, 50, 100, 200]});
 }
 function bindPagedTable(prefix, pager, renderPage) {
   if (!document.getElementById(`${prefix}PageInfo`)) return;
-  SraAuditTools.bindPager({firstId: `${prefix}FirstBtn`, prevId: `${prefix}PrevBtn`, inputId: `${prefix}PageInput`, gotoId: `${prefix}GotoBtn`, nextId: `${prefix}NextBtn`, lastId: `${prefix}LastBtn`, getPage: () => pager.page, setPage: page => { pager.page = page; }, renderPage});
+  SraAuditTools.bindPager({firstId: `${prefix}FirstBtn`, prevId: `${prefix}PrevBtn`, inputId: `${prefix}PageInput`, gotoId: `${prefix}GotoBtn`, nextId: `${prefix}NextBtn`, lastId: `${prefix}LastBtn`, getPage: () => pager.page, setPage: page => { pager.page = page; }, getPageSize: () => pager.pageSize, setPageSize: size => { pager.pageSize = size; pager.page = 1; }, pageSizeOptions: [10, 25, 50, 100, 200], renderPage});
 }
 function pad2(v) { return String(v).padStart(2, '0'); }
 function normalizeAuditUtc(text) { const raw = String(text || ''); if (!raw) return null; const trimmed = raw.replace(/(\.\d{3})\d+/, '$1'); return /[zZ]|[+-]\d\d:?\d\d$/.test(trimmed) ? trimmed : trimmed + 'Z'; }
@@ -350,16 +350,33 @@ function renderUploadTaskDetails() {
   if (!canReviewTaskMappings()) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   box.innerHTML = `<strong>目前匯入任務的 Excel→SQL 欄位轉換</strong><div class="muted">資料庫管理者可在上傳前先確認此任務會把哪些 Excel 欄位寫入哪些 SQL 欄位。</div><div class="review-card"><h4>Excel 欄位 → SQL 欄位</h4>${renderMappingsForReview(summary.mappings)}</div>`;
 }
+function taskReviewDetailsHtml(task, context = 'review') {
+  const summary = task?.review_summary || {};
+  const intro = context === 'mine'
+    ? '可檢視自己建立任務的資料來源、目的資料表、欄位對應與自動建表 / 建欄設定；Server、資料庫名稱、DB 使用者與密碼等敏感欄位已遮蔽。'
+    : '審核前請確認資料來源、目的資料表、欄位對應與自動建表 / 建欄設定；Server、資料庫名稱、DB 使用者與密碼等敏感欄位已遮蔽。';
+  return `<strong>JSON 任務轉換細節</strong><div class="muted">${intro}</div><div class="review-grid"><div class="review-card"><h4>資料庫連線</h4><ul>${reviewListItems(summary.db)}</ul></div><div class="review-card"><h4>Excel 來源</h4><ul>${reviewListItems(summary.source)}</ul></div><div class="review-card"><h4>SQL 目的地</h4><ul>${reviewListItems(summary.destination)}</ul></div><div class="review-card"><h4>Audit / 匯入設定</h4><ul>${reviewListItems({ audit_table: summary.audit?.table, audit_enabled: summary.audit?.enabled, batch_size: summary.import?.batch_size, skip_empty_rows: summary.import?.skip_empty_rows, retry_max_attempts: summary.retry?.max_attempts })}</ul></div></div><div class="review-card"><h4>Excel 欄位 → SQL 欄位</h4>${renderMappingsForReview(summary.mappings)}</div><details><summary>查看遮蔽敏感資訊後的 JSON</summary><pre class="review-json">${escapeHtml(JSON.stringify(task?.config_preview || {}, null, 2))}</pre></details>`;
+}
 function renderTaskReviewDetails() {
   const box = $('taskReviewDetails');
   const config = taskValue('approveTaskConfigPath');
   if (!box || !config) { if (box) box.classList.add('hidden'); return; }
   const task = taskConfigReviewTasks.find(item => item.config_path === config);
   if (!task) { box.classList.add('hidden'); return; }
-  const summary = task.review_summary || {};
   box.classList.remove('hidden');
-  box.innerHTML = `<strong>JSON 任務轉換細節</strong><div class="muted">審核前請確認資料來源、目的資料表、欄位對應與自動建表 / 建欄設定；Server、資料庫名稱、DB 使用者與密碼等敏感欄位已遮蔽。</div><div class="review-grid"><div class="review-card"><h4>資料庫連線</h4><ul>${reviewListItems(summary.db)}</ul></div><div class="review-card"><h4>Excel 來源</h4><ul>${reviewListItems(summary.source)}</ul></div><div class="review-card"><h4>SQL 目的地</h4><ul>${reviewListItems(summary.destination)}</ul></div><div class="review-card"><h4>Audit / 匯入設定</h4><ul>${reviewListItems({ audit_table: summary.audit?.table, audit_enabled: summary.audit?.enabled, batch_size: summary.import?.batch_size, skip_empty_rows: summary.import?.skip_empty_rows, retry_max_attempts: summary.retry?.max_attempts })}</ul></div></div><div class="review-card"><h4>Excel 欄位 → SQL 欄位</h4>${renderMappingsForReview(summary.mappings)}</div><details><summary>查看遮蔽敏感資訊後的 JSON</summary><pre class="review-json">${escapeHtml(JSON.stringify(task.config_preview || {}, null, 2))}</pre></details>`;
+  box.innerHTML = taskReviewDetailsHtml(task, 'review');
 }
+function showMyTaskConfigDetails(config) {
+  const task = myTaskConfigsPager.rows.find(item => item.config_path === config);
+  if (!task) { showError('找不到此任務設定檔的檢示資料，請重新整理我的任務後再試。'); return; }
+  const dialog = $('myTaskConfigDetailsDialog');
+  const body = $('myTaskConfigDetailsBody');
+  if (!dialog || !body) return;
+  body.innerHTML = taskReviewDetailsHtml(task, 'mine');
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+function closeMyTaskConfigDetails() { $('myTaskConfigDetailsDialog')?.close(); }
 async function loadTaskConfigReviewOptions() {
   const select = $('approveTaskConfigPath');
   if (!select || currentUserRole !== ROLE_SUPERUSER) return;
@@ -399,7 +416,7 @@ function taskConfigStatusBadge(status, enabled) {
 }
 function myTaskConfigActions(task) {
   const config = escapeHtml(task.config_path || '');
-  return `<div class="record-actions"><button class="secondary" onclick="disableMyTaskConfig('${config}')">停用</button><button class="ghost" onclick="deleteMyTaskConfig('${config}')">刪除</button></div>`;
+  return `<div class="record-actions"><button class="ghost" onclick="showMyTaskConfigDetails('${config}')">檢示</button><button class="secondary" onclick="disableMyTaskConfig('${config}')">停用</button><button class="ghost" onclick="deleteMyTaskConfig('${config}')">刪除</button></div>`;
 }
 async function loadMyTaskConfigs() {
   const table = $('myTaskConfigs');
