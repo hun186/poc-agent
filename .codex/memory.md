@@ -3,7 +3,7 @@
 ## Current Summary
 
 - 本專案是 FastAPI + Elasticsearch 的 RAG / agent 系統；API 在 `sra_api/`（另有相容 shim），agent / retrieval / evidence 在 `agent/`，資料匯入與 ETL 在 `data_ingestion/`，設定在 `config/`，測試在 `tests/`。
-- Editor / SQL 來源資料編輯器共用 `sra_editor_token`；主要來源是 localStorage，SQL 來源資料編輯器另允許同分頁 sessionStorage 作為導航承接 fallback。不得把 bearer token 放進 URL query 或 hash。若修改前端靜態 JS，需同步更新 HTML script query version 以避免瀏覽器沿用舊資產。
+- Editor / Excel→SQL 相關頁面共用 `sra_editor_token`；前端登入身份來源統一使用 localStorage，不使用 URL query/hash 或 sessionStorage 傳遞 bearer token。若修改前端靜態 JS，需同步更新 HTML script query version 以避免瀏覽器沿用舊資產。
 - Excel→SQL 使用者匯入採上傳保存、預掃描、確認匯入 SQL 三階段；SQL 來源資料編輯器只允許操作已啟用 dashboard 任務的 `destination.table`，禁止任意 SQL / 任意 table name。
 - Auth 採四層 role：`data_reader`、`data_editor`、`db_operator`、`superuser`；legacy `user` 正規化為 `data_editor`。新註冊帳號預設 `data_reader` + `pending`。
 - Vercel / mock runtime 只用於檢閱或唯讀環境，正式 ES / SQL 可用時仍應優先使用真實服務；mock response 必須透過 `mock_mode` 與 warnings 明確揭露。
@@ -53,3 +53,10 @@
 - 目的：修正從 Editor 首頁登入後進入 SQL 來源資料編輯器仍顯示未登入的使用體驗，並將「受控 SQL 來源資料表」說明改成與既有 dashboard / Editor 問號浮動提示一致的樣式。
 - 主要修改：SQL 來源資料編輯器前端新增 `authToken()` / `loadCurrentUser()`，沿用其他 Excel→SQL 頁面的 `/v1/auth/me` 驗證與 header 顯示模式，同時保留 Editor 導航寫入的同分頁 `sessionStorage` fallback，並優先使用 session handoff token 再回退 localStorage，避免舊 localStorage token 壓過導航承接 token。說明 UI 移除原本 details popover，改用 `scope-help` / `scope-help-tooltip` 問號提示樣式。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_editor_auth_ui_static.py -q`。本環境未提供瀏覽器 / Playwright runtime，未做實機截圖；以靜態 UI 測試與 JS 語法檢查替代。
+
+
+### 2026-07-02 SQL 來源資料編輯器登入流程改回 localStorage-only
+
+- 目的：前次修正仍讓 SQL 來源資料編輯器讀取 sessionStorage，可能被舊或無效的同分頁 token 壓過有效 localStorage token；依使用者回饋，改成與 Excel→SQL dashboard、Excel 匯入作業中心、JSON 任務管理相同的身份讀取流程。
+- 主要修改：SQL 來源資料編輯器 `authToken()` 改為只讀 localStorage；Editor 導航到 SQL 來源資料編輯器時不再寫入 sessionStorage handoff，四個 Excel→SQL 入口都只靠同源 localStorage token 承接登入身份；同步更新 cache-busting 版本與靜態測試。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`、`node --check sra_api/static/editor_bootstrap.js`、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_editor_auth_ui_static.py -q`。
