@@ -57,6 +57,9 @@ def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     assert "function fillRecentWindow()" in html
     assert "function resetDefaultWindow()" in html
     assert "使用回看天數" not in html
+    assert '<div><label>載入列數上限</label><input id="limit" type="number" min="1" max="1000" value="100" /></div>' in html
+    assert "const pageSize = Math.max(1, Math.min(Number($('limit').value || state.recentPageSize || 100), 1000));" in html
+    assert "$('limit').addEventListener('change', applyAuditFilters)" in html
     assert '<button onclick="refreshDashboardNow()">重新整理</button>' in html
     assert (
         "function applyAuditFilters() { resetRecentPage(); loadDashboard(); }" in html

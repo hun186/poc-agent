@@ -330,7 +330,8 @@ async function loadDashboard() {
   showError('');
   const token = authToken();
   if (!token) { showError('請先到 /editor 登入；本儀表板會沿用 sra_editor_token。'); return; }
-  const pageSize = Math.max(1, Math.min(Number(state.recentPageSize || 100), 1000));
+  const pageSize = Math.max(1, Math.min(Number($('limit').value || state.recentPageSize || 100), 1000));
+  state.recentPageSize = pageSize;
   const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: pageSize, page: state.recentPage, chart_bucket: $('chartBucket').value });
   const startIso = auditRangeStartIso();
   const endIso = auditRangeEndIso();

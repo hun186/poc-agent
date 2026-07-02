@@ -87,8 +87,9 @@ async function searchAuditLogs() {
   }
 }
 const ACCOUNT_AUDIT_FETCH_LIMIT = 5000;
+function accountAuditLimit() { return Math.max(1, Math.min(ACCOUNT_AUDIT_FETCH_LIMIT, Number($('accountAuditLimit').value || ACCOUNT_AUDIT_FETCH_LIMIT))); }
 function collectAccountAuditQuery() {
-  const qs = new URLSearchParams({limit: String(ACCOUNT_AUDIT_FETCH_LIMIT)});
+  const qs = new URLSearchParams({limit: String(accountAuditLimit())});
   const username = $('accountAuditUsername').value.trim();
   const action = $('accountAuditAction').value.trim();
   const startTs = toIsoOrEmpty($('accountAuditStartTs').value.trim());
@@ -113,9 +114,10 @@ async function searchAccountAuditLogs() {
     renderAccountAuditHits(hits);
     refreshAccountAuditFilterOptions(hits);
     const scopeText = state.user && state.user.role === 'superuser' ? '帳號操作' : '我的帳號操作';
-    const truncated = Boolean(data.truncated) || hits.length >= ACCOUNT_AUDIT_FETCH_LIMIT;
-    if (truncated) alert(`帳號操作紀錄可能未全部載入：目前最多載入 ${ACCOUNT_AUDIT_FETCH_LIMIT} 筆。請設定帳號、動作或時間條件縮小查詢範圍。`);
-    const warningText = truncated ? `；已達安全載入上限 ${ACCOUNT_AUDIT_FETCH_LIMIT} 筆，可能尚有未載入資料，請縮小篩選條件` : '';
+    const limit = Number(data.limit || accountAuditLimit());
+    const truncated = Boolean(data.truncated) || hits.length >= limit;
+    if (truncated) alert(`帳號操作紀錄可能未全部載入：目前最多載入 ${limit} 筆。請設定帳號、動作或時間條件縮小查詢範圍。`);
+    const warningText = truncated ? `；已達載入上限 ${limit} 筆，可能尚有未載入資料，請縮小篩選條件` : '';
     setStatus('accountAuditStatus', `${scopeText}共符合 ${data.total ?? hits.length} 筆，已載入 ${hits.length} 筆${warningText}；已先篩選、依時間排序，再分頁顯示。`, truncated ? 'error' : 'ok');
   } catch (err) {
     setStatus('accountAuditStatus', err.message, 'error');
@@ -127,5 +129,6 @@ function clearAccountAuditFilters() {
   $('accountAuditAction').value = '';
   $('accountAuditStartTs').value = '';
   $('accountAuditEndTs').value = '';
+  $('accountAuditLimit').value = String(ACCOUNT_AUDIT_FETCH_LIMIT);
 }
 

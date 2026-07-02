@@ -132,3 +132,10 @@
 - 目的：回應帳號操作記錄固定載入 500 筆可能太少、但完全不限量又可能造成瀏覽器或後端過載的疑慮。
 - 主要修改：`GET /v1/editor/audit-logs` 的 `limit` 上限由 500 提高至 5000，response 新增 `truncated` 表示篩選後資料超過本次回傳筆數。帳號操作記錄前端移除手動筆數欄位後，固定以安全上限 5000 查詢；若後端回報截斷或載入筆數達安全上限，會跳出告警並在 status 提醒使用者用帳號、動作或時間條件縮小查詢範圍。同步更新 API contract 與靜態 / router 測試。
 - 驗證：`python -m py_compile sra_api/routers/editor_usage.py`、`node --check sra_api/static/editor_audit.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_workspace_separates_document_and_account_work_areas tests/test_editor_auth_ui_static.py::test_editor_static_shell_loads_split_assets tests/test_editor_audit_queries.py::test_list_audit_logs_reports_truncated_hits tests/test_editor_audit_queries.py::test_list_audit_logs_allows_regular_user_own_account_events -q`。依專案要求本輪也先執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt`；pip index 仍有 403 retry，但 requirements 已滿足。
+
+
+### 2026-07-02 載入列數/筆數上限命名與控制補正
+
+- 目的：回應 Excel→SQL 匯入查詢儀表板仍需要保留列數上限控制，以及帳號安全 → 帳號操作記錄雖有分頁但仍應讓使用者控制後端載入筆數上限。
+- 主要修改：Excel→SQL dashboard 查詢列恢復 `limit` 控制並改名為「載入列數上限」，仍使用後端既有 1-1000 安全上限；帳號操作記錄恢復 `accountAuditLimit`，改名為「載入筆數上限」、預設 5000、最大 5000，前端以使用者輸入送出 `/v1/editor/audit-logs` limit，若 `truncated=true` 或已達該上限則跳窗提醒使用者縮小帳號、動作或時間條件。同步更新靜態測試與資產版本。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍有 403 retry，但 requirements 已滿足）、`for f in sra_api/static/editor_audit.js sra_api/static/excel_to_sql_dashboard_app.js; do node --check "$f" || exit 1; done`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_workspace_separates_document_and_account_work_areas tests/test_editor_auth_ui_static.py::test_editor_static_shell_loads_split_assets tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range -q`。
