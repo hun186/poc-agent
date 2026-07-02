@@ -98,6 +98,7 @@ def test_import_center_static_contains_user_import_controls():
     script = Path("sra_api/static/excel_to_sql_import_records.js").read_text(
         encoding="utf-8"
     )
+    audit_tools = Path("sra_api/static/audit_tools.js").read_text(encoding="utf-8")
     assert (
         "使用者 Excel 上傳、預掃描、確認匯入 SQL 與匯入記錄管理已移至獨立頁面"
         not in dashboard_html
@@ -106,9 +107,16 @@ def test_import_center_static_contains_user_import_controls():
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
     assert (
-        "/static/excel_to_sql_import_records.js?v=20260702-shared-pager"
+        "/static/excel_to_sql_import_records.js?v=20260702-shared-page-size"
         in html
     )
+    assert "sraAuditToolsPagerStyles" in audit_tools
+    assert ".pager .sr-only" in audit_tools
+    assert ".pager .pager-jump input" in audit_tools
+    assert ".pager .pager-size" in audit_tools
+    assert "getPageSize" in audit_tools
+    assert "setPageSize" in audit_tools
+    assert "每頁顯示" in audit_tools
     assert "/v1/excel-to-sql/import-records" in script
     assert "previewImportRecord" in script
     assert "刪除記錄" not in script
@@ -186,6 +194,11 @@ def test_import_center_static_contains_user_import_controls():
     assert "setSensitiveConnectionFieldsVisible" in script
     assert "input.disabled = !visible" in script
     assert "function renderTaskReviewDetails" in script
+    assert "function taskReviewDetailsHtml" in script
+    assert "showMyTaskConfigDetails" in script
+    assert "myTaskConfigDetailsDialog" in config_html
+    assert "檢示" in script
+    assert "可檢視自己建立任務的資料來源" in script
     assert "config_preview" in script
     assert "review_summary" in script
     assert "config-grid" in config_html

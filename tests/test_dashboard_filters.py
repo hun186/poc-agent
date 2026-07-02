@@ -448,3 +448,6 @@ def test_dashboard_source_scope_filters_selected_task_registry_and_configured_so
     assert str(configured_file) in params
     assert str(other_file) not in params
     assert any(str(value).startswith(str(inbox)) for value in params)
+    assert "JSON_VALUE(row_payload, '$.config_path')" in conditions[0]
+    assert "manual-control" in params
+    assert "config/excel_to_sql/selected.json" in params

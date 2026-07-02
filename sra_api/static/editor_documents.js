@@ -150,7 +150,7 @@ async function refreshUsers() {
   } catch (err) { $('users').innerHTML = `<div class="status error">${esc(err.message)}</div>`; }
 }
 function renderUsersPage(roleOptions) {
-  const page = SraAuditTools.paginateRows(state.usersRows || [], state.usersPage || 1, 20);
+  const page = SraAuditTools.paginateRows(state.usersRows || [], state.usersPage || 1, state.usersPageSize || 20);
   state.usersPage = page.page;
   SraAuditTools.updatePager({pageData: page, infoId: 'usersPageInfo', firstId: 'usersFirstBtn', prevId: 'usersPrevBtn', inputId: 'usersPageInput', gotoId: 'usersGotoBtn', nextId: 'usersNextBtn', lastId: 'usersLastBtn', inputLabel: '帳號審核頁數'});
   $('users').innerHTML = page.rows.map(u => `<div class="user"><strong>${esc(u.username)}</strong><div class="muted">status=${esc(u.status)}, role=${esc(u.role)}</div><div class="muted">姓名=${esc(u.full_name || '-')}, 單位=${esc(u.department || '-')}, 備註=${esc(u.note || '-')}</div><div class="row"><label class="inline-label">帳號層級<select data-role-select="${esc(u.username)}">${roleOptionsHtml(u.role, roleOptions)}</select></label><button data-approve-user="${esc(u.username)}">核准 / 更新層級</button><button data-issue-reset-token="${esc(u.username)}" class="secondary">產生 reset token</button><button data-unlock-login="${esc(u.username)}" class="secondary" title="清除該帳號目前記憶體中的登入冷卻紀錄。">解除登入冷卻</button><button data-reset-user="${esc(u.username)}" class="secondary">直接重設密碼</button><button data-reject-user="${esc(u.username)}" class="danger" title="pending 帳號會被拒絕申請；active 帳號會被停權並讓既有 token 失效。">拒絕申請／停權</button><button data-delete-user="${esc(u.username)}" class="danger">刪除帳號</button></div></div>`).join('');
@@ -161,7 +161,7 @@ function renderUsersPage(roleOptions) {
   document.querySelectorAll('[data-reject-user]').forEach(btn => btn.onclick = () => rejectUser(btn.dataset.rejectUser));
   document.querySelectorAll('[data-delete-user]').forEach(btn => btn.onclick = () => deleteUser(btn.dataset.deleteUser));
 }
-SraAuditTools.bindPager({firstId: 'usersFirstBtn', prevId: 'usersPrevBtn', inputId: 'usersPageInput', gotoId: 'usersGotoBtn', nextId: 'usersNextBtn', lastId: 'usersLastBtn', getPage: () => state.usersPage || 1, setPage: page => { state.usersPage = page; }, renderPage: () => renderUsersPage(state.usersRoleOptions || [])});
+SraAuditTools.bindPager({firstId: 'usersFirstBtn', prevId: 'usersPrevBtn', inputId: 'usersPageInput', gotoId: 'usersGotoBtn', nextId: 'usersNextBtn', lastId: 'usersLastBtn', getPage: () => state.usersPage || 1, setPage: page => { state.usersPage = page; }, getPageSize: () => state.usersPageSize || 20, setPageSize: size => { state.usersPageSize = size; state.usersPage = 1; }, pageSizeOptions: [10, 20, 50, 100], renderPage: () => renderUsersPage(state.usersRoleOptions || [])});
 async function approveSelectedUser(username) {
   const select = Array.from(document.querySelectorAll('[data-role-select]')).find(el => el.dataset.roleSelect === username);
   await approveUser(username, select ? select.value : 'data_reader');

@@ -36,7 +36,7 @@ from api.routers.editor_dependencies import (
     require_db_operator,
     require_superuser,
 )
-from api.services.auth_store import ROLE_DB_OPERATOR, ROLE_SUPERUSER, AuthUser, has_role_at_least
+from api.services.auth_store import ROLE_DATA_EDITOR, ROLE_DB_OPERATOR, ROLE_SUPERUSER, AuthUser, has_role_at_least
 
 router = APIRouter(tags=["excel-to-sql"])
 
@@ -272,21 +272,31 @@ def excel_to_sql_source_rows(
     hash_value_filter: str = Query("", max_length=200, description="hash 部分比對"),
     payload_filter: str = Query("", max_length=200, description="資料欄位文字部分比對"),
     username_filter: list[str] | None = Query(None, description="使用者，可重複提供以複選"),
+    import_start_ts: str = Query("", max_length=80, description="當初匯入執行起始時間（ISO 8601；以 audit.processed_at 比對）"),
+    import_end_ts: str = Query("", max_length=80, description="當初匯入執行結束時間（ISO 8601；以 audit.processed_at 比對）"),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     config_dir: str = Query(
         "config/excel_to_sql", description="白名單來源：已啟用 Excel→SQL 任務設定檔目錄"
     ),
-    user: AuthUser = Depends(require_data_editor),
+    user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
     _ensure_source_editor_config_allowed(user, config, config_dir)
     try:
         try:
-            return list_sql_source_rows(config, q=q, source_file_filter=source_file_filter, row_no_filter=row_no_filter, hash_value_filter=hash_value_filter, payload_filter=payload_filter, username_filter=username_filter, page=page, limit=limit)
+            payload = list_sql_source_rows(config, q=q, source_file_filter=source_file_filter, row_no_filter=row_no_filter, hash_value_filter=hash_value_filter, payload_filter=payload_filter, username_filter=username_filter, import_start_ts=import_start_ts, import_end_ts=import_end_ts, page=page, limit=limit)
+            payload["can_edit"] = has_role_at_least(user.role, ROLE_DATA_EDITOR)
+            payload["can_delete"] = has_role_at_least(user.role, ROLE_DATA_EDITOR)
+            payload["can_batch_delete"] = has_role_at_least(user.role, ROLE_DB_OPERATOR)
+            return payload
         except TypeError:
-            if any([source_file_filter, row_no_filter, hash_value_filter, payload_filter, username_filter]):
+            if any([source_file_filter, row_no_filter, hash_value_filter, payload_filter, username_filter, import_start_ts, import_end_ts]):
                 raise
-            return list_sql_source_rows(config, q=q, page=page, limit=limit)
+            payload = list_sql_source_rows(config, q=q, page=page, limit=limit)
+            payload["can_edit"] = has_role_at_least(user.role, ROLE_DATA_EDITOR)
+            payload["can_delete"] = has_role_at_least(user.role, ROLE_DATA_EDITOR)
+            payload["can_batch_delete"] = has_role_at_least(user.role, ROLE_DB_OPERATOR)
+            return payload
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -323,8 +333,9 @@ def excel_to_sql_update_source_row(
 @router.post("/v1/excel-to-sql/delete-row")
 def excel_to_sql_delete_row(
     payload: DeleteImportedRowPayload,
-    user: AuthUser = Depends(require_db_operator),
+    user: AuthUser = Depends(require_data_editor),
 ) -> dict[str, Any]:
+    _ensure_source_editor_config_allowed(user, payload.config, "config/excel_to_sql")
     try:
         return delete_imported_sql_row(
             payload.config,

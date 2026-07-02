@@ -139,7 +139,7 @@ function closeDestinationTableDropdown(applyPending = false) {
 function updateRecentPager(data) {
   const paging = data.recent_paging || {};
   state.recentPage = Number(paging.page || state.recentPage || 1);
-  state.recentPageSize = Number(paging.page_size || $('limit').value || 100);
+  state.recentPageSize = Number(paging.page_size || state.recentPageSize || 100);
   state.recentTotal = Number(paging.total || (data.recent || []).length || 0);
   const page = SraAuditTools.updatePager({page: state.recentPage, pageSize: state.recentPageSize, total: state.recentTotal, infoId: 'recentPageInfo', firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', inputLabel: '最近 audit 事件頁數'});
   state.recentPage = page.page;
@@ -330,7 +330,7 @@ async function loadDashboard() {
   showError('');
   const token = authToken();
   if (!token) { showError('請先到 /editor 登入；本儀表板會沿用 sra_editor_token。'); return; }
-  const pageSize = Math.max(1, Math.min(Number($('limit').value || 100), 1000));
+  const pageSize = Math.max(1, Math.min(Number(state.recentPageSize || 100), 1000));
   const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: pageSize, page: state.recentPage, chart_bucket: $('chartBucket').value });
   const startIso = auditRangeStartIso();
   const endIso = auditRangeEndIso();
@@ -381,10 +381,9 @@ function bindAuditFilterEvents() {
   destinationDropdown.addEventListener('toggle', () => { if (!destinationDropdown.open) applyDestinationTablePendingFilters(); });
   destinationDropdown.addEventListener('focusout', () => { setTimeout(() => { if (!destinationDropdown.contains(document.activeElement)) closeDestinationTableDropdown(true); }, 0); });
   document.addEventListener('click', event => { if (!destinationDropdown.contains(event.target)) closeDestinationTableDropdown(true); });
-  $('limit').addEventListener('change', applyAuditFilters);
   $('chartBucket').addEventListener('change', applyAuditFilters);
 }
 bindAuditFilterEvents();
-SraAuditTools.bindPager({firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', getPage: () => state.recentPage, setPage: page => { state.recentPage = page; }, renderPage: loadDashboard});
+SraAuditTools.bindPager({firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', getPage: () => state.recentPage, setPage: page => { state.recentPage = page; }, getPageSize: () => state.recentPageSize, setPageSize: size => { state.recentPageSize = size; state.recentPage = 1; }, pageSizeOptions: [25, 50, 100, 200, 500], renderPage: loadDashboard});
 // boot order includes: await loadCurrentUser(); await loadTasks(); await loadDashboard();
 (async () => { resetDefaultWindow(); applyInitialQueryParams(); await loadCurrentUser(); await loadTasks(); applyInitialQueryParams(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
