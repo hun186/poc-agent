@@ -38,9 +38,9 @@ class FakeCursor:
         elif normalized.startswith("SELECT DISTINCT TOP (200)") and "FROM [dbo].[ExcelAudit]" in normalized:
             self.description = [("username",)]
             self._rows = [("importer_alice",), ("importer_bob",)]
-        elif normalized.startswith("SELECT hash_value, MAX") and "FROM [dbo].[ExcelAudit]" in normalized:
-            self.description = [("hash_value",), ("username",)]
-            self._rows = [("h1", "importer_alice")]
+        elif normalized.startswith("WITH ranked_audit AS") and "FROM [dbo].[ExcelAudit] aud" in normalized:
+            self.description = [("hash_value",), ("username",), ("source_file",), ("processed_at",)]
+            self._rows = [("h1", "importer_alice", "upload.xlsx", "2026-07-02T01:02:03")]
         elif normalized.startswith("SELECT DISTINCT TOP (200)"):
             self.description = [("username",)]
             self._rows = [("source_username_should_not_be_used",)]
@@ -105,7 +105,9 @@ def test_list_sql_source_rows_uses_task_destination_and_blocks_system_columns(mo
     assert result["rows"][0]["title"] == "舊標題"
     assert result["username_options"] == ["importer_alice", "importer_bob"]
     assert result["rows"][0]["_import_username"] == "importer_alice"
-    assert {col["name"] for col in result["columns"]} >= {"username", "_import_username"}
+    assert result["rows"][0]["_source_excel"] == "upload.xlsx"
+    assert result["rows"][0]["_imported_at"] == "2026-07-02T01:02:03"
+    assert {col["name"] for col in result["columns"]} >= {"username", "_import_username", "_imported_at", "_source_excel"}
     assert result["editable_columns"] == ["title", "content", "username"]
     assert any("CAST([title] AS NVARCHAR(MAX)) LIKE ?" in sql for sql, _ in conn.cursor_obj.calls)
 
@@ -148,6 +150,42 @@ def test_update_sql_source_row_writes_audit_and_rejects_system_columns(monkeypat
     assert conn.cursor_obj.audit_payload["action"] == "sql_source_editor.update_row"
     assert conn.cursor_obj.audit_payload["changes"] == {"title": "新標題"}
 
+
+def test_source_rows_allows_data_reader_as_read_only(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers import editor_dependencies
+    from api.services.auth_store import AuthUser
+    import sra_api.routers.excel_to_sql as excel_router
+
+    app = FastAPI()
+    app.include_router(excel_router.router)
+    monkeypatch.setattr(
+        excel_router,
+        "discover_dashboard_tasks",
+        lambda config_dir: [{"name": "Allowed", "config_path": "config/excel_to_sql/allowed.json"}],
+    )
+    monkeypatch.setattr(
+        excel_router,
+        "list_sql_source_rows",
+        lambda *args, **kwargs: {"ok": True, "columns": [], "rows": [], "total": 0},
+    )
+
+    def data_reader_user():
+        return AuthUser(username="reader", role="data_reader", status="active")
+
+    app.dependency_overrides[editor_dependencies.current_user] = data_reader_user
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/excel-to-sql/source-rows?config=config/excel_to_sql/allowed.json"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["can_edit"] is False
+    assert payload["can_delete"] is False
+    assert payload["can_batch_delete"] is False
 
 def test_source_rows_rejects_config_outside_enabled_task_whitelist(monkeypatch):
     from fastapi import FastAPI

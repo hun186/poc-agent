@@ -89,3 +89,46 @@
 - 目的：將 SQL 來源資料列的原生 `username` 欄位保留為一般目的資料欄位，同時讓 `_import_username` 成為匯入時由程式寫入的系統欄位，語意專指「執行匯入的使用者」。
 - 主要修改：Excel→SQL 使用者匯入若有 `_audit_actor`，會在目的資料表自動建立 / 補齊 `_import_username NVARCHAR(255)`，並於新增 destination row 時填入當下匯入者；SQL 來源資料編輯器只把 `_import_username` 視為不可編輯系統欄位，目的表原生 `username` 不再被系統欄位清單攔截。既有 rows 顯示 `_import_username` 時仍優先用 audit table 補值，沒有 audit 對應時回退目的資料表欄位值。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python -m pytest tests/test_audit.py tests/test_excel_to_sql_source_editor.py tests/test_sql_utils.py -q`。
+
+### 2026-07-02 Excel→SQL 我建立的任務檢示 JSON 轉換細節
+
+- 目的：讓 db_operator / superuser 在「我建立的任務清單 / 審核進度」也能回看自己建立的 Excel→SQL 任務 JSON 轉換細節，避免建立後忘記欄位對應、目的資料表或遮蔽後 JSON 內容時只能請 superuser 查審核區。
+- 主要修改：任務 JSON 管理頁在我的任務操作欄新增「檢示」按鈕；點擊後以 dialog 顯示與 superuser 審核區共用的 JSON 任務轉換細節、欄位對應與遮蔽敏感資訊後的 JSON preview。共用前端 render helper，維持 DB server、database、user、password 等敏感欄位只顯示遮蔽值。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/excel_to_sql_import_records.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py::test_import_center_static_contains_user_import_controls -q`。
+
+### 2026-07-02 API Contract 記憶濃縮
+
+- 目的：`.codex/api_contract.md` 超過 400 行觸發記憶濃縮。
+- 主要修改：完整舊版 API contract 已歸檔至 `.codex/archive/api_contract.md-20260702-063606.md`；active contract 重寫為目前仍有效的摘要，並保留本次 SQL 來源資料編輯器權限、篩選、刪除與 audit scope 變更。
+- 驗證：以 `wc -l .codex/api_contract.md` 確認濃縮後低於 200 行，並保留歸檔檔名於 active memory。
+
+### 2026-07-02 SQL 來源資料編輯器權限、刪除、audit 與批次篩選補強
+
+- 目的：回應受控 SQL 來源資料表欄寬、權限、刪除操作、audit 缺口與依來源 Excel / 匯入時間篩選批次錯誤資料的需求。
+- 主要修改：`data_reader` 可唯讀 source rows；`data_editor` 可單列編輯與單篇刪除；`db_operator` 可在來源資料編輯器勾選批次刪除，沿用 dashboard 風格的原因、確認文字與最後確認。source rows 由 audit table 補 `_imported_at` / `_source_excel`，並支援 audit source_file 與 processed_at 起迄篩選；dashboard selected-task audit scope 納入 manual-control config_path 事件，避免來源資料編輯器操作不出現在最近 audit 事件。前端縮窄 `_import_username` 欄寬並新增匯入時間 / 來源 Excel 顯示。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`python -m py_compile data_ingestion/excel_to_sql/table_editor.py data_ingestion/excel_to_sql/dashboard.py sra_api/routers/excel_to_sql.py`、`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py tests/test_dashboard_filters.py::test_dashboard_source_scope_filters_selected_task_registry_and_configured_sources tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_sql_source_editor_page_and_navigation_are_wired -q`。
+
+### 2026-07-02 共用分頁導航排版修正
+
+- 目的：修正 Excel 匯入記錄管理與所有使用共用分頁導航工具的區塊中，首頁按鈕貼到上一行、sr-only label 可見、頁數輸入框占滿整欄造成分頁控制破碎不緊湊的問題。
+- 主要修改：`sra_api/static/audit_tools.js` 在 `updatePager()` / `bindPager()` 時注入共用 pager CSS，強制 `.pager` 使用 flex row、`.pager-jump` inline-flex、頁碼 input 固定寬度，並補上 `.sr-only` 視覺隱藏規則；不需逐頁複製 CSS，所有共用 pager 使用點會一致套用。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py::test_import_center_static_contains_user_import_controls tests/test_excel_to_sql_dashboard_static.py::test_sql_source_editor_page_and_navigation_are_wired tests/test_editor_auth_ui_static.py::test_editor_audit_views_are_client_paginated_after_sorting -q`。
+
+### 2026-07-02 共用分頁每頁筆數控制
+
+- 目的：修正共用分頁導航仍缺少統一每頁顯示筆數控制，避免各頁自帶「每頁筆數 / 列數上限」欄位與共用分頁互相衝突。
+- 主要修改：`sra_api/static/audit_tools.js` 的 `bindPager()` 新增共用 page-size 控制，包含下拉選項與直接輸入筆數；Excel 匯入記錄、任務 JSON 我的任務、Excel→SQL 最近 audit、SQL 來源資料編輯器與 Editor 帳號審核改由共用 pager 控制 page size。SQL 來源資料編輯器移除工具列原本的 `limit` input；Excel→SQL dashboard 移除原本的「列數上限」 input，改以最近 audit 分頁控制送出的 `limit`。既有 client-side 顯示仍維持先產生已篩選 / 已排序 row list，再呼叫 `paginateRows()` 切出目前頁面。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍有 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js sra_api/static/excel_to_sql_source_editor_app.js sra_api/static/excel_to_sql_dashboard_app.js sra_api/static/excel_to_sql_import_records.js sra_api/static/editor_documents.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py::test_import_center_static_contains_user_import_controls tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_sql_source_editor_page_and_navigation_are_wired tests/test_editor_auth_ui_static.py::test_editor_audit_views_are_client_paginated_after_sorting -q`。
+
+### 2026-07-02 帳號操作記錄查詢移除最多筆數
+
+- 目的：回應帳號安全 → 帳號操作記錄下方已有分頁導覽，因此查詢區塊不再顯示容易與分頁混淆的「最多筆數」欄位。
+- 主要修改：`sra_api/static/editor.html` 移除 `accountAuditLimit` 欄位並更新 `editor_audit.js` cache-busting 版本；`sra_api/static/editor_audit.js` 改以固定後端載入上限 500 筆查詢帳號 audit，再由既有前端分頁顯示目前頁面；清空篩選不再重設已移除的欄位。同步更新靜態 UI 測試。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍有 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_audit.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_workspace_separates_document_and_account_work_areas tests/test_editor_auth_ui_static.py::test_editor_static_shell_loads_split_assets tests/test_editor_auth_ui_static.py::test_editor_audit_views_are_client_paginated_after_sorting -q`。曾誤用不存在的 pytest target `test_editor_static_scripts_are_split_and_loaded`，已改跑正確測試名稱。
+
+
+### 2026-07-02 帳號操作記錄安全上限與未完整載入告警
+
+- 目的：回應帳號操作記錄固定載入 500 筆可能太少、但完全不限量又可能造成瀏覽器或後端過載的疑慮。
+- 主要修改：`GET /v1/editor/audit-logs` 的 `limit` 上限由 500 提高至 5000，response 新增 `truncated` 表示篩選後資料超過本次回傳筆數。帳號操作記錄前端移除手動筆數欄位後，固定以安全上限 5000 查詢；若後端回報截斷或載入筆數達安全上限，會跳出告警並在 status 提醒使用者用帳號、動作或時間條件縮小查詢範圍。同步更新 API contract 與靜態 / router 測試。
+- 驗證：`python -m py_compile sra_api/routers/editor_usage.py`、`node --check sra_api/static/editor_audit.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_workspace_separates_document_and_account_work_areas tests/test_editor_auth_ui_static.py::test_editor_static_shell_loads_split_assets tests/test_editor_audit_queries.py::test_list_audit_logs_reports_truncated_hits tests/test_editor_audit_queries.py::test_list_audit_logs_allows_regular_user_own_account_events -q`。依專案要求本輪也先執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt`；pip index 仍有 403 retry，但 requirements 已滿足。

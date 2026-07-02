@@ -214,7 +214,6 @@
               <div><label>帳號動作</label><select id="accountAuditAction"><option value="">全部帳號動作</option><option value="auth.login">登入</option><option value="auth.logout">登出</option><option value="auth.password_changed">變更密碼</option><option value="auth.password_reset_requested">忘記密碼申請</option><option value="auth.password_recovered">Token 重設密碼</option><option value="auth.password_reset_token_issued">管理員發 token</option><option value="auth.password_reset_by_superuser">管理員重設密碼</option><option value="auth.user_registered">建立 pending 帳號</option><option value="auth.user_approved">核准帳號</option><option value="auth.user_rejected">拒絕申請／停權</option><option value="auth.user_deleted">刪除帳號</option></select></div>
               <div><label>起始時間</label><input id="accountAuditStartTs" type="datetime-local" /></div>
               <div><label>結束時間</label><input id="accountAuditEndTs" type="datetime-local" /></div>
-              <div><label>最多筆數</label><input id="accountAuditLimit" type="number" min="1" max="500" value="100" /></div>
             </div>
             <div class="row" style="margin-top: 12px;">
               <button id="searchAccountAuditBtn">查詢帳號操作</button>
@@ -278,7 +277,7 @@
 <script src="/static/editor_form.js?v=20260625-array-preserve-single"></script>
 <script src="/static/editor_auth_nav.js?v=20260629-login-hints"></script>
 <script src="/static/editor_stats.js?v=20260614-split"></script>
-<script src="/static/editor_audit.js?v=20260614-split"></script>
+<script src="/static/editor_audit.js?v=20260702-account-audit-limit-warning"></script>
 <script src="/static/editor_documents.js?v=20260629-login-unlock"></script>
 <script src="/static/editor_bootstrap.js?v=20260702-source-editor-local-auth"></script>
 </body>
