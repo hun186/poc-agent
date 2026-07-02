@@ -200,9 +200,12 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "SQL 來源資料編輯器" in editor_html
     assert "excelSourceEditorBtn" in editor_html
     assert "location.href = '/excel-to-sql-source-editor'" in bootstrap_js
+    assert "sra_token" not in bootstrap_js
     assert "受控 SQL 來源資料表" in source_html
+    assert "20260702-source-editor-auth-cache" in source_html
     assert "/v1/excel-to-sql/source-rows" in source_js
     assert "/v1/excel-to-sql/source-row" in source_js
+    assert "sra_token" not in source_js
     assert '<label for="usernameSummary">使用者</label>' in source_html
     assert '<script src="/static/audit_tools.js"></script>' in source_html
     assert "SraAuditTools.renderMultiFilterOptions" in source_js
