@@ -54,7 +54,7 @@ def test_editor_static_shell_loads_split_assets() -> None:
         "editor_form.js": "20260625-array-preserve-single",
         "editor_auth_nav.js": "20260629-login-hints",
         "editor_documents.js": "20260629-login-unlock",
-        "editor_bootstrap.js": "20260702-source-editor-session-handoff",
+        "editor_bootstrap.js": "20260702-source-editor-auth-helper",
     }
     for path in EDITOR_SCRIPT_FILES:
         asset_name = Path(path).name

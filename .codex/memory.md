@@ -47,3 +47,9 @@
 - `.codex/archive/memory.md-20260616-042648.md`：歸檔 2026-06-12 至 2026-06-16 的 active memory。
 - `.codex/archive/memory.md-20260623-064506.md`：歸檔 2026-06-16 至 2026-06-23 的 active memory。
 - `.codex/archive/memory.md-20260702-021320.md`：歸檔 2026-06-23 至本次濃縮前的 active memory；本次濃縮保留仍有效摘要、近期工作與 URL token handoff 安全修正結論。
+
+### 2026-07-02 SQL 來源資料編輯器登入與說明樣式對齊
+
+- 目的：修正從 Editor 首頁登入後進入 SQL 來源資料編輯器仍顯示未登入的使用體驗，並將「受控 SQL 來源資料表」說明改成與既有 dashboard / Editor 問號浮動提示一致的樣式。
+- 主要修改：SQL 來源資料編輯器前端新增 `authToken()` / `loadCurrentUser()`，沿用其他 Excel→SQL 頁面的 `/v1/auth/me` 驗證與 header 顯示模式，同時保留 Editor 導航寫入的同分頁 `sessionStorage` fallback，並優先使用 session handoff token 再回退 localStorage，避免舊 localStorage token 壓過導航承接 token。說明 UI 移除原本 details popover，改用 `scope-help` / `scope-help-tooltip` 問號提示樣式。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_editor_auth_ui_static.py -q`。本環境未提供瀏覽器 / Playwright runtime，未做實機截圖；以靜態 UI 測試與 JS 語法檢查替代。

@@ -1,7 +1,8 @@
 const $ = id => document.getElementById(id);
 const tokenKey = 'sra_editor_token';
 const state = { page: 1, data: null, editing: null, usernameOptions: [], selectedUsers: [], usernameDirty: false };
-function token() { return localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey) || ''; }
+function authToken() { return sessionStorage.getItem(tokenKey) || localStorage.getItem(tokenKey) || ''; }
+function token() { return authToken(); }
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function show(id, msg, cls='') { const el=$(id); el.textContent=msg; el.className='status ' + cls; el.classList.toggle('hidden', !msg); }
 async function api(path, options={}) {
@@ -11,7 +12,23 @@ async function api(path, options={}) {
   if (!res.ok) { let text = await res.text(); try { text = JSON.parse(text).detail || text; } catch (_) {} throw new Error(text); }
   return res.json();
 }
-async function loadMe() { try { const data = await api('/v1/auth/me'); $('whoami').textContent = `${data.user.username} (${data.user.role})`; return true; } catch (err) { $('whoami').textContent = token() ? '登入逾時' : '未登入'; show('status', token() ? `登入狀態驗證失敗：${err.message}` : '請先到 /editor 登入；本頁沿用 sra_editor_token。', 'error'); return false; } }
+async function loadCurrentUser() {
+  const currentToken = authToken();
+  if (!currentToken) { $('whoami').textContent = '未登入'; show('status', '請先到 /editor 登入；本頁會沿用 sra_editor_token。', 'error'); return false; }
+  try {
+    const res = await fetch('/v1/auth/me', { headers: { Authorization: 'Bearer ' + currentToken } });
+    if (!res.ok) throw new Error('unauthorized');
+    const data = await res.json();
+    const user = data.user || {};
+    $('whoami').textContent = user.username ? `${user.username} (${user.role || '-'})` : '未登入';
+    return true;
+  } catch (_) {
+    $('whoami').textContent = '登入已失效';
+    show('status', '登入已失效，請回 /editor 重新登入。', 'error');
+    return false;
+  }
+}
+const loadMe = loadCurrentUser;
 async function loadTasks() {
   const data = await api('/v1/excel-to-sql/dashboard-tasks');
   const tasks = (data.tasks || []).filter(t => t.config_path && t.destination_table);
@@ -74,7 +91,7 @@ function renderTable() {
   $('nextBtn').disabled = !data.has_more;
 }
 async function loadRows(page=1) {
-  if (!token()) { show('status', '請先到 /editor 登入；本頁沿用 sra_editor_token。', 'error'); return; }
+  if (!token()) { show('status', '請先到 /editor 登入；本頁會沿用 sra_editor_token。', 'error'); return; }
   state.page = page;
   const params = new URLSearchParams({config: $('config').value.trim(), q: $('query').value.trim(), source_file_filter: $('sourceFileFilter').value.trim(), hash_value_filter: $('hashFilter').value.trim(), payload_filter: $('payloadFilter').value.trim(), page: String(state.page), limit: String($('limit').value || 50)});
   if ($('rowNoFilter').value) params.set('row_no_filter', $('rowNoFilter').value);
