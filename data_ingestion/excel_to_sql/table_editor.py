@@ -23,10 +23,6 @@ SYSTEM_COLUMNS = {
     "source_file",
     "sheet_name",
     "row_no",
-    "username",
-    "audit_actor",
-    "audit_user",
-    "actor",
     "_import_username",
 }
 
@@ -279,7 +275,7 @@ def list_sql_source_rows(
             rows = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
             audit_usernames = _audit_usernames_by_hash(cursor, audit_table, table, [row.get(hash_field) for row in rows])
             for row in rows:
-                row["_import_username"] = audit_usernames.get(str(row.get(hash_field) or "").strip(), "")
+                row["_import_username"] = audit_usernames.get(str(row.get(hash_field) or "").strip(), str(row.get("_import_username") or ""))
             if not any(str(col.get("name") or "").lower() == "_import_username" for col in columns):
                 columns.append({"name": "_import_username", "data_type": "nvarchar", "nullable": True})
             return {

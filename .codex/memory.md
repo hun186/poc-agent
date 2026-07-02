@@ -83,3 +83,9 @@
 - 目的：依使用者回饋，SQL 來源資料編輯器的「使用者」篩選應精確代表「執行 Excel→SQL 匯入的使用者」，不得讀取目的資料表自身可能存在的 `username` 情報欄位，以免特殊資料表欄位語意混淆。
 - 主要修改：`data_ingestion/excel_to_sql/table_editor.py` 的 `username_options`、`username_filter` 與回傳列上的使用者欄位一律從 Excel→SQL audit table 取得；目的資料列即使有 native `username` 欄位，也只當一般資料欄位顯示，不再作為匯入使用者篩選來源。SQL 來源資料編輯器 UI 文案改為「匯入使用者」，回傳列補 `_import_username` 虛擬欄位表示匯入操作者。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍有 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js && node --check sra_api/static/excel_to_sql_source_editor_app.js && node --check sra_api/static/excel_to_sql_dashboard_app.js && node --check sra_api/static/excel_to_sql_import_records.js && node --check sra_api/static/editor_documents.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_dashboard_static.py tests/test_editor_auth_ui_static.py -q`。
+
+### 2026-07-02 Excel→SQL 匯入使用者系統欄位落地
+
+- 目的：將 SQL 來源資料列的原生 `username` 欄位保留為一般目的資料欄位，同時讓 `_import_username` 成為匯入時由程式寫入的系統欄位，語意專指「執行匯入的使用者」。
+- 主要修改：Excel→SQL 使用者匯入若有 `_audit_actor`，會在目的資料表自動建立 / 補齊 `_import_username NVARCHAR(255)`，並於新增 destination row 時填入當下匯入者；SQL 來源資料編輯器只把 `_import_username` 視為不可編輯系統欄位，目的表原生 `username` 不再被系統欄位清單攔截。既有 rows 顯示 `_import_username` 時仍優先用 audit table 補值，沒有 audit 對應時回退目的資料表欄位值。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python -m pytest tests/test_audit.py tests/test_excel_to_sql_source_editor.py tests/test_sql_utils.py -q`。

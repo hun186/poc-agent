@@ -106,7 +106,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
     assert (
-        "/static/excel_to_sql_import_records.js?v=20260629-task-review-permission"
+        "/static/excel_to_sql_import_records.js?v=20260702-shared-pager"
         in html
     )
     assert "/v1/excel-to-sql/import-records" in script

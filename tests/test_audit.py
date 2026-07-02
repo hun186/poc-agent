@@ -146,3 +146,23 @@ def test_attach_audit_metadata_keeps_operational_config_out_of_row_payload():
     assert rows[0].row_payload["audit_user"] == "alice"
     assert "config_path" not in rows[0].row_payload
     assert "source_config_path" not in rows[0].row_payload
+
+
+def test_import_username_system_mapping_is_added_only_for_user_import():
+    from data_ingestion.excel_to_sql.file_processor import _import_username_mapping
+
+    assert _import_username_mapping({}) is None
+    assert _import_username_mapping({"_audit_actor": " alice "}) == {
+        "dest_field": "_import_username",
+        "dest_field_type": "NVARCHAR(255)",
+    }
+
+
+def test_attach_import_username_writes_actor_to_destination_record():
+    from data_ingestion.excel_to_sql.file_processor import _attach_import_username
+
+    record = {"username": "native-value", "title": "row"}
+    _attach_import_username(record, {"_audit_actor": "alice"})
+
+    assert record["username"] == "native-value"
+    assert record["_import_username"] == "alice"
