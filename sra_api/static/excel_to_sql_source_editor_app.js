@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 const tokenKey = 'sra_editor_token';
 const state = { page: 1, data: null, editing: null, usernameOptions: [], selectedUsers: [], usernameDirty: false };
-function token() { return localStorage.getItem(tokenKey) || ''; }
+function token() { return localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey) || ''; }
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function show(id, msg, cls='') { const el=$(id); el.textContent=msg; el.className='status ' + cls; el.classList.toggle('hidden', !msg); }
 async function api(path, options={}) {
