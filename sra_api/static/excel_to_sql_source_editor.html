@@ -23,10 +23,12 @@
     .status { padding:12px; border-radius:12px; margin:12px 0; background:#eef4ff; color:var(--info); white-space:pre-wrap; }
     .status.ok { background:#ecfdf3; color:var(--ok); }
     .status.error { background:#fef3f2; border:1px solid #fecdca; color:var(--bad); }
-    .details-help { display:inline-block; margin-left:8px; position:relative; }
-    .details-help summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border:1px solid var(--line); border-radius:999px; color:var(--muted); background:white; font-size:13px; font-weight:800; }
-    .details-help summary::-webkit-details-marker { display:none; }
-    .details-help[open] .help-popover { position:absolute; z-index:20; left:0; top:30px; width:min(640px, 80vw); padding:12px 14px; border-radius:12px; background:#111827; color:white; box-shadow:0 10px 24px rgba(16,24,40,.18); line-height:1.6; }
+    .heading-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .heading-row h2 { margin:0; }
+    .scope-help { position:relative; display:inline-flex; flex:0 0 auto; }
+    .scope-help-btn { width:28px; height:28px; border-radius:999px; padding:0; display:inline-flex; align-items:center; justify-content:center; background:#2563eb; color:#fff; border:0; font-size:13px; font-weight:800; cursor:help; }
+    .scope-help-tooltip { display:none; position:absolute; left:0; top:calc(100% + 8px); z-index:30; width:min(520px, calc(100vw - 48px)); border:1px solid #bfdbfe; border-radius:12px; background:#fff; color:#1e3a8a; box-shadow:0 14px 32px rgba(15,23,42,.18); padding:10px 12px; font-size:13px; line-height:1.55; font-weight:500; }
+    .scope-help:hover .scope-help-tooltip, .scope-help:focus-within .scope-help-tooltip { display:block; }
     .filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; align-items:end; margin:12px 0 14px; }
     .dropdown-filter { position:relative; }
     .field-label-row { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
@@ -69,7 +71,7 @@
 </header>
 <main>
   <section class="card">
-    <h2>受控 SQL 來源資料表 <details class="details-help"><summary aria-label="查看 SQL 來源資料編輯器說明">?</summary><div class="help-popover">此頁只會操作已啟用 Excel→SQL 任務清單中的設定檔，並由該設定檔讀取對應的 <code>destination.table</code>；使用者不能自行輸入任意 SQL 或任意 table name。資料修改者可單列編輯並需填寫原因；修改會寫入同一張 Excel→SQL audit table，但 action 會標記為 <code>sql_source_editor.update_row</code>。刪除與批次刪除仍請使用 db_operator 權限的匯入查詢儀表板。</div></details></h2>
+    <div class="heading-row"><h2>受控 SQL 來源資料表</h2><span class="scope-help"><button class="scope-help-btn" type="button" aria-label="查看 SQL 來源資料編輯器說明" aria-describedby="sourceEditorScopeHelpText">?</button><span id="sourceEditorScopeHelpText" class="scope-help-tooltip" role="tooltip">此頁只會操作已啟用 Excel→SQL 任務清單中的設定檔，並由該設定檔讀取對應的 <code>destination.table</code>；使用者不能自行輸入任意 SQL 或任意 table name。資料修改者可單列編輯並需填寫原因；修改會寫入同一張 Excel→SQL audit table，但 action 會標記為 <code>sql_source_editor.update_row</code>。刪除與批次刪除仍請使用 db_operator 權限的匯入查詢儀表板。</span></span></div>
     <div class="toolbar">
       <div><label>任務</label><select id="task"></select></div>
       <div style="min-width:360px"><label>設定檔</label><input id="config" value="config/excel_to_sql/vessel_activities.example.json" /></div>
@@ -103,6 +105,6 @@
   </section>
 </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_source_editor_app.js?v=20260702-source-editor-session-token"></script>
+<script src="/static/excel_to_sql_source_editor_app.js?v=20260702-source-editor-local-auth"></script>
 </body>
 </html>
