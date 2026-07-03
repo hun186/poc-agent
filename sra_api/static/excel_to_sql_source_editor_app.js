@@ -82,7 +82,7 @@ function sourceColumnClass(name) { return name === '_import_username' ? 'col-imp
 function sourceCellClass(name, isEditable) { return `${isEditable ? '' : 'muted'} ${sourceColumnClass(name)}`.trim(); }
 function formatSourceCell(name, value) { return name === '_imported_at' ? formatSourceTime(value) : cellValue(value); }
 function rowActions(index, hashValue) {
-  const checkbox = state.canBatchDelete && hashValue ? `<label class="row-check"><input type="checkbox" data-source-delete-check value="${esc(hashValue)}" />批刪</label>` : '';
+  const checkbox = state.canBatchDelete && hashValue ? `<label class="row-check"><input type="checkbox" data-source-delete-check value="${esc(hashValue)}" aria-label="勾選刪除 hash ${esc(hashValue)}" /></label>` : '';
   const editBtn = state.canEdit ? `<button class="secondary" data-edit-index="${index}">編輯</button>` : '';
   const deleteBtn = state.canDelete && hashValue ? `<button class="ghost danger" data-delete-hash="${esc(hashValue)}">刪除</button>` : '';
   return `<div class="source-actions">${checkbox}${editBtn}${deleteBtn || '<span class="muted">唯讀</span>'}</div>`;
@@ -98,7 +98,8 @@ function renderTable() {
   const canDelete = Boolean(data.can_delete);
   const canBatchDelete = Boolean(data.can_batch_delete);
   state.canEdit = canEdit; state.canDelete = canDelete; state.canBatchDelete = canBatchDelete;
-  const head = '<tr><th>操作</th>' + cols.map(c => `<th class="${sourceColumnClass(c.name)}" title="${esc(c.data_type || '')}${c.nullable ? '; nullable' : ''}">${esc(displayColumnName(c.name))}</th>`).join('') + '</tr>';
+  const selectAll = canBatchDelete ? '<input type="checkbox" id="sourceSelectAll" aria-label="勾選本頁可批次刪除 SQL 列" />' : '';
+  const head = `<tr><th>${selectAll}<span class="sr-only">操作</span></th>` + cols.map(c => `<th class="${sourceColumnClass(c.name)}" title="${esc(c.data_type || '')}${c.nullable ? '; nullable' : ''}">${esc(displayColumnName(c.name))}</th>`).join('') + '</tr>';
   const body = rows.map((r, idx) => {
     const hashValue = r[data.hash_field] || '';
     const tds = cols.map(c => `<td class="${sourceCellClass(c.name, editable.has(c.name))}"><pre>${esc(formatSourceCell(c.name, r[c.name]))}</pre></td>`).join('');
@@ -107,6 +108,8 @@ function renderTable() {
   $('tableWrap').innerHTML = `<table class="source-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
   document.querySelectorAll('[data-edit-index]').forEach(btn => btn.onclick = () => startEdit(Number(btn.dataset.editIndex)));
   document.querySelectorAll('[data-delete-hash]').forEach(btn => btn.onclick = () => deleteSourceRow(btn.dataset.deleteHash));
+  const selectAllBox = $('sourceSelectAll');
+  if (selectAllBox) selectAllBox.onchange = () => toggleSourceSelection(selectAllBox.checked);
   document.querySelectorAll('[data-source-delete-check]').forEach(input => input.onchange = updateBatchDeleteSummary);
   updateBatchDeleteControls();
   state.page = Number(data.page || state.page || 1);
@@ -157,7 +160,8 @@ SraAuditTools.bindPager({firstId: 'sourceFirstBtn', prevId: 'sourcePrevBtn', inp
 $('saveBtn').onclick = saveEdit;
 $('cancelEditBtn').onclick = () => { $('editCard').classList.add('hidden'); state.editing = null; };
 function selectedDeleteHashes() { return Array.from(document.querySelectorAll('[data-source-delete-check]:checked')).map(input => input.value).filter(Boolean); }
-function updateBatchDeleteSummary() { const count = selectedDeleteHashes().length; const el = $('batchDeleteSummary'); if (el) el.textContent = count ? `已勾選 ${count} 筆` : '尚未勾選資料列'; }
+function toggleSourceSelection(checked) { document.querySelectorAll('[data-source-delete-check]').forEach(input => { input.checked = checked; }); updateBatchDeleteSummary(); }
+function updateBatchDeleteSummary() { const count = selectedDeleteHashes().length; const total = document.querySelectorAll('[data-source-delete-check]').length; const selectAllBox = $('sourceSelectAll'); if (selectAllBox) { selectAllBox.checked = total > 0 && count === total; selectAllBox.indeterminate = count > 0 && count < total; } const el = $('batchDeleteSummary'); if (el) el.textContent = count ? `已勾選 ${count} 筆` : '尚未勾選資料列'; }
 function updateBatchDeleteControls() { const box = $('batchDeleteBar'); if (box) box.classList.toggle('hidden', !state.canBatchDelete); updateBatchDeleteSummary(); }
 function batchDeleteConfirmationPhrase(rowCount) { return `DELETE ${rowCount}`; }
 function confirmBatchDeleteRows(hashes) { const phrase = batchDeleteConfirmationPhrase(hashes.length); const typed = prompt(`高風險操作確認：即將批次刪除 ${hashes.length} 筆 SQL 條目。\n前 ${Math.min(hashes.length, 5)} 筆 hash：\n${hashes.slice(0, 5).join('\n')}\n\n若確認要刪除，請完整輸入：${phrase}`, ''); return typed === phrase; }

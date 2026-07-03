@@ -244,6 +244,9 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert '<div><label>載入筆數上限</label><input id="sourceLimit" type="number" min="1" max="50000" value="5000" /></div>' in source_html
     assert "/v1/excel-to-sql/source-rows" in source_js
     assert "/v1/excel-to-sql/source-row" in source_js
+    source_dashboard_js = (STATIC_ROOT / "excel_to_sql_source_dashboard_app.js").read_text(encoding="utf-8")
+    assert "const user=me.user||me||{}" in source_dashboard_js
+    assert "${user.username}（${user.role||'-'}）" in source_dashboard_js
     assert "function authToken()" in source_js
     assert "function authToken() { return localStorage.getItem(tokenKey) || ''; }" in source_js
     assert "sessionStorage.getItem(tokenKey)" not in source_js
@@ -264,6 +267,10 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "function deleteSourceRow" in source_js
     assert "function confirmBatchDeleteRows" in source_js
     assert "data-source-delete-check" in source_js
+    assert 'id="sourceSelectAll"' in source_js
+    assert "function toggleSourceSelection(checked)" in source_js
+    assert "selectAllBox.indeterminate" in source_js
+    assert ">批刪<" not in source_js
     assert "displayColumnName(name)" in source_js
     assert "col-import-user" in source_html
     assert "此操作不會自動同步 ES" in source_html
