@@ -23,7 +23,7 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         html = (STATIC_ROOT / filename).read_text(encoding="utf-8")
         script_urls.update(re.findall(r'<script src="([^"]+)"', html))
 
-    assert "/static/excel_to_sql_source_editor_app.js?v=20260703-source-load-limit" in script_urls
+    assert "/static/excel_to_sql_source_editor_app.js?v=20260703-pager-page-size" in script_urls
     assert "/static/excel_to_sql_source_dashboard_app.js?v=20260703-source-dashboard-import-series" in script_urls
     for script_url in sorted(script_urls):
         response = TestClient(app).get(script_url)
@@ -74,6 +74,7 @@ def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     assert "使用回看天數" not in html
     assert '<div><label>載入列數上限</label><input id="limit" type="number" min="1" max="400000" value="50000" /></div>' in html
     assert "const pageSize = Math.max(1, Math.min(Number($('limit').value || state.recentPageSize || 50000), 400000));" in html
+    assert "maxPageSize: 400000" in html
     assert "$('limit').addEventListener('change', applyAuditFilters)" in html
     assert '<button onclick="refreshDashboardNow()">重新整理</button>' in html
     assert (
@@ -253,8 +254,9 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "受控 SQL 來源資料表" in source_html
     assert "scope-help-tooltip" in source_html
     assert "sourceEditorScopeHelpText" in source_html
-    assert "20260703-source-load-limit" in source_html
-    assert '<div><label>載入筆數上限</label><input id="sourceLimit" type="number" min="1" max="50000" value="5000" /></div>' in source_html
+    assert "20260703-pager-page-size" in source_html
+    assert '載入筆數上限' not in source_html
+    assert 'id="sourceLimit"' not in source_html
     assert "/v1/excel-to-sql/source-rows" in source_js
     assert "/v1/excel-to-sql/source-row" in source_js
     source_dashboard_js = (STATIC_ROOT / "excel_to_sql_source_dashboard_app.js").read_text(encoding="utf-8")
@@ -268,9 +270,10 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert '<label for="usernameSummary">匯入使用者</label>' in source_html
     assert '<script src="/static/audit_tools.js"></script>' in source_html
     assert "SraAuditTools.renderMultiFilterOptions" in source_js
-    assert "getPageSize: () => state.pageSize" not in source_js
-    assert "limit: String(Math.max(1, Math.min(50000, Number($('sourceLimit').value || state.pageSize || 5000))))" in source_js
-    assert "$('sourceLimit').value = '5000'" in source_js
+    assert "getPageSize: () => state.pageSize" in source_js
+    assert "maxPageSize: 50000" in source_js
+    assert "limit: String(Math.max(1, Math.min(50000, Number(state.pageSize || 50))))" in source_js
+    assert "sourceLimit" not in source_js
     assert "params.append('username_filter', value)" in source_js
     assert "import_start_ts" in source_js
     assert "import_end_ts" in source_js

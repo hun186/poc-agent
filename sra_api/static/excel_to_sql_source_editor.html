@@ -91,7 +91,6 @@
       <div><label>任務</label><select id="task"></select></div>
       <div style="min-width:360px"><label>設定檔</label><input id="config" value="config/excel_to_sql/vessel_activities.example.json" /></div>
       <div><label>關鍵字</label><input id="query" placeholder="跨前 12 個欄位搜尋" /></div>
-      <div><label>載入筆數上限</label><input id="sourceLimit" type="number" min="1" max="50000" value="5000" /></div>
       <button id="loadBtn">載入資料列</button>
     </div>
     <section class="filters" aria-label="SQL 來源資料列篩選">
@@ -122,6 +121,6 @@
   </section>
 </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_source_editor_app.js?v=20260703-source-load-limit"></script>
+<script src="/static/excel_to_sql_source_editor_app.js?v=20260703-pager-page-size"></script>
 </body>
 </html>

@@ -187,13 +187,6 @@
         font-size: 13px !important;
         font-weight: 600 !important;
       }
-      .pager .pager-size select {
-        width: auto !important;
-        min-width: 72px !important;
-        flex: 0 0 auto !important;
-        padding: 7px 9px !important;
-        box-sizing: border-box !important;
-      }
       .pager .pager-jump input,
       .pager .pager-size input,
       .pager input[type="number"] {
@@ -219,11 +212,12 @@
     document.head.appendChild(style);
   }
 
-  function clampPageSize(value, fallback) {
+  function clampPageSize(value, fallback, maxPageSize) {
     const base = Number(fallback || 25);
     const parsed = Number(value);
     const raw = Number.isFinite(parsed) ? parsed : (Number.isFinite(base) ? base : 25);
-    return Math.max(1, Math.min(1000, Math.floor(raw)));
+    const maxSize = Math.max(1, Number(maxPageSize || 1000));
+    return Math.max(1, Math.min(maxSize, Math.floor(raw)));
   }
 
   function pagerRoot(options) {
@@ -249,10 +243,8 @@
   function syncPageSizeControls(options, pageSize) {
     const root = pagerRoot(options);
     if (!root) return;
-    const normalized = clampPageSize(pageSize, options.defaultPageSize || 25);
-    const select = root.querySelector('[data-pager-size-select]');
+    const normalized = clampPageSize(pageSize, options.defaultPageSize || 25, options.maxPageSize);
     const input = root.querySelector('[data-pager-size-input]');
-    if (select) select.value = Array.from(select.options).some((option) => Number(option.value) === normalized) ? String(normalized) : '';
     if (input) input.value = String(normalized);
   }
 
@@ -260,28 +252,23 @@
     if (!options.getPageSize || !options.setPageSize) return;
     const root = pagerRoot(options);
     if (!root || root.querySelector('[data-pager-size-control]')) return;
-    const sizes = (options.pageSizeOptions || [10, 25, 50, 100, 200]).map((value) => clampPageSize(value, 25));
-    const uniqueSizes = [...new Set(sizes)].sort((a, b) => a - b);
-    const currentSize = clampPageSize(options.getPageSize(), options.defaultPageSize || uniqueSizes[0] || 25);
+    const maxPageSize = Math.max(1, Number(options.maxPageSize || 1000));
+    const currentSize = clampPageSize(options.getPageSize(), options.defaultPageSize || 25, maxPageSize);
     const control = document.createElement('span');
     control.className = 'pager-size';
     control.dataset.pagerSizeControl = 'true';
-    const selectId = pageSizeControlId(options, 'Select');
     const inputId = pageSizeControlId(options, 'Input');
-    control.innerHTML = `<label for="${escapeHtml(selectId)}">每頁顯示</label><select id="${escapeHtml(selectId)}" data-pager-size-select aria-label="每頁顯示筆數選單"><option value="">自訂</option>${uniqueSizes.map((size) => `<option value="${size}">${size}</option>`).join('')}</select><label class="sr-only" for="${escapeHtml(inputId)}">直接輸入每頁筆數</label><input id="${escapeHtml(inputId)}" data-pager-size-input type="number" min="1" max="1000" inputmode="numeric" aria-label="直接輸入每頁筆數" /><span class="muted">筆</span>`;
+    control.innerHTML = `<label for="${escapeHtml(inputId)}">每頁顯示</label><input id="${escapeHtml(inputId)}" data-pager-size-input type="number" min="1" max="${escapeHtml(maxPageSize)}" inputmode="numeric" aria-label="直接輸入每頁筆數" /><span class="muted">筆</span>`;
     const first = typeof options.firstId === 'string' ? document.getElementById(options.firstId) : options.firstEl;
     root.insertBefore(control, first || root.firstChild);
-    const select = control.querySelector('[data-pager-size-select]');
     const input = control.querySelector('[data-pager-size-input]');
     const applySize = (value) => {
-      const size = clampPageSize(value, options.getPageSize());
+      const size = clampPageSize(value, options.getPageSize(), maxPageSize);
       options.setPageSize(size);
       if (options.setPage) options.setPage(1);
       if (input) input.value = String(size);
-      if (select) select.value = uniqueSizes.includes(size) ? String(size) : '';
       if (options.renderPage) options.renderPage();
     };
-    if (select) select.onchange = () => { if (select.value) applySize(select.value); };
     if (input) {
       input.onkeydown = (ev) => { if (ev.key === 'Enter') applySize(ev.currentTarget.value); };
       input.onchange = () => applySize(input.value);

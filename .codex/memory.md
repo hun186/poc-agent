@@ -177,3 +177,9 @@
 - 目的：釐清 SQL 來源資料統計儀表板的「匯入執行起 / 迄」篩選是否已用 audit table 交叉比對，並補上依匯入時間統計來源資料數量的曲線。
 - 主要修改：既有匯入時間篩選維持透過 destination table `hash_value` 與 Excel→SQL audit table `processed_at` 交叉比對；本次在 `/v1/excel-to-sql/source-stats` 新增 `chart_bucket` 與 `import_time_series` / `filtered_series`，後端使用 audit table `processed_at` 分桶並套用目前來源資料篩選。SQL 來源資料統計儀表板新增曲線區塊，載入共用 `SraAuditTools.renderTimeSeriesChart`，沿用 Excel→SQL 匯入查詢儀表板的時間區間選單與曲線模板。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js && node --check sra_api/static/excel_to_sql_source_dashboard_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_dashboard_static.py -q`。
+
+### 2026-07-03 分頁工具列每頁筆數輸入修正
+
+- 目的：回應 Excel→SQL 頁面分頁工具列同時出現「自訂」下拉與手動輸入的冗餘，以及最近 audit 事件每頁筆數被共用 helper 鎖在 1000、SQL 來源資料編輯器同時有載入筆數上限與分頁每頁筆數兩套控制的混淆。
+- 主要修改：`SraAuditTools` 共用分頁 helper 移除每頁筆數下拉選單，只保留數字輸入框，並支援呼叫端設定 `maxPageSize`；Excel→SQL 最近 audit 事件分頁允許最高 400000，SQL 來源資料編輯器移除上方「載入筆數上限」，改由下方分頁工具列的每頁筆數作為後端 `limit`。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index upgrade 查詢仍有 403 retry，但既有 requirements 已滿足）、`node --check sra_api/static/audit_tools.js && node --check sra_api/static/excel_to_sql_source_editor_app.js && node --check sra_api/static/excel_to_sql_dashboard_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_source_editor.py -q`。
