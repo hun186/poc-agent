@@ -141,7 +141,7 @@ function updateRecentPager(data) {
   state.recentPage = Number(paging.page || state.recentPage || 1);
   state.recentPageSize = Number(paging.page_size || $('limit').value || 50000);
   state.recentTotal = Number(paging.total || (data.recent || []).length || 0);
-  const page = SraAuditTools.updatePager({page: state.recentPage, pageSize: state.recentPageSize, total: state.recentTotal, infoId: 'recentPageInfo', firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', inputLabel: '最近 audit 事件頁數'});
+  const page = SraAuditTools.updatePager({page: state.recentPage, pageSize: state.recentPageSize, total: state.recentTotal, infoId: 'recentPageInfo', firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', inputLabel: '最近 audit 事件頁數', maxPageSize: 400000});
   state.recentPage = page.page;
 }
 function renderJson(value, level = 0) {
@@ -386,6 +386,6 @@ function bindAuditFilterEvents() {
   $('chartBucket').addEventListener('change', applyAuditFilters);
 }
 bindAuditFilterEvents();
-SraAuditTools.bindPager({firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', getPage: () => state.recentPage, setPage: page => { state.recentPage = page; }, getPageSize: () => state.recentPageSize, setPageSize: size => { state.recentPageSize = size; state.recentPage = 1; }, pageSizeOptions: [25, 50, 100, 200, 500], renderPage: loadDashboard});
+SraAuditTools.bindPager({firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', getPage: () => state.recentPage, setPage: page => { state.recentPage = page; }, getPageSize: () => state.recentPageSize, setPageSize: size => { state.recentPageSize = size; state.recentPage = 1; }, maxPageSize: 400000, renderPage: loadDashboard});
 // boot order includes: await loadCurrentUser(); await loadTasks(); await loadDashboard();
 (async () => { resetDefaultWindow(); applyInitialQueryParams(); await loadCurrentUser(); await loadTasks(); applyInitialQueryParams(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));

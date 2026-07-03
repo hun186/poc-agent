@@ -113,14 +113,14 @@ function renderTable() {
   document.querySelectorAll('[data-source-delete-check]').forEach(input => input.onchange = updateBatchDeleteSummary);
   updateBatchDeleteControls();
   state.page = Number(data.page || state.page || 1);
-  state.pageSize = Number(data.limit || $('sourceLimit').value || state.pageSize || 5000);
+  state.pageSize = Number(data.limit || state.pageSize || 50);
   state.total = Number(data.total || rows.length || 0);
-  SraAuditTools.updatePager({page: state.page, pageSize: state.pageSize, total: state.total, infoId: 'sourcePageInfo', firstId: 'sourceFirstBtn', prevId: 'sourcePrevBtn', inputId: 'sourcePageInput', gotoId: 'sourceGotoBtn', nextId: 'sourceNextBtn', lastId: 'sourceLastBtn', inputLabel: 'SQL 來源資料列頁數'});
+  SraAuditTools.updatePager({page: state.page, pageSize: state.pageSize, total: state.total, infoId: 'sourcePageInfo', firstId: 'sourceFirstBtn', prevId: 'sourcePrevBtn', inputId: 'sourcePageInput', gotoId: 'sourceGotoBtn', nextId: 'sourceNextBtn', lastId: 'sourceLastBtn', inputLabel: 'SQL 來源資料列頁數', maxPageSize: 50000});
 }
 async function loadRows(page=1) {
   if (!token()) { show('status', '請先到 /editor 登入；本頁會沿用 sra_editor_token。', 'error'); return; }
   state.page = page;
-  const params = new URLSearchParams({config: $('config').value.trim(), q: $('query').value.trim(), source_file_filter: $('sourceFileFilter').value.trim(), hash_value_filter: $('hashFilter').value.trim(), payload_filter: $('payloadFilter').value.trim(), import_start_ts: localInputToUtcIso('importStartFilter'), import_end_ts: localInputToUtcIso('importEndFilter'), page: String(state.page), limit: String(Math.max(1, Math.min(50000, Number($('sourceLimit').value || state.pageSize || 5000))))});
+  const params = new URLSearchParams({config: $('config').value.trim(), q: $('query').value.trim(), source_file_filter: $('sourceFileFilter').value.trim(), hash_value_filter: $('hashFilter').value.trim(), payload_filter: $('payloadFilter').value.trim(), import_start_ts: localInputToUtcIso('importStartFilter'), import_end_ts: localInputToUtcIso('importEndFilter'), page: String(state.page), limit: String(Math.max(1, Math.min(50000, Number(state.pageSize || 50))))});
   if ($('rowNoFilter').value) params.set('row_no_filter', $('rowNoFilter').value);
   state.selectedUsers.forEach(value => params.append('username_filter', value));
   show('status', '載入中...');
@@ -155,8 +155,8 @@ async function saveEdit() {
 $('task').onchange = () => { if ($('task').value) $('config').value = $('task').value; loadRows(1); };
 $('loadBtn').onclick = () => loadRows(1);
 $('applyFiltersBtn').onclick = () => loadRows(1);
-$('clearFiltersBtn').onclick = () => { ['query','sourceFileFilter','importStartFilter','importEndFilter','rowNoFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); $('sourceLimit').value = '5000'; state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); loadRows(1); };
-SraAuditTools.bindPager({firstId: 'sourceFirstBtn', prevId: 'sourcePrevBtn', inputId: 'sourcePageInput', gotoId: 'sourceGotoBtn', nextId: 'sourceNextBtn', lastId: 'sourceLastBtn', getPage: () => state.page, setPage: page => { state.page = page; }, renderPage: () => loadRows(state.page)});
+$('clearFiltersBtn').onclick = () => { ['query','sourceFileFilter','importStartFilter','importEndFilter','rowNoFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); loadRows(1); };
+SraAuditTools.bindPager({firstId: 'sourceFirstBtn', prevId: 'sourcePrevBtn', inputId: 'sourcePageInput', gotoId: 'sourceGotoBtn', nextId: 'sourceNextBtn', lastId: 'sourceLastBtn', getPage: () => state.page, setPage: page => { state.page = page; }, getPageSize: () => state.pageSize, setPageSize: size => { state.pageSize = size; state.page = 1; }, maxPageSize: 50000, renderPage: () => loadRows(state.page)});
 $('saveBtn').onclick = saveEdit;
 $('cancelEditBtn').onclick = () => { $('editCard').classList.add('hidden'); state.editing = null; };
 function selectedDeleteHashes() { return Array.from(document.querySelectorAll('[data-source-delete-check]:checked')).map(input => input.value).filter(Boolean); }
