@@ -280,7 +280,7 @@ def excel_to_sql_source_stats(
     group_by: list[str] | None = Query(None, description="分群欄位，可重複提供"),
     top_n: int = Query(20, ge=1, le=100),
     config_dir: str = Query("config/excel_to_sql"),
-    user: AuthUser = Depends(current_user),
+    user: AuthUser = Depends(require_data_editor),
 ) -> dict[str, Any]:
     _ensure_source_editor_config_allowed(user, config, config_dir)
     try:

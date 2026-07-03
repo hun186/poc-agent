@@ -274,7 +274,7 @@ def test_sql_source_stats_groups_selected_columns(monkeypatch):
     assert result["groups"][0]["buckets"] == [{"value": "alice", "count": 1}]
 
 
-def test_source_stats_route_uses_enabled_task_whitelist(monkeypatch):
+def test_source_stats_route_requires_data_editor_and_uses_enabled_task_whitelist(monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from api.routers import editor_dependencies
@@ -300,6 +300,16 @@ def test_source_stats_route_uses_enabled_task_whitelist(monkeypatch):
     app.dependency_overrides[editor_dependencies.current_user] = data_reader_user
     client = TestClient(app)
 
+    response = client.get(
+        "/v1/excel-to-sql/source-stats?config=config/excel_to_sql/allowed.json&group_by=username"
+    )
+
+    assert response.status_code == 403
+
+    def data_editor_user():
+        return AuthUser(username="editor", role="data_editor", status="active")
+
+    app.dependency_overrides[editor_dependencies.current_user] = data_editor_user
     response = client.get(
         "/v1/excel-to-sql/source-stats?config=config/excel_to_sql/allowed.json&group_by=username"
     )

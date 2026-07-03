@@ -165,3 +165,9 @@
 - 目的：修正新增 SQL 來源資料統計儀表板後，Excel 匯入流程管理子層各功能頁上方同層頁面切換按鈕未全面同步的問題。
 - 主要修改：在 Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、任務 JSON 管理、SQL 來源資料編輯器與 SQL 來源資料統計儀表板的 header 導航中補齊同層頁面連結；SQL 來源資料統計儀表板 header 也改用既有文案「前往登入 / 編輯器」。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip upgrade 查詢套件索引仍出現 403 retry，但 requirements 已滿足）、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py -q`。
+
+### 2026-07-03 SQL 來源資料統計身份與批刪勾選 UI 修正
+
+- 目的：修正 SQL 來源資料統計儀表板 header 身份誤顯示 `undefined（undefined）`，並將該統計 API 權限提升為資料修改者以上；同時調整 SQL 來源資料編輯器批次刪除勾選 UI。
+- 主要修改：SQL 來源資料統計前端讀取 `/v1/auth/me` 時改用 `data.user` 內的 username / role；`/v1/excel-to-sql/source-stats` 改用 `require_data_editor`。SQL 來源資料編輯器移除列內批次刪除勾選格旁「批刪」文字，並於操作欄標題加入本頁全選 checkbox，支援同步勾選、取消與 indeterminate 狀態。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip upgrade 查詢套件索引仍遇 403 retry，但 requirements 已滿足）、`node --check sra_api/static/excel_to_sql_source_dashboard_app.js`、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_source_editor.py -q`。
