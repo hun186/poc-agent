@@ -281,8 +281,8 @@
 - 後端統計入口為 `GET /v1/excel-to-sql/source-stats`，實作委派到 `data_ingestion/excel_to_sql/table_editor.py::sql_source_stats()`。此功能與 SQL 來源資料編輯器共用已啟用 Excel→SQL dashboard task 白名單，避免使用者任意指定 SQL table。
 - 統計查詢沿用 SQL 來源資料列查詢的主要篩選語意：關鍵字、來源 Excel、匯入時間、列號、hash、資料欄位文字與匯入使用者；結果提供 total 與依指定欄位分群的 Top N buckets。
 
-## 2026-07-03 代理人資料流程說明頁
+## 2026-07-03 代理人資料流程圖資料流更新
 
-- `/agent-data-flow` 由 `sra_api/routers/excel_to_sql.py` 回傳 `sra_api/static/agent_data_flow.html`，定位為靜態視覺說明頁，不新增後端資料處理邏輯。
-- 說明頁呈現資料流：txt 文本與 SQL 資料可經匯入流程進入 Elasticsearch；Excel 檔案先進入 Excel→SQL 機制（上傳、預掃描、確認匯入、欄位映射、hash 去重與 audit），成為可治理 SQL 來源資料後，再沿用 SQL→ES 路徑供代理人檢索。
-- Editor 主導航與 Excel→SQL 相關子頁 header 皆提供「代理人資料流程圖」入口，與既有 Excel→SQL dashboard / source editor / source dashboard / import center / task config 頁維持互相導覽。
+- 代理人資料流程圖目前由 `/agent-data-flow` 頁面呈現，並透過 `/static/agent_data_flow.svg` 載入 SVG。
+- 圖中資料流明確表示：匯入與轉換層會把 content 非結構化文本寫入 Elasticsearch；「LLM多階段平行化暨智慧多流路分析框架」再從 Elasticsearch 讀取 content，完成結構化分析後把結構化結果回寫 Elasticsearch。
+- 圖中不再保留後續 SQL→ES 直接同步線，避免誤解 SQL 來源資料編輯 / audit 管理流程與 LLM 結構化回寫流程。

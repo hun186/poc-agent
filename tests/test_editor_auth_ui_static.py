@@ -55,7 +55,7 @@ def test_editor_static_shell_loads_split_assets() -> None:
         "editor_auth_nav.js": "20260629-login-hints",
         "editor_documents.js": "20260629-login-unlock",
         "editor_audit.js": "20260703-account-audit-50000",
-        "editor_bootstrap.js": "20260702-source-editor-local-auth",
+        "editor_bootstrap.js": "20260703-agent-data-flow-nav",
     }
     for path in EDITOR_SCRIPT_FILES:
         asset_name = Path(path).name
@@ -174,7 +174,11 @@ def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     assert 'class="nav-root-btn" type="button" data-nav-root="content"' in html
     assert 'id="adminNavGroup" data-nav-root="system"' in html
     assert 'data-nav-root="pipeline" aria-expanded="false">匯入管理</button>' in html
+    assert 'id="agentDataFlowBtn">代理人資料流程圖</button>' in html
+    assert "$('agentDataFlowBtn').onclick = () => { collapseMainNav(); location.href = '/agent-data-flow'; };" in html
     assert '<summary>Excel 匯入流程管理</summary>' in html
+    assert '<summary>Excel 匯入流程管理</summary>' in html and 'id="agentDataFlowBtn"' in html
+    assert '<summary>Excel 匯入流程管理</summary>' in html and html.index('id="agentDataFlowBtn"') < html.index('<summary>Excel 匯入流程管理</summary>')
     assert 'id="excelDashboardBtn">Excel→SQL 匯入查詢儀表板</button>' in html
     assert 'id="excelImportCenterBtn">Excel 匯入作業中心</button>' in html
     assert 'id="navSubPanel" class="nav-subpanel hidden" aria-label="第二層功能選單"' in html
@@ -198,6 +202,27 @@ def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     assert 'setActiveRoot: setActiveNavRoot' in html
     assert 'setActiveRoot,\n    collapse: collapseMainNav' not in html
     assert 'id="mainNavDetails"' not in html
+
+
+def test_agent_data_flow_page_and_svg_are_served_by_editor_router() -> None:
+    from api.routers import editor
+
+    app = FastAPI()
+    app.include_router(editor.router)
+    client = TestClient(app)
+
+    page = client.get("/agent-data-flow")
+    svg = client.get("/static/agent_data_flow.svg")
+
+    assert page.status_code == 200
+    assert "代理人資料流程圖" in page.text
+    assert "/static/agent_data_flow.svg?v=20260703-es-content-llm-structure" in page.text
+    assert svg.status_code == 200
+    assert "image/svg+xml" in svg.headers.get("content-type", "")
+    assert "content 文本寫入 ES" in svg.text
+    assert "讀取非結構化 content" in svg.text
+    assert "結構化結果回寫 ES" in svg.text
+    assert "SQL→ES 直接同步線" in svg.text
 
 
 def test_editor_workspace_separates_document_and_account_work_areas() -> None:

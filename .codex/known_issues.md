@@ -48,6 +48,7 @@
 
 - `.codex/archive/known_issues.md-20260625-130126.md`: Archived all detailed known-issue entries from 2026-06-11 through this compaction, including repeated UI screenshot limitations, resolved Vercel / GitHub issues, and pip index 403 retry.
 
-## 2026-07-03 UI 截圖限制
+## 2026-07-03 pip index 403 during dependency preflight
 
-- 本環境未提供瀏覽器 / Playwright runtime；本次代理人資料流程 SVG 靜態頁未做實機截圖。替代驗證為 HTML 靜態內容檢查、`node --check sra_api/static/editor_bootstrap.js` 與 FastAPI TestClient route 測試。
+- 在本環境執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 時，`pip install --upgrade pip` 查詢 `/simple/pip/` 仍出現 `Tunnel connection failed: 403 Forbidden` retry，導致整條 chain exit code 為 1。
+- 替代驗證：`requirements.txt` 的套件皆回報 `Requirement already satisfied`，並已成功執行本次相關 `node --check` 與 pytest 測試。

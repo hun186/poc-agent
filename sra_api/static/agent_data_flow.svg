@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">代理人資料流程圖</title>
+  <desc id="desc">Excel 匯入與轉換會將 content 文本寫入 Elasticsearch；LLM 多階段平行化暨智慧多流路分析框架會從 Elasticsearch 讀取非結構化 content，完成結構化分析後再把結果寫回 Elasticsearch。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1f2937"/></marker>
+    <style>
+      text{font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;fill:#172033}.title{font-size:28px;font-weight:800}.subtitle{font-size:14px;fill:#475467}.layer-title{font-size:19px;font-weight:800}.body{font-size:14px}.small{font-size:12px;fill:#475467}.box{fill:#fff;stroke:#94a3b8;stroke-width:2;rx:16}.input{fill:#eff6ff;stroke:#2563eb}.process{fill:#ecfdf3;stroke:#027a48}.llm{fill:#fffbeb;stroke:#d97706}.db{fill:#f8fafc;stroke:#475467}.note{fill:#fef3c7;stroke:#f59e0b}.edge{stroke:#1f2937;stroke-width:2.5;fill:none;marker-end:url(#arrow)}.edge-dashed{stroke:#64748b;stroke-width:2.5;fill:none;stroke-dasharray:7 6;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1280" height="760" fill="#f6f7fb"/>
+  <text x="640" y="46" text-anchor="middle" class="title">代理人資料流程圖</text>
+  <text x="640" y="72" text-anchor="middle" class="subtitle">非結構化 content 先進 ES；LLM 分析框架再由 ES 讀取 content 並回寫結構化結果</text>
+
+  <rect class="box input" x="46" y="130" width="220" height="126"/>
+  <text x="156" y="164" text-anchor="middle" class="layer-title">來源資料層</text>
+  <text x="156" y="194" text-anchor="middle" class="body">Excel / 檔案來源</text>
+  <text x="156" y="220" text-anchor="middle" class="small">原始欄位、列號、來源檔案</text>
+
+  <rect class="box process" x="346" y="112" width="250" height="162"/>
+  <text x="471" y="148" text-anchor="middle" class="layer-title">匯入與轉換層</text>
+  <text x="471" y="180" text-anchor="middle" class="body">Excel→SQL / 匯入處理</text>
+  <text x="471" y="206" text-anchor="middle" class="body">欄位整理與 content 拼裝</text>
+  <text x="471" y="236" text-anchor="middle" class="small">輸出：非結構化 content 文本</text>
+
+  <rect class="box db" x="690" y="100" width="258" height="184"/>
+  <text x="819" y="136" text-anchor="middle" class="layer-title">檢索資料庫</text>
+  <text x="819" y="166" text-anchor="middle" class="body">Elasticsearch</text>
+  <text x="819" y="194" text-anchor="middle" class="small">存放 content 非結構化文本</text>
+  <text x="819" y="220" text-anchor="middle" class="small">也保存 LLM 結構化結果</text>
+
+  <rect class="box llm" x="376" y="414" width="492" height="172"/>
+  <text x="622" y="450" text-anchor="middle" class="layer-title">LLM多階段平行化暨智慧多流路分析框架</text>
+  <text x="622" y="484" text-anchor="middle" class="body">由 ES 讀取非結構化 content 文本</text>
+  <text x="622" y="514" text-anchor="middle" class="body">多階段 / 多流路分析、抽取、結構化</text>
+  <text x="622" y="548" text-anchor="middle" class="small">輸出：結構化欄位、事件、metadata、分析結果</text>
+
+  <rect class="box note" x="978" y="420" width="232" height="144"/>
+  <text x="1094" y="456" text-anchor="middle" class="layer-title">RAG / Agent 使用</text>
+  <text x="1094" y="490" text-anchor="middle" class="body">查詢 ES</text>
+  <text x="1094" y="518" text-anchor="middle" class="body">取回 content 與結構化資料</text>
+  <text x="1094" y="546" text-anchor="middle" class="small">產生證據、摘要與報告</text>
+
+  <path class="edge" d="M266 193 C294 193 318 193 346 193"/>
+  <text x="306" y="178" text-anchor="middle" class="small">匯入</text>
+
+  <path class="edge" d="M596 193 C628 193 658 193 690 193"/>
+  <text x="643" y="172" text-anchor="middle" class="small">content 文本寫入 ES</text>
+
+  <path class="edge-dashed" d="M762 284 C720 330 680 370 650 414"/>
+  <text x="738" y="348" text-anchor="middle" class="small">讀取非結構化 content</text>
+
+  <path class="edge" d="M742 414 C786 370 820 330 834 284"/>
+  <text x="850" y="350" text-anchor="middle" class="small">結構化結果回寫 ES</text>
+
+  <path class="edge" d="M948 210 C1046 242 1094 328 1094 420"/>
+  <text x="1086" y="314" text-anchor="middle" class="small">檢索 / 讀取</text>
+
+  <rect x="72" y="654" width="1136" height="54" rx="12" fill="#ffffff" stroke="#d9deea"/>
+  <text x="640" y="677" text-anchor="middle" class="small">注意：本流程不再繪製 SQL→ES 直接同步線；結構化由 LLM 分析框架讀取 ES content 後再寫回 ES。</text>
+  <text x="640" y="699" text-anchor="middle" class="small">SQL 來源資料可作為匯入 / audit 管理來源，但不是此圖中的後續 SQL→ES 轉換路徑。</text>
+</svg>

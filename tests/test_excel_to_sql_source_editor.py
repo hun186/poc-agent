@@ -147,6 +147,33 @@ def test_list_sql_source_rows_combines_filters_sort_and_page_in_sql(monkeypatch)
     ]
 
 
+def test_list_sql_source_rows_allows_sorting_by_audit_metadata(monkeypatch):
+    conn = FakeConnection()
+    monkeypatch.setattr(table_editor, "load_json_config", lambda path: CFG)
+
+    result = table_editor.list_sql_source_rows(
+        "config/excel_to_sql/task.json",
+        sort=["_import_username:asc", "_imported_at:desc", "_source_excel:asc"],
+        connect=lambda cfg: conn,
+    )
+
+    data_calls = [
+        (sql, params)
+        for sql, params in conn.cursor_obj.calls
+        if "ORDER BY" in sql and "OFFSET" in sql
+    ]
+    assert data_calls
+    sql, _ = data_calls[-1]
+    assert "SELECT TOP (1) COALESCE(NULLIF(aud.username, '')," in sql
+    assert "SELECT TOP (1) aud.processed_at" in sql
+    assert "SELECT TOP (1) aud.source_file" in sql
+    assert result["sort"][:3] == [
+        {"field": "_import_username", "direction": "asc"},
+        {"field": "_imported_at", "direction": "desc"},
+        {"field": "_source_excel", "direction": "asc"},
+    ]
+
+
 def test_list_sql_source_rows_filters_by_import_username_from_audit_even_with_available_user_column(monkeypatch):
     conn = FakeConnection()
     monkeypatch.setattr(table_editor, "load_json_config", lambda path: CFG)

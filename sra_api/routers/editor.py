@@ -72,6 +72,8 @@ EDITOR_STATIC_ASSETS: dict[str, str] = {
     "excel_to_sql_source_editor_app.js": "application/javascript",
     "excel_to_sql_source_dashboard_app.js": "application/javascript",
     "excel_to_sql_import_center.html": "text/html",
+    "agent_data_flow.html": "text/html",
+    "agent_data_flow.svg": "image/svg+xml",
 }
 
 EDITOR_STATIC_ASSET_ALIASES: dict[str, str] = {
@@ -85,6 +87,11 @@ EDITOR_STATIC_ASSET_ALIASES: dict[str, str] = {
 @router.get("/editor", include_in_schema=False)
 def editor_page() -> FileResponse:
     return FileResponse(static_path("editor.html"))
+
+
+@router.get("/agent-data-flow", include_in_schema=False)
+def agent_data_flow_page() -> FileResponse:
+    return FileResponse(static_path("agent_data_flow.html"))
 
 
 @router.get("/static/audit_tools.js", include_in_schema=False)
