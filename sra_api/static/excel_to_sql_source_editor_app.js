@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 const tokenKey = 'sra_editor_token';
-const state = { page: 1, data: null, editing: null, usernameOptions: [], selectedUsers: [], usernameDirty: false, pageSize: 50, total: 0, role: '', canEdit: false, canDelete: false, canBatchDelete: false, sourceSort: null, sortFields: [] };
+const state = { page: 1, data: null, editing: null, usernameOptions: [], selectedUsers: [], usernameDirty: false, pageSize: 50, total: 0, role: '', canEdit: false, canDelete: false, canBatchDelete: false, sourceSort: null, sortFields: [], loadedConfig: '' };
 function authToken() { return localStorage.getItem(tokenKey) || ''; }
 function token() { return authToken(); }
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -124,11 +124,11 @@ async function loadRows(page=1) {
   if (!token()) { show('status', '請先到 /editor 登入；本頁會沿用 sra_editor_token。', 'error'); return; }
   state.page = page;
   const params = new URLSearchParams({config: $('config').value.trim(), q: $('query').value.trim(), source_file_filter: $('sourceFileFilter').value.trim(), hash_value_filter: $('hashFilter').value.trim(), payload_filter: $('payloadFilter').value.trim(), import_start_ts: localInputToUtcIso('importStartFilter'), import_end_ts: localInputToUtcIso('importEndFilter'), page: String(state.page), limit: String(Math.max(1, Math.min(50000, Number(state.pageSize || 50))))});
-  if (state.sourceSort) state.sourceSort.getSortParams().forEach(value => params.append('sort', value));
+  if (state.sourceSort && $('config').value.trim() === state.loadedConfig) state.sourceSort.getSortParams().forEach(value => params.append('sort', value));
   if ($('rowNoFilter').value) params.set('row_no_filter', $('rowNoFilter').value);
   state.selectedUsers.forEach(value => params.append('username_filter', value));
   show('status', '載入中...');
-  try { state.data = await api('/v1/excel-to-sql/source-rows?' + params.toString()); state.usernameOptions = SraAuditTools.uniqueSortedValues([...(state.data.username_options || []), ...state.selectedUsers]); renderUsernameFilter(); show('status', '載入完成', 'ok'); renderTable(); }
+  try { state.data = await api('/v1/excel-to-sql/source-rows?' + params.toString()); state.loadedConfig = $('config').value.trim(); state.usernameOptions = SraAuditTools.uniqueSortedValues([...(state.data.username_options || []), ...state.selectedUsers]); renderUsernameFilter(); show('status', '載入完成', 'ok'); renderTable(); }
   catch (err) { show('status', err.message, 'error'); }
 }
 function startEdit(index) {
