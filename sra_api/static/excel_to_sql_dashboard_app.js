@@ -382,10 +382,9 @@ function bindAuditFilterEvents() {
   destinationDropdown.addEventListener('toggle', () => { if (!destinationDropdown.open) applyDestinationTablePendingFilters(); });
   destinationDropdown.addEventListener('focusout', () => { setTimeout(() => { if (!destinationDropdown.contains(document.activeElement)) closeDestinationTableDropdown(true); }, 0); });
   document.addEventListener('click', event => { if (!destinationDropdown.contains(event.target)) closeDestinationTableDropdown(true); });
-  $('limit').addEventListener('change', applyAuditFilters);
   $('chartBucket').addEventListener('change', applyAuditFilters);
 }
 bindAuditFilterEvents();
-SraAuditTools.bindPager({firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', getPage: () => state.recentPage, setPage: page => { state.recentPage = page; }, renderPage: loadDashboard});
+SraAuditTools.bindPager({firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', getPage: () => state.recentPage, setPage: page => { state.recentPage = page; }, getPageSize: () => state.recentPageSize, setPageSize: size => { state.recentPageSize = size; state.recentPage = 1; }, pageSizeOptions: [25, 50, 100, 200, 500], renderPage: loadDashboard});
 // boot order includes: await loadCurrentUser(); await loadTasks(); await loadDashboard();
 (async () => { resetDefaultWindow(); applyInitialQueryParams(); await loadCurrentUser(); await loadTasks(); applyInitialQueryParams(); await loadDashboard(); })().catch(err => showError(err.message || String(err)));
