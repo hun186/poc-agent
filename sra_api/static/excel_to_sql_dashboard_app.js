@@ -116,7 +116,7 @@ function closeUsernameDropdown(applyPending = false) {
   if (dropdown.open) dropdown.open = false;
   if (applyPending) applyUsernamePendingFilters();
 }
-function clearAuditFilters() { ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); $('destinationTableFilter').querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; }); updateDestinationTableSummary(); applyAuditFilters(); }
+function clearAuditFilters() { ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter','limit'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); $('destinationTableFilter').querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; }); updateDestinationTableSummary(); applyAuditFilters(); }
 function renderDestinationTableOptions(options) {
   const el = $('destinationTableFilter');
   const selected = new Set(selectedValues('destinationTableFilter'));
@@ -362,11 +362,12 @@ async function loadDashboard() {
   fillTable('recent', data.recent, r => `<tr><td class="select-col">${selectionCell(r)}</td><td class="time-col">${formatAuditTime(r.processed_at)}</td><td class="status-col">${statusBadge(r.status)}</td><td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td><td class="user-col">${escapeHtml(r.username || '')}</td><td class="row-col">${escapeHtml(r.row_no ?? '')}</td><td class="message-col">${escapeHtml(r.message || '')}</td><td class="op-col">${operatorSourceCell(r)}</td><td class="action-col">${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
 }
 function bindAuditFilterEvents() {
-  ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {
+  ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter','limit'].forEach(id => {
     const el = $(id);
     el.addEventListener('change', applyAuditFilters);
     el.addEventListener('keydown', event => { if (event.key === 'Enter') applyAuditFilters(); });
   });
+  $('limit').addEventListener('change', applyAuditFilters);
   const destinationDropdown = $('destinationTableDropdown');
   const usernameDropdown = $('usernameDropdown');
   $('usernameSearch').addEventListener('input', renderUsernameFilter);

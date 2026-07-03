@@ -153,3 +153,15 @@
 - 目的：回應帳號 audit 截斷判斷是否應用 COUNT、以及 Excel→SQL dashboard 上方統計是否不受最近事件載入上限影響。
 - 主要修改：帳號 audit 來源目前是 JSONL 檔案而非 SQL table，因此沒有 SQL COUNT 語法可用；本次移除「limit+1」過度讀取方式，改固定讀取目前安全上限 50000 內的 audit records 後用篩選總數 `total` 與回傳 `hits` 長度決定 `truncated`。Excel→SQL dashboard 既有上方 summary / daily / filtered time-series 皆為 SQL `COUNT(1)` 聚合，不受最近事件 `limit` 影響；新增測試確認 `limit` 只會進入來源檔案摘要 / 最近事件載入，不會套到 status summary COUNT。
 - 驗證：`python -m py_compile sra_api/routers/editor_usage.py`、`PYTHONPATH=. pytest tests/test_editor_audit_queries.py::test_list_audit_logs_reports_truncated_hits tests/test_dashboard_filters.py::test_dashboard_payload_applies_destination_table_filter -q`。
+
+### 2026-07-03 SQL 來源資料統計儀表板
+
+- 目的：比照 Excel→SQL 匯入查詢儀表板與 ES 文件異動統計概念，新增 SQL 來源資料統計頁，讓使用者對已啟用 Excel→SQL 任務的目的 SQL table 套用篩選並做分群分析。
+- 主要修改：新增 `/excel-to-sql-source-dashboard` 靜態頁與 `/v1/excel-to-sql/source-stats` API；統計 API 沿用 SQL 來源資料編輯器的任務白名單與篩選條件，回傳總列數、可分群欄位與 Top N 分群 buckets。主編輯器匯入管理導覽在「SQL 來源資料編輯器」下方新增「SQL 來源資料統計儀表板」。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip upgrade 查詢套件索引仍出現 403 retry，但 requirements 已滿足）、`python -m py_compile data_ingestion/excel_to_sql/table_editor.py sra_api/routers/excel_to_sql.py`、`node --check sra_api/static/excel_to_sql_source_dashboard_app.js`、`node --check sra_api/static/editor_bootstrap.js`、`node --check sra_api/static/excel_to_sql_dashboard_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_dashboard_static.py -q`。
+
+### 2026-07-03 Excel 匯入流程管理子頁導航補齊
+
+- 目的：修正新增 SQL 來源資料統計儀表板後，Excel 匯入流程管理子層各功能頁上方同層頁面切換按鈕未全面同步的問題。
+- 主要修改：在 Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、任務 JSON 管理、SQL 來源資料編輯器與 SQL 來源資料統計儀表板的 header 導航中補齊同層頁面連結；SQL 來源資料統計儀表板 header 也改用既有文案「前往登入 / 編輯器」。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip upgrade 查詢套件索引仍出現 403 retry，但 requirements 已滿足）、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py -q`。

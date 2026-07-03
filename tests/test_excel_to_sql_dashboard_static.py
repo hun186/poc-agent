@@ -16,6 +16,7 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         "excel_to_sql_import_center.html",
         "excel_to_sql_task_configs.html",
         "excel_to_sql_source_editor.html",
+        "excel_to_sql_source_dashboard.html",
     ]
     script_urls = set()
     for filename in html_files:
@@ -23,6 +24,7 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         script_urls.update(re.findall(r'<script src="([^"]+)"', html))
 
     assert "/static/excel_to_sql_source_editor_app.js?v=20260703-source-load-limit" in script_urls
+    assert "/static/excel_to_sql_source_dashboard_app.js?v=20260703-source-dashboard" in script_urls
     for script_url in sorted(script_urls):
         response = TestClient(app).get(script_url)
 
@@ -226,9 +228,12 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     source_js = (STATIC_ROOT / "excel_to_sql_source_editor_app.js").read_text(encoding="utf-8")
 
     assert "SQL 來源資料編輯器" in editor_html
+    assert "SQL 來源資料統計儀表板" in editor_html
+    assert "excelSourceDashboardBtn" in editor_html
     assert "excelSourceEditorBtn" in editor_html
     assert "20260702-source-editor-local-auth" in editor_html
     assert "location.href = '/excel-to-sql-source-editor'" in bootstrap_js
+    assert "location.href = '/excel-to-sql-source-dashboard'" in bootstrap_js
     assert "rememberEditorTokenForNavigation" not in bootstrap_js
     assert "sessionStorage.setItem('sra_editor_token', token)" not in bootstrap_js
     assert "sra_token" not in bootstrap_js
@@ -262,3 +267,34 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "displayColumnName(name)" in source_js
     assert "col-import-user" in source_html
     assert "此操作不會自動同步 ES" in source_html
+
+
+def test_excel_flow_child_pages_include_sql_source_stats_navigation():
+    page_names = [
+        "excel_to_sql_dashboard.html",
+        "excel_to_sql_import_center.html",
+        "excel_to_sql_task_configs.html",
+        "excel_to_sql_source_editor.html",
+        "excel_to_sql_source_dashboard.html",
+    ]
+    sibling_routes = [
+        "/excel-to-sql-dashboard",
+        "/excel-to-sql-source-editor",
+        "/excel-to-sql-source-dashboard",
+        "/excel-to-sql-import-center",
+        "/excel-to-sql-task-configs",
+    ]
+    for page_name in page_names:
+        html = (STATIC_ROOT / page_name).read_text(encoding="utf-8")
+        for route in sibling_routes:
+            if route in {
+                "/excel-to-sql-import-center" if page_name == "excel_to_sql_import_center.html" else "",
+                "/excel-to-sql-dashboard" if page_name == "excel_to_sql_dashboard.html" else "",
+                "/excel-to-sql-task-configs" if page_name == "excel_to_sql_task_configs.html" else "",
+                "/excel-to-sql-source-editor" if page_name == "excel_to_sql_source_editor.html" else "",
+                "/excel-to-sql-source-dashboard" if page_name == "excel_to_sql_source_dashboard.html" else "",
+            }:
+                continue
+            assert route in html, f"{page_name} missing sibling route {route}"
+        assert "前往登入 / 編輯器" in html
+        assert "主編輯器" not in html

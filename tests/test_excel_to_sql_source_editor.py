@@ -44,6 +44,9 @@ class FakeCursor:
         elif normalized.startswith("SELECT DISTINCT TOP (200)"):
             self.description = [("username",)]
             self._rows = [("source_username_should_not_be_used",)]
+        elif normalized.startswith("SELECT TOP (") and "GROUP BY" in normalized:
+            self.description = [("group_value",), ("count",)]
+            self._rows = [("alice", 1)]
         elif normalized.startswith("SELECT COUNT(*) AS total"):
             self.description = [("total",)]
             self._one = (1,)
@@ -254,3 +257,52 @@ def test_source_rows_accepts_enabled_task_config_before_loading_rows(monkeypatch
 
     assert response.status_code == 200
     assert response.json()["destination_table"] == "dbo.Target"
+
+def test_sql_source_stats_groups_selected_columns(monkeypatch):
+    conn = FakeConnection()
+    monkeypatch.setattr(table_editor, "load_json_config", lambda path: CFG)
+
+    result = table_editor.sql_source_stats(
+        "config/excel_to_sql/task.json",
+        group_by=["username"],
+        connect=lambda cfg: conn,
+    )
+
+    assert result["destination_table"] == "dbo.Target"
+    assert result["total"] == 1
+    assert result["groups"][0]["field"] == "username"
+    assert result["groups"][0]["buckets"] == [{"value": "alice", "count": 1}]
+
+
+def test_source_stats_route_uses_enabled_task_whitelist(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers import editor_dependencies
+    from api.services.auth_store import AuthUser
+    import sra_api.routers.excel_to_sql as excel_router
+
+    app = FastAPI()
+    app.include_router(excel_router.router)
+    monkeypatch.setattr(
+        excel_router,
+        "discover_dashboard_tasks",
+        lambda config_dir: [{"name": "Allowed", "config_path": "config/excel_to_sql/allowed.json"}],
+    )
+    monkeypatch.setattr(
+        excel_router,
+        "sql_source_stats",
+        lambda *args, **kwargs: {"ok": True, "total": 3, "groups": []},
+    )
+
+    def data_reader_user():
+        return AuthUser(username="reader", role="data_reader", status="active")
+
+    app.dependency_overrides[editor_dependencies.current_user] = data_reader_user
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/excel-to-sql/source-stats?config=config/excel_to_sql/allowed.json&group_by=username"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 3
