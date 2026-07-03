@@ -39,3 +39,9 @@
 
 - `GET /v1/excel-to-sql/source-stats` 新增 query 參數 `chart_bucket`，可用值沿用 audit dashboard：`hour`、`6_hours`、`12_hours`、`day`、`week`、`month`，預設 `day`。
 - Response 新增 `chart_bucket`、`chart_bucket_label`、`import_time_series` 與相容別名 `filtered_series`。`import_time_series` 以目前篩選後的 SQL 來源資料列與 Excel→SQL audit table 依 `hash_value` / `destination_table` 交叉比對，使用 audit `processed_at` 分桶回傳 `{ bucket_start, count }`。
+
+### 2026-07-03 Excel→SQL SQL-backed tables sort contract
+
+- `GET /v1/excel-to-sql/dashboard` 新增可重複 query 參數 `sort=field:asc|desc`，用於 audit 事件表。支援欄位：`processed_at`、`audit_id`、`status`、`source_file`、`username`、`row_no`、`message`、`hash_value`、`destination_table`。未提供時預設 `processed_at:desc`、`audit_id:desc`。response 新增 `recent_sort`，回傳實際套用的排序規則。
+- `GET /v1/excel-to-sql/source-rows` 新增可重複 query 參數 `sort=field:asc|desc`，用於受控 SQL 來源資料表。支援欄位限目的資料表實體欄位；未提供時使用 hash 欄位或第一欄升冪排序。response 新增 `sort`，回傳實際套用的排序規則。
+- 排序欄位採白名單驗證，方向只允許 `asc` / `desc`；非法欄位或方向回傳 400。

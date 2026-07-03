@@ -84,6 +84,7 @@ def mock_dashboard_payload(
     hash_value_filter: str | None = None,
     payload_filter: str | None = None,
     page: int = 1,
+    sort: list[str] | str | None = None,
     chart_bucket: str | None = "day",
 ) -> dict[str, Any]:
     cfg = load_json_config(config_path)

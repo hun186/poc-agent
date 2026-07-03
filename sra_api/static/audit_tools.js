@@ -347,6 +347,46 @@
     if (input) input.onkeydown = (ev) => { if (ev.key === 'Enter') jumpTo(Number(ev.currentTarget.value || 1)); };
   }
 
+
+  function normalizeSortSpecs(specs, fallback) {
+    const rows = Array.isArray(specs) ? specs : [];
+    const cleaned = rows.map((item) => ({
+      field: String(item?.field || '').trim(),
+      direction: String(item?.direction || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc',
+    })).filter((item) => item.field);
+    return cleaned.length ? cleaned : (fallback || []);
+  }
+
+  function bindSqlSortControls(options) {
+    const container = typeof options.containerId === 'string' ? document.getElementById(options.containerId) : options.containerEl;
+    if (!container) return { getSortParams: () => [] };
+    const maxFields = Math.max(1, Number(options.maxFields || 5));
+    const state = { specs: normalizeSortSpecs(options.initialSort || [], []) };
+    const fieldOptions = () => (options.getFields ? options.getFields() : (options.fields || []))
+      .map((field) => ({ value: String(field.value || field.name || field.field || '').trim(), label: String(field.label || field.name || field.value || '').trim() }))
+      .filter((field) => field.value);
+    const render = () => {
+      const fields = fieldOptions();
+      if (!state.specs.length) state.specs = normalizeSortSpecs(options.defaultSort || [], fields.length ? [{ field: fields[0].value, direction: 'asc' }] : []);
+      state.specs = state.specs.slice(0, maxFields);
+      container.innerHTML = state.specs.map((spec, index) => {
+        const opts = fields.map((field) => `<option value="${escapeHtml(field.value)}"${field.value === spec.field ? ' selected' : ''}>${escapeHtml(field.label || field.value)}</option>`).join('');
+        return `<div class="sql-sort-row" data-sort-index="${index}"><span class="muted">第 ${index + 1} 排序</span><select data-sort-field>${opts}</select><select data-sort-direction><option value="asc"${spec.direction !== 'desc' ? ' selected' : ''}>順序</option><option value="desc"${spec.direction === 'desc' ? ' selected' : ''}>逆序</option></select><button class="ghost" type="button" data-sort-remove ${state.specs.length <= 1 ? 'disabled' : ''}>移除</button></div>`;
+      }).join('') + `<div class="sql-sort-actions"><button class="secondary" type="button" data-sort-add ${state.specs.length >= maxFields ? 'disabled' : ''}>新增排序欄位</button><span class="muted">依上到下優先排序；排序與篩選會送到 SQL Server 後再分頁。</span></div>`;
+      container.querySelectorAll('[data-sort-field]').forEach((el) => { el.onchange = () => { state.specs[Number(el.closest('[data-sort-index]').dataset.sortIndex)].field = el.value; if (options.onChange) options.onChange(); }; });
+      container.querySelectorAll('[data-sort-direction]').forEach((el) => { el.onchange = () => { state.specs[Number(el.closest('[data-sort-index]').dataset.sortIndex)].direction = el.value === 'desc' ? 'desc' : 'asc'; if (options.onChange) options.onChange(); }; });
+      container.querySelectorAll('[data-sort-remove]').forEach((el) => { el.onclick = () => { state.specs.splice(Number(el.closest('[data-sort-index]').dataset.sortIndex), 1); render(); if (options.onChange) options.onChange(); }; });
+      const add = container.querySelector('[data-sort-add]');
+      if (add) add.onclick = () => { const used = new Set(state.specs.map((item) => item.field)); const next = fields.find((field) => !used.has(field.value)) || fields[0]; if (next) state.specs.push({ field: next.value, direction: 'asc' }); render(); if (options.onChange) options.onChange(); };
+    };
+    render();
+    return {
+      getSortParams: () => normalizeSortSpecs(state.specs, []).map((item) => `${item.field}:${item.direction}`),
+      setFields: () => render(),
+      setSort: (specs) => { state.specs = normalizeSortSpecs(specs, state.specs); render(); },
+    };
+  }
+
   window.SraAuditTools = {
     escapeHtml,
     normalizeBucketLabel,
@@ -362,5 +402,6 @@
     paginateRows,
     updatePager,
     bindPager,
+    bindSqlSortControls,
   };
 }());

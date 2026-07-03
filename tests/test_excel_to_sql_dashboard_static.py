@@ -23,7 +23,7 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         html = (STATIC_ROOT / filename).read_text(encoding="utf-8")
         script_urls.update(re.findall(r'<script src="([^"]+)"', html))
 
-    assert "/static/excel_to_sql_source_editor_app.js?v=20260703-pager-page-size" in script_urls
+    assert "/static/excel_to_sql_source_editor_app.js?v=sort-20260703-pager-page-size" in script_urls
     assert "/static/excel_to_sql_source_dashboard_app.js?v=20260703-source-dashboard-import-series" in script_urls
     for script_url in sorted(script_urls):
         response = TestClient(app).get(script_url)

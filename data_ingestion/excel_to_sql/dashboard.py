@@ -30,6 +30,7 @@ from data_ingestion.excel_to_sql.dashboard_sql import (
     _table_exists,
 )
 from data_ingestion.excel_to_sql.ingest import load_json_config, quote_object_path
+from data_ingestion.excel_to_sql.sql_sorting import normalize_sql_sort_specs, sort_specs_payload, sql_order_by_clause
 from data_ingestion.excel_to_sql.utils import get_nested, resolve_path
 from data_ingestion.excel_to_sql.dashboard_batch_delete import (
     delete_imported_sql_rows_batch,
@@ -176,6 +177,7 @@ def dashboard_payload(
     hash_value_filter: str | None = None,
     payload_filter: str | None = None,
     page: int = 1,
+    sort: list[str] | str | None = None,
     chart_bucket: str | None = "day",
     expose_operational_metadata: bool = True,
 ) -> dict[str, Any]:
@@ -407,6 +409,24 @@ FROM {quoted_table}
             page = min(page, max_page)
             offset = (page - 1) * limit
 
+            allowed_sort = {
+                "processed_at": "processed_at",
+                "audit_id": "audit_id",
+                "status": "status",
+                "source_file": "source_file",
+                "username": user_expr,
+                "row_no": "row_no",
+                "message": "message",
+                "hash_value": "hash_value",
+                "destination_table": "destination_table",
+            }
+            sort_specs = normalize_sql_sort_specs(
+                sort,
+                allowed_expressions=allowed_sort,
+                default=[("processed_at", "desc"), ("audit_id", "desc")],
+            )
+            order_sql = sql_order_by_clause(sort_specs)
+
             recent = _fetch_all_dicts(
                 cursor,
                 f"""
@@ -424,7 +444,7 @@ WITH ordered_recent AS (
         row_payload,
         {user_expr} AS username,
         processed_at,
-        ROW_NUMBER() OVER (ORDER BY processed_at DESC, audit_id DESC) AS rn
+        ROW_NUMBER() OVER (ORDER BY {order_sql}) AS rn
     FROM {quoted_table}
     {recent_where}
 )
@@ -479,6 +499,7 @@ ORDER BY rn
                     "page_size": limit,
                     "total": recent_total,
                 },
+                "recent_sort": sort_specs_payload(sort_specs),
                 "can_delete": expose_operational_metadata,
                 "exists": True,
                 "summary": summary,

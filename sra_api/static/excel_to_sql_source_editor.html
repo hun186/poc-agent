@@ -101,7 +101,7 @@
       <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
       <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
       <div><label>資料欄位關鍵字</label><input id="payloadFilter" placeholder="資料欄位文字" /></div>
-      <button id="applyFiltersBtn">套用篩選</button>
+      <div><label>複式排序</label><div id="sourceSortControls" class="sql-sort-controls"></div></div><button id="applyFiltersBtn">套用篩選</button>
       <button id="clearFiltersBtn" class="secondary">清空篩選</button>
     </section>
     <div id="status" class="status hidden"></div>
@@ -121,6 +121,6 @@
   </section>
 </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_source_editor_app.js?v=20260703-pager-page-size"></script>
+<script src="/static/excel_to_sql_source_editor_app.js?v=sort-20260703-pager-page-size"></script>
 </body>
 </html>

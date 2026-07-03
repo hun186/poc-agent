@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 const tokenKey = 'sra_editor_token';
-const state = { page: 1, data: null, editing: null, usernameOptions: [], selectedUsers: [], usernameDirty: false, pageSize: 50, total: 0, role: '', canEdit: false, canDelete: false, canBatchDelete: false };
+const state = { page: 1, data: null, editing: null, usernameOptions: [], selectedUsers: [], usernameDirty: false, pageSize: 50, total: 0, role: '', canEdit: false, canDelete: false, canBatchDelete: false, sourceSort: null, sortFields: [] };
 function authToken() { return localStorage.getItem(tokenKey) || ''; }
 function token() { return authToken(); }
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -78,6 +78,8 @@ function localInputToUtcIso(id) { const el = $(id); const v = el?.value || ''; r
 function normalizeAuditUtc(text) { const raw = String(text || ''); if (!raw) return null; const trimmed = raw.replace(/(\.\d{3})\d+/, '$1'); return /[zZ]|[+-]\d\d:?\d\d$/.test(trimmed) ? trimmed : trimmed + 'Z'; }
 function formatSourceTime(value) { const raw = String(value || ''); const normalized = normalizeAuditUtc(raw); if (!normalized) return ''; const local = new Date(normalized); if (Number.isNaN(local.getTime())) return raw; return `${local.toLocaleString()}\nUTC：${raw}`; }
 function displayColumnName(name) { return ({_import_username:'匯入使用者', _imported_at:'匯入執行時間', _source_excel:'來源 Excel'}[name] || name); }
+function sourceSortFields() { return (state.sortFields || []).map(name => ({value: name, label: displayColumnName(name)})); }
+function syncSourceSortFields(cols) { state.sortFields = (cols || []).map(c => c.name).filter(name => name && !String(name).startsWith('_')); if (!state.sourceSort) state.sourceSort = SraAuditTools.bindSqlSortControls({containerId: 'sourceSortControls', getFields: sourceSortFields, defaultSort: [{field: state.sortFields[0] || 'hash_value', direction: 'asc'}], onChange: () => loadRows(1)}); else state.sourceSort.setFields(); }
 function sourceColumnClass(name) { return name === '_import_username' ? 'col-import-user' : (name === '_source_excel' ? 'col-source-excel' : ''); }
 function sourceCellClass(name, isEditable) { return `${isEditable ? '' : 'muted'} ${sourceColumnClass(name)}`.trim(); }
 function formatSourceCell(name, value) { return name === '_imported_at' ? formatSourceTime(value) : cellValue(value); }
@@ -92,6 +94,7 @@ function renderTable() {
   if (!data) return;
   $('summary').textContent = `任務：${data.config_path}；SQL table：${data.destination_table}；總筆數：${data.total}；第 ${data.page} 頁；hash 欄位：${data.hash_field}`;
   const cols = data.columns || [];
+  syncSourceSortFields(cols);
   const rows = data.rows || [];
   const editable = new Set(data.editable_columns || []);
   const canEdit = Boolean(data.can_edit);
@@ -121,6 +124,7 @@ async function loadRows(page=1) {
   if (!token()) { show('status', '請先到 /editor 登入；本頁會沿用 sra_editor_token。', 'error'); return; }
   state.page = page;
   const params = new URLSearchParams({config: $('config').value.trim(), q: $('query').value.trim(), source_file_filter: $('sourceFileFilter').value.trim(), hash_value_filter: $('hashFilter').value.trim(), payload_filter: $('payloadFilter').value.trim(), import_start_ts: localInputToUtcIso('importStartFilter'), import_end_ts: localInputToUtcIso('importEndFilter'), page: String(state.page), limit: String(Math.max(1, Math.min(50000, Number(state.pageSize || 50))))});
+  if (state.sourceSort) state.sourceSort.getSortParams().forEach(value => params.append('sort', value));
   if ($('rowNoFilter').value) params.set('row_no_filter', $('rowNoFilter').value);
   state.selectedUsers.forEach(value => params.append('username_filter', value));
   show('status', '載入中...');
