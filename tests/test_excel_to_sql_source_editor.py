@@ -288,10 +288,16 @@ def test_source_stats_route_requires_data_editor_and_uses_enabled_task_whitelist
         "discover_dashboard_tasks",
         lambda config_dir: [{"name": "Allowed", "config_path": "config/excel_to_sql/allowed.json"}],
     )
+    captured_stats_kwargs = {}
+
+    def fake_sql_source_stats(*args, **kwargs):
+        captured_stats_kwargs.update(kwargs)
+        return {"ok": True, "total": 3, "groups": []}
+
     monkeypatch.setattr(
         excel_router,
         "sql_source_stats",
-        lambda *args, **kwargs: {"ok": True, "total": 3, "groups": []},
+        fake_sql_source_stats,
     )
 
     def data_reader_user():
@@ -311,8 +317,9 @@ def test_source_stats_route_requires_data_editor_and_uses_enabled_task_whitelist
 
     app.dependency_overrides[editor_dependencies.current_user] = data_editor_user
     response = client.get(
-        "/v1/excel-to-sql/source-stats?config=config/excel_to_sql/allowed.json&group_by=username"
+        "/v1/excel-to-sql/source-stats?config=config/excel_to_sql/allowed.json&group_by=username&chart_bucket=week"
     )
 
     assert response.status_code == 200
     assert response.json()["total"] == 3
+    assert captured_stats_kwargs["chart_bucket"] == "week"

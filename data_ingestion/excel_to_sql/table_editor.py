@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from data_ingestion.excel_to_sql.dashboard_filters import _coerce_utc_datetime
+from data_ingestion.excel_to_sql.dashboard_filters import _audit_chart_bucket, _coerce_utc_datetime
 from data_ingestion.excel_to_sql.dashboard_sql import (
     _audit_table,
     _connect,
@@ -293,6 +293,7 @@ def sql_source_stats(
     import_start_ts: str | None = None,
     import_end_ts: str | None = None,
     top_n: int = 20,
+    chart_bucket: str = "day",
     connect: Callable[[dict[str, Any]], Any] = _connect,
 ) -> dict[str, Any]:
     cfg = load_json_config(config_path)
@@ -308,6 +309,7 @@ def sql_source_stats(
                 raise ValueError(f"找不到 SQL table 欄位資訊：{table}")
             audit_table = _audit_table(cfg)
             username_options = _load_audit_username_options(cursor, audit_table, table)
+            chart_bucket, chart_bucket_label, chart_bucket_sql = _audit_chart_bucket(chart_bucket)
             where_sql, params = _source_filter_sql(table=table, audit_table=audit_table, hash_field=hash_field, columns=columns, q=q, source_file_filter=source_file_filter, row_no_filter=row_no_filter, hash_value_filter=hash_value_filter, payload_filter=payload_filter, username_filter=username_filter, import_start_ts=import_start_ts, import_end_ts=import_end_ts)
             cursor.execute(f"SELECT COUNT(*) AS total FROM {quote_object_path(table)}{where_sql}", tuple(params))
             row = cursor.fetchone()
@@ -341,8 +343,51 @@ def sql_source_stats(
                     data = _row_to_dict(cursor, r)
                     buckets.append({"value": str(data.get("group_value") or "-"), "count": int(data.get("count") or 0)})
                 groups.append({"field": col, "buckets": buckets})
+            chart_join_conditions = [
+                "aud.destination_table = ?",
+                f"aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)}",
+            ]
+            chart_join_params: list[Any] = [table]
+            clean_source_file = str(source_file_filter or "").strip()
+            if clean_source_file:
+                chart_join_conditions.append("aud.source_file LIKE ?")
+                chart_join_params.append(f"%{clean_source_file}%")
+            start_dt = _coerce_utc_datetime(import_start_ts)
+            end_dt = _coerce_utc_datetime(import_end_ts, end_of_day=True)
+            if start_dt:
+                chart_join_conditions.append("aud.processed_at >= ?")
+                chart_join_params.append(start_dt)
+            if end_dt:
+                chart_join_conditions.append("aud.processed_at <= ?")
+                chart_join_params.append(end_dt)
+            clean_usernames = _normalize_filter_values(username_filter)
+            if clean_usernames:
+                placeholders = ", ".join("?" for _ in clean_usernames)
+                chart_join_conditions.append(f"{_audit_username_expr('aud')} IN ({placeholders})")
+                chart_join_params.extend(clean_usernames)
+            chart_join_sql = " AND ".join(chart_join_conditions)
+            cursor.execute(
+                f"""
+SELECT {chart_bucket_sql} AS bucket_start,
+       COUNT(DISTINCT {quote_object_path(table)}.{quote_ident(hash_field)}) AS count
+FROM {quote_object_path(table)}
+INNER JOIN {quote_object_path(audit_table)} aud
+    ON {chart_join_sql}
+{where_sql}
+GROUP BY {chart_bucket_sql}
+ORDER BY bucket_start ASC
+""",
+                tuple(chart_join_params + params),
+            )
+            import_time_series = []
+            for r in cursor.fetchall():
+                data = _row_to_dict(cursor, r)
+                import_time_series.append({
+                    "bucket_start": _json_safe(data.get("bucket_start")),
+                    "count": int(data.get("count") or 0),
+                })
             groupable_columns = [*virtual_group_fields.keys(), *[n for n in column_names if n.lower() not in {hash_field.lower()}]]
-            return {"ok": True, "config_path": str(Path(config_path)), "destination_table": table, "hash_field": hash_field, "columns": columns, "groupable_columns": groupable_columns, "username_options": username_options, "total": total, "groups": groups}
+            return {"ok": True, "config_path": str(Path(config_path)), "destination_table": table, "hash_field": hash_field, "columns": columns, "groupable_columns": groupable_columns, "username_options": username_options, "total": total, "groups": groups, "chart_bucket": chart_bucket, "chart_bucket_label": chart_bucket_label, "import_time_series": import_time_series, "filtered_series": import_time_series}
         finally:
             cursor.close()
     finally:

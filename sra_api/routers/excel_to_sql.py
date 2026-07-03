@@ -279,12 +279,13 @@ def excel_to_sql_source_stats(
     import_end_ts: str = Query("", max_length=80),
     group_by: list[str] | None = Query(None, description="分群欄位，可重複提供"),
     top_n: int = Query(20, ge=1, le=100),
+    chart_bucket: str = Query("day", max_length=40),
     config_dir: str = Query("config/excel_to_sql"),
     user: AuthUser = Depends(require_data_editor),
 ) -> dict[str, Any]:
     _ensure_source_editor_config_allowed(user, config, config_dir)
     try:
-        return sql_source_stats(config, q=q, source_file_filter=source_file_filter, row_no_filter=row_no_filter, hash_value_filter=hash_value_filter, payload_filter=payload_filter, username_filter=username_filter, import_start_ts=import_start_ts, import_end_ts=import_end_ts, group_by=group_by, top_n=top_n)
+        return sql_source_stats(config, q=q, source_file_filter=source_file_filter, row_no_filter=row_no_filter, hash_value_filter=hash_value_filter, payload_filter=payload_filter, username_filter=username_filter, import_start_ts=import_start_ts, import_end_ts=import_end_ts, group_by=group_by, top_n=top_n, chart_bucket=chart_bucket)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
