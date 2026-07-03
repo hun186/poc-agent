@@ -45,3 +45,7 @@
 - `GET /v1/excel-to-sql/dashboard` 新增可重複 query 參數 `sort=field:asc|desc`，用於 audit 事件表。支援欄位：`processed_at`、`audit_id`、`status`、`source_file`、`username`、`row_no`、`message`、`hash_value`、`destination_table`。未提供時預設 `processed_at:desc`、`audit_id:desc`。response 新增 `recent_sort`，回傳實際套用的排序規則。
 - `GET /v1/excel-to-sql/source-rows` 新增可重複 query 參數 `sort=field:asc|desc`，用於受控 SQL 來源資料表。支援欄位限目的資料表實體欄位；未提供時使用 hash 欄位或第一欄升冪排序。response 新增 `sort`，回傳實際套用的排序規則。
 - 排序欄位採白名單驗證，方向只允許 `asc` / `desc`；非法欄位或方向回傳 400。
+
+## 2026-07-03 靜態頁面路由
+
+- `GET /agent-data-flow`：回傳 `sra_api/static/agent_data_flow.html`，用於顯示代理人資料運用處理流程 SVG 說明圖；不需要 request body，也不回傳 JSON API payload。
