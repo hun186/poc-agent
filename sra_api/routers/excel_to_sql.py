@@ -231,6 +231,7 @@ def excel_to_sql_dashboard_data(
     payload_filter: str | None = Query(
         None, description="最近 audit 事件：payload JSON 文字部分比對"
     ),
+    sort: list[str] | None = Query(None, description="audit 事件排序，可重複提供，例如 processed_at:desc、source_file:asc"),
     chart_bucket: str = Query(
         "day",
         description="audit 統計曲線區間：hour、6_hours、12_hours、day、week、month",
@@ -253,6 +254,7 @@ def excel_to_sql_dashboard_data(
             hash_value_filter=hash_value_filter,
             payload_filter=payload_filter,
             page=page,
+            sort=sort,
             chart_bucket=chart_bucket,
             expose_operational_metadata=has_role_at_least(user.role, ROLE_DB_OPERATOR),
         )
@@ -310,6 +312,7 @@ def excel_to_sql_source_rows(
     import_end_ts: str = Query("", max_length=80, description="當初匯入執行結束時間（ISO 8601；以 audit.processed_at 比對）"),
     page: int = Query(1, ge=1),
     limit: int = Query(5000, ge=1, le=50000),
+    sort: list[str] | None = Query(None, description="SQL 來源資料排序，可重複提供，例如 col_a:asc、col_b:desc"),
     config_dir: str = Query(
         "config/excel_to_sql", description="白名單來源：已啟用 Excel→SQL 任務設定檔目錄"
     ),
@@ -318,7 +321,7 @@ def excel_to_sql_source_rows(
     _ensure_source_editor_config_allowed(user, config, config_dir)
     try:
         try:
-            payload = list_sql_source_rows(config, q=q, source_file_filter=source_file_filter, row_no_filter=row_no_filter, hash_value_filter=hash_value_filter, payload_filter=payload_filter, username_filter=username_filter, import_start_ts=import_start_ts, import_end_ts=import_end_ts, page=page, limit=limit)
+            payload = list_sql_source_rows(config, q=q, source_file_filter=source_file_filter, row_no_filter=row_no_filter, hash_value_filter=hash_value_filter, payload_filter=payload_filter, username_filter=username_filter, import_start_ts=import_start_ts, import_end_ts=import_end_ts, page=page, limit=limit, sort=sort)
             payload["can_edit"] = has_role_at_least(user.role, ROLE_DATA_EDITOR)
             payload["can_delete"] = has_role_at_least(user.role, ROLE_DATA_EDITOR)
             payload["can_batch_delete"] = has_role_at_least(user.role, ROLE_DB_OPERATOR)

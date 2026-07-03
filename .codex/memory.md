@@ -183,3 +183,15 @@
 - 目的：回應 Excel→SQL 頁面分頁工具列同時出現「自訂」下拉與手動輸入的冗餘，以及最近 audit 事件每頁筆數被共用 helper 鎖在 1000、SQL 來源資料編輯器同時有載入筆數上限與分頁每頁筆數兩套控制的混淆。
 - 主要修改：`SraAuditTools` 共用分頁 helper 移除每頁筆數下拉選單，只保留數字輸入框，並支援呼叫端設定 `maxPageSize`；Excel→SQL 最近 audit 事件分頁允許最高 400000，SQL 來源資料編輯器移除上方「載入筆數上限」，改由下方分頁工具列的每頁筆數作為後端 `limit`。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index upgrade 查詢仍有 403 retry，但既有 requirements 已滿足）、`node --check sra_api/static/audit_tools.js && node --check sra_api/static/excel_to_sql_source_editor_app.js && node --check sra_api/static/excel_to_sql_dashboard_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_source_editor.py -q`。
+
+### 2026-07-03 SQL 來源 SQL-backed 表格複式排序
+
+- 目的：讓 Excel→SQL 匯入查詢儀表板 audit 事件表與 SQL 來源資料編輯器受控 SQL 來源資料表共用複式排序能力，排序與篩選需在 SQL Server 端完成後再分頁。
+- 主要修改：新增 SQL 排序白名單 helper，API 支援重複 `sort=field:asc|desc` 參數並保留預設 tie-breaker；dashboard audit 事件排序支援時間、audit_id、狀態、檔案、使用者、列號、訊息、hash、目的地 table；SQL 來源資料表排序支援目的資料表實體欄位。前端新增共用複式排序控制 helper，套用到 dashboard audit 事件與 SQL 來源資料編輯器，並將「最近 audit 事件」文案改為「audit 事件」。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js && node --check sra_api/static/excel_to_sql_dashboard_app.js && node --check sra_api/static/excel_to_sql_source_editor_app.js`、`python -m py_compile data_ingestion/excel_to_sql/sql_sorting.py data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/table_editor.py sra_api/routers/excel_to_sql.py`、`PYTHONPATH=. pytest tests/test_excel_to_sql_sorting.py tests/test_excel_to_sql_source_editor.py tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py -q`。
+
+### 2026-07-03 SQL 組合查詢驗證補強
+
+- 目的：釐清並補強 SQL-backed 表格的篩選、複式排序與分頁是否確實在同一個 SQL Server 查詢流程中完成。
+- 主要修改：新增 regression 測試，明確檢查 SQL 來源資料編輯器的資料列查詢同時包含 `WHERE` 篩選、`ORDER BY` 複式排序與 `OFFSET/FETCH` 分頁；並檢查 Excel→SQL audit 事件查詢的 `ROW_NUMBER() OVER (ORDER BY ...)` 同時套用使用者指定排序與預設 tie-breaker。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js && node --check sra_api/static/excel_to_sql_dashboard_app.js && node --check sra_api/static/excel_to_sql_source_editor_app.js`、`python -m py_compile data_ingestion/excel_to_sql/sql_sorting.py data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/table_editor.py sra_api/routers/excel_to_sql.py`、`PYTHONPATH=. pytest tests/test_excel_to_sql_sorting.py tests/test_excel_to_sql_source_editor.py tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py -q`。

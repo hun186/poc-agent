@@ -13,6 +13,7 @@ from data_ingestion.excel_to_sql.dashboard_sql import (
     _table_exists,
 )
 from data_ingestion.excel_to_sql.ingest import get_nested, load_json_config, quote_ident, quote_object_path
+from data_ingestion.excel_to_sql.sql_sorting import normalize_sql_sort_specs, sort_specs_payload, sql_order_by_clause
 
 SYSTEM_COLUMNS = {
     "hash_value",
@@ -406,6 +407,7 @@ def list_sql_source_rows(
     import_end_ts: str | None = None,
     page: int = 1,
     limit: int = 50,
+    sort: list[str] | str | None = None,
     connect: Callable[[dict[str, Any]], Any] = _connect,
 ) -> dict[str, Any]:
     cfg = load_json_config(config_path)
@@ -490,9 +492,16 @@ def list_sql_source_rows(
             count_row = cursor.fetchone()
             total = int(count_row[0] if count_row else 0)
             order_col = hash_field if any(col["name"] == hash_field for col in columns) else columns[0]["name"]
+            allowed_sort = {str(col["name"]): quote_ident(str(col["name"])) for col in columns}
+            sort_specs = normalize_sql_sort_specs(
+                sort,
+                allowed_expressions=allowed_sort,
+                default=[(order_col, "asc")],
+            )
+            order_sql = sql_order_by_clause(sort_specs)
             data_sql = (
                 f"SELECT * FROM {quote_object_path(table)}{where_sql} "
-                f"ORDER BY {quote_ident(order_col)} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+                f"ORDER BY {order_sql} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
             )
             cursor.execute(data_sql, tuple(params + [offset, limit]))
             rows = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
@@ -524,6 +533,7 @@ def list_sql_source_rows(
                 "page": page,
                 "limit": limit,
                 "has_more": offset + len(rows) < total,
+                "sort": sort_specs_payload(sort_specs),
             }
         finally:
             cursor.close()

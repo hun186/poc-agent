@@ -115,6 +115,38 @@ def test_list_sql_source_rows_uses_task_destination_and_blocks_system_columns(mo
     assert any("CAST([title] AS NVARCHAR(MAX)) LIKE ?" in sql for sql, _ in conn.cursor_obj.calls)
 
 
+def test_list_sql_source_rows_combines_filters_sort_and_page_in_sql(monkeypatch):
+    conn = FakeConnection()
+    monkeypatch.setattr(table_editor, "load_json_config", lambda path: CFG)
+
+    result = table_editor.list_sql_source_rows(
+        "config/excel_to_sql/task.json",
+        q="舊",
+        payload_filter="內容",
+        page=3,
+        limit=5,
+        sort=["title:desc", "row_no:asc"],
+        connect=lambda cfg: conn,
+    )
+
+    data_calls = [
+        (sql, params)
+        for sql, params in conn.cursor_obj.calls
+        if "ORDER BY" in sql and "OFFSET" in sql
+    ]
+    assert data_calls
+    sql, params = data_calls[-1]
+    assert "CAST([title] AS NVARCHAR(MAX)) LIKE ?" in sql
+    assert "CAST([content] AS NVARCHAR(MAX)) LIKE ?" in sql
+    assert "ORDER BY [title] DESC, [row_no] ASC, [hash_value] ASC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY" in sql
+    assert params[0][-2:] == (10, 5)
+    assert result["sort"] == [
+        {"field": "title", "direction": "desc"},
+        {"field": "row_no", "direction": "asc"},
+        {"field": "hash_value", "direction": "asc"},
+    ]
+
+
 def test_list_sql_source_rows_filters_by_import_username_from_audit_even_with_available_user_column(monkeypatch):
     conn = FakeConnection()
     monkeypatch.setattr(table_editor, "load_json_config", lambda path: CFG)

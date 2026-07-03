@@ -198,6 +198,7 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
         limit=12345,
         destination_table_filter=["dbo.Target", "dbo.OtherTarget"],
         username_filter=["alice", "bob"],
+        sort=["source_file:asc", "processed_at:desc"],
     )
 
     filtered_calls = [
@@ -217,6 +218,11 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
         "dbo.OtherTarget",
     ]
     assert result["recent_filters"]["username"] == ["alice", "bob"]
+    assert result["recent_sort"] == [
+        {"field": "source_file", "direction": "asc"},
+        {"field": "processed_at", "direction": "desc"},
+        {"field": "audit_id", "direction": "desc"},
+    ]
     summary_calls = [
         params
         for sql, params in conn.cursor_obj.calls
@@ -227,6 +233,9 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
     ]
     assert summary_calls and summary_calls[0][0][0] != 12345
     assert files_calls and files_calls[0][0][0] == 12345
+    recent_sql_calls = [sql for sql, _ in conn.cursor_obj.calls if "WITH ordered_recent AS" in sql]
+    assert recent_sql_calls
+    assert "ROW_NUMBER() OVER (ORDER BY source_file ASC, processed_at DESC, audit_id DESC) AS rn" in recent_sql_calls[-1]
 
 
 def test_discover_dashboard_tasks_recursively_loads_enabled_json(tmp_path):

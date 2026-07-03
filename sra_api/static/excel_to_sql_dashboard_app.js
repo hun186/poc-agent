@@ -1,5 +1,5 @@
 const tokenKey = 'sra_editor_token';
-const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false, usernameOptions: [], selectedUsers: [], usernameDirty: false, batchDeleteReport: null, canDelete: false };
+const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false, usernameOptions: [], selectedUsers: [], usernameDirty: false, batchDeleteReport: null, canDelete: false, recentSort: null };
 function $(id) { return document.getElementById(id); }
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function statusBadge(s) { return `<span class="status ${escapeHtml(s)}">${escapeHtml(s || '(empty)')}</span>`; }
@@ -141,7 +141,7 @@ function updateRecentPager(data) {
   state.recentPage = Number(paging.page || state.recentPage || 1);
   state.recentPageSize = Number(paging.page_size || $('limit').value || 50000);
   state.recentTotal = Number(paging.total || (data.recent || []).length || 0);
-  const page = SraAuditTools.updatePager({page: state.recentPage, pageSize: state.recentPageSize, total: state.recentTotal, infoId: 'recentPageInfo', firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', inputLabel: '最近 audit 事件頁數', maxPageSize: 400000});
+  const page = SraAuditTools.updatePager({page: state.recentPage, pageSize: state.recentPageSize, total: state.recentTotal, infoId: 'recentPageInfo', firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', inputLabel: 'audit 事件頁數', maxPageSize: 400000});
   state.recentPage = page.page;
 }
 function renderJson(value, level = 0) {
@@ -333,6 +333,7 @@ async function loadDashboard() {
   const pageSize = Math.max(1, Math.min(Number($('limit').value || state.recentPageSize || 50000), 400000));
   state.recentPageSize = pageSize;
   const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: pageSize, page: state.recentPage, chart_bucket: $('chartBucket').value });
+  if (state.recentSort) state.recentSort.getSortParams().forEach(value => params.append('sort', value));
   const startIso = auditRangeStartIso();
   const endIso = auditRangeEndIso();
   if (startIso) params.set('start_ts', startIso);
@@ -385,6 +386,9 @@ function bindAuditFilterEvents() {
   document.addEventListener('click', event => { if (!destinationDropdown.contains(event.target)) closeDestinationTableDropdown(true); });
   $('chartBucket').addEventListener('change', applyAuditFilters);
 }
+state.recentSort = SraAuditTools.bindSqlSortControls({containerId: 'recentSortControls', fields: [
+  {value: 'processed_at', label: '時間'}, {value: 'audit_id', label: 'audit ID'}, {value: 'status', label: '狀態'}, {value: 'source_file', label: '檔案'}, {value: 'username', label: '使用者'}, {value: 'row_no', label: '列號'}, {value: 'message', label: '訊息'}, {value: 'hash_value', label: 'hash'}, {value: 'destination_table', label: '目的地 table'}
+], defaultSort: [{field: 'processed_at', direction: 'desc'}, {field: 'audit_id', direction: 'desc'}], onChange: applyAuditFilters});
 bindAuditFilterEvents();
 SraAuditTools.bindPager({firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', getPage: () => state.recentPage, setPage: page => { state.recentPage = page; }, getPageSize: () => state.recentPageSize, setPageSize: size => { state.recentPageSize = size; state.recentPage = 1; }, maxPageSize: 400000, renderPage: loadDashboard});
 // boot order includes: await loadCurrentUser(); await loadTasks(); await loadDashboard();
