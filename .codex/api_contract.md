@@ -34,3 +34,8 @@
 - Auth：需登入；可讀取的 `config` 必須存在於已啟用 Excel→SQL dashboard task 白名單。
 - Query：`config`、`q`、`source_file_filter`、`row_no_filter`、`hash_value_filter`、`payload_filter`、`username_filter`（可重複）、`import_start_ts`、`import_end_ts`、`group_by`（可重複）、`top_n`、`config_dir`。
 - Response：`ok`、`config_path`、`destination_table`、`hash_field`、`columns`、`groupable_columns`、`username_options`、`total`、`groups`；其中 `groups[]` 包含 `field` 與 `buckets[]`（`value`、`count`）。
+
+## 2026-07-03 Excel→SQL SQL 來源資料統計 API 補充
+
+- `GET /v1/excel-to-sql/source-stats` 新增 query 參數 `chart_bucket`，可用值沿用 audit dashboard：`hour`、`6_hours`、`12_hours`、`day`、`week`、`month`，預設 `day`。
+- Response 新增 `chart_bucket`、`chart_bucket_label`、`import_time_series` 與相容別名 `filtered_series`。`import_time_series` 以目前篩選後的 SQL 來源資料列與 Excel→SQL audit table 依 `hash_value` / `destination_table` 交叉比對，使用 audit `processed_at` 分桶回傳 `{ bucket_start, count }`。

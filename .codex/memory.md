@@ -171,3 +171,9 @@
 - 目的：修正 SQL 來源資料統計儀表板 header 身份誤顯示 `undefined（undefined）`，並將該統計 API 權限提升為資料修改者以上；同時調整 SQL 來源資料編輯器批次刪除勾選 UI。
 - 主要修改：SQL 來源資料統計前端讀取 `/v1/auth/me` 時改用 `data.user` 內的 username / role；`/v1/excel-to-sql/source-stats` 改用 `require_data_editor`。SQL 來源資料編輯器移除列內批次刪除勾選格旁「批刪」文字，並於操作欄標題加入本頁全選 checkbox，支援同步勾選、取消與 indeterminate 狀態。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip upgrade 查詢套件索引仍遇 403 retry，但 requirements 已滿足）、`node --check sra_api/static/excel_to_sql_source_dashboard_app.js`、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_source_editor.py -q`。
+
+### 2026-07-03 SQL 來源資料統計儀表板匯入時間曲線
+
+- 目的：釐清 SQL 來源資料統計儀表板的「匯入執行起 / 迄」篩選是否已用 audit table 交叉比對，並補上依匯入時間統計來源資料數量的曲線。
+- 主要修改：既有匯入時間篩選維持透過 destination table `hash_value` 與 Excel→SQL audit table `processed_at` 交叉比對；本次在 `/v1/excel-to-sql/source-stats` 新增 `chart_bucket` 與 `import_time_series` / `filtered_series`，後端使用 audit table `processed_at` 分桶並套用目前來源資料篩選。SQL 來源資料統計儀表板新增曲線區塊，載入共用 `SraAuditTools.renderTimeSeriesChart`，沿用 Excel→SQL 匯入查詢儀表板的時間區間選單與曲線模板。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js && node --check sra_api/static/excel_to_sql_source_dashboard_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_dashboard_static.py -q`。

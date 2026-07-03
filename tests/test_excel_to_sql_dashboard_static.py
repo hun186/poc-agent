@@ -24,7 +24,7 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         script_urls.update(re.findall(r'<script src="([^"]+)"', html))
 
     assert "/static/excel_to_sql_source_editor_app.js?v=20260703-source-load-limit" in script_urls
-    assert "/static/excel_to_sql_source_dashboard_app.js?v=20260703-source-dashboard" in script_urls
+    assert "/static/excel_to_sql_source_dashboard_app.js?v=20260703-source-dashboard-import-series" in script_urls
     for script_url in sorted(script_urls):
         response = TestClient(app).get(script_url)
 
@@ -51,6 +51,19 @@ def test_chart_bucket_selector_is_visible_in_chart_card_and_sent_to_api():
     assert '<script src="/static/audit_tools.js"></script>' in html
     assert "SraAuditTools.renderTimeSeriesChart" in html
 
+
+
+
+def test_sql_source_dashboard_import_time_series_uses_shared_chart_helper():
+    html = (STATIC_ROOT / "excel_to_sql_source_dashboard.html").read_text(encoding="utf-8")
+    js = (STATIC_ROOT / "excel_to_sql_source_dashboard_app.js").read_text(encoding="utf-8")
+
+    assert '<script src="/static/audit_tools.js"></script>' in html
+    assert 'id="importSeriesChart"' in html
+    assert 'id="chartBucket"' in html
+    assert "params.set('chart_bucket',$('chartBucket').value)" in js
+    assert "SraAuditTools.renderTimeSeriesChart" in js
+    assert "import_time_series" in js
 
 def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     html = dashboard_source()
