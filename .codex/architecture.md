@@ -274,3 +274,12 @@
 - 目的資料表若原本有 `username` 欄位，該欄位屬於業務資料，不再代表匯入操作者，也不應被 SQL 來源資料編輯器當成系統欄位攔截。
 - SQL 來源資料編輯器的 `_import_username` 顯示仍相容舊資料：優先從 Excel→SQL audit table 依 `hash_value` 補回匯入者，若沒有 audit 對應則使用目的資料表中已落地的 `_import_username` 欄位值。
 - SQL 來源資料編輯器另由 audit table 補 `_imported_at`（匯入執行時間 / `processed_at`）與 `_source_excel`（來源 Excel / `source_file`）虛擬欄位，並可用 audit source_file 與 processed_at 篩選，方便針對特定批次匯入錯誤做查找與批次刪除。
+
+## 2026-07-03 SQL 來源資料統計儀表板
+
+- SQL 來源資料統計頁位於 `sra_api/static/excel_to_sql_source_stats.html`，互動邏輯位於 `sra_api/static/excel_to_sql_source_stats_app.js`。
+- 後端路由位於 `sra_api/routers/excel_to_sql.py`；統計邏輯位於 `data_ingestion/excel_to_sql/table_editor.py`，與 SQL 來源資料編輯器共用任務白名單、目的表解析、audit 使用者與篩選條件組裝，避免任意 SQL / 任意 table name。
+
+## 2026-07-03 SQL 來源資料統計分群資料流補充
+
+- `sql_source_stats()` 除單一可選資料欄位排行外，會用 filtered destination rows 對 latest audit metadata 做 left join，產生匯入使用者、來源 Excel、匯入日期等固定重要屬性分群，讓儀表板可直接掌握 SQL 來源資料分布。

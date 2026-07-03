@@ -139,3 +139,17 @@
 - 目的：回應 Excel→SQL 匯入查詢儀表板仍需要保留列數上限控制，以及帳號安全 → 帳號操作記錄雖有分頁但仍應讓使用者控制後端載入筆數上限。
 - 主要修改：Excel→SQL dashboard 查詢列恢復 `limit` 控制並改名為「載入列數上限」，仍使用後端既有 1-1000 安全上限；帳號操作記錄恢復 `accountAuditLimit`，改名為「載入筆數上限」、預設 5000、最大 5000，前端以使用者輸入送出 `/v1/editor/audit-logs` limit，若 `truncated=true` 或已達該上限則跳窗提醒使用者縮小帳號、動作或時間條件。同步更新靜態測試與資產版本。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍有 403 retry，但 requirements 已滿足）、`for f in sra_api/static/editor_audit.js sra_api/static/excel_to_sql_dashboard_app.js; do node --check "$f" || exit 1; done`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_workspace_separates_document_and_account_work_areas tests/test_editor_auth_ui_static.py::test_editor_static_shell_loads_split_assets tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range -q`。
+
+### 2026-07-03 SQL 來源資料統計儀表板
+
+- 目的：比照 Excel→SQL 匯入查詢儀表板的統計概念，為 SQL 來源資料新增獨立統計頁，並將入口放在主導航「SQL 來源資料編輯器」下一個位置。
+- 主要修改：新增 `/excel-to-sql-source-stats` 靜態頁與 `/v1/excel-to-sql/source-stats` API，沿用已啟用 Excel→SQL 任務白名單與相同篩選條件，對任務 `destination.table` 產生總筆數、分組排行與數值欄位摘要；主導航新增「SQL 來源資料統計儀表板」。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/excel_to_sql_source_stats_app.js`、`node --check sra_api/static/editor_bootstrap.js`、`node --check sra_api/static/excel_to_sql_dashboard_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_source_editor.py -q`。
+- 限制：本環境未提供瀏覽器 / Playwright runtime，未做實機截圖；以靜態 UI 測試與 JS 語法檢查替代。
+
+
+### 2026-07-03 SQL 來源資料統計重要屬性分群補強
+
+- 目的：回應 SQL 來源資料統計儀表板應比照 ES 文件異動統計，直接呈現適合 SQL 來源資料的關鍵屬性分群，而不是只提供單一手動 group-by。
+- 主要修改：`/v1/excel-to-sql/source-stats` 回傳 `attribute_groups`，包含依匯入使用者、來源 Excel、匯入日期與目前選擇資料欄位的分群統計；前端新增「重要屬性分群統計」卡片區。
+- 驗證：`node --check sra_api/static/excel_to_sql_source_stats_app.js`、`python -m py_compile data_ingestion/excel_to_sql/table_editor.py`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_sql_source_stats_page_and_navigation_are_wired -q`。

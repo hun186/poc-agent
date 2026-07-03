@@ -218,6 +218,100 @@ def _fetch_row_by_hash(cursor, table: str, hash_field: str, hash_value: str) -> 
     return _row_to_dict(cursor, row) if row else None
 
 
+
+def _sql_source_filter_conditions(
+    *,
+    table: str,
+    audit_table: str,
+    hash_field: str,
+    columns: list[dict[str, Any]],
+    q: str = "",
+    source_file_filter: str = "",
+    row_no_filter: int | None = None,
+    hash_value_filter: str = "",
+    payload_filter: str = "",
+    username_filter: str | list[str] | None = None,
+    import_start_ts: str | None = None,
+    import_end_ts: str | None = None,
+) -> tuple[str, list[Any]]:
+    search_cols = [col["name"] for col in columns[:12]]
+    params: list[Any] = []
+    conditions: list[str] = []
+    available = {str(col["name"]).lower(): str(col["name"]) for col in columns}
+    table_sql = quote_object_path(table)
+    audit_sql = quote_object_path(audit_table)
+    clean_q = str(q or "").strip()
+    if clean_q:
+        like = f"%{clean_q}%"
+        conditions.append("(" + " OR ".join(
+            f"CAST({quote_ident(col)} AS NVARCHAR(MAX)) LIKE ?" for col in search_cols
+        ) + ")")
+        params.extend([like for _ in search_cols])
+    clean_source_file = str(source_file_filter or "").strip()
+    if clean_source_file:
+        conditions.append(
+            f"EXISTS (SELECT 1 FROM {audit_sql} aud "
+            f"WHERE aud.destination_table = ? AND aud.hash_value = {table_sql}.{quote_ident(hash_field)} "
+            "AND aud.source_file LIKE ?)"
+        )
+        params.extend([table, f"%{clean_source_file}%"])
+    start_dt = _coerce_utc_datetime(import_start_ts)
+    end_dt = _coerce_utc_datetime(import_end_ts, end_of_day=True)
+    if start_dt and end_dt and start_dt > end_dt:
+        raise ValueError("匯入執行起始時間不可晚於結束時間。")
+    if start_dt:
+        conditions.append(
+            f"EXISTS (SELECT 1 FROM {audit_sql} aud "
+            f"WHERE aud.destination_table = ? AND aud.hash_value = {table_sql}.{quote_ident(hash_field)} "
+            "AND aud.processed_at >= ?)"
+        )
+        params.extend([table, start_dt])
+    if end_dt:
+        conditions.append(
+            f"EXISTS (SELECT 1 FROM {audit_sql} aud "
+            f"WHERE aud.destination_table = ? AND aud.hash_value = {table_sql}.{quote_ident(hash_field)} "
+            "AND aud.processed_at <= ?)"
+        )
+        params.extend([table, end_dt])
+    if row_no_filter is not None and "row_no" in available:
+        conditions.append(f"{quote_ident(available['row_no'])} = ?")
+        params.append(int(row_no_filter))
+    clean_hash_filter = str(hash_value_filter or "").strip()
+    if clean_hash_filter and hash_field.lower() in available:
+        conditions.append(f"CAST({quote_ident(available[hash_field.lower()])} AS NVARCHAR(MAX)) LIKE ?")
+        params.append(f"%{clean_hash_filter}%")
+    clean_usernames = _normalize_filter_values(username_filter)
+    if clean_usernames:
+        audit_user_expr = _audit_username_expr("aud")
+        placeholders = ", ".join("?" for _ in clean_usernames)
+        conditions.append(
+            f"EXISTS (SELECT 1 FROM {audit_sql} aud "
+            f"WHERE aud.destination_table = ? AND aud.hash_value = {table_sql}.{quote_ident(hash_field)} "
+            f"AND {audit_user_expr} IN ({placeholders}))"
+        )
+        params.append(table)
+        params.extend(clean_usernames)
+    clean_payload = str(payload_filter or "").strip()
+    if clean_payload:
+        payload_cols = [col["name"] for col in columns if str(col.get("name") or "").lower() not in {"source_file", "row_no", hash_field.lower(), *SYSTEM_COLUMNS}]
+        if payload_cols:
+            conditions.append("(" + " OR ".join(f"CAST({quote_ident(col)} AS NVARCHAR(MAX)) LIKE ?" for col in payload_cols[:24]) + ")")
+            params.extend([f"%{clean_payload}%" for _ in payload_cols[:24]])
+    where_sql = " WHERE " + " AND ".join(conditions) if conditions else ""
+    return where_sql, params
+
+
+def _numeric_columns(columns: list[dict[str, Any]], hash_field: str) -> list[str]:
+    numeric_types = {"bigint", "int", "smallint", "tinyint", "decimal", "numeric", "float", "real", "money", "smallmoney"}
+    blocked = {hash_field.lower(), *SYSTEM_COLUMNS}
+    result = []
+    for col in columns:
+        name = str(col.get("name") or "")
+        data_type = str(col.get("data_type") or "").lower()
+        if name and name.lower() not in blocked and data_type in numeric_types:
+            result.append(name)
+    return result
+
 def list_sql_source_rows(
     config_path: str,
     *,
@@ -246,70 +340,22 @@ def list_sql_source_rows(
             columns = _load_columns(cursor, table)
             if not columns:
                 raise ValueError(f"找不到 SQL table 欄位資訊：{table}")
-            search_cols = [col["name"] for col in columns[:12]]
             audit_table = _audit_table(cfg)
             username_options = _load_audit_username_options(cursor, audit_table, table)
-            params: list[Any] = []
-            conditions: list[str] = []
-            available = {str(col["name"]).lower(): str(col["name"]) for col in columns}
-            clean_q = str(q or "").strip()
-            if clean_q:
-                like = f"%{clean_q}%"
-                conditions.append("(" + " OR ".join(
-                    f"CAST({quote_ident(col)} AS NVARCHAR(MAX)) LIKE ?" for col in search_cols
-                ) + ")")
-                params.extend([like for _ in search_cols])
-            clean_source_file = str(source_file_filter or "").strip()
-            if clean_source_file:
-                conditions.append(
-                    f"EXISTS (SELECT 1 FROM {quote_object_path(audit_table)} aud "
-                    f"WHERE aud.destination_table = ? AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)} "
-                    "AND aud.source_file LIKE ?)"
-                )
-                params.extend([table, f"%{clean_source_file}%"])
-            start_dt = _coerce_utc_datetime(import_start_ts)
-            end_dt = _coerce_utc_datetime(import_end_ts, end_of_day=True)
-            if start_dt and end_dt and start_dt > end_dt:
-                raise ValueError("匯入執行起始時間不可晚於結束時間。")
-            if start_dt:
-                conditions.append(
-                    f"EXISTS (SELECT 1 FROM {quote_object_path(audit_table)} aud "
-                    f"WHERE aud.destination_table = ? AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)} "
-                    "AND aud.processed_at >= ?)"
-                )
-                params.extend([table, start_dt])
-            if end_dt:
-                conditions.append(
-                    f"EXISTS (SELECT 1 FROM {quote_object_path(audit_table)} aud "
-                    f"WHERE aud.destination_table = ? AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)} "
-                    "AND aud.processed_at <= ?)"
-                )
-                params.extend([table, end_dt])
-            if row_no_filter is not None and "row_no" in available:
-                conditions.append(f"{quote_ident(available['row_no'])} = ?")
-                params.append(int(row_no_filter))
-            clean_hash_filter = str(hash_value_filter or "").strip()
-            if clean_hash_filter and hash_field.lower() in available:
-                conditions.append(f"CAST({quote_ident(available[hash_field.lower()])} AS NVARCHAR(MAX)) LIKE ?")
-                params.append(f"%{clean_hash_filter}%")
-            clean_usernames = _normalize_filter_values(username_filter)
-            if clean_usernames:
-                audit_user_expr = _audit_username_expr("aud")
-                placeholders = ", ".join("?" for _ in clean_usernames)
-                conditions.append(
-                    f"EXISTS (SELECT 1 FROM {quote_object_path(audit_table)} aud "
-                    f"WHERE aud.destination_table = ? AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)} "
-                    f"AND {audit_user_expr} IN ({placeholders}))"
-                )
-                params.append(table)
-                params.extend(clean_usernames)
-            clean_payload = str(payload_filter or "").strip()
-            if clean_payload:
-                payload_cols = [col["name"] for col in columns if str(col.get("name") or "").lower() not in {"source_file", "row_no", hash_field.lower(), *SYSTEM_COLUMNS}]
-                if payload_cols:
-                    conditions.append("(" + " OR ".join(f"CAST({quote_ident(col)} AS NVARCHAR(MAX)) LIKE ?" for col in payload_cols[:24]) + ")")
-                    params.extend([f"%{clean_payload}%" for _ in payload_cols[:24]])
-            where_sql = " WHERE " + " AND ".join(conditions) if conditions else ""
+            where_sql, params = _sql_source_filter_conditions(
+                table=table,
+                audit_table=audit_table,
+                hash_field=hash_field,
+                columns=columns,
+                q=q,
+                source_file_filter=source_file_filter,
+                row_no_filter=row_no_filter,
+                hash_value_filter=hash_value_filter,
+                payload_filter=payload_filter,
+                username_filter=username_filter,
+                import_start_ts=import_start_ts,
+                import_end_ts=import_end_ts,
+            )
             count_sql = f"SELECT COUNT(*) AS total FROM {quote_object_path(table)}{where_sql}"
             cursor.execute(count_sql, tuple(params))
             count_row = cursor.fetchone()
@@ -355,6 +401,168 @@ def list_sql_source_rows(
     finally:
         conn.close()
 
+
+
+
+def _audit_attribute_groups(
+    cursor,
+    *,
+    table: str,
+    audit_table: str,
+    hash_field: str,
+    where_sql: str,
+    params: list[Any],
+    top: int,
+) -> list[dict[str, Any]]:
+    table_sql = quote_object_path(table)
+    audit_sql = quote_object_path(audit_table)
+    hash_sql = quote_ident(hash_field)
+    username_expr = _audit_username_expr("aud")
+    base_cte = f"""
+WITH filtered_rows AS (
+    SELECT CAST({hash_sql} AS NVARCHAR(128)) AS hash_value
+    FROM {table_sql}{where_sql}
+), ranked_audit AS (
+    SELECT
+        aud.hash_value,
+        {username_expr} AS username,
+        aud.source_file,
+        aud.processed_at,
+        ROW_NUMBER() OVER (
+            PARTITION BY aud.hash_value
+            ORDER BY
+                CASE WHEN aud.source_file IN ('dashboard', 'sql-source-editor') THEN 1 ELSE 0 END,
+                aud.processed_at DESC
+        ) AS rn
+    FROM {audit_sql} aud
+    INNER JOIN filtered_rows fr ON fr.hash_value = aud.hash_value
+    WHERE aud.destination_table = ?
+), latest_audit AS (
+    SELECT hash_value, username, source_file, processed_at
+    FROM ranked_audit
+    WHERE rn = 1
+)
+"""
+    dimensions = [
+        ("import_username", "依匯入使用者", "COALESCE(NULLIF(CAST(la.username AS NVARCHAR(4000)), ''), '-')"),
+        ("source_excel", "依來源 Excel", "COALESCE(NULLIF(CAST(la.source_file AS NVARCHAR(4000)), ''), '-')"),
+        ("import_date", "依匯入日期", "COALESCE(CONVERT(NVARCHAR(10), la.processed_at, 23), '-')"),
+    ]
+    groups: list[dict[str, Any]] = []
+    query_params = tuple(params + [table])
+    for key, label, value_expr in dimensions:
+        cursor.execute(
+            base_cte
+            + f"""
+SELECT TOP ({top}) {value_expr} AS value, COUNT(*) AS count
+FROM filtered_rows fr
+LEFT JOIN latest_audit la ON la.hash_value = fr.hash_value
+GROUP BY {value_expr}
+ORDER BY COUNT(*) DESC, value
+""",
+            query_params,
+        )
+        groups.append({
+            "key": key,
+            "label": label,
+            "items": [_row_to_dict(cursor, row) for row in cursor.fetchall()],
+        })
+    return groups
+
+def sql_source_stats(
+    config_path: str,
+    *,
+    q: str = "",
+    source_file_filter: str = "",
+    row_no_filter: int | None = None,
+    hash_value_filter: str = "",
+    payload_filter: str = "",
+    username_filter: str | list[str] | None = None,
+    import_start_ts: str | None = None,
+    import_end_ts: str | None = None,
+    group_by: str = "",
+    top: int = 20,
+    connect: Callable[[dict[str, Any]], Any] = _connect,
+) -> dict[str, Any]:
+    cfg = load_json_config(config_path)
+    table = _destination_table(cfg)
+    hash_field = _hash_field(cfg)
+    top = min(max(int(top or 20), 1), 100)
+    conn = connect(cfg)
+    try:
+        cursor = conn.cursor()
+        try:
+            columns = _load_columns(cursor, table)
+            if not columns:
+                raise ValueError(f"找不到 SQL table 欄位資訊：{table}")
+            audit_table = _audit_table(cfg)
+            where_sql, params = _sql_source_filter_conditions(
+                table=table, audit_table=audit_table, hash_field=hash_field, columns=columns,
+                q=q, source_file_filter=source_file_filter, row_no_filter=row_no_filter,
+                hash_value_filter=hash_value_filter, payload_filter=payload_filter,
+                username_filter=username_filter, import_start_ts=import_start_ts, import_end_ts=import_end_ts,
+            )
+            table_sql = quote_object_path(table)
+            cursor.execute(f"SELECT COUNT(*) AS total FROM {table_sql}{where_sql}", tuple(params))
+            count_row = cursor.fetchone()
+            total = int(count_row[0] if count_row else 0)
+            allowed_group_columns = [str(col.get("name") or "") for col in columns if str(col.get("name") or "").lower() not in {hash_field.lower(), *SYSTEM_COLUMNS}]
+            selected_group = str(group_by or "").strip()
+            if selected_group not in allowed_group_columns:
+                selected_group = allowed_group_columns[0] if allowed_group_columns else ""
+            groups: list[dict[str, Any]] = []
+            if selected_group:
+                group_expr = quote_ident(selected_group)
+                cursor.execute(
+                    f"SELECT TOP ({top}) CAST({group_expr} AS NVARCHAR(4000)) AS value, COUNT(*) AS count "
+                    f"FROM {table_sql}{where_sql} GROUP BY CAST({group_expr} AS NVARCHAR(4000)) ORDER BY COUNT(*) DESC, value",
+                    tuple(params),
+                )
+                groups = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+            numeric_summaries: list[dict[str, Any]] = []
+            for col in _numeric_columns(columns, hash_field)[:12]:
+                col_sql = quote_ident(col)
+                cursor.execute(
+                    f"SELECT COUNT({col_sql}) AS count, MIN({col_sql}) AS min, MAX({col_sql}) AS max, AVG(CAST({col_sql} AS FLOAT)) AS avg, SUM(CAST({col_sql} AS FLOAT)) AS sum "
+                    f"FROM {table_sql}{where_sql}",
+                    tuple(params),
+                )
+                row = _row_to_dict(cursor, cursor.fetchone())
+                row["column"] = col
+                numeric_summaries.append(row)
+            attribute_groups = _audit_attribute_groups(
+                cursor,
+                table=table,
+                audit_table=audit_table,
+                hash_field=hash_field,
+                where_sql=where_sql,
+                params=params,
+                top=top,
+            )
+            if selected_group:
+                attribute_groups.append({
+                    "key": "selected_data_column",
+                    "label": f"依資料欄位：{selected_group}",
+                    "items": groups,
+                })
+            return {
+                "ok": True,
+                "config_path": str(Path(config_path)),
+                "destination_table": table,
+                "hash_field": hash_field,
+                "total": total,
+                "columns": columns,
+                "groupable_columns": allowed_group_columns,
+                "group_by": selected_group,
+                "groups": groups,
+                "attribute_groups": attribute_groups,
+                "numeric_summaries": numeric_summaries,
+                "username_options": _load_audit_username_options(cursor, audit_table, table),
+            }
+        finally:
+            cursor.close()
+    finally:
+        conn.close()
 
 def update_sql_source_row(
     config_path: str,

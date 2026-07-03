@@ -26,3 +26,8 @@
 ## Archived History
 
 - `.codex/archive/api_contract.md-20260702-063606.md`：歸檔本次濃縮前的完整 API contract（含 2026-06-11 至 2026-07-02 詳細逐項 contract）。
+
+## 2026-07-03 SQL 來源資料統計 API
+
+- `GET /excel-to-sql-source-stats`：回傳 SQL 來源資料統計儀表板靜態頁。
+- `GET /v1/excel-to-sql/source-stats`：需登入；`config` 必須屬於已啟用 Excel→SQL dashboard task 白名單。Query 支援 `config`、`q`、`source_file_filter`、`row_no_filter`、`hash_value_filter`、`payload_filter`、重複 `username_filter`、`import_start_ts`、`import_end_ts`、`group_by`、`top`、`config_dir`。Response 包含 `ok`、`config_path`、`destination_table`、`hash_field`、`total`、`columns`、`groupable_columns`、`group_by`、`groups`、`attribute_groups`（重要屬性分群：匯入使用者、來源 Excel、匯入日期、目前選擇資料欄位）、`numeric_summaries`、`username_options`。

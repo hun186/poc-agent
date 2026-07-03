@@ -382,6 +382,7 @@ function bindAuditFilterEvents() {
   destinationDropdown.addEventListener('toggle', () => { if (!destinationDropdown.open) applyDestinationTablePendingFilters(); });
   destinationDropdown.addEventListener('focusout', () => { setTimeout(() => { if (!destinationDropdown.contains(document.activeElement)) closeDestinationTableDropdown(true); }, 0); });
   document.addEventListener('click', event => { if (!destinationDropdown.contains(event.target)) closeDestinationTableDropdown(true); });
+  $('limit').addEventListener('change', applyAuditFilters);
   $('chartBucket').addEventListener('change', applyAuditFilters);
 }
 bindAuditFilterEvents();

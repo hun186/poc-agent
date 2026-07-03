@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SQL 來源資料統計儀表板</title>
+  <style>
+    :root { color-scheme: light; --bg:#f6f7fb; --card:#fff; --line:#d9deea; --text:#172033; --muted:#667085; --ok:#027a48; --bad:#b42318; --info:#175cd3; }
+    body { margin:0; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:20px 28px; background:#111827; color:white; display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    h1 { margin:0; font-size:22px; } h2 { margin:0 0 10px; }
+    .header-actions,.row,.toolbar { display:flex; gap:10px; align-items:end; flex-wrap:wrap; }
+    .header-user { color:#cbd5e1; font-size:13px; font-weight:700; white-space:nowrap; }
+    button { padding:10px 14px; border:0; border-radius:10px; background:#2563eb; color:white; font-weight:700; cursor:pointer; }
+    button.secondary { background:#475467; }
+    main { max-width:1440px; margin:0 auto; padding:24px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:0 1px 2px rgba(16,24,40,.05); margin-bottom:16px; }
+    .muted { color:var(--muted); font-size:13px; }
+    label { font-weight:600; font-size:13px; display:block; margin-bottom:6px; }
+    input,select { width:100%; box-sizing:border-box; padding:10px 11px; border:1px solid var(--line); border-radius:10px; font-size:14px; background:white; }
+    .hidden { display:none; }
+    .status { padding:12px; border-radius:12px; margin:12px 0; background:#eef4ff; color:var(--info); white-space:pre-wrap; }
+    .status.ok { background:#ecfdf3; color:var(--ok); } .status.error { background:#fef3f2; border:1px solid #fecdca; color:var(--bad); }
+    .filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; align-items:end; margin:12px 0 14px; }
+    .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:12px 0; }
+    .metric { border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#f8fafc; }
+    .metric strong { display:block; font-size:28px; margin-top:4px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; background:white; }
+    th,td { border-bottom:1px solid #e5e7eb; padding:8px; text-align:left; vertical-align:top; }
+    th { background:#f8fafc; position:sticky; top:0; }
+    .table-wrap { overflow:auto; border:1px solid #e5e7eb; border-radius:12px; max-height:520px; }
+    .bar { height:10px; background:#dbeafe; border-radius:999px; overflow:hidden; min-width:120px; }
+    .bar span { display:block; height:100%; background:#2563eb; }
+    .attribute-card { border:1px solid #e5e7eb; border-radius:12px; padding:12px; background:white; }
+    .attribute-card h3 { margin:0 0 8px; font-size:15px; }
+    .attribute-card ul { list-style:none; padding:0; margin:0; display:grid; gap:8px; }
+    .attribute-card li { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:center; }
+    .attribute-card li .bar { grid-column:1 / -1; min-width:0; }
+    .group-value { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  </style>
+</head>
+<body>
+<header>
+  <div><h1>SQL 來源資料統計儀表板</h1><div class="muted" style="color:#cbd5e1;">依已啟用 Excel→SQL 任務的目的資料表進行篩選與資料分析</div></div>
+  <div class="header-actions">
+    <div id="whoami" class="header-user">未登入</div>
+    <button onclick="location.href='/excel-to-sql-source-editor'">SQL 來源資料編輯器</button>
+    <button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button>
+    <button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
+  </div>
+</header>
+<main>
+  <section class="card">
+    <h2>篩選條件</h2>
+    <div class="toolbar">
+      <div><label>任務</label><select id="task"></select></div>
+      <div style="min-width:360px"><label>設定檔</label><input id="config" value="config/excel_to_sql/vessel_activities.example.json" /></div>
+      <div><label>關鍵字</label><input id="query" placeholder="跨前 12 個欄位搜尋" /></div>
+      <div><label>分組欄位</label><select id="groupBy"></select></div>
+      <div><label>排行筆數</label><input id="top" type="number" min="1" max="100" value="20" /></div>
+      <button id="loadBtn">套用並統計</button>
+    </div>
+    <section class="filters" aria-label="SQL 來源資料統計篩選">
+      <div><label>來源 Excel 包含</label><input id="sourceFileFilter" placeholder="audit source_file 檔名片段" /></div>
+      <div><label>匯入執行起</label><input id="importStartFilter" type="datetime-local" /></div>
+      <div><label>匯入執行迄</label><input id="importEndFilter" type="datetime-local" /></div>
+      <div><label>匯入使用者（逗號分隔）</label><input id="usernameFilter" placeholder="例如 alice,bob" /></div>
+      <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
+      <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
+      <div><label>資料欄位關鍵字</label><input id="payloadFilter" placeholder="資料欄位文字" /></div>
+      <button id="clearFiltersBtn" class="secondary">清空篩選</button>
+    </section>
+    <div id="status" class="status hidden"></div>
+  </section>
+  <section class="card">
+    <h2>統計摘要</h2>
+    <div id="metrics" class="stats-grid"></div>
+  </section>
+  <section class="card">
+    <h2>重要屬性分群統計</h2>
+    <p class="muted">用適合 SQL 來源資料的屬性快速掌握資料分布：匯入使用者、來源 Excel、匯入日期，以及目前選擇的資料欄位。</p>
+    <div id="attributeGroups" class="stats-grid"></div>
+  </section>
+  <section class="card">
+    <h2>分組排行</h2>
+    <p id="groupSummary" class="muted"></p>
+    <div id="groupTable" class="table-wrap"></div>
+  </section>
+  <section class="card">
+    <h2>數值欄位摘要</h2>
+    <div id="numericTable" class="table-wrap"></div>
+  </section>
+</main>
+<script src="/static/excel_to_sql_source_stats_app.js?v=20260703-source-stats-groups"></script>
+</body>
+</html>

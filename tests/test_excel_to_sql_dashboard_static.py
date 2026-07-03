@@ -16,6 +16,7 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         "excel_to_sql_import_center.html",
         "excel_to_sql_task_configs.html",
         "excel_to_sql_source_editor.html",
+        "excel_to_sql_source_stats.html",
     ]
     script_urls = set()
     for filename in html_files:
@@ -227,8 +228,11 @@ def test_sql_source_editor_page_and_navigation_are_wired():
 
     assert "SQL 來源資料編輯器" in editor_html
     assert "excelSourceEditorBtn" in editor_html
-    assert "20260702-source-editor-local-auth" in editor_html
+    assert "SQL 來源資料統計儀表板" in editor_html
+    assert "excelSourceStatsBtn" in editor_html
+    assert "20260703-source-stats" in editor_html
     assert "location.href = '/excel-to-sql-source-editor'" in bootstrap_js
+    assert "location.href = '/excel-to-sql-source-stats'" in bootstrap_js
     assert "rememberEditorTokenForNavigation" not in bootstrap_js
     assert "sessionStorage.setItem('sra_editor_token', token)" not in bootstrap_js
     assert "sra_token" not in bootstrap_js
@@ -253,6 +257,7 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "import_start_ts" in source_js
     assert "import_end_ts" in source_js
     assert "來源 Excel 包含" in source_html
+
     assert "匯入執行起" in source_html
     assert "批次刪除勾選 SQL 列" in source_html
     assert "function deleteSourceRow" in source_js
@@ -261,3 +266,22 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "displayColumnName(name)" in source_js
     assert "col-import-user" in source_html
     assert "此操作不會自動同步 ES" in source_html
+
+
+def test_sql_source_stats_page_and_navigation_are_wired():
+    html = (STATIC_ROOT / "excel_to_sql_source_stats.html").read_text(encoding="utf-8")
+    js = (STATIC_ROOT / "excel_to_sql_source_stats_app.js").read_text(encoding="utf-8")
+
+    assert "SQL 來源資料統計儀表板" in html
+    assert "SQL 來源資料編輯器" in html
+    assert "/static/excel_to_sql_source_stats_app.js?v=20260703-source-stats-groups" in html
+    assert "/v1/excel-to-sql/source-stats" in js
+    assert "group_by" in js
+    assert "username_filter" in js
+    assert "renderGroups" in js
+    assert "renderNumeric" in js
+    assert "renderAttributeGroups" in js
+    assert "attribute_groups" in js
+    assert "重要屬性分群統計" in html
+    assert "匯入使用者、來源 Excel、匯入日期" in html
+    assert "匯入執行起" in html

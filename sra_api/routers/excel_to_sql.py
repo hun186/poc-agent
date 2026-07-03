@@ -15,6 +15,7 @@ from data_ingestion.excel_to_sql.dashboard import (
 )
 from data_ingestion.excel_to_sql.table_editor import (
     list_sql_source_rows,
+    sql_source_stats,
     update_sql_source_row,
 )
 from data_ingestion.excel_to_sql.task_configs import (
@@ -176,6 +177,11 @@ def excel_to_sql_source_editor_page() -> FileResponse:
     return FileResponse(_static_path("excel_to_sql_source_editor.html"))
 
 
+@router.get("/excel-to-sql-source-stats", include_in_schema=False)
+def excel_to_sql_source_stats_page() -> FileResponse:
+    return FileResponse(_static_path("excel_to_sql_source_stats.html"))
+
+
 @router.get("/v1/excel-to-sql/dashboard-tasks")
 def excel_to_sql_dashboard_tasks(
     config_dir: str = Query(
@@ -303,6 +309,50 @@ def excel_to_sql_source_rows(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"讀取 SQL 來源資料列失敗：{exc}") from exc
+
+
+@router.get("/v1/excel-to-sql/source-stats")
+def excel_to_sql_source_stats_data(
+    config: str = Query(
+        "config/excel_to_sql/vessel_activities.example.json",
+        description="Excel 匯入設定檔路徑；只能統計該任務的 destination.table",
+    ),
+    q: str = Query("", max_length=200, description="跨欄位關鍵字搜尋"),
+    source_file_filter: str = Query("", max_length=200, description="來源檔名部分比對"),
+    row_no_filter: int | None = Query(None, ge=1, description="Excel 列號"),
+    hash_value_filter: str = Query("", max_length=200, description="hash 部分比對"),
+    payload_filter: str = Query("", max_length=200, description="資料欄位文字部分比對"),
+    username_filter: list[str] | None = Query(None, description="使用者，可重複提供以複選"),
+    import_start_ts: str = Query("", max_length=80, description="當初匯入執行起始時間（ISO 8601；以 audit.processed_at 比對）"),
+    import_end_ts: str = Query("", max_length=80, description="當初匯入執行結束時間（ISO 8601；以 audit.processed_at 比對）"),
+    group_by: str = Query("", max_length=128, description="統計分組欄位；必須是目的表欄位"),
+    top: int = Query(20, ge=1, le=100, description="分組排行筆數"),
+    config_dir: str = Query(
+        "config/excel_to_sql", description="白名單來源：已啟用 Excel→SQL 任務設定檔目錄"
+    ),
+    user: AuthUser = Depends(current_user),
+) -> dict[str, Any]:
+    _ensure_source_editor_config_allowed(user, config, config_dir)
+    try:
+        return sql_source_stats(
+            config,
+            q=q,
+            source_file_filter=source_file_filter,
+            row_no_filter=row_no_filter,
+            hash_value_filter=hash_value_filter,
+            payload_filter=payload_filter,
+            username_filter=username_filter,
+            import_start_ts=import_start_ts,
+            import_end_ts=import_end_ts,
+            group_by=group_by,
+            top=top,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"讀取 SQL 來源資料統計失敗：{exc}") from exc
 
 
 @router.patch("/v1/excel-to-sql/source-row")
