@@ -31,6 +31,7 @@
     .scope-help-tooltip { display:none; position:absolute; left:0; top:calc(100% + 8px); z-index:30; width:min(520px, calc(100vw - 48px)); border:1px solid #bfdbfe; border-radius:12px; background:#fff; color:#1e3a8a; box-shadow:0 14px 32px rgba(15,23,42,.18); padding:10px 12px; font-size:13px; line-height:1.55; font-weight:500; }
     .scope-help:hover .scope-help-tooltip, .scope-help:focus-within .scope-help-tooltip { display:block; }
     .filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; align-items:end; margin:12px 0 14px; }
+    .filters .full-row { grid-column:1/-1; }
     .dropdown-filter { position:relative; }
     .field-label-row { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
     .field-label-row label { margin-bottom:0; }
@@ -81,7 +82,7 @@
     <button onclick="location.href='/excel-to-sql-source-dashboard'">SQL 來源資料統計儀表板</button>
     <button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button>
     <button onclick="location.href='/excel-to-sql-task-configs'">任務 JSON 管理</button>
-    <button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
+    <button onclick="location.href='/agent-data-flow'">代理人資料流程圖</button><button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
   </div>
 </header>
 <main>
@@ -101,7 +102,7 @@
       <div><label>列號</label><input id="rowNoFilter" type="number" min="1" placeholder="Excel row_no" /></div>
       <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
       <div><label>資料欄位關鍵字</label><input id="payloadFilter" placeholder="資料欄位文字" /></div>
-      <div><div class="field-label-row"><label>複式排序</label><span class="help-tip" tabindex="0" data-tip="可新增多個排序欄位；依上到下優先排序。排序與篩選會送到 SQL Server 後再分頁。" aria-label="複式排序說明">?</span></div><div id="sourceSortControls" class="sql-sort-controls"></div></div><button id="applyFiltersBtn">套用篩選</button>
+      <div class="full-row"><div class="field-label-row"><label>複式排序</label><span class="help-tip" tabindex="0" data-tip="可新增多個排序欄位；依上到下優先排序。排序與篩選會送到 SQL Server 後再分頁。" aria-label="複式排序說明">?</span></div><div id="sourceSortControls" class="sql-sort-controls"></div></div><button id="applyFiltersBtn">套用篩選</button>
       <button id="clearFiltersBtn" class="secondary">清空篩選</button>
     </section>
     <div id="status" class="status hidden"></div>
@@ -121,6 +122,6 @@
   </section>
 </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_source_editor_app.js?v=sort-20260703-task-fields-compact"></script>
+<script src="/static/excel_to_sql_source_editor_app.js?v=sort-20260703-audit-metadata"></script>
 </body>
 </html>

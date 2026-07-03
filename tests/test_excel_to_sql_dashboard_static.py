@@ -23,8 +23,8 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         html = (STATIC_ROOT / filename).read_text(encoding="utf-8")
         script_urls.update(re.findall(r'<script src="([^"]+)"', html))
 
-    assert "/static/excel_to_sql_source_editor_app.js?v=sort-20260703-task-fields-compact" in script_urls
-    assert "/static/excel_to_sql_source_dashboard_app.js?v=20260703-source-dashboard-import-series" in script_urls
+    assert "/static/excel_to_sql_source_editor_app.js?v=sort-20260703-audit-metadata" in script_urls
+    assert "/static/excel_to_sql_source_dashboard_app.js?v=20260703-source-dashboard-group-grid" in script_urls
     for script_url in sorted(script_urls):
         response = TestClient(app).get(script_url)
 
@@ -44,6 +44,22 @@ def test_sql_source_editor_sort_controls_reset_for_task_specific_columns_and_use
     assert "sql-sort-help" in tools
     assert "可新增多個排序欄位；依上到下優先排序。排序與篩選會送到 SQL Server 後再分頁。" in html
     assert '<span class="muted">依上到下優先排序；排序與篩選會送到 SQL Server 後再分頁。</span>' not in tools
+
+
+def test_dashboard_audit_sort_controls_start_on_new_grid_row():
+    html = DASHBOARD_HTML.read_text(encoding="utf-8")
+
+    assert '.full-row { grid-column: 1 / -1; }' in html
+    assert '<div class="full-row"><label>複式排序</label><div id="recentSortControls" class="sql-sort-controls"></div></div>' in html
+
+
+def test_sql_source_dashboard_group_checkboxes_use_responsive_grid():
+    html = (STATIC_ROOT / "excel_to_sql_source_dashboard.html").read_text(encoding="utf-8")
+    js = (STATIC_ROOT / "excel_to_sql_source_dashboard_app.js").read_text(encoding="utf-8")
+
+    assert 'grid-template-columns:repeat(auto-fit,minmax(180px,1fr))' in html
+    assert '<span>${escapeHtml(name)}</span>' in js
+    assert 'title="${escapeHtml(name)}"' in js
 
 
 def dashboard_source() -> str:
@@ -259,7 +275,7 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "SQL 來源資料統計儀表板" in editor_html
     assert "excelSourceDashboardBtn" in editor_html
     assert "excelSourceEditorBtn" in editor_html
-    assert "20260702-source-editor-local-auth" in editor_html
+    assert "20260703-agent-data-flow-nav" in editor_html
     assert "location.href = '/excel-to-sql-source-editor'" in bootstrap_js
     assert "location.href = '/excel-to-sql-source-dashboard'" in bootstrap_js
     assert "rememberEditorTokenForNavigation" not in bootstrap_js
@@ -268,7 +284,7 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "受控 SQL 來源資料表" in source_html
     assert "scope-help-tooltip" in source_html
     assert "sourceEditorScopeHelpText" in source_html
-    assert "20260703-task-fields-compact" in source_html
+    assert "20260703-audit-metadata" in source_html
     assert '載入筆數上限' not in source_html
     assert 'id="sourceLimit"' not in source_html
     assert "/v1/excel-to-sql/source-rows" in source_js
@@ -333,5 +349,7 @@ def test_excel_flow_child_pages_include_sql_source_stats_navigation():
             }:
                 continue
             assert route in html, f"{page_name} missing sibling route {route}"
+        assert "/agent-data-flow" in html
+        assert "代理人資料流程圖" in html
         assert "前往登入 / 編輯器" in html
         assert "主編輯器" not in html

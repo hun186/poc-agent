@@ -201,3 +201,15 @@
 - 目的：修正 SQL 來源資料編輯器切換任務時，複式排序欄位仍沿用第一個任務欄位，導致後續任務送出不相容 sort 參數而無法回傳資料列；同時壓縮複式排序版面並改用問號浮動說明。
 - 主要修改：來源資料列前端改以 `loadedConfig` 判斷目前排序欄位是否已對應目前任務，切換到尚未載入欄位的新任務時先不送出舊 sort 參數；共用 SQL sort helper 在欄位清單更新時會過濾不屬於新任務的排序欄位並回退到目前欄位預設值。複式排序 UI 改成緊湊橫列、較短排序序號與問號浮動說明，並更新 SQL 來源資料編輯器 JS cache-busting 版本。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js`、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_sql_source_editor_sort_controls_reset_for_task_specific_columns_and_use_compact_help -q`。
+
+### 2026-07-03 SQL / Excel→SQL 儀表板排序與分群 UI 優化
+
+- 目的：改善 SQL 來源資料統計儀表板自訂分群勾選區空間使用、Excel→SQL 匯入查詢儀表板 audit 複式排序列版面，以及 SQL 來源資料編輯器排序欄位缺少 audit metadata 的問題。
+- 主要修改：自訂分群 checkbox 區改用 responsive CSS grid，依頁寬自動決定每列選項數；Excel→SQL audit 複式排序控制列改為 grid full-row，避免與其他篩選條件擠在同列；SQL 來源資料編輯器複式排序選項新增 `_import_username`、`_imported_at`、`_source_excel`，後端以 audit table 最新對應紀錄作為排序 expression 並維持欄位白名單驗證。
+- 驗證：`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`node --check sra_api/static/excel_to_sql_source_dashboard_app.js`、`node --check sra_api/static/excel_to_sql_dashboard_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_sorting.py -q` 皆通過。依專案要求先執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt`；pip upgrade 查詢套件索引仍遇 403，但 requirements 已顯示 satisfied，後續 pytest 已成功執行。
+
+### 2026-07-03 代理人資料流程圖導航與 ES content 結構化流程修正
+
+- 目的：將「代理人資料流程圖」提升為 Editor 第一層主導航入口，並修正流程圖中匯入 / ES / LLM 結構化資料流的語意。
+- 主要修改：Editor 主頁新增第一層「代理人資料流程圖」按鈕，不再放在 Excel 匯入流程管理子層；Excel→SQL 各子頁 header 也補上同一路由入口。新增 `/agent-data-flow` 頁與 `/static/agent_data_flow.svg` 靜態資產，SVG 改為「匯入與轉換層將 content 文本寫入 ES → LLM 多階段平行化暨智慧多流路分析框架從 ES 讀 content → 結構化結果回寫 ES」，並移除原先多餘的 SQL→ES 後續路徑表達。
+- 驗證：`python -m py_compile sra_api/routers/editor.py`、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py tests/test_excel_to_sql_dashboard_static.py -q` 皆通過；依專案要求先執行 dependency preflight，pip upgrade 仍遇既有 403，但 requirements 均已 satisfied。

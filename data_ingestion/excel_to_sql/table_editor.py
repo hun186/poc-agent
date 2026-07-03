@@ -493,6 +493,16 @@ def list_sql_source_rows(
             total = int(count_row[0] if count_row else 0)
             order_col = hash_field if any(col["name"] == hash_field for col in columns) else columns[0]["name"]
             allowed_sort = {str(col["name"]): quote_ident(str(col["name"])) for col in columns}
+            latest_audit_where = (
+                f"aud.destination_table = '{table.replace("'", "''")}' "
+                f"AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)}"
+            )
+            latest_audit_order = "CASE WHEN aud.source_file IN ('dashboard', 'sql-source-editor') THEN 1 ELSE 0 END, aud.processed_at DESC"
+            allowed_sort.update({
+                "_import_username": f"(SELECT TOP (1) {_audit_username_expr('aud')} FROM {quote_object_path(audit_table)} aud WHERE {latest_audit_where} ORDER BY {latest_audit_order})",
+                "_imported_at": f"(SELECT TOP (1) aud.processed_at FROM {quote_object_path(audit_table)} aud WHERE {latest_audit_where} ORDER BY {latest_audit_order})",
+                "_source_excel": f"(SELECT TOP (1) aud.source_file FROM {quote_object_path(audit_table)} aud WHERE {latest_audit_where} ORDER BY {latest_audit_order})",
+            })
             sort_specs = normalize_sql_sort_specs(
                 sort,
                 allowed_expressions=allowed_sort,

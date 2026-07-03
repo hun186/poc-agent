@@ -47,3 +47,8 @@
 ## Archived History
 
 - `.codex/archive/known_issues.md-20260625-130126.md`: Archived all detailed known-issue entries from 2026-06-11 through this compaction, including repeated UI screenshot limitations, resolved Vercel / GitHub issues, and pip index 403 retry.
+
+## 2026-07-03 pip index 403 during dependency preflight
+
+- 在本環境執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt` 時，`pip install --upgrade pip` 查詢 `/simple/pip/` 仍出現 `Tunnel connection failed: 403 Forbidden` retry，導致整條 chain exit code 為 1。
+- 替代驗證：`requirements.txt` 的套件皆回報 `Requirement already satisfied`，並已成功執行本次相關 `node --check` 與 pytest 測試。

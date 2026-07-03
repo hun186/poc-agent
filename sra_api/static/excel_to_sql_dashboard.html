@@ -13,6 +13,7 @@
     .controls, .filters, .cards, .grid { display:grid; gap:16px; }
     .controls { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items:end; margin-bottom:18px; }
     .filters { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items:end; margin:12px 0 14px; }
+    .filters .full-row { grid-column: 1 / -1; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:0 1px 2px rgba(16,24,40,.05); }
     .cards { grid-template-columns: repeat(5, minmax(140px, 1fr)); margin-bottom:16px; }
     .upload-actions, .record-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
@@ -111,7 +112,7 @@
       <button onclick="location.href='/excel-to-sql-task-configs'">任務 JSON 管理</button>
       <button onclick="location.href='/excel-to-sql-source-editor'">SQL 來源資料編輯器</button>
       <button onclick="location.href='/excel-to-sql-source-dashboard'">SQL 來源資料統計儀表板</button>
-      <button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
+      <button onclick="location.href='/agent-data-flow'">代理人資料流程圖</button><button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
     </div>
   </header>
   <main>
@@ -155,7 +156,7 @@
         <div><label>訊息包含</label><input id="messageFilter" placeholder="錯誤訊息 / 智慧比對" /></div>
         <div><label>hash 包含</label><input id="hashFilter" placeholder="hash_value 片段" /></div>
         <div><label>payload 關鍵字</label><input id="payloadFilter" placeholder="payload JSON 文字" /></div>
-        <div><label>複式排序</label><div id="recentSortControls" class="sql-sort-controls"></div></div><button onclick="applyAuditFilters()">套用篩選</button>
+        <div class="full-row"><label>複式排序</label><div id="recentSortControls" class="sql-sort-controls"></div></div><button onclick="applyAuditFilters()">套用篩選</button>
         <button class="secondary" onclick="clearAuditFilters()">清空 audit 篩選</button>
       </section>
       <div class="chart-card">
@@ -195,6 +196,6 @@
     </section>
   </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_dashboard_app.js?v=20260703-dashboard-sql-sort"></script>
+<script src="/static/excel_to_sql_dashboard_app.js?v=20260703-dashboard-sort-row"></script>
 </body>
 </html>
