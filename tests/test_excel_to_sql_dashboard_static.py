@@ -17,6 +17,7 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         "excel_to_sql_task_configs.html",
         "excel_to_sql_source_editor.html",
         "excel_to_sql_source_dashboard.html",
+        "agent_data_flow.html",
     ]
     script_urls = set()
     for filename in html_files:
@@ -320,6 +321,7 @@ def test_excel_flow_child_pages_include_sql_source_stats_navigation():
         "/excel-to-sql-source-dashboard",
         "/excel-to-sql-import-center",
         "/excel-to-sql-task-configs",
+        "/agent-data-flow",
     ]
     for page_name in page_names:
         html = (STATIC_ROOT / page_name).read_text(encoding="utf-8")
@@ -335,3 +337,27 @@ def test_excel_flow_child_pages_include_sql_source_stats_navigation():
             assert route in html, f"{page_name} missing sibling route {route}"
         assert "前往登入 / 編輯器" in html
         assert "主編輯器" not in html
+
+
+def test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline():
+    html = (STATIC_ROOT / "agent_data_flow.html").read_text(encoding="utf-8")
+    assert "代理人資料運用處理流程" in html
+    assert "Elasticsearch" in html
+    assert "txt 文本" in html
+    assert "SQL 資料" in html
+    assert "Excel→SQL 機制" in html
+    assert "SQL→ES 匯入" in html
+    assert "<svg" in html
+    assert "/excel-to-sql-dashboard" in html
+    assert "/editor" in html
+    response = TestClient(app).get("/agent-data-flow")
+    assert response.status_code == 200
+    assert "代理人資料運用處理流程" in response.text
+
+
+def test_editor_navigation_links_agent_data_flow_page():
+    html = (STATIC_ROOT / "editor.html").read_text(encoding="utf-8")
+    js = (STATIC_ROOT / "editor_bootstrap.js").read_text(encoding="utf-8")
+    assert 'id="agentDataFlowBtn"' in html
+    assert "代理人資料流程圖" in html
+    assert "location.href = '/agent-data-flow'" in js

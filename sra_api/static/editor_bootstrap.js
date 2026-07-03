@@ -1,5 +1,6 @@
 $('vercelPreviewLoginBtn').onclick = vercelPreviewLogin;
 setupVercelPreviewLogin().catch(() => {});
+$('agentDataFlowBtn').onclick = () => { collapseMainNav(); location.href = '/agent-data-flow'; };
 $('excelDashboardBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-dashboard'; };
 $('excelSourceEditorBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-source-editor'; };
 $('excelSourceDashboardBtn').onclick = () => { collapseMainNav(); location.href = '/excel-to-sql-source-dashboard'; };

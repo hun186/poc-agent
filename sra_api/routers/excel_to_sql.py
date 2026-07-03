@@ -182,6 +182,11 @@ def excel_to_sql_source_dashboard_page() -> FileResponse:
     return FileResponse(_static_path("excel_to_sql_source_dashboard.html"))
 
 
+@router.get("/agent-data-flow", include_in_schema=False)
+def agent_data_flow_page() -> FileResponse:
+    return FileResponse(_static_path("agent_data_flow.html"))
+
+
 @router.get("/v1/excel-to-sql/dashboard-tasks")
 def excel_to_sql_dashboard_tasks(
     config_dir: str = Query(

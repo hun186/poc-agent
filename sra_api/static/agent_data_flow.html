@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>代理人資料流程圖</title>
+  <style>
+    :root{--bg:#f6f7fb;--card:#fff;--line:#d9deea;--text:#172033;--muted:#667085;--blue:#2563eb;--green:#059669;--amber:#d97706;--purple:#7c3aed;--red:#dc2626}body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}header{padding:20px 28px;background:#111827;color:#fff;display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}h1{margin:0;font-size:22px}.muted{color:var(--muted);font-size:13px}.header-subtitle{color:#cbd5e1;margin-top:4px}.header-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}button{padding:10px 14px;border:0;border-radius:10px;background:var(--blue);color:white;font-weight:700;cursor:pointer}button.secondary{background:#475467}main{max-width:1400px;margin:0 auto;padding:24px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 1px 2px rgba(16,24,40,.05);margin-bottom:18px}.flow-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);padding:8px}.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px}.legend-item{display:flex;gap:8px;align-items:center;font-size:14px}.dot{width:12px;height:12px;border-radius:999px;display:inline-block}.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.note{border-left:4px solid var(--blue);background:#f8fafc;border-radius:12px;padding:12px}.note h3{margin:0 0 8px;font-size:16px}.note ul{margin:0;padding-left:20px}.pill{display:inline-block;border-radius:999px;background:#eef4ff;color:#175cd3;padding:3px 9px;font-weight:700;font-size:12px}svg{min-width:1160px;width:100%;height:auto}.box{fill:#fff;stroke:#cbd5e1;stroke-width:2}.box-title{font-size:18px;font-weight:800;fill:#172033}.box-text{font-size:13px;fill:#475467}.source{stroke:#2563eb}.stage{stroke:#059669}.store{stroke:#7c3aed}.agent{stroke:#d97706}.output{stroke:#dc2626}.arrow{stroke:#334155;stroke-width:2.4;fill:none;marker-end:url(#arrow)}.arrow-dash{stroke-dasharray:7 6}.label{font-size:13px;font-weight:700;fill:#334155}.swimlane{fill:#f1f5f9;stroke:#e2e8f0}.swimlane-title{font-size:14px;font-weight:800;fill:#64748b}.icon{font-size:28px}.small{font-size:12px;fill:#64748b}.badge{fill:#eef4ff;stroke:#bfdbfe}.badge-text{font-size:12px;font-weight:800;fill:#175cd3}@media(max-width:760px){header{align-items:flex-start}.header-actions{justify-content:flex-start}main{padding:16px}.card{padding:14px}}
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>代理人資料運用處理流程</h1>
+      <div class="header-subtitle">說明 txt、SQL、Excel→SQL、Elasticsearch 與代理人回答之間的資料流向</div>
+    </div>
+    <div class="header-actions">
+      <button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button>
+      <button onclick="location.href='/excel-to-sql-source-editor'">SQL 來源資料編輯器</button>
+      <button onclick="location.href='/excel-to-sql-source-dashboard'">SQL 來源資料統計儀表板</button>
+      <button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button>
+      <button onclick="location.href='/excel-to-sql-task-configs'">任務 JSON 管理</button>
+      <button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
+    </div>
+  </header>
+  <main>
+    <section class="card">
+      <p><span class="pill">RAG / Agent</span> 使用者提問後，代理人會先到 Elasticsearch 檢索相關文本與結構化證據，再組合答案；ES 的內容來源包含既有 txt 匯入、SQL 匯入，以及後續新增的 Excel→SQL 匯入機制。</p>
+      <div class="flow-wrap" aria-label="代理人資料流程 SVG 圖">
+        <svg viewBox="0 0 1180 720" role="img" aria-labelledby="flowTitle flowDesc">
+          <title id="flowTitle">代理人資料運用處理流程圖</title>
+          <desc id="flowDesc">txt 與 SQL 可匯入 Elasticsearch；Excel 先經 Excel 到 SQL 機制進入 SQL，再同步至 Elasticsearch；代理人查詢 ES 後回覆使用者。</desc>
+          <defs><marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#334155" /></marker></defs>
+          <rect class="swimlane" x="24" y="32" width="1132" height="150" rx="18"/><text class="swimlane-title" x="46" y="60">資料接收來源</text>
+          <rect class="swimlane" x="24" y="208" width="1132" height="170" rx="18"/><text class="swimlane-title" x="46" y="236">匯入與轉換層</text>
+          <rect class="swimlane" x="24" y="404" width="1132" height="132" rx="18"/><text class="swimlane-title" x="46" y="432">檢索資料庫</text>
+          <rect class="swimlane" x="24" y="562" width="1132" height="126" rx="18"/><text class="swimlane-title" x="46" y="590">代理人使用層</text>
+
+          <rect class="box source" x="70" y="82" width="210" height="74" rx="14"/><text class="icon" x="92" y="127">📄</text><text class="box-title" x="132" y="112">txt 文本</text><text class="box-text" x="132" y="136">原始文件 / 純文字</text>
+          <rect class="box source" x="360" y="82" width="210" height="74" rx="14"/><text class="icon" x="382" y="127">🗄️</text><text class="box-title" x="422" y="112">SQL 資料</text><text class="box-text" x="422" y="136">結構化來源表</text>
+          <rect class="box source" x="650" y="82" width="210" height="74" rx="14"/><text class="icon" x="672" y="127">📊</text><text class="box-title" x="712" y="112">Excel 檔案</text><text class="box-text" x="712" y="136">後續新增支援來源</text>
+
+          <rect class="box stage" x="70" y="260" width="250" height="82" rx="14"/><text class="box-title" x="94" y="292">文本匯入 / ETL</text><text class="box-text" x="94" y="318">切分、清理、建立可檢索文本</text>
+          <rect class="box stage" x="380" y="260" width="250" height="82" rx="14"/><text class="box-title" x="404" y="292">SQL→ES 匯入</text><text class="box-text" x="404" y="318">讀取 SQL 欄位並轉為 ES 文件</text>
+          <rect class="box stage" x="690" y="238" width="260" height="126" rx="14"/><text class="box-title" x="714" y="270">Excel→SQL 機制</text><text class="box-text" x="714" y="296">上傳 / 預掃描 / 確認匯入</text><text class="box-text" x="714" y="320">欄位映射、hash 去重、audit</text><text class="box-text" x="714" y="344">產生可治理的 SQL 來源資料</text>
+          <rect class="badge" x="840" y="208" width="94" height="28" rx="14"/><text class="badge-text" x="854" y="227">新增支援</text>
+
+          <rect class="box store" x="430" y="444" width="320" height="72" rx="16"/><text class="icon" x="458" y="489">🔎</text><text class="box-title" x="500" y="474">Elasticsearch</text><text class="box-text" x="500" y="498">代理人的主要檢索資料庫</text>
+          <rect class="box agent" x="230" y="608" width="250" height="58" rx="14"/><text class="box-title" x="254" y="633">使用者提問</text><text class="box-text" x="254" y="654">Chat / API request</text>
+          <rect class="box agent" x="548" y="604" width="250" height="66" rx="14"/><text class="box-title" x="572" y="630">代理人 / RAG</text><text class="box-text" x="572" y="652">檢索、彙整 evidence、生成回答</text>
+          <rect class="box output" x="874" y="608" width="220" height="58" rx="14"/><text class="box-title" x="898" y="633">答案與引用</text><text class="box-text" x="898" y="654">回傳使用者 / 前端</text>
+
+          <path class="arrow" d="M175 156 C175 198 180 220 195 260"/><text class="label" x="88" y="218">txt 匯入</text>
+          <path class="arrow" d="M465 156 C470 198 492 220 505 260"/><text class="label" x="488" y="218">SQL 直接匯入</text>
+          <path class="arrow" d="M755 156 C760 190 790 204 810 238"/><text class="label" x="780" y="198">Excel 支援</text>
+          <path class="arrow" d="M690 302 H630"/><text class="label" x="634" y="290">寫入 SQL</text>
+          <path class="arrow" d="M195 342 C248 410 350 458 430 475"/><text class="label" x="228" y="410">文件化</text>
+          <path class="arrow" d="M505 342 V444"/><text class="label" x="520" y="396">索引化</text>
+          <path class="arrow arrow-dash" d="M820 364 C810 420 758 458 750 474"/><text class="label" x="782" y="416">後續由 SQL→ES</text>
+          <path class="arrow" d="M480 637 H548"/><text class="label" x="492" y="626">問題</text>
+          <path class="arrow" d="M638 604 C620 560 604 532 596 516"/><text class="label" x="640" y="558">檢索 ES</text>
+          <path class="arrow" d="M750 480 C830 506 866 554 936 608"/><text class="label" x="808" y="546">證據 / 文本</text>
+          <path class="arrow" d="M798 637 H874"/><text class="label" x="816" y="626">生成回覆</text>
+        </svg>
+      </div>
+      <div class="legend"><div class="legend-item"><span class="dot" style="background:var(--blue)"></span>資料來源</div><div class="legend-item"><span class="dot" style="background:var(--green)"></span>匯入 / 轉換</div><div class="legend-item"><span class="dot" style="background:var(--purple)"></span>Elasticsearch 檢索庫</div><div class="legend-item"><span class="dot" style="background:var(--amber)"></span>代理人使用流程</div></div>
+    </section>
+    <section class="notes"><div class="note"><h3>1. 來源進入 ES</h3><ul><li>txt 透過文本匯入流程整理為可檢索內容。</li><li>SQL 來源表透過 SQL→ES 匯入流程索引到 Elasticsearch。</li></ul></div><div class="note"><h3>2. Excel 的新增路徑</h3><ul><li>Excel 不直接宣稱已成為 ES 文件；先經 Excel→SQL 上傳、預掃描與確認匯入。</li><li>匯入 SQL 後再沿用 SQL→ES 的資料治理與索引流程。</li></ul></div><div class="note"><h3>3. 代理人查詢</h3><ul><li>使用者提問時，代理人到 ES 檢索 evidence。</li><li>回答時彙整 ES 命中的文本與結構化資料來源。</li></ul></div></section>
+  </main>
+</body>
+</html>

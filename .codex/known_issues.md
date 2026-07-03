@@ -47,3 +47,7 @@
 ## Archived History
 
 - `.codex/archive/known_issues.md-20260625-130126.md`: Archived all detailed known-issue entries from 2026-06-11 through this compaction, including repeated UI screenshot limitations, resolved Vercel / GitHub issues, and pip index 403 retry.
+
+## 2026-07-03 UI 截圖限制
+
+- 本環境未提供瀏覽器 / Playwright runtime；本次代理人資料流程 SVG 靜態頁未做實機截圖。替代驗證為 HTML 靜態內容檢查、`node --check sra_api/static/editor_bootstrap.js` 與 FastAPI TestClient route 測試。
