@@ -357,7 +357,27 @@
     return cleaned.length ? cleaned : (fallback || []);
   }
 
+  function ensureSqlSortStyles() {
+    if (document.getElementById('sraAuditToolsSqlSortStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'sraAuditToolsSqlSortStyles';
+    style.textContent = `
+      .sql-sort-controls { display: grid; gap: 6px; min-width: 260px; }
+      .sql-sort-row { display: grid; grid-template-columns: auto minmax(110px, 1fr) 78px auto; gap: 6px; align-items: center; }
+      .sql-sort-row .sql-sort-rank { white-space: nowrap; font-size: 12px; }
+      .sql-sort-row select { padding: 8px 9px; min-width: 0; }
+      .sql-sort-row button, .sql-sort-actions button { padding: 7px 9px; font-size: 12px; white-space: nowrap; }
+      .sql-sort-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .sql-sort-help { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid #d9deea; border-radius: 999px; color: #667085; background: #fff; font-size: 12px; font-weight: 700; cursor: help; }
+      .sql-sort-help::after { content: attr(data-tip); display: none; position: absolute; z-index: 40; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: max-content; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: #111827; color: #fff; font-size: 12px; font-weight: 500; line-height: 1.4; box-shadow: 0 10px 24px rgba(16,24,40,.18); }
+      .sql-sort-help:hover::after, .sql-sort-help:focus::after { display: block; }
+      @media (max-width: 680px) { .sql-sort-row { grid-template-columns: 1fr; } }
+    `;
+    document.head.appendChild(style);
+  }
+
   function bindSqlSortControls(options) {
+    ensureSqlSortStyles();
     const container = typeof options.containerId === 'string' ? document.getElementById(options.containerId) : options.containerEl;
     if (!container) return { getSortParams: () => [] };
     const maxFields = Math.max(1, Number(options.maxFields || 5));
@@ -367,12 +387,15 @@
       .filter((field) => field.value);
     const render = () => {
       const fields = fieldOptions();
-      if (!state.specs.length) state.specs = normalizeSortSpecs(options.defaultSort || [], fields.length ? [{ field: fields[0].value, direction: 'asc' }] : []);
+      const allowed = new Set(fields.map((field) => field.value));
+      state.specs = normalizeSortSpecs(state.specs, []).filter((spec) => allowed.has(spec.field));
+      if (!state.specs.length) state.specs = normalizeSortSpecs(options.defaultSort || [], fields.length ? [{ field: fields[0].value, direction: 'asc' }] : []).filter((spec) => allowed.has(spec.field));
+      if (!state.specs.length && fields.length) state.specs = [{ field: fields[0].value, direction: 'asc' }];
       state.specs = state.specs.slice(0, maxFields);
       container.innerHTML = state.specs.map((spec, index) => {
         const opts = fields.map((field) => `<option value="${escapeHtml(field.value)}"${field.value === spec.field ? ' selected' : ''}>${escapeHtml(field.label || field.value)}</option>`).join('');
-        return `<div class="sql-sort-row" data-sort-index="${index}"><span class="muted">第 ${index + 1} 排序</span><select data-sort-field>${opts}</select><select data-sort-direction><option value="asc"${spec.direction !== 'desc' ? ' selected' : ''}>順序</option><option value="desc"${spec.direction === 'desc' ? ' selected' : ''}>逆序</option></select><button class="ghost" type="button" data-sort-remove ${state.specs.length <= 1 ? 'disabled' : ''}>移除</button></div>`;
-      }).join('') + `<div class="sql-sort-actions"><button class="secondary" type="button" data-sort-add ${state.specs.length >= maxFields ? 'disabled' : ''}>新增排序欄位</button><span class="muted">依上到下優先排序；排序與篩選會送到 SQL Server 後再分頁。</span></div>`;
+        return `<div class="sql-sort-row" data-sort-index="${index}"><span class="muted sql-sort-rank">第 ${index + 1}</span><select data-sort-field aria-label="第 ${index + 1} 排序欄位">${opts}</select><select data-sort-direction aria-label="第 ${index + 1} 排序方向"><option value="asc"${spec.direction !== 'desc' ? ' selected' : ''}>順序</option><option value="desc"${spec.direction === 'desc' ? ' selected' : ''}>逆序</option></select><button class="ghost" type="button" data-sort-remove ${state.specs.length <= 1 ? 'disabled' : ''}>移除</button></div>`;
+      }).join('') + `<div class="sql-sort-actions"><button class="secondary" type="button" data-sort-add ${state.specs.length >= maxFields ? 'disabled' : ''}>新增排序欄位</button><span class="sql-sort-help" tabindex="0" data-tip="依上到下優先排序；排序與篩選會送到 SQL Server 後再分頁。" aria-label="複式排序說明">?</span></div>`;
       container.querySelectorAll('[data-sort-field]').forEach((el) => { el.onchange = () => { state.specs[Number(el.closest('[data-sort-index]').dataset.sortIndex)].field = el.value; if (options.onChange) options.onChange(); }; });
       container.querySelectorAll('[data-sort-direction]').forEach((el) => { el.onchange = () => { state.specs[Number(el.closest('[data-sort-index]').dataset.sortIndex)].direction = el.value === 'desc' ? 'desc' : 'asc'; if (options.onChange) options.onChange(); }; });
       container.querySelectorAll('[data-sort-remove]').forEach((el) => { el.onclick = () => { state.specs.splice(Number(el.closest('[data-sort-index]').dataset.sortIndex), 1); render(); if (options.onChange) options.onChange(); }; });

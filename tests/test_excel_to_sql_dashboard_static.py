@@ -23,13 +23,27 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         html = (STATIC_ROOT / filename).read_text(encoding="utf-8")
         script_urls.update(re.findall(r'<script src="([^"]+)"', html))
 
-    assert "/static/excel_to_sql_source_editor_app.js?v=sort-20260703-pager-page-size" in script_urls
+    assert "/static/excel_to_sql_source_editor_app.js?v=sort-20260703-task-fields-compact" in script_urls
     assert "/static/excel_to_sql_source_dashboard_app.js?v=20260703-source-dashboard-import-series" in script_urls
     for script_url in sorted(script_urls):
         response = TestClient(app).get(script_url)
 
         assert response.status_code == 200, script_url
         assert "application/javascript" in response.headers.get("content-type", ""), script_url
+
+
+def test_sql_source_editor_sort_controls_reset_for_task_specific_columns_and_use_compact_help():
+    html = (STATIC_ROOT / "excel_to_sql_source_editor.html").read_text(encoding="utf-8")
+    js = (STATIC_ROOT / "excel_to_sql_source_editor_app.js").read_text(encoding="utf-8")
+    tools = (STATIC_ROOT / "audit_tools.js").read_text(encoding="utf-8")
+
+    assert "$('config').value.trim() === state.loadedConfig" in js
+    assert "state.loadedConfig = $('config').value.trim()" in js
+    assert "filter((spec) => allowed.has(spec.field))" in tools
+    assert "sql-sort-rank" in tools
+    assert "sql-sort-help" in tools
+    assert "可新增多個排序欄位；依上到下優先排序。排序與篩選會送到 SQL Server 後再分頁。" in html
+    assert '<span class="muted">依上到下優先排序；排序與篩選會送到 SQL Server 後再分頁。</span>' not in tools
 
 
 def dashboard_source() -> str:
@@ -254,7 +268,7 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "受控 SQL 來源資料表" in source_html
     assert "scope-help-tooltip" in source_html
     assert "sourceEditorScopeHelpText" in source_html
-    assert "20260703-pager-page-size" in source_html
+    assert "20260703-task-fields-compact" in source_html
     assert '載入筆數上限' not in source_html
     assert 'id="sourceLimit"' not in source_html
     assert "/v1/excel-to-sql/source-rows" in source_js

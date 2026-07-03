@@ -195,3 +195,9 @@
 - 目的：釐清並補強 SQL-backed 表格的篩選、複式排序與分頁是否確實在同一個 SQL Server 查詢流程中完成。
 - 主要修改：新增 regression 測試，明確檢查 SQL 來源資料編輯器的資料列查詢同時包含 `WHERE` 篩選、`ORDER BY` 複式排序與 `OFFSET/FETCH` 分頁；並檢查 Excel→SQL audit 事件查詢的 `ROW_NUMBER() OVER (ORDER BY ...)` 同時套用使用者指定排序與預設 tie-breaker。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js && node --check sra_api/static/excel_to_sql_dashboard_app.js && node --check sra_api/static/excel_to_sql_source_editor_app.js`、`python -m py_compile data_ingestion/excel_to_sql/sql_sorting.py data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/table_editor.py sra_api/routers/excel_to_sql.py`、`PYTHONPATH=. pytest tests/test_excel_to_sql_sorting.py tests/test_excel_to_sql_source_editor.py tests/test_dashboard_filters.py tests/test_excel_to_sql_dashboard_static.py -q`。
+
+### 2026-07-03 SQL 來源資料編輯器複式排序任務欄位修正
+
+- 目的：修正 SQL 來源資料編輯器切換任務時，複式排序欄位仍沿用第一個任務欄位，導致後續任務送出不相容 sort 參數而無法回傳資料列；同時壓縮複式排序版面並改用問號浮動說明。
+- 主要修改：來源資料列前端改以 `loadedConfig` 判斷目前排序欄位是否已對應目前任務，切換到尚未載入欄位的新任務時先不送出舊 sort 參數；共用 SQL sort helper 在欄位清單更新時會過濾不屬於新任務的排序欄位並回退到目前欄位預設值。複式排序 UI 改成緊湊橫列、較短排序序號與問號浮動說明，並更新 SQL 來源資料編輯器 JS cache-busting 版本。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js`、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_sql_source_editor_sort_controls_reset_for_task_specific_columns_and_use_compact_help -q`。
