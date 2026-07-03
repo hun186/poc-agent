@@ -262,3 +262,9 @@
 - `data_editor` 已可編修 ES 最終文件，因此第一版允許 `data_editor` 讀取並單列編輯 Excel→SQL 任務目的表，但採受控 table 白名單（只能由任務設定檔取得 destination.table）、必填 reason、禁止修改 hash / 系統欄位，並寫入 SQL audit。
 - SQL row 刪除與批次刪除維持 `db_operator` 以上並保留高風險二次確認；不提升到 superuser，避免日常資料修復過度集中於少數最高權限者，但仍不下放給一般資料修改者。
 - 第一版不提供任意 SQL query / arbitrary table name / 批次更新，避免把流程管理工具變成通用 SQL client 而擴大資安與誤操作風險。
+
+## 2026-07-03 SQL 來源資料統計儀表板決策
+
+- SQL 來源資料統計不可開放任意 table 或任意 SQL；沿用 SQL 來源資料編輯器的已啟用 Excel→SQL 任務白名單，確保統計範圍與既有資料治理邊界一致。
+- 分群統計採後端 SQL `GROUP BY` 計算 Top N buckets，而不是只在前端對目前頁面資料列做統計，避免使用者誤以為只載入的頁面資料代表全體資料。
+- 預設分群欄位從實際 SQL table 欄位挑選，並允許使用者自行勾選欄位；避免針對不同來源表硬編固定業務欄位。

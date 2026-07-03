@@ -15,6 +15,7 @@ from data_ingestion.excel_to_sql.dashboard import (
 )
 from data_ingestion.excel_to_sql.table_editor import (
     list_sql_source_rows,
+    sql_source_stats,
     update_sql_source_row,
 )
 from data_ingestion.excel_to_sql.task_configs import (
@@ -176,6 +177,11 @@ def excel_to_sql_source_editor_page() -> FileResponse:
     return FileResponse(_static_path("excel_to_sql_source_editor.html"))
 
 
+@router.get("/excel-to-sql-source-dashboard", include_in_schema=False)
+def excel_to_sql_source_dashboard_page() -> FileResponse:
+    return FileResponse(_static_path("excel_to_sql_source_dashboard.html"))
+
+
 @router.get("/v1/excel-to-sql/dashboard-tasks")
 def excel_to_sql_dashboard_tasks(
     config_dir: str = Query(
@@ -258,6 +264,33 @@ def excel_to_sql_dashboard_data(
         raise HTTPException(
             status_code=500, detail=f"讀取 Excel 匯入監控資料失敗：{exc}"
         ) from exc
+
+
+@router.get("/v1/excel-to-sql/source-stats")
+def excel_to_sql_source_stats(
+    config: str = Query("config/excel_to_sql/vessel_activities.example.json"),
+    q: str = Query("", max_length=200),
+    source_file_filter: str = Query("", max_length=200),
+    row_no_filter: int | None = Query(None, ge=1),
+    hash_value_filter: str = Query("", max_length=200),
+    payload_filter: str = Query("", max_length=200),
+    username_filter: list[str] | None = Query(None),
+    import_start_ts: str = Query("", max_length=80),
+    import_end_ts: str = Query("", max_length=80),
+    group_by: list[str] | None = Query(None, description="分群欄位，可重複提供"),
+    top_n: int = Query(20, ge=1, le=100),
+    config_dir: str = Query("config/excel_to_sql"),
+    user: AuthUser = Depends(current_user),
+) -> dict[str, Any]:
+    _ensure_source_editor_config_allowed(user, config, config_dir)
+    try:
+        return sql_source_stats(config, q=q, source_file_filter=source_file_filter, row_no_filter=row_no_filter, hash_value_filter=hash_value_filter, payload_filter=payload_filter, username_filter=username_filter, import_start_ts=import_start_ts, import_end_ts=import_end_ts, group_by=group_by, top_n=top_n)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"讀取 SQL 來源資料統計失敗：{exc}") from exc
 
 
 @router.get("/v1/excel-to-sql/source-rows")
