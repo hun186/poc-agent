@@ -200,7 +200,7 @@ def excel_to_sql_dashboard_data(
         None, description="結束時間（ISO 8601；會以 UTC 比對 audit.processed_at）"
     ),
     limit: int = Query(
-        100, ge=1, le=1000, description="最近事件每頁筆數與檔案列數上限"
+        50000, ge=1, le=400000, description="最近事件載入列數上限"
     ),
     page: int = Query(1, ge=1, description="最近 audit 事件頁碼"),
     status_filter: str | None = Query(None, description="最近 audit 事件：狀態篩選"),
@@ -275,7 +275,7 @@ def excel_to_sql_source_rows(
     import_start_ts: str = Query("", max_length=80, description="當初匯入執行起始時間（ISO 8601；以 audit.processed_at 比對）"),
     import_end_ts: str = Query("", max_length=80, description="當初匯入執行結束時間（ISO 8601；以 audit.processed_at 比對）"),
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(5000, ge=1, le=50000),
     config_dir: str = Query(
         "config/excel_to_sql", description="白名單來源：已啟用 Excel→SQL 任務設定檔目錄"
     ),

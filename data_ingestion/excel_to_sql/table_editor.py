@@ -237,7 +237,7 @@ def list_sql_source_rows(
     table = _destination_table(cfg)
     hash_field = _hash_field(cfg)
     page = max(int(page or 1), 1)
-    limit = min(max(int(limit or 50), 1), 200)
+    limit = min(max(int(limit or 5000), 1), 50000)
     offset = (page - 1) * limit
     conn = connect(cfg)
     try:

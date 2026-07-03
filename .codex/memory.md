@@ -139,3 +139,17 @@
 - 目的：回應 Excel→SQL 匯入查詢儀表板仍需要保留列數上限控制，以及帳號安全 → 帳號操作記錄雖有分頁但仍應讓使用者控制後端載入筆數上限。
 - 主要修改：Excel→SQL dashboard 查詢列恢復 `limit` 控制並改名為「載入列數上限」，仍使用後端既有 1-1000 安全上限；帳號操作記錄恢復 `accountAuditLimit`，改名為「載入筆數上限」、預設 5000、最大 5000，前端以使用者輸入送出 `/v1/editor/audit-logs` limit，若 `truncated=true` 或已達該上限則跳窗提醒使用者縮小帳號、動作或時間條件。同步更新靜態測試與資產版本。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 仍有 403 retry，但 requirements 已滿足）、`for f in sra_api/static/editor_audit.js sra_api/static/excel_to_sql_dashboard_app.js; do node --check "$f" || exit 1; done`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_workspace_separates_document_and_account_work_areas tests/test_editor_auth_ui_static.py::test_editor_static_shell_loads_split_assets tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range -q`。
+
+
+### 2026-07-03 audit / source editor 載入上限調整
+
+- 目的：依使用者要求，帳號操作記錄「載入筆數上限」保留使用者控制且最大提高到 50000；SQL 來源資料編輯器也新增同樣的載入筆數上限；Excel→SQL dashboard 最近 audit 事件載入上限預設提高到 50000、最大 400000 以支援安全查核大量檢索。
+- 主要修改：`GET /v1/editor/audit-logs` limit 上限改為 50000，帳號操作記錄 UI 預設 5000 / max 50000，且只在後端 `truncated=true` 時用明確文案提示「已達載入上限，尚有資料未載入」；SQL 來源資料編輯器 router / table editor limit 上限提高到 50000，前端新增 `sourceLimit` 預設 5000；Excel→SQL dashboard limit 預設 50000 / max 400000，router / dashboard / mock clamp 同步提高。高上限可能增加 SQL 查詢、network payload 與瀏覽器 DOM 負載；目前以使用者可調上限 + 篩選條件控制風險，後續若需要更大量查核，建議追加後端匯出或 server-side cursor / cache。
+- 驗證：`python -m py_compile sra_api/routers/editor_usage.py sra_api/routers/excel_to_sql.py data_ingestion/excel_to_sql/dashboard.py data_ingestion/excel_to_sql/table_editor.py data_ingestion/excel_to_sql/mock_sql.py`、`for f in sra_api/static/editor_audit.js sra_api/static/excel_to_sql_dashboard_app.js sra_api/static/excel_to_sql_source_editor_app.js; do node --check "$f" || exit 1; done`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_workspace_separates_document_and_account_work_areas tests/test_editor_auth_ui_static.py::test_editor_static_shell_loads_split_assets tests/test_editor_audit_queries.py::test_list_audit_logs_reports_truncated_hits tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range tests/test_excel_to_sql_dashboard_static.py::test_sql_source_editor_page_and_navigation_are_wired -q`。
+
+
+### 2026-07-03 audit count/truncation 與 dashboard 統計範圍釐清
+
+- 目的：回應帳號 audit 截斷判斷是否應用 COUNT、以及 Excel→SQL dashboard 上方統計是否不受最近事件載入上限影響。
+- 主要修改：帳號 audit 來源目前是 JSONL 檔案而非 SQL table，因此沒有 SQL COUNT 語法可用；本次移除「limit+1」過度讀取方式，改固定讀取目前安全上限 50000 內的 audit records 後用篩選總數 `total` 與回傳 `hits` 長度決定 `truncated`。Excel→SQL dashboard 既有上方 summary / daily / filtered time-series 皆為 SQL `COUNT(1)` 聚合，不受最近事件 `limit` 影響；新增測試確認 `limit` 只會進入來源檔案摘要 / 最近事件載入，不會套到 status summary COUNT。
+- 驗證：`python -m py_compile sra_api/routers/editor_usage.py`、`PYTHONPATH=. pytest tests/test_editor_audit_queries.py::test_list_audit_logs_reports_truncated_hits tests/test_dashboard_filters.py::test_dashboard_payload_applies_destination_table_filter -q`。

@@ -120,7 +120,7 @@ def mock_dashboard_payload(
             continue
         recent.append(dict(row))
 
-    limit = max(1, min(int(limit), 1000))
+    limit = max(1, min(int(limit), 400000))
     page = max(1, int(page))
     total = len(recent)
     max_page = max(1, (total + limit - 1) // limit)

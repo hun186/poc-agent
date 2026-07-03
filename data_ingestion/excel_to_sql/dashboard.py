@@ -206,7 +206,7 @@ def dashboard_payload(
     chart_bucket, chart_bucket_label, chart_bucket_sql = _audit_chart_bucket(
         chart_bucket
     )
-    limit = max(1, min(int(limit), 1000))
+    limit = max(1, min(int(limit), 400000))
     page = max(1, int(page))
 
     conn = _connect(cfg)

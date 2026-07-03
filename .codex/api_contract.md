@@ -12,11 +12,11 @@
 - SQL 來源資料編輯器：`GET /excel-to-sql-source-editor` 回傳靜態頁；`GET /v1/excel-to-sql/source-rows` 允許 active `data_reader` 以上唯讀，Query 支援 `config`、`q`、`source_file_filter`（audit source_file）、`import_start_ts` / `import_end_ts`（audit processed_at）、`username_filter`、`row_no_filter`、`hash_value_filter`、`payload_filter`、`page`、`limit`。Response 含 `columns`、`editable_columns`、`rows`、`username_options`、`can_edit`、`can_delete`、`can_batch_delete`；後端只允許已啟用任務的 `destination.table`，並用 audit table 補 `_import_username`、`_imported_at`、`_source_excel` 虛擬欄位。
 - `PATCH /v1/excel-to-sql/source-row` 需 `data_editor` 以上，request 為 `{config, hash_value, changes, reason}`；禁止修改 hash/system/virtual 欄位，寫入 `sql_source_editor.update_row` audit payload（before / after / changes）。
 - Dashboard selected-task audit scope 包含 registry / configured source 檔案，也包含 `run_id=manual-control` 且 `row_payload.config_path` 等於目前 config 的人工編輯/刪除 audit 事件，避免 SQL 來源資料編輯器操作在最近 audit 事件缺漏。
-- Editor audit logs：`GET /v1/editor/audit-logs` query `limit` 允許 1-5000；response 含 `total`、`limit`、`hits` 與 `truncated`，當篩選後筆數超過回傳 hits 時 `truncated=true`，前端可由使用者設定載入筆數上限（預設 5000），若未完整載入需提醒使用者縮小帳號、動作或時間條件。
+- Editor audit logs：`GET /v1/editor/audit-logs` query `limit` 允許 1-50000；response 含 `total`、`limit`、`hits` 與 `truncated`，當篩選後筆數超過回傳 hits 時 `truncated=true`，前端可由使用者設定載入筆數上限（預設 5000、最大 50000），若未完整載入需提醒使用者縮小帳號、動作或時間條件。
 
 ## Recent Changes
 
-- 2026-07-02：帳號操作記錄查詢改以「載入筆數上限」欄位（預設 5000）控制 `/v1/editor/audit-logs` limit；API 上限提高到 5000 並回傳 `truncated` 供前端告警。Excel→SQL dashboard 保留「載入列數上限」欄位。
+- 2026-07-02：帳號操作記錄查詢改以「載入筆數上限」欄位（預設 5000、最大 50000）控制 `/v1/editor/audit-logs` limit；API 上限提高到 50000 並回傳 `truncated` 供前端告警。SQL 來源資料編輯器新增「載入筆數上限」（預設 5000、最大 50000）；Excel→SQL dashboard 保留「載入列數上限」（預設 50000、最大 400000）。
 - 2026-07-02：SQL 來源資料編輯器改為 data_reader 可唯讀、data_editor 可單列編輯/刪除、db_operator 可批次刪除；source-rows 新增 audit source_file / processed_at 篩選與 `_imported_at`、`_source_excel` 虛擬欄位；dashboard audit scope 納入 manual-control 事件。
 - 2026-07-02：任務 JSON 管理「我建立的任務清單 / 審核進度」新增檢示 JSON 任務轉換細節，沿用遮蔽敏感資訊後的 `review_summary` / `config_preview`。
 - 2026-07-01：SQL 來源資料編輯器加入已啟用任務白名單、匯入使用者 audit 篩選與 SQL row update audit。
