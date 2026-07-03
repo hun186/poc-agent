@@ -201,3 +201,9 @@
 - 目的：修正 SQL 來源資料編輯器切換任務時，複式排序欄位仍沿用第一個任務欄位，導致後續任務送出不相容 sort 參數而無法回傳資料列；同時壓縮複式排序版面並改用問號浮動說明。
 - 主要修改：來源資料列前端改以 `loadedConfig` 判斷目前排序欄位是否已對應目前任務，切換到尚未載入欄位的新任務時先不送出舊 sort 參數；共用 SQL sort helper 在欄位清單更新時會過濾不屬於新任務的排序欄位並回退到目前欄位預設值。複式排序 UI 改成緊湊橫列、較短排序序號與問號浮動說明，並更新 SQL 來源資料編輯器 JS cache-busting 版本。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/audit_tools.js`、`node --check sra_api/static/excel_to_sql_source_editor_app.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_sql_source_editor_sort_controls_reset_for_task_specific_columns_and_use_compact_help -q`。
+
+### 2026-07-03 代理人資料流程 SVG 說明頁
+
+- 目的：補上代理人資料運用處理流程的視覺化說明，讓使用者理解 txt、SQL、Excel→SQL、Elasticsearch 與代理人回答之間的關係。
+- 主要修改：新增 `/agent-data-flow` 靜態說明頁，頁面以內嵌 SVG 呈現資料來源、匯入轉換層、ES 檢索資料庫與代理人使用層；Editor 導航列與 Excel→SQL 子頁 header 均新增「代理人資料流程圖」入口。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip upgrade 查詢套件索引遇 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py -q`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_excel_to_sql_dashboard_static.py::test_editor_navigation_links_agent_data_flow_page -q`。本環境未提供瀏覽器 / Playwright runtime，未做實機截圖；以靜態 UI 測試、JS 語法檢查與 TestClient 路由驗證替代。

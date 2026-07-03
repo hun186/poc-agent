@@ -280,3 +280,9 @@
 - SQL 來源資料統計儀表板由 `sra_api/static/excel_to_sql_source_dashboard.html` 與 `sra_api/static/excel_to_sql_source_dashboard_app.js` 提供前端頁面，路由為 `/excel-to-sql-source-dashboard`。
 - 後端統計入口為 `GET /v1/excel-to-sql/source-stats`，實作委派到 `data_ingestion/excel_to_sql/table_editor.py::sql_source_stats()`。此功能與 SQL 來源資料編輯器共用已啟用 Excel→SQL dashboard task 白名單，避免使用者任意指定 SQL table。
 - 統計查詢沿用 SQL 來源資料列查詢的主要篩選語意：關鍵字、來源 Excel、匯入時間、列號、hash、資料欄位文字與匯入使用者；結果提供 total 與依指定欄位分群的 Top N buckets。
+
+## 2026-07-03 代理人資料流程說明頁
+
+- `/agent-data-flow` 由 `sra_api/routers/excel_to_sql.py` 回傳 `sra_api/static/agent_data_flow.html`，定位為靜態視覺說明頁，不新增後端資料處理邏輯。
+- 說明頁呈現資料流：txt 文本與 SQL 資料可經匯入流程進入 Elasticsearch；Excel 檔案先進入 Excel→SQL 機制（上傳、預掃描、確認匯入、欄位映射、hash 去重與 audit），成為可治理 SQL 來源資料後，再沿用 SQL→ES 路徑供代理人檢索。
+- Editor 主導航與 Excel→SQL 相關子頁 header 皆提供「代理人資料流程圖」入口，與既有 Excel→SQL dashboard / source editor / source dashboard / import center / task config 頁維持互相導覽。
