@@ -155,6 +155,141 @@
       });
     });
   }
+
+  function ensurePagerStyles() {
+    if (document.getElementById('sraAuditToolsPagerStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'sraAuditToolsPagerStyles';
+    style.textContent = `
+      .pager {
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        flex-wrap: wrap !important;
+        margin: 10px 0 !important;
+      }
+      .pager button { flex: 0 0 auto !important; padding: 7px 10px; }
+      .pager .pager-jump,
+      .pager .pager-size {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+        white-space: nowrap !important;
+      }
+      .pager .pager-size label {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 4px !important;
+        margin: 0 !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+      }
+      .pager .pager-size select {
+        width: auto !important;
+        min-width: 72px !important;
+        flex: 0 0 auto !important;
+        padding: 7px 9px !important;
+        box-sizing: border-box !important;
+      }
+      .pager .pager-jump input,
+      .pager .pager-size input,
+      .pager input[type="number"] {
+        width: 78px !important;
+        min-width: 78px !important;
+        max-width: 78px !important;
+        flex: 0 0 78px !important;
+        padding: 7px 9px !important;
+        box-sizing: border-box !important;
+      }
+      .pager .sr-only {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
+        white-space: nowrap !important;
+        border: 0 !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function clampPageSize(value, fallback) {
+    const base = Number(fallback || 25);
+    const parsed = Number(value);
+    const raw = Number.isFinite(parsed) ? parsed : (Number.isFinite(base) ? base : 25);
+    return Math.max(1, Math.min(1000, Math.floor(raw)));
+  }
+
+  function pagerRoot(options) {
+    const ids = [options.infoId, options.firstId, options.prevId, options.inputId, options.gotoId, options.nextId, options.lastId];
+    for (const id of ids) {
+      const el = id ? document.getElementById(id) : null;
+      const root = el ? el.closest('.pager') : null;
+      if (root) return root;
+    }
+    const els = [options.infoEl, options.firstEl, options.prevEl, options.inputEl, options.gotoEl, options.nextEl, options.lastEl];
+    for (const el of els) {
+      const root = el ? el.closest('.pager') : null;
+      if (root) return root;
+    }
+    return null;
+  }
+
+  function pageSizeControlId(options, suffix) {
+    const base = options.inputId || options.infoId || 'pager';
+    return `${base}PageSize${suffix}`;
+  }
+
+  function syncPageSizeControls(options, pageSize) {
+    const root = pagerRoot(options);
+    if (!root) return;
+    const normalized = clampPageSize(pageSize, options.defaultPageSize || 25);
+    const select = root.querySelector('[data-pager-size-select]');
+    const input = root.querySelector('[data-pager-size-input]');
+    if (select) select.value = Array.from(select.options).some((option) => Number(option.value) === normalized) ? String(normalized) : '';
+    if (input) input.value = String(normalized);
+  }
+
+  function ensurePageSizeControls(options) {
+    if (!options.getPageSize || !options.setPageSize) return;
+    const root = pagerRoot(options);
+    if (!root || root.querySelector('[data-pager-size-control]')) return;
+    const sizes = (options.pageSizeOptions || [10, 25, 50, 100, 200]).map((value) => clampPageSize(value, 25));
+    const uniqueSizes = [...new Set(sizes)].sort((a, b) => a - b);
+    const currentSize = clampPageSize(options.getPageSize(), options.defaultPageSize || uniqueSizes[0] || 25);
+    const control = document.createElement('span');
+    control.className = 'pager-size';
+    control.dataset.pagerSizeControl = 'true';
+    const selectId = pageSizeControlId(options, 'Select');
+    const inputId = pageSizeControlId(options, 'Input');
+    control.innerHTML = `<label for="${escapeHtml(selectId)}">每頁顯示</label><select id="${escapeHtml(selectId)}" data-pager-size-select aria-label="每頁顯示筆數選單"><option value="">自訂</option>${uniqueSizes.map((size) => `<option value="${size}">${size}</option>`).join('')}</select><label class="sr-only" for="${escapeHtml(inputId)}">直接輸入每頁筆數</label><input id="${escapeHtml(inputId)}" data-pager-size-input type="number" min="1" max="1000" inputmode="numeric" aria-label="直接輸入每頁筆數" /><span class="muted">筆</span>`;
+    const first = typeof options.firstId === 'string' ? document.getElementById(options.firstId) : options.firstEl;
+    root.insertBefore(control, first || root.firstChild);
+    const select = control.querySelector('[data-pager-size-select]');
+    const input = control.querySelector('[data-pager-size-input]');
+    const applySize = (value) => {
+      const size = clampPageSize(value, options.getPageSize());
+      options.setPageSize(size);
+      if (options.setPage) options.setPage(1);
+      if (input) input.value = String(size);
+      if (select) select.value = uniqueSizes.includes(size) ? String(size) : '';
+      if (options.renderPage) options.renderPage();
+    };
+    if (select) select.onchange = () => { if (select.value) applySize(select.value); };
+    if (input) {
+      input.onkeydown = (ev) => { if (ev.key === 'Enter') applySize(ev.currentTarget.value); };
+      input.onchange = () => applySize(input.value);
+    }
+    syncPageSizeControls(options, currentSize);
+  }
+
+  // Caller supplies the already filtered and sorted rows; this helper only slices the visible page range.
   function paginateRows(rows, page, pageSize) {
     const allRows = Array.isArray(rows) ? rows : [];
     const size = Math.max(1, Number(pageSize || 25));
@@ -174,6 +309,7 @@
   }
 
   function updatePager(options) {
+    ensurePagerStyles();
     const pageData = options.pageData || {};
     const currentPage = Math.max(1, Number(pageData.page || options.page || 1));
     const pageSize = Math.max(1, Number(pageData.pageSize || pageData.page_size || options.pageSize || 25));
@@ -198,9 +334,12 @@
       input.setAttribute('aria-label', options.inputLabel || '頁數');
     }
     if (goto) goto.disabled = totalPages <= 1 && currentPage === 1;
+    syncPageSizeControls(options, pageSize);
     return { page: currentPage, pageSize, total, totalPages, start, end };
   }
   function bindPager(options) {
+    ensurePagerStyles();
+    ensurePageSizeControls(options);
     const getPage = options.getPage || (() => 1);
     const setPage = options.setPage || (() => {});
     const renderPage = options.renderPage || (() => {});

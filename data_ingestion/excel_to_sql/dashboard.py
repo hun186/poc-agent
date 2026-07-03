@@ -156,8 +156,8 @@ def _audit_source_scope_conditions(
     for prefix in prefix_values:
         clauses.append("source_file LIKE ?")
         params.append(prefix + "%")
-    if not clauses:
-        return [], []
+    clauses.append("(run_id = ? AND JSON_VALUE(row_payload, '$.config_path') = ?)")
+    params.extend(["manual-control", str(Path(config_path))])
     return ["(" + " OR ".join(clauses) + ")"], params
 
 def dashboard_payload(
@@ -206,7 +206,7 @@ def dashboard_payload(
     chart_bucket, chart_bucket_label, chart_bucket_sql = _audit_chart_bucket(
         chart_bucket
     )
-    limit = max(1, min(int(limit), 1000))
+    limit = max(1, min(int(limit), 400000))
     page = max(1, int(page))
 
     conn = _connect(cfg)

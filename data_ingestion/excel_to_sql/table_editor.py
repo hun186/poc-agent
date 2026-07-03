@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from data_ingestion.excel_to_sql.dashboard_filters import _coerce_utc_datetime
 from data_ingestion.excel_to_sql.dashboard_sql import (
     _audit_table,
     _connect,
@@ -24,6 +25,8 @@ SYSTEM_COLUMNS = {
     "sheet_name",
     "row_no",
     "_import_username",
+    "_imported_at",
+    "_source_excel",
 }
 
 
@@ -116,25 +119,46 @@ def _load_audit_username_options(cursor, audit_table: str, destination_table: st
     return values
 
 
-def _audit_usernames_by_hash(cursor, audit_table: str, destination_table: str, hash_values: list[str]) -> dict[str, str]:
+def _audit_metadata_by_hash(cursor, audit_table: str, destination_table: str, hash_values: list[str]) -> dict[str, dict[str, Any]]:
     clean_hashes = [str(value or "").strip() for value in hash_values if str(value or "").strip()]
     if not clean_hashes:
         return {}
-    expr = _audit_username_expr()
+    expr = _audit_username_expr("aud")
     placeholders = ", ".join("?" for _ in clean_hashes)
     cursor.execute(
-        f"SELECT hash_value, MAX({expr}) AS username FROM {quote_object_path(audit_table)} "
-        f"WHERE destination_table = ? AND hash_value IN ({placeholders}) GROUP BY hash_value",
+        f"""
+WITH ranked_audit AS (
+    SELECT
+        aud.hash_value,
+        {expr} AS username,
+        aud.source_file,
+        aud.processed_at,
+        ROW_NUMBER() OVER (
+            PARTITION BY aud.hash_value
+            ORDER BY
+                CASE WHEN aud.source_file IN ('dashboard', 'sql-source-editor') THEN 1 ELSE 0 END,
+                aud.processed_at DESC
+        ) AS rn
+    FROM {quote_object_path(audit_table)} aud
+    WHERE aud.destination_table = ? AND aud.hash_value IN ({placeholders})
+)
+SELECT hash_value, username, source_file, processed_at
+FROM ranked_audit
+WHERE rn = 1
+""",
         destination_table,
         *clean_hashes,
     )
-    result: dict[str, str] = {}
+    result: dict[str, dict[str, Any]] = {}
     for row in cursor.fetchall():
         data = _row_to_dict(cursor, row)
         hash_value = str(data.get("hash_value") or "").strip()
-        username = str(data.get("username") or "").strip()
-        if hash_value and username:
-            result[hash_value] = username
+        if hash_value:
+            result[hash_value] = {
+                "username": str(data.get("username") or "").strip(),
+                "source_file": str(data.get("source_file") or "").strip(),
+                "processed_at": data.get("processed_at"),
+            }
     return result
 
 
@@ -203,6 +227,8 @@ def list_sql_source_rows(
     hash_value_filter: str = "",
     payload_filter: str = "",
     username_filter: str | list[str] | None = None,
+    import_start_ts: str | None = None,
+    import_end_ts: str | None = None,
     page: int = 1,
     limit: int = 50,
     connect: Callable[[dict[str, Any]], Any] = _connect,
@@ -211,7 +237,7 @@ def list_sql_source_rows(
     table = _destination_table(cfg)
     hash_field = _hash_field(cfg)
     page = max(int(page or 1), 1)
-    limit = min(max(int(limit or 50), 1), 200)
+    limit = min(max(int(limit or 5000), 1), 50000)
     offset = (page - 1) * limit
     conn = connect(cfg)
     try:
@@ -234,9 +260,31 @@ def list_sql_source_rows(
                 ) + ")")
                 params.extend([like for _ in search_cols])
             clean_source_file = str(source_file_filter or "").strip()
-            if clean_source_file and "source_file" in available:
-                conditions.append(f"CAST({quote_ident(available['source_file'])} AS NVARCHAR(MAX)) LIKE ?")
-                params.append(f"%{clean_source_file}%")
+            if clean_source_file:
+                conditions.append(
+                    f"EXISTS (SELECT 1 FROM {quote_object_path(audit_table)} aud "
+                    f"WHERE aud.destination_table = ? AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)} "
+                    "AND aud.source_file LIKE ?)"
+                )
+                params.extend([table, f"%{clean_source_file}%"])
+            start_dt = _coerce_utc_datetime(import_start_ts)
+            end_dt = _coerce_utc_datetime(import_end_ts, end_of_day=True)
+            if start_dt and end_dt and start_dt > end_dt:
+                raise ValueError("匯入執行起始時間不可晚於結束時間。")
+            if start_dt:
+                conditions.append(
+                    f"EXISTS (SELECT 1 FROM {quote_object_path(audit_table)} aud "
+                    f"WHERE aud.destination_table = ? AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)} "
+                    "AND aud.processed_at >= ?)"
+                )
+                params.extend([table, start_dt])
+            if end_dt:
+                conditions.append(
+                    f"EXISTS (SELECT 1 FROM {quote_object_path(audit_table)} aud "
+                    f"WHERE aud.destination_table = ? AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)} "
+                    "AND aud.processed_at <= ?)"
+                )
+                params.extend([table, end_dt])
             if row_no_filter is not None and "row_no" in available:
                 conditions.append(f"{quote_ident(available['row_no'])} = ?")
                 params.append(int(row_no_filter))
@@ -273,11 +321,21 @@ def list_sql_source_rows(
             )
             cursor.execute(data_sql, tuple(params + [offset, limit]))
             rows = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-            audit_usernames = _audit_usernames_by_hash(cursor, audit_table, table, [row.get(hash_field) for row in rows])
+            audit_metadata = _audit_metadata_by_hash(cursor, audit_table, table, [row.get(hash_field) for row in rows])
             for row in rows:
-                row["_import_username"] = audit_usernames.get(str(row.get(hash_field) or "").strip(), str(row.get("_import_username") or ""))
-            if not any(str(col.get("name") or "").lower() == "_import_username" for col in columns):
-                columns.append({"name": "_import_username", "data_type": "nvarchar", "nullable": True})
+                meta = audit_metadata.get(str(row.get(hash_field) or "").strip(), {})
+                row["_import_username"] = meta.get("username") or str(row.get("_import_username") or "")
+                row["_imported_at"] = meta.get("processed_at") or str(row.get("_imported_at") or "")
+                row["_source_excel"] = meta.get("source_file") or str(row.get("_source_excel") or "")
+            virtual_columns = [
+                ("_import_username", "nvarchar"),
+                ("_imported_at", "datetime2"),
+                ("_source_excel", "nvarchar"),
+            ]
+            existing_column_names = {str(col.get("name") or "").lower() for col in columns}
+            for name, data_type in virtual_columns:
+                if name.lower() not in existing_column_names:
+                    columns.append({"name": name, "data_type": data_type, "nullable": True})
             return {
                 "ok": True,
                 "config_path": str(Path(config_path)),

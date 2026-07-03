@@ -85,14 +85,14 @@ def list_audit_logs(
     client_host: str | None = Query(None, description="依 client_host / IP 篩選，可用逗號分隔多個值"),
     start_ts: str | None = Query(None, description="起始時間（ISO 8601）"),
     end_ts: str | None = Query(None, description="結束時間（ISO 8601）"),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=50000),
     user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
     action_prefix_value = (action_prefix or "").strip().lower()
     if user.role != "superuser" and not action_prefix_value.startswith("auth."):
         raise HTTPException(status_code=403, detail="一般使用者只能查詢自己的帳號操作紀錄。")
     effective_username = username if user.role == "superuser" else user.username
-    records = load_audit_records(limit=5000)
+    records = load_audit_records(limit=50000)
     filtered = filter_audit_records(
         records,
         username=effective_username,
@@ -105,4 +105,5 @@ def list_audit_logs(
         start_ts=start_ts,
         end_ts=end_ts,
     )
-    return {"total": len(filtered), "limit": limit, "hits": filtered[:limit]}
+    hits = filtered[:limit]
+    return {"total": len(filtered), "limit": limit, "hits": hits, "truncated": len(filtered) > len(hits)}

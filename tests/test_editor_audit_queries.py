@@ -189,6 +189,36 @@ def test_list_audit_logs_allows_regular_user_own_account_events(monkeypatch) -> 
     assert [event["action"] for event in data["hits"]] == ["auth.login"]
 
 
+def test_list_audit_logs_reports_truncated_hits(monkeypatch) -> None:
+    from api.routers import editor as editor_router
+    from api.services.auth_store import AuthUser
+
+    records = [
+        {"ts": f"2026-06-01T00:{idx:02d}:00+00:00", "action": "auth.login", "username": "alice"}
+        for idx in range(3)
+    ]
+    monkeypatch.setattr(editor_router, "load_audit_records", lambda limit=5000: records)
+
+    data = editor_router.list_audit_logs(
+        username=None,
+        action=None,
+        action_prefix="auth.",
+        index=None,
+        id=None,
+        changed_path=None,
+        client_host=None,
+        start_ts=None,
+        end_ts=None,
+        limit=2,
+        user=AuthUser(username="admin", role="superuser", status="active"),
+    )
+
+    assert data["total"] == 3
+    assert data["limit"] == 2
+    assert len(data["hits"]) == 2
+    assert data["truncated"] is True
+
+
 def test_list_audit_logs_rejects_regular_user_document_events(monkeypatch) -> None:
     from fastapi import HTTPException
 

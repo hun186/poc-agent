@@ -195,6 +195,7 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
     result = dashboard_payload(
         "config/excel_to_sql/task.json",
         days=7,
+        limit=12345,
         destination_table_filter=["dbo.Target", "dbo.OtherTarget"],
         username_filter=["alice", "bob"],
     )
@@ -216,6 +217,16 @@ def test_dashboard_payload_applies_destination_table_filter(monkeypatch):
         "dbo.OtherTarget",
     ]
     assert result["recent_filters"]["username"] == ["alice", "bob"]
+    summary_calls = [
+        params
+        for sql, params in conn.cursor_obj.calls
+        if "SELECT status, COUNT(1) AS count" in sql
+    ]
+    files_calls = [
+        params for sql, params in conn.cursor_obj.calls if "GROUP BY source_file" in sql
+    ]
+    assert summary_calls and summary_calls[0][0][0] != 12345
+    assert files_calls and files_calls[0][0][0] == 12345
 
 
 def test_discover_dashboard_tasks_recursively_loads_enabled_json(tmp_path):
@@ -448,3 +459,6 @@ def test_dashboard_source_scope_filters_selected_task_registry_and_configured_so
     assert str(configured_file) in params
     assert str(other_file) not in params
     assert any(str(value).startswith(str(inbox)) for value in params)
+    assert "JSON_VALUE(row_payload, '$.config_path')" in conditions[0]
+    assert "manual-control" in params
+    assert "config/excel_to_sql/selected.json" in params

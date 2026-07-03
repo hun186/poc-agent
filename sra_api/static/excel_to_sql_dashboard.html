@@ -120,7 +120,7 @@
       <div><label>起始時間（本機）</label><input id="startTs" type="datetime-local" step="1" /></div>
       <div><label>結束時間（本機）</label><input id="endTs" type="datetime-local" step="1" /></div>
       <div><label>回看天數（起迄皆空時才生效）</label><input id="days" type="number" min="1" max="365" value="14" /></div>
-      <div><label>列數上限</label><input id="limit" type="number" min="1" max="1000" value="100" /></div>
+      <div><label>載入列數上限</label><input id="limit" type="number" min="1" max="400000" value="50000" /></div>
       <button onclick="refreshDashboardNow()">重新整理</button>
       <button class="ghost" onclick="fillRecentWindow(); refreshDashboardNow();">填入近14天起迄</button>
     </section>
@@ -194,6 +194,6 @@
     </section>
   </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_dashboard_app.js?v=20260702-shared-pager"></script>
+<script src="/static/excel_to_sql_dashboard_app.js?v=20260703-dashboard-400000"></script>
 </body>
 </html>
