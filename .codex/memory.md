@@ -255,3 +255,9 @@
 - 目的：依使用者回饋再次縮短 ES 檢索資料庫到 RAG / Agent 的「回傳檢索結果」線，避免曲線控制點進入使用者提問方塊範圍。
 - 主要修改：`sra_api/static/agent_data_flow.svg` 將「回傳檢索結果」路徑改為 ES 右下角到 RAG 左上角的短直線，並把標籤移到線左側；未改動資料流程語意、HTML 文案或 API contract。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python - <<'PY' ... ET.parse('sra_api/static/agent_data_flow.svg') ... PY`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
+
+### 2026-07-04 代理人資料流程圖導航層級修正
+
+- 目的：依使用者回饋，代理人資料流程圖已是網站第一層導航，不應再出現在「匯入管理 → Excel 匯入流程管理」第二層選單，避免與 Excel 匯入子功能混淆。
+- 主要修改：移除 Excel 匯入流程管理子層內重複的「代理人資料流程圖」按鈕，保留第一層 `agentDataFlowBtn`；更新靜態 UI 測試確認按鈕只存在一次且不在 Excel 子層。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。本環境未提供瀏覽器 / Playwright runtime，未做實機截圖；以靜態 UI 測試與 JS 語法檢查替代。
