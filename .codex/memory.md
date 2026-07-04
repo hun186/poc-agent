@@ -243,3 +243,9 @@
 - 目的：依使用者回饋美化 ES 檢索資料庫方塊、將 LLM 平行化分析框架移到 ES 方塊上方，並微調 ES→RAG 檢索結果線與 RAG→使用者報告回傳線端點以避免重疊。
 - 主要修改：`sra_api/static/agent_data_flow.svg` 將 ES 方塊改為淡紫藍底與靛色邊框，移動 LLM 方塊到 ES 上方並重畫 ES↔LLM 短線；把 ES/RAG/使用者三者的右側回傳曲線改成分離路徑，並同步更新 `agent_data_flow.html` cache-busting 版本與靜態測試。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python - <<'PY' ... ET.parse('sra_api/static/agent_data_flow.svg') ... PY`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
+
+### 2026-07-04 代理人資料流程 ES→RAG 回傳線端點微調
+
+- 目的：依使用者回饋將 ES 檢索資料庫到 RAG / Agent 的「回傳檢索結果」線改為從 ES 方塊右下角連到 RAG 方塊左上角，以避免線條壓到其他方塊。
+- 主要修改：`sra_api/static/agent_data_flow.svg` 調整「回傳檢索結果」路徑為 ES 右下角→RAG 左上角，並移動標籤位置；未改動資料流程語意、HTML 文案或 API contract。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python - <<'PY' ... ET.parse('sra_api/static/agent_data_flow.svg') ... PY`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
