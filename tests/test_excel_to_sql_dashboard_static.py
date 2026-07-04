@@ -372,6 +372,10 @@ def test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline():
     assert "RAG" in html
     assert "回傳報告" in html
     assert "<img" in html
+    assert 'id="downloadPngBtn"' in html
+    assert "下載流程圖 PNG" in html
+    assert "canvas.toDataURL('image/png')" in html
+    assert "agent-data-flow.png" in html
     assert "/excel-to-sql-dashboard" in html
     assert "/editor" in html
     response = TestClient(app).get("/agent-data-flow")

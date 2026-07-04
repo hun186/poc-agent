@@ -5,11 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>代理人資料運用處理流程</title>
   <style>
-    :root{--bg:#f6f7fb;--card:#fff;--line:#d9deea;--text:#172033;--muted:#667085}body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}header{padding:20px 28px;background:#111827;color:white;display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}h1{margin:0;font-size:22px}.muted{color:var(--muted);font-size:13px}.header-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}button{padding:10px 14px;border:0;border-radius:10px;background:#2563eb;color:white;font-weight:700;cursor:pointer}button.secondary{background:#475467}main{max-width:1320px;margin:0 auto;padding:24px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 1px 2px rgba(16,24,40,.05)}.diagram-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#f8fafc}.diagram-wrap img{display:block;min-width:960px;width:100%;height:auto}.note{line-height:1.7}
+    :root{--bg:#f6f7fb;--card:#fff;--line:#d9deea;--text:#172033;--muted:#667085}body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}header{padding:20px 28px;background:#111827;color:white;display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}h1{margin:0;font-size:22px}.muted{color:var(--muted);font-size:13px}.header-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}button{padding:10px 14px;border:0;border-radius:10px;background:#2563eb;color:white;font-weight:700;cursor:pointer}button.secondary{background:#475467}button.download{background:#047857}.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}.card-head h2{margin:0;font-size:18px}.download-note{font-size:12px;color:var(--muted)}main{max-width:1320px;margin:0 auto;padding:24px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 1px 2px rgba(16,24,40,.05)}.diagram-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#f8fafc}.diagram-wrap img{display:block;min-width:960px;width:100%;height:auto}.note{line-height:1.7}
   </style>
 </head>
 <body>
 <header><div><h1>代理人資料運用處理流程</h1><div class="muted" style="color:#cbd5e1;">說明 txt、SQL 與 Excel→SQL 如何模組化匯入 ES content，並串回使用者提問、RAG 檢索結果與報告回傳</div></div><div class="header-actions"><button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button><button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button><button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button></div></header>
-<main><section class="card"><p class="muted note">此圖聚焦「content 文本如何進入 Elasticsearch」。既有來源包含 txt 文本與 SQL 資料；後續新增 Excel→SQL 機制後，Excel 先被整理、去重與稽核後寫入 SQL Server，再沿用 SQL→ES 匯入模組把 content 欄位寫入 ES。這樣 Excel 不直接耦合 ES，SQL 成為可查詢、可稽核、可重跑的標準化中介，讓整體流路保持模組化；上層再接回使用者提問、RAG / Agent 檢索 ES、ES 回傳檢索結果與代理人回傳報告，呈現端到端的完整 solution。</p><div class="diagram-wrap"><img src="/static/agent_data_flow.svg?v=20260704-es-llm-layout" alt="代理人資料流程圖" /></div></section></main>
+<main><section class="card"><div class="card-head"><div><h2>流程圖預覽</h2><div class="download-note">可將下方 SVG 流程圖轉成 PNG 檔下載，方便放入簡報或文件。</div></div><button class="download" type="button" id="downloadPngBtn">下載流程圖 PNG</button></div><p class="muted note">此圖聚焦「content 文本如何進入 Elasticsearch」。既有來源包含 txt 文本與 SQL 資料；後續新增 Excel→SQL 機制後，Excel 先被整理、去重與稽核後寫入 SQL Server，再沿用 SQL→ES 匯入模組把 content 欄位寫入 ES。這樣 Excel 不直接耦合 ES，SQL 成為可查詢、可稽核、可重跑的標準化中介，讓整體流路保持模組化；上層再接回使用者提問、RAG / Agent 檢索 ES、ES 回傳檢索結果與代理人回傳報告，呈現端到端的完整 solution。</p><div class="diagram-wrap"><img id="agentDataFlowDiagram" src="/static/agent_data_flow.svg?v=20260704-es-llm-layout" alt="代理人資料流程圖" /></div></section></main>
+<script>
+const downloadButton = document.getElementById('downloadPngBtn');
+const diagramImage = document.getElementById('agentDataFlowDiagram');
+
+function downloadDiagramPng() {
+  const canvas = document.createElement('canvas');
+  const width = diagramImage.naturalWidth || 1360;
+  const height = diagramImage.naturalHeight || 920;
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#f6f7fb';
+  context.fillRect(0, 0, width, height);
+  context.drawImage(diagramImage, 0, 0, width, height);
+  const link = document.createElement('a');
+  link.download = 'agent-data-flow.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+downloadButton.addEventListener('click', () => {
+  if (diagramImage.complete) {
+    downloadDiagramPng();
+    return;
+  }
+  diagramImage.addEventListener('load', downloadDiagramPng, { once: true });
+});
+</script>
 </body>
 </html>
