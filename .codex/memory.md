@@ -285,3 +285,9 @@
 - 目的：依使用者明確要求，匯入管理功能下的頁首導航應與 ES 資料庫、帳號審核、帳號安全等功能一致，採用全域樹狀結構，而不是只提供返回 Editor 或同層平面大按鈕。
 - 主要修改：新增 `excel_global_nav.css`，並在 Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、任務 JSON 管理、SQL 來源資料編輯器與 SQL 來源資料統計儀表板頁首加入全域樹狀導航：ES 資料庫、匯入管理、系統管理、帳號安全與最後的代理人資料流程圖；匯入管理節點展開並包含各 Excel 子頁入口。同步將 CSS 加入 Editor static asset 白名單，更新靜態測試確認 CSS 可服務與頁首全域樹狀結構存在。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_excel_flow_child_pages_use_global_tree_navigation tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。
+
+### 2026-07-04 代理人資料流程圖 PNG 下載按鈕
+
+- 目的：在代理人資料流程圖分頁提供可下載 PNG 檔的按鈕，方便使用者將流程圖放入簡報或文件。
+- 主要修改：`sra_api/static/agent_data_flow.html` 新增「下載流程圖 PNG」按鈕、說明文字與前端 canvas 轉檔下載流程；按鈕會將既有 SVG 流程圖繪製到 canvas，產生 `agent-data-flow.png` 下載檔。
+- 驗證：先執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足），再執行 `PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline -q`，確認流程圖頁面、SVG 與 PNG 下載 UI 文字 / canvas 轉檔程式存在。
