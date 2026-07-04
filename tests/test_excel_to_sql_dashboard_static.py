@@ -323,7 +323,7 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "此操作不會自動同步 ES" in source_html
 
 
-def test_excel_flow_child_pages_include_sql_source_stats_navigation():
+def test_excel_flow_child_pages_use_editor_global_navigation_entry_only():
     page_names = [
         "excel_to_sql_dashboard.html",
         "excel_to_sql_import_center.html",
@@ -340,20 +340,13 @@ def test_excel_flow_child_pages_include_sql_source_stats_navigation():
     ]
     for page_name in page_names:
         html = (STATIC_ROOT / page_name).read_text(encoding="utf-8")
+        header = html.split("<header", 1)[1].split("</header>", 1)[0]
         for route in sibling_routes:
-            if route in {
-                "/excel-to-sql-import-center" if page_name == "excel_to_sql_import_center.html" else "",
-                "/excel-to-sql-dashboard" if page_name == "excel_to_sql_dashboard.html" else "",
-                "/excel-to-sql-task-configs" if page_name == "excel_to_sql_task_configs.html" else "",
-                "/excel-to-sql-source-editor" if page_name == "excel_to_sql_source_editor.html" else "",
-                "/excel-to-sql-source-dashboard" if page_name == "excel_to_sql_source_dashboard.html" else "",
-            }:
-                continue
-            assert route in html, f"{page_name} missing sibling route {route}"
-        assert "/agent-data-flow" not in html
-        assert "代理人資料流程圖" not in html
-        assert "前往登入 / 編輯器" in html
-        assert "主編輯器" not in html
+            assert route not in header, f"{page_name} should not show sibling nav route {route}"
+        assert "/agent-data-flow" not in header
+        assert "代理人資料流程圖" not in header
+        assert "前往登入 / 編輯器" in header
+        assert "主編輯器" not in header
 
 
 def test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline():

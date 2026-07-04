@@ -273,3 +273,9 @@
 - 目的：依使用者回饋，代理人資料流程圖主要供不熟悉流程的使用者查看說明，因此在第一層導航中應排在同層最後，避免干擾主要操作功能。
 - 主要修改：將 Editor 第一層 `agentDataFlowBtn` 移到「帳號安全」之後，維持其第一層入口身份但排序為最後；更新靜態 UI 測試確認代理人資料流程圖位於帳號安全之後。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。
+
+### 2026-07-04 Excel 匯入子頁頁首導覽風格統一
+
+- 目的：回應使用者對導覽風格一致性的疑慮；ES 資料庫、帳號審核、帳號安全等功能主要透過 Editor 全域樹狀導航切換，Excel 匯入管理子頁不應另外在頁首放一排同層大按鈕，避免導覽模式不一致且佔用頁首空間。
+- 主要修改：Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、任務 JSON 管理、SQL 來源資料編輯器與 SQL 來源資料統計儀表板的頁首只保留登入狀態與「前往登入 / 編輯器」，移除同層 Excel 子頁大按鈕；使用者若要切換功能，回到 Editor 使用全域導航。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_flow_child_pages_use_editor_global_navigation_entry_only tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。
