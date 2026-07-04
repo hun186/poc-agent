@@ -277,5 +277,11 @@
 ### 2026-07-04 Excel 匯入子頁頁首導覽風格統一
 
 - 目的：回應使用者對導覽風格一致性的疑慮；ES 資料庫、帳號審核、帳號安全等功能主要透過 Editor 全域樹狀導航切換，Excel 匯入管理子頁不應另外在頁首放一排同層大按鈕，避免導覽模式不一致且佔用頁首空間。
-- 主要修改：Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、任務 JSON 管理、SQL 來源資料編輯器與 SQL 來源資料統計儀表板的頁首只保留登入狀態與「前往登入 / 編輯器」，移除同層 Excel 子頁大按鈕；使用者若要切換功能，回到 Editor 使用全域導航。
+- 主要修改：曾短暫改為 Excel 匯入子頁頁首只保留登入狀態與「前往登入 / 編輯器」，移除同層 Excel 子頁大按鈕；此方案已被後續「匯入管理子頁套用全域樹狀導航」取代。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_flow_child_pages_use_editor_global_navigation_entry_only tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。
+
+### 2026-07-04 匯入管理子頁套用全域樹狀導航
+
+- 目的：依使用者明確要求，匯入管理功能下的頁首導航應與 ES 資料庫、帳號審核、帳號安全等功能一致，採用全域樹狀結構，而不是只提供返回 Editor 或同層平面大按鈕。
+- 主要修改：新增 `excel_global_nav.css`，並在 Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、任務 JSON 管理、SQL 來源資料編輯器與 SQL 來源資料統計儀表板頁首加入全域樹狀導航：ES 資料庫、匯入管理、系統管理、帳號安全與最後的代理人資料流程圖；匯入管理節點展開並包含各 Excel 子頁入口。同步將 CSS 加入 Editor static asset 白名單，更新靜態測試確認 CSS 可服務與頁首全域樹狀結構存在。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_excel_flow_child_pages_use_global_tree_navigation tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。

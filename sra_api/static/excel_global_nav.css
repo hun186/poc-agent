@@ -1,0 +1,11 @@
+.global-tree-nav { display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
+.global-tree-nav .header-user { margin-right:4px; }
+.global-tree-nav details { position:relative; }
+.global-tree-nav summary { list-style:none; padding:8px 10px; border-radius:10px; background:#2563eb; color:white; font-weight:700; cursor:pointer; user-select:none; }
+.global-tree-nav summary::-webkit-details-marker { display:none; }
+.global-tree-nav details[open] summary { background:#1d4ed8; }
+.global-tree-nav .global-nav-actions { position:absolute; z-index:20; right:0; top:calc(100% + 8px); min-width:220px; padding:8px; border-radius:12px; background:white; box-shadow:0 12px 30px rgba(15,23,42,.24); display:grid; gap:6px; }
+.global-tree-nav .global-nav-actions button { width:100%; text-align:left; background:#2563eb; }
+.global-tree-nav .global-nav-actions button.secondary { background:#475467; }
+.global-tree-nav > button { padding:8px 10px; }
+@media (max-width:720px) { .global-tree-nav { justify-content:flex-start; } .global-tree-nav details { position:static; } .global-tree-nav .global-nav-actions { position:static; box-shadow:none; margin-top:6px; } }

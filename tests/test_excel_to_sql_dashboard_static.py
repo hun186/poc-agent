@@ -32,6 +32,10 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         assert response.status_code == 200, script_url
         assert "application/javascript" in response.headers.get("content-type", ""), script_url
 
+    css_response = TestClient(app).get("/static/excel_global_nav.css?v=20260704-global-tree")
+    assert css_response.status_code == 200
+    assert "text/css" in css_response.headers.get("content-type", "")
+
 
 def test_sql_source_editor_sort_controls_reset_for_task_specific_columns_and_use_compact_help():
     html = (STATIC_ROOT / "excel_to_sql_source_editor.html").read_text(encoding="utf-8")
@@ -323,7 +327,7 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "此操作不會自動同步 ES" in source_html
 
 
-def test_excel_flow_child_pages_use_editor_global_navigation_entry_only():
+def test_excel_flow_child_pages_use_global_tree_navigation():
     page_names = [
         "excel_to_sql_dashboard.html",
         "excel_to_sql_import_center.html",
@@ -331,7 +335,7 @@ def test_excel_flow_child_pages_use_editor_global_navigation_entry_only():
         "excel_to_sql_source_editor.html",
         "excel_to_sql_source_dashboard.html",
     ]
-    sibling_routes = [
+    import_routes = [
         "/excel-to-sql-dashboard",
         "/excel-to-sql-source-editor",
         "/excel-to-sql-source-dashboard",
@@ -340,11 +344,17 @@ def test_excel_flow_child_pages_use_editor_global_navigation_entry_only():
     ]
     for page_name in page_names:
         html = (STATIC_ROOT / page_name).read_text(encoding="utf-8")
+        assert "/static/excel_global_nav.css?v=20260704-global-tree" in html
         header = html.split("<header", 1)[1].split("</header>", 1)[0]
-        for route in sibling_routes:
-            assert route not in header, f"{page_name} should not show sibling nav route {route}"
-        assert "/agent-data-flow" not in header
-        assert "代理人資料流程圖" not in header
+        assert 'class="header-actions global-tree-nav" aria-label="全域功能導航"' in header
+        assert "<summary>ES 資料庫</summary>" in header
+        assert "<summary>匯入管理</summary>" in header
+        assert "<summary>系統管理</summary>" in header
+        assert "<summary>帳號安全</summary>" in header
+        assert header.rfind("代理人資料流程圖") > header.rfind("<summary>帳號安全</summary>")
+        for route in import_routes:
+            assert route in header, f"{page_name} missing import tree route {route}"
+        assert "/agent-data-flow" in header
         assert "前往登入 / 編輯器" in header
         assert "主編輯器" not in header
 
