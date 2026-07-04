@@ -9,7 +9,7 @@
   </defs>
   <rect width="1360" height="920" fill="#f6f7fb"/>
   <text x="680" y="44" text-anchor="middle" class="title">代理人資料運用處理流程</text>
-  <text x="680" y="72" text-anchor="middle" class="subtitle">重點：content 來源模組化進 ES；上層呈現使用者提問、代理人檢索與報告回傳的完整 solution</text>
+  <text x="680" y="72" text-anchor="middle" class="subtitle">重點：content 來源模組化進 ES；上層呈現使用者提問、RAG 檢索結果與報告回傳的完整 solution</text>
 
   <rect x="40" y="108" width="300" height="570" rx="20" fill="#ffffff" stroke="#d9deea"/>
   <text x="190" y="140" text-anchor="middle" class="lane-title">來源資料層</text>
@@ -99,18 +99,15 @@
 
   <path class="edge" d="M1213 448 C1213 462 1213 478 1213 492"/>
   <text x="1266" y="472" text-anchor="middle" class="small">提問</text>
-  <path class="edge-dashed" d="M1118 552 C1052 500 1060 397 1085 334"/>
-  <text x="1084" y="472" text-anchor="middle" class="small">RAG 檢索 ES</text>
-  <path class="edge-soft" d="M1250 268 C1324 330 1328 500 1308 552"/>
-  <text x="1302" y="386" text-anchor="middle" class="small">回傳檢索結果</text>
-  <path class="edge" d="M1308 532 C1342 500 1342 426 1308 412"/>
-  <text x="1330" y="476" text-anchor="middle" class="small">回傳報告</text>
-  <path class="edge" d="M1118 610 C1076 665 1090 774 1080 805"/>
-  <text x="1136" y="812" text-anchor="middle" class="small">分析 / 報告</text>
-
+  <path class="edge-dashed" d="M1118 548 C1060 500 1068 404 1090 334"/>
+  <text x="1074" y="462" text-anchor="middle" class="small">RAG 檢索 ES</text>
+  <path class="edge-soft" d="M1250 286 C1310 340 1322 470 1308 548"/>
+  <text x="1288" y="376" text-anchor="middle" class="small">回傳檢索結果</text>
+  <path class="edge" d="M1308 520 C1350 492 1350 412 1308 398"/>
+  <text x="1338" y="458" text-anchor="middle" class="small">回傳報告</text>
   <rect x="66" y="730" width="570" height="94" rx="14" fill="#ffffff" stroke="#d9deea"/>
   <text x="351" y="760" text-anchor="middle" class="body">設計說明</text>
   <text x="351" y="788" text-anchor="middle" class="small">content 進 ES 的主路徑不是單一來源：txt 可直接進 ES，SQL 可透過 SQL→ES 進 ES。</text>
   <text x="351" y="812" text-anchor="middle" class="small">Excel 新增後不重寫 ES 匯入邏輯，而是先導入 SQL，再重用 SQL→ES；中介 SQL 提供 audit、查詢與資料治理邊界。</text>
-  <text x="351" y="836" text-anchor="middle" class="small">上層使用者提問與 RAG / Agent 串接 ES 檢索結果，再回傳報告給使用者，讓流程圖呈現端到端 solution。</text>
+  <text x="351" y="836" text-anchor="middle" class="small">上層使用者提問由 RAG / Agent 向 ES 檢索並接收結果，再回傳報告給使用者；LLM 平行化分析框架維持由 ES content 驅動。</text>
 </svg>

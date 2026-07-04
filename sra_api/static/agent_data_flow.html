@@ -9,7 +9,7 @@
   </style>
 </head>
 <body>
-<header><div><h1>代理人資料運用處理流程</h1><div class="muted" style="color:#cbd5e1;">說明 txt、SQL 與 Excel→SQL 如何模組化匯入 ES content，並串回使用者提問、代理人檢索與報告回傳</div></div><div class="header-actions"><button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button><button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button><button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button></div></header>
-<main><section class="card"><p class="muted note">此圖聚焦「content 文本如何進入 Elasticsearch」。既有來源包含 txt 文本與 SQL 資料；後續新增 Excel→SQL 機制後，Excel 先被整理、去重與稽核後寫入 SQL Server，再沿用 SQL→ES 匯入模組把 content 欄位寫入 ES。這樣 Excel 不直接耦合 ES，SQL 成為可查詢、可稽核、可重跑的標準化中介，讓整體流路保持模組化；上層再接回使用者提問、RAG / Agent 檢索 ES、ES 回傳檢索結果與代理人回傳報告，呈現端到端的完整 solution。</p><div class="diagram-wrap"><img src="/static/agent_data_flow.svg?v=20260704-rag-answer-loop" alt="代理人資料流程圖" /></div></section></main>
+<header><div><h1>代理人資料運用處理流程</h1><div class="muted" style="color:#cbd5e1;">說明 txt、SQL 與 Excel→SQL 如何模組化匯入 ES content，並串回使用者提問、RAG 檢索結果與報告回傳</div></div><div class="header-actions"><button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button><button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button><button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button></div></header>
+<main><section class="card"><p class="muted note">此圖聚焦「content 文本如何進入 Elasticsearch」。既有來源包含 txt 文本與 SQL 資料；後續新增 Excel→SQL 機制後，Excel 先被整理、去重與稽核後寫入 SQL Server，再沿用 SQL→ES 匯入模組把 content 欄位寫入 ES。這樣 Excel 不直接耦合 ES，SQL 成為可查詢、可稽核、可重跑的標準化中介，讓整體流路保持模組化；上層再接回使用者提問、RAG / Agent 檢索 ES、ES 回傳檢索結果與代理人回傳報告，呈現端到端的完整 solution。</p><div class="diagram-wrap"><img src="/static/agent_data_flow.svg?v=20260704-rag-loop-layout" alt="代理人資料流程圖" /></div></section></main>
 </body>
 </html>

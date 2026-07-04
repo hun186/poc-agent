@@ -216,7 +216,7 @@ def test_agent_data_flow_page_and_svg_are_served_by_editor_router() -> None:
 
     assert page.status_code == 200
     assert "代理人資料流程圖" in page.text
-    assert "/static/agent_data_flow.svg?v=20260704-rag-answer-loop" in page.text
+    assert "/static/agent_data_flow.svg?v=20260704-rag-loop-layout" in page.text
     assert svg.status_code == 200
     assert "image/svg+xml" in svg.headers.get("content-type", "")
     assert "content 寫入 ES" in svg.text
@@ -229,6 +229,7 @@ def test_agent_data_flow_page_and_svg_are_served_by_editor_router() -> None:
     assert "回傳檢索結果" in svg.text
     assert "回傳報告" in svg.text
     assert "資料庫互動" not in svg.text
+    assert "分析 / 報告" not in svg.text
 
 
 def test_editor_workspace_separates_document_and_account_work_areas() -> None:
