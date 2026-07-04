@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>代理人資料流程圖</title>
+  <title>代理人資料運用處理流程</title>
   <style>
     :root{--bg:#f6f7fb;--card:#fff;--line:#d9deea;--text:#172033;--muted:#667085}body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}header{padding:20px 28px;background:#111827;color:white;display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}h1{margin:0;font-size:22px}.muted{color:var(--muted);font-size:13px}.header-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}button{padding:10px 14px;border:0;border-radius:10px;background:#2563eb;color:white;font-weight:700;cursor:pointer}button.secondary{background:#475467}main{max-width:1320px;margin:0 auto;padding:24px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 1px 2px rgba(16,24,40,.05)}.diagram-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#f8fafc}.diagram-wrap img{display:block;min-width:960px;width:100%;height:auto}.note{line-height:1.7}
   </style>
 </head>
 <body>
-<header><div><h1>代理人資料流程圖</h1><div class="muted" style="color:#cbd5e1;">說明 content 進 ES、LLM 結構化分析與結果回寫 ES 的資料路徑</div></div><div class="header-actions"><button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button><button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button><button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button></div></header>
-<main><section class="card"><p class="muted note">此圖已移除多餘的 SQL→ES 後續線；匯入與轉換層只將 content 文本寫入 Elasticsearch，後續由 LLM 多階段平行化暨智慧多流路分析框架從 ES 讀取 content，分析後再將結構化結果回寫 ES。</p><div class="diagram-wrap"><img src="/static/agent_data_flow.svg?v=20260703-es-content-llm-structure" alt="代理人資料流程圖" /></div></section></main>
+<header><div><h1>代理人資料運用處理流程</h1><div class="muted" style="color:#cbd5e1;">說明 txt、SQL 與 Excel→SQL 如何模組化匯入 ES content，並供 Agent / LLM 後續檢索與回寫</div></div><div class="header-actions"><button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button><button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button><button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button></div></header>
+<main><section class="card"><p class="muted note">此圖聚焦「content 文本如何進入 Elasticsearch」。既有來源包含 txt 文本與 SQL 資料；後續新增 Excel→SQL 機制後，Excel 先被整理、去重與稽核後寫入 SQL Server，再沿用 SQL→ES 匯入模組把 content 欄位寫入 ES。這樣 Excel 不直接耦合 ES，SQL 成為可查詢、可稽核、可重跑的標準化中介，讓整體流路保持模組化。</p><div class="diagram-wrap"><img src="/static/agent_data_flow.svg?v=20260704-modular-content-sources" alt="代理人資料流程圖" /></div></section></main>
 </body>
 </html>

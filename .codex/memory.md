@@ -213,3 +213,9 @@
 - 目的：將「代理人資料流程圖」提升為 Editor 第一層主導航入口，並修正流程圖中匯入 / ES / LLM 結構化資料流的語意。
 - 主要修改：Editor 主頁新增第一層「代理人資料流程圖」按鈕，不再放在 Excel 匯入流程管理子層；Excel→SQL 各子頁 header 也補上同一路由入口。新增 `/agent-data-flow` 頁與 `/static/agent_data_flow.svg` 靜態資產，SVG 改為「匯入與轉換層將 content 文本寫入 ES → LLM 多階段平行化暨智慧多流路分析框架從 ES 讀 content → 結構化結果回寫 ES」，並移除原先多餘的 SQL→ES 後續路徑表達。
 - 驗證：`python -m py_compile sra_api/routers/editor.py`、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py tests/test_excel_to_sql_dashboard_static.py -q` 皆通過；依專案要求先執行 dependency preflight，pip upgrade 仍遇既有 403，但 requirements 均已 satisfied。
+
+### 2026-07-04 代理人資料流程 SVG 精進
+
+- 目的：依使用者回饋精進代理人資料運用處理流程圖，凸顯 ES content 文本來源從既有 txt / SQL 延伸到 Excel，且 Excel 透過 Excel→SQL 先進 SQL Server，再沿用 SQL→ES 進 ES 的模組化流路。
+- 主要修改：重繪 `sra_api/static/agent_data_flow.svg`，新增來源資料層、模組化匯入與標準化層、SQL Server 標準化中介、SQL→ES 匯入模組、ES 檢索資料庫與 Agent/LLM 回寫關係；同步更新 `sra_api/static/agent_data_flow.html` 說明與 SVG cache-busting 版本，並調整靜態測試預期。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
