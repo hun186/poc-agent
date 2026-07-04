@@ -337,7 +337,6 @@ def test_excel_flow_child_pages_include_sql_source_stats_navigation():
         "/excel-to-sql-source-dashboard",
         "/excel-to-sql-import-center",
         "/excel-to-sql-task-configs",
-        "/agent-data-flow",
     ]
     for page_name in page_names:
         html = (STATIC_ROOT / page_name).read_text(encoding="utf-8")
@@ -351,8 +350,8 @@ def test_excel_flow_child_pages_include_sql_source_stats_navigation():
             }:
                 continue
             assert route in html, f"{page_name} missing sibling route {route}"
-        assert "/agent-data-flow" in html
-        assert "代理人資料流程圖" in html
+        assert "/agent-data-flow" not in html
+        assert "代理人資料流程圖" not in html
         assert "前往登入 / 編輯器" in html
         assert "主編輯器" not in html
 
