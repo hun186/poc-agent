@@ -60,6 +60,7 @@ def _ensure_mock_preview_es_access(user: AuthUser) -> None:
 EDITOR_STATIC_ASSETS: dict[str, str] = {
     "audit_tools.js": "application/javascript",
     "editor.css": "text/css",
+    "excel_global_nav.css": "text/css",
     "editor_core.js": "application/javascript",
     "editor_form.js": "application/javascript",
     "editor_auth_nav.js": "application/javascript",

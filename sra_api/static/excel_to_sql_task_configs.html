@@ -95,6 +95,7 @@
       .diagnostics { width:100%; }
     }
   </style>
+  <link rel="stylesheet" href="/static/excel_global_nav.css?v=20260704-global-tree" />
 </head>
 <body>
 <header>
@@ -102,14 +103,14 @@
     <h1>Excel→SQL 任務 JSON 管理</h1>
     <div class="muted" style="color:#cbd5e1;">建立待審任務 JSON、查看自己建立的任務進度，並停用或刪除自己的設定檔</div>
   </div>
-  <div class="header-actions"><button onclick="location.href='/agent-data-flow'">代理人資料流程圖</button>
-    <div id="whoami" class="header-user">未登入</div>
-    <button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button>
-    <button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button>
-    <button onclick="location.href='/excel-to-sql-source-editor'">SQL 來源資料編輯器</button>
-    <button onclick="location.href='/excel-to-sql-source-dashboard'">SQL 來源資料統計儀表板</button>
-    <button onclick="location.href='/agent-data-flow'">代理人資料流程圖</button><button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
-  </div>
+  <div class="header-actions global-tree-nav" aria-label="全域功能導航">
+      <div id="whoami" class="header-user">未登入</div>
+      <details><summary>ES 資料庫</summary><div class="global-nav-actions"><button onclick="location.href='/editor'">搜尋與編輯文件</button><button onclick="location.href='/editor'">新增文件</button><button onclick="location.href='/editor'">統計與檢核曲線儀表板</button></div></details>
+      <details open><summary>匯入管理</summary><div class="global-nav-actions"><button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button><button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button><button onclick="location.href='/excel-to-sql-task-configs'">任務 JSON 管理</button><button onclick="location.href='/excel-to-sql-source-editor'">SQL 來源資料編輯器</button><button onclick="location.href='/excel-to-sql-source-dashboard'">SQL 來源資料統計儀表板</button></div></details>
+      <details><summary>系統管理</summary><div class="global-nav-actions"><button onclick="location.href='/editor'">帳號審核</button></div></details>
+      <details><summary>帳號安全</summary><div class="global-nav-actions"><button onclick="location.href='/editor'">變更密碼</button><button onclick="location.href='/editor'">帳號操作記錄</button></div></details>
+      <button class="secondary" onclick="location.href='/agent-data-flow'">代理人資料流程圖</button><button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
+    </div>
 </header>
 <main>
   <div id="msg" class="error hidden"></div>

@@ -255,3 +255,33 @@
 - 目的：依使用者回饋再次縮短 ES 檢索資料庫到 RAG / Agent 的「回傳檢索結果」線，避免曲線控制點進入使用者提問方塊範圍。
 - 主要修改：`sra_api/static/agent_data_flow.svg` 將「回傳檢索結果」路徑改為 ES 右下角到 RAG 左上角的短直線，並把標籤移到線左側；未改動資料流程語意、HTML 文案或 API contract。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python - <<'PY' ... ET.parse('sra_api/static/agent_data_flow.svg') ... PY`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
+
+### 2026-07-04 代理人資料流程圖導航層級修正
+
+- 目的：依使用者回饋，代理人資料流程圖已是網站第一層導航，不應再出現在「匯入管理 → Excel 匯入流程管理」第二層選單，避免與 Excel 匯入子功能混淆。
+- 主要修改：移除 Excel 匯入流程管理子層內重複的「代理人資料流程圖」按鈕，保留第一層 `agentDataFlowBtn`；更新靜態 UI 測試確認按鈕只存在一次且不在 Excel 子層。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。本環境未提供瀏覽器 / Playwright runtime，未做實機截圖；以靜態 UI 測試與 JS 語法檢查替代。
+
+### 2026-07-04 Excel 匯入子頁上方導航移除資料流程入口
+
+- 目的：補齊前次導航修正；Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、任務 JSON 管理、SQL 來源資料編輯器與 SQL 來源資料統計儀表板的頁首也不應出現「代理人資料流程圖」入口，避免使用者進入 Excel 匯入管理子頁後仍看到多餘的資料處理流程導航鈕。
+- 主要修改：移除上述 Excel 匯入子頁 header-actions 內的 `/agent-data-flow` 按鈕，保留各 Excel 匯入子頁彼此導航與「前往登入 / 編輯器」；更新靜態測試確認 Excel 子頁不含 `/agent-data-flow` 與「代理人資料流程圖」。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_flow_child_pages_include_sql_source_stats_navigation tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。本環境未提供瀏覽器 / Playwright runtime，未做實機截圖；以靜態 UI 測試與 JS 語法檢查替代。
+
+### 2026-07-04 代理人資料流程圖第一層導航排序調整
+
+- 目的：依使用者回饋，代理人資料流程圖主要供不熟悉流程的使用者查看說明，因此在第一層導航中應排在同層最後，避免干擾主要操作功能。
+- 主要修改：將 Editor 第一層 `agentDataFlowBtn` 移到「帳號安全」之後，維持其第一層入口身份但排序為最後；更新靜態 UI 測試確認代理人資料流程圖位於帳號安全之後。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。
+
+### 2026-07-04 Excel 匯入子頁頁首導覽風格統一
+
+- 目的：回應使用者對導覽風格一致性的疑慮；ES 資料庫、帳號審核、帳號安全等功能主要透過 Editor 全域樹狀導航切換，Excel 匯入管理子頁不應另外在頁首放一排同層大按鈕，避免導覽模式不一致且佔用頁首空間。
+- 主要修改：曾短暫改為 Excel 匯入子頁頁首只保留登入狀態與「前往登入 / 編輯器」，移除同層 Excel 子頁大按鈕；此方案已被後續「匯入管理子頁套用全域樹狀導航」取代。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_flow_child_pages_use_editor_global_navigation_entry_only tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。
+
+### 2026-07-04 匯入管理子頁套用全域樹狀導航
+
+- 目的：依使用者明確要求，匯入管理功能下的頁首導航應與 ES 資料庫、帳號審核、帳號安全等功能一致，採用全域樹狀結構，而不是只提供返回 Editor 或同層平面大按鈕。
+- 主要修改：新增 `excel_global_nav.css`，並在 Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、任務 JSON 管理、SQL 來源資料編輯器與 SQL 來源資料統計儀表板頁首加入全域樹狀導航：ES 資料庫、匯入管理、系統管理、帳號安全與最後的代理人資料流程圖；匯入管理節點展開並包含各 Excel 子頁入口。同步將 CSS 加入 Editor static asset 白名單，更新靜態測試確認 CSS 可服務與頁首全域樹狀結構存在。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route tests/test_excel_to_sql_dashboard_static.py::test_excel_flow_child_pages_use_global_tree_navigation tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。

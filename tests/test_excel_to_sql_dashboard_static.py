@@ -32,6 +32,10 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         assert response.status_code == 200, script_url
         assert "application/javascript" in response.headers.get("content-type", ""), script_url
 
+    css_response = TestClient(app).get("/static/excel_global_nav.css?v=20260704-global-tree")
+    assert css_response.status_code == 200
+    assert "text/css" in css_response.headers.get("content-type", "")
+
 
 def test_sql_source_editor_sort_controls_reset_for_task_specific_columns_and_use_compact_help():
     html = (STATIC_ROOT / "excel_to_sql_source_editor.html").read_text(encoding="utf-8")
@@ -323,7 +327,7 @@ def test_sql_source_editor_page_and_navigation_are_wired():
     assert "此操作不會自動同步 ES" in source_html
 
 
-def test_excel_flow_child_pages_include_sql_source_stats_navigation():
+def test_excel_flow_child_pages_use_global_tree_navigation():
     page_names = [
         "excel_to_sql_dashboard.html",
         "excel_to_sql_import_center.html",
@@ -331,30 +335,28 @@ def test_excel_flow_child_pages_include_sql_source_stats_navigation():
         "excel_to_sql_source_editor.html",
         "excel_to_sql_source_dashboard.html",
     ]
-    sibling_routes = [
+    import_routes = [
         "/excel-to-sql-dashboard",
         "/excel-to-sql-source-editor",
         "/excel-to-sql-source-dashboard",
         "/excel-to-sql-import-center",
         "/excel-to-sql-task-configs",
-        "/agent-data-flow",
     ]
     for page_name in page_names:
         html = (STATIC_ROOT / page_name).read_text(encoding="utf-8")
-        for route in sibling_routes:
-            if route in {
-                "/excel-to-sql-import-center" if page_name == "excel_to_sql_import_center.html" else "",
-                "/excel-to-sql-dashboard" if page_name == "excel_to_sql_dashboard.html" else "",
-                "/excel-to-sql-task-configs" if page_name == "excel_to_sql_task_configs.html" else "",
-                "/excel-to-sql-source-editor" if page_name == "excel_to_sql_source_editor.html" else "",
-                "/excel-to-sql-source-dashboard" if page_name == "excel_to_sql_source_dashboard.html" else "",
-            }:
-                continue
-            assert route in html, f"{page_name} missing sibling route {route}"
-        assert "/agent-data-flow" in html
-        assert "代理人資料流程圖" in html
-        assert "前往登入 / 編輯器" in html
-        assert "主編輯器" not in html
+        assert "/static/excel_global_nav.css?v=20260704-global-tree" in html
+        header = html.split("<header", 1)[1].split("</header>", 1)[0]
+        assert 'class="header-actions global-tree-nav" aria-label="全域功能導航"' in header
+        assert "<summary>ES 資料庫</summary>" in header
+        assert "<summary>匯入管理</summary>" in header
+        assert "<summary>系統管理</summary>" in header
+        assert "<summary>帳號安全</summary>" in header
+        assert header.rfind("代理人資料流程圖") > header.rfind("<summary>帳號安全</summary>")
+        for route in import_routes:
+            assert route in header, f"{page_name} missing import tree route {route}"
+        assert "/agent-data-flow" in header
+        assert "前往登入 / 編輯器" in header
+        assert "主編輯器" not in header
 
 
 def test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline():

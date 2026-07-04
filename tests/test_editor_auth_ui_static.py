@@ -175,10 +175,13 @@ def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     assert 'id="adminNavGroup" data-nav-root="system"' in html
     assert 'data-nav-root="pipeline" aria-expanded="false">匯入管理</button>' in html
     assert 'id="agentDataFlowBtn">代理人資料流程圖</button>' in html
+    nav_primary = html.split('aria-label="第一層功能區">', 1)[1].split('</div>', 1)[0]
+    assert nav_primary.rfind('id="agentDataFlowBtn"') > nav_primary.rfind('data-nav-root="account"')
     assert "$('agentDataFlowBtn').onclick = () => { collapseMainNav(); location.href = '/agent-data-flow'; };" in html
     assert '<summary>Excel 匯入流程管理</summary>' in html
-    assert '<summary>Excel 匯入流程管理</summary>' in html and 'id="agentDataFlowBtn"' in html
-    assert '<summary>Excel 匯入流程管理</summary>' in html and html.index('id="agentDataFlowBtn"') < html.index('<summary>Excel 匯入流程管理</summary>')
+    pipeline_section = html.split('<summary>Excel 匯入流程管理</summary>', 1)[1].split('</details>', 1)[0]
+    assert 'id="agentDataFlowBtn"' not in pipeline_section
+    assert html.count('id="agentDataFlowBtn"') == 1
     assert 'id="excelDashboardBtn">Excel→SQL 匯入查詢儀表板</button>' in html
     assert 'id="excelImportCenterBtn">Excel 匯入作業中心</button>' in html
     assert 'id="navSubPanel" class="nav-subpanel hidden" aria-label="第二層功能選單"' in html
