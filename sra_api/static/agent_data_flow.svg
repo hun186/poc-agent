@@ -101,8 +101,8 @@
   <text x="1248" y="470" text-anchor="middle" class="small">提問</text>
   <path class="edge-dashed" d="M1118 552 C1076 508 1046 450 1000 410"/>
   <text x="1048" y="482" text-anchor="middle" class="small">RAG 檢索 ES</text>
-  <path class="edge-soft" d="M1110 410 C1142 438 1146 468 1118 492"/>
-  <text x="1166" y="452" text-anchor="middle" class="small">回傳檢索結果</text>
+  <path class="edge-soft" d="M1110 410 L1118 492"/>
+  <text x="1074" y="456" text-anchor="middle" class="small">回傳檢索結果</text>
   <path class="edge" d="M1308 520 C1352 486 1352 408 1308 392"/>
   <text x="1340" y="482" text-anchor="middle" class="small">回傳報告</text>
   <rect x="66" y="730" width="570" height="94" rx="14" fill="#ffffff" stroke="#d9deea"/>
