@@ -267,3 +267,9 @@
 - 目的：補齊前次導航修正；Excel→SQL 匯入查詢儀表板、Excel 匯入作業中心、任務 JSON 管理、SQL 來源資料編輯器與 SQL 來源資料統計儀表板的頁首也不應出現「代理人資料流程圖」入口，避免使用者進入 Excel 匯入管理子頁後仍看到多餘的資料處理流程導航鈕。
 - 主要修改：移除上述 Excel 匯入子頁 header-actions 內的 `/agent-data-flow` 按鈕，保留各 Excel 匯入子頁彼此導航與「前往登入 / 編輯器」；更新靜態測試確認 Excel 子頁不含 `/agent-data-flow` 與「代理人資料流程圖」。
 - 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_excel_flow_child_pages_include_sql_source_stats_navigation tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。本環境未提供瀏覽器 / Playwright runtime，未做實機截圖；以靜態 UI 測試與 JS 語法檢查替代。
+
+### 2026-07-04 代理人資料流程圖第一層導航排序調整
+
+- 目的：依使用者回饋，代理人資料流程圖主要供不熟悉流程的使用者查看說明，因此在第一層導航中應排在同層最後，避免干擾主要操作功能。
+- 主要修改：將 Editor 第一層 `agentDataFlowBtn` 移到「帳號安全」之後，維持其第一層入口身份但排序為最後；更新靜態 UI 測試確認代理人資料流程圖位於帳號安全之後。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q`。

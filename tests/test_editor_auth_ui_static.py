@@ -175,6 +175,8 @@ def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     assert 'id="adminNavGroup" data-nav-root="system"' in html
     assert 'data-nav-root="pipeline" aria-expanded="false">匯入管理</button>' in html
     assert 'id="agentDataFlowBtn">代理人資料流程圖</button>' in html
+    nav_primary = html.split('aria-label="第一層功能區">', 1)[1].split('</div>', 1)[0]
+    assert nav_primary.rfind('id="agentDataFlowBtn"') > nav_primary.rfind('data-nav-root="account"')
     assert "$('agentDataFlowBtn').onclick = () => { collapseMainNav(); location.href = '/agent-data-flow'; };" in html
     assert '<summary>Excel 匯入流程管理</summary>' in html
     pipeline_section = html.split('<summary>Excel 匯入流程管理</summary>', 1)[1].split('</details>', 1)[0]
