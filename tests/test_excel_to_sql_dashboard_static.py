@@ -366,9 +366,9 @@ def test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline():
     assert "Excel→SQL 機制" in html
     assert "SQL→ES 匯入" in html
     assert "標準化中介" in html
-    assert "使用者問答" in html
+    assert "使用者提問" in html
     assert "RAG" in html
-    assert "資料庫互動" in html
+    assert "回傳報告" in html
     assert "<img" in html
     assert "/excel-to-sql-dashboard" in html
     assert "/editor" in html
