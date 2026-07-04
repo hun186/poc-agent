@@ -365,7 +365,11 @@ def test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline():
     assert "SQL 資料" in html
     assert "Excel→SQL 機制" in html
     assert "SQL→ES 匯入" in html
-    assert "<svg" in html
+    assert "標準化中介" in html
+    assert "使用者提問" in html
+    assert "RAG" in html
+    assert "回傳報告" in html
+    assert "<img" in html
     assert "/excel-to-sql-dashboard" in html
     assert "/editor" in html
     response = TestClient(app).get("/agent-data-flow")

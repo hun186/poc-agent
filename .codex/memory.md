@@ -213,3 +213,45 @@
 - 目的：將「代理人資料流程圖」提升為 Editor 第一層主導航入口，並修正流程圖中匯入 / ES / LLM 結構化資料流的語意。
 - 主要修改：Editor 主頁新增第一層「代理人資料流程圖」按鈕，不再放在 Excel 匯入流程管理子層；Excel→SQL 各子頁 header 也補上同一路由入口。新增 `/agent-data-flow` 頁與 `/static/agent_data_flow.svg` 靜態資產，SVG 改為「匯入與轉換層將 content 文本寫入 ES → LLM 多階段平行化暨智慧多流路分析框架從 ES 讀 content → 結構化結果回寫 ES」，並移除原先多餘的 SQL→ES 後續路徑表達。
 - 驗證：`python -m py_compile sra_api/routers/editor.py`、`node --check sra_api/static/editor_bootstrap.js`、`PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py tests/test_excel_to_sql_dashboard_static.py -q` 皆通過；依專案要求先執行 dependency preflight，pip upgrade 仍遇既有 403，但 requirements 均已 satisfied。
+
+### 2026-07-04 代理人資料流程 SVG 精進
+
+- 目的：依使用者回饋精進代理人資料運用處理流程圖，凸顯 ES content 文本來源從既有 txt / SQL 延伸到 Excel，且 Excel 透過 Excel→SQL 先進 SQL Server，再沿用 SQL→ES 進 ES 的模組化流路。
+- 主要修改：重繪 `sra_api/static/agent_data_flow.svg`，新增來源資料層、模組化匯入與標準化層、SQL Server 標準化中介、SQL→ES 匯入模組、ES 檢索資料庫與 Agent/LLM 回寫關係；同步更新 `sra_api/static/agent_data_flow.html` 說明與 SVG cache-busting 版本，並調整靜態測試預期。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
+
+### 2026-07-04 代理人資料流程完整 solution 補強
+
+- 目的：依使用者回饋把流程圖原本的使用者問答、RAG / Agent 與資料庫互動方塊加回，讓圖不只呈現 content 進 ES 的資料管線，也呈現端到端 solution 概念。
+- 主要修改：`sra_api/static/agent_data_flow.svg` 新增「使用者問答入口」、「RAG / Agent 互動」、「資料庫互動」三個上層使用情境方塊與連線，保留 txt / SQL / Excel→SQL→SQL→ES 模組化匯入主線；同步更新 `agent_data_flow.html` 說明與 cache-busting 版本，並補強靜態測試。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python - <<'PY' ... ET.parse('sra_api/static/agent_data_flow.svg') ... PY`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
+
+### 2026-07-04 代理人資料流程 RAG 回傳線調整
+
+- 目的：依使用者回饋移除流程圖中的「資料庫互動」方塊，改以更直接的線條表示 ES 檢索資料庫回傳檢索結果給代理人，代理人再回傳報告給使用者提問入口。
+- 主要修改：`sra_api/static/agent_data_flow.svg` 移除「資料庫互動」方塊與相關連線，新增 ES→RAG / Agent 的「回傳檢索結果」線，以及 RAG / Agent→使用者提問入口的「回傳報告」線；同步更新 `agent_data_flow.html` 說明、cache-busting 版本與靜態測試預期。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python - <<'PY' ... ET.parse('sra_api/static/agent_data_flow.svg') ... PY`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
+
+### 2026-07-04 代理人資料流程線條版面修正
+
+- 目的：依使用者回饋移除 RAG / Agent 方塊連到 LLM 平行化分析框架的線，並降低右側 RAG 檢索 / 回傳線互相覆蓋造成的視覺雜訊。
+- 主要修改：`sra_api/static/agent_data_flow.svg` 移除 RAG / Agent→LLM 的「分析 / 報告」連線，重新調整 RAG→ES、ES→RAG 與 RAG→使用者提問入口三條右側曲線的控制點與標籤位置；同步更新 `agent_data_flow.html` cache-busting 版本與靜態測試。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python - <<'PY' ... ET.parse('sra_api/static/agent_data_flow.svg') ... PY`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
+
+### 2026-07-04 代理人資料流程 ES / LLM 版面調整
+
+- 目的：依使用者回饋美化 ES 檢索資料庫方塊、將 LLM 平行化分析框架移到 ES 方塊上方，並微調 ES→RAG 檢索結果線與 RAG→使用者報告回傳線端點以避免重疊。
+- 主要修改：`sra_api/static/agent_data_flow.svg` 將 ES 方塊改為淡紫藍底與靛色邊框，移動 LLM 方塊到 ES 上方並重畫 ES↔LLM 短線；把 ES/RAG/使用者三者的右側回傳曲線改成分離路徑，並同步更新 `agent_data_flow.html` cache-busting 版本與靜態測試。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python - <<'PY' ... ET.parse('sra_api/static/agent_data_flow.svg') ... PY`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
+
+### 2026-07-04 代理人資料流程 ES→RAG 回傳線端點微調
+
+- 目的：依使用者回饋將 ES 檢索資料庫到 RAG / Agent 的「回傳檢索結果」線改為從 ES 方塊右下角連到 RAG 方塊左上角，以避免線條壓到其他方塊。
+- 主要修改：`sra_api/static/agent_data_flow.svg` 調整「回傳檢索結果」路徑為 ES 右下角→RAG 左上角，並移動標籤位置；未改動資料流程語意、HTML 文案或 API contract。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python - <<'PY' ... ET.parse('sra_api/static/agent_data_flow.svg') ... PY`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
+
+### 2026-07-04 代理人資料流程 ES→RAG 回傳線縮短
+
+- 目的：依使用者回饋再次縮短 ES 檢索資料庫到 RAG / Agent 的「回傳檢索結果」線，避免曲線控制點進入使用者提問方塊範圍。
+- 主要修改：`sra_api/static/agent_data_flow.svg` 將「回傳檢索結果」路徑改為 ES 右下角到 RAG 左上角的短直線，並把標籤移到線左側；未改動資料流程語意、HTML 文案或 API contract。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足）、`python - <<'PY' ... ET.parse('sra_api/static/agent_data_flow.svg') ... PY`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router -q`。
