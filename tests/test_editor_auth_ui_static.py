@@ -216,11 +216,11 @@ def test_agent_data_flow_page_and_svg_are_served_by_editor_router() -> None:
 
     assert page.status_code == 200
     assert "代理人資料流程圖" in page.text
-    assert "/static/agent_data_flow.svg?v=20260704-rag-loop-layout" in page.text
+    assert "/static/agent_data_flow.svg?v=20260704-es-llm-layout" in page.text
     assert svg.status_code == 200
     assert "image/svg+xml" in svg.headers.get("content-type", "")
     assert "content 寫入 ES" in svg.text
-    assert "Agent / LLM 讀取 content" in svg.text
+    assert "LLM 讀取 content" in svg.text
     assert "結構化結果回寫 ES" in svg.text
     assert "Excel→SQL 機制" in svg.text
     assert "SQL→ES 匯入模組" in svg.text
