@@ -135,11 +135,22 @@ async function loadTasks() {
     $('taskConnectionSource').innerHTML = '<option value="">直接填寫下方 DB 連線資訊</option>' + sourceOptions;
     applyConnectionSourceDefaults(sourceTasks);
   }
-  if (dashboardTasks.length && $('uploadConfig')) $('uploadConfig').value = dashboardTasks[0].config_path;
+  if (dashboardTasks.length && $('task') && !$('task').value) $('task').value = dashboardTasks[0].config_path;
+  syncUploadConfigFromTask();
   renderUploadTaskDetails();
   if (currentUserRole === ROLE_SUPERUSER) await loadTaskConfigReviewOptions();
 }
-function onTaskChange() { if ($('task').value) $('uploadConfig').value = $('task').value; renderUploadTaskDetails(); }
+function selectedUploadConfig() {
+  const selectedTask = taskValue('task');
+  if (selectedTask && $('uploadConfig') && $('uploadConfig').value !== selectedTask) $('uploadConfig').value = selectedTask;
+  return selectedTask || taskValue('uploadConfig');
+}
+function syncUploadConfigFromTask() {
+  if (!$('task') || !$('uploadConfig')) return;
+  const selectedTask = taskValue('task');
+  if (selectedTask) $('uploadConfig').value = selectedTask;
+}
+function onTaskChange() { syncUploadConfigFromTask(); renderUploadTaskDetails(); }
 function setSensitiveConnectionFieldsVisible(visible) {
   const fields = $('connectionSensitiveFields');
   const notice = $('connectionSourceNotice');
@@ -167,7 +178,9 @@ async function uploadExcelRecord() {
   const input = $('uploadExcel');
   if (!input.files.length) { showError('請先選擇 Excel 檔案。'); return; }
   const body = new FormData(); body.append('file', input.files[0]);
-  const params = new URLSearchParams({ config: $('uploadConfig').value });
+  const config = selectedUploadConfig();
+  if (!config) { showError('請先選擇匯入任務。'); return; }
+  const params = new URLSearchParams({ config });
   const res = await fetch('/v1/excel-to-sql/import-records?' + params.toString(), { method:'POST', headers:{ Authorization:'Bearer ' + authToken() }, body });
   if (!res.ok) { let text=await res.text(); try{text=JSON.parse(text).detail||text;}catch(_){} showError(text); return; }
   const data = await res.json();
@@ -342,7 +355,7 @@ function renderMappingsForReview(mappings) {
 function renderUploadTaskDetails() {
   const box = $('uploadTaskDetails');
   if (!box) return;
-  const config = taskValue('task') || taskValue('uploadConfig');
+  const config = selectedUploadConfig();
   const task = dashboardTasks.find(item => item.config_path === config);
   if (!task?.review_summary) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   const summary = task.review_summary || {};

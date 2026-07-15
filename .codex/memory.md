@@ -291,3 +291,9 @@
 - 目的：在代理人資料流程圖分頁提供可下載 PNG 檔的按鈕，方便使用者將流程圖放入簡報或文件。
 - 主要修改：`sra_api/static/agent_data_flow.html` 新增「下載流程圖 PNG」按鈕、說明文字與前端 canvas 轉檔下載流程；按鈕會將既有 SVG 流程圖繪製到 canvas，產生 `agent-data-flow.png` 下載檔。
 - 驗證：先執行 `python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip index 查詢仍出現 403 retry，但 requirements 已滿足），再執行 `PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_agent_data_flow_page_and_svg_are_served_by_editor_router tests/test_excel_to_sql_dashboard_static.py::test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline -q`，確認流程圖頁面、SVG 與 PNG 下載 UI 文字 / canvas 轉檔程式存在。
+
+### 2026-07-15 Excel 匯入作業中心任務選單套用修正
+
+- 目的：修正使用者回報建立 JSON 任務並設定工作表（例如「測試表格名稱」）後，在 Excel 匯入作業中心選擇該 JSON 任務仍可能用到預設 `vessel_activities.example.json`，導致預掃描 / 匯入報錯找不到舊任務的「漁業活動記錄」工作表。
+- 主要修改：Excel 匯入作業中心的 `uploadConfig` 改為 readonly 且不再預填舊範例設定；前端新增 `selectedUploadConfig()` / `syncUploadConfigFromTask()`，上傳 Excel、任務細節顯示與載入任務後的預設值都以目前 `#task` 下拉選單為權威來源，避免隱藏 / 輔助設定欄位與下拉選單不同步。
+- 驗證：`python -m pip install --upgrade pip && python -m pip install -r requirements.txt`（pip upgrade 受套件索引 403 retry 影響但 requirements 已滿足）、`node --check sra_api/static/excel_to_sql_import_records.js`、`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py::test_import_center_static_contains_user_import_controls tests/test_excel_to_sql_dashboard_static.py::test_excel_pages_static_scripts_are_served_by_static_route -q`、`PYTHONPATH=. pytest tests/test_excel_to_sql_user_imports.py -q`。
