@@ -117,7 +117,7 @@
     <p class="muted">上傳 Excel 後會先存入備查區；請先執行預掃描，確認預估新增、重複與錯誤列數後，再按「確認匯入 SQL」。若狀態為 imported_with_errors，請查看「錯誤診斷」欄與預掃描樣本。</p>
     <div class="controls">
       <div><label>匯入任務</label><select id="task" onchange="onTaskChange()"><option value="">載入中...</option></select></div>
-      <div><label>匯入設定檔</label><input id="uploadConfig" value="config/excel_to_sql/vessel_activities.example.json" /></div>
+      <div><label>匯入設定檔</label><input id="uploadConfig" value="" readonly /></div>
       <div><label>Excel 檔案</label><input id="uploadExcel" type="file" accept=".xlsx,.xlsm,.xltx,.xltm" /></div>
       <div class="upload-actions"><button onclick="uploadExcelRecord()">上傳並建立記錄</button><button class="secondary" onclick="loadImportRecords()">重新查詢記錄</button></div>
     </div>
@@ -141,6 +141,6 @@
   </section>
 </main>
 <script src="/static/audit_tools.js"></script>
-<script src="/static/excel_to_sql_import_records.js?v=20260702-shared-page-size"></script>
+<script src="/static/excel_to_sql_import_records.js?v=20260715-selected-task-config"></script>
 </body>
 </html>

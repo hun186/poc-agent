@@ -107,7 +107,7 @@ def test_import_center_static_contains_user_import_controls():
     assert "使用者 Excel 匯入操作" not in dashboard_html
     assert "使用者 Excel 匯入操作" in html
     assert (
-        "/static/excel_to_sql_import_records.js?v=20260702-shared-page-size"
+        "/static/excel_to_sql_import_records.js?v=20260715-selected-task-config"
         in html
     )
     assert "sraAuditToolsPagerStyles" in audit_tools
@@ -128,6 +128,13 @@ def test_import_center_static_contains_user_import_controls():
     assert "匯入任務" in html
     assert "uploadTaskDetails" in html
     assert "目前匯入任務的 Excel→SQL 欄位轉換" in script
+    assert 'id="uploadConfig" value="" readonly' in html
+    assert "function selectedUploadConfig" in script
+    assert "function syncUploadConfigFromTask" in script
+    assert "const config = selectedUploadConfig();" in script
+    assert "new URLSearchParams({ config })" in script
+    assert "請先選擇匯入任務" in script
+    assert "new URLSearchParams({ config: $('uploadConfig').value })" not in script
     assert "dashboardTasks" in script
     assert "renderUploadTaskDetails" in script
     assert "canReviewTaskMappings" in script
