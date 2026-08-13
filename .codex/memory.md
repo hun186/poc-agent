@@ -10,6 +10,18 @@
 
 ## Recent Changes
 
+### 2026-08-13 PURE_LLM 獨立 timeout
+
+- `REPORT_LLM_TIMEOUT` 僅作用於 SRA_REPORT，先前 PURE_LLM 固定等待 180 秒；現新增 `PURE_LLM_TIMEOUT`（預設 180 秒）供 `.env` 獨立調整。
+- 路由確實使用 bounded router view；關鍵字提取的 bounded view 是另一個函式，只在檢索模式後續使用。
+- 驗證：`PYTHONPATH=. pytest tests/test_routing_input.py tests/test_keyword_extraction_input.py tests/test_pure_llm_timeout.py -q`，7 tests passed。
+
+### 2026-08-13 關鍵字提取裁切範圍隔離
+
+- 大型檢索問句只在 `extract_topic_terms_llm()` 呼叫前建立預設 6000 字元的暫時頭尾視圖；原始查詢不被覆寫，人工詞比對、同義詞擴增與 Elasticsearch 流程仍收到完整查詢。
+- 文件明確記錄路由結果與提取出的關鍵字仍會間接影響 index 選擇、同義詞種子與檢索召回，但裁切字串不會傳播成共用下游輸入。
+- 驗證：`PYTHONPATH=. pytest tests/test_routing_input.py tests/test_keyword_extraction_input.py -q`，5 tests passed。
+
 ### 2026-08-13 路由裁切 terminal 提示
 
 - 大型當輪或歷史訊息實際觸發 bounded router view 時，`agent.routing` 會輸出 WARNING，包含來源、原始字元數與路由上限，並提醒完整內容仍交給執行模型及 Word 匯出；log 不含原始本文。

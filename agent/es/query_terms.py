@@ -1,6 +1,7 @@
 # agent/es/query_terms.py
 import os
 import json
+import logging
 import re
 import textwrap
 from typing import List, Dict, Tuple
@@ -10,6 +11,31 @@ from agent.es.synonyms import (
     extract_manual_terms_from_query,
 )
 from agent.es.zh_variants import expand_zh_script_variants
+
+logger = logging.getLogger(__name__)
+
+KEYWORD_EXTRACTION_MAX_CHARS = max(
+    512, int(os.getenv("KEYWORD_EXTRACTION_MAX_CHARS", "6000"))
+)
+
+
+def _build_keyword_extraction_input(q: str) -> str:
+    """Build a bounded, temporary view used only by the keyword extractor LLM."""
+    cleaned = (q or "").strip()
+    if len(cleaned) <= KEYWORD_EXTRACTION_MAX_CHARS:
+        return cleaned
+
+    marker = "\n\n【中間大量任務資料已省略，完整查詢仍供後續檢索流程使用】\n\n"
+    available = KEYWORD_EXTRACTION_MAX_CHARS - len(marker)
+    head_chars = int(available * 0.75)
+    tail_chars = available - head_chars
+    logger.warning(
+        "[keywords] 輸入過長，已啟動關鍵字提取裁切機制：original_chars=%d "
+        "extractor_chars=%d；只裁切關鍵字提取器的暫時輸入。",
+        len(cleaned),
+        KEYWORD_EXTRACTION_MAX_CHARS,
+    )
+    return f"{cleaned[:head_chars]}{marker}{cleaned[-tail_chars:]}"
 
 
 # ===== LLM：抽主題詞 =====
@@ -276,7 +302,10 @@ def compute_effective_terms(q: str) -> Tuple[
         return [], {}, False, [], []
 
     # 1) LLM 主題詞
-    llm_terms_raw = extract_topic_terms_llm(q)
+    # Only the extraction LLM receives a bounded temporary view. Keep ``q``
+    # unchanged for manual-term matching, synonym expansion, and ES retrieval.
+    keyword_extraction_input = _build_keyword_extraction_input(q)
+    llm_terms_raw = extract_topic_terms_llm(keyword_extraction_input)
     llm_terms: List[str] = []
     seen: set[str] = set()
     for t in llm_terms_raw:
