@@ -23,6 +23,14 @@
 | `routers/export.py` | 匯出 API |
 | `routers/docs.py` | 文件或說明相關 endpoint |
 
+## Chat 與 Word 匯出資料流
+
+Chat completion 會先由 agent router 判斷 `SRA_REPORT`、`SRA_STYLE`、
+`DOC_FOLLOWUP` 或 `PURE_LLM`，再由對應執行路徑產生統一輸出；DOCX presenter
+使用該完整輸出建立 Word 檔。大型輸入只會在「路由判定視圖」中被瘦身，
+原始 request 不會因此被截斷。完整流程與環境變數請參閱
+[`../docs/chat_agent_flow.md`](../docs/chat_agent_flow.md)。
+
 ## 注意事項
 
 - 修改 API response shape 時，請同步檢查前端 static page 與 tests。

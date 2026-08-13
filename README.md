@@ -4,6 +4,9 @@
 本專案是一個基於 **FastAPI** 和 **Elasticsearch** 建構的 **RAG (Retrieval-Augmented Generation)** 代理人系統，稱為 **SRA (Structured Retrieval Agent)**。
 核心設計是透過一個 **Router Agent** 分析使用者的意圖，將任務分流到不同的子代理人（Reporting, Style Transfer, Doc Follow-up），並支援基於 Topic 的動態索引檢索。同時具備完整的對話歷史 (Session Store) 與遙測 (Telemetry) 機制。
 
+對話請求從路由、模式執行到 Word 匯出的完整資料流，以及大型 PURE_LLM
+輸入的路由瘦身設定，請參閱 [`docs/chat_agent_flow.md`](docs/chat_agent_flow.md)。
+
 ## 技術堆疊 (Tech Stack)
 
 ### Backend & API
@@ -15,6 +18,7 @@
 - **Framework:** Custom Architecture (Not relying on LangChain/LlamaIndex for core loop)
 - **LLM Client:** Custom Wrapper (`agent.llm_utils.ollama_client`) supporting OpenAI-compatible APIs (likely Ollama).
 - **Core Pattern:** Router-Dispatcher Pattern (`SRA_REPORT`, `SRA_STYLE`, `DOC_FOLLOWUP`, `PURE_LLM`).
+- **Bounded Router Input:** Router 只讀取有上限的頭尾視圖；完整使用者資料仍交給實際執行模型，並保留供 DOCX 匯出使用。
 
 ### Data & Retrieval
 - **Vector Database / Search Engine:** [Elasticsearch](https://www.elastic.co/)

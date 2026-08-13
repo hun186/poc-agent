@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from typing import Any, Dict, Optional
@@ -8,6 +9,8 @@ from typing import Any, Dict, Optional
 from agent.llm_utils.ollama_client import call_llm
 from agent.utils.profiler import log_duration
 from config.index_loader import INDEX_CONFIG
+
+logger = logging.getLogger(__name__)
 
 ROUTER_MODEL_ID = (
     os.getenv("ROUTER_MODEL_ID")
@@ -28,6 +31,34 @@ TOPIC_DESC_TEXT = "\n".join(
 
 TOPIC_INDEX_MAP: dict = INDEX_CONFIG["topic_index_map"]
 ES_INDEX_DEFAULT: str = INDEX_CONFIG.get("default_index", "news_test")
+
+ROUTER_CURRENT_MAX_CHARS = max(
+    512, int(os.getenv("ROUTER_CURRENT_MAX_CHARS", "6000"))
+)
+ROUTER_HISTORY_MAX_CHARS = max(
+    256, int(os.getenv("ROUTER_HISTORY_MAX_CHARS", "1500"))
+)
+
+
+def _compact_router_text(text: str, max_chars: int, *, source: str) -> str:
+    """Bound classifier input while retaining instructions at both ends."""
+    cleaned = (text or "").strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+
+    logger.warning(
+        "[router] 輸入過長，已啟動路由裁切機制：source=%s original_chars=%d "
+        "router_chars=%d；完整內容仍會交給執行模型與 Word 匯出流程。",
+        source,
+        len(cleaned),
+        max_chars,
+    )
+
+    marker = "\n\n【中間大量任務資料已省略，完整內容仍會交給執行模型】\n\n"
+    available = max_chars - len(marker)
+    head_chars = int(available * 0.75)
+    tail_chars = available - head_chars
+    return f"{cleaned[:head_chars]}{marker}{cleaned[-tail_chars:]}"
 
 
 def topic_to_index_hint(topic: str | None) -> str | None:
@@ -189,12 +220,25 @@ def build_router_input(
     """
     給任務分流器用的輸入字串：
     - 一律以「目前問題」為主，過去問題只是輔助理解上下文
+    - 路由只需要任務意圖與主題；大型資料本文會截成頭尾樣本，完整內容仍由執行模型處理
     """
-    current = (current_user_msg or "").strip()
+    current = _compact_router_text(
+        current_user_msg,
+        ROUTER_CURRENT_MAX_CHARS,
+        source="current_user_message",
+    )
     if not recent_user_msgs:
         return f"【目前問題】\n{current}"
 
-    cleaned = [m.strip() for m in recent_user_msgs if m and m.strip()]
+    cleaned = [
+        _compact_router_text(
+            message,
+            ROUTER_HISTORY_MAX_CHARS,
+            source=f"recent_user_message[{index}]",
+        )
+        for index, message in enumerate(recent_user_msgs, 1)
+        if message and message.strip()
+    ]
     if not cleaned:
         return f"【目前問題】\n{current}"
 
