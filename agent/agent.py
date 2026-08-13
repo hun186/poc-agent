@@ -25,6 +25,27 @@ SESSION_MAX_TURNS = int(os.getenv("SESSION_MAX_TURNS", "60"))
 SESSION_MAX_CHARS = int(os.getenv("SESSION_MAX_CHARS", "8000"))
 SESSION_STORE_ASSISTANT = os.getenv("SESSION_STORE_ASSISTANT", "1") == "1"
 
+
+def _positive_env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        print(f"[agent] invalid {name}={raw!r}; fallback to {default}")
+        return default
+    if value <= 0:
+        print(f"[agent] invalid {name}={raw!r}; fallback to {default}")
+        return default
+    return value
+
+
+# PURE_LLM is a separate execution path from report generation. Do not reuse
+# REPORT_LLM_TIMEOUT here, because operators may need different limits for
+# retrieval reports and direct large-payload generation.
+PURE_LLM_TIMEOUT = _positive_env_float("PURE_LLM_TIMEOUT", 180.0)
+
 SESSION_STORE = FileSessionStore(
     base_dir=SESSION_STORE_DIR,
     enabled=SESSION_STORE_ENABLED,
@@ -289,7 +310,7 @@ def answer_with_routing(
                     "請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。"
                 ),
                 extra_params={"options": {}},
-                timeout=180.0,
+                timeout=PURE_LLM_TIMEOUT,
             )
             out = {
                 "answer": generic_answer,
@@ -390,4 +411,3 @@ def answer_with_routing(
 if __name__ == "__main__":
     q = "請整理2025年『拉拉隊』相關的重點事件，並引述來源。綜整成一個總結，並進行趨勢分析。"
     print(ask_with_report(q))
-

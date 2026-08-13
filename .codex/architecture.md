@@ -17,6 +17,8 @@
 3. Router 僅讀瘦身視圖以判斷 mode / topic，不讀完整大量資料。
 4. 執行階段仍使用完整 `user_msg` 或既有 `query_for_agent`；PURE_LLM 的大量資料、回答內容及 Word 匯出資料不被截斷。
 5. 上限可由 `ROUTER_CURRENT_MAX_CHARS`、`ROUTER_HISTORY_MAX_CHARS` 調整。
+6. 檢索模式另在關鍵字提取 LLM 前建立獨立 bounded view（預設 6000 字元）；完整精煉查詢仍傳給人工詞比對、同義詞擴增及 Elasticsearch 搜尋。
+7. PURE_LLM 直接生成不經 report agent，使用獨立 `PURE_LLM_TIMEOUT`；`REPORT_LLM_TIMEOUT` 只控制 SRA_REPORT 的報告模型呼叫。
 
 ### Data and administration boundaries
 
@@ -27,6 +29,7 @@
 
 ## Recent Changes
 
+- 2026-08-13：關鍵字提取裁切限制於 extractor 呼叫邊界，不改寫下游共用查詢。
 - 2026-08-13：Chat router 新增 bounded head/tail input view，大型資料只在執行階段交給模型。
 - 2026-07-01～07-04：SQL 來源編輯 / 統計與 Excel 匯入全域樹狀導航完成。
 - 2026-06-25～06-29：Chat helpers、data-agent prompts、auth flows、task config builder 拆分並保留 facade contracts。

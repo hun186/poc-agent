@@ -17,6 +17,10 @@
         |
         +--> 完整執行輸入（不套用路由字元上限）
                   |
+                  +--> 關鍵字提取暫時視圖（僅檢索模式、有獨立字元上限）
+                  |       |
+                  |       +--> 核心關鍵字
+                  |
                   +--> 對應 agent / LLM 產生完整回答
                                   |
                                   +--> 統一 response
@@ -59,15 +63,18 @@
 ```dotenv
 ROUTER_CURRENT_MAX_CHARS=6000
 ROUTER_HISTORY_MAX_CHARS=1500
+KEYWORD_EXTRACTION_MAX_CHARS=6000
 ```
 
 | 變數 | 用途 | 預設值 | 最低值 |
 | --- | --- | ---: | ---: |
 | `ROUTER_CURRENT_MAX_CHARS` | 當輪訊息的路由判定字元上限 | `6000` | `512` |
 | `ROUTER_HISTORY_MAX_CHARS` | 每筆歷史使用者訊息的路由判定字元上限 | `1500` | `256` |
+| `KEYWORD_EXTRACTION_MAX_CHARS` | 關鍵字提取 LLM 暫時輸入的字元上限 | `6000` | `512` |
 
-這兩個值只控制路由判定成本，不是執行模型的 context limit。若降低數值，路由速度通常會改善，
-但任務指示或 topic 藏在資料中段時可能降低分類準確度；調高則會增加分類模型的輸入量與逾時風險。
+前兩個值只控制路由判定成本，第三個值只控制關鍵字提取成本，都不是執行模型的 context limit。
+若降低數值，對應前置模型的速度通常會改善，但任務指示或 topic 藏在資料中段時可能降低分類或
+提取準確度；調高則會增加對應模型的輸入量與逾時風險。
 
 裁切時可在 API terminal 看到類似訊息：
 
@@ -79,9 +86,32 @@ ROUTER_HISTORY_MAX_CHARS=1500
 
 ## 與關鍵字精煉的關係
 
-目前的 bounded view 位於最前面的任務路由階段。只有路由結果為需要資料檢索的模式時，
-後續 report / data agent 才依既有設定進行問句精煉與關鍵字抽取。PURE_LLM 不需要為了 Word
-匯出而額外執行 Elasticsearch 關鍵字抽取。
+路由與關鍵字提取各自建立 bounded temporary view，且都不會覆寫原始 `user_msg`、
+`query_for_agent` 或精煉後查詢。只有路由結果為需要資料檢索的模式時，後續 report / data
+agent 才會執行關鍵字抽取；PURE_LLM 不會為了 Word 匯出而額外執行 Elasticsearch 關鍵字抽取。
+
+關鍵字裁切只套用在 `extract_topic_terms_llm()` 的輸入前。人工同義詞比對、同義詞擴增函式與
+Elasticsearch 搜尋仍收到未套用此字元上限的完整查詢。這可避免「暫時視圖」被誤當成共用
+query 後，無意間傳播至現在或未來新增的下游功能。
+
+仍需注意兩種**間接影響**：路由結果會決定是否檢索及使用哪個 index；關鍵字提取結果本來就會
+成為同義詞與檢索詞的種子。因此若關鍵主題只存在於被省略的中段，分類或檢索召回率仍可能下降，
+但下游收到的完整查詢與資料本身不會被裁切。
+
+## PURE_LLM 大型任務逾時
+
+`REPORT_LLM_TIMEOUT`（以及相容舊名 `REPORT_TIMEOUT`）只套用在 SRA_REPORT 最後的報告生成，
+不會作用到 PURE_LLM。PURE_LLM 是 `answer_with_routing()` 中獨立的直接模型呼叫，可用下列設定
+控制應用程式等待模型回應的秒數，預設為 180 秒：
+
+```dotenv
+PURE_LLM_TIMEOUT=900
+```
+
+這個值是 Python HTTP client 等待模型服務的 timeout，不會縮短輸入，也不會讓模型本身運算變快。
+若設為 900 秒後仍在更早的固定時間中斷，應另外檢查反向代理、API gateway、load balancer、瀏覽器
+或部署平台的 request timeout。對極長輸入而言，提高 timeout 只能延長等待；若模型 context window
+不足或推論資源不夠，仍需縮減輸入、選擇更大 context / 更快模型，或另行設計分段處理。
 
 ## 驗證
 
