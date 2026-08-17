@@ -192,3 +192,5 @@ SRA-API_output.txt
 /config/sql_import/github_ignore
 /.sra_users.login_audit.json
 /.sra_users.login_audit.json.d/
+/logs/traces
+SRA-API_output.txt
