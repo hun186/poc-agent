@@ -1,0 +1,17 @@
+1. Model Preset 建議值
+| 項目               | 建議                                 |
+| ---------------- | ---------------------------------- |
+| Name             | `SRAF-ES Intelligence Agent`       |
+| Model ID         | `sraf-es-intelligence-agent`       |
+| Base Model       | `qwen3.8:latest`                   |
+| Description      | Elasticsearch 情報檢索、多輪探索、交叉比對與研析代理人 |
+| Temperature      | `0.15`                             |
+| Top P            | `0.9`                              |
+| Context          | 建議 `64K` 起；大量週報可再提高                |
+| Function Calling | Native                             |
+| ES MCP           | **預設啟用**                           |
+| Web Search       | 預設關閉                               |
+| Knowledge        | 可掛 Schema Guide                    |
+| Automation       | 排程直接選這個 Model                      |
+
+最重要的是 ES MCP 固定掛在這個 preset 上，不要依賴使用者每次聊天手動開啟。
