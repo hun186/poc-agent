@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi import HTTPException
 
@@ -9,6 +11,8 @@ from data_ingestion.excel_to_sql.user_import_storage import _record_path
 from portable_auth_pack.fastapi_auth_pack.dependencies import bearer_token as portable_bearer_token
 from api.routers import chat, docs, export
 from api.routers.editor_dependencies import bearer_token
+from api.routers.editor_dependencies import scope_resource_id
+from api.services.auth_store import AuthUser
 
 
 ROUTERS = (chat.router, docs.router, export.router)
@@ -40,6 +44,18 @@ def test_openwebui_agent_routes_remain_public(path: str, method: str) -> None:
 
 def test_health_check_remains_public() -> None:
     assert not _route("/healthz", "GET").dependant.dependencies
+
+
+def test_legacy_session_scope_import_is_a_noop_for_mixed_deployments() -> None:
+    user = AuthUser(username="legacy", role="data_reader", status="active")
+    assert scope_resource_id(user, "openwebui-session") == "openwebui-session"
+
+
+def test_chat_support_uses_package_relative_import_without_router_recursion() -> None:
+    source = Path("sra_api/routers/chat.py").read_text(encoding="utf-8")
+    assert "from .chat_support import (" in source
+    assert "from sra_api.routers.chat_support import (" not in source
+    assert "scope_resource_id" not in source
 
 
 @pytest.mark.parametrize("parser", [bearer_token, portable_bearer_token])

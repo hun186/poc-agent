@@ -33,6 +33,11 @@ def bearer_token(authorization: str | None) -> str:
     return token.strip()
 
 
+def scope_resource_id(user: AuthUser, resource_id: str) -> str:
+    """Compatibility shim for mixed-version workers; agent routes no longer use it."""
+    return resource_id
+
+
 def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
     payload = parse_token(bearer_token(authorization))
     if not payload:

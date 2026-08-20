@@ -10,6 +10,13 @@
 
 ## Recent Changes
 
+### 2026-08-20 SRA API mixed-version startup 修復
+
+- 部署端 traceback 顯示 `api.routers.chat` 載入時又以 `sra_api.routers.chat_support` 觸發第二套 `sra_api.routers` 初始化，第二份舊 chat 隨即匯入已移除的 `scope_resource_id` 而中止啟動。
+- Chat support 改為 package-relative import，避免 `api.*` compatibility namespace 與 `sra_api.*` namespace 交叉遞迴載入。
+- `editor_dependencies` 暫時保留 identity-only `scope_resource_id` compatibility shim；目前 agent routes 不使用它，但混合版本 worker 不再因舊 import 直接啟動失敗。
+- 驗證：security/Excel/SQL targeted suite 68 tests passed；兩個全新 Python process 分別執行 `from api.main import app` 與 `from sra_api.main import app` 均成功，重現 traceback 的兩種 entrypoint 不再發生 ImportError。
+
 ### 2026-08-20 OpenWebUI agent API 相容性修復
 
 - 前次 security patch 超出使用者要求範圍，把 Editor bearer token 強制套到 `/v1/models` 與 `/v1/chat/completions`，導致既有 OpenWebUI 連線持續收到 401；本次已還原 agent models/chat/docs/export 的既有公開整合 contract、原 session key 與 CORS 行為。

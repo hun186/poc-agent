@@ -21,6 +21,7 @@
 ### Stable project decisions
 
 - API runtime source 使用 `sra_api/`，`api/` 僅為 compatibility layer；對外 import / endpoint contract 優先保持相容。
+- Compatibility package 內部引用同層模組時採 relative import，避免同一實體檔案同時以 `api.*` 與 `sra_api.*` 兩個 module identity 載入；移除已公開 symbol 時先保留無副作用 compatibility shim，讓 rolling / 部分同步部署可啟動。
 - Route、prompt 或大型服務拆分時保留原 facade，避免一次迫使 routes、tests 與外部使用者遷移。
 - Editor 欄位結構以 Elasticsearch mapping metadata 為型別權威，form config 負責 UI layout；mapping 不可用時明確降級。
 - Excel→SQL 任務由 db_operator 建立 pending 設定、superuser 審核啟用；來源資料工具限定啟用任務白名單，不提供 arbitrary SQL。

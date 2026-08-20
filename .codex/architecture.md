@@ -5,6 +5,7 @@
 ### Runtime layout
 
 - `app.py` 是 root ASGI entrypoint；`api/` 提供 compatibility import，實際 FastAPI app、routers、services、presenters 與 static assets 位於 `sra_api/`。
+- `sra_api/routers/chat.py` 對同 package helper 使用 relative import，避免從 `api.routers.chat` 啟動時交叉載入第二份 `sra_api.routers.chat`；compatibility package 與 runtime package 不應在同一 import chain 混用絕對 namespace。
 - `agent/agent.py::answer_with_routing()` 是對話主協調器；API 建立 history / memory / trace 後呼叫它，再保存 session 並產生 OpenAI-compatible response。
 - `agent/routing.py` 以 LLM 將任務分類為 `SRA_REPORT`、`SRA_STYLE`、`DOC_FOLLOWUP`、`PURE_LLM`，topic 再映射到 Elasticsearch indexes。
 - `agent/report_agent.py`、`style_agent.py`、`doc_followup_agent.py` 分別承接資料報告、風格改寫與既有文件追問；PURE_LLM 直接呼叫一般模型。
