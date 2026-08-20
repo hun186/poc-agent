@@ -14,14 +14,18 @@ _DATETIME2_TYPE_RE = re.compile(r"^DATETIME2(?:\([0-7]\))?$")
 
 
 def quote_ident(name: str) -> str:
-    if not name:
+    if not isinstance(name, str) or not name.strip():
         raise ValueError("欄位名稱不可為空")
+    if len(name) > 128 or any(ord(char) < 32 or ord(char) == 127 for char in name):
+        raise ValueError("欄位名稱包含不允許的字元或超過 128 字元")
     return f"[{name.replace(']', ']]')}]"
 
 
 def quote_object_path(name: str) -> str:
-    parts = [part.strip() for part in name.split(".") if part.strip()]
-    if not parts:
+    if not isinstance(name, str):
+        raise ValueError(f"無效物件名稱: {name}")
+    parts = [part.strip() for part in name.split(".")]
+    if not parts or len(parts) > 3 or any(not part for part in parts):
         raise ValueError(f"無效物件名稱: {name}")
     return ".".join(quote_ident(part) for part in parts)
 
