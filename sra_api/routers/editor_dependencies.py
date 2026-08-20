@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import hashlib
 from pathlib import Path
 
 from fastapi import Depends, Header, HTTPException, status
@@ -24,9 +25,19 @@ def static_path(filename: str) -> Path:
 
 
 def bearer_token(authorization: str | None) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
+    if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="請先登入。")
-    return authorization.split(" ", 1)[1].strip()
+    scheme, separator, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or separator != " " or not token.strip() or " " in token.strip():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="請先登入。")
+    return token.strip()
+
+
+def scope_resource_id(user: AuthUser, resource_id: str) -> str:
+    """Namespace process-local resources so another account cannot guess their IDs."""
+    owner = hashlib.sha256(user.username.encode("utf-8")).hexdigest()[:24]
+    prefix = f"user-{owner}:"
+    return resource_id if resource_id.startswith(prefix) else f"{prefix}{resource_id}"
 
 
 def current_user(authorization: str | None = Header(default=None)) -> AuthUser:

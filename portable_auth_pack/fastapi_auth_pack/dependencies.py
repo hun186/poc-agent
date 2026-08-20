@@ -18,9 +18,12 @@ from .auth_support import should_enable_mock_preview_login
 
 
 def bearer_token(authorization: str | None) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
+    if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="請先登入。")
-    return authorization.split(" ", 1)[1].strip()
+    scheme, separator, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or separator != " " or not token.strip() or " " in token.strip():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="請先登入。")
+    return token.strip()
 
 
 def current_user(authorization: str | None = Header(default=None)) -> AuthUser:

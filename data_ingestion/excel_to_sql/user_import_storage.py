@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ RECORDS_DIR = ROOT / "records"
 REGISTRY = ROOT / "records.json"
 ALLOWED_SUFFIXES = {".xlsx", ".xlsm", ".xltx", ".xltm"}
 _MOCK_RECORDS: list[dict[str, Any]] = []
+_RECORD_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
 
 def utc_now() -> str:
@@ -41,6 +43,8 @@ def ensure_dirs() -> None:
 
 
 def _record_path(record_id: str) -> Path:
+    if not _RECORD_ID_RE.fullmatch(str(record_id or "")):
+        raise ValueError("匯入記錄 ID 格式錯誤")
     return RECORDS_DIR / f"{record_id}.json"
 
 
@@ -85,7 +89,7 @@ def read_registry() -> dict[str, Any]:
     records = []
     missing_ids = set()
     for record_id in record_ids:
-        if not isinstance(record_id, str) or not record_id:
+        if not isinstance(record_id, str) or not _RECORD_ID_RE.fullmatch(record_id):
             continue
         record = _read_json(_record_path(record_id), {})
         if record.get("id") == record_id:

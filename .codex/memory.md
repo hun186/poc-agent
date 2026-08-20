@@ -10,6 +10,22 @@
 
 ## Recent Changes
 
+### 2026-08-20 檔名 / config path IDOR 防護
+
+- 發現 `overwrite=true` 時 db_operator 只要知道任務設定檔名稱即可覆寫其他建立者的 JSON；現改為僅原建立者可覆寫自己的 pending 任務，已啟用任務僅 superuser 可覆寫。
+- Dashboard 讀取、批次 SQL 刪除與 Excel 上傳匯入統一套用已啟用任務白名單；request 不再能以 `config_dir` 掃描系統管理目錄以外的位置。
+- 匯入記錄的 per-record filename 僅接受安全 record ID（保留 legacy ID 相容），阻擋 registry 污染後的 path traversal。
+- 驗證：`PYTHONPATH=. pytest tests/test_api_security_boundaries.py tests/test_excel_to_sql_user_imports.py tests/test_excel_to_sql_source_editor.py tests/test_dashboard_filters.py -q`，67 tests passed。
+- 完整 `PYTHONPATH=. pytest tests -q` 為 222 passed / 2 個既有失敗（auth module reload identity、Vercel mock mode expectation），未新增 regression。
+
+### 2026-08-20 API 授權與 injection 防護稽核
+
+- Chat、模型清單、ES 文件全文與 Word 匯出 API 改為強制 bearer 登入；process-local chat / export session 依使用者雜湊 namespace 隔離，避免猜測 session ID 越權讀取。
+- 移除文件 UUID wildcard fallback，SQL Server identifier 增加結構、長度與控制字元驗證；主程式 CORS 改為明確 `CORS_ALLOWED_ORIGINS` 白名單，未設定時維持同源。
+- portable auth pack 同步收緊 Bearer header parser，拒絕空 token、錯誤 scheme 與含空白的畸形 token。
+- 驗證：security boundaries + SQL utils 25 tests passed；auth store 21 tests passed；portable auth preview 5 tests passed。
+- 全套 `pytest tests -q` 結果為 219 passed / 2 failed；失敗為既有 suite order 下 auth module reload identity 問題，以及未修改的 `vercel.json` mock mode 與既有測試期待不一致，均與本次 security patch 無關並記錄於 known issues。
+
 ### 2026-08-20 Ollama 遠端模型設定與 router timeout 修正
 
 - 修正共用 `call_llm()` 未把呼叫端的 `model` override 放進實際 payload 的問題；router / report 等子流程現在會使用各自指定的模型。

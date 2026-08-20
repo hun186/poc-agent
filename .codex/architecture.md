@@ -24,8 +24,11 @@
 
 - Elasticsearch 是 agent retrieval 與 Editor 文件層；Excel→SQL 匯入、audit、來源資料編輯 / 統計位於 `data_ingestion/excel_to_sql/` 與 `sra_api/routers/excel_to_sql.py`。
 - SQL 來源工具只能操作啟用任務設定內的 `destination.table`，並以 role、欄位白名單、reason、audit 限制修改。
+- Dashboard、Excel upload/import 與單列/批次 SQL 修改共用同一份已啟用任務白名單；任務 JSON filename 不是授權憑證，overwrite 另以 `dashboard.created_by` 與 superuser 狀態檢查。
 - Auth roles 為 `data_reader`、`data_editor`、`db_operator`、`superuser`；前端 session 使用同源 localStorage key `sra_editor_token`。
 - Vercel mock runtime 與正式 ES / SQL 路徑分離，mock response 必須揭露其狀態。
+- `/v1/chat/completions`、`/v1/models`、`/v1/docs/*`、`/v1/export/word` 均位於 bearer auth boundary；chat state key 以登入帳號的不可逆短雜湊 namespace 隔離。`/healthz` 保持公開供探針使用。
+- 跨來源瀏覽器存取採 `CORS_ALLOWED_ORIGINS` 明確白名單；未設定時不安裝 CORS middleware，僅允許同源。
 
 ## Recent Changes
 

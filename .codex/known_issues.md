@@ -9,6 +9,8 @@
 
 ## Recent Changes
 
+- 2026-08-20：完整 test suite 有兩項既有失敗：`test_role_hierarchy_approval_and_role_options` 在整套執行時受 `api.*` / `sra_api.*` module reload identity 影響回傳 403（單檔執行 21 tests passed）；`test_vercel_json_uses_zero_config_fastapi_discovery` 期待 `auto`，但目前未修改的 `vercel.json` 為 `always`。本次 security targeted suites 全數通過。
+
 - 2026-08-20: 此容器對遠端私有 Ollama 位址的 curl 經環境 proxy 回覆 HTTP 403，無法代替部署工作站驗證 `/api/chat`；已提供在 API 工作站執行的直接 curl 檢查方式，單元測試則驗證模型 override 與 timeout 傳遞。
 
 - 2026-06-25: Editor mapping metadata UI screenshot limitation was recorded; substitute verification uses form-config tests, static UI tests, and JS syntax checks.
