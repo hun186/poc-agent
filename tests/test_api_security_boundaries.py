@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 from data_ingestion.excel_to_sql.sql_utils import quote_ident, quote_object_path
 from data_ingestion.excel_to_sql.task_configs import create_task_config
@@ -44,6 +45,65 @@ def test_openwebui_agent_routes_remain_public(path: str, method: str) -> None:
 
 def test_health_check_remains_public() -> None:
     assert not _route("/healthz", "GET").dependant.dependencies
+
+
+@pytest.fixture
+def openwebui_client() -> TestClient:
+    app = FastAPI()
+    for router in ROUTERS:
+        app.include_router(router)
+    return TestClient(app)
+
+
+def test_openwebui_can_open_and_download_cited_document_without_editor_token(
+    monkeypatch, openwebui_client: TestClient
+) -> None:
+    document = {
+        "uuid": "doc-1",
+        "title": "資料庫文件",
+        "full_text": "文件全文內容",
+    }
+    monkeypatch.setattr(docs, "_get_doc_source_or_404", lambda _doc_id: document)
+
+    detail = openwebui_client.get("/v1/docs/doc-1")
+    fulltext = openwebui_client.get("/v1/docs/doc-1/fulltext")
+    download = openwebui_client.get(
+        "/v1/docs/doc-1/fulltext", params={"format": "txt", "download": "true"}
+    )
+
+    assert detail.status_code == 200
+    assert detail.json()["uuid"] == "doc-1"
+    assert fulltext.status_code == 200
+    assert fulltext.json()["full_text"] == "文件全文內容"
+    assert download.status_code == 200
+    assert download.text == "文件全文內容"
+    assert download.headers["content-disposition"].startswith("attachment;")
+
+
+def test_openwebui_can_download_word_without_editor_token(
+    monkeypatch, openwebui_client: TestClient
+) -> None:
+    monkeypatch.setattr(
+        export.API_STORE,
+        "read_raw",
+        lambda: {"structured_history": {"session-1": {"turn-1": {"mode": "PURE_LLM"}}}},
+    )
+    monkeypatch.setattr(
+        export.ExportWordService,
+        "build_docx_bytes",
+        lambda _self, _out, filename: (b"docx-content", filename),
+    )
+
+    response = openwebui_client.get(
+        "/v1/export/word", params={"session_id": "session-1", "turn_id": "turn-1"}
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"docx-content"
+    assert response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert response.headers["content-disposition"].startswith("attachment;")
 
 
 def test_legacy_session_scope_import_is_a_noop_for_mixed_deployments() -> None:
