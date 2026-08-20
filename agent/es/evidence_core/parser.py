@@ -29,6 +29,24 @@ def parse_es_hits(
 
     out_hits: List[HitDoc] = []
 
+    def named_inner_hits(node: Any, name: str) -> List[Dict[str, Any]]:
+        """Find child inner hits in a multi-level nested ES response."""
+        if isinstance(node, list):
+            found: List[Dict[str, Any]] = []
+            for value in node:
+                found.extend(named_inner_hits(value, name))
+            return found
+        if not isinstance(node, dict):
+            return []
+        found = []
+        named = (node.get("inner_hits") or {}).get(name)
+        if isinstance(named, dict):
+            found.extend(((named.get("hits") or {}).get("hits") or []))
+        for value in node.values():
+            if isinstance(value, (dict, list)):
+                found.extend(named_inner_hits(value, name))
+        return found
+
     for h in es_hits or []:
         src = h.get("_source", {}) or {}
         raw_content = ((src.get("rawInfo") or {}).get("content") or "").strip()
@@ -43,18 +61,26 @@ def parse_es_hits(
 
         # timeline / article date
         tl_dates = collect_timeline_dates(src, topk=config.timeline_dates_topk)
-        article_date_iso = parse_article_date_iso(raw_content) or (tl_dates[0] if tl_dates else None)
+        mapped_article_date = next(
+            (block.get("article_date_iso") for block in blocks if block.get("article_date_iso")),
+            None,
+        )
+        article_date_iso = (
+            mapped_article_date
+            or parse_article_date_iso(raw_content)
+            or (tl_dates[0] if tl_dates else None)
+        )
         
         # citations: inner_hits 優先
         citations: List[Citation] = []
-        ih = (h.get("inner_hits") or {}).get("evi") or {}
-        ih_hits = (ih.get("hits") or {}).get("hits") or []
+        ih_hits = named_inner_hits(h, "evi")
         if ih_hits:
             for eh in ih_hits[:config.inner_hit_topk]:
                 esrc = (eh.get("_source") or {})
                 txt = esrc.get("text")
                 sid = esrc.get("source_id")
                 pid = esrc.get("paragraph_id")
+                event_ids = esrc.get("event_ids") or []
 
                 if not txt:
                     nested = {}
@@ -70,9 +96,17 @@ def parse_es_hits(
                     txt = nested.get("text")
                     sid = nested.get("source_id")
                     pid = nested.get("paragraph_id")
+                    event_ids = nested.get("event_ids") or []
 
                 if txt:
-                    citations.append(Citation(text=txt, source_id=sid, paragraph_id=pid))
+                    if isinstance(event_ids, str):
+                        event_ids = [event_ids]
+                    citations.append(Citation(
+                        text=txt,
+                        source_id=sid,
+                        paragraph_id=pid,
+                        event_ids=[str(item) for item in event_ids if item],
+                    ))
 
             if citations:
                 stats["n_inner_used"] += 1

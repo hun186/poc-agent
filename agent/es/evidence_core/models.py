@@ -22,6 +22,7 @@ class Citation:
     date_iso: Optional[str] = None
     uuid: Optional[str] = None
     subject: Optional[str] = None
+    event_ids: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -51,6 +52,7 @@ class EvidenceSnippet:
     article_title: Optional[str] = None
     paragraph_id: Optional[str] = None
     source_id: Optional[str] = None
+    event_ids: List[str] = field(default_factory=list)
 
     synonym_hits: List[str] = field(default_factory=list)
     match_policy: str = "strict"

@@ -167,6 +167,7 @@ def build_hits_and_evidence(
                     **({"date_iso": c.date_iso} if c.date_iso else {}),
                     **({"uuid": c.uuid} if c.uuid else {}),
                     **({"subject": c.subject} if c.subject else {}),
+                    **({"event_ids": c.event_ids} if c.event_ids else {}),
                 }
                 for c in (h.citations or [])
             ],
@@ -190,6 +191,7 @@ def build_hits_and_evidence(
             "article_title": e.article_title,
             **({"paragraph_id": e.paragraph_id} if e.paragraph_id is not None else {}),
             **({"source_id": e.source_id} if e.source_id is not None else {}),
+            **({"event_ids": e.event_ids} if e.event_ids else {}),
             **({"synonym_hits": e.synonym_hits} if e.synonym_hits else {}),
             "match_policy": e.match_policy,
             "match_scope": e.match_scope,

@@ -2,6 +2,36 @@
 import re
 from typing import Any, Dict, List, Optional
 
+
+MD_PATH = "multidim_event_json"
+
+
+def _nested(path: str, query: Dict[str, Any], **options: Any) -> Dict[str, Any]:
+    """Build a nested clause and make the nested boundary explicit."""
+    nested = {"path": path, "query": query, **options}
+    return {"nested": nested}
+
+
+def _in_multidim(query: Dict[str, Any], **options: Any) -> Dict[str, Any]:
+    return _nested(MD_PATH, query, **options)
+
+
+def _in_multidim_child(
+    child: str, query: Dict[str, Any], *, outer_options: Optional[Dict[str, Any]] = None,
+    **child_options: Any,
+) -> Dict[str, Any]:
+    """Query a nested child below the nested multidim event document.
+
+    Elasticsearch requires both nested levels to be entered.  Querying the child
+    path directly worked with the old object Event mapping but is invalid once
+    Event (and the other event-linked arrays) are nested below
+    ``multidim_event_json``.
+    """
+    return _in_multidim(
+        _nested(f"{MD_PATH}.{child}", query, **child_options),
+        **(outer_options or {}),
+    )
+
 def build_main_query_body(
     query: Optional[str],
     must_high_value: Optional[bool],
@@ -35,31 +65,26 @@ def build_main_query_body(
 
     # 日期過濾：nested range
     if with_date and (date_from or date_to):
-        rng = {"range": {"multidim_event_json.Event_Timeline.date_iso": {}}}
+        rng = {"range": {"multidim_event_json.Event_Timeline.time_iso": {}}}
         if date_from:
-            rng["range"]["multidim_event_json.Event_Timeline.date_iso"]["gte"] = date_from
+            rng["range"]["multidim_event_json.Event_Timeline.time_iso"]["gte"] = date_from
         if date_to:
-            rng["range"]["multidim_event_json.Event_Timeline.date_iso"]["lte"] = date_to
-        filters.append({
-            "nested": {
-                "path": "multidim_event_json.Event_Timeline",
-                "query": rng,
-                "score_mode": "none"
-            }
-        })
+            rng["range"]["multidim_event_json.Event_Timeline.time_iso"]["lte"] = date_to
+        filters.append(_in_multidim_child(
+            "Event_Timeline", rng,
+            outer_options={"score_mode": "none"}, score_mode="none",
+        ))
     elif with_date and years_in_q:
         year_should = [{
-            "range": {"multidim_event_json.Event_Timeline.date_iso": {
+            "range": {"multidim_event_json.Event_Timeline.time_iso": {
                 "gte": f"{y}-01-01", "lte": f"{y}-12-31"
             }}
         } for y in years_in_q]
-        filters.append({
-            "nested": {
-                "path": "multidim_event_json.Event_Timeline",
-                "query": {"bool": {"should": year_should, "minimum_should_match": 1}},
-                "score_mode": "none"
-            }
-        })
+        filters.append(_in_multidim_child(
+            "Event_Timeline",
+            {"bool": {"should": year_should, "minimum_should_match": 1}},
+            outer_options={"score_mode": "none"}, score_mode="none",
+        ))
 
     shoulds: List[Dict[str, Any]] = []
 
@@ -104,31 +129,53 @@ def build_main_query_body(
         "multidim_event_json.evidence_snippets.text^2",
     ]
     
-    # 1) 一般語義檢索（第一階段只打解析後欄位，不打 rawInfo.content）
-    shoulds.append({
+    # 1) 一般語義檢索。nested 欄位必須在各自的 nested context 查詢，
+    # 不可再把 root / outer nested / child nested 欄位放在同一個 multi_match。
+    outer_fields = [f for f in structured_fields_main if not any(
+        f.startswith(f"{MD_PATH}.{child}.")
+        for child in ("Event", "Event_Timeline", "Person", "Involved_Parties", "evidence_snippets")
+    ) and f.startswith(f"{MD_PATH}.")]
+    root_fields = [f for f in structured_fields_main if not f.startswith(f"{MD_PATH}.")]
+    if root_fields:
+        shoulds.append({"multi_match": {
+            "query": q, "fields": root_fields, "type": "best_fields", "operator": "or"
+        }})
+    shoulds.append(_in_multidim({
         "multi_match": {
             "query": q,
-            "fields": structured_fields_main,
+            "fields": outer_fields,
             "type": "best_fields",
             "operator": "or"
         }
-    })
-    shoulds.append({
-        "simple_query_string": {
-            "query": q,
-            "fields": structured_fields_sqs,
-            "default_operator": "and"
-        }
-    })
+    }))
+    child_fields_main = {
+        child: [f for f in structured_fields_main if f.startswith(f"{MD_PATH}.{child}.")]
+        for child in ("Event", "Event_Timeline", "Person", "Involved_Parties")
+    }
+    for child, fields in child_fields_main.items():
+        shoulds.append(_in_multidim_child(child, {"multi_match": {
+            "query": q, "fields": fields, "type": "best_fields", "operator": "or"
+        }}))
+
+    root_sqs = [f for f in structured_fields_sqs if not f.startswith(f"{MD_PATH}.")]
+    outer_sqs = [f for f in structured_fields_sqs if f.startswith(f"{MD_PATH}.") and not any(
+        f.startswith(f"{MD_PATH}.{child}.")
+        for child in ("Event", "Event_Timeline", "Person", "Involved_Parties", "evidence_snippets")
+    )]
+    if root_sqs:
+        shoulds.append({"simple_query_string": {"query": q, "fields": root_sqs, "default_operator": "and"}})
+    shoulds.append(_in_multidim({"simple_query_string": {
+        "query": q, "fields": outer_sqs, "default_operator": "and"
+    }}))
 
     # 2) 精準加分（keyword/wildcard）
     if q:
         def wc(field, pat): return {"wildcard": {field: {"value": pat}}}
         shoulds.append(wc("communication.subject.keyword", f"*{q}*"))
-        shoulds.append(wc("multidim_event_json.article_title.raw", f"*{q}*"))
+        shoulds.append(_in_multidim(wc("multidim_event_json.article_title.raw", f"*{q}*")))
 
     # 3) 直接命中證據段落（nested + inner_hits）
-    evidence_nested: Dict[str, Any] = {
+    evidence_child: Dict[str, Any] = {
         "nested": {
             "path": "multidim_event_json.evidence_snippets",
             "query": {
@@ -158,7 +205,8 @@ def build_main_query_body(
                 "_source": [
                     "multidim_event_json.evidence_snippets.text",
                     "multidim_event_json.evidence_snippets.source_id",
-                    "multidim_event_json.evidence_snippets.paragraph_id"
+                    "multidim_event_json.evidence_snippets.paragraph_id",
+                    "multidim_event_json.evidence_snippets.event_ids"
                 ],
                 "highlight": {
                     "fields": {
@@ -171,10 +219,11 @@ def build_main_query_body(
             }
         }
     }
+    evidence_nested = _in_multidim(evidence_child)
 
     # ★ 在 nested 裡也加入 all_terms，強化 snippet 命中
     if all_terms:
-        ev_should = evidence_nested["nested"]["query"]["bool"]["should"]
+        ev_should = evidence_child["nested"]["query"]["bool"]["should"]
         for t in all_terms:
             ev_should.append({
                 "match_phrase": {
@@ -190,7 +239,7 @@ def build_main_query_body(
         for t in core_terms:
             entity_shoulds.append({"match_phrase": {"rawInfo.content": t}})
             entity_shoulds.append({"match_phrase": {"communication.subject": t}})
-            entity_shoulds.append({"match_phrase": {"multidim_event_json.article_title": t}})
+            entity_shoulds.append(_in_multidim({"match_phrase": {"multidim_event_json.article_title": t}}))
     
         # 同義詞：用 match（OR），當加分用
         for t in syn_terms:
@@ -240,6 +289,7 @@ def build_main_query_body(
             "communication.subject",
             #"rawInfo.content",
             "multidim_event_json.article_title",
+            "multidim_event_json.article_date_iso",
             "multidim_event_json.evidence_snippets",
             "multidim_event_json.Event_Timeline",
             "selectedMessage",
@@ -265,10 +315,13 @@ def build_main_query_body(
         "sort": [
             "_score",
             {
-              "multidim_event_json.Event_Timeline.date_iso": {
+              "multidim_event_json.Event_Timeline.time_iso": {
                   "order": "desc",
                   "mode": "max",
-                  "nested": {"path": "multidim_event_json.Event_Timeline"}
+                  "nested": {
+                      "path": "multidim_event_json",
+                      "nested": {"path": "multidim_event_json.Event_Timeline"}
+                  }
               }
             },
             {"importDT": {"order": "desc"}}
@@ -299,17 +352,19 @@ def build_fallback_query_body(
     shoulds = [
         {"simple_query_string": {
             "query": q,
-            "fields": ["communication.subject^3", "rawInfo.content", "multidim_event_json.article_title^2"]
+            "fields": ["communication.subject^3", "rawInfo.content"]
         }},
-        {"multi_match": {
+        _in_multidim({"match": {"multidim_event_json.article_title": q}}),
+        _in_multidim_child("evidence_snippets", {"match": {
+            "multidim_event_json.evidence_snippets.text": {
             "query": q,
-            "fields": ["communication.subject^2", "rawInfo.content", "multidim_event_json.evidence_snippets.text"]
-        }}
+            "operator": "or"
+        }}})
     ]
     if q:
         def wc(field, pat): return {"wildcard": {field: {"value": pat}}}
         shoulds.append(wc("communication.subject.keyword", f"*{q}*"))
-        shoulds.append(wc("multidim_event_json.article_title.raw", f"*{q}*"))
+        shoulds.append(_in_multidim(wc("multidim_event_json.article_title.raw", f"*{q}*")))
 
     return {
         "size": size or 5,
@@ -319,6 +374,7 @@ def build_fallback_query_body(
             "rawInfo.content",
             "multidim_event_json.evidence_snippets",
             "multidim_event_json.article_title",
+            "multidim_event_json.article_date_iso",
             "multidim_event_json.Event_Timeline"
         ],
         "query": {"bool": {"should": shoulds, "minimum_should_match": 1, "filter": filters}},

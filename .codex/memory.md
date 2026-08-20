@@ -10,6 +10,12 @@
 
 ## Recent Changes
 
+### 2026-08-20 ES 多事件 nested mapping 相容
+
+- `multidim_event_json.Event` 及事件關聯陣列改為 nested 後，查詢會依 outer event block 與 child nested path 分層建立，不再跨 nested context 混用 multi-match；時間線欄位改讀 `time_iso/time_raw/time_precision`。
+- evidence parser 支援多層 inner hits，並將 `event_ids` 保留到 citation / evidence 輸出；DOC_FOLLOWUP 同時支援 Event 陣列。
+- 驗證：`PYTHONPATH=. pytest tests/test_nested_event_mapping.py tests/test_multidim_shape_normalization.py tests/test_doc_followup_fetcher.py -q`，8 tests passed。
+
 ### 2026-08-13 PURE_LLM 獨立 timeout
 
 - `REPORT_LLM_TIMEOUT` 僅作用於 SRA_REPORT，先前 PURE_LLM 固定等待 180 秒；現新增 `PURE_LLM_TIMEOUT`（預設 180 秒）供 `.env` 獨立調整。

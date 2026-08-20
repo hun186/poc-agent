@@ -87,7 +87,10 @@ def fetch_docs_by_uuid(
         # 統一轉為 blocks 後取第一個 dict，避免 list 沒有 .get() 而中斷 DOC_FOLLOWUP。
         md_blocks = as_blocks(src.get("multidim_event_json") if isinstance(src, dict) else None)
         md = md_blocks[0] if md_blocks else {}
-        ev = (md.get("Event") or {}) if isinstance(md, dict) else {}
+        events = (md.get("Event") or []) if isinstance(md, dict) else []
+        if isinstance(events, dict):
+            events = [events]
+        ev = events[0] if events and isinstance(events[0], dict) else {}
         print("md in fetch_docs_by_uuid:", md)
         timeline = md.get("Event_Timeline") or []
         if not isinstance(timeline, list):
@@ -106,7 +109,7 @@ def fetch_docs_by_uuid(
             src.get("article_date_iso")
             or src.get("date_iso")
             or ev.get("time_iso")
-            or (timeline[0].get("date_iso") if timeline else None)
+            or (timeline[0].get("time_iso") if timeline else None)
             or (src.get("rawInfo", {}) or {}).get("date")
         )
 

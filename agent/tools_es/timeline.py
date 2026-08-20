@@ -15,7 +15,7 @@ from .common import resolve_index, dbg
 
 class ESTimeline(Tool):
     name = "es_timeline"
-    description = "讀取指定 uuid 的 multidim_event_json.Event_Timeline，回傳依日期排序的 {date_iso, date_raw, description}"
+    description = "讀取指定 uuid 的事件時間線，回傳 event_ids、time_iso、time_raw、time_precision 與 description。"
 
     inputs = {
         "uuid": {
@@ -81,12 +81,14 @@ class ESTimeline(Tool):
                         continue
                     items.append(
                         {
-                            "date_iso": t.get("date_iso"),
-                            "date_raw": t.get("date_raw"),
+                            "event_ids": t.get("event_ids") or [],
+                            "time_iso": t.get("time_iso"),
+                            "time_raw": t.get("time_raw"),
+                            "time_precision": t.get("time_precision"),
                             "description": t.get("description"),
                         }
                     )
 
-        items = [i for i in items if i.get("date_iso")]
-        items.sort(key=lambda x: x["date_iso"])
+        items = [i for i in items if i.get("time_iso")]
+        items.sort(key=lambda x: x["time_iso"])
         return {"timeline": items[: (k or 40)]}
