@@ -1,12 +1,14 @@
 # api/routers/export.py
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from fastapi.responses import StreamingResponse
 
 from api.services.export_word_service import ExportWordService
 from shared.http.download_filename import build_content_disposition
 from api.services.api_state_store import API_STORE
+from api.routers.editor_dependencies import current_user, scope_resource_id
+from api.services.auth_store import AuthUser
 
 router = APIRouter()
 
@@ -34,7 +36,9 @@ def _load_out_from_disk(session_id: str, turn_id: str | None) -> dict | None:
 def export_word(
     session_id: str = Query(..., description="會話 session_id"),
     turn_id: str | None = Query(None, description="該輪 turn_id（建議使用 request_id）"),
+    user: AuthUser = Depends(current_user),
 ):
+    session_id = scope_resource_id(user, session_id)
     raw = API_STORE.read_raw() or {}
     last = raw.get("last_structured") or {}
     hist = raw.get("structured_history") or {}
