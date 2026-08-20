@@ -33,13 +33,6 @@ def bearer_token(authorization: str | None) -> str:
     return token.strip()
 
 
-def scope_resource_id(user: AuthUser, resource_id: str) -> str:
-    """Namespace process-local resources so another account cannot guess their IDs."""
-    owner = hashlib.sha256(user.username.encode("utf-8")).hexdigest()[:24]
-    prefix = f"user-{owner}:"
-    return resource_id if resource_id.startswith(prefix) else f"{prefix}{resource_id}"
-
-
 def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
     payload = parse_token(bearer_token(authorization))
     if not payload:

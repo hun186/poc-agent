@@ -10,6 +10,14 @@
 
 ## Recent Changes
 
+### 2026-08-20 OpenWebUI agent API 相容性修復
+
+- 前次 security patch 超出使用者要求範圍，把 Editor bearer token 強制套到 `/v1/models` 與 `/v1/chat/completions`，導致既有 OpenWebUI 連線持續收到 401；本次已還原 agent models/chat/docs/export 的既有公開整合 contract、原 session key 與 CORS 行為。
+- SRA Editor、Excel 匯入、SQL 資料管理的 role、owner、enabled-task allowlist、SQL identifier 與 filename/path traversal 防護均保留。
+- 新增 route regression，明確確認 OpenWebUI 所需 models/chat 以及其 docs/export 輔助路由不依賴 Editor `current_user`。
+- 驗證：OpenWebUI/Editor/Excel/SQL/portable targeted suite 71 tests passed；auth store 單獨執行 21 tests passed；`TestClient(app).get('/v1/models')` 未帶 Authorization 實際回傳 200 `object=list`。
+- 完整 `PYTHONPATH=. pytest tests -q` 為 221 passed / 2 個既有失敗（auth module reload identity、Vercel mock mode expectation）；OpenWebUI 相容性修復未新增失敗。
+
 ### 2026-08-20 檔名 / config path IDOR 防護
 
 - 發現 `overwrite=true` 時 db_operator 只要知道任務設定檔名稱即可覆寫其他建立者的 JSON；現改為僅原建立者可覆寫自己的 pending 任務，已啟用任務僅 superuser 可覆寫。

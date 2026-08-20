@@ -4,7 +4,7 @@
 
 - 本專案主要對外 API 由 FastAPI 提供，常用路由集中在 `sra_api/routers/`；OpenAI-compatible chat、Editor/Auth、Excel→SQL 匯入與 SQL 來源資料編輯器是目前主要 contract。
 - Auth 使用 bearer token；角色階層為 `data_reader` < `data_editor` < `db_operator` < `superuser`。`GET /v1/auth/me` 回傳目前使用者資訊；登入、註冊、帳號審核、重設密碼與 unlock login contract 詳見歸檔歷史。
-- `GET /v1/models`、`POST /v1/chat/completions`、`GET /v1/docs/{doc_id}`、`GET /v1/docs/{doc_id}/fulltext`、`GET /v1/export/word` 皆要求有效 bearer token；`GET /healthz` 是刻意保留的公開健康探針。Chat / export session 僅能在建立它的登入帳號 namespace 內存取。
+- `GET /v1/models`、`POST /v1/chat/completions`、`GET /v1/docs/{doc_id}`、`GET /v1/docs/{doc_id}/fulltext`、`GET /v1/export/word` 維持 OpenWebUI-compatible 公開整合 contract，不要求 Editor bearer token；`GET /healthz` 同樣公開。Editor/Auth、Excel 匯入與 SQL 資料管理端點才套用角色授權。
 - Chat completion API 維持 OpenAI-compatible response shape；Editor 文件 API 與 form-config API 維持既有 ES 文件讀寫、mapping metadata 合併與 audit 記錄契約。
 - Excel→SQL 匯入流程：`GET /v1/excel-to-sql/dashboard-tasks` 列出 `dashboard.enabled=true` 任務；`POST /v1/excel-to-sql/import-records` 建立上傳記錄；`POST /v1/excel-to-sql/import-records/{id}/preview` 預掃描；`POST /v1/excel-to-sql/import-records/{id}/confirm` 實際匯入 SQL。
 - Excel→SQL dashboard：`GET /v1/excel-to-sql/dashboard` 支援 audit time range、status/source/user/destination/hash/payload filters、chart bucket 與 paging。`db_operator` 以上可取得 `can_delete=true` 與操作型 metadata；較低角色會移除 destination table / source config path 等操作資訊。

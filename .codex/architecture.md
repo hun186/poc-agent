@@ -27,8 +27,8 @@
 - Dashboard、Excel upload/import 與單列/批次 SQL 修改共用同一份已啟用任務白名單；任務 JSON filename 不是授權憑證，overwrite 另以 `dashboard.created_by` 與 superuser 狀態檢查。
 - Auth roles 為 `data_reader`、`data_editor`、`db_operator`、`superuser`；前端 session 使用同源 localStorage key `sra_editor_token`。
 - Vercel mock runtime 與正式 ES / SQL 路徑分離，mock response 必須揭露其狀態。
-- `/v1/chat/completions`、`/v1/models`、`/v1/docs/*`、`/v1/export/word` 均位於 bearer auth boundary；chat state key 以登入帳號的不可逆短雜湊 namespace 隔離。`/healthz` 保持公開供探針使用。
-- 跨來源瀏覽器存取採 `CORS_ALLOWED_ORIGINS` 明確白名單；未設定時不安裝 CORS middleware，僅允許同源。
+- OpenWebUI 整合面 `/v1/chat/completions`、`/v1/models`、`/v1/docs/*`、`/v1/export/word` 維持既有無 Editor bearer token 的 contract；Editor/Auth 與 Excel→SQL/SQL 管理才使用 `sra_editor_token` role boundary。
+- API app 保留既有 permissive CORS 相容性，供既有 OpenWebUI / 內網整合使用；若未來要保護 agent API，需設計不與 Editor token 混用的可選 integration credential。
 
 ## Recent Changes
 

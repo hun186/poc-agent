@@ -2,7 +2,7 @@
 
 ## 高優先度
 
-- 
+- 若部署環境需要保護 OpenWebUI agent API，設計獨立、可選的 integration API key 或 gateway auth；不可直接重用 Editor bearer token，且需提供 OpenWebUI 設定與相容遷移文件。
 
 ## 中優先度
 

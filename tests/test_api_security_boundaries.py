@@ -7,9 +7,8 @@ from data_ingestion.excel_to_sql.sql_utils import quote_ident, quote_object_path
 from data_ingestion.excel_to_sql.task_configs import create_task_config
 from data_ingestion.excel_to_sql.user_import_storage import _record_path
 from portable_auth_pack.fastapi_auth_pack.dependencies import bearer_token as portable_bearer_token
-from sra_api.routers import chat, docs, export
-from sra_api.routers.editor_dependencies import bearer_token, scope_resource_id
-from sra_api.services.auth_store import AuthUser
+from api.routers import chat, docs, export
+from api.routers.editor_dependencies import bearer_token
 
 
 ROUTERS = (chat.router, docs.router, export.router)
@@ -34,13 +33,9 @@ def _route(path: str, method: str):
         ("/v1/export/word", "GET"),
     ],
 )
-def test_sensitive_api_routes_require_authentication(path: str, method: str) -> None:
+def test_openwebui_agent_routes_remain_public(path: str, method: str) -> None:
     route = _route(path, method)
-    dependency_calls = {dependency.call for dependency in route.dependant.dependencies}
-    assert any(
-        call.__name__ == "current_user" and call.__module__.endswith("routers.editor_dependencies")
-        for call in dependency_calls
-    )
+    assert not route.dependant.dependencies
 
 
 def test_health_check_remains_public() -> None:
@@ -53,15 +48,6 @@ def test_bearer_parser_rejects_malformed_values(parser, value: str | None) -> No
     with pytest.raises(HTTPException) as exc_info:
         parser(value)
     assert exc_info.value.status_code == 401
-
-
-def test_session_resources_are_scoped_per_user_and_idempotent() -> None:
-    alice = AuthUser(username="alice", role="data_reader", status="active")
-    bob = AuthUser(username="bob", role="data_reader", status="active")
-    alice_key = scope_resource_id(alice, "conversation-1")
-    assert alice_key != scope_resource_id(bob, "conversation-1")
-    assert scope_resource_id(alice, alice_key) == alice_key
-    assert scope_resource_id(bob, alice_key) != alice_key
 
 
 def test_sql_identifiers_are_quoted_and_structurally_validated() -> None:
