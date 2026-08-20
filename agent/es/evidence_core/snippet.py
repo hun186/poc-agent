@@ -65,4 +65,5 @@ def build_evidence_snippet(
         article_title=h.article_title,
         paragraph_id=c.paragraph_id,
         source_id=c.source_id,
+        event_ids=c.event_ids,
     )

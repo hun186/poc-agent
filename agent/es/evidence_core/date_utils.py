@@ -59,7 +59,7 @@ def collect_timeline_dates(src: dict, *, topk: int) -> List[str]:
         for t in ets:
             if not isinstance(t, dict):
                 continue
-            di = normalize_iso_date(t.get("date_iso"))
+            di = normalize_iso_date(t.get("time_iso"))
             if di and di not in seen:
                 seen.add(di)
                 uniq.append(di)

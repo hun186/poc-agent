@@ -29,6 +29,7 @@
 
 ## Recent Changes
 
+- 2026-08-20：結構化事件檢索採 `multidim_event_json` outer nested + Event / Timeline / Person / Party / evidence child nested 兩層查詢；`event_id/event_ids` 為跨事件子結構的關聯鍵。
 - 2026-08-13：關鍵字提取裁切限制於 extractor 呼叫邊界，不改寫下游共用查詢。
 - 2026-08-13：Chat router 新增 bounded head/tail input view，大型資料只在執行階段交給模型。
 - 2026-07-01～07-04：SQL 來源編輯 / 統計與 Excel 匯入全域樹狀導航完成。

@@ -67,12 +67,12 @@ class ESSearchNews(Tool):
         },
         "date_from": {
             "type": "string",
-            "description": "ISO 起始日期（YYYY-MM-DD）；nested 過濾 Event_Timeline.date_iso",
+            "description": "ISO 起始日期（YYYY-MM-DD）；nested 過濾 Event_Timeline.time_iso",
             "nullable": True
         },
         "date_to": {
             "type": "string",
-            "description": "ISO 結束日期（YYYY-MM-DD）；nested 過濾 Event_Timeline.date_iso",
+            "description": "ISO 結束日期（YYYY-MM-DD）；nested 過濾 Event_Timeline.time_iso",
             "nullable": True
         },
         "selected_boost": {
