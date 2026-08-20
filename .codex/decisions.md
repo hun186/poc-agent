@@ -21,12 +21,16 @@
 ### Stable project decisions
 
 - API runtime source 使用 `sra_api/`，`api/` 僅為 compatibility layer；對外 import / endpoint contract 優先保持相容。
+- Compatibility package 內部引用同層模組時採 relative import，避免同一實體檔案同時以 `api.*` 與 `sra_api.*` 兩個 module identity 載入；移除已公開 symbol 時先保留無副作用 compatibility shim，讓 rolling / 部分同步部署可啟動。
 - Route、prompt 或大型服務拆分時保留原 facade，避免一次迫使 routes、tests 與外部使用者遷移。
 - Editor 欄位結構以 Elasticsearch mapping metadata 為型別權威，form config 負責 UI layout；mapping 不可用時明確降級。
 - Excel→SQL 任務由 db_operator 建立 pending 設定、superuser 審核啟用；來源資料工具限定啟用任務白名單，不提供 arbitrary SQL。
 - SQL / ES 跨系統刪除不在 request 內同步硬刪，後續應採 lineage + outbox / tombstone / 補償流程。
 - Mock preview 不能冒充正式成功；production-like 環境預設關閉免密入口，mock token 與資料邊界需明確標記。
 - Bearer token 不放 URL；同源前端身份以 localStorage 承接，長期可評估 HttpOnly cookie + CSRF。
+- Agent/OpenWebUI integration API 與 Editor 管理 API 是不同 trust boundary；不得直接把 `sra_editor_token` 強制套到 OpenWebUI 的 models/chat/docs/export contract。未來若需 agent API auth，應新增可選且可由 OpenWebUI 設定的 integration credential，並提供相容遷移。
+- SQL 值一律參數化；無法參數化的 identifier 必須經結構驗證並使用 SQL Server bracket quoting。ES document ID 只允許 exact lookup，不以使用者輸入建立 wildcard fallback。
+- Filename、config path、record ID 與其他可猜測 locator 只用來定位資源，不構成授權；所有寫入仍須在 service boundary 驗證 owner、role 或已啟用任務白名單，不能只依賴前端隱藏清單。
 - 靜態 UI 子頁使用共用全域樹狀導航，不另建平行大按鈕導覽體系。
 
 ## Recent Changes

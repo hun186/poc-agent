@@ -38,7 +38,7 @@ API_STORE = APIStateStore(
     max_messages_per_session=API_STORE_MAX_MSGS,
 )
 '''
-from sra_api.routers.chat_support import (
+from .chat_support import (
     ChatPayload,
     build_citations,
     detect_meta_kind,
