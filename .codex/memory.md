@@ -10,6 +10,13 @@
 
 ## Recent Changes
 
+### 2026-08-20 Ollama 遠端模型設定與 router timeout 修正
+
+- 修正共用 `call_llm()` 未把呼叫端的 `model` override 放進實際 payload 的問題；router / report 等子流程現在會使用各自指定的模型。
+- router 的固定 120 秒等待改為可由 `ROUTER_LLM_TIMEOUT` 設定，並補上從 API 工作站直接測試 Ollama `/api/chat` 的部署文件。
+- 驗證：`PYTHONPATH=. pytest tests/test_ollama_client_config.py tests/test_routing_input.py tests/test_pure_llm_timeout.py -q`，7 tests passed。
+- 此容器透過環境 proxy 存取遠端私有 IP 時收到 HTTP 403，故實際 Ollama 推論仍須在部署 API 的遠端工作站依文件 curl 驗證。
+
 ### 2026-08-20 ES 多事件 nested mapping 相容
 
 - `multidim_event_json.Event` 及事件關聯陣列改為 nested 後，查詢會依 outer event block 與 child nested path 分層建立，不再跨 nested context 混用 multi-match；時間線欄位改讀 `time_iso/time_raw/time_precision`。

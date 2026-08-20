@@ -108,6 +108,27 @@ query 後，無意間傳播至現在或未來新增的下游功能。
 PURE_LLM_TIMEOUT=900
 ```
 
+### Ollama 遠端部署檢查
+
+`GET /api/tags` 只證明 Ollama HTTP 服務可達，並不會載入模型或執行推論。部署前應從
+**API 所在工作站**直接測試實際模型的 `/api/chat`；模型名稱必須與 `/api/tags` 回傳值完全一致：
+
+```bash
+curl -sS "$MODEL_BASE_URL/api/tags"
+curl -sS --max-time 300 "$MODEL_BASE_URL/api/chat" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"<EXACT_MODEL_NAME>","messages":[{"role":"user","content":"只回答 OK"}],"stream":false}'
+```
+
+至少設定 `MODEL_ID=<EXACT_MODEL_NAME>`；若 router 或 report 使用不同模型，也應分別設定
+`ROUTER_MODEL_ID`、`REPORT_MODEL_ID`。router 預設等待 120 秒，可用
+`ROUTER_LLM_TIMEOUT` 調整；一般回答與報告則分別使用 `PURE_LLM_TIMEOUT`、
+`REPORT_LLM_TIMEOUT`。大型模型第一次載入可能超過兩分鐘，應先以 `/api/chat` 預熱，
+再依實測時間調整 timeout。
+
+SRA API 自己的 `GET /v1/models` 是 OpenAI-compatible 服務探索端點，只回報 SRA 服務名稱，
+不能用來確認下游 Ollama 模型已載入或可在 timeout 內完成推論。
+
 這個值是 Python HTTP client 等待模型服務的 timeout，不會縮短輸入，也不會讓模型本身運算變快。
 若設為 900 秒後仍在更早的固定時間中斷，應另外檢查反向代理、API gateway、load balancer、瀏覽器
 或部署平台的 request timeout。對極長輸入而言，提高 timeout 只能延長等待；若模型 context window

@@ -206,7 +206,7 @@ def call_llm(
     try:
         return client.chat(
             messages,
-            extra_params=extra_params or {},
+            extra_params=params,
             timeout=timeout,
         )
     except Exception as e:
