@@ -9,7 +9,7 @@ def test_editor_array_render_initializes_missing_arrays_from_schema():
 
 def test_editor_form_config_covers_reference_nested_fields():
     config = Path("config/editor_form.default.json").read_text(encoding="utf-8")
-    for field in ["date_raw", "date_precision", "party_role", "quote", "action", "stance", "relation", "confidence"]:
+    for field in ["time_raw", "time_precision", "party_role", "quote", "action", "stance", "relation", "confidence"]:
         assert f'"path": "{field}"' in config
 
 

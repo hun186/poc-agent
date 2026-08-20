@@ -33,6 +33,26 @@ def test_fulltext_endpoint_reads_multidim_json_string_and_all_timeline_blocks(mo
 
     assert body["title"] == "第一區塊標題"
     assert body["date"] == "2026-03-12"
+
+
+def test_fulltext_endpoint_reads_event_arrays_and_new_timeline_time_iso(monkeypatch):
+    monkeypatch.setattr(
+        docs_router,
+        "_get_doc_source_or_404",
+        lambda doc_id: {
+            "uuid": doc_id,
+            "rawInfo": {"content": "全文內容"},
+            "multidim_event_json": [{
+                "Event": [{}, {"time_iso": "2026-06-23T09:00:00Z"}],
+                "Event_Timeline": [{"time_iso": "2026-06-24T00:00:00Z"}],
+            }],
+        },
+    )
+
+    response = docs_router.get_fulltext_on_demand("doc-new", format="json")
+    body = json.loads(response.body.decode("utf-8"))
+
+    assert body["date"] == "2026-06-23T09:00:00Z"
     assert body["full_text"] == "全文內容"
 
 

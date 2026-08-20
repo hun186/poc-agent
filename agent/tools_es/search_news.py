@@ -26,22 +26,6 @@ from .common import (
 class ESSearchNews(Tool):
     name = "es_search_news"
     description = "BM25 + nested 日期過濾；回傳證據段落、uuid、subject、分數等。"
-    '''
-    inputs = {
-        "query": {"type": "string", "description": "使用者查詢關鍵字（必填）", "nullable": True},
-        "must_high_value": {"type": "boolean", "description": "是否只回傳 AI 判定高價值文件（預設 False：改以加權提升）", "default": False, "nullable": True},
-        "must_selected": {"type": "boolean", "description": "是否只回傳人審選取（selectedMessage=true）的文件（預設 False）", "default": False, "nullable": True},
-        "size": {"type": "integer", "description": "返回筆數上限（1–10000；預設 10000）", "default": 10000, "minimum": 1, "maximum": 10000, "nullable": True},
-        "date_from": {"type": "string", "description": "ISO 起始日期（YYYY-MM-DD）；nested 過濾 Event_Timeline.date_iso", "nullable": True},
-        "date_to": {"type": "string", "description": "ISO 結束日期（YYYY-MM-DD）；nested 過濾 Event_Timeline.date_iso", "nullable": True},
-        "selected_boost": {"type": "number", "description": "人審文件加權（function_score weight；預設 6.0）", "default": 6.0, "nullable": True},
-        "high_value_boost": {"type": "number", "description": "AI 高價值文件加權（function_score weight；預設 2.5）", "default": 2.5, "nullable": True},
-        "recency_boost": {"type": "boolean", "description": "是否啟用「時間衰減」新鮮度加分（預設 False）", "default": False, "nullable": True},
-        "recency_field": {"type": "string", "description": "新鮮度欄位（預設 importDT，可改 multidim_event_json.update_time_ai）", "default": "importDT", "nullable": True},
-        "recency_scale": {"type": "string", "description": "高斯衰減尺度（如 '30d'、'90d'；預設 '30d'）", "default": "30d", "nullable": True},
-        "index_hint": {"type": "string", "description": "由 LLM 分流傳入的索引提示字串；若未提供則使用環境變數 ES_INDEX", "nullable": True},
-    }
-    '''
     inputs = {
         "query": {
             "type": "string",
