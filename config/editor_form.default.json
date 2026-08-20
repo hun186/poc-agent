@@ -174,13 +174,13 @@
           "add_label": "新增 Timeline",
           "fields": [
             {
-              "path": "date_iso",
-              "label": "date_iso",
+              "path": "time_iso",
+              "label": "time_iso",
               "type": "text"
             },
             {
-              "path": "date_raw",
-              "label": "date_raw",
+              "path": "time_raw",
+              "label": "time_raw",
               "type": "text"
             },
             {
@@ -191,12 +191,6 @@
             {
               "path": "time_precision",
               "label": "time_precision",
-              "type": "text",
-              "compact_hide": true
-            },
-            {
-              "path": "date_precision",
-              "label": "date_precision",
               "type": "text",
               "compact_hide": true
             }

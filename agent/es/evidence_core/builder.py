@@ -68,9 +68,10 @@ def build_hits_and_evidence(
     out_hits, stats = parse_es_hits(es_hits, query_for_snippet=query_for_snippet, config=config)
 
     logger.info(
-        "build_hits_and_evidence: es_hits=%d out_hits=%d citations=%d inner_used=%d fallback_used=%d "
+        "build_hits_and_evidence: es_hits=%d out_hits=%d citations=%d inner_used=%d source_evidence_used=%d fallback_used=%d "
         "term_groups=%d effective_terms=%d date_range=%s~%s",
-        stats["n_es_hits"], len(out_hits), stats["n_total_citations"], stats["n_inner_used"], stats["n_fallback_used"],
+        stats["n_es_hits"], len(out_hits), stats["n_total_citations"], stats["n_inner_used"],
+        stats["n_source_evidence_used"], stats["n_fallback_used"],
         len(term_groups), len(effective_terms),
         date_from or "N/A", date_to or "N/A",
     )

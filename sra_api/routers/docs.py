@@ -121,13 +121,19 @@ def get_fulltext_on_demand(
         or doc_id
     )
 
-    # ==== 3) 日期：優先用 Event.time_iso，再用 Event_Timeline 的最大 date_iso ====
+    # ==== 3) 日期：優先用 Event.time_iso，再用 Event_Timeline 的最大 time_iso ====
     def infer_article_date(src_doc: dict) -> str | None:
         mdj_blocks = as_blocks(src_doc.get("multidim_event_json") if isinstance(src_doc, dict) else None)
         dates: list[str] = []
         for mdj in mdj_blocks:
-            evt = mdj.get("Event") or {}
-            if isinstance(evt, dict):
+            events = json_load_maybe(mdj.get("Event") or [])
+            if isinstance(events, dict):
+                events = [events]
+            if not isinstance(events, list):
+                events = []
+            for evt in events:
+                if not isinstance(evt, dict):
+                    continue
                 time_iso = evt.get("time_iso")
                 if isinstance(time_iso, str) and time_iso.strip():
                     return time_iso.strip()
@@ -140,7 +146,9 @@ def get_fulltext_on_demand(
             for item in tl:
                 if not isinstance(item, dict):
                     continue
-                di = item.get("date_iso")
+                # date_iso is retained only for documents written before the
+                # nested timeline migration; new documents use time_iso.
+                di = item.get("time_iso") or item.get("date_iso")
                 if isinstance(di, str) and di.strip():
                     dates.append(di.strip())
         if dates:

@@ -12,7 +12,7 @@ def _find_field(section, path):
 def test_editor_form_config_enriches_visible_fields_from_es_mapping(monkeypatch):
     mapping = {
         "multidim_event_json.Event_Timeline": {"type": "nested", "has_properties": True},
-        "multidim_event_json.Event_Timeline.date_iso": {"type": "date"},
+        "multidim_event_json.Event_Timeline.time_iso": {"type": "date"},
         "multidim_event_json.Event_Timeline.description": {"type": "text"},
         "multidim_event_json.evidence_snippets": {"type": "nested", "has_properties": True},
         "multidim_event_json.evidence_snippets.confidence": {"type": "integer"},
@@ -32,10 +32,10 @@ def test_editor_form_config_enriches_visible_fields_from_es_mapping(monkeypatch)
     timeline = _find_section(schema, "multidim_event_json.Event_Timeline")
     assert timeline["mapping"]["type"] == "nested"
 
-    date_iso = _find_field(timeline, "date_iso")
-    assert date_iso["mapping_path"] == "multidim_event_json.Event_Timeline.date_iso"
-    assert date_iso["mapping"]["type"] == "date"
-    assert date_iso["type"] == "date"
+    time_iso = _find_field(timeline, "time_iso")
+    assert time_iso["mapping_path"] == "multidim_event_json.Event_Timeline.time_iso"
+    assert time_iso["mapping"]["type"] == "date"
+    assert time_iso["type"] == "date"
 
     description = _find_field(timeline, "description")
     assert description["mapping"]["type"] == "text"
@@ -60,6 +60,6 @@ def test_editor_form_config_keeps_layout_when_mapping_unavailable(monkeypatch):
     assert body["mapping_ok"] is False
     assert body["mapping_field_count"] == 0
     timeline = _find_section(body["schema"], "multidim_event_json.Event_Timeline")
-    date_iso = _find_field(timeline, "date_iso")
-    assert "mapping" not in date_iso
-    assert date_iso["type"] == "text"
+    time_iso = _find_field(timeline, "time_iso")
+    assert "mapping" not in time_iso
+    assert time_iso["type"] == "text"

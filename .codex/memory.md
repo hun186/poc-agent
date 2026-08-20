@@ -117,3 +117,9 @@
 - 補上實際 HTTP regression tests，而非只檢查 FastAPI dependency metadata：未附 Editor token 時，文件詳情、全文 JSON、全文 TXT 附件與 Word DOCX 下載皆須成功。
 - 驗證涵蓋回傳內容及下載 headers（Content-Type / Content-Disposition），確認 OpenWebUI 文獻區點擊查閱、下載資料庫文件，以及報告 Word 匯出均沿用公開 integration contract。
 - 驗證：`PYTHONPATH=. pytest tests/test_api_security_boundaries.py tests/test_multidim_shape_normalization.py tests/test_export_word_service.py -q`，33 tests passed。
+
+### 2026-08-20 nested evidence source fallback 修復
+
+- 修正 evidence parser 僅依賴 `inner_hits.evi` 的缺口：現在依序使用 inner hits、`_source.multidim_event_json[*].evidence_snippets`、舊版 `rawInfo.content`，並保留 event IDs、形狀正規化與每文件 citation 上限。
+- SRA 全文日期抽取支援 nested `Event` 陣列與 `Event_Timeline.time_iso`，仍保留舊 `date_iso` 文件讀取相容；mock mapping、mock timeline fixtures 與 Editor timeline schema 對齊 nested/time 欄位。
+- 驗證：nested/parser/docs/mock/editor targeted suite 25 tests passed；全套在主要修正後為 232 passed / 2 個既有失敗（auth module reload identity、Vercel mock mode expectation）。

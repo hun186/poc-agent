@@ -38,9 +38,9 @@ MOCK_DOCS: dict[str, dict[str, dict[str, Any]]] = {
                     "Event_Summary": "联合国秘书长潘基文在印尼强震、海啸及默拉皮火山喷发造成重大伤亡后，宣布联合国随时准备提供人道援助，并与印尼政府共同评估灾情。",
                     "Event.consequence": "近180人死亡、数百人失踪、约500所房屋受损，约4万人被迫撤离。",
                     "Event_Timeline": [
-                        {"date_iso": "2010-10-25T00:00:00.000Z", "date_precision": "day", "date_raw": "2010年10月25日", "description": "印尼苏门答腊岛以西发生7.2级地震，引发海啸。"},
-                        {"date_iso": "2010-10-27T00:00:00.000Z", "date_precision": "day", "date_raw": "2010年10月27日", "description": "中爪哇的默拉皮火山发生喷发。"},
-                        {"date_iso": "2010-10-28T00:00:00.000Z", "date_precision": "day", "date_raw": "2010年10月28日", "description": "潘基文发表声明，表示联合国随时准备向灾区提供援助。"},
+                        {"time_iso": "2010-10-25T00:00:00.000Z", "time_precision": "day", "time_raw": "2010年10月25日", "description": "印尼苏门答腊岛以西发生7.2级地震，引发海啸。"},
+                        {"time_iso": "2010-10-27T00:00:00.000Z", "time_precision": "day", "time_raw": "2010年10月27日", "description": "中爪哇的默拉皮火山发生喷发。"},
+                        {"time_iso": "2010-10-28T00:00:00.000Z", "time_precision": "day", "time_raw": "2010年10月28日", "description": "潘基文发表声明，表示联合国随时准备向灾区提供援助。"},
                     ],
                     "Involved_Parties": [{"party_name": "联合国教科文组织", "party_role": "评估海啸报警系统表现"}],
                     "Person": [
@@ -86,10 +86,10 @@ MOCK_DOCS: dict[str, dict[str, dict[str, Any]]] = {
                     "Event_Summary": "潘基文在联合国纽约总部举行的记者会上指出，面对埃博拉疫情、气候变化等多重全球危机，联合国将在第69届联大期间展示其不可替代的作用，并主导多场高级别会议。",
                     "Event.consequence": "联合国将在联大峰会期间展示其不可替代的作用，并将主持针对埃博拉疫情、气候变化等危机的高级别讨论。",
                     "Event_Timeline": [
-                        {"date_iso": "2014-09-16T00:00:00.000Z", "date_precision": "day", "date_raw": "2014 年 9 月 16 日", "description": "潘基文在记者会上发表讲话，指出联合国在联大期间的不可替代作用。"},
-                        {"date_iso": "2014-09-18T00:00:00.000Z", "date_precision": "day", "date_raw": "两天之后", "description": "安理会将就危及西非和其它地区的埃博拉疫情召开一次紧急会议。"},
-                        {"date_iso": "2014-09-21T00:00:00.000Z", "date_precision": "day", "date_raw": "9月21日", "description": "潘基文将亲自参加在纽约举行的“人民气候游行”。"},
-                        {"date_iso": "2014-09-27T00:00:00.000Z", "date_precision": "day", "date_raw": "9月27日", "description": "潘基文将亲自参加在纽约中央公园举行的“全球公民节”。"},
+                        {"time_iso": "2014-09-16T00:00:00.000Z", "time_precision": "day", "time_raw": "2014 年 9 月 16 日", "description": "潘基文在记者会上发表讲话，指出联合国在联大期间的不可替代作用。"},
+                        {"time_iso": "2014-09-18T00:00:00.000Z", "time_precision": "day", "time_raw": "两天之后", "description": "安理会将就危及西非和其它地区的埃博拉疫情召开一次紧急会议。"},
+                        {"time_iso": "2014-09-21T00:00:00.000Z", "time_precision": "day", "time_raw": "9月21日", "description": "潘基文将亲自参加在纽约举行的“人民气候游行”。"},
+                        {"time_iso": "2014-09-27T00:00:00.000Z", "time_precision": "day", "time_raw": "9月27日", "description": "潘基文将亲自参加在纽约中央公园举行的“全球公民节”。"},
                     ],
                     "Involved_Parties": [
                         {"party_name": "联合国", "party_role": "国际组织"},
@@ -140,7 +140,7 @@ MOCK_DOCS: dict[str, dict[str, dict[str, Any]]] = {
                     "Event_Summary": "福隆88號於2025年8月1日自花蓮港出海，以延繩釣捕撈午仔魚，回報漁獲量約498公斤，漁獲情況正常。",
                     "Event.consequence": "回報漁獲量約498kg，漁獲量正常。",
                     "Event_Timeline": [
-                        {"date_iso": "2025-08-01T00:00:00.000Z", "date_precision": "day", "date_raw": "2025-08-01", "description": "福隆88號今日自花蓮港出港，以延繩釣捕撈午仔魚，回報漁獲量約498kg。"},
+                        {"time_iso": "2025-08-01T00:00:00.000Z", "time_precision": "day", "time_raw": "2025-08-01", "description": "福隆88號今日自花蓮港出港，以延繩釣捕撈午仔魚，回報漁獲量約498kg。"},
                     ],
                     "Involved_Parties": [{"party_name": "福隆88號", "party_role": "漁船"}],
                     "evidence_snippets": [
@@ -179,14 +179,16 @@ MAPPING = {
                 "content_length": {"type": "long"},
                 "sourceSql": {"properties": {"contentColumn": {"type": "keyword"}, "rowDTColumn": {"type": "keyword"}, "titleColumn": {"type": "keyword"}}},
                 "multidim_event_json": {
+                    "type": "nested",
                     "properties": {
                         "article_title": {"type": "text", "fields": {"raw": {"type": "keyword"}}},
                         "article_date_iso": {"type": "date"},
                         "Event_Summary": {"type": "text"},
-                        "Event_Timeline": {"properties": {"date_iso": {"type": "date"}, "date_raw": {"type": "keyword"}, "date_precision": {"type": "keyword"}, "description": {"type": "text"}}},
-                        "Involved_Parties": {"properties": {"party_name": {"type": "text"}, "party_role": {"type": "text"}}},
-                        "Person": {"properties": {"name": {"type": "text"}, "role": {"type": "text"}, "quote": {"type": "text"}, "action": {"type": "text"}, "stance": {"type": "keyword"}, "relation": {"type": "text"}}},
-                        "evidence_snippets": {"properties": {"text": {"type": "text"}, "confidence": {"type": "integer"}, "sentence_index": {"type": "integer"}, "char_start": {"type": "integer"}, "char_end": {"type": "integer"}}},
+                        "Event": {"type": "nested", "properties": {"event_id": {"type": "keyword"}, "subject": {"type": "text"}, "object": {"type": "text"}, "action": {"type": "text"}, "location": {"type": "text"}, "time_iso": {"type": "date"}, "time_raw": {"type": "keyword"}, "time_precision": {"type": "keyword"}}},
+                        "Event_Timeline": {"type": "nested", "properties": {"event_ids": {"type": "keyword"}, "time_iso": {"type": "date"}, "time_raw": {"type": "keyword"}, "time_precision": {"type": "keyword"}, "description": {"type": "text"}}},
+                        "Involved_Parties": {"type": "nested", "properties": {"event_ids": {"type": "keyword"}, "party_name": {"type": "text"}, "party_role": {"type": "text"}}},
+                        "Person": {"type": "nested", "properties": {"event_ids": {"type": "keyword"}, "name": {"type": "text"}, "role": {"type": "text"}, "quote": {"type": "text"}, "action": {"type": "text"}, "stance": {"type": "keyword"}, "relation": {"type": "text"}}},
+                        "evidence_snippets": {"type": "nested", "properties": {"event_ids": {"type": "keyword"}, "source_id": {"type": "keyword"}, "paragraph_id": {"type": "keyword"}, "text": {"type": "text"}, "confidence": {"type": "integer"}, "sentence_index": {"type": "integer"}, "char_start": {"type": "integer"}, "char_end": {"type": "integer"}}},
                         "core_entities": {"type": "keyword"},
                         "locations": {"type": "keyword"},
                         "facet": {"type": "keyword"},

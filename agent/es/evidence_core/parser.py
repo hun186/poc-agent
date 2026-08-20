@@ -23,6 +23,7 @@ def parse_es_hits(
     stats = {
         "n_es_hits": len(es_hits or []),
         "n_inner_used": 0,
+        "n_source_evidence_used": 0,
         "n_fallback_used": 0,
         "n_total_citations": 0,
     }
@@ -46,6 +47,39 @@ def parse_es_hits(
             if isinstance(value, (dict, list)):
                 found.extend(named_inner_hits(value, name))
         return found
+
+    def normalized_text(value: Any) -> str:
+        """Normalize scalar/one-element-array ES source values without raising."""
+        value = json_load_maybe(value)
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, list):
+            for item in value:
+                text = normalized_text(item)
+                if text:
+                    return text
+        return ""
+
+    def normalized_ids(value: Any) -> List[str]:
+        value = json_load_maybe(value)
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            value = [value]
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    def citation_from_source(item: Any) -> Citation | None:
+        if not isinstance(item, dict):
+            return None
+        text = normalized_text(item.get("text"))
+        if not text:
+            return None
+        return Citation(
+            text=text,
+            source_id=normalized_text(item.get("source_id")) or None,
+            paragraph_id=normalized_text(item.get("paragraph_id")) or None,
+            event_ids=normalized_ids(item.get("event_ids")),
+        )
 
     for h in es_hits or []:
         src = h.get("_source", {}) or {}
@@ -77,10 +111,10 @@ def parse_es_hits(
         if ih_hits:
             for eh in ih_hits[:config.inner_hit_topk]:
                 esrc = (eh.get("_source") or {})
-                txt = esrc.get("text")
+                txt = normalized_text(esrc.get("text"))
                 sid = esrc.get("source_id")
                 pid = esrc.get("paragraph_id")
-                event_ids = esrc.get("event_ids") or []
+                event_ids = normalized_ids(esrc.get("event_ids"))
 
                 if not txt:
                     nested = {}
@@ -93,25 +127,44 @@ def parse_es_hits(
                         nested = next((item for item in snippets if isinstance(item, dict)), {})
                         if nested:
                             break
-                    txt = nested.get("text")
+                    txt = normalized_text(nested.get("text"))
                     sid = nested.get("source_id")
                     pid = nested.get("paragraph_id")
-                    event_ids = nested.get("event_ids") or []
+                    event_ids = normalized_ids(nested.get("event_ids"))
 
                 if txt:
-                    if isinstance(event_ids, str):
-                        event_ids = [event_ids]
                     citations.append(Citation(
                         text=txt,
-                        source_id=sid,
-                        paragraph_id=pid,
-                        event_ids=[str(item) for item in event_ids if item],
+                        source_id=normalized_text(sid) or None,
+                        paragraph_id=normalized_text(pid) or None,
+                        event_ids=event_ids,
                     ))
 
             if citations:
                 stats["n_inner_used"] += 1
 
-        # fallback
+        # A document can match another nested clause and therefore have no `evi`
+        # inner hit. Its selected _source still contains authoritative structured
+        # evidence, so use that before considering legacy raw content.
+        if not citations:
+            for block in blocks:
+                snippets = json_load_maybe(block.get("evidence_snippets"))
+                if isinstance(snippets, dict):
+                    snippets = [snippets]
+                if not isinstance(snippets, list):
+                    continue
+                for item in snippets:
+                    citation = citation_from_source(item)
+                    if citation is not None:
+                        citations.append(citation)
+                    if len(citations) >= config.citations_per_doc:
+                        break
+                if len(citations) >= config.citations_per_doc:
+                    break
+            if citations:
+                stats["n_source_evidence_used"] += 1
+
+        # Legacy fallback, only when neither inner hits nor structured source won.
         if not citations:
             snippet = make_fallback_snippet(raw_content, query_for_snippet or "", width=config.fallback_width)
             if snippet:
