@@ -64,10 +64,20 @@ def create_task_config(
     actor: str,
     root: Path = CONFIG_ROOT,
     overwrite: bool = False,
+    is_superuser: bool = False,
 ) -> dict[str, Any]:
     target = resolve_task_config_path(str(payload.get("filename") or ""), root=root)
     if target.exists() and not overwrite:
         raise FileExistsError(f"設定檔已存在：{target}")
+    if target.exists():
+        existing = load_json_config(str(target))
+        dashboard = existing.get("dashboard") if isinstance(existing, dict) else None
+        existing_owner = dashboard.get("created_by") if isinstance(dashboard, dict) else None
+        existing_enabled = bool(dashboard.get("enabled")) if isinstance(dashboard, dict) else False
+        if not is_superuser and existing_owner != actor:
+            raise PermissionError("只能覆寫自己建立的任務設定檔")
+        if not is_superuser and existing_enabled:
+            raise PermissionError("已啟用的任務設定檔只能由 superuser 覆寫")
     connection_db = _resolve_connection_source_config(payload, root=root)
     config = build_task_config(payload, connection_db=connection_db)
     config["dashboard"]["created_by"] = actor

@@ -140,7 +140,19 @@ def _normalize_config_path(value: str) -> str:
     return str(Path(str(value or "")).as_posix())
 
 
+def _ensure_default_config_dir(config_dir: str) -> str:
+    configured_root = Path("config/excel_to_sql").resolve()
+    requested_root = Path(str(config_dir or "")).resolve()
+    if requested_root != configured_root:
+        raise HTTPException(
+            status_code=403,
+            detail="設定檔清單只能使用系統管理的 config/excel_to_sql 目錄。",
+        )
+    return str(configured_root)
+
+
 def _ensure_source_editor_config_allowed(user: AuthUser, config: str, config_dir: str) -> None:
+    _ensure_default_config_dir(config_dir)
     requested = _normalize_config_path(config)
     allowed = {
         _normalize_config_path(str(task.get("config_path") or ""))
@@ -194,6 +206,7 @@ def excel_to_sql_dashboard_tasks(
     ),
     user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
+    _ensure_default_config_dir(config_dir)
     return {"tasks": _dashboard_tasks_for_user(user, config_dir)}
 
 
@@ -243,6 +256,7 @@ def excel_to_sql_dashboard_data(
     ),
     user: AuthUser = Depends(current_user),
 ) -> dict[str, Any]:
+    _ensure_source_editor_config_allowed(user, config, "config/excel_to_sql")
     try:
         return dashboard_payload(
             config,
@@ -402,6 +416,7 @@ def excel_to_sql_delete_rows(
     payload: DeleteImportedRowsPayload,
     user: AuthUser = Depends(require_db_operator),
 ) -> dict[str, Any]:
+    _ensure_source_editor_config_allowed(user, payload.config, "config/excel_to_sql")
     try:
         return delete_imported_sql_rows(
             payload.config,
@@ -444,11 +459,16 @@ def excel_to_sql_create_task_config(
 ) -> dict[str, Any]:
     try:
         created = create_task_config(
-            payload.model_dump(), actor=user.username, overwrite=payload.overwrite
+            payload.model_dump(),
+            actor=user.username,
+            overwrite=payload.overwrite,
+            is_superuser=_is_superuser(user),
         )
         return {"task": created}
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -533,6 +553,7 @@ def excel_to_sql_upload_import_record(
     file: UploadFile = File(...),
     user: AuthUser = Depends(require_db_operator),
 ) -> dict[str, Any]:
+    _ensure_source_editor_config_allowed(user, config, "config/excel_to_sql")
     try:
         record = save_upload(
             fileobj=file.file,
