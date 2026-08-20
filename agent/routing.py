@@ -18,6 +18,24 @@ ROUTER_MODEL_ID = (
     or "gpt-oss:120b-32k"
 )
 
+
+def _positive_env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("[router] invalid %s=%r; fallback to %s", name, raw, default)
+        return default
+    if value <= 0:
+        logger.warning("[router] invalid %s=%r; fallback to %s", name, raw, default)
+        return default
+    return value
+
+
+ROUTER_LLM_TIMEOUT = _positive_env_float("ROUTER_LLM_TIMEOUT", 120.0)
+
 AVAILABLE_TOPICS = INDEX_CONFIG["topic_index_map"].keys()
 TOPIC_ENUM_TEXT = " | ".join(AVAILABLE_TOPICS) + " | none"
 TOPIC_DESCRIPTIONS = {
@@ -148,7 +166,7 @@ def llm_route_task(user_msg: str, trace: Optional[Dict[str, Any]] = None) -> dic
                 user_prompt,
                 system_prompt=TASK_ROUTER_SYSTEM,
                 extra_params={"options": {}},
-                timeout=120.0,
+                timeout=ROUTER_LLM_TIMEOUT,
                 model=ROUTER_MODEL_ID,
             )
         t1 = time.perf_counter()
