@@ -2,7 +2,7 @@
 #import os
 import json
 import time
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException
 import traceback
 
 from agent.agent import answer_with_routing
@@ -48,16 +48,13 @@ from .chat_support import (
     resolve_session_key,
     save_session_and_memory,
 )
-from api.routers.editor_dependencies import current_user, scope_resource_id
-from api.services.auth_store import AuthUser
-
 @router.get("/healthz")
 def healthz():
     return {"ok": True}
 
 # --- OpenAI Chat Completions 相容端點（非串流版） ---
 @router.get("/v1/models")
-def list_models(_: AuthUser = Depends(current_user)):
+def list_models():
     return {
         "object": "list",
         "data": [
@@ -73,7 +70,6 @@ def list_models(_: AuthUser = Depends(current_user)):
 def chat_completions(
     payload: ChatPayload,
     request: Request,
-    user: AuthUser = Depends(current_user),
 ):
     sessions = get_sessions()
     last_structured = get_last_structured()
@@ -86,7 +82,7 @@ def chat_completions(
 
     try:
         # 0) 決定 session_key
-        session_key = scope_resource_id(user, resolve_session_key(payload, request))
+        session_key = resolve_session_key(payload, request)
 
         # 建立 trace 雛形
         trace = new_trace(session_id=session_key, request_id=request_id)

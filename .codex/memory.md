@@ -105,3 +105,15 @@
 - `.codex/archive/memory.md-20260623-064506.md`：2026-06-16～2026-06-23。
 - `.codex/archive/memory.md-20260702-021320.md`：2026-06-23～2026-07-02。
 - `.codex/archive/memory.md-20260813-000000.md`：本次濃縮前完整 active memory，涵蓋至 2026-08-13 路由輸入瘦身前。
+
+### 2026-08-20 OpenWebUI 401 merge regression 修復
+
+- 合併 PR #168 後，`sra_api/routers/chat.py`、`docs.py`、`export.py` 意外重新套用 Editor `current_user` dependency，造成未攜帶 Editor token 的 OpenWebUI `GET /v1/models` 回覆 401。
+- 再次移除 agent integration routes 對 Editor bearer token 的依賴，恢復既有公開 OpenAI-compatible models/chat 與 docs/export contract；Editor、Excel→SQL 與管理 API 的授權不變。
+- 驗證：`PYTHONPATH=. pytest tests/test_api_security_boundaries.py -q` 為 24 passed；`TestClient(app).get('/v1/models')` 未帶 Authorization 回傳 200 且 `object=list`。
+
+### 2026-08-20 OpenWebUI 文件與 Word 整合驗證補強
+
+- 補上實際 HTTP regression tests，而非只檢查 FastAPI dependency metadata：未附 Editor token 時，文件詳情、全文 JSON、全文 TXT 附件與 Word DOCX 下載皆須成功。
+- 驗證涵蓋回傳內容及下載 headers（Content-Type / Content-Disposition），確認 OpenWebUI 文獻區點擊查閱、下載資料庫文件，以及報告 Word 匯出均沿用公開 integration contract。
+- 驗證：`PYTHONPATH=. pytest tests/test_api_security_boundaries.py tests/test_multidim_shape_normalization.py tests/test_export_word_service.py -q`，33 tests passed。
