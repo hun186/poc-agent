@@ -1,6 +1,6 @@
 # api/routers/docs.py
 import re
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse, JSONResponse
 from elasticsearch import NotFoundError
 #from api.core.settings import ES, ALL_INDEXES
@@ -8,6 +8,8 @@ from elasticsearch import NotFoundError
 
 from agent.es.es_client import get_es, init_index_cache, ALL_INDEXES
 from agent.es.evidence_core.json_utils import as_blocks, json_load_maybe
+from api.routers.editor_dependencies import current_user
+from api.services.auth_store import AuthUser
 
 router = APIRouter()
 
@@ -69,27 +71,10 @@ def _get_doc_source_or_404(doc_id: str) -> dict:
         src["_index"] = hit.get("_index")
         return src
 
-    # 4) 最後保底：wildcard 模糊比對
-    res = ES.search(
-        index=ALL_INDEXES,
-        body={
-            "size": 1,
-            "_source": True,
-            "query": {"wildcard": {"uuid": {"value": f"*{doc_id}*"}}},
-        },
-    )
-    hits = res.get("hits", {}).get("hits", []) or []
-    if hits:
-        hit = hits[0]
-        src = hit.get("_source", {}) or {}
-        src["_id"] = hit.get("_id")
-        src["_index"] = hit.get("_index")
-        return src
-
     raise HTTPException(status_code=404, detail="document not found")
 
 @router.get("/v1/docs/{doc_id}")
-def get_doc(doc_id: str):
+def get_doc(doc_id: str, _: AuthUser = Depends(current_user)):
     return _get_doc_source_or_404(doc_id)
 @router.get("/v1/docs/{doc_id}/fulltext")
 def get_fulltext_on_demand(
@@ -102,6 +87,7 @@ def get_fulltext_on_demand(
         False,
         description="在 format=txt 時，為 true 則以附件下載形式回傳。",
     ),
+    _: AuthUser = Depends(current_user),
 ):
     """
     按需下載全文：

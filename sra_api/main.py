@@ -12,6 +12,8 @@ from api.core.proctitle import init_proctitle
 # 啟動時先設定 process title
 init_proctitle(app_name="SRA-API")
 
+import os
+
 from fastapi import FastAPI  # , HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -22,13 +24,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+cors_origins = [origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origin.strip()]
+if cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-OpenWebUI-Chat-Id", "X-Conversation-Id", "X-Session-Id"],
+    )
 
 
 @app.get("/", include_in_schema=False)
