@@ -345,6 +345,7 @@ def test_excel_flow_child_pages_use_global_tree_navigation():
     for page_name in page_names:
         html = (STATIC_ROOT / page_name).read_text(encoding="utf-8")
         assert "/static/excel_global_nav.css?v=20260704-global-tree" in html
+        assert "/static/excel_global_nav.js?v=20260821-hover-open" in html
         header = html.split("<header", 1)[1].split("</header>", 1)[0]
         assert 'class="header-actions global-tree-nav" aria-label="全域功能導航"' in header
         assert "<summary>ES 資料庫</summary>" in header
@@ -357,6 +358,20 @@ def test_excel_flow_child_pages_use_global_tree_navigation():
         assert "/agent-data-flow" in header
         assert "前往登入 / 編輯器" in header
         assert "主編輯器" not in header
+        assert "<details open><summary>匯入管理</summary>" not in header
+
+
+def test_excel_global_navigation_opens_on_hover_and_closes_automatically():
+    script = (STATIC_ROOT / "excel_global_nav.js").read_text(encoding="utf-8")
+    assert "window.matchMedia('(hover: hover)').matches" in script
+    assert "menu.addEventListener('mouseenter'" in script
+    assert "closeMenus(menu);" in script
+    assert "menu.open = true;" in script
+    assert "menu.addEventListener('mouseleave'" in script
+    assert "document.addEventListener('pointerdown'" in script
+    assert "if (!nav.contains(event.target)) closeMenus();" in script
+    assert "if (event.key === 'Escape')" in script
+    assert "if (menu.open) closeMenus(menu);" in script
 
 
 def test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline():

@@ -123,3 +123,15 @@
 - 修正 evidence parser 僅依賴 `inner_hits.evi` 的缺口：現在依序使用 inner hits、`_source.multidim_event_json[*].evidence_snippets`、舊版 `rawInfo.content`，並保留 event IDs、形狀正規化與每文件 citation 上限。
 - SRA 全文日期抽取支援 nested `Event` 陣列與 `Event_Timeline.time_iso`，仍保留舊 `date_iso` 文件讀取相容；mock mapping、mock timeline fixtures 與 Editor timeline schema 對齊 nested/time 欄位。
 - 驗證：nested/parser/docs/mock/editor targeted suite 25 tests passed；全套在主要修正後為 232 passed / 2 個既有失敗（auth module reload identity、Vercel mock mode expectation）。
+
+### 2026-08-21 匯入管理子頁導航下拉自動收合
+
+- 匯入管理的五個子頁不再預設展開目前分類；新增共用導航互動腳本，切換選單時只保留一個展開，滑鼠離開、點擊導航外部或按 Escape 都會自動收合。
+- 靜態資產白名單新增共用腳本，並補上所有子頁引用與自動收合行為的靜態 regression test。
+- 驗證：`node --check sra_api/static/excel_global_nav.js` 與 `PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（19 tests passed）。本環境仍無 Playwright / browser runtime，故沿用既有 known issue，以靜態 DOM、JS 語法與 FastAPI 靜態資產路由測試替代截圖。
+
+### 2026-08-21 匯入管理導航滑入自動展開補強
+
+- 修正前次只加入自動收合、未加入滑鼠 hover 展開的缺口：具備 hover 能力的桌機裝置在滑鼠進入導航分類時會自動展開，並關閉其他分類；觸控裝置仍保留原生點擊展開行為。
+- 五個匯入管理子頁同步更新共用腳本 cache-busting 版本，避免瀏覽器沿用僅支援自動收合的舊腳本。
+- 驗證：`node --check sra_api/static/excel_global_nav.js` 與 `PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（19 tests passed）。因既有 Playwright / browser runtime 限制，仍以 JS 語法、DOM 靜態與資產路由測試替代截圖。
