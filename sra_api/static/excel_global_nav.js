@@ -1,5 +1,6 @@
 (function () {
   const navs = document.querySelectorAll('.global-tree-nav');
+  const supportsHover = window.matchMedia('(hover: hover)').matches;
 
   navs.forEach((nav) => {
     const menus = Array.from(nav.querySelectorAll(':scope > details'));
@@ -11,6 +12,12 @@
     };
 
     menus.forEach((menu) => {
+      menu.addEventListener('mouseenter', () => {
+        if (!supportsHover) return;
+        closeMenus(menu);
+        menu.open = true;
+      });
+
       menu.addEventListener('toggle', () => {
         if (menu.open) closeMenus(menu);
       });
