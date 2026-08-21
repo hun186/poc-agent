@@ -155,3 +155,9 @@
 - 修正前次只加入自動收合、未加入滑鼠 hover 展開的缺口：具備 hover 能力的桌機裝置在滑鼠進入導航分類時會自動展開，並關閉其他分類；觸控裝置仍保留原生點擊展開行為。
 - 五個匯入管理子頁同步更新共用腳本 cache-busting 版本，避免瀏覽器沿用僅支援自動收合的舊腳本。
 - 驗證：`node --check sra_api/static/excel_global_nav.js` 與 `PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（19 tests passed）。因既有 Playwright / browser runtime 限制，仍以 JS 語法、DOM 靜態與資產路由測試替代截圖。
+
+### 2026-08-21 匯入管理導航延遲收合
+
+- 匯入管理五個子頁的共用導航改為滑鼠離開後等待 600ms 才收合；若游標在等待期間進入目標選單，會取消排程，避免游標由上層按鈕移向下方功能按鈕途中選單立即消失。
+- 下拉面板上方新增 8px 透明 hover bridge，填補上層按鈕與面板之間的視覺間距；五個子頁同步更新 JS/CSS cache-busting 版本。
+- 驗證：`node --check sra_api/static/excel_global_nav.js` 與 `PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（21 tests passed）。本環境未提供 Chromium / Playwright，依既有 known issue 以 JS 語法、靜態 DOM/CSS 與 FastAPI 資產路由測試替代截圖。

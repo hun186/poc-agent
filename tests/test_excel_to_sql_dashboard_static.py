@@ -32,7 +32,7 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         assert response.status_code == 200, script_url
         assert "application/javascript" in response.headers.get("content-type", ""), script_url
 
-    css_response = TestClient(app).get("/static/excel_global_nav.css?v=20260704-global-tree")
+    css_response = TestClient(app).get("/static/excel_global_nav.css?v=20260821-hover-bridge")
     assert css_response.status_code == 200
     assert "text/css" in css_response.headers.get("content-type", "")
 
@@ -388,8 +388,8 @@ def test_excel_flow_child_pages_use_global_tree_navigation():
     ]
     for page_name in page_names:
         html = (STATIC_ROOT / page_name).read_text(encoding="utf-8")
-        assert "/static/excel_global_nav.css?v=20260704-global-tree" in html
-        assert "/static/excel_global_nav.js?v=20260821-hover-open" in html
+        assert "/static/excel_global_nav.css?v=20260821-hover-bridge" in html
+        assert "/static/excel_global_nav.js?v=20260821-hover-delay" in html
         header = html.split("<header", 1)[1].split("</header>", 1)[0]
         assert 'class="header-actions global-tree-nav" aria-label="全域功能導航"' in header
         assert "<summary>ES 資料庫</summary>" in header
@@ -407,11 +407,18 @@ def test_excel_flow_child_pages_use_global_tree_navigation():
 
 def test_excel_global_navigation_opens_on_hover_and_closes_automatically():
     script = (STATIC_ROOT / "excel_global_nav.js").read_text(encoding="utf-8")
+    styles = (STATIC_ROOT / "excel_global_nav.css").read_text(encoding="utf-8")
     assert "window.matchMedia('(hover: hover)').matches" in script
     assert "menu.addEventListener('mouseenter'" in script
     assert "closeMenus(menu);" in script
     assert "menu.open = true;" in script
     assert "menu.addEventListener('mouseleave'" in script
+    assert "const closeDelayMs = 600;" in script
+    assert "cancelClose(menu);" in script
+    assert "closeTimers.set(menu, window.setTimeout(() => {" in script
+    assert "}, closeDelayMs));" in script
+    assert '.global-tree-nav .global-nav-actions::before' in styles
+    assert 'height:8px' in styles
     assert "document.addEventListener('pointerdown'" in script
     assert "if (!nav.contains(event.target)) closeMenus();" in script
     assert "if (event.key === 'Escape')" in script
