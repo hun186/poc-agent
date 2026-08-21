@@ -10,6 +10,12 @@
 
 ## Recent Changes
 
+### 2026-08-21 代理人資料流程頁全域導航補齊
+
+- `/agent-data-flow` 標題列改用與 Excel→SQL 子頁一致的全域樹狀導航，補齊 ES 資料庫、匯入管理、系統管理、帳號安全及登入／編輯器入口，並將目前流程圖頁標示為 disabled current page。
+- 沿用 `excel_global_nav.css` / `excel_global_nav.js` 的 hover、延遲收合、點擊外部及 Escape 關閉互動，避免建立另一套導航行為。
+- 驗證：`node --check sra_api/static/excel_global_nav.js` 與 `PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py -q` 通過（22 tests）；環境無 Playwright / browser runtime，故依既知限制以靜態 UI test 取代截圖。
+
 ### 2026-08-21 Excel→SQL dashboard 分頁語意更正
 
 - 更正前次將「載入列數上限」與「每頁顯示」視為兩個需要連動的控制項；dashboard API 的 `limit` 實際用於 SQL server-side pagination，是每頁筆數。
