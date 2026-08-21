@@ -224,7 +224,7 @@ def excel_to_sql_dashboard_data(
         None, description="結束時間（ISO 8601；會以 UTC 比對 audit.processed_at）"
     ),
     limit: int = Query(
-        50000, ge=1, le=400000, description="最近事件載入列數上限"
+        2000, ge=1, le=400000, description="每頁顯示的最近 audit 事件筆數"
     ),
     page: int = Query(1, ge=1, description="最近 audit 事件頁碼"),
     status_filter: str | None = Query(None, description="最近 audit 事件：狀態篩選"),

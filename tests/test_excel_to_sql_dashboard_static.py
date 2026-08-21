@@ -107,10 +107,12 @@ def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     assert "function fillRecentWindow()" in html
     assert "function resetDefaultWindow()" in html
     assert "使用回看天數" not in html
-    assert '<div><label>載入列數上限</label><input id="limit" type="number" min="1" max="400000" value="50000" /></div>' in html
-    assert "const pageSize = Math.max(1, Math.min(Number($('limit').value || state.recentPageSize || 50000), 400000));" in html
+    assert '載入列數上限' not in html
+    assert 'id="limit"' not in html
+    assert "recentPageSize: 2000" in html
+    assert "const pageSize = Math.max(1, Math.min(Number(state.recentPageSize || 2000), 400000));" in html
+    assert "pageSizeInputId" not in html
     assert "maxPageSize: 400000" in html
-    assert "$('limit').addEventListener('change', applyAuditFilters)" in html
     assert '<button onclick="refreshDashboardNow()">重新整理</button>' in html
     assert (
         "function applyAuditFilters() { resetRecentPage(); loadDashboard(); }" in html
@@ -125,6 +127,48 @@ def test_dashboard_refresh_and_audit_filters_preserve_explicit_time_range():
     assert "Excel→SQL 匯入查詢儀表板" in html
     assert "匯入任務" in html
     assert "監控任務" not in html
+
+
+def test_dashboard_api_and_ui_default_to_2000_rows_per_page():
+    operation = app.openapi()["paths"]["/v1/excel-to-sql/dashboard"]["get"]
+    limit_parameter = next(
+        parameter for parameter in operation["parameters"] if parameter["name"] == "limit"
+    )
+
+    assert limit_parameter["schema"]["default"] == 2000
+    assert limit_parameter["description"] == "每頁顯示的最近 audit 事件筆數"
+    html = DASHBOARD_HTML.read_text(encoding="utf-8")
+    js = DASHBOARD_JS.read_text(encoding="utf-8")
+    assert 'id="limit"' not in html
+    assert "recentPageSize: 2000" in js
+    assert "Number(state.recentPageSize || 2000)" in js
+
+
+def test_all_adjustable_page_sizes_keep_a_single_authoritative_value():
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+    source_editor = (STATIC_ROOT / "excel_to_sql_source_editor_app.js").read_text(
+        encoding="utf-8"
+    )
+    import_records = (STATIC_ROOT / "excel_to_sql_import_records.js").read_text(
+        encoding="utf-8"
+    )
+    editor_documents = (STATIC_ROOT / "editor_documents.js").read_text(
+        encoding="utf-8"
+    )
+
+    # The dashboard's generated "每頁顯示" control is the only source
+    # of its server-backed page size; there is no separate load-limit field.
+    assert "getPageSize: () => state.recentPageSize" in dashboard
+    assert "setPageSize: size => { state.recentPageSize = size;" in dashboard
+    assert "limit: pageSize" in dashboard
+    assert "$('limit')" not in dashboard
+
+    # The other adjustable pagers use their page-size state directly: the SQL
+    # source editor sends it to the API, while these two paginate in memory.
+    assert "Number(state.pageSize || 50)" in source_editor
+    assert "state.pageSize = Number(data.limit || state.pageSize || 50)" in source_editor
+    assert "pager.pageSize = size" in import_records
+    assert "state.usersPageSize = size" in editor_documents
 
 
 def test_recent_audit_filters_include_destination_table():
