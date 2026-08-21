@@ -449,6 +449,20 @@ def test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline():
     assert "代理人資料運用處理流程" in response.text
 
 
+def test_agent_data_flow_page_uses_global_tree_navigation():
+    html = (STATIC_ROOT / "agent_data_flow.html").read_text(encoding="utf-8")
+    header = html.split("<header>", 1)[1].split("</header>", 1)[0]
+
+    assert "/static/excel_global_nav.css?v=20260821-hover-bridge" in html
+    assert "/static/excel_global_nav.js?v=20260821-hover-delay" in html
+    assert 'class="header-actions global-tree-nav" aria-label="全域功能導航"' in header
+    assert "<summary>ES 資料庫</summary>" in header
+    assert "<summary>匯入管理</summary>" in header
+    assert "<summary>系統管理</summary>" in header
+    assert "<summary>帳號安全</summary>" in header
+    assert 'aria-current="page" disabled>代理人資料流程圖</button>' in header
+
+
 def test_editor_navigation_links_agent_data_flow_page():
     html = (STATIC_ROOT / "editor.html").read_text(encoding="utf-8")
     js = (STATIC_ROOT / "editor_bootstrap.js").read_text(encoding="utf-8")
