@@ -104,7 +104,7 @@
   <div class="header-actions global-tree-nav" aria-label="全域功能導航">
       <div id="whoami" class="header-user">未登入</div>
       <details><summary>ES 資料庫</summary><div class="global-nav-actions"><button onclick="location.href='/editor'">搜尋與編輯文件</button><button onclick="location.href='/editor'">新增文件</button><button onclick="location.href='/editor'">統計與檢核曲線儀表板</button></div></details>
-      <details open><summary>匯入管理</summary><div class="global-nav-actions"><button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button><button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button><button onclick="location.href='/excel-to-sql-task-configs'">任務 JSON 管理</button><button onclick="location.href='/excel-to-sql-source-editor'">SQL 來源資料編輯器</button><button onclick="location.href='/excel-to-sql-source-dashboard'">SQL 來源資料統計儀表板</button></div></details>
+      <details><summary>匯入管理</summary><div class="global-nav-actions"><button onclick="location.href='/excel-to-sql-dashboard'">Excel→SQL 匯入查詢儀表板</button><button onclick="location.href='/excel-to-sql-import-center'">Excel 匯入作業中心</button><button onclick="location.href='/excel-to-sql-task-configs'">任務 JSON 管理</button><button onclick="location.href='/excel-to-sql-source-editor'">SQL 來源資料編輯器</button><button onclick="location.href='/excel-to-sql-source-dashboard'">SQL 來源資料統計儀表板</button></div></details>
       <details><summary>系統管理</summary><div class="global-nav-actions"><button onclick="location.href='/editor'">帳號審核</button></div></details>
       <details><summary>帳號安全</summary><div class="global-nav-actions"><button onclick="location.href='/editor'">變更密碼</button><button onclick="location.href='/editor'">帳號操作記錄</button></div></details>
       <button class="secondary" onclick="location.href='/agent-data-flow'">代理人資料流程圖</button><button class="secondary" onclick="location.href='/editor'">前往登入 / 編輯器</button>
@@ -140,6 +140,7 @@
     <div class="table-wrap import-records-wrap"><table id="importRecords" class="import-records-table"><colgroup><col class="date-col" /><col class="user-col" /><col class="original-file-col" /><col class="stored-file-col" /><col class="config-col" /><col class="status-col" /><col class="count-col" /><col class="count-col" /><col class="count-col" /><col class="size-col" /><col class="diagnostics-col" /><col class="actions-col" /></colgroup><thead><tr><th>日期</th><th>使用者</th><th>原始檔名</th><th>導入檔名</th><th>設定檔</th><th>狀態</th><th>新增</th><th>重複</th><th>錯誤</th><th>大小</th><th>錯誤診斷</th><th>操作</th></tr></thead><tbody></tbody></table></div>
   </section>
 </main>
+<script src="/static/excel_global_nav.js?v=20260821-auto-close"></script>
 <script src="/static/audit_tools.js"></script>
 <script src="/static/excel_to_sql_import_records.js?v=20260715-selected-task-config"></script>
 </body>
