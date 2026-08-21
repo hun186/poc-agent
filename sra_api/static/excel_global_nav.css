@@ -5,6 +5,7 @@
 .global-tree-nav summary::-webkit-details-marker { display:none; }
 .global-tree-nav details[open] summary { background:#1d4ed8; }
 .global-tree-nav .global-nav-actions { position:absolute; z-index:20; right:0; top:calc(100% + 8px); min-width:220px; padding:8px; border-radius:12px; background:white; box-shadow:0 12px 30px rgba(15,23,42,.24); display:grid; gap:6px; }
+.global-tree-nav .global-nav-actions::before { content:""; position:absolute; right:0; bottom:100%; width:100%; height:8px; }
 .global-tree-nav .global-nav-actions button { width:100%; text-align:left; background:#2563eb; }
 .global-tree-nav .global-nav-actions button.secondary { background:#475467; }
 .global-tree-nav > button { padding:8px 10px; }

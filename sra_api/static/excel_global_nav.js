@@ -4,16 +4,28 @@
 
   navs.forEach((nav) => {
     const menus = Array.from(nav.querySelectorAll(':scope > details'));
+    const closeTimers = new WeakMap();
+    const closeDelayMs = 600;
+
+    const cancelClose = (menu) => {
+      const timer = closeTimers.get(menu);
+      if (timer) window.clearTimeout(timer);
+      closeTimers.delete(menu);
+    };
 
     const closeMenus = (except) => {
       menus.forEach((menu) => {
-        if (menu !== except) menu.open = false;
+        if (menu !== except) {
+          cancelClose(menu);
+          menu.open = false;
+        }
       });
     };
 
     menus.forEach((menu) => {
       menu.addEventListener('mouseenter', () => {
         if (!supportsHover) return;
+        cancelClose(menu);
         closeMenus(menu);
         menu.open = true;
       });
@@ -23,7 +35,12 @@
       });
 
       menu.addEventListener('mouseleave', () => {
-        menu.open = false;
+        if (!supportsHover) return;
+        cancelClose(menu);
+        closeTimers.set(menu, window.setTimeout(() => {
+          menu.open = false;
+          closeTimers.delete(menu);
+        }, closeDelayMs));
       });
     });
 
