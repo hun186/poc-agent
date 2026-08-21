@@ -10,6 +10,26 @@
 
 ## Recent Changes
 
+### 2026-08-21 Excel→SQL dashboard 分頁語意更正
+
+- 更正前次將「載入列數上限」與「每頁顯示」視為兩個需要連動的控制項；dashboard API 的 `limit` 實際用於 SQL server-side pagination，是每頁筆數。
+- 移除 dashboard 上方重複且語意錯誤的「載入列數上限」欄位；表格下方 pager 的「每頁顯示」成為唯一筆數來源，預設 2000，並直接送出 API `limit=2000`。
+- 撤回因誤解而新增的共用 pager `pageSizeInputId` 連動擴充，不再維護不必要的雙欄位同步邏輯。
+- 驗證：dashboard JavaScript 與共用 pager 通過 `node --check`；dashboard static / filter suite 共 34 tests passed。
+
+### 2026-08-21 全站可調整分頁筆數同步稽核
+
+- 稽核共用 `bindPager()` 的所有可調整分頁：Excel 匯入記錄、我建立的任務、帳號審核均為純前端分頁並直接使用各自 state；SQL 來源資料編輯器則直接以 `state.pageSize` 建立 API `limit`，均無「調整後被另一欄位舊值覆寫」問題。
+- 共用 pager 新增 `pageSizeInputId` 連動能力；Excel→SQL dashboard 宣告 `limit` 為連動欄位，在觸發 server-backed render 前由共用 helper 同步，避免專案特例邏輯與未來回歸。
+- 「搜尋每頁筆數」直接作為搜尋 request 來源；「載入筆數上限」是 audit fetch cap，不是可調整的顯示分頁，因此不屬於本次同步缺陷。
+- 驗證：5 個相關 JavaScript 檔案均通過 `node --check`；dashboard / filter / import records / Editor static targeted suite 共 78 tests passed。
+
+### 2026-08-21 Excel→SQL dashboard 預設分頁與手動調整修復
+
+- Dashboard UI 與 `GET /v1/excel-to-sql/dashboard` 的預設載入筆數由 50000 降為 2000，避免首次開啟時一次產生過多 table rows。
+- 分頁器的「每頁顯示」輸入現在會同步更新查詢用的 `limit` 欄位，手動設為 2000 後重新載入不再被舊的 50000 值覆寫。
+- 驗證：`node --check sra_api/static/excel_to_sql_dashboard_app.js` 與 dashboard/filter targeted pytest 通過（33 tests）；環境無 Playwright / browser runtime，故依既知限制以靜態 UI test 取代截圖。
+
 ### 2026-08-20 SRA API mixed-version startup 修復
 
 - 部署端 traceback 顯示 `api.routers.chat` 載入時又以 `sra_api.routers.chat_support` 觸發第二套 `sra_api.routers` 初始化，第二份舊 chat 隨即匯入已移除的 `scope_resource_id` 而中止啟動。

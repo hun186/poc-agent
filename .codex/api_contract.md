@@ -18,6 +18,8 @@
 
 ## Recent Changes
 
+- 2026-08-21（更正）：`GET /v1/excel-to-sql/dashboard` 的 `limit` 是 server-side pagination 的每頁 audit 事件筆數，不是另一個「載入列數上限」；預設 2000、上限 400000。
+- 2026-08-21：`GET /v1/excel-to-sql/dashboard` 的 `limit` 預設值從 50000 降為 2000（上限仍為 400000），降低首次進入儀表板時的 SQL 回傳量與瀏覽器 DOM 壓力。
 - 2026-07-02：帳號操作記錄查詢改以「載入筆數上限」欄位（預設 5000、最大 50000）控制 `/v1/editor/audit-logs` limit；API 上限提高到 50000 並回傳 `truncated` 供前端告警。SQL 來源資料編輯器新增「載入筆數上限」（預設 5000、最大 50000）；Excel→SQL dashboard 保留「載入列數上限」（預設 50000、最大 400000）。
 - 2026-07-02：SQL 來源資料編輯器改為 data_reader 可唯讀、data_editor 可單列編輯/刪除、db_operator 可批次刪除；source-rows 新增 audit source_file / processed_at 篩選與 `_imported_at`、`_source_excel` 虛擬欄位；dashboard audit scope 納入 manual-control 事件。
 - 2026-07-02：任務 JSON 管理「我建立的任務清單 / 審核進度」新增檢示 JSON 任務轉換細節，沿用遮蔽敏感資訊後的 `review_summary` / `config_preview`。

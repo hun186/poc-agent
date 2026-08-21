@@ -1,5 +1,5 @@
 const tokenKey = 'sra_editor_token';
-const state = { recentPage: 1, recentTotal: 0, recentPageSize: 100, destinationTableDirty: false, usernameOptions: [], selectedUsers: [], usernameDirty: false, batchDeleteReport: null, canDelete: false, recentSort: null };
+const state = { recentPage: 1, recentTotal: 0, recentPageSize: 2000, destinationTableDirty: false, usernameOptions: [], selectedUsers: [], usernameDirty: false, batchDeleteReport: null, canDelete: false, recentSort: null };
 function $(id) { return document.getElementById(id); }
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function statusBadge(s) { return `<span class="status ${escapeHtml(s)}">${escapeHtml(s || '(empty)')}</span>`; }
@@ -116,7 +116,7 @@ function closeUsernameDropdown(applyPending = false) {
   if (dropdown.open) dropdown.open = false;
   if (applyPending) applyUsernamePendingFilters();
 }
-function clearAuditFilters() { ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter','limit'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); $('destinationTableFilter').querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; }); updateDestinationTableSummary(); applyAuditFilters(); }
+function clearAuditFilters() { ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => { $(id).value = ''; }); state.selectedUsers = []; state.usernameDirty = false; renderUsernameFilter(); $('destinationTableFilter').querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; }); updateDestinationTableSummary(); applyAuditFilters(); }
 function renderDestinationTableOptions(options) {
   const el = $('destinationTableFilter');
   const selected = new Set(selectedValues('destinationTableFilter'));
@@ -139,7 +139,7 @@ function closeDestinationTableDropdown(applyPending = false) {
 function updateRecentPager(data) {
   const paging = data.recent_paging || {};
   state.recentPage = Number(paging.page || state.recentPage || 1);
-  state.recentPageSize = Number(paging.page_size || $('limit').value || 50000);
+  state.recentPageSize = Number(paging.page_size || state.recentPageSize || 2000);
   state.recentTotal = Number(paging.total || (data.recent || []).length || 0);
   const page = SraAuditTools.updatePager({page: state.recentPage, pageSize: state.recentPageSize, total: state.recentTotal, infoId: 'recentPageInfo', firstId: 'recentFirstBtn', prevId: 'recentPrevBtn', inputId: 'recentPageInput', gotoId: 'recentGotoBtn', nextId: 'recentNextBtn', lastId: 'recentLastBtn', inputLabel: 'audit 事件頁數', maxPageSize: 400000});
   state.recentPage = page.page;
@@ -330,7 +330,7 @@ async function loadDashboard() {
   showError('');
   const token = authToken();
   if (!token) { showError('請先到 /editor 登入；本儀表板會沿用 sra_editor_token。'); return; }
-  const pageSize = Math.max(1, Math.min(Number($('limit').value || state.recentPageSize || 50000), 400000));
+  const pageSize = Math.max(1, Math.min(Number(state.recentPageSize || 2000), 400000));
   state.recentPageSize = pageSize;
   const params = new URLSearchParams({ config: $('config').value, days: $('days').value, limit: pageSize, page: state.recentPage, chart_bucket: $('chartBucket').value });
   if (state.recentSort) state.recentSort.getSortParams().forEach(value => params.append('sort', value));
@@ -363,12 +363,11 @@ async function loadDashboard() {
   fillTable('recent', data.recent, r => `<tr><td class="select-col">${selectionCell(r)}</td><td class="time-col">${formatAuditTime(r.processed_at)}</td><td class="status-col">${statusBadge(r.status)}</td><td class="file-col" title="${escapeHtml(r.source_file)}">${escapeHtml(r.source_file)}</td><td class="user-col">${escapeHtml(r.username || '')}</td><td class="row-col">${escapeHtml(r.row_no ?? '')}</td><td class="message-col">${escapeHtml(r.message || '')}</td><td class="op-col">${operatorSourceCell(r)}</td><td class="action-col">${actionCell(r)}</td><td class="payload-col">${payloadCell(r.row_payload)}</td></tr>`);
 }
 function bindAuditFilterEvents() {
-  ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter','limit'].forEach(id => {
+  ['statusFilter','sourceFileFilter','auditStartTs','auditEndTs','rowNoFilter','messageFilter','hashFilter','payloadFilter'].forEach(id => {
     const el = $(id);
     el.addEventListener('change', applyAuditFilters);
     el.addEventListener('keydown', event => { if (event.key === 'Enter') applyAuditFilters(); });
   });
-  $('limit').addEventListener('change', applyAuditFilters);
   const destinationDropdown = $('destinationTableDropdown');
   const usernameDropdown = $('usernameDropdown');
   $('usernameSearch').addEventListener('input', renderUsernameFilter);
