@@ -183,36 +183,47 @@ def add_data_agent_section(
         p = doc.add_paragraph()
         p.add_run("實際使用關鍵詞（effective terms）：").bold = True
         p.add_run(normalize_text_for_docx(eff_str))
-    
+
     style_refs = iter_style_refs(da_section)
-    if not style_refs:
-        return
+    if style_refs:
+        doc.add_paragraph("")
+        doc.add_heading("風格參考文本（Style References）", level=3)
 
-    doc.add_paragraph("")
-    doc.add_heading("風格參考文本（Style References）", level=3)
+        has_quote = any(s.name == "Intense Quote" and s.type == WD_STYLE_TYPE.PARAGRAPH for s in doc.styles)
+        quote_style = "Intense Quote" if has_quote else None
 
-    has_quote = any(s.name == "Intense Quote" and s.type == WD_STYLE_TYPE.PARAGRAPH for s in doc.styles)
-    quote_style = "Intense Quote" if has_quote else None
+        for idx, ref in enumerate(style_refs[:cfg.style_ref_max_docs], start=1):
+            title = _get(ref, "title") or _get(ref, "article_title")
+            date_iso = _get(ref, "date_iso") or _get(ref, "article_date_iso")
+            uuid_ = _get(ref, "uuid") or _get(ref, "id") or _get(ref, "doc_id")
+            text = (_get(ref, "text") or _get(ref, "fulltext") or _get(ref, "content") or _get(ref, "note") or _get(ref, "snippet"))
 
-    for idx, ref in enumerate(style_refs[:cfg.style_ref_max_docs], start=1):
-        title = _get(ref, "title") or _get(ref, "article_title")
-        date_iso = _get(ref, "date_iso") or _get(ref, "article_date_iso")
-        uuid_ = _get(ref, "uuid") or _get(ref, "id") or _get(ref, "doc_id")
-        text = (_get(ref, "text") or _get(ref, "fulltext") or _get(ref, "content") or _get(ref, "note") or _get(ref, "snippet"))
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"參考 {idx}：").bold = True
+            if title:
+                p.add_run(normalize_text_for_docx(title))
+            if date_iso:
+                p.add_run(f"（{normalize_text_for_docx(date_iso)}）")
 
-        p = doc.add_paragraph(style="List Bullet")
-        p.add_run(f"參考 {idx}：").bold = True
-        if title:
-            p.add_run(normalize_text_for_docx(title))
-        if date_iso:
-            p.add_run(f"（{normalize_text_for_docx(date_iso)}）")
+            if uuid_:
+                p2 = doc.add_paragraph()
+                p2.add_run("UUID：").bold = True
+                p2.add_run(normalize_text_for_docx(uuid_))
 
-        if uuid_:
-            p2 = doc.add_paragraph()
-            p2.add_run("UUID：").bold = True
-            p2.add_run(normalize_text_for_docx(uuid_))
+            if text:
+                body = normalize_text_for_docx(_truncate(text, cfg.style_ref_max_chars))
+                p3 = doc.add_paragraph(style=quote_style) if quote_style else doc.add_paragraph()
+                p3.add_run(body)
 
-        if text:
-            body = normalize_text_for_docx(_truncate(text, cfg.style_ref_max_chars))
-            p3 = doc.add_paragraph(style=quote_style) if quote_style else doc.add_paragraph()
-            p3.add_run(body)
+    model_usage = getattr(da_section, "model_usage", None) or []
+    if model_usage:
+        doc.add_paragraph("")
+        doc.add_heading("各階段使用模型", level=3)
+        for item in model_usage:
+            stage = _get(item, "stage")
+            model_id = _get(item, "model_id")
+            if not stage or not model_id:
+                continue
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"{normalize_text_for_docx(stage)}：").bold = True
+            p.add_run(normalize_text_for_docx(model_id))

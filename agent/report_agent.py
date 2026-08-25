@@ -208,6 +208,12 @@ def ask_with_report(
             "meta": {"mode": "rules", "llm_used": False, "llm_error": f"{type(ex).__name__}: {ex}", "allow_fields": [], "fields_count": 0}
         }
     compressed_for_llm["ev"] = packed["ev_slim"]
+
+    if packed["meta"].get("llm_used"):
+        selector_model = os.getenv("REPORT_FIELD_SELECTOR_MODEL_ID") or REPORT_MODEL_ID
+        trace.setdefault("llm", {}).setdefault("field_selector", []).append({
+            "model_id": selector_model,
+        })
     
     em = payload.get("evidence_meta")
     if isinstance(em, dict):
@@ -364,5 +370,4 @@ def ask_with_report(
     )
     
     return result
-
 

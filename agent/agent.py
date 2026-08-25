@@ -46,6 +46,62 @@ def _positive_env_float(name: str, default: float) -> float:
 # retrieval reports and direct large-payload generation.
 PURE_LLM_TIMEOUT = _positive_env_float("PURE_LLM_TIMEOUT", 180.0)
 
+_MODEL_STAGE_LABELS = {
+    "router": "任務路由",
+    "refiner": "問題精煉",
+    "data_agent": "資料整備",
+    "field_selector": "證據欄位選擇",
+    "report": "報告生成",
+    "style": "風格生成",
+}
+
+
+def _collect_model_usage(trace: Dict[str, Any]) -> List[Dict[str, str]]:
+    usage: List[Dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(stage_key: str, model_id: Any) -> None:
+        if not isinstance(model_id, str) or not model_id.strip():
+            return
+        label = _MODEL_STAGE_LABELS.get(stage_key, stage_key)
+        key = (label, model_id.strip())
+        if key not in seen:
+            seen.add(key)
+            usage.append({"stage": label, "model_id": model_id.strip()})
+
+    llm_trace = trace.get("llm") or {}
+
+    def add_llm_trace_stage(stage_key: str) -> None:
+        if isinstance(llm_trace, dict):
+            records = llm_trace.get(stage_key) or []
+            if isinstance(records, dict):
+                records = [records]
+            if isinstance(records, list):
+                for record in records:
+                    if isinstance(record, dict):
+                        add(stage_key, record.get("model_id"))
+
+    add_llm_trace_stage("router")
+    add_llm_trace_stage("refiner")
+
+    query_refiner = trace.get("query_refiner") or {}
+    if isinstance(query_refiner, dict):
+        for record in query_refiner.values():
+            if isinstance(record, dict):
+                add("refiner", record.get("model_id"))
+
+    data_agent = trace.get("data_agent") or {}
+    if isinstance(data_agent, dict):
+        for run in data_agent.get("runs") or []:
+            if isinstance(run, dict):
+                add("data_agent", run.get("model_id_effective") or run.get("model_id"))
+
+    add_llm_trace_stage("field_selector")
+    add_llm_trace_stage("report")
+    add_llm_trace_stage("style")
+
+    return usage
+
 SESSION_STORE = FileSessionStore(
     base_dir=SESSION_STORE_DIR,
     enabled=SESSION_STORE_ENABLED,
@@ -311,6 +367,8 @@ def answer_with_routing(
                 ),
                 extra_params={"options": {}},
                 timeout=PURE_LLM_TIMEOUT,
+                include_current_time=True,
+                current_time_context_reason="pure_llm_relative_date_resolution",
             )
             out = {
                 "answer": generic_answer,
@@ -367,6 +425,8 @@ def answer_with_routing(
         
     # ★ 從 trace 裡把 data_agent 掛回結果（若還沒掛）
     data_agent = trace.get("data_agent")
+    if isinstance(data_agent, dict):
+        data_agent["model_usage"] = _collect_model_usage(trace)
     if data_agent and "data_agent" not in out:
         out["data_agent"] = data_agent
         

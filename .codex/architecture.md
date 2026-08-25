@@ -33,6 +33,12 @@
 
 ## Recent Changes
 
+- 2026-08-25：opt-in 目前時間 context 是可觀測的 LLM 邊界事件；實際注入時以 warning 輸出 reason code、timezone、reference time 與輸出可能改變標記，未注入則不記錄，且不將 debug 提示送入 user message。
+
+- 2026-08-25（更正）：LLM 呼叫邊界預設不附加目前時間；僅 query refiner 與 PURE_LLM 這兩個以使用者當下問題為語意的 caller 明確 opt in。結構化文章抽取及其他 machine-to-machine JSON 流程維持既有 system/user message，避免把執行時間誤當文章事件時間。
+
+- 2026-08-25：LLM 呼叫邊界在 system role 附加可關閉的時區化目前時間，不改寫 user role payload；agent 完成時將 trace 內各階段 model ID 正規化至 `data_agent.model_usage`，供 presentation extractor 與 DOCX renderer 顯示。
+
 - 2026-08-20：結構化事件檢索採 `multidim_event_json` outer nested + Event / Timeline / Person / Party / evidence child nested 兩層查詢；`event_id/event_ids` 為跨事件子結構的關聯鍵。
 - 2026-08-13：關鍵字提取裁切限制於 extractor 呼叫邊界，不改寫下游共用查詢。
 - 2026-08-13：Chat router 新增 bounded head/tail input view，大型資料只在執行階段交給模型。
