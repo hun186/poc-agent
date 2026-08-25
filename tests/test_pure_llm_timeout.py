@@ -13,6 +13,8 @@ def test_pure_llm_uses_its_own_timeout(monkeypatch):
     def fake_call_llm(prompt, **kwargs):
         received["prompt"] = prompt
         received["timeout"] = kwargs["timeout"]
+        received["include_current_time"] = kwargs["include_current_time"]
+        received["current_time_context_reason"] = kwargs["current_time_context_reason"]
         return "完成"
 
     monkeypatch.setattr(agent_module, "call_llm", fake_call_llm)
@@ -21,7 +23,12 @@ def test_pure_llm_uses_its_own_timeout(monkeypatch):
     result = agent_module.answer_with_routing("很長的直接分析任務")
 
     assert result["answer"] == "完成"
-    assert received == {"prompt": "很長的直接分析任務", "timeout": 900.0}
+    assert received == {
+        "prompt": "很長的直接分析任務",
+        "timeout": 900.0,
+        "include_current_time": True,
+        "current_time_context_reason": "pure_llm_relative_date_resolution",
+    }
 
 
 def test_positive_env_float_rejects_invalid_values(monkeypatch):

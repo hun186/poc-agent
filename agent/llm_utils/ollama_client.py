@@ -1,9 +1,14 @@
 # agent/llm_utils/ollama_client.py
 
 import os
+import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional, Dict, List, Any
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 class LLMClient:
     """
@@ -161,11 +166,14 @@ def call_llm(
     extra_params: Optional[Dict[str, Any]] = None,
     timeout: Optional[float] = None,
     model: Optional[str] = None,       # ★ 新增：可選 model 覆寫
+    include_current_time: bool = False,
+    current_time_context_reason: Optional[str] = None,
 ) -> str:
     """
     最建議使用的入口：
     - 內部自動組成 /api/chat 的 messages
     - 有需要才另外傳 system_prompt
+    - 目前時間預設不注入；只有需要解析相對日期的呼叫端才明確啟用
     """
     #raise RuntimeError("### call_llm WAS CALLED ###")
     prompt = (prompt or "").strip()
@@ -190,8 +198,32 @@ def call_llm(
     client = get_default_client()
 
     messages: List[Dict[str, str]] = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
+    effective_system_prompt = system_prompt or ""
+    if include_current_time:
+        timezone_name = (os.getenv("LLM_CURRENT_TIMEZONE") or "Asia/Taipei").strip()
+        try:
+            now = datetime.now(ZoneInfo(timezone_name))
+        except ZoneInfoNotFoundError:
+            timezone_name = "UTC"
+            now = datetime.now(ZoneInfo("UTC"))
+        logger.warning(
+            "[call_llm] current-time system context enabled; "
+            "reason=%s timezone=%s reference_time=%s output_may_change=true",
+            (current_time_context_reason or "unspecified").strip() or "unspecified",
+            timezone_name,
+            now.isoformat(timespec="seconds"),
+        )
+        time_context = (
+            "【系統時間參考】目前時間為 "
+            f"{now.isoformat(timespec='seconds')}（{timezone_name}）。"
+            "此資訊僅供解讀『本週』、『上週』等相對日期；"
+            "不要把它視為使用者輸入的一部分，也不要在與日期無關的回答中主動提及。"
+        )
+        effective_system_prompt = "\n\n".join(
+            part for part in (effective_system_prompt, time_context) if part
+        )
+    if effective_system_prompt:
+        messages.append({"role": "system", "content": effective_system_prompt})
     messages.append({"role": "user", "content": prompt})
 
     

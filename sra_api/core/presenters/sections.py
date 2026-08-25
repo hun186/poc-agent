@@ -25,7 +25,8 @@ class DataAgentSection:
     refined_question: Optional[str] = None
     # ✅ 新增：風格模式用的參考全文（對應 payload["style_docs"]）
     style_docs: List[Dict[str, Any]] = field(default_factory=list)
-    
+    model_usage: List[Dict[str, str]] = field(default_factory=list)
+
 # ★ 新增：統一給 markdown / docx 共用的 presentation
 @dataclass(frozen=True)
 class AgentPresentation:
@@ -40,5 +41,3 @@ class AgentPresentation:
     raw_json_line_count: int
     auto_collapse_json: bool
     raw_json_md: str  # 已包好 ```json 的 Markdown block
-    
-    

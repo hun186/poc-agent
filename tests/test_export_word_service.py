@@ -7,11 +7,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from docx import Document
 
 from api.services.export_word_service import ExportWordService
+from agent.agent import _collect_model_usage
 
 
 def _paragraph_texts(docx_bytes: bytes) -> list[str]:
     doc = Document(BytesIO(docx_bytes))
     return [paragraph.text for paragraph in doc.paragraphs]
+
+
+def test_collect_model_usage_preserves_pipeline_order_and_deduplicates() -> None:
+    trace = {
+        "llm": {
+            "router": [{"model_id": "router-model"}],
+            "field_selector": [{"model_id": "selector-model"}],
+            "report": [{"model_id": "report-model"}],
+        },
+        "query_refiner": {"report": {"model_id": "refiner-model"}},
+        "data_agent": {
+            "runs": [
+                {"model_id": "ollama_chat/data-model", "model_id_effective": "data-model"},
+                {"model_id_effective": "data-model"},
+            ]
+        },
+    }
+
+    assert _collect_model_usage(trace) == [
+        {"stage": "任務路由", "model_id": "router-model"},
+        {"stage": "問題精煉", "model_id": "refiner-model"},
+        {"stage": "資料整備", "model_id": "data-model"},
+        {"stage": "證據欄位選擇", "model_id": "selector-model"},
+        {"stage": "報告生成", "model_id": "report-model"},
+    ]
 
 
 def test_export_docx_adds_answer_heading_after_user_question() -> None:
@@ -88,3 +114,29 @@ def test_export_docx_answer_heading_preserves_markdown_table_smart_merge() -> No
     assert table.cell(1, 0)._tc is table.cell(2, 0)._tc
     assert table.cell(1, 1)._tc is table.cell(2, 1)._tc
     assert table.cell(1, 2)._tc is not table.cell(2, 2)._tc
+
+
+def test_export_docx_lists_stage_models_at_end_of_data_agent_section() -> None:
+    docx_bytes, _ = ExportWordService().build_docx_bytes(
+        {
+            "question": "請整理本週資料。",
+            "answer": "整理完成。",
+            "data_agent": {
+                "model_usage": [
+                    {"stage": "任務路由", "model_id": "router-model"},
+                    {"stage": "資料整備", "model_id": "data-model"},
+                    {"stage": "報告生成", "model_id": "report-model"},
+                ],
+                "runs": [{"mode": "SRA_REPORT", "question_raw": "請整理本週資料。"}],
+            },
+        }
+    )
+
+    paragraphs = _paragraph_texts(docx_bytes)
+    heading_index = paragraphs.index("各階段使用模型")
+    assert paragraphs[heading_index + 1:heading_index + 4] == [
+        "任務路由：router-model",
+        "資料整備：data-model",
+        "報告生成：report-model",
+    ]
+    assert heading_index > paragraphs.index("原始問題：請整理本週資料。")

@@ -308,6 +308,17 @@ def extract_data_agent_section(out: Dict[str, Any]) -> Optional[DataAgentSection
     
     # ✅ 新增：抽出 style_docs（只在 style / sra_style 時通常有）
     style_docs = _extract_style_docs_from_out(out, last_run)
+
+    model_usage: List[Dict[str, str]] = []
+    raw_model_usage = data_agent.get("model_usage") or []
+    if isinstance(raw_model_usage, list):
+        for item in raw_model_usage:
+            if not isinstance(item, dict):
+                continue
+            stage = item.get("stage")
+            model_id = item.get("model_id")
+            if isinstance(stage, str) and stage.strip() and isinstance(model_id, str) and model_id.strip():
+                model_usage.append({"stage": stage.strip(), "model_id": model_id.strip()})
     
     return DataAgentSection(
         mode=str(mode) if mode is not None else None,
@@ -332,4 +343,5 @@ def extract_data_agent_section(out: Dict[str, Any]) -> Optional[DataAgentSection
         
         # ✅ 新增欄位
         style_docs=style_docs,
+        model_usage=model_usage,
     )

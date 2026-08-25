@@ -10,6 +10,27 @@
 
 ## Recent Changes
 
+### 2026-08-25 時間上下文啟用警示紀錄
+
+- `call_llm()` 每次實際加入目前時間 system context 時，會以 warning 記錄 `reason`、實際時區、reference time 與 `output_may_change=true`；未啟用時不產生此警示。
+- Query refiner 與 PURE_LLM caller 分別提供穩定 reason code，方便從部署 log 判斷是哪個階段加入了可能改變輸出的時間證據；不新增使用者訊息，避免為了提示而再次污染對話或 JSON payload。
+- 驗證：`PYTHONPATH=. pytest tests/test_ollama_client_config.py tests/test_pure_llm_timeout.py tests/test_routing_input.py tests/test_export_word_service.py -q`，14 tests passed；測試確認 opt-in 時包含完整 warning 欄位、預設 strict JSON 路徑沒有時間內容也沒有警示 log。
+
+### 2026-08-25 目前時間改為呼叫端明確啟用
+
+- 修正共用 `call_llm()` 全域預設注入目前時間的風險：現在預設 `include_current_time=False`，文章結構化、欄位抽取、DOC_FOLLOWUP、router、report、style 與其他既有 caller 的 system/user messages 不會被加入執行時間。
+- 只有真正需要解析使用者相對日期的 query refiner 與 PURE_LLM 路徑明確傳入 `include_current_time=True`；例如文章原文只有「上週」但嚴格模板要求無明確日期輸出 `null` 時，不會因共用 caller 得到執行時間而改判絕對日期。
+- 此項更正取代同日「共用 caller 預設加入時間」的舊敘述；模型稽核與 Word 匯出功能不受影響。
+- 驗證：`PYTHONPATH=. pytest tests/test_ollama_client_config.py tests/test_pure_llm_timeout.py tests/test_routing_input.py tests/test_export_word_service.py -q`，14 tests passed；其中 regression test 使用含「上週」及 `published_at: null` 的 JSON，確認預設 system/user messages 完全不增加時間內容。
+
+### 2026-08-25 Word 模型稽核與 LLM 相對時間上下文
+
+- Agent 統一從 trace 彙整任務路由、問題精煉、資料整備、報告／風格生成階段的實際模型 ID，Word 匯出在「資料整備紀錄（Data Agent）」最後列出各階段使用模型。
+- 共用 `call_llm()` 預設只在 system message 加入帶時區的目前時間（預設 `Asia/Taipei`，可用 `LLM_CURRENT_TIMEZONE` 調整），不修改 user message；嚴格隔離流程可用 `include_current_time=False` 關閉。
+- 時間指示明定僅用於解讀「本週／上週」等相對日期，與日期無關時不得主動提及，降低模型不必要回顯或偏題風險。
+- 驗證：`PYTHONPATH=. pytest tests/test_ollama_client_config.py tests/test_export_word_service.py tests/test_routing_input.py tests/test_pure_llm_timeout.py -q`，14 tests passed；測試亦確認 JSON user message 內容保持完全不變。
+- 完整 `PYTHONPATH=. pytest tests -q` 為 239 passed / 2 個既有失敗（auth module reload identity、Vercel mock mode expectation），本次修改未新增 regression。
+
 ### 2026-08-21 代理人資料流程頁全域導航補齊
 
 - `/agent-data-flow` 標題列改用與 Excel→SQL 子頁一致的全域樹狀導航，補齊 ES 資料庫、匯入管理、系統管理、帳號安全及登入／編輯器入口，並將目前流程圖頁標示為 disabled current page。

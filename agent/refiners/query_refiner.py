@@ -130,6 +130,8 @@ def refine_question_for_data_agent(
             extra_params={"options": {}},
             timeout=REFINER_TIMEOUT,
             model=REFINER_MODEL_ID,
+            include_current_time=True,
+            current_time_context_reason="query_refiner_relative_date_resolution",
         )
         refined, parse_note = _safe_parse_refined_question(raw, q0)
 

@@ -2,6 +2,20 @@
 
 ## Current Summary
 
+### 2026-08-25 影響輸出的隱性 context 必須可觀測
+
+- 目前時間屬於不一定加入、但可能改變答案的 system context。啟用時必須留下包含 caller reason、timezone、實際 reference time 與風險標記的 warning log；不以額外 user message 提示，因為提示本身會改變對話與結構化輸入。
+
+### 2026-08-25 目前時間採 opt-in，而非共用 caller 預設值
+
+- System role 雖不會字串污染 user JSON，仍會改變模型可用的推論證據；對「文章沒有明確日期就輸出 null」的抽取契約而言，執行時間可能使模型把文章中的「上週」推算成日期，屬於語意污染。
+- 因此 `call_llm()` 預設不得注入現在時間。只有明確處理「使用者現在問本週／上週」的 query refiner 與 PURE_LLM caller opt in；文章結構化、文件抽取與中間 JSON 階段維持無時鐘上下文。此決策取代下方同日「共用 caller 附加時間」的預設策略。
+
+### 2026-08-25 時間上下文與結構化輸入隔離
+
+- 相對日期需要單一可信的 request-time 參考，但不得把時間字串串接進 user prompt 或 JSON payload。共用 LLM caller 因此只將時間附加至 system role，並保留 `include_current_time=False` 作為嚴格隔離開關。
+- 時區由 `LLM_CURRENT_TIMEZONE` 控制，預設 `Asia/Taipei`；設定無效時安全降級為 UTC。system 指示限制時間只用於相對日期解析，避免與日期無關的輸出受影響。
+
 ### 2026-08-13 執行模式 timeout 分離
 
 - PURE_LLM 與 SRA_REPORT 是不同模型呼叫邊界，timeout 採 `PURE_LLM_TIMEOUT` 與 `REPORT_LLM_TIMEOUT` 分開設定，避免調整報告等待時間時對直接生成產生錯誤預期。
