@@ -344,4 +344,5 @@ def extract_data_agent_section(out: Dict[str, Any]) -> Optional[DataAgentSection
         # ✅ 新增欄位
         style_docs=style_docs,
         model_usage=model_usage,
+        time_context=data_agent.get("time_context") if isinstance(data_agent.get("time_context"), dict) else {},
     )

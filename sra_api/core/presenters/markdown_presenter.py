@@ -292,6 +292,14 @@ def _render_data_agent_1229(da_section: Optional[DataAgentSection]) -> List[str]
     if question_raw:
         md.append(f"- 原始問題：{question_raw}")
 
+    time_context = getattr(da_section, "time_context", None) or {}
+    if time_context.get("enabled"):
+        md.append(
+            "- 相對時間解析基準："
+            f"`{time_context.get('reference_time', 'N/A')}` "
+            f"(`{time_context.get('timezone', 'N/A')}`；去年=`{time_context.get('previous_year', 'N/A')}`)"
+        )
+
     if dt_from or dt_to:
         md.append(f"- 查詢時間範圍：`{dt_from or 'N/A'}` ～ `{dt_to or 'N/A'}`")
 

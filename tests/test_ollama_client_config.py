@@ -67,6 +67,7 @@ def test_call_llm_opt_in_adds_time_only_to_system_message_and_logs_it(monkeypatc
     assert system_content.startswith("只輸出 JSON。")
     assert "【系統時間參考】目前時間為" in system_content
     assert "（Asia/Taipei）" in system_content
+    assert "『今年』、『去年』" in system_content
     assert "current-time system context enabled" in caplog.text
     assert "reason=test_relative_date_resolution" in caplog.text
     assert "timezone=Asia/Taipei" in caplog.text
