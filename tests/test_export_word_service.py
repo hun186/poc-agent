@@ -140,3 +140,23 @@ def test_export_docx_lists_stage_models_at_end_of_data_agent_section() -> None:
         "報告生成：report-model",
     ]
     assert heading_index > paragraphs.index("原始問題：請整理本週資料。")
+
+
+def test_export_docx_displays_relative_time_reference() -> None:
+    docx_bytes, _ = ExportWordService().build_docx_bytes(
+        {
+            "question": "請整理去年資料。",
+            "answer": "整理完成。",
+            "data_agent": {
+                "time_context": {
+                    "enabled": True,
+                    "reference_time": "2026-08-25T12:00:00+08:00",
+                    "timezone": "Asia/Taipei",
+                    "previous_year": "2025",
+                },
+                "runs": [{"mode": "SRA_REPORT", "question_raw": "請整理去年資料。"}],
+            },
+        }
+    )
+
+    assert "相對時間解析基準：2026-08-25T12:00:00+08:00 (Asia/Taipei；去年=2025)" in _paragraph_texts(docx_bytes)

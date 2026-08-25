@@ -88,6 +88,15 @@ def add_data_agent_section(
         p.add_run("原始問題：").bold = True
         p.add_run(normalize_text_for_docx(question_raw))
 
+    time_context = getattr(da_section, "time_context", None) or {}
+    if time_context.get("enabled"):
+        p = doc.add_paragraph()
+        p.add_run("相對時間解析基準：").bold = True
+        p.add_run(normalize_text_for_docx(
+            f"{time_context.get('reference_time', 'N/A')} "
+            f"({time_context.get('timezone', 'N/A')}；去年={time_context.get('previous_year', 'N/A')})"
+        ))
+
     refined_question = getattr(da_section, "refined_question", None)
     if refined_question:
         p = doc.add_paragraph()

@@ -10,6 +10,18 @@
 
 ## Recent Changes
 
+### 2026-08-25 相對週期語意與週界線補強
+
+- 將 refiner 的時間換算從單一「去年」例子擴充為通用日／週／月／季／年與帶數量相對時間規則；週以週一至週日為界，prompt 會帶入上一週及目前週之前兩個完整週的實際起訖日期。
+- 明確區分「前 N 週」（目前週之前連續 N 個完整週）、「N 週前」（往前偏移 N 週的單一完整週）與「過去 N 週」（截至 reference date 的滾動 N×7 天），避免「前兩週」與「兩週前」被模型混用。
+- 驗證：`PYTHONPATH=. pytest tests/test_query_refiner_time_context.py tests/test_ollama_client_config.py tests/test_export_word_service.py tests/test_routing_input.py -q`，15 tests passed；另以 `git diff --check` 確認 patch 無 whitespace error。
+
+### 2026-08-25 「去年」相對年份解析與輸出稽核
+
+- 修正 report query refiner 雖收到目前時間、但 prompt 仍禁止新增年份且時間提示只列「本週／上週」，使模型可能依訓練截止知識把「去年」誤判為 2024 的矛盾。
+- Refiner 現在以設定時區產生可稽核的 reference time，明示今年／去年，要求把相對時間換成明確檢索日期且不得依模型知識截止日猜測；reference time、時區與去年年份會寫入 Data Agent payload，並顯示於 Markdown / Word 的資料整備紀錄。
+- 驗證：`PYTHONPATH=. pytest tests/test_query_refiner_time_context.py tests/test_ollama_client_config.py tests/test_export_word_service.py tests/test_routing_input.py -q`，14 tests passed（另有 2 個既有 invalid escape SyntaxWarning）。
+
 ### 2026-08-25 時間上下文啟用警示紀錄
 
 - `call_llm()` 每次實際加入目前時間 system context 時，會以 warning 記錄 `reason`、實際時區、reference time 與 `output_may_change=true`；未啟用時不產生此警示。
