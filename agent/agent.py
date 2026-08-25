@@ -427,6 +427,9 @@ def answer_with_routing(
     data_agent = trace.get("data_agent")
     if isinstance(data_agent, dict):
         data_agent["model_usage"] = _collect_model_usage(trace)
+        refiner_report = (trace.get("query_refiner") or {}).get("report") or {}
+        if isinstance(refiner_report, dict) and isinstance(refiner_report.get("time_context"), dict):
+            data_agent["time_context"] = dict(refiner_report["time_context"])
     if data_agent and "data_agent" not in out:
         out["data_agent"] = data_agent
         

@@ -2,6 +2,16 @@
 
 ## Current Summary
 
+### 2026-08-25 相對週期採明確週界線與不重疊語意
+
+- 相對週不是只靠 reference timestamp 猜測：系統以週一至週日為完整週，並在 refiner system context 提供上一週與前兩個完整週的實際日期邊界。
+- 「前 N 週」定義為目前週之前的連續 N 個完整週；「N 週前」是偏移 N 週的單一完整週；「過去 N 週」是包含 reference date 的滾動 N×7 天。明確區分三者可避免檢索區間因自然語言歧義漂移。
+
+### 2026-08-25 相對年度換算須明示且可稽核
+
+- 對 report refiner 而言，僅提供目前時間不足以保證模型正確換算「去年」；system prompt 必須明示由 request-time 推得的今年／去年，並把相對時間轉為明確檢索範圍列為「不得新增事實」規則的唯一合理例外。
+- 實際 reference time、時區與推得的去年年份必須隨 Data Agent 記錄輸出，讓 OpenWebUI / Word 使用者可直接確認是否啟用時間上下文，不必只依部署端 warning log 猜測。
+
 ### 2026-08-25 影響輸出的隱性 context 必須可觀測
 
 - 目前時間屬於不一定加入、但可能改變答案的 system context。啟用時必須留下包含 caller reason、timezone、實際 reference time 與風險標記的 warning log；不以額外 user message 提示，因為提示本身會改變對話與結構化輸入。

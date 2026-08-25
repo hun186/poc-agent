@@ -216,7 +216,7 @@ def call_llm(
         time_context = (
             "【系統時間參考】目前時間為 "
             f"{now.isoformat(timespec='seconds')}（{timezone_name}）。"
-            "此資訊僅供解讀『本週』、『上週』等相對日期；"
+            "此資訊僅供解讀『今天』、『本週』、『上週』、『今年』、『去年』等相對日期；"
             "不要把它視為使用者輸入的一部分，也不要在與日期無關的回答中主動提及。"
         )
         effective_system_prompt = "\n\n".join(
