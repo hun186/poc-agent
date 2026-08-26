@@ -24,7 +24,7 @@ REFINER_MODEL_ID = (
     or os.getenv("MODEL_ID")
     or "gpt-oss:120b-32k"
 )
-REFINER_TIMEOUT = float(os.getenv("QUERY_REFINER_TIMEOUT", "20"))
+REFINER_TIMEOUT = float(os.getenv("QUERY_REFINER_TIMEOUT", "60"))
 
 # 可選：要不要把完整 prompt/raw_response 記到 trace（通常很肥）
 REFINER_TRACE_VERBOSE = _env_bool("QUERY_REFINER_TRACE_VERBOSE", "0")

@@ -37,7 +37,7 @@ def load_report_refiner_config() -> QueryRefinerConfig:
     )
 
     timeout = float(
-        _env_int("QUERY_REFINER_REPORT_TIMEOUT", os.getenv("QUERY_REFINER_TIMEOUT", "20"))
+        _env_int("QUERY_REFINER_REPORT_TIMEOUT", os.getenv("QUERY_REFINER_TIMEOUT", "60"))
     )
 
     use_context = _env_bool("QUERY_REFINER_REPORT_USE_CONTEXT", "1")
