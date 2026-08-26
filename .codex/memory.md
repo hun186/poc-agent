@@ -12,6 +12,12 @@
 
 ## Recent Changes
 
+### 2026-08-26 問題精煉 timeout 預設延長
+
+- 將 report query refiner 的通用 timeout 預設由 20 秒延長為 60 秒，並同步 report refiner 設定載入器與 `.env.example`。
+- 盤點 agent/API/ingestion Python 路徑的 timeout：其餘 LLM 預設皆為 60 秒以上；較短者僅 Elasticsearch request timeout 30 秒，屬資料庫 I/O 而非生成式 LLM 呼叫，未調整。
+- 驗證：`PYTHONPATH=. pytest tests/test_query_refiner_time_context.py -q` 與 `git diff --check` 通過。
+
 ### 2026-08-26 時間優先序 prompt 範例去除驗測月份
 
 - 將「任務時間範圍優先於背景事件時間」規則中的示例月份由 10 月改為 3 月，避免 system prompt 直接包含高難度驗測案例的 10 月線索而影響效能評估。

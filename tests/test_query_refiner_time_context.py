@@ -1,6 +1,14 @@
 from datetime import datetime
 
+from agent.config.query_refiner_settings import load_report_refiner_config
 from agent.refiners import query_refiner
+
+
+def test_report_refiner_timeout_defaults_to_sixty_seconds(monkeypatch) -> None:
+    monkeypatch.delenv("QUERY_REFINER_REPORT_TIMEOUT", raising=False)
+    monkeypatch.delenv("QUERY_REFINER_TIMEOUT", raising=False)
+
+    assert load_report_refiner_config().timeout_sec == 60.0
 
 
 def test_time_reference_calculates_completed_week_boundaries(monkeypatch) -> None:
