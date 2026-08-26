@@ -63,3 +63,9 @@
 
 - `.codex/archive/memory.md-20260813-000000.md`：2026-06-11 至 2026-08-13 的完整歷史。
 - `.codex/archive/memory.md-20260826-043925.md`：2026-08-26 濃縮前全文，涵蓋 2026-06-11 至 2026-08-25 的工作紀錄；因 active memory 已累積超過 20 個工作區塊而濃縮。
+
+### 2026-08-26 Word 附加 LLM 階段埋行稽核
+
+- Agent 將任務路由、問題精煉、資料整備、證據欄位選擇、報告／風格／一般回答生成的成功、錯誤或 fallback 狀態整理為 `llm_execution`，包含實際模型、耗時與截短後錯誤訊息。
+- Word 報告在所有既有內容之後新增「附錄：LLM 各階段執行情況」，方便確認正常回傳與糾錯；錯誤回應也保留已收集的執行軌跡。
+- 驗證：`PYTHONPATH=. pytest tests/test_export_word_service.py -q`，8 tests passed；`git diff --check` 通過。依賴安裝完成，pip index 查詢仍出現既有 proxy 403 retry，但 requirements 均已安裝。

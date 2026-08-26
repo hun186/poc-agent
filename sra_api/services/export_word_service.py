@@ -90,6 +90,33 @@ class ExportWordService:
             doc.add_heading("附錄：推理內容", level=2)
             add_markdown_to_doc(doc, pres.reasoning)
 
+        # This audit appendix is deliberately rendered last so operators can
+        # quickly verify which LLM boundaries returned normally or fell back.
+        if pres.llm_execution:
+            doc.add_page_break()
+            doc.add_heading("附錄：LLM 各階段執行情況", level=2)
+            status_labels = {
+                "success": "正常回傳",
+                "fallback": "發生錯誤，已採用備援結果",
+                "error": "執行錯誤",
+            }
+            for item in pres.llm_execution:
+                stage = normalize_text_for_docx(item.get("stage") or "未知階段")
+                status = str(item.get("status") or "").lower()
+                label = status_labels.get(status, normalize_text_for_docx(status or "未知"))
+                p = doc.add_paragraph(style="List Bullet")
+                p.add_run(f"{stage}：").bold = True
+                p.add_run(label)
+                model_id = item.get("model_id")
+                if model_id:
+                    p.add_run(f"；模型：{normalize_text_for_docx(model_id)}")
+                elapsed = item.get("elapsed_sec")
+                if isinstance(elapsed, (int, float)):
+                    p.add_run(f"；耗時：{elapsed:.3f} 秒")
+                detail = item.get("detail")
+                if detail:
+                    p.add_run(f"\n錯誤／備註：{normalize_text_for_docx(detail)}")
+
         buf = BytesIO()
         doc.save(buf)
         buf.seek(0)

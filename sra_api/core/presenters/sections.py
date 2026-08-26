@@ -37,6 +37,7 @@ class AgentPresentation:
     reasoning: str
     citations: List[Dict[str, Any]]
     da_section: Optional[DataAgentSection]
+    llm_execution: List[Dict[str, Any]]
 
     raw_json_str: str
     raw_json_line_count: int

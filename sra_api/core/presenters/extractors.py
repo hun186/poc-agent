@@ -41,6 +41,7 @@ def extract_presentation(
             reasoning="",
             citations=[],
             da_section=None,
+            llm_execution=[],
             raw_json_str=raw_json_str,
             raw_json_line_count=line_count,
             auto_collapse_json=(line_count > json_collapse_threshold),
@@ -51,6 +52,22 @@ def extract_presentation(
     user_question = extract_user_question(out)
     citations = extract_citations(out)  # 已 dedupe + normalize(text)
     da_section = extract_data_agent_section(out)
+    llm_execution = []
+    for item in out.get("llm_execution") or []:
+        if not isinstance(item, dict):
+            continue
+        stage = item.get("stage")
+        status = item.get("status")
+        if not isinstance(stage, str) or not stage.strip() or not isinstance(status, str):
+            continue
+        row = {"stage": stage.strip(), "status": status.strip()}
+        for key in ("model_id", "detail"):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                row[key] = value.strip()
+        if isinstance(item.get("elapsed_sec"), (int, float)):
+            row["elapsed_sec"] = item["elapsed_sec"]
+        llm_execution.append(row)
 
     answer = normalize_text_for_markdown(out.get("answer") or "")
     reasoning = normalize_text_for_markdown(out.get("reasoning") or "")
@@ -69,6 +86,7 @@ def extract_presentation(
         reasoning=reasoning,
         citations=citations,
         da_section=da_section,
+        llm_execution=llm_execution,
         raw_json_str=raw_json_str,
         raw_json_line_count=line_count,
         auto_collapse_json=auto_collapse,

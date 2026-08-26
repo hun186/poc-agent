@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from docx import Document
 
 from api.services.export_word_service import ExportWordService
-from agent.agent import _collect_model_usage
+from agent.agent import _collect_llm_execution, _collect_model_usage
 
 
 def _paragraph_texts(docx_bytes: bytes) -> list[str]:
@@ -160,3 +160,57 @@ def test_export_docx_displays_relative_time_reference() -> None:
     )
 
     assert "相對時間解析基準：2026-08-25T12:00:00+08:00 (Asia/Taipei；去年=2025)" in _paragraph_texts(docx_bytes)
+
+
+def test_collect_llm_execution_reports_success_and_fallback() -> None:
+    trace = {
+        "llm": {"router": [{"model_id": "router", "elapsed_sec": 1.25}]},
+        "query_refiner": {
+            "report": {
+                "enabled": True,
+                "model_id": "refiner",
+                "note": "error=TimeoutError: timed out",
+                "elapsed_sec": 3.0,
+            }
+        },
+        "data_agent": {"runs": [{"model_id_effective": "data", "elapsed_sec": 2.0}]},
+    }
+
+    assert _collect_llm_execution(trace) == [
+        {"stage": "任務路由", "status": "success", "model_id": "router", "elapsed_sec": 1.25},
+        {
+            "stage": "問題精煉",
+            "status": "fallback",
+            "model_id": "refiner",
+            "elapsed_sec": 3.0,
+            "detail": "TimeoutError: timed out",
+        },
+        {"stage": "資料整備", "status": "success", "model_id": "data", "elapsed_sec": 2.0},
+    ]
+
+
+def test_export_docx_puts_llm_execution_appendix_at_the_end() -> None:
+    docx_bytes, _ = ExportWordService().build_docx_bytes(
+        {
+            "question": "請整理資料。",
+            "answer": "完成。",
+            "reasoning": "先分析資料。",
+            "llm_execution": [
+                {"stage": "任務路由", "status": "success", "model_id": "router", "elapsed_sec": 1.25},
+                {
+                    "stage": "問題精煉",
+                    "status": "fallback",
+                    "model_id": "refiner",
+                    "detail": "TimeoutError: timed out",
+                },
+            ],
+        }
+    )
+
+    paragraphs = _paragraph_texts(docx_bytes)
+    heading = paragraphs.index("附錄：LLM 各階段執行情況")
+    assert heading > paragraphs.index("附錄：推理內容")
+    assert paragraphs[heading + 1:] == [
+        "任務路由：正常回傳；模型：router；耗時：1.250 秒",
+        "問題精煉：發生錯誤，已採用備援結果；模型：refiner\n錯誤／備註：TimeoutError: timed out",
+    ]

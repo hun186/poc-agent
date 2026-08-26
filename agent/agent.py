@@ -53,7 +53,59 @@ _MODEL_STAGE_LABELS = {
     "field_selector": "證據欄位選擇",
     "report": "報告生成",
     "style": "風格生成",
+    "pure_llm": "一般回答生成",
+    "pipeline": "分析管線",
 }
+
+
+def _collect_llm_execution(trace: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build a compact, user-safe audit trail for the Word appendix."""
+    rows: List[Dict[str, Any]] = []
+
+    def add(stage_key: str, record: Dict[str, Any], *, default_status: str = "success") -> None:
+        error = record.get("error") or record.get("llm_error")
+        status = record.get("status") or ("error" if error else default_status)
+        row: Dict[str, Any] = {
+            "stage": _MODEL_STAGE_LABELS.get(stage_key, stage_key),
+            "status": status,
+        }
+        model_id = record.get("model_id_effective") or record.get("model_id")
+        if isinstance(model_id, str) and model_id.strip():
+            row["model_id"] = model_id.strip()
+        elapsed = record.get("elapsed_sec")
+        if isinstance(elapsed, (int, float)):
+            row["elapsed_sec"] = elapsed
+        detail = error or record.get("detail")
+        if isinstance(detail, str) and detail.strip():
+            row["detail"] = detail.strip()[:1000]
+        rows.append(row)
+
+    llm_trace = trace.get("llm") or {}
+    if isinstance(llm_trace, dict):
+        for stage_key in ("router", "field_selector", "report", "style", "pure_llm", "pipeline"):
+            records = llm_trace.get(stage_key) or []
+            if isinstance(records, dict):
+                records = [records]
+            for record in records if isinstance(records, list) else []:
+                if isinstance(record, dict):
+                    add(stage_key, record)
+
+    refiner = (trace.get("query_refiner") or {}).get("report") or {}
+    if isinstance(refiner, dict) and refiner.get("enabled"):
+        note = str(refiner.get("note") or "")
+        refiner_record = dict(refiner)
+        if note.startswith("error="):
+            refiner_record.update(status="fallback", detail=note.removeprefix("error="))
+        else:
+            refiner_record["status"] = "success"
+        add("refiner", refiner_record)
+
+    data_agent = trace.get("data_agent") or {}
+    if isinstance(data_agent, dict):
+        for run in data_agent.get("runs") or []:
+            if isinstance(run, dict):
+                add("data_agent", run)
+    return rows
 
 
 def _collect_model_usage(trace: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -359,17 +411,27 @@ def answer_with_routing(
 
         # === PURE_LLM：不查 ES，直接用模型知識回答 ===
         else:
-            generic_answer = call_llm(
-                user_msg,
-                system_prompt=(
-                    "你是一個一般用途的繁體中文助手。"
-                    "請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。"
-                ),
-                extra_params={"options": {}},
-                timeout=PURE_LLM_TIMEOUT,
-                include_current_time=True,
-                current_time_context_reason="pure_llm_relative_date_resolution",
-            )
+            pure_t0 = time.perf_counter()
+            pure_record = {"model_id": os.getenv("MODEL_ID", "gpt-oss:latest-32k")}
+            trace.setdefault("llm", {}).setdefault("pure_llm", []).append(pure_record)
+            try:
+                generic_answer = call_llm(
+                    user_msg,
+                    system_prompt=(
+                        "你是一個一般用途的繁體中文助手。"
+                        "請直接根據使用者問題回答或寫作，不需要查詢後端資料庫。"
+                    ),
+                    extra_params={"options": {}},
+                    timeout=PURE_LLM_TIMEOUT,
+                    include_current_time=True,
+                    current_time_context_reason="pure_llm_relative_date_resolution",
+                )
+                pure_record["status"] = "success"
+            except Exception as exc:
+                pure_record.update(status="error", error=f"{type(exc).__name__}: {exc}")
+                raise
+            finally:
+                pure_record["elapsed_sec"] = round(time.perf_counter() - pure_t0, 3)
             out = {
                 "answer": generic_answer,
                 "citations": [],
@@ -378,6 +440,10 @@ def answer_with_routing(
 
     except Exception as e:
         print("[agent] answer_with_routing error:", e)
+        trace.setdefault("llm", {}).setdefault("pipeline", []).append({
+            "status": "error",
+            "error": f"{type(e).__name__}: {e}",
+        })
         # 這邊也順便寫一下 trace
         trace.setdefault("routing", {}).update({
             "error": str(e),
@@ -388,6 +454,7 @@ def answer_with_routing(
             "reasoning": f"後端例外：{e}",
             "mode": mode,
             "route": route,
+            "llm_execution": _collect_llm_execution(trace),
         }
 
     # === 補上 routing info（前端要看） ===
@@ -397,6 +464,7 @@ def answer_with_routing(
     out.setdefault("reasoning", "")
     out["mode"] = mode
     out["route"] = route
+    out["llm_execution"] = _collect_llm_execution(trace)
 
     # ✅ 統一保證每個模式都有「使用者提問」（Word / Markdown 都靠這個）
     out.setdefault("question", user_msg)
