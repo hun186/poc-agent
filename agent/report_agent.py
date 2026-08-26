@@ -209,10 +209,14 @@ def ask_with_report(
         }
     compressed_for_llm["ev"] = packed["ev_slim"]
 
-    if packed["meta"].get("llm_used"):
+    selector_mode = packed["meta"].get("mode")
+    if packed["meta"].get("llm_used") or packed["meta"].get("llm_error"):
         selector_model = os.getenv("REPORT_FIELD_SELECTOR_MODEL_ID") or REPORT_MODEL_ID
         trace.setdefault("llm", {}).setdefault("field_selector", []).append({
             "model_id": selector_model,
+            "status": "error" if packed["meta"].get("llm_error") else "success",
+            "error": packed["meta"].get("llm_error"),
+            "detail": f"mode={selector_mode}" if selector_mode else None,
         })
     
     em = payload.get("evidence_meta")
@@ -370,4 +374,3 @@ def ask_with_report(
     )
     
     return result
-

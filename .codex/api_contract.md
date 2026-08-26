@@ -53,3 +53,8 @@
 ## 2026-07-03 靜態頁面路由
 
 - `GET /agent-data-flow`：回傳 `sra_api/static/agent_data_flow.html`，用於顯示代理人資料運用處理流程 SVG 說明圖；不需要 request body，也不回傳 JSON API payload。
+
+## 2026-08-26 Chat 結果 LLM 執行情況
+
+- Agent 產出的結果物件可包含 `llm_execution[]`；每項包含 `stage`、`status`（`success`、`fallback` 或 `error`），並可選擇包含 `model_id`、`elapsed_sec`、`detail`。`detail` 是供糾錯的截短錯誤／備註，不包含完整 prompt 或 raw response。
+- `/v1/export/word` 會在 Word 最後以「附錄：LLM 各階段執行情況」呈現此欄位；舊 session 未包含此欄位時不輸出該附錄。
