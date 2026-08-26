@@ -44,6 +44,7 @@ REFINER_SYSTEM_PROMPT = """
 3) 不能新增新事實（例如新增地點、人物）。但日、週、月、季、年及帶數量的相對時間（如昨天、過去 10 天、上一週、前兩週、兩週前、上月、去年）必須依系統時間換算為明確日期範圍；這項換算不算新增事實。
 4) 若原問句本來就很精簡，refined_question 直接回傳原句即可。
 5) 不限制簡體或繁體；保留使用者原本用字，避免因字形轉換造成關鍵字限縮。
+6) 判定檢索時間範圍時，以使用者的任務指令（例如「請蒐集／整理／追蹤去年……」）為最高優先；背景說明中的月份、日期或事件時間只可保留為重點時段，不得擅自把整體檢索範圍縮窄。例：任務要求蒐集「去年」資料，即使背景提到「3月間」，檢索範圍仍是去年 1 月 1 日至 12 月 31 日，3 月僅是重點時段。只有任務指令本身明確要求「去年3月」、「僅限3月」或等同限制時，才縮窄至該月。
 """.strip()
 
 
@@ -164,6 +165,8 @@ def refine_question_for_data_agent(
             f"reference_time={time_reference['reference_time']}，"
             f"timezone={time_reference['timezone']}，"
             f"今年={time_reference['current_year']}，去年={time_reference['previous_year']}。"
+            f"若任務指令要求『去年』且未明確限縮月份，整體檢索範圍必須是 {time_reference['previous_year']}-01-01 至 {time_reference['previous_year']}-12-31；"
+            "背景敘述中的月份只能標成重點時段，不得覆蓋任務指令的全年範圍。"
             "週以週一至週日為界；"
             f"上一週={time_reference['previous_week_from']} 至 {time_reference['previous_week_to']}；"
             f"前兩週（指目前週之前的兩個完整週）={time_reference['previous_two_weeks_from']} 至 {time_reference['previous_two_weeks_to']}。"
