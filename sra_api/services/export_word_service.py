@@ -15,6 +15,31 @@ from api.core.presenters.extractors import extract_presentation
 from shared.citations.citation_view_core import build_citation_core_views
 from shared.http.download_filename import build_docx_filename_from_presentation
 
+_MODEL_STAGE_ORDER = {
+    stage: index
+    for index, stage in enumerate(
+        (
+            "任務路由",
+            "問題精煉",
+            "資料整備",
+            "證據欄位選擇",
+            "報告生成",
+            "風格生成",
+            "一般回答生成",
+            "分析管線",
+        )
+    )
+}
+
+
+def _sort_model_execution_rows(rows: list[dict]) -> list[dict]:
+    """Return a stable processing-flow view of model execution records."""
+    return sorted(
+        rows,
+        key=lambda item: _MODEL_STAGE_ORDER.get(str(item.get("stage") or "").strip(), len(_MODEL_STAGE_ORDER)),
+    )
+
+
 # ----------------------------
 # Service
 # ----------------------------
@@ -94,7 +119,7 @@ class ExportWordService:
         # end of the document. Older saved sessions may only have model_usage,
         # so retain their original model-only display as a compatibility path.
         model_usage = pres.da_section.model_usage if pres.da_section else []
-        execution_rows = pres.llm_execution or model_usage
+        execution_rows = _sort_model_execution_rows(pres.llm_execution or model_usage)
         if execution_rows:
             doc.add_page_break()
             doc.add_heading("各階段使用模型", level=2)

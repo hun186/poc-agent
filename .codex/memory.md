@@ -129,3 +129,8 @@
 - Word 最後的「各階段使用模型」清單改為在每個階段的模型 ID 後直接顯示執行狀態與耗時，不再另建內容重複的 LLM 執行情況附錄；fallback / error 仍保留安全截短的錯誤備註。
 - 舊 session 若只有 `data_agent.model_usage`，仍在文件最後輸出既有模型清單，不虛構無法取得的狀態或耗時。
 - 驗證：`PYTHONPATH=. pytest tests/test_export_word_service.py -q`，8 tests passed；相關模組 `py_compile` 與 `git diff --check` 通過。依賴確認成功，pip index 查詢出現既有 proxy 403 retry，但 requirements 均已安裝。
+
+### 2026-08-27 Word 模型執行階段依資料處理流排序
+
+- 「各階段使用模型」固定依任務路由、問題精煉、資料整備、證據欄位選擇、報告生成及後續生成階段排列；Word 匯出也會穩定排序舊 session 或外部傳入的未排序執行紀錄，未知階段保留在已知階段之後。
+- 驗證：`PYTHONPATH=. pytest tests/test_export_word_service.py -q`（10 tests passed）、相關模組 `py_compile` 與 `git diff --check` 通過。

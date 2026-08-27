@@ -81,14 +81,20 @@ def _collect_llm_execution(trace: Dict[str, Any]) -> List[Dict[str, Any]]:
         rows.append(row)
 
     llm_trace = trace.get("llm") or {}
-    if isinstance(llm_trace, dict):
-        for stage_key in ("router", "field_selector", "report", "style", "pure_llm", "pipeline"):
-            records = llm_trace.get(stage_key) or []
-            if isinstance(records, dict):
-                records = [records]
-            for record in records if isinstance(records, list) else []:
-                if isinstance(record, dict):
-                    add(stage_key, record)
+
+    def add_llm_trace_stage(stage_key: str) -> None:
+        if not isinstance(llm_trace, dict):
+            return
+        records = llm_trace.get(stage_key) or []
+        if isinstance(records, dict):
+            records = [records]
+        for record in records if isinstance(records, list) else []:
+            if isinstance(record, dict):
+                add(stage_key, record)
+
+    # Keep the audit trail in processing-flow order rather than grouping all
+    # records from trace["llm"] ahead of records stored in other trace branches.
+    add_llm_trace_stage("router")
 
     refiner = (trace.get("query_refiner") or {}).get("report") or {}
     if isinstance(refiner, dict) and refiner.get("enabled"):
@@ -105,6 +111,9 @@ def _collect_llm_execution(trace: Dict[str, Any]) -> List[Dict[str, Any]]:
         for run in data_agent.get("runs") or []:
             if isinstance(run, dict):
                 add("data_agent", run)
+
+    for stage_key in ("field_selector", "report", "style", "pure_llm", "pipeline"):
+        add_llm_trace_stage(stage_key)
     return rows
 
 
