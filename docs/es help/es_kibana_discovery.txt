@@ -1,0 +1,290 @@
+# Welcome to the Dev Tools Console!
+#
+# You can use Console to explore the Elasticsearch API. See the Elasticsearch API reference to learn more:
+# https://www.elastic.co/guide/en/elasticsearch/reference/current/rest-apis.html
+#
+# Here are a few examples to get you started.
+
+
+# Create an index
+PUT /my-index
+DELETE /fishing_test
+DELETE /news_test
+DELETE /srp_test/_doc/fa3ff977bf55716190169107fd80bc701ff20d68
+GET /srp_test/_doc/17ed6369b37c151975b6498d9128dd24a5d1a254
+
+# Add a document to my-index
+POST /my-index/_doc
+{
+    "id": "park_rocky-mountain",
+    "title": "Rocky Mountain",
+    "description": "Bisected north to south by the Continental Divide, this portion of the Rockies has ecosystems varying from over 150 riparian lakes to montane and subalpine forests to treeless alpine tundra."
+}
+
+
+# Perform a search in my-index
+GET /my-index/_search?q="rocky mountain"
+
+PUT _snapshot/win_backup
+{
+  "type": "fs",
+  "settings": {
+    "location": "/mntCZJ/TopicClassification/es-backup",
+    "compress": true,
+    "readonly": true
+  }
+}
+GET _snapshot/win_backup/_all
+
+POST _snapshot/win_backup/all_index_snapshot/_restore
+{
+  "indices": "*",
+  "include_global_state": true
+}
+
+POST _snapshot/win_backup/all_index_snapshot/_restore
+{
+  "indices": "news_test,mil_reports-01",
+  "include_global_state": false
+}
+GET news_test/_count
+GET mil_reports-01/_count
+
+POST /_security/user/SRA
+{
+  "password" : "AAEAAWVsYXN0aWMv",
+  "roles" : [ "superuser" ],
+  "enabled": true
+}
+
+DELETE /_security/user/SRA
+
+PUT /_security/role/SRA_admin
+{
+  "cluster": ["manage_index_templates", "monitor"],
+  "indices": [
+    {
+      "names": ["*"],
+      "privileges": ["create_index", "manage", "write", "read"]
+    }
+  ]
+}
+
+POST /_security/user/SRA
+{
+  "password" : "AAEAAWVsYXN0aWMv",
+  "roles" : [ "SRA_admin" ],
+  "enabled": true
+}
+
+GET satmeta/_mapping
+DELETE satmeta
+DELETE news_test
+GET news_test/_mapping
+
+GET news_test/_count
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "nested": {
+            "path": "multidim_event_json",
+            "query": { "match_all": {} }
+          }
+        }
+      ],
+      "must_not": [
+        {
+          "nested": {
+            "path": "multidim_event_json",
+            "query": {
+              "nested": {
+                "path": "multidim_event_json.Event_Timeline",
+                "query": {
+                  "exists": {
+                    "field": "multidim_event_json.Event_Timeline.date_iso"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+GET satmeta/_count
+{
+  "query": {
+    "term": {
+      "_ignored": "multidim_event_json.Event_Timeline.date_iso"
+    }
+  }
+}
+
+GET srp_test/_search
+GET news_test/_search
+
+
+GET srp_test/_search
+{
+  "_source": ["multidim_event_json"],
+  "query": {
+    "ids": {
+      "values": ["4bd1f9f516dcfc764090483dc79f11e9f5cc8844"]
+    }
+  }
+}
+
+PUT _ingest/pipeline/add_content_length
+{
+  "description": "Add rawInfo.content_length",
+  "processors": [
+    {
+      "script": {
+        "lang": "painless",
+        "source": """
+          if (ctx.rawInfo != null) {
+            if (ctx.rawInfo.content != null) {
+              ctx.rawInfo.content_length = ctx.rawInfo.content.length();
+            } else {
+              ctx.rawInfo.content_length = 0;
+            }
+          }
+        """
+      }
+    }
+  ]
+}
+POST news_test/_update_by_query?pipeline=add_content_length&conflicts=proceed
+#在Discovery查 rawInfo.content_length >= 1000
+
+POST _ingest/pipeline/add_content_length/_simulate
+{
+  "docs": [
+    {
+      "_source": {
+        "rawInfo": {
+          "content": "這是一段測試文字"
+        }
+      }
+    }
+  ]
+}
+
+PUT news_test/_settings
+{
+  "index.default_pipeline": "add_content_length"
+}
+
+POST news_test/_update_by_query?pipeline=add_content_length
+POST news_test/_update_by_query?pipeline=add_content_length&wait_for_completion=false
+GET _tasks?actions=*byquery&detailed=true
+GET news_test/_search
+{
+  "size": 1,
+  "_source": ["content_length", "rawInfo.content"],
+  "query": {
+    "exists": {
+      "field": "content_length"
+    }
+  }
+}
+GET news_test/_mapping/field/content_length
+POST news_test/_update_by_query?wait_for_completion=false&slices=auto&conflicts=proceed
+{
+  "script": {
+    "source": "ctx._source.remove('content_length')",
+    "lang": "painless"
+  },
+  "query": {
+    "exists": {
+      "field": "content_length"
+    }
+  }
+}
+GET _tasks?actions=*byquery&detailed=true
+POST news_test/_update_by_query?pipeline=add_content_length&wait_for_completion=false&slices=auto
+
+GET srp_test/_count
+GET srp_test/_count
+{
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "term": {
+            "multidim_event_json_meta.pipeline_hash": "v3.2.2-es-multistage-rerun-test"
+          }
+        },
+        {
+          "term": {
+            "route_audit_json_meta.pipeline_hash": "v3.2.2-es-multistage-rerun-test"
+          }
+        }
+      ],
+      "minimum_should_match": 1
+    }
+  }
+}
+
+POST fishing_test/_update_by_query?conflicts=proceed&refresh=true
+{
+  "max_docs": 100,
+  "script": {
+    "lang": "painless",
+    "source": """
+      String[] fields = new String[] {
+        'multidim_event_json',
+        'multidim_event_json_meta',
+        'route_audit_json',
+        'route_audit_json_meta'
+      };
+
+      for (String f : fields) {
+        if (ctx._source.containsKey(f)) {
+          ctx._source.remove(f);
+        }
+      }
+    """
+  },
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "term": {
+            "multidim_event_json_meta.pipeline_hash": "v3.2.2-es-multistage-rerun-test"
+          }
+        },
+        {
+          "term": {
+            "route_audit_json_meta.pipeline_hash": "v3.2.2-es-multistage-rerun-test"
+          }
+        }
+      ],
+      "minimum_should_match": 1
+    }
+  }
+}
+
+POST fishing_test/_search
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "must": [
+        { "range": { "sourceSql.rowDT": { "gte": "2025-01-01", "lte": "2026-12-31" } } },
+        { "wildcard": { "communication.subject": "*昇益*" } } 
+    }
+  },
+  "aggs": {
+    "by_month": {
+      "terms": { "field": "sourceSql.rowDT", "size": 20 }
+    },
+    "by_port": {
+      "terms": { "field": "rawInfo.content", "size": 10 }
+    }
+  }
+}
