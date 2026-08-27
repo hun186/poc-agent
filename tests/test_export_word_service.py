@@ -40,6 +40,26 @@ def test_collect_model_usage_preserves_pipeline_order_and_deduplicates() -> None
     ]
 
 
+def test_collect_llm_execution_preserves_processing_flow_order() -> None:
+    trace = {
+        "llm": {
+            "router": [{"model_id": "router"}],
+            "field_selector": [{"model_id": "selector"}],
+            "report": [{"model_id": "report"}],
+        },
+        "query_refiner": {"report": {"enabled": True, "model_id": "refiner"}},
+        "data_agent": {"runs": [{"model_id_effective": "data"}]},
+    }
+
+    assert [row["stage"] for row in _collect_llm_execution(trace)] == [
+        "任務路由",
+        "問題精煉",
+        "資料整備",
+        "證據欄位選擇",
+        "報告生成",
+    ]
+
+
 def test_export_docx_adds_answer_heading_after_user_question() -> None:
     docx_bytes, filename = ExportWordService().build_docx_bytes(
         {
@@ -215,4 +235,30 @@ def test_export_docx_integrates_llm_execution_into_model_list_at_the_end() -> No
     assert paragraphs[heading + 1:] == [
         "任務路由：router；執行狀態：正常完成；耗時：1.250 秒",
         "問題精煉：refiner；執行狀態：發生錯誤，已採用備援結果\n錯誤／備註：TimeoutError: timed out",
+    ]
+
+
+def test_export_docx_sorts_model_list_by_processing_flow() -> None:
+    docx_bytes, _ = ExportWordService().build_docx_bytes(
+        {
+            "question": "請整理資料。",
+            "answer": "完成。",
+            "llm_execution": [
+                {"stage": "證據欄位選擇", "status": "success", "model_id": "selector"},
+                {"stage": "報告生成", "status": "success", "model_id": "report"},
+                {"stage": "問題精煉", "status": "success", "model_id": "refiner"},
+                {"stage": "資料整備", "status": "success", "model_id": "data"},
+                {"stage": "任務路由", "status": "success", "model_id": "router"},
+            ],
+        }
+    )
+
+    paragraphs = _paragraph_texts(docx_bytes)
+    heading = paragraphs.index("各階段使用模型")
+    assert [text.split("：", 1)[0] for text in paragraphs[heading + 1:]] == [
+        "任務路由",
+        "問題精煉",
+        "資料整備",
+        "證據欄位選擇",
+        "報告生成",
     ]
