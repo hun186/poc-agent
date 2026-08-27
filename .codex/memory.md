@@ -12,6 +12,17 @@
 
 ## Recent Changes
 
+### 2026-08-27 Word 文件改以 Base64 文字保存
+
+- 因 PR 工具無法提交 binary，移除 tracked `.docx`，改提交 `docs/SRA代理人參考文本與多層全文下載技術說明.docx.b64` 與 `docs/restore_docx.py`；restore script 會先驗證內建 SHA-256，成功後才寫出 DOCX。
+- 原始與還原檔 SHA-256 均為 `ea08d8bef0498e003c0b6133379234fa10e97f8233767914c87d4560d252f2bc`，`cmp --silent` 確認 byte-for-byte 完全相同，還原檔 `unzip -t`、script `py_compile` 與 `git diff --check` 通過。
+
+### 2026-08-27 代理人參考文本技術介紹 Word
+
+- 新增 `docs/SRA代理人參考文本與多層全文下載技術說明.docx`，以非開發者也能理解的方式整理更新背景、目標、核心名詞、資料流、OpenWebUI/API 行為、相容性、部署步驟、測試範圍、效益與 30 秒介紹話術。
+- 文件包含資料流圖示表、相容性矩陣、下載層次表與主要技術元件附錄，可直接用於內部說明或對外簡報前的技術附件。
+- 驗證：`unzip -t docs/SRA代理人參考文本與多層全文下載技術說明.docx` 通過；以 `python-docx` 重新開啟並確認 55 個 paragraphs、12 個 tables、必要章節與文件 metadata 均存在；`git diff --check` 通過。
+
 ### 2026-08-27 OpenWebUI 全文下載入口分層
 
 - Citation 原本的單一「下載全文」連結改為參考文本、原始文本與雙層比對三個明確入口，JSON link 也直接顯示 both 層次。
