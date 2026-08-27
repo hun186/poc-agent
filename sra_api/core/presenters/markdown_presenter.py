@@ -107,9 +107,14 @@ def _render_citations(pres: AgentPresentation, request: Request) -> List[str]:
         date_piece = f" · 🗓 {v.date_iso}" if v.date_iso else ""
 
         link = ""
-        if v.doc_id and v.url_es and v.url_json and v.url_txt:
+        if v.doc_id and v.url_es and v.url_json and v.url_txt and v.url_raw_txt and v.url_both_txt:
             uuid_link = f"[{v.doc_id}]({v.url_es})"
-            link = f" · UUID: {uuid_link} · [JSON]({v.url_json}) · [下載全文]({v.url_txt})"
+            link = (
+                f" · UUID: {uuid_link} · [多層 JSON]({v.url_json})"
+                f" · [下載參考文本]({v.url_txt})"
+                f" · [下載原始文本]({v.url_raw_txt})"
+                f" · [下載雙層比對]({v.url_both_txt})"
+            )
 
         out.append(f"{v.label} **{v.display}**{pid_str}{link}{date_piece}\n\n   > {v.short_text}")
 
@@ -253,9 +258,14 @@ def _render_citations_1229(pres: AgentPresentation, request: Request) -> List[st
         date_piece = f" · 🗓 {v.date_iso}" if v.date_iso else ""
 
         link = ""
-        if v.doc_id and v.url_es and v.url_json and v.url_txt:
+        if v.doc_id and v.url_es and v.url_json and v.url_txt and v.url_raw_txt and v.url_both_txt:
             uuid_link = f"[{v.doc_id}]({v.url_es})"
-            link = f" · UUID: {uuid_link} · [JSON]({v.url_json}) · [下載全文]({v.url_txt})"
+            link = (
+                f" · UUID: {uuid_link} · [多層 JSON]({v.url_json})"
+                f" · [下載參考文本]({v.url_txt})"
+                f" · [下載原始文本]({v.url_raw_txt})"
+                f" · [下載雙層比對]({v.url_both_txt})"
+            )
 
         out.append(f"{v.label} **{v.display}**{pid_str}{link}{date_piece}\n\n   > {v.short_text}")
 

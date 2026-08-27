@@ -30,6 +30,9 @@
 - Vercel mock runtime 與正式 ES / SQL 路徑分離，mock response 必須揭露其狀態。
 - OpenWebUI 整合面 `/v1/chat/completions`、`/v1/models`、`/v1/docs/*`、`/v1/export/word` 維持既有無 Editor bearer token 的 contract；Editor/Auth 與 Excel→SQL/SQL 管理才使用 `sra_editor_token` role boundary。
 - API app 保留既有 permissive CORS 相容性，供既有 OpenWebUI / 內網整合使用；若未來要保護 agent API，需設計不與 Editor token 混用的可選 integration credential。
+- 「代理人參考文本」是提供連貫上下文的原始全文或精煉詳文，與可引用的零碎 `evidence_snippets` 分工；其 ES dot path 由 `SRA_REFERENCE_TEXT_FIELD` 設定（預設 `rawInfo.content`），TXT→ES / SQL→ES writer 與 mapping、搜尋、證據 fallback、單篇參考文本取得及 docs 下載共用同一契約。Excel→SQL 只負責 SQL 欄位映射，後續由 SQL→ES 的 `source.columns.content` 接入此契約。
+- 全文 API 將「代理人參考文本」與固定 `rawInfo.content` 的「原始未處理文本」視為並列資料層；預設只回 reference，人工稽核可明確要求 raw 或 both，不改變代理人的預設消費欄位。
+- TXT→ES / SQL→ES 在 reference field 不同於 raw 時採相容雙寫：raw 永久保留稽核材料，reference 初始以同一輸入 seed，之後由精煉 pipeline 單獨更新。這讓舊版 reader 可持續讀 raw，但既有舊文件仍需 backfill reference 後才能供新版 agent 使用。
 
 ## Recent Changes
 

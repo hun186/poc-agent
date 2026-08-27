@@ -7,8 +7,9 @@ from elasticsearch import NotFoundError
 from smolagents import Tool
 
 from agent.es.es_client import get_es
+from agent.es.reference_text import get_reference_text, get_reference_text_field
 
-from .common import resolve_index, split_indexes, dot_get, dbg
+from .common import resolve_index, split_indexes, dbg
 
 
 class ESFetchDocById(Tool):
@@ -16,7 +17,7 @@ class ESFetchDocById(Tool):
     依 uuid 從 Elasticsearch 撈出「單篇完整文件」，主要提供風格學習 / 公文範例用。
 
     - 預期 index 內有欄位 uuid（或 _id 就是 uuid）
-    - 內文欄位預設用 text_field 指定，預設抓 rawInfo.content
+    - 代理人參考文本欄位可由 text_field 指定，預設讀取 SRA_REFERENCE_TEXT_FIELD
     """
     name = "es_fetch_doc_by_id"
     description = "依 uuid 從 Elasticsearch 撈出完整文件內文，供風格寫作或報告範例參考。"
@@ -35,7 +36,7 @@ class ESFetchDocById(Tool):
             "type": "string",
             "description": (
                 "可選：主要內文欄位名稱，例如 'rawInfo.content'、'content'、"
-                "'doc_text'；預設為 'rawInfo.content'。"
+                "'doc_text'；未提供時使用 SRA_REFERENCE_TEXT_FIELD（預設 rawInfo.content）。"
             ),
             "nullable": True,
         },
@@ -57,7 +58,7 @@ class ESFetchDocById(Tool):
         self,
         uuid: str,
         index_hint: Optional[str] = None,
-        text_field: Optional[str] = "rawInfo.content",
+        text_field: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not uuid:
             return {"uuid": "", "index": "", "full_text": "", "source": {}, "error": "uuid is required"}
@@ -123,14 +124,14 @@ class ESFetchDocById(Tool):
                 "source": {},
             }
         # 4) 取內文（支援 dot path）
-        tf = text_field or "rawInfo.content"
-        full_text = (
-            dot_get(src, tf)
-            or dot_get(src, "rawInfo.content")
-            or src.get("content")
-            or src.get("doc_text")
-            or ""
-        )
+        tf = text_field or get_reference_text_field()
+        full_text = get_reference_text(src, field=tf)
+
+        # Preserve the historical root-field fallbacks only for the default
+        # contract. An explicitly configured replacement is authoritative and
+        # must not silently fall back to a different, potentially noisy source.
+        if not full_text and tf == "rawInfo.content":
+            full_text = src.get("content") or src.get("doc_text") or ""
 
         if not isinstance(full_text, str):
             full_text = str(full_text)

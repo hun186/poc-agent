@@ -12,6 +12,7 @@ from .date_utils import (
     is_valid_year,
 )
 from .snippet import make_fallback_snippet
+from ..reference_text import get_reference_text
 
 
 def parse_es_hits(
@@ -83,7 +84,10 @@ def parse_es_hits(
 
     for h in es_hits or []:
         src = h.get("_source", {}) or {}
-        raw_content = ((src.get("rawInfo") or {}).get("content") or "").strip()
+        # `raw_content` is retained as an internal compatibility name. Its value
+        # is the configured context-rich agent reference text, which may be raw
+        # source material or a refined, coherent document.
+        raw_content = get_reference_text(src)
 
         subject = (src.get("communication", {}) or {}).get("subject")
 

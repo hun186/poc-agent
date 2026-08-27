@@ -21,6 +21,8 @@ class CitationView:
     url_es: Optional[str]
     url_json: Optional[str]
     url_txt: Optional[str]
+    url_raw_txt: Optional[str]
+    url_both_txt: Optional[str]
 
 def build_citation_views(
     citations: List[dict],
@@ -37,11 +39,13 @@ def build_citation_views(
 
     views: List[CitationView] = []
     for c in cores:
-        url_es = url_json = url_txt = None
+        url_es = url_json = url_txt = url_raw_txt = url_both_txt = None
         if isinstance(c.doc_id, str) and c.doc_id:
             base_full = abs_url(request, f"/v1/docs/{c.doc_id}/fulltext")
-            url_json = base_full + "?format=json"
-            url_txt = base_full + "?format=txt&download=1"
+            url_json = base_full + "?format=json&text_layer=both"
+            url_txt = base_full + "?format=txt&download=1&text_layer=reference"
+            url_raw_txt = base_full + "?format=txt&download=1&text_layer=raw"
+            url_both_txt = base_full + "?format=txt&download=1&text_layer=both"
             url_es = abs_url(request, f"/v1/docs/{c.doc_id}")
 
         views.append(
@@ -55,6 +59,8 @@ def build_citation_views(
                 url_es=url_es,
                 url_json=url_json,
                 url_txt=url_txt,
+                url_raw_txt=url_raw_txt,
+                url_both_txt=url_both_txt,
             )
         )
 
