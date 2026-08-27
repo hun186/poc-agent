@@ -223,16 +223,3 @@ def add_data_agent_section(
                 body = normalize_text_for_docx(_truncate(text, cfg.style_ref_max_chars))
                 p3 = doc.add_paragraph(style=quote_style) if quote_style else doc.add_paragraph()
                 p3.add_run(body)
-
-    model_usage = getattr(da_section, "model_usage", None) or []
-    if model_usage:
-        doc.add_paragraph("")
-        doc.add_heading("各階段使用模型", level=3)
-        for item in model_usage:
-            stage = _get(item, "stage")
-            model_id = _get(item, "model_id")
-            if not stage or not model_id:
-                continue
-            p = doc.add_paragraph(style="List Bullet")
-            p.add_run(f"{normalize_text_for_docx(stage)}：").bold = True
-            p.add_run(normalize_text_for_docx(model_id))

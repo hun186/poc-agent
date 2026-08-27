@@ -90,26 +90,30 @@ class ExportWordService:
             doc.add_heading("附錄：推理內容", level=2)
             add_markdown_to_doc(doc, pres.reasoning)
 
-        # This audit appendix is deliberately rendered last so operators can
-        # quickly verify which LLM boundaries returned normally or fell back.
-        if pres.llm_execution:
+        # Keep model identity, completion status, and duration together at the
+        # end of the document. Older saved sessions may only have model_usage,
+        # so retain their original model-only display as a compatibility path.
+        model_usage = pres.da_section.model_usage if pres.da_section else []
+        execution_rows = pres.llm_execution or model_usage
+        if execution_rows:
             doc.add_page_break()
-            doc.add_heading("附錄：LLM 各階段執行情況", level=2)
+            doc.add_heading("各階段使用模型", level=2)
             status_labels = {
-                "success": "正常回傳",
+                "success": "正常完成",
                 "fallback": "發生錯誤，已採用備援結果",
                 "error": "執行錯誤",
             }
-            for item in pres.llm_execution:
+            for item in execution_rows:
                 stage = normalize_text_for_docx(item.get("stage") or "未知階段")
-                status = str(item.get("status") or "").lower()
-                label = status_labels.get(status, normalize_text_for_docx(status or "未知"))
                 p = doc.add_paragraph(style="List Bullet")
                 p.add_run(f"{stage}：").bold = True
-                p.add_run(label)
                 model_id = item.get("model_id")
                 if model_id:
-                    p.add_run(f"；模型：{normalize_text_for_docx(model_id)}")
+                    p.add_run(normalize_text_for_docx(model_id))
+                status = str(item.get("status") or "").lower()
+                if status:
+                    label = status_labels.get(status, normalize_text_for_docx(status))
+                    p.add_run(f"；執行狀態：{label}")
                 elapsed = item.get("elapsed_sec")
                 if isinstance(elapsed, (int, float)):
                     p.add_run(f"；耗時：{elapsed:.3f} 秒")

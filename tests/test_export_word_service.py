@@ -140,6 +140,7 @@ def test_export_docx_lists_stage_models_at_end_of_data_agent_section() -> None:
         "報告生成：report-model",
     ]
     assert heading_index > paragraphs.index("原始問題：請整理本週資料。")
+    assert heading_index == len(paragraphs) - 4
 
 
 def test_export_docx_displays_relative_time_reference() -> None:
@@ -189,7 +190,7 @@ def test_collect_llm_execution_reports_success_and_fallback() -> None:
     ]
 
 
-def test_export_docx_puts_llm_execution_appendix_at_the_end() -> None:
+def test_export_docx_integrates_llm_execution_into_model_list_at_the_end() -> None:
     docx_bytes, _ = ExportWordService().build_docx_bytes(
         {
             "question": "請整理資料。",
@@ -208,9 +209,10 @@ def test_export_docx_puts_llm_execution_appendix_at_the_end() -> None:
     )
 
     paragraphs = _paragraph_texts(docx_bytes)
-    heading = paragraphs.index("附錄：LLM 各階段執行情況")
+    heading = paragraphs.index("各階段使用模型")
     assert heading > paragraphs.index("附錄：推理內容")
+    assert "附錄：LLM 各階段執行情況" not in paragraphs
     assert paragraphs[heading + 1:] == [
-        "任務路由：正常回傳；模型：router；耗時：1.250 秒",
-        "問題精煉：發生錯誤，已採用備援結果；模型：refiner\n錯誤／備註：TimeoutError: timed out",
+        "任務路由：router；執行狀態：正常完成；耗時：1.250 秒",
+        "問題精煉：refiner；執行狀態：發生錯誤，已採用備援結果\n錯誤／備註：TimeoutError: timed out",
     ]
