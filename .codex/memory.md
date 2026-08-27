@@ -123,3 +123,9 @@
 - Agent 將任務路由、問題精煉、資料整備、證據欄位選擇、報告／風格／一般回答生成的成功、錯誤或 fallback 狀態整理為 `llm_execution`，包含實際模型、耗時與截短後錯誤訊息。
 - Word 報告在所有既有內容之後新增「附錄：LLM 各階段執行情況」，方便確認正常回傳與糾錯；錯誤回應也保留已收集的執行軌跡。
 - 驗證：`PYTHONPATH=. pytest tests/test_export_word_service.py -q`，8 tests passed；`git diff --check` 通過。依賴安裝完成，pip index 查詢仍出現既有 proxy 403 retry，但 requirements 均已安裝。
+
+### 2026-08-27 Word 模型清單整合執行狀態與耗時
+
+- Word 最後的「各階段使用模型」清單改為在每個階段的模型 ID 後直接顯示執行狀態與耗時，不再另建內容重複的 LLM 執行情況附錄；fallback / error 仍保留安全截短的錯誤備註。
+- 舊 session 若只有 `data_agent.model_usage`，仍在文件最後輸出既有模型清單，不虛構無法取得的狀態或耗時。
+- 驗證：`PYTHONPATH=. pytest tests/test_export_word_service.py -q`，8 tests passed；相關模組 `py_compile` 與 `git diff --check` 通過。依賴確認成功，pip index 查詢出現既有 proxy 403 retry，但 requirements 均已安裝。
