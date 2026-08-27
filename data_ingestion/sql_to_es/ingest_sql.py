@@ -19,6 +19,7 @@ from elasticsearch import helpers
 from dotenv import load_dotenv
 
 from agent.es.es_client import get_es, ES_INDEX_DEFAULT
+from agent.es.reference_text import add_reference_text_mapping, set_ingested_text
 from data_ingestion.txt_to_es.ingest_txt import INDEX_MAPPINGS
 from data_ingestion.excel_to_sql.sql_utils import detect_odbc_driver
 
@@ -39,6 +40,11 @@ SQL_INDEX_MAPPINGS["properties"]["sourceSql"] = {
         "whereClause": {"type": "keyword"}
     }
 }
+
+
+def build_sql_index_mappings() -> Dict:
+    """Build SQL-import mappings using the current reference-text field."""
+    return add_reference_text_mapping(SQL_INDEX_MAPPINGS)
 
 
 def load_json_config(path: str) -> Dict[str, Any]:
@@ -75,7 +81,7 @@ def chunked(iterable: Iterable, size: int) -> Generator[List, None, None]:
 
 def ensure_index(es, index_name: str):
     if not es.indices.exists(index=index_name):
-        es.indices.create(index=index_name, body={"mappings": SQL_INDEX_MAPPINGS})
+        es.indices.create(index=index_name, body={"mappings": build_sql_index_mappings()})
         print(f"✅ Created index: {index_name}")
     else:
         print(f"ℹ️ Index already exists: {index_name}")
@@ -294,10 +300,7 @@ def build_doc_from_row(row: Dict[str, Any], cfg: Dict[str, Any]):
 
     source = {
         "uuid": doc_id,
-        "rawInfo": {
-            "content": content,
-            "langCode": lang_code
-        },
+        "rawInfo": {"langCode": lang_code},
         "communication": {
             "subject": title
         },
@@ -332,6 +335,7 @@ def build_doc_from_row(row: Dict[str, Any], cfg: Dict[str, Any]):
         }
     }
 
+    set_ingested_text(source, content)
     return doc_id, source
 
 

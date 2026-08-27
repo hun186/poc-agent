@@ -23,6 +23,7 @@ from elasticsearch import helpers
 from dotenv import load_dotenv
 
 from agent.es.es_client import get_es, ES_INDEX_DEFAULT
+from agent.es.reference_text import add_reference_text_mapping, set_ingested_text
 
 
 INDEX_MAPPINGS: Dict = {
@@ -46,6 +47,11 @@ INDEX_MAPPINGS: Dict = {
         },
     }
 }
+
+
+def build_index_mappings() -> Dict:
+    """Build mappings using the current agent reference-text field contract."""
+    return add_reference_text_mapping(INDEX_MAPPINGS)
 
 
 def iter_txt_paths(root_dir: str, exts: Tuple[str, ...] = (".txt",)) -> Generator[str, None, None]:
@@ -106,9 +112,9 @@ def build_doc_from_file(
         file_size = None
         file_mtime = None
 
-    return doc_id, {
+    source = {
         "uuid": doc_id,
-        "rawInfo": {"content": content, "langCode": lang_code},
+        "rawInfo": {"langCode": lang_code},
         "communication": {"subject": subject},
         "itc": {"rawTypeCode": raw_type_code},
         "importDT": now_iso,
@@ -123,6 +129,8 @@ def build_doc_from_file(
             "dedupByContent": dedup_by_content,
         },
     }
+    set_ingested_text(source, content)
+    return doc_id, source
 
 
 def chunked(iterable: Iterable, size: int) -> Generator[List, None, None]:
@@ -138,7 +146,7 @@ def chunked(iterable: Iterable, size: int) -> Generator[List, None, None]:
 
 def ensure_index(es, index_name: str):
     if not es.indices.exists(index=index_name):
-        es.indices.create(index=index_name, body={"mappings": INDEX_MAPPINGS})
+        es.indices.create(index=index_name, body={"mappings": build_index_mappings()})
         print(f"✅ Created index: {index_name}")
     else:
         print(f"ℹ️ Index already exists: {index_name}")

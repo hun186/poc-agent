@@ -2,6 +2,14 @@
 
 ## Current Summary
 
+### 2026-08-27 連貫文本採「代理人參考文本」契約
+
+- 使用「代理人參考文本」（agent reference text）指稱代理人理解前後文所用的連貫文本；它可以是原始全文或精煉詳文，但不取代可追溯、局部引用的 `evidence_snippets`。
+- ES 欄位以 `SRA_REFERENCE_TEXT_FIELD` 在部署時選擇，預設 `rawInfo.content`。明確設定替代欄位後不得靜默退回雜亂原文，以避免同一次任務混合不同品質與語意的文本來源。
+- 同一環境的 TXT→ES、SQL→ES writer/mapping 與 agent/API reader 必須共用此設定，避免只換讀取端而造成新文件無內容。Excel→SQL 不直接寫 ES dot path，其銜接點是 SQL→ES 的 `source.columns.content`。
+- 人工檢核需要保留原始材料，因此全文 API 不把 raw 視為 reference 的 fallback alias，而以 `reference`、`raw`、`both` 三個明確層次輸出；單獨要求缺少的層次必須回 404，避免把精煉內容誤標成原文。
+- Ingestion 對新文件保留 `rawInfo.content` 並 seed configured reference field，以支援舊版 reader 與人工稽核；精煉工作只能覆寫 reference。Reader 不做 raw→reference 靜默 fallback，舊文件需明確 backfill，避免把「尚未精煉」誤報為「精煉完成」。
+
 ### 2026-08-25 相對週期採明確週界線與不重疊語意
 
 - 相對週不是只靠 reference timestamp 猜測：系統以週一至週日為完整週，並在 refiner system context 提供上一週與前兩個完整週的實際日期邊界。

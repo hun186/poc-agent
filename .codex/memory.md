@@ -12,6 +12,54 @@
 
 ## Recent Changes
 
+### 2026-08-27 Word 文件改以 Base64 文字保存
+
+- 因 PR 工具無法提交 binary，移除 tracked `.docx`，改提交 `docs/SRA代理人參考文本與多層全文下載技術說明.docx.b64` 與 `docs/restore_docx.py`；restore script 會先驗證內建 SHA-256，成功後才寫出 DOCX。
+- 原始與還原檔 SHA-256 均為 `ea08d8bef0498e003c0b6133379234fa10e97f8233767914c87d4560d252f2bc`，`cmp --silent` 確認 byte-for-byte 完全相同，還原檔 `unzip -t`、script `py_compile` 與 `git diff --check` 通過。
+
+### 2026-08-27 代理人參考文本技術介紹 Word
+
+- 新增 `docs/SRA代理人參考文本與多層全文下載技術說明.docx`，以非開發者也能理解的方式整理更新背景、目標、核心名詞、資料流、OpenWebUI/API 行為、相容性、部署步驟、測試範圍、效益與 30 秒介紹話術。
+- 文件包含資料流圖示表、相容性矩陣、下載層次表與主要技術元件附錄，可直接用於內部說明或對外簡報前的技術附件。
+- 驗證：`unzip -t docs/SRA代理人參考文本與多層全文下載技術說明.docx` 通過；以 `python-docx` 重新開啟並確認 55 個 paragraphs、12 個 tables、必要章節與文件 metadata 均存在；`git diff --check` 通過。
+
+### 2026-08-27 OpenWebUI 全文下載入口分層
+
+- Citation 原本的單一「下載全文」連結改為參考文本、原始文本與雙層比對三個明確入口，JSON link 也直接顯示 both 層次。
+- 舊文件若沒有 `agent_context`，下載參考文本會明確 404，但下載原始文本與雙層比對仍能取得 `rawInfo.content`，不再讓單一按鈕造成使用者無法判斷下載內容或只有錯誤頁。
+- 新增 citation URL 與 Markdown label 測試；`PYTHONPATH=. pytest tests/test_reference_text_config.py tests/test_export_word_service.py tests/test_api_security_boundaries.py -q`（49 tests passed）、presenter `py_compile` 與 `git diff --check` 通過。
+
+### 2026-08-27 舊文件相容性與 ingestion 雙寫測試
+
+- 未設定 reference env 時，只有 `rawInfo.content` 的舊文件維持完整相容；切換到新欄位但尚未 backfill 時，reference 明確 404，而 raw / both 仍可供人工檢核。
+- TXT→ES / SQL→ES 新資料改為保留 raw 並 seed configured reference field，使舊版 reader、新版 agent 與後續精煉 pipeline 能平順共存。
+- 新增舊文件 default／切換後行為、雙層 ingestion 與 API layer 回歸測試；`PYTHONPATH=. pytest tests/test_reference_text_config.py tests/test_sql_to_es_odbc_driver.py tests/test_nested_event_mapping.py tests/test_multidim_shape_normalization.py tests/test_doc_followup_fetcher.py tests/test_api_security_boundaries.py -q`（57 tests passed）、相關模組 `py_compile` 與 `git diff --check` 通過。
+
+### 2026-08-27 全文下載多層次文本
+
+- `/v1/docs/{doc_id}/fulltext` 新增 `text_layer=reference|raw|both`，讓預設代理人參考文本與固定 `rawInfo.content` 原始材料可分別取得或並列比對。
+- JSON 回傳層次可用性、欄位與長度，both 模式包含兩份文本；TXT both 使用清楚的層次／欄位標題，下載檔名含 layer suffix。
+- 驗證：`PYTHONPATH=. pytest tests/test_reference_text_config.py tests/test_multidim_shape_normalization.py tests/test_api_security_boundaries.py -q`（43 tests passed）、docs router `py_compile` 與 `git diff --check` 通過。
+
+### 2026-08-27 代理人參考文本 ingestion 串接
+
+- 補齊 TXT→ES 與 SQL→ES 寫入端及新 index mapping，使其與 agent/API 共用 `SRA_REFERENCE_TEXT_FIELD`，避免替換讀取欄位後新匯入文件斷流。
+- 確認 Excel→SQL 不直接建立 ES `_source`；其 destination 內容欄由 SQL→ES `source.columns.content` 選取後，寫入設定的代理人參考文本欄位。
+- 驗證：`PYTHONPATH=. pytest tests/test_reference_text_config.py tests/test_sql_to_es_odbc_driver.py tests/test_nested_event_mapping.py tests/test_multidim_shape_normalization.py tests/test_doc_followup_fetcher.py tests/test_api_security_boundaries.py -q`（53 tests passed）、ingestion `py_compile` 與 `git diff --check` 通過。
+
+### 2026-08-27 代理人參考文本欄位模組化
+
+- 將具前後文的原始全文或精煉詳文命名為「代理人參考文本」，明確與局部、可追溯的 `evidence_snippets` 分工。
+- 新增 `SRA_REFERENCE_TEXT_FIELD`，預設 `rawInfo.content`；搜尋、證據 fallback、依 ID 取得參考文本與 docs 下載改用共用 accessor，無效欄位設定安全退回預設值。
+- 驗證：`PYTHONPATH=. pytest tests/test_reference_text_config.py tests/test_nested_event_mapping.py tests/test_multidim_shape_normalization.py tests/test_doc_followup_fetcher.py tests/test_api_security_boundaries.py -q`（47 tests passed）與 `git diff --check` 通過。
+
+### 2026-08-26 SRA Elasticsearch 原文欄位契約盤點
+
+- 確認 `rawInfo.content` 並非全域可設定欄位，而是在搜尋加分與 fallback、證據日期 fallback、全文／風格文件取得及 Editor 設定中直接引用。
+- 結構化主搜尋主要依賴 `multidim_event_json` 與 `communication.subject`；保留完整結構化欄位時，原文改名未必使所有報告立即報錯，但會降低召回並破壞或降級全文相關功能。
+- 新增 `docs/es_source_field_contract.md`，記錄安全遷移方式與需同步修改的邊界。
+- 驗證：`PYTHONPATH=. pytest tests/test_nested_event_mapping.py tests/test_multidim_shape_normalization.py -q` 與 `git diff --check` 通過。
+
 ### 2026-08-26 問題精煉 timeout 預設延長
 
 - 將 report query refiner 的通用 timeout 預設由 20 秒延長為 60 秒，並同步 report refiner 設定載入器與 `.env.example`。

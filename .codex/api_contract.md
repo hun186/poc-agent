@@ -18,6 +18,9 @@
 
 ## Recent Changes
 
+- 2026-08-27：`GET /v1/docs/{doc_id}/fulltext` 新增 `text_layer=reference|raw|both`（預設 `reference`）。JSON 新增 `text_layer`、`text_field`、`available_text_layers`；`both` 另回傳 `text_layers.reference/raw`，既有 `full_text` 保持代理人參考文本主值。TXT `both` 以明確標題串接兩層，下載檔名加入 layer suffix；明確要求但該層不存在時回傳 404。
+- 2026-08-27：OpenWebUI citation Markdown 將單一「下載全文」拆成「下載參考文本」、「下載原始文本」、「下載雙層比對」，並將 JSON link 改為 `text_layer=both`；舊文件缺少 configured reference 時，raw / both link 仍可用。
+
 - 2026-08-21（更正）：`GET /v1/excel-to-sql/dashboard` 的 `limit` 是 server-side pagination 的每頁 audit 事件筆數，不是另一個「載入列數上限」；預設 2000、上限 400000。
 - 2026-08-21：`GET /v1/excel-to-sql/dashboard` 的 `limit` 預設值從 50000 降為 2000（上限仍為 400000），降低首次進入儀表板時的 SQL 回傳量與瀏覽器 DOM 壓力。
 - 2026-07-02：帳號操作記錄查詢改以「載入筆數上限」欄位（預設 5000、最大 50000）控制 `/v1/editor/audit-logs` limit；API 上限提高到 50000 並回傳 `truncated` 供前端告警。SQL 來源資料編輯器新增「載入筆數上限」（預設 5000、最大 50000）；Excel→SQL dashboard 保留「載入列數上限」（預設 50000、最大 400000）。
