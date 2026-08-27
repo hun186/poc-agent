@@ -1,5 +1,6 @@
 # api/routers/docs.py
 import re
+from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import PlainTextResponse, JSONResponse
 from elasticsearch import NotFoundError
@@ -8,6 +9,11 @@ from elasticsearch import NotFoundError
 
 from agent.es.es_client import get_es, init_index_cache, ALL_INDEXES
 from agent.es.evidence_core.json_utils import as_blocks, json_load_maybe
+from agent.es.reference_text import (
+    DEFAULT_REFERENCE_TEXT_FIELD,
+    get_reference_text,
+    get_reference_text_field,
+)
 
 router = APIRouter()
 
@@ -85,6 +91,10 @@ def get_fulltext_on_demand(
         False,
         description="在 format=txt 時，為 true 則以附件下載形式回傳。",
     ),
+    text_layer: Annotated[
+        Literal["reference", "raw", "both"],
+        Query(description="文本層次：代理人參考文本、原始未處理文本，或兩者。"),
+    ] = "reference",
 ):
     """
     按需下載全文：
@@ -97,16 +107,49 @@ def get_fulltext_on_demand(
     if isinstance(src, dict) and "_source" in src:
         src = src["_source"]
 
-    # ==== 1) 全文 ====
-    full_text = (
-        src.get("full_text")
-        or (src.get("rawInfo") or {}).get("content")
-        or src.get("content")
-        or ""
-    )
+    # ==== 1) 多層次文本 ====
+    reference_field = get_reference_text_field()
+    if reference_field == DEFAULT_REFERENCE_TEXT_FIELD:
+        reference_text = src.get("full_text") or get_reference_text(src) or src.get("content") or ""
+    else:
+        reference_text = get_reference_text(src, field=reference_field)
+    raw_text = get_reference_text(src, field=DEFAULT_REFERENCE_TEXT_FIELD)
 
-    if not isinstance(full_text, str) or not full_text.strip():
-        raise HTTPException(status_code=404, detail="文件存在，但沒有可用的全文內容。")
+    layer_payloads = {
+        "reference": {
+            "label": "代理人參考文本",
+            "field": reference_field,
+            "text": reference_text,
+            "total_length": len(reference_text),
+            "available": bool(reference_text),
+        },
+        "raw": {
+            "label": "原始未處理文本",
+            "field": DEFAULT_REFERENCE_TEXT_FIELD,
+            "text": raw_text,
+            "total_length": len(raw_text),
+            "available": bool(raw_text),
+        },
+    }
+    available_text_layers = {
+        name: {
+            "label": item["label"],
+            "field": item["field"],
+            "available": item["available"],
+            "total_length": item["total_length"],
+        }
+        for name, item in layer_payloads.items()
+    }
+
+    if text_layer == "both":
+        full_text = reference_text or raw_text
+        if not full_text:
+            raise HTTPException(status_code=404, detail="文件存在，但沒有可用的文本內容。")
+    else:
+        full_text = layer_payloads[text_layer]["text"]
+        if not full_text:
+            label = layer_payloads[text_layer]["label"]
+            raise HTTPException(status_code=404, detail=f"文件存在，但沒有可用的{label}。")
 
     # ==== 2) 標題 ====
     md_blocks = as_blocks(src.get("multidim_event_json"))
@@ -184,11 +227,24 @@ def get_fulltext_on_demand(
                 "subject": subject,
                 "total_length": total_length,
                 "full_text": full_text,
+                "text_layer": text_layer,
+                "text_field": reference_field if text_layer == "both" else layer_payloads[text_layer]["field"],
+                "available_text_layers": available_text_layers,
+                **({"text_layers": layer_payloads} if text_layer == "both" else {}),
             }
         )
 
     # === TXT 模式：單純吐出全文（可選擇是否附件下載） ===
     if format.lower() == "txt":
+        if text_layer == "both":
+            sections = []
+            for name in ("reference", "raw"):
+                item = layer_payloads[name]
+                if item["available"]:
+                    sections.append(
+                        f"===== {item['label']} ({item['field']}) =====\n\n{item['text']}"
+                    )
+            full_text = "\n\n".join(sections)
         headers = {}
     
         if download:
@@ -213,8 +269,8 @@ def get_fulltext_on_demand(
             safe_uuid = src.get("uuid", doc_id)
     
             # ===== 4) 組合檔名 =====
-            filename_ascii = f"{safe_date}_{ascii_title}_{safe_uuid}.txt"
-            filename_utf8  = f"{safe_date}_{utf8_title}_{safe_uuid}.txt"
+            filename_ascii = f"{safe_date}_{ascii_title}_{safe_uuid}_{text_layer}.txt"
+            filename_utf8  = f"{safe_date}_{utf8_title}_{safe_uuid}_{text_layer}.txt"
     
             headers["Content-Disposition"] = (
                 f"attachment; "

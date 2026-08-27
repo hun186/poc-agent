@@ -2,6 +2,8 @@
 import re
 from typing import Any, Dict, List, Optional
 
+from .reference_text import get_reference_text_field
+
 
 MD_PATH = "multidim_event_json"
 
@@ -50,6 +52,7 @@ def build_main_query_body(
     syn_terms: Optional[List[str]] = None,
     all_terms: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
+    reference_text_field = get_reference_text_field()
     core_terms = core_terms or []
     syn_terms = syn_terms or []
     all_terms = all_terms or []
@@ -237,7 +240,7 @@ def build_main_query_body(
     
         # 核心主題詞：match_phrase（精準）
         for t in core_terms:
-            entity_shoulds.append({"match_phrase": {"rawInfo.content": t}})
+            entity_shoulds.append({"match_phrase": {reference_text_field: t}})
             entity_shoulds.append({"match_phrase": {"communication.subject": t}})
             entity_shoulds.append(_in_multidim({"match_phrase": {"multidim_event_json.article_title": t}}))
     
@@ -245,7 +248,7 @@ def build_main_query_body(
         for t in syn_terms:
             entity_shoulds.append({
                 "match": {
-                    "rawInfo.content": {
+                    reference_text_field: {
                         "query": t,
                         "operator": "or"
                     }
@@ -342,6 +345,7 @@ def build_fallback_query_body(
     must_selected: Optional[bool],
     size: Optional[int],
 ) -> Dict[str, Any]:
+    reference_text_field = get_reference_text_field()
     filters: List[Dict[str, Any]] = []
     if must_high_value:
         filters.append({"term": {"ai.classLabels.highValue": True}})
@@ -352,7 +356,7 @@ def build_fallback_query_body(
     shoulds = [
         {"simple_query_string": {
             "query": q,
-            "fields": ["communication.subject^3", "rawInfo.content"]
+            "fields": ["communication.subject^3", reference_text_field]
         }},
         _in_multidim({"match": {"multidim_event_json.article_title": q}}),
         _in_multidim_child("evidence_snippets", {"match": {
@@ -371,7 +375,7 @@ def build_fallback_query_body(
         "_source": [
             "uuid",
             "communication.subject",
-            "rawInfo.content",
+            reference_text_field,
             "multidim_event_json.evidence_snippets",
             "multidim_event_json.article_title",
             "multidim_event_json.article_date_iso",
@@ -379,7 +383,7 @@ def build_fallback_query_body(
         ],
         "query": {"bool": {"should": shoulds, "minimum_should_match": 1, "filter": filters}},
         "highlight": {
-            "fields": {"rawInfo.content": {"fragment_size": 200, "number_of_fragments": 2}},
+            "fields": {reference_text_field: {"fragment_size": 200, "number_of_fragments": 2}},
             "require_field_match": False
         }
     }
