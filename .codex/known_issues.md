@@ -23,6 +23,13 @@
 
 ## Open Issues
 
+### Retrieval exclusion directive is not propagated to the ES Tool
+
+- First confirmed: 2026-08-31.
+- Impact: Report Data Agent instructions can prevent an explicitly excluded term from being selected as a core term, but the downstream `es_search_news()` call receives only the prepared core query. Because the exclusion directive is not structured data at that boundary, the architecture cannot guarantee that synonym expansion will never produce the same excluded spelling.
+- Mitigation: synonym expansion now uses full-query contextual disambiguation and a narrower equivalent-name contract; do not claim this is a hard exclusion guarantee.
+- Status: Open.
+
 ### Playwright / browser runtime unavailable
 
 - First seen: 2026-06-11.

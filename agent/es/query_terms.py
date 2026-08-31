@@ -38,6 +38,33 @@ def _build_keyword_extraction_input(q: str) -> str:
     return f"{cleaned[:head_chars]}{marker}{cleaned[-tail_chars:]}"
 
 
+_EXPLICIT_REPORT_CORE_QUERY_RE = re.compile(
+    r"^\s*核心關鍵詞組如下\s*[：:]\s*(.*?)\s*$",
+    re.DOTALL,
+)
+
+
+def _parse_explicit_core_terms_query(q: str) -> List[str] | None:
+    """Parse only the structured core query emitted by the Report Data Agent.
+
+    ``None`` means the query is not in the Report format.  An empty list means
+    that the Report prefix was present but did not contain any usable terms.
+    """
+    match = _EXPLICIT_REPORT_CORE_QUERY_RE.fullmatch(q or "")
+    if match is None:
+        return None
+
+    terms: List[str] = []
+    seen: set[str] = set()
+    for raw_term in re.split(r"[、，,]", match.group(1)):
+        term = raw_term.strip()
+        if not term or term in seen:
+            continue
+        seen.add(term)
+        terms.append(term)
+    return terms
+
+
 # ===== LLM：抽主題詞 =====
 
 def extract_topic_terms_llm(q: str) -> List[str]:
@@ -63,16 +90,16 @@ def extract_topic_terms_llm(q: str) -> List[str]:
 
     從內容中找出最重要的「關鍵詞 / 主題詞」，例如：
     - 專有名詞：人名、地名（國家、城市、海域、基地、港口等）、組織、機構
-    - 事件 / 政策名稱：軍演名稱、法案名稱、政策名稱
-    - 重要概念：例如 碳排放交易、數位轉型、通膨、關稅戰
-    - 產品 / 人工同義詞 / 型號：武器型號、船艦名、飛機型號、產品型號等
+    - 事件 / 政策名稱：某事件、A政策、B制度
+    - 重要概念：具明確檢索價值的技術、制度或專業概念
+    - 產品 / 人工同義詞 / 型號：某種設備、產品型號等
 
     規則：
     1. 僅輸出一個 JSON 陣列（array of string），不得有任何多餘文字。
-       例：["川普經濟學", "對等關稅", "美國就業", "物價", "宮古水道"]
+       例：["甲主題", "乙制度", "丙技術"]
     2. 每個元素應是短語或名詞，不要整句話。
     3. 優先挑選具體、可檢索的詞：
-       - 例如「川普經濟學」「宮古水道」「東風15型導彈」
+       - 例如「A政策」「乙地」「某種設備X型」
        - 比起「影響」「變化」「情勢」這種抽象詞更重要。
     4. 不要輸出：
        - 功能詞：的、和、是否、以及、影響、分析、情況、趨勢 等
@@ -80,7 +107,7 @@ def extract_topic_terms_llm(q: str) -> List[str]:
        - 單獨的數字：如 15、2025 等
        - 過於籠統的地理詞：如 世界、全球、國際、亞洲、歐洲（除非明顯是查詢核心）
     5. 若覺得沒有明顯的關鍵詞，可以輸出空陣列 []。
-    6. 盡量控制在 3～8 個關鍵詞內，寧可少給也不要亂給。
+    6. 原則上不超過 8 個，沒有最低數量要求；寧可少給也不要亂給。
     """).strip()
 
     user_prompt = textwrap.dedent(f"""
@@ -112,8 +139,8 @@ def extract_topic_terms_llm(q: str) -> List[str]:
 
 def expand_synonyms_grouped_llm(q: str, core_terms: List[str]) -> Dict[str, List[str]]:
     """
-    用 LLM 幫忙，針對「每一個核心主題詞」給一組同義詞，
-    並在 LLM 端就完成「同一語意軸的合併」。
+    用既有 LLM 呼叫依完整 query context，針對核心詞產生等價或近等價
+    名稱變體，並合併真正等價的語意軸。
 
     要求 LLM：
     - 若覺得某些 core term 其實是互為同義詞（或其中一個只是別名 / 英譯），
@@ -136,9 +163,9 @@ def expand_synonyms_grouped_llm(q: str, core_terms: List[str]) -> Dict[str, List
     - 一段查詢句子（query）
     - 一組核心關鍵詞（core_terms）
 
-    你的工作只有一件事：
-    1. 針對這些核心關鍵詞，建立「語意軸 → 同義詞列表」的映射。
-    2. 若發現有多個核心關鍵詞其實是同一個概念（例如中文名 + 英文名 + 簡寫），
+    你的工作只有一件事：在完整 query 與全部 core_terms 的共同語境下，
+    建立「語意軸 → 等價／近等價名稱列表」的映射。這不是主題擴張工作。
+    若多個核心關鍵詞確實是同一概念（例如正式名稱 + 外文名 + 簡寫），
        請把它們「合併成同一語意軸」，只保留一個代表核心詞當 key，其餘全部放進 value 的陣列裡。
 
     具體規則：
@@ -149,38 +176,44 @@ def expand_synonyms_grouped_llm(q: str, core_terms: List[str]) -> Dict[str, List
       value: 該語意軸的同義詞陣列（array of string）
 
     【語意軸合併規則】
-    1. 先觀察 core_terms 列表，思考是否有「其實是同一個概念」的核心詞：
-       例如：
-       - 「敘利亞」「Syrian Arab Republic」「Syria」「敘利亞阿拉伯共和國」
-       - 「DF-15」「東風-15」「東風15型導彈」
+    1. 只有同一實體、全名／縮寫、同一名稱的不同語言，或在本 query
+       語境下高度可互換的明確等價名稱，才可合併。
     2. 若你判定它們是同一個概念，請：
        - 從中挑一個代表核心詞作為 key
          （優先選用 core_terms 中出現較早、且較常用的寫法）
        - 其他同義寫法（包含原本的核心詞、別名、縮寫）全部放進該 key 的 value 陣列。
-    3. 不要再為同一個概念產生第二個 key。
-       例如不要同時有「敘利亞」和「Syrian Arab Republic」兩個 key。
+    3. 不得因上下位、子類、組成關係、共同出現、同一政策的不同機制，
+       或同一文件常一起出現而合併。
 
     【同義詞擴充】
     1. value 陣列中可以包含：
        - 其他 core_terms 中的同義寫法
-       - 常見別名、縮寫、英譯
-    2. 不要發明不存在的專有名詞；不確定就少給。
-    3. 若覺得某個核心關鍵詞沒有需要補充，可以讓它的 value 為空陣列 []。
+       - 同一實體的正式名稱、別名、全名、縮寫、精確外文名稱、常見譯名
+       - 轉寫、拼寫或標點差異，以及本 query 語境中的高度等價表述
+       - 文種／風格詞可包含實際資料中合理且常用的近等價文種名稱
+    2. 「高度相關」不等於同義。不要加入上下位概念、兄弟類別、元件、
+       原因、結果、影響、對策、關聯人物／組織／事件／地點、歷史或類比案例，
+       也不要加入只因媒體共現、同一地區或同一技術體系而相關的詞。
+    3. 文種近等價彈性不得跨到不同主題、政策、事件，或只是用途相關、常共同出現的文件。
+    4. 不要發明名稱；沒有最低數量要求，value 可以是 []。不確定就省略，precision 優先。
+
+    【完整語境消歧】
+    1. 判斷依序以本次 query、全部 core_terms 的共同語意、現代新聞／情報／文件
+       語境中的主要義項為準，不做脫離 query 的單詞字典式展開。
+    2. 古語、罕見歷史義項、其他專業領域義項、在本 query 中不自然或可能大量
+       命中不同領域文件的候選都不要加入；需要特殊字典知識才勉強相關時也省略。
+    3. 對每個候選做取代測試：若在與 query 相關的正常新聞／文件句子中取代原詞，
+       無法穩定維持相同或高度等價概念且不改變檢索主題，就不要加入。
 
     【子型號 / 子類的嚴謹規則】
-    1. 若核心關鍵詞包含明確子類或型號資訊（例如「東風15型導彈」「DF-21D」「A型流感」「H1N1流感」「Toyota Corolla Altis 1.8」），
+    1. 若核心關鍵詞包含明確子類或型號資訊（例如「某種設備X型」「某類疾病A型」），
        同義詞必須保留相同的子類或型號，不可以退化成更廣泛的類別。
-       例如：
-       - 「東風15型導彈」可以對應「東風-15」「DF-15」「DF-15A」，但不能對應「DF」「東風」。
-       - 「A型流感」可以對應「甲型流感」「Influenza A」，但不能對應「流感」「influenza」。
-       - 「H1N1流感」可以對應「H1N1 influenza」，但不能對應「季節性流感」。
-    2. 類似地，若關鍵詞包含明確型號、版本號、系列編號（例如「M1A2」「iPhone 15」「F-16V」），
+    2. 類似地，若關鍵詞包含明確型號、版本號、系列編號，
        同義詞中也必須保留對應的識別資訊（數字或等價符號），不要只給「坦克」「手機」「戰機」這類籠統詞。
 
     【代表核心詞的選擇原則（說明用，不用輸出）】
     - 優先選 core_terms 列表中較前面出現，且較自然、常用的寫法。
-    - 例如 core_terms = ["敘利亞", "Syrian Arab Republic"]，
-      建議 key 用 "敘利亞"，value 包含 ["Syrian Arab Republic", ...]。
+    - key 必須逐字來自 core_terms；不得自行創造 representative key。
     """).strip()
 
     user_prompt = textwrap.dedent(f"""
@@ -237,8 +270,7 @@ def expand_synonyms_grouped_llm(q: str, core_terms: List[str]) -> Dict[str, List
         for k, syns in final.items():
             if k in core_set:
                 filtered[k] = syns
-        # 若 filtered 不是空的，就用 filtered；否則 fallback 用 final
-        return filtered or final
+        return filtered
 
     except Exception as e:
         print(f"[ES tools] LLM grouped synonym expander 失敗：{e}")
@@ -287,25 +319,30 @@ def extract_topic_terms_rules(q: str) -> List[str]:
 
 
 def compute_effective_terms(q: str) -> Tuple[
-    List[str], Dict[str, List[str]], bool, List[str], List[set[str]]
+    List[str], Dict[str, List[str]], bool, List[str], List[str], List[set[str]]
 ]:
     """
     回傳：
     - core_terms
     - grouped_synonyms
     - is_manual_entity_query
+    - manual_terms_in_q
     - effective_terms
     - term_groups（list[set]）
     """
     q = (q or "").strip()
     if not q:
-        return [], {}, False, [], []
+        return [], {}, False, [], [], []
 
     # 1) LLM 主題詞
     # Only the extraction LLM receives a bounded temporary view. Keep ``q``
     # unchanged for manual-term matching, synonym expansion, and ES retrieval.
-    keyword_extraction_input = _build_keyword_extraction_input(q)
-    llm_terms_raw = extract_topic_terms_llm(keyword_extraction_input)
+    explicit_core_terms = _parse_explicit_core_terms_query(q)
+    if explicit_core_terms is not None:
+        llm_terms_raw = explicit_core_terms
+    else:
+        keyword_extraction_input = _build_keyword_extraction_input(q)
+        llm_terms_raw = extract_topic_terms_llm(keyword_extraction_input)
     llm_terms: List[str] = []
     seen: set[str] = set()
     for t in llm_terms_raw:
@@ -347,7 +384,7 @@ def compute_effective_terms(q: str) -> Tuple[
                 ordered_core_candidates.append(t)
 
     if not ordered_core_candidates:
-        return [], {}, is_manual_entity_query, [], []
+        return [], {}, is_manual_entity_query, manual_terms_in_q, [], []
 
     # 5) LLM 做 group 同義詞
     raw_grouped = expand_synonyms_grouped_llm(q, ordered_core_candidates) or {}

@@ -6,7 +6,7 @@
 
 ## 中優先度
 
-- 
+- 另案設計可硬性傳遞的 retrieval controls，例如 `exclude_terms`、`query_directives` 或 structured retrieval constraints；需先定義 Data Agent、Tool schema、query_meta 與 backward-compatible migration，本次不修改既有 Tool/payload contract。
 
 ## 低優先度
 
