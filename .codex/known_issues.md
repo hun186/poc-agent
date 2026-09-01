@@ -70,3 +70,7 @@
 
 - 本次調整 Editor 網站導航結構屬靜態 UI 變更；目前容器未提供可用瀏覽器 / Playwright runtime，無法產生實機截圖。
 - 替代驗證：使用 `node --check sra_api/static/editor_bootstrap.js` 檢查導航 JS 語法，並以 `PYTHONPATH=. pytest tests/test_editor_auth_ui_static.py::test_editor_navigation_is_header_multilevel_and_collapsible -q` 確認代理人資料流程圖只保留於第一層、未出現在 Excel 匯入流程管理子層。
+# 2026-09-01 Report Job deployment limits
+
+- Worker 是單一 API process 內的 thread，SQLite 與 DOCX 都在 local disk；不可用多 process/多 machine 當作 HA。process crash 時正在執行的工作於下次 startup 轉為 `interrupted`，不會自動續跑或重試。
+- pip upgrade 查詢仍因環境 proxy 403 retry，但 requirements 已安裝，未阻礙測試。

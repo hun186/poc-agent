@@ -29,7 +29,11 @@ class AgentTurnResult:
     trace: dict
 
 
-def _resolve_session_id(payload: Any, request: Request) -> str:
+def _resolve_session_id(payload: Any, request: Request | None, session_id: str | None) -> str:
+    if session_id and session_id.strip():
+        return session_id.strip()
+    if request is None:
+        return infer_session_key_from_payload(payload.messages or [])
     session_id = (
         request.headers.get("x-openwebui-chat-id")
         or request.headers.get("x-conversation-id")
@@ -80,7 +84,8 @@ def _prepare_reuse(previous: dict) -> tuple[list[str], dict[int, str] | None]:
 def execute_agent_turn(
     *,
     payload: Any,
-    request: Request,
+    request: Request | None = None,
+    session_id: str | None = None,
     request_id: str | None = None,
     trace: dict | None = None,
 ) -> AgentTurnResult:
@@ -92,7 +97,7 @@ def execute_agent_turn(
     sessions = get_sessions()
     last_structured = get_last_structured()
     request_id = str(request_id or new_request_id())
-    session_id = _resolve_session_id(payload, request)
+    session_id = _resolve_session_id(payload, request, session_id)
     trace = trace if trace is not None else new_trace(
         session_id=session_id,
         request_id=request_id,

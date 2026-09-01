@@ -12,6 +12,13 @@
 
 ## Recent Changes
 
+### 2026-09-01 Dual-mode Word report Job API
+
+- 保留同步 `POST /v1/report/word` 與 snapshot `GET /v1/export/word`，新增 dedicated persisted Job create/status/download resources。
+- lifespan 管理唯一 worker；startup 先把 stale running 原子更新 interrupted。worker 以直接 session parameter 呼叫 shared turn service，DOCX temp write、驗證後 atomic rename。
+- SQLite 每操作獨立 connection與 busy timeout，transaction-safe claim，idempotency 使用 UNIQUE key + normalized hash；正式圖只留 `docs/architecture/`。
+- 驗證：Job targeted tests 9 passed、1 warning；新增 transport-neutral regression 後 review suite 42 passed、1 warning（原 baseline 為 41 passed）；完整 suite 288 passed、2 個既有 failure、8 warnings（auth module identity 403 與 Vercel mock expectation）；`python -m compileall sra_api`、SVG XML parse、`git diff --check` 通過。
+
 ### 2026-09-01 已部署 API 的非 Swagger 瀏覽器呼叫說明
 
 - 釐清 `PUBLIC_API_BASE=http://192.168.0.133:9002` 是 origin，根路徑依既有 app contract 轉入 `/editor`，Word endpoint 必須使用 `POST /v1/report/word`，不能靠瀏覽器網址列 GET 傳送長提問。

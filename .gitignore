@@ -194,3 +194,6 @@ SRA-API_output.txt
 /.sra_users.login_audit.json.d/
 /logs/traces
 SRA-API_output.txt
+.api_jobs/
+*.sqlite3-wal
+*.sqlite3-shm
