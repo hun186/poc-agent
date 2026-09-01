@@ -18,7 +18,9 @@
 
 ## 未來構想
 
-- Phase 3 可另案評估長時間報告的非同步 job contract、idempotency key、狀態查詢、取消、重試、保留期限、webhook 與集中式 durable storage；在定義 auth、容量、失敗語意與營運責任前，不先指定 Queue、Redis、PostgreSQL、Airflow 等實作。
+- Report Job 後續可另案設計 retention/cleanup、容量與 metrics、cancel、人工 retry/webhook，以及跨機 shared queue/object storage；目前不得把 single-process SQLite/local disk 描述成 HA 或 exactly-once。
+
+- Phase 3 Job 基礎 contract、idempotency 與狀態查詢已完成；取消、重試、保留期限、webhook 與集中式 durable storage 仍待另案評估。
 - Phase 3 可補 integration API credential、per-client rate limit、request size limit、可觀測性 dashboard，以及在具備實際 Elasticsearch / LLM 的 staging 環境執行端到端 DOCX smoke test。
 
 ## 2026-06-11 後續改善建議

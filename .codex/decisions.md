@@ -67,6 +67,8 @@
 
 ## Recent Changes
 
+- 2026-09-01：長報告採 FastAPI lifespan 管理的單機 worker、SQLite persisted state 與 local atomic DOCX publication，不使用 request `BackgroundTasks` 或 internal HTTP。此版只保證 pollable resource；process crash 將 stale running 標記 interrupted，不承諾 HA、exactly-once 或 crash resume。Caller filename 僅作顯示，實體 basename 固定由 job ID 生成。
+
 - 2026-09-01：同步 Word automation 與 Chat 共用單一 turn execution service，避免兩個 endpoint 各自拼裝 Agent inputs。新的 POST endpoint 必須直接 render service 回傳的本輪 structured result；snapshot persistence 只保留既有 GET 下載相容性，不可成為 POST 產檔的 read-after-write 依賴。Phase 2 維持 synchronous HTTP 與既有 integration trust boundary，不引入 Queue、Redis、PostgreSQL、Airflow 或排程元件。
 
 - 2026-08-31：Report explicit core query 採限定 prefix 的 deterministic parser，以保留上游已確認詞並省去重複 topic extraction；不泛化到 Style structured query。共用 synonym LLM 僅負責完整 query context 下的等價／近等價名稱與合法 semantic-axis 合併，Python 僅接受原 core term 作 representative key；不新增 reviewer/judge LLM，也不讓關鍵詞處理介入 index routing。

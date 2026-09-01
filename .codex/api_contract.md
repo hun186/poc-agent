@@ -1,5 +1,12 @@
 # API Contract
 
+## 2026-09-01 Persisted report Job API
+
+- `POST /v1/report/jobs` accepts the dedicated `{prompt, filename?, session_id?, model?, options?, metadata?}` model; default model is `SRA-Structured Retrieval Agent`, supported `options` is currently empty, and success is `202` with job/status/download URLs. Optional `Idempotency-Key` returns the same job for the same normalized resource and `409` for different content.
+- `GET /v1/report/jobs/{job_id}` returns `queued|running|completed|failed|interrupted` persisted state; safe failure category/message may be present.
+- `GET /v1/report/jobs/{job_id}/word` returns DOCX only for completed jobs: unknown is `404`, non-completed is `409`, and completed with a missing/invalid artifact is `500`.
+- `POST /v1/report/word` remains synchronous `ChatPayload → DOCX`; `GET /v1/export/word` remains snapshot-based and independent of Job SQLite/files.
+
 ## 2026-09-01 Synchronous Word report automation
 
 ### `POST /v1/report/word`

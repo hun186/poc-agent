@@ -532,3 +532,6 @@ SRA_EDITOR_FORM_CONFIG=/secure/path/editor_form.my_app.json
 ```
 
 登入稽核已和帳號資料分檔；若未設定 `SRA_LOGIN_AUDIT_FILE`，預設會放在 `SRA_AUTH_USERS_FILE` 同目錄、同檔名前綴的 `.login_audit.json` manifest。實際登入事件會再依月份寫入旁邊的 shard 目錄（例如 `.sra_users.login_audit.json.d/login_audit-202606.json`），避免單一 audit JSON 日積月累肥大。帳號檔與每個 audit shard 每次寫入前都會更新最新 `.bak`；另在每天第一次改寫該檔案時保留 1 份 `.bak.<YYYYMMDD>` 歷史備份，預設保留 20 天版本；讀取遇到 JSON 損壞時會從最新備份一路嘗試到歷史備份還原；還原成功、備份不可用或無法還原時會輸出 warning/error log，並在同目錄寫入 `<file>.recovery.jsonl` 供管理者追蹤。
+# Word report execution modes
+
+`POST /v1/report/word` remains the synchronous ChatPayload-to-DOCX API. For long-running automation, `POST /v1/report/jobs` creates single-machine persisted work that can be polled and downloaded. See [`docs/api/report-api.md`](docs/api/report-api.md), [`docs/architecture/dual-mode-report-api.md`](docs/architecture/dual-mode-report-api.md), and [`docs/operations/report-jobs.md`](docs/operations/report-jobs.md).
