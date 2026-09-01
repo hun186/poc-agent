@@ -12,6 +12,14 @@
 
 ## Recent Changes
 
+### 2026-08-31 Report explicit terms 與 contextual synonym contract
+
+- Report core-term prompt 移除最低數量要求，補上人工關鍵詞控制、受控一階語義擴充、明示案例／模型聯想案例區分與背景議題跳躍限制，並將相關 prompt 範例泛化以避免驗測提示污染。
+- `核心關鍵詞組如下：...` 改由限定 Report prefix 的 deterministic parser 依序清理與去重，跳過第二次 topic extraction；自然語言與 Style structured prefix 保持既有行為，Style 的 `< 5` style-only fallback 與 index_hint 傳遞未改。
+- synonym LLM 改為完整 query context 下的等價／近等價名稱擴充，收斂跨領域義項與 semantic-axis 合併；Python 拒絕非原 core term 的 representative key，簡繁與 manual synonym 架構維持 deterministic。
+- 驗證：`python -m compileall agent` 通過（僅有既有 `markdown_tables.py` invalid escape SyntaxWarning）；`PYTHONPATH=. pytest -q tests/test_query_terms_contract.py tests/test_keyword_extraction_input.py tests/test_routing_input.py tests/test_nested_event_mapping.py` 為 23 passed；`git diff --check` 通過。
+- 相依套件 preflight 已執行；requirements 皆已安裝。package index 經 proxy 查詢 pip 更新時仍出現既有 403 retry，但未阻礙測試。
+
 ### 2026-08-27 Word 文件改以 Base64 文字保存
 
 - 因 PR 工具無法提交 binary，移除 tracked `.docx`，改提交 `docs/SRA代理人參考文本與多層全文下載技術說明.docx.b64` 與 `docs/restore_docx.py`；restore script 會先驗證內建 SHA-256，成功後才寫出 DOCX。

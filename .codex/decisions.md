@@ -67,6 +67,7 @@
 
 ## Recent Changes
 
+- 2026-08-31：Report explicit core query 採限定 prefix 的 deterministic parser，以保留上游已確認詞並省去重複 topic extraction；不泛化到 Style structured query。共用 synonym LLM 僅負責完整 query context 下的等價／近等價名稱與合法 semantic-axis 合併，Python 僅接受原 core term 作 representative key；不新增 reviewer/judge LLM，也不讓關鍵詞處理介入 index routing。
 - 2026-08-20：ES 多事件資料不做跨 nested context 的單一 multi-match；每種 child path 獨立查詢並由 outer nested 包覆，避免不同事件間欄位誤配，evidence 輸出保留 `event_ids` 供下游追溯。
 - 2026-08-13：採用 bounded router view，完整資料延後到 execution model。
 - 2026-07-01～07-04：SQL 來源工具採啟用任務白名單、audit 與全域樹狀導航。

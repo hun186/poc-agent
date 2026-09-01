@@ -36,6 +36,8 @@
 
 ## Recent Changes
 
+- 2026-08-31：Report Data Agent 產生的 `核心關鍵詞組如下：...` 在 `compute_effective_terms()` 由 deterministic parser 直接接收，不再進行第二次 topic extraction；自然語言與 Style 的 `風格仿寫關鍵詞組如下：...` 維持原路徑。synonym、人工詞與簡繁變體仍在 ES Tool 層處理，router/topic/index_hint 軸未改動。
+
 - 2026-08-25：opt-in 目前時間 context 是可觀測的 LLM 邊界事件；實際注入時以 warning 輸出 reason code、timezone、reference time 與輸出可能改變標記，未注入則不記錄，且不將 debug 提示送入 user message。
 
 - 2026-08-25（更正）：LLM 呼叫邊界預設不附加目前時間；僅 query refiner 與 PURE_LLM 這兩個以使用者當下問題為語意的 caller 明確 opt in。結構化文章抽取及其他 machine-to-machine JSON 流程維持既有 system/user message，避免把執行時間誤當文章事件時間。
