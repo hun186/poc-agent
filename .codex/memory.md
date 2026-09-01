@@ -12,6 +12,25 @@
 
 ## Recent Changes
 
+### 2026-09-01 已部署 API 的非 Swagger 瀏覽器呼叫說明
+
+- 釐清 `PUBLIC_API_BASE=http://192.168.0.133:9002` 是 origin，根路徑依既有 app contract 轉入 `/editor`，Word endpoint 必須使用 `POST /v1/report/word`，不能靠瀏覽器網址列 GET 傳送長提問。
+- 自動化文件新增同源 Editor 頁面 DevTools Console `fetch()` 範例，可直接呼叫現有 Word API、檢查錯誤、把 DOCX Blob 下載成檔案並顯示 session/turn/request IDs；此方式不使用 Swagger UI，也不引入第二套非 FastAPI backend。
+- 驗證：requirements 已確認安裝；`PYTHONPATH=. pytest -q tests/test_report_word_api.py tests/test_chat_word_export_metadata.py` 為 4 passed、1 warning；從 Markdown 擷取 JavaScript 為 `.mjs` 後執行 `node --check` 通過，`git diff --check` 通過。
+
+### 2026-09-01 Word API 瀏覽器測試說明與 OpenAPI binary contract
+
+- 補充 Swagger UI 瀏覽器測試步驟與完整加薩提問 request body，說明 POST endpoint 不能只靠網址列帶入長提問，應開啟 `/docs` 後使用 Try it out / Execute。
+- `POST /v1/report/word` 的 OpenAPI 200 response 現在明確宣告 DOCX MIME 與 binary schema，讓 Swagger UI 與 API client generator 不再把成功結果誤認為 JSON。
+- 驗證：先新增 OpenAPI failing test，確認原 contract 錯誤宣告為 `application/json`；最小修改後 targeted suite 為 41 passed、1 warning，compileall 與 diff check 通過。完整 `PYTHONPATH=. pytest tests -q --tb=short` 為 278 passed、2 個既有 failure、8 warnings；failure 仍是 full-suite auth module identity 403 與 `vercel.json` mock mode expectation 差異。
+
+### 2026-09-01 自動化 API 直接回傳 Word 報告
+
+- 新增 synchronous `POST /v1/report/word`，沿用 Chat messages/session contract，同輪 Agent 完成後直接以 structured result 產生 DOCX，不讀取 `state.json`；response 附 session/turn/request tracking headers。
+- 抽出共用 Agent turn execution service，供 Chat 與 Word endpoint 統一處理 history、memory、reuse、routing call、structured identifiers 與 snapshot compatibility side effect；Chat response 新增精確輪次 `word_export` metadata。
+- 新增 API automation 文件與 turn/API/DOCX/metadata/regression tests。實作前已確認使用者指定的 `docs/superpowers/plans/2026-09-01-report-word-api-automation.md` 不存在於目前 branch，因此以目前程式碼及使用者明列 scope/contract 為準完成最小設計。
+- 驗證：相依套件已確認安裝（pip index upgrade 查詢仍有既有 proxy 403 warning）；targeted suite `PYTHONPATH=. pytest -q tests/test_export_word_service.py tests/test_api_security_boundaries.py tests/test_turn_execution_service.py tests/test_report_word_api.py tests/test_chat_word_export_metadata.py` 為 40 passed、1 warning。完整 `PYTHONPATH=. pytest tests -q --tb=short` 已實際跑完，結果 277 passed、2 failed、8 warnings；兩個 failure 是 `.codex/known_issues.md` 已記錄且本次未改動的 full-suite module identity 403 與 `vercel.json` mock mode expectation 差異，相關 auth 單檔驗證通過。
+
 ### 2026-08-31 Report explicit terms 與 contextual synonym contract
 
 - Report core-term prompt 移除最低數量要求，補上人工關鍵詞控制、受控一階語義擴充、明示案例／模型聯想案例區分與背景議題跳躍限制，並將相關 prompt 範例泛化以避免驗測提示污染。

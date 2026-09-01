@@ -1,16 +1,70 @@
 # api/routers/export.py
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import Field
 from fastapi.responses import Response
-from fastapi.responses import StreamingResponse
 
 from api.services.export_word_service import ExportWordService
 from shared.http.download_filename import build_content_disposition
 from api.services.api_state_store import API_STORE
+from api.routers.chat_support import ChatPayload
+from api.services.turn_execution import execute_agent_turn
 
 router = APIRouter()
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+class DocxResponse(Response):
+    media_type = DOCX_MIME
+
+
+class ReportWordPayload(ChatPayload):
+    """A synchronous Agent request whose representation is a DOCX file."""
+
+    stream: bool = Field(default=False)
+    filename: str | None = Field(default=None, max_length=180)
+
+
+@router.post(
+    "/v1/report/word",
+    response_class=DocxResponse,
+    responses={
+        200: {
+            "description": "本輪 Agent 產生的 Word 報告",
+            "content": {
+                DOCX_MIME: {
+                    "schema": {"type": "string", "format": "binary"},
+                }
+            },
+        }
+    },
+)
+def create_report_word(payload: ReportWordPayload, request: Request):
+    if payload.stream:
+        raise HTTPException(status_code=422, detail="Word report endpoint does not support streaming")
+
+    try:
+        turn = execute_agent_turn(payload=payload, request=request)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="後端分析發生錯誤，請稍後再試") from exc
+
+    data, filename = ExportWordService().build_docx_bytes(
+        turn.output,
+        filename=payload.filename or "agent_output.docx",
+    )
+    headers = {
+        "Content-Disposition": build_content_disposition(filename),
+        "Content-Length": str(len(data)),
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+        "X-Session-Id": turn.session_id,
+        "X-Turn-Id": turn.turn_id,
+        "X-Request-Id": turn.request_id,
+    }
+    return DocxResponse(data, headers=headers)
 
 def _load_out_from_disk(session_id: str, turn_id: str | None) -> dict | None:
     raw = API_STORE.read_raw()  # ✅ 每次都讀最新檔

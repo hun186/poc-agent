@@ -36,6 +36,8 @@
 
 ## Recent Changes
 
+- 2026-09-01：新增 `sra_api/services/turn_execution.py` 作為 Chat 與同步 Word API 的共用非 META Agent turn 執行邊界；它統一準備 session/history/memory/reuse、呼叫 `answer_with_routing()`、補齊 turn identifiers 並保留既有 snapshot 相容副作用。`POST /v1/report/word` 直接把 service 回傳的本輪 structured result 交給 `ExportWordService`，不從 `state.json` 讀回；Chat 則沿用相同 service，再完成 Markdown response、session/memory 與 API state persistence。
+
 - 2026-08-31：Report Data Agent 產生的 `核心關鍵詞組如下：...` 在 `compute_effective_terms()` 由 deterministic parser 直接接收，不再進行第二次 topic extraction；自然語言與 Style 的 `風格仿寫關鍵詞組如下：...` 維持原路徑。synonym、人工詞與簡繁變體仍在 ES Tool 層處理，router/topic/index_hint 軸未改動。
 
 - 2026-08-25：opt-in 目前時間 context 是可觀測的 LLM 邊界事件；實際注入時以 warning 輸出 reason code、timezone、reference time 與輸出可能改變標記，未注入則不記錄，且不將 debug 提示送入 user message。
