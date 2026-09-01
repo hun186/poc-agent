@@ -1,5 +1,20 @@
 # API Contract
 
+## 2026-09-01 Synchronous Word report automation
+
+### `POST /v1/report/word`
+
+- Request JSON：沿用 Chat 的 `model`、`messages`、`stream`，另可傳 `filename`（最長 180 字元）；`stream=true` 回 422。
+- Session headers：依序採 `X-OpenWebUI-Chat-Id`、`X-Conversation-Id`、`X-Session-Id`，未提供則由 messages 推導。
+- Success：200，body 為本輪 structured result 直接 render 的 DOCX；Content-Type 為 OOXML Word MIME，並回傳 `Content-Disposition`、`Content-Length`、`Cache-Control: no-store`、`X-Session-Id`、`X-Turn-Id`、`X-Request-Id`。
+- Failure：validation 為 422；Agent 執行錯誤為 500 JSON detail，不回傳假的 Word 檔。
+- 此 contract 為 synchronous execution，不依賴 `state.json` round-trip，也不包含 queue / scheduler。
+
+### `POST /v1/chat/completions` metadata extension
+
+- 非 META 正常 Agent response 的 `choices[0].message.context.word_export` 新增 `method`、URL-encoded `url`、`session_id`、`turn_id`。
+- URL 指向既有 `GET /v1/export/word` 的精確輪次快照；既有 response 欄位不移除。
+
 ## Current Summary
 
 - 本專案主要對外 API 由 FastAPI 提供，常用路由集中在 `sra_api/routers/`；OpenAI-compatible chat、Editor/Auth、Excel→SQL 匯入與 SQL 來源資料編輯器是目前主要 contract。

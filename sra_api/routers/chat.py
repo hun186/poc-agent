@@ -4,21 +4,20 @@ import json
 import time
 from fastapi import APIRouter, Request, HTTPException
 import traceback
+from urllib.parse import urlencode
 
-from agent.agent import answer_with_routing
 from api.services.markdown_renderer import render_markdown
 from api.services.sessions import (
-    ChatMessage,
     get_sessions,
     get_last_structured,
 )
-from api.services.memory import render_memory_text, get_memory
+from api.services.memory import get_memory
 from telemetry import log_event, new_request_id, new_trace, save_trace
 #from api.services.api_state_store import APIStateStore
-from api.services.sessions import save_structured_snapshot
-
 from api.services.api_state_store import API_STORE
 from api.services.sessions import get_structured_history
+from api.services.turn_execution import execute_agent_turn
+from api.core.url_utils import abs_url
 
 
 router = APIRouter()
@@ -44,7 +43,6 @@ from .chat_support import (
     detect_meta_kind,
     extract_user_and_history,
     handle_meta_task,
-    prepare_reuse_info,
     resolve_session_key,
     save_session_and_memory,
 )
@@ -129,72 +127,26 @@ def chat_completions(
             save_trace(trace)
             return resp
 
-        # 3) 一般任務 → 準備 query_for_agent
+        # 3) 一般任務由共用 turn execution service 執行。
         #query_for_agent = _build_query_for_agent(
         #    session_key=session_key,
         #    history_msgs=history_msgs,
         #    user_msg=user_msg,
         #)
         # 3) 不再拼裝，改傳原料
-        mem_all = get_memory()
-        mem_txt = render_memory_text(mem_all.get(session_key))
-        
-        history_items = [
-            {"role": (m.role or ""), "content": (m.content or "")}
-            for m in (history_msgs or [])
-        ]
-        
-        prev_out = (last_structured.get(session_key) or {}) if session_key in last_structured else {}
-
-        # 4) 準備 reuse_uuids / refno_uuid_map
-        reuse_uuids, refno_uuid_map = prepare_reuse_info(session_key, last_structured)
-
-        # 5) 呼叫總路由（answer_with_routing）
         try:
-            t_route_start = time.time()
-            '''
-            out = answer_with_routing(
-                user_msg=user_msg,
-                query_for_agent=query_for_agent,
-                recent_user_msgs=recent_user_msgs,
-                reuse_uuids=reuse_uuids,
-                refno_uuid_map=refno_uuid_map,
-                session_id=session_key,
-                request_id=request_id,
-                trace=trace,  # 給報告代理 / ES 工具填 core_terms, ES 狀況
-            )
-            '''
-            out = answer_with_routing(
-                user_msg=user_msg,
-                history_msgs=history_items,
-                memory_text=mem_txt,
-                last_structured=prev_out,
-                recent_user_msgs=recent_user_msgs,
-                reuse_uuids=reuse_uuids,
-                refno_uuid_map=refno_uuid_map,
-                session_id=session_key,
+            turn = execute_agent_turn(
+                payload=payload,
+                request=request,
                 request_id=request_id,
                 trace=trace,
             )
-            t_route_end = time.time()
-            trace.setdefault("timing", {})["routing_sec"] = t_route_end - t_route_start
-
+            session_key = turn.session_id
+            user_msg = turn.user_message
+            out = turn.output
         except Exception as e:
             print("answer_with_routing 發生錯誤：", e)
             raise HTTPException(status_code=500, detail="後端分析發生錯誤，請稍後再試")
-        # ✅ 5.3) 本輪 out 存快照（turn_id=request_id）
-        if isinstance(out, dict):
-            try:
-                # 讓後面 Markdown 下載連結用得到
-                out.setdefault("session_id", session_key)
-                out.setdefault("turn_id", str(request_id))
-                out.setdefault("request_id", str(request_id))
-        
-                mode = out.get("mode")
-                if mode in ("SRA_REPORT", "SRA_STYLE", "DOC_FOLLOWUP", "PURE_LLM"):
-                    save_structured_snapshot(session_key, request_id, out)
-            except Exception:
-                pass
         # 6) 產主文
         fmt = (payload.format or "markdown").lower()
         if fmt == "json":
@@ -225,6 +177,15 @@ def chat_completions(
                         "citations": citations,
                         "mode": out.get("mode") if isinstance(out, dict) else None,
                         "route": out.get("route") if isinstance(out, dict) else None,
+                        "word_export": {
+                            "method": "GET",
+                            "url": abs_url(
+                                request,
+                                f"/v1/export/word?{urlencode({'session_id': session_key, 'turn_id': turn.turn_id})}",
+                            ),
+                            "session_id": session_key,
+                            "turn_id": turn.turn_id,
+                        },
                     },
                 },
                 "finish_reason": "stop",
