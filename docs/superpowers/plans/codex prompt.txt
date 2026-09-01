@@ -1,0 +1,26 @@
+請依 `docs/superpowers/plans/2026-09-01-report-word-api-automation.md` 完整實作「自動化 API 直接回傳 Word 報告」功能。
+
+開始前請依 `AGENTS.md` 順序讀取 `.codex` 專案記憶，先確認目前程式碼與計劃假設是否一致；若文件與程式碼衝突，以程式碼為準並同步修正文件。
+
+請採 TDD，先補 failing tests，再做最小實作。
+
+這次範圍只包含：
+
+* synchronous `POST /v1/report/word`
+* 共用 Agent turn execution service
+* `/v1/chat/completions` 增加 Word export metadata
+* API / DOCX / regression tests
+* API 自動化使用文件
+* `.codex` 專案記憶更新
+
+不要擴充到 Queue、Redis、PostgreSQL、Airflow 或其他排程基礎設施，也不要修改 Agent、Elasticsearch、Query Refiner、Report Prompt 的核心行為。
+
+新的 Word endpoint 必須直接使用本輪 structured result 產生 DOCX，不得依賴 `state.json` round-trip。
+
+完成後請：
+
+1. 跑計劃內的 targeted tests。
+2. 跑完整 `pytest tests`。
+3. 提供實際測試結果，不得以未執行測試宣稱成功。
+4. 依 `AGENTS.md` 更新 `.codex/memory.md`、`.codex/api_contract.md`、`.codex/architecture.md`、`.codex/decisions.md`、`.codex/backlog.md`。
+5. 最後整理修改檔案、API 使用方式、測試結果、已知限制，以及 Phase 3 建議。
