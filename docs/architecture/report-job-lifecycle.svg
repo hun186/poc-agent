@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="520" viewBox="0 0 1100 520" role="img" aria-labelledby="title desc">
+  <title id="title">Report Job Lifecycle</title>
+  <desc id="desc">State transitions for queued, running, completed, failed, and interrupted report jobs.</desc>
+  <defs>
+    <style>
+      .state { fill:#f8fbff; stroke:#2b5f9e; stroke-width:2.2; rx:16; ry:16; }
+      .terminal-ok { fill:#f3fff4; stroke:#2f7d32; stroke-width:2.2; rx:16; ry:16; }
+      .terminal-bad { fill:#fff5f5; stroke:#a33838; stroke-width:2.2; rx:16; ry:16; }
+      .terminal-warn { fill:#fff9eb; stroke:#9a6a00; stroke-width:2.2; rx:16; ry:16; }
+      .title { font-family:Arial,Helvetica,sans-serif; font-size:28px; font-weight:bold; fill:#17324d; }
+      .label { font-family:Arial,Helvetica,sans-serif; font-size:20px; font-weight:bold; fill:#1f2a33; }
+      .small { font-family:Arial,Helvetica,sans-serif; font-size:15px; fill:#33424d; }
+      .edge { stroke:#4b5a67; stroke-width:2.5; fill:none; marker-end:url(#arrow); }
+      .note { fill:#fbfbfb; stroke:#8a8a8a; stroke-width:1.5; stroke-dasharray:6 5; rx:10; ry:10; }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#4b5a67"/>
+    </marker>
+  </defs>
+
+  <text x="550" y="42" text-anchor="middle" class="title">Report Job Lifecycle</text>
+
+  <rect x="80" y="180" width="190" height="90" class="state"/>
+  <text x="175" y="217" text-anchor="middle" class="label">queued</text>
+  <text x="175" y="245" text-anchor="middle" class="small">Persisted, waiting for worker</text>
+
+  <rect x="420" y="180" width="190" height="90" class="state"/>
+  <text x="515" y="217" text-anchor="middle" class="label">running</text>
+  <text x="515" y="245" text-anchor="middle" class="small">Atomically claimed by worker</text>
+
+  <rect x="790" y="75" width="210" height="90" class="terminal-ok"/>
+  <text x="895" y="112" text-anchor="middle" class="label">completed</text>
+  <text x="895" y="140" text-anchor="middle" class="small">Final DOCX published</text>
+
+  <rect x="790" y="210" width="210" height="90" class="terminal-bad"/>
+  <text x="895" y="247" text-anchor="middle" class="label">failed</text>
+  <text x="895" y="275" text-anchor="middle" class="small">Sanitized operational error</text>
+
+  <rect x="790" y="345" width="210" height="90" class="terminal-warn"/>
+  <text x="895" y="382" text-anchor="middle" class="label">interrupted</text>
+  <text x="895" y="410" text-anchor="middle" class="small">Recovered after service restart/crash</text>
+
+  <path d="M270 225 L420 225" class="edge"/>
+  <text x="345" y="207" text-anchor="middle" class="small">atomic claim</text>
+
+  <path d="M610 205 C690 180 710 120 790 120" class="edge"/>
+  <text x="700" y="148" text-anchor="middle" class="small">success</text>
+
+  <path d="M610 230 L790 250" class="edge"/>
+  <text x="700" y="220" text-anchor="middle" class="small">runtime error</text>
+
+  <path d="M610 250 C690 285 710 390 790 390" class="edge"/>
+  <text x="700" y="333" text-anchor="middle" class="small">startup recovery finds stale running</text>
+
+  <rect x="80" y="345" width="530" height="95" class="note"/>
+  <text x="345" y="377" text-anchor="middle" class="label">No automatic retry in this phase</text>
+  <text x="345" y="405" text-anchor="middle" class="small">queued survives restart; running becomes interrupted.</text>
+  <text x="345" y="428" text-anchor="middle" class="small">No interrupted → queued and no failed → queued automatic transition.</text>
+</svg>
