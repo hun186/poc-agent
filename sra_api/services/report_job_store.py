@@ -58,6 +58,10 @@ class ReportJobStore:
     def _migration_checkpoint(self, name: str) -> None:
         """Test seam for proving transactional rollback; production is a no-op."""
 
+    def _migration_execute(self, con: sqlite3.Connection, operation: str, sql: str):
+        """Execute one migration SQL operation (named for failure injection tests)."""
+        return con.execute(sql)
+
     def initialize(self) -> None:
         con = self._connect()
         try:
@@ -68,10 +72,13 @@ class ReportJobStore:
                 self._create_v1(con, "report_jobs")
                 self._create_owner_index(con)
                 con.execute(f"PRAGMA user_version={REPORT_JOB_SCHEMA_VERSION}")
+                self._validate_v1(con)
             elif version == 0:
                 self._migrate_v0(con)
             elif version != REPORT_JOB_SCHEMA_VERSION:
                 raise RuntimeError(f"Unsupported report job schema version: {version}")
+            else:
+                self._validate_v1(con)
             con.commit()
         except Exception:
             con.rollback()
@@ -95,32 +102,51 @@ class ReportJobStore:
         con.execute("CREATE UNIQUE INDEX uq_report_jobs_owner_idempotency ON report_jobs(owner_kind, owner_id, idempotency_key) WHERE idempotency_key IS NOT NULL")
 
     def _migrate_v0(self, con):
-        cols = [r[1] for r in con.execute("PRAGMA table_info(report_jobs)")]
         legacy = ["job_id","status","prompt","filename","session_id","model","options_json","metadata_json","idempotency_key","request_hash","turn_id","docx_basename","error_type","error_message","created_at","started_at","finished_at","updated_at"]
-        if cols != legacy: raise RuntimeError("Unsupported legacy report_jobs schema")
+        info = list(con.execute("PRAGMA table_info(report_jobs)"))
+        if [r[1] for r in info] != legacy or info[0][5] != 1:
+            raise RuntimeError("Unsupported legacy report_jobs schema")
+        required = {"status","prompt","session_id","model","options_json","metadata_json","request_hash","created_at","updated_at"}
+        if {r[1] for r in info if r[3]} != required:
+            raise RuntimeError("Unsupported legacy report_jobs constraints")
+        unique = [r for r in con.execute("PRAGMA index_list(report_jobs)") if r[2]]
+        if not any([x[2] for x in con.execute(f"PRAGMA index_info({r[1]})")] == ["idempotency_key"] for r in unique):
+            raise RuntimeError("Unsupported legacy report_jobs uniqueness")
         count = con.execute("SELECT COUNT(*) FROM report_jobs").fetchone()[0]
         self._create_v1(con, "report_jobs_new")
         fields = ",".join(legacy)
-        con.execute(f"INSERT INTO report_jobs_new ({fields},owner_kind,owner_id) SELECT {fields},NULL,NULL FROM report_jobs")
+        self._migration_execute(con, "copy", f"INSERT INTO report_jobs_new ({fields},owner_kind,owner_id) SELECT {fields},NULL,NULL FROM report_jobs")
         staged = con.execute("SELECT COUNT(*) FROM report_jobs_new").fetchone()[0]
         missing = con.execute("SELECT COUNT(*) FROM report_jobs l LEFT JOIN report_jobs_new n ON n.job_id=l.job_id WHERE n.job_id IS NULL").fetchone()[0]
-        if staged != count or missing: raise RuntimeError("Staged report job validation failed")
+        nulls = con.execute("SELECT COUNT(*) FROM report_jobs_new WHERE status IS NULL OR prompt IS NULL OR session_id IS NULL OR model IS NULL OR options_json IS NULL OR metadata_json IS NULL OR request_hash IS NULL OR created_at IS NULL OR updated_at IS NULL OR owner_kind IS NOT NULL OR owner_id IS NOT NULL").fetchone()[0]
+        if staged != count or missing or nulls: raise RuntimeError("Staged report job validation failed")
         self._migration_checkpoint("staged_validation")
-        con.execute("ALTER TABLE report_jobs RENAME TO report_jobs_old")
+        self._migration_execute(con, "rename_old", "ALTER TABLE report_jobs RENAME TO report_jobs_old")
         self._migration_checkpoint("first_rename")
-        con.execute("ALTER TABLE report_jobs_new RENAME TO report_jobs")
-        self._create_owner_index(con)
+        self._migration_execute(con, "rename_new", "ALTER TABLE report_jobs_new RENAME TO report_jobs")
+        self._migration_execute(con, "create_index", "CREATE UNIQUE INDEX uq_report_jobs_owner_idempotency ON report_jobs(owner_kind, owner_id, idempotency_key) WHERE idempotency_key IS NOT NULL")
         self._migration_checkpoint("index_creation")
-        newcols = [r[1] for r in con.execute("PRAGMA table_info(report_jobs)")]
-        idx = con.execute("PRAGMA index_list(report_jobs)").fetchall()
-        named = [r for r in idx if r[1] == "uq_report_jobs_owner_idempotency" and r[2] == 1]
-        idxcols = [r[2] for r in con.execute("PRAGMA index_info(uq_report_jobs_owner_idempotency)")]
-        if not {"owner_kind","owner_id"}.issubset(newcols) or not named or idxcols != ["owner_kind","owner_id","idempotency_key"] or con.execute("SELECT COUNT(*) FROM report_jobs").fetchone()[0] != count:
-            raise RuntimeError("Canonical report job validation failed")
-        con.execute("DROP TABLE report_jobs_old")
-        con.execute(f"PRAGMA user_version={REPORT_JOB_SCHEMA_VERSION}")
+        self._validate_v1(con, expected_rows=count)
+        self._migration_execute(con, "drop_old", "DROP TABLE report_jobs_old")
+        self._migration_execute(con, "set_version", f"PRAGMA user_version={REPORT_JOB_SCHEMA_VERSION}")
         self._migration_checkpoint("user_version")
         if con.execute("PRAGMA user_version").fetchone()[0] != REPORT_JOB_SCHEMA_VERSION: raise RuntimeError("Schema version update failed")
+
+    @staticmethod
+    def _validate_v1(con: sqlite3.Connection, expected_rows: int | None = None) -> None:
+        expected = ["job_id","status","prompt","filename","session_id","model","options_json","metadata_json","idempotency_key","request_hash","owner_kind","owner_id","turn_id","docx_basename","error_type","error_message","created_at","started_at","finished_at","updated_at"]
+        info = list(con.execute("PRAGMA table_info(report_jobs)"))
+        required = {"status","prompt","session_id","model","options_json","metadata_json","request_hash","created_at","updated_at"}
+        indexes = list(con.execute("PRAGMA index_list(report_jobs)"))
+        owner = [r for r in indexes if r[1] == "uq_report_jobs_owner_idempotency" and r[2] == 1 and r[4] == 1]
+        global_unique = any([x[2] for x in con.execute(f"PRAGMA index_info({r[1]})")] == ["idempotency_key"] for r in indexes if r[2])
+        owner_cols = [r[2] for r in con.execute("PRAGMA index_info(uq_report_jobs_owner_idempotency)")]
+        count = con.execute("SELECT COUNT(*) FROM report_jobs").fetchone()[0]
+        if ([r[1] for r in info] != expected or info[0][5] != 1 or
+                {r[1] for r in info if r[3]} != required or not owner or global_unique or
+                owner_cols != ["owner_kind", "owner_id", "idempotency_key"] or
+                (expected_rows is not None and count != expected_rows)):
+            raise RuntimeError("Canonical report job validation failed")
 
     @staticmethod
     def _row(row: sqlite3.Row | None) -> ReportJob | None:

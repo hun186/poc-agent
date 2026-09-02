@@ -58,7 +58,7 @@ SRA_SERVICE_KEYS_FILE -> .sra_service_keys.json
 
 若 API 與 CLI 都從同一個專案根目錄執行，使用預設值最簡單。若 production 需要把 store 移到 persistent volume，可指定絕對路徑。
 
-> **目前 baseline 注意事項：** `python -m api.security.cli ...` 本身不主動呼叫 `bootstrap_env()`，因此自訂 `SRA_SERVICE_KEYS_FILE` 只寫在 `.env` 時，CLI 不一定會看到它。若有自訂路徑，執行 CLI 時必須另外用 OS/shell 環境變數提供同一路徑；否則 API 與 CLI 可能操作不同 store，造成 OpenWebUI 使用新 Key 時回 `401 Invalid credential`。
+> API 與 Service Key CLI 都會先呼叫 `bootstrap_env()`；同一專案 `.env` 的 `SRA_SERVICE_KEYS_FILE` 會讓兩者操作同一個 store。
 
 Windows CMD：
 
@@ -140,7 +140,7 @@ python -m api.security.cli revoke-service-key KEY_ID
 - `403 Insufficient scope`：Key 有效但缺少 endpoint 所需 scope；不要為排除問題直接授予全部權限。
 - citation／Word URL 回 `401`：連結已過期、遭修改，或服務重啟後使用了不同的 `SRA_SIGNED_URL_SECRET`。
 - 正式環境無法啟動：確認 `SRA_SIGNED_URL_SECRET` 至少 32 bytes，且 `APP_ENV=production` 的設定正確。
-- `.env` 已設定自訂 `SRA_SERVICE_KEYS_FILE`，但 CLI 仍看不到 Key：確認執行 CLI 的 shell 也有設定相同的 `SRA_SERVICE_KEYS_FILE`，或先使用預設 `.sra_service_keys.json`。
+- `.env` 已設定自訂 `SRA_SERVICE_KEYS_FILE`，但 CLI 仍看不到 Key：確認 API 與 CLI 的工作目錄使用同一份專案 `.env`，且路徑可讀寫。
 
 ## 6. 安全原則
 

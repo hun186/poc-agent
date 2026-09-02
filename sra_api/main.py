@@ -16,6 +16,12 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from config.bootstrap import bootstrap_env
+
+# Security singletons and router globals read environment at import time.  Load
+# the project environment before importing any of them.
+bootstrap_env()
+
 from fastapi import FastAPI  # , HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -23,6 +29,7 @@ from api.routers import chat, docs, export, editor, excel_to_sql, report_jobs, s
 from api.services.report_job_store import ReportJobStore
 from api.services.report_job_worker import ReportJobWorker
 from api.security.signed_urls import validate_signing_config
+from api.services.auth_support import PRODUCTION_ENVS
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,7 +54,7 @@ app = FastAPI(
 )
 
 cors_origins = [origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origin.strip()]
-wildcard = not cors_origins and (os.getenv("APP_ENV") or "").lower() not in {"prod", "production"}
+wildcard = not cors_origins and (os.getenv("APP_ENV") or "").lower() not in PRODUCTION_ENVS
 app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins or (["*"] if wildcard else []),

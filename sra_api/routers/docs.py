@@ -15,9 +15,8 @@ from agent.es.reference_text import (
     get_reference_text_field,
 )
 from api.security.models import AuthPrincipal
-from api.security.principal import optional_principal
+from api.security.principal import optional_principal, require_principal_or_capability
 from api.security.scopes import DOCUMENT_READ
-from api.security.signed_urls import verify_resource_token
 
 router = APIRouter()
 
@@ -81,20 +80,19 @@ def _get_doc_source_or_404(doc_id: str) -> dict:
 
     raise HTTPException(status_code=404, detail="document not found")
 
-def _resource_auth(request, principal, resource_type, **binding):
-    if principal is not None:
-        if DOCUMENT_READ not in principal.scopes: raise HTTPException(403, "Insufficient scope")
-        return False
-    values = request.query_params.getlist("sig")
-    if len(values) != 1: raise HTTPException(401, "Valid capability required")
-    try: verify_resource_token(values[0], resource_type, **binding)
-    except ValueError as exc: raise HTTPException(401, "Invalid capability") from exc
-    return True
+CAPABILITY_HEADERS = {
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+}
 
 @router.get("/v1/docs/{doc_id}")
 def get_doc(doc_id: str, request: Request, principal: AuthPrincipal | None = Depends(optional_principal)):
-    _resource_auth(request, principal, "doc_detail", doc_id=doc_id)
-    return _get_doc_source_or_404(doc_id)
+    capability = require_principal_or_capability(
+        request, principal, required_scope=DOCUMENT_READ, resource_type="doc_detail",
+        binding={"doc_id": doc_id}, allowed_query_keys=set(),
+    )
+    return JSONResponse(_get_doc_source_or_404(doc_id), headers=CAPABILITY_HEADERS if capability else None)
 def get_fulltext_on_demand(
     doc_id: str,
     format: str = Query(
@@ -315,5 +313,12 @@ def secured_fulltext(
     if len(raw_download) > 1 or (raw_download and raw_download[0] not in {"0", "1"}):
         raise HTTPException(401, "Invalid capability parameters")
     canonical_download = "1" if download else "0"
-    _resource_auth(request, principal, "doc_fulltext", doc_id=doc_id, format=format, download=canonical_download, text_layer=text_layer)
-    return get_fulltext_on_demand(doc_id, format=format, download=download, text_layer=text_layer)
+    capability = require_principal_or_capability(
+        request, principal, required_scope=DOCUMENT_READ, resource_type="doc_fulltext",
+        binding={"doc_id": doc_id, "format": format, "download": canonical_download, "text_layer": text_layer},
+        allowed_query_keys={"format", "download", "text_layer"},
+    )
+    response = get_fulltext_on_demand(doc_id, format=format, download=download, text_layer=text_layer)
+    if capability:
+        response.headers.update(CAPABILITY_HEADERS)
+    return response

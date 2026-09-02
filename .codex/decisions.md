@@ -91,3 +91,7 @@
 
 - Query refiner 判定 ES 檢索區間時，使用者的任務指令是時間範圍的權威來源；背景說明內的月份或事件日期只代表重點時段，不得覆蓋較廣的任務範圍。
 - 任務要求「去年」且沒有在指令中明確限縮月份時，一律解讀為去年 1 月 1 日至 12 月 31 日；只有「去年10月」、「僅限10月」等明確限制才縮窄為單月。
+
+## 2026-09-02 Shared capability resolver
+
+- Direct principal and browser-capability authorization use one resolver. A supplied invalid Authorization header is authoritative; capability fallback is only available when Authorization is absent. Exact query multiplicity and allowlisting are enforced only on the capability path before any resource access.

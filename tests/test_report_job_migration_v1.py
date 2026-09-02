@@ -27,3 +27,27 @@ def test_migration_failure_rolls_back_every_step(tmp_path, checkpoint):
         assert con.execute("SELECT prompt FROM report_jobs WHERE job_id='j'").fetchone()[0] == 'p'
         assert not {'owner_kind','owner_id'} & {r[1] for r in con.execute('PRAGMA table_info(report_jobs)')}
         with pytest.raises(sqlite3.IntegrityError): con.execute("INSERT INTO report_jobs(job_id,status,prompt,session_id,model,options_json,metadata_json,idempotency_key,request_hash,created_at,updated_at) VALUES('j2','queued','p','s','m','{}','{}','key','h','now','now')")
+
+
+@pytest.mark.parametrize("operation", ["copy", "rename_old", "rename_new", "create_index", "drop_old", "set_version"])
+def test_sql_operation_failure_reopens_as_complete_legacy(tmp_path, operation):
+    path = tmp_path / f"{operation}.db"; legacy(path)
+    class Failing(ReportJobStore):
+        def _migration_execute(self, con, name, sql):
+            if name == operation: raise sqlite3.OperationalError(name)
+            return super()._migration_execute(con, name, sql)
+    with pytest.raises(sqlite3.OperationalError): Failing(path).initialize()
+    with sqlite3.connect(path) as con:
+        assert con.execute("PRAGMA user_version").fetchone()[0] == 0
+        assert con.execute("SELECT prompt FROM report_jobs").fetchone()[0] == "p"
+        names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert not {"report_jobs_new", "report_jobs_old"} & names
+
+
+def test_malformed_version_one_is_rejected_on_reopen(tmp_path):
+    path = tmp_path / "bad-v1.db"
+    with sqlite3.connect(path) as con:
+        con.execute("CREATE TABLE report_jobs(job_id TEXT PRIMARY KEY)")
+        con.execute("PRAGMA user_version=1")
+    with pytest.raises(RuntimeError, match="Canonical"):
+        ReportJobStore(path).initialize()

@@ -65,3 +65,9 @@
 - `.codex/archive/architecture.md-20260813-000000.md`：濃縮前完整 architecture，含 Vercel、auth、Editor、Excel→SQL 與資料流歷史細節。
 
 - 2026-08-26：`answer_with_routing()` 在 LLM 邊界 trace 之上產生精簡且可輸出的 `llm_execution` 稽核資料；presentation extractor 僅保留允許欄位，DOCX renderer 將執行情況置於文件最後，避免輸出完整 prompt 或 raw response。
+
+## 2026-09-02 Phase 0 hardening follow-up
+
+- `bootstrap_env()` runs before `sra_api.main` imports configuration-backed routers/security globals; CLI bootstraps before constructing `ServiceKeyStore`.
+- Document detail/fulltext and legacy Word share `require_principal_or_capability`; capability validation is transport-only and precedes resource lookup.
+- Report Job schema initialization validates both fresh and reopened version-1 databases; version-0 migration operations remain in the approved transactional order and are individually injectable for rollback regressions.

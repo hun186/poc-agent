@@ -105,3 +105,9 @@
 - 後續若要支援 View 模式，應新增明確任務設定，例如 `compose_storage_mode: physical_column | sql_view`、`view_name`、view schema / owner、CREATE OR ALTER 權限需求、既有 view 更新策略、欄位引用白名單與 SQL injection 防護。
 - View 模式需決定 audit payload 是否仍記錄拼裝結果、hash 去重是否使用原始欄位或 view expression、ES / downstream 匯出是否讀 base table 還是 view，避免只在 UI 切換但資料流不一致。
 - 在上述設計完成前，不應以 STUB 或只產生文字規格的方式宣稱已支援 View 模式。
+
+## Phase 0 Plan v4 remaining verification (2026-09-02 fresh audit)
+
+- Complete tracked unified authn/authz/service-key/admin-cross-owner audit regressions and cross-process service-key/concurrent Report Job initialize regressions requested by Plan v4.
+- Execute the exact Task 7 gate after all proposed test modules exist, plus affected API/Job gate, compileall/static/leak/runtime-artifact guards, and the complete manual no-key/OpenWebUI/Batch/revoked/signed-link/production-secret smoke matrix.
+- The 2026-09-02 full suite was 318 passed with 9 warnings, but the Phase 0 gate must not be declared passed until those remaining gates and manual smoke scenarios complete without blocking/high findings.
