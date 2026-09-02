@@ -3,9 +3,10 @@ from fastapi.testclient import TestClient
 from api.main import app
 from api.routers import chat
 from api.services.turn_execution import AgentTurnResult
+from tests.security_test_utils import bearer
 
 
-def test_chat_completion_exposes_word_export_metadata(monkeypatch):
+def test_chat_completion_exposes_word_export_metadata(monkeypatch, tmp_path):
     result = AgentTurnResult(
         session_id="chat-session",
         turn_id="chat-turn",
@@ -21,7 +22,7 @@ def test_chat_completion_exposes_word_export_metadata(monkeypatch):
 
     response = TestClient(app).post(
         "/v1/chat/completions",
-        headers={"X-Session-Id": "chat-session"},
+        headers={**bearer(monkeypatch,tmp_path,["model:invoke"]), "X-Session-Id": "chat-session"},
         json={"messages": [{"role": "user", "content": "問題"}]},
     )
 
@@ -30,6 +31,4 @@ def test_chat_completion_exposes_word_export_metadata(monkeypatch):
     assert metadata["method"] == "GET"
     assert metadata["session_id"] == "chat-session"
     assert metadata["turn_id"] == "chat-turn"
-    assert metadata["url"].endswith(
-        "/v1/export/word?session_id=chat-session&turn_id=chat-turn"
-    )
+    assert "session_id=chat-session" in metadata["url"] and "turn_id=chat-turn" in metadata["url"] and "sig=" in metadata["url"]

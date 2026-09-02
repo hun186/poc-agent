@@ -1,5 +1,12 @@
 # API Contract
 
+## 2026-09-02 Phase 0 unified security boundary
+
+- `GET /v1/models`, `POST /v1/chat/completions`, and `POST /v1/report/word` require Bearer principals with `model:read`, `model:invoke`, and `report:sync` respectively.
+- Report Job create/read/download require corresponding scopes; persisted `owner_kind`/`owner_id` enforce owner isolation, while `report:job:admin` may access all jobs.
+- Document detail/fulltext and legacy Word export accept either the direct-read scope or an exact HMAC `sig` capability. Signed Word URLs always bind an explicit `turn_id`.
+- Superuser-only service-key administration is exposed at `/v1/auth/service-keys`; plaintext is returned once on creation and never by list/revoke.
+
 ## 2026-09-01 Persisted report Job API
 
 - `POST /v1/report/jobs` accepts the dedicated `{prompt, filename?, session_id?, model?, options?, metadata?}` model; default model is `SRA-Structured Retrieval Agent`, supported `options` is currently empty, and success is `202` with job/status/download URLs. Optional `Idempotency-Key` returns the same job for the same normalized resource and `409` for different content.

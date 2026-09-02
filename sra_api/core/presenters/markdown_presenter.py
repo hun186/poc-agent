@@ -82,11 +82,12 @@ def build_markdown(
 
 
 def _render_download_link(request: Request, session_id: Optional[str], turn_id: Optional[str]) -> List[str]:
-    if not session_id:
+    if not session_id or not turn_id:
         return []
-    q = f"/v1/export/word?session_id={session_id}"
-    if turn_id:
-        q += f"&turn_id={turn_id}"
+    from urllib.parse import urlencode
+    from api.security.signed_urls import sign_resource
+    q = "/v1/export/word?" + urlencode({"session_id": session_id, "turn_id": turn_id,
+        "sig": sign_resource("legacy_word", session_id=session_id, turn_id=turn_id)})
     download_url = abs_url(request, q)
     return [f"[⬇ 下載為 Word]({download_url})\n"]
 

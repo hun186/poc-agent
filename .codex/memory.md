@@ -1,5 +1,20 @@
 # Project Memory
 
+## 2026-09-02 Service Key 中文設定與維運文件
+
+- 將 OpenWebUI Service Key 設定文件擴充為中文版，補齊 production prerequisites、最小 scope、OpenWebUI 管理端設定、驗證、撤銷／更換與故障排除。
+- 將 Service Key 維運文件擴充為中文版，記錄 credential model、完整 scope matrix、CLI／HTTP 操作、store 權限與跨 process transaction、備份復原及 incident rotation。
+- 新增靜態文件測試，防止關鍵安全步驟與中文版標題在後續修改中遺失。
+- 驗證：`PYTHONPATH=. pytest -q tests/test_security_docs.py` 為 2 passed；`git diff --check` 通過。
+
+## 2026-09-02 Phase 0 v3 unified API security boundary
+
+- Added unified user/service principals, registered scopes, one-time service keys with atomic cross-process persistence, service-key administration/CLI, owner-isolated Report Jobs, and exact HMAC browser capabilities.
+- Fixed Editor dependency singleton staleness by resolving `AUTH_STORE` through the canonical `api.services.auth_store` module at dependency execution time.
+- Job schema migrates legacy SQLite `user_version=0` to owner-aware version 1 using the approved transactional rebuild order; fresh databases start at version 1. Four rollback checkpoints preserve the complete legacy state.
+- Verification recorded: new security/migration suite 10 passed; pre-change full suite after intentional route enforcement was 271 passed/19 failed, where 18 failures were obsolete anonymous-route test expectations/direct call signatures and one was the pre-existing Vercel mock expectation. A final updated-suite result is recorded in the completion entry below.
+- Final verification: security/auth gate 57 passed; affected API/Job regression gate 29 passed; complete suite 305 passed with 8 warnings and zero failures. Compileall, diff check, canonical namespace guard, 12-process service-key mutation, four migration rollback injections, and manual no-key/OpenWebUI/Batch/revoked smoke checks passed.
+
 ## Current Summary
 
 - 本專案是 FastAPI + Elasticsearch 的 RAG / agent 系統；實際 API source 在 `sra_api/`，`api/` 為 compatibility package，agent / retrieval / evidence 在 `agent/`，ETL 在 `data_ingestion/`。

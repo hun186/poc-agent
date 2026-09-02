@@ -2,7 +2,7 @@
 #import os
 import json
 import time
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException
 import traceback
 from urllib.parse import urlencode
 
@@ -18,6 +18,9 @@ from api.services.api_state_store import API_STORE
 from api.services.sessions import get_structured_history
 from api.services.turn_execution import execute_agent_turn
 from api.core.url_utils import abs_url
+from api.security.principal import require_scopes
+from api.security.scopes import MODEL_INVOKE, MODEL_READ
+from api.security.signed_urls import sign_resource
 
 
 router = APIRouter()
@@ -51,7 +54,7 @@ def healthz():
     return {"ok": True}
 
 # --- OpenAI Chat Completions 相容端點（非串流版） ---
-@router.get("/v1/models")
+@router.get("/v1/models", dependencies=[Depends(require_scopes(MODEL_READ))])
 def list_models():
     return {
         "object": "list",
@@ -64,7 +67,7 @@ def list_models():
         ]
     }
 
-@router.post("/v1/chat/completions")
+@router.post("/v1/chat/completions", dependencies=[Depends(require_scopes(MODEL_INVOKE))])
 def chat_completions(
     payload: ChatPayload,
     request: Request,
@@ -181,7 +184,7 @@ def chat_completions(
                             "method": "GET",
                             "url": abs_url(
                                 request,
-                                f"/v1/export/word?{urlencode({'session_id': session_key, 'turn_id': turn.turn_id})}",
+                                f"/v1/export/word?{urlencode({'session_id': session_key, 'turn_id': turn.turn_id, 'sig': sign_resource('legacy_word', session_id=session_key, turn_id=turn.turn_id)})}",
                             ),
                             "session_id": session_key,
                             "turn_id": turn.turn_id,

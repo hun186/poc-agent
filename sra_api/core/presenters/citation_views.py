@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import Request
 from api.core.url_utils import abs_url
+from api.security.signed_urls import sign_resource
+from urllib.parse import urlencode
 
 #from shared.citations.citation_id import pick_doc_id
 from shared.citations.citation_view_core import build_citation_core_views
@@ -42,11 +44,14 @@ def build_citation_views(
         url_es = url_json = url_txt = url_raw_txt = url_both_txt = None
         if isinstance(c.doc_id, str) and c.doc_id:
             base_full = abs_url(request, f"/v1/docs/{c.doc_id}/fulltext")
-            url_json = base_full + "?format=json&text_layer=both"
-            url_txt = base_full + "?format=txt&download=1&text_layer=reference"
-            url_raw_txt = base_full + "?format=txt&download=1&text_layer=raw"
-            url_both_txt = base_full + "?format=txt&download=1&text_layer=both"
-            url_es = abs_url(request, f"/v1/docs/{c.doc_id}")
+            def full(fmt, download, layer):
+                return base_full + "?" + urlencode({"format": fmt, "download": download, "text_layer": layer,
+                    "sig": sign_resource("doc_fulltext", doc_id=c.doc_id, format=fmt, download=download, text_layer=layer)})
+            url_json = full("json", "0", "both")
+            url_txt = full("txt", "1", "reference")
+            url_raw_txt = full("txt", "1", "raw")
+            url_both_txt = full("txt", "1", "both")
+            url_es = abs_url(request, f"/v1/docs/{c.doc_id}?{urlencode({'sig': sign_resource('doc_detail', doc_id=c.doc_id)})}")
 
         views.append(
             CitationView(

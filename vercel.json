@@ -7,7 +7,7 @@
     }
   ],
   "env": {
-    "SRA_VERCEL_MOCK_MODE": "always",
+    "SRA_VERCEL_MOCK_MODE": "auto",
     "API_STORE_ENABLED": "0"
   }
 }

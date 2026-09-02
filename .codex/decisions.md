@@ -1,5 +1,11 @@
 # Architecture Decisions
 
+## 2026-09-02 Scoped principals and signed browser capabilities
+
+- Use distinct high-entropy service keys for OpenWebUI and future batch clients. User and service credentials share scope authorization without conflating their identity domains.
+- Persist only complete-key SHA-256 digests under cross-process locking; return plaintext once.
+- Preserve browser-clickable resources with bounded, exact HMAC capabilities. An invalid Authorization header is authoritative and cannot fall back to a capability.
+
 ## Current Summary
 
 ### 2026-08-27 連貫文本採「代理人參考文本」契約
