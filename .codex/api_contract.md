@@ -90,3 +90,8 @@
 
 - Agent 產出的結果物件可包含 `llm_execution[]`；每項包含 `stage`、`status`（`success`、`fallback` 或 `error`），並可選擇包含 `model_id`、`elapsed_sec`、`detail`。`detail` 是供糾錯的截短錯誤／備註，不包含完整 prompt 或 raw response。
 - `/v1/export/word` 會在 Word 最後的「各階段使用模型」清單中，將模型 ID、執行狀態與耗時整合在同一項；fallback / error 可另列截短錯誤備註。舊 session 若只有 `data_agent.model_usage[]`，仍輸出相容的模型清單，但不虛構狀態或耗時。
+
+## 2026-09-02 Signed-resource canonical query hardening
+
+- Capability requests reject duplicate protected keys, unsupported query keys, non-canonical browser booleans, and resource/representation/session/turn substitutions before lookup.
+- Successful signed document detail/fulltext and legacy Word responses include `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, and `X-Content-Type-Options: nosniff`.

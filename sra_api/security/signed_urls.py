@@ -4,14 +4,19 @@ import base64, hashlib, hmac, json, os, secrets, time, warnings
 from api.services.auth_support import PRODUCTION_ENVS
 
 ALLOWED_TYPES = {"doc_detail", "doc_fulltext", "legacy_word"}
+_fallback_warned = False
 
 
 def _secret() -> bytes:
+    global _fallback_warned
     value = os.getenv("SRA_SIGNED_URL_SECRET", "").encode()
     env = (os.getenv("APP_ENV") or os.getenv("ENV") or os.getenv("PY_ENV") or "").lower()
     if len(value) < 32:
         if env in PRODUCTION_ENVS: raise RuntimeError("SRA_SIGNED_URL_SECRET must contain at least 32 bytes")
         value = b"sra-development-signed-url-secret-change-me"
+        if not _fallback_warned:
+            warnings.warn("Using development fallback for signed URL secret", RuntimeWarning, stacklevel=2)
+            _fallback_warned = True
     return value
 
 

@@ -16,7 +16,7 @@ superuser RBAC。不同服務必須使用不同 Key：OpenWebUI 與未來 Batch 
 - 真正交給 client（例如 OpenWebUI）的 credential 是 CLI 建立時只顯示一次的 `sra_sk_...`。
 - `SRA_SIGNED_URL_SECRET` 是另一把獨立的 server-side HMAC secret，用來簽署瀏覽器限時 URL，不可拿來當 Service Key，也不可與 `sra_sk_...` 共用。由系統管理者在部署時自行產生一次，然後固定保存。例如用 Python 產生一個高強度隨機值：
 python -c "import secrets; print(secrets.token_urlsafe(48))"
-- API runtime 可透過專案 `.env` 載入這些設定；但目前 Service Key CLI 不主動載入 `.env`。若自訂 `SRA_SERVICE_KEYS_FILE`，CLI 執行環境也必須設定同一路徑。
+- API runtime 與 Service Key CLI 都會先載入專案 `.env`；`SRA_SERVICE_KEYS_FILE` 因此會讓兩者指向同一個 store。
 
 ## Scope 對照
 

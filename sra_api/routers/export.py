@@ -10,9 +10,8 @@ from api.services.api_state_store import API_STORE
 from api.routers.chat_support import ChatPayload
 from api.services.turn_execution import execute_agent_turn
 from api.security.models import AuthPrincipal
-from api.security.principal import optional_principal, require_scopes
+from api.security.principal import optional_principal, require_principal_or_capability, require_scopes
 from api.security.scopes import REPORT_LEGACY_DOWNLOAD, REPORT_SYNC
-from api.security.signed_urls import verify_resource_token
 
 router = APIRouter()
 
@@ -96,13 +95,13 @@ def export_word(
     turn_id: str | None = Query(None, description="該輪 turn_id（建議使用 request_id）"),
     principal: AuthPrincipal | None = Depends(optional_principal),
 ):
-    if principal is not None:
-        if REPORT_LEGACY_DOWNLOAD not in principal.scopes: raise HTTPException(403, "Insufficient scope")
-    else:
-        sigs = request.query_params.getlist("sig")
-        if len(sigs) != 1 or not turn_id: raise HTTPException(401, "Valid capability required")
-        try: verify_resource_token(sigs[0], "legacy_word", session_id=session_id, turn_id=turn_id)
-        except ValueError as exc: raise HTTPException(401, "Invalid capability") from exc
+    if principal is None and not turn_id:
+        raise HTTPException(401, "Valid capability required")
+    capability = require_principal_or_capability(
+        request, principal, required_scope=REPORT_LEGACY_DOWNLOAD,
+        resource_type="legacy_word", binding={"session_id": session_id, "turn_id": turn_id},
+        allowed_query_keys={"session_id", "turn_id"},
+    )
     raw = API_STORE.read_raw() or {}
     last = raw.get("last_structured") or {}
     hist = raw.get("structured_history") or {}

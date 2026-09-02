@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 
 import api.services.auth_store as auth_store_module
 from api.security.models import AuthPrincipal
 from api.security.scopes import scopes_for_user_role, validate_scopes
 import api.security.service_key_store as service_key_module
+from api.security.signed_urls import verify_resource_token
 
 
 def optional_principal(authorization: str | None = Header(default=None)) -> AuthPrincipal | None:
@@ -44,3 +45,37 @@ def require_scopes(*required: str) -> Callable:
         if not wanted.issubset(principal.scopes): raise HTTPException(403, "Insufficient scope")
         return principal
     return dependency
+
+
+def require_principal_or_capability(
+    request: Request,
+    principal: AuthPrincipal | None,
+    *,
+    required_scope: str,
+    resource_type: str,
+    binding: dict[str, str],
+    allowed_query_keys: set[str],
+) -> bool:
+    """Authorize a direct principal or an exact, canonical browser capability.
+
+    Returns True for capability mode.  Resource lookup must happen afterwards.
+    An invalid Authorization header is rejected by ``optional_principal`` and
+    therefore can never fall through to this function's capability branch.
+    """
+    if principal is not None:
+        if required_scope not in principal.scopes:
+            raise HTTPException(403, "Insufficient scope")
+        return False
+    keys = set(request.query_params.keys())
+    if not keys.issubset(allowed_query_keys | {"sig"}):
+        raise HTTPException(401, "Invalid capability parameters")
+    if any(len(request.query_params.getlist(key)) != 1 for key in keys):
+        raise HTTPException(401, "Invalid capability parameters")
+    sigs = request.query_params.getlist("sig")
+    if len(sigs) != 1:
+        raise HTTPException(401, "Valid capability required")
+    try:
+        verify_resource_token(sigs[0], resource_type, **binding)
+    except ValueError as exc:
+        raise HTTPException(401, "Invalid capability") from exc
+    return True

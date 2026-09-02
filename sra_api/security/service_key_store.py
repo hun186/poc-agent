@@ -49,12 +49,28 @@ class ServiceKeyStore:
     def _public(item):
         return {k: v for k, v in item.items() if k != "token_digest"}
 
+    @staticmethod
+    def _expires(value):
+        if value is None or value == "":
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("expires_at must be a timezone-aware ISO 8601 timestamp") from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("expires_at must be timezone-aware")
+        return parsed.astimezone(timezone.utc).isoformat()
+
     def create(self, name, scopes, created_by, expires_at=None):
         scopes = validate_scopes(scopes)
+        name = str(name).strip()
+        if not name:
+            raise ValueError("Service key name must not be empty")
+        expires_at = self._expires(expires_at)
         key_id = secrets.token_hex(8)
         raw = f"sra_sk_{key_id}_{secrets.token_urlsafe(32)}"
         now = datetime.now(timezone.utc).isoformat()
-        item = {"key_id": key_id, "name": str(name).strip(), "token_digest": hashlib.sha256(raw.encode()).hexdigest(),
+        item = {"key_id": key_id, "name": name, "token_digest": hashlib.sha256(raw.encode()).hexdigest(),
                 "scopes": sorted(scopes), "status": "active", "created_at": now, "created_by": created_by,
                 "expires_at": expires_at, "revoked_at": None, "revoked_by": None, "hint": raw[-4:]}
         with self._lock, exclusive_file_lock(self.lock_path):
@@ -72,7 +88,11 @@ class ServiceKeyStore:
         for item in data["keys"]:
             if hmac.compare_digest(str(item.get("token_digest", "")), digest):
                 if item.get("status") != "active": return None
-                if item.get("expires_at") and datetime.fromisoformat(item["expires_at"]) <= now: return None
+                try:
+                    expires = self._expires(item.get("expires_at"))
+                except ValueError:
+                    return None
+                if expires and datetime.fromisoformat(expires) <= now: return None
                 return self._public(item)
         return None
 

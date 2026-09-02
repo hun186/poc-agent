@@ -1,8 +1,14 @@
 from __future__ import annotations
-import argparse, json
+import argparse, io, json
+from contextlib import redirect_stdout
+from config.bootstrap import bootstrap_env
 from api.security.service_key_store import ServiceKeyStore
 
 def main(argv=None):
+    # Keep machine-readable CLI output stable; bootstrap diagnostics must not be
+    # interleaved with the one-time credential JSON.
+    with redirect_stdout(io.StringIO()):
+        bootstrap_env()
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
     create = sub.add_parser("create-service-key"); create.add_argument("--name", required=True); create.add_argument("--scope", action="append", default=[])

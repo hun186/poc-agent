@@ -183,3 +183,10 @@
 
 - 「各階段使用模型」固定依任務路由、問題精煉、資料整備、證據欄位選擇、報告生成及後續生成階段排列；Word 匯出也會穩定排序舊 session 或外部傳入的未排序執行紀錄，未知階段保留在已知階段之後。
 - 驗證：`PYTHONPATH=. pytest tests/test_export_word_service.py -q`（10 tests passed）、相關模組 `py_compile` 與 `git diff --check` 通過。
+
+## 2026-09-02 Phase 0 v3 Plan v4 completion follow-up
+
+- Baseline `522be61636a2c36d7238429ed201ceb919217fec` on branch `work`; the requested implementation review was found under `docs/superpowers/plans/`, not the requested `docs/superpowers/reviews/` path.
+- Security environment bootstrap now precedes router/security singleton imports, and the service-key CLI bootstraps before choosing its store. Shared capability authorization rejects non-canonical/duplicate/extra signed query parameters before resource lookup and applies browser security headers.
+- Service-key expiration is validated and UTC-normalized; malformed persisted expiration fails credential resolution closed. Report Job migration now validates legacy constraints, staged rows, fresh/reopened v1 schemas, and exposes SQL-operation-boundary rollback injection.
+- Fresh verification: security targeted gate 51 passed, 2 warnings; complete repository suite 318 passed, 9 warnings. `python -m compileall sra_api api tests`, static guards, and manual smoke gates are recorded only if run later; no prior 305-pass claim was reused.
