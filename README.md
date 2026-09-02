@@ -537,4 +537,10 @@ SRA_EDITOR_FORM_CONFIG=/secure/path/editor_form.my_app.json
 `POST /v1/report/word` remains the synchronous ChatPayload-to-DOCX API. For long-running automation, `POST /v1/report/jobs` creates single-machine persisted work that can be polled and downloaded. See [`docs/api/report-api.md`](docs/api/report-api.md), [`docs/architecture/dual-mode-report-api.md`](docs/architecture/dual-mode-report-api.md), and [`docs/operations/report-jobs.md`](docs/operations/report-jobs.md).
 # API security
 
-Agent, report, and document APIs now use scoped user/service principals and exact signed browser capabilities. See [`docs/security/sra-api-security-boundary.md`](docs/security/sra-api-security-boundary.md) and the [OpenWebUI setup](docs/security/openwebui-service-key-setup.md).
+Agent, report, and document APIs now use scoped user/service principals and exact signed browser capabilities.
+
+- `SRA_SIGNED_URL_SECRET`：由 SRA 管理者在 production 部署時產生一次並固定保存的 server-side HMAC secret，用來簽署 citation／文件／Word 限時 URL；不是 OpenWebUI API Key。
+- `SRA_SERVICE_KEYS_FILE`：Service Key store 的檔案路徑，不是 Key；未設定時預設 `.sra_service_keys.json`。
+- `sra_sk_...`：用 `python -m api.security.cli create-service-key ...` 產生，只顯示一次；這才是填入 OpenWebUI OpenAI-compatible connection 的 API Key。
+
+完整的 `.env`、Windows/Linux CLI 範例與 OpenWebUI 設定流程請見 [OpenWebUI Service Key 設定指南](docs/security/openwebui-service-key-setup.md)；維運與撤銷請見 [`docs/security/service-key-operations.md`](docs/security/service-key-operations.md)，安全邊界請見 [`docs/security/sra-api-security-boundary.md`](docs/security/sra-api-security-boundary.md)。
