@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from agent.direct_llm_json import task_followups, task_tags, task_title
 from api.core.settings import json_llm
 from api.core.url_utils import abs_url
+from api.security.signed_urls import sign_resource
+from urllib.parse import urlencode
 from api.services.markdown_renderer import render_markdown
 from api.services.memory import get_memory, render_memory_text, update_memory
 from api.services.sessions import (
@@ -183,7 +185,7 @@ def build_citations(out: dict, request: Request) -> list:
         uuid_ = c.get("uuid")
         source_id = c.get("source_id")
         doc_id = uuid_ or source_id or c.get("doc_id") or c.get("id")
-        href = abs_url(request, f"/v1/docs/{doc_id}") if doc_id else None
+        href = abs_url(request, f"/v1/docs/{doc_id}?{urlencode({'sig': sign_resource('doc_detail', doc_id=str(doc_id))})}") if doc_id else None
 
         citations.append({
             "text": c.get("text"),

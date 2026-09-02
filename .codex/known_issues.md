@@ -1,5 +1,11 @@
 # Known Issues
 
+## 2026-09-02 Phase 0 operational limits
+
+- OpenWebUI's service principal identifies the integration, not an individual OpenWebUI end user.
+- Service-key persistence is a single-machine owner-only file; it is not distributed state.
+- Signed URLs are bearer capabilities until expiry and historical messages may contain expired links. Reverse proxies should omit/redact query strings in access logs.
+
 ## Current Summary
 
 - The current environment does not have Playwright / browser runtime. Visual UI changes cannot be verified with screenshots or browser E2E here; use static DOM / JS checks, node syntax checks, pytest, and a browser-capable environment when screenshots are required.

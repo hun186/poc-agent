@@ -197,3 +197,4 @@ SRA-API_output.txt
 .api_jobs/
 *.sqlite3-wal
 *.sqlite3-shm
+.sra_service_keys.json*

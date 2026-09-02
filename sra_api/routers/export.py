@@ -1,6 +1,6 @@
 # api/routers/export.py
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import Field
 from fastapi.responses import Response
 
@@ -9,6 +9,10 @@ from shared.http.download_filename import build_content_disposition
 from api.services.api_state_store import API_STORE
 from api.routers.chat_support import ChatPayload
 from api.services.turn_execution import execute_agent_turn
+from api.security.models import AuthPrincipal
+from api.security.principal import optional_principal, require_scopes
+from api.security.scopes import REPORT_LEGACY_DOWNLOAD, REPORT_SYNC
+from api.security.signed_urls import verify_resource_token
 
 router = APIRouter()
 
@@ -39,6 +43,7 @@ class ReportWordPayload(ChatPayload):
             },
         }
     },
+    dependencies=[Depends(require_scopes(REPORT_SYNC))],
 )
 def create_report_word(payload: ReportWordPayload, request: Request):
     if payload.stream:
@@ -86,9 +91,18 @@ def _load_out_from_disk(session_id: str, turn_id: str | None) -> dict | None:
 
 @router.get("/v1/export/word")
 def export_word(
+    request: Request,
     session_id: str = Query(..., description="會話 session_id"),
     turn_id: str | None = Query(None, description="該輪 turn_id（建議使用 request_id）"),
+    principal: AuthPrincipal | None = Depends(optional_principal),
 ):
+    if principal is not None:
+        if REPORT_LEGACY_DOWNLOAD not in principal.scopes: raise HTTPException(403, "Insufficient scope")
+    else:
+        sigs = request.query_params.getlist("sig")
+        if len(sigs) != 1 or not turn_id: raise HTTPException(401, "Valid capability required")
+        try: verify_resource_token(sigs[0], "legacy_word", session_id=session_id, turn_id=turn_id)
+        except ValueError as exc: raise HTTPException(401, "Invalid capability") from exc
     raw = API_STORE.read_raw() or {}
     last = raw.get("last_structured") or {}
     hist = raw.get("structured_history") or {}
@@ -114,6 +128,7 @@ def export_word(
         "Content-Length": str(len(data)),          # 2) 明確長度
         "X-Content-Type-Options": "nosniff",       # 2) 禁止嗅探
         "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
     }
     
     return Response(

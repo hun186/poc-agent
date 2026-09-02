@@ -1,5 +1,11 @@
 # System Architecture
 
+## 2026-09-02 Unified API security boundary
+
+- Canonical runtime imports remain `api.*`. Editor user authentication and service credentials resolve into transport-neutral principals only at the Agent/report boundary; service keys never satisfy Editor RBAC.
+- The owner-aware Report Job schema is SQLite `user_version=1`; legacy version 0 is rebuilt in one `BEGIN IMMEDIATE` transaction before the owner-scoped partial unique index is installed.
+- Browser document/Word access uses HMAC capabilities with exact action/representation binding rather than placing upstream credentials in URLs.
+
 ## Current Summary
 
 ### Runtime layout

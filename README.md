@@ -535,3 +535,6 @@ SRA_EDITOR_FORM_CONFIG=/secure/path/editor_form.my_app.json
 # Word report execution modes
 
 `POST /v1/report/word` remains the synchronous ChatPayload-to-DOCX API. For long-running automation, `POST /v1/report/jobs` creates single-machine persisted work that can be polled and downloaded. See [`docs/api/report-api.md`](docs/api/report-api.md), [`docs/architecture/dual-mode-report-api.md`](docs/architecture/dual-mode-report-api.md), and [`docs/operations/report-jobs.md`](docs/operations/report-jobs.md).
+# API security
+
+Agent, report, and document APIs now use scoped user/service principals and exact signed browser capabilities. See [`docs/security/sra-api-security-boundary.md`](docs/security/sra-api-security-boundary.md) and the [OpenWebUI setup](docs/security/openwebui-service-key-setup.md).

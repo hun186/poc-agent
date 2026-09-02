@@ -1,7 +1,7 @@
 # api/routers/docs.py
 import re
 from typing import Annotated, Literal
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, JSONResponse
 from elasticsearch import NotFoundError
 #from api.core.settings import ES, ALL_INDEXES
@@ -14,6 +14,10 @@ from agent.es.reference_text import (
     get_reference_text,
     get_reference_text_field,
 )
+from api.security.models import AuthPrincipal
+from api.security.principal import optional_principal
+from api.security.scopes import DOCUMENT_READ
+from api.security.signed_urls import verify_resource_token
 
 router = APIRouter()
 
@@ -77,10 +81,20 @@ def _get_doc_source_or_404(doc_id: str) -> dict:
 
     raise HTTPException(status_code=404, detail="document not found")
 
+def _resource_auth(request, principal, resource_type, **binding):
+    if principal is not None:
+        if DOCUMENT_READ not in principal.scopes: raise HTTPException(403, "Insufficient scope")
+        return False
+    values = request.query_params.getlist("sig")
+    if len(values) != 1: raise HTTPException(401, "Valid capability required")
+    try: verify_resource_token(values[0], resource_type, **binding)
+    except ValueError as exc: raise HTTPException(401, "Invalid capability") from exc
+    return True
+
 @router.get("/v1/docs/{doc_id}")
-def get_doc(doc_id: str):
+def get_doc(doc_id: str, request: Request, principal: AuthPrincipal | None = Depends(optional_principal)):
+    _resource_auth(request, principal, "doc_detail", doc_id=doc_id)
     return _get_doc_source_or_404(doc_id)
-@router.get("/v1/docs/{doc_id}/fulltext")
 def get_fulltext_on_demand(
     doc_id: str,
     format: str = Query(
@@ -286,3 +300,20 @@ def get_fulltext_on_demand(
 
 
     raise HTTPException(status_code=400, detail="format 只支援 json 或 txt。")
+
+
+@router.get("/v1/docs/{doc_id}/fulltext")
+def secured_fulltext(
+    doc_id: str,
+    request: Request,
+    format: str = Query("json"),
+    download: bool = Query(False),
+    text_layer: Literal["reference", "raw", "both"] = Query("reference"),
+    principal: AuthPrincipal | None = Depends(optional_principal),
+):
+    raw_download = request.query_params.getlist("download")
+    if len(raw_download) > 1 or (raw_download and raw_download[0] not in {"0", "1"}):
+        raise HTTPException(401, "Invalid capability parameters")
+    canonical_download = "1" if download else "0"
+    _resource_auth(request, principal, "doc_fulltext", doc_id=doc_id, format=format, download=canonical_download, text_layer=text_layer)
+    return get_fulltext_on_demand(doc_id, format=format, download=download, text_layer=text_layer)

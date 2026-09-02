@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from api.main import app
 from api.routers import export
 from api.services.turn_execution import AgentTurnResult
+from tests.security_test_utils import bearer
 
 
 def _turn_result() -> AgentTurnResult:
@@ -28,7 +29,7 @@ def _turn_result() -> AgentTurnResult:
     )
 
 
-def test_post_report_word_returns_docx_from_current_turn_without_state_read(monkeypatch):
+def test_post_report_word_returns_docx_from_current_turn_without_state_read(monkeypatch, tmp_path):
     monkeypatch.setattr(export, "execute_agent_turn", lambda **kwargs: _turn_result())
     monkeypatch.setattr(
         export.API_STORE,
@@ -38,7 +39,7 @@ def test_post_report_word_returns_docx_from_current_turn_without_state_read(monk
 
     response = TestClient(app).post(
         "/v1/report/word",
-        headers={"X-Session-Id": "automation-session"},
+        headers={**bearer(monkeypatch,tmp_path,["report:sync"]), "X-Session-Id": "automation-session"},
         json={
             "model": "SRA-Structured Retrieval Agent",
             "messages": [{"role": "user", "content": "請產生報告"}],
@@ -57,10 +58,10 @@ def test_post_report_word_returns_docx_from_current_turn_without_state_read(monk
     assert "本輪即時產生" in "\n".join(p.text for p in document.paragraphs)
 
 
-def test_post_report_word_rejects_streaming_request():
+def test_post_report_word_rejects_streaming_request(monkeypatch, tmp_path):
     response = TestClient(app).post(
         "/v1/report/word",
-        json={
+        headers=bearer(monkeypatch,tmp_path,["report:sync"]), json={
             "messages": [{"role": "user", "content": "請產生報告"}],
             "stream": True,
         },

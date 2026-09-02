@@ -14,6 +14,7 @@ from api.routers import chat, docs, export
 from api.routers.editor_dependencies import bearer_token
 from api.routers.editor_dependencies import scope_resource_id
 from api.services.auth_store import AuthUser
+from api.security.signed_urls import sign_resource
 
 
 ROUTERS = (chat.router, docs.router, export.router)
@@ -38,9 +39,9 @@ def _route(path: str, method: str):
         ("/v1/export/word", "GET"),
     ],
 )
-def test_openwebui_agent_routes_remain_public(path: str, method: str) -> None:
+def test_sensitive_agent_routes_are_protected(path: str, method: str) -> None:
     route = _route(path, method)
-    assert not route.dependant.dependencies
+    assert route.dependant.dependencies
 
 
 def test_health_check_remains_public() -> None:
@@ -65,10 +66,10 @@ def test_openwebui_can_open_and_download_cited_document_without_editor_token(
     }
     monkeypatch.setattr(docs, "_get_doc_source_or_404", lambda _doc_id: document)
 
-    detail = openwebui_client.get("/v1/docs/doc-1")
-    fulltext = openwebui_client.get("/v1/docs/doc-1/fulltext")
+    detail = openwebui_client.get("/v1/docs/doc-1", params={"sig": sign_resource("doc_detail", doc_id="doc-1")})
+    fulltext = openwebui_client.get("/v1/docs/doc-1/fulltext", params={"format":"json","download":"0","text_layer":"reference","sig":sign_resource("doc_fulltext",doc_id="doc-1",format="json",download="0",text_layer="reference")})
     download = openwebui_client.get(
-        "/v1/docs/doc-1/fulltext", params={"format": "txt", "download": "true"}
+        "/v1/docs/doc-1/fulltext", params={"format": "txt", "download": "1", "text_layer":"reference", "sig":sign_resource("doc_fulltext",doc_id="doc-1",format="txt",download="1",text_layer="reference")}
     )
 
     assert detail.status_code == 200
@@ -95,7 +96,7 @@ def test_openwebui_can_download_word_without_editor_token(
     )
 
     response = openwebui_client.get(
-        "/v1/export/word", params={"session_id": "session-1", "turn_id": "turn-1"}
+        "/v1/export/word", params={"session_id": "session-1", "turn_id": "turn-1", "sig":sign_resource("legacy_word",session_id="session-1",turn_id="turn-1")}
     )
 
     assert response.status_code == 200

@@ -6,8 +6,8 @@ from pathlib import Path
 
 from fastapi import Depends, Header, HTTPException, status
 
+import api.services.auth_store as auth_store_module
 from api.services.auth_store import (
-    AUTH_STORE,
     ROLE_DATA_EDITOR,
     ROLE_DB_OPERATOR,
     ROLE_SUPERUSER,
@@ -43,12 +43,12 @@ def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
     if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。")
     username = str(payload.get("sub") or "")
-    stored = AUTH_STORE.get_user(username)
+    stored = auth_store_module.AUTH_STORE.get_user(username)
     if not stored or stored.get("status") != "active":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="帳號尚未啟用。")
-    if AUTH_STORE.is_token_denied(str(payload.get("jti") or "")):
+    if auth_store_module.AUTH_STORE.is_token_denied(str(payload.get("jti") or "")):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。")
-    if not AUTH_STORE.is_token_current(username, int(payload.get("ver") or 0)):
+    if not auth_store_module.AUTH_STORE.is_token_current(username, int(payload.get("ver") or 0)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登入已失效，請重新登入。")
     mock_preview = bool(payload.get("mock_preview"))
     if mock_preview and not should_prefer_mock_runtime():

@@ -1,5 +1,16 @@
 # 待辦事項（Backlog）
 
+## Phase 0 v3 completion audit（2026-09-02）
+
+- 前一版雖已建立 Phase 0 核心骨架，但尚不可宣稱 approved v3 全部完成：仍需補齊 signed query 所有 protected key 的 duplicate／unsupported-value fail-closed、signed response security headers、`require_principal_or_capability` 共用 resolver、authn/authz/service-key 管理 audit，以及完整 negative/leak/API/CLI tests。
+- Report Job migration 仍需加強 legacy constraint/index validation、canonical version-1 reopen validation、required non-null staged validation，並以真正 SQL operation failure injection（不只 post-step checkpoint）覆蓋 copy、rename、index 與 version failure。
+- 尚需依 Task 13 更新 tracked API 測試指南的 Authorization 範例，並完成 signed-link 實際 route smoke 與 production signing-secret startup tests。
+
+## Phase 0 security follow-up
+
+- Per-end-user OpenWebUI identity propagation, service-key rotation workflow, and quotas/rate limits by principal remain future work.
+- Batch Scheduler, Server Dashboard, and Windows GUI are explicitly outside Phase 0 and were not implemented.
+
 ## 高優先度
 
 - 若部署環境需要保護 OpenWebUI agent API，設計獨立、可選的 integration API key 或 gateway auth；不可直接重用 Editor bearer token，且需提供 OpenWebUI 設定與相容遷移文件。
