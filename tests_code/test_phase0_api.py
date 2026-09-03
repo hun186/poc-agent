@@ -1,3 +1,4 @@
+import os
 import requests
 
 BASE = "http://192.168.0.133:9002"
@@ -151,6 +152,10 @@ r = requests.post(
 '''
 prompt = "請簡短回答測試訊息即可。"
 prompt = "去年加薩衝突持續造成重大平民傷亡與人道危機，停火談判、人質釋放及人道援助准入逐漸形成彼此連動的重要議題。10月間哈馬斯表示準備釋放人質並展開對話，聯合國秘書長古特雷斯對此表示歡迎，卡達與埃及亦持續參與調解；同時聯合國已備妥大批食品、藥品及帳篷等物資，但軍事行動、邊境准入、安全通行及醫療系統惡化仍限制援助落實。請持續蒐集去年加薩停火、人質談判、人道援助及平民保護相關資訊。**政治外交部門**掌握以色列、哈馬斯、美國、卡達、埃及及其他調解方之停火方案、人質交換條件與談判進展；**國際安全部門**追蹤空襲、地面軍事行動、停火違規及對平民與救援人員造成之安全影響；**人道事務部門**掌握食品、藥品、飲水、避難、邊境口岸與援助物資進入情形；**醫療衛生部門**追蹤醫院運作、醫療物資短缺、病患轉送及醫護人員安全；**國際組織部門**蒐集聯合國、人道協調廳、世衛組織及相關機構之聲明、數據與行動；**綜合研析部門**整合上述資訊，分析停火與人質談判是否實際改善人道准入與平民處境，辨識外交進展、軍事行動與人道情勢間之傳導關係，並提出談判破裂、援助受阻、醫療體系惡化及衝突再升級等後續風險。"
+
+OUTPUT_DIR = r"D:\shared\topicclassification\poc-agent\tests_code\output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
 try:
     r = requests.post(
         f"{BASE}/v1/chat/completions",
@@ -177,44 +182,96 @@ try:
         r,
     )
 
+    if r.status_code == 200:
+        data = r.json()
+
+        word_export = (
+            data["choices"][0]["message"]
+            ["context"]["word_export"]
+        )
+
+        word_url = word_export["url"]
+
+        print()
+        print("Word export URL:")
+        print(word_url)
+
+        print()
+        print("Downloading Word...")
+
+        # 注意：
+        # 這是 signed capability URL。
+        # 不要附 OpenWebUI Authorization header。
+        word_response = requests.get(
+            word_url,
+            timeout=(10, 300),
+        )
+
+        print("Word download HTTP:", word_response.status_code)
+
+        if word_response.status_code == 200:
+            output_file = os.path.join(
+                OUTPUT_DIR,
+                "phase0_test_report.docx"
+            )
+
+            with open(output_file, "wb") as f:
+                f.write(word_response.content)
+
+            print()
+            print("Word downloaded:")
+            print(output_file)
+
+        else:
+            print("Word download failed:")
+            print(word_response.text[:1000])
+
 except requests.exceptions.ReadTimeout:
     print()
     print("=" * 70)
     print("6. actual chat")
-    print("TIMEOUT: API 已接受長時間工作，但在設定時間內未取得完整 response")
-    
-show("6. actual chat - expected 200 if backend is healthy", r)
+    print("TIMEOUT: API 在設定時間內未完成")
+
+except Exception as e:
+    print()
+    print("=" * 70)
+    print("6. actual chat")
+    print("ERROR:", repr(e))
 
 
-####read_only_test############################################################
 
-READ_ONLY_KEY = "sra_sk_333184c907ae8ece_z6oH67h2DSggLqySEopxzsPfLUM_eLHFVRKfW_t34sw"
+#============sync key
 
-headers = {
-    "Authorization": f"Bearer {READ_ONLY_KEY}"
-}
-
-r = requests.get(
-    f"{BASE}/v1/models",
-    headers=headers,
-)
-
-print("read test code: ",r.status_code)
-
+REPORT_KEY = "sra_sk_382ab46ecf03cce2_7tdLSccuU_2qjDOo6WpAayr2UBwqEzM1kPDdv-cslY0"
 
 r = requests.post(
-    f"{BASE}/v1/chat/completions",
-    headers=headers,
+    f"{BASE}/v1/report/word",
+    headers={
+        "Authorization": f"Bearer {REPORT_KEY}",
+        "Content-Type": "application/json",
+        "X-Session-Id": "python-report-test-001",
+    },
     json={
         "model": "SRA-Structured Retrieval Agent",
         "messages": [
             {
                 "role": "user",
-                "content": "test"
+                "content": prompt,
             }
-        ]
-    }
+        ],
+        "stream": False,
+        "filename": "gaza_report.docx",
+    },
+    timeout=(10, 1800),
 )
 
-print("write test code: ",r.status_code)
-print(r.text)
+print("HTTP:", r.status_code)
+print("Content-Type:", r.headers.get("Content-Type"))
+
+if r.status_code == 200:
+    with open("gaza_report.docx", "wb") as f:
+        f.write(r.content)
+
+    print("Word saved: gaza_report.docx")
+else:
+    print(r.text)
