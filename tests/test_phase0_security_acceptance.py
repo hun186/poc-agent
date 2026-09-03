@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import replace
+import inspect
 import json
 import multiprocessing
 from pathlib import Path
@@ -12,7 +13,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.routers import chat, docs, export, report_jobs, service_keys
+from api.routers import chat, docs, editor_dependencies, export, report_jobs, service_keys
 from api.routers.editor_dependencies import require_superuser
 from api.security.models import AuthPrincipal
 from api.security.principal import current_principal, optional_principal, require_scopes
@@ -97,16 +98,54 @@ def test_service_key_cannot_satisfy_editor_superuser_dependency(tmp_path, monkey
 
 
 def test_non_superuser_cannot_administer_service_keys(monkeypatch):
+    events = []
+    monkeypatch.setattr(editor_dependencies, "append_audit_event", events.append)
     app = FastAPI(); app.include_router(service_keys.router)
-    app.dependency_overrides[require_superuser] = lambda: (_ for _ in ()).throw(Exception("override must be replaced"))
-    # Exercise the real RBAC dependency directly with an authenticated, insufficient user.
-    app.dependency_overrides.clear()
-    from api.routers.editor_dependencies import require_role
-    dependency = require_role("superuser", "require_superuser", "denied")
-    monkeypatch.setattr("api.routers.editor_dependencies.append_audit_event", lambda event: None)
+    authenticated_reader = lambda: AuthUser(
+        "reader", "data_reader", "active"
+    )
+    app.dependency_overrides[editor_dependencies.current_user] = authenticated_reader
+    # Some full-suite compatibility-import tests intentionally reload modules.
+    # Override the exact canonical seam captured by the wired RBAC dependency too.
+    wired_current_user = inspect.signature(require_superuser).parameters["user"].default.dependency
+    app.dependency_overrides[wired_current_user] = authenticated_reader
+    client = TestClient(app)
+
+    responses = [
+        client.get("/v1/auth/service-keys"),
+        client.post("/v1/auth/service-keys", json={"name": "denied", "scopes": ["model:read"]}),
+        client.post("/v1/auth/service-keys/nonexistent/revoke"),
+    ]
+
+    assert [response.status_code for response in responses] == [403, 403, 403]
+    assert len(events) == 3
+    assert all(event == {
+        "action": "authz.denied", "username": "reader", "role": "data_reader",
+        "reason": "require_superuser",
+    } for event in events)
+    rendered = json.dumps(events)
+    assert "Authorization" not in rendered and "token_digest" not in rendered
+
+
+def test_direct_principal_signed_resource_scope_denial_is_audited(monkeypatch):
+    from api.security.principal import require_principal_or_capability
+
+    events = []
+    monkeypatch.setattr("api.security.principal.append_audit_event", events.append)
+    principal = AuthPrincipal("service", "reader", None, frozenset({"model:read"}), "key-id")
+    request = SimpleNamespace(query_params={})
+
     with pytest.raises(Exception) as denied:
-        dependency(AuthUser("reader", "data_reader", "active"))
+        require_principal_or_capability(
+            request, principal, required_scope="document:read", resource_type="doc_detail",
+            binding={"doc_id": "doc"}, allowed_query_keys=set(),
+        )
+
     assert denied.value.status_code == 403
+    assert events == [{
+        "action": "security.authorization_denied", "reason": "insufficient_scope",
+        "principal_kind": "service", "subject": "reader", "required_scopes": ["document:read"],
+    }]
 
 
 def test_cross_process_service_key_mutation_is_atomic_and_secret_free(tmp_path):
@@ -218,6 +257,37 @@ def test_admin_cross_owner_report_job_access_is_audited(monkeypatch):
         "action": "security.report_job_admin_cross_owner_access", "principal_kind": "service",
         "subject": "administrator", "job_id": "job-1", "operation": "read",
     }]
+
+
+@pytest.mark.parametrize(("route", "scope", "operation"), [
+    (report_jobs.status, "report:job:read", "read"),
+    (report_jobs.download, "report:job:download", "download"),
+])
+def test_report_job_owner_mismatch_is_audited_and_concealed(monkeypatch, route, scope, operation):
+    events = []
+    job = ReportJob(
+        job_id="job-1", status="queued", prompt="p", filename=None, session_id="s", model="m",
+        options={}, metadata={}, idempotency_key=None, request_hash="h", owner_kind="service", owner_id="owner",
+    )
+    principal = AuthPrincipal("service", "requester", None, frozenset({scope}), "requester-id")
+    monkeypatch.setattr(report_jobs, "append_audit_event", events.append)
+
+    store = SimpleNamespace(get=lambda job_id: job if job_id == "job-1" else None)
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(report_job_store=store)))
+    with pytest.raises(Exception) as denied:
+        route("job-1", request, principal)
+    assert denied.value.status_code == 404
+    assert events == [{
+        "action": "security.authorization_denied", "reason": "job_owner_mismatch",
+        "principal_kind": "service", "subject": "requester", "job_id": "job-1",
+        "operation": operation,
+    }]
+
+    events.clear()
+    with pytest.raises(Exception) as missing:
+        route("missing", request, principal)
+    assert missing.value.status_code == 404
+    assert events == []
 
 
 def test_fast_openwebui_scope_matrix_uses_actual_routes(tmp_path, monkeypatch):

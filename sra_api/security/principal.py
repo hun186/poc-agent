@@ -93,6 +93,12 @@ def require_principal_or_capability(
     """
     if principal is not None:
         if required_scope not in principal.scopes:
+            _audit_denied(
+                "security.authorization_denied",
+                reason="insufficient_scope",
+                principal=principal,
+                required_scopes={required_scope},
+            )
             raise HTTPException(403, "Insufficient scope")
         return False
     keys = set(request.query_params.keys())

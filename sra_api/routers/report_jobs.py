@@ -52,17 +52,33 @@ def _audit_admin_cross_owner(job, principal, operation):
             "operation": operation,
         })
 
+def _audit_owner_mismatch(job, principal, operation):
+    append_audit_event({
+        "action": "security.authorization_denied",
+        "reason": "job_owner_mismatch",
+        "principal_kind": principal.kind,
+        "subject": principal.subject,
+        "job_id": job.job_id,
+        "operation": operation,
+    })
+
 @router.get("/{job_id}", responses={404: {"description": "Not found"}})
 def status(job_id: str, request: Request, principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_READ))):
     job = _store(request).get(job_id)
-    if not job or not _authorized(job, principal): raise HTTPException(404, "Report job not found")
+    if not job: raise HTTPException(404, "Report job not found")
+    if not _authorized(job, principal):
+        _audit_owner_mismatch(job, principal, "read")
+        raise HTTPException(404, "Report job not found")
     _audit_admin_cross_owner(job, principal, "read")
     return _view(job)
 
 @router.get("/{job_id}/word", responses={200: {"content": {DOCX: {"schema": {"type": "string", "format": "binary"}}}}, 404: {"description": "Not found"}, 409: {"description": "Not completed"}, 500: {"description": "Artifact unavailable"}})
 def download(job_id: str, request: Request, principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_DOWNLOAD))):
     job = _store(request).get(job_id)
-    if not job or not _authorized(job, principal): raise HTTPException(404, "Report job not found")
+    if not job: raise HTTPException(404, "Report job not found")
+    if not _authorized(job, principal):
+        _audit_owner_mismatch(job, principal, "download")
+        raise HTTPException(404, "Report job not found")
     _audit_admin_cross_owner(job, principal, "download")
     if job.status != "completed": raise HTTPException(409, f"Report job is {job.status}")
     expected = f"{job.job_id}.docx"

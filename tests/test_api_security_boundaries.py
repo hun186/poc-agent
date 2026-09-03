@@ -105,6 +105,9 @@ def test_openwebui_can_download_word_without_editor_token(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
     assert response.headers["content-disposition"].startswith("attachment;")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_legacy_session_scope_import_is_a_noop_for_mixed_deployments() -> None:
