@@ -111,3 +111,8 @@
 - Complete tracked unified authn/authz/service-key/admin-cross-owner audit regressions and cross-process service-key/concurrent Report Job initialize regressions requested by Plan v4.
 - Execute the exact Task 7 gate after all proposed test modules exist, plus affected API/Job gate, compileall/static/leak/runtime-artifact guards, and the complete manual no-key/OpenWebUI/Batch/revoked/signed-link/production-secret smoke matrix.
 - The 2026-09-02 full suite was 318 passed with 9 warnings, but the Phase 0 gate must not be declared passed until those remaining gates and manual smoke scenarios complete without blocking/high findings.
+
+## 2026-09-03 Phase 0 Plan v6 deployment gate pending
+
+- 在可連線 configured SRA API/Elasticsearch 的 operator environment 執行 fast live matrix與 real Elasticsearch → long report Agent → signed Word DOCX acceptance；只有完整 PASS 後才執行 acceptance Service Key revoke/rotation、harness env 化及 real-looking literal guard。
+- 補回 Plan v6 所引用但 actual repository 缺少的 `docs/superpowers/reviews/2026-09-02-sra-unified-api-security-boundary-implementation-review-v2.md` review artifact。

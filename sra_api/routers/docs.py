@@ -305,20 +305,20 @@ def secured_fulltext(
     doc_id: str,
     request: Request,
     format: str = Query("json"),
-    download: bool = Query(False),
+    download: str = Query("0"),
     text_layer: Literal["reference", "raw", "both"] = Query("reference"),
     principal: AuthPrincipal | None = Depends(optional_principal),
 ):
     raw_download = request.query_params.getlist("download")
     if len(raw_download) > 1 or (raw_download and raw_download[0] not in {"0", "1"}):
         raise HTTPException(401, "Invalid capability parameters")
-    canonical_download = "1" if download else "0"
+    canonical_download = download
     capability = require_principal_or_capability(
         request, principal, required_scope=DOCUMENT_READ, resource_type="doc_fulltext",
         binding={"doc_id": doc_id, "format": format, "download": canonical_download, "text_layer": text_layer},
         allowed_query_keys={"format", "download", "text_layer"},
     )
-    response = get_fulltext_on_demand(doc_id, format=format, download=download, text_layer=text_layer)
+    response = get_fulltext_on_demand(doc_id, format=format, download=download == "1", text_layer=text_layer)
     if capability:
         response.headers.update(CAPABILITY_HEADERS)
     return response

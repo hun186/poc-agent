@@ -71,3 +71,7 @@
 - `bootstrap_env()` runs before `sra_api.main` imports configuration-backed routers/security globals; CLI bootstraps before constructing `ServiceKeyStore`.
 - Document detail/fulltext and legacy Word share `require_principal_or_capability`; capability validation is transport-only and precedes resource lookup.
 - Report Job schema initialization validates both fresh and reopened version-1 databases; version-0 migration operations remain in the approved transactional order and are individually injectable for rollback regressions.
+
+## 2026-09-03 Unified security audit boundary
+
+- `sra_api/security/principal.py` 在 unified authentication/scope boundary 記錄 denied audit；Service Key admin router記錄 create/revoke，Report Job router記錄 admin cross-owner read/download。事件只保存 action、reason、principal/key/job識別及 scopes，不保存 credential或 digest。

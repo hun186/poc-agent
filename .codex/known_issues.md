@@ -80,3 +80,9 @@
 
 - Worker 是單一 API process 內的 thread，SQLite 與 DOCX 都在 local disk；不可用多 process/多 machine 當作 HA。process crash 時正在執行的工作於下次 startup 轉為 `interrupted`，不會自動續跑或重試。
 - pip upgrade 查詢仍因環境 proxy 403 retry，但 requirements 已安裝，未阻礙測試。
+
+## 2026-09-03 Phase 0 live deployment acceptance unavailable
+
+- 本容器對 tracked smoke harness 所設定的 private SRA API 呼叫均由環境 proxy 回覆 HTTP 403，無法證明請求抵達 SRA deployment；real Elasticsearch、long report Agent 與 signed Word E2E 因此 NOT EXECUTED。
+- 替代驗證為 84-test Phase 0 targeted gate及 343-test full repository suite。部署 acceptance 與其後 credential rotation 仍須由可連線的 operator environment 執行；既有 working acceptance credentials 本輪刻意保持不變。
+- Required Implementation Review v2 文件不在 actual repository；現有最新 review 是 v1，Plan v6 仍明確指定 v2。實作以 authoritative Design v3、Plan v6 completion delta 與 actual source 為準，待 operator 補回 review artifact 供追溯。

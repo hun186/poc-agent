@@ -190,3 +190,10 @@
 - Security environment bootstrap now precedes router/security singleton imports, and the service-key CLI bootstraps before choosing its store. Shared capability authorization rejects non-canonical/duplicate/extra signed query parameters before resource lookup and applies browser security headers.
 - Service-key expiration is validated and UTC-normalized; malformed persisted expiration fails credential resolution closed. Report Job migration now validates legacy constraints, staged rows, fresh/reopened v1 schemas, and exposes SQL-operation-boundary rollback injection.
 - Fresh verification: security targeted gate 51 passed, 2 warnings; complete repository suite 318 passed, 9 warnings. `python -m compileall sra_api api tests`, static guards, and manual smoke gates are recorded only if run later; no prior 305-pass claim was reused.
+
+## 2026-09-03 Phase 0 v3 Plan v6 repository acceptance delta
+
+- 完成 unified authn/authz、Service Key 管理及 admin cross-owner Report Job 安全稽核；稽核只含非敏感 metadata。
+- 新增 HTTP admin、scope/OpenWebUI、跨 process key store、並行 Job migration、signed capability 對抗、startup/CORS tracked regressions；signed `download` 僅接受 canonical `0`/`1`。
+- 驗證：Phase 0 targeted 84 passed/3 warnings；full suite 343 passed/10 warnings；dependency install、compile/static gates另見本次 execution report。
+- Live private API 經本環境 proxy 全部回覆 403，未能連線至 configured deployment，故 real ES/long Agent/signed Word E2E 為 NOT EXECUTED；既有 acceptance credentials 依 contract 保留未動。

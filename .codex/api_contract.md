@@ -95,3 +95,7 @@
 
 - Capability requests reject duplicate protected keys, unsupported query keys, non-canonical browser booleans, and resource/representation/session/turn substitutions before lookup.
 - Successful signed document detail/fulltext and legacy Word responses include `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, and `X-Content-Type-Options: nosniff`.
+
+## 2026-09-03 Signed fulltext canonical query clarification
+
+- Capability mode `GET /v1/docs/{doc_id}/fulltext` 的 `download` query representation只接受字串 `0` 或 `1`；duplicate、其他拼法或額外 query key均 fail closed為 401。成功 capability response持續回傳 `no-store`、`no-referrer`、`nosniff` headers。

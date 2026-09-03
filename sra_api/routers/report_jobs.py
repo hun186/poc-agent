@@ -9,6 +9,7 @@ from api.services.report_job_store import IdempotencyConflict
 from api.security.models import AuthPrincipal
 from api.security.principal import require_scopes
 from api.security.scopes import REPORT_JOB_ADMIN, REPORT_JOB_CREATE, REPORT_JOB_DOWNLOAD, REPORT_JOB_READ
+from api.services.editor_audit import append_audit_event
 
 router = APIRouter(prefix="/v1/report/jobs", tags=["report jobs"])
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -41,16 +42,28 @@ def submit(payload: ReportJobCreate, request: Request, idempotency_key: str | No
 def _authorized(job, principal):
     return REPORT_JOB_ADMIN in principal.scopes or (job.owner_kind == principal.kind and job.owner_id == principal.subject)
 
+def _audit_admin_cross_owner(job, principal, operation):
+    if REPORT_JOB_ADMIN in principal.scopes and (job.owner_kind != principal.kind or job.owner_id != principal.subject):
+        append_audit_event({
+            "action": "security.report_job_admin_cross_owner_access",
+            "principal_kind": principal.kind,
+            "subject": principal.subject,
+            "job_id": job.job_id,
+            "operation": operation,
+        })
+
 @router.get("/{job_id}", responses={404: {"description": "Not found"}})
 def status(job_id: str, request: Request, principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_READ))):
     job = _store(request).get(job_id)
     if not job or not _authorized(job, principal): raise HTTPException(404, "Report job not found")
+    _audit_admin_cross_owner(job, principal, "read")
     return _view(job)
 
 @router.get("/{job_id}/word", responses={200: {"content": {DOCX: {"schema": {"type": "string", "format": "binary"}}}}, 404: {"description": "Not found"}, 409: {"description": "Not completed"}, 500: {"description": "Artifact unavailable"}})
 def download(job_id: str, request: Request, principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_DOWNLOAD))):
     job = _store(request).get(job_id)
     if not job or not _authorized(job, principal): raise HTTPException(404, "Report job not found")
+    _audit_admin_cross_owner(job, principal, "download")
     if job.status != "completed": raise HTTPException(409, f"Report job is {job.status}")
     expected = f"{job.job_id}.docx"
     if job.docx_basename != expected: raise HTTPException(500, "Completed report artifact is invalid")
