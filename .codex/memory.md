@@ -1,5 +1,15 @@
 # Project Memory
 
+## 2026-09-03 Phase 0 v3 Plan v6.1 completion delta
+
+- Restored the missing Review v2 traceability path and preserved Review v3 as the authoritative completion review.
+- Added safe authorization-denied auditing for direct signed-resource scope failures and concealed Report Job owner mismatches; nonexistent Jobs remain unaudited 404 responses.
+- Replaced helper-only Service Key RBAC coverage with create/list/revoke HTTP regressions through the Editor authentication dependency seam, and completed signed Word security-header assertions.
+- Repeated fresh concurrent initialization exposed an intermittent SQLite WAL setup lock; `_connect()` now retries only locked WAL setup until the existing busy-timeout deadline. Five consecutive concurrency regressions passed afterward.
+- Verification: targeted Phase 0 gate 87 passed with 3 warnings after one initial intermittent SQLite failure; full suite 346 passed with 10 warnings; compileall, diff check, namespace guard, tracked-runtime-artifact scan, and focused changed-file secret scan passed.
+- Fast live smoke and real Elasticsearch/long-Agent/signed-Word E2E were not executed because the configured private deployment was intercepted with uniform HTTP 403 responses. Existing acceptance credentials were intentionally preserved unchanged.
+- Compacted `.codex/backlog.md`; the pre-compaction history is preserved at `.codex/archive/backlog.md-20260903-000000.md`, and the active backlog retains all unresolved work. Verified the archive matches the pre-compaction content before rewriting.
+
 ## 2026-09-02 Service Key 中文設定與維運文件
 
 - 將 OpenWebUI Service Key 設定文件擴充為中文版，補齊 production prerequisites、最小 scope、OpenWebUI 管理端設定、驗證、撤銷／更換與故障排除。

@@ -1,5 +1,10 @@
 # Known Issues
 
+## 2026-09-03 Private deployment unreachable from Codex environment
+
+- The configured operator smoke target returned the same HTTP 403 for health, missing/invalid credential, read-only credential, chat, and Report Job probes, indicating interception before the SRA application rather than an application security result.
+- Fast live security smoke and the real Elasticsearch → long Agent → signed Word E2E are therefore NOT EXECUTED in this environment. Run the Plan v6.1 operator acceptance from a network that can reach the private deployment; do not classify the proxy response as an SRA failure.
+
 ## 2026-09-02 Phase 0 operational limits
 
 - OpenWebUI's service principal identifies the integration, not an individual OpenWebUI end user.

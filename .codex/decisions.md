@@ -95,3 +95,8 @@
 ## 2026-09-02 Shared capability resolver
 
 - Direct principal and browser-capability authorization use one resolver. A supplied invalid Authorization header is authoritative; capability fallback is only available when Authorization is absent. Exact query multiplicity and allowlisting are enforced only on the capability path before any resource access.
+
+## 2026-09-03 Pre-request signing configuration failure audit channel
+
+- Production signing-secret validation failures are process-start failures. The raised startup exception and service/process logs are the authoritative audit channel for this pre-request condition; the application audit store is not required to initialize merely to record a startup failure.
+- Startup validation remains fail-closed for a missing or weak signing secret, and logs must never include the secret value.
