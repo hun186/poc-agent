@@ -207,3 +207,10 @@
 - 新增 HTTP admin、scope/OpenWebUI、跨 process key store、並行 Job migration、signed capability 對抗、startup/CORS tracked regressions；signed `download` 僅接受 canonical `0`/`1`。
 - 驗證：Phase 0 targeted 84 passed/3 warnings；full suite 343 passed/10 warnings；dependency install、compile/static gates另見本次 execution report。
 - Live private API 經本環境 proxy 全部回覆 403，未能連線至 configured deployment，故 real ES/long Agent/signed Word E2E 為 NOT EXECUTED；既有 acceptance credentials 依 contract 保留未動。
+
+## 2026-09-04 Phase 1 Batch Scheduler Core
+
+- Added the standalone `batch_scheduler` HTTP client for canonical CSV/XLSX/JSON loading, versioned local SQLite state, deterministic idempotent submission, remote reconciliation, and confined atomic DOCX publication.
+- Added validate/import/run/resume/status/execute CLI commands and removed raw-looking Phase 0 acceptance credentials from the tracked operator harness in favor of environment variables.
+- Repository verification: Phase 1 targeted suite passed 24 tests. Full and affected-gate results are recorded by the implementation completion commit. Private deployment acceptance was not executed from this environment; live key rotation/revocation remains an operator action.
+- Final verification evidence: Phase 1 targeted 24 passed; affected Report Job/security gate 38 passed with 5 warnings; full repository suite 370 passed with 10 warnings; compileall and diff check passed. Dependency installation succeeded from already-installed requirements despite the documented package-index proxy retries.

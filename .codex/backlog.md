@@ -35,3 +35,7 @@
 ## Archived History
 
 - `.codex/archive/backlog.md-20260903-000000.md` — compacted 2026-09-03; contains all prior Phase 0 audit entries and dated backlog details from 2026-06-11 through 2026-09-03.
+
+## 2026-09-04 Phase 1 deployment follow-up
+
+- From the private operator network, execute the documented two-task tabular-plus-JSON real SRA/Elasticsearch Batch Scheduler acceptance, exercise stop/resume against the same remote job, inspect both DOCX reports, then create/test a replacement key and revoke/verify the old key. Do not treat repository mocked transport tests as this acceptance.

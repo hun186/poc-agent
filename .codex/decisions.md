@@ -100,3 +100,7 @@
 
 - Production signing-secret validation failures are process-start failures. The raised startup exception and service/process logs are the authoritative audit channel for this pre-request condition; the application audit store is not required to initialize merely to record a startup failure.
 - Startup validation remains fail-closed for a missing or weak signing secret, and logs must never include the secret value.
+
+## 2026-09-04 Batch Scheduler Phase 1 boundary
+
+- Keep scheduling in a standalone process consuming only the existing Report Job HTTP API with a dedicated create/read/download key. Persist deterministic task idempotency keys before submission, treat remote failed/interrupted as terminal, and publish validated DOCX through a confined atomic local write. Do not add recurrence, queues, server UI, or internal server imports in Phase 1.

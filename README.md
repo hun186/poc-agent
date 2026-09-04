@@ -544,3 +544,7 @@ Agent, report, and document APIs now use scoped user/service principals and exac
 - `sra_sk_...`：用 `python -m api.security.cli create-service-key ...` 產生，只顯示一次；這才是填入 OpenWebUI OpenAI-compatible connection 的 API Key。
 
 完整的 `.env`、Windows/Linux CLI 範例與 OpenWebUI 設定流程請見 [OpenWebUI Service Key 設定指南](docs/security/openwebui-service-key-setup.md)；維運與撤銷請見 [`docs/security/service-key-operations.md`](docs/security/service-key-operations.md)，安全邊界請見 [`docs/security/sra-api-security-boundary.md`](docs/security/sra-api-security-boundary.md)。
+
+## Batch report automation
+
+See [SRA Batch Scheduler Phase 1 operations](docs/operations/batch-scheduler.md) for validated CSV/XLSX/JSON import, resumable Report Job execution, and atomic Word download.

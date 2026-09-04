@@ -75,3 +75,7 @@
 ## 2026-09-03 Unified security audit boundary
 
 - `sra_api/security/principal.py` 在 unified authentication/scope boundary 記錄 denied audit；Service Key admin router記錄 create/revoke，Report Job router記錄 admin cross-owner read/download。事件只保存 action、reason、principal/key/job識別及 scopes，不保存 credential或 digest。
+
+## 2026-09-04 Standalone Batch Scheduler boundary
+
+`CSV/XLSX/JSON -> batch_scheduler process -> dedicated scoped Service Key -> Report Job HTTP API -> existing server worker/Router/Elasticsearch/Agent -> HTTP DOCX -> local atomic publication`. The scheduler owns a separate user-version-1 SQLite database and never imports server execution components or accesses the server Report Job database.

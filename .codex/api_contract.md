@@ -99,3 +99,7 @@
 ## 2026-09-03 Signed fulltext canonical query clarification
 
 - Capability mode `GET /v1/docs/{doc_id}/fulltext` 的 `download` query representation只接受字串 `0` 或 `1`；duplicate、其他拼法或額外 query key均 fail closed為 401。成功 capability response持續回傳 `no-store`、`no-referrer`、`nosniff` headers。
+
+## 2026-09-04 Batch Scheduler client contract
+
+The scheduler consumes, without changing, `POST /v1/report/jobs` with `Authorization`, deterministic `Idempotency-Key`, `options={}`, and batch/task metadata; `GET /v1/report/jobs/{job_id}`; and `GET /v1/report/jobs/{job_id}/word` with the DOCX MIME type. Canonical inputs accept task_id, prompt, optional filename/session_id/model/offset-aware scheduled_at, and object metadata.
