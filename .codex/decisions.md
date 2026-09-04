@@ -1,5 +1,10 @@
 # Architecture Decisions
 
+## 2026-09-04 Phase 1B immutable SQL Requirement history
+
+- SQL Server is the control-plane authority. Profiles, Requirement versions, observations, and snapshots are immutable; reviewed pointers are mutable.
+- SQL API sources store named registry references only; filesystem sources are allow-root confined. Preview is side-effect free and activation is strict/atomic.
+
 ## 2026-09-02 Scoped principals and signed browser capabilities
 
 - Use distinct high-entropy service keys for OpenWebUI and future batch clients. User and service credentials share scope authorization without conflating their identity domains.

@@ -1,5 +1,9 @@
 # Known Issues
 
+## 2026-09-04 Phase 1B live SQL Server acceptance not executed
+
+- This container has no explicitly authorized Requirement control-plane SQL Server or credentials. Schema/import logic is repository-tested; live acceptance remains open. No unrelated credential was reused.
+
 ## 2026-09-03 Private deployment unreachable from Codex environment
 
 - The configured operator smoke target returned the same HTTP 403 for health, missing/invalid credential, read-only credential, chat, and Report Job probes, indicating interception before the SRA application rather than an application security result.

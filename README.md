@@ -9,6 +9,13 @@
 
 ## 技術堆疊 (Tech Stack)
 
+## Requirement import pipeline (Phase 1B)
+
+The optional Requirement control plane imports manual uploads, confined server files, or
+reviewed named SQL queries through immutable approved profiles into SQL Server. Successful
+imports atomically activate immutable snapshots; they do not execute Agent, Elasticsearch,
+Report Jobs, or Word generation. See [`docs/operations/requirement-import.md`](docs/operations/requirement-import.md).
+
 ### Backend & API
 - **Language:** Python 3.10+
 - **Web Framework:** [FastAPI](https://fastapi.tiangolo.com/) (Async Web Server)

@@ -1,5 +1,10 @@
 # 待辦事項（Backlog）
 
+## 2026-09-04 Phase 1B / 1C handoff
+
+- Execute real SQL Server Phase 1B acceptance from an explicitly authorized environment.
+- Phase 1C owns recurrence, due/expiry selection, Batch Run creation, and HTTP handoff to Phase 1A; none is implemented in Phase 1B.
+
 ## Current Summary
 
 ### Phase 0 deployment acceptance
