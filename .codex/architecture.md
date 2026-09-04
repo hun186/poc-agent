@@ -1,5 +1,10 @@
 # System Architecture
 
+## 2026-09-04 Phase 1B legacy key-name compatibility
+
+- Canonical fresh DDL continues to explicitly name every required PK/UQ/FK. Version-1 validation treats the PKs and `requirement_sets.source_id` UQ that PR #194 declared inline without names as structural identities: canonical schema/table, PK/UQ kind, exact ordered columns, and exactly one matching key are required, while the SQL Server-generated name is ignored.
+- Keys and foreign keys explicitly named by PR #194 remain name-and-structure validated. Legacy acceptance does not rename or recreate keys and composes with the existing diagnostic-nullability repair before complete validation and commit.
+
 ## 2026-09-04 Phase 1B Requirement control plane
 
 - `data_ingestion/requirements/` separates adapters, strict immutable mapping, deterministic hashes, analysis, and an explicit SQL Server schema/store.
