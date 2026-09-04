@@ -49,3 +49,8 @@
 ## 2026-09-04 Phase 1C v2 implementation gates
 
 - Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1. Implement only v2 in two reviewed gates; 1C-A remains not started, and 1C-B remains prohibited until 1C-A is merged, its Implementation Review is PASS, and the new actual `main` baseline is recorded.
+
+## 2026-09-04 Phase 1C-A follow-up
+
+- Phase 1C-B remains prohibited until Gate A is merged and its human/ChatGPT Implementation Review records PASS. Gate B owns the Phase 1A seam/bridge, pre-handoff expiry, worker, reconciliation, manual trigger execution, and root-bound Word history.
+- Execute Phase 1C live SQL Server acceptance only from an explicitly authorized environment; repository fake-ODBC evidence is not deployment acceptance.

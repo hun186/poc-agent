@@ -123,3 +123,7 @@ The scheduler consumes, without changing, `POST /v1/report/jobs` with `Authoriza
 - Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1; no Phase 1C route exists yet.
 - Future manual-trigger idempotency is scoped by `(schedule_id, trigger_request_id)`, so same-schedule replay is idempotent while another schedule may reuse the request ID.
 - Future Word history must compare the Batch Run's persisted `phase1a_output_root_fingerprint` before resolving a relative artifact and fail with safe mismatch/unavailable taxonomy without disclosing an absolute path.
+
+## 2026-09-04 Phase 1C-A schedule control API
+
+Authenticated endpoints: `GET/POST /v1/requirement-schedules`, `GET/PATCH /v1/requirement-schedules/{schedule_id}`, `POST /v1/requirement-schedules/{schedule_id}/versions`, and superuser-only `POST /v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve`. Readers may GET; db_operator may create disabled schedules, rename disabled schedules, and create immutable drafts; superuser controls approval and enablement. Gate A exposes no manual-trigger, run execution, or Word route. Errors use bounded `{detail:{code}}` values.

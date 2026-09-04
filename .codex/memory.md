@@ -58,3 +58,13 @@
 - Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1; runtime implementation remains NOT STARTED.
 - Design/Plan v2 bind checkpoint chronology to immutable RequirementVersion numbers, define pause/re-enable/version-activation transactions, allow monotonic A→B→A configuration reversion, persist and verify `phase1a_output_root_fingerprint`, and scope manual request identity per schedule.
 - Documentation verification used `git diff --check`, placeholder and forbidden-semantics scans, cross-document consistency checks, and tree inspection; no runtime pytest was required or used to claim runtime behavior.
+
+### 2026-09-04 Phase 1C-A control plane
+
+- Implemented structured recurrence, coalesced due calculation, separately versioned `sra_schedule` schema evidence, schedule/version lifecycle, snapshot-bound immutable run materialization, policy/checkpoint/selection-expiry behavior, and authenticated control-plane APIs.
+- Focused repository verification: 16 passed, 0 failed, 0 errors, 2 warnings. Full/regression verification is recorded in the final task result after execution.
+- Phase 1C-A control plane repository gate ready for implementation review.
+- Phase 1C implementation incomplete.
+- Outbound execution absent.
+- Phase 1C live SQL Server acceptance: NOT EXECUTED (no explicitly authorized SQL Server access was supplied). Phase 1B live SQL Server acceptance remains NOT EXECUTED.
+- Final verification evidence: Phase 1C-A 16 passed/0 failed/0 errors/2 warnings; Phase 1B 88 passed/0 failed/0 errors/2 warnings; Phase 1A 24 passed/0 failed/0 errors/0 warnings; Phase 0/security 27 passed/0 failed/0 errors/3 warnings; full repository 474 passed/0 failed/0 errors/10 warnings. `compileall`, `git diff --check`, prohibited-import scan, changed-file credential scan (24 files, 0 hits), and tracked runtime-artifact scan (0) passed.
