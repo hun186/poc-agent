@@ -131,3 +131,10 @@
 - Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1. RequirementVersion number—not source membership/run/completion order—is the only checkpoint chronology evidence.
 - Intentional disable is not a misfire interval; re-enable and enabled version activation start recurrence strictly after their transaction UTC time. Only uninterrupted enabled state across worker downtime uses `coalesce_latest`.
 - Schedule version identity is its monotonic number, not its configuration hash; immutable A→B→A reversion is supported. Persist a non-secret output-root fingerprint with Phase 1A handoff identity and fail closed on mismatch.
+
+## 2026-09-04 Phase 1C-A control-plane implementation
+
+- Keep schedule authority in separately validated `sra_schedule`; preserve exact RequirementVersion ID/number chronology and membership `source_order` only as ordering evidence.
+- Treat disable as pause (`next_run_at=NULL`), recalculate strictly after activation on enable/version approval, and coalesce only uninterrupted enabled downtime.
+- Schedule versions are insert-only monotonic identities; configuration hashes are evidence and intentionally non-unique, allowing A→B→A.
+- Gate A remains control-plane only and deliberately contains no Phase 1A bridge, recurring worker, manual execution, artifact serving, or execution-engine import.

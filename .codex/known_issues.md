@@ -105,3 +105,8 @@
 - No explicit authorized connection or credential for the intended Requirement control-plane SQL Server was provided in this environment.
 - Substitute verification: recording fake-ODBC transaction/migration tests plus focused and full repository suites; these are repository evidence only and are not live SQL Server acceptance.
 - Status: Open; execute the documented live acceptance from an authorized operator environment.
+
+## 2026-09-04 Phase 1C live acceptance unavailable
+
+- Phase 1C live SQL Server acceptance was NOT EXECUTED because this task supplied no explicitly authorized SQL Server connection or credential. Repository recurrence, fake persistence, API, security, and regression checks are substitute repository evidence only. Phase 1B live SQL acceptance independently remains NOT EXECUTED.
+- `pip --upgrade` encountered the known package-index proxy HTTP 403 warning, but all requirement packages were already installed and dependency verification completed.

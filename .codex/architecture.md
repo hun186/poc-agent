@@ -106,3 +106,9 @@
 - Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1. Run Items will bind RequirementVersion ID plus monotonic per-Requirement number; checkpoints will carry matched seen/success ID-number evidence and reject older success completions.
 - Operator pause clears `next_run_at` and starts a fresh recurrence window on re-enable; continuously enabled worker downtime alone uses `coalesce_latest`. Version activation recalculates from its transaction time.
 - Configuration hashes remain comparison evidence rather than version identity, allowing immutable A→B→A reversion. Batch Runs will persist a non-secret Phase 1A output-root fingerprint and fail closed if the configured root changes before resume/reconciliation/history serving.
+
+## 2026-09-04 Phase 1C-A control plane
+
+- `requirement_scheduler/` is the SQL Server-backed scheduling control-plane boundary: frozen recurrence/domain evidence, transactional schema/store operations, pure selection policy, and lifecycle orchestration.
+- `sra_schedule` remains independently versioned from immutable Phase 1B history. Scheduled claims lock authority rows, coalesce enabled downtime, bind the active snapshot and exact RequirementVersion ID/number, persist selection evidence/checkpoint seen state, and advance recurrence atomically.
+- `sra_api/routers/requirement_schedules.py` exposes control-plane CRUD/version approval only. FastAPI initializes the store only when configured and starts no scheduling thread; Gate A has no Phase 1A bridge or outbound execution.
