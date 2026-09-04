@@ -185,10 +185,23 @@ try:
     if r.status_code == 200:
         data = r.json()
 
-        word_export = (
-            data["choices"][0]["message"]
-            ["context"]["word_export"]
-        )
+        # Phase 0 real E2E routing / retrieval evidence.
+        # Do not treat HTTP 200 alone as sufficient: confirm the request
+        # reached the expected report/analysis route and returned citations.
+        message = data.get("choices", [{}])[0].get("message", {})
+        context = message.get("context") or {}
+
+        print()
+        print("=== ROUTING EVIDENCE ===")
+        print("mode :", context.get("mode"))
+        print("route:", context.get("route"))
+
+        citations = context.get("citations") or []
+        print()
+        print("=== CITATIONS ===")
+        print("citation count:", len(citations))
+
+        word_export = context["word_export"]
 
         word_url = word_export["url"]
 
