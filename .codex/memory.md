@@ -68,3 +68,11 @@
 - Outbound execution absent.
 - Phase 1C live SQL Server acceptance: NOT EXECUTED (no explicitly authorized SQL Server access was supplied). Phase 1B live SQL Server acceptance remains NOT EXECUTED.
 - Final verification evidence: Phase 1C-A 16 passed/0 failed/0 errors/2 warnings; Phase 1B 88 passed/0 failed/0 errors/2 warnings; Phase 1A 24 passed/0 failed/0 errors/0 warnings; Phase 0/security 27 passed/0 failed/0 errors/3 warnings; full repository 474 passed/0 failed/0 errors/10 warnings. `compileall`, `git diff --check`, prohibited-import scan, changed-file credential scan (24 files, 0 hits), and tracked runtime-artifact scan (0) passed.
+
+### 2026-09-04 Phase 1C-A Review v1 closure correction
+
+- Closed schema/FK/index/column validation, scheduled duplicate-race reconciliation, canonical `reqrun-`/external-item identities, direct configuration validation, transactional fake-ODBC evidence, bounded API list/detail and RBAC/audit regressions, and safe resource taxonomy findings.
+- Finding G remains a Design-level blocker: lifecycle SQL commits and the canonical filesystem JSONL audit append cannot form one atomic transaction. No distributed transaction or second audit authority was invented; Phase 1C-B remains prohibited.
+- Verification: focused 28 passed/0 failed/0 errors/2 warnings; Phase 1B 88 passed/0 failed/0 errors/2 warnings; Phase 1A 24 passed/0 failed/0 errors/0 warnings; Phase 0 27 passed/0 failed/0 errors/3 warnings; full suite before the final audit-matrix test 485 passed/0 failed/0 errors/10 warnings. Final full/static results are recorded in the task report.
+- Phase 1C and Phase 1B live SQL Server acceptance: NOT EXECUTED; no explicitly authorized SQL Server access was supplied.
+- Final rerun after the HTTP audit matrix: full repository 486 passed/0 failed/0 errors/10 warnings.

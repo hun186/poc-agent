@@ -138,3 +138,7 @@
 - Treat disable as pause (`next_run_at=NULL`), recalculate strictly after activation on enable/version approval, and coalesce only uninterrupted enabled downtime.
 - Schedule versions are insert-only monotonic identities; configuration hashes are evidence and intentionally non-unique, allowing A→B→A.
 - Gate A remains control-plane only and deliberately contains no Phase 1A bridge, recurring worker, manual execution, artifact serving, or execution-engine import.
+
+## 2026-09-04 Phase 1C-A audit authority decision
+
+- Do not claim atomic SQL-plus-filesystem lifecycle audit and do not add a second audit framework or distributed transaction. Preserve the canonical audit path and mark the review finding as a Design-level blocker pending an explicit authority/outbox design decision.

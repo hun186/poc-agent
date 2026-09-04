@@ -54,3 +54,7 @@
 
 - Phase 1C-B remains prohibited until Gate A is merged and its human/ChatGPT Implementation Review records PASS. Gate B owns the Phase 1A seam/bridge, pre-handoff expiry, worker, reconciliation, manual trigger execution, and root-bound Word history.
 - Execute Phase 1C live SQL Server acceptance only from an explicitly authorized environment; repository fake-ODBC evidence is not deployment acceptance.
+
+## 2026-09-04 Phase 1C-A Review v1 blocker
+
+- Resolve Finding G through a reviewed design change that makes schedule lifecycle mutation and durable audit acceptance atomic (or explicitly redefines the authority contract). Phase 1C-B remains prohibited until this blocker and Gate A review are closed.

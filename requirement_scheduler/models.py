@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, time
 from enum import StrEnum
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 class RunPolicy(StrEnum):
@@ -44,6 +45,8 @@ class RecurrenceSpec:
             except (TypeError, ValueError): raise ValueError("recurrence_invalid") from None
             if anchor.tzinfo is None or anchor.utcoffset() is None:
                 raise ValueError("timezone_naive")
+            if anchor.microsecond:
+                raise ValueError("recurrence_second_precision_required")
             return cls(kind=kind, every=every, unit=value["unit"], anchor_at=anchor)
         try: local = time.fromisoformat(value["local_time"])
         except (TypeError, ValueError): raise ValueError("recurrence_invalid") from None
@@ -75,6 +78,14 @@ class ScheduleVersionCreate:
     recurrence: RecurrenceSpec
     run_policy: RunPolicy
     model: str
+
+    def __post_init__(self):
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError, TypeError):
+            raise ValueError("timezone_invalid") from None
+        if not isinstance(self.model, str) or not self.model.strip() or len(self.model) > 240:
+            raise ValueError("schedule_model_invalid")
 
 
 @dataclass(frozen=True)
