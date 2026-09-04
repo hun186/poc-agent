@@ -52,3 +52,9 @@
 
 - `.codex/archive/memory.md-20260904-220000.md` — full active memory before 2026-09-04 compaction, covering detailed work records through the Phase 1B PR #197 baseline.
 - Other historical architecture/decision/backlog archives remain listed in their respective active files and are loaded only when traceability requires them.
+
+### 2026-09-04 Phase 1C Design Review v1 corrections
+
+- Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1; runtime implementation remains NOT STARTED.
+- Design/Plan v2 bind checkpoint chronology to immutable RequirementVersion numbers, define pause/re-enable/version-activation transactions, allow monotonic A→B→A configuration reversion, persist and verify `phase1a_output_root_fingerprint`, and scope manual request identity per schedule.
+- Documentation verification used `git diff --check`, placeholder and forbidden-semantics scans, cross-document consistency checks, and tree inspection; no runtime pytest was required or used to claim runtime behavior.

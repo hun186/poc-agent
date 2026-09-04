@@ -117,3 +117,9 @@ The scheduler consumes, without changing, `POST /v1/report/jobs` with `Authoriza
 - Design v1 reserves authenticated schedule list/detail/create/patch, immutable version creation/approval, superuser manual trigger, Batch Run list/detail/items, and completed Word history under `/v1/requirement-schedules` and `/v1/requirement-batch-runs`.
 - Safe GETs allow any authenticated user; `db_operator` may create disabled schedules, edit disabled safe metadata, and create drafts; `superuser` approves/activates, enables/disables, and triggers. Existing Editor authorization and denial audit remain authoritative.
 - Gate 1C-A deliberately omits manual trigger, execution, and Word serving. These become active only in reviewed Gate 1C-B; documentation presence does not mean an endpoint exists.
+
+## 2026-09-04 Phase 1C planned API contract v2 (not implemented)
+
+- Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1; no Phase 1C route exists yet.
+- Future manual-trigger idempotency is scoped by `(schedule_id, trigger_request_id)`, so same-schedule replay is idempotent while another schedule may reuse the request ID.
+- Future Word history must compare the Batch Run's persisted `phase1a_output_root_fingerprint` before resolving a relative artifact and fail with safe mismatch/unavailable taxonomy without disclosing an absolute path.
