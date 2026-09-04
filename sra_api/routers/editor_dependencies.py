@@ -58,17 +58,22 @@ def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
 
 def require_role(minimum_role: str, reason: str, detail: str) -> Callable[[AuthUser], AuthUser]:
     def dependency(user: AuthUser = Depends(current_user)) -> AuthUser:
-        if not has_role_at_least(user.role, minimum_role):
-            append_audit_event({
-                "action": "authz.denied",
-                "username": user.username,
-                "role": user.role,
-                "reason": reason,
-            })
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
-        return user
+        return authorize_role(user, minimum_role, reason, detail)
 
     return dependency
+
+
+def authorize_role(user: AuthUser, minimum_role: str, reason: str, detail: str) -> AuthUser:
+    """Apply the canonical RBAC decision and denied-action audit to an existing user."""
+    if not has_role_at_least(user.role, minimum_role):
+        append_audit_event({
+            "action": "authz.denied",
+            "username": user.username,
+            "role": user.role,
+            "reason": reason,
+        })
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+    return user
 
 
 require_data_editor = require_role(ROLE_DATA_EDITOR, "require_data_editor", "需要資料修改者以上權限。")

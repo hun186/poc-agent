@@ -1,5 +1,12 @@
 # Project Memory
 
+## 2026-09-04 Phase 1B final repository closure follow-up
+
+- Closed Review v1 follow-up findings against baseline `70f1c99b1c86a6cc6a418a315404bf8631972237` (the merge commit for PR #194): canonical PK/UQ/FK validation now proves table and ordered-column bindings, and the only version-1 compatibility repair is the transactional `import_run_rows.source_row_number` nullable correction required for non-row-scoped diagnostics.
+- Added actual `RequirementStore` fake-ODBC evidence for profile/source writes, monotonic immutable draft versions and approval, snapshot modes/binding/order, version reuse/insertion, stale/anomaly audit rollback, and forced persistence rollback. Expanded HTTP evidence across unauthenticated, reader, database-operator, and superuser roles, including audited activation denials, upload boundaries, and safe error taxonomy.
+- Verification: actual-store focused selection 11 passed; Phase 1B gate 80 passed with 2 warnings; Phase 0/1A gate 62 passed with 3 warnings; full repository 450 passed with 10 warnings. `compileall`, `git diff --check`, execution-dependency/sample-mapping guards, and tracked runtime-artifact scan passed.
+- Live Requirement SQL Server acceptance was **NOT EXECUTED** because no explicitly authorized control-plane connection or credentials were provided. Fake ODBC is repository evidence only, not deployment acceptance.
+
 ## 2026-09-04 Phase 1B Requirement source/import pipeline
 
 - Added strict configuration-driven mapping, UTC normalization, required hashes, manual/file/named-SQL adapters, confinement, and secret/executable-config rejection.

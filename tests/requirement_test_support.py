@@ -7,6 +7,51 @@ from uuid import uuid4
 from data_ingestion.requirements.models import ImportProfileDocument
 
 
+class ScriptedCursor:
+    """Ordered fake-ODBC cursor for driving the real RequirementStore."""
+    description = []
+
+    def __init__(self, *, one=(), many=(), fail_on=None):
+        self.one = list(one)
+        self.many = list(many)
+        self.fail_on = fail_on
+        self.calls = []
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        if self.fail_on and self.fail_on in sql:
+            raise RuntimeError("ODBC DRIVER=hidden;PWD=hidden")
+        return self
+
+    def fetchone(self):
+        return self.one.pop(0) if self.one else None
+
+    def fetchall(self):
+        return self.many.pop(0) if self.many else []
+
+
+class ScriptedConnection:
+    def __init__(self, **cursor_options):
+        self.cursor_value = ScriptedCursor(**cursor_options)
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = False
+        self.events = []
+
+    def cursor(self): return self.cursor_value
+    def commit(self): self.commits += 1; self.events.append("commit")
+    def rollback(self): self.rollbacks += 1; self.events.append("rollback")
+    def close(self): self.closed = True; self.events.append("close")
+
+
+class ScriptedRegistry:
+    def __init__(self, *connections): self.connections = list(connections); self.opened = []
+    def open_named_connection(self, ref):
+        connection = self.connections.pop(0)
+        self.opened.append(connection)
+        return connection
+
+
 def sample_profile(format="json"):
     return {"format": format, "source_timezone": "Asia/Taipei", "source_mode": "authoritative_snapshot", **({"worksheet": {"name": "工作表1", "header_row": 1, "first_data_row": 2, "trim_headers": True, "case_sensitive": False}} if format == "xlsx" else {}), "mapping": {
         "external_item_id": {"source": "ITEMNO", "required": True, "transforms": ["trim", "to_text"]},

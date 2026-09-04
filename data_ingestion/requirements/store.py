@@ -10,8 +10,9 @@ from .hashing import canonical_sha256
 from .migrations import (
     SCHEMA_VERSION,
     bootstrap_schema_statements,
-    expected_validation_count,
     migration_0_to_1_statements,
+    nullable_diagnostic_check,
+    repair_diagnostic_nullability_statement,
     validation_queries,
     validate_schema_name,
 )
@@ -59,10 +60,25 @@ class RequirementStore:
                 for statement in migration_0_to_1_statements(self.schema): cursor.execute(statement)
             elif version != SCHEMA_VERSION:
                 raise RuntimeError("unsupported requirement schema version")
-            for name, sql, params in validation_queries(self.schema):
+            nullable_sql, nullable_params = nullable_diagnostic_check(self.schema)
+            cursor.execute(nullable_sql, *nullable_params)
+            nullable_row = cursor.fetchone()
+            if version == SCHEMA_VERSION and nullable_row == (False,):
+                # The sole compatibility repair for PR #194 canonical v1: early v1
+                # made non-row-scoped diagnostics impossible to persist.
+                cursor.execute(repair_diagnostic_nullability_statement(self.schema))
+                cursor.execute(nullable_sql, *nullable_params)
+                nullable_row = cursor.fetchone()
+            if nullable_row is None or not bool(nullable_row[0]):
+                raise RuntimeError("malformed requirement schema version 1")
+            for name, sql, params, expected in validation_queries(self.schema):
                 cursor.execute(sql, *params)
-                result = cursor.fetchone()
-                if result is None or int(result[0]) != expected_validation_count(name):
+                if name.startswith("columns:"):
+                    result = cursor.fetchone()
+                    valid = result is not None and int(result[0]) == expected
+                else:
+                    valid = tuple(cursor.fetchall()) == expected
+                if not valid:
                     raise RuntimeError("malformed requirement schema version 1")
             if version == 0:
                 if row is None: cursor.execute(f"INSERT INTO {table}(version) VALUES (?)", SCHEMA_VERSION)
