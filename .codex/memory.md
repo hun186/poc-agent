@@ -229,3 +229,11 @@
 - Full repository gate: 384 passed, 0 failed, 10 warnings.
 - `compileall`, `git diff --check`, direct Agent/ES/Word/Report-worker import guard, and no-value-printing tracked-diff credential scan passed.
 - Dependency preflight completed with installed requirements; the package index returned the already-known proxy 403 retries while pip continued with satisfied packages.
+
+## 2026-09-04 Phase 1B completion delta v1.1
+
+- Closed Implementation Review v1 findings: failed Import Runs now persist bounded row diagnostics; commit-lock stale/anomaly races roll back before a separate failure-audit transaction; CSV parsing preserves duplicate/empty positions for strict ambiguity detection; SQL schema startup migrates version 0 and structurally validates version 1; SQL/persistence errors map to stable safe codes.
+- Added real `RequirementStore` recording-ODBC coverage for failed diagnostics, migration states, rollback, and persistence sanitization, plus dependency-layer HTTP 401/403/operator/superuser and safe-error regressions. Existing MemoryStore integration coverage continues to prove authoritative/upsert snapshot semantics.
+- Documented that named SQL security uses reviewed registry SQL plus a read-only database principal; SQL parsing is not the security boundary.
+- Phase 1B focused gate: 28 passed, 0 failed, 2 warnings. Phase 1A/Phase 0 regression gate: 62 passed, 0 failed, 3 warnings after removing raw-looking operator-harness keys in favor of required environment variables. Full repository gate: 398 passed, 0 failed, 10 warnings. Compileall, diff check, direct execution-import/sample-branch guards, tracked runtime-artifact scan, and no-value credential literal scan passed.
+- Live Requirement SQL Server acceptance was NOT EXECUTED because this environment has no explicit authorization/credentials for the intended control-plane database. Repository fake-ODBC evidence is not deployment acceptance.

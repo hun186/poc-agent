@@ -12,6 +12,7 @@ def validate_schema_name(value: str) -> str:
 
 
 def migration_v1(schema: str) -> list[str]:
+    """Canonical idempotent version-0 to version-1 DDL."""
     s = f"[{validate_schema_name(schema)}]"
     return [
         f"IF SCHEMA_ID(N'{schema}') IS NULL EXEC(N'CREATE SCHEMA {s}')",
@@ -33,4 +34,80 @@ def migration_v1(schema: str) -> list[str]:
         f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_requirement_snapshot_set') ALTER TABLE {s}.[requirement_set_snapshots] ADD CONSTRAINT FK_requirement_snapshot_set FOREIGN KEY(requirement_set_id) REFERENCES {s}.[requirement_sets](requirement_set_id)",
         f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_requirement_snapshot_item_snapshot') ALTER TABLE {s}.[requirement_snapshot_items] ADD CONSTRAINT FK_requirement_snapshot_item_snapshot FOREIGN KEY(snapshot_id) REFERENCES {s}.[requirement_set_snapshots](snapshot_id)",
         f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_requirement_snapshot_item_version') ALTER TABLE {s}.[requirement_snapshot_items] ADD CONSTRAINT FK_requirement_snapshot_item_version FOREIGN KEY(requirement_version_id) REFERENCES {s}.[requirement_versions](requirement_version_id)",
+        f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_requirement_set_source') ALTER TABLE {s}.[requirement_sets] ADD CONSTRAINT FK_requirement_set_source FOREIGN KEY(source_id) REFERENCES {s}.[requirement_sources](source_id)",
+        f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_import_run_source') ALTER TABLE {s}.[import_runs] ADD CONSTRAINT FK_import_run_source FOREIGN KEY(source_id) REFERENCES {s}.[requirement_sources](source_id)",
+        f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_import_run_profile_version') ALTER TABLE {s}.[import_runs] ADD CONSTRAINT FK_import_run_profile_version FOREIGN KEY(import_profile_version_id) REFERENCES {s}.[import_profile_versions](profile_version_id)",
+        f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_import_run_row_run') ALTER TABLE {s}.[import_run_rows] ADD CONSTRAINT FK_import_run_row_run FOREIGN KEY(import_run_id) REFERENCES {s}.[import_runs](import_run_id)",
+        f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_requirement_snapshot_run') ALTER TABLE {s}.[requirement_set_snapshots] ADD CONSTRAINT FK_requirement_snapshot_run FOREIGN KEY(import_run_id) REFERENCES {s}.[import_runs](import_run_id)",
+        f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_requirement_snapshot_profile_version') ALTER TABLE {s}.[requirement_set_snapshots] ADD CONSTRAINT FK_requirement_snapshot_profile_version FOREIGN KEY(import_profile_version_id) REFERENCES {s}.[import_profile_versions](profile_version_id)",
+        f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_requirement_snapshot_item_requirement') ALTER TABLE {s}.[requirement_snapshot_items] ADD CONSTRAINT FK_requirement_snapshot_item_requirement FOREIGN KEY(requirement_id) REFERENCES {s}.[requirements](requirement_id)",
+        f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_import_profile_active_version') ALTER TABLE {s}.[import_profiles] ADD CONSTRAINT FK_import_profile_active_version FOREIGN KEY(active_version_id) REFERENCES {s}.[import_profile_versions](profile_version_id)",
+        f"IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_requirement_set_active_snapshot') ALTER TABLE {s}.[requirement_sets] ADD CONSTRAINT FK_requirement_set_active_snapshot FOREIGN KEY(active_snapshot_id) REFERENCES {s}.[requirement_set_snapshots](snapshot_id)",
     ]
+
+
+def bootstrap_schema_statements(schema: str) -> list[str]:
+    """Create only the namespace and version container used to inspect state."""
+    return migration_v1(schema)[:2]
+
+
+def migration_0_to_1_statements(schema: str) -> list[str]:
+    """Create/repair canonical v1 domain objects without changing the version row."""
+    return migration_v1(schema)[2:]
+
+
+# Runtime-required columns. Validation intentionally names every column rather than
+# trusting an integer schema marker.
+REQUIRED_COLUMNS = {
+    "schema_version": ("version",),
+    "requirement_sources": ("source_id", "name", "source_type", "source_mode", "source_config_json", "import_profile_id", "enabled", "created_by", "created_at", "updated_by", "updated_at"),
+    "import_profiles": ("profile_id", "name", "description", "enabled", "active_version_id", "created_by", "created_at", "updated_by", "updated_at"),
+    "import_profile_versions": ("profile_version_id", "profile_id", "version_number", "format", "source_mode", "profile_json", "profile_sha256", "status", "created_by", "created_at", "approved_by", "approved_at", "retired_at"),
+    "requirements": ("requirement_id", "source_id", "external_item_id", "created_at"),
+    "requirement_versions": ("requirement_version_id", "requirement_id", "version_number", "title", "prompt_content", "source_updated_at", "expires_at", "source_created_by", "source_updated_by", "source_created_at", "source_row_hash", "source_payload_hash", "execution_content_hash", "source_raw_json", "created_at"),
+    "requirement_sets": ("requirement_set_id", "source_id", "name", "active_snapshot_id", "created_at"),
+    "import_runs": ("import_run_id", "source_id", "import_profile_version_id", "source_uri_display", "source_sha256", "status", "row_count", "accepted_count", "rejected_count", "started_at", "completed_at", "actor_kind", "actor_id", "error_summary"),
+    "import_run_rows": ("import_run_id", "source_row_number", "external_item_id", "row_status", "source_row_hash", "diagnostic_code", "diagnostic_message"),
+    "requirement_set_snapshots": ("snapshot_id", "requirement_set_id", "import_run_id", "source_snapshot_sha256", "import_profile_version_id", "created_at", "activated_at"),
+    "requirement_snapshot_items": ("snapshot_id", "requirement_id", "requirement_version_id", "source_order"),
+}
+REQUIRED_CONSTRAINTS = (
+    "UQ_import_profile_version", "UQ_requirement_identity", "UQ_requirement_version",
+    "PK_requirement_snapshot_items", "FK_requirement_profile_version_profile",
+    "FK_requirement_source_profile", "FK_requirement_source", "FK_requirement_version_requirement",
+    "FK_requirement_snapshot_set", "FK_requirement_snapshot_item_snapshot",
+    "FK_requirement_snapshot_item_version",
+    "FK_requirement_set_source", "FK_import_run_source", "FK_import_run_profile_version",
+    "FK_import_run_row_run", "FK_requirement_snapshot_run",
+    "FK_requirement_snapshot_profile_version", "FK_requirement_snapshot_item_requirement",
+    "FK_import_profile_active_version", "FK_requirement_set_active_snapshot",
+)
+
+
+def validation_queries(schema: str) -> list[tuple[str, str, tuple[object, ...]]]:
+    """Return named scalar checks; each query must return exactly the expected count."""
+    validate_schema_name(schema)
+    checks: list[tuple[str, str, tuple[object, ...]]] = []
+    for table, columns in REQUIRED_COLUMNS.items():
+        placeholders = ",".join("?" for _ in columns)
+        checks.append((
+            f"columns:{table}",
+            "SELECT COUNT(DISTINCT c.name) FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id "
+            "JOIN sys.columns c ON c.object_id=t.object_id WHERE s.name=? AND t.name=? "
+            f"AND c.name IN ({placeholders})",
+            (schema, table, *columns),
+        ))
+    placeholders = ",".join("?" for _ in REQUIRED_CONSTRAINTS)
+    checks.append((
+        "constraints",
+        "SELECT COUNT(DISTINCT o.name) FROM sys.objects o JOIN sys.schemas s ON s.schema_id=o.schema_id "
+        f"WHERE s.name=? AND o.name IN ({placeholders}) AND o.type IN ('PK','UQ','F')",
+        (schema, *REQUIRED_CONSTRAINTS),
+    ))
+    return checks
+
+
+def expected_validation_count(name: str) -> int:
+    if name == "constraints":
+        return len(REQUIRED_CONSTRAINTS)
+    return len(REQUIRED_COLUMNS[name.split(":", 1)[1]])

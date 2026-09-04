@@ -7,8 +7,15 @@ from uuid import uuid4
 
 from .connections import SqlRegistry
 from .hashing import canonical_sha256
-from .migrations import SCHEMA_VERSION, migration_v1, validate_schema_name
-from .models import ImportProfileDocument, NormalizedCandidate, SourceMode, SourceType
+from .migrations import (
+    SCHEMA_VERSION,
+    bootstrap_schema_statements,
+    expected_validation_count,
+    migration_0_to_1_statements,
+    validation_queries,
+    validate_schema_name,
+)
+from .models import ImportProfileDocument, NormalizedCandidate, RowDiagnostic, SourceMode, SourceType
 from .source_adapters import validate_source_config
 
 
@@ -16,25 +23,56 @@ def _now() -> datetime: return datetime.now(timezone.utc)
 def _id(prefix: str) -> str: return f"{prefix}_{uuid4().hex}"
 
 
+DOMAIN_ERRORS = {
+    "profile_invalid", "source_disabled", "source_version_anomaly",
+    "stale_source_version", "source_config_invalid",
+    "source_config_secret_or_executable_rejected",
+}
+
+
+def _stable_persistence_error(exc: Exception) -> Exception:
+    if isinstance(exc, KeyError) or (exc.args and str(exc.args[0]).split(":", 1)[0] in DOMAIN_ERRORS):
+        return exc
+    return RuntimeError("persistence_error")
+
+
 class RequirementStore:
     """SQL Server-backed Phase 1B control-plane store."""
     def __init__(self, registry: SqlRegistry, connection_ref: str, schema: str = "sra_requirement"):
         self.registry, self.connection_ref, self.schema = registry, connection_ref, validate_schema_name(schema)
 
-    def _connect(self): return self.registry.open_named_connection(self.connection_ref)
+    def _connect(self):
+        try:
+            return self.registry.open_named_connection(self.connection_ref)
+        except Exception as exc:
+            raise RuntimeError("persistence_error") from exc
 
     def initialize(self) -> None:
         connection = self._connect()
         try:
             cursor = connection.cursor()
-            for statement in migration_v1(self.schema): cursor.execute(statement)
+            for statement in bootstrap_schema_statements(self.schema): cursor.execute(statement)
             table = f"[{self.schema}].[schema_version]"
             cursor.execute(f"SELECT version FROM {table}"); row = cursor.fetchone()
-            if row is None: cursor.execute(f"INSERT INTO {table}(version) VALUES (?)", SCHEMA_VERSION)
-            elif int(row[0]) != SCHEMA_VERSION: raise RuntimeError("unsupported requirement schema version")
+            version = 0 if row is None else int(row[0])
+            if version == 0:
+                for statement in migration_0_to_1_statements(self.schema): cursor.execute(statement)
+            elif version != SCHEMA_VERSION:
+                raise RuntimeError("unsupported requirement schema version")
+            for name, sql, params in validation_queries(self.schema):
+                cursor.execute(sql, *params)
+                result = cursor.fetchone()
+                if result is None or int(result[0]) != expected_validation_count(name):
+                    raise RuntimeError("malformed requirement schema version 1")
+            if version == 0:
+                if row is None: cursor.execute(f"INSERT INTO {table}(version) VALUES (?)", SCHEMA_VERSION)
+                else: cursor.execute(f"UPDATE {table} SET version=? WHERE version=0", SCHEMA_VERSION)
             connection.commit()
-        except Exception:
-            connection.rollback(); raise
+        except Exception as exc:
+            connection.rollback()
+            if str(exc) in {"unsupported requirement schema version", "malformed requirement schema version 1"}:
+                raise
+            raise _stable_persistence_error(exc) from exc
         finally: connection.close()
 
     @staticmethod
@@ -45,12 +83,14 @@ class RequirementStore:
     def _query(self, sql: str, *params: Any) -> list[dict[str, Any]]:
         connection = self._connect()
         try: cursor = connection.cursor(); cursor.execute(sql, *params); return self._rows(cursor)
+        except Exception as exc: raise _stable_persistence_error(exc) from exc
         finally: connection.close()
 
     def _execute(self, sql: str, *params: Any) -> None:
         connection = self._connect()
         try: connection.cursor().execute(sql, *params); connection.commit()
-        except Exception: connection.rollback(); raise
+        except Exception as exc:
+            connection.rollback(); raise _stable_persistence_error(exc) from exc
         finally: connection.close()
 
     @property
@@ -81,7 +121,7 @@ class RequirementStore:
         try:
             cursor = connection.cursor(); cursor.execute(f"SELECT COALESCE(MAX(version_number),0)+1 FROM {self.t}.[import_profile_versions] WITH (UPDLOCK,HOLDLOCK) WHERE profile_id=?", profile_id); number = int(cursor.fetchone()[0]); vid = _id("pv")
             cursor.execute(f"INSERT INTO {self.t}.[import_profile_versions] VALUES (?,?,?,?,?,?,?,?,?,NULL,NULL,NULL)", vid, profile_id, number, profile.format, profile.source_mode.value, serialized, digest, "draft", actor, _now()); connection.commit()
-        except Exception: connection.rollback(); raise
+        except Exception as exc: connection.rollback(); raise _stable_persistence_error(exc) from exc
         finally: connection.close()
         return self.get_profile_version(vid)
 
@@ -96,7 +136,7 @@ class RequirementStore:
             cursor = connection.cursor(); cursor.execute(f"SELECT profile_version_id FROM {self.t}.[import_profile_versions] WITH (UPDLOCK,HOLDLOCK) WHERE profile_id=? AND version_number=?", profile_id, version_number); row = cursor.fetchone()
             if row is None: raise KeyError("profile_version_not_found")
             vid = row[0]; now = _now(); cursor.execute(f"UPDATE {self.t}.[import_profile_versions] SET status='approved',approved_by=?,approved_at=? WHERE profile_version_id=? AND status IN ('draft','approved')", actor, now, vid); cursor.execute(f"UPDATE {self.t}.[import_profiles] SET active_version_id=?,updated_by=?,updated_at=? WHERE profile_id=?", vid, actor, now, profile_id); connection.commit()
-        except Exception: connection.rollback(); raise
+        except Exception as exc: connection.rollback(); raise _stable_persistence_error(exc) from exc
         finally: connection.close()
         return self.get_profile_version(vid)
 
@@ -144,7 +184,7 @@ class RequirementStore:
                 c.execute(f"SELECT TOP 1 requirement_version_id,version_number,source_updated_at,source_payload_hash,source_row_hash FROM {self.t}.[requirement_versions] WHERE requirement_id=? ORDER BY version_number DESC", rid); old = c.fetchone()
                 if old and row.source_updated_at < old[2]: raise ValueError("stale_source_version")
                 if old and row.source_updated_at == old[2] and row.source_payload_hash != old[3]: raise ValueError("source_version_anomaly")
-                if old and row.source_payload_hash == old[3]: rvid = old[0]
+                if old and row.source_updated_at == old[2] and row.source_payload_hash == old[3]: rvid = old[0]
                 else:
                     rvid, number = _id("rv"), (int(old[1]) + 1 if old else 1)
                     c.execute(f"INSERT INTO {self.t}.[requirement_versions] VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rvid, rid, number, row.title, row.prompt_content, row.source_updated_at, row.expires_at, row.source_created_by, row.source_updated_by, row.source_created_at, row.source_row_hash, row.source_payload_hash, row.execution_content_hash, json.dumps(row.source_raw, default=str, ensure_ascii=False), now)
@@ -157,13 +197,49 @@ class RequirementStore:
             c.execute(f"INSERT INTO {self.t}.[requirement_set_snapshots] VALUES (?,?,?,?,?,?,?)", snapshot_id, set_id, run_id, acquired.source_sha256, version["profile_version_id"], now, now)
             for rid, rvid, order in memberships: c.execute(f"INSERT INTO {self.t}.[requirement_snapshot_items] VALUES (?,?,?,?)", snapshot_id, rid, rvid, order)
             c.execute(f"UPDATE {self.t}.[requirement_sets] SET active_snapshot_id=? WHERE requirement_set_id=?", snapshot_id, set_id); c.execute(f"UPDATE {self.t}.[import_runs] SET status='committed',completed_at=? WHERE import_run_id=?", now, run_id); connection.commit()
-        except Exception:
-            connection.rollback(); raise
+        except Exception as exc:
+            connection.rollback()
+            code = str(exc.args[0] if exc.args else exc).split(":", 1)[0]
+            if code in {"stale_source_version", "source_version_anomaly"}:
+                failed_row = row if "row" in locals() else (candidate.rows[0] if candidate.rows else None)
+                diagnostic = RowDiagnostic(
+                    source_row_number=failed_row.source_row_number if failed_row else None,
+                    external_item_id=failed_row.external_item_id if failed_row else None,
+                    code=code,
+                    message=code,
+                )
+                failed_candidate = candidate.model_copy(update={"diagnostics": [*candidate.diagnostics, diagnostic]})
+                # The mutation connection is closed by finally before the independent
+                # audit transaction is opened below.
+            else:
+                raise _stable_persistence_error(exc) from exc
         finally: connection.close()
+        if 'failed_candidate' in locals():
+            self.record_failed_import(source, version, acquired, failed_candidate, actor)
+            raise ValueError(code)
         return {"import_run_id": run_id, "snapshot_id": snapshot_id, "status": "committed", "accepted_count": len(candidate.rows), "rejected_count": 0}
 
     def record_failed_import(self, source: dict[str, Any], version: dict[str, Any], acquired: Any, candidate: NormalizedCandidate, actor: str) -> dict[str, Any]:
-        run_id, now = _id("run"), _now(); self._execute(f"INSERT INTO {self.t}.[import_runs] VALUES (?,?,?,?,?,'failed',?,?,?,?,?,'user',?,?)", run_id, source["source_id"], version["profile_version_id"], acquired.source_uri_display, acquired.source_sha256, len(candidate.rows) + len(candidate.diagnostics), len(candidate.rows), len(candidate.diagnostics), now, now, actor, candidate.diagnostics[0].code if candidate.diagnostics else "import_failed")
+        run_id, now = _id("run"), _now()
+        observed_rows = {row.source_row_number for row in candidate.rows}
+        observed_rows.update(item.source_row_number for item in candidate.diagnostics if item.source_row_number is not None)
+        connection = self._connect()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(f"INSERT INTO {self.t}.[import_runs] VALUES (?,?,?,?,?,'failed',?,?,?,?,?,'user',?,?)", run_id, source["source_id"], version["profile_version_id"], acquired.source_uri_display, acquired.source_sha256, len(observed_rows), len(candidate.rows), len(candidate.diagnostics), now, now, actor, candidate.diagnostics[0].code if candidate.diagnostics else "import_failed")
+            row_hashes = {row.source_row_number: row.source_row_hash for row in candidate.rows}
+            for diagnostic in candidate.diagnostics:
+                cursor.execute(
+                    f"INSERT INTO {self.t}.[import_run_rows] VALUES (?,?,?,?,?,?,?)",
+                    run_id, diagnostic.source_row_number, diagnostic.external_item_id, "rejected",
+                    row_hashes.get(diagnostic.source_row_number), diagnostic.code,
+                    diagnostic.message[:500],
+                )
+            connection.commit()
+        except Exception as exc:
+            connection.rollback(); raise _stable_persistence_error(exc) from exc
+        finally:
+            connection.close()
         return {"import_run_id": run_id, "snapshot_id": None, "status": "failed", "accepted_count": len(candidate.rows), "rejected_count": len(candidate.diagnostics)}
 
     def get_import_run(self, run_id: str) -> dict[str, Any]:

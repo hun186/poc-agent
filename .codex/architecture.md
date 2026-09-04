@@ -5,6 +5,8 @@
 - `data_ingestion/requirements/` separates adapters, strict immutable mapping, deterministic hashes, analysis, and an explicit SQL Server schema/store.
 - Manual upload, confined file path, and reviewed named SQL queries converge on one service. Commits atomically create immutable versions/snapshots; preview is read-only.
 - The authenticated router initializes in the existing lifespan only when enabled and has no Agent, Elasticsearch, Report Job worker, Word, or Phase 1A SQLite dependency.
+- SQL startup is a transactional 0→1 state machine: bootstrap the version container, migrate only version 0, structurally validate canonical v1 tables/columns/constraints/foreign keys, then write version 1. Unknown or malformed schemas roll back and fail closed.
+- Commit-lock stale/anomaly detection rolls back the mutation transaction before a separate failed Import Run transaction records safe row diagnostics; active snapshot selection is not changed.
 
 ## 2026-09-02 Unified API security boundary
 

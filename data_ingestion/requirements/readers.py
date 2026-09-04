@@ -27,20 +27,41 @@ def read_xlsx_rows(content: bytes, profile: ImportProfileDocument) -> tuple[list
         # Preserve duplicate labels for strict ambiguity detection instead of overwriting them.
         record: dict[str, Any] = {}
         for position, (header, value) in enumerate(zip(headers, values, strict=False), 1):
-            key = header
+            key = header or f"__column_{position}"
             while key in record:
                 key += " "
-            record[key or f"__column_{position}"] = value
+            record[key] = value
         rows.append(record); numbers.append(row_number)
     return rows, numbers
 
 
 def read_csv_rows(content: bytes) -> tuple[list[dict[str, Any]], list[int]]:
-    reader = csv.DictReader(StringIO(content.decode("utf-8-sig")))
-    if not reader.fieldnames:
+    try:
+        parsed = csv.reader(StringIO(content.decode("utf-8-sig")))
+        headers = next(parsed)
+    except (UnicodeDecodeError, csv.Error, StopIteration) as exc:
+        raise ValueError("source_format_invalid") from exc
+    if not headers or not any(header for header in headers):
         raise ValueError("source_format_invalid")
-    rows = [dict(row) for row in reader]
-    return rows, list(range(2, len(rows) + 2))
+    keys: list[str] = []
+    for position, header in enumerate(headers, 1):
+        key = header or f"__column_{position}"
+        while key in keys:
+            key += " "
+        keys.append(key)
+    rows: list[dict[str, Any]] = []
+    numbers: list[int] = []
+    try:
+        for row_number, values in enumerate(parsed, 2):
+            if not any(value != "" for value in values):
+                continue
+            if len(values) > len(keys) and any(values[len(keys):]):
+                raise ValueError("source_format_invalid")
+            rows.append({key: value for key, value in zip(keys, values, strict=False)})
+            numbers.append(row_number)
+    except csv.Error as exc:
+        raise ValueError("source_format_invalid") from exc
+    return rows, numbers
 
 
 def read_json_rows(content: bytes) -> tuple[list[dict[str, Any]], list[int]]:
