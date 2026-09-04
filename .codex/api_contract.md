@@ -6,6 +6,7 @@
 - `db_operator+` manages metadata/versions and imports; source/profile enablement and version approval require `superuser`.
 - Manual preview/import accepts multipart `file`; preview may select a draft, while commit always uses the approved active version. Errors use safe `detail.code` values.
 - Named SQL acquisition failures expose only `sql_read_error` (HTTP 503); Requirement persistence failures expose only `persistence_error` (HTTP 500). Stale/anomaly conflicts remain HTTP 409 and validation errors retain their existing safe codes.
+- Import Run diagnostics use SQL `NULL` for `source_row_number` when a safe profile/source-level failure cannot be attributed to one source row; row-scoped diagnostics retain their actual row number and bounded safe code/message.
 
 ## 2026-09-02 Phase 0 unified security boundary
 

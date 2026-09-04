@@ -7,6 +7,7 @@
 - The authenticated router initializes in the existing lifespan only when enabled and has no Agent, Elasticsearch, Report Job worker, Word, or Phase 1A SQLite dependency.
 - SQL startup is a transactional 0→1 state machine: bootstrap the version container, migrate only version 0, structurally validate canonical v1 tables/columns/constraints/foreign keys, then write version 1. Unknown or malformed schemas roll back and fail closed.
 - Commit-lock stale/anomaly detection rolls back the mutation transaction before a separate failed Import Run transaction records safe row diagnostics; active snapshot selection is not changed.
+- Canonical-v1 startup validates each required named PK/UQ/FK against its owning/parent table and ordered local/referenced columns. The sole legacy-v1 repair changes `import_run_rows.source_row_number` from `NOT NULL` to nullable, then runs the complete validator in the same transaction.
 
 ## 2026-09-02 Unified API security boundary
 
