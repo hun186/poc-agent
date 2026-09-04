@@ -116,3 +116,12 @@
 ## 2026-09-04 Batch Scheduler Phase 1 boundary
 
 - Keep scheduling in a standalone process consuming only the existing Report Job HTTP API with a dedicated create/read/download key. Persist deterministic task idempotency keys before submission, treat remote failed/interrupted as terminal, and publish validated DOCX through a confined atomic local write. Do not add recurrence, queues, server UI, or internal server imports in Phase 1.
+
+## 2026-09-04 Phase 1C scheduling control-plane design
+
+- Use separately versioned SQL Server schema `sra_schedule`; do not extend the stabilized Phase 1B schema. Cross-schema references use validated configured identifiers and fail closed if deployment cannot enforce the reviewed structure.
+- Model a mutable logical schedule pointing at immutable, monotonically versioned schedule configurations. Batch Runs bind exact schedule versions and active Requirement snapshots.
+- Allow only structured daily/weekly/monthly/interval recurrence with IANA timezone and deterministic UTC persistence. Monthly invalid days use the last day; v1 misfires use `coalesce_latest` without backfill.
+- Persist explicit per-schedule/Requirement seen and successful checkpoints to distinguish `all_active`, `new_or_changed`, and `changed_only` retry behavior.
+- Run recurrence/handoff in an explicit one-active-worker process, never FastAPI lifespan. Reuse a new narrow Phase 1A programmatic import seam and existing Phase 1A idempotency; no direct SQLite or execution-engine imports.
+- Word history stores a safe relative reference to Phase 1A's artifact under the shared output root. Phase 1C does not copy or render DOCX.
