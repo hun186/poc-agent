@@ -79,6 +79,7 @@ class KeyConstraint:
     table: str
     columns: tuple[str, ...]
     kind: str
+    legacy_generated_name: bool = False
 
 
 @dataclass(frozen=True)
@@ -91,18 +92,18 @@ class ForeignKey:
 
 
 REQUIRED_KEYS = (
-    KeyConstraint("PK_requirement_sources", "requirement_sources", ("source_id",), "PK"),
-    KeyConstraint("PK_import_profiles", "import_profiles", ("profile_id",), "PK"),
-    KeyConstraint("PK_import_profile_versions", "import_profile_versions", ("profile_version_id",), "PK"),
+    KeyConstraint("PK_requirement_sources", "requirement_sources", ("source_id",), "PK", True),
+    KeyConstraint("PK_import_profiles", "import_profiles", ("profile_id",), "PK", True),
+    KeyConstraint("PK_import_profile_versions", "import_profile_versions", ("profile_version_id",), "PK", True),
     KeyConstraint("UQ_import_profile_version", "import_profile_versions", ("profile_id", "version_number"), "UQ"),
-    KeyConstraint("PK_requirements", "requirements", ("requirement_id",), "PK"),
+    KeyConstraint("PK_requirements", "requirements", ("requirement_id",), "PK", True),
     KeyConstraint("UQ_requirement_identity", "requirements", ("source_id", "external_item_id"), "UQ"),
-    KeyConstraint("PK_requirement_versions", "requirement_versions", ("requirement_version_id",), "PK"),
+    KeyConstraint("PK_requirement_versions", "requirement_versions", ("requirement_version_id",), "PK", True),
     KeyConstraint("UQ_requirement_version", "requirement_versions", ("requirement_id", "version_number"), "UQ"),
-    KeyConstraint("PK_requirement_sets", "requirement_sets", ("requirement_set_id",), "PK"),
-    KeyConstraint("UQ_requirement_set_source", "requirement_sets", ("source_id",), "UQ"),
-    KeyConstraint("PK_import_runs", "import_runs", ("import_run_id",), "PK"),
-    KeyConstraint("PK_requirement_set_snapshots", "requirement_set_snapshots", ("snapshot_id",), "PK"),
+    KeyConstraint("PK_requirement_sets", "requirement_sets", ("requirement_set_id",), "PK", True),
+    KeyConstraint("UQ_requirement_set_source", "requirement_sets", ("source_id",), "UQ", True),
+    KeyConstraint("PK_import_runs", "import_runs", ("import_run_id",), "PK", True),
+    KeyConstraint("PK_requirement_set_snapshots", "requirement_set_snapshots", ("snapshot_id",), "PK", True),
     KeyConstraint("PK_requirement_snapshot_items", "requirement_snapshot_items", ("snapshot_id", "requirement_id"), "PK"),
 )
 
@@ -154,6 +155,17 @@ def validation_queries(schema: str) -> list[tuple[str, str, tuple[object, ...], 
             (schema, table, *columns), len(columns),
         ))
     for key in REQUIRED_KEYS:
+        if key.legacy_generated_name:
+            checks.append((
+                f"legacy-key:{key.name}",
+                "SELECT s.name,t.name,kc.name,kc.type,c.name,ic.key_ordinal FROM sys.key_constraints kc "
+                "JOIN sys.tables t ON t.object_id=kc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id "
+                "JOIN sys.index_columns ic ON ic.object_id=kc.parent_object_id AND ic.index_id=kc.unique_index_id "
+                "JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id "
+                "WHERE s.name=? AND t.name=? AND kc.type=? ORDER BY kc.name,ic.key_ordinal",
+                (schema, key.table, key.kind), key,
+            ))
+            continue
         checks.append((
             f"key:{key.name}",
             "SELECT s.name,t.name,kc.name,kc.type,c.name,ic.key_ordinal FROM sys.key_constraints kc "

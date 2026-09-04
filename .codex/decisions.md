@@ -1,5 +1,10 @@
 # Architecture Decisions
 
+## 2026-09-04 Preserve PR #194 system-generated key names
+
+- Do not mutate valid legacy PK/UQ constraints solely to normalize names. For only the keys that PR #194 left unnamed, identity is the unique exact combination of owning schema/table, key kind, and ordered columns; ambiguous, missing, or malformed structures fail closed.
+- Continue exact canonical-name validation for PR #194's explicitly named UQ/PK/FK constraints, and continue emitting explicit canonical names for all fresh schemas. This compatibility correction does not require Design v2 or Plan v1.2.
+
 ## 2026-09-04 Phase 1B immutable SQL Requirement history
 
 - SQL Server is the control-plane authority. Profiles, Requirement versions, observations, and snapshots are immutable; reviewed pointers are mutable.

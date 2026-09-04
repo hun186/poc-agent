@@ -1,5 +1,13 @@
 # Project Memory
 
+## 2026-09-04 Phase 1B PR #194 schema compatibility closure
+
+- Baseline was actual `main` HEAD `bdbdd5550c96ee29c449e617ab40795495404ebb`; Design v1 and Plan v1.1 remain unchanged.
+- Version-1 validation now accepts SQL Server-generated names only for the PK/UQ keys that PR #194 left unnamed, and only when exactly one key on the canonical schema/table has the required kind and exact ordered columns. PR #194's explicitly named keys and all foreign keys still require their canonical names and bindings. Fresh migrations retain all current explicit canonical names.
+- The existing transactional `import_run_rows.source_row_number NOT NULL` to `NULL` repair remains the only schema mutation. A PR #194-semantic regression proves the repair and generated-name validation occur together without rewriting the version or renaming keys; wrong-table, wrong-kind, wrong-column, duplicate, and missing legacy structures roll back.
+- Verification: Requirement store 63 passed; Phase 1B 87 passed with 4 warnings; Phase 0/1A 62 passed with 3 warnings; full repository 457 passed with 10 warnings. `compileall`, `git diff --check`, execution-boundary, sample-mapping, tracked-runtime-artifact, and credential-hygiene checks passed.
+- Live Requirement SQL Server acceptance was **NOT EXECUTED** because no explicitly authorized control-plane connection or credential was available; fake ODBC evidence is not deployment acceptance.
+
 ## 2026-09-04 Phase 1B final repository closure follow-up
 
 - Closed Review v1 follow-up findings against baseline `70f1c99b1c86a6cc6a418a315404bf8631972237` (the merge commit for PR #194): canonical PK/UQ/FK validation now proves table and ordered-column bindings, and the only version-1 compatibility repair is the transactional `import_run_rows.source_row_number` nullable correction required for non-row-scoped diagnostics.

@@ -15,13 +15,14 @@ def test_migration_v1_has_explicit_control_plane_tables_and_support_fields():
     sql="\n".join(migration_v1("sra_requirement"))
     for table in ("schema_version","requirement_sources","import_profiles","import_profile_versions","requirements","requirement_versions","requirement_sets","import_runs","import_run_rows","requirement_set_snapshots","requirement_snapshot_items"): assert f"[{table}]" in sql
     for field in ("active_version_id","source_payload_hash","source_mode","approved_by"): assert field in sql
+    for key in REQUIRED_KEYS: assert f"CONSTRAINT {key.name}" in sql
     assert "auto_create" not in sql
 def test_schema_identifier_rejected():
     with pytest.raises(ValueError): validate_schema_name("dbo]; DROP TABLE x--")
 
 class RecordingCursor:
     description=[]
-    def __init__(self, version=None, malformed=False, malformed_binding=None, diagnostic_nullable=True): self.version=version; self.malformed=malformed; self.malformed_binding=malformed_binding; self.diagnostic_nullable=diagnostic_nullable; self.calls=[]; self.last=""
+    def __init__(self, version=None, malformed=False, malformed_binding=None, diagnostic_nullable=True, legacy_generated_names=False, legacy_defect=None): self.version=version; self.malformed=malformed; self.malformed_binding=malformed_binding; self.diagnostic_nullable=diagnostic_nullable; self.legacy_generated_names=legacy_generated_names; self.legacy_defect=legacy_defect; self.calls=[]; self.last=""
     def execute(self, sql, *params):
         self.last=sql; self.calls.append((sql,params))
         if "ALTER COLUMN source_row_number INT NULL" in sql: self.diagnostic_nullable=True
@@ -35,14 +36,26 @@ class RecordingCursor:
     def fetchall(self):
         params=self.calls[-1][1]
         if "sys.key_constraints" in self.last:
-            item=next(value for value in REQUIRED_KEYS if value.name == params[1])
-            rows=[(params[0],item.table,item.name,item.kind,column,index) for index,column in enumerate(item.columns,1)]
+            if "t.name=? AND kc.type=?" in self.last:
+                item=next(value for value in REQUIRED_KEYS if value.table == params[1] and value.kind == params[2] and value.legacy_generated_name)
+                name = f"{item.kind}__{item.table}__6F4A3C2B" if self.legacy_generated_names else item.name
+            else:
+                item=next(value for value in REQUIRED_KEYS if value.name == params[1])
+                name=item.name
+            if self.legacy_defect and self.legacy_defect[1] == item.name and self.legacy_defect[0] in {"wrong_table", "wrong_kind", "missing"}:
+                return []
+            columns = item.columns
+            if self.legacy_defect and self.legacy_defect == ("wrong_columns", item.name): columns=("wrong_column",)
+            rows=[(params[0],item.table,name,item.kind,column,index) for index,column in enumerate(columns,1)]
+            if self.legacy_defect and self.legacy_defect == ("duplicate", item.name):
+                rows += [(params[0],item.table,f"{item.kind}__duplicate",item.kind,column,index) for index,column in enumerate(item.columns,1)]
         elif "sys.foreign_keys" in self.last:
             item=next(value for value in REQUIRED_FOREIGN_KEYS if value.name == params[1])
             rows=[(params[0],item.parent_table,item.name,parent,params[0],item.referenced_table,referenced,index) for index,(parent,referenced) in enumerate(zip(item.parent_columns,item.referenced_columns,strict=True),1)]
         else: return []
         malformed = self.malformed_binding
-        if malformed and (malformed == params[1] or malformed[1] == params[1]):
+        lookup_name = item.name
+        if malformed and (malformed == lookup_name or malformed[1] == lookup_name):
             mode = "column" if isinstance(malformed, str) else malformed[0]
             row = list(rows[0])
             positions = {
@@ -106,6 +119,30 @@ def test_v1_repairs_only_legacy_diagnostic_nullability_before_validation():
     statements=[sql for sql,_ in connection.cursor_value.calls]
     assert sum("ALTER COLUMN source_row_number INT NULL" in sql for sql in statements) == 1
     assert connection.commits == 1 and connection.rollbacks == 0
+
+def test_actual_pr194_v1_schema_is_accepted_without_renaming_generated_keys():
+    connection=RecordingConnection(version=1,diagnostic_nullable=False,legacy_generated_names=True)
+    RequirementStore(Registry(connection),"control").initialize()
+    statements=[sql for sql,_ in connection.cursor_value.calls]
+    assert sum("ALTER COLUMN source_row_number INT NULL" in sql for sql in statements) == 1
+    assert not any("schema_version] SET version" in sql or "schema_version](version) VALUES" in sql for sql in statements)
+    assert not any("DROP CONSTRAINT" in sql or "ADD CONSTRAINT" in sql for sql in statements)
+    assert sum("sys.key_constraints" in sql for sql in statements) == len(REQUIRED_KEYS)
+    assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
+
+@pytest.mark.parametrize("defect,constraint", [
+    ("wrong_table", "PK_requirement_sources"),
+    ("wrong_columns", "PK_requirement_sources"),
+    ("wrong_columns", "UQ_requirement_set_source"),
+    ("wrong_kind", "UQ_requirement_set_source"),
+    ("duplicate", "UQ_requirement_set_source"),
+    ("missing", "PK_import_runs"),
+])
+def test_malformed_pr194_generated_key_structure_fails_closed(defect,constraint):
+    connection=RecordingConnection(version=1,legacy_generated_names=True,legacy_defect=(defect,constraint))
+    with pytest.raises(RuntimeError,match="malformed requirement schema version 1"):
+        RequirementStore(Registry(connection),"control").initialize()
+    assert connection.rollbacks == 1 and connection.commits == 0 and connection.closed
 
 def test_failed_import_persists_each_row_diagnostic_in_one_transaction():
     connection=RecordingConnection(); store=RequirementStore(Registry(connection),"control")

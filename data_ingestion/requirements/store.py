@@ -11,6 +11,7 @@ from .migrations import (
     SCHEMA_VERSION,
     bootstrap_schema_statements,
     migration_0_to_1_statements,
+    KeyConstraint,
     nullable_diagnostic_check,
     repair_diagnostic_nullability_statement,
     validation_queries,
@@ -76,6 +77,19 @@ class RequirementStore:
                 if name.startswith("columns:"):
                     result = cursor.fetchone()
                     valid = result is not None and int(result[0]) == expected
+                elif isinstance(expected, KeyConstraint):
+                    rows = tuple(cursor.fetchall())
+                    structures: dict[str, list[str]] = {}
+                    structurally_sound = True
+                    for row_schema, table_name, constraint_name, kind, column, ordinal in rows:
+                        columns = structures.setdefault(constraint_name, [])
+                        structurally_sound = structurally_sound and (
+                            row_schema == self.schema and table_name == expected.table
+                            and kind == expected.kind and ordinal == len(columns) + 1
+                        )
+                        columns.append(column)
+                    matches = [name for name, columns in structures.items() if tuple(columns) == expected.columns]
+                    valid = structurally_sound and len(matches) == 1
                 else:
                     valid = tuple(cursor.fetchall()) == expected
                 if not valid:
