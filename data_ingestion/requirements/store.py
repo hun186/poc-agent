@@ -64,7 +64,11 @@ class RequirementStore:
             nullable_sql, nullable_params = nullable_diagnostic_check(self.schema)
             cursor.execute(nullable_sql, *nullable_params)
             nullable_row = cursor.fetchone()
-            if version == SCHEMA_VERSION and nullable_row == (False,):
+            if (
+                version == SCHEMA_VERSION
+                and nullable_row is not None
+                and not bool(nullable_row[0])
+            ):
                 # The sole compatibility repair for PR #194 canonical v1: early v1
                 # made non-row-scoped diagnostics impossible to persist.
                 cursor.execute(repair_diagnostic_nullability_statement(self.schema))

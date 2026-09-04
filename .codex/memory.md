@@ -252,3 +252,11 @@
 - Documented that named SQL security uses reviewed registry SQL plus a read-only database principal; SQL parsing is not the security boundary.
 - Phase 1B focused gate: 28 passed, 0 failed, 2 warnings. Phase 1A/Phase 0 regression gate: 62 passed, 0 failed, 3 warnings after removing raw-looking operator-harness keys in favor of required environment variables. Full repository gate: 398 passed, 0 failed, 10 warnings. Compileall, diff check, direct execution-import/sample-branch guards, tracked runtime-artifact scan, and no-value credential literal scan passed.
 - Live Requirement SQL Server acceptance was NOT EXECUTED because this environment has no explicit authorization/credentials for the intended control-plane database. Repository fake-ODBC evidence is not deployment acceptance.
+
+## 2026-09-04 Phase 1B pyodbc.Row nullability compatibility fix
+
+- Baseline was actual branch `work` HEAD `3d731940f8041865da607a15d72c5a6a3a423b30` (PR #196 merge). Design v1 and Plan v1.1 remain unchanged.
+- `RequirementStore.initialize()` now detects the sole version-1 diagnostic-nullability compatibility case by indexing the DB-API result (`nullable_row[0]`) rather than comparing the row object with a Python tuple. Transaction order, complete structural validation, and fail-closed behavior are unchanged.
+- Added a non-tuple, sequence-style DB-API row regression for the combined PR #194 schema (generated legacy PK/UQ names plus `source_row_number NOT NULL`), including successful one-time repair and a post-repair-invalid rollback case.
+- Verification: RequirementStore 64 passed; Phase 1B 88 passed with 4 warnings; Phase 0/1A 62 passed with 3 warnings; full repository 458 passed with 10 warnings. `compileall`, `git diff --check`, execution-boundary, sample-mapping, tracked-runtime-artifact, and credential-hygiene checks passed.
+- Live Requirement SQL Server acceptance was **NOT EXECUTED** because no explicitly authorized control-plane connection or credential was available. The realistic DB-API test double is repository evidence, not live deployment acceptance.
