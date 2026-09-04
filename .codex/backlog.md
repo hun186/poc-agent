@@ -3,7 +3,8 @@
 ## 2026-09-04 Phase 1B / 1C handoff
 
 - Execute real SQL Server Phase 1B acceptance from an explicitly authorized environment.
-- Phase 1C owns recurrence, due/expiry selection, Batch Run creation, and HTTP handoff to Phase 1A; none is implemented in Phase 1B.
+- Implement the authoritative Phase 1C Design/Plan in two reviewed gates: 1C-A control plane first, then 1C-B execution bridge only after Gate A review PASS. Phase 1C owns recurrence, due/expiry selection, Batch Run creation, and Phase 1A handoff; it remains not implemented.
+- After repository completion, execute real Phase 1C SQL/worker/Report Job/DOCX acceptance from an explicitly authorized environment. Repository fake SQL/transport evidence must not be called deployment acceptance.
 
 ## Current Summary
 

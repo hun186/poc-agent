@@ -93,3 +93,10 @@
 ## 2026-09-04 Standalone Batch Scheduler boundary
 
 `CSV/XLSX/JSON -> batch_scheduler process -> dedicated scoped Service Key -> Report Job HTTP API -> existing server worker/Router/Elasticsearch/Agent -> HTTP DOCX -> local atomic publication`. The scheduler owns a separate user-version-1 SQLite database and never imports server execution components or accesses the server Report Job database.
+
+## 2026-09-04 Phase 1C planned architecture (not implemented)
+
+- The authoritative Design v1 places scheduling control-plane state in separately versioned SQL Server schema `sra_schedule` and code in a focused future `requirement_scheduler/` package. It reads exact active Phase 1B snapshots but cannot mutate immutable Requirement history.
+- Immutable schedule versions and Batch Run/Run Item history feed a narrow Phase 1A programmatic import seam. Phase 1C may not access Phase 1A SQLite directly or import Agent, Elasticsearch execution, ReportJobWorker, or Word renderer code.
+- Recurring work belongs to `python -m requirement_scheduler worker`, formally one active process in v1, never a FastAPI lifespan thread. SQL locking/unique identities and deterministic Phase 1A identities protect restarts.
+- Phase 1C references, rather than copies or renders, Phase 1A-published DOCX artifacts under one shared confined output root.
