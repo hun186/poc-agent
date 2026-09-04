@@ -26,6 +26,7 @@ from fastapi import FastAPI  # , HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from api.routers import chat, docs, export, editor, excel_to_sql, report_jobs, service_keys
+from api.routers import requirements
 from api.services.report_job_store import ReportJobStore
 from api.services.report_job_worker import ReportJobWorker
 from api.security.signed_urls import validate_signing_config
@@ -34,6 +35,16 @@ from api.services.auth_support import PRODUCTION_ENVS
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     validate_signing_config()
+    app.state.requirement_import_service = None
+    if os.getenv("REQUIREMENT_PIPELINE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        from data_ingestion.requirements.connections import SqlRegistry
+        from data_ingestion.requirements.service import RequirementImportService
+        from data_ingestion.requirements.store import RequirementStore
+        registry_file = os.getenv("REQUIREMENT_SQL_REGISTRY_FILE", "config/requirements/sql_registry.json")
+        registry = SqlRegistry.load(registry_file)
+        requirement_store = RequirementStore(registry, os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"), os.getenv("REQUIREMENT_DB_SCHEMA", "sra_requirement"))
+        requirement_store.initialize()
+        app.state.requirement_import_service = RequirementImportService(requirement_store, registry)
     store = ReportJobStore(os.getenv("REPORT_JOBS_DB_PATH", ".api_jobs/jobs.sqlite3"), int(os.getenv("REPORT_JOBS_SQLITE_BUSY_TIMEOUT_MS", "5000")))
     reports_root = Path(os.getenv("REPORT_JOBS_REPORTS_ROOT", ".api_jobs/reports"))
     store.initialize()
@@ -76,3 +87,4 @@ app.include_router(report_jobs.router)
 app.include_router(service_keys.router)
 app.include_router(editor.router)
 app.include_router(excel_to_sql.router)
+app.include_router(requirements.router)

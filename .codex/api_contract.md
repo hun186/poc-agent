@@ -1,5 +1,11 @@
 # API Contract
 
+## 2026-09-04 Phase 1B Requirement management
+
+- Authenticated reads cover sources, profiles, import runs, sets, snapshots, and items.
+- `db_operator+` manages metadata/versions and imports; source/profile enablement and version approval require `superuser`.
+- Manual preview/import accepts multipart `file`; preview may select a draft, while commit always uses the approved active version. Errors use safe `detail.code` values.
+
 ## 2026-09-02 Phase 0 unified security boundary
 
 - `GET /v1/models`, `POST /v1/chat/completions`, and `POST /v1/report/word` require Bearer principals with `model:read`, `model:invoke`, and `report:sync` respectively.

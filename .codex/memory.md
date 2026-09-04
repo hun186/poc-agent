@@ -1,5 +1,12 @@
 # Project Memory
 
+## 2026-09-04 Phase 1B Requirement source/import pipeline
+
+- Added strict configuration-driven mapping, UTC normalization, required hashes, manual/file/named-SQL adapters, confinement, and secret/executable-config rejection.
+- Added explicit SQL Server schema v1, immutable approval/history, strict atomic snapshots, side-effect-free preview, RBAC/audit APIs, and opt-in fail-closed startup.
+- Added deterministic ten-row XLSX coverage and a sample profile without committing a binary workbook or source-specific branch.
+- Live SQL Server acceptance was not executed because no explicitly authorized database is available. Final repository verification is recorded after completion commands.
+
 ## 2026-09-03 Phase 0 v3 Plan v6.1 completion delta
 
 - Restored the missing Review v2 traceability path and preserved Review v3 as the authoritative completion review.
@@ -214,3 +221,11 @@
 - Added validate/import/run/resume/status/execute CLI commands and removed raw-looking Phase 0 acceptance credentials from the tracked operator harness in favor of environment variables.
 - Repository verification: Phase 1 targeted suite passed 24 tests. Full and affected-gate results are recorded by the implementation completion commit. Private deployment acceptance was not executed from this environment; live key rotation/revocation remains an operator action.
 - Final verification evidence: Phase 1 targeted 24 passed; affected Report Job/security gate 38 passed with 5 warnings; full repository suite 370 passed with 10 warnings; compileall and diff check passed. Dependency installation succeeded from already-installed requirements despite the documented package-index proxy retries.
+
+### Final verification evidence
+
+- Phase 1B focused gate: 14 passed, 0 failed, 2 warnings.
+- Phase 0/1A regression gate: 62 passed, 0 failed, 3 warnings.
+- Full repository gate: 384 passed, 0 failed, 10 warnings.
+- `compileall`, `git diff --check`, direct Agent/ES/Word/Report-worker import guard, and no-value-printing tracked-diff credential scan passed.
+- Dependency preflight completed with installed requirements; the package index returned the already-known proxy 403 retries while pip continued with satisfied packages.

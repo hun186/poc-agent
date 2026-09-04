@@ -1,5 +1,11 @@
 # System Architecture
 
+## 2026-09-04 Phase 1B Requirement control plane
+
+- `data_ingestion/requirements/` separates adapters, strict immutable mapping, deterministic hashes, analysis, and an explicit SQL Server schema/store.
+- Manual upload, confined file path, and reviewed named SQL queries converge on one service. Commits atomically create immutable versions/snapshots; preview is read-only.
+- The authenticated router initializes in the existing lifespan only when enabled and has no Agent, Elasticsearch, Report Job worker, Word, or Phase 1A SQLite dependency.
+
 ## 2026-09-02 Unified API security boundary
 
 - Canonical runtime imports remain `api.*`. Editor user authentication and service credentials resolve into transport-neutral principals only at the Agent/report boundary; service keys never satisfy Editor RBAC.
