@@ -20,18 +20,37 @@ def test_migration_v1_has_explicit_control_plane_tables_and_support_fields():
 def test_schema_identifier_rejected():
     with pytest.raises(ValueError): validate_schema_name("dbo]; DROP TABLE x--")
 
+class DbApiRow:
+    """Minimal sequence row that deliberately has no tuple equality semantics."""
+
+    def __init__(self, *values):
+        self._values = values
+
+    def __getitem__(self, index):
+        return self._values[index]
+
+    def __len__(self):
+        return len(self._values)
+
+    def __iter__(self):
+        return iter(self._values)
+
+
 class RecordingCursor:
     description=[]
-    def __init__(self, version=None, malformed=False, malformed_binding=None, diagnostic_nullable=True, legacy_generated_names=False, legacy_defect=None): self.version=version; self.malformed=malformed; self.malformed_binding=malformed_binding; self.diagnostic_nullable=diagnostic_nullable; self.legacy_generated_names=legacy_generated_names; self.legacy_defect=legacy_defect; self.calls=[]; self.last=""
+    def __init__(self, version=None, malformed=False, malformed_binding=None, diagnostic_nullable=True, diagnostic_row_factory=None, repair_effective=True, legacy_generated_names=False, legacy_defect=None): self.version=version; self.malformed=malformed; self.malformed_binding=malformed_binding; self.diagnostic_nullable=diagnostic_nullable; self.diagnostic_row_factory=diagnostic_row_factory or (lambda value: (value,)); self.repair_effective=repair_effective; self.legacy_generated_names=legacy_generated_names; self.legacy_defect=legacy_defect; self.calls=[]; self.nullable_rows=[]; self.last=""
     def execute(self, sql, *params):
         self.last=sql; self.calls.append((sql,params))
-        if "ALTER COLUMN source_row_number INT NULL" in sql: self.diagnostic_nullable=True
+        if "ALTER COLUMN source_row_number INT NULL" in sql and self.repair_effective: self.diagnostic_nullable=True
         return self
     def fetchone(self):
         if "SELECT version" in self.last: return None if self.version is None else (self.version,)
         if "COUNT(DISTINCT c.name)" in self.last:
             table=self.calls[-1][1][1]; count=len(REQUIRED_COLUMNS[table]); return (count-1 if self.malformed else count,)
-        if "SELECT c.is_nullable" in self.last: return (self.diagnostic_nullable,)
+        if "SELECT c.is_nullable" in self.last:
+            row = self.diagnostic_row_factory(self.diagnostic_nullable)
+            self.nullable_rows.append(row)
+            return row
         return None
     def fetchall(self):
         params=self.calls[-1][1]
@@ -121,14 +140,33 @@ def test_v1_repairs_only_legacy_diagnostic_nullability_before_validation():
     assert connection.commits == 1 and connection.rollbacks == 0
 
 def test_actual_pr194_v1_schema_is_accepted_without_renaming_generated_keys():
-    connection=RecordingConnection(version=1,diagnostic_nullable=False,legacy_generated_names=True)
+    connection=RecordingConnection(version=1,diagnostic_nullable=False,diagnostic_row_factory=DbApiRow,legacy_generated_names=True)
     RequirementStore(Registry(connection),"control").initialize()
     statements=[sql for sql,_ in connection.cursor_value.calls]
+    nullable_rows = connection.cursor_value.nullable_rows
+    assert len(nullable_rows) == 2
+    assert all(not isinstance(row, tuple) for row in nullable_rows)
+    assert nullable_rows[0] != (False,) and nullable_rows[0][0] is False
     assert sum("ALTER COLUMN source_row_number INT NULL" in sql for sql in statements) == 1
     assert not any("schema_version] SET version" in sql or "schema_version](version) VALUES" in sql for sql in statements)
     assert not any("DROP CONSTRAINT" in sql or "ADD CONSTRAINT" in sql for sql in statements)
     assert sum("sys.key_constraints" in sql for sql in statements) == len(REQUIRED_KEYS)
     assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
+
+def test_pr194_v1_schema_fails_closed_when_dbapi_row_remains_not_nullable_after_repair():
+    connection=RecordingConnection(
+        version=1,
+        diagnostic_nullable=False,
+        diagnostic_row_factory=DbApiRow,
+        repair_effective=False,
+        legacy_generated_names=True,
+    )
+    with pytest.raises(RuntimeError,match="malformed requirement schema version 1"):
+        RequirementStore(Registry(connection),"control").initialize()
+    statements=[sql for sql,_ in connection.cursor_value.calls]
+    assert sum("ALTER COLUMN source_row_number INT NULL" in sql for sql in statements) == 1
+    assert not any("schema_version] SET version" in sql or "schema_version](version) VALUES" in sql for sql in statements)
+    assert connection.commits == 0 and connection.rollbacks == 1 and connection.closed
 
 @pytest.mark.parametrize("defect,constraint", [
     ("wrong_table", "PK_requirement_sources"),
