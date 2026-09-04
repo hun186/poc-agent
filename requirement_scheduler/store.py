@@ -7,8 +7,8 @@ from typing import Any
 from uuid import uuid4
 
 from .migrations import (
-    ForeignKey, KeyConstraint, SCHEMA_VERSION, bootstrap_schema_statements,
-    migration_0_to_1_statements, validate_schema_name, validation_queries,
+    SCHEMA_VERSION, bootstrap_schema_statements,
+    migration_0_to_1_statements, validate_catalog_evidence, validate_schema_name, validation_queries,
 )
 from .models import MaterializedRun, RecurrenceSpec, ScheduleVersionCreate, TriggerIdentity
 from .recurrence import next_occurrence
@@ -25,8 +25,15 @@ def _safe_error(exc: Exception) -> Exception:
         "schedule_not_found", "schedule_version_not_found", "schedule_enabled",
         "schedule_version_not_approved", "schedule_name_invalid", "recurrence_invalid",
         "timezone_naive", "timezone_invalid", "recurrence_second_precision_required",
+        "schedule_model_invalid", "requirement_set_not_found",
     }: return exc
     return RuntimeError("persistence_error")
+
+
+def _is_scheduled_occurrence_conflict(exc: Exception) -> bool:
+    text = " ".join(str(part) for part in getattr(exc, "args", (exc,)))
+    return ("23000" in text and ("2601" in text or "2627" in text)
+            and "UX_schedule_run_scheduled" in text)
 
 
 class ScheduleStore:
@@ -59,13 +66,7 @@ class ScheduleStore:
             elif version != SCHEMA_VERSION: raise RuntimeError("unsupported schedule schema version")
             for name, sql, params, expected in validation_queries(self.schema, self.requirement_schema):
                 cursor.execute(sql, *params); rows = tuple(cursor.fetchall())
-                if isinstance(expected, KeyConstraint):
-                    actual = tuple((r[4], int(r[5])) for r in rows)
-                    valid = all(r[0] == self.schema and r[1] == expected.table and r[2] == expected.name and r[3] == expected.kind for r in rows) and actual == tuple((c, i) for i, c in enumerate(expected.columns, 1))
-                elif isinstance(expected, ForeignKey):
-                    valid = tuple((r[3], r[4], r[5], r[6], int(r[7])) for r in rows) == tuple((c, expected.referenced_schema, expected.referenced_table, rc, i) for i, (c, rc) in enumerate(zip(expected.columns, expected.referenced_columns), 1)) and all(r[0] == self.schema and r[1] == expected.table and r[2] == expected.name for r in rows)
-                else:
-                    valid = tuple(r[0] for r in rows) == tuple(expected)
+                valid = validate_catalog_evidence(self.schema, expected, rows)
                 if not valid: raise RuntimeError("malformed schedule schema version 1")
             if version == 0:
                 if row is None: cursor.execute(f"INSERT INTO {self.t}.[schema_version](version) VALUES (?)", SCHEMA_VERSION)
@@ -98,18 +99,27 @@ class ScheduleStore:
         except Exception as exc: raise _safe_error(exc) from exc
         finally: connection.close()
 
-    def list_schedules(self): return self._query(f"SELECT * FROM {self.t}.[requirement_schedules] ORDER BY created_at")
+    def list_schedules(self, *, enabled: bool | None = None, requirement_set_id: str | None = None, limit: int = 50, offset: int = 0):
+        limit = max(1, min(int(limit), 100)); offset = max(0, int(offset)); where=[]; params=[]
+        if enabled is not None: where.append("enabled=?"); params.append(enabled)
+        if requirement_set_id is not None: where.append("requirement_set_id=?"); params.append(requirement_set_id)
+        clause = " WHERE " + " AND ".join(where) if where else ""
+        return self._query(f"SELECT schedule_id,name,requirement_set_id,enabled,active_version_id,next_run_at,created_by,created_at,updated_by,updated_at FROM {self.t}.[requirement_schedules]{clause} ORDER BY created_at,schedule_id OFFSET ? ROWS FETCH NEXT ? ROWS ONLY", *params, offset, limit)
     def get_schedule(self, schedule_id: str):
-        rows = self._query(f"SELECT * FROM {self.t}.[requirement_schedules] WHERE schedule_id=?", schedule_id)
+        rows = self._query(f"SELECT schedule_id,name,requirement_set_id,enabled,active_version_id,next_run_at,created_by,created_at,updated_by,updated_at FROM {self.t}.[requirement_schedules] WHERE schedule_id=?", schedule_id)
         if not rows: raise KeyError("schedule_not_found")
-        return rows[0]
+        result = rows[0]
+        result["versions"] = self._query(f"SELECT schedule_version_id,version_number,timezone,run_policy,model,config_sha256,status,created_by,created_at,approved_by,approved_at,retired_at FROM {self.t}.[requirement_schedule_versions] WHERE schedule_id=? ORDER BY version_number DESC", schedule_id)
+        return result
 
     def rename_schedule(self, schedule_id: str, name: str, actor: str):
         if not name.strip(): raise ValueError("schedule_name_invalid")
         connection = self._connect(); now = _now()
         try:
-            c = connection.cursor(); c.execute(f"UPDATE {self.t}.[requirement_schedules] SET name=?,updated_by=?,updated_at=? WHERE schedule_id=? AND enabled=0", name.strip(), actor, now, schedule_id)
-            if getattr(c, "rowcount", 1) != 1: raise ValueError("schedule_enabled")
+            c = connection.cursor(); c.execute(f"SELECT enabled FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); row=c.fetchone()
+            if row is None: raise KeyError("schedule_not_found")
+            if bool(row[0]): raise ValueError("schedule_enabled")
+            c.execute(f"UPDATE {self.t}.[requirement_schedules] SET name=?,updated_by=?,updated_at=? WHERE schedule_id=?", name.strip(), actor, now, schedule_id)
             connection.commit()
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
@@ -122,6 +132,8 @@ class ScheduleStore:
         return encoded, hashlib.sha256(encoded.encode()).hexdigest()
 
     def create_version(self, *, schedule_id: str, config: ScheduleVersionCreate, actor: str) -> dict[str, Any]:
+        # Enforce domain invariants even for callers which bypass FastAPI validation.
+        config = ScheduleVersionCreate(config.timezone, RecurrenceSpec.validate(config.recurrence.as_dict()), config.run_policy, config.model)
         encoded, digest = self.canonical_config(config); connection = self._connect(); now = _now(); vid = _id("sv")
         try:
             c = connection.cursor(); c.execute(f"SELECT schedule_id FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id)
@@ -171,6 +183,7 @@ class ScheduleStore:
     def claim_due(self, *, now_utc: datetime, actor: str):
         """Claim at most one latest due occurrence and advance it atomically."""
         connection = self._connect()
+        race_identity = None
         try:
             c = connection.cursor()
             c.execute(f"SELECT TOP 1 s.schedule_id,s.active_version_id,s.next_run_at,v.timezone,v.recurrence_json,v.run_policy FROM {self.t}.[requirement_schedules] s WITH (UPDLOCK,HOLDLOCK) JOIN {self.t}.[requirement_schedule_versions] v WITH (UPDLOCK,HOLDLOCK) ON v.schedule_version_id=s.active_version_id WHERE s.enabled=1 AND s.next_run_at<=? AND v.status='approved' ORDER BY s.next_run_at,s.schedule_id", now_utc)
@@ -179,13 +192,29 @@ class ScheduleStore:
             schedule_id, version_id, persisted_due, timezone_name, recurrence_json, policy = row
             document = json.loads(recurrence_json); spec = RecurrenceSpec.validate(document.get("recurrence", document))
             latest, following = coalesce_latest(spec, timezone_name, persisted_due, now_utc)
+            race_identity = (schedule_id, version_id, latest, following)
             materialized = self._materialize_locked(c, schedule_id, version_id, policy, TriggerIdentity("scheduled", latest), now_utc, actor)
             run_id = materialized.run["batch_run_id"]
             c.execute(f"UPDATE {self.t}.[requirement_schedules] SET next_run_at=?,updated_by=?,updated_at=? WHERE schedule_id=? AND active_version_id=?", following, actor, now_utc, schedule_id, version_id); connection.commit()
             return {"batch_run_id": run_id, "schedule_id": schedule_id, "schedule_version_id": version_id, "scheduled_for": latest, "next_run_at": following}
         except Exception as exc:
             connection.rollback()
-            # A filtered-unique race is reconciled by a fresh read on the next claim.
+            if race_identity is not None and _is_scheduled_occurrence_conflict(exc):
+                schedule_id, version_id, latest, following = race_identity
+                read_connection = self._connect()
+                try:
+                    cursor = read_connection.cursor()
+                    cursor.execute(f"SELECT batch_run_id FROM {self.t}.[requirement_batch_runs] WHERE schedule_id=? AND scheduled_for=? AND trigger_type='scheduled'", schedule_id, latest)
+                    existing = cursor.fetchone()
+                    cursor.execute(f"SELECT next_run_at FROM {self.t}.[requirement_schedules] WHERE schedule_id=?", schedule_id)
+                    schedule = cursor.fetchone()
+                    if existing is None or schedule is None:
+                        raise RuntimeError("persistence_error")
+                    return {"batch_run_id": existing[0], "schedule_id": schedule_id, "schedule_version_id": version_id, "scheduled_for": latest, "next_run_at": schedule[0]}
+                except Exception as read_exc:
+                    raise _safe_error(read_exc) from read_exc
+                finally:
+                    read_connection.close()
             raise _safe_error(exc) from exc
         finally: connection.close()
 
@@ -199,21 +228,25 @@ class ScheduleStore:
         c.execute(f"SELECT active_snapshot_id FROM [{self.requirement_schema}].[requirement_sets] WITH (UPDLOCK,HOLDLOCK) WHERE requirement_set_id=(SELECT requirement_set_id FROM {self.t}.[requirement_schedules] WHERE schedule_id=?)", schedule_id); snapshot_row = c.fetchone()
         snapshot_id = snapshot_row[0] if snapshot_row else None; run_id = _id("br")
         if snapshot_id is None:
-            c.execute(f"INSERT INTO {self.t}.[requirement_batch_runs](batch_run_id,schedule_id,schedule_version_id,trigger_type,trigger_request_id,scheduled_for,snapshot_id,run_policy,phase1a_batch_id,state,selected_count,skipped_count,success_count,failure_count,error_code,error_message,deadline_elapsed_during_execution,created_by,created_at,materialized_at,updated_at) VALUES (?,?,?,?,?,?,NULL,?,?,'blocked_no_snapshot',0,0,0,0,'no_active_snapshot','No active Requirement snapshot',0,?,?,?,?)", run_id, schedule_id, version_id, trigger.trigger_type, trigger.trigger_request_id, trigger.scheduled_for, policy, f"phase1c-{run_id}", actor, now_utc, now_utc, now_utc)
-            return MaterializedRun({"batch_run_id": run_id, "schedule_id": schedule_id, "snapshot_id": None, "state": "blocked_no_snapshot"}, ())
-        c.execute(f"SELECT i.requirement_id,i.requirement_version_id,v.version_number,i.source_order,v.expires_at FROM [{self.requirement_schema}].[requirement_snapshot_items] i WITH (HOLDLOCK) JOIN [{self.requirement_schema}].[requirement_versions] v WITH (HOLDLOCK) ON v.requirement_version_id=i.requirement_version_id WHERE i.snapshot_id=? ORDER BY i.source_order", snapshot_id); source_items = tuple(c.fetchall())
+            phase1a_batch_id = f"reqrun-{run_id}"
+            c.execute(f"INSERT INTO {self.t}.[requirement_batch_runs](batch_run_id,schedule_id,schedule_version_id,trigger_type,trigger_request_id,scheduled_for,snapshot_id,run_policy,phase1a_batch_id,state,selected_count,skipped_count,success_count,failure_count,error_code,error_message,deadline_elapsed_during_execution,created_by,created_at,materialized_at,updated_at) VALUES (?,?,?,?,?,?,NULL,?,?,'blocked_no_snapshot',0,0,0,0,'no_active_snapshot','No active Requirement snapshot',0,?,?,?,?)", run_id, schedule_id, version_id, trigger.trigger_type, trigger.trigger_request_id, trigger.scheduled_for, policy, phase1a_batch_id, actor, now_utc, now_utc, now_utc)
+            return MaterializedRun({"batch_run_id": run_id, "phase1a_batch_id": phase1a_batch_id, "schedule_id": schedule_id, "schedule_version_id": version_id, "snapshot_id": None, "state": "blocked_no_snapshot"}, ())
+        c.execute(f"SELECT i.requirement_id,i.requirement_version_id,v.version_number,i.source_order,v.expires_at,r.external_item_id FROM [{self.requirement_schema}].[requirement_snapshot_items] i WITH (HOLDLOCK) JOIN [{self.requirement_schema}].[requirement_versions] v WITH (HOLDLOCK) ON v.requirement_version_id=i.requirement_version_id JOIN [{self.requirement_schema}].[requirements] r WITH (HOLDLOCK) ON r.requirement_id=i.requirement_id WHERE i.snapshot_id=? ORDER BY i.source_order", snapshot_id); source_items = tuple(c.fetchall())
         items = []
-        for requirement_id, rv_id, rv_number, source_order, expires_at in source_items:
+        for requirement_id, rv_id, rv_number, source_order, expires_at, external_item_id in source_items:
             c.execute(f"SELECT last_seen_requirement_version_id,last_seen_requirement_version_number,last_successful_requirement_version_id,last_successful_requirement_version_number FROM {self.t}.[requirement_schedule_item_state] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=? AND requirement_id=?", schedule_id, requirement_id); cp = c.fetchone()
             checkpoint = Checkpoint(*(cp or (None, None, None, None)))
             decision = evaluate_selection(policy, rv_id, int(rv_number), checkpoint, expires_at, now_utc)
-            items.append({"run_item_id": _id("ri"), "requirement_id": requirement_id, "requirement_version_id": rv_id, "requirement_version_number": int(rv_number), "source_order": int(source_order), "selection_status": "selected" if decision.selected else "skipped", "selection_reason": decision.reason, "expired_at_selection": decision.expired_at_selection})
+            items.append({"run_item_id": _id("ri"), "requirement_id": requirement_id, "external_item_id": external_item_id, "requirement_version_id": rv_id, "requirement_version_number": int(rv_number), "source_order": int(source_order), "selection_status": "selected" if decision.selected else "skipped", "selection_reason": decision.reason, "expired_at_selection": decision.expired_at_selection})
         selected = sum(x["selection_status"] == "selected" for x in items); skipped = len(items) - selected
-        c.execute(f"INSERT INTO {self.t}.[requirement_batch_runs](batch_run_id,schedule_id,schedule_version_id,trigger_type,trigger_request_id,scheduled_for,snapshot_id,run_policy,phase1a_batch_id,state,selected_count,skipped_count,success_count,failure_count,deadline_elapsed_during_execution,created_by,created_at,materialized_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'handoff_pending',?,?,0,0,0,?,?,?,?)", run_id, schedule_id, version_id, trigger.trigger_type, trigger.trigger_request_id, trigger.scheduled_for, snapshot_id, policy, f"phase1c-{run_id}", selected, skipped, actor, now_utc, now_utc, now_utc)
+        phase1a_batch_id = f"reqrun-{run_id}"
+        c.execute(f"INSERT INTO {self.t}.[requirement_batch_runs](batch_run_id,schedule_id,schedule_version_id,trigger_type,trigger_request_id,scheduled_for,snapshot_id,run_policy,phase1a_batch_id,state,selected_count,skipped_count,success_count,failure_count,deadline_elapsed_during_execution,created_by,created_at,materialized_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'handoff_pending',?,?,0,0,0,?,?,?,?)", run_id, schedule_id, version_id, trigger.trigger_type, trigger.trigger_request_id, trigger.scheduled_for, snapshot_id, policy, phase1a_batch_id, selected, skipped, actor, now_utc, now_utc, now_utc)
         for item in items:
-            c.execute(f"INSERT INTO {self.t}.[requirement_batch_run_items](run_item_id,batch_run_id,requirement_id,requirement_version_id,requirement_version_number,source_order,selection_status,selection_reason,phase1a_task_id,execution_state,expired_at_selection,expired_before_handoff,deadline_elapsed_during_execution,created_at,evaluated_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,0,?,?,?)", item["run_item_id"], run_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], item["source_order"], item["selection_status"], item["selection_reason"], item["requirement_id"] if item["selection_status"] == "selected" else None, "handoff_pending" if item["selection_status"] == "selected" else "not_selected", item["expired_at_selection"], now_utc, now_utc, now_utc)
+            phase1a_task_id = item["external_item_id"] if item["selection_status"] == "selected" else None
+            item["phase1a_task_id"] = phase1a_task_id
+            c.execute(f"INSERT INTO {self.t}.[requirement_batch_run_items](run_item_id,batch_run_id,requirement_id,requirement_version_id,requirement_version_number,source_order,selection_status,selection_reason,phase1a_task_id,execution_state,expired_at_selection,expired_before_handoff,deadline_elapsed_during_execution,created_at,evaluated_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,0,?,?,?)", item["run_item_id"], run_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], item["source_order"], item["selection_status"], item["selection_reason"], phase1a_task_id, "handoff_pending" if item["selection_status"] == "selected" else "not_selected", item["expired_at_selection"], now_utc, now_utc, now_utc)
             c.execute(f"MERGE {self.t}.[requirement_schedule_item_state] WITH (HOLDLOCK) AS t USING (SELECT ? schedule_id,? requirement_id) s ON t.schedule_id=s.schedule_id AND t.requirement_id=s.requirement_id WHEN MATCHED THEN UPDATE SET last_seen_requirement_version_id=?,last_seen_requirement_version_number=?,updated_at=? WHEN NOT MATCHED THEN INSERT(schedule_id,requirement_id,last_seen_requirement_version_id,last_seen_requirement_version_number,updated_at) VALUES (?,?,?,?,?);", schedule_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], now_utc, schedule_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], now_utc)
-        return MaterializedRun({"batch_run_id": run_id, "schedule_id": schedule_id, "schedule_version_id": version_id, "snapshot_id": snapshot_id, "state": "handoff_pending", "selected_count": selected, "skipped_count": skipped}, tuple(items))
+        return MaterializedRun({"batch_run_id": run_id, "phase1a_batch_id": phase1a_batch_id, "schedule_id": schedule_id, "schedule_version_id": version_id, "snapshot_id": snapshot_id, "state": "handoff_pending", "selected_count": selected, "skipped_count": skipped}, tuple(items))
 
     def materialize_run(self, *, schedule_id: str, trigger: TriggerIdentity, now_utc: datetime, actor: str) -> MaterializedRun:
         connection = self._connect()

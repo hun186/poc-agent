@@ -10,7 +10,11 @@ from sra_api.routers.requirement_schedules import router, schedule_service
 
 class Store:
     def __init__(self): self.data = {}; self.version = 0
-    def list_schedules(self): return list(self.data.values())
+    def list_schedules(self, **filters):
+        rows = list(self.data.values())
+        if filters.get("enabled") is not None: rows = [row for row in rows if row["enabled"] == filters["enabled"]]
+        if filters.get("requirement_set_id") is not None: rows = [row for row in rows if row["requirement_set_id"] == filters["requirement_set_id"]]
+        return rows[filters.get("offset", 0):][:filters.get("limit", 50)]
     def get_schedule(self, sid):
         if sid not in self.data: raise KeyError("schedule_not_found")
         return self.data[sid]
@@ -38,3 +42,21 @@ def test_auth_and_control_plane_roles():
     assert operator.post("/v1/requirement-schedules/s/versions/1/approve").status_code == 403
     assert operator.patch("/v1/requirement-schedules/s",json={"enabled":True}).status_code == 403
     assert not any("trigger" in getattr(route, "path", "") or "word" in getattr(route, "path", "") for route in app("superuser").routes)
+
+
+def test_filters_superuser_lifecycle_and_success_denial_audits(monkeypatch):
+    events=[]
+    monkeypatch.setattr("sra_api.routers.requirement_schedules.append_audit_event", events.append)
+    monkeypatch.setattr("api.routers.editor_dependencies.append_audit_event", events.append)
+    reader=TestClient(app("data_reader"))
+    assert reader.post("/v1/requirement-schedules",json={"name":"x","requirement_set_id":"set"}).status_code==403
+    assert any(event["action"]=="authz.denied" for event in events)
+    events.clear(); client=TestClient(app("superuser"))
+    assert client.post("/v1/requirement-schedules",json={"name":"x","requirement_set_id":"set"}).status_code==201
+    body={"timezone":"UTC","recurrence":{"kind":"daily","local_time":"09:00:00"},"run_policy":"all_active","model":"m"}
+    assert client.post("/v1/requirement-schedules/s/versions",json=body).status_code==201
+    assert client.post("/v1/requirement-schedules/s/versions/1/approve").status_code==200
+    assert client.patch("/v1/requirement-schedules/s",json={"enabled":True}).status_code==200
+    assert client.patch("/v1/requirement-schedules/s",json={"enabled":False}).status_code==200
+    assert client.get("/v1/requirement-schedules?enabled=false&requirement_set_id=set&limit=10&offset=0").status_code==200
+    assert {event["action"] for event in events} >= {"requirement_schedule.created","requirement_schedule.version_created","requirement_schedule.version_approved","requirement_schedule.updated"}

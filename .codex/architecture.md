@@ -112,3 +112,9 @@
 - `requirement_scheduler/` is the SQL Server-backed scheduling control-plane boundary: frozen recurrence/domain evidence, transactional schema/store operations, pure selection policy, and lifecycle orchestration.
 - `sra_schedule` remains independently versioned from immutable Phase 1B history. Scheduled claims lock authority rows, coalesce enabled downtime, bind the active snapshot and exact RequirementVersion ID/number, persist selection evidence/checkpoint seen state, and advance recurrence atomically.
 - `sra_api/routers/requirement_schedules.py` exposes control-plane CRUD/version approval only. FastAPI initializes the store only when configured and starts no scheduling thread; Gate A has no Phase 1A bridge or outbound execution.
+
+## 2026-09-04 Phase 1C-A review corrections
+
+- Canonical v1 validation now treats columns (type, byte length/MAX, nullability, ordinal), filtered unique indexes, keys, and cross-schema FKs as exact catalog evidence. Internal FK identities derive from the configured schedule schema; Phase 1B references derive independently from the configured Requirement schema.
+- Run materialization joins immutable RequirementVersion evidence to `requirements.external_item_id`; selected items persist that external identity as their future Phase 1A task identity and runs persist `reqrun-<batch_run_id>`.
+- A narrowly recognized SQL Server 2601/2627 violation naming the scheduled filtered index rolls back and rereads the winner; all other database errors remain failures.

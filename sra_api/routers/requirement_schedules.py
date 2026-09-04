@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from api.routers.editor_dependencies import authorize_role, current_user, require_db_operator, require_superuser
@@ -54,8 +54,16 @@ def _audit(action: str, user: AuthUser, **evidence): append_audit_event({"action
 
 
 @router.get("/v1/requirement-schedules")
-def list_schedules(service=Depends(schedule_service), user: AuthUser = Depends(current_user)):
-    try: return {"items": service.store.list_schedules()}
+def list_schedules(
+    enabled: bool | None = None,
+    requirement_set_id: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    service=Depends(schedule_service), user: AuthUser = Depends(current_user),
+):
+    try:
+        items = service.store.list_schedules(enabled=enabled, requirement_set_id=requirement_set_id, limit=limit, offset=offset)
+        return {"items": items, "limit": limit, "offset": offset}
     except Exception as exc: raise _error(exc) from exc
 
 

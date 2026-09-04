@@ -1,6 +1,8 @@
 from datetime import timezone
 
 from requirement_scheduler.store import ScheduleStore
+from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate
+import pytest
 
 
 class Connection:
@@ -41,3 +43,11 @@ def test_persistence_error_is_safe_and_rolls_back():
     try: store.create_schedule(name="x", requirement_set_id="set", actor="op")
     except RuntimeError as exc: assert str(exc) == "persistence_error"
     assert registry.connection.rollbacks == 1 and registry.connection.closed == 1
+
+
+def test_domain_schedule_version_rejects_bad_timezone_and_model():
+    recurrence=RecurrenceSpec.validate({"kind":"daily","local_time":"09:00:00"})
+    with pytest.raises(ValueError, match="timezone_invalid"):
+        ScheduleVersionCreate("No/Such_Zone", recurrence, RunPolicy.ALL_ACTIVE, "m")
+    with pytest.raises(ValueError, match="schedule_model_invalid"):
+        ScheduleVersionCreate("UTC", recurrence, RunPolicy.ALL_ACTIVE, "   ")

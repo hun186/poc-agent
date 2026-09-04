@@ -23,6 +23,8 @@ def test_rejects_invalid_inputs():
         with pytest.raises(ValueError): RecurrenceSpec.validate(value)
     with pytest.raises(ValueError): next_occurrence(RecurrenceSpec.validate({"kind": "daily", "local_time": "09:00:00"}), "Not/AZone", datetime.now(timezone.utc))
     with pytest.raises(ValueError): next_occurrence(RecurrenceSpec.validate({"kind": "daily", "local_time": "09:00:00"}), "UTC", datetime.now())
+    with pytest.raises(ValueError, match="second_precision"):
+        RecurrenceSpec.validate({"kind":"interval","every":1,"unit":"hours","anchor_at":"2026-09-05T00:00:00.123456+00:00"})
 
 
 def test_coalesce_latest_due_without_backfill():

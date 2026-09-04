@@ -110,3 +110,9 @@
 
 - Phase 1C live SQL Server acceptance was NOT EXECUTED because this task supplied no explicitly authorized SQL Server connection or credential. Repository recurrence, fake persistence, API, security, and regression checks are substitute repository evidence only. Phase 1B live SQL acceptance independently remains NOT EXECUTED.
 - `pip --upgrade` encountered the known package-index proxy HTTP 403 warning, but all requirement packages were already installed and dependency verification completed.
+
+## 2026-09-04 Phase 1C-A lifecycle audit blocker
+
+- Canonical lifecycle audit remains filesystem JSONL (`append_audit_event`) while schedule authority is SQL Server. A SQL commit and local filesystem append cannot be truly atomic with the existing architecture; an audit append failure can occur after an accepted SQL mutation. Resolving this requires a reviewed authority-boundary design (for example a transactional SQL outbox), not a local correction or distributed-transaction invention. Finding G and the Gate A closure are BLOCKED; Phase 1C-B must not start.
+- Phase 1C and Phase 1B live SQL Server acceptance were not executed because no explicitly authorized SQL Server access was supplied. Repository fake-ODBC tests are substitutes only.
+- Package installation observed package-index proxy HTTP 403 retries, but all requirements were already installed and verification could proceed.

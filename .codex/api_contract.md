@@ -127,3 +127,9 @@ The scheduler consumes, without changing, `POST /v1/report/jobs` with `Authoriza
 ## 2026-09-04 Phase 1C-A schedule control API
 
 Authenticated endpoints: `GET/POST /v1/requirement-schedules`, `GET/PATCH /v1/requirement-schedules/{schedule_id}`, `POST /v1/requirement-schedules/{schedule_id}/versions`, and superuser-only `POST /v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve`. Readers may GET; db_operator may create disabled schedules, rename disabled schedules, and create immutable drafts; superuser controls approval and enablement. Gate A exposes no manual-trigger, run execution, or Word route. Errors use bounded `{detail:{code}}` values.
+
+## 2026-09-04 Phase 1C-A review corrections
+
+- `GET /v1/requirement-schedules` accepts optional `enabled`, optional bounded `requirement_set_id`, `limit` 1..100 (default 50), and nonnegative `offset`; response includes `items`, `limit`, and `offset`.
+- `GET /v1/requirement-schedules/{schedule_id}` includes safe immutable version summaries and excludes recurrence JSON/SQL implementation details.
+- Resource errors remain safe: missing sets/schedules/versions are 404 domain codes; invalid configuration is 400; enabled rename/version lifecycle conflicts are 409; persistence failures are opaque 500 `persistence_error`.
