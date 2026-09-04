@@ -1,8 +1,10 @@
 import os
 import requests
 
-BASE = "http://192.168.0.133:9002"
-KEY = "sra_sk_bff23b56457f2c0e_eGGd32zKhkJriCAVHZJOPpxZFG74v8kF2VRZ2EjoW0w"
+BASE = os.environ.get("SRA_API_BASE", "http://192.168.0.133:9002")
+OPENWEBUI_KEY = os.environ["SRA_SMOKE_OPENWEBUI_KEY"]
+READ_ONLY_KEY = os.environ["SRA_SMOKE_READONLY_KEY"]
+REPORT_KEY = os.environ["SRA_SMOKE_REPORT_KEY"]
 
 
 def show(name, response):
@@ -17,8 +19,6 @@ def show(name, response):
         print(response.text[:1000])
 
 ####read_only_test############################################################
-
-READ_ONLY_KEY = "sra_sk_333184c907ae8ece_z6oH67h2DSggLqySEopxzsPfLUM_eLHFVRKfW_t34sw"
 
 headers = {
     "Authorization": f"Bearer {READ_ONLY_KEY}"
@@ -91,7 +91,7 @@ show("3. models with invalid key - expected 401", r)
 # --------------------------------------------------
 
 headers = {
-    "Authorization": f"Bearer {KEY}"
+    "Authorization": f"Bearer {OPENWEBUI_KEY}"
 }
 
 r = requests.get(
@@ -254,8 +254,6 @@ except Exception as e:
 
 
 #============sync key
-
-REPORT_KEY = "sra_sk_382ab46ecf03cce2_7tdLSccuU_2qjDOo6WpAayr2UBwqEzM1kPDdv-cslY0"
 
 r = requests.post(
     f"{BASE}/v1/report/word",
