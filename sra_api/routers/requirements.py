@@ -24,7 +24,10 @@ def _error(exc: Exception) -> HTTPException:
     elif code == "source_path_outside_allowed_root": status = 403
     elif code in {"stale_source_version", "source_version_anomaly"}: status = 409
     elif code in {"source_unavailable", "sql_read_error"}: status = 503
-    else: status = 400
+    elif code == "persistence_error": status = 500
+    elif isinstance(exc, (ValueError, PermissionError, FileNotFoundError)): status = 400
+    else:
+        status, code = 500, "persistence_error"
     return HTTPException(status_code=status, detail={"code": code})
 
 
@@ -33,7 +36,9 @@ def _audit(action: str, user: AuthUser, **values: Any) -> None:
 
 
 @router.get("/v1/requirement-sources")
-def list_sources(service=Depends(requirement_service), user: AuthUser = Depends(current_user)): return {"items": service.store.list_sources()}
+def list_sources(service=Depends(requirement_service), user: AuthUser = Depends(current_user)):
+    try: return {"items": service.store.list_sources()}
+    except Exception as exc: raise _error(exc) from exc
 @router.get("/v1/requirement-sources/{source_id}")
 def get_source(source_id: str, service=Depends(requirement_service), user: AuthUser = Depends(current_user)):
     try: return service.store.get_source(source_id)
@@ -52,7 +57,9 @@ def patch_source(source_id: str, payload: SourcePatch, service=Depends(requireme
     _audit("requirement.source.updated", user, source_id=source_id); return result
 
 @router.get("/v1/requirement-import-profiles")
-def list_profiles(service=Depends(requirement_service), user: AuthUser = Depends(current_user)): return {"items": service.store.list_profiles()}
+def list_profiles(service=Depends(requirement_service), user: AuthUser = Depends(current_user)):
+    try: return {"items": service.store.list_profiles()}
+    except Exception as exc: raise _error(exc) from exc
 @router.get("/v1/requirement-import-profiles/{profile_id}")
 def get_profile(profile_id: str, service=Depends(requirement_service), user: AuthUser = Depends(current_user)):
     try: return service.store.get_profile(profile_id)
@@ -60,7 +67,9 @@ def get_profile(profile_id: str, service=Depends(requirement_service), user: Aut
 @router.post("/v1/requirement-import-profiles", status_code=201)
 def create_profile(payload: ProfileCreate, service=Depends(requirement_service), user: AuthUser = Depends(require_db_operator)):
     if payload.enabled and user.role != ROLE_SUPERUSER: raise HTTPException(403, detail="Only a superuser may enable a profile")
-    result = service.store.create_profile(**payload.model_dump(), actor=user.username); _audit("requirement.profile.created", user, profile_id=result["profile_id"]); return result
+    try: result = service.store.create_profile(**payload.model_dump(), actor=user.username)
+    except Exception as exc: raise _error(exc) from exc
+    _audit("requirement.profile.created", user, profile_id=result["profile_id"]); return result
 @router.patch("/v1/requirement-import-profiles/{profile_id}")
 def patch_profile(profile_id: str, payload: ProfilePatch, service=Depends(requirement_service), user: AuthUser = Depends(require_db_operator)):
     if payload.enabled is not None and user.role != ROLE_SUPERUSER: raise HTTPException(403, detail="Only a superuser may change profile enablement")
@@ -98,12 +107,18 @@ def get_run(run_id: str, service=Depends(requirement_service), user: AuthUser = 
     try: return service.store.get_import_run(run_id)
     except Exception as exc: raise _error(exc) from exc
 @router.get("/v1/requirement-sets")
-def sets(service=Depends(requirement_service), user: AuthUser = Depends(current_user)): return {"items": service.store.list_requirement_sets()}
+def sets(service=Depends(requirement_service), user: AuthUser = Depends(current_user)):
+    try: return {"items": service.store.list_requirement_sets()}
+    except Exception as exc: raise _error(exc) from exc
 @router.get("/v1/requirement-sets/{set_id}/snapshots")
-def snapshots(set_id: str, service=Depends(requirement_service), user: AuthUser = Depends(current_user)): return {"items": service.store.list_snapshots(set_id)}
+def snapshots(set_id: str, service=Depends(requirement_service), user: AuthUser = Depends(current_user)):
+    try: return {"items": service.store.list_snapshots(set_id)}
+    except Exception as exc: raise _error(exc) from exc
 @router.get("/v1/requirement-snapshots/{snapshot_id}")
 def snapshot(snapshot_id: str, service=Depends(requirement_service), user: AuthUser = Depends(current_user)):
     try: return service.store.get_snapshot(snapshot_id)
     except Exception as exc: raise _error(exc) from exc
 @router.get("/v1/requirement-snapshots/{snapshot_id}/items")
-def snapshot_items(snapshot_id: str, service=Depends(requirement_service), user: AuthUser = Depends(current_user)): return {"items": service.store.list_snapshot_items(snapshot_id)}
+def snapshot_items(snapshot_id: str, service=Depends(requirement_service), user: AuthUser = Depends(current_user)):
+    try: return {"items": service.store.list_snapshot_items(snapshot_id)}
+    except Exception as exc: raise _error(exc) from exc

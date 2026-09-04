@@ -99,3 +99,9 @@
 ## 2026-09-04 Phase 1 deployment acceptance pending
 
 - This environment has no verified private SRA/Elasticsearch connectivity or runtime Batch Scheduler credential. Real two-task CSV/JSON E2E, restart observation against a live remote job, DOCX content review, and replacement-key revocation were not executed. Repository transport-seam tests are the substitute validation, not deployment acceptance.
+
+## 2026-09-04 Requirement SQL Server live acceptance unavailable
+
+- No explicit authorized connection or credential for the intended Requirement control-plane SQL Server was provided in this environment.
+- Substitute verification: recording fake-ODBC transaction/migration tests plus focused and full repository suites; these are repository evidence only and are not live SQL Server acceptance.
+- Status: Open; execute the documented live acceptance from an authorized operator environment.

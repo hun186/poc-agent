@@ -62,12 +62,18 @@ def acquire_source(source: dict[str, Any], profile: ImportProfileDocument, *, up
         rows, numbers = read_bytes(content, path.name, profile)
         return AcquiredSource(rows=rows, source_row_numbers=numbers, source_sha256=canonical_sha256({"bytes_sha256": __import__("hashlib").sha256(content).hexdigest()}), source_uri_display=path.name)
     if registry is None: raise RuntimeError("sql_read_error")
-    query = registry.query(str(config["query_ref"]))
-    if query.get("connection_ref") != config["connection_ref"]: raise ValueError("source_config_invalid")
-    connection = registry.open_named_connection(str(config["connection_ref"]))
+    connection = None
     try:
+        query = registry.query(str(config["query_ref"]))
+        if query.get("connection_ref") != config["connection_ref"]: raise ValueError("source_config_invalid")
+        connection = registry.open_named_connection(str(config["connection_ref"]))
         cursor = connection.cursor(); cursor.execute(str(query["sql"])); headers = [column[0] for column in cursor.description]
         rows = [dict(zip(headers, row, strict=True)) for row in cursor.fetchall()]
+    except Exception as exc:
+        if isinstance(exc, ValueError) and str(exc).split(":", 1)[0] == "source_config_invalid":
+            raise
+        raise RuntimeError("sql_read_error") from exc
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
     return AcquiredSource(rows=rows, source_row_numbers=list(range(1, len(rows) + 1)), source_sha256=canonical_sha256(rows), source_uri_display=f"sql:{config['query_ref']}")

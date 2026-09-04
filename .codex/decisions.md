@@ -4,6 +4,7 @@
 
 - SQL Server is the control-plane authority. Profiles, Requirement versions, observations, and snapshots are immutable; reviewed pointers are mutable.
 - SQL API sources store named registry references only; filesystem sources are allow-root confined. Preview is side-effect free and activation is strict/atomic.
+- Schema integers are not trusted alone: version 1 is accepted only after structural validation, and version 0 is upgraded with the marker written last in the same transaction. Named SQL security relies on reviewed registry entries plus a read-only database principal, not SQL text parsing.
 
 ## 2026-09-02 Scoped principals and signed browser capabilities
 
