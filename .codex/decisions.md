@@ -125,3 +125,9 @@
 - Persist explicit per-schedule/Requirement seen and successful checkpoints to distinguish `all_active`, `new_or_changed`, and `changed_only` retry behavior.
 - Run recurrence/handoff in an explicit one-active-worker process, never FastAPI lifespan. Reuse a new narrow Phase 1A programmatic import seam and existing Phase 1A idempotency; no direct SQLite or execution-engine imports.
 - Word history stores a safe relative reference to Phase 1A's artifact under the shared output root. Phase 1C does not copy or render DOCX.
+
+## 2026-09-04 Phase 1C Design Review v1 corrections
+
+- Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1. RequirementVersion number—not source membership/run/completion order—is the only checkpoint chronology evidence.
+- Intentional disable is not a misfire interval; re-enable and enabled version activation start recurrence strictly after their transaction UTC time. Only uninterrupted enabled state across worker downtime uses `coalesce_latest`.
+- Schedule version identity is its monotonic number, not its configuration hash; immutable A→B→A reversion is supported. Persist a non-secret output-root fingerprint with Phase 1A handoff identity and fail closed on mismatch.

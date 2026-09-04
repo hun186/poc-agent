@@ -45,3 +45,7 @@
 ## 2026-09-04 Phase 1 deployment follow-up
 
 - From the private operator network, execute the documented two-task tabular-plus-JSON real SRA/Elasticsearch Batch Scheduler acceptance, exercise stop/resume against the same remote job, inspect both DOCX reports, then create/test a replacement key and revoke/verify the old key. Do not treat repository mocked transport tests as this acceptance.
+
+## 2026-09-04 Phase 1C v2 implementation gates
+
+- Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1. Implement only v2 in two reviewed gates; 1C-A remains not started, and 1C-B remains prohibited until 1C-A is merged, its Implementation Review is PASS, and the new actual `main` baseline is recorded.

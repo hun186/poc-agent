@@ -100,3 +100,9 @@
 - Immutable schedule versions and Batch Run/Run Item history feed a narrow Phase 1A programmatic import seam. Phase 1C may not access Phase 1A SQLite directly or import Agent, Elasticsearch execution, ReportJobWorker, or Word renderer code.
 - Recurring work belongs to `python -m requirement_scheduler worker`, formally one active process in v1, never a FastAPI lifespan thread. SQL locking/unique identities and deterministic Phase 1A identities protect restarts.
 - Phase 1C references, rather than copies or renders, Phase 1A-published DOCX artifacts under one shared confined output root.
+
+## 2026-09-04 Phase 1C Design v2 correction (not implemented)
+
+- Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1. Run Items will bind RequirementVersion ID plus monotonic per-Requirement number; checkpoints will carry matched seen/success ID-number evidence and reject older success completions.
+- Operator pause clears `next_run_at` and starts a fresh recurrence window on re-enable; continuously enabled worker downtime alone uses `coalesce_latest`. Version activation recalculates from its transaction time.
+- Configuration hashes remain comparison evidence rather than version identity, allowing immutable A→B→A reversion. Batch Runs will persist a non-secret Phase 1A output-root fingerprint and fail closed if the configured root changes before resume/reconciliation/history serving.
