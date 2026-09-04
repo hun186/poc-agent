@@ -91,3 +91,7 @@
 - 本容器對 tracked smoke harness 所設定的 private SRA API 呼叫均由環境 proxy 回覆 HTTP 403，無法證明請求抵達 SRA deployment；real Elasticsearch、long report Agent 與 signed Word E2E 因此 NOT EXECUTED。
 - 替代驗證為 84-test Phase 0 targeted gate及 343-test full repository suite。部署 acceptance 與其後 credential rotation 仍須由可連線的 operator environment 執行；既有 working acceptance credentials 本輪刻意保持不變。
 - Required Implementation Review v2 文件不在 actual repository；現有最新 review 是 v1，Plan v6 仍明確指定 v2。實作以 authoritative Design v3、Plan v6 completion delta 與 actual source 為準，待 operator 補回 review artifact 供追溯。
+
+## 2026-09-04 Phase 1 deployment acceptance pending
+
+- This environment has no verified private SRA/Elasticsearch connectivity or runtime Batch Scheduler credential. Real two-task CSV/JSON E2E, restart observation against a live remote job, DOCX content review, and replacement-key revocation were not executed. Repository transport-seam tests are the substitute validation, not deployment acceptance.
