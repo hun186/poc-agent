@@ -118,3 +118,10 @@
 - Canonical v1 validation now treats columns (type, byte length/MAX, nullability, ordinal), filtered unique indexes, keys, and cross-schema FKs as exact catalog evidence. Internal FK identities derive from the configured schedule schema; Phase 1B references derive independently from the configured Requirement schema.
 - Run materialization joins immutable RequirementVersion evidence to `requirements.external_item_id`; selected items persist that external identity as their future Phase 1A task identity and runs persist `reqrun-<batch_run_id>`.
 - A narrowly recognized SQL Server 2601/2627 violation naming the scheduled filtered index rolls back and rereads the winner; all other database errors remain failures.
+
+## 2026-09-05 Phase 1C Design v3 architecture (not implemented)
+
+- Design v3 supersedes Design v2. Canonical Phase 1C SQL becomes schema version 2: fresh stores create v2 directly; allowlisted PR #200/#201 version-1 shapes migrate in one transaction with marker 2 last; malformed/future states fail closed.
+- Canonical Run Item `phase1a_task_id` is nullable `NVARCHAR(240)` and preserves the exact Phase 1B `external_item_id`. Composite `(schedule_id,schedule_version_id)` relationships enforce same-schedule active pointers and Batch Run bindings without cascades.
+- Successful lifecycle mutations and `requirement_schedule_audit_outbox` events share one SQL transaction. Existing Editor JSONL is an at-least-once projection through `append_audit_event()` with stable `audit_event_id`; authorization denials without SQL mutation retain the direct canonical denial path.
+- This architecture is a pending Phase 1C-A v3 closure, not implemented behavior. Phase 1C-B remains not started and blocked pending merge plus explicit post-merge PASS.

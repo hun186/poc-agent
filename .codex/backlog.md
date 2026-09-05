@@ -58,3 +58,8 @@
 ## 2026-09-04 Phase 1C-A Review v1 blocker
 
 - Resolve Finding G through a reviewed design change that makes schedule lifecycle mutation and durable audit acceptance atomic (or explicitly redefines the authority contract). Phase 1C-B remains prohibited until this blocker and Gate A review are closed.
+
+## 2026-09-05 Phase 1C-A v3 closure
+
+- Implement Design/Plan v3 C1–C8: canonical schema v2; direct fresh-v2 initialization; recognized PR #200/#201 v1 migration; 240-character exact task identity; same-schedule composite constraints; transactional lifecycle audit outbox; bounded at-least-once JSONL projection; and failure/security/regression evidence.
+- Phase 1C-A current implementation exists but repository gate is NOT PASS pending the v3 closure PR and explicit post-merge Implementation Review. Phase 1C-B is NOT STARTED and remains prohibited until that PASS and a new actual `main` baseline are recorded.

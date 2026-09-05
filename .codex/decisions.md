@@ -142,3 +142,10 @@
 ## 2026-09-04 Phase 1C-A audit authority decision
 
 - Do not claim atomic SQL-plus-filesystem lifecycle audit and do not add a second audit framework or distributed transaction. Preserve the canonical audit path and mark the review finding as a Design-level blocker pending an explicit authority/outbox design decision.
+
+## 2026-09-05 Phase 1C Design v3 authority and schema decision
+
+- Design v3 supersedes v2 and makes Phase 1C schema version 2 canonical. Fresh databases create v2 directly; recognized PR #200/#201 v1 shapes migrate transactionally with the marker written last; malformed/future states fail closed.
+- Widen `phase1a_task_id` to nullable `NVARCHAR(240)` without transforming history. Enforce active-version and Run-version ownership using ordered composite `(schedule_id,schedule_version_id)` UQ/FKs with no cascades.
+- Successful lifecycle audit authority is a same-transaction SQL outbox. Existing `append_audit_event()` JSONL remains an at-least-once projection with stable event identity; direct audit remains correct for authorization denial without SQL mutation. This avoids distributed transactions and makes no exactly-once filesystem claim.
+- These are pending closure decisions, not current runtime claims. Gate B cannot start before the closure merge and explicit post-merge review PASS.
