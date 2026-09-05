@@ -46,7 +46,6 @@ def test_auth_and_control_plane_roles():
 
 def test_filters_superuser_lifecycle_and_success_denial_audits(monkeypatch):
     events=[]
-    monkeypatch.setattr("sra_api.routers.requirement_schedules.append_audit_event", events.append)
     monkeypatch.setattr("api.routers.editor_dependencies.append_audit_event", events.append)
     reader=TestClient(app("data_reader"))
     assert reader.post("/v1/requirement-schedules",json={"name":"x","requirement_set_id":"set"}).status_code==403
@@ -59,4 +58,6 @@ def test_filters_superuser_lifecycle_and_success_denial_audits(monkeypatch):
     assert client.patch("/v1/requirement-schedules/s",json={"enabled":True}).status_code==200
     assert client.patch("/v1/requirement-schedules/s",json={"enabled":False}).status_code==200
     assert client.get("/v1/requirement-schedules?enabled=false&requirement_set_id=set&limit=10&offset=0").status_code==200
-    assert {event["action"] for event in events} >= {"requirement_schedule.created","requirement_schedule.version_created","requirement_schedule.version_approved","requirement_schedule.updated"}
+    # Successful lifecycle evidence is authoritative in the SQL outbox, not a
+    # best-effort route-level filesystem append. Denials remain direct JSONL.
+    assert events == []

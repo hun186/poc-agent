@@ -90,3 +90,9 @@
 - v4 corrects exact PR #200/#201 catalog classification, a narrow PR #200 persisted-identity repair guarded by proof that Gate B never ran, legacy active/approved configuration validation, outbox-created lifecycle timestamp projection, and pending-row CAS delivery metadata.
 - Documentation only: no closure implementation or tests were changed. Phase 1C-A repository gate remains NOT PASS; Phase 1C-A v4 closure implementation is NOT STARTED; Phase 1C-B is NOT STARTED.
 - Verification: `git diff --check`, placeholder/cross-document scans, and changed-file scope inspection passed; no runtime tests were used to claim implementation.
+
+### 2026-09-05 Phase 1C-A v4 closure implementation
+
+- Raised the Requirement Schedule authority to canonical schema v2, with direct fresh-v2 DDL, strict reviewed-v1 descriptor classification, marker-last migration ordering, same-schedule ownership constraints, exact 240-character selected external identities, and guarded PR #200 identity repair statements. Phase 1C-B remains not started.
+- Added same-transaction lifecycle audit outbox writes and bounded at-least-once JSONL projection. Projection preserves immutable outbox `created_at` as lifecycle `ts`; success and failure delivery metadata use pending-row compare-and-set and never claim SQL/filesystem atomicity or JSONL exactly-once behavior.
+- Repository verification: Phase 1C focused 33 passed with 2 warnings; focused cross-phase regression 172 passed with 3 warnings; full repository 491 passed with 10 warnings. Compile/static checks were completed after the final edits. Live SQL Server acceptance was NOT EXECUTED because no explicit authorization or connection was supplied.

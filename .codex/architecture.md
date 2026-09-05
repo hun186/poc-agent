@@ -131,3 +131,8 @@
 - Design v4 supersedes v3 without redesigning schema v2 or the transactional audit outbox. Exact PR #200/PR #201 whole-catalog descriptors classify v1 before mutation; only recognized PR #200 may transactionally repair its exact `phase1c-`/internal-Requirement handoff placeholders after proving Gate-B evidence absent. PR #201 canonical identity is never rewritten.
 - Migration validates active/approved persisted configuration under current canonical rules. JSONL lifecycle `ts` derives from immutable outbox `created_at`; delivery success/failure updates compare-and-set only pending rows so delivered metadata cannot regress.
 - These contracts await Phase 1C-A v4 closure implementation and post-merge review; Gate B remains not started.
+
+## 2026-09-05 Phase 1C-A schema v2 and audit projection
+
+- `sra_schedule` now has canonical schema version 2. Fresh initialization creates v2 directly; exact reviewed v1 shapes migrate in one transaction with the version marker updated last. Composite schedule/version ownership prevents cross-schedule active pointers and Run bindings.
+- Successful lifecycle mutations and immutable audit-outbox rows share the SQL transaction. `requirement_scheduler.audit_delivery` performs bounded, at-least-once projection to the existing audit sink outside that transaction; immutable creation time supplies the lifecycle timestamp and pending-row CAS keeps delivery metadata monotonic.
