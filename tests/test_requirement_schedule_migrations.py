@@ -1,5 +1,5 @@
 from requirement_scheduler.migrations import (
-    SCHEMA_VERSION, REQUIRED_COLUMNS, REQUIRED_FILTERED_INDEXES, REQUIRED_FOREIGN_KEYS, REQUIRED_KEYS,
+    SCHEMA_VERSION, REQUIRED_CHECKS, REQUIRED_COLUMNS, REQUIRED_DEFAULTS, REQUIRED_FILTERED_INDEXES, REQUIRED_FOREIGN_KEYS, REQUIRED_KEYS,
     bootstrap_schema_statements, canonical_v2_statements, classify_v1_catalog,
     migration_0_to_1_statements, validate_schema_name,
     required_foreign_keys, validate_catalog_evidence,
@@ -74,11 +74,12 @@ def test_v1_classifier_accepts_only_exact_whole_catalogs():
                                   for k in self.evidence["keys"]
                                   for ordinal,column in enumerate(k.columns,1))
             elif "sys.indexes" in sql:
-                self.rows = tuple((i.table,i.name,i.is_unique,True,i.filter_definition,column,ordinal)
+                self.rows = tuple((i.table,i.name,i.is_unique,True,
+                                   f" ( [ {i.filter_definition.replace('=', '] = [')} ] ) ",column,ordinal)
                                   for i in self.evidence["indexes"]
                                   for ordinal,column in enumerate(i.columns,1))
             else:
-                self.rows = tuple((fk.table,fk.name,column,fk.referenced_schema,fk.referenced_table,referenced,ordinal,0)
+                self.rows = tuple((fk.table,fk.name,column,fk.referenced_schema,fk.referenced_table,referenced,ordinal,0,0)
                                   for fk in self.evidence["foreign_keys"]
                                   for ordinal,(column,referenced) in enumerate(zip(fk.columns,fk.referenced_columns),1))
             return self
@@ -94,3 +95,21 @@ def test_v1_classifier_accepts_only_exact_whole_catalogs():
         hybrid = dict(evidence, foreign_keys=evidence["foreign_keys"] + (migrations.ForeignKey("unexpected", "requirement_schedules", ("active_version_id",), "sra_schedule", "requirement_schedule_versions", ("schedule_version_id",)),))
         with pytest.raises(RuntimeError, match="unsupported_requirement_schedule_schema"):
             classify_v1_catalog(Cursor(hybrid), "sra_schedule", "sra_requirement")
+
+
+def test_fk_actions_and_outbox_constraints_fail_closed():
+    fk = REQUIRED_FOREIGN_KEYS[0]
+    base = (("sra_schedule", fk.table, fk.name, fk.columns[0], fk.referenced_schema,
+             fk.referenced_table, fk.referenced_columns[0], 1, 0, 0),)
+    assert validate_catalog_evidence("sra_schedule", fk, base)
+    for action_position in (8, 9):
+        changed = [list(base[0])]
+        changed[0][action_position] = 1
+        assert not validate_catalog_evidence("sra_schedule", fk, tuple(map(tuple, changed)))
+
+    default = REQUIRED_DEFAULTS[0]
+    assert validate_catalog_evidence("sra_schedule", default, (("sra_schedule", default.table, default.name, default.column, "((0))"),))
+    assert not validate_catalog_evidence("sra_schedule", default, (("sra_schedule", default.table, default.name, default.column, "(1)"),))
+    check = REQUIRED_CHECKS[0]
+    assert validate_catalog_evidence("sra_schedule", check, (("sra_schedule", check.table, check.name, "(([delivery_attempt_count] >= (0)))"),))
+    assert not validate_catalog_evidence("sra_schedule", check, (("sra_schedule", check.table, check.name, "delivery_attempt_count>0"),))

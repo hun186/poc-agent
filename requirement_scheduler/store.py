@@ -124,16 +124,32 @@ class ScheduleStore:
             marker_rows = tuple(cursor.fetchall())
             if len(marker_rows) > 1 or (not marker_rows and marker_preexisted):
                 raise RuntimeError("unsupported_requirement_schedule_schema")
-            version = 0 if not marker_rows else int(marker_rows[0][0])
+            if marker_rows:
+                if len(marker_rows[0]) != 1:
+                    raise RuntimeError("unsupported_requirement_schedule_schema")
+                try:
+                    version = int(marker_rows[0][0])
+                except (TypeError, ValueError, OverflowError) as exc:
+                    raise RuntimeError("unsupported_requirement_schedule_schema") from exc
+            else:
+                version = 0
             if version == 0:
                 for sql in canonical_v2_statements(self.schema, self.requirement_schema): cursor.execute(sql)
             elif version == 1:
                 shape = classify_v1_catalog(cursor, self.schema, self.requirement_schema)
                 self._validate_legacy_configurations(cursor)
                 if shape == "pr200_v1":
-                    for sql in self._pr200_identity_repair_statements():
+                    repair = self._pr200_identity_repair_statements()
+                    for sql in repair[:-2]:
                         cursor.execute(sql)
-                for sql in migration_1_to_2_statements(self.schema, shape):
+                    migration = migration_1_to_2_statements(self.schema, shape)
+                    cursor.execute(migration[0])  # widen before copying external identities
+                    for sql in repair[-2:]:
+                        cursor.execute(sql)
+                    migration = migration[1:]
+                else:
+                    migration = migration_1_to_2_statements(self.schema, shape)
+                for sql in migration:
                     cursor.execute(sql)
             elif version != SCHEMA_VERSION: raise RuntimeError("unsupported_requirement_schedule_schema")
             for name, sql, params, expected in validation_queries(self.schema, self.requirement_schema):
@@ -152,7 +168,15 @@ class ScheduleStore:
                     raise RuntimeError("unsupported_requirement_schedule_schema")
             cursor.execute(f"SELECT version FROM {self.t}.[schema_version] WITH (UPDLOCK,HOLDLOCK)")
             final_markers = tuple(cursor.fetchall())
-            if final_markers != ((SCHEMA_VERSION,),):
+            try:
+                final_marker_valid = (
+                    len(final_markers) == 1
+                    and len(final_markers[0]) == 1
+                    and int(final_markers[0][0]) == SCHEMA_VERSION
+                )
+            except (TypeError, ValueError, OverflowError):
+                final_marker_valid = False
+            if not final_marker_valid:
                 raise RuntimeError("unsupported_requirement_schedule_schema")
             connection.commit()
         except Exception as exc:
@@ -185,7 +209,7 @@ class ScheduleStore:
         # All assertions execute before the first UPDATE, so unexpected history
         # cannot be partly rewritten even before transaction rollback.
         return (
-            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_runs] WHERE phase1a_source_sha256 IS NOT NULL OR phase1a_output_root_fingerprint IS NOT NULL OR handoff_started_at IS NOT NULL OR handed_off_at IS NOT NULL OR reconciled_at IS NOT NULL OR completed_at IS NOT NULL OR deadline_elapsed_during_execution<>0 OR success_count<>0 OR failure_count<>0 OR state NOT IN ('materialized','handoff_pending','blocked_no_snapshot')) THROW 51000,'unsupported_requirement_schedule_schema',1",
+            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_runs] WHERE phase1a_source_sha256 IS NOT NULL OR phase1a_output_root_fingerprint IS NOT NULL OR handoff_started_at IS NOT NULL OR handed_off_at IS NOT NULL OR reconciled_at IS NOT NULL OR completed_at IS NOT NULL OR deadline_elapsed_during_execution<>0 OR success_count<>0 OR failure_count<>0 OR state NOT IN ('handoff_pending','blocked_no_snapshot')) THROW 51000,'unsupported_requirement_schedule_schema',1",
             f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_run_items] WHERE remote_job_id IS NOT NULL OR remote_job_state IS NOT NULL OR artifact_relative_path IS NOT NULL OR handoff_started_at IS NOT NULL OR dispatched_at IS NOT NULL OR remote_completed_at IS NOT NULL OR artifact_reconciled_at IS NOT NULL OR completed_at IS NOT NULL OR expired_before_handoff<>0 OR deadline_elapsed_during_execution<>0 OR execution_state NOT IN ('handoff_pending','not_selected')) THROW 51000,'unsupported_requirement_schedule_schema',1",
             f"IF EXISTS(SELECT 1 FROM {s}.[requirement_schedule_item_state] WHERE last_successful_requirement_version_id IS NOT NULL OR last_successful_requirement_version_number IS NOT NULL OR last_successful_run_item_id IS NOT NULL OR last_successful_at IS NOT NULL) THROW 51000,'unsupported_requirement_schedule_schema',1",
             f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_runs] WHERE phase1a_batch_id<>N'phase1c-'+batch_run_id) THROW 51000,'unsupported_requirement_schedule_schema',1",

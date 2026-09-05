@@ -148,3 +148,7 @@
 
 - Phase 1C schema classification now reads complete columns, keys, filtered indexes (including uniqueness), and FK bindings through parameterized SQL Server `sys.*` queries and ordinary DB-API methods. Fresh v2 DDL is explicit; exact PR #200/#201 shapes use separate transactional migration programs and complete canonical postvalidation.
 - Canonical audit outbox uses the v5 field/index contract. Scheduler initialization and committed lifecycle mutations trigger bounded best-effort projection to the existing JSONL sink, with no FastAPI scheduling thread; SQL outbox remains authoritative when projection fails.
+
+### 2026-09-05 Phase 1C-A v5 post-merge catalog hardening
+
+- Schedule schema authority now includes normalized filtered predicates, FK delete/update NO ACTION evidence, and the narrowly required audit-outbox default/check constraints. PR #200 migration widens `phase1a_task_id` before copying external identity, within the same transaction.
