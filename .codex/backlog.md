@@ -83,3 +83,7 @@
 - Merge and perform a fresh human/ChatGPT Implementation Review of the stateful `ScheduleStore.initialize()` acceptance-evidence closure; do not self-award PASS from repository test results.
 - Execute fresh-v2, exact PR #200/#201 migration, rollback, and audit-projection acceptance against live SQL Server only when an explicitly authorized connection is supplied. Current live SQL status remains NOT EXECUTED.
 - Phase 1C-B remains blocked and NOT STARTED. The separately discussed Job Task Orchestration Boundary design/implementation also remains NOT STARTED and is not part of Phase 1C-A v5.
+
+## 2026-09-05 Future Job Task orchestration boundary
+
+- Preserve and review the non-authoritative future architecture discussion in `docs/superpowers/notes/2026-09-05-job-task-orchestration-boundary-discussion-notes.md`; reconcile it against actual `main` before authoring `Job Task Orchestration Boundary Design v1`, then obtain human approval and replace/revise the Gate-B Plan and execution prompt. Do not execute the existing Phase 1C-B Prompt directly. Implementation NOT STARTED; Phase 1C-B NOT STARTED.
