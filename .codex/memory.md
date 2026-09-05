@@ -129,3 +129,10 @@
 - Verification: focused closure 65 passed; all Requirement Schedule tests 99 passed with 4 warnings; cross-phase Requirement/Batch Scheduler/Phase 0 tests 238 passed with 3 warnings; full repository 557 passed with 10 warnings. `compileall`, `git diff --check`, prohibited production-import scan, LangGraph/smolagents boundary scan, modified-file credential scan, and tracked generated-artifact scan passed.
 - Dependency preflight completed from installed requirements; pip index access emitted the known HTTP 403 retry warning. Live SQL Server acceptance: NOT EXECUTED because no explicitly authorized connection details were supplied; stateful DB-API tests are repository evidence only.
 - Phase 1C-B remains blocked and NOT STARTED pending merge and a fresh human/ChatGPT post-merge Implementation Review. Future Job Task Orchestration Boundary implementation remains NOT STARTED and was not added to current v5 architecture.
+
+### 2026-09-05 Phase 1C-B Implementation Planning Gate
+
+- Authored the documentation-only Phase 1C-B Requirement Execution Bridge Plan v1 against source snapshot `d1fc213633dc9dc83c1e32e010d9aca59a0dd909` and authoritative `docs/superpowers/specs/2026-09-05-job-task-orchestration-boundary-design-v1.md`.
+- The plan freezes canonical Requirement Schedule schema v3, immutable submission manifest/fingerprint and isolated session identity, fenced external coordinator, legacy Report Job HTTP gateway, crash-safe reconciliation/artifact publication, atomic terminal checkpoint/audit closure, and a 14-task RED/GREEN matrix.
+- Source snapshot exactly matches the requested PR #210 merge baseline. Hosted refresh was attempted, but the network proxy rejected GitHub with HTTP 403, so the local commit could not be independently compared with a newer hosted `main`.
+- Phase 1C-B implementation is NOT STARTED. Job Task JT-1 and LangGraph integration are NOT STARTED. Live SQL Server acceptance is NOT EXECUTED. The pre-Design-v1 Gate-B prompt remains stale and MUST NOT RUN. Next gate is Human/ChatGPT Phase 1C-B Plan Review.
