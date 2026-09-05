@@ -76,3 +76,10 @@
 - Verification: focused 28 passed/0 failed/0 errors/2 warnings; Phase 1B 88 passed/0 failed/0 errors/2 warnings; Phase 1A 24 passed/0 failed/0 errors/0 warnings; Phase 0 27 passed/0 failed/0 errors/3 warnings; full suite before the final audit-matrix test 485 passed/0 failed/0 errors/10 warnings. Final full/static results are recorded in the task report.
 - Phase 1C and Phase 1B live SQL Server acceptance: NOT EXECUTED; no explicitly authorized SQL Server access was supplied.
 - Final rerun after the HTTP audit matrix: full repository 486 passed/0 failed/0 errors/10 warnings.
+
+### 2026-09-05 Phase 1C Design/Plan v3 correction
+
+- Phase 1C Design v3 supersedes v2 because lifecycle success requires transactional SQL audit authority, Phase 1C needs formal schema v2 evolution with recognized-v1 migration, and `phase1a_task_id` must match the Phase 1B 240-character external identity contract. Historical v1/v2 documents remain unchanged.
+- Authored the documentation-only v3 Design, incremental C1–C8 TDD closure Plan, and two execution contracts. The design selects composite same-schedule version ownership and an SQL outbox with at-least-once projection through existing `append_audit_event()` using stable event IDs.
+- Phase 1C-A implementation exists, but its repository gate is NOT PASS pending v3 closure implementation and post-merge review. Phase 1C-A v3 closure implementation is NOT STARTED. Phase 1C-B is NOT STARTED.
+- Verification was documentation/static only: `git diff --check`, placeholder/contract consistency scans, and runtime-scope status inspection passed; no runtime pytest was required or used to claim implementation.

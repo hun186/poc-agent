@@ -116,3 +116,8 @@
 - Canonical lifecycle audit remains filesystem JSONL (`append_audit_event`) while schedule authority is SQL Server. A SQL commit and local filesystem append cannot be truly atomic with the existing architecture; an audit append failure can occur after an accepted SQL mutation. Resolving this requires a reviewed authority-boundary design (for example a transactional SQL outbox), not a local correction or distributed-transaction invention. Finding G and the Gate A closure are BLOCKED; Phase 1C-B must not start.
 - Phase 1C and Phase 1B live SQL Server acceptance were not executed because no explicitly authorized SQL Server access was supplied. Repository fake-ODBC tests are substitutes only.
 - Package installation observed package-index proxy HTTP 403 retries, but all requirements were already installed and verification could proceed.
+
+## 2026-09-05 Phase 1C v3 closure remains unimplemented
+
+- Design v3 resolves the authority decision on paper by selecting a transactional Phase 1C SQL outbox and at-least-once JSONL projection, plus canonical schema v2 migration and task-ID widening. The current runtime still has schema version 1, `phase1a_task_id NVARCHAR(128)`, and post-commit direct success audit, so the repository gate remains NOT PASS until the v3 closure is implemented, merged, and reviewed.
+- Phase 1C-B remains blocked and NOT STARTED. Live Phase 1B/1C SQL Server acceptance remains NOT EXECUTED without explicitly authorized access.

@@ -133,3 +133,9 @@ Authenticated endpoints: `GET/POST /v1/requirement-schedules`, `GET/PATCH /v1/re
 - `GET /v1/requirement-schedules` accepts optional `enabled`, optional bounded `requirement_set_id`, `limit` 1..100 (default 50), and nonnegative `offset`; response includes `items`, `limit`, and `offset`.
 - `GET /v1/requirement-schedules/{schedule_id}` includes safe immutable version summaries and excludes recurrence JSON/SQL implementation details.
 - Resource errors remain safe: missing sets/schedules/versions are 404 domain codes; invalid configuration is 400; enabled rename/version lifecycle conflicts are 409; persistence failures are opaque 500 `persistence_error`.
+
+## 2026-09-05 Phase 1C Design v3 API/audit correction (not implemented)
+
+- Existing schedule endpoint request/response shapes remain unchanged. Design v3 changes successful lifecycle audit authority from route-level filesystem append to a same-transaction SQL outbox; JSONL becomes an at-least-once projection with stable `audit_event_id`.
+- Authorization denials still use existing `authorize_role()` direct audit because they have no Phase 1C SQL mutation. Outbox payload and delivery errors are not added to public responses.
+- Phase 1C-A's current repository gate is NOT PASS pending v3 closure. No manual trigger, execution, reconciliation, or Word-history API is authorized; Phase 1C-B is NOT STARTED.
