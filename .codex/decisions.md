@@ -159,3 +159,9 @@
 
 - Use SQL outbox insertion as successful schedule-lifecycle audit authority and retain the Editor JSONL audit only as an at-least-once projection. Preserve event identity and outbox creation time across retries; do not represent SQL and filesystem as atomic or JSONL as exactly once.
 - Restrict v1 persisted-identity mutation to an exactly classified PR #200 catalog after Gate-B absence assertions. PR #201 and canonical-v2 identities remain immutable.
+
+## 2026-09-05 Phase 1C Design v5 source-baseline correction
+
+- Preserve schema v2, same-schedule ownership, transactional outbox, stable event identity/time, pending CAS, and two-gate decisions; v5 is a correction, not a redesign.
+- Treat actual PR #200/#201 DDL as physical authority: vocabulary/state widths are equal. Use complete real SQL Server catalog queries, explicit canonical-v2 DDL, and separate migrations rather than fake-only cursor hooks or broad text replacement.
+- Keep the exact reviewed outbox contract and positive per-action payload allowlists. Make bounded post-commit and startup projection part of production Gate A wiring while allowing at-least-once duplicate JSONL appends.

@@ -96,3 +96,11 @@
 - Raised the Requirement Schedule authority to canonical schema v2, with direct fresh-v2 DDL, strict reviewed-v1 descriptor classification, marker-last migration ordering, same-schedule ownership constraints, exact 240-character selected external identities, and guarded PR #200 identity repair statements. Phase 1C-B remains not started.
 - Added same-transaction lifecycle audit outbox writes and bounded at-least-once JSONL projection. Projection preserves immutable outbox `created_at` as lifecycle `ts`; success and failure delivery metadata use pending-row compare-and-set and never claim SQL/filesystem atomicity or JSONL exactly-once behavior.
 - Repository verification: Phase 1C focused 33 passed with 2 warnings; focused cross-phase regression 172 passed with 3 warnings; full repository 491 passed with 10 warnings. Compile/static checks were completed after the final edits. Live SQL Server acceptance was NOT EXECUTED because no explicit authorization or connection was supplied.
+
+### 2026-09-05 Phase 1C Design/Plan v5 source-baseline correction
+
+- Rebaselined documentation against actual `main` merge `d56a8a061446400e324384f2719af3c95ba7d0af` (PR #204) and re-read PR #200/#201 source. Design/Plan/Prompts v5 supersede v4 and correct the false claim that PR #201 widened vocabulary/state columns; both v1 DDLs use the same reviewed widths.
+- v5 documents PR #204 closure defects: fake-only catalog access, transformed rather than explicit v2 DDL, incomplete shape-specific migration/marker/Gate-B validation, persisted RunPolicy conversion, outbox schema/index drift, dead projection wiring, and incomplete CAS result semantics/closure coverage.
+- The architecture is unchanged: canonical schema v2, transactional recognized-v1 migration, 240-character task identity, same-schedule composites, transactional SQL outbox, and stable at-least-once JSONL projection.
+- This was documentation-only; no production or test code changed. Phase 1C-A remains **NOT PASS** pending v5 implementation and post-merge review. Phase 1C-B remains **NOT STARTED**.
+- Documentation verification passed: `git diff --check`, unresolved-placeholder scan, cross-document contract scan, and changed-file scope inspection. No runtime tests were run because this task changes no production/test code and makes no runtime completion claim.

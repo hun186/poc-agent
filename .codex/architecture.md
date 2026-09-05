@@ -136,3 +136,10 @@
 
 - `sra_schedule` now has canonical schema version 2. Fresh initialization creates v2 directly; exact reviewed v1 shapes migrate in one transaction with the version marker updated last. Composite schedule/version ownership prevents cross-schedule active pointers and Run bindings.
 - Successful lifecycle mutations and immutable audit-outbox rows share the SQL transaction. `requirement_scheduler.audit_delivery` performs bounded, at-least-once projection to the existing audit sink outside that transaction; immutable creation time supplies the lifecycle timestamp and pending-row CAS keeps delivery metadata monotonic.
+
+## 2026-09-05 Phase 1C Design v5 source correction (pending implementation)
+
+- Design v5 preserves the schema-v2/outbox architecture but corrects the source baseline: PR #200 and PR #201 share the reviewed vocabulary/state widths and differ primarily in internal FK additions. Canonical v2 preserves those widths and widens only nullable `phase1a_task_id` to 240 characters.
+- Production classification must query complete SQL Server catalog evidence through ordinary DB-API methods. Fresh v2 uses explicit canonical DDL; recognized v1 shapes have distinct transactional migration programs; marker authority is exactly one row and is written last/re-read.
+- The authoritative outbox retains `safe_payload_json`, non-null lifecycle `schedule_id`, reserved `batch_run_id`, and the non-unique `(delivered_at,created_at,audit_event_id)` pending index. Bounded startup and post-commit drains make projection live without a FastAPI scheduler thread.
+- These are corrective requirements, not runtime claims. Phase 1C-A remains NOT PASS pending implementation/review; Phase 1C-B remains NOT STARTED.

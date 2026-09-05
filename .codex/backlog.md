@@ -72,3 +72,8 @@
 ## 2026-09-05 Phase 1C-A v4 post-merge follow-up
 
 - Run explicitly authorized live SQL Server acceptance for fresh v2, both reviewed v1 migrations, rollback injection, and delayed/duplicate audit projection. Phase 1C-B remains NOT STARTED until the closure is merged and a human/ChatGPT post-merge Implementation Review records PASS.
+
+## 2026-09-05 Phase 1C-A v5 closure
+
+- Implement Design/Plan v5 against PR #204: corrected source-derived widths; real DB-API SQL Server catalog classifier; explicit canonical-v2 DDL; shape-specific migrations and complete Gate-B absence proof; explicit persisted RunPolicy coercion; exact outbox/index; live bounded projection; correct lost-race results; and the comprehensive v5 closure matrix.
+- Phase 1C-A remains NOT PASS until implementation is merged and a post-merge human/ChatGPT Implementation Review explicitly records PASS. Phase 1C-B remains NOT STARTED and blocked until that PASS plus a new actual `main` baseline.
