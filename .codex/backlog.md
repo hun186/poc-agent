@@ -77,3 +77,9 @@
 
 - Implement Design/Plan v5 against PR #204: corrected source-derived widths; real DB-API SQL Server catalog classifier; explicit canonical-v2 DDL; shape-specific migrations and complete Gate-B absence proof; explicit persisted RunPolicy coercion; exact outbox/index; live bounded projection; correct lost-race results; and the comprehensive v5 closure matrix.
 - Phase 1C-A remains NOT PASS until implementation is merged and a post-merge human/ChatGPT Implementation Review explicitly records PASS. Phase 1C-B remains NOT STARTED and blocked until that PASS plus a new actual `main` baseline.
+
+## 2026-09-05 Phase 1C-A v5 acceptance-evidence follow-up
+
+- Merge and perform a fresh human/ChatGPT Implementation Review of the stateful `ScheduleStore.initialize()` acceptance-evidence closure; do not self-award PASS from repository test results.
+- Execute fresh-v2, exact PR #200/#201 migration, rollback, and audit-projection acceptance against live SQL Server only when an explicitly authorized connection is supplied. Current live SQL status remains NOT EXECUTED.
+- Phase 1C-B remains blocked and NOT STARTED. The separately discussed Job Task Orchestration Boundary design/implementation also remains NOT STARTED and is not part of Phase 1C-A v5.
