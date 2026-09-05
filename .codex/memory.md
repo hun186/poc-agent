@@ -104,3 +104,11 @@
 - The architecture is unchanged: canonical schema v2, transactional recognized-v1 migration, 240-character task identity, same-schedule composites, transactional SQL outbox, and stable at-least-once JSONL projection.
 - This was documentation-only; no production or test code changed. Phase 1C-A remains **NOT PASS** pending v5 implementation and post-merge review. Phase 1C-B remains **NOT STARTED**.
 - Documentation verification passed: `git diff --check`, unresolved-placeholder scan, cross-document contract scan, and changed-file scope inspection. No runtime tests were run because this task changes no production/test code and makes no runtime completion claim.
+
+### 2026-09-05 Phase 1C-A v5 closure correction
+
+- Rebaselined the available checkout at `974be3555ca0bb4a4699cbe9b8758c08c02d2f04` (`work`, merge of PR #205); this checkout has no configured remotes, so hosted `main` could not be fetched independently. Source history contains PR #200/#201/#204 and the v5 documentation baseline.
+- Replaced the fake-only v1 classifier hook with parameterized SQL Server `sys.*` DB-API catalog reads, corrected source-derived widths, added complete descriptor matching, explicit fresh-v2 DDL, separate PR #200/#201 migration operations, complete repair guards, explicit `RunPolicy` coercion, and the exact v5 outbox/index contract.
+- Added action-specific payload allowlists and bounded best-effort startup/post-commit audit projection; pending delivery success/failure use CAS and lost races are neutral. Phase 1C-B remains NOT STARTED.
+- TDD evidence: the pre-change focused migration/audit run failed 1 test because the old classifier required `requirement_schedule_catalog`; after correction the focused closure matrix passed 10 tests. Phase 1C passed 43 tests with 2 warnings; cross-phase passed 182 tests with 3 warnings; full repository passed 501 tests with 10 warnings. Compile/static and scope evidence is recorded in the task handoff.
+- Live SQL Server acceptance was NOT EXECUTED because no explicitly authorized SQL Server connection was supplied; realistic DB-API scripted/recording tests are repository evidence, not deployment acceptance.

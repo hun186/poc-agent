@@ -60,15 +60,37 @@ def test_bootstrap_and_identifiers_are_fail_closed():
 def test_v1_classifier_accepts_only_exact_whole_catalogs():
     import requirement_scheduler.migrations as migrations
     class Cursor:
-        def __init__(self, evidence): self.evidence = evidence
-        def requirement_schedule_catalog(self, *_): return self.evidence
+        def __init__(self, evidence): self.evidence = evidence; self.rows = ()
+        def execute(self, sql, *params):
+            assert params == ("sra_schedule",)
+            if "SELECT t.name FROM" in sql:
+                self.rows = tuple((name,) for name in sorted(self.evidence["columns"]))
+            elif "SELECT t.name,c.name" in sql:
+                self.rows = tuple((table,c.name,c.sql_type,c.max_length,c.nullable,c.ordinal)
+                                  for table in sorted(self.evidence["columns"])
+                                  for c in self.evidence["columns"][table])
+            elif "sys.key_constraints" in sql:
+                self.rows = tuple((k.table,k.name,k.kind,column,ordinal)
+                                  for k in self.evidence["keys"]
+                                  for ordinal,column in enumerate(k.columns,1))
+            elif "sys.indexes" in sql:
+                self.rows = tuple((i.table,i.name,i.is_unique,True,i.filter_definition,column,ordinal)
+                                  for i in self.evidence["indexes"]
+                                  for ordinal,column in enumerate(i.columns,1))
+            else:
+                self.rows = tuple((fk.table,fk.name,column,fk.referenced_schema,fk.referenced_table,referenced,ordinal,0)
+                                  for fk in self.evidence["foreign_keys"]
+                                  for ordinal,(column,referenced) in enumerate(zip(fk.columns,fk.referenced_columns),1))
+            return self
+        def fetchall(self): return self.rows
     common_keys = tuple(k for k in REQUIRED_KEYS if k.name not in {
         "UQ_requirement_schedule_version_owner", "PK_requirement_schedule_audit_outbox"})
     for shape, names in (("pr200_v1", migrations._PR200_FK_NAMES),
                          ("pr201_v1", migrations._PR201_FK_NAMES)):
         evidence = {"columns": migrations._v1_columns(shape), "keys": common_keys,
-                    "indexes": REQUIRED_FILTERED_INDEXES[:2], "foreign_key_names": names}
+                    "indexes": REQUIRED_FILTERED_INDEXES[:2],
+                    "foreign_keys": tuple(fk for fk in migrations.v1_foreign_keys("sra_schedule", "sra_requirement") if fk.name in names)}
         assert classify_v1_catalog(Cursor(evidence), "sra_schedule", "sra_requirement") == shape
-        hybrid = dict(evidence, foreign_key_names=names | {"unexpected"})
+        hybrid = dict(evidence, foreign_keys=evidence["foreign_keys"] + (migrations.ForeignKey("unexpected", "requirement_schedules", ("active_version_id",), "sra_schedule", "requirement_schedule_versions", ("schedule_version_id",)),))
         with pytest.raises(RuntimeError, match="unsupported_requirement_schedule_schema"):
             classify_v1_catalog(Cursor(hybrid), "sra_schedule", "sra_requirement")

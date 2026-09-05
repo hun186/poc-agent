@@ -143,3 +143,8 @@
 - Production classification must query complete SQL Server catalog evidence through ordinary DB-API methods. Fresh v2 uses explicit canonical DDL; recognized v1 shapes have distinct transactional migration programs; marker authority is exactly one row and is written last/re-read.
 - The authoritative outbox retains `safe_payload_json`, non-null lifecycle `schedule_id`, reserved `batch_run_id`, and the non-unique `(delivered_at,created_at,audit_event_id)` pending index. Bounded startup and post-commit drains make projection live without a FastAPI scheduler thread.
 - These are corrective requirements, not runtime claims. Phase 1C-A remains NOT PASS pending implementation/review; Phase 1C-B remains NOT STARTED.
+
+## 2026-09-05 Phase 1C-A v5 closure implementation
+
+- Phase 1C schema classification now reads complete columns, keys, filtered indexes (including uniqueness), and FK bindings through parameterized SQL Server `sys.*` queries and ordinary DB-API methods. Fresh v2 DDL is explicit; exact PR #200/#201 shapes use separate transactional migration programs and complete canonical postvalidation.
+- Canonical audit outbox uses the v5 field/index contract. Scheduler initialization and committed lifecycle mutations trigger bounded best-effort projection to the existing JSONL sink, with no FastAPI scheduling thread; SQL outbox remains authoritative when projection fails.

@@ -8,10 +8,11 @@ from uuid import uuid4
 
 from .migrations import (
     SCHEMA_VERSION, bootstrap_schema_statements,
-    canonical_v2_statements, classify_v1_catalog, migration_1_to_2_statements,
+    canonical_catalog_matches, canonical_v2_statements, classify_v1_catalog, migration_1_to_2_statements,
+    read_catalog,
     validate_catalog_evidence, validate_schema_name, validation_queries,
 )
-from .models import MaterializedRun, RecurrenceSpec, ScheduleAuditEvent, ScheduleVersionCreate, TriggerIdentity
+from .models import MaterializedRun, RecurrenceSpec, RunPolicy, ScheduleAuditEvent, ScheduleVersionCreate, TriggerIdentity
 from .recurrence import next_occurrence
 from .recurrence import coalesce_latest
 from .policy import Checkpoint, evaluate_selection
@@ -39,9 +40,11 @@ def _is_scheduled_occurrence_conflict(exc: Exception) -> bool:
 
 class ScheduleStore:
     """SQL Server Phase 1C authority. No method writes Phase 1B tables."""
-    def __init__(self, registry, connection_ref: str, schema: str = "sra_schedule", requirement_schema: str = "sra_requirement"):
+    def __init__(self, registry, connection_ref: str, schema: str = "sra_schedule", requirement_schema: str = "sra_requirement", *, audit_sink=None, audit_drain_limit: int = 20):
         self.registry = registry; self.connection_ref = connection_ref
         self.schema = validate_schema_name(schema); self.requirement_schema = validate_schema_name(requirement_schema)
+        self.audit_sink = audit_sink
+        self.audit_drain_limit = max(1, min(int(audit_drain_limit), 100))
 
     @property
     def t(self): return f"[{self.schema}]"
@@ -51,7 +54,7 @@ class ScheduleStore:
         except Exception as exc: raise RuntimeError("persistence_error") from exc
 
     @staticmethod
-    def _audit_event(action: str, actor: str, schedule_id: str | None, *,
+    def _audit_event(action: str, actor: str, schedule_id: str, *,
                      schedule_version_id: str | None = None, payload: dict[str, Any] | None = None,
                      created_at: datetime | None = None) -> ScheduleAuditEvent:
         allowed = {
@@ -61,7 +64,19 @@ class ScheduleStore:
         }
         if action not in allowed or not actor or len(actor) > 128:
             raise ValueError("audit_event_invalid")
+        if not schedule_id:
+            raise ValueError("audit_event_invalid")
+        payload_keys = {
+            "requirement_schedule.created": {"requirement_set_id"},
+            "requirement_schedule.updated": {"field"},
+            "requirement_schedule.version_created": {"version_number"},
+            "requirement_schedule.version_approved": {"version_number"},
+            "requirement_schedule.enabled": set(),
+            "requirement_schedule.disabled": set(),
+        }
         body = payload or {}
+        if not isinstance(body, dict) or not set(body).issubset(payload_keys[action]):
+            raise ValueError("audit_payload_invalid")
         forbidden = ("password", "token", "secret", "connection", "sql", "prompt", "traceback", "path", "body")
         if any(any(term in str(key).lower() for term in forbidden) for key in body):
             raise ValueError("audit_payload_invalid")
@@ -74,10 +89,20 @@ class ScheduleStore:
     def _enqueue_audit_event(self, cursor, event: ScheduleAuditEvent) -> None:
         payload = json.dumps(event.payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         cursor.execute(
-            f"INSERT INTO {self.t}.[requirement_schedule_audit_outbox](audit_event_id,action,actor,schedule_id,schedule_version_id,payload_json,created_at,delivery_attempts) VALUES (?,?,?,?,?,?,?,0)",
+            f"INSERT INTO {self.t}.[requirement_schedule_audit_outbox](audit_event_id,action,actor,schedule_id,schedule_version_id,batch_run_id,safe_payload_json,created_at,delivery_attempt_count) VALUES (?,?,?,?,?,NULL,?,?,0)",
             event.audit_event_id, event.action, event.actor, event.schedule_id,
             event.schedule_version_id, payload, event.created_at,
         )
+
+    def _drain_best_effort(self) -> None:
+        if self.audit_sink is None:
+            return
+        try:
+            from .audit_delivery import drain_audit_outbox
+            drain_audit_outbox(self, self.audit_sink, limit=self.audit_drain_limit, now_utc=_now())
+        except Exception:
+            # The committed SQL outbox is authoritative; projection is retried later.
+            return
 
     @staticmethod
     def _rows(cursor) -> list[dict[str, Any]]:
@@ -88,9 +113,18 @@ class ScheduleStore:
         connection = self._connect()
         try:
             cursor = connection.cursor()
-            for sql in bootstrap_schema_statements(self.schema): cursor.execute(sql)
-            cursor.execute(f"SELECT version FROM {self.t}.[schema_version] WITH (UPDLOCK,HOLDLOCK)"); row = cursor.fetchone()
-            version = 0 if row is None else int(row[0])
+            cursor.execute("SELECT OBJECT_ID(?,N'U')", f"{self.schema}.schema_version")
+            object_row = cursor.fetchone()
+            marker_preexisted = object_row is not None and object_row[0] is not None
+            # pyodbc returns one row whose value is NULL when the object is absent.
+            # Scripted DB-API fakes may return no row; both spell a proven bootstrap.
+            if not marker_preexisted:
+                for sql in bootstrap_schema_statements(self.schema): cursor.execute(sql)
+            cursor.execute(f"SELECT version FROM {self.t}.[schema_version] WITH (UPDLOCK,HOLDLOCK)")
+            marker_rows = tuple(cursor.fetchall())
+            if len(marker_rows) > 1 or (not marker_rows and marker_preexisted):
+                raise RuntimeError("unsupported_requirement_schedule_schema")
+            version = 0 if not marker_rows else int(marker_rows[0][0])
             if version == 0:
                 for sql in canonical_v2_statements(self.schema, self.requirement_schema): cursor.execute(sql)
             elif version == 1:
@@ -106,23 +140,27 @@ class ScheduleStore:
                 cursor.execute(sql, *params); rows = tuple(cursor.fetchall())
                 valid = validate_catalog_evidence(self.schema, expected, rows)
                 if not valid: raise RuntimeError("unsupported_requirement_schedule_schema")
+            if not canonical_catalog_matches(
+                read_catalog(cursor, self.schema), self.schema, self.requirement_schema
+            ):
+                raise RuntimeError("unsupported_requirement_schedule_schema")
             if version == 0:
-                if row is None: cursor.execute(f"INSERT INTO {self.t}.[schema_version](version) VALUES (?)", SCHEMA_VERSION)
-                else: cursor.execute(f"UPDATE {self.t}.[schema_version] SET version=? WHERE version=0", SCHEMA_VERSION)
+                cursor.execute(f"INSERT INTO {self.t}.[schema_version](version) VALUES (?)", SCHEMA_VERSION)
             elif version == 1:
                 cursor.execute(f"UPDATE {self.t}.[schema_version] SET version=2 WHERE version=1")
                 if getattr(cursor, "rowcount", 1) != 1:
                     raise RuntimeError("unsupported_requirement_schedule_schema")
-                cursor.execute(f"SELECT version FROM {self.t}.[schema_version] WITH (UPDLOCK,HOLDLOCK)")
-                migrated = cursor.fetchone()
-                if migrated is None or int(migrated[0]) != SCHEMA_VERSION:
-                    raise RuntimeError("unsupported_requirement_schedule_schema")
+            cursor.execute(f"SELECT version FROM {self.t}.[schema_version] WITH (UPDLOCK,HOLDLOCK)")
+            final_markers = tuple(cursor.fetchall())
+            if final_markers != ((SCHEMA_VERSION,),):
+                raise RuntimeError("unsupported_requirement_schedule_schema")
             connection.commit()
         except Exception as exc:
             connection.rollback()
             if str(exc) == "unsupported_requirement_schedule_schema": raise
             raise _safe_error(exc) from exc
         finally: connection.close()
+        self._drain_best_effort()
 
     def _validate_legacy_configurations(self, cursor) -> None:
         cursor.execute(
@@ -147,11 +185,12 @@ class ScheduleStore:
         # All assertions execute before the first UPDATE, so unexpected history
         # cannot be partly rewritten even before transaction rollback.
         return (
-            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_runs] WHERE phase1a_source_sha256 IS NOT NULL OR phase1a_output_root_fingerprint IS NOT NULL OR handoff_started_at IS NOT NULL OR handed_off_at IS NOT NULL OR reconciled_at IS NOT NULL OR success_count<>0 OR failure_count<>0) THROW 51000,'unsupported_requirement_schedule_schema',1",
-            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_run_items] WHERE remote_job_id IS NOT NULL OR remote_job_state IS NOT NULL OR artifact_relative_path IS NOT NULL OR handoff_started_at IS NOT NULL OR dispatched_at IS NOT NULL OR remote_completed_at IS NOT NULL OR artifact_reconciled_at IS NOT NULL OR completed_at IS NOT NULL OR expired_before_handoff<>0 OR deadline_elapsed_during_execution<>0) THROW 51000,'unsupported_requirement_schedule_schema',1",
+            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_runs] WHERE phase1a_source_sha256 IS NOT NULL OR phase1a_output_root_fingerprint IS NOT NULL OR handoff_started_at IS NOT NULL OR handed_off_at IS NOT NULL OR reconciled_at IS NOT NULL OR completed_at IS NOT NULL OR deadline_elapsed_during_execution<>0 OR success_count<>0 OR failure_count<>0 OR state NOT IN ('materialized','handoff_pending','blocked_no_snapshot')) THROW 51000,'unsupported_requirement_schedule_schema',1",
+            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_run_items] WHERE remote_job_id IS NOT NULL OR remote_job_state IS NOT NULL OR artifact_relative_path IS NOT NULL OR handoff_started_at IS NOT NULL OR dispatched_at IS NOT NULL OR remote_completed_at IS NOT NULL OR artifact_reconciled_at IS NOT NULL OR completed_at IS NOT NULL OR expired_before_handoff<>0 OR deadline_elapsed_during_execution<>0 OR execution_state NOT IN ('handoff_pending','not_selected')) THROW 51000,'unsupported_requirement_schedule_schema',1",
+            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_schedule_item_state] WHERE last_successful_requirement_version_id IS NOT NULL OR last_successful_requirement_version_number IS NOT NULL OR last_successful_run_item_id IS NOT NULL OR last_successful_at IS NOT NULL) THROW 51000,'unsupported_requirement_schedule_schema',1",
             f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_runs] WHERE phase1a_batch_id<>N'phase1c-'+batch_run_id) THROW 51000,'unsupported_requirement_schedule_schema',1",
             f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_run_items] WHERE (selection_status='selected' AND phase1a_task_id<>requirement_id) OR (selection_status='skipped' AND phase1a_task_id IS NOT NULL) OR selection_status NOT IN ('selected','skipped')) THROW 51000,'unsupported_requirement_schedule_schema',1",
-            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_run_items] i LEFT JOIN {r}.[requirements] q ON q.requirement_id=i.requirement_id WHERE i.selection_status='selected' AND (q.requirement_id IS NULL OR LEN(q.external_item_id)>240)) THROW 51000,'unsupported_requirement_schedule_schema',1",
+            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_run_items] i LEFT JOIN {r}.[requirement_versions] v ON v.requirement_version_id=i.requirement_version_id AND v.requirement_id=i.requirement_id AND v.version_number=i.requirement_version_number LEFT JOIN {r}.[requirements] q ON q.requirement_id=i.requirement_id WHERE i.selection_status='selected' AND (v.requirement_version_id IS NULL OR q.requirement_id IS NULL OR q.external_item_id IS NULL OR LEN(q.external_item_id)>240 OR (SELECT COUNT(*) FROM {r}.[requirements] q2 WHERE q2.external_item_id=q.external_item_id)<>1)) THROW 51000,'unsupported_requirement_schedule_schema',1",
             f"UPDATE {s}.[requirement_batch_runs] SET phase1a_batch_id=N'reqrun-'+batch_run_id WHERE phase1a_batch_id=N'phase1c-'+batch_run_id",
             f"UPDATE i SET phase1a_task_id=q.external_item_id FROM {s}.[requirement_batch_run_items] i JOIN {r}.[requirements] q ON q.requirement_id=i.requirement_id WHERE i.selection_status='selected' AND i.phase1a_task_id=i.requirement_id",
         )
@@ -170,6 +209,7 @@ class ScheduleStore:
             connection.commit()
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
+        self._drain_best_effort()
         return {"schedule_id": sid, "name": name.strip(), "requirement_set_id": requirement_set_id, "enabled": False, "active_version_id": None, "next_run_at": None, "created_by": actor, "created_at": now, "updated_by": actor, "updated_at": now}
 
     def _query(self, sql: str, *params) -> list[dict[str, Any]]:
@@ -203,6 +243,7 @@ class ScheduleStore:
             connection.commit()
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
+        self._drain_best_effort()
         return self.get_schedule(schedule_id)
 
     @staticmethod
@@ -219,12 +260,12 @@ class ScheduleStore:
             document = json.loads(recurrence_json)
             recurrence_document = document["recurrence"] if "recurrence" in document else document
             config = ScheduleVersionCreate(timezone_name, RecurrenceSpec.validate(recurrence_document),
-                                           run_policy, model)
+                                           RunPolicy(run_policy), model)
             encoded, digest = cls.canonical_config(config)
             if config_sha256 is not None and (recurrence_json != encoded or config_sha256 != digest):
                 raise ValueError("recurrence_invalid")
             return config
-        except (KeyError, TypeError, json.JSONDecodeError):
+        except (KeyError, TypeError, json.JSONDecodeError, ValueError):
             raise ValueError("recurrence_invalid") from None
 
     def create_version(self, *, schedule_id: str, config: ScheduleVersionCreate, actor: str) -> dict[str, Any]:
@@ -240,6 +281,7 @@ class ScheduleStore:
             connection.commit()
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
+        self._drain_best_effort()
         return {"schedule_version_id": vid, "schedule_id": schedule_id, "version_number": number, "timezone": config.timezone, "recurrence": config.recurrence.as_dict(), "run_policy": config.run_policy.value, "model": config.model, "config_sha256": digest, "status": "draft", "created_by": actor, "created_at": now}
 
     def approve_version(self, *, schedule_id: str, version_number: int, actor: str, now_utc: datetime):
@@ -259,6 +301,7 @@ class ScheduleStore:
             c.execute(f"UPDATE {self.t}.[requirement_schedules] SET active_version_id=?,next_run_at=?,updated_by=?,updated_at=? WHERE schedule_id=?", vid, due, actor, now_utc, schedule_id)
             self._enqueue_audit_event(c, self._audit_event("requirement_schedule.version_approved", actor, schedule_id, schedule_version_id=vid, payload={"version_number": version_number}, created_at=now_utc))
             connection.commit()
+            self._drain_best_effort()
             return {"schedule_version_id": vid, "status": "approved", "version_number": version_number}
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
@@ -282,6 +325,7 @@ class ScheduleStore:
             action = "requirement_schedule.enabled" if enabled else "requirement_schedule.disabled"
             self._enqueue_audit_event(c, self._audit_event(action, actor, schedule_id, created_at=now_utc))
             connection.commit()
+            self._drain_best_effort()
             return {"schedule_id": schedule_id, "enabled": bool(enabled), "next_run_at": due}
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
@@ -289,20 +333,20 @@ class ScheduleStore:
     def list_pending_audit_events(self, limit: int) -> tuple[ScheduleAuditEvent, ...]:
         limit = max(1, min(int(limit), 100))
         rows = self._query(
-            f"SELECT TOP (?) audit_event_id,action,actor,schedule_id,schedule_version_id,payload_json,created_at FROM {self.t}.[requirement_schedule_audit_outbox] WHERE delivered_at IS NULL ORDER BY created_at,audit_event_id",
+            f"SELECT TOP (?) audit_event_id,action,actor,schedule_id,schedule_version_id,safe_payload_json,created_at FROM {self.t}.[requirement_schedule_audit_outbox] WHERE delivered_at IS NULL ORDER BY created_at,audit_event_id",
             limit,
         )
-        return tuple(ScheduleAuditEvent(row["audit_event_id"], row["action"], row["actor"], row["schedule_id"], row["schedule_version_id"], json.loads(row["payload_json"]), row["created_at"]) for row in rows)
+        return tuple(ScheduleAuditEvent(row["audit_event_id"], row["action"], row["actor"], row["schedule_id"], row["schedule_version_id"], json.loads(row["safe_payload_json"]), row["created_at"]) for row in rows)
 
     def mark_audit_delivered(self, event_id: str, at: datetime) -> bool:
         return self._update_audit_delivery(
-            f"UPDATE {self.t}.[requirement_schedule_audit_outbox] SET delivery_attempts=delivery_attempts+1,last_delivery_attempt_at=?,last_delivery_error_code=NULL,delivered_at=? WHERE audit_event_id=? AND delivered_at IS NULL",
+            f"UPDATE {self.t}.[requirement_schedule_audit_outbox] SET delivery_attempt_count=delivery_attempt_count+1,last_delivery_attempt_at=?,last_delivery_error_code=NULL,delivered_at=? WHERE audit_event_id=? AND delivered_at IS NULL",
             at, at, event_id,
         )
 
     def mark_audit_failed(self, event_id: str, at: datetime) -> bool:
         return self._update_audit_delivery(
-            f"UPDATE {self.t}.[requirement_schedule_audit_outbox] SET delivery_attempts=delivery_attempts+1,last_delivery_attempt_at=?,last_delivery_error_code='audit_sink_write_failed' WHERE audit_event_id=? AND delivered_at IS NULL",
+            f"UPDATE {self.t}.[requirement_schedule_audit_outbox] SET delivery_attempt_count=delivery_attempt_count+1,last_delivery_attempt_at=?,last_delivery_error_code='audit_sink_write_failed' WHERE audit_event_id=? AND delivered_at IS NULL",
             at, event_id,
         )
 

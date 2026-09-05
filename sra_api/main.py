@@ -51,8 +51,9 @@ async def lifespan(app: FastAPI):
         from data_ingestion.requirements.connections import SqlRegistry
         from requirement_scheduler.service import ScheduleService
         from requirement_scheduler.store import ScheduleStore
+        from sra_api.services.editor_audit import append_audit_event
         registry = SqlRegistry.load(os.getenv("REQUIREMENT_SQL_REGISTRY_FILE", "config/requirements/sql_registry.json"))
-        schedule_store = ScheduleStore(registry, os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"), os.getenv("REQUIREMENT_SCHEDULE_DB_SCHEMA", "sra_schedule"), os.getenv("REQUIREMENT_DB_SCHEMA", "sra_requirement"))
+        schedule_store = ScheduleStore(registry, os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"), os.getenv("REQUIREMENT_SCHEDULE_DB_SCHEMA", "sra_schedule"), os.getenv("REQUIREMENT_DB_SCHEMA", "sra_requirement"), audit_sink=append_audit_event)
         schedule_store.initialize()
         app.state.requirement_schedule_service = ScheduleService(schedule_store)
     store = ReportJobStore(os.getenv("REPORT_JOBS_DB_PATH", ".api_jobs/jobs.sqlite3"), int(os.getenv("REPORT_JOBS_SQLITE_BUSY_TIMEOUT_MS", "5000")))
