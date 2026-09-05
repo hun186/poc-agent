@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import datetime, timezone
 
 import pytest
@@ -8,6 +9,7 @@ from requirement_scheduler.migrations import (
     canonical_v2_statements, migration_1_to_2_statements,
     required_foreign_keys, validation_queries,
 )
+import requirement_scheduler.migrations as migrations
 from requirement_scheduler.models import RunPolicy, ScheduleAuditEvent
 from requirement_scheduler.store import ScheduleStore
 
@@ -186,3 +188,430 @@ def test_gate_b_implementation_remains_absent():
     sources = "\n".join(p.read_text() for p in pathlib.Path("requirement_scheduler").glob("*.py"))
     for forbidden in ("ReportJobWorker", "batch_scheduler.store", "elasticsearch", "manual_execute"):
         assert forbidden not in sources
+
+
+class IndexableRow:
+    """Small pyodbc.Row analogue: indexable, sized, and deliberately not a tuple."""
+
+    def __init__(self, *values):
+        self.values = values
+
+    def __getitem__(self, index):
+        return self.values[index]
+
+    def __len__(self):
+        return len(self.values)
+
+    def __iter__(self):
+        return iter(self.values)
+
+    def __eq__(self, other):
+        return self is other
+
+
+def _catalog(shape):
+    if shape == "v2":
+        return {
+            "columns": deepcopy(REQUIRED_COLUMNS),
+            "keys": tuple(REQUIRED_KEYS),
+            "indexes": tuple(REQUIRED_FILTERED_INDEXES),
+            "foreign_keys": required_foreign_keys("sra_schedule", "sra_requirement"),
+            "defaults": tuple(REQUIRED_DEFAULTS),
+            "checks": tuple(REQUIRED_CHECKS),
+        }
+    names = migrations._PR200_FK_NAMES if shape == "pr200_v1" else migrations._PR201_FK_NAMES
+    return {
+        "columns": migrations._v1_columns(shape),
+        "keys": tuple(k for k in REQUIRED_KEYS if k.name not in {
+            "UQ_requirement_schedule_version_owner", "PK_requirement_schedule_audit_outbox"
+        }),
+        "indexes": tuple(REQUIRED_FILTERED_INDEXES[:2]),
+        "foreign_keys": tuple(fk for fk in migrations.v1_foreign_keys(
+            "sra_schedule", "sra_requirement") if fk.name in names),
+        "defaults": (),
+        "checks": (),
+    }
+
+
+class StatefulDatabase:
+    """Transactional SQL Server model for the exact scheduler SQL surface.
+
+    It intentionally interprets only statements emitted by ScheduleStore.  Catalog
+    reads use normal execute/fetch methods, while DDL and UPDATE statements change
+    durable modeled state.  A rollback restores a deep transaction snapshot.
+    """
+
+    def __init__(self, shape="pr200_v1", *, marker_rows=None, marker_table=True,
+                 external_id="external-1", config_rows=(), fail_at=None,
+                 guard_token=None, final_marker_rows=None, catalog_mutator=None):
+        self.shape = shape
+        self.marker_table = marker_table
+        self.marker_rows = list(marker_rows if marker_rows is not None else
+                                ([] if not marker_table else [1 if shape != "v2" else 2]))
+        self.catalog = _catalog(shape) if marker_table else {
+            "columns": {}, "keys": (), "indexes": (), "foreign_keys": (),
+            "defaults": (), "checks": (),
+        }
+        self.width = 480 if shape == "v2" else 256
+        self.batch_identity = "reqrun-run-1" if shape == "v2" else "phase1c-run-1"
+        self.selected_identity = external_id if shape in {"v2", "pr201_v1"} else "req-1"
+        self.skipped_identity = None
+        self.external_id = external_id
+        self.config_rows = list(config_rows)
+        self.outbox_exists = shape == "v2"
+        self.sql = []
+        self.rowcount = 1
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = 0
+        self.fail_at = fail_at
+        self.guard_token = guard_token
+        self.final_marker_rows = final_marker_rows
+        self.catalog_mutator = catalog_mutator
+        self.mutations = []
+        self._rows = []
+        self._snapshot = self._state()
+
+    def _state(self):
+        return deepcopy((self.marker_table, self.marker_rows, self.catalog, self.width,
+                         self.batch_identity, self.selected_identity,
+                         self.skipped_identity, self.outbox_exists))
+
+    def cursor(self):
+        return self
+
+    def _catalog_rows(self, sql, params):
+        c = self.catalog
+        if "SELECT t.name FROM sys.tables" in sql:
+            return [(name,) for name in sorted(c["columns"])]
+        if (sql.startswith("SELECT t.name,c.name,ty.name")
+                or sql.startswith("SELECT c.name,ty.name")):
+            table = params[1] if len(params) == 2 else None
+            return [(name, col.name, col.sql_type, col.max_length, col.nullable, col.ordinal)
+                    for name in sorted(c["columns"]) if table is None or name == table
+                    for col in c["columns"][name]][:] if len(params) == 1 else [
+                        (col.name, col.sql_type, col.max_length, col.nullable, col.ordinal)
+                        for col in c["columns"].get(table, ())]
+        if "sys.key_constraints" in sql:
+            wanted = params[1] if len(params) == 2 else None
+            rows = [(k.table, k.name, k.kind, col, ordinal) for k in c["keys"]
+                    if wanted is None or k.name == wanted
+                    for ordinal, col in enumerate(k.columns, 1)]
+            return rows if len(params) == 1 else [
+                ("sra_schedule", table, name, kind, col, ordinal)
+                for table, name, kind, col, ordinal in rows]
+        if "sys.indexes" in sql:
+            wanted = params[1] if len(params) == 2 else None
+            rows = [(i.table, i.name, i.is_unique, True,
+                     " ( [" + i.filter_definition.replace("=", "] = [") + "] ) ", col, ordinal)
+                    for i in c["indexes"] if wanted is None or i.name == wanted
+                    for ordinal, col in enumerate(i.columns, 1)]
+            return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
+        if "sys.foreign_keys" in sql:
+            wanted = params[1] if len(params) == 2 else None
+            rows = [(fk.table, fk.name, col, fk.referenced_schema, fk.referenced_table,
+                     ref, ordinal, fk.delete_action, fk.update_action)
+                    for fk in c["foreign_keys"] if wanted is None or fk.name == wanted
+                    for ordinal, (col, ref) in enumerate(zip(fk.columns, fk.referenced_columns), 1)]
+            return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
+        if "sys.default_constraints" in sql:
+            wanted = params[1] if len(params) == 2 else None
+            rows = [(d.table, d.name, d.column, "((0))") for d in c["defaults"]
+                    if wanted is None or d.name == wanted]
+            return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
+        if "sys.check_constraints" in sql:
+            wanted = params[1] if len(params) == 2 else None
+            rows = [(item.table, item.name, "(([delivery_attempt_count] >= (0)))")
+                    for item in c["checks"] if wanted is None or item.name == wanted]
+            return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
+        return None
+
+    def execute(self, sql, *params):
+        self.sql.append((sql, params))
+        self._rows = []
+        self.rowcount = 1
+        if self.fail_at and self.fail_at(sql, len(self.sql)):
+            raise RuntimeError("injected migration failure")
+        if "OBJECT_ID" in sql:
+            self._rows = [(object(),)] if self.marker_table else [(None,)]
+            return self
+        if sql.startswith("IF SCHEMA_ID"):
+            return self
+        if sql.startswith("IF OBJECT_ID"):
+            self.marker_table = True
+            self.marker_rows = []
+            self.mutations.append("bootstrap")
+            return self
+        if sql.startswith("SELECT version"):
+            rows = self.marker_rows
+            if self.final_marker_rows is not None and any(
+                    text.startswith(("INSERT INTO [sra_schedule].[schema_version]",
+                                     "UPDATE [sra_schedule].[schema_version]")) for text, _ in self.sql):
+                rows = self.final_marker_rows
+            self._rows = [IndexableRow(*row) if isinstance(row, tuple) else IndexableRow(row)
+                          for row in rows]
+            return self
+        catalog_rows = self._catalog_rows(sql, params)
+        if catalog_rows is not None:
+            self._rows = catalog_rows
+            return self
+        if "SELECT v.timezone" in sql:
+            self._rows = self.config_rows
+            return self
+        if sql.startswith("IF EXISTS"):
+            if self.guard_token and self.guard_token in sql:
+                raise RuntimeError("unsupported_requirement_schedule_schema")
+            if "LEN(q.external_item_id)>240" in sql and len(self.external_id) > 240:
+                raise RuntimeError("unsupported_requirement_schedule_schema")
+            return self
+        if "ALTER COLUMN phase1a_task_id" in sql:
+            self.width = 480
+            self.mutations.append("widen")
+        elif sql.startswith("UPDATE [sra_schedule].[requirement_batch_runs]"):
+            self.batch_identity = "reqrun-run-1"
+            self.mutations.append("repair_batch")
+        elif sql.startswith("UPDATE i SET phase1a_task_id"):
+            self.selected_identity = self.external_id
+            self.mutations.append("repair_item")
+        elif sql.startswith("CREATE TABLE [sra_schedule].[requirement_schedules]"):
+            self.mutations.append("fresh_ddl")
+        elif sql.startswith("CREATE INDEX IX_requirement_schedule_audit_pending"):
+            self.catalog = _catalog("v2")
+            if self.catalog_mutator:
+                self.catalog_mutator(self.catalog)
+            self.outbox_exists = True
+            self.mutations.append("canonical_catalog")
+        elif sql.startswith("ALTER TABLE") or sql.startswith("CREATE TABLE"):
+            self.mutations.append(sql.split()[0].lower())
+        if sql.startswith("INSERT INTO [sra_schedule].[schema_version]"):
+            self.marker_rows = [2]
+            self.mutations.append("marker")
+        elif sql.startswith("UPDATE [sra_schedule].[schema_version]"):
+            self.marker_rows = [2] if self.marker_rows == [1] else self.marker_rows
+            self.rowcount = 1 if self.marker_rows == [2] else 0
+            self.mutations.append("marker")
+        return self
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return list(self._rows)
+
+    def commit(self):
+        self.commits += 1
+        self._snapshot = self._state()
+
+    def rollback(self):
+        self.rollbacks += 1
+        (self.marker_table, self.marker_rows, self.catalog, self.width,
+         self.batch_identity, self.selected_identity, self.skipped_identity,
+         self.outbox_exists) = deepcopy(self._snapshot)
+
+    def close(self):
+        self.closed += 1
+
+
+def _initialize(database, **kwargs):
+    return ScheduleStore(Registry(database), "db", **kwargs).initialize()
+
+
+def test_stateful_fresh_and_existing_v2_public_initialization_paths():
+    fresh = StatefulDatabase(marker_table=False)
+    _initialize(fresh)
+    assert fresh.marker_rows == [2] and fresh.catalog == _catalog("v2")
+    assert fresh.commits == 1 and fresh.rollbacks == 0
+    assert fresh.mutations[-1] == "marker"
+    assert fresh.sql[-1][0].startswith("SELECT version")
+    assert not any("ALTER COLUMN" in sql for sql, _ in fresh.sql)
+
+    existing = StatefulDatabase("v2")
+    before = existing._state()
+    _initialize(existing)
+    assert existing._state() == before
+    assert existing.mutations == [] and existing.commits == 1
+    assert sum("sys.columns" in sql for sql, _ in existing.sql) >= len(REQUIRED_COLUMNS) + 1
+
+
+@pytest.mark.parametrize("shape", ["pr200_v1", "pr201_v1"])
+def test_stateful_exact_v1_catalogs_migrate_through_public_initialize(shape):
+    external_id = "外" * 200
+    database = StatefulDatabase(shape, external_id=external_id)
+    original_identity = database.selected_identity
+    _initialize(database)
+    assert database.marker_rows == [2] and database.catalog == _catalog("v2")
+    assert database.width == 480 and database.commits == 1 and database.rollbacks == 0
+    assert database.mutations[-1] == "marker"
+    widen = database.mutations.index("widen")
+    if shape == "pr200_v1":
+        assert database.batch_identity == "reqrun-run-1"
+        assert database.selected_identity == external_id and database.skipped_identity is None
+        assert widen < database.mutations.index("repair_item")
+        assert "repair_batch" in database.mutations
+    else:
+        assert database.selected_identity == original_identity
+        assert "repair_batch" not in database.mutations and "repair_item" not in database.mutations
+        statements = "\n".join(sql for sql, _ in database.sql)
+        assert "DROP CONSTRAINT FK_schedule_active_version" in statements
+        assert "DROP CONSTRAINT FK_run_schedule_version" in statements
+
+
+def test_pr200_rejects_oversized_external_identity_before_any_mutation():
+    database = StatefulDatabase("pr200_v1", external_id="x" * 241)
+    before = database._state()
+    with pytest.raises(RuntimeError, match="unsupported_requirement_schedule_schema"):
+        _initialize(database)
+    assert database._state() == before and database.marker_rows == [1]
+    assert "repair_batch" not in database.mutations and "repair_item" not in database.mutations
+
+
+@pytest.mark.parametrize("guard_token", [
+    "phase1a_source_sha256", "handoff_started_at", "deadline_elapsed_during_execution<>0",
+    "success_count<>0", "remote_job_id", "remote_job_state", "artifact_relative_path",
+    "dispatched_at", "remote_completed_at", "expired_before_handoff<>0",
+    "last_successful_requirement_version_id", "phase1a_batch_id<>",
+    "selection_status='selected'", "selection_status NOT IN", "v.requirement_version_id IS NULL",
+])
+def test_pr200_gate_b_guard_matrix_fails_closed_and_restores_state(guard_token):
+    database = StatefulDatabase("pr200_v1", guard_token=guard_token)
+    before = database._state()
+    with pytest.raises(RuntimeError, match="unsupported_requirement_schedule_schema"):
+        _initialize(database)
+    assert database._state() == before and database.marker_rows == [1]
+    assert "repair_batch" not in database.mutations and "repair_item" not in database.mutations
+
+
+def _config_row(*, timezone_name="UTC", recurrence='{"kind":"daily","local_time":"01:00:00"}',
+                policy="all_active", model="model", digest="a" * 64, status="approved",
+                enabled=False, active=False):
+    version_id = "sv-1"
+    return (timezone_name, recurrence, policy, model, digest, status, enabled,
+            version_id if active else None, version_id, "approver" if status == "approved" else None,
+            datetime.now(timezone.utc) if status == "approved" else None)
+
+
+@pytest.mark.parametrize("change", [
+    {"timezone_name": "Not/AZone"}, {"recurrence": "{}"}, {"policy": "unsafe"},
+    {"model": ""}, {"digest": "bad"},
+])
+@pytest.mark.parametrize("authority", ["approved", "active"])
+def test_recognized_v1_invalid_authoritative_config_fails_closed(change, authority):
+    base = {"status": "approved"} if authority == "approved" else {
+        "status": "draft", "enabled": True, "active": True
+    }
+    database = StatefulDatabase("pr201_v1", config_rows=[_config_row(**base, **change)])
+    before = database._state()
+    with pytest.raises(RuntimeError, match="unsupported_requirement_schedule_schema"):
+        _initialize(database)
+    assert database._state() == before and database.mutations == []
+
+
+def test_invalid_disabled_unapproved_history_is_not_broadened_into_migration_blocker():
+    database = StatefulDatabase("pr201_v1", config_rows=[_config_row(
+        status="draft", timezone_name="Not/AZone", policy="unsafe")])
+    _initialize(database)
+    assert database.marker_rows == [2]
+
+
+@pytest.mark.parametrize("marker_rows", [[], [1, 1], [(1, "extra")], ["not-a-number"], [3], [-1]])
+def test_preexisting_marker_authority_rejects_unsupported_evidence(marker_rows):
+    database = StatefulDatabase("pr200_v1", marker_rows=marker_rows)
+    before = database._state()
+    with pytest.raises(RuntimeError, match="unsupported_requirement_schedule_schema"):
+        _initialize(database)
+    assert database._state() == before and database.commits == 0
+
+
+@pytest.mark.parametrize("final_rows", [[], [2, 2], [(2, "extra")], [1], [3]])
+def test_final_marker_reread_mismatch_rolls_back_complete_migration(final_rows):
+    database = StatefulDatabase("pr200_v1", final_marker_rows=final_rows)
+    before = database._state()
+    with pytest.raises(RuntimeError, match="unsupported_requirement_schedule_schema"):
+        _initialize(database)
+    assert database._state() == before
+
+
+def _nth_match(fragment, occurrence=1):
+    seen = 0
+    def predicate(sql, _):
+        nonlocal seen
+        if fragment in sql:
+            seen += 1
+            return seen == occurrence
+        return False
+    return predicate
+
+
+@pytest.mark.parametrize("failure", [
+    _nth_match("SELECT v.timezone"),
+    _nth_match("ALTER COLUMN phase1a_task_id"),
+    _nth_match("UPDATE i SET phase1a_task_id"),
+    _nth_match("ADD CONSTRAINT FK_run_schedule"),
+    _nth_match("CREATE TABLE [sra_schedule].[requirement_schedule_audit_outbox]"),
+    _nth_match("sys.columns", 3),
+    _nth_match("UPDATE [sra_schedule].[schema_version]"),
+    _nth_match("SELECT version", 2),
+])
+def test_migration_failure_boundaries_restore_data_catalog_and_marker(failure):
+    database = StatefulDatabase("pr200_v1", external_id="z" * 200, fail_at=failure)
+    before = database._state()
+    with pytest.raises(RuntimeError):
+        _initialize(database)
+    assert database.rollbacks == 1 and database.commits == 0
+    assert database._state() == before
+    assert database.marker_rows == [1] and database.width == 256
+    assert database.selected_identity == "req-1" and not database.outbox_exists
+
+
+@pytest.mark.parametrize("drift_kind", ["missing_fk", "unique_pending_index"])
+def test_catalog_postvalidation_rejects_structural_drift_and_rolls_back(drift_kind):
+    def drift(catalog):
+        if drift_kind == "missing_fk":
+            catalog["foreign_keys"] = catalog["foreign_keys"][:-1]
+        else:
+            pending = catalog["indexes"][-1]
+            catalog["indexes"] = catalog["indexes"][:-1] + (migrations.replace(pending, is_unique=True),)
+    database = StatefulDatabase("pr201_v1", catalog_mutator=drift)
+    before = database._state()
+    with pytest.raises(RuntimeError, match="unsupported_requirement_schedule_schema"):
+        _initialize(database)
+    assert database._state() == before
+
+
+def test_initialize_invokes_bounded_startup_projector_without_owning_success():
+    database = StatefulDatabase("v2")
+    calls = []
+    store = ScheduleStore(Registry(database), "db", audit_sink=lambda event: calls.append(event), audit_drain_limit=7)
+    store.list_pending_audit_events = lambda limit: calls.append(("limit", limit)) or ()
+    store.initialize()
+    assert calls == [("limit", 7)] and database.commits == 1
+
+    failing = StatefulDatabase("v2")
+    store = ScheduleStore(Registry(failing), "db", audit_sink=lambda _: (_ for _ in ()).throw(OSError()))
+    store.list_pending_audit_events = lambda limit: (_ for _ in ()).throw(OSError("sink unavailable"))
+    store.initialize()
+    assert failing.commits == 1
+
+
+def test_audit_allowlist_matrix_rejects_every_extra_key():
+    allowed = {
+        "requirement_schedule.created": {"requirement_set_id": "r"},
+        "requirement_schedule.updated": {"field": "name"},
+        "requirement_schedule.version_created": {"version_number": 1},
+        "requirement_schedule.version_approved": {"version_number": 1},
+        "requirement_schedule.enabled": {},
+        "requirement_schedule.disabled": {},
+    }
+    for action, payload in allowed.items():
+        assert ScheduleStore._audit_event(action, "actor", "s", payload=payload).payload == payload
+        for unsafe in ("password", "credential", "sql", "config", "runtime_state", "path"):
+            with pytest.raises(ValueError, match="audit_payload_invalid"):
+                ScheduleStore._audit_event(action, "actor", "s", payload={**payload, unsafe: "value"})
+
+
+def test_phase1ca_source_has_no_orchestration_or_execution_boundary_coupling():
+    import pathlib
+    sources = "\n".join(p.read_text().lower() for p in pathlib.Path("requirement_scheduler").glob("*.py"))
+    forbidden = ("langgraph", "smolagents", "workflow_registry", "orchestration adapter",
+                 "reportjobworker", "elasticsearch", "backgroundtasks", "threading")
+    assert not [term for term in forbidden if term in sources]
