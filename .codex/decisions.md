@@ -149,3 +149,8 @@
 - Widen `phase1a_task_id` to nullable `NVARCHAR(240)` without transforming history. Enforce active-version and Run-version ownership using ordered composite `(schedule_id,schedule_version_id)` UQ/FKs with no cascades.
 - Successful lifecycle audit authority is a same-transaction SQL outbox. Existing `append_audit_event()` JSONL remains an at-least-once projection with stable event identity; direct audit remains correct for authorization denial without SQL mutation. This avoids distributed transactions and makes no exactly-once filesystem claim.
 - These are pending closure decisions, not current runtime claims. Gate B cannot start before the closure merge and explicit post-merge review PASS.
+
+## 2026-09-05 Phase 1C recognized-v1 compatibility decision v4
+
+- Preserve schema-v2, same-schedule constraints, SQL outbox, and at-least-once JSONL architecture. Replace v3's blanket byte-preservation rule only for the exact PR #200 catalog and exact known-bad placeholder values, guarded by a fail-closed proof that no Gate B evidence exists; this is a one-time migration exception, not general identity mutability.
+- Treat outbox `created_at` as lifecycle event time and require pending-row CAS for both delivery success and failure metadata. Invalid active/approved legacy schedule configuration blocks migration; invalid historical draft/retired configuration can never pass later persisted-row approval validation.

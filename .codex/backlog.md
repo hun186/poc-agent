@@ -63,3 +63,8 @@
 
 - Implement Design/Plan v3 C1–C8: canonical schema v2; direct fresh-v2 initialization; recognized PR #200/#201 v1 migration; 240-character exact task identity; same-schedule composite constraints; transactional lifecycle audit outbox; bounded at-least-once JSONL projection; and failure/security/regression evidence.
 - Phase 1C-A current implementation exists but repository gate is NOT PASS pending the v3 closure PR and explicit post-merge Implementation Review. Phase 1C-B is NOT STARTED and remains prohibited until that PASS and a new actual `main` baseline are recorded.
+
+## 2026-09-05 Phase 1C-A v4 closure
+
+- Implement Design/Plan v4 C1–C8 only: exact PR #200/#201 catalog descriptors, guarded PR #200 identity repair, legacy configuration validation, ordered transactional schema-v2 migration, original outbox event-time projection, and monotonic pending-row delivery CAS.
+- Phase 1C-A repository gate remains NOT PASS and its v4 closure implementation is NOT STARTED. Phase 1C-B is NOT STARTED and remains blocked until closure merge, explicit post-merge Implementation Review PASS, and a new actual `main` baseline.
