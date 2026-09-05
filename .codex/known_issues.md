@@ -136,3 +136,7 @@
 
 - Live SQL Server acceptance was NOT EXECUTED because no explicitly authorized connection details were supplied. Repository DB-API simulations, including non-tuple indexable rows and decorated SQL Server catalog expressions, were used instead and are not represented as live acceptance.
 - `pip --upgrade` retried against the environment package-index proxy and received HTTP 403, but the required packages were already installed and `pip install -r requirements.txt` completed from the environment.
+
+## 2026-09-05 Phase 1C-B planning hosted refresh limitation
+
+- A GitHub `origin` was configured and `git fetch origin main` was attempted before planning, but the environment proxy returned `CONNECT tunnel failed, response 403`. The local starting commit exactly matched requested PR #210 merge `d1fc213633dc9dc83c1e32e010d9aca59a0dd909`, but a newer hosted `main` could not be independently excluded. The implementation gate must fetch/rebaseline from a network-enabled environment before executing Task 1; documentation/source checks used the exact local snapshot instead.

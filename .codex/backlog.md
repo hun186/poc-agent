@@ -87,3 +87,7 @@
 ## 2026-09-05 Future Job Task orchestration boundary
 
 - Preserve and review the non-authoritative future architecture discussion in `docs/superpowers/notes/2026-09-05-job-task-orchestration-boundary-discussion-notes.md`; reconcile it against actual `main` before authoring `Job Task Orchestration Boundary Design v1`, then obtain human approval and replace/revise the Gate-B Plan and execution prompt. Do not execute the existing Phase 1C-B Prompt directly. Implementation NOT STARTED; Phase 1C-B NOT STARTED.
+
+## 2026-09-05 Phase 1C-B Plan v1 review gate
+
+- Review `docs/superpowers/plans/2026-09-05-phase1c-b-requirement-execution-bridge-plan-v1.md` against Job Task Orchestration Boundary Design v1 before issuing a new execution prompt. Phase 1C-B implementation, JT-1, and LangGraph remain NOT STARTED; the old Gate-B prompt remains stale and MUST NOT RUN.
