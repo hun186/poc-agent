@@ -165,3 +165,8 @@
 - Preserve schema v2, same-schedule ownership, transactional outbox, stable event identity/time, pending CAS, and two-gate decisions; v5 is a correction, not a redesign.
 - Treat actual PR #200/#201 DDL as physical authority: vocabulary/state widths are equal. Use complete real SQL Server catalog queries, explicit canonical-v2 DDL, and separate migrations rather than fake-only cursor hooks or broad text replacement.
 - Keep the exact reviewed outbox contract and positive per-action payload allowlists. Make bounded post-commit and startup projection part of production Gate A wiring while allowing at-least-once duplicate JSONL appends.
+
+## 2026-09-05 Phase 1C-A v5 source-faithful closure
+
+- Treat complete SQL Server catalog evidence, not marker values or constraint names alone, as migration authority. Preserve PR #200/#201 vocabulary widths and widen only `phase1a_task_id`; use explicit fresh-v2 DDL and shape-specific migration sequences.
+- Keep the SQL outbox authoritative and projection bounded/best-effort. A zero-row pending CAS is a benign projector race and must not be counted as the current attempt's success or failure.

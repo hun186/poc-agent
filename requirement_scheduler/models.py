@@ -110,7 +110,7 @@ class ScheduleAuditEvent:
     audit_event_id: str
     action: str
     actor: str
-    schedule_id: str | None
+    schedule_id: str
     schedule_version_id: str | None
     payload: dict[str, Any]
     created_at: datetime

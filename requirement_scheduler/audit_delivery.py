@@ -44,9 +44,9 @@ def drain_audit_outbox(store, sink: Callable[[dict], None], *, limit: int,
         try:
             sink(projection_record(event))
         except Exception:
-            store.mark_audit_failed(event.audit_event_id, now_utc)
-            failed += 1
+            if store.mark_audit_failed(event.audit_event_id, now_utc):
+                failed += 1
         else:
-            store.mark_audit_delivered(event.audit_event_id, now_utc)
-            delivered += 1
+            if store.mark_audit_delivered(event.audit_event_id, now_utc):
+                delivered += 1
     return AuditDrainResult(len(events), delivered, failed)

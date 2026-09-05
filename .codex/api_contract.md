@@ -139,3 +139,7 @@ Authenticated endpoints: `GET/POST /v1/requirement-schedules`, `GET/PATCH /v1/re
 - Existing schedule endpoint request/response shapes remain unchanged. Design v3 changes successful lifecycle audit authority from route-level filesystem append to a same-transaction SQL outbox; JSONL becomes an at-least-once projection with stable `audit_event_id`.
 - Authorization denials still use existing `authorize_role()` direct audit because they have no Phase 1C SQL mutation. Outbox payload and delivery errors are not added to public responses.
 - Phase 1C-A's current repository gate is NOT PASS pending v3 closure. No manual trigger, execution, reconciliation, or Word-history API is authorized; Phase 1C-B is NOT STARTED.
+
+## 2026-09-05 Phase 1C-A v5 lifecycle projection behavior
+
+- Successful Requirement Schedule lifecycle responses remain successful after their SQL mutation/outbox transaction commits even if best-effort JSONL projection fails. Authorization denials remain on the direct audit path. This changes no route or response shape.

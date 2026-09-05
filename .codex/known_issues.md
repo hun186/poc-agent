@@ -125,3 +125,9 @@
 ## 2026-09-05 Phase 1C-A v4 live acceptance
 
 - Live SQL Server migration/audit acceptance was NOT EXECUTED because this environment was not supplied an explicitly authorized SQL Server connection. Repository catalog/transaction/projector tests and compile/static checks are the substitute evidence; operator acceptance must still exercise both recognized v1 catalogs and projection retry against SQL Server.
+
+## 2026-09-05 Phase 1C-A v5 verification limitations
+
+- No Git remote is configured in this checkout, so `git fetch --all --prune` had nothing to fetch and hosted `main` ancestry could not be independently compared; local HEAD is merge `974be3555ca0bb4a4699cbe9b8758c08c02d2f04` containing PR #205.
+- `pip --upgrade` encountered the environment's package-index proxy HTTP 403 retries, but all requirements were already installed and repository verification ran successfully.
+- Live SQL Server fresh-v2/migration/rollback/projection acceptance remains NOT EXECUTED without an explicitly authorized connection. The comprehensive scripted DB-API suite is the documented alternative repository validation.
