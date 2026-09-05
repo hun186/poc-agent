@@ -121,3 +121,7 @@
 
 - Design v3 resolves the authority decision on paper by selecting a transactional Phase 1C SQL outbox and at-least-once JSONL projection, plus canonical schema v2 migration and task-ID widening. The current runtime still has schema version 1, `phase1a_task_id NVARCHAR(128)`, and post-commit direct success audit, so the repository gate remains NOT PASS until the v3 closure is implemented, merged, and reviewed.
 - Phase 1C-B remains blocked and NOT STARTED. Live Phase 1B/1C SQL Server acceptance remains NOT EXECUTED without explicitly authorized access.
+
+## 2026-09-05 Phase 1C-A v4 live acceptance
+
+- Live SQL Server migration/audit acceptance was NOT EXECUTED because this environment was not supplied an explicitly authorized SQL Server connection. Repository catalog/transaction/projector tests and compile/static checks are the substitute evidence; operator acceptance must still exercise both recognized v1 catalogs and projection retry against SQL Server.

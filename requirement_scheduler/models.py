@@ -103,3 +103,14 @@ class TriggerIdentity:
 class MaterializedRun:
     run: dict[str, Any]
     items: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class ScheduleAuditEvent:
+    audit_event_id: str
+    action: str
+    actor: str
+    schedule_id: str | None
+    schedule_version_id: str | None
+    payload: dict[str, Any]
+    created_at: datetime

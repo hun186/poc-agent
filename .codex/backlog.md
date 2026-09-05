@@ -68,3 +68,7 @@
 
 - Implement Design/Plan v4 C1–C8 only: exact PR #200/#201 catalog descriptors, guarded PR #200 identity repair, legacy configuration validation, ordered transactional schema-v2 migration, original outbox event-time projection, and monotonic pending-row delivery CAS.
 - Phase 1C-A repository gate remains NOT PASS and its v4 closure implementation is NOT STARTED. Phase 1C-B is NOT STARTED and remains blocked until closure merge, explicit post-merge Implementation Review PASS, and a new actual `main` baseline.
+
+## 2026-09-05 Phase 1C-A v4 post-merge follow-up
+
+- Run explicitly authorized live SQL Server acceptance for fresh v2, both reviewed v1 migrations, rollback injection, and delayed/duplicate audit projection. Phase 1C-B remains NOT STARTED until the closure is merged and a human/ChatGPT post-merge Implementation Review records PASS.

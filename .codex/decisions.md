@@ -154,3 +154,8 @@
 
 - Preserve schema-v2, same-schedule constraints, SQL outbox, and at-least-once JSONL architecture. Replace v3's blanket byte-preservation rule only for the exact PR #200 catalog and exact known-bad placeholder values, guarded by a fail-closed proof that no Gate B evidence exists; this is a one-time migration exception, not general identity mutability.
 - Treat outbox `created_at` as lifecycle event time and require pending-row CAS for both delivery success and failure metadata. Invalid active/approved legacy schedule configuration blocks migration; invalid historical draft/retired configuration can never pass later persisted-row approval validation.
+
+## 2026-09-05 Phase 1C-A v4 closure implementation decision
+
+- Use SQL outbox insertion as successful schedule-lifecycle audit authority and retain the Editor JSONL audit only as an at-least-once projection. Preserve event identity and outbox creation time across retries; do not represent SQL and filesystem as atomic or JSONL as exactly once.
+- Restrict v1 persisted-identity mutation to an exactly classified PR #200 catalog after Gate-B absence assertions. PR #201 and canonical-v2 identities remain immutable.

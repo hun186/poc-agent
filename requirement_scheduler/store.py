@@ -8,9 +8,10 @@ from uuid import uuid4
 
 from .migrations import (
     SCHEMA_VERSION, bootstrap_schema_statements,
-    migration_0_to_1_statements, validate_catalog_evidence, validate_schema_name, validation_queries,
+    canonical_v2_statements, classify_v1_catalog, migration_1_to_2_statements,
+    validate_catalog_evidence, validate_schema_name, validation_queries,
 )
-from .models import MaterializedRun, RecurrenceSpec, ScheduleVersionCreate, TriggerIdentity
+from .models import MaterializedRun, RecurrenceSpec, ScheduleAuditEvent, ScheduleVersionCreate, TriggerIdentity
 from .recurrence import next_occurrence
 from .recurrence import coalesce_latest
 from .policy import Checkpoint, evaluate_selection
@@ -50,6 +51,35 @@ class ScheduleStore:
         except Exception as exc: raise RuntimeError("persistence_error") from exc
 
     @staticmethod
+    def _audit_event(action: str, actor: str, schedule_id: str | None, *,
+                     schedule_version_id: str | None = None, payload: dict[str, Any] | None = None,
+                     created_at: datetime | None = None) -> ScheduleAuditEvent:
+        allowed = {
+            "requirement_schedule.created", "requirement_schedule.updated",
+            "requirement_schedule.version_created", "requirement_schedule.version_approved",
+            "requirement_schedule.enabled", "requirement_schedule.disabled",
+        }
+        if action not in allowed or not actor or len(actor) > 128:
+            raise ValueError("audit_event_invalid")
+        body = payload or {}
+        forbidden = ("password", "token", "secret", "connection", "sql", "prompt", "traceback", "path", "body")
+        if any(any(term in str(key).lower() for term in forbidden) for key in body):
+            raise ValueError("audit_payload_invalid")
+        encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        if len(encoded) > 2000:
+            raise ValueError("audit_payload_invalid")
+        return ScheduleAuditEvent(_id("aud"), action, actor, schedule_id, schedule_version_id,
+                                  body, created_at or _now())
+
+    def _enqueue_audit_event(self, cursor, event: ScheduleAuditEvent) -> None:
+        payload = json.dumps(event.payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        cursor.execute(
+            f"INSERT INTO {self.t}.[requirement_schedule_audit_outbox](audit_event_id,action,actor,schedule_id,schedule_version_id,payload_json,created_at,delivery_attempts) VALUES (?,?,?,?,?,?,?,0)",
+            event.audit_event_id, event.action, event.actor, event.schedule_id,
+            event.schedule_version_id, payload, event.created_at,
+        )
+
+    @staticmethod
     def _rows(cursor) -> list[dict[str, Any]]:
         names = [item[0] for item in cursor.description]
         return [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
@@ -59,24 +89,72 @@ class ScheduleStore:
         try:
             cursor = connection.cursor()
             for sql in bootstrap_schema_statements(self.schema): cursor.execute(sql)
-            cursor.execute(f"SELECT version FROM {self.t}.[schema_version]"); row = cursor.fetchone()
+            cursor.execute(f"SELECT version FROM {self.t}.[schema_version] WITH (UPDLOCK,HOLDLOCK)"); row = cursor.fetchone()
             version = 0 if row is None else int(row[0])
             if version == 0:
-                for sql in migration_0_to_1_statements(self.schema, self.requirement_schema): cursor.execute(sql)
-            elif version != SCHEMA_VERSION: raise RuntimeError("unsupported schedule schema version")
+                for sql in canonical_v2_statements(self.schema, self.requirement_schema): cursor.execute(sql)
+            elif version == 1:
+                shape = classify_v1_catalog(cursor, self.schema, self.requirement_schema)
+                self._validate_legacy_configurations(cursor)
+                if shape == "pr200_v1":
+                    for sql in self._pr200_identity_repair_statements():
+                        cursor.execute(sql)
+                for sql in migration_1_to_2_statements(self.schema, shape):
+                    cursor.execute(sql)
+            elif version != SCHEMA_VERSION: raise RuntimeError("unsupported_requirement_schedule_schema")
             for name, sql, params, expected in validation_queries(self.schema, self.requirement_schema):
                 cursor.execute(sql, *params); rows = tuple(cursor.fetchall())
                 valid = validate_catalog_evidence(self.schema, expected, rows)
-                if not valid: raise RuntimeError("malformed schedule schema version 1")
+                if not valid: raise RuntimeError("unsupported_requirement_schedule_schema")
             if version == 0:
                 if row is None: cursor.execute(f"INSERT INTO {self.t}.[schema_version](version) VALUES (?)", SCHEMA_VERSION)
                 else: cursor.execute(f"UPDATE {self.t}.[schema_version] SET version=? WHERE version=0", SCHEMA_VERSION)
+            elif version == 1:
+                cursor.execute(f"UPDATE {self.t}.[schema_version] SET version=2 WHERE version=1")
+                if getattr(cursor, "rowcount", 1) != 1:
+                    raise RuntimeError("unsupported_requirement_schedule_schema")
+                cursor.execute(f"SELECT version FROM {self.t}.[schema_version] WITH (UPDLOCK,HOLDLOCK)")
+                migrated = cursor.fetchone()
+                if migrated is None or int(migrated[0]) != SCHEMA_VERSION:
+                    raise RuntimeError("unsupported_requirement_schedule_schema")
             connection.commit()
         except Exception as exc:
             connection.rollback()
-            if str(exc) in {"unsupported schedule schema version", "malformed schedule schema version 1"}: raise
+            if str(exc) == "unsupported_requirement_schedule_schema": raise
             raise _safe_error(exc) from exc
         finally: connection.close()
+
+    def _validate_legacy_configurations(self, cursor) -> None:
+        cursor.execute(
+            f"SELECT v.timezone,v.recurrence_json,v.run_policy,v.model,v.config_sha256,v.status,"
+            f"s.enabled,s.active_version_id,v.schedule_version_id,v.approved_by,v.approved_at "
+            f"FROM {self.t}.[requirement_schedule_versions] v LEFT JOIN {self.t}.[requirement_schedules] s "
+            f"ON s.schedule_id=v.schedule_id"
+        )
+        for row in cursor.fetchall():
+            timezone_name, recurrence_json, policy, model, digest, status, enabled, active_id, vid, approved_by, approved_at = row
+            must_validate = status == "approved" or (bool(enabled) and active_id == vid)
+            if status == "approved" and (approved_by is None or approved_at is None):
+                raise RuntimeError("unsupported_requirement_schedule_schema")
+            if must_validate:
+                try:
+                    self._validate_persisted_config(timezone_name, recurrence_json, policy, model, digest)
+                except ValueError as exc:
+                    raise RuntimeError("unsupported_requirement_schedule_schema") from exc
+
+    def _pr200_identity_repair_statements(self) -> tuple[str, ...]:
+        s, r = self.t, f"[{self.requirement_schema}]"
+        # All assertions execute before the first UPDATE, so unexpected history
+        # cannot be partly rewritten even before transaction rollback.
+        return (
+            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_runs] WHERE phase1a_source_sha256 IS NOT NULL OR phase1a_output_root_fingerprint IS NOT NULL OR handoff_started_at IS NOT NULL OR handed_off_at IS NOT NULL OR reconciled_at IS NOT NULL OR success_count<>0 OR failure_count<>0) THROW 51000,'unsupported_requirement_schedule_schema',1",
+            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_run_items] WHERE remote_job_id IS NOT NULL OR remote_job_state IS NOT NULL OR artifact_relative_path IS NOT NULL OR handoff_started_at IS NOT NULL OR dispatched_at IS NOT NULL OR remote_completed_at IS NOT NULL OR artifact_reconciled_at IS NOT NULL OR completed_at IS NOT NULL OR expired_before_handoff<>0 OR deadline_elapsed_during_execution<>0) THROW 51000,'unsupported_requirement_schedule_schema',1",
+            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_runs] WHERE phase1a_batch_id<>N'phase1c-'+batch_run_id) THROW 51000,'unsupported_requirement_schedule_schema',1",
+            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_run_items] WHERE (selection_status='selected' AND phase1a_task_id<>requirement_id) OR (selection_status='skipped' AND phase1a_task_id IS NOT NULL) OR selection_status NOT IN ('selected','skipped')) THROW 51000,'unsupported_requirement_schedule_schema',1",
+            f"IF EXISTS(SELECT 1 FROM {s}.[requirement_batch_run_items] i LEFT JOIN {r}.[requirements] q ON q.requirement_id=i.requirement_id WHERE i.selection_status='selected' AND (q.requirement_id IS NULL OR LEN(q.external_item_id)>240)) THROW 51000,'unsupported_requirement_schedule_schema',1",
+            f"UPDATE {s}.[requirement_batch_runs] SET phase1a_batch_id=N'reqrun-'+batch_run_id WHERE phase1a_batch_id=N'phase1c-'+batch_run_id",
+            f"UPDATE i SET phase1a_task_id=q.external_item_id FROM {s}.[requirement_batch_run_items] i JOIN {r}.[requirements] q ON q.requirement_id=i.requirement_id WHERE i.selection_status='selected' AND i.phase1a_task_id=i.requirement_id",
+        )
 
     def create_schedule(self, *, name: str, requirement_set_id: str, actor: str, schedule_id: str | None = None) -> dict[str, Any]:
         if not name.strip() or len(name) > 240: raise ValueError("schedule_name_invalid")
@@ -88,6 +166,7 @@ class ScheduleStore:
             row = c.fetchone()
             if row is None: raise KeyError("requirement_set_not_found")
             c.execute(f"INSERT INTO {self.t}.[requirement_schedules](schedule_id,name,requirement_set_id,enabled,active_version_id,next_run_at,created_by,created_at,updated_by,updated_at) VALUES (?,?,?,0,NULL,NULL,?,?,?,?)", sid, name.strip(), requirement_set_id, actor, now, actor, now)
+            self._enqueue_audit_event(c, self._audit_event("requirement_schedule.created", actor, sid, payload={"requirement_set_id": requirement_set_id}, created_at=now))
             connection.commit()
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
@@ -120,6 +199,7 @@ class ScheduleStore:
             if row is None: raise KeyError("schedule_not_found")
             if bool(row[0]): raise ValueError("schedule_enabled")
             c.execute(f"UPDATE {self.t}.[requirement_schedules] SET name=?,updated_by=?,updated_at=? WHERE schedule_id=?", name.strip(), actor, now, schedule_id)
+            self._enqueue_audit_event(c, self._audit_event("requirement_schedule.updated", actor, schedule_id, payload={"field": "name"}, created_at=now))
             connection.commit()
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
@@ -131,6 +211,22 @@ class ScheduleStore:
         encoded = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         return encoded, hashlib.sha256(encoded.encode()).hexdigest()
 
+    @classmethod
+    def _validate_persisted_config(cls, timezone_name: str, recurrence_json: str,
+                                   run_policy: str, model: str,
+                                   config_sha256: str | None = None) -> ScheduleVersionCreate:
+        try:
+            document = json.loads(recurrence_json)
+            recurrence_document = document["recurrence"] if "recurrence" in document else document
+            config = ScheduleVersionCreate(timezone_name, RecurrenceSpec.validate(recurrence_document),
+                                           run_policy, model)
+            encoded, digest = cls.canonical_config(config)
+            if config_sha256 is not None and (recurrence_json != encoded or config_sha256 != digest):
+                raise ValueError("recurrence_invalid")
+            return config
+        except (KeyError, TypeError, json.JSONDecodeError):
+            raise ValueError("recurrence_invalid") from None
+
     def create_version(self, *, schedule_id: str, config: ScheduleVersionCreate, actor: str) -> dict[str, Any]:
         # Enforce domain invariants even for callers which bypass FastAPI validation.
         config = ScheduleVersionCreate(config.timezone, RecurrenceSpec.validate(config.recurrence.as_dict()), config.run_policy, config.model)
@@ -139,7 +235,9 @@ class ScheduleStore:
             c = connection.cursor(); c.execute(f"SELECT schedule_id FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id)
             if c.fetchone() is None: raise KeyError("schedule_not_found")
             c.execute(f"SELECT COALESCE(MAX(version_number),0)+1 FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); number = int(c.fetchone()[0])
-            c.execute(f"INSERT INTO {self.t}.[requirement_schedule_versions](schedule_version_id,schedule_id,version_number,timezone,recurrence_json,run_policy,model,config_sha256,status,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,'draft',?,?)", vid, schedule_id, number, config.timezone, encoded, config.run_policy.value, config.model, digest, actor, now); connection.commit()
+            c.execute(f"INSERT INTO {self.t}.[requirement_schedule_versions](schedule_version_id,schedule_id,version_number,timezone,recurrence_json,run_policy,model,config_sha256,status,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,'draft',?,?)", vid, schedule_id, number, config.timezone, encoded, config.run_policy.value, config.model, digest, actor, now)
+            self._enqueue_audit_event(c, self._audit_event("requirement_schedule.version_created", actor, schedule_id, schedule_version_id=vid, payload={"version_number": number}, created_at=now))
+            connection.commit()
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
         return {"schedule_version_id": vid, "schedule_id": schedule_id, "version_number": number, "timezone": config.timezone, "recurrence": config.recurrence.as_dict(), "run_policy": config.run_policy.value, "model": config.model, "config_sha256": digest, "status": "draft", "created_by": actor, "created_at": now}
@@ -147,19 +245,20 @@ class ScheduleStore:
     def approve_version(self, *, schedule_id: str, version_number: int, actor: str, now_utc: datetime):
         connection = self._connect()
         try:
-            c = connection.cursor(); c.execute(f"SELECT enabled,active_version_id FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); schedule = c.fetchone()
+            c = connection.cursor(); c.execute(f"SELECT enabled,active_version_id,next_run_at FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); schedule = c.fetchone()
             if schedule is None: raise KeyError("schedule_not_found")
-            c.execute(f"SELECT schedule_version_id,status,timezone,recurrence_json FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=? AND version_number=?", schedule_id, version_number); version = c.fetchone()
+            c.execute(f"SELECT schedule_version_id,status,timezone,recurrence_json,run_policy,model,config_sha256 FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=? AND version_number=?", schedule_id, version_number); version = c.fetchone()
             if version is None: raise KeyError("schedule_version_not_found")
-            vid, status, timezone_name, recurrence_json = version
+            vid, status, timezone_name, recurrence_json, run_policy, model, config_sha256 = version
             if status == "retired": raise ValueError("schedule_version_not_approved")
             if status == "approved" and schedule[1] == vid: connection.commit(); return {"schedule_version_id": vid, "status": "approved", "version_number": version_number}
-            recurrence_document = json.loads(recurrence_json)
-            recurrence = RecurrenceSpec.validate(recurrence_document.get("recurrence", recurrence_document))
+            recurrence = self._validate_persisted_config(timezone_name, recurrence_json, run_policy, model, config_sha256).recurrence
             due = next_occurrence(recurrence, timezone_name, now_utc) if bool(schedule[0]) else None
             if schedule[1]: c.execute(f"UPDATE {self.t}.[requirement_schedule_versions] SET status='retired',retired_at=? WHERE schedule_version_id=? AND status='approved'", now_utc, schedule[1])
             c.execute(f"UPDATE {self.t}.[requirement_schedule_versions] SET status='approved',approved_by=?,approved_at=? WHERE schedule_version_id=? AND status='draft'", actor, now_utc, vid)
-            c.execute(f"UPDATE {self.t}.[requirement_schedules] SET active_version_id=?,next_run_at=?,updated_by=?,updated_at=? WHERE schedule_id=?", vid, due, actor, now_utc, schedule_id); connection.commit()
+            c.execute(f"UPDATE {self.t}.[requirement_schedules] SET active_version_id=?,next_run_at=?,updated_by=?,updated_at=? WHERE schedule_id=?", vid, due, actor, now_utc, schedule_id)
+            self._enqueue_audit_event(c, self._audit_event("requirement_schedule.version_approved", actor, schedule_id, schedule_version_id=vid, payload={"version_number": version_number}, created_at=now_utc))
+            connection.commit()
             return {"schedule_version_id": vid, "status": "approved", "version_number": version_number}
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
@@ -167,18 +266,56 @@ class ScheduleStore:
     def set_enabled(self, *, schedule_id: str, enabled: bool, actor: str, now_utc: datetime):
         connection = self._connect()
         try:
-            c = connection.cursor(); c.execute(f"SELECT enabled,active_version_id FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); schedule = c.fetchone()
+            c = connection.cursor(); c.execute(f"SELECT enabled,active_version_id,next_run_at FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); schedule = c.fetchone()
             if schedule is None: raise KeyError("schedule_not_found")
+            if bool(schedule[0]) == bool(enabled):
+                connection.commit()
+                return {"schedule_id": schedule_id, "enabled": bool(enabled), "next_run_at": schedule[2]}
             due = None
             if enabled:
                 if not schedule[1]: raise ValueError("schedule_version_not_approved")
-                c.execute(f"SELECT status,timezone,recurrence_json FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_version_id=?", schedule[1]); version = c.fetchone()
+                c.execute(f"SELECT status,timezone,recurrence_json,run_policy,model,config_sha256 FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_version_id=?", schedule[1]); version = c.fetchone()
                 if version is None or version[0] != "approved": raise ValueError("schedule_version_not_approved")
-                document = json.loads(version[2]); due = next_occurrence(RecurrenceSpec.validate(document.get("recurrence", document)), version[1], now_utc)
-            c.execute(f"UPDATE {self.t}.[requirement_schedules] SET enabled=?,next_run_at=?,updated_by=?,updated_at=? WHERE schedule_id=?", bool(enabled), due, actor, now_utc, schedule_id); connection.commit()
+                config = self._validate_persisted_config(version[1], version[2], version[3], version[4], version[5])
+                due = next_occurrence(config.recurrence, config.timezone, now_utc)
+            c.execute(f"UPDATE {self.t}.[requirement_schedules] SET enabled=?,next_run_at=?,updated_by=?,updated_at=? WHERE schedule_id=?", bool(enabled), due, actor, now_utc, schedule_id)
+            action = "requirement_schedule.enabled" if enabled else "requirement_schedule.disabled"
+            self._enqueue_audit_event(c, self._audit_event(action, actor, schedule_id, created_at=now_utc))
+            connection.commit()
             return {"schedule_id": schedule_id, "enabled": bool(enabled), "next_run_at": due}
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
+
+    def list_pending_audit_events(self, limit: int) -> tuple[ScheduleAuditEvent, ...]:
+        limit = max(1, min(int(limit), 100))
+        rows = self._query(
+            f"SELECT TOP (?) audit_event_id,action,actor,schedule_id,schedule_version_id,payload_json,created_at FROM {self.t}.[requirement_schedule_audit_outbox] WHERE delivered_at IS NULL ORDER BY created_at,audit_event_id",
+            limit,
+        )
+        return tuple(ScheduleAuditEvent(row["audit_event_id"], row["action"], row["actor"], row["schedule_id"], row["schedule_version_id"], json.loads(row["payload_json"]), row["created_at"]) for row in rows)
+
+    def mark_audit_delivered(self, event_id: str, at: datetime) -> bool:
+        return self._update_audit_delivery(
+            f"UPDATE {self.t}.[requirement_schedule_audit_outbox] SET delivery_attempts=delivery_attempts+1,last_delivery_attempt_at=?,last_delivery_error_code=NULL,delivered_at=? WHERE audit_event_id=? AND delivered_at IS NULL",
+            at, at, event_id,
+        )
+
+    def mark_audit_failed(self, event_id: str, at: datetime) -> bool:
+        return self._update_audit_delivery(
+            f"UPDATE {self.t}.[requirement_schedule_audit_outbox] SET delivery_attempts=delivery_attempts+1,last_delivery_attempt_at=?,last_delivery_error_code='audit_sink_write_failed' WHERE audit_event_id=? AND delivered_at IS NULL",
+            at, event_id,
+        )
+
+    def _update_audit_delivery(self, sql: str, *params) -> bool:
+        connection = self._connect()
+        try:
+            cursor = connection.cursor(); cursor.execute(sql, *params)
+            changed = getattr(cursor, "rowcount", 1) == 1
+            connection.commit(); return changed
+        except Exception as exc:
+            connection.rollback(); raise _safe_error(exc) from exc
+        finally:
+            connection.close()
 
     def claim_due(self, *, now_utc: datetime, actor: str):
         """Claim at most one latest due occurrence and advance it atomically."""
