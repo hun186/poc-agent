@@ -83,3 +83,10 @@
 - Authored the documentation-only v3 Design, incremental C1–C8 TDD closure Plan, and two execution contracts. The design selects composite same-schedule version ownership and an SQL outbox with at-least-once projection through existing `append_audit_event()` using stable event IDs.
 - Phase 1C-A implementation exists, but its repository gate is NOT PASS pending v3 closure implementation and post-merge review. Phase 1C-A v3 closure implementation is NOT STARTED. Phase 1C-B is NOT STARTED.
 - Verification was documentation/static only: `git diff --check`, placeholder/contract consistency scans, and runtime-scope status inspection passed; no runtime pytest was required or used to claim implementation.
+
+### 2026-09-05 Phase 1C Design/Plan v4 compatibility correction
+
+- Design/Plan/Prompts v4 supersede v3; v1–v3 remain historical. The architecture remains canonical schema v2 with direct fresh-v2 initialization, transactional v1→v2 migration, same-schedule composite integrity, and a transactional SQL audit outbox projected at least once through existing JSONL audit.
+- v4 corrects exact PR #200/#201 catalog classification, a narrow PR #200 persisted-identity repair guarded by proof that Gate B never ran, legacy active/approved configuration validation, outbox-created lifecycle timestamp projection, and pending-row CAS delivery metadata.
+- Documentation only: no closure implementation or tests were changed. Phase 1C-A repository gate remains NOT PASS; Phase 1C-A v4 closure implementation is NOT STARTED; Phase 1C-B is NOT STARTED.
+- Verification: `git diff --check`, placeholder/cross-document scans, and changed-file scope inspection passed; no runtime tests were used to claim implementation.

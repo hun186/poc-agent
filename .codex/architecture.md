@@ -125,3 +125,9 @@
 - Canonical Run Item `phase1a_task_id` is nullable `NVARCHAR(240)` and preserves the exact Phase 1B `external_item_id`. Composite `(schedule_id,schedule_version_id)` relationships enforce same-schedule active pointers and Batch Run bindings without cascades.
 - Successful lifecycle mutations and `requirement_schedule_audit_outbox` events share one SQL transaction. Existing Editor JSONL is an at-least-once projection through `append_audit_event()` with stable `audit_event_id`; authorization denials without SQL mutation retain the direct canonical denial path.
 - This architecture is a pending Phase 1C-A v3 closure, not implemented behavior. Phase 1C-B remains not started and blocked pending merge plus explicit post-merge PASS.
+
+## 2026-09-05 Phase 1C Design v4 compatibility correction
+
+- Design v4 supersedes v3 without redesigning schema v2 or the transactional audit outbox. Exact PR #200/PR #201 whole-catalog descriptors classify v1 before mutation; only recognized PR #200 may transactionally repair its exact `phase1c-`/internal-Requirement handoff placeholders after proving Gate-B evidence absent. PR #201 canonical identity is never rewritten.
+- Migration validates active/approved persisted configuration under current canonical rules. JSONL lifecycle `ts` derives from immutable outbox `created_at`; delivery success/failure updates compare-and-set only pending rows so delivered metadata cannot regress.
+- These contracts await Phase 1C-A v4 closure implementation and post-merge review; Gate B remains not started.
