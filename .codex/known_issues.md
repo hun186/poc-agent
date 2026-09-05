@@ -131,3 +131,8 @@
 - No Git remote is configured in this checkout, so `git fetch --all --prune` had nothing to fetch and hosted `main` ancestry could not be independently compared; local HEAD is merge `974be3555ca0bb4a4699cbe9b8758c08c02d2f04` containing PR #205.
 - `pip --upgrade` encountered the environment's package-index proxy HTTP 403 retries, but all requirements were already installed and repository verification ran successfully.
 - Live SQL Server fresh-v2/migration/rollback/projection acceptance remains NOT EXECUTED without an explicitly authorized connection. The comprehensive scripted DB-API suite is the documented alternative repository validation.
+
+### 2026-09-05 Phase 1C-A v5 post-merge acceptance limitation
+
+- Live SQL Server acceptance was NOT EXECUTED because no explicitly authorized connection details were supplied. Repository DB-API simulations, including non-tuple indexable rows and decorated SQL Server catalog expressions, were used instead and are not represented as live acceptance.
+- `pip --upgrade` retried against the environment package-index proxy and received HTTP 403, but the required packages were already installed and `pip install -r requirements.txt` completed from the environment.

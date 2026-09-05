@@ -4,7 +4,7 @@ import pytest
 
 from requirement_scheduler.audit_delivery import drain_audit_outbox
 from requirement_scheduler.migrations import (
-    REQUIRED_COLUMNS, REQUIRED_FILTERED_INDEXES, REQUIRED_KEYS,
+    REQUIRED_CHECKS, REQUIRED_COLUMNS, REQUIRED_DEFAULTS, REQUIRED_FILTERED_INDEXES, REQUIRED_KEYS,
     canonical_v2_statements, migration_1_to_2_statements,
     required_foreign_keys, validation_queries,
 )
@@ -44,9 +44,13 @@ class FreshCursor:
                           for i, c in enumerate(index.columns, 1)]
         elif "SELECT pt.name,fk.name" in sql:
             self._rows = [(fk.table, fk.name, c, fk.referenced_schema,
-                           fk.referenced_table, rc, i, 0)
+                           fk.referenced_table, rc, i, 0, 0)
                           for fk in required_foreign_keys("sra_schedule", "sra_requirement")
                           for i, (c, rc) in enumerate(zip(fk.columns, fk.referenced_columns), 1)]
+        elif "sys.default_constraints" in sql and len(params) == 1:
+            self._rows = [(d.table, d.name, d.column, "((0))") for d in REQUIRED_DEFAULTS]
+        elif "sys.check_constraints" in sql and len(params) == 1:
+            self._rows = [(c.table, c.name, "(([delivery_attempt_count] >= (0)))") for c in REQUIRED_CHECKS]
         elif params and isinstance(params[-1], str):
             expected = next((e for _, query, query_params, e in validation_queries("sra_schedule", "sra_requirement")
                              if query == sql and query_params == params), None)
@@ -61,10 +65,14 @@ class FreshCursor:
                 elif expected.__class__.__name__ == "FilteredIndex":
                     self._rows = [("sra_schedule", expected.table, expected.name, expected.is_unique, True,
                                    expected.filter_definition, c, i) for i, c in enumerate(expected.columns, 1)]
-                else:
+                elif expected.__class__.__name__ == "ForeignKey":
                     self._rows = [("sra_schedule", expected.table, expected.name, c,
-                                   expected.referenced_schema, expected.referenced_table, rc, i)
+                                   expected.referenced_schema, expected.referenced_table, rc, i, 0, 0)
                                   for i, (c, rc) in enumerate(zip(expected.columns, expected.referenced_columns), 1)]
+                elif expected.__class__.__name__ == "DefaultConstraint":
+                    self._rows = [("sra_schedule", expected.table, expected.name, expected.column, "((0))")]
+                else:
+                    self._rows = [("sra_schedule", expected.table, expected.name, "(([delivery_attempt_count] >= (0)))")]
         return self
 
     def fetchone(self):
@@ -99,6 +107,19 @@ def test_initialize_executes_explicit_fresh_v2_and_rereads_marker_last():
     assert not any("requirement_schedule_catalog" in sql for sql in statements)
 
 
+def test_marker_reread_accepts_dbapi_indexable_rows_without_tuple_equality():
+    class Row:
+        def __init__(self, value): self.value = value
+        def __getitem__(self, index): return self.value if index == 0 else (_ for _ in ()).throw(IndexError())
+        def __len__(self): return 1
+        def __eq__(self, other): return False
+    connection = Connection()
+    original = connection.cursor_value.fetchall
+    connection.cursor_value.fetchall = lambda: [Row(2)] if connection.cursor_value.sql[-1][0].startswith("SELECT version") and connection.cursor_value.marker_written else original()
+    ScheduleStore(Registry(connection), "db").initialize()
+    assert connection.commits == 1
+
+
 def test_canonical_widths_outbox_and_index_are_exact():
     columns = {c.name: c.max_length for table in ("requirement_schedule_versions", "requirement_batch_runs", "requirement_batch_run_items") for c in REQUIRED_COLUMNS[table]}
     assert columns["run_policy"] == 64 and columns["status"] == 40
@@ -122,6 +143,10 @@ def test_shape_specific_migrations_do_not_form_hybrids():
     assert "DROP CONSTRAINT FK_schedule_active_version" in pr201
     assert "DROP CONSTRAINT FK_run_schedule_version" in pr201
     assert "UPDATE" not in pr201
+    repair = ScheduleStore(Registry(Connection()), "db")._pr200_identity_repair_statements()
+    assert "LEN(q.external_item_id)>240" in repair[-3]
+    assert "phase1a_task_id=q.external_item_id" in repair[-1]
+    assert "materialized" not in repair[0]
 
 
 @pytest.mark.parametrize("policy", list(RunPolicy))

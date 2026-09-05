@@ -112,3 +112,11 @@
 - Added action-specific payload allowlists and bounded best-effort startup/post-commit audit projection; pending delivery success/failure use CAS and lost races are neutral. Phase 1C-B remains NOT STARTED.
 - TDD evidence: the pre-change focused migration/audit run failed 1 test because the old classifier required `requirement_schedule_catalog`; after correction the focused closure matrix passed 10 tests. Phase 1C passed 43 tests with 2 warnings; cross-phase passed 182 tests with 3 warnings; full repository passed 501 tests with 10 warnings. Compile/static and scope evidence is recorded in the task handoff.
 - Live SQL Server acceptance was NOT EXECUTED because no explicitly authorized SQL Server connection was supplied; realistic DB-API scripted/recording tests are repository evidence, not deployment acceptance.
+
+### 2026-09-05 Phase 1C-A v5 post-merge review corrections
+
+- Corrected DB-API marker validation to use row length/indexed value extraction rather than tuple equality; singleton/malformed/future marker evidence remains fail closed.
+- Canonicalized filtered-index predicates in focused and whole-catalog evidence, validated both FK referential actions, and added exact outbox default/check catalog evidence.
+- Reordered exact PR #200 migration so all pre-mutation guards precede widening, the 240-character column widening precedes identity repair, and subsequent failure remains transactionally rollbackable. Removed the unreachable PR #200 `materialized` run state from the allowlist.
+- Verification: focused closure 11 passed; all requirement-schedule tests 45 passed (2 warnings); cross-phase selection 184 passed (3 warnings); full repository 503 passed (10 warnings); compileall, diff check, prohibited-import, credential, and generated-artifact checks passed.
+- Live SQL Server acceptance: NOT EXECUTED (no explicitly authorized connection details were supplied). Scripted DB-API tests are repository evidence only.

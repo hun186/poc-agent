@@ -170,3 +170,8 @@
 
 - Treat complete SQL Server catalog evidence, not marker values or constraint names alone, as migration authority. Preserve PR #200/#201 vocabulary widths and widen only `phase1a_task_id`; use explicit fresh-v2 DDL and shape-specific migration sequences.
 - Keep the SQL outbox authoritative and projection bounded/best-effort. A zero-row pending CAS is a benign projector race and must not be counted as the current attempt's success or failure.
+
+### 2026-09-05 DB-API-neutral catalog evidence
+
+- Marker rows are interpreted through cardinality, row width, and indexed scalar extraction; no pyodbc-specific type branch or row-to-tuple equality is used.
+- SQL Server-owned formatting (brackets, parentheses, whitespace, case) is normalized through one shared helper for filtered predicates and the narrow outbox default/check expressions, while bindings, names, keys, uniqueness, and semantics stay exact.
