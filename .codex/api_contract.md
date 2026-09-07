@@ -143,3 +143,7 @@ Authenticated endpoints: `GET/POST /v1/requirement-schedules`, `GET/PATCH /v1/re
 ## 2026-09-05 Phase 1C-A v5 lifecycle projection behavior
 
 - Successful Requirement Schedule lifecycle responses remain successful after their SQL mutation/outbox transaction commits even if best-effort JSONL projection fails. Authorization denials remain on the direct audit path. This changes no route or response shape.
+
+## 2026-09-07 Phase 1C-B
+
+- The bridge consumes only the existing public Report Job create/status/Word-download endpoints. It adds no cancel/retry endpoint and does not expose native Report Job ownership, credentials, prompts, absolute artifact roots, or backend-native state as Requirement API authority.

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import re
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def validate_schema_name(value: str) -> str:
@@ -63,15 +63,21 @@ REQUIRED_COLUMNS = {
     "requirement_schedules": _cols("requirement_schedules", (("schedule_id",*_N64,False),("name",*_N240,False),("requirement_set_id",*_N64,False),("enabled","bit",1,False),("active_version_id",*_N64,True),("next_run_at","datetimeoffset",10,True),("created_by",*_N128,False),("created_at","datetimeoffset",10,False),("updated_by",*_N128,False),("updated_at","datetimeoffset",10,False))),
     "requirement_schedule_versions": _cols("requirement_schedule_versions", (("schedule_version_id",*_N64,False),("schedule_id",*_N64,False),("version_number","int",4,False),("timezone",*_N128,False),("recurrence_json","nvarchar",-1,False),("run_policy","nvarchar",64,False),("model",*_N240,False),("config_sha256","char",64,False),("status","nvarchar",40,False),("created_by",*_N128,False),("created_at","datetimeoffset",10,False),("approved_by",*_N128,True),("approved_at","datetimeoffset",10,True),("retired_at","datetimeoffset",10,True))),
     "requirement_batch_runs": _cols("requirement_batch_runs", (("batch_run_id",*_N64,False),("schedule_id",*_N64,False),("schedule_version_id",*_N64,False),("trigger_type","nvarchar",32,False),("trigger_request_id",*_N128,True),("scheduled_for","datetimeoffset",10,True),("snapshot_id",*_N64,True),("run_policy","nvarchar",64,False),("phase1a_batch_id",*_N128,False),("phase1a_source_sha256","char",64,True),("phase1a_output_root_fingerprint","char",64,True),("state","nvarchar",64,False),("selected_count","int",4,False),("skipped_count","int",4,False),("success_count","int",4,False),("failure_count","int",4,False),("error_code",*_N64,True),("error_message",*_N500,True),("deadline_elapsed_during_execution","bit",1,False),("created_by",*_N128,False),("created_at","datetimeoffset",10,False),("materialized_at","datetimeoffset",10,True),("handoff_started_at","datetimeoffset",10,True),("handed_off_at","datetimeoffset",10,True),("reconciled_at","datetimeoffset",10,True),("completed_at","datetimeoffset",10,True),("updated_at","datetimeoffset",10,False))),
-    "requirement_batch_run_items": _cols("requirement_batch_run_items", (("run_item_id",*_N64,False),("batch_run_id",*_N64,False),("requirement_id",*_N64,False),("requirement_version_id",*_N64,False),("requirement_version_number","int",4,False),("source_order","int",4,False),("selection_status","nvarchar",32,False),("selection_reason",*_N64,False),("phase1a_task_id",*_N240,True),("execution_state","nvarchar",64,False),("remote_job_id",*_N64,True),("remote_job_state","nvarchar",64,True),("artifact_relative_path",*_N500,True),("error_code",*_N64,True),("error_message",*_N500,True),("expired_at_selection","bit",1,False),("expired_before_handoff","bit",1,False),("deadline_elapsed_during_execution","bit",1,False),("created_at","datetimeoffset",10,False),("evaluated_at","datetimeoffset",10,False),("handoff_started_at","datetimeoffset",10,True),("dispatched_at","datetimeoffset",10,True),("remote_completed_at","datetimeoffset",10,True),("artifact_reconciled_at","datetimeoffset",10,True),("completed_at","datetimeoffset",10,True),("updated_at","datetimeoffset",10,False))),
+    "requirement_batch_run_items": _cols("requirement_batch_run_items", (("run_item_id",*_N64,False),("batch_run_id",*_N64,False),("requirement_id",*_N64,False),("requirement_version_id",*_N64,False),("requirement_version_number","int",4,False),("source_order","int",4,False),("selection_status","nvarchar",32,False),("selection_reason",*_N64,False),("phase1a_task_id",*_N240,True),("execution_state","nvarchar",64,False),("remote_job_id",*_N64,True),("remote_job_state","nvarchar",64,True),("artifact_relative_path",*_N500,True),("error_code",*_N64,True),("error_message",*_N500,True),("expired_at_selection","bit",1,False),("expired_before_handoff","bit",1,False),("deadline_elapsed_during_execution","bit",1,False),("created_at","datetimeoffset",10,False),("evaluated_at","datetimeoffset",10,False),("handoff_started_at","datetimeoffset",10,True),("dispatched_at","datetimeoffset",10,True),("remote_completed_at","datetimeoffset",10,True),("artifact_reconciled_at","datetimeoffset",10,True),("completed_at","datetimeoffset",10,True),("updated_at","datetimeoffset",10,False),("artifact_sha256","char",64,True))),
     "requirement_schedule_item_state": _cols("requirement_schedule_item_state", (("schedule_id",*_N64,False),("requirement_id",*_N64,False),("last_seen_requirement_version_id",*_N64,True),("last_seen_requirement_version_number","int",4,True),("last_successful_requirement_version_id",*_N64,True),("last_successful_requirement_version_number","int",4,True),("last_successful_run_item_id",*_N64,True),("last_successful_at","datetimeoffset",10,True),("updated_at","datetimeoffset",10,False))),
     "requirement_schedule_audit_outbox": _cols("requirement_schedule_audit_outbox", (("audit_event_id",*_N64,False),("action","nvarchar",192,False),("actor",*_N128,False),("schedule_id",*_N64,False),("schedule_version_id",*_N64,True),("batch_run_id",*_N64,True),("safe_payload_json","nvarchar",4000,False),("created_at","datetimeoffset",10,False),("delivery_attempt_count","int",4,False),("last_delivery_attempt_at","datetimeoffset",10,True),("last_delivery_error_code",*_N64,True),("delivered_at","datetimeoffset",10,True))),
+    "requirement_handoff_submissions": _cols("requirement_handoff_submissions", (("submission_id",*_N64,False),("run_item_id",*_N64,False),("workflow_id",*_N64,False),("semantic_manifest_json","nvarchar",-1,False),("semantic_fingerprint","char",64,False),("legacy_session_id",*_N240,False),("created_at","datetimeoffset",10,False),("prepared_at","datetimeoffset",10,False))),
+    "requirement_handoff_coordinator_leases": _cols("requirement_handoff_coordinator_leases", (("control_domain",*_N64,False),("owner_id",*_N128,False),("lease_token","char",64,False),("fencing_generation","bigint",8,False),("heartbeat_at","datetimeoffset",10,False),("expires_at","datetimeoffset",10,False),("updated_at","datetimeoffset",10,False))),
 }
 
 REQUIRED_KEYS = (
     KeyConstraint("PK_requirement_schedules","requirement_schedules",("schedule_id",),"PK"), KeyConstraint("PK_requirement_schedule_versions","requirement_schedule_versions",("schedule_version_id",),"PK"), KeyConstraint("UQ_requirement_schedule_version","requirement_schedule_versions",("schedule_id","version_number"),"UQ"), KeyConstraint("PK_requirement_batch_runs","requirement_batch_runs",("batch_run_id",),"PK"), KeyConstraint("PK_requirement_batch_run_items","requirement_batch_run_items",("run_item_id",),"PK"), KeyConstraint("UQ_requirement_batch_run_item","requirement_batch_run_items",("batch_run_id","requirement_id"),"UQ"), KeyConstraint("UQ_requirement_batch_run_order","requirement_batch_run_items",("batch_run_id","source_order"),"UQ"), KeyConstraint("PK_requirement_schedule_item_state","requirement_schedule_item_state",("schedule_id","requirement_id"),"PK"),
     KeyConstraint("UQ_requirement_schedule_version_owner","requirement_schedule_versions",("schedule_id","schedule_version_id"),"UQ"),
     KeyConstraint("PK_requirement_schedule_audit_outbox","requirement_schedule_audit_outbox",("audit_event_id",),"PK"),
+    KeyConstraint("PK_requirement_handoff_submissions","requirement_handoff_submissions",("submission_id",),"PK"),
+    KeyConstraint("UQ_requirement_handoff_submission_item","requirement_handoff_submissions",("run_item_id",),"UQ"),
+    KeyConstraint("PK_requirement_handoff_coordinator_leases","requirement_handoff_coordinator_leases",("control_domain",),"PK"),
+    KeyConstraint("UQ_requirement_handoff_lease_token","requirement_handoff_coordinator_leases",("lease_token",),"UQ"),
 )
 
 REQUIRED_FILTERED_INDEXES = (
@@ -85,6 +91,11 @@ REQUIRED_DEFAULTS = (
 )
 REQUIRED_CHECKS = (
     CheckConstraint("CK_requirement_schedule_audit_attempts", "requirement_schedule_audit_outbox", "delivery_attempt_count>=0"),
+    CheckConstraint("CK_requirement_batch_run_item_artifact_sha256", "requirement_batch_run_items", "artifact_sha256isnullorartifact_sha256notlike'%^0-9a-f%'andlenartifact_sha256=64"),
+    CheckConstraint("CK_handoff_submission_workflow", "requirement_handoff_submissions", "workflow_id=n'report_v1'"),
+    CheckConstraint("CK_handoff_submission_fingerprint", "requirement_handoff_submissions", "semantic_fingerprintnotlike'%^0-9a-f%'andlensemantic_fingerprint=64"),
+    CheckConstraint("CK_requirement_handoff_lease_generation", "requirement_handoff_coordinator_leases", "fencing_generation>0"),
+    CheckConstraint("CK_requirement_handoff_lease_window", "requirement_handoff_coordinator_leases", "expires_at>heartbeat_at"),
 )
 
 
@@ -104,6 +115,7 @@ def required_foreign_keys(schedule_schema: str = "sra_schedule", requirement_sch
         ForeignKey("FK_state_success_version","requirement_schedule_item_state",("last_successful_requirement_version_id",),r,"requirement_versions",("requirement_version_id",)),
         ForeignKey("FK_state_success_item","requirement_schedule_item_state",("last_successful_run_item_id",),s,"requirement_batch_run_items",("run_item_id",)),
         ForeignKey("FK_audit_outbox_schedule","requirement_schedule_audit_outbox",("schedule_id",),s,"requirement_schedules",("schedule_id",)),
+        ForeignKey("FK_handoff_submission_item","requirement_handoff_submissions",("run_item_id",),s,"requirement_batch_run_items",("run_item_id",)),
     )
 
 REQUIRED_FOREIGN_KEYS = required_foreign_keys()
@@ -320,6 +332,18 @@ def canonical_v2_statements(schema: str, requirement_schema: str = "sra_requirem
  'CREATE INDEX IX_requirement_schedule_audit_pending ON '
  '{s}.[requirement_schedule_audit_outbox](delivered_at,created_at,audit_event_id) WHERE delivered_at IS NULL']
     return [statement.format(s=f"[{name}]", r=f"[{req}]") for statement in values]
+
+def migration_2_to_3_statements(schema: str) -> list[str]:
+    s = f"[{validate_schema_name(schema)}]"
+    return [
+        f"ALTER TABLE {s}.[requirement_batch_run_items] ADD artifact_sha256 CHAR(64) NULL CONSTRAINT CK_requirement_batch_run_item_artifact_sha256 CHECK(artifact_sha256 IS NULL OR (artifact_sha256 NOT LIKE '%[^0-9a-f]%' AND LEN(artifact_sha256)=64))",
+        f"CREATE TABLE {s}.[requirement_handoff_submissions](submission_id NVARCHAR(64) NOT NULL CONSTRAINT PK_requirement_handoff_submissions PRIMARY KEY,run_item_id NVARCHAR(64) NOT NULL CONSTRAINT UQ_requirement_handoff_submission_item UNIQUE,workflow_id NVARCHAR(64) NOT NULL,semantic_manifest_json NVARCHAR(MAX) NOT NULL,semantic_fingerprint CHAR(64) NOT NULL,legacy_session_id NVARCHAR(240) NOT NULL,created_at DATETIMEOFFSET NOT NULL,prepared_at DATETIMEOFFSET NOT NULL,CONSTRAINT FK_handoff_submission_item FOREIGN KEY(run_item_id) REFERENCES {s}.[requirement_batch_run_items](run_item_id),CONSTRAINT CK_handoff_submission_workflow CHECK(workflow_id=N'report_v1'),CONSTRAINT CK_handoff_submission_fingerprint CHECK(semantic_fingerprint NOT LIKE '%[^0-9a-f]%' AND LEN(semantic_fingerprint)=64))",
+        f"CREATE TABLE {s}.[requirement_handoff_coordinator_leases](control_domain NVARCHAR(64) NOT NULL CONSTRAINT PK_requirement_handoff_coordinator_leases PRIMARY KEY,owner_id NVARCHAR(128) NOT NULL,lease_token CHAR(64) NOT NULL CONSTRAINT UQ_requirement_handoff_lease_token UNIQUE,fencing_generation BIGINT NOT NULL,heartbeat_at DATETIMEOFFSET NOT NULL,expires_at DATETIMEOFFSET NOT NULL,updated_at DATETIMEOFFSET NOT NULL,CONSTRAINT CK_requirement_handoff_lease_generation CHECK(fencing_generation>0),CONSTRAINT CK_requirement_handoff_lease_window CHECK(expires_at>heartbeat_at))",
+    ]
+
+def canonical_v3_statements(schema: str, requirement_schema: str = "sra_requirement") -> list[str]:
+    """Explicit fresh-v3 schema statements, retaining canonical-v2 objects unchanged."""
+    return [*canonical_v2_statements(schema, requirement_schema), *migration_2_to_3_statements(schema)]
 
 def migration_1_to_2_statements(schema: str, v1_shape: str) -> list[str]:
     """Ordered v2 DDL. Identity repair/validation is performed before these statements."""

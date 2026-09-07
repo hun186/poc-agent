@@ -152,3 +152,7 @@
 ### 2026-09-05 Phase 1C-A v5 post-merge catalog hardening
 
 - Schedule schema authority now includes normalized filtered predicates, FK delete/update NO ACTION evidence, and the narrowly required audit-outbox default/check constraints. PR #200 migration widens `phase1a_task_id` before copying external identity, within the same transaction.
+
+## 2026-09-07 Requirement execution compatibility bridge
+
+- `requirement_scheduler` now contains a framework-neutral execution boundary, an HTTP-only legacy Report Job gateway, durable SQL lease/schema contracts, and an independently supervised coordinator entry point. HTTP and filesystem effects occur outside SQL transactions.

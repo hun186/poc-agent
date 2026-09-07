@@ -140,3 +140,10 @@
 ## 2026-09-05 Phase 1C-B planning hosted refresh limitation
 
 - A GitHub `origin` was configured and `git fetch origin main` was attempted before planning, but the environment proxy returned `CONNECT tunnel failed, response 403`. The local starting commit exactly matched requested PR #210 merge `d1fc213633dc9dc83c1e32e010d9aca59a0dd909`, but a newer hosted `main` could not be independently excluded. The implementation gate must fetch/rebaseline from a network-enabled environment before executing Task 1; documentation/source checks used the exact local snapshot instead.
+
+## 2026-09-07 Phase 1C-B acceptance limitations
+
+- Live SQL Server acceptance: NOT EXECUTED; no explicitly authorized SQL Server environment was supplied.
+- Private/deployment Report Job and DOCX E2E: NOT EXECUTED.
+- Package index refresh returned proxy HTTP 403, but all requirements were already installed locally.
+- This checkout has no configured Git remote, so hosted refresh/push/CI inspection is unavailable.

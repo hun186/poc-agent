@@ -175,3 +175,8 @@
 
 - Marker rows are interpreted through cardinality, row width, and indexed scalar extraction; no pyodbc-specific type branch or row-to-tuple equality is used.
 - SQL Server-owned formatting (brackets, parentheses, whitespace, case) is normalized through one shared helper for filtered predicates and the narrow outbox default/check expressions, while bindings, names, keys, uniqueness, and semantics stay exact.
+
+## 2026-09-07 Phase 1C-B bridge decisions
+
+- Keep `report_v1` behind immutable neutral contracts and deterministic submission/session identities. Bind the server-owned artifact root once by non-secret fingerprint; never accept caller root authority.
+- Treat successful item closure and checkpoint advancement separately: older/same immutable versions complete with checkpoint no-op; equal version number with different immutable identity fails closed.

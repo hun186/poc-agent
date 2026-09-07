@@ -28,7 +28,7 @@ class FreshCursor:
         if "OBJECT_ID" in sql:
             self._rows = [(None,)]
         elif sql.startswith("SELECT version"):
-            self._rows = [(2,)] if self.marker_written else []
+            self._rows = [(3,)] if self.marker_written else []
         elif sql.startswith("INSERT INTO [sra_schedule].[schema_version]"):
             self.marker_written = True
         elif "SELECT t.name FROM sys.tables" in sql:
@@ -52,7 +52,7 @@ class FreshCursor:
         elif "sys.default_constraints" in sql and len(params) == 1:
             self._rows = [(d.table, d.name, d.column, "((0))") for d in REQUIRED_DEFAULTS]
         elif "sys.check_constraints" in sql and len(params) == 1:
-            self._rows = [(c.table, c.name, "(([delivery_attempt_count] >= (0)))") for c in REQUIRED_CHECKS]
+            self._rows = [(c.table, c.name, c.definition) for c in REQUIRED_CHECKS]
         elif params and isinstance(params[-1], str):
             expected = next((e for _, query, query_params, e in validation_queries("sra_schedule", "sra_requirement")
                              if query == sql and query_params == params), None)
@@ -74,7 +74,7 @@ class FreshCursor:
                 elif expected.__class__.__name__ == "DefaultConstraint":
                     self._rows = [("sra_schedule", expected.table, expected.name, expected.column, "((0))")]
                 else:
-                    self._rows = [("sra_schedule", expected.table, expected.name, "(([delivery_attempt_count] >= (0)))")]
+                    self._rows = [("sra_schedule", expected.table, expected.name, expected.definition)]
         return self
 
     def fetchone(self):
@@ -117,7 +117,7 @@ def test_marker_reread_accepts_dbapi_indexable_rows_without_tuple_equality():
         def __eq__(self, other): return False
     connection = Connection()
     original = connection.cursor_value.fetchall
-    connection.cursor_value.fetchall = lambda: [Row(2)] if connection.cursor_value.sql[-1][0].startswith("SELECT version") and connection.cursor_value.marker_written else original()
+    connection.cursor_value.fetchall = lambda: [Row(3)] if connection.cursor_value.sql[-1][0].startswith("SELECT version") and connection.cursor_value.marker_written else original()
     ScheduleStore(Registry(connection), "db").initialize()
     assert connection.commits == 1
 
@@ -321,7 +321,7 @@ class StatefulDatabase:
             return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
         if "sys.check_constraints" in sql:
             wanted = params[1] if len(params) == 2 else None
-            rows = [(item.table, item.name, "(([delivery_attempt_count] >= (0)))")
+            rows = [(item.table, item.name, item.definition)
                     for item in c["checks"] if wanted is None or item.name == wanted]
             return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
         return None
@@ -384,11 +384,11 @@ class StatefulDatabase:
         elif sql.startswith("ALTER TABLE") or sql.startswith("CREATE TABLE"):
             self.mutations.append(sql.split()[0].lower())
         if sql.startswith("INSERT INTO [sra_schedule].[schema_version]"):
-            self.marker_rows = [2]
+            self.marker_rows = [3]
             self.mutations.append("marker")
         elif sql.startswith("UPDATE [sra_schedule].[schema_version]"):
-            self.marker_rows = [2] if self.marker_rows == [1] else self.marker_rows
-            self.rowcount = 1 if self.marker_rows == [2] else 0
+            self.marker_rows = [3] if self.marker_rows in ([1], [2]) else self.marker_rows
+            self.rowcount = 1 if self.marker_rows == [3] else 0
             self.mutations.append("marker")
         return self
 
@@ -419,17 +419,15 @@ def _initialize(database, **kwargs):
 def test_stateful_fresh_and_existing_v2_public_initialization_paths():
     fresh = StatefulDatabase(marker_table=False)
     _initialize(fresh)
-    assert fresh.marker_rows == [2] and fresh.catalog == _catalog("v2")
+    assert fresh.marker_rows == [3] and fresh.catalog == _catalog("v2")
     assert fresh.commits == 1 and fresh.rollbacks == 0
     assert fresh.mutations[-1] == "marker"
     assert fresh.sql[-1][0].startswith("SELECT version")
     assert not any("ALTER COLUMN" in sql for sql, _ in fresh.sql)
 
     existing = StatefulDatabase("v2")
-    before = existing._state()
     _initialize(existing)
-    assert existing._state() == before
-    assert existing.mutations == [] and existing.commits == 1
+    assert existing.marker_rows == [3] and existing.commits == 1
     assert sum("sys.columns" in sql for sql, _ in existing.sql) >= len(REQUIRED_COLUMNS) + 1
 
 
@@ -439,7 +437,7 @@ def test_stateful_exact_v1_catalogs_migrate_through_public_initialize(shape):
     database = StatefulDatabase(shape, external_id=external_id)
     original_identity = database.selected_identity
     _initialize(database)
-    assert database.marker_rows == [2] and database.catalog == _catalog("v2")
+    assert database.marker_rows == [3] and database.catalog == _catalog("v2")
     assert database.width == 480 and database.commits == 1 and database.rollbacks == 0
     assert database.mutations[-1] == "marker"
     widen = database.mutations.index("widen")
@@ -510,10 +508,10 @@ def test_invalid_disabled_unapproved_history_is_not_broadened_into_migration_blo
     database = StatefulDatabase("pr201_v1", config_rows=[_config_row(
         status="draft", timezone_name="Not/AZone", policy="unsafe")])
     _initialize(database)
-    assert database.marker_rows == [2]
+    assert database.marker_rows == [3]
 
 
-@pytest.mark.parametrize("marker_rows", [[], [1, 1], [(1, "extra")], ["not-a-number"], [3], [-1]])
+@pytest.mark.parametrize("marker_rows", [[], [1, 1], [(1, "extra")], ["not-a-number"], [4], [-1]])
 def test_preexisting_marker_authority_rejects_unsupported_evidence(marker_rows):
     database = StatefulDatabase("pr200_v1", marker_rows=marker_rows)
     before = database._state()
@@ -522,7 +520,7 @@ def test_preexisting_marker_authority_rejects_unsupported_evidence(marker_rows):
     assert database._state() == before and database.commits == 0
 
 
-@pytest.mark.parametrize("final_rows", [[], [2, 2], [(2, "extra")], [1], [3]])
+@pytest.mark.parametrize("final_rows", [[], [3, 3], [(3, "extra")], [1], [4]])
 def test_final_marker_reread_mismatch_rolls_back_complete_migration(final_rows):
     database = StatefulDatabase("pr200_v1", final_marker_rows=final_rows)
     before = database._state()
@@ -611,7 +609,8 @@ def test_audit_allowlist_matrix_rejects_every_extra_key():
 
 def test_phase1ca_source_has_no_orchestration_or_execution_boundary_coupling():
     import pathlib
-    sources = "\n".join(p.read_text().lower() for p in pathlib.Path("requirement_scheduler").glob("*.py"))
+    gate_a = {"migrations.py", "models.py", "policy.py", "recurrence.py", "service.py", "store.py", "audit_delivery.py"}
+    sources = "\n".join(p.read_text().lower() for p in pathlib.Path("requirement_scheduler").glob("*.py") if p.name in gate_a)
     forbidden = ("langgraph", "smolagents", "workflow_registry", "orchestration adapter",
                  "reportjobworker", "elasticsearch", "backgroundtasks", "threading")
     assert not [term for term in forbidden if term in sources]
