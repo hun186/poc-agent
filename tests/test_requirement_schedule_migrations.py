@@ -9,14 +9,14 @@ import pytest
 
 def test_schema_v2_contains_exact_history_evidence_and_identities():
     ddl = "\n".join(canonical_v2_statements("sra_schedule", "sra_requirement"))
-    assert SCHEMA_VERSION == 2
+    assert SCHEMA_VERSION == 3
     assert "requirement_version_number" in ddl
     assert "last_seen_requirement_version_number" in ddl
     assert "last_successful_requirement_version_number" in ddl
     assert "phase1a_output_root_fingerprint" in ddl
     assert "UX_schedule_run_manual" in ddl and "schedule_id,trigger_request_id" in ddl
     assert "UNIQUE(schedule_id,config_sha256)" not in ddl.replace(" ", "")
-    assert set(REQUIRED_COLUMNS) == {"schema_version", "requirement_schedules", "requirement_schedule_versions", "requirement_batch_runs", "requirement_batch_run_items", "requirement_schedule_item_state", "requirement_schedule_audit_outbox"}
+    assert set(REQUIRED_COLUMNS) == {"schema_version", "requirement_schedules", "requirement_schedule_versions", "requirement_batch_runs", "requirement_batch_run_items", "requirement_schedule_item_state", "requirement_schedule_audit_outbox", "requirement_handoff_submissions", "requirement_handoff_coordinator_leases"}
     assert next(c for c in REQUIRED_COLUMNS["requirement_batch_run_items"] if c.name == "phase1a_task_id").max_length == 480
     assert "UQ_requirement_schedule_version_owner" in ddl
     assert "FK_schedule_active_version_owner" in ddl and "FK_run_schedule_version_owner" in ddl

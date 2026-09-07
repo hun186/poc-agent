@@ -143,3 +143,8 @@
 - Added Plan v1.1 as a documentation-only correction: a successfully proven same/lower-version Run Item may complete with checkpoint no-op, while equal version number with a different immutable RequirementVersion ID fails closed; first Gate-B Prepare binds a NULL Batch Run output-root fingerprint exactly once before remote POST and every later stage verifies it.
 - Actual local baseline/source snapshot was `cf89843daea1d3c5b51891c5bcf40c408a19b09b`, matching the supplied hosted PR #211 merge. This checkout had no configured remote or local `main` ref, so hosted refresh could not be independently performed; no divergence was observed in the available source.
 - Documentation verification: `git diff --check`, placeholder/forbidden-semantics scan, docs-only scope check, Design v1 consistency and Task 5/8/9 plus decisions #54/#55/#56 cross-reference scans passed. Phase 1C-B implementation NOT STARTED; JT-1 and LangGraph NOT STARTED; live SQL Server acceptance NOT EXECUTED.
+
+### 2026-09-07 Phase 1C-B compatibility bridge implementation
+
+- Added schema-v3 descriptors/migration DDL, neutral execution contracts, deterministic manifests, legacy Report Job HTTP gateway, lease types/store operations, root-bound crash-safe DOCX publication, checkpoint decision semantics, and an independent coordinator CLI.
+- Repository evidence and exact final results are recorded in the associated implementation commit/PR. Live SQL Server acceptance and private deployment E2E remain NOT EXECUTED.

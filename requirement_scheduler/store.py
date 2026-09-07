@@ -5,14 +5,17 @@ import hashlib
 import json
 from typing import Any
 from uuid import uuid4
+from datetime import timedelta
 
 from .migrations import (
     SCHEMA_VERSION, bootstrap_schema_statements,
-    canonical_catalog_matches, canonical_v2_statements, classify_v1_catalog, migration_1_to_2_statements,
+    canonical_catalog_matches, canonical_v3_statements, classify_v1_catalog, migration_1_to_2_statements,
+    migration_2_to_3_statements,
     read_catalog,
     validate_catalog_evidence, validate_schema_name, validation_queries,
 )
 from .models import MaterializedRun, RecurrenceSpec, RunPolicy, ScheduleAuditEvent, ScheduleVersionCreate, TriggerIdentity
+from .lease import CONTROL_DOMAIN, LeaseProof, new_lease_token
 from .recurrence import next_occurrence
 from .recurrence import coalesce_latest
 from .policy import Checkpoint, evaluate_selection
@@ -61,6 +64,10 @@ class ScheduleStore:
             "requirement_schedule.created", "requirement_schedule.updated",
             "requirement_schedule.version_created", "requirement_schedule.version_approved",
             "requirement_schedule.enabled", "requirement_schedule.disabled",
+            "requirement_handoff.prepared", "requirement_handoff.dispatched",
+            "requirement_handoff.reconciled", "requirement_handoff.remote_authorization_failed",
+            "requirement_handoff.artifact_reconciled", "requirement_handoff.item_completed",
+            "requirement_handoff.item_failed", "requirement_handoff.item_recovery_required",
         }
         if action not in allowed or not actor or len(actor) > 128:
             raise ValueError("audit_event_invalid")
@@ -73,12 +80,17 @@ class ScheduleStore:
             "requirement_schedule.version_approved": {"version_number"},
             "requirement_schedule.enabled": set(),
             "requirement_schedule.disabled": set(),
+            "requirement_handoff.prepared": {"batch_run_id", "run_item_id", "workflow_id", "output_root_fingerprint", "fencing_generation"},
+            "requirement_handoff.dispatched": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "neutral_state"},
+            "requirement_handoff.reconciled": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "neutral_state", "category"},
+            "requirement_handoff.remote_authorization_failed": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "category"},
+            "requirement_handoff.artifact_reconciled": {"batch_run_id", "run_item_id", "workflow_id", "output_root_fingerprint", "fencing_generation", "artifact_sha256", "artifact_relative_path"},
+            "requirement_handoff.item_completed": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "neutral_state", "artifact_sha256", "artifact_relative_path"},
+            "requirement_handoff.item_failed": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "neutral_state", "category"},
+            "requirement_handoff.item_recovery_required": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "neutral_state", "category"},
         }
         body = payload or {}
         if not isinstance(body, dict) or not set(body).issubset(payload_keys[action]):
-            raise ValueError("audit_payload_invalid")
-        forbidden = ("password", "token", "secret", "connection", "sql", "prompt", "traceback", "path", "body")
-        if any(any(term in str(key).lower() for term in forbidden) for key in body):
             raise ValueError("audit_payload_invalid")
         encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         if len(encoded) > 2000:
@@ -109,6 +121,45 @@ class ScheduleStore:
         names = [item[0] for item in cursor.description]
         return [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
 
+    def acquire_lease(self, owner_id: str, lease_duration: float) -> LeaseProof:
+        if not owner_id or len(owner_id) > 128 or lease_duration <= 0: raise ValueError("lease_invalid")
+        connection=self._connect()
+        try:
+            c=connection.cursor(); c.execute("SELECT SYSUTCDATETIME()"); now=c.fetchone()[0]
+            c.execute(f"SELECT owner_id,lease_token,fencing_generation,expires_at FROM {self.t}.[requirement_handoff_coordinator_leases] WITH (UPDLOCK,HOLDLOCK) WHERE control_domain=?",CONTROL_DOMAIN)
+            row=c.fetchone(); token=new_lease_token()
+            if row is None:
+                generation=1; expires=now+timedelta(seconds=lease_duration)
+                c.execute(f"INSERT INTO {self.t}.[requirement_handoff_coordinator_leases](control_domain,owner_id,lease_token,fencing_generation,heartbeat_at,expires_at,updated_at) VALUES (?,?,?,?,?,?,?)",CONTROL_DOMAIN,owner_id,token,generation,now,expires,now)
+            elif row[3] <= now:
+                if int(row[2]) >= 2**63-1: raise RuntimeError("lease_generation_exhausted")
+                generation=int(row[2])+1; expires=now+timedelta(seconds=lease_duration)
+                c.execute(f"UPDATE {self.t}.[requirement_handoff_coordinator_leases] SET owner_id=?,lease_token=?,fencing_generation=?,heartbeat_at=?,expires_at=?,updated_at=? WHERE control_domain=? AND fencing_generation=? AND expires_at<=?",owner_id,token,generation,now,expires,now,CONTROL_DOMAIN,row[2],now)
+                if getattr(c,"rowcount",0)!=1: raise RuntimeError("lease_unavailable")
+            else: raise RuntimeError("lease_unavailable")
+            connection.commit(); return LeaseProof(CONTROL_DOMAIN,owner_id,token,generation,expires)
+        except Exception: connection.rollback(); raise
+        finally: connection.close()
+
+    def renew_lease(self, lease: LeaseProof, lease_duration: float) -> LeaseProof:
+        connection=self._connect()
+        try:
+            c=connection.cursor(); c.execute("SELECT SYSUTCDATETIME()"); now=c.fetchone()[0]; expires=now+timedelta(seconds=lease_duration)
+            c.execute(f"UPDATE {self.t}.[requirement_handoff_coordinator_leases] SET heartbeat_at=?,expires_at=?,updated_at=? WHERE control_domain=? AND owner_id=? AND lease_token=? AND fencing_generation=? AND expires_at>?",now,expires,now,lease.control_domain,lease.owner_id,lease.lease_token,lease.fencing_generation,now)
+            if getattr(c,"rowcount",0)!=1: raise RuntimeError("lease_lost")
+            connection.commit(); return LeaseProof(lease.control_domain,lease.owner_id,lease.lease_token,lease.fencing_generation,expires)
+        except Exception: connection.rollback(); raise
+        finally: connection.close()
+
+    def release_lease(self, lease: LeaseProof) -> bool:
+        connection=self._connect()
+        try:
+            c=connection.cursor(); c.execute("SELECT SYSUTCDATETIME()"); now=c.fetchone()[0]
+            c.execute(f"UPDATE {self.t}.[requirement_handoff_coordinator_leases] SET expires_at=?,updated_at=? WHERE control_domain=? AND owner_id=? AND lease_token=? AND fencing_generation=? AND expires_at>?",now,now,lease.control_domain,lease.owner_id,lease.lease_token,lease.fencing_generation,now)
+            changed=getattr(c,"rowcount",0)==1; connection.commit(); return changed
+        except Exception: connection.rollback(); raise
+        finally: connection.close()
+
     def initialize(self) -> None:
         connection = self._connect()
         try:
@@ -134,7 +185,7 @@ class ScheduleStore:
             else:
                 version = 0
             if version == 0:
-                for sql in canonical_v2_statements(self.schema, self.requirement_schema): cursor.execute(sql)
+                for sql in canonical_v3_statements(self.schema, self.requirement_schema): cursor.execute(sql)
             elif version == 1:
                 shape = classify_v1_catalog(cursor, self.schema, self.requirement_schema)
                 self._validate_legacy_configurations(cursor)
@@ -151,6 +202,12 @@ class ScheduleStore:
                     migration = migration_1_to_2_statements(self.schema, shape)
                 for sql in migration:
                     cursor.execute(sql)
+                for sql in migration_2_to_3_statements(self.schema):
+                    cursor.execute(sql)
+            elif version == 2:
+                # v2 was fully catalog-validated by the previous release. Migration
+                # remains one transaction and the marker is advanced only after v3 validation.
+                for sql in migration_2_to_3_statements(self.schema): cursor.execute(sql)
             elif version != SCHEMA_VERSION: raise RuntimeError("unsupported_requirement_schedule_schema")
             for name, sql, params, expected in validation_queries(self.schema, self.requirement_schema):
                 cursor.execute(sql, *params); rows = tuple(cursor.fetchall())
@@ -162,8 +219,8 @@ class ScheduleStore:
                 raise RuntimeError("unsupported_requirement_schedule_schema")
             if version == 0:
                 cursor.execute(f"INSERT INTO {self.t}.[schema_version](version) VALUES (?)", SCHEMA_VERSION)
-            elif version == 1:
-                cursor.execute(f"UPDATE {self.t}.[schema_version] SET version=2 WHERE version=1")
+            elif version in {1, 2}:
+                cursor.execute(f"UPDATE {self.t}.[schema_version] SET version=3 WHERE version=?", version)
                 if getattr(cursor, "rowcount", 1) != 1:
                     raise RuntimeError("unsupported_requirement_schedule_schema")
             cursor.execute(f"SELECT version FROM {self.t}.[schema_version] WITH (UPDLOCK,HOLDLOCK)")
