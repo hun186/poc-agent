@@ -19,6 +19,11 @@ from .lease import CONTROL_DOMAIN, LeaseProof, new_lease_token
 from .recurrence import next_occurrence
 from .recurrence import coalesce_latest
 from .policy import Checkpoint, evaluate_selection
+from .execution import (
+    ExecutionFailure, ExecutionHandle, ExecutionState, ExecutionStatus, FailureCategory,
+    build_execution_manifest,
+)
+from .handoff import PreparedHandoff, checkpoint_outcome, prepared_handoff, verify_prepared
 
 
 def _now() -> datetime: return datetime.now(timezone.utc).replace(microsecond=0)
@@ -80,14 +85,14 @@ class ScheduleStore:
             "requirement_schedule.version_approved": {"version_number"},
             "requirement_schedule.enabled": set(),
             "requirement_schedule.disabled": set(),
-            "requirement_handoff.prepared": {"batch_run_id", "run_item_id", "workflow_id", "output_root_fingerprint", "fencing_generation"},
-            "requirement_handoff.dispatched": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "neutral_state"},
-            "requirement_handoff.reconciled": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "neutral_state", "category"},
-            "requirement_handoff.remote_authorization_failed": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "category"},
-            "requirement_handoff.artifact_reconciled": {"batch_run_id", "run_item_id", "workflow_id", "output_root_fingerprint", "fencing_generation", "artifact_sha256", "artifact_relative_path"},
-            "requirement_handoff.item_completed": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "neutral_state", "artifact_sha256", "artifact_relative_path"},
-            "requirement_handoff.item_failed": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "neutral_state", "category"},
-            "requirement_handoff.item_recovery_required": {"batch_run_id", "run_item_id", "workflow_id", "fencing_generation", "neutral_state", "category"},
+            "requirement_handoff.prepared": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "output_root_fingerprint", "fencing_generation"},
+            "requirement_handoff.dispatched": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "fencing_generation", "neutral_state"},
+            "requirement_handoff.reconciled": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "fencing_generation", "neutral_state", "category"},
+            "requirement_handoff.remote_authorization_failed": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "fencing_generation", "category"},
+            "requirement_handoff.artifact_reconciled": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "output_root_fingerprint", "fencing_generation", "artifact_sha256", "artifact_relative_path"},
+            "requirement_handoff.item_completed": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "fencing_generation", "neutral_state", "artifact_sha256", "artifact_relative_path"},
+            "requirement_handoff.item_failed": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "fencing_generation", "neutral_state", "category"},
+            "requirement_handoff.item_recovery_required": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "fencing_generation", "neutral_state", "category"},
         }
         body = payload or {}
         if not isinstance(body, dict) or not set(body).issubset(payload_keys[action]):
@@ -101,9 +106,9 @@ class ScheduleStore:
     def _enqueue_audit_event(self, cursor, event: ScheduleAuditEvent) -> None:
         payload = json.dumps(event.payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         cursor.execute(
-            f"INSERT INTO {self.t}.[requirement_schedule_audit_outbox](audit_event_id,action,actor,schedule_id,schedule_version_id,batch_run_id,safe_payload_json,created_at,delivery_attempt_count) VALUES (?,?,?,?,?,NULL,?,?,0)",
+            f"INSERT INTO {self.t}.[requirement_schedule_audit_outbox](audit_event_id,action,actor,schedule_id,schedule_version_id,batch_run_id,safe_payload_json,created_at,delivery_attempt_count) VALUES (?,?,?,?,?,?,?,?,0)",
             event.audit_event_id, event.action, event.actor, event.schedule_id,
-            event.schedule_version_id, payload, event.created_at,
+            event.schedule_version_id, event.payload.get("batch_run_id"), payload, event.created_at,
         )
 
     def _drain_best_effort(self) -> None:
@@ -520,3 +525,325 @@ class ScheduleStore:
             result = self._materialize_locked(c, schedule_id, schedule[0], version[0], trigger, now_utc, actor); connection.commit(); return result
         except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
         finally: connection.close()
+
+    @staticmethod
+    def _prove_lease(cursor, table: str, lease: LeaseProof) -> datetime:
+        """Lock and prove coordinator authority using SQL Server's clock."""
+        if lease.control_domain != CONTROL_DOMAIN:
+            raise RuntimeError("lease_lost")
+        cursor.execute("SELECT SYSUTCDATETIME()")
+        now = cursor.fetchone()[0]
+        cursor.execute(
+            f"SELECT owner_id,lease_token,fencing_generation,expires_at FROM {table}.[requirement_handoff_coordinator_leases] WITH (UPDLOCK,HOLDLOCK) WHERE control_domain=?",
+            lease.control_domain,
+        )
+        row = cursor.fetchone()
+        if (row is None or row[0] != lease.owner_id or row[1] != lease.lease_token
+                or int(row[2]) != lease.fencing_generation or row[3] <= now):
+            raise RuntimeError("lease_lost")
+        return now
+
+    @staticmethod
+    def _handoff_source(row) -> dict[str, Any]:
+        keys = ("run_item_id", "batch_run_id", "schedule_id", "schedule_version_id",
+                "snapshot_id", "requirement_id", "requirement_version_id",
+                "requirement_version_number", "resolved_prompt", "resolved_model",
+                "deadline_at")
+        return dict(zip(keys, row[:len(keys)], strict=True))
+
+    def _terminal_run_recompute(self, cursor, batch_run_id: str, now: datetime) -> None:
+        cursor.execute(
+            f"SELECT execution_state,COUNT(*) FROM {self.t}.[requirement_batch_run_items] WITH (UPDLOCK,HOLDLOCK) WHERE batch_run_id=? AND selection_status='selected' GROUP BY execution_state",
+            batch_run_id,
+        )
+        counts = {str(state): int(count) for state, count in cursor.fetchall()}
+        success = counts.get("completed", 0)
+        failures = sum(counts.get(state, 0) for state in ("failed", "recovery_required", "expired"))
+        active = sum(counts.get(state, 0) for state in ("handoff_pending", "submitting", "pending", "running", "reconciling"))
+        state = "completed" if active == 0 and failures == 0 else ("completed_with_failures" if active == 0 else "running")
+        cursor.execute(
+            f"UPDATE {self.t}.[requirement_batch_runs] SET success_count=?,failure_count=?,state=?,completed_at=CASE WHEN ?=0 THEN COALESCE(completed_at,?) ELSE NULL END,updated_at=? WHERE batch_run_id=?",
+            success, failures, state, active, now, now, batch_run_id,
+        )
+
+    def prepare_next_handoff(self, *, lease: LeaseProof,
+                             output_root_fingerprint: str,
+                             now_utc: datetime | None = None) -> PreparedHandoff | None:
+        """Fenced Prepare TX #1.  No transport or filesystem operation occurs here."""
+        if len(output_root_fingerprint) != 64 or any(c not in "0123456789abcdef" for c in output_root_fingerprint):
+            raise ValueError("output_root_fingerprint_invalid")
+        connection = self._connect()
+        try:
+            c = connection.cursor()
+            db_now = self._prove_lease(c, self.t, lease)
+            # now_utc is intentionally not expiry authority; it is accepted only for
+            # compatibility with callers and deterministic tests. SQL time wins.
+            c.execute(
+                f"SELECT TOP 1 i.run_item_id,i.batch_run_id,r.schedule_id,r.schedule_version_id,r.snapshot_id,i.requirement_id,i.requirement_version_id,i.requirement_version_number,v.prompt_content,sv.model,v.expires_at,r.phase1a_output_root_fingerprint,r.state "
+                f"FROM {self.t}.[requirement_batch_run_items] i WITH (UPDLOCK,HOLDLOCK,READPAST) "
+                f"JOIN {self.t}.[requirement_batch_runs] r WITH (UPDLOCK,HOLDLOCK) ON r.batch_run_id=i.batch_run_id "
+                f"JOIN {self.t}.[requirement_schedule_versions] sv WITH (HOLDLOCK) ON sv.schedule_id=r.schedule_id AND sv.schedule_version_id=r.schedule_version_id "
+                f"JOIN [{self.requirement_schema}].[requirement_snapshot_items] si WITH (HOLDLOCK) ON si.snapshot_id=r.snapshot_id AND si.requirement_id=i.requirement_id AND si.requirement_version_id=i.requirement_version_id "
+                f"JOIN [{self.requirement_schema}].[requirements] q WITH (HOLDLOCK) ON q.requirement_id=i.requirement_id "
+                f"JOIN [{self.requirement_schema}].[requirement_versions] v WITH (HOLDLOCK) ON v.requirement_id=i.requirement_id AND v.requirement_version_id=i.requirement_version_id AND v.version_number=i.requirement_version_number "
+                f"WHERE i.selection_status='selected' AND i.execution_state='handoff_pending' AND r.state IN ('handoff_pending','running') ORDER BY i.created_at,i.run_item_id"
+            )
+            row = c.fetchone()
+            if row is None:
+                connection.commit()
+                return None
+            source = self._handoff_source(row)
+            frozen_root, run_state = row[11], row[12]
+            # Required second database-time check is deliberately after all identity locks.
+            c.execute("SELECT SYSUTCDATETIME()")
+            expiry_now = c.fetchone()[0]
+            if source["deadline_at"] is not None and source["deadline_at"] <= expiry_now:
+                c.execute(
+                    f"UPDATE {self.t}.[requirement_batch_run_items] SET execution_state='expired',expired_before_handoff=1,error_code='deadline_exceeded',error_message='deadline_exceeded',completed_at=?,updated_at=? WHERE run_item_id=? AND execution_state='handoff_pending'",
+                    expiry_now, expiry_now, source["run_item_id"],
+                )
+                if getattr(c, "rowcount", 0) != 1: raise RuntimeError("handoff_state_conflict")
+                self._terminal_run_recompute(c, source["batch_run_id"], expiry_now)
+                event = self._audit_event("requirement_handoff.item_failed", lease.owner_id,
+                    source["schedule_id"], schedule_version_id=source["schedule_version_id"],
+                    payload={"batch_run_id": source["batch_run_id"], "run_item_id": source["run_item_id"],
+                             "workflow_id": "report_v1", "fencing_generation": lease.fencing_generation,
+                             "neutral_state": "expired", "category": "deadline_exceeded"}, created_at=expiry_now)
+                self._enqueue_audit_event(c, event)
+                connection.commit(); self._drain_best_effort(); return None
+            if source["deadline_at"] is None:
+                source["deadline_at"] = datetime.max.replace(tzinfo=timezone.utc, microsecond=0)
+            if frozen_root is None:
+                c.execute(
+                    f"UPDATE {self.t}.[requirement_batch_runs] SET phase1a_output_root_fingerprint=?,updated_at=? WHERE batch_run_id=? AND phase1a_output_root_fingerprint IS NULL AND state=?",
+                    output_root_fingerprint, expiry_now, source["batch_run_id"], run_state,
+                )
+                if getattr(c, "rowcount", 0) != 1: raise RuntimeError("output_root_bind_conflict")
+                frozen_root = output_root_fingerprint
+            if frozen_root != output_root_fingerprint:
+                raise RuntimeError("output_root_fingerprint_mismatch")
+            candidate = prepared_handoff(source["run_item_id"], build_execution_manifest(source))
+            c.execute(
+                f"SELECT submission_id,workflow_id,semantic_manifest_json,semantic_fingerprint,legacy_session_id FROM {self.t}.[requirement_handoff_submissions] WITH (UPDLOCK,HOLDLOCK) WHERE run_item_id=?",
+                source["run_item_id"],
+            )
+            existing = c.fetchone()
+            if existing is None:
+                try:
+                    c.execute(
+                        f"INSERT INTO {self.t}.[requirement_handoff_submissions](submission_id,run_item_id,workflow_id,semantic_manifest_json,semantic_fingerprint,legacy_session_id,created_at,prepared_at) VALUES (?,?,?,?,?,?,?,?)",
+                        candidate.submission_id, candidate.run_item_id, candidate.manifest.workflow_id,
+                        candidate.semantic_manifest_json, candidate.semantic_fingerprint,
+                        candidate.legacy_session_id, expiry_now, expiry_now,
+                    )
+                except Exception:
+                    # A unique-key race can only be accepted after the winner is
+                    # visible and every immutable byte compares equal.
+                    c.execute(
+                        f"SELECT submission_id,workflow_id,semantic_manifest_json,semantic_fingerprint,legacy_session_id FROM {self.t}.[requirement_handoff_submissions] WITH (UPDLOCK,HOLDLOCK) WHERE run_item_id=?",
+                        source["run_item_id"],
+                    )
+                    existing = c.fetchone()
+                    if existing is None: raise
+            if existing is not None:
+                stored_manifest = ExecutionManifest(**json.loads(existing[2]))
+                stored = PreparedHandoff(source["run_item_id"], existing[0], stored_manifest,
+                                         existing[2], existing[3], existing[4])
+                if existing[1] != "report_v1": raise RuntimeError("submission_semantic_drift")
+                verify_prepared(stored, candidate)
+            c.execute(
+                f"UPDATE {self.t}.[requirement_batch_run_items] SET execution_state='submitting',handoff_started_at=COALESCE(handoff_started_at,?),updated_at=? WHERE run_item_id=? AND execution_state='handoff_pending'",
+                expiry_now, expiry_now, source["run_item_id"],
+            )
+            if getattr(c, "rowcount", 0) != 1: raise RuntimeError("handoff_state_conflict")
+            c.execute(
+                f"UPDATE {self.t}.[requirement_batch_runs] SET state='running',handoff_started_at=COALESCE(handoff_started_at,?),updated_at=? WHERE batch_run_id=? AND phase1a_output_root_fingerprint=?",
+                expiry_now, expiry_now, source["batch_run_id"], frozen_root,
+            )
+            self._enqueue_audit_event(c, self._audit_event("requirement_handoff.prepared", lease.owner_id,
+                source["schedule_id"], schedule_version_id=source["schedule_version_id"],
+                payload={"batch_run_id": source["batch_run_id"], "run_item_id": source["run_item_id"],
+                         "submission_id": candidate.submission_id, "workflow_id": "report_v1", "output_root_fingerprint": frozen_root,
+                         "fencing_generation": lease.fencing_generation}, created_at=expiry_now))
+            connection.commit()
+            self._drain_best_effort()
+            return candidate
+        except Exception:
+            connection.rollback(); raise
+        finally:
+            connection.close()
+
+    def _load_submission_locked(self, cursor, run_item_id: str):
+        cursor.execute(
+            f"SELECT s.submission_id,s.workflow_id,s.semantic_manifest_json,s.semantic_fingerprint,s.legacy_session_id,i.execution_state,i.remote_job_id,i.batch_run_id,r.schedule_id,r.schedule_version_id,r.phase1a_output_root_fingerprint "
+            f"FROM {self.t}.[requirement_handoff_submissions] s WITH (UPDLOCK,HOLDLOCK) JOIN {self.t}.[requirement_batch_run_items] i WITH (UPDLOCK,HOLDLOCK) ON i.run_item_id=s.run_item_id JOIN {self.t}.[requirement_batch_runs] r WITH (UPDLOCK,HOLDLOCK) ON r.batch_run_id=i.batch_run_id WHERE s.run_item_id=?",
+            run_item_id,
+        )
+        row = cursor.fetchone()
+        if row is None: raise RuntimeError("submission_not_found")
+        return row
+
+    @staticmethod
+    def _prepared_from_submission(run_item_id: str, row) -> PreparedHandoff:
+        try: manifest = ExecutionManifest(**json.loads(row[2]))
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeError("submission_semantic_drift") from exc
+        return PreparedHandoff(run_item_id, row[0], manifest, row[2], row[3], row[4])
+
+    def acknowledge_submission(self, prepared: PreparedHandoff, handle: ExecutionHandle,
+                               lease: LeaseProof, expected_state: str | None = None) -> None:
+        if handle.submission_id != prepared.submission_id:
+            raise RuntimeError("submission_semantic_drift")
+        connection = self._connect()
+        try:
+            c = connection.cursor(); now = self._prove_lease(c, self.t, lease)
+            row = self._load_submission_locked(c, prepared.run_item_id)
+            verify_prepared(self._prepared_from_submission(prepared.run_item_id, row), prepared)
+            allowed = {expected_state} if expected_state else {"submitting", "reconciling"}
+            if row[5] not in allowed: raise RuntimeError("handoff_state_conflict")
+            if row[6] is not None and row[6] != handle.remote_job_id:
+                raise RuntimeError("remote_job_identity_conflict")
+            c.execute(
+                f"UPDATE {self.t}.[requirement_batch_run_items] SET remote_job_id=?,remote_job_state='pending',execution_state='pending',dispatched_at=COALESCE(dispatched_at,?),updated_at=? WHERE run_item_id=? AND execution_state=? AND (remote_job_id IS NULL OR remote_job_id=?)",
+                handle.remote_job_id, now, now, prepared.run_item_id, row[5], handle.remote_job_id,
+            )
+            if getattr(c, "rowcount", 0) != 1: raise RuntimeError("handoff_state_conflict")
+            c.execute(f"UPDATE {self.t}.[requirement_batch_runs] SET handed_off_at=COALESCE(handed_off_at,?),updated_at=? WHERE batch_run_id=?", now, now, row[7])
+            self._enqueue_audit_event(c, self._audit_event("requirement_handoff.dispatched", lease.owner_id,
+                row[8], schedule_version_id=row[9], payload={"batch_run_id": row[7],
+                "run_item_id": prepared.run_item_id, "submission_id": prepared.submission_id, "workflow_id": "report_v1",
+                "fencing_generation": lease.fencing_generation, "neutral_state": "pending"}, created_at=now))
+            connection.commit(); self._drain_best_effort()
+        except Exception: connection.rollback(); raise
+        finally: connection.close()
+
+    def mark_reconciling(self, run_item_id: str, lease: LeaseProof, category: str) -> None:
+        connection = self._connect()
+        try:
+            c=connection.cursor(); now=self._prove_lease(c,self.t,lease); row=self._load_submission_locked(c,run_item_id)
+            if row[5] not in {"submitting","pending","running","reconciling"}: raise RuntimeError("handoff_state_conflict")
+            c.execute(f"UPDATE {self.t}.[requirement_batch_run_items] SET execution_state='reconciling',error_code=?,error_message=?,updated_at=? WHERE run_item_id=? AND execution_state=?",category,category,now,run_item_id,row[5])
+            if getattr(c,"rowcount",0)!=1: raise RuntimeError("handoff_state_conflict")
+            self._enqueue_audit_event(c,self._audit_event("requirement_handoff.reconciled",lease.owner_id,row[8],schedule_version_id=row[9],payload={"batch_run_id":row[7],"run_item_id":run_item_id,"submission_id":row[0],"workflow_id":"report_v1","fencing_generation":lease.fencing_generation,"neutral_state":"reconciling","category":category},created_at=now))
+            connection.commit(); self._drain_best_effort()
+        except Exception: connection.rollback(); raise
+        finally: connection.close()
+
+    def list_unfinished_handoffs(self, *, lease: LeaseProof, limit: int) -> list[dict[str, Any]]:
+        limit=max(1,min(int(limit),100)); connection=self._connect()
+        try:
+            c=connection.cursor(); self._prove_lease(c,self.t,lease)
+            c.execute(f"SELECT TOP (?) s.run_item_id,s.submission_id,s.workflow_id,s.semantic_manifest_json,s.semantic_fingerprint,s.legacy_session_id,i.remote_job_id,i.execution_state,i.batch_run_id,r.schedule_id,r.schedule_version_id,r.phase1a_output_root_fingerprint FROM {self.t}.[requirement_handoff_submissions] s JOIN {self.t}.[requirement_batch_run_items] i ON i.run_item_id=s.run_item_id JOIN {self.t}.[requirement_batch_runs] r ON r.batch_run_id=i.batch_run_id WHERE i.execution_state IN ('submitting','pending','running','reconciling') ORDER BY i.handoff_started_at,i.run_item_id",limit)
+            result=[]
+            for row in c.fetchall():
+                prepared=self._prepared_from_submission(row[0],(row[1],row[2],row[3],row[4],row[5]))
+                result.append({"run_item_id":row[0],"prepared":prepared,"remote_job_id":row[6],"execution_state":row[7],"batch_run_id":row[8],"schedule_id":row[9],"schedule_version_id":row[10],"output_root_fingerprint":row[11],"handle":ExecutionHandle(row[1],row[6]) if row[6] else None})
+            connection.commit(); return result
+        except Exception: connection.rollback(); raise
+        finally: connection.close()
+
+    def record_reconciliation(self, row: dict[str,Any], status: ExecutionStatus,
+                              lease: LeaseProof) -> None:
+        if status.state == ExecutionState.COMPLETED:
+            # Keep the item reconciling until artifact proof is durable.
+            target="reconciling"
+        else: target=status.state.value
+        if target == "failed":
+            return self.close_failed_or_recovery_item(lease, row["run_item_id"], "failed",
+                status.safe_error.category.value if status.safe_error else "remote_execution_failed")
+        if target == "recovery_required":
+            return self.close_failed_or_recovery_item(lease,row["run_item_id"],"recovery_required",
+                status.safe_error.category.value if status.safe_error else "reconciliation_unknown")
+        connection=self._connect()
+        try:
+            c=connection.cursor(); now=self._prove_lease(c,self.t,lease); stored=self._load_submission_locked(c,row["run_item_id"])
+            if stored[6] != row["remote_job_id"]: raise RuntimeError("remote_job_identity_conflict")
+            if stored[5] not in {"pending","running","reconciling"}: raise RuntimeError("handoff_state_conflict")
+            category=status.safe_error.category.value if status.safe_error else None
+            c.execute(f"UPDATE {self.t}.[requirement_batch_run_items] SET execution_state=?,remote_job_state=?,error_code=?,error_message=?,remote_completed_at=CASE WHEN ?='reconciling' THEN COALESCE(remote_completed_at,?) ELSE remote_completed_at END,updated_at=? WHERE run_item_id=? AND execution_state=?",target,status.state.value,category,category,target,now,now,row["run_item_id"],stored[5])
+            if getattr(c,"rowcount",0)!=1: raise RuntimeError("handoff_state_conflict")
+            c.execute(f"UPDATE {self.t}.[requirement_batch_runs] SET reconciled_at=?,updated_at=? WHERE batch_run_id=?",now,now,stored[7])
+            payload={"batch_run_id":stored[7],"run_item_id":row["run_item_id"],"submission_id":stored[0],"workflow_id":"report_v1","fencing_generation":lease.fencing_generation,"neutral_state":target}
+            if category: payload["category"]=category
+            self._enqueue_audit_event(c,self._audit_event("requirement_handoff.reconciled",lease.owner_id,stored[8],schedule_version_id=stored[9],payload=payload,created_at=now))
+            connection.commit(); self._drain_best_effort()
+        except Exception: connection.rollback(); raise
+        finally: connection.close()
+
+    def record_artifact_reconciled(self, *, lease: LeaseProof, run_item_id: str,
+                                   relative_path: str, sha256: str,
+                                   output_root_fingerprint: str) -> None:
+        if (not relative_path or relative_path.startswith(("/","\\")) or ".." in relative_path.replace("\\","/").split("/")
+                or len(sha256)!=64 or any(c not in "0123456789abcdef" for c in sha256)):
+            raise ValueError("artifact_evidence_invalid")
+        connection=self._connect()
+        try:
+            c=connection.cursor(); now=self._prove_lease(c,self.t,lease); row=self._load_submission_locked(c,run_item_id)
+            if row[10] != output_root_fingerprint: raise RuntimeError("output_root_fingerprint_mismatch")
+            if row[5] != "reconciling": raise RuntimeError("handoff_state_conflict")
+            c.execute(f"UPDATE {self.t}.[requirement_batch_run_items] SET artifact_relative_path=?,artifact_sha256=?,artifact_reconciled_at=?,updated_at=? WHERE run_item_id=? AND execution_state='reconciling' AND remote_job_state='completed'",relative_path,sha256,now,now,run_item_id)
+            if getattr(c,"rowcount",0)!=1: raise RuntimeError("artifact_proof_incomplete")
+            self._enqueue_audit_event(c,self._audit_event("requirement_handoff.artifact_reconciled",lease.owner_id,row[8],schedule_version_id=row[9],payload={"batch_run_id":row[7],"run_item_id":run_item_id,"submission_id":row[0],"workflow_id":"report_v1","output_root_fingerprint":output_root_fingerprint,"fencing_generation":lease.fencing_generation,"artifact_sha256":sha256,"artifact_relative_path":relative_path},created_at=now))
+            connection.commit(); self._drain_best_effort()
+        except Exception: connection.rollback(); raise
+        finally: connection.close()
+
+    def close_completed_item(self, *, lease: LeaseProof, run_item_id: str,
+                             output_root_fingerprint: str) -> None:
+        connection=self._connect()
+        try:
+            c=connection.cursor(); now=self._prove_lease(c,self.t,lease)
+            c.execute(f"SELECT i.batch_run_id,i.requirement_id,i.requirement_version_id,i.requirement_version_number,i.execution_state,i.remote_job_state,i.artifact_relative_path,i.artifact_sha256,i.artifact_reconciled_at,r.schedule_id,r.schedule_version_id,r.phase1a_output_root_fingerprint FROM {self.t}.[requirement_batch_run_items] i WITH (UPDLOCK,HOLDLOCK) JOIN {self.t}.[requirement_batch_runs] r WITH (UPDLOCK,HOLDLOCK) ON r.batch_run_id=i.batch_run_id WHERE i.run_item_id=?",run_item_id)
+            row=c.fetchone()
+            if row is None: raise RuntimeError("run_item_not_found")
+            batch_run_id,requirement_id,version_id,version_number,state,remote_state,path,digest,reconciled_at,schedule_id,schedule_version_id,frozen=row
+            if state == "completed": connection.commit(); return
+            if state != "reconciling" or remote_state != "completed" or not path or not digest or reconciled_at is None:
+                raise RuntimeError("artifact_proof_incomplete")
+            if frozen != output_root_fingerprint: raise RuntimeError("output_root_fingerprint_mismatch")
+            c.execute(f"SELECT submission_id FROM {self.t}.[requirement_handoff_submissions] WITH (UPDLOCK,HOLDLOCK) WHERE run_item_id=?",run_item_id)
+            submission_row=c.fetchone()
+            if submission_row is None: raise RuntimeError("submission_not_found")
+            c.execute(f"SELECT last_successful_requirement_version_id,last_successful_requirement_version_number,last_successful_run_item_id FROM {self.t}.[requirement_schedule_item_state] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=? AND requirement_id=?",schedule_id,requirement_id)
+            checkpoint=c.fetchone()
+            outcome=checkpoint_outcome(checkpoint[1] if checkpoint else None,checkpoint[0] if checkpoint else None,int(version_number),version_id)
+            c.execute(f"UPDATE {self.t}.[requirement_batch_run_items] SET execution_state='completed',error_code=NULL,error_message=NULL,completed_at=?,updated_at=? WHERE run_item_id=? AND execution_state='reconciling' AND remote_job_state='completed' AND artifact_relative_path IS NOT NULL AND artifact_sha256 IS NOT NULL AND artifact_reconciled_at IS NOT NULL",now,now,run_item_id)
+            if getattr(c,"rowcount",0)!=1: raise RuntimeError("handoff_state_conflict")
+            if outcome == "advance":
+                c.execute(f"UPDATE {self.t}.[requirement_schedule_item_state] SET last_successful_requirement_version_id=?,last_successful_requirement_version_number=?,last_successful_run_item_id=?,last_successful_at=?,updated_at=? WHERE schedule_id=? AND requirement_id=?",version_id,version_number,run_item_id,now,now,schedule_id,requirement_id)
+                if getattr(c,"rowcount",0)!=1: raise RuntimeError("checkpoint_not_found")
+            self._terminal_run_recompute(c,batch_run_id,now)
+            self._enqueue_audit_event(c,self._audit_event("requirement_handoff.item_completed",lease.owner_id,schedule_id,schedule_version_id=schedule_version_id,payload={"batch_run_id":batch_run_id,"run_item_id":run_item_id,"submission_id":submission_row[0],"workflow_id":"report_v1","fencing_generation":lease.fencing_generation,"neutral_state":"completed","artifact_sha256":digest,"artifact_relative_path":path},created_at=now))
+            connection.commit(); self._drain_best_effort()
+        except Exception: connection.rollback(); raise
+        finally: connection.close()
+
+    def close_failed_or_recovery_item(self, lease: LeaseProof, run_item_id: str,
+                                      terminal_state: str, category: str) -> None:
+        if terminal_state not in {"failed","recovery_required"}: raise ValueError("terminal_state_invalid")
+        action="requirement_handoff.item_failed" if terminal_state=="failed" else "requirement_handoff.item_recovery_required"
+        connection=self._connect()
+        try:
+            c=connection.cursor(); now=self._prove_lease(c,self.t,lease); row=self._load_submission_locked(c,run_item_id)
+            if row[5] in {"completed","failed","recovery_required","expired"}:
+                if row[5] == terminal_state: connection.commit(); return
+                raise RuntimeError("handoff_state_conflict")
+            c.execute(f"UPDATE {self.t}.[requirement_batch_run_items] SET execution_state=?,error_code=?,error_message=?,completed_at=?,updated_at=? WHERE run_item_id=? AND execution_state=?",terminal_state,category,category,now,now,run_item_id,row[5])
+            if getattr(c,"rowcount",0)!=1: raise RuntimeError("handoff_state_conflict")
+            self._terminal_run_recompute(c,row[7],now)
+            if category in {"authentication_failed","authorization_failed"}:
+                self._enqueue_audit_event(c,self._audit_event("requirement_handoff.remote_authorization_failed",lease.owner_id,row[8],schedule_version_id=row[9],payload={"batch_run_id":row[7],"run_item_id":run_item_id,"submission_id":row[0],"workflow_id":"report_v1","fencing_generation":lease.fencing_generation,"category":category},created_at=now))
+            self._enqueue_audit_event(c,self._audit_event(action,lease.owner_id,row[8],schedule_version_id=row[9],payload={"batch_run_id":row[7],"run_item_id":run_item_id,"submission_id":row[0],"workflow_id":"report_v1","fencing_generation":lease.fencing_generation,"neutral_state":terminal_state,"category":category},created_at=now))
+            connection.commit(); self._drain_best_effort()
+        except Exception: connection.rollback(); raise
+        finally: connection.close()
+
+    def list_batch_runs(self, *, schedule_id: str, limit: int=50, offset: int=0):
+        limit=max(1,min(int(limit),100)); offset=max(0,int(offset))
+        return self._query(f"SELECT batch_run_id,schedule_id,schedule_version_id,trigger_type,trigger_request_id,scheduled_for,state,selected_count,skipped_count,success_count,failure_count,error_code,deadline_elapsed_during_execution,created_at,materialized_at,handoff_started_at,handed_off_at,reconciled_at,completed_at FROM {self.t}.[requirement_batch_runs] WHERE schedule_id=? ORDER BY created_at DESC,batch_run_id OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",schedule_id,offset,limit)
+
+    def get_batch_run(self, *, schedule_id: str, batch_run_id: str):
+        runs=self._query(f"SELECT batch_run_id,schedule_id,schedule_version_id,trigger_type,trigger_request_id,scheduled_for,state,selected_count,skipped_count,success_count,failure_count,error_code,deadline_elapsed_during_execution,created_at,materialized_at,handoff_started_at,handed_off_at,reconciled_at,completed_at FROM {self.t}.[requirement_batch_runs] WHERE schedule_id=? AND batch_run_id=?",schedule_id,batch_run_id)
+        if not runs: raise KeyError("batch_run_not_found")
+        runs[0]["items"]=self._query(f"SELECT run_item_id,requirement_id,requirement_version_id,requirement_version_number,source_order,selection_status,selection_reason,execution_state,error_code,expired_at_selection,expired_before_handoff,deadline_elapsed_during_execution,artifact_relative_path,artifact_sha256,handoff_started_at,dispatched_at,remote_completed_at,artifact_reconciled_at,completed_at FROM {self.t}.[requirement_batch_run_items] WHERE batch_run_id=? ORDER BY source_order",batch_run_id)
+        return runs[0]

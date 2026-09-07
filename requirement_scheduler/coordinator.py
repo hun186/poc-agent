@@ -16,6 +16,7 @@ class RequirementHandoffCoordinator:
         return result
     def run(self, stop_event: threading.Event) -> None:
         try:
+            self.store.initialize()
             while not stop_event.is_set():
                 self.run_once(); stop_event.wait(self.config.poll_interval)
         finally:

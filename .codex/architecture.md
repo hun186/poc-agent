@@ -156,3 +156,8 @@
 ## 2026-09-07 Requirement execution compatibility bridge
 
 - `requirement_scheduler` now contains a framework-neutral execution boundary, an HTTP-only legacy Report Job gateway, durable SQL lease/schema contracts, and an independently supervised coordinator entry point. HTTP and filesystem effects occur outside SQL transactions.
+
+## 2026-09-07 Phase 1C-B closure runtime flow
+
+- The external `handoff-worker` initializes schema v3, acquires/renews a SQL-fenced coordinator lease, reconciles unfinished immutable submissions before preparing bounded new work, and stops authoritative mutation on lease failure. FastAPI owns no handoff loop.
+- Prepare and acknowledge are separate SQL transactions around the Report Job HTTP call. Reconciliation translates only neutral gateway states, verifies the frozen server-owned root, publishes a validated deterministic DOCX, then atomically closes item/counters/checkpoint/audit.

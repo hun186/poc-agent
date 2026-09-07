@@ -180,3 +180,9 @@
 
 - Keep `report_v1` behind immutable neutral contracts and deterministic submission/session identities. Bind the server-owned artifact root once by non-secret fingerprint; never accept caller root authority.
 - Treat successful item closure and checkpoint advancement separately: older/same immutable versions complete with checkpoint no-op; equal version number with different immutable identity fails closed.
+
+## 2026-09-07 Phase 1C-B closure implementation decisions
+
+- Preserve PR #213's neutral immutable contracts and implement missing authority in `ScheduleStore` transactions rather than adding a shadow Task/Attempt store. SQL Server database time and exact lease/fence evidence gate every business mutation.
+- Keep HTTP and filesystem work outside SQL transactions. Bind the server-owned output-root fingerprint once in Prepare; later reconciliation must prove equality before download/publication and stores only relative artifact evidence.
+- Expose only existing Requirement Schedule manual materialization and neutral Run status. Do not add Report Job-native control, retry/cancel, JT-1, LangGraph, or a FastAPI worker thread.
