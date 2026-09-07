@@ -136,3 +136,10 @@
 - The plan freezes canonical Requirement Schedule schema v3, immutable submission manifest/fingerprint and isolated session identity, fenced external coordinator, legacy Report Job HTTP gateway, crash-safe reconciliation/artifact publication, atomic terminal checkpoint/audit closure, and a 14-task RED/GREEN matrix.
 - Source snapshot exactly matches the requested PR #210 merge baseline. Hosted refresh was attempted, but the network proxy rejected GitHub with HTTP 403, so the local commit could not be independently compared with a newer hosted `main`.
 - Phase 1C-B implementation is NOT STARTED. Job Task JT-1 and LangGraph integration are NOT STARTED. Live SQL Server acceptance is NOT EXECUTED. The pre-Design-v1 Gate-B prompt remains stale and MUST NOT RUN. Next gate is Human/ChatGPT Phase 1C-B Plan Review.
+
+### 2026-09-05 Phase 1C-B Plan v1.1 correction
+
+- Phase 1C-B Plan Review v1: **NOT PASS**. Reasons: same-version re-run/checkpoint conflict and missing output-root fingerprint snapshot authority.
+- Added Plan v1.1 as a documentation-only correction: a successfully proven same/lower-version Run Item may complete with checkpoint no-op, while equal version number with a different immutable RequirementVersion ID fails closed; first Gate-B Prepare binds a NULL Batch Run output-root fingerprint exactly once before remote POST and every later stage verifies it.
+- Actual local baseline/source snapshot was `cf89843daea1d3c5b51891c5bcf40c408a19b09b`, matching the supplied hosted PR #211 merge. This checkout had no configured remote or local `main` ref, so hosted refresh could not be independently performed; no divergence was observed in the available source.
+- Documentation verification: `git diff --check`, placeholder/forbidden-semantics scan, docs-only scope check, Design v1 consistency and Task 5/8/9 plus decisions #54/#55/#56 cross-reference scans passed. Phase 1C-B implementation NOT STARTED; JT-1 and LangGraph NOT STARTED; live SQL Server acceptance NOT EXECUTED.
