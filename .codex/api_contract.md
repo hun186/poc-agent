@@ -147,3 +147,8 @@ Authenticated endpoints: `GET/POST /v1/requirement-schedules`, `GET/PATCH /v1/re
 ## 2026-09-07 Phase 1C-B
 
 - The bridge consumes only the existing public Report Job create/status/Word-download endpoints. It adds no cancel/retry endpoint and does not expose native Report Job ownership, credentials, prompts, absolute artifact roots, or backend-native state as Requirement API authority.
+
+## 2026-09-07 Requirement Schedule Gate-B status surfaces
+
+- `POST /v1/requirement-schedules/{schedule_id}/runs` materializes an idempotent schedule-scoped manual Run from `trigger_request_id`; it does not synchronously execute or wake a FastAPI worker.
+- `GET /v1/requirement-schedules/{schedule_id}/runs` returns bounded neutral Run status; `GET /v1/requirement-schedules/{schedule_id}/runs/{batch_run_id}` adds neutral item state/error, immutable version identity, timestamps, and safe relative artifact path/digest. Remote owner/native backend state, prompts, credentials, absolute paths, retry, and cancellation controls are not exposed.

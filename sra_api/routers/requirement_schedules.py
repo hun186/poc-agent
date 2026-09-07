@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from api.routers.editor_dependencies import authorize_role, current_user, require_db_operator, require_superuser
 from api.services.auth_store import ROLE_DB_OPERATOR, ROLE_SUPERUSER, AuthUser
-from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate
+from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate, TriggerIdentity
 
 router = APIRouter(tags=["requirement-schedules"])
 
@@ -31,6 +31,10 @@ class ScheduleVersionBody(BaseModel):
     recurrence: dict[str, Any]
     run_policy: RunPolicy
     model: str = Field(min_length=1, max_length=240)
+
+class ManualRunBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    trigger_request_id: str = Field(min_length=1,max_length=128)
 
 
 def schedule_service(request: Request):
@@ -103,3 +107,20 @@ def approve_version(schedule_id: str, version_number: int, service=Depends(sched
     try: result = service.approve_version(schedule_id=schedule_id, version_number=version_number, actor=user.username, now_utc=datetime.now(timezone.utc).replace(microsecond=0))
     except Exception as exc: raise _error(exc) from exc
     return result
+
+@router.post("/v1/requirement-schedules/{schedule_id}/runs",status_code=201)
+def create_manual_run(schedule_id: str,payload: ManualRunBody,service=Depends(schedule_service),user: AuthUser=Depends(require_db_operator)):
+    try:
+        result=service.store.materialize_run(schedule_id=schedule_id,trigger=TriggerIdentity("manual",trigger_request_id=payload.trigger_request_id),now_utc=datetime.now(timezone.utc).replace(microsecond=0),actor=user.username)
+        return {"run":result.run,"items":result.items}
+    except Exception as exc: raise _error(exc) from exc
+
+@router.get("/v1/requirement-schedules/{schedule_id}/runs")
+def list_runs(schedule_id: str,limit: int=Query(default=50,ge=1,le=100),offset: int=Query(default=0,ge=0),service=Depends(schedule_service),user: AuthUser=Depends(current_user)):
+    try: return {"items":service.store.list_batch_runs(schedule_id=schedule_id,limit=limit,offset=offset),"limit":limit,"offset":offset}
+    except Exception as exc: raise _error(exc) from exc
+
+@router.get("/v1/requirement-schedules/{schedule_id}/runs/{batch_run_id}")
+def get_run(schedule_id: str,batch_run_id: str,service=Depends(schedule_service),user: AuthUser=Depends(current_user)):
+    try: return service.store.get_batch_run(schedule_id=schedule_id,batch_run_id=batch_run_id)
+    except Exception as exc: raise _error(exc) from exc

@@ -148,3 +148,11 @@
 
 - Added schema-v3 descriptors/migration DDL, neutral execution contracts, deterministic manifests, legacy Report Job HTTP gateway, lease types/store operations, root-bound crash-safe DOCX publication, checkpoint decision semantics, and an independent coordinator CLI.
 - Repository evidence and exact final results are recorded in the associated implementation commit/PR. Live SQL Server acceptance and private deployment E2E remain NOT EXECUTED.
+
+### 2026-09-07 Phase 1C-B post-PR #213 implementation closure
+
+- PR #213 (`cf77b5efd12ee43768440b1aed27b4ac6d168b2a`) is preserved as the historical partial schema/manifest/lease/gateway/publisher/coordinator foundation. Follow-up production closure commit `51fb74a720d146469b8f5e738be7260ea7e04bf9` adds fenced Prepare and Acknowledge transactions, bounded reconciliation with artifact lifecycle integration, atomic terminal/counter/checkpoint closure, external-worker environment wiring, neutral management Run APIs, safe audit correlation, and source-aware boundary gates.
+- Repository evidence: focused handoff/API suite 23 passed; full suite 578 passed before final documentation and safe-audit correlation refinements. Final post-documentation rerun is recorded in the completion report/Git history.
+- No Design v1 / Plan v1.1 material deviation was required. Job Task JT-1 Implementation: NOT STARTED. LangGraph Integration: NOT STARTED.
+- Live SQL Server Acceptance: NOT EXECUTED (no explicitly authorized SQL Server environment supplied). Private Report Job + Agent + DOCX deployment E2E: NOT EXECUTED (private deployment unavailable). Stateful DB-API and mocked transport tests are repository evidence only.
+- Final closure verification after focused-suite completion: focused bridge matrix 30 passed; full repository 587 passed with 10 warnings; `compileall` and `git diff --check` passed. The first ad-hoc generated-artifact command incorrectly scanned ignored `__pycache__` output from `compileall`; the corrected tracked-file-only check passed and no generated artifact is committed.

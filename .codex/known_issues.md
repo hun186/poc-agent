@@ -147,3 +147,8 @@
 - Private/deployment Report Job and DOCX E2E: NOT EXECUTED.
 - Package index refresh returned proxy HTTP 403, but all requirements were already installed locally.
 - This checkout has no configured Git remote, so hosted refresh/push/CI inspection is unavailable.
+
+## 2026-09-07 Phase 1C-B closure external acceptance limits
+
+- Live SQL Server schema-v3 migration, locking, fencing, and rollback acceptance is NOT EXECUTED because no explicitly authorized SQL Server connection was supplied. Repository DB-API simulations are not live evidence.
+- Private Report Job + Agent + DOCX deployment E2E and hosted CI are NOT EXECUTED/NOT OBSERVED in this environment. The package index proxy returned HTTP 403 during the optional pip upgrade check, while installed requirements were sufficient for repository tests.

@@ -100,3 +100,9 @@
 ## 2026-09-07 Phase 1C-B deployment follow-up
 
 - Execute schema-v3 migration/rollback and coordinator acceptance against an explicitly authorized live SQL Server, then run the private Report Job/DOCX deployment E2E. JT-1 and LangGraph remain NOT STARTED.
+
+## 2026-09-07 Phase 1C-B closure deployment gates
+
+- Run schema-v3 migration/rollback, DB-time expiry, fencing turnover, and transaction failure injection against an explicitly authorized live SQL Server. Status: NOT EXECUTED.
+- Run the private owner-scoped Report Job + Agent + valid DOCX end-to-end deployment acceptance and observe hosted CI for the closure PR. Status: NOT EXECUTED.
+- Job Task JT-1 and LangGraph integration remain NOT STARTED and are separate future gates.

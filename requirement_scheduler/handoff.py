@@ -4,7 +4,7 @@ import hmac
 from pathlib import Path
 from typing import Any
 
-from .artifacts import output_root_fingerprint
+from .artifacts import ArtifactPublisher, output_root_fingerprint
 from .execution import ExecutionFailure, ExecutionHandle, ExecutionManifest, FailureCategory, semantic_fingerprint, submission_id
 from .lease import LeaseProof
 
@@ -50,3 +50,13 @@ class RequirementHandoffService:
             raise
         self.store.acknowledge_submission(prepared,handle,lease)
         return handle
+    def reconcile_completed(self, row: dict[str, Any], lease: LeaseProof) -> None:
+        """Download/publish the one authoritative remote artifact, then close SQL."""
+        expected=row["output_root_fingerprint"]
+        if output_root_fingerprint(self.output_root) != expected:
+            raise ExecutionFailure(FailureCategory.INTERNAL_CONTRACT_VIOLATION,"output_root_fingerprint_mismatch")
+        data=self.gateway.download_artifact(row["handle"])
+        logical=row["prepared"].manifest.execution_input["logical_filename"]
+        artifact=ArtifactPublisher(self.output_root).publish_or_reconcile(row["run_item_id"],logical,data,expected)
+        self.store.record_artifact_reconciled(lease=lease,run_item_id=row["run_item_id"],relative_path=artifact.relative_path,sha256=artifact.sha256,output_root_fingerprint=expected)
+        self.store.close_completed_item(lease=lease,run_item_id=row["run_item_id"],output_root_fingerprint=expected)
