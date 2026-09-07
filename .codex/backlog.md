@@ -91,3 +91,8 @@
 ## 2026-09-05 Phase 1C-B Plan v1 review gate
 
 - Review `docs/superpowers/plans/2026-09-05-phase1c-b-requirement-execution-bridge-plan-v1.md` against Job Task Orchestration Boundary Design v1 before issuing a new execution prompt. Phase 1C-B implementation, JT-1, and LangGraph remain NOT STARTED; the old Gate-B prompt remains stale and MUST NOT RUN.
+
+## 2026-09-05 Phase 1C-B Plan v1.1 review gate
+
+- Phase 1C-B Plan Review v1 is **NOT PASS** because it treated a legitimate same-RequirementVersion successful re-run as a checkpoint conflict and lacked first-handoff authority to snapshot the output-root fingerprint.
+- Review `docs/superpowers/plans/2026-09-05-phase1c-b-requirement-execution-bridge-plan-v1.1.md`. Do not implement until Human/ChatGPT Plan v1.1 Review passes and a fresh execution contract is issued. Phase 1C-B implementation, JT-1, and LangGraph remain NOT STARTED; live SQL Server acceptance remains NOT EXECUTED.
