@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from enum import StrEnum
 import hashlib
 import json
 from typing import Any, Protocol
+
+from python_compat import StrEnum
 
 
 class ExecutionState(StrEnum):

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, time
-from enum import StrEnum
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from python_compat import StrEnum
 
 
 class RunPolicy(StrEnum):
