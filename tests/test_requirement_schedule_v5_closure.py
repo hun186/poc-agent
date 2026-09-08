@@ -98,6 +98,78 @@ class Registry:
     def open_named_connection(self, _): return self.connection
 
 
+def test_sql_server_not_like_placement_normalizes_for_digest_checks():
+    assert migrations.normalize_sql_predicate(
+        "artifact_sha256 NOT LIKE '%[^0-9a-f]%'"
+    ) == migrations.normalize_sql_predicate(
+        "NOT [artifact_sha256] LIKE '%[^0-9a-f]%'"
+    )
+    assert migrations.normalize_sql_predicate(
+        "artifact_sha256 IS NULL OR artifact_sha256 NOT LIKE '%[^0-9a-f]%' "
+        "AND LEN(artifact_sha256)=64"
+    ) == migrations.normalize_sql_predicate(
+        "([artifact_sha256] IS NULL OR NOT [artifact_sha256] like "
+        "'%[^0-9a-f]%' AND len([artifact_sha256])=(64))"
+    )
+    assert migrations.normalize_sql_predicate(
+        "semantic_fingerprint NOT LIKE '%[^0-9a-f]%' "
+        "AND LEN(semantic_fingerprint)=64"
+    ) == migrations.normalize_sql_predicate(
+        "(NOT [semantic_fingerprint] LIKE '%[^0-9a-f]%' "
+        "AND LEN([semantic_fingerprint])=(64))"
+    )
+    assert migrations.normalize_sql_predicate(
+        "example = 'NOT artifact_sha256 LIKE'"
+    ) == "example='notartifact_sha256like'"
+
+
+@pytest.mark.parametrize(
+    ("constraint_name", "sql_server_definition"),
+    (
+        (
+            "CK_requirement_batch_run_item_artifact_sha256",
+            "([artifact_sha256] IS NULL OR NOT [artifact_sha256] like "
+            "'%[^0-9a-f]%' AND len([artifact_sha256])=(64))",
+        ),
+        (
+            "CK_handoff_submission_fingerprint",
+            "(NOT [semantic_fingerprint] like '%[^0-9a-f]%' "
+            "AND len([semantic_fingerprint])=(64))",
+        ),
+    ),
+)
+def test_check_catalog_accepts_sql_server_not_like_placement(
+    constraint_name, sql_server_definition
+):
+    expected = next(check for check in REQUIRED_CHECKS if check.name == constraint_name)
+    rows = (("sra_schedule", expected.table, expected.name, sql_server_definition),)
+    assert migrations.validate_catalog_evidence("sra_schedule", expected, rows)
+
+
+@pytest.mark.parametrize(
+    "drifted_definition",
+    (
+        "([artifact_sha256] IS NULL OR NOT [some_other_column] like "
+        "'%[^0-9a-f]%' AND len([artifact_sha256])=(64))",
+        "([artifact_sha256] IS NULL OR NOT [artifact_sha256] like "
+        "'%[^0-9]%' AND len([artifact_sha256])=(64))",
+        "([artifact_sha256] IS NULL OR NOT [artifact_sha256] like "
+        "'%[^0-9a-f]%' AND len([artifact_sha256])=(63))",
+        "([artifact_sha256] IS NULL OR [artifact_sha256] like "
+        "'%[^0-9a-f]%' AND len([artifact_sha256])=(64))",
+        "([artifact_sha256] IS NOT NULL OR NOT [artifact_sha256] like "
+        "'%[^0-9a-f]%' AND len([artifact_sha256])=(64))",
+    ),
+)
+def test_check_catalog_rejects_digest_semantic_drift(drifted_definition):
+    expected = next(
+        check for check in REQUIRED_CHECKS
+        if check.name == "CK_requirement_batch_run_item_artifact_sha256"
+    )
+    rows = (("sra_schedule", expected.table, expected.name, drifted_definition),)
+    assert not migrations.validate_catalog_evidence("sra_schedule", expected, rows)
+
+
 def test_initialize_executes_explicit_fresh_v2_and_rereads_marker_last():
     connection = Connection()
     ScheduleStore(Registry(connection), "db").initialize()

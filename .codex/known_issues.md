@@ -1,5 +1,11 @@
 # Known Issues
 
+## 2026-09-08 Phase 1C live CHECK-expression blocker corrected in repository
+
+- The Phase 1B post-PR #218 operator startup progressed past `RequirementStore.initialize()`; its prior DB-API row-container defect is no longer the active live blocker.
+- Phase 1C live startup was executed by the operator and reproduced a canonical CHECK comparison failure caused by SQL Server moving `NOT` from `<column> NOT LIKE` to the equivalent `NOT <column> LIKE` catalog spelling. Focused repository tests now cover both artifact SHA-256 and semantic fingerprint constraints plus fail-closed semantic drift.
+- The post-fix Phase 1C live SQL startup retest was not executed in this environment and remains pending operator execution. Repository verification cannot substitute for that live retest.
+
 ## 2026-09-08 Phase 1B live SQL acceptance blocker corrected in repository
 
 - Phase 1B live SQL acceptance has now been initiated by an authorized operator. The pre-fix run proved connectivity, schema/table/constraint creation, catalog visibility, and transactional rollback, then reproduced canonical catalog validation failure caused by DB-API row-container equality semantics.

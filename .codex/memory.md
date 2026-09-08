@@ -11,6 +11,13 @@
 
 ## Recent Changes
 
+### 2026-09-08 Phase 1C SQL Server CHECK-expression normalization
+
+- The operator's Phase 1B post-PR #218 live startup progressed successfully past `RequirementStore.initialize()`; Phase 1B DB-API catalog-row comparison is no longer the active live blocker.
+- Phase 1C live startup then reproduced `ScheduleStore.initialize()` rejection because SQL Server reports canonical `<column> NOT LIKE <pattern>` CHECK predicates as the logically equivalent `NOT [<column>] LIKE <pattern>`. The repository correction narrowly rewrites that unquoted operator placement before the existing exact normalization and comparison.
+- TDD evidence: the live-equivalent helper and `validate_catalog_evidence()` regressions were RED with 3 failures before production modification, then the focused closure file passed 73 tests. Scheduler tests passed 109 tests with 4 warnings, handoff tests passed 78 tests, and all Requirement tests passed 300 tests with 2 warnings. Negative cases retain fail-closed rejection for wrong column, pattern, length, negation, and NULL condition.
+- The full repository result was 671 passed, 1 failed, and 10 warnings; the failure is the pre-existing tracked raw-key operator-harness finding in `tests/test_batch_scheduler_security.py::test_phase0_harness_has_no_raw_key_literal`. Post-fix live SQL startup retest was not executed and remains pending operator execution.
+
 ### 2026-09-08 Phase 1B DB-API catalog-row normalization
 
 - Operator live acceptance reproduced a Phase 1B startup blocker: named PK/UQ and FK catalog rows had matching scalar evidence but driver row containers did not compare equal to canonical Python tuples.

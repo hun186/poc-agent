@@ -16,6 +16,10 @@
 
 ## Recent Changes
 
+### 2026-09-08 Narrow SQL Server CHECK-expression equivalence
+
+- SQL Server-owned catalog formatting may normalize the proven unquoted equivalence `NOT <identifier> LIKE` to `<identifier> NOT LIKE` before exact CHECK comparison. Quoted string segments are excluded from this rewrite, and predicate columns, literals, operators, length, NULL semantics, constraint identity, and ownership remain exact. This is not a general SQL parser or permission to weaken catalog validation.
+
 ### 2026-09-08 DB-API-neutral catalog row comparison
 
 - Canonical catalog validation normalizes each sequence-like DB-API result row into a plain Python tuple before exact expected-evidence comparison. This changes only container semantics: cardinality, scalar values, ordering, ownership, names, kinds, columns, referenced objects, and ordinals remain exact, with no driver-specific row-type dependency.
