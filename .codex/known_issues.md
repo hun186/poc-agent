@@ -17,6 +17,8 @@
 
 ## Current Summary
 
+- Hosted `main` refresh and PR publication are unavailable in this checkout because GitHub access returns `CONNECT tunnel failed, response 403`; the local starting commit matched the requested baseline exactly.
+- Python 3.10.20 is installed, but its isolated environment lacks the project dependencies. The package-index proxy returned HTTP 403 when installing `requirements.txt`; therefore only the dependency-free Python 3.10 compatibility-helper smoke ran, while full Requirement model/Pydantic and SRA API imports were verified on the provisioned default runtime.
 - The current environment does not have Playwright / browser runtime. Visual UI changes cannot be verified with screenshots or browser E2E here; use static DOM / JS checks, node syntax checks, pytest, and a browser-capable environment when screenshots are required.
 - Excel-to-SQL file ops may emit a Python datetime deprecation warning because `datetime.utcnow()` is still used. Existing tests pass; later work can migrate to timezone-aware datetime.
 - FastAPI / Starlette TestClient may emit compatibility deprecation warnings. Existing tests pass.

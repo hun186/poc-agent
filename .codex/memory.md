@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-08 Python 3.10 StrEnum compatibility
+
+- Replaced the three unconditional Python 3.11-only `enum.StrEnum` imports in Requirement import and scheduling production models with one shared compatibility definition. Python 3.11+ retains the stdlib implementation; Python 3.10 uses a string/Enum fallback with value-preserving string behavior.
+- Added Requirement enum value and Pydantic parse/JSON serialization regressions. Verification: focused Requirement/API tests 90 passed; all Requirement tests 274 passed; repository `tests/` suite 646 passed with 10 warnings; current-runtime Requirement and SRA API import smoke checks passed; compileall and static checks passed.
+- Python 3.10.20 executed the dependency-free compatibility helper smoke successfully. Full Python 3.10 Requirement/SRA imports were not executed because that interpreter lacks project dependencies and the package index returned HTTP 403 while attempting installation.
+
 ### 2026-09-07 Phase 1C-B post-PR #214 acceptance closure
 
 - Added a stateful transaction-copy DB-API harness and production-method acceptance for Prepare, Acknowledge, Reconcile, artifact evidence/closure, terminal checkpoint Cases A-E, counter recomputation, fencing, safe audit payloads, and rollback injection.
