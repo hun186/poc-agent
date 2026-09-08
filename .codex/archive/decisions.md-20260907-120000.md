@@ -1,0 +1,188 @@
+# Architecture Decisions
+
+## 2026-09-04 Preserve PR #194 system-generated key names
+
+- Do not mutate valid legacy PK/UQ constraints solely to normalize names. For only the keys that PR #194 left unnamed, identity is the unique exact combination of owning schema/table, key kind, and ordered columns; ambiguous, missing, or malformed structures fail closed.
+- Continue exact canonical-name validation for PR #194's explicitly named UQ/PK/FK constraints, and continue emitting explicit canonical names for all fresh schemas. This compatibility correction does not require Design v2 or Plan v1.2.
+
+## 2026-09-04 Phase 1B immutable SQL Requirement history
+
+- SQL Server is the control-plane authority. Profiles, Requirement versions, observations, and snapshots are immutable; reviewed pointers are mutable.
+- SQL API sources store named registry references only; filesystem sources are allow-root confined. Preview is side-effect free and activation is strict/atomic.
+- Schema integers are not trusted alone: version 1 is accepted only after structural validation, and version 0 is upgraded with the marker written last in the same transaction. Named SQL security relies on reviewed registry entries plus a read-only database principal, not SQL text parsing.
+- Constraint names alone are not schema evidence: canonical validation binds each required PK/UQ/FK to its schema/table and ordered columns. Legacy-v1 compatibility is deliberately limited to making diagnostic row numbers nullable; all other malformed-v1 structures fail closed.
+
+## 2026-09-02 Scoped principals and signed browser capabilities
+
+- Use distinct high-entropy service keys for OpenWebUI and future batch clients. User and service credentials share scope authorization without conflating their identity domains.
+- Persist only complete-key SHA-256 digests under cross-process locking; return plaintext once.
+- Preserve browser-clickable resources with bounded, exact HMAC capabilities. An invalid Authorization header is authoritative and cannot fall back to a capability.
+
+## Current Summary
+
+### 2026-08-27 連貫文本採「代理人參考文本」契約
+
+- 使用「代理人參考文本」（agent reference text）指稱代理人理解前後文所用的連貫文本；它可以是原始全文或精煉詳文，但不取代可追溯、局部引用的 `evidence_snippets`。
+- ES 欄位以 `SRA_REFERENCE_TEXT_FIELD` 在部署時選擇，預設 `rawInfo.content`。明確設定替代欄位後不得靜默退回雜亂原文，以避免同一次任務混合不同品質與語意的文本來源。
+- 同一環境的 TXT→ES、SQL→ES writer/mapping 與 agent/API reader 必須共用此設定，避免只換讀取端而造成新文件無內容。Excel→SQL 不直接寫 ES dot path，其銜接點是 SQL→ES 的 `source.columns.content`。
+- 人工檢核需要保留原始材料，因此全文 API 不把 raw 視為 reference 的 fallback alias，而以 `reference`、`raw`、`both` 三個明確層次輸出；單獨要求缺少的層次必須回 404，避免把精煉內容誤標成原文。
+- Ingestion 對新文件保留 `rawInfo.content` 並 seed configured reference field，以支援舊版 reader 與人工稽核；精煉工作只能覆寫 reference。Reader 不做 raw→reference 靜默 fallback，舊文件需明確 backfill，避免把「尚未精煉」誤報為「精煉完成」。
+
+### 2026-08-25 相對週期採明確週界線與不重疊語意
+
+- 相對週不是只靠 reference timestamp 猜測：系統以週一至週日為完整週，並在 refiner system context 提供上一週與前兩個完整週的實際日期邊界。
+- 「前 N 週」定義為目前週之前的連續 N 個完整週；「N 週前」是偏移 N 週的單一完整週；「過去 N 週」是包含 reference date 的滾動 N×7 天。明確區分三者可避免檢索區間因自然語言歧義漂移。
+
+### 2026-08-25 相對年度換算須明示且可稽核
+
+- 對 report refiner 而言，僅提供目前時間不足以保證模型正確換算「去年」；system prompt 必須明示由 request-time 推得的今年／去年，並把相對時間轉為明確檢索範圍列為「不得新增事實」規則的唯一合理例外。
+- 實際 reference time、時區與推得的去年年份必須隨 Data Agent 記錄輸出，讓 OpenWebUI / Word 使用者可直接確認是否啟用時間上下文，不必只依部署端 warning log 猜測。
+
+### 2026-08-25 影響輸出的隱性 context 必須可觀測
+
+- 目前時間屬於不一定加入、但可能改變答案的 system context。啟用時必須留下包含 caller reason、timezone、實際 reference time 與風險標記的 warning log；不以額外 user message 提示，因為提示本身會改變對話與結構化輸入。
+
+### 2026-08-25 目前時間採 opt-in，而非共用 caller 預設值
+
+- System role 雖不會字串污染 user JSON，仍會改變模型可用的推論證據；對「文章沒有明確日期就輸出 null」的抽取契約而言，執行時間可能使模型把文章中的「上週」推算成日期，屬於語意污染。
+- 因此 `call_llm()` 預設不得注入現在時間。只有明確處理「使用者現在問本週／上週」的 query refiner 與 PURE_LLM caller opt in；文章結構化、文件抽取與中間 JSON 階段維持無時鐘上下文。此決策取代下方同日「共用 caller 附加時間」的預設策略。
+
+### 2026-08-25 時間上下文與結構化輸入隔離
+
+- 相對日期需要單一可信的 request-time 參考，但不得把時間字串串接進 user prompt 或 JSON payload。共用 LLM caller 因此只將時間附加至 system role，並保留 `include_current_time=False` 作為嚴格隔離開關。
+- 時區由 `LLM_CURRENT_TIMEZONE` 控制，預設 `Asia/Taipei`；設定無效時安全降級為 UTC。system 指示限制時間只用於相對日期解析，避免與日期無關的輸出受影響。
+
+### 2026-08-13 執行模式 timeout 分離
+
+- PURE_LLM 與 SRA_REPORT 是不同模型呼叫邊界，timeout 採 `PURE_LLM_TIMEOUT` 與 `REPORT_LLM_TIMEOUT` 分開設定，避免調整報告等待時間時對直接生成產生錯誤預期。
+
+### 2026-08-13 裁切視圖限制於消費者邊界
+
+- 路由器與關鍵字提取器各自建立局部、暫時的 bounded view，不覆寫共用 query 物件，避免目前或未來新增的檢索、同義詞、匯出與執行功能意外繼承裁切內容。
+- 關鍵字提取結果依設計仍是同義詞與 ES query 的種子，因此裁切可能間接改變召回率；此風險與「將裁切字串直接傳入下游」分開揭露及測試。
+
+### 2026-08-13 Router 與執行內容分離
+
+- 任務分類器只需要辨識意圖、模式與 topic，不應為了分類先讀取使用者附上的完整大量資料。
+- 路由視圖採固定字元上限並保留頭尾：開頭通常包含任務指示，尾端可保留使用者把要求寫在資料後方的情境；中間插入明確省略標記，避免分類模型誤認內容完整。
+- 不修改原始 `user_msg` / `query_for_agent`，因此執行模型及 Word 匯出仍使用完整資料。此方案比先用另一個 LLM 摘要更省一次昂貴呼叫，也不會把路由 timeout 轉移到摘要階段。
+- 上限採環境變數調整而非寫死單一部署值；目前問題與歷史問題分開配置，避免歷史大型 payload 再度膨脹路由 context。
+
+### Stable project decisions
+
+- API runtime source 使用 `sra_api/`，`api/` 僅為 compatibility layer；對外 import / endpoint contract 優先保持相容。
+- Compatibility package 內部引用同層模組時採 relative import，避免同一實體檔案同時以 `api.*` 與 `sra_api.*` 兩個 module identity 載入；移除已公開 symbol 時先保留無副作用 compatibility shim，讓 rolling / 部分同步部署可啟動。
+- Route、prompt 或大型服務拆分時保留原 facade，避免一次迫使 routes、tests 與外部使用者遷移。
+- Editor 欄位結構以 Elasticsearch mapping metadata 為型別權威，form config 負責 UI layout；mapping 不可用時明確降級。
+- Excel→SQL 任務由 db_operator 建立 pending 設定、superuser 審核啟用；來源資料工具限定啟用任務白名單，不提供 arbitrary SQL。
+- SQL / ES 跨系統刪除不在 request 內同步硬刪，後續應採 lineage + outbox / tombstone / 補償流程。
+- Mock preview 不能冒充正式成功；production-like 環境預設關閉免密入口，mock token 與資料邊界需明確標記。
+- Bearer token 不放 URL；同源前端身份以 localStorage 承接，長期可評估 HttpOnly cookie + CSRF。
+- Agent/OpenWebUI integration API 與 Editor 管理 API 是不同 trust boundary；不得直接把 `sra_editor_token` 強制套到 OpenWebUI 的 models/chat/docs/export contract。未來若需 agent API auth，應新增可選且可由 OpenWebUI 設定的 integration credential，並提供相容遷移。
+- SQL 值一律參數化；無法參數化的 identifier 必須經結構驗證並使用 SQL Server bracket quoting。ES document ID 只允許 exact lookup，不以使用者輸入建立 wildcard fallback。
+- Filename、config path、record ID 與其他可猜測 locator 只用來定位資源，不構成授權；所有寫入仍須在 service boundary 驗證 owner、role 或已啟用任務白名單，不能只依賴前端隱藏清單。
+- 靜態 UI 子頁使用共用全域樹狀導航，不另建平行大按鈕導覽體系。
+
+## Recent Changes
+
+- 2026-09-01：長報告採 FastAPI lifespan 管理的單機 worker、SQLite persisted state 與 local atomic DOCX publication，不使用 request `BackgroundTasks` 或 internal HTTP。此版只保證 pollable resource；process crash 將 stale running 標記 interrupted，不承諾 HA、exactly-once 或 crash resume。Caller filename 僅作顯示，實體 basename 固定由 job ID 生成。
+
+- 2026-09-01：同步 Word automation 與 Chat 共用單一 turn execution service，避免兩個 endpoint 各自拼裝 Agent inputs。新的 POST endpoint 必須直接 render service 回傳的本輪 structured result；snapshot persistence 只保留既有 GET 下載相容性，不可成為 POST 產檔的 read-after-write 依賴。Phase 2 維持 synchronous HTTP 與既有 integration trust boundary，不引入 Queue、Redis、PostgreSQL、Airflow 或排程元件。
+
+- 2026-08-31：Report explicit core query 採限定 prefix 的 deterministic parser，以保留上游已確認詞並省去重複 topic extraction；不泛化到 Style structured query。共用 synonym LLM 僅負責完整 query context 下的等價／近等價名稱與合法 semantic-axis 合併，Python 僅接受原 core term 作 representative key；不新增 reviewer/judge LLM，也不讓關鍵詞處理介入 index routing。
+- 2026-08-20：ES 多事件資料不做跨 nested context 的單一 multi-match；每種 child path 獨立查詢並由 outer nested 包覆，避免不同事件間欄位誤配，evidence 輸出保留 `event_ids` 供下游追溯。
+- 2026-08-13：採用 bounded router view，完整資料延後到 execution model。
+- 2026-07-01～07-04：SQL 來源工具採啟用任務白名單、audit 與全域樹狀導航。
+- 2026-06-23～06-29：確立 Vercel mock hardening、schema-driven Editor、任務審核與模組 facade 拆分原則。
+
+## Archived History
+
+- `.codex/archive/decisions.md-20260813-000000.md`：濃縮前完整 decisions，包含所有已取代與仍有效決策的原始日期區塊。
+
+### 2026-08-26 任務時間範圍優先於背景事件時間
+
+- Query refiner 判定 ES 檢索區間時，使用者的任務指令是時間範圍的權威來源；背景說明內的月份或事件日期只代表重點時段，不得覆蓋較廣的任務範圍。
+- 任務要求「去年」且沒有在指令中明確限縮月份時，一律解讀為去年 1 月 1 日至 12 月 31 日；只有「去年10月」、「僅限10月」等明確限制才縮窄為單月。
+
+## 2026-09-02 Shared capability resolver
+
+- Direct principal and browser-capability authorization use one resolver. A supplied invalid Authorization header is authoritative; capability fallback is only available when Authorization is absent. Exact query multiplicity and allowlisting are enforced only on the capability path before any resource access.
+
+## 2026-09-03 Pre-request signing configuration failure audit channel
+
+- Production signing-secret validation failures are process-start failures. The raised startup exception and service/process logs are the authoritative audit channel for this pre-request condition; the application audit store is not required to initialize merely to record a startup failure.
+- Startup validation remains fail-closed for a missing or weak signing secret, and logs must never include the secret value.
+
+## 2026-09-04 Batch Scheduler Phase 1 boundary
+
+- Keep scheduling in a standalone process consuming only the existing Report Job HTTP API with a dedicated create/read/download key. Persist deterministic task idempotency keys before submission, treat remote failed/interrupted as terminal, and publish validated DOCX through a confined atomic local write. Do not add recurrence, queues, server UI, or internal server imports in Phase 1.
+
+## 2026-09-04 Phase 1C scheduling control-plane design
+
+- Use separately versioned SQL Server schema `sra_schedule`; do not extend the stabilized Phase 1B schema. Cross-schema references use validated configured identifiers and fail closed if deployment cannot enforce the reviewed structure.
+- Model a mutable logical schedule pointing at immutable, monotonically versioned schedule configurations. Batch Runs bind exact schedule versions and active Requirement snapshots.
+- Allow only structured daily/weekly/monthly/interval recurrence with IANA timezone and deterministic UTC persistence. Monthly invalid days use the last day; v1 misfires use `coalesce_latest` without backfill.
+- Persist explicit per-schedule/Requirement seen and successful checkpoints to distinguish `all_active`, `new_or_changed`, and `changed_only` retry behavior.
+- Run recurrence/handoff in an explicit one-active-worker process, never FastAPI lifespan. Reuse a new narrow Phase 1A programmatic import seam and existing Phase 1A idempotency; no direct SQLite or execution-engine imports.
+- Word history stores a safe relative reference to Phase 1A's artifact under the shared output root. Phase 1C does not copy or render DOCX.
+
+## 2026-09-04 Phase 1C Design Review v1 corrections
+
+- Phase 1C Design v1 / Plan v1 / Prompts v1 are superseded by v2 after Design Review v1. RequirementVersion number—not source membership/run/completion order—is the only checkpoint chronology evidence.
+- Intentional disable is not a misfire interval; re-enable and enabled version activation start recurrence strictly after their transaction UTC time. Only uninterrupted enabled state across worker downtime uses `coalesce_latest`.
+- Schedule version identity is its monotonic number, not its configuration hash; immutable A→B→A reversion is supported. Persist a non-secret output-root fingerprint with Phase 1A handoff identity and fail closed on mismatch.
+
+## 2026-09-04 Phase 1C-A control-plane implementation
+
+- Keep schedule authority in separately validated `sra_schedule`; preserve exact RequirementVersion ID/number chronology and membership `source_order` only as ordering evidence.
+- Treat disable as pause (`next_run_at=NULL`), recalculate strictly after activation on enable/version approval, and coalesce only uninterrupted enabled downtime.
+- Schedule versions are insert-only monotonic identities; configuration hashes are evidence and intentionally non-unique, allowing A→B→A.
+- Gate A remains control-plane only and deliberately contains no Phase 1A bridge, recurring worker, manual execution, artifact serving, or execution-engine import.
+
+## 2026-09-04 Phase 1C-A audit authority decision
+
+- Do not claim atomic SQL-plus-filesystem lifecycle audit and do not add a second audit framework or distributed transaction. Preserve the canonical audit path and mark the review finding as a Design-level blocker pending an explicit authority/outbox design decision.
+
+## 2026-09-05 Phase 1C Design v3 authority and schema decision
+
+- Design v3 supersedes v2 and makes Phase 1C schema version 2 canonical. Fresh databases create v2 directly; recognized PR #200/#201 v1 shapes migrate transactionally with the marker written last; malformed/future states fail closed.
+- Widen `phase1a_task_id` to nullable `NVARCHAR(240)` without transforming history. Enforce active-version and Run-version ownership using ordered composite `(schedule_id,schedule_version_id)` UQ/FKs with no cascades.
+- Successful lifecycle audit authority is a same-transaction SQL outbox. Existing `append_audit_event()` JSONL remains an at-least-once projection with stable event identity; direct audit remains correct for authorization denial without SQL mutation. This avoids distributed transactions and makes no exactly-once filesystem claim.
+- These are pending closure decisions, not current runtime claims. Gate B cannot start before the closure merge and explicit post-merge review PASS.
+
+## 2026-09-05 Phase 1C recognized-v1 compatibility decision v4
+
+- Preserve schema-v2, same-schedule constraints, SQL outbox, and at-least-once JSONL architecture. Replace v3's blanket byte-preservation rule only for the exact PR #200 catalog and exact known-bad placeholder values, guarded by a fail-closed proof that no Gate B evidence exists; this is a one-time migration exception, not general identity mutability.
+- Treat outbox `created_at` as lifecycle event time and require pending-row CAS for both delivery success and failure metadata. Invalid active/approved legacy schedule configuration blocks migration; invalid historical draft/retired configuration can never pass later persisted-row approval validation.
+
+## 2026-09-05 Phase 1C-A v4 closure implementation decision
+
+- Use SQL outbox insertion as successful schedule-lifecycle audit authority and retain the Editor JSONL audit only as an at-least-once projection. Preserve event identity and outbox creation time across retries; do not represent SQL and filesystem as atomic or JSONL as exactly once.
+- Restrict v1 persisted-identity mutation to an exactly classified PR #200 catalog after Gate-B absence assertions. PR #201 and canonical-v2 identities remain immutable.
+
+## 2026-09-05 Phase 1C Design v5 source-baseline correction
+
+- Preserve schema v2, same-schedule ownership, transactional outbox, stable event identity/time, pending CAS, and two-gate decisions; v5 is a correction, not a redesign.
+- Treat actual PR #200/#201 DDL as physical authority: vocabulary/state widths are equal. Use complete real SQL Server catalog queries, explicit canonical-v2 DDL, and separate migrations rather than fake-only cursor hooks or broad text replacement.
+- Keep the exact reviewed outbox contract and positive per-action payload allowlists. Make bounded post-commit and startup projection part of production Gate A wiring while allowing at-least-once duplicate JSONL appends.
+
+## 2026-09-05 Phase 1C-A v5 source-faithful closure
+
+- Treat complete SQL Server catalog evidence, not marker values or constraint names alone, as migration authority. Preserve PR #200/#201 vocabulary widths and widen only `phase1a_task_id`; use explicit fresh-v2 DDL and shape-specific migration sequences.
+- Keep the SQL outbox authoritative and projection bounded/best-effort. A zero-row pending CAS is a benign projector race and must not be counted as the current attempt's success or failure.
+
+### 2026-09-05 DB-API-neutral catalog evidence
+
+- Marker rows are interpreted through cardinality, row width, and indexed scalar extraction; no pyodbc-specific type branch or row-to-tuple equality is used.
+- SQL Server-owned formatting (brackets, parentheses, whitespace, case) is normalized through one shared helper for filtered predicates and the narrow outbox default/check expressions, while bindings, names, keys, uniqueness, and semantics stay exact.
+
+## 2026-09-07 Phase 1C-B bridge decisions
+
+- Keep `report_v1` behind immutable neutral contracts and deterministic submission/session identities. Bind the server-owned artifact root once by non-secret fingerprint; never accept caller root authority.
+- Treat successful item closure and checkpoint advancement separately: older/same immutable versions complete with checkpoint no-op; equal version number with different immutable identity fails closed.
+
+## 2026-09-07 Phase 1C-B closure implementation decisions
+
+- Preserve PR #213's neutral immutable contracts and implement missing authority in `ScheduleStore` transactions rather than adding a shadow Task/Attempt store. SQL Server database time and exact lease/fence evidence gate every business mutation.
+- Keep HTTP and filesystem work outside SQL transactions. Bind the server-owned output-root fingerprint once in Prepare; later reconciliation must prove equality before download/publication and stores only relative artifact evidence.
+- Expose only existing Requirement Schedule manual materialization and neutral Run status. Do not add Report Job-native control, retry/cancel, JT-1, LangGraph, or a FastAPI worker thread.
