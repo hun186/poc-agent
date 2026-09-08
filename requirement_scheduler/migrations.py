@@ -49,7 +49,15 @@ class CheckConstraint:
 
 def normalize_sql_predicate(value: object) -> str:
     """Canonicalize the narrow catalog expressions owned by this schema."""
-    return re.sub(r"[\s\[\]\(\)]", "", str(value or "")).lower()
+    parts = re.split(r"('(?:''|[^'])*')", str(value or ""))
+    for index in range(0, len(parts), 2):
+        parts[index] = re.sub(
+            r"\bNOT\s+(\[?[A-Za-z_][A-Za-z0-9_]*\]?)\s+LIKE\b",
+            r"\1 NOT LIKE",
+            parts[index],
+            flags=re.IGNORECASE,
+        )
+    return re.sub(r"[\s\[\]\(\)]", "", "".join(parts)).lower()
 
 
 def _cols(table: str, specs: tuple[tuple[str, str, int, bool], ...]) -> tuple[Column, ...]:
