@@ -7,6 +7,8 @@ from typing import Any
 
 import pyodbc
 
+from data_ingestion.sql_server import detect_odbc_driver
+
 
 class SqlRegistry:
     def __init__(self, document: dict[str, Any]):
@@ -32,14 +34,44 @@ class SqlRegistry:
         except KeyError as exc: raise KeyError("unknown_query_ref") from exc
 
     def open_named_connection(self, name: str):
-        try: config = self._document["connections"][name]
-        except KeyError as exc: raise KeyError("unknown_connection_ref") from exc
-        def env(key: str) -> str:
-            env_name = config.get(f"{key}_env")
-            return os.getenv(env_name, "") if env_name else str(config.get(key, ""))
-        parts = [f"DRIVER={{{env('driver') or 'ODBC Driver 18 for SQL Server'}}}", f"SERVER={env('server')}", f"DATABASE={env('database')}"]
-        trusted = env("trusted_connection").casefold() in {"1", "true", "yes"}
-        if trusted: parts.append("Trusted_Connection=yes")
-        else: parts.extend((f"UID={env('user')}", f"PWD={env('password')}"))
+        try:
+            config = self._document["connections"][name]
+        except KeyError as exc:
+            raise KeyError("unknown_connection_ref") from exc
+
+        def resolve(key: str) -> str:
+            env_key = f"{key}_env"
+            if env_key in config:
+                env_name = str(config.get(env_key, "")).strip()
+                return os.getenv(env_name, "") if env_name else ""
+            value = config.get(key, "")
+            return "" if value is None else str(value).strip()
+
+        server = resolve("server")
+        database = resolve("database")
+        if not server:
+            raise ValueError("SQL connection requires server")
+        if not database:
+            raise ValueError("SQL connection requires database")
+
+        trusted = resolve("trusted_connection").casefold() in {"1", "true", "yes"}
+        user = password = ""
+        if not trusted:
+            user = resolve("user")
+            password = resolve("password")
+            if not user:
+                raise ValueError("SQL authentication requires user")
+            if not password:
+                raise ValueError("SQL authentication requires password")
+
+        configured_driver = resolve("driver")
+        if "driver_env" in config and not configured_driver:
+            raise ValueError("SQL connection requires driver")
+        driver = detect_odbc_driver(configured_driver or "auto")
+        parts = [f"DRIVER={{{driver}}}", f"SERVER={server}", f"DATABASE={database}"]
+        if trusted:
+            parts.append("Trusted_Connection=yes")
+        else:
+            parts.extend((f"UID={user}", f"PWD={password}"))
         parts.extend((f"Encrypt={'yes' if config.get('encrypt', True) else 'no'}", f"TrustServerCertificate={'yes' if config.get('trust_server_certificate', False) else 'no'}"))
         return pyodbc.connect(";".join(parts), autocommit=False)

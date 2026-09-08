@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-08 Requirement SQL registry DB configuration alignment
+
+- Kept Excel-to-SQL and Requirement/Schedule registries separate while aligning their inner SQL Server keys. Requirement now supports canonical direct keys, shared `auto`/`detect` ODBC selection, explicit drivers, and authoritative fail-closed legacy `*_env` sources.
+- Added pre-connect validation for server, database, and SQL-auth credentials; trusted authentication omits UID/PWD, connection creation remains `autocommit=False`, the local password-bearing registry is ignored, and operations guidance documents both configuration modes.
+- TDD evidence: the new focused suite initially failed 10 tests for literal `DRIVER={auto}`, absent validation/shared resolution, and the legacy example contract. After implementation, focused SQL suites passed 22 tests; Requirement source/startup/integration passed 7/1/1; schedule and handoff regressions passed 101 and 78 tests (4 schedule warnings); the full repository suite passed 661 tests with 10 warnings. Compileall and `git diff --check` passed. No live SQL Server or private Report Job/Agent/DOCX E2E was executed.
+
 ### 2026-09-08 Python 3.10 StrEnum compatibility
 
 - Replaced the three unconditional Python 3.11-only `enum.StrEnum` imports in Requirement import and scheduling production models with one shared compatibility definition. Python 3.11+ retains the stdlib implementation; Python 3.10 uses a string/Enum fallback with value-preserving string behavior.

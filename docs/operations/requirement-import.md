@@ -11,9 +11,28 @@ privileged `REQUIREMENT_SQL_REGISTRY_FILE`, opens `REQUIREMENT_CONTROL_DB_CONNEC
 validates `REQUIREMENT_DB_SCHEMA`, and initializes schema v1. Invalid configuration,
 connectivity, or schema version aborts startup. Disabled startup reads no Requirement SQL.
 
-Copy `config/requirements/sql_registry.example.json` to an ignored deployment file. The
-registry contains environment-variable names and reviewed SQL. Resolved credentials belong
-only in runtime secret configuration—never in source/profile/audit/API payloads.
+Excel-to-SQL and Requirement configuration remain separate because they configure different
+operations. Their SQL Server connection objects intentionally use the same inner keys
+(`driver`, `server`, `database`, `trusted_connection`, `user`, `password`, `encrypt`, and
+`trust_server_certificate`) so an operator can copy the database settings without renaming
+fields. Requirement retains `connections.requirement_control` because it is a named SQL
+registry, and retains the separate `queries` registry. The same SQL Server/database may host
+the `sra_requirement` and `sra_schedule` schemas; both use the named control connection.
+
+Copy `config/requirements/sql_registry.example.json` to the ignored deployment file
+`config/requirements/sql_registry.json`. Direct inner keys are the canonical operator-friendly
+format. `driver` values `auto` and `detect` select an installed SQL Server ODBC driver with the
+same resolution used by Excel-to-SQL; an explicit installed driver name is also supported.
+`REQUIREMENT_SQL_REGISTRY_FILE` selects the registry file and
+`REQUIREMENT_CONTROL_DB_CONNECTION` selects its named connection.
+
+Legacy `driver_env`, `server_env`, `database_env`, `trusted_connection_env`, `user_env`, and
+`password_env` keys remain supported for existing and secret-managed deployments. When a
+`*_env` key is present it is authoritative over the matching direct value; a missing referenced
+environment variable fails closed instead of exposing or falling back to a direct credential.
+Environment-backed secrets remain the safer managed-deployment option. Never commit real
+credentials. Resolved credentials belong only in runtime secret configuration—never in
+source/profile/audit/API payloads.
 
 ## Sources, review, and import
 

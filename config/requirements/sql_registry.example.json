@@ -1,14 +1,14 @@
 {
   "connections": {
     "requirement_control": {
-      "driver_env": "REQUIREMENT_CONTROL_DB_DRIVER",
-      "server_env": "REQUIREMENT_CONTROL_DB_SERVER",
-      "database_env": "REQUIREMENT_CONTROL_DB_DATABASE",
-      "trusted_connection_env": "REQUIREMENT_CONTROL_DB_TRUSTED_CONNECTION",
-      "user_env": "REQUIREMENT_CONTROL_DB_USER",
-      "password_env": "REQUIREMENT_CONTROL_DB_PASSWORD",
+      "driver": "auto",
+      "server": "YOUR_SQL_SERVER_HOST",
+      "database": "YOUR_DATABASE_NAME",
+      "trusted_connection": false,
+      "user": "YOUR_DB_USERNAME",
+      "password": "YOUR_DB_PASSWORD",
       "encrypt": true,
-      "trust_server_certificate": false
+      "trust_server_certificate": true
     }
   },
   "queries": {}
