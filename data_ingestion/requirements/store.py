@@ -95,7 +95,8 @@ class RequirementStore:
                     matches = [name for name, columns in structures.items() if tuple(columns) == expected.columns]
                     valid = structurally_sound and len(matches) == 1
                 else:
-                    valid = tuple(cursor.fetchall()) == expected
+                    actual = tuple(tuple(row) for row in cursor.fetchall())
+                    valid = actual == expected
                 if not valid:
                     raise RuntimeError("malformed requirement schema version 1")
             if version == 0:

@@ -6,10 +6,17 @@
 - Phase 0 security, Phase 1A Batch Scheduler, Phase 1B Requirement import, Phase 1C-A control plane, and Phase 1C-B Requirement execution compatibility bridge are present.
 - Phase 1C-B uses SQL Server as Requirement lifecycle authority, a transactional audit outbox, an external fenced coordinator, immutable `report_v1` submissions, the existing owner-scoped Report Job HTTP API, and confined root-bound DOCX publication.
 - Job Task JT-1 and LangGraph integration remain NOT STARTED. The Requirement Scheduler must remain framework-neutral and must not embed Batch Scheduler or Report Job persistence/worker internals.
-- Live Requirement SQL Server acceptance and private Report Job + Agent + DOCX deployment E2E remain NOT EXECUTED because no explicitly authorized environment was supplied. Stateful fake DB-API evidence is repository acceptance only.
+- Phase 1B live Requirement SQL Server acceptance was initiated by an authorized operator and reproduced a DB-API catalog-row blocker; the repository correction is verified, but its post-fix live retest remains pending. Private Report Job + Agent + DOCX deployment E2E remains NOT EXECUTED.
 - Environment limitations: package-index proxy may return 403; private deployment/Elasticsearch and authorized Requirement SQL are unavailable; Playwright/browser runtime is absent.
 
 ## Recent Changes
+
+### 2026-09-08 Phase 1B DB-API catalog-row normalization
+
+- Operator live acceptance reproduced a Phase 1B startup blocker: named PK/UQ and FK catalog rows had matching scalar evidence but driver row containers did not compare equal to canonical Python tuples.
+- `RequirementStore.initialize()` now converts generic DB-API catalog rows to plain scalar tuples before exact comparison; regression coverage proves canonical sequence rows pass while wrong named-key ownership and wrong FK referenced-table evidence still roll back and fail closed.
+- TDD evidence: the new positive regression failed before the production correction and passed afterward. Requirement Store passed 67 tests; the requested focused files passed 1, 1, 10, 7, and 15 tests; all Requirement tests passed 292 tests with 2 warnings. Compileall and diff/static checks passed. The full repository gate stopped at a pre-existing security test because a tracked operator harness contains raw-looking key literals; this task did not modify that harness.
+- Live SQL pre-fix blocker reproduction was executed by the operator. Post-fix live SQL retest was not executed and remains required.
 
 ### 2026-09-08 Requirement SQL registry DB configuration alignment
 
