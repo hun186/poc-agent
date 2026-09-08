@@ -1,8 +1,15 @@
 # Known Issues
 
-## 2026-09-04 Phase 1B live SQL Server acceptance not executed
+## 2026-09-08 Phase 1B live SQL acceptance blocker corrected in repository
 
-- This container has no explicitly authorized Requirement control-plane SQL Server or credentials. Schema/import logic is repository-tested; live acceptance remains open. No unrelated credential was reused.
+- Phase 1B live SQL acceptance has now been initiated by an authorized operator. The pre-fix run proved connectivity, schema/table/constraint creation, catalog visibility, and transactional rollback, then reproduced canonical catalog validation failure caused by DB-API row-container equality semantics.
+- The repository now normalizes catalog result rows before exact scalar comparison and retains fail-closed structural validation. A post-fix live SQL retest was not executed in this environment and remains pending operator execution.
+- Full repository verification is not green: `python -m pytest -q tests/ -x` stops at `tests/test_batch_scheduler_security.py::test_phase0_harness_has_no_raw_key_literal` because a pre-existing tracked operator harness contains raw-looking key literals. The focused Requirement gates pass, and this correction neither reads nor modifies those literal values.
+- Hosted refresh and PR publication are unavailable because this checkout has no configured remote and the GitHub HTTPS probe is rejected by the environment proxy with HTTP 403. The `pytest` shim also omits the repository root from its import path here, so verification uses the equivalent `python -m pytest` invocation.
+
+## 2026-09-04 Phase 1B live SQL Server acceptance not executed (superseded)
+
+- Historical status only. Live acceptance was later initiated and its current status is recorded in the 2026-09-08 entry above.
 
 ## 2026-09-03 Private deployment unreachable from Codex environment
 

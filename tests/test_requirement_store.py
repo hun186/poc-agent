@@ -38,7 +38,7 @@ class DbApiRow:
 
 class RecordingCursor:
     description=[]
-    def __init__(self, version=None, malformed=False, malformed_binding=None, diagnostic_nullable=True, diagnostic_row_factory=None, repair_effective=True, legacy_generated_names=False, legacy_defect=None): self.version=version; self.malformed=malformed; self.malformed_binding=malformed_binding; self.diagnostic_nullable=diagnostic_nullable; self.diagnostic_row_factory=diagnostic_row_factory or (lambda value: (value,)); self.repair_effective=repair_effective; self.legacy_generated_names=legacy_generated_names; self.legacy_defect=legacy_defect; self.calls=[]; self.nullable_rows=[]; self.last=""
+    def __init__(self, version=None, malformed=False, malformed_binding=None, diagnostic_nullable=True, diagnostic_row_factory=None, catalog_row_factory=None, repair_effective=True, legacy_generated_names=False, legacy_defect=None): self.version=version; self.malformed=malformed; self.malformed_binding=malformed_binding; self.diagnostic_nullable=diagnostic_nullable; self.diagnostic_row_factory=diagnostic_row_factory or (lambda value: (value,)); self.catalog_row_factory=catalog_row_factory or (lambda *values: tuple(values)); self.repair_effective=repair_effective; self.legacy_generated_names=legacy_generated_names; self.legacy_defect=legacy_defect; self.calls=[]; self.nullable_rows=[]; self.last=""
     def execute(self, sql, *params):
         self.last=sql; self.calls.append((sql,params))
         if "ALTER COLUMN source_row_number INT NULL" in sql and self.repair_effective: self.diagnostic_nullable=True
@@ -83,7 +83,7 @@ class RecordingCursor:
             }
             row[positions[mode]] = "wrong_value"
             rows[0] = tuple(row)
-        return rows
+        return [self.catalog_row_factory(*row) for row in rows]
 class RecordingConnection:
     def __init__(self, **kwargs): self.cursor_value=RecordingCursor(**kwargs); self.commits=0; self.rollbacks=0; self.closed=False
     def cursor(self): return self.cursor_value
@@ -102,6 +102,21 @@ def test_schema_migration_and_validation_state_machine(version):
     assert any("sys.columns" in sql for sql in statements)
     assert any("INSERT INTO [sra_requirement].[schema_version]" in sql for sql in statements) == (version is None)
     assert any("UPDATE [sra_requirement].[schema_version]" in sql for sql in statements) == (version == 0)
+
+def test_fresh_schema_accepts_canonical_catalog_evidence_as_dbapi_rows():
+    connection=RecordingConnection(version=None,catalog_row_factory=DbApiRow)
+    RequirementStore(Registry(connection),"control").initialize()
+    assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
+
+@pytest.mark.parametrize("mode,constraint", [
+    ("owner_table","UQ_requirement_identity"),
+    ("referenced_table","FK_requirement_source"),
+])
+def test_dbapi_catalog_rows_with_wrong_named_constraint_structure_fail_closed(mode,constraint):
+    connection=RecordingConnection(version=None,catalog_row_factory=DbApiRow,malformed_binding=(mode,constraint))
+    with pytest.raises(RuntimeError,match="malformed requirement schema version 1"):
+        RequirementStore(Registry(connection),"control").initialize()
+    assert connection.commits == 0 and connection.rollbacks == 1 and connection.closed
 
 @pytest.mark.parametrize("kwargs,error", [({"version":99},"unsupported requirement schema version"),({"version":1,"malformed":True},"malformed requirement schema version 1")])
 def test_unknown_or_malformed_schema_rolls_back(kwargs,error):

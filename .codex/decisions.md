@@ -16,6 +16,10 @@
 
 ## Recent Changes
 
+### 2026-09-08 DB-API-neutral catalog row comparison
+
+- Canonical catalog validation normalizes each sequence-like DB-API result row into a plain Python tuple before exact expected-evidence comparison. This changes only container semantics: cardinality, scalar values, ordering, ownership, names, kinds, columns, referenced objects, and ordinals remain exact, with no driver-specific row-type dependency.
+
 ### 2026-09-08 Requirement SQL configuration alignment
 
 - Keep the operational registries separate but share one neutral SQL Server ODBC driver resolver. Requirement direct inner keys are canonical; explicitly configured legacy `*_env` sources remain authoritative and fail closed when absent.
