@@ -16,6 +16,10 @@
 
 ## Recent Changes
 
+### 2026-09-08 Requirement SQL configuration alignment
+
+- Keep the operational registries separate but share one neutral SQL Server ODBC driver resolver. Requirement direct inner keys are canonical; explicitly configured legacy `*_env` sources remain authoritative and fail closed when absent.
+
 ### 2026-09-07 Acceptance-driven persistence correction
 
 - Only SQL Server duplicate-key errors (`SQLSTATE 23000` with native `2601` or `2627`) may enter immutable submission winner reconciliation. Arbitrary insert/database failures propagate and roll back the Prepare transaction.

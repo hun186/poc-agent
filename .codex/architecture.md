@@ -1,5 +1,10 @@
 # System Architecture
 
+## 2026-09-08 Shared SQL Server driver-resolution seam
+
+- Generic SQL Server ODBC driver selection lives in `data_ingestion/sql_server.py`. Excel-to-SQL preserves its `sql_utils.detect_odbc_driver` import surface while Requirement's named registry uses the same helper.
+- Excel-to-SQL task configuration and Requirement/Schedule named-registry configuration remain separate. Their inner DB key semantics align; `connections.requirement_control` continues to serve both `sra_requirement` and `sra_schedule`.
+
 ## 2026-09-04 Phase 1B legacy key-name compatibility
 
 - Canonical fresh DDL continues to explicitly name every required PK/UQ/FK. Version-1 validation treats the PKs and `requirement_sets.source_id` UQ that PR #194 declared inline without names as structural identities: canonical schema/table, PK/UQ kind, exact ordered columns, and exactly one matching key are required, while the SQL Server-generated name is ignored.

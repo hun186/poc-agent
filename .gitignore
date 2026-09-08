@@ -198,3 +198,4 @@ SRA-API_output.txt
 *.sqlite3-wal
 *.sqlite3-shm
 .sra_service_keys.json*
+/config/requirements/sql_registry.json
