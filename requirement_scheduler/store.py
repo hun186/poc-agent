@@ -20,7 +20,7 @@ from .recurrence import next_occurrence
 from .recurrence import coalesce_latest
 from .policy import Checkpoint, evaluate_selection
 from .execution import (
-    ExecutionFailure, ExecutionHandle, ExecutionState, ExecutionStatus, FailureCategory,
+    ExecutionFailure, ExecutionHandle, ExecutionManifest, ExecutionState, ExecutionStatus, FailureCategory,
     build_execution_manifest,
 )
 from .handoff import PreparedHandoff, checkpoint_outcome, prepared_handoff, verify_prepared
@@ -44,6 +44,12 @@ def _is_scheduled_occurrence_conflict(exc: Exception) -> bool:
     text = " ".join(str(part) for part in getattr(exc, "args", (exc,)))
     return ("23000" in text and ("2601" in text or "2627" in text)
             and "UX_schedule_run_scheduled" in text)
+
+
+def _is_unique_key_conflict(exc: Exception) -> bool:
+    """Recognize only SQL Server duplicate-key errors, never arbitrary DB failures."""
+    text = " ".join(str(part) for part in getattr(exc, "args", (exc,)))
+    return "23000" in text and ("2601" in text or "2627" in text)
 
 
 class ScheduleStore:
@@ -636,9 +642,11 @@ class ScheduleStore:
                         candidate.semantic_manifest_json, candidate.semantic_fingerprint,
                         candidate.legacy_session_id, expiry_now, expiry_now,
                     )
-                except Exception:
+                except Exception as exc:
                     # A unique-key race can only be accepted after the winner is
                     # visible and every immutable byte compares equal.
+                    if not _is_unique_key_conflict(exc):
+                        raise
                     c.execute(
                         f"SELECT submission_id,workflow_id,semantic_manifest_json,semantic_fingerprint,legacy_session_id FROM {self.t}.[requirement_handoff_submissions] WITH (UPDLOCK,HOLDLOCK) WHERE run_item_id=?",
                         source["run_item_id"],
