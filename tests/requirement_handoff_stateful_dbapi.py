@@ -97,6 +97,11 @@ class Cursor:
             self.s["locks"].append(normalized)
         if normalized == "SELECT SYSUTCDATETIME()":
             values = self.s["now_values"]
+            value = values.pop(0) if len(values) > 1 else values[0]
+            # Live pyodbc semantics: datetime2 is naive even though the value is UTC.
+            self.results = [(value.replace(tzinfo=None),)]
+        elif normalized == "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')":
+            values = self.s["now_values"]
             self.results = [(values.pop(0) if len(values) > 1 else values[0],)]
         elif "FROM [sra_schedule].[requirement_handoff_coordinator_leases]" in normalized:
             self.results = [tuple(self.s["lease"])]

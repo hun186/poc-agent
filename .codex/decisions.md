@@ -16,6 +16,11 @@
 
 ## Recent Changes
 
+### 2026-09-09 Requirement Handoff SQL clock type boundary
+
+- Requirement Handoff retains SQL Server as its lease and deadline time authority, but reads that clock through `TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')` so pyodbc applies the existing `datetimeoffset` converter and returns an aware UTC Python datetime consistent with persisted lease/deadline values.
+- A single private store helper validates the result as aware UTC and fails closed on malformed or unexpected driver values. Do not substitute host/caller time, use server-local `SYSDATETIMEOFFSET()`, scatter `tzinfo` replacement, or globally reinterpret unrelated `datetime2` results.
+
 ### 2026-09-08 Narrow SQL Server CHECK-expression equivalence
 
 - SQL Server-owned catalog formatting may normalize the proven unquoted equivalence `NOT <identifier> LIKE` to `<identifier> NOT LIKE` before exact CHECK comparison. Quoted string segments are excluded from this rewrite, and predicate columns, literals, operators, length, NULL semantics, constraint identity, and ownership remain exact. This is not a general SQL parser or permission to weaken catalog validation.
