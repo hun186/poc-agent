@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-09 Report Job gateway contract alignment
+
+- Corrected the Requirement Handoff Report Job gateway to accept the API's successful `202` creation response and to reconcile from the native GET response field `status` rather than the nonexistent `state` field.
+- Preserved deterministic submission identity/payload semantics, returned job-ID validation, native status translation, fail-closed malformed/unknown status handling, and 401/403/409 behavior.
+- TDD evidence: the focused gateway suite was RED with 11 failures (the expected rejected `202`, missing `state`, and wrong unknown-status category), then passed 23 tests. Direct handoff tests passed 71 tests, the broader handoff subset passed 101 tests, and all Requirement tests passed 323 tests with 4 warnings. No live Golden Path records or private APIs were accessed or mutated.
+
 ### 2026-09-09 Requirement profile-version INSERT parameter correction
 
 - Corrected `RequirementStore.create_profile_version()` so the 13-column `import_profile_versions` INSERT binds all ten non-NULL values in schema order before the three approval/retirement NULLs.
