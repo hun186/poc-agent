@@ -1,5 +1,10 @@
 # Known Issues
 
+## 2026-09-09 Runtime-automation implementation environment
+
+- Hosted `main` at `13ef7bf980614c986e7fd0a2756d779ccccb415f` was verified externally by Human/ChatGPT GitHub authority and matched the clean local baseline. Codex raw `git fetch` remains unavailable because the proxy returns CONNECT tunnel HTTP 403; no successful fetch is claimed.
+- The schedule-worker repository implementation can be exercised with fakes and existing DB-API fixtures here. The authorized three-item automatic schedule → handoff → Report Job → DOCX deployment acceptance is NOT EXECUTED and remains operator-only.
+
 ## 2026-09-09 Hosted rebaseline unavailable for Plan/Prompt v1.1 correction
 
 - The local repository had no configured Git remote (`git remote -v` returned no entries). `git fetch --all --prune` completed locally but could not query hosted `main`, so hosted state newer than local clean baseline `a702dcf528cd6f77f26aa89aec665dcc8145acda` could not be ruled out.
