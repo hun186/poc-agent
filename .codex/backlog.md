@@ -2,11 +2,16 @@
 
 ## 2026-09-04 Phase 1B / 1C handoff
 
-- Execute real SQL Server Phase 1B acceptance from an explicitly authorized environment.
-- Implement the authoritative Phase 1C Design/Plan in two reviewed gates: 1C-A control plane first, then 1C-B execution bridge only after Gate A review PASS. Phase 1C owns recurrence, due/expiry selection, Batch Run creation, and Phase 1A handoff; it remains not implemented.
-- After repository completion, execute real Phase 1C SQL/worker/Report Job/DOCX acceptance from an explicitly authorized environment. Repository fake SQL/transport evidence must not be called deployment acceptance.
+- Historical gate at issuance: execute real SQL Server Phase 1B acceptance and implement Phase 1C in reviewed A/B gates. Superseded current status: both repository gates are implemented, and the supplied operator evidence proves one live import/manual-run/handoff/Report Job/Agent/DOCX Golden Path.
+- Remaining acceptance is narrower but still material: automatic due claiming, additional schema/migration/rollback/failure/failover/race shapes, and broader multi-item deployment scenarios require an explicitly authorized environment. Repository fake SQL/transport evidence must not be called deployment acceptance.
 
 ## Current Summary
+
+### Phase 1 completion delta
+
+- Phase 1C-B implementation is present. External operator evidence now establishes the single-item Requirement → owner-scoped Report Job → real Agent/Elasticsearch → root-bound verified DOCX live Golden Path as **PASS**. Do not retain older statements that this specific path has never run.
+- Automatic scheduled materialization remains missing: `ScheduleStore.claim_due()` exists, but no continuous production caller or `schedule-worker` CLI exists. After human/ChatGPT Design + Plan Review, implement only `docs/superpowers/plans/2026-09-09-sra-requirement-schedule-runtime-automation-plan-v1.md` under its future execution contract.
+- Still unexecuted: the complete Phase 0 Service-Key/signed-resource chain and credential hygiene; dedicated Phase 1A two-task/restart acceptance; all Phase 1B/1C schema/migration/rollback/failure-injection, coordinator failover/fencing, concurrency/race, multi-item, and automatic due-claim deployment scenarios. JT-1 and LangGraph remain **NOT STARTED**.
 
 ### Phase 0 deployment acceptance
 
@@ -109,5 +114,5 @@
 ## 2026-09-07 Phase 1C-B closure deployment gates
 
 - Run schema-v3 migration/rollback, DB-time expiry, fencing turnover, and transaction failure injection against an explicitly authorized live SQL Server. Status: NOT EXECUTED.
-- Run the private owner-scoped Report Job + Agent + valid DOCX end-to-end deployment acceptance and observe hosted CI for the closure PR. Status: NOT EXECUTED.
+- Historical status at gate issuance: the private owner-scoped Report Job + Agent + valid DOCX end-to-end was NOT EXECUTED. Superseded current status: the operator-supplied single-item Golden Path is PASS; broader multi-item/failover/failure/race deployment acceptance remains pending.
 - Job Task JT-1 and LangGraph integration remain NOT STARTED and are separate future gates.

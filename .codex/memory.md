@@ -6,10 +6,17 @@
 - Phase 0 security, Phase 1A Batch Scheduler, Phase 1B Requirement import, Phase 1C-A control plane, and Phase 1C-B Requirement execution compatibility bridge are present.
 - Phase 1C-B uses SQL Server as Requirement lifecycle authority, a transactional audit outbox, an external fenced coordinator, immutable `report_v1` submissions, the existing owner-scoped Report Job HTTP API, and confined root-bound DOCX publication.
 - Job Task JT-1 and LangGraph integration remain NOT STARTED. The Requirement Scheduler must remain framework-neutral and must not embed Batch Scheduler or Report Job persistence/worker internals.
-- Phase 1B live Requirement SQL Server acceptance was initiated by an authorized operator and reproduced a DB-API catalog-row blocker; the repository correction is verified, but its post-fix live retest remains pending. Private Report Job + Agent + DOCX deployment E2E remains NOT EXECUTED.
+- An authorized operator has now completed the single-item Requirement import → manual Batch Run → owner-scoped Report Job → real Agent/Elasticsearch → DOCX → reconciliation chain; this Phase 1C-B live Golden Path is PASS. It does not prove the remaining Phase 0 Service-Key/signed-resource or full migration/failover/failure/race acceptance matrices.
+- The current CLI exposes the implemented `handoff-worker`, while `ScheduleStore.claim_due()` has no automatic runtime caller. The reviewed completion delta is a separate external `schedule-worker`; implementation has NOT started. JT-1 and LangGraph remain NOT STARTED.
 - Environment limitations: package-index proxy may return 403; private deployment/Elasticsearch and authorized Requirement SQL are unavailable; Playwright/browser runtime is absent.
 
 ## Recent Changes
+
+### 2026-09-09 Phase 1 plan reconciliation and runtime-automation design
+
+- Reconciled historical Phase 0/1A/1B/1C artifacts against source at `b8bcd779815337bb386a97fc457a5f49663fb2b6`. Historical verdicts and checkboxes remain unchanged; current implementation, review, live Golden Path, and full deployment acceptance are recorded separately.
+- Recorded external operator evidence: one selected Requirement completed through the real Report Job worker, Agent/Elasticsearch, and a structurally valid 42,341-byte DOCX whose recorded and actual SHA-256 matched. This evidence was supplied by the operator, not executed by Codex.
+- Added Design v1, Plan v1, and a future Codex execution contract for the missing external scheduled due-claim driver. Documentation verification used scoped `rg`, `git diff --check`, changed-file scope checks, and source inspection; no production code, tests, schema, runtime configuration, or dependencies changed.
 
 ### 2026-09-09 Requirement Handoff SQL Server queue-lock compatibility
 

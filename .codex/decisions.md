@@ -16,6 +16,11 @@
 
 ## Recent Changes
 
+### 2026-09-09 Separate scheduled materialization runtime
+
+- Complete automatic scheduled materialization with a narrow external `schedule-worker` that delegates one occurrence at a time to existing `ScheduleStore.claim_due()` and polls interruptibly. Keep the implemented `handoff-worker` independent; SQL Batch Run / Run Item state is their only communication boundary.
+- Do not revive Phase 1C v2's combined scheduling/execution worker, embed the Phase 1A controller, add a FastAPI scheduling thread, or introduce a queue/schema. Store recurrence, locking, materialization, occurrence identity, audit, and advancement semantics remain authoritative.
+
 ### 2026-09-09 Requirement Handoff queue locking
 
 - Prepare scans candidate `requirement_batch_run_items` with `UPDLOCK,READPAST,READCOMMITTEDLOCK`: update locks preserve claim intent, `READPAST` skips rows locked by another consumer, and `READCOMMITTEDLOCK` explicitly selects locking READ COMMITTED behavior, including compatibility with databases where `READ_COMMITTED_SNAPSHOT` is enabled. Do not combine the candidate's `READPAST` with `HOLDLOCK`/SERIALIZABLE.
