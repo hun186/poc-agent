@@ -61,6 +61,12 @@
 
 ## Recent Changes
 
+### 2026-09-09 Phase 1C runtime process separation
+
+- Phase 1C has two independent externally supervised process roles. The existing `handoff-worker` owns reconcile → prepare → submit. A future `schedule-worker` will own only validated startup, aware-UTC `ScheduleStore.claim_due()` polling, and graceful stop.
+- The processes communicate only through SQL-authoritative Batch Run / Run Item state. The schedule process performs no HTTP, handoff, artifact, Phase 1A SQLite, Report Job worker, Agent, Elasticsearch, or Word work and is not hosted in FastAPI lifespan.
+- The runtime-driver design completes a missing automation delta without superseding Phase 1C-A Design v5, Job Task Orchestration Boundary Design v1, or the corrected Phase 1C-B architecture. JT-1 and LangGraph remain future, unimplemented gates.
+
 - 2026-09-01：新增 dual-mode Word report。FastAPI lifespan 依序初始化 Job SQLite、原子標記 stale `running` 為 `interrupted`、啟動唯一 thread worker；worker 直接呼叫 transport-neutral `execute_agent_turn(request=None, session_id=...)`。SQLite 每操作獨立 connection，`BEGIN IMMEDIATE` 保護 idempotent create 與 claim；DOCX 在 local reports root temp write/validation 後 atomic rename。
 
 - 2026-09-01：新增 `sra_api/services/turn_execution.py` 作為 Chat 與同步 Word API 的共用非 META Agent turn 執行邊界；它統一準備 session/history/memory/reuse、呼叫 `answer_with_routing()`、補齊 turn identifiers 並保留既有 snapshot 相容副作用。`POST /v1/report/word` 直接把 service 回傳的本輪 structured result 交給 `ExportWordService`，不從 `state.json` 讀回；Chat 則沿用相同 service，再完成 Markdown response、session/memory 與 API state persistence。
