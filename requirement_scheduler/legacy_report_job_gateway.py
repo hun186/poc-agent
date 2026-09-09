@@ -58,7 +58,7 @@ class LegacyReportJobGateway:
                    "session_id": manifest.execution_policy["legacy_session_id"], "model": manifest.execution_input["resolved_model"],
                    "options": {}, "metadata": {"submission_id": idempotency_key, "workflow_id": "report_v1"}}
         response = self._request("POST", "/v1/report/jobs", headers=self._headers(idempotency_key=idempotency_key), json=payload)
-        if response.status_code not in {200, 201}: raise ExecutionFailure(FailureCategory.REMOTE_UNAVAILABLE, "remote_response_invalid")
+        if response.status_code not in {200, 201, 202}: raise ExecutionFailure(FailureCategory.REMOTE_UNAVAILABLE, "remote_response_invalid")
         try: body=response.json(); job_id=body["job_id"]
         except Exception as exc: raise ExecutionFailure(FailureCategory.INTERNAL_CONTRACT_VIOLATION, "remote_response_invalid") from exc
         if not isinstance(job_id, str) or not job_id or len(job_id)>64: raise ExecutionFailure(FailureCategory.INTERNAL_CONTRACT_VIOLATION, "remote_response_invalid")
@@ -67,7 +67,7 @@ class LegacyReportJobGateway:
     def inspect(self, handle: ExecutionHandle) -> ExecutionStatus:
         response=self._request("GET", f"/v1/report/jobs/{handle.remote_job_id}", headers=self._headers())
         if response.status_code != 200: raise ExecutionFailure(FailureCategory.REMOTE_UNAVAILABLE, "remote_response_invalid")
-        try: state=response.json()["state"]
+        try: state=response.json()["status"]
         except Exception as exc: raise ExecutionFailure(FailureCategory.INTERNAL_CONTRACT_VIOLATION, "remote_response_invalid") from exc
         if not isinstance(state, str): raise ExecutionFailure(FailureCategory.INTERNAL_CONTRACT_VIOLATION, "remote_response_invalid")
         return translate_native_state(state)
