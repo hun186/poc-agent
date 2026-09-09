@@ -1,5 +1,6 @@
 from copy import deepcopy
 from datetime import timedelta
+import re
 
 import pytest
 
@@ -24,6 +25,28 @@ def test_prepare_happy_path_commits_root_submission_item_run_and_safe_audit():
     assert s["item"]["state"] == "submitting"
     assert s["audits"][0]["action"] == "requirement_handoff.prepared"
     assert any("UPDLOCK" in sql and "HOLDLOCK" in sql for sql in s["locks"])
+
+
+def test_prepare_candidate_scan_uses_valid_readpast_queue_lock_contract():
+    db = StatefulDatabase()
+
+    prepare(db)
+
+    candidate_sql = next(
+        sql for sql, _params in db.executions if "SELECT TOP 1 i.run_item_id" in sql
+    )
+    assert re.search(
+        r"requirement_batch_run_items\] i WITH \(UPDLOCK,READPAST,READCOMMITTEDLOCK\)",
+        candidate_sql,
+    )
+    assert not re.search(
+        r"requirement_batch_run_items\] i WITH \([^)]*HOLDLOCK[^)]*READPAST|"
+        r"requirement_batch_run_items\] i WITH \([^)]*READPAST[^)]*HOLDLOCK",
+        candidate_sql,
+    )
+    assert re.search(
+        r"requirement_batch_runs\] r WITH \(UPDLOCK,HOLDLOCK\)", candidate_sql
+    )
 
 
 def test_database_time_is_authoritative_and_second_read_can_expire_after_locks():

@@ -16,6 +16,11 @@
 
 ## Recent Changes
 
+### 2026-09-09 Requirement Handoff queue locking
+
+- Prepare scans candidate `requirement_batch_run_items` with `UPDLOCK,READPAST,READCOMMITTEDLOCK`: update locks preserve claim intent, `READPAST` skips rows locked by another consumer, and `READCOMMITTEDLOCK` explicitly selects locking READ COMMITTED behavior, including compatibility with databases where `READ_COMMITTED_SNAPSHOT` is enabled. Do not combine the candidate's `READPAST` with `HOLDLOCK`/SERIALIZABLE.
+- The joined `requirement_batch_runs` row continues to use `UPDLOCK,HOLDLOCK`; it does not use `READPAST` and still protects run identity/state through the existing Prepare transaction.
+
 ### 2026-09-09 Requirement Handoff SQL clock type boundary
 
 - Requirement Handoff retains SQL Server as its lease and deadline time authority, but reads that clock through `TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')` so pyodbc applies the existing `datetimeoffset` converter and returns an aware UTC Python datetime consistent with persisted lease/deadline values.
