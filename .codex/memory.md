@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-09 SQL Server DATETIMEOFFSET result decoding
+
+- Fixed Requirement named SQL connections to register a pyodbc output converter for SQL Server `DATETIMEOFFSET` type code `-155`, decoding the driver binary representation into timezone-aware Python `datetime` values without changing the SQL schema or queries.
+- TDD evidence: the focused registry suite first failed 6 tests because the converter and decoder were absent, then passed 21 tests. Coverage includes converter registration, UTC, positive and negative offsets, fractional seconds, and NULL.
+- Repository verification: all Requirement tests passed 306 tests with 3 warnings; compileall and `git diff --check` passed. The full suite reached 677 passed, 1 failed, and 10 warnings; the sole failure is the pre-existing tracked raw-key operator-harness finding in `tests/test_batch_scheduler_security.py::test_phase0_harness_has_no_raw_key_literal`. Post-fix deployed API retest was NOT EXECUTED and remains required.
+
 ### 2026-09-08 Phase 1C SQL Server CHECK-expression normalization
 
 - The operator's Phase 1B post-PR #218 live startup progressed successfully past `RequirementStore.initialize()`; Phase 1B DB-API catalog-row comparison is no longer the active live blocker.
