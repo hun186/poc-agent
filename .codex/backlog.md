@@ -97,6 +97,11 @@
 - Phase 1C-B Plan Review v1 is **NOT PASS** because it treated a legitimate same-RequirementVersion successful re-run as a checkpoint conflict and lacked first-handoff authority to snapshot the output-root fingerprint.
 - Review `docs/superpowers/plans/2026-09-05-phase1c-b-requirement-execution-bridge-plan-v1.1.md`. Do not implement until Human/ChatGPT Plan v1.1 Review passes and a fresh execution contract is issued. Phase 1C-B implementation, JT-1, and LangGraph remain NOT STARTED; live SQL Server acceptance remains NOT EXECUTED.
 
+## 2026-09-09 Phase 1C-B Plan history revalidation
+
+- Plan v1 remains **SUPERSEDED / NOT PASS** for the same-version re-run/checkpoint conflict and missing first-Prepare output-root fingerprint binding. Plan v1.1 remains the corrected historical plan and is ready for human/ChatGPT review as a plan artifact.
+- Repository history after the plan snapshot contains Phase 1C-B implementation, so do not interpret the historical plan gate as current implementation status. The remaining external gate is explicitly authorized live SQL Server and private Report Job/DOCX acceptance; JT-1 and LangGraph remain NOT STARTED.
+
 ## 2026-09-07 Phase 1C-B deployment follow-up
 
 - Execute schema-v3 migration/rollback and coordinator acceptance against an explicitly authorized live SQL Server, then run the private Report Job/DOCX deployment E2E. JT-1 and LangGraph remain NOT STARTED.
