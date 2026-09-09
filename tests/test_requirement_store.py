@@ -1,4 +1,7 @@
+import json
+
 import pytest
+from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.migrations import (
     REQUIRED_COLUMNS,
     REQUIRED_FOREIGN_KEYS,
@@ -6,7 +9,7 @@ from data_ingestion.requirements.migrations import (
     migration_v1,
     validate_schema_name,
 )
-from data_ingestion.requirements.models import AcquiredSource, NormalizedCandidate, RowDiagnostic
+from data_ingestion.requirements.models import AcquiredSource, ImportProfileDocument, NormalizedCandidate, RowDiagnostic
 from data_ingestion.requirements.profile import normalize_rows
 from data_ingestion.requirements.store import RequirementStore
 from tests.requirement_test_support import ScriptedConnection, ScriptedRegistry, sample_profile, sample_row
@@ -259,6 +262,26 @@ def test_actual_store_profile_source_and_immutable_version_sql(monkeypatch):
     store.create_source("source","sql_query","authoritative_snapshot",{"connection_ref":"reviewed","query_ref":"named"},"profile-1","admin",source_id="source-1")
     persisted=connections[3].cursor_value.calls[0][1][4]
     assert "reviewed" in persisted and "named" in persisted and "password" not in persisted.casefold() and "query" not in persisted.casefold().replace("query_ref","")
+
+
+def test_create_profile_version_binds_all_insert_columns_in_order(monkeypatch):
+    connection=ScriptedConnection(one=[(4,)])
+    store=RequirementStore(ScriptedRegistry(connection),"control")
+    monkeypatch.setattr(store,"get_profile_version",lambda vid:{"profile_version_id":vid})
+    profile=ImportProfileDocument.model_validate(sample_profile())
+
+    store.create_profile_version("profile-1",sample_profile(),"operator")
+
+    insert_sql,params=next(call for call in connection.cursor_value.calls if call[0].lstrip().upper().startswith("INSERT"))
+    assert "VALUES (?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL)" in insert_sql
+    assert insert_sql.count("?") == len(params) == 10
+    assert params[0].startswith("pv_")
+    assert params[1:5] == ("profile-1",4,"json","authoritative_snapshot")
+    assert json.loads(params[5]) == profile.model_dump(mode="json")
+    assert params[6] == canonical_sha256(profile.model_dump(mode="json"))
+    assert params[7:9] == ("draft","operator")
+    assert params[9].tzinfo is not None
+    assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
 
 
 def test_actual_store_commit_resolution_requires_enabled_approved_active_version(monkeypatch):
