@@ -12,6 +12,13 @@
 
 ## Recent Changes
 
+### 2026-09-09 Runtime-automation Plan/Prompt v1.1 correction
+
+- Recorded the review disposition: Phase 1 Plan Status Reconciliation **PASS** and Runtime Automation Design v1 **PASS**; Implementation Plan v1 is **NOT PASS** due only to implementation-contract precision gaps, and Prompt v1 is **NOT AUTHORIZED** because it binds that plan.
+- Added documentation-only Plan v1.1 and Prompt v1.1. They freeze the separate poll environment variable (`REQUIREMENT_SCHEDULE_WORKER_POLL_INTERVAL`, finite `0.1..300.0`, default `2.0`), stable system actor `requirement-schedule-worker`, exact one-shot/continuous/shutdown semantics, executable RED/GREEN steps, process-boundary assertions, cross-phase gates, and operator-only live acceptance. Design v1 remains authoritative and unchanged; production implementation has not started.
+- Rebaseline began from clean local commit `a702dcf528cd6f77f26aa89aec665dcc8145acda` on branch `work`. No Git remote was configured, so `git fetch --all --prune` could not query hosted `main`; the correction moved to dedicated branch `docs/runtime-automation-plan-v1-1` and explicitly requires a fresh hosted rebaseline before future execution.
+- Documentation verification passed: required-term scoped search found the frozen contracts, the prohibited-placeholder search returned no matches, `git diff --check` passed, and the changed-path allowlist contained only Markdown documentation/memory. Per task scope, pytest and the live Golden Path were not run.
+
 ### 2026-09-09 Phase 1 plan reconciliation and runtime-automation design
 
 - Reconciled historical Phase 0/1A/1B/1C artifacts against source at `b8bcd779815337bb386a97fc457a5f49663fb2b6`. Historical verdicts and checkboxes remain unchanged; current implementation, review, live Golden Path, and full deployment acceptance are recorded separately.

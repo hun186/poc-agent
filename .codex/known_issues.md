@@ -1,5 +1,10 @@
 # Known Issues
 
+## 2026-09-09 Hosted rebaseline unavailable for Plan/Prompt v1.1 correction
+
+- The local repository had no configured Git remote (`git remote -v` returned no entries). `git fetch --all --prune` completed locally but could not query hosted `main`, so hosted state newer than local clean baseline `a702dcf528cd6f77f26aa89aec665dcc8145acda` could not be ruled out.
+- Alternative evidence was the clean local merge commit for PR #226 plus exact repository/branch/HEAD/status capture. Plan v1.1 and Prompt v1.1 require future implementation to fetch and bind actual hosted `main`; no hosted-baseline claim is made by this documentation correction.
+
 ## 2026-09-08 Phase 1C live CHECK-expression blocker corrected in repository
 
 - The Phase 1B post-PR #218 operator startup progressed past `RequirementStore.initialize()`; its prior DB-API row-container defect is no longer the active live blocker.
