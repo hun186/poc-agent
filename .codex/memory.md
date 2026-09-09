@@ -11,6 +11,13 @@
 
 ## Recent Changes
 
+### 2026-09-09 Phase 1C-B Plan v1.1 correction revalidation
+
+- Revalidated the documentation-only Plan v1.1 correction against Design v1, historical Plan v1, and current Requirement scheduling/handoff sources at local baseline `af38b9d60bb18ba1929f7876c26c10a11fd0e161`. No remote or local `main` ref was available, so hosted authority could not be refreshed; the supplied PR #211 merge remains the historical plan source snapshot.
+- Phase 1C-B Plan Review v1 remains **NOT PASS** for its same-version re-run/checkpoint conflict and missing first-handoff output-root fingerprint snapshot authority. Plan v1.1 preserves legitimate same-RequirementVersion terminal success with checkpoint no-op and binds the server-owned root once in Prepare TX #1 before transport.
+- This revalidation changed documentation only. The plan's `Phase 1C-B implementation NOT STARTED` wording is historical plan-issuance status; later repository history contains the Phase 1C-B implementation. Job Task JT-1 and LangGraph remain NOT STARTED, and live SQL Server acceptance was NOT EXECUTED.
+- Verification passed: `git diff --check`; placeholder, changed-scope, source-path, prohibited-semantics, Task 5/8/9, acceptance-matrix, and Design decision #54/#55/#56 static checks.
+
 ### 2026-09-08 Phase 1C SQL Server CHECK-expression normalization
 
 - The operator's Phase 1B post-PR #218 live startup progressed successfully past `RequirementStore.initialize()`; Phase 1B DB-API catalog-row comparison is no longer the active live blocker.
