@@ -11,6 +11,8 @@ Status: **PLAN CORRECTION ONLY / IMPLEMENTATION NOT STARTED**
 
 > This v1.1 correction changes only (1) same-version successful re-run/checkpoint semantics and (2) first-handoff output-root fingerprint binding. All other Design v1 and Plan v1 architecture remains unchanged. Historical Plan v1 is retained; no Design v2 is created. No Phase 1C-B, JT-1, or LangGraph implementation is authorized by this document.
 
+Revalidation note (2026-09-09): this historical plan was authored from the PR #211 merge snapshot above. The current local checkout started at `af38b9d60bb18ba1929f7876c26c10a11fd0e161` (PR #219 merge), with no configured remote or local `main` ref; consequently `git fetch --all --prune` could not establish a newer hosted authority and `git checkout main` could not run. Source review at that local baseline confirms that Plan v1 still contains both review defects, while this v1.1 document contains the required corrections. Later commits have implemented Phase 1C-B, so the `IMPLEMENTATION NOT STARTED` statements in this plan record the plan-issuance gate rather than the current repository implementation status. This revalidation is documentation-only and makes no production, test, dependency, JT-1, or LangGraph change.
+
 ## 1. Gate contract and source reconciliation
 
 This plan implements only **Gate 1C-B — Requirement execution compatibility bridge** after a separate human/ChatGPT plan review. Design v1 supersedes the discussion notes as architecture authority. Actual source at the snapshot confirms:
