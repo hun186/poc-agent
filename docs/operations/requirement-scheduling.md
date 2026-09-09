@@ -8,4 +8,68 @@ Authenticated readers may inspect schedules. `db_operator` creates disabled sche
 
 SQL and filesystem writes are not atomic, and JSONL delivery is not exactly once. A sink failure after SQL commit leaves the domain mutation and outbox row committed and pending; retries preserve the stable event ID and lifecycle timestamp.
 
-Gate A has no recurring worker, manual trigger execution, Phase 1A bridge, Report Job/Agent/Elasticsearch execution, or Word serving. Do not run or document `python -m requirement_scheduler worker`; that belongs to Phase 1C-B and cannot begin until Gate A is merged and implementation review passes. Phase 1C live SQL Server acceptance is **NOT EXECUTED** without explicit authorization.
+The control plane and execution bridge run as two separate, externally supervised
+processes. Do not use a FastAPI lifespan task or the obsolete generic `worker`
+command:
+
+```bash
+python -m requirement_scheduler schedule-worker
+python -m requirement_scheduler handoff-worker
+```
+
+`schedule-worker` only initializes and validates `ScheduleStore`, then calls its
+existing due-claim boundary. It performs no HTTP, Report Job, Agent,
+Elasticsearch, rendering, artifact, or handoff work. `handoff-worker` remains
+the independently deployed execution-side coordinator. Run both under systemd,
+a container orchestrator, or an equivalent supervisor with restart/backoff and
+separate safe logs.
+
+## Schedule worker configuration and behavior
+
+`REQUIREMENT_SCHEDULE_WORKER_POLL_INTERVAL` is the schedule worker's only new
+setting. It defaults to `2.0` seconds and must be a finite float in the inclusive
+range `0.1` through `300.0`. Invalid values fail startup before registry/store
+construction. Do not substitute `REQUIREMENT_HANDOFF_POLL_INTERVAL`.
+
+Claims always use the non-configurable system actor
+`requirement-schedule-worker`. The normal worker claims at most one occurrence
+per outer iteration. A successful claim may proceed to the next iteration;
+no-due and safe `persistence_error` outcomes wait interruptibly for the poll
+interval. Other invariant failures are fatal so the supervisor can alert and
+restart. Logs expose only safe categories and must not contain SQL errors,
+connection strings, credentials, headers, or tracebacks.
+
+For a deterministic startup/operator diagnostic, run:
+
+```bash
+python -m requirement_scheduler schedule-worker --once
+```
+
+`--once` initializes the store, obtains one aware UTC time, performs exactly one
+claim, and exits without waiting or retrying. No due item and one successful
+claim both exit zero. Configuration, initialization, `persistence_error`, and
+unexpected failures exit nonzero.
+
+SIGTERM and KeyboardInterrupt set the schedule worker stop event. An in-flight
+claim is allowed to finish its current SQL transaction; it is never
+force-cancelled. All idle/retry waits use the interruptible stop event.
+
+## Live acceptance gate
+
+Live/deployment acceptance requires **separate authorization** and must not be
+self-run as part of repository verification. The authorized sequence is:
+
+```text
+import >= 3 active Requirements
+→ approved/enabled schedule
+→ wait for next_run_at
+→ schedule-worker automatically materializes ONE scheduled Batch Run
+→ 3 selected Run Items
+→ handoff-worker automatically submits them
+→ 3 Report Jobs → 3 DOCX → automatic reconciliation
+→ Batch completed; success_count = 3; failure_count = 0
+```
+
+Do not use a manual schedule trigger or manually invoke a coordinator
+`run_once()` during that acceptance. Phase 1C live SQL Server acceptance remains
+**NOT EXECUTED** in repository-only environments without explicit authorization.

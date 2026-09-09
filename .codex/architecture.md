@@ -63,7 +63,7 @@
 
 ### 2026-09-09 Phase 1C runtime process separation
 
-- Phase 1C has two independent externally supervised process roles. The existing `handoff-worker` owns reconcile → prepare → submit. A future `schedule-worker` will own only validated startup, aware-UTC `ScheduleStore.claim_due()` polling, and graceful stop.
+- Phase 1C has two independent externally supervised process roles. The existing `handoff-worker` owns reconcile → prepare → submit. The implemented `schedule-worker` owns only validated startup, aware-UTC `ScheduleStore.claim_due()` polling, and graceful stop.
 - The processes communicate only through SQL-authoritative Batch Run / Run Item state. The schedule process performs no HTTP, handoff, artifact, Phase 1A SQLite, Report Job worker, Agent, Elasticsearch, or Word work and is not hosted in FastAPI lifespan.
 - The runtime-driver design completes a missing automation delta without superseding Phase 1C-A Design v5, Job Task Orchestration Boundary Design v1, or the corrected Phase 1C-B architecture. JT-1 and LangGraph remain future, unimplemented gates.
 

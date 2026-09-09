@@ -10,7 +10,7 @@
 ### Phase 1 completion delta
 
 - Phase 1C-B implementation is present. External operator evidence now establishes the single-item Requirement → owner-scoped Report Job → real Agent/Elasticsearch → root-bound verified DOCX live Golden Path as **PASS**. Do not retain older statements that this specific path has never run.
-- Automatic scheduled materialization remains missing: `ScheduleStore.claim_due()` exists, but no continuous production caller or `schedule-worker` CLI exists. After human/ChatGPT Design + Plan Review, implement only `docs/superpowers/plans/2026-09-09-sra-requirement-schedule-runtime-automation-plan-v1.md` under its future execution contract.
+- Automatic scheduled materialization now has a repository implementation through the separate `schedule-worker` CLI under reviewed Runtime Automation Plan v1.1. Its three-item automatic deployment acceptance remains NOT EXECUTED and requires separate operator authorization.
 - Still unexecuted: the complete Phase 0 Service-Key/signed-resource chain and credential hygiene; dedicated Phase 1A two-task/restart acceptance; all Phase 1B/1C schema/migration/rollback/failure-injection, coordinator failover/fencing, concurrency/race, multi-item, and automatic due-claim deployment scenarios. JT-1 and LangGraph remain **NOT STARTED**.
 
 ### Phase 0 deployment acceptance

@@ -7,10 +7,19 @@
 - Phase 1C-B uses SQL Server as Requirement lifecycle authority, a transactional audit outbox, an external fenced coordinator, immutable `report_v1` submissions, the existing owner-scoped Report Job HTTP API, and confined root-bound DOCX publication.
 - Job Task JT-1 and LangGraph integration remain NOT STARTED. The Requirement Scheduler must remain framework-neutral and must not embed Batch Scheduler or Report Job persistence/worker internals.
 - An authorized operator has now completed the single-item Requirement import → manual Batch Run → owner-scoped Report Job → real Agent/Elasticsearch → DOCX → reconciliation chain; this Phase 1C-B live Golden Path is PASS. It does not prove the remaining Phase 0 Service-Key/signed-resource or full migration/failover/failure/race acceptance matrices.
-- The current CLI exposes the implemented `handoff-worker`, while `ScheduleStore.claim_due()` has no automatic runtime caller. The reviewed completion delta is a separate external `schedule-worker`; implementation has NOT started. JT-1 and LangGraph remain NOT STARTED.
+- The current CLI exposes separate `schedule-worker` and `handoff-worker` processes. The schedule-only worker delegates one due occurrence per iteration to `ScheduleStore.claim_due()`; JT-1 and LangGraph remain NOT STARTED.
 - Environment limitations: package-index proxy may return 403; private deployment/Elasticsearch and authorized Requirement SQL are unavailable; Playwright/browser runtime is absent.
 
 ## Recent Changes
+
+### 2026-09-09 Requirement schedule-worker implementation
+
+- Baseline `13ef7bf980614c986e7fd0a2756d779ccccb415f` was verified as hosted `main` by external Human/ChatGPT GitHub authority; local identity matched exactly and the working tree was clean. Codex raw `git fetch` remained unavailable with CONNECT tunnel HTTP 403 and is not represented as successful.
+- Added only the external schedule-only runtime, CLI surface, focused tests, and operations guidance. `REQUIREMENT_SCHEDULE_WORKER_POLL_INTERVAL` is finite `0.1..300.0` (default `2.0`); the actor is fixed as `requirement-schedule-worker`; one-shot makes exactly one claim; continuous mode performs one claim per outer iteration with interruptible no-due/persistence waits and graceful stop.
+- RED evidence: Task 1 failed collection because `requirement_scheduler.schedule_worker` did not exist (1 error); Task 2 failed 7 selected tests because the loop and signal seam did not exist; Task 3 failed 16 selected tests because the CLI lacked `schedule-worker`; Task 5 documentation assertion failed; Task 6 memory search had no matches. Task 4's four new delegation/import-boundary tests passed immediately and were retained without manufacturing a production change.
+- GREEN evidence: Task 1 passed 15 tests; Task 2 passed 12 selected tests; Task 3 passed 18 selected tests; Task 4 passed 4 selected tests; Task 5 static assertion exited 0. Final focused worker coverage passed 44 tests; schedule/handoff cross-phase coverage passed 241 tests with 4 warnings; PR #223/#224/#225 focused preservation passed 49 tests.
+- The broader Requirement/Batch/Phase-0 gate produced 427 passed, 1 failed, and 3 warnings; the full repository suite produced 748 passed, 1 failed, and 10 warnings. Both sole failures were the pre-existing tracked raw-key operator-harness finding in `tests/test_batch_scheduler_security.py::test_phase0_harness_has_no_raw_key_literal`, outside this task's authorized scope. Compileall, both CLI help commands, documentation assertion, memory assertion, and `git diff --check` passed.
+- No schema, migration, dependency, recurrence, store, handoff, coordinator, gateway, API, Batch Scheduler, JT-1, or LangGraph implementation changed. The three-item automatic live acceptance is **NOT EXECUTED** and requires separate authorization.
 
 ### 2026-09-09 Runtime-automation Plan/Prompt v1.1 correction
 

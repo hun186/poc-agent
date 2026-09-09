@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import sys
 
 from data_ingestion.requirements.connections import SqlRegistry
 from requirement_scheduler.config import RequirementHandoffConfig
@@ -10,6 +11,27 @@ from requirement_scheduler.handoff import RequirementHandoffService
 from requirement_scheduler.legacy_report_job_gateway import LegacyReportJobGateway
 from requirement_scheduler.reconciliation import RequirementReconciler
 from requirement_scheduler.store import ScheduleStore
+from requirement_scheduler.schedule_worker import (
+    RequirementScheduleWorker,
+    parse_poll_interval,
+    run_schedule_worker,
+)
+
+
+def build_schedule_worker_from_env() -> RequirementScheduleWorker:
+    """Construct and validate the schedule-only worker from server-owned settings."""
+    poll_interval = parse_poll_interval()
+    registry = SqlRegistry.load(
+        os.getenv("REQUIREMENT_SQL_REGISTRY_FILE", "config/requirements/sql_registry.json")
+    )
+    store = ScheduleStore(
+        registry,
+        os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"),
+        os.getenv("REQUIREMENT_SCHEDULE_DB_SCHEMA", "sra_schedule"),
+        os.getenv("REQUIREMENT_DB_SCHEMA", "sra_requirement"),
+    )
+    store.initialize()
+    return RequirementScheduleWorker(store, poll_interval)
 
 def build_coordinator_from_env() -> RequirementHandoffCoordinator:
     """Construct the external worker exclusively from server-owned environment."""
@@ -38,10 +60,20 @@ def build_coordinator_from_env() -> RequirementHandoffCoordinator:
 
 def build_parser() -> argparse.ArgumentParser:
     parser=argparse.ArgumentParser(prog="python -m requirement_scheduler")
-    parser.add_argument("command",choices=("handoff-worker",))
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("handoff-worker")
+    schedule = commands.add_parser("schedule-worker")
+    schedule.add_argument("--once", action="store_true")
     return parser
 
-def main(argv=None, *, coordinator_factory=None) -> int:
+def _safe_schedule_error(exc: BaseException, *, startup: bool) -> str:
+    category = str(exc).split(":", 1)[0]
+    if category in {"schedule_worker_config_invalid", "persistence_error", "invalid_utc_clock"}:
+        return category
+    return "schedule_worker_startup_error" if startup else "schedule_worker_invariant_error"
+
+
+def main(argv=None, *, coordinator_factory=None, schedule_worker_factory=None) -> int:
     args=build_parser().parse_args(argv)
     if args.command == "handoff-worker":
         coordinator_factory = coordinator_factory or build_coordinator_from_env
@@ -49,5 +81,21 @@ def main(argv=None, *, coordinator_factory=None) -> int:
         stop=threading.Event()
         try: coordinator_factory().run(stop)
         except KeyboardInterrupt: stop.set()
+        return 0
+    if args.command == "schedule-worker":
+        schedule_worker_factory = schedule_worker_factory or build_schedule_worker_from_env
+        try:
+            worker = schedule_worker_factory()
+        except Exception as exc:
+            print(_safe_schedule_error(exc, startup=True), file=sys.stderr)
+            return 1
+        try:
+            if args.once:
+                worker.run_once()
+            else:
+                run_schedule_worker(worker)
+        except Exception as exc:
+            print(_safe_schedule_error(exc, startup=False), file=sys.stderr)
+            return 1
         return 0
     return 2
