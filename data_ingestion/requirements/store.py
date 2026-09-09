@@ -155,7 +155,7 @@ class RequirementStore:
         connection = self._connect()
         try:
             cursor = connection.cursor(); cursor.execute(f"SELECT COALESCE(MAX(version_number),0)+1 FROM {self.t}.[import_profile_versions] WITH (UPDLOCK,HOLDLOCK) WHERE profile_id=?", profile_id); number = int(cursor.fetchone()[0]); vid = _id("pv")
-            cursor.execute(f"INSERT INTO {self.t}.[import_profile_versions] VALUES (?,?,?,?,?,?,?,?,?,NULL,NULL,NULL)", vid, profile_id, number, profile.format, profile.source_mode.value, serialized, digest, "draft", actor, _now()); connection.commit()
+            cursor.execute(f"INSERT INTO {self.t}.[import_profile_versions] VALUES (?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL)", vid, profile_id, number, profile.format, profile.source_mode.value, serialized, digest, "draft", actor, _now()); connection.commit()
         except Exception as exc: connection.rollback(); raise _stable_persistence_error(exc) from exc
         finally: connection.close()
         return self.get_profile_version(vid)

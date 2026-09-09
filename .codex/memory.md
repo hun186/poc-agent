@@ -11,6 +11,11 @@
 
 ## Recent Changes
 
+### 2026-09-09 Requirement profile-version INSERT parameter correction
+
+- Corrected `RequirementStore.create_profile_version()` so the 13-column `import_profile_versions` INSERT binds all ten non-NULL values in schema order before the three approval/retirement NULLs.
+- Added a regression that verifies the ten SQL markers, bound parameter count and order, serialized profile, canonical digest, draft metadata, and offset-aware creation timestamp. Verification passed: 307 Requirement tests with 2 warnings, Requirement package compileall, and `git diff --check`.
+
 ### 2026-09-09 SQL Server DATETIMEOFFSET result decoding
 
 - Fixed Requirement named SQL connections to register a pyodbc output converter for SQL Server `DATETIMEOFFSET` type code `-155`, decoding the driver binary representation into timezone-aware Python `datetime` values without changing the SQL schema or queries.
