@@ -596,7 +596,7 @@ class ScheduleStore:
             # compatibility with callers and deterministic tests. SQL time wins.
             c.execute(
                 f"SELECT TOP 1 i.run_item_id,i.batch_run_id,r.schedule_id,r.schedule_version_id,r.snapshot_id,i.requirement_id,i.requirement_version_id,i.requirement_version_number,v.prompt_content,sv.model,v.expires_at,r.phase1a_output_root_fingerprint,r.state "
-                f"FROM {self.t}.[requirement_batch_run_items] i WITH (UPDLOCK,HOLDLOCK,READPAST) "
+                f"FROM {self.t}.[requirement_batch_run_items] i WITH (UPDLOCK,READPAST,READCOMMITTEDLOCK) "
                 f"JOIN {self.t}.[requirement_batch_runs] r WITH (UPDLOCK,HOLDLOCK) ON r.batch_run_id=i.batch_run_id "
                 f"JOIN {self.t}.[requirement_schedule_versions] sv WITH (HOLDLOCK) ON sv.schedule_id=r.schedule_id AND sv.schedule_version_id=r.schedule_version_id "
                 f"JOIN [{self.requirement_schema}].[requirement_snapshot_items] si WITH (HOLDLOCK) ON si.snapshot_id=r.snapshot_id AND si.requirement_id=i.requirement_id AND si.requirement_version_id=i.requirement_version_id "

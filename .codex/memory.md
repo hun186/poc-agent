@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-09 Requirement Handoff SQL Server queue-lock compatibility
+
+- Corrected the Prepare candidate scan from `UPDLOCK,HOLDLOCK,READPAST` to `UPDLOCK,READPAST,READCOMMITTEDLOCK` on `requirement_batch_run_items`; the joined `requirement_batch_runs` row retains `UPDLOCK,HOLDLOCK` and transaction, fencing, state-transition, and external-I/O boundaries are unchanged.
+- The focused SQL-emission regression was RED against baseline `c012d17750ba84022dc5a27c64ac76bfbf6c5c67` with 1 failed and 16 passed because `READCOMMITTEDLOCK` was absent. After the production correction, the focused file passed 17 tests; handoff/transaction/deadline tests passed 96 tests; all Requirement tests passed 333 tests with 4 warnings; compileall and static diff checks passed.
+- No live SQL integration harness was added. The supplied operator probe is the real-engine evidence for SQL Server error 650; repository CI uses the focused emitted-SQL contract regression. No live Golden Path DB/API records were accessed or mutated during this task.
+
 ### 2026-09-09 Requirement Handoff aware SQL clock boundary
 
 - Centralized every Requirement Handoff lease/proof and second pre-handoff deadline clock read on SQL Server expression `TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')`, with fail-closed validation that the DB-API value is an aware UTC datetime.
