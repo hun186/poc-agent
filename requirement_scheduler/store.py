@@ -30,6 +30,17 @@ def _now() -> datetime: return datetime.now(timezone.utc).replace(microsecond=0)
 def _id(prefix: str) -> str: return f"{prefix}_{uuid4().hex}"
 
 
+def _sql_utc_now(cursor) -> datetime:
+    """Read SQL Server's authoritative clock as an aware UTC datetimeoffset."""
+    cursor.execute("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')")
+    row = cursor.fetchone()
+    value = row[0] if row and len(row) == 1 else None
+    if (not isinstance(value, datetime) or value.tzinfo is None
+            or value.utcoffset() != timedelta(0)):
+        raise RuntimeError("persistence_error")
+    return value.astimezone(timezone.utc)
+
+
 def _safe_error(exc: Exception) -> Exception:
     if isinstance(exc, (KeyError, ValueError)) and str(exc).strip("'") in {
         "schedule_not_found", "schedule_version_not_found", "schedule_enabled",
@@ -136,7 +147,7 @@ class ScheduleStore:
         if not owner_id or len(owner_id) > 128 or lease_duration <= 0: raise ValueError("lease_invalid")
         connection=self._connect()
         try:
-            c=connection.cursor(); c.execute("SELECT SYSUTCDATETIME()"); now=c.fetchone()[0]
+            c=connection.cursor(); now=_sql_utc_now(c)
             c.execute(f"SELECT owner_id,lease_token,fencing_generation,expires_at FROM {self.t}.[requirement_handoff_coordinator_leases] WITH (UPDLOCK,HOLDLOCK) WHERE control_domain=?",CONTROL_DOMAIN)
             row=c.fetchone(); token=new_lease_token()
             if row is None:
@@ -155,7 +166,7 @@ class ScheduleStore:
     def renew_lease(self, lease: LeaseProof, lease_duration: float) -> LeaseProof:
         connection=self._connect()
         try:
-            c=connection.cursor(); c.execute("SELECT SYSUTCDATETIME()"); now=c.fetchone()[0]; expires=now+timedelta(seconds=lease_duration)
+            c=connection.cursor(); now=_sql_utc_now(c); expires=now+timedelta(seconds=lease_duration)
             c.execute(f"UPDATE {self.t}.[requirement_handoff_coordinator_leases] SET heartbeat_at=?,expires_at=?,updated_at=? WHERE control_domain=? AND owner_id=? AND lease_token=? AND fencing_generation=? AND expires_at>?",now,expires,now,lease.control_domain,lease.owner_id,lease.lease_token,lease.fencing_generation,now)
             if getattr(c,"rowcount",0)!=1: raise RuntimeError("lease_lost")
             connection.commit(); return LeaseProof(lease.control_domain,lease.owner_id,lease.lease_token,lease.fencing_generation,expires)
@@ -165,7 +176,7 @@ class ScheduleStore:
     def release_lease(self, lease: LeaseProof) -> bool:
         connection=self._connect()
         try:
-            c=connection.cursor(); c.execute("SELECT SYSUTCDATETIME()"); now=c.fetchone()[0]
+            c=connection.cursor(); now=_sql_utc_now(c)
             c.execute(f"UPDATE {self.t}.[requirement_handoff_coordinator_leases] SET expires_at=?,updated_at=? WHERE control_domain=? AND owner_id=? AND lease_token=? AND fencing_generation=? AND expires_at>?",now,now,lease.control_domain,lease.owner_id,lease.lease_token,lease.fencing_generation,now)
             changed=getattr(c,"rowcount",0)==1; connection.commit(); return changed
         except Exception: connection.rollback(); raise
@@ -537,8 +548,7 @@ class ScheduleStore:
         """Lock and prove coordinator authority using SQL Server's clock."""
         if lease.control_domain != CONTROL_DOMAIN:
             raise RuntimeError("lease_lost")
-        cursor.execute("SELECT SYSUTCDATETIME()")
-        now = cursor.fetchone()[0]
+        now = _sql_utc_now(cursor)
         cursor.execute(
             f"SELECT owner_id,lease_token,fencing_generation,expires_at FROM {table}.[requirement_handoff_coordinator_leases] WITH (UPDLOCK,HOLDLOCK) WHERE control_domain=?",
             lease.control_domain,
@@ -601,8 +611,7 @@ class ScheduleStore:
             source = self._handoff_source(row)
             frozen_root, run_state = row[11], row[12]
             # Required second database-time check is deliberately after all identity locks.
-            c.execute("SELECT SYSUTCDATETIME()")
-            expiry_now = c.fetchone()[0]
+            expiry_now = _sql_utc_now(c)
             if source["deadline_at"] is not None and source["deadline_at"] <= expiry_now:
                 c.execute(
                     f"UPDATE {self.t}.[requirement_batch_run_items] SET execution_state='expired',expired_before_handoff=1,error_code='deadline_exceeded',error_message='deadline_exceeded',completed_at=?,updated_at=? WHERE run_item_id=? AND execution_state='handoff_pending'",

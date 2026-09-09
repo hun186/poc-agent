@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-09 Requirement Handoff aware SQL clock boundary
+
+- Centralized every Requirement Handoff lease/proof and second pre-handoff deadline clock read on SQL Server expression `TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')`, with fail-closed validation that the DB-API value is an aware UTC datetime.
+- Preserved SQL Server clock authority, transaction/lock boundaries, lease fencing predicates, deadline terminal behavior, and the non-authoritative status of caller `now_utc`; no shared connection-layer or schema change was made.
+- TDD evidence: focused lease/prepare tests were RED with 19 failures reproducing naive SQL clock versus aware `datetimeoffset` comparisons, then passed 25 tests. Direct handoff/transaction/deadline suites passed 95 tests; all Requirement tests passed 332 tests with 4 warnings; compileall and `git diff --check` passed. No live Golden Path DB/API records were accessed or mutated.
+
 ### 2026-09-09 Report Job gateway contract alignment
 
 - Corrected the Requirement Handoff Report Job gateway to accept the API's successful `202` creation response and to reconcile from the native GET response field `status` rather than the nonexistent `state` field.
