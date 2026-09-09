@@ -11,12 +11,11 @@
 
 ## Recent Changes
 
-### 2026-09-09 Phase 1C-B Plan v1.1 correction revalidation
+### 2026-09-09 SQL Server DATETIMEOFFSET result decoding
 
-- Revalidated the documentation-only Plan v1.1 correction against Design v1, historical Plan v1, and current Requirement scheduling/handoff sources at local baseline `af38b9d60bb18ba1929f7876c26c10a11fd0e161`. No remote or local `main` ref was available, so hosted authority could not be refreshed; the supplied PR #211 merge remains the historical plan source snapshot.
-- Phase 1C-B Plan Review v1 remains **NOT PASS** for its same-version re-run/checkpoint conflict and missing first-handoff output-root fingerprint snapshot authority. Plan v1.1 preserves legitimate same-RequirementVersion terminal success with checkpoint no-op and binds the server-owned root once in Prepare TX #1 before transport.
-- This revalidation changed documentation only. The plan's `Phase 1C-B implementation NOT STARTED` wording is historical plan-issuance status; later repository history contains the Phase 1C-B implementation. Job Task JT-1 and LangGraph remain NOT STARTED, and live SQL Server acceptance was NOT EXECUTED.
-- Verification passed: `git diff --check`; placeholder, changed-scope, source-path, prohibited-semantics, Task 5/8/9, acceptance-matrix, and Design decision #54/#55/#56 static checks.
+- Fixed Requirement named SQL connections to register a pyodbc output converter for SQL Server `DATETIMEOFFSET` type code `-155`, decoding the driver binary representation into timezone-aware Python `datetime` values without changing the SQL schema or queries.
+- TDD evidence: the focused registry suite first failed 6 tests because the converter and decoder were absent, then passed 21 tests. Coverage includes converter registration, UTC, positive and negative offsets, fractional seconds, and NULL.
+- Repository verification: all Requirement tests passed 306 tests with 3 warnings; compileall and `git diff --check` passed. The full suite reached 677 passed, 1 failed, and 10 warnings; the sole failure is the pre-existing tracked raw-key operator-harness finding in `tests/test_batch_scheduler_security.py::test_phase0_harness_has_no_raw_key_literal`. Post-fix deployed API retest was NOT EXECUTED and remains required.
 
 ### 2026-09-08 Phase 1C SQL Server CHECK-expression normalization
 

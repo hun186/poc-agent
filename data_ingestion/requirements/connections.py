@@ -2,12 +2,46 @@ from __future__ import annotations
 
 import json
 import os
+import struct
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import pyodbc
 
 from data_ingestion.sql_server import detect_odbc_driver
+
+
+_SQL_SS_TIMESTAMPOFFSET = -155
+
+
+def _decode_datetimeoffset(value: bytes | None) -> datetime | None:
+    if value is None:
+        return None
+
+    (
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        fraction,
+        offset_hours,
+        offset_minutes,
+    ) = struct.unpack("<6hI2h", value)
+    return datetime(
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        fraction // 1000,
+        tzinfo=timezone(
+            timedelta(hours=offset_hours, minutes=offset_minutes)
+        ),
+    )
 
 
 class SqlRegistry:
@@ -74,4 +108,9 @@ class SqlRegistry:
         else:
             parts.extend((f"UID={user}", f"PWD={password}"))
         parts.extend((f"Encrypt={'yes' if config.get('encrypt', True) else 'no'}", f"TrustServerCertificate={'yes' if config.get('trust_server_certificate', False) else 'no'}"))
-        return pyodbc.connect(";".join(parts), autocommit=False)
+        connection = pyodbc.connect(";".join(parts), autocommit=False)
+        connection.add_output_converter(
+            _SQL_SS_TIMESTAMPOFFSET,
+            _decode_datetimeoffset,
+        )
+        return connection

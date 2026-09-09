@@ -1,4 +1,6 @@
 import json
+import struct
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -7,13 +9,22 @@ from data_ingestion.requirements import connections
 from data_ingestion.requirements.connections import SqlRegistry
 
 
+class FakeConnection:
+    def __init__(self):
+        self.output_converters = []
+
+    def add_output_converter(self, type_code, callback):
+        self.output_converters.append((type_code, callback))
+
+
 class FakePyodbc:
     def __init__(self):
         self.calls = []
+        self.connection = FakeConnection()
 
     def connect(self, connection_string, *, autocommit):
         self.calls.append((connection_string, autocommit))
-        return object()
+        return self.connection
 
 
 def registry(connection):
@@ -30,8 +41,8 @@ def open_connection(monkeypatch, config, *, detected="ODBC Driver 18 for SQL Ser
         return detected
 
     monkeypatch.setattr(connections, "detect_odbc_driver", detect)
-    registry(config).open_named_connection("requirement_control")
-    return fake.calls[0], requested
+    connection = registry(config).open_named_connection("requirement_control")
+    return fake.calls[0], requested, connection
 
 
 def direct_config(**overrides):
@@ -50,7 +61,7 @@ def direct_config(**overrides):
 
 
 def test_direct_keys_and_auto_driver_use_shared_resolution(monkeypatch):
-    (connection_string, autocommit), requested = open_connection(monkeypatch, direct_config())
+    (connection_string, autocommit), requested, _ = open_connection(monkeypatch, direct_config())
     assert requested == ["auto"]
     assert "DRIVER={ODBC Driver 18 for SQL Server}" in connection_string
     assert "SERVER=sql.example.invalid" in connection_string
@@ -63,9 +74,9 @@ def test_direct_keys_and_auto_driver_use_shared_resolution(monkeypatch):
 
 
 def test_detect_alias_and_explicit_driver_are_passed_to_shared_resolution(monkeypatch):
-    (_, _), requested = open_connection(monkeypatch, direct_config(driver="detect"))
+    (_, _), requested, _ = open_connection(monkeypatch, direct_config(driver="detect"))
     assert requested == ["detect"]
-    (_, _), requested = open_connection(
+    (_, _), requested, _ = open_connection(
         monkeypatch,
         direct_config(driver="ODBC Driver 17 for SQL Server"),
         detected="ODBC Driver 17 for SQL Server",
@@ -92,7 +103,7 @@ def test_legacy_environment_keys_work_and_override_direct_values(monkeypatch):
     }
     for key, value in values.items():
         monkeypatch.setenv(key, value)
-    (connection_string, _), requested = open_connection(monkeypatch, config)
+    (connection_string, _), requested, _ = open_connection(monkeypatch, config)
     assert requested == ["detect"]
     assert "SERVER=environment-server" in connection_string
     assert "DATABASE=environment-database" in connection_string
@@ -112,10 +123,70 @@ def test_configured_environment_source_fails_closed_when_absent(monkeypatch, key
 
 
 def test_trusted_connection_omits_sql_credentials(monkeypatch):
-    (connection_string, _), _ = open_connection(monkeypatch, direct_config(trusted_connection=True))
+    (connection_string, _), _, _ = open_connection(monkeypatch, direct_config(trusted_connection=True))
     assert "Trusted_Connection=yes" in connection_string
     assert "UID=" not in connection_string
     assert "PWD=" not in connection_string
+
+
+def _datetimeoffset_bytes(
+    year=2026,
+    month=9,
+    day=9,
+    hour=12,
+    minute=34,
+    second=56,
+    fraction=0,
+    offset_hours=0,
+    offset_minutes=0,
+):
+    return struct.pack(
+        "<6hI2h",
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        fraction,
+        offset_hours,
+        offset_minutes,
+    )
+
+
+def test_connection_registers_sql_server_datetimeoffset_converter(monkeypatch):
+    _, _, connection = open_connection(monkeypatch, direct_config())
+
+    assert len(connection.output_converters) == 1
+    type_code, callback = connection.output_converters[0]
+    assert type_code == -155
+    assert callback is connections._decode_datetimeoffset
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (_datetimeoffset_bytes(), datetime(2026, 9, 9, 12, 34, 56, tzinfo=timezone.utc)),
+        (
+            _datetimeoffset_bytes(offset_hours=8),
+            datetime(2026, 9, 9, 12, 34, 56, tzinfo=timezone(timedelta(hours=8))),
+        ),
+        (
+            _datetimeoffset_bytes(offset_hours=-5, offset_minutes=-30),
+            datetime(2026, 9, 9, 12, 34, 56, tzinfo=timezone(timedelta(hours=-5, minutes=-30))),
+        ),
+        (
+            _datetimeoffset_bytes(fraction=123456000),
+            datetime(2026, 9, 9, 12, 34, 56, 123456, tzinfo=timezone.utc),
+        ),
+    ],
+)
+def test_decode_datetimeoffset(payload, expected):
+    assert connections._decode_datetimeoffset(payload) == expected
+
+
+def test_decode_datetimeoffset_none():
+    assert connections._decode_datetimeoffset(None) is None
 
 
 @pytest.mark.parametrize(("key", "message"), [("server", "server"), ("database", "database")])
