@@ -3,15 +3,16 @@
 ## 2026-09-04 Phase 1B / 1C handoff
 
 - Historical gate at issuance: execute real SQL Server Phase 1B acceptance and implement Phase 1C in reviewed A/B gates. Superseded current status: both repository gates are implemented, and the supplied operator evidence proves one live import/manual-run/handoff/Report Job/Agent/DOCX Golden Path.
-- Remaining acceptance is narrower but still material: automatic due claiming, additional schema/migration/rollback/failure/failover/race shapes, and broader multi-item deployment scenarios require an explicitly authorized environment. Repository fake SQL/transport evidence must not be called deployment acceptance.
+- Remaining acceptance is narrower but still material: additional schema/migration/rollback/failure/failover/race shapes and deployment scenarios beyond the proven three-item automatic technical Golden Path require an explicitly authorized environment. Repository fake SQL/transport evidence must not be called deployment acceptance.
 
 ## Current Summary
 
 ### Phase 1 completion delta
 
 - Phase 1C-B implementation is present. External operator evidence now establishes the single-item Requirement → owner-scoped Report Job → real Agent/Elasticsearch → root-bound verified DOCX live Golden Path as **PASS**. Do not retain older statements that this specific path has never run.
-- Automatic scheduled materialization now has a repository implementation through the separate `schedule-worker` CLI under reviewed Runtime Automation Plan v1.1. Its three-item automatic deployment acceptance remains NOT EXECUTED and requires separate operator authorization.
-- Still unexecuted: the complete Phase 0 Service-Key/signed-resource chain and credential hygiene; dedicated Phase 1A two-task/restart acceptance; all Phase 1B/1C schema/migration/rollback/failure-injection, coordinator failover/fencing, concurrency/race, multi-item, and automatic due-claim deployment scenarios. JT-1 and LangGraph remain **NOT STARTED**.
+- Automatic scheduled materialization now has a repository implementation through the separate `schedule-worker` CLI under reviewed Runtime Automation Plan v1.1. Externally supplied 2026-09-10 operator evidence establishes **three-item automatic technical Golden Path deployment acceptance = PASS**: scheduled Batch `br_b3d3b788aac341ebaf18325da935883b` for schedule `sch_2807a1f605e547ef88686cf268dc09ab` / version `sv_20430189941645d18e8e8b007cdf24a5` completed with `selected_count=3`, `skipped_count=0`, `success_count=3`, and `failure_count=0`; three distinct Run Items and owner-scoped Report Jobs completed; three DOCX artifacts passed ZIP and persisted-SHA256 validation; `next_run_at` advanced from `2026-09-10T03:22:34+00:00` to `2026-09-11T03:22:34+00:00`; and both workers remained alive. This is narrow external operator evidence, not a Codex-executed test and not proof that all Phase 1B/1C deployment acceptance is complete.
+- Still unexecuted: the complete Phase 0 Service-Key/signed-resource chain and credential hygiene; dedicated Phase 1A two-task/restart acceptance; and the remaining Phase 1B/1C schema/migration/rollback/failure-injection, coordinator failover/fencing, concurrency/race, HA, and security-rotation matrices. JT-1 and LangGraph remain **NOT STARTED**.
+- POC content caveat: Elasticsearch/topic data coverage is intentionally incomplete. Content misses caused by incomplete test data are not evidence that the technical Schedule/Handoff/Report Job automation chain failed; no production content-quality acceptance is claimed.
 
 ### Phase 0 deployment acceptance
 
@@ -114,5 +115,13 @@
 ## 2026-09-07 Phase 1C-B closure deployment gates
 
 - Run schema-v3 migration/rollback, DB-time expiry, fencing turnover, and transaction failure injection against an explicitly authorized live SQL Server. Status: NOT EXECUTED.
-- Historical status at gate issuance: the private owner-scoped Report Job + Agent + valid DOCX end-to-end was NOT EXECUTED. Superseded current status: the operator-supplied single-item Golden Path is PASS; broader multi-item/failover/failure/race deployment acceptance remains pending.
+- Historical status at gate issuance: the private owner-scoped Report Job + Agent + valid DOCX end-to-end was NOT EXECUTED. Superseded current status: the operator-supplied single-item Golden Path and three-item automatic technical Golden Path are PASS; schema/migration, rollback/failure injection, fencing/failover, concurrency/races, HA, broader deployment shapes, and security-rotation gates remain pending.
 - Job Task JT-1 and LangGraph integration remain NOT STARTED and are separate future gates.
+
+## 2026-09-10 Future Requirement Task Center / Operator Workflow
+
+- **Status: FUTURE / NOT STARTED.** Preserve the non-authoritative requirements capture in `docs/superpowers/notes/2026-09-10-requirement-task-center-operator-workflow-notes.md` and follow `current-main rebaseline → Requirement Task Center Design v1 → human/ChatGPT Design review/approval → Implementation Plan v1 → Codex execution prompt → implementation` before changing runtime behavior.
+- The future authorized operator surface should make Requirement upload, preview/diagnostics, explicit import confirmation, Requirement Set/Snapshot visibility, immediate execution or recurring scheduling, policy/model selection, schedule/run state, Batch and item progress/history, and authorized artifact downloads straightforward without weakening current RBAC.
+- Import remains distinct from execution: upload/import must never silently execute reports. The surface may present a simple combined flow, but must preserve separately authorized `import only`, `execute now`, and `schedule execution` actions.
+- Orchestrate rather than replace Requirement Import, Requirement Set/Snapshot, Requirement Schedule, Batch Run/Run Item, Schedule Worker, Handoff Worker, Report Job, Agent/Elasticsearch/LLM, and DOCX reconciliation. JT-1, LangGraph, and launcher/startup work remain separate.
+- A future reviewed Design must define owner-/RBAC-aware HTTP artifact delivery. Browsers must never receive `REQUIREMENT_HANDOFF_CREDENTIAL`, use the Handoff Service Key, treat raw server filesystem paths as the download contract, or depend directly on `artifact_relative_path`. Exact API routes, retry, and cancel semantics are intentionally undecided.
