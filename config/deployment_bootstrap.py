@@ -6,6 +6,7 @@ from contextlib import redirect_stdout
 import json
 import os
 from pathlib import Path
+import secrets
 import stat
 import sys
 import tempfile
@@ -100,10 +101,14 @@ def _write_state(path: Path, values: dict[str, str]) -> None:
             os.unlink(temporary)
 
 
-def _write_repair_journal(path: Path, old_key_id: str, new_key_id: str) -> None:
+def _write_repair_journal(
+    path: Path, old_key_id: str, new_key_id: str, *, old_state_present: bool,
+) -> None:
     """Durably record the two identities authorized for repair recovery."""
     payload = json.dumps({
-        "version": 1,
+        "version": 2,
+        "operation": "credential_rotation" if old_state_present else "first_run_orphan_recovery",
+        "old_state_present": old_state_present,
         "old_key_id": old_key_id,
         "new_key_id": new_key_id,
     }, sort_keys=True, separators=(",", ":")) + "\n"
@@ -134,7 +139,14 @@ def _read_repair_journal(path: Path) -> dict[str, object]:
         raise _fail("repair_journal_invalid")
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-        if (set(value) != {"version", "old_key_id", "new_key_id"} or value["version"] != 1 or
+        expected_keys = {"version", "operation", "old_state_present", "old_key_id", "new_key_id"}
+        valid_context = (
+            value.get("operation") == "credential_rotation" and value.get("old_state_present") is True
+        ) or (
+            value.get("operation") == "first_run_orphan_recovery" and
+            value.get("old_state_present") is False
+        )
+        if (set(value) != expected_keys or value["version"] != 2 or not valid_context or
                 not all(isinstance(value[key], str) and value[key] for key in ("old_key_id", "new_key_id")) or
                 value["old_key_id"] == value["new_key_id"]):
             raise ValueError
@@ -223,14 +235,20 @@ def _rotate_handoff_key(
     old_metadata: dict, old_values: dict[str, str] | None, port: int, state_dir: Path,
 ) -> dict[str, str]:
     """Rotate with a journal and conservative post-replace failure recovery."""
-    metadata = None
-    values = None
-    journal_written = False
+    replacement_key_id = secrets.token_hex(8)
     try:
-        metadata, raw = store.create(KEY_NAME, KEY_SCOPES, created_by="deployment-bootstrap-repair")
+        # Establish the exact replacement identity before creation. If create()
+        # commits but its response is lost, the durable journal still proves
+        # which key belongs to this attempt.
+        _write_repair_journal(
+            journal_file, old_metadata["key_id"], replacement_key_id,
+            old_state_present=old_values is not None,
+        )
+        metadata, raw = store.create(
+            KEY_NAME, KEY_SCOPES, created_by="deployment-bootstrap-repair",
+            key_id=replacement_key_id,
+        )
         values = _build_values(port, state_dir, metadata["key_id"], raw)
-        _write_repair_journal(journal_file, old_metadata["key_id"], metadata["key_id"])
-        journal_written = True
         try:
             _write_state(state_file, values)
         except Exception:
@@ -246,13 +264,9 @@ def _rotate_handoff_key(
         _remove_repair_journal(journal_file)
         return values
     except Exception:
-        # Creation succeeded but journaling definitely did not complete: state
-        # has not been touched, so rolling back the replacement is safe.
-        if metadata is not None and not journal_written:
-            try:
-                store.revoke(metadata["key_id"], revoked_by="deployment-bootstrap-repair-rollback")
-            except Exception:
-                pass
+        # Once the intent is durable, retain it even when create() raises: it
+        # may have committed before losing its response. Explicit repair can
+        # distinguish and roll back that exact key on the next invocation.
         raise
 
 
@@ -273,7 +287,17 @@ def bootstrap(*, project_root: Path, port: int, repair: bool = False) -> Path:
         if journal_file.exists() or journal_file.is_symlink():
             journal = _read_repair_journal(journal_file)
             if not state_file.exists() or state_file.is_symlink():
-                raise _fail("repair_state_ambiguous")
+                if journal["old_state_present"] is True or state_file.is_symlink():
+                    raise _fail("repair_state_ambiguous")
+                active_ids = {item["key_id"] for item in keys}
+                old_id = str(journal["old_key_id"])
+                new_id = str(journal["new_key_id"])
+                if active_ids == {old_id, new_id}:
+                    store.revoke(new_id, revoked_by="deployment-bootstrap-repair-recovery")
+                elif active_ids != {old_id}:
+                    raise _fail("repair_identity_ambiguous")
+                _remove_repair_journal(journal_file)
+                return bootstrap(project_root=project_root, port=port, repair=True)
             current_values = _read_state(state_file)
             current_metadata = store.resolve(current_values["REQUIREMENT_HANDOFF_CREDENTIAL"])
             if current_metadata is None:

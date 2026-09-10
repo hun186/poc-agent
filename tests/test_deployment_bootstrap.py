@@ -169,6 +169,66 @@ def test_repair_missing_state_replaces_unique_bootstrap_orphan(deployment: Path)
     assert [item["status"] for item in store.list_keys() if item["key_id"] == orphan["key_id"]] == ["revoked"]
 
 
+def test_repair_recovers_first_run_interruption_after_journal_before_state(
+    deployment: Path, monkeypatch,
+) -> None:
+    store = ServiceKeyStore(deployment / "keys.json")
+    orphan, _ = store.create(KEY_NAME, KEY_SCOPES, "deployment-bootstrap")
+    from config import deployment_bootstrap
+    real_write = deployment_bootstrap._write_state
+
+    monkeypatch.setattr(
+        "config.deployment_bootstrap._write_state",
+        lambda *_: (_ for _ in ()).throw(SystemExit("process interrupted")),
+    )
+    with pytest.raises(SystemExit, match="process interrupted"):
+        bootstrap(project_root=deployment, port=9002, repair=True)
+
+    journal_path = deployment / ".sra_runtime" / "requirement_handoff.repair.json"
+    journal = json.loads(journal_path.read_text(encoding="utf-8"))
+    assert journal["version"] == 2
+    assert journal["operation"] == "first_run_orphan_recovery"
+    assert journal["old_state_present"] is False
+    assert journal["old_key_id"] == orphan["key_id"]
+    assert not (deployment / ".sra_runtime" / "requirement_handoff.env").exists()
+
+    monkeypatch.setattr(deployment_bootstrap, "_write_state", real_write)
+    state_path = bootstrap(project_root=deployment, port=9002, repair=True)
+    assert ServiceKeyStore(deployment / "keys.json").resolve(
+        _read_state(state_path)["REQUIREMENT_HANDOFF_CREDENTIAL"]
+    ) is not None
+    assert not journal_path.exists()
+
+
+def test_repair_recovers_first_run_replacement_create_committed_before_raising(
+    deployment: Path, monkeypatch,
+) -> None:
+    store = ServiceKeyStore(deployment / "keys.json")
+    orphan, _ = store.create(KEY_NAME, KEY_SCOPES, "deployment-bootstrap")
+    real_create = ServiceKeyStore.create
+
+    def create_then_fail(store, *args, **kwargs):
+        real_create(store, *args, **kwargs)
+        raise OSError("repair create response lost")
+
+    monkeypatch.setattr(ServiceKeyStore, "create", create_then_fail)
+    with pytest.raises(OSError, match="repair create response lost"):
+        bootstrap(project_root=deployment, port=9002, repair=True)
+
+    active = [item for item in store.list_keys() if item["name"] == KEY_NAME and item["status"] == "active"]
+    assert {item["key_id"] for item in active} == {
+        orphan["key_id"],
+        json.loads((deployment / ".sra_runtime" / "requirement_handoff.repair.json").read_text())["new_key_id"],
+    }
+
+    monkeypatch.setattr(ServiceKeyStore, "create", real_create)
+    state_path = bootstrap(project_root=deployment, port=9002, repair=True)
+    state = _read_state(state_path)
+    active = [item for item in store.list_keys() if item["name"] == KEY_NAME and item["status"] == "active"]
+    assert [item["key_id"] for item in active] == [state["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]]
+    assert state["SRA_BOOTSTRAP_HANDOFF_KEY_ID"] != orphan["key_id"]
+
+
 def test_repair_missing_state_rejects_unowned_or_ambiguous_keys(deployment: Path) -> None:
     store = ServiceKeyStore(deployment / "keys.json")
     store.create(KEY_NAME, KEY_SCOPES, "unrelated")

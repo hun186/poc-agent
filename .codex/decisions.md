@@ -106,3 +106,8 @@
 - Do not use `_write_state()` return as the credential commit boundary because `os.replace()` precedes directory fsync. Re-read the protected state after errors and retain both keys whenever the visible version cannot be proven old.
 - Persist an owner-only old/new ID journal before state replacement. Only that journal authorizes interrupted-repair old-key revocation; creator and scope similarity alone are insufficient evidence.
 - Permit state-absent repair only for one exact-scope canonical orphan owned by first-run `deployment-bootstrap`, using create-new → journal → persist-state → revoke-orphan ordering.
+
+## 2026-09-10 Journal before replacement creation
+
+- Preselect a cryptographically random Service Key ID and allow `ServiceKeyStore.create` to accept that validated, collision-checked ID. Persist journal v2 before creation so a store commit followed by a lost response never produces an unattributable second key.
+- Encode transaction origin explicitly rather than inferring it from `created_by`. Only `first_run_orphan_recovery` with `old_state_present=false` permits journal recovery while state is absent; ordinary rotation continues to fail closed on missing state.

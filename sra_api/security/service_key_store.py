@@ -61,20 +61,27 @@ class ServiceKeyStore:
             raise ValueError("expires_at must be timezone-aware")
         return parsed.astimezone(timezone.utc).isoformat()
 
-    def create(self, name, scopes, created_by, expires_at=None):
+    def create(self, name, scopes, created_by, expires_at=None, *, key_id=None):
         scopes = validate_scopes(scopes)
         name = str(name).strip()
         if not name:
             raise ValueError("Service key name must not be empty")
         expires_at = self._expires(expires_at)
-        key_id = secrets.token_hex(8)
+        if key_id is None:
+            key_id = secrets.token_hex(8)
+        elif (not isinstance(key_id, str) or len(key_id) != 16 or
+              any(character not in "0123456789abcdef" for character in key_id)):
+            raise ValueError("Service key id must be 16 lowercase hexadecimal characters")
         raw = f"sra_sk_{key_id}_{secrets.token_urlsafe(32)}"
         now = datetime.now(timezone.utc).isoformat()
         item = {"key_id": key_id, "name": name, "token_digest": hashlib.sha256(raw.encode()).hexdigest(),
                 "scopes": sorted(scopes), "status": "active", "created_at": now, "created_by": created_by,
                 "expires_at": expires_at, "revoked_at": None, "revoked_by": None, "hint": raw[-4:]}
         with self._lock, exclusive_file_lock(self.lock_path):
-            data = self._read(); data["keys"].append(item); self._write(data)
+            data = self._read()
+            if any(existing.get("key_id") == key_id for existing in data["keys"]):
+                raise ValueError("Service key id already exists")
+            data["keys"].append(item); self._write(data)
         return self._public(item), raw
 
     def list_keys(self):
