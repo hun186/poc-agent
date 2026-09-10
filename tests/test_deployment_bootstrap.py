@@ -127,6 +127,68 @@ def test_repair_state_write_failure_keeps_old_credential_usable(deployment: Path
     assert len([item for item in store.list_keys() if item["name"] == KEY_NAME and item["status"] == "active"]) == 1
 
 
+def test_repair_post_replace_fsync_failure_retains_replacement_for_recovery(
+    deployment: Path, monkeypatch,
+) -> None:
+    state_path = bootstrap(project_root=deployment, port=9002)
+    old_id = _read_state(state_path)["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]
+    from config import deployment_bootstrap
+    real_write = deployment_bootstrap._write_state
+
+    def replace_then_fail(path, values):
+        real_write(path, values)
+        raise OSError("directory fsync")
+
+    monkeypatch.setattr(deployment_bootstrap, "_write_state", replace_then_fail)
+    with pytest.raises(OSError, match="directory fsync"):
+        bootstrap(project_root=deployment, port=9002, repair=True)
+    replacement = _read_state(state_path)
+    store = ServiceKeyStore(deployment / "keys.json")
+    assert store.resolve(replacement["REQUIREMENT_HANDOFF_CREDENTIAL"])["key_id"] == replacement[
+        "SRA_BOOTSTRAP_HANDOFF_KEY_ID"
+    ]
+    assert len([item for item in store.list_keys() if item["name"] == KEY_NAME and item["status"] == "active"]) == 2
+
+    monkeypatch.setattr(deployment_bootstrap, "_write_state", real_write)
+    assert bootstrap(project_root=deployment, port=9002, repair=True) == state_path
+    active = [item for item in store.list_keys() if item["name"] == KEY_NAME and item["status"] == "active"]
+    assert [item["key_id"] for item in active] == [replacement["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]]
+    assert active[0]["key_id"] != old_id
+
+
+def test_repair_missing_state_replaces_unique_bootstrap_orphan(deployment: Path) -> None:
+    store = ServiceKeyStore(deployment / "keys.json")
+    orphan, _ = store.create(KEY_NAME, KEY_SCOPES, "deployment-bootstrap")
+
+    state_path = bootstrap(project_root=deployment, port=9002, repair=True)
+    state = _read_state(state_path)
+    assert state["SRA_BOOTSTRAP_HANDOFF_KEY_ID"] != orphan["key_id"]
+    assert store.resolve(state["REQUIREMENT_HANDOFF_CREDENTIAL"])["key_id"] == state[
+        "SRA_BOOTSTRAP_HANDOFF_KEY_ID"
+    ]
+    assert [item["status"] for item in store.list_keys() if item["key_id"] == orphan["key_id"]] == ["revoked"]
+
+
+def test_repair_missing_state_rejects_unowned_or_ambiguous_keys(deployment: Path) -> None:
+    store = ServiceKeyStore(deployment / "keys.json")
+    store.create(KEY_NAME, KEY_SCOPES, "unrelated")
+    with pytest.raises(DeploymentBootstrapError, match="repair_identity_ambiguous"):
+        bootstrap(project_root=deployment, port=9002, repair=True)
+
+
+def test_repair_does_not_infer_interruption_without_journal(deployment: Path) -> None:
+    state_path = bootstrap(project_root=deployment, port=9002)
+    bootstrap(project_root=deployment, port=9002, repair=True)
+    store = ServiceKeyStore(deployment / "keys.json")
+    unknown, _ = store.create(KEY_NAME, KEY_SCOPES, "deployment-bootstrap")
+
+    with pytest.raises(DeploymentBootstrapError, match="repair_identity_ambiguous"):
+        bootstrap(project_root=deployment, port=9002, repair=True)
+    active_ids = {item["key_id"] for item in store.list_keys() if item["status"] == "active"}
+    assert unknown["key_id"] in active_ids
+    assert _read_state(state_path)["SRA_BOOTSTRAP_HANDOFF_KEY_ID"] in active_ids
+
+
 def test_repair_create_failure_preserves_state_and_key(deployment: Path, monkeypatch) -> None:
     state_path = bootstrap(project_root=deployment, port=9002)
     before = state_path.read_bytes()
@@ -134,6 +196,30 @@ def test_repair_create_failure_preserves_state_and_key(deployment: Path, monkeyp
     with pytest.raises(OSError, match="create"):
         bootstrap(project_root=deployment, port=9002, repair=True)
     assert state_path.read_bytes() == before
+
+
+def test_repair_recovers_first_run_create_that_committed_before_raising(
+    deployment: Path, monkeypatch,
+) -> None:
+    real_create = ServiceKeyStore.create
+
+    def create_then_fail(store, name, scopes, created_by):
+        real_create(store, name, scopes, created_by)
+        raise OSError("create response lost")
+
+    monkeypatch.setattr(ServiceKeyStore, "create", create_then_fail)
+    with pytest.raises(OSError, match="create response lost"):
+        bootstrap(project_root=deployment, port=9002)
+    assert not (deployment / ".sra_runtime" / "requirement_handoff.env").exists()
+
+    monkeypatch.setattr(ServiceKeyStore, "create", real_create)
+    state_path = bootstrap(project_root=deployment, port=9002, repair=True)
+    state = _read_state(state_path)
+    store = ServiceKeyStore(deployment / "keys.json")
+    assert store.resolve(state["REQUIREMENT_HANDOFF_CREDENTIAL"])["key_id"] == state[
+        "SRA_BOOTSTRAP_HANDOFF_KEY_ID"
+    ]
+    assert len([item for item in store.list_keys() if item["name"] == KEY_NAME and item["status"] == "active"]) == 1
 
 
 def test_repair_recovers_interruption_after_state_replace(deployment: Path, monkeypatch) -> None:

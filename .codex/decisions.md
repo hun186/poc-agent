@@ -100,3 +100,9 @@
 - Treat the Python bootstrap result as the sole effective state-path authority because it runs after project dotenv loading; expose only a fixed machine-readable path record, never raw generated values.
 - Factor SQL registry validation from connection opening and reuse the same connection-string semantics during preflight. Also reuse signed-resource startup validation before destructive takeover.
 - Keep ordinary startup strictly non-destructive on canonical-key ambiguity. Exceptional repair creates the replacement first, atomically replaces protected raw state, then revokes the old key; pre-replace failure attempts replacement rollback, while a recognizable post-replace interruption is completed only by a later explicit repair.
+
+## 2026-09-10 Repair identity and commit-boundary decision
+
+- Do not use `_write_state()` return as the credential commit boundary because `os.replace()` precedes directory fsync. Re-read the protected state after errors and retain both keys whenever the visible version cannot be proven old.
+- Persist an owner-only old/new ID journal before state replacement. Only that journal authorizes interrupted-repair old-key revocation; creator and scope similarity alone are insufficient evidence.
+- Permit state-absent repair only for one exact-scope canonical orphan owned by first-run `deployment-bootstrap`, using create-new → journal → persist-state → revoke-orphan ordering.
