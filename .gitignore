@@ -199,3 +199,4 @@ SRA-API_output.txt
 *.sqlite3-shm
 .sra_service_keys.json*
 /config/requirements/sql_registry.json
+/config/requirements/git_ignore
