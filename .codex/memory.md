@@ -12,6 +12,12 @@
 
 ## Recent Changes
 
+### 2026-09-10 Future Requirement Task Center requirements capture
+
+- Added a documentation-only, non-authoritative FUTURE / NOT STARTED operator-workflow note and backlog item. The future Task Center must be designed from a fresh current-main rebaseline, reviewed, planned, and separately authorized before implementation; no historical Phase 1B/1C Design or Implementation Plan was rewritten.
+- Recorded the explicit import-versus-execution boundary, reuse of the implemented Import/Snapshot/Schedule/Batch/Handoff/Report Job/Agent/DOCX engines, preserved RBAC, future progress/download capabilities, and the prohibition on browser Handoff credentials, service keys, raw filesystem paths, or direct `artifact_relative_path` contracts.
+- Narrowly updated stale backlog status from externally supplied operator evidence: three-item automatic technical Golden Path deployment acceptance is PASS. Schema/migration, rollback/failure injection, fencing/failover, concurrency/races, HA, security rotation, and production content-quality acceptance remain unproven. Verification was documentation-only: scoped required/prohibited-term searches, changed-path allowlist, `git diff --check`, and runtime-code diff exclusion.
+
 ### 2026-09-10 Unified SRA operator launcher
 
 - Reworked tracked `run_sra_api.sh` into the single foreground supervisor for the SRA API, Requirement Schedule Worker, and Requirement Handoff Worker. Report Job Worker ownership remains exclusively inside API lifespan. Each Requirement worker uses an inline Python entrypoint that calls `bootstrap_env()` before importing/calling the existing CLI.
