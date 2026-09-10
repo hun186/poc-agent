@@ -12,6 +12,12 @@
 
 ## Recent Changes
 
+### 2026-09-10 Unified SRA operator launcher
+
+- Reworked tracked `run_sra_api.sh` into the single foreground supervisor for the SRA API, Requirement Schedule Worker, and Requirement Handoff Worker. Report Job Worker ownership remains exclusively inside API lifespan. Each Requirement worker uses an inline Python entrypoint that calls `bootstrap_env()` before importing/calling the existing CLI.
+- Added `flock` duplicate-launch exclusion, direct child PID ownership, bounded TERM-then-KILL/reap shutdown, fail-fast sibling cleanup, separate approximately 10 MB runtime logs, and append-only port audit behavior. Port 9002 is only reclaimed after narrow `/proc` command, port, and deployment-cwd verification; unrelated/unverified listeners are audited and never signaled.
+- TDD RED against the prior single-API launcher: the focused file had 1 syntax pass and launcher behavior failures (the interrupted run reported 5 failures before cancellation because the old foreground API pipeline could not satisfy or clean up the new three-process cases). GREEN: `bash -n run_sra_api.sh` passed and the focused launcher suite passed 11 tests. The Requirement startup/schedule/handoff regression selection passed 134 tests (145 total focused + regression tests) with `python -m pytest`; direct `pytest` hit the documented local shim import-path limitation. No live SQL, Elasticsearch, Report Job, or deployment startup/liveness acceptance was performed.
+
 ### 2026-09-10 Requirement schedule-worker clock precision hotfix
 
 - Normalized the already validated aware-UTC schedule-worker clock to second precision at the `ScheduleStore.claim_due()` boundary, truncating rather than rounding while preserving the fixed `requirement-schedule-worker` actor. Recurrence validation, occurrence identity, store/coalescing, locking, transactions, audit, and handoff behavior remain unchanged.

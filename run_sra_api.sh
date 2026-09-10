@@ -1,123 +1,186 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-########################################
-# 固定設定（10KB 測試 + Port 偵測）
-########################################
-
-BASE_DIR="/mntCZJ/TopicClassification/poc-agent"
-
-# ✅ 主 Log（會被清空的）
-LOG_FILE="SRA-API_output.txt"
-
-# ✅ Kill 稽核 Log（永久保存）
-KILL_AUDIT_LOG="SRA-API_kill_audit.log"
-
-MAX_SIZE_KB=10*1024          # ✅ 可先用 10KB 測試
-PORT=9002               # ✅ 你現在用的 port
-
-########################################
-# 程式開始
-########################################
+# Unified SRA runtime supervisor. Normal runtime logs are capped at 10 MB;
+# the port-kill audit is permanent and is never truncated here.
+BASE_DIR="${BASE_DIR:-/mntCZJ/TopicClassification/poc-agent}"
+PORT="${PORT:-9002}"
+MAX_SIZE_KB=$((10 * 1024))
+MAX_SIZE=$((MAX_SIZE_KB * 1024))
+API_LOG="${API_LOG:-SRA-API_output.txt}"
+SCHEDULE_LOG="${SCHEDULE_LOG:-SRA-ScheduleWorker_output.txt}"
+HANDOFF_LOG="${HANDOFF_LOG:-SRA-HandoffWorker_output.txt}"
+KILL_AUDIT_LOG="${KILL_AUDIT_LOG:-SRA-API_kill_audit.log}"
+LOCK_FILE="${LOCK_FILE:-$BASE_DIR/.run_sra_api.lock}"
+SHUTDOWN_TIMEOUT_SECONDS="${SHUTDOWN_TIMEOUT_SECONDS:-10}"
+PORT_RELEASE_TIMEOUT_SECONDS="${PORT_RELEASE_TIMEOUT_SECONDS:-10}"
 
 cd "$BASE_DIR"
 
-MAX_SIZE=$((MAX_SIZE_KB * 1024))
-NOW_TS="$(date '+%Y-%m-%d %H:%M:%S')"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "[run_sra_api] Another launcher is already running (lock: $LOCK_FILE)." >&2
+  exit 1
+fi
+printf '%s\n' "$$" 1>&9
 
-echo "[run_sra_api] 啟動目錄：$BASE_DIR"
-echo "[run_sra_api] Log 檔案：$LOG_FILE"
-echo "[run_sra_api] Kill 稽核檔：$KILL_AUDIT_LOG"
-echo "[run_sra_api] Log 上限：${MAX_SIZE_KB}KB"
-echo "[run_sra_api] 使用 Port：$PORT"
-echo "----------------------------------------"
+audit() {
+  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$KILL_AUDIT_LOG"
+}
 
-########################################
-# ✅ 1. 檢查 Port 是否被佔用 + 寫入稽核檔
-########################################
+process_start_time() {
+  awk '{print $22}' "/proc/$1/stat" 2>/dev/null || true
+}
 
-echo "[run_sra_api] 檢查 Port $PORT 是否被佔用..."
+process_is_live() {
+  local pid="$1"
+  kill -0 "$pid" 2>/dev/null || return 1
+  [ "$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null || true)" != "Z" ]
+}
 
-PIDS=$(lsof -ti tcp:"$PORT" || true)
+is_expected_sra_api() {
+  local pid="$1" cmd cwd
+  [ -r "/proc/$pid/cmdline" ] || return 1
+  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline")"
+  cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+  [ "$cwd" = "$(readlink -f "$BASE_DIR")" ] || return 1
+  [[ "$cmd" == *"uvicorn"* ]] || return 1
+  [[ "$cmd" == *"api.main:app"* ]] || return 1
+  [[ "$cmd" == *"--port $PORT"* || "$cmd" == *"--port=$PORT"* ]]
+}
 
-if [ -n "$PIDS" ]; then
-  {
-    echo "=================================================="
-    echo "[$NOW_TS] ⚠️ Port $PORT 已被佔用"
-    echo "[$NOW_TS] 佔用程式詳細資訊："
-    lsof -nP -i tcp:"$PORT"
-    echo "--------------------------------------------------"
-    echo "[$NOW_TS] 準備進行 kill -9"
-  } >> "$KILL_AUDIT_LOG"
+port_pids() {
+  lsof -t -i "tcp:$PORT" 2>/dev/null | sort -u || true
+}
 
-  echo "[run_sra_api] ⚠️ Port $PORT 已被佔用！"
-  echo "[run_sra_api] 佔用程式詳細資訊："
-  echo "----------------------------------------"
-  lsof -nP -i tcp:"$PORT"
-  echo "----------------------------------------"
+inspect_port() {
+  local pids pid cmd cwd start deadline remaining
+  declare -A verified_start=()
+  pids="$(port_pids)"
+  [ -n "$pids" ] || { audit "Port $PORT is free"; return 0; }
 
-  echo "[run_sra_api] 正在嘗試強制關閉佔用程式..."
+  audit "Port $PORT collision detected"
+  lsof -nP -i "tcp:$PORT" >> "$KILL_AUDIT_LOG" 2>&1 || true
+  lsof -nP -i "tcp:$PORT" >&2 2>/dev/null || true
 
-  for pid in $PIDS; do
-    echo "[run_sra_api] → kill -9 PID=$pid"
-    if kill -9 "$pid"; then
-      echo "[run_sra_api] ✅ 已成功關閉 PID=$pid"
-      echo "[$NOW_TS] ✅ 已成功 kill PID=$pid" >> "$KILL_AUDIT_LOG"
-    else
-      echo "[run_sra_api] ❌ 關閉失敗 PID=$pid"
-      echo "[$NOW_TS] ❌ kill 失敗 PID=$pid" >> "$KILL_AUDIT_LOG"
+  for pid in $pids; do
+    cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+    start="$(process_start_time "$pid")"
+    audit "PID=$pid start=$start cwd=$cwd cmd=$cmd"
+    if ! is_expected_sra_api "$pid"; then
+      audit "ABORT unverified port owner PID=$pid; no signal sent"
+      echo "[run_sra_api] Port $PORT has an unrelated or unverified owner (PID $pid); refusing to kill it." >&2
+      return 1
     fi
+    verified_start["$pid"]="$start"
   done
 
-  sleep 1
+  for pid in $pids; do
+    start="$(process_start_time "$pid")"
+    audit "Sending SIGTERM to verified stale SRA API PID=$pid start=$start"
+    kill -TERM "$pid"
+  done
 
-  # ✅ 再次確認是否釋放
-  if lsof -ti tcp:"$PORT" >/dev/null; then
-    echo "[run_sra_api] ❌ 無法釋放 Port $PORT，請手動處理"
-    echo "[$NOW_TS] ❌ Port $PORT 仍占用，kill 失敗" >> "$KILL_AUDIT_LOG"
-    exit 1
-  else
-    echo "[run_sra_api] ✅ Port $PORT 已成功釋放"
-    echo "[$NOW_TS] ✅ Port $PORT 已成功釋放" >> "$KILL_AUDIT_LOG"
+  deadline=$((SECONDS + PORT_RELEASE_TIMEOUT_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ] && [ -n "$(port_pids)" ]; do sleep 0.1; done
+  remaining="$(port_pids)"
+  for pid in $remaining; do
+    start="$(process_start_time "$pid")"
+    if is_expected_sra_api "$pid" && [ -n "$start" ] && [ "$start" = "${verified_start[$pid]:-}" ]; then
+      audit "Sending SIGKILL to verified unresponsive SRA API PID=$pid start=$start"
+      kill -KILL "$pid"
+    else
+      audit "ABORT port owner changed or became unverified PID=$pid; no SIGKILL sent"
+      return 1
+    fi
+  done
+  deadline=$((SECONDS + PORT_RELEASE_TIMEOUT_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ] && [ -n "$(port_pids)" ]; do sleep 0.1; done
+  if [ -n "$(port_pids)" ]; then
+    audit "ABORT Port $PORT was not released"
+    return 1
   fi
-else
-  echo "[run_sra_api] ✅ Port $PORT 可正常使用"
-  echo "[$NOW_TS] ✅ Port $PORT 可正常使用" >> "$KILL_AUDIT_LOG"
-fi
+  audit "Port $PORT released after verified stale SRA API shutdown"
+}
 
-########################################
-# ✅ 2. 啟動時先清空主 log（不影響稽核檔）
-########################################
+cap_log() {
+  local file="$1" line size tmp
+  while IFS= read -r line || [ -n "$line" ]; do
+    printf '%s\n' "$line" >> "$file"
+    size="$(stat -c%s "$file" 2>/dev/null || printf 0)"
+    if [ "$size" -gt "$MAX_SIZE" ]; then
+      tmp="${file}.cap.$$"
+      tail -c "$MAX_SIZE" "$file" > "$tmp"
+      mv -f "$tmp" "$file"
+    fi
+  done
+}
 
-echo "[run_sra_api] 啟動時清空舊主 log..."
-: > "$LOG_FILE"
+declare -a CHILD_PIDS=()
+declare -a CHILD_NAMES=()
+CLEANED_UP=0
+SIGNALLED=0
 
-########################################
-# ✅ 3. 啟動 uvicorn 並即時控管主 log 容量
-########################################
+cleanup() {
+  local pid deadline
+  [ "$CLEANED_UP" -eq 0 ] || return 0
+  CLEANED_UP=1
+  trap - INT TERM
+  for pid in "${CHILD_PIDS[@]:-}"; do
+    process_is_live "$pid" && kill -TERM "$pid" 2>/dev/null || true
+  done
+  deadline=$((SECONDS + SHUTDOWN_TIMEOUT_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    local any=0
+    for pid in "${CHILD_PIDS[@]:-}"; do process_is_live "$pid" && any=1; done
+    [ "$any" -eq 1 ] || break
+    sleep 0.1
+  done
+  for pid in "${CHILD_PIDS[@]:-}"; do
+    process_is_live "$pid" && kill -KILL "$pid" 2>/dev/null || true
+  done
+  for pid in "${CHILD_PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
+}
 
-echo "[run_sra_api] 啟動 uvicorn..."
+handle_signal() {
+  SIGNALLED=1
+  cleanup
+  exit 0
+}
+trap handle_signal INT TERM
+trap cleanup EXIT
 
-#uvicorn api.main:app --host 0.0.0.0 --port "$PORT" 2>&1 | \
-#python -m api.run_api --public --ssl --port "$PORT" 2>&1 | \
+inspect_port
 
-uvicorn api.main:app --host 0.0.0.0 --port "$PORT" 2>&1 | \
-while IFS= read -r line; do
+# Normal logs may be reset for a new launch. The permanent audit log is append-only.
+: > "$API_LOG"
+: > "$SCHEDULE_LOG"
+: > "$HANDOFF_LOG"
 
-  # 取得目前主 log 檔案大小（不存在就當 0）
-  if [ -f "$LOG_FILE" ]; then
-    size=$(stat -c%s "$LOG_FILE")
-  else
-    size=0
-  fi
+echo "[run_sra_api] Starting API + Requirement Schedule Worker + Requirement Handoff Worker"
+echo "[run_sra_api] Base directory: $BASE_DIR; port: $PORT; runtime log cap: 10 MB"
 
-  # ✅ 超過上限 → 立刻清空（不動稽核檔）
-  if [ "$size" -gt "$MAX_SIZE" ]; then
-    echo "[run_sra_api] ⚠️ 主 log 超過 ${MAX_SIZE_KB}KB，清空重寫..." >&2
-    : > "$LOG_FILE"
-  fi
+uvicorn api.main:app --host 0.0.0.0 --port "$PORT" > >(cap_log "$API_LOG") 2>&1 &
+CHILD_PIDS+=("$!"); CHILD_NAMES+=("SRA API")
 
-  # ✅ 寫入主 log（UTF-8 原樣）
-  printf '%s\n' "$line" >> "$LOG_FILE"
+WORKER_BOOTSTRAP='from config.bootstrap import bootstrap_env; bootstrap_env(); import sys; from requirement_scheduler.cli import main; raise SystemExit(main([sys.argv[1]]))'
+python -c "$WORKER_BOOTSTRAP" schedule-worker > >(cap_log "$SCHEDULE_LOG") 2>&1 &
+CHILD_PIDS+=("$!"); CHILD_NAMES+=("Requirement Schedule Worker")
+python -c "$WORKER_BOOTSTRAP" handoff-worker > >(cap_log "$HANDOFF_LOG") 2>&1 &
+CHILD_PIDS+=("$!"); CHILD_NAMES+=("Requirement Handoff Worker")
 
+exited_pid=""
+status=0
+set +e
+wait -n -p exited_pid "${CHILD_PIDS[@]}"
+status=$?
+set -e
+
+exited_name="unknown child"
+for i in "${!CHILD_PIDS[@]}"; do
+  [ "${CHILD_PIDS[$i]}" = "$exited_pid" ] && exited_name="${CHILD_NAMES[$i]}"
 done
+echo "[run_sra_api] $exited_name exited unexpectedly with status $status; stopping the remaining runtime." >&2
+cleanup
+exit 1

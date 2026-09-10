@@ -8,21 +8,24 @@ Authenticated readers may inspect schedules. `db_operator` creates disabled sche
 
 SQL and filesystem writes are not atomic, and JSONL delivery is not exactly once. A sink failure after SQL commit leaves the domain mutation and outbox row committed and pending; retries preserve the stable event ID and lifecycle timestamp.
 
-The control plane and execution bridge run as two separate, externally supervised
-processes. Do not use a FastAPI lifespan task or the obsolete generic `worker`
-command:
+The repository launcher is the single operator-facing startup command:
 
 ```bash
-python -m requirement_scheduler schedule-worker
-python -m requirement_scheduler handoff-worker
+./run_sra_api.sh
 ```
+
+It remains in the foreground and supervises the SRA API, the separate
+`schedule-worker`, and the separate `handoff-worker`. The Report Job Worker is
+not a fourth launcher child: it remains owned by the API lifespan. The launcher
+bootstraps the project `.env` files before invoking each Requirement worker,
+keeps separate capped runtime logs, and shuts down its other owned children if
+one child exits. Do not use a FastAPI lifespan task or the obsolete generic
+`worker` command for Requirement scheduling.
 
 `schedule-worker` only initializes and validates `ScheduleStore`, then calls its
 existing due-claim boundary. It performs no HTTP, Report Job, Agent,
 Elasticsearch, rendering, artifact, or handoff work. `handoff-worker` remains
-the independently deployed execution-side coordinator. Run both under systemd,
-a container orchestrator, or an equivalent supervisor with restart/backoff and
-separate safe logs.
+the independent execution-side coordinator process supervised by the launcher.
 
 ## Schedule worker configuration and behavior
 
