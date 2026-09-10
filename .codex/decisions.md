@@ -94,3 +94,9 @@
 - Keep the Bash supervisor and generic environment loader narrowly scoped; use an in-process Python bootstrap rather than CLI/HTTP key capture or `.env.local` generation.
 - Missing raw canonical credentials, corrupt/mismatched state, ambiguous recovery identity, and unverified live worker records fail closed. Rotation is exceptional, retains the canonical principal name, and never prints the raw key.
 - Generated state is data, never shell code. Import only the fixed Handoff whitelist and require exact owner/mode/version evidence.
+
+## 2026-09-10 Deployment bootstrap review correction
+
+- Treat the Python bootstrap result as the sole effective state-path authority because it runs after project dotenv loading; expose only a fixed machine-readable path record, never raw generated values.
+- Factor SQL registry validation from connection opening and reuse the same connection-string semantics during preflight. Also reuse signed-resource startup validation before destructive takeover.
+- Keep ordinary startup strictly non-destructive on canonical-key ambiguity. Exceptional repair creates the replacement first, atomically replaces protected raw state, then revokes the old key; pre-replace failure attempts replacement rollback, while a recognizable post-replace interruption is completed only by a later explicit repair.

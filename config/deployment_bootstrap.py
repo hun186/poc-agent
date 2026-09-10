@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stdout
 import os
 from pathlib import Path
 import stat
@@ -13,6 +14,7 @@ from data_ingestion.requirements.connections import SqlRegistry
 from requirement_scheduler.config import RequirementHandoffConfig
 from sra_api.security.scopes import REPORT_JOB_CREATE, REPORT_JOB_DOWNLOAD, REPORT_JOB_READ
 from sra_api.security.service_key_store import ServiceKeyStore
+from sra_api.security.signed_urls import validate_signing_config
 
 
 STATE_VERSION = "1"
@@ -102,14 +104,20 @@ def _validate_site(project_root: Path) -> None:
         registry_path = project_root / registry_path
     registry = SqlRegistry.load(registry_path)
     connection_name = os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control")
-    document = registry._document  # shape was validated by SqlRegistry.load; no connection is opened.
     try:
-        connection = document["connections"][connection_name]
+        connection = registry._document["connections"][connection_name]
     except KeyError as exc:
         raise _fail("sql_connection_missing") from exc
     for key, value in connection.items():
         if key.endswith("_env") and str(value).strip() and not os.getenv(str(value).strip()):
             raise _fail(f"environment_missing:{value}")
+    try:
+        registry.validate_named_connection(connection_name)
+    except KeyError as exc:
+        raise _fail("sql_connection_missing") from exc
+    except (ValueError, RuntimeError) as exc:
+        raise _fail(f"sql_connection_invalid:{exc}") from exc
+    validate_signing_config()
 
 
 def _validate_key(metadata: dict, values: dict[str, str]) -> None:
@@ -154,18 +162,52 @@ def bootstrap(*, project_root: Path, port: int, repair: bool = False) -> Path:
     keys = [item for item in store.list_keys() if item.get("name") == KEY_NAME and item.get("status") == "active"]
 
     if repair:
-        if len(keys) != 1:
+        if not state_file.exists() or state_file.is_symlink():
+            raise _fail("repair_state_missing")
+        old_values = _read_state(state_file)
+        old_metadata = store.resolve(old_values["REQUIREMENT_HANDOFF_CREDENTIAL"])
+        if old_metadata is None:
+            raise _fail("repair_persisted_key_unresolved")
+        _validate_key(old_metadata, old_values)
+
+        # Complete an interrupted post-replace revocation.  This recovery is
+        # recognizable because the protected state already selects the repair-created key.
+        others = [item for item in keys if item.get("key_id") != old_metadata["key_id"]]
+        if others and old_metadata.get("created_by") == "deployment-bootstrap-repair":
+            if any(frozenset(item.get("scopes", ())) != KEY_SCOPES for item in others):
+                raise _fail("repair_identity_ambiguous")
+            for item in others:
+                store.revoke(item["key_id"], revoked_by="deployment-bootstrap-repair-recovery")
+            return state_file
+        if len(keys) != 1 or keys[0].get("key_id") != old_metadata["key_id"]:
             raise _fail("repair_identity_ambiguous")
-        store.revoke(keys[0]["key_id"], revoked_by="deployment-bootstrap-repair")
-        metadata, raw = store.create(KEY_NAME, KEY_SCOPES, created_by="deployment-bootstrap-repair")
-        values = _build_values(port, state_dir, metadata["key_id"], raw)
-        _write_state(state_file, values)
+
+        metadata = None
+        state_replaced = False
+        try:
+            metadata, raw = store.create(KEY_NAME, KEY_SCOPES, created_by="deployment-bootstrap-repair")
+            values = _build_values(port, state_dir, metadata["key_id"], raw)
+            _write_state(state_file, values)
+            state_replaced = True
+            store.revoke(old_metadata["key_id"], revoked_by="deployment-bootstrap-repair")
+        except Exception:
+            # Before replace, retain the usable persisted credential and best-effort
+            # remove the unpersisted replacement.  After replace, retain both keys;
+            # the next explicit repair deterministically completes old-key revocation.
+            if metadata is not None and not state_replaced:
+                try:
+                    store.revoke(metadata["key_id"], revoked_by="deployment-bootstrap-repair-rollback")
+                except Exception:
+                    pass
+            raise
     elif state_file.exists() or state_file.is_symlink():
         values = _read_state(state_file)
         metadata = store.resolve(values["REQUIREMENT_HANDOFF_CREDENTIAL"])
         if metadata is None:
             raise _fail("handoff_credential_unresolved")
         _validate_key(metadata, values)
+        if len(keys) != 1 or keys[0].get("key_id") != metadata.get("key_id"):
+            raise _fail("canonical_key_ambiguous")
         expected = _build_values(port, state_dir, metadata["key_id"], values["REQUIREMENT_HANDOFF_CREDENTIAL"])
         if values != expected:
             raise _fail("generated_configuration_mismatch")
@@ -192,15 +234,17 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--port", type=int, default=int(os.getenv("PORT", "9002")))
     args = parser.parse_args(argv)
     try:
-        state = bootstrap(
-            project_root=args.project_root.resolve(), port=args.port,
-            repair=args.command == "repair-handoff-credential",
-        )
+        # Keep stdout a single machine-readable non-secret record for Bash.
+        with redirect_stdout(sys.stderr):
+            state = bootstrap(
+                project_root=args.project_root.resolve(), port=args.port,
+                repair=args.command == "repair-handoff-credential",
+            )
     except Exception as exc:
         reason = str(exc) if isinstance(exc, DeploymentBootstrapError) else "deployment_bootstrap_error:preflight_failed"
         print(reason, file=sys.stderr)
         return 1
-    print(f"deployment_bootstrap_ok:{state}")
+    print(f"deployment_bootstrap_state_path={state}")
     return 0
 
 

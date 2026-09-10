@@ -48,3 +48,10 @@
 - The launcher now bootstraps before takeover, imports generated state through a fixed whitelist (never `source`/`eval`), closes flock FD 9 in children/log consumers, waits for API listener readiness, and records/reclaims positively verified Schedule/Handoff worker identities.
 - Removed the obsolete duplicate launcher and added shell LF and generated-secret ignore policy.
 - Verification: dependency installation completed using already-installed packages despite package-index proxy 403 warnings; deployment-bootstrap tests passed (5); launcher tests passed in bounded groups (29 total); `bash -n` and `git diff --check` passed. Live SD-1 through SD-7 deployment gates were not run because private SQL/runtime infrastructure is unavailable here.
+
+### 2026-09-10 SRA deployment bootstrap implementation-review correction
+
+- Closed the review blockers by requiring one exact active canonical Handoff key, making Python's validated state path authoritative for the shell importer, and reusing deterministic SQL connection plus signed-URL startup validation before runtime takeover.
+- Credential repair now creates and persists the replacement before revoking the old key, rolls back an unpersisted replacement when possible, and can deterministically finish an interrupted post-replace old-key revocation. Ordinary bootstrap never repairs ambiguous keys.
+- Added focused repair/failure tests and a process-level launcher regression proving SIGKILL releases flock while orphan workers remain available for positive identification and replacement-launcher reclamation.
+- Verification: `python -m pytest -q tests/test_deployment_bootstrap.py tests/test_run_sra_api_launcher.py tests/test_requirement_sql_registry.py` passed (67 tests); `bash -n run_sra_api.sh` and `git diff --check` passed. Dependency installation used installed packages; the package-index proxy still returned 403 warnings while checking pip.
