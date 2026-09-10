@@ -75,3 +75,10 @@
 - Made every successful ServiceKeyStore atomic replacement directory-durable before returning; repair therefore retains its authoritative journal if the key-store directory fsync fails.
 - Added process-level concurrent-repair coverage, post-replace key-store directory-fsync failure coverage, and direct custom-key-ID validation/collision/default-generation tests.
 - Verification: dependency installation completed from installed packages despite pip-index proxy 403 retries; focused bootstrap/launcher/SQL-registry/ServiceKey store/API suite passed 86 tests; `bash -n run_sra_api.sh` and `git diff --check` passed. SD-1 through SD-7 remain pending and the Agent/ES/LLM/DOCX Golden Path was not replayed.
+
+### 2026-09-10 Safe launcher restart and Handoff lease handoff
+
+- A second `run_sra_api.sh` invocation now validates durable owner-only launcher evidence, asks that exact launcher to terminate, waits for flock and port release, and starts one replacement. Concurrent contenders are serialized and a contender older than the replacement cannot restart it again.
+- Launcher evidence uses a separate atomic mode-0600 identity record; opening the runtime and takeover lock files is non-truncating. PID, Linux start time, effective UID, resolved cwd, resolved script path, and live cmdline are checked again immediately before SIGTERM. Unverified owners and graceful-shutdown timeouts fail closed without escalation.
+- Handoff CLI SIGTERM/SIGINT now sets the coordinator stop event, allowing its existing `finally` block to release the fenced SQL lease before exit.
+- Strict TDD RED was observed for missing launcher identity/restart and missing Handoff SIGTERM registration. GREEN verification: launcher/coordinator/lease suite passed 51 tests; deployment-bootstrap/SQL-registry/schedule-worker suite passed 91 tests (one expected development-signing warning); Bash syntax and diff checks passed. Live deployment acceptance was not run.

@@ -2,7 +2,9 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import signal
 import sys
+import threading
 
 from data_ingestion.requirements.connections import SqlRegistry
 from requirement_scheduler.config import RequirementHandoffConfig
@@ -73,14 +75,26 @@ def _safe_schedule_error(exc: BaseException, *, startup: bool) -> str:
     return "schedule_worker_startup_error" if startup else "schedule_worker_invariant_error"
 
 
+def run_handoff_worker(coordinator: RequirementHandoffCoordinator) -> None:
+    """Translate process shutdown signals into the coordinator's graceful stop seam."""
+    stop = threading.Event()
+
+    def request_stop(_signum, _frame) -> None:
+        stop.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    try:
+        coordinator.run(stop)
+    except KeyboardInterrupt:
+        stop.set()
+
+
 def main(argv=None, *, coordinator_factory=None, schedule_worker_factory=None) -> int:
     args=build_parser().parse_args(argv)
     if args.command == "handoff-worker":
         coordinator_factory = coordinator_factory or build_coordinator_from_env
-        import threading
-        stop=threading.Event()
-        try: coordinator_factory().run(stop)
-        except KeyboardInterrupt: stop.set()
+        run_handoff_worker(coordinator_factory())
         return 0
     if args.command == "schedule-worker":
         schedule_worker_factory = schedule_worker_factory or build_schedule_worker_from_env

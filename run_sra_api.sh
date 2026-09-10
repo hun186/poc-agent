@@ -12,6 +12,8 @@ SCHEDULE_LOG="${SCHEDULE_LOG:-SRA-ScheduleWorker_output.txt}"
 HANDOFF_LOG="${HANDOFF_LOG:-SRA-HandoffWorker_output.txt}"
 KILL_AUDIT_LOG="${KILL_AUDIT_LOG:-SRA-API_kill_audit.log}"
 LOCK_FILE="${LOCK_FILE:-$BASE_DIR/.run_sra_api.lock}"
+LAUNCHER_IDENTITY_FILE="${LAUNCHER_IDENTITY_FILE:-$BASE_DIR/.run_sra_api_launcher.identity}"
+TAKEOVER_LOCK_FILE="${TAKEOVER_LOCK_FILE:-$BASE_DIR/.run_sra_api_takeover.lock}"
 SHUTDOWN_TIMEOUT_SECONDS="${SHUTDOWN_TIMEOUT_SECONDS:-10}"
 PORT_RELEASE_TIMEOUT_SECONDS="${PORT_RELEASE_TIMEOUT_SECONDS:-10}"
 API_IDENTITY_FILE="${API_IDENTITY_FILE:-$BASE_DIR/.run_sra_api_api.identity}"
@@ -21,15 +23,14 @@ HANDOFF_STATE_FILE=""
 API_READINESS_TIMEOUT_SECONDS="${API_READINESS_TIMEOUT_SECONDS:-15}"
 LAUNCHER_UID="$(id -u)"
 RUNTIME_HOSTNAME="$(hostname)"
+INVOCATION_START_TIME="$(awk '{print $22}' "/proc/$$/stat")"
 
 cd "$BASE_DIR"
 
-exec 9>"$LOCK_FILE"
-if ! flock -n 9; then
-  echo "[run_sra_api] Another launcher is already running (lock: $LOCK_FILE)." >&2
-  exit 1
-fi
-printf '%s\n' "$$" 1>&9
+# Opening read/write is deliberately non-truncating: a restart contender must not
+# destroy the current owner's evidence before it has proved lock ownership.
+exec 9<>"$LOCK_FILE"
+exec 8<>"$TAKEOVER_LOCK_FILE"
 
 audit() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$KILL_AUDIT_LOG"
@@ -47,6 +48,58 @@ process_is_live() {
 
 process_effective_uid() {
   awk '/^Uid:/{print $3; exit}' "/proc/$1/status" 2>/dev/null || true
+}
+
+launcher_cmdline_matches() {
+  local pid="$1" resolved=""; local -a args=()
+  mapfile -d '' -t args < "/proc/$pid/cmdline" 2>/dev/null || return 1
+  [ "${#args[@]}" -ge 2 ] && [ "${args[0]##*/}" = bash ] || return 1
+  if [[ "${args[1]}" = /* ]]; then resolved="$(readlink -f "${args[1]}" 2>/dev/null || true)"
+  else resolved="$(readlink -f "/proc/$pid/cwd/${args[1]}" 2>/dev/null || true)"; fi
+  [ "$resolved" = "$(readlink -f "$0")" ]
+}
+
+read_launcher_identity() {
+  local key value count=0 record_pid="" record_start="" record_uid="" record_cwd="" record_path=""
+  [ -f "$LAUNCHER_IDENTITY_FILE" ] && [ ! -L "$LAUNCHER_IDENTITY_FILE" ] || return 1
+  [ "$(stat -c%u "$LAUNCHER_IDENTITY_FILE" 2>/dev/null || true)" = "$LAUNCHER_UID" ] || return 1
+  [ "$(stat -c%a "$LAUNCHER_IDENTITY_FILE" 2>/dev/null || true)" = 600 ] || return 1
+  while IFS='=' read -r key value; do
+    count=$((count + 1)); case "$key" in
+      pid) record_pid="$value";; process_start_time) record_start="$value";;
+      effective_uid) record_uid="$value";; cwd) record_cwd="$value";; launcher_path) record_path="$value";;
+      *) return 1;;
+    esac
+  done < "$LAUNCHER_IDENTITY_FILE"
+  [ "$count" -eq 5 ] && [[ "$record_pid" =~ ^[0-9]+$ ]] && [[ "$record_start" =~ ^[0-9]+$ ]] || return 1
+  [ "$record_uid" = "$LAUNCHER_UID" ] && [ "$record_cwd" = "$(readlink -f "$BASE_DIR")" ] || return 1
+  [ "$record_path" = "$(readlink -f "$0")" ] || return 1
+  LAUNCHER_RECORD_PID="$record_pid"; LAUNCHER_RECORD_START="$record_start"
+}
+
+launcher_process_matches() {
+  local pid="$1" start="$2"
+  process_is_live "$pid" && [ "$(process_start_time "$pid")" = "$start" ] &&
+    [ "$(process_effective_uid "$pid")" = "$LAUNCHER_UID" ] &&
+    [ "$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)" = "$(readlink -f "$BASE_DIR")" ] &&
+    launcher_cmdline_matches "$pid"
+}
+
+write_launcher_identity() {
+  local start tmp
+  start="$(process_start_time "$$")"; [ -n "$start" ] || return 1
+  tmp="${LAUNCHER_IDENTITY_FILE}.tmp.$$"
+  (umask 077; printf 'pid=%s\nprocess_start_time=%s\neffective_uid=%s\ncwd=%s\nlauncher_path=%s\n' \
+    "$$" "$start" "$LAUNCHER_UID" "$(readlink -f "$BASE_DIR")" "$(readlink -f "$0")" > "$tmp")
+  mv -f "$tmp" "$LAUNCHER_IDENTITY_FILE"
+  OWNED_LAUNCHER_START="$start"
+}
+
+remove_owned_launcher_identity() {
+  local pid="" start=""
+  [ -n "${OWNED_LAUNCHER_START:-}" ] || return 0
+  if read_launcher_identity; then pid="$LAUNCHER_RECORD_PID"; start="$LAUNCHER_RECORD_START"; fi
+  [ "$pid" = "$$" ] && [ "$start" = "$OWNED_LAUNCHER_START" ] && rm -f "$LAUNCHER_IDENTITY_FILE"
 }
 
 pid_is_listener() {
@@ -315,6 +368,7 @@ cleanup() {
   remove_owned_api_identity "${OWNED_API_PID:-}"
   [ -z "${OWNED_SCHEDULE_PID:-}" ] || rm -f "$SCHEDULE_IDENTITY_FILE"
   [ -z "${OWNED_HANDOFF_PID:-}" ] || rm -f "$HANDOFF_IDENTITY_FILE"
+  remove_owned_launcher_identity
 }
 
 handle_signal() {
@@ -333,6 +387,60 @@ esac
 [ -n "$HANDOFF_STATE_FILE" ] && [[ "$HANDOFF_STATE_FILE" != *$'\n'* ]] || {
   echo "[run_sra_api] Deployment bootstrap returned an invalid state path." >&2; exit 1; }
 import_handoff_state || { echo "[run_sra_api] Generated Handoff state validation failed." >&2; exit 1; }
+
+if flock -n 9; then
+  write_launcher_identity
+else
+  if ! read_launcher_identity || ! launcher_process_matches "$LAUNCHER_RECORD_PID" "$LAUNCHER_RECORD_START"; then
+    audit "ABORT launcher lock is busy but owner identity is unverified; no signal sent"
+    echo "[run_sra_api] Launcher lock owner cannot be safely verified; no signal sent." >&2
+    exit 1
+  fi
+  if [ "$LAUNCHER_RECORD_START" -gt "$INVOCATION_START_TIME" ]; then
+    audit "Restart already completed by newer launcher PID=$LAUNCHER_RECORD_PID start=$LAUNCHER_RECORD_START"
+    echo "[run_sra_api] Restart already completed by another contender."
+    exit 0
+  fi
+  takeover_pid="$LAUNCHER_RECORD_PID"; takeover_start="$LAUNCHER_RECORD_START"
+  if ! flock -n 8; then
+    deadline=$((SECONDS + SHUTDOWN_TIMEOUT_SECONDS))
+    while [ "$SECONDS" -lt "$deadline" ] && ! flock -n 8; do sleep 0.1; done
+    if ! flock -n 8; then
+      audit "ABORT timed out waiting for concurrent restart contender"
+      echo "[run_sra_api] Concurrent restart coordination timed out; no signal sent." >&2
+      exit 1
+    fi
+    if ! read_launcher_identity || [ "$LAUNCHER_RECORD_PID" != "$takeover_pid" ] ||
+       [ "$LAUNCHER_RECORD_START" != "$takeover_start" ]; then
+      audit "Restart already completed while waiting for takeover coordination"
+      echo "[run_sra_api] Restart already completed by another contender."
+      flock -u 8
+      exit 0
+    fi
+  fi
+  echo "[run_sra_api] Existing verified launcher detected PID=$takeover_pid."
+  # Close the PID-reuse/TOCTOU window immediately before granting signal authority.
+  if ! read_launcher_identity || [ "$LAUNCHER_RECORD_PID" != "$takeover_pid" ] ||
+     [ "$LAUNCHER_RECORD_START" != "$takeover_start" ] ||
+     ! launcher_process_matches "$takeover_pid" "$takeover_start"; then
+    audit "ABORT launcher identity changed before SIGTERM; no signal sent"
+    echo "[run_sra_api] Launcher identity changed before shutdown; no signal sent." >&2
+    exit 1
+  fi
+  audit "Sending SIGTERM to verified launcher PID=$takeover_pid start=$takeover_start"
+  echo "[run_sra_api] Requesting graceful restart..."
+  kill -TERM "$takeover_pid"
+  if flock -w "$SHUTDOWN_TIMEOUT_SECONDS" 9; then
+    echo "[run_sra_api] Previous runtime stopped."
+    write_launcher_identity
+    TAKEOVER_COORDINATION_HELD=1
+  else
+    audit "ABORT verified launcher PID=$takeover_pid shutdown timed out; no escalation"
+    echo "[run_sra_api] Graceful launcher shutdown timed out; no escalation or replacement attempted." >&2
+    exit 1
+  fi
+  echo "[run_sra_api] Starting replacement runtime..."
+fi
 
 reclaim_worker schedule
 reclaim_worker handoff
@@ -366,6 +474,7 @@ OWNED_SCHEDULE_PID="$!"; write_worker_identity schedule "$OWNED_SCHEDULE_PID"
 python -c "$WORKER_BOOTSTRAP" handoff-worker 9>&- > >(cap_log "$HANDOFF_LOG" 9>&- >/dev/null 2>&1) 2>&1 &
 CHILD_PIDS+=("$!"); CHILD_NAMES+=("Requirement Handoff Worker")
 OWNED_HANDOFF_PID="$!"; write_worker_identity handoff "$OWNED_HANDOFF_PID"
+[ "${TAKEOVER_COORDINATION_HELD:-0}" -eq 0 ] || { flock -u 8; TAKEOVER_COORDINATION_HELD=0; }
 
 exited_pid=""
 status=0
