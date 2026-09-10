@@ -197,3 +197,8 @@
 - An owner-only repair journal binds each rotation to exactly one validated old key ID and one newly created key ID before generated state replacement. Recovery accepts only the journal-selected replacement credential and the exact recorded active identity set; it never infers transaction ownership from same-name/same-scope keys.
 - A state-write exception is not treated as proof that replacement failed. Protected state is re-read: exact old state permits replacement rollback, while exact replacement or unreadable/other state retains both credentials and the journal for fail-closed explicit recovery.
 - State-absent explicit recovery is limited to one exact-scope canonical key created by `deployment-bootstrap`. It creates and persists a replacement through the same journaled rotation before revoking the unrecoverable orphan; ordinary bootstrap remains non-destructive.
+
+## 2026-09-10 Pre-creation repair intent
+
+- Repair journal schema v2 binds the exact old/replacement IDs to either `credential_rotation` with prior state or `first_run_orphan_recovery` without prior state. The repair layer preselects the replacement ID and durably journals it before `ServiceKeyStore.create`, closing the store committed-before-response boundary.
+- Journal-proven first-run recovery rolls back only its exact replacement when state is still absent, then retries from the uniquely retained original orphan. Missing state for a normal rotation and any active-ID set beyond the exact journal evidence remain fail-closed.

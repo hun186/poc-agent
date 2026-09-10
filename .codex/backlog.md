@@ -135,3 +135,7 @@
 ## 2026-09-10 Corrective review v2 follow-up
 
 - Corrective Review v2's repository repair-boundary, first-run orphan recovery, and unique interrupted-repair identity findings are implemented with focused tests. This does not self-award review PASS or authorize deployment acceptance; obtain post-merge review before running SD-1 through SD-7.
+
+## 2026-09-10 Corrective review v3 follow-up
+
+- Corrective Review v3's missing-state pre-state-write and replacement-create committed-before-response boundaries are implemented with journal-v2 transaction context, preselected replacement identity, and focused crash regressions. This repository evidence does not self-award review PASS; SD-1 through SD-7 remain pending post-merge review and authorized live execution.
