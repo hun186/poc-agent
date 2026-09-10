@@ -17,8 +17,7 @@ PORT_RELEASE_TIMEOUT_SECONDS="${PORT_RELEASE_TIMEOUT_SECONDS:-10}"
 API_IDENTITY_FILE="${API_IDENTITY_FILE:-$BASE_DIR/.run_sra_api_api.identity}"
 SCHEDULE_IDENTITY_FILE="${SCHEDULE_IDENTITY_FILE:-$BASE_DIR/.run_sra_api_schedule.identity}"
 HANDOFF_IDENTITY_FILE="${HANDOFF_IDENTITY_FILE:-$BASE_DIR/.run_sra_api_handoff.identity}"
-DEPLOYMENT_STATE_DIR="${SRA_DEPLOYMENT_STATE_DIR:-$BASE_DIR/.sra_runtime}"
-HANDOFF_STATE_FILE="$DEPLOYMENT_STATE_DIR/requirement_handoff.env"
+HANDOFF_STATE_FILE=""
 API_READINESS_TIMEOUT_SECONDS="${API_READINESS_TIMEOUT_SECONDS:-15}"
 LAUNCHER_UID="$(id -u)"
 RUNTIME_HOSTNAME="$(hostname)"
@@ -326,7 +325,13 @@ handle_signal() {
 trap handle_signal INT TERM
 trap cleanup EXIT
 
-python -m config.deployment_bootstrap bootstrap --project-root "$BASE_DIR" --port "$PORT" 9>&-
+bootstrap_result="$(python -m config.deployment_bootstrap bootstrap --project-root "$BASE_DIR" --port "$PORT" 9>&-)"
+case "$bootstrap_result" in
+  deployment_bootstrap_state_path=*) HANDOFF_STATE_FILE="${bootstrap_result#deployment_bootstrap_state_path=}" ;;
+  *) echo "[run_sra_api] Deployment bootstrap returned an invalid state path." >&2; exit 1 ;;
+esac
+[ -n "$HANDOFF_STATE_FILE" ] && [[ "$HANDOFF_STATE_FILE" != *$'\n'* ]] || {
+  echo "[run_sra_api] Deployment bootstrap returned an invalid state path." >&2; exit 1; }
 import_handoff_state || { echo "[run_sra_api] Generated Handoff state validation failed." >&2; exit 1; }
 
 reclaim_worker schedule

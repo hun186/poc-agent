@@ -67,7 +67,7 @@ class SqlRegistry:
         try: return dict(self._document["queries"][reference])
         except KeyError as exc: raise KeyError("unknown_query_ref") from exc
 
-    def open_named_connection(self, name: str):
+    def _connection_string(self, name: str) -> str:
         try:
             config = self._document["connections"][name]
         except KeyError as exc:
@@ -108,7 +108,14 @@ class SqlRegistry:
         else:
             parts.extend((f"UID={user}", f"PWD={password}"))
         parts.extend((f"Encrypt={'yes' if config.get('encrypt', True) else 'no'}", f"TrustServerCertificate={'yes' if config.get('trust_server_certificate', False) else 'no'}"))
-        connection = pyodbc.connect(";".join(parts), autocommit=False)
+        return ";".join(parts)
+
+    def validate_named_connection(self, name: str) -> None:
+        """Validate all deterministic named-connection settings without connecting."""
+        self._connection_string(name)
+
+    def open_named_connection(self, name: str):
+        connection = pyodbc.connect(self._connection_string(name), autocommit=False)
         connection.add_output_converter(
             _SQL_SS_TIMESTAMPOFFSET,
             _decode_datetimeoffset,

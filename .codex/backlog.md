@@ -129,3 +129,5 @@
 ## 2026-09-10 Self-bootstrapping deployment follow-up
 
 - Execute live acceptance Gates SD-1 through SD-7 one at a time in the authorized Linux deployment, including durable output-root migration evidence and positive identification/revocation of any acceptance-only legacy key. Do not replay the Agent/ES/LLM/DOCX Golden Path for this deployment-only change.
+- Implementation Review v1 was issued post-merge without a previously approved Implementation Plan v1 or Codex execution contract; this discrepancy is recorded, not retroactively relabeled. Restore the normal design review → approved plan → execution contract → implementation review sequence for future work.
+- Repository corrections do not execute or close SD-1 through SD-7. All seven live gates remain **PENDING**, and SD-7 still requires fresh durable-state evidence before legacy output configuration/key cleanup; do not invent automatic SQL repair.

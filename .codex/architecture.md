@@ -32,6 +32,7 @@
 - `run_sra_api.sh` is the foreground Linux supervisor for exactly three external runtime children: the API, Requirement Schedule Worker, and Requirement Handoff Worker. The API lifespan continues to own the Report Job Worker internally.
 - A Linux `flock` prevents duplicate launcher instances. The launcher retains direct runtime PIDs, bootstraps project environment files in each Requirement worker process, applies separate approximately 10 MB runtime logs, and performs bounded TERM-then-KILL cleanup only for owned children.
 - Port 9002 collision handling fails closed unless `/proc` command and deployment-directory evidence narrowly identify the listener as the expected SRA API; verified stale API shutdown is TERM-first and permanently audited.
+- Deployment bootstrap's machine-readable, non-secret state-path result is the sole authority consumed by the launcher after dotenv loading; Bash does not independently derive or source the generated credential file. Normal restart requires one exact active canonical key, and deterministic SQL/signing configuration is checked before takeover.
 
 ### Runtime layout
 

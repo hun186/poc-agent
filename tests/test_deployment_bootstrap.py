@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from config.deployment_bootstrap import (
-    DeploymentBootstrapError, KEY_NAME, KEY_SCOPES, _read_state, bootstrap,
+    DeploymentBootstrapError, KEY_NAME, KEY_SCOPES, _read_state, bootstrap, main,
 )
 from sra_api.security.service_key_store import ServiceKeyStore
 
@@ -21,6 +21,7 @@ def deployment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", str(registry))
     monkeypatch.setenv("SRA_SERVICE_KEYS_FILE", str(tmp_path / "keys.json"))
     monkeypatch.setenv("SRA_DEPLOYMENT_STATE_DIR", str(tmp_path / ".sra_runtime"))
+    monkeypatch.setattr("data_ingestion.requirements.connections.detect_odbc_driver", lambda _: "test-driver")
     return tmp_path
 
 
@@ -42,6 +43,12 @@ def test_first_run_is_secure_exact_scope_and_restart_is_idempotent(deployment: P
     assert (deployment / "keys.json").read_text(encoding="utf-8") == first_store
     captured = capsys.readouterr()
     assert token not in captured.out and token not in captured.err
+
+
+def test_cli_stdout_contains_only_machine_readable_state_path(deployment: Path, capsys) -> None:
+    assert main(["bootstrap", "--project-root", str(deployment), "--port", "9002"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == f"deployment_bootstrap_state_path={deployment / '.sra_runtime' / 'requirement_handoff.env'}\n"
 
 
 def stat_mode(path: Path) -> int:
@@ -79,6 +86,97 @@ def test_revoked_persisted_key_and_additional_scope_fail_closed(deployment: Path
     store.revoke(state["SRA_BOOTSTRAP_HANDOFF_KEY_ID"], "test")
     with pytest.raises(DeploymentBootstrapError, match="handoff_credential_unresolved"):
         bootstrap(project_root=deployment, port=9002)
+
+
+def test_second_active_canonical_key_fails_normal_restart(deployment: Path) -> None:
+    bootstrap(project_root=deployment, port=9002)
+    ServiceKeyStore(deployment / "keys.json").create(KEY_NAME, KEY_SCOPES, "unexpected")
+    with pytest.raises(DeploymentBootstrapError, match="canonical_key_ambiguous"):
+        bootstrap(project_root=deployment, port=9002)
+
+
+def test_repair_rotates_key_without_disclosing_credential(deployment: Path, capsys) -> None:
+    state_path = bootstrap(project_root=deployment, port=9002)
+    old = _read_state(state_path)
+    assert bootstrap(project_root=deployment, port=9002, repair=True) == state_path
+    new = _read_state(state_path)
+    keys = ServiceKeyStore(deployment / "keys.json").list_keys()
+    assert new["SRA_BOOTSTRAP_HANDOFF_KEY_ID"] != old["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]
+    assert [item["status"] for item in keys if item["key_id"] == old["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]] == ["revoked"]
+    assert len([item for item in keys if item["name"] == KEY_NAME and item["status"] == "active"]) == 1
+    captured = capsys.readouterr()
+    assert old["REQUIREMENT_HANDOFF_CREDENTIAL"] not in captured.out + captured.err
+    assert new["REQUIREMENT_HANDOFF_CREDENTIAL"] not in captured.out + captured.err
+
+
+def test_repair_rejects_ambiguous_existing_keys(deployment: Path) -> None:
+    bootstrap(project_root=deployment, port=9002)
+    ServiceKeyStore(deployment / "keys.json").create(KEY_NAME, KEY_SCOPES, "unexpected")
+    with pytest.raises(DeploymentBootstrapError, match="repair_identity_ambiguous"):
+        bootstrap(project_root=deployment, port=9002, repair=True)
+
+
+def test_repair_state_write_failure_keeps_old_credential_usable(deployment: Path, monkeypatch) -> None:
+    state_path = bootstrap(project_root=deployment, port=9002)
+    old = _read_state(state_path)
+    monkeypatch.setattr("config.deployment_bootstrap._write_state", lambda *_: (_ for _ in ()).throw(OSError("disk")))
+    with pytest.raises(OSError, match="disk"):
+        bootstrap(project_root=deployment, port=9002, repair=True)
+    store = ServiceKeyStore(deployment / "keys.json")
+    assert store.resolve(old["REQUIREMENT_HANDOFF_CREDENTIAL"])["key_id"] == old["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]
+    assert len([item for item in store.list_keys() if item["name"] == KEY_NAME and item["status"] == "active"]) == 1
+
+
+def test_repair_create_failure_preserves_state_and_key(deployment: Path, monkeypatch) -> None:
+    state_path = bootstrap(project_root=deployment, port=9002)
+    before = state_path.read_bytes()
+    monkeypatch.setattr(ServiceKeyStore, "create", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("create")))
+    with pytest.raises(OSError, match="create"):
+        bootstrap(project_root=deployment, port=9002, repair=True)
+    assert state_path.read_bytes() == before
+
+
+def test_repair_recovers_interruption_after_state_replace(deployment: Path, monkeypatch) -> None:
+    state_path = bootstrap(project_root=deployment, port=9002)
+    old_id = _read_state(state_path)["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]
+    real_revoke = ServiceKeyStore.revoke
+
+    def fail_old_revoke(store, key_id, revoked_by):
+        if key_id == old_id:
+            raise OSError("revoke")
+        return real_revoke(store, key_id, revoked_by)
+
+    monkeypatch.setattr(ServiceKeyStore, "revoke", fail_old_revoke)
+    with pytest.raises(OSError, match="revoke"):
+        bootstrap(project_root=deployment, port=9002, repair=True)
+    replacement = _read_state(state_path)
+    assert replacement["SRA_BOOTSTRAP_HANDOFF_KEY_ID"] != old_id
+    monkeypatch.setattr(ServiceKeyStore, "revoke", real_revoke)
+    assert bootstrap(project_root=deployment, port=9002, repair=True) == state_path
+    active = [item for item in ServiceKeyStore(deployment / "keys.json").list_keys()
+              if item["name"] == KEY_NAME and item["status"] == "active"]
+    assert [item["key_id"] for item in active] == [replacement["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]]
+
+
+@pytest.mark.parametrize("connection", [
+    {"server": "", "database": "sra", "trusted_connection": True},
+    {"server": "sql.example", "database": "", "trusted_connection": True},
+    {"server": "sql.example", "database": "sra", "trusted_connection": False},
+])
+def test_invalid_direct_sql_configuration_fails_preflight(deployment: Path, connection: dict) -> None:
+    Path(os.environ["REQUIREMENT_SQL_REGISTRY_FILE"]).write_text(
+        json.dumps({"connections": {"requirement_control": connection}, "queries": {}}), encoding="utf-8",
+    )
+    with pytest.raises(DeploymentBootstrapError, match="sql_connection_invalid"):
+        bootstrap(project_root=deployment, port=9002)
+
+
+def test_production_signing_configuration_fails_before_state(deployment: Path, monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SRA_SIGNED_URL_SECRET", "too-short")
+    with pytest.raises(RuntimeError, match="at least 32 bytes"):
+        bootstrap(project_root=deployment, port=9002)
+    assert not (deployment / ".sra_runtime").exists()
 
 
 def test_missing_referenced_site_environment_fails_before_state(deployment: Path) -> None:
