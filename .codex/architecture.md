@@ -191,3 +191,9 @@
 - `config/deployment_bootstrap.py` is a one-shot provisioning/preflight component invoked by `run_sra_api.sh`; it does not become a runtime role and does not alter `config.bootstrap` environment-loading responsibilities.
 - `.sra_runtime/requirement_handoff.env` is strict owner-only generated state, while the existing shared `ServiceKeyStore` remains the sole digest-only key authority. The canonical Handoff principal has exactly create/read/download Report Job scopes.
 - Startup order is bootstrap and strict state import, verified orphan/takeover handling, API listener readiness, Schedule Worker, then Handoff Worker. Only the supervisor retains flock FD 9; all three children and log consumers close it.
+
+## 2026-09-10 Credential-repair transaction recovery
+
+- An owner-only repair journal binds each rotation to exactly one validated old key ID and one newly created key ID before generated state replacement. Recovery accepts only the journal-selected replacement credential and the exact recorded active identity set; it never infers transaction ownership from same-name/same-scope keys.
+- A state-write exception is not treated as proof that replacement failed. Protected state is re-read: exact old state permits replacement rollback, while exact replacement or unreadable/other state retains both credentials and the journal for fail-closed explicit recovery.
+- State-absent explicit recovery is limited to one exact-scope canonical key created by `deployment-bootstrap`. It creates and persists a replacement through the same journaled rotation before revoking the unrecoverable orphan; ordinary bootstrap remains non-destructive.

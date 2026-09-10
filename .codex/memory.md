@@ -55,3 +55,10 @@
 - Credential repair now creates and persists the replacement before revoking the old key, rolls back an unpersisted replacement when possible, and can deterministically finish an interrupted post-replace old-key revocation. Ordinary bootstrap never repairs ambiguous keys.
 - Added focused repair/failure tests and a process-level launcher regression proving SIGKILL releases flock while orphan workers remain available for positive identification and replacement-launcher reclamation.
 - Verification: `python -m pytest -q tests/test_deployment_bootstrap.py tests/test_run_sra_api_launcher.py tests/test_requirement_sql_registry.py` passed (67 tests); `bash -n run_sra_api.sh` and `git diff --check` passed. Dependency installation used installed packages; the package-index proxy still returned 403 warnings while checking pip.
+
+### 2026-09-10 SRA deployment bootstrap corrective review v2
+
+- Historical PR #234 verification was reported inconsistently as 67/68 tests. That acceptance claim is superseded by this fresh corrective verification; SD-1 through SD-7 remained pending.
+- Repair now journals the exact old/new key IDs before state replacement and re-reads protected state after a write error. It revokes the replacement only when state is proven unchanged; replacement or indeterminate state retains both keys for explicit journal-bound recovery.
+- Explicit repair can replace one exact-scope, `deployment-bootstrap`-owned orphan canonical key when first-run state is absent. Recovery no longer infers obsolete keys from name/scopes/creator alone or revokes multiple unknown keys.
+- Verification: dependency installation completed from installed packages (pip index checks still warned with proxy 403); `python -m pytest -q tests/test_deployment_bootstrap.py tests/test_run_sra_api_launcher.py tests/test_requirement_sql_registry.py --tb=short` passed 73 tests; `bash -n run_sra_api.sh` and `git diff --check` passed. This is repository evidence only; SD-1 through SD-7 remain pending and the historical Agent/ES/LLM/DOCX Golden Path was not replayed.
