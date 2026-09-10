@@ -12,6 +12,11 @@
 
 ## Recent Changes
 
+### 2026-09-10 Requirement schedule-worker clock precision hotfix
+
+- Normalized the already validated aware-UTC schedule-worker clock to second precision at the `ScheduleStore.claim_due()` boundary, truncating rather than rounding while preserving the fixed `requirement-schedule-worker` actor. Recurrence validation, occurrence identity, store/coalescing, locking, transactions, audit, and handoff behavior remain unchanged.
+- RED evidence against baseline `18ce66d9dfb155a13df4ae5ef658c1860538b6a2`: the new focused regression failed because `2026-09-10T02:52:02.671876+00:00` reached the fake store unchanged instead of `2026-09-10T02:52:02+00:00`. GREEN evidence: the schedule-worker file passed 45 tests; recurrence/transaction/worker focus passed 55 tests; all `test_requirement_schedule_*.py` regressions passed 154 tests with 4 warnings. No live SQL claim, manual schedule run, handoff, or Golden Path execution was performed.
+
 ### 2026-09-09 Requirement schedule-worker implementation
 
 - Baseline `13ef7bf980614c986e7fd0a2756d779ccccb415f` was verified as hosted `main` by external Human/ChatGPT GitHub authority; local identity matched exactly and the working tree was clean. Codex raw `git fetch` remained unavailable with CONNECT tunnel HTTP 403 and is not represented as successful.

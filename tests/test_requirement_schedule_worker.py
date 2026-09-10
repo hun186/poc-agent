@@ -118,6 +118,20 @@ def test_run_once_uses_aware_utc_and_stable_actor():
     assert utc_store.claims == [(NOW, "requirement-schedule-worker")]
 
 
+def test_run_once_truncates_runtime_clock_to_utc_second_precision():
+    runtime_now = datetime(2026, 9, 10, 2, 52, 2, 671876, tzinfo=timezone.utc)
+    store = FakeStore()
+
+    RequirementScheduleWorker(store, 2.0, clock=lambda: runtime_now).run_once()
+
+    claimed_now, actor = store.claims[0]
+    assert claimed_now == datetime(2026, 9, 10, 2, 52, 2, tzinfo=timezone.utc)
+    assert claimed_now.tzinfo is timezone.utc
+    assert claimed_now.microsecond == 0
+    assert claimed_now.second == runtime_now.second
+    assert actor == "requirement-schedule-worker"
+
+
 def test_run_no_due_claims_once_then_waits_interruptibly():
     store = FakeStore([None])
     stop = FakeStopEvent()
