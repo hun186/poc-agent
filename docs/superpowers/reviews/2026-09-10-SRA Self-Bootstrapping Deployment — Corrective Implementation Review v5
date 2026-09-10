@@ -1,0 +1,354 @@
+# SRA Self-Bootstrapping Deployment — Corrective Implementation Review v5
+
+## Review Baseline
+
+**Repository:** `hun186/poc-agent`
+**Review type:** Post-merge source-grounded review
+**Authoritative branch:** `main`
+**Authoritative hosted baseline:** `d45d9ce3e9cc34b3be937193af34491df04448ee`
+**Merged PR:** #237 — `Serialize deployment credential repair transactions`
+**Hosted PR head:** `fdcb5893edb306cd715412b46035fa5114b3e8d2`
+**Previous hosted baseline:** `6f953b898fef9ff3d7b886d1c2bfef05ec03f546`
+
+GitHub confirms current `main` is merge commit `d45d9ce3...`, whose parents are previous `main` and hosted PR #237 head.
+
+The completion-report SHA `fc314aadb` is not resolvable as a hosted GitHub commit. It therefore remains local Codex execution evidence and is not used as the authoritative review baseline.
+
+---
+
+# Disposition
+
+**`CORRECTIVE_IMPLEMENTATION_REVIEW_V5 = PASS`**
+
+More precisely:
+
+```text
+SOURCE_IMPLEMENTATION_REVIEW = PASS
+READY_FOR_LIVE_SD_ACCEPTANCE = YES
+
+LIVE_DEPLOYMENT_ACCEPTANCE = NOT_YET_RUN
+SD-1 .. SD-7 = PENDING
+```
+
+No additional corrective design or implementation cycle is required from the source evidence reviewed in this round.
+
+---
+
+# Review v4 Blocker 1 — transaction serialization
+
+## CLOSED
+
+The deployment bootstrap now has a distinct outer transaction lock:
+
+```text
+deployment_bootstrap.lock
+```
+
+and the public `bootstrap()` sequence performs dotenv/site validation and state-directory validation, then holds:
+
+```python
+with exclusive_file_lock(state_dir / TRANSACTION_LOCK_FILENAME):
+    return _bootstrap_locked(...)
+```
+
+All state/key/journal decision and mutation work occurs inside `_bootstrap_locked()`.
+
+This closes the important interleaving problem identified in Review v4.
+
+The protected transaction now effectively contains:
+
+```text
+inspect canonical identity
+→ inspect state
+→ inspect recovery journal
+→ create/revoke Service Keys
+→ replace credential state
+→ recover/replace journal
+→ finish transaction
+```
+
+under one deployment-state lock.
+
+### Recursive recovery is correctly handled
+
+Recovery paths no longer call the public `bootstrap()` while already holding the transaction lock.
+
+Instead, they recurse directly into:
+
+```python
+_bootstrap_locked(...)
+```
+
+so the transaction stays serialized without attempting to reacquire the same filesystem lock.
+
+That is the correct structure for this design.
+
+### Behavioral regression exists
+
+The new multiprocessing regression launches two explicit repairs concurrently and verifies that after both complete:
+
+```text
+exactly one active canonical Handoff key
+state selects that key
+no stale repair journal
+```
+
+This directly targets the v4 failure scenario rather than merely asserting that a lock call appears in source.
+
+**Finding status: CLOSED.**
+
+---
+
+# Review v4 Blocker 2 — ServiceKeyStore durability
+
+## CLOSED
+
+`ServiceKeyStore._write()` now performs:
+
+```text
+write temporary file
+→ fsync temporary file
+→ chmod 0600
+→ os.replace(temp, keys.json)
+→ chmod final keys.json 0600
+→ fsync parent directory
+→ return
+```
+
+via `_fsync_parent_directory()`.
+
+This is materially important because `create()` and `revoke()` can now be treated by deployment repair as durable mutation boundaries only after successful return.
+
+The repair protocol therefore has consistent persistence semantics across its durable files:
+
+```text
+repair journal
+credential state
+ServiceKeyStore
+```
+
+rather than having stronger durability semantics for journal/state than for the identity store itself.
+
+### Unknown key-store commit status retains recovery evidence
+
+The newly added failure injection makes the parent-directory fsync for the old-key revoke raise after the replacement state has already selected the new credential.
+
+The regression verifies that the repair journal still exists after the exception.
+
+That is the required invariant:
+
+```text
+key-store durable status unknown
+→ do not discard transaction evidence
+```
+
+A subsequent explicit repair therefore still has authoritative old/new transaction identity available.
+
+**Finding status: CLOSED.**
+
+---
+
+# Review v4 custom ServiceKey ID test gap
+
+## CLOSED
+
+Direct ServiceKeyStore regressions now cover all three requested cases:
+
+```text
+invalid caller-selected IDs → rejected
+duplicate caller-selected ID → rejected
+ordinary create() → still generates valid 16-char lowercase hex ID
+```
+
+The production implementation also keeps the custom ID keyword-only and performs collision checking while holding the ServiceKeyStore mutation lock.
+
+No ordinary caller needs to supply a key ID.
+
+**Finding status: CLOSED.**
+
+---
+
+# Previous corrective findings status
+
+The complete corrective chain now stands as follows:
+
+| Finding                                           | Status |
+| ------------------------------------------------- | ------ |
+| Canonical active-key uniqueness                   | CLOSED |
+| dotenv-aware state-path authority                 | CLOSED |
+| SQL deterministic preflight parity                | CLOSED |
+| signed-URL preflight before takeover              | CLOSED |
+| launcher SIGKILL/flock/orphan recovery            | CLOSED |
+| post-state-replace write ambiguity                | CLOSED |
+| repair journal exact identity binding             | CLOSED |
+| first-run orphan recovery                         | CLOSED |
+| journal-before-state crash recovery               | CLOSED |
+| replacement create committed-before-response      | CLOSED |
+| concurrent repair serialization                   | CLOSED |
+| ServiceKeyStore directory durability              | CLOSED |
+| custom caller-selected key ID regression coverage | CLOSED |
+
+I found no new source-level BLOCKER or HIGH defect within the Self-Bootstrapping Deployment scope during this review.
+
+---
+
+# Small implementation observation — non-blocking
+
+The transaction lock intentionally begins after:
+
+```text
+bootstrap_env()
+_validate_site()
+_secure_directory(state_dir)
+```
+
+rather than literally at function entry.
+
+This is acceptable for the reviewed invariant because those operations do not mutate credential state, repair journal, or ServiceKeyStore.
+
+A simultaneous first-ever invocation could theoretically race while creating the state directory and cause one invocation to fail early, but it does not permit two state/key/journal transactions to execute concurrently.
+
+I therefore do **not** classify this as an acceptance blocker.
+
+---
+
+# Verification Evidence
+
+Codex/PR #237 reports:
+
+```text
+python -m pytest -q \
+  tests/test_deployment_bootstrap.py \
+  tests/test_service_key_store.py \
+  --tb=short
+
+33 passed
+```
+
+and:
+
+```text
+python -m pytest -q \
+  tests/test_deployment_bootstrap.py \
+  tests/test_run_sra_api_launcher.py \
+  tests/test_requirement_sql_registry.py \
+  tests/test_service_key_store.py \
+  tests/test_service_key_api.py \
+  --tb=short
+
+86 passed
+```
+
+plus:
+
+```text
+bash -n run_sra_api.sh
+git diff --check
+git status --short --branch
+```
+
+The PR patch also contains the corresponding concurrency, durability-failure, and key-ID regressions.
+
+I have independently verified:
+
+```text
+hosted PR identity
+hosted merge baseline
+actual source changes
+actual regression definitions
+previous-review requirements against hosted implementation
+```
+
+I have **not independently executed** the private-repository pytest commands in the Codex execution environment.
+
+Therefore:
+
+```text
+86 passed = Codex execution evidence
+not an independently reproduced test run by this reviewer
+```
+
+The currently visible hosted commit status is only Vercel and does not independently establish the Python pytest suite.
+
+This distinction does not prevent source implementation review PASS, but it means deployment-level PASS must come from the live SD gates.
+
+---
+
+# Scope Boundary
+
+This review does not reopen or redesign:
+
+```text
+Requirement scheduling semantics
+Requirement Handoff state machine
+Report Job owner model
+Agent logic
+Elasticsearch queries
+LLM/report generation
+DOCX generation
+Requirement Task Center
+LangGraph migration
+JT-1
+```
+
+The previously accepted:
+
+```text
+Requirement
+→ scheduled Batch
+→ Run Items
+→ Handoff
+→ Report Jobs
+→ Agent / Elasticsearch / LLM
+→ DOCX
+```
+
+three-item Golden Path remains valid historical evidence.
+
+**Do not replay it for this deployment bootstrap acceptance.**
+
+---
+
+# Live Acceptance Authorization
+
+The repository implementation has now reached the point where the next work should be **live deployment acceptance**, not another speculative corrective coding round.
+
+Proceed one Gate at a time:
+
+```text
+SD-1  DEPLOYMENT_SOURCE_GATE
+SD-2  LF_PACKAGE_GATE
+SD-3  BOOTSTRAP_FIRST_RUN_GATE
+SD-4  FLOCK_ORPHAN_RECOVERY_GATE
+SD-5  LIVE_RUNTIME_START_GATE
+SD-6  RESTART_IDEMPOTENCY_GATE
+SD-7  MIGRATION_CLEANUP_GATE
+```
+
+Do not mark later Gates based on inference from earlier ones.
+
+Do not combine all seven into one large acceptance script.
+
+Do not rerun the accepted Agent/ES/LLM/DOCX Golden Path.
+
+For any write/mutation whose result is ambiguous, inspect durable state before retrying.
+
+---
+
+# Final Decision
+
+```text
+SRA_SELF_BOOTSTRAPPING_DEPLOYMENT
+SOURCE_IMPLEMENTATION_REVIEW_V5 = PASS
+
+READY_FOR_LIVE_ACCEPTANCE = YES
+
+SD-1 .. SD-7 = PENDING
+DEPLOYMENT_ACCEPTANCE = NOT YET PASS
+```
+
+PR #237 completes the corrective source-review cycle started after PR #233.
+
+The next Gate is:
+
+**SD-1 — DEPLOYMENT_SOURCE_GATE**
