@@ -15,6 +15,7 @@ from config.bootstrap import bootstrap_env
 from data_ingestion.requirements.connections import SqlRegistry
 from requirement_scheduler.config import RequirementHandoffConfig
 from sra_api.security.scopes import REPORT_JOB_CREATE, REPORT_JOB_DOWNLOAD, REPORT_JOB_READ
+from sra_api.security.file_lock import exclusive_file_lock
 from sra_api.security.service_key_store import ServiceKeyStore
 from sra_api.security.signed_urls import validate_signing_config
 
@@ -24,6 +25,7 @@ KEY_NAME = "requirement-handoff-runtime"
 KEY_SCOPES = frozenset({REPORT_JOB_CREATE, REPORT_JOB_READ, REPORT_JOB_DOWNLOAD})
 STATE_FILENAME = "requirement_handoff.env"
 REPAIR_JOURNAL_FILENAME = "requirement_handoff.repair.json"
+TRANSACTION_LOCK_FILENAME = "deployment_bootstrap.lock"
 STATE_KEYS = (
     "SRA_BOOTSTRAP_STATE_VERSION", "SRA_BOOTSTRAP_HANDOFF_KEY_ID",
     "REQUIREMENT_HANDOFF_API_BASE_URL", "REQUIREMENT_HANDOFF_ALLOW_INSECURE_LOCALHOST",
@@ -270,13 +272,10 @@ def _rotate_handoff_key(
         raise
 
 
-def bootstrap(*, project_root: Path, port: int, repair: bool = False) -> Path:
-    bootstrap_env(project_root=project_root)
-    _validate_site(project_root)
-    state_dir = Path(os.getenv("SRA_DEPLOYMENT_STATE_DIR", str(project_root / ".sra_runtime")))
-    if not state_dir.is_absolute():
-        state_dir = project_root / state_dir
-    _secure_directory(state_dir)
+def _bootstrap_locked(
+    *, project_root: Path, port: int, repair: bool, state_dir: Path,
+) -> Path:
+    """Run one complete state/key/journal transaction under the caller's lock."""
     state_file = state_dir / STATE_FILENAME
     journal_file = state_dir / REPAIR_JOURNAL_FILENAME
     store_path = Path(os.getenv("SRA_SERVICE_KEYS_FILE", str(project_root / ".sra_service_keys.json")))
@@ -297,7 +296,9 @@ def bootstrap(*, project_root: Path, port: int, repair: bool = False) -> Path:
                 elif active_ids != {old_id}:
                     raise _fail("repair_identity_ambiguous")
                 _remove_repair_journal(journal_file)
-                return bootstrap(project_root=project_root, port=port, repair=True)
+                return _bootstrap_locked(
+                    project_root=project_root, port=port, repair=True, state_dir=state_dir,
+                )
             current_values = _read_state(state_file)
             current_metadata = store.resolve(current_values["REQUIREMENT_HANDOFF_CREDENTIAL"])
             if current_metadata is None:
@@ -321,7 +322,9 @@ def bootstrap(*, project_root: Path, port: int, repair: bool = False) -> Path:
                 _remove_repair_journal(journal_file)
                 # The old state was proven intact. Cleanup completed the failed
                 # attempt; this explicit command may now perform a fresh repair.
-                return bootstrap(project_root=project_root, port=port, repair=True)
+                return _bootstrap_locked(
+                    project_root=project_root, port=port, repair=True, state_dir=state_dir,
+                )
             raise _fail("repair_identity_ambiguous")
 
         if not state_file.exists() or state_file.is_symlink():
@@ -375,6 +378,22 @@ def bootstrap(*, project_root: Path, port: int, repair: bool = False) -> Path:
         raise _fail("handoff_credential_unresolved")
     _validate_key(metadata, values)
     return state_file
+
+
+def bootstrap(*, project_root: Path, port: int, repair: bool = False) -> Path:
+    bootstrap_env(project_root=project_root)
+    _validate_site(project_root)
+    state_dir = Path(os.getenv("SRA_DEPLOYMENT_STATE_DIR", str(project_root / ".sra_runtime")))
+    if not state_dir.is_absolute():
+        state_dir = project_root / state_dir
+    _secure_directory(state_dir)
+    # ServiceKeyStore's lock makes individual mutations safe. This outer lock
+    # additionally serializes the multi-file state/key/journal transaction for
+    # both ordinary bootstrap and explicit repair callers.
+    with exclusive_file_lock(state_dir / TRANSACTION_LOCK_FILENAME):
+        return _bootstrap_locked(
+            project_root=project_root, port=port, repair=repair, state_dir=state_dir,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
