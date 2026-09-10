@@ -36,6 +36,7 @@ class RequirementScheduleWorker:
         now = self.clock()
         if now.tzinfo is None or now.utcoffset() != timezone.utc.utcoffset(now):
             raise RuntimeError("invalid_utc_clock")
+        now = now.replace(microsecond=0)
         return self.store.claim_due(now_utc=now, actor=SCHEDULE_WORKER_ACTOR)
 
     def run(self, stop_event) -> None:
