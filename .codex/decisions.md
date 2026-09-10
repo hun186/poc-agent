@@ -116,3 +116,9 @@
 
 - Retain ServiceKeyStore's per-operation lock for generic callers, and add a distinct deployment-state transaction lock around complete bootstrap/repair operations. The outer lock is required because journal, state, and multiple key-store operations form one recovery transaction.
 - Treat ServiceKeyStore parent-directory fsync as part of successful mutation, not optional hardening. Repair may durably delete its journal only after old-key revocation returns from that complete durability boundary.
+
+## 2026-09-10 Restart through verified supervisor ownership
+
+- Preserve supervisor ownership: restart sends SIGTERM only to a fully verified launcher and does not introduce a second child-kill path. Launcher timeout fails closed; existing verified child cleanup and orphan recovery policies remain unchanged.
+- Keep runtime flock evidence non-truncating and place durable launcher identity in a separate atomic owner-mode-0600 record. Serialize simultaneous takeover attempts with a second flock and reject targeting a launcher newer than the contender.
+- Convert Handoff SIGTERM/SIGINT into its existing stop-event contract rather than changing SQL lease, TTL, fencing, or ownership semantics.

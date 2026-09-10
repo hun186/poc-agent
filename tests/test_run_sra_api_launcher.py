@@ -68,6 +68,8 @@ def launcher_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
         PATH=f"{bin_dir}:{env['PATH']}",
         BASE_DIR=str(tmp_path),
         LOCK_FILE=str(tmp_path / "launcher.lock"),
+        LAUNCHER_IDENTITY_FILE=str(tmp_path / ".run_sra_api_launcher.identity"),
+        TAKEOVER_LOCK_FILE=str(tmp_path / ".run_sra_api_takeover.lock"),
         TEST_EVENTS=str(events),
         SHUTDOWN_TIMEOUT_SECONDS="1",
         PORT_RELEASE_TIMEOUT_SECONDS="1",
@@ -176,18 +178,137 @@ def test_launcher_imports_exact_path_returned_by_bootstrap(launcher_env) -> None
     assert (Path(env["BOOTSTRAP_STATE_DIR"]) / "requirement_handoff.env").is_file()
 
 
-def test_second_launcher_fails_without_starting_duplicates(launcher_env) -> None:
+def test_second_launcher_gracefully_restarts_verified_runtime(launcher_env) -> None:
     env, events = launcher_env
     first = _start(env)
     _wait_for(events, "handoff-worker")
     _wait_for(events, "schedule-worker")
-    before = events.read_text(encoding="utf-8")
-    second = subprocess.run(["bash", str(LAUNCHER)], env=env, capture_output=True, text=True, timeout=3)
-    after = events.read_text(encoding="utf-8")
+    identity = Path(env["LAUNCHER_IDENTITY_FILE"])
+    old = dict(line.split("=", 1) for line in identity.read_text().splitlines())
+    role_records = [Path(env["BASE_DIR"]) / ".run_sra_api_schedule.identity",
+                    Path(env["BASE_DIR"]) / ".run_sra_api_handoff.identity"]
+    for path in role_records:
+        _wait_for(path, "process_start_time=")
+    old_roles = [dict(line.split("=", 1) for line in path.read_text().splitlines()) for path in role_records]
+    second = _start(env)
+    _wait_for(events, "api-term")
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        content = events.read_text(encoding="utf-8")
+        current = dict(line.split("=", 1) for line in identity.read_text().splitlines()) if identity.exists() else {}
+        current_roles = [dict(line.split("=", 1) for line in path.read_text().splitlines())
+                         if path.exists() else {} for path in role_records]
+        if (current.get("pid") != old["pid"]
+                and all(item.get("pid") and item["pid"] != previous["pid"]
+                        for item, previous in zip(current_roles, old_roles))):
+            break
+        time.sleep(0.03)
+    assert first.wait(timeout=3) == 0
+    assert second.poll() is None, second.communicate(timeout=1)[0]
+    assert all(Path(f"/proc/{item['pid']}").exists() for item in current_roles)
+    assert current["process_start_time"] != old["process_start_time"] or current["pid"] != old["pid"]
+    _stop(second)
+
+
+def test_restart_contender_does_not_truncate_launcher_identity(launcher_env) -> None:
+    env, events = launcher_env
+    first = _start(env)
+    _wait_for(events, "handoff-worker")
+    identity = Path(env["LAUNCHER_IDENTITY_FILE"])
+    evidence = identity.read_bytes()
+    first.send_signal(signal.SIGSTOP)
+    contender = _start(env)
+    try:
+        time.sleep(0.2)
+        assert identity.read_bytes() == evidence
+        assert contender.poll() is None
+    finally:
+        first.send_signal(signal.SIGCONT)
+        first.wait(timeout=5)
+        _wait_for(events, "handoff-worker", timeout=5)
+        _stop(contender)
+
+
+def test_unverified_launcher_lock_holder_is_never_signaled(launcher_env) -> None:
+    env, _ = launcher_env
+    holder = subprocess.Popen(["flock", env["LOCK_FILE"], "sleep", "30"])
+    identity = Path(env["LAUNCHER_IDENTITY_FILE"])
+    identity.write_text(
+        f"pid={holder.pid}\nprocess_start_time=1\neffective_uid={os.geteuid()}\n"
+        f"cwd={env['BASE_DIR']}\nlauncher_path={LAUNCHER}\n", encoding="utf-8",
+    )
+    identity.chmod(0o600)
+    try:
+        result = subprocess.run(["bash", str(LAUNCHER)], env=env, capture_output=True, text=True, timeout=3)
+        assert result.returncode != 0
+        assert holder.poll() is None
+        assert "no signal" in (result.stdout + result.stderr).lower()
+    finally:
+        holder.terminate(); holder.wait(timeout=3)
+
+
+@pytest.mark.parametrize("field,replacement", [
+    ("process_start_time", "1"),
+    ("effective_uid", "99999"),
+    ("cwd", "/tmp"),
+    ("launcher_path", "/tmp/not-the-launcher"),
+])
+def test_launcher_identity_mismatch_fails_closed(launcher_env, field: str, replacement: str) -> None:
+    env, events = launcher_env
+    first = _start(env)
+    _wait_for(events, "handoff-worker")
+    identity = Path(env["LAUNCHER_IDENTITY_FILE"])
+    original = identity.read_text()
+    values = dict(line.split("=", 1) for line in original.splitlines())
+    values[field] = replacement
+    identity.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
+    identity.chmod(0o600)
+    result = subprocess.run(["bash", str(LAUNCHER)], env=env, capture_output=True, text=True, timeout=3)
+    assert result.returncode != 0
+    assert first.poll() is None
+    assert "no signal" in (result.stdout + result.stderr).lower()
+    identity.write_text(original); identity.chmod(0o600)
     _stop(first)
-    assert second.returncode != 0
-    assert "already running" in (second.stdout + second.stderr).lower()
-    assert after == before
+
+
+def test_concurrent_restart_contenders_do_not_restart_replacement(launcher_env) -> None:
+    env, events = launcher_env
+    first = _start(env)
+    _wait_for(events, "handoff-worker")
+    identity = Path(env["LAUNCHER_IDENTITY_FILE"])
+    old_launcher_pid = dict(line.split("=", 1) for line in identity.read_text().splitlines())["pid"]
+    contenders = [_start(env), _start(env)]
+    first.wait(timeout=5)
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        current = dict(line.split("=", 1) for line in identity.read_text().splitlines()) if identity.exists() else {}
+        roles_ready = all((Path(env["BASE_DIR"]) / name).exists() for name in (
+            ".run_sra_api_schedule.identity", ".run_sra_api_handoff.identity"))
+        if current.get("pid") != old_launcher_pid and roles_ready and any(p.poll() is not None for p in contenders):
+            break
+        time.sleep(0.03)
+    running = [p for p in contenders if p.poll() is None]
+    assert len(running) == 1, [p.communicate(timeout=1)[0] for p in contenders]
+    assert all((Path(env["BASE_DIR"]) / name).exists() for name in (
+        ".run_sra_api_schedule.identity", ".run_sra_api_handoff.identity"))
+    stopped = next(p for p in contenders if p.poll() is not None)
+    assert stopped.returncode in {0, 1}
+    _stop(running[0])
+
+
+def test_verified_launcher_shutdown_timeout_fails_without_replacement(launcher_env) -> None:
+    env, events = launcher_env
+    first = _start(env)
+    _wait_for(events, "handoff-worker")
+    first.send_signal(signal.SIGSTOP)
+    try:
+        result = subprocess.run(["bash", str(LAUNCHER)], env=env, capture_output=True, text=True, timeout=4)
+        assert result.returncode != 0
+        assert events.read_text().count("handoff-worker") == 1
+        assert first.poll() is None
+        assert "timed out" in (result.stdout + result.stderr).lower()
+    finally:
+        first.kill(); first.wait(timeout=3)
 
 
 def test_sigkill_releases_flock_and_replacement_reclaims_orphan_workers(launcher_env) -> None:

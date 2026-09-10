@@ -207,3 +207,9 @@
 
 - A state-directory deployment-bootstrap lock serializes the entire Python bootstrap or explicit repair decision/mutation sequence across credential state, repair journal, and ServiceKeyStore. Recursive journal recovery stays inside the already-held transaction rather than reacquiring the lock.
 - ServiceKeyStore atomic writes now fsync the containing directory after replacement and final owner-only mode enforcement. A successful create/revoke return is therefore a durable store commit point for the repair protocol; an uncertain directory commit raises before journal removal.
+
+## 2026-09-10 Safe launcher takeover
+
+- Runtime flock remains the single-launcher authority. A separate owner-only atomic launcher identity record binds PID, process start time, effective UID, resolved deployment cwd, and resolved launcher path; current `/proc` cmdline evidence must resolve to that launcher.
+- A restart contender bootstraps first, validates and revalidates the existing launcher, signals only that launcher, and relies on its existing direct-child cleanup. A narrow takeover flock serializes concurrent contenders through replacement worker startup; invocation start time prevents an older contender from targeting a newer replacement.
+- Handoff process signals are translated to its coordinator stop event, preserving the coordinator's existing `finally`-owned lease release and fencing protocol.

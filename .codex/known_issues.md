@@ -44,3 +44,7 @@
 
 - Repository automation verifies provisioning, restart reuse, launcher ordering, identity safety, LF policy, and syntax. Private SQL Server and deployed runtime access are unavailable, so live acceptance Gates SD-1 through SD-7 remain operator work and no Golden Path was replayed.
 - `pip --upgrade` retried against the configured package-index proxy and received HTTP 403; required dependencies were already installed and requirements validation completed without adding packages.
+
+## 2026-09-10 Safe restart live acceptance pending
+
+- Repository process regressions verify launcher replacement, fail-closed identity mismatches/timeouts, concurrent contenders, orphan recovery, and Handoff lease-release control flow. The private deployed SQL/runtime environment remains unavailable, so an operator must still confirm real SQL lease release/reacquisition and `/openapi.json` readiness during a live restart; no lease row or production process was modified here.
