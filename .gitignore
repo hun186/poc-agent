@@ -182,6 +182,9 @@ cython_debug/
 /.agent_sessions
 /logs
 .env.dev
+.env.local
+.env.*.local
+/.sra_runtime/
 /logs
 SRA-API_output.txt
 # SRA editor auth secrets

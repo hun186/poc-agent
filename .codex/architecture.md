@@ -184,3 +184,9 @@
 - `sra_api/main.py` invokes `sra_api/core/proctitle.py::init_proctitle()` during module import, before FastAPI construction. When `setproctitle` is installed it replaces argv/cmdline and the comm name with `SRA-API | port=<PUBLIC_API_BASE port or 9002> | [<MODEL_ID prefix> | ]pid=<os.getpid()> | <socket.gethostname()>` (the kernel comm view is truncated). Both PID and hostname therefore use the launcher's current/container namespace and hostname.
 - `run_sra_api.sh` discovers only TCP LISTEN owners, then requires exact deployment cwd, effective UID, live listener ownership, and either original uvicorn argv, the exact rewritten-title grammar, or a matching launcher-owned PID/start-time/port record. The record supplements rather than replaces live `/proc` and listener proof.
 - Takeover captures `/proc/<pid>/stat` field 22, sends TERM first, and permits KILL only after the same PID/start time remains a verified listener. It performs no Docker/host PID translation.
+
+## 2026-09-10 Self-bootstrapping deployment boundary
+
+- `config/deployment_bootstrap.py` is a one-shot provisioning/preflight component invoked by `run_sra_api.sh`; it does not become a runtime role and does not alter `config.bootstrap` environment-loading responsibilities.
+- `.sra_runtime/requirement_handoff.env` is strict owner-only generated state, while the existing shared `ServiceKeyStore` remains the sole digest-only key authority. The canonical Handoff principal has exactly create/read/download Report Job scopes.
+- Startup order is bootstrap and strict state import, verified orphan/takeover handling, API listener readiness, Schedule Worker, then Handoff Worker. Only the supervisor retains flock FD 9; all three children and log consumers close it.

@@ -88,3 +88,9 @@
 
 - PR #230 assumed original uvicorn argv remained in `/proc/<pid>/cmdline`. The API import-time `setproctitle` call intentionally replaces that argv, so the launcher now recognizes the exact source-derived title (including same-namespace `os.getpid()` and `socket.gethostname()`) rather than a generic `SRA-API` substring.
 - Listener PID, cwd, effective UID, configured port, exact title fields, and process start time are independent required evidence. A launcher-owned atomic identity record adds durable PID/start-time/port evidence for newly launched API children but cannot authorize signaling without current listener and `/proc` validation.
+
+## 2026-09-10 Deployment bootstrap and orphan recovery
+
+- Keep the Bash supervisor and generic environment loader narrowly scoped; use an in-process Python bootstrap rather than CLI/HTTP key capture or `.env.local` generation.
+- Missing raw canonical credentials, corrupt/mismatched state, ambiguous recovery identity, and unverified live worker records fail closed. Rotation is exceptional, retains the canonical principal name, and never prints the raw key.
+- Generated state is data, never shell code. Import only the fixed Handoff whitelist and require exact owner/mode/version evidence.

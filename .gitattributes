@@ -1,4 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+*.sh text eol=lf
 # Project memory is append-only; union merge prevents GitHub web-only conflicts.
 .codex/memory.md merge=union
