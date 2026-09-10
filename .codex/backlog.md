@@ -125,3 +125,7 @@
 - Import remains distinct from execution: upload/import must never silently execute reports. The surface may present a simple combined flow, but must preserve separately authorized `import only`, `execute now`, and `schedule execution` actions.
 - Orchestrate rather than replace Requirement Import, Requirement Set/Snapshot, Requirement Schedule, Batch Run/Run Item, Schedule Worker, Handoff Worker, Report Job, Agent/Elasticsearch/LLM, and DOCX reconciliation. JT-1, LangGraph, and launcher/startup work remain separate.
 - A future reviewed Design must define owner-/RBAC-aware HTTP artifact delivery. Browsers must never receive `REQUIREMENT_HANDOFF_CREDENTIAL`, use the Handoff Service Key, treat raw server filesystem paths as the download contract, or depend directly on `artifact_relative_path`. Exact API routes, retry, and cancel semantics are intentionally undecided.
+
+## 2026-09-10 Self-bootstrapping deployment follow-up
+
+- Execute live acceptance Gates SD-1 through SD-7 one at a time in the authorized Linux deployment, including durable output-root migration evidence and positive identification/revocation of any acceptance-only legacy key. Do not replay the Agent/ES/LLM/DOCX Golden Path for this deployment-only change.

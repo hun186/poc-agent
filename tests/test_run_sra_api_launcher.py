@@ -29,13 +29,26 @@ def launcher_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
     events = tmp_path / "events"
     _write_executable(
         bin_dir / "uvicorn",
+        "printf '\\n%s LISTEN\\n' \"$BASHPID\" >> \"$FAKE_PORT_PID_FILE\"; "
         'echo "api:$*" >> "$TEST_EVENTS"; '
         'trap \'echo api-term >> "$TEST_EVENTS"; exit 0\' TERM INT; '
         'while :; do sleep 0.05; done',
     )
     _write_executable(
         bin_dir / "python",
+        'case "$*" in *config.deployment_bootstrap*) '
+        'mkdir -m 700 -p "$SRA_DEPLOYMENT_STATE_DIR"; '
+        'cat > "$SRA_DEPLOYMENT_STATE_DIR/requirement_handoff.env" <<EOF\n'
+        'SRA_BOOTSTRAP_STATE_VERSION=1\nSRA_BOOTSTRAP_HANDOFF_KEY_ID=test-key\n'
+        'REQUIREMENT_HANDOFF_API_BASE_URL=http://127.0.0.1:9002\n'
+        'REQUIREMENT_HANDOFF_ALLOW_INSECURE_LOCALHOST=true\n'
+        'REQUIREMENT_HANDOFF_LOGICAL_PRINCIPAL=requirement-handoff-runtime\n'
+        'REQUIREMENT_HANDOFF_OUTPUT_ROOT=/tmp/output\n'
+        'REQUIREMENT_HANDOFF_CREDENTIAL_ENV=REQUIREMENT_HANDOFF_CREDENTIAL\n'
+        'REQUIREMENT_HANDOFF_CREDENTIAL=sra_sk_test_not-a-real-secret\nEOF\n'
+        'chmod 600 "$SRA_DEPLOYMENT_STATE_DIR/requirement_handoff.env"; exit 0;; esac; '
         'echo "python:$*" >> "$TEST_EVENTS"; '
+        'case "$*:$FAIL_SCHEDULE" in *schedule-worker:1) sleep .2; exit 7;; esac; '
         'trap \'echo "worker-term:$*" >> "$TEST_EVENTS"; exit 0\' TERM INT; '
         'while :; do sleep 0.05; done',
     )
@@ -58,6 +71,10 @@ def launcher_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
         SHUTDOWN_TIMEOUT_SECONDS="1",
         PORT_RELEASE_TIMEOUT_SECONDS="1",
         API_IDENTITY_FILE=str(tmp_path / ".run_sra_api.identity"),
+        SRA_DEPLOYMENT_STATE_DIR=str(tmp_path / ".sra_runtime"),
+        FAKE_PORT_PID_FILE=str(tmp_path / "port.pid"),
+        API_READINESS_TIMEOUT_SECONDS="2",
+        FAIL_SCHEDULE="0",
         LSOF_CALLS=str(tmp_path / "lsof.calls"),
     )
     return env, events
@@ -116,6 +133,21 @@ def _stop(proc: subprocess.Popen[str], sig: int = signal.SIGTERM) -> tuple[int, 
 def test_launcher_has_valid_bash_syntax() -> None:
     result = subprocess.run(["bash", "-n", str(LAUNCHER)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_shell_sources_are_lf_only_and_duplicate_launcher_is_absent() -> None:
+    assert "*.sh text eol=lf" in (ROOT / ".gitattributes").read_text(encoding="utf-8")
+    for path in ROOT.glob("*.sh"):
+        assert b"\r\n" not in path.read_bytes(), path
+    assert not (ROOT / "run_sra_api - 複製.sh").exists()
+
+
+def test_bootstrap_precedes_takeover_and_state_is_not_executed() -> None:
+    source = LAUNCHER.read_text(encoding="utf-8")
+    assert source.index("python -m config.deployment_bootstrap") < source.index("\ninspect_port\n")
+    assert "source $HANDOFF_STATE_FILE" not in source
+    assert "eval" not in source
+    assert source.count("9>&-") >= 7
 
 
 def test_starts_all_three_roles_and_bootstraps_workers(launcher_env) -> None:
@@ -404,14 +436,7 @@ def test_signal_cleans_up_every_owned_child(launcher_env, sig: int) -> None:
 
 def test_unexpected_child_exit_cleans_up_siblings(launcher_env) -> None:
     env, events = launcher_env
-    python = Path(env["PATH"].split(":", 1)[0]) / "python"
-    _write_executable(
-        python,
-        'echo "python:$*" >> "$TEST_EVENTS"; '
-        'case "$*" in *schedule-worker*) sleep .2; exit 7;; esac; '
-        'trap \'echo "worker-term:$*" >> "$TEST_EVENTS"; exit 0\' TERM INT; '
-        'while :; do sleep .05; done',
-    )
+    env["FAIL_SCHEDULE"] = "1"
     proc = _start(env)
     output, _ = proc.communicate(timeout=5)
     content = events.read_text(encoding="utf-8")

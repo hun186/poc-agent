@@ -41,3 +41,10 @@
 
 - `.codex/archive/memory.md-20260910-070805.md`: complete memory before 2026-09-10 compaction.
 - Older archive references remain discoverable from that preserved file.
+
+### 2026-09-10 SRA self-bootstrapping deployment
+
+- Added fail-closed deployment bootstrap provisioning for a persistent, exact-scope `requirement-handoff-runtime` Service Key and owner-only generated Handoff state. Normal restarts validate and reuse the same credential; exceptional same-name repair is explicit.
+- The launcher now bootstraps before takeover, imports generated state through a fixed whitelist (never `source`/`eval`), closes flock FD 9 in children/log consumers, waits for API listener readiness, and records/reclaims positively verified Schedule/Handoff worker identities.
+- Removed the obsolete duplicate launcher and added shell LF and generated-secret ignore policy.
+- Verification: dependency installation completed using already-installed packages despite package-index proxy 403 warnings; deployment-bootstrap tests passed (5); launcher tests passed in bounded groups (29 total); `bash -n` and `git diff --check` passed. Live SD-1 through SD-7 deployment gates were not run because private SQL/runtime infrastructure is unavailable here.
