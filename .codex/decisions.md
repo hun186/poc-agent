@@ -16,6 +16,12 @@
 
 ## Recent Changes
 
+### 2026-09-10 Unified SRA runtime launcher
+
+- Keep one operator command, `./run_sra_api.sh`, as a narrow foreground supervisor rather than changing API, scheduler, handoff, or Report Job ownership. It starts the three external roles; the API lifespan remains the sole Report Job Worker owner.
+- Use `flock` for duplicate-launch exclusion, direct child PIDs with process-substitution log consumers, bounded TERM-then-KILL shutdown, and `/proc` command/cwd evidence before acting on a port-9002 owner. Unverified listeners always fail closed without a signal.
+- Bootstrap `.env` inside each worker's inline Python entrypoint before importing and calling the existing Requirement CLI, avoiding a scheduler-module convenience change.
+
 ### 2026-09-09 Separate scheduled materialization runtime
 
 - Complete automatic scheduled materialization with a narrow external `schedule-worker` that delegates one occurrence at a time to existing `ScheduleStore.claim_due()` and polls interruptibly. Keep the implemented `handoff-worker` independent; SQL Batch Run / Run Item state is their only communication boundary.

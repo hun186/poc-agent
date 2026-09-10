@@ -1,5 +1,10 @@
 # Known Issues
 
+## 2026-09-10 Local pytest shim import-path limitation
+
+- In the current Codex container, invoking the `pytest` shim directly for the combined Requirement launcher/worker regression set omitted the repository root from `sys.path`, causing collection-only `ModuleNotFoundError: requirement_scheduler` errors. The equivalent `python -m pytest ...` command uses the repository root correctly and passed all 144 selected tests. This is a local test-entrypoint limitation, not a production launcher or package failure.
+- Package installation was attempted first as required. All requirements were already installed; the package-index proxy still emitted its known HTTP 403 retry warnings while checking for a newer pip release.
+
 ## 2026-09-09 Runtime-automation implementation environment
 
 - Hosted `main` at `13ef7bf980614c986e7fd0a2756d779ccccb415f` was verified externally by Human/ChatGPT GitHub authority and matched the clean local baseline. Codex raw `git fetch` remains unavailable because the proxy returns CONNECT tunnel HTTP 403; no successful fetch is claimed.

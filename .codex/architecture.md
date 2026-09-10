@@ -27,6 +27,12 @@
 
 ## Current Summary
 
+### Unified operator launcher
+
+- `run_sra_api.sh` is the foreground Linux supervisor for exactly three external runtime children: the API, Requirement Schedule Worker, and Requirement Handoff Worker. The API lifespan continues to own the Report Job Worker internally.
+- A Linux `flock` prevents duplicate launcher instances. The launcher retains direct runtime PIDs, bootstraps project environment files in each Requirement worker process, applies separate approximately 10 MB runtime logs, and performs bounded TERM-then-KILL cleanup only for owned children.
+- Port 9002 collision handling fails closed unless `/proc` command and deployment-directory evidence narrowly identify the listener as the expected SRA API; verified stale API shutdown is TERM-first and permanently audited.
+
 ### Runtime layout
 
 - `app.py` 是 root ASGI entrypoint；`api/` 提供 compatibility import，實際 FastAPI app、routers、services、presenters 與 static assets 位於 `sra_api/`。
