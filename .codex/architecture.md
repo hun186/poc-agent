@@ -178,3 +178,9 @@
 
 - The external `handoff-worker` initializes schema v3, acquires/renews a SQL-fenced coordinator lease, reconciles unfinished immutable submissions before preparing bounded new work, and stops authoritative mutation on lease failure. FastAPI owns no handoff loop.
 - Prepare and acknowledge are separate SQL transactions around the Report Job HTTP call. Reconciliation translates only neutral gateway states, verifies the frozen server-owned root, publishes a validated deterministic DOCX, then atomically closes item/counters/checkpoint/audit.
+
+## 2026-09-10 SRA launcher stale-runtime identity boundary
+
+- `sra_api/main.py` invokes `sra_api/core/proctitle.py::init_proctitle()` during module import, before FastAPI construction. When `setproctitle` is installed it replaces argv/cmdline and the comm name with `SRA-API | port=<PUBLIC_API_BASE port or 9002> | [<MODEL_ID prefix> | ]pid=<os.getpid()> | <socket.gethostname()>` (the kernel comm view is truncated). Both PID and hostname therefore use the launcher's current/container namespace and hostname.
+- `run_sra_api.sh` discovers only TCP LISTEN owners, then requires exact deployment cwd, effective UID, live listener ownership, and either original uvicorn argv, the exact rewritten-title grammar, or a matching launcher-owned PID/start-time/port record. The record supplements rather than replaces live `/proc` and listener proof.
+- Takeover captures `/proc/<pid>/stat` field 22, sends TERM first, and permits KILL only after the same PID/start time remains a verified listener. It performs no Docker/host PID translation.
