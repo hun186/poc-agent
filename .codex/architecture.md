@@ -202,3 +202,8 @@
 
 - Repair journal schema v2 binds the exact old/replacement IDs to either `credential_rotation` with prior state or `first_run_orphan_recovery` without prior state. The repair layer preselects the replacement ID and durably journals it before `ServiceKeyStore.create`, closing the store committed-before-response boundary.
 - Journal-proven first-run recovery rolls back only its exact replacement when state is still absent, then retries from the uniquely retained original orphan. Missing state for a normal rotation and any active-ID set beyond the exact journal evidence remain fail-closed.
+
+## 2026-09-10 Deployment bootstrap transaction serialization and store durability
+
+- A state-directory deployment-bootstrap lock serializes the entire Python bootstrap or explicit repair decision/mutation sequence across credential state, repair journal, and ServiceKeyStore. Recursive journal recovery stays inside the already-held transaction rather than reacquiring the lock.
+- ServiceKeyStore atomic writes now fsync the containing directory after replacement and final owner-only mode enforcement. A successful create/revoke return is therefore a durable store commit point for the repair protocol; an uncertain directory commit raises before journal removal.

@@ -18,6 +18,14 @@ class ServiceKeyStoreError(RuntimeError):
     pass
 
 
+def _fsync_parent_directory(path: Path) -> None:
+    directory_fd = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
 class ServiceKeyStore:
     def __init__(self, path=None):
         self.path = Path(path or os.getenv("SRA_SERVICE_KEYS_FILE", ".sra_service_keys.json"))
@@ -41,7 +49,10 @@ class ServiceKeyStore:
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
                 json.dump(data, stream, ensure_ascii=False, sort_keys=True)
                 stream.flush(); os.fsync(stream.fileno())
-            os.chmod(tmp, 0o600); os.replace(tmp, self.path); os.chmod(self.path, 0o600)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, self.path)
+            os.chmod(self.path, 0o600)
+            _fsync_parent_directory(self.path)
         finally:
             if os.path.exists(tmp): os.unlink(tmp)
 

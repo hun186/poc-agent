@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
 from pathlib import Path
+import time
 
 import pytest
 
@@ -302,6 +304,72 @@ def test_repair_recovers_interruption_after_state_replace(deployment: Path, monk
     active = [item for item in ServiceKeyStore(deployment / "keys.json").list_keys()
               if item["name"] == KEY_NAME and item["status"] == "active"]
     assert [item["key_id"] for item in active] == [replacement["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]]
+
+
+def _concurrent_repair(project_root: str, start, results) -> None:
+    start.wait()
+    try:
+        bootstrap(project_root=Path(project_root), port=9002, repair=True)
+        results.put(None)
+    except BaseException as exc:
+        results.put(f"{type(exc).__name__}:{exc}")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fork-based process regression")
+def test_concurrent_repairs_are_serialized(deployment: Path, monkeypatch) -> None:
+    state_path = bootstrap(project_root=deployment, port=9002)
+    from config import deployment_bootstrap
+    real_rotate = deployment_bootstrap._rotate_handoff_key
+
+    def slow_rotate(**kwargs):
+        time.sleep(0.15)
+        return real_rotate(**kwargs)
+
+    monkeypatch.setattr(deployment_bootstrap, "_rotate_handoff_key", slow_rotate)
+    context = multiprocessing.get_context("fork")
+    start = context.Event()
+    results = context.Queue()
+    processes = [
+        context.Process(target=_concurrent_repair, args=(str(deployment), start, results))
+        for _ in range(2)
+    ]
+    for process in processes:
+        process.start()
+    start.set()
+    for process in processes:
+        process.join(timeout=10)
+        assert process.exitcode == 0
+    assert [results.get(timeout=1) for _ in processes] == [None, None]
+
+    store = ServiceKeyStore(deployment / "keys.json")
+    active = [item for item in store.list_keys() if item["name"] == KEY_NAME and item["status"] == "active"]
+    assert [item["key_id"] for item in active] == [_read_state(state_path)["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]]
+    assert not (deployment / ".sra_runtime" / "requirement_handoff.repair.json").exists()
+
+
+def test_repair_keeps_journal_when_key_store_directory_commit_is_unknown(
+    deployment: Path, monkeypatch,
+) -> None:
+    state_path = bootstrap(project_root=deployment, port=9002)
+    old_id = _read_state(state_path)["SRA_BOOTSTRAP_HANDOFF_KEY_ID"]
+    from sra_api.security import service_key_store
+    real_fsync_parent = service_key_store._fsync_parent_directory
+    calls = 0
+
+    def fail_revoke_directory_commit(path):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("key store directory fsync")
+        real_fsync_parent(path)
+
+    monkeypatch.setattr(service_key_store, "_fsync_parent_directory", fail_revoke_directory_commit)
+    with pytest.raises(OSError, match="key store directory fsync"):
+        bootstrap(project_root=deployment, port=9002, repair=True)
+
+    journal = deployment / ".sra_runtime" / "requirement_handoff.repair.json"
+    assert journal.exists()
+    assert _read_state(state_path)["SRA_BOOTSTRAP_HANDOFF_KEY_ID"] != old_id
 
 
 @pytest.mark.parametrize("connection", [

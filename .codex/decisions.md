@@ -111,3 +111,8 @@
 
 - Preselect a cryptographically random Service Key ID and allow `ServiceKeyStore.create` to accept that validated, collision-checked ID. Persist journal v2 before creation so a store commit followed by a lost response never produces an unattributable second key.
 - Encode transaction origin explicitly rather than inferring it from `created_by`. Only `first_run_orphan_recovery` with `old_state_present=false` permits journal recovery while state is absent; ordinary rotation continues to fail closed on missing state.
+
+## 2026-09-10 Serialize deployment credential transactions above the key store
+
+- Retain ServiceKeyStore's per-operation lock for generic callers, and add a distinct deployment-state transaction lock around complete bootstrap/repair operations. The outer lock is required because journal, state, and multiple key-store operations form one recovery transaction.
+- Treat ServiceKeyStore parent-directory fsync as part of successful mutation, not optional hardening. Repair may durably delete its journal only after old-key revocation returns from that complete durability boundary.

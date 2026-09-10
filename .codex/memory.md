@@ -68,3 +68,10 @@
 - Repair journal v2 now records immutable operation context and whether state existed at transaction start. The repair layer selects the replacement key ID and persists that intent before key creation, so committed-before-response creation and interruption before first state creation remain attributable and restartable without revoking unknown keys.
 - Missing-state recovery is allowed only for a journal-proven first-run orphan transaction whose active IDs are exactly the old key alone or the exact old/new pair. A journal originating from normal credential rotation still fails closed if its prior state disappears.
 - Verification: dependency installation used installed packages despite pip-index proxy 403 retries; the focused deployment/launcher/SQL-registry suite passed 75 tests, Service Key store/API tests passed 3 tests, and `bash -n run_sra_api.sh` plus `git diff --check` passed. SD-1 through SD-7 remain pending; no Agent/ES/LLM/DOCX Golden Path was replayed.
+
+### 2026-09-10 SRA deployment bootstrap corrective review v4
+
+- Serialized each complete Python bootstrap/repair state-key-journal transaction with a deployment-state lock, including restartable recovery, so concurrent explicit repairs cannot overwrite one another's journal or leave an unattributed active key.
+- Made every successful ServiceKeyStore atomic replacement directory-durable before returning; repair therefore retains its authoritative journal if the key-store directory fsync fails.
+- Added process-level concurrent-repair coverage, post-replace key-store directory-fsync failure coverage, and direct custom-key-ID validation/collision/default-generation tests.
+- Verification: dependency installation completed from installed packages despite pip-index proxy 403 retries; focused bootstrap/launcher/SQL-registry/ServiceKey store/API suite passed 86 tests; `bash -n run_sra_api.sh` and `git diff --check` passed. SD-1 through SD-7 remain pending and the Agent/ES/LLM/DOCX Golden Path was not replayed.
