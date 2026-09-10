@@ -83,3 +83,8 @@
 
 - `.codex/archive/decisions.md-20260907-120000.md` — complete pre-compaction decision history through PR #214.
 - `.codex/archive/decisions.md-20260813-000000.md` — earlier decision history retained for traceability.
+
+## 2026-09-10 Validate rewritten SRA titles without weakening fail-closed takeover
+
+- PR #230 assumed original uvicorn argv remained in `/proc/<pid>/cmdline`. The API import-time `setproctitle` call intentionally replaces that argv, so the launcher now recognizes the exact source-derived title (including same-namespace `os.getpid()` and `socket.gethostname()`) rather than a generic `SRA-API` substring.
+- Listener PID, cwd, effective UID, configured port, exact title fields, and process start time are independent required evidence. A launcher-owned atomic identity record adds durable PID/start-time/port evidence for newly launched API children but cannot authorize signaling without current listener and `/proc` validation.
