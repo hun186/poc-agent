@@ -32,6 +32,7 @@
 - `run_sra_api.sh` is the foreground Linux supervisor for exactly three external runtime children: the API, Requirement Schedule Worker, and Requirement Handoff Worker. The API lifespan continues to own the Report Job Worker internally.
 - A Linux `flock` prevents duplicate launcher instances. The launcher retains direct runtime PIDs, bootstraps project environment files in each Requirement worker process, applies separate approximately 10 MB runtime logs, and performs bounded TERM-then-KILL cleanup only for owned children.
 - Port 9002 collision handling fails closed unless `/proc` command and deployment-directory evidence narrowly identify the listener as the expected SRA API; verified stale API shutdown is TERM-first and permanently audited.
+- Deployment bootstrap's machine-readable, non-secret state-path result is the sole authority consumed by the launcher after dotenv loading; Bash does not independently derive or source the generated credential file. Normal restart requires one exact active canonical key, and deterministic SQL/signing configuration is checked before takeover.
 
 ### Runtime layout
 
@@ -184,3 +185,25 @@
 - `sra_api/main.py` invokes `sra_api/core/proctitle.py::init_proctitle()` during module import, before FastAPI construction. When `setproctitle` is installed it replaces argv/cmdline and the comm name with `SRA-API | port=<PUBLIC_API_BASE port or 9002> | [<MODEL_ID prefix> | ]pid=<os.getpid()> | <socket.gethostname()>` (the kernel comm view is truncated). Both PID and hostname therefore use the launcher's current/container namespace and hostname.
 - `run_sra_api.sh` discovers only TCP LISTEN owners, then requires exact deployment cwd, effective UID, live listener ownership, and either original uvicorn argv, the exact rewritten-title grammar, or a matching launcher-owned PID/start-time/port record. The record supplements rather than replaces live `/proc` and listener proof.
 - Takeover captures `/proc/<pid>/stat` field 22, sends TERM first, and permits KILL only after the same PID/start time remains a verified listener. It performs no Docker/host PID translation.
+
+## 2026-09-10 Self-bootstrapping deployment boundary
+
+- `config/deployment_bootstrap.py` is a one-shot provisioning/preflight component invoked by `run_sra_api.sh`; it does not become a runtime role and does not alter `config.bootstrap` environment-loading responsibilities.
+- `.sra_runtime/requirement_handoff.env` is strict owner-only generated state, while the existing shared `ServiceKeyStore` remains the sole digest-only key authority. The canonical Handoff principal has exactly create/read/download Report Job scopes.
+- Startup order is bootstrap and strict state import, verified orphan/takeover handling, API listener readiness, Schedule Worker, then Handoff Worker. Only the supervisor retains flock FD 9; all three children and log consumers close it.
+
+## 2026-09-10 Credential-repair transaction recovery
+
+- An owner-only repair journal binds each rotation to exactly one validated old key ID and one newly created key ID before generated state replacement. Recovery accepts only the journal-selected replacement credential and the exact recorded active identity set; it never infers transaction ownership from same-name/same-scope keys.
+- A state-write exception is not treated as proof that replacement failed. Protected state is re-read: exact old state permits replacement rollback, while exact replacement or unreadable/other state retains both credentials and the journal for fail-closed explicit recovery.
+- State-absent explicit recovery is limited to one exact-scope canonical key created by `deployment-bootstrap`. It creates and persists a replacement through the same journaled rotation before revoking the unrecoverable orphan; ordinary bootstrap remains non-destructive.
+
+## 2026-09-10 Pre-creation repair intent
+
+- Repair journal schema v2 binds the exact old/replacement IDs to either `credential_rotation` with prior state or `first_run_orphan_recovery` without prior state. The repair layer preselects the replacement ID and durably journals it before `ServiceKeyStore.create`, closing the store committed-before-response boundary.
+- Journal-proven first-run recovery rolls back only its exact replacement when state is still absent, then retries from the uniquely retained original orphan. Missing state for a normal rotation and any active-ID set beyond the exact journal evidence remain fail-closed.
+
+## 2026-09-10 Deployment bootstrap transaction serialization and store durability
+
+- A state-directory deployment-bootstrap lock serializes the entire Python bootstrap or explicit repair decision/mutation sequence across credential state, repair journal, and ServiceKeyStore. Recursive journal recovery stays inside the already-held transaction rather than reacquiring the lock.
+- ServiceKeyStore atomic writes now fsync the containing directory after replacement and final owner-only mode enforcement. A successful create/revoke return is therefore a durable store commit point for the repair protocol; an uncertain directory commit raises before journal removal.

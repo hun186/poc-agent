@@ -41,3 +41,37 @@
 
 - `.codex/archive/memory.md-20260910-070805.md`: complete memory before 2026-09-10 compaction.
 - Older archive references remain discoverable from that preserved file.
+
+### 2026-09-10 SRA self-bootstrapping deployment
+
+- Added fail-closed deployment bootstrap provisioning for a persistent, exact-scope `requirement-handoff-runtime` Service Key and owner-only generated Handoff state. Normal restarts validate and reuse the same credential; exceptional same-name repair is explicit.
+- The launcher now bootstraps before takeover, imports generated state through a fixed whitelist (never `source`/`eval`), closes flock FD 9 in children/log consumers, waits for API listener readiness, and records/reclaims positively verified Schedule/Handoff worker identities.
+- Removed the obsolete duplicate launcher and added shell LF and generated-secret ignore policy.
+- Verification: dependency installation completed using already-installed packages despite package-index proxy 403 warnings; deployment-bootstrap tests passed (5); launcher tests passed in bounded groups (29 total); `bash -n` and `git diff --check` passed. Live SD-1 through SD-7 deployment gates were not run because private SQL/runtime infrastructure is unavailable here.
+
+### 2026-09-10 SRA deployment bootstrap implementation-review correction
+
+- Closed the review blockers by requiring one exact active canonical Handoff key, making Python's validated state path authoritative for the shell importer, and reusing deterministic SQL connection plus signed-URL startup validation before runtime takeover.
+- Credential repair now creates and persists the replacement before revoking the old key, rolls back an unpersisted replacement when possible, and can deterministically finish an interrupted post-replace old-key revocation. Ordinary bootstrap never repairs ambiguous keys.
+- Added focused repair/failure tests and a process-level launcher regression proving SIGKILL releases flock while orphan workers remain available for positive identification and replacement-launcher reclamation.
+- Verification: `python -m pytest -q tests/test_deployment_bootstrap.py tests/test_run_sra_api_launcher.py tests/test_requirement_sql_registry.py` passed (67 tests); `bash -n run_sra_api.sh` and `git diff --check` passed. Dependency installation used installed packages; the package-index proxy still returned 403 warnings while checking pip.
+
+### 2026-09-10 SRA deployment bootstrap corrective review v2
+
+- Historical PR #234 verification was reported inconsistently as 67/68 tests. That acceptance claim is superseded by this fresh corrective verification; SD-1 through SD-7 remained pending.
+- Repair now journals the exact old/new key IDs before state replacement and re-reads protected state after a write error. It revokes the replacement only when state is proven unchanged; replacement or indeterminate state retains both keys for explicit journal-bound recovery.
+- Explicit repair can replace one exact-scope, `deployment-bootstrap`-owned orphan canonical key when first-run state is absent. Recovery no longer infers obsolete keys from name/scopes/creator alone or revokes multiple unknown keys.
+- Verification: dependency installation completed from installed packages (pip index checks still warned with proxy 403); `python -m pytest -q tests/test_deployment_bootstrap.py tests/test_run_sra_api_launcher.py tests/test_requirement_sql_registry.py --tb=short` passed 73 tests; `bash -n run_sra_api.sh` and `git diff --check` passed. This is repository evidence only; SD-1 through SD-7 remain pending and the historical Agent/ES/LLM/DOCX Golden Path was not replayed.
+
+### 2026-09-10 SRA deployment bootstrap corrective review v3
+
+- Repair journal v2 now records immutable operation context and whether state existed at transaction start. The repair layer selects the replacement key ID and persists that intent before key creation, so committed-before-response creation and interruption before first state creation remain attributable and restartable without revoking unknown keys.
+- Missing-state recovery is allowed only for a journal-proven first-run orphan transaction whose active IDs are exactly the old key alone or the exact old/new pair. A journal originating from normal credential rotation still fails closed if its prior state disappears.
+- Verification: dependency installation used installed packages despite pip-index proxy 403 retries; the focused deployment/launcher/SQL-registry suite passed 75 tests, Service Key store/API tests passed 3 tests, and `bash -n run_sra_api.sh` plus `git diff --check` passed. SD-1 through SD-7 remain pending; no Agent/ES/LLM/DOCX Golden Path was replayed.
+
+### 2026-09-10 SRA deployment bootstrap corrective review v4
+
+- Serialized each complete Python bootstrap/repair state-key-journal transaction with a deployment-state lock, including restartable recovery, so concurrent explicit repairs cannot overwrite one another's journal or leave an unattributed active key.
+- Made every successful ServiceKeyStore atomic replacement directory-durable before returning; repair therefore retains its authoritative journal if the key-store directory fsync fails.
+- Added process-level concurrent-repair coverage, post-replace key-store directory-fsync failure coverage, and direct custom-key-ID validation/collision/default-generation tests.
+- Verification: dependency installation completed from installed packages despite pip-index proxy 403 retries; focused bootstrap/launcher/SQL-registry/ServiceKey store/API suite passed 86 tests; `bash -n run_sra_api.sh` and `git diff --check` passed. SD-1 through SD-7 remain pending and the Agent/ES/LLM/DOCX Golden Path was not replayed.

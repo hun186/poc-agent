@@ -88,3 +88,31 @@
 
 - PR #230 assumed original uvicorn argv remained in `/proc/<pid>/cmdline`. The API import-time `setproctitle` call intentionally replaces that argv, so the launcher now recognizes the exact source-derived title (including same-namespace `os.getpid()` and `socket.gethostname()`) rather than a generic `SRA-API` substring.
 - Listener PID, cwd, effective UID, configured port, exact title fields, and process start time are independent required evidence. A launcher-owned atomic identity record adds durable PID/start-time/port evidence for newly launched API children but cannot authorize signaling without current listener and `/proc` validation.
+
+## 2026-09-10 Deployment bootstrap and orphan recovery
+
+- Keep the Bash supervisor and generic environment loader narrowly scoped; use an in-process Python bootstrap rather than CLI/HTTP key capture or `.env.local` generation.
+- Missing raw canonical credentials, corrupt/mismatched state, ambiguous recovery identity, and unverified live worker records fail closed. Rotation is exceptional, retains the canonical principal name, and never prints the raw key.
+- Generated state is data, never shell code. Import only the fixed Handoff whitelist and require exact owner/mode/version evidence.
+
+## 2026-09-10 Deployment bootstrap review correction
+
+- Treat the Python bootstrap result as the sole effective state-path authority because it runs after project dotenv loading; expose only a fixed machine-readable path record, never raw generated values.
+- Factor SQL registry validation from connection opening and reuse the same connection-string semantics during preflight. Also reuse signed-resource startup validation before destructive takeover.
+- Keep ordinary startup strictly non-destructive on canonical-key ambiguity. Exceptional repair creates the replacement first, atomically replaces protected raw state, then revokes the old key; pre-replace failure attempts replacement rollback, while a recognizable post-replace interruption is completed only by a later explicit repair.
+
+## 2026-09-10 Repair identity and commit-boundary decision
+
+- Do not use `_write_state()` return as the credential commit boundary because `os.replace()` precedes directory fsync. Re-read the protected state after errors and retain both keys whenever the visible version cannot be proven old.
+- Persist an owner-only old/new ID journal before state replacement. Only that journal authorizes interrupted-repair old-key revocation; creator and scope similarity alone are insufficient evidence.
+- Permit state-absent repair only for one exact-scope canonical orphan owned by first-run `deployment-bootstrap`, using create-new → journal → persist-state → revoke-orphan ordering.
+
+## 2026-09-10 Journal before replacement creation
+
+- Preselect a cryptographically random Service Key ID and allow `ServiceKeyStore.create` to accept that validated, collision-checked ID. Persist journal v2 before creation so a store commit followed by a lost response never produces an unattributable second key.
+- Encode transaction origin explicitly rather than inferring it from `created_by`. Only `first_run_orphan_recovery` with `old_state_present=false` permits journal recovery while state is absent; ordinary rotation continues to fail closed on missing state.
+
+## 2026-09-10 Serialize deployment credential transactions above the key store
+
+- Retain ServiceKeyStore's per-operation lock for generic callers, and add a distinct deployment-state transaction lock around complete bootstrap/repair operations. The outer lock is required because journal, state, and multiple key-store operations form one recovery transaction.
+- Treat ServiceKeyStore parent-directory fsync as part of successful mutation, not optional hardening. Repair may durably delete its journal only after old-key revocation returns from that complete durability boundary.

@@ -15,6 +15,10 @@ LOCK_FILE="${LOCK_FILE:-$BASE_DIR/.run_sra_api.lock}"
 SHUTDOWN_TIMEOUT_SECONDS="${SHUTDOWN_TIMEOUT_SECONDS:-10}"
 PORT_RELEASE_TIMEOUT_SECONDS="${PORT_RELEASE_TIMEOUT_SECONDS:-10}"
 API_IDENTITY_FILE="${API_IDENTITY_FILE:-$BASE_DIR/.run_sra_api_api.identity}"
+SCHEDULE_IDENTITY_FILE="${SCHEDULE_IDENTITY_FILE:-$BASE_DIR/.run_sra_api_schedule.identity}"
+HANDOFF_IDENTITY_FILE="${HANDOFF_IDENTITY_FILE:-$BASE_DIR/.run_sra_api_handoff.identity}"
+HANDOFF_STATE_FILE=""
+API_READINESS_TIMEOUT_SECONDS="${API_READINESS_TIMEOUT_SECONDS:-15}"
 LAUNCHER_UID="$(id -u)"
 RUNTIME_HOSTNAME="$(hostname)"
 
@@ -51,6 +55,73 @@ pid_is_listener() {
     [ "$pid" = "$expected" ] && return 0
   done < <(port_pids)
   return 1
+}
+
+import_handoff_state() {
+  local key value count=0 version=""
+  declare -A seen=()
+  [ -f "$HANDOFF_STATE_FILE" ] && [ ! -L "$HANDOFF_STATE_FILE" ] || return 1
+  [ "$(stat -c%u "$HANDOFF_STATE_FILE" 2>/dev/null || true)" = "$LAUNCHER_UID" ] || return 1
+  [ "$(stat -c%a "$HANDOFF_STATE_FILE" 2>/dev/null || true)" = 600 ] || return 1
+  while IFS='=' read -r key value; do
+    [ -n "$key" ] && [ -z "${seen[$key]:-}" ] || return 1
+    case "$key" in
+      SRA_BOOTSTRAP_STATE_VERSION) version="$value" ;;
+      SRA_BOOTSTRAP_HANDOFF_KEY_ID) : ;;
+      REQUIREMENT_HANDOFF_API_BASE_URL|REQUIREMENT_HANDOFF_ALLOW_INSECURE_LOCALHOST|REQUIREMENT_HANDOFF_LOGICAL_PRINCIPAL|REQUIREMENT_HANDOFF_OUTPUT_ROOT|REQUIREMENT_HANDOFF_CREDENTIAL_ENV|REQUIREMENT_HANDOFF_CREDENTIAL)
+        printf -v "$key" '%s' "$value"; export "$key" ;;
+      *) return 1 ;;
+    esac
+    seen[$key]=1; count=$((count + 1))
+  done < "$HANDOFF_STATE_FILE"
+  [ "$count" -eq 8 ] && [ "$version" = 1 ]
+}
+
+worker_identity_file() {
+  case "$1" in schedule) printf '%s' "$SCHEDULE_IDENTITY_FILE";; handoff) printf '%s' "$HANDOFF_IDENTITY_FILE";; *) return 1;; esac
+}
+
+worker_process_matches() {
+  local role="$1" pid="$2" start="$3" cmd cwd expected
+  process_is_live "$pid" || return 1
+  [ "$(process_start_time "$pid")" = "$start" ] || return 1
+  [ "$(process_effective_uid "$pid")" = "$LAUNCHER_UID" ] || return 1
+  cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+  [ "$cwd" = "$(readlink -f "$BASE_DIR")" ] || return 1
+  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+  expected="$role-worker"
+  [[ "$cmd" == *"requirement_scheduler.cli"* && "$cmd" == *"$expected"* ]]
+}
+
+reclaim_worker() {
+  local role="$1" file key value record_role="" pid="" start="" count=0 deadline
+  file="$(worker_identity_file "$role")"
+  [ -e "$file" ] || return 0
+  [ -f "$file" ] && [ ! -L "$file" ] && [ "$(stat -c%u "$file" 2>/dev/null || true)" = "$LAUNCHER_UID" ] || {
+    echo "[run_sra_api] Invalid $role worker identity record; refusing startup." >&2; return 1; }
+  while IFS='=' read -r key value; do
+    count=$((count + 1)); case "$key" in role) record_role="$value";; pid) pid="$value";; process_start_time) start="$value";; *) return 1;; esac
+  done < "$file"
+  [ "$count" -eq 3 ] && [ "$record_role" = "$role" ] && [[ "$pid" =~ ^[0-9]+$ ]] && [[ "$start" =~ ^[0-9]+$ ]] || return 1
+  if ! process_is_live "$pid"; then rm -f "$file"; return 0; fi
+  worker_process_matches "$role" "$pid" "$start" || {
+    echo "[run_sra_api] Recorded $role worker is live but unverified; no signal sent." >&2; return 1; }
+  audit "Sending SIGTERM to verified stale $role worker PID=$pid start=$start"
+  kill -TERM "$pid"
+  deadline=$((SECONDS + SHUTDOWN_TIMEOUT_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ] && process_is_live "$pid"; do sleep 0.1; done
+  if process_is_live "$pid"; then
+    worker_process_matches "$role" "$pid" "$start" || return 1
+    audit "Sending SIGKILL to verified stale $role worker PID=$pid start=$start"; kill -KILL "$pid"
+  fi
+  rm -f "$file"
+}
+
+write_worker_identity() {
+  local role="$1" pid="$2" file start tmp
+  file="$(worker_identity_file "$role")"; start="$(process_start_time "$pid")"; [ -n "$start" ] || return 1
+  tmp="${file}.tmp.$$"; (umask 077; printf 'role=%s\npid=%s\nprocess_start_time=%s\n' "$role" "$pid" "$start" > "$tmp")
+  mv -f "$tmp" "$file"
 }
 
 identity_record_matches() {
@@ -242,6 +313,8 @@ cleanup() {
   done
   for pid in "${CHILD_PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
   remove_owned_api_identity "${OWNED_API_PID:-}"
+  [ -z "${OWNED_SCHEDULE_PID:-}" ] || rm -f "$SCHEDULE_IDENTITY_FILE"
+  [ -z "${OWNED_HANDOFF_PID:-}" ] || rm -f "$HANDOFF_IDENTITY_FILE"
 }
 
 handle_signal() {
@@ -252,6 +325,17 @@ handle_signal() {
 trap handle_signal INT TERM
 trap cleanup EXIT
 
+bootstrap_result="$(python -m config.deployment_bootstrap bootstrap --project-root "$BASE_DIR" --port "$PORT" 9>&-)"
+case "$bootstrap_result" in
+  deployment_bootstrap_state_path=*) HANDOFF_STATE_FILE="${bootstrap_result#deployment_bootstrap_state_path=}" ;;
+  *) echo "[run_sra_api] Deployment bootstrap returned an invalid state path." >&2; exit 1 ;;
+esac
+[ -n "$HANDOFF_STATE_FILE" ] && [[ "$HANDOFF_STATE_FILE" != *$'\n'* ]] || {
+  echo "[run_sra_api] Deployment bootstrap returned an invalid state path." >&2; exit 1; }
+import_handoff_state || { echo "[run_sra_api] Generated Handoff state validation failed." >&2; exit 1; }
+
+reclaim_worker schedule
+reclaim_worker handoff
 inspect_port
 
 # Normal logs may be reset for a new launch. The permanent audit log is append-only.
@@ -262,16 +346,26 @@ inspect_port
 echo "[run_sra_api] Starting API + Requirement Schedule Worker + Requirement Handoff Worker"
 echo "[run_sra_api] Base directory: $BASE_DIR; port: $PORT; runtime log cap: 10 MB"
 
-uvicorn api.main:app --host 0.0.0.0 --port "$PORT" > >(cap_log "$API_LOG") 2>&1 &
+uvicorn api.main:app --host 0.0.0.0 --port "$PORT" 9>&- > >(cap_log "$API_LOG" 9>&- >/dev/null 2>&1) 2>&1 &
 CHILD_PIDS+=("$!"); CHILD_NAMES+=("SRA API")
 OWNED_API_PID="$!"
 write_api_identity "$OWNED_API_PID"
 
+deadline=$((SECONDS + API_READINESS_TIMEOUT_SECONDS))
+while [ "$SECONDS" -lt "$deadline" ]; do
+  process_is_live "$OWNED_API_PID" || { echo "[run_sra_api] API exited before readiness." >&2; exit 1; }
+  if pid_is_listener "$OWNED_API_PID" && [ "$(process_start_time "$OWNED_API_PID")" = "$OWNED_API_START" ]; then break; fi
+  sleep 0.1
+done
+pid_is_listener "$OWNED_API_PID" || { echo "[run_sra_api] API readiness timed out." >&2; exit 1; }
+
 WORKER_BOOTSTRAP='from config.bootstrap import bootstrap_env; bootstrap_env(); import sys; from requirement_scheduler.cli import main; raise SystemExit(main([sys.argv[1]]))'
-python -c "$WORKER_BOOTSTRAP" schedule-worker > >(cap_log "$SCHEDULE_LOG") 2>&1 &
+python -c "$WORKER_BOOTSTRAP" schedule-worker 9>&- > >(cap_log "$SCHEDULE_LOG" 9>&- >/dev/null 2>&1) 2>&1 &
 CHILD_PIDS+=("$!"); CHILD_NAMES+=("Requirement Schedule Worker")
-python -c "$WORKER_BOOTSTRAP" handoff-worker > >(cap_log "$HANDOFF_LOG") 2>&1 &
+OWNED_SCHEDULE_PID="$!"; write_worker_identity schedule "$OWNED_SCHEDULE_PID"
+python -c "$WORKER_BOOTSTRAP" handoff-worker 9>&- > >(cap_log "$HANDOFF_LOG" 9>&- >/dev/null 2>&1) 2>&1 &
 CHILD_PIDS+=("$!"); CHILD_NAMES+=("Requirement Handoff Worker")
+OWNED_HANDOFF_PID="$!"; write_worker_identity handoff "$OWNED_HANDOFF_PID"
 
 exited_pid=""
 status=0

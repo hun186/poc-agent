@@ -29,13 +29,27 @@ def launcher_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
     events = tmp_path / "events"
     _write_executable(
         bin_dir / "uvicorn",
+        "printf '\\n%s LISTEN\\n' \"$BASHPID\" >> \"$FAKE_PORT_PID_FILE\"; "
         'echo "api:$*" >> "$TEST_EVENTS"; '
         'trap \'echo api-term >> "$TEST_EVENTS"; exit 0\' TERM INT; '
         'while :; do sleep 0.05; done',
     )
     _write_executable(
         bin_dir / "python",
+        'case "$*" in *config.deployment_bootstrap*) '
+        'state_dir="${BOOTSTRAP_STATE_DIR:-$SRA_DEPLOYMENT_STATE_DIR}"; mkdir -m 700 -p "$state_dir"; '
+        'cat > "$state_dir/requirement_handoff.env" <<EOF\n'
+        'SRA_BOOTSTRAP_STATE_VERSION=1\nSRA_BOOTSTRAP_HANDOFF_KEY_ID=test-key\n'
+        'REQUIREMENT_HANDOFF_API_BASE_URL=http://127.0.0.1:9002\n'
+        'REQUIREMENT_HANDOFF_ALLOW_INSECURE_LOCALHOST=true\n'
+        'REQUIREMENT_HANDOFF_LOGICAL_PRINCIPAL=requirement-handoff-runtime\n'
+        'REQUIREMENT_HANDOFF_OUTPUT_ROOT=/tmp/output\n'
+        'REQUIREMENT_HANDOFF_CREDENTIAL_ENV=REQUIREMENT_HANDOFF_CREDENTIAL\n'
+        'REQUIREMENT_HANDOFF_CREDENTIAL=sra_sk_test_not-a-real-secret\nEOF\n'
+        'chmod 600 "$state_dir/requirement_handoff.env"; '
+        'echo "deployment_bootstrap_state_path=$state_dir/requirement_handoff.env"; exit 0;; esac; '
         'echo "python:$*" >> "$TEST_EVENTS"; '
+        'case "$*:$FAIL_SCHEDULE" in *schedule-worker:1) sleep .2; exit 7;; esac; '
         'trap \'echo "worker-term:$*" >> "$TEST_EVENTS"; exit 0\' TERM INT; '
         'while :; do sleep 0.05; done',
     )
@@ -58,6 +72,10 @@ def launcher_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
         SHUTDOWN_TIMEOUT_SECONDS="1",
         PORT_RELEASE_TIMEOUT_SECONDS="1",
         API_IDENTITY_FILE=str(tmp_path / ".run_sra_api.identity"),
+        SRA_DEPLOYMENT_STATE_DIR=str(tmp_path / ".sra_runtime"),
+        FAKE_PORT_PID_FILE=str(tmp_path / "port.pid"),
+        API_READINESS_TIMEOUT_SECONDS="2",
+        FAIL_SCHEDULE="0",
         LSOF_CALLS=str(tmp_path / "lsof.calls"),
     )
     return env, events
@@ -118,6 +136,21 @@ def test_launcher_has_valid_bash_syntax() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_shell_sources_are_lf_only_and_duplicate_launcher_is_absent() -> None:
+    assert "*.sh text eol=lf" in (ROOT / ".gitattributes").read_text(encoding="utf-8")
+    for path in ROOT.glob("*.sh"):
+        assert b"\r\n" not in path.read_bytes(), path
+    assert not (ROOT / "run_sra_api - 複製.sh").exists()
+
+
+def test_bootstrap_precedes_takeover_and_state_is_not_executed() -> None:
+    source = LAUNCHER.read_text(encoding="utf-8")
+    assert source.index("python -m config.deployment_bootstrap") < source.index("\ninspect_port\n")
+    assert "source $HANDOFF_STATE_FILE" not in source
+    assert "eval" not in source
+    assert source.count("9>&-") >= 7
+
+
 def test_starts_all_three_roles_and_bootstraps_workers(launcher_env) -> None:
     env, events = launcher_env
     proc = _start(env)
@@ -134,6 +167,15 @@ def test_starts_all_three_roles_and_bootstraps_workers(launcher_env) -> None:
     assert all("bootstrap_env()" in line for line in worker_lines)
 
 
+def test_launcher_imports_exact_path_returned_by_bootstrap(launcher_env) -> None:
+    env, events = launcher_env
+    env["BOOTSTRAP_STATE_DIR"] = str(Path(env["BASE_DIR"]) / "dotenv-selected-state")
+    proc = _start(env)
+    _wait_for(events, "handoff-worker")
+    _stop(proc)
+    assert (Path(env["BOOTSTRAP_STATE_DIR"]) / "requirement_handoff.env").is_file()
+
+
 def test_second_launcher_fails_without_starting_duplicates(launcher_env) -> None:
     env, events = launcher_env
     first = _start(env)
@@ -146,6 +188,54 @@ def test_second_launcher_fails_without_starting_duplicates(launcher_env) -> None
     assert second.returncode != 0
     assert "already running" in (second.stdout + second.stderr).lower()
     assert after == before
+
+
+def test_sigkill_releases_flock_and_replacement_reclaims_orphan_workers(launcher_env) -> None:
+    env, events = launcher_env
+    first = _start(env)
+    _wait_for(events, "handoff-worker")
+    schedule_record = Path(env["BASE_DIR"]) / ".run_sra_api_schedule.identity"
+    handoff_record = Path(env["BASE_DIR"]) / ".run_sra_api_handoff.identity"
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and not (schedule_record.exists() and handoff_record.exists()):
+        time.sleep(0.02)
+    old_schedule = int(dict(line.split("=", 1) for line in schedule_record.read_text().splitlines())["pid"])
+    old_handoff = int(dict(line.split("=", 1) for line in handoff_record.read_text().splitlines())["pid"])
+
+    first.kill()
+    first.wait(timeout=3)
+    assert all(os.kill(pid, 0) is None for pid in (old_schedule, old_handoff))
+    lock_probe = subprocess.run(
+        ["flock", "-n", env["LOCK_FILE"], "true"], capture_output=True, text=True,
+    )
+    assert lock_probe.returncode == 0
+
+    replacement = _start(env)
+    try:
+        def live(pid: int) -> bool:
+            stat_path = Path(f"/proc/{pid}/stat")
+            return stat_path.exists() and stat_path.read_text().split()[2] != "Z"
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if not live(old_schedule) and not live(old_handoff):
+                break
+            time.sleep(0.05)
+        assert not live(old_schedule)
+        assert not live(old_handoff)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            content = events.read_text(encoding="utf-8") if events.exists() else ""
+            if content.count("handoff-worker") >= 2 and schedule_record.exists() and handoff_record.exists():
+                break
+            time.sleep(0.03)
+        assert content.count("handoff-worker") >= 2
+        new_schedule = int(dict(line.split("=", 1) for line in schedule_record.read_text().splitlines())["pid"])
+        new_handoff = int(dict(line.split("=", 1) for line in handoff_record.read_text().splitlines())["pid"])
+        assert new_schedule != old_schedule and new_handoff != old_handoff
+        assert sum(1 for pid in (new_schedule, new_handoff) if Path(f"/proc/{pid}").exists()) == 2
+    finally:
+        _stop(replacement)
 
 
 def test_unverified_port_owner_is_not_killed_and_fails_closed(launcher_env) -> None:
@@ -404,14 +494,7 @@ def test_signal_cleans_up_every_owned_child(launcher_env, sig: int) -> None:
 
 def test_unexpected_child_exit_cleans_up_siblings(launcher_env) -> None:
     env, events = launcher_env
-    python = Path(env["PATH"].split(":", 1)[0]) / "python"
-    _write_executable(
-        python,
-        'echo "python:$*" >> "$TEST_EVENTS"; '
-        'case "$*" in *schedule-worker*) sleep .2; exit 7;; esac; '
-        'trap \'echo "worker-term:$*" >> "$TEST_EVENTS"; exit 0\' TERM INT; '
-        'while :; do sleep .05; done',
-    )
+    env["FAIL_SCHEDULE"] = "1"
     proc = _start(env)
     output, _ = proc.communicate(timeout=5)
     content = events.read_text(encoding="utf-8")
