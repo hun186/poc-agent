@@ -1,16 +1,12 @@
 from __future__ import annotations
 
+import os
 import sys
+import requests
 from pathlib import Path
 
-# ----------------------------------------------------------------------
-# Make this operator E2E script runnable from:
-#   - Spyder F5 / runfile()
-#   - python operator_e2e/<script>.py
-#   - Windows
-#   - Linux
-# regardless of the current working directory.
-# ----------------------------------------------------------------------
+from dotenv import dotenv_values
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
@@ -20,18 +16,69 @@ if project_root_text not in sys.path:
     sys.path.insert(0, project_root_text)
 
 from config.bootstrap import bootstrap_env
-import os
+
+
+# ------------------------------------------------------------
+# Normal application configuration
+# ------------------------------------------------------------
 
 bootstrap_env()
 
-BASE = os.getenv(
-    "SRA_E2E_API_BASE",
-    "http://127.0.0.1:9002",
-)
 
-OPENWEBUI_KEY = os.environ["SRA_E2E_OPENWEBUI_KEY"]
-READ_ONLY_KEY = os.environ["SRA_E2E_READ_ONLY_KEY"]
-REPORT_KEY = os.environ["SRA_E2E_REPORT_KEY"]
+# ------------------------------------------------------------
+# Operator E2E private configuration
+#
+# Precedence:
+#   existing environment > operator_e2e/e2e.env.local
+#
+# Only SRA_E2E_* variables are accepted.
+# ------------------------------------------------------------
+
+E2E_ENV_FILE = SCRIPT_DIR / "e2e.env.local"
+
+if E2E_ENV_FILE.exists():
+    values = dotenv_values(E2E_ENV_FILE)
+
+    for key, value in values.items():
+        if not key.startswith("SRA_E2E_"):
+            raise RuntimeError(
+                f"Unsupported setting in {E2E_ENV_FILE.name}: {key}\n"
+                "Only SRA_E2E_* variables are allowed."
+            )
+
+        if value is not None and key not in os.environ:
+            os.environ[key] = value
+
+
+def require_e2e_env(name: str) -> str:
+    value = (os.getenv(name) or "").strip()
+
+    if value:
+        return value
+
+    print()
+    print("=" * 70)
+    print("E2E CONFIG ERROR")
+    print("=" * 70)
+    print(f"Missing or empty setting: {name}")
+    print()
+    print("Expected source:")
+    print(f"  {E2E_ENV_FILE}")
+    print()
+    print("Do NOT put raw credentials in this Python file.")
+    print("=" * 70)
+
+    raise SystemExit(2)
+
+
+BASE = (
+    os.getenv("SRA_E2E_API_BASE")
+    or "http://127.0.0.1:9002"
+).strip()
+
+OPENWEBUI_KEY = require_e2e_env("SRA_E2E_OPENWEBUI_KEY")
+READ_ONLY_KEY = require_e2e_env("SRA_E2E_READ_ONLY_KEY")
+REPORT_KEY = require_e2e_env("SRA_E2E_REPORT_KEY")
 
 def show(name, response):
     print()
