@@ -56,7 +56,8 @@ def bootstrap_env(
         os.environ[env_key] = env
 
     _BOOTSTRAPPED = True
-    print(f"env:{env}")
+    print(f"config profile: {env} (selector only; not runtime mode)")
+    print(f"config precedence: OS environment > .env.local > .env.{env} > .env")
     print(f"loaded env files:{loaded}")
     return env, loaded
 

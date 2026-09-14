@@ -10,6 +10,11 @@
 
 ## Recent Changes
 
+### 2026-09-11 Bootstrap profile logging clarification
+
+- Replaced `bootstrap_env()`'s ambiguous `env:<profile>` line with explicit selector-only profile wording and a dynamic precedence line while preserving file loading, merge, OS-environment precedence, guard, force, and return behavior.
+- Strict TDD evidence: the new focused bootstrap tests first failed 2 tests against the old output, then passed 2 tests after the logging-only change. The focused bootstrap/config regression suite passed 29 tests; `git diff --check` also passed.
+
 ### 2026-09-10 Rewritten SRA runtime-title takeover fix
 
 - Corrected PR #230's stale API identity assumption. `sra_api/main.py` calls `init_proctitle(\"SRA-API\")` at import time; when `setproctitle` is installed, `sra_api/core/proctitle.py` replaces argv/cmdline and comm with `SRA-API | port=<port> | [<model> | ]pid=<os.getpid()> | <socket.gethostname()>`. This is process-title mutation, not a Docker PID namespace defect.
