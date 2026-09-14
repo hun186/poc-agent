@@ -1,8 +1,9 @@
-# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.1
+# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.2
 
-> **Supersedes v1.** The post-merge command review found source-identity,
-> process-binding, restart-evidence, and cleanup authorization defects in v1.
-> Do not execute the v1 commands from repository history.
+> **Supersedes v1.1. Do not use v1 or v1.1 for live execution.** The v1.2
+> corrective review closes fail-open control flow, signal-authority, and
+> executable restart-comparison defects. Static review is not deployment
+> acceptance; SD-1 through SD-7 remain **PENDING**.
 
 ## Document control
 
@@ -10,16 +11,15 @@
 | --- | --- |
 | Repository | `hun186/poc-agent` |
 | Hosted branch | `main` |
-| Reviewed source | `2ef993e34629828128ff5244422c3440a4e305f3` (PR #240 merge) |
+| Runbook review baseline | `30c5c918ff83a9f4f238383419b0db9886d0b872` (PR #241 merge) |
+| Deployed runtime baseline | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` (runtime tree; see SD-1) |
 | Runtime parent | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` |
-| Version | `v1.1` |
+| Version | `v1.2` |
 | Status | **STATICALLY REVIEWED; SD-1 THROUGH SD-7 PENDING** |
 
-The command reviewer attempted `git ls-remote` on 2026-09-14 and received
-`CONNECT tunnel failed, response 403`. The hosted SHA could not be refreshed, so
-no SHA newer than the issuance baseline is claimed. The local object at the
-issuance SHA was used only because it exactly matched that supplied hosted
-baseline.
+At v1.2 issuance, the supplied hosted authority is the PR #241 merge above.
+Runbook identity and deployed-byte identity are deliberately separate: a future
+documentation-only merge changes the former without invalidating the latter.
 
 ## Universal rules
 
@@ -50,30 +50,34 @@ accept_setup
 
 If `aiuser` is not the configured owner, stop and review a revised owner binding.
 
-## Shared exact runtime verifier (read-only)
+## Shared source-aligned runtime verifier (read-only)
 
 Define this helper only for SD-4 through SD-6. It validates owner-only identity
-records, PID/start time, effective UID, cwd, parent launcher, exact worker argv,
-API listener ownership, and parsed OpenAPI content. PID existence alone never
-passes. `lsof` is the same listener authority used by the launcher.
+records, their exact schemas, PID/start time, non-zombie state, effective UID,
+cwd, parent launcher, worker argv, API identity/listener ownership, and parsed
+OpenAPI content. It also proves the launcher owns the configured flock. PID
+existence alone never passes. `lsof` is the same listener authority used by the
+launcher. Each Python invocation is explicitly connected to `return 1`; no
+function relies on interactive `set -e`.
 
 ```bash
 verify_sra_runtime() {
   cd /mntCZJ/TopicClassification/poc-agent || { echo 'RUNTIME_VERIFY=FAIL reason=cannot_cd'; return 1; }
   python - <<'PY'
-import json, os, stat, subprocess, urllib.request
+import json, os, socket, stat, subprocess, urllib.request
 from pathlib import Path
 root=Path.cwd().resolve(); uid=os.geteuid()
-def record(role):
+def record(role, expected, exact_mode=None):
  p=Path(f'.run_sra_api_{role}.identity')
  if p.is_symlink() or not p.is_file(): raise RuntimeError(f'{role}_record_type')
  s=p.stat()
- if s.st_uid!=uid or stat.S_IMODE(s.st_mode)!=0o600: raise RuntimeError(f'{role}_record_owner_mode')
+ if s.st_uid!=uid or (exact_mode is not None and stat.S_IMODE(s.st_mode)!=exact_mode): raise RuntimeError(f'{role}_record_owner_mode')
  rows=p.read_text().splitlines(); d={}
  for row in rows:
   k,sep,v=row.partition('=')
   if not sep or k in d: raise RuntimeError(f'{role}_record_shape')
   d[k]=v
+ if len(rows)!=len(expected) or set(d)!=set(expected): raise RuntimeError(f'{role}_record_schema')
  return d
 def proc(pid, start, role, parent=None):
  if not pid.isdigit() or not start.isdigit(): raise RuntimeError(f'{role}_pid_shape')
@@ -86,18 +90,27 @@ def proc(pid, start, role, parent=None):
   raise RuntimeError(f'{role}_process_identity')
  if parent is not None and int(fields[3])!=parent: raise RuntimeError(f'{role}_wrong_parent')
  return argv
-l=record('launcher'); lpid=l['pid']; largv=proc(lpid,l['process_start_time'],'launcher')
-if len(largv)<2: raise RuntimeError('launcher_argv')
+l=record('launcher',('pid','process_start_time','effective_uid','cwd','launcher_path'),0o600)
+lpid=l['pid']; largv=proc(lpid,l['process_start_time'],'launcher')
+if l['effective_uid']!=str(uid) or Path(l['cwd']).resolve()!=root: raise RuntimeError('launcher_stored_identity')
+if len(largv)<2 or Path(largv[0]).name!='bash': raise RuntimeError('launcher_argv')
 script=(root/largv[1]).resolve() if not Path(largv[1]).is_absolute() else Path(largv[1]).resolve()
 if Path(l['launcher_path']).resolve()!=root/'run_sra_api.sh' or script!=root/'run_sra_api.sh':
  raise RuntimeError('launcher_argv')
+# FD 9 and /proc/locks jointly bind the exact launcher to the launcher flock.
+lock=(root/'.run_sra_api.lock').stat(); fd=(Path('/proc')/lpid/'fd/9')
+if fd.stat().st_ino!=lock.st_ino or fd.stat().st_dev!=lock.st_dev: raise RuntimeError('launcher_lock_fd')
+needle=f'{os.major(lock.st_dev):02x}:{os.minor(lock.st_dev):02x}:{lock.st_ino}'
+locks=Path('/proc/locks').read_text().splitlines()
+if not any(x.split()[1:4]==['FLOCK','ADVISORY','WRITE'] and x.split()[4]==lpid and x.split()[5].lower()==needle.lower() for x in locks):
+ raise RuntimeError('launcher_flock_owner')
 lp=int(lpid)
-a=record('api'); apid=a['api_pid']; proc(apid,a['api_start_time'],'api',lp)
+a=record('api',('api_pid','api_start_time','port')); apid=a['api_pid']; aargv=proc(apid,a['api_start_time'],'api',lp)
 if a.get('port')!='9002': raise RuntimeError('api_port_record')
 listeners=subprocess.check_output(['lsof','-t','-nP','-a','-p',apid,'-iTCP:9002','-sTCP:LISTEN'],text=True).split()
 if listeners!=[apid]: raise RuntimeError('api_listener')
 for role,command in [('schedule','schedule-worker'),('handoff','handoff-worker')]:
- d=record(role); argv=proc(d['pid'],d['process_start_time'],role,lp)
+ d=record(role,('role','pid','process_start_time'),0o600); argv=proc(d['pid'],d['process_start_time'],role,lp)
  if d.get('role')!=role or 'requirement_scheduler.cli' not in ' '.join(argv) or command not in argv:
   raise RuntimeError(f'{role}_argv')
 try:
@@ -109,6 +122,8 @@ print(f'RUNTIME_LAUNCHER_PID={lpid}')
 print(f'RUNTIME_API_PID={apid}')
 print('RUNTIME_VERIFY=PASS')
 PY
+  local rc=$?
+  [ "$rc" -eq 0 ] || { echo 'RUNTIME_VERIFY=FAIL reason=source_aligned_identity'; return 1; }
 }
 ```
 
@@ -125,31 +140,38 @@ artifact-identity assumption.
 Only a deployment installed as an intact Git worktree may use the command below.
 For a package/overlay deployment, do not substitute its incidental `.git` state:
 report `SD_1=BLOCKED reason=no_authoritative_package_identity` until the release
-owner supplies a reviewed, tamper-evident manifest binding the package and overlay
-to commit `2ef993e...`. This does not weaken the source gate.
+owner supplies a reviewed, tamper-evident `DEPLOYMENT_COMMIT.txt` or equivalent
+package/overlay manifest. This does not weaken the source gate.
 
 ### Git-worktree action (read-only)
 
 ```bash
 sd1_git_worktree() {
-  local expected=2ef993e34629828128ff5244422c3440a4e305f3 head
+  local runtime=edcbc744f71374eaa839b0a31e0cd125fcb6fe52 head
   cd /mntCZJ/TopicClassification/poc-agent || { echo 'SD_1=FAIL reason=cannot_cd'; return 1; }
   [ -d .git ] || { echo 'SD_1=BLOCKED reason=no_authoritative_package_identity'; return 2; }
   head=$(git rev-parse HEAD 2>/dev/null) || { echo 'SD_1=FAIL reason=git_unreadable'; return 1; }
-  [ "$head" = "$expected" ] || { printf 'SD_1_HEAD=%s\nSD_1=FAIL reason=baseline_mismatch\n' "$head"; return 1; }
-  git diff --quiet "$expected" -- || { echo 'SD_1=FAIL reason=tracked_bytes_differ'; return 1; }
-  [ -z "$(git status --porcelain=v1 --untracked-files=no)" ] || { echo 'SD_1=FAIL reason=tracked_changes'; return 1; }
+  git merge-base --is-ancestor "$runtime" "$head" || { echo 'SD_1=FAIL reason=runtime_not_ancestor'; return 1; }
+  git diff --quiet "$runtime" "$head" -- . ':(exclude)docs/**' ':(exclude).codex/**' || {
+    echo 'SD_1=FAIL reason=runtime_tree_changed_after_reviewed_runtime'; return 1;
+  }
+  git diff --quiet "$head" -- . ':(exclude)docs/**' ':(exclude).codex/**' || {
+    echo 'SD_1=FAIL reason=deployed_runtime_bytes_dirty'; return 1;
+  }
   for f in run_sra_api.sh config/deployment_bootstrap.py requirement_scheduler/cli.py .gitattributes; do
     [ -f "$f" ] || { echo "SD_1=FAIL reason=missing_file file=$f"; return 1; }
   done
-  git show -s --format='SD_1_COMMIT=%H%nSD_1_SUBJECT=%s' HEAD
-  echo 'SD_1=PASS identity_mode=intact_git_worktree'
+  printf 'SD_1_WORKTREE_HEAD=%s\nSD_1_RUNTIME_TREE=%s\n' "$head" "$runtime"
+  echo 'SD_1=PASS identity_mode=intact_git_worktree_runtime_tree'
 }
 sd1_git_worktree
 ```
 
-PASS requires the exact reviewed merge commit and byte-clean tracked worktree.
-Package/overlay identity remains a deployment-release BLOCKER; do not pull/reset.
+PASS requires that the runtime commit is an ancestor, all tracked non-documentation
+bytes equal its runtime tree, and those deployed bytes are clean. Documentation-
+only commits therefore do not recursively invalidate SD-1. Unreviewed runtime
+changes fail. Package/overlay identity remains a release BLOCKER; do not pull,
+reset, or clean.
 
 ## SD-2 — LF_PACKAGE_GATE
 
@@ -159,7 +181,7 @@ This gate is entirely read-only. `.gitattributes` applies `text eol=lf` to
 ```bash
 sd2_lf() {
   cd /mntCZJ/TopicClassification/poc-agent || { echo 'SD_2=FAIL reason=cannot_cd'; return 1; }
-  git check-attr text eol -- run_sra_api.sh
+  git check-attr text eol -- run_sra_api.sh || { echo 'SD_2=FAIL reason=attribute_scan'; return 1; }
   git check-attr text -- run_sra_api.sh | grep -q ': text: set$' || { echo 'SD_2=FAIL reason=text_attribute'; return 1; }
   git check-attr eol -- run_sra_api.sh | grep -q ': eol: lf$' || { echo 'SD_2=FAIL reason=eol_attribute'; return 1; }
   python - <<'PY'
@@ -171,6 +193,8 @@ print(f'SD_2_FILES={len(files)} CR_FILES={len(bad)}')
 for p in bad[:10]: print('SD_2_BAD_FILE='+p)
 raise SystemExit(1 if bad else 0)
 PY
+  local rc=$?
+  [ "$rc" -eq 0 ] || { echo 'SD_2=FAIL reason=crlf_or_scan'; return 1; }
   bash -n run_sra_api.sh || { echo 'SD_2=FAIL reason=bash_syntax'; return 1; }
   echo 'SD_2=PASS'
 }
@@ -203,6 +227,8 @@ if p.exists() or p.is_symlink() or keys:
  print('SD_3_PRECHECK=BLOCKED_ALREADY_PROVISIONED'); raise SystemExit(2)
 print('SD_3_PRECHECK=PASS')
 PY
+  local rc=$?
+  [ "$rc" -eq 0 ] || { echo 'SD_3_PRECHECK=FAIL_OR_BLOCKED'; return "$rc"; }
 }
 sd3_precheck
 ```
@@ -217,12 +243,15 @@ On an accepted first-run instance only, start the normal entrypoint:
 sd3_start() {
   cd /mntCZJ/TopicClassification/poc-agent || { echo 'SD_3_ACTION=FAIL reason=cannot_cd'; return 1; }
   umask 077
-  nohup ./run_sra_api.sh > /tmp/sra-sd3-launcher.log 2>&1 </dev/null &
+  SD3_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sra-sd3.XXXXXXXX") || { echo 'SD_3_ACTION=FAIL reason=mktemp'; return 1; }
+  export SD3_DIR
+  [ -d "$SD3_DIR" ] && [ ! -L "$SD3_DIR" ] && [ "$(stat -c%u "$SD3_DIR")" = "$(id -u)" ] && [ "$(stat -c%a "$SD3_DIR")" = 700 ] || { echo 'SD_3_ACTION=FAIL reason=evidence_dir'; return 1; }
+  nohup ./run_sra_api.sh > "$SD3_DIR/launcher.log" 2>&1 </dev/null &
   local pid=$! start
   start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || { echo 'SD_3_ACTION=FAIL reason=launcher_exited'; return 1; }
-  printf 'pid=%s\nstart=%s\n' "$pid" "$start" > /tmp/sra-sd3-invocation.identity
+  printf 'pid=%s\nstart=%s\n' "$pid" "$start" > "$SD3_DIR/invocation.identity" || { echo 'SD_3_ACTION=FAIL reason=evidence_write'; return 1; }
   sleep 18
-  [ "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)" = "$start" ] || { echo 'SD_3_ACTION=FAIL reason=launcher_exited_or_reused'; tail -n 30 /tmp/sra-sd3-launcher.log; return 1; }
+  [ "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)" = "$start" ] || { echo 'SD_3_ACTION=FAIL reason=launcher_exited_or_reused'; tail -n 30 "$SD3_DIR/launcher.log"; return 1; }
   echo 'SD_3_ACTION=PASS'
 }
 sd3_start
@@ -254,6 +283,8 @@ print('SD_3_SCOPES='+(','.join(selected[0]['scopes']) if selected else 'UNAVAILA
 print('SD_3_VERIFY='+('PASS' if ok else 'FAIL'))
 raise SystemExit(0 if ok else 1)
 PY
+  local rc=$?
+  [ "$rc" -eq 0 ] || { echo 'SD_3_VERIFY=FAIL reason=metadata_invariant'; return 1; }
 }
 sd3_verify
 ```
@@ -276,19 +307,39 @@ sd4_crash_exact_launcher() {
 import os, signal, stat
 from pathlib import Path
 p=Path('.run_sra_api_launcher.identity')
-if p.is_symlink() or stat.S_IMODE(p.stat().st_mode)!=0o600 or p.stat().st_uid!=os.geteuid(): raise SystemExit('SD_4_CRASH=FAIL reason=record')
-d=dict(x.split('=',1) for x in p.read_text().splitlines()); pid=int(d['pid'])
+root=Path.cwd().resolve(); uid=os.geteuid()
+if p.is_symlink() or not p.is_file() or stat.S_IMODE(p.stat().st_mode)!=0o600 or p.stat().st_uid!=uid:
+ raise SystemExit('SD_4_CRASH=FAIL reason=record')
+rows=p.read_text().splitlines(); d={}
+for row in rows:
+ k,sep,v=row.partition('=')
+ if not sep or k in d: raise SystemExit('SD_4_CRASH=FAIL reason=record_schema')
+ d[k]=v
+if len(rows)!=5 or set(d)!= {'pid','process_start_time','effective_uid','cwd','launcher_path'}:
+ raise SystemExit('SD_4_CRASH=FAIL reason=record_schema')
+if d['effective_uid']!=str(uid) or Path(d['cwd']).resolve()!=root or Path(d['launcher_path']).resolve()!=root/'run_sra_api.sh':
+ raise SystemExit('SD_4_CRASH=FAIL reason=stored_identity')
+pid=int(d['pid'])
 fd=os.pidfd_open(pid)
 try:
  proc=Path('/proc')/str(pid); argv=[x.decode() for x in (proc/'cmdline').read_bytes().split(b'\0') if x]
- start=(proc/'stat').read_text().split()[21]; cwd=Path(os.readlink(proc/'cwd')).resolve()
+ fields=(proc/'stat').read_text().split(); start=fields[21]; cwd=Path(os.readlink(proc/'cwd')).resolve()
+ status=(proc/'status').read_text().splitlines(); euid=next(x.split()[2] for x in status if x.startswith('Uid:'))
+ if fields[2]=='Z' or len(argv)<2 or Path(argv[0]).name!='bash': raise SystemExit('SD_4_CRASH=FAIL reason=process_shape')
  script=(cwd/argv[1]).resolve() if not Path(argv[1]).is_absolute() else Path(argv[1]).resolve()
- ok=(start==d['process_start_time'] and cwd==Path.cwd().resolve() and script==Path('run_sra_api.sh').resolve() and Path(d['launcher_path']).resolve()==script)
+ lock=(root/'.run_sra_api.lock').stat(); lockfd=(proc/'fd/9').stat()
+ needle=f'{os.major(lock.st_dev):02x}:{os.minor(lock.st_dev):02x}:{lock.st_ino}'
+ owns=any(x.split()[1:4]==['FLOCK','ADVISORY','WRITE'] and x.split()[4]==str(pid) and x.split()[5].lower()==needle.lower() for x in Path('/proc/locks').read_text().splitlines())
+ ok=(start==d['process_start_time'] and euid==str(uid) and cwd==root and script==root/'run_sra_api.sh' and lockfd.st_dev==lock.st_dev and lockfd.st_ino==lock.st_ino and owns)
  if not ok: raise SystemExit('SD_4_CRASH=FAIL reason=identity_changed_no_signal')
+ # Re-read the complete record after opening pidfd and immediately before signal.
+ if p.read_text().splitlines()!=rows: raise SystemExit('SD_4_CRASH=FAIL reason=record_drift_no_signal')
  signal.pidfd_send_signal(fd,signal.SIGKILL)
  print(f'SD_4_CRASH=PASS pid={pid} start={start}')
 finally: os.close(fd)
 PY
+  local rc=$?
+  [ "$rc" -eq 0 ] || { echo 'SD_4_CRASH=FAIL_OR_BLOCKED no_signal_if_unproven'; return 1; }
 }
 sd4_crash_exact_launcher
 ```
@@ -299,11 +350,14 @@ Start recovery as a separate operator step only after the crash PASS:
 sd4_recover() {
   cd /mntCZJ/TopicClassification/poc-agent || { echo 'SD_4_RECOVERY=FAIL reason=cannot_cd'; return 1; }
   umask 077
-  nohup ./run_sra_api.sh > /tmp/sra-sd4-recovery.log 2>&1 </dev/null &
+  local log
+  log=$(mktemp "${TMPDIR:-/tmp}/sra-sd4-recovery.XXXXXXXX.log") || { echo 'SD_4_RECOVERY=FAIL reason=mktemp'; return 1; }
+  [ ! -L "$log" ] && [ "$(stat -c%u "$log")" = "$(id -u)" ] && [ "$(stat -c%a "$log")" = 600 ] || { echo 'SD_4_RECOVERY=FAIL reason=log_owner_mode'; return 1; }
+  nohup ./run_sra_api.sh > "$log" 2>&1 </dev/null &
   local pid=$! start
   start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || { echo 'SD_4_RECOVERY=FAIL reason=exited'; return 1; }
   sleep 18
-  [ "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)" = "$start" ] || { echo 'SD_4_RECOVERY=FAIL reason=exited_or_reused'; tail -n 40 /tmp/sra-sd4-recovery.log; return 1; }
+  [ "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)" = "$start" ] || { echo 'SD_4_RECOVERY=FAIL reason=exited_or_reused'; tail -n 40 "$log"; return 1; }
   verify_sra_runtime || return 1
   echo 'SD_4_RECOVERY=PASS'
 }
@@ -343,6 +397,8 @@ if row: print(f'SD_5_LEASE_OWNER={row[0]} GENERATION={int(row[1])} LIVE={int(row
 print('SD_5='+('PASS' if ok else 'FAIL'))
 raise SystemExit(0 if ok else 1)
 PY
+  local rc=$?
+  [ "$rc" -eq 0 ] || { echo 'SD_5=FAIL reason=lease_observation'; return 1; }
 }
 sd5_observe
 ```
@@ -352,65 +408,133 @@ worker logs without startup/invariant errors. HTTP 200 or live PIDs alone fail.
 
 ## SD-6 — RESTART_IDEMPOTENCY_GATE
 
-Run `verify_sra_runtime`, then capture: exact identity records, protected-state
-SHA-256 and selected public key ID, and the read-only lease projection used by
-SD-5. Store the evidence in owner-only `/tmp/sra-sd6-before` (`umask 077`). Never
-store a raw credential or lease token.
+Use one new SSH session, define `accept_setup`, `verify_sra_runtime`, and all four functions below, then run exactly: `accept_setup`, `sd6_prepare`, `sd6_snapshot_before`, `sd6_restart`, `sd6_verify_after`, and `sd6_cleanup`. `SD6_DIR` is the only documented cross-step shell state. It is unique, owner-only, and contains no credential, token, password, Authorization header, or signed URL.
 
 ```bash
-sd6_snapshot() {
-  local label="$1"
-  [ "$label" = before ] || [ "$label" = after ] || { echo 'SD_6_SNAPSHOT=FAIL reason=label'; return 1; }
-  cd /mntCZJ/TopicClassification/poc-agent || { echo 'SD_6_SNAPSHOT=FAIL reason=cannot_cd'; return 1; }
+sd6_prepare() {
+  cd /mntCZJ/TopicClassification/poc-agent || { echo 'SD_6_PREPARE=FAIL reason=cannot_cd'; return 1; }
+  umask 077
+  SD6_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sra-sd6.XXXXXXXX") || { echo 'SD_6_PREPARE=FAIL reason=mktemp'; return 1; }
+  export SD6_DIR
+  [ -d "$SD6_DIR" ] && [ ! -L "$SD6_DIR" ] || { echo 'SD_6_PREPARE=FAIL reason=directory_type'; return 1; }
+  [ "$(stat -c%u "$SD6_DIR")" = "$(id -u)" ] && [ "$(stat -c%a "$SD6_DIR")" = 700 ] || { echo 'SD_6_PREPARE=FAIL reason=directory_owner_mode'; return 1; }
+  echo 'SD_6_PREPARE=PASS'
+}
+```
+
+```bash
+sd6_snapshot_before() {
+  cd /mntCZJ/TopicClassification/poc-agent || { echo 'SD_6_BEFORE=FAIL reason=cannot_cd'; return 1; }
+  [ -n "${SD6_DIR:-}" ] && [ -d "$SD6_DIR" ] && [ ! -L "$SD6_DIR" ] || { echo 'SD_6_BEFORE=FAIL reason=evidence_dir'; return 1; }
+  [ "$(stat -c%u "$SD6_DIR")" = "$(id -u)" ] && [ "$(stat -c%a "$SD6_DIR")" = 700 ] || { echo 'SD_6_BEFORE=FAIL reason=evidence_owner_mode'; return 1; }
   verify_sra_runtime || return 1
-  SD6_LABEL="$label" python - <<'PY'
-import hashlib, os
+  python - <<'PY'
+import hashlib,json,os
 from pathlib import Path
 from config.bootstrap import bootstrap_env
 bootstrap_env(project_root=Path.cwd())
-d=Path(os.getenv('SRA_DEPLOYMENT_STATE_DIR','.sra_runtime')); d=d if d.is_absolute() else Path.cwd()/d
-p=d/'requirement_handoff.env'; values=dict(x.split('=',1) for x in p.read_text().splitlines())
-label=os.environ['SD6_LABEL'].upper()
-print(f'SD_6_{label}_KEY_ID='+values['SRA_BOOTSTRAP_HANDOFF_KEY_ID'])
-print(f'SD_6_{label}_STATE_SHA256='+hashlib.sha256(p.read_bytes()).hexdigest())
-for role in ('launcher','api','schedule','handoff'):
- x=dict(line.split('=',1) for line in Path(f'.run_sra_api_{role}.identity').read_text().splitlines())
- print(f'SD_6_{label}_{role.upper()}_PID='+x.get('api_pid',x.get('pid','')))
+from data_ingestion.requirements.connections import SqlRegistry
+root=Path.cwd(); out=Path(os.environ['SD6_DIR'])/'before.json'
+def rec(role):
+ d=dict(x.split('=',1) for x in (root/f'.run_sra_api_{role}.identity').read_text().splitlines())
+ return {'pid':d.get('api_pid',d.get('pid')),'start':d.get('api_start_time',d.get('process_start_time'))}
+state_dir=Path(os.getenv('SRA_DEPLOYMENT_STATE_DIR','.sra_runtime')); state_dir=state_dir if state_dir.is_absolute() else root/state_dir
+state=state_dir/'requirement_handoff.env'; values=dict(x.split('=',1) for x in state.read_text().splitlines())
+r=SqlRegistry.load(os.getenv('REQUIREMENT_SQL_REGISTRY_FILE','config/requirements/sql_registry.json'))
+c=r.open_named_connection(os.getenv('REQUIREMENT_CONTROL_DB_CONNECTION','requirement_control')); schema=os.getenv('REQUIREMENT_SCHEDULE_DB_SCHEMA','sra_schedule')
+try:
+ q=c.cursor(); q.execute(f"SELECT owner_id,fencing_generation,CASE WHEN expires_at>SYSDATETIMEOFFSET() THEN 1 ELSE 0 END FROM [{schema}].[requirement_handoff_coordinator_leases] WHERE control_domain=?",'requirement-report-v1'); row=q.fetchone()
+finally: c.close()
+if not row or int(row[2])!=1: raise SystemExit('SD_6_BEFORE=FAIL reason=no_live_lease')
+audit=root/'SRA-API_kill_audit.log'
+data={'state_sha256':hashlib.sha256(state.read_bytes()).hexdigest(),'key_id':values['SRA_BOOTSTRAP_HANDOFF_KEY_ID'],'identity':{x:rec(x) for x in ('launcher','api','schedule','handoff')},'lease':{'owner':row[0],'generation':int(row[1])},'audit_size':audit.stat().st_size if audit.exists() else 0}
+out.write_text(json.dumps(data,sort_keys=True)+'\n')
+print('SD_6_BEFORE=PASS')
 PY
-  # Run the read-only lease projection from SD-5 and retain its owner,
-  # generation, and live fields with this snapshot's evidence.
-  sd5_observe || return 1
-  echo "SD_6_${label}=PASS"
+  local rc=$?
+  [ "$rc" -eq 0 ] || { echo 'SD_6_BEFORE=FAIL reason=snapshot'; return 1; }
 }
-sd6_snapshot before
 ```
 
-Invoke only the supported takeover path:
+Invoke only the supported takeover path; this function contains no signal command:
 
 ```bash
 sd6_restart() {
   cd /mntCZJ/TopicClassification/poc-agent || { echo 'SD_6_ACTION=FAIL reason=cannot_cd'; return 1; }
+  [ -r "${SD6_DIR:-}/before.json" ] || { echo 'SD_6_ACTION=FAIL reason=missing_before'; return 1; }
   verify_sra_runtime || return 1
   umask 077
-  cp .run_sra_api_{launcher,api,schedule,handoff}.identity /tmp/sra-sd6-before/ 2>/dev/null || { mkdir -m 700 -p /tmp/sra-sd6-before; cp .run_sra_api_{launcher,api,schedule,handoff}.identity /tmp/sra-sd6-before/; }
-  nohup ./run_sra_api.sh > /tmp/sra-sd6-restart.log 2>&1 </dev/null &
+  nohup ./run_sra_api.sh > "$SD6_DIR/restart.log" 2>&1 </dev/null &
   local pid=$! start
   start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || { echo 'SD_6_ACTION=FAIL reason=contender_exited'; return 1; }
   sleep 20
-  [ "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)" = "$start" ] || { echo 'SD_6_ACTION=FAIL reason=contender_exited_or_reused'; tail -n 50 /tmp/sra-sd6-restart.log; return 1; }
+  [ "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)" = "$start" ] || { echo 'SD_6_ACTION=FAIL reason=contender_exited_or_reused'; return 1; }
   verify_sra_runtime || return 1
-  echo 'SD_6_ACTION=PASS'
+  echo 'SD_6_ACTION=PASS supported_takeover_only'
 }
-sd6_restart
 ```
 
-Before executing, run `sd6_snapshot before`; afterward run `sd6_snapshot after`.
-PASS requires all
-four exact identities to change, old launcher TERM only through the new launcher,
-no timeout/SIGKILL, listener transfer, OpenAPI readiness, unchanged state SHA and
-key ID, and a greater live lease generation. Source allows an explicit
-`REQUIREMENT_HANDOFF_OWNER_ID`; when configured, owner equality is expected rather
-than false failure. Without it, owner must change to `handoff-<new-pid>`.
+The final verifier independently captures after-state and compares it. Identity is the `(PID, process-start-time)` pair. The old launcher must be gone; the shared verifier proves new flock/listener/OpenAPI ownership. The bounded audit slice must prove graceful SIGTERM with no `SIGKILL` or `ABORT`. An explicit configured owner may remain equal; otherwise it must be `handoff-<new-worker-pid>`.
+
+```bash
+sd6_verify_after() {
+  cd /mntCZJ/TopicClassification/poc-agent || { echo 'SD_6_VERIFY=FAIL reason=cannot_cd'; return 1; }
+  [ -r "${SD6_DIR:-}/before.json" ] || { echo 'SD_6_VERIFY=FAIL reason=missing_before'; return 1; }
+  verify_sra_runtime || return 1
+  python - <<'PY'
+import hashlib,json,os
+from pathlib import Path
+from config.bootstrap import bootstrap_env
+bootstrap_env(project_root=Path.cwd())
+from data_ingestion.requirements.connections import SqlRegistry
+root=Path.cwd(); before=json.loads((Path(os.environ['SD6_DIR'])/'before.json').read_text())
+def rec(role):
+ d=dict(x.split('=',1) for x in (root/f'.run_sra_api_{role}.identity').read_text().splitlines())
+ return {'pid':d.get('api_pid',d.get('pid')),'start':d.get('api_start_time',d.get('process_start_time'))}
+after_ids={x:rec(x) for x in ('launcher','api','schedule','handoff')}
+state_dir=Path(os.getenv('SRA_DEPLOYMENT_STATE_DIR','.sra_runtime')); state_dir=state_dir if state_dir.is_absolute() else root/state_dir
+state=state_dir/'requirement_handoff.env'; values=dict(x.split('=',1) for x in state.read_text().splitlines())
+r=SqlRegistry.load(os.getenv('REQUIREMENT_SQL_REGISTRY_FILE','config/requirements/sql_registry.json'))
+c=r.open_named_connection(os.getenv('REQUIREMENT_CONTROL_DB_CONNECTION','requirement_control')); schema=os.getenv('REQUIREMENT_SCHEDULE_DB_SCHEMA','sra_schedule')
+try:
+ q=c.cursor(); q.execute(f"SELECT owner_id,fencing_generation,CASE WHEN expires_at>SYSDATETIMEOFFSET() THEN 1 ELSE 0 END FROM [{schema}].[requirement_handoff_coordinator_leases] WHERE control_domain=?",'requirement-report-v1'); row=q.fetchone()
+finally: c.close()
+def require(ok, reason):
+ if not ok: raise SystemExit('SD_6_VERIFY=FAIL reason='+reason)
+require(hashlib.sha256(state.read_bytes()).hexdigest()==before['state_sha256'],'state_changed')
+require(values['SRA_BOOTSTRAP_HANDOFF_KEY_ID']==before['key_id'],'key_id_changed')
+for role in ('launcher','api','schedule','handoff'): require(after_ids[role]!=before['identity'][role],role+'_identity_not_replaced')
+old=before['identity']['launcher']; oldproc=Path('/proc')/old['pid']/'stat'
+require(not oldproc.exists() or oldproc.read_text().split()[21]!=old['start'],'old_launcher_still_live')
+require(bool(row) and int(row[2])==1,'lease_not_live')
+require(int(row[1])>int(before['lease']['generation']),'generation_not_increased')
+explicit=os.getenv('REQUIREMENT_HANDOFF_OWNER_ID'); expected=explicit if explicit else 'handoff-'+after_ids['handoff']['pid']
+require(row[0]==expected,'owner_semantics')
+audit=root/'SRA-API_kill_audit.log'; require(audit.is_file() and not audit.is_symlink(),'audit_type')
+with audit.open('rb') as f: f.seek(before['audit_size']); delta=f.read(1_000_001)
+require(len(delta)<=1_000_000,'audit_slice_unbounded')
+text=delta.decode(errors='replace'); oldpid=old['pid']; oldstart=old['start']
+require(f'Sending SIGTERM to verified launcher PID={oldpid} start={oldstart}' in text,'no_supported_takeover_evidence')
+require('SIGKILL' not in text and 'ABORT' not in text,'escalation_or_abort')
+print('SD_6_VERIFY=PASS')
+PY
+  local rc=$?
+  [ "$rc" -eq 0 ] || { echo 'SD_6_VERIFY=FAIL reason=executable_comparison'; return 1; }
+}
+```
+
+```bash
+sd6_cleanup() {
+  [ -n "${SD6_DIR:-}" ] && [ -d "$SD6_DIR" ] && [ ! -L "$SD6_DIR" ] || { echo 'SD_6_CLEANUP=FAIL reason=evidence_dir'; return 1; }
+  [ "$(stat -c%u "$SD6_DIR")" = "$(id -u)" ] && [ "$(stat -c%a "$SD6_DIR")" = 700 ] || { echo 'SD_6_CLEANUP=FAIL reason=evidence_owner_mode'; return 1; }
+  rm -f -- "$SD6_DIR/before.json" "$SD6_DIR/restart.log" || { echo 'SD_6_CLEANUP=FAIL reason=remove_files'; return 1; }
+  rmdir -- "$SD6_DIR" || { echo 'SD_6_CLEANUP=FAIL reason=remove_directory'; return 1; }
+  unset SD6_DIR
+  echo 'SD_6_CLEANUP=PASS'
+}
+```
+
+Only `SD_6_VERIFY=PASS` is the gate comparison result. `SD_6_ACTION=PASS` merely confirms that the supported contender survived and must never be reported as the gate PASS.
 
 ## SD-7 — MIGRATION_CLEANUP_GATE
 
@@ -502,8 +626,9 @@ Share at most the last 80 relevant log lines after redacting
 
 ```text
 Repository: hun186/poc-agent
-Reviewed commit: 2ef993e34629828128ff5244422c3440a4e305f3
-Runbook: v1.1
+Runbook review baseline: 30c5c918ff83a9f4f238383419b0db9886d0b872
+Deployed runtime baseline: edcbc744f71374eaa839b0a31e0cd125fcb6fe52
+Runbook: v1.2
 Gate executed:
 Identity mode:
 Precheck/action/verify marker:

@@ -57,3 +57,8 @@
 ## 2026-09-10 Safe restart live acceptance pending
 
 - Repository process regressions verify launcher replacement, fail-closed identity mismatches/timeouts, concurrent contenders, orphan recovery, and Handoff lease-release control flow. The private deployed SQL/runtime environment remains unavailable, so an operator must still confirm real SQL lease release/reacquisition and `/openapi.json` readiness during a live restart; no lease row or production process was modified here.
+
+## 2026-09-14 Hosted baseline refresh limitation (v1.2 review)
+
+- `git ls-remote https://github.com/hun186/poc-agent.git refs/heads/main` was attempted before edits and failed with `CONNECT tunnel failed, response 403`; the repository has no configured Git remote and GitHub CLI has no authentication. The v1.2 static review therefore uses the task-supplied hosted authority `30c5c918ff83a9f4f238383419b0db9886d0b872` and does not claim that a newer hosted SHA was excluded.
+- Alternative evidence: the local HEAD exactly matched that supplied hosted merge, and its source/runtime objects were reviewed statically. An authorized network environment must independently refresh hosted `main` before live execution.
