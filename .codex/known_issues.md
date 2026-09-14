@@ -1,5 +1,14 @@
 # Known Issues
 
+## 2026-09-14 Package/overlay deployment identity gap
+
+- Current repository source does not emit or validate an authoritative deployment
+  identity artifact such as `DEPLOYMENT_COMMIT.txt`. For a Windows package plus
+  Linux overlay deployment, incidental Linux `.git/HEAD` cannot prove deployed
+  bytes. Live SD-1 must remain BLOCKED until the release owner supplies a reviewed,
+  tamper-evident package/overlay manifest; intact Git-worktree deployments can use
+  the exact commit/worktree gate in acceptance package v1.1.
+
 ## Current Summary
 
 - Hosted GitHub refresh/publication may fail when the environment proxy returns HTTP 403; installed Python requirements are currently sufficient, but package-index upgrade checks can emit the same warning.
