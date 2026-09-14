@@ -10,6 +10,21 @@
 
 ## Recent Changes
 
+### 2026-09-14 SRA live acceptance command review v1
+
+- Reviewed every SD-1 through SD-7 operator procedure against current launcher,
+  bootstrap, Service Key, SQL lease/fencing, Handoff, artifact, OpenAPI, and test
+  source at issuance SHA `2ef993e34629828128ff5244422c3440a4e305f3` after hosted
+  refresh failed with CONNECT 403.
+- Superseded acceptance package v1 with v1.1. Corrections fail closed for
+  package/overlay identity without an authoritative manifest, bind deliberate
+  crash signalling with pidfd and exact identity, strengthen runtime/restart
+  evidence, correct configurable lease-owner semantics, and prevent inferred
+  artifact cleanup or credential revocation.
+- Static snippet compilation/syntax and focused repository tests passed; no live
+  SD gate, private SQL, runtime lifecycle, credential mutation, or Golden Path was
+  executed. SD-1 through SD-7 remain PENDING.
+
 ### 2026-09-11 Bootstrap profile logging clarification
 
 - Replaced `bootstrap_env()`'s ambiguous `env:<profile>` line with explicit selector-only profile wording and a dynamic precedence line while preserving file loading, merge, OS-environment precedence, guard, force, and return behavior.
