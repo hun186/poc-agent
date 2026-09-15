@@ -1,5 +1,10 @@
 # Architecture and Engineering Decisions
 
+## 2026-09-15 Thin automatic E2E observer
+
+- Keep the Requirement E2E harness as a stimulus/observer rather than a second executor. Automatic scheduling is proven only by a new durable `scheduled` Batch tied to the invocation's version, occurrence, and Snapshot; manual Run and worker/coordinator invocation are prohibited.
+- Reuse exact dedicated Profile/Source/Schedule shells but create unique Import Run, Snapshot, Schedule Version, Batch, Run Items, jobs, and evidence each invocation. Unknown drift or ambiguity fails closed, and cleanup only disables the exact schedule through its normal API.
+
 ## Current Summary
 
 - Keep runtime API code in `sra_api/` with `api/` as compatibility namespace; preserve established authentication, RBAC, signed capability, and owner-isolation boundaries.

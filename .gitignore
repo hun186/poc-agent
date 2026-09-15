@@ -204,3 +204,4 @@ SRA-API_output.txt
 /config/requirements/sql_registry.json
 /config/requirements/git_ignore
 operator_e2e/e2e.env.local
+operator_e2e/output/requirement_e2e/
