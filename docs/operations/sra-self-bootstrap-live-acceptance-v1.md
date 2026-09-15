@@ -1,6 +1,6 @@
-# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.2
+# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.3
 
-> **Supersedes v1.1. Do not use v1 or v1.1 for live execution.** The v1.2
+> **Supersedes v1.2. Do not use v1, v1.1, or v1.2 for live execution.** The v1.3
 > corrective review closes fail-open control flow, signal-authority, and
 > executable restart-comparison defects. Static review is not deployment
 > acceptance; SD-1 through SD-7 remain **PENDING**.
@@ -11,13 +11,13 @@
 | --- | --- |
 | Repository | `hun186/poc-agent` |
 | Hosted branch | `main` |
-| Runbook review baseline | `30c5c918ff83a9f4f238383419b0db9886d0b872` (PR #241 merge) |
+| Runbook review baseline | `d21ce42c4abd740a50cb7d4d076bb04253cd2dca` (PR #242 merge) |
 | Deployed runtime baseline | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` (runtime tree; see SD-1) |
 | Runtime parent | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` |
-| Version | `v1.2` |
+| Version | `v1.3` |
 | Status | **STATICALLY REVIEWED; SD-1 THROUGH SD-7 PENDING** |
 
-At v1.2 issuance, the supplied hosted authority is the PR #241 merge above.
+At v1.3 issuance, the supplied hosted authority is the PR #242 merge above.
 Runbook identity and deployed-byte identity are deliberately separate: a future
 documentation-only merge changes the former without invalidating the latter.
 
@@ -143,6 +143,15 @@ report `SD_1=BLOCKED reason=no_authoritative_package_identity` until the release
 owner supplies a reviewed, tamper-evident `DEPLOYMENT_COMMIT.txt` or equivalent
 package/overlay manifest. This does not weaken the source gate.
 
+That manifest is authoritative only when the release/package process creates it
+(never when an operator manually invents it on the deployed Linux host), it is
+immutable or tamper-evident relative to the distributed package, it binds a
+reviewed runtime source identity, and its release evidence proves that the actual
+deployed runtime bytes correspond to that identity. Incidental `.git/HEAD` is not
+such evidence. No manifest exists in current source, so package/overlay mode stays
+`BLOCKED reason=no_authoritative_package_identity` until the release owner
+supplies and reviews this complete chain.
+
 ### Git-worktree action (read-only)
 
 ```bash
@@ -246,6 +255,14 @@ sd3_start() {
   SD3_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sra-sd3.XXXXXXXX") || { echo 'SD_3_ACTION=FAIL reason=mktemp'; return 1; }
   export SD3_DIR
   [ -d "$SD3_DIR" ] && [ ! -L "$SD3_DIR" ] && [ "$(stat -c%u "$SD3_DIR")" = "$(id -u)" ] && [ "$(stat -c%a "$SD3_DIR")" = 700 ] || { echo 'SD_3_ACTION=FAIL reason=evidence_dir'; return 1; }
+  # State-neutral last precondition before the first mutating launcher call.
+  local raw_listeners listeners lsof_rc
+  raw_listeners=$(timeout 5 lsof -t -nP -iTCP:9002 -sTCP:LISTEN 2>/dev/null)
+  lsof_rc=$?
+  [ "$lsof_rc" -eq 0 ] || [ "$lsof_rc" -eq 1 ] || { echo 'SD_3_PRECHECK=FAIL reason=listener_authority'; return 1; }
+  listeners=$(printf '%s\n' "$raw_listeners" | awk 'NF' | sort -u) || { echo 'SD_3_PRECHECK=FAIL reason=listener_sort'; return 1; }
+  [ -z "$listeners" ] || { echo 'SD_3_PRECHECK=BLOCKED_PORT_IN_USE'; return 2; }
+  echo 'SD_3_PORT_PRECHECK=PASS'
   nohup ./run_sra_api.sh > "$SD3_DIR/launcher.log" 2>&1 </dev/null &
   local pid=$! start
   start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || { echo 'SD_3_ACTION=FAIL reason=launcher_exited'; return 1; }
@@ -267,16 +284,36 @@ import os, stat
 from pathlib import Path
 from config.bootstrap import bootstrap_env
 bootstrap_env(project_root=Path.cwd())
-from config.deployment_bootstrap import KEY_NAME,KEY_SCOPES,STATE_KEYS
+from config.deployment_bootstrap import KEY_NAME,KEY_SCOPES,STATE_KEYS,STATE_VERSION
 from sra_api.security.service_key_store import ServiceKeyStore
 d=Path(os.getenv('SRA_DEPLOYMENT_STATE_DIR','.sra_runtime')); d=d if d.is_absolute() else Path.cwd()/d
-p=d/'requirement_handoff.env'; raw=p.read_bytes(); values=dict(x.split('=',1) for x in raw.decode().splitlines())
-out=Path(values['REQUIREMENT_HANDOFF_OUTPUT_ROOT'])
+p=d/'requirement_handoff.env'
+def secure(path, kind, expected_mode):
+ if path.is_symlink(): raise SystemExit(f'SD_3_VERIFY=FAIL reason={kind}_symlink')
+ try: info=path.stat()
+ except OSError: raise SystemExit(f'SD_3_VERIFY=FAIL reason={kind}_missing')
+ wanted=stat.S_ISDIR if kind!='state_file' else stat.S_ISREG
+ if not wanted(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=expected_mode:
+  raise SystemExit(f'SD_3_VERIFY=FAIL reason={kind}_owner_mode_type')
+secure(d,'state_dir',0o700); secure(p,'state_file',0o600)
+raw=p.read_bytes()
+if b'\0' in raw or b'\r' in raw: raise SystemExit('SD_3_VERIFY=FAIL reason=state_parser')
+try: lines=raw.decode('utf-8').splitlines()
+except UnicodeDecodeError: raise SystemExit('SD_3_VERIFY=FAIL reason=state_utf8')
+values={}
+for line in lines:
+ key,sep,value=line.partition('=')
+ if sep!='=' or key not in STATE_KEYS or key in values or '\n' in value:
+  raise SystemExit('SD_3_VERIFY=FAIL reason=state_schema')
+ values[key]=value
+if set(values)!=set(STATE_KEYS) or values['SRA_BOOTSTRAP_STATE_VERSION']!=STATE_VERSION:
+ raise SystemExit('SD_3_VERIFY=FAIL reason=state_schema_or_version')
+out=Path(values['REQUIREMENT_HANDOFF_OUTPUT_ROOT']); secure(out,'output_dir',0o700)
 store=ServiceKeyStore(Path(os.getenv('SRA_SERVICE_KEYS_FILE','.sra_service_keys.json')))
 active=[x for x in store.list_keys() if x.get('name')==KEY_NAME and x.get('status')=='active']
 selected=[x for x in active if x.get('key_id')==values.get('SRA_BOOTSTRAP_HANDOFF_KEY_ID')]
 mode=lambda x: format(stat.S_IMODE(x.stat().st_mode),'04o')
-ok=(set(values)==set(STATE_KEYS) and b'\r' not in raw and b'\0' not in raw and not d.is_symlink() and not p.is_symlink() and not out.is_symlink() and mode(d)=='0700' and mode(p)=='0600' and mode(out)=='0700' and out.parent.resolve()==d.resolve() and len(active)==len(selected)==1 and frozenset(selected[0]['scopes'])==KEY_SCOPES)
+ok=(out.parent.resolve()==d.resolve() and len(active)==len(selected)==1 and frozenset(selected[0]['scopes'])==KEY_SCOPES)
 print(f'SD_3_STATE_DIR_MODE={mode(d)} STATE_FILE_MODE={mode(p)} OUTPUT_DIR_MODE={mode(out)}')
 print(f'SD_3_ACTIVE_CANONICAL_COUNT={len(active)} SELECTED_MATCH={len(selected)}')
 print('SD_3_SCOPES='+(','.join(selected[0]['scopes']) if selected else 'UNAVAILABLE'))
@@ -410,6 +447,17 @@ worker logs without startup/invariant errors. HTTP 200 or live PIDs alone fail.
 
 Use one new SSH session, define `accept_setup`, `verify_sra_runtime`, and all four functions below, then run exactly: `accept_setup`, `sd6_prepare`, `sd6_snapshot_before`, `sd6_restart`, `sd6_verify_after`, and `sd6_cleanup`. `SD6_DIR` is the only documented cross-step shell state. It is unique, owner-only, and contains no credential, token, password, Authorization header, or signed URL.
 
+The reviewed default temporal budget is 40 seconds: launcher graceful shutdown
+is bounded at 10 seconds, the action observation sleeps 20 seconds, OpenAPI
+verification is bounded at 5 seconds, and the configured SQL connect timeout is
+5 seconds. The default lease is 45 seconds and renews every 10 seconds. The
+before step therefore requires strictly more than 40 seconds remaining according
+to SQL Server's clock. If any of those deployment timing settings differ, stop
+and obtain a recalculated reviewed bound; do not lower the margin ad hoc. The
+after proof still fails unless replacement acquisition is observed before the
+old recorded expiry, so scheduling delay can only block the gate, never create a
+false PASS.
+
 ```bash
 sd6_prepare() {
   cd /mntCZJ/TopicClassification/poc-agent || { echo 'SD_6_PREPARE=FAIL reason=cannot_cd'; return 1; }
@@ -443,11 +491,13 @@ state=state_dir/'requirement_handoff.env'; values=dict(x.split('=',1) for x in s
 r=SqlRegistry.load(os.getenv('REQUIREMENT_SQL_REGISTRY_FILE','config/requirements/sql_registry.json'))
 c=r.open_named_connection(os.getenv('REQUIREMENT_CONTROL_DB_CONNECTION','requirement_control')); schema=os.getenv('REQUIREMENT_SCHEDULE_DB_SCHEMA','sra_schedule')
 try:
- q=c.cursor(); q.execute(f"SELECT owner_id,fencing_generation,CASE WHEN expires_at>SYSDATETIMEOFFSET() THEN 1 ELSE 0 END FROM [{schema}].[requirement_handoff_coordinator_leases] WHERE control_domain=?",'requirement-report-v1'); row=q.fetchone()
+ q=c.cursor(); q.execute(f"SELECT owner_id,fencing_generation,expires_at,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') FROM [{schema}].[requirement_handoff_coordinator_leases] WHERE control_domain=?",'requirement-report-v1'); row=q.fetchone()
 finally: c.close()
-if not row or int(row[2])!=1: raise SystemExit('SD_6_BEFORE=FAIL reason=no_live_lease')
+if not row or row[2]<=row[3]: raise SystemExit('SD_6_BEFORE=FAIL reason=no_live_lease')
+remaining=(row[2]-row[3]).total_seconds()
+if remaining<=40: raise SystemExit('SD_6_BEFORE=BLOCKED reason=insufficient_lease_margin')
 audit=root/'SRA-API_kill_audit.log'
-data={'state_sha256':hashlib.sha256(state.read_bytes()).hexdigest(),'key_id':values['SRA_BOOTSTRAP_HANDOFF_KEY_ID'],'identity':{x:rec(x) for x in ('launcher','api','schedule','handoff')},'lease':{'owner':row[0],'generation':int(row[1])},'audit_size':audit.stat().st_size if audit.exists() else 0}
+data={'state_sha256':hashlib.sha256(state.read_bytes()).hexdigest(),'key_id':values['SRA_BOOTSTRAP_HANDOFF_KEY_ID'],'identity':{x:rec(x) for x in ('launcher','api','schedule','handoff')},'lease':{'owner':row[0],'generation':int(row[1]),'expires_at':row[2].isoformat(),'sql_now':row[3].isoformat(),'remaining_seconds':remaining},'audit_size':audit.stat().st_size if audit.exists() else 0}
 out.write_text(json.dumps(data,sort_keys=True)+'\n')
 print('SD_6_BEFORE=PASS')
 PY
@@ -497,7 +547,7 @@ state=state_dir/'requirement_handoff.env'; values=dict(x.split('=',1) for x in s
 r=SqlRegistry.load(os.getenv('REQUIREMENT_SQL_REGISTRY_FILE','config/requirements/sql_registry.json'))
 c=r.open_named_connection(os.getenv('REQUIREMENT_CONTROL_DB_CONNECTION','requirement_control')); schema=os.getenv('REQUIREMENT_SCHEDULE_DB_SCHEMA','sra_schedule')
 try:
- q=c.cursor(); q.execute(f"SELECT owner_id,fencing_generation,CASE WHEN expires_at>SYSDATETIMEOFFSET() THEN 1 ELSE 0 END FROM [{schema}].[requirement_handoff_coordinator_leases] WHERE control_domain=?",'requirement-report-v1'); row=q.fetchone()
+ q=c.cursor(); q.execute(f"SELECT owner_id,fencing_generation,expires_at,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') FROM [{schema}].[requirement_handoff_coordinator_leases] WHERE control_domain=?",'requirement-report-v1'); row=q.fetchone()
 finally: c.close()
 def require(ok, reason):
  if not ok: raise SystemExit('SD_6_VERIFY=FAIL reason='+reason)
@@ -506,8 +556,11 @@ require(values['SRA_BOOTSTRAP_HANDOFF_KEY_ID']==before['key_id'],'key_id_changed
 for role in ('launcher','api','schedule','handoff'): require(after_ids[role]!=before['identity'][role],role+'_identity_not_replaced')
 old=before['identity']['launcher']; oldproc=Path('/proc')/old['pid']/'stat'
 require(not oldproc.exists() or oldproc.read_text().split()[21]!=old['start'],'old_launcher_still_live')
-require(bool(row) and int(row[2])==1,'lease_not_live')
+require(bool(row) and row[2]>row[3],'lease_not_live')
 require(int(row[1])>int(before['lease']['generation']),'generation_not_increased')
+from datetime import datetime
+before_expiry=datetime.fromisoformat(before['lease']['expires_at'])
+require(row[3]<before_expiry,'replacement_not_before_previous_expiry')
 explicit=os.getenv('REQUIREMENT_HANDOFF_OWNER_ID'); expected=explicit if explicit else 'handoff-'+after_ids['handoff']['pid']
 require(row[0]==expected,'owner_semantics')
 audit=root/'SRA-API_kill_audit.log'; require(audit.is_file() and not audit.is_symlink(),'audit_type')
@@ -626,9 +679,9 @@ Share at most the last 80 relevant log lines after redacting
 
 ```text
 Repository: hun186/poc-agent
-Runbook review baseline: 30c5c918ff83a9f4f238383419b0db9886d0b872
+Runbook review baseline: d21ce42c4abd740a50cb7d4d076bb04253cd2dca
 Deployed runtime baseline: edcbc744f71374eaa839b0a31e0cd125fcb6fe52
-Runbook: v1.2
+Runbook: v1.3
 Gate executed:
 Identity mode:
 Precheck/action/verify marker:
