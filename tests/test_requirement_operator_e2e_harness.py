@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -137,6 +138,73 @@ def test_runtime_sha_mismatch_fails_before_harness_mutations(tmp_path, monkeypat
     result = json.loads(next(output.glob("*/result.json")).read_text())
     assert result["failed_stage"] == "CONFIG_PREFLIGHT"
     assert result["failure_category"] == "runtime_source_identity_mismatch"
+
+
+def test_dirty_reviewed_runtime_fails_before_harness_mutations(tmp_path, monkeypatch):
+    from operator_e2e.test_requirement_schedule_e2e import Harness, main
+
+    reviewed_sha = "a" * 40
+    artifact_root = tmp_path / "artifact-root"
+    artifact_root.mkdir()
+    env_file = tmp_path / "e2e.env.local"
+    env_file.write_text(
+        f"SRA_E2E_MODEL=model\nSRA_E2E_REQUIREMENT_ARTIFACT_ROOT={artifact_root}\n"
+        f"SRA_E2E_EDITOR_TOKEN=token\nSRA_E2E_EXPECTED_RUNTIME_SHA={reviewed_sha}\n",
+        encoding="utf-8",
+    )
+    run_calls = []
+    monkeypatch.setattr(Harness, "run", lambda self: run_calls.append(self))
+    monkeypatch.setattr(
+        "operator_e2e.test_requirement_schedule_e2e._git_source",
+        lambda expected: {
+            "repository": "hun186/poc-agent",
+            "expected_runtime_sha": expected,
+            "local_git_sha": reviewed_sha,
+            "local_git_dirty": True,
+        },
+    )
+
+    output = tmp_path / "evidence"
+    code = main([
+        "--excel", "unused.xlsx", "--env-file", str(env_file), "--output-dir", str(output),
+    ])
+
+    assert code == ExitCode.PREFLIGHT
+    assert len(run_calls) == 0
+    result = json.loads(next(output.glob("*/result.json")).read_text())
+    assert result["failed_stage"] == "CONFIG_PREFLIGHT"
+    assert result["failure_category"] == "runtime_source_dirty"
+
+
+def test_clean_reviewed_runtime_passes_source_validation():
+    from operator_e2e.test_requirement_schedule_e2e import _validate_runtime_source
+
+    reviewed_sha = "a" * 40
+    _validate_runtime_source({
+        "expected_runtime_sha": reviewed_sha,
+        "local_git_sha": reviewed_sha,
+        "local_git_dirty": False,
+    })
+
+
+def test_runbook_uses_external_runtime_sha_authority_and_stable_xlsx_digest():
+    runbook = Path("docs/operations/requirement-automatic-operator-e2e.md").read_text(
+        encoding="utf-8",
+    )
+    runtime_assignments = re.findall(
+        r"^SRA_E2E_EXPECTED_RUNTIME_SHA=(\S+)$", runbook, flags=re.MULTILINE,
+    )
+
+    assert runtime_assignments
+    assert all(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in runtime_assignments)
+    assert "post-merge" in runbook.lower()
+    assert "git rev-parse HEAD" in runbook
+    assert "repository-self-authoritative" in runbook
+    assert "copying an old sha from repository history is invalid" in runbook.lower()
+    assert (
+        "SRA_E2E_EXPECTED_SOURCE_SHA="
+        "2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03"
+    ) in runbook
 
 
 def test_redaction_removes_headers_fields_and_known_literals():

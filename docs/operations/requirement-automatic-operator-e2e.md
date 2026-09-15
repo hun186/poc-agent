@@ -25,7 +25,7 @@ SRA_E2E_MODEL=SRA-Structured Retrieval Agent
 SRA_E2E_REQUIREMENT_ARTIFACT_ROOT=/absolute/production/requirement/artifact/root
 SRA_E2E_BASE_URL=http://127.0.0.1:9002
 SRA_E2E_EXPECTED_SOURCE_SHA=2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03
-SRA_E2E_EXPECTED_RUNTIME_SHA=9bf009922d3be304d65d59927f62bbbb3f21e305
+SRA_E2E_EXPECTED_RUNTIME_SHA=<reviewed_hosted_main_SHA_from_post_merge_acceptance_handoff>
 ```
 
 The identity must be authorized to create Requirement fixtures and to approve/enable schedules.
@@ -38,11 +38,16 @@ The two optional expected hashes bind different inputs and must never be interch
 * `SRA_E2E_EXPECTED_SOURCE_SHA` is the 64-character lowercase SHA-256 of the XLSX input bytes.
   Input validation compares it only with the actual uploaded workbook digest.
 * `SRA_E2E_EXPECTED_RUNTIME_SHA` is the 40-character lowercase reviewed Git commit identity.
-  In a Git worktree, a configured value must equal `git rev-parse HEAD` before any live mutation.
+  This value is not repository-self-authoritative: the operator must obtain it externally from
+  the completed post-merge source review/acceptance handoff. In a Git worktree, it must exactly
+  equal the deployment worktree's `git rev-parse HEAD`, and that worktree must be clean, before
+  any live mutation. Copying an old SHA from repository history is invalid. Do not substitute
+  `$(git rev-parse HEAD)` as the authority because the local checkout must not self-attest its
+  reviewed identity.
 
-The example values above identify the tracked three-item fixture and reviewed hosted baseline
-`9bf009922d3be304d65d59927f62bbbb3f21e305`, respectively. Package/overlay deployments continue
-to use the separately approved deployment identity workflow.
+The concrete source value above identifies the stable tracked three-item fixture. The runtime
+placeholder must be replaced with the exact externally reviewed handoff value. Package/overlay
+deployments continue to use the separately approved deployment identity workflow.
 
 ## Input and invocation
 
