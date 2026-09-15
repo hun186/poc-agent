@@ -1,9 +1,9 @@
-# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.3
+# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.4
 
-> **Supersedes v1.2. Do not use v1, v1.1, or v1.2 for live execution.** The v1.3
-> corrective review closes fail-open control flow, signal-authority, and
-> executable restart-comparison defects. Static review is not deployment
-> acceptance; SD-1 through SD-7 remain **PENDING**.
+> **Supersedes v1.3. Do not use v1, v1.1, v1.2, or v1.3 for live execution.**
+> The v1.4 corrective review binds the first-run port preflight to the launcher's
+> runtime port and corrects the lease-renewal description. Static review is not
+> deployment acceptance; SD-1 through SD-7 remain **PENDING**.
 
 ## Document control
 
@@ -11,13 +11,13 @@
 | --- | --- |
 | Repository | `hun186/poc-agent` |
 | Hosted branch | `main` |
-| Runbook review baseline | `d21ce42c4abd740a50cb7d4d076bb04253cd2dca` (PR #242 merge) |
+| Runbook review baseline | `548b08a4fb0ee719ed15dba91260db7ce0612201` (PR #243 merge) |
 | Deployed runtime baseline | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` (runtime tree; see SD-1) |
 | Runtime parent | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` |
-| Version | `v1.3` |
+| Version | `v1.4` |
 | Status | **STATICALLY REVIEWED; SD-1 THROUGH SD-7 PENDING** |
 
-At v1.3 issuance, the supplied hosted authority is the PR #242 merge above.
+At v1.4 issuance, the supplied hosted authority is the PR #243 merge above.
 Runbook identity and deployed-byte identity are deliberately separate: a future
 documentation-only merge changes the former without invalidating the latter.
 
@@ -256,13 +256,33 @@ sd3_start() {
   export SD3_DIR
   [ -d "$SD3_DIR" ] && [ ! -L "$SD3_DIR" ] && [ "$(stat -c%u "$SD3_DIR")" = "$(id -u)" ] && [ "$(stat -c%a "$SD3_DIR")" = 700 ] || { echo 'SD_3_ACTION=FAIL reason=evidence_dir'; return 1; }
   # State-neutral last precondition before the first mutating launcher call.
-  local raw_listeners listeners lsof_rc
-  raw_listeners=$(timeout 5 lsof -t -nP -iTCP:9002 -sTCP:LISTEN 2>/dev/null)
-  lsof_rc=$?
-  [ "$lsof_rc" -eq 0 ] || [ "$lsof_rc" -eq 1 ] || { echo 'SD_3_PRECHECK=FAIL reason=listener_authority'; return 1; }
-  listeners=$(printf '%s\n' "$raw_listeners" | awk 'NF' | sort -u) || { echo 'SD_3_PRECHECK=FAIL reason=listener_sort'; return 1; }
-  [ -z "$listeners" ] || { echo 'SD_3_PRECHECK=BLOCKED_PORT_IN_USE'; return 2; }
-  echo 'SD_3_PORT_PRECHECK=PASS'
+  local runtime_port="${PORT:-9002}" port_rc
+  case "$runtime_port" in
+    ''|*[!0-9]*) echo 'SD_3_PRECHECK=FAIL reason=invalid_runtime_port'; return 1 ;;
+  esac
+  [ "${#runtime_port}" -le 5 ] && [ "$runtime_port" -ge 1 ] && [ "$runtime_port" -le 65535 ] || { echo 'SD_3_PRECHECK=FAIL reason=invalid_runtime_port'; return 1; }
+  command -v python >/dev/null 2>&1 || { echo 'SD_3_PRECHECK=FAIL reason=listener_authority'; return 1; }
+  timeout 5 python - "$runtime_port" <<'PY'
+import sys
+port = int(sys.argv[1])
+try:
+    for path in ('/proc/net/tcp', '/proc/net/tcp6'):
+        with open(path, encoding='ascii') as stream:
+            next(stream)
+            for line in stream:
+                fields = line.split()
+                if len(fields) < 4:
+                    raise RuntimeError('malformed_listener_authority')
+                _address, port_hex = fields[1].rsplit(':', 1)
+                if fields[3] == '0A' and int(port_hex, 16) == port:
+                    raise SystemExit(2)
+except (OSError, UnicodeError, ValueError, RuntimeError):
+    raise SystemExit(1)
+PY
+  port_rc=$?
+  [ "$port_rc" -ne 2 ] || { echo "SD_3_PRECHECK=BLOCKED_PORT_IN_USE port=$runtime_port"; return 2; }
+  [ "$port_rc" -eq 0 ] || { echo 'SD_3_PRECHECK=FAIL reason=listener_authority'; return 1; }
+  echo "SD_3_PORT_PRECHECK=PASS port=$runtime_port"
   nohup ./run_sra_api.sh > "$SD3_DIR/launcher.log" 2>&1 </dev/null &
   local pid=$! start
   start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || { echo 'SD_3_ACTION=FAIL reason=launcher_exited'; return 1; }
@@ -447,16 +467,23 @@ worker logs without startup/invariant errors. HTTP 200 or live PIDs alone fail.
 
 Use one new SSH session, define `accept_setup`, `verify_sra_runtime`, and all four functions below, then run exactly: `accept_setup`, `sd6_prepare`, `sd6_snapshot_before`, `sd6_restart`, `sd6_verify_after`, and `sd6_cleanup`. `SD6_DIR` is the only documented cross-step shell state. It is unique, owner-only, and contains no credential, token, password, Authorization header, or signed URL.
 
-The reviewed default temporal budget is 40 seconds: launcher graceful shutdown
+The reviewed operational execution budget is 40 seconds: launcher graceful shutdown
 is bounded at 10 seconds, the action observation sleeps 20 seconds, OpenAPI
 verification is bounded at 5 seconds, and the configured SQL connect timeout is
-5 seconds. The default lease is 45 seconds and renews every 10 seconds. The
-before step therefore requires strictly more than 40 seconds remaining according
-to SQL Server's clock. If any of those deployment timing settings differ, stop
-and obtain a recalculated reviewed bound; do not lower the margin ad hoc. The
-after proof still fails unless replacement acquisition is observed before the
-old recorded expiry, so scheduling delay can only block the gate, never create a
-false PASS.
+5 seconds. The default lease duration is 45 seconds. A configured
+`heartbeat_interval` of 10 seconds exists, but it is not evidence of a fixed,
+independent renewal loop: after the initial acquisition, the current coordinator
+renews when `run_once()` begins, and the actual interval depends on the preceding
+runtime/workload cycle plus the configured polling interval. The before step
+therefore requires strictly more than 40 seconds remaining according to SQL
+Server's clock only to give the operator enough practical time to attempt this
+bounded procedure. This operational safety margin is separate from lease-renewal
+semantics and is not the correctness proof. Insufficient margin is **BLOCKED** and
+must be retried later without mutation. If any acceptance-procedure timing bound
+differs, stop and obtain a recalculated reviewed budget; do not lower it ad hoc.
+PASS remains governed by the final temporal proof: `after_generation >
+before_generation` **and** `after_sql_now < before_expires_at`. Scheduling delay
+can only block the gate, never create a false PASS.
 
 ```bash
 sd6_prepare() {
@@ -679,9 +706,9 @@ Share at most the last 80 relevant log lines after redacting
 
 ```text
 Repository: hun186/poc-agent
-Runbook review baseline: d21ce42c4abd740a50cb7d4d076bb04253cd2dca
+Runbook review baseline: 548b08a4fb0ee719ed15dba91260db7ce0612201
 Deployed runtime baseline: edcbc744f71374eaa839b0a31e0cd125fcb6fe52
-Runbook: v1.3
+Runbook: v1.4
 Gate executed:
 Identity mode:
 Precheck/action/verify marker:

@@ -67,3 +67,8 @@
 
 - `git ls-remote https://github.com/hun186/poc-agent.git refs/heads/main` was attempted before edits and failed with `CONNECT tunnel failed, response 403`; no configured remote was available. Local HEAD exactly matched the task-supplied hosted authority `d21ce42c4abd740a50cb7d4d076bb04253cd2dca`, but this environment cannot independently exclude a newer hosted `main` SHA.
 - Alternative validation used the matching local source objects and static, non-live command tests. An authorized network environment must refresh hosted `main` before live execution or merge.
+
+## 2026-09-15 Hosted baseline refresh limitation (v1.4 review)
+
+- `git ls-remote https://github.com/hun186/poc-agent.git refs/heads/main` was attempted before edits and failed with `CONNECT tunnel failed, response 403`; the repository has no configured remote. Local HEAD exactly matched the task-supplied hosted authority `548b08a4fb0ee719ed15dba91260db7ce0612201`, but this environment cannot independently exclude a newer hosted `main` SHA.
+- Alternative validation used the matching local source objects and static, non-live command tests. An authorized network environment must independently refresh hosted `main` before live execution or merge.
