@@ -10,6 +10,11 @@
 
 ## Recent Changes
 
+### 2026-09-15 SRA live acceptance command review v1.4
+
+- Superseded runbook v1.3 with a documentation-only v1.4 correction against the task-supplied PR #243 merge baseline. SD-3 now validates `${PORT:-9002}` and uses bounded, fail-closed exact Linux listener authority before first-run bootstrap; SD-6 now describes cycle-driven renewal accurately and separates its 40-second operational budget from the unchanged temporal correctness proof.
+- Static Bash/Python extraction, synthetic port-negative/launcher-exclusion and lease-temporal tests, safety scans, and diff checks passed. No live gate, SRA lifecycle, private SQL, credential, Golden Path, or Agent/ES/LLM/DOCX action was executed; SD-1 through SD-7 remain PENDING. Hosted refresh remained blocked by the HTTP 403 CONNECT proxy.
+
 ### 2026-09-14 SRA live acceptance command review v1
 
 - Reviewed every SD-1 through SD-7 operator procedure against current launcher,
