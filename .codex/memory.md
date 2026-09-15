@@ -10,6 +10,13 @@
 
 ## Recent Changes
 
+### 2026-09-15 Requirement automatic operator E2E harness hotfix
+
+- Kept Schedule enablement ownership separate from immutable Batch polling identity: the harness still disables immediately after proving `next_run_at` advancement, then polls the Batch with its persisted `schedule_id` and `batch_run_id`.
+- Made the successfully resolved `E2EConfig.output_dir` authoritative for the invocation lock, artifact copies, and final evidence, while retaining a default/CLI-safe evidence destination when configuration loading fails.
+- Import ambiguous-write recovery now snapshots every pre-existing Snapshot ID for the exact E2E Source's Requirement Sets and permits only newly observed IDs to match SHA/profile identity.
+- Strict TDD RED reproduced all three defects. GREEN verification passed the focused harness suite (24 tests) and the original Requirement API/import/Schedule Store/API/worker/Handoff/Report Job/launcher regression subset (196 tests). The live deployment E2E was intentionally not executed.
+
 ### 2026-09-15 Requirement automatic operator E2E harness v1
 
 - Added the offline deployment-host XLSX harness, stable Profile/Source/Schedule fixtures, unique import/snapshot/version/run evidence, automatic scheduled-Batch identity checks, Handoff/Report Job terminal polling, verified DOCX copies, redacted bounded diagnostics, exit-code/cleanup handling, and operator documentation.

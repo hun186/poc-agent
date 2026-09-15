@@ -139,3 +139,9 @@
 - Candidate source policy is never comparison authority. Exact policy Git blob and mode must equal `reviewed_manifest_commit`; runtime equality continues to use fixed baseline `edcbc744f71374eaa839b0a31e0cd125fcb6fe52`.
 - Release tools require their own reviewed baseline and the authoritative CLI additionally compares its running builder bytes to the source Git blob. This is source integrity inside the trusted release environment, not a defense against total release-host compromise.
 - No managed-root extra is benign: `__pycache__` and bytecode are rejected rather than deleted. Every path component is opened no-follow, and Git executable intent is verified without requiring exact POSIX permission values.
+
+## 2026-09-15 Separate cleanup ownership from durable E2E identities
+
+- Schedule cleanup state must not double as Batch lookup identity. Continue disabling the Schedule immediately after recurrence advancement is proven, clear cleanup ownership, and use the Schedule identity persisted on the observed Batch for all terminal polling.
+- Import ambiguous-write recovery defines “new” against every durable pre-commit Snapshot ID in the exact Source/Requirement Set context, not only previously active Snapshot IDs; historical same-content imports therefore cannot win recovery.
+- After configuration succeeds, resolved `config.output_dir` is invocation authority. CLI `--output-dir` retains explicit precedence, and a separate fallback exists only to preserve evidence when configuration cannot be built.

@@ -231,3 +231,9 @@
 - Release construction uses two independent Git authorities: `reviewed_runtime_commit` fixes runtime path/blob/mode identity, while `reviewed_manifest_commit` fixes exact policy bytes/mode and release-tool path/blob/mode identity. Both must be ancestors of the candidate source commit.
 - The reviewed policy permits no unmanaged runtime extras. Staged-package and deployed managed-file reads use a package-root directory descriptor and `O_NOFOLLOW` for every parent and final component.
 - Manifest Git modes are executable-semantics authority: `100755` requires an executable bit and `100644` prohibits executable bits. The external manifest SHA-256 remains the package-mode trust anchor.
+
+## 2026-09-15 Requirement operator harness identity recovery
+
+- `enabled_schedule_id` is cleanup ownership only. Once the automatic Batch is observed, its durable `schedule_id` plus `batch_run_id` is the immutable polling route even after the Schedule is disabled and cleanup ownership is cleared.
+- Before Import Commit, the harness enumerates the complete Snapshot ID set across Requirement Sets belonging to the exact E2E Source. Ambiguous-write rereads subtract that durable baseline before applying source-SHA/profile-version matching.
+- A valid `E2EConfig.output_dir` is the single root for the invocation lock, copied artifacts, and result/summary/diagnostic evidence; only pre-config failure evidence uses the safe fallback destination.

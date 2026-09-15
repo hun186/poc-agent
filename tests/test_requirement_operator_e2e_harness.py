@@ -6,6 +6,7 @@ import os
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from openpyxl import load_workbook
@@ -222,3 +223,117 @@ def test_cleanup_failure_forces_exit_five_and_evidence(tmp_path, monkeypatch):
     result = json.loads(next(output.glob("*/result.json")).read_text())
     assert result["failure_category"] == "cleanup_failed"
     assert "SENTINEL-TOKEN" not in json.dumps(result)
+
+
+def test_disabled_schedule_batch_keeps_polling_identity(monkeypatch, tmp_path):
+    from operator_e2e.test_requirement_schedule_e2e import Harness
+
+    schedule_id, batch_id = "schedule-durable", "batch-durable"
+    initial = (datetime.now(timezone.utc) + timedelta(seconds=30)).replace(microsecond=0)
+    selected = [
+        {
+            "run_item_id": f"item-{index}", "requirement_id": f"req-{index}",
+            "selection_status": "selected", "remote_job_id": f"job-{index}",
+            "dispatched_at": initial.isoformat(), "remote_job_state": "completed",
+            "execution_state": "completed",
+        }
+        for index in range(3)
+    ]
+    batch = {
+        "schedule_id": schedule_id, "batch_run_id": batch_id, "trigger_type": "scheduled",
+        "schedule_version_id": "version-1", "scheduled_for": initial.isoformat(),
+        "snapshot_id": "snapshot-1", "selected_count": 3, "skipped_count": 0,
+        "success_count": 3, "failure_count": 0, "state": "completed", "items": selected,
+    }
+
+    class FakeApi:
+        def __init__(self): self.poll_paths, self.enabled = [], False
+        def get(self, path, **_kwargs):
+            if path == f"/v1/requirement-schedules/{schedule_id}/runs?limit=100":
+                return {"items": [{"batch_run_id": batch_id}]} if self.enabled else {"items": []}
+            if path == f"/v1/requirement-schedules/{schedule_id}":
+                return {"versions": [], "next_run_at": (initial + timedelta(days=7)).isoformat()}
+            if path == f"/v1/requirement-schedules/{schedule_id}/runs/{batch_id}":
+                self.poll_paths.append(path); return batch
+            raise AssertionError(path)
+        def post(self, path, **_kwargs):
+            if path.endswith("/versions"): return {"schedule_version_id": "version-1", "version_number": 1}
+            if path.endswith("/approve"): return {}
+            raise AssertionError(path)
+        def patch(self, path, *, json, **_kwargs):
+            assert path == f"/v1/requirement-schedules/{schedule_id}"
+            if json["enabled"]:
+                self.enabled = True
+                return {"enabled": True, "active_version_id": "version-1", "next_run_at": initial.isoformat()}
+            return {"enabled": False}
+
+    config = SimpleNamespace(anchor_lead_seconds=30, allowed_anchor_window_seconds=60,
+                             auto_claim_timeout_seconds=1, handoff_timeout_seconds=1,
+                             remote_timeout_seconds=1, model="model", output_dir=tmp_path,
+                             token="token", password=None)
+    result = result_document("run")
+    harness = Harness(config, tmp_path / "unused.xlsx", "run", result)
+    harness.api = FakeApi()
+    detail = harness.schedule_and_wait({"schedule_id": schedule_id}, "snapshot-1", {f"req-{i}" for i in range(3)})
+
+    assert harness.enabled_schedule_id is None
+    assert harness.wait_terminal(detail)["batch_run_id"] == batch_id
+    assert harness.api.poll_paths and set(harness.api.poll_paths) == {f"/v1/requirement-schedules/{schedule_id}/runs/{batch_id}"}
+
+
+def test_env_file_output_directory_is_authoritative_for_all_evidence(tmp_path, monkeypatch):
+    from operator_e2e.test_requirement_schedule_e2e import Harness, main
+
+    for key in tuple(os.environ):
+        if key.startswith("SRA_E2E_"): monkeypatch.delenv(key, raising=False)
+    artifact_root = tmp_path / "artifact-root"; artifact_root.mkdir()
+    output = tmp_path / "env-output"
+    env_file = tmp_path / "e2e.env.local"
+    env_file.write_text(
+        f"SRA_E2E_MODEL=model\nSRA_E2E_REQUIREMENT_ARTIFACT_ROOT={artifact_root}\n"
+        f"SRA_E2E_EDITOR_TOKEN=token\nSRA_E2E_OUTPUT_DIR={output}\n", encoding="utf-8",
+    )
+    observed = {}
+    monkeypatch.setattr(Harness, "run", lambda self: observed.update(output=self.output, config=self.config.output_dir))
+
+    assert main(["--excel", "unused.xlsx", "--env-file", str(env_file)]) == ExitCode.PASS
+    runs = list(output.iterdir())
+    assert observed["config"] == output and observed["output"].parent == output
+    assert len([path for path in runs if path.is_dir()]) == 1
+    assert {path.name for path in observed["output"].iterdir()} == {"result.json", "summary.txt", "diagnostics.json", "artifacts"}
+    assert (output / ".lock").exists()
+
+
+def test_import_ambiguous_write_ignores_historical_matching_snapshots(tmp_path):
+    import requests
+    from operator_e2e.test_requirement_schedule_e2e import Harness
+
+    old_ids = {"historical-1", "historical-2", "active-before"}
+    new_id = "new-snapshot"
+
+    class FakeApi:
+        imported = False
+        def post(self, path, **_kwargs):
+            if path.endswith("/preview") or "/preview?" in path:
+                return {"has_errors": False, "accepted_count": 3, "rejected_count": 0, "source_sha256": "same-sha"}
+            if path.endswith("/import"):
+                self.imported = True; raise requests.Timeout()
+            raise AssertionError(path)
+        def get(self, path, **_kwargs):
+            if path == "/v1/requirement-sets":
+                active = new_id if self.imported else "active-before"
+                return {"items": [{"source_id": "source-1", "requirement_set_id": "set-1", "active_snapshot_id": active}]}
+            if path == "/v1/requirement-sets/set-1/snapshots":
+                ids = old_ids | ({new_id} if self.imported else set())
+                return {"items": [{"snapshot_id": sid, "source_sha256": "same-sha", "profile_version_id": "profile-v1"} for sid in sorted(ids)]}
+            if path == f"/v1/requirement-snapshots/{new_id}/items":
+                return {"items": [{"requirement_id": f"req-{i}", "expires_at": None} for i in range(3)]}
+            raise AssertionError(path)
+
+    excel = tmp_path / "input.xlsx"; excel.write_bytes(b"xlsx")
+    config = SimpleNamespace(output_dir=tmp_path, token="token", password=None)
+    harness = Harness(config, excel, "run", result_document("run")); harness.api = FakeApi()
+    reqset, items = harness.import_requirements({"source_id": "source-1"}, {"profile_version_id": "profile-v1"})
+    assert reqset["active_snapshot_id"] == new_id
+    assert harness.result["requirement_import"]["snapshot_id"] == new_id
+    assert len(items) == 3
