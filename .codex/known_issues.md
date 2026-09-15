@@ -1,5 +1,11 @@
 # Known Issues
 
+## 2026-09-15 Requirement harness verification limits
+
+- The private deployment, SQL Server, Elasticsearch, LLM, and launcher-managed workers are unavailable in this repository environment. The new harness was not executed live and no fresh Requirement E2E PASS is claimed; run the documented command on the authorized deployment host.
+- The required combined regression set passed 195 tests but one launcher SIGINT cleanup case exceeded its 10-second test timeout. The exact failed case passed in 0.96 seconds on immediate isolated rerun, consistent with existing launcher timing sensitivity rather than the harness/projection change.
+- Package-index access remains blocked by the environment proxy (HTTP 403); all declared requirements were already installed, so repository tests could run.
+
 ## 2026-09-14 Package/overlay deployment identity gap
 
 - Current repository source does not emit or validate an authoritative deployment

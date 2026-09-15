@@ -1,5 +1,9 @@
 # API Contract
 
+## 2026-09-15 Batch Run evidence projection
+
+- Existing `GET /v1/requirement-schedules/{schedule_id}/runs/{batch_run_id}` additionally projects Batch `snapshot_id` and `phase1a_output_root_fingerprint`, plus Run Item `remote_job_id` and `remote_job_state`. These are read-only projections of existing schema-v3 fields; routes and write contracts are unchanged.
+
 ## 2026-09-04 Phase 1B Requirement management
 
 - Authenticated reads cover sources, profiles, import runs, sets, snapshots, and items.

@@ -1,5 +1,11 @@
 # System Architecture
 
+## 2026-09-15 Requirement operator E2E harness
+
+- `operator_e2e/test_requirement_schedule_e2e.py` is a thin deployment-host orchestrator: it uses authenticated HTTP Requirement/Schedule lifecycle calls, read-only launcher identity/process evidence, and read-only artifact verification. It never runs production workers or uses the manual Run route.
+- `operator_e2e/requirement_e2e_support.py` owns environment validation, stage/result types, redaction, bounded diagnostics, process identity checks, automatic Batch identity validation, terminal checks, and DOCX/SHA verification. Production workflow logic remains in its existing modules.
+- Correlation flows from Import Run and exact Snapshot to immutable Schedule Version, scheduled Batch, Run Items, durable remote Job IDs, and root-bound artifact evidence. Per-invocation evidence is isolated under `operator_e2e/output/requirement_e2e/<e2e_run_id>/`.
+
 ## 2026-09-08 Shared SQL Server driver-resolution seam
 
 - Generic SQL Server ODBC driver selection lives in `data_ingestion/sql_server.py`. Excel-to-SQL preserves its `sql_utils.detect_odbc_driver` import surface while Requirement's named registry uses the same helper.

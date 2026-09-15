@@ -1,5 +1,9 @@
 # 待辦事項（Backlog）
 
+## 2026-09-15 Requirement automatic operator E2E live acceptance
+
+- Execute `python operator_e2e/test_requirement_schedule_e2e.py --excel operator_e2e/input/requirement_e2e_3items.xlsx` on the authorized deployment host with valid `SRA_E2E_*` configuration. Repository tests do not establish live Schedule Worker, Handoff, Report Job, Agent/Elasticsearch/LLM, or DOCX acceptance.
+
 ## 2026-09-04 Phase 1B / 1C handoff
 
 - Historical gate at issuance: execute real SQL Server Phase 1B acceptance and implement Phase 1C in reviewed A/B gates. Superseded current status: both repository gates are implemented, and the supplied operator evidence proves one live import/manual-run/handoff/Report Job/Agent/DOCX Golden Path.

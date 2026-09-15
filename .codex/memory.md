@@ -10,6 +10,12 @@
 
 ## Recent Changes
 
+### 2026-09-15 Requirement automatic operator E2E harness v1
+
+- Added the offline deployment-host XLSX harness, stable Profile/Source/Schedule fixtures, unique import/snapshot/version/run evidence, automatic scheduled-Batch identity checks, Handoff/Report Job terminal polling, verified DOCX copies, redacted bounded diagnostics, exit-code/cleanup handling, and operator documentation.
+- Extended only the existing Batch GET read projection with already-durable Snapshot, output-root, and remote-job evidence; no schema, migration, or write-semantics change was made.
+- Strict TDD recorded focused RED failures before the projection, harness module, and tracked XLSX fixture existed. Focused harness tests passed 21 tests; Schedule projection/API/v5 regression passed 79 tests. The required 196-test regression set had one launcher SIGINT timing failure, and that exact test passed immediately in isolated rerun. No private deployment was available, so no live harness or fresh Agent/ES/LLM/DOCX PASS is claimed.
+
 ### 2026-09-15 SRA live acceptance command review v1.4
 
 - Superseded runbook v1.3 with a documentation-only v1.4 correction against the task-supplied PR #243 merge baseline. SD-3 now validates `${PORT:-9002}` and uses bounded, fail-closed exact Linux listener authority before first-run bootstrap; SD-6 now describes cycle-driven renewal accurately and separates its 40-second operational budget from the unchanged temporal correctness proof.

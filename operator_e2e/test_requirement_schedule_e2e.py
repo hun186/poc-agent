@@ -1,0 +1,392 @@
+#!/usr/bin/env python3
+"""One-command deployment-host Requirement automatic-schedule E2E harness."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import time
+import uuid
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Callable
+
+import requests
+from openpyxl import load_workbook
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+if str(PROJECT_ROOT) not in sys.path: sys.path.insert(0, str(PROJECT_ROOT))
+
+from config.bootstrap import bootstrap_env
+from data_ingestion.requirements.hashing import canonical_sha256
+from data_ingestion.requirements.models import ImportProfileDocument
+from operator_e2e.requirement_e2e_support import (
+    E2EConfig, ExitCode, HarnessFailure, SingleRunLock, StageStatus, atomic_write_json,
+    atomic_write_text, bounded_log_tail, classify_new_batch, load_e2e_environment,
+    output_root_fingerprint, redact, result_document, terminal_failure, validate_artifact,
+    validate_next_run, validate_preview, validate_remote_items, validate_terminal, verify_worker_identity,
+)
+
+PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
+TRANSIENT = {429, 502, 503, 504}
+
+
+class Api:
+    def __init__(self, config: E2EConfig): self.config, self.token = config, config.token
+    @property
+    def headers(self): return {"Authorization": f"Bearer {self.token}"} if self.token else {}
+    def request(self, method: str, path: str, *, read_retry: bool = False, timeout: int = 30, **kwargs):
+        if method.upper() == "POST" and path.rstrip("/").endswith("/runs"):
+            raise AssertionError("manual run forbidden")
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                response = requests.request(method, self.config.base_url + path, headers=self.headers, timeout=(5, timeout), **kwargs)
+                if read_retry and response.status_code in TRANSIENT and time.monotonic() < deadline: time.sleep(1); continue
+                if response.status_code >= 400:
+                    category = "authentication_failed" if response.status_code == 401 else "authorization_failed" if response.status_code == 403 else "api_request_failed"
+                    raise HarnessFailure(category)
+                return response.json() if response.content else {}
+            except (requests.Timeout, requests.ConnectionError):
+                if read_retry and time.monotonic() < deadline: time.sleep(1); continue
+                raise
+    def get(self, path: str, **kwargs): return self.request("GET", path, read_retry=True, **kwargs)
+    def post(self, path: str, **kwargs): return self.request("POST", path, **kwargs)
+    def patch(self, path: str, **kwargs): return self.request("PATCH", path, **kwargs)
+
+
+class Harness:
+    def __init__(self, config: E2EConfig, excel: Path, run_id: str, result: dict[str, Any]):
+        self.config, self.excel, self.run_id, self.result = config, excel, run_id, result
+        self.api = Api(config); self.enabled_schedule_id: str | None = None
+        self.output = config.output_dir / run_id; self.known_secrets = [x for x in (config.token, config.password) if x]
+
+    def pass_stage(self, name: str, **evidence):
+        stage = next(item for item in self.result["stages"] if item["name"] == name)
+        stage.update(status=StageStatus.PASS, evidence=redact(evidence, self.known_secrets))
+
+    def fail(self, category: str, stage: str, exit_code=ExitCode.FUNCTIONAL):
+        raise HarnessFailure(category, stage=stage, exit_code=exit_code)
+
+    def authenticate(self):
+        if self.api.token: return
+        try:
+            value = self.api.post("/v1/auth/login", json={"username": self.config.username, "password": self.config.password})
+        except Exception as exc: raise HarnessFailure("authentication_failed", stage="AUTH", exit_code=ExitCode.PREFLIGHT) from exc
+        self.api.token = value.get("access_token")
+        if not self.api.token: self.fail("authentication_failed", "AUTH", ExitCode.PREFLIGHT)
+        self.known_secrets.append(self.api.token)
+
+    def validate_input(self):
+        if self.excel.suffix.lower() != ".xlsx" or not self.excel.is_file() or self.excel.stat().st_size <= 0:
+            self.fail("input_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
+        try:
+            book = load_workbook(self.excel, read_only=True); book.close()
+        except Exception as exc: raise HarnessFailure("input_invalid", stage="INPUT_VALIDATION", exit_code=ExitCode.PREFLIGHT) from exc
+        digest = hashlib.sha256(self.excel.read_bytes()).hexdigest()
+        expected = self.config.expected_source_sha
+        if expected and expected != digest: self.fail("input_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
+        self.result["input"] = {"path": str(self.excel), "sha256": digest, "size_bytes": self.excel.stat().st_size}
+
+    def _exact_named(self, path: str, name: str): return [item for item in self.api.get(path)["items"] if item.get("name") == name]
+    def _write_with_reread(self, write: Callable[[], dict], reread: Callable[[], list[dict]], stage: str):
+        try: return write()
+        except (requests.Timeout, requests.ConnectionError):
+            winners = reread()
+            if len(winners) == 1: return winners[0]
+            if len(winners) > 1: self.fail("ambiguous_write", stage)
+            try: return write()
+            except (requests.Timeout, requests.ConnectionError) as exc: raise HarnessFailure("ambiguous_write", stage=stage) from exc
+
+    def ensure_profile(self, profile_doc: dict):
+        name = self.config.profile_name
+        matches = self._exact_named("/v1/requirement-import-profiles", name)
+        if len(matches) > 1: self.fail("fixture_ambiguous", "FIXTURE_PROFILE")
+        if not matches:
+            profile = self._write_with_reread(lambda: self.api.post("/v1/requirement-import-profiles", json={"name": name, "description": "Reserved automatic operator E2E fixture", "enabled": False}), lambda: self._exact_named("/v1/requirement-import-profiles", name), "FIXTURE_PROFILE")
+        else: profile = matches[0]
+        profile = self.api.get(f"/v1/requirement-import-profiles/{profile['profile_id']}")
+        digest = canonical_sha256(ImportProfileDocument.model_validate(profile_doc).model_dump(mode="json"))
+        exact = [v for v in profile.get("versions", []) if v.get("profile_sha256") == digest]
+        if profile.get("versions") and (len(profile["versions"]) != 1 or len(exact) != 1): self.fail("fixture_drift", "FIXTURE_PROFILE")
+        if not exact:
+            version = self._write_with_reread(
+                lambda: self.api.post(f"/v1/requirement-import-profiles/{profile['profile_id']}/versions", json={"profile": profile_doc}),
+                lambda: [item for item in self.api.get(f"/v1/requirement-import-profiles/{profile['profile_id']}").get("versions", []) if item.get("profile_sha256") == digest],
+                "FIXTURE_PROFILE",
+            )
+        else: version = exact[0]
+        if version.get("status") == "draft":
+            try: version = self.api.post(f"/v1/requirement-import-profiles/{profile['profile_id']}/versions/{version['version_number']}/approve")
+            except (requests.Timeout, requests.ConnectionError):
+                observed = self.api.get(f"/v1/requirement-import-profiles/{profile['profile_id']}")
+                matches = [item for item in observed.get("versions", []) if item.get("profile_version_id") == version["profile_version_id"] and item.get("status") == "approved"]
+                if observed.get("active_version_id") != version["profile_version_id"] or len(matches) != 1: self.fail("ambiguous_write", "FIXTURE_PROFILE")
+                version = matches[0]
+        elif version.get("status") != "approved": self.fail("fixture_drift", "FIXTURE_PROFILE")
+        profile = self.api.get(f"/v1/requirement-import-profiles/{profile['profile_id']}")
+        if profile.get("active_version_id") != version["profile_version_id"]: self.fail("fixture_drift", "FIXTURE_PROFILE")
+        if not profile.get("enabled"):
+            try: profile = self.api.patch(f"/v1/requirement-import-profiles/{profile['profile_id']}", json={"enabled": True})
+            except (requests.Timeout, requests.ConnectionError):
+                profile = self.api.get(f"/v1/requirement-import-profiles/{profile['profile_id']}")
+                if not profile.get("enabled"): self.fail("ambiguous_write", "FIXTURE_PROFILE")
+        self.result["fixtures"].update(profile_id=profile["profile_id"], profile_version_id=version["profile_version_id"])
+        return profile, version
+
+    def ensure_source(self, profile_id: str):
+        name = self.config.source_name; matches = self._exact_named("/v1/requirement-sources", name)
+        if len(matches) > 1: self.fail("fixture_ambiguous", "FIXTURE_SOURCE")
+        expected = {"source_type": "manual_upload", "source_mode": "authoritative_snapshot", "source_config": {"display_name": "Requirement Operator E2E XLSX", "format": "xlsx"}, "import_profile_id": profile_id}
+        if matches:
+            source = matches[0]
+            if any(source.get(key) != value for key, value in expected.items()): self.fail("fixture_drift", "FIXTURE_SOURCE")
+        else:
+            payload = {"name": name, **expected, "enabled": False}
+            source = self._write_with_reread(lambda: self.api.post("/v1/requirement-sources", json=payload), lambda: self._exact_named("/v1/requirement-sources", name), "FIXTURE_SOURCE")
+        if not source.get("enabled"):
+            try: source = self.api.patch(f"/v1/requirement-sources/{source['source_id']}", json={"enabled": True})
+            except (requests.Timeout, requests.ConnectionError):
+                source = self.api.get(f"/v1/requirement-sources/{source['source_id']}")
+                if not source.get("enabled"): self.fail("ambiguous_write", "FIXTURE_SOURCE")
+        self.result["fixtures"]["source_id"] = source["source_id"]
+        return source
+
+    def import_requirements(self, source, version):
+        data = self.excel.read_bytes(); files = {"file": (self.excel.name, data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+        preview = self.api.post(f"/v1/requirement-sources/{source['source_id']}/preview?profile_version_id={version['profile_version_id']}", files=files, timeout=60)
+        validate_preview(preview); self.pass_stage("REQUIREMENT_PREVIEW", accepted_count=3, rejected_count=0)
+        sets_before = {item.get("active_snapshot_id") for item in self.api.get("/v1/requirement-sets")["items"] if item.get("source_id") == source["source_id"]}
+        def winners():
+            sets = [item for item in self.api.get("/v1/requirement-sets")["items"] if item.get("source_id") == source["source_id"]]
+            found=[]
+            for reqset in sets:
+                for snap in self.api.get(f"/v1/requirement-sets/{reqset['requirement_set_id']}/snapshots")["items"]:
+                    if snap.get("snapshot_id") not in sets_before and snap.get("source_sha256") == preview.get("source_sha256") and snap.get("profile_version_id") == version["profile_version_id"]: found.append({**snap, "requirement_set_id": reqset["requirement_set_id"], "status": "committed", "accepted_count": 3, "rejected_count": 0})
+            return found
+        committed = self._write_with_reread(lambda: self.api.post(f"/v1/requirement-sources/{source['source_id']}/import", files=files, timeout=60), winners, "REQUIREMENT_IMPORT")
+        if committed.get("status") != "committed" or committed.get("accepted_count") != 3 or committed.get("rejected_count") != 0: self.fail("import_failed", "REQUIREMENT_IMPORT")
+        sets = [item for item in self.api.get("/v1/requirement-sets")["items"] if item.get("source_id") == source["source_id"]]
+        if len(sets) != 1: self.fail("snapshot_identity_mismatch", "SNAPSHOT")
+        reqset = sets[0]
+        if reqset.get("active_snapshot_id") != committed["snapshot_id"]: self.fail("snapshot_identity_mismatch", "SNAPSHOT")
+        items = self.api.get(f"/v1/requirement-snapshots/{committed['snapshot_id']}/items")["items"]
+        now = datetime.now(timezone.utc)
+        if len(items) != 3 or any(item.get("expires_at") and self._dt(item["expires_at"]) <= now for item in items): self.fail("item_count_mismatch", "REQUIREMENT_ITEMS")
+        self.result["fixtures"]["requirement_set_id"] = reqset["requirement_set_id"]
+        self.result["requirement_import"] = {key: committed.get(key) for key in ("import_run_id", "snapshot_id", "accepted_count", "rejected_count")}
+        return reqset, items
+
+    @staticmethod
+    def _dt(value): return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc)
+
+    def ensure_schedule(self, set_id: str):
+        name = self.config.schedule_name; matches = self._exact_named("/v1/requirement-schedules?limit=100", name)
+        if len(matches) > 1: self.fail("fixture_ambiguous", "SCHEDULE_FIXTURE")
+        if matches:
+            schedule = matches[0]
+            if schedule.get("requirement_set_id") != set_id: self.fail("fixture_drift", "SCHEDULE_FIXTURE")
+            if schedule.get("enabled"):
+                try: schedule = self.api.patch(f"/v1/requirement-schedules/{schedule['schedule_id']}", json={"enabled": False})
+                except (requests.Timeout, requests.ConnectionError):
+                    schedule = self.api.get(f"/v1/requirement-schedules/{schedule['schedule_id']}")
+                    if schedule.get("enabled"): self.fail("ambiguous_write", "SCHEDULE_FIXTURE")
+        else:
+            schedule = self._write_with_reread(lambda: self.api.post("/v1/requirement-schedules", json={"name": name, "requirement_set_id": set_id}), lambda: self._exact_named("/v1/requirement-schedules?limit=100", name), "SCHEDULE_FIXTURE")
+        self.result["fixtures"]["schedule_id"] = schedule["schedule_id"]
+        return schedule
+
+    def schedule_and_wait(self, schedule, snapshot_id: str, expected_requirements: set[str]):
+        sid = schedule["schedule_id"]
+        baseline = {item["batch_run_id"] for item in self.api.get(f"/v1/requirement-schedules/{sid}/runs?limit=100")["items"]}
+        anchor = (datetime.now(timezone.utc) + timedelta(seconds=self.config.anchor_lead_seconds)).replace(microsecond=0)
+        payload = {"timezone": "UTC", "recurrence": {"kind": "interval", "every": 10080, "unit": "minutes", "anchor_at": anchor.isoformat()}, "run_policy": "all_active", "model": self.config.model}
+        existing_versions = {item["schedule_version_id"] for item in self.api.get(f"/v1/requirement-schedules/{sid}").get("versions", [])}
+        config_document = {"schema_version": 1, **payload}
+        config_digest = hashlib.sha256(json.dumps(config_document, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+        def version_winners():
+            return [item for item in self.api.get(f"/v1/requirement-schedules/{sid}").get("versions", []) if item.get("schedule_version_id") not in existing_versions and item.get("config_sha256") == config_digest]
+        version = self._write_with_reread(lambda: self.api.post(f"/v1/requirement-schedules/{sid}/versions", json=payload), version_winners, "SCHEDULE_VERSION")
+        self.result["fixtures"]["schedule_version_id"] = version["schedule_version_id"]
+        self.pass_stage("SCHEDULE_VERSION", schedule_version_id=version["schedule_version_id"])
+        try: self.api.post(f"/v1/requirement-schedules/{sid}/versions/{version['version_number']}/approve")
+        except (requests.Timeout, requests.ConnectionError):
+            observed = self.api.get(f"/v1/requirement-schedules/{sid}")
+            if observed.get("active_version_id") != version["schedule_version_id"]: self.fail("ambiguous_write", "SCHEDULE_APPROVE")
+        self.pass_stage("SCHEDULE_APPROVE")
+        try: enabled = self.api.patch(f"/v1/requirement-schedules/{sid}", json={"enabled": True})
+        except (requests.Timeout, requests.ConnectionError):
+            enabled = self.api.get(f"/v1/requirement-schedules/{sid}")
+            if not enabled.get("enabled") or enabled.get("active_version_id") != version["schedule_version_id"]: self.fail("ambiguous_write", "SCHEDULE_ENABLE")
+        self.enabled_schedule_id = sid
+        initial = self._dt(enabled["next_run_at"]); now = datetime.now(timezone.utc)
+        if not now < initial <= now + timedelta(seconds=self.config.allowed_anchor_window_seconds): self.fail("next_run_at_out_of_window", "SCHEDULE_ENABLE")
+        self.pass_stage("SCHEDULE_ENABLE", next_run_at=initial.isoformat())
+        deadline = max(time.monotonic() + self.config.auto_claim_timeout_seconds, time.monotonic() + (initial-now).total_seconds() + 90)
+        batch = None
+        while time.monotonic() < deadline:
+            listed = self.api.get(f"/v1/requirement-schedules/{sid}/runs?limit=100")["items"]
+            runs = [self.api.get(f"/v1/requirement-schedules/{sid}/runs/{item['batch_run_id']}") for item in listed if item.get("batch_run_id") not in baseline]
+            try: batch = classify_new_batch(runs, baseline, version["schedule_version_id"], snapshot_id, initial.isoformat()); break
+            except HarnessFailure as exc:
+                if str(exc) != "automatic_claim_timeout": raise
+            time.sleep(2)
+        if batch is None: self.fail("automatic_claim_timeout", "AUTO_CLAIM")
+        detail = self.api.get(f"/v1/requirement-schedules/{sid}/runs/{batch['batch_run_id']}")
+        selected = [item for item in detail["items"] if item.get("selection_status") == "selected"]
+        if len(selected) != 3 or {item.get("requirement_id") for item in selected} != expected_requirements: self.fail("item_count_mismatch", "RUN_SELECTION")
+        advanced = self._dt(self.api.get(f"/v1/requirement-schedules/{sid}")["next_run_at"])
+        validate_next_run(initial, advanced)
+        try:
+            disabled = self.api.patch(f"/v1/requirement-schedules/{sid}", json={"enabled": False}, timeout=30)
+            if disabled.get("enabled") is not False: self.fail("cleanup_failed", "CLEANUP", ExitCode.CLEANUP)
+            self.enabled_schedule_id = None
+        except Exception as exc:
+            raise HarnessFailure("cleanup_failed", stage="CLEANUP", exit_code=ExitCode.CLEANUP) from exc
+        self.result["schedule"] = {"initial_next_run_at": initial.isoformat(), "scheduled_for": initial.isoformat(), "advanced_next_run_at": advanced.isoformat(), "trigger_type": "scheduled"}
+        self.result["batch"] = {key: detail.get(key) for key in ("batch_run_id", "snapshot_id", "state", "selected_count", "skipped_count", "success_count", "failure_count", "phase1a_output_root_fingerprint")}
+        for stage in ("AUTO_CLAIM", "RUN_IDENTITY", "RUN_SELECTION", "NEXT_RUN_ADVANCE"): self.pass_stage(stage)
+        return detail
+
+    def wait_terminal(self, batch):
+        sid, bid = self.enabled_schedule_id, batch["batch_run_id"]
+        handoff_deadline = time.monotonic() + self.config.handoff_timeout_seconds
+        while time.monotonic() < handoff_deadline:
+            batch = self.api.get(f"/v1/requirement-schedules/{sid}/runs/{bid}")
+            failure = terminal_failure(batch)
+            if failure: self.fail(failure, "REMOTE_EXECUTION")
+            selected = [x for x in batch["items"] if x.get("selection_status") == "selected"]
+            if len(selected) == 3 and all(x.get("remote_job_id") and x.get("dispatched_at") for x in selected): break
+            time.sleep(2)
+        else: self.fail("handoff_timeout", "HANDOFF")
+        validate_remote_items(batch["items"]); self.pass_stage("HANDOFF"); self.pass_stage("REPORT_JOBS")
+        deadline = time.monotonic() + self.config.remote_timeout_seconds
+        while time.monotonic() < deadline:
+            batch = self.api.get(f"/v1/requirement-schedules/{sid}/runs/{bid}")
+            failure = terminal_failure(batch)
+            if failure: self.fail(failure, "REMOTE_EXECUTION")
+            if all(x.get("remote_job_state") == "completed" and x.get("execution_state") == "completed" for x in batch["items"] if x.get("selection_status") == "selected") and batch.get("state") == "completed": break
+            time.sleep(3)
+        else: self.fail("remote_execution_timeout", "REMOTE_EXECUTION")
+        validate_terminal(batch)
+        for stage in ("REMOTE_EXECUTION", "ARTIFACT_RECONCILIATION", "RUN_ITEMS_TERMINAL", "BATCH_TERMINAL"): self.pass_stage(stage)
+        return batch
+
+    def verify_artifacts(self, batch):
+        persisted_root = batch.get("phase1a_output_root_fingerprint")
+        if persisted_root != output_root_fingerprint(self.config.artifact_root): self.fail("artifact_root_fingerprint_mismatch", "ARTIFACT_RECONCILIATION")
+        for item in batch["items"]:
+            if item.get("selection_status") != "selected": continue
+            evidence = validate_artifact(self.config.artifact_root, persisted_root, item.get("artifact_relative_path", ""), item.get("artifact_sha256", ""), self.output / "artifacts" / f"{item['run_item_id']}.docx")
+            self.result["artifacts"].append({"run_item_id": item["run_item_id"], **evidence})
+            self.result["items"].append({key: item.get(key) for key in ("run_item_id", "requirement_id", "remote_job_id", "remote_job_state", "execution_state", "artifact_relative_path", "artifact_sha256")})
+        if len(self.result["artifacts"]) != 3: self.fail("artifact_missing", "ARTIFACT_RECONCILIATION")
+        self.pass_stage("DOCX_INTEGRITY", count=3); self.pass_stage("SHA256_MATCH", count=3)
+
+    def run(self):
+        self.pass_stage("CONFIG_PREFLIGHT")
+        try: health = self.api.get("/healthz", timeout=30)
+        except Exception as exc: raise HarnessFailure("api_unreachable", stage="API_READINESS", exit_code=ExitCode.PREFLIGHT) from exc
+        self.pass_stage("API_READINESS", status=health.get("status")); self.authenticate(); self.pass_stage("AUTH")
+        self.api.get("/v1/requirement-import-profiles"); self.api.get("/v1/requirement-schedules")
+        self.pass_stage("PIPELINE_READINESS")
+        workers = [verify_worker_identity(PROJECT_ROOT / f".run_sra_api_{role}.identity", role, PROJECT_ROOT) for role in ("schedule", "handoff")]
+        self.pass_stage("RUNTIME_WORKERS", workers=workers)
+        self.validate_input(); self.pass_stage("INPUT_VALIDATION")
+        profile_doc = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+        profile, version = self.ensure_profile(profile_doc); self.pass_stage("FIXTURE_PROFILE")
+        source = self.ensure_source(profile["profile_id"]); self.pass_stage("FIXTURE_SOURCE")
+        reqset, items = self.import_requirements(source, version)
+        for stage in ("REQUIREMENT_IMPORT", "SNAPSHOT", "REQUIREMENT_ITEMS"): self.pass_stage(stage)
+        schedule = self.ensure_schedule(reqset["requirement_set_id"]); self.pass_stage("SCHEDULE_FIXTURE")
+        batch = self.schedule_and_wait(schedule, self.result["requirement_import"]["snapshot_id"], {x["requirement_id"] for x in items})
+        batch = self.wait_terminal(batch); self.verify_artifacts(batch)
+        self.result["batch"].update({key: batch.get(key) for key in ("state", "success_count", "failure_count")})
+
+    def cleanup(self):
+        if self.enabled_schedule_id:
+            self.api.patch(f"/v1/requirement-schedules/{self.enabled_schedule_id}", json={"enabled": False}, timeout=30)
+            self.enabled_schedule_id = None
+        self.pass_stage("CLEANUP")
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__); parser.add_argument("--excel", required=True, type=Path)
+    parser.add_argument("--output-dir", type=Path); parser.add_argument("--env-file", type=Path, default=SCRIPT_DIR / "e2e.env.local")
+    return parser.parse_args(argv)
+
+
+def _git_source():
+    def command(*args):
+        try: return subprocess.run(args, cwd=PROJECT_ROOT, check=True, text=True, capture_output=True).stdout.strip()
+        except Exception: return None
+    return {"repository": "hun186/poc-agent", "design_baseline": "4fd6f1adad66c3cfc20a91ad556c6da7e8a2da9b", "expected_runtime_sha": os.getenv("SRA_E2E_EXPECTED_SOURCE_SHA") or None, "local_git_sha": command("git", "rev-parse", "HEAD"), "local_git_dirty": bool(command("git", "status", "--porcelain"))}
+
+
+def main(argv=None) -> int:
+    bootstrap_env(); args = parse_args(argv); run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
+    result = result_document(run_id); started = time.monotonic(); harness = None; diagnostics = {"logs": {}}
+    evidence_output = (args.output_dir or Path(os.getenv("SRA_E2E_OUTPUT_DIR") or "operator_e2e/output/requirement_e2e")) / run_id
+    try:
+        env = load_e2e_environment(args.env_file, dict(os.environ)); config = E2EConfig.from_environment(env)
+        if args.output_dir: config = E2EConfig(**{**config.__dict__, "output_dir": args.output_dir})
+        harness = Harness(config, args.excel.resolve(), run_id, result); result["source"] = _git_source()
+        with SingleRunLock(config.output_dir / ".lock"):
+            try: harness.run()
+            finally:
+                try: harness.cleanup()
+                except Exception as cleanup_exc: raise HarnessFailure("cleanup_failed", stage="CLEANUP", exit_code=ExitCode.CLEANUP) from cleanup_exc
+        result.update(overall_status="PASS", exit_code=0); exit_code = ExitCode.PASS
+    except HarnessFailure as exc:
+        result.update(overall_status="FAIL", exit_code=int(exc.exit_code), failed_stage=exc.stage, failure_category=str(exc)); exit_code = exc.exit_code
+        if exc.stage:
+            stage = next((x for x in result["stages"] if x["name"] == exc.stage), None)
+            if stage: stage["status"] = StageStatus.FAIL
+        if harness:
+            paths = {"api": harness.config.api_log_path, "schedule": harness.config.schedule_log_path, "handoff": harness.config.handoff_log_path}
+            diagnostics["logs"] = {name: bounded_log_tail(path if path.is_absolute() else PROJECT_ROOT / path, harness.known_secrets) for name, path in paths.items()}
+    except Exception:
+        result.update(overall_status="FAIL", exit_code=4, failure_category="internal_harness_error"); exit_code = ExitCode.INTERNAL
+    result["finished_at"] = datetime.now(timezone.utc).isoformat(); result["duration_seconds"] = round(time.monotonic() - started, 3)
+    try:
+        known_secrets = harness.known_secrets if harness else []
+        if harness: harness.pass_stage("FINAL_EVIDENCE")
+        else:
+            next(item for item in result["stages"] if item["name"] == "FINAL_EVIDENCE")["status"] = StageStatus.PASS
+        evidence_output.mkdir(parents=True, exist_ok=False)
+        (evidence_output / "artifacts").mkdir()
+        safe = redact(result, known_secrets)
+        atomic_write_json(evidence_output / "result.json", safe)
+        atomic_write_json(evidence_output / "diagnostics.json", redact(diagnostics, known_secrets))
+        summary = f"REQUIREMENT_E2E = {result['overall_status']}\nEXIT_CODE = {int(exit_code)}\n"
+        if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
+        atomic_write_text(evidence_output / "summary.txt", summary)
+    except FileExistsError:
+        # Artifact verification may already have created this invocation's unique
+        # directory; only the expected directory itself may pre-exist.
+        try:
+            evidence_output.mkdir(parents=True, exist_ok=True)
+            (evidence_output / "artifacts").mkdir(exist_ok=True)
+            atomic_write_json(evidence_output / "result.json", redact(result, known_secrets))
+            atomic_write_json(evidence_output / "diagnostics.json", redact(diagnostics, known_secrets))
+            summary = f"REQUIREMENT_E2E = {result['overall_status']}\nEXIT_CODE = {int(exit_code)}\n"
+            if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
+            atomic_write_text(evidence_output / "summary.txt", summary)
+        except Exception:
+            exit_code = ExitCode.INTERNAL
+            result.update(overall_status="FAIL", exit_code=4, failed_stage="FINAL_EVIDENCE", failure_category="evidence_write_failed")
+            next(item for item in result["stages"] if item["name"] == "FINAL_EVIDENCE")["status"] = StageStatus.FAIL
+    except Exception:
+        exit_code = ExitCode.INTERNAL
+        result.update(overall_status="FAIL", exit_code=4, failed_stage="FINAL_EVIDENCE", failure_category="evidence_write_failed")
+        next(item for item in result["stages"] if item["name"] == "FINAL_EVIDENCE")["status"] = StageStatus.FAIL
+    print(f"REQUIREMENT_E2E = {result['overall_status']}")
+    if result.get("failed_stage"): print(f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}")
+    return int(exit_code)
+
+
+if __name__ == "__main__": raise SystemExit(main())

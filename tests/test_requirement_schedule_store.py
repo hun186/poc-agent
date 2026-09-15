@@ -51,3 +51,30 @@ def test_domain_schedule_version_rejects_bad_timezone_and_model():
         ScheduleVersionCreate("No/Such_Zone", recurrence, RunPolicy.ALL_ACTIVE, "m")
     with pytest.raises(ValueError, match="schedule_model_invalid"):
         ScheduleVersionCreate("UTC", recurrence, RunPolicy.ALL_ACTIVE, "   ")
+
+
+def test_get_batch_run_projects_durable_handoff_and_artifact_identity(monkeypatch):
+    store = ScheduleStore(Registry(), "control")
+    queries = []
+
+    def query(sql, *params):
+        queries.append(sql)
+        if "requirement_batch_run_items" in sql:
+            return [{"run_item_id": "item-1", "remote_job_id": "job-1", "remote_job_state": "running"}]
+        return [{
+            "batch_run_id": "run-1",
+            "snapshot_id": "snap-1",
+            "phase1a_output_root_fingerprint": "a" * 64,
+        }]
+
+    monkeypatch.setattr(store, "_query", query)
+    run = store.get_batch_run(schedule_id="schedule-1", batch_run_id="run-1")
+
+    assert run["snapshot_id"] == "snap-1"
+    assert run["phase1a_output_root_fingerprint"] == "a" * 64
+    assert run["items"][0]["remote_job_id"] == "job-1"
+    assert run["items"][0]["remote_job_state"] == "running"
+    assert "snapshot_id" in queries[0]
+    assert "phase1a_output_root_fingerprint" in queries[0]
+    assert "remote_job_id" in queries[1]
+    assert "remote_job_state" in queries[1]
