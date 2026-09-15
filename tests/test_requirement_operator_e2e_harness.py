@@ -313,10 +313,12 @@ def test_import_ambiguous_write_ignores_historical_matching_snapshots(tmp_path):
 
     class FakeApi:
         imported = False
+        import_post_count = 0
         def post(self, path, **_kwargs):
             if path.endswith("/preview") or "/preview?" in path:
                 return {"has_errors": False, "accepted_count": 3, "rejected_count": 0, "source_sha256": "same-sha"}
             if path.endswith("/import"):
+                self.import_post_count += 1
                 self.imported = True; raise requests.Timeout()
             raise AssertionError(path)
         def get(self, path, **_kwargs):
@@ -325,7 +327,18 @@ def test_import_ambiguous_write_ignores_historical_matching_snapshots(tmp_path):
                 return {"items": [{"source_id": "source-1", "requirement_set_id": "set-1", "active_snapshot_id": active}]}
             if path == "/v1/requirement-sets/set-1/snapshots":
                 ids = old_ids | ({new_id} if self.imported else set())
-                return {"items": [{"snapshot_id": sid, "source_sha256": "same-sha", "profile_version_id": "profile-v1"} for sid in sorted(ids)]}
+                return {"items": [
+                    {
+                        "snapshot_id": sid,
+                        "requirement_set_id": "set-1",
+                        "import_run_id": "new-import-run" if sid == new_id else f"import-{sid}",
+                        "source_snapshot_sha256": "same-sha",
+                        "import_profile_version_id": "profile-v1",
+                        "created_at": "2026-09-15T00:00:00+00:00",
+                        "activated_at": "2026-09-15T00:00:00+00:00",
+                    }
+                    for sid in sorted(ids)
+                ]}
             if path == f"/v1/requirement-snapshots/{new_id}/items":
                 return {"items": [{"requirement_id": f"req-{i}", "expires_at": None} for i in range(3)]}
             raise AssertionError(path)
@@ -336,4 +349,6 @@ def test_import_ambiguous_write_ignores_historical_matching_snapshots(tmp_path):
     reqset, items = harness.import_requirements({"source_id": "source-1"}, {"profile_version_id": "profile-v1"})
     assert reqset["active_snapshot_id"] == new_id
     assert harness.result["requirement_import"]["snapshot_id"] == new_id
+    assert harness.result["requirement_import"]["import_run_id"] == "new-import-run"
+    assert harness.api.import_post_count == 1
     assert len(items) == 3

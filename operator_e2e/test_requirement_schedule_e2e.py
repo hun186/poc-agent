@@ -171,7 +171,7 @@ class Harness:
             found=[]
             for reqset in sets:
                 for snap in self.api.get(f"/v1/requirement-sets/{reqset['requirement_set_id']}/snapshots")["items"]:
-                    if snap.get("snapshot_id") not in snapshot_ids_before and snap.get("source_sha256") == preview.get("source_sha256") and snap.get("profile_version_id") == version["profile_version_id"]: found.append({**snap, "requirement_set_id": reqset["requirement_set_id"], "status": "committed", "accepted_count": 3, "rejected_count": 0})
+                    if snap.get("snapshot_id") not in snapshot_ids_before and snap.get("source_snapshot_sha256") == preview.get("source_sha256") and snap.get("import_profile_version_id") == version["profile_version_id"]: found.append({**snap, "requirement_set_id": reqset["requirement_set_id"], "status": "committed", "accepted_count": 3, "rejected_count": 0})
             return found
         committed = self._write_with_reread(lambda: self.api.post(f"/v1/requirement-sources/{source['source_id']}/import", files=files, timeout=60), winners, "REQUIREMENT_IMPORT")
         if committed.get("status") != "committed" or committed.get("accepted_count") != 3 or committed.get("rejected_count") != 0: self.fail("import_failed", "REQUIREMENT_IMPORT")
