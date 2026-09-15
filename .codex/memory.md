@@ -10,6 +10,12 @@
 
 ## Recent Changes
 
+### 2026-09-15 Requirement Snapshot recovery field-name hotfix
+
+- Corrected only the operator Harness ambiguous Import recovery to compare durable Snapshot fields `source_snapshot_sha256` and `import_profile_version_id` against the Preview SHA and exact active Profile Version; the production Requirement API and schemas are unchanged.
+- The focused fake API regression now models complete durable Snapshot identities, includes two historical same-content/Same-Profile Snapshots, simulates commit-followed-by-timeout, and proves recovery preserves the new `snapshot_id` and `import_run_id` with exactly one Import POST.
+- Strict TDD RED failed the new recovery scenario against baseline `1719adea390a5a90ddbd3d38b2dd4f3e9afcf3a3`. GREEN passed the 24-test Harness suite and the prescribed 196-test Requirement API/import/Schedule/worker/Handoff/Report Job/launcher regression. The live deployment Harness was intentionally not executed, so no fresh live E2E PASS is claimed.
+
 ### 2026-09-15 Requirement automatic operator E2E harness hotfix
 
 - Kept Schedule enablement ownership separate from immutable Batch polling identity: the harness still disables immediately after proving `next_run_at` advancement, then polls the Batch with its persisted `schedule_id` and `batch_run_id`.
