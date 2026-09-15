@@ -1,7 +1,7 @@
-# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.6
+# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.6.1
 
-> **Supersedes v1.5. Do not use v1 through v1.5 for live execution.**
-> The v1.6 release closes the package-manifest trust-boundary gaps while retaining
+> **Supersedes v1.6. Do not use v1 through v1.6 for live execution.**
+> The v1.6.1 release corrects the reviewed manifest implementation authority while retaining
 > intact Git-worktree identity as an alternative. Static review is not deployment
 > acceptance; SD-1 through SD-7 remain **PENDING**.
 
@@ -11,16 +11,16 @@
 | --- | --- |
 | Repository | `hun186/poc-agent` |
 | Hosted branch | `main` |
-| Corrective implementation baseline | `7a54f182d9c1b6d18234d6e8085b163880b26db0` (PR #245 merge) |
+| Post-merge corrective source baseline | `8cd7be88ec3e36e344b0bbb5e73b0125a3579b39` (PR #246 merge) |
 | Reviewed runtime baseline | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` (runtime tree; see SD-1) |
-| Reviewed manifest implementation commit | `d170dc7c42cdfc5f454aa00f0ef37743aba34fd7` |
+| Reviewed manifest implementation commit | `a79198aaff5828dbe54c3ffc4120d10377ea6e77` (hosted PR #246 head) |
 | Runtime parent | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` |
-| Version | `v1.6` |
-| Status | **SOURCE IMPLEMENTED; POST-MERGE REVIEW REQUIRED; SD-1 THROUGH SD-7 PENDING** |
+| Version | `v1.6.1` |
+| Status | **POST-MERGE SOURCE REVIEW REQUIRED; SD-1 THROUGH SD-7 PENDING** |
 
-The corrective implementation baseline is the supplied PR #245 merge. The
-reviewed manifest implementation commit is the concrete Task 4 commit above;
-it is not a predicted merge SHA.
+The post-merge corrective source baseline is the supplied PR #246 merge. The
+reviewed manifest implementation commit is the hosted PR #246 head above; it is
+the reviewed release authority rather than a local-only intermediate commit.
 Runbook identity and deployed-byte identity are deliberately separate: a future
 documentation-only merge changes the former without invalidating the latter.
 
@@ -139,7 +139,7 @@ command and must run only against a newly staged package in the trusted release
 environment. The receipt remains outside that package.
 
 ```bash
-REVIEWED_MANIFEST_IMPLEMENTATION_COMMIT=d170dc7c42cdfc5f454aa00f0ef37743aba34fd7
+REVIEWED_MANIFEST_IMPLEMENTATION_COMMIT=a79198aaff5828dbe54c3ffc4120d10377ea6e77
 python tools/deployment_manifest.py build \
   --repo-root . \
   --package-root "$STAGED_PACKAGE_ROOT" \
@@ -773,11 +773,11 @@ Share at most the last 80 relevant log lines after redacting
 
 ```text
 Repository: hun186/poc-agent
-Corrective implementation baseline: 7a54f182d9c1b6d18234d6e8085b163880b26db0
-Reviewed manifest implementation commit: d170dc7c42cdfc5f454aa00f0ef37743aba34fd7
+Post-merge corrective source baseline: 8cd7be88ec3e36e344b0bbb5e73b0125a3579b39
+Reviewed manifest implementation commit: a79198aaff5828dbe54c3ffc4120d10377ea6e77
 Reviewed runtime baseline: edcbc744f71374eaa839b0a31e0cd125fcb6fe52
 Deployed runtime baseline: edcbc744f71374eaa839b0a31e0cd125fcb6fe52
-Runbook: v1.6
+Runbook: v1.6.1
 Gate executed:
 Identity mode:
 Precheck/action/verify marker:
