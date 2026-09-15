@@ -10,6 +10,12 @@
 
 ## Recent Changes
 
+### 2026-09-15 Requirement operator E2E input/runtime identity separation
+
+- Preserved `SRA_E2E_EXPECTED_SOURCE_SHA` exclusively as the optional 64-character lowercase XLSX byte SHA-256 and added the independent optional 40-character lowercase `SRA_E2E_EXPECTED_RUNTIME_SHA` for reviewed Git identity.
+- The Harness now rejects malformed configured identities during `CONFIG_PREFLIGHT`, records an expected input digest as `input.expected_sha256`, and fails before live API mutations when an available local Git SHA differs from the configured runtime SHA.
+- Strict TDD RED produced seven expected failures against the reviewed baseline; GREEN passed the 31-test focused Harness suite and the prescribed 196-test Requirement API/import/Schedule/worker/Handoff/Report Job/launcher regression. Python compilation and `git diff --check` also passed. The live deployment Harness was not executed, so no fresh live E2E PASS is claimed.
+
 ### 2026-09-15 Requirement Snapshot recovery field-name hotfix
 
 - Corrected only the operator Harness ambiguous Import recovery to compare durable Snapshot fields `source_snapshot_sha256` and `import_profile_version_id` against the Preview SHA and exact active Profile Version; the production Requirement API and schemas are unchanged.

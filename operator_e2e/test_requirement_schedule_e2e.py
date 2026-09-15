@@ -91,6 +91,7 @@ class Harness:
         expected = self.config.expected_source_sha
         if expected and expected != digest: self.fail("input_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
         self.result["input"] = {"path": str(self.excel), "sha256": digest, "size_bytes": self.excel.stat().st_size}
+        if expected: self.result["input"]["expected_sha256"] = expected
 
     def _exact_named(self, path: str, name: str): return [item for item in self.api.get(path)["items"] if item.get("name") == name]
     def _write_with_reread(self, write: Callable[[], dict], reread: Callable[[], list[dict]], stage: str):
@@ -326,11 +327,19 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def _git_source():
+def _git_source(expected_runtime_sha: str | None):
     def command(*args):
         try: return subprocess.run(args, cwd=PROJECT_ROOT, check=True, text=True, capture_output=True).stdout.strip()
         except Exception: return None
-    return {"repository": "hun186/poc-agent", "design_baseline": "4fd6f1adad66c3cfc20a91ad556c6da7e8a2da9b", "expected_runtime_sha": os.getenv("SRA_E2E_EXPECTED_SOURCE_SHA") or None, "local_git_sha": command("git", "rev-parse", "HEAD"), "local_git_dirty": bool(command("git", "status", "--porcelain"))}
+    return {"repository": "hun186/poc-agent", "design_baseline": "4fd6f1adad66c3cfc20a91ad556c6da7e8a2da9b", "expected_runtime_sha": expected_runtime_sha, "local_git_sha": command("git", "rev-parse", "HEAD"), "local_git_dirty": bool(command("git", "status", "--porcelain"))}
+
+
+def _validate_runtime_source(source: dict[str, Any]) -> None:
+    expected, actual = source.get("expected_runtime_sha"), source.get("local_git_sha")
+    if expected and actual and expected != actual:
+        raise HarnessFailure(
+            "runtime_source_identity_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+        )
 
 
 def main(argv=None) -> int:
@@ -346,7 +355,9 @@ def main(argv=None) -> int:
         config = E2EConfig.from_environment(env)
         if args.output_dir: config = E2EConfig(**{**config.__dict__, "output_dir": args.output_dir})
         evidence_output = config.output_dir / run_id
-        harness = Harness(config, args.excel.resolve(), run_id, result); result["source"] = _git_source()
+        harness = Harness(config, args.excel.resolve(), run_id, result)
+        result["source"] = _git_source(config.expected_runtime_sha)
+        _validate_runtime_source(result["source"])
         with SingleRunLock(config.output_dir / ".lock"):
             try: harness.run()
             finally:

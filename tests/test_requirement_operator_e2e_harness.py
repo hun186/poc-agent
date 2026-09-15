@@ -52,6 +52,93 @@ def test_config_auth_and_required_values(tmp_path):
     assert config.model == "m" and config.exit_code_for_failure == ExitCode.PREFLIGHT
 
 
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("SRA_E2E_EXPECTED_SOURCE_SHA", "a" * 40),
+        ("SRA_E2E_EXPECTED_RUNTIME_SHA", "a" * 64),
+        ("SRA_E2E_EXPECTED_SOURCE_SHA", "z" * 64),
+        ("SRA_E2E_EXPECTED_RUNTIME_SHA", "z" * 40),
+    ],
+)
+def test_config_rejects_malformed_source_and_runtime_shas(tmp_path, name, value):
+    env = {
+        "SRA_E2E_MODEL": "m",
+        "SRA_E2E_REQUIREMENT_ARTIFACT_ROOT": str(tmp_path),
+        "SRA_E2E_EDITOR_TOKEN": "t",
+        name: value,
+    }
+    with pytest.raises(HarnessFailure, match="configuration_error") as failure:
+        E2EConfig.from_environment(env)
+    assert failure.value.stage == "CONFIG_PREFLIGHT"
+
+
+def test_input_sha_validation_and_evidence_are_input_only(tmp_path):
+    from operator_e2e.test_requirement_schedule_e2e import Harness
+
+    excel = Path("operator_e2e/input/requirement_e2e_3items.xlsx")
+    digest = hashlib.sha256(excel.read_bytes()).hexdigest()
+    result = result_document("run")
+    config = SimpleNamespace(
+        output_dir=tmp_path, token="token", password=None, expected_source_sha=digest,
+    )
+    harness = Harness(config, excel, "run", result)
+    harness.validate_input()
+    assert result["input"]["sha256"] == digest
+    assert result["input"]["expected_sha256"] == digest
+
+    mismatch = Harness(
+        SimpleNamespace(**{**config.__dict__, "expected_source_sha": "0" * 64}),
+        excel,
+        "run-2",
+        result_document("run-2"),
+    )
+    with pytest.raises(HarnessFailure, match="input_invalid") as failure:
+        mismatch.validate_input()
+    assert failure.value.stage == "INPUT_VALIDATION"
+
+
+def test_runtime_source_evidence_uses_only_runtime_sha(monkeypatch):
+    from operator_e2e.test_requirement_schedule_e2e import _git_source
+
+    monkeypatch.setenv("SRA_E2E_EXPECTED_SOURCE_SHA", "1" * 64)
+    evidence = _git_source("9bf009922d3be304d65d59927f62bbbb3f21e305")
+    assert evidence["expected_runtime_sha"] == "9bf009922d3be304d65d59927f62bbbb3f21e305"
+    assert evidence["expected_runtime_sha"] != os.environ["SRA_E2E_EXPECTED_SOURCE_SHA"]
+
+
+def test_runtime_sha_mismatch_fails_before_harness_mutations(tmp_path, monkeypatch):
+    from operator_e2e.test_requirement_schedule_e2e import Harness, main
+
+    artifact_root = tmp_path / "artifact-root"
+    artifact_root.mkdir()
+    env_file = tmp_path / "e2e.env.local"
+    env_file.write_text(
+        f"SRA_E2E_MODEL=model\nSRA_E2E_REQUIREMENT_ARTIFACT_ROOT={artifact_root}\n"
+        f"SRA_E2E_EDITOR_TOKEN=token\nSRA_E2E_EXPECTED_RUNTIME_SHA={'b' * 40}\n",
+        encoding="utf-8",
+    )
+    mutations = []
+    monkeypatch.setattr(Harness, "run", lambda self: mutations.append("run"))
+    monkeypatch.setattr(
+        "operator_e2e.test_requirement_schedule_e2e._git_source",
+        lambda expected: {
+            "repository": "hun186/poc-agent", "expected_runtime_sha": expected,
+            "local_git_sha": "a" * 40, "local_git_dirty": False,
+        },
+    )
+
+    output = tmp_path / "evidence"
+    code = main([
+        "--excel", "unused.xlsx", "--env-file", str(env_file), "--output-dir", str(output),
+    ])
+    assert code == ExitCode.PREFLIGHT
+    assert mutations == []
+    result = json.loads(next(output.glob("*/result.json")).read_text())
+    assert result["failed_stage"] == "CONFIG_PREFLIGHT"
+    assert result["failure_category"] == "runtime_source_identity_mismatch"
+
+
 def test_redaction_removes_headers_fields_and_known_literals():
     secret = "SENTINEL-SECRET"
     value = {"Authorization": f"Bearer {secret}", "nested": f"password={secret} token={secret} PWD={secret} User ID=bob"}
