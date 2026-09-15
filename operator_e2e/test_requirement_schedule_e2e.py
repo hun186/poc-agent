@@ -340,6 +340,10 @@ def _validate_runtime_source(source: dict[str, Any]) -> None:
         raise HarnessFailure(
             "runtime_source_identity_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
         )
+    if expected and actual and source.get("local_git_dirty"):
+        raise HarnessFailure(
+            "runtime_source_dirty", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+        )
 
 
 def main(argv=None) -> int:
