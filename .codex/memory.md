@@ -114,3 +114,9 @@
 - Superseded v1.1 with v1.2 against the supplied hosted PR #241 merge baseline `30c5c918ff83a9f4f238383419b0db9886d0b872`; hosted refresh was attempted but blocked by the CONNECT 403 network policy, so no newer hosted SHA is claimed.
 - Separated runbook identity from the stable reviewed runtime tree, made every Python gate step explicitly fail closed, bound SD-4 pidfd signal authority to the complete launcher identity and actual flock owner, and added an executable owner-bound SD-6 before/after verifier.
 - Static validation passed 17/17 Bash fences and 8/8 Python heredocs plus control-flow/forbidden-pattern/status checks. No live gate, SQL connection, runtime lifecycle, credential mutation, Golden Path, Agent, Elasticsearch, LLM, or DOCX execution occurred. SD-1 through SD-7 remain PENDING.
+
+### 2026-09-14 SRA live acceptance command review v1.3
+
+- Corrected the v1.2 runbook without runtime changes: SD-3 now performs a bounded, state-neutral port-9002 preflight immediately before launcher invocation and mirrors bootstrap state ownership/schema/version parsing without exposing secrets.
+- SD-6 now snapshots SQL-authoritative time and prior lease expiry, requires a source-derived 40-second pre-restart margin, and proves the replacement generation was acquired strictly before natural expiry. Package manifests now require release-produced, tamper-evident byte-to-source binding.
+- Documentation/static validation covered all Bash fences, Python heredocs, failure propagation, synthetic occupied-port and corrupt-state paths, temporal accept/reject cases, forbidden patterns, and diff whitespace. No live SD gate, private SQL, runtime lifecycle, credential, Golden Path, Agent, Elasticsearch, LLM, or DOCX action was executed; SD-1 through SD-7 remain PENDING.
