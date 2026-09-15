@@ -1,8 +1,8 @@
-# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.4
+# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.5
 
-> **Supersedes v1.3. Do not use v1, v1.1, v1.2, or v1.3 for live execution.**
-> The v1.4 corrective review binds the first-run port preflight to the launcher's
-> runtime port and corrects the lease-renewal description. Static review is not
+> **Supersedes v1.4. Do not use v1, v1.1, v1.2, v1.3, or v1.4 for live execution.**
+> The v1.5 release adds externally anchored package/overlay manifest identity while
+> retaining intact Git-worktree identity as an alternative. Static review is not
 > deployment acceptance; SD-1 through SD-7 remain **PENDING**.
 
 ## Document control
@@ -14,10 +14,10 @@
 | Runbook review baseline | `548b08a4fb0ee719ed15dba91260db7ce0612201` (PR #243 merge) |
 | Deployed runtime baseline | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` (runtime tree; see SD-1) |
 | Runtime parent | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` |
-| Version | `v1.4` |
+| Version | `v1.5` |
 | Status | **STATICALLY REVIEWED; SD-1 THROUGH SD-7 PENDING** |
 
-At v1.4 issuance, the supplied hosted authority is the PR #243 merge above.
+At v1.5 issuance, the supplied hosted authority is the PR #243 merge above.
 Runbook identity and deployed-byte identity are deliberately separate: a future
 documentation-only merge changes the former without invalidating the latter.
 
@@ -131,26 +131,68 @@ PY
 
 ### Contract and result
 
-The deployment can be a Windows-built package plus Linux overlay. Current source
-does not create or validate `DEPLOYMENT_COMMIT.txt`, and therefore does **not**
-guarantee that a deployed `.git/HEAD` identifies deployed bytes. v1's unconditional
-`git rev-parse HEAD == runtime parent` was both the wrong commit and an invalid
-artifact-identity assumption.
+Package/overlay and intact Git-worktree deployments use separate, read-only
+identity modes. Package mode requires `EXPECTED_MANIFEST_SHA256` copied from an
+independently retained release record. Never derive it from the deployed manifest,
+a release receipt copied into the same deployment, or local Git metadata. Missing
+trusted authority is BLOCKED; contradictory or corrupt evidence is FAIL. Any
+nonzero result stops acceptance, and SD-2 is a separate later reviewed gate.
 
-Only a deployment installed as an intact Git worktree may use the command below.
-For a package/overlay deployment, do not substitute its incidental `.git` state:
-report `SD_1=BLOCKED reason=no_authoritative_package_identity` until the release
-owner supplies a reviewed, tamper-evident `DEPLOYMENT_COMMIT.txt` or equivalent
-package/overlay manifest. This does not weaken the source gate.
+### Package/overlay manifest action (read-only)
 
-That manifest is authoritative only when the release/package process creates it
-(never when an operator manually invents it on the deployed Linux host), it is
-immutable or tamper-evident relative to the distributed package, it binds a
-reviewed runtime source identity, and its release evidence proves that the actual
-deployed runtime bytes correspond to that identity. Incidental `.git/HEAD` is not
-such evidence. No manifest exists in current source, so package/overlay mode stays
-`BLOCKED reason=no_authoritative_package_identity` until the release owner
-supplies and reviews this complete chain.
+```bash
+sd1_release_manifest() {
+  local root=/mntCZJ/TopicClassification/poc-agent
+  local manifest="$root/DEPLOYMENT_MANIFEST.json"
+  cd "$root" || { echo 'SD_1=FAIL reason=cannot_cd'; return 1; }
+  [ -n "${EXPECTED_MANIFEST_SHA256:-}" ] || {
+    echo 'SD_1=BLOCKED reason=trusted_manifest_digest_missing'; return 2;
+  }
+  EXPECTED_MANIFEST_SHA256="$EXPECTED_MANIFEST_SHA256" python - "$root" "$manifest" <<'PY'
+import hashlib, json, os, re, stat, sys
+from pathlib import Path
+root=Path(sys.argv[1]); manifest=Path(sys.argv[2])
+expected=os.environ['EXPECTED_MANIFEST_SHA256']
+def exact_bytes(path, reason):
+ info=path.lstat()
+ if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode): raise RuntimeError(reason)
+ fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))
+ try:
+  opened=os.fstat(fd)
+  if (info.st_dev,info.st_ino)!=(opened.st_dev,opened.st_ino) or not stat.S_ISREG(opened.st_mode): raise RuntimeError(reason)
+  chunks=[]
+  while True:
+   chunk=os.read(fd,1024*1024)
+   if not chunk: break
+   chunks.append(chunk)
+  return b''.join(chunks)
+ finally: os.close(fd)
+try:
+ if re.fullmatch(r'[0-9a-f]{64}',expected) is None: raise RuntimeError('trusted_manifest_digest_invalid')
+ raw=exact_bytes(manifest,'manifest_file_type')
+ if hashlib.sha256(raw).hexdigest()!=expected: raise RuntimeError('manifest_digest_mismatch')
+ value=json.loads(raw)
+ files=value.get('files') if isinstance(value,dict) else None
+ if not isinstance(files,list): raise RuntimeError('manifest_schema')
+ entries=[x for x in files if isinstance(x,dict) and x.get('path')=='tools/deployment_manifest.py']
+ if len(entries)!=1 or entries[0].get('class')!='release_tool' or re.fullmatch(r'[0-9a-f]{64}',str(entries[0].get('sha256',''))) is None: raise RuntimeError('verifier_manifest_identity')
+ verifier=exact_bytes(root/'tools/deployment_manifest.py','verifier_file_type')
+ if hashlib.sha256(verifier).hexdigest()!=entries[0]['sha256']: raise RuntimeError('verifier_hash_mismatch')
+except (OSError,UnicodeDecodeError,json.JSONDecodeError,RuntimeError) as exc:
+ raise SystemExit('SD_1=FAIL reason='+str(exc))
+print('SD_1_MANIFEST_PRECHECK=PASS')
+PY
+  local rc=$?
+  [ "$rc" -eq 0 ] || return "$rc"
+  python tools/deployment_manifest.py verify \
+    --deployment-root "$root" \
+    --manifest "$manifest" \
+    --expected-manifest-sha256 "$EXPECTED_MANIFEST_SHA256"
+  rc=$?
+  [ "$rc" -eq 0 ] || return "$rc"
+}
+sd1_release_manifest
+```
 
 ### Git-worktree action (read-only)
 
@@ -161,10 +203,10 @@ sd1_git_worktree() {
   [ -d .git ] || { echo 'SD_1=BLOCKED reason=no_authoritative_package_identity'; return 2; }
   head=$(git rev-parse HEAD 2>/dev/null) || { echo 'SD_1=FAIL reason=git_unreadable'; return 1; }
   git merge-base --is-ancestor "$runtime" "$head" || { echo 'SD_1=FAIL reason=runtime_not_ancestor'; return 1; }
-  git diff --quiet "$runtime" "$head" -- . ':(exclude)docs/**' ':(exclude).codex/**' || {
+  git diff --quiet "$runtime" "$head" -- . ':(exclude)docs/**' ':(exclude).codex/**' ':(exclude)tools/**' || {
     echo 'SD_1=FAIL reason=runtime_tree_changed_after_reviewed_runtime'; return 1;
   }
-  git diff --quiet "$head" -- . ':(exclude)docs/**' ':(exclude).codex/**' || {
+  git diff --quiet "$head" -- . ':(exclude)docs/**' ':(exclude).codex/**' ':(exclude)tools/**' || {
     echo 'SD_1=FAIL reason=deployed_runtime_bytes_dirty'; return 1;
   }
   for f in run_sra_api.sh config/deployment_bootstrap.py requirement_scheduler/cli.py .gitattributes; do
@@ -176,11 +218,10 @@ sd1_git_worktree() {
 sd1_git_worktree
 ```
 
-PASS requires that the runtime commit is an ancestor, all tracked non-documentation
+PASS requires that the runtime commit is an ancestor, all tracked non-documentation/non-project-memory/non-release-tool
 bytes equal its runtime tree, and those deployed bytes are clean. Documentation-
 only commits therefore do not recursively invalidate SD-1. Unreviewed runtime
-changes fail. Package/overlay identity remains a release BLOCKER; do not pull,
-reset, or clean.
+changes fail. Package/overlay mode uses its external trust anchor instead; do not mutate the worktree.
 
 ## SD-2 — LF_PACKAGE_GATE
 
@@ -708,7 +749,7 @@ Share at most the last 80 relevant log lines after redacting
 Repository: hun186/poc-agent
 Runbook review baseline: 548b08a4fb0ee719ed15dba91260db7ce0612201
 Deployed runtime baseline: edcbc744f71374eaa839b0a31e0cd125fcb6fe52
-Runbook: v1.4
+Runbook: v1.5
 Gate executed:
 Identity mode:
 Precheck/action/verify marker:

@@ -213,3 +213,9 @@
 - Runtime flock remains the single-launcher authority. A separate owner-only atomic launcher identity record binds PID, process start time, effective UID, resolved deployment cwd, and resolved launcher path; current `/proc` cmdline evidence must resolve to that launcher.
 - A restart contender bootstraps first, validates and revalidates the existing launcher, signals only that launcher, and relies on its existing direct-child cleanup. A narrow takeover flock serializes concurrent contenders through replacement worker startup; invocation start time prevents an older contender from targeting a newer replacement.
 - Handoff process signals are translated to its coordinator stop event, preserving the coordinator's existing `finally`-owned lease release and fencing protocol.
+
+## 2026-09-15 SD-1 release/deployment identity
+
+- Release identity flows as `explicit source commit -> Git-object runtime equivalence -> exact staged-package validation -> canonical DEPLOYMENT_MANIFEST.json -> external manifest SHA-256 receipt -> Linux no-Git byte verification`.
+- `tools/deployment_manifest_policy.json` defines runtime-managed roots/files and separately classified release tooling. Runtime equivalence compares path set, blob identity, and Git mode to the reviewed runtime commit; release-tool and documentation changes may coexist without moving that baseline.
+- Package verification trusts an independently retained manifest SHA-256, rejects symlinks/missing or mutated managed files/unexpected runtime code, and ignores historical deployed `.git`. The runbook hashes both the manifest and deployed verifier before executing project code.
