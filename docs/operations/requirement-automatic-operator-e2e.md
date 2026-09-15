@@ -24,12 +24,25 @@ SRA_E2E_EDITOR_PASSWORD=<managed secret>
 SRA_E2E_MODEL=SRA-Structured Retrieval Agent
 SRA_E2E_REQUIREMENT_ARTIFACT_ROOT=/absolute/production/requirement/artifact/root
 SRA_E2E_BASE_URL=http://127.0.0.1:9002
+SRA_E2E_EXPECTED_SOURCE_SHA=2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03
+SRA_E2E_EXPECTED_RUNTIME_SHA=9bf009922d3be304d65d59927f62bbbb3f21e305
 ```
 
 The identity must be authorized to create Requirement fixtures and to approve/enable schedules.
 Do not provide a SQL connection string, Handoff Service Key, signing secret, or credential-store
 contents. Optional timeout and path settings are documented by `--help` and the Design; defaults
 are bounded and suitable for the normal deployment.
+
+The two optional expected hashes bind different inputs and must never be interchanged:
+
+* `SRA_E2E_EXPECTED_SOURCE_SHA` is the 64-character lowercase SHA-256 of the XLSX input bytes.
+  Input validation compares it only with the actual uploaded workbook digest.
+* `SRA_E2E_EXPECTED_RUNTIME_SHA` is the 40-character lowercase reviewed Git commit identity.
+  In a Git worktree, a configured value must equal `git rev-parse HEAD` before any live mutation.
+
+The example values above identify the tracked three-item fixture and reviewed hosted baseline
+`9bf009922d3be304d65d59927f62bbbb3f21e305`, respectively. Package/overlay deployments continue
+to use the separately approved deployment identity workflow.
 
 ## Input and invocation
 

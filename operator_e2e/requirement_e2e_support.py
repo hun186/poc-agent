@@ -65,6 +65,7 @@ class E2EConfig:
     source_name: str
     schedule_name: str
     expected_source_sha: str | None
+    expected_runtime_sha: str | None
     api_log_path: Path
     schedule_log_path: Path
     handoff_log_path: Path
@@ -94,6 +95,11 @@ class E2EConfig:
             except ValueError: value = 0
             if value <= 0: raise HarnessFailure("configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
             return value
+        def optional_sha(name: str, length: int) -> str | None:
+            value = (env.get(name) or "").strip()
+            if value and not re.fullmatch(rf"[0-9a-f]{{{length}}}", value):
+                raise HarnessFailure("configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
+            return value or None
         return cls(
             base_url=(env.get("SRA_E2E_BASE_URL") or "http://127.0.0.1:9002").rstrip("/"),
             model=required("SRA_E2E_MODEL"), artifact_root=Path(required("SRA_E2E_REQUIREMENT_ARTIFACT_ROOT")),
@@ -102,7 +108,8 @@ class E2EConfig:
             profile_name=env.get("SRA_E2E_PROFILE_NAME") or "SRA Requirement Operator E2E Profile v1",
             source_name=env.get("SRA_E2E_SOURCE_NAME") or "SRA Requirement Operator E2E Source v1",
             schedule_name=env.get("SRA_E2E_SCHEDULE_NAME") or "SRA Requirement Operator E2E Schedule v1",
-            expected_source_sha=(env.get("SRA_E2E_EXPECTED_SOURCE_SHA") or "").strip().lower() or None,
+            expected_source_sha=optional_sha("SRA_E2E_EXPECTED_SOURCE_SHA", 64),
+            expected_runtime_sha=optional_sha("SRA_E2E_EXPECTED_RUNTIME_SHA", 40),
             api_log_path=Path(env.get("SRA_E2E_API_LOG_PATH") or "SRA-API_output.txt"),
             schedule_log_path=Path(env.get("SRA_E2E_SCHEDULE_LOG_PATH") or "SRA-ScheduleWorker_output.txt"),
             handoff_log_path=Path(env.get("SRA_E2E_HANDOFF_LOG_PATH") or "SRA-HandoffWorker_output.txt"),
