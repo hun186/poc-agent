@@ -122,3 +122,9 @@
 - Preserve supervisor ownership: restart sends SIGTERM only to a fully verified launcher and does not introduce a second child-kill path. Launcher timeout fails closed; existing verified child cleanup and orphan recovery policies remain unchanged.
 - Keep runtime flock evidence non-truncating and place durable launcher identity in a separate atomic owner-mode-0600 record. Serialize simultaneous takeover attempts with a second flock and reject targeting a launcher newer than the contender.
 - Convert Handoff SIGTERM/SIGINT into its existing stop-event contract rather than changing SQL lease, TTL, fencing, or ownership semantics.
+
+## 2026-09-15 Externally anchored SD-1 package identity
+
+- Use a deterministic Git-anchored manifest plus an out-of-band SHA-256 retained in the release record. A host-created commit marker cannot bind deployed bytes, and a manifest stored only beside those bytes is self-attestation; historical local `.git` is therefore never package authority.
+- Include the verifier as a hashed `release_tool` entry and require the runbook's standard-library bootstrap to authenticate the manifest and verifier before project code runs. Package verification is read-only and fail closed.
+- Asymmetric signing is deferred rather than prohibited. v1 addresses the present deployment gap with an independently retained digest and reviewed release environment without adding dependencies or changing SRA runtime behavior.

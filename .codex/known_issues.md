@@ -72,3 +72,8 @@
 
 - `git ls-remote https://github.com/hun186/poc-agent.git refs/heads/main` was attempted before edits and failed with `CONNECT tunnel failed, response 403`; the repository has no configured remote. Local HEAD exactly matched the task-supplied hosted authority `548b08a4fb0ee719ed15dba91260db7ce0612201`, but this environment cannot independently exclude a newer hosted `main` SHA.
 - Alternative validation used the matching local source objects and static, non-live command tests. An authorized network environment must independently refresh hosted `main` before live execution or merge.
+
+## 2026-09-15 SD-1 manifest implementation and hosted refresh boundary
+
+- The package/overlay identity implementation is now available in repository release tooling, but no manifest-enabled package has been built/deployed and no live SD-1 evidence exists. SD-1 through SD-7 remain PENDING; the current Linux tree must not be retroactively blessed.
+- Before edits, `git fetch origin main` could not run because this checkout has no configured `origin`; direct `git ls-remote https://github.com/hun186/poc-agent.git refs/heads/main` failed with `CONNECT tunnel failed, response 403`. Local history contains supplied baseline `ffac2f87ffb20d5314b50e6582ce1a6bfd483523`, but this environment cannot independently exclude a newer hosted `main`. An authorized network environment must refresh and review before merge/live execution.
