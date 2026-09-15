@@ -160,13 +160,18 @@ class Harness:
         data = self.excel.read_bytes(); files = {"file": (self.excel.name, data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
         preview = self.api.post(f"/v1/requirement-sources/{source['source_id']}/preview?profile_version_id={version['profile_version_id']}", files=files, timeout=60)
         validate_preview(preview); self.pass_stage("REQUIREMENT_PREVIEW", accepted_count=3, rejected_count=0)
-        sets_before = {item.get("active_snapshot_id") for item in self.api.get("/v1/requirement-sets")["items"] if item.get("source_id") == source["source_id"]}
+        source_sets_before = [item for item in self.api.get("/v1/requirement-sets")["items"] if item.get("source_id") == source["source_id"]]
+        snapshot_ids_before = {
+            snap.get("snapshot_id")
+            for reqset in source_sets_before
+            for snap in self.api.get(f"/v1/requirement-sets/{reqset['requirement_set_id']}/snapshots")["items"]
+        }
         def winners():
             sets = [item for item in self.api.get("/v1/requirement-sets")["items"] if item.get("source_id") == source["source_id"]]
             found=[]
             for reqset in sets:
                 for snap in self.api.get(f"/v1/requirement-sets/{reqset['requirement_set_id']}/snapshots")["items"]:
-                    if snap.get("snapshot_id") not in sets_before and snap.get("source_sha256") == preview.get("source_sha256") and snap.get("profile_version_id") == version["profile_version_id"]: found.append({**snap, "requirement_set_id": reqset["requirement_set_id"], "status": "committed", "accepted_count": 3, "rejected_count": 0})
+                    if snap.get("snapshot_id") not in snapshot_ids_before and snap.get("source_sha256") == preview.get("source_sha256") and snap.get("profile_version_id") == version["profile_version_id"]: found.append({**snap, "requirement_set_id": reqset["requirement_set_id"], "status": "committed", "accepted_count": 3, "rejected_count": 0})
             return found
         committed = self._write_with_reread(lambda: self.api.post(f"/v1/requirement-sources/{source['source_id']}/import", files=files, timeout=60), winners, "REQUIREMENT_IMPORT")
         if committed.get("status") != "committed" or committed.get("accepted_count") != 3 or committed.get("rejected_count") != 0: self.fail("import_failed", "REQUIREMENT_IMPORT")
@@ -253,7 +258,8 @@ class Harness:
         return detail
 
     def wait_terminal(self, batch):
-        sid, bid = self.enabled_schedule_id, batch["batch_run_id"]
+        sid, bid = batch.get("schedule_id"), batch["batch_run_id"]
+        if not sid: self.fail("automatic_claim_identity_mismatch", "RUN_IDENTITY")
         handoff_deadline = time.monotonic() + self.config.handoff_timeout_seconds
         while time.monotonic() < handoff_deadline:
             batch = self.api.get(f"/v1/requirement-schedules/{sid}/runs/{bid}")
@@ -330,10 +336,16 @@ def _git_source():
 def main(argv=None) -> int:
     bootstrap_env(); args = parse_args(argv); run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     result = result_document(run_id); started = time.monotonic(); harness = None; diagnostics = {"logs": {}}
-    evidence_output = (args.output_dir or Path(os.getenv("SRA_E2E_OUTPUT_DIR") or "operator_e2e/output/requirement_e2e")) / run_id
+    # This fallback exists solely so CONFIG failures can still publish evidence.
+    # Once configuration is valid, its resolved (or CLI-overridden) directory is
+    # authoritative for the lock, artifact copies, and final evidence alike.
+    evidence_output = (args.output_dir or Path("operator_e2e/output/requirement_e2e")) / run_id
     try:
-        env = load_e2e_environment(args.env_file, dict(os.environ)); config = E2EConfig.from_environment(env)
+        env = load_e2e_environment(args.env_file, dict(os.environ))
+        evidence_output = (args.output_dir or Path(env.get("SRA_E2E_OUTPUT_DIR") or "operator_e2e/output/requirement_e2e")) / run_id
+        config = E2EConfig.from_environment(env)
         if args.output_dir: config = E2EConfig(**{**config.__dict__, "output_dir": args.output_dir})
+        evidence_output = config.output_dir / run_id
         harness = Harness(config, args.excel.resolve(), run_id, result); result["source"] = _git_source()
         with SingleRunLock(config.output_dir / ".lock"):
             try: harness.run()
