@@ -128,3 +128,9 @@
 - Use a deterministic Git-anchored manifest plus an out-of-band SHA-256 retained in the release record. A host-created commit marker cannot bind deployed bytes, and a manifest stored only beside those bytes is self-attestation; historical local `.git` is therefore never package authority.
 - Include the verifier as a hashed `release_tool` entry and require the runbook's standard-library bootstrap to authenticate the manifest and verifier before project code runs. Package verification is read-only and fail closed.
 - Asymmetric signing is deferred rather than prohibited. v1 addresses the present deployment gap with an independently retained digest and reviewed release environment without adding dependencies or changing SRA runtime behavior.
+
+## 2026-09-15 Dual-baseline SD-1 authority decision
+
+- Candidate source policy is never comparison authority. Exact policy Git blob and mode must equal `reviewed_manifest_commit`; runtime equality continues to use fixed baseline `edcbc744f71374eaa839b0a31e0cd125fcb6fe52`.
+- Release tools require their own reviewed baseline and the authoritative CLI additionally compares its running builder bytes to the source Git blob. This is source integrity inside the trusted release environment, not a defense against total release-host compromise.
+- No managed-root extra is benign: `__pycache__` and bytecode are rejected rather than deleted. Every path component is opened no-follow, and Git executable intent is verified without requiring exact POSIX permission values.

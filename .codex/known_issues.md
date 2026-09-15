@@ -77,3 +77,10 @@
 
 - The package/overlay identity implementation is now available in repository release tooling, but no manifest-enabled package has been built/deployed and no live SD-1 evidence exists. SD-1 through SD-7 remain PENDING; the current Linux tree must not be retroactively blessed.
 - Before edits, `git fetch origin main` could not run because this checkout has no configured `origin`; direct `git ls-remote https://github.com/hun186/poc-agent.git refs/heads/main` failed with `CONNECT tunnel failed, response 403`. Local history contains supplied baseline `ffac2f87ffb20d5314b50e6582ce1a6bfd483523`, but this environment cannot independently exclude a newer hosted `main`. An authorized network environment must refresh and review before merge/live execution.
+
+## 2026-09-15 SD-1 trust-chain v1.1 environment and live status
+
+- Hosted `main` refresh was unavailable because this checkout has no `origin` remote: `fatal: 'origin' does not appear to be a git repository` followed by `fatal: Could not read from remote repository.` Local starting SHA `c133bcbd2866d419a9d89dfa1bf04d0d515179e6` contains supplied baseline `7a54f182d9c1b6d18234d6e8085b163880b26db0`; no newer hosted SHA is claimed.
+- Package-index access still returned `Tunnel connection failed: 403 Forbidden` while pip checked for upgrades; required dependencies were already installed.
+- SD-1 through SD-7 live gates remain PENDING. No production package verification, SQL access, SRA lifecycle operation, credential mutation, Golden Path replay, or Agent/ES/LLM/DOCX acceptance was performed.
+- An extra all-five-files combined pytest invocation produced 11 cascading launcher timeouts after `test_identified_stale_api_gets_term_before_any_kill` missed its 3-second synthetic-worker deadline (106 passed, 11 failed). The contract-required clean standalone deployment regression invocation passed all 67 tests, and the first failed case passed alone after synthetic-process cleanup; treat the combined high-load result as an environment timing warning, not a runtime regression PASS.

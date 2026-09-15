@@ -1,9 +1,9 @@
-# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.5
+# SRA Self-Bootstrapping Deployment Live Acceptance Package v1.6
 
-> **Supersedes v1.4. Do not use v1, v1.1, v1.2, v1.3, or v1.4 for live execution.**
-> The v1.5 release adds externally anchored package/overlay manifest identity while
-> retaining intact Git-worktree identity as an alternative. Static review is not
-> deployment acceptance; SD-1 through SD-7 remain **PENDING**.
+> **Supersedes v1.5. Do not use v1 through v1.5 for live execution.**
+> The v1.6 release closes the package-manifest trust-boundary gaps while retaining
+> intact Git-worktree identity as an alternative. Static review is not deployment
+> acceptance; SD-1 through SD-7 remain **PENDING**.
 
 ## Document control
 
@@ -11,13 +11,16 @@
 | --- | --- |
 | Repository | `hun186/poc-agent` |
 | Hosted branch | `main` |
-| Runbook review baseline | `548b08a4fb0ee719ed15dba91260db7ce0612201` (PR #243 merge) |
-| Deployed runtime baseline | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` (runtime tree; see SD-1) |
+| Corrective implementation baseline | `7a54f182d9c1b6d18234d6e8085b163880b26db0` (PR #245 merge) |
+| Reviewed runtime baseline | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` (runtime tree; see SD-1) |
+| Reviewed manifest implementation commit | `d170dc7c42cdfc5f454aa00f0ef37743aba34fd7` |
 | Runtime parent | `edcbc744f71374eaa839b0a31e0cd125fcb6fe52` |
-| Version | `v1.5` |
-| Status | **STATICALLY REVIEWED; SD-1 THROUGH SD-7 PENDING** |
+| Version | `v1.6` |
+| Status | **SOURCE IMPLEMENTED; POST-MERGE REVIEW REQUIRED; SD-1 THROUGH SD-7 PENDING** |
 
-At v1.5 issuance, the supplied hosted authority is the PR #243 merge above.
+The corrective implementation baseline is the supplied PR #245 merge. The
+reviewed manifest implementation commit is the concrete Task 4 commit above;
+it is not a predicted merge SHA.
 Runbook identity and deployed-byte identity are deliberately separate: a future
 documentation-only merge changes the former without invalidating the latter.
 
@@ -129,6 +132,26 @@ PY
 
 ## SD-1 — DEPLOYMENT_SOURCE_GATE
 
+### Reviewed release construction (release environment only)
+
+The authoritative release ceremony is the CLI build below. It is not a live SD-1
+command and must run only against a newly staged package in the trusted release
+environment. The receipt remains outside that package.
+
+```bash
+REVIEWED_MANIFEST_IMPLEMENTATION_COMMIT=d170dc7c42cdfc5f454aa00f0ef37743aba34fd7
+python tools/deployment_manifest.py build \
+  --repo-root . \
+  --package-root "$STAGED_PACKAGE_ROOT" \
+  --source-commit "$SOURCE_COMMIT" \
+  --reviewed-runtime-commit edcbc744f71374eaa839b0a31e0cd125fcb6fe52 \
+  --reviewed-manifest-commit "$REVIEWED_MANIFEST_IMPLEMENTATION_COMMIT" \
+  --receipt-out "$EXTERNAL_RECEIPT_PATH"
+```
+
+The reviewed policy permits no unmanaged runtime extras. Release construction
+must fail rather than remove an undeclared cache, bytecode, backup, or launcher.
+
 ### Contract and result
 
 Package/overlay and intact Git-worktree deployments use separate, read-only
@@ -172,6 +195,8 @@ try:
  raw=exact_bytes(manifest,'manifest_file_type')
  if hashlib.sha256(raw).hexdigest()!=expected: raise RuntimeError('manifest_digest_mismatch')
  value=json.loads(raw)
+ reviewed_manifest=value.get('reviewed_manifest_commit') if isinstance(value,dict) else None
+ if re.fullmatch(r'[0-9a-f]{40}',str(reviewed_manifest or '')) is None: raise RuntimeError('manifest_schema')
  files=value.get('files') if isinstance(value,dict) else None
  if not isinstance(files,list): raise RuntimeError('manifest_schema')
  entries=[x for x in files if isinstance(x,dict) and x.get('path')=='tools/deployment_manifest.py']
@@ -190,6 +215,7 @@ PY
     --expected-manifest-sha256 "$EXPECTED_MANIFEST_SHA256"
   rc=$?
   [ "$rc" -eq 0 ] || return "$rc"
+  # Success includes SD_1_REVIEWED_MANIFEST_COMMIT=<sha> from the verifier.
 }
 sd1_release_manifest
 ```
@@ -747,9 +773,11 @@ Share at most the last 80 relevant log lines after redacting
 
 ```text
 Repository: hun186/poc-agent
-Runbook review baseline: 548b08a4fb0ee719ed15dba91260db7ce0612201
+Corrective implementation baseline: 7a54f182d9c1b6d18234d6e8085b163880b26db0
+Reviewed manifest implementation commit: d170dc7c42cdfc5f454aa00f0ef37743aba34fd7
+Reviewed runtime baseline: edcbc744f71374eaa839b0a31e0cd125fcb6fe52
 Deployed runtime baseline: edcbc744f71374eaa839b0a31e0cd125fcb6fe52
-Runbook: v1.5
+Runbook: v1.6
 Gate executed:
 Identity mode:
 Precheck/action/verify marker:
