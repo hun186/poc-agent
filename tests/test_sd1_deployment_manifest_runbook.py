@@ -13,10 +13,17 @@ def package_section():
     return value.split("### Package/overlay manifest action (read-only)", 1)[1].split("### Git-worktree action (read-only)", 1)[0]
 
 
-def test_runbook_is_v15_and_keeps_live_status_pending():
+def test_runbook_is_v16_and_keeps_live_status_pending():
     value = text()
-    assert "Package v1.5" in value
-    assert "Supersedes v1.4" in value
+    assert "Package v1.6" in value
+    assert "Supersedes v1.5" in value
+    assert "Corrective implementation baseline" in value
+    assert "7a54f182d9c1b6d18234d6e8085b163880b26db0" in value
+    assert "Reviewed runtime baseline" in value
+    assert "edcbc744f71374eaa839b0a31e0cd125fcb6fe52" in value
+    assert "Reviewed manifest implementation commit" in value
+    assert "d170dc7c42cdfc5f454aa00f0ef37743aba34fd7" in value
+    assert "SOURCE IMPLEMENTED; POST-MERGE REVIEW REQUIRED;" in value
     assert "SD-1 THROUGH SD-7 PENDING" in value
 
 
@@ -26,6 +33,14 @@ def test_package_precheck_precedes_project_verifier_and_checks_self_hash():
     assert section.index("tools/deployment_manifest.py") < section.index("verifier_hash_mismatch")
     assert section.index("verifier_hash_mismatch") < section.index("SD_1_MANIFEST_PRECHECK=PASS")
     assert section.index("SD_1_MANIFEST_PRECHECK=PASS") < section.index("python tools/deployment_manifest.py verify")
+    assert "reviewed_manifest_commit" in section
+    assert "SD_1_REVIEWED_MANIFEST_COMMIT" in section
+
+
+def test_release_build_requires_reviewed_manifest_commit_and_no_cache_allowance():
+    value = text()
+    assert '--reviewed-manifest-commit "$REVIEWED_MANIFEST_IMPLEMENTATION_COMMIT"' in value
+    assert "**/__pycache__/**" not in value
 
 
 def test_package_mode_uses_external_digest_not_git_authority_and_does_not_chain_sd2():

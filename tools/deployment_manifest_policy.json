@@ -4,6 +4,6 @@
   "managed_roots": ["agent", "api", "batch_scheduler", "config", "data_ingestion", "requirement_scheduler", "shared", "sra_api"],
   "managed_files": [".gitattributes", "__init__.py", "app.py", "python_compat.py", "requirements.txt", "run_sra_api.sh", "telemetry.py"],
   "release_tool_files": ["tools/__init__.py", "tools/deployment_manifest.py", "tools/deployment_manifest_policy.json"],
-  "allowed_runtime_extra_globs": ["**/__pycache__/**"],
+  "allowed_runtime_extra_globs": [],
   "guarded_root_extensions": [".py", ".sh", ".pth"]
 }

@@ -219,3 +219,9 @@
 - Release identity flows as `explicit source commit -> Git-object runtime equivalence -> exact staged-package validation -> canonical DEPLOYMENT_MANIFEST.json -> external manifest SHA-256 receipt -> Linux no-Git byte verification`.
 - `tools/deployment_manifest_policy.json` defines runtime-managed roots/files and separately classified release tooling. Runtime equivalence compares path set, blob identity, and Git mode to the reviewed runtime commit; release-tool and documentation changes may coexist without moving that baseline.
 - Package verification trusts an independently retained manifest SHA-256, rejects symlinks/missing or mutated managed files/unexpected runtime code, and ignores historical deployed `.git`. The runbook hashes both the manifest and deployed verifier before executing project code.
+
+## 2026-09-15 SD-1 manifest trust chain v1.1
+
+- Release construction uses two independent Git authorities: `reviewed_runtime_commit` fixes runtime path/blob/mode identity, while `reviewed_manifest_commit` fixes exact policy bytes/mode and release-tool path/blob/mode identity. Both must be ancestors of the candidate source commit.
+- The reviewed policy permits no unmanaged runtime extras. Staged-package and deployed managed-file reads use a package-root directory descriptor and `O_NOFOLLOW` for every parent and final component.
+- Manifest Git modes are executable-semantics authority: `100755` requires an executable bit and `100644` prohibits executable bits. The external manifest SHA-256 remains the package-mode trust anchor.

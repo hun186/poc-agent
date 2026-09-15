@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import tools.deployment_manifest as deployment_manifest
 
 from tools.deployment_manifest import (
     ManifestError,
@@ -29,6 +30,7 @@ def test_policy_declares_expected_runtime_and_release_tool_scope():
     assert {"agent", "sra_api", "requirement_scheduler"} <= set(policy["managed_roots"])
     assert "run_sra_api.sh" in policy["managed_files"]
     assert "tools/deployment_manifest.py" in policy["release_tool_files"]
+    assert policy["allowed_runtime_extra_globs"] == []
 
 
 def test_policy_has_no_overlap_or_unsafe_paths():
@@ -126,7 +128,7 @@ def build_repo(tmp_path: Path):
         "schema_version": 1, "repository": "hun186/poc-agent",
         "managed_roots": ["agent"], "managed_files": ["run.sh"],
         "release_tool_files": ["tools/__init__.py", "tools/deployment_manifest.py", "tools/deployment_manifest_policy.json"],
-        "allowed_runtime_extra_globs": ["**/__pycache__/**"],
+        "allowed_runtime_extra_globs": [],
         "guarded_root_extensions": [".py", ".sh", ".pth"],
     }
     (repo / "tools/deployment_manifest_policy.json").write_text(json.dumps(policy))
@@ -146,7 +148,8 @@ def do_build(tmp_path: Path):
     repo, commit, package = build_repo(tmp_path)
     receipt = tmp_path / "receipt.json"
     result = build_manifest(repo_root=repo, package_root=package, source_commit=commit,
-                            reviewed_runtime_commit=commit, receipt_out=receipt)
+                            reviewed_runtime_commit=commit, reviewed_manifest_commit=commit,
+                            receipt_out=receipt)
     return repo, commit, package, receipt, result
 
 
@@ -161,7 +164,7 @@ def test_build_rejects_crlf_or_other_byte_change(tmp_path):
     (package / "run.sh").write_bytes(b"#!/usr/bin/env bash\r\n")
     with pytest.raises(ManifestError, match="managed_file_hash_mismatch"):
         build_manifest(repo_root=repo, package_root=package, source_commit=commit,
-                       reviewed_runtime_commit=commit, receipt_out=tmp_path / "receipt")
+                       reviewed_runtime_commit=commit, reviewed_manifest_commit=commit, receipt_out=tmp_path / "receipt")
 
 
 @pytest.mark.parametrize("mutation", ["missing", "symlink", "unexpected"])
@@ -173,22 +176,152 @@ def test_build_rejects_invalid_staging(tmp_path, mutation):
     else: (package / "agent/extra.py").write_text("bad\n")
     with pytest.raises(ManifestError):
         build_manifest(repo_root=repo, package_root=package, source_commit=commit,
-                       reviewed_runtime_commit=commit, receipt_out=tmp_path / "receipt")
+                       reviewed_runtime_commit=commit, reviewed_manifest_commit=commit, receipt_out=tmp_path / "receipt")
 
 
-def test_build_allows_declared_cache_extra(tmp_path):
+def test_build_rejects_pycache_extra(tmp_path):
     repo, commit, package = build_repo(tmp_path)
     cache = package / "agent/__pycache__/runtime.pyc"
     cache.parent.mkdir(); cache.write_bytes(b"cache")
-    build_manifest(repo_root=repo, package_root=package, source_commit=commit,
-                   reviewed_runtime_commit=commit, receipt_out=tmp_path / "receipt")
+    with pytest.raises(ManifestError, match="unexpected_managed_file"):
+        build_manifest(repo_root=repo, package_root=package, source_commit=commit,
+                       reviewed_runtime_commit=commit, reviewed_manifest_commit=commit, receipt_out=tmp_path / "receipt")
+
+
+def test_verify_rejects_pycache_extra(tmp_path):
+    *_, package, _, result = do_build(tmp_path)
+    cache = package / "agent/__pycache__/runtime.pyc"
+    cache.parent.mkdir(); cache.write_bytes(b"cache")
+    assert verify(package, result[2]) == 1
+
+
+@pytest.mark.parametrize("formatting_only", [False, True])
+def test_source_policy_not_reviewed(tmp_path, formatting_only):
+    repo, reviewed, _ = build_repo(tmp_path)
+    policy_path = repo / "tools/deployment_manifest_policy.json"
+    policy = json.loads(policy_path.read_text())
+    if formatting_only:
+        policy_path.write_text(json.dumps(policy, indent=2) + "\n")
+    else:
+        policy["managed_roots"] = []
+        policy_path.write_text(json.dumps(policy))
+        (repo / "agent/runtime.py").write_text("VALUE = 2\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "unreviewed policy")
+    with pytest.raises(ManifestError, match="manifest_policy_not_reviewed"):
+        deployment_manifest.require_exact_policy_identity(repo, "HEAD", reviewed)
+
+
+@pytest.mark.parametrize("reason", [
+    "reviewed_runtime_not_ancestor", "reviewed_manifest_not_ancestor",
+])
+def test_unrelated_commit_fails_ancestry(tmp_path, reason):
+    repo, _, _ = build_repo(tmp_path)
+    git(repo, "checkout", "--orphan", "unrelated")
+    git(repo, "rm", "-rf", ".")
+    (repo / "unrelated.txt").write_text("unrelated\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "unrelated")
+    unrelated = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "master")
+    with pytest.raises(ManifestError, match=reason):
+        deployment_manifest.require_ancestor(
+            repo, unrelated, "HEAD", reason=reason,
+        )
+
+
+def test_release_tool_source_not_equivalent(tmp_path):
+    repo, reviewed, _ = build_repo(tmp_path)
+    policy = load_policy(repo / "tools/deployment_manifest_policy.json")
+    (repo / "tools/deployment_manifest.py").write_text("TOOL = 2\n")
+    git(repo, "commit", "-qam", "tool drift")
+    reviewed_files = git_file_map(repo, reviewed, policy, file_class="release_tool")
+    source_files = git_file_map(repo, "HEAD", policy, file_class="release_tool")
+    with pytest.raises(ManifestError, match="release_tool_source_not_equivalent"):
+        deployment_manifest.require_release_tool_equivalence(reviewed_files, source_files)
+
+
+def test_manifest_and_receipt_record_reviewed_manifest_commit(tmp_path):
+    _, commit, package, receipt, _ = do_build(tmp_path)
+    manifest = json.loads((package / "DEPLOYMENT_MANIFEST.json").read_bytes())
+    receipt_value = json.loads(receipt.read_bytes())
+    assert manifest["reviewed_manifest_commit"] == commit
+    assert receipt_value["reviewed_manifest_commit"] == commit
+    assert receipt_value["builder_version"] == 2
+
+
+def test_builder_source_identity_rejects_modified_running_builder(tmp_path):
+    repo, commit, _ = build_repo(tmp_path)
+    running = tmp_path / "running-builder.py"
+    running.write_text("MODIFIED = True\n")
+    with pytest.raises(ManifestError, match="builder_source_identity"):
+        deployment_manifest.require_running_builder_identity(repo, commit, running)
+
+
+def test_builder_source_identity_accepts_exact_bytes(tmp_path):
+    repo, commit, _ = build_repo(tmp_path)
+    deployment_manifest.require_running_builder_identity(
+        repo, commit, repo / "tools/deployment_manifest.py"
+    )
+
+
+def test_build_rejects_parent_symlink(tmp_path):
+    repo, commit, package = build_repo(tmp_path)
+    outside = tmp_path / "outside-agent"
+    (package / "agent").rename(outside)
+    (package / "agent").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ManifestError):
+        build_manifest(
+            repo_root=repo, package_root=package, source_commit=commit,
+            reviewed_runtime_commit=commit, reviewed_manifest_commit=commit,
+            receipt_out=tmp_path / "receipt",
+        )
+
+
+def test_build_rejects_nested_parent_symlink(tmp_path):
+    repo, _, package = build_repo(tmp_path)
+    nested_source = repo / "agent/nested/child.py"
+    nested_source.parent.mkdir()
+    nested_source.write_text("CHILD = 1\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "nested")
+    commit = git(repo, "rev-parse", "HEAD")
+    outside = tmp_path / "outside-nested"
+    outside.mkdir()
+    (outside / "child.py").write_text("CHILD = 1\n")
+    (package / "agent/nested").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ManifestError):
+        build_manifest(
+            repo_root=repo, package_root=package, source_commit=commit,
+            reviewed_runtime_commit=commit, reviewed_manifest_commit=commit,
+            receipt_out=tmp_path / "receipt",
+        )
+
+
+def test_build_rejects_100755_without_executable_bit(tmp_path):
+    repo, _, package = build_repo(tmp_path)
+    os.chmod(repo / "run.sh", 0o755)
+    git(repo, "add", "run.sh")
+    git(repo, "commit", "-qm", "executable")
+    commit = git(repo, "rev-parse", "HEAD")
+    os.chmod(package / "run.sh", 0o644)
+    with pytest.raises(ManifestError, match="managed_file_mode_mismatch"):
+        build_manifest(repo_root=repo, package_root=package, source_commit=commit,
+                       reviewed_runtime_commit=commit, reviewed_manifest_commit=commit,
+                       receipt_out=tmp_path / "receipt")
+
+
+def test_verify_rejects_100644_with_executable_bit(tmp_path):
+    *_, package, _, result = do_build(tmp_path)
+    os.chmod(package / "agent/runtime.py", 0o755)
+    assert verify(package, result[2]) == 1
 
 
 def test_receipt_must_be_outside_package_root(tmp_path):
     repo, commit, package = build_repo(tmp_path)
     with pytest.raises(ManifestError, match="receipt_inside_package"):
         build_manifest(repo_root=repo, package_root=package, source_commit=commit,
-                       reviewed_runtime_commit=commit, receipt_out=package / "receipt")
+                       reviewed_runtime_commit=commit, reviewed_manifest_commit=commit, receipt_out=package / "receipt")
 
 
 def test_repeated_builds_produce_identical_manifest_bytes(tmp_path):
@@ -197,7 +330,7 @@ def test_repeated_builds_produce_identical_manifest_bytes(tmp_path):
     # An existing generated manifest is deliberately ignored as build output.
     repo = tmp_path / "source"; commit = git(repo, "rev-parse", "HEAD")
     build_manifest(repo_root=repo, package_root=package, source_commit=commit,
-                   reviewed_runtime_commit=commit, receipt_out=tmp_path / "receipt2")
+                   reviewed_runtime_commit=commit, reviewed_manifest_commit=commit, receipt_out=tmp_path / "receipt2")
     assert (package / "DEPLOYMENT_MANIFEST.json").read_bytes() == first
 
 

@@ -103,6 +103,25 @@ def read_policy_from_commit(repo_root: Path, commit: str, policy_path: str) -> d
     return _validate_policy(value)
 
 
+def require_exact_policy_identity(
+    repo_root: Path, source_commit: str, reviewed_manifest_commit: str
+) -> tuple[dict[str, Any], bytes]:
+    """Return reviewed policy only when the source carries the identical Git object."""
+    path = "tools/deployment_manifest_policy.json"
+    policy_selector = {"managed_roots": [], "managed_files": [], "release_tool_files": [path]}
+    reviewed = git_file_map(repo_root, reviewed_manifest_commit, policy_selector,
+                            file_class="release_tool")[path]
+    source = git_file_map(repo_root, source_commit, policy_selector,
+                          file_class="release_tool")[path]
+    if (reviewed.mode, reviewed.blob_sha) != (source.mode, source.blob_sha):
+        raise ManifestError("manifest_policy_not_reviewed")
+    try:
+        value = json.loads(reviewed.data)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ManifestError("policy_invalid_json") from exc
+    return _validate_policy(value), reviewed.data
+
+
 def _validate_policy(value: object) -> dict[str, Any]:
     keys = {
         "schema_version", "repository", "managed_roots", "managed_files",
@@ -115,6 +134,8 @@ def _validate_policy(value: object) -> dict[str, Any]:
     for key in keys - {"schema_version", "repository"}:
         if not isinstance(value[key], list) or not all(isinstance(x, str) for x in value[key]):
             raise ManifestError("policy_schema")
+    if value["allowed_runtime_extra_globs"] != []:
+        raise ManifestError("policy_schema")
     validate_unique_paths(value["managed_roots"] + value["managed_files"] + value["release_tool_files"])
     return value
 
@@ -146,6 +167,45 @@ def require_runtime_equivalence(reviewed: dict[str, GitFile], source: dict[str, 
         raise ManifestError("runtime_source_not_equivalent")
 
 
+def require_ancestor(
+    repo_root: Path, ancestor: str, descendant: str, *, reason: str
+) -> None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "merge-base", "--is-ancestor",
+             ancestor, descendant],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+        )
+    except OSError as exc:
+        raise ManifestError("git_object_error") from exc
+    if result.returncode == 1:
+        raise ManifestError(reason)
+    if result.returncode != 0:
+        raise ManifestError("git_object_error")
+
+
+def require_release_tool_equivalence(
+    reviewed: dict[str, GitFile], source: dict[str, GitFile]
+) -> None:
+    identity = lambda item: (item.mode, item.blob_sha)
+    if set(reviewed) != set(source) or any(
+        identity(reviewed[path]) != identity(source[path]) for path in reviewed
+    ):
+        raise ManifestError("release_tool_source_not_equivalent")
+
+
+def require_running_builder_identity(
+    repo_root: Path, source_commit: str, running_tool_path: Path
+) -> None:
+    expected = _git(repo_root, "show", f"{source_commit}:tools/deployment_manifest.py")
+    try:
+        actual = Path(running_tool_path).read_bytes()
+    except OSError as exc:
+        raise ManifestError("builder_source_identity") from exc
+    if actual != expected:
+        raise ManifestError("builder_source_identity")
+
+
 def _inside(child: Path, parent: Path) -> bool:
     try:
         child.resolve(strict=False).relative_to(parent.resolve(strict=True))
@@ -155,8 +215,51 @@ def _inside(child: Path, parent: Path) -> bool:
 
 
 def _allowed_extra(path: str, policy: dict[str, object]) -> bool:
-    # v1 policy intentionally permits extras only below a __pycache__ directory.
-    return policy["allowed_runtime_extra_globs"] == ["**/__pycache__/**"] and "__pycache__" in path.split("/")[:-1]
+    return False
+
+
+def read_regular_beneath_root(
+    root: Path, relative_path: str, *, reason: str
+) -> tuple[bytes, os.stat_result]:
+    """Read a regular file through a descriptor-anchored, no-follow path walk."""
+    path = normalize_manifest_path(relative_path)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    directory = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or directory is None:
+        raise ManifestError(reason)
+    descriptors: list[int] = []
+    try:
+        current = os.open(root, os.O_RDONLY | directory | nofollow)
+        descriptors.append(current)
+        parts = path.split("/")
+        for component in parts[:-1]:
+            current = os.open(
+                component, os.O_RDONLY | directory | nofollow, dir_fd=current
+            )
+            descriptors.append(current)
+        file_fd = os.open(parts[-1], os.O_RDONLY | nofollow, dir_fd=current)
+        descriptors.append(file_fd)
+        info = os.fstat(file_fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ManifestError(reason)
+        chunks: list[bytes] = []
+        while chunk := os.read(file_fd, 1024 * 1024):
+            chunks.append(chunk)
+        return b"".join(chunks), info
+    except ManifestError:
+        raise
+    except OSError as exc:
+        raise ManifestError(reason) from exc
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def require_mode_semantics(git_mode: str, stat_mode: int) -> None:
+    executable = bool(stat_mode & 0o111)
+    if ((git_mode == "100755" and not executable) or
+            (git_mode == "100644" and executable)):
+        raise ManifestError("managed_file_mode_mismatch")
 
 
 def validate_package_root(package_root: Path, expected_files: dict[str, GitFile], policy: dict[str, object]) -> list[dict[str, object]]:
@@ -164,18 +267,12 @@ def validate_package_root(package_root: Path, expected_files: dict[str, GitFile]
         raise ManifestError("package_root_invalid")
     entries: list[dict[str, object]] = []
     for path, source in sorted(expected_files.items()):
-        target = package_root / path
-        try:
-            info = target.lstat()
-        except OSError as exc:
-            raise ManifestError("managed_file_missing") from exc
-        if stat.S_ISLNK(info.st_mode):
-            raise ManifestError("managed_file_symlink")
-        if not stat.S_ISREG(info.st_mode):
-            raise ManifestError("managed_file_not_regular")
-        data = target.read_bytes()
+        data, info = read_regular_beneath_root(
+            package_root, path, reason="managed_file_invalid"
+        )
         if data != source.data:
             raise ManifestError("managed_file_hash_mismatch")
+        require_mode_semantics(source.mode, info.st_mode)
         entries.append({"class": "", "path": path, "git_mode": source.mode,
                         "size": len(data), "sha256": sha256_bytes(data)})
     expected = set(expected_files)
@@ -207,7 +304,8 @@ def _atomic_write(path: Path, data: bytes) -> None:
 
 _MANIFEST_KEYS = {
     "schema_version", "repository", "source_commit", "source_tree",
-    "reviewed_runtime_commit", "policy_sha256", "files_root_sha256", "files",
+    "reviewed_runtime_commit", "reviewed_manifest_commit", "policy_sha256",
+    "files_root_sha256", "files",
     "managed_roots", "managed_files", "release_tool_files",
     "allowed_runtime_extra_globs", "guarded_root_extensions",
 }
@@ -227,7 +325,8 @@ def parse_manifest_bytes(raw: bytes) -> dict[str, object]:
         raise ManifestError("manifest_schema")
     if value.get("repository") != "hun186/poc-agent":
         raise ManifestError("manifest_schema")
-    for key in ("source_commit", "source_tree", "reviewed_runtime_commit"):
+    for key in ("source_commit", "source_tree", "reviewed_runtime_commit",
+                "reviewed_manifest_commit"):
         if not _lower_hex(value[key], 40):
             raise ManifestError("manifest_schema")
     for key in ("policy_sha256", "files_root_sha256"):
@@ -298,9 +397,12 @@ def _verify_files(root: Path, manifest: dict[str, object]) -> int:
     entries = manifest["files"]
     expected = {entry["path"]: entry for entry in entries}
     for path, entry in expected.items():
-        data = _read_regular_no_follow(root / path, "managed_file_invalid")
+        data, info = read_regular_beneath_root(
+            root, path, reason="managed_file_invalid"
+        )
         if len(data) != entry["size"] or sha256_bytes(data) != entry["sha256"]:
             raise ManifestError("managed_file_hash_mismatch")
+        require_mode_semantics(str(entry["git_mode"]), info.st_mode)
     policy = manifest
     for root_name in policy["managed_roots"]:
         managed_root = root / root_name
@@ -340,6 +442,7 @@ def verify_deployment(*, deployment_root: Path, manifest_path: Path,
         matched = _verify_files(deployment_root, manifest)
         print(f"SD_1_SOURCE_COMMIT={manifest['source_commit']}")
         print(f"SD_1_REVIEWED_RUNTIME_COMMIT={manifest['reviewed_runtime_commit']}")
+        print(f"SD_1_REVIEWED_MANIFEST_COMMIT={manifest['reviewed_manifest_commit']}")
         print(f"SD_1_MANIFEST_SHA256={actual_digest}")
         print(f"SD_1_FILES_EXPECTED={len(manifest['files'])}")
         print(f"SD_1_FILES_MATCHED={matched}")
@@ -352,18 +455,26 @@ def verify_deployment(*, deployment_root: Path, manifest_path: Path,
 
 
 def build_manifest(*, repo_root: Path, package_root: Path, source_commit: str,
-                   reviewed_runtime_commit: str, receipt_out: Path) -> tuple[Path, Path, str]:
+                   reviewed_runtime_commit: str, reviewed_manifest_commit: str,
+                   receipt_out: Path) -> tuple[Path, Path, str]:
     repo_root, package_root, receipt_out = map(Path, (repo_root, package_root, receipt_out))
     if _inside(receipt_out, package_root):
         raise ManifestError("receipt_inside_package")
     source = resolve_commit(repo_root, source_commit)
     reviewed = resolve_commit(repo_root, reviewed_runtime_commit)
-    policy_raw = _git(repo_root, "show", f"{source}:tools/deployment_manifest_policy.json")
-    policy = read_policy_from_commit(repo_root, source, "tools/deployment_manifest_policy.json")
+    reviewed_manifest = resolve_commit(repo_root, reviewed_manifest_commit)
+    require_ancestor(repo_root, reviewed, source, reason="reviewed_runtime_not_ancestor")
+    require_ancestor(repo_root, reviewed_manifest, source,
+                     reason="reviewed_manifest_not_ancestor")
+    policy, policy_raw = require_exact_policy_identity(repo_root, source, reviewed_manifest)
     runtime = git_file_map(repo_root, source, policy, file_class="runtime")
     reviewed_runtime = git_file_map(repo_root, reviewed, policy, file_class="runtime")
     require_runtime_equivalence(reviewed_runtime, runtime)
     release_tools = git_file_map(repo_root, source, policy, file_class="release_tool")
+    reviewed_release_tools = git_file_map(
+        repo_root, reviewed_manifest, policy, file_class="release_tool"
+    )
+    require_release_tool_equivalence(reviewed_release_tools, release_tools)
     combined = {**runtime, **release_tools}
     entries = validate_package_root(package_root, combined, policy)
     for entry in entries:
@@ -372,7 +483,9 @@ def build_manifest(*, repo_root: Path, package_root: Path, source_commit: str,
     manifest = {
         "schema_version": 1, "repository": policy["repository"],
         "source_commit": source, "source_tree": source_tree_sha(repo_root, source),
-        "reviewed_runtime_commit": reviewed, "policy_sha256": sha256_bytes(policy_raw),
+        "reviewed_runtime_commit": reviewed,
+        "reviewed_manifest_commit": reviewed_manifest,
+        "policy_sha256": sha256_bytes(policy_raw),
         "files_root_sha256": compute_files_root(entries), "files": entries,
         **{key: policy[key] for key in ("managed_roots", "managed_files", "release_tool_files",
                                         "allowed_runtime_extra_globs", "guarded_root_extensions")},
@@ -383,10 +496,12 @@ def build_manifest(*, repo_root: Path, package_root: Path, source_commit: str,
     manifest_digest = sha256_bytes(manifest_bytes)
     receipt = {
         "schema_version": 1, "repository": policy["repository"], "source_commit": source,
-        "reviewed_runtime_commit": reviewed, "manifest_sha256": manifest_digest,
+        "reviewed_runtime_commit": reviewed,
+        "reviewed_manifest_commit": reviewed_manifest,
+        "manifest_sha256": manifest_digest,
         "files_root_sha256": manifest["files_root_sha256"],
         "created_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "builder_version": 1,
+        "builder_version": 2,
     }
     _atomic_write(receipt_out, canonical_json_bytes(receipt))
     return manifest_path, receipt_out, manifest_digest
@@ -400,6 +515,7 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--package-root", type=Path, required=True)
     build.add_argument("--source-commit", required=True)
     build.add_argument("--reviewed-runtime-commit", required=True)
+    build.add_argument("--reviewed-manifest-commit", required=True)
     build.add_argument("--receipt-out", type=Path, required=True)
     verify = sub.add_parser("verify")
     verify.add_argument("--deployment-root", type=Path, required=True)
@@ -416,14 +532,20 @@ def main(argv: list[str] | None = None) -> int:
             expected_manifest_sha256=args.expected_manifest_sha256,
         )
     try:
+        source_commit = resolve_commit(args.repo_root, args.source_commit)
+        require_running_builder_identity(
+            args.repo_root, source_commit, Path(__file__).resolve()
+        )
         manifest_path, _, digest = build_manifest(
             repo_root=args.repo_root, package_root=args.package_root,
-            source_commit=args.source_commit, reviewed_runtime_commit=args.reviewed_runtime_commit,
+            source_commit=source_commit, reviewed_runtime_commit=args.reviewed_runtime_commit,
+            reviewed_manifest_commit=args.reviewed_manifest_commit,
             receipt_out=args.receipt_out,
         )
         value = json.loads(manifest_path.read_bytes())
         print(f"RELEASE_MANIFEST_SOURCE_COMMIT={value['source_commit']}")
         print(f"RELEASE_MANIFEST_RUNTIME_COMMIT={value['reviewed_runtime_commit']}")
+        print(f"RELEASE_MANIFEST_REVIEWED_MANIFEST_COMMIT={value['reviewed_manifest_commit']}")
         print(f"RELEASE_MANIFEST_SHA256={digest}")
         print(f"RELEASE_MANIFEST_FILES={len(value['files'])}")
         print("RELEASE_MANIFEST=PASS")
