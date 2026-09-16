@@ -1,5 +1,24 @@
 # Requirement automatic operator E2E harness
 
+## Before first run
+
+1. Copy `operator_e2e/e2e.env.example` to `operator_e2e/e2e.env.local`.
+2. Edit only the local file with real deployment values and credentials.
+3. Never commit `e2e.env.local`; it is intentionally ignored by Git.
+4. The same local file may contain the optional Phase 0 Service Keys used by
+   `test_phase0_api_routing_evidence.py`: `SRA_E2E_OPENWEBUI_KEY`,
+   `SRA_E2E_READ_ONLY_KEY`, and `SRA_E2E_REPORT_KEY`.
+5. Requirement Editor authentication and Phase 0 routing/authorization Service Keys are
+   separate roles and must not be assumed interchangeable. In particular, do not alias
+   `SRA_E2E_EDITOR_TOKEN` to `SRA_E2E_REPORT_KEY` unless the operator independently provisioned
+   that credential with every required Requirement control-plane scope. Requirement acceptance
+   needs an identity authorized for fixture creation/import and Schedule approval/enablement.
+6. Run Requirement live acceptance on the Linux deployment host, not Windows/Spyder.
+
+Windows/Spyder may be used to inspect the code, but it is not a supported live acceptance
+runtime. An `unsupported_platform` result on Windows is a local preflight result and does **not**
+prove that the production deployment failed.
+
 ## Purpose and boundary
 
 This deployment-host harness proves or diagnoses the complete XLSX Requirement path through
@@ -13,7 +32,8 @@ route. It has no Internet dependency at runtime.
 
 ## Configuration
 
-Create the ignored `operator_e2e/e2e.env.local`. Every entry must begin with `SRA_E2E_`.
+Start from the tracked, credential-free `operator_e2e/e2e.env.example` and create the ignored
+`operator_e2e/e2e.env.local`. Every entry must begin with `SRA_E2E_`.
 Configure exactly one editor authentication mode:
 
 ```dotenv

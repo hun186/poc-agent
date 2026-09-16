@@ -72,7 +72,8 @@ def require_e2e_env(name: str) -> str:
 
 
 BASE = (
-    os.getenv("SRA_E2E_API_BASE")
+    os.getenv("SRA_E2E_BASE_URL")
+    or os.getenv("SRA_E2E_API_BASE")
     or "http://127.0.0.1:9002"
 ).strip()
 

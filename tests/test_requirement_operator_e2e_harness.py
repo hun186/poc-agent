@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import ast
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import sys
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -26,12 +29,135 @@ from operator_e2e.requirement_e2e_support import (
     redact,
     result_document,
     validate_artifact,
+    validate_live_platform,
     validate_next_run,
     validate_preview,
     validate_remote_items,
     validate_terminal,
     verify_worker_identity,
 )
+
+
+def test_support_imports_when_fcntl_is_unavailable(monkeypatch):
+    source = Path("operator_e2e/requirement_e2e_support.py")
+    real_find_spec = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name, *args, **kwargs: None if name == "fcntl" else real_find_spec(name, *args, **kwargs),
+    )
+    spec = importlib.util.spec_from_file_location("requirement_e2e_support_without_fcntl", source)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    monkeypatch.setitem(sys.modules, spec.name, module)
+    spec.loader.exec_module(module)
+    assert module.fcntl is None
+
+
+def test_unsupported_platform_fails_before_harness_run(tmp_path, monkeypatch, capsys):
+    from operator_e2e.test_requirement_schedule_e2e import Harness, main
+
+    output = tmp_path / "evidence"
+    run_calls = []
+    monkeypatch.setattr(Harness, "run", lambda self: run_calls.append(self))
+    monkeypatch.setattr(
+        "operator_e2e.test_requirement_schedule_e2e.validate_live_platform",
+        lambda: (_ for _ in ()).throw(HarnessFailure(
+            "unsupported_platform", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+        )),
+    )
+
+    code = main(["--excel", "unused.xlsx", "--env-file", str(tmp_path / "missing"), "--output-dir", str(output)])
+
+    assert code == 2
+    assert run_calls == []
+    result = json.loads(next(output.glob("*/result.json")).read_text())
+    assert result["failed_stage"] == "CONFIG_PREFLIGHT"
+    assert result["failure_category"] == "unsupported_platform"
+    assert "Linux deployment host" in capsys.readouterr().out
+
+
+def test_linux_platform_preflight_accepts_required_primitives(monkeypatch):
+    import operator_e2e.requirement_e2e_support as support
+
+    monkeypatch.setattr(support.sys, "platform", "linux")
+    monkeypatch.setattr(support.os, "name", "posix")
+    monkeypatch.setattr(support.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(support, "fcntl", SimpleNamespace(flock=lambda *_: None))
+    monkeypatch.setattr(support.Path, "is_dir", lambda self: str(self) == "/proc")
+    validate_live_platform()
+
+
+@pytest.mark.parametrize("phase0_keys", [False, True])
+def test_missing_requirement_env_file_has_actionable_reminder(tmp_path, monkeypatch, capsys, phase0_keys):
+    from operator_e2e.test_requirement_schedule_e2e import Harness, main
+
+    for key in tuple(os.environ):
+        if key.startswith("SRA_E2E_"):
+            monkeypatch.delenv(key, raising=False)
+    if phase0_keys:
+        for name in ("OPENWEBUI_KEY", "READ_ONLY_KEY", "REPORT_KEY"):
+            monkeypatch.setenv(f"SRA_E2E_{name}", "not-a-requirement-credential")
+    run_calls = []
+    monkeypatch.setattr(Harness, "run", lambda self: run_calls.append(self))
+    output = tmp_path / "evidence"
+
+    assert main(["--excel", "unused.xlsx", "--env-file", str(tmp_path / "missing.env"), "--output-dir", str(output)]) == 2
+    assert run_calls == []
+    result = json.loads(next(output.glob("*/result.json")).read_text())
+    assert result["failure_category"] == "configuration_file_missing"
+    assert result["failed_stage"] == "CONFIG_PREFLIGHT"
+    stdout = capsys.readouterr().out
+    assert "operator_e2e/e2e.env.example" in stdout
+    assert "operator_e2e/e2e.env.local" in stdout
+
+
+def test_complete_requirement_process_environment_does_not_require_env_file(tmp_path, monkeypatch):
+    from operator_e2e.test_requirement_schedule_e2e import Harness, main
+
+    for key in tuple(os.environ):
+        if key.startswith("SRA_E2E_"):
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("SRA_E2E_MODEL", "model")
+    monkeypatch.setenv("SRA_E2E_REQUIREMENT_ARTIFACT_ROOT", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("SRA_E2E_EDITOR_TOKEN", "authorized-token")
+    monkeypatch.setattr(Harness, "run", lambda self: None)
+
+    assert main([
+        "--excel", "unused.xlsx", "--env-file", str(tmp_path / "missing.env"),
+        "--output-dir", str(tmp_path / "evidence"),
+    ]) == ExitCode.PASS
+
+
+def test_common_environment_example_is_safe_and_complete():
+    example = Path("operator_e2e/e2e.env.example").read_text(encoding="utf-8")
+    for name in (
+        "BASE_URL", "OPENWEBUI_KEY", "READ_ONLY_KEY", "REPORT_KEY", "EDITOR_USERNAME",
+        "EDITOR_PASSWORD", "EDITOR_TOKEN", "MODEL", "REQUIREMENT_ARTIFACT_ROOT",
+        "EXPECTED_SOURCE_SHA", "EXPECTED_RUNTIME_SHA",
+    ):
+        assert f"SRA_E2E_{name}" in example
+    runtime_value = re.search(r"^SRA_E2E_EXPECTED_RUNTIME_SHA=(.+)$", example, re.MULTILINE).group(1)
+    assert not re.fullmatch(r"[0-9a-f]{40}", runtime_value)
+    assert "must NOT automatically be reused" in example
+    assert "SRA_E2E_EDITOR_TOKEN = SRA_E2E_REPORT_KEY" in example
+    ignore_rules = Path(".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "operator_e2e/e2e.env.local" in ignore_rules
+    assert "operator_e2e/e2e.env.example" not in ignore_rules
+
+
+def test_phase0_base_url_prefers_common_name_and_retains_legacy_fallback(monkeypatch):
+    source = Path("operator_e2e/test_phase0_api_routing_evidence.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    assignment = next(node for node in tree.body if isinstance(node, ast.Assign) and any(
+        isinstance(target, ast.Name) and target.id == "BASE" for target in node.targets
+    ))
+    expression = compile(ast.Expression(assignment.value), "<phase0-base>", "eval")
+    monkeypatch.setenv("SRA_E2E_BASE_URL", "http://common")
+    monkeypatch.setenv("SRA_E2E_API_BASE", "http://legacy")
+    assert eval(expression, {"os": os}) == "http://common"
+    monkeypatch.delenv("SRA_E2E_BASE_URL")
+    assert eval(expression, {"os": os}) == "http://legacy"
 
 
 def test_env_contract_rejects_foreign_key_and_process_env_wins(tmp_path, monkeypatch):

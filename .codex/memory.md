@@ -11,6 +11,13 @@
 
 ## Recent Changes
 
+### 2026-09-16 Operator E2E configuration and platform UX hotfix
+
+- Added a tracked, credential-free common `operator_e2e/e2e.env.example` for Phase 0 and Requirement operator tools while retaining the ignored local secret file. Phase 0 now prefers `SRA_E2E_BASE_URL` with the legacy base-name fallback; Phase 0 Service Keys remain explicitly separate from Requirement Editor authentication.
+- The Requirement harness now imports without `fcntl` on unsupported systems, but live execution fails closed as `unsupported_platform` during `CONFIG_PREFLIGHT` before lock acquisition or `Harness.run()`. Missing local configuration similarly reports `configuration_file_missing` with copy/setup guidance unless process variables alone form usable Requirement configuration.
+- Strict TDD RED was recorded as the expected missing `validate_live_platform` collection error. GREEN passed 42 focused Harness tests and 466 Requirement API/import/Schedule/worker/Handoff/Report Job/launcher regressions (six pre-existing warnings), plus help, compilation, ignore-policy, protected-file, and diff checks. Package requirements were already installed; the pip index lookup repeated the known HTTP 403 proxy warning.
+- The live deployment Harness was deliberately not executed. No fresh live Requirement, Agent, Elasticsearch, LLM, or DOCX E2E PASS is claimed.
+
 ### 2026-09-15 Requirement E2E reviewed-worktree hardening
 
 - When an externally supplied reviewed runtime SHA and local Git identity are available, source preflight now requires both exact `HEAD` equality and a clean worktree. A dirty reviewed worktree fails as `runtime_source_dirty` at `CONFIG_PREFLIGHT` with exit code 2 before `Harness.run()` or live mutation; mismatches remain `runtime_source_identity_mismatch`.
@@ -46,8 +53,8 @@
 
 ## Verification Summary
 
-- Latest focused result: 34 Requirement operator Harness tests passed.
-- Latest broader related regression: 313 Requirement API/import/Schedule/worker/Handoff/Report Job/launcher tests passed with three pre-existing warnings.
+- Latest focused result: 42 Requirement operator Harness tests passed.
+- Latest broader related regression: 466 Requirement API/import/Schedule/worker/Handoff/Report Job/launcher tests passed with six pre-existing warnings.
 - Python compilation and protected-file/diff checks passed for the latest Harness hardening.
 - Dependency requirements were installed already; pip's upgrade lookup repeated the known HTTP 403 proxy warning.
 - No live Requirement E2E, private SQL, Elasticsearch, LLM, Agent, deployment bootstrap, or credential mutation was performed by the latest task.
