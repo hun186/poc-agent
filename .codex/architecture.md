@@ -6,6 +6,12 @@
 - `operator_e2e/requirement_e2e_support.py` owns environment validation, stage/result types, redaction, bounded diagnostics, process identity checks, automatic Batch identity validation, terminal checks, and DOCX/SHA verification. Production workflow logic remains in its existing modules.
 - Correlation flows from Import Run and exact Snapshot to immutable Schedule Version, scheduled Batch, Run Items, durable remote Job IDs, and root-bound artifact evidence. Per-invocation evidence is isolated under `operator_e2e/output/requirement_e2e/<e2e_run_id>/`.
 
+## 2026-09-16 Runtime provenance namespace and package preflight
+
+- `shared.runtime_provenance` is the single policy for both provenance paths and import namespaces. Package roots define exact top-level Python namespaces; only `.py` entries in the explicit root-file policy define root module names. Shell and dependency files remain byte-managed but are never treated as Python modules.
+- Deployment evidence walks `sys.modules.items()` and applies namespace policy before inspecting module paths. A qualifying namespace outside the project root is shadowing; a qualifying module inside the root but absent from provenance is unexpected active runtime; managed byte mismatches remain blocking.
+- The provenance generator compares reviewed Git blob bytes with the exact working-tree runtime bytes destined for robocopy before manifest output, without normalization or source mutation.
+
 ## 2026-09-08 Shared SQL Server driver-resolution seam
 
 - Generic SQL Server ODBC driver selection lives in `data_ingestion/sql_server.py`. Excel-to-SQL preserves its `sql_utils.detect_odbc_driver` import surface while Requirement's named registry uses the same helper.

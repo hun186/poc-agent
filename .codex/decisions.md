@@ -168,3 +168,9 @@
 - Use one importable policy (`shared.runtime_provenance`) rather than duplicated generator/operator/deployment selectors. This prevents reviewed-map reconstruction from drifting from package generation or deployment path validation.
 - Include only root files with demonstrated runtime effect: `python_compat.py`, `telemetry.py`, `app.py`, `run_sra_api.sh`, and `requirements.txt`. Do not blanket-select repository-root content; notably, the empty root `__init__.py` and README/TODO documentation are excluded.
 - Hash the launcher as an authoritative runtime input without pretending it is a loaded Python module. Keep `unexpected_active_runtime_module` fail-closed: an active root module must both belong to the explicit policy/provenance and match externally reviewed bytes.
+
+## 2026-09-16 Namespace-authoritative module provenance and byte-exact packaging
+
+- Determine loaded project code from Python import identity, not coincidental filesystem tokens: exact managed package top-level namespaces plus exact module names derived only from explicit root `.py` files are authoritative.
+- Preserve fail-closed shadow detection after namespace qualification. Do not classify `thirdparty.api.*` or `vendor.telemetry` as project code, regardless of path segments or basenames.
+- Keep deployment verification byte-exact. Prevent predictable Windows robocopy failures at package creation by comparing working-tree bytes to reviewed Git blobs and refusing manifest emission on any difference; do not normalize line endings or rewrite checkout content.

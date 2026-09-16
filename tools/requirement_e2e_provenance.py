@@ -24,6 +24,7 @@ def generate(repo: Path, reviewed_sha: str, output: Path) -> None:
         ["git", "-C", str(repo), "ls-tree", "-rz", "--full-tree", resolved, "--", *RUNTIME_PATHS],
     )
     files = []
+    byte_mismatches = []
     for record in raw.rstrip(b"\0").split(b"\0") if raw else []:
         header, encoded = record.split(b"\t", 1)
         _mode, kind, blob = header.decode("ascii").split()
@@ -32,6 +33,21 @@ def generate(repo: Path, reviewed_sha: str, output: Path) -> None:
         path = encoded.decode("utf-8")
         data = subprocess.check_output(["git", "-C", str(repo), "cat-file", "blob", blob])
         files.append({"path": path, "sha256": hashlib.sha256(data).hexdigest()})
+        try:
+            worktree_data = (repo / path).read_bytes()
+        except OSError:
+            worktree_data = None
+        if worktree_data != data:
+            byte_mismatches.append(path)
+    if byte_mismatches:
+        bounded = sorted(byte_mismatches)[:20]
+        suffix = (
+            f" (+{len(byte_mismatches) - len(bounded)} more)"
+            if len(byte_mismatches) > len(bounded) else ""
+        )
+        raise RuntimeError(
+            "runtime_worktree_bytes_differ_from_reviewed_source: " + ", ".join(bounded) + suffix
+        )
     value = {"repository": "hun186/poc-agent", "reviewed_runtime_sha": resolved,
              "runtime_files": sorted(files, key=lambda item: item["path"]), "schema_version": 1}
     output.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")

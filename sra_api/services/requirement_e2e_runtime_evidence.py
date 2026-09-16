@@ -10,14 +10,14 @@ import sys
 import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from operator_e2e.requirement_e2e_support import output_root_fingerprint, verify_worker_identity
 from operator_e2e.source_identity import inspect_operator_source
 from shared.runtime_provenance import (
-    RUNTIME_FILES,
     RUNTIME_PATHS,
     RUNTIME_ROOTS,
+    is_project_module_name,
     is_runtime_provenance_path,
 )
 
@@ -38,18 +38,34 @@ def _git(project_root: Path) -> dict:
             "identity_verified": verified}
 
 
-def _active_project_paths(project_root: Path) -> list[Path]:
-    paths = []
-    for module in tuple(sys.modules.values()):
+def _active_project_modules(project_root: Path) -> list[tuple[str, Path]]:
+    modules = []
+    for module_name, module in tuple(sys.modules.items()):
         value = getattr(module, "__file__", None)
-        if value:
+        if value and is_project_module_name(module_name):
             path = Path(value).resolve(strict=False)
-            if (project_root.resolve() in path.parents or path.name in RUNTIME_FILES
-                    or any(part in _MANAGED_TOP_LEVEL for part in path.parts)):
-                paths.append(path)
+            modules.append((module_name, path))
     # The workers are positively bound to this entrypoint by verify_worker_identity.
-    paths.append((project_root / "requirement_scheduler" / "cli.py").resolve(strict=False))
-    return sorted(set(paths), key=str)
+    modules.append(("requirement_scheduler.cli",
+                    (project_root / "requirement_scheduler" / "cli.py").resolve(strict=False)))
+    return sorted(set(modules), key=lambda item: (item[0], str(item[1])))
+
+
+def _module_name_for_test_path(project_root: Path, path: Path) -> str:
+    """Derive a module name for the legacy explicit-path test seam only."""
+    resolved = path.resolve(strict=False)
+    try:
+        relative = resolved.relative_to(project_root)
+        parts = relative.parts
+    except ValueError:
+        parts = resolved.parts
+        indexes = [index for index, part in enumerate(parts) if part in _MANAGED_TOP_LEVEL]
+        if indexes:
+            parts = parts[indexes[-1]:]
+        else:
+            parts = (resolved.name,)
+    without_suffix = Path(*parts).with_suffix("").parts
+    return ".".join(part for part in without_suffix if part != "__init__")
 
 
 def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | None = None) -> dict:
@@ -96,14 +112,18 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
         if actual != digest:
             raise RuntimeError("active_runtime_source_mismatch")
 
-    active = active_paths if active_paths is not None else _active_project_paths(project_root)
+    active = (
+        [(_module_name_for_test_path(project_root, Path(path)), Path(path)) for path in active_paths]
+        if active_paths is not None
+        else _active_project_modules(project_root)
+    )
     active_relative = []
-    for path in active:
+    for module_name, path in active:
         resolved = Path(path).resolve(strict=False)
         try:
             relative = resolved.relative_to(project_root).as_posix()
         except ValueError as exc:
-            if resolved.name in RUNTIME_FILES or any(part in _MANAGED_TOP_LEVEL for part in resolved.parts):
+            if is_project_module_name(module_name):
                 raise RuntimeError("runtime_module_shadowing") from exc
             continue
         if relative.endswith((".pyc", ".pyo")):

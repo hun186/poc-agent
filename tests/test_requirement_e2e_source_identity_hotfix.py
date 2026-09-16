@@ -178,6 +178,71 @@ def test_actual_module_discovery_accepts_reviewed_root_python_module(tmp_path):
     assert evidence["active_runtime_files"] == ["python_compat.py", "requirement_scheduler/cli.py"]
 
 
+@pytest.mark.parametrize(
+    ("module_name", "relative_path"),
+    [("thirdparty.api.client", "thirdparty/api/client.py"),
+     ("vendor.telemetry", "vendor/telemetry.py")],
+)
+def test_actual_module_discovery_ignores_external_namespace_name_collisions(
+    tmp_path, module_name, relative_path,
+):
+    import sra_api.services.requirement_e2e_runtime_evidence as runtime_evidence
+
+    project = tmp_path / "project"
+    external = tmp_path / "site-packages" / relative_path
+    external.parent.mkdir(parents=True)
+    external.write_text("VALUE = 1\n")
+    _manifest(project, "a" * 40, {"requirement_scheduler/cli.py": b"worker"})
+    original_modules = sys.modules.copy()
+    try:
+        sys.modules.clear()
+        sys.modules[module_name] = SimpleNamespace(__file__=str(external))
+        evidence = runtime_evidence.collect_source_evidence(project)
+    finally:
+        sys.modules.clear()
+        sys.modules.update(original_modules)
+    assert evidence["active_runtime_files"] == ["requirement_scheduler/cli.py"]
+
+
+@pytest.mark.parametrize("module_name", ["sra_api.some_module", "python_compat"])
+def test_actual_project_namespace_module_outside_project_is_shadowing(tmp_path, module_name):
+    import sra_api.services.requirement_e2e_runtime_evidence as runtime_evidence
+
+    project = tmp_path / "project"
+    external = tmp_path / "site-packages" / (module_name.replace(".", "/") + ".py")
+    external.parent.mkdir(parents=True)
+    external.write_text("VALUE = 1\n")
+    _manifest(project, "a" * 40, {"requirement_scheduler/cli.py": b"worker"})
+    original_modules = sys.modules.copy()
+    try:
+        sys.modules.clear()
+        sys.modules[module_name] = SimpleNamespace(__file__=str(external))
+        with pytest.raises(RuntimeError, match="runtime_module_shadowing"):
+            runtime_evidence.collect_source_evidence(project)
+    finally:
+        sys.modules.clear()
+        sys.modules.update(original_modules)
+
+
+def test_actual_residual_project_namespace_module_remains_blocking(tmp_path):
+    import sra_api.services.requirement_e2e_runtime_evidence as runtime_evidence
+
+    project = tmp_path / "project"
+    files = {"requirement_scheduler/cli.py": b"worker"}
+    _manifest(project, "a" * 40, files)
+    residual = project / "requirement_scheduler" / "old_worker.py"
+    residual.write_text("VALUE = 1\n")
+    original_modules = sys.modules.copy()
+    try:
+        sys.modules.clear()
+        sys.modules["requirement_scheduler.old_worker"] = SimpleNamespace(__file__=str(residual))
+        with pytest.raises(RuntimeError, match="unexpected_active_runtime_module"):
+            runtime_evidence.collect_source_evidence(project)
+    finally:
+        sys.modules.clear()
+        sys.modules.update(original_modules)
+
+
 @pytest.mark.parametrize("path", ["python_compat.py", "run_sra_api.sh"])
 def test_modified_runtime_root_file_blocks_incremental_evidence(tmp_path, path):
     from sra_api.services.requirement_e2e_runtime_evidence import collect_source_evidence
@@ -208,3 +273,24 @@ def test_provenance_generator_remains_directly_executable():
         cwd=root, check=False, capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_generator_rejects_crlf_worktree_bytes_before_emitting_provenance(tmp_path):
+    from tools.requirement_e2e_provenance import generate
+
+    repo, reviewed = _repo(tmp_path)
+    runtime = repo / "sra_api" / "main.py"
+    runtime.write_bytes(b"VALUE = 1\r\n")
+    output = tmp_path / "provenance.json"
+    with pytest.raises(RuntimeError, match="runtime_worktree_bytes_differ_from_reviewed_source: sra_api/main.py"):
+        generate(repo, reviewed, output)
+    assert not output.exists()
+
+
+def test_generator_emits_provenance_when_worktree_bytes_exactly_match(tmp_path):
+    from tools.requirement_e2e_provenance import generate
+
+    repo, reviewed = _repo(tmp_path)
+    output = tmp_path / "provenance.json"
+    generate(repo, reviewed, output)
+    assert json.loads(output.read_text())["reviewed_runtime_sha"] == reviewed
