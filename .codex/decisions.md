@@ -162,3 +162,9 @@
 
 - Accept reviewed-equivalent documentation descendants and non-runtime/generated dirt; fail closed for runtime-relevant committed or dirty paths.
 - For robocopy overlays, compare every provenance-managed runtime byte to externally reconstructed reviewed Git bytes and reject active unexpected/shadow modules. Do not require deleted-file history or reject inactive residue solely for existing.
+
+## 2026-09-16 Explicit shared root-file runtime provenance
+
+- Use one importable policy (`shared.runtime_provenance`) rather than duplicated generator/operator/deployment selectors. This prevents reviewed-map reconstruction from drifting from package generation or deployment path validation.
+- Include only root files with demonstrated runtime effect: `python_compat.py`, `telemetry.py`, `app.py`, `run_sra_api.sh`, and `requirements.txt`. Do not blanket-select repository-root content; notably, the empty root `__init__.py` and README/TODO documentation are excluded.
+- Hash the launcher as an authoritative runtime input without pretending it is a loaded Python module. Keep `unexpected_active_runtime_module` fail-closed: an active root module must both belong to the explicit policy/provenance and match externally reviewed bytes.

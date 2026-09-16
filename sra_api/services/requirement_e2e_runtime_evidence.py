@@ -10,14 +10,19 @@ import sys
 import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from operator_e2e.requirement_e2e_support import output_root_fingerprint, verify_worker_identity
 from operator_e2e.source_identity import inspect_operator_source
+from shared.runtime_provenance import (
+    RUNTIME_FILES,
+    RUNTIME_PATHS,
+    RUNTIME_ROOTS,
+    is_runtime_provenance_path,
+)
 
 PROVENANCE_NAME = "REQUIREMENT_E2E_PROVENANCE.json"
-_MANAGED_TOP_LEVEL = {"agent", "api", "batch_scheduler", "config", "data_ingestion", "operator_e2e",
-                      "requirement_scheduler", "shared", "sra_api"}
+_MANAGED_TOP_LEVEL = set(RUNTIME_ROOTS)
 
 
 def _git(project_root: Path) -> dict:
@@ -39,7 +44,8 @@ def _active_project_paths(project_root: Path) -> list[Path]:
         value = getattr(module, "__file__", None)
         if value:
             path = Path(value).resolve(strict=False)
-            if project_root.resolve() in path.parents or any(part in _MANAGED_TOP_LEVEL for part in path.parts):
+            if (project_root.resolve() in path.parents or path.name in RUNTIME_FILES
+                    or any(part in _MANAGED_TOP_LEVEL for part in path.parts)):
                 paths.append(path)
     # The workers are positively bound to this entrypoint by verify_worker_identity.
     paths.append((project_root / "requirement_scheduler" / "cli.py").resolve(strict=False))
@@ -73,8 +79,7 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
         for entry in entries:
             if set(entry) != {"path", "sha256"} or not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]):
                 raise ValueError
-            relative = PurePosixPath(entry["path"])
-            if relative.is_absolute() or ".." in relative.parts or not relative.parts or relative.parts[0] not in _MANAGED_TOP_LEVEL:
+            if not is_runtime_provenance_path(entry["path"]):
                 raise ValueError
             if entry["path"] in expected:
                 raise ValueError
@@ -98,7 +103,7 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
         try:
             relative = resolved.relative_to(project_root).as_posix()
         except ValueError as exc:
-            if any(part in _MANAGED_TOP_LEVEL for part in resolved.parts):
+            if resolved.name in RUNTIME_FILES or any(part in _MANAGED_TOP_LEVEL for part in resolved.parts):
                 raise RuntimeError("runtime_module_shadowing") from exc
             continue
         if relative.endswith((".pyc", ".pyo")):

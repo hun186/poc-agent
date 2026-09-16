@@ -255,3 +255,9 @@
 - Operator source identity is exact or a reviewed-equivalent Git descendant after path-role classification.
 - Deployment evidence supports Git worktrees and incremental packages. `REQUIREMENT_E2E_PROVENANCE.json` enumerates deterministic reviewed runtime hashes; the API verifies deployed bytes and bounded active module paths, while the operator reconstructs the expected map from the externally reviewed Git object.
 - Worker positive identity still uses launcher PID/start-time/UID/cwd/cmdline checks; provenance binds the worker entrypoint/runtime tree. Residual files are not directory-cleanliness authority.
+
+## 2026-09-16 Shared runtime provenance path policy
+
+- `shared/runtime_provenance.py` is the single bounded selector for incremental-package byte authority. `RUNTIME_ROOTS` contains runtime source/config trees; `RUNTIME_FILES` enumerates only materially active root files; `RUNTIME_PATHS` is the Git pathspec authority used by both package generation and external reviewed-map reconstruction.
+- Root classification is explicit: `python_compat.py` and `telemetry.py` are imported runtime modules; `app.py` is the Vercel application entrypoint; `run_sra_api.sh` supervises API/Schedule/Handoff startup and process identity; and `requirements.txt` controls runtime dependency installation. The empty root `__init__.py` has no current import/launch role, while README/TODO and repository metadata are documentation/tooling rather than runtime inputs.
+- Deployment evidence accepts provenance entries only inside the shared policy, hashes all declared authoritative bytes (including the launcher even though it is not a Python module), and separately requires every discovered active project module to appear in reviewed provenance. Inactive unmanaged historical Python residue remains warning-only.

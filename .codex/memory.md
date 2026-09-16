@@ -90,3 +90,10 @@
 - Added deterministic incremental-package provenance plus server-side runtime byte and active-module/path checks. Inactive residual Python files warn rather than block; changed reviewed files, loaded residual modules, and shadow paths block. External reviewed Git objects remain the independent hash authority.
 - RED: 12 focused tests failed before implementation. GREEN: focused Harness/source/deployment/manifest suite passed 119 tests; broader verification is recorded with the final task result. No live Golden Path was executed.
 - Final verification: focused source/Harness/deployment suite passed 119 tests; compilation and diff checks passed. Full `tests` run passed 938 and failed 12 due to documented pre-existing/order-dependent missing-file, namespace-guard, and dependency-override identity issues; no live Golden Path was run.
+
+### 2026-09-16 Incremental-package root runtime provenance hotfix
+
+- Added one shared bounded runtime provenance policy covering the existing runtime source trees plus root runtime inputs `app.py`, `python_compat.py`, `requirements.txt`, `run_sra_api.sh`, and `telemetry.py`; root `__init__.py`, README/TODO, and other root metadata remain outside runtime authority.
+- Provenance generation, operator-side reviewed-map reconstruction, and deployment validation now consume that policy. Incremental evidence hashes every selected file, permits a reviewed matching active `python_compat.py`, and fails closed when either `python_compat.py` or the runtime supervisor `run_sra_api.sh` differs.
+- Strict TDD RED first failed because `shared.runtime_provenance` did not exist (and exposed direct-script import requirements). GREEN passed 19 focused source tests and 195 combined source/Harness/launcher/bootstrap/deployment tests with five pre-existing warnings. Compilation and diff checks passed. Dependencies were present; the pip upgrade lookup repeated the known HTTP 403 proxy warning.
+- The live Golden Path was deliberately not run. No fresh live deployment, Agent, Elasticsearch, LLM, or DOCX acceptance PASS is claimed.

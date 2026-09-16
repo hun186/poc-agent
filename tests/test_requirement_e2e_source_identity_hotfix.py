@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -128,3 +130,81 @@ def test_incremental_source_external_reviewed_authority_is_checked(tmp_path):
     with pytest.raises(HarnessFailure, match="deployment_source_provenance_mismatch"):
         _validate_deployment_source({"identity_kind": "incremental_package", "identity_verified": True,
                                      "reviewed_runtime_sha": "b" * 40, "runtime_files": []}, "a" * 40)
+
+
+def test_runtime_policy_explicitly_classifies_runtime_root_files():
+    from shared.runtime_provenance import RUNTIME_FILES, is_runtime_provenance_path
+
+    assert "python_compat.py" in RUNTIME_FILES
+    assert "run_sra_api.sh" in RUNTIME_FILES
+    assert "app.py" in RUNTIME_FILES
+    assert "telemetry.py" in RUNTIME_FILES
+    assert "requirements.txt" in RUNTIME_FILES
+    assert "__init__.py" not in RUNTIME_FILES
+    assert is_runtime_provenance_path("python_compat.py")
+    assert not is_runtime_provenance_path("README.md")
+    assert not is_runtime_provenance_path("TODO.md")
+
+
+def test_generator_includes_runtime_root_files_but_not_root_documentation(tmp_path):
+    from tools.requirement_e2e_provenance import generate
+
+    repo, reviewed = _repo(tmp_path)
+    for path in ("python_compat.py", "run_sra_api.sh", "app.py", "telemetry.py", "requirements.txt",
+                 "README.md", "TODO.md"):
+        (repo / path).write_text(path + "\n")
+    _git(repo, "add", "."); _git(repo, "commit", "-m", "root runtime files")
+    output = tmp_path / "provenance.json"
+    generate(repo, _git(repo, "rev-parse", "HEAD"), output)
+    paths = {entry["path"] for entry in json.loads(output.read_text())["runtime_files"]}
+    assert {"python_compat.py", "run_sra_api.sh", "app.py", "telemetry.py", "requirements.txt"} <= paths
+    assert paths.isdisjoint({"README.md", "TODO.md"})
+
+
+def test_actual_module_discovery_accepts_reviewed_root_python_module(tmp_path):
+    import sra_api.services.requirement_e2e_runtime_evidence as runtime_evidence
+
+    reviewed = "a" * 40
+    files = {"python_compat.py": b"reviewed", "requirement_scheduler/cli.py": b"worker"}
+    _manifest(tmp_path, reviewed, files)
+    original_modules = sys.modules.copy()
+    try:
+        sys.modules.clear()
+        sys.modules["python_compat"] = SimpleNamespace(__file__=str(tmp_path / "python_compat.py"))
+        evidence = runtime_evidence.collect_source_evidence(tmp_path)
+    finally:
+        sys.modules.clear()
+        sys.modules.update(original_modules)
+    assert evidence["active_runtime_files"] == ["python_compat.py", "requirement_scheduler/cli.py"]
+
+
+@pytest.mark.parametrize("path", ["python_compat.py", "run_sra_api.sh"])
+def test_modified_runtime_root_file_blocks_incremental_evidence(tmp_path, path):
+    from sra_api.services.requirement_e2e_runtime_evidence import collect_source_evidence
+
+    reviewed = "a" * 40
+    files = {path: b"reviewed", "requirement_scheduler/cli.py": b"worker"}
+    _manifest(tmp_path, reviewed, files)
+    (tmp_path / path).write_bytes(b"modified")
+    with pytest.raises(RuntimeError, match="active_runtime_source_mismatch"):
+        collect_source_evidence(tmp_path, active_paths=[])
+
+
+def test_generator_operator_and_deployment_share_runtime_path_policy():
+    import operator_e2e.test_requirement_schedule_e2e as harness
+    import sra_api.services.requirement_e2e_runtime_evidence as runtime_evidence
+    import tools.requirement_e2e_provenance as generator
+    from shared.runtime_provenance import RUNTIME_PATHS
+
+    assert generator.RUNTIME_PATHS is RUNTIME_PATHS
+    assert harness.RUNTIME_PATHS is RUNTIME_PATHS
+    assert runtime_evidence.RUNTIME_PATHS is RUNTIME_PATHS
+
+
+def test_provenance_generator_remains_directly_executable():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, str(root / "tools" / "requirement_e2e_provenance.py"), "--help"],
+        cwd=root, check=False, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
