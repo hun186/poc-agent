@@ -1,5 +1,10 @@
 # Architecture and Engineering Decisions
 
+## 2026-09-16 Generated artifacts cannot acquire runtime provenance authority by directory location
+
+- Select the broad runtime-containing roots, then apply the shared `is_generated_non_runtime_path()` exclusion before hashing or accepting a manifest path. Do not weaken byte validation for selected runtime paths and do not special-case individual report filenames.
+- Keep canonical harness profile/input assets selected. They are operator fixture authority rather than generated output, and removing them would silently weaken reproducibility and the XLSX's independent digest check.
+
 ## 2026-09-15 Thin automatic E2E observer
 
 - Keep the Requirement E2E harness as a stimulus/observer rather than a second executor. Automatic scheduling is proven only by a new durable `scheduled` Batch tied to the invocation's version, occurrence, and Snapshot; manual Run and worker/coordinator invocation are prohibited.

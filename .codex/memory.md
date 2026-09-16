@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-16 Generated report/runtime provenance boundary hotfix
+
+- Runtime provenance now uses one shared generated-product classifier to exclude every `operator_e2e/output/**` path and every root-level `operator_e2e/*.docx` report while retaining byte-exact authority for runtime Python, configuration, launcher, profile JSON, and canonical input XLSX paths.
+- The generator, operator reconstruction, server manifest validator, and operator dirty-source classification share that policy. Modified tracked generated DOCX files no longer block package generation or enter `runtime_files`; modified `operator_e2e/requirement_e2e_support.py` and `run_sra_api.sh` still block.
+- Strict RED recorded five expected failures across generation, server validation, and the missing shared classifier. GREEN passed 34 focused tests and 213 Harness/launcher/bootstrap/deployment tests (five pre-existing warnings), plus compilation and diff checks. The live Golden Path was deliberately not run.
+
 ### 2026-09-16 Runtime provenance namespace and package-byte hotfix
 
 - Active runtime discovery now classifies `sys.modules` entries by exact project top-level import namespace or an explicitly managed root Python module name. Third-party paths merely containing `api`, `config`, `shared`, or a basename such as `telemetry.py` are ignored, while true project-namespace modules loaded outside the deployment root still fail as shadowing.

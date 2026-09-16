@@ -1,5 +1,11 @@
 # System Architecture
 
+## 2026-09-16 Runtime provenance generated-product boundary
+
+- `shared/runtime_provenance.py` is the single path-policy authority for generator selection, operator-side reviewed-map reconstruction, deployment manifest validation, and generated dirty-product classification.
+- `operator_e2e/output/**` and root-level `operator_e2e/*.docx` are generated evidence/report products and cannot become deployment runtime authority. The rest of `operator_e2e/` is not blanket-excluded: imported support/source-identity modules and harness configuration remain managed.
+- `operator_e2e/requirement_e2e_profile_v1.json` and `operator_e2e/input/requirement_e2e_3items.xlsx` intentionally remain in the reviewed map as canonical operator fixture authority used by the harness, although they are not Linux service inputs. The XLSX retains its separate canonical source SHA-256 validation in addition to provenance byte authority.
+
 ## 2026-09-15 Requirement operator E2E harness
 
 - `operator_e2e/test_requirement_schedule_e2e.py` is a thin deployment-host orchestrator: it uses authenticated HTTP Requirement/Schedule lifecycle calls, read-only launcher identity/process evidence, and read-only artifact verification. It never runs production workers or uses the manual Run route.

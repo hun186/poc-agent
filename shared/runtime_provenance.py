@@ -38,6 +38,19 @@ ROOT_PYTHON_MODULES = tuple(
 PROJECT_MODULE_NAMESPACES = RUNTIME_ROOTS
 
 
+def is_generated_non_runtime_path(path: str) -> bool:
+    """Classify generated harness/report products that never carry runtime authority."""
+    value = PurePosixPath(path)
+    parts = value.parts
+    if len(parts) >= 2 and parts[:2] == ("operator_e2e", "output"):
+        return True
+    if len(parts) >= 2 and parts[0] in {"tests", "tests_code"} and "output" in parts[1:]:
+        return True
+    # Root-level operator DOCX files are report products, not templates.  Keep
+    # nested input fixtures and all actual Python/configuration files managed.
+    return len(parts) == 2 and parts[0] == "operator_e2e" and value.suffix.lower() == ".docx"
+
+
 def is_project_module_name(module_name: str) -> bool:
     """Return whether an exact Python import namespace belongs to this project."""
     top_level = module_name.partition(".")[0]
@@ -47,6 +60,7 @@ def is_project_module_name(module_name: str) -> bool:
 def is_runtime_provenance_path(path: str) -> bool:
     """Return whether a normalized repository-relative path is in policy."""
     relative = PurePosixPath(path)
-    if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+    if (relative.is_absolute() or ".." in relative.parts or not relative.parts
+            or relative.as_posix() != path or is_generated_non_runtime_path(path)):
         return False
     return path in RUNTIME_FILES or relative.parts[0] in RUNTIME_ROOTS
