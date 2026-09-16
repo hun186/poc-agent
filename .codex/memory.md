@@ -63,3 +63,10 @@
 
 - `.codex/archive/memory.md-20260915-170533.md` — compacted 2026-09-15; full pre-hardening history through the Requirement E2E source-identity split and prior deployment/runbook verification.
 - Earlier archives listed in that file remain available under `.codex/archive/` for traceability.
+
+### 2026-09-16 Requirement Automatic Operator E2E Harness v2
+
+- Added baseline-bound Design/Plan v2, a shared local/remote evidence-provider architecture, default canonical XLSX with automatic digest binding, mandatory reviewed runtime authority, cross-platform operator locking, and result schema v2.
+- Added authenticated superuser-only read-only deployment runtime evidence and reused the existing Report Job download route for remote DOCX bytes. No DB or Scheduler/Handoff/Report Job execution semantics changed.
+- Strict RED was represented by the initial focused compatibility failures before v2 updates; GREEN passed 50 focused tests, 68 API/launcher/bootstrap tests, and 514 broad Requirement/Report Job/launcher/bootstrap tests. Compilation and diff checks passed. Pip package-index lookup warned HTTP 403, but dependencies were already installed.
+- No live deployment Harness was executed and no fresh live Requirement/Agent/Elasticsearch/LLM/DOCX PASS is claimed.

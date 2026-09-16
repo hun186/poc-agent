@@ -90,3 +90,8 @@
 - Package-index access still returned `Tunnel connection failed: 403 Forbidden` while pip checked for upgrades; required dependencies were already installed.
 - SD-1 through SD-7 live gates remain PENDING. No production package verification, SQL access, SRA lifecycle operation, credential mutation, Golden Path replay, or Agent/ES/LLM/DOCX acceptance was performed.
 - An extra all-five-files combined pytest invocation produced 11 cascading launcher timeouts after `test_identified_stale_api_gets_term_before_any_kill` missed its 3-second synthetic-worker deadline (106 passed, 11 failed). The contract-required clean standalone deployment regression invocation passed all 67 tests, and the first failed case passed alone after synthetic-process cleanup; treat the combined high-load result as an environment timing warning, not a runtime regression PASS.
+
+## 2026-09-16 Harness v2 verification environment
+
+- `python -m pip install --upgrade pip` retried the configured package-index proxy and received HTTP 403, while the installed pip and all `requirements.txt` dependencies were already satisfied. Focused and broad repository tests therefore ran successfully without fetching packages.
+- Live Agent/Elasticsearch/LLM/DOCX acceptance was intentionally not run from this environment; execute either documented mode only in an authorized deployment/operator environment with externally reviewed runtime SHA.

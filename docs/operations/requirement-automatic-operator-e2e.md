@@ -125,3 +125,42 @@ disable the exact schedule it enabled through the normal API; failure to do so f
 Do not delete or update SQL rows, rewrite Snapshots, reset checkpoints, change Batch state, kill
 workers, or delete production artifacts. Historical Import Runs, Snapshots, Schedule Versions,
 Batches, Run Items, Report Job identities, and artifacts are retained as durable evidence.
+
+## Harness v2 local and remote acceptance
+
+Harness v2 has two explicit complete modes and no automatic detection or fallback. `local` is the
+default and remains Linux deployment-host only. Windows/Spyder is supported for remote-operator
+acceptance; use `--mode remote`. A remote PASS is complete acceptance and does not normally need a
+local rerun. A local PASS is also complete and does not need a remote run. On remote FAIL/BLOCKED,
+inspect the preserved stage/evidence; a separate local run may be used for diagnosis. Operators may
+intentionally run both after major deployment/bootstrap/worker/security changes.
+
+The canonical `operator_e2e/input/requirement_e2e_3items.xlsx` is resolved relative to the script
+and used by default with its known SHA-256 enforced automatically:
+
+```bash
+# Linux deployment host (equivalent to --mode local)
+python operator_e2e/test_requirement_schedule_e2e.py
+```
+
+```powershell
+# Windows remote operator
+python operator_e2e/test_requirement_schedule_e2e.py `
+  --mode remote
+```
+
+A custom workbook uses `--excel /path/to/custom.xlsx` and its actual digest is recorded. Remote mode
+does not require `SRA_E2E_REQUIREMENT_ARTIFACT_ROOT`; the authenticated, superuser-only read-only
+`GET /v1/operator-e2e/runtime-evidence` route proves deployment source, both launcher-managed worker
+identities, and the configured Handoff artifact-root fingerprint without returning paths, PIDs,
+cmdlines, credentials, or environment values. Real DOCX bytes come through the existing authorized
+Report Job download route and are independently checked on the operator workstation.
+
+`SRA_E2E_EXPECTED_RUNTIME_SHA` is mandatory in both modes. In remote mode both the clean operator
+Harness checkout and clean deployment worktree must equal this externally reviewed SHA. Results use
+`requirement_e2e_result_v2`; `summary.txt` always includes `ACCEPTANCE_MODE` and sets
+`FRESH_LIVE_REQUIREMENT_E2E_PASS` to `YES` only on complete PASS.
+
+The operator-process lock is checkout/output-local (`fcntl` on POSIX, `msvcrt` for remote Windows),
+not a distributed global lock. Immutable fixture/run identity and drift detection remain the safe
+interference boundary. The Harness never launches the other mode automatically.

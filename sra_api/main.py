@@ -27,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from api.routers import chat, docs, export, editor, excel_to_sql, report_jobs, service_keys
 from api.routers import requirements
-from sra_api.routers import requirement_schedules
+from sra_api.routers import operator_e2e, requirement_schedules
 from api.services.report_job_store import ReportJobStore
 from api.services.report_job_worker import ReportJobWorker
 from api.security.signed_urls import validate_signing_config
@@ -100,3 +100,4 @@ app.include_router(editor.router)
 app.include_router(excel_to_sql.router)
 app.include_router(requirements.router)
 app.include_router(requirement_schedules.router)
+app.include_router(operator_e2e.router)

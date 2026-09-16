@@ -38,6 +38,16 @@ from operator_e2e.requirement_e2e_support import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _reviewed_runtime_authority(monkeypatch):
+    monkeypatch.setenv("SRA_E2E_EXPECTED_RUNTIME_SHA", "919422bce992e757a89767f66beb8e042707a976")
+    monkeypatch.setattr(
+        "operator_e2e.test_requirement_schedule_e2e._git_source",
+        lambda expected: {"repository": "hun186/poc-agent", "expected_runtime_sha": expected,
+                          "git_sha": expected, "clean": True, "identity_verified": True},
+    )
+
+
 def test_support_imports_when_fcntl_is_unavailable(monkeypatch):
     source = Path("operator_e2e/requirement_e2e_support.py")
     real_find_spec = importlib.util.find_spec
@@ -62,8 +72,8 @@ def test_unsupported_platform_fails_before_harness_run(tmp_path, monkeypatch, ca
     monkeypatch.setattr(Harness, "run", lambda self: run_calls.append(self))
     monkeypatch.setattr(
         "operator_e2e.test_requirement_schedule_e2e.validate_live_platform",
-        lambda: (_ for _ in ()).throw(HarnessFailure(
-            "unsupported_platform", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+        lambda *_: (_ for _ in ()).throw(HarnessFailure(
+            "unsupported_local_platform", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
         )),
     )
 
@@ -73,7 +83,7 @@ def test_unsupported_platform_fails_before_harness_run(tmp_path, monkeypatch, ca
     assert run_calls == []
     result = json.loads(next(output.glob("*/result.json")).read_text())
     assert result["failed_stage"] == "CONFIG_PREFLIGHT"
-    assert result["failure_category"] == "unsupported_platform"
+    assert result["failure_category"] == "unsupported_local_platform"
     assert "Linux deployment host" in capsys.readouterr().out
 
 
@@ -121,6 +131,7 @@ def test_complete_requirement_process_environment_does_not_require_env_file(tmp_
     monkeypatch.setenv("SRA_E2E_MODEL", "model")
     monkeypatch.setenv("SRA_E2E_REQUIREMENT_ARTIFACT_ROOT", str(tmp_path / "artifacts"))
     monkeypatch.setenv("SRA_E2E_EDITOR_TOKEN", "authorized-token")
+    monkeypatch.setenv("SRA_E2E_EXPECTED_RUNTIME_SHA", "919422bce992e757a89767f66beb8e042707a976")
     monkeypatch.setattr(Harness, "run", lambda self: None)
 
     assert main([
@@ -263,13 +274,14 @@ def test_runtime_sha_mismatch_fails_before_harness_mutations(tmp_path, monkeypat
     assert mutations == []
     result = json.loads(next(output.glob("*/result.json")).read_text())
     assert result["failed_stage"] == "CONFIG_PREFLIGHT"
-    assert result["failure_category"] == "runtime_source_identity_mismatch"
+    assert result["failure_category"] == "operator_source_identity_mismatch"
 
 
 def test_dirty_reviewed_runtime_fails_before_harness_mutations(tmp_path, monkeypatch):
     from operator_e2e.test_requirement_schedule_e2e import Harness, main
 
     reviewed_sha = "a" * 40
+    monkeypatch.setenv("SRA_E2E_EXPECTED_RUNTIME_SHA", reviewed_sha)
     artifact_root = tmp_path / "artifact-root"
     artifact_root.mkdir()
     env_file = tmp_path / "e2e.env.local"
@@ -299,7 +311,7 @@ def test_dirty_reviewed_runtime_fails_before_harness_mutations(tmp_path, monkeyp
     assert len(run_calls) == 0
     result = json.loads(next(output.glob("*/result.json")).read_text())
     assert result["failed_stage"] == "CONFIG_PREFLIGHT"
-    assert result["failure_category"] == "runtime_source_dirty"
+    assert result["failure_category"] == "operator_source_dirty"
 
 
 def test_clean_reviewed_runtime_passes_source_validation():
@@ -342,7 +354,7 @@ def test_redaction_removes_headers_fields_and_known_literals():
 
 def test_result_schema_and_atomic_evidence_does_not_overwrite(tmp_path):
     doc = result_document("run-1")
-    assert doc["schema_version"] == "requirement_e2e_result_v1"
+    assert doc["schema_version"] == "requirement_e2e_result_v2"
     assert all(stage["status"] == StageStatus.NOT_REACHED for stage in doc["stages"])
     target = tmp_path / "result.json"
     atomic_write_json(target, doc)
@@ -496,6 +508,7 @@ def test_cleanup_failure_forces_exit_five_and_evidence(tmp_path, monkeypatch):
     monkeypatch.setenv("SRA_E2E_MODEL", "model")
     monkeypatch.setenv("SRA_E2E_REQUIREMENT_ARTIFACT_ROOT", str(artifact_root))
     monkeypatch.setenv("SRA_E2E_EDITOR_TOKEN", "SENTINEL-TOKEN")
+    monkeypatch.setenv("SRA_E2E_EXPECTED_RUNTIME_SHA", "919422bce992e757a89767f66beb8e042707a976")
     monkeypatch.setattr(Harness, "run", lambda self: setattr(self, "enabled_schedule_id", "schedule-1"))
     monkeypatch.setattr(Harness, "cleanup", lambda self: (_ for _ in ()).throw(RuntimeError("disable failed")))
     output = tmp_path / "evidence"
@@ -572,7 +585,8 @@ def test_env_file_output_directory_is_authoritative_for_all_evidence(tmp_path, m
     env_file = tmp_path / "e2e.env.local"
     env_file.write_text(
         f"SRA_E2E_MODEL=model\nSRA_E2E_REQUIREMENT_ARTIFACT_ROOT={artifact_root}\n"
-        f"SRA_E2E_EDITOR_TOKEN=token\nSRA_E2E_OUTPUT_DIR={output}\n", encoding="utf-8",
+        f"SRA_E2E_EDITOR_TOKEN=token\nSRA_E2E_OUTPUT_DIR={output}\n"
+        f"SRA_E2E_EXPECTED_RUNTIME_SHA=919422bce992e757a89767f66beb8e042707a976\n", encoding="utf-8",
     )
     observed = {}
     monkeypatch.setattr(Harness, "run", lambda self: observed.update(output=self.output, config=self.config.output_dir))
