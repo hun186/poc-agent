@@ -29,6 +29,20 @@ RUNTIME_FILES = (
 
 RUNTIME_PATHS = RUNTIME_ROOTS + RUNTIME_FILES
 
+# Only importable root Python files define top-level module names.  Runtime
+# inputs such as the launcher and requirements lock are provenance-managed
+# bytes, but can never identify a loaded Python module.
+ROOT_PYTHON_MODULES = tuple(
+    PurePosixPath(path).stem for path in RUNTIME_FILES if path.endswith(".py")
+)
+PROJECT_MODULE_NAMESPACES = RUNTIME_ROOTS
+
+
+def is_project_module_name(module_name: str) -> bool:
+    """Return whether an exact Python import namespace belongs to this project."""
+    top_level = module_name.partition(".")[0]
+    return top_level in PROJECT_MODULE_NAMESPACES or module_name in ROOT_PYTHON_MODULES
+
 
 def is_runtime_provenance_path(path: str) -> bool:
     """Return whether a normalized repository-relative path is in policy."""

@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-16 Runtime provenance namespace and package-byte hotfix
+
+- Active runtime discovery now classifies `sys.modules` entries by exact project top-level import namespace or an explicitly managed root Python module name. Third-party paths merely containing `api`, `config`, `shared`, or a basename such as `telemetry.py` are ignored, while true project-namespace modules loaded outside the deployment root still fail as shadowing.
+- Incremental provenance generation now compares every reviewed tracked runtime Git blob byte-for-byte with the corresponding working-tree file before writing the manifest. CRLF/LF or any other package-byte divergence fails early as `runtime_worktree_bytes_differ_from_reviewed_source` with bounded relative paths and does not mutate source files.
+- Strict RED recorded three expected failures for two external namespace collisions and missing CRLF preflight. GREEN passed 26 focused source/provenance tests and 203 combined Harness v2, launcher, deployment bootstrap, and deployment manifest tests; compilation and diff checks passed. The live Golden Path was deliberately not run.
+
 ### 2026-09-16 Operator E2E configuration and platform UX hotfix
 
 - Added a tracked, credential-free common `operator_e2e/e2e.env.example` for Phase 0 and Requirement operator tools while retaining the ignored local secret file. Phase 0 now prefers `SRA_E2E_BASE_URL` with the legacy base-name fallback; Phase 0 Service Keys remain explicitly separate from Requirement Editor authentication.
