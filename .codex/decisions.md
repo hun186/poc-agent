@@ -151,3 +151,9 @@
 - Keep one functional Harness and isolate only deployment evidence behind local/remote providers; duplicated state-machine implementations were rejected.
 - Remote acceptance trusts deployment-generated Git/worker/root-fingerprint evidence plus independently downloaded artifact bytes. Operator and deployment sources must both bind to the externally reviewed runtime SHA.
 - Reuse Report Job download authorization and add only a bounded superuser read-only evidence route; no new artifact store, Service Key scope, DB schema, or worker-control surface.
+
+## 2026-09-16 Durable Handoff publication is remote artifact authority
+
+- Supersede the earlier choice to reuse Report Job `/word` for remote acceptance: that upstream copy cannot prove the separate Handoff publication still exists and matches durable reconciliation state.
+- Use immutable Batch/Run Item identity to read existing durable metadata server-side, validate it under the configured Handoff root, and return only verified bytes. Reject client filesystem authority and keep the route GET-only/superuser-only rather than widening Service Key scopes.
+- Retain independent operator-side DOCX and SHA verification so Remote PASS proves both authoritative server publication and receipt of identical bytes.

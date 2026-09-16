@@ -40,6 +40,12 @@ class RemoteDeploymentEvidenceProvider:
 
     def preflight(self) -> dict[str, Any]:
         try: evidence = self.api.get("/v1/operator-e2e/runtime-evidence", timeout=30)
+        except HarnessFailure as exc:
+            if exc.category == "authentication_failed":
+                raise HarnessFailure("remote_evidence_authentication_failed", stage="RUNTIME_WORKERS") from exc
+            if exc.category == "authorization_failed":
+                raise HarnessFailure("remote_evidence_authorization_failed", stage="RUNTIME_WORKERS") from exc
+            raise HarnessFailure("remote_runtime_evidence_unavailable", stage="RUNTIME_WORKERS") from exc
         except Exception as exc:
             raise HarnessFailure("remote_runtime_evidence_unavailable", stage="RUNTIME_WORKERS") from exc
         if evidence.get("schema_version") != "requirement_e2e_runtime_evidence_v1":
@@ -54,8 +60,23 @@ class RemoteDeploymentEvidenceProvider:
 
     def verify_artifact(self, item, persisted_root, copy_to):
         try:
-            response = self.api.request_raw("GET", f"/v1/report/jobs/{item['remote_job_id']}/word", timeout=60)
-        except (requests.Timeout, requests.ConnectionError, HarnessFailure) as exc:
+            response = self.api.request_raw(
+                "GET",
+                f"/v1/operator-e2e/batches/{item['batch_run_id']}/items/{item['run_item_id']}/artifact",
+                timeout=60,
+            )
+        except HarnessFailure as exc:
+            if exc.category in {
+                "artifact_missing", "artifact_invalid", "artifact_metadata_missing",
+                "artifact_sha256_mismatch", "artifact_root_fingerprint_mismatch",
+            }:
+                raise
+            if exc.category == "authentication_failed":
+                raise HarnessFailure("remote_evidence_authentication_failed", stage="ARTIFACT_RECONCILIATION") from exc
+            if exc.category == "authorization_failed":
+                raise HarnessFailure("remote_evidence_authorization_failed", stage="ARTIFACT_RECONCILIATION") from exc
+            raise HarnessFailure("artifact_download_failed", stage="ARTIFACT_RECONCILIATION") from exc
+        except (requests.Timeout, requests.ConnectionError) as exc:
             raise HarnessFailure("artifact_download_failed", stage="ARTIFACT_RECONCILIATION") from exc
         disposition = response.headers.get("content-disposition", "")
         filename = f"{item['run_item_id']}.docx"

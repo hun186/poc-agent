@@ -243,3 +243,9 @@
 - One shared `Harness` retains the complete functional Golden Path; local and remote providers differ only in deployment-evidence and artifact-byte acquisition.
 - Local mode preserves Linux `/proc`, launcher identity, clean Git, configured root fingerprint, and direct filesystem DOCX checks. Remote mode uses the superuser-only read-only runtime-evidence API and existing Report Job download API, then independently checks downloaded DOCX/SHA bytes.
 - Runtime evidence returns bounded source/worker/fingerprint facts only. Result evidence is `requirement_e2e_result_v2` and distinguishes operator source from deployment source.
+
+## 2026-09-16 Harness v2 authoritative remote artifact correction
+
+- Remote artifact proof now uses a superuser-only operator route keyed solely by immutable Batch Run and Run Item IDs. `ScheduleStore` joins those identities and returns existing durable Handoff metadata; no client path is accepted.
+- The server resolves the durable path only under configured `REQUIREMENT_HANDOFF_OUTPUT_ROOT`, verifies root fingerprint, confinement, non-symlink file, DOCX ZIP safety/integrity, and durable SHA before returning bytes. The remote provider independently repeats DOCX/SHA validation and retains the verified bytes.
+- Report Job `/word` remains a product API but is no longer Remote PASS artifact authority. This supersedes that portion of the preceding Harness v2 entry without DB schema or Schedule/Handoff/Report Job execution changes.

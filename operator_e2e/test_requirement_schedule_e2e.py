@@ -55,6 +55,11 @@ class Api:
                 if read_retry and response.status_code in TRANSIENT and time.monotonic() < deadline: time.sleep(1); continue
                 if response.status_code >= 400:
                     category = "authentication_failed" if response.status_code == 401 else "authorization_failed" if response.status_code == 403 else "api_request_failed"
+                    if path.startswith("/v1/operator-e2e/"):
+                        try: code = response.json().get("detail", {}).get("code")
+                        except (AttributeError, ValueError): code = None
+                        if code in {"artifact_missing", "artifact_invalid", "artifact_metadata_missing", "artifact_sha256_mismatch", "artifact_root_fingerprint_mismatch"}:
+                            category = code
                     raise HarnessFailure(category)
                 return response
             except (requests.Timeout, requests.ConnectionError):
@@ -298,7 +303,8 @@ class Harness:
         for item in batch["items"]:
             if item.get("selection_status") != "selected": continue
             evidence = self.evidence_provider.verify_artifact(
-                item, persisted_root, self.output / "artifacts" / f"{item['run_item_id']}.docx")
+                {**item, "batch_run_id": batch["batch_run_id"]}, persisted_root,
+                self.output / "artifacts" / f"{item['run_item_id']}.docx")
             self.result["artifacts"].append({"run_item_id": item["run_item_id"], **evidence})
             self.result["items"].append({key: item.get(key) for key in ("run_item_id", "requirement_id", "remote_job_id", "remote_job_state", "execution_state", "artifact_relative_path", "artifact_sha256")})
         if len(self.result["artifacts"]) != 3: self.fail("artifact_missing", "ARTIFACT_RECONCILIATION")

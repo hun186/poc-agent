@@ -78,3 +78,22 @@ def test_get_batch_run_projects_durable_handoff_and_artifact_identity(monkeypatc
     assert "phase1a_output_root_fingerprint" in queries[0]
     assert "remote_job_id" in queries[1]
     assert "remote_job_state" in queries[1]
+
+
+def test_operator_artifact_evidence_is_bound_to_batch_and_run_item(monkeypatch):
+    store = ScheduleStore(Registry(), "control")
+    observed = {}
+
+    def query(sql, *params):
+        observed.update(sql=sql, params=params)
+        return [{"batch_run_id": "batch-1", "run_item_id": "item-1"}]
+
+    monkeypatch.setattr(store, "_query", query)
+    result = store.get_operator_artifact_evidence(batch_run_id="batch-1", run_item_id="item-1")
+    assert result == {"batch_run_id": "batch-1", "run_item_id": "item-1"}
+    assert observed["params"] == ("batch-1", "item-1")
+    assert "i.batch_run_id=r.batch_run_id" in observed["sql"]
+
+    monkeypatch.setattr(store, "_query", lambda *_args: [])
+    with pytest.raises(KeyError, match="run_item_not_found"):
+        store.get_operator_artifact_evidence(batch_run_id="batch-1", run_item_id="other-item")
