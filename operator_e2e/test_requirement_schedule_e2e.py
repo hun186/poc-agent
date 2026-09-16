@@ -33,6 +33,7 @@ from operator_e2e.requirement_e2e_support import (
 )
 from operator_e2e.requirement_e2e_evidence import LocalDeploymentEvidenceProvider, RemoteDeploymentEvidenceProvider
 from operator_e2e.source_identity import inspect_operator_source
+from shared.runtime_provenance import RUNTIME_PATHS
 
 PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
 DEFAULT_EXCEL = SCRIPT_DIR / "input" / "requirement_e2e_3items.xlsx"
@@ -404,9 +405,8 @@ def _validate_deployment_source(source: dict[str, Any], expected: str) -> None:
         if source.get("reviewed_runtime_sha") != expected:
             raise HarnessFailure("deployment_source_provenance_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
         try:
-            from tools.requirement_e2e_provenance import RUNTIME_ROOTS
             raw = subprocess.check_output(
-                ["git", "-C", str(PROJECT_ROOT), "ls-tree", "-rz", "--full-tree", expected, "--", *RUNTIME_ROOTS],
+                ["git", "-C", str(PROJECT_ROOT), "ls-tree", "-rz", "--full-tree", expected, "--", *RUNTIME_PATHS],
             )
             reviewed_files = {}
             for record in raw.rstrip(b"\0").split(b"\0") if raw else []:
