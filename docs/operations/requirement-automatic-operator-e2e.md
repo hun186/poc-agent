@@ -66,15 +66,30 @@ The two optional expected hashes bind different inputs and must never be interch
   Input validation compares it only with the actual uploaded workbook digest.
 * `SRA_E2E_EXPECTED_RUNTIME_SHA` is the 40-character lowercase reviewed Git commit identity.
   This value is not repository-self-authoritative: the operator must obtain it externally from
-  the completed post-merge source review/acceptance handoff. In a Git worktree, it must exactly
-  equal the deployment worktree's `git rev-parse HEAD`, and that worktree must be clean, before
-  any live mutation. Copying an old SHA from repository history is invalid. Do not substitute
-  `$(git rev-parse HEAD)` as the authority because the local checkout must not self-attest its
-  reviewed identity.
+  the completed post-merge source review/acceptance handoff. Exact identity passes. A descendant
+  passes only when Git proves ancestry and every intervening path is explicitly non-runtime.
+  Runtime-relevant committed drift blocks. Generated output/project-memory dirt warns;
+  runtime-relevant dirt and untracked importable modules block. Do not substitute local `HEAD` as
+  authority (for example, do not set it from `git rev-parse HEAD`) because a checkout must not
+  self-attest its reviewed identity. Copying an old SHA from repository history is invalid.
 
 The concrete source value above identifies the stable tracked three-item fixture. The runtime
-placeholder must be replaced with the exact externally reviewed handoff value. Package/overlay
-deployments continue to use the separately approved deployment identity workflow.
+placeholder must be replaced with the exact externally reviewed handoff value.
+
+For a non-Git incremental package, generate provenance on the reviewed source/release machine and
+copy it with the package:
+
+```bash
+python tools/requirement_e2e_provenance.py \
+  --reviewed-sha "$SRA_E2E_EXPECTED_RUNTIME_SHA" \
+  --output REQUIREMENT_E2E_PROVENANCE.json
+```
+
+Generation is deterministic and records no deletion history. Acceptance reconstructs the expected
+runtime hash map from the external reviewed Git object and compares it with server-verified bytes.
+Do not edit the file. Inactive residual files yield bounded warning evidence, not failure; files
+that are loaded, resolved, discovered, shadowing, or replace reviewed runtime bytes block. Git
+worktrees remain supported with the same exact/equivalent/runtime-drift policy.
 
 ## Input and invocation
 
@@ -171,8 +186,8 @@ retaining the bytes under the invocation's `artifacts/` directory.
 Both remote evidence routes require a superuser Editor user session. HTTP 401 and 403 are reported
 as remote evidence authentication and authorization failures rather than network unavailability.
 
-`SRA_E2E_EXPECTED_RUNTIME_SHA` is mandatory in both modes. In remote mode both the clean operator
-Harness checkout and clean deployment worktree must equal this externally reviewed SHA. Results use
+`SRA_E2E_EXPECTED_RUNTIME_SHA` is mandatory in both modes. Operator and deployment evidence must be
+exact or provably runtime-equivalent to this external authority. Results use
 `requirement_e2e_result_v2`; `summary.txt` always includes `ACCEPTANCE_MODE` and sets
 `FRESH_LIVE_REQUIREMENT_E2E_PASS` to `YES` only on complete PASS.
 

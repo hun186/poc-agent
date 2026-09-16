@@ -168,3 +168,7 @@ Authenticated endpoints: `GET/POST /v1/requirement-schedules`, `GET/PATCH /v1/re
 - `GET /v1/operator-e2e/batches/{batch_run_id}/items/{run_item_id}/artifact` is authenticated, superuser-only, read-only, and returns the exact Handoff-published DOCX only after durable metadata, configured-root fingerprint, confinement, DOCX ZIP, and SHA-256 validation.
 - Batch/Run Item IDs are the only client identity inputs. The route accepts no path parameter and exposes no absolute path, SQL detail, credential, worker detail, or prompt.
 - Failures use bounded `{detail:{code}}` categories such as `artifact_missing`, `artifact_metadata_missing`, `artifact_invalid`, `artifact_sha256_mismatch`, and `artifact_root_fingerprint_mismatch`. Report Job `/word` is unchanged but is not Remote PASS artifact authority.
+
+## 2026-09-16 Operator runtime evidence identity extension
+
+`GET /v1/operator-e2e/runtime-evidence` remains GET-only and superuser-only. Its bounded `deployment_source` now supports `identity_kind=git_worktree` and `identity_kind=incremental_package`. Incremental evidence contains only reviewed SHA, runtime file path/hash pairs, active reviewed paths, residual count, and bounded warnings; it exposes no environment, command line, PID, cwd, credential, prompt, or arbitrary filesystem listing. The authoritative Batch/Run Item artifact endpoint is unchanged.

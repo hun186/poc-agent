@@ -25,6 +25,14 @@
 6. Run focused tests, compilation, the current broad Requirement-family regression, protected
    XLSX digest verification, and `git diff --check`. Do not execute live acceptance.
 
+## Source/deployment evidence corrective hotfix
+
+Classify committed and dirty paths by repository role rather than requiring literal SHA equality
+and an empty worktree. Incremental deployments use machine-generated deterministic provenance and
+active-module/path checks, without a deleted-file ledger or clean-slate copy. The external reviewed
+SHA and locally reconstructed reviewed hashes remain authoritative. Inactive residue warns; active,
+resolved, discovered, shadowing, or replacement code blocks.
+
 ## Production scope
 
 Only a bounded authenticated read-only evidence surface and its router registration are allowed.

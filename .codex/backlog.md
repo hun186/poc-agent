@@ -147,3 +147,7 @@
 ## 2026-09-16 Harness v2 live acceptance
 
 - After merge and external source review, supply `SRA_E2E_EXPECTED_RUNTIME_SHA` and execute either the complete local Linux-host workflow or complete remote-operator workflow. Repository tests do not constitute a fresh live E2E PASS.
+
+## 2026-09-16 Optional worker runtime attestation enhancement
+
+- If stronger per-process loaded-module proof becomes necessary, design authenticated one-way worker attestation/IPC in a separately reviewed change. Current evidence binds worker identity/entrypoint and the complete managed runtime byte set but does not enumerate each worker's `sys.modules` across process boundaries.

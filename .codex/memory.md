@@ -83,3 +83,10 @@
 - Confirmed the clean operator checkout was exactly reviewed Git SHA `2925065c71abbd7ea8aeee6d0d1189568c05adee`, and the canonical XLSX SHA-256 was exactly `2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03` before invocation.
 - Ran the single authorized command `python operator_e2e/test_requirement_schedule_e2e.py --mode remote` with both expected identities bound. It stopped before `Harness.run()` at `CONFIG_PREFLIGHT` with `configuration_file_missing` because no `operator_e2e/e2e.env.local` or usable process configuration supplied the actual deployment URL, model, and superuser user-session credential.
 - Evidence is retained under the ignored invocation directory `operator_e2e/output/requirement_e2e/20260916T041830Z-a7e5e61a/`. No deployment request, runtime-evidence verification, production write, Golden Path, cleanup, or live PASS occurred; the acceptance result is BLOCKED pending authorized configuration.
+
+### 2026-09-16 Harness v2 source/deployment evidence corrective hotfix
+
+- Replaced literal operator SHA/clean-tree gates with reviewed-ancestor, repository-role committed/dirty classification. Exact and documentation-only descendants pass; runtime commits or dirty runtime/importable files block.
+- Added deterministic incremental-package provenance plus server-side runtime byte and active-module/path checks. Inactive residual Python files warn rather than block; changed reviewed files, loaded residual modules, and shadow paths block. External reviewed Git objects remain the independent hash authority.
+- RED: 12 focused tests failed before implementation. GREEN: focused Harness/source/deployment/manifest suite passed 119 tests; broader verification is recorded with the final task result. No live Golden Path was executed.
+- Final verification: focused source/Harness/deployment suite passed 119 tests; compilation and diff checks passed. Full `tests` run passed 938 and failed 12 due to documented pre-existing/order-dependent missing-file, namespace-guard, and dependency-override identity issues; no live Golden Path was run.

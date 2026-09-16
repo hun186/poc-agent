@@ -20,11 +20,20 @@ There are no local/remote copies of functional orchestration.
 
 ## Trust and source authority
 
-`SRA_E2E_EXPECTED_RUNTIME_SHA` is mandatory and externally reviewed. The clean operator Harness
-checkout and deployment runtime identity must both equal it. A remote workstation never
-self-attests deployment identity. The deployment endpoint computes Git identity and worker
-identity on Linux using the launcher identity records and existing positive PID/start-time/UID/
-cwd/cmdline rules. Package/overlay identity is blocked unless an approved authority can prove it.
+`SRA_E2E_EXPECTED_RUNTIME_SHA` is mandatory and externally reviewed. Operator identity is either
+`exact`, or `reviewed_equivalent_descendant` after Git proves ancestry and every intervening path
+is classified non-runtime. Runtime-relevant commits block. Generated Harness/test output and
+project-memory dirt warn; runtime code, launchers, dependencies, runtime configuration/templates,
+and untracked importable modules block as `operator_runtime_dirty`.
+
+Deployment identity supports `git_worktree` and `incremental_package`. A package carries a
+deterministic `REQUIREMENT_E2E_PROVENANCE.json` with the reviewed SHA and hashes of every tracked
+runtime file. The operator independently reconstructs the complete map from the externally
+reviewed Git object, while the server verifies deployed bytes and bounded active module paths.
+Positive worker identity binds both workers to `requirement_scheduler.cli`; provenance binds that
+entrypoint and the reviewed runtime tree. An inactive residual file only warns. A differing
+reviewed file, unexpected loaded module, discovery participant, or shadowing path blocks. Thus
+residue alone is not execution evidence, but active old code is never treated as safe.
 
 ## Artifact and credential boundaries
 

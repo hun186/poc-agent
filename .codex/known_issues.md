@@ -100,3 +100,11 @@
 
 - `python -m pip install --upgrade pip` retried the configured package-index proxy and received HTTP 403, while the installed pip and all `requirements.txt` dependencies were already satisfied. Focused and broad repository tests therefore ran successfully without fetching packages.
 - Live Agent/Elasticsearch/LLM/DOCX acceptance was intentionally not run from this environment; execute either documented mode only in an authorized deployment/operator environment with externally reviewed runtime SHA.
+
+## 2026-09-16 Incremental runtime observation limit
+
+- Python does not provide a safe cross-process inventory of every module loaded by the separate Schedule/Handoff workers. The hotfix positively binds their launcher identity and `requirement_scheduler.cli` entrypoint and verifies the complete provenance-managed runtime tree, while the API process reports its loaded project-module paths. Dynamic code loaded outside the managed project roots cannot be positively inventoried without new worker IPC/instrumentation; no directory-presence claim is used to hide this limitation.
+
+## 2026-09-16 Full-suite order-dependent pre-existing failures
+
+- `python -m pytest -q tests` completed 938 passing tests but 12 failures: one historical test references absent untracked `tests_code/test_phase0_api_routing_evidence.py`, one namespace guard finds an existing forbidden import in `tests/test_deployment_bootstrap.py`, and ten Harness v2 endpoint tests receive 401 after earlier full-suite module reloads invalidate dependency-override object identity. The same focused Harness files pass together (119 passed), so this hotfix used that isolated security regression evidence; no RBAC production behavior was weakened.

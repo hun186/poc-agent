@@ -157,3 +157,8 @@
 - Supersede the earlier choice to reuse Report Job `/word` for remote acceptance: that upstream copy cannot prove the separate Handoff publication still exists and matches durable reconciliation state.
 - Use immutable Batch/Run Item identity to read existing durable metadata server-side, validate it under the configured Handoff root, and return only verified bytes. Reject client filesystem authority and keep the route GET-only/superuser-only rather than widening Service Key scopes.
 - Retain independent operator-side DOCX and SHA verification so Remote PASS proves both authoritative server publication and receipt of identical bytes.
+
+## 2026-09-16 Active runtime evidence over directory cleanliness
+
+- Accept reviewed-equivalent documentation descendants and non-runtime/generated dirt; fail closed for runtime-relevant committed or dirty paths.
+- For robocopy overlays, compare every provenance-managed runtime byte to externally reconstructed reviewed Git bytes and reject active unexpected/shadow modules. Do not require deleted-file history or reject inactive residue solely for existing.

@@ -249,3 +249,9 @@
 - Remote artifact proof now uses a superuser-only operator route keyed solely by immutable Batch Run and Run Item IDs. `ScheduleStore` joins those identities and returns existing durable Handoff metadata; no client path is accepted.
 - The server resolves the durable path only under configured `REQUIREMENT_HANDOFF_OUTPUT_ROOT`, verifies root fingerprint, confinement, non-symlink file, DOCX ZIP safety/integrity, and durable SHA before returning bytes. The remote provider independently repeats DOCX/SHA validation and retains the verified bytes.
 - Report Job `/word` remains a product API but is no longer Remote PASS artifact authority. This supersedes that portion of the preceding Harness v2 entry without DB schema or Schedule/Handoff/Report Job execution changes.
+
+## 2026-09-16 Harness runtime identity modes
+
+- Operator source identity is exact or a reviewed-equivalent Git descendant after path-role classification.
+- Deployment evidence supports Git worktrees and incremental packages. `REQUIREMENT_E2E_PROVENANCE.json` enumerates deterministic reviewed runtime hashes; the API verifies deployed bytes and bounded active module paths, while the operator reconstructs the expected map from the externally reviewed Git object.
+- Worker positive identity still uses launcher PID/start-time/UID/cwd/cmdline checks; provenance binds the worker entrypoint/runtime tree. Residual files are not directory-cleanliness authority.

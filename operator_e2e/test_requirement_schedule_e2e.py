@@ -32,6 +32,7 @@ from operator_e2e.requirement_e2e_support import (
     validate_terminal,
 )
 from operator_e2e.requirement_e2e_evidence import LocalDeploymentEvidenceProvider, RemoteDeploymentEvidenceProvider
+from operator_e2e.source_identity import inspect_operator_source
 
 PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
 DEFAULT_EXCEL = SCRIPT_DIR / "input" / "requirement_e2e_3items.xlsx"
@@ -58,7 +59,10 @@ class Api:
                     if path.startswith("/v1/operator-e2e/"):
                         try: code = response.json().get("detail", {}).get("code")
                         except (AttributeError, ValueError): code = None
-                        if code in {"artifact_missing", "artifact_invalid", "artifact_metadata_missing", "artifact_sha256_mismatch", "artifact_root_fingerprint_mismatch"}:
+                        if code in {"artifact_missing", "artifact_invalid", "artifact_metadata_missing", "artifact_sha256_mismatch", "artifact_root_fingerprint_mismatch",
+                                    "active_runtime_source_mismatch", "unexpected_active_runtime_module",
+                                    "runtime_module_shadowing", "deployment_source_provenance_invalid",
+                                    "deployment_source_identity_unavailable"}:
                             category = code
                     raise HarnessFailure(category)
                 return response
@@ -367,32 +371,75 @@ Local-host acceptance remains Linux deployment-host only.""",
 
 
 def _git_source(expected_runtime_sha: str | None):
-    def command(*args):
-        try: return subprocess.run(args, cwd=PROJECT_ROOT, check=True, text=True, capture_output=True).stdout.strip()
-        except Exception: return None
-    return {"repository": "hun186/poc-agent", "design_baseline": "919422bce992e757a89767f66beb8e042707a976", "expected_runtime_sha": expected_runtime_sha, "git_sha": command("git", "rev-parse", "HEAD"), "clean": not bool(command("git", "status", "--porcelain")), "identity_kind": "git_worktree", "identity_verified": True}
+    if not expected_runtime_sha:
+        return {"repository": "hun186/poc-agent", "expected_runtime_sha": None}
+    return {**inspect_operator_source(PROJECT_ROOT, expected_runtime_sha),
+            "design_baseline": "32612bbb1ed46e8eefa80ab8741e3f80f166273c",
+            "expected_runtime_sha": expected_runtime_sha}
 
 
 def _validate_runtime_source(source: dict[str, Any]) -> None:
-    expected, actual = source.get("expected_runtime_sha"), source.get("git_sha", source.get("local_git_sha"))
-    clean = source.get("clean", not source.get("local_git_dirty"))
+    expected = source.get("expected_runtime_sha")
     if not expected:
         raise HarnessFailure("runtime_source_authority_missing", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
+    # Compatibility for tests/older result adapters; current inspection has already
+    # proven exact or reviewed-equivalent descendant identity.
+    if source.get("identity_status") in {"exact", "reviewed_equivalent_descendant"}:
+        return
+    actual = source.get("git_sha", source.get("local_git_sha"))
     if not actual or expected != actual:
         raise HarnessFailure(
             "operator_source_identity_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
         )
-    if not clean:
+    if not source.get("clean", not source.get("local_git_dirty")):
         raise HarnessFailure(
-            "operator_source_dirty", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+            "operator_runtime_dirty", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
         )
 
 
 def _validate_deployment_source(source: dict[str, Any], expected: str) -> None:
-    if not source.get("identity_verified") or source.get("git_sha") != expected:
+    if not source.get("identity_verified"):
         raise HarnessFailure("deployment_source_identity_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
-    if source.get("clean") is not True:
-        raise HarnessFailure("deployment_source_dirty", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
+    if source.get("identity_kind") == "incremental_package":
+        if source.get("reviewed_runtime_sha") != expected:
+            raise HarnessFailure("deployment_source_provenance_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
+        try:
+            from tools.requirement_e2e_provenance import RUNTIME_ROOTS
+            raw = subprocess.check_output(
+                ["git", "-C", str(PROJECT_ROOT), "ls-tree", "-rz", "--full-tree", expected, "--", *RUNTIME_ROOTS],
+            )
+            reviewed_files = {}
+            for record in raw.rstrip(b"\0").split(b"\0") if raw else []:
+                header, encoded = record.split(b"\t", 1)
+                _mode, kind, blob = header.decode("ascii").split()
+                if kind == "blob":
+                    data = subprocess.check_output(["git", "-C", str(PROJECT_ROOT), "cat-file", "blob", blob])
+                    reviewed_files[encoded.decode("utf-8")] = hashlib.sha256(data).hexdigest()
+            reported_files = {entry["path"]: entry["sha256"] for entry in source.get("runtime_files", [])}
+        except (OSError, subprocess.SubprocessError, KeyError, TypeError, ValueError) as exc:
+            raise HarnessFailure("deployment_source_provenance_mismatch", stage="RUNTIME_WORKERS",
+                                 exit_code=ExitCode.PREFLIGHT) from exc
+        if reported_files != reviewed_files:
+            raise HarnessFailure("deployment_source_provenance_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
+        return
+    deployment_sha = source.get("git_sha")
+    if deployment_sha != expected:
+        try:
+            relation = subprocess.run(
+                ["git", "-C", str(PROJECT_ROOT), "merge-base", "--is-ancestor", expected, deployment_sha],
+                check=False, capture_output=True,
+            )
+            changed = subprocess.check_output(
+                ["git", "-C", str(PROJECT_ROOT), "diff", "--name-only", f"{expected}..{deployment_sha}"], text=True,
+            ).splitlines()
+            from operator_e2e.source_identity import is_non_runtime_path
+        except (OSError, subprocess.SubprocessError, TypeError) as exc:
+            raise HarnessFailure("deployment_source_identity_mismatch", stage="RUNTIME_WORKERS",
+                                 exit_code=ExitCode.PREFLIGHT) from exc
+        if relation.returncode != 0 or any(not is_non_runtime_path(path) for path in changed):
+            raise HarnessFailure("deployment_source_identity_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
+    if source.get("runtime_relevant_dirty_changes"):
+        raise HarnessFailure("deployment_runtime_dirty", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
 
 
 def main(argv=None) -> int:
