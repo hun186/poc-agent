@@ -26,9 +26,11 @@ from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.models import ImportProfileDocument
 from operator_e2e.requirement_e2e_support import (
     E2EConfig, ExitCode, HarnessFailure, SingleRunLock, StageStatus, atomic_write_json,
-    atomic_write_text, bounded_log_tail, classify_new_batch, load_e2e_environment,
+    atomic_write_text, bounded_log_tail, classify_new_batch, has_usable_requirement_process_configuration,
+    load_e2e_environment,
     output_root_fingerprint, redact, result_document, terminal_failure, validate_artifact,
-    validate_next_run, validate_preview, validate_remote_items, validate_terminal, verify_worker_identity,
+    validate_live_platform, validate_next_run, validate_preview, validate_remote_items,
+    validate_terminal, verify_worker_identity,
 )
 
 PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
@@ -322,7 +324,19 @@ class Harness:
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__); parser.add_argument("--excel", required=True, type=Path)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Before live execution:
+
+1. Copy operator_e2e/e2e.env.example
+   to operator_e2e/e2e.env.local.
+2. Fill deployment-local values and credentials.
+3. Obtain SRA_E2E_EXPECTED_RUNTIME_SHA from external
+   post-merge source review.
+4. Run this Harness on the Linux deployment host.
+
+Windows/Spyder is not a supported live acceptance runtime.""",
+    ); parser.add_argument("--excel", required=True, type=Path)
     parser.add_argument("--output-dir", type=Path); parser.add_argument("--env-file", type=Path, default=SCRIPT_DIR / "e2e.env.local")
     return parser.parse_args(argv)
 
@@ -354,6 +368,11 @@ def main(argv=None) -> int:
     # authoritative for the lock, artifact copies, and final evidence alike.
     evidence_output = (args.output_dir or Path("operator_e2e/output/requirement_e2e")) / run_id
     try:
+        validate_live_platform()
+        if not args.env_file.exists() and not has_usable_requirement_process_configuration(dict(os.environ)):
+            raise HarnessFailure(
+                "configuration_file_missing", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+            )
         env = load_e2e_environment(args.env_file, dict(os.environ))
         evidence_output = (args.output_dir or Path(env.get("SRA_E2E_OUTPUT_DIR") or "operator_e2e/output/requirement_e2e")) / run_id
         config = E2EConfig.from_environment(env)
@@ -413,6 +432,15 @@ def main(argv=None) -> int:
         next(item for item in result["stages"] if item["name"] == "FINAL_EVIDENCE")["status"] = StageStatus.FAIL
     print(f"REQUIREMENT_E2E = {result['overall_status']}")
     if result.get("failed_stage"): print(f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}")
+    if result.get("failure_category") == "configuration_file_missing":
+        print("Create operator_e2e/e2e.env.local first.\nStart from operator_e2e/e2e.env.example.")
+    elif result.get("failure_category") == "unsupported_platform":
+        print(
+            "Requirement Automatic Operator E2E live acceptance must be run on the Linux deployment host.\n\n"
+            "Windows/Spyder may be used to inspect the code, but is not a supported live acceptance runtime.\n\n"
+            "On the Linux host, first copy:\noperator_e2e/e2e.env.example\n\nto:\n"
+            "operator_e2e/e2e.env.local"
+        )
     return int(exit_code)
 
 

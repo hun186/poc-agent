@@ -1,14 +1,16 @@
 """Safety and evidence primitives for the deployment-host Requirement E2E harness."""
 from __future__ import annotations
 
-import fcntl
 import hashlib
+import importlib
+import importlib.util
 import json
 import os
 import re
 import shutil
 import stat
 import tempfile
+import sys
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -19,6 +21,9 @@ from typing import Any, Callable, Iterable
 from dotenv import dotenv_values
 
 from python_compat import StrEnum
+
+
+fcntl = importlib.import_module("fcntl") if importlib.util.find_spec("fcntl") is not None else None
 
 
 class StageStatus(StrEnum):
@@ -50,6 +55,20 @@ class HarnessFailure(RuntimeError):
     def __init__(self, category: str, *, stage: str | None = None, exit_code: ExitCode = ExitCode.FUNCTIONAL):
         super().__init__(category)
         self.category, self.stage, self.exit_code = category, stage, exit_code
+
+
+def validate_live_platform() -> None:
+    """Fail closed unless this live harness has all Linux host primitives."""
+    if not (
+        sys.platform.startswith("linux")
+        and os.name == "posix"
+        and Path("/proc").is_dir()
+        and callable(getattr(os, "geteuid", None))
+        and fcntl is not None
+    ):
+        raise HarnessFailure(
+            "unsupported_platform", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+        )
 
 
 @dataclass(frozen=True)
@@ -133,6 +152,18 @@ def load_e2e_environment(path: Path, process_env: dict[str, str]) -> dict[str, s
     return values
 
 
+def has_usable_requirement_process_configuration(process_env: dict[str, str]) -> bool:
+    """Return whether process variables alone can construct Requirement E2E config."""
+    requirement_env = {
+        key: value for key, value in process_env.items() if key.startswith("SRA_E2E_")
+    }
+    try:
+        E2EConfig.from_environment(requirement_env)
+    except HarnessFailure:
+        return False
+    return True
+
+
 _SECRET_PATTERNS = (
     re.compile(r"(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s,;\"']+"),
     re.compile(r"(?i)(bearer\s+)[^\s,;\"']+"),
@@ -181,6 +212,8 @@ def atomic_write_text(path: Path, value: str, *, overwrite: bool = False) -> Non
 class SingleRunLock:
     def __init__(self, path: Path): self.path, self.stream = path, None
     def __enter__(self):
+        if fcntl is None:
+            raise HarnessFailure("unsupported_platform", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
         self.path.parent.mkdir(parents=True, exist_ok=True); self.stream = self.path.open("a+")
         try: fcntl.flock(self.stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc: raise HarnessFailure("concurrent_e2e_run", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT) from exc
