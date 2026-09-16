@@ -33,7 +33,7 @@ from operator_e2e.requirement_e2e_support import (
 )
 from operator_e2e.requirement_e2e_evidence import LocalDeploymentEvidenceProvider, RemoteDeploymentEvidenceProvider
 from operator_e2e.source_identity import inspect_operator_source
-from shared.runtime_provenance import RUNTIME_PATHS
+from shared.runtime_provenance import RUNTIME_PATHS, is_runtime_provenance_path
 
 PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
 DEFAULT_EXCEL = SCRIPT_DIR / "input" / "requirement_e2e_3items.xlsx"
@@ -412,9 +412,10 @@ def _validate_deployment_source(source: dict[str, Any], expected: str) -> None:
             for record in raw.rstrip(b"\0").split(b"\0") if raw else []:
                 header, encoded = record.split(b"\t", 1)
                 _mode, kind, blob = header.decode("ascii").split()
-                if kind == "blob":
+                path = encoded.decode("utf-8")
+                if kind == "blob" and is_runtime_provenance_path(path):
                     data = subprocess.check_output(["git", "-C", str(PROJECT_ROOT), "cat-file", "blob", blob])
-                    reviewed_files[encoded.decode("utf-8")] = hashlib.sha256(data).hexdigest()
+                    reviewed_files[path] = hashlib.sha256(data).hexdigest()
             reported_files = {entry["path"]: entry["sha256"] for entry in source.get("runtime_files", [])}
         except (OSError, subprocess.SubprocessError, KeyError, TypeError, ValueError) as exc:
             raise HarnessFailure("deployment_source_provenance_mismatch", stage="RUNTIME_WORKERS",

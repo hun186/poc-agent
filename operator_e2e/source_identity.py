@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path, PurePosixPath
 
 from operator_e2e.requirement_e2e_support import ExitCode, HarnessFailure
+from shared.runtime_provenance import is_generated_non_runtime_path
 
 
 def _run(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -25,19 +26,8 @@ def _non_runtime_document(path: str) -> bool:
     return bool(value.parts and value.parts[0] == "docs" and value.suffix.lower() == ".md")
 
 
-def _generated_output(path: str) -> bool:
-    value = PurePosixPath(path)
-    parts = value.parts
-    if len(parts) >= 2 and parts[0] == "operator_e2e" and parts[1] == "output":
-        return True
-    if len(parts) >= 2 and parts[0] in {"tests", "tests_code"} and "output" in parts[1:]:
-        return True
-    # Operator-root DOCX files are harness products, never runtime templates.
-    return len(parts) == 2 and parts[0] == "operator_e2e" and value.suffix.lower() == ".docx"
-
-
 def is_non_runtime_path(path: str, *, dirty: bool = False) -> bool:
-    return _non_runtime_document(path) or (dirty and _generated_output(path))
+    return _non_runtime_document(path) or (dirty and is_generated_non_runtime_path(path))
 
 
 def _dirty_paths(root: Path) -> list[str]:

@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from shared.runtime_provenance import RUNTIME_PATHS
+from shared.runtime_provenance import RUNTIME_PATHS, is_runtime_provenance_path
 
 
 def generate(repo: Path, reviewed_sha: str, output: Path) -> None:
@@ -31,6 +31,8 @@ def generate(repo: Path, reviewed_sha: str, output: Path) -> None:
         if kind != "blob":
             continue
         path = encoded.decode("utf-8")
+        if not is_runtime_provenance_path(path):
+            continue
         data = subprocess.check_output(["git", "-C", str(repo), "cat-file", "blob", blob])
         files.append({"path": path, "sha256": hashlib.sha256(data).hexdigest()})
         try:

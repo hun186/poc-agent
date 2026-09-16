@@ -294,3 +294,94 @@ def test_generator_emits_provenance_when_worktree_bytes_exactly_match(tmp_path):
     output = tmp_path / "provenance.json"
     generate(repo, reviewed, output)
     assert json.loads(output.read_text())["reviewed_runtime_sha"] == reviewed
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["operator_e2e/gaza_report.docx", "operator_e2e/output/phase0_test_report.docx"],
+)
+def test_modified_tracked_generated_docx_is_excluded_from_provenance(tmp_path, path):
+    from tools.requirement_e2e_provenance import generate
+
+    repo, _reviewed = _repo(tmp_path)
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"reviewed generated report")
+    _git(repo, "add", "."); _git(repo, "commit", "-m", "tracked report")
+    reviewed = _git(repo, "rev-parse", "HEAD")
+    target.write_bytes(b"locally regenerated report")
+
+    output = tmp_path / "provenance.json"
+    generate(repo, reviewed, output)
+
+    paths = {entry["path"] for entry in json.loads(output.read_text())["runtime_files"]}
+    assert path not in paths
+
+
+@pytest.mark.parametrize("path", ["operator_e2e/requirement_e2e_support.py", "run_sra_api.sh"])
+def test_generator_still_rejects_modified_runtime_authority(tmp_path, path):
+    from tools.requirement_e2e_provenance import generate
+
+    repo, _reviewed = _repo(tmp_path)
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"reviewed runtime\n")
+    _git(repo, "add", "."); _git(repo, "commit", "-m", "runtime authority")
+    reviewed = _git(repo, "rev-parse", "HEAD")
+    target.write_bytes(b"modified runtime\n")
+
+    with pytest.raises(RuntimeError, match=f"runtime_worktree_bytes_differ_from_reviewed_source: {path}"):
+        generate(repo, reviewed, tmp_path / "provenance.json")
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["operator_e2e/gaza_report.docx", "operator_e2e/output/phase0_test_report.docx"],
+)
+def test_server_rejects_generated_report_as_runtime_provenance(tmp_path, path):
+    from sra_api.services.requirement_e2e_runtime_evidence import collect_source_evidence
+
+    _manifest(tmp_path, "a" * 40, {path: b"generated", "requirement_scheduler/cli.py": b"worker"})
+    with pytest.raises(RuntimeError, match="deployment_source_provenance_invalid"):
+        collect_source_evidence(tmp_path, active_paths=[])
+
+
+def test_operator_reconstructs_same_filtered_runtime_map(tmp_path, monkeypatch):
+    import operator_e2e.test_requirement_schedule_e2e as harness
+    from tools.requirement_e2e_provenance import generate
+
+    repo, _reviewed = _repo(tmp_path)
+    for path, data in {
+        "operator_e2e/gaza_report.docx": b"report",
+        "operator_e2e/output/phase0_test_report.docx": b"report",
+        "operator_e2e/requirement_e2e_support.py": b"runtime",
+        "operator_e2e/requirement_e2e_profile_v1.json": b"{}",
+        "operator_e2e/input/requirement_e2e_3items.xlsx": b"canonical fixture",
+        "run_sra_api.sh": b"launcher",
+    }.items():
+        target = repo / path; target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(data)
+    _git(repo, "add", "."); _git(repo, "commit", "-m", "mixed operator files")
+    reviewed = _git(repo, "rev-parse", "HEAD")
+    output = tmp_path / "provenance.json"
+    generate(repo, reviewed, output)
+    source = json.loads(output.read_text())
+    paths = {entry["path"] for entry in source["runtime_files"]}
+    assert "operator_e2e/requirement_e2e_profile_v1.json" in paths
+    assert "operator_e2e/input/requirement_e2e_3items.xlsx" in paths
+    source.update({"identity_kind": "incremental_package", "identity_verified": True})
+    monkeypatch.setattr(harness, "PROJECT_ROOT", repo)
+
+    harness._validate_deployment_source(source, reviewed)
+
+
+def test_generated_policy_is_shared_with_operator_source_identity():
+    import operator_e2e.source_identity as source_identity
+    from shared.runtime_provenance import is_generated_non_runtime_path, is_runtime_provenance_path
+
+    for path in ("operator_e2e/gaza_report.docx", "operator_e2e/another.DOCX",
+                 "operator_e2e/output/phase0_test_report.docx", "operator_e2e/output/nested/result.json"):
+        assert is_generated_non_runtime_path(path)
+        assert source_identity.is_non_runtime_path(path, dirty=True)
+        assert not is_runtime_provenance_path(path)
+    assert not is_generated_non_runtime_path("operator_e2e/requirement_e2e_support.py")
+    assert is_runtime_provenance_path("operator_e2e/requirement_e2e_support.py")
