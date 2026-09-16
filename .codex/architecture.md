@@ -237,3 +237,9 @@
 - `enabled_schedule_id` is cleanup ownership only. Once the automatic Batch is observed, its durable `schedule_id` plus `batch_run_id` is the immutable polling route even after the Schedule is disabled and cleanup ownership is cleared.
 - Before Import Commit, the harness enumerates the complete Snapshot ID set across Requirement Sets belonging to the exact E2E Source. Ambiguous-write rereads subtract that durable baseline before applying source-SHA/profile-version matching.
 - A valid `E2EConfig.output_dir` is the single root for the invocation lock, copied artifacts, and result/summary/diagnostic evidence; only pre-config failure evidence uses the safe fallback destination.
+
+## 2026-09-16 Requirement operator E2E Harness v2
+
+- One shared `Harness` retains the complete functional Golden Path; local and remote providers differ only in deployment-evidence and artifact-byte acquisition.
+- Local mode preserves Linux `/proc`, launcher identity, clean Git, configured root fingerprint, and direct filesystem DOCX checks. Remote mode uses the superuser-only read-only runtime-evidence API and existing Report Job download API, then independently checks downloaded DOCX/SHA bytes.
+- Runtime evidence returns bounded source/worker/fingerprint facts only. Result evidence is `requirement_e2e_result_v2` and distinguishes operator source from deployment source.

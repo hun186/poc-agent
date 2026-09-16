@@ -25,15 +25,16 @@ from config.bootstrap import bootstrap_env
 from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.models import ImportProfileDocument
 from operator_e2e.requirement_e2e_support import (
-    E2EConfig, ExitCode, HarnessFailure, SingleRunLock, StageStatus, atomic_write_json,
+    CANONICAL_SOURCE_SHA256, E2EConfig, ExitCode, HarnessFailure, SingleRunLock, StageStatus, atomic_write_json,
     atomic_write_text, bounded_log_tail, classify_new_batch, has_usable_requirement_process_configuration,
-    load_e2e_environment,
-    output_root_fingerprint, redact, result_document, terminal_failure, validate_artifact,
+    load_e2e_environment, redact, result_document, terminal_failure,
     validate_live_platform, validate_next_run, validate_preview, validate_remote_items,
-    validate_terminal, verify_worker_identity,
+    validate_terminal,
 )
+from operator_e2e.requirement_e2e_evidence import LocalDeploymentEvidenceProvider, RemoteDeploymentEvidenceProvider
 
 PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
+DEFAULT_EXCEL = SCRIPT_DIR / "input" / "requirement_e2e_3items.xlsx"
 TRANSIENT = {429, 502, 503, 504}
 
 
@@ -42,6 +43,9 @@ class Api:
     @property
     def headers(self): return {"Authorization": f"Bearer {self.token}"} if self.token else {}
     def request(self, method: str, path: str, *, read_retry: bool = False, timeout: int = 30, **kwargs):
+        response = self.request_raw(method, path, read_retry=read_retry, timeout=timeout, **kwargs)
+        return response.json() if response.content else {}
+    def request_raw(self, method: str, path: str, *, read_retry: bool = False, timeout: int = 30, **kwargs):
         if method.upper() == "POST" and path.rstrip("/").endswith("/runs"):
             raise AssertionError("manual run forbidden")
         deadline = time.monotonic() + timeout
@@ -52,7 +56,7 @@ class Api:
                 if response.status_code >= 400:
                     category = "authentication_failed" if response.status_code == 401 else "authorization_failed" if response.status_code == 403 else "api_request_failed"
                     raise HarnessFailure(category)
-                return response.json() if response.content else {}
+                return response
             except (requests.Timeout, requests.ConnectionError):
                 if read_retry and time.monotonic() < deadline: time.sleep(1); continue
                 raise
@@ -66,6 +70,7 @@ class Harness:
         self.config, self.excel, self.run_id, self.result = config, excel, run_id, result
         self.api = Api(config); self.enabled_schedule_id: str | None = None
         self.output = config.output_dir / run_id; self.known_secrets = [x for x in (config.token, config.password) if x]
+        self.evidence_provider = None
 
     def pass_stage(self, name: str, **evidence):
         stage = next(item for item in self.result["stages"] if item["name"] == name)
@@ -90,7 +95,8 @@ class Harness:
             book = load_workbook(self.excel, read_only=True); book.close()
         except Exception as exc: raise HarnessFailure("input_invalid", stage="INPUT_VALIDATION", exit_code=ExitCode.PREFLIGHT) from exc
         digest = hashlib.sha256(self.excel.read_bytes()).hexdigest()
-        expected = self.config.expected_source_sha
+        expected = (CANONICAL_SOURCE_SHA256 if self.excel == DEFAULT_EXCEL.resolve()
+                    else self.config.expected_source_sha)
         if expected and expected != digest: self.fail("input_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
         self.result["input"] = {"path": str(self.excel), "sha256": digest, "size_bytes": self.excel.stat().st_size}
         if expected: self.result["input"]["expected_sha256"] = expected
@@ -287,10 +293,12 @@ class Harness:
 
     def verify_artifacts(self, batch):
         persisted_root = batch.get("phase1a_output_root_fingerprint")
-        if persisted_root != output_root_fingerprint(self.config.artifact_root): self.fail("artifact_root_fingerprint_mismatch", "ARTIFACT_RECONCILIATION")
+        if persisted_root != self.result["deployment_evidence"].get("artifact_root_fingerprint"):
+            self.fail("artifact_root_fingerprint_mismatch", "ARTIFACT_RECONCILIATION")
         for item in batch["items"]:
             if item.get("selection_status") != "selected": continue
-            evidence = validate_artifact(self.config.artifact_root, persisted_root, item.get("artifact_relative_path", ""), item.get("artifact_sha256", ""), self.output / "artifacts" / f"{item['run_item_id']}.docx")
+            evidence = self.evidence_provider.verify_artifact(
+                item, persisted_root, self.output / "artifacts" / f"{item['run_item_id']}.docx")
             self.result["artifacts"].append({"run_item_id": item["run_item_id"], **evidence})
             self.result["items"].append({key: item.get(key) for key in ("run_item_id", "requirement_id", "remote_job_id", "remote_job_state", "execution_state", "artifact_relative_path", "artifact_sha256")})
         if len(self.result["artifacts"]) != 3: self.fail("artifact_missing", "ARTIFACT_RECONCILIATION")
@@ -303,8 +311,15 @@ class Harness:
         self.pass_stage("API_READINESS", status=health.get("status")); self.authenticate(); self.pass_stage("AUTH")
         self.api.get("/v1/requirement-import-profiles"); self.api.get("/v1/requirement-schedules")
         self.pass_stage("PIPELINE_READINESS")
-        workers = [verify_worker_identity(PROJECT_ROOT / f".run_sra_api_{role}.identity", role, PROJECT_ROOT) for role in ("schedule", "handoff")]
-        self.pass_stage("RUNTIME_WORKERS", workers=workers)
+        if self.config.mode == "local":
+            self.evidence_provider = LocalDeploymentEvidenceProvider(PROJECT_ROOT, self.config.artifact_root)
+        else:
+            self.evidence_provider = RemoteDeploymentEvidenceProvider(self.api)
+        deployment_evidence = self.evidence_provider.preflight()
+        self.result["deployment_evidence"] = deployment_evidence
+        self.result["deployment_source"] = deployment_evidence.get("deployment_source", self.result["operator_source"])
+        _validate_deployment_source(self.result["deployment_source"], self.config.expected_runtime_sha)
+        self.pass_stage("RUNTIME_WORKERS", workers=deployment_evidence["workers"])
         self.validate_input(); self.pass_stage("INPUT_VALIDATION")
         profile_doc = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
         profile, version = self.ensure_profile(profile_doc); self.pass_stage("FIXTURE_PROFILE")
@@ -333,10 +348,14 @@ def parse_args(argv=None):
 2. Fill deployment-local values and credentials.
 3. Obtain SRA_E2E_EXPECTED_RUNTIME_SHA from external
    post-merge source review.
-4. Run this Harness on the Linux deployment host.
+4. Use --mode local on the Linux deployment host, or --mode remote from an operator workstation.
 
-Windows/Spyder is not a supported live acceptance runtime.""",
-    ); parser.add_argument("--excel", required=True, type=Path)
+Windows/Spyder is supported for remote-operator acceptance.
+Local-host acceptance remains Linux deployment-host only.""",
+    ); parser.add_argument("--mode", choices=("local", "remote"), default="local",
+                           help="local: Linux deployment host; remote: Windows/POSIX operator workstation")
+    parser.add_argument("--excel", type=Path, default=DEFAULT_EXCEL,
+                        help="XLSX override (default: canonical fixture resolved beside this script)")
     parser.add_argument("--output-dir", type=Path); parser.add_argument("--env-file", type=Path, default=SCRIPT_DIR / "e2e.env.local")
     return parser.parse_args(argv)
 
@@ -345,43 +364,55 @@ def _git_source(expected_runtime_sha: str | None):
     def command(*args):
         try: return subprocess.run(args, cwd=PROJECT_ROOT, check=True, text=True, capture_output=True).stdout.strip()
         except Exception: return None
-    return {"repository": "hun186/poc-agent", "design_baseline": "4fd6f1adad66c3cfc20a91ad556c6da7e8a2da9b", "expected_runtime_sha": expected_runtime_sha, "local_git_sha": command("git", "rev-parse", "HEAD"), "local_git_dirty": bool(command("git", "status", "--porcelain"))}
+    return {"repository": "hun186/poc-agent", "design_baseline": "919422bce992e757a89767f66beb8e042707a976", "expected_runtime_sha": expected_runtime_sha, "git_sha": command("git", "rev-parse", "HEAD"), "clean": not bool(command("git", "status", "--porcelain")), "identity_kind": "git_worktree", "identity_verified": True}
 
 
 def _validate_runtime_source(source: dict[str, Any]) -> None:
-    expected, actual = source.get("expected_runtime_sha"), source.get("local_git_sha")
-    if expected and actual and expected != actual:
+    expected, actual = source.get("expected_runtime_sha"), source.get("git_sha", source.get("local_git_sha"))
+    clean = source.get("clean", not source.get("local_git_dirty"))
+    if not expected:
+        raise HarnessFailure("runtime_source_authority_missing", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
+    if not actual or expected != actual:
         raise HarnessFailure(
-            "runtime_source_identity_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+            "operator_source_identity_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
         )
-    if expected and actual and source.get("local_git_dirty"):
+    if not clean:
         raise HarnessFailure(
-            "runtime_source_dirty", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+            "operator_source_dirty", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
         )
+
+
+def _validate_deployment_source(source: dict[str, Any], expected: str) -> None:
+    if not source.get("identity_verified") or source.get("git_sha") != expected:
+        raise HarnessFailure("deployment_source_identity_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
+    if source.get("clean") is not True:
+        raise HarnessFailure("deployment_source_dirty", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
 
 
 def main(argv=None) -> int:
     bootstrap_env(); args = parse_args(argv); run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
-    result = result_document(run_id); started = time.monotonic(); harness = None; diagnostics = {"logs": {}}
+    result = result_document(run_id, args.mode); started = time.monotonic(); harness = None; diagnostics = {"logs": {}}
     # This fallback exists solely so CONFIG failures can still publish evidence.
     # Once configuration is valid, its resolved (or CLI-overridden) directory is
     # authoritative for the lock, artifact copies, and final evidence alike.
     evidence_output = (args.output_dir or Path("operator_e2e/output/requirement_e2e")) / run_id
     try:
-        validate_live_platform()
-        if not args.env_file.exists() and not has_usable_requirement_process_configuration(dict(os.environ)):
+        validate_live_platform(args.mode)
+        if not args.env_file.exists() and not has_usable_requirement_process_configuration(dict(os.environ), args.mode):
             raise HarnessFailure(
                 "configuration_file_missing", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
             )
         env = load_e2e_environment(args.env_file, dict(os.environ))
         evidence_output = (args.output_dir or Path(env.get("SRA_E2E_OUTPUT_DIR") or "operator_e2e/output/requirement_e2e")) / run_id
-        config = E2EConfig.from_environment(env)
+        config = E2EConfig.from_environment(env, args.mode)
+        if not config.expected_runtime_sha:
+            raise HarnessFailure("runtime_source_authority_missing", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
         if args.output_dir: config = E2EConfig(**{**config.__dict__, "output_dir": args.output_dir})
         evidence_output = config.output_dir / run_id
         harness = Harness(config, args.excel.resolve(), run_id, result)
-        result["source"] = _git_source(config.expected_runtime_sha)
-        _validate_runtime_source(result["source"])
-        with SingleRunLock(config.output_dir / ".lock"):
+        result["operator_source"] = _git_source(config.expected_runtime_sha)
+        _validate_runtime_source(result["operator_source"])
+        with SingleRunLock(config.output_dir / ".lock", args.mode):
             try: harness.run()
             finally:
                 try: harness.cleanup()
@@ -408,7 +439,7 @@ def main(argv=None) -> int:
         safe = redact(result, known_secrets)
         atomic_write_json(evidence_output / "result.json", safe)
         atomic_write_json(evidence_output / "diagnostics.json", redact(diagnostics, known_secrets))
-        summary = f"REQUIREMENT_E2E = {result['overall_status']}\nEXIT_CODE = {int(exit_code)}\n"
+        summary = f"REQUIREMENT_E2E = {result['overall_status']}\nACCEPTANCE_MODE = {args.mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
         if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
         atomic_write_text(evidence_output / "summary.txt", summary)
     except FileExistsError:
@@ -419,7 +450,7 @@ def main(argv=None) -> int:
             (evidence_output / "artifacts").mkdir(exist_ok=True)
             atomic_write_json(evidence_output / "result.json", redact(result, known_secrets))
             atomic_write_json(evidence_output / "diagnostics.json", redact(diagnostics, known_secrets))
-            summary = f"REQUIREMENT_E2E = {result['overall_status']}\nEXIT_CODE = {int(exit_code)}\n"
+            summary = f"REQUIREMENT_E2E = {result['overall_status']}\nACCEPTANCE_MODE = {args.mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
             if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
             atomic_write_text(evidence_output / "summary.txt", summary)
         except Exception:
@@ -434,10 +465,11 @@ def main(argv=None) -> int:
     if result.get("failed_stage"): print(f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}")
     if result.get("failure_category") == "configuration_file_missing":
         print("Create operator_e2e/e2e.env.local first.\nStart from operator_e2e/e2e.env.example.")
-    elif result.get("failure_category") == "unsupported_platform":
+    elif result.get("failure_category") == "unsupported_local_platform":
         print(
             "Requirement Automatic Operator E2E live acceptance must be run on the Linux deployment host.\n\n"
-            "Windows/Spyder may be used to inspect the code, but is not a supported live acceptance runtime.\n\n"
+            "Windows/Spyder is supported for remote-operator acceptance with --mode remote.\n"
+            "Local-host acceptance remains Linux deployment-host only.\n\n"
             "On the Linux host, first copy:\noperator_e2e/e2e.env.example\n\nto:\n"
             "operator_e2e/e2e.env.local"
         )

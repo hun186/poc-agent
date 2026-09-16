@@ -145,3 +145,9 @@
 - Schedule cleanup state must not double as Batch lookup identity. Continue disabling the Schedule immediately after recurrence advancement is proven, clear cleanup ownership, and use the Schedule identity persisted on the observed Batch for all terminal polling.
 - Import ambiguous-write recovery defines “new” against every durable pre-commit Snapshot ID in the exact Source/Requirement Set context, not only previously active Snapshot IDs; historical same-content imports therefore cannot win recovery.
 - After configuration succeeds, resolved `config.output_dir` is invocation authority. CLI `--output-dir` retains explicit precedence, and a separate fallback exists only to preserve evidence when configuration cannot be built.
+
+## 2026-09-16 Harness v2 shared orchestration and remote trust boundary
+
+- Keep one functional Harness and isolate only deployment evidence behind local/remote providers; duplicated state-machine implementations were rejected.
+- Remote acceptance trusts deployment-generated Git/worker/root-fingerprint evidence plus independently downloaded artifact bytes. Operator and deployment sources must both bind to the externally reviewed runtime SHA.
+- Reuse Report Job download authorization and add only a bounded superuser read-only evidence route; no new artifact store, Service Key scope, DB schema, or worker-control surface.

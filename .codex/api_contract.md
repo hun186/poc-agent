@@ -156,3 +156,9 @@ Authenticated endpoints: `GET/POST /v1/requirement-schedules`, `GET/PATCH /v1/re
 
 - `POST /v1/requirement-schedules/{schedule_id}/runs` materializes an idempotent schedule-scoped manual Run from `trigger_request_id`; it does not synchronously execute or wake a FastAPI worker.
 - `GET /v1/requirement-schedules/{schedule_id}/runs` returns bounded neutral Run status; `GET /v1/requirement-schedules/{schedule_id}/runs/{batch_run_id}` adds neutral item state/error, immutable version identity, timestamps, and safe relative artifact path/digest. Remote owner/native backend state, prompts, credentials, absolute paths, retry, and cancellation controls are not exposed.
+
+## 2026-09-16 Requirement E2E runtime evidence
+
+- `GET /v1/operator-e2e/runtime-evidence` requires an authenticated Editor superuser session and is read-only.
+- Response schema `requirement_e2e_runtime_evidence_v1` contains `observed_at`, bounded `deployment_source` Git identity/clean proof, `workers.schedule` and `workers.handoff` alive/identity-verified booleans, and `artifact_root_fingerprint`.
+- The response excludes raw paths, PIDs, cwd/cmdline, environment, credentials, SQL configuration, prompts, and worker controls. Remote artifact bytes continue to use `GET /v1/report/jobs/{job_id}/word` with existing authorization.

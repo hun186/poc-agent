@@ -143,3 +143,7 @@
 ## 2026-09-10 Corrective review v3 follow-up
 
 - Corrective Review v3's missing-state pre-state-write and replacement-create committed-before-response boundaries are implemented with journal-v2 transaction context, preselected replacement identity, and focused crash regressions. This repository evidence does not self-award review PASS; SD-1 through SD-7 remain pending post-merge review and authorized live execution.
+
+## 2026-09-16 Harness v2 live acceptance
+
+- After merge and external source review, supply `SRA_E2E_EXPECTED_RUNTIME_SHA` and execute either the complete local Linux-host workflow or complete remote-operator workflow. Repository tests do not constitute a fresh live E2E PASS.

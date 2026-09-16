@@ -24,6 +24,9 @@ from python_compat import StrEnum
 
 
 fcntl = importlib.import_module("fcntl") if importlib.util.find_spec("fcntl") is not None else None
+msvcrt = importlib.import_module("msvcrt") if importlib.util.find_spec("msvcrt") is not None else None
+
+CANONICAL_SOURCE_SHA256 = "2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03"
 
 
 class StageStatus(StrEnum):
@@ -57,8 +60,10 @@ class HarnessFailure(RuntimeError):
         self.category, self.stage, self.exit_code = category, stage, exit_code
 
 
-def validate_live_platform() -> None:
+def validate_live_platform(mode: str = "local") -> None:
     """Fail closed unless this live harness has all Linux host primitives."""
+    if mode == "remote":
+        return
     if not (
         sys.platform.startswith("linux")
         and os.name == "posix"
@@ -67,15 +72,16 @@ def validate_live_platform() -> None:
         and fcntl is not None
     ):
         raise HarnessFailure(
-            "unsupported_platform", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+            "unsupported_local_platform", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
         )
 
 
 @dataclass(frozen=True)
 class E2EConfig:
+    mode: str
     base_url: str
     model: str
-    artifact_root: Path
+    artifact_root: Path | None
     token: str | None
     username: str | None
     password: str | None
@@ -97,7 +103,7 @@ class E2EConfig:
     exit_code_for_failure: ExitCode = ExitCode.PREFLIGHT
 
     @classmethod
-    def from_environment(cls, env: dict[str, str]) -> "E2EConfig":
+    def from_environment(cls, env: dict[str, str], mode: str = "local") -> "E2EConfig":
         def required(name: str) -> str:
             value = (env.get(name) or "").strip()
             if not value:
@@ -119,16 +125,21 @@ class E2EConfig:
             if value and not re.fullmatch(rf"[0-9a-f]{{{length}}}", value):
                 raise HarnessFailure("configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
             return value or None
+        artifact_value = (env.get("SRA_E2E_REQUIREMENT_ARTIFACT_ROOT") or "").strip()
+        if mode == "local" and not artifact_value:
+            raise HarnessFailure("configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
+        runtime_sha = optional_sha("SRA_E2E_EXPECTED_RUNTIME_SHA", 40)
         return cls(
+            mode=mode,
             base_url=(env.get("SRA_E2E_BASE_URL") or "http://127.0.0.1:9002").rstrip("/"),
-            model=required("SRA_E2E_MODEL"), artifact_root=Path(required("SRA_E2E_REQUIREMENT_ARTIFACT_ROOT")),
+            model=required("SRA_E2E_MODEL"), artifact_root=Path(artifact_value) if artifact_value else None,
             token=token, username=username, password=password,
             output_dir=Path(env.get("SRA_E2E_OUTPUT_DIR") or "operator_e2e/output/requirement_e2e"),
             profile_name=env.get("SRA_E2E_PROFILE_NAME") or "SRA Requirement Operator E2E Profile v1",
             source_name=env.get("SRA_E2E_SOURCE_NAME") or "SRA Requirement Operator E2E Source v1",
             schedule_name=env.get("SRA_E2E_SCHEDULE_NAME") or "SRA Requirement Operator E2E Schedule v1",
             expected_source_sha=optional_sha("SRA_E2E_EXPECTED_SOURCE_SHA", 64),
-            expected_runtime_sha=optional_sha("SRA_E2E_EXPECTED_RUNTIME_SHA", 40),
+            expected_runtime_sha=runtime_sha,
             api_log_path=Path(env.get("SRA_E2E_API_LOG_PATH") or "SRA-API_output.txt"),
             schedule_log_path=Path(env.get("SRA_E2E_SCHEDULE_LOG_PATH") or "SRA-ScheduleWorker_output.txt"),
             handoff_log_path=Path(env.get("SRA_E2E_HANDOFF_LOG_PATH") or "SRA-HandoffWorker_output.txt"),
@@ -152,13 +163,13 @@ def load_e2e_environment(path: Path, process_env: dict[str, str]) -> dict[str, s
     return values
 
 
-def has_usable_requirement_process_configuration(process_env: dict[str, str]) -> bool:
+def has_usable_requirement_process_configuration(process_env: dict[str, str], mode: str = "local") -> bool:
     """Return whether process variables alone can construct Requirement E2E config."""
     requirement_env = {
         key: value for key, value in process_env.items() if key.startswith("SRA_E2E_")
     }
     try:
-        E2EConfig.from_environment(requirement_env)
+        E2EConfig.from_environment(requirement_env, mode)
     except HarnessFailure:
         return False
     return True
@@ -184,11 +195,13 @@ def redact(value: Any, known_secrets: Iterable[str] = ()) -> Any:
     return clean(value) if isinstance(value, str) else value
 
 
-def result_document(run_id: str) -> dict[str, Any]:
+def result_document(run_id: str, execution_mode: str = "local") -> dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
-    return {"schema_version": "requirement_e2e_result_v1", "e2e_run_id": run_id, "started_at": now,
+    return {"schema_version": "requirement_e2e_result_v2", "execution_mode": execution_mode,
+            "e2e_run_id": run_id, "started_at": now,
             "finished_at": None, "duration_seconds": None, "overall_status": "FAIL", "exit_code": int(ExitCode.INTERNAL),
-            "failed_stage": None, "failure_category": None, "source": {}, "input": {}, "fixtures": {},
+            "failed_stage": None, "failure_category": None, "operator_source": {},
+            "deployment_source": {}, "deployment_evidence": {}, "input": {}, "fixtures": {},
             "requirement_import": {}, "schedule": {}, "batch": {}, "items": [], "artifacts": [],
             "stages": [{"name": name, "status": StageStatus.NOT_REACHED} for name in STAGES], "warnings": []}
 
@@ -210,16 +223,25 @@ def atomic_write_text(path: Path, value: str, *, overwrite: bool = False) -> Non
 
 
 class SingleRunLock:
-    def __init__(self, path: Path): self.path, self.stream = path, None
+    def __init__(self, path: Path, mode: str = "local"): self.path, self.mode, self.stream = path, mode, None
     def __enter__(self):
-        if fcntl is None:
-            raise HarnessFailure("unsupported_platform", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
         self.path.parent.mkdir(parents=True, exist_ok=True); self.stream = self.path.open("a+")
-        try: fcntl.flock(self.stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc: raise HarnessFailure("concurrent_e2e_run", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT) from exc
+        try:
+            if os.name == "nt" and self.mode == "remote":
+                if msvcrt is None: raise OSError("msvcrt unavailable")
+                self.stream.seek(0); self.stream.write("0"); self.stream.flush(); self.stream.seek(0)
+                msvcrt.locking(self.stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                if fcntl is None: raise OSError("fcntl unavailable")
+                fcntl.flock(self.stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError) as exc: raise HarnessFailure("concurrent_e2e_run", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT) from exc
         return self
     def __exit__(self, *_):
-        if self.stream: fcntl.flock(self.stream, fcntl.LOCK_UN); self.stream.close()
+        if self.stream:
+            if os.name == "nt" and self.mode == "remote" and msvcrt is not None:
+                self.stream.seek(0); msvcrt.locking(self.stream.fileno(), msvcrt.LK_UNLCK, 1)
+            elif fcntl is not None: fcntl.flock(self.stream, fcntl.LOCK_UN)
+            self.stream.close()
 
 
 def choose_fixture(items: list[dict[str, Any]], exact: Callable[[dict[str, Any]], bool]):
@@ -316,6 +338,29 @@ def validate_artifact(root: Path, persisted_root_fingerprint: str, relative_path
     copy_to.parent.mkdir(parents=True, exist_ok=True)
     with source.open("rb") as incoming, copy_to.open("xb") as outgoing: shutil.copyfileobj(incoming, outgoing)
     return {"relative_path": relative.as_posix(), "persisted_sha256": persisted_sha256, "actual_sha256": actual, "evidence_path": str(copy_to)}
+
+
+def validate_downloaded_artifact(data: bytes, filename: str, persisted_sha256: str, copy_to: Path):
+    """Independently validate and retain bytes returned by the existing Report Job API."""
+    name = PurePosixPath(filename)
+    if name.is_absolute() or ".." in name.parts or len(name.parts) != 1 or name.suffix.lower() != ".docx":
+        raise HarnessFailure("artifact_invalid", stage="DOCX_INTEGRITY")
+    try:
+        import io
+        with zipfile.ZipFile(io.BytesIO(data)) as package:
+            names = package.namelist()
+            if "[Content_Types].xml" not in names or "word/document.xml" not in names: raise ValueError
+            if any(PurePosixPath(item).is_absolute() or ".." in PurePosixPath(item).parts for item in names): raise ValueError
+            if package.testzip() is not None: raise ValueError
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        raise HarnessFailure("artifact_invalid", stage="DOCX_INTEGRITY") from exc
+    actual = hashlib.sha256(data).hexdigest()
+    if not re.fullmatch(r"[0-9a-f]{64}", str(persisted_sha256)) or actual != persisted_sha256:
+        raise HarnessFailure("artifact_sha256_mismatch", stage="SHA256_MATCH")
+    copy_to.parent.mkdir(parents=True, exist_ok=True)
+    with copy_to.open("xb") as stream: stream.write(data)
+    return {"filename": name.name, "persisted_sha256": persisted_sha256, "actual_sha256": actual,
+            "evidence_path": str(copy_to)}
 
 
 def _proc_start_time(pid: int) -> str: return Path(f"/proc/{pid}/stat").read_text().split()[21]
