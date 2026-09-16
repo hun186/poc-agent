@@ -77,3 +77,9 @@
 - The remote provider downloads through that route, preserves distinguishable authentication/authorization and artifact failure categories, independently validates DOCX/SHA, and copies exact verified bytes into invocation evidence. No DB schema or Schedule/Handoff/Report Job execution semantics changed.
 - Strict RED reproduced 10 failures, including the missing endpoint and the old provider's attempted Report Job `/word` request while a source DOCX could exist. GREEN passed 68 focused Harness/store tests, 41 API/store/Handoff/Report Job tests, and 531 broad Requirement/Report Job/launcher/bootstrap regressions (four pre-existing warnings). Python compilation, diff whitespace, hosted-base ancestry, and canonical XLSX unchanged checks passed.
 - Dependency packages were already installed; pip's upgrade lookup repeated the known HTTP 403 proxy warning. No live Agent/ES/LLM/DOCX acceptance was executed and no fresh live E2E PASS is claimed.
+
+### 2026-09-16 Remote Deployment Acceptance blocked at configuration preflight
+
+- Confirmed the clean operator checkout was exactly reviewed Git SHA `2925065c71abbd7ea8aeee6d0d1189568c05adee`, and the canonical XLSX SHA-256 was exactly `2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03` before invocation.
+- Ran the single authorized command `python operator_e2e/test_requirement_schedule_e2e.py --mode remote` with both expected identities bound. It stopped before `Harness.run()` at `CONFIG_PREFLIGHT` with `configuration_file_missing` because no `operator_e2e/e2e.env.local` or usable process configuration supplied the actual deployment URL, model, and superuser user-session credential.
+- Evidence is retained under the ignored invocation directory `operator_e2e/output/requirement_e2e/20260916T041830Z-a7e5e61a/`. No deployment request, runtime-evidence verification, production write, Golden Path, cleanup, or live PASS occurred; the acceptance result is BLOCKED pending authorized configuration.

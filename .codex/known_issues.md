@@ -1,5 +1,10 @@
 # Known Issues
 
+## 2026-09-16 Remote Deployment Acceptance configuration unavailable
+
+- The fresh Remote Harness invocation is blocked at `CONFIG_PREFLIGHT` / `configuration_file_missing`: this operator checkout has neither ignored `operator_e2e/e2e.env.local` nor complete process configuration for the actual deployment URL, model, and required superuser user-session credential.
+- The harness failed before contacting the deployment, so deployment Git identity, clean source state, worker identities, artifact-root fingerprint, functional flow, artifacts, and cleanup could not be verified. The safe next action is to provision the authorized ignored configuration and rerun Remote mode once; do not substitute a Service Key or ordinary Editor credential.
+
 ## 2026-09-15 Requirement harness verification limits
 
 - The private deployment, SQL Server, Elasticsearch, LLM, and launcher-managed workers are unavailable in this repository environment. The new harness was not executed live and no fresh Requirement E2E PASS is claimed; run the documented command on the authorized deployment host.
