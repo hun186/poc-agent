@@ -13,11 +13,14 @@
    `SRA_E2E_EDITOR_TOKEN` to `SRA_E2E_REPORT_KEY` unless the operator independently provisioned
    that credential with every required Requirement control-plane scope. Requirement acceptance
    needs an identity authorized for fixture creation/import and Schedule approval/enablement.
-6. Run Requirement live acceptance on the Linux deployment host, not Windows/Spyder.
+   Remote mode additionally requires a **superuser** Editor user session because its runtime and
+   artifact evidence routes are superuser-only; an ordinary Editor is not sufficient.
+6. Use the Linux deployment host for local mode. Windows/Spyder is supported only as the remote
+   operator client described below.
 
-Windows/Spyder may be used to inspect the code, but it is not a supported live acceptance
-runtime. An `unsupported_platform` result on Windows is a local preflight result and does **not**
-prove that the production deployment failed.
+Windows/Spyder is not a supported local-mode acceptance runtime, but it is supported as the
+remote-mode operator client. An `unsupported_platform` result on Windows is a local preflight
+result and does **not** prove that the production deployment failed.
 
 ## Purpose and boundary
 
@@ -48,7 +51,11 @@ SRA_E2E_EXPECTED_SOURCE_SHA=2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f80
 SRA_E2E_EXPECTED_RUNTIME_SHA=<reviewed_hosted_main_SHA_from_post_merge_acceptance_handoff>
 ```
 
-The identity must be authorized to create Requirement fixtures and to approve/enable schedules.
+Authentication is mode-specific. Local mode uses an authorized control-plane identity according
+to the existing local contract. Remote mode requires a superuser Editor session/token, both for
+the same fixture/Schedule operations and for the superuser-only operator evidence surfaces. When
+`SRA_E2E_EDITOR_TOKEN` is used remotely, it means a valid superuser user-session bearer token—not
+an arbitrary Phase 0 Service Key. An ordinary Editor cannot produce a remote PASS.
 Do not provide a SQL connection string, Handoff Service Key, signing secret, or credential-store
 contents. Optional timeout and path settings are documented by `--help` and the Design; defaults
 are bounded and suitable for the normal deployment.
@@ -153,8 +160,16 @@ A custom workbook uses `--excel /path/to/custom.xlsx` and its actual digest is r
 does not require `SRA_E2E_REQUIREMENT_ARTIFACT_ROOT`; the authenticated, superuser-only read-only
 `GET /v1/operator-e2e/runtime-evidence` route proves deployment source, both launcher-managed worker
 identities, and the configured Handoff artifact-root fingerprint without returning paths, PIDs,
-cmdlines, credentials, or environment values. Real DOCX bytes come through the existing authorized
-Report Job download route and are independently checked on the operator workstation.
+cmdlines, credentials, or environment values. For each durable Batch/Run Item identity, the
+superuser-only `GET /v1/operator-e2e/batches/{batch_run_id}/items/{run_item_id}/artifact` route
+looks up (never accepts from the client) the durable relative path and SHA, validates the configured
+Handoff root fingerprint, confinement, DOCX ZIP, and SHA, and returns the exact Requirement artifact
+published under `REQUIREMENT_HANDOFF_OUTPUT_ROOT`. The upstream Report Job `/word` copy is not Remote
+PASS artifact authority. The operator independently repeats DOCX ZIP and SHA validation before
+retaining the bytes under the invocation's `artifacts/` directory.
+
+Both remote evidence routes require a superuser Editor user session. HTTP 401 and 403 are reported
+as remote evidence authentication and authorization failures rather than network unavailability.
 
 `SRA_E2E_EXPECTED_RUNTIME_SHA` is mandatory in both modes. In remote mode both the clean operator
 Harness checkout and clean deployment worktree must equal this externally reviewed SHA. Results use

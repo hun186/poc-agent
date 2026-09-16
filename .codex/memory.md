@@ -70,3 +70,10 @@
 - Added authenticated superuser-only read-only deployment runtime evidence and reused the existing Report Job download route for remote DOCX bytes. No DB or Scheduler/Handoff/Report Job execution semantics changed.
 - Strict RED was represented by the initial focused compatibility failures before v2 updates; GREEN passed 50 focused tests, 68 API/launcher/bootstrap tests, and 514 broad Requirement/Report Job/launcher/bootstrap tests. Compilation and diff checks passed. Pip package-index lookup warned HTTP 403, but dependencies were already installed.
 - No live deployment Harness was executed and no fresh live Requirement/Agent/Elasticsearch/LLM/DOCX PASS is claimed.
+
+### 2026-09-16 Harness v2 authoritative Handoff artifact hotfix
+
+- Remote acceptance no longer uses upstream Report Job `/word` bytes as artifact authority. A new GET-only, authenticated superuser route binds immutable Batch/Run Item IDs to existing durable Handoff metadata and returns bytes only after configured-root fingerprint, relative-path confinement, non-symlink file, DOCX ZIP safety/integrity, and SHA-256 validation.
+- The remote provider downloads through that route, preserves distinguishable authentication/authorization and artifact failure categories, independently validates DOCX/SHA, and copies exact verified bytes into invocation evidence. No DB schema or Schedule/Handoff/Report Job execution semantics changed.
+- Strict RED reproduced 10 failures, including the missing endpoint and the old provider's attempted Report Job `/word` request while a source DOCX could exist. GREEN passed 68 focused Harness/store tests, 41 API/store/Handoff/Report Job tests, and 531 broad Requirement/Report Job/launcher/bootstrap regressions (four pre-existing warnings). Python compilation, diff whitespace, hosted-base ancestry, and canonical XLSX unchanged checks passed.
+- Dependency packages were already installed; pip's upgrade lookup repeated the known HTTP 403 proxy warning. No live Agent/ES/LLM/DOCX acceptance was executed and no fresh live E2E PASS is claimed.

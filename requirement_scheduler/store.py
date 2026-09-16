@@ -864,3 +864,17 @@ class ScheduleStore:
         if not runs: raise KeyError("batch_run_not_found")
         runs[0]["items"]=self._query(f"SELECT run_item_id,requirement_id,requirement_version_id,requirement_version_number,source_order,selection_status,selection_reason,execution_state,remote_job_id,remote_job_state,error_code,expired_at_selection,expired_before_handoff,deadline_elapsed_during_execution,artifact_relative_path,artifact_sha256,handoff_started_at,dispatched_at,remote_completed_at,artifact_reconciled_at,completed_at FROM {self.t}.[requirement_batch_run_items] WHERE batch_run_id=? ORDER BY source_order",batch_run_id)
         return runs[0]
+
+    def get_operator_artifact_evidence(self, *, batch_run_id: str, run_item_id: str):
+        """Read the durable Batch/Run Item artifact identity without accepting path authority."""
+        rows = self._query(
+            f"SELECT r.batch_run_id,i.run_item_id,i.selection_status,i.remote_job_id,"
+            f"i.artifact_relative_path,i.artifact_sha256,r.phase1a_output_root_fingerprint "
+            f"FROM {self.t}.[requirement_batch_runs] r "
+            f"JOIN {self.t}.[requirement_batch_run_items] i ON i.batch_run_id=r.batch_run_id "
+            f"WHERE r.batch_run_id=? AND i.run_item_id=?",
+            batch_run_id, run_item_id,
+        )
+        if not rows:
+            raise KeyError("run_item_not_found")
+        return rows[0]

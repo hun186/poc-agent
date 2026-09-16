@@ -161,4 +161,10 @@ Authenticated endpoints: `GET/POST /v1/requirement-schedules`, `GET/PATCH /v1/re
 
 - `GET /v1/operator-e2e/runtime-evidence` requires an authenticated Editor superuser session and is read-only.
 - Response schema `requirement_e2e_runtime_evidence_v1` contains `observed_at`, bounded `deployment_source` Git identity/clean proof, `workers.schedule` and `workers.handoff` alive/identity-verified booleans, and `artifact_root_fingerprint`.
-- The response excludes raw paths, PIDs, cwd/cmdline, environment, credentials, SQL configuration, prompts, and worker controls. Remote artifact bytes continue to use `GET /v1/report/jobs/{job_id}/word` with existing authorization.
+- The response excludes raw paths, PIDs, cwd/cmdline, environment, credentials, SQL configuration, prompts, and worker controls.
+
+## 2026-09-16 Requirement E2E published-artifact evidence
+
+- `GET /v1/operator-e2e/batches/{batch_run_id}/items/{run_item_id}/artifact` is authenticated, superuser-only, read-only, and returns the exact Handoff-published DOCX only after durable metadata, configured-root fingerprint, confinement, DOCX ZIP, and SHA-256 validation.
+- Batch/Run Item IDs are the only client identity inputs. The route accepts no path parameter and exposes no absolute path, SQL detail, credential, worker detail, or prompt.
+- Failures use bounded `{detail:{code}}` categories such as `artifact_missing`, `artifact_metadata_missing`, `artifact_invalid`, `artifact_sha256_mismatch`, and `artifact_root_fingerprint_mismatch`. Report Job `/word` is unchanged but is not Remote PASS artifact authority.
