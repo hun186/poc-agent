@@ -22,12 +22,14 @@ class LocalDeploymentEvidenceProvider:
         self.project_root, self.artifact_root = project_root, artifact_root
 
     def preflight(self) -> dict[str, Any]:
+        from sra_api.services.requirement_e2e_runtime_evidence import collect_source_evidence
         workers = {
             role: {**verify_worker_identity(self.project_root / f".run_sra_api_{role}.identity", role, self.project_root),
                    "identity_verified": True}
             for role in ("schedule", "handoff")
         }
         return {"schema_version": "requirement_e2e_runtime_evidence_v1", "workers": workers,
+                "deployment_source": collect_source_evidence(self.project_root),
                 "artifact_root_fingerprint": output_root_fingerprint(self.artifact_root)}
 
     def verify_artifact(self, item, persisted_root, copy_to):
@@ -45,6 +47,10 @@ class RemoteDeploymentEvidenceProvider:
                 raise HarnessFailure("remote_evidence_authentication_failed", stage="RUNTIME_WORKERS") from exc
             if exc.category == "authorization_failed":
                 raise HarnessFailure("remote_evidence_authorization_failed", stage="RUNTIME_WORKERS") from exc
+            if exc.category in {"active_runtime_source_mismatch", "unexpected_active_runtime_module",
+                                "runtime_module_shadowing", "deployment_source_provenance_invalid",
+                                "deployment_source_identity_unavailable"}:
+                raise HarnessFailure(exc.category, stage="RUNTIME_WORKERS") from exc
             raise HarnessFailure("remote_runtime_evidence_unavailable", stage="RUNTIME_WORKERS") from exc
         except Exception as exc:
             raise HarnessFailure("remote_runtime_evidence_unavailable", stage="RUNTIME_WORKERS") from exc

@@ -311,7 +311,7 @@ def test_dirty_reviewed_runtime_fails_before_harness_mutations(tmp_path, monkeyp
     assert len(run_calls) == 0
     result = json.loads(next(output.glob("*/result.json")).read_text())
     assert result["failed_stage"] == "CONFIG_PREFLIGHT"
-    assert result["failure_category"] == "operator_source_dirty"
+    assert result["failure_category"] == "operator_runtime_dirty"
 
 
 def test_clean_reviewed_runtime_passes_source_validation():
