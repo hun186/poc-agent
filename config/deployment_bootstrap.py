@@ -18,6 +18,7 @@ from sra_api.security.scopes import REPORT_JOB_CREATE, REPORT_JOB_DOWNLOAD, REPO
 from sra_api.security.file_lock import exclusive_file_lock
 from sra_api.security.service_key_store import ServiceKeyStore
 from sra_api.security.signed_urls import validate_signing_config
+from shared.runtime_provenance import requirement_sql_registry_path
 
 
 STATE_VERSION = "1"
@@ -172,9 +173,7 @@ def _remove_repair_journal(path: Path) -> None:
 
 
 def _validate_site(project_root: Path) -> None:
-    registry_path = Path(os.getenv("REQUIREMENT_SQL_REGISTRY_FILE", "config/requirements/sql_registry.json"))
-    if not registry_path.is_absolute():
-        registry_path = project_root / registry_path
+    registry_path = requirement_sql_registry_path(project_root)
     registry = SqlRegistry.load(registry_path)
     connection_name = os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control")
     try:

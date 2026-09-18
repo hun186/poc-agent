@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 import yaml
 
 from config.bootstrap import bootstrap_env
+from shared.runtime_provenance import index_config_paths
 
 
 def _normalize_indexes(raw):
@@ -102,26 +103,7 @@ def _candidate_config_paths() -> List[Path]:
     #（bootstrap_env 內部有 one-time guard，不會重複做重活）
     bootstrap_env()
 
-    current_dir = Path(__file__).resolve().parent
-    app_env = os.getenv("APP_ENV") or os.getenv("ENV") or os.getenv("PY_ENV") or ""
-
-    base_candidates: List[Path] = [
-        current_dir / "indexes.yaml",
-    ]
-    if app_env:
-        base_candidates.append(current_dir / f"indexes.{app_env}.yaml")
-
-    # 向後相容：單一路徑
-    single_config = os.getenv("INDEXES_CONFIG") or os.getenv("INDEX_CONFIG")
-    if single_config:
-        return _split_paths(single_config)
-
-    # 新增：多設定檔優先序，後者優先
-    multi_configs = os.getenv("INDEXES_CONFIGS")
-    if multi_configs:
-        return _split_paths(multi_configs)
-
-    return [p.resolve() for p in base_candidates]
+    return index_config_paths(Path(__file__).resolve().parents[1], selector_base=Path.cwd())
 
 
 def load_index_mapping():

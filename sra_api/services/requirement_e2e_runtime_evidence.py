@@ -14,6 +14,7 @@ from operator_e2e.requirement_e2e_support import output_root_fingerprint, verify
 from shared.runtime_provenance import (
     PROVENANCE_NAME,
     RUNTIME_ROOTS,
+    discover_release_runtime_inputs,
     is_project_module_name,
     load_provenance,
     provenance_fingerprint,
@@ -64,7 +65,7 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
         verify_package_files(project_root, provenance)
     except ValueError as exc:
         category = str(exc)
-        if category == "active_runtime_source_mismatch":
+        if category in {"active_runtime_source_mismatch", "unexpected_runtime_input"}:
             raise RuntimeError(category) from exc
         raise RuntimeError("release_provenance_invalid") from exc
     expected = {entry["path"]: entry["sha256"] for entry in provenance["runtime_files"]}

@@ -1,6 +1,9 @@
 # agent/es/synonyms/manual.py
 from typing import Dict, List, Any
+from pathlib import Path
 import os, json
+
+from shared.runtime_provenance import manual_synonym_files
 
 # ================== 人工同義詞：支援外部 config 覆蓋（多檔案） ==================
 
@@ -81,10 +84,8 @@ def load_manual_synonyms() -> Dict[str, List[str]]:
         return base
 
     loaded_files = 0
-    for filename in os.listdir(dir_path):
-        if not filename.lower().endswith(".json"):
-            continue
-        full_path = os.path.join(dir_path, filename)
+    for selected_path in manual_synonym_files(Path.cwd()):
+        full_path = str(selected_path)
         try:
             with open(full_path, "r", encoding="utf-8") as f:
                 data = json.load(f)

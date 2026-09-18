@@ -32,6 +32,7 @@ from api.services.report_job_store import ReportJobStore
 from api.services.report_job_worker import ReportJobWorker
 from api.security.signed_urls import validate_signing_config
 from api.services.auth_support import PRODUCTION_ENVS
+from shared.runtime_provenance import requirement_sql_registry_path
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,7 +43,7 @@ async def lifespan(app: FastAPI):
         from data_ingestion.requirements.connections import SqlRegistry
         from data_ingestion.requirements.service import RequirementImportService
         from data_ingestion.requirements.store import RequirementStore
-        registry_file = os.getenv("REQUIREMENT_SQL_REGISTRY_FILE", "config/requirements/sql_registry.json")
+        registry_file = requirement_sql_registry_path(Path.cwd())
         registry = SqlRegistry.load(registry_file)
         requirement_store = RequirementStore(registry, os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"), os.getenv("REQUIREMENT_DB_SCHEMA", "sra_requirement"))
         requirement_store.initialize()
@@ -52,7 +53,7 @@ async def lifespan(app: FastAPI):
         from requirement_scheduler.service import ScheduleService
         from requirement_scheduler.store import ScheduleStore
         from sra_api.services.editor_audit import append_audit_event
-        registry = SqlRegistry.load(os.getenv("REQUIREMENT_SQL_REGISTRY_FILE", "config/requirements/sql_registry.json"))
+        registry = SqlRegistry.load(requirement_sql_registry_path(Path.cwd()))
         schedule_store = ScheduleStore(registry, os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"), os.getenv("REQUIREMENT_SCHEDULE_DB_SCHEMA", "sra_schedule"), os.getenv("REQUIREMENT_DB_SCHEMA", "sra_requirement"), audit_sink=append_audit_event)
         schedule_store.initialize()
         app.state.requirement_schedule_service = ScheduleService(schedule_store)

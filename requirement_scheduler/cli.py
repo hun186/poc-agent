@@ -18,14 +18,17 @@ from requirement_scheduler.schedule_worker import (
     parse_poll_interval,
     run_schedule_worker,
 )
+from shared.runtime_provenance import requirement_sql_registry_path
+
+
+def _registry_path() -> Path:
+    return requirement_sql_registry_path(Path.cwd())
 
 
 def build_schedule_worker_from_env() -> RequirementScheduleWorker:
     """Construct and validate the schedule-only worker from server-owned settings."""
     poll_interval = parse_poll_interval()
-    registry = SqlRegistry.load(
-        os.getenv("REQUIREMENT_SQL_REGISTRY_FILE", "config/requirements/sql_registry.json")
-    )
+    registry = SqlRegistry.load(_registry_path())
     store = ScheduleStore(
         registry,
         os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"),
@@ -37,7 +40,7 @@ def build_schedule_worker_from_env() -> RequirementScheduleWorker:
 
 def build_coordinator_from_env() -> RequirementHandoffCoordinator:
     """Construct the external worker exclusively from server-owned environment."""
-    registry=SqlRegistry.load(os.getenv("REQUIREMENT_SQL_REGISTRY_FILE","config/requirements/sql_registry.json"))
+    registry=SqlRegistry.load(_registry_path())
     credential_env=os.getenv("REQUIREMENT_HANDOFF_CREDENTIAL_ENV","REQUIREMENT_HANDOFF_CREDENTIAL")
     def resolve(_: str) -> str: return os.getenv(credential_env,"")
     config=RequirementHandoffConfig(

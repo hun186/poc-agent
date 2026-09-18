@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from pathlib import PurePosixPath
 
@@ -44,6 +46,7 @@ PROJECT_MODULE_NAMESPACES = RUNTIME_ROOTS
 PROVENANCE_SCHEMA_VERSION = 2
 PROVENANCE_REPOSITORY = "hun186/poc-agent"
 PROVENANCE_NAME = "REQUIREMENT_E2E_PROVENANCE.json"
+UNEXPECTED_RUNTIME_INPUT = "unexpected_runtime_input"
 
 # These are source/configuration formats for which Git's text checkout EOL
 # conversion cannot change the byte meaning beyond line separators. Shell
@@ -55,6 +58,93 @@ EOL_EQUIVALENT_EXTENSIONS = frozenset({
     ".toml", ".txt", ".yaml", ".yml",
 })
 EOL_EQUIVALENT_FILENAMES = frozenset({"requirements.txt"})
+
+
+def _resolve_selector_path(root: Path, value: str | Path) -> Path:
+    path = Path(value).expanduser()
+    return (path if path.is_absolute() else root / path).resolve(strict=False)
+
+
+def manual_synonym_files(root: Path, environ: Mapping[str, str] | None = None) -> list[Path]:
+    """Reproduce manual.py's direct-child, case-insensitive JSON membership."""
+    env = os.environ if environ is None else environ
+    directory = _resolve_selector_path(root, env.get("MANUAL_SYNONYMS_DIR", "config/synonyms"))
+    if not directory.is_dir():
+        return []
+    try:
+        return [directory / name for name in os.listdir(directory)
+                if name.lower().endswith(".json")]
+    except OSError:
+        return []
+
+
+def index_config_paths(root: Path, environ: Mapping[str, str] | None = None, *,
+                       selector_base: Path | None = None) -> list[Path]:
+    """Return index_loader candidates with its existing selector precedence."""
+    env = os.environ if environ is None else environ
+    single = env.get("INDEXES_CONFIG") or env.get("INDEX_CONFIG")
+    multi = env.get("INDEXES_CONFIGS")
+    selected = single or multi
+    if selected:
+        normalized = selected.replace(",", os.pathsep)
+        base = root if selector_base is None else selector_base
+        return [_resolve_selector_path(base, item) for item in normalized.split(os.pathsep) if item.strip()]
+    app_env = env.get("APP_ENV") or env.get("ENV") or env.get("PY_ENV") or ""
+    paths = [root / "config/indexes.yaml"]
+    if app_env:
+        paths.append(root / f"config/indexes.{app_env}.yaml")
+    return [path.resolve(strict=False) for path in paths]
+
+
+def requirement_sql_registry_path(root: Path, environ: Mapping[str, str] | None = None) -> Path:
+    env = os.environ if environ is None else environ
+    return _resolve_selector_path(
+        root, env.get("REQUIREMENT_SQL_REGISTRY_FILE", "config/requirements/sql_registry.json")
+    )
+
+
+def editor_form_config_path(root: Path, environ: Mapping[str, str] | None = None, *,
+                            selector_base: Path | None = None) -> Path:
+    env = os.environ if environ is None else environ
+    configured = env.get("SRA_EDITOR_FORM_CONFIG")
+    if configured:
+        return _resolve_selector_path(root if selector_base is None else selector_base, configured)
+    return _resolve_selector_path(root, "config/editor_form.default.json")
+
+
+def discover_release_runtime_inputs(
+    root: Path, environ: Mapping[str, str] | None = None,
+) -> list[Path]:
+    """Discover only bounded release-managed inputs that runtime would consume.
+
+    Missing candidates are not inputs. Existing selected external paths remain in
+    the result so provenance acceptance fails closed rather than silently
+    treating arbitrary external bytes as attested.
+    """
+    root = root.resolve(strict=False)
+    paths = manual_synonym_files(root, environ)
+    paths.extend(path for path in index_config_paths(root, environ) if path.is_file())
+    registry = requirement_sql_registry_path(root, environ)
+    if registry.is_file():
+        paths.append(registry)
+    editor_form = editor_form_config_path(root, environ)
+    if editor_form.is_file():
+        paths.append(editor_form)
+    return sorted(set(path.resolve(strict=False) for path in paths), key=str)
+
+
+def verify_discovered_runtime_inputs(root: Path, provenance: object,
+                                     environ: Mapping[str, str] | None = None) -> None:
+    """Require every actually selected release input to belong to provenance."""
+    root = root.resolve(strict=False)
+    expected = {entry["path"] for entry in validate_provenance(provenance)["runtime_files"]}
+    for path in discover_release_runtime_inputs(root, environ):
+        try:
+            relative = path.relative_to(root).as_posix()
+        except ValueError as exc:
+            raise ValueError(UNEXPECTED_RUNTIME_INPUT) from exc
+        if relative not in expected:
+            raise ValueError(UNEXPECTED_RUNTIME_INPUT)
 
 
 def is_generated_non_runtime_path(path: str) -> bool:
@@ -157,3 +247,4 @@ def verify_package_files(root: Path, provenance: object) -> None:
             raise ValueError("active_runtime_source_mismatch") from exc
         if actual != entry["sha256"]:
             raise ValueError("active_runtime_source_mismatch")
+    verify_discovered_runtime_inputs(root, value)
