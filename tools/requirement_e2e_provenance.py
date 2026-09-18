@@ -13,7 +13,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from shared.runtime_provenance import RUNTIME_PATHS, is_runtime_provenance_path
+from shared.runtime_provenance import (
+    PROVENANCE_REPOSITORY, PROVENANCE_SCHEMA_VERSION, RUNTIME_PATHS,
+    is_runtime_provenance_path, source_equivalence,
+)
 
 
 def generate(repo: Path, reviewed_sha: str, output: Path) -> None:
@@ -34,13 +37,14 @@ def generate(repo: Path, reviewed_sha: str, output: Path) -> None:
         if not is_runtime_provenance_path(path):
             continue
         data = subprocess.check_output(["git", "-C", str(repo), "cat-file", "blob", blob])
-        files.append({"path": path, "sha256": hashlib.sha256(data).hexdigest()})
         try:
             worktree_data = (repo / path).read_bytes()
         except OSError:
             worktree_data = None
-        if worktree_data != data:
+        if worktree_data is None or source_equivalence(data, worktree_data, path) is None:
             byte_mismatches.append(path)
+            continue
+        files.append({"path": path, "sha256": hashlib.sha256(worktree_data).hexdigest()})
     if byte_mismatches:
         bounded = sorted(byte_mismatches)[:20]
         suffix = (
@@ -50,8 +54,9 @@ def generate(repo: Path, reviewed_sha: str, output: Path) -> None:
         raise RuntimeError(
             "runtime_worktree_bytes_differ_from_reviewed_source: " + ", ".join(bounded) + suffix
         )
-    value = {"repository": "hun186/poc-agent", "reviewed_runtime_sha": resolved,
-             "runtime_files": sorted(files, key=lambda item: item["path"]), "schema_version": 1}
+    value = {"repository": PROVENANCE_REPOSITORY, "reviewed_runtime_sha": resolved,
+             "runtime_files": sorted(files, key=lambda item: item["path"]),
+             "schema_version": PROVENANCE_SCHEMA_VERSION}
     output.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
 
 

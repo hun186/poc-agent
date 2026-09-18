@@ -109,3 +109,9 @@
 - Provenance generation, operator-side reviewed-map reconstruction, and deployment validation now consume that policy. Incremental evidence hashes every selected file, permits a reviewed matching active `python_compat.py`, and fails closed when either `python_compat.py` or the runtime supervisor `run_sra_api.sh` differs.
 - Strict TDD RED first failed because `shared.runtime_provenance` did not exist (and exposed direct-script import requirements). GREEN passed 19 focused source tests and 195 combined source/Harness/launcher/bootstrap/deployment tests with five pre-existing warnings. Compilation and diff checks passed. Dependencies were present; the pip upgrade lookup repeated the known HTTP 403 proxy warning.
 - The live Golden Path was deliberately not run. No fresh live deployment, Agent, Elasticsearch, LLM, or DOCX acceptance PASS is claimed.
+
+### 2026-09-18 Requirement E2E offline release provenance correction
+
+- Confirmed `.gitattributes` uses `* text=auto` while `*.sh` is forced LF, reproducing the Windows false-failure model: Git blobs are normalized LF while eligible worktree text may be CRLF without Git modification.
+- Added schema-v2 provenance with shared strict LF-to-CRLF source equivalence, exact actual-package SHA-256 entries, strict canonical validation/fingerprinting, offline operator exact-byte verification, and operator/deployment fingerprint comparison. Generated report exclusions and Linux active-module/worker/artifact checks remain intact.
+- Focused Harness/source tests passed 101 tests; launcher/bootstrap/deployment tests passed 108 tests. Compilation/diff checks are recorded with this task's final verification. The live Golden Path was deliberately not run.

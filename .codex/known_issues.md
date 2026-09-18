@@ -108,3 +108,7 @@
 ## 2026-09-16 Full-suite order-dependent pre-existing failures
 
 - `python -m pytest -q tests` completed 938 passing tests but 12 failures: one historical test references absent untracked `tests_code/test_phase0_api_routing_evidence.py`, one namespace guard finds an existing forbidden import in `tests/test_deployment_bootstrap.py`, and ten Harness v2 endpoint tests receive 401 after earlier full-suite module reloads invalidate dependency-override object identity. The same focused Harness files pass together (119 passed), so this hotfix used that isolated security regression evidence; no RBAC production behavior was weakened.
+
+## 2026-09-18 Dependency index warning
+
+- `python -m pip install --upgrade pip` retried through the configured proxy and received HTTP 403, while the installed pip and all `requirements.txt` dependencies were already satisfied. Focused repository verification remained available.

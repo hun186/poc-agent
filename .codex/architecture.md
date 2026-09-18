@@ -273,3 +273,9 @@
 - `shared/runtime_provenance.py` is the single bounded selector for incremental-package byte authority. `RUNTIME_ROOTS` contains runtime source/config trees; `RUNTIME_FILES` enumerates only materially active root files; `RUNTIME_PATHS` is the Git pathspec authority used by both package generation and external reviewed-map reconstruction.
 - Root classification is explicit: `python_compat.py` and `telemetry.py` are imported runtime modules; `app.py` is the Vercel application entrypoint; `run_sra_api.sh` supervises API/Schedule/Handoff startup and process identity; and `requirements.txt` controls runtime dependency installation. The empty root `__init__.py` has no current import/launch role, while README/TODO and repository metadata are documentation/tooling rather than runtime inputs.
 - Deployment evidence accepts provenance entries only inside the shared policy, hashes all declared authoritative bytes (including the launcher even though it is not a Python module), and separately requires every discovered active project module to appear in reviewed provenance. Inactive unmanaged historical Python residue remains warning-only.
+
+## 2026-09-18 Offline schema-v2 release provenance
+
+- External package creation separates reviewed Git identity, narrowly proven source representation, and exact package-byte identity. `shared.runtime_provenance` owns schema validation, canonical fingerprinting, exact package verification, and the only accepted LF-to-CRLF source-equivalence rule.
+- Internal local/remote acceptance loads `REQUIREMENT_E2E_PROVENANCE.json` (or `--provenance`) before mutation. The operator and Linux endpoint hash exact package bytes and compare the SHA-256 of canonical validated provenance; neither Git objects nor GitHub are an acceptance dependency.
+- Linux active-module, namespace-shadow, worker, artifact-root, and inactive-residue checks remain unchanged after exact manifest verification.

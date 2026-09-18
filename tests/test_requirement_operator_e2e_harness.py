@@ -40,11 +40,12 @@ from operator_e2e.requirement_e2e_support import (
 
 @pytest.fixture(autouse=True)
 def _reviewed_runtime_authority(monkeypatch):
-    monkeypatch.setenv("SRA_E2E_EXPECTED_RUNTIME_SHA", "919422bce992e757a89767f66beb8e042707a976")
     monkeypatch.setattr(
-        "operator_e2e.test_requirement_schedule_e2e._git_source",
-        lambda expected: {"repository": "hun186/poc-agent", "expected_runtime_sha": expected,
-                          "git_sha": expected, "clean": True, "identity_verified": True},
+        "operator_e2e.test_requirement_schedule_e2e._provenance_source",
+        lambda _root, _path, expected=None: {
+            "repository": "hun186/poc-agent", "reviewed_runtime_sha": expected or "a" * 40,
+            "provenance_fingerprint": "f" * 64, "identity_verified": True,
+        },
     )
 
 
@@ -145,11 +146,10 @@ def test_common_environment_example_is_safe_and_complete():
     for name in (
         "BASE_URL", "OPENWEBUI_KEY", "READ_ONLY_KEY", "REPORT_KEY", "EDITOR_USERNAME",
         "EDITOR_PASSWORD", "EDITOR_TOKEN", "MODEL", "REQUIREMENT_ARTIFACT_ROOT",
-        "EXPECTED_SOURCE_SHA", "EXPECTED_RUNTIME_SHA",
+        "EXPECTED_SOURCE_SHA",
     ):
         assert f"SRA_E2E_{name}" in example
-    runtime_value = re.search(r"^SRA_E2E_EXPECTED_RUNTIME_SHA=(.+)$", example, re.MULTILINE).group(1)
-    assert not re.fullmatch(r"[0-9a-f]{40}", runtime_value)
+    assert "SRA_E2E_EXPECTED_RUNTIME_SHA is optional" in example
     assert "must NOT automatically be reused" in example
     assert "SRA_E2E_EDITOR_TOKEN = SRA_E2E_REPORT_KEY" in example
     ignore_rules = Path(".gitignore").read_text(encoding="utf-8").splitlines()
@@ -236,13 +236,13 @@ def test_input_sha_validation_and_evidence_are_input_only(tmp_path):
     assert failure.value.stage == "INPUT_VALIDATION"
 
 
-def test_runtime_source_evidence_uses_only_runtime_sha(monkeypatch):
-    from operator_e2e.test_requirement_schedule_e2e import _git_source
-
-    monkeypatch.setenv("SRA_E2E_EXPECTED_SOURCE_SHA", "1" * 64)
-    evidence = _git_source("9bf009922d3be304d65d59927f62bbbb3f21e305")
-    assert evidence["expected_runtime_sha"] == "9bf009922d3be304d65d59927f62bbbb3f21e305"
-    assert evidence["expected_runtime_sha"] != os.environ["SRA_E2E_EXPECTED_SOURCE_SHA"]
+def test_runtime_release_authority_is_not_xlsx_source_sha():
+    config = E2EConfig.from_environment({
+        "SRA_E2E_MODEL": "model", "SRA_E2E_EDITOR_TOKEN": "token",
+        "SRA_E2E_EXPECTED_SOURCE_SHA": "1" * 64,
+    }, "remote")
+    assert config.expected_source_sha == "1" * 64
+    assert config.expected_runtime_sha is None
 
 
 def test_runtime_sha_mismatch_fails_before_harness_mutations(tmp_path, monkeypatch):
@@ -259,11 +259,10 @@ def test_runtime_sha_mismatch_fails_before_harness_mutations(tmp_path, monkeypat
     mutations = []
     monkeypatch.setattr(Harness, "run", lambda self: mutations.append("run"))
     monkeypatch.setattr(
-        "operator_e2e.test_requirement_schedule_e2e._git_source",
-        lambda expected: {
-            "repository": "hun186/poc-agent", "expected_runtime_sha": expected,
-            "local_git_sha": "a" * 40, "local_git_dirty": False,
-        },
+        "operator_e2e.test_requirement_schedule_e2e._provenance_source",
+        lambda *_args: (_ for _ in ()).throw(HarnessFailure(
+            "legacy_runtime_sha_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+        )),
     )
 
     output = tmp_path / "evidence"
@@ -274,7 +273,7 @@ def test_runtime_sha_mismatch_fails_before_harness_mutations(tmp_path, monkeypat
     assert mutations == []
     result = json.loads(next(output.glob("*/result.json")).read_text())
     assert result["failed_stage"] == "CONFIG_PREFLIGHT"
-    assert result["failure_category"] == "operator_source_identity_mismatch"
+    assert result["failure_category"] == "legacy_runtime_sha_mismatch"
 
 
 def test_dirty_reviewed_runtime_fails_before_harness_mutations(tmp_path, monkeypatch):
@@ -293,13 +292,10 @@ def test_dirty_reviewed_runtime_fails_before_harness_mutations(tmp_path, monkeyp
     run_calls = []
     monkeypatch.setattr(Harness, "run", lambda self: run_calls.append(self))
     monkeypatch.setattr(
-        "operator_e2e.test_requirement_schedule_e2e._git_source",
-        lambda expected: {
-            "repository": "hun186/poc-agent",
-            "expected_runtime_sha": expected,
-            "local_git_sha": reviewed_sha,
-            "local_git_dirty": True,
-        },
+        "operator_e2e.test_requirement_schedule_e2e._provenance_source",
+        lambda *_args: (_ for _ in ()).throw(HarnessFailure(
+            "operator_runtime_source_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+        )),
     )
 
     output = tmp_path / "evidence"
@@ -311,34 +307,19 @@ def test_dirty_reviewed_runtime_fails_before_harness_mutations(tmp_path, monkeyp
     assert len(run_calls) == 0
     result = json.loads(next(output.glob("*/result.json")).read_text())
     assert result["failed_stage"] == "CONFIG_PREFLIGHT"
-    assert result["failure_category"] == "operator_runtime_dirty"
+    assert result["failure_category"] == "operator_runtime_source_mismatch"
 
 
-def test_clean_reviewed_runtime_passes_source_validation():
-    from operator_e2e.test_requirement_schedule_e2e import _validate_runtime_source
+def test_matching_release_fingerprint_passes_source_validation():
+    from operator_e2e.test_requirement_schedule_e2e import _validate_deployment_source
 
-    reviewed_sha = "a" * 40
-    _validate_runtime_source({
-        "expected_runtime_sha": reviewed_sha,
-        "local_git_sha": reviewed_sha,
-        "local_git_dirty": False,
-    })
+    _validate_deployment_source({"identity_verified": True, "provenance_fingerprint": "a" * 64}, "a" * 64)
 
 
-def test_runbook_uses_external_runtime_sha_authority_and_stable_xlsx_digest():
-    runbook = Path("docs/operations/requirement-automatic-operator-e2e.md").read_text(
-        encoding="utf-8",
-    )
-    runtime_assignments = re.findall(
-        r"^SRA_E2E_EXPECTED_RUNTIME_SHA=(\S+)$", runbook, flags=re.MULTILINE,
-    )
-
-    assert runtime_assignments
-    assert all(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in runtime_assignments)
-    assert "post-merge" in runbook.lower()
-    assert "git rev-parse HEAD" in runbook
-    assert "repository-self-authoritative" in runbook
-    assert "copying an old sha from repository history is invalid" in runbook.lower()
+def test_runbook_uses_offline_provenance_authority_and_stable_xlsx_digest():
+    runbook = Path("docs/operations/requirement-automatic-operator-e2e.md").read_text(encoding="utf-8")
+    assert "REQUIREMENT_E2E_PROVENANCE.json" in runbook
+    assert "neither `.git` nor GitHub access is required" in runbook
     assert (
         "SRA_E2E_EXPECTED_SOURCE_SHA="
         "2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03"

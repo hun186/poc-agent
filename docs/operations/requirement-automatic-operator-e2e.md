@@ -48,7 +48,6 @@ SRA_E2E_MODEL=SRA-Structured Retrieval Agent
 SRA_E2E_REQUIREMENT_ARTIFACT_ROOT=/absolute/production/requirement/artifact/root
 SRA_E2E_BASE_URL=http://127.0.0.1:9002
 SRA_E2E_EXPECTED_SOURCE_SHA=2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03
-SRA_E2E_EXPECTED_RUNTIME_SHA=<reviewed_hosted_main_SHA_from_post_merge_acceptance_handoff>
 ```
 
 Authentication is mode-specific. Local mode uses an authorized control-plane identity according
@@ -60,36 +59,30 @@ Do not provide a SQL connection string, Handoff Service Key, signing secret, or 
 contents. Optional timeout and path settings are documented by `--help` and the Design; defaults
 are bounded and suitable for the normal deployment.
 
-The two optional expected hashes bind different inputs and must never be interchanged:
+The optional expected hash and release provenance bind different inputs:
 
 * `SRA_E2E_EXPECTED_SOURCE_SHA` is the 64-character lowercase SHA-256 of the XLSX input bytes.
   Input validation compares it only with the actual uploaded workbook digest.
-* `SRA_E2E_EXPECTED_RUNTIME_SHA` is the 40-character lowercase reviewed Git commit identity.
-  This value is not repository-self-authoritative: the operator must obtain it externally from
-  the completed post-merge source review/acceptance handoff. Exact identity passes. A descendant
-  passes only when Git proves ancestry and every intervening path is explicitly non-runtime.
-  Runtime-relevant committed drift blocks. Generated output/project-memory dirt warns;
-  runtime-relevant dirt and untracked importable modules block. Do not substitute local `HEAD` as
-  authority (for example, do not set it from `git rev-parse HEAD`) because a checkout must not
-  self-attest its reviewed identity. Copying an old SHA from repository history is invalid.
+* Repository-root `REQUIREMENT_E2E_PROVENANCE.json` is the release authority. Schema v2 carries the
+  reviewed Git identity as audit metadata and SHA-256 of every exact package byte. The normal operator
+  does not enter a SHA and neither `.git` nor GitHub access is required. The deprecated
+  `SRA_E2E_EXPECTED_RUNTIME_SHA`, when supplied, is only an additional consistency assertion and a
+  disagreement with provenance fails before mutation.
 
-The concrete source value above identifies the stable tracked three-item fixture. The runtime
-placeholder must be replaced with the exact externally reviewed handoff value.
-
-For a non-Git incremental package, generate provenance on the reviewed source/release machine and
-copy it with the package:
+Generate provenance on the external reviewed source/release machine and copy it with the package:
 
 ```bash
 python tools/requirement_e2e_provenance.py \
-  --reviewed-sha "$SRA_E2E_EXPECTED_RUNTIME_SHA" \
+  --reviewed-sha <reviewed-hosted-main-sha> \
   --output REQUIREMENT_E2E_PROVENANCE.json
 ```
 
-Generation is deterministic and records no deletion history. Acceptance reconstructs the expected
-runtime hash map from the external reviewed Git object and compares it with server-verified bytes.
-Do not edit the file. Inactive residual files yield bounded warning evidence, not failure; files
-that are loaded, resolved, discovered, shadowing, or replace reviewed runtime bytes block. Git
-worktrees remain supported with the same exact/equivalent/runtime-drift policy.
+Generation accepts exact source bytes or, for eligible text only, the complete LF-to-CRLF checkout
+transformation, and records SHA-256 of the actual package bytes. `.py`, `.json`, `.yaml`, `.yml`,
+`.toml`, `.ini`, `.cfg`, `.txt`, `.md`, `.html`, `.css`, and `.js` are EOL-eligible. Shell scripts,
+Office files, images, archives, and unknown formats remain exact-only. Deployment verification never
+normalizes bytes. Generated output remains excluded; inactive Python residue remains warning-only,
+while loaded/discovered/shadowing modules and managed-byte drift fail closed.
 
 ## Input and invocation
 
@@ -186,8 +179,9 @@ retaining the bytes under the invocation's `artifacts/` directory.
 Both remote evidence routes require a superuser Editor user session. HTTP 401 and 403 are reported
 as remote evidence authentication and authorization failures rather than network unavailability.
 
-`SRA_E2E_EXPECTED_RUNTIME_SHA` is mandatory in both modes. Operator and deployment evidence must be
-exact or provably runtime-equivalent to this external authority. Results use
+The local provenance defaults to repository-root `REQUIREMENT_E2E_PROVENANCE.json`; `--provenance`
+selects an explicit path. Operator and deployment compare SHA-256 of canonical validated provenance
+JSON, so equal reviewed Git metadata with different package maps cannot pass. Results use
 `requirement_e2e_result_v2`; `summary.txt` always includes `ACCEPTANCE_MODE` and sets
 `FRESH_LIVE_REQUIREMENT_E2E_PASS` to `YES` only on complete PASS.
 
