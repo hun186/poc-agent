@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
-import subprocess
 import sys
 import zipfile
 from datetime import datetime, timezone
@@ -13,29 +11,16 @@ from io import BytesIO
 from pathlib import Path, PurePosixPath
 
 from operator_e2e.requirement_e2e_support import output_root_fingerprint, verify_worker_identity
-from operator_e2e.source_identity import inspect_operator_source
 from shared.runtime_provenance import (
-    RUNTIME_PATHS,
+    PROVENANCE_NAME,
     RUNTIME_ROOTS,
     is_project_module_name,
-    is_runtime_provenance_path,
+    load_provenance,
+    provenance_fingerprint,
+    verify_package_files,
 )
 
-PROVENANCE_NAME = "REQUIREMENT_E2E_PROVENANCE.json"
 _MANAGED_TOP_LEVEL = set(RUNTIME_ROOTS)
-
-
-def _git(project_root: Path) -> dict:
-    def run(*args: str) -> str:
-        return subprocess.run(args, cwd=project_root, check=True, capture_output=True, text=True).stdout.strip()
-    try:
-        sha = run("git", "rev-parse", "HEAD")
-        dirty = bool(run("git", "status", "--porcelain"))
-        verified = len(sha) == 40
-    except (OSError, subprocess.SubprocessError):
-        sha, dirty, verified = None, None, False
-    return {"identity_kind": "git_worktree", "git_sha": sha, "clean": dirty is False,
-            "identity_verified": verified}
 
 
 def _active_project_modules(project_root: Path) -> list[tuple[str, Path]]:
@@ -73,44 +58,16 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
     project_root = project_root.resolve()
     provenance_path = project_root / PROVENANCE_NAME
     if not provenance_path.is_file():
-        git = _git(project_root)
-        if not git.get("identity_verified"):
-            raise RuntimeError("deployment_source_identity_unavailable")
-        if not (project_root / ".git").exists():
-            return git
-        try:
-            return inspect_operator_source(project_root, git["git_sha"])
-        except Exception as exc:
-            raise RuntimeError(getattr(exc, "category", "deployment_source_identity_unavailable")) from exc
+        raise RuntimeError("release_provenance_missing")
     try:
-        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
-        if (set(provenance) != {"schema_version", "repository", "reviewed_runtime_sha", "runtime_files"}
-                or provenance["schema_version"] != 1 or provenance["repository"] != "hun186/poc-agent"
-                or not re.fullmatch(r"[0-9a-f]{40}", provenance["reviewed_runtime_sha"])):
-            raise ValueError
-        entries = provenance["runtime_files"]
-        if not isinstance(entries, list) or len(entries) > 5000:
-            raise ValueError
-        expected = {}
-        for entry in entries:
-            if set(entry) != {"path", "sha256"} or not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]):
-                raise ValueError
-            if not is_runtime_provenance_path(entry["path"]):
-                raise ValueError
-            if entry["path"] in expected:
-                raise ValueError
-            expected[entry["path"]] = entry["sha256"]
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, KeyError) as exc:
-        raise RuntimeError("deployment_source_provenance_invalid") from exc
-
-    for relative, digest in expected.items():
-        path = project_root / relative
-        try:
-            actual = hashlib.sha256(path.read_bytes()).hexdigest()
-        except OSError as exc:
-            raise RuntimeError("active_runtime_source_mismatch") from exc
-        if actual != digest:
-            raise RuntimeError("active_runtime_source_mismatch")
+        provenance = load_provenance(provenance_path)
+        verify_package_files(project_root, provenance)
+    except ValueError as exc:
+        category = str(exc)
+        if category == "active_runtime_source_mismatch":
+            raise RuntimeError(category) from exc
+        raise RuntimeError("release_provenance_invalid") from exc
+    expected = {entry["path"]: entry["sha256"] for entry in provenance["runtime_files"]}
 
     active = (
         [(_module_name_for_test_path(project_root, Path(path)), Path(path)) for path in active_paths]
@@ -142,6 +99,7 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
     return {
         "identity_kind": "incremental_package", "identity_verified": True,
         "reviewed_runtime_sha": provenance["reviewed_runtime_sha"],
+        "provenance_fingerprint": provenance_fingerprint(provenance),
         "runtime_files": [{"path": path, "sha256": expected[path]} for path in sorted(expected)],
         "active_runtime_files": sorted(set(active_relative)),
         "inactive_residual_count": residual,

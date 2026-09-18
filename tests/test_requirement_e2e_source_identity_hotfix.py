@@ -92,7 +92,7 @@ def _manifest(root: Path, reviewed: str, files: dict[str, bytes]) -> None:
         target = root / path; target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(data)
         entries.append({"path": path, "sha256": hashlib.sha256(data).hexdigest()})
     (root / "REQUIREMENT_E2E_PROVENANCE.json").write_text(json.dumps({
-        "schema_version": 1, "repository": "hun186/poc-agent",
+        "schema_version": 2, "repository": "hun186/poc-agent",
         "reviewed_runtime_sha": reviewed, "runtime_files": entries,
     }, sort_keys=True))
 
@@ -125,11 +125,11 @@ def test_incremental_package_blocks_active_runtime_drift(tmp_path, mode):
     with pytest.raises(RuntimeError, match=expected_error): collect_source_evidence(tmp_path, active_paths=active)
 
 
-def test_incremental_source_external_reviewed_authority_is_checked(tmp_path):
+def test_incremental_source_release_fingerprint_is_checked(tmp_path):
     from operator_e2e.test_requirement_schedule_e2e import _validate_deployment_source
-    with pytest.raises(HarnessFailure, match="deployment_source_provenance_mismatch"):
+    with pytest.raises(HarnessFailure, match="deployment_provenance_identity_mismatch"):
         _validate_deployment_source({"identity_kind": "incremental_package", "identity_verified": True,
-                                     "reviewed_runtime_sha": "b" * 40, "runtime_files": []}, "a" * 40)
+                                     "provenance_fingerprint": "b" * 64}, "a" * 64)
 
 
 def test_runtime_policy_explicitly_classifies_runtime_root_files():
@@ -256,14 +256,11 @@ def test_modified_runtime_root_file_blocks_incremental_evidence(tmp_path, path):
 
 
 def test_generator_operator_and_deployment_share_runtime_path_policy():
-    import operator_e2e.test_requirement_schedule_e2e as harness
-    import sra_api.services.requirement_e2e_runtime_evidence as runtime_evidence
     import tools.requirement_e2e_provenance as generator
-    from shared.runtime_provenance import RUNTIME_PATHS
+    from shared.runtime_provenance import RUNTIME_PATHS, verify_package_files
 
     assert generator.RUNTIME_PATHS is RUNTIME_PATHS
-    assert harness.RUNTIME_PATHS is RUNTIME_PATHS
-    assert runtime_evidence.RUNTIME_PATHS is RUNTIME_PATHS
+    assert callable(verify_package_files)
 
 
 def test_provenance_generator_remains_directly_executable():
@@ -275,16 +272,36 @@ def test_provenance_generator_remains_directly_executable():
     assert result.returncode == 0, result.stderr
 
 
-def test_generator_rejects_crlf_worktree_bytes_before_emitting_provenance(tmp_path):
+def test_generator_accepts_crlf_text_and_hashes_exact_package_bytes(tmp_path):
     from tools.requirement_e2e_provenance import generate
 
     repo, reviewed = _repo(tmp_path)
     runtime = repo / "sra_api" / "main.py"
     runtime.write_bytes(b"VALUE = 1\r\n")
     output = tmp_path / "provenance.json"
-    with pytest.raises(RuntimeError, match="runtime_worktree_bytes_differ_from_reviewed_source: sra_api/main.py"):
-        generate(repo, reviewed, output)
-    assert not output.exists()
+    generate(repo, reviewed, output)
+    value = json.loads(output.read_text())
+    entry = next(item for item in value["runtime_files"] if item["path"] == "sra_api/main.py")
+    assert value["schema_version"] == 2
+    assert entry["sha256"] == hashlib.sha256(b"VALUE = 1\r\n").hexdigest()
+    assert entry["sha256"] != hashlib.sha256(b"VALUE = 1\n").hexdigest()
+
+
+def test_generator_rejects_real_text_change_and_binary_eol_difference(tmp_path):
+    from tools.requirement_e2e_provenance import generate
+
+    repo, reviewed = _repo(tmp_path)
+    (repo / "sra_api" / "main.py").write_bytes(b"VALUE = 2\r\n")
+    with pytest.raises(RuntimeError, match="runtime_worktree_bytes_differ_from_reviewed_source"):
+        generate(repo, reviewed, tmp_path / "changed.json")
+
+    _git(repo, "reset", "--hard", reviewed)
+    fixture = repo / "operator_e2e" / "input.xlsx"
+    fixture.write_bytes(b"binary\n"); _git(repo, "add", "."); _git(repo, "commit", "-m", "binary")
+    reviewed = _git(repo, "rev-parse", "HEAD")
+    fixture.write_bytes(b"binary\r\n")
+    with pytest.raises(RuntimeError, match="runtime_worktree_bytes_differ_from_reviewed_source"):
+        generate(repo, reviewed, tmp_path / "binary.json")
 
 
 def test_generator_emits_provenance_when_worktree_bytes_exactly_match(tmp_path):
@@ -342,7 +359,7 @@ def test_server_rejects_generated_report_as_runtime_provenance(tmp_path, path):
     from sra_api.services.requirement_e2e_runtime_evidence import collect_source_evidence
 
     _manifest(tmp_path, "a" * 40, {path: b"generated", "requirement_scheduler/cli.py": b"worker"})
-    with pytest.raises(RuntimeError, match="deployment_source_provenance_invalid"):
+    with pytest.raises(RuntimeError, match="release_provenance_invalid"):
         collect_source_evidence(tmp_path, active_paths=[])
 
 
@@ -368,10 +385,50 @@ def test_operator_reconstructs_same_filtered_runtime_map(tmp_path, monkeypatch):
     paths = {entry["path"] for entry in source["runtime_files"]}
     assert "operator_e2e/requirement_e2e_profile_v1.json" in paths
     assert "operator_e2e/input/requirement_e2e_3items.xlsx" in paths
-    source.update({"identity_kind": "incremental_package", "identity_verified": True})
-    monkeypatch.setattr(harness, "PROJECT_ROOT", repo)
+    from shared.runtime_provenance import provenance_fingerprint
+    fingerprint = provenance_fingerprint(source)
+    source.update({"identity_kind": "incremental_package", "identity_verified": True,
+                   "provenance_fingerprint": fingerprint})
+    harness._validate_deployment_source(source, source["provenance_fingerprint"])
 
-    harness._validate_deployment_source(source, reviewed)
+
+def test_provenance_fingerprint_is_canonical_and_runtime_map_sensitive(tmp_path):
+    from shared.runtime_provenance import provenance_fingerprint
+
+    first = {"schema_version": 2, "repository": "hun186/poc-agent",
+             "reviewed_runtime_sha": "a" * 40,
+             "runtime_files": [{"path": "sra_api/main.py", "sha256": "1" * 64}]}
+    reordered = {"runtime_files": list(reversed(first["runtime_files"])),
+                 "reviewed_runtime_sha": first["reviewed_runtime_sha"],
+                 "repository": first["repository"], "schema_version": 2}
+    assert provenance_fingerprint(first) == provenance_fingerprint(reordered)
+    changed = {**first, "runtime_files": [{"path": "sra_api/main.py", "sha256": "2" * 64}]}
+    assert provenance_fingerprint(first) != provenance_fingerprint(changed)
+
+
+def test_offline_operator_verification_requires_no_git_and_checks_package_bytes(tmp_path):
+    from operator_e2e.test_requirement_schedule_e2e import _provenance_source
+
+    _manifest(tmp_path, "a" * 40, {"sra_api/main.py": b"package"})
+    evidence = _provenance_source(tmp_path, tmp_path / "REQUIREMENT_E2E_PROVENANCE.json")
+    assert evidence["identity_verified"] and evidence["provenance_fingerprint"]
+    (tmp_path / "sra_api" / "main.py").write_bytes(b"drift")
+    with pytest.raises(HarnessFailure, match="operator_runtime_source_mismatch"):
+        _provenance_source(tmp_path, tmp_path / "REQUIREMENT_E2E_PROVENANCE.json")
+
+
+def test_offline_operator_missing_invalid_and_legacy_mismatch_fail_closed(tmp_path):
+    from operator_e2e.test_requirement_schedule_e2e import _provenance_source
+
+    missing = tmp_path / "missing.json"
+    with pytest.raises(HarnessFailure, match="release_provenance_missing"):
+        _provenance_source(tmp_path, missing)
+    missing.write_text("{}")
+    with pytest.raises(HarnessFailure, match="release_provenance_invalid"):
+        _provenance_source(tmp_path, missing)
+    _manifest(tmp_path, "a" * 40, {"sra_api/main.py": b"package"})
+    with pytest.raises(HarnessFailure, match="legacy_runtime_sha_mismatch"):
+        _provenance_source(tmp_path, tmp_path / "REQUIREMENT_E2E_PROVENANCE.json", "b" * 40)
 
 
 def test_generated_policy_is_shared_with_operator_source_identity():

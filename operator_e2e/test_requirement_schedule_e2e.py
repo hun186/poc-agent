@@ -6,7 +6,6 @@ import argparse
 import hashlib
 import json
 import os
-import subprocess
 import sys
 import time
 import uuid
@@ -32,8 +31,9 @@ from operator_e2e.requirement_e2e_support import (
     validate_terminal,
 )
 from operator_e2e.requirement_e2e_evidence import LocalDeploymentEvidenceProvider, RemoteDeploymentEvidenceProvider
-from operator_e2e.source_identity import inspect_operator_source
-from shared.runtime_provenance import RUNTIME_PATHS, is_runtime_provenance_path
+from shared.runtime_provenance import (
+    PROVENANCE_NAME, load_provenance, provenance_fingerprint, verify_package_files,
+)
 
 PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
 DEFAULT_EXCEL = SCRIPT_DIR / "input" / "requirement_e2e_3items.xlsx"
@@ -62,8 +62,8 @@ class Api:
                         except (AttributeError, ValueError): code = None
                         if code in {"artifact_missing", "artifact_invalid", "artifact_metadata_missing", "artifact_sha256_mismatch", "artifact_root_fingerprint_mismatch",
                                     "active_runtime_source_mismatch", "unexpected_active_runtime_module",
-                                    "runtime_module_shadowing", "deployment_source_provenance_invalid",
-                                    "deployment_source_identity_unavailable"}:
+                                    "runtime_module_shadowing", "release_provenance_invalid",
+                                    "release_provenance_missing"}:
                             category = code
                     raise HarnessFailure(category)
                 return response
@@ -329,7 +329,11 @@ class Harness:
         deployment_evidence = self.evidence_provider.preflight()
         self.result["deployment_evidence"] = deployment_evidence
         self.result["deployment_source"] = deployment_evidence.get("deployment_source", self.result["operator_source"])
-        _validate_deployment_source(self.result["deployment_source"], self.config.expected_runtime_sha)
+        _validate_deployment_source(
+            self.result["deployment_source"],
+            self.result["operator_source"]["provenance_fingerprint"],
+            self.config.expected_runtime_sha,
+        )
         self.pass_stage("RUNTIME_WORKERS", workers=deployment_evidence["workers"])
         self.validate_input(); self.pass_stage("INPUT_VALIDATION")
         profile_doc = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
@@ -357,8 +361,7 @@ def parse_args(argv=None):
 1. Copy operator_e2e/e2e.env.example
    to operator_e2e/e2e.env.local.
 2. Fill deployment-local values and credentials.
-3. Obtain SRA_E2E_EXPECTED_RUNTIME_SHA from external
-   post-merge source review.
+3. Transfer the release provenance with the reviewed package.
 4. Use --mode local on the Linux deployment host, or --mode remote from an operator workstation.
 
 Windows/Spyder is supported for remote-operator acceptance.
@@ -367,80 +370,42 @@ Local-host acceptance remains Linux deployment-host only.""",
                            help="local: Linux deployment host; remote: Windows/POSIX operator workstation")
     parser.add_argument("--excel", type=Path, default=DEFAULT_EXCEL,
                         help="XLSX override (default: canonical fixture resolved beside this script)")
+    parser.add_argument("--provenance", type=Path, default=PROJECT_ROOT / PROVENANCE_NAME,
+                        help="release provenance (default: repository-root canonical artifact)")
     parser.add_argument("--output-dir", type=Path); parser.add_argument("--env-file", type=Path, default=SCRIPT_DIR / "e2e.env.local")
     return parser.parse_args(argv)
 
 
-def _git_source(expected_runtime_sha: str | None):
-    if not expected_runtime_sha:
-        return {"repository": "hun186/poc-agent", "expected_runtime_sha": None}
-    return {**inspect_operator_source(PROJECT_ROOT, expected_runtime_sha),
-            "design_baseline": "32612bbb1ed46e8eefa80ab8741e3f80f166273c",
-            "expected_runtime_sha": expected_runtime_sha}
+def _provenance_source(root: Path, path: Path, expected_runtime_sha: str | None = None) -> dict[str, Any]:
+    if not path.is_file():
+        raise HarnessFailure("release_provenance_missing", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
+    try:
+        provenance = load_provenance(path)
+        verify_package_files(root, provenance)
+    except ValueError as exc:
+        category = "operator_runtime_source_mismatch" if str(exc) == "active_runtime_source_mismatch" else "release_provenance_invalid"
+        raise HarnessFailure(category, stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT) from exc
+    if expected_runtime_sha and expected_runtime_sha != provenance["reviewed_runtime_sha"]:
+        raise HarnessFailure("legacy_runtime_sha_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
+    return {
+        "repository": provenance["repository"], "identity_kind": "release_provenance",
+        "identity_verified": True, "reviewed_runtime_sha": provenance["reviewed_runtime_sha"],
+        "runtime_files": provenance["runtime_files"],
+        "provenance_fingerprint": provenance_fingerprint(provenance),
+        "legacy_expected_runtime_sha": expected_runtime_sha,
+    }
 
 
-def _validate_runtime_source(source: dict[str, Any]) -> None:
-    expected = source.get("expected_runtime_sha")
-    if not expected:
-        raise HarnessFailure("runtime_source_authority_missing", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
-    # Compatibility for tests/older result adapters; current inspection has already
-    # proven exact or reviewed-equivalent descendant identity.
-    if source.get("identity_status") in {"exact", "reviewed_equivalent_descendant"}:
-        return
-    actual = source.get("git_sha", source.get("local_git_sha"))
-    if not actual or expected != actual:
-        raise HarnessFailure(
-            "operator_source_identity_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
-        )
-    if not source.get("clean", not source.get("local_git_dirty")):
-        raise HarnessFailure(
-            "operator_runtime_dirty", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
-        )
-
-
-def _validate_deployment_source(source: dict[str, Any], expected: str) -> None:
+def _validate_deployment_source(source: dict[str, Any], expected_fingerprint: str,
+                                legacy_expected_sha: str | None = None) -> None:
     if not source.get("identity_verified"):
         raise HarnessFailure("deployment_source_identity_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
-    if source.get("identity_kind") == "incremental_package":
-        if source.get("reviewed_runtime_sha") != expected:
-            raise HarnessFailure("deployment_source_provenance_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
-        try:
-            raw = subprocess.check_output(
-                ["git", "-C", str(PROJECT_ROOT), "ls-tree", "-rz", "--full-tree", expected, "--", *RUNTIME_PATHS],
-            )
-            reviewed_files = {}
-            for record in raw.rstrip(b"\0").split(b"\0") if raw else []:
-                header, encoded = record.split(b"\t", 1)
-                _mode, kind, blob = header.decode("ascii").split()
-                path = encoded.decode("utf-8")
-                if kind == "blob" and is_runtime_provenance_path(path):
-                    data = subprocess.check_output(["git", "-C", str(PROJECT_ROOT), "cat-file", "blob", blob])
-                    reviewed_files[path] = hashlib.sha256(data).hexdigest()
-            reported_files = {entry["path"]: entry["sha256"] for entry in source.get("runtime_files", [])}
-        except (OSError, subprocess.SubprocessError, KeyError, TypeError, ValueError) as exc:
-            raise HarnessFailure("deployment_source_provenance_mismatch", stage="RUNTIME_WORKERS",
-                                 exit_code=ExitCode.PREFLIGHT) from exc
-        if reported_files != reviewed_files:
-            raise HarnessFailure("deployment_source_provenance_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
-        return
-    deployment_sha = source.get("git_sha")
-    if deployment_sha != expected:
-        try:
-            relation = subprocess.run(
-                ["git", "-C", str(PROJECT_ROOT), "merge-base", "--is-ancestor", expected, deployment_sha],
-                check=False, capture_output=True,
-            )
-            changed = subprocess.check_output(
-                ["git", "-C", str(PROJECT_ROOT), "diff", "--name-only", f"{expected}..{deployment_sha}"], text=True,
-            ).splitlines()
-            from operator_e2e.source_identity import is_non_runtime_path
-        except (OSError, subprocess.SubprocessError, TypeError) as exc:
-            raise HarnessFailure("deployment_source_identity_mismatch", stage="RUNTIME_WORKERS",
-                                 exit_code=ExitCode.PREFLIGHT) from exc
-        if relation.returncode != 0 or any(not is_non_runtime_path(path) for path in changed):
-            raise HarnessFailure("deployment_source_identity_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
-    if source.get("runtime_relevant_dirty_changes"):
-        raise HarnessFailure("deployment_runtime_dirty", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
+    if source.get("provenance_fingerprint") != expected_fingerprint:
+        raise HarnessFailure("deployment_provenance_identity_mismatch", stage="RUNTIME_WORKERS",
+                             exit_code=ExitCode.PREFLIGHT)
+    if legacy_expected_sha and source.get("reviewed_runtime_sha") != legacy_expected_sha:
+        raise HarnessFailure("deployment_source_provenance_mismatch", stage="RUNTIME_WORKERS",
+                             exit_code=ExitCode.PREFLIGHT)
 
 
 def main(argv=None) -> int:
@@ -459,13 +424,12 @@ def main(argv=None) -> int:
         env = load_e2e_environment(args.env_file, dict(os.environ))
         evidence_output = (args.output_dir or Path(env.get("SRA_E2E_OUTPUT_DIR") or "operator_e2e/output/requirement_e2e")) / run_id
         config = E2EConfig.from_environment(env, args.mode)
-        if not config.expected_runtime_sha:
-            raise HarnessFailure("runtime_source_authority_missing", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
         if args.output_dir: config = E2EConfig(**{**config.__dict__, "output_dir": args.output_dir})
         evidence_output = config.output_dir / run_id
         harness = Harness(config, args.excel.resolve(), run_id, result)
-        result["operator_source"] = _git_source(config.expected_runtime_sha)
-        _validate_runtime_source(result["operator_source"])
+        result["operator_source"] = _provenance_source(
+            PROJECT_ROOT, args.provenance.resolve(), config.expected_runtime_sha,
+        )
         with SingleRunLock(config.output_dir / ".lock", args.mode):
             try: harness.run()
             finally:

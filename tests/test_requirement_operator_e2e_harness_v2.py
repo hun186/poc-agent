@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,15 +32,16 @@ def test_cli_defaults_to_local_canonical_fixture_and_allows_overrides(tmp_path):
     custom = tmp_path / "custom.xlsx"
     args = parse_args(["--mode", "remote", "--excel", str(custom)])
     assert args.mode == "remote" and args.excel == custom
+    assert args.provenance.name == "REQUIREMENT_E2E_PROVENANCE.json"
     assert hashlib.sha256(DEFAULT_EXCEL.read_bytes()).hexdigest() == CANONICAL_SOURCE_SHA256
 
 
 def test_remote_configuration_does_not_require_linux_artifact_root():
     config = E2EConfig.from_environment({
         "SRA_E2E_MODEL": "model", "SRA_E2E_EDITOR_TOKEN": "token",
-        "SRA_E2E_EXPECTED_RUNTIME_SHA": "a" * 40,
     }, "remote")
     assert config.mode == "remote" and config.artifact_root is None
+    assert config.expected_runtime_sha is None
 
 
 @pytest.mark.parametrize("role", ["schedule", "handoff"])
@@ -74,11 +76,15 @@ def test_local_and_remote_share_one_golden_path_harness():
 
 def test_runtime_evidence_contract_contains_only_bounded_fields(tmp_path, monkeypatch):
     from sra_api.services import requirement_e2e_runtime_evidence as runtime
+    data = b"package"
+    target = tmp_path / "sra_api" / "main.py"; target.parent.mkdir(); target.write_bytes(data)
+    (tmp_path / "REQUIREMENT_E2E_PROVENANCE.json").write_text(json.dumps({
+        "schema_version": 2, "repository": "hun186/poc-agent",
+        "reviewed_runtime_sha": "a" * 40,
+        "runtime_files": [{"path": "sra_api/main.py", "sha256": hashlib.sha256(data).hexdigest()}],
+    }))
     monkeypatch.setattr(runtime, "verify_worker_identity", lambda *_: {"pid": 123, "cmdline": "secret"})
-    monkeypatch.setattr(runtime, "_git", lambda *_: {
-        "identity_kind": "git_worktree", "git_sha": "a" * 40, "clean": True,
-        "identity_verified": True,
-    })
+    monkeypatch.setattr(runtime, "_active_project_modules", lambda *_: [])
     evidence = runtime.collect_runtime_evidence(tmp_path, tmp_path / "artifacts")
     encoded = str(evidence).lower()
     assert evidence["workers"]["schedule"] == {"alive": True, "identity_verified": True}

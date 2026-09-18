@@ -179,3 +179,9 @@
 - Determine loaded project code from Python import identity, not coincidental filesystem tokens: exact managed package top-level namespaces plus exact module names derived only from explicit root `.py` files are authoritative.
 - Preserve fail-closed shadow detection after namespace qualification. Do not classify `thirdparty.api.*` or `vendor.telemetry` as project code, regardless of path segments or basenames.
 - Keep deployment verification byte-exact. Prevent predictable Windows robocopy failures at package creation by comparing working-tree bytes to reviewed Git blobs and refusing manifest emission on any difference; do not normalize line endings or rewrite checkout content.
+
+## 2026-09-18 Separate reviewed source equivalence from package identity
+
+- Accept only exact Git-blob bytes or, for an explicit text-extension allowlist, candidate bytes equal to replacement of every reviewed LF with CRLF when the reviewed blob contains no CR. Do not decode or normalize whitespace, BOM, Unicode, final newlines, shell scripts, Office files, images, archives, or unknown formats.
+- Record SHA-256 of actual package bytes in schema v2. Deployment never normalizes. Canonical validated provenance JSON, not reviewed Git SHA alone, is the cross-host release identity.
+- Keep `SRA_E2E_EXPECTED_RUNTIME_SHA` only as a deprecated additional assertion; provenance is primary and disagreement fails closed.

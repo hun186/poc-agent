@@ -48,8 +48,8 @@ class RemoteDeploymentEvidenceProvider:
             if exc.category == "authorization_failed":
                 raise HarnessFailure("remote_evidence_authorization_failed", stage="RUNTIME_WORKERS") from exc
             if exc.category in {"active_runtime_source_mismatch", "unexpected_active_runtime_module",
-                                "runtime_module_shadowing", "deployment_source_provenance_invalid",
-                                "deployment_source_identity_unavailable"}:
+                                "runtime_module_shadowing", "release_provenance_invalid",
+                                "release_provenance_missing"}:
                 raise HarnessFailure(exc.category, stage="RUNTIME_WORKERS") from exc
             raise HarnessFailure("remote_runtime_evidence_unavailable", stage="RUNTIME_WORKERS") from exc
         except Exception as exc:

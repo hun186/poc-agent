@@ -172,3 +172,8 @@ Authenticated endpoints: `GET/POST /v1/requirement-schedules`, `GET/PATCH /v1/re
 ## 2026-09-16 Operator runtime evidence identity extension
 
 `GET /v1/operator-e2e/runtime-evidence` remains GET-only and superuser-only. Its bounded `deployment_source` now supports `identity_kind=git_worktree` and `identity_kind=incremental_package`. Incremental evidence contains only reviewed SHA, runtime file path/hash pairs, active reviewed paths, residual count, and bounded warnings; it exposes no environment, command line, PID, cwd, credential, prompt, or arbitrary filesystem listing. The authoritative Batch/Run Item artifact endpoint is unchanged.
+
+## 2026-09-18 Requirement operator release identity
+
+- `GET /v1/operator-e2e/runtime-evidence` retains schema `requirement_e2e_runtime_evidence_v1`; `deployment_source` now reports schema-v2 release `reviewed_runtime_sha`, exact package `runtime_files`, and `provenance_fingerprint` (SHA-256 of canonical validated provenance JSON).
+- Missing/invalid deployment provenance fails with bounded `release_provenance_missing` / `release_provenance_invalid`; exact managed-byte drift remains `active_runtime_source_mismatch`.
