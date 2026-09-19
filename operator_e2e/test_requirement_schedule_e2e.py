@@ -62,6 +62,7 @@ class Api:
                         except (AttributeError, ValueError): code = None
                         if code in {"artifact_missing", "artifact_invalid", "artifact_metadata_missing", "artifact_sha256_mismatch", "artifact_root_fingerprint_mismatch",
                                     "active_runtime_source_mismatch", "unexpected_active_runtime_module",
+                                    "unexpected_runtime_input",
                                     "runtime_module_shadowing", "release_provenance_invalid",
                                     "release_provenance_missing"}:
                             category = code
@@ -383,7 +384,9 @@ def _provenance_source(root: Path, path: Path, expected_runtime_sha: str | None 
         provenance = load_provenance(path)
         verify_package_files(root, provenance)
     except ValueError as exc:
-        category = "operator_runtime_source_mismatch" if str(exc) == "active_runtime_source_mismatch" else "release_provenance_invalid"
+        category = ({"active_runtime_source_mismatch": "operator_runtime_source_mismatch",
+                     "unexpected_runtime_input": "unexpected_runtime_input"}.get(
+                         str(exc), "release_provenance_invalid"))
         raise HarnessFailure(category, stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT) from exc
     if expected_runtime_sha and expected_runtime_sha != provenance["reviewed_runtime_sha"]:
         raise HarnessFailure("legacy_runtime_sha_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)

@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from config.bootstrap import bootstrap_env
+from shared.runtime_provenance import editor_form_config_path
 from .editor_index_utils import get_index_field_metadata_map
 
 
@@ -22,10 +22,7 @@ def default_form_config_path() -> Path:
 
 def form_config_path() -> Path:
     bootstrap_env()
-    configured = (os.getenv("SRA_EDITOR_FORM_CONFIG") or "").strip()
-    if configured:
-        return Path(configured).expanduser().resolve()
-    return default_form_config_path()
+    return editor_form_config_path(_project_root(), selector_base=Path.cwd())
 
 
 def _load_json(path: Path) -> dict[str, Any]:

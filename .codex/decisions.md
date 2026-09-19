@@ -185,3 +185,10 @@
 - Accept only exact Git-blob bytes or, for an explicit text-extension allowlist, candidate bytes equal to replacement of every reviewed LF with CRLF when the reviewed blob contains no CR. Do not decode or normalize whitespace, BOM, Unicode, final newlines, shell scripts, Office files, images, archives, or unknown formats.
 - Record SHA-256 of actual package bytes in schema v2. Deployment never normalizes. Canonical validated provenance JSON, not reviewed Git SHA alone, is the cross-host release identity.
 - Keep `SRA_E2E_EXPECTED_RUNTIME_SHA` only as a deprecated additional assertion; provenance is primary and disagreement fails closed.
+
+## 2026-09-18 Bounded discovered-input provenance authority
+
+- Enforce `actually discovered/selected release-managed runtime inputs ⊆ schema-v2 provenance`, not filesystem equality under runtime roots.
+- Use one side-effect-free policy in `shared.runtime_provenance` for runtime loaders, generation, Linux evidence, and offline operator verification. Closed-directory discovery exactly follows direct-child, case-insensitive `.json` synonym membership; selector resolution preserves index precedence and covers the Requirement SQL registry and Editor form config.
+- Existing selected paths outside the project root have no implicit authority and fail as `unexpected_runtime_input`. Dotenv, secrets, auth/session stores, SQLite, generated outputs, import sources, and operator-managed task configuration remain separate mutable/deployment authority.
+- Preserve incremental deployments: unrelated and ignored residue remains accepted; inactive Python remains a bounded warning, while imported project modules absent from provenance remain blocked by the existing active-module rule.

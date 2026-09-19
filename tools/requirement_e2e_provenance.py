@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from shared.runtime_provenance import (
     PROVENANCE_REPOSITORY, PROVENANCE_SCHEMA_VERSION, RUNTIME_PATHS,
+    UNEXPECTED_RUNTIME_INPUT, discover_release_runtime_inputs,
     is_runtime_provenance_path, source_equivalence,
 )
 
@@ -54,6 +55,14 @@ def generate(repo: Path, reviewed_sha: str, output: Path) -> None:
         raise RuntimeError(
             "runtime_worktree_bytes_differ_from_reviewed_source: " + ", ".join(bounded) + suffix
         )
+    reviewed_paths = {entry["path"] for entry in files}
+    for discovered in discover_release_runtime_inputs(repo):
+        try:
+            relative = discovered.relative_to(repo.resolve()).as_posix()
+        except ValueError as exc:
+            raise RuntimeError(UNEXPECTED_RUNTIME_INPUT) from exc
+        if relative not in reviewed_paths:
+            raise RuntimeError(f"{UNEXPECTED_RUNTIME_INPUT}: {relative}")
     value = {"repository": PROVENANCE_REPOSITORY, "reviewed_runtime_sha": resolved,
              "runtime_files": sorted(files, key=lambda item: item["path"]),
              "schema_version": PROVENANCE_SCHEMA_VERSION}
