@@ -68,7 +68,12 @@ def _resolve_selector_path(root: Path, value: str | Path) -> Path:
 def manual_synonym_files(root: Path, environ: Mapping[str, str] | None = None) -> list[Path]:
     """Reproduce manual.py's direct-child, case-insensitive JSON membership."""
     env = os.environ if environ is None else environ
-    directory = _resolve_selector_path(root, env.get("MANUAL_SYNONYMS_DIR", "config/synonyms"))
+    configured = env.get("MANUAL_SYNONYMS_DIR", "config/synonyms")
+    # Preserve the loader's historical opt-out: an explicitly empty value is
+    # not a relative path selecting the project root.
+    if configured == "":
+        return []
+    directory = _resolve_selector_path(root, configured)
     if not directory.is_dir():
         return []
     try:
@@ -124,9 +129,6 @@ def discover_release_runtime_inputs(
     root = root.resolve(strict=False)
     paths = manual_synonym_files(root, environ)
     paths.extend(path for path in index_config_paths(root, environ) if path.is_file())
-    registry = requirement_sql_registry_path(root, environ)
-    if registry.is_file():
-        paths.append(registry)
     editor_form = editor_form_config_path(root, environ)
     if editor_form.is_file():
         paths.append(editor_form)

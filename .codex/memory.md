@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-20 Post-merge runtime-input provenance correction
+
+- Classified the Requirement SQL registry as privileged deployment-local configuration rather than Git-derived release provenance, while preserving the shared selector across API, both Requirement workers, and deployment bootstrap. Runtime evidence contains no registry bytes, digest, resolved path, credentials, or query text.
+- Restored explicit `MANUAL_SYNONYMS_DIR=""` as disabling external synonym files; absence still defaults to `config/synonyms`, and non-empty directories retain direct-child case-insensitive JSON provenance enforcement.
+- RED: the focused runtime-input suite produced the five expected failures for ignored/external registry handling, generator handling, and empty synonym semantics. GREEN: 122 focused provenance/Harness tests and 25 deployment-bootstrap tests passed; compilation and diff checks passed. The live Golden Path and manual worker/API/coordinator commands were not run.
+
 ### 2026-09-16 Generated report/runtime provenance boundary hotfix
 
 - Runtime provenance now uses one shared generated-product classifier to exclude every `operator_e2e/output/**` path and every root-level `operator_e2e/*.docx` report while retaining byte-exact authority for runtime Python, configuration, launcher, profile JSON, and canonical input XLSX paths.
