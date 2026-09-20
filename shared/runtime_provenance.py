@@ -108,6 +108,19 @@ def requirement_sql_registry_path(root: Path, environ: Mapping[str, str] | None 
     )
 
 
+def requirement_sql_registry_repository_path(
+    root: Path, environ: Mapping[str, str] | None = None,
+) -> str | None:
+    """Return the selected registry's repository-relative member, when local."""
+    resolved_root = root.resolve(strict=False)
+    try:
+        return requirement_sql_registry_path(resolved_root, environ).relative_to(
+            resolved_root
+        ).as_posix()
+    except ValueError:
+        return None
+
+
 def editor_form_config_path(root: Path, environ: Mapping[str, str] | None = None, *,
                             selector_base: Path | None = None) -> Path:
     env = os.environ if environ is None else environ
@@ -242,6 +255,13 @@ def provenance_fingerprint(value: object) -> str:
 def verify_package_files(root: Path, provenance: object) -> None:
     """Require exact package-byte hashes; deployment verification never normalizes."""
     value = validate_provenance(provenance)
+    selected_registry = requirement_sql_registry_repository_path(root)
+    if selected_registry is not None and any(
+        entry["path"] == selected_registry for entry in value["runtime_files"]
+    ):
+        # The selected registry is deployment-local authority. Reject before
+        # reading its bytes, and never include its identity in the failure.
+        raise ValueError("release_provenance_invalid")
     for entry in value["runtime_files"]:
         try:
             actual = hashlib.sha256((root / entry["path"]).read_bytes()).hexdigest()

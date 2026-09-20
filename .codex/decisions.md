@@ -3,6 +3,7 @@
 ## 2026-09-20 Requirement SQL registry remains deployment authority
 
 - Keep `requirement_sql_registry_path()` as the single selector used by API, Schedule Worker, Handoff Worker, and deployment bootstrap, but exclude the selected registry from release-provenance membership and evidence.
+- Derive only a transient normalized repository-relative member for provenance policy. Exclude exactly that selected member during generation and reject it at shared package verification before byte hashing; do not publish the resolved absolute selection or blanket-exclude similarly named/non-selected configuration.
 - The ignored/default or externally selected registry is privileged deployment-local configuration. Named reviewed queries and least-privilege database permissions remain its security boundary; do not publish its bytes, digest, resolved path, credentials, connection details, or query text.
 - Preserve an explicit empty `MANUAL_SYNONYMS_DIR` as the historical opt-out. Only absence selects `config/synonyms`; non-empty values resolve normally.
 
