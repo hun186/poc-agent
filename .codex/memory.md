@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-20 Selected Requirement SQL registry provenance exclusion
+
+- Enforced `selected Requirement SQL registry ∩ release provenance authority = ∅` for tracked project-local registries as well as ignored/default and external registries. Generation excludes only the selected repository-relative member before reading or hashing it; package verification rejects any schema-v2 manifest that includes that selected member before reading its bytes.
+- Added tracked-before-commit generator regressions for the example, custom, and default registry paths; non-selected tracked configuration remains provenance-managed. Added fail-closed verifier, Linux evidence, operator preflight, and bounded non-disclosure regressions.
+- Validation passed 30 focused runtime-input tests and 131 combined provenance/runtime-input/Harness/module-policy tests. Dependency installation found all requirements present; pip's upgrade lookup repeated the known HTTP 403 proxy warning. The live Requirement Golden Path was deliberately not run.
+
 ### 2026-09-20 Post-merge runtime-input provenance correction
 
 - Classified the Requirement SQL registry as privileged deployment-local configuration rather than Git-derived release provenance, while preserving the shared selector across API, both Requirement workers, and deployment bootstrap. Runtime evidence contains no registry bytes, digest, resolved path, credentials, or query text.

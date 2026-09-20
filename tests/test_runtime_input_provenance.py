@@ -162,6 +162,153 @@ def test_generator_allows_deployment_local_sql_registry(tmp_path, monkeypatch, e
     assert "private" not in serialized
 
 
+def _committed_registry_repo(tmp_path: Path, registries: dict[str, str]) -> tuple[Path, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    tracked = repo / "shared/runtime_provenance.py"
+    tracked.parent.mkdir(parents=True)
+    tracked.write_text("# tracked\n")
+    for relative, contents in registries.items():
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, capture_output=True)
+    reviewed = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    return repo, reviewed
+
+
+@pytest.mark.parametrize("selected", [
+    "config/requirements/sql_registry.example.json",
+    "config/requirements/customer_queries.json",
+    "config/requirements/sql_registry.json",
+])
+def test_generator_excludes_selected_tracked_registry_committed_before_review(
+    tmp_path, monkeypatch, selected,
+):
+    from tools.requirement_e2e_provenance import generate
+
+    secret = '{"password":"registry-secret","queries":{"private":"SELECT private_value"}}'
+    repo, reviewed = _committed_registry_repo(tmp_path, {selected: secret})
+    # Prove this exercises git ls-tree rather than the old untracked-registry gap.
+    assert subprocess.check_output(
+        ["git", "ls-tree", "--name-only", reviewed, "--", selected], cwd=repo, text=True,
+    ).strip() == selected
+    if selected == "config/requirements/sql_registry.json":
+        monkeypatch.delenv("REQUIREMENT_SQL_REGISTRY_FILE", raising=False)
+    else:
+        monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", selected)
+
+    output = tmp_path / "out.json"
+    generate(repo, reviewed, output)
+
+    serialized = output.read_text()
+    assert selected not in serialized
+    assert "registry-secret" not in serialized
+    assert hashlib.sha256(secret.encode()).hexdigest() not in serialized
+
+
+def test_generator_keeps_non_selected_tracked_registry_config(tmp_path, monkeypatch):
+    from tools.requirement_e2e_provenance import generate
+
+    example = "config/requirements/sql_registry.example.json"
+    selected = "config/requirements/customer_queries.json"
+    repo, reviewed = _committed_registry_repo(
+        tmp_path, {example: "{}", selected: '{"queries":{}}'},
+    )
+    monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", selected)
+
+    output = tmp_path / "out.json"
+    generate(repo, reviewed, output)
+    paths = {entry["path"] for entry in json.loads(output.read_text())["runtime_files"]}
+
+    assert example in paths
+    assert selected not in paths
+
+
+def test_generator_excludes_external_selected_registry(tmp_path, monkeypatch):
+    from tools.requirement_e2e_provenance import generate
+
+    example = "config/requirements/sql_registry.example.json"
+    repo, reviewed = _committed_registry_repo(tmp_path, {example: "{}"})
+    external = tmp_path / "external-registry.json"
+    external.write_text('{"password":"external-secret"}')
+    monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", str(external))
+
+    output = tmp_path / "out.json"
+    generate(repo, reviewed, output)
+    serialized = output.read_text()
+
+    assert example in serialized
+    assert str(external.resolve()) not in serialized
+    assert "external-secret" not in serialized
+
+
+def test_package_verifier_rejects_selected_tracked_registry_before_reading(tmp_path, monkeypatch):
+    from shared.runtime_provenance import verify_package_files
+
+    selected = "config/requirements/sql_registry.example.json"
+    secret = b'{"password":"secret","query":"SELECT confidential"}'
+    manifest = _manifest(tmp_path, {selected: secret})
+    monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", selected)
+
+    # Removal proves rejection occurs before the selected registry bytes are read.
+    (tmp_path / selected).unlink()
+    with pytest.raises(ValueError, match="^release_provenance_invalid$") as raised:
+        verify_package_files(tmp_path, manifest)
+    assert selected not in str(raised.value)
+
+
+def test_linux_evidence_rejects_manifest_with_selected_tracked_registry(tmp_path, monkeypatch):
+    from sra_api.services.requirement_e2e_runtime_evidence import collect_source_evidence
+
+    selected = "config/requirements/sql_registry.example.json"
+    secret = b'{"password":"secret","query":"SELECT confidential"}'
+    _manifest(tmp_path, {selected: secret})
+    monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", selected)
+
+    with pytest.raises(RuntimeError, match="^release_provenance_invalid$") as raised:
+        collect_source_evidence(tmp_path, active_paths=[])
+    assert selected not in str(raised.value)
+    assert hashlib.sha256(secret).hexdigest() not in str(raised.value)
+
+
+def test_operator_preflight_rejects_manifest_with_selected_tracked_registry(tmp_path, monkeypatch):
+    from operator_e2e.requirement_e2e_support import HarnessFailure
+    from operator_e2e.test_requirement_schedule_e2e import _provenance_source
+
+    selected = "config/requirements/sql_registry.example.json"
+    secret = b'{"password":"secret","query":"SELECT confidential"}'
+    _manifest(tmp_path, {selected: secret})
+    monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", selected)
+
+    with pytest.raises(HarnessFailure, match="^release_provenance_invalid$") as raised:
+        _provenance_source(tmp_path, tmp_path / "REQUIREMENT_E2E_PROVENANCE.json")
+    assert selected not in str(raised.value)
+
+
+def test_valid_evidence_excludes_selected_registry_authority(tmp_path, monkeypatch):
+    selected = "config/requirements/sql_registry.example.json"
+    secret = '{"password":"registry-secret","query":"SELECT confidential"}'
+    registry = tmp_path / selected
+    registry.parent.mkdir(parents=True)
+    registry.write_text(secret)
+    monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", selected)
+
+    result = _verify(tmp_path, {}, monkeypatch, REQUIREMENT_SQL_REGISTRY_FILE=selected)
+    serialized = json.dumps(result)
+
+    assert selected not in serialized
+    assert hashlib.sha256(secret.encode()).hexdigest() not in serialized
+    assert secret not in serialized
+    assert "SELECT confidential" not in serialized
+    assert "registry-secret" not in serialized
+    assert str(registry.resolve()) not in serialized
+
+
 def test_empty_manual_synonyms_directory_disables_discovery(tmp_path):
     from shared.runtime_provenance import manual_synonym_files
     (tmp_path / "vercel.json").write_text("{}")

@@ -16,7 +16,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from shared.runtime_provenance import (
     PROVENANCE_REPOSITORY, PROVENANCE_SCHEMA_VERSION, RUNTIME_PATHS,
     UNEXPECTED_RUNTIME_INPUT, discover_release_runtime_inputs,
-    is_runtime_provenance_path, source_equivalence,
+    is_runtime_provenance_path, requirement_sql_registry_repository_path,
+    source_equivalence,
 )
 
 
@@ -29,13 +30,14 @@ def generate(repo: Path, reviewed_sha: str, output: Path) -> None:
     )
     files = []
     byte_mismatches = []
+    selected_registry = requirement_sql_registry_repository_path(repo)
     for record in raw.rstrip(b"\0").split(b"\0") if raw else []:
         header, encoded = record.split(b"\t", 1)
         _mode, kind, blob = header.decode("ascii").split()
         if kind != "blob":
             continue
         path = encoded.decode("utf-8")
-        if not is_runtime_provenance_path(path):
+        if path == selected_registry or not is_runtime_provenance_path(path):
             continue
         data = subprocess.check_output(["git", "-C", str(repo), "cat-file", "blob", blob])
         try:
