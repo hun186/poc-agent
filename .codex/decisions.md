@@ -1,5 +1,11 @@
 # Architecture and Engineering Decisions
 
+## 2026-09-20 Requirement SQL registry remains deployment authority
+
+- Keep `requirement_sql_registry_path()` as the single selector used by API, Schedule Worker, Handoff Worker, and deployment bootstrap, but exclude the selected registry from release-provenance membership and evidence.
+- The ignored/default or externally selected registry is privileged deployment-local configuration. Named reviewed queries and least-privilege database permissions remain its security boundary; do not publish its bytes, digest, resolved path, credentials, connection details, or query text.
+- Preserve an explicit empty `MANUAL_SYNONYMS_DIR` as the historical opt-out. Only absence selects `config/synonyms`; non-empty values resolve normally.
+
 ## 2026-09-16 Generated artifacts cannot acquire runtime provenance authority by directory location
 
 - Select the broad runtime-containing roots, then apply the shared `is_generated_non_runtime_path()` exclusion before hashing or accepting a manifest path. Do not weaken byte validation for selected runtime paths and do not special-case individual report filenames.

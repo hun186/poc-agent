@@ -71,13 +71,33 @@ def test_explicit_project_index_selector_requires_membership(tmp_path, monkeypat
                    **{selector: path})["identity_verified"]
 
 
-def test_selected_sql_registry_requires_membership(tmp_path, monkeypatch):
-    path = tmp_path / "config/requirements/custom.json"
-    path.parent.mkdir(parents=True); path.write_text("{}")
-    with pytest.raises(RuntimeError, match="unexpected_runtime_input"):
-        _verify(tmp_path, {}, monkeypatch, REQUIREMENT_SQL_REGISTRY_FILE=path)
-    assert _verify(tmp_path, {"config/requirements/custom.json": b"{}"}, monkeypatch,
-                   REQUIREMENT_SQL_REGISTRY_FILE=path)["identity_verified"]
+def test_ignored_deployment_sql_registry_is_not_release_provenance(tmp_path, monkeypatch):
+    path = tmp_path / "config/requirements/sql_registry.json"
+    path.parent.mkdir(parents=True)
+    secret = '{"password":"not-public","queries":{"private":"SELECT secret FROM private"}}'
+    path.write_text(secret)
+
+    result = _verify(tmp_path, {}, monkeypatch)
+
+    assert result["identity_verified"] is True
+    serialized = json.dumps(result)
+    assert secret not in serialized
+    assert hashlib.sha256(secret.encode()).hexdigest() not in serialized
+    assert str(path.resolve()) not in serialized
+    assert "SELECT secret FROM private" not in serialized
+    assert "not-public" not in serialized
+
+
+def test_external_sql_registry_is_deployment_local(tmp_path, monkeypatch):
+    path = tmp_path.parent / "private-registry.json"
+    path.write_text('{"password":"external-secret"}')
+
+    result = _verify(tmp_path, {}, monkeypatch, REQUIREMENT_SQL_REGISTRY_FILE=path)
+
+    assert result["identity_verified"] is True
+    serialized = json.dumps(result)
+    assert str(path.resolve()) not in serialized
+    assert "external-secret" not in serialized
 
 
 def test_selected_editor_form_requires_membership(tmp_path, monkeypatch):
@@ -88,7 +108,7 @@ def test_selected_editor_form_requires_membership(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("selector", ["MANUAL_SYNONYMS_DIR", "INDEXES_CONFIG",
-                                      "REQUIREMENT_SQL_REGISTRY_FILE", "SRA_EDITOR_FORM_CONFIG"])
+                                      "SRA_EDITOR_FORM_CONFIG"])
 def test_external_material_input_fails_closed(tmp_path, monkeypatch, selector):
     external = tmp_path.parent / ("external-dir" if selector == "MANUAL_SYNONYMS_DIR" else "external.json")
     if selector == "MANUAL_SYNONYMS_DIR":
@@ -112,6 +132,70 @@ def test_generator_rejects_untracked_auto_loaded_synonym(tmp_path):
     (repo / "config/synonyms/extra.json").write_text("{}")
     with pytest.raises(RuntimeError, match="unexpected_runtime_input"):
         generate(repo, reviewed, tmp_path / "out.json")
+
+
+@pytest.mark.parametrize("external", [False, True])
+def test_generator_allows_deployment_local_sql_registry(tmp_path, monkeypatch, external):
+    from tools.requirement_e2e_provenance import generate
+    repo = tmp_path / "repo"; repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    tracked = repo / "shared/runtime_provenance.py"
+    tracked.parent.mkdir(parents=True); tracked.write_text("# tracked\n")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, capture_output=True)
+    reviewed = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    registry = (tmp_path / "private-registry.json" if external
+                else repo / "config/requirements/sql_registry.json")
+    registry.parent.mkdir(parents=True, exist_ok=True); registry.write_text('{"password":"private"}')
+    if external:
+        monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", str(registry))
+    else:
+        monkeypatch.delenv("REQUIREMENT_SQL_REGISTRY_FILE", raising=False)
+    output = tmp_path / "out.json"
+
+    generate(repo, reviewed, output)
+
+    serialized = output.read_text()
+    assert "sql_registry.json" not in serialized
+    assert "private" not in serialized
+
+
+def test_empty_manual_synonyms_directory_disables_discovery(tmp_path):
+    from shared.runtime_provenance import manual_synonym_files
+    (tmp_path / "vercel.json").write_text("{}")
+    assert manual_synonym_files(tmp_path, {"MANUAL_SYNONYMS_DIR": ""}) == []
+
+
+def test_empty_manual_synonyms_directory_does_not_select_root_json(tmp_path, monkeypatch):
+    (tmp_path / "vercel.json").write_text("{}")
+    assert _verify(tmp_path, {}, monkeypatch, MANUAL_SYNONYMS_DIR="")["identity_verified"]
+
+
+def test_absent_manual_synonyms_directory_defaults_and_enforces_membership(tmp_path, monkeypatch):
+    (tmp_path / "config/synonyms").mkdir(parents=True)
+    (tmp_path / "config/synonyms/extra.json").write_text("{}")
+    with pytest.raises(RuntimeError, match="unexpected_runtime_input"):
+        _verify(tmp_path, {}, monkeypatch)
+
+
+def test_explicit_nonempty_manual_synonyms_directory_is_used(tmp_path):
+    from shared.runtime_provenance import manual_synonym_files
+    selected = tmp_path / "custom-synonyms"
+    selected.mkdir(); expected = selected / "one.JSON"; expected.write_text("{}")
+    assert manual_synonym_files(tmp_path, {"MANUAL_SYNONYMS_DIR": "custom-synonyms"}) == [expected]
+
+
+def test_all_requirement_entrypoints_share_sql_registry_selector():
+    import config.deployment_bootstrap as bootstrap
+    import requirement_scheduler.cli as scheduler_cli
+    import shared.runtime_provenance as policy
+    import sra_api.main as api_main
+
+    assert api_main.requirement_sql_registry_path is policy.requirement_sql_registry_path
+    assert scheduler_cli.requirement_sql_registry_path is policy.requirement_sql_registry_path
+    assert bootstrap.requirement_sql_registry_path is policy.requirement_sql_registry_path
 
 
 def test_generator_and_verifier_use_shared_discovery_function():

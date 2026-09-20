@@ -26,6 +26,15 @@ same resolution used by Excel-to-SQL; an explicit installed driver name is also 
 `REQUIREMENT_SQL_REGISTRY_FILE` selects the registry file and
 `REQUIREMENT_CONTROL_DB_CONNECTION` selects its named connection.
 
+The selected SQL registry is privileged deployment-local configuration, not a
+release-managed source-provenance input. Requirement E2E release provenance
+does not attest or expose the registry's bytes, digest, resolved path,
+credentials, connection details, or query text. The registry is an operator
+trust boundary: named reviewed queries and least-privilege database permissions
+remain the SQL security boundary. A stronger sanitized registry attestation may
+be considered separately in the future; deployments must not publish the
+private registry or place it in release provenance.
+
 Legacy `driver_env`, `server_env`, `database_env`, `trusted_connection_env`, `user_env`, and
 `password_env` keys remain supported for existing and secret-managed deployments. When a
 `*_env` key is present it is authoritative over the matching direct value; a missing referenced

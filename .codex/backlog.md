@@ -16,6 +16,7 @@
 - Consider Report Job retention, metrics, cancel/retry/webhook, shared queue/object storage, and HA/exactly-once strategy.
 - Continue structured retrieval/event-cluster improvements and reference-text backfill/content coverage work.
 - Consider stronger per-process worker loaded-module attestation only through a separately reviewed IPC design.
+- Consider stronger sanitized SQL-registry attestation only as a separately reviewed future design; do not expose the private deployment registry or add a manual expected-hash variable.
 
 ### Security, UI, and ingestion debt
 
