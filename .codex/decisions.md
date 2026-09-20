@@ -1,5 +1,10 @@
 # Architecture and Engineering Decisions
 
+## 2026-09-20 Deployment-owned Requirement registry classification
+
+- Requirement SQL registry selection is deployment-local authority. Generic/offline package verification must not infer it from the caller's environment; only deployment-side source evidence supplies the selected repository member for fail-closed manifest rejection.
+- Do not serialize the selected registry identity into provenance or runtime evidence. Cross-host acceptance remains bound by the canonical provenance fingerprint and the authenticated deployment determination.
+
 ## 2026-09-20 Requirement SQL registry remains deployment authority
 
 - Keep `requirement_sql_registry_path()` as the single selector used by API, Schedule Worker, Handoff Worker, and deployment bootstrap, but exclude the selected registry from release-provenance membership and evidence.

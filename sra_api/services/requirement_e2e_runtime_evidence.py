@@ -18,6 +18,7 @@ from shared.runtime_provenance import (
     is_project_module_name,
     load_provenance,
     provenance_fingerprint,
+    requirement_sql_registry_repository_path,
     verify_package_files,
 )
 
@@ -62,7 +63,13 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
         raise RuntimeError("release_provenance_missing")
     try:
         provenance = load_provenance(provenance_path)
-        verify_package_files(project_root, provenance)
+        # This is the deployment-side trust boundary: only this process has the
+        # authoritative Requirement registry selector. Keep its identity out of
+        # returned evidence and reject it before package bytes are read.
+        selected_registry = requirement_sql_registry_repository_path(project_root)
+        verify_package_files(
+            project_root, provenance, selected_registry=selected_registry,
+        )
     except ValueError as exc:
         category = str(exc)
         if category in {"active_runtime_source_mismatch", "unexpected_runtime_input"}:

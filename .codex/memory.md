@@ -11,6 +11,11 @@
 
 ## Recent Changes
 
+### 2026-09-20 Remote-operator Requirement registry authority correction
+
+- Generic package verification no longer derives the selected Requirement SQL registry from ambient process environment. Deployment evidence explicitly supplies the repository-relative selection from the Linux deployment environment, preserving fail-closed rejection before registry bytes are read while leaving remote operator preflight independent of workstation selector state.
+- Added regressions for absent and differing remote selectors, deployment rejection, sanitized bounded evidence, and remote failure propagation. The focused provenance/runtime-input/Harness suite passed 133 tests; targeted compilation and `git diff --check` passed. The live Requirement Golden Path was deliberately not run.
+
 ### 2026-09-20 Selected Requirement SQL registry provenance exclusion
 
 - Enforced `selected Requirement SQL registry ∩ release provenance authority = ∅` for tracked project-local registries as well as ignored/default and external registries. Generation excludes only the selected repository-relative member before reading or hashing it; package verification rejects any schema-v2 manifest that includes that selected member before reading its bytes.

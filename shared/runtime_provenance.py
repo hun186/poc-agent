@@ -252,10 +252,17 @@ def provenance_fingerprint(value: object) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def verify_package_files(root: Path, provenance: object) -> None:
-    """Require exact package-byte hashes; deployment verification never normalizes."""
+def verify_package_files(
+    root: Path, provenance: object, *, selected_registry: str | None = None,
+) -> None:
+    """Require exact package-byte hashes; deployment verification never normalizes.
+
+    ``selected_registry`` is deliberately explicit: only the deployment host is
+    authoritative for the Requirement SQL registry selection. Generic package
+    verification, including remote-operator preflight, must not infer that
+    deployment-local identity from its own process environment.
+    """
     value = validate_provenance(provenance)
-    selected_registry = requirement_sql_registry_repository_path(root)
     if selected_registry is not None and any(
         entry["path"] == selected_registry for entry in value["runtime_files"]
     ):
