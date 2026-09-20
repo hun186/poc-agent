@@ -235,6 +235,7 @@ def test_remote_provider_never_uses_report_job_word_and_missing_published_artifa
     [
         ("authentication_failed", "remote_evidence_authentication_failed"),
         ("authorization_failed", "remote_evidence_authorization_failed"),
+        ("release_provenance_invalid", "release_provenance_invalid"),
     ],
 )
 def test_remote_runtime_evidence_preserves_auth_failure_category(source, expected):

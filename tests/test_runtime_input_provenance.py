@@ -258,7 +258,7 @@ def test_package_verifier_rejects_selected_tracked_registry_before_reading(tmp_p
     # Removal proves rejection occurs before the selected registry bytes are read.
     (tmp_path / selected).unlink()
     with pytest.raises(ValueError, match="^release_provenance_invalid$") as raised:
-        verify_package_files(tmp_path, manifest)
+        verify_package_files(tmp_path, manifest, selected_registry=selected)
     assert selected not in str(raised.value)
 
 
@@ -276,18 +276,38 @@ def test_linux_evidence_rejects_manifest_with_selected_tracked_registry(tmp_path
     assert hashlib.sha256(secret).hexdigest() not in str(raised.value)
 
 
-def test_operator_preflight_rejects_manifest_with_selected_tracked_registry(tmp_path, monkeypatch):
-    from operator_e2e.requirement_e2e_support import HarnessFailure
+def test_operator_preflight_without_selector_does_not_invent_deployment_default(tmp_path, monkeypatch):
     from operator_e2e.test_requirement_schedule_e2e import _provenance_source
 
-    selected = "config/requirements/sql_registry.example.json"
-    secret = b'{"password":"secret","query":"SELECT confidential"}'
-    _manifest(tmp_path, {selected: secret})
-    monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", selected)
+    deployment_selected = "config/requirements/custom_registry.json"
+    non_selected_default = "config/requirements/sql_registry.json"
+    monkeypatch.delenv("REQUIREMENT_SQL_REGISTRY_FILE", raising=False)
+    _manifest(tmp_path, {non_selected_default: b"{}"})
 
-    with pytest.raises(HarnessFailure, match="^release_provenance_invalid$") as raised:
-        _provenance_source(tmp_path, tmp_path / "REQUIREMENT_E2E_PROVENANCE.json")
-    assert selected not in str(raised.value)
+    evidence = _provenance_source(
+        tmp_path, tmp_path / "REQUIREMENT_E2E_PROVENANCE.json",
+    )
+
+    assert evidence["identity_verified"]
+    assert any(entry["path"] == non_selected_default for entry in evidence["runtime_files"])
+    assert deployment_selected not in json.dumps(evidence)
+
+
+def test_operator_selector_does_not_classify_deployment_registry(tmp_path, monkeypatch):
+    from operator_e2e.test_requirement_schedule_e2e import _provenance_source
+
+    operator_selected = "config/requirements/registry-a.json"
+    deployment_selected = "config/requirements/registry-b.json"
+    monkeypatch.setenv("REQUIREMENT_SQL_REGISTRY_FILE", operator_selected)
+    _manifest(tmp_path, {operator_selected: b"{}"})
+
+    evidence = _provenance_source(
+        tmp_path, tmp_path / "REQUIREMENT_E2E_PROVENANCE.json",
+    )
+
+    assert evidence["identity_verified"]
+    assert any(entry["path"] == operator_selected for entry in evidence["runtime_files"])
+    assert deployment_selected not in json.dumps(evidence)
 
 
 def test_valid_evidence_excludes_selected_registry_authority(tmp_path, monkeypatch):
