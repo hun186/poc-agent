@@ -508,12 +508,86 @@ def test_entrypoint_contains_no_manual_run_or_worker_execution():
     assert "coordinator.run_once" not in source
 
 
-def test_tracked_xlsx_fixture_has_canonical_three_item_shape():
+def test_tracked_xlsx_fixture_mirrors_real_three_item_requirement_source():
     path = Path("operator_e2e/input/requirement_e2e_3items.xlsx")
-    book = load_workbook(path, read_only=True)
-    rows = list(book.active.iter_rows(values_only=True)); book.close()
-    assert rows[0] == ("external_item_id", "title", "prompt_content", "source_updated_at", "source_created_at", "expires_at")
+    source = Path("data/要項excel/requirement_e2e_three.xlsx")
+    assert path.read_bytes() == source.read_bytes()
+
+    book = load_workbook(path, read_only=True, data_only=True)
+    rows = list(book["工作表1"].iter_rows(values_only=True)); book.close()
+    assert rows[0] == (
+        "ITEMNO", "TITLE", "CONTENT ", "UPDT", "DeadlineDT",
+        "CreateApeno", "UpdateApeno", "CrtDT",
+    )
     assert len(rows[1:]) == 3
+    prompts = [str(row[2]) for row in rows[1:]]
+    assert "加薩" in prompts[0]
+    assert "臺灣海峽" in prompts[1] and "灰色地帶" in prompts[1]
+    assert "美中戰略競爭" in prompts[2]
+
+
+def test_canonical_profile_maps_production_content_column():
+    from operator_e2e.test_requirement_schedule_e2e import PROFILE_PATH
+
+    profile = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+    mapping = profile["mapping"]
+    assert profile["source_timezone"] == "Asia/Taipei"
+    assert mapping["external_item_id"]["source"] == "ITEMNO"
+    assert mapping["prompt_content"]["source"] == "CONTENT"
+    assert "CONTENT " in mapping["prompt_content"]["aliases"]
+
+
+def test_canonical_import_rejects_prompt_content_mapping_drift(tmp_path):
+    from operator_e2e.test_requirement_schedule_e2e import DEFAULT_EXCEL, Harness, _canonical_prompt_map
+
+    expected = _canonical_prompt_map(DEFAULT_EXCEL.resolve())
+    imported = False
+
+    class FakeApi:
+        def post(self, path, **_kwargs):
+            nonlocal imported
+            if "/preview?" in path:
+                return {
+                    "has_errors": False, "accepted_count": 3, "rejected_count": 0,
+                    "source_sha256": "source-sha",
+                }
+            if path.endswith("/import"):
+                imported = True
+                return {
+                    "status": "committed", "accepted_count": 3, "rejected_count": 0,
+                    "snapshot_id": "snapshot-real", "import_run_id": "import-real",
+                }
+            raise AssertionError(path)
+
+        def get(self, path, **_kwargs):
+            if path == "/v1/requirement-sets":
+                return {"items": ([{
+                    "source_id": "source-real", "requirement_set_id": "set-real",
+                    "active_snapshot_id": "snapshot-real",
+                }] if imported else [])}
+            if path == "/v1/requirement-snapshots/snapshot-real/items":
+                items = [
+                    {
+                        "requirement_id": f"req-{index}",
+                        "external_item_id": item_id,
+                        "prompt_content": prompt,
+                        "expires_at": None,
+                    }
+                    for index, (item_id, prompt) in enumerate(expected.items(), 1)
+                ]
+                items[0]["prompt_content"] += " drift"
+                return {"items": items}
+            raise AssertionError(path)
+
+    config = SimpleNamespace(output_dir=tmp_path, token="token", password=None)
+    harness = Harness(config, DEFAULT_EXCEL.resolve(), "run", result_document("run"))
+    harness.api = FakeApi()
+    with pytest.raises(HarnessFailure, match="prompt_content_mismatch") as failure:
+        harness.import_requirements(
+            {"source_id": "source-real"},
+            {"profile_version_id": "profile-v2"},
+        )
+    assert failure.value.stage == "REQUIREMENT_ITEMS"
 
 
 def test_config_failure_still_writes_safe_evidence(tmp_path, monkeypatch):
