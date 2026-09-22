@@ -103,7 +103,10 @@ class E2EConfig:
     exit_code_for_failure: ExitCode = ExitCode.PREFLIGHT
 
     @classmethod
-    def from_environment(cls, env: dict[str, str], mode: str = "local") -> "E2EConfig":
+    def from_environment(
+        cls, env: dict[str, str], mode: str = "local",
+        *, production_artifact_root: Path | str | None = None,
+    ) -> "E2EConfig":
         def required(name: str) -> str:
             value = (env.get(name) or "").strip()
             if not value:
@@ -126,7 +129,7 @@ class E2EConfig:
                 raise HarnessFailure("configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
             return value or None
         artifact_value = (env.get("SRA_E2E_REQUIREMENT_ARTIFACT_ROOT") or "").strip()
-        production_artifact_value = (env.get("REQUIREMENT_HANDOFF_OUTPUT_ROOT") or "").strip()
+        production_artifact_value = str(production_artifact_root or "").strip()
         artifact_root = None
         if mode == "local":
             selected_artifact_value = artifact_value or production_artifact_value
@@ -171,22 +174,21 @@ def load_e2e_environment(path: Path, process_env: dict[str, str]) -> dict[str, s
                 raise HarnessFailure("configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
             if value is not None: values[key] = value
     values.update({key: value for key, value in process_env.items() if key.startswith("SRA_E2E_")})
-    production_artifact_root = (process_env.get("REQUIREMENT_HANDOFF_OUTPUT_ROOT") or "").strip()
-    if production_artifact_root:
-        values["REQUIREMENT_HANDOFF_OUTPUT_ROOT"] = production_artifact_root
     return values
 
 
-def has_usable_requirement_process_configuration(process_env: dict[str, str], mode: str = "local") -> bool:
+def has_usable_requirement_process_configuration(
+    process_env: dict[str, str], mode: str = "local",
+    *, production_artifact_root: Path | str | None = None,
+) -> bool:
     """Return whether process variables alone can construct Requirement E2E config."""
     requirement_env = {
         key: value for key, value in process_env.items() if key.startswith("SRA_E2E_")
     }
-    production_artifact_root = (process_env.get("REQUIREMENT_HANDOFF_OUTPUT_ROOT") or "").strip()
-    if production_artifact_root:
-        requirement_env["REQUIREMENT_HANDOFF_OUTPUT_ROOT"] = production_artifact_root
     try:
-        E2EConfig.from_environment(requirement_env, mode)
+        E2EConfig.from_environment(
+            requirement_env, mode, production_artifact_root=production_artifact_root,
+        )
     except HarnessFailure:
         return False
     return True
