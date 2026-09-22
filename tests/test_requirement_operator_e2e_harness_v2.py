@@ -15,7 +15,14 @@ from operator_e2e.requirement_e2e_evidence import RemoteDeploymentEvidenceProvid
 from operator_e2e.requirement_e2e_support import (
     CANONICAL_SOURCE_SHA256, E2EConfig, HarnessFailure, validate_downloaded_artifact,
 )
-from operator_e2e.test_requirement_schedule_e2e import DEFAULT_EXCEL, Harness, parse_args
+from operator_e2e.test_requirement_schedule_e2e import (
+    DEFAULT_EXCEL,
+    PROFILE_PATH,
+    Harness,
+    parse_args,
+    read_requirement_prompt_identity,
+    validate_requirement_prompt_identity,
+)
 
 
 def _docx() -> bytes:
@@ -36,12 +43,52 @@ def test_cli_defaults_to_local_canonical_fixture_and_allows_overrides(tmp_path):
     assert hashlib.sha256(DEFAULT_EXCEL.read_bytes()).hexdigest() == CANONICAL_SOURCE_SHA256
 
 
+def test_canonical_fixture_is_real_three_item_requirement_source():
+    assert DEFAULT_EXCEL == Path("data/要項excel/requirement_e2e_three.xlsx").resolve()
+    assert PROFILE_PATH == Path(
+        "config/requirements/import_profile.taiwan-investment-security.v1.example.json"
+    ).resolve()
+    identities = read_requirement_prompt_identity(DEFAULT_EXCEL)
+    assert [item["external_item_id"] for item in identities] == [
+        "E12762845769", "E12762845770", "E12762845771",
+    ]
+    assert "加薩衝突" in identities[0]["prompt_content"]
+    assert "灰色地帶" in identities[1]["prompt_content"]
+    assert "美中戰略競爭" in identities[2]["prompt_content"]
+    assert all("Produce an evidence-based situation report" not in item["prompt_content"] for item in identities)
+
+
+def test_snapshot_prompt_identity_is_exact_and_fail_closed():
+    expected = (
+        {"external_item_id": "A", "prompt_content": "prompt one"},
+        {"external_item_id": "B", "prompt_content": "prompt two"},
+    )
+    validate_requirement_prompt_identity(
+        expected,
+        [
+            {"external_item_id": "A", "prompt_content": "prompt one"},
+            {"external_item_id": "B", "prompt_content": "prompt two"},
+        ],
+    )
+    with pytest.raises(HarnessFailure, match="requirement_prompt_identity_mismatch"):
+        validate_requirement_prompt_identity(
+            expected,
+            [
+                {"external_item_id": "A", "prompt_content": "prompt one"},
+                {"external_item_id": "B", "prompt_content": "prompt two "},
+            ],
+        )
+
+
 def test_remote_configuration_does_not_require_linux_artifact_root():
     config = E2EConfig.from_environment({
         "SRA_E2E_MODEL": "model", "SRA_E2E_EDITOR_TOKEN": "token",
     }, "remote")
     assert config.mode == "remote" and config.artifact_root is None
     assert config.expected_runtime_sha is None
+    assert config.profile_name == "SRA Requirement Operator E2E Profile v2"
+    assert config.source_name == "SRA Requirement Operator E2E Source v2"
+    assert config.schedule_name == "SRA Requirement Operator E2E Schedule v2"
 
 
 @pytest.mark.parametrize("role", ["schedule", "handoff"])
