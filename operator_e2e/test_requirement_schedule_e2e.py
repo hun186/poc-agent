@@ -77,15 +77,57 @@ class Api:
 
 
 class Harness:
+    PROGRESS_HEARTBEAT_SECONDS = 15
+
     def __init__(self, config: E2EConfig, excel: Path, run_id: str, result: dict[str, Any]):
         self.config, self.excel, self.run_id, self.result = config, excel, run_id, result
         self.api = Api(config); self.enabled_schedule_id: str | None = None
         self.output = config.output_dir / run_id; self.known_secrets = [x for x in (config.token, config.password) if x]
         self.evidence_provider = None
 
+    def log(self, event: str, **fields):
+        """Emit one redacted, deterministic operator progress record."""
+        safe = redact(fields, self.known_secrets)
+        parts = [f"[E2E {datetime.now(timezone.utc):%H:%M:%S}]", event]
+        for key in sorted(safe):
+            value = safe[key]
+            if isinstance(value, (dict, list, tuple)):
+                value = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+            parts.append(f"{key}={value}")
+        print(" ".join(parts), flush=True)
+
     def pass_stage(self, name: str, **evidence):
         stage = next(item for item in self.result["stages"] if item["name"] == name)
-        stage.update(status=StageStatus.PASS, evidence=redact(evidence, self.known_secrets))
+        safe_evidence = redact(evidence, self.known_secrets)
+        stage.update(status=StageStatus.PASS, evidence=safe_evidence)
+        self.log(f"PASS {name}", **safe_evidence)
+
+    @staticmethod
+    def _progress_snapshot(batch):
+        items = [
+            {key: item.get(key) for key in (
+                "run_item_id", "requirement_id", "remote_job_id",
+                "remote_job_state", "execution_state",
+            )}
+            for item in batch.get("items", []) if item.get("selection_status") == "selected"
+        ]
+        items.sort(key=lambda item: str(item.get("run_item_id") or ""))
+        completed = sum(
+            item["remote_job_state"] == "completed" and item["execution_state"] == "completed"
+            for item in items
+        )
+        summary = {
+            "batch_state": batch.get("state"), "success": batch.get("success_count"),
+            "failure": batch.get("failure_count"), "completed": f"{completed}/{len(items)}",
+        }
+        signature = (tuple(summary.values()), tuple(tuple(item.values()) for item in items))
+        return summary, items, signature
+
+    def _log_progress_snapshot(self, event: str, batch, **fields):
+        summary, items, signature = self._progress_snapshot(batch)
+        self.log(event, **summary, **fields)
+        for item in items: self.log("ITEM", **item)
+        return signature
 
     def fail(self, category: str, stage: str, exit_code=ExitCode.FUNCTIONAL):
         raise HarnessFailure(category, stage=stage, exit_code=exit_code)
@@ -252,6 +294,7 @@ class Harness:
         if not now < initial <= now + timedelta(seconds=self.config.allowed_anchor_window_seconds): self.fail("next_run_at_out_of_window", "SCHEDULE_ENABLE")
         self.pass_stage("SCHEDULE_ENABLE", next_run_at=initial.isoformat())
         deadline = max(time.monotonic() + self.config.auto_claim_timeout_seconds, time.monotonic() + (initial-now).total_seconds() + 90)
+        self.log("WAIT AUTO_CLAIM", schedule_id=sid, schedule_version_id=version["schedule_version_id"], scheduled_for=initial.isoformat())
         batch = None
         while time.monotonic() < deadline:
             listed = self.api.get(f"/v1/requirement-schedules/{sid}/runs?limit=100")["items"]
@@ -261,6 +304,7 @@ class Harness:
                 if str(exc) != "automatic_claim_timeout": raise
             time.sleep(2)
         if batch is None: self.fail("automatic_claim_timeout", "AUTO_CLAIM")
+        self.log("CLAIMED", batch_run_id=batch["batch_run_id"])
         detail = self.api.get(f"/v1/requirement-schedules/{sid}/runs/{batch['batch_run_id']}")
         selected = [item for item in detail["items"] if item.get("selection_status") == "selected"]
         if len(selected) != 3 or {item.get("requirement_id") for item in selected} != expected_requirements: self.fail("item_count_mismatch", "RUN_SELECTION")
@@ -281,23 +325,46 @@ class Harness:
         sid, bid = batch.get("schedule_id"), batch["batch_run_id"]
         if not sid: self.fail("automatic_claim_identity_mismatch", "RUN_IDENTITY")
         handoff_deadline = time.monotonic() + self.config.handoff_timeout_seconds
+        previous_dispatched = None
         while time.monotonic() < handoff_deadline:
             batch = self.api.get(f"/v1/requirement-schedules/{sid}/runs/{bid}")
             failure = terminal_failure(batch)
             if failure: self.fail(failure, "REMOTE_EXECUTION")
             selected = [x for x in batch["items"] if x.get("selection_status") == "selected"]
+            dispatched = sum(bool(x.get("remote_job_id") and x.get("dispatched_at")) for x in selected)
+            if dispatched != previous_dispatched:
+                self.log("WAIT HANDOFF" if dispatched == 0 else "HANDOFF", dispatched=f"{dispatched}/3")
+                for item in selected:
+                    if item.get("remote_job_id"):
+                        self.log("ITEM", **{key: item.get(key) for key in (
+                            "run_item_id", "requirement_id", "remote_job_id", "remote_job_state", "execution_state",
+                        )})
+                previous_dispatched = dispatched
             if len(selected) == 3 and all(x.get("remote_job_id") and x.get("dispatched_at") for x in selected): break
             time.sleep(2)
         else: self.fail("handoff_timeout", "HANDOFF")
         validate_remote_items(batch["items"]); self.pass_stage("HANDOFF"); self.pass_stage("REPORT_JOBS")
-        deadline = time.monotonic() + self.config.remote_timeout_seconds
+        started = time.monotonic(); deadline = started + self.config.remote_timeout_seconds
+        last_signature = None; last_log_at = float("-inf")
+        self.log("WAIT REMOTE_EXECUTION", batch_run_id=bid, timeout_seconds=self.config.remote_timeout_seconds)
         while time.monotonic() < deadline:
             batch = self.api.get(f"/v1/requirement-schedules/{sid}/runs/{bid}")
+            now = time.monotonic()
+            summary, _items, signature = self._progress_snapshot(batch)
+            elapsed = max(0, int(now - started)); remaining = max(0, int(deadline - now))
+            if signature != last_signature:
+                self._log_progress_snapshot("REMOTE_EXECUTION", batch, elapsed_seconds=elapsed, remaining_seconds=remaining)
+                last_signature, last_log_at = signature, now
+            elif now - last_log_at >= self.PROGRESS_HEARTBEAT_SECONDS:
+                self.log("REMOTE_EXECUTION", heartbeat=True, completed=summary["completed"], elapsed_seconds=elapsed, remaining_seconds=remaining)
+                last_log_at = now
             failure = terminal_failure(batch)
             if failure: self.fail(failure, "REMOTE_EXECUTION")
             if all(x.get("remote_job_state") == "completed" and x.get("execution_state") == "completed" for x in batch["items"] if x.get("selection_status") == "selected") and batch.get("state") == "completed": break
             time.sleep(3)
-        else: self.fail("remote_execution_timeout", "REMOTE_EXECUTION")
+        else:
+            self._log_progress_snapshot("TIMEOUT REMOTE_EXECUTION", batch, timeout_seconds=self.config.remote_timeout_seconds)
+            self.fail("remote_execution_timeout", "REMOTE_EXECUTION")
         validate_terminal(batch)
         for stage in ("REMOTE_EXECUTION", "ARTIFACT_RECONCILIATION", "RUN_ITEMS_TERMINAL", "BATCH_TERMINAL"): self.pass_stage(stage)
         return batch
@@ -452,9 +519,8 @@ def main(argv=None) -> int:
     result["finished_at"] = datetime.now(timezone.utc).isoformat(); result["duration_seconds"] = round(time.monotonic() - started, 3)
     try:
         known_secrets = harness.known_secrets if harness else []
-        if harness: harness.pass_stage("FINAL_EVIDENCE")
-        else:
-            next(item for item in result["stages"] if item["name"] == "FINAL_EVIDENCE")["status"] = StageStatus.PASS
+        final_evidence_stage = next(item for item in result["stages"] if item["name"] == "FINAL_EVIDENCE")
+        final_evidence_stage.update(status=StageStatus.PASS, evidence={})
         evidence_output.mkdir(parents=True, exist_ok=False)
         (evidence_output / "artifacts").mkdir()
         safe = redact(result, known_secrets)
@@ -463,6 +529,7 @@ def main(argv=None) -> int:
         summary = f"REQUIREMENT_E2E = {result['overall_status']}\nACCEPTANCE_MODE = {args.mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
         if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
         atomic_write_text(evidence_output / "summary.txt", summary)
+        if harness: harness.log("PASS FINAL_EVIDENCE")
     except FileExistsError:
         # Artifact verification may already have created this invocation's unique
         # directory; only the expected directory itself may pre-exist.
@@ -474,6 +541,7 @@ def main(argv=None) -> int:
             summary = f"REQUIREMENT_E2E = {result['overall_status']}\nACCEPTANCE_MODE = {args.mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
             if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
             atomic_write_text(evidence_output / "summary.txt", summary)
+            if harness: harness.log("PASS FINAL_EVIDENCE")
         except Exception:
             exit_code = ExitCode.INTERNAL
             result.update(overall_status="FAIL", exit_code=4, failed_stage="FINAL_EVIDENCE", failure_category="evidence_write_failed")
