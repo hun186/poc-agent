@@ -42,6 +42,9 @@ def test_remote_configuration_does_not_require_linux_artifact_root():
     }, "remote")
     assert config.mode == "remote" and config.artifact_root is None
     assert config.expected_runtime_sha is None
+    assert config.profile_name == "SRA Requirement Operator E2E Profile v2"
+    assert config.source_name == "SRA Requirement Operator E2E Source v2"
+    assert config.schedule_name == "SRA Requirement Operator E2E Schedule v2"
 
 
 @pytest.mark.parametrize("role", ["schedule", "handoff"])
