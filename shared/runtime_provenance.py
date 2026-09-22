@@ -58,6 +58,7 @@ EOL_EQUIVALENT_EXTENSIONS = frozenset({
     ".toml", ".txt", ".yaml", ".yml",
 })
 EOL_EQUIVALENT_FILENAMES = frozenset({"requirements.txt"})
+EOL_EQUIVALENT_NAME_SUFFIXES = (".env.example",)
 
 
 def _resolve_selector_path(root: Path, value: str | Path) -> Path:
@@ -193,17 +194,28 @@ def is_runtime_provenance_path(path: str) -> bool:
 def source_equivalence(reviewed: bytes, candidate: bytes, path: str) -> str | None:
     """Return the sole accepted source representation, or ``None`` on drift.
 
-    Exact bytes always pass. Eligible text passes only when an LF-only reviewed
-    blob becomes the candidate by replacing every LF byte with CRLF. No decode,
-    whitespace handling, BOM handling, or final-newline special case occurs.
+    Exact bytes always pass. For explicitly eligible text paths, candidate
+    worktree bytes may contain LF, CRLF, or a mixture of both only when CRLF->LF
+    normalization reproduces the reviewed Git blob exactly. Bare CR, BOM,
+    whitespace/content, and final-newline differences remain byte-significant.
     """
     if reviewed == candidate:
         return "git_blob_exact"
     value = PurePosixPath(path)
-    eligible = value.suffix.lower() in EOL_EQUIVALENT_EXTENSIONS or value.name in EOL_EQUIVALENT_FILENAMES
-    if eligible and b"\n" in reviewed and b"\r" not in reviewed:
-        if candidate == reviewed.replace(b"\n", b"\r\n"):
-            return "git_blob_lf_to_worktree_crlf"
+    eligible = (
+        value.suffix.lower() in EOL_EQUIVALENT_EXTENSIONS
+        or value.name in EOL_EQUIVALENT_FILENAMES
+        or value.name.endswith(EOL_EQUIVALENT_NAME_SUFFIXES)
+    )
+    if not eligible:
+        return None
+    normalized = candidate.replace(b"\r\n", b"\n")
+    if b"\r" in normalized:
+        return None
+    if normalized == reviewed:
+        # Preserve the existing representation label for compatibility. It now
+        # also covers mixed LF/CRLF worktrees accepted by Git text normalization.
+        return "git_blob_lf_to_worktree_crlf"
     return None
 
 
