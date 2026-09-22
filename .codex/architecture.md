@@ -25,6 +25,7 @@
 
 - Each production coordinator work cycle owns one non-daemon heartbeat thread that renews the same owner/token/fencing generation at the configured heartbeat interval while authoritative work is active. The synchronized in-memory proof may advance only by successful renewal.
 - Heartbeat loss invalidates that proof; SQL store mutations remain protected by `_prove_lease`, and coordinator stage boundaries reject missing or changed authority. Exact lease contention/loss returns to bounded acquisition polling, while all other failures remain fatal. Shutdown stops and joins the heartbeat before releasing a valid current lease.
+- Joined work/heartbeat errors use fatal-first deterministic precedence, so a recoverable lease error cannot mask an invariant failure. Stop requests are also checked after reconciliation and prepare, preventing shutdown from starting a new prepare or submit stage.
 
 ### 2026-09-20 Deployment registry and empty-synonym correction
 

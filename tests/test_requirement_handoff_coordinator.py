@@ -232,6 +232,82 @@ def test_unexpected_invariant_error_still_escapes():
     assert store.events == ["initialize", "acquire", "release"]
 
 
+def test_fatal_work_error_precedes_recoverable_heartbeat_loss():
+    store = Store()
+    work_started = threading.Event()
+    heartbeat_failed = threading.Event()
+
+    def renew(*_args):
+        assert work_started.wait(0.5)
+        heartbeat_failed.set()
+        raise RuntimeError("lease_lost")
+
+    store.renew_lease = renew
+
+    class FatallyBrokenReconciler:
+        def reconcile_batch(self, *_args):
+            work_started.set()
+            assert heartbeat_failed.wait(0.5)
+            raise ValueError("persisted_invariant_corrupt")
+
+    subject = coordinator(
+        store, FatallyBrokenReconciler(), heartbeat_interval=0.001
+    )
+    subject._replace_lease(store.proof)
+    with pytest.raises(ValueError, match="persisted_invariant_corrupt"):
+        subject._run_with_heartbeat(store.proof, threading.Event())
+
+
+def test_fatal_heartbeat_error_precedes_recoverable_work_error():
+    store = Store()
+    work_started = threading.Event()
+    heartbeat_failed = threading.Event()
+
+    def renew(*_args):
+        assert work_started.wait(0.5)
+        heartbeat_failed.set()
+        raise ValueError("heartbeat_persistence_corrupt")
+
+    store.renew_lease = renew
+
+    class LeaseLosingReconciler:
+        def reconcile_batch(self, *_args):
+            work_started.set()
+            assert heartbeat_failed.wait(0.5)
+            raise RuntimeError("lease_lost")
+
+    subject = coordinator(store, LeaseLosingReconciler(), heartbeat_interval=0.001)
+    subject._replace_lease(store.proof)
+    with pytest.raises(ValueError, match="heartbeat_persistence_corrupt"):
+        subject._run_with_heartbeat(store.proof, threading.Event())
+
+
+def test_stop_during_reconciliation_does_not_start_prepare_or_submit():
+    store = Store()
+    stop = threading.Event()
+
+    class StoppingReconciler:
+        def reconcile_batch(self, *_args):
+            store.events.append("reconcile")
+            stop.set()
+            return ReconcileResult(1, False)
+
+    class ForbiddenService(Service):
+        def prepare_next(self, *_args):
+            pytest.fail("prepare must not start after shutdown is requested")
+
+        def submit_prepared(self, *_args):
+            pytest.fail("submit must not start after shutdown is requested")
+
+    subject = coordinator(store, StoppingReconciler(), ForbiddenService(store))
+    subject.run(stop)
+    assert store.events == ["initialize", "acquire", "reconcile", "release"]
+    assert not any(
+        thread.name == "requirement-handoff-lease-heartbeat"
+        for thread in threading.enumerate()
+    )
+
+
 def test_sigterm_stops_active_heartbeat_without_orphan_or_late_renewal(monkeypatch):
     from requirement_scheduler import cli
 

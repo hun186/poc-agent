@@ -17,6 +17,16 @@ def _is_recoverable_coordination_error(exc: BaseException) -> bool:
     )
 
 
+def _select_cycle_error(
+    work_error: BaseException | None, heartbeat_error: BaseException | None
+) -> BaseException | None:
+    """Prefer fatal errors, then preserve deterministic work-before-heartbeat order."""
+    for error in (work_error, heartbeat_error):
+        if error is not None and not _is_recoverable_coordination_error(error):
+            return error
+    return work_error or heartbeat_error
+
+
 class RequirementHandoffCoordinator:
     def __init__(
         self,
@@ -76,15 +86,20 @@ class RequirementHandoffCoordinator:
         if current is None or self._authority_identity(current) != self._authority_identity(lease):
             raise RuntimeError("lease_lost")
 
-    def _do_authoritative_work(self, lease, authority_check=None):
+    def _do_authoritative_work(self, lease, authority_check=None, stop_requested=None):
         authority_check = authority_check or (lambda: self._assert_current_authority(lease))
+        stop_requested = stop_requested or (lambda: False)
         authority_check()
         result = self.reconciler.reconcile_batch(lease, self.config.batch_size)
         authority_check()
+        if stop_requested():
+            return result
         if result.remaining:
             return result
         prepared = self.service.prepare_next(lease)
         authority_check()
+        if stop_requested():
+            return result
         if prepared is not None:
             self.service.submit_prepared(prepared, lease)
             authority_check()
@@ -129,16 +144,19 @@ class RequirementHandoffCoordinator:
                     raise heartbeat_error[0]
                 self._assert_current_authority(lease)
 
-            result = self._do_authoritative_work(lease, authority_check)
+            result = self._do_authoritative_work(
+                lease, authority_check, stop_event.is_set
+            )
         except BaseException as exc:
             work_error = exc
         finally:
             heartbeat_stop.set()
             thread.join()
-        if heartbeat_error:
-            raise heartbeat_error[0]
-        if work_error is not None:
-            raise work_error
+        cycle_error = _select_cycle_error(
+            work_error, heartbeat_error[0] if heartbeat_error else None
+        )
+        if cycle_error is not None:
+            raise cycle_error
         return result
 
     def run(self, stop_event: threading.Event) -> None:

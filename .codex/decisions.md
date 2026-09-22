@@ -5,6 +5,7 @@
 - Use a short-lived, joined heartbeat thread around each production Handoff authoritative-work cycle so blocking remote I/O can coexist with SQL lease renewal. Do not lengthen the lease, renew inside `_prove_lease`, or treat expiration as valid.
 - Synchronize the current `LeaseProof`, preserve owner/token/fencing-generation identity across renewal, and recheck authority between coordinator stages. Store-level `_prove_lease` remains the final race-safe boundary for mutations occurring inside a stage.
 - Classify only exact `RuntimeError("lease_lost")` and `RuntimeError("lease_unavailable")` as recoverable coordination states. They clear in-memory authority and retry after the bounded poll interval; programming, schema, semantic, and other invariant failures continue to terminate visibly.
+- When work and heartbeat both fail, select any non-recoverable error before any recoverable lease condition; use work-before-heartbeat ordering within the same severity. At stop-aware stage boundaries, finish the already-started call but do not begin prepare or submit after shutdown is requested.
 
 ## 2026-09-20 Deployment-owned Requirement registry classification
 
