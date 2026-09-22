@@ -292,6 +292,7 @@ def test_source_equivalence_accepts_git_text_eol_variants(candidate, expected):
     [
         b"alpha\rbeta\n",
         b"alpha\ngamma\n",
+        b"alpha \nbeta\n",
         b"alpha\nbeta",
         b"\xef\xbb\xbfalpha\nbeta\n",
     ],
