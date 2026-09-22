@@ -82,6 +82,15 @@ def _read_state(path: Path) -> dict[str, str]:
         raise _fail("state_file_corrupt") from exc
 
 
+def requirement_handoff_output_root(project_root: Path) -> Path:
+    """Read the canonical production Handoff artifact root from protected runtime state."""
+    state_dir = Path(os.getenv("SRA_DEPLOYMENT_STATE_DIR", str(project_root / ".sra_runtime")))
+    if not state_dir.is_absolute():
+        state_dir = project_root / state_dir
+    values = _read_state(state_dir / STATE_FILENAME)
+    return Path(values["REQUIREMENT_HANDOFF_OUTPUT_ROOT"])
+
+
 def _write_state(path: Path, values: dict[str, str]) -> None:
     if any("\n" in value or "\r" in value or "\0" in value for value in values.values()):
         raise _fail("state_value_invalid")
