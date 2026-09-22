@@ -272,6 +272,93 @@ def test_provenance_generator_remains_directly_executable():
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize(
+    ("candidate", "expected"),
+    [
+        (b"alpha\nbeta\n", "git_blob_exact"),
+        (b"alpha\r\nbeta\r\n", "git_blob_lf_to_worktree_crlf"),
+        (b"alpha\r\nbeta\n", "git_blob_lf_to_worktree_crlf"),
+    ],
+)
+def test_source_equivalence_accepts_git_text_eol_variants(candidate, expected):
+    from shared.runtime_provenance import source_equivalence
+
+    reviewed = b"alpha\nbeta\n"
+    assert source_equivalence(reviewed, candidate, "sra_api/main.py") == expected
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        b"alpha\rbeta\n",
+        b"alpha\ngamma\n",
+        b"alpha\nbeta",
+        b"\xef\xbb\xbfalpha\nbeta\n",
+    ],
+)
+def test_source_equivalence_rejects_non_eol_text_drift(candidate):
+    from shared.runtime_provenance import source_equivalence
+
+    reviewed = b"alpha\nbeta\n"
+    assert source_equivalence(reviewed, candidate, "sra_api/main.py") is None
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "operator_e2e/e2e.env.example",
+        "sra_api/main.py",
+        "config/editor_form.default.json",
+    ],
+)
+def test_source_equivalence_accepts_mixed_eol_for_eligible_text_paths(path):
+    from shared.runtime_provenance import source_equivalence
+
+    reviewed = b"alpha\nbeta\ngamma\n"
+    candidate = b"alpha\r\nbeta\ngamma\r\n"
+    assert (
+        source_equivalence(reviewed, candidate, path)
+        == "git_blob_lf_to_worktree_crlf"
+    )
+
+
+def test_source_equivalence_unknown_extension_remains_byte_exact():
+    from shared.runtime_provenance import source_equivalence
+
+    reviewed = b"\x00alpha\nbeta\xff\n"
+    assert source_equivalence(reviewed, reviewed, "operator_e2e/input.bin") == "git_blob_exact"
+    assert (
+        source_equivalence(
+            reviewed,
+            b"\x00alpha\r\nbeta\xff\r\n",
+            "operator_e2e/input.bin",
+        )
+        is None
+    )
+
+
+def test_generator_accepts_mixed_eol_in_e2e_env_example(tmp_path):
+    from tools.requirement_e2e_provenance import generate
+
+    repo, _reviewed = _repo(tmp_path)
+    env_example = repo / "operator_e2e" / "e2e.env.example"
+    env_example.write_bytes(b"ONE=1\nTWO=2\nTHREE=3\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "env example")
+    reviewed = _git(repo, "rev-parse", "HEAD")
+    env_example.write_bytes(b"ONE=1\r\nTWO=2\nTHREE=3\r\n")
+
+    output = tmp_path / "provenance.json"
+    generate(repo, reviewed, output)
+
+    entry = next(
+        item
+        for item in json.loads(output.read_text())["runtime_files"]
+        if item["path"] == "operator_e2e/e2e.env.example"
+    )
+    assert entry["sha256"] == hashlib.sha256(env_example.read_bytes()).hexdigest()
+
+
 def test_generator_accepts_crlf_text_and_hashes_exact_package_bytes(tmp_path):
     from tools.requirement_e2e_provenance import generate
 
