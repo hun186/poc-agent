@@ -18,6 +18,8 @@
 - Focused lease/coordinator/reconciliation tests passed 25 tests. The broader Handoff, Schedule Worker, and launcher regression passed 178 tests. Dependency installation confirmed all requirements present, while the pip upgrade index check repeated the known proxy HTTP 403 warning.
 - PR #267 review correction gives every non-recoverable work or heartbeat error precedence over recoverable coordination errors, with deterministic work-before-heartbeat ordering when both are fatal. A stop requested during reconciliation or prepare now prevents the next prepare/submit stage from starting.
 - The corrected focused suite passed 28 tests, both mixed-error concurrency regressions passed ten repeated runs, and the broader Handoff/Schedule/launcher suite passed 181 tests.
+- PR #267 shutdown-lifecycle correction separates the process stop request from the heartbeat stop boundary: SIGTERM/SIGINT prevents the next authoritative stage or cycle, but heartbeat renewal continues until the already-started reconciliation/prepare/submit returns and `_run_with_heartbeat()` enters cleanup.
+- Stop-during-long-reconciliation and stop-during-long-prepare regressions each passed ten repeated runs; the corrected focused suite passed 31 tests and the broader Handoff/Schedule/launcher suite passed 184 tests.
 
 ### 2026-09-20 Remote-operator Requirement registry authority correction
 

@@ -6,6 +6,7 @@
 - Synchronize the current `LeaseProof`, preserve owner/token/fencing-generation identity across renewal, and recheck authority between coordinator stages. Store-level `_prove_lease` remains the final race-safe boundary for mutations occurring inside a stage.
 - Classify only exact `RuntimeError("lease_lost")` and `RuntimeError("lease_unavailable")` as recoverable coordination states. They clear in-memory authority and retry after the bounded poll interval; programming, schema, semantic, and other invariant failures continue to terminate visibly.
 - When work and heartbeat both fail, select any non-recoverable error before any recoverable lease condition; use work-before-heartbeat ordering within the same severity. At stop-aware stage boundaries, finish the already-started call but do not begin prepare or submit after shutdown is requested.
+- Do not use the process `stop_event` to terminate lease renewal. Continue heartbeats until current authoritative work reaches `_run_with_heartbeat()` cleanup; use `heartbeat_stop` as the sole normal heartbeat termination signal so graceful shutdown cannot expire authority underneath an in-flight call.
 
 ## 2026-09-20 Deployment-owned Requirement registry classification
 

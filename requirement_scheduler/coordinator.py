@@ -115,8 +115,6 @@ class RequirementHandoffCoordinator:
 
         def heartbeat() -> None:
             while not heartbeat_stop.wait(self.config.heartbeat_interval):
-                if stop_event.is_set():
-                    return
                 current = self._current_lease()
                 if current is None:
                     return

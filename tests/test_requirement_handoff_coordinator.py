@@ -88,6 +88,26 @@ def test_reconciliation_precedes_new_prepare_and_renewal_precedes_mutation():
     ]
 
 
+def test_normal_acquire_renew_reconcile_prepare_submit_order_is_preserved():
+    store = Store()
+
+    class SubmittingService(Service):
+        def prepare_next(self, *_args):
+            self.store.events.append("prepare")
+            return object()
+
+        def submit_prepared(self, *_args):
+            self.store.events.append("submit")
+
+    subject = coordinator(store, service=SubmittingService(store))
+    subject.run_once()
+    subject.run_once()
+    assert store.events == [
+        "acquire", "reconcile", "prepare", "submit",
+        "renew", "reconcile", "prepare", "submit",
+    ]
+
+
 def test_backlog_blocks_new_prepare():
     store = Store()
     subject = coordinator(store, Reconciler(store, True))
@@ -302,6 +322,101 @@ def test_stop_during_reconciliation_does_not_start_prepare_or_submit():
     subject = coordinator(store, StoppingReconciler(), ForbiddenService(store))
     subject.run(stop)
     assert store.events == ["initialize", "acquire", "reconcile", "release"]
+    assert not any(
+        thread.name == "requirement-handoff-lease-heartbeat"
+        for thread in threading.enumerate()
+    )
+
+
+def test_stop_during_long_reconciliation_keeps_heartbeat_until_cycle_finishes():
+    store = Store()
+    stop = threading.Event()
+    renewals = threading.Condition()
+    renewal_count = 0
+    original_renew = store.renew_lease
+
+    def renew(*args):
+        nonlocal renewal_count
+        result = original_renew(*args)
+        with renewals:
+            renewal_count += 1
+            renewals.notify_all()
+        return result
+
+    store.renew_lease = renew
+
+    class LongStoppingReconciler:
+        def reconcile_batch(self, *_args):
+            stop.set()
+            with renewals:
+                assert renewals.wait_for(lambda: renewal_count >= 8, timeout=0.5)
+            store.events.append("reconcile_finished")
+            return ReconcileResult(1, False)
+
+    class ForbiddenService(Service):
+        def prepare_next(self, *_args):
+            pytest.fail("prepare must not start after shutdown is requested")
+
+        def submit_prepared(self, *_args):
+            pytest.fail("submit must not start after shutdown is requested")
+
+    subject = coordinator(
+        store,
+        LongStoppingReconciler(),
+        ForbiddenService(store),
+        lease_duration=0.03,
+        heartbeat_interval=0.004,
+    )
+    subject.run(stop)
+    assert renewal_count >= 8
+    assert store.events[-2:] == ["reconcile_finished", "release"]
+    assert not any(
+        thread.name == "requirement-handoff-lease-heartbeat"
+        for thread in threading.enumerate()
+    )
+
+
+def test_stop_during_long_prepare_keeps_heartbeat_and_does_not_submit():
+    store = Store()
+    stop = threading.Event()
+    renewals = threading.Condition()
+    renewal_count = 0
+    original_renew = store.renew_lease
+
+    def renew(*args):
+        nonlocal renewal_count
+        result = original_renew(*args)
+        with renewals:
+            renewal_count += 1
+            renewals.notify_all()
+        return result
+
+    store.renew_lease = renew
+
+    class LongPrepareService:
+        def prepare_next(self, *_args):
+            with renewals:
+                renewals_before_stop = renewal_count
+                stop.set()
+                assert renewals.wait_for(
+                    lambda: renewal_count >= renewals_before_stop + 8, timeout=0.5
+                )
+            store.events.append("prepare_finished")
+            return object()
+
+        def submit_prepared(self, *_args):
+            pytest.fail("submit must not start after shutdown is requested")
+
+    subject = coordinator(
+        store,
+        Reconciler(store),
+        LongPrepareService(),
+        lease_duration=0.03,
+        heartbeat_interval=0.004,
+    )
+    subject.run(stop)
+    assert renewal_count >= 8
+    assert store.events[-2:] == ["prepare_finished", "release"]
     assert not any(
         thread.name == "requirement-handoff-lease-heartbeat"
         for thread in threading.enumerate()
