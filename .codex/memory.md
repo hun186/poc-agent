@@ -11,6 +11,16 @@
 
 ## Recent Changes
 
+### 2026-09-22 Requirement Handoff lease-heartbeat corrective
+
+- The production Handoff coordinator now renews its SQL-authoritative lease at `heartbeat_interval` while reconciliation, remote inspection/submission, artifact work, and other authoritative work are in flight. Lease proof updates are synchronized, and authority is rechecked between coordinator stages without weakening store fencing.
+- Exact `lease_lost` and `lease_unavailable` runtime conditions invalidate in-memory authority and return the worker to a bounded poll/acquire cycle. Unexpected and invariant failures still escape; shutdown stops and joins the heartbeat before releasing a still-current lease.
+- Focused lease/coordinator/reconciliation tests passed 25 tests. The broader Handoff, Schedule Worker, and launcher regression passed 178 tests. Dependency installation confirmed all requirements present, while the pip upgrade index check repeated the known proxy HTTP 403 warning.
+- PR #267 review correction gives every non-recoverable work or heartbeat error precedence over recoverable coordination errors, with deterministic work-before-heartbeat ordering when both are fatal. A stop requested during reconciliation or prepare now prevents the next prepare/submit stage from starting.
+- The corrected focused suite passed 28 tests, both mixed-error concurrency regressions passed ten repeated runs, and the broader Handoff/Schedule/launcher suite passed 181 tests.
+- PR #267 shutdown-lifecycle correction separates the process stop request from the heartbeat stop boundary: SIGTERM/SIGINT prevents the next authoritative stage or cycle, but heartbeat renewal continues until the already-started reconciliation/prepare/submit returns and `_run_with_heartbeat()` enters cleanup.
+- Stop-during-long-reconciliation and stop-during-long-prepare regressions each passed ten repeated runs; the corrected focused suite passed 31 tests and the broader Handoff/Schedule/launcher suite passed 184 tests.
+
 ### 2026-09-20 Remote-operator Requirement registry authority correction
 
 - Generic package verification no longer derives the selected Requirement SQL registry from ambient process environment. Deployment evidence explicitly supplies the repository-relative selection from the Linux deployment environment, preserving fail-closed rejection before registry bytes are read while leaving remote operator preflight independent of workstation selector state.

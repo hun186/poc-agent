@@ -1,5 +1,10 @@
 # Known Issues
 
+## 2026-09-22 Hosted baseline refresh and publication limitation
+
+- Before this corrective, direct `git ls-remote https://github.com/hun186/poc-agent.git refs/heads/main` failed with `CONNECT tunnel failed, response 403`; the checkout has no configured remote. Local `HEAD` exactly matches the supplied latest-known hosted SHA `d8e928fd63c592e781767254d596075e3ba14b72`, but this environment cannot independently exclude a newer hosted commit.
+- The dependency upgrade lookup encountered the same proxy HTTP 403, although all requirements were already installed and the focused/related repository regressions ran successfully. An authorized network environment must independently refresh hosted `main` and observe hosted CI before merge.
+
 ## 2026-09-16 Remote Deployment Acceptance configuration unavailable
 
 - The fresh Remote Harness invocation is blocked at `CONFIG_PREFLIGHT` / `configuration_file_missing`: this operator checkout has neither ignored `operator_e2e/e2e.env.local` nor complete process configuration for the actual deployment URL, model, and required superuser user-session credential.
