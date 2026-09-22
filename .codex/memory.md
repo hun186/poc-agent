@@ -11,12 +11,6 @@
 
 ## Recent Changes
 
-### 2026-09-22 Requirement E2E live-progress observability
-
-- Added redacted, flushed UTC stdout records for successful acceptance stages, automatic claim, Handoff dispatch/item identities, and remote execution state changes plus 15-second unchanged-state heartbeats.
-- Remote timeout now emits a final batch and selected-item snapshot before preserving the existing `REMOTE_EXECUTION` / `remote_execution_timeout` failure. Acceptance checks, poll intervals, timeout defaults, evidence documents, and the manual-run prohibition are unchanged.
-- Focused Harness regressions passed 106 tests, including deterministic clock coverage for state-change suppression, heartbeat, timeout snapshot, redaction, and manual Run API rejection. Compilation and diff checks passed; pip dependency verification found requirements installed while the known package-index proxy returned HTTP 403 during the upgrade lookup.
-
 ### 2026-09-20 Remote-operator Requirement registry authority correction
 
 - Generic package verification no longer derives the selected Requirement SQL registry from ambient process environment. Deployment evidence explicitly supplies the repository-relative selection from the Linux deployment environment, preserving fail-closed rejection before registry bytes are read while leaving remote operator preflight independent of workstation selector state.

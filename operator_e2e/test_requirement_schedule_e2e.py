@@ -349,8 +349,6 @@ class Harness:
         self.log("WAIT REMOTE_EXECUTION", batch_run_id=bid, timeout_seconds=self.config.remote_timeout_seconds)
         while time.monotonic() < deadline:
             batch = self.api.get(f"/v1/requirement-schedules/{sid}/runs/{bid}")
-            failure = terminal_failure(batch)
-            if failure: self.fail(failure, "REMOTE_EXECUTION")
             now = time.monotonic()
             summary, _items, signature = self._progress_snapshot(batch)
             elapsed = max(0, int(now - started)); remaining = max(0, int(deadline - now))
@@ -360,6 +358,8 @@ class Harness:
             elif now - last_log_at >= self.PROGRESS_HEARTBEAT_SECONDS:
                 self.log("REMOTE_EXECUTION", heartbeat=True, completed=summary["completed"], elapsed_seconds=elapsed, remaining_seconds=remaining)
                 last_log_at = now
+            failure = terminal_failure(batch)
+            if failure: self.fail(failure, "REMOTE_EXECUTION")
             if all(x.get("remote_job_state") == "completed" and x.get("execution_state") == "completed" for x in batch["items"] if x.get("selection_status") == "selected") and batch.get("state") == "completed": break
             time.sleep(3)
         else:
@@ -519,9 +519,8 @@ def main(argv=None) -> int:
     result["finished_at"] = datetime.now(timezone.utc).isoformat(); result["duration_seconds"] = round(time.monotonic() - started, 3)
     try:
         known_secrets = harness.known_secrets if harness else []
-        if harness: harness.pass_stage("FINAL_EVIDENCE")
-        else:
-            next(item for item in result["stages"] if item["name"] == "FINAL_EVIDENCE")["status"] = StageStatus.PASS
+        final_evidence_stage = next(item for item in result["stages"] if item["name"] == "FINAL_EVIDENCE")
+        final_evidence_stage.update(status=StageStatus.PASS, evidence={})
         evidence_output.mkdir(parents=True, exist_ok=False)
         (evidence_output / "artifacts").mkdir()
         safe = redact(result, known_secrets)
@@ -530,6 +529,7 @@ def main(argv=None) -> int:
         summary = f"REQUIREMENT_E2E = {result['overall_status']}\nACCEPTANCE_MODE = {args.mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
         if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
         atomic_write_text(evidence_output / "summary.txt", summary)
+        if harness: harness.log("PASS FINAL_EVIDENCE")
     except FileExistsError:
         # Artifact verification may already have created this invocation's unique
         # directory; only the expected directory itself may pre-exist.
@@ -541,6 +541,7 @@ def main(argv=None) -> int:
             summary = f"REQUIREMENT_E2E = {result['overall_status']}\nACCEPTANCE_MODE = {args.mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
             if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
             atomic_write_text(evidence_output / "summary.txt", summary)
+            if harness: harness.log("PASS FINAL_EVIDENCE")
         except Exception:
             exit_code = ExitCode.INTERNAL
             result.update(overall_status="FAIL", exit_code=4, failed_stage="FINAL_EVIDENCE", failure_category="evidence_write_failed")

@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from operator_e2e.requirement_e2e_support import HarnessFailure, result_document
-from operator_e2e.test_requirement_schedule_e2e import Api, Harness
+from operator_e2e.requirement_e2e_support import ExitCode, HarnessFailure, result_document
+from operator_e2e.test_requirement_schedule_e2e import Api, Harness, main
 
 
 def _harness(tmp_path, *, remote_timeout=20):
@@ -89,6 +89,64 @@ def test_remote_heartbeat_and_timeout_final_snapshot_preserve_failure(tmp_path, 
     assert "REMOTE_EXECUTION completed=0/3" in stdout and "heartbeat=True" in stdout
     assert "TIMEOUT REMOTE_EXECUTION" in stdout
     assert stdout.count("remote_job_state=running") >= 6
+
+
+def test_remote_terminal_failure_logs_final_snapshot_before_raising(tmp_path, monkeypatch, capsys):
+    harness = _harness(tmp_path)
+    dispatched = _batch("running", "running")
+    failed = _batch("failed", "failed", batch_state="failed")
+    replies = iter([dispatched, failed])
+    harness.api = SimpleNamespace(get=lambda *_args, **_kwargs: next(replies))
+    clock = _Clock()
+    monkeypatch.setattr("operator_e2e.test_requirement_schedule_e2e.time.monotonic", clock.monotonic)
+    monkeypatch.setattr("operator_e2e.test_requirement_schedule_e2e.time.sleep", clock.sleep)
+
+    with pytest.raises(HarnessFailure, match="remote_execution_failed") as raised:
+        harness.wait_terminal(dispatched)
+
+    assert raised.value.stage == "REMOTE_EXECUTION"
+    stdout = capsys.readouterr().out
+    assert "REMOTE_EXECUTION batch_state=failed" in stdout
+    assert "ITEM execution_state=failed" in stdout
+    assert "remote_job_state=failed" in stdout
+
+
+def test_final_evidence_pass_is_not_logged_when_summary_write_fails(tmp_path, monkeypatch, capsys):
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    monkeypatch.setenv("SRA_E2E_MODEL", "model")
+    monkeypatch.setenv("SRA_E2E_REQUIREMENT_ARTIFACT_ROOT", str(artifact_root))
+    monkeypatch.setenv("SRA_E2E_EDITOR_TOKEN", "test-token")
+    monkeypatch.setenv("SRA_E2E_EXPECTED_RUNTIME_SHA", "a" * 40)
+    monkeypatch.setattr(
+        "operator_e2e.test_requirement_schedule_e2e._provenance_source",
+        lambda *_args, **_kwargs: {
+            "repository": "hun186/poc-agent", "reviewed_runtime_sha": "a" * 40,
+            "provenance_fingerprint": "f" * 64, "identity_verified": True,
+        },
+    )
+    monkeypatch.setattr(Harness, "run", lambda self: None)
+    real_write_text = __import__(
+        "operator_e2e.test_requirement_schedule_e2e", fromlist=["atomic_write_text"]
+    ).atomic_write_text
+
+    def fail_summary(path, value, **kwargs):
+        if path.name == "summary.txt":
+            raise OSError("simulated summary write failure")
+        return real_write_text(path, value, **kwargs)
+
+    monkeypatch.setattr("operator_e2e.test_requirement_schedule_e2e.atomic_write_text", fail_summary)
+
+    code = main([
+        "--excel", "unused.xlsx", "--env-file", str(tmp_path / "missing.env"),
+        "--output-dir", str(tmp_path / "evidence"),
+    ])
+
+    assert code == ExitCode.INTERNAL
+    stdout = capsys.readouterr().out
+    assert "PASS FINAL_EVIDENCE" not in stdout
+    assert "FAILED_STAGE = FINAL_EVIDENCE" in stdout
+    assert "FAILURE_CATEGORY = evidence_write_failed" in stdout
 
 
 def test_manual_run_guard_remains_fail_closed(tmp_path):
