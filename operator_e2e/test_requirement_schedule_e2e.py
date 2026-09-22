@@ -487,13 +487,28 @@ def main(argv=None) -> int:
     evidence_output = (args.output_dir or Path("operator_e2e/output/requirement_e2e")) / run_id
     try:
         validate_live_platform(args.mode)
-        if not args.env_file.exists() and not has_usable_requirement_process_configuration(dict(os.environ), args.mode):
+        production_artifact_root = None
+        if args.mode == "local":
+            try:
+                from config.deployment_bootstrap import requirement_handoff_output_root
+                production_artifact_root = requirement_handoff_output_root(PROJECT_ROOT)
+            except FileNotFoundError:
+                production_artifact_root = None
+            except Exception as exc:
+                raise HarnessFailure(
+                    "configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
+                ) from exc
+        if not args.env_file.exists() and not has_usable_requirement_process_configuration(
+            dict(os.environ), args.mode, production_artifact_root=production_artifact_root,
+        ):
             raise HarnessFailure(
                 "configuration_file_missing", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT,
             )
         env = load_e2e_environment(args.env_file, dict(os.environ))
         evidence_output = (args.output_dir or Path(env.get("SRA_E2E_OUTPUT_DIR") or "operator_e2e/output/requirement_e2e")) / run_id
-        config = E2EConfig.from_environment(env, args.mode)
+        config = E2EConfig.from_environment(
+            env, args.mode, production_artifact_root=production_artifact_root,
+        )
         if args.output_dir: config = E2EConfig(**{**config.__dict__, "output_dir": args.output_dir})
         evidence_output = config.output_dir / run_id
         harness = Harness(config, args.excel.resolve(), run_id, result)

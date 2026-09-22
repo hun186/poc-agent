@@ -103,7 +103,10 @@ class E2EConfig:
     exit_code_for_failure: ExitCode = ExitCode.PREFLIGHT
 
     @classmethod
-    def from_environment(cls, env: dict[str, str], mode: str = "local") -> "E2EConfig":
+    def from_environment(
+        cls, env: dict[str, str], mode: str = "local",
+        *, production_artifact_root: Path | str | None = None,
+    ) -> "E2EConfig":
         def required(name: str) -> str:
             value = (env.get(name) or "").strip()
             if not value:
@@ -126,13 +129,24 @@ class E2EConfig:
                 raise HarnessFailure("configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
             return value or None
         artifact_value = (env.get("SRA_E2E_REQUIREMENT_ARTIFACT_ROOT") or "").strip()
-        if mode == "local" and not artifact_value:
-            raise HarnessFailure("configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
+        production_artifact_value = str(production_artifact_root or "").strip()
+        artifact_root = None
+        if mode == "local":
+            selected_artifact_value = artifact_value or production_artifact_value
+            if not selected_artifact_value:
+                raise HarnessFailure("configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
+            artifact_root = Path(selected_artifact_value).expanduser().resolve(strict=False)
+            if artifact_value and production_artifact_value:
+                production_root = Path(production_artifact_value).expanduser().resolve(strict=False)
+                if artifact_root != production_root:
+                    raise HarnessFailure("configuration_error", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
+        elif artifact_value:
+            artifact_root = Path(artifact_value)
         runtime_sha = optional_sha("SRA_E2E_EXPECTED_RUNTIME_SHA", 40)
         return cls(
             mode=mode,
             base_url=(env.get("SRA_E2E_BASE_URL") or "http://127.0.0.1:9002").rstrip("/"),
-            model=required("SRA_E2E_MODEL"), artifact_root=Path(artifact_value) if artifact_value else None,
+            model=required("SRA_E2E_MODEL"), artifact_root=artifact_root,
             token=token, username=username, password=password,
             output_dir=Path(env.get("SRA_E2E_OUTPUT_DIR") or "operator_e2e/output/requirement_e2e"),
             profile_name=env.get("SRA_E2E_PROFILE_NAME") or "SRA Requirement Operator E2E Profile v1",
@@ -163,13 +177,18 @@ def load_e2e_environment(path: Path, process_env: dict[str, str]) -> dict[str, s
     return values
 
 
-def has_usable_requirement_process_configuration(process_env: dict[str, str], mode: str = "local") -> bool:
+def has_usable_requirement_process_configuration(
+    process_env: dict[str, str], mode: str = "local",
+    *, production_artifact_root: Path | str | None = None,
+) -> bool:
     """Return whether process variables alone can construct Requirement E2E config."""
     requirement_env = {
         key: value for key, value in process_env.items() if key.startswith("SRA_E2E_")
     }
     try:
-        E2EConfig.from_environment(requirement_env, mode)
+        E2EConfig.from_environment(
+            requirement_env, mode, production_artifact_root=production_artifact_root,
+        )
     except HarnessFailure:
         return False
     return True

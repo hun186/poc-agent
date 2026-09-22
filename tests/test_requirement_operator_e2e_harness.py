@@ -130,9 +130,12 @@ def test_complete_requirement_process_environment_does_not_require_env_file(tmp_
         if key.startswith("SRA_E2E_"):
             monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("SRA_E2E_MODEL", "model")
-    monkeypatch.setenv("SRA_E2E_REQUIREMENT_ARTIFACT_ROOT", str(tmp_path / "artifacts"))
     monkeypatch.setenv("SRA_E2E_EDITOR_TOKEN", "authorized-token")
     monkeypatch.setenv("SRA_E2E_EXPECTED_RUNTIME_SHA", "919422bce992e757a89767f66beb8e042707a976")
+    monkeypatch.setattr(
+        "config.deployment_bootstrap.requirement_handoff_output_root",
+        lambda _root: tmp_path / "artifacts",
+    )
     monkeypatch.setattr(Harness, "run", lambda self: None)
 
     assert main([
@@ -177,7 +180,12 @@ def test_env_contract_rejects_foreign_key_and_process_env_wins(tmp_path, monkeyp
     with pytest.raises(HarnessFailure, match="configuration_error"):
         load_e2e_environment(env_file, {})
     env_file.write_text("SRA_E2E_MODEL=file\n", encoding="utf-8")
-    assert load_e2e_environment(env_file, {"SRA_E2E_MODEL": "process"})["SRA_E2E_MODEL"] == "process"
+    loaded = load_e2e_environment(env_file, {
+        "SRA_E2E_MODEL": "process",
+        "REQUIREMENT_HANDOFF_OUTPUT_ROOT": str(tmp_path / "production-artifacts"),
+    })
+    assert loaded["SRA_E2E_MODEL"] == "process"
+    assert "REQUIREMENT_HANDOFF_OUTPUT_ROOT" not in loaded
 
 
 def test_config_auth_and_required_values(tmp_path):
@@ -188,6 +196,43 @@ def test_config_auth_and_required_values(tmp_path):
         E2EConfig.from_environment({**base, "SRA_E2E_EDITOR_TOKEN": "t", "SRA_E2E_EDITOR_USERNAME": "u", "SRA_E2E_EDITOR_PASSWORD": "p"})
     config = E2EConfig.from_environment({**base, "SRA_E2E_EDITOR_TOKEN": "t"})
     assert config.model == "m" and config.exit_code_for_failure == ExitCode.PREFLIGHT
+
+
+def test_local_config_uses_production_artifact_root_without_duplicate_e2e_setting(tmp_path):
+    production_root = tmp_path / "production-artifacts"
+    config = E2EConfig.from_environment(
+        {"SRA_E2E_MODEL": "m", "SRA_E2E_EDITOR_TOKEN": "t"},
+        production_artifact_root=production_root,
+    )
+    assert config.artifact_root == production_root.resolve()
+
+
+def test_local_config_rejects_artifact_root_that_disagrees_with_production(tmp_path):
+    with pytest.raises(HarnessFailure, match="configuration_error") as failure:
+        E2EConfig.from_environment(
+            {
+                "SRA_E2E_MODEL": "m",
+                "SRA_E2E_EDITOR_TOKEN": "t",
+                "SRA_E2E_REQUIREMENT_ARTIFACT_ROOT": str(tmp_path / "operator-artifacts"),
+            },
+            production_artifact_root=tmp_path / "production-artifacts",
+        )
+    assert failure.value.stage == "CONFIG_PREFLIGHT"
+
+
+def test_local_config_accepts_matching_artifact_root_assertion(tmp_path):
+    production_root = tmp_path / "production-artifacts"
+    config = E2EConfig.from_environment(
+        {
+            "SRA_E2E_MODEL": "m",
+            "SRA_E2E_EDITOR_TOKEN": "t",
+            "SRA_E2E_REQUIREMENT_ARTIFACT_ROOT": str(
+                production_root / ".." / "production-artifacts"
+            ),
+        },
+        production_artifact_root=production_root,
+    )
+    assert config.artifact_root == production_root.resolve()
 
 
 @pytest.mark.parametrize(
@@ -554,6 +599,37 @@ def test_disabled_schedule_batch_keeps_polling_identity(monkeypatch, tmp_path):
     assert harness.enabled_schedule_id is None
     assert harness.wait_terminal(detail)["batch_run_id"] == batch_id
     assert harness.api.poll_paths and set(harness.api.poll_paths) == {f"/v1/requirement-schedules/{schedule_id}/runs/{batch_id}"}
+
+
+def test_local_main_uses_deployment_state_artifact_root_without_duplicate_env_setting(tmp_path, monkeypatch):
+    from operator_e2e.test_requirement_schedule_e2e import Harness, main
+
+    for key in tuple(os.environ):
+        if key.startswith("SRA_E2E_"):
+            monkeypatch.delenv(key, raising=False)
+    production_root = tmp_path / "production-artifacts"
+    output = tmp_path / "evidence"
+    env_file = tmp_path / "e2e.env.local"
+    env_file.write_text(
+        "SRA_E2E_MODEL=model\n"
+        "SRA_E2E_EDITOR_TOKEN=token\n",
+        encoding="utf-8",
+    )
+    observed = {}
+    monkeypatch.setattr(
+        "config.deployment_bootstrap.requirement_handoff_output_root",
+        lambda _root: production_root,
+    )
+    monkeypatch.setattr(
+        Harness, "run",
+        lambda self: observed.update(artifact_root=self.config.artifact_root),
+    )
+
+    assert main([
+        "--excel", "unused.xlsx", "--env-file", str(env_file),
+        "--output-dir", str(output),
+    ]) == ExitCode.PASS
+    assert observed["artifact_root"] == production_root.resolve()
 
 
 def test_env_file_output_directory_is_authoritative_for_all_evidence(tmp_path, monkeypatch):
