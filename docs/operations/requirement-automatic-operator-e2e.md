@@ -47,7 +47,7 @@ SRA_E2E_EDITOR_PASSWORD=<managed secret>
 SRA_E2E_MODEL=SRA-Structured Retrieval Agent
 SRA_E2E_REQUIREMENT_ARTIFACT_ROOT=/absolute/production/requirement/artifact/root
 SRA_E2E_BASE_URL=http://127.0.0.1:9002
-SRA_E2E_EXPECTED_SOURCE_SHA=2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03
+SRA_E2E_EXPECTED_SOURCE_SHA=816ffac9039530a86955c590b0fa68830757a620229d85630f5e42c12f542403
 ```
 
 Authentication is mode-specific. Local mode uses an authorized control-plane identity according
@@ -86,11 +86,18 @@ while loaded/discovered/shadowing modules and managed-byte drift fail closed.
 
 ## Input and invocation
 
-Prepare an XLSX containing exactly three production-valid rows with these headers:
+The canonical XLSX is a deployment-managed mirror of
+`data/要項excel/requirement_e2e_three.xlsx` and contains exactly three production-style
+Requirement rows with these source headers:
 
 ```text
-external_item_id, title, prompt_content, source_updated_at, source_created_at, expires_at
+ITEMNO, TITLE, CONTENT, UPDT, DeadlineDT, CreateApeno, UpdateApeno, CrtDT
 ```
+
+The Harness uses the reviewed Taiwan investment/security import profile to map `CONTENT` into
+`prompt_content`. After Import, the canonical run additionally requires every imported
+`ITEMNO -> prompt_content` value to match the workbook's full `ITEMNO -> CONTENT` value.
+Prompt text is compared in memory only and is not written to result/evidence files.
 
 Then run from the repository root:
 
