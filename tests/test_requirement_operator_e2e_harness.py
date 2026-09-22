@@ -509,11 +509,18 @@ def test_entrypoint_contains_no_manual_run_or_worker_execution():
 
 
 def test_tracked_xlsx_fixture_has_canonical_three_item_shape():
-    path = Path("operator_e2e/input/requirement_e2e_3items.xlsx")
-    book = load_workbook(path, read_only=True)
-    rows = list(book.active.iter_rows(values_only=True)); book.close()
-    assert rows[0] == ("external_item_id", "title", "prompt_content", "source_updated_at", "source_created_at", "expires_at")
+    path = Path("data/要項excel/requirement_e2e_three.xlsx")
+    book = load_workbook(path, read_only=True, data_only=True)
+    rows = list(book["工作表1"].iter_rows(values_only=True)); book.close()
+    assert tuple(str(value).strip() for value in rows[0]) == (
+        "ITEMNO", "TITLE", "CONTENT", "UPDT", "DeadlineDT",
+        "CreateApeno", "UpdateApeno", "CrtDT",
+    )
     assert len(rows[1:]) == 3
+    prompts = [str(row[2]) for row in rows[1:]]
+    assert "加薩衝突" in prompts[0] and "人質" in prompts[0] and "人道援助" in prompts[0]
+    assert "臺灣海峽" in prompts[1] and "灰色地帶" in prompts[1]
+    assert "美中戰略競爭" in prompts[2] and "美國印太安全政策" in prompts[2]
 
 
 def test_config_failure_still_writes_safe_evidence(tmp_path, monkeypatch):
