@@ -10,6 +10,7 @@ import pytest
 
 from config.deployment_bootstrap import (
     DeploymentBootstrapError, KEY_NAME, KEY_SCOPES, _read_state, bootstrap, main,
+    requirement_handoff_output_root,
 )
 from sra_api.security.service_key_store import ServiceKeyStore
 
@@ -45,6 +46,15 @@ def test_first_run_is_secure_exact_scope_and_restart_is_idempotent(deployment: P
     assert (deployment / "keys.json").read_text(encoding="utf-8") == first_store
     captured = capsys.readouterr()
     assert token not in captured.out and token not in captured.err
+
+
+def test_requirement_handoff_output_root_reads_canonical_protected_state(deployment: Path) -> None:
+    state_path = bootstrap(project_root=deployment, port=9002)
+    state = _read_state(state_path)
+
+    assert requirement_handoff_output_root(deployment) == Path(
+        state["REQUIREMENT_HANDOFF_OUTPUT_ROOT"]
+    )
 
 
 def test_cli_stdout_contains_only_machine_readable_state_path(deployment: Path, capsys) -> None:
