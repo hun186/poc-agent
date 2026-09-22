@@ -35,9 +35,66 @@ from shared.runtime_provenance import (
     PROVENANCE_NAME, load_provenance, provenance_fingerprint, verify_package_files,
 )
 
-PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
-DEFAULT_EXCEL = SCRIPT_DIR / "input" / "requirement_e2e_3items.xlsx"
+PROFILE_PATH = PROJECT_ROOT / "config" / "requirements" / "import_profile.taiwan-investment-security.v1.example.json"
+DEFAULT_EXCEL = PROJECT_ROOT / "data" / "要項excel" / "requirement_e2e_three.xlsx"
 TRANSIENT = {429, 502, 503, 504}
+CANONICAL_INPUT_HEADERS = (
+    "ITEMNO", "TITLE", "CONTENT", "UPDT", "DeadlineDT",
+    "CreateApeno", "UpdateApeno", "CrtDT",
+)
+
+
+def read_requirement_prompt_identity(path: Path) -> tuple[dict[str, str], ...]:
+    """Read the canonical E2E identities independently from the import pipeline."""
+    book = load_workbook(path, read_only=True, data_only=True)
+    try:
+        if "工作表1" not in book.sheetnames:
+            raise ValueError("canonical_worksheet_missing")
+        rows = list(book["工作表1"].iter_rows(values_only=True))
+    finally:
+        book.close()
+    if len(rows) != 4:
+        raise ValueError("canonical_row_count_mismatch")
+    headers = tuple(str(value).strip() if value is not None else "" for value in rows[0])
+    if headers != CANONICAL_INPUT_HEADERS:
+        raise ValueError("canonical_headers_mismatch")
+    result = []
+    seen = set()
+    for row in rows[1:]:
+        external_item_id = str(row[0]).strip() if row[0] is not None else ""
+        prompt_content = str(row[2]).strip() if row[2] is not None else ""
+        if not external_item_id or not prompt_content or external_item_id in seen:
+            raise ValueError("canonical_item_invalid")
+        seen.add(external_item_id)
+        result.append({
+            "external_item_id": external_item_id,
+            "prompt_content": prompt_content,
+        })
+    return tuple(result)
+
+
+def validate_requirement_prompt_identity(
+    expected: tuple[dict[str, str], ...], actual: list[dict[str, Any]]
+) -> None:
+    """Prove that imported snapshot prompts are exactly the canonical workbook prompts."""
+    expected_map = {item["external_item_id"]: item["prompt_content"] for item in expected}
+    actual_map = {}
+    for item in actual:
+        external_item_id = item.get("external_item_id")
+        prompt_content = item.get("prompt_content")
+        if (
+            not isinstance(external_item_id, str)
+            or not isinstance(prompt_content, str)
+            or external_item_id in actual_map
+        ):
+            raise HarnessFailure(
+                "requirement_prompt_identity_mismatch", stage="REQUIREMENT_ITEMS"
+            )
+        actual_map[external_item_id] = prompt_content
+    if actual_map != expected_map:
+        raise HarnessFailure(
+            "requirement_prompt_identity_mismatch", stage="REQUIREMENT_ITEMS"
+        )
 
 
 class Api:
@@ -84,6 +141,7 @@ class Harness:
         self.api = Api(config); self.enabled_schedule_id: str | None = None
         self.output = config.output_dir / run_id; self.known_secrets = [x for x in (config.token, config.password) if x]
         self.evidence_provider = None
+        self.expected_prompt_identity: tuple[dict[str, str], ...] = ()
 
     def log(self, event: str, **fields):
         """Emit one redacted, deterministic operator progress record."""
@@ -146,6 +204,7 @@ class Harness:
             self.fail("input_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
         try:
             book = load_workbook(self.excel, read_only=True); book.close()
+            self.expected_prompt_identity = read_requirement_prompt_identity(self.excel)
         except Exception as exc: raise HarnessFailure("input_invalid", stage="INPUT_VALIDATION", exit_code=ExitCode.PREFLIGHT) from exc
         digest = hashlib.sha256(self.excel.read_bytes()).hexdigest()
         expected = (CANONICAL_SOURCE_SHA256 if self.excel == DEFAULT_EXCEL.resolve()
@@ -244,8 +303,16 @@ class Harness:
         items = self.api.get(f"/v1/requirement-snapshots/{committed['snapshot_id']}/items")["items"]
         now = datetime.now(timezone.utc)
         if len(items) != 3 or any(item.get("expires_at") and self._dt(item["expires_at"]) <= now for item in items): self.fail("item_count_mismatch", "REQUIREMENT_ITEMS")
+        validate_requirement_prompt_identity(self.expected_prompt_identity, items)
         self.result["fixtures"]["requirement_set_id"] = reqset["requirement_set_id"]
         self.result["requirement_import"] = {key: committed.get(key) for key in ("import_run_id", "snapshot_id", "accepted_count", "rejected_count")}
+        self.result["requirement_import"]["prompt_identity"] = [
+            {
+                "external_item_id": item["external_item_id"],
+                "sha256": hashlib.sha256(item["prompt_content"].encode("utf-8")).hexdigest(),
+            }
+            for item in self.expected_prompt_identity
+        ]
         return reqset, items
 
     @staticmethod
@@ -408,7 +475,8 @@ class Harness:
         profile, version = self.ensure_profile(profile_doc); self.pass_stage("FIXTURE_PROFILE")
         source = self.ensure_source(profile["profile_id"]); self.pass_stage("FIXTURE_SOURCE")
         reqset, items = self.import_requirements(source, version)
-        for stage in ("REQUIREMENT_IMPORT", "SNAPSHOT", "REQUIREMENT_ITEMS"): self.pass_stage(stage)
+        self.pass_stage("REQUIREMENT_IMPORT"); self.pass_stage("SNAPSHOT")
+        self.pass_stage("REQUIREMENT_ITEMS", prompt_identity_verified=True)
         schedule = self.ensure_schedule(reqset["requirement_set_id"]); self.pass_stage("SCHEDULE_FIXTURE")
         batch = self.schedule_and_wait(schedule, self.result["requirement_import"]["snapshot_id"], {x["requirement_id"] for x in items})
         batch = self.wait_terminal(batch); self.verify_artifacts(batch)
