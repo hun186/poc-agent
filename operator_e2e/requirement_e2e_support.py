@@ -26,7 +26,7 @@ from python_compat import StrEnum
 fcntl = importlib.import_module("fcntl") if importlib.util.find_spec("fcntl") is not None else None
 msvcrt = importlib.import_module("msvcrt") if importlib.util.find_spec("msvcrt") is not None else None
 
-CANONICAL_SOURCE_SHA256 = "2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03"
+CANONICAL_SOURCE_SHA256 = "816ffac9039530a86955c590b0fa68830757a620229d85630f5e42c12f542403"
 
 
 class StageStatus(StrEnum):
@@ -149,9 +149,9 @@ class E2EConfig:
             model=required("SRA_E2E_MODEL"), artifact_root=artifact_root,
             token=token, username=username, password=password,
             output_dir=Path(env.get("SRA_E2E_OUTPUT_DIR") or "operator_e2e/output/requirement_e2e"),
-            profile_name=env.get("SRA_E2E_PROFILE_NAME") or "SRA Requirement Operator E2E Profile v1",
-            source_name=env.get("SRA_E2E_SOURCE_NAME") or "SRA Requirement Operator E2E Source v1",
-            schedule_name=env.get("SRA_E2E_SCHEDULE_NAME") or "SRA Requirement Operator E2E Schedule v1",
+            profile_name=env.get("SRA_E2E_PROFILE_NAME") or "SRA Requirement Operator E2E Profile v2",
+            source_name=env.get("SRA_E2E_SOURCE_NAME") or "SRA Requirement Operator E2E Source v2",
+            schedule_name=env.get("SRA_E2E_SCHEDULE_NAME") or "SRA Requirement Operator E2E Schedule v2",
             expected_source_sha=optional_sha("SRA_E2E_EXPECTED_SOURCE_SHA", 64),
             expected_runtime_sha=runtime_sha,
             api_log_path=Path(env.get("SRA_E2E_API_LOG_PATH") or "SRA-API_output.txt"),

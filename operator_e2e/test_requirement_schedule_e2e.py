@@ -35,9 +35,27 @@ from shared.runtime_provenance import (
     PROVENANCE_NAME, load_provenance, provenance_fingerprint, verify_package_files,
 )
 
-PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
+PROFILE_PATH = PROJECT_ROOT / "config" / "requirements" / "import_profile.taiwan-investment-security.v1.example.json"
 DEFAULT_EXCEL = SCRIPT_DIR / "input" / "requirement_e2e_3items.xlsx"
 TRANSIENT = {429, 502, 503, 504}
+
+
+def _canonical_prompt_map(path: Path) -> dict[str, str]:
+    """Return canonical ITEMNO -> CONTENT without writing prompt text to evidence."""
+    book = load_workbook(path, read_only=True, data_only=True)
+    try:
+        sheet = book["工作表1"] if "工作表1" in book.sheetnames else book.active
+        rows = sheet.iter_rows(values_only=True)
+        headers = [str(value).strip() if value is not None else "" for value in next(rows)]
+        item_index = headers.index("ITEMNO")
+        content_index = headers.index("CONTENT")
+        return {
+            str(row[item_index]).strip(): str(row[content_index]).strip()
+            for row in rows
+            if row[item_index] is not None and row[content_index] is not None
+        }
+    finally:
+        book.close()
 
 
 class Api:
@@ -244,6 +262,14 @@ class Harness:
         items = self.api.get(f"/v1/requirement-snapshots/{committed['snapshot_id']}/items")["items"]
         now = datetime.now(timezone.utc)
         if len(items) != 3 or any(item.get("expires_at") and self._dt(item["expires_at"]) <= now for item in items): self.fail("item_count_mismatch", "REQUIREMENT_ITEMS")
+        if self.excel == DEFAULT_EXCEL.resolve():
+            expected_prompts = _canonical_prompt_map(self.excel)
+            actual_prompts = {
+                str(item.get("external_item_id") or "").strip(): str(item.get("prompt_content") or "").strip()
+                for item in items
+            }
+            if actual_prompts != expected_prompts:
+                self.fail("prompt_content_mismatch", "REQUIREMENT_ITEMS")
         self.result["fixtures"]["requirement_set_id"] = reqset["requirement_set_id"]
         self.result["requirement_import"] = {key: committed.get(key) for key in ("import_run_id", "snapshot_id", "accepted_count", "rejected_count")}
         return reqset, items
