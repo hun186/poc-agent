@@ -13,7 +13,7 @@ from operator_e2e.requirement_e2e_support import (
 
 
 class DeploymentEvidenceProvider(Protocol):
-    def preflight(self) -> dict[str, Any]: ...
+    def preflight(self, verification: str = "release") -> dict[str, Any]: ...
     def verify_artifact(self, item: dict[str, Any], persisted_root: str, copy_to: Path) -> dict[str, Any]: ...
 
 
@@ -21,11 +21,11 @@ class LocalDeploymentEvidenceProvider:
     def __init__(self, project_root: Path, artifact_root: Path, api):
         self.project_root, self.artifact_root, self.api = project_root, artifact_root, api
 
-    def preflight(self) -> dict[str, Any]:
+    def preflight(self, verification: str = "release") -> dict[str, Any]:
         # Capability authority belongs to the already-running API/ReportJobWorker
         # process. Local artifact access does not make the harness process an
         # acceptable substitute for that runtime evidence.
-        return RemoteDeploymentEvidenceProvider(self.api).preflight()
+        return RemoteDeploymentEvidenceProvider(self.api).preflight(verification)
 
     def verify_artifact(self, item, persisted_root, copy_to):
         return validate_artifact(self.artifact_root, persisted_root, item.get("artifact_relative_path", ""),
@@ -35,8 +35,11 @@ class LocalDeploymentEvidenceProvider:
 class RemoteDeploymentEvidenceProvider:
     def __init__(self, api): self.api = api
 
-    def preflight(self) -> dict[str, Any]:
-        try: evidence = self.api.get("/v1/operator-e2e/runtime-evidence", timeout=30)
+    def preflight(self, verification: str = "release") -> dict[str, Any]:
+        try:
+            evidence = self.api.get(
+                f"/v1/operator-e2e/runtime-evidence?verification={verification}", timeout=30,
+            )
         except HarnessFailure as exc:
             if exc.category == "authentication_failed":
                 raise HarnessFailure("remote_evidence_authentication_failed", stage="RUNTIME_WORKERS") from exc

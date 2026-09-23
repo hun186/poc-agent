@@ -171,3 +171,9 @@
 - Corrected the raw field-selector response to include mandatory `ref_no` and `note`; added explicit topic-extractor and synonym-expander JSON contracts; removed the unsafe generic prose catch-all in favor of `unsupported_e2e_llm_contract`.
 - Added exact-production-prompt tests for all three router themes, time-context refiner recognition, raw selector validity, production report payload grounding/empty evidence, conditional query-term callers, activation/cache reset, ordinary chat/generate behavior, unknown-contract failure, and the real offline Agent-turn path.
 - Verification passed 50 focused capability tests and 89 related LLM/refiner/query-term/turn/ReportJob/Harness tests. No live external dependency or deployment acceptance was executed.
+
+### 2026-09-23 Functional versus release Requirement E2E verification
+
+- Added an explicit `--verification release|functional` policy. Release remains the strict default; functional mode downgrades only ordinary provenance-managed byte drift to visible advisory evidence and still executes the production workflow.
+- Deployment runtime evidence now accepts the authenticated verification policy and returns capability, worker, artifact-root, and explicit source-attestation evidence during ordinary byte drift. Malformed/missing provenance, unexpected runtime inputs, unexpected active modules, module shadowing, worker identity, and artifact integrity remain fail closed.
+- Validation passed 9 focused policy tests, 150 provenance/Harness regressions, and 56 external-capability/live-progress regressions. Dependency installation found requirements present; the pip index upgrade check repeated the known proxy HTTP 403 warning. No deployment E2E or formal acceptance was run.

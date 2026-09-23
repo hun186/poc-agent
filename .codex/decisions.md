@@ -228,3 +228,8 @@
 
 - Treat deterministic E2E output as a faithful external-boundary contract, not input for downstream repair. Raw structured responses must independently satisfy each production prompt.
 - Explicitly model every current SRA_REPORT direct-LLM stage and raise `unsupported_e2e_llm_contract` for unknown prompts. Keep ordinary `LLMClient` behavior unchanged and retain an isolated test-only singleton reset.
+
+## 2026-09-23 Separate functional verification from release attestation
+
+- Preserve `release` as the backward-compatible strict default. Functional verification is not a provenance bypass: it attempts full verification and makes only `active_runtime_source_mismatch` advisory.
+- Keep discovery and active-module security fences independent from byte hashing so a stale hash cannot conceal an unexpected selected input or module shadow. Functional success always reports deployment acceptance as not established.

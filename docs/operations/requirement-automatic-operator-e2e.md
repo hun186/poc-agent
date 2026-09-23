@@ -86,6 +86,43 @@ while loaded/discovered/shadowing modules and managed-byte drift fail closed.
 
 ## Input and invocation
 
+### Verification policy
+
+`--verification release|functional` controls source attestation without changing
+the production workflow (default: `release`). `release` is formal deployment
+acceptance and preserves exact package/provenance equality as a prerequisite.
+Missing or malformed provenance, byte drift, unexpected runtime inputs, active
+module mismatches, module shadowing, and operator/deployment provenance identity
+mismatches remain fatal.
+
+`functional` is for iterative testing of an intentionally updated deployed
+runtime before a new release manifest is generated. It still loads and validates
+the manifest, attempts every package hash, checks discovered runtime inputs, and
+checks active module identity. Only ordinary `active_runtime_source_mismatch`
+(missing or changed provenance-managed bytes) is advisory. Unexpected runtime
+inputs, unexpected active modules, module shadowing, malformed/missing
+provenance, worker identity failure, artifact-root mismatch, DOCX validation,
+and artifact SHA/identity failures remain fatal.
+
+The authenticated deployment runtime-evidence endpoint remains authoritative in
+both policies. In functional mode it returns the frozen capability plan, worker
+identity, artifact-root fingerprint, and an explicit unverified source result
+instead of hiding those facts behind an ordinary byte-drift error. A successful
+functional run reports `FUNCTIONAL_RESULT = PASS`, `SOURCE_ATTESTATION =
+MISMATCH`, and `DEPLOYMENT_ACCEPTANCE = NOT_ESTABLISHED`; external capability
+classification remains separate and does not imply release acceptance.
+
+For iterative deployment testing:
+
+```bash
+python operator_e2e/test_requirement_schedule_e2e.py \
+  --mode local \
+  --verification functional
+```
+
+Omit the option (or pass `--verification release`) for formal release/deployment
+acceptance.
+
 ### External capability policy
 
 Pass `--external-mode live|auto|offline` (default `auto`). The deployment must

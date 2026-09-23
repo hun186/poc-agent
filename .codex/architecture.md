@@ -69,3 +69,8 @@
 - The API lifespan and `ReportJobWorker.start()` freeze the deployment-owned external plan before job claiming. Runtime evidence is sourced from that same process; the harness only asserts requested-mode equality.
 - Requirement semantic ES uses a distinct root retrieval subset plus a `dynamic: strict` czjLLM MultiDim subtree. Its bounded evaluator supports only production query-builder constructs and raises on unsupported DSL.
 - Offline direct-model behavior is contract-specific (router/refiner/field selector/report), while the CodeAgent model derives one of the three business-theme queries and invokes the real retrieval tool.
+
+## 2026-09-23 Requirement E2E verification policy separation
+
+- The shared Harness keeps one production workflow but carries a separate verification policy. `release` requires exact operator/deployment provenance; `functional` permits only explicit package-byte drift while retaining runtime-input, active-module, worker, artifact-root, DOCX, digest, and durable identity fences.
+- The authenticated API process remains evidence authority. Its runtime-evidence response includes an attestation status even for advisory byte drift, allowing the Harness to report functional outcome independently from formal deployment acceptance.

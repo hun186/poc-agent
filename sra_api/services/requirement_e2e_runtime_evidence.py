@@ -19,6 +19,7 @@ from shared.runtime_provenance import (
     load_provenance,
     provenance_fingerprint,
     requirement_sql_registry_repository_path,
+    verify_discovered_runtime_inputs,
     verify_package_files,
 )
 
@@ -55,7 +56,8 @@ def _module_name_for_test_path(project_root: Path, path: Path) -> str:
     return ".".join(part for part in without_suffix if part != "__init__")
 
 
-def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | None = None) -> dict:
+def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | None = None,
+                            verification: str = "release") -> dict:
     """Verify bounded active/runtime-critical bytes; ignore inactive overlay residue."""
     project_root = project_root.resolve()
     provenance_path = project_root / PROVENANCE_NAME
@@ -67,9 +69,19 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
         # authoritative Requirement registry selector. Keep its identity out of
         # returned evidence and reject it before package bytes are read.
         selected_registry = requirement_sql_registry_repository_path(project_root)
-        verify_package_files(
-            project_root, provenance, selected_registry=selected_registry,
-        )
+        try:
+            verify_package_files(
+                project_root, provenance, selected_registry=selected_registry,
+            )
+            attestation_status, attestation_category = "verified", None
+        except ValueError as exc:
+            if verification != "functional" or str(exc) != "active_runtime_source_mismatch":
+                raise
+            # Hash drift is advisory only for functional verification. Runtime
+            # input discovery and active-module checks remain independent,
+            # fail-closed security boundaries.
+            verify_discovered_runtime_inputs(project_root, provenance)
+            attestation_status, attestation_category = "mismatch", "active_runtime_source_mismatch"
     except ValueError as exc:
         category = str(exc)
         if category in {"active_runtime_source_mismatch", "unexpected_runtime_input"}:
@@ -105,7 +117,10 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
             residual += sum(1 for path in root.rglob("*.py")
                             if "__pycache__" not in path.parts and path.relative_to(project_root).as_posix() not in expected)
     return {
-        "identity_kind": "incremental_package", "identity_verified": True,
+        "identity_kind": "incremental_package",
+        "identity_verified": attestation_status == "verified",
+        "attestation_status": attestation_status,
+        "attestation_category": attestation_category,
         "reviewed_runtime_sha": provenance["reviewed_runtime_sha"],
         "provenance_fingerprint": provenance_fingerprint(provenance),
         "runtime_files": [{"path": path, "sha256": expected[path]} for path in sorted(expected)],
@@ -115,7 +130,8 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
     }
 
 
-def collect_runtime_evidence(project_root: Path, artifact_root: Path) -> dict:
+def collect_runtime_evidence(project_root: Path, artifact_root: Path,
+                             verification: str = "release") -> dict:
     from agent.external_capabilities import frozen_plan, resolve_environment_plan
     plan = frozen_plan(resolve_environment_plan)
     workers = {}
@@ -128,17 +144,17 @@ def collect_runtime_evidence(project_root: Path, artifact_root: Path) -> dict:
     return {
         "schema_version": "requirement_e2e_runtime_evidence_v1",
         "observed_at": datetime.now(timezone.utc).isoformat(),
-        "deployment_source": collect_source_evidence(project_root),
+        "deployment_source": collect_source_evidence(project_root, verification=verification),
         "workers": workers,
         "artifact_root_fingerprint": output_root_fingerprint(artifact_root),
         "acceptance": plan.evidence() if plan is not None else None,
     }
 
 
-def configured_runtime_evidence(project_root: Path) -> dict:
+def configured_runtime_evidence(project_root: Path, verification: str = "release") -> dict:
     root = os.getenv("REQUIREMENT_HANDOFF_OUTPUT_ROOT", "").strip()
     if not root: raise RuntimeError("requirement_handoff_output_root_unavailable")
-    return collect_runtime_evidence(project_root, Path(root))
+    return collect_runtime_evidence(project_root, Path(root), verification)
 
 
 class ArtifactEvidenceError(RuntimeError):

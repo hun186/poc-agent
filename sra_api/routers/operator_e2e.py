@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
@@ -13,9 +14,12 @@ router = APIRouter(prefix="/v1/operator-e2e", tags=["operator-e2e"])
 
 
 @router.get("/runtime-evidence")
-def runtime_evidence(user: AuthUser = Depends(require_superuser)) -> dict:
+def runtime_evidence(
+    verification: Literal["release", "functional"] = "release",
+    user: AuthUser = Depends(require_superuser),
+) -> dict:
     """Return bounded verified facts; never paths, process details, or secrets."""
-    try: return configured_runtime_evidence(Path(__file__).resolve().parents[2])
+    try: return configured_runtime_evidence(Path(__file__).resolve().parents[2], verification)
     except RuntimeError as exc: raise HTTPException(503, detail={"code": str(exc)}) from exc
 
 
