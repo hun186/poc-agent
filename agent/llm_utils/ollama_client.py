@@ -105,6 +105,16 @@ class LLMClient:
         # 萬一格式很怪，就回空字串
         return ""
 
+
+class DeterministicE2ELLMClient:
+    """External-boundary replacement; orchestration and report code stay real."""
+
+    def chat(self, messages, **kwargs) -> str:
+        prompt = "\n".join(str(item.get("content") or "") for item in messages)
+        # Stable model output, never a synthesized durable workflow result.
+        return ("Evidence-based Requirement E2E report generated from the retrieval "
+                "tools and their cited source records.\n\n" + prompt[-1000:])
+
     # ===== /api/generate：舊版單一 prompt =====
     def generate(
         self,
@@ -155,7 +165,11 @@ _default_client: Optional[LLMClient] = None
 def get_default_client() -> LLMClient:
     global _default_client
     if _default_client is None:
-        _default_client = LLMClient()
+        from agent.external_capabilities import frozen_plan, resolve_environment_plan
+        plan = frozen_plan(resolve_environment_plan)
+        _default_client = (DeterministicE2ELLMClient()
+                           if plan is not None and plan.llm_backend == "semantic_mock"
+                           else LLMClient())
     return _default_client
 
 

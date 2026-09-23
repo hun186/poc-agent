@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 MOCK_INDEX = "vercel_mock_vessel_activities"
+REQUIREMENT_E2E_INDEX = "requirement_e2e_semantic"
 _NOW = "2026-06-22T00:00:00Z"
 
 MOCK_DOCS: dict[str, dict[str, dict[str, Any]]] = {
@@ -199,6 +200,60 @@ MAPPING = {
     }
 }
 
+# A separate, explicit acceptance fixture.  Unlike the legacy preview records
+# above, this follows the current native Event[]/event_ids enrichment contract.
+_E2E_TOPICS = (
+    ("001", "first", "2026-09-15"),
+    ("002", "second", "2026-09-16"),
+    ("003", "third", "2026-09-17"),
+)
+MOCK_DOCS[REQUIREMENT_E2E_INDEX] = {}
+for _number, _ordinal, _date in _E2E_TOPICS:
+    _text = (
+        f"Produce an evidence-based situation report for the {_ordinal} stable "
+        "Requirement E2E topic."
+    )
+    MOCK_DOCS[REQUIREMENT_E2E_INDEX][f"requirement-e2e-{_number}"] = {
+        "uuid": f"requirement-e2e-{_number}",
+        "communication": {"subject": f"Requirement E2E {_ordinal} stable topic"},
+        "rawInfo": {"content": _text},
+        "importDT": f"{_date}T00:00:00Z",
+        "selectedMessage": True,
+        "ai": {"classLabels": {"highValue": True}},
+        "multidim_event_json": [{
+            "article_title": f"Requirement E2E {_ordinal} stable topic",
+            "article_date_iso": f"{_date}T00:00:00Z",
+            "article_date_precision": "day",
+            "facet": ["requirement_e2e"],
+            "core_entities": ["Requirement E2E"],
+            "locations": [],
+            "Event_Summary": _text,
+            "Event": [{
+                "event_id": "E1", "subject": "Requirement E2E",
+                "object": f"{_ordinal} stable topic", "action": "requests report",
+                "location": "", "time_iso": f"{_date}T00:00:00Z",
+                "time_raw": _date, "time_precision": "day",
+            }],
+            "Person": [],
+            "Involved_Parties": [{
+                "party_name": "Requirement E2E", "party_role": "request source",
+                "event_ids": ["E1"],
+            }],
+            "Impact": [{"impact_description": "A report is required.", "event_ids": ["E1"]}],
+            "Event_Timeline": [{
+                "time_iso": f"{_date}T00:00:00Z", "time_raw": _date,
+                "time_precision": "day", "description": _text,
+                "event_ids": ["E1"],
+            }],
+            "evidence_snippets": [{
+                "source_id": f"requirement-e2e-{_number}", "paragraph_id": "P1",
+                "text": _text, "confidence": 100, "event_ids": ["E1"],
+            }],
+            "importance": {"importance_score": 100},
+        }],
+    }
+MAPPING[REQUIREMENT_E2E_INDEX] = copy.deepcopy(MAPPING[MOCK_INDEX])
+
 
 class MockIndicesClient:
     def __init__(self, parent: "MockElasticsearch") -> None:
@@ -226,7 +281,7 @@ class MockElasticsearch:
     def ping(self) -> bool:
         return True
 
-    def search(self, *, index: str, body: dict[str, Any]) -> dict[str, Any]:
+    def search(self, *, index: str, body: dict[str, Any], **_: Any) -> dict[str, Any]:
         docs = self.docs.get(index, {})
         query_text = _extract_query_text(body).lower()
         rows = []
@@ -234,7 +289,16 @@ class MockElasticsearch:
             haystack = " ".join(str(v) for v in _flatten_values(source)).lower()
             if query_text and query_text not in haystack:
                 continue
-            rows.append({"_id": doc_id, "_index": index, "_score": 1.0, "_source": copy.deepcopy(source)})
+            row = {"_id": doc_id, "_index": index, "_score": 1.0, "_source": copy.deepcopy(source)}
+            blocks = source.get("multidim_event_json") or []
+            snippets = blocks[0].get("evidence_snippets", []) if blocks else []
+            if snippets:
+                row["inner_hits"] = {"evi": {"hits": {"hits": [
+                    {"_nested": {"field": "multidim_event_json.evidence_snippets", "offset": i},
+                     "_score": 1.0, "_source": copy.deepcopy(item)}
+                    for i, item in enumerate(snippets[:3])
+                ]}}}
+            rows.append(row)
         rows.sort(key=lambda hit: str(hit["_source"].get("importDT") or ""), reverse=True)
         offset = int(body.get("from") or 0)
         size = int(body.get("size") or 20)

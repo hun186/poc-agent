@@ -56,3 +56,10 @@
 
 - `.codex/archive/architecture.md-20260918-000000.md` — full pre-compaction architecture through 2026-09-18.
 - Earlier archives referenced by that file remain under `.codex/archive/`.
+
+## 2026-09-22 Requirement E2E external capability boundary
+
+- `agent.external_capabilities` owns immutable per-process mode parsing, live probes, backend resolution, stable evidence categories, and FULL_LIVE/HYBRID/OFFLINE classification. It is dormant unless `REQUIREMENT_E2E_EXTERNAL_MODE` is explicitly configured.
+- Elasticsearch selection remains at `agent.es.es_client.get_es()`. The semantic backend returns ES hit envelopes and nested `evi` inner hits, so `ESSearchNews`, query construction, parsing, and evidence building remain production code.
+- Direct LLM calls inject an `LLMClient` boundary adapter; CodeAgent injects a `Model` boundary adapter that instructs the real CodeAgent to invoke `es_search_news`. Internal Requirement lifecycle, Agent orchestration, report/DOCX generation, and durable reconciliation are not replaced.
+- Live mapping authority remains `indices.get_mapping()`. The capability probe checks only the runtime-required E2E subset; enrichment documentation remains semantic rather than field-type authority.

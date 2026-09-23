@@ -34,3 +34,5 @@
 
 - `.codex/archive/backlog.md-20260918-000000.md` — full pre-compaction backlog, including historical gates and superseded status detail.
 - Earlier archives referenced by that file remain under `.codex/archive/`.
+
+- 2026-09-22: Run live and auto capability-adaptive Requirement acceptance on an authorized deployment, including FULL_LIVE retrieval/content acceptance and final DOCX/durable state. Rebase/retarget the capability slice onto the hosted PR #270 content branch if that prerequisite remains unmerged; hosted PR state was inaccessible from this environment.

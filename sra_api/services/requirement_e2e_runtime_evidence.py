@@ -116,6 +116,8 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
 
 
 def collect_runtime_evidence(project_root: Path, artifact_root: Path) -> dict:
+    from agent.external_capabilities import frozen_plan, resolve_environment_plan
+    plan = frozen_plan(resolve_environment_plan)
     workers = {}
     for role in ("schedule", "handoff"):
         try:
@@ -129,6 +131,7 @@ def collect_runtime_evidence(project_root: Path, artifact_root: Path) -> dict:
         "deployment_source": collect_source_evidence(project_root),
         "workers": workers,
         "artifact_root_fingerprint": output_root_fingerprint(artifact_root),
+        "acceptance": plan.evidence() if plan is not None else None,
     }
 
 

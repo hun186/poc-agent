@@ -150,3 +150,9 @@
 - Added shared bounded selectors/discovery and `unexpected_runtime_input` propagation through generation, exact package verification, Linux runtime evidence, remote evidence, and Harness preflight. Runtime loaders now consume the same pure selectors without importing side-effectful singleton loaders into verification.
 - GREEN: `PYTHONPATH=. pytest -q tests/test_requirement_e2e_source_identity_hotfix.py tests/test_requirement_operator_e2e_harness.py tests/test_requirement_operator_e2e_harness_v2.py tests/test_runtime_input_provenance.py` passed 115 tests with two pre-existing dependency deprecation warnings. The live Requirement Golden Path and all real Agent/Elasticsearch/LLM/DOCX paths were not run.
 - Compacted architecture, API contract, and backlog after each exceeded 20 work/date sections. Full prior text is archived at `.codex/archive/{architecture,api_contract,backlog}.md-20260918-000000.md`.
+
+### 2026-09-22 Capability-adaptive Requirement E2E
+
+- Added explicit live/auto/offline external dependency planning, frozen per deployment process before the Requirement workflow. Runtime evidence and operator output now distinguish FULL_LIVE, HYBRID, and OFFLINE while preserving workflow failures.
+- Added mapping- and dataset-aware live Elasticsearch probing, non-empty live LLM probing, an acceptance-only semantic ES fixture using native Event arrays/event_ids, and deterministic adapters at the ES and both LLM model boundaries. The real CodeAgent/tool/query/parser/evidence path remains active offline.
+- Focused capability tests passed 17 tests; the relevant Harness/provenance/nested-mapping regression command passed. A direct offline CodeAgent run executed retrieval and returned all three semantic evidence records. No live SQL Server, Elasticsearch, LLM, deployment, or DOCX E2E was available or claimed.

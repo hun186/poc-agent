@@ -86,6 +86,34 @@ while loaded/discovered/shadowing modules and managed-byte drift fail closed.
 
 ## Input and invocation
 
+### External capability policy
+
+Pass `--external-mode live|auto|offline` (default `auto`). The deployment must
+have the same `REQUIREMENT_E2E_EXTERNAL_MODE` value before the API and workers
+start. Runtime evidence freezes and reports one LLM/Elasticsearch backend plan
+before workbook import; the harness rejects a requested/deployed-mode mismatch.
+`live` fails if the model is not callable, the index is absent, the live mapping
+lacks the query/runtime-required nested subset, or the canonical retrieval
+phrases do not produce hits. `auto` records the stable probe category and uses a
+semantic boundary mock only for an unsuitable dependency. `offline` skips both
+network probes. No mode replaces Requirement import, scheduling, claiming,
+handoff, Agent orchestration, report/DOCX generation, reconciliation, or durable
+terminal checks.
+
+Successful evidence is always explicit: `PASS / FULL_LIVE`, `PASS / HYBRID`, or
+`PASS / OFFLINE`. `FULL_LIVE` additionally depends on the unchanged downstream
+retrieval, artifact, reconciliation, and terminal acceptance checks; a ping by
+itself cannot earn that classification. A later runtime failure never changes
+the frozen backend and remains `FAIL / <category>`.
+
+The live `indices.get_mapping()` response remains mapping authority. The probe
+checks only the E2E-required compatibility subset used by the query/parser
+(including the nested multi-dimensional arrays); this is not a complete
+production mapping. `docs/taskSetting_Enrichment.py` supplies semantic rules,
+not field-type authority. The dedicated semantic fixture uses native `Event[]`
+and event-scoped `event_ids`, and returns ES-shaped hits through the normal query,
+parser, and evidence-builder path.
+
 Prepare an XLSX containing exactly three production-valid rows with these headers:
 
 ```text

@@ -79,11 +79,12 @@ class Api:
 class Harness:
     PROGRESS_HEARTBEAT_SECONDS = 15
 
-    def __init__(self, config: E2EConfig, excel: Path, run_id: str, result: dict[str, Any]):
+    def __init__(self, config: E2EConfig, excel: Path, run_id: str, result: dict[str, Any], external_mode: str = "auto"):
         self.config, self.excel, self.run_id, self.result = config, excel, run_id, result
         self.api = Api(config); self.enabled_schedule_id: str | None = None
         self.output = config.output_dir / run_id; self.known_secrets = [x for x in (config.token, config.password) if x]
         self.evidence_provider = None
+        self.external_mode = external_mode
 
     def log(self, event: str, **fields):
         """Emit one redacted, deterministic operator progress record."""
@@ -395,6 +396,10 @@ class Harness:
         else:
             self.evidence_provider = RemoteDeploymentEvidenceProvider(self.api)
         deployment_evidence = self.evidence_provider.preflight()
+        acceptance = deployment_evidence.get("acceptance") or {}
+        if acceptance.get("requested_mode") != self.external_mode:
+            self.fail("external_capability_mode_mismatch", "RUNTIME_WORKERS", ExitCode.PREFLIGHT)
+        self.result["acceptance"] = acceptance
         self.result["deployment_evidence"] = deployment_evidence
         self.result["deployment_source"] = deployment_evidence.get("deployment_source", self.result["operator_source"])
         _validate_deployment_source(
@@ -436,6 +441,8 @@ Windows/Spyder is supported for remote-operator acceptance.
 Local-host acceptance remains Linux deployment-host only.""",
     ); parser.add_argument("--mode", choices=("local", "remote"), default="local",
                            help="local: Linux deployment host; remote: Windows/POSIX operator workstation")
+    parser.add_argument("--external-mode", choices=("live", "auto", "offline"), default="auto",
+                        help="external dependency policy, frozen by deployment before workflow start")
     parser.add_argument("--excel", type=Path, default=DEFAULT_EXCEL,
                         help="XLSX override (default: canonical fixture resolved beside this script)")
     parser.add_argument("--provenance", type=Path, default=PROJECT_ROOT / PROVENANCE_NAME,
@@ -481,6 +488,7 @@ def _validate_deployment_source(source: dict[str, Any], expected_fingerprint: st
 def main(argv=None) -> int:
     bootstrap_env(); args = parse_args(argv); run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     result = result_document(run_id, args.mode); started = time.monotonic(); harness = None; diagnostics = {"logs": {}}
+    result["acceptance"] = {"requested_mode": args.external_mode}
     # This fallback exists solely so CONFIG failures can still publish evidence.
     # Once configuration is valid, its resolved (or CLI-overridden) directory is
     # authoritative for the lock, artifact copies, and final evidence alike.
@@ -511,7 +519,12 @@ def main(argv=None) -> int:
         )
         if args.output_dir: config = E2EConfig(**{**config.__dict__, "output_dir": args.output_dir})
         evidence_output = config.output_dir / run_id
-        harness = Harness(config, args.excel.resolve(), run_id, result)
+        # Local mode shares this process policy. Remote deployments must have
+        # the same value configured before their API/workers start; evidence
+        # above rejects disagreement rather than changing a running backend.
+        if args.mode == "local":
+            os.environ["REQUIREMENT_E2E_EXTERNAL_MODE"] = args.external_mode
+        harness = Harness(config, args.excel.resolve(), run_id, result, args.external_mode)
         result["operator_source"] = _provenance_source(
             PROJECT_ROOT, args.provenance.resolve(), config.expected_runtime_sha,
         )
@@ -541,7 +554,8 @@ def main(argv=None) -> int:
         safe = redact(result, known_secrets)
         atomic_write_json(evidence_output / "result.json", safe)
         atomic_write_json(evidence_output / "diagnostics.json", redact(diagnostics, known_secrets))
-        summary = f"REQUIREMENT_E2E = {result['overall_status']}\nACCEPTANCE_MODE = {args.mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
+        classification = result.get("acceptance", {}).get("classification", "UNRESOLVED")
+        summary = f"REQUIREMENT_E2E = {result['overall_status']} / {classification if result['overall_status'] == 'PASS' else result.get('failure_category', 'FAIL')}\nACCEPTANCE_MODE = {args.mode}\nEXTERNAL_MODE = {args.external_mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' and classification == 'FULL_LIVE' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
         if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
         atomic_write_text(evidence_output / "summary.txt", summary)
         if harness: harness.log("PASS FINAL_EVIDENCE")
@@ -553,7 +567,8 @@ def main(argv=None) -> int:
             (evidence_output / "artifacts").mkdir(exist_ok=True)
             atomic_write_json(evidence_output / "result.json", redact(result, known_secrets))
             atomic_write_json(evidence_output / "diagnostics.json", redact(diagnostics, known_secrets))
-            summary = f"REQUIREMENT_E2E = {result['overall_status']}\nACCEPTANCE_MODE = {args.mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
+            classification = result.get("acceptance", {}).get("classification", "UNRESOLVED")
+            summary = f"REQUIREMENT_E2E = {result['overall_status']} / {classification if result['overall_status'] == 'PASS' else result.get('failure_category', 'FAIL')}\nACCEPTANCE_MODE = {args.mode}\nEXTERNAL_MODE = {args.external_mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' and classification == 'FULL_LIVE' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
             if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
             atomic_write_text(evidence_output / "summary.txt", summary)
             if harness: harness.log("PASS FINAL_EVIDENCE")

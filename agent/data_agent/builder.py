@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Tuple, Optional
 
-from smolagents import CodeAgent, LiteLLMModel, PythonInterpreterTool
+from smolagents import ChatMessage, CodeAgent, LiteLLMModel, Model, PythonInterpreterTool
 
 from ..tools_es import ESSearchNews, ESTimeline, ESFetchDocById
 from ..tools_stats import AggregateMonthQuarter
@@ -15,6 +15,26 @@ from .prompts import REPORT_DATA_SYSTEM, STYLE_DATA_CODE_SYSTEM
 logger = logging.getLogger(__name__)
 
 _SHARED_MODEL: Optional[LiteLLMModel] = None
+
+
+class DeterministicE2ECodeModel(Model):
+    """A model-boundary fake that still makes CodeAgent execute its real tool."""
+
+    def __init__(self):
+        super().__init__()
+
+    def generate(self, messages, **kwargs):
+        last = messages[-1] if messages else {}
+        role = getattr(last, "role", None)
+        role_value = getattr(role, "value", role) or (last.get("role") if isinstance(last, dict) else None)
+        if str(role_value).lower() in {"tool", "tool-response"}:
+            content = "```py\nfinal_answer(evidence)\n```"
+        else:
+            content = (
+                "```py\nevidence = es_search_news(query='Requirement E2E stable topic', "
+                "must_selected=True, must_high_value=True)\n```"
+            )
+        return ChatMessage(role="assistant", content=content)
 
 
 def normalize_model_id(mid: str) -> str:
@@ -53,9 +73,15 @@ def _make_code_agent(tools, model, system_prompt: str) -> CodeAgent:
         )
 
 
-def build_model() -> LiteLLMModel:
+def build_model() -> LiteLLMModel | Model:
     global _SHARED_MODEL
     if _SHARED_MODEL is not None:
+        return _SHARED_MODEL
+
+    from agent.external_capabilities import frozen_plan, resolve_environment_plan
+    plan = frozen_plan(resolve_environment_plan)
+    if plan is not None and plan.llm_backend == "semantic_mock":
+        _SHARED_MODEL = DeterministicE2ECodeModel()
         return _SHARED_MODEL
 
     effective_model_id = normalize_model_id(ENV.data_agent_model_id)

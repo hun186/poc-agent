@@ -212,3 +212,8 @@
 - Use one side-effect-free policy in `shared.runtime_provenance` for runtime loaders, generation, Linux evidence, and offline operator verification. Closed-directory discovery exactly follows direct-child, case-insensitive `.json` synonym membership; selector resolution preserves index precedence and covers the Requirement SQL registry and Editor form config.
 - Existing selected paths outside the project root have no implicit authority and fail as `unexpected_runtime_input`. Dotenv, secrets, auth/session stores, SQLite, generated outputs, import sources, and operator-managed task configuration remain separate mutable/deployment authority.
 - Preserve incremental deployments: unrelated and ignored residue remains accepted; inactive Python remains a bounded warning, while imported project modules absent from provenance remain blocked by the existing active-module rule.
+
+## 2026-09-22 Freeze explicit E2E external backend policy
+
+- Keep ordinary production backend behavior unchanged unless the explicit Requirement E2E external-mode variable is present. Resolve both dependencies before workbook mutation and never change the plan after a runtime failure.
+- Reuse the existing ES client seam and separate the Requirement semantic fixture index from the generic Vercel preview fixture. Mock only external model/search boundaries; keep production query, evidence, Agent, Schedule, Handoff, Report Job, DOCX, reconciliation, and terminal-state paths real.
