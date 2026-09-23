@@ -144,12 +144,25 @@ class DeterministicE2ELLMClient:
             question = prompt.split("【使用者問句】", 1)[-1].strip()
             return json.dumps({"refined_question": question}, ensure_ascii=False)
         if "欄位選擇器" in system:
-            return json.dumps({"fields": ["id", "d", "title", "note"]}, ensure_ascii=False)
+            return json.dumps({"fields": ["ref_no", "note", "d", "title"]}, ensure_ascii=False)
+        if "通用查詢關鍵字萃取器" in system:
+            if any(term in prompt for term in ("加薩", "Gaza")):
+                terms = ["加薩", "停火", "人質", "人道援助"]
+            elif any(term in prompt for term in ("臺灣海峽", "台灣海峽", "灰色地帶")):
+                terms = ["臺灣海峽", "灰色地帶", "軍機", "海警"]
+            elif any(term in prompt for term in ("美中戰略", "印太", "US-China")):
+                terms = ["美中戰略競爭", "印太", "美軍"]
+            else:
+                terms = []
+            return json.dumps(terms, ensure_ascii=False)
+        if "文本檢索查詢關鍵詞同義詞擴充器" in system:
+            return "{}"
         try:
             payload = json.loads(prompt)
         except (TypeError, ValueError):
             payload = None
-        if isinstance(payload, dict) and isinstance(payload.get("ev"), list):
+        if ("資料驅動的分析助手" in system and isinstance(payload, dict)
+                and isinstance(payload.get("ev"), list)):
             evidence = payload["ev"]
             lines = ["# 情勢研析報告", "", "## 證據摘要"]
             for item in evidence:
@@ -160,15 +173,15 @@ class DeterministicE2ELLMClient:
                     lines.append(f"- {title}：{note}（參考 {ref}）")
             lines.extend(["", "## 綜合研判", "以上研判僅依據列示證據，未加入外部事實。"])
             return "\n".join(lines)
-        return "Requirement E2E deterministic model response."
+        raise RuntimeError("unsupported_e2e_llm_contract")
 
 
 # ---- 全域 singleton ＋ 簡易 wrapper ----
 
-_default_client: Optional[LLMClient] = None
+_default_client: Optional[LLMClient | DeterministicE2ELLMClient] = None
 
 
-def get_default_client() -> LLMClient:
+def get_default_client() -> LLMClient | DeterministicE2ELLMClient:
     global _default_client
     if _default_client is None:
         from agent.external_capabilities import frozen_plan, resolve_environment_plan
@@ -177,6 +190,12 @@ def get_default_client() -> LLMClient:
                            if plan is not None and plan.llm_backend == "semantic_mock"
                            else LLMClient())
     return _default_client
+
+
+def reset_default_client_for_tests() -> None:
+    """Reset the process singleton only for isolated backend-selection tests."""
+    global _default_client
+    _default_client = None
 
 
 def call_llm(

@@ -164,3 +164,10 @@
 - Moved plan ownership to the API/ReportJobWorker process before claims; local and remote harnesses now assert authenticated runtime evidence rather than modifying harness-process environment.
 - Focused capability tests passed 39 tests; Agent/ES/LLM/ReportJob tests passed 73 tests; Requirement Harness/provenance/ReportJob regressions passed 157 tests. No live LLM, ES, SQL, Schedule/Handoff, full automatic run, DOCX, or reconciliation acceptance was executed.
 - GitHub remained unreachable through the environment proxy, so hosted refs, push, and the required hosted-verifiable provenance regeneration could not be completed. The existing local-only provenance anchor must not be presented as corrected.
+
+### 2026-09-23 Deterministic direct-LLM contract audit
+
+- Audited every direct `call_llm()` contract reachable from SRA_REPORT: router and report are unconditional; query refiner, topic extraction/synonym expansion, and evidence field selection are configuration-conditional. DataAgent remains a distinct smolagents model boundary.
+- Corrected the raw field-selector response to include mandatory `ref_no` and `note`; added explicit topic-extractor and synonym-expander JSON contracts; removed the unsafe generic prose catch-all in favor of `unsupported_e2e_llm_contract`.
+- Added exact-production-prompt tests for all three router themes, time-context refiner recognition, raw selector validity, production report payload grounding/empty evidence, conditional query-term callers, activation/cache reset, ordinary chat/generate behavior, unknown-contract failure, and the real offline Agent-turn path.
+- Verification passed 50 focused capability tests and 89 related LLM/refiner/query-term/turn/ReportJob/Harness tests. No live external dependency or deployment acceptance was executed.

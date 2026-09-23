@@ -123,6 +123,23 @@ The bounded semantic backend evaluates the production query builder's required
 `function_score`/bool/term/text/nested/range subset and fails visibly for an
 unsupported query rather than returning every document.
 
+The deterministic direct-LLM boundary models every `SRA_REPORT` caller contract
+explicitly and fails as `unsupported_e2e_llm_contract` for an unknown system
+prompt. The audited contracts are:
+
+| Stage | Production prompt/caller | Raw response contract | Conditional |
+| --- | --- | --- | --- |
+| Router | `routing.TASK_ROUTER_SYSTEM` | JSON object with `mode`, `reason`, and configured `topic` | No |
+| Query refiner | `query_refiner.REFINER_SYSTEM_PROMPT` plus time context | JSON object with semantics-preserving `refined_question` | `QUERY_REFINER_REPORT_ENABLED=1` |
+| Topic extractor | `query_terms.extract_topic_terms_llm` | JSON string array | `TOPIC_LLM_URL` configured |
+| Synonym expander | `query_terms.expand_synonyms_grouped_llm` | JSON object mapping terms to string arrays | `TOPIC_LLM_URL` configured and core terms present |
+| Evidence field selector | `evidence_pack.LLM_FIELD_SELECTOR_SYSTEM` | JSON `fields` containing mandatory `ref_no` and `note` | selector mode `llm`/`hybrid` |
+| Report writer | `report_prompt.REPORT_SYSTEM_PROMPT` | Evidence-grounded Markdown from the production `q/q0/t/agg/ev` JSON | No |
+
+The smolagents DataAgent model is a separate boundary: its deterministic model
+derives a business-theme query and instructs the real `CodeAgent` to invoke
+`es_search_news`; it does not construct final evidence itself.
+
 Prepare an XLSX containing exactly three production-valid rows with these headers:
 
 ```text

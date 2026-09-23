@@ -223,3 +223,8 @@
 - Never configure an already-running deployment by mutating the operator harness environment. Freeze capability state in the ReportJobWorker-owning process and expose only safe authenticated evidence.
 - Keep full live mapping authority in `indices.get_mapping()`, the czjLLM subtree contract separate, and validate only retrieval-required live fields/multifields plus the configured reference-text path.
 - A semantic mock must reject unsupported DSL and discriminate business topics; returning every fixture is not an acceptable fallback.
+
+## 2026-09-23 Deterministic LLM contracts fail closed
+
+- Treat deterministic E2E output as a faithful external-boundary contract, not input for downstream repair. Raw structured responses must independently satisfy each production prompt.
+- Explicitly model every current SRA_REPORT direct-LLM stage and raise `unsupported_e2e_llm_contract` for unknown prompts. Keep ordinary `LLMClient` behavior unchanged and retain an isolated test-only singleton reset.

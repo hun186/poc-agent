@@ -22,9 +22,12 @@ from agent.external_capabilities import (
 
 @pytest.fixture(autouse=True)
 def _reset_plan():
+    from agent.llm_utils.ollama_client import reset_default_client_for_tests
     reset_plan_for_tests()
+    reset_default_client_for_tests()
     yield
     reset_plan_for_tests()
+    reset_default_client_for_tests()
 
 
 @pytest.mark.parametrize("value", ["live", "auto", "offline", " LIVE "])
@@ -253,28 +256,92 @@ def test_unsupported_semantic_query_fails_visibly():
                                    body={"query": {"query_string": {"query": "加薩"}}})
 
 
-def test_deterministic_direct_llm_contracts_use_evidence():
+@pytest.mark.parametrize(("question", "expected_topic"), [
+    ("請分析加薩停火、人質談判與人道援助。", "news_general"),
+    ("請分析臺灣海峽灰色地帶活動。", "mil_intel"),
+    ("請分析美中戰略競爭與美軍印太部署。", "mil_intel"),
+])
+def test_deterministic_router_recognizes_actual_prompt(question, expected_topic):
     from agent.llm_utils.ollama_client import DeterministicE2ELLMClient
+    from agent.routing import TASK_ROUTER_SYSTEM
+    from config.index_loader import INDEX_CONFIG
     client = DeterministicE2ELLMClient()
     routed = json.loads(client.chat([
-        {"role": "system", "content": "你是一個任務分類器"},
-        {"role": "user", "content": "請分析臺灣海峽灰色地帶活動"},
+        {"role": "system", "content": TASK_ROUTER_SYSTEM},
+        {"role": "user", "content": question},
     ]))
-    assert routed["mode"] == "SRA_REPORT" and routed["topic"] == "mil_intel"
+    assert routed["mode"] == "SRA_REPORT"
+    assert routed["topic"] == expected_topic
+    assert routed["topic"] in INDEX_CONFIG["topic_index_map"]
+
+
+def test_deterministic_refiner_recognizes_actual_prompt_with_time_context():
+    from agent.llm_utils.ollama_client import DeterministicE2ELLMClient
+    from agent.refiners.query_refiner import REFINER_SYSTEM_PROMPT
+    question = "請持續蒐集去年加薩停火、人質談判及人道援助。"
+    system = REFINER_SYSTEM_PROMPT + "\n\n【本次時間換算基準】reference_time=2026-09-23T00:00:00+00:00"
+    client = DeterministicE2ELLMClient()
     refined = json.loads(client.chat([
-        {"role": "system", "content": "你是一個問句精煉器"},
-        {"role": "user", "content": "【使用者問句】\n請分析加薩停火"},
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"請精煉下列使用者問句，只輸出 JSON。\n\n【使用者問句】\n{question}\n"},
     ]))
-    assert refined == {"refined_question": "請分析加薩停火"}
-    report = client.chat([
-        {"role": "system", "content": "報告生成"},
-        {"role": "user", "content": json.dumps({"ev": [{
-            "id": "requirement-gaza-001", "title": "加薩停火談判",
-            "note": "加薩停火談判聚焦人質釋放。",
-        }]}, ensure_ascii=False)},
+    assert refined == {"refined_question": question}
+
+
+def test_deterministic_field_selector_raw_contract_uses_actual_prompt():
+    from agent.llm_utils.ollama_client import DeterministicE2ELLMClient
+    from agent.utils.evidence_pack import ALL_EV_FIELDS, LLM_FIELD_SELECTOR_SYSTEM
+    raw = DeterministicE2ELLMClient().chat([
+        {"role": "system", "content": LLM_FIELD_SELECTOR_SYSTEM},
+        {"role": "user", "content": json.dumps({"q": "加薩時間線", "candidates": sorted(ALL_EV_FIELDS)}, ensure_ascii=False)},
     ])
-    assert "加薩停火談判聚焦人質釋放" in report
+    fields = json.loads(raw)["fields"]
+    assert {"ref_no", "note"} <= set(fields)
+    assert set(fields) <= ALL_EV_FIELDS
+
+
+def test_deterministic_report_consumes_actual_production_payload():
+    from agent.llm_utils.ollama_client import DeterministicE2ELLMClient
+    from agent.report_prompt import REPORT_SYSTEM_PROMPT
+    payload = {"q": "加薩情勢", "q0": "請分析加薩", "t": [None, None],
+               "agg": {"docs": 1}, "ev": [{"ref_no": 7,
+               "title": "供應標題", "note": "供應證據中的唯一事實。"}]}
+    client = DeterministicE2ELLMClient()
+    report = client.chat([
+        {"role": "system", "content": REPORT_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ])
+    assert "供應證據中的唯一事實" in report
+    assert "供應標題" in report and "參考 7" in report
     assert "未加入外部事實" in report
+    empty_report = client.chat([
+        {"role": "system", "content": REPORT_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps({**payload, "ev": []}, ensure_ascii=False)},
+    ])
+    assert "供應證據中的唯一事實" not in empty_report
+    assert all(term not in empty_report for term in ("加薩停火", "臺灣海峽", "美中戰略"))
+
+
+def test_deterministic_query_term_contracts_use_production_callers(monkeypatch):
+    from agent.es import query_terms
+    from agent.llm_utils.ollama_client import DeterministicE2ELLMClient
+    client = DeterministicE2ELLMClient()
+    monkeypatch.setenv("TOPIC_LLM_URL", "semantic-mock-enabled")
+    monkeypatch.setattr(query_terms, "call_llm", lambda prompt, *, system_prompt, **kwargs:
+                        client.chat([{"role": "system", "content": system_prompt},
+                                     {"role": "user", "content": prompt}]))
+    terms = query_terms.extract_topic_terms_llm("分析臺灣海峽灰色地帶活動")
+    assert {"臺灣海峽", "灰色地帶"} <= set(terms)
+    assert query_terms.expand_synonyms_grouped_llm("分析臺灣海峽", terms) == {}
+
+
+def test_unknown_deterministic_direct_llm_contract_fails_closed():
+    from agent.llm_utils.ollama_client import DeterministicE2ELLMClient
+    with pytest.raises(RuntimeError, match="unsupported_e2e_llm_contract"):
+        DeterministicE2ELLMClient().chat([
+            {"role": "system", "content": "未審查的新系統契約"},
+            {"role": "user", "content": '{"ev":[]}'},
+        ])
 
 
 def test_production_llm_generate_regression(monkeypatch):
@@ -291,10 +358,43 @@ def test_production_llm_generate_regression(monkeypatch):
     assert captured["json"]["model"] == "production-model"
 
 
-def test_no_e2e_mode_preserves_production_llm_client(monkeypatch):
+def test_production_llm_chat_regression(monkeypatch):
+    from agent.llm_utils.ollama_client import LLMClient
+    captured = {}
+    class Response:
+        def raise_for_status(self): pass
+        def json(self): return {"message": {"role": "assistant", "content": "chat-result"}}
+    monkeypatch.setattr("agent.llm_utils.ollama_client.requests.post",
+                        lambda url, **kwargs: captured.update(url=url, **kwargs) or Response())
+    client = LLMClient(base_url="http://model", model="production-model")
+    assert client.chat([{"role": "user", "content": "hello"}]) == "chat-result"
+    assert captured["url"] == "http://model/api/chat"
+
+
+@pytest.mark.parametrize(("mode", "backend", "expected"), [
+    (None, None, "LLMClient"),
+    ("live", "live", "LLMClient"),
+    ("offline", "semantic_mock", "DeterministicE2ELLMClient"),
+])
+def test_default_client_activation_boundary(monkeypatch, mode, backend, expected):
     from agent.llm_utils import ollama_client
     monkeypatch.delenv("REQUIREMENT_E2E_EXTERNAL_MODE", raising=False)
-    ollama_client._default_client = None
+    ollama_client.reset_default_client_for_tests()
+    if mode:
+        monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", mode)
+        install_plan(BackendPlan(mode, backend, "live", "pass", "pass"))
+    assert type(ollama_client.get_default_client()).__name__ == expected
+
+
+def test_default_client_reset_prevents_cross_test_backend_leak(monkeypatch):
+    from agent.llm_utils import ollama_client
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "offline")
+    install_plan(BackendPlan("offline", "semantic_mock", "semantic_mock",
+                             "offline_not_probed", "offline_not_probed"))
+    assert isinstance(ollama_client.get_default_client(), ollama_client.DeterministicE2ELLMClient)
+    ollama_client.reset_default_client_for_tests()
+    reset_plan_for_tests()
+    monkeypatch.delenv("REQUIREMENT_E2E_EXTERNAL_MODE")
     assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
 
 
