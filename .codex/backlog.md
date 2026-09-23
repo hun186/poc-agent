@@ -36,3 +36,5 @@
 - Earlier archives referenced by that file remain under `.codex/archive/`.
 
 - 2026-09-22: Run live and auto capability-adaptive Requirement acceptance on an authorized deployment, including FULL_LIVE retrieval/content acceptance and final DOCX/durable state. Rebase/retarget the capability slice onto the hosted PR #270 content branch if that prerequisite remains unmerged; hosted PR state was inaccessible from this environment.
+
+- 2026-09-23: After GitHub access is restored, push the runtime corrective to the existing PR #271 branch, verify the hosted runtime commit resolves, regenerate provenance against that hosted SHA, commit/push provenance separately, and re-read the final hosted diff. Do not reuse the prior local-only `2161ee5e...` anchor.

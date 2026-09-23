@@ -122,3 +122,7 @@
 
 - This environment had no authorized live Requirement SQL deployment, Elasticsearch index, or external LLM, so FULL_LIVE/HYBRID deployment acceptance and DOCX/durable terminal verification were not executed. Offline boundary orchestration and repository regressions are the available substitute; a live operator run remains required.
 - GitHub API/CLI and direct public Git transport were unavailable (CLI unauthenticated and the network proxy returned HTTP 403), so hosted `main`, PR #270, and a hosted PR diff could not be independently refreshed from this environment. Local HEAD matched the supplied authoritative main SHA `c9c0e03c34bad9524b948b4c0c1b30fdc6e425d4`.
+
+## 2026-09-23 Hosted provenance corrective blocked
+
+- GitHub API, Git HTTPS, and unauthenticated `gh` remained unavailable (`CONNECT tunnel failed, response 403`; no GitHub CLI login). The runtime corrective could be committed locally, but it could not be pushed and re-read as hosted PR #271 authority, so a hosted-verifiable runtime SHA and final provenance commit could not be produced without fabrication.

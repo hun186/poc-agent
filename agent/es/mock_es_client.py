@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import copy
+import fnmatch
+import re
 import time
 from typing import Any
+
+from agent.es.reference_text import add_reference_text_mapping, get_reference_text, set_reference_text
 
 MOCK_INDEX = "vercel_mock_vessel_activities"
 REQUIREMENT_E2E_INDEX = "requirement_e2e_semantic"
@@ -200,59 +204,198 @@ MAPPING = {
     }
 }
 
-# A separate, explicit acceptance fixture.  Unlike the legacy preview records
-# above, this follows the current native Event[]/event_ids enrichment contract.
-_E2E_TOPICS = (
-    ("001", "first", "2026-09-15"),
-    ("002", "second", "2026-09-16"),
-    ("003", "third", "2026-09-17"),
+# Dedicated Requirement acceptance mapping. The root fields below are the SRA
+# retrieval subset; REQUIREMENT_MULTIDIM_MAPPING is the separate czjLLM
+# writeback subtree and deliberately does not pretend to be a complete index
+# mapping.
+REQUIREMENT_MULTIDIM_MAPPING = {
+    "type": "nested", "dynamic": "strict", "properties": {
+        "article_date_iso": {"type": "date", "format": "yyyy-MM-dd"},
+        "article_date_precision": {"type": "keyword"},
+        "article_title": {"type": "text", "fields": {"raw": {"type": "keyword"}}},
+        "Event_Summary": {"type": "text"}, "facet": {"type": "keyword"},
+        "core_entities": {"type": "keyword"}, "locations": {"type": "keyword"},
+        "Event": {"type": "nested", "properties": {
+            "event_id": {"type": "keyword"}, "subject": {"type": "keyword"},
+            "object": {"type": "keyword"}, "aspect": {"type": "keyword"},
+            "medium": {"type": "keyword"}, "action": {"type": "keyword"},
+            "time_iso": {"type": "date", "format": "strict_date_optional_time||yyyy-MM-dd"},
+            "time_raw": {"type": "keyword"}, "time_precision": {"type": "keyword"},
+            "location": {"type": "keyword"}, "consequence": {"type": "text"},
+            "relation": {"type": "text"}, "source": {"type": "keyword"},
+        }},
+        "Person": {"type": "nested", "properties": {
+            "event_ids": {"type": "keyword"}, "name": {"type": "keyword"},
+            "role": {"type": "keyword"}, "action": {"type": "text"},
+            "quote": {"type": "text"}, "stance": {"type": "keyword"},
+            "relation": {"type": "text"},
+        }},
+        "Involved_Parties": {"type": "nested", "properties": {
+            "event_ids": {"type": "keyword"}, "party_name": {"type": "keyword"},
+            "party_role": {"type": "keyword"},
+        }},
+        "Impact": {"type": "nested", "properties": {
+            "event_ids": {"type": "keyword"}, "impact_description": {"type": "text"},
+        }},
+        "Event_Timeline": {"type": "nested", "properties": {
+            "event_ids": {"type": "keyword"},
+            "time_iso": {"type": "date", "format": "strict_date_optional_time||yyyy-MM-dd"},
+            "time_raw": {"type": "keyword"}, "time_precision": {"type": "keyword"},
+            "description": {"type": "text"},
+        }},
+        "evidence_snippets": {"type": "nested", "properties": {
+            "event_ids": {"type": "keyword"}, "text": {"type": "text"},
+            "source_id": {"type": "keyword"}, "char_start": {"type": "integer"},
+            "char_end": {"type": "integer"}, "paragraph_id": {"type": "keyword"},
+            "sentence_index": {"type": "integer"}, "confidence": {"type": "integer"},
+        }},
+        "importance": {"properties": {
+            "coverage": {"type": "integer"}, "novelty": {"type": "integer"},
+            "impact": {"type": "integer"}, "credibility": {"type": "integer"},
+            "importance_score": {"type": "integer"},
+        }},
+    },
+}
+
+REQUIREMENT_E2E_MAPPING = {"mappings": add_reference_text_mapping({"properties": {
+    "uuid": {"type": "keyword"},
+    "communication": {"properties": {"subject": {"type": "text", "fields": {"keyword": {"type": "keyword"}}}}},
+    "rawInfo": {"properties": {"content": {"type": "text"}}},
+    "selectedMessage": {"type": "boolean"},
+    "ai": {"properties": {"classLabels": {"properties": {"highValue": {"type": "boolean"}}}}},
+    "importDT": {"type": "date"},
+    "multidim_event_json": REQUIREMENT_MULTIDIM_MAPPING,
+}})}
+MAPPING[REQUIREMENT_E2E_INDEX] = REQUIREMENT_E2E_MAPPING
+
+_REQUIREMENT_DOCUMENTS = (
+    {
+        "id": "requirement-gaza-001", "date": "2025-10-08",
+        "title": "加薩停火談判與人道援助准入",
+        "content": "2025年10月8日，加薩停火談判聚焦人質釋放與人道援助准入。卡達與埃及參與調解，聯合國表示食品、藥品與帳篷已備妥，但邊境准入與安全通行仍限制物資送達。",
+        "subject": "加薩停火談判", "object": "人質釋放與人道援助准入",
+        "action": "持續協商", "location": "加薩", "facet": ["politics", "humanitarian"],
+        "entities": ["加薩", "聯合國", "卡達", "埃及"],
+        "parties": [("卡達", "調解方"), ("埃及", "調解方"), ("聯合國", "人道援助機構")],
+    },
+    {
+        "id": "requirement-taiwan-strait-002", "date": "2026-09-04",
+        "title": "臺灣海峽軍事與灰色地帶活動",
+        "content": "2026年9月4日，臺灣海峽周邊持續出現軍機、軍艦、海警船與無人機活動。相關聯合戰備警巡跨越海峽中線，增加灰色地帶壓力與海空交通風險。",
+        "subject": "臺灣海峽周邊軍事與海警力量", "object": "灰色地帶活動",
+        "action": "實施聯合戰備警巡", "location": "臺灣海峽", "facet": ["security", "military"],
+        "entities": ["臺灣海峽", "軍機", "軍艦", "海警船"],
+        "parties": [("海警", "海上執法力量")],
+    },
+    {
+        "id": "requirement-us-china-003", "date": "2026-09-04",
+        "title": "美中戰略競爭與美軍印太部署",
+        "content": "2026年9月4日，美中戰略競爭涵蓋臺灣、科技管制、軍事互動與盟友協調。美國持續強化印太基地、聯合演訓與後勤節點，並與日本、澳洲及菲律賓推進安全合作。",
+        "subject": "美國與中國", "object": "印太戰略競爭",
+        "action": "調整安全政策與軍力部署", "location": "印太地區", "facet": ["security", "geopolitics"],
+        "entities": ["美國", "中國", "印太", "日本", "澳洲", "菲律賓"],
+        "parties": [("美國", "印太安全政策參與方"), ("中國", "戰略競爭參與方")],
+    },
 )
 MOCK_DOCS[REQUIREMENT_E2E_INDEX] = {}
-for _number, _ordinal, _date in _E2E_TOPICS:
-    _text = (
-        f"Produce an evidence-based situation report for the {_ordinal} stable "
-        "Requirement E2E topic."
-    )
-    MOCK_DOCS[REQUIREMENT_E2E_INDEX][f"requirement-e2e-{_number}"] = {
-        "uuid": f"requirement-e2e-{_number}",
-        "communication": {"subject": f"Requirement E2E {_ordinal} stable topic"},
-        "rawInfo": {"content": _text},
-        "importDT": f"{_date}T00:00:00Z",
-        "selectedMessage": True,
-        "ai": {"classLabels": {"highValue": True}},
+for _fixture in _REQUIREMENT_DOCUMENTS:
+    _event_id = "E1"
+    _source_text = _fixture["content"]
+    _document = {
+        "uuid": _fixture["id"], "communication": {"subject": _fixture["title"]},
+        "rawInfo": {"content": _source_text}, "importDT": f'{_fixture["date"]}T00:00:00Z',
+        "selectedMessage": True, "ai": {"classLabels": {"highValue": True}},
         "multidim_event_json": [{
-            "article_title": f"Requirement E2E {_ordinal} stable topic",
-            "article_date_iso": f"{_date}T00:00:00Z",
-            "article_date_precision": "day",
-            "facet": ["requirement_e2e"],
-            "core_entities": ["Requirement E2E"],
-            "locations": [],
-            "Event_Summary": _text,
-            "Event": [{
-                "event_id": "E1", "subject": "Requirement E2E",
-                "object": f"{_ordinal} stable topic", "action": "requests report",
-                "location": "", "time_iso": f"{_date}T00:00:00Z",
-                "time_raw": _date, "time_precision": "day",
-            }],
+            "article_title": _fixture["title"], "article_date_iso": _fixture["date"],
+            "article_date_precision": "day", "facet": _fixture["facet"],
+            "core_entities": _fixture["entities"], "locations": [_fixture["location"]],
+            "Event_Summary": _source_text,
+            "Event": [{"event_id": _event_id, "subject": _fixture["subject"],
+                "object": _fixture["object"], "aspect": _fixture["facet"][0],
+                "medium": "公開資訊", "action": _fixture["action"],
+                "time_iso": _fixture["date"], "time_raw": _fixture["date"],
+                "time_precision": "day", "location": _fixture["location"],
+                "consequence": "", "relation": ""}],
             "Person": [],
-            "Involved_Parties": [{
-                "party_name": "Requirement E2E", "party_role": "request source",
-                "event_ids": ["E1"],
-            }],
-            "Impact": [{"impact_description": "A report is required.", "event_ids": ["E1"]}],
-            "Event_Timeline": [{
-                "time_iso": f"{_date}T00:00:00Z", "time_raw": _date,
-                "time_precision": "day", "description": _text,
-                "event_ids": ["E1"],
-            }],
-            "evidence_snippets": [{
-                "source_id": f"requirement-e2e-{_number}", "paragraph_id": "P1",
-                "text": _text, "confidence": 100, "event_ids": ["E1"],
-            }],
-            "importance": {"importance_score": 100},
+            "Involved_Parties": [{"party_name": name, "party_role": role, "event_ids": [_event_id]}
+                                 for name, role in _fixture["parties"]],
+            "Impact": [{"impact_description": _source_text, "event_ids": [_event_id]}],
+            "Event_Timeline": [{"time_iso": _fixture["date"], "time_raw": _fixture["date"],
+                "time_precision": "day", "description": _source_text, "event_ids": [_event_id]}],
+            "evidence_snippets": [{"source_id": _fixture["id"], "paragraph_id": "P1",
+                "sentence_index": 0, "char_start": 0, "char_end": len(_source_text),
+                "text": _source_text, "confidence": 100, "event_ids": [_event_id]}],
+            "importance": {"coverage": 5, "novelty": 3, "impact": 5,
+                           "credibility": 4, "importance_score": 85},
         }],
     }
-MAPPING[REQUIREMENT_E2E_INDEX] = copy.deepcopy(MAPPING[MOCK_INDEX])
+    set_reference_text(_document, _source_text)
+    MOCK_DOCS[REQUIREMENT_E2E_INDEX][_fixture["id"]] = _document
+
+
+def validate_requirement_fixture(source: dict[str, Any]) -> None:
+    """Fail closed when a semantic fixture would violate strict writeback shape."""
+    date_only = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    date_time = re.compile(r"^\d{4}-\d{2}-\d{2}(?:T.*)?$")
+
+    def validate_value(value: Any, mapping: dict[str, Any], field: str) -> None:
+        kind = mapping.get("type")
+        if kind == "nested":
+            if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+                raise ValueError("semantic_fixture_nested_shape_invalid")
+            allowed_children = mapping["properties"]
+            for item in value:
+                if set(item) - set(allowed_children):
+                    raise ValueError("semantic_fixture_strict_mapping_violation")
+                for child, child_value in item.items():
+                    validate_value(child_value, allowed_children[child], f"{field}.{child}")
+        elif "properties" in mapping:
+            if not isinstance(value, dict) or set(value) - set(mapping["properties"]):
+                raise ValueError("semantic_fixture_strict_mapping_violation")
+            for child, child_value in value.items():
+                validate_value(child_value, mapping["properties"][child], f"{field}.{child}")
+        elif kind in {"keyword", "text"}:
+            values = value if isinstance(value, list) else [value]
+            if any(not isinstance(item, str) for item in values):
+                raise ValueError("semantic_fixture_scalar_type_invalid")
+        elif kind == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
+            raise ValueError("semantic_fixture_scalar_type_invalid")
+        elif kind == "date":
+            pattern = date_only if mapping.get("format") == "yyyy-MM-dd" else date_time
+            if not isinstance(value, str) or not pattern.fullmatch(value):
+                raise ValueError("semantic_fixture_date_invalid")
+
+    allowed = REQUIREMENT_MULTIDIM_MAPPING["properties"]
+    blocks = source.get("multidim_event_json")
+    if not isinstance(blocks, list) or not blocks:
+        raise ValueError("semantic_fixture_multidim_invalid")
+    for block in blocks:
+        extras = set(block) - set(allowed)
+        if extras:
+            raise ValueError("semantic_fixture_strict_mapping_violation")
+        if not date_only.fullmatch(str(block.get("article_date_iso") or "")):
+            raise ValueError("semantic_fixture_article_date_invalid")
+        for field, value in block.items():
+            validate_value(value, allowed[field], field)
+        events = block["Event"]
+        ids = [event.get("event_id") for event in events]
+        if not ids or None in ids or len(ids) != len(set(ids)):
+            raise ValueError("semantic_fixture_event_ids_invalid")
+        linked_fields = ("Person", "Involved_Parties", "Impact", "Event_Timeline", "evidence_snippets")
+        for field in linked_fields:
+            if any(not item.get("event_ids") or not set(item["event_ids"]) <= set(ids)
+                   for item in block[field]):
+                raise ValueError("semantic_fixture_event_reference_invalid")
+        supported = {event_id for item in block["evidence_snippets"] for event_id in item["event_ids"]}
+        if set(ids) - supported:
+            raise ValueError("semantic_fixture_event_evidence_missing")
+        reference = get_reference_text(source)
+        if any(item["text"] not in reference for item in block["evidence_snippets"]):
+            raise ValueError("semantic_fixture_evidence_not_verbatim")
+
+
+for _source in MOCK_DOCS[REQUIREMENT_E2E_INDEX].values():
+    validate_requirement_fixture(_source)
 
 
 class MockIndicesClient:
@@ -282,23 +425,20 @@ class MockElasticsearch:
         return True
 
     def search(self, *, index: str, body: dict[str, Any], **_: Any) -> dict[str, Any]:
-        docs = self.docs.get(index, {})
-        query_text = _extract_query_text(body).lower()
+        indexes = [item.strip() for item in index.split(",") if item.strip()]
+        if not indexes or any(item not in self.docs for item in indexes):
+            return {"hits": {"total": {"value": 0}, "hits": []}, "_mock": True}
         rows = []
-        for doc_id, source in docs.items():
-            haystack = " ".join(str(v) for v in _flatten_values(source)).lower()
-            if query_text and query_text not in haystack:
-                continue
-            row = {"_id": doc_id, "_index": index, "_score": 1.0, "_source": copy.deepcopy(source)}
-            blocks = source.get("multidim_event_json") or []
-            snippets = blocks[0].get("evidence_snippets", []) if blocks else []
-            if snippets:
-                row["inner_hits"] = {"evi": {"hits": {"hits": [
-                    {"_nested": {"field": "multidim_event_json.evidence_snippets", "offset": i},
-                     "_score": 1.0, "_source": copy.deepcopy(item)}
-                    for i, item in enumerate(snippets[:3])
-                ]}}}
-            rows.append(row)
+        for target in indexes:
+            for doc_id, source in self.docs[target].items():
+                matched, score, inner = _evaluate_query(body.get("query", {}), source)
+                if not matched:
+                    continue
+                row = {"_id": doc_id, "_index": target, "_score": score,
+                       "_source": copy.deepcopy(source)}
+                if inner:
+                    row["inner_hits"] = inner
+                rows.append(row)
         rows.sort(key=lambda hit: str(hit["_source"].get("importDT") or ""), reverse=True)
         offset = int(body.get("from") or 0)
         size = int(body.get("size") or 20)
@@ -323,15 +463,125 @@ class MockElasticsearch:
         return {"_index": index, "_id": id, "result": "deleted"}
 
 
-def _extract_query_text(body: dict[str, Any]) -> str:
-    try:
-        must = body.get("query", {}).get("bool", {}).get("must", [])
-        for item in must:
-            if "simple_query_string" in item:
-                return str(item["simple_query_string"].get("query") or "")
-    except Exception:
-        return ""
-    return ""
+def _path_values(source: Any, path: str) -> list[Any]:
+    parts = path.split(".")
+    values = [source]
+    for part in parts:
+        next_values = []
+        for value in values:
+            if isinstance(value, dict) and part in value:
+                child = value[part]
+                next_values.extend(child if isinstance(child, list) else [child])
+        values = next_values
+    return values
+
+
+def _terms(value: Any) -> list[str]:
+    # Chinese phrases stay intact while Latin phrases get useful token matching.
+    text = str(value or "").strip().lower()
+    pieces = [piece for piece in text.split() if piece]
+    if len(pieces) > 1:
+        return pieces
+    latin = re.findall(r"[a-z0-9]+", text)
+    return latin or ([text] if text else [])
+
+
+def _text_match(query: Any, values: list[Any], operator: str = "or", phrase: bool = False) -> bool:
+    needle = str(query or "").strip().lower()
+    haystack = " ".join(str(value) for value in values).lower()
+    if not needle:
+        return False
+    if phrase:
+        return needle in haystack
+    terms = _terms(needle)
+    return all(term in haystack for term in terms) if operator == "and" else any(term in haystack for term in terms)
+
+
+def _evaluate_query(query: dict[str, Any], source: dict[str, Any]) -> tuple[bool, float, dict[str, Any]]:
+    """Evaluate only the bounded DSL emitted by the production retrieval builder."""
+    if not query:
+        raise ValueError("semantic_mock_unsupported_query")
+    if "function_score" in query:
+        spec = query["function_score"]
+        matched, score, inner = _evaluate_query(spec["query"], source)
+        if not matched:
+            return False, 0.0, {}
+        for function in spec.get("functions", []):
+            if "filter" in function and _evaluate_query(function["filter"], source)[0]:
+                score += float(function.get("weight", 0))
+            elif "gauss" in function:
+                score += 0.01
+            elif "filter" not in function:
+                raise ValueError("semantic_mock_unsupported_function_score")
+        return True, score, inner
+    if "bool" in query:
+        spec = query["bool"]
+        inner: dict[str, Any] = {}
+        for key in ("must", "filter"):
+            clauses = spec.get(key, [])
+            clauses = clauses if isinstance(clauses, list) else [clauses]
+            for clause in clauses:
+                ok, _, found = _evaluate_query(clause, source)
+                if not ok:
+                    return False, 0.0, {}
+                inner.update(found)
+        should = spec.get("should", [])
+        should = should if isinstance(should, list) else [should]
+        matched_should = 0
+        score = 1.0
+        for clause in should:
+            ok, clause_score, found = _evaluate_query(clause, source)
+            if ok:
+                matched_should += 1
+                score += clause_score
+                inner.update(found)
+        required = int(spec.get("minimum_should_match", 0 if (spec.get("must") or spec.get("filter")) else bool(should)))
+        return matched_should >= required, score, inner
+    if "term" in query:
+        field, expected = next(iter(query["term"].items()))
+        if isinstance(expected, dict):
+            expected = expected.get("value")
+        return any(value == expected for value in _path_values(source, field)), 1.0, {}
+    if "multi_match" in query or "simple_query_string" in query:
+        spec = query.get("multi_match") or query.get("simple_query_string")
+        fields = [field.split("^", 1)[0] for field in spec.get("fields", [])]
+        values = [value for field in fields for value in _path_values(source, field)]
+        ok = _text_match(spec.get("query"), values, str(spec.get("operator") or spec.get("default_operator") or "or").lower())
+        return ok, 1.0, {}
+    if "match" in query or "match_phrase" in query:
+        phrase = "match_phrase" in query
+        field, expected = next(iter((query.get("match_phrase") or query.get("match")).items()))
+        operator = "or"
+        if isinstance(expected, dict):
+            operator, expected = str(expected.get("operator", "or")).lower(), expected.get("query")
+        return _text_match(expected, _path_values(source, field), operator, phrase), 1.0, {}
+    if "wildcard" in query:
+        field, expected = next(iter(query["wildcard"].items()))
+        pattern = str(expected.get("value") if isinstance(expected, dict) else expected).lower()
+        ok = any(fnmatch.fnmatch(str(value).lower(), pattern) for value in _path_values(source, field.removesuffix(".keyword").removesuffix(".raw")))
+        return ok, 1.0, {}
+    if "range" in query:
+        field, bounds = next(iter(query["range"].items()))
+        values = [str(value)[:10] for value in _path_values(source, field)]
+        ok = any((not bounds.get("gte") or value >= str(bounds["gte"])[:10]) and
+                 (not bounds.get("lte") or value <= str(bounds["lte"])[:10]) for value in values)
+        return ok, 1.0, {}
+    if "nested" in query:
+        spec = query["nested"]
+        ok, score, inner = _evaluate_query(spec["query"], source)
+        config = spec.get("inner_hits")
+        if ok and config and spec.get("path") == "multidim_event_json.evidence_snippets":
+            snippets = [item for block in source.get("multidim_event_json", [])
+                        for item in block.get("evidence_snippets", [])
+                        if _evaluate_query(spec["query"], {"multidim_event_json": {"evidence_snippets": item}})[0]]
+            name = config.get("name", "evi")
+            inner[name] = {"hits": {"hits": [
+                {"_nested": {"field": spec["path"], "offset": offset},
+                 "_score": 1.0, "_source": copy.deepcopy(item)}
+                for offset, item in enumerate(snippets[:int(config.get("size", 3))])
+            ]}}
+        return ok, score, inner
+    raise ValueError(f"semantic_mock_unsupported_query:{next(iter(query), 'empty')}")
 
 
 def _flatten_values(value: Any):

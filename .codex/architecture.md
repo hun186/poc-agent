@@ -63,3 +63,9 @@
 - Elasticsearch selection remains at `agent.es.es_client.get_es()`. The semantic backend returns ES hit envelopes and nested `evi` inner hits, so `ESSearchNews`, query construction, parsing, and evidence building remain production code.
 - Direct LLM calls inject an `LLMClient` boundary adapter; CodeAgent injects a `Model` boundary adapter that instructs the real CodeAgent to invoke `es_search_news`. Internal Requirement lifecycle, Agent orchestration, report/DOCX generation, and durable reconciliation are not replaced.
 - Live mapping authority remains `indices.get_mapping()`. The capability probe checks only the runtime-required E2E subset; enrichment documentation remains semantic rather than field-type authority.
+
+## 2026-09-23 Capability ownership and semantic backend corrective
+
+- The API lifespan and `ReportJobWorker.start()` freeze the deployment-owned external plan before job claiming. Runtime evidence is sourced from that same process; the harness only asserts requested-mode equality.
+- Requirement semantic ES uses a distinct root retrieval subset plus a `dynamic: strict` czjLLM MultiDim subtree. Its bounded evaluator supports only production query-builder constructs and raises on unsupported DSL.
+- Offline direct-model behavior is contract-specific (router/refiner/field selector/report), while the CodeAgent model derives one of the three business-theme queries and invokes the real retrieval tool.

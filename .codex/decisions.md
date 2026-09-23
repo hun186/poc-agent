@@ -217,3 +217,9 @@
 
 - Keep ordinary production backend behavior unchanged unless the explicit Requirement E2E external-mode variable is present. Resolve both dependencies before workbook mutation and never change the plan after a runtime failure.
 - Reuse the existing ES client seam and separate the Requirement semantic fixture index from the generic Vercel preview fixture. Mock only external model/search boundaries; keep production query, evidence, Agent, Schedule, Handoff, Report Job, DOCX, reconciliation, and terminal-state paths real.
+
+## 2026-09-23 External capability corrective decisions
+
+- Never configure an already-running deployment by mutating the operator harness environment. Freeze capability state in the ReportJobWorker-owning process and expose only safe authenticated evidence.
+- Keep full live mapping authority in `indices.get_mapping()`, the czjLLM subtree contract separate, and validate only retrieval-required live fields/multifields plus the configured reference-text path.
+- A semantic mock must reject unsupported DSL and discriminate business topics; returning every fixture is not an acceptable fallback.

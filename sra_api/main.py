@@ -37,6 +37,11 @@ from shared.runtime_provenance import requirement_sql_registry_path
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     validate_signing_config()
+    # The API process owns ReportJobWorker and therefore owns/fixes the E2E
+    # external plan before any Report Job can be claimed. The operator harness
+    # merely asserts this evidence through the authenticated endpoint.
+    from agent.external_capabilities import frozen_plan, resolve_environment_plan
+    frozen_plan(resolve_environment_plan)
     app.state.requirement_import_service = None
     app.state.requirement_schedule_service = None
     if os.getenv("REQUIREMENT_PIPELINE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:

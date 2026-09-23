@@ -392,7 +392,9 @@ class Harness:
         self.api.get("/v1/requirement-import-profiles"); self.api.get("/v1/requirement-schedules")
         self.pass_stage("PIPELINE_READINESS")
         if self.config.mode == "local":
-            self.evidence_provider = LocalDeploymentEvidenceProvider(PROJECT_ROOT, self.config.artifact_root)
+            self.evidence_provider = LocalDeploymentEvidenceProvider(
+                PROJECT_ROOT, self.config.artifact_root, self.api,
+            )
         else:
             self.evidence_provider = RemoteDeploymentEvidenceProvider(self.api)
         deployment_evidence = self.evidence_provider.preflight()
@@ -519,11 +521,6 @@ def main(argv=None) -> int:
         )
         if args.output_dir: config = E2EConfig(**{**config.__dict__, "output_dir": args.output_dir})
         evidence_output = config.output_dir / run_id
-        # Local mode shares this process policy. Remote deployments must have
-        # the same value configured before their API/workers start; evidence
-        # above rejects disagreement rather than changing a running backend.
-        if args.mode == "local":
-            os.environ["REQUIREMENT_E2E_EXTERNAL_MODE"] = args.external_mode
         harness = Harness(config, args.excel.resolve(), run_id, result, args.external_mode)
         result["operator_source"] = _provenance_source(
             PROJECT_ROOT, args.provenance.resolve(), config.expected_runtime_sha,

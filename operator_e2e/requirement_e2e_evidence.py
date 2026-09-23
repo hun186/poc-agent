@@ -18,12 +18,14 @@ class DeploymentEvidenceProvider(Protocol):
 
 
 class LocalDeploymentEvidenceProvider:
-    def __init__(self, project_root: Path, artifact_root: Path):
-        self.project_root, self.artifact_root = project_root, artifact_root
+    def __init__(self, project_root: Path, artifact_root: Path, api):
+        self.project_root, self.artifact_root, self.api = project_root, artifact_root, api
 
     def preflight(self) -> dict[str, Any]:
-        from sra_api.services.requirement_e2e_runtime_evidence import collect_runtime_evidence
-        return collect_runtime_evidence(self.project_root, self.artifact_root)
+        # Capability authority belongs to the already-running API/ReportJobWorker
+        # process. Local artifact access does not make the harness process an
+        # acceptable substitute for that runtime evidence.
+        return RemoteDeploymentEvidenceProvider(self.api).preflight()
 
     def verify_artifact(self, item, persisted_root, copy_to):
         return validate_artifact(self.artifact_root, persisted_root, item.get("artifact_relative_path", ""),

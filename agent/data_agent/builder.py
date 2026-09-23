@@ -14,7 +14,7 @@ from .prompts import REPORT_DATA_SYSTEM, STYLE_DATA_CODE_SYSTEM
 
 logger = logging.getLogger(__name__)
 
-_SHARED_MODEL: Optional[LiteLLMModel] = None
+_SHARED_MODEL: Optional[Model] = None
 
 
 class DeterministicE2ECodeModel(Model):
@@ -30,8 +30,17 @@ class DeterministicE2ECodeModel(Model):
         if str(role_value).lower() in {"tool", "tool-response"}:
             content = "```py\nfinal_answer(evidence)\n```"
         else:
+            rendered = "\n".join(str(getattr(item, "content", item)) for item in messages)
+            if any(term in rendered for term in ("加薩", "Gaza")):
+                query = "加薩 停火 人質 人道援助"
+            elif any(term in rendered for term in ("臺灣海峽", "台灣海峽", "灰色地帶")):
+                query = "臺灣海峽 灰色地帶 軍機 海警"
+            elif any(term in rendered for term in ("美中戰略", "印太", "US-China")):
+                query = "美中戰略競爭 印太 美軍"
+            else:
+                query = "無匹配的 Requirement 主題"
             content = (
-                "```py\nevidence = es_search_news(query='Requirement E2E stable topic', "
+                f"```py\nevidence = es_search_news(query={query!r}, "
                 "must_selected=True, must_high_value=True)\n```"
             )
         return ChatMessage(role="assistant", content=content)

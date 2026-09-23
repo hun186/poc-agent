@@ -156,3 +156,11 @@
 - Added explicit live/auto/offline external dependency planning, frozen per deployment process before the Requirement workflow. Runtime evidence and operator output now distinguish FULL_LIVE, HYBRID, and OFFLINE while preserving workflow failures.
 - Added mapping- and dataset-aware live Elasticsearch probing, non-empty live LLM probing, an acceptance-only semantic ES fixture using native Event arrays/event_ids, and deterministic adapters at the ES and both LLM model boundaries. The real CodeAgent/tool/query/parser/evidence path remains active offline.
 - Focused capability tests passed 17 tests; the relevant Harness/provenance/nested-mapping regression command passed. A direct offline CodeAgent run executed retrieval and returned all three semantic evidence records. No live SQL Server, Elasticsearch, LLM, deployment, or DOCX E2E was available or claimed.
+
+### 2026-09-23 Capability-adaptive E2E corrective
+
+- Replaced synthetic Requirement phrases with Gaza, Taiwan Strait gray-zone, and US-China/Indo-Pacific semantic fixtures grounded in the business workbook themes. Added a dedicated strict czjLLM MultiDim subtree mapping, fixture validation, and a bounded production-query DSL evaluator with discriminating filters, dates, and evidence inner hits.
+- Restored production `LLMClient.generate()`, made deterministic router/refiner/DataAgent/report contracts evidence-aware, and proved the real `execute_agent_turn()` → routing → ReportAgent/DataAgent → ES parser/builder path offline without faking Report Job state or DOCX completion.
+- Moved plan ownership to the API/ReportJobWorker process before claims; local and remote harnesses now assert authenticated runtime evidence rather than modifying harness-process environment.
+- Focused capability tests passed 39 tests; Agent/ES/LLM/ReportJob tests passed 73 tests; Requirement Harness/provenance/ReportJob regressions passed 157 tests. No live LLM, ES, SQL, Schedule/Handoff, full automatic run, DOCX, or reconciliation acceptance was executed.
+- GitHub remained unreachable through the environment proxy, so hosted refs, push, and the required hosted-verifiable provenance regeneration could not be completed. The existing local-only provenance anchor must not be presented as corrected.

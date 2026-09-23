@@ -245,6 +245,13 @@ def _calc_default_index() -> str:
     return env_indexes[0] if env_indexes else default_one
 '''
 def resolve_index(hint: Optional[Union[str, List[str]]]) -> IndexType:
+    from agent.external_capabilities import frozen_plan
+    try:
+        plan = frozen_plan()
+    except Exception:
+        plan = None
+    if plan is not None and plan.elasticsearch_backend == "semantic_mock":
+        return REQUIREMENT_E2E_INDEX
     default_idx = _calc_default_index()
     if hint is None:
         return default_idx

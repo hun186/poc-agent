@@ -105,56 +105,62 @@ class LLMClient:
         # 萬一格式很怪，就回空字串
         return ""
 
-
-class DeterministicE2ELLMClient:
-    """External-boundary replacement; orchestration and report code stay real."""
-
-    def chat(self, messages, **kwargs) -> str:
-        prompt = "\n".join(str(item.get("content") or "") for item in messages)
-        # Stable model output, never a synthesized durable workflow result.
-        return ("Evidence-based Requirement E2E report generated from the retrieval "
-                "tools and their cited source records.\n\n" + prompt[-1000:])
-
-    # ===== /api/generate：舊版單一 prompt =====
     def generate(
         self,
         prompt: str,
         *,
         stream: bool = False,
         extra_params: Optional[Dict[str, Any]] = None,
-        timeout: Optional[float] = None,   # ★ 新增
+        timeout: Optional[float] = None,
     ) -> str:
-        """
-        傳統 /api/generate 單一 prompt 介面。
-        主要是相容用，如果未來全部改用 chat，可以慢慢汰除它。
-        """
+        """Call the ordinary production Ollama-compatible generate endpoint."""
         prompt = (prompt or "").strip()
-        if not prompt:
+        if not prompt or not self.base_url:
             return ""
-        if not self.base_url:
-            return ""
-
-        url = self._get_generate_url()
-        payload: Dict[str, Any] = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-        }
+        payload: Dict[str, Any] = {"model": self.model, "prompt": prompt, "stream": False}
         if extra_params:
             payload.update(extra_params)
-
-        resp = requests.post(url, json=payload, timeout=timeout or self.timeout)
+        resp = requests.post(self._get_generate_url(), json=payload, timeout=timeout or self.timeout)
         resp.raise_for_status()
         data = resp.json()
-
         if isinstance(data, dict):
             for key in ("response", "result", "text"):
                 if isinstance(data.get(key), str):
                     return data[key]
-        elif isinstance(data, str):
-            return data
+        return data if isinstance(data, str) else ""
 
-        return ""
+
+class DeterministicE2ELLMClient:
+    """External-boundary replacement; orchestration and report code stay real."""
+
+    def chat(self, messages, **kwargs) -> str:
+        import json
+        system = "\n".join(str(item.get("content") or "") for item in messages if item.get("role") == "system")
+        prompt = "\n".join(str(item.get("content") or "") for item in messages if item.get("role") == "user")
+        if "任務分類器" in system:
+            topic = "mil_intel" if any(term in prompt for term in ("臺灣海峽", "灰色地帶", "美中戰略", "印太")) else "news_general"
+            return json.dumps({"mode": "SRA_REPORT", "reason": "Requirement evidence report", "topic": topic}, ensure_ascii=False)
+        if "問句精煉器" in system:
+            question = prompt.split("【使用者問句】", 1)[-1].strip()
+            return json.dumps({"refined_question": question}, ensure_ascii=False)
+        if "欄位選擇器" in system:
+            return json.dumps({"fields": ["id", "d", "title", "note"]}, ensure_ascii=False)
+        try:
+            payload = json.loads(prompt)
+        except (TypeError, ValueError):
+            payload = None
+        if isinstance(payload, dict) and isinstance(payload.get("ev"), list):
+            evidence = payload["ev"]
+            lines = ["# 情勢研析報告", "", "## 證據摘要"]
+            for item in evidence:
+                title = str(item.get("title") or "來源")
+                note = str(item.get("note") or "").strip()
+                ref = item.get("ref_no") or item.get("id") or ""
+                if note:
+                    lines.append(f"- {title}：{note}（參考 {ref}）")
+            lines.extend(["", "## 綜合研判", "以上研判僅依據列示證據，未加入外部事實。"])
+            return "\n".join(lines)
+        return "Requirement E2E deterministic model response."
 
 
 # ---- 全域 singleton ＋ 簡易 wrapper ----
@@ -257,4 +263,8 @@ def call_llm(
         )
     except Exception as e:
         print(f"[LLMClient] chat 呼叫失敗：{e}")
+        from agent.external_capabilities import frozen_plan
+        plan = frozen_plan()
+        if plan is not None and plan.llm_backend == "live":
+            raise RuntimeError("e2e_live_llm_runtime_failure") from e
         return ""
