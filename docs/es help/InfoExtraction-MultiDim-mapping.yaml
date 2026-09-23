@@ -1,0 +1,185 @@
+properties:
+  multidim_event_json:
+    type: nested
+    properties:
+      unique_key:
+        type: keyword
+      article_date_iso:
+        type: date
+        format: yyyy-MM-dd
+      article_title:
+        type: text
+        fields:
+          raw:
+            type: keyword
+      Event_Summary:
+        type: text
+      facet:
+        type: keyword
+      core_entities:
+        type: keyword
+      locations:
+        type: keyword
+      date_range:
+        properties:
+          start:
+            type: date
+            format: yyyy-MM-dd
+          end:
+            type: date
+            format: yyyy-MM-dd
+      Event:
+        type: nested
+        properties:
+          event_id:
+            type: keyword
+          subject:
+            type: keyword
+          object:
+            type: keyword
+          aspect:
+            type: keyword
+          medium:
+            type: keyword
+          action:
+            type: keyword
+          time_iso:
+            type: date
+            format: strict_date_optional_time||yyyy-MM-dd
+          time_raw:
+            type: keyword
+          time_precision:
+            type: keyword
+          location:
+            type: keyword
+          consequence:
+            type: text
+          relation:
+            type: text
+          source:
+            type: keyword
+      Person:
+        type: nested
+        properties:
+          event_ids:
+            type: keyword
+          name:
+            type: keyword
+          role:
+            type: keyword
+          action:
+            type: text
+          quote:
+            type: text
+          stance:
+            type: keyword
+          relation:
+            type: text
+      Involved_Parties:
+        type: nested
+        properties:
+          event_ids:
+            type: keyword
+          party_name:
+            type: keyword
+          party_role:
+            type: keyword
+      Impact:
+        type: nested
+        properties:
+          event_ids:
+            type: keyword
+          impact_description:
+            type: text
+      Event_Timeline:
+        type: nested
+        properties:
+          event_ids:
+            type: keyword
+          time_iso:
+            type: date
+            format: strict_date_optional_time||yyyy-MM-dd
+          time_raw:
+            type: keyword
+          time_precision:
+            type: keyword
+          description:
+            type: text
+      evidence_snippets:
+        type: nested
+        properties:
+          event_ids:
+            type: keyword
+          text:
+            type: text
+          source_id:
+            type: keyword
+          char_start:
+            type: integer
+          char_end:
+            type: integer
+          paragraph_id:
+            type: keyword
+          sentence_index:
+            type: integer
+          confidence:
+            type: integer
+      importance:
+        properties:
+          coverage:
+            type: integer
+          novelty:
+            type: integer
+          impact:
+            type: integer
+          credibility:
+            type: integer
+          importance_score:
+            type: integer
+      update_time_ai:
+        type: date
+        format: strict_date_optional_time||epoch_millis
+      article_date_precision:
+        type: keyword
+    dynamic: strict
+  multidim_event_json_meta:
+    type: object
+    properties:
+      processed_at:
+        type: date
+      model_tag:
+        type: keyword
+      model_name:
+        type: keyword
+      base_url_alias:
+        type: keyword
+      num_ctx:
+        type: integer
+      temperature:
+        type: float
+      model_version:
+        type: keyword
+      pipeline_hash:
+        type: keyword
+      source:
+        type: keyword
+      channel:
+        type: keyword
+      task:
+        type: keyword
+      force_reason:
+        type: keyword
+      output_field:
+        type: keyword
+      output_profile:
+        type: keyword
+      pipeline_name:
+        type: keyword
+      pipeline_version:
+        type: keyword
+      pipeline_enabled:
+        type: boolean
+    dynamic: false
+  update_time_ai:
+    type: date
+    format: strict_date_optional_time||epoch_millis
