@@ -36,7 +36,7 @@ from shared.runtime_provenance import (
     verify_discovered_runtime_inputs, verify_package_files,
 )
 
-PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
+PROFILE_PATH = PROJECT_ROOT / "config" / "requirements" / "import_profile.taiwan-investment-security.v1.example.json"
 DEFAULT_EXCEL = SCRIPT_DIR / "input" / "requirement_e2e_3items.xlsx"
 TRANSIENT = {429, 502, 503, 504}
 
@@ -146,17 +146,51 @@ class Harness:
         self.known_secrets.append(self.api.token)
 
     def validate_input(self):
-        if self.excel.suffix.lower() != ".xlsx" or not self.excel.is_file() or self.excel.stat().st_size <= 0:
-            self.fail("input_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
+        if not self.excel.is_file():
+            self.result["input"] = {"path": str(self.excel), "remediation_hint": "deploy the canonical workbook"}
+            self.fail("input_file_missing", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
+        if self.excel.suffix.lower() != ".xlsx" or self.excel.stat().st_size <= 0:
+            self.result["input"] = {"path": str(self.excel), "remediation_hint": "deploy a valid XLSX workbook"}
+            self.fail("input_xlsx_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
         try:
             book = load_workbook(self.excel, read_only=True); book.close()
-        except Exception as exc: raise HarnessFailure("input_invalid", stage="INPUT_VALIDATION", exit_code=ExitCode.PREFLIGHT) from exc
+        except Exception as exc: raise HarnessFailure("input_xlsx_invalid", stage="INPUT_VALIDATION", exit_code=ExitCode.PREFLIGHT) from exc
         digest = hashlib.sha256(self.excel.read_bytes()).hexdigest()
         expected = (CANONICAL_SOURCE_SHA256 if self.excel == DEFAULT_EXCEL.resolve()
                     else self.config.expected_source_sha)
-        if expected and expected != digest: self.fail("input_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
         self.result["input"] = {"path": str(self.excel), "sha256": digest, "size_bytes": self.excel.stat().st_size}
         if expected: self.result["input"]["expected_sha256"] = expected
+        if expected and expected != digest:
+            self.result["input"]["remediation_hint"] = "redeploy the canonical workbook and matching package"
+            self.fail("input_sha256_mismatch", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
+
+    def _canonical_prompt_content(self) -> dict[str, str] | None:
+        if self.excel != DEFAULT_EXCEL.resolve():
+            return None
+        book = load_workbook(self.excel, read_only=True, data_only=True)
+        try:
+            sheet = book.active
+            rows = sheet.iter_rows(values_only=True)
+            headers = next(rows)
+            normalized = {str(value or "").strip().casefold(): index for index, value in enumerate(headers)}
+            item_index, content_index = normalized["itemno"], normalized["content"]
+            return {
+                str(row[item_index]).strip(): str(row[content_index])
+                for row in rows if row[item_index] is not None
+            }
+        finally:
+            book.close()
+
+    def _validate_canonical_prompt_content(self, items: list[dict[str, Any]]) -> None:
+        canonical_prompts = self._canonical_prompt_content()
+        if canonical_prompts is None:
+            return
+        imported_prompts = {
+            str(item.get("external_item_id") or ""): item.get("prompt_content")
+            for item in items
+        }
+        if imported_prompts != canonical_prompts:
+            self.fail("prompt_content_mismatch", "REQUIREMENT_ITEMS")
 
     def _exact_named(self, path: str, name: str): return [item for item in self.api.get(path)["items"] if item.get("name") == name]
     def _write_with_reread(self, write: Callable[[], dict], reread: Callable[[], list[dict]], stage: str):
@@ -248,6 +282,7 @@ class Harness:
         items = self.api.get(f"/v1/requirement-snapshots/{committed['snapshot_id']}/items")["items"]
         now = datetime.now(timezone.utc)
         if len(items) != 3 or any(item.get("expires_at") and self._dt(item["expires_at"]) <= now for item in items): self.fail("item_count_mismatch", "REQUIREMENT_ITEMS")
+        self._validate_canonical_prompt_content(items)
         self.result["fixtures"]["requirement_set_id"] = reqset["requirement_set_id"]
         self.result["requirement_import"] = {key: committed.get(key) for key in ("import_run_id", "snapshot_id", "accepted_count", "rejected_count")}
         return reqset, items
@@ -403,6 +438,11 @@ class Harness:
         deployment_evidence = self.evidence_provider.preflight(self.verification)
         acceptance = deployment_evidence.get("acceptance") or {}
         if acceptance.get("requested_mode") != self.external_mode:
+            self.result["acceptance"] = {
+                "requested_mode": self.external_mode,
+                "deployed_mode": acceptance.get("requested_mode"),
+                "remediation_hint": "set REQUIREMENT_E2E_EXTERNAL_MODE and restart API/workers",
+            }
             self.fail("external_capability_mode_mismatch", "RUNTIME_WORKERS", ExitCode.PREFLIGHT)
         self.result["acceptance"] = acceptance
         self.result["deployment_evidence"] = deployment_evidence
@@ -512,7 +552,7 @@ def _validate_deployment_source(source: dict[str, Any], expected_fingerprint: st
 def _summary_text(result: dict[str, Any], args, classification: str, exit_code: ExitCode) -> str:
     verification = result.get("verification", {})
     functional_result = "PASS" if result.get("overall_status") == "PASS" else "FAIL"
-    return (
+    summary = (
         f"REQUIREMENT_E2E = {result['overall_status']} / "
         f"{classification if result['overall_status'] == 'PASS' else result.get('failure_category', 'FAIL')}\n"
         f"FUNCTIONAL_RESULT = {functional_result}\n"
@@ -525,6 +565,22 @@ def _summary_text(result: dict[str, Any], args, classification: str, exit_code: 
         f"{'YES' if result['overall_status'] == 'PASS' and classification == 'FULL_LIVE' and verification.get('deployment_acceptance') == 'ESTABLISHED' else 'NO'}\n"
         f"EXIT_CODE = {int(exit_code)}\n"
     )
+    if result.get("failure_category") == "external_capability_mode_mismatch":
+        acceptance = result.get("acceptance", {})
+        summary += (
+            f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode', '')}\n"
+            f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode', '')}\n"
+            f"REMEDIATION_HINT = {acceptance.get('remediation_hint', '')}\n"
+        )
+    if result.get("failure_category") == "input_sha256_mismatch":
+        input_evidence = result.get("input", {})
+        summary += (
+            f"INPUT_PATH = {input_evidence.get('path', '')}\n"
+            f"EXPECTED_SHA256 = {input_evidence.get('expected_sha256', '')}\n"
+            f"ACTUAL_SHA256 = {input_evidence.get('sha256', '')}\n"
+            f"REMEDIATION_HINT = {input_evidence.get('remediation_hint', '')}\n"
+        )
+    return summary
 
 
 def main(argv=None) -> int:
@@ -643,6 +699,17 @@ def main(argv=None) -> int:
     print(f"SOURCE_ATTESTATION = {result['verification']['source_attestation']}")
     print(f"DEPLOYMENT_ACCEPTANCE = {result['verification']['deployment_acceptance']}")
     if result.get("failed_stage"): print(f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}")
+    if result.get("failure_category") == "external_capability_mode_mismatch":
+        acceptance = result.get("acceptance", {})
+        print(f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode', '')}")
+        print(f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode', '')}")
+        print(f"REMEDIATION_HINT = {acceptance.get('remediation_hint', '')}")
+    elif result.get("failure_category") == "input_sha256_mismatch":
+        input_evidence = result.get("input", {})
+        print(f"INPUT_PATH = {input_evidence.get('path', '')}")
+        print(f"EXPECTED_SHA256 = {input_evidence.get('expected_sha256', '')}")
+        print(f"ACTUAL_SHA256 = {input_evidence.get('sha256', '')}")
+        print(f"REMEDIATION_HINT = {input_evidence.get('remediation_hint', '')}")
     if result.get("failure_category") == "configuration_file_missing":
         print("Create operator_e2e/e2e.env.local first.\nStart from operator_e2e/e2e.env.example.")
     elif result.get("failure_category") == "unsupported_local_platform":

@@ -233,3 +233,8 @@
 
 - Preserve `release` as the backward-compatible strict default. Functional verification is not a provenance bypass: it attempts full verification and makes only `active_runtime_source_mismatch` advisory.
 - Keep discovery and active-module security fences independent from byte hashing so a stale hash cannot conceal an unexpected selected input or module shadow. Functional success always reports deployment acceptance as not established.
+
+## 2026-09-23 Port only PR #270 semantic-input contract
+
+- Preserve PR #271 capability, verification, worker, and artifact architecture. Reconcile only the real workbook bytes, production import-profile selection, exact Snapshot prompt guard, v2 fixture identity, and semantic regression coverage.
+- Never log full Requirement content. Compare in memory and expose only `prompt_content_mismatch` at `REQUIREMENT_ITEMS` when durable content differs.

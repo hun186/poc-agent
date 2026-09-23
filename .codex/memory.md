@@ -177,3 +177,9 @@
 - Added an explicit `--verification release|functional` policy. Release remains the strict default; functional mode downgrades only ordinary provenance-managed byte drift to visible advisory evidence and still executes the production workflow.
 - Deployment runtime evidence now accepts the authenticated verification policy and returns capability, worker, artifact-root, and explicit source-attestation evidence during ordinary byte drift. Malformed/missing provenance, unexpected runtime inputs, unexpected active modules, module shadowing, worker identity, and artifact integrity remain fail closed.
 - Validation passed 9 focused policy tests, 150 provenance/Harness regressions, and 56 external-capability/live-progress regressions. Dependency installation found requirements present; the pip index upgrade check repeated the known proxy HTTP 403 warning. No deployment E2E or formal acceptance was run.
+
+### 2026-09-23 Real Requirement semantic-content reconciliation
+
+- The canonical operator XLSX now byte-mirrors `data/要項excel/requirement_e2e_three.xlsx` and uses the production `ITEMNO`/`CONTENT ` business shape with Gaza, Taiwan Strait gray-zone, and US-China/Indo-Pacific Requirements. Its verified SHA-256 is `816ffac9039530a86955c590b0fa68830757a620229d85630f5e42c12f542403`.
+- The Harness uses the reviewed Taiwan investment-security import profile, assigns v2 fixture identities, and compares canonical workbook `ITEMNO -> CONTENT` with durable Snapshot `external_item_id -> prompt_content` without emitting prompt bodies. Input and external-mode failures now provide bounded categories/remediation evidence.
+- Focused real-content tests passed 9 tests; the combined Requirement content, capability, verification, Harness, provenance, profile, adapter, and integration suite passed 229 tests with two dependency deprecation warnings. No deployment acceptance was run.

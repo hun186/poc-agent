@@ -40,3 +40,5 @@
 - 2026-09-23: After GitHub access is restored, push the runtime corrective to the existing PR #271 branch, verify the hosted runtime commit resolves, regenerate provenance against that hosted SHA, commit/push provenance separately, and re-read the final hosted diff. Do not reuse the prior local-only `2161ee5e...` anchor.
 
 - 2026-09-23: Push the deterministic LLM contract corrective to existing PR #271 when GitHub access is available, verify the hosted runtime SHA, then regenerate and commit provenance separately before deployment review.
+
+- 2026-09-23: After the semantic-input corrective is hosted and deployed, rerun authorized functional E2E and inspect runtime Agent traces for Gaza, Taiwan Strait/gray-zone, and US-China/Indo-Pacific semantic preservation. Formal release acceptance still requires regenerated hosted provenance and `--verification release`.
