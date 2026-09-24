@@ -6,6 +6,7 @@ import inspect
 from types import SimpleNamespace
 
 import pytest
+import requests
 
 from agent.es.evidence_core.builder import build_hits_and_evidence
 from agent.es.mock_es_client import (
@@ -14,9 +15,10 @@ from agent.es.mock_es_client import (
 )
 from agent.es.query_body import build_main_query_body
 from agent.external_capabilities import (
-    BackendPlan, CapabilityError, Probe, install_plan, mapping_compatibility,
-    parse_mode, probe_elasticsearch, probe_llm, probe_llm_boundaries,
-    reset_plan_for_tests, resolve_plan,
+    BackendPlan, CapabilityError, Probe, _probe_data_agent_model, install_plan,
+    mapping_compatibility, parse_mode, probe_elasticsearch, probe_llm,
+    probe_llm_boundaries, reset_plan_for_tests, resolve_environment_plan,
+    resolve_plan,
 )
 
 
@@ -78,6 +80,145 @@ def test_required_llm_boundaries_all_must_pass():
     probe = probe_llm_boundaries({"router": lambda: "ok", "data_agent": lambda: ""})
     assert not probe.usable and probe.category == "empty_response"
     assert dict(probe.details) == {"router": "pass", "data_agent": "empty_response"}
+
+
+def test_data_agent_probe_uses_smolagents_text_content_block(monkeypatch):
+    from agent.data_agent.types import ENV
+
+    captured = {}
+
+    class Model:
+        def __init__(self, **kwargs):
+            captured["constructor"] = kwargs
+
+        def generate(self, messages):
+            captured["messages"] = messages
+            return SimpleNamespace(content="READY.")
+
+    monkeypatch.setattr("smolagents.LiteLLMModel", Model)
+
+    assert _probe_data_agent_model() == "READY."
+    assert captured["messages"] == [{
+        "role": "user",
+        "content": [{"type": "text", "text": "Reply with READY."}],
+    }]
+    expected_model_id = (ENV.data_agent_model_id if "/" in ENV.data_agent_model_id
+                         else f"ollama_chat/{ENV.data_agent_model_id}")
+    assert captured["constructor"] == {
+        "model_id": expected_model_id,
+        "api_base": ENV.model_base_url,
+        "temperature": ENV.model_temperature,
+    }
+
+
+def test_environment_plan_invokes_all_llm_boundaries(monkeypatch):
+    invoked = []
+
+    class Model:
+        def __init__(self, **kwargs):
+            pass
+
+        def generate(self, messages):
+            invoked.append("data_agent")
+            return SimpleNamespace(content="READY.")
+
+    def direct_chat(self, messages, timeout):
+        invoked.append("direct")
+        return "READY."
+
+    def unavailable_es():
+        raise ConnectionError("unavailable")
+
+    monkeypatch.setattr("smolagents.LiteLLMModel", Model)
+    monkeypatch.setattr("agent.llm_utils.ollama_client.LLMClient.chat", direct_chat)
+    monkeypatch.setattr("agent.es.es_client._build_es", unavailable_es)
+
+    plan = resolve_environment_plan("auto")
+
+    assert plan.llm_backend == "live"
+    assert plan.elasticsearch_backend == "semantic_mock"
+    assert "data_agent" in invoked
+    assert invoked.count("direct") >= 2
+
+
+def test_llm_boundary_type_error_is_not_transport_failure():
+    probe = probe_llm_boundaries({"data_agent": lambda: (_ for _ in ()).throw(
+        TypeError("local message contract failure")
+    )})
+
+    assert probe == Probe(False, "boundary_error", (("data_agent", "boundary_error"),))
+
+
+@pytest.mark.parametrize("error", [
+    ConnectionError("connection refused"),
+    requests.exceptions.ConnectionError("connection refused"),
+    requests.exceptions.Timeout("timed out"),
+])
+def test_llm_boundary_transport_errors_remain_transport_unavailable(error):
+    probe = probe_llm_boundaries({
+        "data_agent": lambda: (_ for _ in ()).throw(error),
+    })
+
+    assert probe == Probe(
+        False, "transport_unavailable", (("data_agent", "transport_unavailable"),),
+    )
+
+
+@pytest.mark.parametrize(("module", "name"), [
+    ("openai", "APIConnectionError"),
+    ("openai._exceptions", "APITimeoutError"),
+    ("litellm.exceptions", "APIConnectionError"),
+    ("litellm.exceptions", "APITimeoutError"),
+])
+def test_optional_client_transport_metadata_is_recognized(module, name):
+    exception_type = type(name, (Exception,), {"__module__": module})
+    probe = probe_llm_boundaries({
+        "data_agent": lambda: (_ for _ in ()).throw(exception_type()),
+    })
+
+    assert probe.category == "transport_unavailable"
+
+
+def test_transport_name_from_unrelated_module_is_boundary_error():
+    exception_type = type(
+        "APIConnectionError", (Exception,), {"__module__": "unrelated.client"},
+    )
+    probe = probe_llm_boundaries({
+        "data_agent": lambda: (_ for _ in ()).throw(exception_type()),
+    })
+
+    assert probe.category == "boundary_error"
+
+
+def test_wrapped_transport_cause_is_recognized():
+    def invoke():
+        try:
+            raise requests.exceptions.ConnectionError("connection refused")
+        except requests.exceptions.ConnectionError as exc:
+            raise RuntimeError("model invocation failed") from exc
+
+    assert probe_llm_boundaries({"data_agent": invoke}).category == "transport_unavailable"
+
+
+def test_unrelated_runtime_error_is_boundary_error():
+    probe = probe_llm_boundaries({
+        "data_agent": lambda: (_ for _ in ()).throw(RuntimeError("invalid runtime state")),
+    })
+
+    assert probe.category == "boundary_error"
+
+
+def test_malformed_exception_chain_cycle_stays_bounded():
+    first = RuntimeError("first")
+    second = RuntimeError("second")
+    first.__cause__ = second
+    second.__cause__ = first
+
+    probe = probe_llm_boundaries({
+        "data_agent": lambda: (_ for _ in ()).throw(first),
+    })
+
+    assert probe.category == "boundary_error"
 
 
 @pytest.mark.parametrize(("ping", "exists", "mapping", "dataset", "category"), [

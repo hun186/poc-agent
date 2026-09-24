@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-24 DataAgent live capability probe contract correction
+
+- Against authoritative baseline `14672041bac89d7b936dce197bb95725e00dfa6d`, deployment-host verification with smolagents 1.23.0 confirmed that the configured Ollama endpoint was reachable (`/api/tags` HTTP 200), scalar message content raised `TypeError` before transport, and block-form content returned `READY.`. No private endpoint, hostname, port, or credentials are recorded here.
+- The live DataAgent caller now sends smolagents text-block content through `LiteLLMModel.generate()` while preserving model normalization, API base, temperature, live invocation, and response validation. LLM boundary probing reports local contract/runtime failures as sanitized `boundary_error`; built-in, Requests, and narrowly identified LiteLLM/OpenAI connection or timeout failures (including wrapped causes/contexts) remain `transport_unavailable` without optional imports or exception details.
+- Focused and related capability/content/verification-policy regressions passed. Elasticsearch remains blocked by the separately known `mapping_incompatible` deployment condition and its mapping logic was not changed; workflow semantics, external-mode policy, dependencies, and the Requirement lifecycle were also unchanged.
+
 ### 2026-09-22 Requirement Handoff lease-heartbeat corrective
 
 - The production Handoff coordinator now renews its SQL-authoritative lease at `heartbeat_interval` while reconciliation, remote inspection/submission, artifact work, and other authoritative work are in flight. Lease proof updates are synchronized, and authority is rechecked between coordinator stages without weakening store fencing.
