@@ -11,6 +11,8 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
+from requests import exceptions as requests_exceptions
+
 from agent.es.reference_text import get_reference_text_field
 
 
@@ -138,14 +140,50 @@ def probe_llm(client: Any) -> Probe:
                  "pass" if isinstance(value, str) and value.strip() else "empty_response")
 
 
+def _llm_boundary_exception_category(exc: Exception) -> str:
+    transport_errors = (
+        ConnectionError,
+        TimeoutError,
+        requests_exceptions.ConnectionError,
+        requests_exceptions.Timeout,
+    )
+    optional_transport_names = frozenset({
+        "APIConnectionError", "APITimeoutError", "ConnectionError", "Timeout",
+    })
+    optional_transport_modules = frozenset({"openai", "litellm"})
+
+    pending: list[BaseException] = [exc]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+
+        if isinstance(current, transport_errors):
+            return "transport_unavailable"
+
+        for cls in type(current).__mro__:
+            module_root = cls.__module__.split(".", 1)[0]
+            if module_root in optional_transport_modules and cls.__name__ in optional_transport_names:
+                return "transport_unavailable"
+
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+
+    return "boundary_error"
+
+
 def probe_llm_boundaries(boundaries: Mapping[str, Callable[[], str]]) -> Probe:
     results = []
     for name, invoke in boundaries.items():
         try:
             value = invoke()
             category = "pass" if isinstance(value, str) and value.strip() else "empty_response"
-        except Exception:
-            category = "transport_unavailable"
+        except Exception as exc:
+            category = _llm_boundary_exception_category(exc)
         results.append((name, category))
     failed = next((category for _, category in results if category != "pass"), None)
     return Probe(failed is None, "pass" if failed is None else failed, tuple(results))
@@ -229,12 +267,15 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
         for name, model in direct_models.items()
     }
     def data_agent_call() -> str:
-        from smolagents import ChatMessage, LiteLLMModel
+        from smolagents import LiteLLMModel
         model_id = (ENV.data_agent_model_id if "/" in ENV.data_agent_model_id
                     else f"ollama_chat/{ENV.data_agent_model_id}")
         model = LiteLLMModel(model_id=model_id, api_base=ENV.model_base_url,
                              temperature=ENV.model_temperature)
-        response = model.generate([ChatMessage(role="user", content="Reply with READY.")])
+        response = model.generate([{
+            "role": "user",
+            "content": [{"type": "text", "text": "Reply with READY."}],
+        }])
         return str(response.content or "")
     boundaries["data_agent"] = data_agent_call
     llm = probe_llm_boundaries(boundaries)
