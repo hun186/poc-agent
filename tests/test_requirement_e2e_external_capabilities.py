@@ -6,6 +6,7 @@ import inspect
 from types import SimpleNamespace
 
 import pytest
+from requests import exceptions as requests_exceptions
 
 from agent.es.evidence_core.builder import build_hits_and_evidence
 from agent.es.mock_es_client import (
@@ -78,6 +79,73 @@ def test_required_llm_boundaries_all_must_pass():
     probe = probe_llm_boundaries({"router": lambda: "ok", "data_agent": lambda: ""})
     assert not probe.usable and probe.category == "empty_response"
     assert dict(probe.details) == {"router": "pass", "data_agent": "empty_response"}
+
+
+def test_llm_boundary_contract_error_is_not_transport():
+    def raise_type_error():
+        raise TypeError("message contract mismatch")
+
+    probe = probe_llm_boundaries({"data_agent": raise_type_error})
+
+    assert not probe.usable
+    assert probe.category == "boundary_error"
+    assert dict(probe.details) == {"data_agent": "boundary_error"}
+
+
+def test_llm_boundary_connection_error_remains_transport_unavailable():
+    def raise_connection_error():
+        raise requests_exceptions.ConnectionError("unreachable")
+
+    probe = probe_llm_boundaries({"data_agent": raise_connection_error})
+
+    assert not probe.usable
+    assert probe.category == "transport_unavailable"
+    assert dict(probe.details) == {"data_agent": "transport_unavailable"}
+
+
+def test_environment_plan_data_agent_probe_uses_smolagents_content_blocks(monkeypatch):
+    captured = {}
+
+    class FakeLiteLLMModel:
+        def __init__(self, **kwargs):
+            captured["constructor"] = kwargs
+
+        def generate(self, messages):
+            captured["messages"] = messages
+            return SimpleNamespace(content="READY.")
+
+    monkeypatch.setattr("smolagents.LiteLLMModel", FakeLiteLLMModel)
+    monkeypatch.setattr(
+        "agent.data_agent.types.ENV",
+        SimpleNamespace(
+            data_agent_model_id="probe-model",
+            model_base_url="http://model.example:11434",
+            model_temperature=0.25,
+        ),
+    )
+    monkeypatch.setattr(
+        "agent.llm_utils.ollama_client.LLMClient.chat",
+        lambda self, messages, timeout=10: "READY.",
+    )
+    monkeypatch.setattr("agent.es.es_client._build_es", lambda: object())
+    monkeypatch.setattr(
+        "agent.external_capabilities.probe_elasticsearch",
+        lambda client, indexes, acceptance_search: Probe(True, "pass"),
+    )
+
+    plan = resolve_environment_plan("auto")
+
+    assert plan.llm_probe == "pass"
+    assert dict(plan.llm_probe_details)["data_agent"] == "pass"
+    assert captured["constructor"] == {
+        "model_id": "ollama_chat/probe-model",
+        "api_base": "http://model.example:11434",
+        "temperature": 0.25,
+    }
+    assert captured["messages"] == [{
+        "role": "user",
+        "content": [{"type": "text", "text": "Reply with READY."}],
+    }]
 
 
 @pytest.mark.parametrize(("ping", "exists", "mapping", "dataset", "category"), [
