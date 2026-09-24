@@ -17,7 +17,7 @@ from agent.es.query_body import build_main_query_body
 from agent.external_capabilities import (
     BackendPlan, CapabilityError, Probe, install_plan, mapping_compatibility,
     parse_mode, probe_elasticsearch, probe_llm, probe_llm_boundaries,
-    reset_plan_for_tests, resolve_plan,
+    reset_plan_for_tests, resolve_environment_plan, resolve_plan,
 )
 
 
@@ -92,37 +92,63 @@ def test_llm_boundary_contract_error_is_not_transport():
     assert dict(probe.details) == {"data_agent": "boundary_error"}
 
 
-def test_llm_boundary_connection_error_remains_transport_unavailable():
-    def raise_connection_error():
-        raise requests_exceptions.ConnectionError("unreachable")
+@pytest.mark.parametrize("exc", [
+    requests_exceptions.ConnectionError("unreachable"),
+    requests_exceptions.Timeout("timed out"),
+])
+def test_llm_boundary_requests_transport_errors_are_transport_unavailable(exc):
+    def raise_transport_error():
+        raise exc
 
-    probe = probe_llm_boundaries({"data_agent": raise_connection_error})
+    probe = probe_llm_boundaries({"data_agent": raise_transport_error})
 
     assert not probe.usable
     assert probe.category == "transport_unavailable"
     assert dict(probe.details) == {"data_agent": "transport_unavailable"}
 
 
-def test_llm_boundary_litellm_transport_errors_are_transport_unavailable():
-    import litellm
+@pytest.mark.parametrize(("module", "name"), [
+    ("openai", "APIConnectionError"),
+    ("openai._exceptions", "APITimeoutError"),
+    ("litellm", "ConnectionError"),
+    ("litellm.exceptions", "Timeout"),
+])
+def test_llm_boundary_optional_client_transport_metadata_is_transport(module, name):
+    exc_type = type(name, (Exception,), {"__module__": module})
+    exc = exc_type("transport detail must not escape")
 
-    class LiteLLMConnectionError(litellm.APIConnectionError):
-        def __init__(self):
-            Exception.__init__(self, "unreachable")
+    def raise_transport_error():
+        raise exc
 
-    class LiteLLMTimeout(litellm.Timeout):
-        def __init__(self):
-            Exception.__init__(self, "timed out")
+    probe = probe_llm_boundaries({"data_agent": raise_transport_error})
 
-    for exc in (LiteLLMConnectionError(), LiteLLMTimeout()):
-        def raise_transport_error(exc=exc):
-            raise exc
+    assert not probe.usable
+    assert probe.category == "transport_unavailable"
+    assert dict(probe.details) == {"data_agent": "transport_unavailable"}
 
-        probe = probe_llm_boundaries({"data_agent": raise_transport_error})
 
-        assert not probe.usable
-        assert probe.category == "transport_unavailable"
-        assert dict(probe.details) == {"data_agent": "transport_unavailable"}
+def test_llm_boundary_same_named_exception_outside_allowed_module_is_boundary_error():
+    exc_type = type("APIConnectionError", (Exception,), {"__module__": "unrelated.client"})
+
+    def raise_unrelated():
+        raise exc_type("not an approved transport namespace")
+
+    probe = probe_llm_boundaries({"data_agent": raise_unrelated})
+
+    assert not probe.usable
+    assert probe.category == "boundary_error"
+    assert dict(probe.details) == {"data_agent": "boundary_error"}
+
+
+def test_llm_boundary_unrelated_runtime_error_is_boundary_error():
+    def raise_runtime_error():
+        raise RuntimeError("not transport")
+
+    probe = probe_llm_boundaries({"data_agent": raise_runtime_error})
+
+    assert not probe.usable
+    assert probe.category == "boundary_error"
+    assert dict(probe.details) == {"data_agent": "boundary_error"}
 
 
 def test_llm_boundary_wrapped_transport_cause_is_transport_unavailable():
