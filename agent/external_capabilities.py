@@ -140,6 +140,39 @@ def probe_llm(client: Any) -> Probe:
                  "pass" if isinstance(value, str) and value.strip() else "empty_response")
 
 
+_OPTIONAL_TRANSPORT_EXCEPTIONS = {
+    "litellm": frozenset({"APIConnectionError", "APITimeoutError", "ConnectionError", "Timeout"}),
+    "openai": frozenset({"APIConnectionError", "APITimeoutError", "ConnectionError", "Timeout"}),
+}
+
+
+def _is_transport_exception(exc: BaseException) -> bool:
+    """Recognize transport failures without importing optional client packages."""
+    pending = [exc]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        identity = id(current)
+        if identity in visited:
+            continue
+        visited.add(identity)
+        if isinstance(current, (
+            ConnectionError,
+            TimeoutError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        )):
+            return True
+        for cls in type(current).__mro__:
+            module_root = cls.__module__.partition(".")[0]
+            if cls.__name__ in _OPTIONAL_TRANSPORT_EXCEPTIONS.get(module_root, ()):
+                return True
+        for linked in (current.__cause__, current.__context__):
+            if isinstance(linked, BaseException):
+                pending.append(linked)
+    return False
+
+
 def probe_llm_boundaries(boundaries: Mapping[str, Callable[[], str]]) -> Probe:
     results = []
     for name, invoke in boundaries.items():
@@ -147,9 +180,7 @@ def probe_llm_boundaries(boundaries: Mapping[str, Callable[[], str]]) -> Probe:
             value = invoke()
             category = "pass" if isinstance(value, str) and value.strip() else "empty_response"
         except Exception as exc:
-            category = ("transport_unavailable" if isinstance(
-                exc, (ConnectionError, TimeoutError, requests.exceptions.RequestException)
-            ) else "boundary_error")
+            category = "transport_unavailable" if _is_transport_exception(exc) else "boundary_error"
         results.append((name, category))
     failed = next((category for _, category in results if category != "pass"), None)
     return Probe(failed is None, "pass" if failed is None else failed, tuple(results))
