@@ -103,6 +103,42 @@ def test_llm_boundary_connection_error_remains_transport_unavailable():
     assert dict(probe.details) == {"data_agent": "transport_unavailable"}
 
 
+def test_llm_boundary_litellm_transport_errors_are_transport_unavailable():
+    import litellm
+
+    class LiteLLMConnectionError(litellm.APIConnectionError):
+        def __init__(self):
+            Exception.__init__(self, "unreachable")
+
+    class LiteLLMTimeout(litellm.Timeout):
+        def __init__(self):
+            Exception.__init__(self, "timed out")
+
+    for exc in (LiteLLMConnectionError(), LiteLLMTimeout()):
+        def raise_transport_error(exc=exc):
+            raise exc
+
+        probe = probe_llm_boundaries({"data_agent": raise_transport_error})
+
+        assert not probe.usable
+        assert probe.category == "transport_unavailable"
+        assert dict(probe.details) == {"data_agent": "transport_unavailable"}
+
+
+def test_llm_boundary_wrapped_transport_cause_is_transport_unavailable():
+    wrapped = RuntimeError("wrapper")
+    wrapped.__cause__ = requests_exceptions.ConnectionError("unreachable")
+
+    def raise_wrapped():
+        raise wrapped
+
+    probe = probe_llm_boundaries({"data_agent": raise_wrapped})
+
+    assert not probe.usable
+    assert probe.category == "transport_unavailable"
+    assert dict(probe.details) == {"data_agent": "transport_unavailable"}
+
+
 def test_environment_plan_data_agent_probe_uses_smolagents_content_blocks(monkeypatch):
     captured = {}
 
