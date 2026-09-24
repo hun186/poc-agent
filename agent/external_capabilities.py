@@ -141,26 +141,38 @@ def probe_llm(client: Any) -> Probe:
 
 
 def _llm_boundary_exception_category(exc: Exception) -> str:
-    transport_errors: tuple[type[BaseException], ...] = (
+    transport_errors = (
         ConnectionError,
         TimeoutError,
         requests_exceptions.ConnectionError,
         requests_exceptions.Timeout,
     )
-    try:
-        from openai import APIConnectionError, APITimeoutError
-    except ImportError:
-        pass
-    else:
-        transport_errors += (APIConnectionError, APITimeoutError)
+    optional_transport_names = frozenset({
+        "APIConnectionError", "APITimeoutError", "ConnectionError", "Timeout",
+    })
+    optional_transport_modules = frozenset({"openai", "litellm"})
 
-    current: BaseException | None = exc
+    pending: list[BaseException] = [exc]
     seen: set[int] = set()
-    while current is not None and id(current) not in seen:
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+
         if isinstance(current, transport_errors):
             return "transport_unavailable"
-        seen.add(id(current))
-        current = current.__cause__ or current.__context__
+
+        for cls in type(current).__mro__:
+            module_root = cls.__module__.split(".", 1)[0]
+            if module_root in optional_transport_modules and cls.__name__ in optional_transport_names:
+                return "transport_unavailable"
+
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+
     return "boundary_error"
 
 
