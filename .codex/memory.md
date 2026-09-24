@@ -150,3 +150,36 @@
 - Added shared bounded selectors/discovery and `unexpected_runtime_input` propagation through generation, exact package verification, Linux runtime evidence, remote evidence, and Harness preflight. Runtime loaders now consume the same pure selectors without importing side-effectful singleton loaders into verification.
 - GREEN: `PYTHONPATH=. pytest -q tests/test_requirement_e2e_source_identity_hotfix.py tests/test_requirement_operator_e2e_harness.py tests/test_requirement_operator_e2e_harness_v2.py tests/test_runtime_input_provenance.py` passed 115 tests with two pre-existing dependency deprecation warnings. The live Requirement Golden Path and all real Agent/Elasticsearch/LLM/DOCX paths were not run.
 - Compacted architecture, API contract, and backlog after each exceeded 20 work/date sections. Full prior text is archived at `.codex/archive/{architecture,api_contract,backlog}.md-20260918-000000.md`.
+
+### 2026-09-22 Capability-adaptive Requirement E2E
+
+- Added explicit live/auto/offline external dependency planning, frozen per deployment process before the Requirement workflow. Runtime evidence and operator output now distinguish FULL_LIVE, HYBRID, and OFFLINE while preserving workflow failures.
+- Added mapping- and dataset-aware live Elasticsearch probing, non-empty live LLM probing, an acceptance-only semantic ES fixture using native Event arrays/event_ids, and deterministic adapters at the ES and both LLM model boundaries. The real CodeAgent/tool/query/parser/evidence path remains active offline.
+- Focused capability tests passed 17 tests; the relevant Harness/provenance/nested-mapping regression command passed. A direct offline CodeAgent run executed retrieval and returned all three semantic evidence records. No live SQL Server, Elasticsearch, LLM, deployment, or DOCX E2E was available or claimed.
+
+### 2026-09-23 Capability-adaptive E2E corrective
+
+- Replaced synthetic Requirement phrases with Gaza, Taiwan Strait gray-zone, and US-China/Indo-Pacific semantic fixtures grounded in the business workbook themes. Added a dedicated strict czjLLM MultiDim subtree mapping, fixture validation, and a bounded production-query DSL evaluator with discriminating filters, dates, and evidence inner hits.
+- Restored production `LLMClient.generate()`, made deterministic router/refiner/DataAgent/report contracts evidence-aware, and proved the real `execute_agent_turn()` → routing → ReportAgent/DataAgent → ES parser/builder path offline without faking Report Job state or DOCX completion.
+- Moved plan ownership to the API/ReportJobWorker process before claims; local and remote harnesses now assert authenticated runtime evidence rather than modifying harness-process environment.
+- Focused capability tests passed 39 tests; Agent/ES/LLM/ReportJob tests passed 73 tests; Requirement Harness/provenance/ReportJob regressions passed 157 tests. No live LLM, ES, SQL, Schedule/Handoff, full automatic run, DOCX, or reconciliation acceptance was executed.
+- GitHub remained unreachable through the environment proxy, so hosted refs, push, and the required hosted-verifiable provenance regeneration could not be completed. The existing local-only provenance anchor must not be presented as corrected.
+
+### 2026-09-23 Deterministic direct-LLM contract audit
+
+- Audited every direct `call_llm()` contract reachable from SRA_REPORT: router and report are unconditional; query refiner, topic extraction/synonym expansion, and evidence field selection are configuration-conditional. DataAgent remains a distinct smolagents model boundary.
+- Corrected the raw field-selector response to include mandatory `ref_no` and `note`; added explicit topic-extractor and synonym-expander JSON contracts; removed the unsafe generic prose catch-all in favor of `unsupported_e2e_llm_contract`.
+- Added exact-production-prompt tests for all three router themes, time-context refiner recognition, raw selector validity, production report payload grounding/empty evidence, conditional query-term callers, activation/cache reset, ordinary chat/generate behavior, unknown-contract failure, and the real offline Agent-turn path.
+- Verification passed 50 focused capability tests and 89 related LLM/refiner/query-term/turn/ReportJob/Harness tests. No live external dependency or deployment acceptance was executed.
+
+### 2026-09-23 Functional versus release Requirement E2E verification
+
+- Added an explicit `--verification release|functional` policy. Release remains the strict default; functional mode downgrades only ordinary provenance-managed byte drift to visible advisory evidence and still executes the production workflow.
+- Deployment runtime evidence now accepts the authenticated verification policy and returns capability, worker, artifact-root, and explicit source-attestation evidence during ordinary byte drift. Malformed/missing provenance, unexpected runtime inputs, unexpected active modules, module shadowing, worker identity, and artifact integrity remain fail closed.
+- Validation passed 9 focused policy tests, 150 provenance/Harness regressions, and 56 external-capability/live-progress regressions. Dependency installation found requirements present; the pip index upgrade check repeated the known proxy HTTP 403 warning. No deployment E2E or formal acceptance was run.
+
+### 2026-09-23 Real Requirement semantic-content reconciliation
+
+- The canonical operator XLSX now byte-mirrors `data/要項excel/requirement_e2e_three.xlsx` and uses the production `ITEMNO`/`CONTENT ` business shape with Gaza, Taiwan Strait gray-zone, and US-China/Indo-Pacific Requirements. Its verified SHA-256 is `816ffac9039530a86955c590b0fa68830757a620229d85630f5e42c12f542403`.
+- The Harness uses the reviewed Taiwan investment-security import profile, assigns v2 fixture identities, and compares canonical workbook `ITEMNO -> CONTENT` with durable Snapshot `external_item_id -> prompt_content` without emitting prompt bodies. Input and external-mode failures now provide bounded categories/remediation evidence.
+- Focused real-content tests passed 9 tests; the combined Requirement content, capability, verification, Harness, provenance, profile, adapter, and integration suite passed 229 tests with two dependency deprecation warnings. No deployment acceptance was run.

@@ -32,10 +32,11 @@ from operator_e2e.requirement_e2e_support import (
 )
 from operator_e2e.requirement_e2e_evidence import LocalDeploymentEvidenceProvider, RemoteDeploymentEvidenceProvider
 from shared.runtime_provenance import (
-    PROVENANCE_NAME, load_provenance, provenance_fingerprint, verify_package_files,
+    PROVENANCE_NAME, load_provenance, provenance_fingerprint,
+    verify_discovered_runtime_inputs, verify_package_files,
 )
 
-PROFILE_PATH = SCRIPT_DIR / "requirement_e2e_profile_v1.json"
+PROFILE_PATH = PROJECT_ROOT / "config" / "requirements" / "import_profile.taiwan-investment-security.v1.example.json"
 DEFAULT_EXCEL = SCRIPT_DIR / "input" / "requirement_e2e_3items.xlsx"
 TRANSIENT = {429, 502, 503, 504}
 
@@ -79,11 +80,14 @@ class Api:
 class Harness:
     PROGRESS_HEARTBEAT_SECONDS = 15
 
-    def __init__(self, config: E2EConfig, excel: Path, run_id: str, result: dict[str, Any]):
+    def __init__(self, config: E2EConfig, excel: Path, run_id: str, result: dict[str, Any], external_mode: str = "auto",
+                 verification: str = "release"):
         self.config, self.excel, self.run_id, self.result = config, excel, run_id, result
         self.api = Api(config); self.enabled_schedule_id: str | None = None
         self.output = config.output_dir / run_id; self.known_secrets = [x for x in (config.token, config.password) if x]
         self.evidence_provider = None
+        self.external_mode = external_mode
+        self.verification = verification
 
     def log(self, event: str, **fields):
         """Emit one redacted, deterministic operator progress record."""
@@ -142,17 +146,51 @@ class Harness:
         self.known_secrets.append(self.api.token)
 
     def validate_input(self):
-        if self.excel.suffix.lower() != ".xlsx" or not self.excel.is_file() or self.excel.stat().st_size <= 0:
-            self.fail("input_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
+        if not self.excel.is_file():
+            self.result["input"] = {"path": str(self.excel), "remediation_hint": "deploy the canonical workbook"}
+            self.fail("input_file_missing", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
+        if self.excel.suffix.lower() != ".xlsx" or self.excel.stat().st_size <= 0:
+            self.result["input"] = {"path": str(self.excel), "remediation_hint": "deploy a valid XLSX workbook"}
+            self.fail("input_xlsx_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
         try:
             book = load_workbook(self.excel, read_only=True); book.close()
-        except Exception as exc: raise HarnessFailure("input_invalid", stage="INPUT_VALIDATION", exit_code=ExitCode.PREFLIGHT) from exc
+        except Exception as exc: raise HarnessFailure("input_xlsx_invalid", stage="INPUT_VALIDATION", exit_code=ExitCode.PREFLIGHT) from exc
         digest = hashlib.sha256(self.excel.read_bytes()).hexdigest()
         expected = (CANONICAL_SOURCE_SHA256 if self.excel == DEFAULT_EXCEL.resolve()
                     else self.config.expected_source_sha)
-        if expected and expected != digest: self.fail("input_invalid", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
         self.result["input"] = {"path": str(self.excel), "sha256": digest, "size_bytes": self.excel.stat().st_size}
         if expected: self.result["input"]["expected_sha256"] = expected
+        if expected and expected != digest:
+            self.result["input"]["remediation_hint"] = "redeploy the canonical workbook and matching package"
+            self.fail("input_sha256_mismatch", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
+
+    def _canonical_prompt_content(self) -> dict[str, str] | None:
+        if self.excel != DEFAULT_EXCEL.resolve():
+            return None
+        book = load_workbook(self.excel, read_only=True, data_only=True)
+        try:
+            sheet = book.active
+            rows = sheet.iter_rows(values_only=True)
+            headers = next(rows)
+            normalized = {str(value or "").strip().casefold(): index for index, value in enumerate(headers)}
+            item_index, content_index = normalized["itemno"], normalized["content"]
+            return {
+                str(row[item_index]).strip(): str(row[content_index])
+                for row in rows if row[item_index] is not None
+            }
+        finally:
+            book.close()
+
+    def _validate_canonical_prompt_content(self, items: list[dict[str, Any]]) -> None:
+        canonical_prompts = self._canonical_prompt_content()
+        if canonical_prompts is None:
+            return
+        imported_prompts = {
+            str(item.get("external_item_id") or ""): item.get("prompt_content")
+            for item in items
+        }
+        if imported_prompts != canonical_prompts:
+            self.fail("prompt_content_mismatch", "REQUIREMENT_ITEMS")
 
     def _exact_named(self, path: str, name: str): return [item for item in self.api.get(path)["items"] if item.get("name") == name]
     def _write_with_reread(self, write: Callable[[], dict], reread: Callable[[], list[dict]], stage: str):
@@ -244,6 +282,7 @@ class Harness:
         items = self.api.get(f"/v1/requirement-snapshots/{committed['snapshot_id']}/items")["items"]
         now = datetime.now(timezone.utc)
         if len(items) != 3 or any(item.get("expires_at") and self._dt(item["expires_at"]) <= now for item in items): self.fail("item_count_mismatch", "REQUIREMENT_ITEMS")
+        self._validate_canonical_prompt_content(items)
         self.result["fixtures"]["requirement_set_id"] = reqset["requirement_set_id"]
         self.result["requirement_import"] = {key: committed.get(key) for key in ("import_run_id", "snapshot_id", "accepted_count", "rejected_count")}
         return reqset, items
@@ -391,16 +430,28 @@ class Harness:
         self.api.get("/v1/requirement-import-profiles"); self.api.get("/v1/requirement-schedules")
         self.pass_stage("PIPELINE_READINESS")
         if self.config.mode == "local":
-            self.evidence_provider = LocalDeploymentEvidenceProvider(PROJECT_ROOT, self.config.artifact_root)
+            self.evidence_provider = LocalDeploymentEvidenceProvider(
+                PROJECT_ROOT, self.config.artifact_root, self.api,
+            )
         else:
             self.evidence_provider = RemoteDeploymentEvidenceProvider(self.api)
-        deployment_evidence = self.evidence_provider.preflight()
+        deployment_evidence = self.evidence_provider.preflight(self.verification)
+        acceptance = deployment_evidence.get("acceptance") or {}
+        if acceptance.get("requested_mode") != self.external_mode:
+            self.result["acceptance"] = {
+                "requested_mode": self.external_mode,
+                "deployed_mode": acceptance.get("requested_mode"),
+                "remediation_hint": "set REQUIREMENT_E2E_EXTERNAL_MODE and restart API/workers",
+            }
+            self.fail("external_capability_mode_mismatch", "RUNTIME_WORKERS", ExitCode.PREFLIGHT)
+        self.result["acceptance"] = acceptance
         self.result["deployment_evidence"] = deployment_evidence
         self.result["deployment_source"] = deployment_evidence.get("deployment_source", self.result["operator_source"])
         _validate_deployment_source(
             self.result["deployment_source"],
             self.result["operator_source"]["provenance_fingerprint"],
             self.config.expected_runtime_sha,
+            self.verification,
         )
         self.pass_stage("RUNTIME_WORKERS", workers=deployment_evidence["workers"])
         self.validate_input(); self.pass_stage("INPUT_VALIDATION")
@@ -436,6 +487,10 @@ Windows/Spyder is supported for remote-operator acceptance.
 Local-host acceptance remains Linux deployment-host only.""",
     ); parser.add_argument("--mode", choices=("local", "remote"), default="local",
                            help="local: Linux deployment host; remote: Windows/POSIX operator workstation")
+    parser.add_argument("--external-mode", choices=("live", "auto", "offline"), default="auto",
+                        help="external dependency policy, frozen by deployment before workflow start")
+    parser.add_argument("--verification", choices=("release", "functional"), default="release",
+                        help="release: strict source attestation; functional: record ordinary byte drift and run workflow")
     parser.add_argument("--excel", type=Path, default=DEFAULT_EXCEL,
                         help="XLSX override (default: canonical fixture resolved beside this script)")
     parser.add_argument("--provenance", type=Path, default=PROJECT_ROOT / PROVENANCE_NAME,
@@ -444,12 +499,22 @@ Local-host acceptance remains Linux deployment-host only.""",
     return parser.parse_args(argv)
 
 
-def _provenance_source(root: Path, path: Path, expected_runtime_sha: str | None = None) -> dict[str, Any]:
+def _provenance_source(root: Path, path: Path, expected_runtime_sha: str | None = None,
+                       verification: str = "release") -> dict[str, Any]:
     if not path.is_file():
         raise HarnessFailure("release_provenance_missing", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
     try:
         provenance = load_provenance(path)
-        verify_package_files(root, provenance)
+        try:
+            verify_package_files(root, provenance)
+            attestation_status, attestation_category = "verified", None
+        except ValueError as exc:
+            if verification != "functional" or str(exc) != "active_runtime_source_mismatch":
+                raise
+            # Byte drift is the sole advisory condition. Discovery remains a
+            # separate fail-closed fence even if hashing stopped at a mismatch.
+            verify_discovered_runtime_inputs(root, provenance)
+            attestation_status, attestation_category = "mismatch", "active_runtime_source_mismatch"
     except ValueError as exc:
         category = ({"active_runtime_source_mismatch": "operator_runtime_source_mismatch",
                      "unexpected_runtime_input": "unexpected_runtime_input"}.get(
@@ -459,7 +524,10 @@ def _provenance_source(root: Path, path: Path, expected_runtime_sha: str | None 
         raise HarnessFailure("legacy_runtime_sha_mismatch", stage="CONFIG_PREFLIGHT", exit_code=ExitCode.PREFLIGHT)
     return {
         "repository": provenance["repository"], "identity_kind": "release_provenance",
-        "identity_verified": True, "reviewed_runtime_sha": provenance["reviewed_runtime_sha"],
+        "identity_verified": attestation_status == "verified",
+        "attestation_status": attestation_status,
+        "attestation_category": attestation_category,
+        "reviewed_runtime_sha": provenance["reviewed_runtime_sha"],
         "runtime_files": provenance["runtime_files"],
         "provenance_fingerprint": provenance_fingerprint(provenance),
         "legacy_expected_runtime_sha": expected_runtime_sha,
@@ -467,9 +535,12 @@ def _provenance_source(root: Path, path: Path, expected_runtime_sha: str | None 
 
 
 def _validate_deployment_source(source: dict[str, Any], expected_fingerprint: str,
-                                legacy_expected_sha: str | None = None) -> None:
+                                legacy_expected_sha: str | None = None,
+                                verification: str = "release") -> None:
     if not source.get("identity_verified"):
-        raise HarnessFailure("deployment_source_identity_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
+        if not (verification == "functional" and source.get("attestation_status") == "mismatch"
+                and source.get("attestation_category") == "active_runtime_source_mismatch"):
+            raise HarnessFailure("deployment_source_identity_mismatch", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT)
     if source.get("provenance_fingerprint") != expected_fingerprint:
         raise HarnessFailure("deployment_provenance_identity_mismatch", stage="RUNTIME_WORKERS",
                              exit_code=ExitCode.PREFLIGHT)
@@ -478,9 +549,48 @@ def _validate_deployment_source(source: dict[str, Any], expected_fingerprint: st
                              exit_code=ExitCode.PREFLIGHT)
 
 
+def _summary_text(result: dict[str, Any], args, classification: str, exit_code: ExitCode) -> str:
+    verification = result.get("verification", {})
+    functional_result = "PASS" if result.get("overall_status") == "PASS" else "FAIL"
+    summary = (
+        f"REQUIREMENT_E2E = {result['overall_status']} / "
+        f"{classification if result['overall_status'] == 'PASS' else result.get('failure_category', 'FAIL')}\n"
+        f"FUNCTIONAL_RESULT = {functional_result}\n"
+        f"SOURCE_ATTESTATION = {verification.get('source_attestation', 'UNRESOLVED')}\n"
+        f"DEPLOYMENT_ACCEPTANCE = {verification.get('deployment_acceptance', 'NOT_ESTABLISHED')}\n"
+        f"VERIFICATION_POLICY = {args.verification}\n"
+        f"ACCEPTANCE_MODE = {args.mode}\n"
+        f"EXTERNAL_MODE = {args.external_mode}\n"
+        f"FRESH_LIVE_REQUIREMENT_E2E_PASS = "
+        f"{'YES' if result['overall_status'] == 'PASS' and classification == 'FULL_LIVE' and verification.get('deployment_acceptance') == 'ESTABLISHED' else 'NO'}\n"
+        f"EXIT_CODE = {int(exit_code)}\n"
+    )
+    if result.get("failure_category") == "external_capability_mode_mismatch":
+        acceptance = result.get("acceptance", {})
+        summary += (
+            f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode', '')}\n"
+            f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode', '')}\n"
+            f"REMEDIATION_HINT = {acceptance.get('remediation_hint', '')}\n"
+        )
+    if result.get("failure_category") == "input_sha256_mismatch":
+        input_evidence = result.get("input", {})
+        summary += (
+            f"INPUT_PATH = {input_evidence.get('path', '')}\n"
+            f"EXPECTED_SHA256 = {input_evidence.get('expected_sha256', '')}\n"
+            f"ACTUAL_SHA256 = {input_evidence.get('sha256', '')}\n"
+            f"REMEDIATION_HINT = {input_evidence.get('remediation_hint', '')}\n"
+        )
+    return summary
+
+
 def main(argv=None) -> int:
     bootstrap_env(); args = parse_args(argv); run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     result = result_document(run_id, args.mode); started = time.monotonic(); harness = None; diagnostics = {"logs": {}}
+    result["acceptance"] = {"requested_mode": args.external_mode}
+    result["verification"] = {
+        "policy": args.verification, "source_attestation": "UNRESOLVED",
+        "deployment_acceptance": "NOT_ESTABLISHED",
+    }
     # This fallback exists solely so CONFIG failures can still publish evidence.
     # Once configuration is valid, its resolved (or CLI-overridden) directory is
     # authoritative for the lock, artifact copies, and final evidence alike.
@@ -511,9 +621,11 @@ def main(argv=None) -> int:
         )
         if args.output_dir: config = E2EConfig(**{**config.__dict__, "output_dir": args.output_dir})
         evidence_output = config.output_dir / run_id
-        harness = Harness(config, args.excel.resolve(), run_id, result)
-        result["operator_source"] = _provenance_source(
-            PROJECT_ROOT, args.provenance.resolve(), config.expected_runtime_sha,
+        harness = Harness(config, args.excel.resolve(), run_id, result, args.external_mode, args.verification)
+        provenance_args = (PROJECT_ROOT, args.provenance.resolve(), config.expected_runtime_sha)
+        result["operator_source"] = (
+            _provenance_source(*provenance_args, verification=args.verification)
+            if args.verification == "functional" else _provenance_source(*provenance_args)
         )
         with SingleRunLock(config.output_dir / ".lock", args.mode):
             try: harness.run()
@@ -531,6 +643,21 @@ def main(argv=None) -> int:
             diagnostics["logs"] = {name: bounded_log_tail(path if path.is_absolute() else PROJECT_ROOT / path, harness.known_secrets) for name, path in paths.items()}
     except Exception:
         result.update(overall_status="FAIL", exit_code=4, failure_category="internal_harness_error"); exit_code = ExitCode.INTERNAL
+    observed_attestations = {
+        source.get("attestation_status")
+        for source in (result.get("operator_source", {}), result.get("deployment_source", {}))
+        if source.get("attestation_status")
+    }
+    if "mismatch" in observed_attestations:
+        result["verification"]["source_attestation"] = "MISMATCH"
+    elif observed_attestations and observed_attestations == {"verified"}:
+        result["verification"]["source_attestation"] = "VERIFIED"
+    result["verification"]["deployment_acceptance"] = (
+        "ESTABLISHED"
+        if result.get("overall_status") == "PASS" and args.verification == "release"
+        and result["verification"]["source_attestation"] == "VERIFIED"
+        else "NOT_ESTABLISHED"
+    )
     result["finished_at"] = datetime.now(timezone.utc).isoformat(); result["duration_seconds"] = round(time.monotonic() - started, 3)
     try:
         known_secrets = harness.known_secrets if harness else []
@@ -541,7 +668,8 @@ def main(argv=None) -> int:
         safe = redact(result, known_secrets)
         atomic_write_json(evidence_output / "result.json", safe)
         atomic_write_json(evidence_output / "diagnostics.json", redact(diagnostics, known_secrets))
-        summary = f"REQUIREMENT_E2E = {result['overall_status']}\nACCEPTANCE_MODE = {args.mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
+        classification = result.get("acceptance", {}).get("classification", "UNRESOLVED")
+        summary = _summary_text(result, args, classification, exit_code)
         if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
         atomic_write_text(evidence_output / "summary.txt", summary)
         if harness: harness.log("PASS FINAL_EVIDENCE")
@@ -553,7 +681,8 @@ def main(argv=None) -> int:
             (evidence_output / "artifacts").mkdir(exist_ok=True)
             atomic_write_json(evidence_output / "result.json", redact(result, known_secrets))
             atomic_write_json(evidence_output / "diagnostics.json", redact(diagnostics, known_secrets))
-            summary = f"REQUIREMENT_E2E = {result['overall_status']}\nACCEPTANCE_MODE = {args.mode}\nFRESH_LIVE_REQUIREMENT_E2E_PASS = {'YES' if result['overall_status'] == 'PASS' else 'NO'}\nEXIT_CODE = {int(exit_code)}\n"
+            classification = result.get("acceptance", {}).get("classification", "UNRESOLVED")
+            summary = _summary_text(result, args, classification, exit_code)
             if result.get("failed_stage"): summary += f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}\n"
             atomic_write_text(evidence_output / "summary.txt", summary)
             if harness: harness.log("PASS FINAL_EVIDENCE")
@@ -566,7 +695,21 @@ def main(argv=None) -> int:
         result.update(overall_status="FAIL", exit_code=4, failed_stage="FINAL_EVIDENCE", failure_category="evidence_write_failed")
         next(item for item in result["stages"] if item["name"] == "FINAL_EVIDENCE")["status"] = StageStatus.FAIL
     print(f"REQUIREMENT_E2E = {result['overall_status']}")
+    print(f"FUNCTIONAL_RESULT = {'PASS' if result['overall_status'] == 'PASS' else 'FAIL'}")
+    print(f"SOURCE_ATTESTATION = {result['verification']['source_attestation']}")
+    print(f"DEPLOYMENT_ACCEPTANCE = {result['verification']['deployment_acceptance']}")
     if result.get("failed_stage"): print(f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}")
+    if result.get("failure_category") == "external_capability_mode_mismatch":
+        acceptance = result.get("acceptance", {})
+        print(f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode', '')}")
+        print(f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode', '')}")
+        print(f"REMEDIATION_HINT = {acceptance.get('remediation_hint', '')}")
+    elif result.get("failure_category") == "input_sha256_mismatch":
+        input_evidence = result.get("input", {})
+        print(f"INPUT_PATH = {input_evidence.get('path', '')}")
+        print(f"EXPECTED_SHA256 = {input_evidence.get('expected_sha256', '')}")
+        print(f"ACTUAL_SHA256 = {input_evidence.get('sha256', '')}")
+        print(f"REMEDIATION_HINT = {input_evidence.get('remediation_hint', '')}")
     if result.get("failure_category") == "configuration_file_missing":
         print("Create operator_e2e/e2e.env.local first.\nStart from operator_e2e/e2e.env.example.")
     elif result.get("failure_category") == "unsupported_local_platform":

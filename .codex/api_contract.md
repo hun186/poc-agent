@@ -32,3 +32,8 @@
 
 - `.codex/archive/api_contract.md-20260918-000000.md` — full pre-compaction API contract through 2026-09-18.
 - Earlier archives referenced by that file remain under `.codex/archive/`.
+
+### 2026-09-23 Runtime-evidence verification policy
+
+- `GET /v1/operator-e2e/runtime-evidence` accepts `verification=release|functional` (default `release`). Functional requests may receive HTTP 200 with `deployment_source.identity_verified=false`, `attestation_status=mismatch`, and `attestation_category=active_runtime_source_mismatch`; capability, worker, and artifact-root evidence remains authoritative.
+- Missing/malformed provenance, unexpected runtime input, unexpected active runtime modules, and module shadowing remain errors in both policies. The response still excludes secrets and deployment paths.

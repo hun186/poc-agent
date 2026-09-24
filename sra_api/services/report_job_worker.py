@@ -13,6 +13,8 @@ class ReportJobWorker:
         self.stop_event = threading.Event(); self.thread = None
     def start(self):
         if self.thread and self.thread.is_alive(): return
+        from agent.external_capabilities import frozen_plan, resolve_environment_plan
+        frozen_plan(resolve_environment_plan)
         self.root.mkdir(parents=True, exist_ok=True)
         self.thread = threading.Thread(target=self.run, name="report-job-worker", daemon=True); self.thread.start()
     def stop(self, timeout=5):

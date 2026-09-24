@@ -56,3 +56,26 @@
 
 - `.codex/archive/architecture.md-20260918-000000.md` — full pre-compaction architecture through 2026-09-18.
 - Earlier archives referenced by that file remain under `.codex/archive/`.
+
+## 2026-09-22 Requirement E2E external capability boundary
+
+- `agent.external_capabilities` owns immutable per-process mode parsing, live probes, backend resolution, stable evidence categories, and FULL_LIVE/HYBRID/OFFLINE classification. It is dormant unless `REQUIREMENT_E2E_EXTERNAL_MODE` is explicitly configured.
+- Elasticsearch selection remains at `agent.es.es_client.get_es()`. The semantic backend returns ES hit envelopes and nested `evi` inner hits, so `ESSearchNews`, query construction, parsing, and evidence building remain production code.
+- Direct LLM calls inject an `LLMClient` boundary adapter; CodeAgent injects a `Model` boundary adapter that instructs the real CodeAgent to invoke `es_search_news`. Internal Requirement lifecycle, Agent orchestration, report/DOCX generation, and durable reconciliation are not replaced.
+- Live mapping authority remains `indices.get_mapping()`. The capability probe checks only the runtime-required E2E subset; enrichment documentation remains semantic rather than field-type authority.
+
+## 2026-09-23 Capability ownership and semantic backend corrective
+
+- The API lifespan and `ReportJobWorker.start()` freeze the deployment-owned external plan before job claiming. Runtime evidence is sourced from that same process; the harness only asserts requested-mode equality.
+- Requirement semantic ES uses a distinct root retrieval subset plus a `dynamic: strict` czjLLM MultiDim subtree. Its bounded evaluator supports only production query-builder constructs and raises on unsupported DSL.
+- Offline direct-model behavior is contract-specific (router/refiner/field selector/report), while the CodeAgent model derives one of the three business-theme queries and invokes the real retrieval tool.
+
+## 2026-09-23 Requirement E2E verification policy separation
+
+- The shared Harness keeps one production workflow but carries a separate verification policy. `release` requires exact operator/deployment provenance; `functional` permits only explicit package-byte drift while retaining runtime-input, active-module, worker, artifact-root, DOCX, digest, and durable identity fences.
+- The authenticated API process remains evidence authority. Its runtime-evidence response includes an attestation status even for advisory byte drift, allowing the Harness to report functional outcome independently from formal deployment acceptance.
+
+## 2026-09-23 Canonical Requirement semantic input boundary
+
+- Operator E2E begins at the production-shaped business workbook, uses the reviewed production import profile, and proves exact prompt-content persistence at the Snapshot boundary before Schedule materialization.
+- Deterministic external adapters consume the resulting business Requirement text directly; canonical fixture identity is v2 to avoid mutating historical synthetic durable fixtures.

@@ -212,3 +212,29 @@
 - Use one side-effect-free policy in `shared.runtime_provenance` for runtime loaders, generation, Linux evidence, and offline operator verification. Closed-directory discovery exactly follows direct-child, case-insensitive `.json` synonym membership; selector resolution preserves index precedence and covers the Requirement SQL registry and Editor form config.
 - Existing selected paths outside the project root have no implicit authority and fail as `unexpected_runtime_input`. Dotenv, secrets, auth/session stores, SQLite, generated outputs, import sources, and operator-managed task configuration remain separate mutable/deployment authority.
 - Preserve incremental deployments: unrelated and ignored residue remains accepted; inactive Python remains a bounded warning, while imported project modules absent from provenance remain blocked by the existing active-module rule.
+
+## 2026-09-22 Freeze explicit E2E external backend policy
+
+- Keep ordinary production backend behavior unchanged unless the explicit Requirement E2E external-mode variable is present. Resolve both dependencies before workbook mutation and never change the plan after a runtime failure.
+- Reuse the existing ES client seam and separate the Requirement semantic fixture index from the generic Vercel preview fixture. Mock only external model/search boundaries; keep production query, evidence, Agent, Schedule, Handoff, Report Job, DOCX, reconciliation, and terminal-state paths real.
+
+## 2026-09-23 External capability corrective decisions
+
+- Never configure an already-running deployment by mutating the operator harness environment. Freeze capability state in the ReportJobWorker-owning process and expose only safe authenticated evidence.
+- Keep full live mapping authority in `indices.get_mapping()`, the czjLLM subtree contract separate, and validate only retrieval-required live fields/multifields plus the configured reference-text path.
+- A semantic mock must reject unsupported DSL and discriminate business topics; returning every fixture is not an acceptable fallback.
+
+## 2026-09-23 Deterministic LLM contracts fail closed
+
+- Treat deterministic E2E output as a faithful external-boundary contract, not input for downstream repair. Raw structured responses must independently satisfy each production prompt.
+- Explicitly model every current SRA_REPORT direct-LLM stage and raise `unsupported_e2e_llm_contract` for unknown prompts. Keep ordinary `LLMClient` behavior unchanged and retain an isolated test-only singleton reset.
+
+## 2026-09-23 Separate functional verification from release attestation
+
+- Preserve `release` as the backward-compatible strict default. Functional verification is not a provenance bypass: it attempts full verification and makes only `active_runtime_source_mismatch` advisory.
+- Keep discovery and active-module security fences independent from byte hashing so a stale hash cannot conceal an unexpected selected input or module shadow. Functional success always reports deployment acceptance as not established.
+
+## 2026-09-23 Port only PR #270 semantic-input contract
+
+- Preserve PR #271 capability, verification, worker, and artifact architecture. Reconcile only the real workbook bytes, production import-profile selection, exact Snapshot prompt guard, v2 fixture identity, and semantic regression coverage.
+- Never log full Requirement content. Compare in memory and expose only `prompt_content_mismatch` at `REQUIREMENT_ITEMS` when durable content differs.

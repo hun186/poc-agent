@@ -276,7 +276,7 @@ def test_input_sha_validation_and_evidence_are_input_only(tmp_path):
         "run-2",
         result_document("run-2"),
     )
-    with pytest.raises(HarnessFailure, match="input_invalid") as failure:
+    with pytest.raises(HarnessFailure, match="input_sha256_mismatch") as failure:
         mismatch.validate_input()
     assert failure.value.stage == "INPUT_VALIDATION"
 
@@ -367,7 +367,7 @@ def test_runbook_uses_offline_provenance_authority_and_stable_xlsx_digest():
     assert "neither `.git` nor GitHub access is required" in runbook
     assert (
         "SRA_E2E_EXPECTED_SOURCE_SHA="
-        "2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03"
+        "816ffac9039530a86955c590b0fa68830757a620229d85630f5e42c12f542403"
     ) in runbook
 
 
@@ -512,7 +512,10 @@ def test_tracked_xlsx_fixture_has_canonical_three_item_shape():
     path = Path("operator_e2e/input/requirement_e2e_3items.xlsx")
     book = load_workbook(path, read_only=True)
     rows = list(book.active.iter_rows(values_only=True)); book.close()
-    assert rows[0] == ("external_item_id", "title", "prompt_content", "source_updated_at", "source_created_at", "expires_at")
+    assert rows[0] == (
+        "ITEMNO", "TITLE", "CONTENT ", "UPDT", "DeadlineDT",
+        "CreateApeno", "UpdateApeno", "CrtDT",
+    )
     assert len(rows[1:]) == 3
 
 

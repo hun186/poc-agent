@@ -47,7 +47,7 @@ SRA_E2E_EDITOR_PASSWORD=<managed secret>
 SRA_E2E_MODEL=SRA-Structured Retrieval Agent
 SRA_E2E_REQUIREMENT_ARTIFACT_ROOT=/absolute/production/requirement/artifact/root
 SRA_E2E_BASE_URL=http://127.0.0.1:9002
-SRA_E2E_EXPECTED_SOURCE_SHA=2d50bed20a3e697020107ece218e7c001580e1df03adc1c30f8060c4e9118d03
+SRA_E2E_EXPECTED_SOURCE_SHA=816ffac9039530a86955c590b0fa68830757a620229d85630f5e42c12f542403
 ```
 
 Authentication is mode-specific. Local mode uses an authorized control-plane identity according
@@ -86,11 +86,112 @@ while loaded/discovered/shadowing modules and managed-byte drift fail closed.
 
 ## Input and invocation
 
-Prepare an XLSX containing exactly three production-valid rows with these headers:
+### Verification policy
+
+`--verification release|functional` controls source attestation without changing
+the production workflow (default: `release`). `release` is formal deployment
+acceptance and preserves exact package/provenance equality as a prerequisite.
+Missing or malformed provenance, byte drift, unexpected runtime inputs, active
+module mismatches, module shadowing, and operator/deployment provenance identity
+mismatches remain fatal.
+
+`functional` is for iterative testing of an intentionally updated deployed
+runtime before a new release manifest is generated. It still loads and validates
+the manifest, attempts every package hash, checks discovered runtime inputs, and
+checks active module identity. Only ordinary `active_runtime_source_mismatch`
+(missing or changed provenance-managed bytes) is advisory. Unexpected runtime
+inputs, unexpected active modules, module shadowing, malformed/missing
+provenance, worker identity failure, artifact-root mismatch, DOCX validation,
+and artifact SHA/identity failures remain fatal.
+
+The authenticated deployment runtime-evidence endpoint remains authoritative in
+both policies. In functional mode it returns the frozen capability plan, worker
+identity, artifact-root fingerprint, and an explicit unverified source result
+instead of hiding those facts behind an ordinary byte-drift error. A successful
+functional run reports `FUNCTIONAL_RESULT = PASS`, `SOURCE_ATTESTATION =
+MISMATCH`, and `DEPLOYMENT_ACCEPTANCE = NOT_ESTABLISHED`; external capability
+classification remains separate and does not imply release acceptance.
+
+For iterative deployment testing:
+
+```bash
+python operator_e2e/test_requirement_schedule_e2e.py \
+  --mode local \
+  --verification functional
+```
+
+Omit the option (or pass `--verification release`) for formal release/deployment
+acceptance.
+
+### External capability policy
+
+Pass `--external-mode live|auto|offline` (default `auto`). The deployment must
+have the same `REQUIREMENT_E2E_EXTERNAL_MODE` value before the API and workers
+start. The API process that owns `ReportJobWorker` resolves the plan during
+lifespan startup, before a Report Job can be claimed. Both local and remote
+harnesses read that process's authenticated runtime evidence; they never mutate
+their own environment as a substitute for configuring the running deployment.
+The harness rejects a requested/deployed-mode mismatch.
+`live` fails if the model is not callable, the index is absent, the live mapping
+lacks the query/runtime-required nested subset, or the canonical retrieval
+phrases do not produce hits. `auto` records the stable probe category and uses a
+semantic boundary mock only for an unsuitable dependency. `offline` skips both
+network probes. No mode replaces Requirement import, scheduling, claiming,
+handoff, Agent orchestration, report/DOCX generation, reconciliation, or durable
+terminal checks.
+
+Successful evidence is always explicit: `PASS / FULL_LIVE`, `PASS / HYBRID`, or
+`PASS / OFFLINE`. `FULL_LIVE` additionally depends on the unchanged downstream
+retrieval, artifact, reconciliation, and terminal acceptance checks; a ping by
+itself cannot earn that classification. A later runtime failure never changes
+the frozen backend and remains `FAIL / <category>`.
+
+The live `indices.get_mapping()` response remains full index mapping authority.
+The committed Requirement fixture has a dedicated root retrieval subset and a
+separate czjLLM MultiDim writeback subtree (`nested`, `dynamic: strict`); that
+subtree is not represented as a complete SRA root mapping. The probe checks only
+the E2E-required paths, configured `SRA_REFERENCE_TEXT_FIELD`, and required
+multifields through their Elasticsearch `fields` definitions.
+`docs/taskSetting_Enrichment.py` supplies semantic/output rules, not type
+authority. The fixtures cover Gaza humanitarian access, Taiwan Strait gray-zone
+activity, and US-China/Indo-Pacific strategic competition with native `Event[]`,
+referential `event_ids`, date-only `article_date_iso`, and verbatim evidence.
+The bounded semantic backend evaluates the production query builder's required
+`function_score`/bool/term/text/nested/range subset and fails visibly for an
+unsupported query rather than returning every document.
+
+The deterministic direct-LLM boundary models every `SRA_REPORT` caller contract
+explicitly and fails as `unsupported_e2e_llm_contract` for an unknown system
+prompt. The audited contracts are:
+
+| Stage | Production prompt/caller | Raw response contract | Conditional |
+| --- | --- | --- | --- |
+| Router | `routing.TASK_ROUTER_SYSTEM` | JSON object with `mode`, `reason`, and configured `topic` | No |
+| Query refiner | `query_refiner.REFINER_SYSTEM_PROMPT` plus time context | JSON object with semantics-preserving `refined_question` | `QUERY_REFINER_REPORT_ENABLED=1` |
+| Topic extractor | `query_terms.extract_topic_terms_llm` | JSON string array | `TOPIC_LLM_URL` configured |
+| Synonym expander | `query_terms.expand_synonyms_grouped_llm` | JSON object mapping terms to string arrays | `TOPIC_LLM_URL` configured and core terms present |
+| Evidence field selector | `evidence_pack.LLM_FIELD_SELECTOR_SYSTEM` | JSON `fields` containing mandatory `ref_no` and `note` | selector mode `llm`/`hybrid` |
+| Report writer | `report_prompt.REPORT_SYSTEM_PROMPT` | Evidence-grounded Markdown from the production `q/q0/t/agg/ev` JSON | No |
+
+The smolagents DataAgent model is a separate boundary: its deterministic model
+derives a business-theme query and instructs the real `CodeAgent` to invoke
+`es_search_news`; it does not construct final evidence itself.
+
+The canonical XLSX mirrors the production business export and contains exactly
+three rows using these source headers (the committed workbook preserves the
+historical trailing space on `CONTENT `):
 
 ```text
-external_item_id, title, prompt_content, source_updated_at, source_created_at, expires_at
+ITEMNO, TITLE, CONTENT , UPDT, DeadlineDT, CreateApeno, UpdateApeno, CrtDT
 ```
+
+The Harness uses
+`config/requirements/import_profile.taiwan-investment-security.v1.example.json`;
+it maps `ITEMNO` to `external_item_id` and `CONTENT`/`CONTENT ` to
+`prompt_content`. After import, the Harness compares the complete canonical
+`ITEMNO -> CONTENT` map with Snapshot `external_item_id -> prompt_content`
+without logging prompt bodies. Any drift fails at `REQUIREMENT_ITEMS` as
+`prompt_content_mismatch`.
 
 Then run from the repository root:
 

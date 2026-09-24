@@ -9,7 +9,7 @@ from elastic_transport import ObjectApiResponse
 from config.bootstrap import bootstrap_env
 from config.index_loader import INDEX_CONFIG
 from api.services.vercel_mock_runtime import should_prefer_mock_runtime
-from agent.es.mock_es_client import MOCK_INDEX, MockElasticsearch
+from agent.es.mock_es_client import MOCK_INDEX, REQUIREMENT_E2E_INDEX, MockElasticsearch
 
 #load_dotenv()
 
@@ -124,6 +124,12 @@ def _build_es() -> Elasticsearch:
 def get_es() -> Elasticsearch | MockElasticsearch:
     global _ES, _USING_MOCK_ES
     if _ES is None:
+        from agent.external_capabilities import frozen_plan, resolve_environment_plan
+        plan = frozen_plan(resolve_environment_plan)
+        if plan is not None and plan.elasticsearch_backend == "semantic_mock":
+            _ES = MockElasticsearch()
+            _USING_MOCK_ES = True
+            return _ES
         if should_prefer_mock_runtime():
             try:
                 real = _build_es()
@@ -216,6 +222,15 @@ def init_index_cache(*, live_check: bool = False, force: bool = False) -> None:
         print("[es_client] ES_INDEX_DEFAULT =", ES_INDEX_DEFAULT)
 
 def _calc_default_index() -> str:
+    from agent.external_capabilities import frozen_plan, resolve_environment_plan
+    # Do not recursively probe while resolving the plan. A resolved semantic
+    # backend always owns its explicit acceptance-only index.
+    try:
+        plan = frozen_plan()
+    except Exception:
+        plan = None
+    if plan is not None and plan.elasticsearch_backend == "semantic_mock":
+        return REQUIREMENT_E2E_INDEX
     init_index_cache(live_check=False)
     return ES_INDEX_DEFAULT or "news_test"
 '''
@@ -230,6 +245,13 @@ def _calc_default_index() -> str:
     return env_indexes[0] if env_indexes else default_one
 '''
 def resolve_index(hint: Optional[Union[str, List[str]]]) -> IndexType:
+    from agent.external_capabilities import frozen_plan
+    try:
+        plan = frozen_plan()
+    except Exception:
+        plan = None
+    if plan is not None and plan.elasticsearch_backend == "semantic_mock":
+        return REQUIREMENT_E2E_INDEX
     default_idx = _calc_default_index()
     if hint is None:
         return default_idx
