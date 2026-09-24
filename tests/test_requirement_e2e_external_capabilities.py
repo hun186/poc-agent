@@ -14,9 +14,9 @@ from agent.es.mock_es_client import (
 )
 from agent.es.query_body import build_main_query_body
 from agent.external_capabilities import (
-    BackendPlan, CapabilityError, Probe, install_plan, mapping_compatibility,
-    parse_mode, probe_elasticsearch, probe_llm, probe_llm_boundaries,
-    reset_plan_for_tests, resolve_plan,
+    BackendPlan, CapabilityError, Probe, _probe_data_agent_model, install_plan,
+    mapping_compatibility, parse_mode, probe_elasticsearch, probe_llm,
+    probe_llm_boundaries, reset_plan_for_tests, resolve_plan,
 )
 
 
@@ -78,6 +78,53 @@ def test_required_llm_boundaries_all_must_pass():
     probe = probe_llm_boundaries({"router": lambda: "ok", "data_agent": lambda: ""})
     assert not probe.usable and probe.category == "empty_response"
     assert dict(probe.details) == {"router": "pass", "data_agent": "empty_response"}
+
+
+def test_data_agent_probe_uses_smolagents_text_content_block(monkeypatch):
+    from agent.data_agent.types import ENV
+
+    captured = {}
+
+    class Model:
+        def __init__(self, **kwargs):
+            captured["constructor"] = kwargs
+
+        def generate(self, messages):
+            captured["messages"] = messages
+            return SimpleNamespace(content="READY.")
+
+    monkeypatch.setattr("smolagents.LiteLLMModel", Model)
+
+    assert _probe_data_agent_model() == "READY."
+    assert captured["messages"] == [{
+        "role": "user",
+        "content": [{"type": "text", "text": "Reply with READY."}],
+    }]
+    expected_model_id = (ENV.data_agent_model_id if "/" in ENV.data_agent_model_id
+                         else f"ollama_chat/{ENV.data_agent_model_id}")
+    assert captured["constructor"] == {
+        "model_id": expected_model_id,
+        "api_base": ENV.model_base_url,
+        "temperature": ENV.model_temperature,
+    }
+
+
+def test_llm_boundary_type_error_is_not_transport_failure():
+    probe = probe_llm_boundaries({"data_agent": lambda: (_ for _ in ()).throw(
+        TypeError("local message contract failure")
+    )})
+
+    assert probe == Probe(False, "boundary_error", (("data_agent", "boundary_error"),))
+
+
+def test_llm_boundary_connection_error_remains_transport_unavailable():
+    probe = probe_llm_boundaries({"data_agent": lambda: (_ for _ in ()).throw(
+        ConnectionError("connection refused")
+    )})
+
+    assert probe == Probe(
+        False, "transport_unavailable", (("data_agent", "transport_unavailable"),),
+    )
 
 
 @pytest.mark.parametrize(("ping", "exists", "mapping", "dataset", "category"), [

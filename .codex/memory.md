@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+### 2026-09-24 DataAgent live capability probe contract correction
+
+- Against authoritative baseline `14672041bac89d7b936dce197bb95725e00dfa6d`, changed only the live DataAgent capability caller to send smolagents text-block content through `LiteLLMModel.generate()` while preserving model normalization, API base, temperature, live invocation, and response validation.
+- LLM boundary probing now reports local caller/runtime contract exceptions as the stable sanitized `boundary_error` category; connection, timeout, and Requests transport exceptions remain `transport_unavailable` without exposing exception details.
+- The focused external-capability suite passed 53 tests. The combined capability, real-content, and verification-policy regression passed 71 tests. No live deployment was available or claimed; Elasticsearch mapping logic, workflow semantics, external-mode policy, dependencies, and the Requirement lifecycle were not changed.
+
 ### 2026-09-22 Requirement Handoff lease-heartbeat corrective
 
 - The production Handoff coordinator now renews its SQL-authoritative lease at `heartbeat_interval` while reconciliation, remote inspection/submission, artifact work, and other authoritative work are in flight. Lease proof updates are synchronized, and authority is rechecked between coordinator stages without weakening store fencing.

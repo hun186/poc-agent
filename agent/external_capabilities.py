@@ -11,6 +11,8 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
+import requests
+
 from agent.es.reference_text import get_reference_text_field
 
 
@@ -144,8 +146,10 @@ def probe_llm_boundaries(boundaries: Mapping[str, Callable[[], str]]) -> Probe:
         try:
             value = invoke()
             category = "pass" if isinstance(value, str) and value.strip() else "empty_response"
-        except Exception:
-            category = "transport_unavailable"
+        except Exception as exc:
+            category = ("transport_unavailable" if isinstance(
+                exc, (ConnectionError, TimeoutError, requests.exceptions.RequestException)
+            ) else "boundary_error")
         results.append((name, category))
     failed = next((category for _, category in results if category != "pass"), None)
     return Probe(failed is None, "pass" if failed is None else failed, tuple(results))
@@ -204,12 +208,29 @@ def install_plan(plan: BackendPlan) -> BackendPlan:
         return plan
 
 
+def _probe_data_agent_model() -> str:
+    """Exercise the same smolagents/LiteLLM boundary as the DataAgent."""
+    from smolagents import LiteLLMModel
+    from agent.data_agent.types import ENV
+
+    model_id = (ENV.data_agent_model_id if "/" in ENV.data_agent_model_id
+                else f"ollama_chat/{ENV.data_agent_model_id}")
+    model = LiteLLMModel(model_id=model_id, api_base=ENV.model_base_url,
+                         temperature=ENV.model_temperature)
+    response = model.generate([
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "Reply with READY."}],
+        },
+    ])
+    return str(response.content or "")
+
+
 def resolve_environment_plan(mode: str) -> BackendPlan:
     """Probe both real boundaries before selecting either E2E backend."""
     from agent.es.es_client import _build_es
     from agent.es.query_body import build_main_query_body
     from agent.llm_utils.ollama_client import LLMClient
-    from agent.data_agent.types import ENV
     from agent.report_config import REPORT_MODEL_ID
     from agent.routing import ROUTER_MODEL_ID
     from agent.refiners.query_refiner import REFINER_MODEL_ID, REFINER_REPORT_ENABLED
@@ -228,15 +249,7 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
             [{"role": "user", "content": "Reply with READY."}], timeout=10))
         for name, model in direct_models.items()
     }
-    def data_agent_call() -> str:
-        from smolagents import ChatMessage, LiteLLMModel
-        model_id = (ENV.data_agent_model_id if "/" in ENV.data_agent_model_id
-                    else f"ollama_chat/{ENV.data_agent_model_id}")
-        model = LiteLLMModel(model_id=model_id, api_base=ENV.model_base_url,
-                             temperature=ENV.model_temperature)
-        response = model.generate([ChatMessage(role="user", content="Reply with READY.")])
-        return str(response.content or "")
-    boundaries["data_agent"] = data_agent_call
+    boundaries["data_agent"] = _probe_data_agent_model
     llm = probe_llm_boundaries(boundaries)
     topic_map = INDEX_CONFIG.get("topic_index_map", {})
     indexes = []
