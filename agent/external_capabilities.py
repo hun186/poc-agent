@@ -141,13 +141,27 @@ def probe_llm(client: Any) -> Probe:
 
 
 def _llm_boundary_exception_category(exc: Exception) -> str:
-    transport_errors = (
+    transport_errors: tuple[type[BaseException], ...] = (
         ConnectionError,
         TimeoutError,
         requests_exceptions.ConnectionError,
         requests_exceptions.Timeout,
     )
-    return "transport_unavailable" if isinstance(exc, transport_errors) else "boundary_error"
+    try:
+        from openai import APIConnectionError, APITimeoutError
+    except ImportError:
+        pass
+    else:
+        transport_errors += (APIConnectionError, APITimeoutError)
+
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        if isinstance(current, transport_errors):
+            return "transport_unavailable"
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return "boundary_error"
 
 
 def probe_llm_boundaries(boundaries: Mapping[str, Callable[[], str]]) -> Probe:
