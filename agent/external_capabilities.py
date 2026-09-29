@@ -118,6 +118,35 @@ def split_requirement_e2e_model(model: str) -> tuple[bool, str]:
     return True, base
 
 
+def trusted_requirement_e2e_job_model(job: Any) -> tuple[bool, str]:
+    """Return acceptance routing only for a persisted canonical Handoff job.
+
+    The model prefix is caller-controlled and is therefore only a request marker.
+    Trust comes from the server-derived ReportJob owner plus the durable Handoff
+    idempotency/session/metadata contract persisted with the job.
+    """
+    marked, effective_model = split_requirement_e2e_model(getattr(job, "model", ""))
+    if not marked:
+        return False, effective_model
+
+    expected_owner = (os.getenv("REQUIREMENT_HANDOFF_LOGICAL_PRINCIPAL") or "").strip()
+    metadata = getattr(job, "metadata", {})
+    submission_id = str(getattr(job, "idempotency_key", "") or "")
+    trusted = (
+        bool(expected_owner)
+        and getattr(job, "owner_kind", None) == "service"
+        and getattr(job, "owner_id", None) == expected_owner
+        and re.fullmatch(r"rhsub_[0-9a-f]{48}", submission_id) is not None
+        and getattr(job, "session_id", None) == f"requirement-handoff:{submission_id}"
+        and isinstance(metadata, Mapping)
+        and metadata.get("submission_id") == submission_id
+        and metadata.get("workflow_id") == "report_v1"
+    )
+    if not trusted:
+        raise CapabilityError("external_e2e_provenance_invalid")
+    return True, effective_model
+
+
 @contextmanager
 def requirement_acceptance_scope():
     """Scope acceptance-only routing to one explicitly marked Report Job."""
@@ -275,6 +304,60 @@ def _elasticsearch_exception_probe(exc: Exception, *, setup: bool = False) -> Pr
     return Probe(False, "transport_unavailable")
 
 
+def validate_production_index_selectors(
+    client: Any, acceptance_index: str, selectors: Sequence[str],
+) -> Probe:
+    """Prove production selectors cannot resolve to the acceptance fixture.
+
+    Wildcard selectors are rejected because creating the fixture could make a
+    previously non-matching wildcard match after validation. Existing aliases
+    are resolved before any fixture mutation and checked for the same collision.
+    """
+    normalized = tuple(dict.fromkeys(str(value).strip() for value in selectors if str(value).strip()))
+    if acceptance_index in normalized:
+        return Probe(False, "acceptance_index_conflict")
+    if any(value == "_all" or "*" in value or "?" in value for value in normalized):
+        return Probe(False, "production_selector_unsafe")
+
+    resolver = getattr(getattr(client, "indices", None), "resolve_index", None)
+    if not callable(resolver):
+        return Probe(False, "production_selector_unverified")
+
+    for selector in normalized:
+        try:
+            response = resolver(name=selector)
+        except Exception as exc:
+            meta = getattr(exc, "meta", None)
+            status = (getattr(exc, "status_code", None) or getattr(exc, "status", None)
+                      or getattr(meta, "status", None))
+            if status == 404:
+                continue
+            return _elasticsearch_exception_probe(exc)
+
+        body = getattr(response, "body", response)
+        if not isinstance(body, Mapping):
+            return Probe(False, "production_selector_unverified")
+        resolved: set[str] = set()
+        for item in body.get("indices", ()) or ():
+            if isinstance(item, Mapping) and isinstance(item.get("name"), str):
+                resolved.add(item["name"])
+        for item in body.get("aliases", ()) or ():
+            if isinstance(item, Mapping):
+                resolved.update(
+                    str(name) for name in (item.get("indices", ()) or ())
+                    if isinstance(name, str)
+                )
+        for item in body.get("data_streams", ()) or ():
+            if isinstance(item, Mapping):
+                resolved.update(
+                    str(name) for name in (item.get("backing_indices", ()) or ())
+                    if isinstance(name, str)
+                )
+        if acceptance_index in resolved:
+            return Probe(False, "acceptance_index_conflict")
+    return Probe(True, "pass")
+
+
 def prepare_requirement_elasticsearch(
     client: Any, index: str, protected_indexes: Sequence[str],
 ) -> Probe:
@@ -414,31 +497,37 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
     except Exception:
         es_probe = Probe(False, "transport_unavailable")
     else:
-        prepared = prepare_requirement_elasticsearch(
+        selector_probe = validate_production_index_selectors(
             es, acceptance_index, production_indexes,
         )
-        if not prepared.usable:
-            es_probe = prepared
+        if not selector_probe.usable:
+            es_probe = selector_probe
         else:
-            def acceptance_search(client: Any) -> bool:
-                cases = (
-                    "加薩 停火 人道援助",
-                    "臺灣海峽 灰色地帶",
-                    "美中戰略競爭 印太",
-                )
-                for query in cases:
-                    terms = query.split()
-                    body = build_main_query_body(
-                        query, False, False, 1, None, None, 6.0, 2.5,
-                        False, "importDT", "30d", effective_terms=terms,
-                        core_terms=[], syn_terms=[], all_terms=terms,
+            prepared = prepare_requirement_elasticsearch(
+                es, acceptance_index, production_indexes,
+            )
+            if not prepared.usable:
+                es_probe = prepared
+            else:
+                def acceptance_search(client: Any) -> bool:
+                    cases = (
+                        "加薩 停火 人道援助",
+                        "臺灣海峽 灰色地帶",
+                        "美中戰略競爭 印太",
                     )
-                    response = client.search(index=acceptance_index, body=body)
-                    body = getattr(response, "body", response)
-                    if not (((body or {}).get("hits") or {}).get("hits") or []):
-                        return False
-                return True
-            es_probe = probe_elasticsearch(es, acceptance_index, acceptance_search)
+                    for query in cases:
+                        terms = query.split()
+                        body = build_main_query_body(
+                            query, False, False, 1, None, None, 6.0, 2.5,
+                            False, "importDT", "30d", effective_terms=terms,
+                            core_terms=[], syn_terms=[], all_terms=terms,
+                        )
+                        response = client.search(index=acceptance_index, body=body)
+                        body = getattr(response, "body", response)
+                        if not (((body or {}).get("hits") or {}).get("hits") or []):
+                            return False
+                    return True
+                es_probe = probe_elasticsearch(es, acceptance_index, acceptance_search)
     return resolve_plan(mode, llm, es_probe)
 
 
