@@ -251,6 +251,25 @@ def test_requirement_live_index_name_is_dedicated_and_configurable(monkeypatch):
         requirement_e2e_es_index()
 
 
+def test_environment_plan_protects_es_index_override_before_fixture_mutation(monkeypatch):
+    class Client:
+        def ping(self):
+            raise AssertionError("conflicting production ES_INDEX must fail before transport mutation")
+
+    monkeypatch.setenv("ES_INDEX", " requirement_e2e_semantic , other-production ")
+    monkeypatch.setenv("REQUIREMENT_E2E_ES_INDEX", "requirement_e2e_semantic")
+    monkeypatch.setattr(
+        "agent.external_capabilities.probe_llm_boundaries",
+        lambda _boundaries: Probe(True, "pass"),
+    )
+    monkeypatch.setattr("agent.es.es_client._build_es", lambda: Client())
+
+    plan = resolve_environment_plan("auto")
+
+    assert plan.elasticsearch_backend == "semantic_mock"
+    assert plan.elasticsearch_probe == "acceptance_index_conflict"
+
+
 def test_prepare_live_requirement_index_creates_and_upserts_exact_fixture_set():
     state = {"exists": False, "mapping": None, "docs": {}}
 
