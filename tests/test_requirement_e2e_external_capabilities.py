@@ -19,7 +19,7 @@ from agent.external_capabilities import (
     mark_requirement_e2e_model, parse_mode, prepare_requirement_elasticsearch,
     probe_elasticsearch, probe_llm, probe_llm_boundaries, requirement_acceptance_scope,
     requirement_e2e_es_index, reset_plan_for_tests, resolve_environment_plan,
-    resolve_plan, split_requirement_e2e_model,
+    resolve_plan, split_requirement_e2e_model, validate_production_index_selectors,
 )
 
 
@@ -268,6 +268,85 @@ def test_environment_plan_protects_es_index_override_before_fixture_mutation(mon
 
     assert plan.elasticsearch_backend == "semantic_mock"
     assert plan.elasticsearch_probe == "acceptance_index_conflict"
+
+
+def test_environment_plan_rejects_wildcard_production_selector_before_fixture_mutation(monkeypatch):
+    class Indices:
+        def resolve_index(self, **_kwargs):
+            raise AssertionError("wildcard must be rejected without resolving")
+
+    class Client:
+        indices = Indices()
+
+    monkeypatch.setenv("ES_INDEX", "*")
+    monkeypatch.setenv("REQUIREMENT_E2E_ES_INDEX", "requirement_e2e_semantic")
+    monkeypatch.setattr(
+        "agent.external_capabilities.probe_llm_boundaries",
+        lambda _boundaries: Probe(True, "pass"),
+    )
+    monkeypatch.setattr("agent.es.es_client._build_es", lambda: Client())
+    monkeypatch.setattr(
+        "agent.external_capabilities.prepare_requirement_elasticsearch",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unsafe production selector must fail before fixture mutation")
+        ),
+    )
+
+    plan = resolve_environment_plan("auto")
+
+    assert plan.elasticsearch_backend == "semantic_mock"
+    assert plan.elasticsearch_probe == "production_selector_unsafe"
+
+
+def test_environment_plan_resolves_alias_before_fixture_mutation(monkeypatch):
+    acceptance = "requirement_e2e_semantic"
+
+    class Indices:
+        def resolve_index(self, *, name):
+            if name == "production-current":
+                return {
+                    "indices": [],
+                    "aliases": [{"name": name, "indices": [acceptance]}],
+                    "data_streams": [],
+                }
+            return {
+                "indices": [{"name": name}],
+                "aliases": [],
+                "data_streams": [],
+            }
+
+    class Client:
+        indices = Indices()
+
+    monkeypatch.setenv("ES_INDEX", "production-current")
+    monkeypatch.setenv("REQUIREMENT_E2E_ES_INDEX", acceptance)
+    monkeypatch.setattr(
+        "agent.external_capabilities.probe_llm_boundaries",
+        lambda _boundaries: Probe(True, "pass"),
+    )
+    monkeypatch.setattr("agent.es.es_client._build_es", lambda: Client())
+    monkeypatch.setattr(
+        "agent.external_capabilities.prepare_requirement_elasticsearch",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("alias collision must fail before fixture mutation")
+        ),
+    )
+
+    plan = resolve_environment_plan("auto")
+
+    assert plan.elasticsearch_backend == "semantic_mock"
+    assert plan.elasticsearch_probe == "acceptance_index_conflict"
+
+
+def test_production_selector_validator_allows_unrelated_concrete_indexes():
+    class Indices:
+        def resolve_index(self, *, name):
+            return {"indices": [{"name": name}], "aliases": [], "data_streams": []}
+
+    client = SimpleNamespace(indices=Indices())
+    assert validate_production_index_selectors(
+        client, "requirement_e2e_semantic", ["news_test", "srp_test"],
+    ) == Probe(True, "pass")
 
 
 def test_prepare_live_requirement_index_creates_and_upserts_exact_fixture_set():
