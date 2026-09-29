@@ -257,7 +257,9 @@ REQUIREMENT_MULTIDIM_MAPPING = {
     },
 }
 
-REQUIREMENT_E2E_MAPPING = {"mappings": add_reference_text_mapping({"properties": {
+REQUIREMENT_E2E_MAPPING = {"mappings": add_reference_text_mapping({
+    "_meta": {"requirement_e2e_fixture": "v1"},
+    "properties": {
     "uuid": {"type": "keyword"},
     "communication": {"properties": {"subject": {"type": "text", "fields": {"keyword": {"type": "keyword"}}}}},
     "rawInfo": {"properties": {"content": {"type": "text"}}},
