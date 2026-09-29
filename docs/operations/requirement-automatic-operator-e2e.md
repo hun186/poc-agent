@@ -145,13 +145,19 @@ incompatibility or unexpected extra document fails closed; the dedicated index
 is intentionally retained across acceptance runs. Production topic indexes are
 therefore not reindexed or mutated for Requirement acceptance.
 
-After the plan is frozen, the Requirement E2E retrieval boundary forces both
-default and explicitly hinted searches onto that dedicated index. Thus
-`FULL_LIVE` means real Elasticsearch transport, the production query DSL,
+The harness durably marks only its Schedule Version model with the
+`requirement-e2e:` prefix. The Report Job worker recognizes that marker, removes
+it before Agent execution, and opens a context-local acceptance scope for that
+one job. Inside that scope, a frozen live plan forces both default and explicitly
+hinted searches onto the dedicated index. Ordinary live Report Jobs in the same
+API process retain their production index hints, and the scope is reset after
+the marked job completes or fails.
+
+Thus `FULL_LIVE` means real Elasticsearch transport, the production query DSL,
 real Elasticsearch search, and the production parser/Agent path over the
 canonical acceptance dataset; it does not require those fixtures to live in
-business production indexes. When `REQUIREMENT_E2E_EXTERNAL_MODE` is unset,
-ordinary production index routing is unchanged.
+business production indexes. `SRA_E2E_MODEL` remains the ordinary model value
+configured by the operator; the harness adds the durable prefix itself.
 
 `live` fails if the model is not callable, the dedicated index cannot be
 created/accessed, its live mapping lacks the query/runtime-required nested
