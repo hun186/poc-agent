@@ -137,8 +137,12 @@ For `live` and `auto`, Elasticsearch acceptance uses the real configured ES
 transport but an acceptance-only index selected by `REQUIREMENT_E2E_ES_INDEX`
 (default `requirement_e2e_semantic`). The name must stay in the
 `requirement_e2e_` namespace and must not overlap any configured production
-topic/default index or the runtime `ES_INDEX` override. On process startup the
-capability boundary creates that index only when absent, with
+topic/default index or the runtime `ES_INDEX` override. Before any fixture
+mutation, production selectors are checked fail-closed: `_all`, `*`, and
+`?` wildcard selectors are rejected, while concrete selectors and existing
+aliases are resolved through Elasticsearch so an alias cannot hide an overlap
+with the acceptance index. On process startup the capability boundary creates
+that index only when absent, with
 `mappings._meta.requirement_e2e_fixture=v1` as an ownership marker. An existing
 index must have that exact marker and the committed Requirement mapping before
 any fixture write occurs; a same-named unowned index or alias fails closed.
@@ -149,13 +153,20 @@ closed; the dedicated index is intentionally retained across acceptance runs.
 Production topic indexes are therefore not reindexed or mutated for Requirement
 acceptance.
 
-The harness durably marks only its Schedule Version model with the
-`requirement-e2e:` prefix. The Report Job worker recognizes that marker, removes
-it before Agent execution, and opens a context-local acceptance scope for that
-one job. Inside that scope, a frozen live plan forces both default and explicitly
-hinted searches onto the dedicated index. Ordinary live Report Jobs in the same
-API process retain their production index hints, and the scope is reset after
-the marked job completes or fails.
+The harness marks only its Schedule Version model with the
+`requirement-e2e:` prefix, but that prefix is treated only as an untrusted
+request marker. The Report Job worker enables acceptance routing only when the
+persisted job also proves canonical Requirement Handoff provenance: the
+server-derived owner must be the configured Handoff service principal, the
+idempotency key must use the `rhsub_` contract, the session must be bound to
+that submission, and persisted metadata must carry the same submission ID and
+`report_v1` workflow. A caller that merely supplies the model prefix therefore
+fails closed. For a trusted Handoff job, the worker removes the prefix before
+Agent execution and opens a context-local acceptance scope for that one job.
+Inside that scope, a frozen live plan forces both default and explicitly hinted
+searches onto the dedicated index. Ordinary live Report Jobs in the same API
+process retain their production index hints, and the scope is reset after the
+marked job completes or fails.
 
 Thus `FULL_LIVE` means real Elasticsearch transport, the production query DSL,
 real Elasticsearch search, and the production parser/Agent path over the
