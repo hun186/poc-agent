@@ -1,10 +1,14 @@
 from __future__ import annotations
 import os, threading, time, zipfile
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from api.routers.chat_support import ChatMessage
 from api.services.export_word_service import ExportWordService
 from api.services.turn_execution import execute_agent_turn
+from agent.external_capabilities import (
+    requirement_acceptance_scope, split_requirement_e2e_model,
+)
 from .report_job_store import ReportJobStore
 
 class ReportJobWorker:
@@ -30,8 +34,11 @@ class ReportJobWorker:
         final = self.root / f"{job.job_id}.docx"
         temp = self.root / f".{job.job_id}.{os.getpid()}.{threading.get_ident()}.tmp"
         try:
-            payload = SimpleNamespace(model=job.model, messages=[ChatMessage(role="user", content=job.prompt)], stream=False)
-            turn = execute_agent_turn(payload=payload, request=None, session_id=job.session_id)
+            is_acceptance, effective_model = split_requirement_e2e_model(job.model)
+            scope = requirement_acceptance_scope() if is_acceptance else nullcontext()
+            with scope:
+                payload = SimpleNamespace(model=effective_model, messages=[ChatMessage(role="user", content=job.prompt)], stream=False)
+                turn = execute_agent_turn(payload=payload, request=None, session_id=job.session_id)
             content, _ = ExportWordService().build_docx_bytes(turn.output, filename=job.filename)
             with open(temp, "wb") as handle:
                 handle.write(content); handle.flush(); os.fsync(handle.fileno())
