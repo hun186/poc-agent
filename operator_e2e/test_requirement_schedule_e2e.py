@@ -21,6 +21,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path: sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.bootstrap import bootstrap_env
+from agent.external_capabilities import mark_requirement_e2e_model
 from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.models import ImportProfileDocument
 from operator_e2e.requirement_e2e_support import (
@@ -310,7 +311,7 @@ class Harness:
         sid = schedule["schedule_id"]
         baseline = {item["batch_run_id"] for item in self.api.get(f"/v1/requirement-schedules/{sid}/runs?limit=100")["items"]}
         anchor = (datetime.now(timezone.utc) + timedelta(seconds=self.config.anchor_lead_seconds)).replace(microsecond=0)
-        payload = {"timezone": "UTC", "recurrence": {"kind": "interval", "every": 10080, "unit": "minutes", "anchor_at": anchor.isoformat()}, "run_policy": "all_active", "model": self.config.model}
+        payload = {"timezone": "UTC", "recurrence": {"kind": "interval", "every": 10080, "unit": "minutes", "anchor_at": anchor.isoformat()}, "run_policy": "all_active", "model": mark_requirement_e2e_model(self.config.model)}
         existing_versions = {item["schedule_version_id"] for item in self.api.get(f"/v1/requirement-schedules/{sid}").get("versions", [])}
         config_document = {"schema_version": 1, **payload}
         config_digest = hashlib.sha256(json.dumps(config_document, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
