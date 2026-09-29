@@ -353,7 +353,7 @@ def install_plan(plan: BackendPlan) -> BackendPlan:
 
 def resolve_environment_plan(mode: str) -> BackendPlan:
     """Probe both real boundaries before selecting either E2E backend."""
-    from agent.es.es_client import _build_es
+    from agent.es.es_client import _build_es, _normalize_indexes
     from agent.es.query_body import build_main_query_body
     from agent.llm_utils.ollama_client import LLMClient
     from agent.data_agent.types import ENV
@@ -390,17 +390,15 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
     llm = probe_llm_boundaries(boundaries)
     topic_map = INDEX_CONFIG.get("topic_index_map", {})
     production_indexes = []
-    for raw in INDEX_CONFIG.get("default", []) or []:
-        for index in str(raw).split(","):
-            index = index.strip()
-            if index and index not in production_indexes:
+    protected_sources = [
+        INDEX_CONFIG.get("default", []) or [],
+        os.getenv("ES_INDEX") or "",
+        *[(topic_cfg or {}).get("indexes", []) for topic_cfg in topic_map.values()],
+    ]
+    for raw in protected_sources:
+        for index in _normalize_indexes(raw):
+            if index not in production_indexes:
                 production_indexes.append(index)
-    for topic_cfg in topic_map.values():
-        for raw in (topic_cfg or {}).get("indexes", []):
-            for index in str(raw).split(","):
-                index = index.strip()
-                if index and index not in production_indexes:
-                    production_indexes.append(index)
 
     acceptance_index = requirement_e2e_es_index()
     try:
