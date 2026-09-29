@@ -7,6 +7,7 @@ and Elasticsearch selection behaviour.
 from __future__ import annotations
 
 import os
+import re
 import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
@@ -80,6 +81,16 @@ def parse_mode(value: str | None) -> str | None:
     if mode not in MODES:
         raise CapabilityError("external_mode_invalid")
     return mode
+
+
+def requirement_e2e_es_index() -> str:
+    """Return the dedicated real-ES Requirement acceptance index."""
+    from agent.es.mock_es_client import REQUIREMENT_E2E_INDEX
+
+    value = (os.getenv("REQUIREMENT_E2E_ES_INDEX") or REQUIREMENT_E2E_INDEX).strip()
+    if not re.fullmatch(r"requirement_e2e_[a-z0-9._-]{1,238}", value):
+        raise CapabilityError("elasticsearch_acceptance_index_invalid")
+    return value
 
 
 def resolve_plan(mode: str, llm: Probe, elasticsearch: Probe) -> BackendPlan:
@@ -213,6 +224,65 @@ def probe_elasticsearch(client: Any, indexes: str | Sequence[str],
         return Probe(False, "access_failure" if status in {401, 403} else "transport_unavailable")
 
 
+
+def _elasticsearch_exception_probe(exc: Exception, *, setup: bool = False) -> Probe:
+    meta = getattr(exc, "meta", None)
+    status = (getattr(exc, "status_code", None) or getattr(exc, "status", None)
+              or getattr(meta, "status", None))
+    if status in {401, 403}:
+        return Probe(False, "access_failure")
+    if setup and status is not None:
+        return Probe(False, "fixture_setup_failed")
+    return Probe(False, "transport_unavailable")
+
+
+def prepare_requirement_elasticsearch(
+    client: Any, index: str, protected_indexes: Sequence[str],
+) -> Probe:
+    """Create/validate/seed the dedicated live Requirement acceptance index.
+
+    Existing incompatible or polluted indexes fail closed.  The function never
+    deletes, recreates, or mutates production topic indexes.
+    """
+    from agent.es.mock_es_client import (
+        MOCK_DOCS, REQUIREMENT_E2E_INDEX, REQUIREMENT_E2E_MAPPING,
+        validate_requirement_fixture,
+    )
+
+    if index in set(protected_indexes):
+        return Probe(False, "acceptance_index_conflict")
+    try:
+        if not client.ping():
+            return Probe(False, "transport_unavailable")
+        if not client.indices.exists(index=index):
+            client.indices.create(
+                index=index,
+                mappings=REQUIREMENT_E2E_MAPPING["mappings"],
+            )
+        compatible = mapping_compatibility(client.indices.get_mapping(index=index), index)
+        if not compatible.usable:
+            return compatible
+
+        fixtures = MOCK_DOCS[REQUIREMENT_E2E_INDEX]
+        for doc_id, source in fixtures.items():
+            validate_requirement_fixture(source)
+            client.index(
+                index=index,
+                id=doc_id,
+                document=source,
+                refresh="wait_for",
+            )
+
+        count_response = client.count(index=index)
+        count_body = getattr(count_response, "body", count_response)
+        if int((count_body or {}).get("count", -1)) != len(fixtures):
+            return Probe(False, "fixture_dataset_drift")
+        return Probe(True, "pass")
+    except PermissionError:
+        return Probe(False, "access_failure")
+    except Exception as exc:
+        return _elasticsearch_exception_probe(exc, setup=True)
+
 _LOCK = threading.Lock()
 _PLAN: BackendPlan | None = None
 
@@ -280,34 +350,50 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
     boundaries["data_agent"] = data_agent_call
     llm = probe_llm_boundaries(boundaries)
     topic_map = INDEX_CONFIG.get("topic_index_map", {})
-    indexes = []
-    for topic in ("news_general", "mil_intel"):
-        for index in (topic_map.get(topic, {}) or {}).get("indexes", []):
-            if index not in indexes:
-                indexes.append(index)
+    production_indexes = []
+    for raw in INDEX_CONFIG.get("default", []) or []:
+        for index in str(raw).split(","):
+            index = index.strip()
+            if index and index not in production_indexes:
+                production_indexes.append(index)
+    for topic_cfg in topic_map.values():
+        for raw in (topic_cfg or {}).get("indexes", []):
+            for index in str(raw).split(","):
+                index = index.strip()
+                if index and index not in production_indexes:
+                    production_indexes.append(index)
+
+    acceptance_index = requirement_e2e_es_index()
     try:
         es = _build_es()
     except Exception:
         es_probe = Probe(False, "transport_unavailable")
     else:
-        def acceptance_search(client: Any) -> bool:
-            cases = (("news_general", "加薩 停火 人道援助"),
-                     ("mil_intel", "臺灣海峽 灰色地帶"),
-                     ("mil_intel", "美中戰略競爭 印太"))
-            for topic, query in cases:
-                targets = (topic_map.get(topic, {}) or {}).get("indexes", [])
-                terms = query.split()
-                body = build_main_query_body(
-                    query, False, False, 1, None, None, 6.0, 2.5,
-                    False, "importDT", "30d", effective_terms=terms,
-                    core_terms=[], syn_terms=[], all_terms=terms,
+        prepared = prepare_requirement_elasticsearch(
+            es, acceptance_index, production_indexes,
+        )
+        if not prepared.usable:
+            es_probe = prepared
+        else:
+            def acceptance_search(client: Any) -> bool:
+                cases = (
+                    "加薩 停火 人道援助",
+                    "臺灣海峽 灰色地帶",
+                    "美中戰略競爭 印太",
                 )
-                response = client.search(index=",".join(targets), body=body)
-                body = getattr(response, "body", response)
-                if not (((body or {}).get("hits") or {}).get("hits") or []):
-                    return False
-            return True
-        es_probe = probe_elasticsearch(es, indexes, acceptance_search)
+                for query in cases:
+                    terms = query.split()
+                    body = build_main_query_body(
+                        query, False, False, 1, None, None, 6.0, 2.5,
+                        False, "importDT", "30d", effective_terms=terms,
+                        core_terms=[], syn_terms=[], all_terms=terms,
+                    )
+                    response = client.search(index=acceptance_index, body=body)
+                    body = getattr(response, "body", response)
+                    if not (((body or {}).get("hits") or {}).get("hits") or []):
+                        return False
+                return True
+            es_probe = probe_elasticsearch(es, acceptance_index, acceptance_search)
     return resolve_plan(mode, llm, es_probe)
 
 
