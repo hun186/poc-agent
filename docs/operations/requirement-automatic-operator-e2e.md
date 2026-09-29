@@ -132,13 +132,34 @@ lifespan startup, before a Report Job can be claimed. Both local and remote
 harnesses read that process's authenticated runtime evidence; they never mutate
 their own environment as a substitute for configuring the running deployment.
 The harness rejects a requested/deployed-mode mismatch.
-`live` fails if the model is not callable, the index is absent, the live mapping
-lacks the query/runtime-required nested subset, or the canonical retrieval
-phrases do not produce hits. `auto` records the stable probe category and uses a
-semantic boundary mock only for an unsuitable dependency. `offline` skips both
-network probes. No mode replaces Requirement import, scheduling, claiming,
-handoff, Agent orchestration, report/DOCX generation, reconciliation, or durable
-terminal checks.
+
+For `live` and `auto`, Elasticsearch acceptance uses the real configured ES
+transport but an acceptance-only index selected by `REQUIREMENT_E2E_ES_INDEX`
+(default `requirement_e2e_semantic`). The name must stay in the
+`requirement_e2e_` namespace and must not overlap any configured production
+topic/default index. On process startup the capability boundary creates that
+index only when absent, validates the committed Requirement mapping when it
+already exists, and deterministically upserts the three canonical fixtures by
+stable document ID. It never deletes or recreates an existing index. Any mapping
+incompatibility or unexpected extra document fails closed; the dedicated index
+is intentionally retained across acceptance runs. Production topic indexes are
+therefore not reindexed or mutated for Requirement acceptance.
+
+After the plan is frozen, the Requirement E2E retrieval boundary forces both
+default and explicitly hinted searches onto that dedicated index. Thus
+`FULL_LIVE` means real Elasticsearch transport, the production query DSL,
+real Elasticsearch search, and the production parser/Agent path over the
+canonical acceptance dataset; it does not require those fixtures to live in
+business production indexes. When `REQUIREMENT_E2E_EXTERNAL_MODE` is unset,
+ordinary production index routing is unchanged.
+
+`live` fails if the model is not callable, the dedicated index cannot be
+created/accessed, its live mapping lacks the query/runtime-required nested
+subset, its dataset drifts, or the canonical retrieval phrases do not produce
+hits. `auto` records the stable probe category and uses a semantic boundary mock
+only for an unsuitable dependency. `offline` skips both network probes. No mode
+replaces Requirement import, scheduling, claiming, handoff, Agent orchestration,
+report/DOCX generation, reconciliation, or durable terminal checks.
 
 Successful evidence is always explicit: `PASS / FULL_LIVE`, `PASS / HYBRID`, or
 `PASS / OFFLINE`. `FULL_LIVE` additionally depends on the unchanged downstream
