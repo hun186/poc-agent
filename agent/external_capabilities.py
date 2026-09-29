@@ -298,7 +298,15 @@ def prepare_requirement_elasticsearch(
                 index=index,
                 mappings=REQUIREMENT_E2E_MAPPING["mappings"],
             )
-        compatible = mapping_compatibility(client.indices.get_mapping(index=index), index)
+        mapping_response = client.indices.get_mapping(index=index)
+        mapping_entry = mapping_response.get(index)
+        mapping_meta = (
+            (mapping_entry or {}).get("mappings", {}).get("_meta", {})
+            if isinstance(mapping_entry, Mapping) else {}
+        )
+        if mapping_meta.get("requirement_e2e_fixture") != "v1":
+            return Probe(False, "fixture_ownership_unverified")
+        compatible = mapping_compatibility(mapping_response, index)
         if not compatible.usable:
             return compatible
 
