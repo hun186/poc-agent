@@ -137,13 +137,17 @@ For `live` and `auto`, Elasticsearch acceptance uses the real configured ES
 transport but an acceptance-only index selected by `REQUIREMENT_E2E_ES_INDEX`
 (default `requirement_e2e_semantic`). The name must stay in the
 `requirement_e2e_` namespace and must not overlap any configured production
-topic/default index. On process startup the capability boundary creates that
-index only when absent, validates the committed Requirement mapping when it
-already exists, and deterministically upserts the three canonical fixtures by
+topic/default index or the runtime `ES_INDEX` override. On process startup the
+capability boundary creates that index only when absent, with
+`mappings._meta.requirement_e2e_fixture=v1` as an ownership marker. An existing
+index must have that exact marker and the committed Requirement mapping before
+any fixture write occurs; a same-named unowned index or alias fails closed.
+The boundary then deterministically upserts the three canonical fixtures by
 stable document ID. It never deletes or recreates an existing index. Any mapping
-incompatibility or unexpected extra document fails closed; the dedicated index
-is intentionally retained across acceptance runs. Production topic indexes are
-therefore not reindexed or mutated for Requirement acceptance.
+incompatibility, missing ownership marker, or unexpected extra document fails
+closed; the dedicated index is intentionally retained across acceptance runs.
+Production topic indexes are therefore not reindexed or mutated for Requirement
+acceptance.
 
 The harness durably marks only its Schedule Version model with the
 `requirement-e2e:` prefix. The Report Job worker recognizes that marker, removes
