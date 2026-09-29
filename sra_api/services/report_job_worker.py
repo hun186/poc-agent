@@ -6,9 +6,6 @@ from types import SimpleNamespace
 from api.routers.chat_support import ChatMessage
 from api.services.export_word_service import ExportWordService
 from api.services.turn_execution import execute_agent_turn
-from agent.external_capabilities import (
-    requirement_acceptance_scope, split_requirement_e2e_model,
-)
 from .report_job_store import ReportJobStore
 
 class ReportJobWorker:
@@ -34,6 +31,9 @@ class ReportJobWorker:
         final = self.root / f"{job.job_id}.docx"
         temp = self.root / f".{job.job_id}.{os.getpid()}.{threading.get_ident()}.tmp"
         try:
+            from agent.external_capabilities import (
+                requirement_acceptance_scope, split_requirement_e2e_model,
+            )
             is_acceptance, effective_model = split_requirement_e2e_model(job.model)
             scope = requirement_acceptance_scope() if is_acceptance else nullcontext()
             with scope:
