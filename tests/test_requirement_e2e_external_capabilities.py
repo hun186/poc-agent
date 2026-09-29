@@ -16,9 +16,10 @@ from agent.es.mock_es_client import (
 from agent.es.query_body import build_main_query_body
 from agent.external_capabilities import (
     BackendPlan, CapabilityError, Probe, install_plan, mapping_compatibility,
-    parse_mode, prepare_requirement_elasticsearch, probe_elasticsearch, probe_llm,
-    probe_llm_boundaries, requirement_e2e_es_index, reset_plan_for_tests,
-    resolve_environment_plan, resolve_plan,
+    mark_requirement_e2e_model, parse_mode, prepare_requirement_elasticsearch,
+    probe_elasticsearch, probe_llm, probe_llm_boundaries, requirement_acceptance_scope,
+    requirement_e2e_es_index, reset_plan_for_tests, resolve_environment_plan,
+    resolve_plan, split_requirement_e2e_model,
 )
 
 
@@ -229,6 +230,17 @@ def test_live_es_probe_categories(ping, exists, mapping, dataset, category):
     assert probe.usable is (category == "pass")
 
 
+def test_requirement_e2e_model_marker_is_explicit_and_reversible():
+    marked = mark_requirement_e2e_model("SRA-Structured Retrieval Agent")
+    assert marked == "requirement-e2e:SRA-Structured Retrieval Agent"
+    assert split_requirement_e2e_model(marked) == (
+        True, "SRA-Structured Retrieval Agent",
+    )
+    assert split_requirement_e2e_model("ordinary-model") == (False, "ordinary-model")
+    with pytest.raises(CapabilityError, match="external_e2e_model_invalid"):
+        mark_requirement_e2e_model("x" * 240)
+
+
 def test_requirement_live_index_name_is_dedicated_and_configurable(monkeypatch):
     monkeypatch.delenv("REQUIREMENT_E2E_ES_INDEX", raising=False)
     assert requirement_e2e_es_index() == REQUIREMENT_E2E_INDEX
@@ -336,8 +348,9 @@ def test_frozen_live_plan_forces_safe_search_to_acceptance_index(monkeypatch):
     monkeypatch.setattr(es_client, "_ES", Client())
     monkeypatch.setattr(es_client, "_USING_MOCK_ES", False)
 
-    assert es_client.resolve_index(["news_test", "srp_test"]) == "requirement_e2e_live_fixture"
-    es_client.safe_search({"query": {"match_all": {}}}, index=["news_test", "srp_test"])
+    with requirement_acceptance_scope():
+        assert es_client.resolve_index(["news_test", "srp_test"]) == "requirement_e2e_live_fixture"
+        es_client.safe_search({"query": {"match_all": {}}}, index=["news_test", "srp_test"])
     assert captured["index"] == "requirement_e2e_live_fixture"
 
 
@@ -351,11 +364,13 @@ def test_normal_runtime_keeps_explicit_production_index(monkeypatch):
             captured["index"] = index
             return {"hits": {"hits": []}}
 
-    monkeypatch.delenv("REQUIREMENT_E2E_EXTERNAL_MODE", raising=False)
-    monkeypatch.delenv("REQUIREMENT_E2E_ES_INDEX", raising=False)
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "auto")
+    monkeypatch.setenv("REQUIREMENT_E2E_ES_INDEX", "requirement_e2e_live_fixture")
+    install_plan(BackendPlan("auto", "live", "live", "pass", "pass"))
     monkeypatch.setattr(es_client, "_ES", Client())
     monkeypatch.setattr(es_client, "_USING_MOCK_ES", False)
 
+    assert es_client.resolve_index("news_test") == "news_test"
     es_client.safe_search({"query": {"match_all": {}}}, index="news_test")
     assert captured["index"] == "news_test"
 
