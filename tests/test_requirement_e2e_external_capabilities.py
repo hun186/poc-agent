@@ -16,8 +16,9 @@ from agent.es.mock_es_client import (
 from agent.es.query_body import build_main_query_body
 from agent.external_capabilities import (
     BackendPlan, CapabilityError, Probe, install_plan, mapping_compatibility,
-    parse_mode, probe_elasticsearch, probe_llm, probe_llm_boundaries,
-    reset_plan_for_tests, resolve_environment_plan, resolve_plan,
+    parse_mode, prepare_requirement_elasticsearch, probe_elasticsearch, probe_llm,
+    probe_llm_boundaries, requirement_e2e_es_index, reset_plan_for_tests,
+    resolve_environment_plan, resolve_plan,
 )
 
 
@@ -226,6 +227,137 @@ def test_live_es_probe_categories(ping, exists, mapping, dataset, category):
     probe = probe_elasticsearch(client, [REQUIREMENT_E2E_INDEX], lambda _: dataset)
     assert probe.category == category
     assert probe.usable is (category == "pass")
+
+
+def test_requirement_live_index_name_is_dedicated_and_configurable(monkeypatch):
+    monkeypatch.delenv("REQUIREMENT_E2E_ES_INDEX", raising=False)
+    assert requirement_e2e_es_index() == REQUIREMENT_E2E_INDEX
+    monkeypatch.setenv("REQUIREMENT_E2E_ES_INDEX", "requirement_e2e_live_fixture")
+    assert requirement_e2e_es_index() == "requirement_e2e_live_fixture"
+    monkeypatch.setenv("REQUIREMENT_E2E_ES_INDEX", "news_test")
+    with pytest.raises(CapabilityError, match="elasticsearch_acceptance_index_invalid"):
+        requirement_e2e_es_index()
+
+
+def test_prepare_live_requirement_index_creates_and_upserts_exact_fixture_set():
+    state = {"exists": False, "mapping": None, "docs": {}}
+
+    class Indices:
+        def exists(self, index):
+            return state["exists"]
+
+        def create(self, *, index, mappings):
+            state["exists"] = True
+            state["mapping"] = {"mappings": copy.deepcopy(mappings)}
+            return {"acknowledged": True}
+
+        def get_mapping(self, index):
+            return {index: state["mapping"]}
+
+    class Client:
+        indices = Indices()
+
+        def ping(self):
+            return True
+
+        def index(self, *, index, id, document, refresh):
+            assert refresh == "wait_for"
+            state["docs"][id] = copy.deepcopy(document)
+            return {"result": "created"}
+
+        def count(self, *, index):
+            return {"count": len(state["docs"])}
+
+    probe = prepare_requirement_elasticsearch(
+        Client(), "requirement_e2e_live_fixture", ["news_test", "srp_test"],
+    )
+    assert probe == Probe(True, "pass")
+    assert set(state["docs"]) == set(MOCK_DOCS[REQUIREMENT_E2E_INDEX])
+    assert mapping_compatibility(
+        {"requirement_e2e_live_fixture": state["mapping"]},
+        "requirement_e2e_live_fixture",
+    ).usable
+
+
+def test_prepare_live_requirement_index_rejects_production_target_without_mutation():
+    class Client:
+        def ping(self):
+            raise AssertionError("production target must fail before transport access")
+
+    assert prepare_requirement_elasticsearch(
+        Client(), "requirement_e2e_semantic", ["requirement_e2e_semantic"],
+    ) == Probe(False, "acceptance_index_conflict")
+
+
+def test_prepare_live_requirement_index_fails_closed_on_dataset_pollution():
+    state = {
+        "docs": {"unrelated": {"uuid": "unrelated"}},
+        "mapping": copy.deepcopy(MAPPING[REQUIREMENT_E2E_INDEX]),
+    }
+
+    class Indices:
+        def exists(self, index):
+            return True
+
+        def get_mapping(self, index):
+            return {index: state["mapping"]}
+
+    class Client:
+        indices = Indices()
+
+        def ping(self):
+            return True
+
+        def index(self, *, index, id, document, refresh):
+            state["docs"][id] = copy.deepcopy(document)
+            return {"result": "updated"}
+
+        def count(self, *, index):
+            return {"count": len(state["docs"])}
+
+    assert prepare_requirement_elasticsearch(
+        Client(), "requirement_e2e_live_fixture", [],
+    ) == Probe(False, "fixture_dataset_drift")
+
+
+def test_frozen_live_plan_forces_safe_search_to_acceptance_index(monkeypatch):
+    from agent.es import es_client
+
+    captured = {}
+
+    class Client:
+        def search(self, *, index, body, request_timeout, params):
+            captured["index"] = index
+            return {"hits": {"hits": []}}
+
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "auto")
+    monkeypatch.setenv("REQUIREMENT_E2E_ES_INDEX", "requirement_e2e_live_fixture")
+    install_plan(BackendPlan("auto", "live", "live", "pass", "pass"))
+    monkeypatch.setattr(es_client, "_ES", Client())
+    monkeypatch.setattr(es_client, "_USING_MOCK_ES", False)
+
+    assert es_client.resolve_index(["news_test", "srp_test"]) == "requirement_e2e_live_fixture"
+    es_client.safe_search({"query": {"match_all": {}}}, index=["news_test", "srp_test"])
+    assert captured["index"] == "requirement_e2e_live_fixture"
+
+
+def test_normal_runtime_keeps_explicit_production_index(monkeypatch):
+    from agent.es import es_client
+
+    captured = {}
+
+    class Client:
+        def search(self, *, index, body, request_timeout, params):
+            captured["index"] = index
+            return {"hits": {"hits": []}}
+
+    monkeypatch.delenv("REQUIREMENT_E2E_EXTERNAL_MODE", raising=False)
+    monkeypatch.delenv("REQUIREMENT_E2E_ES_INDEX", raising=False)
+    monkeypatch.setattr(es_client, "_ES", Client())
+    monkeypatch.setattr(es_client, "_USING_MOCK_ES", False)
+
+    es_client.safe_search({"query": {"match_all": {}}}, index="news_test")
+    assert captured["index"] == "news_test"
 
 
 def test_offline_adapters_are_installed_at_external_boundaries(monkeypatch):
