@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 import re
 import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
@@ -18,6 +20,10 @@ from agent.es.reference_text import get_reference_text_field
 
 
 MODES = frozenset({"live", "auto", "offline"})
+REQUIREMENT_E2E_MODEL_PREFIX = "requirement-e2e:"
+_REQUIREMENT_ACCEPTANCE_ACTIVE: ContextVar[bool] = ContextVar(
+    "requirement_acceptance_active", default=False,
+)
 REQUIRED_NESTED_PATHS = (
     "multidim_event_json", "multidim_event_json.Event",
     "multidim_event_json.Event_Timeline", "multidim_event_json.Person",
@@ -91,6 +97,39 @@ def requirement_e2e_es_index() -> str:
     if not re.fullmatch(r"requirement_e2e_[a-z0-9._-]{1,238}", value):
         raise CapabilityError("elasticsearch_acceptance_index_invalid")
     return value
+
+
+def mark_requirement_e2e_model(model: str) -> str:
+    """Encode an explicit, durable acceptance marker into the existing model field."""
+    base = str(model or "").strip()
+    marked = REQUIREMENT_E2E_MODEL_PREFIX + base
+    if not base or len(marked) > 240:
+        raise CapabilityError("external_e2e_model_invalid")
+    return marked
+
+
+def split_requirement_e2e_model(model: str) -> tuple[bool, str]:
+    value = str(model or "").strip()
+    if not value.startswith(REQUIREMENT_E2E_MODEL_PREFIX):
+        return False, value
+    base = value[len(REQUIREMENT_E2E_MODEL_PREFIX):].strip()
+    if not base:
+        raise CapabilityError("external_e2e_model_invalid")
+    return True, base
+
+
+@contextmanager
+def requirement_acceptance_scope():
+    """Scope acceptance-only routing to one explicitly marked Report Job."""
+    token = _REQUIREMENT_ACCEPTANCE_ACTIVE.set(True)
+    try:
+        yield
+    finally:
+        _REQUIREMENT_ACCEPTANCE_ACTIVE.reset(token)
+
+
+def requirement_acceptance_active() -> bool:
+    return _REQUIREMENT_ACCEPTANCE_ACTIVE.get()
 
 
 def resolve_plan(mode: str, llm: Probe, elasticsearch: Probe) -> BackendPlan:
