@@ -320,6 +320,31 @@ def test_prepare_live_requirement_index_rejects_production_target_without_mutati
     ) == Probe(False, "acceptance_index_conflict")
 
 
+def test_prepare_live_requirement_index_rejects_unowned_compatible_index_before_seed():
+    mapping = copy.deepcopy(MAPPING[REQUIREMENT_E2E_INDEX])
+    mapping["mappings"].pop("_meta", None)
+
+    class Indices:
+        def exists(self, index):
+            return True
+
+        def get_mapping(self, index):
+            return {index: mapping}
+
+    class Client:
+        indices = Indices()
+
+        def ping(self):
+            return True
+
+        def index(self, **_kwargs):
+            raise AssertionError("unowned existing index must never be seeded")
+
+    assert prepare_requirement_elasticsearch(
+        Client(), REQUIREMENT_E2E_INDEX, [],
+    ) == Probe(False, "fixture_ownership_unverified")
+
+
 def test_prepare_live_requirement_index_fails_closed_on_dataset_pollution():
     state = {
         "docs": {"unrelated": {"uuid": "unrelated"}},
