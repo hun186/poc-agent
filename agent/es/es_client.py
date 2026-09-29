@@ -222,11 +222,14 @@ def init_index_cache(*, live_check: bool = False, force: bool = False) -> None:
         print("[es_client] ES_INDEX_DEFAULT =", ES_INDEX_DEFAULT)
 
 def _requirement_acceptance_index() -> str | None:
-    from agent.external_capabilities import frozen_plan, requirement_e2e_es_index
+    from agent.external_capabilities import (
+        frozen_plan, requirement_acceptance_active, requirement_e2e_es_index,
+    )
 
     # During plan resolution frozen_plan() intentionally raises because no plan
-    # is installed yet.  Only an already-frozen Requirement E2E process may
-    # override ordinary production index routing.
+    # is installed yet.  Preserve the existing semantic-mock behavior, but only
+    # redirect a live backend while executing an explicitly marked E2E Report
+    # Job.  Ordinary production jobs in the same API process keep their hints.
     try:
         plan = frozen_plan()
     except Exception:
@@ -235,7 +238,7 @@ def _requirement_acceptance_index() -> str | None:
         return None
     if plan.elasticsearch_backend == "semantic_mock":
         return REQUIREMENT_E2E_INDEX
-    if plan.elasticsearch_backend == "live":
+    if plan.elasticsearch_backend == "live" and requirement_acceptance_active():
         return requirement_e2e_es_index()
     return None
 
