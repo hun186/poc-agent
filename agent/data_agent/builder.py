@@ -87,11 +87,15 @@ def build_model() -> LiteLLMModel | Model:
     if _SHARED_MODEL is not None:
         return _SHARED_MODEL
 
-    from agent.external_capabilities import frozen_plan, resolve_environment_plan
+    from agent.external_capabilities import (
+        frozen_plan, requirement_acceptance_active, resolve_environment_plan,
+    )
     plan = frozen_plan(resolve_environment_plan)
-    if plan is not None and plan.llm_backend == "semantic_mock":
-        _SHARED_MODEL = DeterministicE2ECodeModel()
-        return _SHARED_MODEL
+    if (requirement_acceptance_active() and plan is not None
+            and plan.llm_backend == "semantic_mock"):
+        # The deterministic CodeAgent model belongs only to the verified E2E
+        # execution scope; never persist it in the production shared-model cache.
+        return DeterministicE2ECodeModel()
 
     effective_model_id = normalize_model_id(ENV.data_agent_model_id)
 
