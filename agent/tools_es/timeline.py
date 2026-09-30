@@ -10,7 +10,7 @@ from smolagents import Tool
 from agent.es.es_client import safe_search as _safe_es_search
 from agent.es.evidence_core.json_utils import as_blocks
 
-from .common import resolve_index, dbg
+from .common import resolve_index, dbg, propagate_requirement_acceptance
 
 
 class ESTimeline(Tool):
@@ -41,6 +41,7 @@ class ESTimeline(Tool):
 
     output_type = "any"
 
+    @propagate_requirement_acceptance
     def forward(self, uuid: Optional[str] = None, k: Optional[int] = 40, index_hint: Optional[str] = None) -> Dict[str, Any]:
         if not uuid:
             return {"timeline": [], "error": "uuid is required"}
