@@ -837,19 +837,27 @@ def test_production_call_llm_transport_failure_never_falls_back_to_e2e_mock(monk
         ollama_client.call_llm("production report request")
 
 
-@pytest.mark.parametrize(("mode", "backend", "expected"), [
-    (None, None, "LLMClient"),
-    ("live", "live", "LLMClient"),
-    ("offline", "semantic_mock", "DeterministicE2ELLMClient"),
+@pytest.mark.parametrize(("mode", "backend"), [
+    (None, None),
+    ("live", "live"),
+    ("offline", "semantic_mock"),
 ])
-def test_default_client_activation_boundary(monkeypatch, mode, backend, expected):
+def test_default_client_activation_boundary(monkeypatch, mode, backend):
     from agent.llm_utils import ollama_client
     monkeypatch.delenv("REQUIREMENT_E2E_EXTERNAL_MODE", raising=False)
     ollama_client.reset_default_client_for_tests()
     if mode:
         monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", mode)
         install_plan(BackendPlan(mode, backend, "live", "pass", "pass"))
-    assert type(ollama_client.get_default_client()).__name__ == expected
+
+    # Outside a verified E2E test-job scope, even an offline E2E plan must not
+    # replace the process-wide production LLM client.
+    assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
+
+    if backend == "semantic_mock":
+        with requirement_acceptance_scope():
+            assert type(ollama_client.get_default_client()).__name__ == "DeterministicE2ELLMClient"
+        assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
 
 
 def test_default_client_reset_prevents_cross_test_backend_leak(monkeypatch):
@@ -857,7 +865,15 @@ def test_default_client_reset_prevents_cross_test_backend_leak(monkeypatch):
     monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "offline")
     install_plan(BackendPlan("offline", "semantic_mock", "semantic_mock",
                              "offline_not_probed", "offline_not_probed"))
-    assert isinstance(ollama_client.get_default_client(), ollama_client.DeterministicE2ELLMClient)
+
+    assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
+    with requirement_acceptance_scope():
+        assert isinstance(
+            ollama_client.get_default_client(),
+            ollama_client.DeterministicE2ELLMClient,
+        )
+    assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
+
     ollama_client.reset_default_client_for_tests()
     reset_plan_for_tests()
     monkeypatch.delenv("REQUIREMENT_E2E_EXTERNAL_MODE")
@@ -889,9 +905,9 @@ def test_execute_agent_turn_offline_runs_real_report_path(monkeypatch):
     from agent.llm_utils import ollama_client
     from api.services.sessions import ChatMessage
     from sra_api.services import turn_execution
-    builder._SHARED_MODEL = None
-    es_client._ES = None
-    ollama_client._default_client = None
+    monkeypatch.setattr(builder, "_SHARED_MODEL", None)
+    monkeypatch.setattr(es_client, "_ES", None)
+    monkeypatch.setattr(ollama_client, "_default_client", None)
     monkeypatch.setattr(agent_module, "SESSION_STORE_ENABLED", False)
     monkeypatch.setattr(turn_execution, "get_sessions", lambda: {})
     monkeypatch.setattr(turn_execution, "get_last_structured", lambda: {})
@@ -900,10 +916,11 @@ def test_execute_agent_turn_offline_runs_real_report_path(monkeypatch):
     payload = SimpleNamespace(model="offline", stream=False, messages=[ChatMessage(
         role="user", content="請分析臺灣海峽軍事、海警與灰色地帶活動並提出情勢報告。",
     )])
-    result = turn_execution.execute_agent_turn(
-        payload=payload, request=None, session_id="offline-capability-test",
-        request_id="offline-turn-1", trace={"integration": True},
-    )
+    with requirement_acceptance_scope():
+        result = turn_execution.execute_agent_turn(
+            payload=payload, request=None, session_id="offline-capability-test",
+            request_id="offline-turn-1", trace={"integration": True},
+        )
     assert result.output["mode"] == "SRA_REPORT"
     assert result.output["used_uuids"] == ["requirement-taiwan-strait-002"]
     assert result.output["citations"]
