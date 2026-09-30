@@ -79,3 +79,9 @@
 
 - Operator E2E begins at the production-shaped business workbook, uses the reviewed production import profile, and proves exact prompt-content persistence at the Snapshot boundary before Schedule materialization.
 - Deterministic external adapters consume the resulting business Requirement text directly; canonical fixture identity is v2 to avoid mutating historical synthetic durable fixtures.
+
+## 2026-09-30 Verified E2E tool-thread scope bridge
+
+- Production/user Report Jobs and normal Requirement -> Schedule -> Handoff jobs always use the ordinary real LLM and production Elasticsearch paths; E2E semantic mocks and the dedicated fixture are activated only for verified E2E test jobs.
+- The verified E2E acceptance bit is captured on each freshly constructed Elasticsearch Tool instance. `smolagents` may execute `Tool.forward()` in a worker thread that does not inherit `ContextVar`; the tool instance crosses that boundary and re-opens `requirement_acceptance_scope()` only for its own call.
+- No process-global E2E execution flag is introduced. Production-bound tool instances are marked false, so concurrent production work cannot inherit E2E routing from another job.
