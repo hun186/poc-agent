@@ -130,3 +130,8 @@
 ## 2026-09-23 Hosted PR re-read remains unavailable
 
 - GitHub HTTPS/API access still fails through the proxy with HTTP 403 and `gh` remains unauthenticated. Hosted PR #271 head and provenance cannot be updated or re-read from this environment; no hosted SHA is inferred from the local corrective commit.
+
+## 2026-09-30 PR #275 local verification limitation
+
+- `git ls-remote https://github.com/hun186/poc-agent.git HEAD` failed with `Could not resolve host: github.com`, so the repository cannot be cloned into this execution container for pytest.
+- Hosted GitHub connector state remains available for exact branch/PR review and edits. Regression tests were updated in the hosted branch, but no local pytest PASS is claimed from this environment; rely on hosted review/status plus authorized deployment verification.
