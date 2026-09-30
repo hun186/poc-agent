@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import json
 from contextlib import nullcontext
+from functools import wraps
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 from typing import Iterable
 
@@ -34,6 +35,15 @@ def requirement_acceptance_tool_scope(tool: Any):
     if getattr(tool, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, False):
         return requirement_acceptance_scope()
     return nullcontext()
+
+
+def propagate_requirement_acceptance(func):
+    """Decorator for Tool.forward methods that may run in worker threads."""
+    @wraps(func)
+    def wrapped(self, *args, **kwargs):
+        with requirement_acceptance_tool_scope(self):
+            return func(self, *args, **kwargs)
+    return wrapped
 
 
 def dbg(*args: Any) -> None:
