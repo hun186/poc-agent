@@ -9,7 +9,7 @@ from smolagents import Tool
 from agent.es.es_client import get_es
 from agent.es.reference_text import get_reference_text, get_reference_text_field
 
-from .common import resolve_index, split_indexes, dbg
+from .common import resolve_index, split_indexes, dbg, propagate_requirement_acceptance
 
 
 class ESFetchDocById(Tool):
@@ -54,6 +54,7 @@ class ESFetchDocById(Tool):
             self._es = get_es()
         return self._es
 
+    @propagate_requirement_acceptance
     def forward(
         self,
         uuid: str,
