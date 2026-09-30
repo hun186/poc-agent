@@ -570,7 +570,7 @@ def test_disabled_schedule_batch_keeps_polling_identity(monkeypatch, tmp_path):
     }
 
     class FakeApi:
-        def __init__(self): self.poll_paths, self.enabled = [], False
+        def __init__(self): self.poll_paths, self.enabled, self.version_payload = [], False, None
         def get(self, path, **_kwargs):
             if path == f"/v1/requirement-schedules/{schedule_id}/runs?limit=100":
                 return {"items": [{"batch_run_id": batch_id}]} if self.enabled else {"items": []}
@@ -580,7 +580,9 @@ def test_disabled_schedule_batch_keeps_polling_identity(monkeypatch, tmp_path):
                 self.poll_paths.append(path); return batch
             raise AssertionError(path)
         def post(self, path, **_kwargs):
-            if path.endswith("/versions"): return {"schedule_version_id": "version-1", "version_number": 1}
+            if path.endswith("/versions"):
+                self.version_payload = _kwargs["json"]
+                return {"schedule_version_id": "version-1", "version_number": 1}
             if path.endswith("/approve"): return {}
             raise AssertionError(path)
         def patch(self, path, *, json, **_kwargs):
@@ -600,6 +602,7 @@ def test_disabled_schedule_batch_keeps_polling_identity(monkeypatch, tmp_path):
     detail = harness.schedule_and_wait({"schedule_id": schedule_id}, "snapshot-1", {f"req-{i}" for i in range(3)})
 
     assert harness.enabled_schedule_id is None
+    assert harness.api.version_payload["model"] == "requirement-e2e:model"
     assert harness.wait_terminal(detail)["batch_run_id"] == batch_id
     assert harness.api.poll_paths and set(harness.api.poll_paths) == {f"/v1/requirement-schedules/{schedule_id}/runs/{batch_id}"}
 

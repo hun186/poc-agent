@@ -307,10 +307,11 @@ class Harness:
         return schedule
 
     def schedule_and_wait(self, schedule, snapshot_id: str, expected_requirements: set[str]):
+        from agent.external_capabilities import mark_requirement_e2e_model
         sid = schedule["schedule_id"]
         baseline = {item["batch_run_id"] for item in self.api.get(f"/v1/requirement-schedules/{sid}/runs?limit=100")["items"]}
         anchor = (datetime.now(timezone.utc) + timedelta(seconds=self.config.anchor_lead_seconds)).replace(microsecond=0)
-        payload = {"timezone": "UTC", "recurrence": {"kind": "interval", "every": 10080, "unit": "minutes", "anchor_at": anchor.isoformat()}, "run_policy": "all_active", "model": self.config.model}
+        payload = {"timezone": "UTC", "recurrence": {"kind": "interval", "every": 10080, "unit": "minutes", "anchor_at": anchor.isoformat()}, "run_policy": "all_active", "model": mark_requirement_e2e_model(self.config.model)}
         existing_versions = {item["schedule_version_id"] for item in self.api.get(f"/v1/requirement-schedules/{sid}").get("versions", [])}
         config_document = {"schema_version": 1, **payload}
         config_digest = hashlib.sha256(json.dumps(config_document, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()

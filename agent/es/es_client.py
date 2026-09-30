@@ -221,16 +221,32 @@ def init_index_cache(*, live_check: bool = False, force: bool = False) -> None:
         print("[es_client] ALL_INDEXES =", ALL_INDEXES)
         print("[es_client] ES_INDEX_DEFAULT =", ES_INDEX_DEFAULT)
 
-def _calc_default_index() -> str:
-    from agent.external_capabilities import frozen_plan, resolve_environment_plan
-    # Do not recursively probe while resolving the plan. A resolved semantic
-    # backend always owns its explicit acceptance-only index.
+def _requirement_acceptance_index() -> str | None:
+    from agent.external_capabilities import (
+        frozen_plan, requirement_acceptance_active, requirement_e2e_es_index,
+    )
+
+    # During plan resolution frozen_plan() intentionally raises because no plan
+    # is installed yet.  Preserve the existing semantic-mock behavior, but only
+    # redirect a live backend while executing an explicitly marked E2E Report
+    # Job.  Ordinary production jobs in the same API process keep their hints.
     try:
         plan = frozen_plan()
     except Exception:
-        plan = None
-    if plan is not None and plan.elasticsearch_backend == "semantic_mock":
+        return None
+    if plan is None:
+        return None
+    if plan.elasticsearch_backend == "semantic_mock":
         return REQUIREMENT_E2E_INDEX
+    if plan.elasticsearch_backend == "live" and requirement_acceptance_active():
+        return requirement_e2e_es_index()
+    return None
+
+
+def _calc_default_index() -> str:
+    acceptance_index = _requirement_acceptance_index()
+    if acceptance_index is not None:
+        return acceptance_index
     init_index_cache(live_check=False)
     return ES_INDEX_DEFAULT or "news_test"
 '''
@@ -245,13 +261,9 @@ def _calc_default_index() -> str:
     return env_indexes[0] if env_indexes else default_one
 '''
 def resolve_index(hint: Optional[Union[str, List[str]]]) -> IndexType:
-    from agent.external_capabilities import frozen_plan
-    try:
-        plan = frozen_plan()
-    except Exception:
-        plan = None
-    if plan is not None and plan.elasticsearch_backend == "semantic_mock":
-        return REQUIREMENT_E2E_INDEX
+    acceptance_index = _requirement_acceptance_index()
+    if acceptance_index is not None:
+        return acceptance_index
     default_idx = _calc_default_index()
     if hint is None:
         return default_idx
@@ -282,8 +294,13 @@ def safe_search(
     es = get_es()
     ES_TIMEOUT = int(os.getenv("ES_TIMEOUT", "30"))
 
-    # ✅ 先正確取得 idx（可能是 str 或 list）
-    idx: IndexType = index if index is not None else _calc_default_index()
+    # Requirement E2E owns one dedicated index after the process-level plan is
+    # frozen.  This final boundary prevents an explicit topic hint from routing
+    # an acceptance search back into production business indexes.
+    acceptance_index = _requirement_acceptance_index()
+    idx: IndexType = acceptance_index if acceptance_index is not None else (
+        index if index is not None else _calc_default_index()
+    )
 
     # ✅ 修正：如果傳進來是空 list，就退回 default
     if isinstance(idx, list) and not idx:

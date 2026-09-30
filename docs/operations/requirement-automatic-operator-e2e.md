@@ -132,13 +132,55 @@ lifespan startup, before a Report Job can be claimed. Both local and remote
 harnesses read that process's authenticated runtime evidence; they never mutate
 their own environment as a substitute for configuring the running deployment.
 The harness rejects a requested/deployed-mode mismatch.
-`live` fails if the model is not callable, the index is absent, the live mapping
-lacks the query/runtime-required nested subset, or the canonical retrieval
-phrases do not produce hits. `auto` records the stable probe category and uses a
-semantic boundary mock only for an unsuitable dependency. `offline` skips both
-network probes. No mode replaces Requirement import, scheduling, claiming,
-handoff, Agent orchestration, report/DOCX generation, reconciliation, or durable
-terminal checks.
+
+For `live` and `auto`, Elasticsearch acceptance uses the real configured ES
+transport but an acceptance-only index selected by `REQUIREMENT_E2E_ES_INDEX`
+(default `requirement_e2e_semantic`). The name must stay in the
+`requirement_e2e_` namespace and must not overlap any configured production
+topic/default index or the runtime `ES_INDEX` override. Before any fixture
+mutation, production selectors are checked fail-closed: `_all`, `*`, and
+`?` wildcard selectors are rejected, while concrete selectors and existing
+aliases are resolved through Elasticsearch so an alias cannot hide an overlap
+with the acceptance index. On process startup the capability boundary creates
+that index only when absent, with
+`mappings._meta.requirement_e2e_fixture=v1` as an ownership marker. An existing
+index must have that exact marker and the committed Requirement mapping before
+any fixture write occurs; a same-named unowned index or alias fails closed.
+The boundary then deterministically upserts the three canonical fixtures by
+stable document ID. It never deletes or recreates an existing index. Any mapping
+incompatibility, missing ownership marker, or unexpected extra document fails
+closed; the dedicated index is intentionally retained across acceptance runs.
+Production topic indexes are therefore not reindexed or mutated for Requirement
+acceptance.
+
+The harness marks only its Schedule Version model with the
+`requirement-e2e:` prefix, but that prefix is treated only as an untrusted
+request marker. The Report Job worker enables acceptance routing only when the
+persisted job also proves canonical Requirement Handoff provenance: the
+server-derived owner must be the configured Handoff service principal, the
+idempotency key must use the `rhsub_` contract, the session must be bound to
+that submission, and persisted metadata must carry the same submission ID and
+`report_v1` workflow. A caller that merely supplies the model prefix therefore
+fails closed. For a trusted Handoff job, the worker removes the prefix before
+Agent execution and opens a context-local acceptance scope for that one job.
+Inside that scope, a frozen live plan forces both default and explicitly hinted
+searches onto the dedicated index. Ordinary live Report Jobs in the same API
+process retain their production index hints, and the scope is reset after the
+marked job completes or fails.
+
+Thus `FULL_LIVE` means real Elasticsearch transport, the production query DSL,
+real Elasticsearch search, and the production parser/Agent path over the
+canonical acceptance dataset; it does not require those fixtures to live in
+business production indexes. `SRA_E2E_MODEL` remains the ordinary model value
+configured by the operator; the harness adds the durable prefix itself.
+
+`live` fails if the model is not callable, the dedicated index cannot be
+created/accessed, its live mapping lacks the query/runtime-required nested
+subset, its dataset drifts, or the canonical retrieval phrases do not produce
+hits. `auto` records the stable probe category and uses a semantic boundary mock
+only for an unsuitable dependency. `offline` skips both network probes. No mode
+replaces Requirement import, scheduling, claiming, handoff, Agent orchestration,
+report/DOCX generation, reconciliation, or durable terminal checks.
 
 Successful evidence is always explicit: `PASS / FULL_LIVE`, `PASS / HYBRID`, or
 `PASS / OFFLINE`. `FULL_LIVE` additionally depends on the unchanged downstream
