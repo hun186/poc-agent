@@ -20,6 +20,7 @@ from .common import (
     resolve_index,
     flatten_syn_terms,
     build_query_meta,
+    propagate_requirement_acceptance,
 )
 
 
@@ -99,6 +100,7 @@ class ESSearchNews(Tool):
 
     output_type = "any"
 
+    @propagate_requirement_acceptance
     def forward(
         self,
         query: Optional[str] = None,
