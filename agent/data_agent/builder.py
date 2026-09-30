@@ -84,18 +84,18 @@ def _make_code_agent(tools, model, system_prompt: str) -> CodeAgent:
 
 def build_model() -> LiteLLMModel | Model:
     global _SHARED_MODEL
-    if _SHARED_MODEL is not None:
-        return _SHARED_MODEL
-
     from agent.external_capabilities import (
         frozen_plan, requirement_acceptance_active, resolve_environment_plan,
     )
     plan = frozen_plan(resolve_environment_plan)
     if (requirement_acceptance_active() and plan is not None
             and plan.llm_backend == "semantic_mock"):
-        # The deterministic CodeAgent model belongs only to the verified E2E
-        # execution scope; never persist it in the production shared-model cache.
+        # Check the E2E scope before the production shared cache: an earlier
+        # production job must not suppress a requested E2E semantic mock.
         return DeterministicE2ECodeModel()
+
+    if _SHARED_MODEL is not None:
+        return _SHARED_MODEL
 
     effective_model_id = normalize_model_id(ENV.data_agent_model_id)
 
