@@ -498,7 +498,30 @@ def test_normal_runtime_keeps_explicit_production_index(monkeypatch):
     assert captured["index"] == "news_test"
 
 
-def test_offline_adapters_are_installed_at_external_boundaries(monkeypatch):
+def test_semantic_mock_plan_does_not_redirect_normal_production_index(monkeypatch):
+    from agent.es import es_client
+
+    captured = {}
+
+    class Client:
+        def search(self, *, index, body, request_timeout, params):
+            captured["index"] = index
+            return {"hits": {"hits": []}}
+
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "auto")
+    install_plan(BackendPlan(
+        "auto", "semantic_mock", "semantic_mock",
+        "transport_unavailable", "transport_unavailable",
+    ))
+    monkeypatch.setattr(es_client, "_ES", Client())
+    monkeypatch.setattr(es_client, "_USING_MOCK_ES", False)
+
+    assert es_client.resolve_index("news_test") == "news_test"
+    es_client.safe_search({"query": {"match_all": {}}}, index="news_test")
+    assert captured["index"] == "news_test"
+
+
+def test_offline_e2e_adapters_are_scope_only(monkeypatch):
     plan = resolve_plan("offline", Probe(False, "offline_not_probed"),
                         Probe(False, "offline_not_probed"))
     install_plan(plan)
@@ -506,12 +529,35 @@ def test_offline_adapters_are_installed_at_external_boundaries(monkeypatch):
     from agent.data_agent import builder
     from agent.es import es_client
     from agent.llm_utils import ollama_client
+
+    class ProductionES:
+        pass
+
+    class ProductionModel:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    production_es = ProductionES()
     builder._SHARED_MODEL = None
     es_client._ES = None
+    es_client._USING_MOCK_ES = False
     ollama_client._default_client = None
-    assert type(builder.build_model()).__name__ == "DeterministicE2ECodeModel"
-    assert type(ollama_client.get_default_client()).__name__ == "DeterministicE2ELLMClient"
-    assert type(es_client.get_es()).__name__ == "MockElasticsearch"
+    monkeypatch.setattr(builder, "LiteLLMModel", ProductionModel)
+    monkeypatch.setattr(es_client, "_build_es", lambda: production_es)
+    monkeypatch.setattr(es_client, "should_prefer_mock_runtime", lambda: False)
+
+    assert type(builder.build_model()).__name__ == "ProductionModel"
+    assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
+    assert es_client.get_es() is production_es
+
+    with requirement_acceptance_scope():
+        assert type(builder.build_model()).__name__ == "DeterministicE2ECodeModel"
+        assert type(ollama_client.get_default_client()).__name__ == "DeterministicE2ELLMClient"
+        assert type(es_client.get_es()).__name__ == "MockElasticsearch"
+
+    assert type(builder.build_model()).__name__ == "ProductionModel"
+    assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
+    assert es_client.get_es() is production_es
 
 
 def _query_body(query, *, selected=False, high_value=False, date_from=None, date_to=None):
@@ -533,10 +579,11 @@ def test_offline_code_agent_derives_actual_requirement_query(monkeypatch):
     from agent.es import es_client
     builder._SHARED_MODEL = None
     es_client._ES = None
-    result = builder.build_agent("report").run(
-        "請持續蒐集臺灣海峽及周邊海空域軍事、海警與灰色地帶活動。",
-        max_steps=3,
-    )
+    with requirement_acceptance_scope():
+        result = builder.build_agent("report").run(
+            "請持續蒐集臺灣海峽及周邊海空域軍事、海警與灰色地帶活動。",
+            max_steps=3,
+        )
     assert "requirement-taiwan-strait-002" in str(result)
     assert "requirement-gaza-001" not in str(result)
 
