@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Tuple, Optional
 from smolagents import ChatMessage, CodeAgent, LiteLLMModel, Model, PythonInterpreterTool
 
 from ..tools_es import ESSearchNews, ESTimeline, ESFetchDocById
+from ..tools_es.common import bind_requirement_acceptance
 from ..tools_stats import AggregateMonthQuarter
 
 from .types import ENV
@@ -117,9 +118,9 @@ def _build_mode_assets(mode: str) -> Tuple[List[Any], str]:
 
     if m in ("report", "sra_report"):
         tools = [
-            ESSearchNews(),
-            ESTimeline(),
-            ESFetchDocById(),
+            bind_requirement_acceptance(ESSearchNews()),
+            bind_requirement_acceptance(ESTimeline()),
+            bind_requirement_acceptance(ESFetchDocById()),
             AggregateMonthQuarter(),
             PythonInterpreterTool(),
         ]
@@ -127,9 +128,9 @@ def _build_mode_assets(mode: str) -> Tuple[List[Any], str]:
 
     if m in ("style", "sra_style"):
         tools = [
-            ESSearchNews(),
-            ESTimeline(),    # 先保留，若確定不用可再移除
-            ESFetchDocById(),
+            bind_requirement_acceptance(ESSearchNews()),
+            bind_requirement_acceptance(ESTimeline()),    # 先保留，若確定不用可再移除
+            bind_requirement_acceptance(ESFetchDocById()),
             PythonInterpreterTool(),
         ]
         return tools, STYLE_DATA_CODE_SYSTEM
