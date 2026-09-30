@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import copy
 import inspect
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -17,8 +18,8 @@ from agent.es.query_body import build_main_query_body
 from agent.external_capabilities import (
     BackendPlan, CapabilityError, Probe, install_plan, mapping_compatibility,
     mark_requirement_e2e_model, parse_mode, prepare_requirement_elasticsearch,
-    probe_elasticsearch, probe_llm, probe_llm_boundaries, requirement_acceptance_scope,
-    requirement_e2e_es_index, reset_plan_for_tests, resolve_environment_plan,
+    probe_elasticsearch, probe_llm, probe_llm_boundaries, requirement_acceptance_active,
+    requirement_acceptance_scope, requirement_e2e_es_index, reset_plan_for_tests, resolve_environment_plan,
     resolve_plan, split_requirement_e2e_model, validate_production_index_selectors,
 )
 
@@ -453,6 +454,34 @@ def test_prepare_live_requirement_index_fails_closed_on_dataset_pollution():
     assert prepare_requirement_elasticsearch(
         Client(), "requirement_e2e_live_fixture", [],
     ) == Probe(False, "fixture_dataset_drift")
+
+
+def test_bound_e2e_tool_reopens_context_inside_worker_thread():
+    from agent.tools_es.common import (
+        bind_requirement_acceptance, requirement_acceptance_tool_scope,
+    )
+
+    tool = SimpleNamespace()
+    with requirement_acceptance_scope():
+        bind_requirement_acceptance(tool)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            # ContextVar state is intentionally not inherited by this worker.
+            assert pool.submit(requirement_acceptance_active).result() is False
+
+            def run_bound_tool():
+                with requirement_acceptance_tool_scope(tool):
+                    return requirement_acceptance_active()
+
+            assert pool.submit(run_bound_tool).result() is True
+
+    # A production-bound tool can never turn the E2E scope on.
+    production_tool = bind_requirement_acceptance(SimpleNamespace())
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        def run_production_tool():
+            with requirement_acceptance_tool_scope(production_tool):
+                return requirement_acceptance_active()
+
+        assert pool.submit(run_production_tool).result() is False
 
 
 def test_frozen_live_plan_forces_safe_search_to_acceptance_index(monkeypatch):
