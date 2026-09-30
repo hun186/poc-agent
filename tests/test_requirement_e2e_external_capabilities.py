@@ -538,10 +538,10 @@ def test_offline_e2e_adapters_are_scope_only(monkeypatch):
             self.kwargs = kwargs
 
     production_es = ProductionES()
-    builder._SHARED_MODEL = None
-    es_client._ES = None
-    es_client._USING_MOCK_ES = False
-    ollama_client._default_client = None
+    monkeypatch.setattr(builder, "_SHARED_MODEL", None)
+    monkeypatch.setattr(es_client, "_ES", None)
+    monkeypatch.setattr(es_client, "_USING_MOCK_ES", False)
+    monkeypatch.setattr(ollama_client, "_default_client", None)
     monkeypatch.setattr(builder, "LiteLLMModel", ProductionModel)
     monkeypatch.setattr(es_client, "_build_es", lambda: production_es)
     monkeypatch.setattr(es_client, "should_prefer_mock_runtime", lambda: False)
@@ -577,8 +577,8 @@ def test_offline_code_agent_derives_actual_requirement_query(monkeypatch):
     monkeypatch.setenv("ES_INDEX", REQUIREMENT_E2E_INDEX)
     from agent.data_agent import builder
     from agent.es import es_client
-    builder._SHARED_MODEL = None
-    es_client._ES = None
+    monkeypatch.setattr(builder, "_SHARED_MODEL", None)
+    monkeypatch.setattr(es_client, "_ES", None)
     with requirement_acceptance_scope():
         result = builder.build_agent("report").run(
             "請持續蒐集臺灣海峽及周邊海空域軍事、海警與灰色地帶活動。",
@@ -816,6 +816,25 @@ def test_production_llm_chat_regression(monkeypatch):
     client = LLMClient(base_url="http://model", model="production-model")
     assert client.chat([{"role": "user", "content": "hello"}]) == "chat-result"
     assert captured["url"] == "http://model/api/chat"
+
+
+def test_production_call_llm_transport_failure_never_falls_back_to_e2e_mock(monkeypatch):
+    from agent.llm_utils import ollama_client
+
+    install_plan(BackendPlan(
+        "auto", "semantic_mock", "semantic_mock",
+        "transport_unavailable", "transport_unavailable",
+    ))
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "auto")
+    monkeypatch.setattr(ollama_client, "_default_client", None)
+
+    def fail_chat(self, messages, **kwargs):
+        raise requests_exceptions.ConnectionError("production LLM unavailable")
+
+    monkeypatch.setattr(ollama_client.LLMClient, "chat", fail_chat)
+
+    with pytest.raises(RuntimeError, match="llm_runtime_failure"):
+        ollama_client.call_llm("production report request")
 
 
 @pytest.mark.parametrize(("mode", "backend", "expected"), [
