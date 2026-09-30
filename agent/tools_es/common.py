@@ -3,10 +3,47 @@ from __future__ import annotations
 
 import os
 import json
+from contextlib import nullcontext
+from functools import wraps
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 from typing import Iterable
 
 from agent.es.es_client import resolve_index as _resolve_es_index
+
+
+_REQUIREMENT_E2E_TOOL_SCOPE_ATTR = "_requirement_e2e_acceptance_scope"
+
+
+def bind_requirement_acceptance(tool: Any) -> Any:
+    """Capture verified E2E scope on a per-Agent tool instance.
+
+    smolagents may execute tool.forward() in a worker thread that does not
+    inherit ContextVar state.  The tool instance crosses that thread boundary,
+    so capture only the current job-scoped acceptance bit on that instance.
+    Production tools are bound False and can never activate the E2E scope.
+    """
+    from agent.external_capabilities import requirement_acceptance_active
+
+    setattr(tool, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, bool(requirement_acceptance_active()))
+    return tool
+
+
+def requirement_acceptance_tool_scope(tool: Any):
+    """Re-open the verified E2E scope inside a tool-execution thread."""
+    from agent.external_capabilities import requirement_acceptance_scope
+
+    if getattr(tool, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, False):
+        return requirement_acceptance_scope()
+    return nullcontext()
+
+
+def propagate_requirement_acceptance(func):
+    """Decorator for Tool.forward methods that may run in worker threads."""
+    @wraps(func)
+    def wrapped(self, *args, **kwargs):
+        with requirement_acceptance_tool_scope(self):
+            return func(self, *args, **kwargs)
+    return wrapped
 
 
 def dbg(*args: Any) -> None:

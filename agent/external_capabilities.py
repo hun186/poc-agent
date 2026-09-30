@@ -1,8 +1,10 @@
-"""Frozen external-backend policy for Requirement operator acceptance.
+"""Frozen external-backend policy for Requirement operator E2E acceptance.
 
-This module is intentionally inactive unless ``REQUIREMENT_E2E_EXTERNAL_MODE``
-is set.  Normal application deployments therefore retain their existing LLM
-and Elasticsearch selection behaviour.
+``REQUIREMENT_E2E_EXTERNAL_MODE`` controls only verified E2E test jobs.
+Semantic mocks and the dedicated acceptance fixture are valid only while the
+verified E2E execution scope is active. Ordinary production/user Report Jobs,
+including normal Requirement -> Schedule -> Handoff jobs, always stay on the
+ordinary real LLM and Elasticsearch paths and never inherit an E2E fallback.
 """
 from __future__ import annotations
 
@@ -118,12 +120,13 @@ def split_requirement_e2e_model(model: str) -> tuple[bool, str]:
     return True, base
 
 
-def trusted_requirement_e2e_job_model(job: Any) -> tuple[bool, str]:
-    """Return acceptance routing only for a persisted canonical Handoff job.
+def verified_requirement_e2e_job_model(job: Any) -> tuple[bool, str]:
+    """Identify a verified Operator E2E test job, not a normal Requirement job.
 
-    The model prefix is caller-controlled and is therefore only a request marker.
-    Trust comes from the server-derived ReportJob owner plus the durable Handoff
-    idempotency/session/metadata contract persisted with the job.
+    The reserved model prefix alone is untrusted and never proves test origin.
+    Verification also requires the server-derived canonical Handoff owner and
+    durable idempotency/session/metadata contract. A normal production Handoff
+    job without the reserved E2E marker remains ordinary production execution.
     """
     marked, effective_model = split_requirement_e2e_model(getattr(job, "model", ""))
     if not marked:
@@ -145,6 +148,12 @@ def trusted_requirement_e2e_job_model(job: Any) -> tuple[bool, str]:
     if not trusted:
         raise CapabilityError("external_e2e_provenance_invalid")
     return True, effective_model
+
+
+# Backward-compatible internal alias for older imports. New code and operator
+# documentation use "verified E2E test job" to avoid implying that Requirement
+# content itself is trusted.
+trusted_requirement_e2e_job_model = verified_requirement_e2e_job_model
 
 
 @contextmanager

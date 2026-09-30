@@ -125,13 +125,19 @@ acceptance.
 
 ### External capability policy
 
-Pass `--external-mode live|auto|offline` (default `auto`). The deployment must
-have the same `REQUIREMENT_E2E_EXTERNAL_MODE` value before the API and workers
-start. The API process that owns `ReportJobWorker` resolves the plan during
-lifespan startup, before a Report Job can be claimed. Both local and remote
-harnesses read that process's authenticated runtime evidence; they never mutate
-their own environment as a substitute for configuring the running deployment.
-The harness rejects a requested/deployed-mode mismatch.
+Pass `--external-mode live|auto|offline` (default `auto`). This setting is
+an **Operator E2E test policy only**. It does not select a fallback policy for
+ordinary production/user reports. A normal Report Job — including a normal
+Requirement -> Schedule -> Handoff job — always stays on the ordinary real LLM
+and production Elasticsearch paths. E2E semantic mocks and the dedicated E2E
+fixture index are available only inside a verified E2E test-job execution scope.
+
+The deployment must have the same `REQUIREMENT_E2E_EXTERNAL_MODE` value before
+the API and workers start. The API process that owns `ReportJobWorker` resolves
+the E2E plan during lifespan startup, before a Report Job can be claimed. Both
+local and remote harnesses read that process's authenticated runtime evidence;
+they never mutate their own environment as a substitute for configuring the
+running deployment. The harness rejects a requested/deployed-mode mismatch.
 
 For `live` and `auto`, Elasticsearch acceptance uses the real configured ES
 transport but an acceptance-only index selected by `REQUIREMENT_E2E_ES_INDEX`
@@ -161,12 +167,24 @@ server-derived owner must be the configured Handoff service principal, the
 idempotency key must use the `rhsub_` contract, the session must be bound to
 that submission, and persisted metadata must carry the same submission ID and
 `report_v1` workflow. A caller that merely supplies the model prefix therefore
-fails closed. For a trusted Handoff job, the worker removes the prefix before
-Agent execution and opens a context-local acceptance scope for that one job.
-Inside that scope, a frozen live plan forces both default and explicitly hinted
-searches onto the dedicated index. Ordinary live Report Jobs in the same API
-process retain their production index hints, and the scope is reset after the
-marked job completes or fails.
+fails closed. Only when the reserved E2E marker and canonical persisted Handoff
+provenance agree does the worker classify the work as a **verified E2E test
+job**. The worker then removes the prefix before Agent execution and opens a
+context-local acceptance scope for that one job.
+
+This distinction is important: canonical Handoff provenance by itself does not
+make a job an E2E test. Future production Requirement schedules also use the
+same Schedule -> Handoff -> Report Job path. Without the reserved E2E marker
+they remain production jobs and must use real production dependencies.
+
+Inside the verified E2E scope, a frozen live plan forces both default and
+explicitly hinted searches onto the dedicated index. If the E2E plan selected a
+semantic mock, that mock is also scoped to this one verified E2E execution and
+is never stored in the process-wide production client/model cache. Ordinary
+Report Jobs in the same API process retain their production index hints and real
+LLM/Elasticsearch clients regardless of whether the E2E plan is `live`,
+`auto`, or `offline`. The scope is reset after the E2E job completes or
+fails.
 
 Thus `FULL_LIVE` means real Elasticsearch transport, the production query DSL,
 real Elasticsearch search, and the production parser/Agent path over the
@@ -174,13 +192,20 @@ canonical acceptance dataset; it does not require those fixtures to live in
 business production indexes. `SRA_E2E_MODEL` remains the ordinary model value
 configured by the operator; the harness adds the durable prefix itself.
 
-`live` fails if the model is not callable, the dedicated index cannot be
-created/accessed, its live mapping lacks the query/runtime-required nested
-subset, its dataset drifts, or the canonical retrieval phrases do not produce
-hits. `auto` records the stable probe category and uses a semantic boundary mock
-only for an unsuitable dependency. `offline` skips both network probes. No mode
-replaces Requirement import, scheduling, claiming, handoff, Agent orchestration,
-report/DOCX generation, reconciliation, or durable terminal checks.
+For a verified E2E test job, `live` fails if the model is not callable, the
+dedicated index cannot be created/accessed, its live mapping lacks the
+query/runtime-required nested subset, its dataset drifts, or the canonical
+retrieval phrases do not produce hits. `auto` records the stable probe category
+and may use a semantic boundary mock only inside that verified E2E scope when an
+E2E dependency is unsuitable. `offline` skips both network probes and uses the
+semantic E2E boundaries only inside that scope. No E2E mode replaces Requirement
+import, scheduling, claiming, handoff, Agent orchestration, report/DOCX
+generation, reconciliation, or durable terminal checks.
+
+Production/user jobs do not inherit `auto` or `offline` fallback behavior.
+They never read the semantic E2E fixture or deterministic E2E LLM/model
+adapters; a real production dependency failure remains a production failure
+rather than being converted into an apparently successful mock report.
 
 Successful evidence is always explicit: `PASS / FULL_LIVE`, `PASS / HYBRID`, or
 `PASS / OFFLINE`. `FULL_LIVE` additionally depends on the unchanged downstream

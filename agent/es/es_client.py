@@ -123,13 +123,18 @@ def _build_es() -> Elasticsearch:
 
 def get_es() -> Elasticsearch | MockElasticsearch:
     global _ES, _USING_MOCK_ES
+    from agent.external_capabilities import (
+        frozen_plan, requirement_acceptance_active, resolve_environment_plan,
+    )
+
+    plan = frozen_plan(resolve_environment_plan)
+    if (requirement_acceptance_active() and plan is not None
+            and plan.elasticsearch_backend == "semantic_mock"):
+        # Requirement E2E semantic mocks are execution-scoped.  Never cache this
+        # adapter into the process-wide production Elasticsearch singleton.
+        return MockElasticsearch()
+
     if _ES is None:
-        from agent.external_capabilities import frozen_plan, resolve_environment_plan
-        plan = frozen_plan(resolve_environment_plan)
-        if plan is not None and plan.elasticsearch_backend == "semantic_mock":
-            _ES = MockElasticsearch()
-            _USING_MOCK_ES = True
-            return _ES
         if should_prefer_mock_runtime():
             try:
                 real = _build_es()
@@ -144,12 +149,23 @@ def get_es() -> Elasticsearch | MockElasticsearch:
                 _ES = MockElasticsearch()
                 _USING_MOCK_ES = True
         else:
+            # Ordinary production/report execution always uses the real client.
+            # E2E auto/offline may choose a semantic mock only inside the
+            # verified Requirement acceptance scope above.
             _ES = _build_es()
             _USING_MOCK_ES = False
     return _ES
 
 
 def using_mock_es() -> bool:
+    from agent.external_capabilities import frozen_plan, requirement_acceptance_active
+    try:
+        plan = frozen_plan()
+    except Exception:
+        plan = None
+    if (requirement_acceptance_active() and plan is not None
+            and plan.elasticsearch_backend == "semantic_mock"):
+        return True
     return bool(_USING_MOCK_ES or isinstance(_ES, MockElasticsearch))
 
 def init_index_cache(*, live_check: bool = False, force: bool = False) -> None:
@@ -234,11 +250,11 @@ def _requirement_acceptance_index() -> str | None:
         plan = frozen_plan()
     except Exception:
         return None
-    if plan is None:
+    if plan is None or not requirement_acceptance_active():
         return None
     if plan.elasticsearch_backend == "semantic_mock":
         return REQUIREMENT_E2E_INDEX
-    if plan.elasticsearch_backend == "live" and requirement_acceptance_active():
+    if plan.elasticsearch_backend == "live":
         return requirement_e2e_es_index()
     return None
 

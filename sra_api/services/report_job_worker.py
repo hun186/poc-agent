@@ -32,9 +32,9 @@ class ReportJobWorker:
         temp = self.root / f".{job.job_id}.{os.getpid()}.{threading.get_ident()}.tmp"
         try:
             from agent.external_capabilities import (
-                requirement_acceptance_scope, trusted_requirement_e2e_job_model,
+                requirement_acceptance_scope, verified_requirement_e2e_job_model,
             )
-            is_acceptance, effective_model = trusted_requirement_e2e_job_model(job)
+            is_acceptance, effective_model = verified_requirement_e2e_job_model(job)
             scope = requirement_acceptance_scope() if is_acceptance else nullcontext()
             with scope:
                 payload = SimpleNamespace(model=effective_model, messages=[ChatMessage(role="user", content=job.prompt)], stream=False)

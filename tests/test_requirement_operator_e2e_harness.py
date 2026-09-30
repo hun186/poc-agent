@@ -144,6 +144,19 @@ def test_complete_requirement_process_environment_does_not_require_env_file(tmp_
     ]) == ExitCode.PASS
 
 
+def test_cli_help_explains_e2e_external_modes_and_production_boundary(capsys):
+    from operator_e2e.test_requirement_schedule_e2e import parse_args
+
+    with pytest.raises(SystemExit) as exc:
+        parse_args(["--help"])
+
+    assert exc.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "External capability modes apply ONLY to verified Operator E2E test jobs" in help_text
+    assert "Production/user Report Jobs are different" in help_text
+    assert "Changing this CLI option does not reconfigure" in help_text
+
+
 def test_common_environment_example_is_safe_and_complete():
     example = Path("operator_e2e/e2e.env.example").read_text(encoding="utf-8")
     for name in (
@@ -155,6 +168,8 @@ def test_common_environment_example_is_safe_and_complete():
     assert "SRA_E2E_EXPECTED_RUNTIME_SHA is optional" in example
     assert "must NOT automatically be reused" in example
     assert "SRA_E2E_EDITOR_TOKEN = SRA_E2E_REPORT_KEY" in example
+    assert "Operator E2E TEST policy only" in example
+    assert "never inherit these E2E mocks" in example
     ignore_rules = Path(".gitignore").read_text(encoding="utf-8").splitlines()
     assert "operator_e2e/e2e.env.local" in ignore_rules
     assert "operator_e2e/e2e.env.example" not in ignore_rules

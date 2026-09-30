@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import copy
 import inspect
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -17,8 +18,8 @@ from agent.es.query_body import build_main_query_body
 from agent.external_capabilities import (
     BackendPlan, CapabilityError, Probe, install_plan, mapping_compatibility,
     mark_requirement_e2e_model, parse_mode, prepare_requirement_elasticsearch,
-    probe_elasticsearch, probe_llm, probe_llm_boundaries, requirement_acceptance_scope,
-    requirement_e2e_es_index, reset_plan_for_tests, resolve_environment_plan,
+    probe_elasticsearch, probe_llm, probe_llm_boundaries, requirement_acceptance_active,
+    requirement_acceptance_scope, requirement_e2e_es_index, reset_plan_for_tests, resolve_environment_plan,
     resolve_plan, split_requirement_e2e_model, validate_production_index_selectors,
 )
 
@@ -455,6 +456,34 @@ def test_prepare_live_requirement_index_fails_closed_on_dataset_pollution():
     ) == Probe(False, "fixture_dataset_drift")
 
 
+def test_bound_e2e_tool_reopens_context_inside_worker_thread():
+    from agent.tools_es.common import (
+        bind_requirement_acceptance, requirement_acceptance_tool_scope,
+    )
+
+    tool = SimpleNamespace()
+    with requirement_acceptance_scope():
+        bind_requirement_acceptance(tool)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            # ContextVar state is intentionally not inherited by this worker.
+            assert pool.submit(requirement_acceptance_active).result() is False
+
+            def run_bound_tool():
+                with requirement_acceptance_tool_scope(tool):
+                    return requirement_acceptance_active()
+
+            assert pool.submit(run_bound_tool).result() is True
+
+    # A production-bound tool can never turn the E2E scope on.
+    production_tool = bind_requirement_acceptance(SimpleNamespace())
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        def run_production_tool():
+            with requirement_acceptance_tool_scope(production_tool):
+                return requirement_acceptance_active()
+
+        assert pool.submit(run_production_tool).result() is False
+
+
 def test_frozen_live_plan_forces_safe_search_to_acceptance_index(monkeypatch):
     from agent.es import es_client
 
@@ -498,7 +527,30 @@ def test_normal_runtime_keeps_explicit_production_index(monkeypatch):
     assert captured["index"] == "news_test"
 
 
-def test_offline_adapters_are_installed_at_external_boundaries(monkeypatch):
+def test_semantic_mock_plan_does_not_redirect_normal_production_index(monkeypatch):
+    from agent.es import es_client
+
+    captured = {}
+
+    class Client:
+        def search(self, *, index, body, request_timeout, params):
+            captured["index"] = index
+            return {"hits": {"hits": []}}
+
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "auto")
+    install_plan(BackendPlan(
+        "auto", "semantic_mock", "semantic_mock",
+        "transport_unavailable", "transport_unavailable",
+    ))
+    monkeypatch.setattr(es_client, "_ES", Client())
+    monkeypatch.setattr(es_client, "_USING_MOCK_ES", False)
+
+    assert es_client.resolve_index("news_test") == "news_test"
+    es_client.safe_search({"query": {"match_all": {}}}, index="news_test")
+    assert captured["index"] == "news_test"
+
+
+def test_offline_e2e_adapters_are_scope_only(monkeypatch):
     plan = resolve_plan("offline", Probe(False, "offline_not_probed"),
                         Probe(False, "offline_not_probed"))
     install_plan(plan)
@@ -506,12 +558,35 @@ def test_offline_adapters_are_installed_at_external_boundaries(monkeypatch):
     from agent.data_agent import builder
     from agent.es import es_client
     from agent.llm_utils import ollama_client
-    builder._SHARED_MODEL = None
-    es_client._ES = None
-    ollama_client._default_client = None
-    assert type(builder.build_model()).__name__ == "DeterministicE2ECodeModel"
-    assert type(ollama_client.get_default_client()).__name__ == "DeterministicE2ELLMClient"
-    assert type(es_client.get_es()).__name__ == "MockElasticsearch"
+
+    class ProductionES:
+        pass
+
+    class ProductionModel:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    production_es = ProductionES()
+    monkeypatch.setattr(builder, "_SHARED_MODEL", None)
+    monkeypatch.setattr(es_client, "_ES", None)
+    monkeypatch.setattr(es_client, "_USING_MOCK_ES", False)
+    monkeypatch.setattr(ollama_client, "_default_client", None)
+    monkeypatch.setattr(builder, "LiteLLMModel", ProductionModel)
+    monkeypatch.setattr(es_client, "_build_es", lambda: production_es)
+    monkeypatch.setattr(es_client, "should_prefer_mock_runtime", lambda: False)
+
+    assert type(builder.build_model()).__name__ == "ProductionModel"
+    assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
+    assert es_client.get_es() is production_es
+
+    with requirement_acceptance_scope():
+        assert type(builder.build_model()).__name__ == "DeterministicE2ECodeModel"
+        assert type(ollama_client.get_default_client()).__name__ == "DeterministicE2ELLMClient"
+        assert type(es_client.get_es()).__name__ == "MockElasticsearch"
+
+    assert type(builder.build_model()).__name__ == "ProductionModel"
+    assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
+    assert es_client.get_es() is production_es
 
 
 def _query_body(query, *, selected=False, high_value=False, date_from=None, date_to=None):
@@ -531,12 +606,13 @@ def test_offline_code_agent_derives_actual_requirement_query(monkeypatch):
     monkeypatch.setenv("ES_INDEX", REQUIREMENT_E2E_INDEX)
     from agent.data_agent import builder
     from agent.es import es_client
-    builder._SHARED_MODEL = None
-    es_client._ES = None
-    result = builder.build_agent("report").run(
-        "請持續蒐集臺灣海峽及周邊海空域軍事、海警與灰色地帶活動。",
-        max_steps=3,
-    )
+    monkeypatch.setattr(builder, "_SHARED_MODEL", None)
+    monkeypatch.setattr(es_client, "_ES", None)
+    with requirement_acceptance_scope():
+        result = builder.build_agent("report").run(
+            "請持續蒐集臺灣海峽及周邊海空域軍事、海警與灰色地帶活動。",
+            max_steps=3,
+        )
     assert "requirement-taiwan-strait-002" in str(result)
     assert "requirement-gaza-001" not in str(result)
 
@@ -771,19 +847,46 @@ def test_production_llm_chat_regression(monkeypatch):
     assert captured["url"] == "http://model/api/chat"
 
 
-@pytest.mark.parametrize(("mode", "backend", "expected"), [
-    (None, None, "LLMClient"),
-    ("live", "live", "LLMClient"),
-    ("offline", "semantic_mock", "DeterministicE2ELLMClient"),
+def test_production_call_llm_transport_failure_never_falls_back_to_e2e_mock(monkeypatch):
+    from agent.llm_utils import ollama_client
+
+    install_plan(BackendPlan(
+        "auto", "semantic_mock", "semantic_mock",
+        "transport_unavailable", "transport_unavailable",
+    ))
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "auto")
+    monkeypatch.setattr(ollama_client, "_default_client", None)
+
+    def fail_chat(self, messages, **kwargs):
+        raise requests_exceptions.ConnectionError("production LLM unavailable")
+
+    monkeypatch.setattr(ollama_client.LLMClient, "chat", fail_chat)
+
+    with pytest.raises(RuntimeError, match="llm_runtime_failure"):
+        ollama_client.call_llm("production report request")
+
+
+@pytest.mark.parametrize(("mode", "backend"), [
+    (None, None),
+    ("live", "live"),
+    ("offline", "semantic_mock"),
 ])
-def test_default_client_activation_boundary(monkeypatch, mode, backend, expected):
+def test_default_client_activation_boundary(monkeypatch, mode, backend):
     from agent.llm_utils import ollama_client
     monkeypatch.delenv("REQUIREMENT_E2E_EXTERNAL_MODE", raising=False)
     ollama_client.reset_default_client_for_tests()
     if mode:
         monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", mode)
         install_plan(BackendPlan(mode, backend, "live", "pass", "pass"))
-    assert type(ollama_client.get_default_client()).__name__ == expected
+
+    # Outside a verified E2E test-job scope, even an offline E2E plan must not
+    # replace the process-wide production LLM client.
+    assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
+
+    if backend == "semantic_mock":
+        with requirement_acceptance_scope():
+            assert type(ollama_client.get_default_client()).__name__ == "DeterministicE2ELLMClient"
+        assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
 
 
 def test_default_client_reset_prevents_cross_test_backend_leak(monkeypatch):
@@ -791,7 +894,15 @@ def test_default_client_reset_prevents_cross_test_backend_leak(monkeypatch):
     monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "offline")
     install_plan(BackendPlan("offline", "semantic_mock", "semantic_mock",
                              "offline_not_probed", "offline_not_probed"))
-    assert isinstance(ollama_client.get_default_client(), ollama_client.DeterministicE2ELLMClient)
+
+    assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
+    with requirement_acceptance_scope():
+        assert isinstance(
+            ollama_client.get_default_client(),
+            ollama_client.DeterministicE2ELLMClient,
+        )
+    assert type(ollama_client.get_default_client()).__name__ == "LLMClient"
+
     ollama_client.reset_default_client_for_tests()
     reset_plan_for_tests()
     monkeypatch.delenv("REQUIREMENT_E2E_EXTERNAL_MODE")
@@ -823,9 +934,9 @@ def test_execute_agent_turn_offline_runs_real_report_path(monkeypatch):
     from agent.llm_utils import ollama_client
     from api.services.sessions import ChatMessage
     from sra_api.services import turn_execution
-    builder._SHARED_MODEL = None
-    es_client._ES = None
-    ollama_client._default_client = None
+    monkeypatch.setattr(builder, "_SHARED_MODEL", None)
+    monkeypatch.setattr(es_client, "_ES", None)
+    monkeypatch.setattr(ollama_client, "_default_client", None)
     monkeypatch.setattr(agent_module, "SESSION_STORE_ENABLED", False)
     monkeypatch.setattr(turn_execution, "get_sessions", lambda: {})
     monkeypatch.setattr(turn_execution, "get_last_structured", lambda: {})
@@ -834,10 +945,11 @@ def test_execute_agent_turn_offline_runs_real_report_path(monkeypatch):
     payload = SimpleNamespace(model="offline", stream=False, messages=[ChatMessage(
         role="user", content="請分析臺灣海峽軍事、海警與灰色地帶活動並提出情勢報告。",
     )])
-    result = turn_execution.execute_agent_turn(
-        payload=payload, request=None, session_id="offline-capability-test",
-        request_id="offline-turn-1", trace={"integration": True},
-    )
+    with requirement_acceptance_scope():
+        result = turn_execution.execute_agent_turn(
+            payload=payload, request=None, session_id="offline-capability-test",
+            request_id="offline-turn-1", trace={"integration": True},
+        )
     assert result.output["mode"] == "SRA_REPORT"
     assert result.output["used_uuids"] == ["requirement-taiwan-strait-002"]
     assert result.output["citations"]

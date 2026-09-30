@@ -485,11 +485,26 @@ def parse_args(argv=None):
 4. Use --mode local on the Linux deployment host, or --mode remote from an operator workstation.
 
 Windows/Spyder is supported for remote-operator acceptance.
-Local-host acceptance remains Linux deployment-host only.""",
+Local-host acceptance remains Linux deployment-host only.
+
+External capability modes apply ONLY to verified Operator E2E test jobs:
+  live    real LLM + real Elasticsearch transport/search over the dedicated
+          E2E fixture index; no semantic-mock fallback.
+  auto    use live E2E boundaries when probes pass; otherwise the affected E2E
+          boundary may use its semantic mock.
+  offline skip external probes and use semantic mocks for the E2E test job.
+
+Production/user Report Jobs are different: including normal
+Requirement -> Schedule -> Handoff jobs, they never use the E2E fixture or
+semantic mocks. They stay on the ordinary real LLM/Elasticsearch paths.
+
+--external-mode must match the running deployment's
+REQUIREMENT_E2E_EXTERNAL_MODE. Changing this CLI option does not reconfigure
+already-running API/workers; change the deployment setting and restart them.""",
     ); parser.add_argument("--mode", choices=("local", "remote"), default="local",
                            help="local: Linux deployment host; remote: Windows/POSIX operator workstation")
     parser.add_argument("--external-mode", choices=("live", "auto", "offline"), default="auto",
-                        help="external dependency policy, frozen by deployment before workflow start")
+                        help="verified E2E test-job external policy only; production jobs never use E2E mocks")
     parser.add_argument("--verification", choices=("release", "functional"), default="release",
                         help="release: strict source attestation; functional: record ordinary byte drift and run workflow")
     parser.add_argument("--excel", type=Path, default=DEFAULT_EXCEL,

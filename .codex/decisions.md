@@ -238,3 +238,9 @@
 
 - Preserve PR #271 capability, verification, worker, and artifact architecture. Reconcile only the real workbook bytes, production import-profile selection, exact Snapshot prompt guard, v2 fixture identity, and semantic regression coverage.
 - Never log full Requirement content. Compare in memory and expose only `prompt_content_mismatch` at `REQUIREMENT_ITEMS` when durable content differs.
+
+## 2026-09-30 Keep E2E mock authority job-scoped across tool threads
+
+- Do not use a process-global or thread-global fallback flag to make semantic mocks visible to `smolagents` worker threads; concurrent production jobs must never be able to observe E2E mock authority.
+- Carry only a boolean verified-E2E execution marker on the per-Agent ES Tool instances created inside the Report Job's acceptance scope. Each decorated `Tool.forward()` re-opens the ContextVar scope inside whatever worker thread actually executes it.
+- Normal canonical Handoff provenance alone is not test provenance. Only the reserved E2E marker plus persisted canonical Handoff provenance activates the verified E2E job scope; ordinary scheduled production jobs remain real-only.

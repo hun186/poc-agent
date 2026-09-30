@@ -190,3 +190,10 @@
 - Capability evidence now distinguishes local boundary/runtime contract failures such as `TypeError` as sanitized `boundary_error`, while built-in/requests and LiteLLM/OpenAI connection/timeout failures remain `transport_unavailable`; wrapped transport causes are recognized through exception chaining without exposing raw exception details.
 - Hosted Codex review identified and the PR addressed LiteLLM-native transport exception classification. No Elasticsearch mapping, Requirement/Schedule/Handoff/Report Job/DOCX flow, provenance, verification-policy, startup-timeout, or dependency behavior is changed by this correction.
 - Hosted pytest CI is not configured for this PR; Vercel preview passed. Formal deployment acceptance remains pending because the independent Elasticsearch `mapping_incompatible` blocker is still unresolved.
+
+### 2026-09-30 Production/E2E mock isolation and tool-thread propagation
+
+- PR #275 isolates Requirement E2E semantic LLM/DataAgent/Elasticsearch adapters from ordinary production/user Report Jobs. Normal Requirement -> Schedule -> Handoff jobs stay on real production dependencies and fail rather than silently producing a mock-backed report.
+- Codex review found that `ContextVar` acceptance state was lost in `smolagents` LocalPythonExecutor worker threads. The corrective binds the verified-E2E bit to each fresh ES Tool instance and re-opens the E2E scope inside decorated `Tool.forward()` calls, avoiding any process-global fallback signal.
+- Regression coverage now includes production-vs-E2E singleton isolation, canonical Handoff production scope, offline Agent-turn integration, and an explicit ThreadPoolExecutor proof that the raw child thread lacks the ContextVar while the bound tool recreates it safely.
+- This environment still cannot resolve `github.com` for Git transport, so no local pytest result is claimed for this corrective; hosted Codex review and deployment/operator verification remain required.
