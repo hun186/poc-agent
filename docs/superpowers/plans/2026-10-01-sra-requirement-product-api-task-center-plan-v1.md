@@ -165,6 +165,7 @@ Add `requirement_product_tasks` with:
 - unique `source_id` FK to Phase 1B `requirement_sources`,
 - immutable `execution_kind` checked to `once|recurring`,
 - `product_state` checked to `active|disabled`,
+- monotonic `revision` initialized to 1 and incremented exactly once per successfully finalized Product Task PATCH,
 - created/updated actor/timestamps.
 
 Add `requirement_product_requests` with:
@@ -175,6 +176,8 @@ Add `requirement_product_requests` with:
 - canonical request SHA-256,
 - durable request state,
 - nullable safe progress/result references including `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, and `batch_run_id`; these reservation columns are deliberately non-FK so IDs can be durably reserved before target rows exist,
+- nullable `base_task_revision` and `result_task_revision` for PATCH compare-and-set/finalization,
+- nullable bounded `safe_result_json` for exact replay of whitelisted Product mutation responses,
 - safe error code,
 - timestamps,
 - unique `(principal_kind, principal_id, operation, idempotency_key)`.
@@ -299,6 +302,24 @@ PYTHONPATH=. pytest -q   tests/test_requirement_import*.py   tests/test_requirem
 **Commit boundary:** authority compatibility/idempotency changes are reviewed before Product service orchestration.
 
 
+### Product Task mutable-state finalization regression
+
+Because `requirement_product_requests` and Product/Schedule state are in the same Schedule database, mutable Task PATCH completion uses one SQL transaction rather than a post-commit ledger write.
+
+Add focused tests around the new finalizer:
+
+- rename-only lost-response replay,
+- recurring enable/disable lost-response replay,
+- combined rename + schedule-version change,
+- old unfinished request vs newer successful request,
+- same-key concurrent retry,
+- different-key same-base-revision race,
+- audit outbox atomicity,
+- stored safe-result replay after subsequent Task revisions.
+
+Do not weaken or change the behavior of existing low-level `rename_schedule()` / `set_enabled()`; Product routes use the new atomic finalizer.
+
+
 ## P1.1 Product presenters and identities
 
 **Files:** create `sra_api/services/requirement_product_service.py`, `tests/test_requirement_product_service.py`.
@@ -404,7 +425,7 @@ Extend create to:
 
 Tests prove recurrence is existing Phase 1C recurrence behavior, not copied product logic.
 
-## P1.5 Prospective task updates
+## P1.5 Prospective task updates — revision CAS + atomic finalization
 
 Implement:
 
@@ -413,16 +434,54 @@ Implement:
 - recurrence/timezone/model/run-policy changes via new immutable Schedule Version,
 - input replacement via new Requirement snapshot.
 
-Every `PATCH /v1/requirement-tasks/{task_id}` mutation uses the durable `task_update` Product request operation and requires `Idempotency-Key`. For any schedule-changing PATCH, preallocate and persist `schedule_version_id` before invoking the Schedule authority, then call `create_version(..., schedule_version_id=...)`. This applies even when the response is lost after the Schedule DB commit; replay must address the same version identity rather than create another draft.
+Every `PATCH /v1/requirement-tasks/{task_id}` mutation uses durable operation `task_update` and requires `Idempotency-Key`.
+
+At request reservation:
+
+1. lock/read the Product Task,
+2. persist current `revision` as `base_task_revision`,
+3. preallocate/persist `schedule_version_id` when the patch changes recurrence/timezone/model/run-policy.
+
+For schedule-changing PATCH, create/recover the request-owned draft through `create_version(..., schedule_version_id=...)`.
+
+Add a Product-specific Schedule-store finalizer, preferred shape subject to implementation rebaseline:
+
+```python
+finalize_product_task_update(
+    *,
+    request_id: str,
+    task_id: str,
+    actor: str,
+    patch: ProductTaskPatch,
+    now_utc: datetime,
+) -> ProductTaskUpdateResult
+```
+
+This method runs in **one Schedule SQL transaction** and MUST:
+
+- lock the Product request, Product Task, linked Schedule, and request-owned draft version if present,
+- if request already succeeded, return stored bounded `safe_result_json`,
+- compare current Task `revision` with ledger `base_task_revision`,
+- on mismatch: do not apply requested rename/state/version activation; mark the request `failed_terminal` with `requirement_task_conflict`; retire/abandon only this request's still-draft version when safe,
+- on match: apply requested rename/product-state/recurring-enabled changes; validate/activate the request-owned version when applicable; update Schedule `next_run_at` using existing recurrence rules; enqueue the same authoritative Schedule audit-outbox events plus Product audit metadata; increment Task `revision` once,
+- persist `result_task_revision` and bounded whitelisted `safe_result_json`,
+- set Product request `succeeded`,
+- commit all mutations and the ledger success marker atomically.
+
+The Product path must not implement rename/state replay by sequentially calling current `rename_schedule()` or `set_enabled()` and then updating the ledger.
 
 Tests prove:
 
 - historical Runs retain old bindings,
-- same PATCH key/hash returns/resumes the original update,
+- same PATCH key/hash after lost HTTP response returns the stored original Product result and performs no second mutation,
 - same PATCH key with changed canonical request returns 409,
 - retry after response loss creates at most one new Schedule Version,
-- crash after `create_version()` commit but before Product progress update reuses the persisted preallocated `schedule_version_id`,
-- concurrent duplicate PATCH creates one durable logical update.
+- crash after `create_version()` commit but before finalization reuses the persisted preallocated `schedule_version_id`,
+- crash/rollback inside finalization leaves both Task state and request success unapplied,
+- successful finalization commits Task/Schedule mutation + audit outbox + `revision+1` + request success together,
+- two concurrent/different-key PATCH requests reserved from the same base revision cannot both succeed,
+- if a newer different-key PATCH succeeds before an older unfinished request resumes, the old request fails CAS and cannot roll back name/enabled/model/recurrence state,
+- a succeeded old request replay after later updates returns its stored `safe_result_json` rather than reapplying old values.
 
 # Gate P2 — Product API
 
@@ -476,7 +535,7 @@ For task create, every task PATCH/update, input replacement, and Run trigger:
 - missing `Idempotency-Key` → safe validation failure,
 - first request reserves principal + operation + key + canonical request SHA and all required server-owned durable IDs before the corresponding Phase 1B/1C mutation,
 - for service-key principals, the ledger uses `AuthPrincipal.credential_id` / immutable `key_id`; duplicate service-key display names must never share replay state,
-- same key/hash + `succeeded` → reconstruct and return the existing result,
+- same key/hash + `succeeded` → return stored bounded `safe_result_json` for mutable PATCH results or reconstruct immutable/create results from authoritative IDs,
 - same key/hash + `in_progress` or `failed_recoverable` → resume from durable stage references and preallocated authority IDs (`import_run_id`, `snapshot_id`, `schedule_id`, `task_id`, `schedule_version_id` as applicable),
 - same key + changed hash → 409 `requirement_idempotency_conflict`,
 - `failed_terminal` → same safe terminal result until a new key is supplied,
@@ -484,6 +543,8 @@ For task create, every task PATCH/update, input replacement, and Run trigger:
 - crash after Requirement import commit but before ledger stage advance → same preallocated import/snapshot identity is recovered without duplicate import,
 - crash after Schedule Version commit but before ledger stage advance → same preallocated version identity is recovered without duplicate draft,
 - concurrent duplicate → one ledger row and one logical mutation,
+- different-key task PATCHes reserved at the same `base_task_revision` → at most one finalizes; stale finalization fails CAS without rolling newer state backward,
+- task PATCH finalization commits task/schedule state, audit outbox, revision increment, safe result snapshot, and request success in one Schedule SQL transaction,
 - replaying an old input-replacement key after newer input exists must never create another snapshot or roll the active input backward.
 
 Canonical request hashing includes semantic payload plus uploaded source digest, never raw credentials or raw file bytes.
