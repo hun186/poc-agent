@@ -45,7 +45,7 @@ external client or SRA UI
 7. Existing low-level Requirement APIs remain backward compatible.
 8. Existing ES editor and Excel→SQL workflows remain operational.
 9. Product mutations that create work must be replay-safe.
-10. Do not add new persistent Product Task schema unless current Schedule identity is proven insufficient and Design v1 is revised before implementation.
+10. Product v1 intentionally extends the existing Requirement Schedule schema from v3 to v4 with only the reviewed `requirement_product_tasks` and `requirement_product_requests` control-plane tables; do not add other Product persistence without another design review.
 11. Do not silently widen roles. Reuse current `data_reader/data_editor/db_operator/superuser` hierarchy and existing denial-audit mechanism.
 12. Implementation follows RED → minimal GREEN → regression → commit at each task boundary.
 
@@ -100,6 +100,8 @@ product_e2e/
 Existing files modified only as required:
 
 ```text
+requirement_scheduler/migrations.py
+requirement_scheduler/store.py
 sra_api/main.py
 sra_api/routers/editor.py
 sra_api/static/editor.html
@@ -108,6 +110,8 @@ api/security/service_key_store.py
 docs/operations/*
 .codex/*
 ```
+
+The only planned persistence change is Schedule schema v3 → v4, adding `requirement_product_tasks` and `requirement_product_requests`. The Phase 1B Requirement schema remains unchanged.
 
 Avoid adding another frontend framework solely for this feature. Follow the current static HTML/JS/CSS architecture unless a separately reviewed UI migration exists.
 
@@ -146,13 +150,65 @@ If baseline is red before Product implementation, record and resolve/rebaseline 
 
 # Gate P1 — Product service façade
 
+## P1.0 Schedule schema v4 — Product Task and idempotency metadata
+
+**Files:** modify `requirement_scheduler/migrations.py`, `requirement_scheduler/store.py`, existing migration/store tests; create focused Product persistence tests if clearer.
+
+Design authority is Design v1 §§5.2, 5.3, and 15.
+
+Migrate current Schedule schema v3 → v4 transactionally and fail closed.
+
+Add `requirement_product_tasks` with:
+
+- `task_id` PK,
+- unique `schedule_id` FK to `requirement_schedules`,
+- unique `source_id` FK to Phase 1B `requirement_sources`,
+- immutable `execution_kind` checked to `once|recurring`,
+- `product_state` checked to `active|disabled`,
+- created/updated actor/timestamps.
+
+Add `requirement_product_requests` with:
+
+- principal kind/id,
+- operation,
+- idempotency key,
+- canonical request SHA-256,
+- durable request state,
+- nullable safe progress/result references,
+- safe error code,
+- timestamps,
+- unique `(principal_kind, principal_id, operation, idempotency_key)`.
+
+Tests must prove:
+
+- valid v3 migrates once to v4,
+- fresh bootstrap reaches v4,
+- malformed/unknown schema fails closed,
+- product task schedule/source uniqueness,
+- invalid execution kind/state rejected,
+- idempotency uniqueness and hash conflict,
+- no Product table duplicates Requirement snapshots, Schedule Versions/Runs, Handoff, Report Job, or artifact payloads,
+- catalog validator requires both new tables/keys/checks/FKs.
+
+**RED**
+
+```bash
+PYTHONPATH=. pytest -q tests/test_requirement_schedule_migrations.py tests/test_requirement_product_persistence.py --tb=short
+```
+
+**GREEN**
+
+Same command after minimal migration/store implementation.
+
+**Commit boundary:** one focused schema/persistence commit. Do not mix router/UI work.
+
 ## P1.1 Product presenters and identities
 
 **Files:** create `sra_api/services/requirement_product_service.py`, `tests/test_requirement_product_service.py`.
 
 Implement pure presenters first:
 
-- `task_id` backed by existing logical Schedule identity.
+- `task_id` loaded from `requirement_product_tasks`, with authoritative persisted `execution_kind`, `product_state`, task-owned `source_id`, and linked `schedule_id`.
 - product task view,
 - product run view,
 - neutral run status mapping,
@@ -200,27 +256,38 @@ Tests prove no source/snapshot/schedule/run mutation.
 
 ## P1.3 Product create orchestration — one-time
 
-Implement one transactionally/replay-safe product flow over existing authorities:
+Implement one durable-saga Product Task provisioning flow over existing authorities.
+
+**Authority:** brand-new Product Task provisioning is `superuser` only in v1 because it creates and enables a new Phase 1B Requirement source. Do not let `db_operator` or a service key bypass current source-enable authority.
 
 ```text
-validate request
-→ import Requirement snapshot
-→ create logical schedule/task
-→ create immutable schedule version
-→ approve under authorized product policy
-→ manual materialize one Run
+validate superuser + reserve idempotency ledger
+→ preview input
+→ create task-owned manual_upload source disabled
+→ enable source under existing superuser authority
+→ commit Requirement snapshot
+→ create requirement_product_tasks row
+→ create linked logical Schedule
+→ create immutable Schedule Version
+→ approve Schedule Version
+→ once: manual materialize one Run, recurring Schedule remains disabled
+→ recurring: enable Schedule
+→ mark durable product request succeeded
 → return task/run presenter
 ```
 
-Do not enable recurrence for a one-time task.
+The Product Task row persists `execution_kind`; one-time vs recurring must never be inferred from Schedule `enabled`.
 
 Tests:
 
-- exact snapshot binding,
+- lower roles cannot provision/enable the new source,
+- superuser provisioning uses the same or stricter source activation rule as the low-level Requirement API,
+- exact task/source/schedule/snapshot binding,
+- `execution_kind=once` remains distinguishable from a disabled recurring task,
 - manual Run uses server-selected active version/snapshot,
 - no direct Report Job call,
 - no duplicate work after ambiguous/replayed create,
-- failure before Run leaves recoverable deterministic state.
+- failure after any durable step can resume from `requirement_product_requests` without re-importing or rolling state backward.
 
 ## P1.4 Product create orchestration — recurring
 
@@ -287,19 +354,25 @@ Tests cover:
 
 Product router delegates parsing to Phase 1B.
 
-## P2.3 Idempotency
+## P2.3 Durable idempotency and saga resume
 
-**Files:** add `tests/test_requirement_product_idempotency.py`.
+**Files:** add `tests/test_requirement_product_idempotency.py`; use the reviewed `requirement_product_requests` v4 table from P1.0.
 
-For create, input replacement, and trigger:
+For task create, input replacement, and Run trigger:
 
-- missing required idempotency identity for automation mutation → 400/422 according to established API convention,
-- same key + same canonical request → same result,
-- same key + changed request → 409,
-- response loss + replay → existing product object,
-- concurrent duplicate → one durable logical mutation.
+- missing `Idempotency-Key` → safe validation failure,
+- first request reserves principal + operation + key + canonical request SHA before Phase 1B/1C mutation,
+- same key/hash + `succeeded` → reconstruct and return the existing result,
+- same key/hash + `in_progress` or `failed_recoverable` → resume from durable stage references,
+- same key + changed hash → 409 `requirement_idempotency_conflict`,
+- `failed_terminal` → same safe terminal result until a new key is supplied,
+- response loss + replay → existing product object/result,
+- concurrent duplicate → one ledger row and one logical mutation,
+- replaying an old input-replacement key after newer input exists must never create another snapshot or roll the active input backward.
 
-Prefer existing durable identities/storage. If a new idempotency table is required, STOP and return to design review with source evidence before migration.
+Canonical request hashing includes semantic payload plus uploaded source digest, never raw credentials or raw file bytes.
+
+The ledger is not polled by workers and is not a second execution queue.
 
 ## P2.4 Product error taxonomy
 
@@ -332,14 +405,16 @@ Acceptance matrix:
 |---|---:|---:|---:|---:|
 | list/view tasks/runs | yes | yes | yes | yes |
 | download allowed completed artifact | yes | yes | yes | yes |
-| preview input | no/default | yes or reviewed policy | yes | yes |
-| create/import task | no | no/default | yes | yes |
-| create draft schedule changes | no | no | yes | yes |
-| approve/enable recurring | no | no | no | yes |
-| disable recurring task | no | no | reviewed existing policy | yes |
+| preview input | no | no by default | yes | yes |
+| provision new Product Task/source | no | no | **no** | **yes** |
+| replace input on already active task/source | no | no | yes | yes |
+| create prospective draft schedule version | no | no | yes | yes |
+| approve/activate schedule version | no | no | no | yes |
+| enable/disable recurring task | no | no | no | yes |
+| trigger permitted Run on active task | no | no | yes | yes |
 | service-key management | no | no | no | yes |
 
-If current lower-level policy differs, preserve stricter authority and update this matrix during review.
+This deliberately preserves current Phase 1B source activation: a new source cannot be enabled/committed by `db_operator`. Product orchestration must not call the store as a lower-privilege principal to evade that rule.
 
 Denied actions must use existing authz audit.
 
@@ -350,9 +425,11 @@ Rebaseline `api.security.service_key_store` and current request-auth support.
 Add only through the existing scope validation mechanism:
 
 - `requirement:task:read`
-- `requirement:task:write`
+- `requirement:task:write` — update/replace input on an already activated pre-provisioned task only
 - `requirement:run:trigger`
 - `requirement:artifact:read`
+
+There is no service-key task-provisioning/source-activation scope in v1. A superuser must first provision and activate the Product Task. This keeps delegated automation separate from source activation authority.
 
 Tests prove:
 
@@ -511,7 +588,7 @@ Hard requirements:
 - no committed fixture dependency,
 - no E2E model prefix,
 - no semantic mock mode,
-- use Product API/service-key or real product auth,
+- use real Product auth: a superuser acceptance principal provisions the new Product Task, then a scoped service key may exercise the delegated automation path on that active task,
 - real LLM and real ES execution,
 - retrieve artifact through Product API.
 
