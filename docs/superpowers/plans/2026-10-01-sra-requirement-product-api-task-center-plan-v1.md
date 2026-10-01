@@ -169,7 +169,7 @@ Add `requirement_product_tasks` with:
 
 Add `requirement_product_requests` with:
 
-- principal kind/id,
+- principal kind/id; for human users persist the canonical username/account identity, while for service keys persist `AuthPrincipal.credential_id` / immutable stored `key_id` and never the key display name/subject,
 - operation,
 - idempotency key,
 - canonical request SHA-256,
@@ -187,6 +187,7 @@ Tests must prove:
 - product task schedule/source uniqueness,
 - invalid execution kind/state rejected,
 - idempotency uniqueness and hash conflict,
+- two distinct service keys with the same display name use distinct idempotency namespaces because ledger `principal_id` is immutable `key_id`,
 - no Product table duplicates Requirement snapshots, Schedule Versions/Runs, Handoff, Report Job, or artifact payloads,
 - catalog validator requires both new tables/keys/checks/FKs.
 
@@ -264,10 +265,14 @@ Implement one durable-saga Product Task provisioning flow over existing authorit
 validate superuser + reserve idempotency ledger
 → preview input
 → create task-owned manual_upload source disabled
+→ persist source_id in product request ledger
 → enable source under existing superuser authority
 → commit Requirement snapshot
-→ create requirement_product_tasks row
+→ persist snapshot_id in product request ledger
 → create linked logical Schedule
+→ persist schedule_id in product request ledger
+→ insert requirement_product_tasks row using existing source_id + schedule_id FK targets
+→ persist task_id in product request ledger
 → create immutable Schedule Version
 → approve Schedule Version
 → once: manual materialize one Run, recurring Schedule remains disabled
@@ -309,7 +314,15 @@ Implement:
 - recurrence/timezone/model/run-policy changes via new immutable Schedule Version,
 - input replacement via new Requirement snapshot.
 
-Tests prove historical Runs retain old bindings.
+Every `PATCH /v1/requirement-tasks/{task_id}` mutation uses the durable `task_update` Product request operation and requires `Idempotency-Key`. This applies even to simple metadata/state changes, and is mandatory for recurrence/timezone/model/run-policy updates so a lost response cannot create a duplicate immutable Schedule Version.
+
+Tests prove:
+
+- historical Runs retain old bindings,
+- same PATCH key/hash returns/resumes the original update,
+- same PATCH key with changed canonical request returns 409,
+- retry after response loss creates at most one new Schedule Version,
+- concurrent duplicate PATCH creates one durable logical update.
 
 # Gate P2 — Product API
 
@@ -358,10 +371,11 @@ Product router delegates parsing to Phase 1B.
 
 **Files:** add `tests/test_requirement_product_idempotency.py`; use the reviewed `requirement_product_requests` v4 table from P1.0.
 
-For task create, input replacement, and Run trigger:
+For task create, every task PATCH/update, input replacement, and Run trigger:
 
 - missing `Idempotency-Key` → safe validation failure,
 - first request reserves principal + operation + key + canonical request SHA before Phase 1B/1C mutation,
+- for service-key principals, the ledger uses `AuthPrincipal.credential_id` / immutable `key_id`; duplicate service-key display names must never share replay state,
 - same key/hash + `succeeded` → reconstruct and return the existing result,
 - same key/hash + `in_progress` or `failed_recoverable` → resume from durable stage references,
 - same key + changed hash → 409 `requirement_idempotency_conflict`,
@@ -437,7 +451,9 @@ Tests prove:
 - wrong scope denied,
 - revoked/expired key denied,
 - Handoff worker key not accepted merely because it is a service credential,
-- browser session never receives raw service key values.
+- browser session never receives raw service key values,
+- two active service keys may share the same human-readable name without sharing Product idempotency/replay state because their immutable `key_id` values differ,
+- Product request persistence maps a service principal to `AuthPrincipal.credential_id`, not `principal_id`/subject/name.
 
 If current service-key authentication is limited to Report Jobs and cannot safely protect Product routes, add a reviewed shared dependency rather than duplicate key parsing.
 
@@ -594,21 +610,35 @@ Hard requirements:
 
 ## P6.2 Product E2E flow
 
+The acceptance flow is intentionally split so it proves both human provisioning and delegated automation without weakening RBAC.
+
 ```text
-generate runtime XLSX/JSON
+SUPERUSER PROVISIONING
+generate runtime provisioning XLSX/JSON
 → Product Preview
-→ Product Create once-task
-→ receive task_id/run_id
-→ verify new snapshot binding
-→ wait run
-→ inspect Run Items
+→ Product Create one-time task/source
+→ receive active task_id
+
+SCOPED SERVICE-KEY AUTOMATION
+generate second runtime XLSX/JSON with distinct automation marker
+→ replace input on existing task with Idempotency-Key
+→ receive/verify replacement snapshot
+→ trigger Run with Idempotency-Key
+→ receive run_id
+→ verify Run binds replacement snapshot
+→ read task/run/items through Product API
+→ wait real Schedule/Handoff/Report Job execution
 → completed
-→ download DOCX
+→ download DOCX through artifact scope
 → validate ZIP/DOCX + digest
-→ verify unique input identity/evidence
+→ verify automation input identity/evidence
 ```
 
-The harness must fail if it discovers the committed Operator E2E fixture is the execution source.
+The harness must fail if:
+
+- it discovers the committed Operator E2E fixture is the execution source,
+- a service key can provision/enable a new Requirement source or brand-new Product Task,
+- the service-key automation phase cannot operate on the superuser-provisioned active task.
 
 ## P6.3 Product E2E evidence
 
@@ -732,7 +762,7 @@ The phase is complete only when:
 1. Product API supports preview/create/read/update/trigger/history/artifact flows.
 2. Product API uses existing Requirement Import + Schedule/Handoff authorities.
 3. Requirement Task Center is integrated in current SRA management navigation and auth.
-4. External service-key automation is least-privilege and audited.
+4. External service-key automation is least-privilege and audited: it operates on a superuser-provisioned active task for input replacement, trigger, read, and artifact access, and cannot provision/activate a new source/task.
 5. Runtime-generated Product E2E passes against real production dependencies.
 6. Browser E2E passes the integrated UI flow.
 7. Existing lower-level Requirement APIs and Operator E2E remain valid.
