@@ -251,7 +251,7 @@ def test_harness_omitted_external_mode_fails_closed_when_deployment_mode_missing
         harness.run()
 
     assert failure.value.stage == "RUNTIME_WORKERS"
-    assert result["acceptance"]["requested_mode"] == "deployment"
+    assert result["acceptance"]["requested_mode"] is None
     assert result["acceptance"]["deployed_mode"] is None
 
 
@@ -317,6 +317,36 @@ def test_summary_reports_effective_deployed_external_mode_when_cli_omits_it():
     assert "EXTERNAL_MODE = live" in summary
     assert "FRESH_LIVE_REQUIREMENT_E2E_PASS = YES" in summary
 
+
+def test_summary_reports_unresolved_when_cli_and_deployment_modes_are_missing():
+    from operator_e2e.test_requirement_schedule_e2e import _summary_text, parse_args
+
+    args = parse_args([])
+    result = {
+        "overall_status": "FAIL",
+        "failure_category": "external_capability_mode_mismatch",
+        "acceptance": {
+            "requested_mode": None,
+            "deployed_mode": None,
+            "remediation_hint": "set REQUIREMENT_E2E_EXTERNAL_MODE and restart API/workers",
+        },
+        "verification": {
+            "source_attestation": "VERIFIED",
+            "deployment_acceptance": "NOT_ESTABLISHED",
+        },
+    }
+
+    summary = _summary_text(result, args, "UNRESOLVED", ExitCode.PREFLIGHT)
+
+    assert "EXTERNAL_MODE = UNRESOLVED" in summary
+    assert "REQUESTED_EXTERNAL_MODE = \n" in summary
+    assert "DEPLOYED_EXTERNAL_MODE = \n" in summary
+
+
+def test_runbook_separates_release_acceptance_from_external_mode_assertion():
+    runbook = Path("docs/operations/requirement-automatic-operator-e2e.md").read_text(encoding="utf-8")
+    assert "Formal release/deployment acceptance requires `--verification release`" in runbook
+    assert "independent of whether `--external-mode` is omitted or supplied" in runbook
 
 def test_common_environment_example_is_safe_and_complete():
     example = Path("operator_e2e/e2e.env.example").read_text(encoding="utf-8")
