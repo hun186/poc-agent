@@ -218,3 +218,10 @@
 - New Product Task provisioning remains superuser-only because Phase 1B source enablement is already a superuser authority and commit requires an enabled source. `db_operator` may operate only within existing lower-level permissions, such as preview/input replacement on an active task/source and prospective draft schedule changes.
 - External service keys in v1 operate only on pre-provisioned active tasks; they do not gain source-activation/task-provisioning authority.
 
+### 2026-10-01 Product Task second review corrections
+
+- Product Task provisioning saga order now respects non-null foreign keys: after Requirement source/snapshot creation, create the linked Schedule first, persist `schedule_id` in `requirement_product_requests`, then insert `requirement_product_tasks` and persist `task_id`.
+- Product idempotency for service principals is keyed by immutable `AuthPrincipal.credential_id` / stored service-key `key_id`, never by human-readable subject/name; duplicate key names must remain separate replay namespaces.
+- Every Product Task PATCH/update is ledger-backed with operation `task_update` and requires `Idempotency-Key`, preventing duplicate immutable Schedule Versions after response loss/retry.
+- Product E2E is explicitly two-stage: superuser provisions/activates the task/source, then a scoped service key proves delegated input replacement, Run trigger, reads, and artifact retrieval on that active task.
+
