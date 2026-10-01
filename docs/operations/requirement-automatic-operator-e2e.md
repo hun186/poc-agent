@@ -365,3 +365,8 @@ JSON, so equal reviewed Git metadata with different package maps cannot pass. Re
 The operator-process lock is checkout/output-local (`fcntl` on POSIX, `msvcrt` for remote Windows),
 not a distributed global lock. Immutable fixture/run identity and drift detection remain the safe
 interference boundary. The Harness never launches the other mode automatically.
+If authenticated runtime evidence does not contain a valid frozen
+`live`/`auto`/`offline` mode, omission does not weaken validation: the
+harness still fails closed at `RUNTIME_WORKERS` and requires deployment
+configuration/restart.
+
