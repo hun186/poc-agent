@@ -263,3 +263,10 @@
 - Persist Product mutation idempotency in `requirement_product_requests` using principal + operation + key + canonical request hash and safe durable progress/result references. Treat multi-authority Product mutations as a resumable saga, not as blind retries.
 - Preserve existing Phase 1B activation RBAC: only superuser may provision/activate a new Product Task/source in v1. Service-key automation requires a pre-provisioned active task.
 
+## 2026-10-01 Product saga ordering and delegated automation identity
+
+- Create Schedule before inserting `requirement_product_tasks`; persist safe saga references after each successful cross-authority step so non-null FKs are always satisfied and replay can resume.
+- For Product request idempotency, human principals use canonical account identity; service principals use immutable `credential_id/key_id`. Never use the service-key display name/subject as an idempotency namespace.
+- Treat all Product Task PATCH mutations as durable `task_update` operations requiring `Idempotency-Key`, including schedule-changing updates that create immutable Schedule Versions.
+- Formal Product automation acceptance is split: superuser provisioning first, then least-privilege service-key operations on the active pre-provisioned task. Service keys do not provision/activate sources/tasks in v1.
+
