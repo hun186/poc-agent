@@ -177,8 +177,8 @@ Required fields:
 
 - `request_id` — server-generated primary key.
 - `principal_kind` — `user` or `service_key`.
-- `principal_id` — stable authenticated principal identifier; never a raw credential.
-- `operation` — bounded product operation name such as `task_create`, `input_replace`, or `run_trigger`.
+- `principal_id` — stable authenticated principal identifier; never a raw credential. For a human user this is the canonical username/account identity. For a service key this MUST be `AuthPrincipal.credential_id`, which is the immutable stored `key_id`; it MUST NOT use `AuthPrincipal.principal_id`, `subject`, or the human-readable key name because service-key names are not unique.
+- `operation` — bounded product operation name such as `task_create`, `task_update`, `input_replace`, or `run_trigger`.
 - `idempotency_key` — caller-supplied bounded key.
 - `request_sha256` — SHA-256 of the canonical semantic request, including input digest but not raw uploaded bytes.
 - `state` — `reserved`, `in_progress`, `succeeded`, `failed_recoverable`, or `failed_terminal`.
@@ -186,7 +186,7 @@ Required fields:
 - nullable safe `error_code`.
 - `created_at`, `updated_at`, `completed_at`.
 
-A unique key over `(principal_kind, principal_id, operation, idempotency_key)` owns replay semantics. The same key with a different `request_sha256` is a conflict. The same key/hash resumes or returns the existing durable result according to `state`; it never replays Phase 1B/1C writes blindly.
+A unique key over `(principal_kind, principal_id, operation, idempotency_key)` owns replay semantics. For `principal_kind=service_key`, `principal_id` is always the immutable service-key `key_id` copied from `AuthPrincipal.credential_id`; two distinct keys with the same display name therefore have independent idempotency namespaces. The same key with a different `request_sha256` is a conflict. The same key/hash resumes or returns the existing durable result according to `state`; it never replays Phase 1B/1C writes blindly.
 
 The ledger is a bounded product saga journal, not a second job queue. Workers do not poll it.
 
@@ -283,15 +283,16 @@ Server workflow:
 
 1. validate authentication, **superuser task-provisioning authority**, and reserve/resolve the durable idempotency request,
 2. preview/validate input,
-3. create the task-owned Phase 1B `manual_upload` source disabled,
+3. create the task-owned Phase 1B `manual_upload` source disabled and persist `source_id` in the request ledger,
 4. enable that source under the same existing superuser activation boundary used by the low-level Requirement API,
-5. commit the Requirement snapshot through Phase 1B,
-6. create the Product Task metadata and logical Schedule bound to that source,
-7. create the immutable Schedule Version,
-8. approve the Schedule Version under existing superuser authority,
-9. for `once`: materialize one manual Run without enabling recurrence,
-10. for `recurring`: enable the approved schedule,
-11. mark the idempotency ledger succeeded and return Product Task / first Run identity.
+5. commit the Requirement snapshot through Phase 1B and persist `snapshot_id` in the request ledger,
+6. create the linked logical Schedule first and persist `schedule_id` in the request ledger,
+7. insert `requirement_product_tasks` using the already-existing `source_id` and `schedule_id` foreign-key targets, then persist `task_id` in the request ledger,
+8. create the immutable Schedule Version,
+9. approve the Schedule Version under existing superuser authority,
+10. for `once`: materialize one manual Run without enabling recurrence,
+11. for `recurring`: enable the approved schedule,
+12. mark the idempotency ledger succeeded and return Product Task / first Run identity.
 
 Brand-new Product Task provisioning is superuser-only in v1 because a new Requirement source cannot be committed until it is enabled, and existing Requirement authority intentionally reserves source enablement to superusers. The Product façade MUST NOT call the store as a lower-privilege principal to bypass that rule.
 
@@ -339,6 +340,8 @@ Allowed changes are prospective only:
 - run policy.
 
 Any schedule-affecting change creates a new immutable Schedule Version.
+
+Every `PATCH /v1/requirement-tasks/{task_id}` mutation requires `Idempotency-Key` and uses the durable `task_update` ledger operation. This includes rename/state changes and especially recurrence/timezone/model/run-policy changes that create a new immutable Schedule Version. A transport retry with the same key/hash must return or resume the original update rather than create another version.
 
 Replacing Requirement input is a separate operation:
 
@@ -544,7 +547,7 @@ Do not expose the Operator E2E runtime-evidence endpoint to ordinary users. Task
 
 All product mutations that can create persistent work must be replay safe through the durable `requirement_product_requests` authority defined in §5.3.
 
-- Require `Idempotency-Key` for task create, input replacement, and Run trigger; UI clients generate one per explicit mutation and retain it across transport retries.
+- Require `Idempotency-Key` for task create, every task PATCH/update, input replacement, and Run trigger; UI clients generate one per explicit mutation and retain it across transport retries.
 - The server canonicalizes the semantic request and hashes it before the first Phase 1B/1C write.
 - Reserve the unique principal/operation/key row first.
 - Same principal/operation/key + same hash returns or resumes the recorded operation.
@@ -572,20 +575,31 @@ The existing Requirement Operator E2E remains the deployment/technical acceptanc
 
 Add a separate **Product API E2E** whose input does not depend on a committed repository fixture.
 
-Each Product E2E run must:
+Each Product E2E run is explicitly split across the two supported authorities:
 
-1. generate an input file or direct JSON payload at runtime with a unique marker,
-2. authenticate through the same product auth/service-key surface,
+**Provisioning phase — superuser principal**
+
+1. generate an initial input file or direct JSON payload at runtime with a unique provisioning marker,
+2. authenticate as the authorized superuser acceptance principal,
 3. call Product Preview,
-4. create a one-time Requirement Task,
-5. obtain `task_id` and `run_id`,
-6. verify the Run binds to the newly imported snapshot,
-7. wait through real Schedule/Handoff/Report Job execution,
-8. require real production LLM and Elasticsearch behavior,
-9. verify terminal Run/Run Item API state,
-10. download and validate DOCX/artifact evidence,
-11. prove the unique runtime input marker is represented in the stored Requirement identity/evidence expected by the test,
-12. clean up only reversible task state; never delete immutable run history merely to make the test clean.
+4. create and activate a one-time Requirement Product Task/source,
+5. obtain the pre-provisioned active `task_id`.
+
+**Delegated automation phase — scoped service key**
+
+6. create a second runtime-generated input with a distinct automation marker,
+7. authenticate with a dedicated service key using the Product scopes allowed for an already active task,
+8. replace the task input through `POST /v1/requirement-tasks/{task_id}/input` with durable idempotency,
+9. trigger a Run through `POST /v1/requirement-tasks/{task_id}/runs`,
+10. obtain `run_id` and verify the Run binds to the replacement snapshot,
+11. read task/run/Run Item status through scoped Product API access,
+12. wait through real Schedule/Handoff/Report Job execution,
+13. require real production LLM and Elasticsearch behavior,
+14. download and validate DOCX/artifact evidence through the scoped Product artifact API,
+15. prove the automation marker is represented in the stored Requirement identity/evidence expected by the test,
+16. clean up only reversible task state; never delete immutable run history merely to make the test clean.
+
+The Product E2E MUST NOT require a service key to create/enable a Requirement source or provision a brand-new Product Task.
 
 No `requirement-e2e:` model marker or semantic mock routing is permitted in Product E2E.
 
@@ -659,7 +673,7 @@ Product v1 is complete only when all of the following are true:
 1. Existing SRA login/RBAC controls the Requirement Task Center.
 2. Requirement navigation is integrated under the existing SRA management UI.
 3. A user can upload their own Excel/CSV/JSON, preview it, and create a task.
-4. An automation client can perform the same flow through Product API/service key.
+4. After a superuser provisions and activates a Product Task/source, a scoped service-key automation client can replace input, trigger Runs, read task/run state, and retrieve permitted artifacts without gaining task-provisioning/source-activation authority.
 5. One-time and recurring task creation reuse existing Schedule authority.
 6. Run status/history is visible without SQL/log inspection.
 7. Completed DOCX is retrievable through authenticated product history.
