@@ -174,7 +174,7 @@ Add `requirement_product_requests` with:
 - idempotency key,
 - canonical request SHA-256,
 - durable request state,
-- nullable safe progress/result references including `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, and `batch_run_id`,
+- nullable safe progress/result references including `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, and `batch_run_id`; these reservation columns are deliberately non-FK so IDs can be durably reserved before target rows exist,
 - safe error code,
 - timestamps,
 - unique `(principal_kind, principal_id, operation, idempotency_key)`.
@@ -187,6 +187,7 @@ Tests must prove:
 - product task schedule/source uniqueness,
 - invalid execution kind/state rejected,
 - idempotency uniqueness and hash conflict,
+- Product request reservation ID columns have no FK constraints to not-yet-created domain rows and are bounded/validated by the application,
 - two distinct service keys with the same display name use distinct idempotency namespaces because ledger `principal_id` is immutable `key_id`,
 - no Product table duplicates Requirement snapshots, Schedule Versions/Runs, Handoff, Report Job, or artifact payloads,
 - catalog validator requires both new tables/keys/checks/FKs.
@@ -216,6 +217,27 @@ Extend the successful/failed import authority so Product callers can preallocate
 
 - `import_run_id`
 - `snapshot_id` for the successful commit path.
+
+Planned backward-compatible signatures:
+
+```python
+RequirementImportService.commit(
+    ...,
+    import_run_id: str | None = None,
+    snapshot_id: str | None = None,
+)
+
+RequirementStore.commit_candidate(
+    ...,
+    import_run_id: str | None = None,
+    snapshot_id: str | None = None,
+)
+
+RequirementStore.record_failed_import(
+    ...,
+    import_run_id: str | None = None,
+)
+```
 
 Required behavior:
 
@@ -256,6 +278,17 @@ Required behavior:
 ### Manual Run authority
 
 Do not add Product-specific `batch_run_id` injection. Current manual materialization already uses unique `(schedule_id, trigger_request_id)` identity and returns an existing Run on replay. Product Run trigger derives a stable `trigger_request_id` from the durable Product request.
+
+
+For task-owned Requirement source, logical Schedule, and `requirement_product_tasks` creation, use an ensure-by-preallocated-ID pattern:
+
+1. ledger already contains the server-owned ID,
+2. read by that ID,
+3. absent → create with the exact ID,
+4. present + matching immutable ownership/config → treat as completed,
+5. present + mismatch → fail closed.
+
+This explicitly covers crashes after source/Schedule/Product-Task commit but before the Product request stage is advanced.
 
 **RED**
 
