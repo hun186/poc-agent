@@ -80,7 +80,7 @@ class Api:
 class Harness:
     PROGRESS_HEARTBEAT_SECONDS = 15
 
-    def __init__(self, config: E2EConfig, excel: Path, run_id: str, result: dict[str, Any], external_mode: str = "auto",
+    def __init__(self, config: E2EConfig, excel: Path, run_id: str, result: dict[str, Any], external_mode: str | None = None,
                  verification: str = "release"):
         self.config, self.excel, self.run_id, self.result = config, excel, run_id, result
         self.api = Api(config); self.enabled_schedule_id: str | None = None
@@ -438,10 +438,23 @@ class Harness:
             self.evidence_provider = RemoteDeploymentEvidenceProvider(self.api)
         deployment_evidence = self.evidence_provider.preflight(self.verification)
         acceptance = deployment_evidence.get("acceptance") or {}
-        if acceptance.get("requested_mode") != self.external_mode:
+        deployed_external_mode = acceptance.get("requested_mode")
+        if deployed_external_mode not in {"live", "auto", "offline"}:
             self.result["acceptance"] = {
                 "requested_mode": self.external_mode,
-                "deployed_mode": acceptance.get("requested_mode"),
+                "deployed_mode": deployed_external_mode,
+                "remediation_hint": "set REQUIREMENT_E2E_EXTERNAL_MODE and restart API/workers",
+            }
+            self.fail("external_capability_mode_mismatch", "RUNTIME_WORKERS", ExitCode.PREFLIGHT)
+        if self.external_mode is None:
+            # No CLI override: follow the authenticated mode already frozen in
+            # the running API/ReportJobWorker process. The harness never mutates
+            # deployment configuration.
+            self.external_mode = deployed_external_mode
+        elif deployed_external_mode != self.external_mode:
+            self.result["acceptance"] = {
+                "requested_mode": self.external_mode,
+                "deployed_mode": deployed_external_mode,
                 "remediation_hint": "set REQUIREMENT_E2E_EXTERNAL_MODE and restart API/workers",
             }
             self.fail("external_capability_mode_mismatch", "RUNTIME_WORKERS", ExitCode.PREFLIGHT)
@@ -498,13 +511,14 @@ Production/user Report Jobs are different: including normal
 Requirement -> Schedule -> Handoff jobs, they never use the E2E fixture or
 semantic mocks. They stay on the ordinary real LLM/Elasticsearch paths.
 
---external-mode must match the running deployment's
-REQUIREMENT_E2E_EXTERNAL_MODE. Changing this CLI option does not reconfigure
+If --external-mode is omitted, the harness uses the authenticated mode already
+frozen in the running deployment. If it is specified, it must match the running
+deployment's REQUIREMENT_E2E_EXTERNAL_MODE. Changing this CLI option does not reconfigure
 already-running API/workers; change the deployment setting and restart them.""",
     ); parser.add_argument("--mode", choices=("local", "remote"), default="local",
                            help="local: Linux deployment host; remote: Windows/POSIX operator workstation")
-    parser.add_argument("--external-mode", choices=("live", "auto", "offline"), default="auto",
-                        help="verified E2E test-job external policy only; production jobs never use E2E mocks")
+    parser.add_argument("--external-mode", choices=("live", "auto", "offline"), default=None,
+                        help="optional verified E2E policy assertion; omitted = use running deployment mode")
     parser.add_argument("--verification", choices=("release", "functional"), default="release",
                         help="release: strict source attestation; functional: record ordinary byte drift and run workflow")
     parser.add_argument("--excel", type=Path, default=DEFAULT_EXCEL,
@@ -568,6 +582,10 @@ def _validate_deployment_source(source: dict[str, Any], expected_fingerprint: st
 def _summary_text(result: dict[str, Any], args, classification: str, exit_code: ExitCode) -> str:
     verification = result.get("verification", {})
     functional_result = "PASS" if result.get("overall_status") == "PASS" else "FAIL"
+    acceptance = result.get("acceptance", {})
+    effective_external_mode = (
+        acceptance.get("requested_mode") or args.external_mode or "UNRESOLVED"
+    )
     summary = (
         f"REQUIREMENT_E2E = {result['overall_status']} / "
         f"{classification if result['overall_status'] == 'PASS' else result.get('failure_category', 'FAIL')}\n"
@@ -576,7 +594,7 @@ def _summary_text(result: dict[str, Any], args, classification: str, exit_code: 
         f"DEPLOYMENT_ACCEPTANCE = {verification.get('deployment_acceptance', 'NOT_ESTABLISHED')}\n"
         f"VERIFICATION_POLICY = {args.verification}\n"
         f"ACCEPTANCE_MODE = {args.mode}\n"
-        f"EXTERNAL_MODE = {args.external_mode}\n"
+        f"EXTERNAL_MODE = {effective_external_mode}\n"
         f"FRESH_LIVE_REQUIREMENT_E2E_PASS = "
         f"{'YES' if result['overall_status'] == 'PASS' and classification == 'FULL_LIVE' and verification.get('deployment_acceptance') == 'ESTABLISHED' else 'NO'}\n"
         f"EXIT_CODE = {int(exit_code)}\n"
@@ -584,8 +602,8 @@ def _summary_text(result: dict[str, Any], args, classification: str, exit_code: 
     if result.get("failure_category") == "external_capability_mode_mismatch":
         acceptance = result.get("acceptance", {})
         summary += (
-            f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode', '')}\n"
-            f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode', '')}\n"
+            f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode') or ''}\n"
+            f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode') or ''}\n"
             f"REMEDIATION_HINT = {acceptance.get('remediation_hint', '')}\n"
         )
     if result.get("failure_category") == "input_sha256_mismatch":
@@ -602,7 +620,7 @@ def _summary_text(result: dict[str, Any], args, classification: str, exit_code: 
 def main(argv=None) -> int:
     bootstrap_env(); args = parse_args(argv); run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     result = result_document(run_id, args.mode); started = time.monotonic(); harness = None; diagnostics = {"logs": {}}
-    result["acceptance"] = {"requested_mode": args.external_mode}
+    result["acceptance"] = ({"requested_mode": args.external_mode} if args.external_mode is not None else {})
     result["verification"] = {
         "policy": args.verification, "source_attestation": "UNRESOLVED",
         "deployment_acceptance": "NOT_ESTABLISHED",
@@ -717,8 +735,8 @@ def main(argv=None) -> int:
     if result.get("failed_stage"): print(f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}")
     if result.get("failure_category") == "external_capability_mode_mismatch":
         acceptance = result.get("acceptance", {})
-        print(f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode', '')}")
-        print(f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode', '')}")
+        print(f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode') or ''}")
+        print(f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode') or ''}")
         print(f"REMEDIATION_HINT = {acceptance.get('remediation_hint', '')}")
     elif result.get("failure_category") == "input_sha256_mismatch":
         input_evidence = result.get("input", {})

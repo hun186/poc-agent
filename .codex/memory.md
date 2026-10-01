@@ -197,3 +197,10 @@
 - Codex review found that `ContextVar` acceptance state was lost in `smolagents` LocalPythonExecutor worker threads. The corrective binds the verified-E2E bit to each fresh ES Tool instance and re-opens the E2E scope inside decorated `Tool.forward()` calls, avoiding any process-global fallback signal.
 - Regression coverage now includes production-vs-E2E singleton isolation, canonical Handoff production scope, offline Agent-turn integration, and an explicit ThreadPoolExecutor proof that the raw child thread lacks the ContextVar while the bound tool recreates it safely.
 - This environment still cannot resolve `github.com` for Git transport, so no local pytest result is claimed for this corrective; hosted Codex review and deployment/operator verification remain required.
+### 2026-10-01 E2E CLI follows deployed external mode by default
+
+- The Requirement operator harness no longer hard-codes CLI `--external-mode=auto` when the operator omits the option. It now reads authenticated runtime evidence and adopts the external mode already frozen in the running deployment.
+- An explicit `--external-mode live|auto|offline` remains a strict assertion: if it differs from the deployed frozen mode, the harness fails closed at `RUNTIME_WORKERS` before workflow mutation.
+- Evidence summaries report the effective deployed mode after runtime preflight, so a successful omitted-flag run against a live deployment records `EXTERNAL_MODE = live` and can still establish `FRESH_LIVE_REQUIREMENT_E2E_PASS = YES`.
+- Regression coverage verifies omitted-mode adoption, explicit mismatch rejection, help text, and effective-mode summary output.
+
