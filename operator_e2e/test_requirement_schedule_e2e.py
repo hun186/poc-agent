@@ -439,6 +439,13 @@ class Harness:
         deployment_evidence = self.evidence_provider.preflight(self.verification)
         acceptance = deployment_evidence.get("acceptance") or {}
         deployed_external_mode = acceptance.get("requested_mode")
+        if deployed_external_mode not in {"live", "auto", "offline"}:
+            self.result["acceptance"] = {
+                "requested_mode": self.external_mode or "deployment",
+                "deployed_mode": deployed_external_mode,
+                "remediation_hint": "set REQUIREMENT_E2E_EXTERNAL_MODE and restart API/workers",
+            }
+            self.fail("external_capability_mode_mismatch", "RUNTIME_WORKERS", ExitCode.PREFLIGHT)
         if self.external_mode is None:
             # No CLI override: follow the authenticated mode already frozen in
             # the running API/ReportJobWorker process. The harness never mutates
