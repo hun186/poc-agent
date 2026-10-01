@@ -441,7 +441,7 @@ class Harness:
         deployed_external_mode = acceptance.get("requested_mode")
         if deployed_external_mode not in {"live", "auto", "offline"}:
             self.result["acceptance"] = {
-                "requested_mode": self.external_mode or "deployment",
+                "requested_mode": self.external_mode,
                 "deployed_mode": deployed_external_mode,
                 "remediation_hint": "set REQUIREMENT_E2E_EXTERNAL_MODE and restart API/workers",
             }
@@ -585,7 +585,7 @@ def _summary_text(result: dict[str, Any], args, classification: str, exit_code: 
     functional_result = "PASS" if result.get("overall_status") == "PASS" else "FAIL"
     acceptance = result.get("acceptance", {})
     effective_external_mode = (
-        acceptance.get("requested_mode") or args.external_mode or "deployment"
+        acceptance.get("requested_mode") or args.external_mode or "UNRESOLVED"
     )
     summary = (
         f"REQUIREMENT_E2E = {result['overall_status']} / "
@@ -603,8 +603,8 @@ def _summary_text(result: dict[str, Any], args, classification: str, exit_code: 
     if result.get("failure_category") == "external_capability_mode_mismatch":
         acceptance = result.get("acceptance", {})
         summary += (
-            f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode', '')}\n"
-            f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode', '')}\n"
+            f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode') or ''}\n"
+            f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode') or ''}\n"
             f"REMEDIATION_HINT = {acceptance.get('remediation_hint', '')}\n"
         )
     if result.get("failure_category") == "input_sha256_mismatch":
@@ -736,8 +736,8 @@ def main(argv=None) -> int:
     if result.get("failed_stage"): print(f"FAILED_STAGE = {result['failed_stage']}\nFAILURE_CATEGORY = {result['failure_category']}")
     if result.get("failure_category") == "external_capability_mode_mismatch":
         acceptance = result.get("acceptance", {})
-        print(f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode', '')}")
-        print(f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode', '')}")
+        print(f"REQUESTED_EXTERNAL_MODE = {acceptance.get('requested_mode') or ''}")
+        print(f"DEPLOYED_EXTERNAL_MODE = {acceptance.get('deployed_mode') or ''}")
         print(f"REMEDIATION_HINT = {acceptance.get('remediation_hint', '')}")
     elif result.get("failure_category") == "input_sha256_mismatch":
         input_evidence = result.get("input", {})
