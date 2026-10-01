@@ -250,3 +250,9 @@
 - Omitting `--external-mode` means “use the authenticated deployed mode”; explicitly supplying the option means “assert that the deployment is in this mode.” Explicit disagreement remains fail closed.
 - This is an operator UX change only. It does not let the harness reconfigure API/workers and does not alter production Report Job dependency selection or E2E mock isolation.
 
+## 2026-10-01 Integrate Requirement automation into the existing SRA operations console
+
+- Treat Requirement automation as another module of the existing SRA management product, not a standalone administration site. Reuse current navigation, Auth/RBAC, audit, and visual shell.
+- Place the planned Requirement Task Center under the existing 匯入管理 domain alongside Excel→SQL tooling, while preserving ES 資料庫 and 系統/帳號管理 as existing peer domains.
+- Build a stable Product API façade for external automation and UI use, but keep Phase 1B Requirement Import and Phase 1C Schedule/Handoff as the underlying authorities. Do not duplicate their persistence or execution engines.
+- Keep Product E2E distinct from Operator acceptance E2E: the former proves an external client/user workflow from runtime-supplied input; the latter remains deployment/technical acceptance.
