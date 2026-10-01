@@ -211,3 +211,10 @@
 - Existing ES structured-data editing and Excel→SQL management remain separate modules under the same management shell. Under 匯入管理, the planned Requirement section adds 要項任務中心, 建立要項任務, 執行紀錄, and 要項來源與版本.
 - The Product API is an orchestration/presentation façade over existing Phase 1B Requirement Import and Phase 1C Schedule/Handoff/Report Job authorities. It must not create a second scheduler/queue/auth system or permit production jobs to enter E2E mock routing.
 - Product E2E is separate from Operator E2E: it must generate runtime input, submit through the Product API, execute against real LLM/ES, and retrieve the resulting artifact without relying on the committed Operator E2E fixture.
+
+### 2026-10-01 Product Task review corrections
+
+- Design review proved Schedule identity alone is insufficient for Product semantics. Product v1 now explicitly plans Schedule schema v4 with `requirement_product_tasks` (task/source/schedule binding plus immutable `execution_kind`) and `requirement_product_requests` (principal-scoped durable idempotency/saga recovery).
+- New Product Task provisioning remains superuser-only because Phase 1B source enablement is already a superuser authority and commit requires an enabled source. `db_operator` may operate only within existing lower-level permissions, such as preview/input replacement on an active task/source and prospective draft schedule changes.
+- External service keys in v1 operate only on pre-provisioned active tasks; they do not gain source-activation/task-provisioning authority.
+
