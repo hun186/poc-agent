@@ -161,6 +161,7 @@ Required fields:
 - `source_id` — unique FK to the Phase 1B Requirement source owned by this task.
 - `execution_kind` — required immutable discriminator: `once` or `recurring`.
 - `product_state` — `active` or `disabled`; this is product operability and is distinct from the underlying recurring Schedule `enabled` bit.
+- `revision` — monotonic BIGINT-style product mutation revision, initialized to 1 and incremented exactly once by every successfully finalized Product Task PATCH/update.
 - `created_by`, `created_at`, `updated_by`, `updated_at`.
 
 `execution_kind` is immutable in v1. Changing a task from one-time to recurring, or vice versa, creates a new Product Task rather than rewriting historical semantics.
@@ -183,6 +184,8 @@ Required fields:
 - `request_sha256` — SHA-256 of the canonical semantic request, including input digest but not raw uploaded bytes.
 - `state` — `reserved`, `in_progress`, `succeeded`, `failed_recoverable`, or `failed_terminal`.
 - nullable safe progress/result references: `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, `batch_run_id`. These reservation columns are intentionally **not foreign keys** because Product must durably store a server-owned ID before the target authority row exists; target ownership/semantics are verified by the Product service and underlying authority on resume.
+- nullable `base_task_revision` and `result_task_revision` for `task_update` compare-and-set/finalization.
+- nullable bounded `safe_result_json` containing only the whitelisted Product response snapshot needed for exact replay; never raw input, prompts, credentials, paths, or upstream error bodies.
 - nullable safe `error_code`.
 - `created_at`, `updated_at`, `completed_at`.
 
@@ -402,7 +405,21 @@ Allowed changes are prospective only:
 
 Any schedule-affecting change creates a new immutable Schedule Version.
 
-Every `PATCH /v1/requirement-tasks/{task_id}` mutation requires `Idempotency-Key` and uses the durable `task_update` ledger operation. This includes rename/state changes and especially recurrence/timezone/model/run-policy changes that create a new immutable Schedule Version. For a schedule-changing update, the Product service preallocates and persists `schedule_version_id` in the request ledger before calling `ScheduleStore.create_version(..., schedule_version_id=...)`. A transport retry with the same key/hash must return or resume that same version rather than create another draft.
+Every `PATCH /v1/requirement-tasks/{task_id}` mutation requires `Idempotency-Key` and uses the durable `task_update` ledger operation.
+
+When the request is first reserved, the Product service locks the Product Task long enough to record its current `revision` as `base_task_revision`. For a schedule-changing update it also preallocates/persists `schedule_version_id` before calling `ScheduleStore.create_version(..., schedule_version_id=...)`.
+
+The Product path MUST NOT finalize rename or enabled-state changes by calling the current standalone `rename_schedule()` / `set_enabled()` methods and then marking the ledger succeeded afterwards. Instead, Schedule/Product persistence exposes one Product-update finalization transaction that:
+
+1. locks the `requirement_product_requests` row, `requirement_product_tasks` row, linked Schedule, and any preallocated draft Schedule Version needed by the request,
+2. returns the stored `safe_result_json` immediately if the Product request is already `succeeded`,
+3. requires current Product Task `revision == base_task_revision`,
+4. if the revision differs, does **not** apply any requested old values; it marks the request terminal with `requirement_task_conflict` and, when safe, retires/abandons only the request-owned unapproved draft version,
+5. if the revision matches, applies the requested rename/product-state/recurring-enabled changes; validates and activates the request-owned preallocated Schedule Version when applicable; emits the existing Schedule audit-outbox events plus Product audit metadata; increments Product Task `revision` exactly once,
+6. stores `result_task_revision` and bounded `safe_result_json`, and changes the Product request to `succeeded`,
+7. commits all state mutation, audit outbox, revision increment, and Product-request success in the **same SQL transaction**.
+
+Therefore there is no crash window in which an in-place Product Task change is committed but its idempotency request remains unknown. If the transaction rolls back, neither the task change nor success marker exists. If it commits and the HTTP response is lost, replay sees `succeeded` and returns the stored result without reapplying old state. If a newer different-key update wins before an older unfinished request resumes, the older request fails the revision CAS instead of rolling the task backward.
 
 Replacing Requirement input is a separate operation:
 
@@ -614,11 +631,14 @@ All product mutations that can create persistent work must be replay safe throug
 - Same principal/operation/key + same hash returns or resumes the recorded operation.
 - Same principal/operation/key + different hash returns 409 `requirement_idempotency_conflict`.
 - `in_progress` or `failed_recoverable` replay resumes from persisted preallocated authority IDs and safe stage references instead of re-importing, creating another Schedule Version, or rolling input backward.
-- `succeeded` replay reconstructs the response from authoritative Product/Requirement/Schedule IDs.
+- `succeeded` replay returns the bounded stored `safe_result_json` when an exact prior mutable-result snapshot is required (notably `task_update`), otherwise it may reconstruct immutable/create results from authoritative Product/Requirement/Schedule IDs.
 - `failed_terminal` replay returns the same safe terminal error until the caller uses a new key.
 - Raw uploaded bytes, credentials, prompts, and upstream error bodies are never stored in the ledger.
 
 Cross-authority Product operations are therefore an explicit durable saga. Each step must be individually idempotent or recoverable by server-owned identity before advancing the ledger stage.
+
+
+For Product Task PATCH/update, durable identity alone is not sufficient because rename/enabled state are mutable in place. These updates additionally use the Product Task revision CAS and same-transaction finalization defined in §7.4. This prevents both crash-after-commit replay and stale old requests from overwriting newer successful changes.
 
 Retrying a failed execution creates a new Run:
 
@@ -690,8 +710,8 @@ Browser E2E proves navigation, RBAC, upload, status rendering, and artifact down
 - The Phase 1B Requirement schema is unchanged by Product v1.
 - The existing Requirement Schedule schema is currently version 3 at this design baseline. Product v1 explicitly requires a reviewed **v3 → v4** migration in `sra_schedule`.
 - Schedule schema v4 adds only:
-  - `requirement_product_tasks` for durable Product Task identity, task-owned source/schedule binding, and authoritative `execution_kind`.
-  - `requirement_product_requests` for durable principal-scoped idempotency/saga recovery.
+  - `requirement_product_tasks` for durable Product Task identity, task-owned source/schedule binding, authoritative `execution_kind`, and monotonic Product `revision`.
+  - `requirement_product_requests` for durable principal-scoped idempotency/saga recovery, including `base_task_revision`, `result_task_revision`, and bounded `safe_result_json` for mutation replay.
 - v4 migration and structural validation must be transactional/fail-closed and extend the existing Schedule schema catalog validator. Unknown/malformed versions remain fatal.
 - These product tables are control-plane metadata only. They do not duplicate Requirement snapshots, Schedule Versions, Runs/Run Items, Handoff submissions, Report Jobs, or artifacts.
 - Product v1 also requires backward-compatible authority API extensions, not new domain tables: Phase 1B commit/failed-import recording accepts preallocated `import_run_id` / `snapshot_id`, and Schedule Version creation accepts preallocated `schedule_version_id`, each with same-ID/same-semantics replay behavior.
