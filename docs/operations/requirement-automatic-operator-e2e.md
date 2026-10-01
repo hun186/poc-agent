@@ -124,8 +124,11 @@ python operator_e2e/test_requirement_schedule_e2e.py \
 Use an explicit `--external-mode` only when you want the operator command to
 assert a specific deployed mode, for example strict `live` acceptance.
 
-Omit the option (or pass `--verification release`) for formal release/deployment
-acceptance.
+Formal release/deployment acceptance requires `--verification release` (or
+omitting `--verification`, because `release` is its default). This requirement
+is independent of whether `--external-mode` is omitted or supplied. A
+`--verification functional` run can prove functional workflow behavior, but it
+always reports `DEPLOYMENT_ACCEPTANCE = NOT_ESTABLISHED`.
 
 ### External capability policy
 
