@@ -12,7 +12,7 @@
 ### Future architecture and product work
 
 - Job Task JT-1 and LangGraph integration remain NOT STARTED and require new reviewed designs/plans.
-- Requirement Task Center/operator workflow remains FUTURE / NOT STARTED; preserve import-versus-execution authorization separation and never expose Handoff credentials or raw artifact paths to browsers.
+- Requirement Product API + Task Center now has docs-only Design v1 and Implementation Plan v1 (`2026-10-01-sra-requirement-product-api-task-center-*`); implementation remains NOT STARTED. It must integrate with the existing SRA `/editor` management shell/Auth/RBAC, preserve import-versus-execution authorization separation, and never expose Handoff credentials or raw artifact paths to browsers.
 - Consider Report Job retention, metrics, cancel/retry/webhook, shared queue/object storage, and HA/exactly-once strategy.
 - Continue structured retrieval/event-cluster improvements and reference-text backfill/content coverage work.
 - Consider stronger per-process worker loaded-module attestation only through a separately reviewed IPC design.
