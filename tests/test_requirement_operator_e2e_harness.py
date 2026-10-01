@@ -147,6 +147,9 @@ def test_complete_requirement_process_environment_does_not_require_env_file(tmp_
 def test_cli_help_explains_e2e_external_modes_and_production_boundary(capsys):
     from operator_e2e.test_requirement_schedule_e2e import parse_args
 
+    assert parse_args([]).external_mode is None
+    assert parse_args(["--external-mode", "live"]).external_mode == "live"
+
     with pytest.raises(SystemExit) as exc:
         parse_args(["--help"])
 
@@ -154,7 +157,105 @@ def test_cli_help_explains_e2e_external_modes_and_production_boundary(capsys):
     help_text = capsys.readouterr().out
     assert "External capability modes apply ONLY to verified Operator E2E test jobs" in help_text
     assert "Production/user Report Jobs are different" in help_text
+    assert "If --external-mode is omitted" in help_text
+    assert "uses the authenticated mode already" in help_text
     assert "Changing this CLI option does not reconfigure" in help_text
+
+
+def test_harness_omitted_external_mode_adopts_authenticated_deployment_mode(tmp_path, monkeypatch):
+    import operator_e2e.test_requirement_schedule_e2e as module
+
+    class FakeApi:
+        token = "token"
+        def get(self, path, **_kwargs):
+            if path == "/healthz":
+                return {"status": "ok"}
+            if path in ("/v1/requirement-import-profiles", "/v1/requirement-schedules"):
+                return {"items": []}
+            raise AssertionError(path)
+
+    class FakeEvidenceProvider:
+        def __init__(self, *_args, **_kwargs):
+            pass
+        def preflight(self, _verification):
+            return {
+                "acceptance": {"requested_mode": "live", "classification": "FULL_LIVE"},
+                "workers": {
+                    "handoff": {"alive": True, "identity_verified": True},
+                    "schedule": {"alive": True, "identity_verified": True},
+                },
+                "deployment_source": {
+                    "identity_verified": True,
+                    "provenance_fingerprint": "f" * 64,
+                },
+            }
+
+    result = result_document("run")
+    result["operator_source"] = {
+        "identity_verified": True,
+        "provenance_fingerprint": "f" * 64,
+    }
+    config = SimpleNamespace(
+        mode="local", artifact_root=tmp_path, output_dir=tmp_path,
+        token="token", password=None, expected_runtime_sha=None,
+    )
+    harness = module.Harness(config, tmp_path / "unused.xlsx", "run", result)
+    harness.api = FakeApi()
+    monkeypatch.setattr(module, "LocalDeploymentEvidenceProvider", FakeEvidenceProvider)
+    monkeypatch.setattr(harness, "validate_input", lambda: (_ for _ in ()).throw(RuntimeError("stop-after-mode")))
+    monkeypatch.setattr(module, "_validate_deployment_source", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(RuntimeError, match="stop-after-mode"):
+        harness.run()
+
+    assert harness.external_mode == "live"
+    assert result["acceptance"]["requested_mode"] == "live"
+    runtime_stage = next(item for item in result["stages"] if item["name"] == "RUNTIME_WORKERS")
+    assert runtime_stage["status"] == StageStatus.PASS
+
+
+def test_harness_explicit_external_mode_still_fails_closed_on_mismatch(tmp_path, monkeypatch):
+    import operator_e2e.test_requirement_schedule_e2e as module
+
+    class FakeApi:
+        token = "token"
+        def get(self, path, **_kwargs):
+            if path == "/healthz":
+                return {"status": "ok"}
+            if path in ("/v1/requirement-import-profiles", "/v1/requirement-schedules"):
+                return {"items": []}
+            raise AssertionError(path)
+
+    class FakeEvidenceProvider:
+        def __init__(self, *_args, **_kwargs):
+            pass
+        def preflight(self, _verification):
+            return {
+                "acceptance": {"requested_mode": "live", "classification": "FULL_LIVE"},
+                "workers": {
+                    "handoff": {"alive": True, "identity_verified": True},
+                    "schedule": {"alive": True, "identity_verified": True},
+                },
+            }
+
+    result = result_document("run")
+    config = SimpleNamespace(
+        mode="local", artifact_root=tmp_path, output_dir=tmp_path,
+        token="token", password=None, expected_runtime_sha=None,
+    )
+    harness = module.Harness(config, tmp_path / "unused.xlsx", "run", result, external_mode="auto")
+    harness.api = FakeApi()
+    monkeypatch.setattr(module, "LocalDeploymentEvidenceProvider", FakeEvidenceProvider)
+
+    with pytest.raises(HarnessFailure, match="external_capability_mode_mismatch") as failure:
+        harness.run()
+
+    assert failure.value.stage == "RUNTIME_WORKERS"
+    assert result["acceptance"] == {
+        "requested_mode": "auto",
+        "deployed_mode": "live",
+        "remediation_hint": "set REQUIREMENT_E2E_EXTERNAL_MODE and restart API/workers",
+    }
 
 
 def test_common_environment_example_is_safe_and_complete():
