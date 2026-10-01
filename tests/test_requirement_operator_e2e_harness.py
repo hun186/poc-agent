@@ -214,6 +214,47 @@ def test_harness_omitted_external_mode_adopts_authenticated_deployment_mode(tmp_
     assert runtime_stage["status"] == StageStatus.PASS
 
 
+def test_harness_omitted_external_mode_fails_closed_when_deployment_mode_missing(tmp_path, monkeypatch):
+    import operator_e2e.test_requirement_schedule_e2e as module
+
+    class FakeApi:
+        token = "token"
+        def get(self, path, **_kwargs):
+            if path == "/healthz":
+                return {"status": "ok"}
+            if path in ("/v1/requirement-import-profiles", "/v1/requirement-schedules"):
+                return {"items": []}
+            raise AssertionError(path)
+
+    class FakeEvidenceProvider:
+        def __init__(self, *_args, **_kwargs):
+            pass
+        def preflight(self, _verification):
+            return {
+                "acceptance": {},
+                "workers": {
+                    "handoff": {"alive": True, "identity_verified": True},
+                    "schedule": {"alive": True, "identity_verified": True},
+                },
+            }
+
+    result = result_document("run")
+    config = SimpleNamespace(
+        mode="local", artifact_root=tmp_path, output_dir=tmp_path,
+        token="token", password=None, expected_runtime_sha=None,
+    )
+    harness = module.Harness(config, tmp_path / "unused.xlsx", "run", result)
+    harness.api = FakeApi()
+    monkeypatch.setattr(module, "LocalDeploymentEvidenceProvider", FakeEvidenceProvider)
+
+    with pytest.raises(HarnessFailure, match="external_capability_mode_mismatch") as failure:
+        harness.run()
+
+    assert failure.value.stage == "RUNTIME_WORKERS"
+    assert result["acceptance"]["requested_mode"] == "deployment"
+    assert result["acceptance"]["deployed_mode"] is None
+
+
 def test_harness_explicit_external_mode_still_fails_closed_on_mismatch(tmp_path, monkeypatch):
     import operator_e2e.test_requirement_schedule_e2e as module
 
