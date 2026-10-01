@@ -225,3 +225,10 @@
 - Every Product Task PATCH/update is ledger-backed with operation `task_update` and requires `Idempotency-Key`, preventing duplicate immutable Schedule Versions after response loss/retry.
 - Product E2E is explicitly two-stage: superuser provisions/activates the task/source, then a scoped service key proves delegated input replacement, Run trigger, reads, and artifact retrieval on that active task.
 
+### 2026-10-01 Product saga authority-level crash recovery
+
+- Product idempotency now requires server-owned durable IDs to be preallocated and written to `requirement_product_requests` before cross-authority commits. Required reservation refs include `import_run_id`, `snapshot_id`, and `schedule_version_id` in addition to source/schedule/task IDs.
+- Phase 1B Product-compatible commit paths must accept caller-supplied `import_run_id/snapshot_id` and same-ID replay safely; failed-import recording uses the preallocated import_run_id. ScheduleStore.create_version must accept optional caller-supplied `schedule_version_id` and return the same version on same-ID/same-config replay.
+- Product request reservation-reference columns intentionally have no domain FKs because the IDs must be persisted before target rows exist. Resume verifies ownership/config semantics before treating an existing target as complete.
+- Manual Run materialization already has authority-level idempotency via unique schedule_id + trigger_request_id; Product trigger reuses that instead of injecting batch_run_id.
+
