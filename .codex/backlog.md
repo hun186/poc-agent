@@ -42,3 +42,5 @@
 - 2026-09-23: Push the deterministic LLM contract corrective to existing PR #271 when GitHub access is available, verify the hosted runtime SHA, then regenerate and commit provenance separately before deployment review.
 
 - 2026-09-23: After the semantic-input corrective is hosted and deployed, rerun authorized functional E2E and inspect runtime Agent traces for Gaza, Taiwan Strait/gray-zone, and US-China/Indo-Pacific semantic preservation. Formal release acceptance still requires regenerated hosted provenance and `--verification release`.
+- 2026-10-01: PR #277 re-review corrections require Schedule-before-Product-Task FK ordering, service-key idempotency bound to immutable key_id, idempotent task PATCH/update, and two-stage Product E2E (superuser provisioning followed by scoped service-key automation). Implementation remains NOT STARTED.
+
