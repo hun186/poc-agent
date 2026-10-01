@@ -182,7 +182,7 @@ Required fields:
 - `idempotency_key` — caller-supplied bounded key.
 - `request_sha256` — SHA-256 of the canonical semantic request, including input digest but not raw uploaded bytes.
 - `state` — `reserved`, `in_progress`, `succeeded`, `failed_recoverable`, or `failed_terminal`.
-- nullable safe progress/result references: `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, `batch_run_id`.
+- nullable safe progress/result references: `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, `batch_run_id`. These reservation columns are intentionally **not foreign keys** because Product must durably store a server-owned ID before the target authority row exists; target ownership/semantics are verified by the Product service and underlying authority on resume.
 - nullable safe `error_code`.
 - `created_at`, `updated_at`, `completed_at`.
 
@@ -200,7 +200,28 @@ Before invoking Phase 1B Requirement commit, the Product service allocates and p
 - `import_run_id`
 - `snapshot_id`
 
-The Phase 1B authority must be extended so `RequirementImportService.commit(...)` / `RequirementStore.commit_candidate(...)` can receive those server-owned IDs. The same applies to failed-import recording: the preallocated `import_run_id` is the identity of that Product import attempt whether it commits a snapshot or terminates as a recorded failed import.
+The Phase 1B authority must be extended so the backward-compatible signatures accept those server-owned IDs:
+
+```python
+RequirementImportService.commit(
+    ...,
+    import_run_id: str | None = None,
+    snapshot_id: str | None = None,
+)
+
+RequirementStore.commit_candidate(
+    ...,
+    import_run_id: str | None = None,
+    snapshot_id: str | None = None,
+)
+
+RequirementStore.record_failed_import(
+    ...,
+    import_run_id: str | None = None,
+)
+```
+
+Omitted IDs preserve current behavior. The same preallocated `import_run_id` is the identity of that Product import attempt whether it commits a snapshot or terminates as a recorded failed import. A reserved `snapshot_id` is materialized only for a successful snapshot commit and is never reassigned to another request.
 
 Authority-level replay rule:
 
@@ -224,6 +245,9 @@ This makes the crash window between authority commit and Product-ledger progress
 `ScheduleStore.create_schedule(..., schedule_id=...)` already supports caller-supplied Schedule identity and should be used the same way: preallocate/persist `schedule_id` before create. Product `task_id` and task-owned `source_id` are likewise preallocated and persisted before their corresponding inserts.
 
 Manual Run materialization is different: the current Schedule authority already provides a durable uniqueness/replay key through `(schedule_id, trigger_request_id)`. Product Run trigger should derive a stable trigger request identity from the durable Product request and reuse that existing authority-level idempotency rather than require a new caller-supplied `batch_run_id`.
+
+
+For other preallocated create steps that already accept caller IDs (task-owned Requirement source and logical Schedule), Product orchestration uses a common **ensure-by-ID** rule: look up the preallocated ID first; if absent, create with that exact ID; if present with matching immutable ownership/config semantics, treat the step as complete; if present with mismatched semantics, fail closed. Inserting `requirement_product_tasks` follows the same rule. This makes a crash after source/Schedule/Product-Task commit but before ledger stage advance replay safe without weakening existing authorities.
 
 
 ### 5.5 Run
