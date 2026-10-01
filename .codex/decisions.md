@@ -277,3 +277,9 @@
 - Product request reserved identity columns are non-FK by design so reservation precedes target creation; Product resume checks exact ownership/config semantics and fails closed on mismatch.
 - Reuse the existing manual trigger_request_id uniqueness for Run materialization instead of introducing Product batch_run_id injection.
 
+## 2026-10-02 Use Task revision CAS and atomic ledger finalization for mutable PATCH
+
+- Add monotonic `revision` to `requirement_product_tasks`; reserve `base_task_revision` for every `task_update` request.
+- Finalize Product Task rename/state/schedule activation and Product request success in one Schedule SQL transaction. Persist bounded `safe_result_json` and result revision for exact replay.
+- A stale unfinished request whose base revision no longer matches fails closed with `requirement_task_conflict` and does not reapply old state. This prevents old idempotency-key retries from overwriting newer successful updates.
+
