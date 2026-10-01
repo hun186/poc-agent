@@ -174,7 +174,7 @@ Add `requirement_product_requests` with:
 - idempotency key,
 - canonical request SHA-256,
 - durable request state,
-- nullable safe progress/result references,
+- nullable safe progress/result references including `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, and `batch_run_id`,
 - safe error code,
 - timestamps,
 - unique `(principal_kind, principal_id, operation, idempotency_key)`.
@@ -202,6 +202,69 @@ PYTHONPATH=. pytest -q tests/test_requirement_schedule_migrations.py tests/test_
 Same command after minimal migration/store implementation.
 
 **Commit boundary:** one focused schema/persistence commit. Do not mix router/UI work.
+
+
+## P1.0A Authority-level caller-supplied identities
+
+The Product ledger alone is not enough if an underlying authority can commit a random durable ID before the ledger knows it. Add backward-compatible optional server-owned identity parameters before Product orchestration.
+
+### Phase 1B Requirement Import
+
+**Files:** `data_ingestion/requirements/store.py`, `data_ingestion/requirements/service.py`, focused Requirement tests.
+
+Extend the successful/failed import authority so Product callers can preallocate:
+
+- `import_run_id`
+- `snapshot_id` for the successful commit path.
+
+Required behavior:
+
+- no supplied IDs → preserve all existing low-level behavior exactly;
+- supplied IDs absent → commit using those exact IDs;
+- supplied `import_run_id/snapshot_id` already represent the same source/profile/input SHA semantics → return the existing terminal result without importing again or changing the active snapshot;
+- supplied identity exists with different semantics → fail closed;
+- failed-import recording uses the preallocated `import_run_id` and is same-ID replay safe;
+- replay of an old Product input-replacement request after a newer snapshot is active returns the old request's existing result and MUST NOT reactivate that old snapshot.
+
+Add crash-window regression tests simulating:
+
+1. authority commit succeeds,
+2. Product progress write is lost,
+3. same Product request re-enters the authority with the persisted preallocated IDs,
+4. no duplicate import/snapshot/version rows are created and active state is not rolled backward.
+
+### Schedule Version authority
+
+**Files:** `requirement_scheduler/store.py`, Schedule tests.
+
+Extend:
+
+```python
+create_version(..., schedule_version_id: str | None = None)
+```
+
+Required behavior:
+
+- omitted ID → preserve existing random-ID behavior;
+- supplied absent ID → create with that exact ID;
+- supplied existing ID + same schedule/config digest → return existing version;
+- supplied existing ID + mismatched schedule/config → fail closed;
+- replay after authority commit but before Product progress update creates no second draft/version.
+
+`create_schedule(..., schedule_id=...)` already supports caller-supplied identity; Product orchestration must use it rather than generating a Schedule ID inside the store.
+
+### Manual Run authority
+
+Do not add Product-specific `batch_run_id` injection. Current manual materialization already uses unique `(schedule_id, trigger_request_id)` identity and returns an existing Run on replay. Product Run trigger derives a stable `trigger_request_id` from the durable Product request.
+
+**RED**
+
+```bash
+PYTHONPATH=. pytest -q   tests/test_requirement_import*.py   tests/test_requirement_schedule*.py   tests/test_requirement_product_idempotency.py   --tb=short
+```
+
+**Commit boundary:** authority compatibility/idempotency changes are reviewed before Product service orchestration.
+
 
 ## P1.1 Product presenters and identities
 
@@ -264,18 +327,19 @@ Implement one durable-saga Product Task provisioning flow over existing authorit
 ```text
 validate superuser + reserve idempotency ledger
 → preview input
-→ create task-owned manual_upload source disabled
-→ persist source_id in product request ledger
+→ preallocate + persist source_id
+→ preallocate + persist import_run_id + snapshot_id
+→ preallocate + persist schedule_id
+→ preallocate + persist task_id
+→ preallocate + persist initial schedule_version_id
+→ create task-owned manual_upload source disabled using source_id
 → enable source under existing superuser authority
-→ commit Requirement snapshot
-→ persist snapshot_id in product request ledger
-→ create linked logical Schedule
-→ persist schedule_id in product request ledger
-→ insert requirement_product_tasks row using existing source_id + schedule_id FK targets
-→ persist task_id in product request ledger
-→ create immutable Schedule Version
+→ commit Requirement import using import_run_id + snapshot_id
+→ create linked logical Schedule using schedule_id
+→ insert requirement_product_tasks using task_id + existing source/schedule FK targets
+→ create immutable Schedule Version using schedule_version_id
 → approve Schedule Version
-→ once: manual materialize one Run, recurring Schedule remains disabled
+→ once: manual materialize one Run using stable trigger_request_id; recurring Schedule remains disabled
 → recurring: enable Schedule
 → mark durable product request succeeded
 → return task/run presenter
@@ -292,7 +356,9 @@ Tests:
 - manual Run uses server-selected active version/snapshot,
 - no direct Report Job call,
 - no duplicate work after ambiguous/replayed create,
-- failure after any durable step can resume from `requirement_product_requests` without re-importing or rolling state backward.
+- failure after any durable step can resume from `requirement_product_requests` using preallocated authority IDs without re-importing, duplicating Schedule Versions, or rolling state backward.
+- crash after Phase 1B commit but before Product progress update replays the same `import_run_id/snapshot_id` and returns the existing snapshot.
+- crash after Schedule Version commit but before Product progress update replays the same `schedule_version_id` and returns the existing version.
 
 ## P1.4 Product create orchestration — recurring
 
@@ -314,7 +380,7 @@ Implement:
 - recurrence/timezone/model/run-policy changes via new immutable Schedule Version,
 - input replacement via new Requirement snapshot.
 
-Every `PATCH /v1/requirement-tasks/{task_id}` mutation uses the durable `task_update` Product request operation and requires `Idempotency-Key`. This applies even to simple metadata/state changes, and is mandatory for recurrence/timezone/model/run-policy updates so a lost response cannot create a duplicate immutable Schedule Version.
+Every `PATCH /v1/requirement-tasks/{task_id}` mutation uses the durable `task_update` Product request operation and requires `Idempotency-Key`. For any schedule-changing PATCH, preallocate and persist `schedule_version_id` before invoking the Schedule authority, then call `create_version(..., schedule_version_id=...)`. This applies even when the response is lost after the Schedule DB commit; replay must address the same version identity rather than create another draft.
 
 Tests prove:
 
@@ -322,6 +388,7 @@ Tests prove:
 - same PATCH key/hash returns/resumes the original update,
 - same PATCH key with changed canonical request returns 409,
 - retry after response loss creates at most one new Schedule Version,
+- crash after `create_version()` commit but before Product progress update reuses the persisted preallocated `schedule_version_id`,
 - concurrent duplicate PATCH creates one durable logical update.
 
 # Gate P2 — Product API
@@ -374,13 +441,15 @@ Product router delegates parsing to Phase 1B.
 For task create, every task PATCH/update, input replacement, and Run trigger:
 
 - missing `Idempotency-Key` → safe validation failure,
-- first request reserves principal + operation + key + canonical request SHA before Phase 1B/1C mutation,
+- first request reserves principal + operation + key + canonical request SHA and all required server-owned durable IDs before the corresponding Phase 1B/1C mutation,
 - for service-key principals, the ledger uses `AuthPrincipal.credential_id` / immutable `key_id`; duplicate service-key display names must never share replay state,
 - same key/hash + `succeeded` → reconstruct and return the existing result,
-- same key/hash + `in_progress` or `failed_recoverable` → resume from durable stage references,
+- same key/hash + `in_progress` or `failed_recoverable` → resume from durable stage references and preallocated authority IDs (`import_run_id`, `snapshot_id`, `schedule_id`, `task_id`, `schedule_version_id` as applicable),
 - same key + changed hash → 409 `requirement_idempotency_conflict`,
 - `failed_terminal` → same safe terminal result until a new key is supplied,
 - response loss + replay → existing product object/result,
+- crash after Requirement import commit but before ledger stage advance → same preallocated import/snapshot identity is recovered without duplicate import,
+- crash after Schedule Version commit but before ledger stage advance → same preallocated version identity is recovered without duplicate draft,
 - concurrent duplicate → one ledger row and one logical mutation,
 - replaying an old input-replacement key after newer input exists must never create another snapshot or roll the active input backward.
 
