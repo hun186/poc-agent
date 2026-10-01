@@ -513,9 +513,8 @@ semantic mocks. They stay on the ordinary real LLM/Elasticsearch paths.
 
 If --external-mode is omitted, the harness uses the authenticated mode already
 frozen in the running deployment. If it is specified, it must match the running
-deployment's REQUIREMENT_E2E_EXTERNAL_MODE. Changing this CLI option does not
-reconfigure already-running API/workers; change the deployment setting and
-restart them.""",
+deployment's REQUIREMENT_E2E_EXTERNAL_MODE. Changing this CLI option does not reconfigure
+already-running API/workers; change the deployment setting and restart them.""",
     ); parser.add_argument("--mode", choices=("local", "remote"), default="local",
                            help="local: Linux deployment host; remote: Windows/POSIX operator workstation")
     parser.add_argument("--external-mode", choices=("live", "auto", "offline"), default=None,
