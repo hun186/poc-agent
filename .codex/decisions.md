@@ -270,3 +270,10 @@
 - Treat all Product Task PATCH mutations as durable `task_update` operations requiring `Idempotency-Key`, including schedule-changing updates that create immutable Schedule Versions.
 - Formal Product automation acceptance is split: superuser provisioning first, then least-privilege service-key operations on the active pre-provisioned task. Service keys do not provision/activate sources/tasks in v1.
 
+## 2026-10-01 Preallocate cross-authority Product saga IDs before commit
+
+- For Product operations spanning Requirement and Schedule authorities, durable identity must be known before an authority can commit. Preallocate/persist import_run_id + snapshot_id before Requirement commit and schedule_version_id before Schedule version creation.
+- Extend existing authorities backward-compatibly with optional caller-supplied IDs and same-ID/same-semantics replay. Omitted IDs preserve existing low-level behavior.
+- Product request reserved identity columns are non-FK by design so reservation precedes target creation; Product resume checks exact ownership/config semantics and fails closed on mismatch.
+- Reuse the existing manual trigger_request_id uniqueness for Run materialization instead of introducing Product batch_run_id injection.
+
