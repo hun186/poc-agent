@@ -244,3 +244,9 @@
 - Do not use a process-global or thread-global fallback flag to make semantic mocks visible to `smolagents` worker threads; concurrent production jobs must never be able to observe E2E mock authority.
 - Carry only a boolean verified-E2E execution marker on the per-Agent ES Tool instances created inside the Report Job's acceptance scope. Each decorated `Tool.forward()` re-opens the ContextVar scope inside whatever worker thread actually executes it.
 - Normal canonical Handoff provenance alone is not test provenance. Only the reserved E2E marker plus persisted canonical Handoff provenance activates the verified E2E job scope; ordinary scheduled production jobs remain real-only.
+## 2026-10-01 Treat E2E external-mode CLI as an optional assertion
+
+- Deployment runtime evidence is authoritative for the already-running E2E external capability mode. Do not impose a separate CLI default that can disagree with a correctly configured deployment.
+- Omitting `--external-mode` means “use the authenticated deployed mode”; explicitly supplying the option means “assert that the deployment is in this mode.” Explicit disagreement remains fail closed.
+- This is an operator UX change only. It does not let the harness reconfigure API/workers and does not alter production Report Job dependency selection or E2E mock isolation.
+
