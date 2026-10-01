@@ -112,7 +112,8 @@ functional run reports `FUNCTIONAL_RESULT = PASS`, `SOURCE_ATTESTATION =
 MISMATCH`, and `DEPLOYMENT_ACCEPTANCE = NOT_ESTABLISHED`; external capability
 classification remains separate and does not imply release acceptance.
 
-For iterative deployment testing:
+For iterative deployment testing, the external mode may be omitted to follow the
+mode already frozen in the deployment:
 
 ```bash
 python operator_e2e/test_requirement_schedule_e2e.py \
@@ -120,24 +121,32 @@ python operator_e2e/test_requirement_schedule_e2e.py \
   --verification functional
 ```
 
+Use an explicit `--external-mode` only when you want the operator command to
+assert a specific deployed mode, for example strict `live` acceptance.
+
 Omit the option (or pass `--verification release`) for formal release/deployment
 acceptance.
 
 ### External capability policy
 
-Pass `--external-mode live|auto|offline` (default `auto`). This setting is
-an **Operator E2E test policy only**. It does not select a fallback policy for
-ordinary production/user reports. A normal Report Job — including a normal
-Requirement -> Schedule -> Handoff job — always stays on the ordinary real LLM
-and production Elasticsearch paths. E2E semantic mocks and the dedicated E2E
-fixture index are available only inside a verified E2E test-job execution scope.
+`--external-mode live|auto|offline` is an optional assertion for an
+**Operator E2E test policy only**. When the option is omitted, the harness adopts
+the mode reported by authenticated runtime evidence from the already-running
+deployment. When the option is explicitly supplied, it must match the deployed
+mode or the harness fails closed before mutation. This setting does not select a
+fallback policy for ordinary production/user reports. A normal Report Job —
+including a normal Requirement -> Schedule -> Handoff job — always stays on the
+ordinary real LLM and production Elasticsearch paths. E2E semantic mocks and
+the dedicated E2E fixture index are available only inside a verified E2E
+test-job execution scope.
 
-The deployment must have the same `REQUIREMENT_E2E_EXTERNAL_MODE` value before
-the API and workers start. The API process that owns `ReportJobWorker` resolves
-the E2E plan during lifespan startup, before a Report Job can be claimed. Both
-local and remote harnesses read that process's authenticated runtime evidence;
-they never mutate their own environment as a substitute for configuring the
-running deployment. The harness rejects a requested/deployed-mode mismatch.
+The deployment must have `REQUIREMENT_E2E_EXTERNAL_MODE` configured before the
+API and workers start. The API process that owns `ReportJobWorker` resolves the
+E2E plan during lifespan startup, before a Report Job can be claimed. Both local
+and remote harnesses read that process's authenticated runtime evidence; they
+never mutate their own environment as a substitute for configuring the running
+deployment. Omitting the CLI option follows that frozen mode; explicitly
+supplying a different mode remains a fail-closed mismatch.
 
 For `live` and `auto`, Elasticsearch acceptance uses the real configured ES
 transport but an acceptance-only index selected by `REQUIREMENT_E2E_ES_INDEX`
