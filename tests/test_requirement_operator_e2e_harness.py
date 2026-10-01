@@ -258,6 +258,25 @@ def test_harness_explicit_external_mode_still_fails_closed_on_mismatch(tmp_path,
     }
 
 
+def test_summary_reports_effective_deployed_external_mode_when_cli_omits_it():
+    from operator_e2e.test_requirement_schedule_e2e import _summary_text, parse_args
+
+    args = parse_args([])
+    result = {
+        "overall_status": "PASS",
+        "acceptance": {"requested_mode": "live", "classification": "FULL_LIVE"},
+        "verification": {
+            "source_attestation": "VERIFIED",
+            "deployment_acceptance": "ESTABLISHED",
+        },
+    }
+
+    summary = _summary_text(result, args, "FULL_LIVE", ExitCode.PASS)
+
+    assert "EXTERNAL_MODE = live" in summary
+    assert "FRESH_LIVE_REQUIREMENT_E2E_PASS = YES" in summary
+
+
 def test_common_environment_example_is_safe_and_complete():
     example = Path("operator_e2e/e2e.env.example").read_text(encoding="utf-8")
     for name in (
