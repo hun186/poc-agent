@@ -135,3 +135,8 @@
 
 - `git ls-remote https://github.com/hun186/poc-agent.git HEAD` failed with `Could not resolve host: github.com`, so the repository cannot be cloned into this execution container for pytest.
 - Hosted GitHub connector state remains available for exact branch/PR review and edits. Regression tests were updated in the hosted branch, but no local pytest PASS is claimed from this environment; rely on hosted review/status plus authorized deployment verification.
+## 2026-10-01 E2E CLI UX local verification limitation
+
+- The hosted branch for the deployed-mode CLI default could be edited and compared through the GitHub connector, but direct Git transport from the execution container still failed with `Could not resolve host: github.com`.
+- Focused pytest could therefore not be executed locally from a fresh clone in this environment. Regression tests are committed for omitted-mode adoption, explicit mismatch rejection, missing deployed-mode fail-close, help text, and summary output; hosted review/status is required before merge.
+
