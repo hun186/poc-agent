@@ -256,3 +256,10 @@
 - Place the planned Requirement Task Center under the existing 匯入管理 domain alongside Excel→SQL tooling, while preserving ES 資料庫 and 系統/帳號管理 as existing peer domains.
 - Build a stable Product API façade for external automation and UI use, but keep Phase 1B Requirement Import and Phase 1C Schedule/Handoff as the underlying authorities. Do not duplicate their persistence or execution engines.
 - Keep Product E2E distinct from Operator acceptance E2E: the former proves an external client/user workflow from runtime-supplied input; the latter remains deployment/technical acceptance.
+
+## 2026-10-01 Persist Product Task kind and idempotency in Schedule schema v4
+
+- Product Task identity is distinct from Schedule identity. Persist `execution_kind=once|recurring` and task/source/schedule binding in `requirement_product_tasks`; never infer one-time versus disabled-recurring from Schedule `enabled`.
+- Persist Product mutation idempotency in `requirement_product_requests` using principal + operation + key + canonical request hash and safe durable progress/result references. Treat multi-authority Product mutations as a resumable saga, not as blind retries.
+- Preserve existing Phase 1B activation RBAC: only superuser may provision/activate a new Product Task/source in v1. Service-key automation requires a pre-provisioned active task.
+
