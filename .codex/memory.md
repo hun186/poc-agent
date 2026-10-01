@@ -232,3 +232,9 @@
 - Product request reservation-reference columns intentionally have no domain FKs because the IDs must be persisted before target rows exist. Resume verifies ownership/config semantics before treating an existing target as complete.
 - Manual Run materialization already has authority-level idempotency via unique schedule_id + trigger_request_id; Product trigger reuses that instead of injecting batch_run_id.
 
+### 2026-10-02 Product Task mutable PATCH replay safety
+
+- Product Task metadata/state PATCHes now use monotonic Task `revision` plus ledger `base_task_revision` CAS. The final Product mutation transaction atomically applies rename/enabled/version activation, writes audit outbox, increments revision, stores bounded safe_result_json/result revision, and marks the Product request succeeded.
+- Product PATCH routes must not sequence existing low-level `rename_schedule()` / `set_enabled()` and then mark the ledger afterward. Those low-level APIs remain unchanged; Product routes use a new atomic finalizer in the Schedule store.
+- If a newer different-key update succeeds before an older unfinished request resumes, the older request fails revision CAS and cannot roll Task state backward. Succeeded replays return stored safe_result_json without reapplying mutable values.
+
