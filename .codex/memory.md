@@ -204,3 +204,10 @@
 - Evidence summaries report the effective deployed mode after runtime preflight, so a successful omitted-flag run against a live deployment records `EXTERNAL_MODE = live` and can still establish `FRESH_LIVE_REQUIREMENT_E2E_PASS = YES`.
 - Regression coverage verifies omitted-mode adoption, explicit mismatch rejection, help text, and effective-mode summary output.
 
+### 2026-10-01 Requirement Product API + Task Center planning
+
+- Added docs-only Design v1 and Implementation Plan v1 for a production-facing Requirement Product API and integrated Requirement Task Center. Implementation is NOT STARTED.
+- The Task Center is part of the existing SRA management application and reuses the current /editor navigation, bearer-session Auth/RBAC, audit conventions, and role hierarchy; no second login/site is planned.
+- Existing ES structured-data editing and Excel→SQL management remain separate modules under the same management shell. Under 匯入管理, the planned Requirement section adds 要項任務中心, 建立要項任務, 執行紀錄, and 要項來源與版本.
+- The Product API is an orchestration/presentation façade over existing Phase 1B Requirement Import and Phase 1C Schedule/Handoff/Report Job authorities. It must not create a second scheduler/queue/auth system or permit production jobs to enter E2E mock routing.
+- Product E2E is separate from Operator E2E: it must generate runtime input, submit through the Product API, execute against real LLM/ES, and retrieve the resulting artifact without relying on the committed Operator E2E fixture.
