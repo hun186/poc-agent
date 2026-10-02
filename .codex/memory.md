@@ -252,3 +252,9 @@
 - input_replace requests persist base_snapshot_id at first reservation. Phase 1B commit accepts expected_base_snapshot_id and, for an uncommitted reserved import, compares it against locked active_snapshot_id before writing. Mismatch is requirement_input_conflict; already-committed same-ID replay is recognized before CAS and returns the existing result.
 - Concurrency tests must use separate connections/barriers for provisioning-vs-low-level-write and stale-uncommitted input replacement races.
 
+### 2026-10-02 Recover committed Product imports before Requirement preparation
+
+- For Product commits with preallocated import_run_id/snapshot_id, RequirementImportService.commit must query persisted terminal identity before _prepare(), source acquisition, normalization/classification, candidate.has_errors, record_failed_import, or base-snapshot CAS.
+- This is necessary for delayed replay: A commits S1, B later commits S2, then A retries. Re-running _prepare against B's newer Requirement versions can classify A stale and must not occur. A returns its original S1 result while active snapshot remains S2.
+- Regression tests explicitly fail if _prepare is invoked during a delayed same-ID committed replay.
+
