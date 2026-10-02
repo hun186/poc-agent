@@ -258,3 +258,7 @@
 - This is necessary for delayed replay: A commits S1, B later commits S2, then A retries. Re-running _prepare against B's newer Requirement versions can classify A stale and must not occur. A returns its original S1 result while active snapshot remains S2.
 - Regression tests explicitly fail if _prepare is invoked during a delayed same-ID committed replay.
 
+### 2026-10-02 Named pre-prepare import recovery helper
+
+- The implementation plan now names a read-only RequirementStore.recover_preallocated_import_result(source_id, import_run_id, snapshot_id) helper. RequirementImportService.commit calls it before _prepare; only an absent persisted identity may proceed to _prepare and commit_candidate/base_snapshot CAS.
+
