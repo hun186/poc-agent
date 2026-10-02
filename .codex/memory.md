@@ -238,3 +238,10 @@
 - Product PATCH routes must not sequence existing low-level `rename_schedule()` / `set_enabled()` and then mark the ledger afterward. Those low-level APIs remain unchanged; Product routes use a new atomic finalizer in the Schedule store.
 - If a newer different-key update succeeds before an older unfinished request resumes, the older request fails revision CAS and cannot roll Task state backward. Succeeded replays return stored safe_result_json without reapplying mutable values.
 
+### 2026-10-02 Product-owned low-level mutation fences
+
+- Product-owned Schedule/source resources are read-only through retained public low-level HTTP mutation routes. Schedule PATCH, version create/approve, and manual-run POST return 409 requirement_product_owned_schedule; task-owned Requirement source PATCH/import return 409 requirement_product_owned_source.
+- Low-level GET/list/history and Requirement preview remain available; non-Product Schedule/source mutation behavior is unchanged.
+- The guard is a public API/service-boundary ownership check. Product orchestration continues to use reviewed internal store operations and the Product atomic finalizer; do not globally disable store methods.
+- This closes cross-API races where an operator could otherwise mutate Product-owned Schedule/source state without incrementing Product Task revision or participating in Product idempotency.
+
