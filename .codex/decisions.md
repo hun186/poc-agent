@@ -304,3 +304,9 @@
 
 - Use a narrow read-only store recovery helper at RequirementImportService.commit entry. Do not place same-ID replay detection only inside commit_candidate because _prepare may already classify an older replay as stale after a newer replacement.
 
+## 2026-10-02 Hide and lock Product Tasks while provisioning
+
+- Add provisioning to Product Task lifecycle. Partial task rows are durable recovery anchors but are not user-operable resources.
+- All normal Product read/mutation/service-key surfaces gate provisioning before request reservation; only the original task_create request can resume.
+- Final visibility is atomic with create success: verify required Schedule/version/run evidence, transition provisioning→active, persist create result, and mark task_create succeeded in one Schedule transaction.
+
