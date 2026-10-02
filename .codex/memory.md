@@ -269,3 +269,10 @@
 - Only replay/resume of the same owning task_create request may continue a provisioning Task. A Product-create finalizer atomically verifies initial version/approval plus once-run or recurring-enable evidence, flips product_state to active, stores bounded create safe_result_json, and marks task_create succeeded.
 - Required concurrency test pauses create after Task insertion, proves other Product surfaces cannot observe/mutate it, then resumes the same create and exposes the Task only after finalization commits.
 
+### 2026-10-02 Atomic initial execution release + Run presenter provisioning gate
+
+- Product create no longer enables recurring Schedule or materializes the one-time initial Run before finalization. Both execution-release actions happen inside finalize_product_task_create's Schedule SQL transaction together with provisioning→active, bounded create safe_result_json, and task_create=succeeded.
+- Before finalizer commit: recurring Schedule remains disabled, no one-time initial Run exists, so scheduler/Handoff workers cannot execute a hidden provisioning Task.
+- Product Run list/detail/items/artifact/Word presenters resolve the owning Product Task and omit/reject provisioning owners. Service-key artifact/read scopes do not bypass this gate.
+- Concurrency regression runs scheduler/Handoff workers while create is paused immediately before finalization and proves no execution or Product Task/Run/history/artifact visibility occurs until atomic commit.
+
