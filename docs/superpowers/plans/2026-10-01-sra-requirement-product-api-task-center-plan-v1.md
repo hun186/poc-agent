@@ -483,6 +483,59 @@ Tests prove:
 - if a newer different-key PATCH succeeds before an older unfinished request resumes, the old request fails CAS and cannot roll back name/enabled/model/recurrence state,
 - a succeeded old request replay after later updates returns its stored `safe_result_json` rather than reapplying old values.
 
+
+## P1.6 Product ownership mutation fences
+
+**Files:** `sra_api/routers/requirement_schedules.py`, `sra_api/routers/requirements.py`, Product ownership lookup in `sra_api/services/requirement_product_service.py` or a narrow shared dependency, plus focused router/service regression tests.
+
+Once `requirement_product_tasks` owns a Schedule/source pair, public low-level HTTP writes must no longer mutate those resources outside Product revision/idempotency.
+
+### Product-owned Schedule
+
+Before mutation, resolve Product ownership by exact `schedule_id`. If owned, return HTTP 409 with:
+
+```json
+{"detail":{"code":"requirement_product_owned_schedule"}}
+```
+
+Fence these existing endpoints:
+
+- `PATCH /v1/requirement-schedules/{schedule_id}`,
+- `POST /v1/requirement-schedules/{schedule_id}/versions`,
+- `POST /v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve`,
+- `POST /v1/requirement-schedules/{schedule_id}/runs`.
+
+Do **not** fence:
+
+- schedule GET/list,
+- run-history GET/list,
+- creation/mutation of a Schedule that is not Product-owned.
+
+The ownership check belongs at the public API/service boundary. Do not make `ScheduleStore.create_version()`, materialization, or the new Product finalizer globally reject Product-owned Schedules, because Product orchestration itself is the authorized mutation path.
+
+### Product-owned Requirement source
+
+Resolve ownership by exact `source_id`. If owned, return HTTP 409 / `requirement_product_owned_source` from:
+
+- `PATCH /v1/requirement-sources/{source_id}`,
+- `POST /v1/requirement-sources/{source_id}/import`.
+
+Keep source GET/list and preview available. Import-profile administration remains unchanged.
+
+### Required cross-API regressions
+
+Tests must prove:
+
+- reserve Product PATCH at Task revision N → attempt low-level Schedule rename/enable/version-create/version-approve/manual-run → each rejects and changes no state,
+- reserve Product PATCH at revision N → low-level Product-owned source PATCH/import rejects and active snapshot does not move,
+- then Product finalization at revision N can still proceed normally,
+- non-Product Schedule/source low-level mutations retain current RBAC/behavior,
+- Product-owned read endpoints remain usable,
+- rejected low-level write does not increment Task revision or mutate Product request state,
+- Product internal orchestration can still call the reviewed store operations directly.
+
+This is the cross-API race closure required for Task revision CAS to be authoritative.
+
 # Gate P2 — Product API
 
 ## P2.1 Router and schemas
@@ -506,7 +559,7 @@ GET  /v1/requirement-runs/{run_id}/artifacts
 GET  /v1/requirement-runs/{run_id}/items/{run_item_id}/word
 ```
 
-Do not remove or repurpose current low-level APIs.
+Do not remove current low-level APIs. Their intentional Product-ownership behavior is: reads remain available; mutation routes reject Product-owned Schedule/source identities with stable 409 codes, while non-Product resources retain existing behavior.
 
 ## P2.2 Multipart and direct JSON input
 
@@ -565,6 +618,8 @@ Stable safe codes at minimum:
 - `requirement_run_unavailable`
 - `requirement_artifact_not_ready`
 - `requirement_dependency_unavailable`
+- `requirement_product_owned_schedule`
+- `requirement_product_owned_source`
 
 No raw ODBC/HTTP/LLM/Python exception text in Product API responses.
 
@@ -853,6 +908,8 @@ PYTHONPATH=. pytest -q   tests/test_requirement_product_*.py   tests/test_requir
 
 Then the repository's normal full suite and compile/static checks.
 
+Explicitly include cross-API ownership-fence regression coverage for `requirements.py` and `requirement_schedules.py`: Product-owned low-level writes reject, Product-owned reads pass, and non-Product low-level behavior remains unchanged.
+
 Update:
 
 - `.codex/api_contract.md`
@@ -902,6 +959,7 @@ Every PR:
 | integrated browser E2E | P7 |
 | no E2E mock leakage | P0/P6/P8 |
 | existing ES/Excel→SQL/Auth regressions preserved | P8 |
+| Product-owned low-level mutation fence + non-Product compatibility | P1/P2/P8 |
 
 ## 7. Explicit future work
 
@@ -928,6 +986,6 @@ The phase is complete only when:
 4. External service-key automation is least-privilege and audited: it operates on a superuser-provisioned active task for input replacement, trigger, read, and artifact access, and cannot provision/activate a new source/task.
 5. Runtime-generated Product E2E passes against real production dependencies.
 6. Browser E2E passes the integrated UI flow.
-7. Existing lower-level Requirement APIs and Operator E2E remain valid.
+7. Existing lower-level Requirement/Schedule APIs and Operator E2E remain valid, with Product-owned resources read-only through low-level HTTP mutation surfaces and non-Product resources retaining their prior mutation behavior.
 8. Existing SRA ES editor, Excel→SQL management, account management, and Report Job regressions are green.
 9. Documentation allows an operator to maintain the system without direct SQL/log inspection for normal operations.
