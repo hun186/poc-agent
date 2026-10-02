@@ -231,7 +231,9 @@ Omitted IDs preserve current behavior. The same preallocated `import_run_id` is 
 
 Authority-level replay rule:
 
-- The authority first checks whether the supplied `import_run_id` / `snapshot_id` already represent this same Product import. If so, it verifies source/profile/input-digest semantics and returns that existing terminal result **before** applying any base-snapshot CAS; this is the normal lost-response/post-commit replay path.
+- When server-owned `import_run_id` / `snapshot_id` are supplied, `RequirementImportService.commit(...)` MUST call a narrow store recovery lookup **before `_prepare()`, source acquisition, normalization/classification, candidate error handling, stale/anomaly diagnostics, failed-import recording, or base-snapshot CAS**.
+- The recovery lookup proves that the persisted `import_run_id` belongs to the requested `source_id`, is terminal, and—when committed—links to exactly the supplied `snapshot_id`. Product-layer replay has already matched the durable request's `request_sha256`, so these server-owned IDs cannot be rebound to a different semantic request.
+- If that existing terminal identity is found, return its original safe import result immediately. Do not re-read current Requirement versions and do not reclassify the old payload against newer state.
 - If the supplied identities do not yet exist and `expected_base_snapshot_id` is provided, the same Requirement SQL transaction locks the target `requirement_sets` row with `UPDLOCK,HOLDLOCK` and requires its current `active_snapshot_id == expected_base_snapshot_id` before inserting import/snapshot rows or advancing active state.
 - A base-snapshot mismatch fails closed with `requirement_input_conflict`; the reserved older input is not imported and cannot reactivate an older snapshot.
 - If no `expected_base_snapshot_id` is supplied (for example initial Product Task provisioning on its newly created source), the authority performs the normal locked commit using the preallocated IDs.
@@ -475,9 +477,24 @@ When an `input_replace` request is first reserved, the Product service reads the
 
 The first commit attempt calls the extended Phase 1B authority with `expected_base_snapshot_id=base_snapshot_id`. If another replacement has already advanced the active snapshot, the authority returns `requirement_input_conflict` and the stale request becomes terminal; it must not import its older payload or move `active_snapshot_id` backward.
 
-If this request already committed earlier and only the response/progress update was lost, replay is recognized by its preallocated import/snapshot IDs and returns the existing result before evaluating the base-snapshot mismatch. Thus both pre-commit stale replay and post-commit lost-response replay are safe.
+If this request already committed earlier and only the response/progress update was lost, replay is recognized by its preallocated import/snapshot IDs **before `RequirementImportService._prepare()` runs** and returns the existing result without normalization, stale/anomaly classification, `candidate.has_errors` handling, failed-import recording, or base-snapshot CAS. Thus both pre-commit stale replay and delayed post-commit replay remain safe even after a newer replacement has changed the current Requirement versions.
 
 Two different replacement requests reserved from the same base snapshot may both exist, but at most one can advance that base snapshot; the other fails CAS when it reaches the locked Requirement commit.
+
+
+A required delayed-replay regression is:
+
+```text
+A reserves from S0
+→ A commits S1
+→ B reserves from S1 and commits S2
+→ A is replayed only now
+→ recover A's original committed S1 result before _prepare()
+→ no stale/anomaly diagnostics or failed import are created for A
+→ active snapshot remains S2
+```
+
+This ordering is materially different from an immediate retry after A commits and is required because current `_prepare()` compares incoming rows against the latest persisted Requirement versions.
 
 Replacing Requirement input follows the base-snapshot CAS contract in §7.4.2. It previews/commits a new Requirement snapshot under the same logical task/source authority without allowing an older unfinished replacement to roll active input backward.
 
