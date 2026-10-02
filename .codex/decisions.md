@@ -283,3 +283,9 @@
 - Finalize Product Task rename/state/schedule activation and Product request success in one Schedule SQL transaction. Persist bounded `safe_result_json` and result revision for exact replay.
 - A stale unfinished request whose base revision no longer matches fails closed with `requirement_task_conflict` and does not reapply old state. This prevents old idempotency-key retries from overwriting newer successful updates.
 
+## 2026-10-02 Make Product-owned low-level Schedule/source surfaces read-only
+
+- Once linked by requirement_product_tasks, a Schedule cannot be mutated through retained low-level HTTP PATCH/version/approve/manual-run endpoints; return 409 requirement_product_owned_schedule. A task-owned Requirement source cannot be PATCHed/imported through low-level HTTP; return 409 requirement_product_owned_source.
+- Reads remain available and non-Product low-level mutation semantics remain unchanged.
+- Enforce ownership at the public router/service boundary so internal Product orchestration can still use the underlying reviewed stores. This keeps Product Task revision/CAS authoritative across API surfaces.
+
