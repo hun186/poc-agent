@@ -160,13 +160,15 @@ Required fields:
 - `schedule_id` — unique FK to the existing logical Requirement Schedule.
 - `source_id` — unique FK to the Phase 1B Requirement source owned by this task.
 - `execution_kind` — required immutable discriminator: `once` or `recurring`.
-- `product_state` — `active` or `disabled`; this is product operability and is distinct from the underlying recurring Schedule `enabled` bit.
+- `product_state` — `provisioning`, `active`, or `disabled`; this is product lifecycle/operability and is distinct from the underlying recurring Schedule `enabled` bit. A newly inserted Product Task starts as `provisioning` and is not externally operable until its owning `task_create` saga finalizes.
 - `revision` — monotonic BIGINT-style product mutation revision, initialized to 1 and incremented exactly once by every successfully finalized Product Task PATCH/update.
 - `created_by`, `created_at`, `updated_by`, `updated_at`.
 
 `execution_kind` is immutable in v1. Changing a task from one-time to recurring, or vice versa, creates a new Product Task rather than rewriting historical semantics.
 
 A one-time Product Task still owns an existing Schedule logical object and approved Schedule Version, but it executes by manual materialization and its Schedule remains recurrence-disabled. A recurring Product Task uses the existing Schedule `enabled` state for recurrence. The persisted `execution_kind` is the authority used by API filters and UI rendering.
+
+`provisioning` is a transient durable lifecycle state, not a user-operable disabled state. Only the owning durable `task_create` request may advance a provisioning task. Normal Product list/detail/mutation surfaces must not allow another principal/request to observe and act on the partially constructed task.
 
 This is product metadata only; it does not create a second scheduler or execution engine.
 
@@ -358,12 +360,17 @@ Server workflow:
 5. enable that source under the same existing superuser activation boundary used by the low-level Requirement API,
 6. commit the Requirement import through Phase 1B using the preallocated `import_run_id` and `snapshot_id`; authority-level replay must return the same import/snapshot instead of creating another one,
 7. create the linked logical Schedule using the preallocated `schedule_id`,
-8. insert `requirement_product_tasks` using the preallocated `task_id` and already-existing `source_id` / `schedule_id` FK targets,
+8. insert `requirement_product_tasks` using the preallocated `task_id` and already-existing `source_id` / `schedule_id` FK targets with `product_state='provisioning'`,
 9. create the immutable Schedule Version using the preallocated `schedule_version_id`; authority-level replay must return the same version if already committed,
 10. approve the Schedule Version under existing superuser authority,
 11. for `once`: materialize one manual Run using a stable `trigger_request_id` derived from the Product request, without enabling recurrence,
 12. for `recurring`: enable the approved schedule,
-13. mark the idempotency ledger succeeded and return Product Task / first Run identity.
+13. finalize provisioning in one Schedule SQL transaction: lock the owning `task_create` request + Product Task + linked Schedule/version/run evidence, verify all required create steps for the declared execution kind are complete, transition `product_state` from `provisioning` to `active`, persist bounded create-result `safe_result_json`, and mark that same `task_create` request `succeeded`,
+14. return Product Task / first Run identity from the finalized result.
+
+A Product Task row in `provisioning` is **not a usable task**. Ordinary `GET /v1/requirement-tasks` excludes it; ordinary `GET /v1/requirement-tasks/{task_id}` behaves as not-found for it; PATCH, input replacement, Run trigger, artifact/task delegation, and service-key access reject it with `requirement_task_provisioning`. The only supported continuation path is replay/resume of the same owning `task_create` request identity. This prevents a second operator/request from mutating partial state between Task-row insertion and create finalization.
+
+The final provisioning transition and `task_create=succeeded` marker are atomic. If that transaction rolls back, the task remains hidden/inoperable as `provisioning`; if it commits and the HTTP response is lost, replay returns the stored successful create result without re-running initialization.
 
 Brand-new Product Task provisioning is superuser-only in v1 because a new Requirement source cannot be committed until it is enabled, and existing Requirement authority intentionally reserves source enablement to superusers. The Product façade MUST NOT call the store as a lower-privilege principal to bypass that rule.
 
@@ -396,6 +403,8 @@ Task detail includes safe links/IDs for:
 - next run,
 - recent execution counts.
 
+Ordinary Product list/detail presenters include only non-provisioning Tasks. A direct lookup of a `provisioning` task does not expose its partial source/schedule/snapshot/version/run identities; it returns the same safe not-found behavior used for an unavailable Task. Provisioning recovery is performed through the owning create request, not through the normal Task presenter.
+
 No local path, credential, prompt, E2E marker, or backend-native status is returned.
 
 ### 7.4 Update task
@@ -412,7 +421,7 @@ Allowed changes are prospective only:
 
 Any schedule-affecting change creates a new immutable Schedule Version.
 
-Every `PATCH /v1/requirement-tasks/{task_id}` mutation requires `Idempotency-Key` and uses the durable `task_update` ledger operation.
+Every `PATCH /v1/requirement-tasks/{task_id}` mutation requires `Idempotency-Key` and uses the durable `task_update` ledger operation. Before reserving a new `task_update`, the Product service must require `product_state != 'provisioning'`; a provisioning Task is rejected with `requirement_task_provisioning` and cannot acquire a competing update request.
 
 When the request is first reserved, the Product service locks the Product Task long enough to record its current `revision` as `base_task_revision`. For a schedule-changing update it also preallocates/persists `schedule_version_id` before calling `ScheduleStore.create_version(..., schedule_version_id=...)`.
 
@@ -471,7 +480,7 @@ This makes ownership fencing race-safe across both the provisioning window and s
 
 ### 7.4.2 Input replacement base-snapshot CAS
 
-`POST /v1/requirement-tasks/{task_id}/input` is a separate Product mutation and requires `Idempotency-Key`.
+`POST /v1/requirement-tasks/{task_id}/input` is a separate Product mutation and requires `Idempotency-Key`. It is unavailable while the Task is `provisioning`; the Product service checks the Task lifecycle before reserving `input_replace` and returns `requirement_task_provisioning` without creating a competing request.
 
 When an `input_replace` request is first reserved, the Product service reads the task-owned Requirement set's current active snapshot and persists it as `base_snapshot_id` together with the preallocated `import_run_id` and replacement `snapshot_id`.
 
@@ -504,7 +513,7 @@ Existing Runs remain bound to their original snapshot/version.
 
 `POST /v1/requirement-tasks/{task_id}/runs`
 
-Requires an idempotency/request identity and reuses the existing manual materialization authority.
+Requires an idempotency/request identity and reuses the existing manual materialization authority. A `provisioning` Task is rejected before a new `run_trigger` request is reserved; only the owning create saga may materialize the initial Run while provisioning.
 
 It returns a product Run presenter.
 
@@ -781,7 +790,7 @@ Browser E2E proves navigation, RBAC, upload, status rendering, and artifact down
 - The Phase 1B Requirement schema is unchanged by Product v1.
 - The existing Requirement Schedule schema is currently version 3 at this design baseline. Product v1 explicitly requires a reviewed **v3 → v4** migration in `sra_schedule`.
 - Schedule schema v4 adds only:
-  - `requirement_product_tasks` for durable Product Task identity, task-owned source/schedule binding, authoritative `execution_kind`, and monotonic Product `revision`.
+  - `requirement_product_tasks` for durable Product Task identity, task-owned source/schedule binding, authoritative `execution_kind`, explicit `provisioning|active|disabled` lifecycle, and monotonic Product `revision`.
   - `requirement_product_requests` for durable principal-scoped idempotency/saga recovery, including `base_task_revision`, `result_task_revision`, and bounded `safe_result_json` for mutation replay.
 - v4 migration and structural validation must be transactional/fail-closed and extend the existing Schedule schema catalog validator. Unknown/malformed versions remain fatal. The catalog also validates bounded indexes on Product-request `schedule_id` and `source_id` used by atomic low-level ownership fencing.
 - These product tables are control-plane metadata only. They do not duplicate Requirement snapshots, Schedule Versions, Runs/Run Items, Handoff submissions, Report Jobs, or artifacts.
@@ -831,7 +840,7 @@ Product v1 is complete only when all of the following are true:
 5. One-time and recurring task creation reuse existing Schedule authority.
 6. Run status/history is visible without SQL/log inspection.
 7. Completed DOCX is retrievable through authenticated product history.
-8. All product mutations are idempotent/replay safe where required.
+8. All product mutations are idempotent/replay safe where required, and partially provisioned Tasks are hidden/inoperable until the owning `task_create` request atomically finalizes.
 9. Historical snapshot/version/run bindings remain immutable.
 10. Product jobs cannot enter E2E mock routing.
 11. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
