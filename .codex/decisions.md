@@ -294,3 +294,9 @@
 - Treat task_create request-ledger source_id/schedule_id reservations as Product ownership claims before requirement_product_tasks exists. Low-level mutation authority must check those claims and steady-state Product ownership in the same DB transaction as each write; router pre-checks are insufficient.
 - Add base_snapshot_id to input_replace request state. Requirement commit checks expected_base_snapshot_id under the locked requirement_sets row only when the preallocated import/snapshot identity does not already exist. A stale uncommitted replacement fails requirement_input_conflict rather than rolling active input backward.
 
+## 2026-10-02 Same-ID committed import recovery precedes _prepare
+
+- Product-layer request_sha256 proves semantic replay identity; server-owned import_run_id/snapshot_id prove persisted authority identity/linkage.
+- RequirementImportService.commit performs persisted-result recovery before any fresh source acquisition or classification. Only absent persisted identity may enter _prepare and then base_snapshot_id CAS/commit.
+- Required race test order: A commits S1, B commits S2, A delayed retry returns A/S1 result with no stale diagnostics/failed import and leaves S2 active.
+
