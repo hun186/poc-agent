@@ -248,20 +248,23 @@ RequirementStore.record_failed_import(
 Required behavior:
 
 - no supplied IDs → preserve all existing low-level behavior exactly;
+- when supplied Product IDs are present, `RequirementImportService.commit(...)` first invokes a narrow persisted-result recovery lookup **before `_prepare()`**, source acquisition, normalization/classification, stale/anomaly diagnostics, `candidate.has_errors`, `record_failed_import()`, or base-snapshot CAS;
+- the recovery lookup validates server-owned identity linkage (`source_id`, `import_run_id`, committed `snapshot_id` when present) and returns the original terminal safe result; Product request `request_sha256` matching already proves the replay belongs to the same semantic mutation;
 - supplied IDs absent → commit using those exact IDs;
-- supplied `import_run_id/snapshot_id` already represent the same source/profile/input SHA semantics → return the existing terminal result **before** evaluating base-snapshot CAS, without importing again or changing active state;
 - supplied identities absent + `expected_base_snapshot_id` provided → under the same `commit_candidate()` SQL transaction and locked `requirement_sets` row, require current `active_snapshot_id == expected_base_snapshot_id` before inserting/activating the replacement snapshot;
 - base-snapshot mismatch → fail closed as `requirement_input_conflict` before any Requirement rows/snapshot activation are written;
 - supplied identity exists with different semantics → fail closed;
 - failed-import recording uses the preallocated `import_run_id` and is same-ID replay safe;
 - replay of an old uncommitted Product input-replacement request after a newer snapshot is active fails CAS and MUST NOT import/reactivate its old input.
 
-Add crash-window regression tests simulating:
+Add crash-window/delayed-replay regression tests simulating:
 
-1. authority commit succeeds,
-2. Product progress write is lost,
-3. same Product request re-enters the authority with the persisted preallocated IDs,
-4. no duplicate import/snapshot/version rows are created and active state is not rolled backward.
+1. A authority commit succeeds as snapshot S1,
+2. Product progress/HTTP response for A is lost,
+3. B later commits newer snapshot S2,
+4. only then A re-enters with its persisted preallocated IDs,
+5. A returns its original committed S1 result **without entering `_prepare()` or failed-import recording**,
+6. no duplicate/failed import rows are created for A and active snapshot remains S2.
 
 ### Schedule Version authority
 
@@ -572,10 +575,11 @@ RequirementImportService.commit(
 Tests:
 
 - A reserves from snapshot S0 and crashes before import; B reserves from S0 and commits S1; A resumes → `requirement_input_conflict`, no A snapshot is created/activated,
-- A commits S1 but crashes before Product progress update; A replay → existing S1 result is returned despite current active snapshot no longer equaling S0,
+- **delayed committed replay:** A reserves from S0 and commits S1; B then reserves from S1 and commits S2; only then A is replayed → A's original S1 success is returned before `_prepare()`, no stale/anomaly diagnostic or failed import is recorded for A, and active snapshot remains S2,
+- instrument/mock `_prepare()` so the delayed committed replay test fails if it is called at all,
 - A/B reserve concurrently from S0 → at most one advances S0,
 - stale replacement conflict leaves the newer active snapshot untouched,
-- replaying the stale key remains terminal and never allocates fresh import/snapshot IDs.
+- replaying the stale uncommitted key remains terminal and never allocates fresh import/snapshot IDs.
 
 # Gate P2 — Product API
 
@@ -640,7 +644,7 @@ For task create, every task PATCH/update, input replacement, and Run trigger:
 - concurrent duplicate → one ledger row and one logical mutation,
 - different-key task PATCHes reserved at the same `base_task_revision` → at most one finalizes; stale finalization fails CAS without rolling newer state backward,
 - task PATCH finalization commits task/schedule state, audit outbox, revision increment, safe result snapshot, and request success in one Schedule SQL transaction,
-- old uncommitted input replacement after newer input exists must fail `base_snapshot_id` CAS without creating/activating its stale snapshot; already-committed same-ID replay still returns its existing result.
+- old uncommitted input replacement after newer input exists must fail `base_snapshot_id` CAS without creating/activating its stale snapshot; already-committed same-ID replay must be recovered before `_prepare()`/diagnostics even if a later replacement has already committed.
 
 Canonical request hashing includes semantic payload plus uploaded source digest, never raw credentials or raw file bytes.
 
