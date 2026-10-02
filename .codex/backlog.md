@@ -48,4 +48,5 @@
 - 2026-10-02: PR #277 latest review correction makes Product-owned Schedule/source low-level HTTP mutation surfaces read-only while preserving reads and non-Product compatibility. Implementation remains NOT STARTED.
 - 2026-10-02: PR #277 latest review corrections require same-transaction Product ownership fencing for low-level writes (including preallocated task-create reservations) and base_snapshot_id CAS for stale uncommitted input replacement. Implementation remains NOT STARTED.
 - 2026-10-02: PR #277 latest review correction requires same-ID committed Requirement import recovery before RequirementImportService._prepare(), with A→S1, B→S2, delayed A replay regression. Implementation remains NOT STARTED.
+- 2026-10-02: PR #277 final replay correction names recover_preallocated_import_result and requires it before _prepare; delayed A/S1 → B/S2 → replay A test must fail if _prepare is called. Implementation remains NOT STARTED.
 
