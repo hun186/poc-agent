@@ -421,6 +421,31 @@ The Product path MUST NOT finalize rename or enabled-state changes by calling th
 
 Therefore there is no crash window in which an in-place Product Task change is committed but its idempotency request remains unknown. If the transaction rolls back, neither the task change nor success marker exists. If it commits and the HTTP response is lost, replay sees `succeeded` and returns the stored result without reapplying old state. If a newer different-key update wins before an older unfinished request resumes, the older request fails the revision CAS instead of rolling the task backward.
 
+
+### 7.4.1 Product ownership fences on low-level mutation APIs
+
+Once a Schedule is linked by `requirement_product_tasks.schedule_id`, the **public low-level Schedule API becomes read-only for that Schedule**. This is required so Product Task `revision` remains the sole mutation serialization authority.
+
+The following existing HTTP mutations MUST reject a Product-owned Schedule before changing any Schedule state:
+
+- `PATCH /v1/requirement-schedules/{schedule_id}` — rename / enable-disable,
+- `POST /v1/requirement-schedules/{schedule_id}/versions`,
+- `POST /v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve`,
+- `POST /v1/requirement-schedules/{schedule_id}/runs`.
+
+The stable response is HTTP 409 with safe code `requirement_product_owned_schedule`. Normal low-level GET/list/run-history endpoints remain available for operators. Non-Product Schedules retain their existing mutation behavior unchanged.
+
+The guard is enforced at the **public router/service boundary**, not by globally disabling the underlying Schedule store methods. Product orchestration still needs reviewed internal store operations such as caller-ID `create_version(...)`, atomic finalization, and manual materialization. Browser/external callers cannot bypass the Product revision protocol by calling those stores directly.
+
+The same ownership rule applies to the task-owned Phase 1B Requirement source. Once `requirement_product_tasks.source_id` links a source to a Product Task, the following public low-level mutations reject with HTTP 409 / `requirement_product_owned_source`:
+
+- `PATCH /v1/requirement-sources/{source_id}`,
+- `POST /v1/requirement-sources/{source_id}/import`.
+
+Low-level source GET/list and side-effect-free Requirement-domain preview remain available. Import-profile administration is unchanged because approved profile versions are independent immutable inputs; it does not mutate a Product Task's active source snapshot directly.
+
+This prevents cross-API races in which an operator mutates Schedule name/enabled/version/Run state or advances the task-owned Requirement snapshot without incrementing Product Task `revision` or participating in Product idempotency.
+
 Replacing Requirement input is a separate operation:
 
 `POST /v1/requirement-tasks/{task_id}/input`
@@ -704,7 +729,7 @@ Browser E2E proves navigation, RBAC, upload, status rendering, and artifact down
 
 ## 15. Compatibility and migration
 
-- Existing `/v1/requirement-sources/*` and `/v1/requirement-schedules/*` remain supported.
+- Existing `/v1/requirement-sources/*` and `/v1/requirement-schedules/*` remain supported for non-Product resources and for read-only inspection of Product-owned resources. Public low-level mutation endpoints intentionally return 409 for Product-owned Schedule/source identities so Product revision/idempotency cannot be bypassed.
 - Existing Operator E2E remains unchanged except where shared bug fixes are necessary.
 - Existing ES editor and Excel→SQL pages remain unchanged except global navigation integration.
 - The Phase 1B Requirement schema is unchanged by Product v1.
@@ -732,6 +757,7 @@ The Product API/UI MUST NOT:
 - invoke Report Jobs directly from browser/API façade,
 - run scheduler/handoff loops inside FastAPI background threads,
 - weaken existing Requirement approval/version rules.
+- mutate a Product-owned Schedule or task-owned Requirement source through the retained public low-level mutation endpoints; those writes must go through Product API/orchestration.
 
 Uploaded files receive bounded size/type validation and are parsed only by the existing Requirement import authority.
 
@@ -764,7 +790,7 @@ Product v1 is complete only when all of the following are true:
 10. Product jobs cannot enter E2E mock routing.
 11. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
 12. Browser E2E passes the integrated SRA UI Golden Path.
-13. Existing ES editor, Excel→SQL, Auth, Requirement lower-level APIs, Operator E2E, and Report Job regression suites remain green.
+13. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
 
 ## 19. Design decision summary
 
