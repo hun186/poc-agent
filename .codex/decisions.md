@@ -289,3 +289,8 @@
 - Reads remain available and non-Product low-level mutation semantics remain unchanged.
 - Enforce ownership at the public router/service boundary so internal Product orchestration can still use the underlying reviewed stores. This keeps Product Task revision/CAS authoritative across API surfaces.
 
+## 2026-10-02 Make ownership fencing transactional and input replacement snapshot-CAS
+
+- Treat task_create request-ledger source_id/schedule_id reservations as Product ownership claims before requirement_product_tasks exists. Low-level mutation authority must check those claims and steady-state Product ownership in the same DB transaction as each write; router pre-checks are insufficient.
+- Add base_snapshot_id to input_replace request state. Requirement commit checks expected_base_snapshot_id under the locked requirement_sets row only when the preallocated import/snapshot identity does not already exist. A stale uncommitted replacement fails requirement_input_conflict rather than rolling active input backward.
+
