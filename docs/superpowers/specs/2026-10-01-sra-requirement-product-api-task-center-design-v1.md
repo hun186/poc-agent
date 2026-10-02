@@ -362,15 +362,13 @@ Server workflow:
 7. create the linked logical Schedule using the preallocated `schedule_id`,
 8. insert `requirement_product_tasks` using the preallocated `task_id` and already-existing `source_id` / `schedule_id` FK targets with `product_state='provisioning'`,
 9. create the immutable Schedule Version using the preallocated `schedule_version_id`; authority-level replay must return the same version if already committed,
-10. approve the Schedule Version under existing superuser authority,
-11. for `once`: materialize one manual Run using a stable `trigger_request_id` derived from the Product request, without enabling recurrence,
-12. for `recurring`: enable the approved schedule,
-13. finalize provisioning in one Schedule SQL transaction: lock the owning `task_create` request + Product Task + linked Schedule/version/run evidence, verify all required create steps for the declared execution kind are complete, transition `product_state` from `provisioning` to `active`, persist bounded create-result `safe_result_json`, and mark that same `task_create` request `succeeded`,
-14. return Product Task / first Run identity from the finalized result.
+10. approve the Schedule Version under existing superuser authority while keeping the logical Schedule recurrence-disabled,
+11. finalize provisioning in one Schedule SQL transaction: lock the owning `task_create` request + Product Task + linked Schedule/version; verify all required pre-finalization create steps; then for `once` materialize exactly one manual initial Run with the stable request-derived `trigger_request_id` using the Schedule store's locked materialization helper, or for `recurring` enable the approved Schedule and compute/persist `next_run_at`; finally transition `product_state` from `provisioning` to `active`, persist bounded create-result `safe_result_json`, and mark that same `task_create` request `succeeded`,
+12. return Product Task / first Run identity from the finalized result.
 
 A Product Task row in `provisioning` is **not a usable task**. Ordinary `GET /v1/requirement-tasks` excludes it; ordinary `GET /v1/requirement-tasks/{task_id}` behaves as not-found for it; PATCH, input replacement, Run trigger, artifact/task delegation, and service-key access reject it with `requirement_task_provisioning`. The only supported continuation path is replay/resume of the same owning `task_create` request identity. This prevents a second operator/request from mutating partial state between Task-row insertion and create finalization.
 
-The final provisioning transition and `task_create=succeeded` marker are atomic. If that transaction rolls back, the task remains hidden/inoperable as `provisioning`; if it commits and the HTTP response is lost, replay returns the stored successful create result without re-running initialization.
+The final provisioning transition, initial execution release, and `task_create=succeeded` marker are atomic. Before that transaction commits, a recurring Schedule remains disabled and a one-time initial Run does not yet exist. Therefore scheduler/Handoff workers cannot execute a hidden provisioning Task. If the transaction rolls back, the task remains hidden/inoperable as `provisioning` with no enabled recurrence or initial Run; if it commits and the HTTP response is lost, replay returns the stored successful create result without re-running initialization.
 
 Brand-new Product Task provisioning is superuser-only in v1 because a new Requirement source cannot be committed until it is enabled, and existing Requirement authority intentionally reserves source enablement to superusers. The Product façade MUST NOT call the store as a lower-privilege principal to bypass that rule.
 
@@ -532,14 +530,14 @@ Stable product status vocabulary:
 - `failed`
 - `recovery_required`
 
-The presenter maps existing neutral Schedule/Handoff state; it does not expose Report Job-native implementation states.
+Every Product Run presenter resolves the owning Product Task through the Run's Schedule binding and applies the same lifecycle predicate as Task presenters. `GET /v1/requirement-runs` excludes Runs owned by `provisioning` Tasks. Direct run detail and run-item lookups for a provisioning owner return the same safe unavailable/not-found behavior and expose no partial task/run identities. The presenter maps existing neutral Schedule/Handoff state; it does not expose Report Job-native implementation states.
 
 ### 7.7 Artifacts
 
 - `GET /v1/requirement-runs/{run_id}/artifacts`
 - `GET /v1/requirement-runs/{run_id}/items/{run_item_id}/word`
 
-The Word endpoint reuses the existing confined artifact validation/history authority. No absolute path appears in JSON or headers.
+Artifact listing/download resolves the owning Product Task before returning metadata or bytes. If the owner is `provisioning`, artifact list/detail/Word access returns the same safe unavailable/not-found behavior; service-key artifact scope does not bypass this lifecycle gate. The Word endpoint otherwise reuses the existing confined artifact validation/history authority. No absolute path appears in JSON or headers.
 
 ## 8. Authentication and authorization
 
@@ -840,7 +838,7 @@ Product v1 is complete only when all of the following are true:
 5. One-time and recurring task creation reuse existing Schedule authority.
 6. Run status/history is visible without SQL/log inspection.
 7. Completed DOCX is retrievable through authenticated product history.
-8. All product mutations are idempotent/replay safe where required, and partially provisioned Tasks are hidden/inoperable until the owning `task_create` request atomically finalizes.
+8. All product mutations are idempotent/replay safe where required, and partially provisioned Tasks—including any Run/history/artifact views—are hidden/inoperable until the owning `task_create` request atomically releases either the one-time initial Run or recurring Schedule together with Task activation.
 9. Historical snapshot/version/run bindings remain immutable.
 10. Product jobs cannot enter E2E mock routing.
 11. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
