@@ -50,4 +50,5 @@
 - 2026-10-02: PR #277 latest review correction requires same-ID committed Requirement import recovery before RequirementImportService._prepare(), with A→S1, B→S2, delayed A replay regression. Implementation remains NOT STARTED.
 - 2026-10-02: PR #277 final replay correction names recover_preallocated_import_result and requires it before _prepare; delayed A/S1 → B/S2 → replay A test must fail if _prepare is called. Implementation remains NOT STARTED.
 - 2026-10-02: PR #277 latest review correction adds provisioning lifecycle gating and atomic task_create finalization so partial Task rows are hidden/inoperable until the owning create saga succeeds. Implementation remains NOT STARTED.
+- 2026-10-02: PR #277 latest review corrections move once initial Run materialization and recurring enablement into atomic create finalization, and gate Product Run/history/artifact presenters by owning Task provisioning state. Implementation remains NOT STARTED.
 
