@@ -245,3 +245,10 @@
 - The guard is a public API/service-boundary ownership check. Product orchestration continues to use reviewed internal store operations and the Product atomic finalizer; do not globally disable store methods.
 - This closes cross-API races where an operator could otherwise mutate Product-owned Schedule/source state without incrementing Product Task revision or participating in Product idempotency.
 
+### 2026-10-02 Atomic ownership fencing and input-replacement CAS
+
+- Product ownership fences are no longer router/service pre-checks. Low-level Schedule/source mutation stores must check Product Task ownership plus preallocated task-create reservation IDs inside the same SQL transaction/locks as the write. Initial Product provisioning reserves source_id/schedule_id before target creation, so the reservation itself fences the provisioning gap.
+- Product v1 relies on Requirement and Schedule schemas sharing REQUIREMENT_CONTROL_DB_CONNECTION; RequirementStore is configured with the Schedule schema for cross-schema ownership checks while Product is enabled.
+- input_replace requests persist base_snapshot_id at first reservation. Phase 1B commit accepts expected_base_snapshot_id and, for an uncommitted reserved import, compares it against locked active_snapshot_id before writing. Mismatch is requirement_input_conflict; already-committed same-ID replay is recognized before CAS and returns the existing result.
+- Concurrency tests must use separate connections/barriers for provisioning-vs-low-level-write and stale-uncommitted input replacement races.
+
