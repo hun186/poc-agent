@@ -262,3 +262,10 @@
 
 - The implementation plan now names a read-only RequirementStore.recover_preallocated_import_result(source_id, import_run_id, snapshot_id) helper. RequirementImportService.commit calls it before _prepare; only an absent persisted identity may proceed to _prepare and commit_candidate/base_snapshot CAS.
 
+### 2026-10-02 Provisioning lifecycle gate
+
+- requirement_product_tasks.product_state is now provisioning|active|disabled. New Product Tasks are inserted as provisioning and are not ordinary Product resources until the owning task_create saga finalizes.
+- Ordinary Task list/get hide provisioning Tasks; PATCH, input replacement, Run trigger, artifact/task delegation, and service-key access reject requirement_task_provisioning before reserving competing work.
+- Only replay/resume of the same owning task_create request may continue a provisioning Task. A Product-create finalizer atomically verifies initial version/approval plus once-run or recurring-enable evidence, flips product_state to active, stores bounded create safe_result_json, and marks task_create succeeded.
+- Required concurrency test pauses create after Task insertion, proves other Product surfaces cannot observe/mutate it, then resumes the same create and exposes the Task only after finalization commits.
+
