@@ -248,7 +248,7 @@ RequirementStore.record_failed_import(
 Required behavior:
 
 - no supplied IDs → preserve all existing low-level behavior exactly;
-- when supplied Product IDs are present, `RequirementImportService.commit(...)` first invokes a narrow persisted-result recovery lookup **before `_prepare()`**, source acquisition, normalization/classification, stale/anomaly diagnostics, `candidate.has_errors`, `record_failed_import()`, or base-snapshot CAS;
+- when supplied Product IDs are present, `RequirementImportService.commit(...)` first invokes `RequirementStore.recover_preallocated_import_result(source_id, import_run_id, snapshot_id)` (or an equivalently narrow read-only helper) **before `_prepare()`**, source acquisition, normalization/classification, stale/anomaly diagnostics, `candidate.has_errors`, `record_failed_import()`, or base-snapshot CAS;
 - the recovery lookup validates server-owned identity linkage (`source_id`, `import_run_id`, committed `snapshot_id` when present) and returns the original terminal safe result; Product request `request_sha256` matching already proves the replay belongs to the same semantic mutation;
 - supplied IDs absent → commit using those exact IDs;
 - supplied identities absent + `expected_base_snapshot_id` provided → under the same `commit_candidate()` SQL transaction and locked `requirement_sets` row, require current `active_snapshot_id == expected_base_snapshot_id` before inserting/activating the replacement snapshot;
@@ -570,7 +570,7 @@ RequirementImportService.commit(
 )
 ```
 
-`commit_candidate()` must first recognize an already-committed same-ID replay. Only if the reserved import/snapshot does not yet exist does it lock the Requirement set and compare current active snapshot with `expected_base_snapshot_id`.
+`RequirementImportService.commit()` must perform same-ID terminal recovery **before calling `_prepare()`**. Only when `recover_preallocated_import_result(...)` reports that the reserved import/snapshot does not yet exist may the service call `_prepare()` and then `commit_candidate()`; only that first-commit path locks the Requirement set and compares current active snapshot with `expected_base_snapshot_id`.
 
 Tests:
 
