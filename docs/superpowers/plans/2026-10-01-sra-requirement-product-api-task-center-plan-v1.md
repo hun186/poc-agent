@@ -177,6 +177,7 @@ Add `requirement_product_requests` with:
 - durable request state,
 - nullable safe progress/result references including `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, and `batch_run_id`; these reservation columns are deliberately non-FK so IDs can be durably reserved before target rows exist,
 - nullable `base_task_revision` and `result_task_revision` for PATCH compare-and-set/finalization,
+- nullable `base_snapshot_id` for `input_replace` CAS,
 - nullable bounded `safe_result_json` for exact replay of whitelisted Product mutation responses,
 - safe error code,
 - timestamps,
@@ -193,7 +194,7 @@ Tests must prove:
 - Product request reservation ID columns have no FK constraints to not-yet-created domain rows and are bounded/validated by the application,
 - two distinct service keys with the same display name use distinct idempotency namespaces because ledger `principal_id` is immutable `key_id`,
 - no Product table duplicates Requirement snapshots, Schedule Versions/Runs, Handoff, Report Job, or artifact payloads,
-- catalog validator requires both new tables/keys/checks/FKs.
+- catalog validator requires both new tables/keys/checks/FKs plus indexes on Product-request `schedule_id` and `source_id` used by atomic ownership fencing.
 
 **RED**
 
@@ -228,12 +229,14 @@ RequirementImportService.commit(
     ...,
     import_run_id: str | None = None,
     snapshot_id: str | None = None,
+    expected_base_snapshot_id: str | None = None,
 )
 
 RequirementStore.commit_candidate(
     ...,
     import_run_id: str | None = None,
     snapshot_id: str | None = None,
+    expected_base_snapshot_id: str | None = None,
 )
 
 RequirementStore.record_failed_import(
@@ -246,10 +249,12 @@ Required behavior:
 
 - no supplied IDs → preserve all existing low-level behavior exactly;
 - supplied IDs absent → commit using those exact IDs;
-- supplied `import_run_id/snapshot_id` already represent the same source/profile/input SHA semantics → return the existing terminal result without importing again or changing the active snapshot;
+- supplied `import_run_id/snapshot_id` already represent the same source/profile/input SHA semantics → return the existing terminal result **before** evaluating base-snapshot CAS, without importing again or changing active state;
+- supplied identities absent + `expected_base_snapshot_id` provided → under the same `commit_candidate()` SQL transaction and locked `requirement_sets` row, require current `active_snapshot_id == expected_base_snapshot_id` before inserting/activating the replacement snapshot;
+- base-snapshot mismatch → fail closed as `requirement_input_conflict` before any Requirement rows/snapshot activation are written;
 - supplied identity exists with different semantics → fail closed;
 - failed-import recording uses the preallocated `import_run_id` and is same-ID replay safe;
-- replay of an old Product input-replacement request after a newer snapshot is active returns the old request's existing result and MUST NOT reactivate that old snapshot.
+- replay of an old uncommitted Product input-replacement request after a newer snapshot is active fails CAS and MUST NOT import/reactivate its old input.
 
 Add crash-window regression tests simulating:
 
@@ -484,59 +489,96 @@ Tests prove:
 - a succeeded old request replay after later updates returns its stored `safe_result_json` rather than reapplying old values.
 
 
-## P1.6 Product ownership mutation fences
+## P1.6 Atomic Product ownership mutation fences
 
-**Files:** `sra_api/routers/requirement_schedules.py`, `sra_api/routers/requirements.py`, Product ownership lookup in `sra_api/services/requirement_product_service.py` or a narrow shared dependency, plus focused router/service regression tests.
+**Files:** `requirement_scheduler/store.py`, `data_ingestion/requirements/store.py`, `sra_api/routers/requirement_schedules.py`, `sra_api/routers/requirements.py`, schema-v4/index validation, focused concurrency tests.
 
-Once `requirement_product_tasks` owns a Schedule/source pair, public low-level HTTP writes must no longer mutate those resources outside Product revision/idempotency.
+A router/service pre-check is insufficient. The Product ownership/reservation check and each low-level write must share one SQL transaction.
 
-### Product-owned Schedule
+### Reservation authority
 
-Before mutation, resolve Product ownership by exact `schedule_id`. If owned, return HTTP 409 with:
+Initial Product provisioning already preallocates/persists `source_id` and `schedule_id` before creating either target resource. Treat the `task_create` Product request as a reserved ownership claim during the provisioning gap. Once `requirement_product_tasks` exists, that row is the steady-state ownership authority.
 
-```json
-{"detail":{"code":"requirement_product_owned_schedule"}}
+Add catalog-validated indexes over `requirement_product_requests.schedule_id` and `source_id` so guarded transactional lookups are bounded.
+
+Product v1 does not adopt pre-existing low-level Requirement sources or Schedules; every Product Task owns newly allocated identities. Therefore an existing target resource created by Product always has a reservation row that predates its creation.
+
+### Guarded Schedule writes
+
+Refactor public low-level mutations to use explicit guarded store methods/private locked helpers. Inside the same Schedule-store connection/transaction that will mutate the row/version/run:
+
+1. lock/read `requirement_product_tasks` for exact `schedule_id`,
+2. lock/read Product `task_create` reservation rows for exact `schedule_id`,
+3. if either exists, raise `requirement_product_owned_schedule` before mutation,
+4. otherwise continue the existing low-level mutation under the same transaction and locks.
+
+Apply this to:
+
+- rename,
+- enable/disable,
+- version create,
+- version approve,
+- manual run materialization.
+
+Public routers call only the guarded methods. Product internal orchestration/finalizer uses separate reviewed internal helpers; there is no public bypass flag.
+
+### Guarded Requirement-source writes
+
+Extend `RequirementStore` with the configured Schedule schema name when Product v1 is enabled; both stores already use the same `REQUIREMENT_CONTROL_DB_CONNECTION`.
+
+Inside the same Requirement-store transaction that will PATCH source metadata or import/advance the snapshot:
+
+1. lock/read `requirement_product_tasks` for exact `source_id`,
+2. lock/read Product `task_create` reservation rows for exact `source_id`,
+3. if either exists, raise `requirement_product_owned_source`,
+4. otherwise perform the existing low-level mutation in that same transaction.
+
+Low-level source GET/list/preview remain unchanged.
+
+### Required TOCTOU/concurrency regressions
+
+Tests must use two connections/barriers, not only sequential mocks:
+
+- low-level Schedule mutation starts while Product provisioning is between reservation and Product Task insert → mutation sees reservation and rejects,
+- provisioning reserves/creates Schedule while a competing low-level mutation is blocked → at most one authority path can proceed; low-level write cannot commit after Product claim,
+- equivalent Product-owned Requirement-source PATCH/import race,
+- steady-state Product Task row fences low-level writes even with no in-progress Product request,
+- non-Product resources still mutate under existing RBAC,
+- Product internal orchestration remains able to use the internal helpers.
+
+## P1.7 Input replacement base-snapshot CAS
+
+**Files:** Product service/request-store methods, `data_ingestion/requirements/service.py`, `data_ingestion/requirements/store.py`, focused idempotency/concurrency tests.
+
+At first reservation of `operation=input_replace`:
+
+1. resolve the Product Task/source and current Requirement set,
+2. read the current active snapshot,
+3. persist it as `base_snapshot_id` together with preallocated `import_run_id` and replacement `snapshot_id`.
+
+On first import attempt call:
+
+```python
+RequirementImportService.commit(
+    ...,
+    import_run_id=reserved_import_run_id,
+    snapshot_id=reserved_snapshot_id,
+    expected_base_snapshot_id=base_snapshot_id,
+)
 ```
 
-Fence these existing endpoints:
+`commit_candidate()` must first recognize an already-committed same-ID replay. Only if the reserved import/snapshot does not yet exist does it lock the Requirement set and compare current active snapshot with `expected_base_snapshot_id`.
 
-- `PATCH /v1/requirement-schedules/{schedule_id}`,
-- `POST /v1/requirement-schedules/{schedule_id}/versions`,
-- `POST /v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve`,
-- `POST /v1/requirement-schedules/{schedule_id}/runs`.
+Tests:
 
-Do **not** fence:
-
-- schedule GET/list,
-- run-history GET/list,
-- creation/mutation of a Schedule that is not Product-owned.
-
-The ownership check belongs at the public API/service boundary. Do not make `ScheduleStore.create_version()`, materialization, or the new Product finalizer globally reject Product-owned Schedules, because Product orchestration itself is the authorized mutation path.
-
-### Product-owned Requirement source
-
-Resolve ownership by exact `source_id`. If owned, return HTTP 409 / `requirement_product_owned_source` from:
-
-- `PATCH /v1/requirement-sources/{source_id}`,
-- `POST /v1/requirement-sources/{source_id}/import`.
-
-Keep source GET/list and preview available. Import-profile administration remains unchanged.
-
-### Required cross-API regressions
-
-Tests must prove:
-
-- reserve Product PATCH at Task revision N → attempt low-level Schedule rename/enable/version-create/version-approve/manual-run → each rejects and changes no state,
-- reserve Product PATCH at revision N → low-level Product-owned source PATCH/import rejects and active snapshot does not move,
-- then Product finalization at revision N can still proceed normally,
-- non-Product Schedule/source low-level mutations retain current RBAC/behavior,
-- Product-owned read endpoints remain usable,
-- rejected low-level write does not increment Task revision or mutate Product request state,
-- Product internal orchestration can still call the reviewed store operations directly.
-
-This is the cross-API race closure required for Task revision CAS to be authoritative.
+- A reserves from snapshot S0 and crashes before import; B reserves from S0 and commits S1; A resumes → `requirement_input_conflict`, no A snapshot is created/activated,
+- A commits S1 but crashes before Product progress update; A replay → existing S1 result is returned despite current active snapshot no longer equaling S0,
+- A/B reserve concurrently from S0 → at most one advances S0,
+- stale replacement conflict leaves the newer active snapshot untouched,
+- replaying the stale key remains terminal and never allocates fresh import/snapshot IDs.
 
 # Gate P2 — Product API
+
 
 ## P2.1 Router and schemas
 
@@ -589,7 +631,7 @@ For task create, every task PATCH/update, input replacement, and Run trigger:
 - first request reserves principal + operation + key + canonical request SHA and all required server-owned durable IDs before the corresponding Phase 1B/1C mutation,
 - for service-key principals, the ledger uses `AuthPrincipal.credential_id` / immutable `key_id`; duplicate service-key display names must never share replay state,
 - same key/hash + `succeeded` → return stored bounded `safe_result_json` for mutable PATCH results or reconstruct immutable/create results from authoritative IDs,
-- same key/hash + `in_progress` or `failed_recoverable` → resume from durable stage references and preallocated authority IDs (`import_run_id`, `snapshot_id`, `schedule_id`, `task_id`, `schedule_version_id` as applicable),
+- same key/hash + `in_progress` or `failed_recoverable` → resume from durable stage references, preallocated authority IDs (`import_run_id`, `snapshot_id`, `schedule_id`, `task_id`, `schedule_version_id` as applicable), and the persisted `base_snapshot_id` / `base_task_revision` CAS anchors,
 - same key + changed hash → 409 `requirement_idempotency_conflict`,
 - `failed_terminal` → same safe terminal result until a new key is supplied,
 - response loss + replay → existing product object/result,
@@ -598,7 +640,7 @@ For task create, every task PATCH/update, input replacement, and Run trigger:
 - concurrent duplicate → one ledger row and one logical mutation,
 - different-key task PATCHes reserved at the same `base_task_revision` → at most one finalizes; stale finalization fails CAS without rolling newer state backward,
 - task PATCH finalization commits task/schedule state, audit outbox, revision increment, safe result snapshot, and request success in one Schedule SQL transaction,
-- replaying an old input-replacement key after newer input exists must never create another snapshot or roll the active input backward.
+- old uncommitted input replacement after newer input exists must fail `base_snapshot_id` CAS without creating/activating its stale snapshot; already-committed same-ID replay still returns its existing result.
 
 Canonical request hashing includes semantic payload plus uploaded source digest, never raw credentials or raw file bytes.
 
@@ -611,6 +653,7 @@ Stable safe codes at minimum:
 - `requirement_input_invalid`
 - `requirement_preview_rejected`
 - `requirement_source_conflict`
+- `requirement_input_conflict`
 - `requirement_task_conflict`
 - `requirement_task_disabled`
 - `requirement_version_not_approved`
@@ -908,7 +951,7 @@ PYTHONPATH=. pytest -q   tests/test_requirement_product_*.py   tests/test_requir
 
 Then the repository's normal full suite and compile/static checks.
 
-Explicitly include cross-API ownership-fence regression coverage for `requirements.py` and `requirement_schedules.py`: Product-owned low-level writes reject, Product-owned reads pass, and non-Product low-level behavior remains unchanged.
+Explicitly include cross-API ownership-fence regression coverage for `requirements.py` and `requirement_schedules.py`: use concurrent connections/barriers to prove reservation/ownership checks are atomic with low-level writes, Product-owned low-level writes reject, Product-owned reads pass, and non-Product low-level behavior remains unchanged. Also include stale-uncommitted input-replacement base-snapshot CAS races.
 
 Update:
 
