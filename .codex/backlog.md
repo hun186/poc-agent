@@ -45,4 +45,5 @@
 - 2026-10-01: PR #277 re-review corrections require Schedule-before-Product-Task FK ordering, service-key idempotency bound to immutable key_id, idempotent task PATCH/update, and two-stage Product E2E (superuser provisioning followed by scoped service-key automation). Implementation remains NOT STARTED.
 - 2026-10-01: PR #277 third-review correction requires preallocated import_run_id/snapshot_id and schedule_version_id plus authority-level same-ID replay; Product request reservation refs are intentionally non-FK. Implementation remains NOT STARTED.
 - 2026-10-02: PR #277 latest review correction adds Product Task revision CAS + atomic mutable-PATCH finalization (state/audit/revision/safe result/request success in one Schedule transaction). Implementation remains NOT STARTED.
+- 2026-10-02: PR #277 latest review correction makes Product-owned Schedule/source low-level HTTP mutation surfaces read-only while preserving reads and non-Product compatibility. Implementation remains NOT STARTED.
 
