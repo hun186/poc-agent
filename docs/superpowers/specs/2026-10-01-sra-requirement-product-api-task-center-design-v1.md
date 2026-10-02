@@ -231,7 +231,7 @@ Omitted IDs preserve current behavior. The same preallocated `import_run_id` is 
 
 Authority-level replay rule:
 
-- When server-owned `import_run_id` / `snapshot_id` are supplied, `RequirementImportService.commit(...)` MUST call a narrow store recovery lookup **before `_prepare()`, source acquisition, normalization/classification, candidate error handling, stale/anomaly diagnostics, failed-import recording, or base-snapshot CAS**.
+- When server-owned `import_run_id` / `snapshot_id` are supplied, `RequirementImportService.commit(...)` MUST first call a read-only helper such as `RequirementStore.recover_preallocated_import_result(source_id, import_run_id, snapshot_id)` **before `_prepare()`, source acquisition, normalization/classification, candidate error handling, stale/anomaly diagnostics, failed-import recording, or base-snapshot CAS**.
 - The recovery lookup proves that the persisted `import_run_id` belongs to the requested `source_id`, is terminal, and—when committed—links to exactly the supplied `snapshot_id`. Product-layer replay has already matched the durable request's `request_sha256`, so these server-owned IDs cannot be rebound to a different semantic request.
 - If that existing terminal identity is found, return its original safe import result immediately. Do not re-read current Requirement versions and do not reclassify the old payload against newer state.
 - If the supplied identities do not yet exist and `expected_base_snapshot_id` is provided, the same Requirement SQL transaction locks the target `requirement_sets` row with `UPDLOCK,HOLDLOCK` and requires its current `active_snapshot_id == expected_base_snapshot_id` before inserting import/snapshot rows or advancing active state.
