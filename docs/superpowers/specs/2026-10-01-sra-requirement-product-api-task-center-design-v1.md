@@ -185,6 +185,7 @@ Required fields:
 - `state` — `reserved`, `in_progress`, `succeeded`, `failed_recoverable`, or `failed_terminal`.
 - nullable safe progress/result references: `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, `batch_run_id`. These reservation columns are intentionally **not foreign keys** because Product must durably store a server-owned ID before the target authority row exists; target ownership/semantics are verified by the Product service and underlying authority on resume.
 - nullable `base_task_revision` and `result_task_revision` for `task_update` compare-and-set/finalization.
+- nullable `base_snapshot_id` for `input_replace`; it records the active Requirement snapshot observed when the replacement request is first reserved and is the CAS authority for the first commit attempt.
 - nullable bounded `safe_result_json` containing only the whitelisted Product response snapshot needed for exact replay; never raw input, prompts, credentials, paths, or upstream error bodies.
 - nullable safe `error_code`.
 - `created_at`, `updated_at`, `completed_at`.
@@ -210,12 +211,14 @@ RequirementImportService.commit(
     ...,
     import_run_id: str | None = None,
     snapshot_id: str | None = None,
+    expected_base_snapshot_id: str | None = None,
 )
 
 RequirementStore.commit_candidate(
     ...,
     import_run_id: str | None = None,
     snapshot_id: str | None = None,
+    expected_base_snapshot_id: str | None = None,
 )
 
 RequirementStore.record_failed_import(
@@ -228,8 +231,10 @@ Omitted IDs preserve current behavior. The same preallocated `import_run_id` is 
 
 Authority-level replay rule:
 
-- If the supplied `import_run_id` / `snapshot_id` do not yet exist, the Requirement authority performs the normal locked commit using exactly those IDs.
-- If a supplied identity already exists, the authority must verify it belongs to the same source/profile/input digest semantics and return the existing terminal result without re-importing, creating another snapshot, or moving the active snapshot backward.
+- The authority first checks whether the supplied `import_run_id` / `snapshot_id` already represent this same Product import. If so, it verifies source/profile/input-digest semantics and returns that existing terminal result **before** applying any base-snapshot CAS; this is the normal lost-response/post-commit replay path.
+- If the supplied identities do not yet exist and `expected_base_snapshot_id` is provided, the same Requirement SQL transaction locks the target `requirement_sets` row with `UPDLOCK,HOLDLOCK` and requires its current `active_snapshot_id == expected_base_snapshot_id` before inserting import/snapshot rows or advancing active state.
+- A base-snapshot mismatch fails closed with `requirement_input_conflict`; the reserved older input is not imported and cannot reactivate an older snapshot.
+- If no `expected_base_snapshot_id` is supplied (for example initial Product Task provisioning on its newly created source), the authority performs the normal locked commit using the preallocated IDs.
 - An existing identity with mismatched semantics is a fail-closed persistence conflict.
 - The caller must never "recover" by generating a new import/snapshot ID for the same Product request key.
 
@@ -422,35 +427,59 @@ The Product path MUST NOT finalize rename or enabled-state changes by calling th
 Therefore there is no crash window in which an in-place Product Task change is committed but its idempotency request remains unknown. If the transaction rolls back, neither the task change nor success marker exists. If it commits and the HTTP response is lost, replay sees `succeeded` and returns the stored result without reapplying old state. If a newer different-key update wins before an older unfinished request resumes, the older request fails the revision CAS instead of rolling the task backward.
 
 
-### 7.4.1 Product ownership fences on low-level mutation APIs
+### 7.4.1 Atomic Product ownership fences on low-level mutation APIs
 
-Once a Schedule is linked by `requirement_product_tasks.schedule_id`, the **public low-level Schedule API becomes read-only for that Schedule**. This is required so Product Task `revision` remains the sole mutation serialization authority.
+Once a Product request reserves a server-owned `schedule_id` / `source_id`, that identity is already **reserved for Product ownership** even before the eventual `requirement_product_tasks` row exists. This closes the provisioning gap between resource creation and Product Task linkage.
 
-The following existing HTTP mutations MUST reject a Product-owned Schedule before changing any Schedule state:
+The ownership decision MUST NOT be a router pre-check followed by a separate store transaction. The check and low-level write must execute under compatible SQL locks in the **same Requirement-control database transaction**. The current runtime already constructs Requirement and Schedule stores from the same `REQUIREMENT_CONTROL_DB_CONNECTION`; Product v1 relies on that same-database/cross-schema authority while enabled.
+
+Schedule schema v4 therefore adds catalog-validated indexes supporting bounded ownership lookups by `requirement_product_requests.schedule_id` and `source_id`. A Product reservation claim is established by the `task_create` request before the corresponding source/Schedule is created and remains authoritative through provisioning; once `requirement_product_tasks` exists, that row is the permanent ownership record.
+
+For a public low-level Schedule write, the Schedule store opens its mutation transaction and, before changing the Schedule, locks/checks both:
+
+1. `requirement_product_tasks` for that `schedule_id`, and
+2. `requirement_product_requests` for a Product provisioning reservation of that `schedule_id`.
+
+If either exists, the transaction performs no mutation and returns `requirement_product_owned_schedule`. The check uses the same connection/transaction as the Schedule row/version/run write, so a request cannot pass the guard, pause, then mutate after Product ownership is established.
+
+The guarded low-level Schedule mutations are:
 
 - `PATCH /v1/requirement-schedules/{schedule_id}` — rename / enable-disable,
 - `POST /v1/requirement-schedules/{schedule_id}/versions`,
 - `POST /v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve`,
 - `POST /v1/requirement-schedules/{schedule_id}/runs`.
 
-The stable response is HTTP 409 with safe code `requirement_product_owned_schedule`. Normal low-level GET/list/run-history endpoints remain available for operators. Non-Product Schedules retain their existing mutation behavior unchanged.
+Their stable response is HTTP 409 with safe code `requirement_product_owned_schedule`. Schedule GET/list/run-history remain available. Non-Product Schedules retain existing mutation behavior.
 
-The guard is enforced at the **public router/service boundary**, not by globally disabling the underlying Schedule store methods. Product orchestration still needs reviewed internal store operations such as caller-ID `create_version(...)`, atomic finalization, and manual materialization. Browser/external callers cannot bypass the Product revision protocol by calling those stores directly.
+For a public low-level Requirement-source write, `RequirementStore` is extended with the configured Schedule schema name while using the same control-database connection. Its source mutation/import transaction locks/checks both:
 
-The same ownership rule applies to the task-owned Phase 1B Requirement source. Once `requirement_product_tasks.source_id` links a source to a Product Task, the following public low-level mutations reject with HTTP 409 / `requirement_product_owned_source`:
+1. `requirement_product_tasks` for that `source_id`, and
+2. `requirement_product_requests` for a Product provisioning reservation of that `source_id`.
+
+If either exists, the same transaction rejects with `requirement_product_owned_source` before changing source metadata or active snapshot state. The guarded source mutations are:
 
 - `PATCH /v1/requirement-sources/{source_id}`,
 - `POST /v1/requirement-sources/{source_id}/import`.
 
-Low-level source GET/list and side-effect-free Requirement-domain preview remain available. Import-profile administration is unchanged because approved profile versions are independent immutable inputs; it does not mutate a Product Task's active source snapshot directly.
+Source GET/list and side-effect-free preview remain available. Import-profile administration is unchanged.
 
-This prevents cross-API races in which an operator mutates Schedule name/enabled/version/Run state or advances the task-owned Requirement snapshot without incrementing Product Task `revision` or participating in Product idempotency.
+Implementation should refactor the current store writes into private locked helpers plus explicit **guarded low-level mutation methods**. Product orchestration uses the reviewed internal helpers/finalizer without the public low-level fence; the public routers never receive a bypass flag. Initial Product provisioning always reserves all server-owned IDs in the Product ledger before creating the task-owned source or Schedule, and v1 does not adopt a pre-existing low-level Schedule/source into Product ownership.
 
-Replacing Requirement input is a separate operation:
+This makes ownership fencing race-safe across both the provisioning window and steady-state Product ownership.
 
-`POST /v1/requirement-tasks/{task_id}/input`
+### 7.4.2 Input replacement base-snapshot CAS
 
-This previews/commits a new Requirement snapshot under the same logical task/source authority.
+`POST /v1/requirement-tasks/{task_id}/input` is a separate Product mutation and requires `Idempotency-Key`.
+
+When an `input_replace` request is first reserved, the Product service reads the task-owned Requirement set's current active snapshot and persists it as `base_snapshot_id` together with the preallocated `import_run_id` and replacement `snapshot_id`.
+
+The first commit attempt calls the extended Phase 1B authority with `expected_base_snapshot_id=base_snapshot_id`. If another replacement has already advanced the active snapshot, the authority returns `requirement_input_conflict` and the stale request becomes terminal; it must not import its older payload or move `active_snapshot_id` backward.
+
+If this request already committed earlier and only the response/progress update was lost, replay is recognized by its preallocated import/snapshot IDs and returns the existing result before evaluating the base-snapshot mismatch. Thus both pre-commit stale replay and post-commit lost-response replay are safe.
+
+Two different replacement requests reserved from the same base snapshot may both exist, but at most one can advance that base snapshot; the other fails CAS when it reaches the locked Requirement commit.
+
+Replacing Requirement input follows the base-snapshot CAS contract in §7.4.2. It previews/commits a new Requirement snapshot under the same logical task/source authority without allowing an older unfinished replacement to roll active input backward.
 
 Existing Runs remain bound to their original snapshot/version.
 
@@ -737,7 +766,7 @@ Browser E2E proves navigation, RBAC, upload, status rendering, and artifact down
 - Schedule schema v4 adds only:
   - `requirement_product_tasks` for durable Product Task identity, task-owned source/schedule binding, authoritative `execution_kind`, and monotonic Product `revision`.
   - `requirement_product_requests` for durable principal-scoped idempotency/saga recovery, including `base_task_revision`, `result_task_revision`, and bounded `safe_result_json` for mutation replay.
-- v4 migration and structural validation must be transactional/fail-closed and extend the existing Schedule schema catalog validator. Unknown/malformed versions remain fatal.
+- v4 migration and structural validation must be transactional/fail-closed and extend the existing Schedule schema catalog validator. Unknown/malformed versions remain fatal. The catalog also validates bounded indexes on Product-request `schedule_id` and `source_id` used by atomic low-level ownership fencing.
 - These product tables are control-plane metadata only. They do not duplicate Requirement snapshots, Schedule Versions, Runs/Run Items, Handoff submissions, Report Jobs, or artifacts.
 - Product v1 also requires backward-compatible authority API extensions, not new domain tables: Phase 1B commit/failed-import recording accepts preallocated `import_run_id` / `snapshot_id`, and Schedule Version creation accepts preallocated `schedule_version_id`, each with same-ID/same-semantics replay behavior.
 - Existing v3 deployments must be backed up and explicitly migrated before Product routes are enabled.
