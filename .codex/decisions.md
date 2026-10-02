@@ -300,3 +300,7 @@
 - RequirementImportService.commit performs persisted-result recovery before any fresh source acquisition or classification. Only absent persisted identity may enter _prepare and then base_snapshot_id CAS/commit.
 - Required race test order: A commits S1, B commits S2, A delayed retry returns A/S1 result with no stale diagnostics/failed import and leaves S2 active.
 
+## 2026-10-02 Separate committed-import recovery from preparation
+
+- Use a narrow read-only store recovery helper at RequirementImportService.commit entry. Do not place same-ID replay detection only inside commit_candidate because _prepare may already classify an older replay as stale after a newer replacement.
+
