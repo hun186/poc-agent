@@ -310,3 +310,9 @@
 - All normal Product read/mutation/service-key surfaces gate provisioning before request reservation; only the original task_create request can resume.
 - Final visibility is atomic with create success: verify required Schedule/version/run evidence, transition provisioning→active, persist create result, and mark task_create succeeded in one Schedule transaction.
 
+## 2026-10-02 Release initial execution only inside Product create finalizer
+
+- For once Tasks, materialize the stable-trigger initial Run with the Schedule store's locked helper inside the create-finalization transaction. For recurring Tasks, enable Schedule and compute next_run_at inside that same transaction.
+- Atomically combine execution release, provisioning→active, create safe result, and task_create success. Rollback leaves recurrence disabled/no initial Run and the Task hidden.
+- All Product Run/history/artifact presenters apply the owning Task provisioning lifecycle gate.
+
