@@ -401,10 +401,11 @@ validate superuser + reserve idempotency ledger
 → create linked logical Schedule using schedule_id
 → insert requirement_product_tasks using task_id + existing source/schedule FK targets with product_state=provisioning
 → create immutable Schedule Version using schedule_version_id
-→ approve Schedule Version
-→ once: manual materialize one Run using stable trigger_request_id; recurring Schedule remains disabled
-→ recurring: enable Schedule
-→ atomically finalize provisioning: validate owning task_create request + Task/Schedule/version/run evidence, set product_state=active, persist bounded create safe_result_json, mark task_create succeeded
+→ approve Schedule Version while Schedule remains recurrence-disabled
+→ atomically finalize provisioning in one Schedule SQL transaction:
+   once: materialize the initial Run through the existing locked materialization helper with stable trigger_request_id
+   recurring: enable the approved Schedule and persist next_run_at
+   then set product_state=active, persist bounded create safe_result_json, mark task_create succeeded
 → return task/run presenter
 ```
 
@@ -422,8 +423,9 @@ Tests:
 - failure after any durable step can resume from `requirement_product_requests` using preallocated authority IDs without re-importing, duplicating Schedule Versions, or rolling state backward,
 - crash immediately after Product Task row insertion leaves `product_state=provisioning`; ordinary Task list/get/mutation/service-key surfaces cannot expose or operate it,
 - while a create saga is paused after Task insertion, concurrent PATCH/input-replace/run-trigger requests cannot reserve competing Product mutation requests for that Task,
-- resuming the same owning `task_create` completes the original version/approval/initial run only and then atomically transitions the Task to `active` while marking the create request `succeeded`,
-- if the finalization transaction rolls back, both `product_state=provisioning` and non-succeeded create request state remain; no half-visible Task is produced,
+- before create finalization commits, recurring Schedule remains disabled and one-time initial Run is not materialized, so scheduler/Handoff workers cannot execute a hidden provisioning Task,
+- resuming the same owning `task_create` completes the original version/approval and atomically releases exactly one initial execution path (manual Run for once, enabled recurrence for recurring) together with Task `active` and create request `succeeded`,
+- if the finalization transaction rolls back, `product_state=provisioning`, recurrence remains disabled/no initial Run exists, and the create request is non-succeeded; no half-visible or worker-executable Task is produced,
 - lost response after successful finalization replays the stored create result without re-running initialization,
 - crash after Phase 1B commit but before Product progress update replays the same `import_run_id/snapshot_id` and returns the existing snapshot,
 - crash after Schedule Version commit but before Product progress update replays the same `schedule_version_id` and returns the existing version.
@@ -433,13 +435,12 @@ Tests:
 Extend create to:
 
 - create schedule version,
-- approve,
-- enable recurrence,
-- keep the Product Task in `provisioning` until recurrence enablement and all required create evidence are durable,
-- finalize to `active` in the same transaction that marks the owning `task_create` request succeeded and stores the bounded create result,
-- return next-run evidence.
+- approve it while keeping the Schedule disabled,
+- move recurrence enablement and `next_run_at` calculation **inside the Product-create finalization transaction**,
+- transition to `active`, store bounded create result, and mark the owning `task_create` request succeeded in that same transaction,
+- return next-run evidence only after commit.
 
-Tests prove recurrence is existing Phase 1C recurrence behavior, not copied product logic, and a paused recurring provisioning task cannot be patched, input-replaced, manually triggered, or delegated through a service key before finalization.
+Tests prove recurrence is existing Phase 1C recurrence behavior, not copied product logic, and a paused recurring provisioning task cannot be selected by the scheduler worker, patched, input-replaced, manually triggered, or delegated through a service key before finalization.
 
 ## P1.4A Provisioning lifecycle gate and create finalizer
 
@@ -462,12 +463,12 @@ In one Schedule SQL transaction it must:
 1. lock the owning `task_create` request and `requirement_product_tasks` row,
 2. require `product_state='provisioning'` unless the same request is already `succeeded`,
 3. verify the Task/source/Schedule binding matches the IDs reserved by that request,
-4. verify the initial Schedule Version exists and is approved/active,
-5. for `once`, verify the request-owned stable-trigger initial Run has been materialized; for `recurring`, verify the Schedule is enabled and next-run state is valid,
+4. verify the initial Schedule Version exists and is approved/active while the Schedule is still disabled for recurrence,
+5. for `once`, call the existing locked materialization helper inside this transaction with the stable request-derived trigger identity, yielding exactly one initial Run; for `recurring`, enable the approved Schedule and calculate/persist `next_run_at` inside this transaction,
 6. transition `product_state` to `active`,
-7. persist bounded create `safe_result_json`,
+7. persist bounded create `safe_result_json` including the initial Run identity or recurring next-run evidence,
 8. mark that same `task_create` request `succeeded`,
-9. commit all final visibility/operability state atomically.
+9. commit execution release + final visibility/operability state atomically.
 
 Ordinary Task visibility/operations use a shared lifecycle predicate:
 
@@ -481,13 +482,14 @@ Required concurrent regression:
 
 ```text
 A task_create inserts Product Task as provisioning
-→ barrier/pause before initial version/approval/run/finalization
-→ B attempts GET/PATCH/input-replace/run-trigger/service-key access
-→ B cannot observe/operate/reserve mutation work
+→ initial Schedule Version is approved but Schedule remains disabled and no one-time initial Run exists
+→ barrier/pause immediately before create finalizer while scheduler/Handoff workers are running
+→ workers materialize/execute nothing for A
+→ B attempts Task GET/PATCH/input-replace/run-trigger/service-key access and Product Run/history/artifact GETs
+→ B cannot observe/operate/reserve mutation work or discover partial Run state
 → A resumes same create request
-→ initial artifacts are completed exactly once
-→ atomic finalizer sets active + task_create succeeded
-→ Task becomes visible/operable only after commit
+→ finalizer atomically materializes exactly one once-Run OR enables recurrence + next_run_at, then sets active + task_create succeeded
+→ Task/Run become visible/operable only after commit
 ```
 
 Also test crash/lost-response immediately before and immediately after finalization.
@@ -667,7 +669,7 @@ GET  /v1/requirement-runs/{run_id}/items/{run_item_id}/word
 
 Do not remove current low-level APIs. Their intentional Product-ownership behavior is: reads remain available; mutation routes reject Product-owned Schedule/source identities with stable 409 codes, while non-Product resources retain existing behavior.
 
-Product Task presenters/routes must share the provisioning lifecycle predicate: ordinary list/get omit provisioning rows, and PATCH/input/run reject `requirement_task_provisioning` before creating any new durable mutation request.
+Product Task and Product Run/artifact presenters/routes must share the provisioning lifecycle predicate. Ordinary Task list/get omit provisioning rows; PATCH/input/run reject `requirement_task_provisioning` before creating any new durable mutation request. `GET /v1/requirement-runs` excludes Runs whose owning Product Task is provisioning, and direct run/items/artifact/Word lookups for such owners return the same safe unavailable/not-found behavior.
 
 ## P2.2 Multipart and direct JSON input
 
@@ -861,6 +863,8 @@ Read-only historical snapshots/versions; only prospective updates.
 
 Show neutral lifecycle, Run Items, safe error category, elapsed time, artifact readiness, Word download.
 
+Run detail/history/artifact views are available only for Runs whose owning Product Task is finalized (`active|disabled`). Provisioning-owned Runs are omitted/rejected by the Product API and therefore cannot appear in the UI.
+
 Do not display Report Job owner internals, local paths, raw tracebacks, or E2E capability data.
 
 ## P4.6 UI contract tests
@@ -1020,7 +1024,7 @@ PYTHONPATH=. pytest -q   tests/test_requirement_product_*.py   tests/test_requir
 Then the repository's normal full suite and compile/static checks.
 
 Explicitly include cross-API ownership-fence regression coverage for `requirements.py` and `requirement_schedules.py`: use concurrent connections/barriers to prove reservation/ownership checks are atomic with low-level writes, Product-owned low-level writes reject, Product-owned reads pass, and non-Product low-level behavior remains unchanged. Also include stale-uncommitted input-replacement base-snapshot CAS races.
-Include a provisioning-visibility concurrency regression that pauses `task_create` after Product Task insertion, proves list/get/PATCH/input/run/service-key surfaces cannot observe or mutate it, resumes the same create request, and proves visibility begins only after the atomic create finalizer commits.
+Include a provisioning-release concurrency regression with scheduler/Handoff workers active: pause after initial version approval but before create finalization; assert recurring Schedule remains disabled, no one-time initial Run exists, no worker execution occurs, Task and Product Run/history/artifact GETs cannot expose partial state, and PATCH/input/run/service-key surfaces cannot reserve work. Resume the same create request and prove the finalizer atomically releases exactly one execution path plus Task visibility/create success.
 
 Update:
 
@@ -1072,7 +1076,7 @@ Every PR:
 | no E2E mock leakage | P0/P6/P8 |
 | existing ES/Excel→SQL/Auth regressions preserved | P8 |
 | Product-owned low-level mutation fence + non-Product compatibility | P1/P2/P8 |
-| provisioning Task hidden/inoperable until atomic create finalization | P1/P2/P3/P8 |
+| provisioning Task and Run/history/artifact state hidden/inoperable until atomic execution release + create finalization | P1/P2/P3/P8 |
 
 ## 7. Explicit future work
 
@@ -1100,6 +1104,6 @@ The phase is complete only when:
 5. Runtime-generated Product E2E passes against real production dependencies.
 6. Browser E2E passes the integrated UI flow.
 7. Existing lower-level Requirement/Schedule APIs and Operator E2E remain valid, with Product-owned resources read-only through low-level HTTP mutation surfaces and non-Product resources retaining their prior mutation behavior.
-8. A partially provisioned Product Task is never visible/operable through ordinary Product/API/UI/service-key surfaces; only its owning create request can resume it until atomic finalization.
+8. A partially provisioned Product Task is neither visible nor worker-executable: recurrence stays disabled and no one-time initial Run is materialized until the atomic create finalizer releases execution, marks the Task active/create succeeded, and only then exposes Task/Run/history/artifact surfaces.
 8. Existing SRA ES editor, Excel→SQL management, account management, and Report Job regressions are green.
 9. Documentation allows an operator to maintain the system without direct SQL/log inspection for normal operations.
