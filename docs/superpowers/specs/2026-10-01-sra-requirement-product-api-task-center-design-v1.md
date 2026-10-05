@@ -181,7 +181,7 @@ Required fields:
 - `request_id` — server-generated primary key.
 - `principal_kind` — `user` or `service_key`.
 - `principal_id` — stable authenticated principal identifier; never a raw credential. For a human user this is the canonical username/account identity. For a service key this MUST be `AuthPrincipal.credential_id`, which is the immutable stored `key_id`; it MUST NOT use `AuthPrincipal.principal_id`, `subject`, or the human-readable key name because service-key names are not unique.
-- `operation` — bounded product operation name such as `task_create`, `task_update`, `input_replace`, or `run_trigger`.
+- `operation` — bounded product operation name such as `task_create`, `task_update`, `task_version_activate`, `input_replace`, or `run_trigger`.
 - `idempotency_key` — caller-supplied bounded key.
 - `request_sha256` — SHA-256 of the canonical semantic request, including input digest but not raw uploaded bytes.
 - `state` — `reserved`, `in_progress`, `succeeded`, `failed_recoverable`, or `failed_terminal`.
@@ -409,34 +409,48 @@ No local path, credential, prompt, E2E marker, or backend-native status is retur
 
 `PATCH /v1/requirement-tasks/{task_id}`
 
-Allowed changes are prospective only:
+Allowed prospective changes are split by authority:
 
-- name,
-- enabled state,
-- recurrence/timezone,
-- approved model selection,
-- run policy.
+- **In-place Product metadata/state changes** that do not require a new Schedule Version follow the Product Task revision-CAS rules and existing RBAC. Recurring enable/disable remains `superuser` only.
+- **Schedule-affecting changes** — recurrence, timezone, approved model selection, or run policy — always create a new immutable **draft Schedule Version**. PATCH never approves/activates that draft, even when the caller is a superuser.
 
-Any schedule-affecting change creates a new immutable Schedule Version.
+Every PATCH requires `Idempotency-Key` and uses durable operation `task_update`. Before reserving it, the Product service requires `product_state != 'provisioning'`.
 
-Every `PATCH /v1/requirement-tasks/{task_id}` mutation requires `Idempotency-Key` and uses the durable `task_update` ledger operation. Before reserving a new `task_update`, the Product service must require `product_state != 'provisioning'`; a provisioning Task is rejected with `requirement_task_provisioning` and cannot acquire a competing update request.
+For a schedule-affecting PATCH:
 
-When the request is first reserved, the Product service locks the Product Task long enough to record its current `revision` as `base_task_revision`. For a schedule-changing update it also preallocates/persists `schedule_version_id` before calling `ScheduleStore.create_version(..., schedule_version_id=...)`.
+1. lock/read the Product Task and persist its current `revision` as the draft request's `base_task_revision`,
+2. preallocate/persist `schedule_version_id`,
+3. create/recover exactly that draft through `ScheduleStore.create_version(..., schedule_version_id=...)`,
+4. leave the current approved/active Schedule Version, recurring enabled state, Product Task `revision`, and `next_run_at` unchanged,
+5. store a bounded result identifying the draft and mark the `task_update` request `succeeded`.
 
-The Product path MUST NOT finalize rename or enabled-state changes by calling the current standalone `rename_schedule()` / `set_enabled()` methods and then marking the ledger succeeded afterwards. Instead, Schedule/Product persistence exposes one Product-update finalization transaction that:
+This path is allowed for `db_operator` and `superuser`, subject to existing model/config validation. It is **proposal creation**, not approval. A successful draft-creation request has no authority to activate its own version later.
 
-1. locks the `requirement_product_requests` row, `requirement_product_tasks` row, linked Schedule, and any preallocated draft Schedule Version needed by the request,
-2. returns the stored `safe_result_json` immediately if the Product request is already `succeeded`,
-3. requires current Product Task `revision == base_task_revision`,
-4. if the revision differs, does **not** apply any requested old values; it marks the request terminal with `requirement_task_conflict` and, when safe, retires/abandons only the request-owned unapproved draft version,
-5. if the revision matches, applies the requested rename/product-state/recurring-enabled changes; validates and activates the request-owned preallocated Schedule Version when applicable; emits the existing Schedule audit-outbox events plus Product audit metadata; increments Product Task `revision` exactly once,
-6. stores `result_task_revision` and bounded `safe_result_json`, and changes the Product request to `succeeded`,
-7. commits all state mutation, audit outbox, revision increment, and Product-request success in the **same SQL transaction**.
+Name-only or other permitted in-place metadata updates use a Product-specific atomic finalizer that locks the Product request, Product Task, and linked Schedule; checks `revision == base_task_revision`; applies only the authorized in-place fields; increments Task `revision` exactly once; writes safe audit/result state; and marks that same request succeeded in one transaction. Recurring enable/disable uses this path only for a `superuser`.
 
-Therefore there is no crash window in which an in-place Product Task change is committed but its idempotency request remains unknown. If the transaction rolls back, neither the task change nor success marker exists. If it commits and the HTTP response is lost, replay sees `succeeded` and returns the stored result without reapplying old state. If a newer different-key update wins before an older unfinished request resumes, the older request fails the revision CAS instead of rolling the task backward.
+### 7.4.1 Approve/activate a draft Schedule Version
 
+`POST /v1/requirement-tasks/{task_id}/versions/{schedule_version_id}/activate`
 
-### 7.4.1 Atomic Product ownership fences on low-level mutation APIs
+This is the **only Product v1 path that approves/activates a draft version on a Product-owned Schedule**, and it requires `superuser`. The low-level approval route remains fenced for Product-owned Schedules.
+
+The activation call requires its own `Idempotency-Key` and durable operation `task_version_activate`. The service must resolve the draft's originating successful `task_update` request by `task_id + schedule_version_id` and reuse that request's persisted `base_task_revision` as the proposal CAS anchor. A draft that cannot be proven to originate from that Task's Product update request is rejected.
+
+Activation finalization runs in one Schedule SQL transaction:
+
+1. lock the activation request, Product Task, linked Schedule, draft Schedule Version, and the originating draft request,
+2. replay an already-succeeded activation from bounded `safe_result_json`,
+3. require the draft is still `draft` and belongs to the Task's Schedule,
+4. require current Product Task `revision == originating_draft.base_task_revision`,
+5. on mismatch, do not activate the stale draft; mark activation terminal with `requirement_task_conflict` and retire/abandon that draft when safe,
+6. on match, apply the existing Schedule approval/activation rules to this exact draft, recalculate `next_run_at` if the recurring Task is currently enabled, increment Product Task `revision` once, emit authoritative Schedule/Product audit metadata, store bounded result, and mark activation succeeded,
+7. commit version activation + Task revision + audit + activation-request success atomically.
+
+Therefore a `db_operator` can propose a new recurrence/timezone/model/run-policy configuration but cannot cause it to become active. A superuser explicitly activates it later. If any intervening successful Task mutation changed the revision, the old draft cannot overwrite newer state.
+
+Task detail/version history should expose draft status and the creator safely. The Task Center shows **待核准** and an activate action only to superusers; ordinary operators can see their draft proposal but cannot approve it.
+
+### 7.4.2 Atomic Product ownership fences on low-level mutation APIs
 
 Once a Product request reserves a server-owned `schedule_id` / `source_id`, that identity is already **reserved for Product ownership** even before the eventual `requirement_product_tasks` row exists. This closes the provisioning gap between resource creation and Product Task linkage.
 
@@ -476,7 +490,7 @@ Implementation should refactor the current store writes into private locked help
 
 This makes ownership fencing race-safe across both the provisioning window and steady-state Product ownership.
 
-### 7.4.2 Input replacement base-snapshot CAS
+### 7.4.3 Input replacement base-snapshot CAS
 
 `POST /v1/requirement-tasks/{task_id}/input` is a separate Product mutation and requires `Idempotency-Key`. It is unavailable while the Task is `provisioning`; the Product service checks the Task lifecycle before reserving `input_replace` and returns `requirement_task_provisioning` without creating a competing request.
 
@@ -503,7 +517,7 @@ A reserves from S0
 
 This ordering is materially different from an immediate retry after A commits and is required because current `_prepare()` compares incoming rows against the latest persisted Requirement versions.
 
-Replacing Requirement input follows the base-snapshot CAS contract in §7.4.2. It previews/commits a new Requirement snapshot under the same logical task/source authority without allowing an older unfinished replacement to roll active input backward.
+Replacing Requirement input follows the base-snapshot CAS contract in §7.4.3. It previews/commits a new Requirement snapshot under the same logical task/source authority without allowing an older unfinished replacement to roll active input backward.
 
 Existing Runs remain bound to their original snapshot/version.
 
@@ -549,8 +563,8 @@ Baseline UI policy:
 
 - `data_reader`: view task/run histories and completed artifacts permitted by product policy.
 - `data_editor`: no Product mutation authority in v1 unless a later reviewed policy explicitly grants side-effect-free preview.
-- `db_operator`: preview Requirement input; replace input on an already activated task/source; create prospective draft Schedule Versions; trigger manual Runs where the existing Schedule authority permits it. It cannot enable a Requirement source or provision/activate a brand-new Product Task.
-- `superuser`: provision a new Product Task, enable its task-owned Requirement source, approve/activate Schedule Versions, enable/disable recurring automation, and manage service keys.
+- `db_operator`: preview Requirement input; replace input on an already activated task/source; create prospective draft Schedule Versions; trigger manual Runs where the existing Schedule authority permits it. It cannot approve/activate those drafts, enable recurring automation, enable a Requirement source, or provision/activate a brand-new Product Task.
+- `superuser`: provision a new Product Task, enable its task-owned Requirement source, create drafts, approve/activate Product draft Schedule Versions through the Product activation endpoint, enable/disable recurring automation, and manage service keys.
 
 Exact privilege inheritance must reuse `authorize_role` and existing denial audit; do not introduce a second role engine. Product orchestration may call the same underlying store/service operations only after the corresponding product endpoint has established the same or stricter authority required by the low-level route.
 
@@ -718,15 +732,9 @@ Cross-authority Product operations are therefore an explicit durable saga. Each 
 
 For Product Task PATCH/update, durable identity alone is not sufficient because rename/enabled state are mutable in place. These updates additionally use the Product Task revision CAS and same-transaction finalization defined in §7.4. This prevents both crash-after-commit replay and stale old requests from overwriting newer successful changes.
 
-Retrying a failed execution creates a new Run:
+A failed Run remains immutable. In Product v1, choosing **Run again** simply issues another ordinary `POST /v1/requirement-tasks/{task_id}/runs` request with a new idempotency key and creates a new independent Run.
 
-```text
-run_001 failed
-└─ retry → run_002
-           parent_run_id = run_001
-```
-
-Do not mutate failed Run history into success.
+Product v1 does **not** persist or expose `parent_run_id` / retry ancestry. The current Schedule schema has no reviewed ancestry field, and v4 deliberately adds only Product Task/request control-plane tables. Durable retry lineage is future work requiring a separate schema/API design. Do not infer ancestry from timestamps, trigger order, or UI state.
 
 ## 13. Product E2E
 
@@ -810,6 +818,7 @@ The Product API/UI MUST NOT:
 - invoke Report Jobs directly from browser/API façade,
 - run scheduler/handoff loops inside FastAPI background threads,
 - weaken existing Requirement approval/version rules.
+- let `db_operator` activate a Product draft Schedule Version; Product draft activation is a separate superuser-only idempotent operation.
 - mutate a Product-owned Schedule or task-owned Requirement source through the retained public low-level mutation endpoints; those writes must go through Product API/orchestration.
 
 Uploaded files receive bounded size/type validation and are parsed only by the existing Requirement import authority.
@@ -839,11 +848,12 @@ Product v1 is complete only when all of the following are true:
 6. Run status/history is visible without SQL/log inspection.
 7. Completed DOCX is retrievable through authenticated product history.
 8. All product mutations are idempotent/replay safe where required, and partially provisioned Tasks—including any Run/history/artifact views—are hidden/inoperable until the owning `task_create` request atomically releases either the one-time initial Run or recurring Schedule together with Task activation.
-9. Historical snapshot/version/run bindings remain immutable.
-10. Product jobs cannot enter E2E mock routing.
-11. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
-12. Browser E2E passes the integrated SRA UI Golden Path.
-13. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
+9. Schedule-affecting Task PATCH creates a draft only; activation is a separate superuser-only Product operation with CAS against the draft's originating Task revision.
+10. Historical snapshot/version/run bindings remain immutable.
+11. Product jobs cannot enter E2E mock routing.
+12. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
+13. Browser E2E passes the integrated SRA UI Golden Path.
+14. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
 
 ## 19. Design decision summary
 
