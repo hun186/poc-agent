@@ -494,26 +494,48 @@ A task_create inserts Product Task as provisioning
 
 Also test crash/lost-response immediately before and immediately after finalization.
 
-## P1.5 Prospective task updates — revision CAS + atomic finalization
+## P1.5 Prospective task updates — draft creation vs in-place finalization
 
 Implement:
 
-- rename,
-- enable/disable,
-- recurrence/timezone/model/run-policy changes via new immutable Schedule Version,
+- name and other permitted in-place metadata updates through revision CAS,
+- recurring enable/disable only under `superuser`,
+- recurrence/timezone/model/run-policy changes as immutable **draft Schedule Versions only**,
 - input replacement via new Requirement snapshot.
 
-Every `PATCH /v1/requirement-tasks/{task_id}` mutation uses durable operation `task_update` and requires `Idempotency-Key`.
+Every `PATCH /v1/requirement-tasks/{task_id}` requires `Idempotency-Key` and durable operation `task_update`.
 
 At request reservation:
 
-1. lock/read the Product Task and require `product_state != 'provisioning'`; otherwise return `requirement_task_provisioning` without reserving `task_update`,
+1. lock/read the Product Task and require `product_state != 'provisioning'`,
 2. persist current `revision` as `base_task_revision`,
-3. preallocate/persist `schedule_version_id` when the patch changes recurrence/timezone/model/run-policy.
+3. if recurrence/timezone/model/run-policy changes are requested, preallocate/persist `schedule_version_id`.
 
-For schedule-changing PATCH, create/recover the request-owned draft through `create_version(..., schedule_version_id=...)`.
+### Schedule-affecting PATCH
 
-Add a Product-specific Schedule-store finalizer, preferred shape subject to implementation rebaseline:
+For any caller, including superuser, a schedule-affecting PATCH creates/replays exactly one request-owned **draft** through `create_version(..., schedule_version_id=...)` and then marks the `task_update` request succeeded with bounded draft-result metadata.
+
+It MUST NOT:
+
+- approve or activate the draft,
+- change the active Schedule Version,
+- change `next_run_at`,
+- change recurring enabled state,
+- increment Product Task `revision`.
+
+The draft request's persisted `base_task_revision` is the proposal's stale-activation CAS anchor. `db_operator` is allowed to create this proposal because doing so does not cross the existing approval boundary.
+
+Tests prove:
+
+- db_operator and superuser can create a validated Product-owned draft,
+- active Schedule/version/next-run/Task revision remain unchanged,
+- lost-response replay returns the same preallocated `schedule_version_id`,
+- same-key changed request conflicts,
+- concurrent draft creation can produce distinct proposals but cannot mutate active Task semantics.
+
+### In-place metadata/state PATCH
+
+For fields that do not require a new Schedule Version, use a Product-specific finalizer in one Schedule SQL transaction:
 
 ```python
 finalize_product_task_update(
@@ -526,32 +548,48 @@ finalize_product_task_update(
 ) -> ProductTaskUpdateResult
 ```
 
-This method runs in **one Schedule SQL transaction** and MUST:
+It must lock request/Task/Schedule, replay succeeded requests, compare `revision == base_task_revision`, apply only RBAC-authorized in-place fields, update recurrence enabled state only for superuser, emit audit metadata, increment Task revision once, store bounded result, and mark request succeeded atomically.
 
-- lock the Product request, Product Task, linked Schedule, and request-owned draft version if present,
-- if request already succeeded, return stored bounded `safe_result_json`,
-- compare current Task `revision` with ledger `base_task_revision`,
-- on mismatch: do not apply requested rename/state/version activation; mark the request `failed_terminal` with `requirement_task_conflict`; retire/abandon only this request's still-draft version when safe,
-- on match: apply requested rename/product-state/recurring-enabled changes; validate/activate the request-owned version when applicable; update Schedule `next_run_at` using existing recurrence rules; enqueue the same authoritative Schedule audit-outbox events plus Product audit metadata; increment Task `revision` once,
-- persist `result_task_revision` and bounded whitelisted `safe_result_json`,
-- set Product request `succeeded`,
-- commit all mutations and the ledger success marker atomically.
+Tests cover lost-response replay, stale different-key CAS, audit atomicity, and superuser-only recurring enable/disable.
 
-The Product path must not implement rename/state replay by sequentially calling current `rename_schedule()` or `set_enabled()` and then updating the ledger.
+## P1.5A Product draft activation — superuser only
+
+**Files:** Product service/router, Schedule store private locked approval helper, Product idempotency/RBAC tests.
+
+Add:
+
+```text
+POST /v1/requirement-tasks/{task_id}/versions/{schedule_version_id}/activate
+```
+
+Requirements:
+
+- `superuser` only,
+- requires `Idempotency-Key`,
+- durable operation `task_version_activate`,
+- resolve the draft's originating successful `task_update` request by `task_id + schedule_version_id`,
+- copy/use that originating request's `base_task_revision` as the activation CAS anchor,
+- reject drafts not proven to belong to this Product Task/update flow.
+
+Activation finalizer, in one Schedule SQL transaction:
+
+1. lock activation request, Product Task, linked Schedule, exact draft version, and originating draft request,
+2. replay already-succeeded activation from bounded safe result,
+3. require version status is still `draft`,
+4. require current Task `revision == originating_draft.base_task_revision`,
+5. stale mismatch → do not activate; mark activation `failed_terminal` with `requirement_task_conflict`; retire/abandon only the stale draft when safe,
+6. matching revision → approve/activate exact draft using existing Schedule rules, recalculate `next_run_at` if recurring currently enabled, increment Task revision once, emit Schedule/Product audit, persist bounded result, mark activation succeeded,
+7. commit all state + activation request outcome atomically.
 
 Tests prove:
 
-- historical Runs retain old bindings,
-- same PATCH key/hash after lost HTTP response returns the stored original Product result and performs no second mutation,
-- same PATCH key with changed canonical request returns 409,
-- retry after response loss creates at most one new Schedule Version,
-- crash after `create_version()` commit but before finalization reuses the persisted preallocated `schedule_version_id`,
-- crash/rollback inside finalization leaves both Task state and request success unapplied,
-- successful finalization commits Task/Schedule mutation + audit outbox + `revision+1` + request success together,
-- two concurrent/different-key PATCH requests reserved from the same base revision cannot both succeed,
-- if a newer different-key PATCH succeeds before an older unfinished request resumes, the old request fails CAS and cannot roll back name/enabled/model/recurrence state,
-- a succeeded old request replay after later updates returns its stored `safe_result_json` rather than reapplying old values.
-
+- db_operator cannot call activation,
+- low-level approval route remains 409 for Product-owned Schedule,
+- superuser activation is the supported approval path,
+- stale draft cannot overwrite newer Task configuration,
+- successful activation changes active version exactly once,
+- lost HTTP response replays without second activation/revision increment,
+- two activations racing from the same Task revision cannot both win.
 
 ## P1.6 Atomic Product ownership mutation fences
 
@@ -658,6 +696,7 @@ POST /v1/requirement-tasks
 GET  /v1/requirement-tasks
 GET  /v1/requirement-tasks/{task_id}
 PATCH /v1/requirement-tasks/{task_id}
+POST /v1/requirement-tasks/{task_id}/versions/{schedule_version_id}/activate
 POST /v1/requirement-tasks/{task_id}/input
 POST /v1/requirement-tasks/{task_id}/runs
 GET  /v1/requirement-runs
@@ -693,13 +732,14 @@ Product router delegates parsing to Phase 1B.
 
 **Files:** add `tests/test_requirement_product_idempotency.py`; use the reviewed `requirement_product_requests` v4 table from P1.0.
 
-For task create, every task PATCH/update, input replacement, and Run trigger:
+For task create, every task PATCH/update, Product draft activation, input replacement, and Run trigger:
 
 - missing `Idempotency-Key` → safe validation failure,
 - first request reserves principal + operation + key + canonical request SHA and all required server-owned durable IDs before the corresponding Phase 1B/1C mutation,
 - for service-key principals, the ledger uses `AuthPrincipal.credential_id` / immutable `key_id`; duplicate service-key display names must never share replay state,
 - same key/hash + `succeeded` → return stored bounded `safe_result_json` for mutable PATCH results or reconstruct immutable/create results from authoritative IDs,
 - same key/hash + `in_progress` or `failed_recoverable` → resume from durable stage references, preallocated authority IDs (`import_run_id`, `snapshot_id`, `schedule_id`, `task_id`, `schedule_version_id` as applicable), and the persisted `base_snapshot_id` / `base_task_revision` CAS anchors,
+- `task_version_activate` resolves the originating draft request and uses that draft's persisted `base_task_revision`; activation never silently refreshes the CAS anchor to the current Task revision,
 - same key + changed hash → 409 `requirement_idempotency_conflict`,
 - `failed_terminal` → same safe terminal result until a new key is supplied,
 - response loss + replay → existing product object/result,
@@ -753,12 +793,15 @@ Acceptance matrix:
 | provision new Product Task/source | no | no | **no** | **yes** |
 | replace input on already active task/source | no | no | yes | yes |
 | create prospective draft schedule version | no | no | yes | yes |
+| activate Product draft schedule version | no | no | **no** | **yes** |
 | approve/activate schedule version | no | no | no | yes |
 | enable/disable recurring task | no | no | no | yes |
 | trigger permitted Run on active task | no | no | yes | yes |
 | service-key management | no | no | no | yes |
 
 This deliberately preserves current Phase 1B source activation: a new source cannot be enabled/committed by `db_operator`. Product orchestration must not call the store as a lower-privilege principal to evade that rule.
+
+It also preserves Schedule approval authority: a `db_operator` Product PATCH may create a draft only. The only Product-owned activation path is the superuser-only `task_version_activate` endpoint; low-level Product-owned approval remains fenced.
 
 Denied actions must use existing authz audit.
 
@@ -857,7 +900,7 @@ Tabs:
 - 執行紀錄
 - 稽核
 
-Read-only historical snapshots/versions; only prospective updates.
+Read-only historical snapshots/versions; prospective schedule changes create drafts. Show draft/待核准 state and an activation control only to superusers; db_operator can submit a draft but cannot activate it.
 
 ## P4.5 Run detail
 
@@ -1025,6 +1068,7 @@ Then the repository's normal full suite and compile/static checks.
 
 Explicitly include cross-API ownership-fence regression coverage for `requirements.py` and `requirement_schedules.py`: use concurrent connections/barriers to prove reservation/ownership checks are atomic with low-level writes, Product-owned low-level writes reject, Product-owned reads pass, and non-Product low-level behavior remains unchanged. Also include stale-uncommitted input-replacement base-snapshot CAS races.
 Include a provisioning-release concurrency regression with scheduler/Handoff workers active: pause after initial version approval but before create finalization; assert recurring Schedule remains disabled, no one-time initial Run exists, no worker execution occurs, Task and Product Run/history/artifact GETs cannot expose partial state, and PATCH/input/run/service-key surfaces cannot reserve work. Resume the same create request and prove the finalizer atomically releases exactly one execution path plus Task visibility/create success.
+Add Product-version approval regressions: db_operator draft creation leaves active state untouched; db_operator activation is denied; low-level approval of Product-owned Schedule is fenced; superuser Product activation succeeds atomically; stale draft activation fails Task revision CAS.
 
 Update:
 
@@ -1086,6 +1130,7 @@ Do not silently include in v1:
 - generic workflow builder,
 - cancel-running execution,
 - arbitrary retry policy editor,
+- durable retry ancestry / `parent_run_id` lineage,
 - HA/distributed queue redesign,
 - object storage migration,
 - JT-1/LangGraph redesign,
@@ -1105,5 +1150,6 @@ The phase is complete only when:
 6. Browser E2E passes the integrated UI flow.
 7. Existing lower-level Requirement/Schedule APIs and Operator E2E remain valid, with Product-owned resources read-only through low-level HTTP mutation surfaces and non-Product resources retaining their prior mutation behavior.
 8. A partially provisioned Product Task is neither visible nor worker-executable: recurrence stays disabled and no one-time initial Run is materialized until the atomic create finalizer releases execution, marks the Task active/create succeeded, and only then exposes Task/Run/history/artifact surfaces.
-8. Existing SRA ES editor, Excel→SQL management, account management, and Report Job regressions are green.
-9. Documentation allows an operator to maintain the system without direct SQL/log inspection for normal operations.
+9. Schedule-affecting PATCH creates an immutable draft only; a separate superuser-only idempotent activation flow is the sole Product approval path and CASes against the draft's originating Task revision.
+10. Existing SRA ES editor, Excel→SQL management, account management, and Report Job regressions are green.
+11. Documentation allows an operator to maintain the system without direct SQL/log inspection for normal operations.
