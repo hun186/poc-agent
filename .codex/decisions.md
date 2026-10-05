@@ -316,3 +316,9 @@
 - Atomically combine execution release, provisioning→active, create safe result, and task_create success. Rollback leaves recurrence disabled/no initial Run and the Task hidden.
 - All Product Run/history/artifact presenters apply the owning Task provisioning lifecycle gate.
 
+## 2026-10-05 Split Product schedule proposal from activation
+
+- Preserve existing Schedule RBAC: db_operator can propose a Product Schedule draft but cannot activate it. Superuser activation is a distinct idempotent task_version_activate flow that uses the draft creator request's base_task_revision as the stale-proposal CAS anchor.
+- Draft creation leaves active Schedule semantics and Task revision unchanged. Successful activation alone changes active version and increments revision.
+- Keep Product v1 schema focused: do not add retry ancestry persistence. parent_run_id is not a v1 contract; Run again is an independent manual Run.
+
