@@ -276,3 +276,10 @@
 - Product Run list/detail/items/artifact/Word presenters resolve the owning Product Task and omit/reject provisioning owners. Service-key artifact/read scopes do not bypass this gate.
 - Concurrency regression runs scheduler/Handoff workers while create is paused immediately before finalization and proves no execution or Product Task/Run/history/artifact visibility occurs until atomic commit.
 
+### 2026-10-05 Draft proposal vs superuser activation; no retry ancestry in v1
+
+- Schedule-affecting Product PATCH (recurrence/timezone/model/run-policy) creates only an immutable draft Schedule Version. It never approves/activates it, does not change active version/next_run_at/enabled state, and does not increment Product Task revision.
+- db_operator may create such drafts; activation is a separate superuser-only Product endpoint using durable operation task_version_activate. Activation resolves the originating draft request and CASes current Task revision against that request's persisted base_task_revision before atomically approving/activating and incrementing revision.
+- Low-level approval remains fenced for Product-owned Schedules, so the Product activation endpoint is the sole supported approval path.
+- Product v1 removes any durable parent_run_id/retry-lineage guarantee. Run again creates an independent new Run; failed Run history remains immutable. Retry ancestry is future schema/API work.
+
