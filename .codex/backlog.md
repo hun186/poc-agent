@@ -51,4 +51,5 @@
 - 2026-10-02: PR #277 final replay correction names recover_preallocated_import_result and requires it before _prepare; delayed A/S1 → B/S2 → replay A test must fail if _prepare is called. Implementation remains NOT STARTED.
 - 2026-10-02: PR #277 latest review correction adds provisioning lifecycle gating and atomic task_create finalization so partial Task rows are hidden/inoperable until the owning create saga succeeds. Implementation remains NOT STARTED.
 - 2026-10-02: PR #277 latest review corrections move once initial Run materialization and recurring enablement into atomic create finalization, and gate Product Run/history/artifact presenters by owning Task provisioning state. Implementation remains NOT STARTED.
+- 2026-10-05: PR #277 latest review corrections split schedule-affecting PATCH into draft-only creation plus separate superuser-only task_version_activate CAS flow, and remove parent_run_id/retry ancestry from Product v1 (future work). Implementation remains NOT STARTED.
 
