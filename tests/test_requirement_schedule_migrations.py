@@ -188,3 +188,37 @@ def test_product_v4_reservation_refs_are_not_domain_foreign_keys():
     assert indexes["IX_requirement_product_request_source"].columns == ("source_id",)
     assert indexes["IX_requirement_product_request_source"].filter_definition == "source_id IS NOT NULL"
 
+def test_product_v4_default_and_check_catalog_normalization_is_fail_closed():
+    defaults = {default.name: default for default in REQUIRED_DEFAULTS}
+    state_default = defaults["DF_requirement_product_task_state"]
+    assert validate_catalog_evidence(
+        "sra_schedule",
+        state_default,
+        (("sra_schedule", "requirement_product_tasks", state_default.name, "product_state",
+          "((N'provisioning'))"),),
+    )
+    assert not validate_catalog_evidence(
+        "sra_schedule",
+        state_default,
+        (("sra_schedule", "requirement_product_tasks", state_default.name, "product_state",
+          "((N'active'))"),),
+    )
+
+    checks = {check.name: check for check in REQUIRED_CHECKS}
+    state_check = checks["CK_requirement_product_task_state"]
+    sql_server_definition = (
+        "([product_state]=N'provisioning' OR [product_state]=N'active' "
+        "OR [product_state]=N'disabled')"
+    )
+    assert validate_catalog_evidence(
+        "sra_schedule",
+        state_check,
+        (("sra_schedule", "requirement_product_tasks", state_check.name, sql_server_definition),),
+    )
+    assert not validate_catalog_evidence(
+        "sra_schedule",
+        state_check,
+        (("sra_schedule", "requirement_product_tasks", state_check.name,
+          "([product_state]=N'active' OR [product_state]=N'disabled')"),),
+    )
+
