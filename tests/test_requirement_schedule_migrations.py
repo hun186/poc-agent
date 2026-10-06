@@ -127,6 +127,8 @@ def test_schema_v4_adds_only_reviewed_product_control_plane_objects():
     assert "UQ_requirement_product_task_schedule UNIQUE" in ddl
     assert "UQ_requirement_product_task_source UNIQUE" in ddl
     assert "UQ_requirement_product_request_idempotency UNIQUE(principal_kind,principal_id,operation,idempotency_key)" in ddl
+    assert "DF_requirement_product_task_state DEFAULT N\'provisioning\'" in ddl
+    assert "DF_requirement_product_task_revision DEFAULT 1" in ddl
     assert "IX_requirement_product_request_schedule" in ddl
     assert "IX_requirement_product_request_source" in ddl
     assert "WHERE schedule_id IS NOT NULL" in ddl
@@ -142,6 +144,12 @@ def test_product_v4_catalog_descriptors_lock_task_and_request_semantics():
         "created_by", "created_at", "updated_by", "updated_at",
     )
     assert task_columns["revision"].sql_type == "int" and not task_columns["revision"].nullable
+    defaults = {default.name: default for default in REQUIRED_DEFAULTS}
+    assert defaults["DF_requirement_product_task_state"].table == "requirement_product_tasks"
+    assert defaults["DF_requirement_product_task_state"].column == "product_state"
+    assert defaults["DF_requirement_product_task_state"].definition == "N\'provisioning\'"
+    assert defaults["DF_requirement_product_task_revision"].column == "revision"
+    assert defaults["DF_requirement_product_task_revision"].definition == "1"
     assert request_columns["safe_result_json"].sql_type == "nvarchar"
     assert request_columns["safe_result_json"].max_length == 8000
     assert all(request_columns[name].nullable for name in (
