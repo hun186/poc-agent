@@ -46,12 +46,14 @@
 - 2026-10-01: Requirement Operator E2E CLI now follows deployed external mode by default when the operator omits the option.
 - 2026-09-30: Isolated Requirement E2E semantic mocks from ordinary production jobs and propagated verified E2E authority safely into tool worker threads.
 
+- 2026-10-06: P1.0A authority-identity compatibility is implemented in PR #279: Phase 1B accepts/replays preallocated import/snapshot IDs before preparation, input replacement enforces locked base-snapshot CAS, Schedule Version accepts/replays a preallocated version ID, and Manual Run keeps its existing trigger-request identity. An initial Codex review found that candidate diagnostics could bypass replacement CAS; the current branch fixes that ordering and adds a regression. Product service/router/create saga/UI remain unimplemented.
+
 ## Verification Summary
 
-- PR #277 is merged. Product implementation is now IN PROGRESS at P1.0 schema v4 only; Product service/API/UI and later saga gates remain not implemented.
-- Current P1.0 edits were source-reviewed through the hosted GitHub branch. Regression coverage now includes v4 DDL/descriptors/defaults, SQL Server catalog normalization, successful v3→v4 marker advancement, rollback on post-DDL catalog failure, and updated legacy/stateful migration fixtures. A local pytest PASS is not claimed because the execution container cannot resolve `github.com` to clone the hosted branch; post-fix exact-head Codex review remains required.
+- PR #277 Design/Plan and PR #278 P1.0 schema v4 are merged. P1.0A authority-level caller-supplied identity support is implemented on open PR #279; Product service/API/UI and later saga gates remain not implemented.
+- P1.0A regression coverage on PR #279 includes terminal import replay before `_prepare()`, exact preallocated import/snapshot IDs, base-snapshot CAS before both normal writes and failed-import recording, failed-import same-ID replay, and Schedule Version exact-ID create/replay/mismatch behavior. A local pytest PASS is not claimed: direct Git transport still fails with `Could not resolve host: github.com`, so the hosted branch cannot be cloned into the execution container. Hosted Vercel/check status and a fresh exact-head Codex review are required before merge.
 - No fresh live Requirement E2E, private SQL Server, Elasticsearch, LLM, Agent, deployment bootstrap, or DOCX acceptance was executed for this documentation task.
-- Exact-head Codex review and hosted status checks are required for the P1.0 implementation PR before merge.
+- Exact-head Codex review and hosted status checks are required for PR #279 before merge; the completed review of older head `ef9fdd1` is not acceptance for the current head.
 - Compaction verification: the 2026-10-06 memory and decisions archives have blob SHAs identical to the pre-compaction files at hosted head `364db0b1d04029570c2ff6a34b05269956751d3d`; active memory/decisions are 59/89 lines respectively, and all six required active `.codex/*.md` context files are below the AGENTS.md mandatory size/line/date-block thresholds.
 - Historical test and deployment evidence is preserved in the archived memory files and should not be restated as fresh acceptance.
 
