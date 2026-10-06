@@ -283,3 +283,9 @@
 - Low-level approval remains fenced for Product-owned Schedules, so the Product activation endpoint is the sole supported approval path.
 - Product v1 removes any durable parent_run_id/retry-lineage guarantee. Run again creates an independent new Run; failed Run history remains immutable. Retry ancestry is future schema/API work.
 
+### 2026-10-06 Product Task revision semantics and mixed PATCH validation
+
+- Product Task revision represents committed active Task semantics. It increments once for successful in-place metadata/state PATCH and once for successful task_version_activate. Draft-only schedule proposal PATCH and input replacement do not increment it.
+- A draft-only task_update stores base_task_revision and leaves result_task_revision null; activation later CASes current revision against that original base before incrementing.
+- Product v1 rejects PATCH payloads that mix in-place fields (for example name/enabled) with schedule-proposal fields (recurrence/timezone/model/run-policy). It returns 422 requirement_task_patch_mixed_modes before durable request reservation, draft ID allocation, or mutation. Same-mode multi-field PATCHes remain allowed.
+
