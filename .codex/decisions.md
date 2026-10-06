@@ -339,3 +339,8 @@
 - The Product Task lock is the admission serialization point between first run_trigger reservation and recurring enable/disable.
 - Disabled state is checked inside the same transaction that inserts a new run_trigger ledger row; never use an unlocked read followed by reservation.
 - A request durably reserved while active remains valid after later disable and may complete/replay exactly once. Disable affects new admissions, not already accepted requests.
+
+## 2026-10-06 Persisted run-trigger state outranks current lifecycle for replay
+
+- Current Product Task disabled/provisioning state is an admission rule for new run_trigger requests only. Existing same-key requests are first resolved by canonical hash and persisted ledger state.
+- failed_recoverable remains resumable after disable; failed_terminal remains the same terminal result; neither is reclassified as requirement_task_disabled.
