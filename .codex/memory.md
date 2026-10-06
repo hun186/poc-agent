@@ -289,3 +289,9 @@
 - A draft-only task_update stores base_task_revision and leaves result_task_revision null; activation later CASes current revision against that original base before incrementing.
 - Product v1 rejects PATCH payloads that mix in-place fields (for example name/enabled) with schedule-proposal fields (recurrence/timezone/model/run-policy). It returns 422 requirement_task_patch_mixed_modes before durable request reservation, draft ID allocation, or mutation. Same-mode multi-field PATCHes remain allowed.
 
+### 2026-10-06 Product disabled-state mirror and activation retry checklist
+
+- Recurring Product Task state is authoritative and mirrored with Schedule enabled state after provisioning: active/enabled=true, disabled/enabled=false. Superuser enable/disable writes both sides, next_run_at, Task revision, audit, safe result, and request success atomically; rollback cannot split the pair. One-time Tasks remain active in v1.
+- Disabled recurring Tasks reject manual run trigger with requirement_task_disabled before reserving run_trigger.
+- P2.3 now distinguishes in-place PATCH finalization (revision +1) from schedule-proposal completion (revision unchanged, result_task_revision NULL), and successful task_version_activate performs its own atomic revision increment.
+- The cross-cutting idempotency checklist explicitly includes task_version_activate; UI/client must retain the same activation Idempotency-Key across transport retries.
