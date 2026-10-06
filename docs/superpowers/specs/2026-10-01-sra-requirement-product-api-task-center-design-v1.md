@@ -529,7 +529,33 @@ Existing Runs remain bound to their original snapshot/version.
 
 `POST /v1/requirement-tasks/{task_id}/runs`
 
-Requires an idempotency/request identity and reuses the existing manual materialization authority. A `provisioning` Task is rejected before a new `run_trigger` request is reserved; only the owning create saga may materialize the initial Run while provisioning. A recurring Task with `product_state='disabled'` is likewise rejected before reservation with `requirement_task_disabled`; it must be re-enabled by a superuser before manual trigger. One-time Tasks remain `active` and can be manually triggered according to existing RBAC.
+Requires an idempotency/request identity and reuses the existing manual materialization authority.
+
+The **first admission** of a new `run_trigger` Product request must be atomic with the Task lifecycle check. Product persistence exposes a transaction such as:
+
+```python
+reserve_product_run_trigger(
+    *,
+    task_id: str,
+    principal_kind: str,
+    principal_id: str,
+    idempotency_key: str,
+    request_sha256: str,
+    now_utc: datetime,
+) -> ProductRunTriggerReservation
+```
+
+In one Schedule SQL transaction it:
+
+1. resolves an already-existing `(principal_kind, principal_id, run_trigger, idempotency_key)` request first; a same-hash existing request is replay/resume state and is not a new admission,
+2. for an absent request, locks the Product Task with write-compatible row/range locking and rechecks the idempotency key under the same transaction,
+3. rejects `provisioning` with `requirement_task_provisioning`,
+4. rejects a recurring `product_state='disabled'` Task with `requirement_task_disabled`,
+5. otherwise inserts/reserves the new `run_trigger` request and commits while still holding the Task lock.
+
+The recurring enable/disable finalizer must acquire a compatible Product Task lock before changing `product_state` / Schedule `enabled`. Therefore admission and disable serialize: if disable commits first, a new trigger cannot be reserved; if trigger reservation commits first while the Task is active, that already-admitted request may resume/materialize exactly once using its stable request-derived `trigger_request_id` even if a later disable commits before materialization. Disable prevents **new admissions**, not completion/replay of work already durably accepted.
+
+A request must not implement this as an unlocked Task read followed by a separate ledger insert. One-time Tasks remain `active` and can be admitted according to existing RBAC. The owning create saga remains the only path allowed to release the initial Run while the Task is `provisioning`.
 
 It returns a product Run presenter.
 
@@ -723,7 +749,7 @@ All product mutations that can create persistent work must be replay safe throug
 
 - Require `Idempotency-Key` for task create, every task PATCH/update, **Product draft activation (`task_version_activate`)**, input replacement, and Run trigger; UI clients generate one per explicit mutation and retain the same key across transport retries of that mutation, including activation.
 - The server canonicalizes the semantic request and hashes it before the first Phase 1B/1C write.
-- Reserve the unique principal/operation/key row first.
+- For ordinary mutations reserve the unique principal/operation/key row before side effects. For `run_trigger`, first-time reservation additionally follows §7.5: lifecycle recheck and ledger insertion are atomic under the Product Task lock; an already-reserved same-hash trigger is replay/resume and remains admitted even if the Task is later disabled.
 - Same principal/operation/key + same hash returns or resumes the recorded operation.
 - Same principal/operation/key + different hash returns 409 `requirement_idempotency_conflict`.
 - `in_progress` or `failed_recoverable` replay resumes from persisted preallocated authority IDs and safe stage references instead of re-importing, creating another Schedule Version, or rolling input backward.
@@ -855,11 +881,12 @@ Product v1 is complete only when all of the following are true:
 9. Schedule-affecting Task PATCH creates a draft only; activation is a separate superuser-only Product operation with CAS against the draft's originating Task revision.
 10. Product v1 rejects mixed in-place + schedule-affecting PATCH payloads before idempotency reservation; draft-only PATCH does not increment Task revision.
 11. Recurring Task enable/disable atomically mirrors Product `active|disabled` with Schedule `enabled=true|false`; one-time Tasks do not enter `disabled`.
-12. Historical snapshot/version/run bindings remain immutable.
-13. Product jobs cannot enter E2E mock routing.
-14. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
-15. Browser E2E passes the integrated SRA UI Golden Path.
-16. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
+12. New `run_trigger` admission is serialized with recurring disable by a shared Product Task lock; disable-first rejects the new trigger, while a trigger reserved first remains replayable/materializable exactly once.
+13. Historical snapshot/version/run bindings remain immutable.
+14. Product jobs cannot enter E2E mock routing.
+15. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
+16. Browser E2E passes the integrated SRA UI Golden Path.
+17. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
 
 ## 19. Design decision summary
 
