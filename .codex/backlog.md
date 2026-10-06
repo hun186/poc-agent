@@ -45,3 +45,9 @@
 ## Compaction Record
 
 - 2026-10-06: Compacted active `.codex/backlog.md` after it exceeded the AGENTS.md >20 work-record trigger. Full text was archived before rewrite; unresolved live-acceptance work, Product NOT STARTED status, future architecture items, security/UI/ingestion debt, and the Elasticsearch `mapping_incompatible` blocker remain active.
+
+## 2026-10-06 Requirement Product implementation status
+
+- P1.0 schema v4 and P1.0A authority identities are merged.
+- P1.1 Product presenters/identities are implemented on `feat/requirement-product-presenters-p1-1` and require exact-head review/check evidence before merge.
+- After P1.1 merge, continue with P1.2 side-effect-free Product preview orchestration. Do not fold P1.2 preview or P1.3 create saga into the P1.1 PR.
