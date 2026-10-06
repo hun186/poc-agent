@@ -42,6 +42,7 @@
 
 ### Requirement deployment acceptance remains incomplete
 
+- Formal Requirement deployment acceptance is additionally blocked by the unresolved live Elasticsearch `mapping_incompatible` result from capability probing. This has not been cleared by later repository work; authorized live Elasticsearch mapping/capability verification is required after the mapping issue is corrected.
 - The single-item live Requirement Golden Path and externally reported three-item automatic technical path do not prove fresh/migrated schema acceptance, rollback/failure injection, fencing/failover, concurrency/races, HA, credential rotation, or production content-quality acceptance.
 - Live SQL Server catalog/migration/locking checks and private Report Job + Agent + Elasticsearch + DOCX acceptance require authorized operator environments.
 
