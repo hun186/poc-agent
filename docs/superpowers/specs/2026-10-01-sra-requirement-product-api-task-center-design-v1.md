@@ -1,7 +1,7 @@
 # SRA Requirement Product API + Task Center — Design v1
 
 **Date:** 2026-10-01  
-**Status:** Design draft for review; implementation NOT STARTED  
+**Status:** Approved design (PR #277 merged); implementation IN PROGRESS — P1.0 Schedule schema v4 first slice  
 **Repository authority:** current hosted `main`  
 **Existing foundations:** Phase 1B Requirement Import, Phase 1C Requirement Schedule/Handoff, Report Jobs, SRA ES structured-data editor, Excel→SQL management UI, existing Auth/RBAC.
 
