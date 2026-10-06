@@ -202,3 +202,29 @@ def test_present_identity_rejects_disabled_one_time_task():
         RequirementProductService().task_identity(
             _task(execution_kind="once", product_state="disabled")
         )
+
+
+def test_present_task_hides_provisioning_identity():
+    with pytest.raises(KeyError, match="requirement_task_not_found"):
+        RequirementProductService().present_task(
+            product_task=_task(product_state="provisioning"),
+            schedule={"schedule_id": "sch-1"},
+        )
+
+
+def test_present_run_hides_provisioning_owner():
+    with pytest.raises(KeyError, match="requirement_task_not_found"):
+        RequirementProductService().present_run(
+            product_task=_task(product_state="provisioning"),
+            run=_run(),
+        )
+
+
+def test_present_links_encode_internal_ids_instead_of_creating_path_segments():
+    view = RequirementProductService().present_run(
+        product_task=_task(task_id="task/one"),
+        run=_run(batch_run_id="br/one"),
+    )
+
+    assert view["links"]["self"] == "/v1/requirement-runs/br%2Fone"
+    assert view["links"]["items"] == "/v1/requirement-runs/br%2Fone/items"
