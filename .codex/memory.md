@@ -36,6 +36,7 @@
 - 2026-10-05: Split Schedule draft proposal from privileged activation; removed Product v1 durable retry-ancestry guarantee.
 - 2026-10-02: Added Product provisioning visibility/execution gate, atomic ownership fences, input replacement snapshot CAS, and same-ID committed import recovery before preparation.
 - 2026-10-06: Started Product implementation with P1.0 Schedule schema v4: two reviewed Product control-plane tables, catalog descriptors, v3→v4 migration/fresh bootstrap, and focused migration tests. Product service/API/UI remain unimplemented.
+- 2026-10-06: PR #278 opening review found two P1 migration issues: whole-catalog checks/defaults were not normalized like SQL Server catalog evidence, and legacy Schedule migration/stateful tests still encoded v3 marker/index/default assumptions. Both were corrected; all Requirement Schedule test files were rescanned for remaining hard-coded v3/final-index assumptions before exact-head re-review.
 - 2026-10-01: Added docs-only Requirement Product API + Task Center Design/Plan v1; PR #277 later merged and became implementation authority.
 - 2026-10-01: Requirement Operator E2E CLI now follows deployed external mode by default when the operator omits the option.
 - 2026-09-30: Isolated Requirement E2E semantic mocks from ordinary production jobs and propagated verified E2E authority safely into tool worker threads.
@@ -43,7 +44,7 @@
 ## Verification Summary
 
 - PR #277 is merged. Product implementation is now IN PROGRESS at P1.0 schema v4 only; Product service/API/UI and later saga gates remain not implemented.
-- Current P1.0 edits were source-reviewed through the hosted GitHub branch and focused migration tests were added for schema descriptors and v3→v4 control flow. A local pytest PASS is not claimed because the execution container cannot resolve `github.com` to clone the hosted branch.
+- Current P1.0 edits were source-reviewed through the hosted GitHub branch. Regression coverage now includes v4 DDL/descriptors/defaults, SQL Server catalog normalization, successful v3→v4 marker advancement, rollback on post-DDL catalog failure, and updated legacy/stateful migration fixtures. A local pytest PASS is not claimed because the execution container cannot resolve `github.com` to clone the hosted branch; post-fix exact-head Codex review remains required.
 - No fresh live Requirement E2E, private SQL Server, Elasticsearch, LLM, Agent, deployment bootstrap, or DOCX acceptance was executed for this documentation task.
 - Exact-head Codex review and hosted status checks are required for the P1.0 implementation PR before merge.
 - Compaction verification: the 2026-10-06 memory and decisions archives have blob SHAs identical to the pre-compaction files at hosted head `364db0b1d04029570c2ff6a34b05269956751d3d`; active memory/decisions are 59/89 lines respectively, and all six required active `.codex/*.md` context files are below the AGENTS.md mandatory size/line/date-block thresholds.
