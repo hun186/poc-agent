@@ -540,7 +540,8 @@ Tests prove:
 - active Schedule/version/next-run/Task revision remain unchanged,
 - lost-response replay returns the same preallocated `schedule_version_id`,
 - same-key changed request conflicts,
-- concurrent draft creation can produce distinct proposals but cannot mutate active Task semantics.
+- concurrent draft creation can produce distinct proposals but cannot mutate active Task semantics,
+- successful draft proposal keeps `result_task_revision=NULL` and Task revision exactly equal to its originating `base_task_revision`,
 - rename + recurrence/timezone/model/run-policy in one PATCH is rejected before ledger reservation and leaves Task/Schedule/request tables unchanged,
 - enabled-state + schedule-affecting fields in one PATCH is likewise rejected,
 - name + enabled-state (same in-place mode) may be finalized atomically subject to RBAC,
@@ -777,6 +778,7 @@ Stable safe codes at minimum:
 - `requirement_source_conflict`
 - `requirement_input_conflict`
 - `requirement_task_conflict`
+- `requirement_task_patch_mixed_modes`
 - `requirement_task_disabled`
 - `requirement_task_provisioning`
 - `requirement_version_not_approved`
