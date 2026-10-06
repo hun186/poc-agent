@@ -79,6 +79,27 @@ def test_existing_v3_schedule_schema_migrates_transactionally_to_v4(monkeypatch)
     assert connection.closed
 
 
+def test_v3_to_v4_catalog_failure_rolls_back_without_advancing_marker(monkeypatch):
+    connection = _Connection(version=3)
+    store = ScheduleStore(_Registry(connection), "control")
+
+    monkeypatch.setattr(store_module, "validation_queries", lambda *_args: ())
+    monkeypatch.setattr(store_module, "read_catalog", lambda *_args: {})
+    monkeypatch.setattr(store_module, "canonical_catalog_matches", lambda *_args: False)
+
+    import pytest
+    with pytest.raises(RuntimeError, match="unsupported_requirement_schedule_schema"):
+        store.initialize()
+
+    sql = "\n".join(statement for statement, _params in connection.cursor_obj.executed)
+    assert "requirement_product_tasks" in sql
+    assert "requirement_product_requests" in sql
+    assert connection.cursor_obj.version == 3
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+    assert connection.closed
+
+
 def test_v4_migration_contains_no_foreign_keys_for_request_reservation_refs():
     ddl = "\n".join(migration_3_to_4_statements("sra_schedule", "sra_requirement"))
     request_ddl = ddl.split("CREATE TABLE [sra_schedule].[requirement_product_requests]", 1)[1]
