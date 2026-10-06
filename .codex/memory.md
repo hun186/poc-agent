@@ -56,5 +56,5 @@
 
 ## Compaction Record
 
-- 2026-10-06: Compacted `.codex/memory.md` and `.codex/decisions.md` after exceeding the AGENTS.md date/work-block thresholds. Full originals were archived at `.codex/archive/memory.md-20261006-143100.md` and `.codex/archive/decisions.md-20261006-143100.md`.
-- Verification: archives were created from the complete hosted branch contents before active-file rewrites; active files retain current architecture/product invariants, recent high-value changes, unresolved status, and archive pointers.
+- 2026-10-06: Compacted `.codex/memory.md`, `.codex/decisions.md`, `.codex/backlog.md`, and `.codex/known_issues.md` after robust AGENTS.md date/work-block counting. Full originals were archived first at `.codex/archive/memory.md-20261006-143100.md`, `.codex/archive/decisions.md-20261006-143100.md`, `.codex/archive/backlog.md-20261006-153400.md`, and `.codex/archive/known_issues.md-20261006-153400.md`.
+- Verification: memory, decisions, backlog, and known-issues archives were created from complete hosted branch contents before active-file rewrites; archive blob SHAs exactly match the corresponding pre-compaction blobs. Recounting all six required active `.codex/*.md` files with both dated headings and dated work bullets leaves every file below the >40 KB, >400-line, and >20-work-block mandatory compaction triggers. Active files retain current Product/architecture contracts, unresolved acceptance blockers (including Elasticsearch `mapping_incompatible`), live backlog, and archive pointers.
