@@ -165,7 +165,7 @@ Add `requirement_product_tasks` with:
 - unique `source_id` FK to Phase 1B `requirement_sources`,
 - immutable `execution_kind` checked to `once|recurring`,
 - `product_state` checked to `provisioning|active|disabled`, with new Product Task rows inserted as `provisioning` and ordinary Product operations allowed only after create finalization,
-- monotonic `revision` initialized to 1 and incremented exactly once per successfully finalized Product Task PATCH,
+- monotonic `revision` initialized to 1; increment exactly once for a successfully committed in-place metadata/state PATCH and exactly once for successful `task_version_activate`; draft-only schedule proposal PATCH and input replacement do not increment Task revision,
 - created/updated actor/timestamps.
 
 Add `requirement_product_requests` with:
@@ -176,7 +176,7 @@ Add `requirement_product_requests` with:
 - canonical request SHA-256,
 - durable request state,
 - nullable safe progress/result references including `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, and `batch_run_id`; these reservation columns are deliberately non-FK so IDs can be durably reserved before target rows exist,
-- nullable `base_task_revision` and `result_task_revision` for PATCH compare-and-set/finalization,
+- nullable `base_task_revision` and `result_task_revision` for Task-revision CAS; draft-only `task_update` stores `base_task_revision` and leaves `result_task_revision` null, while in-place `task_update` and `task_version_activate` store the committed result revision,
 - nullable `base_snapshot_id` for `input_replace` CAS,
 - nullable bounded `safe_result_json` for exact replay of whitelisted Product mutation responses,
 - safe error code,
@@ -190,6 +190,7 @@ Tests must prove:
 - malformed/unknown schema fails closed,
 - product task schedule/source uniqueness,
 - invalid execution kind/state rejected,
+- draft-only schedule proposal does not change Product Task revision; in-place update and successful draft activation each increment it exactly once,
 - a newly inserted Product Task may persist durably as `provisioning` across crash/restart without appearing as an operable Task,
 - idempotency uniqueness and hash conflict,
 - Product request reservation ID columns have no FK constraints to not-yet-created domain rows and are bounded/validated by the application,
@@ -319,7 +320,7 @@ Add focused tests around the new finalizer:
 
 - rename-only lost-response replay,
 - recurring enable/disable lost-response replay,
-- combined rename + schedule-version change,
+- mixed in-place + schedule-affecting PATCH rejected with `requirement_task_patch_mixed_modes` before durable request reservation,
 - old unfinished request vs newer successful request,
 - same-key concurrent retry,
 - different-key same-base-revision race,
@@ -505,6 +506,13 @@ Implement:
 
 Every `PATCH /v1/requirement-tasks/{task_id}` requires `Idempotency-Key` and durable operation `task_update`.
 
+Before durable request reservation, classify the payload into exactly one mode:
+
+- **in-place mode:** name and/or recurring enabled-state fields,
+- **schedule-proposal mode:** recurrence/timezone/model/run-policy fields.
+
+If both mode sets are present, reject HTTP 422 `requirement_task_patch_mixed_modes`; do not reserve `requirement_product_requests`, do not preallocate a Schedule Version, and perform no mutation. Multiple fields from the same mode are allowed.
+
 At request reservation:
 
 1. lock/read the Product Task and require `product_state != 'provisioning'`,
@@ -521,7 +529,8 @@ It MUST NOT:
 - change the active Schedule Version,
 - change `next_run_at`,
 - change recurring enabled state,
-- increment Product Task `revision`.
+- increment Product Task `revision`,
+- populate `result_task_revision` (it remains null for the successful proposal request).
 
 The draft request's persisted `base_task_revision` is the proposal's stale-activation CAS anchor. `db_operator` is allowed to create this proposal because doing so does not cross the existing approval boundary.
 
@@ -532,6 +541,10 @@ Tests prove:
 - lost-response replay returns the same preallocated `schedule_version_id`,
 - same-key changed request conflicts,
 - concurrent draft creation can produce distinct proposals but cannot mutate active Task semantics.
+- rename + recurrence/timezone/model/run-policy in one PATCH is rejected before ledger reservation and leaves Task/Schedule/request tables unchanged,
+- enabled-state + schedule-affecting fields in one PATCH is likewise rejected,
+- name + enabled-state (same in-place mode) may be finalized atomically subject to RBAC,
+- recurrence + timezone + model/run-policy (same schedule-proposal mode) may create one draft.
 
 ### In-place metadata/state PATCH
 
@@ -578,7 +591,7 @@ Activation finalizer, in one Schedule SQL transaction:
 3. require version status is still `draft`,
 4. require current Task `revision == originating_draft.base_task_revision`,
 5. stale mismatch → do not activate; mark activation `failed_terminal` with `requirement_task_conflict`; retire/abandon only the stale draft when safe,
-6. matching revision → approve/activate exact draft using existing Schedule rules, recalculate `next_run_at` if recurring currently enabled, increment Task revision once, emit Schedule/Product audit, persist bounded result, mark activation succeeded,
+6. matching revision → approve/activate exact draft using existing Schedule rules, recalculate `next_run_at` if recurring currently enabled, increment Task revision exactly once, persist `result_task_revision`, emit Schedule/Product audit, persist bounded result, mark activation succeeded,
 7. commit all state + activation request outcome atomically.
 
 Tests prove:
@@ -735,6 +748,7 @@ Product router delegates parsing to Phase 1B.
 For task create, every task PATCH/update, Product draft activation, input replacement, and Run trigger:
 
 - missing `Idempotency-Key` → safe validation failure,
+- mixed in-place + schedule-affecting Task PATCH → 422 `requirement_task_patch_mixed_modes` before any Product request reservation,
 - first request reserves principal + operation + key + canonical request SHA and all required server-owned durable IDs before the corresponding Phase 1B/1C mutation,
 - for service-key principals, the ledger uses `AuthPrincipal.credential_id` / immutable `key_id`; duplicate service-key display names must never share replay state,
 - same key/hash + `succeeded` → return stored bounded `safe_result_json` for mutable PATCH results or reconstruct immutable/create results from authoritative IDs,
@@ -902,6 +916,8 @@ Tabs:
 
 Read-only historical snapshots/versions; prospective schedule changes create drafts. Show draft/待核准 state and an activation control only to superusers; db_operator can submit a draft but cannot activate it.
 
+Separate editing controls/forms for immediate metadata/state changes and schedule-version proposals. The browser must never combine the two modes in one PATCH.
+
 ## P4.5 Run detail
 
 Show neutral lifecycle, Run Items, safe error category, elapsed time, artifact readiness, Word download.
@@ -923,6 +939,7 @@ Static/route tests cover:
 - no `requirement-e2e:`,
 - no direct `/v1/report/jobs` call in Task Center JavaScript,
 - Product API endpoint usage,
+- separate immediate-update vs draft-proposal forms; no mixed-mode PATCH payload,
 - XSS-safe text rendering pattern for uploaded/user-provided names and errors.
 
 # Gate P5 — Operations and maintainability
@@ -1069,6 +1086,7 @@ Then the repository's normal full suite and compile/static checks.
 Explicitly include cross-API ownership-fence regression coverage for `requirements.py` and `requirement_schedules.py`: use concurrent connections/barriers to prove reservation/ownership checks are atomic with low-level writes, Product-owned low-level writes reject, Product-owned reads pass, and non-Product low-level behavior remains unchanged. Also include stale-uncommitted input-replacement base-snapshot CAS races.
 Include a provisioning-release concurrency regression with scheduler/Handoff workers active: pause after initial version approval but before create finalization; assert recurring Schedule remains disabled, no one-time initial Run exists, no worker execution occurs, Task and Product Run/history/artifact GETs cannot expose partial state, and PATCH/input/run/service-key surfaces cannot reserve work. Resume the same create request and prove the finalizer atomically releases exactly one execution path plus Task visibility/create success.
 Add Product-version approval regressions: db_operator draft creation leaves active state untouched; db_operator activation is denied; low-level approval of Product-owned Schedule is fenced; superuser Product activation succeeds atomically; stale draft activation fails Task revision CAS.
+Add PATCH-mode regressions: proposal-only PATCH preserves Task revision/result_task_revision=null; in-place PATCH increments once; successful activation increments once; mixed-mode payload rejects before ledger reservation and produces no Task/Schedule/draft mutation.
 
 Update:
 
@@ -1151,5 +1169,6 @@ The phase is complete only when:
 7. Existing lower-level Requirement/Schedule APIs and Operator E2E remain valid, with Product-owned resources read-only through low-level HTTP mutation surfaces and non-Product resources retaining their prior mutation behavior.
 8. A partially provisioned Product Task is neither visible nor worker-executable: recurrence stays disabled and no one-time initial Run is materialized until the atomic create finalizer releases execution, marks the Task active/create succeeded, and only then exposes Task/Run/history/artifact surfaces.
 9. Schedule-affecting PATCH creates an immutable draft only; a separate superuser-only idempotent activation flow is the sole Product approval path and CASes against the draft's originating Task revision.
-10. Existing SRA ES editor, Excel→SQL management, account management, and Report Job regressions are green.
-11. Documentation allows an operator to maintain the system without direct SQL/log inspection for normal operations.
+10. Draft-only PATCH leaves Task revision unchanged, successful in-place update/activation each increment it once, and mixed in-place + schedule-affecting PATCH is rejected before durable request reservation.
+11. Existing SRA ES editor, Excel→SQL management, account management, and Report Job regressions are green.
+12. Documentation allows an operator to maintain the system without direct SQL/log inspection for normal operations.
