@@ -280,6 +280,54 @@ class RequirementStore:
         expected_base_snapshot_id: str | None = None,
     ) -> dict[str, Any]:
         if candidate.has_errors:
+            if expected_base_snapshot_id is not None:
+                # Product input replacement must prove its snapshot CAS before an
+                # already-stale/anomalous candidate can be recorded as a failed
+                # import. Otherwise an old request could bypass the Product CAS
+                # simply because _prepare() observed a newer Requirement version.
+                connection = self._connect()
+                try:
+                    c = connection.cursor()
+                    if import_run_id is not None:
+                        c.execute(
+                            f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
+                            import_run_id,
+                        )
+                        existing_run = c.fetchone()
+                        if existing_run is not None:
+                            c.execute(
+                                f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
+                                import_run_id,
+                            )
+                            result = self._preallocated_import_result(
+                                source["source_id"],
+                                import_run_id,
+                                snapshot_id,
+                                existing_run,
+                                list(c.fetchall()),
+                            )
+                            connection.commit()
+                            return result
+                    c.execute(
+                        f"SELECT source_id FROM {self.t}.[requirement_sources] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=? AND enabled=1",
+                        source["source_id"],
+                    )
+                    if c.fetchone() is None:
+                        raise ValueError("source_disabled")
+                    c.execute(
+                        f"SELECT requirement_set_id,active_snapshot_id FROM {self.t}.[requirement_sets] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=?",
+                        source["source_id"],
+                    )
+                    setrow = c.fetchone()
+                    prior_snapshot = setrow[1] if setrow else None
+                    if prior_snapshot != expected_base_snapshot_id:
+                        raise ValueError("requirement_input_conflict")
+                    connection.commit()
+                except Exception as exc:
+                    connection.rollback()
+                    raise _stable_persistence_error(exc) from exc
+                finally:
+                    connection.close()
             return self.record_failed_import(
                 source, version, acquired, candidate, actor, import_run_id=import_run_id
             )
