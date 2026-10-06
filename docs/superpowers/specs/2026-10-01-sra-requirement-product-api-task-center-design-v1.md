@@ -161,7 +161,7 @@ Required fields:
 - `source_id` — unique FK to the Phase 1B Requirement source owned by this task.
 - `execution_kind` — required immutable discriminator: `once` or `recurring`.
 - `product_state` — `provisioning`, `active`, or `disabled`; this is product lifecycle/operability and is distinct from the underlying recurring Schedule `enabled` bit. A newly inserted Product Task starts as `provisioning` and is not externally operable until its owning `task_create` saga finalizes.
-- `revision` — monotonic BIGINT-style product mutation revision, initialized to 1 and incremented exactly once by every successfully finalized Product Task PATCH/update.
+- `revision` — monotonic BIGINT-style active Product Task semantic revision, initialized to 1. It increments exactly once when an **in-place metadata/state PATCH** successfully commits and exactly once when a **draft Schedule Version activation** successfully commits. A schedule-affecting PATCH that only creates a draft proposal does **not** increment it; input replacement uses its separate snapshot CAS and also does not increment Task revision.
 - `created_by`, `created_at`, `updated_by`, `updated_at`.
 
 `execution_kind` is immutable in v1. Changing a task from one-time to recurring, or vice versa, creates a new Product Task rather than rewriting historical semantics.
@@ -186,7 +186,7 @@ Required fields:
 - `request_sha256` — SHA-256 of the canonical semantic request, including input digest but not raw uploaded bytes.
 - `state` — `reserved`, `in_progress`, `succeeded`, `failed_recoverable`, or `failed_terminal`.
 - nullable safe progress/result references: `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, `batch_run_id`. These reservation columns are intentionally **not foreign keys** because Product must durably store a server-owned ID before the target authority row exists; target ownership/semantics are verified by the Product service and underlying authority on resume.
-- nullable `base_task_revision` and `result_task_revision` for `task_update` compare-and-set/finalization.
+- nullable `base_task_revision` and `result_task_revision` for Task-revision CAS. A schedule-draft `task_update` stores `base_task_revision` but leaves `result_task_revision` null because proposal creation does not mutate Task revision; in-place `task_update` and `task_version_activate` record the revision they actually commit.
 - nullable `base_snapshot_id` for `input_replace`; it records the active Requirement snapshot observed when the replacement request is first reserved and is the CAS authority for the first commit attempt.
 - nullable bounded `safe_result_json` containing only the whitelisted Product response snapshot needed for exact replay; never raw input, prompts, credentials, paths, or upstream error bodies.
 - nullable safe `error_code`.
@@ -414,6 +414,8 @@ Allowed prospective changes are split by authority:
 - **In-place Product metadata/state changes** that do not require a new Schedule Version follow the Product Task revision-CAS rules and existing RBAC. Recurring enable/disable remains `superuser` only.
 - **Schedule-affecting changes** — recurrence, timezone, approved model selection, or run policy — always create a new immutable **draft Schedule Version**. PATCH never approves/activates that draft, even when the caller is a superuser.
 
+A single PATCH payload MUST choose exactly one mutation mode. Product v1 rejects a payload that combines any in-place metadata/state field (for example `name` or recurring `enabled`) with any schedule-affecting field (recurrence/timezone/model/run-policy). Such a request returns HTTP 422 with stable code `requirement_task_patch_mixed_modes` **before** reserving a durable `task_update` request and performs no mutation or draft creation. Multiple fields within the same mode remain allowed.
+
 Every PATCH requires `Idempotency-Key` and uses durable operation `task_update`. Before reserving it, the Product service requires `product_state != 'provisioning'`.
 
 For a schedule-affecting PATCH:
@@ -422,7 +424,7 @@ For a schedule-affecting PATCH:
 2. preallocate/persist `schedule_version_id`,
 3. create/recover exactly that draft through `ScheduleStore.create_version(..., schedule_version_id=...)`,
 4. leave the current approved/active Schedule Version, recurring enabled state, Product Task `revision`, and `next_run_at` unchanged,
-5. store a bounded result identifying the draft and mark the `task_update` request `succeeded`.
+5. store a bounded result identifying the draft, leave `result_task_revision` null, and mark the `task_update` request `succeeded`.
 
 This path is allowed for `db_operator` and `superuser`, subject to existing model/config validation. It is **proposal creation**, not approval. A successful draft-creation request has no authority to activate its own version later.
 
@@ -449,6 +451,8 @@ Activation finalization runs in one Schedule SQL transaction:
 Therefore a `db_operator` can propose a new recurrence/timezone/model/run-policy configuration but cannot cause it to become active. A superuser explicitly activates it later. If any intervening successful Task mutation changed the revision, the old draft cannot overwrite newer state.
 
 Task detail/version history should expose draft status and the creator safely. The Task Center shows **待核准** and an activate action only to superusers; ordinary operators can see their draft proposal but cannot approve it.
+
+The edit UI must present in-place metadata/state edits separately from **建立待核准版本** schedule edits and must not submit a mixed-mode PATCH.
 
 ### 7.4.2 Atomic Product ownership fences on low-level mutation APIs
 
@@ -849,11 +853,12 @@ Product v1 is complete only when all of the following are true:
 7. Completed DOCX is retrievable through authenticated product history.
 8. All product mutations are idempotent/replay safe where required, and partially provisioned Tasks—including any Run/history/artifact views—are hidden/inoperable until the owning `task_create` request atomically releases either the one-time initial Run or recurring Schedule together with Task activation.
 9. Schedule-affecting Task PATCH creates a draft only; activation is a separate superuser-only Product operation with CAS against the draft's originating Task revision.
-10. Historical snapshot/version/run bindings remain immutable.
-11. Product jobs cannot enter E2E mock routing.
-12. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
-13. Browser E2E passes the integrated SRA UI Golden Path.
-14. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
+10. Product v1 rejects mixed in-place + schedule-affecting PATCH payloads before idempotency reservation; draft-only PATCH does not increment Task revision.
+11. Historical snapshot/version/run bindings remain immutable.
+12. Product jobs cannot enter E2E mock routing.
+13. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
+14. Browser E2E passes the integrated SRA UI Golden Path.
+15. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
 
 ## 19. Design decision summary
 
