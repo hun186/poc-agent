@@ -328,3 +328,8 @@
 - In-place Product mutation and successful superuser draft activation each advance revision exactly once.
 - Reject mixed in-place + schedule-proposal PATCH payloads before idempotency reservation with requirement_task_patch_mixed_modes rather than defining a coupled two-phase semantic in v1.
 
+## 2026-10-06 Mirror recurring Product state with Schedule enablement
+
+- product_state=disabled is reachable only for recurring Tasks and is not a decorative state. The superuser in-place finalizer atomically maps active<->enabled=true and disabled<->enabled=false, including next_run_at/audit/revision/request success. One-time Tasks remain active.
+- Manual run on a disabled recurring Task fails before idempotency reservation with requirement_task_disabled.
+- Cross-cutting idempotency guidance must list Product draft activation and require reuse of its key on retries.
