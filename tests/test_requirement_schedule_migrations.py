@@ -226,3 +226,18 @@ def test_product_v4_default_and_check_catalog_normalization_is_fail_closed():
           "([product_state]=N'active' OR [product_state]=N'disabled')"),),
     )
 
+
+    hash_check = checks["CK_requirement_product_request_hash"]
+    assert validate_catalog_evidence(
+        "sra_schedule",
+        hash_check,
+        (("sra_schedule", "requirement_product_requests", hash_check.name,
+          "([request_sha256] NOT LIKE '%[^0-9a-f]%' AND len([request_sha256])=(64))"),),
+    )
+    assert not validate_catalog_evidence(
+        "sra_schedule",
+        hash_check,
+        (("sra_schedule", "requirement_product_requests", hash_check.name,
+          "([request_sha256] NOT LIKE '%^0-9a-f%' AND len([request_sha256])=(64))"),),
+    )
+
