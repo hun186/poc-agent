@@ -333,3 +333,9 @@
 - product_state=disabled is reachable only for recurring Tasks and is not a decorative state. The superuser in-place finalizer atomically maps active<->enabled=true and disabled<->enabled=false, including next_run_at/audit/revision/request success. One-time Tasks remain active.
 - Manual run on a disabled recurring Task fails before idempotency reservation with requirement_task_disabled.
 - Cross-cutting idempotency guidance must list Product draft activation and require reuse of its key on retries.
+
+## 2026-10-06 Serialize manual Run admission with recurring disable
+
+- The Product Task lock is the admission serialization point between first run_trigger reservation and recurring enable/disable.
+- Disabled state is checked inside the same transaction that inserts a new run_trigger ledger row; never use an unlocked read followed by reservation.
+- A request durably reserved while active remains valid after later disable and may complete/replay exactly once. Disable affects new admissions, not already accepted requests.
