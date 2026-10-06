@@ -547,13 +547,18 @@ reserve_product_run_trigger(
 
 In one Schedule SQL transaction it:
 
-1. resolves an already-existing `(principal_kind, principal_id, run_trigger, idempotency_key)` request first; a same-hash existing request is replay/resume state and is not a new admission,
-2. for an absent request, locks the Product Task with write-compatible row/range locking and rechecks the idempotency key under the same transaction,
-3. rejects `provisioning` with `requirement_task_provisioning`,
-4. rejects a recurring `product_state='disabled'` Task with `requirement_task_disabled`,
-5. otherwise inserts/reserves the new `run_trigger` request and commits while still holding the Task lock.
+1. locks/resolves any existing `(principal_kind, principal_id, run_trigger, idempotency_key)` request **before consulting current Task lifecycle**,
+2. if that row exists with a different canonical `request_sha256`, return `requirement_idempotency_conflict`; if the hash matches, handle its persisted state exactly as the durable ledger contract requires and do not reclassify it as a new admission:
+   - `reserved` / `in_progress` → resume the already-admitted request,
+   - `failed_recoverable` → resume from its persisted stage/authority identities,
+   - `succeeded` → return/reconstruct the original successful result,
+   - `failed_terminal` → return the same stored safe terminal error,
+3. only when no request row exists, lock the Product Task with write-compatible row/range locking and recheck the unique request identity under the same transaction,
+4. reject `provisioning` with `requirement_task_provisioning`,
+5. reject a recurring `product_state='disabled'` Task with `requirement_task_disabled`,
+6. otherwise insert/reserve the new `run_trigger` request and commit while still holding the Task lock.
 
-The recurring enable/disable finalizer must acquire a compatible Product Task lock before changing `product_state` / Schedule `enabled`. Therefore admission and disable serialize: if disable commits first, a new trigger cannot be reserved; if trigger reservation commits first while the Task is active, that already-admitted request may resume/materialize exactly once using its stable request-derived `trigger_request_id` even if a later disable commits before materialization. Disable prevents **new admissions**, not completion/replay of work already durably accepted.
+The recurring enable/disable finalizer must acquire a compatible Product Task lock before changing `product_state` / Schedule `enabled`. Therefore admission and disable serialize: if disable commits first, a **new** trigger cannot be reserved; if trigger reservation commits first while the Task is active, that request is durably admitted. Later retries of that same request are governed solely by its persisted ledger state: recoverable work may resume/materialize exactly once using its stable request-derived `trigger_request_id`, success replays success, and terminal failure replays the same terminal error. Disable prevents **new admissions**; it never changes the replay semantics of a request already present in the ledger.
 
 A request must not implement this as an unlocked Task read followed by a separate ledger insert. One-time Tasks remain `active` and can be admitted according to existing RBAC. The owning create saga remains the only path allowed to release the initial Run while the Task is `provisioning`.
 
@@ -749,7 +754,7 @@ All product mutations that can create persistent work must be replay safe throug
 
 - Require `Idempotency-Key` for task create, every task PATCH/update, **Product draft activation (`task_version_activate`)**, input replacement, and Run trigger; UI clients generate one per explicit mutation and retain the same key across transport retries of that mutation, including activation.
 - The server canonicalizes the semantic request and hashes it before the first Phase 1B/1C write.
-- For ordinary mutations reserve the unique principal/operation/key row before side effects. For `run_trigger`, first-time reservation additionally follows §7.5: lifecycle recheck and ledger insertion are atomic under the Product Task lock; an already-reserved same-hash trigger is replay/resume and remains admitted even if the Task is later disabled.
+- For ordinary mutations reserve the unique principal/operation/key row before side effects. For `run_trigger`, first-time reservation additionally follows §7.5: **any existing same-key row is resolved by hash + persisted ledger state before lifecycle checks**, while a truly absent request performs lifecycle recheck and ledger insertion atomically under the Product Task lock. Disabling later cannot rewrite an existing trigger's `reserved|in_progress|failed_recoverable|succeeded|failed_terminal` replay semantics.
 - Same principal/operation/key + same hash returns or resumes the recorded operation.
 - Same principal/operation/key + different hash returns 409 `requirement_idempotency_conflict`.
 - `in_progress` or `failed_recoverable` replay resumes from persisted preallocated authority IDs and safe stage references instead of re-importing, creating another Schedule Version, or rolling input backward.
@@ -881,7 +886,7 @@ Product v1 is complete only when all of the following are true:
 9. Schedule-affecting Task PATCH creates a draft only; activation is a separate superuser-only Product operation with CAS against the draft's originating Task revision.
 10. Product v1 rejects mixed in-place + schedule-affecting PATCH payloads before idempotency reservation; draft-only PATCH does not increment Task revision.
 11. Recurring Task enable/disable atomically mirrors Product `active|disabled` with Schedule `enabled=true|false`; one-time Tasks do not enter `disabled`.
-12. New `run_trigger` admission is serialized with recurring disable by a shared Product Task lock; disable-first rejects the new trigger, while a trigger reserved first remains replayable/materializable exactly once.
+12. New `run_trigger` admission is serialized with recurring disable by a shared Product Task lock; any existing same-key request is first resolved according to hash and persisted ledger state, so disable-first rejects only a truly new trigger and cannot alter recoverable/succeeded/terminal replay semantics of an already-admitted request.
 13. Historical snapshot/version/run bindings remain immutable.
 14. Product jobs cannot enter E2E mock routing.
 15. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
