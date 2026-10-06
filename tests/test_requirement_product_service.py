@@ -240,3 +240,25 @@ def test_status_mapping_rejects_malformed_failure_item_evidence():
         neutral_run_status(
             {"state": "completed_with_failures", "items": [{"not_execution_state": "failed"}]}
         )
+
+
+def test_status_mapping_allows_duplicate_valid_failure_states():
+    assert neutral_run_status(
+        {
+            "state": "completed_with_failures",
+            "items": [
+                {"execution_state": "failed"},
+                {"execution_state": "failed"},
+            ],
+        }
+    ) == "completed_with_errors"
+
+
+def test_status_mapping_rejects_unknown_item_state_in_failure_evidence():
+    with pytest.raises(ValueError, match="requirement_run_status_evidence_missing"):
+        neutral_run_status(
+            {
+                "state": "completed_with_failures",
+                "items": [{"execution_state": "REPORT_JOB_NATIVE_SUPER_STATE"}],
+            }
+        )
