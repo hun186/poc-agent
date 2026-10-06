@@ -269,8 +269,12 @@ def canonical_catalog_matches(evidence: dict, schedule_schema: str,
             for index in REQUIRED_FILTERED_INDEXES)
         and set(evidence.get("foreign_keys", ()))
         == set(required_foreign_keys(schedule_schema, requirement_schema))
-        and set(evidence.get("defaults", ())) == set(REQUIRED_DEFAULTS)
-        and set(evidence.get("checks", ())) == set(REQUIRED_CHECKS)
+        and set(evidence.get("defaults", ())) == set(
+            replace(default, definition=normalize_sql_predicate(default.definition))
+            for default in REQUIRED_DEFAULTS)
+        and set(evidence.get("checks", ())) == set(
+            replace(check, definition=normalize_sql_predicate(check.definition))
+            for check in REQUIRED_CHECKS)
         and set(evidence.get("tables", ())) == set(REQUIRED_COLUMNS)
     )
 
