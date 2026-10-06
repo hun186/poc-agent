@@ -166,7 +166,7 @@ Add `requirement_product_tasks` with:
 - unique `source_id` FK to Phase 1B `requirement_sources`,
 - immutable `execution_kind` checked to `once|recurring`,
 - `product_state` checked to `provisioning|active|disabled`; new rows start `provisioning`, create finalization sets `active`, and for recurring Tasks only superuser enable/disable atomically mirrors Product `active|disabled` with Schedule `enabled=true|false`; one-time Tasks remain `active` in v1,
-- monotonic `revision` initialized to 1; increment exactly once for a successfully committed in-place metadata/state PATCH and exactly once for successful `task_version_activate`; draft-only schedule proposal PATCH and input replacement do not increment Task revision,
+- monotonic BIGINT `revision` initialized to 1; increment exactly once for a successfully committed in-place metadata/state PATCH and exactly once for successful `task_version_activate`; draft-only schedule proposal PATCH and input replacement do not increment Task revision,
 - created/updated actor/timestamps.
 
 Add `requirement_product_requests` with:
@@ -177,7 +177,7 @@ Add `requirement_product_requests` with:
 - canonical request SHA-256 over operation + every path/target identity + semantic payload/input digest (for example Task-scoped operations include `task_id`, activation includes `task_id + schedule_version_id`; never hash only an empty/body payload),
 - durable request state,
 - nullable safe progress/result references including `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, and `batch_run_id`; these reservation columns are deliberately non-FK so IDs can be durably reserved before target rows exist,
-- nullable `base_task_revision` and `result_task_revision` for Task-revision CAS; draft-only `task_update` stores `base_task_revision` and leaves `result_task_revision` null, while in-place `task_update` and `task_version_activate` store the committed result revision,
+- nullable BIGINT `base_task_revision` and `result_task_revision` for Task-revision CAS; draft-only `task_update` stores `base_task_revision` and leaves `result_task_revision` null, while in-place `task_update` and `task_version_activate` store the committed result revision,
 - nullable `base_snapshot_id` for `input_replace` CAS,
 - nullable bounded `safe_result_json` for exact replay of whitelisted Product mutation responses,
 - safe error code,
