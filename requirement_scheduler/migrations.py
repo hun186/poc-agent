@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import re
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def validate_schema_name(value: str) -> str:
@@ -76,6 +76,8 @@ REQUIRED_COLUMNS = {
     "requirement_schedule_audit_outbox": _cols("requirement_schedule_audit_outbox", (("audit_event_id",*_N64,False),("action","nvarchar",192,False),("actor",*_N128,False),("schedule_id",*_N64,False),("schedule_version_id",*_N64,True),("batch_run_id",*_N64,True),("safe_payload_json","nvarchar",4000,False),("created_at","datetimeoffset",10,False),("delivery_attempt_count","int",4,False),("last_delivery_attempt_at","datetimeoffset",10,True),("last_delivery_error_code",*_N64,True),("delivered_at","datetimeoffset",10,True))),
     "requirement_handoff_submissions": _cols("requirement_handoff_submissions", (("submission_id",*_N64,False),("run_item_id",*_N64,False),("workflow_id",*_N64,False),("semantic_manifest_json","nvarchar",-1,False),("semantic_fingerprint","char",64,False),("legacy_session_id",*_N240,False),("created_at","datetimeoffset",10,False),("prepared_at","datetimeoffset",10,False))),
     "requirement_handoff_coordinator_leases": _cols("requirement_handoff_coordinator_leases", (("control_domain",*_N64,False),("owner_id",*_N128,False),("lease_token","char",64,False),("fencing_generation","bigint",8,False),("heartbeat_at","datetimeoffset",10,False),("expires_at","datetimeoffset",10,False),("updated_at","datetimeoffset",10,False))),
+    "requirement_product_tasks": _cols("requirement_product_tasks", (("task_id",*_N64,False),("schedule_id",*_N64,False),("source_id",*_N64,False),("execution_kind","nvarchar",64,False),("product_state","nvarchar",64,False),("revision","int",4,False),("created_by",*_N128,False),("created_at","datetimeoffset",10,False),("updated_by",*_N128,False),("updated_at","datetimeoffset",10,False))),
+    "requirement_product_requests": _cols("requirement_product_requests", (("request_id",*_N64,False),("principal_kind","nvarchar",64,False),("principal_id",*_N128,False),("operation","nvarchar",128,False),("idempotency_key",*_N128,False),("request_sha256","char",64,False),("state","nvarchar",64,False),("task_id",*_N64,True),("source_id",*_N64,True),("import_run_id",*_N64,True),("snapshot_id",*_N64,True),("schedule_id",*_N64,True),("schedule_version_id",*_N64,True),("batch_run_id",*_N64,True),("base_task_revision","int",4,True),("result_task_revision","int",4,True),("base_snapshot_id",*_N64,True),("safe_result_json","nvarchar",8000,True),("error_code",*_N64,True),("created_at","datetimeoffset",10,False),("updated_at","datetimeoffset",10,False),("completed_at","datetimeoffset",10,True))),
 }
 
 REQUIRED_KEYS = (
@@ -86,13 +88,20 @@ REQUIRED_KEYS = (
     KeyConstraint("UQ_requirement_handoff_submission_item","requirement_handoff_submissions",("run_item_id",),"UQ"),
     KeyConstraint("PK_requirement_handoff_coordinator_leases","requirement_handoff_coordinator_leases",("control_domain",),"PK"),
     KeyConstraint("UQ_requirement_handoff_lease_token","requirement_handoff_coordinator_leases",("lease_token",),"UQ"),
+    KeyConstraint("PK_requirement_product_tasks","requirement_product_tasks",("task_id",),"PK"),
+    KeyConstraint("UQ_requirement_product_task_schedule","requirement_product_tasks",("schedule_id",),"UQ"),
+    KeyConstraint("UQ_requirement_product_task_source","requirement_product_tasks",("source_id",),"UQ"),
+    KeyConstraint("PK_requirement_product_requests","requirement_product_requests",("request_id",),"PK"),
+    KeyConstraint("UQ_requirement_product_request_idempotency","requirement_product_requests",("principal_kind","principal_id","operation","idempotency_key"),"UQ"),
 )
 
 REQUIRED_FILTERED_INDEXES = (
     FilteredIndex("UX_schedule_run_scheduled","requirement_batch_runs",("schedule_id","scheduled_for"),"trigger_type='scheduled'",True),
     FilteredIndex("UX_schedule_run_manual","requirement_batch_runs",("schedule_id","trigger_request_id"),"trigger_type='manual'",True),
     FilteredIndex("IX_requirement_schedule_audit_pending","requirement_schedule_audit_outbox",("delivered_at","created_at","audit_event_id"),"delivered_at IS NULL",False),
-)
+)    FilteredIndex("IX_requirement_product_request_schedule","requirement_product_requests",("schedule_id",),"schedule_id IS NOT NULL",False),
+    FilteredIndex("IX_requirement_product_request_source","requirement_product_requests",("source_id",),"source_id IS NOT NULL",False),
+
 
 REQUIRED_DEFAULTS = (
     DefaultConstraint("DF_requirement_schedule_audit_attempts", "requirement_schedule_audit_outbox", "delivery_attempt_count", "0"),
@@ -104,6 +113,13 @@ REQUIRED_CHECKS = (
     CheckConstraint("CK_handoff_submission_fingerprint", "requirement_handoff_submissions", "semantic_fingerprintnotlike'%^0-9a-f%'andlensemantic_fingerprint=64"),
     CheckConstraint("CK_requirement_handoff_lease_generation", "requirement_handoff_coordinator_leases", "fencing_generation>0"),
     CheckConstraint("CK_requirement_handoff_lease_window", "requirement_handoff_coordinator_leases", "expires_at>heartbeat_at"),
+    CheckConstraint("CK_requirement_product_task_execution_kind", "requirement_product_tasks", "execution_kind IN (N\'once\',N\'recurring\')"),
+    CheckConstraint("CK_requirement_product_task_state", "requirement_product_tasks", "product_state IN (N\'provisioning\',N\'active\',N\'disabled\')"),
+    CheckConstraint("CK_requirement_product_task_revision", "requirement_product_tasks", "revision>=1"),
+    CheckConstraint("CK_requirement_product_request_principal_kind", "requirement_product_requests", "principal_kind IN (N\'user\',N\'service_key\')"),
+    CheckConstraint("CK_requirement_product_request_operation", "requirement_product_requests", "operation IN (N\'task_create\',N\'task_update\',N\'task_version_activate\',N\'input_replace\',N\'run_trigger\')"),
+    CheckConstraint("CK_requirement_product_request_state", "requirement_product_requests", "state IN (N\'reserved\',N\'in_progress\',N\'succeeded\',N\'failed_recoverable\',N\'failed_terminal\')"),
+    CheckConstraint("CK_requirement_product_request_hash", "requirement_product_requests", "request_sha256 NOT LIKE \'%[^0-9a-f]%\' AND LEN(request_sha256)=64"),
 )
 
 
@@ -124,6 +140,8 @@ def required_foreign_keys(schedule_schema: str = "sra_schedule", requirement_sch
         ForeignKey("FK_state_success_item","requirement_schedule_item_state",("last_successful_run_item_id",),s,"requirement_batch_run_items",("run_item_id",)),
         ForeignKey("FK_audit_outbox_schedule","requirement_schedule_audit_outbox",("schedule_id",),s,"requirement_schedules",("schedule_id",)),
         ForeignKey("FK_handoff_submission_item","requirement_handoff_submissions",("run_item_id",),s,"requirement_batch_run_items",("run_item_id",)),
+        ForeignKey("FK_product_task_schedule","requirement_product_tasks",("schedule_id",),s,"requirement_schedules",("schedule_id",)),
+        ForeignKey("FK_product_task_source","requirement_product_tasks",("source_id",),r,"requirement_sources",("source_id",)),
     )
 
 REQUIRED_FOREIGN_KEYS = required_foreign_keys()
@@ -142,7 +160,7 @@ _PR201_FK_NAMES = {
 
 def _v1_columns(shape: str) -> dict[str, tuple[Column, ...]]:
     columns = {name: tuple(values) for name, values in REQUIRED_COLUMNS.items()
-               if name != "requirement_schedule_audit_outbox"}
+               if name not in {"requirement_schedule_audit_outbox", "requirement_product_tasks", "requirement_product_requests"}}
     columns["requirement_batch_run_items"] = tuple(
         replace(column, max_length=256) if column.name == "phase1a_task_id" else column
         for column in columns["requirement_batch_run_items"]
@@ -160,7 +178,9 @@ def classify_v1_catalog(cursor, schedule_schema: str, requirement_schema: str) -
         if evidence.get("columns") != _v1_columns(shape):
             continue
         if set(evidence.get("keys", ())) != set(key for key in REQUIRED_KEYS if key.name not in {
-            "UQ_requirement_schedule_version_owner", "PK_requirement_schedule_audit_outbox"}):
+            "UQ_requirement_schedule_version_owner", "PK_requirement_schedule_audit_outbox",
+            "PK_requirement_product_tasks", "UQ_requirement_product_task_schedule", "UQ_requirement_product_task_source",
+            "PK_requirement_product_requests", "UQ_requirement_product_request_idempotency"}):
             continue
         if set(evidence.get("indexes", ())) != set(REQUIRED_FILTERED_INDEXES[:2]):
             continue
@@ -352,6 +372,20 @@ def migration_2_to_3_statements(schema: str) -> list[str]:
 def canonical_v3_statements(schema: str, requirement_schema: str = "sra_requirement") -> list[str]:
     """Explicit fresh-v3 schema statements, retaining canonical-v2 objects unchanged."""
     return [*canonical_v2_statements(schema, requirement_schema), *migration_2_to_3_statements(schema)]
+
+def migration_3_to_4_statements(schema: str, requirement_schema: str = "sra_requirement") -> list[str]:
+    name = validate_schema_name(schema)
+    req = validate_schema_name(requirement_schema)
+    s, r = f"[{name}]", f"[{req}]"
+    return [
+        f"CREATE TABLE {s}.[requirement_product_tasks](task_id NVARCHAR(64) NOT NULL CONSTRAINT PK_requirement_product_tasks PRIMARY KEY,schedule_id NVARCHAR(64) NOT NULL CONSTRAINT UQ_requirement_product_task_schedule UNIQUE,source_id NVARCHAR(64) NOT NULL CONSTRAINT UQ_requirement_product_task_source UNIQUE,execution_kind NVARCHAR(32) NOT NULL,product_state NVARCHAR(32) NOT NULL,revision INT NOT NULL,created_by NVARCHAR(128) NOT NULL,created_at DATETIMEOFFSET NOT NULL,updated_by NVARCHAR(128) NOT NULL,updated_at DATETIMEOFFSET NOT NULL,CONSTRAINT CK_requirement_product_task_execution_kind CHECK(execution_kind IN (N'once',N'recurring')),CONSTRAINT CK_requirement_product_task_state CHECK(product_state IN (N'provisioning',N'active',N'disabled')),CONSTRAINT CK_requirement_product_task_revision CHECK(revision>=1),CONSTRAINT FK_product_task_schedule FOREIGN KEY(schedule_id) REFERENCES {s}.[requirement_schedules](schedule_id),CONSTRAINT FK_product_task_source FOREIGN KEY(source_id) REFERENCES {r}.[requirement_sources](source_id))",
+        f"CREATE TABLE {s}.[requirement_product_requests](request_id NVARCHAR(64) NOT NULL CONSTRAINT PK_requirement_product_requests PRIMARY KEY,principal_kind NVARCHAR(32) NOT NULL,principal_id NVARCHAR(128) NOT NULL,operation NVARCHAR(64) NOT NULL,idempotency_key NVARCHAR(128) NOT NULL,request_sha256 CHAR(64) NOT NULL,state NVARCHAR(32) NOT NULL,task_id NVARCHAR(64) NULL,source_id NVARCHAR(64) NULL,import_run_id NVARCHAR(64) NULL,snapshot_id NVARCHAR(64) NULL,schedule_id NVARCHAR(64) NULL,schedule_version_id NVARCHAR(64) NULL,batch_run_id NVARCHAR(64) NULL,base_task_revision INT NULL,result_task_revision INT NULL,base_snapshot_id NVARCHAR(64) NULL,safe_result_json NVARCHAR(4000) NULL,error_code NVARCHAR(64) NULL,created_at DATETIMEOFFSET NOT NULL,updated_at DATETIMEOFFSET NOT NULL,completed_at DATETIMEOFFSET NULL,CONSTRAINT UQ_requirement_product_request_idempotency UNIQUE(principal_kind,principal_id,operation,idempotency_key),CONSTRAINT CK_requirement_product_request_principal_kind CHECK(principal_kind IN (N'user',N'service_key')),CONSTRAINT CK_requirement_product_request_operation CHECK(operation IN (N'task_create',N'task_update',N'task_version_activate',N'input_replace',N'run_trigger')),CONSTRAINT CK_requirement_product_request_state CHECK(state IN (N'reserved',N'in_progress',N'succeeded',N'failed_recoverable',N'failed_terminal')),CONSTRAINT CK_requirement_product_request_hash CHECK(request_sha256 NOT LIKE '%[^0-9a-f]%' AND LEN(request_sha256)=64)); CREATE INDEX IX_requirement_product_request_schedule ON {s}.[requirement_product_requests](schedule_id) WHERE schedule_id IS NOT NULL; CREATE INDEX IX_requirement_product_request_source ON {s}.[requirement_product_requests](source_id) WHERE source_id IS NOT NULL",
+    ]
+
+
+def canonical_v4_statements(schema: str, requirement_schema: str = "sra_requirement") -> list[str]:
+    """Explicit fresh-v4 schema statements retaining the complete v3 authority."""
+    return [*canonical_v3_statements(schema, requirement_schema), *migration_3_to_4_statements(schema, requirement_schema)]
 
 def migration_1_to_2_statements(schema: str, v1_shape: str) -> list[str]:
     """Ordered v2 DDL. Identity repair/validation is performed before these statements."""
