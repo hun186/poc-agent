@@ -322,3 +322,9 @@
 - Draft creation leaves active Schedule semantics and Task revision unchanged. Successful activation alone changes active version and increments revision.
 - Keep Product v1 schema focused: do not add retry ancestry persistence. parent_run_id is not a v1 contract; Run again is an independent manual Run.
 
+## 2026-10-06 Revision advances only when active Task semantics change
+
+- Draft proposal creation is not an active Task mutation, so it must not change Product Task revision or populate result_task_revision. This preserves the draft's base_task_revision as a usable activation CAS anchor.
+- In-place Product mutation and successful superuser draft activation each advance revision exactly once.
+- Reject mixed in-place + schedule-proposal PATCH payloads before idempotency reservation with requirement_task_patch_mixed_modes rather than defining a coupled two-phase semantic in v1.
+
