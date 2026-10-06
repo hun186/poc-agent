@@ -1,7 +1,7 @@
 from requirement_scheduler.migrations import SCHEMA_VERSION, canonical_v3_statements, migration_2_to_3_statements
 
 def test_v3_is_explicit_additive_schema_evolution():
-    assert SCHEMA_VERSION==3
+    assert SCHEMA_VERSION==4
     sql="\n".join(migration_2_to_3_statements("sra_schedule"))
     assert "requirement_handoff_submissions" in sql
     assert "requirement_handoff_coordinator_leases" in sql
