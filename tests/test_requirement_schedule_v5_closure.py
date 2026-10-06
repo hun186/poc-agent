@@ -121,7 +121,12 @@ def test_sql_server_not_like_placement_normalizes_for_digest_checks():
     )
     assert migrations.normalize_sql_predicate(
         "example = 'NOT artifact_sha256 LIKE'"
-    ) == "example='notartifact_sha256like'"
+    ) == "example='NOT artifact_sha256 LIKE'"
+    assert migrations.normalize_sql_predicate(
+        "request_sha256 NOT LIKE '%[^0-9a-f]%'"
+    ) != migrations.normalize_sql_predicate(
+        "request_sha256 NOT LIKE '%^0-9a-f%'"
+    )
 
 
 @pytest.mark.parametrize(
