@@ -2,8 +2,9 @@
 
 **Date:** 2026-10-01  
 **Design authority:** `docs/superpowers/specs/2026-10-01-sra-requirement-product-api-task-center-design-v1.md`  
-**Status:** Plan draft for review; implementation NOT STARTED  
+**Status:** Approved plan (PR #277 merged); implementation IN PROGRESS — P1.0 Schedule schema v4 first slice  
 **Baseline:** hosted `main` at planning start `ff16e3dd64baff367df7791dc2be23add22f626f`.
+**Implementation rebaseline:** hosted `main` after PR #277 merge `155db8bb5568e04118481080840aad378026af44`.
 
 ## 1. Goal
 
