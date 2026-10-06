@@ -1,0 +1,901 @@
+# SRA Requirement Product API + Task Center — Design v1
+
+**Date:** 2026-10-01  
+**Status:** Design draft for review; implementation NOT STARTED  
+**Repository authority:** current hosted `main`  
+**Existing foundations:** Phase 1B Requirement Import, Phase 1C Requirement Schedule/Handoff, Report Jobs, SRA ES structured-data editor, Excel→SQL management UI, existing Auth/RBAC.
+
+## 1. Purpose
+
+Turn the already-working Requirement technical pipeline into a production-facing product workflow that can be operated in two ways:
+
+1. **Automation/API use** — an external system can submit its own Excel/CSV/JSON or Requirement payload, create a one-time or recurring task, query run state, and retrieve completed artifacts through a stable product API.
+2. **Human operations** — an authenticated SRA user can perform the same workflow from a Requirement Task Center integrated into the existing SRA management interface.
+
+The product layer MUST reuse the existing Requirement Import, Schedule, Handoff, Report Job, Elasticsearch/Agent/LLM, artifact, audit, and authentication authorities. It MUST NOT create a parallel scheduler, report queue, user database, authentication system, or browser-owned execution path.
+
+## 2. Existing product baseline
+
+The current application already has a unified management surface:
+
+- `/editor` is the primary SRA management entry.
+- Top-level navigation currently includes:
+  - **ES 資料庫**
+  - **匯入管理**
+  - **系統管理**
+  - **帳號安全**
+  - **代理人資料流程圖**
+- Existing data-management interfaces include:
+  - SRA ES structured-data search/edit/create/delete.
+  - Excel→SQL import dashboard.
+  - SQL source-data editor.
+  - SQL source statistics dashboard.
+  - Excel import center.
+  - Excel→SQL task JSON management.
+- Existing account/security features include:
+  - login/registration/password flows,
+  - account approval,
+  - role management,
+  - audit history,
+  - service-key management.
+- Current role hierarchy includes `data_reader`, `data_editor`, `db_operator`, and `superuser`.
+- Requirement import already supports `manual_upload` with `.xlsx`, `.csv`, and `.json`.
+- Requirement Schedule already supports logical schedules, immutable versions, approval, enable/disable, manual runs, run status, Handoff execution, and artifact reconciliation.
+- Report Jobs already own the actual Agent/LLM/ES execution and DOCX production.
+- The Requirement Operator E2E already proves a technical Golden Path, but its input is a committed test fixture and therefore is not a Product Ingress E2E.
+
+This design integrates the new capability into that existing product instead of creating another administration application.
+
+## 3. Product architecture
+
+```text
+                     SRA Management UI (/editor)
+                              │
+                ┌─────────────┴─────────────┐
+                │                           │
+        Existing data tools          Requirement Task Center
+        ES editor / Excel→SQL        create / monitor / maintain
+                │                           │
+                └─────────────┬─────────────┘
+                              │
+                       Product API façade
+                     /v1/requirement-tasks
+                              │
+             ┌────────────────┴────────────────┐
+             │                                 │
+     Phase 1B Requirement Import       Phase 1C Schedule/Run
+     source/profile/snapshot           version/approve/trigger
+             │                                 │
+             └────────────────┬────────────────┘
+                              │
+                        Handoff Coordinator
+                              │
+                          Report Job
+                              │
+                     real Agent / LLM / ES
+                              │
+                       reconciled DOCX
+```
+
+The Product API is orchestration/presentation only. Existing lower-level APIs remain valid administration/integration surfaces.
+
+## 4. Information architecture in the existing UI
+
+Do not add a separate login page or independent site.
+
+### 4.1 Existing top-level navigation
+
+Retain the existing top-level roots.
+
+Under **匯入管理**, keep the existing `Excel 匯入流程管理` section and add a second section:
+
+### 要項與自動化任務
+
+- **要項任務中心**
+- **建立要項任務**
+- **執行紀錄**
+- **要項來源與版本**
+
+The resulting conceptual navigation is:
+
+```text
+匯入管理
+├─ Excel 匯入流程管理
+│  ├─ Excel→SQL 匯入查詢儀表板
+│  ├─ SQL 來源資料編輯器
+│  ├─ SQL 來源資料統計儀表板
+│  ├─ Excel 匯入作業中心
+│  └─ 任務 JSON 管理
+└─ 要項與自動化任務
+   ├─ 要項任務中心
+   ├─ 建立要項任務
+   ├─ 執行紀錄
+   └─ 要項來源與版本
+```
+
+This keeps all ingestion and automation operations under one operational area while preserving ES database editing as its own existing domain.
+
+### 4.2 Shared visual and security shell
+
+The Requirement pages MUST reuse:
+
+- the current login/session token behavior,
+- current role display and logout,
+- the existing global navigation style,
+- current audit conventions,
+- current responsive layout conventions,
+- current error/status component patterns.
+
+No iframe and no second browser-auth state are allowed.
+
+## 5. Product concepts
+
+### 5.1 Requirement Task
+
+A **Requirement Task** is the product-level object an operator or external client understands.
+
+It represents:
+
+- a human-readable task name,
+- the current Requirement source/set,
+- an execution policy,
+- an active schedule version when applicable,
+- current enabled/disabled state,
+- latest run,
+- next run when recurring.
+
+The task is a façade over existing Requirement and Schedule authorities. Do not create a second execution engine.
+
+### 5.2 Product task identity and durable metadata
+
+The product API exposes an opaque `task_id` that is **not** inferred from Schedule state.
+
+Design review against the current source proved that Schedule identity alone cannot reliably preserve the product-level distinction between a one-time task and a disabled recurring task. Product v1 therefore adds a small control-plane table in the existing `sra_schedule` schema:
+
+`requirement_product_tasks`
+
+Required fields:
+
+- `task_id` — product primary key.
+- `schedule_id` — unique FK to the existing logical Requirement Schedule.
+- `source_id` — unique FK to the Phase 1B Requirement source owned by this task.
+- `execution_kind` — required immutable discriminator: `once` or `recurring`.
+- `product_state` — `provisioning`, `active`, or `disabled`; this is the authoritative Product lifecycle/operability state. A newly inserted Product Task starts as `provisioning`. Create finalization sets it to `active`. For **recurring** Tasks only, a superuser disable/enable transition atomically mirrors `product_state=disabled|active` with the linked Schedule `enabled=false|true`. One-time Tasks remain `active` after provisioning and do not enter `disabled` in v1.
+- `revision` — monotonic BIGINT-style active Product Task semantic revision, initialized to 1. It increments exactly once when an **in-place metadata/state PATCH** successfully commits and exactly once when a **draft Schedule Version activation** successfully commits. A schedule-affecting PATCH that only creates a draft proposal does **not** increment it; input replacement uses its separate snapshot CAS and also does not increment Task revision.
+- `created_by`, `created_at`, `updated_by`, `updated_at`.
+
+`execution_kind` is immutable in v1. Changing a task from one-time to recurring, or vice versa, creates a new Product Task rather than rewriting historical semantics.
+
+A one-time Product Task still owns an existing Schedule logical object and approved Schedule Version, but it executes by manual materialization and its Schedule remains recurrence-disabled; its Product state remains `active`. For a recurring Product Task, `product_state` and Schedule `enabled` are a required mirrored invariant after provisioning: `active ⇔ enabled=true`, `disabled ⇔ enabled=false`. The persisted `execution_kind` is the authority used by API filters and UI rendering, while `product_state` is the Product-facing operability authority.
+
+`provisioning` is a transient durable lifecycle state, not a user-operable disabled state. Only the owning durable `task_create` request may advance a provisioning task. Normal Product list/detail/mutation surfaces must not allow another principal/request to observe and act on the partially constructed task.
+
+This is product metadata only; it does not create a second scheduler or execution engine.
+
+### 5.3 Durable product request ledger
+
+Product v1 also adds `requirement_product_requests` in the existing `sra_schedule` schema to provide durable idempotency and crash/replay recovery for product mutations that span Phase 1B and Phase 1C authorities.
+
+Required fields:
+
+- `request_id` — server-generated primary key.
+- `principal_kind` — `user` or `service_key`.
+- `principal_id` — stable authenticated principal identifier; never a raw credential. For a human user this is the canonical username/account identity. For a service key this MUST be `AuthPrincipal.credential_id`, which is the immutable stored `key_id`; it MUST NOT use `AuthPrincipal.principal_id`, `subject`, or the human-readable key name because service-key names are not unique.
+- `operation` — bounded product operation name such as `task_create`, `task_update`, `task_version_activate`, `input_replace`, or `run_trigger`.
+- `idempotency_key` — caller-supplied bounded key.
+- `request_sha256` — SHA-256 of the complete canonical semantic request envelope. It MUST include operation plus every path-/target-bound resource identity and semantic payload/input digest, while excluding raw uploaded bytes and credentials. At minimum: Task-scoped operations include `task_id`; `task_version_activate` includes `task_id + schedule_version_id`; create includes its create semantics; input replacement includes `task_id + input digest`; run trigger includes `task_id` even when the HTTP body is empty.
+- `state` — `reserved`, `in_progress`, `succeeded`, `failed_recoverable`, or `failed_terminal`.
+- nullable safe progress/result references: `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, `batch_run_id`. These reservation columns are intentionally **not foreign keys** because Product must durably store a server-owned ID before the target authority row exists; target ownership/semantics are verified by the Product service and underlying authority on resume.
+- nullable `base_task_revision` and `result_task_revision` for Task-revision CAS. A schedule-draft `task_update` stores `base_task_revision` but leaves `result_task_revision` null because proposal creation does not mutate Task revision; in-place `task_update` and `task_version_activate` record the revision they actually commit.
+- nullable `base_snapshot_id` for `input_replace`; it records the active Requirement snapshot observed when the replacement request is first reserved and is the CAS authority for the first commit attempt.
+- nullable bounded `safe_result_json` containing only the whitelisted Product response snapshot needed for exact replay; never raw input, prompts, credentials, paths, or upstream error bodies.
+- nullable safe `error_code`.
+- `created_at`, `updated_at`, `completed_at`.
+
+A unique key over `(principal_kind, principal_id, operation, idempotency_key)` owns replay semantics. For `principal_kind=service_key`, `principal_id` is always the immutable service-key `key_id` copied from `AuthPrincipal.credential_id`; two distinct keys with the same display name therefore have independent idempotency namespaces. The same key with a different `request_sha256` is a conflict. The same key/hash resumes or returns the existing durable result according to `state`; it never replays Phase 1B/1C writes blindly.
+
+The ledger is a bounded product saga journal, not a second job queue. Workers do not poll it.
+
+
+### 5.4 Preallocated durable identities and authority-level replay
+
+A Product saga MUST know the durable identity of every cross-authority write **before** that authority can commit it. Product v1 therefore uses server-owned preallocated IDs for the steps whose current stores otherwise generate random IDs internally.
+
+Before invoking Phase 1B Requirement commit, the Product service allocates and persists in `requirement_product_requests`:
+
+- `import_run_id`
+- `snapshot_id`
+
+The Phase 1B authority must be extended so the backward-compatible signatures accept those server-owned IDs:
+
+```python
+RequirementImportService.commit(
+    ...,
+    import_run_id: str | None = None,
+    snapshot_id: str | None = None,
+    expected_base_snapshot_id: str | None = None,
+)
+
+RequirementStore.commit_candidate(
+    ...,
+    import_run_id: str | None = None,
+    snapshot_id: str | None = None,
+    expected_base_snapshot_id: str | None = None,
+)
+
+RequirementStore.record_failed_import(
+    ...,
+    import_run_id: str | None = None,
+)
+```
+
+Omitted IDs preserve current behavior. The same preallocated `import_run_id` is the identity of that Product import attempt whether it commits a snapshot or terminates as a recorded failed import. A reserved `snapshot_id` is materialized only for a successful snapshot commit and is never reassigned to another request.
+
+Authority-level replay rule:
+
+- When server-owned `import_run_id` / `snapshot_id` are supplied, `RequirementImportService.commit(...)` MUST first call a read-only helper such as `RequirementStore.recover_preallocated_import_result(source_id, import_run_id, snapshot_id)` **before `_prepare()`, source acquisition, normalization/classification, candidate error handling, stale/anomaly diagnostics, failed-import recording, or base-snapshot CAS**.
+- The recovery lookup proves that the persisted `import_run_id` belongs to the requested `source_id`, is terminal, and—when committed—links to exactly the supplied `snapshot_id`. Product-layer replay has already matched the durable request's `request_sha256`, so these server-owned IDs cannot be rebound to a different semantic request.
+- If that existing terminal identity is found, return its original safe import result immediately. Do not re-read current Requirement versions and do not reclassify the old payload against newer state.
+- If the supplied identities do not yet exist and `expected_base_snapshot_id` is provided, the same Requirement SQL transaction locks the target `requirement_sets` row with `UPDLOCK,HOLDLOCK` and requires its current `active_snapshot_id == expected_base_snapshot_id` before inserting import/snapshot rows or advancing active state.
+- A base-snapshot mismatch fails closed with `requirement_input_conflict`; the reserved older input is not imported and cannot reactivate an older snapshot.
+- If no `expected_base_snapshot_id` is supplied (for example initial Product Task provisioning on its newly created source), the authority performs the normal locked commit using the preallocated IDs.
+- An existing identity with mismatched semantics is a fail-closed persistence conflict.
+- The caller must never "recover" by generating a new import/snapshot ID for the same Product request key.
+
+Before invoking Schedule Version creation, the Product service allocates and persists:
+
+- `schedule_version_id`
+
+`ScheduleStore.create_version(...)` must be extended with an optional server-owned `schedule_version_id`. When supplied:
+
+- absent ID → create the new draft with that exact ID and the next locked version number;
+- existing same ID + same schedule/config digest → return that existing version;
+- existing same ID with different schedule/config semantics → fail closed.
+
+This makes the crash window between authority commit and Product-ledger progress update recoverable: replay already knows the committed durable identity and can ask the authority for the same object instead of creating a new one.
+
+`ScheduleStore.create_schedule(..., schedule_id=...)` already supports caller-supplied Schedule identity and should be used the same way: preallocate/persist `schedule_id` before create. Product `task_id` and task-owned `source_id` are likewise preallocated and persisted before their corresponding inserts.
+
+Manual Run materialization is different: the current Schedule authority already provides a durable uniqueness/replay key through `(schedule_id, trigger_request_id)`. Product Run trigger should derive a stable trigger request identity from the durable Product request and reuse that existing authority-level idempotency rather than require a new caller-supplied `batch_run_id`.
+
+
+For other preallocated create steps that already accept caller IDs (task-owned Requirement source and logical Schedule), Product orchestration uses a common **ensure-by-ID** rule: look up the preallocated ID first; if absent, create with that exact ID; if present with matching immutable ownership/config semantics, treat the step as complete; if present with mismatched semantics, fail closed. Inserting `requirement_product_tasks` follows the same rule. This makes a crash after source/Schedule/Product-Task commit but before ledger stage advance replay safe without weakening existing authorities.
+
+
+### 5.5 Run
+
+A **Run** is one immutable execution occurrence.
+
+A run MUST bind to:
+
+- one Requirement snapshot,
+- one schedule/task version,
+- one selected Requirement set,
+- one model configuration,
+- one trigger identity,
+- its resulting Run Items and artifact evidence.
+
+Updating a Task never mutates an existing Run.
+
+## 6. Product API principles
+
+1. **High-level API for normal automation.** Clients should not need to orchestrate source → preview → import → requirement set → schedule → version → approve → enable/trigger themselves.
+2. **Existing low-level APIs remain available.** They stay the administrative primitives and implementation authority.
+3. **Idempotency first.** Product mutations require `Idempotency-Key` or an equivalent explicit request identity.
+4. **Server-owned identities.** Clients never choose snapshot IDs, version IDs, Report Job IDs, Handoff owner identities, E2E model markers, or artifact paths.
+5. **No E2E-only behavior.** Product API jobs are ordinary production jobs and MUST always use the real production dependencies. E2E semantic mocks are inaccessible from this surface.
+6. **Stable safe errors.** Responses expose product error codes, not raw ODBC/HTTP/Python/LLM bodies.
+7. **Immutable history.** Updating task input or schedule produces new immutable source/snapshot/version state.
+8. **No browser direct execution.** The browser calls the API; workers remain externally supervised.
+9. **No direct Report Job creation from Product API.** Product execution must pass through the Requirement Schedule/Handoff authority.
+
+## 7. Product API v1
+
+### 7.1 Preview upload
+
+`POST /v1/requirement-task-previews`
+
+Content type: `multipart/form-data`.
+
+Fields:
+
+- `file` — required for file mode; `.xlsx`, `.csv`, or `.json`.
+- `task` — JSON document containing task metadata and selected approved import profile.
+- optional `requirements_json` may be supported instead of file upload for direct API payload mode, but file and direct payload are mutually exclusive.
+
+Side effect: none in the Requirement domain.
+
+Response includes:
+
+- normalized source SHA-256,
+- filename/display metadata,
+- accepted/rejected counts,
+- normalized preview rows,
+- row-level validation errors,
+- selected import-profile identity/version,
+- safe warnings.
+
+The Product API MAY internally call the existing Requirement preview service. It must not duplicate the parser.
+
+### 7.2 Create task
+
+`POST /v1/requirement-tasks`
+
+Supports multipart file upload or direct JSON Requirement input.
+
+Required semantic inputs:
+
+- task name,
+- input,
+- import profile selection or server-configured approved default,
+- execution definition,
+- model selection permitted by server policy,
+- expected source SHA-256 from preview when using the interactive preview/commit flow.
+
+Execution definitions:
+
+```json
+{"type":"once"}
+```
+
+or:
+
+```json
+{
+  "type":"recurring",
+  "timezone":"Asia/Taipei",
+  "recurrence":{
+    "kind":"daily",
+    "time":"08:00"
+  }
+}
+```
+
+Server workflow:
+
+1. validate authentication, **superuser task-provisioning authority**, and reserve/resolve the durable idempotency request,
+2. preview/validate input,
+3. preallocate and persist server-owned `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `task_id`, and initial `schedule_version_id` in the durable Product request before any corresponding cross-authority commit,
+4. create the task-owned Phase 1B `manual_upload` source disabled using the preallocated `source_id`,
+5. enable that source under the same existing superuser activation boundary used by the low-level Requirement API,
+6. commit the Requirement import through Phase 1B using the preallocated `import_run_id` and `snapshot_id`; authority-level replay must return the same import/snapshot instead of creating another one,
+7. create the linked logical Schedule using the preallocated `schedule_id`,
+8. insert `requirement_product_tasks` using the preallocated `task_id` and already-existing `source_id` / `schedule_id` FK targets with `product_state='provisioning'`,
+9. create the immutable Schedule Version using the preallocated `schedule_version_id`; authority-level replay must return the same version if already committed,
+10. approve the Schedule Version under existing superuser authority while keeping the logical Schedule recurrence-disabled,
+11. finalize provisioning in one Schedule SQL transaction: lock the owning `task_create` request + Product Task + linked Schedule/version; verify all required pre-finalization create steps; then for `once` materialize exactly one manual initial Run with the stable request-derived `trigger_request_id` using the Schedule store's locked materialization helper, or for `recurring` enable the approved Schedule and compute/persist `next_run_at`; finally transition `product_state` from `provisioning` to `active`, persist bounded create-result `safe_result_json`, and mark that same `task_create` request `succeeded`,
+12. return Product Task / first Run identity from the finalized result.
+
+A Product Task row in `provisioning` is **not a usable task**. Ordinary `GET /v1/requirement-tasks` excludes it; ordinary `GET /v1/requirement-tasks/{task_id}` behaves as not-found for it; PATCH, input replacement, Run trigger, artifact/task delegation, and service-key access reject it with `requirement_task_provisioning`. The only supported continuation path is replay/resume of the same owning `task_create` request identity. This prevents a second operator/request from mutating partial state between Task-row insertion and create finalization.
+
+The final provisioning transition, initial execution release, and `task_create=succeeded` marker are atomic. Before that transaction commits, a recurring Schedule remains disabled and a one-time initial Run does not yet exist. Therefore scheduler/Handoff workers cannot execute a hidden provisioning Task. If the transaction rolls back, the task remains hidden/inoperable as `provisioning` with no enabled recurrence or initial Run; if it commits and the HTTP response is lost, replay returns the stored successful create result without re-running initialization.
+
+Brand-new Product Task provisioning is superuser-only in v1 because a new Requirement source cannot be committed until it is enabled, and existing Requirement authority intentionally reserves source enablement to superusers. The Product façade MUST NOT call the store as a lower-privilege principal to bypass that rule.
+
+A `db_operator` may preview inputs, replace input on an already activated task/source, create prospective draft Schedule Versions, and perform other operations already allowed by the underlying authorities. It cannot provision or activate a new Product Task.
+
+External service keys in v1 operate only on **pre-provisioned active tasks**; they do not receive source-activation/task-provisioning authority. A future delegated provisioning scope requires a separately reviewed design.
+
+The façade does not bypass any existing transaction/approval rules.
+
+### 7.3 List/get tasks
+
+- `GET /v1/requirement-tasks`
+- `GET /v1/requirement-tasks/{task_id}`
+
+Filters should include:
+
+- enabled,
+- execution type,
+- name,
+- latest status,
+- created/updated by,
+- created/updated time,
+- next-run range.
+
+Task detail includes safe links/IDs for:
+
+- current input snapshot,
+- active version,
+- latest Run,
+- next run,
+- recent execution counts.
+
+Ordinary Product list/detail presenters include only non-provisioning Tasks. A direct lookup of a `provisioning` task does not expose its partial source/schedule/snapshot/version/run identities; it returns the same safe not-found behavior used for an unavailable Task. Provisioning recovery is performed through the owning create request, not through the normal Task presenter.
+
+No local path, credential, prompt, E2E marker, or backend-native status is returned.
+
+### 7.4 Update task
+
+`PATCH /v1/requirement-tasks/{task_id}`
+
+Allowed prospective changes are split by authority:
+
+- **In-place Product metadata/state changes** that do not require a new Schedule Version follow the Product Task revision-CAS rules and existing RBAC. Recurring enable/disable remains `superuser` only.
+- **Schedule-affecting changes** — recurrence, timezone, approved model selection, or run policy — always create a new immutable **draft Schedule Version**. PATCH never approves/activates that draft, even when the caller is a superuser.
+
+A single PATCH payload MUST choose exactly one mutation mode. Product v1 rejects a payload that combines any in-place metadata/state field (for example `name` or recurring `enabled`) with any schedule-affecting field (recurrence/timezone/model/run-policy). Such a request returns HTTP 422 with stable code `requirement_task_patch_mixed_modes` **before** reserving a durable `task_update` request and performs no mutation or draft creation. Multiple fields within the same mode remain allowed.
+
+Every PATCH requires `Idempotency-Key` and uses durable operation `task_update`. Before reserving it, the Product service requires `product_state != 'provisioning'`.
+
+For a schedule-affecting PATCH:
+
+1. lock/read the Product Task and persist its current `revision` as the draft request's `base_task_revision`,
+2. preallocate/persist `schedule_version_id`,
+3. create/recover exactly that draft through `ScheduleStore.create_version(..., schedule_version_id=...)`,
+4. leave the current approved/active Schedule Version, recurring enabled state, Product Task `revision`, and `next_run_at` unchanged,
+5. store a bounded result identifying the draft, leave `result_task_revision` null, and mark the `task_update` request `succeeded`.
+
+This path is allowed for `db_operator` and `superuser`, subject to existing model/config validation. It is **proposal creation**, not approval. A successful draft-creation request has no authority to activate its own version later.
+
+Name-only or other permitted in-place metadata updates use a Product-specific atomic finalizer that locks the Product request, Product Task, and linked Schedule; checks `revision == base_task_revision`; applies only the authorized in-place fields; increments Task `revision` exactly once; writes safe audit/result state; and marks that same request succeeded in one transaction. Recurring enable/disable uses this path only for a `superuser`, and that same transaction MUST write both sides of the invariant: disable sets Schedule `enabled=false`, clears/recomputes `next_run_at` according to existing Schedule rules, and sets `product_state='disabled'`; re-enable sets Schedule `enabled=true`, computes `next_run_at`, and sets `product_state='active'`. No commit may leave those two authorities disagreeing.
+
+### 7.4.1 Approve/activate a draft Schedule Version
+
+`POST /v1/requirement-tasks/{task_id}/versions/{schedule_version_id}/activate`
+
+This is the **only Product v1 path that approves/activates a draft version on a Product-owned Schedule**, and it requires `superuser`. The low-level approval route remains fenced for Product-owned Schedules.
+
+The activation call requires its own `Idempotency-Key` and durable operation `task_version_activate`. The service must resolve the draft's originating successful `task_update` request by `task_id + schedule_version_id` and reuse that request's persisted `base_task_revision` as the proposal CAS anchor. A draft that cannot be proven to originate from that Task's Product update request is rejected.
+
+Activation finalization runs in one Schedule SQL transaction:
+
+1. lock the activation request, Product Task, linked Schedule, draft Schedule Version, and the originating draft request,
+2. replay an already-succeeded activation from bounded `safe_result_json`,
+3. require the draft is still `draft` and belongs to the Task's Schedule,
+4. require current Product Task `revision == originating_draft.base_task_revision`,
+5. on mismatch, do not activate the stale draft; mark activation terminal with `requirement_task_conflict` and retire/abandon that draft when safe,
+6. on match, apply the existing Schedule approval/activation rules to this exact draft, recalculate `next_run_at` if the recurring Task is currently enabled, increment Product Task `revision` once, emit authoritative Schedule/Product audit metadata, store bounded result, and mark activation succeeded,
+7. commit version activation + Task revision + audit + activation-request success atomically.
+
+Therefore a `db_operator` can propose a new recurrence/timezone/model/run-policy configuration but cannot cause it to become active. A superuser explicitly activates it later. If any intervening successful Task mutation changed the revision, the old draft cannot overwrite newer state.
+
+Task detail/version history should expose draft status and the creator safely. The Task Center shows **待核准** and an activate action only to superusers; ordinary operators can see their draft proposal but cannot approve it.
+
+The edit UI must present in-place metadata/state edits separately from **建立待核准版本** schedule edits and must not submit a mixed-mode PATCH.
+
+### 7.4.2 Atomic Product ownership fences on low-level mutation APIs
+
+Once a Product request reserves a server-owned `schedule_id` / `source_id`, that identity is already **reserved for Product ownership** even before the eventual `requirement_product_tasks` row exists. This closes the provisioning gap between resource creation and Product Task linkage.
+
+The ownership decision MUST NOT be a router pre-check followed by a separate store transaction. The check and low-level write must execute under compatible SQL locks in the **same Requirement-control database transaction**. The current runtime already constructs Requirement and Schedule stores from the same `REQUIREMENT_CONTROL_DB_CONNECTION`; Product v1 relies on that same-database/cross-schema authority while enabled.
+
+Schedule schema v4 therefore adds catalog-validated indexes supporting bounded ownership lookups by `requirement_product_requests.schedule_id` and `source_id`. A Product reservation claim is established by the `task_create` request before the corresponding source/Schedule is created and remains authoritative through provisioning; once `requirement_product_tasks` exists, that row is the permanent ownership record.
+
+For a public low-level Schedule write, the Schedule store opens its mutation transaction and, before changing the Schedule, locks/checks both:
+
+1. `requirement_product_tasks` for that `schedule_id`, and
+2. `requirement_product_requests` for a Product provisioning reservation of that `schedule_id`.
+
+If either exists, the transaction performs no mutation and returns `requirement_product_owned_schedule`. The check uses the same connection/transaction as the Schedule row/version/run write, so a request cannot pass the guard, pause, then mutate after Product ownership is established.
+
+The guarded low-level Schedule mutations are:
+
+- `PATCH /v1/requirement-schedules/{schedule_id}` — rename / enable-disable,
+- `POST /v1/requirement-schedules/{schedule_id}/versions`,
+- `POST /v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve`,
+- `POST /v1/requirement-schedules/{schedule_id}/runs`.
+
+Their stable response is HTTP 409 with safe code `requirement_product_owned_schedule`. Schedule GET/list/run-history remain available. Non-Product Schedules retain existing mutation behavior.
+
+For a public low-level Requirement-source write, `RequirementStore` is extended with the configured Schedule schema name while using the same control-database connection. Its source mutation/import transaction locks/checks both:
+
+1. `requirement_product_tasks` for that `source_id`, and
+2. `requirement_product_requests` for a Product provisioning reservation of that `source_id`.
+
+If either exists, the same transaction rejects with `requirement_product_owned_source` before changing source metadata or active snapshot state. The guarded source mutations are:
+
+- `PATCH /v1/requirement-sources/{source_id}`,
+- `POST /v1/requirement-sources/{source_id}/import`.
+
+Source GET/list and side-effect-free preview remain available. Import-profile administration is unchanged.
+
+Implementation should refactor the current store writes into private locked helpers plus explicit **guarded low-level mutation methods**. Product orchestration uses the reviewed internal helpers/finalizer without the public low-level fence; the public routers never receive a bypass flag. Initial Product provisioning always reserves all server-owned IDs in the Product ledger before creating the task-owned source or Schedule, and v1 does not adopt a pre-existing low-level Schedule/source into Product ownership.
+
+This makes ownership fencing race-safe across both the provisioning window and steady-state Product ownership.
+
+### 7.4.3 Input replacement base-snapshot CAS
+
+`POST /v1/requirement-tasks/{task_id}/input` is a separate Product mutation and requires `Idempotency-Key`. It is unavailable while the Task is `provisioning`; the Product service checks the Task lifecycle before reserving `input_replace` and returns `requirement_task_provisioning` without creating a competing request.
+
+When an `input_replace` request is first reserved, the Product service reads the task-owned Requirement set's current active snapshot and persists it as `base_snapshot_id` together with the preallocated `import_run_id` and replacement `snapshot_id`.
+
+The first commit attempt calls the extended Phase 1B authority with `expected_base_snapshot_id=base_snapshot_id`. If another replacement has already advanced the active snapshot, the authority returns `requirement_input_conflict` and the stale request becomes terminal; it must not import its older payload or move `active_snapshot_id` backward.
+
+If this request already committed earlier and only the response/progress update was lost, replay is recognized by its preallocated import/snapshot IDs **before `RequirementImportService._prepare()` runs** and returns the existing result without normalization, stale/anomaly classification, `candidate.has_errors` handling, failed-import recording, or base-snapshot CAS. Thus both pre-commit stale replay and delayed post-commit replay remain safe even after a newer replacement has changed the current Requirement versions.
+
+Two different replacement requests reserved from the same base snapshot may both exist, but at most one can advance that base snapshot; the other fails CAS when it reaches the locked Requirement commit.
+
+
+A required delayed-replay regression is:
+
+```text
+A reserves from S0
+→ A commits S1
+→ B reserves from S1 and commits S2
+→ A is replayed only now
+→ recover A's original committed S1 result before _prepare()
+→ no stale/anomaly diagnostics or failed import are created for A
+→ active snapshot remains S2
+```
+
+This ordering is materially different from an immediate retry after A commits and is required because current `_prepare()` compares incoming rows against the latest persisted Requirement versions.
+
+Replacing Requirement input follows the base-snapshot CAS contract in §7.4.3. It previews/commits a new Requirement snapshot under the same logical task/source authority without allowing an older unfinished replacement to roll active input backward.
+
+Existing Runs remain bound to their original snapshot/version.
+
+### 7.5 Trigger a run
+
+`POST /v1/requirement-tasks/{task_id}/runs`
+
+Requires an idempotency/request identity and reuses the existing manual materialization authority.
+
+The **first admission** of a new `run_trigger` Product request must be atomic with the Task lifecycle check. Product persistence exposes a transaction such as:
+
+```python
+reserve_product_run_trigger(
+    *,
+    task_id: str,
+    principal_kind: str,
+    principal_id: str,
+    idempotency_key: str,
+    request_sha256: str,
+    now_utc: datetime,
+) -> ProductRunTriggerReservation
+```
+
+In one Schedule SQL transaction it:
+
+1. locks/resolves any existing `(principal_kind, principal_id, run_trigger, idempotency_key)` request **before consulting current Task lifecycle**,
+2. if that row exists with a different canonical `request_sha256`, return `requirement_idempotency_conflict`; the canonical run-trigger hash MUST bind the requested `task_id` even though the request body may be empty. If the hash matches, handle its persisted state exactly as the durable ledger contract requires and do not reclassify it as a new admission:
+   - `reserved` / `in_progress` → resume the already-admitted request,
+   - `failed_recoverable` → resume from its persisted stage/authority identities,
+   - `succeeded` → return/reconstruct the original successful result,
+   - `failed_terminal` → return the same stored safe terminal error,
+3. only when no request row exists, lock the Product Task with write-compatible row/range locking and recheck the unique request identity under the same transaction,
+4. reject `provisioning` with `requirement_task_provisioning`,
+5. reject a recurring `product_state='disabled'` Task with `requirement_task_disabled`,
+6. otherwise insert/reserve the new `run_trigger` request and commit while still holding the Task lock.
+
+The recurring enable/disable finalizer must acquire a compatible Product Task lock before changing `product_state` / Schedule `enabled`. Therefore admission and disable serialize: if disable commits first, a **new** trigger cannot be reserved; if trigger reservation commits first while the Task is active, that request is durably admitted. Later retries of that same request are governed solely by its persisted ledger state: recoverable work may resume/materialize exactly once using its stable request-derived `trigger_request_id`, success replays success, and terminal failure replays the same terminal error. Disable prevents **new admissions**; it never changes the replay semantics of a request already present in the ledger.
+
+A request must not implement this as an unlocked Task read followed by a separate ledger insert. One-time Tasks remain `active` and can be admitted according to existing RBAC. The owning create saga remains the only path allowed to release the initial Run while the Task is `provisioning`.
+
+It returns a product Run presenter.
+
+### 7.6 Run status/history
+
+- `GET /v1/requirement-runs`
+- `GET /v1/requirement-runs/{run_id}`
+- `GET /v1/requirement-runs/{run_id}/items`
+
+Stable product status vocabulary:
+
+- `queued`
+- `running`
+- `completed`
+- `completed_with_errors`
+- `failed`
+- `recovery_required`
+
+Every Product Run presenter resolves the owning Product Task through the Run's Schedule binding and applies the same lifecycle predicate as Task presenters. `GET /v1/requirement-runs` excludes Runs owned by `provisioning` Tasks. Direct run detail and run-item lookups for a provisioning owner return the same safe unavailable/not-found behavior and expose no partial task/run identities. The presenter maps existing neutral Schedule/Handoff state; it does not expose Report Job-native implementation states.
+
+### 7.7 Artifacts
+
+- `GET /v1/requirement-runs/{run_id}/artifacts`
+- `GET /v1/requirement-runs/{run_id}/items/{run_item_id}/word`
+
+Artifact listing/download resolves the owning Product Task before returning metadata or bytes. If the owner is `provisioning`, artifact list/detail/Word access returns the same safe unavailable/not-found behavior; service-key artifact scope does not bypass this lifecycle gate. The Word endpoint otherwise reuses the existing confined artifact validation/history authority. No absolute path appears in JSON or headers.
+
+## 8. Authentication and authorization
+
+### 8.1 Human UI
+
+Reuse the current bearer session and role hierarchy.
+
+Baseline UI policy:
+
+- `data_reader`: view task/run histories and completed artifacts permitted by product policy.
+- `data_editor`: no Product mutation authority in v1 unless a later reviewed policy explicitly grants side-effect-free preview.
+- `db_operator`: preview Requirement input; replace input on an already activated task/source; create prospective draft Schedule Versions; trigger manual Runs where the existing Schedule authority permits it. It cannot approve/activate those drafts, enable recurring automation, enable a Requirement source, or provision/activate a brand-new Product Task.
+- `superuser`: provision a new Product Task, enable its task-owned Requirement source, create drafts, approve/activate Product draft Schedule Versions through the Product activation endpoint, enable/disable recurring automation, and manage service keys.
+
+Exact privilege inheritance must reuse `authorize_role` and existing denial audit; do not introduce a second role engine. Product orchestration may call the same underlying store/service operations only after the corresponding product endpoint has established the same or stricter authority required by the low-level route.
+
+### 8.2 Automation clients
+
+Use the existing service-key subsystem rather than human passwords.
+
+Add product scopes through the existing validated service-key store, subject to rebaseline:
+
+- `requirement:task:read`
+- `requirement:task:write` — prospective updates and input replacement on an already active/pre-provisioned task only.
+- `requirement:run:trigger`
+- `requirement:artifact:read`
+
+Product v1 intentionally has **no service-key task-provisioning/source-activation scope**. A superuser provisions and activates the Product Task first; automation then supplies replacement inputs, triggers Runs, reads state, and downloads permitted artifacts according to scopes.
+
+Do not reuse the private Handoff worker credential for external clients.
+
+Browser pages never receive service keys.
+
+## 9. Requirement Task Center UX
+
+### 9.1 Task Center dashboard
+
+Main table/cards:
+
+- task name,
+- input type,
+- active Requirement count,
+- once/recurring,
+- enabled state,
+- schedule summary,
+- model,
+- last run time/status,
+- next run,
+- success/failure counts,
+- owner/last editor.
+
+Actions:
+
+- open detail,
+- run now,
+- enable/disable if authorized,
+- edit prospective schedule,
+- replace input,
+- view history.
+
+No destructive deletion of historical Runs.
+
+### 9.2 Create Task wizard
+
+Four steps:
+
+1. **Input**
+   - upload Excel/CSV/JSON,
+   - or paste/send Requirement JSON,
+   - select approved import profile.
+2. **Preview**
+   - accepted/rejected counts,
+   - row errors,
+   - normalized Requirement preview,
+   - source SHA.
+3. **Execution**
+   - once or recurring,
+   - timezone,
+   - recurrence,
+   - model,
+   - run policy.
+4. **Review and create**
+   - show immutable summary,
+   - show what requires approval,
+   - create and optionally start/enable according to user privilege.
+
+Do not hide validation failures behind automatic coercion.
+
+### 9.3 Task detail
+
+Tabs:
+
+- **摘要**
+- **要項**
+- **排程與版本**
+- **執行紀錄**
+- **稽核**
+
+Summary includes latest run and next action. Requirement view shows current snapshot and historical versions without allowing mutation of old snapshots.
+
+### 9.4 Run detail
+
+Timeline:
+
+```text
+Requirement snapshot
+→ Run materialized
+→ Handoff
+→ Report Job
+→ execution
+→ artifact reconciliation
+→ terminal state
+```
+
+For each Run Item show:
+
+- Requirement identity/title,
+- neutral execution state,
+- safe error category,
+- elapsed time,
+- artifact state,
+- Word download when complete.
+
+Do not expose raw LLM prompt, credentials, absolute filesystem paths, Handoff service identity secrets, or arbitrary stack traces.
+
+## 10. Audit and operations
+
+Product mutations must emit safe audit events using the existing audit mechanism.
+
+Minimum actions:
+
+- `requirement.task.previewed`
+- `requirement.task.created`
+- `requirement.task.updated`
+- `requirement.task.input_replaced`
+- `requirement.task.enabled`
+- `requirement.task.disabled`
+- `requirement.task.run_triggered`
+- `requirement.task.artifact_downloaded`
+
+Audit records include actor, safe product IDs, counts, and result category. They exclude source file contents, prompt bodies, credentials, SQL text, local paths, and raw upstream errors.
+
+Task Center should expose operational filters for time, user/service principal, task, run state, and error category.
+
+## 11. Observability and maintainability
+
+A production operator must be able to answer from UI/API without SQL inspection:
+
+- Which tasks are enabled?
+- What runs are currently queued/running?
+- What failed today?
+- Which Requirement item failed?
+- What safe error category was recorded?
+- When will the task run next?
+- Which input snapshot/version did a Run use?
+- Which task/version/user created the Run?
+- Is an artifact available?
+- Is Schedule/Handoff worker health degraded?
+
+Do not expose the Operator E2E runtime-evidence endpoint to ordinary users. Task Center may consume a separate bounded operational-health presenter if needed.
+
+## 12. Idempotency and retry
+
+All product mutations that can create persistent work must be replay safe through the durable `requirement_product_requests` authority defined in §5.3.
+
+- Require `Idempotency-Key` for task create, every task PATCH/update, **Product draft activation (`task_version_activate`)**, input replacement, and Run trigger; UI clients generate one per explicit mutation and retain the same key across transport retries of that mutation, including activation.
+- The server canonicalizes the complete semantic request envelope and hashes it before the first Phase 1B/1C write. Canonicalization includes the operation and every target identity carried by the route/path, not only the JSON/body. Therefore reusing the same principal/operation/idempotency key against a different Task or Schedule Version necessarily produces a different hash and returns `requirement_idempotency_conflict` rather than replaying another resource's result.
+- For ordinary mutations reserve the unique principal/operation/key row before side effects. For `run_trigger`, first-time reservation additionally follows §7.5: **any existing same-key row is resolved by hash + persisted ledger state before lifecycle checks**, while a truly absent request performs lifecycle recheck and ledger insertion atomically under the Product Task lock. Disabling later cannot rewrite an existing trigger's `reserved|in_progress|failed_recoverable|succeeded|failed_terminal` replay semantics.
+- Same principal/operation/key + same hash returns or resumes the recorded operation.
+- Same principal/operation/key + different hash returns 409 `requirement_idempotency_conflict`.
+- `in_progress` or `failed_recoverable` replay resumes from persisted preallocated authority IDs and safe stage references instead of re-importing, creating another Schedule Version, or rolling input backward.
+- `succeeded` replay returns the bounded stored `safe_result_json` when an exact prior mutable-result snapshot is required (notably `task_update`), otherwise it may reconstruct immutable/create results from authoritative Product/Requirement/Schedule IDs.
+- `failed_terminal` replay returns the same safe terminal error until the caller uses a new key.
+- Raw uploaded bytes, credentials, prompts, and upstream error bodies are never stored in the ledger.
+
+Cross-authority Product operations are therefore an explicit durable saga. Each step must be individually idempotent or recoverable by server-owned identity before advancing the ledger stage.
+
+
+For Product Task PATCH/update, durable identity alone is not sufficient because rename/enabled state are mutable in place. These updates additionally use the Product Task revision CAS and same-transaction finalization defined in §7.4. This prevents both crash-after-commit replay and stale old requests from overwriting newer successful changes.
+
+A failed Run remains immutable. In Product v1, choosing **Run again** simply issues another ordinary `POST /v1/requirement-tasks/{task_id}/runs` request with a new idempotency key and creates a new independent Run.
+
+Product v1 does **not** persist or expose `parent_run_id` / retry ancestry. The current Schedule schema has no reviewed ancestry field, and v4 deliberately adds only Product Task/request control-plane tables. Durable retry lineage is future work requiring a separate schema/API design. Do not infer ancestry from timestamps, trigger order, or UI state.
+
+## 13. Product E2E
+
+The existing Requirement Operator E2E remains the deployment/technical acceptance harness.
+
+Add a separate **Product API E2E** whose input does not depend on a committed repository fixture.
+
+Each Product E2E run is explicitly split across the two supported authorities:
+
+**Provisioning phase — superuser principal**
+
+1. generate an initial input file or direct JSON payload at runtime with a unique provisioning marker,
+2. authenticate as the authorized superuser acceptance principal,
+3. call Product Preview,
+4. create and activate a one-time Requirement Product Task/source,
+5. obtain the pre-provisioned active `task_id`.
+
+**Delegated automation phase — scoped service key**
+
+6. create a second runtime-generated input with a distinct automation marker,
+7. authenticate with a dedicated service key using the Product scopes allowed for an already active task,
+8. replace the task input through `POST /v1/requirement-tasks/{task_id}/input` with durable idempotency,
+9. trigger a Run through `POST /v1/requirement-tasks/{task_id}/runs`,
+10. obtain `run_id` and verify the Run binds to the replacement snapshot,
+11. read task/run/Run Item status through scoped Product API access,
+12. wait through real Schedule/Handoff/Report Job execution,
+13. require real production LLM and Elasticsearch behavior,
+14. download and validate DOCX/artifact evidence through the scoped Product artifact API,
+15. prove the automation marker is represented in the stored Requirement identity/evidence expected by the test,
+16. clean up only reversible task state; never delete immutable run history merely to make the test clean.
+
+The Product E2E MUST NOT require a service key to create/enable a Requirement source or provision a brand-new Product Task.
+
+No `requirement-e2e:` model marker or semantic mock routing is permitted in Product E2E.
+
+## 14. Browser E2E
+
+After the Product API is stable, add browser E2E for the integrated SRA UI:
+
+```text
+login
+→ 匯入管理
+→ 建立要項任務
+→ upload generated Excel
+→ preview
+→ create one-time task
+→ view running status
+→ completed
+→ download DOCX
+```
+
+Browser E2E proves navigation, RBAC, upload, status rendering, and artifact download. It is not a substitute for Product API E2E.
+
+## 15. Compatibility and migration
+
+- Existing `/v1/requirement-sources/*` and `/v1/requirement-schedules/*` remain supported for non-Product resources and for read-only inspection of Product-owned resources. Public low-level mutation endpoints intentionally return 409 for Product-owned Schedule/source identities so Product revision/idempotency cannot be bypassed.
+- Existing Operator E2E remains unchanged except where shared bug fixes are necessary.
+- Existing ES editor and Excel→SQL pages remain unchanged except global navigation integration.
+- The Phase 1B Requirement schema is unchanged by Product v1.
+- The existing Requirement Schedule schema is currently version 3 at this design baseline. Product v1 explicitly requires a reviewed **v3 → v4** migration in `sra_schedule`.
+- Schedule schema v4 adds only:
+  - `requirement_product_tasks` for durable Product Task identity, task-owned source/schedule binding, authoritative `execution_kind`, explicit `provisioning|active|disabled` lifecycle, and monotonic Product `revision`.
+  - `requirement_product_requests` for durable principal-scoped idempotency/saga recovery, including `base_task_revision`, `result_task_revision`, and bounded `safe_result_json` for mutation replay.
+- v4 migration and structural validation must be transactional/fail-closed and extend the existing Schedule schema catalog validator. Unknown/malformed versions remain fatal. The catalog also validates bounded indexes on Product-request `schedule_id` and `source_id` used by atomic low-level ownership fencing.
+- These product tables are control-plane metadata only. They do not duplicate Requirement snapshots, Schedule Versions, Runs/Run Items, Handoff submissions, Report Jobs, or artifacts.
+- Product v1 also requires backward-compatible authority API extensions, not new domain tables: Phase 1B commit/failed-import recording accepts preallocated `import_run_id` / `snapshot_id`, and Schedule Version creation accepts preallocated `schedule_version_id`, each with same-ID/same-semantics replay behavior.
+- Existing v3 deployments must be backed up and explicitly migrated before Product routes are enabled.
+
+## 16. Security boundaries
+
+The Product API/UI MUST NOT:
+
+- accept arbitrary SQL,
+- accept arbitrary artifact paths,
+- accept a Report Job owner/service principal,
+- accept E2E model markers,
+- select E2E mocks,
+- expose worker credentials,
+- expose deployment SQL registry details,
+- expose absolute file paths,
+- invoke Report Jobs directly from browser/API façade,
+- run scheduler/handoff loops inside FastAPI background threads,
+- weaken existing Requirement approval/version rules.
+- let `db_operator` activate a Product draft Schedule Version; Product draft activation is a separate superuser-only idempotent operation.
+- mutate a Product-owned Schedule or task-owned Requirement source through the retained public low-level mutation endpoints; those writes must go through Product API/orchestration.
+
+Uploaded files receive bounded size/type validation and are parsed only by the existing Requirement import authority.
+
+## 17. Out of scope for v1
+
+- generic workflow builder,
+- JT-1/LangGraph redesign,
+- replacing Report Job execution,
+- replacing current AuthStore,
+- arbitrary user-defined Python/SQL,
+- distributed queue/HA redesign,
+- cancellation of already-running Report Jobs,
+- webhook delivery (candidate v1.1 after Product API contracts stabilize),
+- deleting immutable audit/run history,
+- moving Schedule/Handoff worker ownership into FastAPI.
+
+## 18. Acceptance criteria
+
+Product v1 is complete only when all of the following are true:
+
+1. Existing SRA login/RBAC controls the Requirement Task Center.
+2. Requirement navigation is integrated under the existing SRA management UI.
+3. A user can upload their own Excel/CSV/JSON, preview it, and create a task.
+4. After a superuser provisions and activates a Product Task/source, a scoped service-key automation client can replace input, trigger Runs, read task/run state, and retrieve permitted artifacts without gaining task-provisioning/source-activation authority.
+5. One-time and recurring task creation reuse existing Schedule authority.
+6. Run status/history is visible without SQL/log inspection.
+7. Completed DOCX is retrievable through authenticated product history.
+8. All product mutations are idempotent/replay safe where required, and partially provisioned Tasks—including any Run/history/artifact views—are hidden/inoperable until the owning `task_create` request atomically releases either the one-time initial Run or recurring Schedule together with Task activation.
+9. Schedule-affecting Task PATCH creates a draft only; activation is a separate superuser-only Product operation with CAS against the draft's originating Task revision.
+10. Product v1 rejects mixed in-place + schedule-affecting PATCH payloads before idempotency reservation; draft-only PATCH does not increment Task revision.
+11. Recurring Task enable/disable atomically mirrors Product `active|disabled` with Schedule `enabled=true|false`; one-time Tasks do not enter `disabled`.
+12. New `run_trigger` admission is serialized with recurring disable by a shared Product Task lock; any existing same-key request is first resolved according to hash and persisted ledger state, so disable-first rejects only a truly new trigger and cannot alter recoverable/succeeded/terminal replay semantics of an already-admitted request.
+13. Canonical Product request hashes bind operation + all path/target resource identities; same principal/operation/idempotency key reused on another Task or Schedule Version conflicts instead of replaying the first resource.
+14. Historical snapshot/version/run bindings remain immutable.
+15. Product jobs cannot enter E2E mock routing.
+16. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
+17. Browser E2E passes the integrated SRA UI Golden Path.
+18. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
+
+## 19. Design decision summary
+
+The correct product boundary is **one integrated SRA operations console** with multiple data/automation modules, not several disconnected applications.
+
+The Requirement Task Center is therefore a new operational module inside the current management system, while the Product API is a stable orchestration façade over already-reviewed Requirement Import and Schedule/Handoff authorities.
