@@ -5,7 +5,7 @@ import pytest
 
 from requirement_scheduler.audit_delivery import drain_audit_outbox
 from requirement_scheduler.migrations import (
-    REQUIRED_CHECKS, REQUIRED_COLUMNS, REQUIRED_DEFAULTS, REQUIRED_FILTERED_INDEXES, REQUIRED_KEYS,
+    SCHEMA_VERSION, REQUIRED_CHECKS, REQUIRED_COLUMNS, REQUIRED_DEFAULTS, REQUIRED_FILTERED_INDEXES, REQUIRED_KEYS,
     canonical_v2_statements, migration_1_to_2_statements,
     required_foreign_keys, validation_queries,
 )
@@ -28,7 +28,7 @@ class FreshCursor:
         if "OBJECT_ID" in sql:
             self._rows = [(None,)]
         elif sql.startswith("SELECT version"):
-            self._rows = [(3,)] if self.marker_written else []
+            self._rows = [(SCHEMA_VERSION,)] if self.marker_written else []
         elif sql.startswith("INSERT INTO [sra_schedule].[schema_version]"):
             self.marker_written = True
         elif "SELECT t.name FROM sys.tables" in sql:
@@ -50,7 +50,7 @@ class FreshCursor:
                           for fk in required_foreign_keys("sra_schedule", "sra_requirement")
                           for i, (c, rc) in enumerate(zip(fk.columns, fk.referenced_columns), 1)]
         elif "sys.default_constraints" in sql and len(params) == 1:
-            self._rows = [(d.table, d.name, d.column, "((0))") for d in REQUIRED_DEFAULTS]
+            self._rows = [(d.table, d.name, d.column, f"(({d.definition}))") for d in REQUIRED_DEFAULTS]
         elif "sys.check_constraints" in sql and len(params) == 1:
             self._rows = [(c.table, c.name, c.definition) for c in REQUIRED_CHECKS]
         elif params and isinstance(params[-1], str):
@@ -72,7 +72,8 @@ class FreshCursor:
                                    expected.referenced_schema, expected.referenced_table, rc, i, 0, 0)
                                   for i, (c, rc) in enumerate(zip(expected.columns, expected.referenced_columns), 1)]
                 elif expected.__class__.__name__ == "DefaultConstraint":
-                    self._rows = [("sra_schedule", expected.table, expected.name, expected.column, "((0))")]
+                    self._rows = [("sra_schedule", expected.table, expected.name, expected.column,
+                                   f"(({expected.definition}))")]
                 else:
                     self._rows = [("sra_schedule", expected.table, expected.name, expected.definition)]
         return self
@@ -189,7 +190,7 @@ def test_marker_reread_accepts_dbapi_indexable_rows_without_tuple_equality():
         def __eq__(self, other): return False
     connection = Connection()
     original = connection.cursor_value.fetchall
-    connection.cursor_value.fetchall = lambda: [Row(3)] if connection.cursor_value.sql[-1][0].startswith("SELECT version") and connection.cursor_value.marker_written else original()
+    connection.cursor_value.fetchall = lambda: [Row(SCHEMA_VERSION)] if connection.cursor_value.sql[-1][0].startswith("SELECT version") and connection.cursor_value.marker_written else original()
     ScheduleStore(Registry(connection), "db").initialize()
     assert connection.commits == 1
 
@@ -200,7 +201,8 @@ def test_canonical_widths_outbox_and_index_are_exact():
     assert columns["trigger_type"] == 32 and columns["selection_status"] == 32
     assert columns["execution_state"] == 64 and columns["remote_job_state"] == 64
     assert columns["phase1a_task_id"] == 480
-    pending = REQUIRED_FILTERED_INDEXES[-1]
+    pending = next(index for index in REQUIRED_FILTERED_INDEXES
+                   if index.name == "IX_requirement_schedule_audit_pending")
     assert pending.columns == ("delivered_at", "created_at", "audit_event_id") and pending.is_unique is False
     ddl = "\n".join(canonical_v2_statements("sra_schedule", "sra_requirement"))
     assert "safe_payload_json NVARCHAR(2000) NOT NULL" in ddl
@@ -295,7 +297,10 @@ def _catalog(shape):
     return {
         "columns": migrations._v1_columns(shape),
         "keys": tuple(k for k in REQUIRED_KEYS if k.name not in {
-            "UQ_requirement_schedule_version_owner", "PK_requirement_schedule_audit_outbox"
+            "UQ_requirement_schedule_version_owner", "PK_requirement_schedule_audit_outbox",
+            "PK_requirement_product_tasks", "UQ_requirement_product_task_schedule",
+            "UQ_requirement_product_task_source", "PK_requirement_product_requests",
+            "UQ_requirement_product_request_idempotency",
         }),
         "indexes": tuple(REQUIRED_FILTERED_INDEXES[:2]),
         "foreign_keys": tuple(fk for fk in migrations.v1_foreign_keys(
@@ -456,11 +461,11 @@ class StatefulDatabase:
         elif sql.startswith("ALTER TABLE") or sql.startswith("CREATE TABLE"):
             self.mutations.append(sql.split()[0].lower())
         if sql.startswith("INSERT INTO [sra_schedule].[schema_version]"):
-            self.marker_rows = [3]
+            self.marker_rows = [SCHEMA_VERSION]
             self.mutations.append("marker")
         elif sql.startswith("UPDATE [sra_schedule].[schema_version]"):
-            self.marker_rows = [3] if self.marker_rows in ([1], [2]) else self.marker_rows
-            self.rowcount = 1 if self.marker_rows == [3] else 0
+            self.marker_rows = [SCHEMA_VERSION] if self.marker_rows in ([1], [2], [3]) else self.marker_rows
+            self.rowcount = 1 if self.marker_rows == [SCHEMA_VERSION] else 0
             self.mutations.append("marker")
         return self
 
@@ -491,7 +496,7 @@ def _initialize(database, **kwargs):
 def test_stateful_fresh_and_existing_v2_public_initialization_paths():
     fresh = StatefulDatabase(marker_table=False)
     _initialize(fresh)
-    assert fresh.marker_rows == [3] and fresh.catalog == _catalog("v2")
+    assert fresh.marker_rows == [SCHEMA_VERSION] and fresh.catalog == _catalog("v2")
     assert fresh.commits == 1 and fresh.rollbacks == 0
     assert fresh.mutations[-1] == "marker"
     assert fresh.sql[-1][0].startswith("SELECT version")
@@ -499,7 +504,7 @@ def test_stateful_fresh_and_existing_v2_public_initialization_paths():
 
     existing = StatefulDatabase("v2")
     _initialize(existing)
-    assert existing.marker_rows == [3] and existing.commits == 1
+    assert existing.marker_rows == [SCHEMA_VERSION] and existing.commits == 1
     assert sum("sys.columns" in sql for sql, _ in existing.sql) >= len(REQUIRED_COLUMNS) + 1
 
 
@@ -509,7 +514,7 @@ def test_stateful_exact_v1_catalogs_migrate_through_public_initialize(shape):
     database = StatefulDatabase(shape, external_id=external_id)
     original_identity = database.selected_identity
     _initialize(database)
-    assert database.marker_rows == [3] and database.catalog == _catalog("v2")
+    assert database.marker_rows == [SCHEMA_VERSION] and database.catalog == _catalog("v2")
     assert database.width == 480 and database.commits == 1 and database.rollbacks == 0
     assert database.mutations[-1] == "marker"
     widen = database.mutations.index("widen")
@@ -580,10 +585,10 @@ def test_invalid_disabled_unapproved_history_is_not_broadened_into_migration_blo
     database = StatefulDatabase("pr201_v1", config_rows=[_config_row(
         status="draft", timezone_name="Not/AZone", policy="unsafe")])
     _initialize(database)
-    assert database.marker_rows == [3]
+    assert database.marker_rows == [SCHEMA_VERSION]
 
 
-@pytest.mark.parametrize("marker_rows", [[], [1, 1], [(1, "extra")], ["not-a-number"], [4], [-1]])
+@pytest.mark.parametrize("marker_rows", [[], [1, 1], [(1, "extra")], ["not-a-number"], [5], [-1]])
 def test_preexisting_marker_authority_rejects_unsupported_evidence(marker_rows):
     database = StatefulDatabase("pr200_v1", marker_rows=marker_rows)
     before = database._state()
@@ -592,7 +597,7 @@ def test_preexisting_marker_authority_rejects_unsupported_evidence(marker_rows):
     assert database._state() == before and database.commits == 0
 
 
-@pytest.mark.parametrize("final_rows", [[], [3, 3], [(3, "extra")], [1], [4]])
+@pytest.mark.parametrize("final_rows", [[], [4, 4], [(4, "extra")], [1], [3], [5]])
 def test_final_marker_reread_mismatch_rolls_back_complete_migration(final_rows):
     database = StatefulDatabase("pr200_v1", final_marker_rows=final_rows)
     before = database._state()
@@ -639,8 +644,12 @@ def test_catalog_postvalidation_rejects_structural_drift_and_rolls_back(drift_ki
         if drift_kind == "missing_fk":
             catalog["foreign_keys"] = catalog["foreign_keys"][:-1]
         else:
-            pending = catalog["indexes"][-1]
-            catalog["indexes"] = catalog["indexes"][:-1] + (migrations.replace(pending, is_unique=True),)
+            pending = next(index for index in catalog["indexes"]
+                           if index.name == "IX_requirement_schedule_audit_pending")
+            catalog["indexes"] = tuple(
+                migrations.replace(index, is_unique=True) if index.name == pending.name else index
+                for index in catalog["indexes"]
+            )
     database = StatefulDatabase("pr201_v1", catalog_mutator=drift)
     before = database._state()
     with pytest.raises(RuntimeError, match="unsupported_requirement_schedule_schema"):
