@@ -45,6 +45,43 @@ class RequirementImportService:
         for item in classifications: counts[item["classification"]] = counts.get(item["classification"], 0) + 1
         return {"source_id": source_id, "profile_version_id": version["profile_version_id"], "source_sha256": acquired.source_sha256, "row_count": len(acquired.rows), "accepted_count": len(candidate.rows), "rejected_count": len(candidate.diagnostics), "expired_count": sum(row.expires_at is not None and row.expires_at <= now for row in candidate.rows), "has_errors": candidate.has_errors, "counts": counts, "classifications": classifications, "diagnostics": [item.model_dump(mode="json") for item in candidate.diagnostics]}
 
-    def commit(self, source_id: str, *, actor: str, upload_bytes: bytes | None = None, upload_filename: str | None = None) -> dict[str, Any]:
-        source, version, acquired, candidate, _ = self._prepare(source_id, profile_version_id=None, upload_bytes=upload_bytes, upload_filename=upload_filename, commit=True)
-        return self.store.commit_candidate(source, version, acquired, candidate, actor)
+    def commit(
+        self,
+        source_id: str,
+        *,
+        actor: str,
+        upload_bytes: bytes | None = None,
+        upload_filename: str | None = None,
+        import_run_id: str | None = None,
+        snapshot_id: str | None = None,
+        expected_base_snapshot_id: str | None = None,
+    ) -> dict[str, Any]:
+        if import_run_id is not None:
+            recovered = self.store.recover_preallocated_import_result(
+                source_id, import_run_id, snapshot_id
+            )
+            if recovered is not None:
+                return recovered
+        source, version, acquired, candidate, _ = self._prepare(
+            source_id,
+            profile_version_id=None,
+            upload_bytes=upload_bytes,
+            upload_filename=upload_filename,
+            commit=True,
+        )
+        if (
+            import_run_id is None
+            and snapshot_id is None
+            and expected_base_snapshot_id is None
+        ):
+            return self.store.commit_candidate(source, version, acquired, candidate, actor)
+        return self.store.commit_candidate(
+            source,
+            version,
+            acquired,
+            candidate,
+            actor,
+            import_run_id=import_run_id,
+            snapshot_id=snapshot_id,
+            expected_base_snapshot_id=expected_base_snapshot_id,
+        )
