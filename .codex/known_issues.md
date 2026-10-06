@@ -41,6 +41,8 @@
 
 ## Recent Changes
 
+- 2026-10-06: P1.0A PR #279 verification again confirmed direct Git transport is unavailable in this execution environment (`git ls-remote` failed with `Could not resolve host: github.com`). Therefore no local pytest PASS is claimed for this branch; Hosted review/check evidence remains required.
+
 - 2026-10-06: P1.0 re-review again confirmed the execution container cannot resolve `github.com` for a direct clone, so local pytest could not be run on the hosted branch; Hosted GitHub connector inspection/checks remain available and must not be represented as local pytest.
 - 2026-10-06: Restored the unresolved Elasticsearch `mapping_incompatible` blocker to active memory/known issues during PR #277 compaction review.
 - 2026-09-30: Hosted GitHub connector remained usable for PR work while direct Git transport from the execution container was unavailable; no local pytest result was claimed for that corrective.

@@ -365,3 +365,138 @@ def test_actual_store_forced_failure_rolls_back_without_authoritative_switch(fai
     assert connection.rollbacks == 1 and connection.commits == 0 and connection.closed
     if fail_on.startswith("requirement_set_snapshots"):
         assert not any("SET active_snapshot_id" in sql for sql,_ in connection.cursor_value.calls)
+
+
+def test_recover_preallocated_import_result_returns_original_terminal_identity():
+    connection = ScriptedConnection(
+        one=[("source-1", "committed", 0, 0)],
+        many=[[("snap-fixed",)]],
+    )
+    store = RequirementStore(ScriptedRegistry(connection), "control")
+    result = store.recover_preallocated_import_result(
+        "source-1", "run-fixed", "snap-fixed"
+    )
+    assert result == {
+        "import_run_id": "run-fixed",
+        "snapshot_id": "snap-fixed",
+        "status": "committed",
+        "accepted_count": 0,
+        "rejected_count": 0,
+    }
+    assert connection.closed
+    assert not any("INSERT" in sql.upper() for sql, _ in connection.cursor_value.calls)
+
+
+def test_commit_candidate_uses_preallocated_ids_and_base_snapshot_cas():
+    connection = ScriptedConnection(
+        one=[None, ("source-1",), ("set-1", "base-snap")]
+    )
+    store = RequirementStore(ScriptedRegistry(connection), "control")
+    result = store.commit_candidate(
+        _source(),
+        _version(),
+        _acquired(),
+        _candidate(),
+        "operator",
+        import_run_id="run-fixed",
+        snapshot_id="snap-fixed",
+        expected_base_snapshot_id="base-snap",
+    )
+    assert result["import_run_id"] == "run-fixed"
+    assert result["snapshot_id"] == "snap-fixed"
+    run_insert = next(
+        params for sql, params in connection.cursor_value.calls
+        if "INSERT INTO [sra_requirement].[import_runs]" in sql
+    )
+    snapshot_insert = next(
+        params for sql, params in connection.cursor_value.calls
+        if "INSERT INTO [sra_requirement].[requirement_set_snapshots]" in sql
+    )
+    assert run_insert[0] == "run-fixed"
+    assert snapshot_insert[0] == "snap-fixed"
+    assert connection.commits == 1 and connection.rollbacks == 0
+
+
+def test_commit_candidate_rejects_stale_base_snapshot_before_requirement_writes():
+    connection = ScriptedConnection(
+        one=[None, ("source-1",), ("set-1", "newer-snap")]
+    )
+    store = RequirementStore(ScriptedRegistry(connection), "control")
+    with pytest.raises(ValueError, match="^requirement_input_conflict$"):
+        store.commit_candidate(
+            _source(),
+            _version(),
+            _acquired(),
+            _candidate(),
+            "operator",
+            import_run_id="run-old",
+            snapshot_id="snap-old",
+            expected_base_snapshot_id="base-snap",
+        )
+    sql = [statement for statement, _ in connection.cursor_value.calls]
+    assert not any("INSERT INTO [sra_requirement].[requirements]" in item for item in sql)
+    assert not any("INSERT INTO [sra_requirement].[import_runs]" in item for item in sql)
+    assert not any("INSERT INTO [sra_requirement].[requirement_set_snapshots]" in item for item in sql)
+    assert connection.rollbacks == 1 and connection.commits == 0
+
+
+def test_failed_import_preallocated_id_replay_does_not_duplicate_rows():
+    candidate = NormalizedCandidate(
+        diagnostics=[
+            RowDiagnostic(
+                source_row_number=2,
+                external_item_id="A1",
+                code="bad",
+                message="bad",
+            )
+        ]
+    )
+    connection = ScriptedConnection(
+        one=[("source-1", "failed", 0, 1)],
+        many=[[]],
+    )
+    store = RequirementStore(ScriptedRegistry(connection), "control")
+    result = store.record_failed_import(
+        _source(),
+        _version(),
+        _acquired(),
+        candidate,
+        "operator",
+        import_run_id="run-failed",
+    )
+    assert result["import_run_id"] == "run-failed"
+    assert result["status"] == "failed"
+    assert not any("INSERT" in sql.upper() for sql, _ in connection.cursor_value.calls)
+    assert connection.commits == 1
+
+
+def test_candidate_errors_still_enforce_replacement_base_cas_before_failed_import():
+    candidate = NormalizedCandidate(
+        diagnostics=[
+            RowDiagnostic(
+                source_row_number=2,
+                external_item_id="A1",
+                code="stale_source_version",
+                message="Source timestamp is older",
+            )
+        ]
+    )
+    connection = ScriptedConnection(
+        one=[None, ("source-1",), ("set-1", "newer-snap")]
+    )
+    store = RequirementStore(ScriptedRegistry(connection), "control")
+    with pytest.raises(ValueError, match="^requirement_input_conflict$"):
+        store.commit_candidate(
+            _source(),
+            _version(),
+            _acquired(),
+            candidate,
+            "operator",
+            import_run_id="run-old",
+            snapshot_id="snap-old",
+            expected_base_snapshot_id="base-snap",
+        )
+    sql = [statement for statement, _ in connection.cursor_value.calls]
+    assert not any("INSERT INTO [sra_requirement].[import_runs]" in item for item in sql)
+    assert not any("INSERT INTO [sra_requirement].[requirement_set_snapshots]" in item for item in sql)
+    assert connection.rollbacks == 1 and connection.commits == 0
