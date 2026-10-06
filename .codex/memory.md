@@ -44,6 +44,7 @@
 - Latest review-driven edits were verified by hosted-file consistency scans for revision semantics, draft activation, Product lifecycle, run-trigger admission/replay, and canonical idempotency hashing.
 - No fresh live Requirement E2E, private SQL Server, Elasticsearch, LLM, Agent, deployment bootstrap, or DOCX acceptance was executed for this documentation task.
 - Exact-head Codex re-review is required after the current compaction/hash-binding commits before merge.
+- Compaction verification: the 2026-10-06 memory and decisions archives have blob SHAs identical to the pre-compaction files at hosted head `364db0b1d04029570c2ff6a34b05269956751d3d`; active memory/decisions are 59/89 lines respectively, and all six required active `.codex/*.md` context files are below the AGENTS.md mandatory size/line/date-block thresholds.
 - Historical test and deployment evidence is preserved in the archived memory files and should not be restated as fresh acceptance.
 
 ## Archived History
