@@ -152,7 +152,10 @@ def test_check_catalog_accepts_sql_server_not_like_placement(
     constraint_name, sql_server_definition
 ):
     expected = next(check for check in REQUIRED_CHECKS if check.name == constraint_name)
-    rows = (("sra_schedule", expected.table, expected.name, sql_server_definition),)
+    rows = ((
+        "sra_schedule", expected.table, expected.name,
+        sql_server_definition, False, False,
+    ),)
     assert migrations.validate_catalog_evidence("sra_schedule", expected, rows)
 
 
@@ -176,7 +179,10 @@ def test_check_catalog_rejects_digest_semantic_drift(drifted_definition):
         check for check in REQUIRED_CHECKS
         if check.name == "CK_requirement_batch_run_item_artifact_sha256"
     )
-    rows = (("sra_schedule", expected.table, expected.name, drifted_definition),)
+    rows = ((
+        "sra_schedule", expected.table, expected.name,
+        drifted_definition, False, False,
+    ),)
     assert not migrations.validate_catalog_evidence("sra_schedule", expected, rows)
 
 
