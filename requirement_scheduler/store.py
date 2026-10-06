@@ -378,21 +378,104 @@ class ScheduleStore:
         except (KeyError, TypeError, json.JSONDecodeError, ValueError):
             raise ValueError("recurrence_invalid") from None
 
-    def create_version(self, *, schedule_id: str, config: ScheduleVersionCreate, actor: str) -> dict[str, Any]:
+    def create_version(
+        self,
+        *,
+        schedule_id: str,
+        config: ScheduleVersionCreate,
+        actor: str,
+        schedule_version_id: str | None = None,
+    ) -> dict[str, Any]:
         # Enforce domain invariants even for callers which bypass FastAPI validation.
-        config = ScheduleVersionCreate(config.timezone, RecurrenceSpec.validate(config.recurrence.as_dict()), config.run_policy, config.model)
-        encoded, digest = self.canonical_config(config); connection = self._connect(); now = _now(); vid = _id("sv")
+        config = ScheduleVersionCreate(
+            config.timezone,
+            RecurrenceSpec.validate(config.recurrence.as_dict()),
+            config.run_policy,
+            config.model,
+        )
+        encoded, digest = self.canonical_config(config)
+        connection = self._connect()
+        now = _now()
+        vid = schedule_version_id or _id("sv")
+        replayed: dict[str, Any] | None = None
         try:
-            c = connection.cursor(); c.execute(f"SELECT schedule_id FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id)
-            if c.fetchone() is None: raise KeyError("schedule_not_found")
-            c.execute(f"SELECT COALESCE(MAX(version_number),0)+1 FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); number = int(c.fetchone()[0])
-            c.execute(f"INSERT INTO {self.t}.[requirement_schedule_versions](schedule_version_id,schedule_id,version_number,timezone,recurrence_json,run_policy,model,config_sha256,status,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,'draft',?,?)", vid, schedule_id, number, config.timezone, encoded, config.run_policy.value, config.model, digest, actor, now)
-            self._enqueue_audit_event(c, self._audit_event("requirement_schedule.version_created", actor, schedule_id, schedule_version_id=vid, payload={"version_number": number}, created_at=now))
-            connection.commit()
-        except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
-        finally: connection.close()
+            c = connection.cursor()
+            c.execute(
+                f"SELECT schedule_id FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?",
+                schedule_id,
+            )
+            if c.fetchone() is None:
+                raise KeyError("schedule_not_found")
+            if schedule_version_id is not None:
+                c.execute(
+                    f"SELECT schedule_version_id,schedule_id,version_number,timezone,recurrence_json,run_policy,model,config_sha256,status,created_by,created_at FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_version_id=?",
+                    vid,
+                )
+                existing = c.fetchone()
+                if existing is not None:
+                    if existing[1] != schedule_id or existing[7] != digest:
+                        raise RuntimeError("persistence_error")
+                    persisted = self._validate_persisted_config(
+                        existing[3], existing[4], existing[5], existing[6], existing[7]
+                    )
+                    replayed = {
+                        "schedule_version_id": existing[0],
+                        "schedule_id": existing[1],
+                        "version_number": int(existing[2]),
+                        "timezone": persisted.timezone,
+                        "recurrence": persisted.recurrence.as_dict(),
+                        "run_policy": persisted.run_policy.value,
+                        "model": persisted.model,
+                        "config_sha256": existing[7],
+                        "status": existing[8],
+                        "created_by": existing[9],
+                        "created_at": existing[10],
+                    }
+                    connection.commit()
+            if replayed is None:
+                c.execute(
+                    f"SELECT COALESCE(MAX(version_number),0)+1 FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?",
+                    schedule_id,
+                )
+                number = int(c.fetchone()[0])
+                c.execute(
+                    f"INSERT INTO {self.t}.[requirement_schedule_versions](schedule_version_id,schedule_id,version_number,timezone,recurrence_json,run_policy,model,config_sha256,status,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,'draft',?,?)",
+                    vid, schedule_id, number, config.timezone, encoded,
+                    config.run_policy.value, config.model, digest, actor, now,
+                )
+                self._enqueue_audit_event(
+                    c,
+                    self._audit_event(
+                        "requirement_schedule.version_created",
+                        actor,
+                        schedule_id,
+                        schedule_version_id=vid,
+                        payload={"version_number": number},
+                        created_at=now,
+                    ),
+                )
+                connection.commit()
+        except Exception as exc:
+            connection.rollback()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
+        if replayed is not None:
+            return replayed
         self._drain_best_effort()
-        return {"schedule_version_id": vid, "schedule_id": schedule_id, "version_number": number, "timezone": config.timezone, "recurrence": config.recurrence.as_dict(), "run_policy": config.run_policy.value, "model": config.model, "config_sha256": digest, "status": "draft", "created_by": actor, "created_at": now}
+        return {
+            "schedule_version_id": vid,
+            "schedule_id": schedule_id,
+            "version_number": number,
+            "timezone": config.timezone,
+            "recurrence": config.recurrence.as_dict(),
+            "run_policy": config.run_policy.value,
+            "model": config.model,
+            "config_sha256": digest,
+            "status": "draft",
+            "created_by": actor,
+            "created_at": now,
+        }
 
     def approve_version(self, *, schedule_id: str, version_number: int, actor: str, now_utc: datetime):
         connection = self._connect()
