@@ -27,7 +27,7 @@ def _id(prefix: str) -> str: return f"{prefix}_{uuid4().hex}"
 
 DOMAIN_ERRORS = {
     "profile_invalid", "source_disabled", "source_version_anomaly",
-    "stale_source_version", "source_config_invalid",
+    "stale_source_version", "requirement_input_conflict", "source_config_invalid",
     "source_config_secret_or_executable_rejected",
 }
 
@@ -202,36 +202,203 @@ class RequirementStore:
         rows = self._query(f"SELECT r.external_item_id,v.* FROM {self.t}.[requirements] r JOIN {self.t}.[requirement_versions] v ON v.requirement_id=r.requirement_id WHERE r.source_id=? AND v.version_number=(SELECT MAX(v2.version_number) FROM {self.t}.[requirement_versions] v2 WHERE v2.requirement_id=r.requirement_id)", source_id)
         return {row["external_item_id"]: row for row in rows}
 
-    # Commit deliberately re-runs comparison while holding update locks.
-    def commit_candidate(self, source: dict[str, Any], version: dict[str, Any], acquired: Any, candidate: NormalizedCandidate, actor: str) -> dict[str, Any]:
-        if candidate.has_errors: return self.record_failed_import(source, version, acquired, candidate, actor)
-        connection = self._connect(); now = _now(); run_id, snapshot_id = _id("run"), _id("snap")
+    @staticmethod
+    def _preallocated_import_result(
+        source_id: str,
+        import_run_id: str,
+        snapshot_id: str | None,
+        run_row: Any,
+        snapshot_rows: list[Any],
+    ) -> dict[str, Any] | None:
+        if run_row is None:
+            return None
+        if len(snapshot_rows) > 1:
+            raise RuntimeError("persistence_error")
+        existing_source_id, status, accepted_count, rejected_count = run_row
+        existing_snapshot_id = snapshot_rows[0][0] if snapshot_rows else None
+        if existing_source_id != source_id:
+            raise RuntimeError("persistence_error")
+        if status == "committed":
+            if existing_snapshot_id is None:
+                raise RuntimeError("persistence_error")
+            if snapshot_id is not None and existing_snapshot_id != snapshot_id:
+                raise RuntimeError("persistence_error")
+        elif status == "failed":
+            if existing_snapshot_id is not None:
+                raise RuntimeError("persistence_error")
+        else:
+            raise RuntimeError("persistence_error")
+        return {
+            "import_run_id": import_run_id,
+            "snapshot_id": existing_snapshot_id,
+            "status": status,
+            "accepted_count": int(accepted_count),
+            "rejected_count": int(rejected_count),
+        }
+
+    def recover_preallocated_import_result(
+        self,
+        source_id: str,
+        import_run_id: str,
+        snapshot_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Return a terminal preallocated import result without re-reading source input."""
+        connection = self._connect()
         try:
-            c = connection.cursor(); c.execute(f"SELECT source_id FROM {self.t}.[requirement_sources] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=? AND enabled=1", source["source_id"])
-            if c.fetchone() is None: raise ValueError("source_disabled")
-            c.execute(f"SELECT requirement_set_id,active_snapshot_id FROM {self.t}.[requirement_sets] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=?", source["source_id"]); setrow = c.fetchone()
+            cursor = connection.cursor()
+            cursor.execute(
+                f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WHERE import_run_id=?",
+                import_run_id,
+            )
+            run_row = cursor.fetchone()
+            if run_row is None:
+                return None
+            cursor.execute(
+                f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WHERE import_run_id=?",
+                import_run_id,
+            )
+            snapshot_rows = list(cursor.fetchall())
+            return self._preallocated_import_result(
+                source_id, import_run_id, snapshot_id, run_row, snapshot_rows
+            )
+        except Exception as exc:
+            raise _stable_persistence_error(exc) from exc
+        finally:
+            connection.close()
+
+    # Commit deliberately re-runs comparison while holding update locks.
+    def commit_candidate(
+        self,
+        source: dict[str, Any],
+        version: dict[str, Any],
+        acquired: Any,
+        candidate: NormalizedCandidate,
+        actor: str,
+        *,
+        import_run_id: str | None = None,
+        snapshot_id: str | None = None,
+        expected_base_snapshot_id: str | None = None,
+    ) -> dict[str, Any]:
+        if candidate.has_errors:
+            return self.record_failed_import(
+                source, version, acquired, candidate, actor, import_run_id=import_run_id
+            )
+        connection = self._connect()
+        now = _now()
+        run_id = import_run_id or _id("run")
+        committed_snapshot_id = snapshot_id or _id("snap")
+        try:
+            c = connection.cursor()
+            if import_run_id is not None:
+                c.execute(
+                    f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
+                    run_id,
+                )
+                existing_run = c.fetchone()
+                if existing_run is not None:
+                    c.execute(
+                        f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
+                        run_id,
+                    )
+                    result = self._preallocated_import_result(
+                        source["source_id"], run_id, snapshot_id, existing_run, list(c.fetchall())
+                    )
+                    connection.commit()
+                    return result
+            c.execute(
+                f"SELECT source_id FROM {self.t}.[requirement_sources] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=? AND enabled=1",
+                source["source_id"],
+            )
+            if c.fetchone() is None:
+                raise ValueError("source_disabled")
+            c.execute(
+                f"SELECT requirement_set_id,active_snapshot_id FROM {self.t}.[requirement_sets] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=?",
+                source["source_id"],
+            )
+            setrow = c.fetchone()
             set_id, prior_snapshot = (setrow[0], setrow[1]) if setrow else (_id("set"), None)
-            if not setrow: c.execute(f"INSERT INTO {self.t}.[requirement_sets] VALUES (?,?,?,NULL,?)", set_id, source["source_id"], source["name"], now)
+            if expected_base_snapshot_id is not None and prior_snapshot != expected_base_snapshot_id:
+                raise ValueError("requirement_input_conflict")
+            if not setrow:
+                c.execute(
+                    f"INSERT INTO {self.t}.[requirement_sets] VALUES (?,?,?,NULL,?)",
+                    set_id, source["source_id"], source["name"], now,
+                )
             memberships: list[tuple[str, str, int]] = []
             for order, row in enumerate(candidate.rows, 1):
-                c.execute(f"SELECT requirement_id FROM {self.t}.[requirements] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=? AND external_item_id=?", source["source_id"], row.external_item_id); req = c.fetchone(); rid = req[0] if req else _id("req")
-                if not req: c.execute(f"INSERT INTO {self.t}.[requirements] VALUES (?,?,?,?)", rid, source["source_id"], row.external_item_id, now)
-                c.execute(f"SELECT TOP 1 requirement_version_id,version_number,source_updated_at,source_payload_hash,source_row_hash FROM {self.t}.[requirement_versions] WHERE requirement_id=? ORDER BY version_number DESC", rid); old = c.fetchone()
-                if old and row.source_updated_at < old[2]: raise ValueError("stale_source_version")
-                if old and row.source_updated_at == old[2] and row.source_payload_hash != old[3]: raise ValueError("source_version_anomaly")
-                if old and row.source_updated_at == old[2] and row.source_payload_hash == old[3]: rvid = old[0]
+                c.execute(
+                    f"SELECT requirement_id FROM {self.t}.[requirements] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=? AND external_item_id=?",
+                    source["source_id"], row.external_item_id,
+                )
+                req = c.fetchone()
+                rid = req[0] if req else _id("req")
+                if not req:
+                    c.execute(
+                        f"INSERT INTO {self.t}.[requirements] VALUES (?,?,?,?)",
+                        rid, source["source_id"], row.external_item_id, now,
+                    )
+                c.execute(
+                    f"SELECT TOP 1 requirement_version_id,version_number,source_updated_at,source_payload_hash,source_row_hash FROM {self.t}.[requirement_versions] WHERE requirement_id=? ORDER BY version_number DESC",
+                    rid,
+                )
+                old = c.fetchone()
+                if old and row.source_updated_at < old[2]:
+                    raise ValueError("stale_source_version")
+                if old and row.source_updated_at == old[2] and row.source_payload_hash != old[3]:
+                    raise ValueError("source_version_anomaly")
+                if old and row.source_updated_at == old[2] and row.source_payload_hash == old[3]:
+                    rvid = old[0]
                 else:
                     rvid, number = _id("rv"), (int(old[1]) + 1 if old else 1)
-                    c.execute(f"INSERT INTO {self.t}.[requirement_versions] VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rvid, rid, number, row.title, row.prompt_content, row.source_updated_at, row.expires_at, row.source_created_by, row.source_updated_by, row.source_created_at, row.source_row_hash, row.source_payload_hash, row.execution_content_hash, json.dumps(row.source_raw, default=str, ensure_ascii=False), now)
+                    c.execute(
+                        f"INSERT INTO {self.t}.[requirement_versions] VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        rvid, rid, number, row.title, row.prompt_content, row.source_updated_at,
+                        row.expires_at, row.source_created_by, row.source_updated_by,
+                        row.source_created_at, row.source_row_hash, row.source_payload_hash,
+                        row.execution_content_hash,
+                        json.dumps(row.source_raw, default=str, ensure_ascii=False), now,
+                    )
                 memberships.append((rid, rvid, order))
             if source["source_mode"] == SourceMode.UPSERT_DELTA.value and prior_snapshot:
-                c.execute(f"SELECT requirement_id,requirement_version_id,source_order FROM {self.t}.[requirement_snapshot_items] WHERE snapshot_id=?", prior_snapshot)
-                present = {item[0] for item in memberships}; memberships.extend((r[0], r[1], r[2]) for r in c.fetchall() if r[0] not in present)
-            c.execute(f"INSERT INTO {self.t}.[import_runs] VALUES (?,?,?,?,?,'staged',?,?,?,?,?,'user',?,NULL)", run_id, source["source_id"], version["profile_version_id"], acquired.source_uri_display, acquired.source_sha256, len(candidate.rows), len(candidate.rows), 0, now, now, actor)
-            for row in candidate.rows: c.execute(f"INSERT INTO {self.t}.[import_run_rows] VALUES (?,?,?,?,?,?,?)", run_id, row.source_row_number, row.external_item_id, "accepted", row.source_row_hash, None, None)
-            c.execute(f"INSERT INTO {self.t}.[requirement_set_snapshots] VALUES (?,?,?,?,?,?,?)", snapshot_id, set_id, run_id, acquired.source_sha256, version["profile_version_id"], now, now)
-            for rid, rvid, order in memberships: c.execute(f"INSERT INTO {self.t}.[requirement_snapshot_items] VALUES (?,?,?,?)", snapshot_id, rid, rvid, order)
-            c.execute(f"UPDATE {self.t}.[requirement_sets] SET active_snapshot_id=? WHERE requirement_set_id=?", snapshot_id, set_id); c.execute(f"UPDATE {self.t}.[import_runs] SET status='committed',completed_at=? WHERE import_run_id=?", now, run_id); connection.commit()
+                c.execute(
+                    f"SELECT requirement_id,requirement_version_id,source_order FROM {self.t}.[requirement_snapshot_items] WHERE snapshot_id=?",
+                    prior_snapshot,
+                )
+                present = {item[0] for item in memberships}
+                memberships.extend(
+                    (r[0], r[1], r[2]) for r in c.fetchall() if r[0] not in present
+                )
+            c.execute(
+                f"INSERT INTO {self.t}.[import_runs] VALUES (?,?,?,?,?,'staged',?,?,?,?,?,'user',?,NULL)",
+                run_id, source["source_id"], version["profile_version_id"],
+                acquired.source_uri_display, acquired.source_sha256,
+                len(candidate.rows), len(candidate.rows), 0, now, now, actor,
+            )
+            for row in candidate.rows:
+                c.execute(
+                    f"INSERT INTO {self.t}.[import_run_rows] VALUES (?,?,?,?,?,?,?)",
+                    run_id, row.source_row_number, row.external_item_id, "accepted",
+                    row.source_row_hash, None, None,
+                )
+            c.execute(
+                f"INSERT INTO {self.t}.[requirement_set_snapshots] VALUES (?,?,?,?,?,?,?)",
+                committed_snapshot_id, set_id, run_id, acquired.source_sha256,
+                version["profile_version_id"], now, now,
+            )
+            for rid, rvid, order in memberships:
+                c.execute(
+                    f"INSERT INTO {self.t}.[requirement_snapshot_items] VALUES (?,?,?,?)",
+                    committed_snapshot_id, rid, rvid, order,
+                )
+            c.execute(
+                f"UPDATE {self.t}.[requirement_sets] SET active_snapshot_id=? WHERE requirement_set_id=?",
+                committed_snapshot_id, set_id,
+            )
+            c.execute(
+                f"UPDATE {self.t}.[import_runs] SET status='committed',completed_at=? WHERE import_run_id=?",
+                now, run_id,
+            )
+            connection.commit()
         except Exception as exc:
             connection.rollback()
             code = str(exc.args[0] if exc.args else exc).split(":", 1)[0]
@@ -243,25 +410,75 @@ class RequirementStore:
                     code=code,
                     message=code,
                 )
-                failed_candidate = candidate.model_copy(update={"diagnostics": [*candidate.diagnostics, diagnostic]})
+                failed_candidate = candidate.model_copy(
+                    update={"diagnostics": [*candidate.diagnostics, diagnostic]}
+                )
                 # The mutation connection is closed by finally before the independent
                 # audit transaction is opened below.
             else:
                 raise _stable_persistence_error(exc) from exc
-        finally: connection.close()
-        if 'failed_candidate' in locals():
-            self.record_failed_import(source, version, acquired, failed_candidate, actor)
+        finally:
+            connection.close()
+        if "failed_candidate" in locals():
+            self.record_failed_import(
+                source, version, acquired, failed_candidate, actor,
+                import_run_id=run_id if import_run_id is not None else None,
+            )
             raise ValueError(code)
-        return {"import_run_id": run_id, "snapshot_id": snapshot_id, "status": "committed", "accepted_count": len(candidate.rows), "rejected_count": 0}
+        return {
+            "import_run_id": run_id,
+            "snapshot_id": committed_snapshot_id,
+            "status": "committed",
+            "accepted_count": len(candidate.rows),
+            "rejected_count": 0,
+        }
 
-    def record_failed_import(self, source: dict[str, Any], version: dict[str, Any], acquired: Any, candidate: NormalizedCandidate, actor: str) -> dict[str, Any]:
-        run_id, now = _id("run"), _now()
+    def record_failed_import(
+        self,
+        source: dict[str, Any],
+        version: dict[str, Any],
+        acquired: Any,
+        candidate: NormalizedCandidate,
+        actor: str,
+        *,
+        import_run_id: str | None = None,
+    ) -> dict[str, Any]:
+        run_id, now = import_run_id or _id("run"), _now()
         observed_rows = {row.source_row_number for row in candidate.rows}
-        observed_rows.update(item.source_row_number for item in candidate.diagnostics if item.source_row_number is not None)
+        observed_rows.update(
+            item.source_row_number
+            for item in candidate.diagnostics
+            if item.source_row_number is not None
+        )
         connection = self._connect()
         try:
             cursor = connection.cursor()
-            cursor.execute(f"INSERT INTO {self.t}.[import_runs] VALUES (?,?,?,?,?,'failed',?,?,?,?,?,'user',?,?)", run_id, source["source_id"], version["profile_version_id"], acquired.source_uri_display, acquired.source_sha256, len(observed_rows), len(candidate.rows), len(candidate.diagnostics), now, now, actor, candidate.diagnostics[0].code if candidate.diagnostics else "import_failed")
+            if import_run_id is not None:
+                cursor.execute(
+                    f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
+                    run_id,
+                )
+                existing_run = cursor.fetchone()
+                if existing_run is not None:
+                    cursor.execute(
+                        f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
+                        run_id,
+                    )
+                    result = self._preallocated_import_result(
+                        source["source_id"], run_id, None, existing_run, list(cursor.fetchall())
+                    )
+                    if result is None or result["status"] != "failed":
+                        raise RuntimeError("persistence_error")
+                    connection.commit()
+                    return result
+            cursor.execute(
+                f"INSERT INTO {self.t}.[import_runs] VALUES (?,?,?,?,?,'failed',?,?,?,?,?,'user',?,?)",
+                run_id, source["source_id"], version["profile_version_id"],
+                acquired.source_uri_display, acquired.source_sha256,
+                len(observed_rows), len(candidate.rows), len(candidate.diagnostics),
+                now, now, actor,
+                candidate.diagnostics[0].code if candidate.diagnostics else "import_failed",
+            )
             row_hashes = {row.source_row_number: row.source_row_hash for row in candidate.rows}
             for diagnostic in candidate.diagnostics:
                 cursor.execute(
@@ -272,10 +489,17 @@ class RequirementStore:
                 )
             connection.commit()
         except Exception as exc:
-            connection.rollback(); raise _stable_persistence_error(exc) from exc
+            connection.rollback()
+            raise _stable_persistence_error(exc) from exc
         finally:
             connection.close()
-        return {"import_run_id": run_id, "snapshot_id": None, "status": "failed", "accepted_count": len(candidate.rows), "rejected_count": len(candidate.diagnostics)}
+        return {
+            "import_run_id": run_id,
+            "snapshot_id": None,
+            "status": "failed",
+            "accepted_count": len(candidate.rows),
+            "rejected_count": len(candidate.diagnostics),
+        }
 
     def get_import_run(self, run_id: str) -> dict[str, Any]:
         rows = self._query(f"SELECT * FROM {self.t}.[import_runs] WHERE import_run_id=?", run_id)
