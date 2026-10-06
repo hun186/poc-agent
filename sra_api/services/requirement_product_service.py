@@ -90,13 +90,16 @@ def neutral_run_status(run: dict[str, Any]) -> str:
         items = run.get("items")
         if not isinstance(items, (list, tuple)):
             raise ValueError("requirement_run_status_evidence_missing")
-        item_states = {
-            item.get("execution_state")
-            for item in items
-            if isinstance(item, dict)
-        }
-        if len(item_states) != len(items):
-            raise ValueError("requirement_run_status_evidence_missing")
+
+        item_states: list[str] = []
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("requirement_run_status_evidence_missing")
+            execution_state = item.get("execution_state")
+            if not isinstance(execution_state, str) or execution_state not in _ITEM_STATE_MAP:
+                raise ValueError("requirement_run_status_evidence_missing")
+            item_states.append(execution_state)
+
         if "recovery_required" in item_states:
             return "recovery_required"
         return "completed_with_errors"
