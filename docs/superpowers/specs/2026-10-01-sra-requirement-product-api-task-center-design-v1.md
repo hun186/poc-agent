@@ -160,13 +160,13 @@ Required fields:
 - `schedule_id` — unique FK to the existing logical Requirement Schedule.
 - `source_id` — unique FK to the Phase 1B Requirement source owned by this task.
 - `execution_kind` — required immutable discriminator: `once` or `recurring`.
-- `product_state` — `provisioning`, `active`, or `disabled`; this is product lifecycle/operability and is distinct from the underlying recurring Schedule `enabled` bit. A newly inserted Product Task starts as `provisioning` and is not externally operable until its owning `task_create` saga finalizes.
+- `product_state` — `provisioning`, `active`, or `disabled`; this is the authoritative Product lifecycle/operability state. A newly inserted Product Task starts as `provisioning`. Create finalization sets it to `active`. For **recurring** Tasks only, a superuser disable/enable transition atomically mirrors `product_state=disabled|active` with the linked Schedule `enabled=false|true`. One-time Tasks remain `active` after provisioning and do not enter `disabled` in v1.
 - `revision` — monotonic BIGINT-style active Product Task semantic revision, initialized to 1. It increments exactly once when an **in-place metadata/state PATCH** successfully commits and exactly once when a **draft Schedule Version activation** successfully commits. A schedule-affecting PATCH that only creates a draft proposal does **not** increment it; input replacement uses its separate snapshot CAS and also does not increment Task revision.
 - `created_by`, `created_at`, `updated_by`, `updated_at`.
 
 `execution_kind` is immutable in v1. Changing a task from one-time to recurring, or vice versa, creates a new Product Task rather than rewriting historical semantics.
 
-A one-time Product Task still owns an existing Schedule logical object and approved Schedule Version, but it executes by manual materialization and its Schedule remains recurrence-disabled. A recurring Product Task uses the existing Schedule `enabled` state for recurrence. The persisted `execution_kind` is the authority used by API filters and UI rendering.
+A one-time Product Task still owns an existing Schedule logical object and approved Schedule Version, but it executes by manual materialization and its Schedule remains recurrence-disabled; its Product state remains `active`. For a recurring Product Task, `product_state` and Schedule `enabled` are a required mirrored invariant after provisioning: `active ⇔ enabled=true`, `disabled ⇔ enabled=false`. The persisted `execution_kind` is the authority used by API filters and UI rendering, while `product_state` is the Product-facing operability authority.
 
 `provisioning` is a transient durable lifecycle state, not a user-operable disabled state. Only the owning durable `task_create` request may advance a provisioning task. Normal Product list/detail/mutation surfaces must not allow another principal/request to observe and act on the partially constructed task.
 
@@ -428,7 +428,7 @@ For a schedule-affecting PATCH:
 
 This path is allowed for `db_operator` and `superuser`, subject to existing model/config validation. It is **proposal creation**, not approval. A successful draft-creation request has no authority to activate its own version later.
 
-Name-only or other permitted in-place metadata updates use a Product-specific atomic finalizer that locks the Product request, Product Task, and linked Schedule; checks `revision == base_task_revision`; applies only the authorized in-place fields; increments Task `revision` exactly once; writes safe audit/result state; and marks that same request succeeded in one transaction. Recurring enable/disable uses this path only for a `superuser`.
+Name-only or other permitted in-place metadata updates use a Product-specific atomic finalizer that locks the Product request, Product Task, and linked Schedule; checks `revision == base_task_revision`; applies only the authorized in-place fields; increments Task `revision` exactly once; writes safe audit/result state; and marks that same request succeeded in one transaction. Recurring enable/disable uses this path only for a `superuser`, and that same transaction MUST write both sides of the invariant: disable sets Schedule `enabled=false`, clears/recomputes `next_run_at` according to existing Schedule rules, and sets `product_state='disabled'`; re-enable sets Schedule `enabled=true`, computes `next_run_at`, and sets `product_state='active'`. No commit may leave those two authorities disagreeing.
 
 ### 7.4.1 Approve/activate a draft Schedule Version
 
@@ -529,7 +529,7 @@ Existing Runs remain bound to their original snapshot/version.
 
 `POST /v1/requirement-tasks/{task_id}/runs`
 
-Requires an idempotency/request identity and reuses the existing manual materialization authority. A `provisioning` Task is rejected before a new `run_trigger` request is reserved; only the owning create saga may materialize the initial Run while provisioning.
+Requires an idempotency/request identity and reuses the existing manual materialization authority. A `provisioning` Task is rejected before a new `run_trigger` request is reserved; only the owning create saga may materialize the initial Run while provisioning. A recurring Task with `product_state='disabled'` is likewise rejected before reservation with `requirement_task_disabled`; it must be re-enabled by a superuser before manual trigger. One-time Tasks remain `active` and can be manually triggered according to existing RBAC.
 
 It returns a product Run presenter.
 
@@ -721,7 +721,7 @@ Do not expose the Operator E2E runtime-evidence endpoint to ordinary users. Task
 
 All product mutations that can create persistent work must be replay safe through the durable `requirement_product_requests` authority defined in §5.3.
 
-- Require `Idempotency-Key` for task create, every task PATCH/update, input replacement, and Run trigger; UI clients generate one per explicit mutation and retain it across transport retries.
+- Require `Idempotency-Key` for task create, every task PATCH/update, **Product draft activation (`task_version_activate`)**, input replacement, and Run trigger; UI clients generate one per explicit mutation and retain the same key across transport retries of that mutation, including activation.
 - The server canonicalizes the semantic request and hashes it before the first Phase 1B/1C write.
 - Reserve the unique principal/operation/key row first.
 - Same principal/operation/key + same hash returns or resumes the recorded operation.
@@ -854,11 +854,12 @@ Product v1 is complete only when all of the following are true:
 8. All product mutations are idempotent/replay safe where required, and partially provisioned Tasks—including any Run/history/artifact views—are hidden/inoperable until the owning `task_create` request atomically releases either the one-time initial Run or recurring Schedule together with Task activation.
 9. Schedule-affecting Task PATCH creates a draft only; activation is a separate superuser-only Product operation with CAS against the draft's originating Task revision.
 10. Product v1 rejects mixed in-place + schedule-affecting PATCH payloads before idempotency reservation; draft-only PATCH does not increment Task revision.
-11. Historical snapshot/version/run bindings remain immutable.
-12. Product jobs cannot enter E2E mock routing.
-13. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
-14. Browser E2E passes the integrated SRA UI Golden Path.
-15. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
+11. Recurring Task enable/disable atomically mirrors Product `active|disabled` with Schedule `enabled=true|false`; one-time Tasks do not enter `disabled`.
+12. Historical snapshot/version/run bindings remain immutable.
+13. Product jobs cannot enter E2E mock routing.
+14. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
+15. Browser E2E passes the integrated SRA UI Golden Path.
+16. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
 
 ## 19. Design decision summary
 
