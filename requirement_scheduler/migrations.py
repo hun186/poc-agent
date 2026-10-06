@@ -48,16 +48,17 @@ class CheckConstraint:
 
 
 def normalize_sql_predicate(value: object) -> str:
-    """Canonicalize the narrow catalog expressions owned by this schema."""
+    """Canonicalize SQL-owned syntax without changing quoted literal contents."""
     parts = re.split(r"('(?:''|[^'])*')", str(value or ""))
     for index in range(0, len(parts), 2):
-        parts[index] = re.sub(
+        outside = re.sub(
             r"\bNOT\s+(\[?[A-Za-z_][A-Za-z0-9_]*\]?)\s+LIKE\b",
             r"\1 NOT LIKE",
             parts[index],
             flags=re.IGNORECASE,
         )
-    return re.sub(r"[\s\[\]\(\)]", "", "".join(parts)).lower()
+        parts[index] = re.sub(r"[\s\[\]\(\)]", "", outside).lower()
+    return "".join(parts)
 
 
 def _cols(table: str, specs: tuple[tuple[str, str, int, bool], ...]) -> tuple[Column, ...]:
@@ -111,9 +112,9 @@ REQUIRED_DEFAULTS = (
 )
 REQUIRED_CHECKS = (
     CheckConstraint("CK_requirement_schedule_audit_attempts", "requirement_schedule_audit_outbox", "delivery_attempt_count>=0"),
-    CheckConstraint("CK_requirement_batch_run_item_artifact_sha256", "requirement_batch_run_items", "artifact_sha256isnullorartifact_sha256notlike'%^0-9a-f%'andlenartifact_sha256=64"),
+    CheckConstraint("CK_requirement_batch_run_item_artifact_sha256", "requirement_batch_run_items", "artifact_sha256isnullorartifact_sha256notlike'%[^0-9a-f]%'andlenartifact_sha256=64"),
     CheckConstraint("CK_handoff_submission_workflow", "requirement_handoff_submissions", "workflow_id=n'report_v1'"),
-    CheckConstraint("CK_handoff_submission_fingerprint", "requirement_handoff_submissions", "semantic_fingerprintnotlike'%^0-9a-f%'andlensemantic_fingerprint=64"),
+    CheckConstraint("CK_handoff_submission_fingerprint", "requirement_handoff_submissions", "semantic_fingerprintnotlike'%[^0-9a-f]%'andlensemantic_fingerprint=64"),
     CheckConstraint("CK_requirement_handoff_lease_generation", "requirement_handoff_coordinator_leases", "fencing_generation>0"),
     CheckConstraint("CK_requirement_handoff_lease_window", "requirement_handoff_coordinator_leases", "expires_at>heartbeat_at"),
     CheckConstraint("CK_requirement_product_task_execution_kind", "requirement_product_tasks", "execution_kind=N\'once\' OR execution_kind=N\'recurring\'"),
