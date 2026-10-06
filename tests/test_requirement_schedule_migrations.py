@@ -57,6 +57,40 @@ def test_bootstrap_and_identifiers_are_fail_closed():
     with pytest.raises(ValueError): validate_schema_name("dbo]; DROP TABLE x--")
 
 
+def test_v1_catalog_shape_excludes_v2_v3_and_v4_only_descriptors():
+    import requirement_scheduler.migrations as migrations
+
+    expected_tables = {
+        "schema_version",
+        "requirement_schedules",
+        "requirement_schedule_versions",
+        "requirement_batch_runs",
+        "requirement_batch_run_items",
+        "requirement_schedule_item_state",
+    }
+    for shape in ("pr200_v1", "pr201_v1"):
+        columns = migrations._v1_columns(shape)
+        assert set(columns) == expected_tables
+        assert "artifact_sha256" not in {
+            column.name for column in columns["requirement_batch_run_items"]
+        }
+
+    excluded_key_names = {
+        "UQ_requirement_schedule_version_owner",
+        "PK_requirement_schedule_audit_outbox",
+        "PK_requirement_handoff_submissions",
+        "UQ_requirement_handoff_submission_item",
+        "PK_requirement_handoff_coordinator_leases",
+        "UQ_requirement_handoff_lease_token",
+        "PK_requirement_product_tasks",
+        "UQ_requirement_product_task_schedule",
+        "UQ_requirement_product_task_source",
+        "PK_requirement_product_requests",
+        "UQ_requirement_product_request_idempotency",
+    }
+    assert migrations._V1_EXCLUDED_KEYS == excluded_key_names
+
+
 def test_v1_classifier_accepts_only_exact_whole_catalogs():
     import requirement_scheduler.migrations as migrations
     class Cursor:
@@ -84,10 +118,9 @@ def test_v1_classifier_accepts_only_exact_whole_catalogs():
                                   for ordinal,(column,referenced) in enumerate(zip(fk.columns,fk.referenced_columns),1))
             return self
         def fetchall(self): return self.rows
-    common_keys = tuple(k for k in REQUIRED_KEYS if k.name not in {
-        "UQ_requirement_schedule_version_owner", "PK_requirement_schedule_audit_outbox",
-        "PK_requirement_product_tasks", "UQ_requirement_product_task_schedule", "UQ_requirement_product_task_source",
-        "PK_requirement_product_requests", "UQ_requirement_product_request_idempotency"})
+    common_keys = tuple(
+        k for k in REQUIRED_KEYS if k.name not in migrations._V1_EXCLUDED_KEYS
+    )
     for shape, names in (("pr200_v1", migrations._PR200_FK_NAMES),
                          ("pr201_v1", migrations._PR201_FK_NAMES)):
         evidence = {"columns": migrations._v1_columns(shape), "keys": common_keys,

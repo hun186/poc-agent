@@ -7,6 +7,7 @@ from requirement_scheduler.audit_delivery import drain_audit_outbox
 from requirement_scheduler.migrations import (
     SCHEMA_VERSION, REQUIRED_CHECKS, REQUIRED_COLUMNS, REQUIRED_DEFAULTS, REQUIRED_FILTERED_INDEXES, REQUIRED_KEYS,
     canonical_v2_statements, migration_1_to_2_statements,
+    migration_2_to_3_statements, migration_3_to_4_statements,
     required_foreign_keys, validation_queries,
 )
 import requirement_scheduler.migrations as migrations
@@ -301,12 +302,9 @@ def _catalog(shape):
     names = migrations._PR200_FK_NAMES if shape == "pr200_v1" else migrations._PR201_FK_NAMES
     return {
         "columns": migrations._v1_columns(shape),
-        "keys": tuple(k for k in REQUIRED_KEYS if k.name not in {
-            "UQ_requirement_schedule_version_owner", "PK_requirement_schedule_audit_outbox",
-            "PK_requirement_product_tasks", "UQ_requirement_product_task_schedule",
-            "UQ_requirement_product_task_source", "PK_requirement_product_requests",
-            "UQ_requirement_product_request_idempotency",
-        }),
+        "keys": tuple(
+            k for k in REQUIRED_KEYS if k.name not in migrations._V1_EXCLUDED_KEYS
+        ),
         "indexes": tuple(REQUIRED_FILTERED_INDEXES[:2]),
         "foreign_keys": tuple(fk for fk in migrations.v1_foreign_keys(
             "sra_schedule", "sra_requirement") if fk.name in names),
@@ -511,6 +509,12 @@ def test_stateful_fresh_and_existing_v2_public_initialization_paths():
     _initialize(existing)
     assert existing.marker_rows == [SCHEMA_VERSION] and existing.commits == 1
     assert sum("sys.columns" in sql for sql, _ in existing.sql) >= len(REQUIRED_COLUMNS) + 1
+    executed = [sql for sql, _ in existing.sql]
+    for statement in (
+        *migration_2_to_3_statements("sra_schedule"),
+        *migration_3_to_4_statements("sra_schedule", "sra_requirement"),
+    ):
+        assert executed.count(statement) == 1
 
 
 @pytest.mark.parametrize("shape", ["pr200_v1", "pr201_v1"])
@@ -522,6 +526,12 @@ def test_stateful_exact_v1_catalogs_migrate_through_public_initialize(shape):
     assert database.marker_rows == [SCHEMA_VERSION] and database.catalog == _catalog("v2")
     assert database.width == 480 and database.commits == 1 and database.rollbacks == 0
     assert database.mutations[-1] == "marker"
+    executed = [sql for sql, _ in database.sql]
+    for statement in (
+        *migration_2_to_3_statements("sra_schedule"),
+        *migration_3_to_4_statements("sra_schedule", "sra_requirement"),
+    ):
+        assert executed.count(statement) == 1
     widen = database.mutations.index("widen")
     if shape == "pr200_v1":
         assert database.batch_identity == "reqrun-run-1"

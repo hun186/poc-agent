@@ -30,6 +30,7 @@
 
 ## Recent Changes
 
+- 2026-10-06: P1.0 re-review found the historical v1 Schedule catalog classifier inherited v3-only `artifact_sha256` plus Handoff tables/keys from current `REQUIRED_*` descriptors. Restored the exact historical v1 shape and added regressions proving v1/v2 upgrade paths execute v3→v4 statements exactly once.
 - 2026-10-06: Started Product implementation from merged hosted main `155db8bb5568e04118481080840aad378026af44` on `feat/requirement-product-schema-v4`: Schedule schema v4 now adds only `requirement_product_tasks` and `requirement_product_requests`, v3→v4/fresh-v4 migration flow, exact catalog descriptors, Product Task FKs/uniqueness/checks, request-ledger uniqueness/checks, and filtered `schedule_id`/`source_id` ownership indexes; Product service/router/create saga/UI are not part of this slice.
 - 2026-10-06: Bound canonical Product idempotency hashes to path/target resource identities and added cross-Task / cross-version same-key conflict regressions to Design/Plan v1.
 - 2026-10-06: Completed run-trigger admission/replay design: first admission is atomic with lifecycle state, and all persisted request states are resolved before new-admission checks.

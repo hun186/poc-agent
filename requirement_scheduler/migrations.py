@@ -162,12 +162,38 @@ _PR201_FK_NAMES = {
 }
 
 
+_V1_EXCLUDED_TABLES = {
+    "requirement_schedule_audit_outbox",
+    "requirement_handoff_submissions",
+    "requirement_handoff_coordinator_leases",
+    "requirement_product_tasks",
+    "requirement_product_requests",
+}
+_V1_EXCLUDED_KEYS = {
+    "UQ_requirement_schedule_version_owner",
+    "PK_requirement_schedule_audit_outbox",
+    "PK_requirement_handoff_submissions",
+    "UQ_requirement_handoff_submission_item",
+    "PK_requirement_handoff_coordinator_leases",
+    "UQ_requirement_handoff_lease_token",
+    "PK_requirement_product_tasks",
+    "UQ_requirement_product_task_schedule",
+    "UQ_requirement_product_task_source",
+    "PK_requirement_product_requests",
+    "UQ_requirement_product_request_idempotency",
+}
+
+
 def _v1_columns(shape: str) -> dict[str, tuple[Column, ...]]:
-    columns = {name: tuple(values) for name, values in REQUIRED_COLUMNS.items()
-               if name not in {"requirement_schedule_audit_outbox", "requirement_product_tasks", "requirement_product_requests"}}
+    columns = {
+        name: tuple(values)
+        for name, values in REQUIRED_COLUMNS.items()
+        if name not in _V1_EXCLUDED_TABLES
+    }
     columns["requirement_batch_run_items"] = tuple(
         replace(column, max_length=256) if column.name == "phase1a_task_id" else column
         for column in columns["requirement_batch_run_items"]
+        if column.name != "artifact_sha256"
     )
     return columns
 
@@ -181,10 +207,8 @@ def classify_v1_catalog(cursor, schedule_schema: str, requirement_schema: str) -
     for shape, fk_names in (("pr200_v1", _PR200_FK_NAMES), ("pr201_v1", _PR201_FK_NAMES)):
         if evidence.get("columns") != _v1_columns(shape):
             continue
-        if set(evidence.get("keys", ())) != set(key for key in REQUIRED_KEYS if key.name not in {
-            "UQ_requirement_schedule_version_owner", "PK_requirement_schedule_audit_outbox",
-            "PK_requirement_product_tasks", "UQ_requirement_product_task_schedule", "UQ_requirement_product_task_source",
-            "PK_requirement_product_requests", "UQ_requirement_product_request_idempotency"}):
+        if set(evidence.get("keys", ())) != set(
+                key for key in REQUIRED_KEYS if key.name not in _V1_EXCLUDED_KEYS):
             continue
         if set(evidence.get("indexes", ())) != set(REQUIRED_FILTERED_INDEXES[:2]):
             continue
