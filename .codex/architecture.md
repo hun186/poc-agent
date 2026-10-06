@@ -86,3 +86,9 @@
 - Production/user Report Jobs and normal Requirement -> Schedule -> Handoff jobs always use the ordinary real LLM and production Elasticsearch paths; E2E semantic mocks and the dedicated fixture are activated only for verified E2E test jobs.
 - The verified E2E acceptance bit is captured on each freshly constructed Elasticsearch Tool instance. `smolagents` may execute `Tool.forward()` in a worker thread that does not inherit `ContextVar`; the tool instance crosses that boundary and re-opens `requirement_acceptance_scope()` only for its own call.
 - No process-global E2E execution flag is introduced. Production-bound tool instances are marked false, so concurrent production work cannot inherit E2E routing from another job.
+
+## 2026-10-06 Requirement Product presenter boundary
+
+- `sra_api.services.requirement_product_service` is now the Product-facing presentation boundary for P1.1. It consumes already-authoritative Product Task / Schedule / Batch Run rows and returns bounded Product Task/Run views.
+- The presenter layer does not own persistence, scheduling, Handoff, Report Job execution, artifact paths, authentication, or routing. Product HTTP routes and orchestration remain future gates.
+- Product Run views retain immutable Schedule Version / Requirement Snapshot / Requirement Version identities while suppressing backend-native Report Job state and filesystem/credential details.
