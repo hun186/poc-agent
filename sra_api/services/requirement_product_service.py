@@ -113,17 +113,25 @@ def _present_run_item(item: dict[str, Any]) -> dict[str, Any]:
     except KeyError:
         raise ValueError("requirement_run_item_state_invalid") from None
 
+    selection_status = item.get("selection_status")
+    if selection_status not in {"selected", "skipped"}:
+        raise ValueError("requirement_run_item_selection_invalid")
+
     presented: dict[str, Any] = {
         "run_item_id": run_item_id,
         "requirement_id": requirement_id,
         "requirement_version_id": version_id,
         "requirement_version_number": version_number,
         "source_order": item.get("source_order"),
-        "selection_status": item.get("selection_status"),
+        "selection_status": selection_status,
         "status": status,
         "error_category": item.get("error_code"),
     }
-    artifact_available = bool(item.get("artifact_sha256")) and status == "completed"
+    artifact_available = (
+        bool(item.get("artifact_sha256"))
+        and bool(item.get("artifact_relative_path"))
+        and status == "completed"
+    )
     presented["artifact"] = {
         "available": artifact_available,
         "sha256": item.get("artifact_sha256") if artifact_available else None,
@@ -203,6 +211,10 @@ class RequirementProductService:
         if len(presented_items) != len(items):
             raise ValueError("requirement_run_items_invalid")
 
+        trigger_type = run.get("trigger_type")
+        if trigger_type not in {"manual", "scheduled"}:
+            raise ValueError("requirement_run_trigger_invalid")
+
         return {
             "run_id": run_id,
             "task_id": identity.task_id,
@@ -213,7 +225,7 @@ class RequirementProductService:
                 "snapshot_id": snapshot_id,
             },
             "trigger": {
-                "type": run.get("trigger_type"),
+                "type": trigger_type,
                 "scheduled_for": run.get("scheduled_for"),
             },
             "counts": {
