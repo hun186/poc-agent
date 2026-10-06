@@ -723,7 +723,7 @@ GET  /v1/requirement-runs/{run_id}/items/{run_item_id}/word
 
 Do not remove current low-level APIs. Their intentional Product-ownership behavior is: reads remain available; mutation routes reject Product-owned Schedule/source identities with stable 409 codes, while non-Product resources retain existing behavior.
 
-Product Task and Product Run/artifact presenters/routes must share the provisioning lifecycle predicate. Ordinary Task list/get omit provisioning rows; PATCH/input/run reject `requirement_task_provisioning` before creating any new durable mutation request. Manual run trigger also rejects a recurring `product_state='disabled'` Task with `requirement_task_disabled` before reserving `run_trigger`; superuser re-enable is required first. `GET /v1/requirement-runs` excludes Runs whose owning Product Task is provisioning, and direct run/items/artifact/Word lookups for such owners return the same safe unavailable/not-found behavior.
+Product Task and Product Run/artifact presenters/routes must share the provisioning lifecycle predicate. Ordinary Task list/get omit provisioning rows; PATCH/input/run reject `requirement_task_provisioning` before creating any new durable mutation request. Manual run trigger uses the atomic admission helper from P2.3: a new recurring disabled trigger is rejected with `requirement_task_disabled` while holding the Product Task lock and before the run-trigger ledger row is inserted; already-reserved same-key replay/resume remains valid. `GET /v1/requirement-runs` excludes Runs whose owning Product Task is provisioning, and direct run/items/artifact/Word lookups for such owners return the same safe unavailable/not-found behavior.
 
 ## P2.2 Multipart and direct JSON input
 
@@ -749,6 +749,31 @@ Product router delegates parsing to Phase 1B.
 
 For task create, every task PATCH/update, Product draft activation, input replacement, and Run trigger, the client must generate one `Idempotency-Key` per explicit mutation and retain/reuse that same key across transport retries:
 
+For `run_trigger`, first admission is a special atomic reservation path. Add a Product persistence helper, preferred shape subject to rebaseline:
+
+```python
+reserve_product_run_trigger(
+    *,
+    task_id: str,
+    principal_kind: str,
+    principal_id: str,
+    idempotency_key: str,
+    request_sha256: str,
+    now_utc: datetime,
+) -> ProductRunTriggerReservation
+```
+
+Its Schedule SQL transaction must:
+
+1. look up the unique run-trigger request identity; if an existing same-hash row is already reserved/in-progress/succeeded, return replay/resume state without treating current disabled state as a new admission check,
+2. if absent, lock the Product Task with write-compatible locking and recheck the unique request identity under that same transaction,
+3. reject provisioning with `requirement_task_provisioning`,
+4. reject recurring `product_state='disabled'` with `requirement_task_disabled`,
+5. otherwise insert/reserve the new run-trigger ledger row while the Task lock is still held and commit.
+
+The recurring enable/disable finalizer uses a compatible Product Task lock, so disable and first trigger admission serialize. A trigger that was durably admitted while active may continue/resume exactly once using the stable request-derived Schedule `trigger_request_id` after a later disable; disable blocks new admissions, not completion of already accepted requests.
+
+
 - missing `Idempotency-Key` → safe validation failure,
 - mixed in-place + schedule-affecting Task PATCH → 422 `requirement_task_patch_mixed_modes` before any Product request reservation,
 - first request reserves principal + operation + key + canonical request SHA and all required server-owned durable IDs before the corresponding Phase 1B/1C mutation,
@@ -763,6 +788,8 @@ For task create, every task PATCH/update, Product draft activation, input replac
 - crash after Requirement import commit but before ledger stage advance → same preallocated import/snapshot identity is recovered without duplicate import,
 - crash after Schedule Version commit but before ledger stage advance → same preallocated version identity is recovered without duplicate draft,
 - concurrent duplicate → one ledger row and one logical mutation,
+- disable-vs-trigger race uses separate DB connections/barriers: disable-first means no new `run_trigger` request row and `requirement_task_disabled`; trigger-admission-first means exactly one durable request is accepted and may materialize once even if disable commits before materialization,
+- same-key retry of an already-admitted run trigger after Task disable resumes/replays the admitted request rather than being reclassified as a new disabled admission,
 - different-key task PATCHes reserved at the same `base_task_revision` → at most one finalizes; stale finalization fails CAS without rolling newer state backward,
 - **in-place** task PATCH finalization commits Task/Schedule state, audit outbox, exactly one revision increment, safe result snapshot, and request success in one Schedule SQL transaction; **schedule-proposal** `task_update` completion instead commits only the immutable draft + bounded proposal result/request success, leaves Task revision unchanged, and leaves `result_task_revision=NULL`,
 - old uncommitted input replacement after newer input exists must fail `base_snapshot_id` CAS without creating/activating its stale snapshot; already-committed same-ID replay must be recovered before `_prepare()`/diagnostics even if a later replacement has already committed.
@@ -1091,7 +1118,7 @@ Explicitly include cross-API ownership-fence regression coverage for `requiremen
 Include a provisioning-release concurrency regression with scheduler/Handoff workers active: pause after initial version approval but before create finalization; assert recurring Schedule remains disabled, no one-time initial Run exists, no worker execution occurs, Task and Product Run/history/artifact GETs cannot expose partial state, and PATCH/input/run/service-key surfaces cannot reserve work. Resume the same create request and prove the finalizer atomically releases exactly one execution path plus Task visibility/create success.
 Add Product-version approval regressions: db_operator draft creation leaves active state untouched; db_operator activation is denied; low-level approval of Product-owned Schedule is fenced; superuser Product activation succeeds atomically; stale draft activation fails Task revision CAS.
 Add PATCH-mode regressions: proposal-only PATCH preserves Task revision/result_task_revision=null; in-place PATCH increments once; successful activation increments once; mixed-mode payload rejects before ledger reservation and produces no Task/Schedule/draft mutation.
-Add Product-state regressions: recurring disable atomically commits `product_state=disabled` + Schedule `enabled=false`; re-enable atomically commits `active/true`; rollback cannot split the pair; disabled recurring run trigger rejects before request reservation; one-time Tasks remain active.
+Add Product-state regressions: recurring disable atomically commits `product_state=disabled` + Schedule `enabled=false`; re-enable atomically commits `active/true`; rollback cannot split the pair; one-time Tasks remain active. Add a two-connection barrier regression for disable versus first `run_trigger` admission: whichever acquires the Product Task lock first defines the legal order—disable-first rejects without a ledger row, trigger-first durably admits exactly one request which may resume/materialize once after disable. Also prove same-key replay after later disable remains admitted while a new key is rejected.
 
 Update:
 
@@ -1175,6 +1202,6 @@ The phase is complete only when:
 8. A partially provisioned Product Task is neither visible nor worker-executable: recurrence stays disabled and no one-time initial Run is materialized until the atomic create finalizer releases execution, marks the Task active/create succeeded, and only then exposes Task/Run/history/artifact surfaces.
 9. Schedule-affecting PATCH creates an immutable draft only; a separate superuser-only idempotent activation flow is the sole Product approval path and CASes against the draft's originating Task revision.
 10. Draft-only PATCH leaves Task revision unchanged, successful in-place update/activation each increment it once, and mixed in-place + schedule-affecting PATCH is rejected before durable request reservation.
-11. Recurring enable/disable atomically mirrors Product `active|disabled` with Schedule `enabled=true|false`, disabled recurring Tasks cannot trigger Runs, and one-time Tasks remain active.
+11. Recurring enable/disable atomically mirrors Product `active|disabled` with Schedule `enabled=true|false`; first manual Run admission is serialized against disable under the same Product Task lock, so disable-first rejects new work while an already-admitted trigger may finish/replay exactly once; one-time Tasks remain active.
 12. Existing SRA ES editor, Excel→SQL management, account management, and Report Job regressions are green.
 13. Documentation allows an operator to maintain the system without direct SQL/log inspection for normal operations.
