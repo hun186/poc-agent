@@ -1,7 +1,7 @@
 # SRA Requirement Product API + Task Center — Design v1
 
 **Date:** 2026-10-01  
-**Status:** Design draft for review; implementation NOT STARTED  
+**Status:** Approved design (PR #277 merged); implementation IN PROGRESS — P1.0 Schedule schema v4 first slice  
 **Repository authority:** current hosted `main`  
 **Existing foundations:** Phase 1B Requirement Import, Phase 1C Requirement Schedule/Handoff, Report Jobs, SRA ES structured-data editor, Excel→SQL management UI, existing Auth/RBAC.
 
@@ -186,7 +186,7 @@ Required fields:
 - `request_sha256` — SHA-256 of the complete canonical semantic request envelope. It MUST include operation plus every path-/target-bound resource identity and semantic payload/input digest, while excluding raw uploaded bytes and credentials. At minimum: Task-scoped operations include `task_id`; `task_version_activate` includes `task_id + schedule_version_id`; create includes its create semantics; input replacement includes `task_id + input digest`; run trigger includes `task_id` even when the HTTP body is empty.
 - `state` — `reserved`, `in_progress`, `succeeded`, `failed_recoverable`, or `failed_terminal`.
 - nullable safe progress/result references: `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, `batch_run_id`. These reservation columns are intentionally **not foreign keys** because Product must durably store a server-owned ID before the target authority row exists; target ownership/semantics are verified by the Product service and underlying authority on resume.
-- nullable `base_task_revision` and `result_task_revision` for Task-revision CAS. A schedule-draft `task_update` stores `base_task_revision` but leaves `result_task_revision` null because proposal creation does not mutate Task revision; in-place `task_update` and `task_version_activate` record the revision they actually commit.
+- nullable BIGINT `base_task_revision` and `result_task_revision` for Task-revision CAS. A schedule-draft `task_update` stores `base_task_revision` but leaves `result_task_revision` null because proposal creation does not mutate Task revision; in-place `task_update` and `task_version_activate` record the revision they actually commit.
 - nullable `base_snapshot_id` for `input_replace`; it records the active Requirement snapshot observed when the replacement request is first reserved and is the CAS authority for the first commit attempt.
 - nullable bounded `safe_result_json` containing only the whitelisted Product response snapshot needed for exact replay; never raw input, prompts, credentials, paths, or upstream error bodies.
 - nullable safe `error_code`.

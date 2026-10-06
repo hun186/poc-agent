@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import re
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def validate_schema_name(value: str) -> str:
@@ -48,16 +48,17 @@ class CheckConstraint:
 
 
 def normalize_sql_predicate(value: object) -> str:
-    """Canonicalize the narrow catalog expressions owned by this schema."""
+    """Canonicalize SQL-owned syntax without changing quoted literal contents."""
     parts = re.split(r"('(?:''|[^'])*')", str(value or ""))
     for index in range(0, len(parts), 2):
-        parts[index] = re.sub(
+        outside = re.sub(
             r"\bNOT\s+(\[?[A-Za-z_][A-Za-z0-9_]*\]?)\s+LIKE\b",
             r"\1 NOT LIKE",
             parts[index],
             flags=re.IGNORECASE,
         )
-    return re.sub(r"[\s\[\]\(\)]", "", "".join(parts)).lower()
+        parts[index] = re.sub(r"[\s\[\]\(\)]", "", outside).lower()
+    return "".join(parts)
 
 
 def _cols(table: str, specs: tuple[tuple[str, str, int, bool], ...]) -> tuple[Column, ...]:
@@ -76,6 +77,8 @@ REQUIRED_COLUMNS = {
     "requirement_schedule_audit_outbox": _cols("requirement_schedule_audit_outbox", (("audit_event_id",*_N64,False),("action","nvarchar",192,False),("actor",*_N128,False),("schedule_id",*_N64,False),("schedule_version_id",*_N64,True),("batch_run_id",*_N64,True),("safe_payload_json","nvarchar",4000,False),("created_at","datetimeoffset",10,False),("delivery_attempt_count","int",4,False),("last_delivery_attempt_at","datetimeoffset",10,True),("last_delivery_error_code",*_N64,True),("delivered_at","datetimeoffset",10,True))),
     "requirement_handoff_submissions": _cols("requirement_handoff_submissions", (("submission_id",*_N64,False),("run_item_id",*_N64,False),("workflow_id",*_N64,False),("semantic_manifest_json","nvarchar",-1,False),("semantic_fingerprint","char",64,False),("legacy_session_id",*_N240,False),("created_at","datetimeoffset",10,False),("prepared_at","datetimeoffset",10,False))),
     "requirement_handoff_coordinator_leases": _cols("requirement_handoff_coordinator_leases", (("control_domain",*_N64,False),("owner_id",*_N128,False),("lease_token","char",64,False),("fencing_generation","bigint",8,False),("heartbeat_at","datetimeoffset",10,False),("expires_at","datetimeoffset",10,False),("updated_at","datetimeoffset",10,False))),
+    "requirement_product_tasks": _cols("requirement_product_tasks", (("task_id",*_N64,False),("schedule_id",*_N64,False),("source_id",*_N64,False),("execution_kind","nvarchar",64,False),("product_state","nvarchar",64,False),("revision","bigint",8,False),("created_by",*_N128,False),("created_at","datetimeoffset",10,False),("updated_by",*_N128,False),("updated_at","datetimeoffset",10,False))),
+    "requirement_product_requests": _cols("requirement_product_requests", (("request_id",*_N64,False),("principal_kind","nvarchar",64,False),("principal_id",*_N128,False),("operation","nvarchar",128,False),("idempotency_key",*_N128,False),("request_sha256","char",64,False),("state","nvarchar",64,False),("task_id",*_N64,True),("source_id",*_N64,True),("import_run_id",*_N64,True),("snapshot_id",*_N64,True),("schedule_id",*_N64,True),("schedule_version_id",*_N64,True),("batch_run_id",*_N64,True),("base_task_revision","bigint",8,True),("result_task_revision","bigint",8,True),("base_snapshot_id",*_N64,True),("safe_result_json","nvarchar",8000,True),("error_code",*_N64,True),("created_at","datetimeoffset",10,False),("updated_at","datetimeoffset",10,False),("completed_at","datetimeoffset",10,True))),
 }
 
 REQUIRED_KEYS = (
@@ -86,24 +89,41 @@ REQUIRED_KEYS = (
     KeyConstraint("UQ_requirement_handoff_submission_item","requirement_handoff_submissions",("run_item_id",),"UQ"),
     KeyConstraint("PK_requirement_handoff_coordinator_leases","requirement_handoff_coordinator_leases",("control_domain",),"PK"),
     KeyConstraint("UQ_requirement_handoff_lease_token","requirement_handoff_coordinator_leases",("lease_token",),"UQ"),
+    KeyConstraint("PK_requirement_product_tasks","requirement_product_tasks",("task_id",),"PK"),
+    KeyConstraint("UQ_requirement_product_task_schedule","requirement_product_tasks",("schedule_id",),"UQ"),
+    KeyConstraint("UQ_requirement_product_task_source","requirement_product_tasks",("source_id",),"UQ"),
+    KeyConstraint("PK_requirement_product_requests","requirement_product_requests",("request_id",),"PK"),
+    KeyConstraint("UQ_requirement_product_request_idempotency","requirement_product_requests",("principal_kind","principal_id","operation","idempotency_key"),"UQ"),
 )
 
 REQUIRED_FILTERED_INDEXES = (
     FilteredIndex("UX_schedule_run_scheduled","requirement_batch_runs",("schedule_id","scheduled_for"),"trigger_type='scheduled'",True),
     FilteredIndex("UX_schedule_run_manual","requirement_batch_runs",("schedule_id","trigger_request_id"),"trigger_type='manual'",True),
     FilteredIndex("IX_requirement_schedule_audit_pending","requirement_schedule_audit_outbox",("delivered_at","created_at","audit_event_id"),"delivered_at IS NULL",False),
+    FilteredIndex("IX_requirement_product_request_schedule","requirement_product_requests",("schedule_id",),"schedule_id IS NOT NULL",False),
+    FilteredIndex("IX_requirement_product_request_source","requirement_product_requests",("source_id",),"source_id IS NOT NULL",False),
 )
+
 
 REQUIRED_DEFAULTS = (
     DefaultConstraint("DF_requirement_schedule_audit_attempts", "requirement_schedule_audit_outbox", "delivery_attempt_count", "0"),
+    DefaultConstraint("DF_requirement_product_task_state", "requirement_product_tasks", "product_state", "N'provisioning'"),
+    DefaultConstraint("DF_requirement_product_task_revision", "requirement_product_tasks", "revision", "1"),
 )
 REQUIRED_CHECKS = (
     CheckConstraint("CK_requirement_schedule_audit_attempts", "requirement_schedule_audit_outbox", "delivery_attempt_count>=0"),
-    CheckConstraint("CK_requirement_batch_run_item_artifact_sha256", "requirement_batch_run_items", "artifact_sha256isnullorartifact_sha256notlike'%^0-9a-f%'andlenartifact_sha256=64"),
+    CheckConstraint("CK_requirement_batch_run_item_artifact_sha256", "requirement_batch_run_items", "artifact_sha256isnullorartifact_sha256notlike'%[^0-9a-f]%'andlenartifact_sha256=64"),
     CheckConstraint("CK_handoff_submission_workflow", "requirement_handoff_submissions", "workflow_id=n'report_v1'"),
-    CheckConstraint("CK_handoff_submission_fingerprint", "requirement_handoff_submissions", "semantic_fingerprintnotlike'%^0-9a-f%'andlensemantic_fingerprint=64"),
+    CheckConstraint("CK_handoff_submission_fingerprint", "requirement_handoff_submissions", "semantic_fingerprintnotlike'%[^0-9a-f]%'andlensemantic_fingerprint=64"),
     CheckConstraint("CK_requirement_handoff_lease_generation", "requirement_handoff_coordinator_leases", "fencing_generation>0"),
     CheckConstraint("CK_requirement_handoff_lease_window", "requirement_handoff_coordinator_leases", "expires_at>heartbeat_at"),
+    CheckConstraint("CK_requirement_product_task_execution_kind", "requirement_product_tasks", "execution_kind=N\'once\' OR execution_kind=N\'recurring\'"),
+    CheckConstraint("CK_requirement_product_task_state", "requirement_product_tasks", "product_state=N\'provisioning\' OR product_state=N\'active\' OR product_state=N\'disabled\'"),
+    CheckConstraint("CK_requirement_product_task_revision", "requirement_product_tasks", "revision>=1"),
+    CheckConstraint("CK_requirement_product_request_principal_kind", "requirement_product_requests", "principal_kind=N\'user\' OR principal_kind=N\'service_key\'"),
+    CheckConstraint("CK_requirement_product_request_operation", "requirement_product_requests", "operation=N\'task_create\' OR operation=N\'task_update\' OR operation=N\'task_version_activate\' OR operation=N\'input_replace\' OR operation=N\'run_trigger\'"),
+    CheckConstraint("CK_requirement_product_request_state", "requirement_product_requests", "state=N\'reserved\' OR state=N\'in_progress\' OR state=N\'succeeded\' OR state=N\'failed_recoverable\' OR state=N\'failed_terminal\'"),
+    CheckConstraint("CK_requirement_product_request_hash", "requirement_product_requests", "request_sha256 NOT LIKE \'%[^0-9a-f]%\' AND LEN(request_sha256)=64"),
 )
 
 
@@ -124,6 +144,8 @@ def required_foreign_keys(schedule_schema: str = "sra_schedule", requirement_sch
         ForeignKey("FK_state_success_item","requirement_schedule_item_state",("last_successful_run_item_id",),s,"requirement_batch_run_items",("run_item_id",)),
         ForeignKey("FK_audit_outbox_schedule","requirement_schedule_audit_outbox",("schedule_id",),s,"requirement_schedules",("schedule_id",)),
         ForeignKey("FK_handoff_submission_item","requirement_handoff_submissions",("run_item_id",),s,"requirement_batch_run_items",("run_item_id",)),
+        ForeignKey("FK_product_task_schedule","requirement_product_tasks",("schedule_id",),s,"requirement_schedules",("schedule_id",)),
+        ForeignKey("FK_product_task_source","requirement_product_tasks",("source_id",),r,"requirement_sources",("source_id",)),
     )
 
 REQUIRED_FOREIGN_KEYS = required_foreign_keys()
@@ -140,12 +162,38 @@ _PR201_FK_NAMES = {
 }
 
 
+_V1_EXCLUDED_TABLES = {
+    "requirement_schedule_audit_outbox",
+    "requirement_handoff_submissions",
+    "requirement_handoff_coordinator_leases",
+    "requirement_product_tasks",
+    "requirement_product_requests",
+}
+_V1_EXCLUDED_KEYS = {
+    "UQ_requirement_schedule_version_owner",
+    "PK_requirement_schedule_audit_outbox",
+    "PK_requirement_handoff_submissions",
+    "UQ_requirement_handoff_submission_item",
+    "PK_requirement_handoff_coordinator_leases",
+    "UQ_requirement_handoff_lease_token",
+    "PK_requirement_product_tasks",
+    "UQ_requirement_product_task_schedule",
+    "UQ_requirement_product_task_source",
+    "PK_requirement_product_requests",
+    "UQ_requirement_product_request_idempotency",
+}
+
+
 def _v1_columns(shape: str) -> dict[str, tuple[Column, ...]]:
-    columns = {name: tuple(values) for name, values in REQUIRED_COLUMNS.items()
-               if name != "requirement_schedule_audit_outbox"}
+    columns = {
+        name: tuple(values)
+        for name, values in REQUIRED_COLUMNS.items()
+        if name not in _V1_EXCLUDED_TABLES
+    }
     columns["requirement_batch_run_items"] = tuple(
         replace(column, max_length=256) if column.name == "phase1a_task_id" else column
         for column in columns["requirement_batch_run_items"]
+        if column.name != "artifact_sha256"
     )
     return columns
 
@@ -159,8 +207,8 @@ def classify_v1_catalog(cursor, schedule_schema: str, requirement_schema: str) -
     for shape, fk_names in (("pr200_v1", _PR200_FK_NAMES), ("pr201_v1", _PR201_FK_NAMES)):
         if evidence.get("columns") != _v1_columns(shape):
             continue
-        if set(evidence.get("keys", ())) != set(key for key in REQUIRED_KEYS if key.name not in {
-            "UQ_requirement_schedule_version_owner", "PK_requirement_schedule_audit_outbox"}):
+        if set(evidence.get("keys", ())) != set(
+                key for key in REQUIRED_KEYS if key.name not in _V1_EXCLUDED_KEYS):
             continue
         if set(evidence.get("indexes", ())) != set(REQUIRED_FILTERED_INDEXES[:2]):
             continue
@@ -200,9 +248,9 @@ def read_catalog(cursor, schema: str) -> dict:
         "SELECT t.name,c.name,ty.name,c.max_length,c.is_nullable,c.column_id FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.columns c ON c.object_id=t.object_id JOIN sys.types ty ON ty.user_type_id=c.user_type_id WHERE s.name=? ORDER BY t.name,c.column_id",
         "SELECT t.name,kc.name,kc.type,c.name,ic.key_ordinal FROM sys.key_constraints kc JOIN sys.tables t ON t.object_id=kc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.index_columns ic ON ic.object_id=t.object_id AND ic.index_id=kc.unique_index_id JOIN sys.columns c ON c.object_id=t.object_id AND c.column_id=ic.column_id WHERE s.name=? ORDER BY t.name,kc.name,ic.key_ordinal",
         "SELECT t.name,i.name,i.is_unique,i.has_filter,i.filter_definition,c.name,ic.key_ordinal FROM sys.indexes i JOIN sys.tables t ON t.object_id=i.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id JOIN sys.columns c ON c.object_id=t.object_id AND c.column_id=ic.column_id WHERE s.name=? AND i.has_filter=1 AND ic.is_included_column=0 ORDER BY t.name,i.name,ic.key_ordinal",
-        "SELECT pt.name,fk.name,pc.name,rs.name,rt.name,rc.name,fkc.constraint_column_id,fk.delete_referential_action,fk.update_referential_action FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id=fk.object_id JOIN sys.tables pt ON pt.object_id=fk.parent_object_id JOIN sys.schemas ps ON ps.schema_id=pt.schema_id JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fkc.parent_column_id JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fkc.referenced_column_id WHERE ps.name=? ORDER BY pt.name,fk.name,fkc.constraint_column_id",
+        "SELECT pt.name,fk.name,pc.name,rs.name,rt.name,rc.name,fkc.constraint_column_id,fk.delete_referential_action,fk.update_referential_action,fk.is_disabled,fk.is_not_trusted FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id=fk.object_id JOIN sys.tables pt ON pt.object_id=fk.parent_object_id JOIN sys.schemas ps ON ps.schema_id=pt.schema_id JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fkc.parent_column_id JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fkc.referenced_column_id WHERE ps.name=? ORDER BY pt.name,fk.name,fkc.constraint_column_id",
         "SELECT t.name,dc.name,c.name,dc.definition FROM sys.default_constraints dc JOIN sys.tables t ON t.object_id=dc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.columns c ON c.object_id=t.object_id AND c.column_id=dc.parent_column_id WHERE s.name=? ORDER BY t.name,dc.name",
-        "SELECT t.name,cc.name,cc.definition FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=? ORDER BY t.name,cc.name",
+        "SELECT t.name,cc.name,cc.definition,cc.is_disabled,cc.is_not_trusted FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=? ORDER BY t.name,cc.name",
     )
     result = []
     for sql in queries:
@@ -226,10 +274,14 @@ def read_catalog(cursor, schema: str) -> dict:
     fks = []
     for table, name in dict.fromkeys((r[0], r[1]) for r in fk_rows):
         rows = [r for r in fk_rows if r[0] == table and r[1] == name]
-        if any(int(r[7]) != 0 or int(r[8]) != 0 for r in rows):
+        if any(
+                int(r[7]) != 0 or int(r[8]) != 0 or bool(r[9]) or bool(r[10])
+                for r in rows):
             raise RuntimeError("unsupported_requirement_schedule_schema")
         fks.append(ForeignKey(name, table, tuple(r[2] for r in rows), rows[0][3], rows[0][4], tuple(r[5] for r in rows)))
     defaults = tuple(DefaultConstraint(r[1], r[0], r[2], normalize_sql_predicate(r[3])) for r in default_rows)
+    if any(bool(r[3]) or bool(r[4]) for r in check_rows):
+        raise RuntimeError("unsupported_requirement_schedule_schema")
     checks = tuple(CheckConstraint(r[1], r[0], normalize_sql_predicate(r[2])) for r in check_rows)
     return {"tables": tuple(r[0] for r in tables), "columns": columns,
             "keys": tuple(keys), "indexes": tuple(indexes), "foreign_keys": tuple(fks),
@@ -246,8 +298,12 @@ def canonical_catalog_matches(evidence: dict, schedule_schema: str,
             for index in REQUIRED_FILTERED_INDEXES)
         and set(evidence.get("foreign_keys", ()))
         == set(required_foreign_keys(schedule_schema, requirement_schema))
-        and set(evidence.get("defaults", ())) == set(REQUIRED_DEFAULTS)
-        and set(evidence.get("checks", ())) == set(REQUIRED_CHECKS)
+        and set(evidence.get("defaults", ())) == set(
+            replace(default, definition=normalize_sql_predicate(default.definition))
+            for default in REQUIRED_DEFAULTS)
+        and set(evidence.get("checks", ())) == set(
+            replace(check, definition=normalize_sql_predicate(check.definition))
+            for check in REQUIRED_CHECKS)
         and set(evidence.get("tables", ())) == set(REQUIRED_COLUMNS)
     )
 
@@ -353,6 +409,20 @@ def canonical_v3_statements(schema: str, requirement_schema: str = "sra_requirem
     """Explicit fresh-v3 schema statements, retaining canonical-v2 objects unchanged."""
     return [*canonical_v2_statements(schema, requirement_schema), *migration_2_to_3_statements(schema)]
 
+def migration_3_to_4_statements(schema: str, requirement_schema: str = "sra_requirement") -> list[str]:
+    name = validate_schema_name(schema)
+    req = validate_schema_name(requirement_schema)
+    s, r = f"[{name}]", f"[{req}]"
+    return [
+        f"CREATE TABLE {s}.[requirement_product_tasks](task_id NVARCHAR(64) NOT NULL CONSTRAINT PK_requirement_product_tasks PRIMARY KEY,schedule_id NVARCHAR(64) NOT NULL CONSTRAINT UQ_requirement_product_task_schedule UNIQUE,source_id NVARCHAR(64) NOT NULL CONSTRAINT UQ_requirement_product_task_source UNIQUE,execution_kind NVARCHAR(32) NOT NULL,product_state NVARCHAR(32) NOT NULL CONSTRAINT DF_requirement_product_task_state DEFAULT N'provisioning',revision BIGINT NOT NULL CONSTRAINT DF_requirement_product_task_revision DEFAULT 1,created_by NVARCHAR(128) NOT NULL,created_at DATETIMEOFFSET NOT NULL,updated_by NVARCHAR(128) NOT NULL,updated_at DATETIMEOFFSET NOT NULL,CONSTRAINT CK_requirement_product_task_execution_kind CHECK(execution_kind=N'once' OR execution_kind=N'recurring'),CONSTRAINT CK_requirement_product_task_state CHECK(product_state=N'provisioning' OR product_state=N'active' OR product_state=N'disabled'),CONSTRAINT CK_requirement_product_task_revision CHECK(revision>=1),CONSTRAINT FK_product_task_schedule FOREIGN KEY(schedule_id) REFERENCES {s}.[requirement_schedules](schedule_id),CONSTRAINT FK_product_task_source FOREIGN KEY(source_id) REFERENCES {r}.[requirement_sources](source_id))",
+        f"CREATE TABLE {s}.[requirement_product_requests](request_id NVARCHAR(64) NOT NULL CONSTRAINT PK_requirement_product_requests PRIMARY KEY,principal_kind NVARCHAR(32) NOT NULL,principal_id NVARCHAR(128) NOT NULL,operation NVARCHAR(64) NOT NULL,idempotency_key NVARCHAR(128) NOT NULL,request_sha256 CHAR(64) NOT NULL,state NVARCHAR(32) NOT NULL,task_id NVARCHAR(64) NULL,source_id NVARCHAR(64) NULL,import_run_id NVARCHAR(64) NULL,snapshot_id NVARCHAR(64) NULL,schedule_id NVARCHAR(64) NULL,schedule_version_id NVARCHAR(64) NULL,batch_run_id NVARCHAR(64) NULL,base_task_revision BIGINT NULL,result_task_revision BIGINT NULL,base_snapshot_id NVARCHAR(64) NULL,safe_result_json NVARCHAR(4000) NULL,error_code NVARCHAR(64) NULL,created_at DATETIMEOFFSET NOT NULL,updated_at DATETIMEOFFSET NOT NULL,completed_at DATETIMEOFFSET NULL,CONSTRAINT UQ_requirement_product_request_idempotency UNIQUE(principal_kind,principal_id,operation,idempotency_key),CONSTRAINT CK_requirement_product_request_principal_kind CHECK(principal_kind=N'user' OR principal_kind=N'service_key'),CONSTRAINT CK_requirement_product_request_operation CHECK(operation=N'task_create' OR operation=N'task_update' OR operation=N'task_version_activate' OR operation=N'input_replace' OR operation=N'run_trigger'),CONSTRAINT CK_requirement_product_request_state CHECK(state=N'reserved' OR state=N'in_progress' OR state=N'succeeded' OR state=N'failed_recoverable' OR state=N'failed_terminal'),CONSTRAINT CK_requirement_product_request_hash CHECK(request_sha256 NOT LIKE '%[^0-9a-f]%' AND LEN(request_sha256)=64)); CREATE INDEX IX_requirement_product_request_schedule ON {s}.[requirement_product_requests](schedule_id) WHERE schedule_id IS NOT NULL; CREATE INDEX IX_requirement_product_request_source ON {s}.[requirement_product_requests](source_id) WHERE source_id IS NOT NULL",
+    ]
+
+
+def canonical_v4_statements(schema: str, requirement_schema: str = "sra_requirement") -> list[str]:
+    """Explicit fresh-v4 schema statements retaining the complete v3 authority."""
+    return [*canonical_v3_statements(schema, requirement_schema), *migration_3_to_4_statements(schema, requirement_schema)]
+
 def migration_1_to_2_statements(schema: str, v1_shape: str) -> list[str]:
     """Ordered v2 DDL. Identity repair/validation is performed before these statements."""
     if v1_shape not in {"pr200_v1", "pr201_v1"}:
@@ -391,11 +461,11 @@ def validation_queries(schema: str, requirement_schema: str = "sra_requirement")
     for index in REQUIRED_FILTERED_INDEXES:
         checks.append((f"index:{index.name}","SELECT s.name,t.name,i.name,i.is_unique,i.has_filter,i.filter_definition,c.name,ic.key_ordinal FROM sys.indexes i JOIN sys.tables t ON t.object_id=i.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id JOIN sys.columns c ON c.object_id=i.object_id AND c.column_id=ic.column_id WHERE s.name=? AND i.name=? AND ic.is_included_column=0 ORDER BY ic.key_ordinal",(schema,index.name),index))
     for fk in required_foreign_keys(schema,requirement_schema):
-        checks.append((f"fk:{fk.name}","SELECT ps.name,pt.name,fk.name,pc.name,rs.name,rt.name,rc.name,fkc.constraint_column_id,fk.delete_referential_action,fk.update_referential_action FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id=fk.object_id JOIN sys.tables pt ON pt.object_id=fk.parent_object_id JOIN sys.schemas ps ON ps.schema_id=pt.schema_id JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fkc.parent_column_id JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fkc.referenced_column_id WHERE ps.name=? AND fk.name=? ORDER BY fkc.constraint_column_id",(schema,fk.name),fk))
+        checks.append((f"fk:{fk.name}","SELECT ps.name,pt.name,fk.name,pc.name,rs.name,rt.name,rc.name,fkc.constraint_column_id,fk.delete_referential_action,fk.update_referential_action,fk.is_disabled,fk.is_not_trusted FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id=fk.object_id JOIN sys.tables pt ON pt.object_id=fk.parent_object_id JOIN sys.schemas ps ON ps.schema_id=pt.schema_id JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fkc.parent_column_id JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fkc.referenced_column_id WHERE ps.name=? AND fk.name=? ORDER BY fkc.constraint_column_id",(schema,fk.name),fk))
     for default in REQUIRED_DEFAULTS:
         checks.append((f"default:{default.name}", "SELECT s.name,t.name,dc.name,c.name,dc.definition FROM sys.default_constraints dc JOIN sys.tables t ON t.object_id=dc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.columns c ON c.object_id=t.object_id AND c.column_id=dc.parent_column_id WHERE s.name=? AND dc.name=?", (schema, default.name), default))
     for check in REQUIRED_CHECKS:
-        checks.append((f"check:{check.name}", "SELECT s.name,t.name,cc.name,cc.definition FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=? AND cc.name=?", (schema, check.name), check))
+        checks.append((f"check:{check.name}", "SELECT s.name,t.name,cc.name,cc.definition,cc.is_disabled,cc.is_not_trusted FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=? AND cc.name=?", (schema, check.name), check))
     return checks
 
 
@@ -407,13 +477,25 @@ def validate_catalog_evidence(schema: str, expected, rows: tuple) -> bool:
     if isinstance(expected, ForeignKey):
         actual=tuple((r[3],r[4],r[5],r[6],int(r[7])) for r in rows)
         wanted=tuple((c,expected.referenced_schema,expected.referenced_table,rc,i) for i,(c,rc) in enumerate(zip(expected.columns,expected.referenced_columns),1))
-        return actual==wanted and bool(rows) and all(r[0]==schema and r[1]==expected.table and r[2]==expected.name and int(r[8]) == expected.delete_action and int(r[9]) == expected.update_action for r in rows)
+        return actual==wanted and bool(rows) and all(
+            r[0]==schema and r[1]==expected.table and r[2]==expected.name
+            and int(r[8]) == expected.delete_action
+            and int(r[9]) == expected.update_action
+            and not bool(r[10]) and not bool(r[11])
+            for r in rows
+        )
     if isinstance(expected, FilteredIndex):
         actual=tuple((r[6],int(r[7])) for r in rows)
         return bool(rows) and all(r[0]==schema and r[1]==expected.table and r[2]==expected.name and bool(r[3]) == expected.is_unique and bool(r[4]) and normalize_sql_predicate(r[5])==normalize_sql_predicate(expected.filter_definition) for r in rows) and actual==tuple((c,i) for i,c in enumerate(expected.columns,1))
     if isinstance(expected, DefaultConstraint):
         return len(rows) == 1 and rows[0][:4] == (schema, expected.table, expected.name, expected.column) and normalize_sql_predicate(rows[0][4]) == normalize_sql_predicate(expected.definition)
     if isinstance(expected, CheckConstraint):
-        return len(rows) == 1 and rows[0][:3] == (schema, expected.table, expected.name) and normalize_sql_predicate(rows[0][3]) == normalize_sql_predicate(expected.definition)
+        return (
+            len(rows) == 1
+            and rows[0][:3] == (schema, expected.table, expected.name)
+            and normalize_sql_predicate(rows[0][3]) == normalize_sql_predicate(expected.definition)
+            and not bool(rows[0][4])
+            and not bool(rows[0][5])
+        )
     actual=tuple(Column(expected[0].table,str(r[0]).lower(),str(r[1]).lower(),int(r[2]),bool(r[3]),int(r[4])) for r in rows)
     return actual==tuple(expected)

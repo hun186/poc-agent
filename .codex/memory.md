@@ -9,7 +9,7 @@
 - Production jobs must never enter Requirement E2E semantic mocks. Verified E2E mock authority is job-scoped and isolated across tool threads.
 - Operator E2E remains a deployment/technical observer. Repository tests or documentation review are not fresh live deployment acceptance.
 - Formal Requirement deployment acceptance is still blocked by the unresolved live Elasticsearch `mapping_incompatible` condition identified during capability probing; repository/offline tests do not clear that blocker. Re-run authorized live mapping/capability acceptance after it is corrected.
-- Requirement Product API + integrated Task Center Design/Plan v1 is under review in PR #277; implementation remains NOT STARTED.
+- Requirement Product API + integrated Task Center Design/Plan v1 was approved and merged in PR #277. Implementation has started with the P1.0 Schedule schema v4 slice on `feat/requirement-product-schema-v4`; Product service/router/UI and create/update/run orchestration are not implemented yet.
 
 ## Requirement Product API + Task Center — Current Contract
 
@@ -30,21 +30,28 @@
 
 ## Recent Changes
 
+- 2026-10-06: Codex review on pre-fix head `40d7a5fff0ca4f2c7dde4f6658dc49dbc9f9efeb` found disabled/untrusted SQL Server CHECK/FK constraints were not rejected. Catalog reads and per-constraint validation now require active, trusted CHECK/FK enforcement; focused Product FK/hash-check regressions cover both `is_disabled` and `is_not_trusted`.
+- 2026-10-06: P1.0 re-review found the historical v1 Schedule catalog classifier inherited v3-only `artifact_sha256` plus Handoff tables/keys from current `REQUIRED_*` descriptors. Restored the exact historical v1 shape and added regressions proving v1/v2 upgrade paths execute v3→v4 statements exactly once.
+- 2026-10-06: Started Product implementation from merged hosted main `155db8bb5568e04118481080840aad378026af44` on `feat/requirement-product-schema-v4`: Schedule schema v4 now adds only `requirement_product_tasks` and `requirement_product_requests`, v3→v4/fresh-v4 migration flow, exact catalog descriptors, Product Task FKs/uniqueness/checks, request-ledger uniqueness/checks, and filtered `schedule_id`/`source_id` ownership indexes; Product service/router/create saga/UI are not part of this slice.
 - 2026-10-06: Bound canonical Product idempotency hashes to path/target resource identities and added cross-Task / cross-version same-key conflict regressions to Design/Plan v1.
 - 2026-10-06: Completed run-trigger admission/replay design: first admission is atomic with lifecycle state, and all persisted request states are resolved before new-admission checks.
 - 2026-10-06: Defined recurring Product disabled-state mirroring and superuser-only draft activation, with revision/CAS and idempotency semantics.
 - 2026-10-05: Split Schedule draft proposal from privileged activation; removed Product v1 durable retry-ancestry guarantee.
 - 2026-10-02: Added Product provisioning visibility/execution gate, atomic ownership fences, input replacement snapshot CAS, and same-ID committed import recovery before preparation.
-- 2026-10-01: Added docs-only Requirement Product API + Task Center Design/Plan v1; implementation remains NOT STARTED.
+- 2026-10-06: Started Product implementation with P1.0 Schedule schema v4: two reviewed Product control-plane tables, catalog descriptors, v3→v4 migration/fresh bootstrap, and focused migration tests. Product service/API/UI remain unimplemented.
+- 2026-10-06: PR #278 opening review found two P1 migration issues: whole-catalog checks/defaults were not normalized like SQL Server catalog evidence, and legacy Schedule migration/stateful tests still encoded v3 marker/index/default assumptions. Both were corrected; all Requirement Schedule test files were rescanned for remaining hard-coded v3/final-index assumptions before exact-head re-review.
+- 2026-10-06: A subsequent review of the pre-fix head also confirmed Product default normalization and found the approved BIGINT revision contract was implemented as INT. `requirement_product_tasks.revision` plus request-ledger `base_task_revision` / `result_task_revision` are now BIGINT in DDL, catalog descriptors, tests, and Design/Plan.
+- 2026-10-06: Review of the next pre-fix head found `normalize_sql_predicate()` removed brackets/whitespace inside quoted literals, weakening hex-character-class CHECK evidence. The shared normalizer now transforms only unquoted SQL syntax; quoted literal bytes/text are preserved, existing artifact/fingerprint descriptors retain `[^0-9a-f]`, and Product request-hash regressions reject the weakened `%^0-9a-f%` form.
+- 2026-10-01: Added docs-only Requirement Product API + Task Center Design/Plan v1; PR #277 later merged and became implementation authority.
 - 2026-10-01: Requirement Operator E2E CLI now follows deployed external mode by default when the operator omits the option.
 - 2026-09-30: Isolated Requirement E2E semantic mocks from ordinary production jobs and propagated verified E2E authority safely into tool worker threads.
 
 ## Verification Summary
 
-- PR #277 remains docs/design only; Product API/Task Center implementation and Product code tests are NOT STARTED.
-- Latest review-driven edits were verified by hosted-file consistency scans for revision semantics, draft activation, Product lifecycle, run-trigger admission/replay, and canonical idempotency hashing.
+- PR #277 is merged. Product implementation is now IN PROGRESS at P1.0 schema v4 only; Product service/API/UI and later saga gates remain not implemented.
+- Current P1.0 edits were source-reviewed through the hosted GitHub branch. Regression coverage now includes v4 DDL/descriptors/defaults, SQL Server catalog normalization, successful v3→v4 marker advancement, rollback on post-DDL catalog failure, and updated legacy/stateful migration fixtures. A local pytest PASS is not claimed because the execution container cannot resolve `github.com` to clone the hosted branch; post-fix exact-head Codex review remains required.
 - No fresh live Requirement E2E, private SQL Server, Elasticsearch, LLM, Agent, deployment bootstrap, or DOCX acceptance was executed for this documentation task.
-- Exact-head Codex re-review is required after the current compaction/hash-binding commits before merge.
+- Exact-head Codex review and hosted status checks are required for the P1.0 implementation PR before merge.
 - Compaction verification: the 2026-10-06 memory and decisions archives have blob SHAs identical to the pre-compaction files at hosted head `364db0b1d04029570c2ff6a34b05269956751d3d`; active memory/decisions are 59/89 lines respectively, and all six required active `.codex/*.md` context files are below the AGENTS.md mandatory size/line/date-block thresholds.
 - Historical test and deployment evidence is preserved in the archived memory files and should not be restated as fresh acceptance.
 

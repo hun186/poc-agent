@@ -21,6 +21,7 @@
 
 ### Requirement Product API + Task Center
 
+- The first implementation slice is intentionally limited to Schedule schema v4 Product control-plane persistence and exact migration/catalog validation; Product service/router/create saga/UI remain separate later PRs.
 - Integrate Requirement automation into the existing SRA operations console. Reuse existing navigation, Auth/RBAC, audit, service-key system, Requirement Import, Schedule/Handoff, Report Job, and artifact authorities; do not build parallel infrastructure.
 - Persist Product Task identity/kind/state and Product idempotency in Schedule schema v4 using only `requirement_product_tasks` and `requirement_product_requests` in v1.
 - New Product Task/source provisioning remains superuser-only. Service-key automation is limited to already provisioned Tasks.
@@ -38,6 +39,20 @@
 - Product v1 does not persist retry parent/child ancestry; “Run again” creates an independent Run.
 
 ## Recent Decisions
+
+### 2026-10-06 Preserve quoted literals during SQL catalog normalization
+
+- Catalog normalization may remove SQL Server-owned brackets/parentheses/spacing and normalize unquoted syntax only; it must never rewrite characters inside quoted SQL literals.
+- Hash/fingerprint CHECK patterns therefore retain the exact `[^0-9a-f]` character class so structural drift cannot be normalized into equivalence.
+
+
+### 2026-10-06 Implement Product schema v4 as the first isolated slice
+
+- Start implementation with P1.0 only: Schedule schema v4, Product Task/request catalog descriptors, transactional v3→v4 migration/fresh bootstrap, and focused persistence tests.
+- Do not introduce Product router, UI, create saga, activation, input replacement, or Run trigger in this slice; later gates build on the reviewed persistence authority.
+- Keep `requirement_product_requests` reservation refs intentionally non-FK while `requirement_product_tasks.schedule_id/source_id` are real FKs to existing Schedule/Requirement authorities.
+- Persist Product Task `revision` and request-ledger `base_task_revision` / `result_task_revision` as SQL Server BIGINT, matching the approved monotonic revision authority before schema v4 is released.
+
 
 ### 2026-10-06 Canonical idempotency hash binds target resources
 

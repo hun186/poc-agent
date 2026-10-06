@@ -9,8 +9,8 @@ from datetime import timedelta
 
 from .migrations import (
     SCHEMA_VERSION, bootstrap_schema_statements,
-    canonical_catalog_matches, canonical_v3_statements, classify_v1_catalog, migration_1_to_2_statements,
-    migration_2_to_3_statements,
+    canonical_catalog_matches, canonical_v4_statements, classify_v1_catalog, migration_1_to_2_statements,
+    migration_2_to_3_statements, migration_3_to_4_statements,
     read_catalog,
     validate_catalog_evidence, validate_schema_name, validation_queries,
 )
@@ -207,7 +207,7 @@ class ScheduleStore:
             else:
                 version = 0
             if version == 0:
-                for sql in canonical_v3_statements(self.schema, self.requirement_schema): cursor.execute(sql)
+                for sql in canonical_v4_statements(self.schema, self.requirement_schema): cursor.execute(sql)
             elif version == 1:
                 shape = classify_v1_catalog(cursor, self.schema, self.requirement_schema)
                 self._validate_legacy_configurations(cursor)
@@ -226,10 +226,17 @@ class ScheduleStore:
                     cursor.execute(sql)
                 for sql in migration_2_to_3_statements(self.schema):
                     cursor.execute(sql)
+                for sql in migration_3_to_4_statements(self.schema, self.requirement_schema):
+                    cursor.execute(sql)
             elif version == 2:
                 # v2 was fully catalog-validated by the previous release. Migration
-                # remains one transaction and the marker is advanced only after v3 validation.
+                # remains one transaction; v3 and v4 DDL commit only after full v4 validation.
                 for sql in migration_2_to_3_statements(self.schema): cursor.execute(sql)
+                for sql in migration_3_to_4_statements(self.schema, self.requirement_schema): cursor.execute(sql)
+            elif version == 3:
+                # v3 was fully catalog-validated by the previous release. Product v4
+                # adds only the reviewed control-plane tables and their constraints/indexes.
+                for sql in migration_3_to_4_statements(self.schema, self.requirement_schema): cursor.execute(sql)
             elif version != SCHEMA_VERSION: raise RuntimeError("unsupported_requirement_schedule_schema")
             for name, sql, params, expected in validation_queries(self.schema, self.requirement_schema):
                 cursor.execute(sql, *params); rows = tuple(cursor.fetchall())
@@ -241,8 +248,8 @@ class ScheduleStore:
                 raise RuntimeError("unsupported_requirement_schedule_schema")
             if version == 0:
                 cursor.execute(f"INSERT INTO {self.t}.[schema_version](version) VALUES (?)", SCHEMA_VERSION)
-            elif version in {1, 2}:
-                cursor.execute(f"UPDATE {self.t}.[schema_version] SET version=3 WHERE version=?", version)
+            elif version in {1, 2, 3}:
+                cursor.execute(f"UPDATE {self.t}.[schema_version] SET version=? WHERE version=?", SCHEMA_VERSION, version)
                 if getattr(cursor, "rowcount", 1) != 1:
                     raise RuntimeError("unsupported_requirement_schedule_schema")
             cursor.execute(f"SELECT version FROM {self.t}.[schema_version] WITH (UPDLOCK,HOLDLOCK)")

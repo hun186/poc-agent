@@ -12,7 +12,7 @@
 
 ### Future architecture and product work
 
-- Requirement Product API + Task Center has docs-only Design v1 and Implementation Plan v1 (`2026-10-01-sra-requirement-product-api-task-center-*`); implementation remains NOT STARTED.
+- Requirement Product API + Task Center Design/Plan v1 is approved (PR #277 merged). Implementation is IN PROGRESS: P1.0 Schedule schema v4 is the current first slice; P1.0A authority-supplied IDs, Product service/presenters/preview, routers, create/update/activation/run orchestration, UI, Product E2E, and browser E2E remain outstanding.
 - Product implementation must integrate with the existing SRA `/editor` management shell/Auth/RBAC, reuse Phase 1B Requirement Import + Phase 1C Schedule/Handoff + Report Job, and never expose Handoff credentials or raw artifact paths to browsers.
 - Product v1 requires Schedule schema v4 Product Task/request control-plane tables, superuser-only provisioning/activation, durable idempotency/resource-bound canonical hashes, revision/CAS rules, transactional ownership fences, provisioning visibility gates, atomic Run admission vs disable, and reviewed Product E2E coverage.
 - Job Task JT-1 and LangGraph integration remain NOT STARTED and require new reviewed designs/plans.
@@ -29,7 +29,7 @@
 
 ## Recent Changes
 
-- 2026-10-06: PR #277 review converged on resource-bound canonical request hashes, complete persisted run-trigger replay semantics, atomic disable/admission ordering, recurring disabled-state mirroring, and mandatory active-memory compaction. Product implementation remains NOT STARTED.
+- 2026-10-06: Product implementation started after PR #277 merge. Current slice is P1.0 Schedule schema v4 only; all higher Product gates remain pending.
 - 2026-10-05: PR #277 split schedule proposal from privileged activation and explicitly deferred durable Run retry ancestry from Product v1.
 - 2026-10-02: PR #277 added Product revision CAS, transactional low-level ownership fencing, input replacement snapshot CAS, same-ID import recovery before preparation, provisioning lifecycle gating, and atomic create finalization.
 - 2026-10-01: PR #277 established docs-only Product API + Task Center design, Schedule schema v4 Product metadata/idempotency, preallocated cross-authority IDs, and two-stage superuser/service-key Product E2E.
