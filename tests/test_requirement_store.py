@@ -468,3 +468,35 @@ def test_failed_import_preallocated_id_replay_does_not_duplicate_rows():
     assert result["status"] == "failed"
     assert not any("INSERT" in sql.upper() for sql, _ in connection.cursor_value.calls)
     assert connection.commits == 1
+
+
+def test_candidate_errors_still_enforce_replacement_base_cas_before_failed_import():
+    candidate = NormalizedCandidate(
+        diagnostics=[
+            RowDiagnostic(
+                source_row_number=2,
+                external_item_id="A1",
+                code="stale_source_version",
+                message="Source timestamp is older",
+            )
+        ]
+    )
+    connection = ScriptedConnection(
+        one=[None, ("source-1",), ("set-1", "newer-snap")]
+    )
+    store = RequirementStore(ScriptedRegistry(connection), "control")
+    with pytest.raises(ValueError, match="^requirement_input_conflict$"):
+        store.commit_candidate(
+            _source(),
+            _version(),
+            _acquired(),
+            candidate,
+            "operator",
+            import_run_id="run-old",
+            snapshot_id="snap-old",
+            expected_base_snapshot_id="base-snap",
+        )
+    sql = [statement for statement, _ in connection.cursor_value.calls]
+    assert not any("INSERT INTO [sra_requirement].[import_runs]" in item for item in sql)
+    assert not any("INSERT INTO [sra_requirement].[requirement_set_snapshots]" in item for item in sql)
+    assert connection.rollbacks == 1 and connection.commits == 0
