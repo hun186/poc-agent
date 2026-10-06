@@ -77,6 +77,11 @@ class ProductTaskIdentity:
         )
 
 
+def _require_visible(identity: ProductTaskIdentity) -> None:
+    if identity.product_state == "provisioning":
+        raise KeyError("requirement_task_not_found")
+
+
 def neutral_run_status(run: dict[str, Any]) -> str:
     state = _required_text(run, "state", error="requirement_run_state_invalid")
     if state == "completed_with_failures":
@@ -141,6 +146,7 @@ class RequirementProductService:
     @staticmethod
     def present_task(*, product_task: dict[str, Any], schedule: dict[str, Any]) -> dict[str, Any]:
         identity = ProductTaskIdentity.from_product_task_row(product_task)
+        _require_visible(identity)
         if schedule.get("schedule_id") != identity.schedule_id:
             raise ValueError("requirement_product_task_identity_conflict")
 
@@ -170,6 +176,7 @@ class RequirementProductService:
     @staticmethod
     def present_run(*, product_task: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
         identity = ProductTaskIdentity.from_product_task_row(product_task)
+        _require_visible(identity)
         run_id = _required_text(run, "batch_run_id", error="requirement_run_identity_invalid")
         schedule_id = _required_text(run, "schedule_id", error="requirement_run_identity_invalid")
         schedule_version_id = _required_text(
