@@ -85,11 +85,18 @@ def _require_visible(identity: ProductTaskIdentity) -> None:
 def neutral_run_status(run: dict[str, Any]) -> str:
     state = _required_text(run, "state", error="requirement_run_state_invalid")
     if state == "completed_with_failures":
+        if "items" not in run:
+            raise ValueError("requirement_run_status_evidence_missing")
+        items = run.get("items")
+        if not isinstance(items, (list, tuple)):
+            raise ValueError("requirement_run_status_evidence_missing")
         item_states = {
             item.get("execution_state")
-            for item in run.get("items", ())
+            for item in items
             if isinstance(item, dict)
         }
+        if len(item_states) != len(items):
+            raise ValueError("requirement_run_status_evidence_missing")
         if "recovery_required" in item_states:
             return "recovery_required"
         return "completed_with_errors"
