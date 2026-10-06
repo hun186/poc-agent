@@ -301,3 +301,9 @@
 - First admission of a new run_trigger request is atomic with Product Task lifecycle validation in the Schedule DB: existing same-key replay is resolved first; absent request locks/rechecks the Task and request identity, rejects provisioning/disabled, then inserts the ledger row while holding the Task lock.
 - Recurring disable finalization uses a compatible Product Task lock. Disable-first blocks the new trigger with no request row; trigger-admission-first durably accepts exactly one request, which may resume/materialize once after a later disable using its stable request-derived trigger_request_id.
 - Same-key replay after disable remains an admitted request; a new idempotency key after disable is rejected. Required regression uses separate DB connections/barriers.
+
+### 2026-10-06 Existing run-trigger state precedes lifecycle admission
+
+- For run_trigger, any existing same principal/operation/key row is resolved before current Task lifecycle checks. Hash mismatch returns idempotency conflict; same-hash reserved/in_progress resume, failed_recoverable resumes, succeeded replays success, and failed_terminal replays the stored terminal error.
+- Only a truly absent request proceeds to Product Task locking plus provisioning/disabled admission. A later disable therefore cannot rewrite replay semantics of an already admitted trigger.
+- Regression coverage must include all existing run-trigger states after disable, not only reserved/in_progress/succeeded.
