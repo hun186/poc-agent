@@ -112,10 +112,12 @@ def test_v1_classifier_accepts_only_exact_whole_catalogs():
                                    f" ( [ {i.filter_definition.replace('=', '] = [')} ] ) ",column,ordinal)
                                   for i in self.evidence["indexes"]
                                   for ordinal,column in enumerate(i.columns,1))
-            else:
-                self.rows = tuple((fk.table,fk.name,column,fk.referenced_schema,fk.referenced_table,referenced,ordinal,0,0)
+            elif "sys.foreign_keys" in sql:
+                self.rows = tuple((fk.table,fk.name,column,fk.referenced_schema,fk.referenced_table,referenced,ordinal,0,0,False,False)
                                   for fk in self.evidence["foreign_keys"]
                                   for ordinal,(column,referenced) in enumerate(zip(fk.columns,fk.referenced_columns),1))
+            else:
+                self.rows = ()
             return self
         def fetchall(self): return self.rows
     common_keys = tuple(
@@ -135,7 +137,7 @@ def test_v1_classifier_accepts_only_exact_whole_catalogs():
 def test_fk_actions_and_outbox_constraints_fail_closed():
     fk = REQUIRED_FOREIGN_KEYS[0]
     base = (("sra_schedule", fk.table, fk.name, fk.columns[0], fk.referenced_schema,
-             fk.referenced_table, fk.referenced_columns[0], 1, 0, 0),)
+             fk.referenced_table, fk.referenced_columns[0], 1, 0, 0, False, False),)
     assert validate_catalog_evidence("sra_schedule", fk, base)
     for action_position in (8, 9):
         changed = [list(base[0])]
@@ -146,8 +148,39 @@ def test_fk_actions_and_outbox_constraints_fail_closed():
     assert validate_catalog_evidence("sra_schedule", default, (("sra_schedule", default.table, default.name, default.column, "((0))"),))
     assert not validate_catalog_evidence("sra_schedule", default, (("sra_schedule", default.table, default.name, default.column, "(1)"),))
     check = REQUIRED_CHECKS[0]
-    assert validate_catalog_evidence("sra_schedule", check, (("sra_schedule", check.table, check.name, "(([delivery_attempt_count] >= (0)))"),))
-    assert not validate_catalog_evidence("sra_schedule", check, (("sra_schedule", check.table, check.name, "delivery_attempt_count>0"),))
+    assert validate_catalog_evidence("sra_schedule", check, (("sra_schedule", check.table, check.name, "(([delivery_attempt_count] >= (0)))", False, False),))
+    assert not validate_catalog_evidence("sra_schedule", check, (("sra_schedule", check.table, check.name, "delivery_attempt_count>0", False, False),))
+
+
+def test_catalog_rejects_disabled_or_untrusted_product_constraints():
+    product_fk = next(fk for fk in REQUIRED_FOREIGN_KEYS if fk.name == "FK_product_task_source")
+    fk_row = (
+        "sra_schedule", product_fk.table, product_fk.name, product_fk.columns[0],
+        product_fk.referenced_schema, product_fk.referenced_table,
+        product_fk.referenced_columns[0], 1, 0, 0, False, False,
+    )
+    assert validate_catalog_evidence("sra_schedule", product_fk, (fk_row,))
+    for position in (10, 11):
+        changed = list(fk_row)
+        changed[position] = True
+        assert not validate_catalog_evidence("sra_schedule", product_fk, (tuple(changed),))
+
+    product_check = next(
+        check for check in REQUIRED_CHECKS
+        if check.name == "CK_requirement_product_request_hash"
+    )
+    check_row = (
+        "sra_schedule", product_check.table, product_check.name,
+        "([request_sha256] NOT LIKE '%[^0-9a-f]%' AND len([request_sha256])=(64))",
+        False, False,
+    )
+    assert validate_catalog_evidence("sra_schedule", product_check, (check_row,))
+    for position in (4, 5):
+        changed = list(check_row)
+        changed[position] = True
+        assert not validate_catalog_evidence(
+            "sra_schedule", product_check, (tuple(changed),)
+        )
 
 def test_schema_v4_adds_only_reviewed_product_control_plane_objects():
     ddl = "\n".join(migration_3_to_4_statements("custom_schedule", "custom_requirement"))
@@ -250,13 +283,13 @@ def test_product_v4_default_and_check_catalog_normalization_is_fail_closed():
     assert validate_catalog_evidence(
         "sra_schedule",
         state_check,
-        (("sra_schedule", "requirement_product_tasks", state_check.name, sql_server_definition),),
+        (("sra_schedule", "requirement_product_tasks", state_check.name, sql_server_definition, False, False),),
     )
     assert not validate_catalog_evidence(
         "sra_schedule",
         state_check,
         (("sra_schedule", "requirement_product_tasks", state_check.name,
-          "([product_state]=N'active' OR [product_state]=N'disabled')"),),
+          "([product_state]=N'active' OR [product_state]=N'disabled')", False, False),),
     )
 
 
@@ -265,12 +298,12 @@ def test_product_v4_default_and_check_catalog_normalization_is_fail_closed():
         "sra_schedule",
         hash_check,
         (("sra_schedule", "requirement_product_requests", hash_check.name,
-          "([request_sha256] NOT LIKE '%[^0-9a-f]%' AND len([request_sha256])=(64))"),),
+          "([request_sha256] NOT LIKE '%[^0-9a-f]%' AND len([request_sha256])=(64))", False, False),),
     )
     assert not validate_catalog_evidence(
         "sra_schedule",
         hash_check,
         (("sra_schedule", "requirement_product_requests", hash_check.name,
-          "([request_sha256] NOT LIKE '%^0-9a-f%' AND len([request_sha256])=(64))"),),
+          "([request_sha256] NOT LIKE '%^0-9a-f%' AND len([request_sha256])=(64))", False, False),),
     )
 

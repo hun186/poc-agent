@@ -248,9 +248,9 @@ def read_catalog(cursor, schema: str) -> dict:
         "SELECT t.name,c.name,ty.name,c.max_length,c.is_nullable,c.column_id FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.columns c ON c.object_id=t.object_id JOIN sys.types ty ON ty.user_type_id=c.user_type_id WHERE s.name=? ORDER BY t.name,c.column_id",
         "SELECT t.name,kc.name,kc.type,c.name,ic.key_ordinal FROM sys.key_constraints kc JOIN sys.tables t ON t.object_id=kc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.index_columns ic ON ic.object_id=t.object_id AND ic.index_id=kc.unique_index_id JOIN sys.columns c ON c.object_id=t.object_id AND c.column_id=ic.column_id WHERE s.name=? ORDER BY t.name,kc.name,ic.key_ordinal",
         "SELECT t.name,i.name,i.is_unique,i.has_filter,i.filter_definition,c.name,ic.key_ordinal FROM sys.indexes i JOIN sys.tables t ON t.object_id=i.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id JOIN sys.columns c ON c.object_id=t.object_id AND c.column_id=ic.column_id WHERE s.name=? AND i.has_filter=1 AND ic.is_included_column=0 ORDER BY t.name,i.name,ic.key_ordinal",
-        "SELECT pt.name,fk.name,pc.name,rs.name,rt.name,rc.name,fkc.constraint_column_id,fk.delete_referential_action,fk.update_referential_action FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id=fk.object_id JOIN sys.tables pt ON pt.object_id=fk.parent_object_id JOIN sys.schemas ps ON ps.schema_id=pt.schema_id JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fkc.parent_column_id JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fkc.referenced_column_id WHERE ps.name=? ORDER BY pt.name,fk.name,fkc.constraint_column_id",
+        "SELECT pt.name,fk.name,pc.name,rs.name,rt.name,rc.name,fkc.constraint_column_id,fk.delete_referential_action,fk.update_referential_action,fk.is_disabled,fk.is_not_trusted FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id=fk.object_id JOIN sys.tables pt ON pt.object_id=fk.parent_object_id JOIN sys.schemas ps ON ps.schema_id=pt.schema_id JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fkc.parent_column_id JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fkc.referenced_column_id WHERE ps.name=? ORDER BY pt.name,fk.name,fkc.constraint_column_id",
         "SELECT t.name,dc.name,c.name,dc.definition FROM sys.default_constraints dc JOIN sys.tables t ON t.object_id=dc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.columns c ON c.object_id=t.object_id AND c.column_id=dc.parent_column_id WHERE s.name=? ORDER BY t.name,dc.name",
-        "SELECT t.name,cc.name,cc.definition FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=? ORDER BY t.name,cc.name",
+        "SELECT t.name,cc.name,cc.definition,cc.is_disabled,cc.is_not_trusted FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=? ORDER BY t.name,cc.name",
     )
     result = []
     for sql in queries:
@@ -274,10 +274,14 @@ def read_catalog(cursor, schema: str) -> dict:
     fks = []
     for table, name in dict.fromkeys((r[0], r[1]) for r in fk_rows):
         rows = [r for r in fk_rows if r[0] == table and r[1] == name]
-        if any(int(r[7]) != 0 or int(r[8]) != 0 for r in rows):
+        if any(
+                int(r[7]) != 0 or int(r[8]) != 0 or bool(r[9]) or bool(r[10])
+                for r in rows):
             raise RuntimeError("unsupported_requirement_schedule_schema")
         fks.append(ForeignKey(name, table, tuple(r[2] for r in rows), rows[0][3], rows[0][4], tuple(r[5] for r in rows)))
     defaults = tuple(DefaultConstraint(r[1], r[0], r[2], normalize_sql_predicate(r[3])) for r in default_rows)
+    if any(bool(r[3]) or bool(r[4]) for r in check_rows):
+        raise RuntimeError("unsupported_requirement_schedule_schema")
     checks = tuple(CheckConstraint(r[1], r[0], normalize_sql_predicate(r[2])) for r in check_rows)
     return {"tables": tuple(r[0] for r in tables), "columns": columns,
             "keys": tuple(keys), "indexes": tuple(indexes), "foreign_keys": tuple(fks),
@@ -457,11 +461,11 @@ def validation_queries(schema: str, requirement_schema: str = "sra_requirement")
     for index in REQUIRED_FILTERED_INDEXES:
         checks.append((f"index:{index.name}","SELECT s.name,t.name,i.name,i.is_unique,i.has_filter,i.filter_definition,c.name,ic.key_ordinal FROM sys.indexes i JOIN sys.tables t ON t.object_id=i.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id JOIN sys.columns c ON c.object_id=i.object_id AND c.column_id=ic.column_id WHERE s.name=? AND i.name=? AND ic.is_included_column=0 ORDER BY ic.key_ordinal",(schema,index.name),index))
     for fk in required_foreign_keys(schema,requirement_schema):
-        checks.append((f"fk:{fk.name}","SELECT ps.name,pt.name,fk.name,pc.name,rs.name,rt.name,rc.name,fkc.constraint_column_id,fk.delete_referential_action,fk.update_referential_action FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id=fk.object_id JOIN sys.tables pt ON pt.object_id=fk.parent_object_id JOIN sys.schemas ps ON ps.schema_id=pt.schema_id JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fkc.parent_column_id JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fkc.referenced_column_id WHERE ps.name=? AND fk.name=? ORDER BY fkc.constraint_column_id",(schema,fk.name),fk))
+        checks.append((f"fk:{fk.name}","SELECT ps.name,pt.name,fk.name,pc.name,rs.name,rt.name,rc.name,fkc.constraint_column_id,fk.delete_referential_action,fk.update_referential_action,fk.is_disabled,fk.is_not_trusted FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id=fk.object_id JOIN sys.tables pt ON pt.object_id=fk.parent_object_id JOIN sys.schemas ps ON ps.schema_id=pt.schema_id JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fkc.parent_column_id JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fkc.referenced_column_id WHERE ps.name=? AND fk.name=? ORDER BY fkc.constraint_column_id",(schema,fk.name),fk))
     for default in REQUIRED_DEFAULTS:
         checks.append((f"default:{default.name}", "SELECT s.name,t.name,dc.name,c.name,dc.definition FROM sys.default_constraints dc JOIN sys.tables t ON t.object_id=dc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.columns c ON c.object_id=t.object_id AND c.column_id=dc.parent_column_id WHERE s.name=? AND dc.name=?", (schema, default.name), default))
     for check in REQUIRED_CHECKS:
-        checks.append((f"check:{check.name}", "SELECT s.name,t.name,cc.name,cc.definition FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=? AND cc.name=?", (schema, check.name), check))
+        checks.append((f"check:{check.name}", "SELECT s.name,t.name,cc.name,cc.definition,cc.is_disabled,cc.is_not_trusted FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=? AND cc.name=?", (schema, check.name), check))
     return checks
 
 
@@ -473,13 +477,25 @@ def validate_catalog_evidence(schema: str, expected, rows: tuple) -> bool:
     if isinstance(expected, ForeignKey):
         actual=tuple((r[3],r[4],r[5],r[6],int(r[7])) for r in rows)
         wanted=tuple((c,expected.referenced_schema,expected.referenced_table,rc,i) for i,(c,rc) in enumerate(zip(expected.columns,expected.referenced_columns),1))
-        return actual==wanted and bool(rows) and all(r[0]==schema and r[1]==expected.table and r[2]==expected.name and int(r[8]) == expected.delete_action and int(r[9]) == expected.update_action for r in rows)
+        return actual==wanted and bool(rows) and all(
+            r[0]==schema and r[1]==expected.table and r[2]==expected.name
+            and int(r[8]) == expected.delete_action
+            and int(r[9]) == expected.update_action
+            and not bool(r[10]) and not bool(r[11])
+            for r in rows
+        )
     if isinstance(expected, FilteredIndex):
         actual=tuple((r[6],int(r[7])) for r in rows)
         return bool(rows) and all(r[0]==schema and r[1]==expected.table and r[2]==expected.name and bool(r[3]) == expected.is_unique and bool(r[4]) and normalize_sql_predicate(r[5])==normalize_sql_predicate(expected.filter_definition) for r in rows) and actual==tuple((c,i) for i,c in enumerate(expected.columns,1))
     if isinstance(expected, DefaultConstraint):
         return len(rows) == 1 and rows[0][:4] == (schema, expected.table, expected.name, expected.column) and normalize_sql_predicate(rows[0][4]) == normalize_sql_predicate(expected.definition)
     if isinstance(expected, CheckConstraint):
-        return len(rows) == 1 and rows[0][:3] == (schema, expected.table, expected.name) and normalize_sql_predicate(rows[0][3]) == normalize_sql_predicate(expected.definition)
+        return (
+            len(rows) == 1
+            and rows[0][:3] == (schema, expected.table, expected.name)
+            and normalize_sql_predicate(rows[0][3]) == normalize_sql_predicate(expected.definition)
+            and not bool(rows[0][4])
+            and not bool(rows[0][5])
+        )
     actual=tuple(Column(expected[0].table,str(r[0]).lower(),str(r[1]).lower(),int(r[2]),bool(r[3]),int(r[4])) for r in rows)
     return actual==tuple(expected)

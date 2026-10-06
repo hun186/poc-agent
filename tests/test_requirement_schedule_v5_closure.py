@@ -47,13 +47,13 @@ class FreshCursor:
                           for i, c in enumerate(index.columns, 1)]
         elif "SELECT pt.name,fk.name" in sql:
             self._rows = [(fk.table, fk.name, c, fk.referenced_schema,
-                           fk.referenced_table, rc, i, 0, 0)
+                           fk.referenced_table, rc, i, 0, 0, False, False)
                           for fk in required_foreign_keys("sra_schedule", "sra_requirement")
                           for i, (c, rc) in enumerate(zip(fk.columns, fk.referenced_columns), 1)]
         elif "sys.default_constraints" in sql and len(params) == 1:
             self._rows = [(d.table, d.name, d.column, f"(({d.definition}))") for d in REQUIRED_DEFAULTS]
         elif "sys.check_constraints" in sql and len(params) == 1:
-            self._rows = [(c.table, c.name, c.definition) for c in REQUIRED_CHECKS]
+            self._rows = [(c.table, c.name, c.definition, False, False) for c in REQUIRED_CHECKS]
         elif params and isinstance(params[-1], str):
             expected = next((e for _, query, query_params, e in validation_queries("sra_schedule", "sra_requirement")
                              if query == sql and query_params == params), None)
@@ -70,13 +70,16 @@ class FreshCursor:
                                    expected.filter_definition, c, i) for i, c in enumerate(expected.columns, 1)]
                 elif expected.__class__.__name__ == "ForeignKey":
                     self._rows = [("sra_schedule", expected.table, expected.name, c,
-                                   expected.referenced_schema, expected.referenced_table, rc, i, 0, 0)
+                                   expected.referenced_schema, expected.referenced_table, rc, i, 0, 0, False, False)
                                   for i, (c, rc) in enumerate(zip(expected.columns, expected.referenced_columns), 1)]
                 elif expected.__class__.__name__ == "DefaultConstraint":
                     self._rows = [("sra_schedule", expected.table, expected.name, expected.column,
                                    f"(({expected.definition}))")]
                 else:
-                    self._rows = [("sra_schedule", expected.table, expected.name, expected.definition)]
+                    self._rows = [(
+                        "sra_schedule", expected.table, expected.name,
+                        expected.definition, False, False,
+                    )]
         return self
 
     def fetchone(self):
@@ -390,7 +393,7 @@ class StatefulDatabase:
         if "sys.foreign_keys" in sql:
             wanted = params[1] if len(params) == 2 else None
             rows = [(fk.table, fk.name, col, fk.referenced_schema, fk.referenced_table,
-                     ref, ordinal, fk.delete_action, fk.update_action)
+                     ref, ordinal, fk.delete_action, fk.update_action, False, False)
                     for fk in c["foreign_keys"] if wanted is None or fk.name == wanted
                     for ordinal, (col, ref) in enumerate(zip(fk.columns, fk.referenced_columns), 1)]
             return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
@@ -401,7 +404,7 @@ class StatefulDatabase:
             return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
         if "sys.check_constraints" in sql:
             wanted = params[1] if len(params) == 2 else None
-            rows = [(item.table, item.name, item.definition)
+            rows = [(item.table, item.name, item.definition, False, False)
                     for item in c["checks"] if wanted is None or item.name == wanted]
             return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
         return None
