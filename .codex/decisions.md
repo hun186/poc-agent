@@ -39,6 +39,12 @@
 
 ## Recent Decisions
 
+### 2026-10-06 Preserve quoted literals during SQL catalog normalization
+
+- Catalog normalization may remove SQL Server-owned brackets/parentheses/spacing and normalize unquoted syntax only; it must never rewrite characters inside quoted SQL literals.
+- Hash/fingerprint CHECK patterns therefore retain the exact `[^0-9a-f]` character class so structural drift cannot be normalized into equivalence.
+
+
 ### 2026-10-06 Implement Product schema v4 as the first isolated slice
 
 - Start implementation with P1.0 only: Schedule schema v4, Product Task/request catalog descriptors, transactional v3→v4 migration/fresh bootstrap, and focused persistence tests.
