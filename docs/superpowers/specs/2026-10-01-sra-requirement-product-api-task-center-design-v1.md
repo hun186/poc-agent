@@ -183,7 +183,7 @@ Required fields:
 - `principal_id` — stable authenticated principal identifier; never a raw credential. For a human user this is the canonical username/account identity. For a service key this MUST be `AuthPrincipal.credential_id`, which is the immutable stored `key_id`; it MUST NOT use `AuthPrincipal.principal_id`, `subject`, or the human-readable key name because service-key names are not unique.
 - `operation` — bounded product operation name such as `task_create`, `task_update`, `task_version_activate`, `input_replace`, or `run_trigger`.
 - `idempotency_key` — caller-supplied bounded key.
-- `request_sha256` — SHA-256 of the canonical semantic request, including input digest but not raw uploaded bytes.
+- `request_sha256` — SHA-256 of the complete canonical semantic request envelope. It MUST include operation plus every path-/target-bound resource identity and semantic payload/input digest, while excluding raw uploaded bytes and credentials. At minimum: Task-scoped operations include `task_id`; `task_version_activate` includes `task_id + schedule_version_id`; create includes its create semantics; input replacement includes `task_id + input digest`; run trigger includes `task_id` even when the HTTP body is empty.
 - `state` — `reserved`, `in_progress`, `succeeded`, `failed_recoverable`, or `failed_terminal`.
 - nullable safe progress/result references: `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, `schedule_version_id`, `batch_run_id`. These reservation columns are intentionally **not foreign keys** because Product must durably store a server-owned ID before the target authority row exists; target ownership/semantics are verified by the Product service and underlying authority on resume.
 - nullable `base_task_revision` and `result_task_revision` for Task-revision CAS. A schedule-draft `task_update` stores `base_task_revision` but leaves `result_task_revision` null because proposal creation does not mutate Task revision; in-place `task_update` and `task_version_activate` record the revision they actually commit.
@@ -548,7 +548,7 @@ reserve_product_run_trigger(
 In one Schedule SQL transaction it:
 
 1. locks/resolves any existing `(principal_kind, principal_id, run_trigger, idempotency_key)` request **before consulting current Task lifecycle**,
-2. if that row exists with a different canonical `request_sha256`, return `requirement_idempotency_conflict`; if the hash matches, handle its persisted state exactly as the durable ledger contract requires and do not reclassify it as a new admission:
+2. if that row exists with a different canonical `request_sha256`, return `requirement_idempotency_conflict`; the canonical run-trigger hash MUST bind the requested `task_id` even though the request body may be empty. If the hash matches, handle its persisted state exactly as the durable ledger contract requires and do not reclassify it as a new admission:
    - `reserved` / `in_progress` → resume the already-admitted request,
    - `failed_recoverable` → resume from its persisted stage/authority identities,
    - `succeeded` → return/reconstruct the original successful result,
@@ -753,7 +753,7 @@ Do not expose the Operator E2E runtime-evidence endpoint to ordinary users. Task
 All product mutations that can create persistent work must be replay safe through the durable `requirement_product_requests` authority defined in §5.3.
 
 - Require `Idempotency-Key` for task create, every task PATCH/update, **Product draft activation (`task_version_activate`)**, input replacement, and Run trigger; UI clients generate one per explicit mutation and retain the same key across transport retries of that mutation, including activation.
-- The server canonicalizes the semantic request and hashes it before the first Phase 1B/1C write.
+- The server canonicalizes the complete semantic request envelope and hashes it before the first Phase 1B/1C write. Canonicalization includes the operation and every target identity carried by the route/path, not only the JSON/body. Therefore reusing the same principal/operation/idempotency key against a different Task or Schedule Version necessarily produces a different hash and returns `requirement_idempotency_conflict` rather than replaying another resource's result.
 - For ordinary mutations reserve the unique principal/operation/key row before side effects. For `run_trigger`, first-time reservation additionally follows §7.5: **any existing same-key row is resolved by hash + persisted ledger state before lifecycle checks**, while a truly absent request performs lifecycle recheck and ledger insertion atomically under the Product Task lock. Disabling later cannot rewrite an existing trigger's `reserved|in_progress|failed_recoverable|succeeded|failed_terminal` replay semantics.
 - Same principal/operation/key + same hash returns or resumes the recorded operation.
 - Same principal/operation/key + different hash returns 409 `requirement_idempotency_conflict`.
@@ -887,11 +887,12 @@ Product v1 is complete only when all of the following are true:
 10. Product v1 rejects mixed in-place + schedule-affecting PATCH payloads before idempotency reservation; draft-only PATCH does not increment Task revision.
 11. Recurring Task enable/disable atomically mirrors Product `active|disabled` with Schedule `enabled=true|false`; one-time Tasks do not enter `disabled`.
 12. New `run_trigger` admission is serialized with recurring disable by a shared Product Task lock; any existing same-key request is first resolved according to hash and persisted ledger state, so disable-first rejects only a truly new trigger and cannot alter recoverable/succeeded/terminal replay semantics of an already-admitted request.
-13. Historical snapshot/version/run bindings remain immutable.
-14. Product jobs cannot enter E2E mock routing.
-15. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
-16. Browser E2E passes the integrated SRA UI Golden Path.
-17. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
+13. Canonical Product request hashes bind operation + all path/target resource identities; same principal/operation/idempotency key reused on another Task or Schedule Version conflicts instead of replaying the first resource.
+14. Historical snapshot/version/run bindings remain immutable.
+15. Product jobs cannot enter E2E mock routing.
+16. Product API E2E passes from runtime-generated external input through real execution and artifact retrieval.
+17. Browser E2E passes the integrated SRA UI Golden Path.
+18. Existing ES editor, Excel→SQL, Auth, Operator E2E, Report Job, and Requirement/Schedule lower-level regressions remain green, with one intentional compatibility change: Product-owned Schedule/source low-level mutation calls are rejected while their read paths and all non-Product low-level mutations continue to behave as before.
 
 ## 19. Design decision summary
 
