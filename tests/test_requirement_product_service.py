@@ -228,3 +228,15 @@ def test_present_links_encode_internal_ids_instead_of_creating_path_segments():
 
     assert view["links"]["self"] == "/v1/requirement-runs/br%2Fone"
     assert view["links"]["items"] == "/v1/requirement-runs/br%2Fone/items"
+
+
+def test_status_mapping_rejects_failure_summary_without_recovery_evidence():
+    with pytest.raises(ValueError, match="requirement_run_status_evidence_missing"):
+        neutral_run_status({"state": "completed_with_failures"})
+
+
+def test_status_mapping_rejects_malformed_failure_item_evidence():
+    with pytest.raises(ValueError, match="requirement_run_status_evidence_missing"):
+        neutral_run_status(
+            {"state": "completed_with_failures", "items": [{"not_execution_state": "failed"}]}
+        )
