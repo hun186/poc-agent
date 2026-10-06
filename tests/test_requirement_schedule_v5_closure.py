@@ -393,7 +393,7 @@ class StatefulDatabase:
             return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
         if "sys.default_constraints" in sql:
             wanted = params[1] if len(params) == 2 else None
-            rows = [(d.table, d.name, d.column, "((0))") for d in c["defaults"]
+            rows = [(d.table, d.name, d.column, f"(({d.definition}))") for d in c["defaults"]
                     if wanted is None or d.name == wanted]
             return rows if len(params) == 1 else [("sra_schedule",) + row for row in rows]
         if "sys.check_constraints" in sql:
