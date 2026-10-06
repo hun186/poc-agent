@@ -9,7 +9,7 @@
 - Production jobs must never enter Requirement E2E semantic mocks. Verified E2E mock authority is job-scoped and isolated across tool threads.
 - Operator E2E remains a deployment/technical observer. Repository tests or documentation review are not fresh live deployment acceptance.
 - Formal Requirement deployment acceptance is still blocked by the unresolved live Elasticsearch `mapping_incompatible` condition identified during capability probing; repository/offline tests do not clear that blocker. Re-run authorized live mapping/capability acceptance after it is corrected.
-- Requirement Product API + integrated Task Center Design/Plan v1 is under review in PR #277; implementation remains NOT STARTED.
+- Requirement Product API + integrated Task Center Design/Plan v1 was approved and merged in PR #277. Implementation has started with the P1.0 Schedule schema v4 slice on `feat/requirement-product-schema-v4`; Product service/router/UI and create/update/run orchestration are not implemented yet.
 
 ## Requirement Product API + Task Center — Current Contract
 
@@ -35,16 +35,17 @@
 - 2026-10-06: Defined recurring Product disabled-state mirroring and superuser-only draft activation, with revision/CAS and idempotency semantics.
 - 2026-10-05: Split Schedule draft proposal from privileged activation; removed Product v1 durable retry-ancestry guarantee.
 - 2026-10-02: Added Product provisioning visibility/execution gate, atomic ownership fences, input replacement snapshot CAS, and same-ID committed import recovery before preparation.
-- 2026-10-01: Added docs-only Requirement Product API + Task Center Design/Plan v1; implementation remains NOT STARTED.
+- 2026-10-06: Started Product implementation with P1.0 Schedule schema v4: two reviewed Product control-plane tables, catalog descriptors, v3→v4 migration/fresh bootstrap, and focused migration tests. Product service/API/UI remain unimplemented.
+- 2026-10-01: Added docs-only Requirement Product API + Task Center Design/Plan v1; PR #277 later merged and became implementation authority.
 - 2026-10-01: Requirement Operator E2E CLI now follows deployed external mode by default when the operator omits the option.
 - 2026-09-30: Isolated Requirement E2E semantic mocks from ordinary production jobs and propagated verified E2E authority safely into tool worker threads.
 
 ## Verification Summary
 
-- PR #277 remains docs/design only; Product API/Task Center implementation and Product code tests are NOT STARTED.
-- Latest review-driven edits were verified by hosted-file consistency scans for revision semantics, draft activation, Product lifecycle, run-trigger admission/replay, and canonical idempotency hashing.
+- PR #277 is merged. Product implementation is now IN PROGRESS at P1.0 schema v4 only; Product service/API/UI and later saga gates remain not implemented.
+- Current P1.0 edits were source-reviewed through the hosted GitHub branch and focused migration tests were added for schema descriptors and v3→v4 control flow. A local pytest PASS is not claimed because the execution container cannot resolve `github.com` to clone the hosted branch.
 - No fresh live Requirement E2E, private SQL Server, Elasticsearch, LLM, Agent, deployment bootstrap, or DOCX acceptance was executed for this documentation task.
-- Exact-head Codex re-review is required after the current compaction/hash-binding commits before merge.
+- Exact-head Codex review and hosted status checks are required for the P1.0 implementation PR before merge.
 - Compaction verification: the 2026-10-06 memory and decisions archives have blob SHAs identical to the pre-compaction files at hosted head `364db0b1d04029570c2ff6a34b05269956751d3d`; active memory/decisions are 59/89 lines respectively, and all six required active `.codex/*.md` context files are below the AGENTS.md mandatory size/line/date-block thresholds.
 - Historical test and deployment evidence is preserved in the archived memory files and should not be restated as fresh acceptance.
 
