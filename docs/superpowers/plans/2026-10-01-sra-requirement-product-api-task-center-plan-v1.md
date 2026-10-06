@@ -765,13 +765,18 @@ reserve_product_run_trigger(
 
 Its Schedule SQL transaction must:
 
-1. look up the unique run-trigger request identity; if an existing same-hash row is already reserved/in-progress/succeeded, return replay/resume state without treating current disabled state as a new admission check,
-2. if absent, lock the Product Task with write-compatible locking and recheck the unique request identity under that same transaction,
-3. reject provisioning with `requirement_task_provisioning`,
-4. reject recurring `product_state='disabled'` with `requirement_task_disabled`,
-5. otherwise insert/reserve the new run-trigger ledger row while the Task lock is still held and commit.
+1. lock/look up the unique run-trigger request identity before consulting current Task lifecycle,
+2. if a row exists, compare canonical request hash first: changed hash → `requirement_idempotency_conflict`; same hash → dispatch strictly by persisted state and return without applying a fresh disabled/provisioning admission check:
+   - `reserved` / `in_progress` → resume admitted work,
+   - `failed_recoverable` → resume from persisted stage/authority identities,
+   - `succeeded` → return/reconstruct the original successful result,
+   - `failed_terminal` → return the same stored safe terminal result,
+3. only if no row exists, lock the Product Task with write-compatible locking and recheck the unique request identity under that same transaction,
+4. reject provisioning with `requirement_task_provisioning`,
+5. reject recurring `product_state='disabled'` with `requirement_task_disabled`,
+6. otherwise insert/reserve the new run-trigger ledger row while the Task lock is still held and commit.
 
-The recurring enable/disable finalizer uses a compatible Product Task lock, so disable and first trigger admission serialize. A trigger that was durably admitted while active may continue/resume exactly once using the stable request-derived Schedule `trigger_request_id` after a later disable; disable blocks new admissions, not completion of already accepted requests.
+The recurring enable/disable finalizer uses a compatible Product Task lock, so disable and first trigger admission serialize. A trigger already present in the ledger remains governed by its persisted state after a later disable: `reserved|in_progress|failed_recoverable` may resume, `succeeded` replays success, and `failed_terminal` replays its stored terminal result. Disable blocks only truly new admissions; it never rewrites the outcome/retry semantics of an already accepted request.
 
 
 - missing `Idempotency-Key` → safe validation failure,
@@ -789,7 +794,7 @@ The recurring enable/disable finalizer uses a compatible Product Task lock, so d
 - crash after Schedule Version commit but before ledger stage advance → same preallocated version identity is recovered without duplicate draft,
 - concurrent duplicate → one ledger row and one logical mutation,
 - disable-vs-trigger race uses separate DB connections/barriers: disable-first means no new `run_trigger` request row and `requirement_task_disabled`; trigger-admission-first means exactly one durable request is accepted and may materialize once even if disable commits before materialization,
-- same-key retry of an already-admitted run trigger after Task disable resumes/replays the admitted request rather than being reclassified as a new disabled admission,
+- same-key retry of an already-admitted run trigger after Task disable is resolved entirely from the persisted ledger state before lifecycle checks: `reserved|in_progress|failed_recoverable` resume, `succeeded` replays success, and `failed_terminal` replays the same terminal error rather than being reclassified as a new disabled admission,
 - different-key task PATCHes reserved at the same `base_task_revision` → at most one finalizes; stale finalization fails CAS without rolling newer state backward,
 - **in-place** task PATCH finalization commits Task/Schedule state, audit outbox, exactly one revision increment, safe result snapshot, and request success in one Schedule SQL transaction; **schedule-proposal** `task_update` completion instead commits only the immutable draft + bounded proposal result/request success, leaves Task revision unchanged, and leaves `result_task_revision=NULL`,
 - old uncommitted input replacement after newer input exists must fail `base_snapshot_id` CAS without creating/activating its stale snapshot; already-committed same-ID replay must be recovered before `_prepare()`/diagnostics even if a later replacement has already committed.
@@ -1118,7 +1123,7 @@ Explicitly include cross-API ownership-fence regression coverage for `requiremen
 Include a provisioning-release concurrency regression with scheduler/Handoff workers active: pause after initial version approval but before create finalization; assert recurring Schedule remains disabled, no one-time initial Run exists, no worker execution occurs, Task and Product Run/history/artifact GETs cannot expose partial state, and PATCH/input/run/service-key surfaces cannot reserve work. Resume the same create request and prove the finalizer atomically releases exactly one execution path plus Task visibility/create success.
 Add Product-version approval regressions: db_operator draft creation leaves active state untouched; db_operator activation is denied; low-level approval of Product-owned Schedule is fenced; superuser Product activation succeeds atomically; stale draft activation fails Task revision CAS.
 Add PATCH-mode regressions: proposal-only PATCH preserves Task revision/result_task_revision=null; in-place PATCH increments once; successful activation increments once; mixed-mode payload rejects before ledger reservation and produces no Task/Schedule/draft mutation.
-Add Product-state regressions: recurring disable atomically commits `product_state=disabled` + Schedule `enabled=false`; re-enable atomically commits `active/true`; rollback cannot split the pair; one-time Tasks remain active. Add a two-connection barrier regression for disable versus first `run_trigger` admission: whichever acquires the Product Task lock first defines the legal order—disable-first rejects without a ledger row, trigger-first durably admits exactly one request which may resume/materialize once after disable. Also prove same-key replay after later disable remains admitted while a new key is rejected.
+Add Product-state regressions: recurring disable atomically commits `product_state=disabled` + Schedule `enabled=false`; re-enable atomically commits `active/true`; rollback cannot split the pair; one-time Tasks remain active. Add a two-connection barrier regression for disable versus first `run_trigger` admission: whichever acquires the Product Task lock first defines the legal order—disable-first rejects without a ledger row, trigger-first durably admits exactly one request. After later disable, explicitly cover each existing same-hash state: `reserved`, `in_progress`, and `failed_recoverable` resume; `succeeded` replays success; `failed_terminal` replays its stored terminal error; a new key is rejected.
 
 Update:
 
@@ -1202,6 +1207,6 @@ The phase is complete only when:
 8. A partially provisioned Product Task is neither visible nor worker-executable: recurrence stays disabled and no one-time initial Run is materialized until the atomic create finalizer releases execution, marks the Task active/create succeeded, and only then exposes Task/Run/history/artifact surfaces.
 9. Schedule-affecting PATCH creates an immutable draft only; a separate superuser-only idempotent activation flow is the sole Product approval path and CASes against the draft's originating Task revision.
 10. Draft-only PATCH leaves Task revision unchanged, successful in-place update/activation each increment it once, and mixed in-place + schedule-affecting PATCH is rejected before durable request reservation.
-11. Recurring enable/disable atomically mirrors Product `active|disabled` with Schedule `enabled=true|false`; first manual Run admission is serialized against disable under the same Product Task lock, so disable-first rejects new work while an already-admitted trigger may finish/replay exactly once; one-time Tasks remain active.
+11. Recurring enable/disable atomically mirrors Product `active|disabled` with Schedule `enabled=true|false`; first manual Run admission is serialized against disable under the same Product Task lock, and any existing same-key trigger is resolved by request hash + persisted ledger state before lifecycle checks, so later disable cannot change recoverable/succeeded/terminal replay semantics; one-time Tasks remain active.
 12. Existing SRA ES editor, Excel→SQL management, account management, and Report Job regressions are green.
 13. Documentation allows an operator to maintain the system without direct SQL/log inspection for normal operations.
