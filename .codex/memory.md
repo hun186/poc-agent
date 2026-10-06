@@ -8,6 +8,7 @@
 - Requirement import authority is SQL Server with immutable Requirement Version/Snapshot history. Requirement recurrence/execution control is the separately versioned `sra_schedule` schema. Report Jobs own real Agent/LLM/Elasticsearch execution and DOCX production.
 - Production jobs must never enter Requirement E2E semantic mocks. Verified E2E mock authority is job-scoped and isolated across tool threads.
 - Operator E2E remains a deployment/technical observer. Repository tests or documentation review are not fresh live deployment acceptance.
+- Formal Requirement deployment acceptance is still blocked by the unresolved live Elasticsearch `mapping_incompatible` condition identified during capability probing; repository/offline tests do not clear that blocker. Re-run authorized live mapping/capability acceptance after it is corrected.
 - Requirement Product API + integrated Task Center Design/Plan v1 is under review in PR #277; implementation remains NOT STARTED.
 
 ## Requirement Product API + Task Center — Current Contract
