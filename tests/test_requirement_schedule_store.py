@@ -1,4 +1,4 @@
-from datetime import timezone
+from datetime import datetime, timezone
 
 from requirement_scheduler.store import ScheduleStore
 from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate
@@ -97,3 +97,138 @@ def test_operator_artifact_evidence_is_bound_to_batch_and_run_item(monkeypatch):
     monkeypatch.setattr(store, "_query", lambda *_args: [])
     with pytest.raises(KeyError, match="run_item_not_found"):
         store.get_operator_artifact_evidence(batch_run_id="batch-1", run_item_id="other-item")
+
+
+class VersionConnection:
+    def __init__(self, existing=None):
+        self.existing = existing
+        self.calls = []
+        self.last = ""
+        self.one = None
+        self.commits = self.rollbacks = self.closed = 0
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.last = sql
+        if "FROM [sra_schedule].[requirement_schedules]" in sql:
+            self.one = (params[0],)
+        elif "WHERE schedule_version_id=?" in sql:
+            self.one = self.existing
+        elif "MAX(version_number)" in sql:
+            self.one = (3,)
+        else:
+            self.one = None
+        return self
+
+    def fetchone(self):
+        return self.one
+
+    def fetchall(self):
+        return []
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed += 1
+
+
+def _version_config():
+    recurrence = RecurrenceSpec.validate({"kind": "daily", "local_time": "09:00:00"})
+    return ScheduleVersionCreate("UTC", recurrence, RunPolicy.ALL_ACTIVE, "model-a")
+
+
+def test_create_version_uses_supplied_identity_when_absent():
+    registry = Registry()
+    registry.connection = VersionConnection()
+    store = ScheduleStore(registry, "control")
+    result = store.create_version(
+        schedule_id="schedule-1",
+        config=_version_config(),
+        actor="operator",
+        schedule_version_id="sv-fixed",
+    )
+    insert = next(
+        params for sql, params in registry.connection.calls
+        if "INSERT INTO [sra_schedule].[requirement_schedule_versions]" in sql
+    )
+    assert result["schedule_version_id"] == "sv-fixed"
+    assert result["version_number"] == 3
+    assert insert[0] == "sv-fixed"
+    assert registry.connection.commits == 1
+
+
+def test_create_version_same_identity_and_digest_replays_existing_row():
+    config = _version_config()
+    encoded, digest = ScheduleStore.canonical_config(config)
+    created_at = datetime(2026, 10, 6, tzinfo=timezone.utc)
+    existing = (
+        "sv-fixed",
+        "schedule-1",
+        2,
+        "UTC",
+        encoded,
+        config.run_policy.value,
+        config.model,
+        digest,
+        "approved",
+        "operator",
+        created_at,
+    )
+    registry = Registry()
+    registry.connection = VersionConnection(existing=existing)
+    store = ScheduleStore(registry, "control")
+    result = store.create_version(
+        schedule_id="schedule-1",
+        config=config,
+        actor="retrying-operator",
+        schedule_version_id="sv-fixed",
+    )
+    assert result["schedule_version_id"] == "sv-fixed"
+    assert result["version_number"] == 2
+    assert result["status"] == "approved"
+    assert result["created_by"] == "operator"
+    assert not any(
+        "INSERT INTO [sra_schedule].[requirement_schedule_versions]" in sql
+        for sql, _ in registry.connection.calls
+    )
+    assert registry.connection.commits == 1
+
+
+def test_create_version_same_identity_with_different_semantics_fails_closed():
+    config = _version_config()
+    encoded, _ = ScheduleStore.canonical_config(config)
+    existing = (
+        "sv-fixed",
+        "schedule-1",
+        2,
+        "UTC",
+        encoded,
+        config.run_policy.value,
+        config.model,
+        "0" * 64,
+        "draft",
+        "operator",
+        datetime(2026, 10, 6, tzinfo=timezone.utc),
+    )
+    registry = Registry()
+    registry.connection = VersionConnection(existing=existing)
+    store = ScheduleStore(registry, "control")
+    with pytest.raises(RuntimeError, match="^persistence_error$"):
+        store.create_version(
+            schedule_id="schedule-1",
+            config=config,
+            actor="operator",
+            schedule_version_id="sv-fixed",
+        )
+    assert registry.connection.rollbacks == 1
+    assert not any(
+        "INSERT INTO [sra_schedule].[requirement_schedule_versions]" in sql
+        for sql, _ in registry.connection.calls
+    )
