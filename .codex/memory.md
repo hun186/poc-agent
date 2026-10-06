@@ -295,3 +295,9 @@
 - Disabled recurring Tasks reject manual run trigger with requirement_task_disabled before reserving run_trigger.
 - P2.3 now distinguishes in-place PATCH finalization (revision +1) from schedule-proposal completion (revision unchanged, result_task_revision NULL), and successful task_version_activate performs its own atomic revision increment.
 - The cross-cutting idempotency checklist explicitly includes task_version_activate; UI/client must retain the same activation Idempotency-Key across transport retries.
+
+### 2026-10-06 Atomic run-trigger admission versus disable
+
+- First admission of a new run_trigger request is atomic with Product Task lifecycle validation in the Schedule DB: existing same-key replay is resolved first; absent request locks/rechecks the Task and request identity, rejects provisioning/disabled, then inserts the ledger row while holding the Task lock.
+- Recurring disable finalization uses a compatible Product Task lock. Disable-first blocks the new trigger with no request row; trigger-admission-first durably accepts exactly one request, which may resume/materialize once after a later disable using its stable request-derived trigger_request_id.
+- Same-key replay after disable remains an admitted request; a new idempotency key after disable is rejected. Required regression uses separate DB connections/barriers.
