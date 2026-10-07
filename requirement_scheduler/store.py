@@ -1207,7 +1207,16 @@ class ScheduleStore:
             document = json.loads(recurrence_json); spec = RecurrenceSpec.validate(document.get("recurrence", document))
             latest, following = coalesce_latest(spec, timezone_name, persisted_due, now_utc)
             race_identity = (schedule_id, version_id, latest, following)
-            materialized = self._materialize_locked(c, schedule_id, version_id, policy, TriggerIdentity("scheduled", latest), now_utc, actor)
+            materialized = self._materialize_locked(
+                c,
+                schedule_id,
+                version_id,
+                policy,
+                TriggerIdentity("scheduled", latest),
+                now_utc,
+                actor,
+                selection_time=latest,
+            )
             run_id = materialized.run["batch_run_id"]
             c.execute(f"UPDATE {self.t}.[requirement_schedules] SET next_run_at=?,updated_by=?,updated_at=? WHERE schedule_id=? AND active_version_id=?", following, actor, now_utc, schedule_id, version_id); connection.commit()
             return {"batch_run_id": run_id, "schedule_id": schedule_id, "schedule_version_id": version_id, "scheduled_for": latest, "next_run_at": following}
