@@ -51,7 +51,6 @@ class RequirementStore:
 
     def initialize(self) -> None:
         connection = self._connect()
-        replayed = False
         try:
             cursor = connection.cursor()
             for statement in bootstrap_schema_statements(self.schema): cursor.execute(statement)
@@ -189,6 +188,7 @@ class RequirementStore:
         sid, now = source_id or _id("src"), _now()
         encoded_config = json.dumps(config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         connection = self._connect()
+        replayed = False
         try:
             cursor = connection.cursor()
             if source_id is not None:
