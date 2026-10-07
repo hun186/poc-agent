@@ -107,3 +107,6 @@
 
 
 - 2026-10-07 P1.3 third review corrections: fixed a Product preview refactor regression where `preview_input()` referenced normalized locals before assignment; raw upload arguments now enter `_input_bytes()` and only normalized bytes/name reach `acquire_source()`. One-time create also rejects previews whose accepted rows are all expired at the create evaluation time, preventing initial Batch Runs with zero selectable items from remaining queued indefinitely.
+
+
+- 2026-10-07 P1.3 fourth review corrections: the exact `preview_input()` block now passes raw `upload_bytes/upload_filename` into `_input_bytes()` and passes only normalized bytes/name to `acquire_source()`. Product create eligibility is evaluated against the durable request's original persisted `created_at`, not the retry wall clock, so a crash/retry after rows later expire can still recover and finalize the same idempotent request.

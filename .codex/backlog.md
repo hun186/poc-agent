@@ -61,3 +61,6 @@
 
 
 - 2026-10-07 P1.3 third exact-head review findings (P1 preview normalization regression, P2 expired-only zero-select run) were fixed; exact-head re-review/check evidence remains required before merge.
+
+
+- 2026-10-07 P1.3 fourth exact-head review findings (P1 exact preview normalization block, P1 durable eligibility time) were fixed; exact-head re-review/check evidence remains required before merge.
