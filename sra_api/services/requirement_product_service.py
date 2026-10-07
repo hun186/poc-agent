@@ -346,6 +346,36 @@ class RequirementProductService:
             },
         }
 
+    @staticmethod
+    def _preview_selectable_count(
+        preview: dict[str, Any], *, evaluation_time: datetime
+    ) -> int:
+        rows = preview.get("normalized_preview")
+        if not isinstance(rows, list):
+            raise RuntimeError("requirement_preview_invalid")
+        selectable = 0
+        for row in rows:
+            if not isinstance(row, dict):
+                raise RuntimeError("requirement_preview_invalid")
+            expires_at = row.get("expires_at")
+            if expires_at is None:
+                selectable += 1
+                continue
+            if isinstance(expires_at, datetime):
+                expiry = expires_at
+            elif isinstance(expires_at, str):
+                try:
+                    expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                except ValueError as exc:
+                    raise RuntimeError("requirement_preview_invalid") from exc
+            else:
+                raise RuntimeError("requirement_preview_invalid")
+            if expiry.tzinfo is None:
+                raise RuntimeError("requirement_preview_invalid")
+            if expiry.astimezone(timezone.utc) > evaluation_time.astimezone(timezone.utc):
+                selectable += 1
+        return selectable
+
     def create_one_time_task(
         self,
         *,
@@ -439,6 +469,13 @@ class RequirementProductService:
                 now_utc=now,
             )
             raise ValueError("requirement_preview_empty")
+        if self._preview_selectable_count(preview, evaluation_time=now) < 1:
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_preview_no_selectable_rows",
+                now_utc=now,
+            )
+            raise ValueError("requirement_preview_no_selectable_rows")
 
         profile = preview["profile"]
 
