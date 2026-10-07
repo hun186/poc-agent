@@ -109,3 +109,9 @@
 - Exact-ID Source and Schedule creation must replay only when semantics match; unique-key or same-ID drift is never treated as success.
 - The one-time initial Batch Run is created only inside the Product finalizer, using the existing locked Schedule materializer and a stable request-derived manual trigger. Product visibility (`active`) and request success commit in that same transaction.
 - The selected preview profile must still be the active approved profile at create time so Requirement commit cannot silently normalize under a different profile version.
+
+
+### 2026-10-07 Product preview profile identity must be transactionally bound at import
+
+- A Product create pre-check of the active Requirement profile is insufficient because another superuser can activate a different profile version before the import transaction begins.
+- Product create therefore passes the previewed `profile_version_id + profile_sha256` into Requirement Import authority. Preparation uses that exact version; a new import locks/validates the active profile binding inside the mutation transaction; terminal exact-ID replay verifies persisted import/snapshot profile identity without requiring the profile to remain currently active after success.

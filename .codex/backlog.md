@@ -52,3 +52,6 @@
 - P1.3 one-time Product create orchestration is implemented on `feat/requirement-product-create-once-p1-3` and requires exact-head Hosted review/check evidence before merge.
 - Keep this PR limited to one-time create saga/service/store + focused recovery tests. Do not fold recurring P1.4, Product HTTP router, P1.5 updates, P1.6 ownership fences, or UI into it.
 - After P1.3 merges, continue with P1.4 recurring create/finalization and the shared provisioning lifecycle gate.
+
+
+- 2026-10-07 P1.3 exact-head review P1 profile-binding race was fixed on the same branch; exact-head Codex re-review/check evidence is required before merge.
