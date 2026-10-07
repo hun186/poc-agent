@@ -254,15 +254,29 @@ class RequirementStore:
         snapshot_id: str | None,
         run_row: Any,
         snapshot_rows: list[Any],
+        *,
+        expected_profile_version_id: str | None = None,
     ) -> dict[str, Any] | None:
         if run_row is None:
             return None
         if len(snapshot_rows) > 1:
             raise RuntimeError("persistence_error")
-        existing_source_id, status, accepted_count, rejected_count = run_row
+        (
+            existing_source_id,
+            existing_profile_version_id,
+            status,
+            accepted_count,
+            rejected_count,
+        ) = run_row
         existing_snapshot_id = snapshot_rows[0][0] if snapshot_rows else None
+        existing_snapshot_profile_id = snapshot_rows[0][1] if snapshot_rows else None
         if existing_source_id != source_id:
             raise RuntimeError("persistence_error")
+        if expected_profile_version_id is not None:
+            if existing_profile_version_id != expected_profile_version_id:
+                raise RuntimeError("persistence_error")
+            if status == "committed" and existing_snapshot_profile_id != expected_profile_version_id:
+                raise RuntimeError("persistence_error")
         if status == "committed":
             if existing_snapshot_id is None:
                 raise RuntimeError("persistence_error")
@@ -281,30 +295,119 @@ class RequirementStore:
             "rejected_count": int(rejected_count),
         }
 
+    @staticmethod
+    def _expected_profile_args_valid(
+        expected_profile_version_id: str | None,
+        expected_profile_sha256: str | None,
+    ) -> bool:
+        return (expected_profile_version_id is None) == (expected_profile_sha256 is None)
+
+    def _verify_expected_profile_record(
+        self,
+        cursor,
+        *,
+        expected_profile_version_id: str | None,
+        expected_profile_sha256: str | None,
+    ) -> None:
+        if not self._expected_profile_args_valid(
+            expected_profile_version_id, expected_profile_sha256
+        ):
+            raise ValueError("profile_invalid")
+        if expected_profile_version_id is None:
+            return
+        cursor.execute(
+            f"SELECT profile_sha256 FROM {self.t}.[import_profile_versions] WITH (HOLDLOCK) "
+            f"WHERE profile_version_id=?",
+            expected_profile_version_id,
+        )
+        row = cursor.fetchone()
+        if row is None or row[0] != expected_profile_sha256:
+            raise ValueError("profile_invalid")
+
+    def _lock_expected_profile_for_import(
+        self,
+        cursor,
+        *,
+        source: dict[str, Any],
+        version: dict[str, Any],
+        expected_profile_version_id: str | None,
+        expected_profile_sha256: str | None,
+    ) -> None:
+        if not self._expected_profile_args_valid(
+            expected_profile_version_id, expected_profile_sha256
+        ):
+            raise ValueError("profile_invalid")
+        if expected_profile_version_id is None:
+            return
+        if (
+            version.get("profile_version_id") != expected_profile_version_id
+            or version.get("profile_sha256") != expected_profile_sha256
+        ):
+            raise ValueError("profile_invalid")
+        cursor.execute(
+            f"SELECT s.import_profile_id,s.enabled,p.enabled,p.active_version_id,"
+            f"v.profile_id,v.profile_sha256,v.status "
+            f"FROM {self.t}.[requirement_sources] s WITH (UPDLOCK,HOLDLOCK) "
+            f"JOIN {self.t}.[import_profiles] p WITH (UPDLOCK,HOLDLOCK) "
+            f"ON p.profile_id=s.import_profile_id "
+            f"JOIN {self.t}.[import_profile_versions] v WITH (UPDLOCK,HOLDLOCK) "
+            f"ON v.profile_version_id=? "
+            f"WHERE s.source_id=?",
+            expected_profile_version_id,
+            source["source_id"],
+        )
+        row = cursor.fetchone()
+        if (
+            row is None
+            or row[0] != version.get("profile_id")
+            or not bool(row[1])
+            or not bool(row[2])
+            or row[3] != expected_profile_version_id
+            or row[4] != row[0]
+            or row[5] != expected_profile_sha256
+            or row[6] != "approved"
+        ):
+            raise ValueError("profile_invalid")
+
     def recover_preallocated_import_result(
         self,
         source_id: str,
         import_run_id: str,
         snapshot_id: str | None = None,
+        *,
+        expected_profile_version_id: str | None = None,
+        expected_profile_sha256: str | None = None,
     ) -> dict[str, Any] | None:
         """Return a terminal preallocated import result without re-reading source input."""
         connection = self._connect()
         try:
             cursor = connection.cursor()
+            self._verify_expected_profile_record(
+                cursor,
+                expected_profile_version_id=expected_profile_version_id,
+                expected_profile_sha256=expected_profile_sha256,
+            )
             cursor.execute(
-                f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WHERE import_run_id=?",
+                f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count "
+                f"FROM {self.t}.[import_runs] WHERE import_run_id=?",
                 import_run_id,
             )
             run_row = cursor.fetchone()
             if run_row is None:
                 return None
             cursor.execute(
-                f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WHERE import_run_id=?",
+                f"SELECT snapshot_id,import_profile_version_id "
+                f"FROM {self.t}.[requirement_set_snapshots] WHERE import_run_id=?",
                 import_run_id,
             )
             snapshot_rows = list(cursor.fetchall())
             return self._preallocated_import_result(
-                source_id, import_run_id, snapshot_id, run_row, snapshot_rows
+                source_id,
+                import_run_id,
+                snapshot_id,
+                run_row,
+                snapshot_rows,
+                expected_profile_version_id=expected_profile_version_id,
             )
         except Exception as exc:
             raise _stable_persistence_error(exc) from exc
