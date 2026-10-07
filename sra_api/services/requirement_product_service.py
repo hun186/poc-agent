@@ -100,6 +100,9 @@ def neutral_run_status(run: dict[str, Any]) -> str:
                 raise ValueError("requirement_run_status_evidence_missing")
             item_states.append(execution_state)
 
+        failure_states = {"failed", "expired", "recovery_required"}
+        if not any(item_state in failure_states for item_state in item_states):
+            raise ValueError("requirement_run_status_evidence_missing")
         if "recovery_required" in item_states:
             return "recovery_required"
         return "completed_with_errors"
@@ -203,9 +206,12 @@ class RequirementProductService:
         if schedule_id != identity.schedule_id:
             raise ValueError("requirement_run_identity_conflict")
 
+        raw_run_state = _required_text(run, "state", error="requirement_run_state_invalid")
         snapshot_id = run.get("snapshot_id")
         if snapshot_id is not None and (not isinstance(snapshot_id, str) or not snapshot_id):
             raise ValueError("requirement_run_identity_invalid")
+        if raw_run_state != "blocked_no_snapshot" and snapshot_id is None:
+            raise ValueError("requirement_run_snapshot_binding_missing")
 
         items = run.get("items", ())
         if items is None:
