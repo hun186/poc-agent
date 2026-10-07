@@ -410,12 +410,21 @@ class RequirementProductService:
                 request.get("error_code") or "requirement_product_request_terminal"
             )
 
-        preview = self.preview_input(
-            profile_version_id=profile_version_id,
-            upload_bytes=input_bytes if requirements is None else None,
-            upload_filename=input_filename if requirements is None else None,
-            requirements=requirements,
-        )
+        try:
+            preview = self.preview_input(
+                profile_version_id=profile_version_id,
+                upload_bytes=input_bytes if requirements is None else None,
+                upload_filename=input_filename if requirements is None else None,
+                requirements=requirements,
+            )
+        except (KeyError, ValueError) as exc:
+            code = str(exc).strip("'").split(":", 1)[0]
+            if not code or len(code) > 64:
+                code = "requirement_preview_invalid"
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"], error_code=code, now_utc=now
+            )
+            raise
         if preview["has_errors"]:
             self.schedule_store.fail_product_request_terminal(
                 request["request_id"],
@@ -506,12 +515,20 @@ class RequirementProductService:
         if requirement_set.get("active_snapshot_id") != request["snapshot_id"]:
             raise RuntimeError("persistence_error")
 
-        self.schedule_store.create_schedule(
+        schedule = self.schedule_store.create_schedule(
             name=clean_name,
             requirement_set_id=requirement_set["requirement_set_id"],
             actor=actor,
             schedule_id=request["schedule_id"],
         )
+        if (
+            bool(schedule.get("enabled"))
+            or schedule.get("active_version_id") not in {
+                None, request["schedule_version_id"]
+            }
+            or schedule.get("next_run_at") is not None
+        ):
+            raise RuntimeError("persistence_error")
         self.schedule_store.create_product_task_provisioning(
             task_id=request["task_id"],
             schedule_id=request["schedule_id"],
