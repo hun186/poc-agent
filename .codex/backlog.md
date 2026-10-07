@@ -73,3 +73,6 @@
 
 
 - 2026-10-07 P1.4 exact-head review P1 audit-payload rollback was fixed on the same branch; exact-head Codex re-review/check evidence is required before merge.
+
+
+- 2026-10-07 P1.4 second exact-head review findings (P2 stale recurrence-release clock, P2 first-occurrence zero-selection) were fixed; exact-head Codex re-review/check evidence remains required before merge.

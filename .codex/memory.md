@@ -130,3 +130,6 @@
 
 
 - 2026-10-07 P1.4 review correction: recurring Product finalization must emit the existing empty-payload `requirement_schedule.enabled` audit event shape. Passing Product-specific metadata in that audit payload violates the Schedule audit schema and rolls back the entire finalizer. The unsupported payload was removed and focused regression now asserts the emitted enable event has an empty payload.
+
+
+- 2026-10-07 P1.4 second review corrections: recurring create now separates durable request time from recurrence-release time. The service refreshes UTC immediately before finalization (with an explicit deterministic test override), while request `created_at` remains the input/replay semantic anchor. The recurring finalizer computes the first due from that fresh release time and, before enabling the Schedule, locks/queries the exact snapshot to require at least one Requirement whose expiry extends beyond that first due. If none can participate, it atomically marks the owning create request `failed_terminal` with `requirement_product_no_selectable_first_run` while leaving the Schedule disabled and Product Task provisioning/invisible.
