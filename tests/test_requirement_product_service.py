@@ -668,6 +668,7 @@ class _CreateScheduleStore:
             "idempotency_key": idempotency_key,
             "request_sha256": request_sha256,
             "state": "reserved",
+            "created_at": now_utc,
             "task_id": "task-create-1",
             "source_id": "src-create-1",
             "import_run_id": "run-create-1",
@@ -1002,3 +1003,43 @@ def test_one_time_product_create_rejects_expired_only_input_before_mutation():
     assert requirement_service.commit_calls == 0
     assert requirement_service.store.sources == {}
     assert schedule_store.finalize_calls == 0
+
+
+
+def test_one_time_product_create_retry_uses_original_request_time_for_eligibility():
+    service, requirement_service, schedule_store = _create_service()
+    requirement_service.raise_after_commit_once = True
+    first_now = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+    requirements = [
+        {
+            "external_item_id": "E-window",
+            "title": "Still eligible at request time",
+            "prompt_content": "alpha",
+            "source_updated_at": "2026-10-07T03:00:00Z",
+            "source_created_at": "2026-10-01T01:00:00Z",
+            "expires_at": "2026-10-07T04:05:00Z",
+        }
+    ]
+    base = {
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "idem-window",
+        "name": "Eligibility Window",
+        "profile_version_id": "pv-1",
+        "schedule_config": _once_schedule_config(),
+        "requirements": requirements,
+    }
+
+    with pytest.raises(RuntimeError, match="simulated_import_lost_response"):
+        service.create_one_time_task(**base, now_utc=first_now)
+
+    replay = service.create_one_time_task(
+        **base,
+        now_utc=datetime(2026, 10, 7, 4, 10, tzinfo=timezone.utc),
+    )
+
+    assert schedule_store.request["created_at"] == first_now
+    assert replay["task"]["task_id"] == "task-create-1"
+    assert replay["run"]["run_id"] == "br-create-1"
+    assert schedule_store.request["state"] == "succeeded"
+    assert schedule_store.finalize_calls == 1
