@@ -496,6 +496,8 @@ class RequirementProductService:
             upload_filename=input_filename,
             import_run_id=request["import_run_id"],
             snapshot_id=request["snapshot_id"],
+            expected_profile_version_id=profile_version_id,
+            expected_profile_sha256=profile["profile_sha256"],
         )
         if (
             import_result.get("status") != "committed"
