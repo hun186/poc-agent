@@ -5,6 +5,7 @@ import json
 from typing import Any
 from urllib.parse import quote
 
+from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.models import ImportProfileDocument
 from data_ingestion.requirements.profile import normalize_rows
 from data_ingestion.requirements.source_adapters import acquire_source
@@ -202,6 +203,8 @@ class RequirementProductService:
         profile_sha256 = _required_text(
             version, "profile_sha256", error="requirement_preview_profile_invalid"
         )
+        if canonical_sha256(profile.model_dump(mode="json")) != profile_sha256:
+            raise ValueError("requirement_preview_profile_invalid")
         if (
             version.get("format") != profile.format
             or version.get("source_mode") != profile.source_mode.value
