@@ -392,10 +392,11 @@ def test_materialize_locked_uses_separate_selection_time_from_audit_time():
 
 
 class RecurringFinalizeConnection:
-    def __init__(self, *, now_utc):
+    def __init__(self, *, now_utc, first_run_selectable=True):
         config = _version_config()
         encoded, digest = ScheduleStore.canonical_config(config)
         self.now_utc = now_utc
+        self.first_run_selectable = first_run_selectable
         self.config = config
         self.encoded = encoded
         self.digest = digest
@@ -440,6 +441,8 @@ class RecurringFinalizeConnection:
             )
         elif "FROM [sra_requirement].[requirement_sets]" in sql:
             self.one = ("snap-1",)
+        elif "FROM [sra_requirement].[requirement_snapshot_items]" in sql:
+            self.one = (1,) if self.first_run_selectable else None
         elif sql.startswith("UPDATE [sra_schedule].[requirement_schedules]"):
             self.one = None
             self.rowcount = 1
@@ -527,3 +530,43 @@ def test_recurring_product_finalizer_atomically_enables_without_initial_run(monk
     safe_result = json.loads(request_update[0])
     assert safe_result["next_run_at"] == expected_due.isoformat()
     assert "batch_run_id" not in safe_result
+
+
+
+def test_recurring_product_finalizer_terminalizes_when_first_due_has_no_selectable_rows(monkeypatch):
+    now = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+    connection = RecurringFinalizeConnection(
+        now_utc=now,
+        first_run_selectable=False,
+    )
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    monkeypatch.setattr(store, "_drain_best_effort", lambda: None)
+
+    with pytest.raises(
+        ValueError,
+        match="requirement_product_no_selectable_first_run",
+    ):
+        store.finalize_recurring_product_task_create(
+            request_id="preq-1",
+            task_id="task-1",
+            actor="admin",
+            now_utc=now,
+        )
+
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+    assert not any(
+        sql.startswith("UPDATE [sra_schedule].[requirement_schedules]")
+        for sql, _ in connection.calls
+    )
+    assert not any(
+        sql.startswith("UPDATE [sra_schedule].[requirement_product_tasks]")
+        for sql, _ in connection.calls
+    )
+    terminal_update = next(
+        (sql, params)
+        for sql, params in connection.calls
+        if sql.startswith("UPDATE [sra_schedule].[requirement_product_requests]")
+    )
+    assert "state='failed_terminal'" in terminal_update[0]
+    assert "requirement_product_no_selectable_first_run" in terminal_update[0]
