@@ -127,3 +127,6 @@
 - Existing Product presenters already hide provisioning Tasks/Runs, and ScheduleStore direct Product Task reads exclude provisioning by default. No Product mutation/run/service-key routes exist yet in this gate; those lifecycle admission checks remain P1.5/P2 work.
 - Focused regressions cover superuser admission, atomic enable-only finalization, no initial Run, lost-response replay without duplicate enable/recalculation, once-vs-recurring idempotency conflict, and store-level use of existing recurrence calculation.
 - Local pytest PASS is not claimed because direct Git transport remains unavailable in the execution environment; exact-head Hosted Codex review and Hosted checks are required before merge.
+
+
+- 2026-10-07 P1.4 review correction: recurring Product finalization must emit the existing empty-payload `requirement_schedule.enabled` audit event shape. Passing Product-specific metadata in that audit payload violates the Schedule audit schema and rolls back the entire finalizer. The unsupported payload was removed and focused regression now asserts the emitted enable event has an empty payload.

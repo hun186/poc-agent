@@ -70,3 +70,6 @@
 
 
 - 2026-10-07 P1.4 recurring create current slice: exact-head Hosted Codex review/check evidence is required before merge. After P1.4, continue with the next planned Product gate rather than folding P1.5/P1.6 into this PR.
+
+
+- 2026-10-07 P1.4 exact-head review P1 audit-payload rollback was fixed on the same branch; exact-head Codex re-review/check evidence is required before merge.
