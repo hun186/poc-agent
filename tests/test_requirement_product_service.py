@@ -602,6 +602,8 @@ class _CreateRequirementImportService:
         self.store = _CreateRequirementStore()
         self.commit_calls = 0
         self.committed = {}
+        self.raise_after_commit_once = False
+        self._raised_after_commit = False
 
     def commit(
         self,
@@ -630,6 +632,9 @@ class _CreateRequirementImportService:
             raise AssertionError("import identity replay drift")
         self.committed[import_run_id] = result
         self.store.active_snapshot_id = snapshot_id
+        if self.raise_after_commit_once and not self._raised_after_commit:
+            self._raised_after_commit = True
+            raise RuntimeError("simulated_import_lost_response")
         return dict(result)
 
 
@@ -907,3 +912,60 @@ def test_one_time_product_create_same_key_changed_payload_conflicts():
 
     with pytest.raises(ValueError, match="requirement_idempotency_conflict"):
         service.create_one_time_task(**{**base, "name": "Changed Name"})
+
+
+
+def test_one_time_product_create_rejects_zero_row_input_before_mutation():
+    service, requirement_service, schedule_store = _create_service()
+
+    with pytest.raises(ValueError, match="requirement_preview_empty"):
+        service.create_one_time_task(
+            actor="admin",
+            is_superuser=True,
+            idempotency_key="idem-empty",
+            name="Empty",
+            profile_version_id="pv-1",
+            schedule_config=_once_schedule_config(),
+            requirements=[],
+            now_utc=datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+        )
+
+    assert schedule_store.request["state"] == "failed_terminal"
+    assert schedule_store.request["error_code"] == "requirement_preview_empty"
+    assert requirement_service.commit_calls == 0
+    assert requirement_service.store.sources == {}
+    assert schedule_store.finalize_calls == 0
+
+
+def test_one_time_product_create_recovers_committed_import_after_profile_switch():
+    service, requirement_service, schedule_store = _create_service()
+    requirement_service.raise_after_commit_once = True
+    kwargs = {
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "idem-import-recovery",
+        "name": "One Time",
+        "profile_version_id": "pv-1",
+        "schedule_config": _once_schedule_config(),
+        "requirements": _valid_direct_requirements(),
+        "now_utc": datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+    }
+
+    with pytest.raises(RuntimeError, match="simulated_import_lost_response"):
+        service.create_one_time_task(**kwargs)
+
+    original_get_active = requirement_service.store.get_active_profile_version
+    requirement_service.store.get_active_profile_version = lambda _profile_id: {
+        **requirement_service.store.version,
+        "profile_version_id": "pv-new",
+        "profile_sha256": "f" * 64,
+    }
+    try:
+        replay = service.create_one_time_task(**kwargs)
+    finally:
+        requirement_service.store.get_active_profile_version = original_get_active
+
+    assert replay["task"]["task_id"] == "task-create-1"
+    assert replay["run"]["run_id"] == "br-create-1"
+    assert requirement_service.commit_calls == 2
+    assert schedule_store.finalize_calls == 1
