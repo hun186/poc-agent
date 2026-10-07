@@ -61,3 +61,6 @@
 
 
 - 2026-10-07: P1.2 local verification reconfirmed the execution container cannot resolve `github.com` (`git ls-remote` -> `Could not resolve host: github.com`). The hosted branch therefore cannot be cloned for local pytest; do not claim a local pytest PASS. Use Hosted source inspection, Vercel/check status, and exact-head Codex review for this slice.
+
+
+- 2026-10-07: P1.3 local verification again cannot clone/read Hosted Git through direct transport because `github.com` DNS resolution fails. No local pytest PASS is claimed for the one-time create saga; Hosted source inspection, exact-head Codex review, and Hosted checks are the available repository verification evidence.

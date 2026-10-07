@@ -12,7 +12,7 @@
 
 ### Future architecture and product work
 
-- Requirement Product API + Task Center Design/Plan v1 is approved (PR #277). P1.0 schema v4, P1.0A authority-supplied IDs, and P1.1 Product presenters/identities are merged through PR #280. P1.2 side-effect-free Product preview is the current slice; P1.3+ create orchestration, routers, activation/run flows, UI, Product E2E, and browser E2E remain pending.
+- Requirement Product API + Task Center Design/Plan v1 is approved (PR #277). P1.0 schema v4, P1.0A authority-supplied IDs, and P1.1 Product presenters/identities are merged through PR #280. P1.2 side-effect-free Product preview is merged in PR #281. P1.3 one-time create orchestration is the current slice; recurring create, routers, activation/run flows, UI, Product E2E, and browser E2E remain pending.
 - Product implementation must integrate with the existing SRA `/editor` management shell/Auth/RBAC, reuse Phase 1B Requirement Import + Phase 1C Schedule/Handoff + Report Job, and never expose Handoff credentials or raw artifact paths to browsers.
 - Product v1 requires Schedule schema v4 Product Task/request control-plane tables, superuser-only provisioning/activation, durable idempotency/resource-bound canonical hashes, revision/CAS rules, transactional ownership fences, provisioning visibility gates, atomic Run admission vs disable, and reviewed Product E2E coverage.
 - Job Task JT-1 and LangGraph integration remain NOT STARTED and require new reviewed designs/plans.
@@ -48,7 +48,7 @@
 
 ## 2026-10-07 Requirement Product implementation status
 
-- P1.0 schema v4, P1.0A authority identities, and P1.1 Product presenters/identities are merged through PR #280.
-- P1.2 side-effect-free Product preview is implemented on `feat/requirement-product-preview-p1-2` and requires exact-head Hosted review/check evidence before merge.
-- Keep P1.2 limited to service-level preview + focused tests. Do not fold P1.3 one-time create saga, Product router, or UI into this PR.
-- After P1.2 merges, continue with P1.3 one-time Product create orchestration.
+- P1.0 schema v4, P1.0A authority identities, P1.1 Product presenters/identities, and P1.2 side-effect-free preview are merged through PR #281.
+- P1.3 one-time Product create orchestration is implemented on `feat/requirement-product-create-once-p1-3` and requires exact-head Hosted review/check evidence before merge.
+- Keep this PR limited to one-time create saga/service/store + focused recovery tests. Do not fold recurring P1.4, Product HTTP router, P1.5 updates, P1.6 ownership fences, or UI into it.
+- After P1.3 merges, continue with P1.4 recurring create/finalization and the shared provisioning lifecycle gate.

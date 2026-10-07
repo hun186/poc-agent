@@ -101,3 +101,11 @@
 - `.codex/archive/decisions.md-20260907-120000.md` — earlier complete pre-compaction history through PR #214.
 - `.codex/archive/decisions.md-20260813-000000.md` — earlier retained decision history.
 - Historical details not repeated here remain authoritative for traceability only when not superseded by the current summary.
+
+
+### 2026-10-07 One-time Product create uses persisted preallocation + atomic release
+
+- Reserve every cross-authority identity in `requirement_product_requests` before creating Source/Import/Snapshot/Schedule/Task/Version rows.
+- Exact-ID Source and Schedule creation must replay only when semantics match; unique-key or same-ID drift is never treated as success.
+- The one-time initial Batch Run is created only inside the Product finalizer, using the existing locked Schedule materializer and a stable request-derived manual trigger. Product visibility (`active`) and request success commit in that same transaction.
+- The selected preview profile must still be the active approved profile at create time so Requirement commit cannot silently normalize under a different profile version.
