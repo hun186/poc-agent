@@ -432,21 +432,15 @@ class RequirementProductService:
                 now_utc=now,
             )
             raise ValueError("requirement_preview_rejected")
-
-        profile = preview["profile"]
-        active_profile = self.requirement_import_service.store.get_active_profile_version(
-            profile["profile_id"]
-        )
-        if (
-            active_profile.get("profile_version_id") != profile_version_id
-            or active_profile.get("profile_sha256") != profile["profile_sha256"]
-        ):
+        if int(preview.get("accepted_count") or 0) < 1:
             self.schedule_store.fail_product_request_terminal(
                 request["request_id"],
-                error_code="requirement_preview_profile_not_active",
+                error_code="requirement_preview_empty",
                 now_utc=now,
             )
-            raise ValueError("requirement_preview_profile_not_active")
+            raise ValueError("requirement_preview_empty")
+
+        profile = preview["profile"]
 
         self.schedule_store.mark_product_request_in_progress(
             request["request_id"], now_utc=now
@@ -489,16 +483,26 @@ class RequirementProductService:
         if not bool(source.get("enabled")):
             raise RuntimeError("persistence_error")
 
-        import_result = self.requirement_import_service.commit(
-            request["source_id"],
-            actor=actor,
-            upload_bytes=input_bytes,
-            upload_filename=input_filename,
-            import_run_id=request["import_run_id"],
-            snapshot_id=request["snapshot_id"],
-            expected_profile_version_id=profile_version_id,
-            expected_profile_sha256=profile["profile_sha256"],
-        )
+        try:
+            import_result = self.requirement_import_service.commit(
+                request["source_id"],
+                actor=actor,
+                upload_bytes=input_bytes,
+                upload_filename=input_filename,
+                import_run_id=request["import_run_id"],
+                snapshot_id=request["snapshot_id"],
+                expected_profile_version_id=profile_version_id,
+                expected_profile_sha256=profile["profile_sha256"],
+            )
+        except ValueError as exc:
+            code = str(exc).strip("'").split(":", 1)[0]
+            if code == "profile_invalid":
+                self.schedule_store.fail_product_request_terminal(
+                    request["request_id"],
+                    error_code="requirement_preview_profile_not_active",
+                    now_utc=now,
+                )
+            raise
         if (
             import_result.get("status") != "committed"
             or import_result.get("import_run_id") != request["import_run_id"]
