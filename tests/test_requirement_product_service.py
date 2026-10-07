@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.models import ImportProfileDocument
 
 from sra_api.services.requirement_product_service import (
@@ -365,7 +366,7 @@ class _PreviewOnlyStore:
             "version_number": 3,
             "format": profile.format,
             "source_mode": profile.source_mode.value,
-            "profile_sha256": "a" * 64,
+            "profile_sha256": canonical_sha256(profile.model_dump(mode="json")),
             "status": status,
             "profile": profile,
         }
@@ -432,7 +433,7 @@ def test_product_preview_direct_json_is_side_effect_free_and_normalized():
         "profile_id": "prof-1",
         "profile_version_id": "pv-1",
         "version_number": 3,
-        "profile_sha256": "a" * 64,
+        "profile_sha256": store.version["profile_sha256"],
         "format": "json",
         "source_mode": "authoritative_snapshot",
     }
