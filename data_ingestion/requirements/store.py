@@ -426,6 +426,8 @@ class RequirementStore:
         import_run_id: str | None = None,
         snapshot_id: str | None = None,
         expected_base_snapshot_id: str | None = None,
+        expected_profile_version_id: str | None = None,
+        expected_profile_sha256: str | None = None,
     ) -> dict[str, Any]:
         if candidate.has_errors:
             if expected_base_snapshot_id is not None:
@@ -492,15 +494,32 @@ class RequirementStore:
                 )
                 existing_run = c.fetchone()
                 if existing_run is not None:
+                    self._verify_expected_profile_record(
+                        c,
+                        expected_profile_version_id=expected_profile_version_id,
+                        expected_profile_sha256=expected_profile_sha256,
+                    )
                     c.execute(
                         f"SELECT snapshot_id,import_profile_version_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
                         run_id,
                     )
                     result = self._preallocated_import_result(
-                        source["source_id"], run_id, snapshot_id, existing_run, list(c.fetchall())
+                        source["source_id"],
+                        run_id,
+                        snapshot_id,
+                        existing_run,
+                        list(c.fetchall()),
+                        expected_profile_version_id=expected_profile_version_id,
                     )
                     connection.commit()
                     return result
+            self._lock_expected_profile_for_import(
+                c,
+                source=source,
+                version=version,
+                expected_profile_version_id=expected_profile_version_id,
+                expected_profile_sha256=expected_profile_sha256,
+            )
             c.execute(
                 f"SELECT source_id FROM {self.t}.[requirement_sources] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=? AND enabled=1",
                 source["source_id"],
