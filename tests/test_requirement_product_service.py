@@ -969,3 +969,36 @@ def test_one_time_product_create_recovers_committed_import_after_profile_switch(
     assert replay["run"]["run_id"] == "br-create-1"
     assert requirement_service.commit_calls == 2
     assert schedule_store.finalize_calls == 1
+
+
+
+def test_one_time_product_create_rejects_expired_only_input_before_mutation():
+    service, requirement_service, schedule_store = _create_service()
+    expired = [
+        {
+            "external_item_id": "E-expired",
+            "title": "Expired",
+            "prompt_content": "old",
+            "source_updated_at": "2026-10-01T01:00:00Z",
+            "source_created_at": "2026-10-01T01:00:00Z",
+            "expires_at": "2026-10-07T03:59:59Z",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="requirement_preview_no_selectable_rows"):
+        service.create_one_time_task(
+            actor="admin",
+            is_superuser=True,
+            idempotency_key="idem-expired",
+            name="Expired Only",
+            profile_version_id="pv-1",
+            schedule_config=_once_schedule_config(),
+            requirements=expired,
+            now_utc=datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+        )
+
+    assert schedule_store.request["state"] == "failed_terminal"
+    assert schedule_store.request["error_code"] == "requirement_preview_no_selectable_rows"
+    assert requirement_service.commit_calls == 0
+    assert requirement_service.store.sources == {}
+    assert schedule_store.finalize_calls == 0
