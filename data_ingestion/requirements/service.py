@@ -14,7 +14,11 @@ class RequirementImportService:
 
     def _prepare(self, source_id: str, *, profile_version_id: str | None, upload_bytes: bytes | None, upload_filename: str | None, commit: bool) -> tuple[Any, ...]:
         source = self.store.get_source(source_id)
-        version = self.store.get_active_profile_version(source["import_profile_id"]) if commit or profile_version_id is None else self.store.get_profile_version(profile_version_id)
+        version = (
+            self.store.get_profile_version(profile_version_id)
+            if profile_version_id is not None
+            else self.store.get_active_profile_version(source["import_profile_id"])
+        )
         if version["profile_id"] != source["import_profile_id"]: raise ValueError("profile_invalid")
         profile: ImportProfileDocument = version["profile"]
         if profile.source_mode.value != source["source_mode"]: raise ValueError("profile_invalid")
@@ -55,24 +59,45 @@ class RequirementImportService:
         import_run_id: str | None = None,
         snapshot_id: str | None = None,
         expected_base_snapshot_id: str | None = None,
+        expected_profile_version_id: str | None = None,
+        expected_profile_sha256: str | None = None,
     ) -> dict[str, Any]:
+        if (expected_profile_version_id is None) != (expected_profile_sha256 is None):
+            raise ValueError("profile_invalid")
         if import_run_id is not None:
-            recovered = self.store.recover_preallocated_import_result(
-                source_id, import_run_id, snapshot_id
-            )
+            if expected_profile_version_id is None:
+                recovered = self.store.recover_preallocated_import_result(
+                    source_id, import_run_id, snapshot_id
+                )
+            else:
+                recovered = self.store.recover_preallocated_import_result(
+                    source_id,
+                    import_run_id,
+                    snapshot_id,
+                    expected_profile_version_id=expected_profile_version_id,
+                    expected_profile_sha256=expected_profile_sha256,
+                )
             if recovered is not None:
                 return recovered
         source, version, acquired, candidate, _ = self._prepare(
             source_id,
-            profile_version_id=None,
+            profile_version_id=expected_profile_version_id,
             upload_bytes=upload_bytes,
             upload_filename=upload_filename,
             commit=True,
         )
+        if expected_profile_version_id is not None:
+            if (
+                version.get("profile_version_id") != expected_profile_version_id
+                or version.get("profile_sha256") != expected_profile_sha256
+                or version.get("status") != "approved"
+            ):
+                raise ValueError("profile_invalid")
         if (
             import_run_id is None
             and snapshot_id is None
             and expected_base_snapshot_id is None
+            and expected_profile_version_id is None
         ):
             return self.store.commit_candidate(source, version, acquired, candidate, actor)
         return self.store.commit_candidate(
@@ -84,4 +109,6 @@ class RequirementImportService:
             import_run_id=import_run_id,
             snapshot_id=snapshot_id,
             expected_base_snapshot_id=expected_base_snapshot_id,
+            expected_profile_version_id=expected_profile_version_id,
+            expected_profile_sha256=expected_profile_sha256,
         )
