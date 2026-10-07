@@ -1,6 +1,9 @@
 import json
+from types import SimpleNamespace
 
 import pytest
+
+from data_ingestion.requirements.models import ImportProfileDocument
 
 from sra_api.services.requirement_product_service import (
     ProductTaskIdentity,
@@ -310,3 +313,190 @@ def test_present_run_allows_missing_snapshot_only_for_blocked_no_snapshot():
 
     assert view["status"] == "failed"
     assert view["binding"]["snapshot_id"] is None
+
+
+
+def _preview_profile(format="json"):
+    document = {
+        "format": format,
+        "source_timezone": "UTC",
+        "source_mode": "authoritative_snapshot",
+        "mapping": {
+            "external_item_id": {
+                "source": "external_item_id",
+                "required": True,
+                "type": "text",
+                "transforms": ["trim"],
+            },
+            "title": {
+                "source": "title",
+                "required": True,
+                "type": "text",
+                "transforms": ["trim"],
+            },
+            "prompt_content": {
+                "source": "prompt_content",
+                "required": True,
+                "type": "text",
+                "transforms": ["trim"],
+            },
+            "source_updated_at": {
+                "source": "source_updated_at",
+                "required": True,
+                "type": "datetime",
+            },
+            "source_created_at": {
+                "source": "source_created_at",
+                "required": True,
+                "type": "datetime",
+            },
+        },
+    }
+    return ImportProfileDocument.model_validate(document)
+
+
+class _PreviewOnlyStore:
+    def __init__(self, *, format="json", status="approved"):
+        self.calls = []
+        profile = _preview_profile(format)
+        self.version = {
+            "profile_id": "prof-1",
+            "profile_version_id": "pv-1",
+            "version_number": 3,
+            "format": profile.format,
+            "source_mode": profile.source_mode.value,
+            "profile_sha256": "a" * 64,
+            "status": status,
+            "profile": profile,
+        }
+
+    def get_profile_version(self, profile_version_id):
+        self.calls.append(("get_profile_version", profile_version_id))
+        return dict(self.version)
+
+    def create_source(self, *args, **kwargs):
+        raise AssertionError("preview must not create a source")
+
+    def commit_candidate(self, *args, **kwargs):
+        raise AssertionError("preview must not create an import run or snapshot")
+
+
+def _preview_service(*, format="json", status="approved"):
+    store = _PreviewOnlyStore(format=format, status=status)
+    service = RequirementProductService(
+        requirement_import_service=SimpleNamespace(store=store)
+    )
+    return service, store
+
+
+def _direct_requirements():
+    return [
+        {
+            "external_item_id": " E-1 ",
+            "title": " First ",
+            "prompt_content": "alpha",
+            "source_updated_at": "2026-10-07T01:00:00Z",
+            "source_created_at": "2026-10-01T01:00:00Z",
+            "private_extra_column": "must-not-leak",
+        },
+        {
+            "external_item_id": "E-2",
+            "title": "Second",
+            "prompt_content": "beta",
+            "source_updated_at": "not-a-date",
+            "source_created_at": "2026-10-01T01:00:00Z",
+        },
+    ]
+
+
+def test_product_preview_direct_json_is_side_effect_free_and_normalized():
+    service, store = _preview_service()
+
+    preview = service.preview_input(
+        profile_version_id="pv-1",
+        requirements=_direct_requirements(),
+    )
+
+    assert store.calls == [("get_profile_version", "pv-1")]
+    assert preview["row_count"] == 2
+    assert preview["accepted_count"] == 1
+    assert preview["rejected_count"] == 1
+    assert preview["has_errors"] is True
+    assert preview["normalized_preview"][0]["external_item_id"] == "E-1"
+    assert preview["normalized_preview"][0]["title"] == "First"
+    assert "private_extra_column" not in json.dumps(preview, default=str)
+    assert preview["errors"][0]["source_row_number"] == 2
+    assert preview["errors"][0]["code"] == "datetime_parse_error"
+    assert preview["warnings"] == []
+    assert preview["profile"] == {
+        "profile_id": "prof-1",
+        "profile_version_id": "pv-1",
+        "version_number": 3,
+        "profile_sha256": "a" * 64,
+        "format": "json",
+        "source_mode": "authoritative_snapshot",
+    }
+    assert isinstance(preview["source_sha256"], str)
+    assert preview["source_sha256"]
+
+
+def test_product_preview_uploaded_csv_reuses_requirement_parser():
+    service, store = _preview_service(format="csv")
+    content = (
+        "external_item_id,title,prompt_content,source_updated_at,source_created_at\n"
+        "E-9,CSV title,CSV body,2026-10-07T01:00:00Z,2026-10-01T01:00:00Z\n"
+    ).encode("utf-8")
+
+    preview = service.preview_input(
+        profile_version_id="pv-1",
+        upload_bytes=content,
+        upload_filename="../unsafe-name.csv",
+    )
+
+    assert store.calls == [("get_profile_version", "pv-1")]
+    assert preview["accepted_count"] == 1
+    assert preview["rejected_count"] == 0
+    assert preview["normalized_preview"][0]["external_item_id"] == "E-9"
+    assert preview["profile"]["format"] == "csv"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {
+            "upload_bytes": b"[]",
+            "upload_filename": "requirements.json",
+            "requirements": [],
+        },
+        {"upload_bytes": b"[]"},
+        {"upload_filename": "requirements.json"},
+    ],
+)
+def test_product_preview_requires_exactly_one_complete_input_mode(kwargs):
+    service, _ = _preview_service()
+
+    with pytest.raises(ValueError, match="requirement_preview_input_invalid"):
+        service.preview_input(profile_version_id="pv-1", **kwargs)
+
+
+def test_product_preview_rejects_unapproved_profile_before_parsing():
+    service, store = _preview_service(status="draft")
+
+    with pytest.raises(ValueError, match="requirement_preview_profile_not_approved"):
+        service.preview_input(
+            profile_version_id="pv-1",
+            requirements=_direct_requirements(),
+        )
+
+    assert store.calls == [("get_profile_version", "pv-1")]
+
+
+def test_product_preview_direct_json_must_match_profile_format():
+    service, _ = _preview_service(format="csv")
+
+    with pytest.raises(ValueError, match="source_format_invalid"):
+        service.preview_input(
+            profile_version_id="pv-1",
+            requirements=_direct_requirements(),
+        )
