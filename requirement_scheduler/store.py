@@ -872,7 +872,6 @@ class ScheduleStore:
                     actor,
                     request["schedule_id"],
                     schedule_version_id=request["schedule_version_id"],
-                    payload={"source": "requirement_product_create"},
                     created_at=now_utc,
                 ),
             )
