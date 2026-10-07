@@ -645,6 +645,7 @@ class _CreateScheduleStore:
         self.version_calls = 0
         self.finalize_calls = 0
         self.recurring_finalize_calls = 0
+        self.recurring_finalize_now = None
         self.schedule_calls = 0
         self.task_calls = 0
         self.raise_after_finalize_commit = False
@@ -798,6 +799,7 @@ class _CreateScheduleStore:
         if self.request["state"] == "succeeded":
             return dict(self.request["safe_result"])
         self.recurring_finalize_calls += 1
+        self.recurring_finalize_now = now_utc
         assert self.task["execution_kind"] == "recurring"
         assert self.task["product_state"] == "provisioning"
         assert self.schedule["enabled"] is False
@@ -1173,3 +1175,25 @@ def test_task_create_same_key_once_vs_recurring_conflicts():
 
     with pytest.raises(ValueError, match="requirement_idempotency_conflict"):
         service.create_recurring_task(**common)
+
+
+
+def test_recurring_product_create_refreshes_finalization_clock():
+    service, _, schedule_store = _create_service()
+    request_now = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+    finalize_now = datetime(2026, 10, 7, 4, 10, tzinfo=timezone.utc)
+
+    service.create_recurring_task(
+        actor="admin",
+        is_superuser=True,
+        idempotency_key="idem-recurring-clock",
+        name="Recurring Clock",
+        profile_version_id="pv-1",
+        schedule_config=_once_schedule_config(),
+        requirements=_valid_direct_requirements(),
+        now_utc=request_now,
+        finalize_now_utc=finalize_now,
+    )
+
+    assert schedule_store.request["created_at"] == request_now
+    assert schedule_store.recurring_finalize_now == finalize_now
