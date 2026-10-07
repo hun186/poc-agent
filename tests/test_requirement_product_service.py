@@ -262,3 +262,51 @@ def test_status_mapping_rejects_unknown_item_state_in_failure_evidence():
                 "items": [{"execution_state": "REPORT_JOB_NATIVE_SUPER_STATE"}],
             }
         )
+
+
+def test_status_mapping_rejects_empty_failure_evidence():
+    with pytest.raises(ValueError, match="requirement_run_status_evidence_missing"):
+        neutral_run_status({"state": "completed_with_failures", "items": []})
+
+
+def test_status_mapping_rejects_failure_summary_without_failure_state():
+    with pytest.raises(ValueError, match="requirement_run_status_evidence_missing"):
+        neutral_run_status(
+            {
+                "state": "completed_with_failures",
+                "items": [
+                    {"execution_state": "completed"},
+                    {"execution_state": "not_selected"},
+                ],
+            }
+        )
+
+
+@pytest.mark.parametrize("state", ["handoff_pending", "running", "completed", "completed_with_failures"])
+def test_present_run_requires_snapshot_binding_for_non_blocked_runs(state):
+    run = _run(state=state, snapshot_id=None)
+    if state == "completed_with_failures":
+        run["items"][0]["execution_state"] = "failed"
+
+    with pytest.raises(ValueError, match="requirement_run_snapshot_binding_missing"):
+        RequirementProductService().present_run(
+            product_task=_task(),
+            run=run,
+        )
+
+
+def test_present_run_allows_missing_snapshot_only_for_blocked_no_snapshot():
+    view = RequirementProductService().present_run(
+        product_task=_task(),
+        run=_run(
+            state="blocked_no_snapshot",
+            snapshot_id=None,
+            selected_count=0,
+            success_count=0,
+            failure_count=0,
+            items=[],
+        ),
+    )
+
+    assert view["status"] == "failed"
+    assert view["binding"]["snapshot_id"] is None
