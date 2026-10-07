@@ -113,3 +113,17 @@
 
 
 - 2026-10-07 P1.3 fifth review correction: the one-time finalizer now separates semantic selection time from audit/materialization time. Product retry materialization evaluates Requirement eligibility at the durable request `created_at`, while Batch Run/item created/updated timestamps remain the current finalization time. This closes the remaining expiry drift between service preview admission and Schedule-store item selection.
+
+
+## 2026-10-07 Requirement Product P1.4 recurring create
+
+- P1.3 one-time Product create merged in PR #282 at `main@c51a10655616354d7a52c3548c363cfec2a3747e`.
+- P1.4 is implemented on `feat/requirement-product-recurring-create-p1-4` as an internal service/store slice only; Product HTTP router/UI/P1.5 updates/P1.6 low-level ownership fences remain out of scope.
+- Added `RequirementProductService.create_recurring_task()` by preserving the reviewed P1.3 durable reservation/preview/profile-binding/source/import/Schedule/Version saga and changing only Product execution kind + finalization behavior.
+- The initial Schedule Version is approved while the Schedule stays `enabled=0,next_run_at=NULL`; the Product Task stays `provisioning` until finalization.
+- Added `ScheduleStore.finalize_recurring_product_task_create()`. In one Schedule SQL transaction it locks the owning request, Product Task, Schedule, approved active version, and exact active Requirement Snapshot; validates persisted recurrence config through existing Phase 1C authority; calculates `next_run_at` with the existing `next_occurrence()`; enables recurrence; transitions the Product Task active; persists bounded safe create evidence; and marks the same request succeeded.
+- Recurring finalization does not create an initial Batch Run. Scheduler visibility is released only by the atomic `enabled=1 + next_run_at` commit; the existing scheduler query considers only enabled schedules.
+- The durable create result stores the initial `next_run_at` as immutable replay evidence. Replaying a successful create may present the Task's current Schedule state while still returning the original create-time next-run evidence, so later scheduler advancement or future Task disable/version activation does not invalidate create idempotency.
+- Existing Product presenters already hide provisioning Tasks/Runs, and ScheduleStore direct Product Task reads exclude provisioning by default. No Product mutation/run/service-key routes exist yet in this gate; those lifecycle admission checks remain P1.5/P2 work.
+- Focused regressions cover superuser admission, atomic enable-only finalization, no initial Run, lost-response replay without duplicate enable/recalculation, once-vs-recurring idempotency conflict, and store-level use of existing recurrence calculation.
+- Local pytest PASS is not claimed because direct Git transport remains unavailable in the execution environment; exact-head Hosted Codex review and Hosted checks are required before merge.

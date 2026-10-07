@@ -48,10 +48,10 @@
 
 ## 2026-10-07 Requirement Product implementation status
 
-- P1.0 schema v4, P1.0A authority identities, P1.1 Product presenters/identities, and P1.2 side-effect-free preview are merged through PR #281.
-- P1.3 one-time Product create orchestration is implemented on `feat/requirement-product-create-once-p1-3` and requires exact-head Hosted review/check evidence before merge.
-- Keep this PR limited to one-time create saga/service/store + focused recovery tests. Do not fold recurring P1.4, Product HTTP router, P1.5 updates, P1.6 ownership fences, or UI into it.
-- After P1.3 merges, continue with P1.4 recurring create/finalization and the shared provisioning lifecycle gate.
+- P1.0 schema v4, P1.0A authority identities, P1.1 Product presenters/identities, P1.2 preview, and P1.3 one-time create are merged through PR #282.
+- P1.4 recurring Product create/finalization is implemented on `feat/requirement-product-recurring-create-p1-4` and requires exact-head Hosted review/check evidence before merge.
+- Keep P1.4 limited to recurring create service/store finalization, provisioning release semantics, immutable initial-next-run replay evidence, and focused tests.
+- Product HTTP router/UI, P1.5 Task update/draft activation, P1.6 atomic low-level ownership fences, P1.7 input replacement, and later Product API gates remain pending.
 
 
 - 2026-10-07 P1.3 exact-head review P1 profile-binding race was fixed on the same branch; exact-head Codex re-review/check evidence is required before merge.
@@ -67,3 +67,6 @@
 
 
 - 2026-10-07 P1.3 fifth exact-head review finding (P1 finalizer selection-time drift) was fixed; exact-head re-review/check evidence remains required before merge.
+
+
+- 2026-10-07 P1.4 recurring create current slice: exact-head Hosted Codex review/check evidence is required before merge. After P1.4, continue with the next planned Product gate rather than folding P1.5/P1.6 into this PR.

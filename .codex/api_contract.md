@@ -62,3 +62,12 @@
 - Durable `task_create` reservation is keyed by user principal + operation + idempotency key and binds a canonical request SHA over execution kind, name, profile-version identity, input digest/name, and Schedule config digest.
 - Reservation preallocates and persists `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, and `schedule_version_id`.
 - Successful one-time finalization stores only bounded safe result IDs/revision plus `batch_run_id`; Product response is rebuilt through existing Task/Run presenters, so trigger-request identity, raw paths, credentials, Report Job native state, and E2E internals remain suppressed.
+
+
+## 2026-10-07 Requirement Product P1.4 internal recurring create contract
+
+- No Product HTTP route is added by P1.4.
+- Internal recurring create is superuser-only and uses the same durable `task_create` reservation namespace as one-time create. `execution_kind=recurring` is included in the canonical request hash, so reusing one idempotency key across once/recurring payloads conflicts.
+- Before finalization the Product Task is `provisioning`, the initial Schedule Version is approved/active, and the Schedule is recurrence-disabled with no next-run time.
+- Successful finalization returns Product Task presentation plus immutable recurrence evidence containing the initial approved Schedule Version ID and create-time `initial_next_run_at`.
+- There is no initial Product Run in a successful recurring create response.
