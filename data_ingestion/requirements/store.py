@@ -51,6 +51,7 @@ class RequirementStore:
 
     def initialize(self) -> None:
         connection = self._connect()
+        replayed = False
         try:
             cursor = connection.cursor()
             for statement in bootstrap_schema_statements(self.schema): cursor.execute(statement)
@@ -216,13 +217,13 @@ class RequirementStore:
                         or bool(existing[5]) != bool(enabled)
                     ):
                         raise RuntimeError("persistence_error")
-                    connection.commit()
-                    return self.get_source(sid)
-            cursor.execute(
-                f"INSERT INTO {self.t}.[requirement_sources] VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                sid, name, kind.value, mode.value, encoded_config, import_profile_id,
-                enabled, actor, now, actor, now,
-            )
+                    replayed = True
+            if not replayed:
+                cursor.execute(
+                    f"INSERT INTO {self.t}.[requirement_sources] VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    sid, name, kind.value, mode.value, encoded_config, import_profile_id,
+                    enabled, actor, now, actor, now,
+                )
             connection.commit()
         except Exception as exc:
             connection.rollback()
