@@ -183,8 +183,52 @@ class RequirementStore:
         return version
 
     def create_source(self, name: str, source_type: str, source_mode: str, source_config: dict[str, Any], import_profile_id: str, actor: str, *, enabled: bool = False, source_id: str | None = None) -> dict[str, Any]:
-        kind, mode = SourceType(source_type), SourceMode(source_mode); config = validate_source_config(kind, source_config); sid, now = source_id or _id("src"), _now()
-        self._execute(f"INSERT INTO {self.t}.[requirement_sources] VALUES (?,?,?,?,?,?,?,?,?,?,?)", sid, name, kind.value, mode.value, json.dumps(config), import_profile_id, enabled, actor, now, actor, now)
+        kind, mode = SourceType(source_type), SourceMode(source_mode)
+        config = validate_source_config(kind, source_config)
+        sid, now = source_id or _id("src"), _now()
+        encoded_config = json.dumps(config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        connection = self._connect()
+        try:
+            cursor = connection.cursor()
+            if source_id is not None:
+                cursor.execute(
+                    f"SELECT name,source_type,source_mode,source_config_json,import_profile_id,enabled "
+                    f"FROM {self.t}.[requirement_sources] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=?",
+                    sid,
+                )
+                existing = cursor.fetchone()
+                if existing is not None:
+                    try:
+                        existing_config = json.dumps(
+                            json.loads(existing[3]),
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                    except (TypeError, json.JSONDecodeError):
+                        raise RuntimeError("persistence_error") from None
+                    if (
+                        existing[0] != name
+                        or existing[1] != kind.value
+                        or existing[2] != mode.value
+                        or existing_config != encoded_config
+                        or existing[4] != import_profile_id
+                        or bool(existing[5]) != bool(enabled)
+                    ):
+                        raise RuntimeError("persistence_error")
+                    connection.commit()
+                    return self.get_source(sid)
+            cursor.execute(
+                f"INSERT INTO {self.t}.[requirement_sources] VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                sid, name, kind.value, mode.value, encoded_config, import_profile_id,
+                enabled, actor, now, actor, now,
+            )
+            connection.commit()
+        except Exception as exc:
+            connection.rollback()
+            raise _stable_persistence_error(exc) from exc
+        finally:
+            connection.close()
         return self.get_source(sid)
 
     def list_sources(self) -> list[dict[str, Any]]: return [self._source(row) for row in self._query(f"SELECT * FROM {self.t}.[requirement_sources] ORDER BY created_at")]
@@ -553,6 +597,17 @@ class RequirementStore:
         rows = self._query(f"SELECT * FROM {self.t}.[import_runs] WHERE import_run_id=?", run_id)
         if not rows: raise KeyError("import_run_not_found")
         rows[0]["rows"] = self._query(f"SELECT * FROM {self.t}.[import_run_rows] WHERE import_run_id=? ORDER BY source_row_number", run_id); return rows[0]
+    def get_requirement_set_for_source(self, source_id: str) -> dict[str, Any]:
+        rows = self._query(
+            f"SELECT * FROM {self.t}.[requirement_sets] WHERE source_id=?",
+            source_id,
+        )
+        if not rows:
+            raise KeyError("requirement_set_not_found")
+        if len(rows) != 1:
+            raise RuntimeError("persistence_error")
+        return rows[0]
+
     def list_requirement_sets(self): return self._query(f"SELECT * FROM {self.t}.[requirement_sets] ORDER BY created_at")
     def list_snapshots(self, set_id: str): return self._query(f"SELECT * FROM {self.t}.[requirement_set_snapshots] WHERE requirement_set_id=? ORDER BY created_at", set_id)
     def get_snapshot(self, snapshot_id: str):
