@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
+import json
 
 from requirement_scheduler.store import ScheduleStore
+from requirement_scheduler.recurrence import next_occurrence
 from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate, TriggerIdentity
 import pytest
 
@@ -386,3 +388,141 @@ def test_materialize_locked_uses_separate_selection_time_from_audit_time():
     assert item_insert[-3] == retry_time
     assert item_insert[-2] == selection_time
     assert item_insert[-1] == retry_time
+
+
+
+class RecurringFinalizeConnection:
+    def __init__(self, *, now_utc):
+        config = _version_config()
+        encoded, digest = ScheduleStore.canonical_config(config)
+        self.now_utc = now_utc
+        self.config = config
+        self.encoded = encoded
+        self.digest = digest
+        self.calls = []
+        self.last_sql = ""
+        self.one = None
+        self.rowcount = 0
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = 0
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.last_sql = sql
+        self.rowcount = 0
+        if "FROM [sra_schedule].[requirement_product_requests]" in sql:
+            self.one = (
+                "preq-1", "user", "admin", "task_create", "idem-1", "a" * 64,
+                "in_progress", "task-1", "src-1", "run-1", "snap-1", "sch-1",
+                "sv-1", None, None, None, None, None, None,
+                datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+                datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+                None,
+            )
+        elif "FROM [sra_schedule].[requirement_product_tasks]" in sql:
+            self.one = (
+                "task-1", "sch-1", "src-1", "recurring", "provisioning", 1
+            )
+        elif "FROM [sra_schedule].[requirement_schedules]" in sql:
+            self.one = ("set-1", False, "sv-1", None)
+        elif "FROM [sra_schedule].[requirement_schedule_versions]" in sql:
+            self.one = (
+                "approved",
+                self.config.timezone,
+                self.encoded,
+                self.config.run_policy.value,
+                self.config.model,
+                self.digest,
+            )
+        elif "FROM [sra_requirement].[requirement_sets]" in sql:
+            self.one = ("snap-1",)
+        elif sql.startswith("UPDATE [sra_schedule].[requirement_schedules]"):
+            self.one = None
+            self.rowcount = 1
+        elif sql.startswith("UPDATE [sra_schedule].[requirement_product_tasks]"):
+            self.one = None
+            self.rowcount = 1
+        elif sql.startswith("UPDATE [sra_schedule].[requirement_product_requests]"):
+            self.one = None
+            self.rowcount = 1
+        else:
+            self.one = None
+        return self
+
+    def fetchone(self):
+        return self.one
+
+    def fetchall(self):
+        return []
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed += 1
+
+
+class RecurringFinalizeRegistry:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def open_named_connection(self, _name):
+        return self.connection
+
+
+def test_recurring_product_finalizer_atomically_enables_without_initial_run(monkeypatch):
+    now = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+    connection = RecurringFinalizeConnection(now_utc=now)
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    audit = []
+    monkeypatch.setattr(
+        store,
+        "_enqueue_audit_event",
+        lambda _cursor, event: audit.append(event),
+    )
+    monkeypatch.setattr(store, "_drain_best_effort", lambda: None)
+
+    result = store.finalize_recurring_product_task_create(
+        request_id="preq-1",
+        task_id="task-1",
+        actor="admin",
+        now_utc=now,
+    )
+
+    expected_due = next_occurrence(
+        connection.config.recurrence,
+        connection.config.timezone,
+        now,
+    )
+    assert result["next_run_at"] == expected_due.isoformat()
+    assert result["task_revision"] == 1
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+    assert len(audit) == 1
+    assert audit[0].action == "requirement_schedule.enabled"
+    schedule_update = next(
+        params
+        for sql, params in connection.calls
+        if sql.startswith("UPDATE [sra_schedule].[requirement_schedules]")
+    )
+    assert schedule_update[0] == expected_due
+    assert not any(
+        "INSERT INTO [sra_schedule].[requirement_batch_runs]" in sql
+        or "INSERT INTO [sra_schedule].[requirement_batch_run_items]" in sql
+        for sql, _ in connection.calls
+    )
+    request_update = next(
+        params
+        for sql, params in connection.calls
+        if sql.startswith("UPDATE [sra_schedule].[requirement_product_requests]")
+    )
+    safe_result = json.loads(request_update[0])
+    assert safe_result["next_run_at"] == expected_due.isoformat()
+    assert "batch_run_id" not in safe_result
