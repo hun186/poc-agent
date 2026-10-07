@@ -232,3 +232,90 @@ def test_create_version_same_identity_with_different_semantics_fails_closed():
         "INSERT INTO [sra_schedule].[requirement_schedule_versions]" in sql
         for sql, _ in registry.connection.calls
     )
+
+
+
+class ScheduleReplayConnection(Connection):
+    def __init__(self, existing):
+        super().__init__()
+        self.existing = existing
+        self.calls = []
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.sql, self.params = sql, params
+        if "[sra_requirement].[requirement_sets]" in sql:
+            self.one = (params[0],)
+        elif "FROM [sra_schedule].[requirement_schedules] WITH (UPDLOCK,HOLDLOCK)" in sql:
+            self.one = self.existing
+        elif sql.startswith("INSERT INTO") and "requirement_schedules" in sql:
+            self.rows.append(params)
+            self.one = None
+        else:
+            self.one = None
+        return self
+
+
+def test_create_schedule_same_supplied_identity_and_semantics_replays_without_insert():
+    created_at = datetime(2026, 10, 7, tzinfo=timezone.utc)
+    existing = (
+        "One Time",
+        "set-1",
+        False,
+        "sv-existing",
+        None,
+        "admin",
+        created_at,
+        "admin",
+        created_at,
+    )
+    registry = Registry()
+    registry.connection = ScheduleReplayConnection(existing)
+    store = ScheduleStore(registry, "control")
+
+    result = store.create_schedule(
+        name="One Time",
+        requirement_set_id="set-1",
+        actor="retry-admin",
+        schedule_id="sch-fixed",
+    )
+
+    assert result["schedule_id"] == "sch-fixed"
+    assert result["active_version_id"] == "sv-existing"
+    assert result["enabled"] is False
+    assert not any(
+        sql.startswith("INSERT INTO") and "requirement_schedules" in sql
+        for sql, _ in registry.connection.calls
+    )
+    assert registry.connection.commits == 1
+
+
+def test_create_schedule_same_supplied_identity_with_different_semantics_fails_closed():
+    existing = (
+        "Other Name",
+        "set-1",
+        False,
+        None,
+        None,
+        "admin",
+        datetime(2026, 10, 7, tzinfo=timezone.utc),
+        "admin",
+        datetime(2026, 10, 7, tzinfo=timezone.utc),
+    )
+    registry = Registry()
+    registry.connection = ScheduleReplayConnection(existing)
+    store = ScheduleStore(registry, "control")
+
+    with pytest.raises(RuntimeError, match="^persistence_error$"):
+        store.create_schedule(
+            name="One Time",
+            requirement_set_id="set-1",
+            actor="admin",
+            schedule_id="sch-fixed",
+        )
+
+    assert registry.connection.rollbacks == 1
+    assert not any(
+        sql.startswith("INSERT INTO") and "requirement_schedules" in sql
+        for sql, _ in registry.connection.calls
+    )
