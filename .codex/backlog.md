@@ -58,3 +58,6 @@
 
 
 - 2026-10-07 P1.3 second exact-head review findings (P1 recovery ordering, P2 zero-row run) were fixed on the same branch; exact-head re-review/check evidence remains required before merge.
+
+
+- 2026-10-07 P1.3 third exact-head review findings (P1 preview normalization regression, P2 expired-only zero-select run) were fixed; exact-head re-review/check evidence remains required before merge.

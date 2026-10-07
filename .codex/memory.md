@@ -104,3 +104,6 @@
 
 
 - 2026-10-07 P1.3 second review corrections: Product create no longer performs a separate active-profile pre-check before import authority. This preserves recovery when an exact-ID import already committed and the profile later changes; genuinely new imports still enforce the previewed profile binding transactionally inside Requirement Import. One-time create also terminal-rejects zero accepted rows before Source/Import/Schedule/Run mutation so empty snapshots cannot create permanently queued runs.
+
+
+- 2026-10-07 P1.3 third review corrections: fixed a Product preview refactor regression where `preview_input()` referenced normalized locals before assignment; raw upload arguments now enter `_input_bytes()` and only normalized bytes/name reach `acquire_source()`. One-time create also rejects previews whose accepted rows are all expired at the create evaluation time, preventing initial Batch Runs with zero selectable items from remaining queued indefinitely.
