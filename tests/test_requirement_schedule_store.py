@@ -3,7 +3,7 @@ import json
 
 from requirement_scheduler.store import ScheduleStore
 from requirement_scheduler.recurrence import next_occurrence
-from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate, TriggerIdentity
+from requirement_scheduler.models import MaterializedRun, RecurrenceSpec, RunPolicy, ScheduleVersionCreate, TriggerIdentity
 import pytest
 
 
@@ -570,3 +570,96 @@ def test_recurring_product_finalizer_terminalizes_when_first_due_has_no_selectab
     )
     assert "state='failed_terminal'" in terminal_update[0]
     assert "requirement_product_no_selectable_first_run" in terminal_update[0]
+
+
+
+class ClaimDueSelectionConnection:
+    def __init__(self, *, persisted_due, recurrence_json):
+        self.persisted_due = persisted_due
+        self.recurrence_json = recurrence_json
+        self.calls = []
+        self.last_sql = ""
+        self.one = None
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = 0
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.last_sql = sql
+        if "SELECT TOP 1 s.schedule_id" in sql:
+            self.one = (
+                "sch-1",
+                "sv-1",
+                self.persisted_due,
+                "UTC",
+                self.recurrence_json,
+                RunPolicy.ALL_ACTIVE.value,
+            )
+        else:
+            self.one = None
+        return self
+
+    def fetchone(self):
+        return self.one
+
+    def fetchall(self):
+        return []
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed += 1
+
+
+def test_claim_due_evaluates_scheduled_run_at_occurrence_time(monkeypatch):
+    config = _version_config()
+    recurrence_json, _ = ScheduleStore.canonical_config(config)
+    persisted_due = datetime(2026, 10, 7, 9, 0, tzinfo=timezone.utc)
+    claim_time = datetime(2026, 10, 7, 9, 5, tzinfo=timezone.utc)
+    connection = ClaimDueSelectionConnection(
+        persisted_due=persisted_due,
+        recurrence_json=recurrence_json,
+    )
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    observed = {}
+
+    def fake_materialize(
+        cursor,
+        schedule_id,
+        version_id,
+        policy,
+        trigger,
+        now_utc,
+        actor,
+        *,
+        selection_time=None,
+    ):
+        observed.update(
+            {
+                "trigger": trigger,
+                "now_utc": now_utc,
+                "selection_time": selection_time,
+            }
+        )
+        return MaterializedRun(
+            {"batch_run_id": "br-1", "schedule_id": schedule_id},
+            (),
+        )
+
+    monkeypatch.setattr(store, "_materialize_locked", fake_materialize)
+
+    result = store.claim_due(now_utc=claim_time, actor="scheduler")
+
+    assert result["scheduled_for"] == persisted_due
+    assert observed["trigger"].scheduled_for == persisted_due
+    assert observed["selection_time"] == persisted_due
+    assert observed["now_utc"] == claim_time
+    assert connection.commits == 1
