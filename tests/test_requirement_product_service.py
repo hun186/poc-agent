@@ -500,3 +500,17 @@ def test_product_preview_direct_json_must_match_profile_format():
             profile_version_id="pv-1",
             requirements=_direct_requirements(),
         )
+
+
+
+def test_product_preview_rejects_profile_digest_mismatch():
+    service, store = _preview_service()
+    store.version["profile_sha256"] = "f" * 64
+
+    with pytest.raises(ValueError, match="requirement_preview_profile_invalid"):
+        service.preview_input(
+            profile_version_id="pv-1",
+            requirements=_direct_requirements(),
+        )
+
+    assert store.calls == [("get_profile_version", "pv-1")]
