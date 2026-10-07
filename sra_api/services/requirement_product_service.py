@@ -675,6 +675,7 @@ class RequirementProductService:
         upload_filename: str | None = None,
         requirements: Any | None = None,
         now_utc: datetime | None = None,
+        finalize_now_utc: datetime | None = None,
     ) -> dict[str, Any]:
         """Provision one recurring Product Task and atomically enable recurrence."""
 
@@ -882,11 +883,20 @@ class RequirementProductService:
             now_utc=now,
         )
 
+        finalization_now = (
+            finalize_now_utc
+            if finalize_now_utc is not None
+            else datetime.now(timezone.utc).replace(microsecond=0)
+        )
+        if finalization_now.tzinfo is None:
+            raise ValueError("timezone_naive")
+        if finalization_now.astimezone(timezone.utc) < self._request_evaluation_time(request):
+            raise ValueError("requirement_product_request_invalid")
         result = self.schedule_store.finalize_recurring_product_task_create(
             request_id=request["request_id"],
             task_id=request["task_id"],
             actor=actor,
-            now_utc=now,
+            now_utc=finalization_now.astimezone(timezone.utc),
         )
         return self._present_recurring_create_result(result)
 
