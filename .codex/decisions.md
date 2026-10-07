@@ -115,3 +115,10 @@
 
 - A Product create pre-check of the active Requirement profile is insufficient because another superuser can activate a different profile version before the import transaction begins.
 - Product create therefore passes the previewed `profile_version_id + profile_sha256` into Requirement Import authority. Preparation uses that exact version; a new import locks/validates the active profile binding inside the mutation transaction; terminal exact-ID replay verifies persisted import/snapshot profile identity without requiring the profile to remain currently active after success.
+
+
+### 2026-10-07 Product create recovery precedes current-active profile admission
+
+- Historical exact-ID import recovery is authoritative once the persisted import/snapshot is bound to the expected profile identity. A later profile activation change must not prevent recovery/finalization of that already-committed Product request.
+- Therefore Product orchestration must not independently reject the current active profile before calling Requirement Import recovery. The Requirement Import transaction enforces active-profile equality only for a genuinely new write.
+- One-time Product create requires at least one accepted Requirement row. Empty direct JSON/header-only uploads fail terminal before durable domain objects or an initial Batch Run are created.

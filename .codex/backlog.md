@@ -55,3 +55,6 @@
 
 
 - 2026-10-07 P1.3 exact-head review P1 profile-binding race was fixed on the same branch; exact-head Codex re-review/check evidence is required before merge.
+
+
+- 2026-10-07 P1.3 second exact-head review findings (P1 recovery ordering, P2 zero-row run) were fixed on the same branch; exact-head re-review/check evidence remains required before merge.

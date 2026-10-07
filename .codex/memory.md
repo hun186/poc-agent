@@ -101,3 +101,6 @@
 
 
 - 2026-10-07 P1.3 review correction: exact-head Codex review found a TOCTOU gap between Product preview/profile pre-check and Requirement commit. The fix threads the expected `profile_version_id + profile_sha256` into `RequirementImportService.commit()`, prepares with that exact version, validates terminal replay against persisted import/snapshot profile identity, and locks the source/profile/profile-version rows with `UPDLOCK,HOLDLOCK` before a new import write so active-profile switching cannot change normalization semantics between preview and snapshot commit.
+
+
+- 2026-10-07 P1.3 second review corrections: Product create no longer performs a separate active-profile pre-check before import authority. This preserves recovery when an exact-ID import already committed and the profile later changes; genuinely new imports still enforce the previewed profile binding transactionally inside Requirement Import. One-time create also terminal-rejects zero accepted rows before Source/Import/Schedule/Run mutation so empty snapshots cannot create permanently queued runs.
