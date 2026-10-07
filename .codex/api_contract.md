@@ -38,3 +38,10 @@
 
 - `GET /v1/operator-e2e/runtime-evidence` accepts `verification=release|functional` (default `release`). Functional requests may receive HTTP 200 with `deployment_source.identity_verified=false`, `attestation_status=mismatch`, and `attestation_category=active_runtime_source_mismatch`; capability, worker, and artifact-root evidence remains authoritative.
 - Missing/malformed provenance, unexpected runtime input, unexpected active runtime modules, and module shadowing remain errors in both policies. The response still excludes secrets and deployment paths.
+
+## 2026-10-06 Requirement Product P1.1 internal presenter contract
+
+- Product HTTP routes remain **NOT IMPLEMENTED**.
+- The internal Product presenter now defines bounded Task/Run shapes for later routes: authoritative Product Task identity, neutral Run status, immutable `schedule_version_id` / `snapshot_id` binding, Requirement Version identity, safe error category, artifact availability/digest, and relative future Product links.
+- Backend-native Report Job state/IDs, absolute or relative artifact storage paths, output-root fingerprints, trigger-request identities, credentials, and E2E markers are not part of the Product presenter contract.
+- Presenters treat `product_state=provisioning` as unavailable to ordinary Product presentation.

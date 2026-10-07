@@ -67,3 +67,13 @@
 
 - 2026-10-06: Compacted `.codex/memory.md`, `.codex/decisions.md`, `.codex/backlog.md`, and `.codex/known_issues.md` after robust AGENTS.md date/work-block counting. Full originals were archived first at `.codex/archive/memory.md-20261006-143100.md`, `.codex/archive/decisions.md-20261006-143100.md`, `.codex/archive/backlog.md-20261006-153400.md`, and `.codex/archive/known_issues.md-20261006-153400.md`.
 - Verification: memory, decisions, backlog, and known-issues archives were created from complete hosted branch contents before active-file rewrites; archive blob SHAs exactly match the corresponding pre-compaction blobs. Recounting all six required active `.codex/*.md` files with both dated headings and dated work bullets leaves every file below the >40 KB, >400-line, and >20-work-block mandatory compaction triggers. Active files retain current Product/architecture contracts, unresolved acceptance blockers (including Elasticsearch `mapping_incompatible`), live backlog, and archive pointers.
+
+## 2026-10-06 Requirement Product P1.1 presenters
+
+- Started P1.1 from hosted `main@a6e81e55ec1d70b4b8e8c07be9440a4e335cab8c` on `feat/requirement-product-presenters-p1-1`.
+- Added `sra_api/services/requirement_product_service.py` as a pure Product façade presenter layer. Product Task identity is taken from the `requirement_product_tasks` authority row; Task and Run presenters whitelist output instead of forwarding Schedule/Handoff/Report Job dictionaries.
+- Product Run presentation exposes immutable `schedule_id + schedule_version_id + snapshot_id` binding and Requirement Version identity, maps backend lifecycle into neutral Product status, emits only relative API links, and does not expose Report Job native state/IDs, artifact filesystem paths, output-root fingerprints, trigger-request identity, credentials, or E2E markers.
+- Provisioning Task/Run presenters fail closed as unavailable; one-time `disabled` identity is rejected as an invalid Product invariant.
+- Added focused `tests/test_requirement_product_service.py` coverage for Product identity authority, neutral status mapping, safe links, provisioning visibility, cross-schedule identity rejection, and sensitive/backend-field non-disclosure.
+- No Product HTTP route, preview orchestration, create saga, activation, input replacement, or Run admission is implemented by this slice.
+- Local pytest PASS is not claimed in this connector-only pass; exact-head Codex review/check evidence is required before merge.
