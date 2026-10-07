@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import hashlib
 import json
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -9,6 +12,7 @@ from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.models import ImportProfileDocument
 from data_ingestion.requirements.profile import normalize_rows
 from data_ingestion.requirements.source_adapters import acquire_source
+from requirement_scheduler.models import ScheduleVersionCreate
 
 
 _PRODUCT_STATES = {"provisioning", "active", "disabled"}
@@ -161,8 +165,74 @@ def _present_run_item(item: dict[str, Any]) -> dict[str, Any]:
 class RequirementProductService:
     """Product façade presenters plus side-effect-free preview orchestration."""
 
-    def __init__(self, requirement_import_service: Any | None = None) -> None:
+    def __init__(
+        self,
+        requirement_import_service: Any | None = None,
+        schedule_store: Any | None = None,
+    ) -> None:
         self.requirement_import_service = requirement_import_service
+        self.schedule_store = schedule_store
+
+    @staticmethod
+    def _input_bytes(
+        *,
+        upload_bytes: bytes | None,
+        upload_filename: str | None,
+        requirements: Any | None,
+    ) -> tuple[bytes, str]:
+        has_upload = upload_bytes is not None or upload_filename is not None
+        has_direct = requirements is not None
+        if has_upload == has_direct:
+            raise ValueError("requirement_preview_input_invalid")
+        if has_upload:
+            if upload_bytes is None or not upload_filename:
+                raise ValueError("requirement_preview_input_invalid")
+            return upload_bytes, Path(upload_filename).name
+        try:
+            content = json.dumps(
+                requirements,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("source_format_invalid") from exc
+        return content, "requirements.json"
+
+    @staticmethod
+    def _validate_existing_product_source(
+        source: dict[str, Any],
+        *,
+        source_id: str,
+        name: str,
+        source_mode: str,
+        source_format: str,
+        profile_id: str,
+    ) -> None:
+        expected_config = {"display_name": name, "format": source_format}
+        if (
+            source.get("source_id") != source_id
+            or source.get("name") != name
+            or source.get("source_type") != "manual_upload"
+            or source.get("source_mode") != source_mode
+            or source.get("source_config") != expected_config
+            or source.get("import_profile_id") != profile_id
+        ):
+            raise RuntimeError("persistence_error")
+
+    def _present_one_time_create_result(self, result: dict[str, Any]) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        task = self.schedule_store.get_product_task(result["task_id"])
+        schedule = self.schedule_store.get_schedule(result["schedule_id"])
+        run = self.schedule_store.get_batch_run(
+            schedule_id=result["schedule_id"],
+            batch_run_id=result["batch_run_id"],
+        )
+        return {
+            "task": self.present_task(product_task=task, schedule=schedule),
+            "run": self.present_run(product_task=task, run=run),
+        }
 
     def preview_input(
         self,
@@ -179,12 +249,12 @@ class RequirementProductService:
         if self.requirement_import_service is None:
             raise RuntimeError("requirement_preview_unconfigured")
 
-        has_upload = upload_bytes is not None or upload_filename is not None
+        input_bytes, input_filename = self._input_bytes(
+            upload_bytes=input_bytes,
+            upload_filename=input_filename,
+            requirements=requirements,
+        )
         has_direct = requirements is not None
-        if has_upload == has_direct:
-            raise ValueError("requirement_preview_input_invalid")
-        if has_upload and (upload_bytes is None or not upload_filename):
-            raise ValueError("requirement_preview_input_invalid")
 
         version = self.requirement_import_service.store.get_profile_version(
             profile_version_id
@@ -217,18 +287,6 @@ class RequirementProductService:
             or version_number < 1
         ):
             raise ValueError("requirement_preview_profile_invalid")
-
-        if has_direct:
-            try:
-                upload_bytes = json.dumps(
-                    requirements,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ).encode("utf-8")
-            except (TypeError, ValueError) as exc:
-                raise ValueError("source_format_invalid") from exc
-            upload_filename = "requirements.json"
 
         source = {
             "source_type": "manual_upload",
