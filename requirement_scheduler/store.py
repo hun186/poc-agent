@@ -706,6 +706,12 @@ class ScheduleStore:
                 raise ValueError("requirement_product_create_incomplete")
 
             trigger_request_id = f"product-create:{request_id}"
+            selection_time = request["created_at"]
+            if (
+                not isinstance(selection_time, datetime)
+                or selection_time.tzinfo is None
+            ):
+                raise RuntimeError("persistence_error")
             materialized = self._materialize_locked(
                 c,
                 request["schedule_id"],
@@ -714,6 +720,7 @@ class ScheduleStore:
                 TriggerIdentity("manual", trigger_request_id=trigger_request_id),
                 now_utc,
                 actor,
+                selection_time=selection_time,
             )
             batch_run_id = materialized.run["batch_run_id"]
             result = {
@@ -1021,7 +1028,21 @@ class ScheduleStore:
             raise _safe_error(exc) from exc
         finally: connection.close()
 
-    def _materialize_locked(self, c, schedule_id: str, version_id: str, policy: str, trigger: TriggerIdentity, now_utc: datetime, actor: str) -> MaterializedRun:
+    def _materialize_locked(
+        self,
+        c,
+        schedule_id: str,
+        version_id: str,
+        policy: str,
+        trigger: TriggerIdentity,
+        now_utc: datetime,
+        actor: str,
+        *,
+        selection_time: datetime | None = None,
+    ) -> MaterializedRun:
+        selection_at = selection_time or now_utc
+        if selection_at.tzinfo is None:
+            raise ValueError("datetime_not_aware")
         identity_value = trigger.scheduled_for if trigger.trigger_type == "scheduled" else trigger.trigger_request_id
         identity_column = "scheduled_for" if trigger.trigger_type == "scheduled" else "trigger_request_id"
         c.execute(f"SELECT batch_run_id FROM {self.t}.[requirement_batch_runs] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=? AND {identity_column}=? AND trigger_type=?", schedule_id, identity_value, trigger.trigger_type)
@@ -1039,7 +1060,7 @@ class ScheduleStore:
         for requirement_id, rv_id, rv_number, source_order, expires_at, external_item_id in source_items:
             c.execute(f"SELECT last_seen_requirement_version_id,last_seen_requirement_version_number,last_successful_requirement_version_id,last_successful_requirement_version_number FROM {self.t}.[requirement_schedule_item_state] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=? AND requirement_id=?", schedule_id, requirement_id); cp = c.fetchone()
             checkpoint = Checkpoint(*(cp or (None, None, None, None)))
-            decision = evaluate_selection(policy, rv_id, int(rv_number), checkpoint, expires_at, now_utc)
+            decision = evaluate_selection(policy, rv_id, int(rv_number), checkpoint, expires_at, selection_at)
             items.append({"run_item_id": _id("ri"), "requirement_id": requirement_id, "external_item_id": external_item_id, "requirement_version_id": rv_id, "requirement_version_number": int(rv_number), "source_order": int(source_order), "selection_status": "selected" if decision.selected else "skipped", "selection_reason": decision.reason, "expired_at_selection": decision.expired_at_selection})
         selected = sum(x["selection_status"] == "selected" for x in items); skipped = len(items) - selected
         phase1a_batch_id = f"reqrun-{run_id}"
@@ -1047,7 +1068,7 @@ class ScheduleStore:
         for item in items:
             phase1a_task_id = item["external_item_id"] if item["selection_status"] == "selected" else None
             item["phase1a_task_id"] = phase1a_task_id
-            c.execute(f"INSERT INTO {self.t}.[requirement_batch_run_items](run_item_id,batch_run_id,requirement_id,requirement_version_id,requirement_version_number,source_order,selection_status,selection_reason,phase1a_task_id,execution_state,expired_at_selection,expired_before_handoff,deadline_elapsed_during_execution,created_at,evaluated_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,0,?,?,?)", item["run_item_id"], run_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], item["source_order"], item["selection_status"], item["selection_reason"], phase1a_task_id, "handoff_pending" if item["selection_status"] == "selected" else "not_selected", item["expired_at_selection"], now_utc, now_utc, now_utc)
+            c.execute(f"INSERT INTO {self.t}.[requirement_batch_run_items](run_item_id,batch_run_id,requirement_id,requirement_version_id,requirement_version_number,source_order,selection_status,selection_reason,phase1a_task_id,execution_state,expired_at_selection,expired_before_handoff,deadline_elapsed_during_execution,created_at,evaluated_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,0,?,?,?)", item["run_item_id"], run_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], item["source_order"], item["selection_status"], item["selection_reason"], phase1a_task_id, "handoff_pending" if item["selection_status"] == "selected" else "not_selected", item["expired_at_selection"], now_utc, selection_at, now_utc)
             c.execute(f"MERGE {self.t}.[requirement_schedule_item_state] WITH (HOLDLOCK) AS t USING (SELECT ? schedule_id,? requirement_id) s ON t.schedule_id=s.schedule_id AND t.requirement_id=s.requirement_id WHEN MATCHED THEN UPDATE SET last_seen_requirement_version_id=?,last_seen_requirement_version_number=?,updated_at=? WHEN NOT MATCHED THEN INSERT(schedule_id,requirement_id,last_seen_requirement_version_id,last_seen_requirement_version_number,updated_at) VALUES (?,?,?,?,?);", schedule_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], now_utc, schedule_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], now_utc)
         return MaterializedRun({"batch_run_id": run_id, "phase1a_batch_id": phase1a_batch_id, "schedule_id": schedule_id, "schedule_version_id": version_id, "snapshot_id": snapshot_id, "state": "handoff_pending", "selected_count": selected, "skipped_count": skipped}, tuple(items))
 
