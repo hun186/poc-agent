@@ -196,9 +196,14 @@ class RequirementProductService:
         profile = version.get("profile")
         if not isinstance(profile, ImportProfileDocument):
             raise ValueError("requirement_preview_profile_invalid")
+        profile_id = _required_text(
+            version, "profile_id", error="requirement_preview_profile_invalid"
+        )
+        profile_sha256 = _required_text(
+            version, "profile_sha256", error="requirement_preview_profile_invalid"
+        )
         if (
-            version.get("profile_id") is None
-            or version.get("format") != profile.format
+            version.get("format") != profile.format
             or version.get("source_mode") != profile.source_mode.value
         ):
             raise ValueError("requirement_preview_profile_invalid")
@@ -273,10 +278,10 @@ class RequirementProductService:
             "errors": errors,
             "warnings": warnings,
             "profile": {
-                "profile_id": version["profile_id"],
+                "profile_id": profile_id,
                 "profile_version_id": profile_version_id,
                 "version_number": version_number,
-                "profile_sha256": version.get("profile_sha256"),
+                "profile_sha256": profile_sha256,
                 "format": profile.format,
                 "source_mode": profile.source_mode.value,
             },
