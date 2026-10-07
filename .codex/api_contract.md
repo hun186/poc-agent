@@ -6,7 +6,7 @@
 - Public integration surfaces include `GET /healthz`, `GET /v1/models`, `POST /v1/chat/completions`, document/fulltext retrieval, and synchronous Word export. Editor/Auth and data-management routes use bearer authentication and role checks.
 - Persisted Report Jobs use `POST /v1/report/jobs`, `GET /v1/report/jobs/{job_id}`, and `GET /v1/report/jobs/{job_id}/word`. Jobs are owner scoped; completed artifacts must pass confinement and DOCX validation.
 - Requirement import and schedule APIs expose authenticated source/profile/import, immutable snapshot/version, schedule lifecycle, manual run materialization, neutral Batch/Run Item status, and authorized artifact history without exposing credentials, prompts, absolute roots, or backend-native state.
-- Requirement Product HTTP routes are still NOT IMPLEMENTED. P1.0 schema v4, P1.0A authority compatibility, and P1.1 Product presenter/identity boundaries are merged. P1.2 adds only an internal side-effect-free Product preview service; create/update/run routes and durable Product mutations remain future gates. Planned Product mutations still require durable `Idempotency-Key`; canonical `request_sha256` binds operation + all route/path target identities + semantic payload/input digest.
+- Requirement Product HTTP routes are still NOT IMPLEMENTED. P1.0 schema v4, P1.0A authority compatibility, and P1.1 Product presenter/identity boundaries are merged. P1.2 internal preview is merged. P1.3 adds an internal one-time durable Product create service/store contract; Product HTTP routes, recurring create, update/run routes, and other Product mutations remain future gates. Planned Product mutations still require durable `Idempotency-Key`; canonical `request_sha256` binds operation + all route/path target identities + semantic payload/input digest.
 - Excel-to-SQL endpoints provide dashboard task/config management, upload/preview/confirm, audit dashboards, controlled source-row reads/edits/deletes, and source statistics. Enabled-task allowlists and role boundaries remain authoritative.
 - `GET /v1/operator-e2e/runtime-evidence` is authenticated, superuser-only, and read-only. Schema `requirement_e2e_runtime_evidence_v1` reports bounded deployment provenance identity, Schedule/Handoff worker identity, and artifact-root fingerprint.
 - Runtime-evidence source failures include `release_provenance_missing`, `release_provenance_invalid`, `active_runtime_source_mismatch`, `unexpected_active_runtime_module`, `runtime_module_shadowing`, and `unexpected_runtime_input`. The last category means an actually selected/discovered release-managed input is absent from provenance.
@@ -53,3 +53,12 @@
 - Internal `RequirementProductService.preview_input(...)` requires an explicit approved `profile_version_id` and exactly one input form: uploaded bytes + filename, or direct Requirement JSON.
 - Output contains `source_sha256`, row/accepted/rejected counts, `has_errors`, `normalized_preview`, row `errors`/`warnings`, and profile identity (`profile_id`, `profile_version_id`, `version_number`, `profile_sha256`, format, source mode).
 - The normalized preview excludes raw source dictionaries and internal row/content hashes. Preview does not reserve idempotency, create Requirement/Schedule/Product persistence, or materialize work.
+
+
+## 2026-10-07 Requirement Product P1.3 internal one-time create contract
+
+- No Product HTTP route is introduced by P1.3.
+- Internal one-time create requires superuser authority, `Idempotency-Key`, task name, explicit approved/current-active Requirement profile version, exactly one Product input form, and a validated `ScheduleVersionCreate`.
+- Durable `task_create` reservation is keyed by user principal + operation + idempotency key and binds a canonical request SHA over execution kind, name, profile-version identity, input digest/name, and Schedule config digest.
+- Reservation preallocates and persists `task_id`, `source_id`, `import_run_id`, `snapshot_id`, `schedule_id`, and `schedule_version_id`.
+- Successful one-time finalization stores only bounded safe result IDs/revision plus `batch_run_id`; Product response is rebuilt through existing Task/Run presenters, so trigger-request identity, raw paths, credentials, Report Job native state, and E2E internals remain suppressed.

@@ -101,3 +101,37 @@
 - `.codex/archive/decisions.md-20260907-120000.md` — earlier complete pre-compaction history through PR #214.
 - `.codex/archive/decisions.md-20260813-000000.md` — earlier retained decision history.
 - Historical details not repeated here remain authoritative for traceability only when not superseded by the current summary.
+
+
+### 2026-10-07 One-time Product create uses persisted preallocation + atomic release
+
+- Reserve every cross-authority identity in `requirement_product_requests` before creating Source/Import/Snapshot/Schedule/Task/Version rows.
+- Exact-ID Source and Schedule creation must replay only when semantics match; unique-key or same-ID drift is never treated as success.
+- The one-time initial Batch Run is created only inside the Product finalizer, using the existing locked Schedule materializer and a stable request-derived manual trigger. Product visibility (`active`) and request success commit in that same transaction.
+- The selected preview profile must still be the active approved profile at create time so Requirement commit cannot silently normalize under a different profile version.
+
+
+### 2026-10-07 Product preview profile identity must be transactionally bound at import
+
+- A Product create pre-check of the active Requirement profile is insufficient because another superuser can activate a different profile version before the import transaction begins.
+- Product create therefore passes the previewed `profile_version_id + profile_sha256` into Requirement Import authority. Preparation uses that exact version; a new import locks/validates the active profile binding inside the mutation transaction; terminal exact-ID replay verifies persisted import/snapshot profile identity without requiring the profile to remain currently active after success.
+
+
+### 2026-10-07 Product create recovery precedes current-active profile admission
+
+- Historical exact-ID import recovery is authoritative once the persisted import/snapshot is bound to the expected profile identity. A later profile activation change must not prevent recovery/finalization of that already-committed Product request.
+- Therefore Product orchestration must not independently reject the current active profile before calling Requirement Import recovery. The Requirement Import transaction enforces active-profile equality only for a genuinely new write.
+- One-time Product create requires at least one accepted Requirement row. Empty direct JSON/header-only uploads fail terminal before durable domain objects or an initial Batch Run are created.
+
+
+### 2026-10-07 Product create selection time is part of durable request semantics
+
+- One-time Product create eligibility must not drift across retries. The selection/expiry evaluation time is the Product request's persisted `created_at`, established when the idempotency reservation is first committed.
+- Retries may occur after Requirement rows expire; if those rows were eligible at the original request time, recovery/finalization continues using that same evaluation instant rather than converting the request to terminal failure.
+
+
+### 2026-10-07 Product one-time finalization separates selection time from audit time
+
+- `_materialize_locked()` accepts an optional semantic `selection_time`; existing scheduler/manual paths default it to `now_utc`.
+- Product one-time finalization passes the reserved Product request `created_at` as `selection_time` so retries select the same rows as the original request.
+- Audit/materialization timestamps continue using current `now_utc`; only eligibility evaluation and item `evaluated_at` use the durable selection instant.

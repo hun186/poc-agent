@@ -100,3 +100,12 @@
 - The preview boundary selects an approved Requirement Import profile version, constructs only an ephemeral manual-upload descriptor, and delegates parsing/normalization to the existing `data_ingestion.requirements.source_adapters.acquire_source` and `profile.normalize_rows` authorities.
 - Direct Requirement JSON is canonicalized to an in-memory JSON upload so JSON and file uploads share the same parser/profile behavior.
 - Preview output is whitelisted to canonical Product-safe fields and diagnostics. It does not create or address Requirement Source/Snapshot, Schedule, Product Task, Batch Run, Handoff, Report Job, artifact path, credential, or E2E authority.
+
+
+## 2026-10-07 Requirement Product one-time create saga
+
+- P1.3 introduces the first durable Product mutation orchestration but still no Product HTTP router. Cross-authority IDs are reserved in `requirement_product_requests` before Requirement/Schedule writes.
+- One-time provisioning composes existing authorities in order: approved Requirement profile/preview → task-owned manual-upload Source → exact-ID Requirement import/Snapshot → logical Schedule → provisioning Product Task → exact-ID Schedule Version → approval while recurrence-disabled → atomic Schedule-store finalizer.
+- The one-time finalizer is the execution-release + visibility boundary. It verifies the reserved IDs against Product Task, Schedule active version, and exact active Requirement Snapshot, then calls the existing `_materialize_locked()` with a stable request-derived manual trigger inside the same SQL transaction that sets Product Task active and request succeeded.
+- Report Job/Handoff remain downstream consumers of the durable Batch Run; Product create does not call either execution subsystem directly.
+- P1.3 does not implement recurring finalization, Product routers, low-level ownership fencing, Task PATCH/activation, input replacement, or general Run-trigger admission.

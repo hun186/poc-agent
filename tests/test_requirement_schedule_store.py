@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from requirement_scheduler.store import ScheduleStore
-from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate
+from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate, TriggerIdentity
 import pytest
 
 
@@ -232,3 +232,157 @@ def test_create_version_same_identity_with_different_semantics_fails_closed():
         "INSERT INTO [sra_schedule].[requirement_schedule_versions]" in sql
         for sql, _ in registry.connection.calls
     )
+
+
+
+class ScheduleReplayConnection(Connection):
+    def __init__(self, existing):
+        super().__init__()
+        self.existing = existing
+        self.calls = []
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.sql, self.params = sql, params
+        if "[sra_requirement].[requirement_sets]" in sql:
+            self.one = (params[0],)
+        elif "FROM [sra_schedule].[requirement_schedules] WITH (UPDLOCK,HOLDLOCK)" in sql:
+            self.one = self.existing
+        elif sql.startswith("INSERT INTO") and "requirement_schedules" in sql:
+            self.rows.append(params)
+            self.one = None
+        else:
+            self.one = None
+        return self
+
+
+def test_create_schedule_same_supplied_identity_and_semantics_replays_without_insert():
+    created_at = datetime(2026, 10, 7, tzinfo=timezone.utc)
+    existing = (
+        "One Time",
+        "set-1",
+        False,
+        "sv-existing",
+        None,
+        "admin",
+        created_at,
+        "admin",
+        created_at,
+    )
+    registry = Registry()
+    registry.connection = ScheduleReplayConnection(existing)
+    store = ScheduleStore(registry, "control")
+
+    result = store.create_schedule(
+        name="One Time",
+        requirement_set_id="set-1",
+        actor="retry-admin",
+        schedule_id="sch-fixed",
+    )
+
+    assert result["schedule_id"] == "sch-fixed"
+    assert result["active_version_id"] == "sv-existing"
+    assert result["enabled"] is False
+    assert not any(
+        sql.startswith("INSERT INTO") and "requirement_schedules" in sql
+        for sql, _ in registry.connection.calls
+    )
+    assert registry.connection.commits == 1
+
+
+def test_create_schedule_same_supplied_identity_with_different_semantics_fails_closed():
+    existing = (
+        "Other Name",
+        "set-1",
+        False,
+        None,
+        None,
+        "admin",
+        datetime(2026, 10, 7, tzinfo=timezone.utc),
+        "admin",
+        datetime(2026, 10, 7, tzinfo=timezone.utc),
+    )
+    registry = Registry()
+    registry.connection = ScheduleReplayConnection(existing)
+    store = ScheduleStore(registry, "control")
+
+    with pytest.raises(RuntimeError, match="^persistence_error$"):
+        store.create_schedule(
+            name="One Time",
+            requirement_set_id="set-1",
+            actor="admin",
+            schedule_id="sch-fixed",
+        )
+
+    assert registry.connection.rollbacks == 1
+    assert not any(
+        sql.startswith("INSERT INTO") and "requirement_schedules" in sql
+        for sql, _ in registry.connection.calls
+    )
+
+
+
+class SelectionTimeCursor:
+    def __init__(self, *, expires_at):
+        self.expires_at = expires_at
+        self.last_sql = ""
+        self.calls = []
+
+    def execute(self, sql, *params):
+        self.last_sql = sql
+        self.calls.append((sql, params))
+        return self
+
+    def fetchone(self):
+        sql = self.last_sql
+        if "FROM [sra_schedule].[requirement_batch_runs]" in sql:
+            return None
+        if "SELECT active_snapshot_id" in sql:
+            return ("snap-1",)
+        if "requirement_schedule_item_state" in sql:
+            return None
+        return None
+
+    def fetchall(self):
+        if "FROM [sra_requirement].[requirement_snapshot_items]" in self.last_sql:
+            return [
+                (
+                    "req-1",
+                    "rv-1",
+                    1,
+                    1,
+                    self.expires_at,
+                    "external-1",
+                )
+            ]
+        return []
+
+
+def test_materialize_locked_uses_separate_selection_time_from_audit_time():
+    store = ScheduleStore(Registry(), "control")
+    selection_time = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+    retry_time = datetime(2026, 10, 7, 4, 10, tzinfo=timezone.utc)
+    cursor = SelectionTimeCursor(
+        expires_at=datetime(2026, 10, 7, 4, 5, tzinfo=timezone.utc)
+    )
+
+    result = store._materialize_locked(
+        cursor,
+        "sch-1",
+        "sv-1",
+        RunPolicy.ALL_ACTIVE.value,
+        TriggerIdentity("manual", trigger_request_id="product-create:preq-1"),
+        retry_time,
+        "admin",
+        selection_time=selection_time,
+    )
+
+    assert result.run["selected_count"] == 1
+    item_insert = next(
+        params
+        for sql, params in cursor.calls
+        if "INSERT INTO [sra_schedule].[requirement_batch_run_items]" in sql
+    )
+    assert item_insert[-3] == retry_time
+    assert item_insert[-2] == selection_time
+    assert item_insert[-1] == retry_time

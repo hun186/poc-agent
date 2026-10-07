@@ -9,7 +9,7 @@
 - Production jobs must never enter Requirement E2E semantic mocks. Verified E2E mock authority is job-scoped and isolated across tool threads.
 - Operator E2E remains a deployment/technical observer. Repository tests or documentation review are not fresh live deployment acceptance.
 - Formal Requirement deployment acceptance is still blocked by the unresolved live Elasticsearch `mapping_incompatible` condition identified during capability probing; repository/offline tests do not clear that blocker. Re-run authorized live mapping/capability acceptance after it is corrected.
-- Requirement Product API + integrated Task Center Design/Plan v1 is approved. P1.0 schema v4, P1.0A authority IDs, and P1.1 Product presenters/identities are merged through PR #280. P1.2 side-effect-free Product preview is in progress; Product HTTP routes, create/update/run orchestration, and UI are not implemented yet.
+- Requirement Product API + integrated Task Center Design/Plan v1 is approved. P1.0 schema v4, P1.0A authority IDs, and P1.1 Product presenters/identities are merged through PR #280. P1.2 side-effect-free Product preview is merged in PR #281. P1.3 one-time Product create orchestration is in progress; Product HTTP routes, recurring create, update/run orchestration, and UI are not implemented yet.
 
 ## Requirement Product API + Task Center — Current Contract
 
@@ -87,3 +87,29 @@
 - Product preview returns source SHA, row/accepted/rejected counts, normalized canonical rows, separated row errors/warnings, and profile/version identity. Raw source columns, row hashes, execution hashes, and durable internal identities are not exposed.
 - Focused tests cover direct JSON normalization, CSV upload parsing, exact-one input mode, approved-profile enforcement, format mismatch, and mutation traps.
 - Local pytest PASS is not claimed: `git ls-remote https://github.com/hun186/poc-agent.git HEAD` still fails with `Could not resolve host: github.com`; Hosted exact-head review/check evidence is required.
+
+
+## 2026-10-07 Requirement Product P1.3 one-time create
+
+- Started P1.3 from hosted `main@b5c8046cdcc4c82727317d3933a775dd874cab6b` on `feat/requirement-product-create-once-p1-3` after PR #281 merged.
+- Added durable `task_create` request reservation in Schedule SQL authority. The reservation persists preallocated Task/Source/Import/Snapshot/Schedule/Schedule-Version IDs before external authority writes and replays same-key/same-hash requests; concurrent first-reservation unique-key races re-read the winner.
+- Added replay-safe exact-ID Requirement Source and Schedule creation. Same ID + same semantics replays; semantic drift fails closed.
+- Added provisioning Product Task persistence and one-time Product create finalizer. The finalizer locks request/Task/Schedule/Version/Snapshot authority in one Schedule transaction, requires the Schedule remain recurrence-disabled, materializes exactly one manual Run through the existing locked materializer, transitions the Task to active, stores bounded safe result metadata, and marks the request succeeded atomically.
+- `RequirementProductService.create_one_time_task()` enforces an internal superuser gate, reserves before preview, requires the selected approved profile to remain active, creates/enables a task-owned manual-upload source, commits exact preallocated import/snapshot IDs, creates exact Schedule/Version identities, approves the initial version while disabled, and invokes the atomic finalizer. It never calls Report Job/Handoff directly.
+- Focused regressions cover lower-role rejection before reservation, exact authority binding, one-time-vs-disabled-recurring identity, lost-response success replay without duplicate import/version/run, same-key changed-payload conflict, replay-safe source identity, and replay-safe Schedule identity.
+- Local pytest PASS is not claimed: direct Git transport still fails with `Could not resolve host: github.com`. Hosted exact-head Codex review/check evidence remains required.
+
+
+- 2026-10-07 P1.3 review correction: exact-head Codex review found a TOCTOU gap between Product preview/profile pre-check and Requirement commit. The fix threads the expected `profile_version_id + profile_sha256` into `RequirementImportService.commit()`, prepares with that exact version, validates terminal replay against persisted import/snapshot profile identity, and locks the source/profile/profile-version rows with `UPDLOCK,HOLDLOCK` before a new import write so active-profile switching cannot change normalization semantics between preview and snapshot commit.
+
+
+- 2026-10-07 P1.3 second review corrections: Product create no longer performs a separate active-profile pre-check before import authority. This preserves recovery when an exact-ID import already committed and the profile later changes; genuinely new imports still enforce the previewed profile binding transactionally inside Requirement Import. One-time create also terminal-rejects zero accepted rows before Source/Import/Schedule/Run mutation so empty snapshots cannot create permanently queued runs.
+
+
+- 2026-10-07 P1.3 third review corrections: fixed a Product preview refactor regression where `preview_input()` referenced normalized locals before assignment; raw upload arguments now enter `_input_bytes()` and only normalized bytes/name reach `acquire_source()`. One-time create also rejects previews whose accepted rows are all expired at the create evaluation time, preventing initial Batch Runs with zero selectable items from remaining queued indefinitely.
+
+
+- 2026-10-07 P1.3 fourth review corrections: the exact `preview_input()` block now passes raw `upload_bytes/upload_filename` into `_input_bytes()` and passes only normalized bytes/name to `acquire_source()`. Product create eligibility is evaluated against the durable request's original persisted `created_at`, not the retry wall clock, so a crash/retry after rows later expire can still recover and finalize the same idempotent request.
+
+
+- 2026-10-07 P1.3 fifth review correction: the one-time finalizer now separates semantic selection time from audit/materialization time. Product retry materialization evaluates Requirement eligibility at the durable request `created_at`, while Batch Run/item created/updated timestamps remain the current finalization time. This closes the remaining expiry drift between service preview admission and Schedule-store item selection.

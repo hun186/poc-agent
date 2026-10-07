@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import hashlib
 import json
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -9,6 +12,7 @@ from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.models import ImportProfileDocument
 from data_ingestion.requirements.profile import normalize_rows
 from data_ingestion.requirements.source_adapters import acquire_source
+from requirement_scheduler.models import ScheduleVersionCreate
 
 
 _PRODUCT_STATES = {"provisioning", "active", "disabled"}
@@ -161,8 +165,74 @@ def _present_run_item(item: dict[str, Any]) -> dict[str, Any]:
 class RequirementProductService:
     """Product façade presenters plus side-effect-free preview orchestration."""
 
-    def __init__(self, requirement_import_service: Any | None = None) -> None:
+    def __init__(
+        self,
+        requirement_import_service: Any | None = None,
+        schedule_store: Any | None = None,
+    ) -> None:
         self.requirement_import_service = requirement_import_service
+        self.schedule_store = schedule_store
+
+    @staticmethod
+    def _input_bytes(
+        *,
+        upload_bytes: bytes | None,
+        upload_filename: str | None,
+        requirements: Any | None,
+    ) -> tuple[bytes, str]:
+        has_upload = upload_bytes is not None or upload_filename is not None
+        has_direct = requirements is not None
+        if has_upload == has_direct:
+            raise ValueError("requirement_preview_input_invalid")
+        if has_upload:
+            if upload_bytes is None or not upload_filename:
+                raise ValueError("requirement_preview_input_invalid")
+            return upload_bytes, Path(upload_filename).name
+        try:
+            content = json.dumps(
+                requirements,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("source_format_invalid") from exc
+        return content, "requirements.json"
+
+    @staticmethod
+    def _validate_existing_product_source(
+        source: dict[str, Any],
+        *,
+        source_id: str,
+        name: str,
+        source_mode: str,
+        source_format: str,
+        profile_id: str,
+    ) -> None:
+        expected_config = {"display_name": name, "format": source_format}
+        if (
+            source.get("source_id") != source_id
+            or source.get("name") != name
+            or source.get("source_type") != "manual_upload"
+            or source.get("source_mode") != source_mode
+            or source.get("source_config") != expected_config
+            or source.get("import_profile_id") != profile_id
+        ):
+            raise RuntimeError("persistence_error")
+
+    def _present_one_time_create_result(self, result: dict[str, Any]) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        task = self.schedule_store.get_product_task(result["task_id"])
+        schedule = self.schedule_store.get_schedule(result["schedule_id"])
+        run = self.schedule_store.get_batch_run(
+            schedule_id=result["schedule_id"],
+            batch_run_id=result["batch_run_id"],
+        )
+        return {
+            "task": self.present_task(product_task=task, schedule=schedule),
+            "run": self.present_run(product_task=task, run=run),
+        }
 
     def preview_input(
         self,
@@ -179,13 +249,11 @@ class RequirementProductService:
         if self.requirement_import_service is None:
             raise RuntimeError("requirement_preview_unconfigured")
 
-        has_upload = upload_bytes is not None or upload_filename is not None
-        has_direct = requirements is not None
-        if has_upload == has_direct:
-            raise ValueError("requirement_preview_input_invalid")
-        if has_upload and (upload_bytes is None or not upload_filename):
-            raise ValueError("requirement_preview_input_invalid")
-
+        input_bytes, input_filename = self._input_bytes(
+            upload_bytes=upload_bytes,
+            upload_filename=upload_filename,
+            requirements=requirements,
+        )
         version = self.requirement_import_service.store.get_profile_version(
             profile_version_id
         )
@@ -218,18 +286,6 @@ class RequirementProductService:
         ):
             raise ValueError("requirement_preview_profile_invalid")
 
-        if has_direct:
-            try:
-                upload_bytes = json.dumps(
-                    requirements,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ).encode("utf-8")
-            except (TypeError, ValueError) as exc:
-                raise ValueError("source_format_invalid") from exc
-            upload_filename = "requirements.json"
-
         source = {
             "source_type": "manual_upload",
             "source_mode": profile.source_mode.value,
@@ -241,8 +297,8 @@ class RequirementProductService:
         acquired = acquire_source(
             source,
             profile,
-            upload_bytes=upload_bytes,
-            upload_filename=upload_filename,
+            upload_bytes=input_bytes,
+            upload_filename=input_filename,
         )
         candidate = normalize_rows(
             acquired.rows,
@@ -289,6 +345,280 @@ class RequirementProductService:
                 "source_mode": profile.source_mode.value,
             },
         }
+
+    @staticmethod
+    def _preview_selectable_count(
+        preview: dict[str, Any], *, evaluation_time: datetime
+    ) -> int:
+        rows = preview.get("normalized_preview")
+        if not isinstance(rows, list):
+            raise RuntimeError("requirement_preview_invalid")
+        selectable = 0
+        for row in rows:
+            if not isinstance(row, dict):
+                raise RuntimeError("requirement_preview_invalid")
+            expires_at = row.get("expires_at")
+            if expires_at is None:
+                selectable += 1
+                continue
+            if isinstance(expires_at, datetime):
+                expiry = expires_at
+            elif isinstance(expires_at, str):
+                try:
+                    expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                except ValueError as exc:
+                    raise RuntimeError("requirement_preview_invalid") from exc
+            else:
+                raise RuntimeError("requirement_preview_invalid")
+            if expiry.tzinfo is None:
+                raise RuntimeError("requirement_preview_invalid")
+            if expiry.astimezone(timezone.utc) > evaluation_time.astimezone(timezone.utc):
+                selectable += 1
+        return selectable
+
+    @staticmethod
+    def _request_evaluation_time(request: dict[str, Any]) -> datetime:
+        value = request.get("created_at")
+        if isinstance(value, datetime):
+            evaluation_time = value
+        elif isinstance(value, str):
+            try:
+                evaluation_time = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise RuntimeError("persistence_error") from exc
+        else:
+            raise RuntimeError("persistence_error")
+        if evaluation_time.tzinfo is None:
+            raise RuntimeError("persistence_error")
+        return evaluation_time.astimezone(timezone.utc)
+
+    def create_one_time_task(
+        self,
+        *,
+        actor: str,
+        is_superuser: bool,
+        idempotency_key: str,
+        name: str,
+        profile_version_id: str,
+        schedule_config: ScheduleVersionCreate,
+        upload_bytes: bytes | None = None,
+        upload_filename: str | None = None,
+        requirements: Any | None = None,
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Provision one Product Task and atomically release its initial manual Run."""
+
+        if not is_superuser:
+            raise PermissionError("superuser_required")
+        if self.requirement_import_service is None or self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        if not actor or len(actor) > 128:
+            raise ValueError("requirement_product_request_invalid")
+        clean_name = name.strip()
+        if not clean_name or len(clean_name) > 240:
+            raise ValueError("schedule_name_invalid")
+
+        input_bytes, input_filename = self._input_bytes(
+            upload_bytes=upload_bytes,
+            upload_filename=upload_filename,
+            requirements=requirements,
+        )
+        input_sha256 = canonical_sha256(
+            {"bytes_sha256": hashlib.sha256(input_bytes).hexdigest()}
+        )
+        _, schedule_sha256 = self.schedule_store.canonical_config(schedule_config)
+        request_sha256 = canonical_sha256(
+            {
+                "operation": "task_create",
+                "execution_kind": "once",
+                "name": clean_name,
+                "profile_version_id": profile_version_id,
+                "input_sha256": input_sha256,
+                "input_filename": input_filename,
+                "schedule_config_sha256": schedule_sha256,
+            }
+        )
+        now = now_utc or datetime.now(timezone.utc).replace(microsecond=0)
+        request = self.schedule_store.reserve_product_task_create(
+            principal_kind="user",
+            principal_id=actor,
+            idempotency_key=idempotency_key,
+            request_sha256=request_sha256,
+            now_utc=now,
+        )
+        if request["state"] == "succeeded":
+            result = request.get("safe_result")
+            if not isinstance(result, dict):
+                raise RuntimeError("persistence_error")
+            return self._present_one_time_create_result(result)
+        if request["state"] == "failed_terminal":
+            raise ValueError(
+                request.get("error_code") or "requirement_product_request_terminal"
+            )
+
+        try:
+            preview = self.preview_input(
+                profile_version_id=profile_version_id,
+                upload_bytes=input_bytes if requirements is None else None,
+                upload_filename=input_filename if requirements is None else None,
+                requirements=requirements,
+            )
+        except (KeyError, ValueError) as exc:
+            code = str(exc).strip("'").split(":", 1)[0]
+            if not code or len(code) > 64:
+                code = "requirement_preview_invalid"
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"], error_code=code, now_utc=now
+            )
+            raise
+        if preview["has_errors"]:
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_preview_rejected",
+                now_utc=now,
+            )
+            raise ValueError("requirement_preview_rejected")
+        if int(preview.get("accepted_count") or 0) < 1:
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_preview_empty",
+                now_utc=now,
+            )
+            raise ValueError("requirement_preview_empty")
+        evaluation_time = self._request_evaluation_time(request)
+        if self._preview_selectable_count(preview, evaluation_time=evaluation_time) < 1:
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_preview_no_selectable_rows",
+                now_utc=now,
+            )
+            raise ValueError("requirement_preview_no_selectable_rows")
+
+        profile = preview["profile"]
+
+        self.schedule_store.mark_product_request_in_progress(
+            request["request_id"], now_utc=now
+        )
+
+        requirement_store = self.requirement_import_service.store
+        try:
+            source = requirement_store.get_source(request["source_id"])
+            self._validate_existing_product_source(
+                source,
+                source_id=request["source_id"],
+                name=clean_name,
+                source_mode=profile["source_mode"],
+                source_format=profile["format"],
+                profile_id=profile["profile_id"],
+            )
+        except KeyError:
+            source = requirement_store.create_source(
+                clean_name,
+                "manual_upload",
+                profile["source_mode"],
+                {"display_name": clean_name, "format": profile["format"]},
+                profile["profile_id"],
+                actor,
+                enabled=False,
+                source_id=request["source_id"],
+            )
+        if not bool(source.get("enabled")):
+            source = requirement_store.patch_source(
+                request["source_id"], actor, enabled=True
+            )
+        self._validate_existing_product_source(
+            source,
+            source_id=request["source_id"],
+            name=clean_name,
+            source_mode=profile["source_mode"],
+            source_format=profile["format"],
+            profile_id=profile["profile_id"],
+        )
+        if not bool(source.get("enabled")):
+            raise RuntimeError("persistence_error")
+
+        try:
+            import_result = self.requirement_import_service.commit(
+                request["source_id"],
+                actor=actor,
+                upload_bytes=input_bytes,
+                upload_filename=input_filename,
+                import_run_id=request["import_run_id"],
+                snapshot_id=request["snapshot_id"],
+                expected_profile_version_id=profile_version_id,
+                expected_profile_sha256=profile["profile_sha256"],
+            )
+        except ValueError as exc:
+            code = str(exc).strip("'").split(":", 1)[0]
+            if code == "profile_invalid":
+                self.schedule_store.fail_product_request_terminal(
+                    request["request_id"],
+                    error_code="requirement_preview_profile_not_active",
+                    now_utc=now,
+                )
+            raise
+        if (
+            import_result.get("status") != "committed"
+            or import_result.get("import_run_id") != request["import_run_id"]
+            or import_result.get("snapshot_id") != request["snapshot_id"]
+        ):
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_product_import_failed",
+                now_utc=now,
+            )
+            raise ValueError("requirement_product_import_failed")
+
+        requirement_set = requirement_store.get_requirement_set_for_source(
+            request["source_id"]
+        )
+        if requirement_set.get("active_snapshot_id") != request["snapshot_id"]:
+            raise RuntimeError("persistence_error")
+
+        schedule = self.schedule_store.create_schedule(
+            name=clean_name,
+            requirement_set_id=requirement_set["requirement_set_id"],
+            actor=actor,
+            schedule_id=request["schedule_id"],
+        )
+        if (
+            bool(schedule.get("enabled"))
+            or schedule.get("active_version_id") not in {
+                None, request["schedule_version_id"]
+            }
+            or schedule.get("next_run_at") is not None
+        ):
+            raise RuntimeError("persistence_error")
+        self.schedule_store.create_product_task_provisioning(
+            task_id=request["task_id"],
+            schedule_id=request["schedule_id"],
+            source_id=request["source_id"],
+            execution_kind="once",
+            actor=actor,
+            now_utc=now,
+        )
+        version = self.schedule_store.create_version(
+            schedule_id=request["schedule_id"],
+            config=schedule_config,
+            actor=actor,
+            schedule_version_id=request["schedule_version_id"],
+        )
+        if version.get("schedule_version_id") != request["schedule_version_id"]:
+            raise RuntimeError("persistence_error")
+        self.schedule_store.approve_version(
+            schedule_id=request["schedule_id"],
+            version_number=int(version["version_number"]),
+            actor=actor,
+            now_utc=now,
+        )
+
+        result = self.schedule_store.finalize_one_time_product_task_create(
+            request_id=request["request_id"],
+            task_id=request["task_id"],
+            actor=actor,
+            now_utc=now,
+        )
+        return self._present_one_time_create_result(result)
 
     @staticmethod
     def task_identity(product_task: dict[str, Any]) -> ProductTaskIdentity:

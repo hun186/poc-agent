@@ -500,3 +500,201 @@ def test_candidate_errors_still_enforce_replacement_base_cas_before_failed_impor
     assert not any("INSERT INTO [sra_requirement].[import_runs]" in item for item in sql)
     assert not any("INSERT INTO [sra_requirement].[requirement_set_snapshots]" in item for item in sql)
     assert connection.rollbacks == 1 and connection.commits == 0
+
+
+
+class SourceReplayCursor:
+    def __init__(self, existing):
+        self.existing = existing
+        self.calls = []
+        self.last = ""
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.last = sql
+        return self
+
+    def fetchone(self):
+        if "FROM [sra_requirement].[requirement_sources] WITH (UPDLOCK,HOLDLOCK)" in self.last:
+            return self.existing
+        return None
+
+
+class SourceReplayConnection:
+    def __init__(self, existing):
+        self.cursor_value = SourceReplayCursor(existing)
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = 0
+
+    def cursor(self):
+        return self.cursor_value
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed += 1
+
+
+class SourceReplayRegistry:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def open_named_connection(self, ref):
+        return self.connection
+
+
+def test_create_source_same_supplied_identity_and_semantics_replays_without_insert(monkeypatch):
+    config = {"display_name": "One Time", "format": "json"}
+    encoded = json.dumps(config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    existing = (
+        "One Time",
+        "manual_upload",
+        "authoritative_snapshot",
+        encoded,
+        "prof-1",
+        False,
+    )
+    connection = SourceReplayConnection(existing)
+    store = RequirementStore(SourceReplayRegistry(connection), "control")
+    monkeypatch.setattr(
+        store,
+        "get_source",
+        lambda source_id: {
+            "source_id": source_id,
+            "name": "One Time",
+            "source_type": "manual_upload",
+            "source_mode": "authoritative_snapshot",
+            "source_config": config,
+            "import_profile_id": "prof-1",
+            "enabled": False,
+        },
+    )
+
+    result = store.create_source(
+        "One Time",
+        "manual_upload",
+        "authoritative_snapshot",
+        config,
+        "prof-1",
+        "admin",
+        enabled=False,
+        source_id="src-fixed",
+    )
+
+    assert result["source_id"] == "src-fixed"
+    assert connection.commits == 1
+    assert not any(
+        sql.startswith("INSERT INTO") and "requirement_sources" in sql
+        for sql, _ in connection.cursor_value.calls
+    )
+
+
+def test_create_source_same_supplied_identity_with_different_semantics_fails_closed():
+    config = {"display_name": "One Time", "format": "json"}
+    encoded = json.dumps(config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    existing = (
+        "Different",
+        "manual_upload",
+        "authoritative_snapshot",
+        encoded,
+        "prof-1",
+        False,
+    )
+    connection = SourceReplayConnection(existing)
+    store = RequirementStore(SourceReplayRegistry(connection), "control")
+
+    with pytest.raises(RuntimeError, match="^persistence_error$"):
+        store.create_source(
+            "One Time",
+            "manual_upload",
+            "authoritative_snapshot",
+            config,
+            "prof-1",
+            "admin",
+            enabled=False,
+            source_id="src-fixed",
+        )
+
+    assert connection.rollbacks == 1
+    assert not any(
+        sql.startswith("INSERT INTO") and "requirement_sources" in sql
+        for sql, _ in connection.cursor_value.calls
+    )
+
+
+
+class ExpectedProfileCursor:
+    def __init__(self, row):
+        self.row = row
+        self.calls = []
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        return self
+
+    def fetchone(self):
+        return self.row
+
+
+def test_expected_profile_lock_binds_active_version_and_digest():
+    store = RequirementStore(SourceReplayRegistry(SourceReplayConnection(None)), "control")
+    cursor = ExpectedProfileCursor(
+        (
+            "prof-1",
+            True,
+            True,
+            "pv-1",
+            "prof-1",
+            "a" * 64,
+            "approved",
+        )
+    )
+
+    store._lock_expected_profile_for_import(
+        cursor,
+        source={"source_id": "src-1"},
+        version={
+            "profile_id": "prof-1",
+            "profile_version_id": "pv-1",
+            "profile_sha256": "a" * 64,
+        },
+        expected_profile_version_id="pv-1",
+        expected_profile_sha256="a" * 64,
+    )
+
+    sql, params = cursor.calls[0]
+    assert "UPDLOCK,HOLDLOCK" in sql
+    assert params == ("pv-1", "src-1")
+
+
+def test_expected_profile_lock_rejects_active_version_switch():
+    store = RequirementStore(SourceReplayRegistry(SourceReplayConnection(None)), "control")
+    cursor = ExpectedProfileCursor(
+        (
+            "prof-1",
+            True,
+            True,
+            "pv-new",
+            "prof-1",
+            "a" * 64,
+            "approved",
+        )
+    )
+
+    with pytest.raises(ValueError, match="profile_invalid"):
+        store._lock_expected_profile_for_import(
+            cursor,
+            source={"source_id": "src-1"},
+            version={
+                "profile_id": "prof-1",
+                "profile_version_id": "pv-1",
+                "profile_sha256": "a" * 64,
+            },
+            expected_profile_version_id="pv-1",
+            expected_profile_sha256="a" * 64,
+        )

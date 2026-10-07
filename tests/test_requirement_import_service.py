@@ -92,3 +92,113 @@ def test_preallocated_first_commit_forwards_ids_and_snapshot_cas(monkeypatch):
         "snapshot_id": "snap-fixed",
         "expected_base_snapshot_id": "base-snap",
     }
+
+
+
+def test_expected_profile_commit_prepares_exact_version_and_forwards_binding(monkeypatch):
+    class BoundStore:
+        def __init__(self):
+            self.kwargs = None
+
+        def recover_preallocated_import_result(
+            self,
+            source_id,
+            import_run_id,
+            snapshot_id,
+            *,
+            expected_profile_version_id=None,
+            expected_profile_sha256=None,
+        ):
+            assert expected_profile_version_id == "pv-expected"
+            assert expected_profile_sha256 == "a" * 64
+            return None
+
+        def commit_candidate(self, *args, **kwargs):
+            self.kwargs = kwargs
+            return {
+                "import_run_id": kwargs["import_run_id"],
+                "snapshot_id": kwargs["snapshot_id"],
+                "status": "committed",
+                "accepted_count": 0,
+                "rejected_count": 0,
+            }
+
+    store = BoundStore()
+    service = RequirementImportService(store)
+    observed = {}
+
+    def prepare(source_id, **kwargs):
+        observed.update(kwargs)
+        return (
+            {"source_id": source_id},
+            {
+                "profile_version_id": "pv-expected",
+                "profile_sha256": "a" * 64,
+                "status": "approved",
+            },
+            object(),
+            object(),
+            [],
+        )
+
+    monkeypatch.setattr(service, "_prepare", prepare)
+    result = service.commit(
+        "source-1",
+        actor="operator",
+        import_run_id="run-1",
+        snapshot_id="snap-1",
+        expected_profile_version_id="pv-expected",
+        expected_profile_sha256="a" * 64,
+    )
+
+    assert result["snapshot_id"] == "snap-1"
+    assert observed["profile_version_id"] == "pv-expected"
+    assert store.kwargs["expected_profile_version_id"] == "pv-expected"
+    assert store.kwargs["expected_profile_sha256"] == "a" * 64
+
+
+def test_preallocated_terminal_replay_validates_expected_profile_before_prepare(monkeypatch):
+    class ReplayStore:
+        def recover_preallocated_import_result(
+            self,
+            source_id,
+            import_run_id,
+            snapshot_id,
+            *,
+            expected_profile_version_id=None,
+            expected_profile_sha256=None,
+        ):
+            assert (source_id, import_run_id, snapshot_id) == (
+                "source-1",
+                "run-1",
+                "snap-1",
+            )
+            assert expected_profile_version_id == "pv-expected"
+            assert expected_profile_sha256 == "b" * 64
+            return {
+                "import_run_id": "run-1",
+                "snapshot_id": "snap-1",
+                "status": "committed",
+                "accepted_count": 1,
+                "rejected_count": 0,
+            }
+
+    service = RequirementImportService(ReplayStore())
+    monkeypatch.setattr(
+        service,
+        "_prepare",
+        lambda *_args, **_kwargs: pytest.fail(
+            "_prepare must not run on bound terminal replay"
+        ),
+    )
+
+    result = service.commit(
+        "source-1",
+        actor="operator",
+        import_run_id="run-1",
+        snapshot_id="snap-1",
+        expected_profile_version_id="pv-expected",
+        expected_profile_sha256="b" * 64,
+    )
+
+    assert result["snapshot_id"] == "snap-1"

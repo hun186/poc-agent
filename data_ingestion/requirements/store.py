@@ -183,8 +183,53 @@ class RequirementStore:
         return version
 
     def create_source(self, name: str, source_type: str, source_mode: str, source_config: dict[str, Any], import_profile_id: str, actor: str, *, enabled: bool = False, source_id: str | None = None) -> dict[str, Any]:
-        kind, mode = SourceType(source_type), SourceMode(source_mode); config = validate_source_config(kind, source_config); sid, now = source_id or _id("src"), _now()
-        self._execute(f"INSERT INTO {self.t}.[requirement_sources] VALUES (?,?,?,?,?,?,?,?,?,?,?)", sid, name, kind.value, mode.value, json.dumps(config), import_profile_id, enabled, actor, now, actor, now)
+        kind, mode = SourceType(source_type), SourceMode(source_mode)
+        config = validate_source_config(kind, source_config)
+        sid, now = source_id or _id("src"), _now()
+        encoded_config = json.dumps(config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        connection = self._connect()
+        replayed = False
+        try:
+            cursor = connection.cursor()
+            if source_id is not None:
+                cursor.execute(
+                    f"SELECT name,source_type,source_mode,source_config_json,import_profile_id,enabled "
+                    f"FROM {self.t}.[requirement_sources] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=?",
+                    sid,
+                )
+                existing = cursor.fetchone()
+                if existing is not None:
+                    try:
+                        existing_config = json.dumps(
+                            json.loads(existing[3]),
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                    except (TypeError, json.JSONDecodeError):
+                        raise RuntimeError("persistence_error") from None
+                    if (
+                        existing[0] != name
+                        or existing[1] != kind.value
+                        or existing[2] != mode.value
+                        or existing_config != encoded_config
+                        or existing[4] != import_profile_id
+                        or bool(existing[5]) != bool(enabled)
+                    ):
+                        raise RuntimeError("persistence_error")
+                    replayed = True
+            if not replayed:
+                cursor.execute(
+                    f"INSERT INTO {self.t}.[requirement_sources] VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    sid, name, kind.value, mode.value, encoded_config, import_profile_id,
+                    enabled, actor, now, actor, now,
+                )
+            connection.commit()
+        except Exception as exc:
+            connection.rollback()
+            raise _stable_persistence_error(exc) from exc
+        finally:
+            connection.close()
         return self.get_source(sid)
 
     def list_sources(self) -> list[dict[str, Any]]: return [self._source(row) for row in self._query(f"SELECT * FROM {self.t}.[requirement_sources] ORDER BY created_at")]
@@ -209,15 +254,29 @@ class RequirementStore:
         snapshot_id: str | None,
         run_row: Any,
         snapshot_rows: list[Any],
+        *,
+        expected_profile_version_id: str | None = None,
     ) -> dict[str, Any] | None:
         if run_row is None:
             return None
         if len(snapshot_rows) > 1:
             raise RuntimeError("persistence_error")
-        existing_source_id, status, accepted_count, rejected_count = run_row
+        (
+            existing_source_id,
+            existing_profile_version_id,
+            status,
+            accepted_count,
+            rejected_count,
+        ) = run_row
         existing_snapshot_id = snapshot_rows[0][0] if snapshot_rows else None
+        existing_snapshot_profile_id = snapshot_rows[0][1] if snapshot_rows else None
         if existing_source_id != source_id:
             raise RuntimeError("persistence_error")
+        if expected_profile_version_id is not None:
+            if existing_profile_version_id != expected_profile_version_id:
+                raise RuntimeError("persistence_error")
+            if status == "committed" and existing_snapshot_profile_id != expected_profile_version_id:
+                raise RuntimeError("persistence_error")
         if status == "committed":
             if existing_snapshot_id is None:
                 raise RuntimeError("persistence_error")
@@ -236,30 +295,119 @@ class RequirementStore:
             "rejected_count": int(rejected_count),
         }
 
+    @staticmethod
+    def _expected_profile_args_valid(
+        expected_profile_version_id: str | None,
+        expected_profile_sha256: str | None,
+    ) -> bool:
+        return (expected_profile_version_id is None) == (expected_profile_sha256 is None)
+
+    def _verify_expected_profile_record(
+        self,
+        cursor,
+        *,
+        expected_profile_version_id: str | None,
+        expected_profile_sha256: str | None,
+    ) -> None:
+        if not self._expected_profile_args_valid(
+            expected_profile_version_id, expected_profile_sha256
+        ):
+            raise ValueError("profile_invalid")
+        if expected_profile_version_id is None:
+            return
+        cursor.execute(
+            f"SELECT profile_sha256 FROM {self.t}.[import_profile_versions] WITH (HOLDLOCK) "
+            f"WHERE profile_version_id=?",
+            expected_profile_version_id,
+        )
+        row = cursor.fetchone()
+        if row is None or row[0] != expected_profile_sha256:
+            raise ValueError("profile_invalid")
+
+    def _lock_expected_profile_for_import(
+        self,
+        cursor,
+        *,
+        source: dict[str, Any],
+        version: dict[str, Any],
+        expected_profile_version_id: str | None,
+        expected_profile_sha256: str | None,
+    ) -> None:
+        if not self._expected_profile_args_valid(
+            expected_profile_version_id, expected_profile_sha256
+        ):
+            raise ValueError("profile_invalid")
+        if expected_profile_version_id is None:
+            return
+        if (
+            version.get("profile_version_id") != expected_profile_version_id
+            or version.get("profile_sha256") != expected_profile_sha256
+        ):
+            raise ValueError("profile_invalid")
+        cursor.execute(
+            f"SELECT s.import_profile_id,s.enabled,p.enabled,p.active_version_id,"
+            f"v.profile_id,v.profile_sha256,v.status "
+            f"FROM {self.t}.[requirement_sources] s WITH (UPDLOCK,HOLDLOCK) "
+            f"JOIN {self.t}.[import_profiles] p WITH (UPDLOCK,HOLDLOCK) "
+            f"ON p.profile_id=s.import_profile_id "
+            f"JOIN {self.t}.[import_profile_versions] v WITH (UPDLOCK,HOLDLOCK) "
+            f"ON v.profile_version_id=? "
+            f"WHERE s.source_id=?",
+            expected_profile_version_id,
+            source["source_id"],
+        )
+        row = cursor.fetchone()
+        if (
+            row is None
+            or row[0] != version.get("profile_id")
+            or not bool(row[1])
+            or not bool(row[2])
+            or row[3] != expected_profile_version_id
+            or row[4] != row[0]
+            or row[5] != expected_profile_sha256
+            or row[6] != "approved"
+        ):
+            raise ValueError("profile_invalid")
+
     def recover_preallocated_import_result(
         self,
         source_id: str,
         import_run_id: str,
         snapshot_id: str | None = None,
+        *,
+        expected_profile_version_id: str | None = None,
+        expected_profile_sha256: str | None = None,
     ) -> dict[str, Any] | None:
         """Return a terminal preallocated import result without re-reading source input."""
         connection = self._connect()
         try:
             cursor = connection.cursor()
+            self._verify_expected_profile_record(
+                cursor,
+                expected_profile_version_id=expected_profile_version_id,
+                expected_profile_sha256=expected_profile_sha256,
+            )
             cursor.execute(
-                f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WHERE import_run_id=?",
+                f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count "
+                f"FROM {self.t}.[import_runs] WHERE import_run_id=?",
                 import_run_id,
             )
             run_row = cursor.fetchone()
             if run_row is None:
                 return None
             cursor.execute(
-                f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WHERE import_run_id=?",
+                f"SELECT snapshot_id,import_profile_version_id "
+                f"FROM {self.t}.[requirement_set_snapshots] WHERE import_run_id=?",
                 import_run_id,
             )
             snapshot_rows = list(cursor.fetchall())
             return self._preallocated_import_result(
-                source_id, import_run_id, snapshot_id, run_row, snapshot_rows
+                source_id,
+                import_run_id,
+                snapshot_id,
+                run_row,
+                snapshot_rows,
+                expected_profile_version_id=expected_profile_version_id,
             )
         except Exception as exc:
             raise _stable_persistence_error(exc) from exc
@@ -278,6 +426,8 @@ class RequirementStore:
         import_run_id: str | None = None,
         snapshot_id: str | None = None,
         expected_base_snapshot_id: str | None = None,
+        expected_profile_version_id: str | None = None,
+        expected_profile_sha256: str | None = None,
     ) -> dict[str, Any]:
         if candidate.has_errors:
             if expected_base_snapshot_id is not None:
@@ -290,13 +440,13 @@ class RequirementStore:
                     c = connection.cursor()
                     if import_run_id is not None:
                         c.execute(
-                            f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
+                            f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
                             import_run_id,
                         )
                         existing_run = c.fetchone()
                         if existing_run is not None:
                             c.execute(
-                                f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
+                                f"SELECT snapshot_id,import_profile_version_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
                                 import_run_id,
                             )
                             result = self._preallocated_import_result(
@@ -339,20 +489,37 @@ class RequirementStore:
             c = connection.cursor()
             if import_run_id is not None:
                 c.execute(
-                    f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
+                    f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
                     run_id,
                 )
                 existing_run = c.fetchone()
                 if existing_run is not None:
+                    self._verify_expected_profile_record(
+                        c,
+                        expected_profile_version_id=expected_profile_version_id,
+                        expected_profile_sha256=expected_profile_sha256,
+                    )
                     c.execute(
-                        f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
+                        f"SELECT snapshot_id,import_profile_version_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
                         run_id,
                     )
                     result = self._preallocated_import_result(
-                        source["source_id"], run_id, snapshot_id, existing_run, list(c.fetchall())
+                        source["source_id"],
+                        run_id,
+                        snapshot_id,
+                        existing_run,
+                        list(c.fetchall()),
+                        expected_profile_version_id=expected_profile_version_id,
                     )
                     connection.commit()
                     return result
+            self._lock_expected_profile_for_import(
+                c,
+                source=source,
+                version=version,
+                expected_profile_version_id=expected_profile_version_id,
+                expected_profile_sha256=expected_profile_sha256,
+            )
             c.execute(
                 f"SELECT source_id FROM {self.t}.[requirement_sources] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=? AND enabled=1",
                 source["source_id"],
@@ -503,13 +670,13 @@ class RequirementStore:
             cursor = connection.cursor()
             if import_run_id is not None:
                 cursor.execute(
-                    f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
+                    f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
                     run_id,
                 )
                 existing_run = cursor.fetchone()
                 if existing_run is not None:
                     cursor.execute(
-                        f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
+                        f"SELECT snapshot_id,import_profile_version_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
                         run_id,
                     )
                     result = self._preallocated_import_result(
@@ -553,6 +720,17 @@ class RequirementStore:
         rows = self._query(f"SELECT * FROM {self.t}.[import_runs] WHERE import_run_id=?", run_id)
         if not rows: raise KeyError("import_run_not_found")
         rows[0]["rows"] = self._query(f"SELECT * FROM {self.t}.[import_run_rows] WHERE import_run_id=? ORDER BY source_row_number", run_id); return rows[0]
+    def get_requirement_set_for_source(self, source_id: str) -> dict[str, Any]:
+        rows = self._query(
+            f"SELECT * FROM {self.t}.[requirement_sets] WHERE source_id=?",
+            source_id,
+        )
+        if not rows:
+            raise KeyError("requirement_set_not_found")
+        if len(rows) != 1:
+            raise RuntimeError("persistence_error")
+        return rows[0]
+
     def list_requirement_sets(self): return self._query(f"SELECT * FROM {self.t}.[requirement_sets] ORDER BY created_at")
     def list_snapshots(self, set_id: str): return self._query(f"SELECT * FROM {self.t}.[requirement_set_snapshots] WHERE requirement_set_id=? ORDER BY created_at", set_id)
     def get_snapshot(self, snapshot_id: str):

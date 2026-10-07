@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import json
 from types import SimpleNamespace
 
@@ -5,6 +6,8 @@ import pytest
 
 from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.models import ImportProfileDocument
+from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate
+from requirement_scheduler.store import ScheduleStore
 
 from sra_api.services.requirement_product_service import (
     ProductTaskIdentity,
@@ -515,3 +518,528 @@ def test_product_preview_rejects_profile_digest_mismatch():
         )
 
     assert store.calls == [("get_profile_version", "pv-1")]
+
+
+def _valid_direct_requirements():
+    return [
+        {
+            "external_item_id": "E-1",
+            "title": "First",
+            "prompt_content": "alpha",
+            "source_updated_at": "2026-10-07T01:00:00Z",
+            "source_created_at": "2026-10-01T01:00:00Z",
+        }
+    ]
+
+
+def _once_schedule_config():
+    return ScheduleVersionCreate(
+        timezone="UTC",
+        recurrence=RecurrenceSpec.validate(
+            {"kind": "daily", "local_time": "09:00:00"}
+        ),
+        run_policy=RunPolicy.ALL_ACTIVE,
+        model="model-safe",
+    )
+
+
+class _CreateRequirementStore(_PreviewOnlyStore):
+    def __init__(self):
+        super().__init__(format="json", status="approved")
+        self.sources = {}
+        self.active_snapshot_id = None
+        self.create_source_calls = 0
+        self.patch_source_calls = 0
+
+    def get_active_profile_version(self, profile_id):
+        assert profile_id == "prof-1"
+        return dict(self.version)
+
+    def get_source(self, source_id):
+        if source_id not in self.sources:
+            raise KeyError("source_not_found")
+        return dict(self.sources[source_id])
+
+    def create_source(
+        self, name, source_type, source_mode, source_config, import_profile_id, actor,
+        *, enabled=False, source_id=None
+    ):
+        self.create_source_calls += 1
+        value = {
+            "source_id": source_id,
+            "name": name,
+            "source_type": source_type,
+            "source_mode": source_mode,
+            "source_config": dict(source_config),
+            "import_profile_id": import_profile_id,
+            "enabled": bool(enabled),
+        }
+        existing = self.sources.get(source_id)
+        if existing is not None and existing != value:
+            raise AssertionError("source semantic replay drift")
+        self.sources[source_id] = value
+        return dict(value)
+
+    def patch_source(self, source_id, actor, **changes):
+        self.patch_source_calls += 1
+        value = dict(self.sources[source_id])
+        value.update(changes)
+        self.sources[source_id] = value
+        return dict(value)
+
+    def get_requirement_set_for_source(self, source_id):
+        if self.active_snapshot_id is None:
+            raise KeyError("requirement_set_not_found")
+        return {
+            "requirement_set_id": "set-1",
+            "source_id": source_id,
+            "active_snapshot_id": self.active_snapshot_id,
+        }
+
+
+class _CreateRequirementImportService:
+    def __init__(self):
+        self.store = _CreateRequirementStore()
+        self.commit_calls = 0
+        self.committed = {}
+        self.raise_after_commit_once = False
+        self._raised_after_commit = False
+
+    def commit(
+        self,
+        source_id,
+        *,
+        actor,
+        upload_bytes,
+        upload_filename,
+        import_run_id,
+        snapshot_id,
+        expected_profile_version_id=None,
+        expected_profile_sha256=None,
+    ):
+        self.commit_calls += 1
+        assert expected_profile_version_id == "pv-1"
+        assert expected_profile_sha256 == self.store.version["profile_sha256"]
+        previous = self.committed.get(import_run_id)
+        result = {
+            "import_run_id": import_run_id,
+            "snapshot_id": snapshot_id,
+            "status": "committed",
+            "accepted_count": 1,
+            "rejected_count": 0,
+        }
+        if previous is not None and previous != result:
+            raise AssertionError("import identity replay drift")
+        self.committed[import_run_id] = result
+        self.store.active_snapshot_id = snapshot_id
+        if self.raise_after_commit_once and not self._raised_after_commit:
+            self._raised_after_commit = True
+            raise RuntimeError("simulated_import_lost_response")
+        return dict(result)
+
+
+class _CreateScheduleStore:
+    def __init__(self):
+        self.request = None
+        self.reserve_calls = 0
+        self.version_calls = 0
+        self.finalize_calls = 0
+        self.schedule_calls = 0
+        self.task_calls = 0
+        self.raise_after_finalize_commit = False
+        self._lost_response_raised = False
+        self.schedule = None
+        self.task = None
+        self.run = None
+
+    canonical_config = staticmethod(ScheduleStore.canonical_config)
+
+    def reserve_product_task_create(self, *, principal_kind, principal_id, idempotency_key, request_sha256, now_utc):
+        self.reserve_calls += 1
+        if self.request is not None:
+            if self.request["request_sha256"] != request_sha256:
+                raise ValueError("requirement_idempotency_conflict")
+            return dict(self.request)
+        self.request = {
+            "request_id": "preq-1",
+            "principal_kind": principal_kind,
+            "principal_id": principal_id,
+            "operation": "task_create",
+            "idempotency_key": idempotency_key,
+            "request_sha256": request_sha256,
+            "state": "reserved",
+            "created_at": now_utc,
+            "task_id": "task-create-1",
+            "source_id": "src-create-1",
+            "import_run_id": "run-create-1",
+            "snapshot_id": "snap-create-1",
+            "schedule_id": "sch-create-1",
+            "schedule_version_id": "sv-create-1",
+            "batch_run_id": None,
+            "safe_result": None,
+            "error_code": None,
+        }
+        return dict(self.request)
+
+    def mark_product_request_in_progress(self, request_id, *, now_utc):
+        assert request_id == self.request["request_id"]
+        self.request["state"] = "in_progress"
+
+    def fail_product_request_terminal(self, request_id, *, error_code, now_utc):
+        assert request_id == self.request["request_id"]
+        self.request["state"] = "failed_terminal"
+        self.request["error_code"] = error_code
+
+    def create_schedule(self, *, name, requirement_set_id, actor, schedule_id):
+        self.schedule_calls += 1
+        value = {
+            "schedule_id": schedule_id,
+            "name": name,
+            "requirement_set_id": requirement_set_id,
+            "enabled": False,
+            "active_version_id": None,
+            "next_run_at": None,
+            "created_by": actor,
+            "created_at": "2026-10-07T04:00:00+00:00",
+            "updated_by": actor,
+            "updated_at": "2026-10-07T04:00:00+00:00",
+        }
+        if self.schedule is None:
+            self.schedule = value
+        return dict(self.schedule)
+
+    def create_product_task_provisioning(self, *, task_id, schedule_id, source_id, execution_kind, actor, now_utc):
+        self.task_calls += 1
+        if self.task is None:
+            self.task = {
+                "task_id": task_id,
+                "schedule_id": schedule_id,
+                "source_id": source_id,
+                "execution_kind": execution_kind,
+                "product_state": "provisioning",
+                "revision": 1,
+                "created_by": actor,
+                "created_at": now_utc,
+                "updated_by": actor,
+                "updated_at": now_utc,
+            }
+        return dict(self.task)
+
+    def create_version(self, *, schedule_id, config, actor, schedule_version_id):
+        self.version_calls += 1
+        return {
+            "schedule_version_id": schedule_version_id,
+            "schedule_id": schedule_id,
+            "version_number": 1,
+            "status": "draft" if self.schedule["active_version_id"] is None else "approved",
+        }
+
+    def approve_version(self, *, schedule_id, version_number, actor, now_utc):
+        self.schedule["active_version_id"] = "sv-create-1"
+        return {"schedule_version_id": "sv-create-1", "status": "approved", "version_number": 1}
+
+    def finalize_one_time_product_task_create(self, *, request_id, task_id, actor, now_utc):
+        if self.request["state"] == "succeeded":
+            return dict(self.request["safe_result"])
+        self.finalize_calls += 1
+        self.task["product_state"] = "active"
+        self.run = {
+            "batch_run_id": "br-create-1",
+            "schedule_id": "sch-create-1",
+            "schedule_version_id": "sv-create-1",
+            "snapshot_id": "snap-create-1",
+            "trigger_type": "manual",
+            "trigger_request_id": "private-stable-create-trigger",
+            "scheduled_for": None,
+            "state": "handoff_pending",
+            "selected_count": 1,
+            "skipped_count": 0,
+            "success_count": 0,
+            "failure_count": 0,
+            "error_code": None,
+            "deadline_elapsed_during_execution": False,
+            "created_at": now_utc,
+            "completed_at": None,
+            "items": [
+                {
+                    "run_item_id": "ri-create-1",
+                    "requirement_id": "req-create-1",
+                    "requirement_version_id": "rv-create-1",
+                    "requirement_version_number": 1,
+                    "source_order": 1,
+                    "selection_status": "selected",
+                    "execution_state": "handoff_pending",
+                    "error_code": None,
+                    "artifact_relative_path": None,
+                    "artifact_sha256": None,
+                }
+            ],
+        }
+        result = {
+            "task_id": task_id,
+            "source_id": "src-create-1",
+            "import_run_id": "run-create-1",
+            "snapshot_id": "snap-create-1",
+            "schedule_id": "sch-create-1",
+            "schedule_version_id": "sv-create-1",
+            "batch_run_id": "br-create-1",
+            "task_revision": 1,
+        }
+        self.request["state"] = "succeeded"
+        self.request["safe_result"] = dict(result)
+        self.request["batch_run_id"] = "br-create-1"
+        if self.raise_after_finalize_commit and not self._lost_response_raised:
+            self._lost_response_raised = True
+            raise RuntimeError("simulated_lost_response")
+        return result
+
+    def get_product_task(self, task_id):
+        assert self.task is not None and self.task["task_id"] == task_id
+        return dict(self.task)
+
+    def get_schedule(self, schedule_id):
+        assert self.schedule is not None and self.schedule["schedule_id"] == schedule_id
+        return dict(self.schedule)
+
+    def get_batch_run(self, *, schedule_id, batch_run_id):
+        assert self.run is not None
+        assert self.run["schedule_id"] == schedule_id
+        assert self.run["batch_run_id"] == batch_run_id
+        return dict(self.run)
+
+
+def _create_service():
+    requirement_service = _CreateRequirementImportService()
+    schedule_store = _CreateScheduleStore()
+    service = RequirementProductService(
+        requirement_import_service=requirement_service,
+        schedule_store=schedule_store,
+    )
+    return service, requirement_service, schedule_store
+
+
+def test_one_time_product_create_rejects_lower_role_before_reservation():
+    service, requirement_service, schedule_store = _create_service()
+
+    with pytest.raises(PermissionError, match="superuser_required"):
+        service.create_one_time_task(
+            actor="operator",
+            is_superuser=False,
+            idempotency_key="idem-1",
+            name="One Time",
+            profile_version_id="pv-1",
+            schedule_config=_once_schedule_config(),
+            requirements=_valid_direct_requirements(),
+        )
+
+    assert schedule_store.reserve_calls == 0
+    assert requirement_service.commit_calls == 0
+    assert requirement_service.store.sources == {}
+
+
+def test_one_time_product_create_binds_exact_authorities_and_releases_one_run():
+    service, requirement_service, schedule_store = _create_service()
+    now = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+
+    result = service.create_one_time_task(
+        actor="admin",
+        is_superuser=True,
+        idempotency_key="idem-1",
+        name="One Time",
+        profile_version_id="pv-1",
+        schedule_config=_once_schedule_config(),
+        requirements=_valid_direct_requirements(),
+        now_utc=now,
+    )
+
+    assert result["task"]["task_id"] == "task-create-1"
+    assert result["task"]["execution_kind"] == "once"
+    assert result["task"]["product_state"] == "active"
+    assert result["task"]["schedule"]["enabled"] is False
+    assert result["run"]["run_id"] == "br-create-1"
+    assert result["run"]["status"] == "queued"
+    assert result["run"]["binding"] == {
+        "schedule_id": "sch-create-1",
+        "schedule_version_id": "sv-create-1",
+        "snapshot_id": "snap-create-1",
+    }
+    assert result["run"]["trigger"]["type"] == "manual"
+    assert requirement_service.commit_calls == 1
+    assert requirement_service.store.create_source_calls == 1
+    assert requirement_service.store.patch_source_calls == 1
+    assert schedule_store.version_calls == 1
+    assert schedule_store.finalize_calls == 1
+
+
+def test_one_time_product_create_lost_response_replays_without_duplicate_work():
+    service, requirement_service, schedule_store = _create_service()
+    schedule_store.raise_after_finalize_commit = True
+    kwargs = {
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "idem-lost",
+        "name": "One Time",
+        "profile_version_id": "pv-1",
+        "schedule_config": _once_schedule_config(),
+        "requirements": _valid_direct_requirements(),
+        "now_utc": datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+    }
+
+    with pytest.raises(RuntimeError, match="simulated_lost_response"):
+        service.create_one_time_task(**kwargs)
+
+    replay = service.create_one_time_task(**kwargs)
+
+    assert replay["task"]["task_id"] == "task-create-1"
+    assert replay["run"]["run_id"] == "br-create-1"
+    assert requirement_service.commit_calls == 1
+    assert schedule_store.version_calls == 1
+    assert schedule_store.finalize_calls == 1
+
+
+def test_one_time_product_create_same_key_changed_payload_conflicts():
+    service, _, _ = _create_service()
+    base = {
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "idem-conflict",
+        "name": "One Time",
+        "profile_version_id": "pv-1",
+        "schedule_config": _once_schedule_config(),
+        "requirements": _valid_direct_requirements(),
+        "now_utc": datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+    }
+    service.create_one_time_task(**base)
+
+    with pytest.raises(ValueError, match="requirement_idempotency_conflict"):
+        service.create_one_time_task(**{**base, "name": "Changed Name"})
+
+
+
+def test_one_time_product_create_rejects_zero_row_input_before_mutation():
+    service, requirement_service, schedule_store = _create_service()
+
+    with pytest.raises(ValueError, match="requirement_preview_empty"):
+        service.create_one_time_task(
+            actor="admin",
+            is_superuser=True,
+            idempotency_key="idem-empty",
+            name="Empty",
+            profile_version_id="pv-1",
+            schedule_config=_once_schedule_config(),
+            requirements=[],
+            now_utc=datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+        )
+
+    assert schedule_store.request["state"] == "failed_terminal"
+    assert schedule_store.request["error_code"] == "requirement_preview_empty"
+    assert requirement_service.commit_calls == 0
+    assert requirement_service.store.sources == {}
+    assert schedule_store.finalize_calls == 0
+
+
+def test_one_time_product_create_recovers_committed_import_after_profile_switch():
+    service, requirement_service, schedule_store = _create_service()
+    requirement_service.raise_after_commit_once = True
+    kwargs = {
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "idem-import-recovery",
+        "name": "One Time",
+        "profile_version_id": "pv-1",
+        "schedule_config": _once_schedule_config(),
+        "requirements": _valid_direct_requirements(),
+        "now_utc": datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+    }
+
+    with pytest.raises(RuntimeError, match="simulated_import_lost_response"):
+        service.create_one_time_task(**kwargs)
+
+    original_get_active = requirement_service.store.get_active_profile_version
+    requirement_service.store.get_active_profile_version = lambda _profile_id: {
+        **requirement_service.store.version,
+        "profile_version_id": "pv-new",
+        "profile_sha256": "f" * 64,
+    }
+    try:
+        replay = service.create_one_time_task(**kwargs)
+    finally:
+        requirement_service.store.get_active_profile_version = original_get_active
+
+    assert replay["task"]["task_id"] == "task-create-1"
+    assert replay["run"]["run_id"] == "br-create-1"
+    assert requirement_service.commit_calls == 2
+    assert schedule_store.finalize_calls == 1
+
+
+
+def test_one_time_product_create_rejects_expired_only_input_before_mutation():
+    service, requirement_service, schedule_store = _create_service()
+    expired = [
+        {
+            "external_item_id": "E-expired",
+            "title": "Expired",
+            "prompt_content": "old",
+            "source_updated_at": "2026-10-01T01:00:00Z",
+            "source_created_at": "2026-10-01T01:00:00Z",
+            "expires_at": "2026-10-07T03:59:59Z",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="requirement_preview_no_selectable_rows"):
+        service.create_one_time_task(
+            actor="admin",
+            is_superuser=True,
+            idempotency_key="idem-expired",
+            name="Expired Only",
+            profile_version_id="pv-1",
+            schedule_config=_once_schedule_config(),
+            requirements=expired,
+            now_utc=datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+        )
+
+    assert schedule_store.request["state"] == "failed_terminal"
+    assert schedule_store.request["error_code"] == "requirement_preview_no_selectable_rows"
+    assert requirement_service.commit_calls == 0
+    assert requirement_service.store.sources == {}
+    assert schedule_store.finalize_calls == 0
+
+
+
+def test_one_time_product_create_retry_uses_original_request_time_for_eligibility():
+    service, requirement_service, schedule_store = _create_service()
+    requirement_service.raise_after_commit_once = True
+    first_now = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+    requirements = [
+        {
+            "external_item_id": "E-window",
+            "title": "Still eligible at request time",
+            "prompt_content": "alpha",
+            "source_updated_at": "2026-10-07T03:00:00Z",
+            "source_created_at": "2026-10-01T01:00:00Z",
+            "expires_at": "2026-10-07T04:05:00Z",
+        }
+    ]
+    base = {
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "idem-window",
+        "name": "Eligibility Window",
+        "profile_version_id": "pv-1",
+        "schedule_config": _once_schedule_config(),
+        "requirements": requirements,
+    }
+
+    with pytest.raises(RuntimeError, match="simulated_import_lost_response"):
+        service.create_one_time_task(**base, now_utc=first_now)
+
+    replay = service.create_one_time_task(
+        **base,
+        now_utc=datetime(2026, 10, 7, 4, 10, tzinfo=timezone.utc),
+    )
+
+    assert schedule_store.request["created_at"] == first_now
+    assert replay["task"]["task_id"] == "task-create-1"
+    assert replay["run"]["run_id"] == "br-create-1"
+    assert schedule_store.request["state"] == "succeeded"
+    assert schedule_store.finalize_calls == 1
