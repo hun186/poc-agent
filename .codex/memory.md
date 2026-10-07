@@ -110,3 +110,6 @@
 
 
 - 2026-10-07 P1.3 fourth review corrections: the exact `preview_input()` block now passes raw `upload_bytes/upload_filename` into `_input_bytes()` and passes only normalized bytes/name to `acquire_source()`. Product create eligibility is evaluated against the durable request's original persisted `created_at`, not the retry wall clock, so a crash/retry after rows later expire can still recover and finalize the same idempotent request.
+
+
+- 2026-10-07 P1.3 fifth review correction: the one-time finalizer now separates semantic selection time from audit/materialization time. Product retry materialization evaluates Requirement eligibility at the durable request `created_at`, while Batch Run/item created/updated timestamps remain the current finalization time. This closes the remaining expiry drift between service preview admission and Schedule-store item selection.

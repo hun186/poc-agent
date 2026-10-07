@@ -128,3 +128,10 @@
 
 - One-time Product create eligibility must not drift across retries. The selection/expiry evaluation time is the Product request's persisted `created_at`, established when the idempotency reservation is first committed.
 - Retries may occur after Requirement rows expire; if those rows were eligible at the original request time, recovery/finalization continues using that same evaluation instant rather than converting the request to terminal failure.
+
+
+### 2026-10-07 Product one-time finalization separates selection time from audit time
+
+- `_materialize_locked()` accepts an optional semantic `selection_time`; existing scheduler/manual paths default it to `now_utc`.
+- Product one-time finalization passes the reserved Product request `created_at` as `selection_time` so retries select the same rows as the original request.
+- Audit/materialization timestamps continue using current `now_utc`; only eligibility evaluation and item `evaluated_at` use the durable selection instant.
