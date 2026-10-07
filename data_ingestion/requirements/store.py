@@ -438,13 +438,13 @@ class RequirementStore:
                     c = connection.cursor()
                     if import_run_id is not None:
                         c.execute(
-                            f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
+                            f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
                             import_run_id,
                         )
                         existing_run = c.fetchone()
                         if existing_run is not None:
                             c.execute(
-                                f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
+                                f"SELECT snapshot_id,import_profile_version_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
                                 import_run_id,
                             )
                             result = self._preallocated_import_result(
@@ -487,13 +487,13 @@ class RequirementStore:
             c = connection.cursor()
             if import_run_id is not None:
                 c.execute(
-                    f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
+                    f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
                     run_id,
                 )
                 existing_run = c.fetchone()
                 if existing_run is not None:
                     c.execute(
-                        f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
+                        f"SELECT snapshot_id,import_profile_version_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
                         run_id,
                     )
                     result = self._preallocated_import_result(
@@ -651,13 +651,13 @@ class RequirementStore:
             cursor = connection.cursor()
             if import_run_id is not None:
                 cursor.execute(
-                    f"SELECT source_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
+                    f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
                     run_id,
                 )
                 existing_run = cursor.fetchone()
                 if existing_run is not None:
                     cursor.execute(
-                        f"SELECT snapshot_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
+                        f"SELECT snapshot_id,import_profile_version_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
                         run_id,
                     )
                     result = self._preallocated_import_result(
