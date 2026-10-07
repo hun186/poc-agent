@@ -254,8 +254,6 @@ class RequirementProductService:
             upload_filename=input_filename,
             requirements=requirements,
         )
-        has_direct = requirements is not None
-
         version = self.requirement_import_service.store.get_profile_version(
             profile_version_id
         )
@@ -347,6 +345,203 @@ class RequirementProductService:
                 "source_mode": profile.source_mode.value,
             },
         }
+
+    def create_one_time_task(
+        self,
+        *,
+        actor: str,
+        is_superuser: bool,
+        idempotency_key: str,
+        name: str,
+        profile_version_id: str,
+        schedule_config: ScheduleVersionCreate,
+        upload_bytes: bytes | None = None,
+        upload_filename: str | None = None,
+        requirements: Any | None = None,
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Provision one Product Task and atomically release its initial manual Run."""
+
+        if not is_superuser:
+            raise PermissionError("superuser_required")
+        if self.requirement_import_service is None or self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        if not actor or len(actor) > 128:
+            raise ValueError("requirement_product_request_invalid")
+        clean_name = name.strip()
+        if not clean_name or len(clean_name) > 240:
+            raise ValueError("schedule_name_invalid")
+
+        input_bytes, input_filename = self._input_bytes(
+            upload_bytes=upload_bytes,
+            upload_filename=upload_filename,
+            requirements=requirements,
+        )
+        input_sha256 = canonical_sha256(
+            {"bytes_sha256": hashlib.sha256(input_bytes).hexdigest()}
+        )
+        _, schedule_sha256 = self.schedule_store.canonical_config(schedule_config)
+        request_sha256 = canonical_sha256(
+            {
+                "operation": "task_create",
+                "execution_kind": "once",
+                "name": clean_name,
+                "profile_version_id": profile_version_id,
+                "input_sha256": input_sha256,
+                "input_filename": input_filename,
+                "schedule_config_sha256": schedule_sha256,
+            }
+        )
+        now = now_utc or datetime.now(timezone.utc).replace(microsecond=0)
+        request = self.schedule_store.reserve_product_task_create(
+            principal_kind="user",
+            principal_id=actor,
+            idempotency_key=idempotency_key,
+            request_sha256=request_sha256,
+            now_utc=now,
+        )
+        if request["state"] == "succeeded":
+            result = request.get("safe_result")
+            if not isinstance(result, dict):
+                raise RuntimeError("persistence_error")
+            return self._present_one_time_create_result(result)
+        if request["state"] == "failed_terminal":
+            raise ValueError(
+                request.get("error_code") or "requirement_product_request_terminal"
+            )
+
+        preview = self.preview_input(
+            profile_version_id=profile_version_id,
+            upload_bytes=input_bytes if requirements is None else None,
+            upload_filename=input_filename if requirements is None else None,
+            requirements=requirements,
+        )
+        if preview["has_errors"]:
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_preview_rejected",
+                now_utc=now,
+            )
+            raise ValueError("requirement_preview_rejected")
+
+        profile = preview["profile"]
+        active_profile = self.requirement_import_service.store.get_active_profile_version(
+            profile["profile_id"]
+        )
+        if (
+            active_profile.get("profile_version_id") != profile_version_id
+            or active_profile.get("profile_sha256") != profile["profile_sha256"]
+        ):
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_preview_profile_not_active",
+                now_utc=now,
+            )
+            raise ValueError("requirement_preview_profile_not_active")
+
+        self.schedule_store.mark_product_request_in_progress(
+            request["request_id"], now_utc=now
+        )
+
+        requirement_store = self.requirement_import_service.store
+        try:
+            source = requirement_store.get_source(request["source_id"])
+            self._validate_existing_product_source(
+                source,
+                source_id=request["source_id"],
+                name=clean_name,
+                source_mode=profile["source_mode"],
+                source_format=profile["format"],
+                profile_id=profile["profile_id"],
+            )
+        except KeyError:
+            source = requirement_store.create_source(
+                clean_name,
+                "manual_upload",
+                profile["source_mode"],
+                {"display_name": clean_name, "format": profile["format"]},
+                profile["profile_id"],
+                actor,
+                enabled=False,
+                source_id=request["source_id"],
+            )
+        if not bool(source.get("enabled")):
+            source = requirement_store.patch_source(
+                request["source_id"], actor, enabled=True
+            )
+        self._validate_existing_product_source(
+            source,
+            source_id=request["source_id"],
+            name=clean_name,
+            source_mode=profile["source_mode"],
+            source_format=profile["format"],
+            profile_id=profile["profile_id"],
+        )
+        if not bool(source.get("enabled")):
+            raise RuntimeError("persistence_error")
+
+        import_result = self.requirement_import_service.commit(
+            request["source_id"],
+            actor=actor,
+            upload_bytes=input_bytes,
+            upload_filename=input_filename,
+            import_run_id=request["import_run_id"],
+            snapshot_id=request["snapshot_id"],
+        )
+        if (
+            import_result.get("status") != "committed"
+            or import_result.get("import_run_id") != request["import_run_id"]
+            or import_result.get("snapshot_id") != request["snapshot_id"]
+        ):
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_product_import_failed",
+                now_utc=now,
+            )
+            raise ValueError("requirement_product_import_failed")
+
+        requirement_set = requirement_store.get_requirement_set_for_source(
+            request["source_id"]
+        )
+        if requirement_set.get("active_snapshot_id") != request["snapshot_id"]:
+            raise RuntimeError("persistence_error")
+
+        self.schedule_store.create_schedule(
+            name=clean_name,
+            requirement_set_id=requirement_set["requirement_set_id"],
+            actor=actor,
+            schedule_id=request["schedule_id"],
+        )
+        self.schedule_store.create_product_task_provisioning(
+            task_id=request["task_id"],
+            schedule_id=request["schedule_id"],
+            source_id=request["source_id"],
+            execution_kind="once",
+            actor=actor,
+            now_utc=now,
+        )
+        version = self.schedule_store.create_version(
+            schedule_id=request["schedule_id"],
+            config=schedule_config,
+            actor=actor,
+            schedule_version_id=request["schedule_version_id"],
+        )
+        if version.get("schedule_version_id") != request["schedule_version_id"]:
+            raise RuntimeError("persistence_error")
+        self.schedule_store.approve_version(
+            schedule_id=request["schedule_id"],
+            version_number=int(version["version_number"]),
+            actor=actor,
+            now_utc=now,
+        )
+
+        result = self.schedule_store.finalize_one_time_product_task_create(
+            request_id=request["request_id"],
+            task_id=request["task_id"],
+            actor=actor,
+            now_utc=now,
+        )
+        return self._present_one_time_create_result(result)
 
     @staticmethod
     def task_identity(product_task: dict[str, Any]) -> ProductTaskIdentity:
