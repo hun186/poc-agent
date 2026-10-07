@@ -9,7 +9,7 @@
 - Production jobs must never enter Requirement E2E semantic mocks. Verified E2E mock authority is job-scoped and isolated across tool threads.
 - Operator E2E remains a deployment/technical observer. Repository tests or documentation review are not fresh live deployment acceptance.
 - Formal Requirement deployment acceptance is still blocked by the unresolved live Elasticsearch `mapping_incompatible` condition identified during capability probing; repository/offline tests do not clear that blocker. Re-run authorized live mapping/capability acceptance after it is corrected.
-- Requirement Product API + integrated Task Center Design/Plan v1 was approved and merged in PR #277. Implementation has started with the P1.0 Schedule schema v4 slice on `feat/requirement-product-schema-v4`; Product service/router/UI and create/update/run orchestration are not implemented yet.
+- Requirement Product API + integrated Task Center Design/Plan v1 is approved. P1.0 schema v4, P1.0A authority IDs, and P1.1 Product presenters/identities are merged through PR #280. P1.2 side-effect-free Product preview is in progress; Product HTTP routes, create/update/run orchestration, and UI are not implemented yet.
 
 ## Requirement Product API + Task Center — Current Contract
 
@@ -77,3 +77,13 @@
 - Added focused `tests/test_requirement_product_service.py` coverage for Product identity authority, neutral status mapping, safe links, provisioning visibility, cross-schedule identity rejection, and sensitive/backend-field non-disclosure.
 - No Product HTTP route, preview orchestration, create saga, activation, input replacement, or Run admission is implemented by this slice.
 - Local pytest PASS is not claimed in this connector-only pass; exact-head Codex review/check evidence is required before merge.
+
+
+## 2026-10-07 Requirement Product P1.2 preview
+
+- Started P1.2 from hosted `main@5ea1530bfd687546d8b97458871258f184a5f1ca` on `feat/requirement-product-preview-p1-2` after PR #280 merged.
+- `RequirementProductService.preview_input()` accepts exactly one input mode: uploaded bytes + filename, or direct Requirement JSON, plus an explicitly selected approved import-profile version.
+- Preview remains side-effect-free: it reads the selected profile version and reuses existing Requirement `acquire_source()` + `normalize_rows()` authority through an ephemeral manual-upload descriptor; it creates no source, import run, snapshot, schedule, Product Task, or Run.
+- Product preview returns source SHA, row/accepted/rejected counts, normalized canonical rows, separated row errors/warnings, and profile/version identity. Raw source columns, row hashes, execution hashes, and durable internal identities are not exposed.
+- Focused tests cover direct JSON normalization, CSV upload parsing, exact-one input mode, approved-profile enforcement, format mismatch, and mutation traps.
+- Local pytest PASS is not claimed: `git ls-remote https://github.com/hun186/poc-agent.git HEAD` still fails with `Could not resolve host: github.com`; Hosted exact-head review/check evidence is required.

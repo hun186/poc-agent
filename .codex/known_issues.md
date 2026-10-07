@@ -58,3 +58,6 @@
 ## Compaction Record
 
 - 2026-10-06: Compacted active `.codex/known_issues.md` after robust date/work-block counting exceeded the AGENTS.md >20 trigger. Full text was archived first; unresolved acceptance blockers, environment constraints, retrieval limitation, launcher work, and provenance observation limits remain active.
+
+
+- 2026-10-07: P1.2 local verification reconfirmed the execution container cannot resolve `github.com` (`git ls-remote` -> `Could not resolve host: github.com`). The hosted branch therefore cannot be cloned for local pytest; do not claim a local pytest PASS. Use Hosted source inspection, Vercel/check status, and exact-head Codex review for this slice.
