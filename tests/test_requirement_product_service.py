@@ -603,8 +603,21 @@ class _CreateRequirementImportService:
         self.commit_calls = 0
         self.committed = {}
 
-    def commit(self, source_id, *, actor, upload_bytes, upload_filename, import_run_id, snapshot_id):
+    def commit(
+        self,
+        source_id,
+        *,
+        actor,
+        upload_bytes,
+        upload_filename,
+        import_run_id,
+        snapshot_id,
+        expected_profile_version_id=None,
+        expected_profile_sha256=None,
+    ):
         self.commit_calls += 1
+        assert expected_profile_version_id == "pv-1"
+        assert expected_profile_sha256 == self.store.version["profile_sha256"]
         previous = self.committed.get(import_run_id)
         result = {
             "import_run_id": import_run_id,
