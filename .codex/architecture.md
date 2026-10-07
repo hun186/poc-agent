@@ -92,3 +92,11 @@
 - `sra_api.services.requirement_product_service` is now the Product-facing presentation boundary for P1.1. It consumes already-authoritative Product Task / Schedule / Batch Run rows and returns bounded Product Task/Run views.
 - The presenter layer does not own persistence, scheduling, Handoff, Report Job execution, artifact paths, authentication, or routing. Product HTTP routes and orchestration remain future gates.
 - Product Run views retain immutable Schedule Version / Requirement Snapshot / Requirement Version identities while suppressing backend-native Report Job state and filesystem/credential details.
+
+
+## 2026-10-07 Requirement Product preview boundary
+
+- P1.2 extends the Product service façade with a read-only preview orchestration boundary; it does not add a Product HTTP route or persistence.
+- The preview boundary selects an approved Requirement Import profile version, constructs only an ephemeral manual-upload descriptor, and delegates parsing/normalization to the existing `data_ingestion.requirements.source_adapters.acquire_source` and `profile.normalize_rows` authorities.
+- Direct Requirement JSON is canonicalized to an in-memory JSON upload so JSON and file uploads share the same parser/profile behavior.
+- Preview output is whitelisted to canonical Product-safe fields and diagnostics. It does not create or address Requirement Source/Snapshot, Schedule, Product Task, Batch Run, Handoff, Report Job, artifact path, credential, or E2E authority.

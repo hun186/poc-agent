@@ -12,7 +12,7 @@
 
 ### Future architecture and product work
 
-- Requirement Product API + Task Center Design/Plan v1 is approved (PR #277 merged), and P1.0 Schedule schema v4 is merged in PR #278. P1.0A authority-supplied ID compatibility is implemented on open PR #279 pending exact-head review/checks; after it merges, the next planned slice is P1.1 Product presenters/identities, followed by Product preview/create orchestration, routers, activation/run flows, UI, Product E2E, and browser E2E.
+- Requirement Product API + Task Center Design/Plan v1 is approved (PR #277). P1.0 schema v4, P1.0A authority-supplied IDs, and P1.1 Product presenters/identities are merged through PR #280. P1.2 side-effect-free Product preview is the current slice; P1.3+ create orchestration, routers, activation/run flows, UI, Product E2E, and browser E2E remain pending.
 - Product implementation must integrate with the existing SRA `/editor` management shell/Auth/RBAC, reuse Phase 1B Requirement Import + Phase 1C Schedule/Handoff + Report Job, and never expose Handoff credentials or raw artifact paths to browsers.
 - Product v1 requires Schedule schema v4 Product Task/request control-plane tables, superuser-only provisioning/activation, durable idempotency/resource-bound canonical hashes, revision/CAS rules, transactional ownership fences, provisioning visibility gates, atomic Run admission vs disable, and reviewed Product E2E coverage.
 - Job Task JT-1 and LangGraph integration remain NOT STARTED and require new reviewed designs/plans.
@@ -46,8 +46,9 @@
 
 - 2026-10-06: Compacted active `.codex/backlog.md` after it exceeded the AGENTS.md >20 work-record trigger. Full text was archived before rewrite; unresolved live-acceptance work, Product NOT STARTED status, future architecture items, security/UI/ingestion debt, and the Elasticsearch `mapping_incompatible` blocker remain active.
 
-## 2026-10-06 Requirement Product implementation status
+## 2026-10-07 Requirement Product implementation status
 
-- P1.0 schema v4 and P1.0A authority identities are merged.
-- P1.1 Product presenters/identities are implemented on `feat/requirement-product-presenters-p1-1` and require exact-head review/check evidence before merge.
-- After P1.1 merge, continue with P1.2 side-effect-free Product preview orchestration. Do not fold P1.2 preview or P1.3 create saga into the P1.1 PR.
+- P1.0 schema v4, P1.0A authority identities, and P1.1 Product presenters/identities are merged through PR #280.
+- P1.2 side-effect-free Product preview is implemented on `feat/requirement-product-preview-p1-2` and requires exact-head Hosted review/check evidence before merge.
+- Keep P1.2 limited to service-level preview + focused tests. Do not fold P1.3 one-time create saga, Product router, or UI into this PR.
+- After P1.2 merges, continue with P1.3 one-time Product create orchestration.

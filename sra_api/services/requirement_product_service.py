@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any
 from urllib.parse import quote
+
+from data_ingestion.requirements.hashing import canonical_sha256
+from data_ingestion.requirements.models import ImportProfileDocument
+from data_ingestion.requirements.profile import normalize_rows
+from data_ingestion.requirements.source_adapters import acquire_source
 
 
 _PRODUCT_STATES = {"provisioning", "active", "disabled"}
@@ -153,12 +159,136 @@ def _present_run_item(item: dict[str, Any]) -> dict[str, Any]:
 
 
 class RequirementProductService:
-    """Pure Product façade presenters.
+    """Product façade presenters plus side-effect-free preview orchestration."""
 
-    P1.1 deliberately accepts authoritative rows from existing stores instead of
-    adding new persistence or orchestration. Later Product gates may compose
-    these presenters with store/service reads without changing the public shape.
-    """
+    def __init__(self, requirement_import_service: Any | None = None) -> None:
+        self.requirement_import_service = requirement_import_service
+
+    def preview_input(
+        self,
+        *,
+        profile_version_id: str,
+        upload_bytes: bytes | None = None,
+        upload_filename: str | None = None,
+        requirements: Any | None = None,
+    ) -> dict[str, Any]:
+        """Normalize candidate Requirement input without creating durable state."""
+
+        if not isinstance(profile_version_id, str) or not profile_version_id:
+            raise ValueError("requirement_preview_profile_invalid")
+        if self.requirement_import_service is None:
+            raise RuntimeError("requirement_preview_unconfigured")
+
+        has_upload = upload_bytes is not None or upload_filename is not None
+        has_direct = requirements is not None
+        if has_upload == has_direct:
+            raise ValueError("requirement_preview_input_invalid")
+        if has_upload and (upload_bytes is None or not upload_filename):
+            raise ValueError("requirement_preview_input_invalid")
+
+        version = self.requirement_import_service.store.get_profile_version(
+            profile_version_id
+        )
+        if version.get("status") != "approved":
+            raise ValueError("requirement_preview_profile_not_approved")
+        if version.get("profile_version_id") != profile_version_id:
+            raise ValueError("requirement_preview_profile_invalid")
+
+        profile = version.get("profile")
+        if not isinstance(profile, ImportProfileDocument):
+            raise ValueError("requirement_preview_profile_invalid")
+        profile_id = _required_text(
+            version, "profile_id", error="requirement_preview_profile_invalid"
+        )
+        profile_sha256 = _required_text(
+            version, "profile_sha256", error="requirement_preview_profile_invalid"
+        )
+        if canonical_sha256(profile.model_dump(mode="json")) != profile_sha256:
+            raise ValueError("requirement_preview_profile_invalid")
+        if (
+            version.get("format") != profile.format
+            or version.get("source_mode") != profile.source_mode.value
+        ):
+            raise ValueError("requirement_preview_profile_invalid")
+        version_number = version.get("version_number")
+        if (
+            isinstance(version_number, bool)
+            or not isinstance(version_number, int)
+            or version_number < 1
+        ):
+            raise ValueError("requirement_preview_profile_invalid")
+
+        if has_direct:
+            try:
+                upload_bytes = json.dumps(
+                    requirements,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            except (TypeError, ValueError) as exc:
+                raise ValueError("source_format_invalid") from exc
+            upload_filename = "requirements.json"
+
+        source = {
+            "source_type": "manual_upload",
+            "source_mode": profile.source_mode.value,
+            "source_config": {
+                "display_name": "Product preview",
+                "format": profile.format,
+            },
+        }
+        acquired = acquire_source(
+            source,
+            profile,
+            upload_bytes=upload_bytes,
+            upload_filename=upload_filename,
+        )
+        candidate = normalize_rows(
+            acquired.rows,
+            profile,
+            acquired.source_row_numbers,
+        )
+
+        diagnostics = [
+            item.model_dump(mode="json") for item in candidate.diagnostics
+        ]
+        errors = [item for item in diagnostics if item["severity"] == "error"]
+        warnings = [item for item in diagnostics if item["severity"] == "warning"]
+        preview_fields = {
+            "source_row_number",
+            "external_item_id",
+            "title",
+            "prompt_content",
+            "source_updated_at",
+            "expires_at",
+            "source_created_by",
+            "source_updated_by",
+            "source_created_at",
+        }
+        normalized_preview = [
+            row.model_dump(mode="json", include=preview_fields)
+            for row in candidate.rows
+        ]
+
+        return {
+            "source_sha256": acquired.source_sha256,
+            "row_count": len(acquired.rows),
+            "accepted_count": len(candidate.rows),
+            "rejected_count": len(errors),
+            "has_errors": bool(errors),
+            "normalized_preview": normalized_preview,
+            "errors": errors,
+            "warnings": warnings,
+            "profile": {
+                "profile_id": profile_id,
+                "profile_version_id": profile_version_id,
+                "version_number": version_number,
+                "profile_sha256": profile_sha256,
+                "format": profile.format,
+                "source_mode": profile.source_mode.value,
+            },
+        }
 
     @staticmethod
     def task_identity(product_task: dict[str, Any]) -> ProductTaskIdentity:
