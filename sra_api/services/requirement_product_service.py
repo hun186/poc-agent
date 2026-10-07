@@ -265,9 +265,7 @@ class RequirementProductService:
         identity = ProductTaskIdentity.from_product_task_row(task)
         if (
             identity.execution_kind != "recurring"
-            or identity.product_state != "active"
-            or not bool(schedule.get("enabled"))
-            or schedule.get("active_version_id") != schedule_version_id
+            or identity.schedule_id != schedule_id
         ):
             raise ValueError("requirement_product_create_result_invalid")
         return {
@@ -890,7 +888,7 @@ class RequirementProductService:
             actor=actor,
             now_utc=now,
         )
-        return self._present_one_time_create_result(result)
+        return self._present_recurring_create_result(result)
 
     @staticmethod
     def task_identity(product_task: dict[str, Any]) -> ProductTaskIdentity:
