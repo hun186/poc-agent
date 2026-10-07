@@ -507,6 +507,7 @@ def test_recurring_product_finalizer_atomically_enables_without_initial_run(monk
     assert connection.rollbacks == 0
     assert len(audit) == 1
     assert audit[0].action == "requirement_schedule.enabled"
+    assert audit[0].safe_payload == {}
     schedule_update = next(
         params
         for sql, params in connection.calls
