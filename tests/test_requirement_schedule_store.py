@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from requirement_scheduler.store import ScheduleStore
-from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate
+from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate, TriggerIdentity
 import pytest
 
 
@@ -319,3 +319,70 @@ def test_create_schedule_same_supplied_identity_with_different_semantics_fails_c
         sql.startswith("INSERT INTO") and "requirement_schedules" in sql
         for sql, _ in registry.connection.calls
     )
+
+
+
+class SelectionTimeCursor:
+    def __init__(self, *, expires_at):
+        self.expires_at = expires_at
+        self.last_sql = ""
+        self.calls = []
+
+    def execute(self, sql, *params):
+        self.last_sql = sql
+        self.calls.append((sql, params))
+        return self
+
+    def fetchone(self):
+        sql = self.last_sql
+        if "FROM [sra_schedule].[requirement_batch_runs]" in sql:
+            return None
+        if "SELECT active_snapshot_id" in sql:
+            return ("snap-1",)
+        if "requirement_schedule_item_state" in sql:
+            return None
+        return None
+
+    def fetchall(self):
+        if "FROM [sra_requirement].[requirement_snapshot_items]" in self.last_sql:
+            return [
+                (
+                    "req-1",
+                    "rv-1",
+                    1,
+                    1,
+                    self.expires_at,
+                    "external-1",
+                )
+            ]
+        return []
+
+
+def test_materialize_locked_uses_separate_selection_time_from_audit_time():
+    store = ScheduleStore(Registry(), "control")
+    selection_time = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+    retry_time = datetime(2026, 10, 7, 4, 10, tzinfo=timezone.utc)
+    cursor = SelectionTimeCursor(
+        expires_at=datetime(2026, 10, 7, 4, 5, tzinfo=timezone.utc)
+    )
+
+    result = store._materialize_locked(
+        cursor,
+        "sch-1",
+        "sv-1",
+        RunPolicy.ALL_ACTIVE.value,
+        TriggerIdentity("manual", trigger_request_id="product-create:preq-1"),
+        retry_time,
+        "admin",
+        selection_time=selection_time,
+    )
+
+    assert result.run["selected_count"] == 1
+    item_insert = next(
+        params
+        for sql, params in cursor.calls
+        if "INSERT INTO [sra_schedule].[requirement_batch_run_items]" in sql
+    )
+    assert item_insert[-3] == retry_time
+    assert item_insert[-2] == selection_time
+    assert item_insert[-1] == retry_time
