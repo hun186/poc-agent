@@ -250,8 +250,8 @@ class RequirementProductService:
             raise RuntimeError("requirement_preview_unconfigured")
 
         input_bytes, input_filename = self._input_bytes(
-            upload_bytes=input_bytes,
-            upload_filename=input_filename,
+            upload_bytes=upload_bytes,
+            upload_filename=upload_filename,
             requirements=requirements,
         )
         version = self.requirement_import_service.store.get_profile_version(
@@ -297,8 +297,8 @@ class RequirementProductService:
         acquired = acquire_source(
             source,
             profile,
-            upload_bytes=upload_bytes,
-            upload_filename=upload_filename,
+            upload_bytes=input_bytes,
+            upload_filename=input_filename,
         )
         candidate = normalize_rows(
             acquired.rows,
@@ -375,6 +375,22 @@ class RequirementProductService:
             if expiry.astimezone(timezone.utc) > evaluation_time.astimezone(timezone.utc):
                 selectable += 1
         return selectable
+
+    @staticmethod
+    def _request_evaluation_time(request: dict[str, Any]) -> datetime:
+        value = request.get("created_at")
+        if isinstance(value, datetime):
+            evaluation_time = value
+        elif isinstance(value, str):
+            try:
+                evaluation_time = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise RuntimeError("persistence_error") from exc
+        else:
+            raise RuntimeError("persistence_error")
+        if evaluation_time.tzinfo is None:
+            raise RuntimeError("persistence_error")
+        return evaluation_time.astimezone(timezone.utc)
 
     def create_one_time_task(
         self,
@@ -469,7 +485,8 @@ class RequirementProductService:
                 now_utc=now,
             )
             raise ValueError("requirement_preview_empty")
-        if self._preview_selectable_count(preview, evaluation_time=now) < 1:
+        evaluation_time = self._request_evaluation_time(request)
+        if self._preview_selectable_count(preview, evaluation_time=evaluation_time) < 1:
             self.schedule_store.fail_product_request_terminal(
                 request["request_id"],
                 error_code="requirement_preview_no_selectable_rows",
