@@ -133,3 +133,6 @@
 
 
 - 2026-10-07 P1.4 second review corrections: recurring create now separates durable request time from recurrence-release time. The service refreshes UTC immediately before finalization (with an explicit deterministic test override), while request `created_at` remains the input/replay semantic anchor. The recurring finalizer computes the first due from that fresh release time and, before enabling the Schedule, locks/queries the exact snapshot to require at least one Requirement whose expiry extends beyond that first due. If none can participate, it atomically marks the owning create request `failed_terminal` with `requirement_product_no_selectable_first_run` while leaving the Schedule disabled and Product Task provisioning/invisible.
+
+
+- 2026-10-07 P1.4 third review correction: scheduled occurrence materialization now evaluates Requirement selection at the occurrence's canonical `scheduled_for` instant, not the later worker claim time. `claim_due()` passes `selection_time=latest` into the existing materializer, while run/item created/materialized/updated timestamps continue using the actual claim time. This keeps Product first-due validation and scheduler selection on the same semantic clock and prevents delayed claims from turning an otherwise valid occurrence into a zero-selected queued run.

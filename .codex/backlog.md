@@ -76,3 +76,6 @@
 
 
 - 2026-10-07 P1.4 second exact-head review findings (P2 stale recurrence-release clock, P2 first-occurrence zero-selection) were fixed; exact-head Codex re-review/check evidence remains required before merge.
+
+
+- 2026-10-07 P1.4 third exact-head review finding (P2 delayed claim selection-time drift) was fixed by binding scheduled materialization to `scheduled_for`; exact-head re-review/check evidence remains required before merge.
