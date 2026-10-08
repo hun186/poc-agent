@@ -1946,3 +1946,19 @@ def test_two_draft_activations_from_same_revision_cannot_both_win():
     assert store.schedule["active_version_id"] == "sv-draft-1"
     assert store.versions["sv-draft-2"]["status"] == "retired"
     assert store.task["revision"] == 8
+
+
+
+def test_task_version_activation_same_key_changed_task_conflicts_before_target_lookup():
+    service, _ = _task_activation_service()
+    common = {
+        "schedule_version_id": "sv-draft-1",
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "activate-cross-task",
+        "now_utc": datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc),
+    }
+    service.activate_task_version(task_id="task-1", **common)
+
+    with pytest.raises(ValueError, match="requirement_idempotency_conflict"):
+        service.activate_task_version(task_id="task-2", **common)
