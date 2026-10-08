@@ -1540,3 +1540,40 @@ def test_product_activation_of_disabled_recurring_task_keeps_next_run_null(monke
     assert result["product_state"] == "disabled"
     assert result["enabled"] is False
     assert result["next_run_at"] is None
+
+
+
+class UnownedTaskActivationConnection(TaskActivationConnection):
+    def execute(self, sql, *params):
+        result = super().execute(sql, *params)
+        if (
+            "FROM [sra_schedule].[requirement_product_requests]" in sql
+            and "operation='task_update'" in sql
+            and "state='succeeded'" in sql
+        ):
+            self.many = []
+        return result
+
+
+def test_reserve_product_task_version_activation_rejects_unowned_draft():
+    connection = UnownedTaskActivationConnection()
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+
+    with pytest.raises(ValueError, match="requirement_task_version_invalid"):
+        store.reserve_product_task_version_activation(
+            task_id="task-1",
+            schedule_version_id="sv-draft-1",
+            principal_kind="user",
+            principal_id="admin",
+            idempotency_key="activate-unowned",
+            request_sha256="a" * 64,
+            now_utc=datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc),
+        )
+
+    assert connection.rollbacks == 1
+    assert not any(
+        sql.startswith(
+            "INSERT INTO [sra_schedule].[requirement_product_requests]"
+        )
+        for sql, _ in connection.calls
+    )
