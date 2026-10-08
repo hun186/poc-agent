@@ -89,3 +89,6 @@
 
 
 - 2026-10-08 P1.5A current slice: exact-head Hosted Codex review/check evidence is required before merge. P1.6 must replace the low-level approve read/precheck with same-transaction Product ownership fencing and extend that fence to all planned Schedule/source mutations.
+
+
+- 2026-10-08 P1.5A first exact-head Codex finding (P2 missing Product activation audit) was fixed by atomically enqueuing `requirement.task.updated` and adding focused store/outbox regressions; exact-head re-review/check evidence remains required before merge.

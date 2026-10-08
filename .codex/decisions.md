@@ -201,3 +201,10 @@
 
 - The low-level Schedule approval endpoint must stop being a supported bypass once Product activation exists, so P1.5A adds a Product-ownership read/precheck and stable 409 response.
 - This precheck is not treated as the final concurrency boundary. P1.6 must move ownership/reservation checks into the same transaction/locks as each low-level mutation and cover the documented TOCTOU races.
+
+
+### 2026-10-08 Product activation requires atomic Product-level audit
+
+- Schedule-version approval audit alone is insufficient when activation also mutates Product Task semantics.
+- Successful `task_version_activate` must enqueue `requirement.task.updated` in the same transaction as approval, Task revision increment, and request success.
+- The Product audit payload is explicitly bounded to `task_id`, committed `revision`, and `operation`; Schedule/version identity remains in the existing audit envelope.
