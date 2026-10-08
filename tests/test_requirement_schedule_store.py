@@ -1365,6 +1365,41 @@ def test_reserve_product_task_version_activation_copies_origin_revision():
     assert connection.commits == 1
 
 
+def test_reserve_product_task_version_activation_matches_finalizer_lock_order():
+    connection = TaskActivationConnection()
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+
+    store.reserve_product_task_version_activation(
+        task_id="task-1",
+        schedule_version_id="sv-draft-1",
+        principal_kind="user",
+        principal_id="admin",
+        idempotency_key="activate-lock-order",
+        request_sha256="a" * 64,
+        now_utc=datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc),
+    )
+
+    sqls = [sql for sql, _ in connection.calls]
+    task_lock = next(
+        index
+        for index, sql in enumerate(sqls)
+        if "SELECT task_id,schedule_id,source_id,execution_kind,product_state,revision" in sql
+    )
+    version_lock = next(
+        index
+        for index, sql in enumerate(sqls)
+        if "SELECT schedule_id,status" in sql
+        and "requirement_schedule_versions" in sql
+    )
+    origin_lock = next(
+        index
+        for index, sql in enumerate(sqls)
+        if "operation='task_update'" in sql and "state='succeeded'" in sql
+    )
+
+    assert task_lock < version_lock < origin_lock
+
+
 def test_finalize_product_task_version_activation_is_atomic(monkeypatch):
     connection = TaskActivationConnection()
     store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
