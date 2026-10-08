@@ -46,7 +46,7 @@ def schedule_service(request: Request):
 def _error(exc: Exception) -> HTTPException:
     code = str(exc.args[0] if exc.args else exc).strip("'").split(":", 1)[0]
     if isinstance(exc, KeyError): status = 404
-    elif code in {"schedule_enabled", "schedule_version_not_approved", "schedule_version_conflict"}: status = 409
+    elif code in {"schedule_enabled", "schedule_version_not_approved", "schedule_version_conflict", "requirement_product_owned_schedule"}: status = 409
     elif code == "persistence_error": status = 500
     elif isinstance(exc, ValueError): status = 400
     else: status, code = 500, "persistence_error"
@@ -104,7 +104,15 @@ def create_version(schedule_id: str, payload: ScheduleVersionBody, service=Depen
 
 @router.post("/v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve")
 def approve_version(schedule_id: str, version_number: int, service=Depends(schedule_service), user: AuthUser = Depends(require_superuser)):
-    try: result = service.approve_version(schedule_id=schedule_id, version_number=version_number, actor=user.username, now_utc=datetime.now(timezone.utc).replace(microsecond=0))
+    try:
+        if service.store.is_product_owned_schedule(schedule_id):
+            raise ValueError("requirement_product_owned_schedule")
+        result = service.approve_version(
+            schedule_id=schedule_id,
+            version_number=version_number,
+            actor=user.username,
+            now_utc=datetime.now(timezone.utc).replace(microsecond=0),
+        )
     except Exception as exc: raise _error(exc) from exc
     return result
 
