@@ -49,9 +49,10 @@
 ## 2026-10-08 Requirement Product implementation status
 
 - P1.0 schema v4, P1.0A authority identities, P1.1 Product presenters/identities, P1.2 preview, P1.3 one-time create, and P1.4 recurring create/finalization are merged through PR #283 at `main@2c22df0bf7fa9a973f374849ebd0de82f2ca6946`.
-- P1.5 Task updates / immutable Schedule draft proposals are implemented on `feat/requirement-product-task-updates-p1-5` and require exact-head Hosted review/check evidence before merge.
-- Keep P1.5 limited to durable `task_update` reservation, in-place revision-CAS finalization, proposal draft creation/recovery/completion, RBAC boundaries, and focused tests.
-- P1.5A Product draft activation, P1.6 atomic low-level ownership fences, P1.7 input replacement, Product HTTP router/UI, and later Product API gates remain pending.
+- P1.5 Task updates / immutable Schedule draft proposals are merged through PR #284 at `main@ad5dde9133e9e93eb4e8ffdd162d55debbaff3f1`.
+- P1.5A Product draft activation is implemented on `feat/requirement-product-draft-activation-p1-5a` and requires exact-head Hosted review/check evidence before merge.
+- Keep P1.5A limited to superuser activation reservation/provenance/CAS, shared locked Schedule approval, stale exact-draft retirement, low-level approve interim 409 precheck, and focused tests.
+- P1.6 atomic low-level ownership fences, P1.7 input replacement, Product HTTP router/UI, and later Product API gates remain pending.
 
 
 - 2026-10-07 P1.3 exact-head review P1 profile-binding race was fixed on the same branch; exact-head Codex re-review/check evidence is required before merge.
@@ -85,3 +86,6 @@
 
 
 - 2026-10-08 P1.5 current slice: exact-head Hosted Codex review/check evidence is required before merge. Do not fold P1.5A activation or P1.6 low-level ownership fencing into this PR.
+
+
+- 2026-10-08 P1.5A current slice: exact-head Hosted Codex review/check evidence is required before merge. P1.6 must replace the low-level approve read/precheck with same-transaction Product ownership fencing and extend that fence to all planned Schedule/source mutations.

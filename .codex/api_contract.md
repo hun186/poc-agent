@@ -85,3 +85,13 @@
 - Successful in-place result is bounded metadata containing Task revision/state and Schedule name/enabled/active-version/next-run snapshot. `result_task_revision` equals the single committed new revision.
 - Successful schedule-proposal result contains Task ID, originating `base_task_revision`, Schedule ID, exact draft Schedule Version ID/number/digest/status. It does not expose a new Task revision; ledger `result_task_revision` remains NULL.
 - Proposal retry recovers an existing exact request-owned draft before consulting current active Schedule config. P1.5 never approves or activates that draft.
+
+
+## 2026-10-08 Requirement Product P1.5A internal activation contract
+
+- Product HTTP Task routes are still not introduced in this gate. Internal `RequirementProductService.activate_task_version(...)` is the activation contract that P2 will expose later.
+- Activation is superuser-only and requires `task_id`, exact `schedule_version_id`, and an idempotency key. Canonical request hashing binds both target identities.
+- The draft must be proven to originate from exactly one successful Product `task_update` schedule proposal. The activation request copies that proposal's persisted `base_task_revision`; arbitrary Schedule drafts are rejected with `requirement_task_version_invalid`.
+- Successful activation returns bounded metadata: Task revision/state, Schedule/version identity, approved status, enabled state, and next-run snapshot. Replay returns the same stored bounded result and does not approve or increment revision again.
+- Stale originating revision terminalizes the activation with `requirement_task_conflict`; if the exact target is still draft it is retired without changing current active Schedule/Task semantics.
+- The existing low-level `POST /v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve` now returns 409 `requirement_product_owned_schedule` for Product-owned Schedule identities. This is an interim precheck until P1.6 makes ownership checking and mutation atomic.

@@ -128,3 +128,13 @@
 - Schedule-proposal mode never touches active semantics. It builds one immutable draft through existing Phase 1C Schedule Version validation, then `complete_product_task_update_proposal()` verifies the request-owned draft and unchanged originating Task revision before marking only the request succeeded. Product Task revision and `result_task_revision` remain unchanged/NULL.
 - Proposal retry uses the preallocated Schedule Version identity as recovery authority. If that exact draft already exists, Product service completes/replays it instead of rebuilding from whatever active config exists later.
 - P1.5A remains the only planned Product path that may approve/activate a proposal draft; P1.6 will later fence low-level non-Product mutation routes transactionally.
+
+
+## 2026-10-08 Requirement Product P1.5A draft activation boundary
+
+- Product draft activation is a separate privileged control-plane operation from P1.5 draft proposal creation. Only superuser callers may reserve `task_version_activate`.
+- Activation reservation resolves exactly one successful originating `task_update` proposal by `task_id + schedule_version_id`, validates its bounded proposal result, and copies the proposal's persisted `base_task_revision` into the activation request. Activation never refreshes this CAS anchor from current Task state.
+- The activation finalizer locks activation request → Product Task → Schedule → exact Schedule Version → originating proposal request, then enforces current Task revision against the proposal-origin revision.
+- Successful activation uses the shared locked Schedule approval helper, retires the prior approved version, approves the exact draft, recomputes `next_run_at` only when the recurring Schedule is currently enabled, increments Product Task revision once, stores `result_task_revision`, and marks the activation request succeeded in the same SQL transaction.
+- Stale activation leaves active Schedule/Task semantics unchanged, retires only the stale exact draft when it is still draft, records a version-retired audit event, and terminalizes the activation request with `requirement_task_conflict`.
+- The existing low-level Schedule approve route now rejects Product-owned Schedules with 409 through an interim ownership precheck. P1.6 still owns the required same-transaction low-level ownership fence and TOCTOU regressions.

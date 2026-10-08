@@ -183,3 +183,21 @@
 
 - An in-place PATCH that repeats the current recurring enabled state may still complete as one Task revision update, but it must preserve the current `next_run_at`.
 - Only an actual disabled→enabled transition recomputes `next_run_at` from the active approved Schedule Version. Active→disabled clears it.
+
+
+### 2026-10-08 Product draft activation uses proposal-origin revision, never current revision
+
+- `task_version_activate` must resolve the exact successful schedule-proposal `task_update` that created the draft and copy its persisted `base_task_revision`.
+- Activation CAS is evaluated against that immutable origin revision. This guarantees that two drafts created from one Task revision cannot both become active after either activation or another in-place Task update advances the revision.
+- Lost-response replay is governed by the activation ledger result; successful replay never re-runs approval or increments Task revision again.
+
+### 2026-10-08 Schedule approval logic is shared through a locked helper
+
+- Low-level Schedule approval and Product activation must not maintain separate recurrence/version-transition implementations.
+- `_approve_version_locked()` is the single SQL-transaction helper for retiring the previous approved version, approving the exact draft, updating active version / next-run state, and emitting Schedule approval audit evidence.
+- Product activation performs Product provenance/CAS checks before calling the helper and commits Product revision/request state in the same transaction.
+
+### 2026-10-08 P1.5A low-level Product approval guard is intentionally interim
+
+- The low-level Schedule approval endpoint must stop being a supported bypass once Product activation exists, so P1.5A adds a Product-ownership read/precheck and stable 409 response.
+- This precheck is not treated as the final concurrency boundary. P1.6 must move ownership/reservation checks into the same transaction/locks as each low-level mutation and cover the documented TOCTOU races.
