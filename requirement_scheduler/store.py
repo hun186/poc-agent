@@ -53,7 +53,8 @@ def _safe_error(exc: Exception) -> Exception:
         "requirement_product_no_selectable_first_run",
         "requirement_task_not_found", "requirement_task_provisioning",
         "requirement_task_conflict", "requirement_task_state_invalid",
-        "requirement_task_update_incomplete",
+        "requirement_task_update_incomplete", "requirement_task_version_invalid",
+        "requirement_product_owned_schedule",
     }: return exc
     return RuntimeError("persistence_error")
 
@@ -1712,27 +1713,157 @@ class ScheduleStore:
             "created_at": now,
         }
 
-    def approve_version(self, *, schedule_id: str, version_number: int, actor: str, now_utc: datetime):
+    def _approve_version_locked(
+        self,
+        c,
+        *,
+        schedule_id: str,
+        schedule_version_id: str,
+        actor: str,
+        now_utc: datetime,
+    ) -> dict[str, Any]:
+        c.execute(
+            f"SELECT enabled,active_version_id,next_run_at "
+            f"FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) "
+            f"WHERE schedule_id=?",
+            schedule_id,
+        )
+        schedule = c.fetchone()
+        if schedule is None:
+            raise KeyError("schedule_not_found")
+        c.execute(
+            f"SELECT version_number,status,timezone,recurrence_json,run_policy,model,config_sha256 "
+            f"FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) "
+            f"WHERE schedule_id=? AND schedule_version_id=?",
+            schedule_id,
+            schedule_version_id,
+        )
+        version = c.fetchone()
+        if version is None:
+            raise KeyError("schedule_version_not_found")
+        (
+            version_number,
+            status,
+            timezone_name,
+            recurrence_json,
+            run_policy,
+            model,
+            config_sha256,
+        ) = version
+        if status == "approved" and schedule[1] == schedule_version_id:
+            return {
+                "schedule_version_id": schedule_version_id,
+                "status": "approved",
+                "version_number": int(version_number),
+                "enabled": bool(schedule[0]),
+                "next_run_at": schedule[2],
+            }
+        if status != "draft":
+            raise ValueError("schedule_version_not_approved")
+
+        config = self._validate_persisted_config(
+            timezone_name,
+            recurrence_json,
+            run_policy,
+            model,
+            config_sha256,
+        )
+        due = (
+            next_occurrence(config.recurrence, config.timezone, now_utc)
+            if bool(schedule[0])
+            else None
+        )
+        if schedule[1] and schedule[1] != schedule_version_id:
+            c.execute(
+                f"UPDATE {self.t}.[requirement_schedule_versions] "
+                f"SET status='retired',retired_at=? "
+                f"WHERE schedule_version_id=? AND status='approved'",
+                now_utc,
+                schedule[1],
+            )
+            if getattr(c, "rowcount", 1) != 1:
+                raise RuntimeError("persistence_error")
+        c.execute(
+            f"UPDATE {self.t}.[requirement_schedule_versions] "
+            f"SET status='approved',approved_by=?,approved_at=? "
+            f"WHERE schedule_version_id=? AND status='draft'",
+            actor,
+            now_utc,
+            schedule_version_id,
+        )
+        if getattr(c, "rowcount", 1) != 1:
+            raise ValueError("schedule_version_not_approved")
+        c.execute(
+            f"UPDATE {self.t}.[requirement_schedules] "
+            f"SET active_version_id=?,next_run_at=?,updated_by=?,updated_at=? "
+            f"WHERE schedule_id=?",
+            schedule_version_id,
+            due,
+            actor,
+            now_utc,
+            schedule_id,
+        )
+        if getattr(c, "rowcount", 1) != 1:
+            raise RuntimeError("persistence_error")
+        self._enqueue_audit_event(
+            c,
+            self._audit_event(
+                "requirement_schedule.version_approved",
+                actor,
+                schedule_id,
+                schedule_version_id=schedule_version_id,
+                payload={"version_number": int(version_number)},
+                created_at=now_utc,
+            ),
+        )
+        return {
+            "schedule_version_id": schedule_version_id,
+            "status": "approved",
+            "version_number": int(version_number),
+            "enabled": bool(schedule[0]),
+            "next_run_at": due,
+        }
+
+    def approve_version(
+        self,
+        *,
+        schedule_id: str,
+        version_number: int,
+        actor: str,
+        now_utc: datetime,
+    ):
         connection = self._connect()
         try:
-            c = connection.cursor(); c.execute(f"SELECT enabled,active_version_id,next_run_at FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); schedule = c.fetchone()
-            if schedule is None: raise KeyError("schedule_not_found")
-            c.execute(f"SELECT schedule_version_id,status,timezone,recurrence_json,run_policy,model,config_sha256 FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=? AND version_number=?", schedule_id, version_number); version = c.fetchone()
-            if version is None: raise KeyError("schedule_version_not_found")
-            vid, status, timezone_name, recurrence_json, run_policy, model, config_sha256 = version
-            if status == "retired": raise ValueError("schedule_version_not_approved")
-            if status == "approved" and schedule[1] == vid: connection.commit(); return {"schedule_version_id": vid, "status": "approved", "version_number": version_number}
-            recurrence = self._validate_persisted_config(timezone_name, recurrence_json, run_policy, model, config_sha256).recurrence
-            due = next_occurrence(recurrence, timezone_name, now_utc) if bool(schedule[0]) else None
-            if schedule[1]: c.execute(f"UPDATE {self.t}.[requirement_schedule_versions] SET status='retired',retired_at=? WHERE schedule_version_id=? AND status='approved'", now_utc, schedule[1])
-            c.execute(f"UPDATE {self.t}.[requirement_schedule_versions] SET status='approved',approved_by=?,approved_at=? WHERE schedule_version_id=? AND status='draft'", actor, now_utc, vid)
-            c.execute(f"UPDATE {self.t}.[requirement_schedules] SET active_version_id=?,next_run_at=?,updated_by=?,updated_at=? WHERE schedule_id=?", vid, due, actor, now_utc, schedule_id)
-            self._enqueue_audit_event(c, self._audit_event("requirement_schedule.version_approved", actor, schedule_id, schedule_version_id=vid, payload={"version_number": version_number}, created_at=now_utc))
+            c = connection.cursor()
+            c.execute(
+                f"SELECT schedule_version_id "
+                f"FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE schedule_id=? AND version_number=?",
+                schedule_id,
+                version_number,
+            )
+            row = c.fetchone()
+            if row is None:
+                raise KeyError("schedule_version_not_found")
+            result = self._approve_version_locked(
+                c,
+                schedule_id=schedule_id,
+                schedule_version_id=row[0],
+                actor=actor,
+                now_utc=now_utc,
+            )
             connection.commit()
-            self._drain_best_effort()
-            return {"schedule_version_id": vid, "status": "approved", "version_number": version_number}
-        except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
-        finally: connection.close()
+        except Exception as exc:
+            connection.rollback()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
+        self._drain_best_effort()
+        return {
+            "schedule_version_id": result["schedule_version_id"],
+            "status": result["status"],
+            "version_number": result["version_number"],
+        }
 
     def set_enabled(self, *, schedule_id: str, enabled: bool, actor: str, now_utc: datetime):
         connection = self._connect()
