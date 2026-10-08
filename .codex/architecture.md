@@ -117,3 +117,14 @@
 - The recurring Product-create finalizer is the single recurrence-release/visibility boundary. It computes the first due time with existing Phase 1C `next_occurrence()` semantics and atomically commits Schedule `enabled=1,next_run_at=<due>`, Product Task `active`, bounded create result, and owning request `succeeded`.
 - Unlike one-time create, recurring create does not materialize an initial manual Batch Run. The first Run is created later by the existing scheduler worker when the persisted due occurrence becomes claimable.
 - Create replay keeps immutable initial-next-run evidence in the request ledger while Product Task presentation reflects current Schedule state. This prevents scheduler progress from changing the semantic result of the original idempotent create.
+
+
+## 2026-10-08 Requirement Product P1.5 Task update boundary
+
+- P1.5 adds internal Product Task update orchestration only; there is still no Product HTTP router/UI and no draft activation in this slice.
+- Task update payloads are classified before persistence into exactly one mode. In-place fields are `name` and recurring `enabled`; Schedule-affecting fields are `timezone`, `recurrence`, `run_policy`, and `model`. Cross-mode payloads never reserve a Product request.
+- `reserve_product_task_update()` is the durable admission point. It locks the Product Task, rejects provisioning, records the current Task revision as `base_task_revision`, and preallocates a Schedule Version identity only for proposal mode.
+- `finalize_product_task_update()` is the atomic in-place authority. It locks request/Task/Schedule, enforces revision CAS, updates Schedule name and recurring enable state, mirrors Product Task active/disabled state, writes audit outbox evidence, increments Task revision once, persists bounded result metadata, and marks the request succeeded in one Schedule transaction.
+- Schedule-proposal mode never touches active semantics. It builds one immutable draft through existing Phase 1C Schedule Version validation, then `complete_product_task_update_proposal()` verifies the request-owned draft and unchanged originating Task revision before marking only the request succeeded. Product Task revision and `result_task_revision` remain unchanged/NULL.
+- Proposal retry uses the preallocated Schedule Version identity as recovery authority. If that exact draft already exists, Product service completes/replays it instead of rebuilding from whatever active config exists later.
+- P1.5A remains the only planned Product path that may approve/activate a proposal draft; P1.6 will later fence low-level non-Product mutation routes transactionally.

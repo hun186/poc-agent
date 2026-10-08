@@ -7,12 +7,13 @@ import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.models import ImportProfileDocument
 from data_ingestion.requirements.profile import normalize_rows
 from data_ingestion.requirements.source_adapters import acquire_source
-from requirement_scheduler.models import ScheduleVersionCreate
+from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate
 
 
 _PRODUCT_STATES = {"provisioning", "active", "disabled"}
@@ -899,6 +900,192 @@ class RequirementProductService:
             now_utc=finalization_now.astimezone(timezone.utc),
         )
         return self._present_recurring_create_result(result)
+
+    def update_task(
+        self,
+        *,
+        task_id: str,
+        actor: str,
+        is_superuser: bool,
+        idempotency_key: str,
+        name: str | None = None,
+        enabled: bool | None = None,
+        timezone_name: str | None = None,
+        recurrence: dict[str, Any] | None = None,
+        run_policy: RunPolicy | str | None = None,
+        model: str | None = None,
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Apply one in-place Product Task update or create one immutable Schedule draft."""
+
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        if not task_id or not actor or len(actor) > 128:
+            raise ValueError("requirement_product_request_invalid")
+        if not idempotency_key:
+            raise ValueError("requirement_product_request_invalid")
+
+        in_place_mode = name is not None or enabled is not None
+        schedule_mode = any(
+            value is not None
+            for value in (timezone_name, recurrence, run_policy, model)
+        )
+        if in_place_mode and schedule_mode:
+            raise ValueError("requirement_task_patch_mixed_modes")
+        if not in_place_mode and not schedule_mode:
+            raise ValueError("requirement_task_patch_invalid")
+
+        clean_name: str | None = None
+        if name is not None:
+            if not isinstance(name, str):
+                raise ValueError("schedule_name_invalid")
+            clean_name = name.strip()
+            if not clean_name or len(clean_name) > 240:
+                raise ValueError("schedule_name_invalid")
+        if enabled is not None:
+            if not isinstance(enabled, bool):
+                raise ValueError("requirement_task_state_invalid")
+            if not is_superuser:
+                raise PermissionError("superuser_required")
+
+        normalized_recurrence: RecurrenceSpec | None = None
+        if recurrence is not None:
+            normalized_recurrence = RecurrenceSpec.validate(recurrence)
+        normalized_policy: RunPolicy | None = None
+        if run_policy is not None:
+            try:
+                normalized_policy = (
+                    run_policy if isinstance(run_policy, RunPolicy) else RunPolicy(run_policy)
+                )
+            except (TypeError, ValueError):
+                raise ValueError("requirement_task_patch_invalid") from None
+        clean_model: str | None = None
+        if model is not None:
+            if not isinstance(model, str):
+                raise ValueError("schedule_model_invalid")
+            clean_model = model.strip()
+            if not clean_model or len(clean_model) > 240:
+                raise ValueError("schedule_model_invalid")
+        clean_timezone: str | None = None
+        if timezone_name is not None:
+            if not isinstance(timezone_name, str):
+                raise ValueError("timezone_invalid")
+            clean_timezone = timezone_name.strip()
+            if not clean_timezone:
+                raise ValueError("timezone_invalid")
+            try:
+                ZoneInfo(clean_timezone)
+            except (ZoneInfoNotFoundError, ValueError):
+                raise ValueError("timezone_invalid") from None
+
+        mode = "in_place" if in_place_mode else "schedule_proposal"
+        patch_document: dict[str, Any] = {}
+        if clean_name is not None:
+            patch_document["name"] = clean_name
+        if enabled is not None:
+            patch_document["enabled"] = enabled
+        if clean_timezone is not None:
+            patch_document["timezone"] = clean_timezone
+        if normalized_recurrence is not None:
+            patch_document["recurrence"] = normalized_recurrence.as_dict()
+        if normalized_policy is not None:
+            patch_document["run_policy"] = normalized_policy.value
+        if clean_model is not None:
+            patch_document["model"] = clean_model
+
+        request_sha256 = canonical_sha256(
+            {
+                "operation": "task_update",
+                "task_id": task_id,
+                "mode": mode,
+                "patch": patch_document,
+            }
+        )
+        now = now_utc or datetime.now(timezone.utc).replace(microsecond=0)
+        request = self.schedule_store.reserve_product_task_update(
+            task_id=task_id,
+            principal_kind="user",
+            principal_id=actor,
+            idempotency_key=idempotency_key,
+            request_sha256=request_sha256,
+            allocate_schedule_version=schedule_mode,
+            now_utc=now,
+        )
+        if request["state"] == "succeeded":
+            result = request.get("safe_result")
+            if not isinstance(result, dict):
+                raise RuntimeError("persistence_error")
+            return result
+        if request["state"] == "failed_terminal":
+            raise ValueError(
+                request.get("error_code") or "requirement_product_request_terminal"
+            )
+
+        self.schedule_store.mark_product_task_update_in_progress(
+            request["request_id"],
+            now_utc=now,
+        )
+
+        if in_place_mode:
+            return self.schedule_store.finalize_product_task_update(
+                request_id=request["request_id"],
+                task_id=task_id,
+                actor=actor,
+                name=clean_name,
+                enabled=enabled,
+                is_superuser=is_superuser,
+                now_utc=now,
+            )
+
+        try:
+            existing_draft = self.schedule_store.get_schedule_version_config(
+                request["schedule_id"],
+                request["schedule_version_id"],
+            )
+        except KeyError:
+            existing_draft = None
+
+        if existing_draft is None:
+            active = self.schedule_store.get_active_schedule_config(
+                request["schedule_id"]
+            )
+            base_config = active["config"]
+            proposed = ScheduleVersionCreate(
+                clean_timezone
+                if clean_timezone is not None
+                else base_config.timezone,
+                normalized_recurrence
+                if normalized_recurrence is not None
+                else base_config.recurrence,
+                normalized_policy
+                if normalized_policy is not None
+                else base_config.run_policy,
+                clean_model if clean_model is not None else base_config.model,
+            )
+            version = self.schedule_store.create_version(
+                schedule_id=request["schedule_id"],
+                config=proposed,
+                actor=actor,
+                schedule_version_id=request["schedule_version_id"],
+            )
+        else:
+            version = {
+                "schedule_version_id": existing_draft["schedule_version_id"],
+                "status": existing_draft["status"],
+            }
+
+        if (
+            version.get("schedule_version_id") != request["schedule_version_id"]
+            or version.get("status") != "draft"
+        ):
+            raise RuntimeError("persistence_error")
+
+        return self.schedule_store.complete_product_task_update_proposal(
+            request_id=request["request_id"],
+            task_id=task_id,
+            actor=actor,
+            now_utc=now,
+        )
 
     @staticmethod
     def task_identity(product_task: dict[str, Any]) -> ProductTaskIdentity:

@@ -165,3 +165,21 @@
 - A materialized Batch Run with `selected_count == 0` has no downstream handoff work and must not be persisted as `handoff_pending`.
 - Reuse `_terminal_run_recompute()` inside the same materialization transaction after item evidence/checkpoint writes. With no selected items, the canonical terminal state is `completed` with zero success/failure counts and a completion timestamp.
 - This is a scheduler invariant rather than a Product-only special case, so delayed/coalesced scheduled occurrences and manual paths cannot strand empty runs.
+
+
+### 2026-10-08 Product Task PATCH is split into two durable mutation modes
+
+- Classify Task PATCH before reservation. In-place metadata/state and Schedule-version proposal semantics must never share one durable request because they have different revision and privilege behavior.
+- In-place success increments Product Task revision exactly once. Schedule-proposal success creates only an immutable draft and leaves Task revision / active Schedule semantics untouched.
+- Persist the originating Task revision in every `task_update` request; it is the in-place CAS anchor and the future P1.5A activation CAS anchor.
+
+### 2026-10-08 Recover exact Product draft before rebuilding proposal config
+
+- A crash may occur after the preallocated Schedule Version draft commits but before the Product request is marked succeeded.
+- Retry therefore checks the exact request-owned `schedule_version_id` first. If present, it reuses that persisted draft and proceeds to request completion instead of recomputing from a possibly newer active Schedule config.
+- This preserves idempotent draft identity and avoids digest drift after unrelated active-version movement.
+
+### 2026-10-08 Same enabled state must not reschedule recurrence
+
+- An in-place PATCH that repeats the current recurring enabled state may still complete as one Task revision update, but it must preserve the current `next_run_at`.
+- Only an actual disabled→enabled transition recomputes `next_run_at` from the active approved Schedule Version. Active→disabled clears it.

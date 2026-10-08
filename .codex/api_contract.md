@@ -71,3 +71,17 @@
 - Before finalization the Product Task is `provisioning`, the initial Schedule Version is approved/active, and the Schedule is recurrence-disabled with no next-run time.
 - Successful finalization returns Product Task presentation plus immutable recurrence evidence containing the initial approved Schedule Version ID and create-time `initial_next_run_at`.
 - There is no initial Product Run in a successful recurring create response.
+
+
+## 2026-10-08 Requirement Product P1.5 internal Task update contract
+
+- No Product HTTP route is introduced by P1.5. Internal `RequirementProductService.update_task(...)` is the service contract that P2 will expose later.
+- Every update requires Task identity, user principal, idempotency key, and exactly one semantic mode:
+  - in-place: `name` and/or `enabled`;
+  - schedule proposal: `timezone`, `recurrence`, `run_policy`, and/or `model`.
+- Mixed modes fail with `requirement_task_patch_mixed_modes` before ledger reservation. Empty patch fails with `requirement_task_patch_invalid`. Invalid timezone/name/model/recurrence/run-policy is validated before mutation; recurring enabled-state changes require superuser.
+- Canonical `task_update` request hashes bind `task_id + mode + normalized patch`. Same principal/operation/key with changed Task or payload conflicts.
+- Reservation persists `base_task_revision`; proposal mode also persists a preallocated `schedule_version_id`.
+- Successful in-place result is bounded metadata containing Task revision/state and Schedule name/enabled/active-version/next-run snapshot. `result_task_revision` equals the single committed new revision.
+- Successful schedule-proposal result contains Task ID, originating `base_task_revision`, Schedule ID, exact draft Schedule Version ID/number/digest/status. It does not expose a new Task revision; ledger `result_task_revision` remains NULL.
+- Proposal retry recovers an existing exact request-owned draft before consulting current active Schedule config. P1.5 never approves or activates that draft.
