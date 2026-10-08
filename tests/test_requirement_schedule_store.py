@@ -852,9 +852,10 @@ def test_reserve_product_task_update_rejects_provisioning_before_ledger_insert()
 
 
 class TaskUpdateFinalizeConnection:
-    def __init__(self, *, task_revision=7, proposal=False):
+    def __init__(self, *, task_revision=7, proposal=False, execution_kind="recurring"):
         self.task_revision = task_revision
         self.proposal = proposal
+        self.execution_kind = execution_kind
         self.calls = []
         self.one = None
         self.rowcount = 0
@@ -884,7 +885,7 @@ class TaskUpdateFinalizeConnection:
                 "task-1",
                 "sch-1",
                 "src-1",
-                "recurring",
+                self.execution_kind,
                 "active",
                 self.task_revision,
             )
@@ -1054,3 +1055,81 @@ def test_complete_product_task_update_proposal_keeps_revision_and_result_revisio
     )
     assert "result_task_revision=NULL" in proposal_update[0]
     assert connection.commits == 1
+
+
+
+def test_finalize_product_task_update_same_enabled_state_preserves_existing_due(monkeypatch):
+    connection = TaskUpdateFinalizeConnection()
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    monkeypatch.setattr(store, "_enqueue_audit_event", lambda *_args: None)
+    monkeypatch.setattr(store, "_drain_best_effort", lambda: None)
+
+    result = store.finalize_product_task_update(
+        request_id="preq-update-1",
+        task_id="task-1",
+        actor="admin",
+        name=None,
+        enabled=True,
+        is_superuser=True,
+        now_utc=datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+    )
+
+    assert result["enabled"] is True
+    assert result["next_run_at"] == connection.due.isoformat()
+    assert not any(
+        "SELECT status,timezone,recurrence_json,run_policy,model,config_sha256"
+        in sql
+        for sql, _ in connection.calls
+    )
+    assert result["task_revision"] == 8
+
+
+def test_finalize_product_task_update_rejects_one_time_enabled_transition():
+    connection = TaskUpdateFinalizeConnection(execution_kind="once")
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+
+    with pytest.raises(ValueError, match="requirement_task_state_invalid"):
+        store.finalize_product_task_update(
+            request_id="preq-update-1",
+            task_id="task-1",
+            actor="admin",
+            name=None,
+            enabled=False,
+            is_superuser=True,
+            now_utc=datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+        )
+
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+    assert not any(
+        sql.startswith("UPDATE [sra_schedule].[requirement_schedules]")
+        or sql.startswith("UPDATE [sra_schedule].[requirement_product_tasks]")
+        for sql, _ in connection.calls
+    )
+
+
+def test_complete_product_task_update_proposal_stale_revision_terminalizes():
+    connection = TaskUpdateFinalizeConnection(
+        task_revision=8,
+        proposal=True,
+    )
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+
+    with pytest.raises(ValueError, match="requirement_task_conflict"):
+        store.complete_product_task_update_proposal(
+            request_id="preq-update-1",
+            task_id="task-1",
+            actor="operator",
+            now_utc=datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+        )
+
+    assert connection.commits == 1
+    assert not any(
+        "SELECT schedule_version_id,schedule_id,version_number,config_sha256,status"
+        in sql
+        for sql, _ in connection.calls
+    )
+    assert not any(
+        sql.startswith("UPDATE [sra_schedule].[requirement_product_tasks]")
+        for sql, _ in connection.calls
+    )
