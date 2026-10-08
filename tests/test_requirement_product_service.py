@@ -1224,6 +1224,8 @@ class _TaskUpdateScheduleStore:
         self.finalize_calls = 0
         self.proposal_complete_calls = 0
         self.version_calls = 0
+        self.raise_before_proposal_complete_once = False
+        self._proposal_precomplete_failed = False
         self.raise_after_proposal_complete_commit = False
         self._proposal_response_lost = False
 
@@ -1344,6 +1346,27 @@ class _TaskUpdateScheduleStore:
             "config": self.active_config,
         }
 
+    def get_schedule_version_config(self, schedule_id, schedule_version_id):
+        assert schedule_id == self.schedule["schedule_id"]
+        version = self.versions.get(schedule_version_id)
+        if version is None:
+            raise KeyError("schedule_version_not_found")
+        return {
+            "schedule_version_id": version["schedule_version_id"],
+            "schedule_id": version["schedule_id"],
+            "version_number": version["version_number"],
+            "config": ScheduleVersionCreate(
+                version["timezone"],
+                RecurrenceSpec.validate(version["recurrence"]),
+                RunPolicy(version["run_policy"]),
+                version["model"],
+            ),
+            "config_sha256": version["config_sha256"],
+            "status": version["status"],
+            "created_by": "operator",
+            "created_at": datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+        }
+
     def create_version(self, *, schedule_id, config, actor, schedule_version_id):
         assert schedule_id == self.schedule["schedule_id"]
         existing = self.versions.get(schedule_version_id)
@@ -1376,6 +1399,12 @@ class _TaskUpdateScheduleStore:
         if request["state"] == "succeeded":
             return dict(request["safe_result"])
         self.proposal_complete_calls += 1
+        if (
+            self.raise_before_proposal_complete_once
+            and not self._proposal_precomplete_failed
+        ):
+            self._proposal_precomplete_failed = True
+            raise RuntimeError("simulated_proposal_precomplete_crash")
         if request["base_task_revision"] != self.task["revision"]:
             request["state"] = "failed_terminal"
             request["error_code"] = "requirement_task_conflict"
@@ -1551,4 +1580,51 @@ def test_task_update_schedule_proposal_merges_same_mode_fields():
     assert draft["recurrence"]["kind"] == "weekly"
     assert draft["run_policy"] == "new_or_changed"
     assert draft["model"] == "model-c"
+    assert store.task["revision"] == 7
+
+
+
+def test_task_update_invalid_timezone_rejected_before_reservation():
+    service, store = _task_update_service()
+
+    with pytest.raises(ValueError, match="timezone_invalid"):
+        service.update_task(
+            task_id="task-1",
+            actor="operator",
+            is_superuser=False,
+            idempotency_key="bad-timezone",
+            timezone_name="No/Such_Zone",
+        )
+
+    assert store.reserve_calls == 0
+
+
+def test_task_update_recovers_exact_draft_after_precompletion_crash():
+    service, store = _task_update_service()
+    store.raise_before_proposal_complete_once = True
+    kwargs = {
+        "task_id": "task-1",
+        "actor": "operator",
+        "is_superuser": False,
+        "idempotency_key": "proposal-precomplete",
+        "timezone_name": "Asia/Taipei",
+        "now_utc": datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+    }
+
+    with pytest.raises(RuntimeError, match="simulated_proposal_precomplete_crash"):
+        service.update_task(**kwargs)
+
+    # Simulate unrelated active-config movement after the exact draft already exists.
+    store.active_config = ScheduleVersionCreate(
+        "UTC",
+        RecurrenceSpec.validate({"kind": "daily", "local_time": "12:00:00"}),
+        RunPolicy.CHANGED_ONLY,
+        "model-z",
+    )
+    replay = service.update_task(**kwargs)
+
+    assert replay["schedule_version_id"] == "sv-draft-1"
+    assert store.version_calls == 1
+    assert store.proposal_complete_calls == 2
+    assert store.versions["sv-draft-1"]["timezone"] == "Asia/Taipei"
     assert store.task["revision"] == 7
