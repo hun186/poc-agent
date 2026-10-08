@@ -93,6 +93,7 @@ class ScheduleStore:
         allowed = {
             "requirement_schedule.created", "requirement_schedule.updated",
             "requirement_schedule.version_created", "requirement_schedule.version_approved",
+            "requirement_schedule.version_retired",
             "requirement_schedule.enabled", "requirement_schedule.disabled",
             "requirement_handoff.prepared", "requirement_handoff.dispatched",
             "requirement_handoff.reconciled", "requirement_handoff.remote_authorization_failed",
@@ -108,6 +109,7 @@ class ScheduleStore:
             "requirement_schedule.updated": {"field"},
             "requirement_schedule.version_created": {"version_number"},
             "requirement_schedule.version_approved": {"version_number"},
+            "requirement_schedule.version_retired": {"version_number"},
             "requirement_schedule.enabled": set(),
             "requirement_schedule.disabled": set(),
             "requirement_handoff.prepared": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "output_root_fingerprint", "fencing_generation"},
@@ -1504,6 +1506,33 @@ class ScheduleStore:
                 terminal_error = "requirement_task_version_invalid"
 
             if terminal_error is not None:
+                if (
+                    terminal_error == "requirement_task_conflict"
+                    and version is not None
+                    and version[2] == "draft"
+                    and origin is not None
+                ):
+                    c.execute(
+                        f"UPDATE {self.t}.[requirement_schedule_versions] "
+                        f"SET status='retired',retired_at=? "
+                        f"WHERE schedule_version_id=? AND status='draft'",
+                        now_utc,
+                        schedule_version_id,
+                    )
+                    if getattr(c, "rowcount", 1) != 1:
+                        raise ValueError("requirement_task_version_invalid")
+                    self._enqueue_audit_event(
+                        c,
+                        self._audit_event(
+                            "requirement_schedule.version_retired",
+                            actor,
+                            task[1],
+                            schedule_version_id=schedule_version_id,
+                            payload={"version_number": int(version[1])},
+                            created_at=now_utc,
+                        ),
+                    )
+                    should_drain = True
                 c.execute(
                     f"UPDATE {self.t}.[requirement_product_requests] "
                     f"SET state='failed_terminal',safe_result_json=NULL,error_code=?,"
@@ -1587,10 +1616,10 @@ class ScheduleStore:
         finally:
             connection.close()
 
-        if terminal_error is not None:
-            raise ValueError(terminal_error)
         if should_drain:
             self._drain_best_effort()
+        if terminal_error is not None:
+            raise ValueError(terminal_error)
         if not isinstance(outcome, dict):
             raise RuntimeError("persistence_error")
         return outcome
