@@ -1037,26 +1037,43 @@ class RequirementProductService:
                 now_utc=now,
             )
 
-        active = self.schedule_store.get_active_schedule_config(
-            request["schedule_id"]
-        )
-        base_config = active["config"]
-        proposed = ScheduleVersionCreate(
-            clean_timezone if clean_timezone is not None else base_config.timezone,
-            normalized_recurrence
-            if normalized_recurrence is not None
-            else base_config.recurrence,
-            normalized_policy
-            if normalized_policy is not None
-            else base_config.run_policy,
-            clean_model if clean_model is not None else base_config.model,
-        )
-        version = self.schedule_store.create_version(
-            schedule_id=request["schedule_id"],
-            config=proposed,
-            actor=actor,
-            schedule_version_id=request["schedule_version_id"],
-        )
+        try:
+            existing_draft = self.schedule_store.get_schedule_version_config(
+                request["schedule_id"],
+                request["schedule_version_id"],
+            )
+        except KeyError:
+            existing_draft = None
+
+        if existing_draft is None:
+            active = self.schedule_store.get_active_schedule_config(
+                request["schedule_id"]
+            )
+            base_config = active["config"]
+            proposed = ScheduleVersionCreate(
+                clean_timezone
+                if clean_timezone is not None
+                else base_config.timezone,
+                normalized_recurrence
+                if normalized_recurrence is not None
+                else base_config.recurrence,
+                normalized_policy
+                if normalized_policy is not None
+                else base_config.run_policy,
+                clean_model if clean_model is not None else base_config.model,
+            )
+            version = self.schedule_store.create_version(
+                schedule_id=request["schedule_id"],
+                config=proposed,
+                actor=actor,
+                schedule_version_id=request["schedule_version_id"],
+            )
+        else:
+            version = {
+                "schedule_version_id": existing_draft["schedule_version_id"],
+                "status": existing_draft["status"],
+            }
+
         if (
             version.get("schedule_version_id") != request["schedule_version_id"]
             or version.get("status") != "draft"
