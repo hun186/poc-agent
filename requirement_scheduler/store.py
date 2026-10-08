@@ -93,7 +93,7 @@ class ScheduleStore:
         allowed = {
             "requirement_schedule.created", "requirement_schedule.updated",
             "requirement_schedule.version_created", "requirement_schedule.version_approved",
-            "requirement_schedule.version_retired",
+            "requirement_schedule.version_retired", "requirement.task.updated",
             "requirement_schedule.enabled", "requirement_schedule.disabled",
             "requirement_handoff.prepared", "requirement_handoff.dispatched",
             "requirement_handoff.reconciled", "requirement_handoff.remote_authorization_failed",
@@ -110,6 +110,7 @@ class ScheduleStore:
             "requirement_schedule.version_created": {"version_number"},
             "requirement_schedule.version_approved": {"version_number"},
             "requirement_schedule.version_retired": {"version_number"},
+            "requirement.task.updated": {"task_id", "revision", "operation"},
             "requirement_schedule.enabled": set(),
             "requirement_schedule.disabled": set(),
             "requirement_handoff.prepared": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "output_root_fingerprint", "fencing_generation"},
@@ -1567,6 +1568,21 @@ class ScheduleStore:
                 )
                 if getattr(c, "rowcount", 1) != 1:
                     raise ValueError("requirement_task_conflict")
+                self._enqueue_audit_event(
+                    c,
+                    self._audit_event(
+                        "requirement.task.updated",
+                        actor,
+                        task[1],
+                        schedule_version_id=schedule_version_id,
+                        payload={
+                            "task_id": task_id,
+                            "revision": new_revision,
+                            "operation": "task_version_activate",
+                        },
+                        created_at=now_utc,
+                    ),
+                )
 
                 next_run_at = approval["next_run_at"]
                 result = {
