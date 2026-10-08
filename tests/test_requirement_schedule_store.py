@@ -1133,3 +1133,393 @@ def test_complete_product_task_update_proposal_stale_revision_terminalizes():
         sql.startswith("UPDATE [sra_schedule].[requirement_product_tasks]")
         for sql, _ in connection.calls
     )
+
+
+
+def _activation_origin_request_row(*, base_revision=7):
+    now = datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc)
+    safe = json.dumps(
+        {
+            "mode": "schedule_proposal",
+            "task_id": "task-1",
+            "base_task_revision": base_revision,
+            "schedule_id": "sch-1",
+            "schedule_version_id": "sv-draft-1",
+            "version_number": 2,
+            "config_sha256": "d" * 64,
+            "status": "draft",
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return (
+        "preq-update-1",
+        "user",
+        "operator",
+        "task_update",
+        "proposal-key",
+        "b" * 64,
+        "succeeded",
+        "task-1",
+        "src-1",
+        None,
+        None,
+        "sch-1",
+        "sv-draft-1",
+        None,
+        base_revision,
+        None,
+        None,
+        safe,
+        None,
+        now,
+        now,
+        now,
+    )
+
+
+def _activation_request_row(*, state="in_progress", base_revision=7, safe_result=None):
+    now = datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc)
+    return (
+        "preq-activate-1",
+        "user",
+        "admin",
+        "task_version_activate",
+        "activate-key",
+        "a" * 64,
+        state,
+        "task-1",
+        "src-1",
+        None,
+        None,
+        "sch-1",
+        "sv-draft-1",
+        None,
+        base_revision,
+        8 if state == "succeeded" else None,
+        None,
+        (
+            json.dumps(safe_result, sort_keys=True, separators=(",", ":"))
+            if safe_result is not None
+            else None
+        ),
+        None,
+        now,
+        now,
+        now if state == "succeeded" else None,
+    )
+
+
+class TaskActivationConnection:
+    def __init__(self, *, task_revision=7, activation_state="in_progress"):
+        config = _version_config()
+        encoded, digest = ScheduleStore.canonical_config(config)
+        self.config = config
+        self.encoded = encoded
+        self.digest = digest
+        self.task_revision = task_revision
+        self.activation_state = activation_state
+        self.calls = []
+        self.one = None
+        self.many = []
+        self.rowcount = 0
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = 0
+        self.current_due = datetime(2026, 10, 8, 9, 0, tzinfo=timezone.utc)
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.one = None
+        self.many = []
+        self.rowcount = 0
+
+        if (
+            "FROM [sra_schedule].[requirement_product_requests]" in sql
+            and "operation='task_version_activate'" in sql
+            and "idempotency_key=?" in sql
+        ):
+            self.one = None
+        elif (
+            "FROM [sra_schedule].[requirement_product_requests]" in sql
+            and "operation='task_update'" in sql
+            and "state='succeeded'" in sql
+        ):
+            self.many = [_activation_origin_request_row()]
+        elif (
+            "FROM [sra_schedule].[requirement_product_requests]" in sql
+            and "WHERE request_id=?" in sql
+        ):
+            self.one = _activation_request_row(state=self.activation_state)
+        elif (
+            "SELECT task_id,schedule_id,source_id,execution_kind,product_state,revision"
+            in sql
+        ):
+            self.one = (
+                "task-1",
+                "sch-1",
+                "src-1",
+                "recurring",
+                "active",
+                self.task_revision,
+            )
+        elif (
+            "SELECT schedule_id,status" in sql
+            and "requirement_schedule_versions" in sql
+        ):
+            self.one = ("sch-1", "draft")
+        elif (
+            "SELECT enabled,active_version_id,next_run_at" in sql
+            and "requirement_schedules" in sql
+        ):
+            self.one = (True, "sv-active", self.current_due)
+        elif (
+            "SELECT schedule_id,version_number,status"
+            in sql
+            and "requirement_schedule_versions" in sql
+        ):
+            self.one = ("sch-1", 2, "draft")
+        elif (
+            "SELECT version_number,status,timezone,recurrence_json,run_policy,model,config_sha256"
+            in sql
+        ):
+            self.one = (
+                2,
+                "draft",
+                self.config.timezone,
+                self.encoded,
+                self.config.run_policy.value,
+                self.config.model,
+                self.digest,
+            )
+        elif sql.startswith(
+            "INSERT INTO [sra_schedule].[requirement_product_requests]"
+        ):
+            self.rowcount = 1
+        elif sql.startswith(
+            "UPDATE [sra_schedule].[requirement_schedule_versions]"
+        ):
+            self.rowcount = 1
+        elif sql.startswith("UPDATE [sra_schedule].[requirement_schedules]"):
+            self.rowcount = 1
+        elif sql.startswith(
+            "UPDATE [sra_schedule].[requirement_product_tasks]"
+        ):
+            self.rowcount = 1
+        elif sql.startswith(
+            "UPDATE [sra_schedule].[requirement_product_requests]"
+        ):
+            self.rowcount = 1
+        return self
+
+    def fetchone(self):
+        return self.one
+
+    def fetchall(self):
+        return self.many
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed += 1
+
+
+def test_reserve_product_task_version_activation_copies_origin_revision():
+    connection = TaskActivationConnection()
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    now = datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc)
+
+    result = store.reserve_product_task_version_activation(
+        task_id="task-1",
+        schedule_version_id="sv-draft-1",
+        principal_kind="user",
+        principal_id="admin",
+        idempotency_key="activate-key",
+        request_sha256="a" * 64,
+        now_utc=now,
+    )
+
+    assert result["operation"] == "task_version_activate"
+    assert result["base_task_revision"] == 7
+    assert result["schedule_id"] == "sch-1"
+    assert result["schedule_version_id"] == "sv-draft-1"
+    insert = next(
+        params
+        for sql, params in connection.calls
+        if sql.startswith(
+            "INSERT INTO [sra_schedule].[requirement_product_requests]"
+        )
+    )
+    assert insert[6] == "task-1"
+    assert insert[7] == "src-1"
+    assert insert[8] == "sch-1"
+    assert insert[9] == "sv-draft-1"
+    assert insert[10] == 7
+    assert connection.commits == 1
+
+
+def test_finalize_product_task_version_activation_is_atomic(monkeypatch):
+    connection = TaskActivationConnection()
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    audit = []
+    monkeypatch.setattr(
+        store,
+        "_enqueue_audit_event",
+        lambda _cursor, event: audit.append(event),
+    )
+    monkeypatch.setattr(store, "_drain_best_effort", lambda: None)
+    now = datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc)
+
+    result = store.finalize_product_task_version_activation(
+        request_id="preq-activate-1",
+        task_id="task-1",
+        schedule_version_id="sv-draft-1",
+        actor="admin",
+        now_utc=now,
+    )
+
+    expected_due = next_occurrence(
+        connection.config.recurrence,
+        connection.config.timezone,
+        now,
+    )
+    assert result["task_revision"] == 8
+    assert result["schedule_version_id"] == "sv-draft-1"
+    assert result["status"] == "approved"
+    assert result["enabled"] is True
+    assert result["next_run_at"] == expected_due.isoformat()
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+
+    version_updates = [
+        (sql, params)
+        for sql, params in connection.calls
+        if sql.startswith(
+            "UPDATE [sra_schedule].[requirement_schedule_versions]"
+        )
+    ]
+    assert len(version_updates) == 2
+    assert "status='retired'" in version_updates[0][0]
+    assert version_updates[0][1][1] == "sv-active"
+    assert "status='approved'" in version_updates[1][0]
+    assert version_updates[1][1][2] == "sv-draft-1"
+
+    schedule_update = next(
+        params
+        for sql, params in connection.calls
+        if sql.startswith("UPDATE [sra_schedule].[requirement_schedules]")
+    )
+    assert schedule_update[0] == "sv-draft-1"
+    assert schedule_update[1] == expected_due
+
+    task_update = next(
+        params
+        for sql, params in connection.calls
+        if sql.startswith(
+            "UPDATE [sra_schedule].[requirement_product_tasks]"
+        )
+    )
+    assert task_update[0] == 8
+    assert task_update[-1] == 7
+
+    request_update = next(
+        params
+        for sql, params in connection.calls
+        if sql.startswith(
+            "UPDATE [sra_schedule].[requirement_product_requests]"
+        )
+        and "SET state='succeeded'" in sql
+    )
+    assert request_update[0] == 8
+    safe = json.loads(request_update[1])
+    assert safe["task_revision"] == 8
+    assert safe["schedule_version_id"] == "sv-draft-1"
+    assert len(audit) == 1
+    assert audit[0].action == "requirement_schedule.version_approved"
+    assert audit[0].schedule_version_id == "sv-draft-1"
+
+
+def test_finalize_product_task_version_activation_stale_cas_terminalizes_only():
+    connection = TaskActivationConnection(task_revision=8)
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+
+    with pytest.raises(ValueError, match="requirement_task_conflict"):
+        store.finalize_product_task_version_activation(
+            request_id="preq-activate-1",
+            task_id="task-1",
+            schedule_version_id="sv-draft-1",
+            actor="admin",
+            now_utc=datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc),
+        )
+
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+    assert not any(
+        sql.startswith(
+            "UPDATE [sra_schedule].[requirement_schedule_versions]"
+        )
+        or sql.startswith("UPDATE [sra_schedule].[requirement_schedules]")
+        or sql.startswith(
+            "UPDATE [sra_schedule].[requirement_product_tasks]"
+        )
+        for sql, _ in connection.calls
+    )
+    terminal = next(
+        params
+        for sql, params in connection.calls
+        if sql.startswith(
+            "UPDATE [sra_schedule].[requirement_product_requests]"
+        )
+        and "failed_terminal" in sql
+    )
+    assert terminal[0] == "requirement_task_conflict"
+
+
+def test_product_activation_of_disabled_recurring_task_keeps_next_run_null(monkeypatch):
+    connection = TaskActivationConnection()
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    original_execute = connection.execute
+
+    def execute(sql, *params):
+        result = original_execute(sql, *params)
+        if (
+            "SELECT task_id,schedule_id,source_id,execution_kind,product_state,revision"
+            in sql
+        ):
+            connection.one = (
+                "task-1",
+                "sch-1",
+                "src-1",
+                "recurring",
+                "disabled",
+                7,
+            )
+        elif (
+            "SELECT enabled,active_version_id,next_run_at" in sql
+            and "requirement_schedules" in sql
+        ):
+            connection.one = (False, "sv-active", None)
+        return result
+
+    monkeypatch.setattr(connection, "execute", execute)
+    monkeypatch.setattr(store, "_enqueue_audit_event", lambda *_args: None)
+    monkeypatch.setattr(store, "_drain_best_effort", lambda: None)
+
+    result = store.finalize_product_task_version_activation(
+        request_id="preq-activate-1",
+        task_id="task-1",
+        schedule_version_id="sv-draft-1",
+        actor="admin",
+        now_utc=datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc),
+    )
+
+    assert result["product_state"] == "disabled"
+    assert result["enabled"] is False
+    assert result["next_run_at"] is None
