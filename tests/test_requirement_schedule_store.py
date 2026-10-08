@@ -1446,9 +1446,16 @@ def test_finalize_product_task_version_activation_is_atomic(monkeypatch):
     assert audit[0].schedule_version_id == "sv-draft-1"
 
 
-def test_finalize_product_task_version_activation_stale_cas_terminalizes_only():
+def test_finalize_product_task_version_activation_stale_cas_retires_only_target(monkeypatch):
     connection = TaskActivationConnection(task_revision=8)
     store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    audit = []
+    monkeypatch.setattr(
+        store,
+        "_enqueue_audit_event",
+        lambda _cursor, event: audit.append(event),
+    )
+    monkeypatch.setattr(store, "_drain_best_effort", lambda: None)
 
     with pytest.raises(ValueError, match="requirement_task_conflict"):
         store.finalize_product_task_version_activation(
@@ -1461,11 +1468,18 @@ def test_finalize_product_task_version_activation_stale_cas_terminalizes_only():
 
     assert connection.commits == 1
     assert connection.rollbacks == 0
-    assert not any(
-        sql.startswith(
+    version_updates = [
+        (sql, params)
+        for sql, params in connection.calls
+        if sql.startswith(
             "UPDATE [sra_schedule].[requirement_schedule_versions]"
         )
-        or sql.startswith("UPDATE [sra_schedule].[requirement_schedules]")
+    ]
+    assert len(version_updates) == 1
+    assert "status='retired'" in version_updates[0][0]
+    assert version_updates[0][1][1] == "sv-draft-1"
+    assert not any(
+        sql.startswith("UPDATE [sra_schedule].[requirement_schedules]")
         or sql.startswith(
             "UPDATE [sra_schedule].[requirement_product_tasks]"
         )
@@ -1480,6 +1494,9 @@ def test_finalize_product_task_version_activation_stale_cas_terminalizes_only():
         and "failed_terminal" in sql
     )
     assert terminal[0] == "requirement_task_conflict"
+    assert len(audit) == 1
+    assert audit[0].action == "requirement_schedule.version_retired"
+    assert audit[0].schedule_version_id == "sv-draft-1"
 
 
 def test_product_activation_of_disabled_recurring_task_keeps_next_run_null(monkeypatch):
