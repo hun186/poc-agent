@@ -1283,7 +1283,11 @@ class ScheduleStore:
             item["phase1a_task_id"] = phase1a_task_id
             c.execute(f"INSERT INTO {self.t}.[requirement_batch_run_items](run_item_id,batch_run_id,requirement_id,requirement_version_id,requirement_version_number,source_order,selection_status,selection_reason,phase1a_task_id,execution_state,expired_at_selection,expired_before_handoff,deadline_elapsed_during_execution,created_at,evaluated_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,0,?,?,?)", item["run_item_id"], run_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], item["source_order"], item["selection_status"], item["selection_reason"], phase1a_task_id, "handoff_pending" if item["selection_status"] == "selected" else "not_selected", item["expired_at_selection"], now_utc, selection_at, now_utc)
             c.execute(f"MERGE {self.t}.[requirement_schedule_item_state] WITH (HOLDLOCK) AS t USING (SELECT ? schedule_id,? requirement_id) s ON t.schedule_id=s.schedule_id AND t.requirement_id=s.requirement_id WHEN MATCHED THEN UPDATE SET last_seen_requirement_version_id=?,last_seen_requirement_version_number=?,updated_at=? WHEN NOT MATCHED THEN INSERT(schedule_id,requirement_id,last_seen_requirement_version_id,last_seen_requirement_version_number,updated_at) VALUES (?,?,?,?,?);", schedule_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], now_utc, schedule_id, item["requirement_id"], item["requirement_version_id"], item["requirement_version_number"], now_utc)
-        return MaterializedRun({"batch_run_id": run_id, "phase1a_batch_id": phase1a_batch_id, "schedule_id": schedule_id, "schedule_version_id": version_id, "snapshot_id": snapshot_id, "state": "handoff_pending", "selected_count": selected, "skipped_count": skipped}, tuple(items))
+        run_state = "handoff_pending"
+        if selected == 0:
+            self._terminal_run_recompute(c, run_id, now_utc)
+            run_state = "completed"
+        return MaterializedRun({"batch_run_id": run_id, "phase1a_batch_id": phase1a_batch_id, "schedule_id": schedule_id, "schedule_version_id": version_id, "snapshot_id": snapshot_id, "state": run_state, "selected_count": selected, "skipped_count": skipped}, tuple(items))
 
     def materialize_run(self, *, schedule_id: str, trigger: TriggerIdentity, now_utc: datetime, actor: str) -> MaterializedRun:
         connection = self._connect()
