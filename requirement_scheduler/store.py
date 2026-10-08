@@ -894,8 +894,9 @@ class ScheduleStore:
                 target_due = schedule[3]
                 if enabled is not None:
                     target_state = "active" if target_enabled else "disabled"
-                    target_due = None
-                    if target_enabled:
+                    if target_enabled == current_enabled:
+                        target_due = schedule[3]
+                    elif target_enabled:
                         if not schedule[2]:
                             raise ValueError("schedule_version_not_approved")
                         c.execute(
@@ -913,6 +914,8 @@ class ScheduleStore:
                         target_due = next_occurrence(
                             config.recurrence, config.timezone, now_utc
                         )
+                    else:
+                        target_due = None
 
                 target_name = schedule[0] if name is None else name
                 if name is not None:
@@ -1539,6 +1542,38 @@ class ScheduleStore:
         return {
             "schedule_version_id": row["active_version_id"],
             "config": config,
+        }
+
+    def get_schedule_version_config(
+        self, schedule_id: str, schedule_version_id: str
+    ) -> dict[str, Any]:
+        rows = self._query(
+            f"SELECT schedule_version_id,schedule_id,version_number,timezone,recurrence_json,"
+            f"run_policy,model,config_sha256,status,created_by,created_at "
+            f"FROM {self.t}.[requirement_schedule_versions] "
+            f"WHERE schedule_id=? AND schedule_version_id=?",
+            schedule_id,
+            schedule_version_id,
+        )
+        if not rows:
+            raise KeyError("schedule_version_not_found")
+        row = rows[0]
+        config = self._validate_persisted_config(
+            row["timezone"],
+            row["recurrence_json"],
+            row["run_policy"],
+            row["model"],
+            row["config_sha256"],
+        )
+        return {
+            "schedule_version_id": row["schedule_version_id"],
+            "schedule_id": row["schedule_id"],
+            "version_number": int(row["version_number"]),
+            "config": config,
+            "config_sha256": row["config_sha256"],
+            "status": row["status"],
+            "created_by": row["created_by"],
+            "created_at": row["created_at"],
         }
 
     def rename_schedule(self, schedule_id: str, name: str, actor: str):
