@@ -663,3 +663,38 @@ def test_claim_due_evaluates_scheduled_run_at_occurrence_time(monkeypatch):
     assert observed["selection_time"] == persisted_due
     assert observed["now_utc"] == claim_time
     assert connection.commits == 1
+
+
+
+def test_materialize_locked_terminalizes_zero_selection_run_in_same_transaction():
+    store = ScheduleStore(Registry(), "control")
+    selection_time = datetime(2026, 10, 7, 9, 0, tzinfo=timezone.utc)
+    materialized_at = datetime(2026, 10, 7, 9, 10, tzinfo=timezone.utc)
+    cursor = SelectionTimeCursor(
+        expires_at=datetime(2026, 10, 7, 8, 59, tzinfo=timezone.utc)
+    )
+
+    result = store._materialize_locked(
+        cursor,
+        "sch-1",
+        "sv-1",
+        RunPolicy.ALL_ACTIVE.value,
+        TriggerIdentity("scheduled", scheduled_for=selection_time),
+        materialized_at,
+        "scheduler",
+        selection_time=selection_time,
+    )
+
+    assert result.run["selected_count"] == 0
+    assert result.run["state"] == "completed"
+    terminal_update = next(
+        params
+        for sql, params in cursor.calls
+        if "UPDATE [sra_schedule].[requirement_batch_runs] SET success_count=?" in sql
+    )
+    assert terminal_update[0] == 0
+    assert terminal_update[1] == 0
+    assert terminal_update[2] == "completed"
+    assert terminal_update[3] == 0
+    assert terminal_update[4] == materialized_at
+    assert terminal_update[5] == materialized_at
