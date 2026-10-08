@@ -136,3 +136,6 @@
 
 
 - 2026-10-07 P1.4 third review correction: scheduled occurrence materialization now evaluates Requirement selection at the occurrence's canonical `scheduled_for` instant, not the later worker claim time. `claim_due()` passes `selection_time=latest` into the existing materializer, while run/item created/materialized/updated timestamps continue using the actual claim time. This keeps Product first-due validation and scheduler selection on the same semantic clock and prevents delayed claims from turning an otherwise valid occurrence into a zero-selected queued run.
+
+
+- 2026-10-08 P1.4 fourth review correction: zero-selection materialization is now terminalized inside the same Schedule transaction. After snapshot items are evaluated and evidence rows/checkpoints are written, `_materialize_locked()` calls the existing `_terminal_run_recompute()` when `selected_count == 0`, so the Batch Run becomes `completed` with `completed_at` before commit instead of remaining `handoff_pending` with no selected item capable of driving recomputation. This closes delayed/coalesced recurrence cases and also hardens any other materialization path that legitimately selects nothing.

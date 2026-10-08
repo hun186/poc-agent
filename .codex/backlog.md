@@ -79,3 +79,6 @@
 
 
 - 2026-10-07 P1.4 third exact-head review finding (P2 delayed claim selection-time drift) was fixed by binding scheduled materialization to `scheduled_for`; exact-head re-review/check evidence remains required before merge.
+
+
+- 2026-10-08 P1.4 fourth exact-head review finding (P2 coalesced occurrence can still select zero) was fixed by terminalizing all zero-selection runs during materialization; exact-head Codex re-review/check evidence remains required before merge.
