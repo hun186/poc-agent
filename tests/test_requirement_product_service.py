@@ -1222,6 +1222,8 @@ class _TaskUpdateScheduleStore:
         self.versions = {}
         self.reserve_calls = 0
         self.finalize_calls = 0
+        self.raise_after_inplace_commit = False
+        self._inplace_response_lost = False
         self.proposal_complete_calls = 0
         self.version_calls = 0
         self.raise_before_proposal_complete_once = False
@@ -1337,6 +1339,9 @@ class _TaskUpdateScheduleStore:
         request["state"] = "succeeded"
         request["result_task_revision"] = self.task["revision"]
         request["safe_result"] = dict(result)
+        if self.raise_after_inplace_commit and not self._inplace_response_lost:
+            self._inplace_response_lost = True
+            raise RuntimeError("simulated_inplace_lost_response")
         return result
 
     def get_active_schedule_config(self, schedule_id):
@@ -1628,3 +1633,58 @@ def test_task_update_recovers_exact_draft_after_precompletion_crash():
     assert store.proposal_complete_calls == 2
     assert store.versions["sv-draft-1"]["timezone"] == "Asia/Taipei"
     assert store.task["revision"] == 7
+
+
+
+def test_task_update_inplace_lost_response_replays_without_second_revision_increment():
+    service, store = _task_update_service()
+    store.raise_after_inplace_commit = True
+    kwargs = {
+        "task_id": "task-1",
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "inplace-lost",
+        "name": "Renamed Once",
+        "now_utc": datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+    }
+
+    with pytest.raises(RuntimeError, match="simulated_inplace_lost_response"):
+        service.update_task(**kwargs)
+
+    assert store.task["revision"] == 8
+    replay = service.update_task(**kwargs)
+
+    assert replay["task_revision"] == 8
+    assert replay["name"] == "Renamed Once"
+    assert store.task["revision"] == 8
+    assert store.finalize_calls == 1
+
+
+def test_task_update_distinct_draft_requests_do_not_mutate_active_task():
+    service, store = _task_update_service()
+    old_due = store.schedule["next_run_at"]
+
+    first = service.update_task(
+        task_id="task-1",
+        actor="operator",
+        is_superuser=False,
+        idempotency_key="proposal-a",
+        timezone_name="Asia/Taipei",
+        now_utc=datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+    )
+    second = service.update_task(
+        task_id="task-1",
+        actor="operator",
+        is_superuser=False,
+        idempotency_key="proposal-b",
+        model="model-b",
+        now_utc=datetime(2026, 10, 8, 3, 1, tzinfo=timezone.utc),
+    )
+
+    assert first["schedule_version_id"] != second["schedule_version_id"]
+    assert first["base_task_revision"] == second["base_task_revision"] == 7
+    assert store.task["revision"] == 7
+    assert store.schedule["active_version_id"] == "sv-active"
+    assert store.schedule["enabled"] is True
+    assert store.schedule["next_run_at"] == old_due
+    assert len(store.versions) == 2
