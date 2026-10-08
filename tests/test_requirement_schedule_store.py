@@ -1441,9 +1441,17 @@ def test_finalize_product_task_version_activation_is_atomic(monkeypatch):
     safe = json.loads(request_update[1])
     assert safe["task_revision"] == 8
     assert safe["schedule_version_id"] == "sv-draft-1"
-    assert len(audit) == 1
-    assert audit[0].action == "requirement_schedule.version_approved"
+    assert [event.action for event in audit] == [
+        "requirement_schedule.version_approved",
+        "requirement.task.updated",
+    ]
     assert audit[0].schedule_version_id == "sv-draft-1"
+    assert audit[1].schedule_version_id == "sv-draft-1"
+    assert audit[1].payload == {
+        "task_id": "task-1",
+        "revision": 8,
+        "operation": "task_version_activate",
+    }
 
 
 def test_finalize_product_task_version_activation_stale_cas_retires_only_target(monkeypatch):
