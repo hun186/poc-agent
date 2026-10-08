@@ -1197,3 +1197,358 @@ def test_recurring_product_create_refreshes_finalization_clock():
 
     assert schedule_store.request["created_at"] == request_now
     assert schedule_store.recurring_finalize_now == finalize_now
+
+
+
+class _TaskUpdateScheduleStore:
+    canonical_config = staticmethod(ScheduleStore.canonical_config)
+
+    def __init__(self):
+        self.task = _task()
+        self.schedule = {
+            "schedule_id": "sch-1",
+            "name": "Original",
+            "enabled": True,
+            "active_version_id": "sv-active",
+            "next_run_at": datetime(2026, 10, 8, 9, 0, tzinfo=timezone.utc),
+        }
+        self.active_config = ScheduleVersionCreate(
+            "UTC",
+            RecurrenceSpec.validate({"kind": "daily", "local_time": "09:00:00"}),
+            RunPolicy.ALL_ACTIVE,
+            "model-a",
+        )
+        self.requests = {}
+        self.versions = {}
+        self.reserve_calls = 0
+        self.finalize_calls = 0
+        self.proposal_complete_calls = 0
+        self.version_calls = 0
+        self.raise_after_proposal_complete_commit = False
+        self._proposal_response_lost = False
+
+    def reserve_product_task_update(
+        self,
+        *,
+        task_id,
+        principal_kind,
+        principal_id,
+        idempotency_key,
+        request_sha256,
+        allocate_schedule_version,
+        now_utc,
+    ):
+        self.reserve_calls += 1
+        key = (principal_kind, principal_id, idempotency_key)
+        if key in self.requests:
+            request = self.requests[key]
+            if request["request_sha256"] != request_sha256:
+                raise ValueError("requirement_idempotency_conflict")
+            return dict(request)
+        assert task_id == self.task["task_id"]
+        request = {
+            "request_id": f"preq-update-{len(self.requests) + 1}",
+            "principal_kind": principal_kind,
+            "principal_id": principal_id,
+            "operation": "task_update",
+            "idempotency_key": idempotency_key,
+            "request_sha256": request_sha256,
+            "state": "reserved",
+            "task_id": task_id,
+            "source_id": self.task["source_id"],
+            "schedule_id": self.task["schedule_id"],
+            "schedule_version_id": (
+                f"sv-draft-{len(self.requests) + 1}"
+                if allocate_schedule_version
+                else None
+            ),
+            "base_task_revision": self.task["revision"],
+            "result_task_revision": None,
+            "safe_result": None,
+            "error_code": None,
+            "created_at": now_utc,
+        }
+        self.requests[key] = request
+        return dict(request)
+
+    def mark_product_task_update_in_progress(self, request_id, *, now_utc):
+        request = next(
+            row for row in self.requests.values() if row["request_id"] == request_id
+        )
+        if request["state"] in {"reserved", "failed_recoverable"}:
+            request["state"] = "in_progress"
+
+    def finalize_product_task_update(
+        self,
+        *,
+        request_id,
+        task_id,
+        actor,
+        name,
+        enabled,
+        is_superuser,
+        now_utc,
+    ):
+        request = next(
+            row for row in self.requests.values() if row["request_id"] == request_id
+        )
+        if request["state"] == "succeeded":
+            return dict(request["safe_result"])
+        self.finalize_calls += 1
+        if request["base_task_revision"] != self.task["revision"]:
+            request["state"] = "failed_terminal"
+            request["error_code"] = "requirement_task_conflict"
+            raise ValueError("requirement_task_conflict")
+        if enabled is not None and not is_superuser:
+            raise PermissionError("superuser_required")
+        if enabled is not None and self.task["execution_kind"] != "recurring":
+            request["state"] = "failed_terminal"
+            request["error_code"] = "requirement_task_state_invalid"
+            raise ValueError("requirement_task_state_invalid")
+        if name is not None:
+            self.schedule["name"] = name
+        if enabled is not None:
+            self.schedule["enabled"] = enabled
+            self.schedule["next_run_at"] = (
+                datetime(2026, 10, 9, 9, 0, tzinfo=timezone.utc)
+                if enabled
+                else None
+            )
+            self.task["product_state"] = "active" if enabled else "disabled"
+        self.task["revision"] += 1
+        result = {
+            "mode": "in_place",
+            "task_id": task_id,
+            "task_revision": self.task["revision"],
+            "name": self.schedule["name"],
+            "execution_kind": self.task["execution_kind"],
+            "product_state": self.task["product_state"],
+            "schedule_id": self.task["schedule_id"],
+            "enabled": self.schedule["enabled"],
+            "active_version_id": self.schedule["active_version_id"],
+            "next_run_at": (
+                self.schedule["next_run_at"].isoformat()
+                if self.schedule["next_run_at"] is not None
+                else None
+            ),
+        }
+        request["state"] = "succeeded"
+        request["result_task_revision"] = self.task["revision"]
+        request["safe_result"] = dict(result)
+        return result
+
+    def get_active_schedule_config(self, schedule_id):
+        assert schedule_id == self.schedule["schedule_id"]
+        return {
+            "schedule_version_id": self.schedule["active_version_id"],
+            "config": self.active_config,
+        }
+
+    def create_version(self, *, schedule_id, config, actor, schedule_version_id):
+        assert schedule_id == self.schedule["schedule_id"]
+        existing = self.versions.get(schedule_version_id)
+        if existing is not None:
+            encoded, digest = ScheduleStore.canonical_config(config)
+            assert digest == existing["config_sha256"]
+            return dict(existing)
+        self.version_calls += 1
+        _, digest = ScheduleStore.canonical_config(config)
+        version = {
+            "schedule_version_id": schedule_version_id,
+            "schedule_id": schedule_id,
+            "version_number": len(self.versions) + 2,
+            "timezone": config.timezone,
+            "recurrence": config.recurrence.as_dict(),
+            "run_policy": config.run_policy.value,
+            "model": config.model,
+            "config_sha256": digest,
+            "status": "draft",
+        }
+        self.versions[schedule_version_id] = version
+        return dict(version)
+
+    def complete_product_task_update_proposal(
+        self, *, request_id, task_id, actor, now_utc
+    ):
+        request = next(
+            row for row in self.requests.values() if row["request_id"] == request_id
+        )
+        if request["state"] == "succeeded":
+            return dict(request["safe_result"])
+        self.proposal_complete_calls += 1
+        if request["base_task_revision"] != self.task["revision"]:
+            request["state"] = "failed_terminal"
+            request["error_code"] = "requirement_task_conflict"
+            raise ValueError("requirement_task_conflict")
+        version = self.versions[request["schedule_version_id"]]
+        result = {
+            "mode": "schedule_proposal",
+            "task_id": task_id,
+            "base_task_revision": request["base_task_revision"],
+            "schedule_id": request["schedule_id"],
+            "schedule_version_id": version["schedule_version_id"],
+            "version_number": version["version_number"],
+            "config_sha256": version["config_sha256"],
+            "status": "draft",
+        }
+        request["state"] = "succeeded"
+        request["result_task_revision"] = None
+        request["safe_result"] = dict(result)
+        if (
+            self.raise_after_proposal_complete_commit
+            and not self._proposal_response_lost
+        ):
+            self._proposal_response_lost = True
+            raise RuntimeError("simulated_proposal_lost_response")
+        return result
+
+
+def _task_update_service():
+    store = _TaskUpdateScheduleStore()
+    return RequirementProductService(schedule_store=store), store
+
+
+def test_task_update_rejects_mixed_modes_before_reservation():
+    service, store = _task_update_service()
+
+    with pytest.raises(ValueError, match="requirement_task_patch_mixed_modes"):
+        service.update_task(
+            task_id="task-1",
+            actor="operator",
+            is_superuser=False,
+            idempotency_key="mixed-1",
+            name="Renamed",
+            timezone_name="Asia/Taipei",
+        )
+
+    assert store.reserve_calls == 0
+    assert store.versions == {}
+
+
+def test_task_update_rejects_operator_enable_before_reservation():
+    service, store = _task_update_service()
+
+    with pytest.raises(PermissionError, match="superuser_required"):
+        service.update_task(
+            task_id="task-1",
+            actor="operator",
+            is_superuser=False,
+            idempotency_key="toggle-1",
+            enabled=False,
+        )
+
+    assert store.reserve_calls == 0
+
+
+def test_task_update_name_and_enabled_finalize_once_with_one_revision_increment():
+    service, store = _task_update_service()
+
+    result = service.update_task(
+        task_id="task-1",
+        actor="admin",
+        is_superuser=True,
+        idempotency_key="in-place-1",
+        name="Renamed",
+        enabled=False,
+        now_utc=datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+    )
+
+    assert result["mode"] == "in_place"
+    assert result["task_revision"] == 8
+    assert result["name"] == "Renamed"
+    assert result["product_state"] == "disabled"
+    assert result["enabled"] is False
+    assert result["next_run_at"] is None
+    assert store.task["revision"] == 8
+    assert store.finalize_calls == 1
+    request = next(iter(store.requests.values()))
+    assert request["base_task_revision"] == 7
+    assert request["result_task_revision"] == 8
+
+
+def test_task_update_operator_can_create_draft_without_mutating_active_task():
+    service, store = _task_update_service()
+    old_due = store.schedule["next_run_at"]
+
+    result = service.update_task(
+        task_id="task-1",
+        actor="operator",
+        is_superuser=False,
+        idempotency_key="proposal-1",
+        timezone_name="Asia/Taipei",
+        model="model-b",
+        now_utc=datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+    )
+
+    assert result["mode"] == "schedule_proposal"
+    assert result["status"] == "draft"
+    assert result["base_task_revision"] == 7
+    assert result["schedule_version_id"] == "sv-draft-1"
+    assert store.versions["sv-draft-1"]["timezone"] == "Asia/Taipei"
+    assert store.versions["sv-draft-1"]["model"] == "model-b"
+    assert store.task["revision"] == 7
+    assert store.schedule["active_version_id"] == "sv-active"
+    assert store.schedule["enabled"] is True
+    assert store.schedule["next_run_at"] == old_due
+    request = next(iter(store.requests.values()))
+    assert request["result_task_revision"] is None
+
+
+def test_task_update_schedule_proposal_lost_response_replays_same_draft():
+    service, store = _task_update_service()
+    store.raise_after_proposal_complete_commit = True
+    kwargs = {
+        "task_id": "task-1",
+        "actor": "operator",
+        "is_superuser": False,
+        "idempotency_key": "proposal-lost",
+        "run_policy": "changed_only",
+        "now_utc": datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+    }
+
+    with pytest.raises(RuntimeError, match="simulated_proposal_lost_response"):
+        service.update_task(**kwargs)
+
+    replay = service.update_task(**kwargs)
+
+    assert replay["schedule_version_id"] == "sv-draft-1"
+    assert store.version_calls == 1
+    assert store.proposal_complete_calls == 1
+    assert store.task["revision"] == 7
+
+
+def test_task_update_same_key_changed_patch_conflicts():
+    service, _ = _task_update_service()
+    common = {
+        "task_id": "task-1",
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "same-key",
+        "now_utc": datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+    }
+    service.update_task(**common, name="Name A")
+
+    with pytest.raises(ValueError, match="requirement_idempotency_conflict"):
+        service.update_task(**common, name="Name B")
+
+
+def test_task_update_schedule_proposal_merges_same_mode_fields():
+    service, store = _task_update_service()
+
+    result = service.update_task(
+        task_id="task-1",
+        actor="operator",
+        is_superuser=False,
+        idempotency_key="proposal-multi",
+        recurrence={"kind": "weekly", "weekdays": [1, 3], "local_time": "10:30:00"},
+        run_policy=RunPolicy.NEW_OR_CHANGED,
+        model="model-c",
+        now_utc=datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+    )
+
+    draft = store.versions[result["schedule_version_id"]]
+    assert draft["timezone"] == "UTC"
+    assert draft["recurrence"]["kind"] == "weekly"
+    assert draft["run_policy"] == "new_or_changed"
+    assert draft["model"] == "model-c"
+    assert store.task["revision"] == 7
