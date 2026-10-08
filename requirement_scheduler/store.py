@@ -1208,6 +1208,36 @@ class ScheduleStore:
                 connection.commit()
                 return result
 
+            # Match the finalizer's relative lock order so concurrent
+            # activation keys cannot deadlock on Task/origin or Version/origin.
+            c.execute(
+                f"SELECT task_id,schedule_id,source_id,execution_kind,product_state,revision "
+                f"FROM {self.t}.[requirement_product_tasks] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE task_id=?",
+                task_id,
+            )
+            task = c.fetchone()
+            if task is None:
+                raise KeyError("requirement_task_not_found")
+            if task[4] == "provisioning":
+                raise ValueError("requirement_task_provisioning")
+            if task[4] not in {"active", "disabled"}:
+                raise ValueError("requirement_product_task_conflict")
+
+            c.execute(
+                f"SELECT schedule_id,status "
+                f"FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE schedule_version_id=?",
+                schedule_version_id,
+            )
+            version = c.fetchone()
+            if (
+                version is None
+                or version[0] != task[1]
+                or version[1] != "draft"
+            ):
+                raise ValueError("requirement_task_version_invalid")
+
             c.execute(
                 f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
                 f"FROM {self.t}.[requirement_product_requests] WITH (UPDLOCK,HOLDLOCK) "
@@ -1233,38 +1263,11 @@ class ScheduleStore:
                 != int(origin["base_task_revision"])
             ):
                 raise ValueError("requirement_task_version_invalid")
-
-            c.execute(
-                f"SELECT task_id,schedule_id,source_id,execution_kind,product_state,revision "
-                f"FROM {self.t}.[requirement_product_tasks] WITH (UPDLOCK,HOLDLOCK) "
-                f"WHERE task_id=?",
-                task_id,
-            )
-            task = c.fetchone()
-            if task is None:
-                raise KeyError("requirement_task_not_found")
-            if task[4] == "provisioning":
-                raise ValueError("requirement_task_provisioning")
             if (
                 task[1] != origin["schedule_id"]
                 or task[2] != origin["source_id"]
-                or task[4] not in {"active", "disabled"}
             ):
                 raise ValueError("requirement_product_task_conflict")
-
-            c.execute(
-                f"SELECT schedule_id,status "
-                f"FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) "
-                f"WHERE schedule_version_id=?",
-                schedule_version_id,
-            )
-            version = c.fetchone()
-            if (
-                version is None
-                or version[0] != task[1]
-                or version[1] != "draft"
-            ):
-                raise ValueError("requirement_task_version_invalid")
 
             request_id = _id("preq")
             base_revision = int(origin["base_task_revision"])
