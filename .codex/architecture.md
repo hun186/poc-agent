@@ -109,3 +109,11 @@
 - The one-time finalizer is the execution-release + visibility boundary. It verifies the reserved IDs against Product Task, Schedule active version, and exact active Requirement Snapshot, then calls the existing `_materialize_locked()` with a stable request-derived manual trigger inside the same SQL transaction that sets Product Task active and request succeeded.
 - Report Job/Handoff remain downstream consumers of the durable Batch Run; Product create does not call either execution subsystem directly.
 - P1.3 does not implement recurring finalization, Product routers, low-level ownership fencing, Task PATCH/activation, input replacement, or general Run-trigger admission.
+
+
+## 2026-10-07 Requirement Product recurring create release boundary
+
+- Recurring Product provisioning deliberately approves its initial Schedule Version while leaving recurrence disabled. The scheduler cannot claim provisioning work because `requirement_schedules.enabled=0` and `next_run_at=NULL`.
+- The recurring Product-create finalizer is the single recurrence-release/visibility boundary. It computes the first due time with existing Phase 1C `next_occurrence()` semantics and atomically commits Schedule `enabled=1,next_run_at=<due>`, Product Task `active`, bounded create result, and owning request `succeeded`.
+- Unlike one-time create, recurring create does not materialize an initial manual Batch Run. The first Run is created later by the existing scheduler worker when the persisted due occurrence becomes claimable.
+- Create replay keeps immutable initial-next-run evidence in the request ledger while Product Task presentation reflects current Schedule state. This prevents scheduler progress from changing the semantic result of the original idempotent create.

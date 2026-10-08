@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
+import json
 
 from requirement_scheduler.store import ScheduleStore
-from requirement_scheduler.models import RecurrenceSpec, RunPolicy, ScheduleVersionCreate, TriggerIdentity
+from requirement_scheduler.recurrence import next_occurrence
+from requirement_scheduler.models import MaterializedRun, RecurrenceSpec, RunPolicy, ScheduleVersionCreate, TriggerIdentity
 import pytest
 
 
@@ -386,3 +388,313 @@ def test_materialize_locked_uses_separate_selection_time_from_audit_time():
     assert item_insert[-3] == retry_time
     assert item_insert[-2] == selection_time
     assert item_insert[-1] == retry_time
+
+
+
+class RecurringFinalizeConnection:
+    def __init__(self, *, now_utc, first_run_selectable=True):
+        config = _version_config()
+        encoded, digest = ScheduleStore.canonical_config(config)
+        self.now_utc = now_utc
+        self.first_run_selectable = first_run_selectable
+        self.config = config
+        self.encoded = encoded
+        self.digest = digest
+        self.calls = []
+        self.last_sql = ""
+        self.one = None
+        self.rowcount = 0
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = 0
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.last_sql = sql
+        self.rowcount = 0
+        if "FROM [sra_schedule].[requirement_product_requests]" in sql:
+            self.one = (
+                "preq-1", "user", "admin", "task_create", "idem-1", "a" * 64,
+                "in_progress", "task-1", "src-1", "run-1", "snap-1", "sch-1",
+                "sv-1", None, None, None, None, None, None,
+                datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+                datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+                None,
+            )
+        elif "FROM [sra_schedule].[requirement_product_tasks]" in sql:
+            self.one = (
+                "task-1", "sch-1", "src-1", "recurring", "provisioning", 1
+            )
+        elif "FROM [sra_schedule].[requirement_schedules]" in sql:
+            self.one = ("set-1", False, "sv-1", None)
+        elif "FROM [sra_schedule].[requirement_schedule_versions]" in sql:
+            self.one = (
+                "approved",
+                self.config.timezone,
+                self.encoded,
+                self.config.run_policy.value,
+                self.config.model,
+                self.digest,
+            )
+        elif "FROM [sra_requirement].[requirement_sets]" in sql:
+            self.one = ("snap-1",)
+        elif "FROM [sra_requirement].[requirement_snapshot_items]" in sql:
+            self.one = (1,) if self.first_run_selectable else None
+        elif sql.startswith("UPDATE [sra_schedule].[requirement_schedules]"):
+            self.one = None
+            self.rowcount = 1
+        elif sql.startswith("UPDATE [sra_schedule].[requirement_product_tasks]"):
+            self.one = None
+            self.rowcount = 1
+        elif sql.startswith("UPDATE [sra_schedule].[requirement_product_requests]"):
+            self.one = None
+            self.rowcount = 1
+        else:
+            self.one = None
+        return self
+
+    def fetchone(self):
+        return self.one
+
+    def fetchall(self):
+        return []
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed += 1
+
+
+class RecurringFinalizeRegistry:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def open_named_connection(self, _name):
+        return self.connection
+
+
+def test_recurring_product_finalizer_atomically_enables_without_initial_run(monkeypatch):
+    now = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+    connection = RecurringFinalizeConnection(now_utc=now)
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    audit = []
+    monkeypatch.setattr(
+        store,
+        "_enqueue_audit_event",
+        lambda _cursor, event: audit.append(event),
+    )
+    monkeypatch.setattr(store, "_drain_best_effort", lambda: None)
+
+    result = store.finalize_recurring_product_task_create(
+        request_id="preq-1",
+        task_id="task-1",
+        actor="admin",
+        now_utc=now,
+    )
+
+    expected_due = next_occurrence(
+        connection.config.recurrence,
+        connection.config.timezone,
+        now,
+    )
+    assert result["next_run_at"] == expected_due.isoformat()
+    assert result["task_revision"] == 1
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+    assert len(audit) == 1
+    assert audit[0].action == "requirement_schedule.enabled"
+    assert audit[0].payload == {}
+    schedule_update = next(
+        params
+        for sql, params in connection.calls
+        if sql.startswith("UPDATE [sra_schedule].[requirement_schedules]")
+    )
+    assert schedule_update[0] == expected_due
+    assert not any(
+        "INSERT INTO [sra_schedule].[requirement_batch_runs]" in sql
+        or "INSERT INTO [sra_schedule].[requirement_batch_run_items]" in sql
+        for sql, _ in connection.calls
+    )
+    request_update = next(
+        params
+        for sql, params in connection.calls
+        if sql.startswith("UPDATE [sra_schedule].[requirement_product_requests]")
+    )
+    safe_result = json.loads(request_update[0])
+    assert safe_result["next_run_at"] == expected_due.isoformat()
+    assert "batch_run_id" not in safe_result
+
+
+
+def test_recurring_product_finalizer_terminalizes_when_first_due_has_no_selectable_rows(monkeypatch):
+    now = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+    connection = RecurringFinalizeConnection(
+        now_utc=now,
+        first_run_selectable=False,
+    )
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    monkeypatch.setattr(store, "_drain_best_effort", lambda: None)
+
+    with pytest.raises(
+        ValueError,
+        match="requirement_product_no_selectable_first_run",
+    ):
+        store.finalize_recurring_product_task_create(
+            request_id="preq-1",
+            task_id="task-1",
+            actor="admin",
+            now_utc=now,
+        )
+
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+    assert not any(
+        sql.startswith("UPDATE [sra_schedule].[requirement_schedules]")
+        for sql, _ in connection.calls
+    )
+    assert not any(
+        sql.startswith("UPDATE [sra_schedule].[requirement_product_tasks]")
+        for sql, _ in connection.calls
+    )
+    terminal_update = next(
+        (sql, params)
+        for sql, params in connection.calls
+        if sql.startswith("UPDATE [sra_schedule].[requirement_product_requests]")
+    )
+    assert "state='failed_terminal'" in terminal_update[0]
+    assert "requirement_product_no_selectable_first_run" in terminal_update[0]
+
+
+
+class ClaimDueSelectionConnection:
+    def __init__(self, *, persisted_due, recurrence_json):
+        self.persisted_due = persisted_due
+        self.recurrence_json = recurrence_json
+        self.calls = []
+        self.last_sql = ""
+        self.one = None
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = 0
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.last_sql = sql
+        if "SELECT TOP 1 s.schedule_id" in sql:
+            self.one = (
+                "sch-1",
+                "sv-1",
+                self.persisted_due,
+                "UTC",
+                self.recurrence_json,
+                RunPolicy.ALL_ACTIVE.value,
+            )
+        else:
+            self.one = None
+        return self
+
+    def fetchone(self):
+        return self.one
+
+    def fetchall(self):
+        return []
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed += 1
+
+
+def test_claim_due_evaluates_scheduled_run_at_occurrence_time(monkeypatch):
+    config = _version_config()
+    recurrence_json, _ = ScheduleStore.canonical_config(config)
+    persisted_due = datetime(2026, 10, 7, 9, 0, tzinfo=timezone.utc)
+    claim_time = datetime(2026, 10, 7, 9, 5, tzinfo=timezone.utc)
+    connection = ClaimDueSelectionConnection(
+        persisted_due=persisted_due,
+        recurrence_json=recurrence_json,
+    )
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+    observed = {}
+
+    def fake_materialize(
+        cursor,
+        schedule_id,
+        version_id,
+        policy,
+        trigger,
+        now_utc,
+        actor,
+        *,
+        selection_time=None,
+    ):
+        observed.update(
+            {
+                "trigger": trigger,
+                "now_utc": now_utc,
+                "selection_time": selection_time,
+            }
+        )
+        return MaterializedRun(
+            {"batch_run_id": "br-1", "schedule_id": schedule_id},
+            (),
+        )
+
+    monkeypatch.setattr(store, "_materialize_locked", fake_materialize)
+
+    result = store.claim_due(now_utc=claim_time, actor="scheduler")
+
+    assert result["scheduled_for"] == persisted_due
+    assert observed["trigger"].scheduled_for == persisted_due
+    assert observed["selection_time"] == persisted_due
+    assert observed["now_utc"] == claim_time
+    assert connection.commits == 1
+
+
+
+def test_materialize_locked_terminalizes_zero_selection_run_in_same_transaction():
+    store = ScheduleStore(Registry(), "control")
+    selection_time = datetime(2026, 10, 7, 9, 0, tzinfo=timezone.utc)
+    materialized_at = datetime(2026, 10, 7, 9, 10, tzinfo=timezone.utc)
+    cursor = SelectionTimeCursor(
+        expires_at=datetime(2026, 10, 7, 8, 59, tzinfo=timezone.utc)
+    )
+
+    result = store._materialize_locked(
+        cursor,
+        "sch-1",
+        "sv-1",
+        RunPolicy.ALL_ACTIVE.value,
+        TriggerIdentity("scheduled", scheduled_for=selection_time),
+        materialized_at,
+        "scheduler",
+        selection_time=selection_time,
+    )
+
+    assert result.run["selected_count"] == 0
+    assert result.run["state"] == "completed"
+    terminal_update = next(
+        params
+        for sql, params in cursor.calls
+        if "UPDATE [sra_schedule].[requirement_batch_runs] SET success_count=?" in sql
+    )
+    assert terminal_update[0] == 0
+    assert terminal_update[1] == 0
+    assert terminal_update[2] == "completed"
+    assert terminal_update[3] == 0
+    assert terminal_update[4] == materialized_at
+    assert terminal_update[5] == materialized_at

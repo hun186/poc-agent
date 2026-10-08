@@ -234,6 +234,48 @@ class RequirementProductService:
             "run": self.present_run(product_task=task, run=run),
         }
 
+    def _present_recurring_create_result(self, result: dict[str, Any]) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        task_id = _required_text(
+            result, "task_id", error="requirement_product_create_result_invalid"
+        )
+        schedule_id = _required_text(
+            result, "schedule_id", error="requirement_product_create_result_invalid"
+        )
+        schedule_version_id = _required_text(
+            result,
+            "schedule_version_id",
+            error="requirement_product_create_result_invalid",
+        )
+        initial_next_run_at = _required_text(
+            result, "next_run_at", error="requirement_product_create_result_invalid"
+        )
+        try:
+            parsed_next = datetime.fromisoformat(
+                initial_next_run_at.replace("Z", "+00:00")
+            )
+        except ValueError as exc:
+            raise ValueError("requirement_product_create_result_invalid") from exc
+        if parsed_next.tzinfo is None:
+            raise ValueError("requirement_product_create_result_invalid")
+
+        task = self.schedule_store.get_product_task(task_id)
+        schedule = self.schedule_store.get_schedule(schedule_id)
+        identity = ProductTaskIdentity.from_product_task_row(task)
+        if (
+            identity.execution_kind != "recurring"
+            or identity.schedule_id != schedule_id
+        ):
+            raise ValueError("requirement_product_create_result_invalid")
+        return {
+            "task": self.present_task(product_task=task, schedule=schedule),
+            "recurrence": {
+                "schedule_version_id": schedule_version_id,
+                "initial_next_run_at": initial_next_run_at,
+            },
+        }
+
     def preview_input(
         self,
         *,
@@ -619,6 +661,244 @@ class RequirementProductService:
             now_utc=now,
         )
         return self._present_one_time_create_result(result)
+
+    def create_recurring_task(
+        self,
+        *,
+        actor: str,
+        is_superuser: bool,
+        idempotency_key: str,
+        name: str,
+        profile_version_id: str,
+        schedule_config: ScheduleVersionCreate,
+        upload_bytes: bytes | None = None,
+        upload_filename: str | None = None,
+        requirements: Any | None = None,
+        now_utc: datetime | None = None,
+        finalize_now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Provision one recurring Product Task and atomically enable recurrence."""
+
+        if not is_superuser:
+            raise PermissionError("superuser_required")
+        if self.requirement_import_service is None or self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        if not actor or len(actor) > 128:
+            raise ValueError("requirement_product_request_invalid")
+        clean_name = name.strip()
+        if not clean_name or len(clean_name) > 240:
+            raise ValueError("schedule_name_invalid")
+
+        input_bytes, input_filename = self._input_bytes(
+            upload_bytes=upload_bytes,
+            upload_filename=upload_filename,
+            requirements=requirements,
+        )
+        input_sha256 = canonical_sha256(
+            {"bytes_sha256": hashlib.sha256(input_bytes).hexdigest()}
+        )
+        _, schedule_sha256 = self.schedule_store.canonical_config(schedule_config)
+        request_sha256 = canonical_sha256(
+            {
+                "operation": "task_create",
+                "execution_kind": "recurring",
+                "name": clean_name,
+                "profile_version_id": profile_version_id,
+                "input_sha256": input_sha256,
+                "input_filename": input_filename,
+                "schedule_config_sha256": schedule_sha256,
+            }
+        )
+        now = now_utc or datetime.now(timezone.utc).replace(microsecond=0)
+        request = self.schedule_store.reserve_product_task_create(
+            principal_kind="user",
+            principal_id=actor,
+            idempotency_key=idempotency_key,
+            request_sha256=request_sha256,
+            now_utc=now,
+        )
+        if request["state"] == "succeeded":
+            result = request.get("safe_result")
+            if not isinstance(result, dict):
+                raise RuntimeError("persistence_error")
+            return self._present_recurring_create_result(result)
+        if request["state"] == "failed_terminal":
+            raise ValueError(
+                request.get("error_code") or "requirement_product_request_terminal"
+            )
+
+        try:
+            preview = self.preview_input(
+                profile_version_id=profile_version_id,
+                upload_bytes=input_bytes if requirements is None else None,
+                upload_filename=input_filename if requirements is None else None,
+                requirements=requirements,
+            )
+        except (KeyError, ValueError) as exc:
+            code = str(exc).strip("'").split(":", 1)[0]
+            if not code or len(code) > 64:
+                code = "requirement_preview_invalid"
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"], error_code=code, now_utc=now
+            )
+            raise
+        if preview["has_errors"]:
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_preview_rejected",
+                now_utc=now,
+            )
+            raise ValueError("requirement_preview_rejected")
+        if int(preview.get("accepted_count") or 0) < 1:
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_preview_empty",
+                now_utc=now,
+            )
+            raise ValueError("requirement_preview_empty")
+        evaluation_time = self._request_evaluation_time(request)
+        if self._preview_selectable_count(preview, evaluation_time=evaluation_time) < 1:
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_preview_no_selectable_rows",
+                now_utc=now,
+            )
+            raise ValueError("requirement_preview_no_selectable_rows")
+
+        profile = preview["profile"]
+
+        self.schedule_store.mark_product_request_in_progress(
+            request["request_id"], now_utc=now
+        )
+
+        requirement_store = self.requirement_import_service.store
+        try:
+            source = requirement_store.get_source(request["source_id"])
+            self._validate_existing_product_source(
+                source,
+                source_id=request["source_id"],
+                name=clean_name,
+                source_mode=profile["source_mode"],
+                source_format=profile["format"],
+                profile_id=profile["profile_id"],
+            )
+        except KeyError:
+            source = requirement_store.create_source(
+                clean_name,
+                "manual_upload",
+                profile["source_mode"],
+                {"display_name": clean_name, "format": profile["format"]},
+                profile["profile_id"],
+                actor,
+                enabled=False,
+                source_id=request["source_id"],
+            )
+        if not bool(source.get("enabled")):
+            source = requirement_store.patch_source(
+                request["source_id"], actor, enabled=True
+            )
+        self._validate_existing_product_source(
+            source,
+            source_id=request["source_id"],
+            name=clean_name,
+            source_mode=profile["source_mode"],
+            source_format=profile["format"],
+            profile_id=profile["profile_id"],
+        )
+        if not bool(source.get("enabled")):
+            raise RuntimeError("persistence_error")
+
+        try:
+            import_result = self.requirement_import_service.commit(
+                request["source_id"],
+                actor=actor,
+                upload_bytes=input_bytes,
+                upload_filename=input_filename,
+                import_run_id=request["import_run_id"],
+                snapshot_id=request["snapshot_id"],
+                expected_profile_version_id=profile_version_id,
+                expected_profile_sha256=profile["profile_sha256"],
+            )
+        except ValueError as exc:
+            code = str(exc).strip("'").split(":", 1)[0]
+            if code == "profile_invalid":
+                self.schedule_store.fail_product_request_terminal(
+                    request["request_id"],
+                    error_code="requirement_preview_profile_not_active",
+                    now_utc=now,
+                )
+            raise
+        if (
+            import_result.get("status") != "committed"
+            or import_result.get("import_run_id") != request["import_run_id"]
+            or import_result.get("snapshot_id") != request["snapshot_id"]
+        ):
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_product_import_failed",
+                now_utc=now,
+            )
+            raise ValueError("requirement_product_import_failed")
+
+        requirement_set = requirement_store.get_requirement_set_for_source(
+            request["source_id"]
+        )
+        if requirement_set.get("active_snapshot_id") != request["snapshot_id"]:
+            raise RuntimeError("persistence_error")
+
+        schedule = self.schedule_store.create_schedule(
+            name=clean_name,
+            requirement_set_id=requirement_set["requirement_set_id"],
+            actor=actor,
+            schedule_id=request["schedule_id"],
+        )
+        if (
+            bool(schedule.get("enabled"))
+            or schedule.get("active_version_id") not in {
+                None, request["schedule_version_id"]
+            }
+            or schedule.get("next_run_at") is not None
+        ):
+            raise RuntimeError("persistence_error")
+        self.schedule_store.create_product_task_provisioning(
+            task_id=request["task_id"],
+            schedule_id=request["schedule_id"],
+            source_id=request["source_id"],
+            execution_kind="recurring",
+            actor=actor,
+            now_utc=now,
+        )
+        version = self.schedule_store.create_version(
+            schedule_id=request["schedule_id"],
+            config=schedule_config,
+            actor=actor,
+            schedule_version_id=request["schedule_version_id"],
+        )
+        if version.get("schedule_version_id") != request["schedule_version_id"]:
+            raise RuntimeError("persistence_error")
+        self.schedule_store.approve_version(
+            schedule_id=request["schedule_id"],
+            version_number=int(version["version_number"]),
+            actor=actor,
+            now_utc=now,
+        )
+
+        finalization_now = (
+            finalize_now_utc
+            if finalize_now_utc is not None
+            else datetime.now(timezone.utc).replace(microsecond=0)
+        )
+        if finalization_now.tzinfo is None:
+            raise ValueError("timezone_naive")
+        if finalization_now.astimezone(timezone.utc) < self._request_evaluation_time(request):
+            raise ValueError("requirement_product_request_invalid")
+        result = self.schedule_store.finalize_recurring_product_task_create(
+            request_id=request["request_id"],
+            task_id=request["task_id"],
+            actor=actor,
+            now_utc=finalization_now.astimezone(timezone.utc),
+        )
+        return self._present_recurring_create_result(result)
 
     @staticmethod
     def task_identity(product_task: dict[str, Any]) -> ProductTaskIdentity:

@@ -113,3 +113,29 @@
 
 
 - 2026-10-07 P1.3 fifth review correction: the one-time finalizer now separates semantic selection time from audit/materialization time. Product retry materialization evaluates Requirement eligibility at the durable request `created_at`, while Batch Run/item created/updated timestamps remain the current finalization time. This closes the remaining expiry drift between service preview admission and Schedule-store item selection.
+
+
+## 2026-10-07 Requirement Product P1.4 recurring create
+
+- P1.3 one-time Product create merged in PR #282 at `main@c51a10655616354d7a52c3548c363cfec2a3747e`.
+- P1.4 is implemented on `feat/requirement-product-recurring-create-p1-4` as an internal service/store slice only; Product HTTP router/UI/P1.5 updates/P1.6 low-level ownership fences remain out of scope.
+- Added `RequirementProductService.create_recurring_task()` by preserving the reviewed P1.3 durable reservation/preview/profile-binding/source/import/Schedule/Version saga and changing only Product execution kind + finalization behavior.
+- The initial Schedule Version is approved while the Schedule stays `enabled=0,next_run_at=NULL`; the Product Task stays `provisioning` until finalization.
+- Added `ScheduleStore.finalize_recurring_product_task_create()`. In one Schedule SQL transaction it locks the owning request, Product Task, Schedule, approved active version, and exact active Requirement Snapshot; validates persisted recurrence config through existing Phase 1C authority; calculates `next_run_at` with the existing `next_occurrence()`; enables recurrence; transitions the Product Task active; persists bounded safe create evidence; and marks the same request succeeded.
+- Recurring finalization does not create an initial Batch Run. Scheduler visibility is released only by the atomic `enabled=1 + next_run_at` commit; the existing scheduler query considers only enabled schedules.
+- The durable create result stores the initial `next_run_at` as immutable replay evidence. Replaying a successful create may present the Task's current Schedule state while still returning the original create-time next-run evidence, so later scheduler advancement or future Task disable/version activation does not invalidate create idempotency.
+- Existing Product presenters already hide provisioning Tasks/Runs, and ScheduleStore direct Product Task reads exclude provisioning by default. No Product mutation/run/service-key routes exist yet in this gate; those lifecycle admission checks remain P1.5/P2 work.
+- Focused regressions cover superuser admission, atomic enable-only finalization, no initial Run, lost-response replay without duplicate enable/recalculation, once-vs-recurring idempotency conflict, and store-level use of existing recurrence calculation.
+- Local pytest PASS is not claimed because direct Git transport remains unavailable in the execution environment; exact-head Hosted Codex review and Hosted checks are required before merge.
+
+
+- 2026-10-07 P1.4 review correction: recurring Product finalization must emit the existing empty-payload `requirement_schedule.enabled` audit event shape. Passing Product-specific metadata in that audit payload violates the Schedule audit schema and rolls back the entire finalizer. The unsupported payload was removed and focused regression now asserts the emitted enable event has an empty payload.
+
+
+- 2026-10-07 P1.4 second review corrections: recurring create now separates durable request time from recurrence-release time. The service refreshes UTC immediately before finalization (with an explicit deterministic test override), while request `created_at` remains the input/replay semantic anchor. The recurring finalizer computes the first due from that fresh release time and, before enabling the Schedule, locks/queries the exact snapshot to require at least one Requirement whose expiry extends beyond that first due. If none can participate, it atomically marks the owning create request `failed_terminal` with `requirement_product_no_selectable_first_run` while leaving the Schedule disabled and Product Task provisioning/invisible.
+
+
+- 2026-10-07 P1.4 third review correction: scheduled occurrence materialization now evaluates Requirement selection at the occurrence's canonical `scheduled_for` instant, not the later worker claim time. `claim_due()` passes `selection_time=latest` into the existing materializer, while run/item created/materialized/updated timestamps continue using the actual claim time. This keeps Product first-due validation and scheduler selection on the same semantic clock and prevents delayed claims from turning an otherwise valid occurrence into a zero-selected queued run.
+
+
+- 2026-10-08 P1.4 fourth review correction: zero-selection materialization is now terminalized inside the same Schedule transaction. After snapshot items are evaluated and evidence rows/checkpoints are written, `_materialize_locked()` calls the existing `_terminal_run_recompute()` when `selected_count == 0`, so the Batch Run becomes `completed` with `completed_at` before commit instead of remaining `handoff_pending` with no selected item capable of driving recomputation. This closes delayed/coalesced recurrence cases and also hardens any other materialization path that legitimately selects nothing.

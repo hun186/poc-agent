@@ -644,6 +644,8 @@ class _CreateScheduleStore:
         self.reserve_calls = 0
         self.version_calls = 0
         self.finalize_calls = 0
+        self.recurring_finalize_calls = 0
+        self.recurring_finalize_now = None
         self.schedule_calls = 0
         self.task_calls = 0
         self.raise_after_finalize_commit = False
@@ -788,6 +790,37 @@ class _CreateScheduleStore:
         self.request["state"] = "succeeded"
         self.request["safe_result"] = dict(result)
         self.request["batch_run_id"] = "br-create-1"
+        if self.raise_after_finalize_commit and not self._lost_response_raised:
+            self._lost_response_raised = True
+            raise RuntimeError("simulated_lost_response")
+        return result
+
+    def finalize_recurring_product_task_create(self, *, request_id, task_id, actor, now_utc):
+        if self.request["state"] == "succeeded":
+            return dict(self.request["safe_result"])
+        self.recurring_finalize_calls += 1
+        self.recurring_finalize_now = now_utc
+        assert self.task["execution_kind"] == "recurring"
+        assert self.task["product_state"] == "provisioning"
+        assert self.schedule["enabled"] is False
+        assert self.schedule["active_version_id"] == "sv-create-1"
+        assert self.schedule["next_run_at"] is None
+        next_run_at = datetime(2026, 10, 8, 9, 0, tzinfo=timezone.utc)
+        self.schedule["enabled"] = True
+        self.schedule["next_run_at"] = next_run_at
+        self.task["product_state"] = "active"
+        result = {
+            "task_id": task_id,
+            "source_id": "src-create-1",
+            "import_run_id": "run-create-1",
+            "snapshot_id": "snap-create-1",
+            "schedule_id": "sch-create-1",
+            "schedule_version_id": "sv-create-1",
+            "next_run_at": next_run_at.isoformat(),
+            "task_revision": 1,
+        }
+        self.request["state"] = "succeeded"
+        self.request["safe_result"] = dict(result)
         if self.raise_after_finalize_commit and not self._lost_response_raised:
             self._lost_response_raised = True
             raise RuntimeError("simulated_lost_response")
@@ -1043,3 +1076,124 @@ def test_one_time_product_create_retry_uses_original_request_time_for_eligibilit
     assert replay["run"]["run_id"] == "br-create-1"
     assert schedule_store.request["state"] == "succeeded"
     assert schedule_store.finalize_calls == 1
+
+
+
+def test_recurring_product_create_rejects_lower_role_before_reservation():
+    service, requirement_service, schedule_store = _create_service()
+
+    with pytest.raises(PermissionError, match="superuser_required"):
+        service.create_recurring_task(
+            actor="operator",
+            is_superuser=False,
+            idempotency_key="idem-recurring-role",
+            name="Recurring",
+            profile_version_id="pv-1",
+            schedule_config=_once_schedule_config(),
+            requirements=_valid_direct_requirements(),
+        )
+
+    assert schedule_store.reserve_calls == 0
+    assert requirement_service.commit_calls == 0
+    assert requirement_service.store.sources == {}
+
+
+def test_recurring_product_create_enables_only_in_finalizer_and_returns_initial_due():
+    service, requirement_service, schedule_store = _create_service()
+    now = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+
+    result = service.create_recurring_task(
+        actor="admin",
+        is_superuser=True,
+        idempotency_key="idem-recurring",
+        name="Recurring",
+        profile_version_id="pv-1",
+        schedule_config=_once_schedule_config(),
+        requirements=_valid_direct_requirements(),
+        now_utc=now,
+    )
+
+    assert result["task"]["task_id"] == "task-create-1"
+    assert result["task"]["execution_kind"] == "recurring"
+    assert result["task"]["product_state"] == "active"
+    assert result["task"]["schedule"]["enabled"] is True
+    assert result["task"]["schedule"]["active_version_id"] == "sv-create-1"
+    assert result["recurrence"] == {
+        "schedule_version_id": "sv-create-1",
+        "initial_next_run_at": "2026-10-08T09:00:00+00:00",
+    }
+    assert schedule_store.run is None
+    assert schedule_store.recurring_finalize_calls == 1
+    assert schedule_store.finalize_calls == 0
+    assert requirement_service.commit_calls == 1
+
+
+def test_recurring_product_create_lost_response_replays_original_due_without_duplicate_enable():
+    service, requirement_service, schedule_store = _create_service()
+    schedule_store.raise_after_finalize_commit = True
+    kwargs = {
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "idem-recurring-lost",
+        "name": "Recurring",
+        "profile_version_id": "pv-1",
+        "schedule_config": _once_schedule_config(),
+        "requirements": _valid_direct_requirements(),
+        "now_utc": datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+    }
+
+    with pytest.raises(RuntimeError, match="simulated_lost_response"):
+        service.create_recurring_task(**kwargs)
+
+    schedule_store.schedule["next_run_at"] = datetime(
+        2026, 10, 9, 9, 0, tzinfo=timezone.utc
+    )
+    replay = service.create_recurring_task(**kwargs)
+
+    assert replay["recurrence"]["initial_next_run_at"] == "2026-10-08T09:00:00+00:00"
+    assert replay["task"]["schedule"]["next_run_at"] == datetime(
+        2026, 10, 9, 9, 0, tzinfo=timezone.utc
+    )
+    assert requirement_service.commit_calls == 1
+    assert schedule_store.version_calls == 1
+    assert schedule_store.recurring_finalize_calls == 1
+
+
+def test_task_create_same_key_once_vs_recurring_conflicts():
+    service, _, _ = _create_service()
+    common = {
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "idem-kind-conflict",
+        "name": "Task",
+        "profile_version_id": "pv-1",
+        "schedule_config": _once_schedule_config(),
+        "requirements": _valid_direct_requirements(),
+        "now_utc": datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc),
+    }
+    service.create_one_time_task(**common)
+
+    with pytest.raises(ValueError, match="requirement_idempotency_conflict"):
+        service.create_recurring_task(**common)
+
+
+
+def test_recurring_product_create_refreshes_finalization_clock():
+    service, _, schedule_store = _create_service()
+    request_now = datetime(2026, 10, 7, 4, 0, tzinfo=timezone.utc)
+    finalize_now = datetime(2026, 10, 7, 4, 10, tzinfo=timezone.utc)
+
+    service.create_recurring_task(
+        actor="admin",
+        is_superuser=True,
+        idempotency_key="idem-recurring-clock",
+        name="Recurring Clock",
+        profile_version_id="pv-1",
+        schedule_config=_once_schedule_config(),
+        requirements=_valid_direct_requirements(),
+        now_utc=request_now,
+        finalize_now_utc=finalize_now,
+    )
+
+    assert schedule_store.request["created_at"] == request_now
+    assert schedule_store.recurring_finalize_now == finalize_now
