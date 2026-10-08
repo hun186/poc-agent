@@ -64,3 +64,6 @@
 
 
 - 2026-10-07: P1.3 local verification again cannot clone/read Hosted Git through direct transport because `github.com` DNS resolution fails. No local pytest PASS is claimed for the one-time create saga; Hosted source inspection, exact-head Codex review, and Hosted checks are the available repository verification evidence.
+
+
+- 2026-10-08 P1.5 local verification remains unavailable because direct Git transport cannot resolve `github.com` in this execution environment. No local pytest PASS is claimed; use Hosted source inspection, exact-head Codex review, and Hosted checks for this branch.
