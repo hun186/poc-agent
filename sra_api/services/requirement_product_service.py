@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from data_ingestion.requirements.hashing import canonical_sha256
 from data_ingestion.requirements.models import ImportProfileDocument
@@ -965,10 +966,17 @@ class RequirementProductService:
             clean_model = model.strip()
             if not clean_model or len(clean_model) > 240:
                 raise ValueError("schedule_model_invalid")
-        if timezone_name is not None and (
-            not isinstance(timezone_name, str) or not timezone_name
-        ):
-            raise ValueError("timezone_invalid")
+        clean_timezone: str | None = None
+        if timezone_name is not None:
+            if not isinstance(timezone_name, str):
+                raise ValueError("timezone_invalid")
+            clean_timezone = timezone_name.strip()
+            if not clean_timezone:
+                raise ValueError("timezone_invalid")
+            try:
+                ZoneInfo(clean_timezone)
+            except (ZoneInfoNotFoundError, ValueError):
+                raise ValueError("timezone_invalid") from None
 
         mode = "in_place" if in_place_mode else "schedule_proposal"
         patch_document: dict[str, Any] = {}
@@ -976,8 +984,8 @@ class RequirementProductService:
             patch_document["name"] = clean_name
         if enabled is not None:
             patch_document["enabled"] = enabled
-        if timezone_name is not None:
-            patch_document["timezone"] = timezone_name
+        if clean_timezone is not None:
+            patch_document["timezone"] = clean_timezone
         if normalized_recurrence is not None:
             patch_document["recurrence"] = normalized_recurrence.as_dict()
         if normalized_policy is not None:
@@ -1034,7 +1042,7 @@ class RequirementProductService:
         )
         base_config = active["config"]
         proposed = ScheduleVersionCreate(
-            timezone_name if timezone_name is not None else base_config.timezone,
+            clean_timezone if clean_timezone is not None else base_config.timezone,
             normalized_recurrence
             if normalized_recurrence is not None
             else base_config.recurrence,
