@@ -9,7 +9,7 @@ from sra_api.routers.requirement_schedules import router, schedule_service
 
 
 class Store:
-    def __init__(self): self.data = {}; self.version = 0
+    def __init__(self): self.data = {}; self.version = 0; self.product_owned = False
     def list_schedules(self, **filters):
         rows = list(self.data.values())
         if filters.get("enabled") is not None: rows = [row for row in rows if row["enabled"] == filters["enabled"]]
@@ -23,11 +23,12 @@ class Store:
     def rename_schedule(self, sid, name, actor): self.data[sid]["name"] = name; return self.data[sid]
     def create_version(self, schedule_id, config, actor): self.version += 1; return {"schedule_version_id":f"v{self.version}","version_number":self.version,"status":"draft"}
     def approve_version(self, **kw): return {"status":"approved","version_number":kw["version_number"]}
+    def is_product_owned_schedule(self, schedule_id): return self.product_owned
     def set_enabled(self, **kw): self.data[kw["schedule_id"]]["enabled"] = kw["enabled"]; return self.data[kw["schedule_id"]]
 
 
-def app(role=None):
-    value=FastAPI(); value.include_router(router); service=ScheduleService(Store()); value.dependency_overrides[schedule_service]=lambda:service
+def app(role=None, product_owned=False):
+    value=FastAPI(); value.include_router(router); store=Store(); store.product_owned=product_owned; service=ScheduleService(store); value.dependency_overrides[schedule_service]=lambda:service
     if role: value.dependency_overrides[current_user]=lambda:AuthUser(username="u",role=role,status="active")
     return value
 
@@ -61,3 +62,15 @@ def test_filters_superuser_lifecycle_and_success_denial_audits(monkeypatch):
     # Successful lifecycle evidence is authoritative in the SQL outbox, not a
     # best-effort route-level filesystem append. Denials remain direct JSONL.
     assert events == []
+
+
+
+def test_product_owned_schedule_low_level_approval_is_rejected():
+    client = TestClient(app("superuser", product_owned=True))
+
+    response = client.post(
+        "/v1/requirement-schedules/s/versions/1/approve"
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "requirement_product_owned_schedule"
