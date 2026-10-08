@@ -1087,6 +1087,70 @@ class RequirementProductService:
             now_utc=now,
         )
 
+    def activate_task_version(
+        self,
+        *,
+        task_id: str,
+        schedule_version_id: str,
+        actor: str,
+        is_superuser: bool,
+        idempotency_key: str,
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Activate one request-owned Product Schedule draft."""
+
+        if not is_superuser:
+            raise PermissionError("superuser_required")
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        if (
+            not task_id
+            or not schedule_version_id
+            or not actor
+            or len(actor) > 128
+            or not idempotency_key
+        ):
+            raise ValueError("requirement_product_request_invalid")
+
+        request_sha256 = canonical_sha256(
+            {
+                "operation": "task_version_activate",
+                "task_id": task_id,
+                "schedule_version_id": schedule_version_id,
+            }
+        )
+        now = now_utc or datetime.now(timezone.utc).replace(microsecond=0)
+        request = self.schedule_store.reserve_product_task_version_activation(
+            task_id=task_id,
+            schedule_version_id=schedule_version_id,
+            principal_kind="user",
+            principal_id=actor,
+            idempotency_key=idempotency_key,
+            request_sha256=request_sha256,
+            now_utc=now,
+        )
+        if request["state"] == "succeeded":
+            result = request.get("safe_result")
+            if not isinstance(result, dict):
+                raise RuntimeError("persistence_error")
+            return result
+        if request["state"] == "failed_terminal":
+            raise ValueError(
+                request.get("error_code") or "requirement_product_request_terminal"
+            )
+
+        self.schedule_store.mark_product_task_version_activation_in_progress(
+            request["request_id"],
+            now_utc=now,
+        )
+        return self.schedule_store.finalize_product_task_version_activation(
+            request_id=request["request_id"],
+            task_id=task_id,
+            schedule_version_id=schedule_version_id,
+            actor=actor,
+            now_utc=now,
+        )
+
     @staticmethod
     def task_identity(product_task: dict[str, Any]) -> ProductTaskIdentity:
         return ProductTaskIdentity.from_product_task_row(product_task)
