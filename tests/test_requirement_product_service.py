@@ -1788,6 +1788,8 @@ class _TaskActivationScheduleStore:
             raise ValueError(request["error_code"])
         self.finalize_activation_calls += 1
         if self.task["revision"] != request["base_task_revision"]:
+            if self.versions[schedule_version_id]["status"] == "draft":
+                self.versions[schedule_version_id]["status"] = "retired"
             request["state"] = "failed_terminal"
             request["error_code"] = "requirement_task_conflict"
             raise ValueError("requirement_task_conflict")
@@ -1942,5 +1944,5 @@ def test_two_draft_activations_from_same_revision_cannot_both_win():
         )
 
     assert store.schedule["active_version_id"] == "sv-draft-1"
-    assert store.versions["sv-draft-2"]["status"] == "draft"
+    assert store.versions["sv-draft-2"]["status"] == "retired"
     assert store.task["revision"] == 8
