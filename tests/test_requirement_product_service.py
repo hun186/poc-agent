@@ -1688,3 +1688,277 @@ def test_task_update_distinct_draft_requests_do_not_mutate_active_task():
     assert store.schedule["enabled"] is True
     assert store.schedule["next_run_at"] == old_due
     assert len(store.versions) == 2
+
+
+
+class _TaskActivationScheduleStore:
+    def __init__(self):
+        self.task = _task()
+        self.schedule = {
+            "schedule_id": "sch-1",
+            "enabled": True,
+            "active_version_id": "sv-active",
+            "next_run_at": datetime(2026, 10, 8, 9, 0, tzinfo=timezone.utc),
+        }
+        self.origins = {
+            "sv-draft-1": 7,
+            "sv-draft-2": 7,
+        }
+        self.versions = {
+            "sv-active": {"status": "approved", "version_number": 1},
+            "sv-draft-1": {"status": "draft", "version_number": 2},
+            "sv-draft-2": {"status": "draft", "version_number": 3},
+        }
+        self.activation_requests = {}
+        self.reserve_activation_calls = 0
+        self.finalize_activation_calls = 0
+        self.raise_after_activation_commit = False
+        self._activation_response_lost = False
+
+    def reserve_product_task_version_activation(
+        self,
+        *,
+        task_id,
+        schedule_version_id,
+        principal_kind,
+        principal_id,
+        idempotency_key,
+        request_sha256,
+        now_utc,
+    ):
+        self.reserve_activation_calls += 1
+        key = (principal_kind, principal_id, idempotency_key)
+        existing = self.activation_requests.get(key)
+        if existing is not None:
+            if existing["request_sha256"] != request_sha256:
+                raise ValueError("requirement_idempotency_conflict")
+            return dict(existing)
+        if (
+            task_id != self.task["task_id"]
+            or schedule_version_id not in self.origins
+            or self.versions[schedule_version_id]["status"] != "draft"
+        ):
+            raise ValueError("requirement_task_version_invalid")
+        request = {
+            "request_id": f"preq-activate-{len(self.activation_requests) + 1}",
+            "operation": "task_version_activate",
+            "request_sha256": request_sha256,
+            "state": "reserved",
+            "task_id": task_id,
+            "source_id": self.task["source_id"],
+            "schedule_id": self.task["schedule_id"],
+            "schedule_version_id": schedule_version_id,
+            "base_task_revision": self.origins[schedule_version_id],
+            "result_task_revision": None,
+            "safe_result": None,
+            "error_code": None,
+            "created_at": now_utc,
+        }
+        self.activation_requests[key] = request
+        return dict(request)
+
+    def mark_product_task_version_activation_in_progress(
+        self, request_id, *, now_utc
+    ):
+        request = next(
+            row
+            for row in self.activation_requests.values()
+            if row["request_id"] == request_id
+        )
+        if request["state"] in {"reserved", "failed_recoverable"}:
+            request["state"] = "in_progress"
+
+    def finalize_product_task_version_activation(
+        self,
+        *,
+        request_id,
+        task_id,
+        schedule_version_id,
+        actor,
+        now_utc,
+    ):
+        request = next(
+            row
+            for row in self.activation_requests.values()
+            if row["request_id"] == request_id
+        )
+        if request["state"] == "succeeded":
+            return dict(request["safe_result"])
+        if request["state"] == "failed_terminal":
+            raise ValueError(request["error_code"])
+        self.finalize_activation_calls += 1
+        if self.task["revision"] != request["base_task_revision"]:
+            if self.versions[schedule_version_id]["status"] == "draft":
+                self.versions[schedule_version_id]["status"] = "retired"
+            request["state"] = "failed_terminal"
+            request["error_code"] = "requirement_task_conflict"
+            raise ValueError("requirement_task_conflict")
+        if self.versions[schedule_version_id]["status"] != "draft":
+            request["state"] = "failed_terminal"
+            request["error_code"] = "requirement_task_version_invalid"
+            raise ValueError("requirement_task_version_invalid")
+
+        old_active = self.schedule["active_version_id"]
+        if old_active:
+            self.versions[old_active]["status"] = "retired"
+        self.versions[schedule_version_id]["status"] = "approved"
+        self.schedule["active_version_id"] = schedule_version_id
+        self.schedule["next_run_at"] = datetime(
+            2026, 10, 9, 10, 0, tzinfo=timezone.utc
+        )
+        self.task["revision"] += 1
+        result = {
+            "mode": "schedule_activation",
+            "task_id": task_id,
+            "task_revision": self.task["revision"],
+            "execution_kind": self.task["execution_kind"],
+            "product_state": self.task["product_state"],
+            "schedule_id": self.task["schedule_id"],
+            "schedule_version_id": schedule_version_id,
+            "version_number": self.versions[schedule_version_id]["version_number"],
+            "status": "approved",
+            "enabled": self.schedule["enabled"],
+            "next_run_at": self.schedule["next_run_at"].isoformat(),
+        }
+        request["state"] = "succeeded"
+        request["result_task_revision"] = self.task["revision"]
+        request["safe_result"] = dict(result)
+        if (
+            self.raise_after_activation_commit
+            and not self._activation_response_lost
+        ):
+            self._activation_response_lost = True
+            raise RuntimeError("simulated_activation_lost_response")
+        return result
+
+
+def _task_activation_service():
+    store = _TaskActivationScheduleStore()
+    return RequirementProductService(schedule_store=store), store
+
+
+def test_task_version_activation_rejects_operator_before_reservation():
+    service, store = _task_activation_service()
+
+    with pytest.raises(PermissionError, match="superuser_required"):
+        service.activate_task_version(
+            task_id="task-1",
+            schedule_version_id="sv-draft-1",
+            actor="operator",
+            is_superuser=False,
+            idempotency_key="activate-1",
+        )
+
+    assert store.reserve_activation_calls == 0
+
+
+def test_task_version_activation_uses_origin_revision_and_increments_once():
+    service, store = _task_activation_service()
+
+    result = service.activate_task_version(
+        task_id="task-1",
+        schedule_version_id="sv-draft-1",
+        actor="admin",
+        is_superuser=True,
+        idempotency_key="activate-1",
+        now_utc=datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc),
+    )
+
+    assert result["mode"] == "schedule_activation"
+    assert result["schedule_version_id"] == "sv-draft-1"
+    assert result["task_revision"] == 8
+    assert store.task["revision"] == 8
+    assert store.schedule["active_version_id"] == "sv-draft-1"
+    assert store.versions["sv-active"]["status"] == "retired"
+    assert store.versions["sv-draft-1"]["status"] == "approved"
+    request = next(iter(store.activation_requests.values()))
+    assert request["base_task_revision"] == 7
+    assert request["result_task_revision"] == 8
+
+
+def test_task_version_activation_lost_response_replays_without_second_activation():
+    service, store = _task_activation_service()
+    store.raise_after_activation_commit = True
+    kwargs = {
+        "task_id": "task-1",
+        "schedule_version_id": "sv-draft-1",
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "activate-lost",
+        "now_utc": datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc),
+    }
+
+    with pytest.raises(RuntimeError, match="simulated_activation_lost_response"):
+        service.activate_task_version(**kwargs)
+
+    replay = service.activate_task_version(**kwargs)
+
+    assert replay["task_revision"] == 8
+    assert replay["schedule_version_id"] == "sv-draft-1"
+    assert store.task["revision"] == 8
+    assert store.finalize_activation_calls == 1
+
+
+def test_task_version_activation_same_key_changed_version_conflicts():
+    service, _ = _task_activation_service()
+    common = {
+        "task_id": "task-1",
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "activate-same-key",
+        "now_utc": datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc),
+    }
+    service.activate_task_version(
+        **common,
+        schedule_version_id="sv-draft-1",
+    )
+
+    with pytest.raises(ValueError, match="requirement_idempotency_conflict"):
+        service.activate_task_version(
+            **common,
+            schedule_version_id="sv-draft-2",
+        )
+
+
+def test_two_draft_activations_from_same_revision_cannot_both_win():
+    service, store = _task_activation_service()
+
+    first = service.activate_task_version(
+        task_id="task-1",
+        schedule_version_id="sv-draft-1",
+        actor="admin",
+        is_superuser=True,
+        idempotency_key="activate-a",
+        now_utc=datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc),
+    )
+    assert first["task_revision"] == 8
+
+    with pytest.raises(ValueError, match="requirement_task_conflict"):
+        service.activate_task_version(
+            task_id="task-1",
+            schedule_version_id="sv-draft-2",
+            actor="admin",
+            is_superuser=True,
+            idempotency_key="activate-b",
+            now_utc=datetime(2026, 10, 8, 4, 1, tzinfo=timezone.utc),
+        )
+
+    assert store.schedule["active_version_id"] == "sv-draft-1"
+    assert store.versions["sv-draft-2"]["status"] == "retired"
+    assert store.task["revision"] == 8
+
+
+
+def test_task_version_activation_same_key_changed_task_conflicts_before_target_lookup():
+    service, _ = _task_activation_service()
+    common = {
+        "schedule_version_id": "sv-draft-1",
+        "actor": "admin",
+        "is_superuser": True,
+        "idempotency_key": "activate-cross-task",
+        "now_utc": datetime(2026, 10, 8, 4, 0, tzinfo=timezone.utc),
+    }
+    service.activate_task_version(task_id="task-1", **common)
+
+    with pytest.raises(ValueError, match="requirement_idempotency_conflict"):
+        service.activate_task_version(task_id="task-2", **common)

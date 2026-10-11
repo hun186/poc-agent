@@ -53,7 +53,8 @@ def _safe_error(exc: Exception) -> Exception:
         "requirement_product_no_selectable_first_run",
         "requirement_task_not_found", "requirement_task_provisioning",
         "requirement_task_conflict", "requirement_task_state_invalid",
-        "requirement_task_update_incomplete",
+        "requirement_task_update_incomplete", "requirement_task_version_invalid",
+        "requirement_product_owned_schedule",
     }: return exc
     return RuntimeError("persistence_error")
 
@@ -92,6 +93,7 @@ class ScheduleStore:
         allowed = {
             "requirement_schedule.created", "requirement_schedule.updated",
             "requirement_schedule.version_created", "requirement_schedule.version_approved",
+            "requirement_schedule.version_retired", "requirement.task.updated",
             "requirement_schedule.enabled", "requirement_schedule.disabled",
             "requirement_handoff.prepared", "requirement_handoff.dispatched",
             "requirement_handoff.reconciled", "requirement_handoff.remote_authorization_failed",
@@ -107,6 +109,8 @@ class ScheduleStore:
             "requirement_schedule.updated": {"field"},
             "requirement_schedule.version_created": {"version_number"},
             "requirement_schedule.version_approved": {"version_number"},
+            "requirement_schedule.version_retired": {"version_number"},
+            "requirement.task.updated": {"task_id", "revision", "operation"},
             "requirement_schedule.enabled": set(),
             "requirement_schedule.disabled": set(),
             "requirement_handoff.prepared": {"batch_run_id", "run_item_id", "submission_id", "workflow_id", "output_root_fingerprint", "fencing_generation"},
@@ -1045,6 +1049,17 @@ class ScheduleStore:
         try:
             c = connection.cursor()
             c.execute(
+                f"SELECT schedule_id,product_state,revision "
+                f"FROM {self.t}.[requirement_product_tasks] WITH (UPDLOCK,HOLDLOCK) WHERE task_id=?",
+                task_id,
+            )
+            task = c.fetchone()
+            if task is None:
+                raise KeyError("requirement_task_not_found")
+            if task[1] == "provisioning":
+                raise ValueError("requirement_task_provisioning")
+
+            c.execute(
                 f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
                 f"FROM {self.t}.[requirement_product_requests] WITH (UPDLOCK,HOLDLOCK) WHERE request_id=?",
                 request_id,
@@ -1072,16 +1087,6 @@ class ScheduleStore:
             if request["state"] not in {"reserved", "in_progress", "failed_recoverable"}:
                 raise ValueError("requirement_product_request_invalid")
 
-            c.execute(
-                f"SELECT schedule_id,product_state,revision "
-                f"FROM {self.t}.[requirement_product_tasks] WITH (UPDLOCK,HOLDLOCK) WHERE task_id=?",
-                task_id,
-            )
-            task = c.fetchone()
-            if task is None:
-                raise KeyError("requirement_task_not_found")
-            if task[1] == "provisioning":
-                raise ValueError("requirement_task_provisioning")
             if (
                 task[0] != request["schedule_id"]
                 or int(task[2]) != int(request["base_task_revision"])
@@ -1160,6 +1165,502 @@ class ScheduleStore:
         if not isinstance(outcome, dict):
             raise RuntimeError("persistence_error")
         return outcome
+
+    def reserve_product_task_version_activation(
+        self,
+        *,
+        task_id: str,
+        schedule_version_id: str,
+        principal_kind: str,
+        principal_id: str,
+        idempotency_key: str,
+        request_sha256: str,
+        now_utc: datetime,
+    ) -> dict[str, Any]:
+        if (
+            not task_id
+            or not schedule_version_id
+            or principal_kind != "user"
+            or not principal_id
+            or len(principal_id) > 128
+            or not idempotency_key
+            or len(idempotency_key) > 128
+            or len(request_sha256) != 64
+            or any(ch not in "0123456789abcdef" for ch in request_sha256)
+        ):
+            raise ValueError("requirement_product_request_invalid")
+        connection = self._connect()
+        try:
+            c = connection.cursor()
+            c.execute(
+                f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
+                f"FROM {self.t}.[requirement_product_requests] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE principal_kind=? AND principal_id=? "
+                f"AND operation='task_version_activate' AND idempotency_key=?",
+                principal_kind,
+                principal_id,
+                idempotency_key,
+            )
+            existing = c.fetchone()
+            if existing is not None:
+                result = self._product_request_dict(existing)
+                if result["request_sha256"] != request_sha256:
+                    raise ValueError("requirement_idempotency_conflict")
+                connection.commit()
+                return result
+
+            # Match the finalizer's relative lock order so concurrent
+            # activation keys cannot deadlock on Task/origin or Version/origin.
+            c.execute(
+                f"SELECT task_id,schedule_id,source_id,execution_kind,product_state,revision "
+                f"FROM {self.t}.[requirement_product_tasks] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE task_id=?",
+                task_id,
+            )
+            task = c.fetchone()
+            if task is None:
+                raise KeyError("requirement_task_not_found")
+            if task[4] == "provisioning":
+                raise ValueError("requirement_task_provisioning")
+            if task[4] not in {"active", "disabled"}:
+                raise ValueError("requirement_product_task_conflict")
+
+            c.execute(
+                f"SELECT schedule_id,status "
+                f"FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE schedule_version_id=?",
+                schedule_version_id,
+            )
+            version = c.fetchone()
+            if (
+                version is None
+                or version[0] != task[1]
+                or version[1] != "draft"
+            ):
+                raise ValueError("requirement_task_version_invalid")
+
+            c.execute(
+                f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
+                f"FROM {self.t}.[requirement_product_requests] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE operation='task_update' AND task_id=? AND schedule_version_id=? "
+                f"AND state='succeeded'",
+                task_id,
+                schedule_version_id,
+            )
+            origin_rows = tuple(c.fetchall())
+            if len(origin_rows) != 1:
+                raise ValueError("requirement_task_version_invalid")
+            origin = self._product_request_dict(origin_rows[0])
+            origin_result = origin.get("safe_result")
+            if (
+                origin["base_task_revision"] is None
+                or origin["result_task_revision"] is not None
+                or not isinstance(origin_result, dict)
+                or origin_result.get("mode") != "schedule_proposal"
+                or origin_result.get("task_id") != task_id
+                or origin_result.get("schedule_id") != origin["schedule_id"]
+                or origin_result.get("schedule_version_id") != schedule_version_id
+                or int(origin_result.get("base_task_revision", -1))
+                != int(origin["base_task_revision"])
+            ):
+                raise ValueError("requirement_task_version_invalid")
+            if (
+                task[1] != origin["schedule_id"]
+                or task[2] != origin["source_id"]
+            ):
+                raise ValueError("requirement_product_task_conflict")
+
+            request_id = _id("preq")
+            base_revision = int(origin["base_task_revision"])
+            c.execute(
+                f"INSERT INTO {self.t}.[requirement_product_requests]("
+                "request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,"
+                "task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,"
+                "batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,"
+                "created_at,updated_at,completed_at"
+                ") VALUES (?,?,?,?,?,?,'reserved',?,?,NULL,NULL,?,?,NULL,?,NULL,NULL,NULL,NULL,?,?,NULL)",
+                request_id,
+                principal_kind,
+                principal_id,
+                "task_version_activate",
+                idempotency_key,
+                request_sha256,
+                task_id,
+                task[2],
+                task[1],
+                schedule_version_id,
+                base_revision,
+                now_utc,
+                now_utc,
+            )
+            connection.commit()
+            return {
+                "request_id": request_id,
+                "principal_kind": principal_kind,
+                "principal_id": principal_id,
+                "operation": "task_version_activate",
+                "idempotency_key": idempotency_key,
+                "request_sha256": request_sha256,
+                "state": "reserved",
+                "task_id": task_id,
+                "source_id": task[2],
+                "import_run_id": None,
+                "snapshot_id": None,
+                "schedule_id": task[1],
+                "schedule_version_id": schedule_version_id,
+                "batch_run_id": None,
+                "base_task_revision": base_revision,
+                "result_task_revision": None,
+                "base_snapshot_id": None,
+                "safe_result_json": None,
+                "safe_result": None,
+                "error_code": None,
+                "created_at": now_utc,
+                "updated_at": now_utc,
+                "completed_at": None,
+            }
+        except Exception as exc:
+            connection.rollback()
+            if _is_unique_key_conflict(exc):
+                read_connection = self._connect()
+                try:
+                    cursor = read_connection.cursor()
+                    cursor.execute(
+                        f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
+                        f"FROM {self.t}.[requirement_product_requests] "
+                        f"WHERE principal_kind=? AND principal_id=? "
+                        f"AND operation='task_version_activate' AND idempotency_key=?",
+                        principal_kind,
+                        principal_id,
+                        idempotency_key,
+                    )
+                    raced = cursor.fetchone()
+                    if raced is None:
+                        raise RuntimeError("persistence_error")
+                    result = self._product_request_dict(raced)
+                    if result["request_sha256"] != request_sha256:
+                        raise ValueError("requirement_idempotency_conflict")
+                    return result
+                except Exception as read_exc:
+                    raise _safe_error(read_exc) from read_exc
+                finally:
+                    read_connection.close()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
+
+    def mark_product_task_version_activation_in_progress(
+        self, request_id: str, *, now_utc: datetime
+    ) -> None:
+        connection = self._connect()
+        try:
+            c = connection.cursor()
+            c.execute(
+                f"UPDATE {self.t}.[requirement_product_requests] "
+                f"SET state='in_progress',updated_at=? "
+                f"WHERE request_id=? AND operation='task_version_activate' "
+                f"AND state IN ('reserved','failed_recoverable')",
+                now_utc,
+                request_id,
+            )
+            c.execute(
+                f"SELECT state FROM {self.t}.[requirement_product_requests] "
+                f"WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE request_id=? AND operation='task_version_activate'",
+                request_id,
+            )
+            row = c.fetchone()
+            if row is None:
+                raise KeyError("requirement_product_request_invalid")
+            if row[0] not in {"in_progress", "succeeded"}:
+                raise ValueError("requirement_product_request_terminal")
+            connection.commit()
+        except Exception as exc:
+            connection.rollback()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
+
+    def finalize_product_task_version_activation(
+        self,
+        *,
+        request_id: str,
+        task_id: str,
+        schedule_version_id: str,
+        actor: str,
+        now_utc: datetime,
+    ) -> dict[str, Any]:
+        connection = self._connect()
+        should_drain = False
+        terminal_error: str | None = None
+        outcome: dict[str, Any] | None = None
+        try:
+            c = connection.cursor()
+            c.execute(
+                f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
+                f"FROM {self.t}.[requirement_product_requests] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE request_id=?",
+                request_id,
+            )
+            request_row = c.fetchone()
+            if request_row is None:
+                raise KeyError("requirement_product_request_invalid")
+            request = self._product_request_dict(request_row)
+            if (
+                request["operation"] != "task_version_activate"
+                or request["task_id"] != task_id
+                or request["schedule_version_id"] != schedule_version_id
+            ):
+                raise ValueError("requirement_product_request_invalid")
+            if request["state"] == "succeeded":
+                result = request["safe_result"]
+                if not isinstance(result, dict):
+                    raise RuntimeError("persistence_error")
+                connection.commit()
+                return result
+            if request["state"] == "failed_terminal":
+                raise ValueError(
+                    request["error_code"] or "requirement_product_request_terminal"
+                )
+            if request["state"] not in {"reserved", "in_progress", "failed_recoverable"}:
+                raise ValueError("requirement_product_request_invalid")
+
+            c.execute(
+                f"SELECT task_id,schedule_id,source_id,execution_kind,product_state,revision "
+                f"FROM {self.t}.[requirement_product_tasks] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE task_id=?",
+                task_id,
+            )
+            task = c.fetchone()
+            if task is None:
+                raise KeyError("requirement_task_not_found")
+            if task[4] == "provisioning":
+                raise ValueError("requirement_task_provisioning")
+            if (
+                task[1] != request["schedule_id"]
+                or task[2] != request["source_id"]
+                or task[4] not in {"active", "disabled"}
+            ):
+                raise ValueError("requirement_product_task_conflict")
+
+            c.execute(
+                f"SELECT enabled,active_version_id,next_run_at "
+                f"FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE schedule_id=?",
+                task[1],
+            )
+            schedule = c.fetchone()
+            if schedule is None:
+                raise KeyError("schedule_not_found")
+            if task[3] == "recurring":
+                if (task[4] == "active") != bool(schedule[0]):
+                    raise RuntimeError("persistence_error")
+            elif task[4] != "active" or bool(schedule[0]):
+                raise RuntimeError("persistence_error")
+
+            c.execute(
+                f"SELECT schedule_id,version_number,status "
+                f"FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE schedule_version_id=?",
+                schedule_version_id,
+            )
+            version = c.fetchone()
+            if version is None or version[0] != task[1]:
+                terminal_error = "requirement_task_version_invalid"
+
+            c.execute(
+                f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
+                f"FROM {self.t}.[requirement_product_requests] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE operation='task_update' AND task_id=? AND schedule_version_id=? "
+                f"AND state='succeeded'",
+                task_id,
+                schedule_version_id,
+            )
+            origin_rows = tuple(c.fetchall())
+            if len(origin_rows) != 1:
+                terminal_error = "requirement_task_version_invalid"
+                origin = None
+            else:
+                origin = self._product_request_dict(origin_rows[0])
+                origin_result = origin.get("safe_result")
+                if (
+                    origin["base_task_revision"] is None
+                    or origin["result_task_revision"] is not None
+                    or not isinstance(origin_result, dict)
+                    or origin_result.get("mode") != "schedule_proposal"
+                    or origin_result.get("task_id") != task_id
+                    or origin_result.get("schedule_id") != task[1]
+                    or origin_result.get("schedule_version_id") != schedule_version_id
+                    or int(origin_result.get("base_task_revision", -1))
+                    != int(origin["base_task_revision"])
+                    or int(request["base_task_revision"])
+                    != int(origin["base_task_revision"])
+                ):
+                    terminal_error = "requirement_task_version_invalid"
+
+            if (
+                terminal_error is None
+                and int(task[5]) != int(request["base_task_revision"])
+            ):
+                terminal_error = "requirement_task_conflict"
+            if (
+                terminal_error is None
+                and version is not None
+                and version[2] != "draft"
+            ):
+                terminal_error = "requirement_task_version_invalid"
+
+            if terminal_error is not None:
+                if (
+                    terminal_error == "requirement_task_conflict"
+                    and version is not None
+                    and version[2] == "draft"
+                    and origin is not None
+                ):
+                    c.execute(
+                        f"UPDATE {self.t}.[requirement_schedule_versions] "
+                        f"SET status='retired',retired_at=? "
+                        f"WHERE schedule_version_id=? AND status='draft'",
+                        now_utc,
+                        schedule_version_id,
+                    )
+                    if getattr(c, "rowcount", 1) != 1:
+                        raise ValueError("requirement_task_version_invalid")
+                    self._enqueue_audit_event(
+                        c,
+                        self._audit_event(
+                            "requirement_schedule.version_retired",
+                            actor,
+                            task[1],
+                            schedule_version_id=schedule_version_id,
+                            payload={"version_number": int(version[1])},
+                            created_at=now_utc,
+                        ),
+                    )
+                    should_drain = True
+                c.execute(
+                    f"UPDATE {self.t}.[requirement_product_requests] "
+                    f"SET state='failed_terminal',safe_result_json=NULL,error_code=?,"
+                    f"updated_at=?,completed_at=? "
+                    f"WHERE request_id=? AND state IN ('reserved','in_progress','failed_recoverable')",
+                    terminal_error,
+                    now_utc,
+                    now_utc,
+                    request_id,
+                )
+                if getattr(c, "rowcount", 1) != 1:
+                    raise ValueError("requirement_product_request_invalid")
+                connection.commit()
+            else:
+                approval = self._approve_version_locked(
+                    c,
+                    schedule_id=task[1],
+                    schedule_version_id=schedule_version_id,
+                    actor=actor,
+                    now_utc=now_utc,
+                )
+                new_revision = int(task[5]) + 1
+                c.execute(
+                    f"UPDATE {self.t}.[requirement_product_tasks] "
+                    f"SET revision=?,updated_by=?,updated_at=? "
+                    f"WHERE task_id=? AND revision=?",
+                    new_revision,
+                    actor,
+                    now_utc,
+                    task_id,
+                    request["base_task_revision"],
+                )
+                if getattr(c, "rowcount", 1) != 1:
+                    raise ValueError("requirement_task_conflict")
+                self._enqueue_audit_event(
+                    c,
+                    self._audit_event(
+                        "requirement.task.updated",
+                        actor,
+                        task[1],
+                        schedule_version_id=schedule_version_id,
+                        payload={
+                            "task_id": task_id,
+                            "revision": new_revision,
+                            "operation": "task_version_activate",
+                        },
+                        created_at=now_utc,
+                    ),
+                )
+
+                next_run_at = approval["next_run_at"]
+                result = {
+                    "mode": "schedule_activation",
+                    "task_id": task_id,
+                    "task_revision": new_revision,
+                    "execution_kind": task[3],
+                    "product_state": task[4],
+                    "schedule_id": task[1],
+                    "schedule_version_id": schedule_version_id,
+                    "version_number": int(approval["version_number"]),
+                    "status": "approved",
+                    "enabled": bool(approval["enabled"]),
+                    "next_run_at": (
+                        next_run_at.isoformat()
+                        if isinstance(next_run_at, datetime)
+                        else next_run_at
+                    ),
+                }
+                encoded = json.dumps(
+                    result,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                if len(encoded) > 8000:
+                    raise RuntimeError("persistence_error")
+                c.execute(
+                    f"UPDATE {self.t}.[requirement_product_requests] "
+                    f"SET state='succeeded',result_task_revision=?,safe_result_json=?,"
+                    f"error_code=NULL,updated_at=?,completed_at=? "
+                    f"WHERE request_id=? AND state IN ('reserved','in_progress','failed_recoverable')",
+                    new_revision,
+                    encoded,
+                    now_utc,
+                    now_utc,
+                    request_id,
+                )
+                if getattr(c, "rowcount", 1) != 1:
+                    raise ValueError("requirement_product_request_invalid")
+                connection.commit()
+                should_drain = True
+                outcome = result
+        except Exception as exc:
+            connection.rollback()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
+
+        if should_drain:
+            self._drain_best_effort()
+        if terminal_error is not None:
+            raise ValueError(terminal_error)
+        if not isinstance(outcome, dict):
+            raise RuntimeError("persistence_error")
+        return outcome
+
+    def is_product_owned_schedule(self, schedule_id: str) -> bool:
+        if not schedule_id:
+            return False
+        task_rows = self._query(
+            f"SELECT TOP 1 task_id FROM {self.t}.[requirement_product_tasks] "
+            f"WHERE schedule_id=?",
+            schedule_id,
+        )
+        if task_rows:
+            return True
+        request_rows = self._query(
+            f"SELECT TOP 1 request_id FROM {self.t}.[requirement_product_requests] "
+            f"WHERE operation='task_create' AND schedule_id=? "
+            f"AND state IN ('reserved','in_progress','failed_recoverable','succeeded')",
+            schedule_id,
+        )
+        return bool(request_rows)
 
     def finalize_one_time_product_task_create(
         self,
@@ -1712,27 +2213,160 @@ class ScheduleStore:
             "created_at": now,
         }
 
-    def approve_version(self, *, schedule_id: str, version_number: int, actor: str, now_utc: datetime):
+    def _approve_version_locked(
+        self,
+        c,
+        *,
+        schedule_id: str,
+        schedule_version_id: str,
+        actor: str,
+        now_utc: datetime,
+    ) -> dict[str, Any]:
+        c.execute(
+            f"SELECT enabled,active_version_id,next_run_at "
+            f"FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) "
+            f"WHERE schedule_id=?",
+            schedule_id,
+        )
+        schedule = c.fetchone()
+        if schedule is None:
+            raise KeyError("schedule_not_found")
+        c.execute(
+            f"SELECT version_number,status,timezone,recurrence_json,run_policy,model,config_sha256 "
+            f"FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) "
+            f"WHERE schedule_id=? AND schedule_version_id=?",
+            schedule_id,
+            schedule_version_id,
+        )
+        version = c.fetchone()
+        if version is None:
+            raise KeyError("schedule_version_not_found")
+        (
+            version_number,
+            status,
+            timezone_name,
+            recurrence_json,
+            run_policy,
+            model,
+            config_sha256,
+        ) = version
+        if status == "approved" and schedule[1] == schedule_version_id:
+            return {
+                "schedule_version_id": schedule_version_id,
+                "status": "approved",
+                "version_number": int(version_number),
+                "enabled": bool(schedule[0]),
+                "next_run_at": schedule[2],
+            }
+        if status != "draft":
+            raise ValueError("schedule_version_not_approved")
+
+        config = self._validate_persisted_config(
+            timezone_name,
+            recurrence_json,
+            run_policy,
+            model,
+            config_sha256,
+        )
+        due = (
+            next_occurrence(config.recurrence, config.timezone, now_utc)
+            if bool(schedule[0])
+            else None
+        )
+        if schedule[1] and schedule[1] != schedule_version_id:
+            c.execute(
+                f"UPDATE {self.t}.[requirement_schedule_versions] "
+                f"SET status='retired',retired_at=? "
+                f"WHERE schedule_version_id=? AND status='approved'",
+                now_utc,
+                schedule[1],
+            )
+            if getattr(c, "rowcount", 1) != 1:
+                raise RuntimeError("persistence_error")
+        c.execute(
+            f"UPDATE {self.t}.[requirement_schedule_versions] "
+            f"SET status='approved',approved_by=?,approved_at=? "
+            f"WHERE schedule_version_id=? AND status='draft'",
+            actor,
+            now_utc,
+            schedule_version_id,
+        )
+        if getattr(c, "rowcount", 1) != 1:
+            raise ValueError("schedule_version_not_approved")
+        c.execute(
+            f"UPDATE {self.t}.[requirement_schedules] "
+            f"SET active_version_id=?,next_run_at=?,updated_by=?,updated_at=? "
+            f"WHERE schedule_id=?",
+            schedule_version_id,
+            due,
+            actor,
+            now_utc,
+            schedule_id,
+        )
+        if getattr(c, "rowcount", 1) != 1:
+            raise RuntimeError("persistence_error")
+        self._enqueue_audit_event(
+            c,
+            self._audit_event(
+                "requirement_schedule.version_approved",
+                actor,
+                schedule_id,
+                schedule_version_id=schedule_version_id,
+                payload={"version_number": int(version_number)},
+                created_at=now_utc,
+            ),
+        )
+        return {
+            "schedule_version_id": schedule_version_id,
+            "status": "approved",
+            "version_number": int(version_number),
+            "enabled": bool(schedule[0]),
+            "next_run_at": due,
+        }
+
+    def approve_version(
+        self,
+        *,
+        schedule_id: str,
+        version_number: int,
+        actor: str,
+        now_utc: datetime,
+    ):
         connection = self._connect()
         try:
-            c = connection.cursor(); c.execute(f"SELECT enabled,active_version_id,next_run_at FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); schedule = c.fetchone()
-            if schedule is None: raise KeyError("schedule_not_found")
-            c.execute(f"SELECT schedule_version_id,status,timezone,recurrence_json,run_policy,model,config_sha256 FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=? AND version_number=?", schedule_id, version_number); version = c.fetchone()
-            if version is None: raise KeyError("schedule_version_not_found")
-            vid, status, timezone_name, recurrence_json, run_policy, model, config_sha256 = version
-            if status == "retired": raise ValueError("schedule_version_not_approved")
-            if status == "approved" and schedule[1] == vid: connection.commit(); return {"schedule_version_id": vid, "status": "approved", "version_number": version_number}
-            recurrence = self._validate_persisted_config(timezone_name, recurrence_json, run_policy, model, config_sha256).recurrence
-            due = next_occurrence(recurrence, timezone_name, now_utc) if bool(schedule[0]) else None
-            if schedule[1]: c.execute(f"UPDATE {self.t}.[requirement_schedule_versions] SET status='retired',retired_at=? WHERE schedule_version_id=? AND status='approved'", now_utc, schedule[1])
-            c.execute(f"UPDATE {self.t}.[requirement_schedule_versions] SET status='approved',approved_by=?,approved_at=? WHERE schedule_version_id=? AND status='draft'", actor, now_utc, vid)
-            c.execute(f"UPDATE {self.t}.[requirement_schedules] SET active_version_id=?,next_run_at=?,updated_by=?,updated_at=? WHERE schedule_id=?", vid, due, actor, now_utc, schedule_id)
-            self._enqueue_audit_event(c, self._audit_event("requirement_schedule.version_approved", actor, schedule_id, schedule_version_id=vid, payload={"version_number": version_number}, created_at=now_utc))
+            c = connection.cursor()
+            # Resolve immutable version identity without retaining an update lock.
+            # _approve_version_locked() owns the mutation lock order and always
+            # acquires Schedule before target Version, matching set_enabled().
+            c.execute(
+                f"SELECT schedule_version_id "
+                f"FROM {self.t}.[requirement_schedule_versions] "
+                f"WHERE schedule_id=? AND version_number=?",
+                schedule_id,
+                version_number,
+            )
+            row = c.fetchone()
+            if row is None:
+                raise KeyError("schedule_version_not_found")
+            result = self._approve_version_locked(
+                c,
+                schedule_id=schedule_id,
+                schedule_version_id=row[0],
+                actor=actor,
+                now_utc=now_utc,
+            )
             connection.commit()
-            self._drain_best_effort()
-            return {"schedule_version_id": vid, "status": "approved", "version_number": version_number}
-        except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
-        finally: connection.close()
+        except Exception as exc:
+            connection.rollback()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
+        self._drain_best_effort()
+        return {
+            "schedule_version_id": result["schedule_version_id"],
+            "status": result["status"],
+            "version_number": result["version_number"],
+        }
 
     def set_enabled(self, *, schedule_id: str, enabled: bool, actor: str, now_utc: datetime):
         connection = self._connect()
