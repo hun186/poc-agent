@@ -44,16 +44,27 @@ async def lifespan(app: FastAPI):
     frozen_plan(resolve_environment_plan)
     app.state.requirement_import_service = None
     app.state.requirement_schedule_service = None
-    if os.getenv("REQUIREMENT_PIPELINE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+    pipeline_enabled = os.getenv("REQUIREMENT_PIPELINE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    scheduler_enabled = os.getenv("REQUIREMENT_SCHEDULER_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    if pipeline_enabled:
         from data_ingestion.requirements.connections import SqlRegistry
         from data_ingestion.requirements.service import RequirementImportService
         from data_ingestion.requirements.store import RequirementStore
         registry_file = requirement_sql_registry_path(Path.cwd())
         registry = SqlRegistry.load(registry_file)
-        requirement_store = RequirementStore(registry, os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"), os.getenv("REQUIREMENT_DB_SCHEMA", "sra_requirement"))
+        requirement_store = RequirementStore(
+            registry,
+            os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"),
+            os.getenv("REQUIREMENT_DB_SCHEMA", "sra_requirement"),
+            schedule_schema=(
+                os.getenv("REQUIREMENT_SCHEDULE_DB_SCHEMA", "sra_schedule")
+                if scheduler_enabled
+                else None
+            ),
+        )
         requirement_store.initialize()
         app.state.requirement_import_service = RequirementImportService(requirement_store, registry)
-    if os.getenv("REQUIREMENT_SCHEDULER_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+    if scheduler_enabled:
         from data_ingestion.requirements.connections import SqlRegistry
         from requirement_scheduler.service import ScheduleService
         from requirement_scheduler.store import ScheduleStore
