@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from api.routers.editor_dependencies import current_user
 from api.services.auth_store import AuthUser
 from requirement_scheduler.service import ScheduleService
+from requirement_scheduler.models import MaterializedRun
 from sra_api.routers.requirement_schedules import router, schedule_service
 
 
@@ -36,6 +37,12 @@ class Store:
     def guarded_set_enabled(self, **kw):
         if self.product_owned: raise ValueError("requirement_product_owned_schedule")
         return self.set_enabled(**kw)
+    def guarded_materialize_run(self, **kw):
+        if self.product_owned: raise ValueError("requirement_product_owned_schedule")
+        return MaterializedRun(
+            {"batch_run_id": "br-1", "schedule_id": kw["schedule_id"]},
+            (),
+        )
 
 
 def app(role=None, product_owned=False):
@@ -94,6 +101,10 @@ def test_product_owned_schedule_low_level_mutations_are_rejected():
         client.patch("/v1/requirement-schedules/s", json={"enabled": True}),
         client.post("/v1/requirement-schedules/s/versions", json=body),
         client.post("/v1/requirement-schedules/s/versions/1/approve"),
+        client.post(
+            "/v1/requirement-schedules/s/runs",
+            json={"trigger_request_id": "manual-1"},
+        ),
     ]
 
     assert all(response.status_code == 409 for response in cases)
