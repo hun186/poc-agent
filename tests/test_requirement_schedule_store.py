@@ -1654,3 +1654,65 @@ def test_reserve_product_task_version_activation_rejects_unowned_draft():
         )
         for sql, _ in connection.calls
     )
+
+
+class ApproveVersionLockOrderConnection(TaskActivationConnection):
+    def execute(self, sql, *params):
+        result = super().execute(sql, *params)
+        if (
+            "SELECT schedule_version_id" in sql
+            and "WHERE schedule_id=? AND version_number=?" in sql
+        ):
+            self.one = ("sv-active",)
+        elif (
+            "SELECT version_number,status,timezone,recurrence_json,run_policy,model,config_sha256"
+            in sql
+        ):
+            self.one = (
+                2,
+                "approved",
+                self.config.timezone,
+                self.encoded,
+                self.config.run_policy.value,
+                self.config.model,
+                self.digest,
+            )
+        return result
+
+
+def test_approve_version_defers_update_locks_to_schedule_first_helper():
+    connection = ApproveVersionLockOrderConnection()
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+
+    result = store.approve_version(
+        schedule_id="sch-1",
+        version_number=2,
+        actor="admin",
+        now_utc=datetime(2026, 10, 11, 8, 0, tzinfo=timezone.utc),
+    )
+
+    assert result["schedule_version_id"] == "sv-active"
+    sqls = [sql for sql, _ in connection.calls]
+    identity_lookup = next(
+        index
+        for index, sql in enumerate(sqls)
+        if "SELECT schedule_version_id" in sql
+        and "WHERE schedule_id=? AND version_number=?" in sql
+    )
+    schedule_lock = next(
+        index
+        for index, sql in enumerate(sqls)
+        if "SELECT enabled,active_version_id,next_run_at" in sql
+        and "requirement_schedules" in sql
+        and "UPDLOCK,HOLDLOCK" in sql
+    )
+    version_lock = next(
+        index
+        for index, sql in enumerate(sqls)
+        if "SELECT version_number,status,timezone,recurrence_json,run_policy,model,config_sha256"
+        in sql
+        and "UPDLOCK,HOLDLOCK" in sql
+    )
+
+    assert "UPDLOCK" not in sqls[identity_lookup]
+    assert identity_lookup < schedule_lock < version_lock
