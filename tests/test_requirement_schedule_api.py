@@ -21,10 +21,21 @@ class Store:
     def create_schedule(self, name, requirement_set_id, actor):
         self.data["s"] = {"schedule_id":"s","name":name,"requirement_set_id":requirement_set_id,"enabled":False,"next_run_at":None}; return self.data["s"]
     def rename_schedule(self, sid, name, actor): self.data[sid]["name"] = name; return self.data[sid]
+    def guarded_rename_schedule(self, sid, name, actor):
+        if self.product_owned: raise ValueError("requirement_product_owned_schedule")
+        return self.rename_schedule(sid, name, actor)
     def create_version(self, schedule_id, config, actor): self.version += 1; return {"schedule_version_id":f"v{self.version}","version_number":self.version,"status":"draft"}
+    def guarded_create_version(self, schedule_id, config, actor):
+        if self.product_owned: raise ValueError("requirement_product_owned_schedule")
+        return self.create_version(schedule_id, config, actor)
     def approve_version(self, **kw): return {"status":"approved","version_number":kw["version_number"]}
-    def is_product_owned_schedule(self, schedule_id): return self.product_owned
+    def guarded_approve_version(self, **kw):
+        if self.product_owned: raise ValueError("requirement_product_owned_schedule")
+        return self.approve_version(**kw)
     def set_enabled(self, **kw): self.data[kw["schedule_id"]]["enabled"] = kw["enabled"]; return self.data[kw["schedule_id"]]
+    def guarded_set_enabled(self, **kw):
+        if self.product_owned: raise ValueError("requirement_product_owned_schedule")
+        return self.set_enabled(**kw)
 
 
 def app(role=None, product_owned=False):
@@ -65,12 +76,28 @@ def test_filters_superuser_lifecycle_and_success_denial_audits(monkeypatch):
 
 
 
-def test_product_owned_schedule_low_level_approval_is_rejected():
+def test_product_owned_schedule_low_level_mutations_are_rejected():
     client = TestClient(app("superuser", product_owned=True))
+    body = {
+        "timezone": "UTC",
+        "recurrence": {"kind": "daily", "local_time": "09:00:00"},
+        "run_policy": "all_active",
+        "model": "m",
+    }
 
-    response = client.post(
-        "/v1/requirement-schedules/s/versions/1/approve"
+    client.post(
+        "/v1/requirement-schedules",
+        json={"name": "x", "requirement_set_id": "set"},
     )
+    cases = [
+        client.patch("/v1/requirement-schedules/s", json={"name": "blocked"}),
+        client.patch("/v1/requirement-schedules/s", json={"enabled": True}),
+        client.post("/v1/requirement-schedules/s/versions", json=body),
+        client.post("/v1/requirement-schedules/s/versions/1/approve"),
+    ]
 
-    assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "requirement_product_owned_schedule"
+    assert all(response.status_code == 409 for response in cases)
+    assert all(
+        response.json()["detail"]["code"] == "requirement_product_owned_schedule"
+        for response in cases
+    )
