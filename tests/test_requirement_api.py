@@ -102,3 +102,53 @@ def test_safe_infrastructure_error_mapping_does_not_leak_driver_detail():
     response=TestClient(value).get("/v1/requirement-sources")
     assert response.status_code == 500
     assert response.json() == {"detail":{"code":"persistence_error"}}
+
+def test_product_owned_source_low_level_patch_and_import_are_409(monkeypatch):
+    value = app("superuser")
+    service = value.dependency_overrides[requirement_service]()
+    store = service.store
+    profile = store.create_profile("p", "", "admin", enabled=True)
+    version = store.create_profile_version(
+        profile["profile_id"], sample_profile(), "admin"
+    )
+    store.approve_profile_version(profile["profile_id"], version["version_number"], "admin")
+    source = store.create_source(
+        "manual",
+        "manual_upload",
+        "authoritative_snapshot",
+        {},
+        profile["profile_id"],
+        "admin",
+        enabled=True,
+    )
+
+    def deny_patch(*_args, **_kwargs):
+        raise ValueError("requirement_product_owned_source")
+
+    def deny_import(*_args, **_kwargs):
+        raise ValueError("requirement_product_owned_source")
+
+    monkeypatch.setattr(store, "guarded_patch_source", deny_patch)
+    monkeypatch.setattr(store, "guarded_commit_candidate", deny_import)
+
+    client = TestClient(value)
+    patch = client.patch(
+        f"/v1/requirement-sources/{source['source_id']}",
+        json={"name": "blocked"},
+    )
+    upload = {
+        "file": (
+            "x.json",
+            json.dumps([sample_row()]),
+            "application/json",
+        )
+    }
+    commit = client.post(
+        f"/v1/requirement-sources/{source['source_id']}/import",
+        files=upload,
+    )
+
+    assert patch.status_code == 409
+    assert patch.json()["detail"]["code"] == "requirement_product_owned_source"
+    assert commit.status_code == 409
+    assert commit.json()["detail"]["code"] == "requirement_product_owned_source"
