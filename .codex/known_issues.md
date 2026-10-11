@@ -71,3 +71,5 @@
 
 - 2026-10-08 P1.5A local verification remains unavailable because direct Git transport cannot resolve `github.com` in this execution environment. No local pytest PASS is claimed; use Hosted source inspection, exact-head Codex review, and Hosted checks for this branch.
 - 2026-10-08 The P1.5A low-level Schedule approval Product-ownership check is an intentional interim non-atomic precheck. A concurrent ownership/mutation TOCTOU remains until P1.6 introduces same-transaction locks/fences across low-level Schedule/source writes.
+
+- 2026-10-11 P1.6 verification limitation: direct Git transport/local checkout remains unavailable in this execution environment, so no local pytest PASS is claimed. Current evidence is Hosted source/diff inspection plus focused regression additions; exact-head Hosted checks and Codex review are required before merge.
