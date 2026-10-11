@@ -2335,9 +2335,12 @@ class ScheduleStore:
         connection = self._connect()
         try:
             c = connection.cursor()
+            # Resolve immutable version identity without retaining an update lock.
+            # _approve_version_locked() owns the mutation lock order and always
+            # acquires Schedule before target Version, matching set_enabled().
             c.execute(
                 f"SELECT schedule_version_id "
-                f"FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) "
+                f"FROM {self.t}.[requirement_schedule_versions] "
                 f"WHERE schedule_id=? AND version_number=?",
                 schedule_id,
                 version_number,
