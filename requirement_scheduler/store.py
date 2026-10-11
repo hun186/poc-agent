@@ -1656,8 +1656,7 @@ class ScheduleStore:
             return True
         request_rows = self._query(
             f"SELECT TOP 1 request_id FROM {self.t}.[requirement_product_requests] "
-            f"WHERE operation='task_create' AND schedule_id=? "
-            f"AND state IN ('reserved','in_progress','failed_recoverable','succeeded')",
+            f"WHERE operation='task_create' AND schedule_id=?",
             schedule_id,
         )
         return bool(request_rows)
