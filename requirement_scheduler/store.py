@@ -1049,6 +1049,17 @@ class ScheduleStore:
         try:
             c = connection.cursor()
             c.execute(
+                f"SELECT schedule_id,product_state,revision "
+                f"FROM {self.t}.[requirement_product_tasks] WITH (UPDLOCK,HOLDLOCK) WHERE task_id=?",
+                task_id,
+            )
+            task = c.fetchone()
+            if task is None:
+                raise KeyError("requirement_task_not_found")
+            if task[1] == "provisioning":
+                raise ValueError("requirement_task_provisioning")
+
+            c.execute(
                 f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
                 f"FROM {self.t}.[requirement_product_requests] WITH (UPDLOCK,HOLDLOCK) WHERE request_id=?",
                 request_id,
@@ -1076,16 +1087,6 @@ class ScheduleStore:
             if request["state"] not in {"reserved", "in_progress", "failed_recoverable"}:
                 raise ValueError("requirement_product_request_invalid")
 
-            c.execute(
-                f"SELECT schedule_id,product_state,revision "
-                f"FROM {self.t}.[requirement_product_tasks] WITH (UPDLOCK,HOLDLOCK) WHERE task_id=?",
-                task_id,
-            )
-            task = c.fetchone()
-            if task is None:
-                raise KeyError("requirement_task_not_found")
-            if task[1] == "provisioning":
-                raise ValueError("requirement_task_provisioning")
             if (
                 task[0] != request["schedule_id"]
                 or int(task[2]) != int(request["base_task_revision"])
