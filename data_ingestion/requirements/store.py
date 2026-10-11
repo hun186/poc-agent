@@ -28,6 +28,7 @@ def _id(prefix: str) -> str: return f"{prefix}_{uuid4().hex}"
 DOMAIN_ERRORS = {
     "profile_invalid", "source_disabled", "source_version_anomaly",
     "stale_source_version", "requirement_input_conflict", "source_config_invalid",
+    "requirement_product_owned_source",
     "source_config_secret_or_executable_rejected",
 }
 
@@ -40,14 +41,47 @@ def _stable_persistence_error(exc: Exception) -> Exception:
 
 class RequirementStore:
     """SQL Server-backed Phase 1B control-plane store."""
-    def __init__(self, registry: SqlRegistry, connection_ref: str, schema: str = "sra_requirement"):
-        self.registry, self.connection_ref, self.schema = registry, connection_ref, validate_schema_name(schema)
+    def __init__(
+        self,
+        registry: SqlRegistry,
+        connection_ref: str,
+        schema: str = "sra_requirement",
+        schedule_schema: str | None = None,
+    ):
+        self.registry = registry
+        self.connection_ref = connection_ref
+        self.schema = validate_schema_name(schema)
+        self.schedule_schema = (
+            validate_schema_name(schedule_schema) if schedule_schema else None
+        )
 
     def _connect(self):
         try:
             return self.registry.open_named_connection(self.connection_ref)
         except Exception as exc:
             raise RuntimeError("persistence_error") from exc
+
+    def _guard_low_level_source_mutation_locked(
+        self, cursor, source_id: str
+    ) -> None:
+        if self.schedule_schema is None:
+            return
+        schedule = f"[{self.schedule_schema}]"
+        cursor.execute(
+            f"SELECT TOP 1 task_id FROM {schedule}.[requirement_product_tasks] "
+            f"WITH (UPDLOCK,HOLDLOCK) WHERE source_id=?",
+            source_id,
+        )
+        if cursor.fetchone() is not None:
+            raise ValueError("requirement_product_owned_source")
+        cursor.execute(
+            f"SELECT TOP 1 request_id FROM {schedule}.[requirement_product_requests] "
+            f"WITH (UPDLOCK,HOLDLOCK) "
+            f"WHERE operation='task_create' AND source_id=?",
+            source_id,
+        )
+        if cursor.fetchone() is not None:
+            raise ValueError("requirement_product_owned_source")
 
     def initialize(self) -> None:
         connection = self._connect()
@@ -243,6 +277,50 @@ class RequirementStore:
         if "source_config" in changes: allowed["source_config_json"] = json.dumps(validate_source_config(current["source_type"], changes["source_config"]))
         assignments = ",".join(f"{key}=?" for key in allowed) + ",updated_by=?,updated_at=?"; self._execute(f"UPDATE {self.t}.[requirement_sources] SET {assignments} WHERE source_id=?", *allowed.values(), actor, _now(), source_id); return self.get_source(source_id)
 
+    def guarded_patch_source(
+        self, source_id: str, actor: str, **changes: Any
+    ) -> dict[str, Any]:
+        connection = self._connect()
+        try:
+            cursor = connection.cursor()
+            self._guard_low_level_source_mutation_locked(cursor, source_id)
+            cursor.execute(
+                f"SELECT source_type FROM {self.t}.[requirement_sources] "
+                f"WITH (UPDLOCK,HOLDLOCK) WHERE source_id=?",
+                source_id,
+            )
+            current = cursor.fetchone()
+            if current is None:
+                raise KeyError("source_not_found")
+            allowed = {
+                key: value
+                for key, value in changes.items()
+                if key in {"name", "source_mode", "enabled", "import_profile_id"}
+            }
+            if "source_config" in changes:
+                allowed["source_config_json"] = json.dumps(
+                    validate_source_config(current[0], changes["source_config"])
+                )
+            assignments = ",".join(f"{key}=?" for key in allowed)
+            assignments = (
+                f"{assignments}," if assignments else ""
+            ) + "updated_by=?,updated_at=?"
+            cursor.execute(
+                f"UPDATE {self.t}.[requirement_sources] SET {assignments} "
+                f"WHERE source_id=?",
+                *allowed.values(),
+                actor,
+                _now(),
+                source_id,
+            )
+            connection.commit()
+        except Exception as exc:
+            connection.rollback()
+            raise _stable_persistence_error(exc) from exc
+        finally:
+            connection.close()
+        return self.get_source(source_id)
+
     def current_versions(self, source_id: str) -> dict[str, dict[str, Any]]:
         rows = self._query(f"SELECT r.external_item_id,v.* FROM {self.t}.[requirements] r JOIN {self.t}.[requirement_versions] v ON v.requirement_id=r.requirement_id WHERE r.source_id=? AND v.version_number=(SELECT MAX(v2.version_number) FROM {self.t}.[requirement_versions] v2 WHERE v2.requirement_id=r.requirement_id)", source_id)
         return {row["external_item_id"]: row for row in rows}
@@ -414,6 +492,23 @@ class RequirementStore:
         finally:
             connection.close()
 
+    def guarded_commit_candidate(
+        self,
+        source: dict[str, Any],
+        version: dict[str, Any],
+        acquired: Any,
+        candidate: NormalizedCandidate,
+        actor: str,
+    ) -> dict[str, Any]:
+        return self.commit_candidate(
+            source,
+            version,
+            acquired,
+            candidate,
+            actor,
+            _guard_low_level=True,
+        )
+
     # Commit deliberately re-runs comparison while holding update locks.
     def commit_candidate(
         self,
@@ -428,6 +523,7 @@ class RequirementStore:
         expected_base_snapshot_id: str | None = None,
         expected_profile_version_id: str | None = None,
         expected_profile_sha256: str | None = None,
+        _guard_low_level: bool = False,
     ) -> dict[str, Any]:
         if candidate.has_errors:
             if expected_base_snapshot_id is not None:
@@ -438,6 +534,10 @@ class RequirementStore:
                 connection = self._connect()
                 try:
                     c = connection.cursor()
+                    if _guard_low_level:
+                        self._guard_low_level_source_mutation_locked(
+                            c, source["source_id"]
+                        )
                     if import_run_id is not None:
                         c.execute(
                             f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
@@ -479,7 +579,13 @@ class RequirementStore:
                 finally:
                     connection.close()
             return self.record_failed_import(
-                source, version, acquired, candidate, actor, import_run_id=import_run_id
+                source,
+                version,
+                acquired,
+                candidate,
+                actor,
+                import_run_id=import_run_id,
+                _guard_low_level=_guard_low_level,
             )
         connection = self._connect()
         now = _now()
@@ -487,6 +593,10 @@ class RequirementStore:
         committed_snapshot_id = snapshot_id or _id("snap")
         try:
             c = connection.cursor()
+            if _guard_low_level:
+                self._guard_low_level_source_mutation_locked(
+                    c, source["source_id"]
+                )
             if import_run_id is not None:
                 c.execute(
                     f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
@@ -636,8 +746,13 @@ class RequirementStore:
             connection.close()
         if "failed_candidate" in locals():
             self.record_failed_import(
-                source, version, acquired, failed_candidate, actor,
+                source,
+                version,
+                acquired,
+                failed_candidate,
+                actor,
                 import_run_id=run_id if import_run_id is not None else None,
+                _guard_low_level=_guard_low_level,
             )
             raise ValueError(code)
         return {
@@ -657,6 +772,7 @@ class RequirementStore:
         actor: str,
         *,
         import_run_id: str | None = None,
+        _guard_low_level: bool = False,
     ) -> dict[str, Any]:
         run_id, now = import_run_id or _id("run"), _now()
         observed_rows = {row.source_row_number for row in candidate.rows}
@@ -668,6 +784,10 @@ class RequirementStore:
         connection = self._connect()
         try:
             cursor = connection.cursor()
+            if _guard_low_level:
+                self._guard_low_level_source_mutation_locked(
+                    cursor, source["source_id"]
+                )
             if import_run_id is not None:
                 cursor.execute(
                     f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
