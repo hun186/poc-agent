@@ -1716,3 +1716,139 @@ def test_approve_version_defers_update_locks_to_schedule_first_helper():
 
     assert "UPDLOCK" not in sqls[identity_lookup]
     assert identity_lookup < schedule_lock < version_lock
+
+class LowLevelFenceConnection:
+    def __init__(self):
+        self.calls = []
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = 0
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        return self
+
+    def fetchone(self):
+        return None
+
+    def fetchall(self):
+        return []
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed += 1
+
+
+class LowLevelFenceRegistry:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def open_named_connection(self, _name):
+        return self.connection
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["rename", "create_version", "approve", "enable", "manual_run"],
+)
+def test_all_guarded_schedule_mutations_fence_before_domain_sql(monkeypatch, operation):
+    connection = LowLevelFenceConnection()
+    store = ScheduleStore(LowLevelFenceRegistry(connection), "control")
+    config = ScheduleVersionCreate(
+        "UTC",
+        RecurrenceSpec.validate({"kind": "daily", "local_time": "09:00:00"}),
+        RunPolicy.ALL_ACTIVE,
+        "m",
+    )
+
+    def deny(cursor, schedule_id):
+        assert cursor is connection
+        assert schedule_id == "sch-1"
+        raise ValueError("requirement_product_owned_schedule")
+
+    monkeypatch.setattr(
+        store, "_guard_low_level_schedule_mutation_locked", deny
+    )
+
+    calls = {
+        "rename": lambda: store.guarded_rename_schedule(
+            "sch-1", "blocked", "operator"
+        ),
+        "create_version": lambda: store.guarded_create_version(
+            schedule_id="sch-1", config=config, actor="operator"
+        ),
+        "approve": lambda: store.guarded_approve_version(
+            schedule_id="sch-1",
+            version_number=1,
+            actor="admin",
+            now_utc=datetime(2026, 10, 11, 12, 0, tzinfo=timezone.utc),
+        ),
+        "enable": lambda: store.guarded_set_enabled(
+            schedule_id="sch-1",
+            enabled=True,
+            actor="admin",
+            now_utc=datetime(2026, 10, 11, 12, 0, tzinfo=timezone.utc),
+        ),
+        "manual_run": lambda: store.guarded_materialize_run(
+            schedule_id="sch-1",
+            trigger=TriggerIdentity("manual", trigger_request_id="manual-1"),
+            actor="operator",
+            now_utc=datetime(2026, 10, 11, 12, 0, tzinfo=timezone.utc),
+        ),
+    }
+
+    with pytest.raises(ValueError, match="requirement_product_owned_schedule"):
+        calls[operation]()
+
+    assert connection.calls == []
+    assert connection.rollbacks == 1
+    assert connection.commits == 0
+
+
+class OwnershipEvidenceCursor:
+    def __init__(self, *, task=False, reservation=False):
+        self.task = task
+        self.reservation = reservation
+        self.calls = []
+        self.last = ""
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.last = sql
+        return self
+
+    def fetchone(self):
+        if "requirement_product_tasks" in self.last:
+            return ("task-1",) if self.task else None
+        if "requirement_product_requests" in self.last:
+            return ("preq-1",) if self.reservation else None
+        return None
+
+
+@pytest.mark.parametrize(
+    "task,reservation",
+    [(True, False), (False, True)],
+)
+def test_schedule_ownership_guard_covers_task_and_provisioning_reservation(
+    task, reservation
+):
+    store = ScheduleStore(LowLevelFenceRegistry(LowLevelFenceConnection()), "control")
+    cursor = OwnershipEvidenceCursor(task=task, reservation=reservation)
+
+    with pytest.raises(ValueError, match="requirement_product_owned_schedule"):
+        store._guard_low_level_schedule_mutation_locked(cursor, "sch-1")
+
+    sql = [statement for statement, _ in cursor.calls]
+    assert "UPDLOCK,HOLDLOCK" in sql[0]
+    if reservation:
+        assert len(sql) == 2
+        assert "operation='task_create'" in sql[1]
+        assert "state IN" not in sql[1]
