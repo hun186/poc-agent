@@ -1057,6 +1057,40 @@ def test_complete_product_task_update_proposal_keeps_revision_and_result_revisio
     assert connection.commits == 1
 
 
+def test_complete_product_task_update_proposal_locks_task_before_origin_request():
+    connection = TaskUpdateFinalizeConnection(proposal=True)
+    store = ScheduleStore(RecurringFinalizeRegistry(connection), "control")
+
+    store.complete_product_task_update_proposal(
+        request_id="preq-update-1",
+        task_id="task-1",
+        actor="operator",
+        now_utc=datetime(2026, 10, 8, 3, 0, tzinfo=timezone.utc),
+    )
+
+    sqls = [sql for sql, _ in connection.calls]
+    task_lock = next(
+        index
+        for index, sql in enumerate(sqls)
+        if "SELECT schedule_id,product_state,revision" in sql
+        and "requirement_product_tasks" in sql
+    )
+    request_lock = next(
+        index
+        for index, sql in enumerate(sqls)
+        if "FROM [sra_schedule].[requirement_product_requests]" in sql
+        and "WHERE request_id=?" in sql
+    )
+    version_lock = next(
+        index
+        for index, sql in enumerate(sqls)
+        if "SELECT schedule_version_id,schedule_id,version_number,config_sha256,status"
+        in sql
+    )
+
+    assert task_lock < request_lock < version_lock
+
+
 
 def test_finalize_product_task_update_same_enabled_state_preserves_existing_due(monkeypatch):
     connection = TaskUpdateFinalizeConnection()
