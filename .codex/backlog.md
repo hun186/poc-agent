@@ -119,3 +119,5 @@
 - 2026-10-12 fifth Codex review on PR #288 exact head `6dbcf20` found a P2 malformed-XLSX parser TypeError → 500 gap. Narrow reader-boundary normalization plus XML-attribute regression added. Re-review the new exact head and validate actual pytest/SQL Server before merge; P2.2 and cross-operator dedup stay deferred.
 
 - 2026-10-12 P2.1 PR #288 sixth review found unbounded sparse-CSV decoded cells despite the row cap. Implemented HTTP-only CSV/JSON total-cell, width and decoded-value bounds with regression tests. Require new exact-head review, hosted checks and executable pytest/SQL Server acceptance. No P2.2 or cross-operator execution sharing in this review PR.
+
+- 2026-10-12 P2.1 seventh review found JSON pre-decode amplification: whole-array `json.loads` before row checks. New HTTP-only JSON streaming element scanner with pre-element and post-decode bounds, plus regression coverage, is on original PR #288 branch. Require new exact-head review and runtime pytest/real SQL Server acceptance before merge; no P2.2 or cross-owner dedup in this PR.
