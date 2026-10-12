@@ -795,3 +795,27 @@ def test_guarded_import_fences_before_requirement_persistence(monkeypatch):
         sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
         for sql, _ in connection.cursor_value.calls
     )
+
+
+def test_candidate_diagnostic_cas_and_failed_import_share_transaction():
+    candidate = NormalizedCandidate(diagnostics=[
+        RowDiagnostic(source_row_number=2, external_item_id="A1", code="bad", message="bad")
+    ])
+    connection = ScriptedConnection(one=[None, ("source-1",), ("set-1", "base-snap"), None])
+    registry = ScriptedRegistry(connection)
+    store = RequirementStore(registry, "control")
+    result = store.commit_candidate(
+        _source(), _version(), _acquired(), candidate, "operator",
+        import_run_id="run-fixed", snapshot_id="snap-fixed",
+        expected_base_snapshot_id="base-snap",
+    )
+    assert result["status"] == "failed"
+    sql = [s for s, _ in connection.cursor_value.calls]
+    base_check = next(i for i, s in enumerate(sql) if "requirement_sets]" in s)
+    failed_insert = next(i for i, s in enumerate(sql) if "import_runs] VALUES" in s)
+    diagnostic_insert = next(i for i, s in enumerate(sql) if "import_run_rows] VALUES" in s)
+    assert base_check < failed_insert < diagnostic_insert
+    assert "UPDLOCK,HOLDLOCK" in sql[base_check]
+    assert registry.opened == [connection]
+    assert connection.commits == 1 and connection.rollbacks == 0
+    assert connection.events == ["commit", "close"]
