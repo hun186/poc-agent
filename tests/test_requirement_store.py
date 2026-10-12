@@ -819,3 +819,48 @@ def test_candidate_diagnostic_cas_and_failed_import_share_transaction():
     assert registry.opened == [connection]
     assert connection.commits == 1 and connection.rollbacks == 0
     assert connection.events == ["commit", "close"]
+
+
+def test_candidate_diagnostic_cas_rolls_back_failed_audit_write_together():
+    candidate = NormalizedCandidate(diagnostics=[
+        RowDiagnostic(source_row_number=2, external_item_id="A1", code="bad", message="bad")
+    ])
+    connection = ScriptedConnection(
+        one=[None, ("source-1",), ("set-1", "base-snap"), None],
+        fail_on="import_run_rows] VALUES",
+    )
+    registry = ScriptedRegistry(connection)
+    store = RequirementStore(registry, "control")
+    with pytest.raises(RuntimeError, match="^persistence_error$"):
+        store.commit_candidate(
+            _source(), _version(), _acquired(), candidate, "operator",
+            import_run_id="run-fixed", snapshot_id="snap-fixed",
+            expected_base_snapshot_id="base-snap",
+        )
+    assert registry.opened == [connection]
+    assert connection.commits == 0 and connection.rollbacks == 1
+    assert connection.events == ["rollback", "close"]
+    assert not any("SET active_snapshot_id" in s for s, _ in connection.cursor_value.calls)
+
+
+def test_candidate_diagnostic_stale_base_leaves_no_failed_audit_write():
+    candidate = NormalizedCandidate(diagnostics=[
+        RowDiagnostic(source_row_number=2, external_item_id="A1", code="bad", message="bad")
+    ])
+    connection = ScriptedConnection(
+        one=[None, ("source-1",), ("set-1", "new-snapshot")]
+    )
+    registry = ScriptedRegistry(connection)
+    store = RequirementStore(registry, "control")
+    with pytest.raises(ValueError, match="^requirement_input_conflict$"):
+        store.commit_candidate(
+            _source(), _version(), _acquired(), candidate, "operator",
+            import_run_id="run-fixed", snapshot_id="snap-fixed",
+            expected_base_snapshot_id="base-snap",
+        )
+    assert registry.opened == [connection]
+    assert connection.commits == 0 and connection.rollbacks == 1
+    assert not any(
+        "import_runs] VALUES" in s or "import_run_rows] VALUES" in s
+        for s, _ in connection.cursor_value.calls
+    )
