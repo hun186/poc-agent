@@ -99,6 +99,6 @@
 
 ## 2026-10-12 Requirement Product implementation
 
-- P1.6 low-level Product ownership fences merged as PR #286 (\`30071cb3b7b732b2875a35c6929b430693029905\`).
-- P1.7 input-replacement base-snapshot CAS is implemented on \`feat/requirement-product-input-replacement-p1-7\`, pending exact-head Hosted Codex review, regression verification and explicit merge authorization.
+- P1.6 low-level Product ownership fences merged as PR #286 (`30071cb3b7b732b2875a35c6929b430693029905`).
+- P1.7 input-replacement base-snapshot CAS is implemented on `feat/requirement-product-input-replacement-p1-7`, pending exact-head Hosted Codex review, regression verification and explicit merge authorization.
 - P2 Product Task HTTP router / Task Center, P2.3 run-trigger admission, and deployment SQL concurrency/real E2E acceptance remain later gates. Do not mix them into P1.7.
