@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from api.routers.editor_dependencies import current_user, require_db_operator
 from api.services.auth_store import AuthUser
+from data_ingestion.requirements.readers import read_json_rows
 
 router = APIRouter(tags=["requirement-tasks"])
 _MAX_INPUT_BYTES = 10 * 1024 * 1024
@@ -105,11 +106,19 @@ async def preview_product_input(
                 max_rows=5000, max_result_rows=100,
             )
         assert requirements_json is not None
-        if not requirements_json or len(requirements_json.encode("utf-8")) > _MAX_DIRECT_JSON_BYTES:
+        try:
+            direct_json_bytes = requirements_json.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise ValueError("requirement_preview_input_invalid") from exc
+        if not direct_json_bytes or len(direct_json_bytes) > _MAX_DIRECT_JSON_BYTES:
             raise ValueError("requirement_preview_input_invalid")
         try:
-            requirements = json.loads(requirements_json)
-        except (TypeError, ValueError) as exc:
+            # Use the exact same bounded decoder as JSON file uploads before
+            # materializing any nested objects from the direct form field.
+            requirements, _ = read_json_rows(direct_json_bytes, max_rows=5000)
+        except ValueError as exc:
+            if str(exc) == "requirement_preview_too_large":
+                raise
             raise ValueError("requirement_preview_input_invalid") from exc
         return service.preview_input(
             profile_version_id=parsed.profile_version_id,
