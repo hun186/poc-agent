@@ -223,8 +223,9 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
             if any(ch not in " \t\r\n" for ch in source[index:]):
                 raise ValueError("source_format_invalid")
             return rows, list(range(1, len(rows) + 1))
-        # Reject trailing commas and doubled separators.
-        if index >= length or source[skip_space(index):skip_space(index) + 1] == "]":
+        # Reject trailing commas and doubled separators before the next row.
+        index = skip_space(index)
+        if index >= length or source[index] in "],":
             raise ValueError("source_format_invalid")
 
 
