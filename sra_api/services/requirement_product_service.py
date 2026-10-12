@@ -99,6 +99,11 @@ def neutral_run_status(run: dict[str, Any]) -> str:
     state = _required_text(run, "state", error="requirement_run_state_invalid")
     if state == "completed_with_failures":
         if "items" not in run:
+            evidence = run.get("_failure_state_evidence")
+            if evidence == "recovery_required":
+                return "recovery_required"
+            if evidence in {"failed", "expired"}:
+                return "completed_with_errors"
             raise ValueError("requirement_run_status_evidence_missing")
         items = run.get("items")
         if not isinstance(items, (list, tuple)):
@@ -1282,25 +1287,30 @@ class RequirementProductService:
             now_utc=now,
         )
 
+    @staticmethod
+    def _present_task_projection(task: dict[str, Any]) -> dict[str, Any]:
+        schedule = {
+            "schedule_id": task["schedule_id"],
+            "name": task["schedule_name"],
+            "enabled": task["schedule_enabled"],
+            "active_version_id": task["schedule_active_version_id"],
+            "next_run_at": task["schedule_next_run_at"],
+        }
+        return RequirementProductService.present_task(product_task=task, schedule=schedule)
+
     def get_task(self, task_id: str) -> dict[str, Any]:
         if self.schedule_store is None:
             raise RuntimeError("requirement_product_create_unconfigured")
-        task = self.schedule_store.get_product_task(task_id)
-        schedule = self.schedule_store.get_schedule(task["schedule_id"])
-        return self.present_task(product_task=task, schedule=schedule)
+        return self._present_task_projection(
+            self.schedule_store.get_product_task_projection(task_id)
+        )
 
     def list_tasks(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
         if self.schedule_store is None:
             raise RuntimeError("requirement_product_create_unconfigured")
-        tasks = self.schedule_store.list_product_tasks(limit=limit, offset=offset)
+        tasks = self.schedule_store.list_product_task_projections(limit=limit, offset=offset)
         return {
-            "items": [
-                self.present_task(
-                    product_task=task,
-                    schedule=self.schedule_store.get_schedule(task["schedule_id"]),
-                )
-                for task in tasks
-            ],
+            "items": [self._present_task_projection(task) for task in tasks],
             "limit": limit,
             "offset": offset,
         }
@@ -1319,6 +1329,7 @@ class RequirementProductService:
                     run=self.schedule_store.get_batch_run(
                         schedule_id=task["schedule_id"],
                         batch_run_id=run["batch_run_id"],
+                        include_items=False,
                     ),
                 )
                 for run in runs
@@ -1332,9 +1343,27 @@ class RequirementProductService:
             raise RuntimeError("requirement_product_create_unconfigured")
         task = self.schedule_store.get_product_task_for_run(run_id)
         run = self.schedule_store.get_batch_run(
-            schedule_id=task["schedule_id"], batch_run_id=run_id
+            schedule_id=task["schedule_id"], batch_run_id=run_id,
+            include_items=False,
         )
         return self.present_run(product_task=task, run=run)
+
+    def get_run_items(
+        self, run_id: str, *, limit: int = 50, offset: int = 0
+    ) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        task = self.schedule_store.get_product_task_for_run(run_id)
+        rows = self.schedule_store.list_batch_run_items(
+            schedule_id=task["schedule_id"], batch_run_id=run_id,
+            limit=limit, offset=offset,
+        )
+        return {
+            "run_id": run_id,
+            "items": [_present_run_item(item) for item in rows],
+            "limit": limit,
+            "offset": offset,
+        }
 
     def list_runs(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
         if self.schedule_store is None:
@@ -1419,7 +1448,7 @@ class RequirementProductService:
         if trigger_type not in {"manual", "scheduled"}:
             raise ValueError("requirement_run_trigger_invalid")
 
-        return {
+        result = {
             "run_id": run_id,
             "task_id": identity.task_id,
             "status": neutral_run_status(run),
@@ -1444,10 +1473,12 @@ class RequirementProductService:
             ),
             "created_at": run.get("created_at"),
             "completed_at": run.get("completed_at"),
-            "items": presented_items,
             "links": {
                 "self": _safe_link("v1", "requirement-runs", run_id),
                 "items": _safe_link("v1", "requirement-runs", run_id, "items"),
                 "artifacts": _safe_link("v1", "requirement-runs", run_id, "artifacts"),
             },
         }
+        if "items" in run:
+            result["items"] = presented_items
+        return result
