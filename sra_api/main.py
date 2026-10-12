@@ -100,6 +100,10 @@ app = FastAPI(
     redoc_url=None,
 )
 
+# Registered first so CORS wraps the limiter's early 413 ASGI response.
+# The limiter still executes before multipart form parsing and disk spooling.
+app.add_middleware(ProductPreviewBodyLimitMiddleware)
+
 cors_origins = [origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 wildcard = not cors_origins and (os.getenv("APP_ENV") or "").lower() not in PRODUCTION_ENVS
 app.add_middleware(
@@ -110,9 +114,6 @@ app.add_middleware(
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-OpenWebUI-Chat-Id", "X-Conversation-Id", "X-Session-Id"],
     )
 
-
-# Enforce raw-body limits before any multipart parser can spool uploads.
-app.add_middleware(ProductPreviewBodyLimitMiddleware)
 
 
 @app.get("/", include_in_schema=False)
