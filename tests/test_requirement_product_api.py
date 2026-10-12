@@ -46,6 +46,10 @@ class ProductStore:
             raise KeyError("requirement_run_unavailable")
         return self.task
 
+    def list_batch_runs(self, *, schedule_id, limit, offset):
+        assert schedule_id == "schedule-1"
+        return [{"batch_run_id": "run-1"}] if offset == 0 else []
+
     def get_batch_run(self, *, schedule_id, batch_run_id):
         assert (schedule_id, batch_run_id) == ("schedule-1", "run-1")
         return {
@@ -103,6 +107,7 @@ def test_reader_product_run_list_detail_and_items_use_safe_presenter():
     assert run["binding"]["snapshot_id"] == "snapshot-1"
     assert "trigger_request_id" not in json.dumps(run)
     assert client.get("/v1/requirement-runs/run-1").json() == run
+    assert client.get("/v1/requirement-tasks/task-1/runs").json()["items"] == [run]
     assert client.get("/v1/requirement-runs/run-1/items").json() == {
         "run_id": "run-1", "items": []
     }
@@ -114,6 +119,7 @@ def test_unfinalized_product_task_and_run_are_not_visible():
     client, _ = make_client(store=store)
     assert client.get("/v1/requirement-tasks/task-1").status_code == 404
     assert client.get("/v1/requirement-runs/run-1").status_code == 404
+    assert client.get("/v1/requirement-tasks/task-1/runs").status_code == 404
     assert client.get("/v1/requirement-runs").json()["items"] == []
 
 
@@ -203,3 +209,32 @@ def test_main_registration_and_safe_product_dependency_wiring():
     assert "app.include_router(requirement_tasks.router)" in source
     assert "if app.state.requirement_import_service is not None:" in source
     assert "app.state.requirement_product_service = RequirementProductService(" in source
+
+
+def test_store_product_query_guards_use_finalized_state_in_sql():
+    from requirement_scheduler.store import ScheduleStore
+
+    store = ScheduleStore(None, "unused")
+    calls = []
+
+    def query(sql, *params):
+        calls.append((sql, params))
+        return []
+
+    store._query = query
+    assert store.list_product_tasks(limit=8, offset=12) == []
+    assert store.list_product_run_bindings(limit=8, offset=12) == []
+    try:
+        store.get_product_task_for_run("run-hidden")
+        assert False, "unowned run must not resolve"
+    except KeyError as exc:
+        assert exc.args == ("requirement_run_unavailable",)
+    assert len(calls) == 3
+    for sql, _ in calls:
+        assert "product_state IN ('active','disabled')" in sql
+        assert "[sra_schedule].[requirement_product_tasks]" in sql
+        assert "provisioning" not in sql
+    assert calls[0][1] == (12, 8)
+    assert calls[1][1] == (12, 8)
+    assert calls[2][1] == ("run-hidden",)
+    assert "JOIN" in calls[1][0] and "JOIN" in calls[2][0]
