@@ -85,3 +85,9 @@
 - Product service is initialized only with both Requirement Import and Schedule authorities, reuses existing `current_user` and `require_db_operator`, and projects finalized Product Task/Run identities from ScheduleStore/P1 presenters. No mutation, Run trigger, new auth store, worker, Report Job, or artifact route is introduced.
 - P2.1 PR #288 first exact-head `5483b66d0334286d9bd1f8d657bc49721553998c` requested `@codex review`, but GitHub Codex bot responded review usage limit exceeded; no clean review or pytest/real SQL PASS is claimed. Do not merge without user approval and completed current-head review gate.
 - Original v1 has no cross-Task identical/similar-Requirement execution sharing. User asked about this potential optimization; defer to a separate explicit security/provenance/semantic design.
+
+## 2026-10-12 P2.1 Codex findings remediation
+
+- Codex Review for PR #288 exact head `3cf17b81310d4c3dbb8b19d66e63cca860526c9f` completed with 1 P1 + 5 P2 findings. Corrective changes remain on the existing Product P2.1 branch.
+- Added pre-multipart-body ASGI cap, HTTP-only normalization/ZIP/preview bounds, independent Run Item paging, atomic Task/Schedule read projections and safe 500 for backend invariant failures. Internal P1 Product create/replacement semantics remain separate from public preview-only caps.
+- Added focused regression source tests; no actual local pytest or two-connection SQL Server PASS is asserted because direct Git transport cannot resolve github.com in the execution environment. New exact-head Codex review and Hosted checks are the next gates; no merge authorization has been given.
