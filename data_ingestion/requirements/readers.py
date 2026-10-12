@@ -78,6 +78,14 @@ def read_csv_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list[
         raise ValueError("source_format_invalid") from exc
     if not headers or not any(header for header in headers):
         raise ValueError("source_format_invalid")
+    # Only HTTP previews pass max_rows: bound width before building keys.
+    # Full internal import paths (max_rows=None) retain their old behavior.
+    preview_cells = len(headers)
+    preview_value_bytes = sum(len(header.encode("utf-8")) for header in headers)
+    if max_rows is not None and (
+        len(headers) > 128 or preview_value_bytes > 8 * 1024 * 1024
+    ):
+        raise ValueError("requirement_preview_too_large")
     keys: list[str] = []
     for position, header in enumerate(headers, 1):
         key = header or f"__column_{position}"
@@ -88,6 +96,15 @@ def read_csv_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list[
     numbers: list[int] = []
     try:
         for row_number, values in enumerate(parsed, 2):
+            if max_rows is not None:
+                # Count cells and value bytes before constructing dictionaries;
+                # sparse CSV must not inflate into millions of copied fields.
+                preview_cells += len(values)
+                if len(values) > 128 or preview_cells > 50000:
+                    raise ValueError("requirement_preview_too_large")
+                preview_value_bytes += sum(len(v.encode("utf-8")) for v in values)
+                if preview_value_bytes > 8 * 1024 * 1024:
+                    raise ValueError("requirement_preview_too_large")
             if not any(value != "" for value in values):
                 continue
             if len(values) > len(keys) and any(values[len(keys):]):
@@ -108,8 +125,25 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
         raise ValueError("source_format_invalid") from exc
     if not isinstance(payload, list) or not all(isinstance(row, dict) for row in payload):
         raise ValueError("source_format_invalid")
-    if max_rows is not None and len(payload) > max_rows:
-        raise ValueError("requirement_preview_too_large")
+    if max_rows is not None:
+        if len(payload) > max_rows:
+            raise ValueError("requirement_preview_too_large")
+        # JSON is already decoded by json.loads, but must also be bounded
+        # before Phase 1B normalization duplicates source_raw objects.
+        total_cells = 0
+        total_value_bytes = 0
+        for row in payload:
+            total_cells += len(row)
+            if len(row) > 128 or total_cells > 50000:
+                raise ValueError("requirement_preview_too_large")
+            for key, value in row.items():
+                total_value_bytes += len(str(key).encode("utf-8"))
+                if isinstance(value, str):
+                    total_value_bytes += len(value.encode("utf-8"))
+                else:
+                    total_value_bytes += len(json.dumps(value, ensure_ascii=False, default=str).encode("utf-8"))
+                if total_value_bytes > 8 * 1024 * 1024:
+                    raise ValueError("requirement_preview_too_large")
     return payload, list(range(1, len(payload) + 1))
 
 
