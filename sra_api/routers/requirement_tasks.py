@@ -187,11 +187,12 @@ def get_product_run(
 @router.get("/v1/requirement-runs/{run_id}/items")
 def get_product_run_items(
     run_id: str,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     service=Depends(product_service),
     user: AuthUser = Depends(current_user),
 ):
     try:
-        result = service.get_run(run_id)
-        return {"items": result["items"], "run_id": result["run_id"]}
+        return service.get_run_items(run_id, limit=limit, offset=offset)
     except Exception as exc:
         raise _error(exc) from exc
