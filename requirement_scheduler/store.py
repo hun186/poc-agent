@@ -670,6 +670,32 @@ class ScheduleStore:
             offset, limit,
         )
 
+    def list_product_run_summaries(self, *, task_id=None, limit=50, offset=0):
+        """Read one page of Product-owned Run summaries in one SQL round trip."""
+        limit=max(1,min(int(limit),100)); offset=max(0,int(offset))
+        task_cols=("task_id","schedule_id","source_id","execution_kind","product_state","revision","created_by","created_at","updated_by","updated_at")
+        run_cols=("batch_run_id","schedule_id","schedule_version_id","snapshot_id","trigger_type","scheduled_for","state","selected_count","skipped_count","success_count","failure_count","error_code","deadline_elapsed_during_execution","created_at","completed_at")
+        task_select=",".join(f"t.{k} AS task_{k}" for k in task_cols)
+        run_select=",".join(f"r.{k} AS run_{k}" for k in run_cols)
+        evidence=(
+            "CASE WHEN r.state='completed_with_failures' THEN "
+            "CASE WHEN EXISTS(SELECT 1 FROM "+self.t+".[requirement_batch_run_items] i WHERE i.batch_run_id=r.batch_run_id AND i.execution_state='recovery_required') THEN 'recovery_required' "
+            "WHEN EXISTS(SELECT 1 FROM "+self.t+".[requirement_batch_run_items] i WHERE i.batch_run_id=r.batch_run_id AND i.execution_state IN ('failed','expired')) THEN 'failed' "
+            "ELSE NULL END ELSE NULL END AS run__failure_state_evidence"
+        )
+        filt=" AND t.task_id=?" if task_id is not None else ""
+        args=(task_id,offset,limit) if task_id is not None else (offset,limit)
+        rows=self._query(
+            f"SELECT {task_select},{run_select},{evidence} FROM {self.t}.[requirement_batch_runs] r "
+            f"JOIN {self.t}.[requirement_product_tasks] t ON t.schedule_id=r.schedule_id "
+            f"WHERE t.product_state IN ('active','disabled'){filt} "
+            "ORDER BY r.created_at DESC,r.batch_run_id OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+            *args)
+        return [{"task":{k:row["task_"+k] for k in task_cols},
+                 "run":{**{k:row["run_"+k] for k in run_cols},
+                        "_failure_state_evidence":row["run__failure_state_evidence"]}}
+                for row in rows]
+
     def list_product_run_bindings(self, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """List eligible Run->Task bindings without exposing unowned or provisioning runs."""
         limit = max(1, min(int(limit), 100))
