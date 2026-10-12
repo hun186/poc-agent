@@ -26,7 +26,6 @@ _VALIDATION_CODES = {
     "requirement_input_invalid", "source_format_invalid", "source_config_invalid",
     "source_type_invalid", "source_input_invalid", "source_file_invalid",
     "source_file_extension_invalid", "source_file_too_large",
-    "requirement_product_task_identity_invalid", "requirement_run_identity_invalid",
     "requirement_preview_too_large", "requirement_preview_archive_invalid",
 }
 _CONFLICT_CODES = {
@@ -68,7 +67,7 @@ def _error(exc: Exception) -> HTTPException:
     if raw in _UNAVAILABLE_CODES:
         return HTTPException(503, detail={"code": "requirement_dependency_unavailable"})
     if raw in _VALIDATION_CODES:
-        return HTTPException(422, detail={"code": raw if raw in _VALIDATION_CODES else "requirement_input_invalid"})
+        return HTTPException(422, detail={"code": raw})
     return HTTPException(500, detail={"code": "persistence_error"})
 
 
