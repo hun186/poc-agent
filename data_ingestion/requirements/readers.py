@@ -122,10 +122,12 @@ def read_bytes(content: bytes, filename: str, profile: ImportProfileDocument, *,
         try:
             return read_xlsx_rows(content, profile, max_rows=max_rows)
         except (BadZipFile, InvalidFileException, KeyError, IndexError,
-                EOFError, UnicodeError, OSError, ParseError) as exc:
+                EOFError, UnicodeError, OSError, ParseError, TypeError) as exc:
             # Failures from the *upload parser* are invalid user input,
             # not a missing Product/Run identity or backend persistence error.
             # This boundary is intentionally specific to XLSX decoding.
+            # openpyxl also raises TypeError for malformed workbook XML
+            # attributes (e.g. a non-integer sheetId).
             raise ValueError("source_format_invalid") from exc
         except ValueError as exc:
             # Preserve stable profile/preview-limit validation codes. Other
