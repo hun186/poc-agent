@@ -127,3 +127,7 @@
 ## 2026-10-12 P2.1 tenth Codex review
 
 - Exact-head `dd2f296645eb3a3989418210a71a10c4379d9e77` Codex review completed with a P2 on malformed XLSX XML when optional lxml parsing is enabled. A specific reader-level catch now normalizes XMLSyntaxError to 422 source_format_invalid and does not require lxml to be installed. Added regression mutating [Content_Types].xml in a real ZIP workbook to trigger lxml; no hosted runtime pytest PASS evidence claimed. PR #288 remains Open; do not merge without explicit user instruction.
+
+## 2026-10-12 P2.1 eleventh Codex review
+
+- Exact-head `4fe28edafd438854d70e99bb416ad4deb4909cb6` Codex review found P1 prohibited try/except import of optional lxml and P2 nested JSON memory amplification before decoding. Fixed via importlib module lookup following AGENTS.md, and a 5k/row plus 100k/preview preparse JSON structural-token cap on the existing incremental HTTP reader, before one-row object construction. Added adversarial and positive regressions; no full pytest or live SQL Server acceptance claimed. PR #288 stays open, no merge authorization.
