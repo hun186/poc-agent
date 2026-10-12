@@ -18,10 +18,20 @@ def read_xlsx_rows(content: bytes, profile: ImportProfileDocument, *, max_rows: 
     if settings.name and settings.name not in workbook.sheetnames:
         raise ValueError("source_format_invalid")
     sheet = workbook[settings.name] if settings.name else workbook.active
+    if max_rows is not None:
+        # XLSX can declare huge sparse dimensions without substantial ZIP size.
+        if (sheet.max_column is not None and sheet.max_column > 512
+                or sheet.max_row is not None
+                and sheet.max_row > settings.first_data_row + max_rows * 4):
+            workbook.close()
+            raise ValueError("requirement_preview_too_large")
     header_values = next(sheet.iter_rows(min_row=settings.header_row, max_row=settings.header_row, values_only=True))
     headers = ["" if value is None else str(value) for value in header_values]
     rows, numbers = [], []
     for row_number, values in enumerate(sheet.iter_rows(min_row=settings.first_data_row, values_only=True), settings.first_data_row):
+        if max_rows is not None and row_number > settings.first_data_row + max_rows * 4:
+            workbook.close()
+            raise ValueError("requirement_preview_too_large")
         if not any(value is not None and value != "" for value in values):
             continue
         # Preserve duplicate labels for strict ambiguity detection instead of overwriting them.
