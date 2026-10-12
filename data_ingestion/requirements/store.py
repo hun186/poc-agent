@@ -527,10 +527,9 @@ class RequirementStore:
     ) -> dict[str, Any]:
         if candidate.has_errors:
             if expected_base_snapshot_id is not None:
-                # Product input replacement must prove its snapshot CAS before an
-                # already-stale/anomalous candidate can be recorded as a failed
-                # import. Otherwise an old request could bypass the Product CAS
-                # simply because _prepare() observed a newer Requirement version.
+                # CAS and the failed-import audit must commit atomically. Releasing
+                # the set's HOLDLOCK before recording failure makes the same
+                # preallocated request race-dependent against a newer snapshot.
                 connection = self._connect()
                 try:
                     c = connection.cursor()
@@ -545,19 +544,29 @@ class RequirementStore:
                         )
                         existing_run = c.fetchone()
                         if existing_run is not None:
+                            self._verify_expected_profile_record(
+                                c,
+                                expected_profile_version_id=expected_profile_version_id,
+                                expected_profile_sha256=expected_profile_sha256,
+                            )
                             c.execute(
                                 f"SELECT snapshot_id,import_profile_version_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
                                 import_run_id,
                             )
                             result = self._preallocated_import_result(
-                                source["source_id"],
-                                import_run_id,
-                                snapshot_id,
-                                existing_run,
-                                list(c.fetchall()),
+                                source["source_id"], import_run_id, snapshot_id,
+                                existing_run, list(c.fetchall()),
+                                expected_profile_version_id=expected_profile_version_id,
                             )
                             connection.commit()
                             return result
+                    self._lock_expected_profile_for_import(
+                        c,
+                        source=source,
+                        version=version,
+                        expected_profile_version_id=expected_profile_version_id,
+                        expected_profile_sha256=expected_profile_sha256,
+                    )
                     c.execute(
                         f"SELECT source_id FROM {self.t}.[requirement_sources] WITH (UPDLOCK,HOLDLOCK) WHERE source_id=? AND enabled=1",
                         source["source_id"],
@@ -572,7 +581,12 @@ class RequirementStore:
                     prior_snapshot = setrow[1] if setrow else None
                     if prior_snapshot != expected_base_snapshot_id:
                         raise ValueError("requirement_input_conflict")
+                    result = self._record_failed_import_locked(
+                        c, source, version, acquired, candidate, actor,
+                        import_run_id=import_run_id,
+                    )
                     connection.commit()
+                    return result
                 except Exception as exc:
                     connection.rollback()
                     raise _stable_persistence_error(exc) from exc
@@ -763,6 +777,66 @@ class RequirementStore:
             "rejected_count": 0,
         }
 
+    def _record_failed_import_locked(
+        self,
+        cursor,
+        source: dict[str, Any],
+        version: dict[str, Any],
+        acquired: Any,
+        candidate: NormalizedCandidate,
+        actor: str,
+        *,
+        import_run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Write failure under caller's transaction, preserving existing set locks."""
+        run_id, now = import_run_id or _id("run"), _now()
+        observed_rows = {row.source_row_number for row in candidate.rows}
+        observed_rows.update(
+            item.source_row_number
+            for item in candidate.diagnostics
+            if item.source_row_number is not None
+        )
+        if import_run_id is not None:
+            cursor.execute(
+                f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
+                run_id,
+            )
+            existing_run = cursor.fetchone()
+            if existing_run is not None:
+                cursor.execute(
+                    f"SELECT snapshot_id,import_profile_version_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
+                    run_id,
+                )
+                result = self._preallocated_import_result(
+                    source["source_id"], run_id, None, existing_run, list(cursor.fetchall())
+                )
+                if result is None or result["status"] != "failed":
+                    raise RuntimeError("persistence_error")
+                return result
+        cursor.execute(
+            f"INSERT INTO {self.t}.[import_runs] VALUES (?,?,?,?,?,'failed',?,?,?,?,?,'user',?,?)",
+            run_id, source["source_id"], version["profile_version_id"],
+            acquired.source_uri_display, acquired.source_sha256,
+            len(observed_rows), len(candidate.rows), len(candidate.diagnostics),
+            now, now, actor,
+            candidate.diagnostics[0].code if candidate.diagnostics else "import_failed",
+        )
+        row_hashes = {row.source_row_number: row.source_row_hash for row in candidate.rows}
+        for diagnostic in candidate.diagnostics:
+            cursor.execute(
+                f"INSERT INTO {self.t}.[import_run_rows] VALUES (?,?,?,?,?,?,?)",
+                run_id, diagnostic.source_row_number, diagnostic.external_item_id, "rejected",
+                row_hashes.get(diagnostic.source_row_number), diagnostic.code,
+                diagnostic.message[:500],
+            )
+        return {
+            "import_run_id": run_id,
+            "snapshot_id": None,
+            "status": "failed",
+            "accepted_count": len(candidate.rows),
+            "rejected_count": len(candidate.diagnostics),
+        }
+
     def record_failed_import(
         self,
         source: dict[str, Any],
@@ -774,13 +848,6 @@ class RequirementStore:
         import_run_id: str | None = None,
         _guard_low_level: bool = False,
     ) -> dict[str, Any]:
-        run_id, now = import_run_id or _id("run"), _now()
-        observed_rows = {row.source_row_number for row in candidate.rows}
-        observed_rows.update(
-            item.source_row_number
-            for item in candidate.diagnostics
-            if item.source_row_number is not None
-        )
         connection = self._connect()
         try:
             cursor = connection.cursor()
@@ -788,53 +855,17 @@ class RequirementStore:
                 self._guard_low_level_source_mutation_locked(
                     cursor, source["source_id"]
                 )
-            if import_run_id is not None:
-                cursor.execute(
-                    f"SELECT source_id,import_profile_version_id,status,accepted_count,rejected_count FROM {self.t}.[import_runs] WITH (UPDLOCK,HOLDLOCK) WHERE import_run_id=?",
-                    run_id,
-                )
-                existing_run = cursor.fetchone()
-                if existing_run is not None:
-                    cursor.execute(
-                        f"SELECT snapshot_id,import_profile_version_id FROM {self.t}.[requirement_set_snapshots] WITH (HOLDLOCK) WHERE import_run_id=?",
-                        run_id,
-                    )
-                    result = self._preallocated_import_result(
-                        source["source_id"], run_id, None, existing_run, list(cursor.fetchall())
-                    )
-                    if result is None or result["status"] != "failed":
-                        raise RuntimeError("persistence_error")
-                    connection.commit()
-                    return result
-            cursor.execute(
-                f"INSERT INTO {self.t}.[import_runs] VALUES (?,?,?,?,?,'failed',?,?,?,?,?,'user',?,?)",
-                run_id, source["source_id"], version["profile_version_id"],
-                acquired.source_uri_display, acquired.source_sha256,
-                len(observed_rows), len(candidate.rows), len(candidate.diagnostics),
-                now, now, actor,
-                candidate.diagnostics[0].code if candidate.diagnostics else "import_failed",
+            result = self._record_failed_import_locked(
+                cursor, source, version, acquired, candidate, actor,
+                import_run_id=import_run_id,
             )
-            row_hashes = {row.source_row_number: row.source_row_hash for row in candidate.rows}
-            for diagnostic in candidate.diagnostics:
-                cursor.execute(
-                    f"INSERT INTO {self.t}.[import_run_rows] VALUES (?,?,?,?,?,?,?)",
-                    run_id, diagnostic.source_row_number, diagnostic.external_item_id, "rejected",
-                    row_hashes.get(diagnostic.source_row_number), diagnostic.code,
-                    diagnostic.message[:500],
-                )
             connection.commit()
+            return result
         except Exception as exc:
             connection.rollback()
             raise _stable_persistence_error(exc) from exc
         finally:
             connection.close()
-        return {
-            "import_run_id": run_id,
-            "snapshot_id": None,
-            "status": "failed",
-            "accepted_count": len(candidate.rows),
-            "rejected_count": len(candidate.diagnostics),
-        }
 
     def get_import_run(self, run_id: str) -> dict[str, Any]:
         rows = self._query(f"SELECT * FROM {self.t}.[import_runs] WHERE import_run_id=?", run_id)
