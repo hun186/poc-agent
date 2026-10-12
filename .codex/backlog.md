@@ -102,3 +102,6 @@
 - P1.6 low-level Product ownership fences merged as PR #286 (`30071cb3b7b732b2875a35c6929b430693029905`).
 - P1.7 input-replacement base-snapshot CAS is implemented on `feat/requirement-product-input-replacement-p1-7`, pending exact-head Hosted Codex review, regression verification and explicit merge authorization.
 - P2 Product Task HTTP router / Task Center, P2.3 run-trigger admission, and deployment SQL concurrency/real E2E acceptance remain later gates. Do not mix them into P1.7.
+
+- 2026-10-12 P2.1 Product API read + preview in progress on `feat/requirement-product-api-read-preview-p2-1`. Adds finalized Task and Run projection endpoints and multipart/manual JSON preview, wired only when both existing authorities are enabled. Requires exact-head Hosted Codex review and acceptance before merge. P2 mutations/idempotency run admission, artifact, service-key scopes, GUI, and authorized live SQL/real E2E remain pending.
+- Cross-Task identical/semantically-similar Requirement execution deduplication is NOT supported by v1 design or P2.1. Requires separate reviewed semantics of input identity, model/config/time window, ownership/ACL, execution freshness, sharing consent and audit lineage; do not silently reuse or cross-leak another Task's output.
