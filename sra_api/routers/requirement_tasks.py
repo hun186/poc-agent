@@ -59,7 +59,11 @@ def product_service(request: Request):
 def _error(exc: Exception) -> HTTPException:
     raw = str(exc.args[0] if exc.args else exc).strip("'").split(":", 1)[0]
     if isinstance(exc, KeyError):
-        return HTTPException(404, detail={"code": raw if raw in _NOT_FOUND_CODES else "requirement_run_unavailable"})
+        # A missing presenter/store column is a backend invariant failure, not
+        # evidence that a requested Product Task or Run was absent.
+        if raw in _NOT_FOUND_CODES:
+            return HTTPException(404, detail={"code": raw})
+        return HTTPException(500, detail={"code": "persistence_error"})
     if raw in _CONFLICT_CODES:
         return HTTPException(409, detail={"code": raw})
     if raw in _NOT_FOUND_CODES:
