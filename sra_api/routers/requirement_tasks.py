@@ -99,6 +99,7 @@ async def preview_product_input(
                 profile_version_id=parsed.profile_version_id,
                 upload_bytes=data,
                 upload_filename=filename,
+                max_rows=5000, max_result_rows=100,
             )
         assert requirements_json is not None
         if not requirements_json or len(requirements_json.encode("utf-8")) > _MAX_DIRECT_JSON_BYTES:
@@ -110,6 +111,7 @@ async def preview_product_input(
         return service.preview_input(
             profile_version_id=parsed.profile_version_id,
             requirements=requirements,
+            max_rows=5000, max_result_rows=100,
         )
     except Exception as exc:
         raise _error(exc) from exc
