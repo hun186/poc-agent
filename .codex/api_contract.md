@@ -154,3 +154,7 @@
 
 - HTTP preview-only JSON arrays are processed one top-level object at a time; the complete input string may be decoded from UTF-8 but the full JSON array is **not** materialized via `json.loads()`. The reader detects the next object's boundaries while respecting nested structures and escaped strings, with a pre-object limit of 1 MiB, then enforces 5,000 rows, 128 fields/row, 50,000 total cells and 8 MiB decoded-value budget. Oversized previews return stable 422 `requirement_preview_too_large`; malformed JSON returns 422 `source_format_invalid`.
 - Full internal Phase 1B JSON reads still use the preexisting whole-array parser only when `max_rows=None`. Regression tests include a 500,000-element compact array, quoted/nested values, malformed delimiters, oversized single rows and internal unbounded imports. Exact-head review and actual repository pytest/live SQL acceptance remain pending.
+
+## 2026-10-12 P2.1 eighth-review JSON syntax/byte refinements
+
+- Preview-only JSON's 1 MiB pre-object cap measures actual encoded UTF-8 bytes, including multibyte Chinese text, before invoking JSON decoding of that object. Element boundaries only accept a comma or closing square bracket, so invalid separator forms (e.g. `[{} } {"x":1}]`) reject as HTTP 422 `source_format_invalid`. Existing row/cell/output caps and internal Phase 1B reader behavior are unchanged. Regressions were added; exact-head review and executable pytest are still pending.
