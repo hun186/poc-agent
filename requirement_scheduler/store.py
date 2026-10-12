@@ -621,6 +621,48 @@ class ScheduleStore:
         finally:
             connection.close()
 
+    def list_product_tasks(self, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """Read only finalized Product Tasks; never expose provisioning identities."""
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+        return self._query(
+            f"SELECT task_id,schedule_id,source_id,execution_kind,product_state,revision,"
+            f"created_by,created_at,updated_by,updated_at "
+            f"FROM {self.t}.[requirement_product_tasks] "
+            f"WHERE product_state IN ('active','disabled') "
+            f"ORDER BY created_at DESC,task_id "
+            f"OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+            offset, limit,
+        )
+
+    def list_product_run_bindings(self, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """List eligible Run->Task bindings without exposing unowned or provisioning runs."""
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+        return self._query(
+            f"SELECT r.batch_run_id,t.task_id "
+            f"FROM {self.t}.[requirement_batch_runs] r "
+            f"JOIN {self.t}.[requirement_product_tasks] t ON t.schedule_id=r.schedule_id "
+            f"WHERE t.product_state IN ('active','disabled') "
+            f"ORDER BY r.created_at DESC,r.batch_run_id "
+            f"OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+            offset, limit,
+        )
+
+    def get_product_task_for_run(self, batch_run_id: str) -> dict[str, Any]:
+        """Resolve the owning finalized Product Task; hide provisioning and low-level Runs."""
+        rows = self._query(
+            f"SELECT t.task_id,t.schedule_id,t.source_id,t.execution_kind,"
+            f"t.product_state,t.revision,t.created_by,t.created_at,t.updated_by,t.updated_at "
+            f"FROM {self.t}.[requirement_batch_runs] r "
+            f"JOIN {self.t}.[requirement_product_tasks] t ON t.schedule_id=r.schedule_id "
+            f"WHERE r.batch_run_id=? AND t.product_state IN ('active','disabled')",
+            batch_run_id,
+        )
+        if not rows:
+            raise KeyError("requirement_run_unavailable")
+        return rows[0]
+
     def get_product_task(self, task_id: str, *, include_provisioning: bool = False) -> dict[str, Any]:
         clause = "" if include_provisioning else " AND product_state IN ('active','disabled')"
         rows = self._query(
