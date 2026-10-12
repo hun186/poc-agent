@@ -92,3 +92,7 @@
 
 
 - 2026-10-08 P1.5A first exact-head Codex finding (P2 missing Product activation audit) was fixed by atomically enqueuing `requirement.task.updated` and adding focused store/outbox regressions; exact-head re-review/check evidence remains required before merge.
+
+- 2026-10-11 P1.5A merged in PR #285 at `main@69a873fd94be8dd34a808d59375b7e9f2f7522d1`.
+- 2026-10-11 P1.6 atomic low-level Product ownership fences are implemented on `feat/requirement-product-ownership-fences-p1-6`: five Schedule mutations and two Requirement-source mutations now use same-transaction ownership checks covering both provisioning reservations and steady Product Tasks. Exact-head Hosted Codex review/check evidence is required before merge.
+- After P1.6, continue with P1.7 input replacement snapshot CAS; do not fold P1.7 or Product HTTP/UI work into this PR.

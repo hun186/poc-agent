@@ -208,3 +208,10 @@
 - Schedule-version approval audit alone is insufficient when activation also mutates Product Task semantics.
 - Successful `task_version_activate` must enqueue `requirement.task.updated` in the same transaction as approval, Task revision increment, and request success.
 - The Product audit payload is explicitly bounded to `task_id`, committed `revision`, and `operation`; Schedule/version identity remains in the existing audit envelope.
+
+### 2026-10-11 Product ownership survives request terminalization
+
+- A `task_create` request's preallocated `schedule_id` / `source_id` is an ownership reservation as soon as it is durable. Low-level mutation fences therefore match the reservation by operation + identity without filtering request state.
+- This is intentional: after a recoverable or terminal provisioning failure, a partially created Schedule/source may still exist and must not become mutable through the legacy low-level API.
+- Once `requirement_product_tasks` exists it is the steady-state ownership authority; checking both authorities closes the provisioning gap.
+- Public mutation code uses explicit guarded methods rather than a generic bypass parameter. Product-internal orchestration retains the existing authority methods.

@@ -87,8 +87,17 @@ def patch_schedule(schedule_id: str, payload: SchedulePatchBody, service=Depends
         authorize_role(user, ROLE_SUPERUSER, "requirement_schedule_enablement", "Only a superuser may change schedule enablement")
     try:
         result = service.store.get_schedule(schedule_id)
-        if payload.name is not None: result = service.store.rename_schedule(schedule_id, payload.name, user.username)
-        if payload.enabled is not None: result = service.set_enabled(schedule_id=schedule_id, enabled=payload.enabled, actor=user.username, now_utc=datetime.now(timezone.utc).replace(microsecond=0))
+        if payload.name is not None:
+            result = service.store.guarded_rename_schedule(
+                schedule_id, payload.name, user.username
+            )
+        if payload.enabled is not None:
+            result = service.store.guarded_set_enabled(
+                schedule_id=schedule_id,
+                enabled=payload.enabled,
+                actor=user.username,
+                now_utc=datetime.now(timezone.utc).replace(microsecond=0),
+            )
     except Exception as exc: raise _error(exc) from exc
     return result
 
@@ -97,7 +106,9 @@ def patch_schedule(schedule_id: str, payload: SchedulePatchBody, service=Depends
 def create_version(schedule_id: str, payload: ScheduleVersionBody, service=Depends(schedule_service), user: AuthUser = Depends(require_db_operator)):
     try:
         config = ScheduleVersionCreate(payload.timezone, RecurrenceSpec.validate(payload.recurrence), payload.run_policy, payload.model)
-        result = service.store.create_version(schedule_id=schedule_id, config=config, actor=user.username)
+        result = service.store.guarded_create_version(
+            schedule_id=schedule_id, config=config, actor=user.username
+        )
     except Exception as exc: raise _error(exc) from exc
     return result
 
@@ -105,9 +116,7 @@ def create_version(schedule_id: str, payload: ScheduleVersionBody, service=Depen
 @router.post("/v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve")
 def approve_version(schedule_id: str, version_number: int, service=Depends(schedule_service), user: AuthUser = Depends(require_superuser)):
     try:
-        if service.store.is_product_owned_schedule(schedule_id):
-            raise ValueError("requirement_product_owned_schedule")
-        result = service.approve_version(
+        result = service.store.guarded_approve_version(
             schedule_id=schedule_id,
             version_number=version_number,
             actor=user.username,
@@ -119,7 +128,7 @@ def approve_version(schedule_id: str, version_number: int, service=Depends(sched
 @router.post("/v1/requirement-schedules/{schedule_id}/runs",status_code=201)
 def create_manual_run(schedule_id: str,payload: ManualRunBody,service=Depends(schedule_service),user: AuthUser=Depends(require_db_operator)):
     try:
-        result=service.store.materialize_run(schedule_id=schedule_id,trigger=TriggerIdentity("manual",trigger_request_id=payload.trigger_request_id),now_utc=datetime.now(timezone.utc).replace(microsecond=0),actor=user.username)
+        result=service.store.guarded_materialize_run(schedule_id=schedule_id,trigger=TriggerIdentity("manual",trigger_request_id=payload.trigger_request_id),now_utc=datetime.now(timezone.utc).replace(microsecond=0),actor=user.username)
         return {"run":result.run,"items":result.items}
     except Exception as exc: raise _error(exc) from exc
 

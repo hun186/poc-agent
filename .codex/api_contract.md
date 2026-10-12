@@ -95,3 +95,10 @@
 - Successful activation returns bounded metadata: Task revision/state, Schedule/version identity, approved status, enabled state, and next-run snapshot. Replay returns the same stored bounded result and does not approve or increment revision again.
 - Stale originating revision terminalizes the activation with `requirement_task_conflict`; if the exact target is still draft it is retired without changing current active Schedule/Task semantics.
 - The existing low-level `POST /v1/requirement-schedules/{schedule_id}/versions/{version_number}/approve` now returns 409 `requirement_product_owned_schedule` for Product-owned Schedule identities. This is an interim precheck until P1.6 makes ownership checking and mutation atomic.
+
+## 2026-10-11 Requirement Product P1.6 low-level mutation fencing
+
+- Product HTTP Task routes remain **NOT IMPLEMENTED** by this gate.
+- Existing low-level Schedule read/history endpoints remain readable, but the public mutation endpoints for rename, recurring enable/disable, Schedule Version creation, Schedule Version approval, and manual Run materialization return HTTP 409 `requirement_product_owned_schedule` when the target identity is Product-reserved/owned.
+- Existing Requirement source GET/list/preview remain unchanged. Public source PATCH and import return HTTP 409 `requirement_product_owned_source` for Product-reserved/owned source identities.
+- These responses are enforced transactionally in the stores, not by a router read/precheck. Product internal orchestration uses separate reviewed internal methods and is not subject to the public low-level fence.

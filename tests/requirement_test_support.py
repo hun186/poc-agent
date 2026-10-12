@@ -95,6 +95,7 @@ class MemoryStore:
         return self.sources[sid]
     def list_sources(self): return list(self.sources.values())
     def patch_source(self,sid,actor,**changes): self.sources[sid].update(changes); return self.sources[sid]
+    def guarded_patch_source(self,sid,actor,**changes): return self.patch_source(sid,actor,**changes)
     def current_versions(self,sid): return self.current.get(sid,{})
     def commit_candidate(self,source,version,acquired,candidate,actor):
         if candidate.has_errors: return self.record_failed_import(source,version,acquired,candidate,actor)
@@ -107,6 +108,7 @@ class MemoryStore:
         if source["source_mode"]=="upsert_delta": items += [v for k,v in current.items() if k not in {r.external_item_id for r in candidate.rows}]
         else: current={r.external_item_id:current[r.external_item_id] for r in candidate.rows}
         self.current[source["source_id"]]=current; run=uuid4().hex; snap=uuid4().hex; self.runs[run]={"import_run_id":run,"status":"committed"}; self.snapshots[snap]={"snapshot_id":snap,"source_snapshot_sha256":acquired.source_sha256,"import_profile_version_id":version["profile_version_id"],"items":items}; self.sets[source["source_id"]]={"requirement_set_id":source["source_id"],"active_snapshot_id":snap}; return {"import_run_id":run,"snapshot_id":snap,"status":"committed","accepted_count":len(items),"rejected_count":0}
+    def guarded_commit_candidate(self,source,version,acquired,candidate,actor): return self.commit_candidate(source,version,acquired,candidate,actor)
     def record_failed_import(self,source,version,acquired,candidate,actor): run=uuid4().hex; self.runs[run]={"import_run_id":run,"status":"failed"}; return {"import_run_id":run,"snapshot_id":None,"status":"failed","accepted_count":len(candidate.rows),"rejected_count":len(candidate.diagnostics)}
     def get_import_run(self,x): return self.runs[x]
     def list_requirement_sets(self): return list(self.sets.values())

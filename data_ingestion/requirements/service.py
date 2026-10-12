@@ -49,6 +49,25 @@ class RequirementImportService:
         for item in classifications: counts[item["classification"]] = counts.get(item["classification"], 0) + 1
         return {"source_id": source_id, "profile_version_id": version["profile_version_id"], "source_sha256": acquired.source_sha256, "row_count": len(acquired.rows), "accepted_count": len(candidate.rows), "rejected_count": len(candidate.diagnostics), "expired_count": sum(row.expires_at is not None and row.expires_at <= now for row in candidate.rows), "has_errors": candidate.has_errors, "counts": counts, "classifications": classifications, "diagnostics": [item.model_dump(mode="json") for item in candidate.diagnostics]}
 
+    def commit_low_level(
+        self,
+        source_id: str,
+        *,
+        actor: str,
+        upload_bytes: bytes | None = None,
+        upload_filename: str | None = None,
+    ) -> dict[str, Any]:
+        source, version, acquired, candidate, _ = self._prepare(
+            source_id,
+            profile_version_id=None,
+            upload_bytes=upload_bytes,
+            upload_filename=upload_filename,
+            commit=True,
+        )
+        return self.store.guarded_commit_candidate(
+            source, version, acquired, candidate, actor
+        )
+
     def commit(
         self,
         source_id: str,

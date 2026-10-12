@@ -138,3 +138,10 @@
 - Successful activation uses the shared locked Schedule approval helper, retires the prior approved version, approves the exact draft, recomputes `next_run_at` only when the recurring Schedule is currently enabled, increments Product Task revision once, stores `result_task_revision`, and marks the activation request succeeded in the same SQL transaction.
 - Stale activation leaves active Schedule/Task semantics unchanged, retires only the stale exact draft when it is still draft, records a version-retired audit event, and terminalizes the activation request with `requirement_task_conflict`.
 - The existing low-level Schedule approve route now rejects Product-owned Schedules with 409 through an interim ownership precheck. P1.6 still owns the required same-transaction low-level ownership fence and TOCTOU regressions.
+
+## 2026-10-11 Requirement Product P1.6 ownership-fence boundary
+
+- Public low-level Schedule mutation routes are separated from Product-internal authority through explicit guarded store methods. The guarded path locks/checks Product Task ownership and the durable `task_create` reservation on the same SQL connection/transaction before it locks or mutates the target Schedule/version/run state.
+- Public low-level Requirement-source PATCH/import use the same pattern across the configured Schedule schema and Requirement schema in the shared Requirement control database. Requirement-only deployments leave `schedule_schema=None`, so they do not query Product tables that are not enabled.
+- Product orchestration deliberately continues to call the existing internal Requirement/Schedule methods. There is no caller-supplied bypass flag on public HTTP routes.
+- A Product `task_create` reservation permanently claims its preallocated `schedule_id` and `source_id`; the fence does not discard ownership merely because the request later becomes terminal, since a partially created durable resource may remain.

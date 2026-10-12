@@ -1656,11 +1656,27 @@ class ScheduleStore:
             return True
         request_rows = self._query(
             f"SELECT TOP 1 request_id FROM {self.t}.[requirement_product_requests] "
-            f"WHERE operation='task_create' AND schedule_id=? "
-            f"AND state IN ('reserved','in_progress','failed_recoverable','succeeded')",
+            f"WHERE operation='task_create' AND schedule_id=?",
             schedule_id,
         )
         return bool(request_rows)
+
+    def _guard_low_level_schedule_mutation_locked(self, cursor, schedule_id: str) -> None:
+        cursor.execute(
+            f"SELECT TOP 1 task_id FROM {self.t}.[requirement_product_tasks] "
+            f"WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?",
+            schedule_id,
+        )
+        if cursor.fetchone() is not None:
+            raise ValueError("requirement_product_owned_schedule")
+        cursor.execute(
+            f"SELECT TOP 1 request_id FROM {self.t}.[requirement_product_requests] "
+            f"WITH (UPDLOCK,HOLDLOCK) "
+            f"WHERE operation='task_create' AND schedule_id=?",
+            schedule_id,
+        )
+        if cursor.fetchone() is not None:
+            raise ValueError("requirement_product_owned_schedule")
 
     def finalize_one_time_product_task_create(
         self,
@@ -2078,17 +2094,65 @@ class ScheduleStore:
         }
 
     def rename_schedule(self, schedule_id: str, name: str, actor: str):
-        if not name.strip(): raise ValueError("schedule_name_invalid")
-        connection = self._connect(); now = _now()
+        return self._rename_schedule(
+            schedule_id, name, actor, guard_low_level=False
+        )
+
+    def guarded_rename_schedule(self, schedule_id: str, name: str, actor: str):
+        return self._rename_schedule(
+            schedule_id, name, actor, guard_low_level=True
+        )
+
+    def _rename_schedule(
+        self,
+        schedule_id: str,
+        name: str,
+        actor: str,
+        *,
+        guard_low_level: bool,
+    ):
+        if not name.strip():
+            raise ValueError("schedule_name_invalid")
+        connection = self._connect()
+        now = _now()
         try:
-            c = connection.cursor(); c.execute(f"SELECT enabled FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); row=c.fetchone()
-            if row is None: raise KeyError("schedule_not_found")
-            if bool(row[0]): raise ValueError("schedule_enabled")
-            c.execute(f"UPDATE {self.t}.[requirement_schedules] SET name=?,updated_by=?,updated_at=? WHERE schedule_id=?", name.strip(), actor, now, schedule_id)
-            self._enqueue_audit_event(c, self._audit_event("requirement_schedule.updated", actor, schedule_id, payload={"field": "name"}, created_at=now))
+            c = connection.cursor()
+            if guard_low_level:
+                self._guard_low_level_schedule_mutation_locked(c, schedule_id)
+            c.execute(
+                f"SELECT enabled FROM {self.t}.[requirement_schedules] "
+                f"WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?",
+                schedule_id,
+            )
+            row = c.fetchone()
+            if row is None:
+                raise KeyError("schedule_not_found")
+            if bool(row[0]):
+                raise ValueError("schedule_enabled")
+            c.execute(
+                f"UPDATE {self.t}.[requirement_schedules] "
+                f"SET name=?,updated_by=?,updated_at=? WHERE schedule_id=?",
+                name.strip(),
+                actor,
+                now,
+                schedule_id,
+            )
+            self._enqueue_audit_event(
+                c,
+                self._audit_event(
+                    "requirement_schedule.updated",
+                    actor,
+                    schedule_id,
+                    payload={"field": "name"},
+                    created_at=now,
+                ),
+            )
             connection.commit()
-        except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
-        finally: connection.close()
+        except Exception as exc:
+            connection.rollback()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
         self._drain_best_effort()
         return self.get_schedule(schedule_id)
 
@@ -2122,6 +2186,38 @@ class ScheduleStore:
         actor: str,
         schedule_version_id: str | None = None,
     ) -> dict[str, Any]:
+        return self._create_version(
+            schedule_id=schedule_id,
+            config=config,
+            actor=actor,
+            schedule_version_id=schedule_version_id,
+            guard_low_level=False,
+        )
+
+    def guarded_create_version(
+        self,
+        *,
+        schedule_id: str,
+        config: ScheduleVersionCreate,
+        actor: str,
+    ) -> dict[str, Any]:
+        return self._create_version(
+            schedule_id=schedule_id,
+            config=config,
+            actor=actor,
+            schedule_version_id=None,
+            guard_low_level=True,
+        )
+
+    def _create_version(
+        self,
+        *,
+        schedule_id: str,
+        config: ScheduleVersionCreate,
+        actor: str,
+        schedule_version_id: str | None,
+        guard_low_level: bool,
+    ) -> dict[str, Any]:
         # Enforce domain invariants even for callers which bypass FastAPI validation.
         config = ScheduleVersionCreate(
             config.timezone,
@@ -2136,6 +2232,8 @@ class ScheduleStore:
         replayed: dict[str, Any] | None = None
         try:
             c = connection.cursor()
+            if guard_low_level:
+                self._guard_low_level_schedule_mutation_locked(c, schedule_id)
             c.execute(
                 f"SELECT schedule_id FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?",
                 schedule_id,
@@ -2332,9 +2430,44 @@ class ScheduleStore:
         actor: str,
         now_utc: datetime,
     ):
+        return self._approve_version(
+            schedule_id=schedule_id,
+            version_number=version_number,
+            actor=actor,
+            now_utc=now_utc,
+            guard_low_level=False,
+        )
+
+    def guarded_approve_version(
+        self,
+        *,
+        schedule_id: str,
+        version_number: int,
+        actor: str,
+        now_utc: datetime,
+    ):
+        return self._approve_version(
+            schedule_id=schedule_id,
+            version_number=version_number,
+            actor=actor,
+            now_utc=now_utc,
+            guard_low_level=True,
+        )
+
+    def _approve_version(
+        self,
+        *,
+        schedule_id: str,
+        version_number: int,
+        actor: str,
+        now_utc: datetime,
+        guard_low_level: bool,
+    ):
         connection = self._connect()
         try:
             c = connection.cursor()
+            if guard_low_level:
+                self._guard_low_level_schedule_mutation_locked(c, schedule_id)
             # Resolve immutable version identity without retaining an update lock.
             # _approve_version_locked() owns the mutation lock order and always
             # acquires Schedule before target Version, matching set_enabled().
@@ -2368,29 +2501,107 @@ class ScheduleStore:
             "version_number": result["version_number"],
         }
 
-    def set_enabled(self, *, schedule_id: str, enabled: bool, actor: str, now_utc: datetime):
+    def set_enabled(
+        self, *, schedule_id: str, enabled: bool, actor: str, now_utc: datetime
+    ):
+        return self._set_enabled(
+            schedule_id=schedule_id,
+            enabled=enabled,
+            actor=actor,
+            now_utc=now_utc,
+            guard_low_level=False,
+        )
+
+    def guarded_set_enabled(
+        self, *, schedule_id: str, enabled: bool, actor: str, now_utc: datetime
+    ):
+        return self._set_enabled(
+            schedule_id=schedule_id,
+            enabled=enabled,
+            actor=actor,
+            now_utc=now_utc,
+            guard_low_level=True,
+        )
+
+    def _set_enabled(
+        self,
+        *,
+        schedule_id: str,
+        enabled: bool,
+        actor: str,
+        now_utc: datetime,
+        guard_low_level: bool,
+    ):
         connection = self._connect()
         try:
-            c = connection.cursor(); c.execute(f"SELECT enabled,active_version_id,next_run_at FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); schedule = c.fetchone()
-            if schedule is None: raise KeyError("schedule_not_found")
+            c = connection.cursor()
+            if guard_low_level:
+                self._guard_low_level_schedule_mutation_locked(c, schedule_id)
+            c.execute(
+                f"SELECT enabled,active_version_id,next_run_at "
+                f"FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE schedule_id=?",
+                schedule_id,
+            )
+            schedule = c.fetchone()
+            if schedule is None:
+                raise KeyError("schedule_not_found")
             if bool(schedule[0]) == bool(enabled):
                 connection.commit()
-                return {"schedule_id": schedule_id, "enabled": bool(enabled), "next_run_at": schedule[2]}
+                return {
+                    "schedule_id": schedule_id,
+                    "enabled": bool(enabled),
+                    "next_run_at": schedule[2],
+                }
             due = None
             if enabled:
-                if not schedule[1]: raise ValueError("schedule_version_not_approved")
-                c.execute(f"SELECT status,timezone,recurrence_json,run_policy,model,config_sha256 FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_version_id=?", schedule[1]); version = c.fetchone()
-                if version is None or version[0] != "approved": raise ValueError("schedule_version_not_approved")
-                config = self._validate_persisted_config(version[1], version[2], version[3], version[4], version[5])
-                due = next_occurrence(config.recurrence, config.timezone, now_utc)
-            c.execute(f"UPDATE {self.t}.[requirement_schedules] SET enabled=?,next_run_at=?,updated_by=?,updated_at=? WHERE schedule_id=?", bool(enabled), due, actor, now_utc, schedule_id)
-            action = "requirement_schedule.enabled" if enabled else "requirement_schedule.disabled"
-            self._enqueue_audit_event(c, self._audit_event(action, actor, schedule_id, created_at=now_utc))
+                if not schedule[1]:
+                    raise ValueError("schedule_version_not_approved")
+                c.execute(
+                    f"SELECT status,timezone,recurrence_json,run_policy,model,config_sha256 "
+                    f"FROM {self.t}.[requirement_schedule_versions] "
+                    f"WITH (UPDLOCK,HOLDLOCK) WHERE schedule_version_id=?",
+                    schedule[1],
+                )
+                version = c.fetchone()
+                if version is None or version[0] != "approved":
+                    raise ValueError("schedule_version_not_approved")
+                config = self._validate_persisted_config(
+                    version[1], version[2], version[3], version[4], version[5]
+                )
+                due = next_occurrence(
+                    config.recurrence, config.timezone, now_utc
+                )
+            c.execute(
+                f"UPDATE {self.t}.[requirement_schedules] "
+                f"SET enabled=?,next_run_at=?,updated_by=?,updated_at=? "
+                f"WHERE schedule_id=?",
+                bool(enabled),
+                due,
+                actor,
+                now_utc,
+                schedule_id,
+            )
+            action = (
+                "requirement_schedule.enabled"
+                if enabled
+                else "requirement_schedule.disabled"
+            )
+            self._enqueue_audit_event(
+                c, self._audit_event(action, actor, schedule_id, created_at=now_utc)
+            )
             connection.commit()
             self._drain_best_effort()
-            return {"schedule_id": schedule_id, "enabled": bool(enabled), "next_run_at": due}
-        except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
-        finally: connection.close()
+            return {
+                "schedule_id": schedule_id,
+                "enabled": bool(enabled),
+                "next_run_at": due,
+            }
+        except Exception as exc:
+            connection.rollback()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
 
     def list_pending_audit_events(self, limit: int) -> tuple[ScheduleAuditEvent, ...]:
         limit = max(1, min(int(limit), 100))
@@ -2518,16 +2729,84 @@ class ScheduleStore:
             run_state = "completed"
         return MaterializedRun({"batch_run_id": run_id, "phase1a_batch_id": phase1a_batch_id, "schedule_id": schedule_id, "schedule_version_id": version_id, "snapshot_id": snapshot_id, "state": run_state, "selected_count": selected, "skipped_count": skipped}, tuple(items))
 
-    def materialize_run(self, *, schedule_id: str, trigger: TriggerIdentity, now_utc: datetime, actor: str) -> MaterializedRun:
+    def materialize_run(
+        self,
+        *,
+        schedule_id: str,
+        trigger: TriggerIdentity,
+        now_utc: datetime,
+        actor: str,
+    ) -> MaterializedRun:
+        return self._materialize_run(
+            schedule_id=schedule_id,
+            trigger=trigger,
+            now_utc=now_utc,
+            actor=actor,
+            guard_low_level=False,
+        )
+
+    def guarded_materialize_run(
+        self,
+        *,
+        schedule_id: str,
+        trigger: TriggerIdentity,
+        now_utc: datetime,
+        actor: str,
+    ) -> MaterializedRun:
+        return self._materialize_run(
+            schedule_id=schedule_id,
+            trigger=trigger,
+            now_utc=now_utc,
+            actor=actor,
+            guard_low_level=True,
+        )
+
+    def _materialize_run(
+        self,
+        *,
+        schedule_id: str,
+        trigger: TriggerIdentity,
+        now_utc: datetime,
+        actor: str,
+        guard_low_level: bool,
+    ) -> MaterializedRun:
         connection = self._connect()
         try:
-            c = connection.cursor(); c.execute(f"SELECT active_version_id FROM {self.t}.[requirement_schedules] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?", schedule_id); schedule = c.fetchone()
-            if not schedule or not schedule[0]: raise KeyError("schedule_not_found")
-            c.execute(f"SELECT run_policy,status FROM {self.t}.[requirement_schedule_versions] WITH (UPDLOCK,HOLDLOCK) WHERE schedule_version_id=?", schedule[0]); version = c.fetchone()
-            if not version or version[1] != "approved": raise ValueError("schedule_version_not_approved")
-            result = self._materialize_locked(c, schedule_id, schedule[0], version[0], trigger, now_utc, actor); connection.commit(); return result
-        except Exception as exc: connection.rollback(); raise _safe_error(exc) from exc
-        finally: connection.close()
+            c = connection.cursor()
+            if guard_low_level:
+                self._guard_low_level_schedule_mutation_locked(c, schedule_id)
+            c.execute(
+                f"SELECT active_version_id FROM {self.t}.[requirement_schedules] "
+                f"WITH (UPDLOCK,HOLDLOCK) WHERE schedule_id=?",
+                schedule_id,
+            )
+            schedule = c.fetchone()
+            if not schedule or not schedule[0]:
+                raise KeyError("schedule_not_found")
+            c.execute(
+                f"SELECT run_policy,status FROM {self.t}.[requirement_schedule_versions] "
+                f"WITH (UPDLOCK,HOLDLOCK) WHERE schedule_version_id=?",
+                schedule[0],
+            )
+            version = c.fetchone()
+            if not version or version[1] != "approved":
+                raise ValueError("schedule_version_not_approved")
+            result = self._materialize_locked(
+                c,
+                schedule_id,
+                schedule[0],
+                version[0],
+                trigger,
+                now_utc,
+                actor,
+            )
+            connection.commit()
+            return result
+        except Exception as exc:
+            connection.rollback()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
 
     @staticmethod
     def _prove_lease(cursor, table: str, lease: LeaseProof) -> datetime:

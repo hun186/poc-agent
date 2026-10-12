@@ -22,7 +22,7 @@ def _error(exc: Exception) -> HTTPException:
     code = str(exc.args[0] if exc.args else exc).split(":", 1)[0]
     if isinstance(exc, KeyError): status = 404
     elif code == "source_path_outside_allowed_root": status = 403
-    elif code in {"stale_source_version", "source_version_anomaly"}: status = 409
+    elif code in {"stale_source_version", "source_version_anomaly", "requirement_product_owned_source"}: status = 409
     elif code in {"source_unavailable", "sql_read_error"}: status = 503
     elif code == "persistence_error": status = 500
     elif isinstance(exc, (ValueError, PermissionError, FileNotFoundError)): status = 400
@@ -61,7 +61,7 @@ def create_source(payload: SourceCreate, service=Depends(requirement_service), u
 @router.patch("/v1/requirement-sources/{source_id}")
 def patch_source(source_id: str, payload: SourcePatch, service=Depends(requirement_service), user: AuthUser = Depends(require_db_operator)):
     if payload.enabled is not None: _require_activation_privilege(user, "source")
-    try: result = service.store.patch_source(source_id, user.username, **payload.model_dump(exclude_none=True, mode="json"))
+    try: result = service.store.guarded_patch_source(source_id, user.username, **payload.model_dump(exclude_none=True, mode="json"))
     except Exception as exc: raise _error(exc) from exc
     _audit("requirement.source.updated", user, source_id=source_id); return result
 
@@ -106,7 +106,7 @@ async def preview(source_id: str, profile_version_id: str | None = Query(None), 
 @router.post("/v1/requirement-sources/{source_id}/import")
 async def commit(source_id: str, file: UploadFile | None = File(None), service=Depends(requirement_service), user: AuthUser = Depends(require_db_operator)):
     content, filename = await _upload(file)
-    try: result = service.commit(source_id, actor=user.username, upload_bytes=content, upload_filename=filename)
+    try: result = service.commit_low_level(source_id, actor=user.username, upload_bytes=content, upload_filename=filename)
     except Exception as exc:
         _audit("requirement.import.failed", user, source_id=source_id, reason_code=str(exc).split(":", 1)[0]); raise _error(exc) from exc
     _audit("requirement.import.committed" if result["status"] == "committed" else "requirement.import.failed", user, source_id=source_id, import_run_id=result["import_run_id"]); return result

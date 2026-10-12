@@ -698,3 +698,100 @@ def test_expected_profile_lock_rejects_active_version_switch():
             expected_profile_version_id="pv-1",
             expected_profile_sha256="a" * 64,
         )
+
+class ProductSourceFenceCursor:
+    def __init__(self, *, task=False, reservation=False):
+        self.task = task
+        self.reservation = reservation
+        self.calls = []
+        self.last = ""
+
+    def execute(self, sql, *params):
+        self.calls.append((sql, params))
+        self.last = sql
+        return self
+
+    def fetchone(self):
+        if "requirement_product_tasks" in self.last:
+            return ("task-1",) if self.task else None
+        if "requirement_product_requests" in self.last:
+            return ("preq-1",) if self.reservation else None
+        return None
+
+
+@pytest.mark.parametrize(
+    "task,reservation",
+    [(True, False), (False, True)],
+)
+def test_requirement_source_guard_covers_task_and_provisioning_reservation(
+    task, reservation
+):
+    store = RequirementStore(
+        ScriptedRegistry(), "control", schedule_schema="sra_schedule"
+    )
+    cursor = ProductSourceFenceCursor(task=task, reservation=reservation)
+
+    with pytest.raises(ValueError, match="requirement_product_owned_source"):
+        store._guard_low_level_source_mutation_locked(cursor, "src-1")
+
+    sql = [statement for statement, _ in cursor.calls]
+    assert "[sra_schedule].[requirement_product_tasks]" in sql[0]
+    assert "UPDLOCK,HOLDLOCK" in sql[0]
+    if reservation:
+        assert len(sql) == 2
+        assert "operation='task_create'" in sql[1]
+        assert "state IN" not in sql[1]
+
+
+def test_guarded_patch_source_fences_before_requirement_update(monkeypatch):
+    connection = ScriptedConnection()
+    store = RequirementStore(
+        ScriptedRegistry(connection), "control", schedule_schema="sra_schedule"
+    )
+
+    def deny(cursor, source_id):
+        assert cursor is connection.cursor_value
+        assert source_id == "source-1"
+        raise ValueError("requirement_product_owned_source")
+
+    monkeypatch.setattr(store, "_guard_low_level_source_mutation_locked", deny)
+
+    with pytest.raises(ValueError, match="requirement_product_owned_source"):
+        store.guarded_patch_source("source-1", "operator", name="blocked")
+
+    assert connection.rollbacks == 1
+    assert connection.commits == 0
+    assert not any(
+        sql.lstrip().upper().startswith("UPDATE")
+        for sql, _ in connection.cursor_value.calls
+    )
+
+
+def test_guarded_import_fences_before_requirement_persistence(monkeypatch):
+    connection = ScriptedConnection()
+    store = RequirementStore(
+        ScriptedRegistry(connection), "control", schedule_schema="sra_schedule"
+    )
+
+    def deny(cursor, source_id):
+        assert cursor is connection.cursor_value
+        assert source_id == "source-1"
+        raise ValueError("requirement_product_owned_source")
+
+    monkeypatch.setattr(store, "_guard_low_level_source_mutation_locked", deny)
+
+    with pytest.raises(ValueError, match="requirement_product_owned_source"):
+        store.guarded_commit_candidate(
+            _source(),
+            _version(),
+            _acquired(),
+            _candidate(sample_row()),
+            "operator",
+        )
+
+    assert connection.rollbacks == 1
+    assert connection.commits == 0
+    assert not any(
+        sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
+        for sql, _ in connection.cursor_value.calls
+    )
