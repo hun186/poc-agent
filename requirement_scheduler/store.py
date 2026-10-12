@@ -55,6 +55,7 @@ def _safe_error(exc: Exception) -> Exception:
         "requirement_task_conflict", "requirement_task_state_invalid",
         "requirement_task_update_incomplete", "requirement_task_version_invalid",
         "requirement_product_owned_schedule",
+        "requirement_product_input_incomplete",
     }: return exc
     return RuntimeError("persistence_error")
 
@@ -1165,6 +1166,211 @@ class ScheduleStore:
         if not isinstance(outcome, dict):
             raise RuntimeError("persistence_error")
         return outcome
+
+    def reserve_product_input_replacement(
+        self,
+        *,
+        task_id: str,
+        principal_kind: str,
+        principal_id: str,
+        idempotency_key: str,
+        request_sha256: str,
+        now_utc: datetime,
+    ) -> dict[str, Any]:
+        """Reserve an immutable source snapshot CAS anchor and import identities."""
+        if (
+            not task_id or principal_kind != "user" or not principal_id
+            or len(principal_id) > 128 or not idempotency_key
+            or len(idempotency_key) > 128 or len(request_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in request_sha256)
+        ):
+            raise ValueError("requirement_product_request_invalid")
+        connection = self._connect()
+        try:
+            c = connection.cursor()
+            c.execute(
+                f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
+                f"FROM {self.t}.[requirement_product_requests] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE principal_kind=? AND principal_id=? AND operation='input_replace' AND idempotency_key=?",
+                principal_kind, principal_id, idempotency_key,
+            )
+            existing = c.fetchone()
+            if existing is not None:
+                result = self._product_request_dict(existing)
+                if result["request_sha256"] != request_sha256:
+                    raise ValueError("requirement_idempotency_conflict")
+                connection.commit()
+                return result
+
+            c.execute(
+                f"SELECT task_id,schedule_id,source_id,product_state "
+                f"FROM {self.t}.[requirement_product_tasks] WITH (UPDLOCK,HOLDLOCK) WHERE task_id=?",
+                task_id,
+            )
+            task = c.fetchone()
+            if task is None:
+                raise KeyError("requirement_task_not_found")
+            if task[3] == "provisioning":
+                raise ValueError("requirement_task_provisioning")
+            if task[3] not in {"active", "disabled"}:
+                raise ValueError("requirement_product_task_conflict")
+            c.execute(
+                f"SELECT active_snapshot_id FROM [{self.requirement_schema}].[requirement_sets] "
+                f"WITH (UPDLOCK,HOLDLOCK) WHERE source_id=?",
+                task[2],
+            )
+            set_row = c.fetchone()
+            if set_row is None or not set_row[0]:
+                raise RuntimeError("persistence_error")
+            base_snapshot_id = set_row[0]
+            request_id, run_id, snapshot_id = _id("preq"), _id("run"), _id("snap")
+            c.execute(
+                f"INSERT INTO {self.t}.[requirement_product_requests]("
+                "request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,"
+                "task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,"
+                "batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,"
+                "created_at,updated_at,completed_at"
+                ") VALUES (?,?,?,?,?,?,'reserved',?,?,?,?,?,NULL,NULL,NULL,NULL,?,NULL,NULL,?,?,NULL)",
+                request_id, principal_kind, principal_id, "input_replace",
+                idempotency_key, request_sha256, task_id, task[2], run_id,
+                snapshot_id, task[1], base_snapshot_id, now_utc, now_utc,
+            )
+            connection.commit()
+            return {
+                "request_id": request_id, "principal_kind": principal_kind,
+                "principal_id": principal_id, "operation": "input_replace",
+                "idempotency_key": idempotency_key, "request_sha256": request_sha256,
+                "state": "reserved", "task_id": task_id, "source_id": task[2],
+                "import_run_id": run_id, "snapshot_id": snapshot_id,
+                "schedule_id": task[1], "schedule_version_id": None,
+                "batch_run_id": None, "base_task_revision": None,
+                "result_task_revision": None, "base_snapshot_id": base_snapshot_id,
+                "safe_result_json": None, "safe_result": None, "error_code": None,
+                "created_at": now_utc, "updated_at": now_utc, "completed_at": None,
+            }
+        except Exception as exc:
+            connection.rollback()
+            if _is_unique_key_conflict(exc):
+                read_connection = self._connect()
+                try:
+                    c = read_connection.cursor()
+                    c.execute(
+                        f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
+                        f"FROM {self.t}.[requirement_product_requests] "
+                        f"WHERE principal_kind=? AND principal_id=? AND operation='input_replace' AND idempotency_key=?",
+                        principal_kind, principal_id, idempotency_key,
+                    )
+                    raced = c.fetchone()
+                    if raced is None:
+                        raise RuntimeError("persistence_error")
+                    result = self._product_request_dict(raced)
+                    if result["request_sha256"] != request_sha256:
+                        raise ValueError("requirement_idempotency_conflict")
+                    return result
+                except Exception as read_exc:
+                    raise _safe_error(read_exc) from read_exc
+                finally:
+                    read_connection.close()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
+
+    def mark_product_input_replacement_in_progress(
+        self, request_id: str, *, now_utc: datetime
+    ) -> None:
+        connection = self._connect()
+        try:
+            c = connection.cursor()
+            c.execute(
+                f"UPDATE {self.t}.[requirement_product_requests] "
+                f"SET state='in_progress',updated_at=? "
+                f"WHERE request_id=? AND operation='input_replace' "
+                f"AND state IN ('reserved','failed_recoverable')",
+                now_utc, request_id,
+            )
+            c.execute(
+                f"SELECT state FROM {self.t}.[requirement_product_requests] "
+                f"WITH (UPDLOCK,HOLDLOCK) WHERE request_id=? AND operation='input_replace'",
+                request_id,
+            )
+            row = c.fetchone()
+            if row is None:
+                raise KeyError("requirement_product_request_invalid")
+            if row[0] not in {"in_progress", "succeeded"}:
+                raise ValueError("requirement_product_request_terminal")
+            connection.commit()
+        except Exception as exc:
+            connection.rollback()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
+
+    def complete_product_input_replacement(
+        self, *, request_id: str, task_id: str, now_utc: datetime,
+    ) -> dict[str, Any]:
+        """Finalize ledger only after proving committed import IDs, including delayed replay."""
+        connection = self._connect()
+        try:
+            c = connection.cursor()
+            c.execute(
+                f"SELECT request_id,principal_kind,principal_id,operation,idempotency_key,request_sha256,state,task_id,source_id,import_run_id,snapshot_id,schedule_id,schedule_version_id,batch_run_id,base_task_revision,result_task_revision,base_snapshot_id,safe_result_json,error_code,created_at,updated_at,completed_at "
+                f"FROM {self.t}.[requirement_product_requests] WITH (UPDLOCK,HOLDLOCK) "
+                f"WHERE request_id=? AND operation='input_replace'",
+                request_id,
+            )
+            row = c.fetchone()
+            if row is None:
+                raise KeyError("requirement_product_request_invalid")
+            request = self._product_request_dict(row)
+            if request["task_id"] != task_id:
+                raise ValueError("requirement_product_request_invalid")
+            if request["state"] == "succeeded":
+                result = request["safe_result"]
+                if not isinstance(result, dict):
+                    raise RuntimeError("persistence_error")
+                connection.commit()
+                return result
+            if request["state"] == "failed_terminal":
+                raise ValueError(request["error_code"] or "requirement_product_request_terminal")
+            if request["state"] not in {"reserved", "in_progress", "failed_recoverable"}:
+                raise ValueError("requirement_product_request_invalid")
+
+            c.execute(
+                f"SELECT r.source_id,r.status,s.snapshot_id "
+                f"FROM [{self.requirement_schema}].[import_runs] r WITH (HOLDLOCK) "
+                f"LEFT JOIN [{self.requirement_schema}].[requirement_set_snapshots] s WITH (HOLDLOCK) "
+                f"ON s.import_run_id=r.import_run_id WHERE r.import_run_id=?",
+                request["import_run_id"],
+            )
+            imported = tuple(c.fetchall())
+            if len(imported) != 1 or imported[0] != (
+                request["source_id"], "committed", request["snapshot_id"]
+            ):
+                raise ValueError("requirement_product_input_incomplete")
+            result = {
+                "task_id": request["task_id"],
+                "source_id": request["source_id"],
+                "import_run_id": request["import_run_id"],
+                "snapshot_id": request["snapshot_id"],
+                "status": "committed",
+            }
+            c.execute(
+                f"UPDATE {self.t}.[requirement_product_requests] "
+                f"SET state='succeeded',safe_result_json=?,error_code=NULL,"
+                f"updated_at=?,completed_at=? WHERE request_id=? "
+                f"AND state IN ('reserved','in_progress','failed_recoverable')",
+                json.dumps(result, separators=(",", ":"), sort_keys=True),
+                now_utc, now_utc, request_id,
+            )
+            if getattr(c, "rowcount", 1) != 1:
+                raise ValueError("requirement_product_request_invalid")
+            connection.commit()
+            return result
+        except Exception as exc:
+            connection.rollback()
+            raise _safe_error(exc) from exc
+        finally:
+            connection.close()
 
     def reserve_product_task_version_activation(
         self,

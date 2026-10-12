@@ -96,3 +96,9 @@
 - 2026-10-11 P1.5A merged in PR #285 at `main@69a873fd94be8dd34a808d59375b7e9f2f7522d1`.
 - 2026-10-11 P1.6 atomic low-level Product ownership fences are implemented on `feat/requirement-product-ownership-fences-p1-6`: five Schedule mutations and two Requirement-source mutations now use same-transaction ownership checks covering both provisioning reservations and steady Product Tasks. Exact-head Hosted Codex review/check evidence is required before merge.
 - After P1.6, continue with P1.7 input replacement snapshot CAS; do not fold P1.7 or Product HTTP/UI work into this PR.
+
+## 2026-10-12 Requirement Product implementation
+
+- P1.6 low-level Product ownership fences merged as PR #286 (`30071cb3b7b732b2875a35c6929b430693029905`).
+- P1.7 input-replacement base-snapshot CAS is implemented on `feat/requirement-product-input-replacement-p1-7`, pending exact-head Hosted Codex review, regression verification and explicit merge authorization.
+- P2 Product Task HTTP router / Task Center, P2.3 run-trigger admission, and deployment SQL concurrency/real E2E acceptance remain later gates. Do not mix them into P1.7.

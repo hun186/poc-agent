@@ -202,3 +202,34 @@ def test_preallocated_terminal_replay_validates_expected_profile_before_prepare(
     )
 
     assert result["snapshot_id"] == "snap-1"
+
+
+def test_delayed_preallocated_replay_after_newer_active_snapshot_skips_prepare(monkeypatch):
+    class SnapshotProgressStore:
+        active = "S2"
+
+        def recover_preallocated_import_result(self, source_id, import_run_id, snapshot_id):
+            assert self.active == "S2"
+            assert (source_id, import_run_id, snapshot_id) == (
+                "src-1", "run-A", "S1"
+            )
+            return {
+                "import_run_id": "run-A", "snapshot_id": "S1",
+                "status": "committed", "accepted_count": 1, "rejected_count": 0,
+            }
+
+    store = SnapshotProgressStore()
+    service = RequirementImportService(store)
+    monkeypatch.setattr(
+        service, "_prepare",
+        lambda *_args, **_kwargs: pytest.fail(
+            "delayed Product replay must not normalize against newer S2 versions"
+        ),
+    )
+    replay = service.commit(
+        "src-1", actor="alice", import_run_id="run-A", snapshot_id="S1",
+        expected_base_snapshot_id="S0",
+        upload_bytes=b"obsolete-first-input", upload_filename="old.json",
+    )
+    assert replay["snapshot_id"] == "S1"
+    assert store.active == "S2"

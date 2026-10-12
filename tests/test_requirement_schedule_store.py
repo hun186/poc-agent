@@ -1852,3 +1852,168 @@ def test_schedule_ownership_guard_covers_task_and_provisioning_reservation(
         assert len(sql) == 2
         assert "operation='task_create'" in sql[1]
         assert "state IN" not in sql[1]
+
+
+class InputReplacementCursor:
+    def __init__(self, *, provisioning=False, existing=None, imported=None):
+        self.provisioning = provisioning
+        self.existing = existing
+        self.imported = imported
+        self.calls = []
+        self.sql = ""
+        self.rowcount = 1
+
+    def execute(self, sql, *params):
+        self.sql = sql
+        self.calls.append((sql, params))
+        return self
+
+    def fetchone(self):
+        if "operation='input_replace' AND idempotency_key=?" in self.sql:
+            return self.existing
+        if "FROM [sra_schedule].[requirement_product_tasks]" in self.sql:
+            return ("task-1", "sch-1", "src-1",
+                    "provisioning" if self.provisioning else "active")
+        if "FROM [sra_requirement].[requirement_sets]" in self.sql:
+            return ("snap-0",)
+        if "WHERE request_id=? AND operation='input_replace'" in self.sql:
+            return ("in_progress",)
+        return None
+
+    def fetchall(self):
+        if "FROM [sra_requirement].[import_runs]" in self.sql:
+            return [self.imported] if self.imported else []
+        return []
+
+
+class InputReplacementConnection:
+    def __init__(self, cursor):
+        self.value = cursor
+        self.commits = self.rollbacks = self.closes = 0
+
+    def cursor(self):
+        return self.value
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closes += 1
+
+
+def _input_replacement_request_row(**changes):
+    values = {
+        "request_id": "preq-A", "principal_kind": "user",
+        "principal_id": "alice", "operation": "input_replace",
+        "idempotency_key": "A", "request_sha256": "a" * 64,
+        "state": "in_progress", "task_id": "task-1",
+        "source_id": "src-1", "import_run_id": "run-A",
+        "snapshot_id": "snap-A", "schedule_id": "sch-1",
+        "schedule_version_id": None, "batch_run_id": None,
+        "base_task_revision": None, "result_task_revision": None,
+        "base_snapshot_id": "snap-0", "safe_result_json": None,
+        "error_code": None, "created_at": datetime(2026, 10, 12, tzinfo=timezone.utc),
+        "updated_at": datetime(2026, 10, 12, tzinfo=timezone.utc),
+        "completed_at": None,
+    }
+    values.update(changes)
+    return tuple(values.values())
+
+
+@pytest.mark.parametrize("provisioning", [False, True])
+def test_input_reservation_locks_task_and_snapshot_in_one_transaction(provisioning):
+    cursor = InputReplacementCursor(provisioning=provisioning)
+    connection = InputReplacementConnection(cursor)
+    store = ScheduleStore(LowLevelFenceRegistry(connection), "control")
+
+    def reserve():
+        return store.reserve_product_input_replacement(
+            task_id="task-1", principal_kind="user", principal_id="alice",
+            idempotency_key="A", request_sha256="a" * 64,
+            now_utc=datetime(2026, 10, 12, tzinfo=timezone.utc),
+        )
+
+    if provisioning:
+        with pytest.raises(ValueError, match="requirement_task_provisioning"):
+            reserve()
+        assert connection.rollbacks == 1
+        assert connection.commits == 0
+        assert not any("INSERT INTO" in sql for sql, _ in cursor.calls)
+    else:
+        request = reserve()
+        assert request["base_snapshot_id"] == "snap-0"
+        assert request["import_run_id"].startswith("run_")
+        assert request["snapshot_id"].startswith("snap_")
+        sqls = [sql for sql, _ in cursor.calls]
+        task_lock = next(i for i, s in enumerate(sqls)
+                         if "FROM [sra_schedule].[requirement_product_tasks]" in s)
+        set_lock = next(i for i, s in enumerate(sqls)
+                        if "FROM [sra_requirement].[requirement_sets]" in s)
+        insert = next(i for i, s in enumerate(sqls)
+                      if "INSERT INTO [sra_schedule].[requirement_product_requests]" in s)
+        assert task_lock < set_lock < insert
+        assert "UPDLOCK,HOLDLOCK" in sqls[task_lock]
+        assert "UPDLOCK,HOLDLOCK" in sqls[set_lock]
+        assert cursor.calls[insert][1][11] == "snap-0"
+        assert connection.commits == 1
+    assert connection.closes == 1
+
+
+def test_input_reservation_replay_uses_original_ids_before_task_snapshot_lookup():
+    original = _input_replacement_request_row()
+    cursor = InputReplacementCursor(existing=original)
+    connection = InputReplacementConnection(cursor)
+    store = ScheduleStore(LowLevelFenceRegistry(connection), "control")
+    replay = store.reserve_product_input_replacement(
+        task_id="task-1", principal_kind="user", principal_id="alice",
+        idempotency_key="A", request_sha256="a" * 64,
+        now_utc=datetime(2026, 10, 12, tzinfo=timezone.utc),
+    )
+    assert replay["base_snapshot_id"] == "snap-0"
+    assert replay["snapshot_id"] == "snap-A"
+    assert replay["import_run_id"] == "run-A"
+    assert len(cursor.calls) == 1
+    assert connection.commits == 1
+
+
+def test_input_complete_proves_exact_import_identity_not_current_active_snapshot():
+    class CompletionCursor(InputReplacementCursor):
+        def fetchone(self):
+            if "WHERE request_id=? AND operation='input_replace'" in self.sql:
+                return _input_replacement_request_row()
+            return super().fetchone()
+
+    cursor = CompletionCursor(imported=("src-1", "committed", "snap-A"))
+    connection = InputReplacementConnection(cursor)
+    store = ScheduleStore(LowLevelFenceRegistry(connection), "control")
+    result = store.complete_product_input_replacement(
+        request_id="preq-A", task_id="task-1",
+        now_utc=datetime(2026, 10, 12, tzinfo=timezone.utc),
+    )
+    assert result["snapshot_id"] == "snap-A"
+    assert result["status"] == "committed"
+    assert connection.commits == 1
+    assert not any("active_snapshot_id" in sql for sql, _ in cursor.calls)
+    assert any("safe_result_json" in sql for sql, _ in cursor.calls)
+
+
+def test_input_complete_does_not_finalize_uncommitted_import():
+    class CompletionCursor(InputReplacementCursor):
+        def fetchone(self):
+            if "WHERE request_id=? AND operation='input_replace'" in self.sql:
+                return _input_replacement_request_row()
+            return super().fetchone()
+
+    cursor = CompletionCursor(imported=None)
+    connection = InputReplacementConnection(cursor)
+    store = ScheduleStore(LowLevelFenceRegistry(connection), "control")
+    with pytest.raises(ValueError, match="requirement_product_input_incomplete"):
+        store.complete_product_input_replacement(
+            request_id="preq-A", task_id="task-1",
+            now_utc=datetime(2026, 10, 12, tzinfo=timezone.utc),
+        )
+    assert connection.commits == 0
+    assert connection.rollbacks == 1

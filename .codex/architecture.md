@@ -145,3 +145,9 @@
 - Public low-level Requirement-source PATCH/import use the same pattern across the configured Schedule schema and Requirement schema in the shared Requirement control database. Requirement-only deployments leave `schedule_schema=None`, so they do not query Product tables that are not enabled.
 - Product orchestration deliberately continues to call the existing internal Requirement/Schedule methods. There is no caller-supplied bypass flag on public HTTP routes.
 - A Product `task_create` reservation permanently claims its preallocated `schedule_id` and `source_id`; the fence does not discard ownership merely because the request later becomes terminal, since a partially created durable resource may remain.
+
+## 2026-10-12 P1.7 snapshot replacement authority
+
+- Internal Product `input_replace` is a Schedule-schema request-ledger saga coupled to the existing Phase 1B Requirement Import authority; it does not introduce an importer, worker, queue, or new schema revision.
+- The reservation transaction locks the Product Task (rejecting provisioning) and then its Requirement set, captures the active snapshot as an immutable `base_snapshot_id`, and stores stable replacement import/snapshot IDs. Independent reservations may share the same base; the Phase 1B Requirement-set row lock and CAS allow at most one winner.
+- The Requirement Import service always attempts exact-ID terminal recovery before `_prepare()`. Only a previously unseen import executes normalization and snapshot CAS. A later Product-ledger completion verifies the committed import/snapshot IDs without requiring the snapshot to remain active, supporting delayed response recovery after a newer replacement.

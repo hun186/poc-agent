@@ -102,3 +102,11 @@
 - Existing low-level Schedule read/history endpoints remain readable, but the public mutation endpoints for rename, recurring enable/disable, Schedule Version creation, Schedule Version approval, and manual Run materialization return HTTP 409 `requirement_product_owned_schedule` when the target identity is Product-reserved/owned.
 - Existing Requirement source GET/list/preview remain unchanged. Public source PATCH and import return HTTP 409 `requirement_product_owned_source` for Product-reserved/owned source identities.
 - These responses are enforced transactionally in the stores, not by a router read/precheck. Product internal orchestration uses separate reviewed internal methods and is not subject to the public low-level fence.
+
+## 2026-10-12 Requirement Product P1.7 internal input replacement
+
+- P1.7 provides an internal Product service entrypoint `replace_task_input(...)`; HTTP `POST /v1/requirement-tasks/{task_id}/input` remains deferred to P2.
+- Idempotent `input_replace` reservations persist the Product Task/source identity, original Requirement `base_snapshot_id`, and server-preallocated `import_run_id`/`snapshot_id`. Provisioning Tasks cannot reserve replacement requests.
+- Requirement Import reuses its existing preallocated-ID terminal recovery **before** parsing or classification and its same-transaction `expected_base_snapshot_id` CAS for the first import attempt. A stale uncommitted reservation terminally fails with `requirement_input_conflict`, without moving the active snapshot backward.
+- Success is recorded only after proving the exact committed import/snapshot pair. A previously committed replacement can be replayed after later replacements without changing the latest active snapshot. Exposed results contain bounded IDs/status only; raw uploaded bytes, paths and prompt contents are not saved in the Product request ledger.
+- Existing low-level source import remains subject to the P1.6 ownership fence; Product's internal authority route remains distinct.
