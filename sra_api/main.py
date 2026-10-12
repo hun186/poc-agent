@@ -32,6 +32,7 @@ from api.services.report_job_store import ReportJobStore
 from api.services.report_job_worker import ReportJobWorker
 from api.security.signed_urls import validate_signing_config
 from api.services.auth_support import PRODUCTION_ENVS
+from sra_api.middleware.product_preview_body_limit import ProductPreviewBodyLimitMiddleware
 from shared.runtime_provenance import requirement_sql_registry_path
 
 @asynccontextmanager
@@ -108,6 +109,10 @@ app.add_middleware(
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-OpenWebUI-Chat-Id", "X-Conversation-Id", "X-Session-Id"],
     )
+
+
+# Enforce raw-body limits before any multipart parser can spool uploads.
+app.add_middleware(ProductPreviewBodyLimitMiddleware)
 
 
 @app.get("/", include_in_schema=False)
