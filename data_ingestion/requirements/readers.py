@@ -6,6 +6,9 @@ import json
 from typing import Any
 
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
+from zipfile import BadZipFile
+from xml.etree.ElementTree import ParseError
 
 from .models import ImportProfileDocument
 
@@ -115,6 +118,23 @@ def read_bytes(content: bytes, filename: str, profile: ImportProfileDocument, *,
     expected = {"xlsx": "xlsx", "csv": "csv", "json": "json"}.get(profile.format)
     if expected is None or extension != expected:
         raise ValueError("source_format_invalid")
-    if extension == "xlsx": return read_xlsx_rows(content, profile, max_rows=max_rows)
+    if extension == "xlsx":
+        try:
+            return read_xlsx_rows(content, profile, max_rows=max_rows)
+        except (BadZipFile, InvalidFileException, KeyError, IndexError,
+                EOFError, UnicodeError, OSError, ParseError) as exc:
+            # Failures from the *upload parser* are invalid user input,
+            # not a missing Product/Run identity or backend persistence error.
+            # This boundary is intentionally specific to XLSX decoding.
+            raise ValueError("source_format_invalid") from exc
+        except ValueError as exc:
+            # Preserve stable profile/preview-limit validation codes. Other
+            # openpyxl parsing ValueErrors indicate malformed upload content.
+            if str(exc).split(":", 1)[0] in {
+                "profile_invalid", "source_format_invalid",
+                "requirement_preview_too_large",
+            }:
+                raise
+            raise ValueError("source_format_invalid") from exc
     if extension == "csv": return read_csv_rows(content, max_rows=max_rows)
     return read_json_rows(content, max_rows=max_rows)
