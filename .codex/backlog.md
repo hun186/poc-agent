@@ -107,3 +107,5 @@
 - Cross-Task identical/semantically-similar Requirement execution deduplication is NOT supported by v1 design or P2.1. Requires separate reviewed semantics of input identity, model/config/time window, ownership/ACL, execution freshness, sharing consent and audit lineage; do not silently reuse or cross-leak another Task's output.
 
 - 2026-10-12 PR #288 Codex review could not execute because the code-review usage limit was reached. Review gate is blocked; do not merge solely on Vercel. After review capacity returns, request one current-head review and handle findings, then continue P2.2/P2.3 separate from Task Center UI.
+
+- 2026-10-12 P2.1 PR #288 exact-head Codex review finally ran (1 P1, 5 P2). A bounded hardening slice is now implemented on the existing branch: request body cap before multipart spooling, preview size/row/result bounds, run item pagination, consistent joined Task/Schedule reads and corrected invariant HTTP errors. Pending: verify all six findings at new exact head, exact-head Hosted checks, and authorized local/live SQL + E2E acceptance. P2.2/P2.3 and cross-Task sharing remain deferred.
