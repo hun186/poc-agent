@@ -143,3 +143,9 @@
 ## 2026-10-12 P2.1 fifth-review input-error refinement
 
 - The XLSX-only untrusted-upload parser boundary also normalizes openpyxl `TypeError` (for example malformed workbook `sheetId`) to HTTP 422 `source_format_invalid`. Unrelated Product presenter/store exceptions are not reclassified as client validation. Actual repository pytest and new exact-head review remain unverified.
+
+## 2026-10-12 P2.1 sixth-review decoded-cell limits
+
+- HTTP preview-only (`max_rows` supplied) CSV and JSON readers now also reject input with more than 128 columns/keys per row, 50,000 aggregate decoded cells, or 8 MiB decoded value/key bytes as `requirement_preview_too_large` (HTTP 422). CSV limits are checked before row dictionaries are appended; JSON is checked after its initial decode and before normalization. XLSX already had matching matrix bounds.
+- These caps complement the existing 5,000-row limit, 10 MiB uploaded-file limit, and Starlette 1 MiB direct JSON form-field limit; none alter full internal Phase 1B reads where `max_rows=None`.
+- Added sparse 128-column CSV matrix, 129-column CSV, wide JSON, and accepted small-input regressions. Actual repository pytest and exact-head Codex review remain unverified.
