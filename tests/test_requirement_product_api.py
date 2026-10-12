@@ -511,3 +511,51 @@ def test_application_registers_cors_outside_product_preview_body_limiter():
     assert source.index("app.add_middleware(ProductPreviewBodyLimitMiddleware)") < (
         source.index("app.add_middleware(\n        CORSMiddleware,")
     )
+
+
+def test_preview_rejects_sparse_wide_csv_before_materializing_rows():
+    from data_ingestion.requirements.readers import read_csv_rows
+
+    # 400 sparse rows x 128 headers exceed the shared 50,000-cell cap,
+    # although only one field on each row contains a value.
+    headers = [f"column_{index}" for index in range(128)]
+    records = [",".join(headers)]
+    records.extend(["value" + "," * 127] * 400)
+    content = ("\n".join(records) + "\n").encode("utf-8")
+    assert len(content) < 10 * 1024 * 1024
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        read_csv_rows(content, max_rows=5000)
+
+
+def test_preview_rejects_wide_csv_header_and_preserves_internal_reader():
+    from data_ingestion.requirements.readers import read_csv_rows
+
+    content = (",".join(f"c{i}" for i in range(129)) + "\n" +
+               ",".join("x" for _ in range(129)) + "\n").encode()
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        read_csv_rows(content, max_rows=5000)
+    internal_rows, _ = read_csv_rows(content)
+    assert len(internal_rows) == 1
+    assert len(internal_rows[0]) == 129
+
+
+def test_preview_rejects_wide_json_before_normalization():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    payload = [{f"c{i}": "x" for i in range(129)}]
+    content = json.dumps(payload).encode("utf-8")
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        read_json_rows(content, max_rows=5000)
+    internal_rows, _ = read_json_rows(content)
+    assert len(internal_rows[0]) == 129
+
+
+def test_preview_csv_and_json_cell_caps_accept_small_inputs():
+    from data_ingestion.requirements.readers import read_csv_rows, read_json_rows
+
+    csv_rows, csv_numbers = read_csv_rows(b"ITEMNO,TITLE\n1,Example\n", max_rows=5000)
+    assert csv_rows == [{"ITEMNO": "1", "TITLE": "Example"}]
+    assert csv_numbers == [2]
+    json_rows, json_numbers = read_json_rows(b'[{"ITEMNO": "1"}]', max_rows=5000)
+    assert json_rows == [{"ITEMNO": "1"}]
+    assert json_numbers == [1]
