@@ -123,3 +123,5 @@
 - 2026-10-12 P2.1 seventh review found JSON pre-decode amplification: whole-array `json.loads` before row checks. New HTTP-only JSON streaming element scanner with pre-element and post-decode bounds, plus regression coverage, is on original PR #288 branch. Require new exact-head review and runtime pytest/real SQL Server acceptance before merge; no P2.2 or cross-owner dedup in this PR.
 
 - 2026-10-12 P2.1 eighth review: fix two P2 JSON scanner bugs (Unicode code points vs UTF-8 bytes; invalid closing-brace array separator). Changes and regressions on PR #288, new exact-head Codex review/CI and actual pytest/SQL Server acceptance still needed before suggesting merge.
+
+- 2026-10-12 ninth P2.1 Codex round: isolate and classify invalid JSON Unicode surrogate escapes as source-format 422 at preview byte-accounting boundary; add nested/key/value regression and valid Unicode positive case. Re-review exact PR #288 head; actual pytest and real SQL Server acceptance still pending, no merge authorized.
