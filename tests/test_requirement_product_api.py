@@ -1,12 +1,16 @@
 """P2.1 Product API read/preview: RBAC, lifecycle hiding, safe projections."""
 import json
+from io import BytesIO
+from zipfile import ZipFile, ZIP_DEFLATED
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.routers.editor_dependencies import current_user
 from api.services.auth_store import AuthUser
 from sra_api.routers.requirement_tasks import product_service, router
+from sra_api.middleware.product_preview_body_limit import ProductPreviewBodyLimitMiddleware
 from sra_api.services.requirement_product_service import RequirementProductService
 
 
@@ -24,6 +28,22 @@ class ProductStore:
     def list_product_tasks(self, *, limit, offset):
         self.calls.append(("tasks", limit, offset))
         return [self.task] if offset == 0 else []
+
+    def _projection(self):
+        return {
+            **self.task, "schedule_name": "Monthly brief",
+            "schedule_enabled": True, "schedule_active_version_id": "version-1",
+            "schedule_next_run_at": None,
+        }
+
+    def list_product_task_projections(self, *, limit, offset):
+        self.calls.append(("tasks", limit, offset))
+        return [self._projection()] if offset == 0 and self.task["product_state"] != "provisioning" else []
+
+    def get_product_task_projection(self, task_id):
+        if task_id != self.task["task_id"] or self.task["product_state"] == "provisioning":
+            raise KeyError("requirement_task_not_found")
+        return self._projection()
 
     def get_product_task(self, task_id):
         if task_id != self.task["task_id"] or self.task["product_state"] == "provisioning":
@@ -50,15 +70,24 @@ class ProductStore:
         assert schedule_id == "schedule-1"
         return [{"batch_run_id": "run-1"}] if offset == 0 else []
 
-    def get_batch_run(self, *, schedule_id, batch_run_id):
+    def get_batch_run(self, *, schedule_id, batch_run_id, include_items=True):
         assert (schedule_id, batch_run_id) == ("schedule-1", "run-1")
-        return {
+        self.calls.append(("batch_run", include_items))
+        result = {
             "batch_run_id": batch_run_id, "schedule_id": schedule_id,
             "schedule_version_id": "version-1", "snapshot_id": "snapshot-1",
             "state": "handoff_pending", "trigger_type": "scheduled",
             "scheduled_for": None, "selected_count": 0, "skipped_count": 0,
-            "success_count": 0, "failure_count": 0, "items": [],
+            "success_count": 0, "failure_count": 0,
         }
+        if include_items:
+            result["items"] = []
+        return result
+
+    def list_batch_run_items(self, *, schedule_id, batch_run_id, limit, offset):
+        assert (schedule_id, batch_run_id) == ("schedule-1", "run-1")
+        self.calls.append(("items", limit, offset))
+        return []
 
 
 class PreviewService:
@@ -73,6 +102,7 @@ class PreviewService:
 def make_client(role="data_reader", *, store=None, preview=None):
     app = FastAPI()
     app.include_router(router)
+    app.add_middleware(ProductPreviewBodyLimitMiddleware)
     store = store or ProductStore()
     service = RequirementProductService(schedule_store=store)
     if preview is not None:
@@ -106,11 +136,14 @@ def test_reader_product_run_list_detail_and_items_use_safe_presenter():
     assert run["status"] == "queued"
     assert run["binding"]["snapshot_id"] == "snapshot-1"
     assert "trigger_request_id" not in json.dumps(run)
+    assert "items" not in run  # History/detail must not eagerly load Run Items.
     assert client.get("/v1/requirement-runs/run-1").json() == run
     assert client.get("/v1/requirement-tasks/task-1/runs").json()["items"] == [run]
-    assert client.get("/v1/requirement-runs/run-1/items").json() == {
-        "run_id": "run-1", "items": []
+    assert client.get("/v1/requirement-runs/run-1/items?limit=7&offset=3").json() == {
+        "run_id": "run-1", "items": [], "limit": 7, "offset": 3,
     }
+    assert ("items", 7, 3) in store.calls
+    assert all(not x[1] for x in store.calls if x[0] == "batch_run")
 
 
 def test_unfinalized_product_task_and_run_are_not_visible():
@@ -143,6 +176,8 @@ def test_preview_upload_and_direct_requirements_are_mutually_exclusive():
     assert uploaded.status_code == 200
     assert preview.calls[0]["upload_bytes"] == b"A,B\n1,2"
     assert preview.calls[0]["upload_filename"] == "requirements.csv"
+    assert preview.calls[0]["max_rows"] == 5000
+    assert preview.calls[0]["max_result_rows"] == 100
     direct = client.post(
         "/v1/requirement-task-previews",
         data={**data, "requirements_json": '[{"ITEMNO":"A"}]'},
@@ -193,7 +228,7 @@ def test_disabled_product_dependency_is_503_and_backend_secrets_are_never_return
     }
 
     class BrokenProductStore(ProductStore):
-        def list_product_tasks(self, *, limit, offset):
+        def list_product_task_projections(self, *, limit, offset):
             raise RuntimeError("ODBC password=secret")
 
     client, _ = make_client(store=BrokenProductStore())
@@ -207,6 +242,7 @@ def test_main_registration_and_safe_product_dependency_wiring():
     from pathlib import Path
     source = Path("sra_api/main.py").read_text(encoding="utf-8")
     assert "app.include_router(requirement_tasks.router)" in source
+    assert "app.add_middleware(ProductPreviewBodyLimitMiddleware)" in source
     assert "if app.state.requirement_import_service is not None:" in source
     assert "app.state.requirement_product_service = RequirementProductService(" in source
 
@@ -238,3 +274,77 @@ def test_store_product_query_guards_use_finalized_state_in_sql():
     assert calls[1][1] == (12, 8)
     assert calls[2][1] == ("run-hidden",)
     assert "JOIN" in calls[1][0] and "JOIN" in calls[2][0]
+
+
+def test_preview_body_is_rejected_before_multipart_spooling_even_without_auth():
+    client, _ = make_client(role=None)
+    response = client.post(
+        "/v1/requirement-task-previews",
+        content=b"abc",
+        headers={"content-type": "multipart/form-data; boundary=test",
+                 "content-length": str(12 * 1024 * 1024)},
+    )
+    assert response.status_code == 413
+    assert response.json() == {"detail": {"code": "requirement_preview_input_invalid"}}
+
+
+def test_direct_json_oversize_stable_rejection_for_urlencoded_input():
+    preview = PreviewService()
+    client, _ = make_client(role="db_operator", preview=preview)
+    response = client.post(
+        "/v1/requirement-task-previews",
+        data={"task": '{"profile_version_id":"pv"}',
+              "requirements_json": "x" * (1024 * 1024 + 1)},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "requirement_preview_input_invalid"
+    assert not preview.calls
+
+
+def test_preview_rejects_compressed_xlsx_bomb_before_decoding():
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("xl/worksheets/sheet1.xml", b"A" * (21 * 1024 * 1024))
+    service = RequirementProductService(requirement_import_service=object())
+    with pytest.raises(ValueError, match="requirement_preview_too_large"):
+        service.preview_input(
+            profile_version_id="p", upload_bytes=buffer.getvalue(),
+            upload_filename="compressed.xlsx", max_rows=5000, max_result_rows=100,
+        )
+
+
+def test_preview_csv_and_json_row_caps():
+    from data_ingestion.requirements.readers import read_csv_rows, read_json_rows
+    with pytest.raises(ValueError, match="requirement_preview_too_large"):
+        read_csv_rows(b"ITEMNO\\n1\\n2\\n", max_rows=1)
+    with pytest.raises(ValueError, match="requirement_preview_too_large"):
+        read_json_rows(b'[{"id":"1"},{"id":"2"}]', max_rows=1)
+
+
+def test_backend_value_error_is_not_reported_as_user_validation():
+    class InconsistentStore(ProductStore):
+        def list_product_task_projections(self, *, limit, offset):
+            raise ValueError("requirement_run_snapshot_binding_missing")
+    client, _ = make_client(store=InconsistentStore())
+    response = client.get("/v1/requirement-tasks")
+    assert response.status_code == 500
+    assert response.json() == {"detail": {"code": "persistence_error"}}
+
+
+def test_atomic_product_projection_queries_and_paged_run_items():
+    from requirement_scheduler.store import ScheduleStore
+    store = ScheduleStore(None, "unused")
+    calls = []
+    store._query = lambda sql, *args: calls.append((sql, args)) or []
+    assert store.list_product_task_projections(limit=6, offset=2) == []
+    with pytest.raises(KeyError, match="requirement_task_not_found"):
+        store.get_product_task_projection("hidden")
+    assert store.list_batch_run_items(
+        schedule_id="schedule-1", batch_run_id="run-1", limit=7, offset=3,
+    ) == []
+    assert all("JOIN" in sql for sql, _ in calls)
+    assert "product_state IN ('active','disabled')" in calls[0][0]
+    assert calls[0][1] == (2, 6)
+    assert calls[1][1] == ("hidden",)
+    assert "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY" in calls[2][0]
+    assert calls[2][1] == ("schedule-1", "run-1", 3, 7)
