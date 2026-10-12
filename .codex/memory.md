@@ -75,6 +75,6 @@
 
 ## 2026-10-12 Requirement Product P1.6 → P1.7 handoff
 
-- PR #286 P1.6 transactional low-level Schedule/source ownership fences merged to \`main@30071cb3b7b732b2875a35c6929b430693029905\` after clean Codex exact-head review and successful Hosted Vercel.
-- P1.7 work is scoped to internal Product input replacement: lifecycle-checked reservation with immutable \`base_snapshot_id\`, preallocated import/snapshot IDs, Phase 1B locked snapshot CAS, delayed committed replay before normalization, and bounded Product ledger finalization.
+- PR #286 P1.6 transactional low-level Schedule/source ownership fences merged to `main@30071cb3b7b732b2875a35c6929b430693029905` after clean Codex exact-head review and successful Hosted Vercel.
+- P1.7 work is scoped to internal Product input replacement: lifecycle-checked reservation with immutable `base_snapshot_id`, preallocated import/snapshot IDs, Phase 1B locked snapshot CAS, delayed committed replay before normalization, and bounded Product ledger finalization.
 - No Product HTTP routes or P1.7 deployment/live SQL Server acceptance are claimed; local pytest remains unavailable without direct Git transport. Retain P1.6 ownership fences and do not merge the P1.7 PR until explicit authorization.
