@@ -115,3 +115,5 @@
 - 2026-10-12 P2.1 third Codex review found three P2 concerns (XLSX total-cell resource bound, Run-list N+1 SQL, broken deferred artifacts link). Code and regressions updated on PR #288; next gates: exact-head Codex and hosted checks, runtime pytest, SQL Server large-history and two-connection concurrency acceptance. P2.2/3 and cross-operator result sharing remain outside this PR.
 
 - 2026-10-12 PR #288 round-four review: corrected two P2 findings (invalid XLSX parser errors and early-body-limit CORS headers), with regressions. Pending exact-head review, hosted checks and real runtime/SQL acceptance before proposing merge. Do not start P2.2 or cross-operator dedup as part of this review loop.
+
+- 2026-10-12 fifth Codex review on PR #288 exact head `6dbcf20` found a P2 malformed-XLSX parser TypeError → 500 gap. Narrow reader-boundary normalization plus XML-attribute regression added. Re-review the new exact head and validate actual pytest/SQL Server before merge; P2.2 and cross-operator dedup stay deferred.
