@@ -46,20 +46,20 @@ def _confined_file(config: dict[str, Any], allowed_roots: str | None) -> Path:
     return path
 
 
-def acquire_source(source: dict[str, Any], profile: ImportProfileDocument, *, upload_bytes: bytes | None = None, upload_filename: str | None = None, registry: SqlRegistry | None = None, allowed_roots: str | None = None) -> AcquiredSource:
+def acquire_source(source: dict[str, Any], profile: ImportProfileDocument, *, upload_bytes: bytes | None = None, upload_filename: str | None = None, registry: SqlRegistry | None = None, allowed_roots: str | None = None, max_rows: int | None = None) -> AcquiredSource:
     kind = SourceType(source["source_type"])
     config = validate_source_config(kind, source.get("source_config", {}))
     if kind == SourceType.MANUAL_UPLOAD:
         if upload_bytes is None or not upload_filename: raise ValueError("manual_upload_required")
         safe_name = Path(upload_filename).name
-        rows, numbers = read_bytes(upload_bytes, safe_name, profile)
+        rows, numbers = read_bytes(upload_bytes, safe_name, profile, max_rows=max_rows)
         fingerprint = canonical_sha256({"bytes_sha256": __import__("hashlib").sha256(upload_bytes).hexdigest()})
         return AcquiredSource(rows=rows, source_row_numbers=numbers, source_sha256=fingerprint, source_uri_display=safe_name)
     if upload_bytes is not None: raise ValueError("upload_not_allowed")
     if kind == SourceType.FILE_PATH:
         path = _confined_file(config, allowed_roots)
         content = path.read_bytes()
-        rows, numbers = read_bytes(content, path.name, profile)
+        rows, numbers = read_bytes(content, path.name, profile, max_rows=max_rows)
         return AcquiredSource(rows=rows, source_row_numbers=numbers, source_sha256=canonical_sha256({"bytes_sha256": __import__("hashlib").sha256(content).hexdigest()}), source_uri_display=path.name)
     if registry is None: raise RuntimeError("sql_read_error")
     connection = None
