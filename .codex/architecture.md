@@ -157,3 +157,9 @@
 - `sra_api/routers/requirement_tasks.py` introduces the first high-level HTTP read/preview façade. It composes existing RequirementProductService, Phase 1B import preview, P1 presenters, Schedule SQL-read projections, and existing SRA bearer RBAC.
 - API lifespan installs `requirement_product_service` only when both Requirement Import and Schedule control-plane authorities initialize. Product list/detail and Run lookups filter on finalized Product Task states in authoritative SQL; provisioning is not a browser/HTTP visible resource.
 - No Product HTTP mutations or second scheduler/worker exist in this PR. The rest of Product API is separately gated P2.2/P2.3/P3; Task Center UI remains P4.
+
+## 2026-10-12 P2.1 Review remediation
+
+- Product preview raw request cap is enforced in a narrowly scoped ASGI middleware before FastAPI's multipart parsing or temporary-file spooling. It is not a generic file-upload policy for unrelated endpoints.
+- Product HTTP preview uses an explicit limit-only path through existing Requirement readers. P1 internal normalization and full-data create/replacement flows remain uncapped by these HTTP display limits.
+- ScheduleStore adds one-query joined Product Task/Schedule projections and bounded Run Item SQL pagination. Existing full `get_batch_run()` remains the internal authority default; Product public Run summaries explicitly request `include_items=False`, retaining failure-state evidence without loading every item.
