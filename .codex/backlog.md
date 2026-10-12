@@ -121,3 +121,5 @@
 - 2026-10-12 P2.1 PR #288 sixth review found unbounded sparse-CSV decoded cells despite the row cap. Implemented HTTP-only CSV/JSON total-cell, width and decoded-value bounds with regression tests. Require new exact-head review, hosted checks and executable pytest/SQL Server acceptance. No P2.2 or cross-operator execution sharing in this review PR.
 
 - 2026-10-12 P2.1 seventh review found JSON pre-decode amplification: whole-array `json.loads` before row checks. New HTTP-only JSON streaming element scanner with pre-element and post-decode bounds, plus regression coverage, is on original PR #288 branch. Require new exact-head review and runtime pytest/real SQL Server acceptance before merge; no P2.2 or cross-owner dedup in this PR.
+
+- 2026-10-12 P2.1 eighth review: fix two P2 JSON scanner bugs (Unicode code points vs UTF-8 bytes; invalid closing-brace array separator). Changes and regressions on PR #288, new exact-head Codex review/CI and actual pytest/SQL Server acceptance still needed before suggesting merge.
