@@ -119,3 +119,7 @@
 ## 2026-10-12 P2.1 eighth Codex review
 
 - Exact-head `e4642084a73c48fc42a5021c66a91e593b182415` review found two P2 issues in incremental JSON preview: UTF-8 byte accounting (previously Unicode characters) and invalid array separators accepted. Adjusted the scanner to enforce 1 MiB original UTF-8 bytes before each row parse and reject top-level delimiters other than comma/closing square bracket. Added multilingual/invalid-JSON regressions. Keep P2.1 on original PR #288, no merge until explicitly authorized and exact-head verification.
+
+## 2026-10-12 P2.1 ninth Codex review
+
+- Exact-head Codex review `d72444b64961e023fff148f856531db73f380f35` found one P2 JSON preview invalid Unicode surrogate gap. Fixed isolated-surrogate `UnicodeEncodeError` to HTTP 422 `source_format_invalid` at the JSON reader's untrusted-value byte accounting boundary, without weakening general persistence/presenter errors. Added parameterized invalid keys/values and valid surrogate-pair regression. PR #288 remains open; fresh exact-head review and executable pytest/SQL Server acceptance are necessary.
