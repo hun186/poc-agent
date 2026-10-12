@@ -103,3 +103,7 @@
 ## 2026-10-12 P2.1 fourth Codex review
 
 - Codex completed on `45318fd8ad124ae94758799c9dc2ab40bf6d27e8` with two P2 findings: malformed XLSX classified as 500 and pre-parser 413 without browser CORS headers. Fixed input decoding error normalization and middleware order, added tests and documentation on PR #288 original branch. New-head Codex review/hosted checks and true pytest/live SQL Server acceptance are separate gates; no merge instruction given.
+
+## 2026-10-12 P2.1 fifth Codex review
+
+- Exact-head Codex review at `6dbcf20d163b565a4f3cf8ee34c3ece11872f1d3` completed with one P2 malformed-XLSX TypeError error classification finding. Added an XLSX decoding-boundary `TypeError` normalization to stable `source_format_invalid` and regression using an invalid `sheetId` attribute in an otherwise valid XLSX archive. Do not treat any prior review or CI result as passing the new head; runtime pytest and real SQL Server tests are pending. PR #288 remains open, no merge authorized.
