@@ -105,8 +105,8 @@
 
 ## 2026-10-12 Requirement Product P1.7 internal input replacement
 
-- P1.7 provides an internal Product service entrypoint \`replace_task_input(...)\`; HTTP \`POST /v1/requirement-tasks/{task_id}/input\` remains deferred to P2.
-- Idempotent \`input_replace\` reservations persist the Product Task/source identity, original Requirement \`base_snapshot_id\`, and server-preallocated \`import_run_id\`/\`snapshot_id\`. Provisioning Tasks cannot reserve replacement requests.
-- Requirement Import reuses its existing preallocated-ID terminal recovery **before** parsing or classification and its same-transaction \`expected_base_snapshot_id\` CAS for the first import attempt. A stale uncommitted reservation terminally fails with \`requirement_input_conflict\`, without moving the active snapshot backward.
+- P1.7 provides an internal Product service entrypoint `replace_task_input(...)`; HTTP `POST /v1/requirement-tasks/{task_id}/input` remains deferred to P2.
+- Idempotent `input_replace` reservations persist the Product Task/source identity, original Requirement `base_snapshot_id`, and server-preallocated `import_run_id`/`snapshot_id`. Provisioning Tasks cannot reserve replacement requests.
+- Requirement Import reuses its existing preallocated-ID terminal recovery **before** parsing or classification and its same-transaction `expected_base_snapshot_id` CAS for the first import attempt. A stale uncommitted reservation terminally fails with `requirement_input_conflict`, without moving the active snapshot backward.
 - Success is recorded only after proving the exact committed import/snapshot pair. A previously committed replacement can be replayed after later replacements without changing the latest active snapshot. Exposed results contain bounded IDs/status only; raw uploaded bytes, paths and prompt contents are not saved in the Product request ledger.
 - Existing low-level source import remains subject to the P1.6 ownership fence; Product's internal authority route remains distinct.
