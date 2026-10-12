@@ -149,3 +149,8 @@
 - HTTP preview-only (`max_rows` supplied) CSV and JSON readers now also reject input with more than 128 columns/keys per row, 50,000 aggregate decoded cells, or 8 MiB decoded value/key bytes as `requirement_preview_too_large` (HTTP 422). CSV limits are checked before row dictionaries are appended; JSON is checked after its initial decode and before normalization. XLSX already had matching matrix bounds.
 - These caps complement the existing 5,000-row limit, 10 MiB uploaded-file limit, and Starlette 1 MiB direct JSON form-field limit; none alter full internal Phase 1B reads where `max_rows=None`.
 - Added sparse 128-column CSV matrix, 129-column CSV, wide JSON, and accepted small-input regressions. Actual repository pytest and exact-head Codex review remain unverified.
+
+## 2026-10-12 P2.1 seventh-review JSON decoding boundary
+
+- HTTP preview-only JSON arrays are processed one top-level object at a time; the complete input string may be decoded from UTF-8 but the full JSON array is **not** materialized via `json.loads()`. The reader detects the next object's boundaries while respecting nested structures and escaped strings, with a pre-object limit of 1 MiB, then enforces 5,000 rows, 128 fields/row, 50,000 total cells and 8 MiB decoded-value budget. Oversized previews return stable 422 `requirement_preview_too_large`; malformed JSON returns 422 `source_format_invalid`.
+- Full internal Phase 1B JSON reads still use the preexisting whole-array parser only when `max_rows=None`. Regression tests include a 500,000-element compact array, quoted/nested values, malformed delimiters, oversized single rows and internal unbounded imports. Exact-head review and actual repository pytest/live SQL acceptance remain pending.
