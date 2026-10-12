@@ -169,3 +169,8 @@
 - HTTP-only XLSX previews enforce cumulative cell and decoded-value-byte caps in the existing streaming reader, before raw source rows can accumulate into expensive in-memory graphs.
 - Public Run pages use `ScheduleStore.list_product_run_summaries` to project finalized Product Task identity, Run summary and P1-compatible failure evidence through one bounded SQL statement; they do not issue one database request per Run. Existing internal batch-run APIs retain their full-item behavior by default.
 - Deferred `/artifacts` links are excluded from Product P2.1 responses.
+
+## 2026-10-12 P2.1 round-four hardening boundary
+
+- XLSX parse errors from untrusted upload data are normalized at the format reader, before HTTP error presentation; server projection/store invariants continue to return masked 500 responses.
+- The Product preview ASGI cap is applied after CORS in request execution (registered earlier than `CORSMiddleware` in Starlette) so its synthetic 413 rejection inherits normal browser CORS handling, without weakening the pre-parser body limit.
