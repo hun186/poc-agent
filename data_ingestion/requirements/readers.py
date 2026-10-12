@@ -140,7 +140,7 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
     index = 0
 
     def skip_space(pos: int) -> int:
-        while pos < length and source[pos] in " \\t\\r\\n":
+        while pos < length and source[pos] in " \t\r\n":
             pos += 1
         return pos
 
@@ -156,7 +156,7 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
         if index >= length:
             raise ValueError("source_format_invalid")
         if source[index] == "]":
-            if any(ch not in " \\t\\r\\n" for ch in source[index + 1:]):
+            if any(ch not in " \t\r\n" for ch in source[index + 1:]):
                 raise ValueError("source_format_invalid")
             return rows, list(range(1, len(rows) + 1))
         if len(rows) >= max_rows:
@@ -175,7 +175,7 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
             if in_string:
                 if escaped:
                     escaped = False
-                elif char == "\\\\":
+                elif char == "\\":
                     escaped = True
                 elif char == '"':
                     in_string = False
@@ -220,7 +220,7 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
         delimiter = source[index]
         index += 1
         if delimiter == "]":
-            if any(ch not in " \\t\\r\\n" for ch in source[index:]):
+            if any(ch not in " \t\r\n" for ch in source[index:]):
                 raise ValueError("source_format_invalid")
             return rows, list(range(1, len(rows) + 1))
         # Reject trailing commas and doubled separators.
