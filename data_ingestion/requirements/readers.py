@@ -167,6 +167,7 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
         # and escaped quotes. A per-item cap prevents a single giant object
         # from being materialized before the cell count can be checked.
         start = index
+        fragment_bytes = 0
         depth = 0
         in_string = False
         escaped = False
@@ -189,10 +190,18 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
                 depth -= 1
             elif char == "," and depth == 0:
                 break
-            index += 1
-            if index - start > 1024 * 1024:
+            # The cap is measured in the original UTF-8 representation,
+            # never decoded Unicode code points. Non-ASCII content can use
+            # up to four bytes per code point.
+            fragment_bytes += len(char.encode("utf-8"))
+            if fragment_bytes > 1024 * 1024:
                 raise ValueError("requirement_preview_too_large")
+            index += 1
         if index >= length:
+            raise ValueError("source_format_invalid")
+        # The only legal separators between JSON array elements are ',' and
+        # the final ']'. An extra '}' must not silently act like a comma.
+        if source[index] not in ",]":
             raise ValueError("source_format_invalid")
         fragment = source[start:index].strip()
         if not fragment:
