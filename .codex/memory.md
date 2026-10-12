@@ -111,3 +111,7 @@
 ## 2026-10-12 P2.1 sixth Codex review
 
 - PR #288 sixth Codex review for `1102b368ebd38d1856f8d84b42a5f36eb1df9534` finished with one P2 CSV matrix amplification issue. Fix caps width (128), total cell count (50,000) and decoded bytes (8 MiB) in preview-only CSV. Same guard added to preview-only JSON for consistent format isolation; internal no-limit P1 reads unaffected. Regressions and API contract updated. Await new exact-head review and actual pytest/SQL Server tests; do not merge without explicit user instruction.
+
+## 2026-10-12 P2.1 seventh Codex review
+
+- Codex review at exact head `b9d4bd3a5e2859c44af78bd31ce6d76b14002b73` found one P2 JSON preview pre-decode amplification bug. Added preview-only incremental array parsing of at most one 1 MiB row at a time, respecting escaped strings and nested values, with 5,000-row and 50,000-cell caps. The P1 internal JSON reader remains unchanged. Added regression tests for a very large compact array, malformed syntax, and normal nested objects. The branch is still open, exact-head review/CI and runtime pytest/SQL Server acceptance are not claimed.
