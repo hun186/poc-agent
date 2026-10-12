@@ -215,16 +215,22 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
         total_cells += len(row)
         if len(row) > 128 or total_cells > 50000:
             raise ValueError("requirement_preview_too_large")
-        for key, value in row.items():
-            total_value_bytes += len(str(key).encode("utf-8"))
-            if isinstance(value, str):
-                total_value_bytes += len(value.encode("utf-8"))
-            else:
-                total_value_bytes += len(
-                    json.dumps(value, ensure_ascii=False, default=str).encode("utf-8")
-                )
-            if total_value_bytes > 8 * 1024 * 1024:
-                raise ValueError("requirement_preview_too_large")
+        try:
+            for key, value in row.items():
+                total_value_bytes += len(str(key).encode("utf-8"))
+                if isinstance(value, str):
+                    total_value_bytes += len(value.encode("utf-8"))
+                else:
+                    total_value_bytes += len(
+                        json.dumps(value, ensure_ascii=False, default=str).encode("utf-8")
+                    )
+                if total_value_bytes > 8 * 1024 * 1024:
+                    raise ValueError("requirement_preview_too_large")
+        except UnicodeEncodeError as exc:
+            # json.loads accepts isolated \\uD800-\\uDFFF escapes, but such
+            # values (including nested keys/values) cannot encode as UTF-8.
+            # Keep malformed user input separate from backend failures.
+            raise ValueError("source_format_invalid") from exc
         rows.append(row)
         delimiter = source[index]
         index += 1
