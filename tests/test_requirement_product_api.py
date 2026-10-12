@@ -754,3 +754,66 @@ def test_internal_json_import_retains_previous_nested_input_behavior():
     rows, numbers = read_json_rows(raw)
     assert len(rows) == 1 and len(rows[0]["data"]) == 3000
     assert numbers == [1]
+
+
+def test_json_preview_two_valid_top_level_rows_decode_separately():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    rows, numbers = read_json_rows(
+        b'[{"ITEMNO":"A"},{"ITEMNO":"B","TITLE":"ok"}]',
+        max_rows=5000,
+    )
+    assert rows == [
+        {"ITEMNO": "A"},
+        {"ITEMNO": "B", "TITLE": "ok"},
+    ]
+    assert numbers == [1, 2]
+
+
+def test_direct_json_preview_rejects_nested_amplification_before_service():
+    preview = PreviewService()
+    client, _ = make_client(role="db_operator", preview=preview)
+    nested = '[{"ITEMNO":"A","data":[' + "{}," * 2999 + "{}]}]"
+    assert len(nested.encode("utf-8")) < 1024 * 1024
+    response = client.post(
+        "/v1/requirement-task-previews",
+        data={
+            "task": '{"profile_version_id":"pv"}',
+            "requirements_json": nested,
+        },
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": {"code": "requirement_preview_too_large"}}
+    assert preview.calls == []
+
+
+def test_direct_json_preview_preserves_multirow_input_to_service():
+    preview = PreviewService()
+    client, _ = make_client(role="db_operator", preview=preview)
+    response = client.post(
+        "/v1/requirement-task-previews",
+        data={
+            "task": '{"profile_version_id":"pv"}',
+            "requirements_json": '[{"ITEMNO":"A"},{"ITEMNO":"B"}]',
+        },
+    )
+    assert response.status_code == 200
+    assert len(preview.calls) == 1
+    assert preview.calls[0]["requirements"] == [
+        {"ITEMNO": "A"}, {"ITEMNO": "B"}
+    ]
+
+
+def test_direct_json_preview_malformed_input_still_uses_input_error_code():
+    preview = PreviewService()
+    client, _ = make_client(role="db_operator", preview=preview)
+    response = client.post(
+        "/v1/requirement-task-previews",
+        data={
+            "task": '{"profile_version_id":"pv"}',
+            "requirements_json": '[{"ITEMNO":"A"},]',
+        },
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": {"code": "requirement_preview_input_invalid"}}
+    assert preview.calls == []
