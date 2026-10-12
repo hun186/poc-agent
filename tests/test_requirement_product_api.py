@@ -711,3 +711,46 @@ def test_malformed_xlsx_content_types_xml_is_input_error_with_lxml():
             malformed.getvalue(), "broken-content-types.xlsx", profile,
             max_rows=5000,
         )
+
+
+def test_json_preview_bounds_nested_object_expansion_before_row_decode():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    # Around 9 KiB on wire but 3,000 individual Python dict objects. 1 MiB
+    # byte and 128 top-level column budgets alone cannot bound this.
+    nested = b'[{"ITEMNO":"1","data":[' + b"{}," * 2999 + b"{}]}]"
+    assert len(nested) < 1024 * 1024
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        read_json_rows(nested, max_rows=5000)
+
+
+def test_json_preview_bounds_aggregate_nested_nodes_across_rows():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    # Each row stays below the per-item node cap, but the collection
+    # exceeds the total structural-token budget.
+    row = b'{"ITEMNO":"1","data":[' + b"0," * 2999 + b"0]}"
+    raw = b"[" + b",".join([row] * 40) + b"]"
+    assert len(raw) < 1024 * 1024
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        read_json_rows(raw, max_rows=5000)
+
+
+def test_json_preview_accepts_small_nested_objects_and_strings_with_punctuation():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    record = [{"ITEMNO": "1", "data": [{}, {"codes": [1, 2, 3]}],
+               "note": "literal brackets [ ] and commas , : { }"}]
+    payload = json.dumps(record, ensure_ascii=False).encode("utf-8")
+    rows, numbers = read_json_rows(payload, max_rows=5000)
+    assert rows == record
+    assert numbers == [1]
+
+
+def test_internal_json_import_retains_previous_nested_input_behavior():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    raw = b'[{"data":[' + b"{}," * 2999 + b"{}]}]"
+    rows, numbers = read_json_rows(raw)
+    assert len(rows) == 1 and len(rows[0]["data"]) == 3000
+    assert numbers == [1]
