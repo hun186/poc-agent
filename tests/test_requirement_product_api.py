@@ -449,6 +449,36 @@ def test_malformed_but_valid_zip_xlsx_is_client_validation_not_server_error():
         read_bytes(archive_data.getvalue(), "invalid.xlsx", profile, max_rows=5000)
 
 
+def test_malformed_xlsx_workbook_sheet_id_type_error_maps_to_input_error():
+    from types import SimpleNamespace
+    from openpyxl import Workbook
+    from data_ingestion.requirements.readers import read_bytes
+
+    workbook_bytes = BytesIO()
+    workbook = Workbook()
+    workbook.active.append(["ITEMNO"])
+    workbook.active.append(["1"])
+    workbook.save(workbook_bytes)
+    workbook.close()
+
+    malformed_bytes = BytesIO()
+    with ZipFile(BytesIO(workbook_bytes.getvalue())) as source:
+        with ZipFile(malformed_bytes, "w", ZIP_DEFLATED) as invalid:
+            for member in source.infolist():
+                data = source.read(member.filename)
+                if member.filename == "xl/workbook.xml":
+                    assert b'sheetId="1"' in data
+                    data = data.replace(b'sheetId="1"', b'sheetId="invalid"', 1)
+                invalid.writestr(member, data)
+
+    profile = SimpleNamespace(
+        format="xlsx",
+        worksheet=SimpleNamespace(name=None, header_row=1, first_data_row=2),
+    )
+    with pytest.raises(ValueError, match="^source_format_invalid$"):
+        read_bytes(malformed_bytes.getvalue(), "malformed-sheet-id.xlsx", profile, max_rows=5000)
+
+
 def test_cors_allowed_origin_survives_preparser_413_body_rejection():
     app = FastAPI()
     app.add_middleware(ProductPreviewBodyLimitMiddleware)
