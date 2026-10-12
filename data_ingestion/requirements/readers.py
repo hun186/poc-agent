@@ -10,6 +10,13 @@ from openpyxl.utils.exceptions import InvalidFileException
 from zipfile import BadZipFile
 from xml.etree.ElementTree import ParseError
 
+try:
+    # openpyxl switches to lxml when installed, otherwise to stdlib XML.
+    # lxml is optional; do not make Phase 1B depend on its installation.
+    from lxml.etree import XMLSyntaxError as LxmlXMLSyntaxError
+except ImportError:
+    LxmlXMLSyntaxError = ParseError
+
 from .models import ImportProfileDocument
 
 
@@ -254,7 +261,8 @@ def read_bytes(content: bytes, filename: str, profile: ImportProfileDocument, *,
         try:
             return read_xlsx_rows(content, profile, max_rows=max_rows)
         except (BadZipFile, InvalidFileException, KeyError, IndexError,
-                EOFError, UnicodeError, OSError, ParseError, TypeError) as exc:
+                EOFError, UnicodeError, OSError, ParseError,
+                LxmlXMLSyntaxError, TypeError) as exc:
             # Failures from the *upload parser* are invalid user input,
             # not a missing Product/Run identity or backend persistence error.
             # This boundary is intentionally specific to XLSX decoding.
