@@ -115,3 +115,7 @@
 ## 2026-10-12 P2.1 seventh Codex review
 
 - Codex review at exact head `b9d4bd3a5e2859c44af78bd31ce6d76b14002b73` found one P2 JSON preview pre-decode amplification bug. Added preview-only incremental array parsing of at most one 1 MiB row at a time, respecting escaped strings and nested values, with 5,000-row and 50,000-cell caps. The P1 internal JSON reader remains unchanged. Added regression tests for a very large compact array, malformed syntax, and normal nested objects. The branch is still open, exact-head review/CI and runtime pytest/SQL Server acceptance are not claimed.
+
+## 2026-10-12 P2.1 eighth Codex review
+
+- Exact-head `e4642084a73c48fc42a5021c66a91e593b182415` review found two P2 issues in incremental JSON preview: UTF-8 byte accounting (previously Unicode characters) and invalid array separators accepted. Adjusted the scanner to enforce 1 MiB original UTF-8 bytes before each row parse and reject top-level delimiters other than comma/closing square bracket. Added multilingual/invalid-JSON regressions. Keep P2.1 on original PR #288, no merge until explicitly authorized and exact-head verification.
