@@ -479,5 +479,5 @@ def test_application_registers_cors_outside_product_preview_body_limiter():
     source = Path("sra_api/main.py").read_text(encoding="utf-8")
     # Starlette executes the last registered middleware first.
     assert source.index("app.add_middleware(ProductPreviewBodyLimitMiddleware)") < (
-        source.index("app.add_middleware(\\n        CORSMiddleware,")
+        source.index("app.add_middleware(\n        CORSMiddleware,")
     )
