@@ -1245,6 +1245,50 @@ class RequirementProductService:
             now_utc=now,
         )
 
+    def get_task(self, task_id: str) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        task = self.schedule_store.get_product_task(task_id)
+        schedule = self.schedule_store.get_schedule(task["schedule_id"])
+        return self.present_task(product_task=task, schedule=schedule)
+
+    def list_tasks(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        tasks = self.schedule_store.list_product_tasks(limit=limit, offset=offset)
+        return {
+            "items": [
+                self.present_task(
+                    product_task=task,
+                    schedule=self.schedule_store.get_schedule(task["schedule_id"]),
+                )
+                for task in tasks
+            ],
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def get_run(self, run_id: str) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        task = self.schedule_store.get_product_task_for_run(run_id)
+        run = self.schedule_store.get_batch_run(
+            schedule_id=task["schedule_id"], batch_run_id=run_id
+        )
+        return self.present_run(product_task=task, run=run)
+
+    def list_runs(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        bindings = self.schedule_store.list_product_run_bindings(
+            limit=limit, offset=offset
+        )
+        return {
+            "items": [self.get_run(binding["batch_run_id"]) for binding in bindings],
+            "limit": limit,
+            "offset": offset,
+        }
+
     @staticmethod
     def task_identity(product_task: dict[str, Any]) -> ProductTaskIdentity:
         return ProductTaskIdentity.from_product_task_row(product_task)
