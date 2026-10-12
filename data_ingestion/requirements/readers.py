@@ -119,32 +119,114 @@ def read_csv_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list[
 
 
 def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list[dict[str, Any]], list[int]]:
+    if max_rows is None:
+        # Preserve the complete/unbounded internal Phase 1B import contract.
+        try:
+            payload = json.loads(content.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("source_format_invalid") from exc
+        if not isinstance(payload, list) or not all(isinstance(row, dict) for row in payload):
+            raise ValueError("source_format_invalid")
+        return payload, list(range(1, len(payload) + 1))
+
+    # HTTP preview: never json.loads() the *entire* uploaded array. A compact
+    # 10-MiB JSON array can contain millions of '{}' elements, producing huge
+    # Python object graphs before a post-decode row-limit check.
     try:
-        payload = json.loads(content.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        source = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
         raise ValueError("source_format_invalid") from exc
-    if not isinstance(payload, list) or not all(isinstance(row, dict) for row in payload):
+    length = len(source)
+    index = 0
+
+    def skip_space(pos: int) -> int:
+        while pos < length and source[pos] in " \\t\\r\\n":
+            pos += 1
+        return pos
+
+    index = skip_space(index)
+    if index >= length or source[index] != "[":
         raise ValueError("source_format_invalid")
-    if max_rows is not None:
-        if len(payload) > max_rows:
+    index += 1
+    rows: list[dict[str, Any]] = []
+    total_cells = 0
+    total_value_bytes = 0
+    while True:
+        index = skip_space(index)
+        if index >= length:
+            raise ValueError("source_format_invalid")
+        if source[index] == "]":
+            if any(ch not in " \\t\\r\\n" for ch in source[index + 1:]):
+                raise ValueError("source_format_invalid")
+            return rows, list(range(1, len(rows) + 1))
+        if len(rows) >= max_rows:
             raise ValueError("requirement_preview_too_large")
-        # JSON is already decoded by json.loads, but must also be bounded
-        # before Phase 1B normalization duplicates source_raw objects.
-        total_cells = 0
-        total_value_bytes = 0
-        for row in payload:
-            total_cells += len(row)
-            if len(row) > 128 or total_cells > 50000:
+
+        # Find one top-level JSON element without constructing its objects.
+        # Respect nested arrays/objects and strings containing commas, brackets
+        # and escaped quotes. A per-item cap prevents a single giant object
+        # from being materialized before the cell count can be checked.
+        start = index
+        depth = 0
+        in_string = False
+        escaped = False
+        while index < length:
+            char = source[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+            elif char == '"':
+                in_string = True
+            elif char in "[{":
+                depth += 1
+            elif char in "]}":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif char == "," and depth == 0:
+                break
+            index += 1
+            if index - start > 1024 * 1024:
                 raise ValueError("requirement_preview_too_large")
-            for key, value in row.items():
-                total_value_bytes += len(str(key).encode("utf-8"))
-                if isinstance(value, str):
-                    total_value_bytes += len(value.encode("utf-8"))
-                else:
-                    total_value_bytes += len(json.dumps(value, ensure_ascii=False, default=str).encode("utf-8"))
-                if total_value_bytes > 8 * 1024 * 1024:
-                    raise ValueError("requirement_preview_too_large")
-    return payload, list(range(1, len(payload) + 1))
+        if index >= length:
+            raise ValueError("source_format_invalid")
+        fragment = source[start:index].strip()
+        if not fragment:
+            raise ValueError("source_format_invalid")
+        try:
+            row = json.loads(fragment)
+        except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+            raise ValueError("source_format_invalid") from exc
+        if not isinstance(row, dict):
+            raise ValueError("source_format_invalid")
+        total_cells += len(row)
+        if len(row) > 128 or total_cells > 50000:
+            raise ValueError("requirement_preview_too_large")
+        for key, value in row.items():
+            total_value_bytes += len(str(key).encode("utf-8"))
+            if isinstance(value, str):
+                total_value_bytes += len(value.encode("utf-8"))
+            else:
+                total_value_bytes += len(
+                    json.dumps(value, ensure_ascii=False, default=str).encode("utf-8")
+                )
+            if total_value_bytes > 8 * 1024 * 1024:
+                raise ValueError("requirement_preview_too_large")
+        rows.append(row)
+        delimiter = source[index]
+        index += 1
+        if delimiter == "]":
+            if any(ch not in " \\t\\r\\n" for ch in source[index:]):
+                raise ValueError("source_format_invalid")
+            return rows, list(range(1, len(rows) + 1))
+        # Reject trailing commas and doubled separators.
+        if index >= length or source[skip_space(index):skip_space(index) + 1] == "]":
+            raise ValueError("source_format_invalid")
+
 
 
 def read_bytes(content: bytes, filename: str, profile: ImportProfileDocument, *, max_rows: int | None = None) -> tuple[list[dict[str, Any]], list[int]]:
