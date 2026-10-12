@@ -123,3 +123,7 @@
 ## 2026-10-12 P2.1 ninth Codex review
 
 - Exact-head Codex review `d72444b64961e023fff148f856531db73f380f35` found one P2 JSON preview invalid Unicode surrogate gap. Fixed isolated-surrogate `UnicodeEncodeError` to HTTP 422 `source_format_invalid` at the JSON reader's untrusted-value byte accounting boundary, without weakening general persistence/presenter errors. Added parameterized invalid keys/values and valid surrogate-pair regression. PR #288 remains open; fresh exact-head review and executable pytest/SQL Server acceptance are necessary.
+
+## 2026-10-12 P2.1 tenth Codex review
+
+- Exact-head `dd2f296645eb3a3989418210a71a10c4379d9e77` Codex review completed with a P2 on malformed XLSX XML when optional lxml parsing is enabled. A specific reader-level catch now normalizes XMLSyntaxError to 422 source_format_invalid and does not require lxml to be installed. Added regression mutating [Content_Types].xml in a real ZIP workbook to trigger lxml; no hosted runtime pytest PASS evidence claimed. PR #288 remains Open; do not merge without explicit user instruction.
