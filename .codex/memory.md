@@ -107,3 +107,7 @@
 ## 2026-10-12 P2.1 fifth Codex review
 
 - Exact-head Codex review at `6dbcf20d163b565a4f3cf8ee34c3ece11872f1d3` completed with one P2 malformed-XLSX TypeError error classification finding. Added an XLSX decoding-boundary `TypeError` normalization to stable `source_format_invalid` and regression using an invalid `sheetId` attribute in an otherwise valid XLSX archive. Do not treat any prior review or CI result as passing the new head; runtime pytest and real SQL Server tests are pending. PR #288 remains open, no merge authorized.
+
+## 2026-10-12 P2.1 sixth Codex review
+
+- PR #288 sixth Codex review for `1102b368ebd38d1856f8d84b42a5f36eb1df9534` finished with one P2 CSV matrix amplification issue. Fix caps width (128), total cell count (50,000) and decoded bytes (8 MiB) in preview-only CSV. Same guard added to preview-only JSON for consistent format isolation; internal no-limit P1 reads unaffected. Regressions and API contract updated. Await new exact-head review and actual pytest/SQL Server tests; do not merge without explicit user instruction.
