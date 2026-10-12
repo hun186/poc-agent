@@ -43,7 +43,9 @@ def read_xlsx_rows(content: bytes, profile: ImportProfileDocument, *, max_rows: 
             record[key] = value
         rows.append(record); numbers.append(row_number)
         if max_rows is not None and len(rows) > max_rows:
+            workbook.close()
             raise ValueError("requirement_preview_too_large")
+    workbook.close()
     return rows, numbers
 
 
