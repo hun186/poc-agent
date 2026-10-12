@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+from io import BytesIO
 import json
+from zipfile import ZipFile, BadZipFile, LargeZipFile
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -284,6 +286,8 @@ class RequirementProductService:
         upload_bytes: bytes | None = None,
         upload_filename: str | None = None,
         requirements: Any | None = None,
+        max_rows: int | None = None,
+        max_result_rows: int | None = None,
     ) -> dict[str, Any]:
         """Normalize candidate Requirement input without creating durable state."""
 
@@ -297,6 +301,21 @@ class RequirementProductService:
             upload_filename=upload_filename,
             requirements=requirements,
         )
+        if max_rows is not None and input_filename.lower().endswith(".xlsx"):
+            # Reject compressed XLSX bombs before openpyxl inflates any worksheet.
+            try:
+                with ZipFile(BytesIO(input_bytes)) as archive:
+                    entries = archive.infolist()
+                    if len(entries) > 2000:
+                        raise ValueError("requirement_preview_too_large")
+                    expanded = 0
+                    for entry in entries:
+                        expanded += entry.file_size
+                        if (entry.flag_bits & 1 or entry.file_size > 20 * 1024 * 1024
+                                or expanded > 40 * 1024 * 1024):
+                            raise ValueError("requirement_preview_too_large")
+            except (BadZipFile, LargeZipFile, OSError) as exc:
+                raise ValueError("requirement_preview_archive_invalid") from exc
         version = self.requirement_import_service.store.get_profile_version(
             profile_version_id
         )
@@ -342,6 +361,7 @@ class RequirementProductService:
             profile,
             upload_bytes=input_bytes,
             upload_filename=input_filename,
+            max_rows=max_rows,
         )
         candidate = normalize_rows(
             acquired.rows,
@@ -365,10 +385,24 @@ class RequirementProductService:
             "source_updated_by",
             "source_created_at",
         }
+        selected_rows = (candidate.rows[:max_result_rows]
+                         if max_result_rows is not None else candidate.rows)
         normalized_preview = [
             row.model_dump(mode="json", include=preview_fields)
-            for row in candidate.rows
+            for row in selected_rows
         ]
+        if max_result_rows is not None:
+            # Bounded HTTP sample, never used for actual Product creation.
+            def bounded(item):
+                return {
+                    key: value[:1024] if isinstance(value, str) else value
+                    for key, value in item.items()
+                }
+            normalized_preview = [bounded(row) for row in normalized_preview]
+            errors_sample = [bounded(item) for item in errors[:max_result_rows]]
+            warnings_sample = [bounded(item) for item in warnings[:max_result_rows]]
+        else:
+            errors_sample, warnings_sample = errors, warnings
 
         return {
             "source_sha256": acquired.source_sha256,
@@ -377,8 +411,11 @@ class RequirementProductService:
             "rejected_count": len(errors),
             "has_errors": bool(errors),
             "normalized_preview": normalized_preview,
-            "errors": errors,
-            "warnings": warnings,
+            "errors": errors_sample,
+            "warnings": warnings_sample,
+            "preview_truncated": (len(candidate.rows) > len(normalized_preview)
+                                  or len(errors) > len(errors_sample)
+                                  or len(warnings) > len(warnings_sample)),
             "profile": {
                 "profile_id": profile_id,
                 "profile_version_id": profile_version_id,
