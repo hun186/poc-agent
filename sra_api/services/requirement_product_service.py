@@ -409,7 +409,7 @@ class RequirementProductService:
         else:
             errors_sample, warnings_sample = errors, warnings
 
-        return {
+        result = {
             "source_sha256": acquired.source_sha256,
             "row_count": len(acquired.rows),
             "accepted_count": len(candidate.rows),
@@ -418,9 +418,6 @@ class RequirementProductService:
             "normalized_preview": normalized_preview,
             "errors": errors_sample,
             "warnings": warnings_sample,
-            "preview_truncated": (len(candidate.rows) > len(normalized_preview)
-                                  or len(errors) > len(errors_sample)
-                                  or len(warnings) > len(warnings_sample)),
             "profile": {
                 "profile_id": profile_id,
                 "profile_version_id": profile_version_id,
@@ -430,6 +427,13 @@ class RequirementProductService:
                 "source_mode": profile.source_mode.value,
             },
         }
+        if max_result_rows is not None:
+            result["preview_truncated"] = (
+                len(candidate.rows) > len(normalized_preview)
+                or len(errors) > len(errors_sample)
+                or len(warnings) > len(warnings_sample)
+            )
+        return result
 
     @staticmethod
     def _preview_selectable_count(
