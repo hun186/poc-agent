@@ -163,3 +163,9 @@
 - Product preview raw request cap is enforced in a narrowly scoped ASGI middleware before FastAPI's multipart parsing or temporary-file spooling. It is not a generic file-upload policy for unrelated endpoints.
 - Product HTTP preview uses an explicit limit-only path through existing Requirement readers. P1 internal normalization and full-data create/replacement flows remain uncapped by these HTTP display limits.
 - ScheduleStore adds one-query joined Product Task/Schedule projections with explicit SQL Server `HOLDLOCK` on both joined tables, plus bounded Run Item SQL pagination. Existing full `get_batch_run()` remains the internal authority default; Product public Run summaries explicitly request `include_items=False`, retaining failure-state evidence without loading every item.
+
+## 2026-10-12 P2.1 round-three read-path performance and bounds
+
+- HTTP-only XLSX previews enforce cumulative cell and decoded-value-byte caps in the existing streaming reader, before raw source rows can accumulate into expensive in-memory graphs.
+- Public Run pages use `ScheduleStore.list_product_run_summaries` to project finalized Product Task identity, Run summary and P1-compatible failure evidence through one bounded SQL statement; they do not issue one database request per Run. Existing internal batch-run APIs retain their full-item behavior by default.
+- Deferred `/artifacts` links are excluded from Product P2.1 responses.
