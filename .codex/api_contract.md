@@ -126,3 +126,10 @@
 - `GET /v1/requirement-runs`, `/{run_id}`, `/v1/requirement-tasks/{task_id}/runs` are bounded Run summary projections and do not return eagerly loaded `items`. Retrieve items with `GET /v1/requirement-runs/{run_id}/items?limit=50&offset=0` (`limit` 1–100) returning `{run_id,items,limit,offset}`.
 - Task list/detail use one joined Product Task + Schedule SQL projection with `HOLDLOCK` on both tables, retaining SQL Server locks while reading both authorities rather than trusting default locking `READ COMMITTED`. Unexpected storage/presenter invariants map to masked HTTP 500 `persistence_error` rather than invalid-client-input 422.
 - These adjustments remain subject to exact-head Codex re-review and deployed SQL Server/pytest acceptance; this contract does not claim operational PASS.
+
+## 2026-10-12 P2.1 Codex round-three refinements (PR #288)
+
+- Preview-only XLSX decoding (when `max_rows` is set) is bounded by at most 50,000 decoded cells, 128 worksheet columns and 8 MiB of decoded cell/string-value bytes; the 5,000-row and ZIP expansion caps still apply. Internal Phase 1B import without `max_rows` remains unchanged.
+- `GET /v1/requirement-runs` and `GET /v1/requirement-tasks/{task_id}/runs` use a single paged joined SQL query per Run page, with inline failure-state evidence, rather than per-Run Task/Run lookups. The latter first checks the specific Product Task exists and is finalized. Public Run detail and paged Run Items stay separate.
+- Product Run `links` exposes only implemented `self` and `items` relations. `artifacts` is deliberately absent until a separate, authorized P2 artifact endpoint is implemented.
+- The above are code and test changes only: exact-head Codex review, runtime pytest and real SQL Server large-page/concurrency acceptance remain pending.
