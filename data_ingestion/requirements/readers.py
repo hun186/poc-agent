@@ -28,10 +28,28 @@ def read_xlsx_rows(content: bytes, profile: ImportProfileDocument, *, max_rows: 
     header_values = next(sheet.iter_rows(min_row=settings.header_row, max_row=settings.header_row, values_only=True))
     headers = ["" if value is None else str(value) for value in header_values]
     rows, numbers = [], []
+    # HTTP previews only: cap the entire decoded matrix, not just row count.
+    # The full internal P1 import paths pass max_rows=None and retain their
+    # existing semantics.
+    preview_cells = len(headers)
+    preview_value_bytes = sum(len(header.encode("utf-8")) for header in headers)
+    if max_rows is not None and (len(headers) > 128 or preview_value_bytes > 8 * 1024 * 1024):
+        workbook.close()
+        raise ValueError("requirement_preview_too_large")
     for row_number, values in enumerate(sheet.iter_rows(min_row=settings.first_data_row, values_only=True), settings.first_data_row):
-        if max_rows is not None and row_number > settings.first_data_row + max_rows * 4:
-            workbook.close()
-            raise ValueError("requirement_preview_too_large")
+        if max_rows is not None:
+            preview_cells += len(values)
+            if len(values) > 128 or preview_cells > 50000:
+                workbook.close()
+                raise ValueError("requirement_preview_too_large")
+            preview_value_bytes += sum(
+                len(value.encode("utf-8")) if isinstance(value, str) else 64
+                for value in values if value is not None
+            )
+            if (preview_value_bytes > 8 * 1024 * 1024
+                    or row_number > settings.first_data_row + max_rows * 4):
+                workbook.close()
+                raise ValueError("requirement_preview_too_large")
         if not any(value is not None and value != "" for value in values):
             continue
         # Preserve duplicate labels for strict ambiguity detection instead of overwriting them.
