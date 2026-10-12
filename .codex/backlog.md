@@ -105,3 +105,5 @@
 
 - 2026-10-12 P2.1 Product API read + preview in progress on `feat/requirement-product-api-read-preview-p2-1`. Adds finalized Task and Run projection endpoints and multipart/manual JSON preview, wired only when both existing authorities are enabled. Requires exact-head Hosted Codex review and acceptance before merge. P2 mutations/idempotency run admission, artifact, service-key scopes, GUI, and authorized live SQL/real E2E remain pending.
 - Cross-Task identical/semantically-similar Requirement execution deduplication is NOT supported by v1 design or P2.1. Requires separate reviewed semantics of input identity, model/config/time window, ownership/ACL, execution freshness, sharing consent and audit lineage; do not silently reuse or cross-leak another Task's output.
+
+- 2026-10-12 PR #288 Codex review could not execute because the code-review usage limit was reached. Review gate is blocked; do not merge solely on Vercel. After review capacity returns, request one current-head review and handle findings, then continue P2.2/P2.3 separate from Task Center UI.
