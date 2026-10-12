@@ -125,3 +125,5 @@
 - 2026-10-12 P2.1 eighth review: fix two P2 JSON scanner bugs (Unicode code points vs UTF-8 bytes; invalid closing-brace array separator). Changes and regressions on PR #288, new exact-head Codex review/CI and actual pytest/SQL Server acceptance still needed before suggesting merge.
 
 - 2026-10-12 ninth P2.1 Codex round: isolate and classify invalid JSON Unicode surrogate escapes as source-format 422 at preview byte-accounting boundary; add nested/key/value regression and valid Unicode positive case. Re-review exact PR #288 head; actual pytest and real SQL Server acceptance still pending, no merge authorized.
+
+- 2026-10-12 P2.1 PR #288 tenth review: normalize optional lxml XMLSyntaxError on malformed uploaded XLSX XML to 422, retaining stdlib parser support, with regression. Latest exact-head Codex/hosted CI and real runtime/SQL Server acceptance required before proposing merge; P2.2 and cross-owner dedup deferred.
