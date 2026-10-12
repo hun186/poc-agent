@@ -166,3 +166,7 @@
 ## 2026-10-12 P2.1 tenth-review XLSX parser parity
 
 - XLSX preview normalizes structurally invalid Office XML to 422 source_format_invalid both when openpyxl uses stdlib XML ParseError and when optional lxml emits XMLSyntaxError. The catch stays localized to user-upload XLSX reader errors; unexpected database/presenter failures remain masked 500. Added lxml-enabled malformed [Content_Types].xml fixture; actual project pytest and exact-head review still pending.
+
+## 2026-10-12 P2.1 eleventh-review nested JSON resource controls
+
+- Public JSON preview now enforces an additional **pre-object** nested-structure budget (5,000 structural markers per row and 100,000 total across one upload), counting syntactic container openings, separators, and object key/value colons outside JSON strings. This is in addition to the 1 MiB per-row UTF-8 byte cap and existing 5,000-row / 128-field / 50,000 top-level cell / 8 MiB decoded-value budgets. Exceeding structural bounds returns 422 `requirement_preview_too_large`. Internal Phase 1B imports without `max_rows` keep their historical semantics. Optional lxml support no longer uses try/except-wrapped imports, per project conventions. Tests added; runtime project pytest and exact-head review still pending.
