@@ -1962,3 +1962,190 @@ def test_task_version_activation_same_key_changed_task_conflicts_before_target_l
 
     with pytest.raises(ValueError, match="requirement_idempotency_conflict"):
         service.activate_task_version(task_id="task-2", **common)
+
+
+class _InputReplaceLedger:
+    """Minimal durable-ledger simulator for P1.7 orchestration ordering."""
+
+    def __init__(self):
+        self.active_snapshot = "S0"
+        self.state = "active"
+        self.requests = {}
+        self.errors = []
+
+    def reserve_product_input_replacement(
+        self, *, task_id, principal_kind, principal_id, idempotency_key,
+        request_sha256, now_utc,
+    ):
+        assert (task_id, principal_kind, principal_id) == ("task-1", "user", "alice")
+        key = (principal_id, idempotency_key)
+        if key not in self.requests:
+            if self.state == "provisioning":
+                raise ValueError("requirement_task_provisioning")
+            self.requests[key] = {
+                "request_id": f"preq-{idempotency_key}",
+                "task_id": task_id,
+                "source_id": "src-1",
+                "import_run_id": f"run-{idempotency_key}",
+                "snapshot_id": f"snap-{idempotency_key}",
+                "base_snapshot_id": self.active_snapshot,
+                "request_sha256": request_sha256,
+                "state": "reserved",
+            }
+        request = self.requests[key]
+        if request["request_sha256"] != request_sha256:
+            raise ValueError("requirement_idempotency_conflict")
+        return dict(request)
+
+    def mark_product_input_replacement_in_progress(self, request_id, *, now_utc):
+        for request in self.requests.values():
+            if request["request_id"] == request_id:
+                request["state"] = "in_progress"
+                return
+        raise AssertionError("missing reservation")
+
+    def complete_product_input_replacement(self, *, request_id, task_id, now_utc):
+        for request in self.requests.values():
+            if request["request_id"] == request_id:
+                result = {
+                    "task_id": task_id, "source_id": request["source_id"],
+                    "import_run_id": request["import_run_id"],
+                    "snapshot_id": request["snapshot_id"], "status": "committed",
+                }
+                request.update(state="succeeded", safe_result=result)
+                return result
+        raise AssertionError("missing reservation")
+
+    def fail_product_request_terminal(self, request_id, *, error_code, now_utc):
+        self.errors.append(error_code)
+        for request in self.requests.values():
+            if request["request_id"] == request_id:
+                request.update(state="failed_terminal", error_code=error_code)
+                return
+        raise AssertionError("missing reservation")
+
+
+class _InputReplaceImporter:
+    def __init__(self, ledger):
+        self.ledger = ledger
+        self.committed = {}
+        self.prepared = []
+
+    def commit(
+        self, source_id, *, actor, upload_bytes, upload_filename,
+        import_run_id, snapshot_id, expected_base_snapshot_id,
+    ):
+        assert source_id == "src-1"
+        if import_run_id in self.committed:
+            # The durable import is recovered BEFORE reading/classifying input.
+            return self.committed[import_run_id]
+        self.prepared.append(import_run_id)
+        if self.ledger.active_snapshot != expected_base_snapshot_id:
+            raise ValueError("requirement_input_conflict")
+        self.ledger.active_snapshot = snapshot_id
+        result = {
+            "import_run_id": import_run_id, "snapshot_id": snapshot_id,
+            "status": "committed", "accepted_count": 1, "rejected_count": 0,
+        }
+        self.committed[import_run_id] = result
+        return result
+
+
+def _input_replace_setup():
+    ledger = _InputReplaceLedger()
+    importer = _InputReplaceImporter(ledger)
+    return ledger, importer, RequirementProductService(importer, ledger)
+
+
+def _reserve_input_replace(ledger, key, requirements):
+    import hashlib
+    payload = json.dumps(
+        requirements, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")
+    sha = canonical_sha256({
+        "operation": "input_replace",
+        "task_id": "task-1",
+        "input_sha256": hashlib.sha256(payload).hexdigest(),
+        "input_filename": "requirements.json",
+    })
+    return ledger.reserve_product_input_replacement(
+        task_id="task-1", principal_kind="user", principal_id="alice",
+        idempotency_key=key, request_sha256=sha,
+        now_utc=datetime(2026, 10, 12, tzinfo=timezone.utc),
+    )
+
+
+def test_input_replacement_stale_uncommitted_reservation_never_moves_newer_snapshot():
+    ledger, importer, service = _input_replace_setup()
+    a, b = [{"v": 1}], [{"v": 2}]
+    _reserve_input_replace(ledger, "A", a)
+    _reserve_input_replace(ledger, "B", b)
+    first = service.replace_task_input(
+        task_id="task-1", actor="alice", idempotency_key="B", requirements=b,
+    )
+    assert first["snapshot_id"] == "snap-B"
+    with pytest.raises(ValueError, match="requirement_input_conflict"):
+        service.replace_task_input(
+            task_id="task-1", actor="alice", idempotency_key="A", requirements=a,
+        )
+    with pytest.raises(ValueError, match="requirement_input_conflict"):
+        service.replace_task_input(
+            task_id="task-1", actor="alice", idempotency_key="A", requirements=a,
+        )
+    assert ledger.active_snapshot == "snap-B"
+    assert "run-A" not in importer.committed
+    assert ledger.errors == ["requirement_input_conflict"]
+    assert ledger.requests[("alice", "A")]["snapshot_id"] == "snap-A"
+
+
+def test_input_replacement_delayed_committed_recovery_never_reprepares_input():
+    ledger, importer, service = _input_replace_setup()
+    a, b = [{"v": 1}], [{"v": 2}]
+    _reserve_input_replace(ledger, "A", a)
+    first = service.replace_task_input(
+        task_id="task-1", actor="alice", idempotency_key="A", requirements=a,
+    )
+    assert first["snapshot_id"] == "snap-A"
+    _reserve_input_replace(ledger, "B", b)
+    second = service.replace_task_input(
+        task_id="task-1", actor="alice", idempotency_key="B", requirements=b,
+    )
+    assert second["snapshot_id"] == "snap-B"
+    assert ledger.active_snapshot == "snap-B"
+
+    # Simulate a lost response after Requirement commit, before Product finalizer.
+    ledger.requests[("alice", "A")].update(state="in_progress", safe_result=None)
+    importer.prepared.clear()
+    replayed = service.replace_task_input(
+        task_id="task-1", actor="alice", idempotency_key="A", requirements=a,
+    )
+    assert replayed == first
+    assert ledger.active_snapshot == "snap-B"
+    assert importer.prepared == []
+    assert ledger.errors == []
+
+
+def test_input_replacement_provisioning_denied_before_reservation():
+    ledger, importer, service = _input_replace_setup()
+    ledger.state = "provisioning"
+    with pytest.raises(ValueError, match="requirement_task_provisioning"):
+        service.replace_task_input(
+            task_id="task-1", actor="alice", idempotency_key="A",
+            requirements=[{"v": 1}],
+        )
+    assert ledger.requests == {}
+    assert importer.prepared == []
+
+
+def test_input_replacement_idempotency_binds_payload_and_task():
+    ledger, _, service = _input_replace_setup()
+    service.replace_task_input(
+        task_id="task-1", actor="alice", idempotency_key="A",
+        requirements=[{"v": 1}],
+    )
+    with pytest.raises(ValueError, match="requirement_idempotency_conflict"):
+        service.replace_task_input(
+            task_id="task-1", actor="alice", idempotency_key="A",
+            requirements=[{"v": 2}],
+        )
+    assert ledger.active_snapshot == "snap-A"
