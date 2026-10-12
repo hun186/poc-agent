@@ -158,3 +158,7 @@
 ## 2026-10-12 P2.1 eighth-review JSON syntax/byte refinements
 
 - Preview-only JSON's 1 MiB pre-object cap measures actual encoded UTF-8 bytes, including multibyte Chinese text, before invoking JSON decoding of that object. Element boundaries only accept a comma or closing square bracket, so invalid separator forms (e.g. `[{} } {"x":1}]`) reject as HTTP 422 `source_format_invalid`. Existing row/cell/output caps and internal Phase 1B reader behavior are unchanged. Regressions were added; exact-head review and executable pytest are still pending.
+
+## 2026-10-12 P2.1 ninth-review JSON Unicode validation
+
+- JSON preview's decoded-value UTF-8 budget normalizes encoding failures from invalid unpaired surrogate escapes in object keys, values and nested structures as HTTP 422 `source_format_invalid` rather than HTTP 500. Valid Unicode surrogate pairs remain accepted. This catch is local to preview row decoding and does not classify backend/storage failures as client-input errors. Exact-head review and real test execution remain outstanding.
