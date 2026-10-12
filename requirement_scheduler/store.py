@@ -55,6 +55,7 @@ def _safe_error(exc: Exception) -> Exception:
         "requirement_task_conflict", "requirement_task_state_invalid",
         "requirement_task_update_incomplete", "requirement_task_version_invalid",
         "requirement_product_owned_schedule",
+        "requirement_product_input_incomplete",
     }: return exc
     return RuntimeError("persistence_error")
 
