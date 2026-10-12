@@ -199,20 +199,22 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
                 in_string = True
             elif char in "[{":
                 depth += 1
-            # A structural-token budget bounds nested containers and arrays
-            # of short scalar values even when serialized bytes stay below 1 MiB.
+            elif char in "]}":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif char == "," and depth == 0:
+                # The outer comma delimits two rows; it must NOT become
+                # part of the JSON fragment decoded for the previous row.
+                break
+            # Count nested structure only AFTER identifying boundaries:
+            # the outer row delimiter must not be consumed by this counter.
             if not in_string and char in "[{:,":
                 row_structure_tokens += 1
                 total_json_structure_tokens += 1
                 if (row_structure_tokens > max_row_structure_tokens
                         or total_json_structure_tokens > max_total_structure_tokens):
                     raise ValueError("requirement_preview_too_large")
-            elif char in "]}":
-                if depth == 0:
-                    break
-                depth -= 1
-            elif char == "," and depth == 0:
-                break
             # The cap is measured in the original UTF-8 representation,
             # never decoded Unicode code points. Non-ASCII content can use
             # up to four bytes per code point.
