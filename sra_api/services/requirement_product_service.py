@@ -366,7 +366,7 @@ class RequirementProductService:
             profile,
             upload_bytes=input_bytes,
             upload_filename=input_filename,
-            max_rows=max_rows,
+            **({"max_rows": max_rows} if max_rows is not None else {}),
         )
         candidate = normalize_rows(
             acquired.rows,
