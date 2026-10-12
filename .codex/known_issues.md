@@ -75,3 +75,5 @@
 - 2026-10-11 P1.6 verification limitation: direct Git transport/local checkout remains unavailable in this execution environment, so no local pytest PASS is claimed. Current evidence is Hosted source/diff inspection plus focused regression additions; exact-head Hosted checks and Codex review are required before merge.
 
 - 2026-10-12 P1.7: Product input replacement has focused in-memory/scripted-DB regression coverage and reuses Phase 1B snapshot CAS. Real two-connection SQL Server concurrency and live import acceptance are still pending; direct repository checkout/pytest is unavailable in this environment. Do not label these as PASS based solely on hosted Vercel/Codex review.
+
+- 2026-10-12 P1.7 first exact-head Codex P1 finding: candidate-diagnostic CAS had a transaction gap before failed-import persistence. The branch now writes the preallocated failed import under the same Requirement-set UPDLOCK/HOLDLOCK transaction, with regression coverage for success, rollback, and stale-base refusal; exact-head re-review and actual SQL Server concurrency acceptance remain pending.
