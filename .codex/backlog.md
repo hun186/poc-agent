@@ -113,3 +113,5 @@
 - 2026-10-12 P2.1 round-2 review (head `4141570`) found three P2 regressions; corrected form parser error expectation, joined Product read locks and unexpected KeyError mapping in the existing PR. Next gates: exact-head Codex review and checks; runtime pytest and authorized SQL Server read/write concurrency remain unverified. Keep P2.2 and cross-Task dedup outside current PR.
 
 - 2026-10-12 P2.1 third Codex review found three P2 concerns (XLSX total-cell resource bound, Run-list N+1 SQL, broken deferred artifacts link). Code and regressions updated on PR #288; next gates: exact-head Codex and hosted checks, runtime pytest, SQL Server large-history and two-connection concurrency acceptance. P2.2/3 and cross-operator result sharing remain outside this PR.
+
+- 2026-10-12 PR #288 round-four review: corrected two P2 findings (invalid XLSX parser errors and early-body-limit CORS headers), with regressions. Pending exact-head review, hosted checks and real runtime/SQL acceptance before proposing merge. Do not start P2.2 or cross-operator dedup as part of this review loop.
