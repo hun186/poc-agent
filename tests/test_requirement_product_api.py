@@ -671,3 +671,43 @@ def test_preview_json_valid_surrogate_pair_and_cjk_are_accepted():
     rows, numbers = read_json_rows(payload, max_rows=5000)
     assert rows == [{"emoji": "\U0001F600", "text": "\u754c"}]
     assert numbers == [1]
+
+
+
+def test_malformed_xlsx_content_types_xml_is_input_error_with_lxml():
+    from types import SimpleNamespace
+    from openpyxl import Workbook
+    import openpyxl.xml
+    from data_ingestion.requirements.readers import read_bytes
+
+    # lxml is optional in openpyxl; exercise its XMLSyntaxError path when
+    # available rather than inadvertently testing only stdlib ParseError.
+    if not openpyxl.xml.LXML:
+        pytest.skip("optional openpyxl lxml parser not enabled")
+
+    valid = BytesIO()
+    book = Workbook()
+    book.active.append(["ITEMNO"])
+    book.active.append(["1"])
+    book.save(valid)
+    book.close()
+
+    malformed = BytesIO()
+    with ZipFile(BytesIO(valid.getvalue())) as source:
+        with ZipFile(malformed, "w", ZIP_DEFLATED) as target:
+            for member in source.infolist():
+                payload = source.read(member.filename)
+                if member.filename == "[Content_Types].xml":
+                    assert b"<Types" in payload
+                    payload = payload.replace(b"<Types", b'<Types bad="&"', 1)
+                target.writestr(member, payload)
+
+    profile = SimpleNamespace(
+        format="xlsx",
+        worksheet=SimpleNamespace(name=None, header_row=1, first_data_row=2),
+    )
+    with pytest.raises(ValueError, match="^source_format_invalid$"):
+        read_bytes(
+            malformed.getvalue(), "broken-content-types.xlsx", profile,
+            max_rows=5000,
+        )
