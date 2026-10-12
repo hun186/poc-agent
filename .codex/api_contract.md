@@ -162,3 +162,7 @@
 ## 2026-10-12 P2.1 ninth-review JSON Unicode validation
 
 - JSON preview's decoded-value UTF-8 budget normalizes encoding failures from invalid unpaired surrogate escapes in object keys, values and nested structures as HTTP 422 `source_format_invalid` rather than HTTP 500. Valid Unicode surrogate pairs remain accepted. This catch is local to preview row decoding and does not classify backend/storage failures as client-input errors. Exact-head review and real test execution remain outstanding.
+
+## 2026-10-12 P2.1 tenth-review XLSX parser parity
+
+- XLSX preview normalizes structurally invalid Office XML to 422 source_format_invalid both when openpyxl uses stdlib XML ParseError and when optional lxml emits XMLSyntaxError. The catch stays localized to user-upload XLSX reader errors; unexpected database/presenter failures remain masked 500. Added lxml-enabled malformed [Content_Types].xml fixture; actual project pytest and exact-head review still pending.
