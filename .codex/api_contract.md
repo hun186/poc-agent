@@ -110,3 +110,11 @@
 - Requirement Import reuses its existing preallocated-ID terminal recovery **before** parsing or classification and its same-transaction `expected_base_snapshot_id` CAS for the first import attempt. A stale uncommitted reservation terminally fails with `requirement_input_conflict`, without moving the active snapshot backward.
 - Success is recorded only after proving the exact committed import/snapshot pair. A previously committed replacement can be replayed after later replacements without changing the latest active snapshot. Exposed results contain bounded IDs/status only; raw uploaded bytes, paths and prompt contents are not saved in the Product request ledger.
 - Existing low-level source import remains subject to the P1.6 ownership fence; Product's internal authority route remains distinct.
+
+## 2026-10-12 P2.1 Product API read + preview (in review)
+
+- Router `sra_api/routers/requirement_tasks.py` exposes authenticated `GET /v1/requirement-tasks`, `GET /v1/requirement-tasks/{task_id}`, `GET /v1/requirement-tasks/{task_id}/runs`, `GET /v1/requirement-runs`, `GET /v1/requirement-runs/{run_id}`, and `GET /v1/requirement-runs/{run_id}/items` using existing Product presenters, and `POST /v1/requirement-task-previews` for db_operator+.
+- Preview accepts multipart `task` JSON with explicit approved `profile_version_id` and exactly one `file` (.xlsx/.csv/.json) or `requirements_json` field; 10 MiB input cap. No import/Task/Run mutation. Full P2.2 media/expected-SHA acceptance is separate.
+- All Product list/detail/run lookups use authoritative finalized Task identity; provisioning or unowned Runs are omitted/unavailable. Task and Run read access requires existing human bearer authentication. No service-key scope is introduced in P2.1.
+- `requirement_product_service` is registered only when both Requirement Import and Schedule authorities start. Unavailable dependency returns bounded 503 error. Store/adapter exceptions are mapped to safe Product error codes; raw paths or backend errors are not returned.
+- This PR contains NO create, PATCH, input replacement, activation, Run triggering, artifact download or Task Center UI endpoints. Their v1 gates remain pending.
