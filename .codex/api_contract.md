@@ -139,3 +139,7 @@
 - A ZIP-like `.xlsx` upload whose Office workbook structure is malformed now has its parser-specific errors normalized in `read_bytes` to HTTP 422 `source_format_invalid`; unknown store/presenter `KeyError` remains a masked 500. Valid row/size rejections preserve `requirement_preview_too_large`.
 - The raw request-body limiter is registered **inside** the configured CORS middleware: its HTTP 413 `requirement_preview_input_invalid` response includes allowed-origin CORS headers for browser callers. The 11 MiB pre-multipart cap is unchanged.
 - Focused regressions cover valid-ZIP/invalid-workbook decoding and an oversized cross-origin preview request. Exact-head review and runtime pytest remain pending.
+
+## 2026-10-12 P2.1 fifth-review input-error refinement
+
+- The XLSX-only untrusted-upload parser boundary also normalizes openpyxl `TypeError` (for example malformed workbook `sheetId`) to HTTP 422 `source_format_invalid`. Unrelated Product presenter/store exceptions are not reclassified as client validation. Actual repository pytest and new exact-head review remain unverified.
