@@ -141,6 +141,20 @@ def get_product_task(
         raise _error(exc) from exc
 
 
+@router.get("/v1/requirement-tasks/{task_id}/runs")
+def list_product_task_runs(
+    task_id: str,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    service=Depends(product_service),
+    user: AuthUser = Depends(current_user),
+):
+    try:
+        return service.list_task_runs(task_id, limit=limit, offset=offset)
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
 @router.get("/v1/requirement-runs")
 def list_product_runs(
     limit: int = Query(default=50, ge=1, le=100),
