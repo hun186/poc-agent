@@ -151,3 +151,9 @@
 - Internal Product `input_replace` is a Schedule-schema request-ledger saga coupled to the existing Phase 1B Requirement Import authority; it does not introduce an importer, worker, queue, or new schema revision.
 - The reservation transaction locks the Product Task (rejecting provisioning) and then its Requirement set, captures the active snapshot as an immutable `base_snapshot_id`, and stores stable replacement import/snapshot IDs. Independent reservations may share the same base; the Phase 1B Requirement-set row lock and CAS allow at most one winner.
 - The Requirement Import service always attempts exact-ID terminal recovery before `_prepare()`. Only a previously unseen import executes normalization and snapshot CAS. A later Product-ledger completion verifies the committed import/snapshot IDs without requiring the snapshot to remain active, supporting delayed response recovery after a newer replacement.
+
+## 2026-10-12 P2.1 Product façade boundary (PR #288)
+
+- `sra_api/routers/requirement_tasks.py` introduces the first high-level HTTP read/preview façade. It composes existing RequirementProductService, Phase 1B import preview, P1 presenters, Schedule SQL-read projections, and existing SRA bearer RBAC.
+- API lifespan installs `requirement_product_service` only when both Requirement Import and Schedule control-plane authorities initialize. Product list/detail and Run lookups filter on finalized Product Task states in authoritative SQL; provisioning is not a browser/HTTP visible resource.
+- No Product HTTP mutations or second scheduler/worker exist in this PR. The rest of Product API is separately gated P2.2/P2.3/P3; Task Center UI remains P4.
