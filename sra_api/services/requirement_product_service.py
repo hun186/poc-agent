@@ -901,6 +901,100 @@ class RequirementProductService:
         )
         return self._present_recurring_create_result(result)
 
+    def replace_task_input(
+        self,
+        *,
+        task_id: str,
+        actor: str,
+        idempotency_key: str,
+        upload_bytes: bytes | None = None,
+        upload_filename: str | None = None,
+        requirements: Any | None = None,
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Replace Product input using a reserved immutable base-snapshot CAS."""
+        if self.requirement_import_service is None or self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        if not task_id or not actor or len(actor) > 128 or not idempotency_key:
+            raise ValueError("requirement_product_request_invalid")
+        input_bytes, input_filename = self._input_bytes(
+            upload_bytes=upload_bytes,
+            upload_filename=upload_filename,
+            requirements=requirements,
+        )
+        request_sha256 = canonical_sha256({
+            "operation": "input_replace",
+            "task_id": task_id,
+            "input_sha256": hashlib.sha256(input_bytes).hexdigest(),
+            "input_filename": input_filename,
+        })
+        now = now_utc or datetime.now(timezone.utc).replace(microsecond=0)
+        request = self.schedule_store.reserve_product_input_replacement(
+            task_id=task_id,
+            principal_kind="user",
+            principal_id=actor,
+            idempotency_key=idempotency_key,
+            request_sha256=request_sha256,
+            now_utc=now,
+        )
+        if request["state"] == "succeeded":
+            result = request.get("safe_result")
+            if not isinstance(result, dict):
+                raise RuntimeError("persistence_error")
+            return result
+        if request["state"] == "failed_terminal":
+            raise ValueError(
+                request.get("error_code") or "requirement_product_request_terminal"
+            )
+        if (
+            not request.get("base_snapshot_id")
+            or not request.get("import_run_id")
+            or not request.get("snapshot_id")
+            or request.get("task_id") != task_id
+        ):
+            raise RuntimeError("persistence_error")
+
+        self.schedule_store.mark_product_input_replacement_in_progress(
+            request["request_id"], now_utc=now,
+        )
+        try:
+            imported = self.requirement_import_service.commit(
+                request["source_id"],
+                actor=actor,
+                upload_bytes=input_bytes,
+                upload_filename=input_filename,
+                import_run_id=request["import_run_id"],
+                snapshot_id=request["snapshot_id"],
+                expected_base_snapshot_id=request["base_snapshot_id"],
+            )
+        except ValueError as exc:
+            if str(exc).strip("'").split(":", 1)[0] == "requirement_input_conflict":
+                self.schedule_store.fail_product_request_terminal(
+                    request["request_id"],
+                    error_code="requirement_input_conflict",
+                    now_utc=now,
+                )
+            raise
+        if (
+            imported.get("import_run_id") != request["import_run_id"]
+            or imported.get("status") not in {"committed", "failed"}
+            or (imported["status"] == "committed"
+                and imported.get("snapshot_id") != request["snapshot_id"])
+        ):
+            raise RuntimeError("persistence_error")
+        if imported["status"] == "failed":
+            self.schedule_store.fail_product_request_terminal(
+                request["request_id"],
+                error_code="requirement_import_failed",
+                now_utc=now,
+            )
+            raise ValueError("requirement_import_failed")
+        return self.schedule_store.complete_product_input_replacement(
+            request_id=request["request_id"],
+            task_id=task_id,
+            now_utc=now,
+        )
+
     def update_task(
         self,
         *,
