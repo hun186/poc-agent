@@ -316,7 +316,7 @@ def test_preview_rejects_compressed_xlsx_bomb_before_decoding():
 def test_preview_csv_and_json_row_caps():
     from data_ingestion.requirements.readers import read_csv_rows, read_json_rows
     with pytest.raises(ValueError, match="requirement_preview_too_large"):
-        read_csv_rows(b"ITEMNO\\n1\\n2\\n", max_rows=1)
+        read_csv_rows(b"ITEMNO\n1\n2\n", max_rows=1)
     with pytest.raises(ValueError, match="requirement_preview_too_large"):
         read_json_rows(b'[{"id":"1"},{"id":"2"}]', max_rows=1)
 
