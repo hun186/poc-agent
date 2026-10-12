@@ -91,3 +91,7 @@
 - Codex Review for PR #288 exact head `3cf17b81310d4c3dbb8b19d66e63cca860526c9f` completed with 1 P1 + 5 P2 findings. Corrective changes remain on the existing Product P2.1 branch.
 - Added pre-multipart-body ASGI cap, HTTP-only normalization/ZIP/preview bounds, independent Run Item paging, atomic Task/Schedule read projections and safe 500 for backend invariant failures. Internal P1 Product create/replacement semantics remain separate from public preview-only caps.
 - Added focused regression source tests; no actual local pytest or two-connection SQL Server PASS is asserted because direct Git transport cannot resolve github.com in the execution environment. New exact-head Codex review and Hosted checks are the next gates; no merge authorization has been given.
+
+## 2026-10-12 P2.1 second Codex review
+
+- PR #288 exact head `41415706013da58356002840c2348924a84c518a` Codex completed with three P2 findings and no new P1. Addressed the parser 400/test mismatch, JOIN read-consistency with SQL Server `HOLDLOCK` for both Task/Schedule, and unexpected presenter `KeyError` masking as 500. Added focused regression tests for known 404 vs unexpected KeyError and lock hints. All verification remains source-based until new exact-head Hosted review/CI and runtime pytest/live SQL acceptance.
