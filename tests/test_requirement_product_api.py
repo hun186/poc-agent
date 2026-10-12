@@ -559,3 +559,46 @@ def test_preview_csv_and_json_cell_caps_accept_small_inputs():
     json_rows, json_numbers = read_json_rows(b'[{"ITEMNO": "1"}]', max_rows=5000)
     assert json_rows == [{"ITEMNO": "1"}]
     assert json_numbers == [1]
+
+
+def test_json_preview_bounded_decode_rejects_millions_of_small_rows():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    # A compact array can have far more than 5,000 records while fitting
+    # comfortably inside the uploaded-file size cap. Stop before decoding it.
+    many = b"[" + b"{}," * 500_000 + b"{}]"
+    assert len(many) < 10 * 1024 * 1024
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        read_json_rows(many, max_rows=5000)
+
+
+def test_json_preview_streamed_rows_preserve_nested_and_escaped_values():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    examples = [
+        {"ITEMNO": "one", "text": 'embedded "quotes", ] and }', "details": {"tags": [1, 2]}},
+        {"ITEMNO": "two", "text": "escaped \\ backslash and \n newline"},
+    ]
+    raw = (" \n\t" + json.dumps(examples, ensure_ascii=False) + " \n").encode("utf-8")
+    decoded, numbers = read_json_rows(raw, max_rows=5000)
+    assert decoded == examples
+    assert numbers == [1, 2]
+
+
+def test_json_preview_rejects_trailing_commas_and_oversized_single_object():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    for malformed in (b'[{},]', b'[{},,{}]', b'[{}]{"other":true}', b'{"obj":{}}'):
+        with pytest.raises(ValueError, match="^source_format_invalid$"):
+            read_json_rows(malformed, max_rows=5000)
+    one_huge_row = b'[{"text":"' + b"x" * (1024 * 1024 + 20) + b'"}]'
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        read_json_rows(one_huge_row, max_rows=5000)
+
+
+def test_json_internal_reader_keeps_full_array_without_preview_cap():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    rows, numbers = read_json_rows(b"[{}, {}, {}]")
+    assert rows == [{}, {}, {}]
+    assert numbers == [1, 2, 3]
