@@ -215,3 +215,10 @@
 - This is intentional: after a recoverable or terminal provisioning failure, a partially created Schedule/source may still exist and must not become mutable through the legacy low-level API.
 - Once `requirement_product_tasks` exists it is the steady-state ownership authority; checking both authorities closes the provisioning gap.
 - Public mutation code uses explicit guarded methods rather than a generic bypass parameter. Product-internal orchestration retains the existing authority methods.
+
+## 2026-10-12 P1.7 Product input replacement
+
+- Reuse schema v4's \`input_replace\` operation and optional \`base_snapshot_id\`/\`import_run_id\`/\`snapshot_id\`; no new schema migration.
+- Keep input-replacement CAS inside Requirement Import's existing SQL transaction and record conflict terminally in the Product request ledger. Never recompute the CAS anchor or assign fresh import/snapshot IDs on retries.
+- The Product finalizer verifies preallocated committed import identity rather than the currently active snapshot, because later successful replacements legitimately advance the active snapshot.
+- Preserve the P1.6 public guarded source-import path; Product internal orchestration calls the existing authority-bound \`commit()\` with preallocated IDs and base snapshot.
