@@ -78,3 +78,10 @@
 - PR #286 P1.6 transactional low-level Schedule/source ownership fences merged to `main@30071cb3b7b732b2875a35c6929b430693029905` after clean Codex exact-head review and successful Hosted Vercel.
 - P1.7 work is scoped to internal Product input replacement: lifecycle-checked reservation with immutable `base_snapshot_id`, preallocated import/snapshot IDs, Phase 1B locked snapshot CAS, delayed committed replay before normalization, and bounded Product ledger finalization.
 - No Product HTTP routes or P1.7 deployment/live SQL Server acceptance are claimed; local pytest remains unavailable without direct Git transport. Retain P1.6 ownership fences and do not merge the P1.7 PR until explicit authorization.
+
+## 2026-10-12 P2.1 Product API first HTTP slice
+
+- Authoritative P1.7 merged PR #287 at `main@1ebb44986acf5c901861728fa61ee0b897bb904c`. P2.1 begins on `feat/requirement-product-api-read-preview-p2-1`, PR #288, with read-only Product Task/Run HTTP routes and operator-only side-effect-free multipart/direct-JSON preview.
+- Product service is initialized only with both Requirement Import and Schedule authorities, reuses existing `current_user` and `require_db_operator`, and projects finalized Product Task/Run identities from ScheduleStore/P1 presenters. No mutation, Run trigger, new auth store, worker, Report Job, or artifact route is introduced.
+- P2.1 PR #288 first exact-head `5483b66d0334286d9bd1f8d657bc49721553998c` requested `@codex review`, but GitHub Codex bot responded review usage limit exceeded; no clean review or pytest/real SQL PASS is claimed. Do not merge without user approval and completed current-head review gate.
+- Original v1 has no cross-Task identical/similar-Requirement execution sharing. User asked about this potential optimization; defer to a separate explicit security/provenance/semantic design.
