@@ -643,3 +643,31 @@ def test_json_preview_rejects_noncomma_nonbracket_element_delimiters():
     )
     assert accepted == [{}, {"x": 1}]
     assert positions == [1, 2]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'[{"text":"\\ud800"}]',
+        b'[{"\\ud800":"text"}]',
+        b'[{"text":{"nested":"\\ud800"}}]',
+        b'[{"text":{"\\ud800":"value"}}]',
+        b'[{"text":["normal", "\\udc00"]}]',
+    ],
+)
+def test_preview_json_unpaired_surrogate_escape_is_invalid_input(payload):
+    from data_ingestion.requirements.readers import read_json_rows
+
+    # Even though Python json.loads accepts isolated surrogate escapes,
+    # the preview cannot re-encode them to UTF-8 for byte accounting.
+    with pytest.raises(ValueError, match="^source_format_invalid$"):
+        read_json_rows(payload, max_rows=5000)
+
+
+def test_preview_json_valid_surrogate_pair_and_cjk_are_accepted():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    payload = b'[{"emoji":"\\ud83d\\ude00","text":"\\u754c"}]'
+    rows, numbers = read_json_rows(payload, max_rows=5000)
+    assert rows == [{"emoji": "\U0001F600", "text": "\u754c"}]
+    assert numbers == [1]
