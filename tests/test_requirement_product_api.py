@@ -5,6 +5,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 import pytest
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 from api.routers.editor_dependencies import current_user
@@ -431,3 +432,52 @@ def test_store_run_history_projection_one_sql_statement_and_task_filter():
         assert "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY" in sql
     assert statements[0][1] == (7, 40)
     assert statements[1][1] == ("task-1", 2, 4)
+
+
+def test_malformed_but_valid_zip_xlsx_is_client_validation_not_server_error():
+    from types import SimpleNamespace
+    from data_ingestion.requirements.readers import read_bytes
+
+    archive_data = BytesIO()
+    with ZipFile(archive_data, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("xl/worksheets/sheet1.xml", "<worksheet/>")
+    profile = SimpleNamespace(
+        format="xlsx",
+        worksheet=SimpleNamespace(name=None, header_row=1, first_data_row=2),
+    )
+    with pytest.raises(ValueError, match="^source_format_invalid$"):
+        read_bytes(archive_data.getvalue(), "invalid.xlsx", profile, max_rows=5000)
+
+
+def test_cors_allowed_origin_survives_preparser_413_body_rejection():
+    app = FastAPI()
+    app.add_middleware(ProductPreviewBodyLimitMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["https://ui.example.invalid"],
+        allow_credentials=True,
+        allow_methods=["POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/v1/requirement-task-previews",
+        content=b"x" * (11 * 1024 * 1024 + 1),
+        headers={
+            "Origin": "https://ui.example.invalid",
+            "Content-Type": "multipart/form-data; boundary=test",
+        },
+    )
+    assert response.status_code == 413
+    assert response.json() == {"detail": {"code": "requirement_preview_input_invalid"}}
+    assert response.headers["access-control-allow-origin"] == "https://ui.example.invalid"
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+
+def test_application_registers_cors_outside_product_preview_body_limiter():
+    from pathlib import Path
+    source = Path("sra_api/main.py").read_text(encoding="utf-8")
+    # Starlette executes the last registered middleware first.
+    assert source.index("app.add_middleware(ProductPreviewBodyLimitMiddleware)") < (
+        source.index("app.add_middleware(\\n        CORSMiddleware,")
+    )
