@@ -131,3 +131,7 @@
 ## 2026-10-12 P2.1 eleventh Codex review
 
 - Exact-head `4fe28edafd438854d70e99bb416ad4deb4909cb6` Codex review found P1 prohibited try/except import of optional lxml and P2 nested JSON memory amplification before decoding. Fixed via importlib module lookup following AGENTS.md, and a 5k/row plus 100k/preview preparse JSON structural-token cap on the existing incremental HTTP reader, before one-row object construction. Added adversarial and positive regressions; no full pytest or live SQL Server acceptance claimed. PR #288 stays open, no merge authorization.
+
+## 2026-10-12 P2.1 twelfth Codex review
+
+- PR #288 review at exact head `a9449c61b347a1509951f5034639d948e7a3c38d` finished with P1 JSON scanner comma-regression, P2 `requirements_json` direct-form predecode memory amplification. Both repaired on original PR branch: top-level commas now end each JSON fragment before counting nested tokens; direct JSON uses existing bounded HTTP reader to materialize rows before preview service's canonical serialization. Added multirow reader/API, nested form amplification and invalid syntax tests. Await fresh exact-head review / full runtime pytest / real SQL Server acceptance; do not merge without user's explicit instruction.
