@@ -95,3 +95,7 @@
 ## 2026-10-12 P2.1 second Codex review
 
 - PR #288 exact head `41415706013da58356002840c2348924a84c518a` Codex completed with three P2 findings and no new P1. Addressed the parser 400/test mismatch, JOIN read-consistency with SQL Server `HOLDLOCK` for both Task/Schedule, and unexpected presenter `KeyError` masking as 500. Added focused regression tests for known 404 vs unexpected KeyError and lock hints. All verification remains source-based until new exact-head Hosted review/CI and runtime pytest/live SQL acceptance.
+
+## 2026-10-12 P2.1 third Codex review
+
+- PR #288 third exact-head Codex review `9fa8890` completed with three P2 issues. Added XLSX preview total cell/value-byte caps, one-query Product Run history pages (no per-Run round trips) and removed the deferred Artifacts HTTP relation. Test coverage and API/architecture documentation updated. No merge authorized, exact-head review/CI and live SQL Server verification pending.
