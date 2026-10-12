@@ -27,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from api.routers import chat, docs, export, editor, excel_to_sql, report_jobs, service_keys
 from api.routers import requirements
-from sra_api.routers import operator_e2e, requirement_schedules
+from sra_api.routers import operator_e2e, requirement_schedules, requirement_tasks
 from api.services.report_job_store import ReportJobStore
 from api.services.report_job_worker import ReportJobWorker
 from api.security.signed_urls import validate_signing_config
@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI):
     frozen_plan(resolve_environment_plan)
     app.state.requirement_import_service = None
     app.state.requirement_schedule_service = None
+    app.state.requirement_product_service = None
     pipeline_enabled = os.getenv("REQUIREMENT_PIPELINE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     scheduler_enabled = os.getenv("REQUIREMENT_SCHEDULER_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     if pipeline_enabled:
@@ -73,6 +74,12 @@ async def lifespan(app: FastAPI):
         schedule_store = ScheduleStore(registry, os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"), os.getenv("REQUIREMENT_SCHEDULE_DB_SCHEMA", "sra_schedule"), os.getenv("REQUIREMENT_DB_SCHEMA", "sra_requirement"), audit_sink=append_audit_event)
         schedule_store.initialize()
         app.state.requirement_schedule_service = ScheduleService(schedule_store)
+        if app.state.requirement_import_service is not None:
+            from sra_api.services.requirement_product_service import RequirementProductService
+            app.state.requirement_product_service = RequirementProductService(
+                requirement_import_service=app.state.requirement_import_service,
+                schedule_store=schedule_store,
+            )
     store = ReportJobStore(os.getenv("REPORT_JOBS_DB_PATH", ".api_jobs/jobs.sqlite3"), int(os.getenv("REPORT_JOBS_SQLITE_BUSY_TIMEOUT_MS", "5000")))
     reports_root = Path(os.getenv("REPORT_JOBS_REPORTS_ROOT", ".api_jobs/reports"))
     store.initialize()
@@ -118,3 +125,4 @@ app.include_router(excel_to_sql.router)
 app.include_router(requirements.router)
 app.include_router(requirement_schedules.router)
 app.include_router(operator_e2e.router)
+app.include_router(requirement_tasks.router)
