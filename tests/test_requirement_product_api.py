@@ -602,3 +602,44 @@ def test_json_internal_reader_keeps_full_array_without_preview_cap():
     rows, numbers = read_json_rows(b"[{}, {}, {}]")
     assert rows == [{}, {}, {}]
     assert numbers == [1, 2, 3]
+
+
+def test_json_preview_enforces_single_object_budget_in_utf8_bytes():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    # 400k CJK code points encode to ~1.2 MiB despite fewer than
+    # 1 MiB of decoded Python string code points.
+    multibyte_json = json.dumps(
+        [{"text": "界" * 400_000}], ensure_ascii=False
+    ).encode("utf-8")
+    assert 1024 * 1024 < len(multibyte_json) < 10 * 1024 * 1024
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        read_json_rows(multibyte_json, max_rows=5000)
+
+    # A genuinely small multibyte JSON object remains valid.
+    small_json = json.dumps(
+        [{"text": "界" * 1000}], ensure_ascii=False
+    ).encode("utf-8")
+    rows, numbers = read_json_rows(small_json, max_rows=5000)
+    assert rows == [{"text": "界" * 1000}]
+    assert numbers == [1]
+
+
+def test_json_preview_rejects_noncomma_nonbracket_element_delimiters():
+    from data_ingestion.requirements.readers import read_json_rows
+
+    malformed = [
+        b'[{} } {"x":1}]',
+        b'[{} } {}]',
+        b'[{} {"x":1}]',
+        b'[{} : {"x":1}]',
+    ]
+    for raw in malformed:
+        with pytest.raises(ValueError, match="^source_format_invalid$"):
+            read_json_rows(raw, max_rows=5000)
+
+    accepted, positions = read_json_rows(
+        b'[{}, {"x":1}]', max_rows=5000
+    )
+    assert accepted == [{}, {"x": 1}]
+    assert positions == [1, 2]
