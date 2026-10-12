@@ -622,15 +622,20 @@ class ScheduleStore:
             connection.close()
 
     def _product_projection_query(self, where: str, *params) -> list[dict[str, Any]]:
-        """Atomic one-statement Task/Schedule projection, no mixed revisions."""
+        """Keep both Product Task and Schedule locks until the query finishes.
+
+        On locking READ COMMITTED databases, a join without HOLDLOCK may
+        combine the Task before a concurrent update with the Schedule after.
+        Holding both joined row locks prevents that mixed projection.
+        """
         return self._query(
             f"SELECT t.task_id,t.schedule_id,t.source_id,t.execution_kind,"
             f"t.product_state,t.revision,t.created_by,t.created_at,t.updated_by,t.updated_at,"
             f"s.name AS schedule_name,s.enabled AS schedule_enabled,"
             f"s.active_version_id AS schedule_active_version_id,"
             f"s.next_run_at AS schedule_next_run_at "
-            f"FROM {self.t}.[requirement_product_tasks] t "
-            f"JOIN {self.t}.[requirement_schedules] s ON s.schedule_id=t.schedule_id "
+            f"FROM {self.t}.[requirement_product_tasks] AS t WITH (HOLDLOCK) "
+            f"JOIN {self.t}.[requirement_schedules] AS s WITH (HOLDLOCK) ON s.schedule_id=t.schedule_id "
             f"WHERE t.product_state IN ('active','disabled') AND {where}",
             *params,
         )
