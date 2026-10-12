@@ -61,6 +61,16 @@ class ProductStore:
         self.calls.append(("runs", limit, offset))
         return [{"batch_run_id": "run-1", "task_id": "task-1"}] if offset == 0 and self.task["product_state"] != "provisioning" else []
 
+    def list_product_run_summaries(self, *, task_id=None, limit, offset):
+        self.calls.append(("run_summaries", task_id, limit, offset))
+        if (offset != 0 or self.task["product_state"] == "provisioning"
+                or task_id not in (None, "task-1")):
+            return []
+        run = self.get_batch_run(
+            schedule_id="schedule-1", batch_run_id="run-1", include_items=False
+        )
+        return [{"task": self.task, "run": run}]
+
     def get_product_task_for_run(self, run_id):
         if run_id != "run-1" or self.task["product_state"] == "provisioning":
             raise KeyError("requirement_run_unavailable")
@@ -136,6 +146,7 @@ def test_reader_product_run_list_detail_and_items_use_safe_presenter():
     assert run["status"] == "queued"
     assert run["binding"]["snapshot_id"] == "snapshot-1"
     assert "trigger_request_id" not in json.dumps(run)
+    assert "artifacts" not in run["links"]  # Deferred endpoint is not advertised.
     assert "items" not in run  # History/detail must not eagerly load Run Items.
     assert client.get("/v1/requirement-runs/run-1").json() == run
     assert client.get("/v1/requirement-tasks/task-1/runs").json()["items"] == [run]
@@ -372,3 +383,51 @@ def test_explicit_not_found_remains_404():
     response = client.get("/v1/requirement-tasks/does-not-exist")
     assert response.status_code == 404
     assert response.json() == {"detail": {"code": "requirement_task_not_found"}}
+
+
+def test_run_list_uses_bounded_bulk_projection_without_n_plus_one():
+    client, store = make_client()
+    assert client.get("/v1/requirement-runs?limit=40&offset=0").status_code == 200
+    assert ("run_summaries", None, 40, 0) in store.calls
+    assert not any(call[0] == "runs" for call in store.calls)
+    assert client.get("/v1/requirement-tasks/task-1/runs?limit=10").status_code == 200
+    assert ("run_summaries", "task-1", 10, 0) in store.calls
+
+
+def test_xlsx_preview_limits_total_decoded_cells():
+    from types import SimpleNamespace
+    from openpyxl import Workbook
+    from data_ingestion.requirements.readers import read_xlsx_rows
+
+    profile = SimpleNamespace(
+        worksheet=SimpleNamespace(name=None, header_row=1, first_data_row=2)
+    )
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append([f"field{i}" for i in range(128)])
+    for _ in range(400):
+        sheet.append(["v"] * 128)
+    stream = BytesIO()
+    workbook.save(stream)
+    workbook.close()
+    with pytest.raises(ValueError, match="requirement_preview_too_large"):
+        read_xlsx_rows(stream.getvalue(), profile, max_rows=5000)
+
+
+def test_store_run_history_projection_one_sql_statement_and_task_filter():
+    from requirement_scheduler.store import ScheduleStore
+    store = ScheduleStore(None, "unused")
+    statements = []
+    store._query = lambda sql, *params: statements.append((sql, params)) or []
+    assert store.list_product_run_summaries(limit=40, offset=7) == []
+    assert store.list_product_run_summaries(task_id="task-1", limit=4, offset=2) == []
+    assert len(statements) == 2
+    for sql, _ in statements:
+        assert "JOIN" in sql
+        assert "requirement_product_tasks" in sql
+        assert "requirement_batch_runs" in sql
+        assert "requirement_batch_run_items" in sql  # Inlined failure evidence
+        assert "product_state IN ('active','disabled')" in sql
+        assert "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY" in sql
+    assert statements[0][1] == (7, 40)
+    assert statements[1][1] == ("task-1", 2, 4)
