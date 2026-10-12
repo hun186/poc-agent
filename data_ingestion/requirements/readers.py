@@ -10,7 +10,7 @@ from openpyxl import load_workbook
 from .models import ImportProfileDocument
 
 
-def read_xlsx_rows(content: bytes, profile: ImportProfileDocument) -> tuple[list[dict[str, Any]], list[int]]:
+def read_xlsx_rows(content: bytes, profile: ImportProfileDocument, *, max_rows: int | None = None) -> tuple[list[dict[str, Any]], list[int]]:
     workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
     settings = profile.worksheet
     if settings is None:
@@ -32,10 +32,12 @@ def read_xlsx_rows(content: bytes, profile: ImportProfileDocument) -> tuple[list
                 key += " "
             record[key] = value
         rows.append(record); numbers.append(row_number)
+        if max_rows is not None and len(rows) > max_rows:
+            raise ValueError("requirement_preview_too_large")
     return rows, numbers
 
 
-def read_csv_rows(content: bytes) -> tuple[list[dict[str, Any]], list[int]]:
+def read_csv_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list[dict[str, Any]], list[int]]:
     try:
         parsed = csv.reader(StringIO(content.decode("utf-8-sig")))
         headers = next(parsed)
@@ -59,26 +61,30 @@ def read_csv_rows(content: bytes) -> tuple[list[dict[str, Any]], list[int]]:
                 raise ValueError("source_format_invalid")
             rows.append({key: value for key, value in zip(keys, values, strict=False)})
             numbers.append(row_number)
+            if max_rows is not None and len(rows) > max_rows:
+                raise ValueError("requirement_preview_too_large")
     except csv.Error as exc:
         raise ValueError("source_format_invalid") from exc
     return rows, numbers
 
 
-def read_json_rows(content: bytes) -> tuple[list[dict[str, Any]], list[int]]:
+def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list[dict[str, Any]], list[int]]:
     try:
         payload = json.loads(content.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("source_format_invalid") from exc
     if not isinstance(payload, list) or not all(isinstance(row, dict) for row in payload):
         raise ValueError("source_format_invalid")
+    if max_rows is not None and len(payload) > max_rows:
+        raise ValueError("requirement_preview_too_large")
     return payload, list(range(1, len(payload) + 1))
 
 
-def read_bytes(content: bytes, filename: str, profile: ImportProfileDocument) -> tuple[list[dict[str, Any]], list[int]]:
+def read_bytes(content: bytes, filename: str, profile: ImportProfileDocument, *, max_rows: int | None = None) -> tuple[list[dict[str, Any]], list[int]]:
     extension = filename.rsplit(".", 1)[-1].casefold() if "." in filename else ""
     expected = {"xlsx": "xlsx", "csv": "csv", "json": "json"}.get(profile.format)
     if expected is None or extension != expected:
         raise ValueError("source_format_invalid")
-    if extension == "xlsx": return read_xlsx_rows(content, profile)
-    if extension == "csv": return read_csv_rows(content)
-    return read_json_rows(content)
+    if extension == "xlsx": return read_xlsx_rows(content, profile, max_rows=max_rows)
+    if extension == "csv": return read_csv_rows(content, max_rows=max_rows)
+    return read_json_rows(content, max_rows=max_rows)
