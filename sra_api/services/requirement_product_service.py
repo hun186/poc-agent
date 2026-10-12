@@ -1323,20 +1323,13 @@ class RequirementProductService:
         if self.schedule_store is None:
             raise RuntimeError("requirement_product_create_unconfigured")
         task = self.schedule_store.get_product_task(task_id)
-        runs = self.schedule_store.list_batch_runs(
-            schedule_id=task["schedule_id"], limit=limit, offset=offset
+        summaries = self.schedule_store.list_product_run_summaries(
+            task_id=task_id, limit=limit, offset=offset
         )
         return {
             "items": [
-                self.present_run(
-                    product_task=task,
-                    run=self.schedule_store.get_batch_run(
-                        schedule_id=task["schedule_id"],
-                        batch_run_id=run["batch_run_id"],
-                        include_items=False,
-                    ),
-                )
-                for run in runs
+                self.present_run(product_task=item["task"], run=item["run"])
+                for item in summaries
             ],
             "limit": limit,
             "offset": offset,
@@ -1372,11 +1365,14 @@ class RequirementProductService:
     def list_runs(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
         if self.schedule_store is None:
             raise RuntimeError("requirement_product_create_unconfigured")
-        bindings = self.schedule_store.list_product_run_bindings(
+        summaries = self.schedule_store.list_product_run_summaries(
             limit=limit, offset=offset
         )
         return {
-            "items": [self.get_run(binding["batch_run_id"]) for binding in bindings],
+            "items": [
+                self.present_run(product_task=item["task"], run=item["run"])
+                for item in summaries
+            ],
             "limit": limit,
             "offset": offset,
         }
@@ -1480,7 +1476,6 @@ class RequirementProductService:
             "links": {
                 "self": _safe_link("v1", "requirement-runs", run_id),
                 "items": _safe_link("v1", "requirement-runs", run_id, "items"),
-                "artifacts": _safe_link("v1", "requirement-runs", run_id, "artifacts"),
             },
         }
         if "items" in run:
