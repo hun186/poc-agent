@@ -16,6 +16,7 @@ from api.services.auth_store import AuthUser
 
 router = APIRouter(tags=["requirement-tasks"])
 _MAX_INPUT_BYTES = 10 * 1024 * 1024
+_MAX_DIRECT_JSON_BYTES = 1024 * 1024  # Starlette's max_part_size for form fields
 _ALLOWED_EXTENSIONS = (".xlsx", ".csv", ".json")
 
 # Never echo arbitrary SQL/ODBC/adapter exceptions or file content through HTTP.
@@ -26,6 +27,7 @@ _VALIDATION_CODES = {
     "source_type_invalid", "source_input_invalid", "source_file_invalid",
     "source_file_extension_invalid", "source_file_too_large",
     "requirement_product_task_identity_invalid", "requirement_run_identity_invalid",
+    "requirement_preview_too_large", "requirement_preview_archive_invalid",
 }
 _CONFLICT_CODES = {
     "requirement_input_conflict", "requirement_idempotency_conflict",
@@ -65,7 +67,7 @@ def _error(exc: Exception) -> HTTPException:
         return HTTPException(404, detail={"code": raw})
     if raw in _UNAVAILABLE_CODES:
         return HTTPException(503, detail={"code": "requirement_dependency_unavailable"})
-    if raw in _VALIDATION_CODES or isinstance(exc, (ValueError, ValidationError)):
+    if raw in _VALIDATION_CODES:
         return HTTPException(422, detail={"code": raw if raw in _VALIDATION_CODES else "requirement_input_invalid"})
     return HTTPException(500, detail={"code": "persistence_error"})
 
@@ -99,7 +101,7 @@ async def preview_product_input(
                 upload_filename=filename,
             )
         assert requirements_json is not None
-        if not requirements_json or len(requirements_json.encode("utf-8")) > _MAX_INPUT_BYTES:
+        if not requirements_json or len(requirements_json.encode("utf-8")) > _MAX_DIRECT_JSON_BYTES:
             raise ValueError("requirement_preview_input_invalid")
         try:
             requirements = json.loads(requirements_json)
