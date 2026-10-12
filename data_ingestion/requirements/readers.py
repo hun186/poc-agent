@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 from io import BytesIO, StringIO
 import json
+from importlib import import_module
+from importlib.util import find_spec
 from typing import Any
 
 from openpyxl import load_workbook
@@ -10,12 +12,12 @@ from openpyxl.utils.exceptions import InvalidFileException
 from zipfile import BadZipFile
 from xml.etree.ElementTree import ParseError
 
-try:
-    # openpyxl switches to lxml when installed, otherwise to stdlib XML.
-    # lxml is optional; do not make Phase 1B depend on its installation.
-    from lxml.etree import XMLSyntaxError as LxmlXMLSyntaxError
-except ImportError:
-    LxmlXMLSyntaxError = ParseError
+# Match openpyxl's optional lxml parser without a try/except-wrapped import.
+# Keep stdlib-only environments supported, and follow AGENTS.md import policy.
+LxmlXMLSyntaxError = (
+    import_module("lxml.etree").XMLSyntaxError
+    if find_spec("lxml") is not None else ParseError
+)
 
 from .models import ImportProfileDocument
 
@@ -158,6 +160,11 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
     rows: list[dict[str, Any]] = []
     total_cells = 0
     total_value_bytes = 0
+    total_json_structure_tokens = 0
+    # Bound nested objects, lists and scalar separators BEFORE json.loads
+    # builds a row: compact arrays of "{}" otherwise amplify dramatically.
+    max_row_structure_tokens = 5000
+    max_total_structure_tokens = 100000
     while True:
         index = skip_space(index)
         if index >= length:
@@ -175,6 +182,7 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
         # from being materialized before the cell count can be checked.
         start = index
         fragment_bytes = 0
+        row_structure_tokens = 0
         depth = 0
         in_string = False
         escaped = False
@@ -191,6 +199,14 @@ def read_json_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list
                 in_string = True
             elif char in "[{":
                 depth += 1
+            # A structural-token budget bounds nested containers and arrays
+            # of short scalar values even when serialized bytes stay below 1 MiB.
+            if not in_string and char in "[{:,":
+                row_structure_tokens += 1
+                total_json_structure_tokens += 1
+                if (row_structure_tokens > max_row_structure_tokens
+                        or total_json_structure_tokens > max_total_structure_tokens):
+                    raise ValueError("requirement_preview_too_large")
             elif char in "]}":
                 if depth == 0:
                     break
