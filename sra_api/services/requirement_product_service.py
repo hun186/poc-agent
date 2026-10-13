@@ -376,9 +376,16 @@ class RequirementProductService:
                             raise ValueError("requirement_preview_too_large")
             except (BadZipFile, LargeZipFile, OSError) as exc:
                 raise ValueError("requirement_preview_archive_invalid") from exc
-        version = self.requirement_import_service.store.get_profile_version(
-            profile_version_id
-        )
+        try:
+            version = self.requirement_import_service.store.get_profile_version(
+                profile_version_id
+            )
+        except KeyError as exc:
+            # A missing requested profile is a client input problem, while
+            # unexpected store/presenter KeyErrors remain masked HTTP 500s.
+            if exc.args != ("profile_version_not_found",):
+                raise
+            raise ValueError("requirement_preview_profile_invalid") from exc
         if version.get("status") != "approved":
             raise ValueError("requirement_preview_profile_not_approved")
         if version.get("profile_version_id") != profile_version_id:
