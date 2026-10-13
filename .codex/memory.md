@@ -143,3 +143,7 @@
 ## 2026-10-13 P2.1 fourteenth Codex review
 
 - Exact-head review `5ff11c6789bcae908274cf41544f10f5780aa97f` reported one P2 metadata encoding compatibility bug: `json.dumps` default ASCII escaping can generate more than 4 KiB from two otherwise Pydantic-valid Unicode fields. Increased preview-only `task` JSON predecode budget to 8 KiB, tested 128 + 240 non-BMP characters serialized with default escapes, and kept oversized nested task form rejection. Maintain original PR #288, no merge until explicitly instructed; real pytest and SQL Server tests remain unverified.
+
+## 2026-10-13 P2.1 fifteenth Codex review
+
+- The 15th Codex review of PR #288 on exact head `b3f3e73116410ad335e1b05a70e587be5e799e91` reported one P2 in CSV preview: width check only after csv.reader created million-column field arrays. Fixed through preview-only pre-scan of CSV logical records before csv.reader, respecting quotes, escaped quotes, CRLF and quoted newlines, rejecting >128 columns before allocating decoded field lists. Added adversarial/positive regressions, retained unrestricted internal Phase 1B import. Same PR branch, no merge; exact-head review and actual pytest/live SQL Server still pending.
