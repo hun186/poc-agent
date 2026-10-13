@@ -192,3 +192,7 @@
 ## 2026-10-13 P2.1 sixteenth-review XLSX no-sheet input
 
 - XLSX preview now rejects a workbook with no declared/active worksheet as HTTP 422 `source_format_invalid`, instead of permitting an unhandled `AttributeError` to surface as HTTP 500. The check occurs immediately after selecting the configured/active sheet, before resource limits or header read. Added an archive-level regression, while exact-head Codex and repository pytest/SQL Server acceptance remain outstanding.
+
+## 2026-10-13 P2.1 seventeenth-review missing Import Profile
+
+- When the requested preview `profile_version_id` does not exist in RequirementStore, `KeyError("profile_version_not_found")` is classified at the Product preview lookup boundary as HTTP 422 `requirement_preview_profile_invalid`, the same stable validation code used for structurally invalid/mismatched profiles. Other unexpected store KeyErrors remain masked HTTP 500 `persistence_error`. Added direct/API regression; exact-head Codex and full pytest/SQL Server still pending.
