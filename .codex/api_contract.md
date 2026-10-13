@@ -184,3 +184,7 @@
 ## 2026-10-13 P2.1 fourteenth-review metadata encoding compatibility
 
 - Public preview's `task` JSON metadata predecode byte ceiling is **8,192 bytes** (previous 4,096); this accommodates schema-valid maximum-length `profile_version_id` (128 code points) and `name` (240 code points) even with Python default JSON non-BMP surrogate-pair escaping, while limiting nested object preallocation. Inputs above the byte ceiling still return HTTP 422 `requirement_preview_input_invalid`, before parsing. New positive/negative regressions added; authoritative exact-head Codex review and actual runtime pytest remain pending.
+
+## 2026-10-13 P2.1 fifteenth-review CSV predecode field budget
+
+- Uploaded CSV Preview now preflights raw logical record field counts (**128 fields maximum**) BEFORE calling Python `csv.reader`, protecting against millions of comma-delimited columns in a <=10 MiB file. The preflight respects CSV quoted fields, doubled-quote escapes and quoted line breaks; `csv.reader` still performs actual parsing. Exceeding width maps to 422 `requirement_preview_too_large`. Previous matrix cell/row/byte budgets and non-preview Phase 1B full imports remain unchanged. New tests include 2.7 million header cells and 1 million data cells, escaped/multiline CSV and 128-field boundary. Exact-head Codex and runtime pytest remain unverified.
