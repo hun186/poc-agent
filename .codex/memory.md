@@ -139,3 +139,7 @@
 ## 2026-10-12 P2.1 thirteenth Codex review
 
 - The 13th Codex review of PR #288 (`fc1e8eac0906999fc2085808bc00fae63d2d2298`) found three P2 issues. HTTP preview task form metadata now has 4 KiB predecode budget, valid two-field boundary retained. XLSX ZipFile opens only after a bounded raw central-directory EOCD/member-count preflight, with ZIP64/multidisk large variants refused and forged EOCD count cross-checked. Empty XLSX headers now yield 422 source-format validation. Regression tests added; exact-head Codex re-review, full pytest and real SQL Server acceptance remain unverified. No merge.
+
+## 2026-10-13 P2.1 fourteenth Codex review
+
+- Exact-head review `5ff11c6789bcae908274cf41544f10f5780aa97f` reported one P2 metadata encoding compatibility bug: `json.dumps` default ASCII escaping can generate more than 4 KiB from two otherwise Pydantic-valid Unicode fields. Increased preview-only `task` JSON predecode budget to 8 KiB, tested 128 + 240 non-BMP characters serialized with default escapes, and kept oversized nested task form rejection. Maintain original PR #288, no merge until explicitly instructed; real pytest and SQL Server tests remain unverified.
