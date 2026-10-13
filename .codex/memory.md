@@ -151,3 +151,7 @@
 ## 2026-10-13 P2.1 sixteenth Codex review
 
 - PR #288 exact-head Codex review `f372756a184979593d44803a5e6b21deaf51ee50` found a P2 malformed XLSX no-active-worksheet case. Reader now checks resolved sheet for None before touching max_column/header, closes workbook and reports 422 source_format_invalid. Added realistic ZIP workbook.xml-without-sheets regression; local isolated openpyxl confirmed workbook.active is None. Full repository pytest, hosted authoritative CI and real SQL acceptance are unverified. Maintain original PR; no merge without authorization.
+
+## 2026-10-13 P2.1 seventeenth Codex review
+
+- Exact-head `7b064f56bfb065539c78449b2e352b9cf4c79d0a` review found user-supplied nonexistent profile IDs produced `KeyError("profile_version_not_found")` and incorrectly became HTTP 500. Narrow normalization at Product preview service's known profile lookup now yields HTTP 422 `requirement_preview_profile_invalid`, preserving unknown backend KeyError as masked 500. Unit/API regressions added, full pytest and real SQL Server acceptance not yet verified. PR #288 open and unmerged.
