@@ -952,3 +952,56 @@ def test_preview_task_metadata_rejects_nested_payload_over_new_cap():
     assert response.status_code == 422
     assert response.json() == {"detail": {"code": "requirement_preview_input_invalid"}}
     assert preview.calls == []
+
+
+def test_csv_preview_rejects_very_wide_header_before_csv_reader(monkeypatch):
+    from data_ingestion.requirements import readers
+
+    # ~8 MiB on the wire, but 2.7 million CSV fields if parsed first.
+    wide = (b"ab," * 2_700_000) + b"ab\n"
+    assert len(wide) < 10 * 1024 * 1024
+    def fail_if_csv_parser_called(*args, **kwargs):
+        pytest.fail("csv.reader must not materialize a very wide header")
+    monkeypatch.setattr(readers.csv, "reader", fail_if_csv_parser_called)
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        readers.read_csv_rows(wide, max_rows=5000)
+
+
+def test_csv_preview_rejects_very_wide_data_row_before_csv_reader(monkeypatch):
+    from data_ingestion.requirements import readers
+
+    wide = b"ITEMNO,TITLE\n" + (b"ab," * 1_000_000) + b"ab\n"
+    def fail_if_csv_parser_called(*args, **kwargs):
+        pytest.fail("csv.reader must not materialize an over-wide data row")
+    monkeypatch.setattr(readers.csv, "reader", fail_if_csv_parser_called)
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        readers.read_csv_rows(wide, max_rows=5000)
+
+
+def test_csv_preflight_distinguishes_quoted_commas_escaped_quotes_and_newlines():
+    from data_ingestion.requirements.readers import read_csv_rows
+
+    source = b'ITEMNO,TITLE,CONTENT\r\n1,"one,two","quote ""hi"", and\r\nnewline"\r\n'
+    rows, numbers = read_csv_rows(source, max_rows=5000)
+    assert rows == [{
+        "ITEMNO": "1",
+        "TITLE": "one,two",
+        "CONTENT": 'quote "hi", and\r\nnewline',
+    }]
+    assert numbers == [2]
+
+
+def test_csv_preflight_accepts_128_columns_rejects_129_and_preserves_full_import():
+    from data_ingestion.requirements.readers import read_csv_rows
+
+    headers = [f"c{i}" for i in range(129)]
+    accepted = (",".join(headers[:128]) + "\n" + ",".join(["x"] * 128)).encode()
+    rows, numbers = read_csv_rows(accepted, max_rows=5000)
+    assert len(rows[0]) == 128
+    assert numbers == [2]
+
+    too_wide = (",".join(headers) + "\n" + ",".join(["x"] * 129)).encode()
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        read_csv_rows(too_wide, max_rows=5000)
+    full_rows, _ = read_csv_rows(too_wide)
+    assert len(full_rows[0]) == 129
