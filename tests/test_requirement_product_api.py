@@ -918,3 +918,37 @@ def test_empty_xlsx_sheet_is_client_input_error():
     )
     with pytest.raises(ValueError, match="^source_format_invalid$"):
         read_bytes(data.getvalue(), "empty.xlsx", profile, max_rows=5000)
+
+
+def test_preview_task_metadata_allows_maximum_escaped_non_bmp_fields():
+    preview = PreviewService()
+    client, _ = make_client(role="db_operator", preview=preview)
+
+    # Python's default ensure_ascii=True emits each emoji as a 12-byte
+    # Unicode surrogate pair. Both fields meet their Pydantic length limits.
+    metadata = json.dumps({
+        "profile_version_id": "\U0001f600" * 128,
+        "name": "\U0001f600" * 240,
+    })
+    assert 4096 < len(metadata.encode("utf-8")) <= 8192
+    response = client.post(
+        "/v1/requirement-task-previews",
+        data={"task": metadata, "requirements_json": "[]"},
+    )
+    assert response.status_code == 200
+    assert len(preview.calls) == 1
+    assert preview.calls[0]["profile_version_id"] == "\U0001f600" * 128
+
+
+def test_preview_task_metadata_rejects_nested_payload_over_new_cap():
+    preview = PreviewService()
+    client, _ = make_client(role="db_operator", preview=preview)
+    malicious = '{"profile_version_id":"pv","extra":[' + "{}," * 3000 + "{}]}"
+    assert len(malicious.encode("utf-8")) > 8192
+    response = client.post(
+        "/v1/requirement-task-previews",
+        data={"task": malicious, "requirements_json": "[]"},
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": {"code": "requirement_preview_input_invalid"}}
+    assert preview.calls == []
