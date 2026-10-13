@@ -180,3 +180,7 @@
 - Public preview's `task` multipart JSON metadata is capped at 4,096 UTF-8 bytes **before** eager `json.loads` (422 `requirement_preview_input_invalid`); legitimate `profile_version_id` (max 128 chars) and `name` (max 240 chars) still fit.
 - Uploaded XLSX previews scan raw ZIP EOCD plus central-directory entry headers to enforce a max of 2,000 members **before** Python `ZipFile` builds all member objects. Invalid metadata yields `requirement_preview_archive_invalid`; excessive members or ZIP64 sentinel variants yield `requirement_preview_too_large`; expanded-content limits remain. Malformed/missing/blank worksheet headers map to 422 `source_format_invalid`.
 - Added narrow positive/negative tests; the new exact head still requires running actual pytest and hosted SQL Server acceptance.
+
+## 2026-10-13 P2.1 fourteenth-review metadata encoding compatibility
+
+- Public preview's `task` JSON metadata predecode byte ceiling is **8,192 bytes** (previous 4,096); this accommodates schema-valid maximum-length `profile_version_id` (128 code points) and `name` (240 code points) even with Python default JSON non-BMP surrogate-pair escaping, while limiting nested object preallocation. Inputs above the byte ceiling still return HTTP 422 `requirement_preview_input_invalid`, before parsing. New positive/negative regressions added; authoritative exact-head Codex review and actual runtime pytest remain pending.
