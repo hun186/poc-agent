@@ -30,6 +30,11 @@ def read_xlsx_rows(content: bytes, profile: ImportProfileDocument, *, max_rows: 
     if settings.name and settings.name not in workbook.sheetnames:
         raise ValueError("source_format_invalid")
     sheet = workbook[settings.name] if settings.name else workbook.active
+    if sheet is None:
+        # A valid XLSX container can have no worksheets. Do not leak the
+        # AttributeError from sheet.max_column to the HTTP 500 error path.
+        workbook.close()
+        raise ValueError("source_format_invalid")
     if max_rows is not None:
         # XLSX can declare huge sparse dimensions without substantial ZIP size.
         if (sheet.max_column is not None and sheet.max_column > 512
