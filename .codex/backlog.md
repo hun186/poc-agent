@@ -135,3 +135,5 @@
 - 2026-10-12 P2.1 PR #288 thirteenth review: fixed three P2 input guards (predecode task metadata 4 KiB, raw ZIP central directory 2,000-entry bound before ZipFile, blank XLSX header 422) and added tests. Preserve P1 internal import behavior, seek exact-head Codex approval and verified pytest/SQL Server tests before any merge. Deferred P2.2 and cross-owner duplicate scheduling unchanged.
 
 - 2026-10-13 P2.1 PR #288 fourteenth review P2: increase `task` predecode bound from 4 KiB to 8 KiB to admit valid escaped non-BMP maximum fields, with adversarial nested-task and positive regression tests. Request new exact-head review and verify hosted pytest and real SQL Server acceptance; do not merge or expand scope.
+
+- 2026-10-13 P2.1 PR #288 fifteenth Codex P2: pre-scan CSV logical records (including quoted commas and newlines) to reject >128 columns before csv.reader materializes millions of strings. Added tests for very wide header/data, normal quoted multiline input and internal Phase 1B parity. Request exact-head Codex review and authoritative pytest/SQL Server acceptance; no merge authorization.
