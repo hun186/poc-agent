@@ -63,7 +63,7 @@ def _preflight_preview_zip_entries(content: bytes, *, max_entries: int = 2000) -
     and central-directory entry headers from the existing upload bytes,
     without instantiating Python objects for each untrusted ZIP member.
     """
-    signature = b"PK\\x05\\x06"
+    signature = b"PK\x05\x06"
     beginning = max(0, len(content) - (22 + 65535))
     eocd = content.rfind(signature, beginning)
     while eocd != -1:
@@ -93,7 +93,7 @@ def _preflight_preview_zip_entries(content: bytes, *, max_entries: int = 2000) -
     position = central_start
     parsed = 0
     while position < eocd:
-        if position + 46 > eocd or content[position:position + 4] != b"PK\\x01\\x02":
+        if position + 46 > eocd or content[position:position + 4] != b"PK\x01\x02":
             raise ValueError("requirement_preview_archive_invalid")
         filename_length, extra_length, comment_length = (
             unpack_from("<3H", content, position + 28)
