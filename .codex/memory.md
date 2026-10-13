@@ -135,3 +135,7 @@
 ## 2026-10-12 P2.1 twelfth Codex review
 
 - PR #288 review at exact head `a9449c61b347a1509951f5034639d948e7a3c38d` finished with P1 JSON scanner comma-regression, P2 `requirements_json` direct-form predecode memory amplification. Both repaired on original PR branch: top-level commas now end each JSON fragment before counting nested tokens; direct JSON uses existing bounded HTTP reader to materialize rows before preview service's canonical serialization. Added multirow reader/API, nested form amplification and invalid syntax tests. Await fresh exact-head review / full runtime pytest / real SQL Server acceptance; do not merge without user's explicit instruction.
+
+## 2026-10-12 P2.1 thirteenth Codex review
+
+- The 13th Codex review of PR #288 (`fc1e8eac0906999fc2085808bc00fae63d2d2298`) found three P2 issues. HTTP preview task form metadata now has 4 KiB predecode budget, valid two-field boundary retained. XLSX ZipFile opens only after a bounded raw central-directory EOCD/member-count preflight, with ZIP64/multidisk large variants refused and forged EOCD count cross-checked. Empty XLSX headers now yield 422 source-format validation. Regression tests added; exact-head Codex re-review, full pytest and real SQL Server acceptance remain unverified. No merge.
