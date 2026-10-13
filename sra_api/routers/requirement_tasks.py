@@ -18,7 +18,7 @@ from data_ingestion.requirements.readers import read_json_rows
 router = APIRouter(tags=["requirement-tasks"])
 _MAX_INPUT_BYTES = 10 * 1024 * 1024
 _MAX_DIRECT_JSON_BYTES = 1024 * 1024  # Starlette's max_part_size for form fields
-_MAX_PREVIEW_TASK_METADATA_BYTES = 4096  # Two small declared fields; bound before json.loads
+_MAX_PREVIEW_TASK_METADATA_BYTES = 8192  # Supports max-length fields escaped as surrogate pairs
 _ALLOWED_EXTENSIONS = (".xlsx", ".csv", ".json")
 
 # Never echo arbitrary SQL/ODBC/adapter exceptions or file content through HTTP.
