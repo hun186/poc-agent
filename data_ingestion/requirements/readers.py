@@ -116,10 +116,10 @@ def _preflight_csv_preview_columns(source: str, *, max_columns: int = 128) -> No
             if columns > max_columns:
                 raise ValueError("requirement_preview_too_large")
             field_start = True
-        elif char in "\\r\\n":
+        elif char in "\r\n":
             columns = 1
             field_start = True
-            if char == "\\r" and index + 1 < len(source) and source[index + 1] == "\\n":
+            if char == "\r" and index + 1 < len(source) and source[index + 1] == "\n":
                 index += 1
         else:
             field_start = False
