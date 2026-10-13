@@ -18,6 +18,7 @@ from data_ingestion.requirements.readers import read_json_rows
 router = APIRouter(tags=["requirement-tasks"])
 _MAX_INPUT_BYTES = 10 * 1024 * 1024
 _MAX_DIRECT_JSON_BYTES = 1024 * 1024  # Starlette's max_part_size for form fields
+_MAX_PREVIEW_TASK_METADATA_BYTES = 4096  # Two small declared fields; bound before json.loads
 _ALLOWED_EXTENSIONS = (".xlsx", ".csv", ".json")
 
 # Never echo arbitrary SQL/ODBC/adapter exceptions or file content through HTTP.
@@ -86,9 +87,14 @@ async def preview_product_input(
 ):
     try:
         try:
+            # Metadata only declares profile_version_id (128 chars) and an
+            # optional name (240 chars). Reject large nested JSON before
+            # json.loads allocates an untrusted object graph.
+            if len(task.encode("utf-8")) > _MAX_PREVIEW_TASK_METADATA_BYTES:
+                raise ValueError("requirement_preview_input_invalid")
             task_data = json.loads(task)
             parsed = PreviewTaskBody.model_validate(task_data)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (UnicodeError, ValueError, TypeError, ValidationError) as exc:
             raise ValueError("requirement_preview_input_invalid") from exc
         if (file is None) == (requirements_json is None):
             raise ValueError("requirement_preview_input_invalid")
