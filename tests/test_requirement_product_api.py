@@ -1005,3 +1005,44 @@ def test_csv_preflight_accepts_128_columns_rejects_129_and_preserves_full_import
         read_csv_rows(too_wide, max_rows=5000)
     full_rows, _ = read_csv_rows(too_wide)
     assert len(full_rows[0]) == 129
+
+
+def test_xlsx_preview_with_no_worksheets_reports_source_format_error():
+    from types import SimpleNamespace
+    from xml.etree import ElementTree
+    from openpyxl import Workbook, load_workbook
+    from data_ingestion.requirements.readers import read_bytes
+
+    # A well-formed XLSX can declare no sheets. openpyxl then returns
+    # workbook.active is None, even though loading the ZIP succeeds.
+    original = BytesIO()
+    workbook = Workbook()
+    workbook.active["A1"] = "ITEMNO"
+    workbook.save(original)
+    workbook.close()
+
+    no_sheets = BytesIO()
+    with ZipFile(BytesIO(original.getvalue()), "r") as source:
+        with ZipFile(no_sheets, "w", ZIP_DEFLATED) as target:
+            for member in source.infolist():
+                contents = source.read(member.filename)
+                if member.filename == "xl/workbook.xml":
+                    root = ElementTree.fromstring(contents)
+                    namespace = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+                    sheets = root.find(namespace + "sheets")
+                    assert sheets is not None
+                    for item in list(sheets):
+                        sheets.remove(item)
+                    contents = ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
+                target.writestr(member, contents)
+
+    loaded = load_workbook(BytesIO(no_sheets.getvalue()), read_only=True)
+    assert loaded.active is None
+    loaded.close()
+
+    profile = SimpleNamespace(
+        format="xlsx",
+        worksheet=SimpleNamespace(name=None, header_row=1, first_data_row=2),
+    )
+    with pytest.raises(ValueError, match="^source_format_invalid$"):
+        read_bytes(no_sheets.getvalue(), "no-sheets.xlsx", profile, max_rows=5000)
