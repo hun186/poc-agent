@@ -174,3 +174,9 @@
 ## 2026-10-12 P2.1 twelfth-review JSON ingestion parity
 
 - Uploaded JSON file and direct `requirements_json` multipart form-field previews now share the **same predecode** incremental JSON row/structure limits. The direct form's existing 1 MiB size limit remains; valid raw JSON is decoded into bounded row dictionaries then sent via the same Product preview service `requirements` input to preserve canonical input hashing/normalization. Malformed direct syntax retains 422 `requirement_preview_input_invalid`, while structurally oversized direct JSON returns 422 `requirement_preview_too_large`. Valid multirow JSON arrays retain top-level comma delimiters when the structural-token scanner checks a row's boundary. Added focused tests; hosted exact-head pytest and Codex re-review not yet verified.
+
+## 2026-10-12 P2.1 thirteenth-review metadata/archive protections
+
+- Public preview's `task` multipart JSON metadata is capped at 4,096 UTF-8 bytes **before** eager `json.loads` (422 `requirement_preview_input_invalid`); legitimate `profile_version_id` (max 128 chars) and `name` (max 240 chars) still fit.
+- Uploaded XLSX previews scan raw ZIP EOCD plus central-directory entry headers to enforce a max of 2,000 members **before** Python `ZipFile` builds all member objects. Invalid metadata yields `requirement_preview_archive_invalid`; excessive members or ZIP64 sentinel variants yield `requirement_preview_too_large`; expanded-content limits remain. Malformed/missing/blank worksheet headers map to 422 `source_format_invalid`.
+- Added narrow positive/negative tests; the new exact head still requires running actual pytest and hosted SQL Server acceptance.
