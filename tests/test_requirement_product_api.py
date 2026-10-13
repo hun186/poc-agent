@@ -1046,3 +1046,62 @@ def test_xlsx_preview_with_no_worksheets_reports_source_format_error():
     )
     with pytest.raises(ValueError, match="^source_format_invalid$"):
         read_bytes(no_sheets.getvalue(), "no-sheets.xlsx", profile, max_rows=5000)
+
+
+
+@pytest.mark.parametrize(
+    "missing_key, expected_status, expected_code",
+    [
+        ("profile_version_not_found", 422, "requirement_preview_profile_invalid"),
+        ("unexpected_store_binding_missing", 500, "persistence_error"),
+    ],
+)
+def test_preview_profile_lookup_missing_vs_store_error(
+    missing_key, expected_status, expected_code,
+):
+    from types import SimpleNamespace
+
+    class ProfileStore:
+        def get_profile_version(self, profile_version_id):
+            assert profile_version_id == "missing-profile"
+            raise KeyError(missing_key)
+
+    service = RequirementProductService(
+        requirement_import_service=SimpleNamespace(store=ProfileStore()),
+    )
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[product_service] = lambda: service
+    app.dependency_overrides[current_user] = lambda: AuthUser(
+        username="operator", role="db_operator", status="active"
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/requirement-task-previews",
+        data={
+            "task": '{"profile_version_id":"missing-profile"}',
+            "requirements_json": "[]",
+        },
+    )
+    assert response.status_code == expected_status
+    assert response.json() == {"detail": {"code": expected_code}}
+
+
+def test_preview_missing_profile_is_input_error_at_service_boundary():
+    from types import SimpleNamespace
+
+    class ProfileStore:
+        def get_profile_version(self, _):
+            raise KeyError("profile_version_not_found")
+
+    service = RequirementProductService(
+        requirement_import_service=SimpleNamespace(store=ProfileStore()),
+    )
+    with pytest.raises(ValueError, match="^requirement_preview_profile_invalid$"):
+        service.preview_input(
+            profile_version_id="no-such-version",
+            requirements=[],
+            max_rows=5000,
+            max_result_rows=100,
+        )
