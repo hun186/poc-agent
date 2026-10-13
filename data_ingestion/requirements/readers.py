@@ -89,9 +89,51 @@ def read_xlsx_rows(content: bytes, profile: ImportProfileDocument, *, max_rows: 
     return rows, numbers
 
 
+def _preflight_csv_preview_columns(source: str, *, max_columns: int = 128) -> None:
+    """Reject over-wide CSV records before csv.reader constructs field lists.
+
+    Respect RFC-style quoted commas, doubled quotes, and quoted newlines.
+    This is a width preflight, not a second CSV parser: csv.reader remains
+    responsible for field values and malformed CSV syntax.
+    """
+    columns = 1
+    quoted = False
+    field_start = True
+    index = 0
+    while index < len(source):
+        char = source[index]
+        if quoted:
+            if char == '"':
+                if index + 1 < len(source) and source[index + 1] == '"':
+                    index += 1
+                else:
+                    quoted = False
+        elif char == '"' and field_start:
+            quoted = True
+            field_start = False
+        elif char == ",":
+            columns += 1
+            if columns > max_columns:
+                raise ValueError("requirement_preview_too_large")
+            field_start = True
+        elif char in "\\r\\n":
+            columns = 1
+            field_start = True
+            if char == "\\r" and index + 1 < len(source) and source[index + 1] == "\\n":
+                index += 1
+        else:
+            field_start = False
+        index += 1
+
+
 def read_csv_rows(content: bytes, *, max_rows: int | None = None) -> tuple[list[dict[str, Any]], list[int]]:
     try:
-        parsed = csv.reader(StringIO(content.decode("utf-8-sig")))
+        source = content.decode("utf-8-sig")
+        if max_rows is not None:
+            # Enforce width while scanning the raw logical records. Waiting
+            # until csv.reader returns a row can allocate millions of cells.
+            _preflight_csv_preview_columns(source)
+        parsed = csv.reader(StringIO(source))
         headers = next(parsed)
     except (UnicodeDecodeError, csv.Error, StopIteration) as exc:
         raise ValueError("source_format_invalid") from exc
