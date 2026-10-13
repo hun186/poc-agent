@@ -817,3 +817,104 @@ def test_direct_json_preview_malformed_input_still_uses_input_error_code():
     assert response.status_code == 422
     assert response.json() == {"detail": {"code": "requirement_preview_input_invalid"}}
     assert preview.calls == []
+
+
+def test_preview_task_metadata_size_checked_before_eager_json_decode():
+    preview = PreviewService()
+    client, _ = make_client(role="db_operator", preview=preview)
+    # Legal multipart size, but this task metadata contains thousands of
+    # hidden objects beyond the two allowed schema fields.
+    task_metadata = '{"profile_version_id":"pv","extra":[' + "{}," * 4000 + "{}]}"
+    assert 4096 < len(task_metadata.encode("utf-8")) < 1024 * 1024
+    response = client.post(
+        "/v1/requirement-task-previews",
+        data={"task": task_metadata, "requirements_json": "[]"},
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": {"code": "requirement_preview_input_invalid"}}
+    assert preview.calls == []
+
+
+def test_preview_task_metadata_accepts_declared_maximum_lengths():
+    preview = PreviewService()
+    client, _ = make_client(role="db_operator", preview=preview)
+    metadata = json.dumps({"profile_version_id": "p" * 128, "name": "名" * 240})
+    response = client.post(
+        "/v1/requirement-task-previews",
+        data={"task": metadata, "requirements_json": "[]"},
+    )
+    assert response.status_code == 200
+    assert len(preview.calls) == 1
+    assert preview.calls[0]["profile_version_id"] == "p" * 128
+
+
+def test_xlsx_preview_rejects_large_central_directory_before_zipfile(monkeypatch):
+    from sra_api.services import requirement_product_service as module
+
+    data = BytesIO()
+    with ZipFile(data, "w", ZIP_DEFLATED) as archive:
+        for i in range(2001):
+            archive.writestr(f"empty-{i:04d}.txt", b"")
+
+    def forbid_open(*args, **kwargs):
+        pytest.fail("ZipFile allocated ZipInfo before raw metadata preflight")
+
+    monkeypatch.setattr(module, "ZipFile", forbid_open)
+    service = RequirementProductService(requirement_import_service=object())
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        service.preview_input(
+            profile_version_id="pv",
+            upload_bytes=data.getvalue(),
+            upload_filename="many-members.xlsx",
+            max_rows=5000,
+            max_result_rows=100,
+        )
+
+
+def test_xlsx_preview_rejects_understated_central_directory_count():
+    from sra_api.services.requirement_product_service import (
+        _preflight_preview_zip_entries,
+    )
+    from struct import pack_into
+
+    data = BytesIO()
+    with ZipFile(data, "w", ZIP_DEFLATED) as archive:
+        for i in range(2001):
+            archive.writestr(f"file-{i:04d}", b"")
+    mutated = bytearray(data.getvalue())
+    eocd = mutated.rfind(b"PK\x05\x06")
+    assert eocd > 0
+    # Rewrite the untrusted EOCD declared counts to try to hide 2,001 rows.
+    pack_into("<H", mutated, eocd + 8, 1)
+    pack_into("<H", mutated, eocd + 10, 1)
+    with pytest.raises(ValueError, match="^requirement_preview_too_large$"):
+        _preflight_preview_zip_entries(bytes(mutated))
+
+
+def test_xlsx_preview_raw_central_directory_accepts_small_archive():
+    from sra_api.services.requirement_product_service import (
+        _preflight_preview_zip_entries,
+    )
+
+    data = BytesIO()
+    with ZipFile(data, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("xl/workbook.xml", b"<workbook/>")
+        archive.writestr("xl/worksheets/sheet1.xml", b"<worksheet/>")
+    assert _preflight_preview_zip_entries(data.getvalue()) is None
+
+
+def test_empty_xlsx_sheet_is_client_input_error():
+    from types import SimpleNamespace
+    from openpyxl import Workbook
+    from data_ingestion.requirements.readers import read_bytes
+
+    book = Workbook()
+    data = BytesIO()
+    book.save(data)
+    book.close()
+    profile = SimpleNamespace(
+        format="xlsx",
+        worksheet=SimpleNamespace(name=None, header_row=1, first_data_row=2),
+    )
+    with pytest.raises(ValueError, match="^source_format_invalid$"):
+        read_bytes(data.getvalue(), "empty.xlsx", profile, max_rows=5000)
