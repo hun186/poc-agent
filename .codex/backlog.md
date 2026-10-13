@@ -131,3 +131,5 @@
 - 2026-10-12 P2.1 PR #288 eleventh review: address P1 AGENTS.md import rule (remove guarded lxml import) and P2 preparse nested JSON memory budget with structural-token ceilings; commit tests/docs to same branch. New exact-head Codex review, hosted tests and real SQL Server acceptance remain required. Do not merge or expand into P2.2/cross-owner dedup.
 
 - 2026-10-12 P2.1 PR #288 twelfth review P1/P2: restore valid multirow JSON parsing and make direct `requirements_json` form path enforce predecode row/structure caps, same as .json upload. Tests added. Request new exact-head Codex review, inspect hosted checks, and run executable pytest / true SQL Server two-connection acceptance before merge; P2.2/cross-operator features remain deferred.
+
+- 2026-10-12 P2.1 PR #288 thirteenth review: fixed three P2 input guards (predecode task metadata 4 KiB, raw ZIP central directory 2,000-entry bound before ZipFile, blank XLSX header 422) and added tests. Preserve P1 internal import behavior, seek exact-head Codex approval and verified pytest/SQL Server tests before any merge. Deferred P2.2 and cross-owner duplicate scheduling unchanged.
