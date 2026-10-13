@@ -137,3 +137,5 @@
 - 2026-10-13 P2.1 PR #288 fourteenth review P2: increase `task` predecode bound from 4 KiB to 8 KiB to admit valid escaped non-BMP maximum fields, with adversarial nested-task and positive regression tests. Request new exact-head review and verify hosted pytest and real SQL Server acceptance; do not merge or expand scope.
 
 - 2026-10-13 P2.1 PR #288 fifteenth Codex P2: pre-scan CSV logical records (including quoted commas and newlines) to reject >128 columns before csv.reader materializes millions of strings. Added tests for very wide header/data, normal quoted multiline input and internal Phase 1B parity. Request exact-head Codex review and authoritative pytest/SQL Server acceptance; no merge authorization.
+
+- 2026-10-13 PR #288 sixteenth Codex review: fix no-active-worksheet XLSX P2, with real XLSX fixture and 422 input-code regression. Re-request Codex on exact new head. Full pytest/hosted CI and two-connection real SQL Server tests remain outstanding; do not merge without user's explicit authorization.
