@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 from io import BytesIO
 import json
+from struct import unpack_from
 from zipfile import ZipFile, BadZipFile, LargeZipFile
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,58 @@ def _required_text(row: dict[str, Any], key: str, *, error: str) -> str:
 
 def _safe_link(*parts: str) -> str:
     return "/" + "/".join(quote(str(part), safe="") for part in parts)
+
+
+def _preflight_preview_zip_entries(content: bytes, *, max_entries: int = 2000) -> None:
+    """Bound ZIP central-directory members before ZipFile allocates ZipInfo.
+
+    XLSX is ordinarily a small ZIP archive. We parse the fixed-length EOCD
+    and central-directory entry headers from the existing upload bytes,
+    without instantiating Python objects for each untrusted ZIP member.
+    """
+    signature = b"PK\\x05\\x06"
+    beginning = max(0, len(content) - (22 + 65535))
+    eocd = content.rfind(signature, beginning)
+    while eocd != -1:
+        if eocd + 22 <= len(content):
+            comment_length = unpack_from("<H", content, eocd + 20)[0]
+            if eocd + 22 + comment_length == len(content):
+                break
+        eocd = content.rfind(signature, beginning, eocd)
+    if eocd < 0:
+        raise ValueError("requirement_preview_archive_invalid")
+
+    _, disk_number, cd_disk, disk_entries, total_entries, cd_size, cd_offset, _ = (
+        unpack_from("<4s4H2IH", content, eocd)
+    )
+    if disk_number != 0 or cd_disk != 0 or disk_entries != total_entries:
+        raise ValueError("requirement_preview_archive_invalid")
+    # ZIP64 sentinels indicate potentially unbounded central-directory data;
+    # XLSX previews intentionally reject those uncommon oversized variants.
+    if total_entries > max_entries or total_entries == 0xFFFF or cd_size == 0xFFFFFFFF:
+        raise ValueError("requirement_preview_too_large")
+
+    # ZIP may contain an executable prefix (the offset encoded in EOCD is
+    # relative to the ZIP portion). Derive the absolute location from EOCD.
+    central_start = eocd - cd_size
+    if central_start < 0 or cd_offset > central_start:
+        raise ValueError("requirement_preview_archive_invalid")
+    position = central_start
+    parsed = 0
+    while position < eocd:
+        if position + 46 > eocd or content[position:position + 4] != b"PK\\x01\\x02":
+            raise ValueError("requirement_preview_archive_invalid")
+        filename_length, extra_length, comment_length = (
+            unpack_from("<3H", content, position + 28)
+        )
+        position += 46 + filename_length + extra_length + comment_length
+        if position > eocd:
+            raise ValueError("requirement_preview_archive_invalid")
+        parsed += 1
+        if parsed > max_entries:
+            raise ValueError("requirement_preview_too_large")
+    if parsed != total_entries:
+        raise ValueError("requirement_preview_archive_invalid")
 
 
 @dataclass(frozen=True)
@@ -307,6 +360,8 @@ class RequirementProductService:
             requirements=requirements,
         )
         if max_rows is not None and input_filename.lower().endswith(".xlsx"):
+            # Bound untrusted member count before ZipFile constructs ZipInfo.
+            _preflight_preview_zip_entries(input_bytes)
             # Reject compressed XLSX bombs before openpyxl inflates any worksheet.
             try:
                 with ZipFile(BytesIO(input_bytes)) as archive:
