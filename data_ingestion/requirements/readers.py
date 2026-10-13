@@ -37,7 +37,17 @@ def read_xlsx_rows(content: bytes, profile: ImportProfileDocument, *, max_rows: 
                 and sheet.max_row > settings.first_data_row + max_rows * 4):
             workbook.close()
             raise ValueError("requirement_preview_too_large")
-    header_values = next(sheet.iter_rows(min_row=settings.header_row, max_row=settings.header_row, values_only=True))
+    header_values = next(
+        sheet.iter_rows(
+            min_row=settings.header_row,
+            max_row=settings.header_row,
+            values_only=True,
+        ),
+        None,
+    )
+    if header_values is None or not any(value is not None and value != "" for value in header_values):
+        workbook.close()
+        raise ValueError("source_format_invalid")
     headers = ["" if value is None else str(value) for value in header_values]
     rows, numbers = [], []
     # HTTP previews only: cap the entire decoded matrix, not just row count.
