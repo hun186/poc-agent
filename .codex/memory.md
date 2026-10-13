@@ -147,3 +147,7 @@
 ## 2026-10-13 P2.1 fifteenth Codex review
 
 - The 15th Codex review of PR #288 on exact head `b3f3e73116410ad335e1b05a70e587be5e799e91` reported one P2 in CSV preview: width check only after csv.reader created million-column field arrays. Fixed through preview-only pre-scan of CSV logical records before csv.reader, respecting quotes, escaped quotes, CRLF and quoted newlines, rejecting >128 columns before allocating decoded field lists. Added adversarial/positive regressions, retained unrestricted internal Phase 1B import. Same PR branch, no merge; exact-head review and actual pytest/live SQL Server still pending.
+
+## 2026-10-13 P2.1 sixteenth Codex review
+
+- PR #288 exact-head Codex review `f372756a184979593d44803a5e6b21deaf51ee50` found a P2 malformed XLSX no-active-worksheet case. Reader now checks resolved sheet for None before touching max_column/header, closes workbook and reports 422 source_format_invalid. Added realistic ZIP workbook.xml-without-sheets regression; local isolated openpyxl confirmed workbook.active is None. Full repository pytest, hosted authoritative CI and real SQL acceptance are unverified. Maintain original PR; no merge without authorization.
