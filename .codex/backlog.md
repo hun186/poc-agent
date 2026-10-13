@@ -139,3 +139,5 @@
 - 2026-10-13 P2.1 PR #288 fifteenth Codex P2: pre-scan CSV logical records (including quoted commas and newlines) to reject >128 columns before csv.reader materializes millions of strings. Added tests for very wide header/data, normal quoted multiline input and internal Phase 1B parity. Request exact-head Codex review and authoritative pytest/SQL Server acceptance; no merge authorization.
 
 - 2026-10-13 PR #288 sixteenth Codex review: fix no-active-worksheet XLSX P2, with real XLSX fixture and 422 input-code regression. Re-request Codex on exact new head. Full pytest/hosted CI and two-connection real SQL Server tests remain outstanding; do not merge without user's explicit authorization.
+
+- 2026-10-13 PR #288 seventeenth review: map explicitly missing Import Profile version selection to 422 (not 500), with adversarial unknown KeyError still mapping to 500. Tests/docs committed on same PR. Request exact-head Codex review; full repository pytest, hosted authoritative CI and two-connection real SQL Server acceptance pending before merge. Do not merge without explicit user authorization.
