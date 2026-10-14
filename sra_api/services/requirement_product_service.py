@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+from io import BytesIO
 import json
+from struct import unpack_from
+from zipfile import ZipFile, BadZipFile, LargeZipFile
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -53,6 +56,58 @@ def _safe_link(*parts: str) -> str:
     return "/" + "/".join(quote(str(part), safe="") for part in parts)
 
 
+def _preflight_preview_zip_entries(content: bytes, *, max_entries: int = 2000) -> None:
+    """Bound ZIP central-directory members before ZipFile allocates ZipInfo.
+
+    XLSX is ordinarily a small ZIP archive. We parse the fixed-length EOCD
+    and central-directory entry headers from the existing upload bytes,
+    without instantiating Python objects for each untrusted ZIP member.
+    """
+    signature = b"PK\x05\x06"
+    beginning = max(0, len(content) - (22 + 65535))
+    eocd = content.rfind(signature, beginning)
+    while eocd != -1:
+        if eocd + 22 <= len(content):
+            comment_length = unpack_from("<H", content, eocd + 20)[0]
+            if eocd + 22 + comment_length == len(content):
+                break
+        eocd = content.rfind(signature, beginning, eocd)
+    if eocd < 0:
+        raise ValueError("requirement_preview_archive_invalid")
+
+    _, disk_number, cd_disk, disk_entries, total_entries, cd_size, cd_offset, _ = (
+        unpack_from("<4s4H2IH", content, eocd)
+    )
+    if disk_number != 0 or cd_disk != 0 or disk_entries != total_entries:
+        raise ValueError("requirement_preview_archive_invalid")
+    # ZIP64 sentinels indicate potentially unbounded central-directory data;
+    # XLSX previews intentionally reject those uncommon oversized variants.
+    if total_entries > max_entries or total_entries == 0xFFFF or cd_size == 0xFFFFFFFF:
+        raise ValueError("requirement_preview_too_large")
+
+    # ZIP may contain an executable prefix (the offset encoded in EOCD is
+    # relative to the ZIP portion). Derive the absolute location from EOCD.
+    central_start = eocd - cd_size
+    if central_start < 0 or cd_offset > central_start:
+        raise ValueError("requirement_preview_archive_invalid")
+    position = central_start
+    parsed = 0
+    while position < eocd:
+        if position + 46 > eocd or content[position:position + 4] != b"PK\x01\x02":
+            raise ValueError("requirement_preview_archive_invalid")
+        filename_length, extra_length, comment_length = (
+            unpack_from("<3H", content, position + 28)
+        )
+        position += 46 + filename_length + extra_length + comment_length
+        if position > eocd:
+            raise ValueError("requirement_preview_archive_invalid")
+        parsed += 1
+        if parsed > max_entries:
+            raise ValueError("requirement_preview_too_large")
+    if parsed != total_entries:
+        raise ValueError("requirement_preview_archive_invalid")
+
+
 @dataclass(frozen=True)
 class ProductTaskIdentity:
     task_id: str
@@ -97,6 +152,11 @@ def neutral_run_status(run: dict[str, Any]) -> str:
     state = _required_text(run, "state", error="requirement_run_state_invalid")
     if state == "completed_with_failures":
         if "items" not in run:
+            evidence = run.get("_failure_state_evidence")
+            if evidence == "recovery_required":
+                return "recovery_required"
+            if evidence in {"failed", "expired"}:
+                return "completed_with_errors"
             raise ValueError("requirement_run_status_evidence_missing")
         items = run.get("items")
         if not isinstance(items, (list, tuple)):
@@ -284,6 +344,8 @@ class RequirementProductService:
         upload_bytes: bytes | None = None,
         upload_filename: str | None = None,
         requirements: Any | None = None,
+        max_rows: int | None = None,
+        max_result_rows: int | None = None,
     ) -> dict[str, Any]:
         """Normalize candidate Requirement input without creating durable state."""
 
@@ -297,9 +359,33 @@ class RequirementProductService:
             upload_filename=upload_filename,
             requirements=requirements,
         )
-        version = self.requirement_import_service.store.get_profile_version(
-            profile_version_id
-        )
+        if max_rows is not None and input_filename.lower().endswith(".xlsx"):
+            # Bound untrusted member count before ZipFile constructs ZipInfo.
+            _preflight_preview_zip_entries(input_bytes)
+            # Reject compressed XLSX bombs before openpyxl inflates any worksheet.
+            try:
+                with ZipFile(BytesIO(input_bytes)) as archive:
+                    entries = archive.infolist()
+                    if len(entries) > 2000:
+                        raise ValueError("requirement_preview_too_large")
+                    expanded = 0
+                    for entry in entries:
+                        expanded += entry.file_size
+                        if (entry.flag_bits & 1 or entry.file_size > 20 * 1024 * 1024
+                                or expanded > 40 * 1024 * 1024):
+                            raise ValueError("requirement_preview_too_large")
+            except (BadZipFile, LargeZipFile, OSError) as exc:
+                raise ValueError("requirement_preview_archive_invalid") from exc
+        try:
+            version = self.requirement_import_service.store.get_profile_version(
+                profile_version_id
+            )
+        except KeyError as exc:
+            # A missing requested profile is a client input problem, while
+            # unexpected store/presenter KeyErrors remain masked HTTP 500s.
+            if exc.args != ("profile_version_not_found",):
+                raise
+            raise ValueError("requirement_preview_profile_invalid") from exc
         if version.get("status") != "approved":
             raise ValueError("requirement_preview_profile_not_approved")
         if version.get("profile_version_id") != profile_version_id:
@@ -342,6 +428,7 @@ class RequirementProductService:
             profile,
             upload_bytes=input_bytes,
             upload_filename=input_filename,
+            **({"max_rows": max_rows} if max_rows is not None else {}),
         )
         candidate = normalize_rows(
             acquired.rows,
@@ -365,20 +452,34 @@ class RequirementProductService:
             "source_updated_by",
             "source_created_at",
         }
+        selected_rows = (candidate.rows[:max_result_rows]
+                         if max_result_rows is not None else candidate.rows)
         normalized_preview = [
             row.model_dump(mode="json", include=preview_fields)
-            for row in candidate.rows
+            for row in selected_rows
         ]
+        if max_result_rows is not None:
+            # Bounded HTTP sample, never used for actual Product creation.
+            def bounded(item):
+                return {
+                    key: value[:1024] if isinstance(value, str) else value
+                    for key, value in item.items()
+                }
+            normalized_preview = [bounded(row) for row in normalized_preview]
+            errors_sample = [bounded(item) for item in errors[:max_result_rows]]
+            warnings_sample = [bounded(item) for item in warnings[:max_result_rows]]
+        else:
+            errors_sample, warnings_sample = errors, warnings
 
-        return {
+        result = {
             "source_sha256": acquired.source_sha256,
             "row_count": len(acquired.rows),
             "accepted_count": len(candidate.rows),
             "rejected_count": len(errors),
             "has_errors": bool(errors),
             "normalized_preview": normalized_preview,
-            "errors": errors,
-            "warnings": warnings,
+            "errors": errors_sample,
+            "warnings": warnings_sample,
             "profile": {
                 "profile_id": profile_id,
                 "profile_version_id": profile_version_id,
@@ -388,6 +489,13 @@ class RequirementProductService:
                 "source_mode": profile.source_mode.value,
             },
         }
+        if max_result_rows is not None:
+            result["preview_truncated"] = (
+                len(candidate.rows) > len(normalized_preview)
+                or len(errors) > len(errors_sample)
+                or len(warnings) > len(warnings_sample)
+            )
+        return result
 
     @staticmethod
     def _preview_selectable_count(
@@ -1246,6 +1354,92 @@ class RequirementProductService:
         )
 
     @staticmethod
+    def _present_task_projection(task: dict[str, Any]) -> dict[str, Any]:
+        schedule = {
+            "schedule_id": task["schedule_id"],
+            "name": task["schedule_name"],
+            "enabled": task["schedule_enabled"],
+            "active_version_id": task["schedule_active_version_id"],
+            "next_run_at": task["schedule_next_run_at"],
+        }
+        return RequirementProductService.present_task(product_task=task, schedule=schedule)
+
+    def get_task(self, task_id: str) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        return self._present_task_projection(
+            self.schedule_store.get_product_task_projection(task_id)
+        )
+
+    def list_tasks(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        tasks = self.schedule_store.list_product_task_projections(limit=limit, offset=offset)
+        return {
+            "items": [self._present_task_projection(task) for task in tasks],
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def list_task_runs(self, task_id: str, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        task = self.schedule_store.get_product_task(task_id)
+        summaries = self.schedule_store.list_product_run_summaries(
+            task_id=task_id, limit=limit, offset=offset
+        )
+        return {
+            "items": [
+                self.present_run(product_task=item["task"], run=item["run"])
+                for item in summaries
+            ],
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def get_run(self, run_id: str) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        task = self.schedule_store.get_product_task_for_run(run_id)
+        run = self.schedule_store.get_batch_run(
+            schedule_id=task["schedule_id"], batch_run_id=run_id,
+            include_items=False,
+        )
+        return self.present_run(product_task=task, run=run)
+
+    def get_run_items(
+        self, run_id: str, *, limit: int = 50, offset: int = 0
+    ) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        task = self.schedule_store.get_product_task_for_run(run_id)
+        rows = self.schedule_store.list_batch_run_items(
+            schedule_id=task["schedule_id"], batch_run_id=run_id,
+            limit=limit, offset=offset,
+        )
+        return {
+            "run_id": run_id,
+            "items": [_present_run_item(item) for item in rows],
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def list_runs(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        if self.schedule_store is None:
+            raise RuntimeError("requirement_product_create_unconfigured")
+        summaries = self.schedule_store.list_product_run_summaries(
+            limit=limit, offset=offset
+        )
+        return {
+            "items": [
+                self.present_run(product_task=item["task"], run=item["run"])
+                for item in summaries
+            ],
+            "limit": limit,
+            "offset": offset,
+        }
+
+    @staticmethod
     def task_identity(product_task: dict[str, Any]) -> ProductTaskIdentity:
         return ProductTaskIdentity.from_product_task_row(product_task)
 
@@ -1316,7 +1510,7 @@ class RequirementProductService:
         if trigger_type not in {"manual", "scheduled"}:
             raise ValueError("requirement_run_trigger_invalid")
 
-        return {
+        result = {
             "run_id": run_id,
             "task_id": identity.task_id,
             "status": neutral_run_status(run),
@@ -1341,10 +1535,11 @@ class RequirementProductService:
             ),
             "created_at": run.get("created_at"),
             "completed_at": run.get("completed_at"),
-            "items": presented_items,
             "links": {
                 "self": _safe_link("v1", "requirement-runs", run_id),
                 "items": _safe_link("v1", "requirement-runs", run_id, "items"),
-                "artifacts": _safe_link("v1", "requirement-runs", run_id, "artifacts"),
             },
         }
+        if "items" in run:
+            result["items"] = presented_items
+        return result

@@ -621,6 +621,109 @@ class ScheduleStore:
         finally:
             connection.close()
 
+    def _product_projection_query(self, where: str, *params) -> list[dict[str, Any]]:
+        """Keep both Product Task and Schedule locks until the query finishes.
+
+        On locking READ COMMITTED databases, a join without HOLDLOCK may
+        combine the Task before a concurrent update with the Schedule after.
+        Holding both joined row locks prevents that mixed projection.
+        """
+        return self._query(
+            f"SELECT t.task_id,t.schedule_id,t.source_id,t.execution_kind,"
+            f"t.product_state,t.revision,t.created_by,t.created_at,t.updated_by,t.updated_at,"
+            f"s.name AS schedule_name,s.enabled AS schedule_enabled,"
+            f"s.active_version_id AS schedule_active_version_id,"
+            f"s.next_run_at AS schedule_next_run_at "
+            f"FROM {self.t}.[requirement_product_tasks] AS t WITH (HOLDLOCK) "
+            f"JOIN {self.t}.[requirement_schedules] AS s WITH (HOLDLOCK) ON s.schedule_id=t.schedule_id "
+            f"WHERE t.product_state IN ('active','disabled') AND {where}",
+            *params,
+        )
+
+    def get_product_task_projection(self, task_id: str) -> dict[str, Any]:
+        rows = self._product_projection_query("t.task_id=?", task_id)
+        if not rows:
+            raise KeyError("requirement_task_not_found")
+        return rows[0]
+
+    def list_product_task_projections(
+        self, *, limit: int = 50, offset: int = 0
+    ) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+        return self._product_projection_query(
+            "1=1 ORDER BY t.created_at DESC,t.task_id OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+            offset, limit,
+        )
+
+    def list_product_tasks(self, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """Read only finalized Product Tasks; never expose provisioning identities."""
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+        return self._query(
+            f"SELECT task_id,schedule_id,source_id,execution_kind,product_state,revision,"
+            f"created_by,created_at,updated_by,updated_at "
+            f"FROM {self.t}.[requirement_product_tasks] "
+            f"WHERE product_state IN ('active','disabled') "
+            f"ORDER BY created_at DESC,task_id "
+            f"OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+            offset, limit,
+        )
+
+    def list_product_run_summaries(self, *, task_id=None, limit=50, offset=0):
+        """Read one page of Product-owned Run summaries in one SQL round trip."""
+        limit=max(1,min(int(limit),100)); offset=max(0,int(offset))
+        task_cols=("task_id","schedule_id","source_id","execution_kind","product_state","revision","created_by","created_at","updated_by","updated_at")
+        run_cols=("batch_run_id","schedule_id","schedule_version_id","snapshot_id","trigger_type","scheduled_for","state","selected_count","skipped_count","success_count","failure_count","error_code","deadline_elapsed_during_execution","created_at","completed_at")
+        task_select=",".join(f"t.{k} AS task_{k}" for k in task_cols)
+        run_select=",".join(f"r.{k} AS run_{k}" for k in run_cols)
+        evidence=(
+            "CASE WHEN r.state='completed_with_failures' THEN "
+            "CASE WHEN EXISTS(SELECT 1 FROM "+self.t+".[requirement_batch_run_items] i WHERE i.batch_run_id=r.batch_run_id AND i.execution_state='recovery_required') THEN 'recovery_required' "
+            "WHEN EXISTS(SELECT 1 FROM "+self.t+".[requirement_batch_run_items] i WHERE i.batch_run_id=r.batch_run_id AND i.execution_state IN ('failed','expired')) THEN 'failed' "
+            "ELSE NULL END ELSE NULL END AS run__failure_state_evidence"
+        )
+        filt=" AND t.task_id=?" if task_id is not None else ""
+        args=(task_id,offset,limit) if task_id is not None else (offset,limit)
+        rows=self._query(
+            f"SELECT {task_select},{run_select},{evidence} FROM {self.t}.[requirement_batch_runs] r "
+            f"JOIN {self.t}.[requirement_product_tasks] t ON t.schedule_id=r.schedule_id "
+            f"WHERE t.product_state IN ('active','disabled'){filt} "
+            "ORDER BY r.created_at DESC,r.batch_run_id OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+            *args)
+        return [{"task":{k:row["task_"+k] for k in task_cols},
+                 "run":{**{k:row["run_"+k] for k in run_cols},
+                        "_failure_state_evidence":row["run__failure_state_evidence"]}}
+                for row in rows]
+
+    def list_product_run_bindings(self, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """List eligible Run->Task bindings without exposing unowned or provisioning runs."""
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+        return self._query(
+            f"SELECT r.batch_run_id,t.task_id "
+            f"FROM {self.t}.[requirement_batch_runs] r "
+            f"JOIN {self.t}.[requirement_product_tasks] t ON t.schedule_id=r.schedule_id "
+            f"WHERE t.product_state IN ('active','disabled') "
+            f"ORDER BY r.created_at DESC,r.batch_run_id "
+            f"OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+            offset, limit,
+        )
+
+    def get_product_task_for_run(self, batch_run_id: str) -> dict[str, Any]:
+        """Resolve the owning finalized Product Task; hide provisioning and low-level Runs."""
+        rows = self._query(
+            f"SELECT t.task_id,t.schedule_id,t.source_id,t.execution_kind,"
+            f"t.product_state,t.revision,t.created_by,t.created_at,t.updated_by,t.updated_at "
+            f"FROM {self.t}.[requirement_batch_runs] r "
+            f"JOIN {self.t}.[requirement_product_tasks] t ON t.schedule_id=r.schedule_id "
+            f"WHERE r.batch_run_id=? AND t.product_state IN ('active','disabled')",
+            batch_run_id,
+        )
+        if not rows:
+            raise KeyError("requirement_run_unavailable")
+        return rows[0]
+
     def get_product_task(self, task_id: str, *, include_provisioning: bool = False) -> dict[str, Any]:
         clause = "" if include_provisioning else " AND product_state IN ('active','disabled')"
         rows = self._query(
@@ -3330,11 +3433,45 @@ class ScheduleStore:
         limit=max(1,min(int(limit),100)); offset=max(0,int(offset))
         return self._query(f"SELECT batch_run_id,schedule_id,schedule_version_id,trigger_type,trigger_request_id,scheduled_for,state,selected_count,skipped_count,success_count,failure_count,error_code,deadline_elapsed_during_execution,created_at,materialized_at,handoff_started_at,handed_off_at,reconciled_at,completed_at FROM {self.t}.[requirement_batch_runs] WHERE schedule_id=? ORDER BY created_at DESC,batch_run_id OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",schedule_id,offset,limit)
 
-    def get_batch_run(self, *, schedule_id: str, batch_run_id: str):
+    def get_batch_run(self, *, schedule_id: str, batch_run_id: str, include_items: bool = True):
         runs=self._query(f"SELECT batch_run_id,schedule_id,schedule_version_id,trigger_type,trigger_request_id,scheduled_for,snapshot_id,phase1a_output_root_fingerprint,state,selected_count,skipped_count,success_count,failure_count,error_code,deadline_elapsed_during_execution,created_at,materialized_at,handoff_started_at,handed_off_at,reconciled_at,completed_at FROM {self.t}.[requirement_batch_runs] WHERE schedule_id=? AND batch_run_id=?",schedule_id,batch_run_id)
         if not runs: raise KeyError("batch_run_not_found")
-        runs[0]["items"]=self._query(f"SELECT run_item_id,requirement_id,requirement_version_id,requirement_version_number,source_order,selection_status,selection_reason,execution_state,remote_job_id,remote_job_state,error_code,expired_at_selection,expired_before_handoff,deadline_elapsed_during_execution,artifact_relative_path,artifact_sha256,handoff_started_at,dispatched_at,remote_completed_at,artifact_reconciled_at,completed_at FROM {self.t}.[requirement_batch_run_items] WHERE batch_run_id=? ORDER BY source_order",batch_run_id)
+        if include_items:
+            runs[0]["items"]=self._query(f"SELECT run_item_id,requirement_id,requirement_version_id,requirement_version_number,source_order,selection_status,selection_reason,execution_state,remote_job_id,remote_job_state,error_code,expired_at_selection,expired_before_handoff,deadline_elapsed_during_execution,artifact_relative_path,artifact_sha256,handoff_started_at,dispatched_at,remote_completed_at,artifact_reconciled_at,completed_at FROM {self.t}.[requirement_batch_run_items] WHERE batch_run_id=? ORDER BY source_order",batch_run_id)
+        elif runs[0]["state"] == "completed_with_failures":
+            # P1 presenter requires failure-state proof; fetch at most one item.
+            evidence = self._query(
+                f"SELECT TOP 1 execution_state FROM {self.t}.[requirement_batch_run_items] "
+                f"WHERE batch_run_id=? AND execution_state IN ('failed','expired','recovery_required') "
+                f"ORDER BY CASE WHEN execution_state='recovery_required' THEN 0 ELSE 1 END",
+                batch_run_id,
+            )
+            runs[0]["_failure_state_evidence"] = (
+                evidence[0]["execution_state"] if evidence else None
+            )
         return runs[0]
+
+    def list_batch_run_items(
+        self, *, schedule_id: str, batch_run_id: str,
+        limit: int = 50, offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+        return self._query(
+            f"SELECT i.run_item_id,i.requirement_id,i.requirement_version_id,"
+            f"i.requirement_version_number,i.source_order,i.selection_status,"
+            f"i.selection_reason,i.execution_state,i.remote_job_id,i.remote_job_state,"
+            f"i.error_code,i.expired_at_selection,i.expired_before_handoff,"
+            f"i.deadline_elapsed_during_execution,i.artifact_relative_path,"
+            f"i.artifact_sha256,i.handoff_started_at,i.dispatched_at,"
+            f"i.remote_completed_at,i.artifact_reconciled_at,i.completed_at "
+            f"FROM {self.t}.[requirement_batch_run_items] i "
+            f"JOIN {self.t}.[requirement_batch_runs] r ON r.batch_run_id=i.batch_run_id "
+            f"WHERE r.schedule_id=? AND r.batch_run_id=? "
+            f"ORDER BY i.source_order,i.run_item_id "
+            f"OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+            schedule_id, batch_run_id, offset, limit,
+        )
 
     def get_operator_artifact_evidence(self, *, batch_run_id: str, run_item_id: str):
         """Read the durable Batch/Run Item artifact identity without accepting path authority."""

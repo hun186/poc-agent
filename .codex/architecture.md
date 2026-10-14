@@ -151,3 +151,26 @@
 - Internal Product `input_replace` is a Schedule-schema request-ledger saga coupled to the existing Phase 1B Requirement Import authority; it does not introduce an importer, worker, queue, or new schema revision.
 - The reservation transaction locks the Product Task (rejecting provisioning) and then its Requirement set, captures the active snapshot as an immutable `base_snapshot_id`, and stores stable replacement import/snapshot IDs. Independent reservations may share the same base; the Phase 1B Requirement-set row lock and CAS allow at most one winner.
 - The Requirement Import service always attempts exact-ID terminal recovery before `_prepare()`. Only a previously unseen import executes normalization and snapshot CAS. A later Product-ledger completion verifies the committed import/snapshot IDs without requiring the snapshot to remain active, supporting delayed response recovery after a newer replacement.
+
+## 2026-10-12 P2.1 Product façade boundary (PR #288)
+
+- `sra_api/routers/requirement_tasks.py` introduces the first high-level HTTP read/preview façade. It composes existing RequirementProductService, Phase 1B import preview, P1 presenters, Schedule SQL-read projections, and existing SRA bearer RBAC.
+- API lifespan installs `requirement_product_service` only when both Requirement Import and Schedule control-plane authorities initialize. Product list/detail and Run lookups filter on finalized Product Task states in authoritative SQL; provisioning is not a browser/HTTP visible resource.
+- No Product HTTP mutations or second scheduler/worker exist in this PR. The rest of Product API is separately gated P2.2/P2.3/P3; Task Center UI remains P4.
+
+## 2026-10-12 P2.1 Review remediation
+
+- Product preview raw request cap is enforced in a narrowly scoped ASGI middleware before FastAPI's multipart parsing or temporary-file spooling. It is not a generic file-upload policy for unrelated endpoints.
+- Product HTTP preview uses an explicit limit-only path through existing Requirement readers. P1 internal normalization and full-data create/replacement flows remain uncapped by these HTTP display limits.
+- ScheduleStore adds one-query joined Product Task/Schedule projections with explicit SQL Server `HOLDLOCK` on both joined tables, plus bounded Run Item SQL pagination. Existing full `get_batch_run()` remains the internal authority default; Product public Run summaries explicitly request `include_items=False`, retaining failure-state evidence without loading every item.
+
+## 2026-10-12 P2.1 round-three read-path performance and bounds
+
+- HTTP-only XLSX previews enforce cumulative cell and decoded-value-byte caps in the existing streaming reader, before raw source rows can accumulate into expensive in-memory graphs.
+- Public Run pages use `ScheduleStore.list_product_run_summaries` to project finalized Product Task identity, Run summary and P1-compatible failure evidence through one bounded SQL statement; they do not issue one database request per Run. Existing internal batch-run APIs retain their full-item behavior by default.
+- Deferred `/artifacts` links are excluded from Product P2.1 responses.
+
+## 2026-10-12 P2.1 round-four hardening boundary
+
+- XLSX parse errors from untrusted upload data are normalized at the format reader, before HTTP error presentation; server projection/store invariants continue to return masked 500 responses.
+- The Product preview ASGI cap is applied after CORS in request execution (registered earlier than `CORSMiddleware` in Starlette) so its synthetic 413 rejection inherits normal browser CORS handling, without weakening the pre-parser body limit.

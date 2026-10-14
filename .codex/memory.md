@@ -78,3 +78,80 @@
 - PR #286 P1.6 transactional low-level Schedule/source ownership fences merged to `main@30071cb3b7b732b2875a35c6929b430693029905` after clean Codex exact-head review and successful Hosted Vercel.
 - P1.7 work is scoped to internal Product input replacement: lifecycle-checked reservation with immutable `base_snapshot_id`, preallocated import/snapshot IDs, Phase 1B locked snapshot CAS, delayed committed replay before normalization, and bounded Product ledger finalization.
 - No Product HTTP routes or P1.7 deployment/live SQL Server acceptance are claimed; local pytest remains unavailable without direct Git transport. Retain P1.6 ownership fences and do not merge the P1.7 PR until explicit authorization.
+
+## 2026-10-12 P2.1 Product API first HTTP slice
+
+- Authoritative P1.7 merged PR #287 at `main@1ebb44986acf5c901861728fa61ee0b897bb904c`. P2.1 begins on `feat/requirement-product-api-read-preview-p2-1`, PR #288, with read-only Product Task/Run HTTP routes and operator-only side-effect-free multipart/direct-JSON preview.
+- Product service is initialized only with both Requirement Import and Schedule authorities, reuses existing `current_user` and `require_db_operator`, and projects finalized Product Task/Run identities from ScheduleStore/P1 presenters. No mutation, Run trigger, new auth store, worker, Report Job, or artifact route is introduced.
+- P2.1 PR #288 first exact-head `5483b66d0334286d9bd1f8d657bc49721553998c` requested `@codex review`, but GitHub Codex bot responded review usage limit exceeded; no clean review or pytest/real SQL PASS is claimed. Do not merge without user approval and completed current-head review gate.
+- Original v1 has no cross-Task identical/similar-Requirement execution sharing. User asked about this potential optimization; defer to a separate explicit security/provenance/semantic design.
+
+## 2026-10-12 P2.1 Codex findings remediation
+
+- Codex Review for PR #288 exact head `3cf17b81310d4c3dbb8b19d66e63cca860526c9f` completed with 1 P1 + 5 P2 findings. Corrective changes remain on the existing Product P2.1 branch.
+- Added pre-multipart-body ASGI cap, HTTP-only normalization/ZIP/preview bounds, independent Run Item paging, atomic Task/Schedule read projections and safe 500 for backend invariant failures. Internal P1 Product create/replacement semantics remain separate from public preview-only caps.
+- Added focused regression source tests; no actual local pytest or two-connection SQL Server PASS is asserted because direct Git transport cannot resolve github.com in the execution environment. New exact-head Codex review and Hosted checks are the next gates; no merge authorization has been given.
+
+## 2026-10-12 P2.1 second Codex review
+
+- PR #288 exact head `41415706013da58356002840c2348924a84c518a` Codex completed with three P2 findings and no new P1. Addressed the parser 400/test mismatch, JOIN read-consistency with SQL Server `HOLDLOCK` for both Task/Schedule, and unexpected presenter `KeyError` masking as 500. Added focused regression tests for known 404 vs unexpected KeyError and lock hints. All verification remains source-based until new exact-head Hosted review/CI and runtime pytest/live SQL acceptance.
+
+## 2026-10-12 P2.1 third Codex review
+
+- PR #288 third exact-head Codex review `9fa8890` completed with three P2 issues. Added XLSX preview total cell/value-byte caps, one-query Product Run history pages (no per-Run round trips) and removed the deferred Artifacts HTTP relation. Test coverage and API/architecture documentation updated. No merge authorized, exact-head review/CI and live SQL Server verification pending.
+
+## 2026-10-12 P2.1 fourth Codex review
+
+- Codex completed on `45318fd8ad124ae94758799c9dc2ab40bf6d27e8` with two P2 findings: malformed XLSX classified as 500 and pre-parser 413 without browser CORS headers. Fixed input decoding error normalization and middleware order, added tests and documentation on PR #288 original branch. New-head Codex review/hosted checks and true pytest/live SQL Server acceptance are separate gates; no merge instruction given.
+
+## 2026-10-12 P2.1 fifth Codex review
+
+- Exact-head Codex review at `6dbcf20d163b565a4f3cf8ee34c3ece11872f1d3` completed with one P2 malformed-XLSX TypeError error classification finding. Added an XLSX decoding-boundary `TypeError` normalization to stable `source_format_invalid` and regression using an invalid `sheetId` attribute in an otherwise valid XLSX archive. Do not treat any prior review or CI result as passing the new head; runtime pytest and real SQL Server tests are pending. PR #288 remains open, no merge authorized.
+
+## 2026-10-12 P2.1 sixth Codex review
+
+- PR #288 sixth Codex review for `1102b368ebd38d1856f8d84b42a5f36eb1df9534` finished with one P2 CSV matrix amplification issue. Fix caps width (128), total cell count (50,000) and decoded bytes (8 MiB) in preview-only CSV. Same guard added to preview-only JSON for consistent format isolation; internal no-limit P1 reads unaffected. Regressions and API contract updated. Await new exact-head review and actual pytest/SQL Server tests; do not merge without explicit user instruction.
+
+## 2026-10-12 P2.1 seventh Codex review
+
+- Codex review at exact head `b9d4bd3a5e2859c44af78bd31ce6d76b14002b73` found one P2 JSON preview pre-decode amplification bug. Added preview-only incremental array parsing of at most one 1 MiB row at a time, respecting escaped strings and nested values, with 5,000-row and 50,000-cell caps. The P1 internal JSON reader remains unchanged. Added regression tests for a very large compact array, malformed syntax, and normal nested objects. The branch is still open, exact-head review/CI and runtime pytest/SQL Server acceptance are not claimed.
+
+## 2026-10-12 P2.1 eighth Codex review
+
+- Exact-head `e4642084a73c48fc42a5021c66a91e593b182415` review found two P2 issues in incremental JSON preview: UTF-8 byte accounting (previously Unicode characters) and invalid array separators accepted. Adjusted the scanner to enforce 1 MiB original UTF-8 bytes before each row parse and reject top-level delimiters other than comma/closing square bracket. Added multilingual/invalid-JSON regressions. Keep P2.1 on original PR #288, no merge until explicitly authorized and exact-head verification.
+
+## 2026-10-12 P2.1 ninth Codex review
+
+- Exact-head Codex review `d72444b64961e023fff148f856531db73f380f35` found one P2 JSON preview invalid Unicode surrogate gap. Fixed isolated-surrogate `UnicodeEncodeError` to HTTP 422 `source_format_invalid` at the JSON reader's untrusted-value byte accounting boundary, without weakening general persistence/presenter errors. Added parameterized invalid keys/values and valid surrogate-pair regression. PR #288 remains open; fresh exact-head review and executable pytest/SQL Server acceptance are necessary.
+
+## 2026-10-12 P2.1 tenth Codex review
+
+- Exact-head `dd2f296645eb3a3989418210a71a10c4379d9e77` Codex review completed with a P2 on malformed XLSX XML when optional lxml parsing is enabled. A specific reader-level catch now normalizes XMLSyntaxError to 422 source_format_invalid and does not require lxml to be installed. Added regression mutating [Content_Types].xml in a real ZIP workbook to trigger lxml; no hosted runtime pytest PASS evidence claimed. PR #288 remains Open; do not merge without explicit user instruction.
+
+## 2026-10-12 P2.1 eleventh Codex review
+
+- Exact-head `4fe28edafd438854d70e99bb416ad4deb4909cb6` Codex review found P1 prohibited try/except import of optional lxml and P2 nested JSON memory amplification before decoding. Fixed via importlib module lookup following AGENTS.md, and a 5k/row plus 100k/preview preparse JSON structural-token cap on the existing incremental HTTP reader, before one-row object construction. Added adversarial and positive regressions; no full pytest or live SQL Server acceptance claimed. PR #288 stays open, no merge authorization.
+
+## 2026-10-12 P2.1 twelfth Codex review
+
+- PR #288 review at exact head `a9449c61b347a1509951f5034639d948e7a3c38d` finished with P1 JSON scanner comma-regression, P2 `requirements_json` direct-form predecode memory amplification. Both repaired on original PR branch: top-level commas now end each JSON fragment before counting nested tokens; direct JSON uses existing bounded HTTP reader to materialize rows before preview service's canonical serialization. Added multirow reader/API, nested form amplification and invalid syntax tests. Await fresh exact-head review / full runtime pytest / real SQL Server acceptance; do not merge without user's explicit instruction.
+
+## 2026-10-12 P2.1 thirteenth Codex review
+
+- The 13th Codex review of PR #288 (`fc1e8eac0906999fc2085808bc00fae63d2d2298`) found three P2 issues. HTTP preview task form metadata now has 4 KiB predecode budget, valid two-field boundary retained. XLSX ZipFile opens only after a bounded raw central-directory EOCD/member-count preflight, with ZIP64/multidisk large variants refused and forged EOCD count cross-checked. Empty XLSX headers now yield 422 source-format validation. Regression tests added; exact-head Codex re-review, full pytest and real SQL Server acceptance remain unverified. No merge.
+
+## 2026-10-13 P2.1 fourteenth Codex review
+
+- Exact-head review `5ff11c6789bcae908274cf41544f10f5780aa97f` reported one P2 metadata encoding compatibility bug: `json.dumps` default ASCII escaping can generate more than 4 KiB from two otherwise Pydantic-valid Unicode fields. Increased preview-only `task` JSON predecode budget to 8 KiB, tested 128 + 240 non-BMP characters serialized with default escapes, and kept oversized nested task form rejection. Maintain original PR #288, no merge until explicitly instructed; real pytest and SQL Server tests remain unverified.
+
+## 2026-10-13 P2.1 fifteenth Codex review
+
+- The 15th Codex review of PR #288 on exact head `b3f3e73116410ad335e1b05a70e587be5e799e91` reported one P2 in CSV preview: width check only after csv.reader created million-column field arrays. Fixed through preview-only pre-scan of CSV logical records before csv.reader, respecting quotes, escaped quotes, CRLF and quoted newlines, rejecting >128 columns before allocating decoded field lists. Added adversarial/positive regressions, retained unrestricted internal Phase 1B import. Same PR branch, no merge; exact-head review and actual pytest/live SQL Server still pending.
+
+## 2026-10-13 P2.1 sixteenth Codex review
+
+- PR #288 exact-head Codex review `f372756a184979593d44803a5e6b21deaf51ee50` found a P2 malformed XLSX no-active-worksheet case. Reader now checks resolved sheet for None before touching max_column/header, closes workbook and reports 422 source_format_invalid. Added realistic ZIP workbook.xml-without-sheets regression; local isolated openpyxl confirmed workbook.active is None. Full repository pytest, hosted authoritative CI and real SQL acceptance are unverified. Maintain original PR; no merge without authorization.
+
+## 2026-10-13 P2.1 seventeenth Codex review
+
+- Exact-head `7b064f56bfb065539c78449b2e352b9cf4c79d0a` review found user-supplied nonexistent profile IDs produced `KeyError("profile_version_not_found")` and incorrectly became HTTP 500. Narrow normalization at Product preview service's known profile lookup now yields HTTP 422 `requirement_preview_profile_invalid`, preserving unknown backend KeyError as masked 500. Unit/API regressions added, full pytest and real SQL Server acceptance not yet verified. PR #288 open and unmerged.
