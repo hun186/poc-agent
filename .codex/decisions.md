@@ -245,3 +245,7 @@
 ### 2026-10-16 OFF-0 check inventory and error semantics
 
 - OFF-0 contract PASS requires the complete reviewed 19 check IDs, never a nonempty subset. FAIL must carry only its check-specific real error code; SKIP may carry only a bounded allowed skip reason; PASS has no error code; WARN may have its specific code or none. JSON parsing uses a deterministic preparse structural nesting limit of 128, ignoring brackets in quoted JSON strings, so acceptance does not depend on CPython recursion depth.
+
+### 2026-10-16 OFF-0 planned-check result invariant
+
+- A check whose readiness is `planned` has no executable proof and may only be represented as `SKIP(check_not_implemented)`. It must never be a PASS/FAIL/WARN or use any alternate skip reason. This applies in the safe report-record constructor and must be retained by any future unified offline Runner. Existing/reviewed checks retain check-specific failure codes when actually executed.
