@@ -308,6 +308,11 @@ def make_report_record(
     _require(status in STATUSES, "report_status_invalid")
     _require(not (status == "PASS" and check["readiness"] == "planned"),
              "report_unimplemented_pass")
+    # A planned check has no probe and therefore cannot have executed or failed.
+    # It must not be presented as PASS, FAIL or WARN in offline acceptance.
+    if check["readiness"] == "planned":
+        _require(status == "SKIP" and error_code == "check_not_implemented",
+                 "report_unimplemented_check")
     _require(type(duration_ms) is int and 0 <= duration_ms <= 86_400_000,
              "report_duration_invalid")
     if status == "FAIL":
