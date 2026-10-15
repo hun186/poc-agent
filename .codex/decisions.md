@@ -229,3 +229,7 @@
 
 - Issue #290 is a separate release/operability gate parallel to Product P2.2, not a new reporting core or Product schema/API subsystem. Preserve existing launcher, Operator E2E, Release Provenance and external capabilities ownership; one future offline runner may orchestrate their **approved, mode-safe** entry points, never duplicate their domain authorities.
 - Default `quick` and explicit `diagnose` must be logically read-only; notably API login can write audit state, schema `initialize()` can change SQL, and E2E Elasticsearch fixture setup creates/indexes data. Only an explicitly selected authorized `acceptance` phase may mutate controlled fixtures or run real jobs; mock/offline tests do not satisfy FULL_LIVE external dependency proof. Use stable check IDs and dependency-aware FAIL/SKIP separation.
+
+### 2026-10-15 OFF-0 fail-closed safe report construction
+
+- A report is constructed from reviewed inventory-defined static summary/remediation only, bounded numeric/bool/hash/classification evidence keys, approved per-check or system error codes, and no unstructured exception data. The registry must carry the explicit fail-closed policy and reject any extra top-level weakening fields. Future OFF-3/4 report runners must use `make_report_record` instead of serializing probe results or arbitrary log text. Worker Runtime Evidence requires valid package provenance as well as API availability; missing provenance must cause dependent Worker SKIP rather than misleading FAIL.
