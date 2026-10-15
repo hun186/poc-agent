@@ -55,15 +55,14 @@ REPORT_SYSTEM_CODES = frozenset({
     "mode_not_enabled",
 })
 REPORT_TEXT_FORBIDDEN = re.compile(
-    r"(?i)(?:https?://|file://|www\\.|"
-    r"\\b(?:password|passwd|token|secret|api[_-]?key|authorization)\\s*[:=]|"
-    r"\\bbearer\\s+\\S+|\\btraceback\\b|"
-    r"\\b[A-Za-z]*(?:Exception|Error)\\s*[:(]|"
-    r"(?:^|\\s)/(?:etc|home|root|var|mnt|tmp|opt)/|"
-    r"\\b[A-Za-z]:[\\\\/])"
+    r"(?i)(?:https?://|file://|www\.|"
+    r"\b(?:password|passwd|token|secret|api[_-]?key|authorization)\s*[:=]|"
+    r"\bbearer\s+\S+|\btraceback\b|"
+    r"\b[A-Za-z]*(?:Exception|Error)\s*[:(]|"
+    r"(?:^|\s)/(?:etc|home|root|var|mnt|tmp|opt)/|"
+    r"\b[A-Za-z]:[\\/])"
 )
-REPORT_TEXT_CONTROL = re.compile(r"[\\x00-\\x1f\\x7f]")
-
+REPORT_TEXT_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 def _safe_report_text(value: Any, *, max_chars: int, code: str) -> None:
     _require(
