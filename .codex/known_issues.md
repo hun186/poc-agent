@@ -125,3 +125,5 @@
 - 2026-10-15 third review of OFF-0 PR #291 identified three more P2 issues: credential/path/Unicode redaction bypass, deep-JSON recursion traceback, nonregular/size-race unbounded registry read. Remediation committed to the same branch with negative tests, but latest-head CI and Codex re-review are not yet proof of completion. OFF-0 remains contract-only and does not authorize actual offline dependency acceptance.
 
 - 2026-10-16 OFF-0 PR #291 fourth Codex review found three P2 contract integrity gaps: deep JSON behavior differed across Python versions, error codes allowed contradictory FAIL/SKIP status, and missing checks could still yield contract PASS. Fixes and regression cases have been committed to PR branch; latest-head hosted tests/re-review remain pending. OFF-0 is not operational air-gapped acceptance.
+
+- 2026-10-16 OFF-0 PR #291 fifth review: contract code previously allowed planned checks to return FAIL/WARN despite having no implemented probe. Branch now enforces SKIP/check_not_implemented exclusively until the check's reviewed readiness is updated. Await the exact-head CI and next review; do not label OFF-0 a live offline verification runner.
