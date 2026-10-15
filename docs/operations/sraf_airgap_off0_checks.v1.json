@@ -126,11 +126,11 @@
       "component": "sql",
       "minimum_mode": "diagnose",
       "effect": "read_only",
-      "readiness": "existing_component",
+      "readiness": "planned",
       "depends_on": [
         "SQL-01"
       ],
-      "existing_evidence": "RequirementStore/ ScheduleStore catalog validation",
+      "existing_evidence": "Schema/catalog descriptors available in RequirementStore/ScheduleStore; create a read-only checker; NEVER call initialize() in diagnose.",
       "error_code": "sql_schema_mismatch",
       "remediation": "比對既有 schema/catalog；不得執行 migration"
     },
@@ -142,7 +142,7 @@
       "effect": "read_only",
       "readiness": "existing_component",
       "depends_on": [],
-      "existing_evidence": "agent/external_capabilities.py live probe (reusable, not Quick)",
+      "existing_evidence": "agent/external_capabilities.py probe_elasticsearch (read-only when search callback is pure); DO NOT call prepare_requirement_elasticsearch(), which creates/indexes E2E fixture.",
       "error_code": "es_unreachable",
       "remediation": "檢查封閉網路端點與授權"
     },
@@ -156,7 +156,7 @@
       "depends_on": [
         "ES-01"
       ],
-      "existing_evidence": "mapping_compatibility + configured production index selectors",
+      "existing_evidence": "agent/external_capabilities.py mapping_compatibility (pure mapping validator), GET mapping from existing configured index only; no fixture seeding.",
       "error_code": "mapping_incompatible",
       "remediation": "報告失配欄位；不得自動修改或重建索引"
     },
@@ -210,7 +210,7 @@
       "depends_on": [
         "API-01"
       ],
-      "existing_evidence": "GET /v1/operator-e2e/runtime-evidence?verification=release; superuser session required",
+      "existing_evidence": "GET /v1/operator-e2e/runtime-evidence?verification=release needs existing superuser bearer; do not run login from Quick or reconfigure launcher.",
       "error_code": "worker_identity_unverified",
       "remediation": "不得用 PID 是否存在取代帶身分的 worker 驗證"
     },
@@ -220,11 +220,11 @@
       "component": "api",
       "minimum_mode": "diagnose",
       "effect": "read_only",
-      "readiness": "existing_external_smoke",
+      "readiness": "planned",
       "depends_on": [
         "API-01"
       ],
-      "existing_evidence": "operator_e2e/p21_api_smoke.py (not tracked in Hosted main)",
+      "existing_evidence": "separately supplied operator_e2e/p21_api_smoke.py (not tracked in Hosted main); current helper logs in and may generate audit writes; new Quick/Diagnose runner must use existing bearer/session or clearly defer.",
       "error_code": "product_api_invalid",
       "remediation": "驗證 route, read, 401/404/422；空清單不等於有資料的查詢成功"
     },
