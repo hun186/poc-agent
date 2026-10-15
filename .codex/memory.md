@@ -155,3 +155,9 @@
 ## 2026-10-13 P2.1 seventeenth Codex review
 
 - Exact-head `7b064f56bfb065539c78449b2e352b9cf4c79d0a` review found user-supplied nonexistent profile IDs produced `KeyError("profile_version_not_found")` and incorrectly became HTTP 500. Narrow normalization at Product preview service's known profile lookup now yields HTTP 422 `requirement_preview_profile_invalid`, preserving unknown backend KeyError as masked 500. Unit/API regressions added, full pytest and real SQL Server acceptance not yet verified. PR #288 open and unmerged.
+
+## 2026-10-15 SRAF air-gap OFF-0 inventory handoff
+
+- Issue #290 tracks an independent sealed-network release/acceptance program alongside Product P2.2. OFF-0 inventory and acceptance-mode contract are proposed on `feat/sraf-airgap-off0-inventory-contract`: `docs/operations/sraf_airgap_off0.md`, `docs/operations/sraf_airgap_off0_checks.v1.json`, a pure-stdlib registry validator, and focused contract safety tests. This is design/schema validation ONLY, not a runtime offline-check launcher, dependency probe, or air-gapped acceptance PASS.
+- Reuse existing provenance, operator E2E, runtime-evidence, ES mapping/LLM probes and existing P2.1 API smoke evidence with strict mode/side-effect separation. Quick/Diagnose must not execute `run_sra_api.sh`, DB `initialize()`/migration, `prepare_requirement_elasticsearch()` fixture writes, or automatic login; authorized Acceptance is a separate gated mutation mode.
+- Focused P2.1 user evidence is 13/13 live smoke and three approved XLSX preview rows; actual Product-owned Task/Run fixture and cross-reader RBAC acceptance remain missing, and PR #289's URL-encoded 400/422 test-only fix is still a separate pending PR. Do not merge OFF-0 automatically.
