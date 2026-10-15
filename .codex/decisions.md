@@ -237,3 +237,7 @@
 ### 2026-10-15 OFF-0 report copy validation and JSON parsing isolation
 
 - Report-emitted `title` and `remediation` must be short, single-line, and reject obvious URL, credential/authorization, traceback and absolute-path text; `component` and `error_code` must match bounded machine-code formats. No raw probe exception or other untrusted text is permitted in report records. The report-message validator is defense-in-depth atop PR review of the static inventory. JSON parser's `ValueError` is normalized to a fixed CLI code in its own block so it does not mask the `ContractError` validator boundary. Hosted focused pytest now installs project dependencies first, per AGENTS.md.
+
+### 2026-10-15 OFF-0 reviewed copy and bounded registry bytes
+
+- Any text emitted as report title or remediation is required to equal an in-code reviewed per-check allowlist in addition to regex/Unicode/length checks. A registry-only change cannot introduce unreviewed report strings. The JSON registry CLI reads only opened regular, non-symlink files with an effective 256KiB+1 byte cap and nonblocking open; malformed deeply nested JSON maps to bounded `contract_json_invalid`. No runtime SQL/ES/LLM interaction is added by these defenses.
