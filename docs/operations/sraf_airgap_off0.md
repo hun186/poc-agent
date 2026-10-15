@@ -1,0 +1,75 @@
+# SRAF Air-Gap OFF-0 — 盤點、驗收契約與實作邊界
+
+> 工作追蹤：[Issue #290](https://github.com/hun186/poc-agent/issues/290)。本文件與 [機器可讀檢查清單](sraf_airgap_off0_checks.v1.json) 只是 **OFF-0 規格基線**，不是已完成的離線一鍵驗收工具。Product API P2.2 仍獨立開發。
+
+## 一、何時收集與何時整合
+
+**現在開始盤點和積累，不等所有功能完成才收集。**
+
+1. OFF-0 設定每個檢查的唯一 ID、來源、執行模式、權限與副作用；目前這些欄位放在 JSON 契約中。先確立不可互相冒充的證據類型。
+2. OFF-1 逐項補上真正的依賴檢查（SQL/ES/LLM/OS 等）與故障模擬測試；只增加小而有界的 probe，不建立另一個 Agent/Worker。
+3. OFF-2 把完整部署包、所有離線原生套件、模型、索引/資料與配置操作納入受檢清單；增量更新必須另有來源與目標基線驗證。
+4. OFF-3 才正式提供一個可執行的統一入口；OFF-4 加上標準報告及中文操作手冊；OFF-5 做真實封閉網路移機與故障注入。各階段可重複使用前階段的成果。
+
+## 二、現有程式盤點（不重複造輪子）
+
+| 現有路徑／界面 | 可重用的能力 | 限制與整合動作 |
+| --- | --- | --- |
+| `shared/runtime_provenance.py`、`REQUIREMENT_E2E_PROVENANCE.json` | release 管理檔案的雜湊、載入模組與選定配置的可信度檢查 | 不把 Git HEAD 當成部署成功；manifest 所列檔案要驗證實際位元組；部署地祕密 SQL registry 故意不披露 |
+| `tools/requirement_e2e_provenance.py`、`tools/deployment_manifest.py` | Git anchored manifest 生產/驗證工具 | 建包端可能需要 Git，不可假設斷網主機可存取 GitHub；執行端用封存的可信 manifest 自查 |
+| `run_sra_api.sh`、`config/deployment_bootstrap.py` | 受監管的 API、Schedule/Handoff 起停與部署憑證 bootstrap | 可能重啟進程或改寫保護狀態；**Quick/Diagnose 絕不能執行 launcher/bootstrap 來「檢查」** |
+| `sra_api/routers/operator_e2e.py` | 已登入 superuser 可讀的 Runtime Evidence / DOCX 領取，支援 worker 身分和 artifacts | 需要已有的 superuser user-session Bearer；不可把 Service Key 當作有同等權限 |
+| `operator_e2e/test_requirement_schedule_e2e.py`、`operator_e2e/requirement_e2e_support.py` | 既有來源驗證＋SQL/排程/Handoff/真報告/DOCX 核驗，並寫入結果 JSON | **會建立/更新 fixture、啟動排程、觸發工作、清理/停用排程**；只能在 Acceptance 且明確授權下執行 |
+| `agent/external_capabilities.py` | ES Mapping checker、實際 ES/LLM probes、獨立 FULL_LIVE/HYBRID/OFFLINE 分類 | `prepare_requirement_elasticsearch()` **會建立/寫入**測試索引，不能拿來做唯讀健康檢查；`offline` 是測試替身，不是正式生產離線推論 |
+| `sra_api/routers/requirement_tasks.py`、`tests/test_requirement_product_api.py` | Product API P2.1 查詢/Preview 及 FastAPI 模擬測試 | pytest ≠ 真實 SQL/服務；Task/Run 清單為空不能冒充實資料詳情與跨帳號 RBAC |
+| `operator_e2e/p21_api_smoke.py`（先前在部署主機人工使用） | 使用者已跑過 13/13，包含核准 Profile 及三筆 Excel Preview | **目前 Hosted main 找不到該檔案**；應先正式版控、審核及避免日常檢查自動登入／寫入 Auth audit |
+| `operator_e2e/test_phase0_api_routing_evidence.py` | Phase-0 API 身分／授權與 Service Key 行為驗證 | 需額外許可與測試身分，先盤點實際副作用，再納入 Acceptance |
+
+**已發生、可供規格設計參考的觀察（不是 OFF-0 新執行的測試）：**
+- 在使用者的 Linux 部署主機，PR #288 P2.1 API Smoke 得到 13 PASS、0 FAIL、0 SKIP，使用核准 XLSX Profile Preview 3 accepted/0 rejected。
+- P2.1 focused pytest 先得到 64 PASS、1 FAIL；有一個 URL-encoded 表單的 HTTP 400/422 測試預期錯誤，已有 PR #289 提案，尚未 Merge；用 `-k` 排除該案例的執行結果是 64 PASS、1 deselected。
+- 既有三筆 Requirement E2E 在使用者提供的執行紀錄中完成 3/3 產出、DOCX 與 SHA-256 PASS。該紀錄不能代替新環境的 FULL_LIVE、SQL 競爭、ES Mapping、斷網重建或品質驗收。
+- 前述觀察不可被 OFF-0 規格檔自動轉換為最新部署的 PASS。
+
+## 三、執行模式與副作用矩陣
+
+| 模式 | 允許的操作 | 禁止的操作 | 人員準備 |
+| --- | --- | --- | --- |
+| `quick`（預設，無參數亦採用） | 本地檔案雜湊、硬體/空間/時鐘、API GET/health、無憑證匿名權限負測 | 登入、Task/SQL 變更、模型推論、E2E、啟動/重啟/殺除程序、修改設定/索引 | 不應需要管理員密碼；對不可驗證者明示 SKIP |
+| `diagnose`（唯讀） | 已授權的 SQL SELECT、ES GET/ping/mapping、模型與工作程序 metadata、帶現有 bearer token 的 API GET | 任何 migration、索引建立/寫入、模型推論、登出/重新登入、Report Job 建立、啟停 Workers | 允許獨立授權 Session；**禁止把 Token 寫入報告或記錄** |
+| `acceptance`（明確選用） | 隔離測試資料集及明確限定的 E2E；可進行模型推論、經許可的 fixture 匯入/清理、產物生成 | 未授權的生產資料更新、默默更換 ES 索引、跨帳號存取、將 mock 當 FULL_LIVE | 事前列出會寫的資源、fixture ID、權限／影響範圍、可復原方式、測試模型、封閉網路准入 |
+| `upgrade`（未規劃為 OFF-0 runner） | 另由安全更新流程處理預檢、備份、變更與復原 | 從任何唯讀模式隱式觸發 | 單獨維運 SOP |
+
+機器可讀清單的 `readiness=existing_component` **僅指既有程式有可重用能力**，不代表 OFF-3 runner 已存在或該現成函式可直接在 Quick 執行。尤其 `initialize()`、`prepare_requirement_elasticsearch()`、`run_sra_api.sh` 的副作用須在整合時避開。
+
+### HTTP Auth 稽核例外
+
+`POST /v1/auth/login` 有登入稽核/節流寫入，不能宣稱完全唯讀。Quick 只做不需登入的項目；Diagnose 需要登入態資料時應使用既有有效 user-session token，否則報 `SKIP(auth_session_unavailable)`，**不得私自呼叫登入**。若正式 Acceptance 設計要新增登入測試，需標明安全稽核副作用。
+
+## 四、統一輸出契約與故障歸因
+
+預定輸出一份 bounded JSON 和一份人員易讀報告，檢查記錄包含：
+`check_id`、`component`、`status`（PASS/FAIL/WARN/SKIP）、`severity`、`error_code`、`summary`、`evidence`、`remediation`、`dependency`、`duration_ms`。
+
+約束：
+
+- `PASS`：真實 probe 執行且滿足明確條件；**「程式存在」、「HTTP route registered」、「mock PASS」與「有資料的正常寫/讀流程」不同**。
+- `FAIL`：已執行且有可重現的失敗證據；使用穩定代碼（如 `mapping_incompatible`、`sql_unreachable`、`worker_identity_unverified`），不可把祕密例外訊息原樣回傳。
+- `WARN`：已執行但屬可用性/容量/可觀測性風險，不可遮掩重大安全失敗。
+- `SKIP`：因模式不允許、沒有資料/憑證、前置依賴未過或檢查尚未實作；報告要列確切原因，**絕不能當 PASS**。
+- 若 `ES-02` Mapping 失敗，`ES-03` 應 SKIP，`RUN-01` 依賴的 FULL_LIVE 驗收亦 SKIP，而不是形成一串假的連鎖 FAIL。
+- `OFFLINE` / `HYBRID` / `FULL_LIVE` 是外部依賴證據分類，不等同 quick/diagnose/acceptance 的執行模式；斷外網但使用真實內部 ES+LLM 才有資格朝 FULL_LIVE 判定。
+
+### 日誌及敏感資料最小化
+
+不得在報告中出現登入密碼、Token、Session、密鑰、SQL connection string/registry 內容/路徑、報告全文、使用者個資、未授權 SQL 查詢、私有模型提示、原始 Excel 內容。來源身份以安全的雜湊/版本/代碼表示；長文字和例外設長度上限。報告放在獨立、權限受控的工作區，預設不自動上傳任何服務；失敗時不直接打包整份主機日誌。
+
+## 五、斷網與離線部署完成門檻
+
+第一次移機必須交付**完整可重建部署包**：原始程式/可執行依賴、Python wheelhouse/locked versions、OS native/ODBC libraries、模型權重與雜湊、必要內網服務版本/配置/索引/遷移手冊、憑證分離與核發流程、受控測試資料及驗收工具。後續既有 BAT 可保留增量更新用途，但必須有安全底版、變更清單、原子套用/復原與目標系統驗證；不能只用檔案 mtime 當成 Git 內容差異。
+
+**OFF-0 的完成條件**是規格與盤點經審查、19 個檢查 ID/模式/依賴可機器解析且沒有環狀依賴；**尚不是**全環境健康檢查程式、Full Live 驗收或正式離線移機完成。
+
+## 六、下一個可獨立合併的小階段：OFF-1
+
+優先實作 **唯讀** `PKG-01`、`SYS-01`、`ENV-01/02`、`API-01`、`SQL-01/02`、`ES-01/02`，每個 probe 都要有 timeout、穩定錯誤代碼、假服務/錯誤注入回歸測試和禁止副作用驗證。LLM 推論 `LLM-02`、ES 真實檢索 `ES-03`、完整 `RUN-01` 應保持在授權 Acceptance。P2.2 不因 OFF-1 排程受阻。
