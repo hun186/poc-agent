@@ -97,3 +97,8 @@
 - **FAIL／SKIP 不可交換**：FAIL 必須回報該檢查專屬的真實失敗代碼；SKIP 只能使用 `blocked_by_dependency`、`check_not_implemented`、`auth_session_unavailable` 或 `mode_not_enabled`；WARN 只能為專屬警示代碼或不帶代碼。禁止把「因依賴失敗未執行」假裝成真正功能失敗。
 - **版本無關的 JSON 深度限制**：在 `json.loads` 前，使用不解析字串內 `[]{}` 的掃描器拒絕超過 128 層巢狀結構；不依賴 Python 3.10～3.14 的遞迴行為。惡意過深 JSON 固定回報 `contract_json_invalid`，正常 JSON 字串內的括號不影響深度。
 - 以上屬於 OFF-0 規格與 safe record constructor 的回歸防護，不代表正式封閉網路 Quick/Diagnose/Acceptance Runner 已完成。
+
+### 第五輪 Review：未實作項目不可偽裝成已執行（2026-10-16）
+
+- 若 Check 的 `readiness=planned`，報告產生器只允許 `status=SKIP` 且 `error_code=check_not_implemented`；即使被要求標記 FAIL、WARN、PASS，或用 `blocked_by_dependency` 等其他 SKIP 理由，都必須拒絕。不能對從未執行的探測器報告故障或警告。
+- 已有可重用元件的 Check 仍可在未來真正執行後回報檢查專屬 FAIL/WARN；**此欄位並不代表 OFF-3 統一 Runner 已完成或這些檢查已在目標主機執行**。
