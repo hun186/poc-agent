@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import stat
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -54,25 +57,105 @@ REPORT_SYSTEM_CODES = frozenset({
     "blocked_by_dependency", "check_not_implemented", "auth_session_unavailable",
     "mode_not_enabled",
 })
+# Reviewed fixed strings: the editable registry alone may not introduce report copy.
+APPROVED_REPORT_TEXT = {
+    "PKG-01": {
+        "title": "發行包／部署檔案完整性",
+        "remediation": "SHA-256 與執行中的受管理檔案不一致"
+    },
+    "SYS-01": {
+        "title": "主機資源、磁碟與時間",
+        "remediation": "檢查容量、時鐘及檔案權限"
+    },
+    "ENV-01": {
+        "title": "Python 套件與離線 wheelhouse",
+        "remediation": "比對已鎖定的版本、離線 wheelhouse 與依賴樹"
+    },
+    "ENV-02": {
+        "title": "原生函式庫與 ODBC Driver",
+        "remediation": "確認已離線安裝所需 ODBC driver 及 shared libraries"
+    },
+    "API-01": {
+        "title": "SRA API Health",
+        "remediation": "檢查本機 port、API 進程與啟動日誌"
+    },
+    "AUTH-01": {
+        "title": "匿名資源存取拒絕",
+        "remediation": "匿名請求應拒絕，不得建立登入 session"
+    },
+    "SQL-01": {
+        "title": "SQL Server 唯讀連線",
+        "remediation": "區分 DNS/driver/TLS/登入/權限問題；勿列印 connection string"
+    },
+    "SQL-02": {
+        "title": "Requirement／Schedule Schema",
+        "remediation": "比對既有 schema/catalog；不得執行 migration"
+    },
+    "ES-01": {
+        "title": "Elasticsearch 連線與認證",
+        "remediation": "檢查封閉網路端點與授權"
+    },
+    "ES-02": {
+        "title": "索引 alias 與 Mapping 相容性",
+        "remediation": "報告失配欄位；不得自動修改或重建索引"
+    },
+    "ES-03": {
+        "title": "真實 ES 檢索結果",
+        "remediation": "使用已確認的隔離索引及受控查詢驗證檢索"
+    },
+    "LLM-01": {
+        "title": "模型與推論服務可用性",
+        "remediation": "模型須事先下載；不呼叫外部網路"
+    },
+    "LLM-02": {
+        "title": "真實模型小型推論",
+        "remediation": "檢查服務資源、模型權重與上下文配置"
+    },
+    "WORK-01": {
+        "title": "Schedule/Handoff Worker 身分",
+        "remediation": "不得用 PID 是否存在取代帶身分的 worker 驗證"
+    },
+    "PROD-01": {
+        "title": "Product P2.1 路由與讀取",
+        "remediation": "驗證 route, read, 401/404/422；空清單不等於有資料的查詢成功"
+    },
+    "PREV-01": {
+        "title": "真實 Excel Preview 不落地",
+        "remediation": "確認 accepted/rejected 筆數與資料不落地"
+    },
+    "RUN-01": {
+        "title": "Requirement→Schedule→Agent 完整 E2E",
+        "remediation": "必須指定授權測試身分及專用 fixture，禁止由 Quick 啟動"
+    },
+    "DOC-01": {
+        "title": "DOCX 與 SHA-256 驗證",
+        "remediation": "驗證 docx ZIP、安全路徑、SHA-256，並獨立記錄內容品質"
+    },
+    "AIR-01": {
+        "title": "封閉網路隔離證據",
+        "remediation": "確認未使用 GitHub、pip index、ChatGPT、外部 LLM；只驗證被允許的內網相依"
+    }
+}
+
 REPORT_TEXT_FORBIDDEN = re.compile(
     r"(?i)(?:https?://|file://|www\.|"
-    r"\b(?:password|passwd|token|secret|api[_-]?key|authorization)\s*[:=]|"
+    r"[a-z_]*(?:password|passwd|token|secret|credential|api[_-]?key)[a-z_]*\s*[:=]|"
     r"\bbearer\s+\S+|\btraceback\b|"
     r"\b[A-Za-z]*(?:Exception|Error)\s*[:(]|"
-    r"(?:^|\s)/(?:etc|home|root|var|mnt|tmp|opt)/|"
+    r"(?:^|\s)/[a-zA-Z0-9._-]+(?:/[a-zA-Z0-9._-]+)*|"
     r"\b[A-Za-z]:[\\/])"
 )
-REPORT_TEXT_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
 
 def _safe_report_text(value: Any, *, max_chars: int, code: str) -> None:
     _require(
         isinstance(value, str) and value == value.strip() and
         1 <= len(value) <= max_chars and
-        REPORT_TEXT_CONTROL.search(value) is None and
+        all(unicodedata.category(ch) not in {"Cc", "Cf", "Zl", "Zp"}
+            for ch in value) and
         REPORT_TEXT_FORBIDDEN.search(value) is None,
         code,
     )
-
 
 
 class ContractError(ValueError):
@@ -144,6 +227,9 @@ def validate_contract(document: Any) -> int:
             item["remediation"], max_chars=200,
             code="contract_report_text_unsafe",
         )
+        _require(APPROVED_REPORT_TEXT.get(identifier) == {
+            "title": item["title"], "remediation": item["remediation"],
+        }, "contract_report_text_unapproved")
         _require(isinstance(item["component"], str) and
                  re.fullmatch(r"[a-z][a-z0-9_]{0,31}",
                               item["component"]) is not None,
@@ -280,17 +366,35 @@ def main() -> int:
                 "docs/operations/sraf_airgap_off0_checks.v1.json",
     )
     args = parser.parse_args()
+    # No unbounded read: reject special devices and read at most limit + 1 bytes.
+    limit = 256 * 1024
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        if args.registry.stat().st_size > 256 * 1024:
-            print("OFF0_CONTRACT = FAIL (contract_file_too_large)")
-            return 2
-        content = args.registry.read_text(encoding="utf-8")
+        fd = os.open(args.registry, flags)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                print("OFF0_CONTRACT = FAIL (contract_file_not_regular)")
+                return 2
+            parts = []
+            total = 0
+            while total <= limit:
+                chunk = os.read(fd, min(65536, limit + 1 - total))
+                if not chunk:
+                    break
+                parts.append(chunk)
+                total += len(chunk)
+            if total > limit:
+                print("OFF0_CONTRACT = FAIL (contract_file_too_large)")
+                return 2
+            content = b"".join(parts).decode("utf-8")
+        finally:
+            os.close(fd)
     except (OSError, UnicodeError):
         print("OFF0_CONTRACT = FAIL (contract_file_unreadable)")
         return 2
     try:
         value = json.loads(content)
-    except ValueError:
+    except (ValueError, RecursionError):
         # Includes JSONDecodeError and Python 3.11's oversized integer limit.
         # Do not catch ContractError here: it is reported separately below.
         print("OFF0_CONTRACT = FAIL (contract_json_invalid)")
