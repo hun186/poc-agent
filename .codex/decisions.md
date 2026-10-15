@@ -224,3 +224,8 @@
 - Preserve the P1.6 public guarded source-import path; Product internal orchestration calls the existing authority-bound `commit()` with preallocated IDs and base snapshot.
 
 - 2026-10-12 P2.1 PR #288 deliberately exposes only Product Task/Run read APIs and side-effect-free Product input preview. P2 mutation endpoints cannot be advertised until durable Run-trigger admission and remaining authorization/error-contract gates are reviewed. Cross-Task semantic dedup/result reuse remains deferred, not implicitly enabled.
+
+### 2026-10-15 SRAF air-gap OFF-0 inspection/mutation boundary
+
+- Issue #290 is a separate release/operability gate parallel to Product P2.2, not a new reporting core or Product schema/API subsystem. Preserve existing launcher, Operator E2E, Release Provenance and external capabilities ownership; one future offline runner may orchestrate their **approved, mode-safe** entry points, never duplicate their domain authorities.
+- Default `quick` and explicit `diagnose` must be logically read-only; notably API login can write audit state, schema `initialize()` can change SQL, and E2E Elasticsearch fixture setup creates/indexes data. Only an explicitly selected authorized `acceptance` phase may mutate controlled fixtures or run real jobs; mock/offline tests do not satisfy FULL_LIVE external dependency proof. Use stable check IDs and dependency-aware FAIL/SKIP separation.
