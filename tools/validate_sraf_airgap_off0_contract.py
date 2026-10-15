@@ -119,9 +119,12 @@ def validate_contract(document: Any) -> int:
                     "error_code", "remediation"):
             _require(isinstance(item[key], str) and bool(item[key].strip()),
                      "contract_check_field_invalid")
-        _require(item["minimum_mode"] in MODES, "contract_mode_invalid")
-        _require(item["effect"] in EFFECTS, "contract_effect_invalid")
-        _require(item["readiness"] in READINESS, "contract_readiness_invalid")
+        _require(isinstance(item["minimum_mode"], str) and
+                 item["minimum_mode"] in MODES, "contract_mode_invalid")
+        _require(isinstance(item["effect"], str) and
+                 item["effect"] in EFFECTS, "contract_effect_invalid")
+        _require(isinstance(item["readiness"], str) and
+                 item["readiness"] in READINESS, "contract_readiness_invalid")
         _require(isinstance(item["depends_on"], list) and
                  all(isinstance(dep, str) and dep for dep in item["depends_on"]),
                  "contract_dependencies_invalid")
