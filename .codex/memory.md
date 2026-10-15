@@ -155,3 +155,5 @@
 ## 2026-10-13 P2.1 seventeenth Codex review
 
 - Exact-head `7b064f56bfb065539c78449b2e352b9cf4c79d0a` review found user-supplied nonexistent profile IDs produced `KeyError("profile_version_not_found")` and incorrectly became HTTP 500. Narrow normalization at Product preview service's known profile lookup now yields HTTP 422 `requirement_preview_profile_invalid`, preserving unknown backend KeyError as masked 500. Unit/API regressions added, full pytest and real SQL Server acceptance not yet verified. PR #288 open and unmerged.
+
+- 2026-10-15 P2.1 deployment-focused test feedback: `python -m pytest -q tests/test_requirement_product_api.py` returned 64 passed / 1 failed against merged PR #288. The single test wrongly expected HTTP 400 multipart parser rejection from `TestClient.post(data=dict)`, which actually sends URL-encoded form data; the Product guard returns safe HTTP 422. Reproduced request-encoding distinction independently with FastAPI/Starlette; changed only the test expectation and error-code assertion on `fix/p21-urlencoded-preview-test-20261015` (not merged, no claim that the full repo suite was rerun).
