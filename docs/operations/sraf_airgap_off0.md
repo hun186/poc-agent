@@ -90,3 +90,10 @@
 - 報告文字會拒絕 Unicode 控制/格式字元及行、段分隔符 U+2028/U+2029，也涵蓋 `client_secret=`、`access_token=` 等常見鍵名與一般 Unix 絕對路徑。驗證是 fail-closed，不能視為能安全輸出任意使用者原始字串。
 - 契約 JSON 只可從常規檔案的已開啟 descriptor 讀取，不跟隨 symlink；採非阻塞開啟，**實際只讀最多 256 KiB + 1 byte**，拒絕特殊裝置與超大內容，不依賴可競爭的預讀檔案大小。深層巢狀資料引發的 `RecursionError` 與過大整數等解析錯誤都歸類為固定 `contract_json_invalid`，不輸出 Traceback。
 - 以上只保護 OFF-0 契約檔的驗證及安全紀錄建構函式。正式 Runner 尚未實作，不能宣稱系統已具備完整報告脫敏與離線診斷能力。
+
+### 第四輪報告語意與 JSON 相容性修正（2026-10-16）
+
+- **完整清單是成功條件**：不允許只留下 18/19 項甚至更少仍回報 OFF0_CONTRACT PASS；驗證器強制檢查完整 19 個已審查的 Check ID，若缺少則使用固定碼 `contract_incomplete_check_inventory`。
+- **FAIL／SKIP 不可交換**：FAIL 必須回報該檢查專屬的真實失敗代碼；SKIP 只能使用 `blocked_by_dependency`、`check_not_implemented`、`auth_session_unavailable` 或 `mode_not_enabled`；WARN 只能為專屬警示代碼或不帶代碼。禁止把「因依賴失敗未執行」假裝成真正功能失敗。
+- **版本無關的 JSON 深度限制**：在 `json.loads` 前，使用不解析字串內 `[]{}` 的掃描器拒絕超過 128 層巢狀結構；不依賴 Python 3.10～3.14 的遞迴行為。惡意過深 JSON 固定回報 `contract_json_invalid`，正常 JSON 字串內的括號不影響深度。
+- 以上屬於 OFF-0 規格與 safe record constructor 的回歸防護，不代表正式封閉網路 Quick/Diagnose/Acceptance Runner 已完成。
