@@ -208,6 +208,7 @@
       "effect": "read_only",
       "readiness": "existing_component",
       "depends_on": [
+        "PKG-01",
         "API-01"
       ],
       "existing_evidence": "GET /v1/operator-e2e/runtime-evidence?verification=release needs existing superuser bearer; do not run login from Quick or reconfigure launcher.",
@@ -290,5 +291,30 @@
       "error_code": "airgap_isolation_unverified",
       "remediation": "確認未使用 GitHub、pip index、ChatGPT、外部 LLM；只驗證被允許的內網相依"
     }
-  ]
+  ],
+  "report_policy": {
+    "strategy": "allowlisted_fields_fail_closed",
+    "summary_source": "inventory_check_title",
+    "remediation_source": "inventory_check_remediation",
+    "allow_raw_exceptions": false,
+    "allow_unstructured_evidence": false,
+    "max_evidence_entries": 12,
+    "max_evidence_value_chars": 80,
+    "permitted_evidence": {
+      "http_status": "http_status",
+      "item_count": "nonnegative_integer",
+      "accepted_count": "nonnegative_integer",
+      "rejected_count": "nonnegative_integer",
+      "file_count": "nonnegative_integer",
+      "worker_count": "nonnegative_integer",
+      "component_size_bytes": "nonnegative_integer",
+      "package_sha256": "sha256",
+      "provenance_fingerprint": "sha256",
+      "artifact_sha256": "sha256",
+      "identity_verified": "boolean",
+      "mapping_compatible": "boolean",
+      "model_available": "boolean",
+      "classification": "classification"
+    }
+  }
 }
