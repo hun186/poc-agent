@@ -393,3 +393,47 @@ def test_depth_guard_ignores_brackets_and_escaped_quotes_inside_json_strings(
     output = _run_cli_with_registry(fixture)
     assert output.returncode == 0, output.stdout + output.stderr
     assert "checks=19" in output.stdout
+
+
+@pytest.mark.parametrize(("status", "error_code"), [
+    ("FAIL", "host_resource_insufficient"),
+    ("WARN", "host_resource_insufficient"),
+    ("WARN", None),
+    ("PASS", None),
+    ("SKIP", "blocked_by_dependency"),
+    ("SKIP", "auth_session_unavailable"),
+    ("SKIP", "mode_not_enabled"),
+])
+def test_unimplemented_checks_cannot_claim_execution(inventory, status, error_code):
+    check = next(item for item in inventory["checks"] if item["id"] == "SYS-01")
+    assert check["readiness"] == "planned"
+    expected = ("report_unimplemented_pass" if status == "PASS"
+                else "report_unimplemented_check")
+    with pytest.raises(ContractError, match=expected):
+        make_report_record(
+            inventory, check["id"], status, error_code=error_code,
+        )
+
+
+def test_every_planned_check_has_only_explicit_unimplemented_skip(inventory):
+    checks = [item for item in inventory["checks"] if item["readiness"] == "planned"]
+    assert checks
+    for check in checks:
+        record = make_report_record(
+            inventory, check["id"], "SKIP",
+            error_code="check_not_implemented",
+        )
+        assert record["status"] == "SKIP"
+        assert record["error_code"] == "check_not_implemented"
+        assert record["remediation"] == check["remediation"]
+
+
+def test_a_reviewed_existing_probe_retains_real_fail_and_skip(inventory):
+    record = make_report_record(
+        inventory, "API-01", "FAIL", error_code="api_unreachable",
+    )
+    assert record["status"] == "FAIL"
+    skipped = make_report_record(
+        inventory, "API-01", "SKIP", error_code="blocked_by_dependency",
+    )
+    assert skipped["status"] == "SKIP"
