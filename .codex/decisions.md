@@ -233,3 +233,7 @@
 ### 2026-10-15 OFF-0 fail-closed safe report construction
 
 - A report is constructed from reviewed inventory-defined static summary/remediation only, bounded numeric/bool/hash/classification evidence keys, approved per-check or system error codes, and no unstructured exception data. The registry must carry the explicit fail-closed policy and reject any extra top-level weakening fields. Future OFF-3/4 report runners must use `make_report_record` instead of serializing probe results or arbitrary log text. Worker Runtime Evidence requires valid package provenance as well as API availability; missing provenance must cause dependent Worker SKIP rather than misleading FAIL.
+
+### 2026-10-15 OFF-0 report copy validation and JSON parsing isolation
+
+- Report-emitted `title` and `remediation` must be short, single-line, and reject obvious URL, credential/authorization, traceback and absolute-path text; `component` and `error_code` must match bounded machine-code formats. No raw probe exception or other untrusted text is permitted in report records. The report-message validator is defense-in-depth atop PR review of the static inventory. JSON parser's `ValueError` is normalized to a fixed CLI code in its own block so it does not mask the `ContractError` validator boundary. Hosted focused pytest now installs project dependencies first, per AGENTS.md.
