@@ -60,6 +60,14 @@
 - 若 `ES-02` Mapping 失敗，`ES-03` 應 SKIP，`RUN-01` 依賴的 FULL_LIVE 驗收亦 SKIP，而不是形成一串假的連鎖 FAIL。
 - `OFFLINE` / `HYBRID` / `FULL_LIVE` 是外部依賴證據分類，不等同 quick/diagnose/acceptance 的執行模式；斷外網但使用真實內部 ES+LLM 才有資格朝 FULL_LIVE 判定。
 
+### 機器可驗證的輸出白名單（Codex P2 修正）
+
+- JSON Registry 的 `report_policy` 有固定 schema，不允許 `allow_raw_exceptions=true`、`allow_unstructured_evidence=true`、私自加上停用脫敏的 root 欄位，或擴增未核准的 Evidence Key。
+- `tools/validate_sraf_airgap_off0_contract.py::make_report_record` 是預定 OFF-3/4 報告產生器必須使用的**唯一安全紀錄建構邊界**：`summary` 取已審查的檢查標題，`remediation` 取已審查的處理指引，`error_code` 只能為該檢查預定代碼或固定系統代碼。
+- `evidence` 僅接受 12 欄以下白名單數值/布林/64 位 SHA-256/固定 FULL_LIVE-HYBRID-OFFLINE 分類；未知 Key、路徑、Bearer、連線字串、原始例外與任意字串皆拒絕，**不能先原樣序列化、再試圖事後把秘密遮掉**。
+- 目前只有安全輸出建構函式和回歸測試，**還沒有 OFF-3 統一 Runner/報告檔輸出功能**。之後每個真實 probe 只能將經過安全分類的數值交給此邊界；不得直接 `json.dump(exc/response/headers/logs)`。
+- 依賴圖已將 `WORK-01` 連到 `PKG-01`：Runtime Evidence 需要已通過的 provenance，若來源驗證失敗，Worker 只能 `SKIP(blocked_by_dependency)`，不可產生誤導的第二個故障。
+
 ### 日誌及敏感資料最小化
 
 不得在報告中出現登入密碼、Token、Session、密鑰、SQL connection string/registry 內容/路徑、報告全文、使用者個資、未授權 SQL 查詢、私有模型提示、原始 Excel 內容。來源身份以安全的雜湊/版本/代碼表示；長文字和例外設長度上限。報告放在獨立、權限受控的工作區，預設不自動上傳任何服務；失敗時不直接打包整份主機日誌。
