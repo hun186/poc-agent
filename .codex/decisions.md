@@ -241,3 +241,7 @@
 ### 2026-10-15 OFF-0 reviewed copy and bounded registry bytes
 
 - Any text emitted as report title or remediation is required to equal an in-code reviewed per-check allowlist in addition to regex/Unicode/length checks. A registry-only change cannot introduce unreviewed report strings. The JSON registry CLI reads only opened regular, non-symlink files with an effective 256KiB+1 byte cap and nonblocking open; malformed deeply nested JSON maps to bounded `contract_json_invalid`. No runtime SQL/ES/LLM interaction is added by these defenses.
+
+### 2026-10-16 OFF-0 check inventory and error semantics
+
+- OFF-0 contract PASS requires the complete reviewed 19 check IDs, never a nonempty subset. FAIL must carry only its check-specific real error code; SKIP may carry only a bounded allowed skip reason; PASS has no error code; WARN may have its specific code or none. JSON parsing uses a deterministic preparse structural nesting limit of 128, ignoring brackets in quoted JSON strings, so acceptance does not depend on CPython recursion depth.
