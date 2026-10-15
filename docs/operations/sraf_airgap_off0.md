@@ -65,6 +65,8 @@
 - JSON Registry 的 `report_policy` 有固定 schema，不允許 `allow_raw_exceptions=true`、`allow_unstructured_evidence=true`、私自加上停用脫敏的 root 欄位，或擴增未核准的 Evidence Key。
 - `tools/validate_sraf_airgap_off0_contract.py::make_report_record` 是預定 OFF-3/4 報告產生器必須使用的**唯一安全紀錄建構邊界**：`summary` 取已審查的檢查標題，`remediation` 取已審查的處理指引，`error_code` 只能為該檢查預定代碼或固定系統代碼。
 - `evidence` 僅接受 12 欄以下白名單數值/布林/64 位 SHA-256/固定 FULL_LIVE-HYBRID-OFFLINE 分類；未知 Key、路徑、Bearer、連線字串、原始例外與任意字串皆拒絕，**不能先原樣序列化、再試圖事後把秘密遮掉**。
+- **Codex 第二輪 P2 防護**：報告 `title` 長度最多 96 字元、`remediation` 最多 200 字元，拒絕換行/控制字元、URL、明顯祕密欄位（如 `Password=`、`Token=`）、Bearer、Traceback、典型系統絕對路徑等；`error_code` 僅可使用小寫英數底線，最長 64 字元；`component` 也有格式/長度約束。以上用於報告的靜態文案仍必須經 GitHub 程式碼審查，不可讓執行期錯誤文字代入。
+- 契約 CLI 針對 JSON 語法錯誤及 Python 3.11 超長整數解析採固定錯誤碼 `contract_json_invalid`，不印出 Traceback 或原始輸入。
 - 目前只有安全輸出建構函式和回歸測試，**還沒有 OFF-3 統一 Runner/報告檔輸出功能**。之後每個真實 probe 只能將經過安全分類的數值交給此邊界；不得直接 `json.dump(exc/response/headers/logs)`。
 - 依賴圖已將 `WORK-01` 連到 `PKG-01`：Runtime Evidence 需要已通過的 provenance，若來源驗證失敗，Worker 只能 `SKIP(blocked_by_dependency)`，不可產生誤導的第二個故障。
 
