@@ -240,7 +240,8 @@ def validate_contract(document: Any) -> int:
                  "contract_report_error_code_unsafe")
         _require(isinstance(item["existing_evidence"], str) and
                  1 <= len(item["existing_evidence"]) <= 512 and
-                 REPORT_TEXT_CONTROL.search(item["existing_evidence"]) is None,
+                 all(unicodedata.category(ch) not in {"Cc", "Cf", "Zl", "Zp"}
+                     for ch in item["existing_evidence"]),
                  "contract_check_field_invalid")
         _require(isinstance(item["minimum_mode"], str) and
                  item["minimum_mode"] in MODES, "contract_mode_invalid")
