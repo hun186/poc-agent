@@ -141,3 +141,8 @@
 - 2026-10-13 PR #288 sixteenth Codex review: fix no-active-worksheet XLSX P2, with real XLSX fixture and 422 input-code regression. Re-request Codex on exact new head. Full pytest/hosted CI and two-connection real SQL Server tests remain outstanding; do not merge without user's explicit authorization.
 
 - 2026-10-13 PR #288 seventeenth review: map explicitly missing Import Profile version selection to 422 (not 500), with adversarial unknown KeyError still mapping to 500. Tests/docs committed on same PR. Request exact-head Codex review; full repository pytest, hosted authoritative CI and two-connection real SQL Server acceptance pending before merge. Do not merge without explicit user authorization.
+
+## 2026-10-15 OFF-0 air-gap delivery line (Issue #290)
+
+- Separate scoped OFF-0 PR: inventory reusable release/E2E/API/ES/LLM code, 19 check contracts and dependency graph, Quick/Diagnose/Acceptance read/write matrix, redaction/error report fields, and focused JSON contract validator/test. Review the branch and execute `python -m pytest -q tests/test_sraf_airgap_off0_contract.py` on a repository checkout before Merge; no user authorization to Merge this slice has been given.
+- OFF-1: build actual safe, bounded SQL/ES/LLM/ODBC/disk/model read-only probes and error tests. OFF-2: independently reproducible full release bundle/wheelhouse/model/ODBC/index and safe incremental upgrades. OFF-3/4: unified offline runner and readable reports/manual. OFF-5: site isolation + FULL_LIVE and failure/recovery drills. P2.2 must not inherit any OFF-side work or be blocked by its future steps.
