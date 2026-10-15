@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 
 from tools.validate_sraf_airgap_off0_contract import (
-    ContractError, make_report_record, validate_contract,
+    ContractError, _json_exceeds_nesting_limit, make_report_record,
+    validate_contract,
 )
 
 
@@ -304,3 +305,91 @@ def test_symlink_registry_is_rejected_without_following(tmp_path):
     assert output.returncode == 2
     assert output.stdout.strip() == "OFF0_CONTRACT = FAIL (contract_file_unreadable)"
     assert "Traceback" not in output.stderr
+
+
+
+@pytest.mark.parametrize("removed_id", ["AIR-01", "DOC-01", "SQL-01"])
+def test_incomplete_reviewed_inventory_must_fail(removed_id, inventory):
+    changed = copy.deepcopy(inventory)
+    changed["checks"] = [
+        check for check in changed["checks"] if check["id"] != removed_id
+    ]
+    # Removing independent leaves and dependency targets both fail closed:
+    # the incomplete inventory is invalid even if the graph is still connected.
+    with pytest.raises(ContractError, match="contract_incomplete_check_inventory"):
+        validate_contract(changed)
+
+
+def test_incomplete_registry_cli_never_reports_pass(tmp_path, inventory):
+    changed = copy.deepcopy(inventory)
+    changed["checks"] = [
+        check for check in changed["checks"] if check["id"] != "AIR-01"
+    ]
+    fixture = tmp_path / "missing-check.json"
+    fixture.write_text(json.dumps(changed), encoding="utf-8")
+    output = _run_cli_with_registry(fixture)
+    assert output.returncode == 1
+    assert output.stdout.strip() == (
+        "OFF0_CONTRACT = FAIL (contract_incomplete_check_inventory)"
+    )
+
+
+@pytest.mark.parametrize(("status", "error_code"), [
+    ("FAIL", "blocked_by_dependency"),
+    ("FAIL", "check_not_implemented"),
+    ("FAIL", "auth_session_unavailable"),
+    ("SKIP", "api_unreachable"),
+    ("SKIP", "product_api_invalid"),
+    ("WARN", "blocked_by_dependency"),
+])
+def test_report_rejects_status_error_code_confusion(
+    inventory, status, error_code,
+):
+    with pytest.raises(ContractError, match="report_error_code_unsafe"):
+        make_report_record(
+            inventory, "API-01", status, error_code=error_code,
+        )
+
+
+def test_report_valid_status_error_code_pairs(inventory):
+    for status, code in [
+        ("FAIL", "api_unreachable"),
+        ("SKIP", "blocked_by_dependency"),
+        ("SKIP", "auth_session_unavailable"),
+        ("SKIP", "check_not_implemented"),
+        ("WARN", "api_unreachable"),
+        ("WARN", None),
+        ("PASS", None),
+    ]:
+        record = make_report_record(inventory, "API-01", status,
+                                    error_code=code)
+        assert record["status"] == status
+        assert record["error_code"] == code
+
+
+@pytest.mark.parametrize("depth", [129, 150, 2000])
+def test_json_depth_rejection_independent_of_python_version(tmp_path, depth):
+    raw = "[" * depth + "0" + "]" * depth
+    assert _json_exceeds_nesting_limit(raw)
+    fixture = tmp_path / "deep.json"
+    fixture.write_text(raw, encoding="utf-8")
+    output = _run_cli_with_registry(fixture)
+    assert output.returncode == 2
+    assert output.stdout.strip() == "OFF0_CONTRACT = FAIL (contract_json_invalid)"
+    assert "Traceback" not in output.stderr
+
+
+def test_depth_guard_ignores_brackets_and_escaped_quotes_inside_json_strings(
+    tmp_path, inventory,
+):
+    changed = copy.deepcopy(inventory)
+    changed["checks"][0]["existing_evidence"] = (
+        'look at "[[[[' + "\\\"" + '[' * 130 + ']' * 130
+    )
+    raw = json.dumps(changed)
+    assert not _json_exceeds_nesting_limit(raw)
+    fixture = tmp_path / "brackets-in-string.json"
+    fixture.write_text(raw, encoding="utf-8")
+    output = _run_cli_with_registry(fixture)
+    assert output.returncode == 0, output.stdout + output.stderr
+    assert "checks=19" in output.stdout
