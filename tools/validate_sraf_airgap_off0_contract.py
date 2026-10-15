@@ -54,6 +54,26 @@ REPORT_SYSTEM_CODES = frozenset({
     "blocked_by_dependency", "check_not_implemented", "auth_session_unavailable",
     "mode_not_enabled",
 })
+REPORT_TEXT_FORBIDDEN = re.compile(
+    r"(?i)(?:https?://|file://|www\\.|"
+    r"\\b(?:password|passwd|token|secret|api[_-]?key|authorization)\\s*[:=]|"
+    r"\\bbearer\\s+\\S+|\\btraceback\\b|"
+    r"\\b[A-Za-z]*(?:Exception|Error)\\s*[:(]|"
+    r"(?:^|\\s)/(?:etc|home|root|var|mnt|tmp|opt)/|"
+    r"\\b[A-Za-z]:[\\\\/])"
+)
+REPORT_TEXT_CONTROL = re.compile(r"[\\x00-\\x1f\\x7f]")
+
+
+def _safe_report_text(value: Any, *, max_chars: int, code: str) -> None:
+    _require(
+        isinstance(value, str) and value == value.strip() and
+        1 <= len(value) <= max_chars and
+        REPORT_TEXT_CONTROL.search(value) is None and
+        REPORT_TEXT_FORBIDDEN.search(value) is None,
+        code,
+    )
+
 
 
 class ContractError(ValueError):
@@ -86,6 +106,8 @@ def validate_contract(document: Any) -> int:
     _require(set(document) == ROOT_KEYS, "contract_top_level_shape_invalid")
     _require(document.get("schema_version") == "sraf_airgap_off0_inventory_v1",
              "contract_schema_version_invalid")
+    _require(type(document.get("issue")) is int and document["issue"] == 290,
+             "contract_issue_invalid")
     _require(document.get("scope") == "contract_only_not_executable",
              "contract_scope_invalid")
     _require(document.get("default_mode") == "quick", "contract_unsafe_default")
@@ -112,13 +134,29 @@ def validate_contract(document: Any) -> int:
         _require(isinstance(item, dict) and set(item) == CHECK_KEYS,
                  "contract_check_shape_invalid")
         identifier = item["id"]
-        _require(isinstance(identifier, str) and identifier,
+        _require(isinstance(identifier, str) and
+                 re.fullmatch(r"[A-Z]{2,5}-[0-9]{2}", identifier) is not None,
                  "contract_check_id_invalid")
         _require(identifier not in by_id, "contract_duplicate_check_id")
-        for key in ("title", "component", "existing_evidence",
-                    "error_code", "remediation"):
-            _require(isinstance(item[key], str) and bool(item[key].strip()),
-                     "contract_check_field_invalid")
+        _safe_report_text(
+            item["title"], max_chars=96, code="contract_report_text_unsafe",
+        )
+        _safe_report_text(
+            item["remediation"], max_chars=200,
+            code="contract_report_text_unsafe",
+        )
+        _require(isinstance(item["component"], str) and
+                 re.fullmatch(r"[a-z][a-z0-9_]{0,31}",
+                              item["component"]) is not None,
+                 "contract_report_component_unsafe")
+        _require(isinstance(item["error_code"], str) and
+                 re.fullmatch(r"[a-z][a-z0-9_]{2,63}",
+                              item["error_code"]) is not None,
+                 "contract_report_error_code_unsafe")
+        _require(isinstance(item["existing_evidence"], str) and
+                 1 <= len(item["existing_evidence"]) <= 512 and
+                 REPORT_TEXT_CONTROL.search(item["existing_evidence"]) is None,
+                 "contract_check_field_invalid")
         _require(isinstance(item["minimum_mode"], str) and
                  item["minimum_mode"] in MODES, "contract_mode_invalid")
         _require(isinstance(item["effect"], str) and
@@ -244,11 +282,22 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        value = json.loads(args.registry.read_text(encoding="utf-8"))
-        count = validate_contract(value)
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        print(f"OFF0_CONTRACT = FAIL (contract_file_unreadable: {type(exc).__name__})")
+        if args.registry.stat().st_size > 256 * 1024:
+            print("OFF0_CONTRACT = FAIL (contract_file_too_large)")
+            return 2
+        content = args.registry.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        print("OFF0_CONTRACT = FAIL (contract_file_unreadable)")
         return 2
+    try:
+        value = json.loads(content)
+    except ValueError:
+        # Includes JSONDecodeError and Python 3.11's oversized integer limit.
+        # Do not catch ContractError here: it is reported separately below.
+        print("OFF0_CONTRACT = FAIL (contract_json_invalid)")
+        return 2
+    try:
+        count = validate_contract(value)
     except ContractError as exc:
         print(f"OFF0_CONTRACT = FAIL ({exc})")
         return 1
