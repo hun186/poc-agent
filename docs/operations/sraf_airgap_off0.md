@@ -83,3 +83,10 @@
 ## 六、下一個可獨立合併的小階段：OFF-1
 
 優先實作 **唯讀** `PKG-01`、`SYS-01`、`ENV-01/02`、`API-01`、`SQL-01/02`、`ES-01/02`，每個 probe 都要有 timeout、穩定錯誤代碼、假服務/錯誤注入回歸測試和禁止副作用驗證。LLM 推論 `LLM-02`、ES 真實檢索 `ES-03`、完整 `RUN-01` 應保持在授權 Acceptance。P2.2 不因 OFF-1 排程受阻。
+
+### 第三輪安全界線補強（2026-10-15）
+
+- 報告的 `title` 與 `remediation` 不僅限制長度、敏感關鍵字與路徑，還必須與 `tools/validate_sraf_airgap_off0_contract.py` 中的**已審查固定文字白名單**逐字相同；不能從改寫的 registry 靜默引入新文字。未來正式修改文案必須同時修改受審程式及測試。
+- 報告文字會拒絕 Unicode 控制/格式字元及行、段分隔符 U+2028/U+2029，也涵蓋 `client_secret=`、`access_token=` 等常見鍵名與一般 Unix 絕對路徑。驗證是 fail-closed，不能視為能安全輸出任意使用者原始字串。
+- 契約 JSON 只可從常規檔案的已開啟 descriptor 讀取，不跟隨 symlink；採非阻塞開啟，**實際只讀最多 256 KiB + 1 byte**，拒絕特殊裝置與超大內容，不依賴可競爭的預讀檔案大小。深層巢狀資料引發的 `RecursionError` 與過大整數等解析錯誤都歸類為固定 `contract_json_invalid`，不輸出 Traceback。
+- 以上只保護 OFF-0 契約檔的驗證及安全紀錄建構函式。正式 Runner 尚未實作，不能宣稱系統已具備完整報告脫敏與離線診斷能力。
