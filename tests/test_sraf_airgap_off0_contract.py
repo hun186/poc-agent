@@ -239,3 +239,68 @@ def test_valid_but_wrong_issue_has_contract_error_not_json_error(inventory):
     changed["issue"] = 123
     with pytest.raises(ContractError, match="contract_issue_invalid"):
         validate_contract(changed)
+
+
+@pytest.mark.parametrize("payload", [
+    "client_secret=hunter2",
+    "access_token=hunter2",
+    "/usr/local/private/config",
+    "Hello\u2028credential",
+    "Hello\u2029credential",
+    "CREDENTIAL_KEY=topsecret",
+])
+def test_common_redaction_bypasses_are_rejected(inventory, payload):
+    changed = copy.deepcopy(inventory)
+    changed["checks"][0]["remediation"] = payload
+    with pytest.raises(ContractError, match="contract_report_text_unsafe"):
+        make_report_record(changed, "PKG-01", "FAIL", error_code="package_missing")
+
+
+def test_innocuous_but_unapproved_registry_copy_is_rejected(inventory):
+    changed = copy.deepcopy(inventory)
+    changed["checks"][0]["title"] = "Unreviewed harmless looking text"
+    with pytest.raises(ContractError, match="contract_report_text_unapproved"):
+        make_report_record(changed, "PKG-01", "FAIL", error_code="package_missing")
+
+
+def _run_cli_with_registry(path):
+    validator = Path(__file__).resolve().parents[1] / "tools/validate_sraf_airgap_off0_contract.py"
+    return subprocess.run(
+        [sys.executable, str(validator), "--registry", str(path)],
+        capture_output=True, text=True, check=False, timeout=10,
+    )
+
+
+def test_deeply_nested_json_is_bounded_error_not_traceback(tmp_path):
+    input_path = tmp_path / "too-deep.json"
+    input_path.write_text("[" * 2000 + "0" + "]" * 2000, encoding="utf-8")
+    output = _run_cli_with_registry(input_path)
+    assert output.returncode == 2
+    assert output.stdout.strip() == "OFF0_CONTRACT = FAIL (contract_json_invalid)"
+    assert "Traceback" not in output.stderr
+
+
+def test_excessive_regular_registry_is_rejected_before_decode(tmp_path):
+    input_path = tmp_path / "over-limit.json"
+    input_path.write_bytes(b"x" * (256 * 1024 + 1))
+    output = _run_cli_with_registry(input_path)
+    assert output.returncode == 2
+    assert output.stdout.strip() == "OFF0_CONTRACT = FAIL (contract_file_too_large)"
+    assert "Traceback" not in output.stderr
+
+
+@pytest.mark.skipif(not Path("/dev/zero").exists(), reason="Linux only")
+def test_character_device_cannot_trigger_unbounded_registry_read():
+    output = _run_cli_with_registry(Path("/dev/zero"))
+    assert output.returncode == 2
+    assert output.stdout.strip() == "OFF0_CONTRACT = FAIL (contract_file_not_regular)"
+    assert "Traceback" not in output.stderr
+
+
+def test_symlink_registry_is_rejected_without_following(tmp_path):
+    input_path = tmp_path / "link.json"
+    input_path.symlink_to(REGISTRY)
+    output = _run_cli_with_registry(input_path)
+    assert output.returncode == 2
+    assert output.stdout.strip() == "OFF0_CONTRACT = FAIL (contract_file_unreadable)"
+    assert "Traceback" not in output.stderr
