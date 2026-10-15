@@ -53,7 +53,7 @@ PERMITTED_EVIDENCE = {
     "model_available": "boolean",
     "classification": "classification",
 }
-REPORT_SYSTEM_CODES = frozenset({
+SKIP_REASON_CODES = frozenset({
     "blocked_by_dependency", "check_not_implemented", "auth_session_unavailable",
     "mode_not_enabled",
 })
@@ -259,6 +259,10 @@ def validate_contract(document: Any) -> int:
                      "contract_readonly_mode_violation")
         by_id[identifier] = item
 
+    # Contract PASS is valid only for the complete reviewed 19-check baseline.
+    _require(set(by_id) == set(APPROVED_REPORT_TEXT),
+             "contract_incomplete_check_inventory")
+
     checked: set[str] = set()
     active: set[str] = set()
 
@@ -306,16 +310,18 @@ def make_report_record(
              "report_unimplemented_pass")
     _require(type(duration_ms) is int and 0 <= duration_ms <= 86_400_000,
              "report_duration_invalid")
-    permitted_codes = {check["error_code"]} | REPORT_SYSTEM_CODES
-    _require(error_code is None or
-             (isinstance(error_code, str) and error_code in permitted_codes),
-             "report_error_code_unsafe")
     if status == "FAIL":
         _require(error_code is not None, "report_failure_code_missing")
-    if status == "PASS":
-        _require(error_code is None, "report_pass_with_error")
-    if status == "SKIP":
+        _require(error_code == check["error_code"], "report_error_code_unsafe")
+    elif status == "SKIP":
         _require(error_code is not None, "report_skip_code_missing")
+        _require(isinstance(error_code, str) and error_code in SKIP_REASON_CODES,
+                 "report_error_code_unsafe")
+    elif status == "PASS":
+        _require(error_code is None, "report_pass_with_error")
+    else:  # WARN: soft check-specific warning or general warning without a code.
+        _require(error_code is None or error_code == check["error_code"],
+                 "report_error_code_unsafe")
     values = evidence if evidence is not None else {}
     _require(isinstance(values, dict) and
              len(values) <= contract["report_policy"]["max_evidence_entries"],
@@ -359,6 +365,39 @@ def make_report_record(
     }
 
 
+
+
+def _json_exceeds_nesting_limit(content: str, limit: int = 128) -> bool:
+    """Scan structural braces outside strings, independently of JSON parser depth.
+
+    Malformed JSON is still rejected by json.loads; this bound simply prevents
+    deeply nested (even valid) JSON from being accepted differently by Python
+    versions or causing interpreter recursion errors.
+    """
+    depth = 0
+    inside_string = False
+    escaped = False
+    for char in content:
+        if inside_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                inside_string = False
+            continue
+        if char == '"':
+            inside_string = True
+        elif char in "[{":
+            depth += 1
+            if depth > limit:
+                return True
+        elif char in "]}":
+            depth -= 1
+            if depth < 0:
+                return False  # Invalid structure goes to json.loads.
+    return False
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -392,6 +431,9 @@ def main() -> int:
             os.close(fd)
     except (OSError, UnicodeError):
         print("OFF0_CONTRACT = FAIL (contract_file_unreadable)")
+        return 2
+    if _json_exceeds_nesting_limit(content):
+        print("OFF0_CONTRACT = FAIL (contract_json_invalid)")
         return 2
     try:
         value = json.loads(content)
