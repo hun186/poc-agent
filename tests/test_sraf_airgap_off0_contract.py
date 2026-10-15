@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -175,3 +177,65 @@ def test_report_rejects_raw_unbounded_evidence(inventory):
             evidence={f"untrusted_{i}": "x" for i in range(13)},
             error_code="api_unreachable",
         )
+
+
+@pytest.mark.parametrize(("field", "text_value"), [
+    ("title", "x" * 97),
+    ("title", "https://internal.example/secret"),
+    ("title", "Error: something went wrong"),
+    ("remediation", "x" * 201),
+    ("remediation", "Bearer sensitive-token"),
+    ("remediation", "Password=1234"),
+    ("remediation", "/var/log/secret"),
+    ("remediation", "Traceback (most recent call last)"),
+    ("remediation", "value\nhidden"),
+    ("remediation", r"C:\secret\password.txt"),
+])
+def test_report_text_fields_are_bounded_and_safe(inventory, field, text_value):
+    changed = copy.deepcopy(inventory)
+    changed["checks"][0][field] = text_value
+    with pytest.raises(ContractError, match="contract_report_text_unsafe"):
+        validate_contract(changed)
+    with pytest.raises(ContractError, match="contract_report_text_unsafe"):
+        make_report_record(
+            changed, "PKG-01", "FAIL", error_code="package_missing",
+        )
+
+
+@pytest.mark.parametrize(("field", "text_value", "code"), [
+    ("error_code", "Password=secret", "contract_report_error_code_unsafe"),
+    ("error_code", "too_long_" + "x" * 80, "contract_report_error_code_unsafe"),
+    ("component", r"C:\secret", "contract_report_component_unsafe"),
+])
+def test_structured_report_fields_reject_paths_and_secrets(
+    inventory, field, text_value, code,
+):
+    changed = copy.deepcopy(inventory)
+    changed["checks"][0][field] = text_value
+    with pytest.raises(ContractError, match=code):
+        validate_contract(changed)
+
+
+def test_oversized_json_number_gives_bounded_cli_failure(tmp_path, inventory):
+    raw = REGISTRY.read_text(encoding="utf-8")
+    assert '"issue": 290' in raw
+    fixture = tmp_path / "bad-integer.json"
+    fixture.write_text(
+        raw.replace('"issue": 290', '"issue": ' + "9" * 6000, 1),
+        encoding="utf-8",
+    )
+    validator = Path(__file__).resolve().parents[1] / "tools/validate_sraf_airgap_off0_contract.py"
+    output = subprocess.run(
+        [sys.executable, str(validator), "--registry", str(fixture)],
+        capture_output=True, text=True, check=False, timeout=10,
+    )
+    assert output.returncode == 2
+    assert output.stdout.strip() == "OFF0_CONTRACT = FAIL (contract_json_invalid)"
+    assert "Traceback" not in output.stderr
+
+
+def test_valid_but_wrong_issue_has_contract_error_not_json_error(inventory):
+    changed = copy.deepcopy(inventory)
+    changed["issue"] = 123
+    with pytest.raises(ContractError, match="contract_issue_invalid"):
+        validate_contract(changed)
