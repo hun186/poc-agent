@@ -164,3 +164,5 @@
 - 2026-10-16 OFF-0 PR #291 eighth round Codex found one P2: runtime `PASS` records were allowed with empty/untrusted evidence. In this contract-only stage, reject all per-check PASS pending OFF-1 reviewed probes; regressions cover no evidence, empty evidence and plausible-but-forged evidence. Next: exact-head CI then Codex review; never merge without explicit authorization. This does not block independent P2.2 Product API progress.
 
 - 2026-10-16 PR #291 ninth Codex review at `781e214e`: one P2 for proofless FAIL/WARN. Safe record constructor now blocks every unprobed runtime PASS/FAIL/WARN; tests exercise real-check IDs and fake evidence. Await exact-head GitHub Actions and Codex re-review. OFF-1 and P2.2 remain independent. No merge authorized.
+
+- 2026-10-16 OFF-0 PR #291 tenth Codex review (`ccf6dd5f`) identified one P2 allowing fabricated evidence in SKIP despite no probes. Added fail-closed empty-evidence gate and regression coverage; pending exact-head GitHub Actions and Codex re-review. Do not merge without explicit user instruction. OFF-1 remains independent from P2.2.
