@@ -437,3 +437,44 @@ def test_a_reviewed_existing_probe_retains_real_fail_and_skip(inventory):
         inventory, "API-01", "SKIP", error_code="blocked_by_dependency",
     )
     assert skipped["status"] == "SKIP"
+
+
+@pytest.mark.parametrize("check_id,new_readiness", [
+    ("SYS-01", "existing_component"),
+    ("SYS-01", "existing_external_smoke"),
+    ("ENV-01", "existing_component"),
+    ("SQL-01", "existing_external_smoke"),
+    ("API-01", "planned"),
+    ("PREV-01", "existing_component"),
+])
+def test_readiness_cannot_be_promoted_or_relabelled_by_registry(
+    inventory, check_id, new_readiness,
+):
+    changed = copy.deepcopy(inventory)
+    entry = next(x for x in changed["checks"] if x["id"] == check_id)
+    assert entry["readiness"] != new_readiness
+    entry["readiness"] = new_readiness
+    with pytest.raises(ContractError, match="contract_check_readiness_unapproved"):
+        validate_contract(changed)
+
+
+def test_fake_ready_planned_probe_cannot_report_pass(inventory):
+    changed = copy.deepcopy(inventory)
+    entry = next(x for x in changed["checks"] if x["id"] == "SYS-01")
+    entry["readiness"] = "existing_component"
+    with pytest.raises(ContractError, match="contract_check_readiness_unapproved"):
+        make_report_record(changed, "SYS-01", "PASS")
+
+
+def test_readiness_mutation_is_rejected_by_standalone_cli(tmp_path, inventory):
+    changed = copy.deepcopy(inventory)
+    entry = next(x for x in changed["checks"] if x["id"] == "SYS-01")
+    entry["readiness"] = "existing_component"
+    path = tmp_path / "fake-promoted.json"
+    path.write_text(json.dumps(changed, ensure_ascii=False), encoding="utf-8")
+    out = _run_cli_with_registry(path)
+    assert out.returncode == 1
+    assert out.stdout.strip() == (
+        "OFF0_CONTRACT = FAIL (contract_check_readiness_unapproved)"
+    )
+    assert "Traceback" not in out.stderr
