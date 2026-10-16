@@ -253,3 +253,7 @@
 ### 2026-10-16 OFF-0 reviewed readiness authority
 
 - Probe readiness is an implementation fact, not user-editable configuration. Bind every OFF-0 check ID to a reviewed in-code readiness value and reject any JSON-only promotion or relabeling. Future OFF-1 work must update this authority only when a real probe and its tests have been reviewed; no planned check may produce operational PASS/FAIL/WARN.
+
+### 2026-10-16 OFF-0 execution and failure attribution authority
+
+- Each check ID has code-owned reviewed `minimum_mode`, `effect`, `depends_on`, `component`, and `error_code`. Registry JSON is a declared contract to validate, not an authority capable of changing execution permissions, dependency fences, or fault categories. A mismatch must fail closed before future runners can consume the values. Any change to this code-owned mapping needs corresponding reviewed implementation and regression tests.
