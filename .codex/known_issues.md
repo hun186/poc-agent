@@ -133,3 +133,5 @@
 - 2026-10-16 PR #291 seventh Codex review found two P2 contract trust issues: changing JSON execution mode/effect/dependency graph could run acceptance E2E in Quick, and changing error codes could misdirect remediation. Branch now pins reviewed semantics and failure codes for every check ID, awaiting latest-head CI and Codex review. This does not yet provide actual offline dependency probes.
 
 - 2026-10-16 OFF-0 eighth Codex review: even reusable existing components could report a fake PASS without executing a real probe. The OFF-0 report constructor now blocks per-check PASS until OFF-1 introduces actual reviewed execution/evidence bindings; safe schema validation continues independent of runtime acceptance. Current-head CI and re-review still required, and no operational air-gap probe is delivered by this change.
+
+- 2026-10-16 OFF-0 ninth Codex P2: false FAIL/WARN could be reported with no real probe execution. Fix now rejects all runtime outcome claims (PASS/FAIL/WARN) in the OFF-0 safe record constructor until OFF-1 supplies audited probes and evidence. Exact-head CI/Review required; OFF-0 is not an executable production health check.
