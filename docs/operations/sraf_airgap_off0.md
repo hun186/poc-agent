@@ -126,3 +126,9 @@
 - Codex 指出 OFF-0 在沒有可信的實際探測執行路徑時，雖已禁止 PASS，卻仍可能產生 `FAIL`／`WARN`，誤導使用者認為 SQL、ES、API 等真實服務已執行檢查並失敗。
 - 目前 OFF-0 **只有靜態契約與安全報告格式驗證**。`make_report_record` 現在同時拒絕未綁定 probe 的 `PASS`（`report_pass_probe_not_implemented`）及 `FAIL/WARN`（`report_outcome_probe_not_implemented`）；`readiness=planned` 的 Check 依然只能 `SKIP(check_not_implemented)`。
 - 只有 `OFF0_CONTRACT = PASS (checks=19, schema-only; no runtime probes)` 可能表示「規格合格」，它不是業務檢查的 PASS；OFF-1 將來要開放真實成功／失敗／警告，必須以獨立受審的實際 probe 與可信證據為前提。
+
+### 第十輪 Review：OFF-0 的 SKIP 不得附帶虛構證據（2026-10-16）
+
+- 第十輪 Codex 指出：雖然 OFF-0 封鎖未探測的 PASS／FAIL／WARN，但 `SKIP` 還能附帶看似合法的 `classification=FULL_LIVE`、`http_status=200`、雜湊及計數。這些在未執行 probe 的情況下都不能當成驗收證據。
+- `make_report_record` 現在要求 OFF-0 的 SKIP 必須 **`evidence={}` 或未提供證據**；任何非空 evidence 即使通過型別與欄位白名單，也會以 `report_skip_evidence_untrusted` 拒絕。測試涵蓋未實作、依賴阻擋、模式停用等情境，並驗證合法空證據的 SKIP。
+- 只有規格層級的 `OFF0_CONTRACT = PASS (schema-only)` 可表明 19 項契約完成結構性驗證；OFF-0 不宣稱 SQL/ES/LLM/API/Workers/DOCX 真正健康。未來 OFF-1/3 真實 probe 的資料必須經獨立受審的執行證明機制，不能藉由改 JSON 或呼叫 SKIP 附帶數值。
