@@ -127,10 +127,10 @@ def test_reject_report_policy_disabled_and_unknown_root_fields(inventory):
 def test_report_records_use_allowlisted_static_strings_without_fake_evidence(inventory):
     record = make_report_record(
         inventory, "API-01", "SKIP",
-        evidence={}, error_code="blocked_by_dependency", duration_ms=0,
+        evidence={}, error_code="check_not_implemented", duration_ms=0,
     )
     assert record["status"] == "SKIP"
-    assert record["error_code"] == "blocked_by_dependency"
+    assert record["error_code"] == "check_not_implemented"
     assert record["summary"] == "SRA API Health"
     assert record["evidence"] == {}
     assert record["remediation"]
@@ -163,10 +163,10 @@ def test_report_rejects_unlisted_error_and_unimplemented_success(inventory):
     with pytest.raises(ContractError, match="report_unimplemented_pass"):
         make_report_record(inventory, "SYS-01", "PASS")
     record = make_report_record(
-        inventory, "API-01", "SKIP", error_code="blocked_by_dependency",
+        inventory, "API-01", "SKIP", error_code="check_not_implemented",
     )
     assert record["status"] == "SKIP"
-    assert record["error_code"] == "blocked_by_dependency"
+    assert record["error_code"] == "check_not_implemented"
 
 
 def test_report_rejects_raw_unbounded_evidence(inventory):
@@ -351,8 +351,6 @@ def test_report_rejects_status_error_code_confusion(
 
 def test_report_valid_status_error_code_pairs(inventory):
     for status, code in [
-        ("SKIP", "blocked_by_dependency"),
-        ("SKIP", "auth_session_unavailable"),
         ("SKIP", "check_not_implemented"),
     ]:
         record = make_report_record(inventory, "API-01", status,
@@ -428,7 +426,7 @@ def test_reusable_component_does_not_claim_unexecuted_fail(inventory):
             inventory, "API-01", "FAIL", error_code="api_unreachable",
         )
     skipped = make_report_record(
-        inventory, "API-01", "SKIP", error_code="blocked_by_dependency",
+        inventory, "API-01", "SKIP", error_code="check_not_implemented",
     )
     assert skipped["status"] == "SKIP"
 
@@ -634,9 +632,9 @@ def test_off0_schema_pass_cannot_produce_live_pass_fail_or_warn(inventory):
 @pytest.mark.parametrize(("check_id", "error_code"), [
     ("SYS-01", "check_not_implemented"),
     ("ENV-01", "check_not_implemented"),
-    ("API-01", "blocked_by_dependency"),
-    ("RUN-01", "mode_not_enabled"),
-    ("WORK-01", "auth_session_unavailable"),
+    ("API-01", "check_not_implemented"),
+    ("RUN-01", "check_not_implemented"),
+    ("WORK-01", "check_not_implemented"),
 ])
 @pytest.mark.parametrize("evidence", [
     {"classification": "FULL_LIVE"},
@@ -661,7 +659,40 @@ def test_off0_skip_rejects_even_allowlisted_fabricated_evidence(
 def test_off0_skip_accepts_only_empty_evidence(inventory, evidence):
     record = make_report_record(
         inventory, "API-01", "SKIP",
-        error_code="blocked_by_dependency", evidence=evidence,
+        error_code="check_not_implemented", evidence=evidence,
     )
     assert record["evidence"] == {}
     assert record["status"] == "SKIP"
+
+
+
+@pytest.mark.parametrize(("check_id", "unverified_reason"), [
+    ("API-01", "blocked_by_dependency"),
+    ("API-01", "auth_session_unavailable"),
+    ("API-01", "mode_not_enabled"),
+    ("PKG-01", "blocked_by_dependency"),
+    ("WORK-01", "auth_session_unavailable"),
+    ("RUN-01", "blocked_by_dependency"),
+    ("RUN-01", "mode_not_enabled"),
+    ("DOC-01", "auth_session_unavailable"),
+])
+def test_off0_skip_cannot_invent_precondition_or_mode_reason(
+    inventory, check_id, unverified_reason,
+):
+    with pytest.raises(ContractError, match="report_skip_reason_unverified"):
+        make_report_record(
+            inventory, check_id, "SKIP", error_code=unverified_reason,
+            evidence=None,
+        )
+
+
+def test_off0_reusable_check_only_reports_no_probe(inventory):
+    # Reusable upstream source is NOT proof that an OFF-0 probe was executed.
+    for check in inventory["checks"]:
+        entry = make_report_record(
+            inventory, check["id"], "SKIP",
+            error_code="check_not_implemented",
+        )
+        assert entry["status"] == "SKIP"
+        assert entry["error_code"] == "check_not_implemented"
+        assert entry["evidence"] == {}
