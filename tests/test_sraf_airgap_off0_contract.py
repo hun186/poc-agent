@@ -133,7 +133,8 @@ def test_report_records_use_allowlisted_static_strings_without_fake_evidence(inv
     assert record["error_code"] == "check_not_implemented"
     assert record["summary"] == "SRA API Health"
     assert record["evidence"] == {}
-    assert record["remediation"]
+    assert record["remediation"] is None
+    assert record["duration_ms"] == 0
     assert set(record) == set(inventory["report_required"])
 
 
@@ -417,7 +418,8 @@ def test_every_planned_check_has_only_explicit_unimplemented_skip(inventory):
         )
         assert record["status"] == "SKIP"
         assert record["error_code"] == "check_not_implemented"
-        assert record["remediation"] == check["remediation"]
+        assert record["remediation"] is None
+        assert record["duration_ms"] == 0
 
 
 def test_reusable_component_does_not_claim_unexecuted_fail(inventory):
@@ -696,3 +698,43 @@ def test_off0_reusable_check_only_reports_no_probe(inventory):
         assert entry["status"] == "SKIP"
         assert entry["error_code"] == "check_not_implemented"
         assert entry["evidence"] == {}
+
+
+
+@pytest.mark.parametrize("check_id", ["API-01", "SYS-01", "DOC-01", "RUN-01"])
+@pytest.mark.parametrize("fake_duration_ms", [1, 125, 86400000])
+def test_off0_skip_rejects_fabricated_execution_time(
+    inventory, check_id, fake_duration_ms,
+):
+    with pytest.raises(ContractError, match="report_skip_duration_unverified"):
+        make_report_record(
+            inventory, check_id, "SKIP",
+            error_code="check_not_implemented",
+            duration_ms=fake_duration_ms,
+        )
+
+
+@pytest.mark.parametrize("duration_ms", [-1, 86400001, True, "0"])
+def test_duration_type_and_range_errors_remain_bounded(inventory, duration_ms):
+    with pytest.raises(ContractError, match="report_duration_invalid"):
+        make_report_record(
+            inventory, "API-01", "SKIP",
+            error_code="check_not_implemented",
+            duration_ms=duration_ms,
+        )
+
+
+def test_all_off0_skips_show_neither_probe_duration_nor_failure_remediation(
+    inventory,
+):
+    assert validate_contract(inventory) == 19
+    for check in inventory["checks"]:
+        record = make_report_record(
+            inventory, check["id"], "SKIP",
+            error_code="check_not_implemented",
+        )
+        assert record["remediation"] is None
+        assert record["duration_ms"] == 0
+        assert record["evidence"] == {}
+        assert record["status"] == "SKIP"
+        assert set(record) == set(inventory["report_required"])
