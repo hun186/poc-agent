@@ -137,3 +137,5 @@
 - 2026-10-16 OFF-0 ninth Codex P2: false FAIL/WARN could be reported with no real probe execution. Fix now rejects all runtime outcome claims (PASS/FAIL/WARN) in the OFF-0 safe record constructor until OFF-1 supplies audited probes and evidence. Exact-head CI/Review required; OFF-0 is not an executable production health check.
 
 - 2026-10-16 PR #291 tenth Codex finding: contract-only SKIP records could contain fabricated yet syntactically permitted FULL_LIVE/hash/HTTP evidence. Branch now rejects nonempty SKIP evidence and tests all declared safe-value categories. Hosted tests and new Codex review are still needed. No actual air-gapped runtime probes have been delivered.
+
+- 2026-10-16 OFF-0 PR #291 eleventh Codex finding: SKIP reasons remained forged despite redacted/empty evidence; API-01 wrongly allowed blocked_by_dependency/auth_session_unavailable. Current branch now permits only SKIP(check_not_implemented) until OFF-1/3 can bind specific reasons to actual checked dependencies/session/mode. Hosted CI and exact-head Codex review remain necessary.
