@@ -161,6 +161,176 @@ APPROVED_CHECK_READINESS = {
     "AIR-01": "planned",
 }
 
+# Approved check semantics are code-reviewed authority, not JSON configuration.
+# Do not let mutable registry metadata silently downgrade an acceptance write
+# into Quick mode or reroute failure attribution to a different component.
+APPROVED_CHECK_SEMANTICS = {
+    "PKG-01": {
+        "component": "release",
+        "minimum_mode": "quick",
+        "effect": "read_only",
+        "depends_on": [],
+        "error_code": "package_missing"
+    },
+    "SYS-01": {
+        "component": "host",
+        "minimum_mode": "quick",
+        "effect": "read_only",
+        "depends_on": [],
+        "error_code": "host_resource_insufficient"
+    },
+    "ENV-01": {
+        "component": "host",
+        "minimum_mode": "quick",
+        "effect": "read_only",
+        "depends_on": [],
+        "error_code": "python_dependency_missing"
+    },
+    "ENV-02": {
+        "component": "host",
+        "minimum_mode": "quick",
+        "effect": "read_only",
+        "depends_on": [],
+        "error_code": "odbc_driver_missing"
+    },
+    "API-01": {
+        "component": "api",
+        "minimum_mode": "quick",
+        "effect": "read_only",
+        "depends_on": [],
+        "error_code": "api_unreachable"
+    },
+    "AUTH-01": {
+        "component": "auth",
+        "minimum_mode": "quick",
+        "effect": "read_only",
+        "depends_on": [
+            "API-01"
+        ],
+        "error_code": "auth_boundary_invalid"
+    },
+    "SQL-01": {
+        "component": "sql",
+        "minimum_mode": "diagnose",
+        "effect": "read_only",
+        "depends_on": [
+            "ENV-02"
+        ],
+        "error_code": "sql_unreachable"
+    },
+    "SQL-02": {
+        "component": "sql",
+        "minimum_mode": "diagnose",
+        "effect": "read_only",
+        "depends_on": [
+            "SQL-01"
+        ],
+        "error_code": "sql_schema_mismatch"
+    },
+    "ES-01": {
+        "component": "elasticsearch",
+        "minimum_mode": "diagnose",
+        "effect": "read_only",
+        "depends_on": [],
+        "error_code": "es_unreachable"
+    },
+    "ES-02": {
+        "component": "elasticsearch",
+        "minimum_mode": "diagnose",
+        "effect": "read_only",
+        "depends_on": [
+            "ES-01"
+        ],
+        "error_code": "mapping_incompatible"
+    },
+    "ES-03": {
+        "component": "elasticsearch",
+        "minimum_mode": "acceptance",
+        "effect": "read_only",
+        "depends_on": [
+            "ES-02"
+        ],
+        "error_code": "es_retrieval_invalid"
+    },
+    "LLM-01": {
+        "component": "llm",
+        "minimum_mode": "diagnose",
+        "effect": "read_only",
+        "depends_on": [],
+        "error_code": "llm_model_missing"
+    },
+    "LLM-02": {
+        "component": "llm",
+        "minimum_mode": "acceptance",
+        "effect": "compute_only",
+        "depends_on": [
+            "LLM-01"
+        ],
+        "error_code": "llm_inference_failed"
+    },
+    "WORK-01": {
+        "component": "worker",
+        "minimum_mode": "diagnose",
+        "effect": "read_only",
+        "depends_on": [
+            "PKG-01",
+            "API-01"
+        ],
+        "error_code": "worker_identity_unverified"
+    },
+    "PROD-01": {
+        "component": "api",
+        "minimum_mode": "diagnose",
+        "effect": "read_only",
+        "depends_on": [
+            "API-01"
+        ],
+        "error_code": "product_api_invalid"
+    },
+    "PREV-01": {
+        "component": "api",
+        "minimum_mode": "acceptance",
+        "effect": "compute_only",
+        "depends_on": [
+            "PROD-01"
+        ],
+        "error_code": "preview_normalization_failed"
+    },
+    "RUN-01": {
+        "component": "workflow",
+        "minimum_mode": "acceptance",
+        "effect": "test_job_write",
+        "depends_on": [
+            "PKG-01",
+            "SQL-02",
+            "ES-03",
+            "LLM-02",
+            "WORK-01"
+        ],
+        "error_code": "workflow_acceptance_failed"
+    },
+    "DOC-01": {
+        "component": "artifact",
+        "minimum_mode": "acceptance",
+        "effect": "read_only",
+        "depends_on": [
+            "RUN-01"
+        ],
+        "error_code": "docx_integrity_failed"
+    },
+    "AIR-01": {
+        "component": "release",
+        "minimum_mode": "acceptance",
+        "effect": "read_only",
+        "depends_on": [
+            "PKG-01",
+            "ENV-01",
+            "ENV-02"
+        ],
+        "error_code": "airgap_isolation_unverified"
+    }
+}
+
 REPORT_TEXT_FORBIDDEN = re.compile(
     r"(?i)(?:https?://|file://|www\.|"
     r"[a-z_]*(?:password|passwd|token|secret|credential|api[_-]?key)[a-z_]*\s*[:=]|"
@@ -280,6 +450,19 @@ def validate_contract(document: Any) -> int:
                  "contract_dependencies_invalid")
         _require(len(item["depends_on"]) == len(set(item["depends_on"])),
                  "contract_duplicate_dependency")
+        reviewed = APPROVED_CHECK_SEMANTICS.get(identifier)
+        _require(isinstance(reviewed, dict),
+                 "contract_check_semantics_unapproved")
+        _require(item["error_code"] == reviewed["error_code"],
+                 "contract_check_error_code_unapproved")
+        _require(item["component"] == reviewed["component"],
+                 "contract_check_component_unapproved")
+        _require(
+            item["minimum_mode"] == reviewed["minimum_mode"] and
+            item["effect"] == reviewed["effect"] and
+            item["depends_on"] == reviewed["depends_on"],
+            "contract_check_execution_unapproved",
+        )
         if item["minimum_mode"] in ("quick", "diagnose"):
             _require(item["effect"] == "read_only",
                      "contract_readonly_mode_violation")
