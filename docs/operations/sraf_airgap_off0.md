@@ -132,3 +132,9 @@
 - 第十輪 Codex 指出：雖然 OFF-0 封鎖未探測的 PASS／FAIL／WARN，但 `SKIP` 還能附帶看似合法的 `classification=FULL_LIVE`、`http_status=200`、雜湊及計數。這些在未執行 probe 的情況下都不能當成驗收證據。
 - `make_report_record` 現在要求 OFF-0 的 SKIP 必須 **`evidence={}` 或未提供證據**；任何非空 evidence 即使通過型別與欄位白名單，也會以 `report_skip_evidence_untrusted` 拒絕。測試涵蓋未實作、依賴阻擋、模式停用等情境，並驗證合法空證據的 SKIP。
 - 只有規格層級的 `OFF0_CONTRACT = PASS (schema-only)` 可表明 19 項契約完成結構性驗證；OFF-0 不宣稱 SQL/ES/LLM/API/Workers/DOCX 真正健康。未來 OFF-1/3 真實 probe 的資料必須經獨立受審的執行證明機制，不能藉由改 JSON 或呼叫 SKIP 附帶數值。
+
+### 第十一輪 Review：沒有執行依據，不得虛構 SKIP 原因（2026-10-16）
+
+- Codex 指出即使限制 SKIP 證據為空，呼叫端仍可捏造 `blocked_by_dependency`、`auth_session_unavailable`、`mode_not_enabled` 等說明；例如 `API-01` 的 `/healthz` 並無事先登入與依賴需求，不能任意聲稱被阻擋。
+- OFF-0 沒有真正的 Runner、實際相依檢測、授權 Session 或有效的模式執行脈絡，因此 **所有 19 項單項 SKIP 都只能回報 `check_not_implemented`，且 evidence 必須為空**；試圖填入其他全域 SKIP 原因會回報 `report_skip_reason_unverified`。
+- 此處 `check_not_implemented` 是指 OFF-0 **驗收探測器尚未實作**，不代表 SRAF 既有功能不存在。到 OFF-1/3 真正執行時，應提供受審的逐檢查前置條件與實際模式/登入證據，才能逐項解鎖被依賴阻擋、登入缺失、模式未啟用等 SKIP 說明。
