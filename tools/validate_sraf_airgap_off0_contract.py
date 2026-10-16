@@ -137,6 +137,30 @@ APPROVED_REPORT_TEXT = {
     }
 }
 
+# In-code reviewed readiness authority: mutable JSON cannot self-upgrade probes.
+# OFF-1 implementation must update this map only with reviewed probe evidence.
+APPROVED_CHECK_READINESS = {
+    "PKG-01": "existing_component",
+    "SYS-01": "planned",
+    "ENV-01": "planned",
+    "ENV-02": "planned",
+    "API-01": "existing_component",
+    "AUTH-01": "existing_component",
+    "SQL-01": "planned",
+    "SQL-02": "planned",
+    "ES-01": "existing_component",
+    "ES-02": "existing_component",
+    "ES-03": "planned",
+    "LLM-01": "planned",
+    "LLM-02": "existing_component",
+    "WORK-01": "existing_component",
+    "PROD-01": "planned",
+    "PREV-01": "existing_external_smoke",
+    "RUN-01": "existing_component",
+    "DOC-01": "existing_component",
+    "AIR-01": "planned",
+}
+
 REPORT_TEXT_FORBIDDEN = re.compile(
     r"(?i)(?:https?://|file://|www\.|"
     r"[a-z_]*(?:password|passwd|token|secret|credential|api[_-]?key)[a-z_]*\s*[:=]|"
@@ -249,6 +273,8 @@ def validate_contract(document: Any) -> int:
                  item["effect"] in EFFECTS, "contract_effect_invalid")
         _require(isinstance(item["readiness"], str) and
                  item["readiness"] in READINESS, "contract_readiness_invalid")
+        _require(APPROVED_CHECK_READINESS.get(identifier) == item["readiness"],
+                 "contract_check_readiness_unapproved")
         _require(isinstance(item["depends_on"], list) and
                  all(isinstance(dep, str) and dep for dep in item["depends_on"]),
                  "contract_dependencies_invalid")
