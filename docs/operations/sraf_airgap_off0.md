@@ -102,3 +102,8 @@
 
 - 若 Check 的 `readiness=planned`，報告產生器只允許 `status=SKIP` 且 `error_code=check_not_implemented`；即使被要求標記 FAIL、WARN、PASS，或用 `blocked_by_dependency` 等其他 SKIP 理由，都必須拒絕。不能對從未執行的探測器報告故障或警告。
 - 已有可重用元件的 Check 仍可在未來真正執行後回報檢查專屬 FAIL/WARN；**此欄位並不代表 OFF-3 統一 Runner 已完成或這些檢查已在目標主機執行**。
+
+### 第六輪 Review：實作狀態不能由 JSON 自我升級（2026-10-16）
+
+- `readiness` 原先只需符合合法列舉，可能透過修改 JSON 將 `SYS-01` 由 `planned` 偽裝成 `existing_component`，再產生假 PASS。現在在程式中明確維護 19 項的 `APPROVED_CHECK_READINESS`，逐一與契約 JSON 對照，失配時拒絕並回傳 `contract_check_readiness_unapproved`。
+- 未來 OFF-1 的真實 probe 實作完成時，必須經程式碼審查並同步修改固定實作狀態與測試；改一份外部 JSON 不構成實作或驗收。此防護只涉及 OFF-0 靜態契約，不代表已完成實機診斷。
