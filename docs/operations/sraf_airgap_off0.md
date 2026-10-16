@@ -138,3 +138,9 @@
 - Codex 指出即使限制 SKIP 證據為空，呼叫端仍可捏造 `blocked_by_dependency`、`auth_session_unavailable`、`mode_not_enabled` 等說明；例如 `API-01` 的 `/healthz` 並無事先登入與依賴需求，不能任意聲稱被阻擋。
 - OFF-0 沒有真正的 Runner、實際相依檢測、授權 Session 或有效的模式執行脈絡，因此 **所有 19 項單項 SKIP 都只能回報 `check_not_implemented`，且 evidence 必須為空**；試圖填入其他全域 SKIP 原因會回報 `report_skip_reason_unverified`。
 - 此處 `check_not_implemented` 是指 OFF-0 **驗收探測器尚未實作**，不代表 SRAF 既有功能不存在。到 OFF-1/3 真正執行時，應提供受審的逐檢查前置條件與實際模式/登入證據，才能逐項解鎖被依賴阻擋、登入缺失、模式未啟用等 SKIP 說明。
+
+### 第十二輪 Review：未執行檢查不得捏造時間或故障處置（2026-10-16）
+
+- 第十二輪 Codex 發現兩項 P2：OFF-0 的 `SKIP(check_not_implemented)` 可填入非零 `duration_ms`，並且回傳的是實際探測失敗時才有意義的「檢查本機 port、API 進程與啟動日誌」等故障處置。
+- 現在 OFF-0 單項檢查仍只能 `SKIP(check_not_implemented)`、`evidence={}`，而且 **`duration_ms=0`、`remediation=null`**。非零執行時間使用 `report_skip_duration_unverified` 拒絕；非法型別及負數仍屬 `report_duration_invalid`。
+- 真正的驗收失敗處置建議繼續保留在受審 registry 供未來 OFF-1/3 實際探測器使用；但在 OFF-0 的「未執行」結果中不會顯示，避免維運人員誤判系統故障。
