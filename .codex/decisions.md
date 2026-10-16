@@ -273,3 +273,7 @@
 ### 2026-10-16 OFF-0 SKIP reason honesty
 
 - OFF-0 has no runtime execution or verified dependency, auth, or mode context. Each of its report records is constrained to SKIP(check_not_implemented) with empty evidence: this means the OFF-0 probe is not implemented, NOT that a reusable SRAF component is missing. Future real OFF-1/3 probes must add trustworthy check-specific evidence and verified mode/dependency paths before any richer skip reason can be emitted.
+
+### 2026-10-16 OFF-0 non-execution timing and remediation
+
+- OFF-0 emits only `SKIP(check_not_implemented)` with empty evidence, zero duration, and no failure remediation. Displaying elapsed probe time or a subsystem troubleshooting instruction for a check that never ran is an unsupported operational claim. The reviewed failure remediation remains in the inventory for future evidence-bound OFF-1/3 probes, but OFF-0 records set it to null.
