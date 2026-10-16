@@ -533,6 +533,9 @@ def make_report_record(
                  "report_unimplemented_check")
     _require(type(duration_ms) is int and 0 <= duration_ms <= 86_400_000,
              "report_duration_invalid")
+    # OFF-0 never executes a probe. A nonzero duration would invent an
+    # execution time even for the only permitted no-probe SKIP outcome.
+    _require(duration_ms == 0, "report_skip_duration_unverified")
     if status == "FAIL":
         _require(error_code is not None, "report_failure_code_missing")
         _require(error_code == check["error_code"], "report_error_code_unsafe")
@@ -597,7 +600,9 @@ def make_report_record(
         "error_code": error_code,
         "summary": check["title"],
         "evidence": safe,
-        "remediation": check["remediation"] if status != "PASS" else None,
+        # No operational failure was observed in OFF-0. Displaying the
+        # check's failure remediation here would be a false diagnosis.
+        "remediation": None,
         "dependency": list(check["depends_on"]),
         "duration_ms": duration_ms,
     }
