@@ -257,3 +257,7 @@
 ### 2026-10-16 OFF-0 execution and failure attribution authority
 
 - Each check ID has code-owned reviewed `minimum_mode`, `effect`, `depends_on`, `component`, and `error_code`. Registry JSON is a declared contract to validate, not an authority capable of changing execution permissions, dependency fences, or fault categories. A mismatch must fail closed before future runners can consume the values. Any change to this code-owned mapping needs corresponding reviewed implementation and regression tests.
+
+### 2026-10-16 OFF-0 success proof boundary
+
+- An implemented/reusable component indicator or caller-provided `http_status=200`/`sha256` is **not** authoritative evidence of probe execution. OFF-0 supplies only a contract validator, not live probes; its report-record constructor cannot emit any per-check PASS. The static schema validator can still print `OFF0_CONTRACT=PASS (schema-only)`. OFF-1 must add trustworthy per-check execution provenance and deterministic success evidence validation before allowing live PASS, without introducing a JSON-only bypass.
