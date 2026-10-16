@@ -496,10 +496,11 @@ def test_reviewed_execution_gates_cannot_be_changed_from_json(
     check = next(x for x in changed["checks"] if x["id"] == check_id)
     assert check[field] != value
     check[field] = value
-    # A too-early mode with unchanged Acceptance dependencies is also caught
-    # by the intrinsic dependency-mode gate before the semantic pinning step.
-    expected = ("contract_dependency_mode_violation"
-                if check_id == "RUN-01" and field == "minimum_mode"
+    # Moving a compute/write check into a read-only mode hits the intrinsic
+    # side-effect fence before the reviewed semantic authority is consulted.
+    # Both failures must remain fail-closed with a stable error category.
+    expected = ("contract_readonly_mode_violation"
+                if field == "minimum_mode"
                 else "contract_check_execution_unapproved")
     with pytest.raises(ContractError, match=expected):
         validate_contract(changed)
