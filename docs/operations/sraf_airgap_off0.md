@@ -107,3 +107,9 @@
 
 - `readiness` 原先只需符合合法列舉，可能透過修改 JSON 將 `SYS-01` 由 `planned` 偽裝成 `existing_component`，再產生假 PASS。現在在程式中明確維護 19 項的 `APPROVED_CHECK_READINESS`，逐一與契約 JSON 對照，失配時拒絕並回傳 `contract_check_readiness_unapproved`。
 - 未來 OFF-1 的真實 probe 實作完成時，必須經程式碼審查並同步修改固定實作狀態與測試；改一份外部 JSON 不構成實作或驗收。此防護只涉及 OFF-0 靜態契約，不代表已完成實機診斷。
+
+### 第七輪 Review：執行權限與故障歸因不可由 JSON 變更（2026-10-16）
+
+- `APPROVED_CHECK_SEMANTICS` 在受審程式內固定各項 `component`、`minimum_mode`、`effect`、`depends_on` 和 `error_code`，與既有 `APPROVED_CHECK_READINESS` 和 `APPROVED_REPORT_TEXT` 共同約束 19 項檢查。直接修改 JSON 將 `RUN-01` 從 Acceptance/有副作用改成 Quick/唯讀，或刪除 SQL/ES/LLM/Workers/來源驗證依賴，應得到 `contract_check_execution_unapproved`，不能得到 PASS。
+- 直接把 API 檢查的 `error_code` 換成 `mapping_incompatible`，會得到 `contract_check_error_code_unapproved`；把 API 元件改成 Elasticsearch，會得到 `contract_check_component_unapproved`。錯誤歸因必須與經審查的檢查身分一致。
+- OFF-1 真正實作依賴探測器後，如需更新能力、允許的執行模式或前置依賴，必須經程式碼/契約雙方審查且新增回歸測試，不能把修改 JSON 當成已完工或授權。這仍是 OFF-0 靜態驗證，並未在離線主機執行任何服務檢查。
