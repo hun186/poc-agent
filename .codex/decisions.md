@@ -224,3 +224,60 @@
 - Preserve the P1.6 public guarded source-import path; Product internal orchestration calls the existing authority-bound `commit()` with preallocated IDs and base snapshot.
 
 - 2026-10-12 P2.1 PR #288 deliberately exposes only Product Task/Run read APIs and side-effect-free Product input preview. P2 mutation endpoints cannot be advertised until durable Run-trigger admission and remaining authorization/error-contract gates are reviewed. Cross-Task semantic dedup/result reuse remains deferred, not implicitly enabled.
+
+### 2026-10-15 SRAF air-gap OFF-0 inspection/mutation boundary
+
+- Issue #290 is a separate release/operability gate parallel to Product P2.2, not a new reporting core or Product schema/API subsystem. Preserve existing launcher, Operator E2E, Release Provenance and external capabilities ownership; one future offline runner may orchestrate their **approved, mode-safe** entry points, never duplicate their domain authorities.
+- Default `quick` and explicit `diagnose` must be logically read-only; notably API login can write audit state, schema `initialize()` can change SQL, and E2E Elasticsearch fixture setup creates/indexes data. Only an explicitly selected authorized `acceptance` phase may mutate controlled fixtures or run real jobs; mock/offline tests do not satisfy FULL_LIVE external dependency proof. Use stable check IDs and dependency-aware FAIL/SKIP separation.
+
+### 2026-10-15 OFF-0 fail-closed safe report construction
+
+- A report is constructed from reviewed inventory-defined static summary/remediation only, bounded numeric/bool/hash/classification evidence keys, approved per-check or system error codes, and no unstructured exception data. The registry must carry the explicit fail-closed policy and reject any extra top-level weakening fields. Future OFF-3/4 report runners must use `make_report_record` instead of serializing probe results or arbitrary log text. Worker Runtime Evidence requires valid package provenance as well as API availability; missing provenance must cause dependent Worker SKIP rather than misleading FAIL.
+
+### 2026-10-15 OFF-0 report copy validation and JSON parsing isolation
+
+- Report-emitted `title` and `remediation` must be short, single-line, and reject obvious URL, credential/authorization, traceback and absolute-path text; `component` and `error_code` must match bounded machine-code formats. No raw probe exception or other untrusted text is permitted in report records. The report-message validator is defense-in-depth atop PR review of the static inventory. JSON parser's `ValueError` is normalized to a fixed CLI code in its own block so it does not mask the `ContractError` validator boundary. Hosted focused pytest now installs project dependencies first, per AGENTS.md.
+
+### 2026-10-15 OFF-0 reviewed copy and bounded registry bytes
+
+- Any text emitted as report title or remediation is required to equal an in-code reviewed per-check allowlist in addition to regex/Unicode/length checks. A registry-only change cannot introduce unreviewed report strings. The JSON registry CLI reads only opened regular, non-symlink files with an effective 256KiB+1 byte cap and nonblocking open; malformed deeply nested JSON maps to bounded `contract_json_invalid`. No runtime SQL/ES/LLM interaction is added by these defenses.
+
+### 2026-10-16 OFF-0 check inventory and error semantics
+
+- OFF-0 contract PASS requires the complete reviewed 19 check IDs, never a nonempty subset. FAIL must carry only its check-specific real error code; SKIP may carry only a bounded allowed skip reason; PASS has no error code; WARN may have its specific code or none. JSON parsing uses a deterministic preparse structural nesting limit of 128, ignoring brackets in quoted JSON strings, so acceptance does not depend on CPython recursion depth.
+
+### 2026-10-16 OFF-0 planned-check result invariant
+
+- A check whose readiness is `planned` has no executable proof and may only be represented as `SKIP(check_not_implemented)`. It must never be a PASS/FAIL/WARN or use any alternate skip reason. This applies in the safe report-record constructor and must be retained by any future unified offline Runner. Existing/reviewed checks retain check-specific failure codes when actually executed.
+
+### 2026-10-16 OFF-0 reviewed readiness authority
+
+- Probe readiness is an implementation fact, not user-editable configuration. Bind every OFF-0 check ID to a reviewed in-code readiness value and reject any JSON-only promotion or relabeling. Future OFF-1 work must update this authority only when a real probe and its tests have been reviewed; no planned check may produce operational PASS/FAIL/WARN.
+
+### 2026-10-16 OFF-0 execution and failure attribution authority
+
+- Each check ID has code-owned reviewed `minimum_mode`, `effect`, `depends_on`, `component`, and `error_code`. Registry JSON is a declared contract to validate, not an authority capable of changing execution permissions, dependency fences, or fault categories. A mismatch must fail closed before future runners can consume the values. Any change to this code-owned mapping needs corresponding reviewed implementation and regression tests.
+
+### 2026-10-16 OFF-0 success proof boundary
+
+- An implemented/reusable component indicator or caller-provided `http_status=200`/`sha256` is **not** authoritative evidence of probe execution. OFF-0 supplies only a contract validator, not live probes; its report-record constructor cannot emit any per-check PASS. The static schema validator can still print `OFF0_CONTRACT=PASS (schema-only)`. OFF-1 must add trustworthy per-check execution provenance and deterministic success evidence validation before allowing live PASS, without introducing a JSON-only bypass.
+
+### 2026-10-16 OFF-0 runtime outcome proof requirement
+
+- No business check result `PASS`, `FAIL` or `WARN` may be generated by the OFF-0 contract-only recorder absent a reviewed, execution-bound probe. The validator's `OFF0_CONTRACT=PASS` is strictly schema-only. Future OFF-1 must introduce a provenance-aware evidence pathway for each new live outcome, instead of trusting a `status` or `evidence` dict provided by arbitrary callers. `SKIP` remains possible with constrained reason codes.
+
+### 2026-10-16 OFF-0 skipped-check evidence boundary
+
+- A contract-only OFF-0 SKIP denotes non-execution and therefore must not expose caller-supplied positive or negative service observations. Its `evidence` must be empty; even structurally valid HTTP/status/classification/hash data is unsafe without an audited execution path. OFF-1 can define reason-specific trusted evidence only after integrating genuine probe execution and versioned tests.
+
+### 2026-10-16 OFF-0 SKIP reason honesty
+
+- OFF-0 has no runtime execution or verified dependency, auth, or mode context. Each of its report records is constrained to SKIP(check_not_implemented) with empty evidence: this means the OFF-0 probe is not implemented, NOT that a reusable SRAF component is missing. Future real OFF-1/3 probes must add trustworthy check-specific evidence and verified mode/dependency paths before any richer skip reason can be emitted.
+
+### 2026-10-16 OFF-0 non-execution timing and remediation
+
+- OFF-0 emits only `SKIP(check_not_implemented)` with empty evidence, zero duration, and no failure remediation. Displaying elapsed probe time or a subsystem troubleshooting instruction for a check that never ran is an unsupported operational claim. The reviewed failure remediation remains in the inventory for future evidence-bound OFF-1/3 probes, but OFF-0 records set it to null.
+
+### 2026-10-16 OFF-0 nullable remediation policy
+
+- The validated JSON contract specifies `report_policy.remediation_source=verified_fail_warn_inventory_remediation_else_null`: only an actual, verified failure/warning probe in future OFF-1/3 may use reviewed inventory operational remediation; unexecuted SKIP and non-failure outcomes must have null remediation. The static report builder's only supported result in OFF-0 remains SKIP(check_not_implemented), no evidence, zero duration, and null remediation. The validator must reject the legacy always-inventory policy.

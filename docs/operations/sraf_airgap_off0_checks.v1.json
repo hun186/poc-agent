@@ -1,0 +1,320 @@
+{
+  "schema_version": "sraf_airgap_off0_inventory_v1",
+  "issue": 290,
+  "scope": "contract_only_not_executable",
+  "default_mode": "quick",
+  "modes": [
+    "quick",
+    "diagnose",
+    "acceptance"
+  ],
+  "valid_states": [
+    "PASS",
+    "FAIL",
+    "WARN",
+    "SKIP"
+  ],
+  "effects": [
+    "read_only",
+    "compute_only",
+    "test_job_write"
+  ],
+  "report_required": [
+    "check_id",
+    "component",
+    "status",
+    "severity",
+    "error_code",
+    "summary",
+    "evidence",
+    "remediation",
+    "dependency",
+    "duration_ms"
+  ],
+  "checks": [
+    {
+      "id": "PKG-01",
+      "title": "發行包／部署檔案完整性",
+      "component": "release",
+      "minimum_mode": "quick",
+      "effect": "read_only",
+      "readiness": "existing_component",
+      "depends_on": [],
+      "existing_evidence": "shared/runtime_provenance.py + REQUIREMENT_E2E_PROVENANCE.json",
+      "error_code": "package_missing",
+      "remediation": "SHA-256 與執行中的受管理檔案不一致"
+    },
+    {
+      "id": "SYS-01",
+      "title": "主機資源、磁碟與時間",
+      "component": "host",
+      "minimum_mode": "quick",
+      "effect": "read_only",
+      "readiness": "planned",
+      "depends_on": [],
+      "existing_evidence": "host resource and clock probes",
+      "error_code": "host_resource_insufficient",
+      "remediation": "檢查容量、時鐘及檔案權限"
+    },
+    {
+      "id": "ENV-01",
+      "title": "Python 套件與離線 wheelhouse",
+      "component": "host",
+      "minimum_mode": "quick",
+      "effect": "read_only",
+      "readiness": "planned",
+      "depends_on": [],
+      "existing_evidence": "requirements.txt + future locked wheelhouse",
+      "error_code": "python_dependency_missing",
+      "remediation": "比對已鎖定的版本、離線 wheelhouse 與依賴樹"
+    },
+    {
+      "id": "ENV-02",
+      "title": "原生函式庫與 ODBC Driver",
+      "component": "host",
+      "minimum_mode": "quick",
+      "effect": "read_only",
+      "readiness": "planned",
+      "depends_on": [],
+      "existing_evidence": "pyodbc + OS native library inspection",
+      "error_code": "odbc_driver_missing",
+      "remediation": "確認已離線安裝所需 ODBC driver 及 shared libraries"
+    },
+    {
+      "id": "API-01",
+      "title": "SRA API Health",
+      "component": "api",
+      "minimum_mode": "quick",
+      "effect": "read_only",
+      "readiness": "existing_component",
+      "depends_on": [],
+      "existing_evidence": "GET /healthz",
+      "error_code": "api_unreachable",
+      "remediation": "檢查本機 port、API 進程與啟動日誌"
+    },
+    {
+      "id": "AUTH-01",
+      "title": "匿名資源存取拒絕",
+      "component": "auth",
+      "minimum_mode": "quick",
+      "effect": "read_only",
+      "readiness": "existing_component",
+      "depends_on": [
+        "API-01"
+      ],
+      "existing_evidence": "GET /v1/requirement-tasks without token",
+      "error_code": "auth_boundary_invalid",
+      "remediation": "匿名請求應拒絕，不得建立登入 session"
+    },
+    {
+      "id": "SQL-01",
+      "title": "SQL Server 唯讀連線",
+      "component": "sql",
+      "minimum_mode": "diagnose",
+      "effect": "read_only",
+      "readiness": "planned",
+      "depends_on": [
+        "ENV-02"
+      ],
+      "existing_evidence": "authorized local control-plane connection, SELECT-only",
+      "error_code": "sql_unreachable",
+      "remediation": "區分 DNS/driver/TLS/登入/權限問題；勿列印 connection string"
+    },
+    {
+      "id": "SQL-02",
+      "title": "Requirement／Schedule Schema",
+      "component": "sql",
+      "minimum_mode": "diagnose",
+      "effect": "read_only",
+      "readiness": "planned",
+      "depends_on": [
+        "SQL-01"
+      ],
+      "existing_evidence": "Schema/catalog descriptors available in RequirementStore/ScheduleStore; create a read-only checker; NEVER call initialize() in diagnose.",
+      "error_code": "sql_schema_mismatch",
+      "remediation": "比對既有 schema/catalog；不得執行 migration"
+    },
+    {
+      "id": "ES-01",
+      "title": "Elasticsearch 連線與認證",
+      "component": "elasticsearch",
+      "minimum_mode": "diagnose",
+      "effect": "read_only",
+      "readiness": "existing_component",
+      "depends_on": [],
+      "existing_evidence": "agent/external_capabilities.py probe_elasticsearch (read-only when search callback is pure); DO NOT call prepare_requirement_elasticsearch(), which creates/indexes E2E fixture.",
+      "error_code": "es_unreachable",
+      "remediation": "檢查封閉網路端點與授權"
+    },
+    {
+      "id": "ES-02",
+      "title": "索引 alias 與 Mapping 相容性",
+      "component": "elasticsearch",
+      "minimum_mode": "diagnose",
+      "effect": "read_only",
+      "readiness": "existing_component",
+      "depends_on": [
+        "ES-01"
+      ],
+      "existing_evidence": "agent/external_capabilities.py mapping_compatibility (pure mapping validator), GET mapping from existing configured index only; no fixture seeding.",
+      "error_code": "mapping_incompatible",
+      "remediation": "報告失配欄位；不得自動修改或重建索引"
+    },
+    {
+      "id": "ES-03",
+      "title": "真實 ES 檢索結果",
+      "component": "elasticsearch",
+      "minimum_mode": "acceptance",
+      "effect": "read_only",
+      "readiness": "planned",
+      "depends_on": [
+        "ES-02"
+      ],
+      "existing_evidence": "isolated pre-provisioned acceptance dataset + real search",
+      "error_code": "es_retrieval_invalid",
+      "remediation": "使用已確認的隔離索引及受控查詢驗證檢索"
+    },
+    {
+      "id": "LLM-01",
+      "title": "模型與推論服務可用性",
+      "component": "llm",
+      "minimum_mode": "diagnose",
+      "effect": "read_only",
+      "readiness": "planned",
+      "depends_on": [],
+      "existing_evidence": "local/authorized model inventory endpoint",
+      "error_code": "llm_model_missing",
+      "remediation": "模型須事先下載；不呼叫外部網路"
+    },
+    {
+      "id": "LLM-02",
+      "title": "真實模型小型推論",
+      "component": "llm",
+      "minimum_mode": "acceptance",
+      "effect": "compute_only",
+      "readiness": "existing_component",
+      "depends_on": [
+        "LLM-01"
+      ],
+      "existing_evidence": "agent/external_capabilities.py real probe, no semantic mock",
+      "error_code": "llm_inference_failed",
+      "remediation": "檢查服務資源、模型權重與上下文配置"
+    },
+    {
+      "id": "WORK-01",
+      "title": "Schedule/Handoff Worker 身分",
+      "component": "worker",
+      "minimum_mode": "diagnose",
+      "effect": "read_only",
+      "readiness": "existing_component",
+      "depends_on": [
+        "PKG-01",
+        "API-01"
+      ],
+      "existing_evidence": "GET /v1/operator-e2e/runtime-evidence?verification=release needs existing superuser bearer; do not run login from Quick or reconfigure launcher.",
+      "error_code": "worker_identity_unverified",
+      "remediation": "不得用 PID 是否存在取代帶身分的 worker 驗證"
+    },
+    {
+      "id": "PROD-01",
+      "title": "Product P2.1 路由與讀取",
+      "component": "api",
+      "minimum_mode": "diagnose",
+      "effect": "read_only",
+      "readiness": "planned",
+      "depends_on": [
+        "API-01"
+      ],
+      "existing_evidence": "separately supplied operator_e2e/p21_api_smoke.py (not tracked in Hosted main); current helper logs in and may generate audit writes; new Quick/Diagnose runner must use existing bearer/session or clearly defer.",
+      "error_code": "product_api_invalid",
+      "remediation": "驗證 route, read, 401/404/422；空清單不等於有資料的查詢成功"
+    },
+    {
+      "id": "PREV-01",
+      "title": "真實 Excel Preview 不落地",
+      "component": "api",
+      "minimum_mode": "acceptance",
+      "effect": "compute_only",
+      "readiness": "existing_external_smoke",
+      "depends_on": [
+        "PROD-01"
+      ],
+      "existing_evidence": "approved profile + fixture xlsx; Product preview endpoint",
+      "error_code": "preview_normalization_failed",
+      "remediation": "確認 accepted/rejected 筆數與資料不落地"
+    },
+    {
+      "id": "RUN-01",
+      "title": "Requirement→Schedule→Agent 完整 E2E",
+      "component": "workflow",
+      "minimum_mode": "acceptance",
+      "effect": "test_job_write",
+      "readiness": "existing_component",
+      "depends_on": [
+        "PKG-01",
+        "SQL-02",
+        "ES-03",
+        "LLM-02",
+        "WORK-01"
+      ],
+      "existing_evidence": "operator_e2e/test_requirement_schedule_e2e.py --mode local --verification release; require FULL_LIVE proof",
+      "error_code": "workflow_acceptance_failed",
+      "remediation": "必須指定授權測試身分及專用 fixture，禁止由 Quick 啟動"
+    },
+    {
+      "id": "DOC-01",
+      "title": "DOCX 與 SHA-256 驗證",
+      "component": "artifact",
+      "minimum_mode": "acceptance",
+      "effect": "read_only",
+      "readiness": "existing_component",
+      "depends_on": [
+        "RUN-01"
+      ],
+      "existing_evidence": "operator_e2e harness artifact reconciliation/validation",
+      "error_code": "docx_integrity_failed",
+      "remediation": "驗證 docx ZIP、安全路徑、SHA-256，並獨立記錄內容品質"
+    },
+    {
+      "id": "AIR-01",
+      "title": "封閉網路隔離證據",
+      "component": "release",
+      "minimum_mode": "acceptance",
+      "effect": "read_only",
+      "readiness": "planned",
+      "depends_on": [
+        "PKG-01",
+        "ENV-01",
+        "ENV-02"
+      ],
+      "existing_evidence": "site-approved isolation/routing evidence, no external probes by default",
+      "error_code": "airgap_isolation_unverified",
+      "remediation": "確認未使用 GitHub、pip index、ChatGPT、外部 LLM；只驗證被允許的內網相依"
+    }
+  ],
+  "report_policy": {
+    "strategy": "allowlisted_fields_fail_closed",
+    "summary_source": "inventory_check_title",
+    "remediation_source": "verified_fail_warn_inventory_remediation_else_null",
+    "allow_raw_exceptions": false,
+    "allow_unstructured_evidence": false,
+    "max_evidence_entries": 12,
+    "max_evidence_value_chars": 80,
+    "permitted_evidence": {
+      "http_status": "http_status",
+      "item_count": "nonnegative_integer",
+      "accepted_count": "nonnegative_integer",
+      "rejected_count": "nonnegative_integer",
+      "file_count": "nonnegative_integer",
+      "worker_count": "nonnegative_integer",
+      "component_size_bytes": "nonnegative_integer",
+      "package_sha256": "sha256",
+      "provenance_fingerprint": "sha256",
+      "artifact_sha256": "sha256",
+      "identity_verified": "boolean",
+      "mapping_compatible": "boolean",
+      "model_available": "boolean",
+      "classification": "classification"
+    }
+  }
+}

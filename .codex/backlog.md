@@ -141,3 +141,34 @@
 - 2026-10-13 PR #288 sixteenth Codex review: fix no-active-worksheet XLSX P2, with real XLSX fixture and 422 input-code regression. Re-request Codex on exact new head. Full pytest/hosted CI and two-connection real SQL Server tests remain outstanding; do not merge without user's explicit authorization.
 
 - 2026-10-13 PR #288 seventeenth review: map explicitly missing Import Profile version selection to 422 (not 500), with adversarial unknown KeyError still mapping to 500. Tests/docs committed on same PR. Request exact-head Codex review; full repository pytest, hosted authoritative CI and two-connection real SQL Server acceptance pending before merge. Do not merge without explicit user authorization.
+
+## 2026-10-15 OFF-0 air-gap delivery line (Issue #290)
+
+- Separate scoped OFF-0 PR: inventory reusable release/E2E/API/ES/LLM code, 19 check contracts and dependency graph, Quick/Diagnose/Acceptance read/write matrix, redaction/error report fields, and focused JSON contract validator/test. Review the branch and execute `python -m pytest -q tests/test_sraf_airgap_off0_contract.py` on a repository checkout before Merge; no user authorization to Merge this slice has been given.
+- OFF-1: build actual safe, bounded SQL/ES/LLM/ODBC/disk/model read-only probes and error tests. OFF-2: independently reproducible full release bundle/wheelhouse/model/ODBC/index and safe incremental upgrades. OFF-3/4: unified offline runner and readable reports/manual. OFF-5: site isolation + FULL_LIVE and failure/recovery drills. P2.2 must not inherit any OFF-side work or be blocked by its future steps.
+
+- 2026-10-15 OFF-0 PR #291 first Codex review completed with three P2 items; implemented isolated fix set and extended unit regressions. Added a path-filtered GitHub Actions workflow to run stdlib validator and focused pytest against PR changes in the development environment. Request fresh exact-head Codex review, verify CI; **do not merge without explicit user approval**. OFF-1 probe implementation stays separate from P2.2 and remains pending once OFF-0 safety contract is reviewed.
+
+- 2026-10-15 OFF-0 PR #291 second Codex review (`42689fb4`) found P1 GitHub Actions missing project dependency setup, P2 report string redaction bypass, P2 oversize-number JSON parser traceback. Remediation and adversarial CLI/registry regressions added; require latest exact-head GitHub Actions tests and a new Codex review before any proposal to merge. Keep OFF-1 runtime probes and Product P2.2 separate. Vercel quota block does not imply Python test failure, but cannot be recorded as a successful Vercel gate.
+
+- 2026-10-15 OFF-0 PR #291 third Codex round found 3 P2 redaction/deep JSON/device-boundary issues. In-branch remediation adds static allowlisted report copy, stricter Unicode/path/credential checks, bounded fd reads, RecursionError normalization, and adversarial regressions. Next: verify exact-head Github Actions and request Codex review, fix anything flagged, obtain explicit merge authorization only after review; OFF-1 probes and P2.2 remain separate.
+
+- 2026-10-16 OFF-0 PR #291 fourth-round Codex review completed at head `93c355b5`, three P2 issues (cross-Python nesting behavior; contradictory FAIL/SKIP codes; incomplete check list passing validation). Fixes and new regression tests on the existing branch; require exact-head GH Actions PASS and fresh Codex review before any merge. Separate OFF-1 real dependency probes and Product P2.2 remain pending and independent.
+
+- 2026-10-16 OFF-0 PR #291 fifth Codex review completed at `a679533b`: one P2 (planned checks could produce unexecuted FAIL/WARN). Added restrictive safe-record status rule and adversarial regressions, pending exact-head CI/Codex re-review. No merge authorized. OFF-1 and Product P2.2 remain independent future work.
+
+- 2026-10-16 OFF-0 PR #291 sixth Codex round completed at `fe5cc68e`: one P2, readiness could be self-promoted in JSON. Fix enforces complete 19-ID in-code approved readiness and adds malformed/promotion regression tests. Await current-head GH Actions and Codex re-review; no Merge authorization. OFF-1 and Product P2.2 remain independent.
+
+- 2026-10-16 OFF-0 PR #291 seventh Codex review on `23166cc3`: 2 P2 findings for execution gate/dependency JSON privilege escalation and fault-code rebinding. Added reviewed per-check execution/error/component authority and tests; exact-head GH Actions plus next Codex review pending. Do NOT merge without authorization. OFF-1 real probes and Product P2.2 remain separate.
+
+- 2026-10-16 OFF-0 PR #291 eighth round Codex found one P2: runtime `PASS` records were allowed with empty/untrusted evidence. In this contract-only stage, reject all per-check PASS pending OFF-1 reviewed probes; regressions cover no evidence, empty evidence and plausible-but-forged evidence. Next: exact-head CI then Codex review; never merge without explicit authorization. This does not block independent P2.2 Product API progress.
+
+- 2026-10-16 PR #291 ninth Codex review at `781e214e`: one P2 for proofless FAIL/WARN. Safe record constructor now blocks every unprobed runtime PASS/FAIL/WARN; tests exercise real-check IDs and fake evidence. Await exact-head GitHub Actions and Codex re-review. OFF-1 and P2.2 remain independent. No merge authorized.
+
+- 2026-10-16 OFF-0 PR #291 tenth Codex review (`ccf6dd5f`) identified one P2 allowing fabricated evidence in SKIP despite no probes. Added fail-closed empty-evidence gate and regression coverage; pending exact-head GitHub Actions and Codex re-review. Do not merge without explicit user instruction. OFF-1 remains independent from P2.2.
+
+- 2026-10-16 PR #291 eleventh Codex round at `2dec55a7` found one P2 allowing false SKIP reasons. Fix restricts all OFF-0 SKIPs to check_not_implemented, with no evidence, and adds negative cases for blocked_by_dependency/auth_session_unavailable/mode_not_enabled. Require current-head Actions success and fresh Codex review. Do not merge without user authorization; OFF-1 and P2.2 stay separate.
+
+- 2026-10-16 OFF-0 PR #291 twelfth Codex round at `0aadda10` yielded 2 P2: fabricated duration and incorrect operational remediation for no-probe SKIP. Branch amended with zero-duration guard, null remediation and adversarial tests. Await hosted CI and exact-head next review; do not Merge without permission.
+
+- 2026-10-16 OFF-0 PR #291 thirteenth Codex review at `a47e0f4d` identified policy/output contradiction about nullable SKIP remediation. Updated registry and validator to explicit status-conditional remediation sourcing with negative/CLI tests; exact-head hosted CI and Codex next review pending. No merge without permission. OFF-1 live probes and P2.2 remain separate.
