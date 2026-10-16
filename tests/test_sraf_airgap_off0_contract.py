@@ -126,12 +126,12 @@ def test_reject_report_policy_disabled_and_unknown_root_fields(inventory):
 
 def test_report_records_use_allowlisted_static_strings_and_evidence(inventory):
     record = make_report_record(
-        inventory, "API-01", "FAIL",
+        inventory, "API-01", "SKIP",
         evidence={"http_status": 503, "package_sha256": "a" * 64},
-        error_code="api_unreachable", duration_ms=25,
+        error_code="blocked_by_dependency", duration_ms=25,
     )
-    assert record["status"] == "FAIL"
-    assert record["error_code"] == "api_unreachable"
+    assert record["status"] == "SKIP"
+    assert record["error_code"] == "blocked_by_dependency"
     assert record["summary"] == "SRA API Health"
     assert record["evidence"]["http_status"] == 503
     assert record["evidence"]["package_sha256"] == "a" * 64
@@ -353,12 +353,9 @@ def test_report_rejects_status_error_code_confusion(
 
 def test_report_valid_status_error_code_pairs(inventory):
     for status, code in [
-        ("FAIL", "api_unreachable"),
         ("SKIP", "blocked_by_dependency"),
         ("SKIP", "auth_session_unavailable"),
         ("SKIP", "check_not_implemented"),
-        ("WARN", "api_unreachable"),
-        ("WARN", None),
     ]:
         record = make_report_record(inventory, "API-01", status,
                                     error_code=code)
@@ -427,11 +424,11 @@ def test_every_planned_check_has_only_explicit_unimplemented_skip(inventory):
         assert record["remediation"] == check["remediation"]
 
 
-def test_a_reviewed_existing_probe_retains_real_fail_and_skip(inventory):
-    record = make_report_record(
-        inventory, "API-01", "FAIL", error_code="api_unreachable",
-    )
-    assert record["status"] == "FAIL"
+def test_reusable_component_does_not_claim_unexecuted_fail(inventory):
+    with pytest.raises(ContractError, match="report_outcome_probe_not_implemented"):
+        make_report_record(
+            inventory, "API-01", "FAIL", error_code="api_unreachable",
+        )
     skipped = make_report_record(
         inventory, "API-01", "SKIP", error_code="blocked_by_dependency",
     )
@@ -600,3 +597,36 @@ def test_off0_skip_is_not_an_execution_pass(inventory):
     )
     assert record["status"] == "SKIP"
     assert record["evidence"] == {}
+
+
+
+@pytest.mark.parametrize("check_id", [
+    "PKG-01", "API-01", "ES-01", "ES-02", "LLM-02",
+    "WORK-01", "PREV-01", "RUN-01", "DOC-01",
+])
+@pytest.mark.parametrize("status", ["FAIL", "WARN"])
+@pytest.mark.parametrize("evidence", [
+    None, {}, {"http_status": 503}, {"mapping_compatible": False},
+    {"classification": "FULL_LIVE"},
+])
+def test_contract_only_components_cannot_claim_fail_or_warn(
+    inventory, check_id, status, evidence,
+):
+    check = next(item for item in inventory["checks"] if item["id"] == check_id)
+    assert check["readiness"] != "planned"
+    with pytest.raises(ContractError, match="report_outcome_probe_not_implemented"):
+        make_report_record(
+            inventory, check_id, status, evidence=evidence,
+            error_code=check["error_code"],
+        )
+
+
+def test_off0_schema_pass_cannot_produce_live_pass_fail_or_warn(inventory):
+    assert validate_contract(inventory) == 19
+    for status, code, expected in [
+        ("PASS", None, "report_pass_probe_not_implemented"),
+        ("FAIL", "api_unreachable", "report_outcome_probe_not_implemented"),
+        ("WARN", None, "report_outcome_probe_not_implemented"),
+    ]:
+        with pytest.raises(ContractError, match=expected):
+            make_report_record(inventory, "API-01", status, error_code=code)
