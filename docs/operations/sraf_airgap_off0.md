@@ -144,3 +144,9 @@
 - 第十二輪 Codex 發現兩項 P2：OFF-0 的 `SKIP(check_not_implemented)` 可填入非零 `duration_ms`，並且回傳的是實際探測失敗時才有意義的「檢查本機 port、API 進程與啟動日誌」等故障處置。
 - 現在 OFF-0 單項檢查仍只能 `SKIP(check_not_implemented)`、`evidence={}`，而且 **`duration_ms=0`、`remediation=null`**。非零執行時間使用 `report_skip_duration_unverified` 拒絕；非法型別及負數仍屬 `report_duration_invalid`。
 - 真正的驗收失敗處置建議繼續保留在受審 registry 供未來 OFF-1/3 實際探測器使用；但在 OFF-0 的「未執行」結果中不會顯示，避免維運人員誤判系統故障。
+
+### 第十三輪 Review：Remediation 政策與實際輸出一致（2026-10-16）
+
+- Codex 發現：安全報告建構器針對 `SKIP(check_not_implemented)` 回傳 `remediation: null`，但 `report_policy.remediation_source` 仍為 `inventory_check_remediation`，與機器可讀契約的語意互相矛盾，未來 OFF-3/4 報告程式可能因此重新填入未觀測到的故障排除資訊。
+- `report_policy.remediation_source` 現在固定為 `verified_fail_warn_inventory_remediation_else_null`：只有後續正式 Runner 確認真實 probe 已執行並驗證故障／警告時，才允許使用受審 inventory 的故障處置；無實際檢查的 SKIP（及未受支援的執行結果）**必須為 null**，不是自行猜測要查哪些服務。
+- 驗證器拒絕先前過度寬鬆的 `inventory_check_remediation` 與任意新增的 policy 值；新增 schema、報告輸出及 CLI 負面測試。此修改**沒有**使 OFF-0 具備真實服務檢查能力：單項檢查仍只有 `SKIP(check_not_implemented)`，空 Evidence，0ms Duration，Null Remediation。
