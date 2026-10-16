@@ -366,7 +366,7 @@ def _validate_report_policy(policy: Any) -> None:
              "contract_report_policy_shape_invalid")
     _require(policy["strategy"] == "allowlisted_fields_fail_closed" and
              policy["summary_source"] == "inventory_check_title" and
-             policy["remediation_source"] == "inventory_check_remediation" and
+             policy["remediation_source"] == "verified_fail_warn_inventory_remediation_else_null" and
              policy["allow_raw_exceptions"] is False and
              policy["allow_unstructured_evidence"] is False and
              type(policy["max_evidence_entries"]) is int and
