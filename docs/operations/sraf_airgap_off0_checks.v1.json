@@ -295,7 +295,7 @@
   "report_policy": {
     "strategy": "allowlisted_fields_fail_closed",
     "summary_source": "inventory_check_title",
-    "remediation_source": "inventory_check_remediation",
+    "remediation_source": "verified_fail_warn_inventory_remediation_else_null",
     "allow_raw_exceptions": false,
     "allow_unstructured_evidence": false,
     "max_evidence_entries": 12,
