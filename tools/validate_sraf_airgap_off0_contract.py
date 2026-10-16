@@ -450,19 +450,6 @@ def validate_contract(document: Any) -> int:
                  "contract_dependencies_invalid")
         _require(len(item["depends_on"]) == len(set(item["depends_on"])),
                  "contract_duplicate_dependency")
-        reviewed = APPROVED_CHECK_SEMANTICS.get(identifier)
-        _require(isinstance(reviewed, dict),
-                 "contract_check_semantics_unapproved")
-        _require(item["error_code"] == reviewed["error_code"],
-                 "contract_check_error_code_unapproved")
-        _require(item["component"] == reviewed["component"],
-                 "contract_check_component_unapproved")
-        _require(
-            item["minimum_mode"] == reviewed["minimum_mode"] and
-            item["effect"] == reviewed["effect"] and
-            item["depends_on"] == reviewed["depends_on"],
-            "contract_check_execution_unapproved",
-        )
         if item["minimum_mode"] in ("quick", "diagnose"):
             _require(item["effect"] == "read_only",
                      "contract_readonly_mode_violation")
@@ -494,6 +481,22 @@ def validate_contract(document: Any) -> int:
 
     for identifier in by_id:
         visit(identifier)
+    # First report intrinsic schema/DAG errors using their established codes.
+    # Then reject otherwise-well-formed but semantically unauthorized metadata.
+    for identifier, item in by_id.items():
+        reviewed = APPROVED_CHECK_SEMANTICS.get(identifier)
+        _require(isinstance(reviewed, dict),
+                 "contract_check_semantics_unapproved")
+        _require(item["error_code"] == reviewed["error_code"],
+                 "contract_check_error_code_unapproved")
+        _require(item["component"] == reviewed["component"],
+                 "contract_check_component_unapproved")
+        _require(
+            item["minimum_mode"] == reviewed["minimum_mode"] and
+            item["effect"] == reviewed["effect"] and
+            item["depends_on"] == reviewed["depends_on"],
+            "contract_check_execution_unapproved",
+        )
     return len(checked)
 
 
