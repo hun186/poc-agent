@@ -168,3 +168,5 @@
 - 2026-10-16 OFF-0 PR #291 tenth Codex review (`ccf6dd5f`) identified one P2 allowing fabricated evidence in SKIP despite no probes. Added fail-closed empty-evidence gate and regression coverage; pending exact-head GitHub Actions and Codex re-review. Do not merge without explicit user instruction. OFF-1 remains independent from P2.2.
 
 - 2026-10-16 PR #291 eleventh Codex round at `2dec55a7` found one P2 allowing false SKIP reasons. Fix restricts all OFF-0 SKIPs to check_not_implemented, with no evidence, and adds negative cases for blocked_by_dependency/auth_session_unavailable/mode_not_enabled. Require current-head Actions success and fresh Codex review. Do not merge without user authorization; OFF-1 and P2.2 stay separate.
+
+- 2026-10-16 OFF-0 PR #291 twelfth Codex round at `0aadda10` yielded 2 P2: fabricated duration and incorrect operational remediation for no-probe SKIP. Branch amended with zero-duration guard, null remediation and adversarial tests. Await hosted CI and exact-head next review; do not Merge without permission.
