@@ -120,3 +120,9 @@
 - **OFF-0 的範圍只是規格及契約驗證，沒有受審核綁定的真實 probe。** 因此 `make_report_record` 對所有現有檢查一律拒絕業務 `PASS`，使用固定錯誤 `report_pass_probe_not_implemented`；原本 `readiness=planned` 的檢查則仍適用 `report_unimplemented_pass`。
 - `OFF0_CONTRACT = PASS (checks=19, schema-only; no runtime probes)` 僅代表機器可讀契約規格通過，**不代表任何 SQL Server、ES、LLM、API、Worker、DOCX 的實機驗收 PASS**。
 - 未來 OFF-1 實作實際探測器時，必須另建立由受審程式控制、逐項指定的驗證資料契約及可信成功路徑，並同時保留 OFF-0 防止假成功的回歸測試。只修改 JSON 裡的 readiness 或塞入看似合理的證據欄位不能放行 PASS。
+
+### 第九輪 Review：OFF-0 不允許虛構 FAIL／WARN（2026-10-16）
+
+- Codex 指出 OFF-0 在沒有可信的實際探測執行路徑時，雖已禁止 PASS，卻仍可能產生 `FAIL`／`WARN`，誤導使用者認為 SQL、ES、API 等真實服務已執行檢查並失敗。
+- 目前 OFF-0 **只有靜態契約與安全報告格式驗證**。`make_report_record` 現在同時拒絕未綁定 probe 的 `PASS`（`report_pass_probe_not_implemented`）及 `FAIL/WARN`（`report_outcome_probe_not_implemented`）；`readiness=planned` 的 Check 依然只能 `SKIP(check_not_implemented)`。
+- 只有 `OFF0_CONTRACT = PASS (checks=19, schema-only; no runtime probes)` 可能表示「規格合格」，它不是業務檢查的 PASS；OFF-1 將來要開放真實成功／失敗／警告，必須以獨立受審的實際 probe 與可信證據為前提。
