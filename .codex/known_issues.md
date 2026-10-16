@@ -141,3 +141,5 @@
 - 2026-10-16 OFF-0 PR #291 eleventh Codex finding: SKIP reasons remained forged despite redacted/empty evidence; API-01 wrongly allowed blocked_by_dependency/auth_session_unavailable. Current branch now permits only SKIP(check_not_implemented) until OFF-1/3 can bind specific reasons to actual checked dependencies/session/mode. Hosted CI and exact-head Codex review remain necessary.
 
 - 2026-10-16 OFF-0 twelfth review found fake execution duration and misdirected operational remediation on unimplemented SKIPs. Proposed branch correction now forces `duration_ms=0` and `remediation=None` on contract-only SKIPs. Hosted exact-head CI and fresh Codex review required; this is not an OFF-1 live probe.
+
+- 2026-10-16 OFF-0 PR #291 thirteenth Codex Review: machine-readable report policy still implied mandatory failure remediation, conflicting with no-probe SKIP's null remediation. Fixed policy declaration and validator to conditional reviewed fail/warn remediation only; negative tests cover legacy/untrusted policy. Current-head CI and fresh review pending. OFF-0 remains contract-only.
