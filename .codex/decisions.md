@@ -269,3 +269,7 @@
 ### 2026-10-16 OFF-0 skipped-check evidence boundary
 
 - A contract-only OFF-0 SKIP denotes non-execution and therefore must not expose caller-supplied positive or negative service observations. Its `evidence` must be empty; even structurally valid HTTP/status/classification/hash data is unsafe without an audited execution path. OFF-1 can define reason-specific trusted evidence only after integrating genuine probe execution and versioned tests.
+
+### 2026-10-16 OFF-0 SKIP reason honesty
+
+- OFF-0 has no runtime execution or verified dependency, auth, or mode context. Each of its report records is constrained to SKIP(check_not_implemented) with empty evidence: this means the OFF-0 probe is not implemented, NOT that a reusable SRAF component is missing. Future real OFF-1/3 probes must add trustworthy check-specific evidence and verified mode/dependency paths before any richer skip reason can be emitted.
