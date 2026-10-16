@@ -129,3 +129,5 @@
 - 2026-10-16 OFF-0 PR #291 fifth review: contract code previously allowed planned checks to return FAIL/WARN despite having no implemented probe. Branch now enforces SKIP/check_not_implemented exclusively until the check's reviewed readiness is updated. Await the exact-head CI and next review; do not label OFF-0 a live offline verification runner.
 
 - 2026-10-16 OFF-0 PR #291 sixth Codex review: mutable registry readiness could falsely promote unimplemented checks to eligible PASS; in-code readiness binding and regression tests have been added to the branch, pending hosted exact-head CI and re-review. This is still a contract-only PR; real air-gap dependency probes and full-live acceptance remain unimplemented.
+
+- 2026-10-16 PR #291 seventh Codex review found two P2 contract trust issues: changing JSON execution mode/effect/dependency graph could run acceptance E2E in Quick, and changing error codes could misdirect remediation. Branch now pins reviewed semantics and failure codes for every check ID, awaiting latest-head CI and Codex review. This does not yet provide actual offline dependency probes.
