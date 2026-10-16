@@ -156,3 +156,5 @@
 - 2026-10-16 OFF-0 PR #291 fourth-round Codex review completed at head `93c355b5`, three P2 issues (cross-Python nesting behavior; contradictory FAIL/SKIP codes; incomplete check list passing validation). Fixes and new regression tests on the existing branch; require exact-head GH Actions PASS and fresh Codex review before any merge. Separate OFF-1 real dependency probes and Product P2.2 remain pending and independent.
 
 - 2026-10-16 OFF-0 PR #291 fifth Codex review completed at `a679533b`: one P2 (planned checks could produce unexecuted FAIL/WARN). Added restrictive safe-record status rule and adversarial regressions, pending exact-head CI/Codex re-review. No merge authorized. OFF-1 and Product P2.2 remain independent future work.
+
+- 2026-10-16 OFF-0 PR #291 sixth Codex round completed at `fe5cc68e`: one P2, readiness could be self-promoted in JSON. Fix enforces complete 19-ID in-code approved readiness and adds malformed/promotion regression tests. Await current-head GH Actions and Codex re-review; no Merge authorization. OFF-1 and Product P2.2 remain independent.
