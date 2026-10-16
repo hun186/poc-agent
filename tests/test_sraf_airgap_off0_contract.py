@@ -359,7 +359,6 @@ def test_report_valid_status_error_code_pairs(inventory):
         ("SKIP", "check_not_implemented"),
         ("WARN", "api_unreachable"),
         ("WARN", None),
-        ("PASS", None),
     ]:
         record = make_report_record(inventory, "API-01", status,
                                     error_code=code)
@@ -567,3 +566,37 @@ def test_cli_rejects_error_code_rebinding(tmp_path, inventory):
     assert result.stdout.strip() == (
         "OFF0_CONTRACT = FAIL (contract_check_error_code_unapproved)"
     )
+
+
+
+@pytest.mark.parametrize("check_id", ["API-01", "PKG-01", "ES-01", "WORK-01", "RUN-01", "DOC-01"])
+@pytest.mark.parametrize("evidence", [
+    None,
+    {},
+    {"http_status": 200},
+    {"identity_verified": True},
+    {"artifact_sha256": "a" * 64},
+    {"classification": "FULL_LIVE"},
+])
+def test_contract_only_components_cannot_claim_pass_without_bound_probes(
+    inventory, check_id, evidence,
+):
+    check = next(item for item in inventory["checks"] if item["id"] == check_id)
+    assert check["readiness"] != "planned"
+    with pytest.raises(ContractError, match="report_pass_probe_not_implemented"):
+        make_report_record(inventory, check_id, "PASS", evidence=evidence)
+
+
+def test_schema_pass_and_runtime_pass_are_independent(inventory):
+    # A sound OFF-0 schema is not evidence that a live check was run.
+    assert validate_contract(inventory) == 19
+    with pytest.raises(ContractError, match="report_pass_probe_not_implemented"):
+        make_report_record(inventory, "API-01", "PASS")
+
+
+def test_off0_skip_is_not_an_execution_pass(inventory):
+    record = make_report_record(
+        inventory, "API-01", "SKIP", error_code="check_not_implemented",
+    )
+    assert record["status"] == "SKIP"
+    assert record["evidence"] == {}
