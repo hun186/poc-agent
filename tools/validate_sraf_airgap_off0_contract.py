@@ -573,6 +573,11 @@ def make_report_record(
                   len(value) <= contract["report_policy"]["max_evidence_value_chars"]),
                  "report_evidence_value_unsafe")
         safe[key] = value
+    # OFF-0 has no trusted execution-bound probe. A FAIL or WARN would claim
+    # an operational check ran, just as a proofless PASS would. Keep those
+    # outcomes disabled until OFF-1 binds them to reviewed live probes.
+    _require(status not in ("FAIL", "WARN"),
+             "report_outcome_probe_not_implemented")
     return {
         "check_id": check_id,
         "component": check["component"],
