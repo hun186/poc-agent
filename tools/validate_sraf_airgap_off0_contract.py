@@ -520,6 +520,12 @@ def make_report_record(
     _require(status in STATUSES, "report_status_invalid")
     _require(not (status == "PASS" and check["readiness"] == "planned"),
              "report_unimplemented_pass")
+    # OFF-0 is contract-only: even an existing reusable component has no
+    # bound OFF-1 probe execution, so no live per-check PASS is authorized.
+    # A caller-supplied HTTP 200 or fabricated hash is not execution proof.
+    # OFF-1 may grant success ONLY through a reviewed, check-specific probe
+    # and a separately validated evidence path; changing JSON is insufficient.
+    _require(status != "PASS", "report_pass_probe_not_implemented")
     # A planned check has no probe and therefore cannot have executed or failed.
     # It must not be presented as PASS, FAIL or WARN in offline acceptance.
     if check["readiness"] == "planned":
