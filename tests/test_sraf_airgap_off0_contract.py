@@ -478,3 +478,86 @@ def test_readiness_mutation_is_rejected_by_standalone_cli(tmp_path, inventory):
         "OFF0_CONTRACT = FAIL (contract_check_readiness_unapproved)"
     )
     assert "Traceback" not in out.stderr
+
+
+
+@pytest.mark.parametrize(("check_id", "field", "value"), [
+    ("RUN-01", "minimum_mode", "quick"),
+    ("RUN-01", "effect", "read_only"),
+    ("RUN-01", "depends_on", []),
+    ("WORK-01", "depends_on", ["API-01"]),
+    ("DOC-01", "depends_on", []),
+    ("LLM-02", "minimum_mode", "diagnose"),
+])
+def test_reviewed_execution_gates_cannot_be_changed_from_json(
+    inventory, check_id, field, value,
+):
+    changed = copy.deepcopy(inventory)
+    check = next(x for x in changed["checks"] if x["id"] == check_id)
+    assert check[field] != value
+    check[field] = value
+    with pytest.raises(ContractError, match="contract_check_execution_unapproved"):
+        validate_contract(changed)
+
+
+def test_e2e_cannot_be_disguised_as_read_only_quick_check(inventory):
+    changed = copy.deepcopy(inventory)
+    check = next(x for x in changed["checks"] if x["id"] == "RUN-01")
+    check["minimum_mode"] = "quick"
+    check["effect"] = "read_only"
+    check["depends_on"] = []
+    with pytest.raises(ContractError, match="contract_check_execution_unapproved"):
+        validate_contract(changed)
+    with pytest.raises(ContractError, match="contract_check_execution_unapproved"):
+        make_report_record(
+            changed, "RUN-01", "SKIP", error_code="mode_not_enabled",
+        )
+
+
+def test_mutable_error_code_cannot_redirect_failure_attribution(inventory):
+    changed = copy.deepcopy(inventory)
+    api = next(x for x in changed["checks"] if x["id"] == "API-01")
+    api["error_code"] = "mapping_incompatible"
+    with pytest.raises(ContractError, match="contract_check_error_code_unapproved"):
+        validate_contract(changed)
+    with pytest.raises(ContractError, match="contract_check_error_code_unapproved"):
+        make_report_record(
+            changed, "API-01", "FAIL", error_code="mapping_incompatible",
+        )
+
+
+def test_mutable_component_cannot_redirect_failure_attribution(inventory):
+    changed = copy.deepcopy(inventory)
+    api = next(x for x in changed["checks"] if x["id"] == "API-01")
+    api["component"] = "elasticsearch"
+    with pytest.raises(ContractError, match="contract_check_component_unapproved"):
+        validate_contract(changed)
+
+
+def test_cli_rejects_quick_mode_e2e_promotion(tmp_path, inventory):
+    changed = copy.deepcopy(inventory)
+    check = next(x for x in changed["checks"] if x["id"] == "RUN-01")
+    check["minimum_mode"] = "quick"
+    check["effect"] = "read_only"
+    check["depends_on"] = []
+    fixture = tmp_path / "unsafe-promotion.json"
+    fixture.write_text(json.dumps(changed, ensure_ascii=False), encoding="utf-8")
+    result = _run_cli_with_registry(fixture)
+    assert result.returncode == 1
+    assert result.stdout.strip() == (
+        "OFF0_CONTRACT = FAIL (contract_check_execution_unapproved)"
+    )
+    assert "Traceback" not in result.stderr
+
+
+def test_cli_rejects_error_code_rebinding(tmp_path, inventory):
+    changed = copy.deepcopy(inventory)
+    check = next(x for x in changed["checks"] if x["id"] == "API-01")
+    check["error_code"] = "mapping_incompatible"
+    fixture = tmp_path / "wrong-code.json"
+    fixture.write_text(json.dumps(changed, ensure_ascii=False), encoding="utf-8")
+    result = _run_cli_with_registry(fixture)
+    assert result.returncode == 1
+    assert result.stdout.strip() == (
+        "OFF0_CONTRACT = FAIL (contract_check_error_code_unapproved)"
+    )
