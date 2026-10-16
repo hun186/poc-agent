@@ -158,3 +158,5 @@
 - 2026-10-16 OFF-0 PR #291 fifth Codex review completed at `a679533b`: one P2 (planned checks could produce unexecuted FAIL/WARN). Added restrictive safe-record status rule and adversarial regressions, pending exact-head CI/Codex re-review. No merge authorized. OFF-1 and Product P2.2 remain independent future work.
 
 - 2026-10-16 OFF-0 PR #291 sixth Codex round completed at `fe5cc68e`: one P2, readiness could be self-promoted in JSON. Fix enforces complete 19-ID in-code approved readiness and adds malformed/promotion regression tests. Await current-head GH Actions and Codex re-review; no Merge authorization. OFF-1 and Product P2.2 remain independent.
+
+- 2026-10-16 OFF-0 PR #291 seventh Codex review on `23166cc3`: 2 P2 findings for execution gate/dependency JSON privilege escalation and fault-code rebinding. Added reviewed per-check execution/error/component authority and tests; exact-head GH Actions plus next Codex review pending. Do NOT merge without authorization. OFF-1 real probes and Product P2.2 remain separate.
