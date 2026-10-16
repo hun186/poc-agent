@@ -540,6 +540,12 @@ def make_report_record(
         _require(error_code is not None, "report_skip_code_missing")
         _require(isinstance(error_code, str) and error_code in SKIP_REASON_CODES,
                  "report_error_code_unsafe")
+        # OFF-0 has no checked dependencies, runtime authentication state,
+        # or selected-mode execution trace. All operational SKIP explanations
+        # beyond "probe not implemented" would be speculative. OFF-1 must
+        # introduce reviewed reason-specific provenance before enabling them.
+        _require(error_code == "check_not_implemented",
+                 "report_skip_reason_unverified")
     elif status == "PASS":
         _require(error_code is None, "report_pass_with_error")
     else:  # WARN: soft check-specific warning or general warning without a code.
