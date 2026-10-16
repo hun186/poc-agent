@@ -578,6 +578,10 @@ def make_report_record(
     # outcomes disabled until OFF-1 binds them to reviewed live probes.
     _require(status not in ("FAIL", "WARN"),
              "report_outcome_probe_not_implemented")
+    # OFF-0 SKIP is a declaration of non-execution, never observational data.
+    # Even structurally valid status/hash/classification values would be
+    # fabricated here because this contract-only stage has no actual probe.
+    _require(not safe, "report_skip_evidence_untrusted")
     return {
         "check_id": check_id,
         "component": check["component"],
