@@ -738,3 +738,48 @@ def test_all_off0_skips_show_neither_probe_duration_nor_failure_remediation(
         assert record["evidence"] == {}
         assert record["status"] == "SKIP"
         assert set(record) == set(inventory["report_required"])
+
+
+
+def test_remediation_policy_expressly_allows_null_when_no_probe_ran(inventory):
+    policy = inventory["report_policy"]
+    assert policy["remediation_source"] == (
+        "verified_fail_warn_inventory_remediation_else_null"
+    )
+    assert validate_contract(inventory) == 19
+    for check in inventory["checks"]:
+        record = make_report_record(
+            inventory, check["id"], "SKIP",
+            error_code="check_not_implemented", evidence={}, duration_ms=0,
+        )
+        assert record["remediation"] is None
+
+
+@pytest.mark.parametrize("unsafe_value", [
+    "inventory_check_remediation",
+    "always_inventory_check_remediation",
+    "caller_supplied_remediation",
+    None,
+])
+def test_remediation_policy_cannot_reenable_diagnosis_on_skips(
+    inventory, unsafe_value,
+):
+    changed = copy.deepcopy(inventory)
+    changed["report_policy"]["remediation_source"] = unsafe_value
+    with pytest.raises(ContractError, match="contract_report_policy_unsafe"):
+        validate_contract(changed)
+    with pytest.raises(ContractError, match="contract_report_policy_unsafe"):
+        make_report_record(
+            changed, "API-01", "SKIP", error_code="check_not_implemented",
+        )
+
+
+def test_remediation_policy_old_value_rejected_in_cli(tmp_path, inventory):
+    changed = copy.deepcopy(inventory)
+    changed["report_policy"]["remediation_source"] = "inventory_check_remediation"
+    path = tmp_path / "unsafe-remediation-policy.json"
+    path.write_text(json.dumps(changed, ensure_ascii=False), encoding="utf-8")
+    out = _run_cli_with_registry(path)
+    assert out.returncode == 1
+    assert out.stdout.strip() == "OFF0_CONTRACT = FAIL (contract_report_policy_unsafe)"
+    assert "Traceback" not in out.stderr
