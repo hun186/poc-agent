@@ -127,3 +127,5 @@
 - 2026-10-16 OFF-0 PR #291 fourth Codex review found three P2 contract integrity gaps: deep JSON behavior differed across Python versions, error codes allowed contradictory FAIL/SKIP status, and missing checks could still yield contract PASS. Fixes and regression cases have been committed to PR branch; latest-head hosted tests/re-review remain pending. OFF-0 is not operational air-gapped acceptance.
 
 - 2026-10-16 OFF-0 PR #291 fifth review: contract code previously allowed planned checks to return FAIL/WARN despite having no implemented probe. Branch now enforces SKIP/check_not_implemented exclusively until the check's reviewed readiness is updated. Await the exact-head CI and next review; do not label OFF-0 a live offline verification runner.
+
+- 2026-10-16 OFF-0 PR #291 sixth Codex review: mutable registry readiness could falsely promote unimplemented checks to eligible PASS; in-code readiness binding and regression tests have been added to the branch, pending hosted exact-head CI and re-review. This is still a contract-only PR; real air-gap dependency probes and full-live acceptance remain unimplemented.
