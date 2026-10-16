@@ -277,3 +277,7 @@
 ### 2026-10-16 OFF-0 non-execution timing and remediation
 
 - OFF-0 emits only `SKIP(check_not_implemented)` with empty evidence, zero duration, and no failure remediation. Displaying elapsed probe time or a subsystem troubleshooting instruction for a check that never ran is an unsupported operational claim. The reviewed failure remediation remains in the inventory for future evidence-bound OFF-1/3 probes, but OFF-0 records set it to null.
+
+### 2026-10-16 OFF-0 nullable remediation policy
+
+- The validated JSON contract specifies `report_policy.remediation_source=verified_fail_warn_inventory_remediation_else_null`: only an actual, verified failure/warning probe in future OFF-1/3 may use reviewed inventory operational remediation; unexecuted SKIP and non-failure outcomes must have null remediation. The static report builder's only supported result in OFF-0 remains SKIP(check_not_implemented), no evidence, zero duration, and null remediation. The validator must reject the legacy always-inventory policy.
