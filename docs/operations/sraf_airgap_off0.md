@@ -113,3 +113,10 @@
 - `APPROVED_CHECK_SEMANTICS` 在受審程式內固定各項 `component`、`minimum_mode`、`effect`、`depends_on` 和 `error_code`，與既有 `APPROVED_CHECK_READINESS` 和 `APPROVED_REPORT_TEXT` 共同約束 19 項檢查。直接修改 JSON 將 `RUN-01` 從 Acceptance/有副作用改成 Quick/唯讀，或刪除 SQL/ES/LLM/Workers/來源驗證依賴，應得到 `contract_check_execution_unapproved`，不能得到 PASS。
 - 直接把 API 檢查的 `error_code` 換成 `mapping_incompatible`，會得到 `contract_check_error_code_unapproved`；把 API 元件改成 Elasticsearch，會得到 `contract_check_component_unapproved`。錯誤歸因必須與經審查的檢查身分一致。
 - OFF-1 真正實作依賴探測器後，如需更新能力、允許的執行模式或前置依賴，必須經程式碼/契約雙方審查且新增回歸測試，不能把修改 JSON 當成已完工或授權。這仍是 OFF-0 靜態驗證，並未在離線主機執行任何服務檢查。
+
+### 第八輪 Review：沒有實際探測證據，不得產生單項 PASS（2026-10-16）
+
+- Codex 指出現有安全紀錄建構器可能在 `API-01` 沒有實際呼叫 `/healthz` 時，仍接受 `make_report_record(..., status="PASS", evidence=None)`。即使由使用者提供 `http_status=200` 或 SHA-256，也不能把任意輸入視為可信的執行證據。
+- **OFF-0 的範圍只是規格及契約驗證，沒有受審核綁定的真實 probe。** 因此 `make_report_record` 對所有現有檢查一律拒絕業務 `PASS`，使用固定錯誤 `report_pass_probe_not_implemented`；原本 `readiness=planned` 的檢查則仍適用 `report_unimplemented_pass`。
+- `OFF0_CONTRACT = PASS (checks=19, schema-only; no runtime probes)` 僅代表機器可讀契約規格通過，**不代表任何 SQL Server、ES、LLM、API、Worker、DOCX 的實機驗收 PASS**。
+- 未來 OFF-1 實作實際探測器時，必須另建立由受審程式控制、逐項指定的驗證資料契約及可信成功路徑，並同時保留 OFF-0 防止假成功的回歸測試。只修改 JSON 裡的 readiness 或塞入看似合理的證據欄位不能放行 PASS。
