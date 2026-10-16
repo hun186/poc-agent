@@ -124,17 +124,15 @@ def test_reject_report_policy_disabled_and_unknown_root_fields(inventory):
         validate_contract(another)
 
 
-def test_report_records_use_allowlisted_static_strings_and_evidence(inventory):
+def test_report_records_use_allowlisted_static_strings_without_fake_evidence(inventory):
     record = make_report_record(
         inventory, "API-01", "SKIP",
-        evidence={"http_status": 503, "package_sha256": "a" * 64},
-        error_code="blocked_by_dependency", duration_ms=25,
+        evidence={}, error_code="blocked_by_dependency", duration_ms=0,
     )
     assert record["status"] == "SKIP"
     assert record["error_code"] == "blocked_by_dependency"
     assert record["summary"] == "SRA API Health"
-    assert record["evidence"]["http_status"] == 503
-    assert record["evidence"]["package_sha256"] == "a" * 64
+    assert record["evidence"] == {}
     assert record["remediation"]
     assert set(record) == set(inventory["report_required"])
 
@@ -630,3 +628,40 @@ def test_off0_schema_pass_cannot_produce_live_pass_fail_or_warn(inventory):
     ]:
         with pytest.raises(ContractError, match=expected):
             make_report_record(inventory, "API-01", status, error_code=code)
+
+
+
+@pytest.mark.parametrize(("check_id", "error_code"), [
+    ("SYS-01", "check_not_implemented"),
+    ("ENV-01", "check_not_implemented"),
+    ("API-01", "blocked_by_dependency"),
+    ("RUN-01", "mode_not_enabled"),
+    ("WORK-01", "auth_session_unavailable"),
+])
+@pytest.mark.parametrize("evidence", [
+    {"classification": "FULL_LIVE"},
+    {"http_status": 200},
+    {"identity_verified": True},
+    {"mapping_compatible": False},
+    {"package_sha256": "a" * 64},
+    {"item_count": 0},
+    {"artifact_sha256": "b" * 64, "classification": "OFFLINE"},
+])
+def test_off0_skip_rejects_even_allowlisted_fabricated_evidence(
+    inventory, check_id, error_code, evidence,
+):
+    with pytest.raises(ContractError, match="report_skip_evidence_untrusted"):
+        make_report_record(
+            inventory, check_id, "SKIP", error_code=error_code,
+            evidence=evidence,
+        )
+
+
+@pytest.mark.parametrize("evidence", [None, {}])
+def test_off0_skip_accepts_only_empty_evidence(inventory, evidence):
+    record = make_report_record(
+        inventory, "API-01", "SKIP",
+        error_code="blocked_by_dependency", evidence=evidence,
+    )
+    assert record["evidence"] == {}
+    assert record["status"] == "SKIP"
