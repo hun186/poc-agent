@@ -30,7 +30,7 @@ Port 和 Model Name 為參數範例，**非已驗證的正式部署配置**。�
 - HTTP 僅送匿名 **GET** 到字面固定的 IPv4 loopback 127.0.0.1 和明確限制的埠（1..65535）；不使用 Proxy、不自動追隨 3xx、不登入、不加入 Bearer/Basic/Cookie，使用全請求共用的單調時鐘**絕對截止時間 3 秒**（連線、送出、回應標頭、回應本文皆受限；不是每次 recv 重設的 3 秒），Body 最多 64 KiB + 1 byte。持續慢速傳送字節也會在截止時中止；超時分類為對應子探測的 transport unavailable。
 - 不支援任意內網 DNS/IP 和 TLS；如 SRAF 依賴在不同主機，後續須另設經核准的遠端 allowlist/TLS 及秘密配置安全界面，不能藉不受限的任意 URL 放寬探測邊界。
 - 不輸出 HTTP 原始內文、例外、headers、URL、模型名稱、檔案路徑、連線字串、機敏值；僅固定 reason codes + 有界整數／布林證據。
-- HTTP 接受結果前先比對 Content-Length 原始標頭值，拒絕非十進位、負數、重複長度標頭與同時出現 Transfer-Encoding 的歧義格式，再核對宣稱長度與實際收到的本文長度；提前 EOF、截斷的 JSON 即使語法有效，也不得 PASS。Elasticsearch 基本身分 JSON 的 cluster_name 與 version.number 不可為空白字串。這仍不構成認證或 Mapping 驗收。
+- HTTP 接受結果前先檢查 HTTP 標頭解析器所記錄的任何語法缺陷（包含有空白分隔的 `Content-Length : -1`，避免不合法標頭被解析器丟棄後誤認為未指定長度）；再比對 Content-Length 已解析標頭值，拒絕非十進位、負數、重複長度標頭與同時出現 Transfer-Encoding 的歧義格式，並核對宣稱長度與實際收到的本文長度；提前 EOF、截斷的 JSON 即使語法有效，也不得 PASS。Elasticsearch 基本身分 JSON 的 cluster_name 與 version.number 不可為空白字串。這仍不構成認證或 Mapping 驗收。
 - 不讀取 secrets、不執行 SQL、不登入、不啟停 Worker、不寫入資料、不得呼叫會建索引的 prepare_requirement_elasticsearch、不執行 LLM completion 或 E2E。
 - SYS、ODBC 都只是局部檢查；ODBC library 存在不等於 SQL Server ODBC driver 可用。ODBC 只用事先審查的固定 Unix 本機路徑進行檔案存在性檢查，不呼叫 ctypes.util.find_library（Linux 上可能啟動無時間限制的 ldconfig/compiler 子程序）；未知自訂路徑可能產生 WARN 假陰性、非 POSIX 平台回報 SKIP，絕不冒充驅動可用。API /healthz HTTP 200 不等於完整 SRA 或其依賴都可用。
 - OFF-0 安全 make_report_record 函式仍僅允許 SKIP(check_not_implemented)，因為沒有可信 execution-bound 報告路徑。**OFF-1 子探測結果不經 OFF-0 正式報告邊界**；不可宣稱正式通過。
