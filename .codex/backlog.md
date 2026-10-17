@@ -192,3 +192,5 @@
 - 2026-10-17 OFF-1A PR #292 fifth Codex P2 on discarded malformed HTTP headers fixed by rejecting response.headers.defects. Added real raw malformed framing GET tests across API/ES/Ollama/OpenAI. Exact latest-head GitHub Actions and Codex re-review pending. Do not merge before user approval.
 
 - 2026-10-17 PR #292 sixth Codex review found P2 legitimate chunked transfer decoding rejected. Added safe chunked-only allowance and 26 parameterized regression cases for valid/invalid/truncated responses; exact-head CI and new review must finish before any merge. OFF-1B/full-airgap acceptance still future work.
+
+- 2026-10-17 PR #292 seventh Codex review found 2 P2: malformed chunk CRLF or incomplete final trailers falsely accepted; HTTP/1.0 Transfer-Encoding chunked falsely accepted. Fix and adversarial raw HTTP regressions submitted; latest Hosted CI and exact-head Codex review outstanding. No merge authorization.
