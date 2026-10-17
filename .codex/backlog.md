@@ -186,3 +186,5 @@
 - 2026-10-17 OFF-1A: second Codex review P1 about unbounded ODBC helper execution addressed by static finite Unix library candidate checks plus tests/docs. Hosted exact-head Actions and fresh Codex review still required before merge authorization. Expand real ODBC/SQL testing only with reviewed OFF-1B trust boundary.
 
 - 2026-10-17 OFF-1A third Codex review of a10408e8 surfaced two P2 (Content-Length early EOF, empty ES identity). Added safeguards, negative real loopback tests, and docs; current-head GitHub Actions/Codex review and explicit merge authorization remain outstanding.
+
+- 2026-10-17 OFF-1A fourth Codex P2: reject malformed Content-Length obscured by http.client. Added strict framing check and ES/LLM loopback regressions; hosted exact-head CI and further Codex review still pending. PR #292 must stay open until user explicitly authorizes merge.
