@@ -143,3 +143,9 @@
 - 2026-10-16 OFF-0 twelfth review found fake execution duration and misdirected operational remediation on unimplemented SKIPs. Proposed branch correction now forces `duration_ms=0` and `remediation=None` on contract-only SKIPs. Hosted exact-head CI and fresh Codex review required; this is not an OFF-1 live probe.
 
 - 2026-10-16 OFF-0 PR #291 thirteenth Codex Review: machine-readable report policy still implied mandatory failure remediation, conflicting with no-probe SKIP's null remediation. Fixed policy declaration and validator to conditional reviewed fail/warn remediation only; negative tests cover legacy/untrusted policy. Current-head CI and fresh review pending. OFF-0 remains contract-only.
+
+## 2026-10-17 OFF-1A limitations
+
+- First batch only: disk/CPU count, ODBC library name discovery, loopback API health, anonymous ES root response shape, and listed LLM model metadata. None verifies SQL login/read-only permissions/catalog, ES Auth/mapping/retrieval (live mapping_incompatible blocker remains), true LLM inference/GPU/context, actual target deployment TLS/time/permissions, worker/report/DOCX, or OFF-5 air-gap release.
+- Only numeric localhost 127.0.0.1 is permitted; SRAF dependencies on other private hosts, protected endpoints needing existing credentials, and HTTPS are currently out of scope pending a reviewed allowlist/secret transport. Never weaken by adding arbitrary URLs or print credentials.
+- GitHub CI and loopback test HTTPServer evidence are not deployment-host FULL_LIVE proof. PR code/tests await hosted CI and Codex review; no merge authorization.
