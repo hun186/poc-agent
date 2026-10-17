@@ -53,6 +53,33 @@ def http_site():
                     pass
                 return
             status, body, headers = routes.get(self.path, (404, b"", {}))
+            if "_chunked" in headers:
+                coding = headers["_chunked"]
+                raw_header = (
+                    ("HTTP/1.1 " + str(status) + " OK\r\n" +
+                     "Content-Type: application/json\r\n" +
+                     "Transfer-Encoding: " + coding + "\r\n" +
+                     ("Content-Length: " + str(len(body)) + "\r\n"
+                      if headers.get("_with_length") else "") +
+                     ("Transfer-Encoding: chunked\r\n"
+                      if headers.get("_duplicate_coding") else "") +
+                     "\r\n").encode("ascii")
+                )
+                middle = max(1, len(body) // 2)
+                chunks = [body[:middle], body[middle:]]
+                raw_body = b"".join(
+                    ("%x\r\n" % len(chunk)).encode("ascii") + chunk + b"\r\n"
+                    for chunk in chunks if chunk
+                )
+                if not headers.get("_omit_terminal"):
+                    raw_body += b"0\r\n\r\n"
+                try:
+                    self.wfile.write(raw_header + raw_body)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                self.close_connection = True
+                return
             malformed = headers.get("_raw_malformed_header")
             if malformed is not None:
                 # Emit raw response bytes: BaseHTTPRequestHandler.send_header
@@ -507,3 +534,77 @@ def test_well_formed_content_length_absent_http_response_can_be_observed(http_si
     result = probes.probe_es_transport(port)
     assert result.status == "PASS"
     assert requests == [("GET", "/", None)]
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_valid_http11_chunked_get_probes_pass_with_bounded_decoding(
+    http_site, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama" else
+            _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_chunked": "chunked"})
+    result = (
+        probes.probe_api_health(port) if kind == "api" else
+        probes.probe_es_transport(port) if kind == "es" else
+        probes.probe_llm_inventory(port, "model-a",
+                                   "ollama" if kind == "ollama" else "openai")
+    )
+    assert result.status == "PASS"
+    assert result.executed is True
+    assert requests == [("GET", path, None)]
+    assert "model-a" not in json.dumps(result.serialize())
+
+
+@pytest.mark.parametrize("headers", [
+    {"_chunked": "chunked", "_with_length": "yes"},
+    {"_chunked": "chunked", "_duplicate_coding": "yes"},
+    {"_chunked": "gzip"},
+    {"_chunked": "gzip, chunked"},
+    {"_chunked": "chunked;invalid"},
+])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_ambiguous_unsupported_transfer_encoding_never_passes(
+    http_site, headers, path, kind,
+):
+    port, routes, _ = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama" else
+            _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, headers)
+    result = (
+        probes.probe_api_health(port) if kind == "api" else
+        probes.probe_es_transport(port) if kind == "es" else
+        probes.probe_llm_inventory(port, "model-a",
+                                   "ollama" if kind == "ollama" else "openai")
+    )
+    assert result.status == "FAIL"
+    assert result.evidence == {}
+
+
+def test_truncated_chunked_response_does_not_pass_even_with_valid_json(http_site):
+    port, routes, requests = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {"_chunked": "chunked", "_omit_terminal": "yes"})
+    result = probes.probe_es_transport(port)
+    assert result.status == "FAIL"
+    assert result.reason == "es_transport_unavailable"
+    assert requests == [("GET", "/", None)]
+
+
+def test_legitimate_uppercase_chunked_token_accepted(http_site):
+    port, routes, _ = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {"_chunked": "CHUNKED"})
+    assert probes.probe_es_transport(port).status == "PASS"
