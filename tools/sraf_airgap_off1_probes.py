@@ -156,8 +156,24 @@ class _DeadlineSocket(socket.socket):
         return super().sendall(data, flags)
 
 
+class _RawVersionHTTPResponse(http.client.HTTPResponse):
+    """Retain the literal HTTP status version before CPython normalizes it.
+
+    CPython HTTPResponse.begin() maps anything prefixed with 'HTTP/1.' to
+    version=11, including malformed 'HTTP/1.X' and unsupported 'HTTP/1.2'.
+    The precise status-line token is needed for the HTTP/1.1-only chunk gate.
+    """
+
+    def _read_status(self) -> tuple[str, int, str]:
+        version, status, reason = super()._read_status()
+        self.raw_status_version = version
+        return version, status, reason
+
+
 class _DeadlineHTTPConnection(http.client.HTTPConnection):
     """Single loopback connection; retain http.client parsing and size checks."""
+
+    response_class = _RawVersionHTTPResponse
 
     def __init__(self, port: int, *, deadline: float):
         super().__init__("127.0.0.1", port, timeout=TIMEOUT_SECONDS)
@@ -269,7 +285,9 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
             return None, None
         if transfers:
             if (lengths or transfers[0].strip(" \t").lower() != "chunked"
-                    or response.chunked is not True or response.version != 11):
+                    or response.chunked is not True
+                    or response.raw_status_version != "HTTP/1.1"
+                    or response.version != 11):
                 return None, None
             expected_length = None
         elif lengths:
