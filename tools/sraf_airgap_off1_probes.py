@@ -129,8 +129,23 @@ def probe_es_transport(port: int) -> Observation:
     if status in (401, 403):
         return _result("es-transport", "SKIP", "es_credentials_not_probed",
                        executed=True, evidence={"http_status": status})
-    return _result("es-transport", "PASS" if status == 200 else "FAIL",
-                   "es_http_reachable" if status == 200 else "es_http_unexpected",
+    if status != 200:
+        return _result("es-transport", "FAIL", "es_http_unexpected",
+                       executed=True, evidence={"http_status": status})
+    try:
+        payload = json.loads(body if body is not None else b"")
+    except (ValueError, UnicodeError, RecursionError):
+        return _result("es-transport", "FAIL", "es_identity_unverified",
+                       executed=True, evidence={"http_status": status})
+    if (not isinstance(payload, dict) or
+            not isinstance(payload.get("cluster_name"), str) or
+            not isinstance(payload.get("version"), dict) or
+            not isinstance(payload["version"].get("number"), str)):
+        return _result("es-transport", "FAIL", "es_identity_unverified",
+                       executed=True, evidence={"http_status": status})
+    # This confirms only an ES-like HTTP identity, NOT credentials, mapping
+    # compatibility, retrieval correctness, cluster health, or TLS.
+    return _result("es-transport", "PASS", "es_http_identity_observed",
                    executed=True, evidence={"http_status": status})
 
 
