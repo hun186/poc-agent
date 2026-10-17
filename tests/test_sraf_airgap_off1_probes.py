@@ -55,9 +55,10 @@ def http_site():
             status, body, headers = routes.get(self.path, (404, b"", {}))
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Length", headers.get("_declared_length", str(len(body))))
             for name, value in headers.items():
-                self.send_header(name, value)
+                if not name.startswith("_"):
+                    self.send_header(name, value)
             self.end_headers()
             try:
                 self.wfile.write(body)
@@ -372,3 +373,36 @@ def test_http_connection_uses_deadline_socket_instead_of_default_factory(http_si
         assert isinstance(conn.sock, probes._DeadlineSocket)
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/", "es"), ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_truncated_declared_content_length_cannot_make_partial_probe_pass(
+    http_site, path, kind,
+):
+    port, routes, _ = http_site
+    body = (_json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_declared_length": str(len(body) + 7)})
+    observation = (probes.probe_es_transport(port) if kind == "es" else
+                   probes.probe_llm_inventory(port, "model-a",
+                                              "ollama" if kind == "ollama" else "openai"))
+    assert observation.status == "FAIL"
+    assert observation.reason in ("es_transport_unavailable", "model_service_unavailable")
+    assert observation.evidence == {}
+
+
+@pytest.mark.parametrize("cluster,version", [
+    ("", "8.13.0"), ("  ", "8.13.0"),
+    ("local", ""), ("local", "\t"),
+])
+def test_es_identity_rejects_blank_names_or_versions(http_site, cluster, version):
+    port, routes, _ = http_site
+    routes["/"] = (200, _json({"cluster_name": cluster,
+                               "version": {"number": version}}), {})
+    got = probes.probe_es_transport(port)
+    assert got.status == "FAIL"
+    assert got.reason == "es_identity_unverified"
