@@ -286,3 +286,7 @@
 
 - Integrate in small, single-check, read-only slices before the OFF-3 runner. The first batch uses zero secrets and loopback-only GET with timeout=3s, max body=64KiB+1, no proxy/redirect, and fixed reason codes; riskier read-only SQL auth, ES mapping, and remote TLS are designed separately with explicit environment authorization.
 - OFF-1A returns explicit PARTIAL_ONLY_NOT_ACCEPTANCE observations; no unreviewed adapter to OFF-0 formal report. The OFF-0 make_report_record no-execution safeguards remain unchanged. True parent PASS/FAIL requires reviewed full-scope probe outcomes, trusted execution source, mode/identity/side-effect guards, and dependency-aware report generation, not arbitrary caller values.
+
+### 2026-10-17 OFF-1A wall-clock deadline security invariant
+
+- Every anonymous localhost HTTP probe must obey a single 3-second monotonic deadline for connect, send, response header and response body, NOT a 3-second inactivity interval reset after each recv. Standard http.client HTTP parser remains in use; a socket subclass used by socket.SocketIO recomputes remaining time before recv_into/recv and sendall, returning static error classification on expiry. The absolute deadline must be backed by slow-drip socket regressions.
