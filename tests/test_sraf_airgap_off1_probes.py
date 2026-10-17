@@ -53,6 +53,18 @@ def http_site():
                     pass
                 return
             status, body, headers = routes.get(self.path, (404, b"", {}))
+            malformed = headers.get("_raw_malformed_header")
+            if malformed is not None:
+                # Emit raw response bytes: BaseHTTPRequestHandler.send_header
+                # normalizes good headers and cannot model parser defects.
+                self.wfile.write(
+                    ("HTTP/1.1 " + str(status) + " OK\r\n" +
+                     "Content-Type: application/json\r\n" +
+                     malformed + "\r\n\r\n").encode("ascii") + body
+                )
+                self.wfile.flush()
+                self.close_connection = True
+                return
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", headers.get("_declared_length", str(len(body))))
@@ -448,3 +460,50 @@ def test_valid_content_length_optional_ascii_whitespace_is_accepted(http_site):
     body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
     routes["/"] = (200, body, {"_declared_length": "  " + str(len(body)) + " \t"})
     assert probes.probe_es_transport(port).status == "PASS"
+
+
+@pytest.mark.parametrize("malformed_header", [
+    "Content-Length : -1",
+    "Content-Length : 999",
+    "Transfer-Encoding : chunked",
+    "NoColonHeader",
+])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/", "es"),
+    ("/api/tags", "ollama"),
+    ("/v1/models", "openai"),
+    ("/healthz", "health"),
+])
+def test_discarded_malformed_raw_headers_cannot_claim_probe_pass(
+    http_site, malformed_header, path, kind,
+):
+    port, routes, requests = http_site
+    body = (_json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}) if kind == "openai"
+            else b'{"status":"ok"}')
+    routes[path] = (200, body, {"_raw_malformed_header": malformed_header})
+    observation = (probes.probe_es_transport(port) if kind == "es" else
+                   probes.probe_llm_inventory(port, "model-a", "ollama")
+                   if kind == "ollama" else
+                   probes.probe_llm_inventory(port, "model-a", "openai")
+                   if kind == "openai" else probes.probe_api_health(port))
+    assert observation.status == "FAIL"
+    assert observation.reason in (
+        "es_transport_unavailable", "model_service_unavailable",
+        "api_transport_unavailable",
+    )
+    assert observation.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+def test_well_formed_content_length_absent_http_response_can_be_observed(http_site):
+    port, routes, requests = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {"_raw_malformed_header": "X-Valid: yes"})
+    # Deliberate close-delimited HTTP/1.1: no Content-Length and no parser
+    # defect. This remains legitimate; the negative tests above distinguish.
+    result = probes.probe_es_transport(port)
+    assert result.status == "PASS"
+    assert requests == [("GET", "/", None)]
