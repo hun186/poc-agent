@@ -7,7 +7,7 @@
 | CLI --check | 對應 OFF-0 ID | 模式 | 實際檢查 | 無法由此宣稱 |
 | --- | --- | --- | --- | --- |
 | sys-disk | SYS-01 | quick | 執行目錄所在磁碟空間（門檻 512 MiB）及 CPU 邏輯數 | 完整主機、GPU、時間同步、輸出目錄權限 |
-| odbc-library | ENV-02 | quick | 動態函式庫搜尋是否能發現 odbc 名稱 | 已裝 SQL Server driver、能連線 |
+| odbc-library | ENV-02 | quick | 對少量固定本機 Unix 安裝路徑檢查 ODBC 函式庫檔案是否存在，不執行 helper／dynamic loader | 已裝 SQL Server driver、能連線 |
 | api-health | API-01 | quick | 匿名 GET 127.0.0.1:PORT/healthz HTTP 200 | Auth/RBAC、SQL/ES/LLM、完整 API 可用性 |
 | es-transport | ES-01 | diagnose | 匿名 GET / 回 HTTP 200 且包含 cluster_name + version.number | ES 認證、Mapping、檢索、叢集健康 |
 | llm-inventory | LLM-01 | diagnose | 匿名 GET Ollama /api/tags 或相容 /v1/models，列出完整指定名稱 | 模型可載入、GPU/context、推論成功 |
@@ -31,7 +31,7 @@ Port 和 Model Name 為參數範例，**非已驗證的正式部署配置**。�
 - 不支援任意內網 DNS/IP 和 TLS；如 SRAF 依賴在不同主機，後續須另設經核准的遠端 allowlist/TLS 及秘密配置安全界面，不能藉不受限的任意 URL 放寬探測邊界。
 - 不輸出 HTTP 原始內文、例外、headers、URL、模型名稱、檔案路徑、連線字串、機敏值；僅固定 reason codes + 有界整數／布林證據。
 - 不讀取 secrets、不執行 SQL、不登入、不啟停 Worker、不寫入資料、不得呼叫會建索引的 prepare_requirement_elasticsearch、不執行 LLM completion 或 E2E。
-- SYS、ODBC 都只是局部檢查；ODBC library 存在不等於 SQL Server ODBC driver 可用。API /healthz HTTP 200 不等於完整 SRA 或其依賴都可用。
+- SYS、ODBC 都只是局部檢查；ODBC library 存在不等於 SQL Server ODBC driver 可用。ODBC 只用事先審查的固定 Unix 本機路徑進行檔案存在性檢查，不呼叫 ctypes.util.find_library（Linux 上可能啟動無時間限制的 ldconfig/compiler 子程序）；未知自訂路徑可能產生 WARN 假陰性、非 POSIX 平台回報 SKIP，絕不冒充驅動可用。API /healthz HTTP 200 不等於完整 SRA 或其依賴都可用。
 - OFF-0 安全 make_report_record 函式仍僅允許 SKIP(check_not_implemented)，因為沒有可信 execution-bound 報告路徑。**OFF-1 子探測結果不經 OFF-0 正式報告邊界**；不可宣稱正式通過。
 - CI 中本機 HTTPServer 是可重現的安全負面/正面測試；若在 GitHub runner 執行主機 probe，僅量測 GitHub runner，**不是使用者封閉網路的 FULL_LIVE SQL/ES/LLM 驗收**。
 
