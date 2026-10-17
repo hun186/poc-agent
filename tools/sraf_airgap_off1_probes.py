@@ -13,6 +13,7 @@ import http.client
 import socket
 import time
 import json
+import re
 import os
 import shutil
 from dataclasses import asdict, dataclass
@@ -186,10 +187,27 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
                                           "Connection": "close"})
         response = conn.getresponse()
         status = response.status
+        # http.client silently normalizes a *malformed* Content-Length to
+        # response.length=None, indistinguishable from an absent header.
+        # Inspect the original parsed header list before accepting JSON.
+        # Duplicate lengths and mixed Transfer-Encoding/Content-Length are
+        # rejected instead of relying on ambiguous framing precedence.
+        lengths = response.headers.get_all("Content-Length", [])
+        transfers = response.headers.get_all("Transfer-Encoding", [])
+        if len(lengths) > 1 or transfers:
+            return None, None
+        if lengths:
+            raw_length = lengths[0].strip(" \t")
+            if re.fullmatch(r"[0-9]{1,18}", raw_length) is None:
+                return None, None
+            expected_length = int(raw_length)
+            if response.length != expected_length:
+                return None, None
+        else:
+            expected_length = None
         # read(amt) can silently return incomplete bytes on early EOF even
         # when Content-Length declared a larger body. Preserve the expected
         # length BEFORE http.client updates its internal remaining counter.
-        expected_length = response.length
         body = response.read(MAX_HTTP_BYTES + 1)
         if time.monotonic() >= deadline:
             return None, None
