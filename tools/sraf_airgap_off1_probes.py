@@ -134,9 +134,13 @@ class _DeadlineHTTPConnection(http.client.HTTPConnection):
     def __init__(self, port: int, *, deadline: float):
         super().__init__("127.0.0.1", port, timeout=TIMEOUT_SECONDS)
         self._deadline = deadline
+        # HTTPConnection.__init__ installs _create_connection as an INSTANCE
+        # attribute. Rebind it after super() so the absolute deadline socket
+        # is actually used (a subclass method alone is silently shadowed).
+        self._create_connection = self._bounded_create_connection
 
-    def _create_connection(self, address: tuple[str, int], timeout: float,
-                           source_address: Any) -> socket.socket:
+    def _bounded_create_connection(self, address: tuple[str, int], timeout: float,
+                                   source_address: Any) -> socket.socket:
         sock = _DeadlineSocket(self._deadline)
         try:
             sock.connect(address)
