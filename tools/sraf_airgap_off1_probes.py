@@ -178,6 +178,67 @@ class _DeadlineHTTPConnection(http.client.HTTPConnection):
         return sock
 
 
+
+_CHUNK_LINE_LIMIT = 1024
+_CHUNK_TRAILER_LIMIT = 8192
+_CHUNK_MAX_FRAGMENTS = 8192
+# A deliberately constrained subset of RFC token chunk-extension syntax.
+_CHUNK_HEAD = re.compile(
+    rb"[0-9A-Fa-f]{1,16}(?:;[!#$%&'*+\-.^_\x60|~0-9A-Za-z]+"
+    rb"(?:=[!#$%&'*+\-.^_\x60|~0-9A-Za-z]+)?)*"
+)
+_CHUNK_TRAILER = re.compile(
+    rb"[!#$%&'*+\-.^_\x60|~0-9A-Za-z]+:[ \t]*[\x20-\x7e\t]*"
+)
+
+
+def _read_verified_chunked(fp: Any, deadline: float) -> bytes:
+    """Decode only complete, bounded HTTP/1.1 chunks with exact CRLF.
+
+    CPython 3.11 http.client drops post-chunk delimiter bytes without checking
+    they are CRLF and accepts EOF inside trailer headers. Bypass its permissive
+    chunk reader and read from its existing buffered socket file directly.
+    All blocking reads remain bounded by _DeadlineSocket's monotonic deadline.
+    """
+    if fp is None:
+        raise http.client.HTTPException("chunk_stream_missing")
+    payload = bytearray()
+    for _ in range(_CHUNK_MAX_FRAGMENTS):
+        if time.monotonic() >= deadline:
+            raise TimeoutError("probe_deadline_exceeded")
+        line = fp.readline(_CHUNK_LINE_LIMIT + 1)
+        if (len(line) > _CHUNK_LINE_LIMIT or not line.endswith(b"\r\n")
+                or _CHUNK_HEAD.fullmatch(line[:-2]) is None):
+            raise http.client.HTTPException("chunk_size_invalid")
+        chunk_size = int(line[:-2].split(b";", 1)[0], 16)
+        if chunk_size == 0:
+            trailer_bytes = 0
+            while trailer_bytes <= _CHUNK_TRAILER_LIMIT:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("probe_deadline_exceeded")
+                trailer = fp.readline(_CHUNK_LINE_LIMIT + 1)
+                trailer_bytes += len(trailer)
+                if (len(trailer) > _CHUNK_LINE_LIMIT
+                        or trailer_bytes > _CHUNK_TRAILER_LIMIT
+                        or not trailer.endswith(b"\r\n")):
+                    raise http.client.HTTPException("chunk_trailer_invalid")
+                if trailer == b"\r\n":
+                    return bytes(payload)
+                if _CHUNK_TRAILER.fullmatch(trailer[:-2]) is None:
+                    raise http.client.HTTPException("chunk_trailer_invalid")
+            raise http.client.HTTPException("chunk_trailer_oversized")
+        if chunk_size > MAX_HTTP_BYTES - len(payload):
+            # Keep the existing oversized-body classification at the caller,
+            # without allocating or waiting for a massive declared chunk.
+            return b"x" * (MAX_HTTP_BYTES + 1)
+        chunk_and_crlf = fp.read(chunk_size + 2)
+        if (len(chunk_and_crlf) != chunk_size + 2
+                or not chunk_and_crlf.endswith(b"\r\n")):
+            raise http.client.HTTPException("chunk_delimiter_invalid")
+        payload.extend(chunk_and_crlf[:-2])
+    raise http.client.HTTPException("too_many_chunks")
+
+
 def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
     """One anonymous loopback GET, bounded by an absolute 3-second deadline."""
     deadline = time.monotonic() + TIMEOUT_SECONDS
@@ -208,7 +269,7 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
             return None, None
         if transfers:
             if (lengths or transfers[0].strip(" \t").lower() != "chunked"
-                    or response.chunked is not True):
+                    or response.chunked is not True or response.version != 11):
                 return None, None
             expected_length = None
         elif lengths:
@@ -225,7 +286,10 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
         # read(amt) can silently return incomplete bytes on early EOF even
         # when Content-Length declared a larger body. Preserve the expected
         # length BEFORE http.client updates its internal remaining counter.
-        body = response.read(MAX_HTTP_BYTES + 1)
+        if transfers:
+            body = _read_verified_chunked(response.fp, deadline)
+        else:
+            body = response.read(MAX_HTTP_BYTES + 1)
         if time.monotonic() >= deadline:
             return None, None
         if (expected_length is not None and
