@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 import ctypes.util
 import http.client
+import socket
+import time
 import json
 import os
 import shutil
@@ -91,15 +93,71 @@ def probe_odbc_library() -> Observation:
                    executed=True, evidence={"odbc_library_found": present})
 
 
+class _DeadlineSocket(socket.socket):
+    """TCP socket whose *every* read/write uses the same absolute deadline.
+
+    http.client wraps the socket in socket.SocketIO for buffered header/body
+    reads; SocketIO calls recv_into(), so bounding only HTTPConnection(timeout)
+    is insufficient against a peer sending one byte just before each timeout.
+    """
+
+    def __init__(self, deadline: float):
+        super().__init__(socket.AF_INET, socket.SOCK_STREAM)
+        self._deadline = deadline
+
+    def _enforce_deadline(self) -> None:
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("probe_deadline_exceeded")
+        self.settimeout(remaining)
+
+    def connect(self, address: tuple[str, int]) -> None:
+        self._enforce_deadline()
+        return super().connect(address)
+
+    def recv_into(self, buffer: Any, nbytes: int = 0, flags: int = 0) -> int:
+        self._enforce_deadline()
+        return super().recv_into(buffer, nbytes, flags)
+
+    def recv(self, bufsize: int, flags: int = 0) -> bytes:
+        self._enforce_deadline()
+        return super().recv(bufsize, flags)
+
+    def sendall(self, data: bytes, flags: int = 0) -> None:
+        self._enforce_deadline()
+        return super().sendall(data, flags)
+
+
+class _DeadlineHTTPConnection(http.client.HTTPConnection):
+    """Single loopback connection; retain http.client parsing and size checks."""
+
+    def __init__(self, port: int, *, deadline: float):
+        super().__init__("127.0.0.1", port, timeout=TIMEOUT_SECONDS)
+        self._deadline = deadline
+
+    def _create_connection(self, address: tuple[str, int], timeout: float,
+                           source_address: Any) -> socket.socket:
+        sock = _DeadlineSocket(self._deadline)
+        try:
+            sock.connect(address)
+        except BaseException:
+            sock.close()
+            raise
+        return sock
+
+
 def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
-    """One real loopback GET, no redirects/proxies/auth, bounded body/time."""
-    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=TIMEOUT_SECONDS)
+    """One anonymous loopback GET, bounded by an absolute 3-second deadline."""
+    deadline = time.monotonic() + TIMEOUT_SECONDS
+    conn = _DeadlineHTTPConnection(port, deadline=deadline)
     try:
         conn.request("GET", path, headers={"Accept": "application/json",
                                           "Connection": "close"})
         response = conn.getresponse()
         status = response.status
         body = response.read(MAX_HTTP_BYTES + 1)
+        if time.monotonic() >= deadline:
+            return None, None
         return status, body
     except (OSError, http.client.HTTPException):
         return None, None
