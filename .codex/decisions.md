@@ -292,3 +292,5 @@
 - Every anonymous localhost HTTP probe must obey a single 3-second monotonic deadline for connect, send, response header and response body, NOT a 3-second inactivity interval reset after each recv. Standard http.client HTTP parser remains in use; a socket subclass used by socket.SocketIO recomputes remaining time before recv_into/recv and sendall, returning static error classification on expiry. The absolute deadline must be backed by slow-drip socket regressions.
 
 - 2026-10-17 Python http.client portability detail: HTTPConnection.__init__ assigns _create_connection as an *instance* attribute, so a subclass method with that name is silently overridden. OFF-1A must explicitly rebind the factory after super().__init__ to create _DeadlineSocket; preserve the integration regression on a connected real loopback socket in addition to timeout tests.
+
+- 2026-10-17 OFF-1A ODBC: never run implicit ldconfig/compiler helper discovery in bounded read-only probes. Use a fixed candidate list on Unix, no arbitrary paths, dynamic loader, or subprocesses; missing path WARN is not proof the driver is absent. Functional SQL driver/connection diagnosis remains OFF-1B.
