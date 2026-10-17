@@ -165,3 +165,5 @@
 - 2026-10-17 OFF-1A sixth Codex P2: standard chunked HTTP/1.1 response rejected as transport failure. New guarded support allows one properly decoded chunked coding without Content-Length, rejecting conflicting or unsupported TE and truncated chunks. New hosted regression and re-review pending.
 
 - 2026-10-17 OFF-1A seventh Codex review surfaced chunked framing corruption false PASS and HTTP/1.0 chunked false PASS. Added strict bounded chunk decoder that checks data CRLF and complete 0-chunk trailer ending, and gate response.version == 11. Added adversarial actual socket tests. Still requires Hosted CI and fresh Codex review on exact new Head.
+
+- 2026-10-17 OFF-1A eighth Codex P2: normalized HTTPResponse.version=11 accepted invalid HTTP/1.X and 1.2 chunked replies. Subclass now captures literal status version and checks exact HTTP/1.1 for chunked; new actual TCP regression tests added. Hosted CI and next-head review pending.
