@@ -151,3 +151,5 @@
 - GitHub CI and loopback test HTTPServer evidence are not deployment-host FULL_LIVE proof. PR code/tests await hosted CI and Codex review; no merge authorization.
 
 - 2026-10-17 OFF-1A PR #292 first Codex Review P1: http.client timeout is an inactivity limit per socket call; slow-dripping service could exceed 3s total. Updated implementation uses a shared absolute monotonic deadline and checks socket time left on every read/write (including buffered headers/body). Regressions added for sustained byte drips. Hosted Actions and subsequent current-head Codex review needed before treating fix as verified; no live SRAF host checks.
+
+- 2026-10-17 OFF-1A run 38992439458 proved the initial P1 deadline patch did not activate: slow header/body responses took 6.6s/7.2s because HTTPConnection.__init__ shadowed _create_connection on the instance. Corrected the instance factory binding and added a regression asserting live socket type; exact-new-head hosted CI remains required.
