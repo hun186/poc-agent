@@ -239,19 +239,49 @@ def test_host_disk_warn_on_low_space(monkeypatch):
     assert probes.probe_disk().status == "WARN"
 
 
-def test_odbc_discovery_does_not_emit_library_path(monkeypatch):
-    monkeypatch.setattr(probes.ctypes.util, "find_library", lambda name: "/usr/lib/private/libodbc.so")
+def test_odbc_fixed_file_probe_does_not_emit_library_path(monkeypatch):
+    monkeypatch.setattr(probes.os, "name", "posix")
+    observed = []
+    def file_exists(path):
+        observed.append(path)
+        return path == probes.ODBC_LIBRARY_CANDIDATES[0]
+    monkeypatch.setattr(probes.os.path, "isfile", file_exists)
     got = probes.probe_odbc_library()
     assert got.aspect == "native_odbc_library_discovery_only"
     assert got.status == "PASS"
+    assert observed == [probes.ODBC_LIBRARY_CANDIDATES[0]]
     assert "usr/lib" not in json.dumps(got.serialize())
 
 
 def test_odbc_missing_is_not_claimed_driver_present(monkeypatch):
-    monkeypatch.setattr(probes.ctypes.util, "find_library", lambda name: None)
+    monkeypatch.setattr(probes.os, "name", "posix")
+    monkeypatch.setattr(probes.os.path, "isfile", lambda path: False)
     got = probes.probe_odbc_library()
     assert got.status == "WARN"
     assert got.evidence == {"odbc_library_found": False}
+
+
+def test_odbc_discovery_checks_only_fixed_candidates_no_subprocess(monkeypatch):
+    monkeypatch.setattr(probes.os, "name", "posix")
+    seen = []
+    def check(path):
+        seen.append(path)
+        return False
+    monkeypatch.setattr(probes.os.path, "isfile", check)
+    got = probes.probe_odbc_library()
+    assert got.status == "WARN"
+    assert seen == list(probes.ODBC_LIBRARY_CANDIDATES)
+    assert all(path.startswith(("/usr/", "/lib/", "/opt/homebrew/"))
+               for path in seen)
+
+
+def test_odbc_file_probe_unsupported_platform_skips_not_passes(monkeypatch):
+    monkeypatch.setattr(probes.os, "name", "nt")
+    monkeypatch.setattr(probes.os.path, "isfile",
+                        lambda path: pytest.fail("no file checks on unsupported OS"))
+    result = probes.probe_odbc_library()
+    assert result.status == "SKIP"
+    assert result.executed is False
 
 
 def test_cli_requires_explicit_check_and_diagnose_mode(capsys, monkeypatch):
