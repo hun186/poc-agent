@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -25,6 +26,32 @@ def http_site():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             requests.append(("GET", self.path, self.headers.get("Authorization")))
+            if self.path == "/slow-headers":
+                # Continuously deliver response-header bytes more frequently
+                # than the socket inactivity timeout, without finishing them.
+                try:
+                    self.wfile.write(b"HTTP/1.1 200 OK\r\nX-Slow: ")
+                    self.wfile.flush()
+                    for _ in range(55):
+                        self.wfile.write(b"x")
+                        self.wfile.flush()
+                        time.sleep(0.12)
+                    self.wfile.write(b"\r\n\r\n")
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                return
+            if self.path == "/slow-body":
+                self.send_response(200)
+                self.send_header("Content-Length", "100")
+                self.end_headers()
+                try:
+                    for _ in range(60):
+                        self.wfile.write(b"x")
+                        self.wfile.flush()
+                        time.sleep(0.12)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                return
             status, body, headers = routes.get(self.path, (404, b"", {}))
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -279,3 +306,28 @@ def test_standalone_cli_non_mutating_status_not_full_acceptance():
     assert payload["executed"] is False
     assert payload["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
     assert finished.stderr == ""
+
+
+@pytest.mark.parametrize("path", ["/slow-headers", "/slow-body"])
+def test_absolute_three_second_deadline_beats_continuous_byte_drip(http_site, path):
+    port, _, requests = http_site
+    started = time.monotonic()
+    status, body = probes._http_get(port, path)
+    duration = time.monotonic() - started
+    assert (status, body) == (None, None)
+    assert duration < probes.TIMEOUT_SECONDS + 1.5
+    assert duration >= probes.TIMEOUT_SECONDS - 0.6
+    assert requests == [("GET", path, None)]
+
+
+def test_deadline_is_rechecked_between_socket_reads(monkeypatch):
+    monotonic = iter((10.0, 12.5, 13.001))
+    monkeypatch.setattr(probes.time, "monotonic", lambda: next(monotonic))
+    sock = probes._DeadlineSocket(deadline=13.0)
+    try:
+        sock._enforce_deadline()
+        assert 0 < sock.gettimeout() <= 0.5
+        with pytest.raises(TimeoutError, match="probe_deadline_exceeded"):
+            sock._enforce_deadline()
+    finally:
+        sock.close()
