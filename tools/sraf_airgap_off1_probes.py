@@ -200,9 +200,18 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
         # rejected instead of relying on ambiguous framing precedence.
         lengths = response.headers.get_all("Content-Length", [])
         transfers = response.headers.get_all("Transfer-Encoding", [])
-        if len(lengths) > 1 or transfers:
+        # HTTP/1.1 chunked transfer is valid without Content-Length.
+        # Accept only the single, exact coding supported by http.client and
+        # verified as decoded by the parser; reject ambiguous or unsupported
+        # codings and all Transfer-Encoding/Content-Length combinations.
+        if len(lengths) > 1 or len(transfers) > 1:
             return None, None
-        if lengths:
+        if transfers:
+            if (lengths or transfers[0].strip(" \t").lower() != "chunked"
+                    or response.chunked is not True):
+                return None, None
+            expected_length = None
+        elif lengths:
             raw_length = lengths[0].strip(" \t")
             if re.fullmatch(r"[0-9]{1,18}", raw_length) is None:
                 return None, None
@@ -210,6 +219,8 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
             if response.length != expected_length:
                 return None, None
         else:
+            # Only an actually absent Content-Length with no transfer coding
+            # may use close-delimited framing.
             expected_length = None
         # read(amt) can silently return incomplete bytes on early EOF even
         # when Content-Length declared a larger body. Preserve the expected
