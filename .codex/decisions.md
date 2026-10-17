@@ -281,3 +281,8 @@
 ### 2026-10-16 OFF-0 nullable remediation policy
 
 - The validated JSON contract specifies `report_policy.remediation_source=verified_fail_warn_inventory_remediation_else_null`: only an actual, verified failure/warning probe in future OFF-1/3 may use reviewed inventory operational remediation; unexecuted SKIP and non-failure outcomes must have null remediation. The static report builder's only supported result in OFF-0 remains SKIP(check_not_implemented), no evidence, zero duration, and null remediation. The validator must reject the legacy always-inventory policy.
+
+## 2026-10-17 OFF-1A first-probe trust decision
+
+- Integrate in small, single-check, read-only slices before the OFF-3 runner. The first batch uses zero secrets and loopback-only GET with timeout=3s, max body=64KiB+1, no proxy/redirect, and fixed reason codes; riskier read-only SQL auth, ES mapping, and remote TLS are designed separately with explicit environment authorization.
+- OFF-1A returns explicit PARTIAL_ONLY_NOT_ACCEPTANCE observations; no unreviewed adapter to OFF-0 formal report. The OFF-0 make_report_record no-execution safeguards remain unchanged. True parent PASS/FAIL requires reviewed full-scope probe outcomes, trusted execution source, mode/identity/side-effect guards, and dependency-aware report generation, not arbitrary caller values.
