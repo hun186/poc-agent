@@ -159,3 +159,5 @@
 - 2026-10-17 OFF-1A third review found two P2: early-EOF Content-Length mismatch and blank Elasticsearch identity. Branch now rejects truncated responses and empty identity strings. New focused regressions added; hosted verification and review pending.
 
 - 2026-10-17 OFF-1A fourth review identified malformed Content-Length accepted via http.client length=None normalization. This branch now rejects malformed, duplicate or conflicting framing before accepting probe identity and adds live HTTPServer negative tests. Fresh CI and Codex review still required.
+
+- 2026-10-17 OFF-1A fifth review P2: parsed-header-only validation cannot detect malformed framing lines dropped by email.parser; _http_get now rejects any response.headers.defects before accepting JSON identity. New raw malformed-header loopback test coverage. Await hosted CI and re-review; no production deployment evidence.
