@@ -155,3 +155,5 @@
 - 2026-10-17 OFF-1A run 38992439458 proved the initial P1 deadline patch did not activate: slow header/body responses took 6.6s/7.2s because HTTPConnection.__init__ shadowed _create_connection on the instance. Corrected the instance factory binding and added a regression asserting live socket type; exact-new-head hosted CI remains required.
 
 - 2026-10-17 OFF-1A second Codex P1: ctypes.util.find_library may run unbounded helper programs. Replaced with finite Unix file existence checks, avoiding process invocation. Nonstandard installations might be WARN (false negative), and non-POSIX is SKIP. It does not certify actual SQL ODBC driver. New hosted CI/review pending.
+
+- 2026-10-17 OFF-1A third review found two P2: early-EOF Content-Length mismatch and blank Elasticsearch identity. Branch now rejects truncated responses and empty identity strings. New focused regressions added; hosted verification and review pending.
