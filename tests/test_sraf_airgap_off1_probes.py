@@ -332,3 +332,13 @@ def test_deadline_is_rechecked_between_socket_reads(monkeypatch):
             sock._enforce_deadline()
     finally:
         sock.close()
+
+
+def test_http_connection_uses_deadline_socket_instead_of_default_factory(http_site):
+    port, _, _ = http_site
+    conn = probes._DeadlineHTTPConnection(port, deadline=time.monotonic() + 3)
+    try:
+        conn.connect()
+        assert isinstance(conn.sock, probes._DeadlineSocket)
+    finally:
+        conn.close()
