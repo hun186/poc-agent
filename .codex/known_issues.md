@@ -157,3 +157,5 @@
 - 2026-10-17 OFF-1A second Codex P1: ctypes.util.find_library may run unbounded helper programs. Replaced with finite Unix file existence checks, avoiding process invocation. Nonstandard installations might be WARN (false negative), and non-POSIX is SKIP. It does not certify actual SQL ODBC driver. New hosted CI/review pending.
 
 - 2026-10-17 OFF-1A third review found two P2: early-EOF Content-Length mismatch and blank Elasticsearch identity. Branch now rejects truncated responses and empty identity strings. New focused regressions added; hosted verification and review pending.
+
+- 2026-10-17 OFF-1A fourth review identified malformed Content-Length accepted via http.client length=None normalization. This branch now rejects malformed, duplicate or conflicting framing before accepting probe identity and adds live HTTPServer negative tests. Fresh CI and Codex review still required.
