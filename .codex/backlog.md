@@ -178,3 +178,5 @@
 - OFF-1A branch feat/sraf-airgap-off1-readonly-probes adds first bounded localhost/host-only probe slices with tests, docs, and Actions. Hosted CI, Codex Review, and explicit user merge instruction still required.
 - OFF-1B: approved read-only SQL connector with non-logging DSN handling and SQL permission/catalog, ES authenticated GET mapping/alias diagnostics (live mapping_incompatible blocker), vetted remote/internal TLS allowlist and LLM model/resource metadata, native ODBC SQL driver confirmation, wheelhouse/GPU/time/CA/disk target root, dependency-based fault attribution. No fake FULL_LIVE PASS.
 - OFF-2 bundle, OFF-3 unified Runner, OFF-4 safety reports/runbook, OFF-5 real isolated air-gap dress rehearsal remain unimplemented, independent from Requirement Product API P2.2.
+
+- 2026-10-17 PR #292 first Codex review produced P1 unbounded wall-clock duration under slow-drip HTTP response despite 3s inactivity timeouts. Added absolute deadline socket and adversarial live loopback regressions. Track exact new head Hosted CI, address any failures, re-request Codex review, do NOT merge without explicit user authorization.
