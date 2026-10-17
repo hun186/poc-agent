@@ -240,12 +240,12 @@ def test_host_disk_warn_on_low_space(monkeypatch):
 
 
 def test_odbc_fixed_file_probe_does_not_emit_library_path(monkeypatch):
-    monkeypatch.setattr(probes.os, "name", "posix")
+    monkeypatch.setattr(probes, "_odbc_platform_supported", lambda: True)
     observed = []
     def file_exists(path):
         observed.append(path)
         return path == probes.ODBC_LIBRARY_CANDIDATES[0]
-    monkeypatch.setattr(probes.os.path, "isfile", file_exists)
+    monkeypatch.setattr(probes, "_odbc_library_file_exists", file_exists)
     got = probes.probe_odbc_library()
     assert got.aspect == "native_odbc_library_discovery_only"
     assert got.status == "PASS"
@@ -254,20 +254,20 @@ def test_odbc_fixed_file_probe_does_not_emit_library_path(monkeypatch):
 
 
 def test_odbc_missing_is_not_claimed_driver_present(monkeypatch):
-    monkeypatch.setattr(probes.os, "name", "posix")
-    monkeypatch.setattr(probes.os.path, "isfile", lambda path: False)
+    monkeypatch.setattr(probes, "_odbc_platform_supported", lambda: True)
+    monkeypatch.setattr(probes, "_odbc_library_file_exists", lambda path: False)
     got = probes.probe_odbc_library()
     assert got.status == "WARN"
     assert got.evidence == {"odbc_library_found": False}
 
 
 def test_odbc_discovery_checks_only_fixed_candidates_no_subprocess(monkeypatch):
-    monkeypatch.setattr(probes.os, "name", "posix")
+    monkeypatch.setattr(probes, "_odbc_platform_supported", lambda: True)
     seen = []
     def check(path):
         seen.append(path)
         return False
-    monkeypatch.setattr(probes.os.path, "isfile", check)
+    monkeypatch.setattr(probes, "_odbc_library_file_exists", check)
     got = probes.probe_odbc_library()
     assert got.status == "WARN"
     assert seen == list(probes.ODBC_LIBRARY_CANDIDATES)
@@ -276,8 +276,8 @@ def test_odbc_discovery_checks_only_fixed_candidates_no_subprocess(monkeypatch):
 
 
 def test_odbc_file_probe_unsupported_platform_skips_not_passes(monkeypatch):
-    monkeypatch.setattr(probes.os, "name", "nt")
-    monkeypatch.setattr(probes.os.path, "isfile",
+    monkeypatch.setattr(probes, "_odbc_platform_supported", lambda: False)
+    monkeypatch.setattr(probes, "_odbc_library_file_exists",
                         lambda path: pytest.fail("no file checks on unsupported OS"))
     result = probes.probe_odbc_library()
     assert result.status == "SKIP"
