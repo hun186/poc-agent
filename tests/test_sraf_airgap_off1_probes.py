@@ -321,7 +321,7 @@ def test_absolute_three_second_deadline_beats_continuous_byte_drip(http_site, pa
 
 
 def test_deadline_is_rechecked_between_socket_reads(monkeypatch):
-    monotonic = iter((10.0, 12.5, 13.001))
+    monotonic = iter((12.5, 13.001))
     monkeypatch.setattr(probes.time, "monotonic", lambda: next(monotonic))
     sock = probes._DeadlineSocket(deadline=13.0)
     try:
