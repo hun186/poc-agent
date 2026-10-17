@@ -296,3 +296,5 @@
 - 2026-10-17 OFF-1A ODBC: never run implicit ldconfig/compiler helper discovery in bounded read-only probes. Use a fixed candidate list on Unix, no arbitrary paths, dynamic loader, or subprocesses; missing path WARN is not proof the driver is absent. Functional SQL driver/connection diagnosis remains OFF-1B.
 
 - 2026-10-17 OFF-1A HTTP response integrity: a 200 with parsable JSON is insufficient if Content-Length declares unreceived bytes; bounded reads must compare original advertised length to bytes received before allowing any subprobe PASS. ES root identity fields must be nonblank strings. These remain partial, not full service attestation.
+
+- 2026-10-17 OFF-1A framing safety: response.length=None may mean either no length header or an invalid header. Read parsed headers to distinguish them; when present require exactly one decimal-only Content-Length, reject duplicate framing and any Transfer-Encoding ambiguity, and validate actual received body size. This is mandatory before partial ES/LLM PASS.
