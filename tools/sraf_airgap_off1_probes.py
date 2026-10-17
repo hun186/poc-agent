@@ -9,7 +9,6 @@ redirect following, login, tokens, SQL queries, LLM generation, or writes.
 from __future__ import annotations
 
 import argparse
-import ctypes.util
 import http.client
 import socket
 import time
@@ -80,16 +79,36 @@ def probe_disk() -> Observation:
     )
 
 
+# Only a fixed, small set of familiar *local* Unix library locations is
+# observed. ctypes.util.find_library may spawn ldconfig/compiler subprocesses
+# with no timeout, so is prohibited in this bounded diagnostics path.
+# This can produce false negatives on nonstandard installations by design.
+ODBC_LIBRARY_CANDIDATES = (
+    "/lib/x86_64-linux-gnu/libodbc.so.2",
+    "/usr/lib/x86_64-linux-gnu/libodbc.so.2",
+    "/lib/aarch64-linux-gnu/libodbc.so.2",
+    "/usr/lib/aarch64-linux-gnu/libodbc.so.2",
+    "/usr/lib64/libodbc.so.2",
+    "/usr/lib/libodbc.so.2",
+    "/usr/local/lib/libodbc.so.2",
+    "/opt/homebrew/lib/libodbc.2.dylib",
+    "/usr/local/lib/libodbc.2.dylib",
+)
+
+
 def probe_odbc_library() -> Observation:
     probe = "odbc-library"
-    # Discovery is not a Driver Manager load nor evidence of a SQL Server driver.
-    # The absolute native library path, if found, is never recorded.
+    if os.name != "posix":
+        return _result(probe, "SKIP", "odbc_filesystem_probe_unsupported",
+                       executed=False)
+    # No dynamic loader, compiler, helper subprocess, glob, or user-supplied path.
+    # Merely finding one file is NOT confirmation of loadability or SQL driver.
     try:
-        present = bool(ctypes.util.find_library("odbc"))
+        present = any(os.path.isfile(path) for path in ODBC_LIBRARY_CANDIDATES)
     except (OSError, ValueError):
         return _result(probe, "FAIL", "odbc_discovery_unavailable", executed=True)
     return _result(probe, "PASS" if present else "WARN",
-                   "odbc_library_discovered" if present else "odbc_library_not_found",
+                   "odbc_library_file_observed" if present else "odbc_library_not_found",
                    executed=True, evidence={"odbc_library_found": present})
 
 
