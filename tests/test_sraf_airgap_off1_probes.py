@@ -1,0 +1,281 @@
+"""OFF-1 narrow real observations: fail-closed, bounded and no writes."""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+import pytest
+
+from tools import sraf_airgap_off1_probes as probes
+from tools.validate_sraf_airgap_off0_contract import ContractError, make_report_record
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def http_site():
+    routes: dict[str, tuple[int, bytes, dict[str, str]]] = {}
+    requests: list[tuple[str, str, str | None]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            requests.append(("GET", self.path, self.headers.get("Authorization")))
+            status, body, headers = routes.get(self.path, (404, b"", {}))
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            for name, value in headers.items():
+                self.send_header(name, value)
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except BrokenPipeError:
+                pass
+
+        def do_POST(self):
+            requests.append(("POST", self.path, self.headers.get("Authorization")))
+            self.send_error(405)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        yield server.server_port, routes, requests
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=3)
+
+
+def _json(payload):
+    return json.dumps(payload).encode("utf-8")
+
+
+def test_real_local_health_get_sends_no_auth_and_no_post(http_site):
+    port, routes, requests = http_site
+    routes["/healthz"] = (200, b'{"status":"ok"}', {})
+    got = probes.probe_api_health(port)
+    assert got.check_id == "API-01"
+    assert got.aspect == "healthz_http_only"
+    assert got.status == "PASS"
+    assert got.executed is True
+    assert got.evidence == {"http_status": 200}
+    assert requests == [("GET", "/healthz", None)]
+    assert got.serialize()["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
+
+
+def test_health_rejects_500_and_does_not_echo_body(http_site):
+    port, routes, _ = http_site
+    routes["/healthz"] = (500, b"password=hunter2; secret=/etc/sra.conf", {})
+    report = probes.probe_api_health(port)
+    assert report.status == "FAIL"
+    assert "hunter2" not in json.dumps(report.serialize())
+    assert "/etc/" not in json.dumps(report.serialize())
+
+
+def test_no_redirect_following_even_with_external_location(http_site):
+    port, routes, requests = http_site
+    routes["/healthz"] = (302, b"", {"Location": "http://example.invalid/steal"})
+    got = probes.probe_api_health(port)
+    assert got.status == "FAIL"
+    assert got.evidence == {"http_status": 302}
+    assert requests == [("GET", "/healthz", None)]
+
+
+def test_response_body_is_bounded(http_site):
+    port, routes, _ = http_site
+    routes["/healthz"] = (200, b"x" * (probes.MAX_HTTP_BYTES + 100), {})
+    got = probes.probe_api_health(port)
+    assert got.status == "FAIL"
+    assert got.reason == "api_response_oversized"
+
+
+def test_es_anonymous_identity_really_checked(http_site):
+    port, routes, requests = http_site
+    routes["/"] = (200, _json({"cluster_name": "local", "version": {"number": "8.13.0"}}), {})
+    got = probes.probe_es_transport(port)
+    assert got.status == "PASS"
+    assert got.aspect == "anonymous_http_reachability_only"
+    assert got.evidence == {"http_status": 200}
+    assert requests == [("GET", "/", None)]
+
+
+@pytest.mark.parametrize("body", [
+    b"<html>proxy splash</html>",
+    b'{"ok":true}',
+    b'{"cluster_name":"local","version":{"number":23}}',
+    b"[" * 2500 + b"]" * 2500,
+])
+def test_es_not_fooled_by_http_200_without_identity(http_site, body):
+    port, routes, _ = http_site
+    routes["/"] = (200, body, {})
+    got = probes.probe_es_transport(port)
+    assert got.status == "FAIL"
+    assert got.reason == "es_identity_unverified"
+
+
+@pytest.mark.parametrize("code", [401, 403])
+def test_es_auth_boundary_yields_incomplete_not_pass(http_site, code):
+    port, routes, requests = http_site
+    routes["/"] = (code, b"password=hunter2", {})
+    got = probes.probe_es_transport(port)
+    assert got.status == "SKIP"
+    assert got.reason == "es_credentials_not_probed"
+    assert requests == [("GET", "/", None)]
+    assert "hunter2" not in json.dumps(got.serialize())
+
+
+def test_es_does_not_follow_redirect(http_site):
+    port, routes, requests = http_site
+    routes["/"] = (302, b"", {"Location": "https://example.invalid"})
+    assert probes.probe_es_transport(port).status == "FAIL"
+    assert requests == [("GET", "/", None)]
+
+
+def test_llm_model_inventory_ollama_real_get_no_generation(http_site):
+    port, routes, requests = http_site
+    routes["/api/tags"] = (200, _json({"models": [
+        {"name": "qwen3:8b"}, {"name": "other:latest"}]}), {})
+    got = probes.probe_llm_inventory(port, "qwen3:8b")
+    assert got.status == "PASS"
+    assert got.evidence == {"model_available": True, "item_count": 2, "http_status": 200}
+    assert requests == [("GET", "/api/tags", None)]
+    assert "qwen3:8b" not in json.dumps(got.serialize())
+
+
+def test_llm_openai_model_list_and_exact_match(http_site):
+    port, routes, requests = http_site
+    routes["/v1/models"] = (200, _json({"data": [{"id": "model-a"}]}), {})
+    assert probes.probe_llm_inventory(port, "model-a", "openai").status == "PASS"
+    missing = probes.probe_llm_inventory(port, "model", "openai")
+    assert missing.status == "FAIL"
+    assert missing.reason == "configured_model_not_listed"
+    assert requests == [("GET", "/v1/models", None)] * 2
+
+
+@pytest.mark.parametrize("value", [
+    b"<html/>", b'{"models":"bad"}', b'{"models":[null]}',
+    _json({"models": [{"name": "one"}] * 1001}),
+    b"[" * 2500 + b"]" * 2500,
+])
+def test_llm_invalid_inventory_never_passes(http_site, value):
+    port, routes, _ = http_site
+    routes["/api/tags"] = (200, value, {})
+    got = probes.probe_llm_inventory(port, "target")
+    assert got.status == "FAIL"
+    assert got.reason == "model_inventory_invalid"
+
+
+def test_llm_unconfigured_model_makes_no_request(http_site):
+    port, _, requests = http_site
+    got = probes.probe_llm_inventory(port, None)
+    assert got.status == "SKIP"
+    assert got.executed is False
+    assert requests == []
+
+
+def test_llm_auth_needed_is_not_success(http_site):
+    port, routes, _ = http_site
+    routes["/v1/models"] = (401, b"token=secret", {})
+    got = probes.probe_llm_inventory(port, "some-model", "openai")
+    assert got.status == "SKIP"
+    assert "secret" not in json.dumps(got.serialize())
+
+
+def test_llm_large_payload_is_bounded(http_site):
+    port, routes, _ = http_site
+    routes["/api/tags"] = (200, b" " * (probes.MAX_HTTP_BYTES + 1), {})
+    got = probes.probe_llm_inventory(port, "model")
+    assert got.reason == "model_inventory_oversized"
+
+
+def test_host_disk_only_not_full_host_acceptance(monkeypatch):
+    monkeypatch.setattr(probes.shutil, "disk_usage", lambda p: (10**10, 0, 1024**3))
+    monkeypatch.setattr(probes.os, "cpu_count", lambda: 8)
+    got = probes.probe_disk()
+    assert got.status == "PASS"
+    assert got.aspect == "disk_free_only"
+    assert got.evidence == {"free_mib": 1024, "cpu_count": 8}
+
+
+def test_host_disk_warn_on_low_space(monkeypatch):
+    monkeypatch.setattr(probes.shutil, "disk_usage", lambda p: (10**9, 0, 100 * 1024**2))
+    monkeypatch.setattr(probes.os, "cpu_count", lambda: 8)
+    assert probes.probe_disk().status == "WARN"
+
+
+def test_odbc_discovery_does_not_emit_library_path(monkeypatch):
+    monkeypatch.setattr(probes.ctypes.util, "find_library", lambda name: "/usr/lib/private/libodbc.so")
+    got = probes.probe_odbc_library()
+    assert got.aspect == "native_odbc_library_discovery_only"
+    assert got.status == "PASS"
+    assert "usr/lib" not in json.dumps(got.serialize())
+
+
+def test_odbc_missing_is_not_claimed_driver_present(monkeypatch):
+    monkeypatch.setattr(probes.ctypes.util, "find_library", lambda name: None)
+    got = probes.probe_odbc_library()
+    assert got.status == "WARN"
+    assert got.evidence == {"odbc_library_found": False}
+
+
+def test_cli_requires_explicit_check_and_diagnose_mode(capsys, monkeypatch):
+    monkeypatch.setattr(probes, "_http_get",
+                        lambda port, path: pytest.fail("unexpected network"))
+    assert probes.main(["--check", "llm-inventory"]) == 2
+    got = json.loads(capsys.readouterr().out)
+    assert got["reason"] == "diagnose_mode_required"
+    assert got["executed"] is False
+
+
+def test_cli_mode_gate_even_with_model_name(capsys, monkeypatch):
+    monkeypatch.setattr(probes, "_http_get",
+                        lambda port, path: pytest.fail("unexpected network"))
+    assert probes.main(["--check", "llm-inventory", "--model-name", "secret"]) == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "SKIP"
+
+
+@pytest.mark.parametrize("bad", ["0", "-4", "65536", "xyz"])
+def test_cli_rejects_invalid_ports(bad):
+    with pytest.raises(SystemExit) as error:
+        probes.main(["--check", "sys-disk", "--api-port", bad])
+    assert error.value.code == 2
+
+
+def test_cli_real_local_http_and_exit_code(http_site, capsys):
+    port, routes, _ = http_site
+    routes["/healthz"] = (200, b"{}", {})
+    assert probes.main(["--check", "api-health", "--api-port", str(port)]) == 0
+    got = json.loads(capsys.readouterr().out)
+    assert got["status"] == "PASS"
+    assert got["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
+
+
+def test_off0_safe_record_boundary_still_refuses_proofless_pass():
+    registry = json.loads(
+        (ROOT / "docs/operations/sraf_airgap_off0_checks.v1.json").read_text()
+    )
+    with pytest.raises(ContractError, match="report_pass_probe_not_implemented"):
+        make_report_record(registry, "API-01", "PASS", evidence={"http_status": 200})
+
+
+def test_standalone_cli_non_mutating_status_not_full_acceptance():
+    finished = subprocess.run(
+        [sys.executable, "tools/sraf_airgap_off1_probes.py",
+         "--check", "llm-inventory"],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=10,
+    )
+    assert finished.returncode == 2
+    payload = json.loads(finished.stdout)
+    assert payload["status"] == "SKIP"
+    assert payload["executed"] is False
+    assert payload["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
+    assert finished.stderr == ""
