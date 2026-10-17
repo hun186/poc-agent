@@ -1,0 +1,40 @@
+name: SRAF OFF-1A read-only probe tests
+
+on:
+  pull_request:
+    paths:
+      - 'tools/sraf_airgap_off1_probes.py'
+      - 'tests/test_sraf_airgap_off1_probes.py'
+      - 'tools/validate_sraf_airgap_off0_contract.py'
+      - 'docs/operations/sraf_airgap_off1a.md'
+      - '.github/workflows/sraf-airgap-off1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probes:
+    name: OFF-1A bounded probe regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile and check OFF-0 inventory (no runtime services)
+        run: |
+          python -m compileall -q tools/sraf_airgap_off1_probes.py tests/test_sraf_airgap_off1_probes.py
+          python tools/validate_sraf_airgap_off0_contract.py
+      - name: Install dependencies before pytest (AGENTS.md)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install 'pytest>=8,<10'
+      - name: Run OFF-1A and OFF-0 regressions
+        run: python -m pytest -q tests/test_sraf_airgap_off1_probes.py tests/test_sraf_airgap_off0_contract.py
+      - name: Probe CI host disk only (not the SRAF deployment host)
+        run: python tools/sraf_airgap_off1_probes.py --check sys-disk
