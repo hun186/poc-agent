@@ -196,3 +196,8 @@
 ## 2026-10-13 P2.1 seventeenth-review missing Import Profile
 
 - When the requested preview `profile_version_id` does not exist in RequirementStore, `KeyError("profile_version_not_found")` is classified at the Product preview lookup boundary as HTTP 422 `requirement_preview_profile_invalid`, the same stable validation code used for structurally invalid/mismatched profiles. Other unexpected store KeyErrors remain masked HTTP 500 `persistence_error`. Added direct/API regression; exact-head Codex and full pytest/SQL Server still pending.
+
+## 2026-10-17 SRAF OFF-1A standalone CLI (not HTTP API)
+
+- New operator-invoked script tools/sraf_airgap_off1_probes.py requires --check sys-disk|odbc-library|api-health|es-transport|llm-inventory, supports --mode quick|diagnose and bounded loopback port selectors. diagnose checks may not execute in quick.
+- JSON stdout is schema sraf_airgap_off1_partial_probe_v1 with mode=PARTIAL_ONLY_NOT_ACCEPTANCE, check_id, probe, aspect, status, reason, executed, safe numeric/boolean evidence. CLI exits 0 for subprobe PASS, 1 for FAIL/WARN, 2 for SKIP. This is NOT an HTTP endpoint, unified Runner, OFF-0 formal report, or a production acceptance contract.
