@@ -56,7 +56,8 @@ def http_site():
             if "_chunked" in headers:
                 coding = headers["_chunked"]
                 raw_header = (
-                    (("HTTP/1.0" if headers.get("_http10") else "HTTP/1.1") +
+                    (headers.get("_status_version",
+                                 "HTTP/1.0" if headers.get("_http10") else "HTTP/1.1") +
                      " " + str(status) + " OK\r\n" +
                      "Content-Type: application/json\r\n" +
                      "Transfer-Encoding: " + coding + "\r\n" +
@@ -675,3 +676,60 @@ def test_chunked_oversized_body_stays_bounded_and_cannot_pass(http_site):
     result = probes.probe_api_health(port)
     assert result.status == "FAIL"
     assert result.reason == "api_response_oversized"
+
+
+@pytest.mark.parametrize("status_version", [
+    "HTTP/1.2", "HTTP/1.X", "HTTP/1.9", "HTTP/1.invalid",
+])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_normalized_http11_response_version_cannot_bypass_literal_check(
+    http_site, status_version, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama" else
+            _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_chunked": "chunked",
+                                "_status_version": status_version})
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+def test_raw_http11_version_is_captured_before_normalization(http_site):
+    port, routes, _ = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {"_chunked": "chunked",
+                               "_status_version": "HTTP/1.1"})
+    conn = probes._DeadlineHTTPConnection(port, deadline=time.monotonic() + 3)
+    try:
+        conn.request("GET", "/")
+        response = conn.getresponse()
+        assert response.raw_status_version == "HTTP/1.1"
+        assert response.version == 11
+    finally:
+        conn.close()
+
+
+def test_raw_http12_version_is_preserved_despite_http_client_normalization(http_site):
+    port, routes, _ = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {"_chunked": "chunked",
+                               "_status_version": "HTTP/1.2"})
+    conn = probes._DeadlineHTTPConnection(port, deadline=time.monotonic() + 3)
+    try:
+        conn.request("GET", "/")
+        response = conn.getresponse()
+        assert response.raw_status_version == "HTTP/1.2"
+        assert response.version == 11
+    finally:
+        conn.close()
