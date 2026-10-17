@@ -186,8 +186,15 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
                                           "Connection": "close"})
         response = conn.getresponse()
         status = response.status
+        # read(amt) can silently return incomplete bytes on early EOF even
+        # when Content-Length declared a larger body. Preserve the expected
+        # length BEFORE http.client updates its internal remaining counter.
+        expected_length = response.length
         body = response.read(MAX_HTTP_BYTES + 1)
         if time.monotonic() >= deadline:
+            return None, None
+        if (expected_length is not None and
+                len(body) != min(expected_length, MAX_HTTP_BYTES + 1)):
             return None, None
         return status, body
     except (OSError, http.client.HTTPException):
@@ -228,8 +235,10 @@ def probe_es_transport(port: int) -> Observation:
                        executed=True, evidence={"http_status": status})
     if (not isinstance(payload, dict) or
             not isinstance(payload.get("cluster_name"), str) or
+            not payload["cluster_name"].strip() or
             not isinstance(payload.get("version"), dict) or
-            not isinstance(payload["version"].get("number"), str)):
+            not isinstance(payload["version"].get("number"), str) or
+            not payload["version"]["number"].strip()):
         return _result("es-transport", "FAIL", "es_identity_unverified",
                        executed=True, evidence={"http_status": status})
     # This confirms only an ES-like HTTP identity, NOT credentials, mapping
