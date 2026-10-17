@@ -188,3 +188,5 @@
 - 2026-10-17 OFF-1A third Codex review of a10408e8 surfaced two P2 (Content-Length early EOF, empty ES identity). Added safeguards, negative real loopback tests, and docs; current-head GitHub Actions/Codex review and explicit merge authorization remain outstanding.
 
 - 2026-10-17 OFF-1A fourth Codex P2: reject malformed Content-Length obscured by http.client. Added strict framing check and ES/LLM loopback regressions; hosted exact-head CI and further Codex review still pending. PR #292 must stay open until user explicitly authorizes merge.
+
+- 2026-10-17 OFF-1A PR #292 fifth Codex P2 on discarded malformed HTTP headers fixed by rejecting response.headers.defects. Added real raw malformed framing GET tests across API/ES/Ollama/OpenAI. Exact latest-head GitHub Actions and Codex re-review pending. Do not merge before user approval.
