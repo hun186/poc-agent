@@ -56,7 +56,8 @@ def http_site():
             if "_chunked" in headers:
                 coding = headers["_chunked"]
                 raw_header = (
-                    ("HTTP/1.1 " + str(status) + " OK\r\n" +
+                    (("HTTP/1.0" if headers.get("_http10") else "HTTP/1.1") +
+                     " " + str(status) + " OK\r\n" +
                      "Content-Type: application/json\r\n" +
                      "Transfer-Encoding: " + coding + "\r\n" +
                      ("Content-Length: " + str(len(body)) + "\r\n"
@@ -68,11 +69,19 @@ def http_site():
                 middle = max(1, len(body) // 2)
                 chunks = [body[:middle], body[middle:]]
                 raw_body = b"".join(
-                    ("%x\r\n" % len(chunk)).encode("ascii") + chunk + b"\r\n"
+                    ("%x\r\n" % len(chunk)).encode("ascii") + chunk +
+                    (b"XX" if headers.get("_bad_delimiter") else b"\r\n")
                     for chunk in chunks if chunk
                 )
-                if not headers.get("_omit_terminal"):
-                    raw_body += b"0\r\n\r\n"
+                if headers.get("_omit_trailer_terminator"):
+                    raw_body += b"0\r\n"
+                elif not headers.get("_omit_terminal"):
+                    if headers.get("_valid_trailer"):
+                        raw_body += b"0\r\nX-Check: verified\r\n\r\n"
+                    elif headers.get("_bad_trailer"):
+                        raw_body += b"0\r\nX-Check : invalid\r\n\r\n"
+                    else:
+                        raw_body += b"0\r\n\r\n"
                 try:
                     self.wfile.write(raw_header + raw_body)
                     self.wfile.flush()
@@ -608,3 +617,61 @@ def test_legitimate_uppercase_chunked_token_accepted(http_site):
     body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
     routes["/"] = (200, body, {"_chunked": "CHUNKED"})
     assert probes.probe_es_transport(port).status == "PASS"
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+@pytest.mark.parametrize("malformed", [
+    {"_bad_delimiter": "yes"},
+    {"_omit_trailer_terminator": "yes"},
+    {"_bad_trailer": "yes"},
+    {"_http10": "yes"},
+])
+def test_chunked_corrupt_delimiter_trailer_or_http10_never_passes(
+    http_site, path, kind, malformed,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama" else
+            _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_chunked": "chunked", **malformed})
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(
+               port, "model-a", "ollama" if kind == "ollama" else "openai",
+           ))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/", "es"), ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_legitimate_chunked_trailer_is_fully_consumed(
+    http_site, path, kind,
+):
+    port, routes, _ = http_site
+    body = (_json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_chunked": "chunked", "_valid_trailer": "yes"})
+    got = (probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(
+               port, "model-a", "ollama" if kind == "ollama" else "openai",
+           ))
+    assert got.status == "PASS"
+
+
+def test_chunked_oversized_body_stays_bounded_and_cannot_pass(http_site):
+    port, routes, _ = http_site
+    body = b"x" * (probes.MAX_HTTP_BYTES + 100)
+    routes["/healthz"] = (200, body, {"_chunked": "chunked"})
+    result = probes.probe_api_health(port)
+    assert result.status == "FAIL"
+    assert result.reason == "api_response_oversized"
