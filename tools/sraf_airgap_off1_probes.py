@@ -96,15 +96,23 @@ ODBC_LIBRARY_CANDIDATES = (
 )
 
 
+def _odbc_platform_supported() -> bool:
+    return os.name == "posix"
+
+
+def _odbc_library_file_exists(path: str) -> bool:
+    return os.path.isfile(path)
+
+
 def probe_odbc_library() -> Observation:
     probe = "odbc-library"
-    if os.name != "posix":
+    if not _odbc_platform_supported():
         return _result(probe, "SKIP", "odbc_filesystem_probe_unsupported",
                        executed=False)
     # No dynamic loader, compiler, helper subprocess, glob, or user-supplied path.
     # Merely finding one file is NOT confirmation of loadability or SQL driver.
     try:
-        present = any(os.path.isfile(path) for path in ODBC_LIBRARY_CANDIDATES)
+        present = any(_odbc_library_file_exists(path) for path in ODBC_LIBRARY_CANDIDATES)
     except (OSError, ValueError):
         return _result(probe, "FAIL", "odbc_discovery_unavailable", executed=True)
     return _result(probe, "PASS" if present else "WARN",
