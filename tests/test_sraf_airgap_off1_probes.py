@@ -406,3 +406,45 @@ def test_es_identity_rejects_blank_names_or_versions(http_site, cluster, version
     got = probes.probe_es_transport(port)
     assert got.status == "FAIL"
     assert got.reason == "es_identity_unverified"
+
+
+@pytest.mark.parametrize(("declared_length", "extra_headers"), [
+    ("-1", {}),
+    ("not-a-number", {}),
+    ("+12", {}),
+    ("12.0", {}),
+    ("5, 5", {}),
+    ("1e2", {}),
+    ("9999999999999999999999999999999999", {}),
+    ("0", {"Content-Length": "20"}),
+    ("0", {"Transfer-Encoding": "chunked"}),
+])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/", "es"),
+    ("/api/tags", "ollama"),
+    ("/v1/models", "openai"),
+])
+def test_invalid_or_duplicate_content_length_never_confirms_service(
+    http_site, declared_length, extra_headers, path, kind,
+):
+    port, routes, requests = http_site
+    body = (_json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_declared_length": declared_length, **extra_headers})
+    observation = (probes.probe_es_transport(port) if kind == "es"
+                   else probes.probe_llm_inventory(
+                       port, "model-a", "ollama" if kind == "ollama" else "openai",
+                   ))
+    assert observation.status == "FAIL"
+    assert observation.reason in ("es_transport_unavailable", "model_service_unavailable")
+    assert observation.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+def test_valid_content_length_optional_ascii_whitespace_is_accepted(http_site):
+    port, routes, _ = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {"_declared_length": "  " + str(len(body)) + " \t"})
+    assert probes.probe_es_transport(port).status == "PASS"
