@@ -184,3 +184,5 @@
 - 2026-10-17 OFF-1A P1 first fix CI run 38992439458 FAILED (331 PASS/2 FAIL): actual slow-drip still exceeded 3s due to HTTPConnection's instance _create_connection shadowing. Fixed binding and regression in new branch head; await new hosted CI and Codex re-review. No merge permission.
 
 - 2026-10-17 OFF-1A: second Codex review P1 about unbounded ODBC helper execution addressed by static finite Unix library candidate checks plus tests/docs. Hosted exact-head Actions and fresh Codex review still required before merge authorization. Expand real ODBC/SQL testing only with reviewed OFF-1B trust boundary.
+
+- 2026-10-17 OFF-1A third Codex review of a10408e8 surfaced two P2 (Content-Length early EOF, empty ES identity). Added safeguards, negative real loopback tests, and docs; current-head GitHub Actions/Codex review and explicit merge authorization remain outstanding.
