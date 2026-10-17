@@ -180,3 +180,5 @@
 - OFF-2 bundle, OFF-3 unified Runner, OFF-4 safety reports/runbook, OFF-5 real isolated air-gap dress rehearsal remain unimplemented, independent from Requirement Product API P2.2.
 
 - 2026-10-17 PR #292 first Codex review produced P1 unbounded wall-clock duration under slow-drip HTTP response despite 3s inactivity timeouts. Added absolute deadline socket and adversarial live loopback regressions. Track exact new head Hosted CI, address any failures, re-request Codex review, do NOT merge without explicit user authorization.
+
+- 2026-10-17 OFF-1A P1 first fix CI run 38992439458 FAILED (331 PASS/2 FAIL): actual slow-drip still exceeded 3s due to HTTPConnection's instance _create_connection shadowing. Fixed binding and regression in new branch head; await new hosted CI and Codex re-review. No merge permission.
