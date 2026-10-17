@@ -187,6 +187,12 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
                                           "Connection": "close"})
         response = conn.getresponse()
         status = response.status
+        # Invalid raw lines (e.g. "Content-Length : -1") are discarded
+        # by email.parser and do not appear in get_all(). They do register
+        # defects: reject the entire response before inspecting framing or
+        # accepting an otherwise plausible JSON service identity.
+        if response.headers.defects:
+            return None, None
         # http.client silently normalizes a *malformed* Content-Length to
         # response.length=None, indistinguishable from an absent header.
         # Inspect the original parsed header list before accepting JSON.
