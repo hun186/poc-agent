@@ -165,7 +165,7 @@ _HEADER_FIELD_LINE = re.compile(
 # The status line is checked *before* http.client decodes it to text:
 # otherwise NUL/DEL and other invalid reason-phrase bytes go unnoticed.
 _HTTP_STATUS_LINE = re.compile(
-    rb"HTTP/1\.[01] [1-9][0-9]{2}(?: [\t\x20-\x7e\x80-\xff]*)?"
+    rb"HTTP/1\.[01] [1-9][0-9]{2} [\t\x20-\x7e\x80-\xff]*"
 )
 
 
