@@ -162,6 +162,11 @@ class _DeadlineSocket(socket.socket):
 _HEADER_FIELD_LINE = re.compile(
     rb"[!#$%&'*+\-.^_`|~0-9A-Za-z]+:[\t\x20-\x7e\x80-\xff]*"
 )
+# The status line is checked *before* http.client decodes it to text:
+# otherwise NUL/DEL and other invalid reason-phrase bytes go unnoticed.
+_HTTP_STATUS_LINE = re.compile(
+    rb"HTTP/1\.[01] [1-9][0-9]{2}(?: [\t\x20-\x7e\x80-\xff]*)?"
+)
 
 
 class _StrictHeaderLineReader:
@@ -182,7 +187,8 @@ class _StrictHeaderLineReader:
         if not line.endswith(b"\r\n"):
             raise http.client.HTTPException("http_header_line_ending_invalid")
         if self._expect_status:
-            # The normal HTTP parser validates status shape and range.
+            if _HTTP_STATUS_LINE.fullmatch(line[:-2]) is None:
+                raise http.client.HTTPException("http_status_line_invalid")
             self._expect_status = False
         elif line == b"\r\n":
             # Needed for another status line after interim 100 Continue.
