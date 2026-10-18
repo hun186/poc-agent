@@ -316,3 +316,5 @@
 - 2026-10-18 strict OFF-1A raw status syntax requires exact HTTP/1.0 or 1.1, SP, 3 ASCII decimal status digits, mandatory SP, then optional safe reason bytes. Absence of second SP is malformed even if Python HTTPResponse accepts it. Validate all final and interim raw status lines.
 
 - 2026-10-18 OFF-1A HTTP interim framing rule: reject Content-Length or Transfer-Encoding headers on every 100 Continue status block prior to stdlib http.client discarding interim headers, regardless of value/case. Stateful strict raw-line reader tracks current 100 header block, resets at the blank line and continues validating subsequent final response. Preserve valid custom interim headers and strict final HTTP framing checks.
+
+- 2026-10-18 OFF-1A chunk trailers: although syntactically legal field lines can appear after zero-size chunk, message-framing fields (Content-Length, Transfer-Encoding) are never allowed to modify/declare framing after body. Explicitly reject both names case-insensitively in strict bounded trailer parser. Ordinary safe metadata trailers remain allowed. No full-live SRAF acceptance implied.
