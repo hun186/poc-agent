@@ -309,6 +309,13 @@ def _read_verified_chunked(fp: Any, deadline: float) -> bytes:
                     return bytes(payload)
                 if _CHUNK_TRAILER.fullmatch(trailer[:-2]) is None:
                     raise http.client.HTTPException("chunk_trailer_invalid")
+                # Trailers cannot retroactively declare or override message
+                # framing. Validate the field name before accepting the
+                # already decoded JSON body (also reject mixed-case names).
+                if trailer.split(b":", 1)[0].lower() in (
+                    b"content-length", b"transfer-encoding",
+                ):
+                    raise http.client.HTTPException("chunk_trailer_framing_forbidden")
             raise http.client.HTTPException("chunk_trailer_oversized")
         if chunk_size > MAX_HTTP_BYTES - len(payload):
             # Keep the existing oversized-body classification at the caller,
