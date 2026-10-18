@@ -200,3 +200,5 @@
 - 2026-10-18 PR #292 ninth exact-head Codex review flagged one P2 bare-LF HTTP status/header false-PASS. Added strict CRLF raw-header guard and 21 new tested scenarios, docs updated. Must verify exact-head Hosted GitHub Actions and submit tenth Codex review; no merge without explicit user request.
 
 - 2026-10-18 PR #292 tenth Codex review produced two P2: invalid raw headers including interim 100 bypass parser defects, and unsupported status tokens on nonchunked Content-Length responses. Fixed both with header raw-syntax and all-mode literal-version validation; expanded live TCP tests. Exact-head Actions and eleventh Codex review outstanding; no merge until explicit authorization.
+
+- 2026-10-18 OFF-1A PR #292 Hosted run 39094410231 FAILED (526 pass, 1 obsolete expectation test fail). Updated test to expect immediate HTTP/1.2 rejection consistent with strict all-mode guard; new exact-head Hosted CI and fresh Codex review pending. No merge approval.
