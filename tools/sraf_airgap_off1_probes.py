@@ -181,6 +181,7 @@ class _StrictHeaderLineReader:
     def __init__(self, original: Any):
         self._original = original
         self._expect_status = True
+        self._interim_100 = False
 
     def readline(self, limit: int = -1) -> bytes:
         line = self._original.readline(limit)
@@ -189,12 +190,21 @@ class _StrictHeaderLineReader:
         if self._expect_status:
             if _HTTP_STATUS_LINE.fullmatch(line[:-2]) is None:
                 raise http.client.HTTPException("http_status_line_invalid")
+            # http.client discards every 100 Continue header block before
+            # returning the final headers. Track interim framing on the raw
+            # wire so a malformed 100 cannot be used to conceal CL or TE.
+            self._interim_100 = line.split(b" ", 2)[1] == b"100"
             self._expect_status = False
         elif line == b"\r\n":
             # Needed for another status line after interim 100 Continue.
             self._expect_status = True
+            self._interim_100 = False
         elif _HEADER_FIELD_LINE.fullmatch(line[:-2]) is None:
             raise http.client.HTTPException("http_header_field_invalid")
+        elif (self._interim_100 and
+              line.split(b":", 1)[0].lower()
+              in (b"content-length", b"transfer-encoding")):
+            raise http.client.HTTPException("http_interim_framing_forbidden")
         return line
 
 
