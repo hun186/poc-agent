@@ -202,3 +202,5 @@
 - 2026-10-18 PR #292 tenth Codex review produced two P2: invalid raw headers including interim 100 bypass parser defects, and unsupported status tokens on nonchunked Content-Length responses. Fixed both with header raw-syntax and all-mode literal-version validation; expanded live TCP tests. Exact-head Actions and eleventh Codex review outstanding; no merge until explicit authorization.
 
 - 2026-10-18 OFF-1A PR #292 Hosted run 39094410231 FAILED (526 pass, 1 obsolete expectation test fail). Updated test to expect immediate HTTP/1.2 rejection consistent with strict all-mode guard; new exact-head Hosted CI and fresh Codex review pending. No merge approval.
+
+- 2026-10-18 OFF-1A followup review at old 53cd2655 reported P1 obsolete HTTP/1.2 regression test (already corrected on later head) and P2 NUL in raw reason phrase (patched using strict raw status regex plus live negative tests). Current head requires Hosted CI and Codex re-review; PR remains OPEN and unmerged.
