@@ -212,3 +212,5 @@
 - 2026-10-18 PR #292 current 0171184d Codex P2 on forbidden 100 Continue framing headers addressed with raw state tracking and 25 new parameterized TCP cases. Exact head Hosted Actions and fresh Codex review required before merge; offline FULL_LIVE acceptance still not implemented.
 
 - 2026-10-18 PR #292 latest Codex review on 9129fff0 found P2 forbidden framing field names in chunk trailers. Fix and 44 live socket tests committed across four endpoint types; next exact-head Hosted CI and Codex review needed; do not merge without approval.
+
+- 2026-10-18 PR #292 current Codex Review found 2 P2 on header-only chunk trailer fields and legal obs-text custom metadata. Code/docs/test fix committed; verify latest Hosted GitHub Actions and request fresh exact-head Codex review. No merge without user authorization.
