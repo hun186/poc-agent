@@ -998,3 +998,48 @@ def test_raw_status_line_normal_valid_reason_phrase_still_accepted(http_site):
     got = probes.probe_es_transport(port)
     assert got.status == "PASS"
     assert requests == [("GET", "/", None)]
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_status_code_without_required_reason_separator_is_rejected(
+    http_site, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama" else
+            _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_raw_status_line": "HTTP/1.1 200"})
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+def test_status_line_empty_reason_with_mandatory_separator_is_accepted(http_site):
+    port, routes, requests = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {"_raw_status_line": "HTTP/1.1 200 "})
+    got = probes.probe_es_transport(port)
+    assert got.status == "PASS"
+    assert requests == [("GET", "/", None)]
+
+
+def test_interim_status_without_reason_separator_cannot_be_skipped(http_site):
+    port, routes, requests = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {
+        "_interim_raw_header": "X-Interim: yes",
+        "_interim_status_line": "HTTP/1.1 100",
+    })
+    got = probes.probe_es_transport(port)
+    assert got.status == "FAIL"
+    assert got.reason == "es_transport_unavailable"
+    assert requests == [("GET", "/", None)]
