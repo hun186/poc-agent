@@ -204,3 +204,5 @@
 - 2026-10-18 OFF-1A PR #292 Hosted run 39094410231 FAILED (526 pass, 1 obsolete expectation test fail). Updated test to expect immediate HTTP/1.2 rejection consistent with strict all-mode guard; new exact-head Hosted CI and fresh Codex review pending. No merge approval.
 
 - 2026-10-18 OFF-1A followup review at old 53cd2655 reported P1 obsolete HTTP/1.2 regression test (already corrected on later head) and P2 NUL in raw reason phrase (patched using strict raw status regex plus live negative tests). Current head requires Hosted CI and Codex re-review; PR remains OPEN and unmerged.
+
+- 2026-10-18 CI 39094831761 returned 552 PASS / 1 FAIL because direct invalid HTTP/1.2 test asserted stale exception reason. Updated test to assert http_status_line_invalid from earliest raw status-line syntax guard; new exact-head CI and re-review required, PR remains OPEN.
