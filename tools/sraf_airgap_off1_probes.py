@@ -156,22 +156,39 @@ class _DeadlineSocket(socket.socket):
         return super().sendall(data, flags)
 
 
-class _StrictHeaderLineReader:
-    """Validate each raw status/header line while http.client parses it.
+# HTTP field-name follows RFC token syntax. A valid field value may
+# include visible ASCII, spaces/tabs and obs-text, but not control bytes,
+# NUL, bare CR/LF, or obsolete folded continuation lines.
+_HEADER_FIELD_LINE = re.compile(
+    rb"[!#$%&'*+\-.^_`|~0-9A-Za-z]+:[\t\x20-\x7e\x80-\xff]*"
+)
 
-    CPython's status and email header parsers accept bare LF (and sometimes
-    EOF-terminated lines) without recording defects. The HTTP probe requires
-    exact CRLF for every line, including 100-Continue interim responses.
-    Only readline() is exposed because begin() needs solely header lines.
+
+class _StrictHeaderLineReader:
+    """Validate raw HTTP status/header lines before any forgiving parser.
+
+    CPython accepts bare LF and email.parser can silently drop bad field
+    names or accept NUL values without reporting defects. Validate *all*
+    interim 100 headers as well as final headers, then restore the original
+    buffered stream so body decoding keeps the monotonic socket deadline.
     """
 
     def __init__(self, original: Any):
         self._original = original
+        self._expect_status = True
 
     def readline(self, limit: int = -1) -> bytes:
         line = self._original.readline(limit)
         if not line.endswith(b"\r\n"):
             raise http.client.HTTPException("http_header_line_ending_invalid")
+        if self._expect_status:
+            # The normal HTTP parser validates status shape and range.
+            self._expect_status = False
+        elif line == b"\r\n":
+            # Needed for another status line after interim 100 Continue.
+            self._expect_status = True
+        elif _HEADER_FIELD_LINE.fullmatch(line[:-2]) is None:
+            raise http.client.HTTPException("http_header_field_invalid")
         return line
 
 
@@ -186,6 +203,10 @@ class _RawVersionHTTPResponse(http.client.HTTPResponse):
     def _read_status(self) -> tuple[str, int, str]:
         version, status, reason = super()._read_status()
         self.raw_status_version = version
+        # CPython treats arbitrary HTTP/1.* tokens as version 11. Validate
+        # each status line here, including intermediate HTTP/1.1 100 replies.
+        if version not in ("HTTP/1.0", "HTTP/1.1"):
+            raise http.client.HTTPException("http_status_version_unsupported")
         return version, status, reason
 
     def begin(self) -> None:
@@ -294,6 +315,8 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
                                           "Connection": "close"})
         response = conn.getresponse()
         status = response.status
+        if response.raw_status_version not in ("HTTP/1.0", "HTTP/1.1"):
+            return None, None
         # Invalid raw lines (e.g. "Content-Length : -1") are discarded
         # by email.parser and do not appear in get_all(). They do register
         # defects: reject the entire response before inspecting framing or
