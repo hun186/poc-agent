@@ -171,3 +171,5 @@
 - 2026-10-18 OFF-1A ninth Codex P2: permissive CPython HTTP/email parser accepts bare LF header boundaries without defects. Temporary raw readline guard during response.begin now insists on CRLF; added actual raw socket tests for chunked and nonchunked framing. CI and fresh review outstanding.
 
 - 2026-10-18 tenth OFF-1A Codex review: malformed final/interim raw HTTP header syntax and Content-Length response with invalid HTTP/1.X raw status could falsely PASS. Both fixed with raw RFC field name/value check (control/NUL rejection) for every status/header block and literal supported-version gate across all body modes; new live HTTPServer regressions. Fresh exact-head CI/Review pending.
+
+- 2026-10-18 Codex head 53cd2655 P2 discovered NUL/control bytes in HTTP raw status reason text could still lead to false PASS. Raw status lines now validated before permissive parsing (version/status/reason byte ranges) for all final and interim status lines. Tests cover bad control bytes and valid reason phrases. Exact-head CI and review outstanding.
