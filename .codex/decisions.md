@@ -314,3 +314,5 @@
 - 2026-10-18 OFF-1A raw status-line trust: validate every wire status line before http.client text parsing, including interim 100s. Only HTTP/1.0 and HTTP/1.1, three ASCII-digit status code and reason characters limited to HTAB/visible ASCII/obs-text (not NUL/other C0/DEL) may proceed. Continue using strict header field validation and total socket deadline.
 
 - 2026-10-18 strict OFF-1A raw status syntax requires exact HTTP/1.0 or 1.1, SP, 3 ASCII decimal status digits, mandatory SP, then optional safe reason bytes. Absence of second SP is malformed even if Python HTTPResponse accepts it. Validate all final and interim raw status lines.
+
+- 2026-10-18 OFF-1A HTTP interim framing rule: reject Content-Length or Transfer-Encoding headers on every 100 Continue status block prior to stdlib http.client discarding interim headers, regardless of value/case. Stateful strict raw-line reader tracks current 100 header block, resets at the blank line and continues validating subsequent final response. Preserve valid custom interim headers and strict final HTTP framing checks.
