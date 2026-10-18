@@ -795,8 +795,10 @@ def test_raw_http12_status_version_is_rejected_before_normalization(http_site):
     conn = probes._DeadlineHTTPConnection(port, deadline=time.monotonic() + 3)
     try:
         conn.request("GET", "/")
+        # Raw wire-format validation intentionally rejects unsupported
+        # versions before stdlib's status-version normalization occurs.
         with pytest.raises(probes.http.client.HTTPException,
-                           match="http_status_version_unsupported"):
+                           match="http_status_line_invalid"):
             conn.getresponse()
         assert requests == [("GET", "/", None)]
     finally:
