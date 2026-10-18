@@ -196,3 +196,5 @@
 - 2026-10-17 PR #292 seventh Codex review found 2 P2: malformed chunk CRLF or incomplete final trailers falsely accepted; HTTP/1.0 Transfer-Encoding chunked falsely accepted. Fix and adversarial raw HTTP regressions submitted; latest Hosted CI and exact-head Codex review outstanding. No merge authorization.
 
 - 2026-10-17 PR #292 eighth Codex review found one P2 normalized response.version accepted HTTP/1.2/1.X in chunked reply. Raw status token now checked for exact HTTP/1.1, with 18 new parametrized and direct HTTP socket regressions. Run Hosted current-head CI and fresh Codex review; await explicit merge authorization.
+
+- 2026-10-18 PR #292 ninth exact-head Codex review flagged one P2 bare-LF HTTP status/header false-PASS. Added strict CRLF raw-header guard and 21 new tested scenarios, docs updated. Must verify exact-head Hosted GitHub Actions and submit tenth Codex review; no merge without explicit user request.
