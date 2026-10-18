@@ -175,3 +175,5 @@
 - 2026-10-18 Codex head 53cd2655 P2 discovered NUL/control bytes in HTTP raw status reason text could still lead to false PASS. Raw status lines now validated before permissive parsing (version/status/reason byte ranges) for all final and interim status lines. Tests cover bad control bytes and valid reason phrases. Exact-head CI and review outstanding.
 
 - 2026-10-18 Codex P2 on d82fc99d: status line missing ASCII space after 3-digit code allowed as false PASS. Fixed mandatory delimiter regex; raw final and interim 100 negative tests and valid empty-reason positive added. P1 outdated test was already fixed. Exact-head CI and review pending.
+
+- 2026-10-18 Codex exact head 0171184d P2: forbidden 100 Continue Content-Length/Transfer-Encoding fields silently discarded by Python http.client. Added stateful raw interim-100 framing rejection, case insensitive, with real loopback tests. Hosted CI and fresh exact-head Codex review pending.
