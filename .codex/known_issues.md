@@ -179,3 +179,5 @@
 - 2026-10-18 Codex exact head 0171184d P2: forbidden 100 Continue Content-Length/Transfer-Encoding fields silently discarded by Python http.client. Added stateful raw interim-100 framing rejection, case insensitive, with real loopback tests. Hosted CI and fresh exact-head Codex review pending.
 
 - 2026-10-18 OFF-1A latest Codex P2: framing fields Content-Length and Transfer-Encoding wrongly allowed in chunk trailers. Added case-insensitive trailer denial and 40 negative + 4 positive local real TCP regression tests. CI/re-review pending.
+
+- 2026-10-18 OFF-1A Codex review on daee2d6d found 2 P2: header-only trailer standard fields can false-PASS; obs-text in legal custom trailers false-FAIL. Fixed with explicit forbidden standard/prefix set and shared RFC field-line regex with obs-text; raw live TCP regression cases added. Exact-head Actions and re-review pending.
