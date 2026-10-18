@@ -270,8 +270,35 @@ _CHUNK_HEAD = re.compile(
     rb"[0-9A-Fa-f]{1,16}(?:;[!#$%&'*+\-.^_\x60|~0-9A-Za-z]+"
     rb"(?:=[!#$%&'*+\-.^_\x60|~0-9A-Za-z]+)?)*"
 )
-_CHUNK_TRAILER = re.compile(
-    rb"[!#$%&'*+\-.^_\x60|~0-9A-Za-z]+:[ \t]*[\x20-\x7e\t]*"
+# Trailer field lines use the same RFC field grammar as ordinary headers,
+# including obs-text 0x80-0xFF in values. Keep that grammar identical to the
+# raw final/interim header validation instead of a narrower ASCII-only regex.
+_CHUNK_TRAILER = _HEADER_FIELD_LINE
+
+# RFC 9110 6.5.1 excludes fields needed for framing, authentication, routing,
+# response control or interpretation. Custom metadata and expressly permitted
+# digest/integrity fields remain available; reject these known header-only
+# standard fields, regardless of casing, rather than rejecting all trailers.
+_TRAILER_HEADER_ONLY_FIELDS = frozenset((
+    b"content-length", b"transfer-encoding", b"content-type",
+    b"content-encoding", b"content-language", b"content-location",
+    b"content-disposition", b"content-range", b"host", b"connection",
+    b"keep-alive", b"proxy-connection", b"trailer", b"te", b"upgrade",
+    b"location", b"alt-svc", b"forwarded", b"via",
+    b"authorization", b"proxy-authorization", b"www-authenticate",
+    b"proxy-authenticate", b"authentication-info",
+    b"proxy-authentication-info", b"cookie", b"set-cookie",
+    b"cache-control", b"pragma", b"expires", b"age", b"vary", b"etag",
+    b"last-modified", b"date", b"retry-after", b"allow", b"server",
+    b"accept", b"accept-encoding", b"accept-language",
+    b"accept-ranges", b"user-agent", b"origin", b"referer",
+    b"if-match", b"if-none-match", b"if-modified-since",
+    b"if-unmodified-since", b"if-range", b"strict-transport-security",
+    b"content-security-policy", b"content-security-policy-report-only",
+    b"x-content-type-options", b"x-frame-options",
+))
+_TRAILER_FORBIDDEN_PREFIXES = (
+    b"access-control-", b"proxy-", b"sec-fetch-", b"sec-ch-",
 )
 
 
@@ -309,13 +336,14 @@ def _read_verified_chunked(fp: Any, deadline: float) -> bytes:
                     return bytes(payload)
                 if _CHUNK_TRAILER.fullmatch(trailer[:-2]) is None:
                     raise http.client.HTTPException("chunk_trailer_invalid")
-                # Trailers cannot retroactively declare or override message
-                # framing. Validate the field name before accepting the
-                # already decoded JSON body (also reject mixed-case names).
-                if trailer.split(b":", 1)[0].lower() in (
-                    b"content-length", b"transfer-encoding",
-                ):
-                    raise http.client.HTTPException("chunk_trailer_framing_forbidden")
+                # Reject standard header-only fields that would alter
+                # framing, authentication, response control, routing or the
+                # interpretation of JSON if sent after its body. Do not
+                # indiscriminately reject custom/integrity metadata trailers.
+                trailer_name = trailer.split(b":", 1)[0].lower()
+                if (trailer_name in _TRAILER_HEADER_ONLY_FIELDS or
+                        trailer_name.startswith(_TRAILER_FORBIDDEN_PREFIXES)):
+                    raise http.client.HTTPException("chunk_trailer_field_forbidden")
             raise http.client.HTTPException("chunk_trailer_oversized")
         if chunk_size > MAX_HTTP_BYTES - len(payload):
             # Keep the existing oversized-body classification at the caller,
