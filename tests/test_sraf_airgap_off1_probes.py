@@ -95,7 +95,7 @@ def http_site():
                     if "_custom_trailer" in headers:
                         raw_body += (
                             b"0\r\n" +
-                            headers["_custom_trailer"].encode("ascii") +
+                            headers["_custom_trailer"].encode("latin-1") +
                             b"\r\n\r\n"
                         )
                     elif headers.get("_valid_trailer"):
@@ -1154,3 +1154,107 @@ def test_chunk_trailer_regular_metadata_is_allowed(
     assert got.status == "PASS"
     assert got.executed is True
     assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize("forbidden_trailer", [
+    "Content-Type: application/json",
+    "CONTENT-ENCODING: gzip",
+    "Content-Language: en-US",
+    "Content-Location: /secret",
+    "Content-Disposition: attachment",
+    "Content-Range: bytes 0-1/2",
+    "WWW-Authenticate: Basic realm=local",
+    "Proxy-Authenticate: Basic",
+    "Authorization: Basic abc",
+    "Authentication-Info: token",
+    "Cookie: session=test",
+    "Set-Cookie: session=test",
+    "Cache-Control: no-cache",
+    "Expires: Wed, 21 Oct 2015 07:28:00 GMT",
+    "Location: /redirect",
+    "Strict-Transport-Security: max-age=31536000",
+    "Content-Security-Policy: default-src 'none'",
+    "Access-Control-Allow-Origin: *",
+    "X-Frame-Options: DENY",
+    "X-Content-Type-Options: nosniff",
+    "Server: local",
+    "ETag: abc",
+    "X-Safe: yes\r\nCoNtEnT-TyPe: application/json",
+])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_chunk_trailers_reject_header_only_standard_fields(
+    http_site, forbidden_trailer, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {
+        "_chunked": "chunked",
+        "_custom_trailer": forbidden_trailer,
+    })
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize("allowed_trailer", [
+    "X-Label: caf\xe9",
+    "X-Bytes: \x80\xff",
+    "Content-Digest: sha-256=:YQ==:",
+    "Digest: SHA-256=abcd",
+    "X-Label: caf\xe9\r\nX-Integrity: verified",
+])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_chunk_trailers_allow_obs_text_and_permitted_metadata(
+    http_site, allowed_trailer, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {
+        "_chunked": "chunked",
+        "_custom_trailer": allowed_trailer,
+    })
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "PASS"
+    assert got.executed is True
+    assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize("bad_trailer", [
+    "X-Label: a\x00b",
+    "X-Label: a\x01b",
+    "X-Label: a\x7fb",
+])
+def test_chunk_trailer_obs_text_does_not_allow_control_bytes(
+    http_site, bad_trailer,
+):
+    port, routes, requests = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {
+        "_chunked": "chunked",
+        "_custom_trailer": bad_trailer,
+    })
+    got = probes.probe_es_transport(port)
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", "/", None)]
