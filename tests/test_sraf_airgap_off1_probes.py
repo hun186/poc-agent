@@ -105,6 +105,35 @@ def http_site():
                     pass
                 self.close_connection = True
                 return
+            if ("_raw_extra_header" in headers or
+                    "_interim_raw_header" in headers or
+                    "_unframed_status_version" in headers):
+                # Preserve intentionally invalid raw header bytes, including
+                # NUL and malformed interim 100 Continue blocks. Normal
+                # send_header() refuses/normalizes these cases.
+                raw_status_version = headers.get("_unframed_status_version", "HTTP/1.1")
+                final = (
+                    raw_status_version + " " + str(status) + " OK\r\n" +
+                    "Content-Type: application/json\r\n" +
+                    "Content-Length: " + str(len(body)) + "\r\n"
+                ).encode("ascii")
+                if "_raw_extra_header" in headers:
+                    final += headers["_raw_extra_header"].encode("latin-1") + b"\r\n"
+                final += b"\r\n"
+                interim = b""
+                if "_interim_raw_header" in headers:
+                    interim = (
+                        b"HTTP/1.1 100 Continue\r\n" +
+                        headers["_interim_raw_header"].encode("latin-1") +
+                        b"\r\n\r\n"
+                    )
+                try:
+                    self.wfile.write(interim + final + body)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                self.close_connection = True
+                return
             if headers.get("_lf_unframed"):
                 # Valid JSON with malformed bare-LF status/headers and a
                 # syntactically valid Content-Length remains a transport error.
@@ -829,3 +858,77 @@ def test_strict_header_guard_restores_buffered_stream_for_body_read(http_site):
     routes["/"] = (200, body, {"_chunked": "chunked",
                                "_valid_trailer": "yes"})
     assert probes.probe_es_transport(port).status == "PASS"
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+@pytest.mark.parametrize("bad_header", [
+    {"_raw_extra_header": "X-Test: a\x00b"},
+    {"_raw_extra_header": "X-Test: a\x01b"},
+    {"_raw_extra_header": "Bad Header"},
+    {"_raw_extra_header": "Bad Header: value"},
+    {"_raw_extra_header": " X-Test: folded-value"},
+    {"_raw_extra_header": "X-Test : invalid"},
+    {"_interim_raw_header": "Bad Header"},
+    {"_interim_raw_header": "X-Test: a\x00b"},
+    {"_interim_raw_header": "X-Test : invalid"},
+])
+def test_raw_header_field_syntax_fails_closed_for_final_and_interim(
+    http_site, path, kind, bad_header,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, bad_header)
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize("raw_version", ["HTTP/1.2", "HTTP/1.X", "HTTP/1.9", "HTTP/0.9"])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_bad_raw_status_versions_rejected_for_content_length_responses(
+    http_site, raw_version, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_unframed_status_version": raw_version})
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+def test_valid_interim_100_header_and_final_identity_still_pass(http_site):
+    port, routes, requests = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {"_interim_raw_header": "X-Interim: yes"})
+    assert probes.probe_es_transport(port).status == "PASS"
+    assert requests == [("GET", "/", None)]
+
+
+def test_valid_obs_text_header_field_remains_parseable(http_site):
+    port, routes, requests = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {"_raw_extra_header": "X-Label: caf\xe9"})
+    assert probes.probe_es_transport(port).status == "PASS"
+    assert requests == [("GET", "/", None)]
