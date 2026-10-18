@@ -1043,3 +1043,44 @@ def test_interim_status_without_reason_separator_cannot_be_skipped(http_site):
     assert got.status == "FAIL"
     assert got.reason == "es_transport_unavailable"
     assert requests == [("GET", "/", None)]
+
+
+@pytest.mark.parametrize("interim_header", [
+    "Content-Length: 999",
+    "Content-Length: 0",
+    "cOnTeNt-LeNgTh: 12",
+    "Transfer-Encoding: chunked",
+    "TRANSFER-ENCODING: identity",
+    "Content-Length: 0\r\nTransfer-Encoding: chunked",
+])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_interim_100_framing_fields_are_not_discarded_into_false_pass(
+    http_site, interim_header, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_interim_raw_header": interim_header})
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+def test_regular_interim_100_headers_still_allow_normal_body_framing(http_site):
+    port, routes, requests = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {
+        "_interim_raw_header": "X-Probe: local\r\nX-Second: ok",
+    })
+    assert probes.probe_es_transport(port).status == "PASS"
+    assert requests == [("GET", "/", None)]
