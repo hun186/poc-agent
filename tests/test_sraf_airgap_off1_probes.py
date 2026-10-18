@@ -92,7 +92,13 @@ def http_site():
                 if headers.get("_omit_trailer_terminator"):
                     raw_body += b"0\r\n"
                 elif not headers.get("_omit_terminal"):
-                    if headers.get("_valid_trailer"):
+                    if "_custom_trailer" in headers:
+                        raw_body += (
+                            b"0\r\n" +
+                            headers["_custom_trailer"].encode("ascii") +
+                            b"\r\n\r\n"
+                        )
+                    elif headers.get("_valid_trailer"):
                         raw_body += b"0\r\nX-Check: verified\r\n\r\n"
                     elif headers.get("_bad_trailer"):
                         raw_body += b"0\r\nX-Check : invalid\r\n\r\n"
@@ -1084,3 +1090,67 @@ def test_regular_interim_100_headers_still_allow_normal_body_framing(http_site):
     })
     assert probes.probe_es_transport(port).status == "PASS"
     assert requests == [("GET", "/", None)]
+
+
+@pytest.mark.parametrize("forbidden_trailer", [
+    "Content-Length: 999",
+    "Content-Length: 0",
+    "content-length: 0",
+    "CoNtEnT-LeNgTh: 42",
+    "Transfer-Encoding: chunked",
+    "transfer-encoding: identity",
+    "TRANSFER-ENCODING: gzip",
+    "X-Safe: ok\r\nContent-Length: 999",
+    "X-Safe: ok\r\nTransfer-Encoding: chunked",
+    "Content-Length: 0\r\nTransfer-Encoding: chunked",
+])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_chunk_trailers_cannot_override_message_framing(
+    http_site, forbidden_trailer, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {
+        "_chunked": "chunked",
+        "_custom_trailer": forbidden_trailer,
+    })
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_chunk_trailer_regular_metadata_is_allowed(
+    http_site, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {
+        "_chunked": "chunked",
+        "_custom_trailer": "X-Probe: valid",
+    })
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "PASS"
+    assert got.executed is True
+    assert requests == [("GET", path, None)]
