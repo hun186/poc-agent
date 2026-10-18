@@ -173,3 +173,5 @@
 - 2026-10-18 tenth OFF-1A Codex review: malformed final/interim raw HTTP header syntax and Content-Length response with invalid HTTP/1.X raw status could falsely PASS. Both fixed with raw RFC field name/value check (control/NUL rejection) for every status/header block and literal supported-version gate across all body modes; new live HTTPServer regressions. Fresh exact-head CI/Review pending.
 
 - 2026-10-18 Codex head 53cd2655 P2 discovered NUL/control bytes in HTTP raw status reason text could still lead to false PASS. Raw status lines now validated before permissive parsing (version/status/reason byte ranges) for all final and interim status lines. Tests cover bad control bytes and valid reason phrases. Exact-head CI and review outstanding.
+
+- 2026-10-18 Codex P2 on d82fc99d: status line missing ASCII space after 3-digit code allowed as false PASS. Fixed mandatory delimiter regex; raw final and interim 100 negative tests and valid empty-reason positive added. P1 outdated test was already fixed. Exact-head CI and review pending.
