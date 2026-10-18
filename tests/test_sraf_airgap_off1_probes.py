@@ -107,23 +107,31 @@ def http_site():
                 return
             if ("_raw_extra_header" in headers or
                     "_interim_raw_header" in headers or
-                    "_unframed_status_version" in headers):
+                    "_unframed_status_version" in headers or
+                    "_raw_status_line" in headers or
+                    "_interim_status_line" in headers):
                 # Preserve intentionally invalid raw header bytes, including
                 # NUL and malformed interim 100 Continue blocks. Normal
                 # send_header() refuses/normalizes these cases.
                 raw_status_version = headers.get("_unframed_status_version", "HTTP/1.1")
+                status_line = headers.get(
+                    "_raw_status_line", raw_status_version + " " +
+                    str(status) + " OK",
+                ).encode("latin-1")
                 final = (
-                    raw_status_version + " " + str(status) + " OK\r\n" +
-                    "Content-Type: application/json\r\n" +
-                    "Content-Length: " + str(len(body)) + "\r\n"
-                ).encode("ascii")
+                    status_line + b"\r\n" +
+                    b"Content-Type: application/json\r\n" +
+                    ("Content-Length: " + str(len(body)) + "\r\n").encode("ascii")
+                )
                 if "_raw_extra_header" in headers:
                     final += headers["_raw_extra_header"].encode("latin-1") + b"\r\n"
                 final += b"\r\n"
                 interim = b""
                 if "_interim_raw_header" in headers:
                     interim = (
-                        b"HTTP/1.1 100 Continue\r\n" +
+                        headers.get("_interim_status_line",
+                                    "HTTP/1.1 100 Continue").encode("latin-1") +
+                        b"\r\n" +
                         headers["_interim_raw_header"].encode("latin-1") +
                         b"\r\n\r\n"
                     )
@@ -932,4 +940,59 @@ def test_valid_obs_text_header_field_remains_parseable(http_site):
     body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
     routes["/"] = (200, body, {"_raw_extra_header": "X-Label: caf\xe9"})
     assert probes.probe_es_transport(port).status == "PASS"
+    assert requests == [("GET", "/", None)]
+
+
+@pytest.mark.parametrize("bad_status", [
+    "HTTP/1.1 200 O\x00K",
+    "HTTP/1.1 200 O\x01K",
+    "HTTP/1.1 200 O\x7fK",
+    "HTTP/1.1 200 O\x0bK",
+    "HTTP/1.1 200 O\rK",
+    "HTTP/1.1 200 O\nK",
+])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_raw_status_reason_control_bytes_cannot_confirm_service(
+    http_site, bad_status, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama" else
+            _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_raw_status_line": bad_status})
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+def test_raw_interim_100_continue_status_control_byte_cannot_pass(http_site):
+    port, routes, requests = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {
+        "_interim_raw_header": "X-Interim: fine",
+        "_interim_status_line": "HTTP/1.1 100 Cont\x00inue",
+    })
+    got = probes.probe_es_transport(port)
+    assert got.status == "FAIL"
+    assert got.reason == "es_transport_unavailable"
+    assert requests == [("GET", "/", None)]
+
+
+def test_raw_status_line_normal_valid_reason_phrase_still_accepted(http_site):
+    port, routes, requests = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {
+        "_raw_status_line": "HTTP/1.1 200 All Good",
+    })
+    got = probes.probe_es_transport(port)
+    assert got.status == "PASS"
     assert requests == [("GET", "/", None)]
