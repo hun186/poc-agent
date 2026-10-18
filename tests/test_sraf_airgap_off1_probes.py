@@ -67,6 +67,21 @@ def http_site():
                       if headers.get("_duplicate_coding") else "") +
                      "\r\n").encode("ascii")
                 )
+                # Raw malformed wire framing is not representable through
+                # BaseHTTPRequestHandler.send_header(). Exercise the exact
+                # bytes before http.client and email parsers normalize them.
+                if headers.get("_lf_headers"):
+                    raw_header = raw_header.replace(b"\r\n", b"\n")
+                elif headers.get("_lf_status"):
+                    raw_header = raw_header.replace(b"\r\n", b"\n", 1)
+                elif headers.get("_lf_transfer"):
+                    raw_header = raw_header.replace(
+                        ("Transfer-Encoding: " + coding + "\r\n").encode("ascii"),
+                        ("Transfer-Encoding: " + coding + "\n").encode("ascii"),
+                        1,
+                    )
+                elif headers.get("_lf_terminator"):
+                    raw_header = raw_header[:-2] + b"\n"
                 middle = max(1, len(body) // 2)
                 chunks = [body[:middle], body[middle:]]
                 raw_body = b"".join(
@@ -85,6 +100,21 @@ def http_site():
                         raw_body += b"0\r\n\r\n"
                 try:
                     self.wfile.write(raw_header + raw_body)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                self.close_connection = True
+                return
+            if headers.get("_lf_unframed"):
+                # Valid JSON with malformed bare-LF status/headers and a
+                # syntactically valid Content-Length remains a transport error.
+                raw_header = (
+                    ("HTTP/1.1 " + str(status) + " OK\n" +
+                     "Content-Type: application/json\n" +
+                     "Content-Length: " + str(len(body)) + "\n\n").encode("ascii")
+                )
+                try:
+                    self.wfile.write(raw_header + body)
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):
                     pass
@@ -733,3 +763,69 @@ def test_raw_http12_version_is_preserved_despite_http_client_normalization(http_
         assert response.version == 11
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("bad_header", [
+    {"_lf_headers": "yes"},
+    {"_lf_status": "yes"},
+    {"_lf_transfer": "yes"},
+    {"_lf_terminator": "yes"},
+])
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"),
+    ("/", "es"),
+    ("/api/tags", "ollama"),
+    ("/v1/models", "openai"),
+])
+def test_bare_lf_in_status_or_headers_rejected_even_with_valid_chunks(
+    http_site, bad_header, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_chunked": "chunked", **bad_header})
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"),
+    ("/", "es"),
+    ("/api/tags", "ollama"),
+    ("/v1/models", "openai"),
+])
+def test_lf_only_headers_with_valid_content_length_rejected(
+    http_site, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {"_lf_unframed": "yes"})
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+def test_strict_header_guard_restores_buffered_stream_for_body_read(http_site):
+    port, routes, _ = http_site
+    body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+    routes["/"] = (200, body, {})
+    assert probes.probe_es_transport(port).status == "PASS"
+    routes["/"] = (200, body, {"_chunked": "chunked",
+                               "_valid_trailer": "yes"})
+    assert probes.probe_es_transport(port).status == "PASS"
