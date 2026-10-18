@@ -208,3 +208,5 @@
 - 2026-10-18 CI 39094831761 returned 552 PASS / 1 FAIL because direct invalid HTTP/1.2 test asserted stale exception reason. Updated test to assert http_status_line_invalid from earliest raw status-line syntax guard; new exact-head CI and re-review required, PR remains OPEN.
 
 - 2026-10-18 d82fc99d Codex review P2 missing post-status separator fixed; tests for HTTP/1.1 200 (no SP) negative across 4 probes, interim 100 negative and 'HTTP/1.1 200 ' positive. Latest Hosted CI and Codex review outstanding.
+
+- 2026-10-18 PR #292 current 0171184d Codex P2 on forbidden 100 Continue framing headers addressed with raw state tracking and 25 new parameterized TCP cases. Exact head Hosted Actions and fresh Codex review required before merge; offline FULL_LIVE acceptance still not implemented.
