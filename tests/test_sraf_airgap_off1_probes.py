@@ -779,17 +779,18 @@ def test_raw_http11_version_is_captured_before_normalization(http_site):
         conn.close()
 
 
-def test_raw_http12_version_is_preserved_despite_http_client_normalization(http_site):
-    port, routes, _ = http_site
+def test_raw_http12_status_version_is_rejected_before_normalization(http_site):
+    port, routes, requests = http_site
     body = _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
     routes["/"] = (200, body, {"_chunked": "chunked",
                                "_status_version": "HTTP/1.2"})
     conn = probes._DeadlineHTTPConnection(port, deadline=time.monotonic() + 3)
     try:
         conn.request("GET", "/")
-        response = conn.getresponse()
-        assert response.raw_status_version == "HTTP/1.2"
-        assert response.version == 11
+        with pytest.raises(probes.http.client.HTTPException,
+                           match="http_status_version_unsupported"):
+            conn.getresponse()
+        assert requests == [("GET", "/", None)]
     finally:
         conn.close()
 
