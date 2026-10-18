@@ -210,3 +210,5 @@
 - 2026-10-18 d82fc99d Codex review P2 missing post-status separator fixed; tests for HTTP/1.1 200 (no SP) negative across 4 probes, interim 100 negative and 'HTTP/1.1 200 ' positive. Latest Hosted CI and Codex review outstanding.
 
 - 2026-10-18 PR #292 current 0171184d Codex P2 on forbidden 100 Continue framing headers addressed with raw state tracking and 25 new parameterized TCP cases. Exact head Hosted Actions and fresh Codex review required before merge; offline FULL_LIVE acceptance still not implemented.
+
+- 2026-10-18 PR #292 latest Codex review on 9129fff0 found P2 forbidden framing field names in chunk trailers. Fix and 44 live socket tests committed across four endpoint types; next exact-head Hosted CI and Codex review needed; do not merge without approval.
