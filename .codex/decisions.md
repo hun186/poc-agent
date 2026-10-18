@@ -312,3 +312,5 @@
 - 2026-10-18 strict OFF-1A HTTP protocol validation: raw CRLF is necessary but not sufficient. Before permissive stdlib parser sees final or interim 100 response, require every raw header line to have token field-name, colon, and value containing only HTTP visible ASCII/HTAB/obs-text; reject NUL, control bytes, whitespace field names, obsolete folds and malformed lines. Accept only literal HTTP/1.0 or HTTP/1.1 for all response body framings; chunked requires exact HTTP/1.1. Keep OFF-0 acceptance fail-closed.
 
 - 2026-10-18 OFF-1A raw status-line trust: validate every wire status line before http.client text parsing, including interim 100s. Only HTTP/1.0 and HTTP/1.1, three ASCII-digit status code and reason characters limited to HTAB/visible ASCII/obs-text (not NUL/other C0/DEL) may proceed. Continue using strict header field validation and total socket deadline.
+
+- 2026-10-18 strict OFF-1A raw status syntax requires exact HTTP/1.0 or 1.1, SP, 3 ASCII decimal status digits, mandatory SP, then optional safe reason bytes. Absence of second SP is malformed even if Python HTTPResponse accepts it. Validate all final and interim raw status lines.
