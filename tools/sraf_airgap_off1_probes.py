@@ -156,6 +156,25 @@ class _DeadlineSocket(socket.socket):
         return super().sendall(data, flags)
 
 
+class _StrictHeaderLineReader:
+    """Validate each raw status/header line while http.client parses it.
+
+    CPython's status and email header parsers accept bare LF (and sometimes
+    EOF-terminated lines) without recording defects. The HTTP probe requires
+    exact CRLF for every line, including 100-Continue interim responses.
+    Only readline() is exposed because begin() needs solely header lines.
+    """
+
+    def __init__(self, original: Any):
+        self._original = original
+
+    def readline(self, limit: int = -1) -> bytes:
+        line = self._original.readline(limit)
+        if not line.endswith(b"\r\n"):
+            raise http.client.HTTPException("http_header_line_ending_invalid")
+        return line
+
+
 class _RawVersionHTTPResponse(http.client.HTTPResponse):
     """Retain the literal HTTP status version before CPython normalizes it.
 
@@ -168,6 +187,17 @@ class _RawVersionHTTPResponse(http.client.HTTPResponse):
         version, status, reason = super()._read_status()
         self.raw_status_version = version
         return version, status, reason
+
+    def begin(self) -> None:
+        # A temporary read-only guard checks the original wire bytes before
+        # the permissive HTTP and email parsers have discarded line endings.
+        # Restore the buffered stream before body / strict chunk decoding.
+        original = self.fp
+        self.fp = _StrictHeaderLineReader(original)
+        try:
+            super().begin()
+        finally:
+            self.fp = original
 
 
 class _DeadlineHTTPConnection(http.client.HTTPConnection):
