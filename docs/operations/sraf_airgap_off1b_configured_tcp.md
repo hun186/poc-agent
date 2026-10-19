@@ -30,7 +30,7 @@ Services are selected from:
 - Main LLM: MODEL_BASE_URL (whether MODEL_ID is set is reported as boolean)
 - Topic LLM: TOPIC_LLM_URL is only an enablement flag in the current query_terms path. It is never used for a TCP target. The actual client uses MODEL_BASE_URL / MODEL_ID; the explicit --check topic-llm reports only the enabled boolean and exit 2 (SKIP).
 
-The default --check all probes API, ES and the actual LLM client only; it does NOT probe the topic feature flag. LLM base URL may be the origin or end in /api/chat or /api/generate, matching the existing LLMClient helper. Those paths remain excluded from diagnostics. ES still requires a bare origin.
+The default --check all probes API, ES and the actual LLM client only; it does NOT probe the topic feature flag. LLM base URL may be the origin, /api/chat or /api/generate, or a reverse-proxy prefix such as /ollama or /gateway/v1/ollama/api/chat (including trailing slashes). This matches the existing LLMClient suffix/appending behavior. The diagnostic never transmits or prints these URL paths. LLM path syntax is bounded to ordinary simple segments (no dot navigation, percent-escapes, doubled interior slash, userinfo, query or fragment). ES still requires an exact bare origin (empty path or a single slash): LLM normalization never applies to ES.
 
 An endpoint with its hostname explicitly written as a numeric IPv4 address in
 127/8 or RFC1918 10/8, 172.16/12, 192.168/16 may receive one TCP connection
@@ -89,3 +89,9 @@ not be interpreted as already deployed simply because GitHub contains the code.
 - Launcher uses shell PORT (default 9002) and listens on all interfaces; test the numeric loopback bind target rather than PUBLIC_API_BASE, which may be a reverse proxy. The CLI process cannot prove the running supervisor used the same external shell environment.
 - Accept the runtime LLMClient's /api/chat and /api/generate suffixes for MODEL_BASE_URL; validate host/port only, never expose the path.
 - These corrections do not elevate a TCP connect to runtime PID attestation or live service verification.
+
+## 2026-10-20 Codex follow-up — prefixed LLM paths
+
+- Real LLMClient accepts a configurable /ollama or /gateway/ollama path prefix and appends /api/chat when needed. OFF-1B now derives the TCP-only host and port from these paths without treating the LLM path itself as an HTTP probe target.
+- Continue refusing malformed URLs, nonnumeric hostnames, public or link-local destinations, credentials inside the URL, and query/fragment data. Reject dot-segment and interior doubled slash ambiguity to keep the preflight diagnosis bounded. These restrictions do not modify LLMClient behavior.
+- ES_URL continues to accept only a bare origin and must never inherit LLM path-prefix rules. Passing this preflight still does not verify LLM or ES identity, TLS/authentication, inventory, or inference.
