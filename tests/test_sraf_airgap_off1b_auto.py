@@ -363,3 +363,63 @@ def test_es_must_reject_runtime_llm_proxy_prefixes(monkeypatch, path):
     }, no_network=False)
     assert obs["configuration"] == "INVALID"
     assert obs["tcp_probe"] == "SKIP"
+
+
+@pytest.mark.parametrize(("service", "key"), [
+    ("llm", "MODEL_BASE_URL"),
+    ("es", "ES_URL"),
+])
+@pytest.mark.parametrize("suffix", (
+    "?", "#", "/ollama?", "/ollama#", "/ollama?x=",
+    "/ollama#empty", "/ollama?#", "/ollama?x=#y",
+))
+def test_empty_or_nonempty_delimiters_are_invalid_without_tcp(
+        monkeypatch, service, key, suffix):
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda *args: pytest.fail("delimiter-containing URL must not connect"),
+    )
+    obs = auto._observe(
+        service, {key: f"http://192.168.0.134:18080{suffix}"},
+        no_network=False,
+    )
+    assert obs["configuration"] == "INVALID"
+    assert obs["tcp_probe"] == "SKIP"
+    assert suffix not in json.dumps(obs)
+
+
+@pytest.mark.parametrize("path", (
+    "/ollama" + "/" * 508,    # 515+ characters
+    "/" * 513,
+    "/ollama/api/chat" + "/" * 512,
+    "/x" * 257,
+))
+def test_oversized_raw_llm_path_rejected_before_suffix_trim(
+        monkeypatch, path):
+    assert len(path) > 512
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda *args: pytest.fail("overlength URL must not connect"),
+    )
+    obs = auto._observe("llm", {
+        "MODEL_BASE_URL": "http://192.168.0.134:18080" + path,
+    }, no_network=False)
+    assert obs["configuration"] == "INVALID"
+    assert obs["tcp_probe"] == "SKIP"
+
+
+def test_llm_raw_path_length_boundary_exactly_512_is_accepted(monkeypatch):
+    connections = []
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda host, port: connections.append((host, port)) or True,
+    )
+    path = "/ollama" + "/" * (512 - len("/ollama"))
+    assert len(path) == 512
+    obs = auto._observe("llm", {
+        "MODEL_BASE_URL": "http://192.168.0.134:18080" + path,
+    }, no_network=False)
+    assert obs["tcp_probe"] == "PASS"
+    assert obs["configuration"] == "RESOLVED"
+    assert connections == [("192.168.0.134", 18080)]
+    assert path not in json.dumps(obs)
