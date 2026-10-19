@@ -289,3 +289,32 @@ def test_invalid_api_url_path_is_not_reinterpreted_as_llm_path():
     endpoint, host = auto._parse_endpoint("https://192.168.0.134:9001/api/chat/")
     assert endpoint["configuration"] == "INVALID"
     assert host is None
+
+
+@pytest.mark.parametrize("suffix", ("//", "///", "/api/chat/", "/api/generate//"))
+def test_es_rejects_extra_slashes_and_llm_paths_without_network(monkeypatch, suffix):
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda *args: pytest.fail("invalid ES origin must never connect"),
+    )
+    obs = auto._observe("es", {
+        "ES_URL": "https://192.168.0.134:9001" + suffix,
+    }, no_network=False)
+    assert obs["configuration"] == "INVALID"
+    assert obs["tcp_probe"] == "SKIP"
+
+
+def test_llm_trailing_slashes_normalize_only_for_llm(monkeypatch):
+    targets = []
+    monkeypatch.setattr(auto, "_tcp_connect",
+                        lambda host, port: targets.append((host, port)) or True)
+    cfg = {"MODEL_BASE_URL": "http://10.23.5.7:11434/api/chat///"}
+    obs = auto._observe("llm", cfg, no_network=False)
+    assert obs["configuration"] == "RESOLVED"
+    assert obs["tcp_probe"] == "PASS"
+    assert targets == [("10.23.5.7", 11434)]
+    es = auto._observe("es", {"ES_URL": "http://10.23.5.7:11434//"},
+                       no_network=False)
+    assert es["configuration"] == "INVALID"
+    assert es["tcp_probe"] == "SKIP"
+    assert targets == [("10.23.5.7", 11434)]
