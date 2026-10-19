@@ -95,3 +95,8 @@ not be interpreted as already deployed simply because GitHub contains the code.
 - Real LLMClient accepts a configurable /ollama or /gateway/ollama path prefix and appends /api/chat when needed. OFF-1B now derives the TCP-only host and port from these paths without treating the LLM path itself as an HTTP probe target.
 - Continue refusing malformed URLs, nonnumeric hostnames, public or link-local destinations, credentials inside the URL, and query/fragment data. Reject dot-segment and interior doubled slash ambiguity to keep the preflight diagnosis bounded. These restrictions do not modify LLMClient behavior.
 - ES_URL continues to accept only a bare origin and must never inherit LLM path-prefix rules. Passing this preflight still does not verify LLM or ES identity, TLS/authentication, inventory, or inference.
+
+## 2026-10-20 fifth Codex review — raw URL validation
+
+- URL delimiters '?' and '#' are prohibited outright, even when empty. urlsplit() converts empty query/fragment delimiters into empty strings, but actual LLMClient URL concatenation could otherwise turn /api/chat into query/fragment text. These malformed configs are classified INVALID without network activity.
+- The 512-character raw MODEL_BASE_URL path bound is checked before trailing-slash normalization; an overlong path with hundreds of trailing slash characters must never be accepted. A path exactly 512 characters long remains valid if its normalized segments are safe. Negative and boundary regressions assert no unexpected TCP or secret output.
