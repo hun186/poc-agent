@@ -201,3 +201,8 @@
 
 - New operator-invoked script tools/sraf_airgap_off1_probes.py requires --check sys-disk|odbc-library|api-health|es-transport|llm-inventory, supports --mode quick|diagnose and bounded loopback port selectors. diagnose checks may not execute in quick.
 - JSON stdout is schema sraf_airgap_off1_partial_probe_v1 with mode=PARTIAL_ONLY_NOT_ACCEPTANCE, check_id, probe, aspect, status, reason, executed, safe numeric/boolean evidence. CLI exits 0 for subprobe PASS, 1 for FAIL/WARN, 2 for SKIP. This is NOT an HTTP endpoint, unified Runner, OFF-0 formal report, or a production acceptance contract.
+
+
+## 2026-10-19 proposed OFF-1B operator CLI (not an HTTP API)
+
+- Entry: python tools/sraf_airgap_off1b_auto.py [--check all|api|es|llm|topic-llm] [--no-network]. Reads configured API/ES/LLM endpoints through config.bootstrap.bootstrap_env() from repository root; requires no manual IP/port. Emits one JSON document schema=sraf_airgap_off1b_configured_tcp_preflight_v1, mode=PARTIAL_ONLY_NOT_ACCEPTANCE, separate config classification and TCP PASS/FAIL/SKIP, and NOT_TESTED for service identity/TLS/auth/feature acceptance. Exit 0 only if all selected TCP subchecks PASS; 1 for invalid config or TCP failure; 2 for skipped/incomplete. No cross-promotion into OFF-0 formal report or OFF-1A HTTP identity.
