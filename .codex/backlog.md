@@ -234,3 +234,5 @@
 - 2026-10-19 PR #293 first exact-head Codex completed with 3 P2 (topic flag network target, API external URL vs launcher PORT, LLM endpoint path parity). Same-branch remediation and adversarial regression tests prepared. Obtain Hosted exact-head Actions PASS and fresh Codex review; keep PR OPEN/unmerged until explicit user command. Runtime supervisor identity binding and true service TLS/auth/mapping/model/SQL acceptance remain future work.
 
 - 2026-10-19 PR #293 second Codex exact-head b04b14798e found 2 P2 (LLM URL trailing slash parity, stale architecture topic TCP claim). Hosted CI 39277783676 FAILED at compile (IndentationError at line 191), not a test pass. Repairs and new regression vectors committed; request fresh exact-head CI and Codex review. No Merge until user command.
+
+- 2026-10-20 PR #293 third Codex review on head 28e98a233c found 1 P2 for accidental Elasticsearch extra-slash normalization. Same-branch remediation scoped rstrip('/') to LLM, plus negative regression tests. Require exact-head Hosted CI PASS and new Codex review; do not merge before explicit instruction.
