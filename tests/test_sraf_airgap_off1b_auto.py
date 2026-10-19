@@ -1,5 +1,6 @@
 """Regression coverage for safe OFF-1B environment discovery / TCP-only preflight."""
 import json
+import os
 import socket
 
 import pytest
@@ -53,6 +54,7 @@ def test_actual_bootstrap_env_precedence(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("MODEL_ID", "os_env")
     values = auto._effective_runtime_config(tmp_path)
     assert values["ES_URL"] == "https://192.168.0.134:9001"
+    assert values["_OFF1B_LAUNCHER_PORT"] == os.getenv("PORT", "")
     assert values["MODEL_ID"] == "os_env"
     assert capsys.readouterr().out == ""
 
@@ -100,7 +102,8 @@ def test_no_network_mode_does_not_open_socket(monkeypatch):
         lambda *args: pytest.fail("socket used in no-network mode"),
     )
     record = auto._observe(
-        "api", {"PUBLIC_API_BASE": "http://192.168.0.134:9002"},
+        "api", {"_OFF1B_LAUNCHER_PORT": "9002",
+                "PUBLIC_API_BASE": "http://192.168.0.134:9191"},
         no_network=True,
     )
     assert record["tcp_probe"] == "SKIP"
@@ -141,9 +144,12 @@ def test_cli_reports_only_partial_observations(monkeypatch, tmp_path, capsys):
     output = capsys.readouterr().out
     payload = json.loads(output)
     assert payload["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
-    assert len(payload["results"]) == 4
+    assert len(payload["results"]) == 3
     assert all(x["tcp_probe"] == "PASS" for x in payload["results"])
     assert all(x["feature_acceptance"] == "NOT_TESTED" for x in payload["results"])
+    assert payload["results"][0]["config_key"] == "PORT"
+    assert payload["results"][0]["host_scope"] == "LOOPBACK_IPV4"
+    assert payload["results"][0]["port"] == 9002
     assert "192.168.0.134" not in output
 
 
@@ -164,3 +170,116 @@ def test_cli_skip_returns_two(monkeypatch, tmp_path, capsys):
     assert auto.main(["--check", "es"]) == 2
     result = json.loads(capsys.readouterr().out)
     assert result["results"][0]["tcp_probe"] == "SKIP"
+
+
+@pytest.mark.parametrize("path", ("/api/chat", "/api/generate"))
+def test_llm_runtime_supported_endpoint_paths(monkeypatch, path):
+    recorded = []
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda host, port: recorded.append((host, port)) or True,
+    )
+    result = auto._observe("llm", {
+        "MODEL_BASE_URL": f"http://10.23.5.7:11434{path}",
+        "MODEL_ID": "private-model",
+    }, no_network=False)
+    assert result["tcp_probe"] == "PASS"
+    assert result["port"] == 11434
+    assert result["service_identity"] == "NOT_TESTED"
+    assert recorded == [("10.23.5.7", 11434)]
+    assert path not in json.dumps(result)
+    assert "private-model" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("path", ("/api/chat/other", "/api/chat?x=1", "/v1/secrets"))
+def test_llm_unrecognized_path_never_contacts_network(monkeypatch, path):
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda *_: pytest.fail("must not contact unknown paths"),
+    )
+    obs = auto._observe("llm", {
+        "MODEL_BASE_URL": "http://10.23.5.7:11434" + path,
+    }, no_network=False)
+    assert obs["configuration"] == "INVALID"
+    assert obs["tcp_probe"] == "SKIP"
+
+
+def test_topic_llm_flag_does_not_open_flag_url(monkeypatch):
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda *_: pytest.fail("topic flag URL must not trigger a connection"),
+    )
+    obs = auto._observe("topic-llm", {
+        "TOPIC_LLM_URL": "https://192.168.9.8:9443/never-called",
+        "MODEL_BASE_URL": "http://192.168.0.134:18080",
+        "MODEL_ID": "configured-model",
+    }, no_network=False)
+    assert obs["tcp_probe"] == "SKIP"
+    assert obs["reason"] == "feature_flag_only"
+    assert obs["feature_enabled"] is True
+    assert obs["host_scope"] == "NOT_AN_ENDPOINT"
+    assert "192.168.9.8" not in json.dumps(obs)
+
+
+def test_api_uses_launcher_port_not_external_public_url(monkeypatch):
+    recorded = []
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda host, port: recorded.append((host, port)) or True,
+    )
+    obs = auto._observe("api", {
+        "_OFF1B_LAUNCHER_PORT": "9012",
+        "PUBLIC_API_BASE": "http://10.23.5.7:9999",
+    }, no_network=False)
+    assert obs["config_key"] == "PORT"
+    assert obs["port"] == 9012
+    assert obs["host_scope"] == "LOOPBACK_IPV4"
+    assert recorded == [("127.0.0.1", 9012)]
+    assert "9999" not in json.dumps(obs)
+
+
+@pytest.mark.parametrize("bad", ("-1", "65536", "not-a-port", "0", "9002; curl", ""))
+def test_invalid_launcher_port_except_empty_default(monkeypatch, bad):
+    recorded = []
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda host, port: recorded.append((host, port)) or True,
+    )
+    obs = auto._observe("api", {
+        "_OFF1B_LAUNCHER_PORT": bad,
+        "PUBLIC_API_BASE": "https://10.5.6.7:7777",
+    }, no_network=False)
+    if bad == "":
+        assert obs["tcp_probe"] == "PASS"
+        assert recorded == [("127.0.0.1", 9002)]
+    else:
+        assert obs["configuration"] == "INVALID"
+        assert obs["tcp_probe"] == "SKIP"
+        assert not recorded
+
+
+def test_topic_only_cli_is_config_classification_not_tcp(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(auto, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(auto, "_effective_runtime_config",
+                        lambda root: {"TOPIC_LLM_URL": "http://192.168.0.20:9999"})
+    monkeypatch.setattr(
+        auto, "_tcp_connect", lambda *a: pytest.fail("no network expected"),
+    )
+    assert auto.main(["--check", "topic-llm"]) == 2
+    doc = json.loads(capsys.readouterr().out)
+    assert len(doc["results"]) == 1
+    assert doc["results"][0]["reason"] == "feature_flag_only"
+
+
+def test_env_file_port_is_not_launcher_port(tmp_path, monkeypatch):
+    from config import bootstrap
+    monkeypatch.setattr(bootstrap, "_BOOTSTRAPPED", False)
+    monkeypatch.delenv("PORT", raising=False)
+    (tmp_path / ".env.local").write_text("PORT=9999\nPUBLIC_API_BASE=http://10.1.2.3:3333\n")
+    cfg = auto._effective_runtime_config(tmp_path)
+    assert cfg["PORT"] == "9999"  # Python dotenv sees this, shell launcher did not.
+    assert cfg["_OFF1B_LAUNCHER_PORT"] == ""
+    info, host = auto._api_bind_endpoint(cfg)
+    assert info["port"] == 9002
+    assert host == "127.0.0.1"
