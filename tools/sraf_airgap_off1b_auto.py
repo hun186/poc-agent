@@ -62,7 +62,8 @@ def _effective_runtime_config(root: Path) -> dict[str, str]:
 
 
 def _parse_endpoint(
-    raw: str | None, *, allowed_paths: tuple[str, ...] = ("", "/")
+    raw: str | None, *, allowed_paths: tuple[str, ...] = ("", "/"),
+    normalize_llm_path: bool = False,
 ) -> tuple[dict[str, object], str | None]:
     info: dict[str, object] = {
         "configuration": "MISSING",
@@ -85,7 +86,10 @@ def _parse_endpoint(
             raise ValueError("unsupported_scheme")
         if url.username is not None or url.password is not None:
             raise ValueError("userinfo_forbidden")
-        if url.path.rstrip("/") not in allowed_paths or url.query or url.fragment:
+        # LLMClient.rstrip("/") accepts optional suffix slashes. ES and
+        # all other endpoints retain strict bare-origin path validation.
+        checked_path = url.path.rstrip("/") if normalize_llm_path else url.path
+        if checked_path not in allowed_paths or url.query or url.fragment:
             raise ValueError("unexpected_url_component")
         if port is None:
             port = 443 if url.scheme == "https" else 80
@@ -170,7 +174,10 @@ def _observe(service: str, cfg: dict[str, str], *, no_network: bool) -> dict[str
         key = "PORT"
     else:
         allowed_paths = ("", "/", "/api/chat", "/api/generate") if service == "llm" else ("", "/")
-        endpoint, host = _parse_endpoint(cfg.get(key), allowed_paths=allowed_paths)
+        endpoint, host = _parse_endpoint(
+            cfg.get(key), allowed_paths=allowed_paths,
+            normalize_llm_path=(service == "llm"),
+        )
     evidence: dict[str, object] = {
         "component": service,
         "config_key": key,
