@@ -143,3 +143,50 @@
 - 2026-10-16 OFF-0 twelfth review found fake execution duration and misdirected operational remediation on unimplemented SKIPs. Proposed branch correction now forces `duration_ms=0` and `remediation=None` on contract-only SKIPs. Hosted exact-head CI and fresh Codex review required; this is not an OFF-1 live probe.
 
 - 2026-10-16 OFF-0 PR #291 thirteenth Codex Review: machine-readable report policy still implied mandatory failure remediation, conflicting with no-probe SKIP's null remediation. Fixed policy declaration and validator to conditional reviewed fail/warn remediation only; negative tests cover legacy/untrusted policy. Current-head CI and fresh review pending. OFF-0 remains contract-only.
+
+## 2026-10-17 OFF-1A limitations
+
+- First batch only: disk/CPU count, ODBC library name discovery, loopback API health, anonymous ES root response shape, and listed LLM model metadata. None verifies SQL login/read-only permissions/catalog, ES Auth/mapping/retrieval (live mapping_incompatible blocker remains), true LLM inference/GPU/context, actual target deployment TLS/time/permissions, worker/report/DOCX, or OFF-5 air-gap release.
+- Only numeric localhost 127.0.0.1 is permitted; SRAF dependencies on other private hosts, protected endpoints needing existing credentials, and HTTPS are currently out of scope pending a reviewed allowlist/secret transport. Never weaken by adding arbitrary URLs or print credentials.
+- GitHub CI and loopback test HTTPServer evidence are not deployment-host FULL_LIVE proof. PR code/tests await hosted CI and Codex review; no merge authorization.
+
+- 2026-10-17 OFF-1A PR #292 first Codex Review P1: http.client timeout is an inactivity limit per socket call; slow-dripping service could exceed 3s total. Updated implementation uses a shared absolute monotonic deadline and checks socket time left on every read/write (including buffered headers/body). Regressions added for sustained byte drips. Hosted Actions and subsequent current-head Codex review needed before treating fix as verified; no live SRAF host checks.
+
+- 2026-10-17 OFF-1A run 38992439458 proved the initial P1 deadline patch did not activate: slow header/body responses took 6.6s/7.2s because HTTPConnection.__init__ shadowed _create_connection on the instance. Corrected the instance factory binding and added a regression asserting live socket type; exact-new-head hosted CI remains required.
+
+- 2026-10-17 OFF-1A second Codex P1: ctypes.util.find_library may run unbounded helper programs. Replaced with finite Unix file existence checks, avoiding process invocation. Nonstandard installations might be WARN (false negative), and non-POSIX is SKIP. It does not certify actual SQL ODBC driver. New hosted CI/review pending.
+
+- 2026-10-17 OFF-1A third review found two P2: early-EOF Content-Length mismatch and blank Elasticsearch identity. Branch now rejects truncated responses and empty identity strings. New focused regressions added; hosted verification and review pending.
+
+- 2026-10-17 OFF-1A fourth review identified malformed Content-Length accepted via http.client length=None normalization. This branch now rejects malformed, duplicate or conflicting framing before accepting probe identity and adds live HTTPServer negative tests. Fresh CI and Codex review still required.
+
+- 2026-10-17 OFF-1A fifth review P2: parsed-header-only validation cannot detect malformed framing lines dropped by email.parser; _http_get now rejects any response.headers.defects before accepting JSON identity. New raw malformed-header loopback test coverage. Await hosted CI and re-review; no production deployment evidence.
+
+- 2026-10-17 OFF-1A sixth Codex P2: standard chunked HTTP/1.1 response rejected as transport failure. New guarded support allows one properly decoded chunked coding without Content-Length, rejecting conflicting or unsupported TE and truncated chunks. New hosted regression and re-review pending.
+
+- 2026-10-17 OFF-1A seventh Codex review surfaced chunked framing corruption false PASS and HTTP/1.0 chunked false PASS. Added strict bounded chunk decoder that checks data CRLF and complete 0-chunk trailer ending, and gate response.version == 11. Added adversarial actual socket tests. Still requires Hosted CI and fresh Codex review on exact new Head.
+
+- 2026-10-17 OFF-1A eighth Codex P2: normalized HTTPResponse.version=11 accepted invalid HTTP/1.X and 1.2 chunked replies. Subclass now captures literal status version and checks exact HTTP/1.1 for chunked; new actual TCP regression tests added. Hosted CI and next-head review pending.
+
+- 2026-10-18 OFF-1A ninth Codex P2: permissive CPython HTTP/email parser accepts bare LF header boundaries without defects. Temporary raw readline guard during response.begin now insists on CRLF; added actual raw socket tests for chunked and nonchunked framing. CI and fresh review outstanding.
+
+- 2026-10-18 tenth OFF-1A Codex review: malformed final/interim raw HTTP header syntax and Content-Length response with invalid HTTP/1.X raw status could falsely PASS. Both fixed with raw RFC field name/value check (control/NUL rejection) for every status/header block and literal supported-version gate across all body modes; new live HTTPServer regressions. Fresh exact-head CI/Review pending.
+
+- 2026-10-18 Codex head 53cd2655 P2 discovered NUL/control bytes in HTTP raw status reason text could still lead to false PASS. Raw status lines now validated before permissive parsing (version/status/reason byte ranges) for all final and interim status lines. Tests cover bad control bytes and valid reason phrases. Exact-head CI and review outstanding.
+
+- 2026-10-18 Codex P2 on d82fc99d: status line missing ASCII space after 3-digit code allowed as false PASS. Fixed mandatory delimiter regex; raw final and interim 100 negative tests and valid empty-reason positive added. P1 outdated test was already fixed. Exact-head CI and review pending.
+
+- 2026-10-18 Codex exact head 0171184d P2: forbidden 100 Continue Content-Length/Transfer-Encoding fields silently discarded by Python http.client. Added stateful raw interim-100 framing rejection, case insensitive, with real loopback tests. Hosted CI and fresh exact-head Codex review pending.
+
+- 2026-10-18 OFF-1A latest Codex P2: framing fields Content-Length and Transfer-Encoding wrongly allowed in chunk trailers. Added case-insensitive trailer denial and 40 negative + 4 positive local real TCP regression tests. CI/re-review pending.
+
+- 2026-10-18 OFF-1A Codex review on daee2d6d found 2 P2: header-only trailer standard fields can false-PASS; obs-text in legal custom trailers false-FAIL. Fixed with explicit forbidden standard/prefix set and shared RFC field-line regex with obs-text; raw live TCP regression cases added. Exact-head Actions and re-review pending.
+
+- 2026-10-19 PR #292 Codex exact-head eebc79d2a4 found 2 P2: legal ETag trailer rejected and request-control trailers (Range/Expect/Max-Forwards) falsely accepted. Corrected case-insensitive denylist, audited RFC 9110 and also restored legitimate Accept-Ranges trailer. Extended actual loopback HTTPServer positive/negative matrix across API health, ES, Ollama, OpenAI-compatible; current-head Hosted CI / Codex re-review must independently complete. OFF-1A stays PARTIAL_ONLY_NOT_ACCEPTANCE; no merge authorization.
+- 2026-10-19 OFF-1A PR #292 exact-head Codex at 39af7be found two P2: Early-Data response trailer falsely accepted; valid Proxy-Status trailer falsely rejected. Corrected request-only denylist and header-member conditional exception with real four-endpoint TCP regressions; fresh Hosted CI/Review required; no live acceptance or merge.
+
+- 2026-10-19 PR #292 Codex exact-head 816a0297ed review completed after 863 passed (run 39206507074). Two new P2: malformed Proxy-Status parameter suffix (e.g. '; =broken') falsely accepted; legal RFC 8941 sf-token characters (e.g. '+') falsely rejected. Replaced prefix-only parsing with full RFC 8941 Item/Parameter matcher (all token tchar, key/bare item grammar and decoded Base64 validation). Added live TCP four-path valid/invalid regression matrix; new exact-head Hosted CI and Codex review pending. No full SRAF airgap deployment acceptance or merge authorization.
+
+- 2026-10-19 PR #292 Codex exact-head aa8ed6f3df review completed at 2026-10-19T07:25:47Z (previous Hosted run 39211543915: 1003 PASS, OFF-0 19 schema-only PASS). New P2s: parser accepted known Proxy-Status fields using wrong types (e.g. received-status quoted string or error boolean) and incorrectly normalized illegal initial HTAB around RFC 8941 List items. Followup patch validates RFC 9209 and 9532 registered field types including next-protocol as Token OR Byte Sequence, and preserves RFC 8941 legal OWS around commas while rejecting HTAB at list start/end. Raw header guard rejects leading Tab before http.client strips it; strict trailer decoder no longer strips original field data. Four-endpoint live loopback regression vectors added. New exact-head Hosted CI and Codex re-review required; no merged/live acceptance claim.
+
+- 2026-10-19 PR #292 Codex reviewed exact head bdb2148e01 at 08:11 UTC, found P1: valid Proxy-Status trailers all false-FAIL because the strict parser receives the raw trailer CRLF in its RFC 8941 fullmatch. Hosted Actions 39219555536 confirmed 148 FAIL, 979 PASS (not a PASS). Repair slices the already verified final CRLF off the wire line before parsing only the field value; preserve the actual leading/trailing content for OWS rules and reject bad raw line endings. Four-endpoint real TCP regression added. New exact-head Hosted CI / Codex review required, no merge or offline FULL_LIVE claim.

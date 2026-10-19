@@ -174,3 +174,8 @@
 
 - XLSX parse errors from untrusted upload data are normalized at the format reader, before HTTP error presentation; server projection/store invariants continue to return masked 500 responses.
 - The Product preview ASGI cap is applied after CORS in request execution (registered earlier than `CORSMiddleware` in Starlette) so its synthetic 413 rejection inherits normal browser CORS handling, without weakening the pre-parser body limit.
+
+## 2026-10-17 SRAF OFF-1A isolation boundary
+
+- tools/sraf_airgap_off1_probes.py is an independent, single-observation **partial** probe CLI; it does not invoke SRA application initialization, external_capabilities.py's potentially write-producing acceptance path, SQL, Agent/LLM inference, E2E, or OFF-3 unified Runner. The loopback-only no-auth GET channel intentionally avoids arbitrary URL selection and unaudited credential handling. SYS/ODBC probes observe only a subset of their OFF-0 parent check.
+- OFF-0 checked registry semantics remain code-authoritative; its make_report_record still cannot emit PASS/FAIL/WARN because it lacks a reviewed trusted execution-to-report boundary. OFF-1A observation JSON declares PARTIAL_ONLY_NOT_ACCEPTANCE and must not be interpreted as the parent's PASS. Subsequent OFF-1B work should provide authorized SQL/ES mapping/LLM diagnostic boundaries before OFF-3 composes verified full-check outcomes.
