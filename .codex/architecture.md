@@ -179,3 +179,9 @@
 
 - tools/sraf_airgap_off1_probes.py is an independent, single-observation **partial** probe CLI; it does not invoke SRA application initialization, external_capabilities.py's potentially write-producing acceptance path, SQL, Agent/LLM inference, E2E, or OFF-3 unified Runner. The loopback-only no-auth GET channel intentionally avoids arbitrary URL selection and unaudited credential handling. SYS/ODBC probes observe only a subset of their OFF-0 parent check.
 - OFF-0 checked registry semantics remain code-authoritative; its make_report_record still cannot emit PASS/FAIL/WARN because it lacks a reviewed trusted execution-to-report boundary. OFF-1A observation JSON declares PARTIAL_ONLY_NOT_ACCEPTANCE and must not be interpreted as the parent's PASS. Subsequent OFF-1B work should provide authorized SQL/ES mapping/LLM diagnostic boundaries before OFF-3 composes verified full-check outcomes.
+
+
+## 2026-10-19 OFF-1B configured TCP preflight (proposed)
+
+- tools/sraf_airgap_off1b_auto.py is an isolated operator CLI, not application initialization or OFF-3 runner. It calls the existing deployment bootstrap for the effective dotenv precedence from the working repository root, without starting any API/worker/Agent/SQL lifecycle or reading secret values into output.
+- First slice sends at most one bounded TCP connect per configured API/ES/main-LLM/topic-LLM numeric RFC1918/loopback IPv4 target. DNS/public/link-local/non-IPv4 targets are skipped; no HTTP/TLS/auth, DNS, proxy, index, model, or task action is performed. Output includes explicit PARTIAL_ONLY_NOT_ACCEPTANCE and separate configuration versus TCP observations. Authenticated read-only service probes remain an independently reviewed subsequent OFF-1B gate.
