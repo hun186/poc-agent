@@ -206,3 +206,5 @@
 ## 2026-10-19 proposed OFF-1B operator CLI (not an HTTP API)
 
 - Entry: python tools/sraf_airgap_off1b_auto.py [--check all|api|es|llm|topic-llm] [--no-network]. Reads configured API/ES/LLM endpoints through config.bootstrap.bootstrap_env() from repository root; requires no manual IP/port. Emits one JSON document schema=sraf_airgap_off1b_configured_tcp_preflight_v1, mode=PARTIAL_ONLY_NOT_ACCEPTANCE, separate config classification and TCP PASS/FAIL/SKIP, and NOT_TESTED for service identity/TLS/auth/feature acceptance. Exit 0 only if all selected TCP subchecks PASS; 1 for invalid config or TCP failure; 2 for skipped/incomplete. No cross-promotion into OFF-0 formal report or OFF-1A HTTP identity.
+
+- 2026-10-19 PR #293 review correction: --check all selects api, es, llm (actual TCP endpoints); --check topic-llm is a no-network feature-flag-only SKIP, exit 2. API config_key PORT reflects the shell launch listener (default 9002), not PUBLIC_API_BASE. Main LLM accepts the two runtime-recognized /api/chat and /api/generate URL suffixes; no URL/path or model name in output. Remains PARTIAL_ONLY_NOT_ACCEPTANCE.
