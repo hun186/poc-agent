@@ -1178,7 +1178,19 @@ def test_chunk_trailer_regular_metadata_is_allowed(
     "X-Frame-Options: DENY",
     "X-Content-Type-Options: nosniff",
     "Server: local",
-    "ETag: abc",
+    # Request-control fields MUST be available before response body handling.
+    "Range: bytes=0-1",
+    "rAnGe: bytes=0-1",
+    "Expect: 100-continue",
+    "eXpEcT: 100-continue",
+    "Max-Forwards: 5",
+    "MAX-FORWARDS: 0",
+    "Accept-Charset: utf-8",
+    "From: tester@example.invalid",
+    "Prefer: respond-async",
+    "Priority: u=3",
+    "Upgrade-Insecure-Requests: 1",
+    "X-Safe: yes\r\nRaNgE: bytes=0-1",
     "X-Safe: yes\r\nCoNtEnT-TyPe: application/json",
 ])
 @pytest.mark.parametrize(("path", "kind"), [
@@ -1212,6 +1224,13 @@ def test_chunk_trailers_reject_header_only_standard_fields(
     "X-Bytes: \x80\xff",
     "Content-Digest: sha-256=:YQ==:",
     "Digest: SHA-256=abcd",
+    # RFC 9110 8.8.3 and 14.3 expressly permit these trailer fields.
+    'ETag: "strong-123"',
+    'eTaG: W/"weak-456"',
+    'ETAG: "mixed"',
+    "Accept-Ranges: bytes",
+    "aCcEpT-rAnGeS: none",
+    'X-Integrity: verified\r\nEtAg: "valid"\r\nAccept-Ranges: bytes',
     "X-Label: caf\xe9\r\nX-Integrity: verified",
 ])
 @pytest.mark.parametrize(("path", "kind"), [

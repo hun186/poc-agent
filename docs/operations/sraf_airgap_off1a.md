@@ -27,6 +27,8 @@ Port 和 Model Name 為參數範例，**非已驗證的正式部署配置**。�
 
 ## 安全邊界
 
+- HTTP/1.1 chunked Trailer 採「明確拒絕已知不適合尾端出現的欄位」而非全面拒絕標準欄位：合法的 `ETag`（RFC 9110 §8.8.3）、`Accept-Ranges`（§14.3）、`Content-Digest`、`Digest`、自訂完整性 metadata 可通過（不將 Trailer 視為新的 Header 認證或決策來源）；`Range`、`Expect`、`Max-Forwards`、`Accept-Charset`、`From`、`Prefer`、`Priority`、`Upgrade-Insecure-Requests` 等 request-control 欄位不得在尾端追加，名稱大小寫不敏感。真實 loopback TCP HTTPServer 的 API／ES／Ollama／OpenAI-compatible 四類 probe 同時測試正向與負向場景，仍為局部探測非完整驗收。
+
 - HTTP 僅送匿名 **GET** 到字面固定的 IPv4 loopback 127.0.0.1 和明確限制的埠（1..65535）；不使用 Proxy、不自動追隨 3xx、不登入、不加入 Bearer/Basic/Cookie，使用全請求共用的單調時鐘**絕對截止時間 3 秒**（連線、送出、回應標頭、回應本文皆受限；不是每次 recv 重設的 3 秒），Body 最多 64 KiB + 1 byte。持續慢速傳送字節也會在截止時中止；超時分類為對應子探測的 transport unavailable。
 - 不支援任意內網 DNS/IP 和 TLS；如 SRAF 依賴在不同主機，後續須另設經核准的遠端 allowlist/TLS 及秘密配置安全界面，不能藉不受限的任意 URL 放寬探測邊界。
 - 不輸出 HTTP 原始內文、例外、headers、URL、模型名稱、檔案路徑、連線字串、機敏值；僅固定 reason codes + 有界整數／布林證據。

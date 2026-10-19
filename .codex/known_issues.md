@@ -181,3 +181,5 @@
 - 2026-10-18 OFF-1A latest Codex P2: framing fields Content-Length and Transfer-Encoding wrongly allowed in chunk trailers. Added case-insensitive trailer denial and 40 negative + 4 positive local real TCP regression tests. CI/re-review pending.
 
 - 2026-10-18 OFF-1A Codex review on daee2d6d found 2 P2: header-only trailer standard fields can false-PASS; obs-text in legal custom trailers false-FAIL. Fixed with explicit forbidden standard/prefix set and shared RFC field-line regex with obs-text; raw live TCP regression cases added. Exact-head Actions and re-review pending.
+
+- 2026-10-19 PR #292 Codex exact-head eebc79d2a4 found 2 P2: legal ETag trailer rejected and request-control trailers (Range/Expect/Max-Forwards) falsely accepted. Corrected case-insensitive denylist, audited RFC 9110 and also restored legitimate Accept-Ranges trailer. Extended actual loopback HTTPServer positive/negative matrix across API health, ES, Ollama, OpenAI-compatible; current-head Hosted CI / Codex re-review must independently complete. OFF-1A stays PARTIAL_ONLY_NOT_ACCEPTANCE; no merge authorization.

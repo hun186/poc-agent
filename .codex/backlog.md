@@ -214,3 +214,5 @@
 - 2026-10-18 PR #292 latest Codex review on 9129fff0 found P2 forbidden framing field names in chunk trailers. Fix and 44 live socket tests committed across four endpoint types; next exact-head Hosted CI and Codex review needed; do not merge without approval.
 
 - 2026-10-18 PR #292 current Codex Review found 2 P2 on header-only chunk trailer fields and legal obs-text custom metadata. Code/docs/test fix committed; verify latest Hosted GitHub Actions and request fresh exact-head Codex review. No merge without user authorization.
+
+- 2026-10-19 PR #292 OFF-1A trailer compatibility/control-field remediation submitted for exact-head review. Gate on new HEAD's Hosted Actions, OFF-0 schema-only, all focused tests, and no remaining new P1/P2; await explicit user merge command. OFF-1B live SQL/ES/LLM/Workers/DOCX remains independent.

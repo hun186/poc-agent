@@ -277,7 +277,8 @@ _CHUNK_TRAILER = _HEADER_FIELD_LINE
 
 # RFC 9110 6.5.1 excludes fields needed for framing, authentication, routing,
 # response control or interpretation. Custom metadata and expressly permitted
-# digest/integrity fields remain available; reject these known header-only
+# digest/integrity fields plus RFC-permitted ETag and Accept-Ranges stay available;
+# reject these known header-only
 # standard fields, regardless of casing, rather than rejecting all trailers.
 _TRAILER_HEADER_ONLY_FIELDS = frozenset((
     b"content-length", b"transfer-encoding", b"content-type",
@@ -288,12 +289,16 @@ _TRAILER_HEADER_ONLY_FIELDS = frozenset((
     b"authorization", b"proxy-authorization", b"www-authenticate",
     b"proxy-authenticate", b"authentication-info",
     b"proxy-authentication-info", b"cookie", b"set-cookie",
-    b"cache-control", b"pragma", b"expires", b"age", b"vary", b"etag",
+    b"cache-control", b"pragma", b"expires", b"age", b"vary",
     b"last-modified", b"date", b"retry-after", b"allow", b"server",
-    b"accept", b"accept-encoding", b"accept-language",
-    b"accept-ranges", b"user-agent", b"origin", b"referer",
+    b"accept", b"accept-charset", b"accept-encoding", b"accept-language",
+    b"user-agent", b"origin", b"referer",
     b"if-match", b"if-none-match", b"if-modified-since",
-    b"if-unmodified-since", b"if-range", b"strict-transport-security",
+    b"if-unmodified-since", b"if-range",
+    # Request-control fields require header-time interpretation, never trailers.
+    b"range", b"expect", b"max-forwards", b"from", b"prefer",
+    b"priority", b"upgrade-insecure-requests",
+    b"strict-transport-security",
     b"content-security-policy", b"content-security-policy-report-only",
     b"x-content-type-options", b"x-frame-options",
 ))
