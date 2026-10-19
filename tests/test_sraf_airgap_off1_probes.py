@@ -65,6 +65,8 @@ def http_site():
                       if headers.get("_with_length") else "") +
                      ("Transfer-Encoding: chunked\r\n"
                       if headers.get("_duplicate_coding") else "") +
+                     (headers["_extra_chunk_header"] + "\r\n"
+                      if headers.get("_extra_chunk_header") else "") +
                      "\r\n").encode("ascii")
                 )
                 # Raw malformed wire framing is not representable through
@@ -1190,6 +1192,9 @@ def test_chunk_trailer_regular_metadata_is_allowed(
     "Prefer: respond-async",
     "Priority: u=3",
     "Upgrade-Insecure-Requests: 1",
+    "Early-Data: 1",
+    "eArLy-DaTa: 1",
+    "X-Safe: yes\r\nEARLY-DATA: 1",
     "X-Safe: yes\r\nRaNgE: bytes=0-1",
     "X-Safe: yes\r\nCoNtEnT-TyPe: application/json",
 ])
@@ -1277,3 +1282,44 @@ def test_chunk_trailer_obs_text_does_not_allow_control_bytes(
     assert got.status == "FAIL"
     assert got.evidence == {}
     assert requests == [("GET", "/", None)]
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+@pytest.mark.parametrize(("header", "trailer", "expect_pass"), [
+    ("Proxy-Status: ThisProxy", "Proxy-Status: ThisProxy; error=read_timeout", True),
+    ("pRoXy-StAtUs: First, ThisProxy", "PROXY-STATUS: ThisProxy; error=read_timeout", True),
+    ('Proxy-Status: ThisProxy; next-hop="local"', "proxy-status: ThisProxy", True),
+    ('Proxy-Status: "Local Proxy"', 'Proxy-Status: "Local Proxy"; error=read_timeout', True),
+    ("", "Proxy-Status: ThisProxy", False),
+    ("Proxy-Status: First", "Proxy-Status: OtherProxy", False),
+    ("Proxy-Status: ThisProxy", "Proxy-Status: ThisProxy, OtherProxy", False),
+    ("Proxy-Status: ThisProxy", "Proxy-Authorization: Basic abc", False),
+    ("Proxy-Status: ThisProxy", "Proxy-Authenticate: Basic", False),
+    ("Proxy-Status: ThisProxy", "Early-Data: 1", False),
+])
+def test_chunk_proxy_status_trailers_require_matching_header_member(
+    http_site, path, kind, header, trailer, expect_pass,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {
+        "_chunked": "chunked",
+        "_extra_chunk_header": header,
+        "_custom_trailer": trailer,
+    })
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == ("PASS" if expect_pass else "FAIL")
+    assert got.executed is True
+    if not expect_pass:
+        assert got.evidence == {}
+    assert requests == [("GET", path, None)]

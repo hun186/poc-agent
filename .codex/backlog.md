@@ -216,3 +216,4 @@
 - 2026-10-18 PR #292 current Codex Review found 2 P2 on header-only chunk trailer fields and legal obs-text custom metadata. Code/docs/test fix committed; verify latest Hosted GitHub Actions and request fresh exact-head Codex review. No merge without user authorization.
 
 - 2026-10-19 PR #292 OFF-1A trailer compatibility/control-field remediation submitted for exact-head review. Gate on new HEAD's Hosted Actions, OFF-0 schema-only, all focused tests, and no remaining new P1/P2; await explicit user merge command. OFF-1B live SQL/ES/LLM/Workers/DOCX remains independent.
+- 2026-10-19 OFF-1A PR #292: exact-head review 39af7be raised Early-Data / Proxy-Status P2s. Code and real TCP tests prepared; require new Hosted exact-head CI, OFF-0 19 checks and Codex receipt before merge authorization. Full SRAF airgap acceptance deferred.

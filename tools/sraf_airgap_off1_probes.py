@@ -297,7 +297,7 @@ _TRAILER_HEADER_ONLY_FIELDS = frozenset((
     b"if-unmodified-since", b"if-range",
     # Request-control fields require header-time interpretation, never trailers.
     b"range", b"expect", b"max-forwards", b"from", b"prefer",
-    b"priority", b"upgrade-insecure-requests",
+    b"priority", b"upgrade-insecure-requests", b"early-data",
     b"strict-transport-security",
     b"content-security-policy", b"content-security-policy-report-only",
     b"x-content-type-options", b"x-frame-options",
@@ -307,7 +307,55 @@ _TRAILER_FORBIDDEN_PREFIXES = (
 )
 
 
-def _read_verified_chunked(fp: Any, deadline: float) -> bytes:
+# RFC 9209 §2 permits Proxy-Status trailers only if the same intermediary
+# member was first declared in a Proxy-Status header. This diagnostic metadata
+# never becomes routing, authorization or probe-identity authority.
+_PROXY_STATUS_MEMBER = re.compile(
+    r'^(?:[A-Za-z*][A-Za-z0-9_.*:/-]*|"(?:[ \x21\x23-\x5b\x5d-\x7e]|\\["\\])*")'
+)
+
+
+def _proxy_status_members(values: list[str]) -> set[str] | None:
+    members: set[str] = set()
+    for value in values:
+        if not value or len(value) > _CHUNK_TRAILER_LIMIT:
+            return None
+        # Commas within quoted Structured Field values are not separators.
+        items: list[str] = []
+        start = 0
+        quoted = False
+        escaped = False
+        for pos, char in enumerate(value):
+            if quoted and escaped:
+                escaped = False
+            elif quoted and char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = not quoted
+            elif char == "," and not quoted:
+                items.append(value[start:pos])
+                start = pos + 1
+        if quoted or escaped:
+            return None
+        items.append(value[start:])
+        for item in items:
+            item = item.strip(" \t")
+            match = _PROXY_STATUS_MEMBER.match(item)
+            if match is None:
+                return None
+            remainder = item[match.end():].lstrip(" \t")
+            if remainder and not remainder.startswith(";"):
+                return None
+            member = match.group()
+            if member.startswith('"'):
+                member = member[1:-1].replace(r'\"', '"').replace(r'\\', '\\')
+            members.add(member)
+    return members
+
+
+def _read_verified_chunked(
+    fp: Any, deadline: float, *, proxy_status_headers: list[str],
+) -> bytes:
     """Decode only complete, bounded HTTP/1.1 chunks with exact CRLF.
 
     CPython 3.11 http.client drops post-chunk delimiter bytes without checking
@@ -346,8 +394,18 @@ def _read_verified_chunked(fp: Any, deadline: float) -> bytes:
                 # interpretation of JSON if sent after its body. Do not
                 # indiscriminately reject custom/integrity metadata trailers.
                 trailer_name = trailer.split(b":", 1)[0].lower()
-                if (trailer_name in _TRAILER_HEADER_ONLY_FIELDS or
-                        trailer_name.startswith(_TRAILER_FORBIDDEN_PREFIXES)):
+                if trailer_name == b"proxy-status":
+                    header_members = _proxy_status_members(proxy_status_headers)
+                    trailer_members = _proxy_status_members([
+                        trailer.split(b":", 1)[1].decode("latin-1").strip()
+                    ])
+                    if (not header_members or not trailer_members or
+                            not trailer_members.issubset(header_members)):
+                        raise http.client.HTTPException(
+                            "chunk_trailer_field_forbidden"
+                        )
+                elif (trailer_name in _TRAILER_HEADER_ONLY_FIELDS or
+                      trailer_name.startswith(_TRAILER_FORBIDDEN_PREFIXES)):
                     raise http.client.HTTPException("chunk_trailer_field_forbidden")
             raise http.client.HTTPException("chunk_trailer_oversized")
         if chunk_size > MAX_HTTP_BYTES - len(payload):
@@ -414,7 +472,10 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
         # when Content-Length declared a larger body. Preserve the expected
         # length BEFORE http.client updates its internal remaining counter.
         if transfers:
-            body = _read_verified_chunked(response.fp, deadline)
+            body = _read_verified_chunked(
+                response.fp, deadline,
+                proxy_status_headers=response.headers.get_all("Proxy-Status", []),
+            )
         else:
             body = response.read(MAX_HTTP_BYTES + 1)
         if time.monotonic() >= deadline:
