@@ -191,8 +191,11 @@ def test_llm_runtime_supported_endpoint_paths(monkeypatch, path):
     assert "private-model" not in json.dumps(result)
 
 
-@pytest.mark.parametrize("path", ("/api/chat/other", "/api/chat?x=1", "/v1/secrets"))
-def test_llm_unrecognized_path_never_contacts_network(monkeypatch, path):
+@pytest.mark.parametrize("path", (
+    "/api/chat?x=1", "/api/generate#fragment", "/v1/../secrets",
+    "/api//chat", "/%", "/api/chat/%2F", "//internal",
+))
+def test_llm_unsafe_path_never_contacts_network(monkeypatch, path):
     monkeypatch.setattr(
         auto, "_tcp_connect",
         lambda *_: pytest.fail("must not contact unknown paths"),
@@ -318,3 +321,45 @@ def test_llm_trailing_slashes_normalize_only_for_llm(monkeypatch):
     assert es["configuration"] == "INVALID"
     assert es["tcp_probe"] == "SKIP"
     assert targets == [("10.23.5.7", 11434)]
+
+
+@pytest.mark.parametrize("path", (
+    "/ollama", "/ollama/", "/ollama/api/chat", "/ollama/api/chat/",
+    "/gateway/v1/ollama", "/gateway/v1/ollama/api/generate",
+    "/api/chat/other", "/v1/secrets", "/proxy-service.v2/api/chat//",
+))
+def test_llm_proxy_prefix_parity_tcp_target_and_redaction(monkeypatch, path):
+    connections = []
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda host, port: connections.append((host, port)) or True,
+    )
+    obs = auto._observe("llm", {
+        "MODEL_BASE_URL": f"http://192.168.0.134:18080{path}",
+        "MODEL_ID": "SECRET_MODEL_NAME",
+    }, no_network=False)
+    assert obs["configuration"] == "RESOLVED"
+    assert obs["tcp_probe"] == "PASS"
+    assert connections == [("192.168.0.134", 18080)]
+    output = json.dumps(obs)
+    assert "192.168.0.134" not in output
+    assert "SECRET_MODEL_NAME" not in output
+    assert path not in output
+    assert obs["service_identity"] == "NOT_TESTED"
+    assert obs["feature_acceptance"] == "NOT_TESTED"
+
+
+@pytest.mark.parametrize("path", (
+    "/ollama", "/ollama/api/chat", "/gateway/v1/ollama",
+    "/proxy-service.v2/api/chat//",
+))
+def test_es_must_reject_runtime_llm_proxy_prefixes(monkeypatch, path):
+    monkeypatch.setattr(
+        auto, "_tcp_connect",
+        lambda *args: pytest.fail("ES URL with proxy path must not connect"),
+    )
+    obs = auto._observe("es", {
+        "ES_URL": f"https://192.168.0.134:9001{path}",
+    }, no_network=False)
+    assert obs["configuration"] == "INVALID"
+    assert obs["tcp_probe"] == "SKIP"
