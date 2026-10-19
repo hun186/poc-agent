@@ -51,12 +51,19 @@ def _effective_runtime_config(root: Path) -> dict[str, str]:
     profile = (os.getenv("APP_ENV") or "dev").strip().lower()
     if re.fullmatch(r"[a-z0-9_-]{1,32}", profile) is None:
         raise ValueError("invalid_profile")
+    # The shell launcher sets PORT before the Python dotenv bootstrap. A PORT
+    # defined only in .env is not applied to run_sra_api.sh's listener.
+    launcher_port = os.environ.get("PORT", "")
     with redirect_stdout(io.StringIO()):
         bootstrap_env(project_root=root)
-    return dict(os.environ)
+    cfg = dict(os.environ)
+    cfg["_OFF1B_LAUNCHER_PORT"] = launcher_port
+    return cfg
 
 
-def _parse_endpoint(raw: str | None) -> tuple[dict[str, object], str | None]:
+def _parse_endpoint(
+    raw: str | None, *, allowed_paths: tuple[str, ...] = ("", "/")
+) -> tuple[dict[str, object], str | None]:
     info: dict[str, object] = {
         "configuration": "MISSING",
         "scheme": None,
@@ -78,7 +85,7 @@ def _parse_endpoint(raw: str | None) -> tuple[dict[str, object], str | None]:
             raise ValueError("unsupported_scheme")
         if url.username is not None or url.password is not None:
             raise ValueError("userinfo_forbidden")
-        if url.path not in ("", "/") or url.query or url.fragment:
+        if url.path not in allowed_paths or url.query or url.fragment:
             raise ValueError("unexpected_url_component")
         if port is None:
             port = 443 if url.scheme == "https" else 80
@@ -110,6 +117,27 @@ def _parse_endpoint(raw: str | None) -> tuple[dict[str, object], str | None]:
         return info, None
 
 
+def _api_bind_endpoint(cfg: dict[str, str]) -> tuple[dict[str, object], str | None]:
+    """Model launcher bind target (loopback available for host=0.0.0.0).
+
+    This is not PUBLIC_API_BASE (a URL-generation / reverse-proxy setting).
+    Port is shell PORT, NOT a value injected by the Python dotenv bootstrap.
+    """
+    raw_port = cfg.get("_OFF1B_LAUNCHER_PORT", "")
+    if raw_port == "":
+        port = 9002
+    elif re.fullmatch(r"[0-9]{1,5}", raw_port) is not None:
+        port = int(raw_port)
+    else:
+        port = 0
+    if not 1 <= port <= 65535:
+        return {
+            "configuration": "INVALID", "scheme": None,
+            "port": None, "host_scope": "UNRESOLVED",
+        }, None
+    return _parse_endpoint(f"http://127.0.0.1:{port}")
+
+
 def _tcp_connect(host: str, port: int) -> bool:
     # Numeric validated IPv4 only; no DNS lookup, proxy, TLS, or HTTP.
     try:
@@ -123,7 +151,26 @@ def _tcp_connect(host: str, port: int) -> bool:
 
 def _observe(service: str, cfg: dict[str, str], *, no_network: bool) -> dict[str, object]:
     key = SERVICE_KEYS[service]
-    endpoint, host = _parse_endpoint(cfg.get(key))
+    if service == "topic-llm":
+        # query_terms uses TOPIC_LLM_URL only as a truthy enablement flag;
+        # the actual call_llm client connects to MODEL_BASE_URL. Do not open
+        # an unrelated socket just because TOPIC_LLM_URL contains an address.
+        return {
+            "component": service, "config_key": key,
+            "configuration": "FEATURE_ENABLED" if cfg.get(key) else "FEATURE_DISABLED",
+            "scheme": None, "port": None, "host_scope": "NOT_AN_ENDPOINT",
+            "feature_enabled": bool(cfg.get(key)),
+            "model_configured": bool(cfg.get("MODEL_ID")),
+            "tcp_probe": "SKIP", "reason": "feature_flag_only",
+            "service_identity": "NOT_TESTED", "tls_validation": "NOT_TESTED",
+            "auth": "NOT_TESTED", "feature_acceptance": "NOT_TESTED",
+        }
+    if service == "api":
+        endpoint, host = _api_bind_endpoint(cfg)
+        key = "PORT"
+    else:
+        allowed_paths = ("", "/", "/api/chat", "/api/generate") if service == "llm" else ("", "/")
+        endpoint, host = _parse_endpoint(cfg.get(key), allowed_paths=allowed_paths)
     evidence: dict[str, object] = {
         "component": service,
         "config_key": key,
@@ -141,10 +188,7 @@ def _observe(service: str, cfg: dict[str, str], *, no_network: bool) -> dict[str
         )
     elif service == "llm":
         evidence["model_configured"] = bool(cfg.get("MODEL_ID"))
-    elif service == "topic-llm":
-        evidence["model_configured"] = bool(cfg.get("TOPIC_LLM_MODEL"))
-
-    if evidence["configuration"] != "RESOLVED":
+     if evidence["configuration"] != "RESOLVED":
         return evidence
     if no_network:
         evidence["reason"] = "network_disabled"
@@ -177,7 +221,9 @@ def main(argv: list[str] | None = None) -> int:
                           "error": "runtime_configuration_unavailable"}, sort_keys=True))
         return 2
 
-    names = tuple(SERVICE_KEYS) if args.check == "all" else (args.check,)
+    # Topic LLM is a feature flag, not an independent TCP service. The
+    # all-services TCP check includes only real configured network endpoints.
+    names = ("api", "es", "llm") if args.check == "all" else (args.check,)
     observations = [_observe(name, cfg, no_network=args.no_network) for name in names]
     result = {"schema": SCHEMA, "mode": MODE,
               "network_mode": "CONFIG_ONLY" if args.no_network else "BOUNDED_TCP_ONLY",
