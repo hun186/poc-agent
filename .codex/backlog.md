@@ -232,3 +232,5 @@
 - Continue OFF-1B with authenticated bounded read-only ES TLS identity/alias/mapping diagnostics, verified configured LLM backend/model inventory, SQL least-privilege driver/schema checks, worker startup/readiness diagnostics and non-mutating observability. Preserve earlier mapping_incompatible blocker until genuine deployed mapping verified.
 
 - 2026-10-19 PR #293 first exact-head Codex completed with 3 P2 (topic flag network target, API external URL vs launcher PORT, LLM endpoint path parity). Same-branch remediation and adversarial regression tests prepared. Obtain Hosted exact-head Actions PASS and fresh Codex review; keep PR OPEN/unmerged until explicit user command. Runtime supervisor identity binding and true service TLS/auth/mapping/model/SQL acceptance remain future work.
+
+- 2026-10-19 PR #293 second Codex exact-head b04b14798e found 2 P2 (LLM URL trailing slash parity, stale architecture topic TCP claim). Hosted CI 39277783676 FAILED at compile (IndentationError at line 191), not a test pass. Repairs and new regression vectors committed; request fresh exact-head CI and Codex review. No Merge until user command.
