@@ -25,10 +25,12 @@ Alternative bounded commands:
     python tools/sraf_airgap_off1b_auto.py --no-network
 
 Services are selected from:
-- API: PUBLIC_API_BASE
+- API launcher listener: shell PORT (default 9002), numeric 127.0.0.1; PUBLIC_API_BASE may reference a separate reverse proxy and is not used to identify the listener. Note: this CLI observes its own launching shell PORT; a separately started running launcher may have used another PORT, so PID/listener attestation is still needed.
 - Elasticsearch: ES_URL
 - Main LLM: MODEL_BASE_URL (whether MODEL_ID is set is reported as boolean)
-- Topic LLM: TOPIC_LLM_URL (whether TOPIC_LLM_MODEL is set is boolean)
+- Topic LLM: TOPIC_LLM_URL is only an enablement flag in the current query_terms path. It is never used for a TCP target. The actual client uses MODEL_BASE_URL / MODEL_ID; the explicit --check topic-llm reports only the enabled boolean and exit 2 (SKIP).
+
+The default --check all probes API, ES and the actual LLM client only; it does NOT probe the topic feature flag. LLM base URL may be the origin or end in /api/chat or /api/generate, matching the existing LLMClient helper. Those paths remain excluded from diagnostics. ES still requires a bare origin.
 
 An endpoint with its hostname explicitly written as a numeric IPv4 address in
 127/8 or RFC1918 10/8, 172.16/12, 192.168/16 may receive one TCP connection
@@ -80,3 +82,10 @@ OFF-0 parent PASS, OFF-1B completion, or deployment FULL_LIVE.
 The deployed operator may run this first-slice tool after the PR is reviewed,
 CI passes, and its bytes are included in a verified deployment package. It must
 not be interpreted as already deployed simply because GitHub contains the code.
+
+## Codex exact-head remediation (2026-10-19)
+
+- TOPIC_LLM_URL is a truthy feature flag, not an independent LLM endpoint. No network connection to its contents; --check topic-llm is classification-only SKIP.
+- Launcher uses shell PORT (default 9002) and listens on all interfaces; test the numeric loopback bind target rather than PUBLIC_API_BASE, which may be a reverse proxy. The CLI process cannot prove the running supervisor used the same external shell environment.
+- Accept the runtime LLMClient's /api/chat and /api/generate suffixes for MODEL_BASE_URL; validate host/port only, never expose the path.
+- These corrections do not elevate a TCP connect to runtime PID attestation or live service verification.
