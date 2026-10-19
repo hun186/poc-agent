@@ -206,3 +206,5 @@
 - 2026-10-20 PR #293 third review P2: unconditional rstrip('/') broadened ES_URL origin classification (// became valid) although only MODEL_BASE_URL should accept trailing slash normalization. Fixed per-service path policy and added negative no-socket ES tests; Hosted Actions and fresh Codex review on corrected exact head are still required, PR remains open.
 
 - 2026-10-20 PR #293 fourth Codex exact-head 45c03b3389 found one P2: configured LLM reverse-proxy path prefixes were false-INVALID even though runtime LLMClient may append /api/chat. Corrected preflight path policy only for LLM, preserved strict ES origin; added adversarial and positive regression tests. Hosted CI and Codex exact-head re-review remain pending, no merge authorization.
+
+- 2026-10-20 PR #293 fifth Codex exact-head cf84d5a3c3 found two P2: empty '?' / '#' URL delimiters lost by urlsplit and oversized raw LLM URL paths bypassing length after rstrip('/'). Same-branch fix and negative/boundary tests submitted. Do not cite old 366 PASS as current-head validation; new Hosted run and fresh Codex review pending, PR unmerged.
