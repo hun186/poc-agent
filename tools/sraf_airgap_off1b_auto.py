@@ -78,6 +78,11 @@ def _parse_endpoint(
     if any(c.isspace() or ord(c) < 0x20 or ord(c) == 0x7f for c in raw):
         info["configuration"] = "INVALID"
         return info, None
+    # urlsplit erases the distinction between no query/fragment and an empty
+    # delimiter. Neither '?'/ '#' is allowed in this bounded TCP-origin CLI.
+    if "?" in raw or "#" in raw:
+        info["configuration"] = "INVALID"
+        return info, None
     try:
         url = urlsplit(raw)
         host = url.hostname
@@ -90,11 +95,13 @@ def _parse_endpoint(
         # appends or recognizes /api/chat and /api/generate. This TCP-only
         # probe never transmits the path. Accept safe prefixed LLM paths,
         # but keep ES strictly root-only and reject ambiguous segments.
+        # Check raw length BEFORE trimming suffix slashes; otherwise a URL
+        # with an unbounded trailing run bypasses the path length limit.
+        if normalize_llm_path and len(url.path) > 512:
+            raise ValueError("llm_path_too_long")
         checked_path = url.path.rstrip("/") if normalize_llm_path else url.path
-        if url.query or url.fragment:
-            raise ValueError("unexpected_url_component")
         if normalize_llm_path:
-            if len(checked_path) > 512 or (
+            if (
                 checked_path and (
                     not re.fullmatch(
                         r"/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*",
