@@ -238,3 +238,5 @@
 - 2026-10-20 PR #293 third Codex review on head 28e98a233c found 1 P2 for accidental Elasticsearch extra-slash normalization. Same-branch remediation scoped rstrip('/') to LLM, plus negative regression tests. Require exact-head Hosted CI PASS and new Codex review; do not merge before explicit instruction.
 
 - 2026-10-20 PR #293 fourth Codex completed with 1 P2: false-INVALID for runtime-supported LLM reverse proxy prefix paths. Corrected in same branch with path-parity + ES isolation regressions and documentation. Next verify new Hosted Actions exact head and request Codex re-review; keep PR open pending explicit merge instruction.
+
+- 2026-10-20 PR #293 fifth Codex on cf84d5a3c3 found 2 P2 (empty query/fragment delimiters; pre-normalization LLM path length limit). Fixed raw URL validation and expanded adversarial no-network/512-char-boundary regressions. Exact-head Hosted CI and Codex re-review outstanding, no authorization to merge.
