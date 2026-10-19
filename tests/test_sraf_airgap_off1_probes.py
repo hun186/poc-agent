@@ -1482,3 +1482,32 @@ def test_proxy_status_raw_header_leading_tab_no_longer_normalized_to_pass(
     assert got.status == "FAIL"
     assert got.evidence == {}
     assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_proxy_status_trailer_crlf_removed_only_after_validating_wire_line(
+    http_site, path, kind,
+):
+    # Wire trailer bytes end with CRLF; only the field value, not the
+    # line terminator, enters RFC 8941's full-match structured-field parser.
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {
+        "_chunked": "chunked",
+        "_extra_chunk_header": "Proxy-Status: edge+proxy",
+        "_custom_trailer": "Proxy-Status: edge+proxy; received-status=200",
+    })
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "PASS"
+    assert got.executed is True
+    assert requests == [("GET", path, None)]

@@ -455,7 +455,7 @@ def _read_verified_chunked(
                 if trailer_name == b"proxy-status":
                     header_members = _proxy_status_members(proxy_status_headers)
                     trailer_members = _proxy_status_members([
-                        trailer.split(b":", 1)[1].decode("latin-1")
+                        trailer[:-2].split(b":", 1)[1].decode("latin-1")
                     ])
                     if (not header_members or not trailer_members or
                             not trailer_members.issubset(header_members)):
