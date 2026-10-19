@@ -172,7 +172,7 @@ def test_cli_skip_returns_two(monkeypatch, tmp_path, capsys):
     assert result["results"][0]["tcp_probe"] == "SKIP"
 
 
-@pytest.mark.parametrize("path", ("/api/chat", "/api/generate"))
+@pytest.mark.parametrize("path", ("/api/chat", "/api/generate", "/api/chat/", "/api/generate/", "/api/chat//", "/api/generate//"))
 def test_llm_runtime_supported_endpoint_paths(monkeypatch, path):
     recorded = []
     monkeypatch.setattr(
@@ -283,3 +283,9 @@ def test_env_file_port_is_not_launcher_port(tmp_path, monkeypatch):
     info, host = auto._api_bind_endpoint(cfg)
     assert info["port"] == 9002
     assert host == "127.0.0.1"
+
+
+def test_invalid_api_url_path_is_not_reinterpreted_as_llm_path():
+    endpoint, host = auto._parse_endpoint("https://192.168.0.134:9001/api/chat/")
+    assert endpoint["configuration"] == "INVALID"
+    assert host is None
