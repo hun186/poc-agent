@@ -1390,3 +1390,95 @@ def test_proxy_status_strict_structured_field_parameter_and_token_grammar(
     if expected == "FAIL":
         assert got.evidence == {}
     assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+@pytest.mark.parametrize(("header", "trailer", "expected"), [
+    # Known RFC 9209 / 9532 parameters require their registered types.
+    ("ThisProxy", "ThisProxy; received-status=200", "PASS"),
+    ("ThisProxy", 'ThisProxy; received-status="200"', "FAIL"),
+    ("ThisProxy", "ThisProxy; received-status=?1", "FAIL"),
+    ("ThisProxy", "ThisProxy; received-status=200.0", "FAIL"),
+    ("ThisProxy", "ThisProxy; error=read_timeout", "PASS"),
+    ("ThisProxy", "ThisProxy; error=?1", "FAIL"),
+    ("ThisProxy", 'ThisProxy; error="read_timeout"', "FAIL"),
+    ("ThisProxy", "ThisProxy; error", "FAIL"),
+    ("ThisProxy", "ThisProxy; next-protocol=h2", "PASS"),
+    # RFC 9209 §2.1.3 also permits Byte Sequence (not only Token).
+    ("ThisProxy", "ThisProxy; next-protocol=:aDI=:", "PASS"),
+    ("ThisProxy", 'ThisProxy; next-protocol="h2"', "FAIL"),
+    ("ThisProxy", "ThisProxy; next-protocol=?0", "FAIL"),
+    ("ThisProxy", 'ThisProxy; next-hop="backend"', "PASS"),
+    ("ThisProxy", "ThisProxy; next-hop=backend", "PASS"),
+    ("ThisProxy", "ThisProxy; next-hop=:aDI=:", "FAIL"),
+    ("ThisProxy", 'ThisProxy; details="okay"', "PASS"),
+    ("ThisProxy", "ThisProxy; details=okay", "FAIL"),
+    ("ThisProxy", "ThisProxy; next-hop-aliases=backend", "FAIL"),
+    ("ThisProxy", 'ThisProxy; next-hop-aliases="backend"', "PASS"),
+    ("ThisProxy", "ThisProxy; unknown-flag=?1", "PASS"),
+    # Header and trailer both checked; duplicates follow last-wins rules.
+    ("ThisProxy; error=?1", "ThisProxy", "FAIL"),
+    ("ThisProxy", "ThisProxy; error=?1; error=read_timeout", "PASS"),
+    ("ThisProxy", "ThisProxy; error=read_timeout; error=?1", "FAIL"),
+    # Leading HTAB invalid, yet OWS including HTAB around commas is legal.
+    ("\tThisProxy", "ThisProxy", "FAIL"),
+    ("  \tThisProxy", "ThisProxy", "FAIL"),
+    ("ThisProxy", "\tThisProxy", "FAIL"),
+    ("ThisProxy", "ThisProxy\t", "FAIL"),
+    ("ThisProxy,\tSecondary", "ThisProxy", "PASS"),
+    ("First,\tThisProxy", "ThisProxy", "PASS"),
+    ("First, ThisProxy", "ThisProxy,\tFirst", "PASS"),
+])
+def test_proxy_status_registered_parameter_types_and_tab_positions(
+    http_site, path, kind, header, trailer, expected,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {
+        "_chunked": "chunked",
+        "_extra_chunk_header": "Proxy-Status: " + header,
+        "_custom_trailer": "Proxy-Status: " + trailer,
+    })
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == expected
+    assert got.executed is True
+    if expected == "FAIL":
+        assert got.evidence == {}
+    assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+def test_proxy_status_raw_header_leading_tab_no_longer_normalized_to_pass(
+    http_site, path, kind,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {
+        "_chunked": "chunked",
+        "_extra_chunk_header": "Proxy-Status:\tThisProxy",
+        "_custom_trailer": "Proxy-Status: ThisProxy",
+    })
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == "FAIL"
+    assert got.evidence == {}
+    assert requests == [("GET", path, None)]

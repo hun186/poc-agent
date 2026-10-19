@@ -207,6 +207,14 @@ class _StrictHeaderLineReader:
               line.split(b":", 1)[0].lower()
               in (b"content-length", b"transfer-encoding")):
             raise http.client.HTTPException("http_interim_framing_forbidden")
+        elif line.split(b":", 1)[0].lower() == b"proxy-status":
+            # http.client/email.parser discards header-value leading HTAB;
+            # RFC 8941 list parsing discards only leading SP, never HTAB.
+            raw_value = line[:-2].split(b":", 1)[1]
+            if raw_value.lstrip(b" ").startswith(b"\t"):
+                raise http.client.HTTPException(
+                    "http_proxy_status_leading_tab_forbidden"
+                )
         return line
 
 
@@ -319,6 +327,7 @@ _SF_STRING = r'"(?:[\x20-\x21\x23-\x5b\x5d-\x7e]|\\["\\])*"'
 _SF_NUMBER = r"-?(?:[0-9]{1,12}\.[0-9]{1,3}|[0-9]{1,15})"
 _SF_BYTES = r":[A-Za-z0-9+/]*={0,2}:"
 _SF_BOOL = r"\?[01]"
+_SF_INTEGER = r"-?[0-9]{1,15}"
 _SF_BARE = rf"(?:{_SF_TOKEN}|{_SF_STRING}|{_SF_NUMBER}|{_SF_BYTES}|{_SF_BOOL})"
 _SF_KEY = r"[a-z*][a-z0-9_.*-]*"
 _PROXY_STATUS_ITEM = re.compile(
@@ -353,18 +362,48 @@ def _proxy_status_members(values: list[str]) -> set[str] | None:
         if quoted or escaped:
             return None
         items.append(value[start:])
-        for item in items:
-            item = item.strip(" \t")
+        for index, item in enumerate(items):
+            # RFC 8941 §4.2 strips SP at the start/end of the whole
+            # field, while OWS (SP/HTAB) is legal only around commas.
+            item = item.lstrip(" " if index == 0 else " \t")
+            item = item.rstrip(" " if index == len(items) - 1 else " \t")
             match = _PROXY_STATUS_ITEM.fullmatch(item)
             if match is None:
                 return None
+            parameters: dict[str, str | None] = {}
             for param in _PROXY_STATUS_PARAM.finditer(match.group("params")):
-                bare = param.group("value")
+                key, bare = param.group("key"), param.group("value")
                 if bare is not None and bare.startswith(":"):
                     try:
                         base64.b64decode(bare[1:-1], validate=True)
                     except (ValueError, binascii.Error):
                         return None
+                # RFC 8941 duplicate parameter keys: last value wins, but
+                # *every* earlier instance must still be syntactically valid.
+                parameters[key] = bare
+            for key, bare in parameters.items():
+                if key not in (
+                    "error", "next-hop", "next-protocol", "received-status",
+                    "details", "next-hop-aliases",
+                ):
+                    continue
+                if bare is None:
+                    return None
+                if key == "error":
+                    type_allowed = re.fullmatch(_SF_TOKEN, bare) is not None
+                elif key == "next-hop":
+                    type_allowed = (re.fullmatch(_SF_TOKEN, bare) is not None
+                                    or re.fullmatch(_SF_STRING, bare) is not None)
+                elif key == "next-protocol":
+                    # RFC 9209 §2.1.3 permits Token *or* Byte Sequence.
+                    type_allowed = (re.fullmatch(_SF_TOKEN, bare) is not None
+                                    or re.fullmatch(_SF_BYTES, bare) is not None)
+                elif key == "received-status":
+                    type_allowed = re.fullmatch(_SF_INTEGER, bare) is not None
+                else:  # details, next-hop-aliases (RFC 9532)
+                    type_allowed = re.fullmatch(_SF_STRING, bare) is not None
+                if not type_allowed:
+                    return None
             member = match.group("member")
             if member.startswith('"'):
                 member = member[1:-1].replace(r'\"', '"').replace(r'\\', '\\')
@@ -416,7 +455,7 @@ def _read_verified_chunked(
                 if trailer_name == b"proxy-status":
                     header_members = _proxy_status_members(proxy_status_headers)
                     trailer_members = _proxy_status_members([
-                        trailer.split(b":", 1)[1].decode("latin-1").strip()
+                        trailer.split(b":", 1)[1].decode("latin-1")
                     ])
                     if (not header_members or not trailer_members or
                             not trailer_members.issubset(header_members)):

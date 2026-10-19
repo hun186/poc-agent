@@ -27,6 +27,8 @@ Port 和 Model Name 為參數範例，**非已驗證的正式部署配置**。�
 
 ## 安全邊界
 
+- `Proxy-Status`（RFC 9209／8941／9532）已加上已知參數的型別限制：`error`=Token、`next-hop`=Token/String、`next-protocol`=Token/Byte Sequence、`received-status`=Integer、`details` 與 `next-hop-aliases`=String；未知參數依 Structured Fields 語法保留。拒絕在 List 首尾出現 HTAB，但允許逗號兩側合法 OWS；在標頭尚未被 Python 正規化前，即檢查原始 `Proxy-Status` 欄位值的前置 HTAB，避免假 PASS。四類 loopback TCP probe 均新增型別與空白正反測試，仍只代表局部唯讀探測。
+
 - `Proxy-Status` 使用 RFC 8941 Structured Fields 完整 List Item／Parameters 文法：支援完整合法 Token 字元與字串、數字、布林、Byte Sequence，參數內容須全部通過（包含 Base64 驗證），禁止僅依分號前綴而忽略不合法參數。仍須由同一回應 Header 宣告對應 intermediary member；四類 loopback TCP 測試包含合法加號 Token 與非法參數案例。嚴格 HTTP 封包、deadline、body 限制與局部唯讀驗收不變。
 
 - HTTP Trailer 審查：RFC 8470 §5.1 禁止 `Early-Data` 出現在 HTTP 回應（所有大小寫皆拒絕）。RFC 9209 §2 允許 `Proxy-Status` 出現在 Trailer，但對應 Header 必須先列出相同 intermediary member；缺少 Header、成員不相符或其他 `Proxy-*` 欄位仍 fail-closed。合規的 `Proxy-Status` 僅作為傳輸 metadata，不取代 probe 的服務身分驗證與授權規則。四類 loopback TCP 情境均有正向與負向測試，OFF-1A 不構成正式封閉網路驗收。
