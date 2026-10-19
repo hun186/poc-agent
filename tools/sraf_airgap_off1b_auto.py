@@ -85,7 +85,7 @@ def _parse_endpoint(
             raise ValueError("unsupported_scheme")
         if url.username is not None or url.password is not None:
             raise ValueError("userinfo_forbidden")
-        if url.path not in allowed_paths or url.query or url.fragment:
+        if url.path.rstrip("/") not in allowed_paths or url.query or url.fragment:
             raise ValueError("unexpected_url_component")
         if port is None:
             port = 443 if url.scheme == "https" else 80
@@ -188,7 +188,7 @@ def _observe(service: str, cfg: dict[str, str], *, no_network: bool) -> dict[str
         )
     elif service == "llm":
         evidence["model_configured"] = bool(cfg.get("MODEL_ID"))
-     if evidence["configuration"] != "RESOLVED":
+    if evidence["configuration"] != "RESOLVED":
         return evidence
     if no_network:
         evidence["reason"] = "network_disabled"
