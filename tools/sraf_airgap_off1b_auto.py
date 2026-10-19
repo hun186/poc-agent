@@ -86,10 +86,26 @@ def _parse_endpoint(
             raise ValueError("unsupported_scheme")
         if url.username is not None or url.password is not None:
             raise ValueError("userinfo_forbidden")
-        # LLMClient.rstrip("/") accepts optional suffix slashes. ES and
-        # all other endpoints retain strict bare-origin path validation.
+        # LLMClient.rstrip("/") preserves reverse-proxy prefixes, then
+        # appends or recognizes /api/chat and /api/generate. This TCP-only
+        # probe never transmits the path. Accept safe prefixed LLM paths,
+        # but keep ES strictly root-only and reject ambiguous segments.
         checked_path = url.path.rstrip("/") if normalize_llm_path else url.path
-        if checked_path not in allowed_paths or url.query or url.fragment:
+        if url.query or url.fragment:
+            raise ValueError("unexpected_url_component")
+        if normalize_llm_path:
+            if len(checked_path) > 512 or (
+                checked_path and (
+                    not re.fullmatch(
+                        r"/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*",
+                        checked_path,
+                    )
+                    or any(segment in (".", "..")
+                           for segment in checked_path.split("/"))
+                )
+            ):
+                raise ValueError("invalid_llm_path")
+        elif checked_path not in allowed_paths:
             raise ValueError("unexpected_url_component")
         if port is None:
             port = 443 if url.scheme == "https" else 80
