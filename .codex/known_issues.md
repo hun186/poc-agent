@@ -204,3 +204,5 @@
 - 2026-10-19 OFF-1B second Codex review on head b04b14798e completed with 2 P2: trailing LLM URL slashes false-INVALID and stale architecture target set. Hosted Actions 39277783676 failed at Python compile (IndentationError line 191), not at runtime tests; prior 324-pass results apply only to older head 2008069. Corrections in same PR branch; need new current-head CI pass and Codex review. No permission to merge.
 
 - 2026-10-20 PR #293 third review P2: unconditional rstrip('/') broadened ES_URL origin classification (// became valid) although only MODEL_BASE_URL should accept trailing slash normalization. Fixed per-service path policy and added negative no-socket ES tests; Hosted Actions and fresh Codex review on corrected exact head are still required, PR remains open.
+
+- 2026-10-20 PR #293 fourth Codex exact-head 45c03b3389 found one P2: configured LLM reverse-proxy path prefixes were false-INVALID even though runtime LLMClient may append /api/chat. Corrected preflight path policy only for LLM, preserved strict ES origin; added adversarial and positive regression tests. Hosted CI and Codex exact-head re-review remain pending, no merge authorization.
