@@ -1323,3 +1323,70 @@ def test_chunk_proxy_status_trailers_require_matching_header_member(
     if not expect_pass:
         assert got.evidence == {}
     assert requests == [("GET", path, None)]
+
+
+@pytest.mark.parametrize(("path", "kind"), [
+    ("/healthz", "api"), ("/", "es"),
+    ("/api/tags", "ollama"), ("/v1/models", "openai"),
+])
+@pytest.mark.parametrize(("header", "trailer", "expected"), [
+    # RFC 8941: sf-token allows every tchar plus ':' and '/' after the first byte.
+    ("edge+proxy", "edge+proxy; next-hop=edge+backend", "PASS"),
+    ("edge!proxy", "edge!proxy", "PASS"),
+    ("edge#proxy", "edge#proxy", "PASS"),
+    ("edge$proxy", "edge$proxy", "PASS"),
+    ("edge%proxy", "edge%proxy", "PASS"),
+    ("edge&proxy", "edge&proxy", "PASS"),
+    ("edge'proxy", "edge'proxy", "PASS"),
+    ("edge^proxy", "edge^proxy", "PASS"),
+    ("edge\x60proxy", "edge\x60proxy", "PASS"),
+    ("edge|proxy", "edge|proxy", "PASS"),
+    ("edge~proxy", "edge~proxy", "PASS"),
+    ("edge/proxy", "edge/proxy", "PASS"),
+    ("edge:proxy", "edge:proxy", "PASS"),
+    ("*edge", "*edge", "PASS"),
+    ("ThisProxy", "ThisProxy; error=read_timeout", "PASS"),
+    ("ThisProxy", "ThisProxy; next-protocol=:aDI=:", "PASS"),
+    ("ThisProxy", "ThisProxy; received-status=200", "PASS"),
+    ("ThisProxy", 'ThisProxy; details="upstream, delayed"', "PASS"),
+    ("ThisProxy", "ThisProxy; flag=?1; neg=-42; decimal=3.125", "PASS"),
+    ("ThisProxy", "ThisProxy; x-empty; false=?0", "PASS"),
+    ("ThisProxy; =broken", "ThisProxy", "FAIL"),
+    ("ThisProxy", "ThisProxy; =broken", "FAIL"),
+    ("ThisProxy", "ThisProxy; Foo=1", "FAIL"),
+    ("ThisProxy", "ThisProxy; x==1", "FAIL"),
+    ("ThisProxy", "ThisProxy; foo=bar extra", "FAIL"),
+    ("ThisProxy", "ThisProxy; a=?2", "FAIL"),
+    ("ThisProxy", "ThisProxy; a=(bad)", "FAIL"),
+    ("ThisProxy", "ThisProxy; a=12.3456", "FAIL"),
+    ("ThisProxy", "ThisProxy; a=1234567890123456", "FAIL"),
+    ("ThisProxy", 'ThisProxy; details="unfinished', "FAIL"),
+    ("ThisProxy", 'ThisProxy; details="bad\\q"', "FAIL"),
+    ("ThisProxy", "ThisProxy; x=:%%%%:", "FAIL"),
+    ("ThisProxy", "ThisProxy; x=:abc:", "FAIL"),
+    ("ThisProxy", "ThisProxy; x=@", "FAIL"),
+    ("ThisProxy", "ThisProxy; a=ok; =broken", "FAIL"),
+])
+def test_proxy_status_strict_structured_field_parameter_and_token_grammar(
+    http_site, path, kind, header, trailer, expected,
+):
+    port, routes, requests = http_site
+    body = (b'{"status":"ok"}' if kind == "api" else
+            _json({"cluster_name": "local", "version": {"number": "8.13.0"}})
+            if kind == "es" else
+            _json({"models": [{"name": "model-a"}]}) if kind == "ollama"
+            else _json({"data": [{"id": "model-a"}]}))
+    routes[path] = (200, body, {
+        "_chunked": "chunked",
+        "_extra_chunk_header": "Proxy-Status: " + header,
+        "_custom_trailer": "Proxy-Status: " + trailer,
+    })
+    got = (probes.probe_api_health(port) if kind == "api" else
+           probes.probe_es_transport(port) if kind == "es" else
+           probes.probe_llm_inventory(port, "model-a",
+                                      "ollama" if kind == "ollama" else "openai"))
+    assert got.status == expected
+    assert got.executed is True
+    if expected == "FAIL":
+        assert got.evidence == {}
+    assert requests == [("GET", path, None)]

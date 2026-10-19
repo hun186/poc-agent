@@ -84,3 +84,5 @@
 ## Compaction Record — 2026-10-19
 
 - Archived pre-compaction active memory verbatim at `.codex/archive/memory.md-20261019-134500.md` (>40KB / multiple dated sections), retained current summary, contracts, previous archives and outstanding obligations. No historical progress is discarded or falsely restated.
+
+- 2026-10-19 PR #292 Codex exact-head 816a0297ed review completed after 863 passed (run 39206507074). Two new P2: malformed Proxy-Status parameter suffix (e.g. '; =broken') falsely accepted; legal RFC 8941 sf-token characters (e.g. '+') falsely rejected. Replaced prefix-only parsing with full RFC 8941 Item/Parameter matcher (all token tchar, key/bare item grammar and decoded Base64 validation). Added live TCP four-path valid/invalid regression matrix; new exact-head Hosted CI and Codex review pending. No full SRAF airgap deployment acceptance or merge authorization.

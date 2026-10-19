@@ -14,6 +14,8 @@ import socket
 import time
 import json
 import re
+import base64
+import binascii
 import os
 import shutil
 from dataclasses import asdict, dataclass
@@ -310,8 +312,21 @@ _TRAILER_FORBIDDEN_PREFIXES = (
 # RFC 9209 §2 permits Proxy-Status trailers only if the same intermediary
 # member was first declared in a Proxy-Status header. This diagnostic metadata
 # never becomes routing, authorization or probe-identity authority.
-_PROXY_STATUS_MEMBER = re.compile(
-    r'^(?:[A-Za-z*][A-Za-z0-9_.*:/-]*|"(?:[ \x21\x23-\x5b\x5d-\x7e]|\\["\\])*")'
+# RFC 8941 Structured Field Item/List syntax: match entire members and
+# parameter values, not just a loose member prefix or a semicolon.
+_SF_TOKEN = r"[A-Za-z*][A-Za-z0-9!#$%&'*+\-.^_\x60|~:/]*"
+_SF_STRING = r'"(?:[\x20-\x21\x23-\x5b\x5d-\x7e]|\\["\\])*"'
+_SF_NUMBER = r"-?(?:[0-9]{1,12}\.[0-9]{1,3}|[0-9]{1,15})"
+_SF_BYTES = r":[A-Za-z0-9+/]*={0,2}:"
+_SF_BOOL = r"\?[01]"
+_SF_BARE = rf"(?:{_SF_TOKEN}|{_SF_STRING}|{_SF_NUMBER}|{_SF_BYTES}|{_SF_BOOL})"
+_SF_KEY = r"[a-z*][a-z0-9_.*-]*"
+_PROXY_STATUS_ITEM = re.compile(
+    rf"(?P<member>(?:{_SF_TOKEN}|{_SF_STRING}))"
+    rf"(?P<params>(?:; *{_SF_KEY}(?:={_SF_BARE})?)*)"
+)
+_PROXY_STATUS_PARAM = re.compile(
+    rf"; *(?P<key>{_SF_KEY})(?:=(?P<value>{_SF_BARE}))?"
 )
 
 
@@ -320,7 +335,7 @@ def _proxy_status_members(values: list[str]) -> set[str] | None:
     for value in values:
         if not value or len(value) > _CHUNK_TRAILER_LIMIT:
             return None
-        # Commas within quoted Structured Field values are not separators.
+        # Split only unquoted commas; respect escaped quotes within strings.
         items: list[str] = []
         start = 0
         quoted = False
@@ -340,13 +355,17 @@ def _proxy_status_members(values: list[str]) -> set[str] | None:
         items.append(value[start:])
         for item in items:
             item = item.strip(" \t")
-            match = _PROXY_STATUS_MEMBER.match(item)
+            match = _PROXY_STATUS_ITEM.fullmatch(item)
             if match is None:
                 return None
-            remainder = item[match.end():].lstrip(" \t")
-            if remainder and not remainder.startswith(";"):
-                return None
-            member = match.group()
+            for param in _PROXY_STATUS_PARAM.finditer(match.group("params")):
+                bare = param.group("value")
+                if bare is not None and bare.startswith(":"):
+                    try:
+                        base64.b64decode(bare[1:-1], validate=True)
+                    except (ValueError, binascii.Error):
+                        return None
+            member = match.group("member")
             if member.startswith('"'):
                 member = member[1:-1].replace(r'\"', '"').replace(r'\\', '\\')
             members.add(member)

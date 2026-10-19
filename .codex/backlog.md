@@ -217,3 +217,5 @@
 
 - 2026-10-19 PR #292 OFF-1A trailer compatibility/control-field remediation submitted for exact-head review. Gate on new HEAD's Hosted Actions, OFF-0 schema-only, all focused tests, and no remaining new P1/P2; await explicit user merge command. OFF-1B live SQL/ES/LLM/Workers/DOCX remains independent.
 - 2026-10-19 OFF-1A PR #292: exact-head review 39af7be raised Early-Data / Proxy-Status P2s. Code and real TCP tests prepared; require new Hosted exact-head CI, OFF-0 19 checks and Codex receipt before merge authorization. Full SRAF airgap acceptance deferred.
+
+- 2026-10-19 PR #292 Codex exact-head 816a0297ed review completed after 863 passed (run 39206507074). Two new P2: malformed Proxy-Status parameter suffix (e.g. '; =broken') falsely accepted; legal RFC 8941 sf-token characters (e.g. '+') falsely rejected. Replaced prefix-only parsing with full RFC 8941 Item/Parameter matcher (all token tchar, key/bare item grammar and decoded Base64 validation). Added live TCP four-path valid/invalid regression matrix; new exact-head Hosted CI and Codex review pending. No full SRAF airgap deployment acceptance or merge authorization.
