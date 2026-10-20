@@ -281,9 +281,15 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         result["reason"] = "es_auth_transport_unavailable"
         _later_tls_failure(result, auth_reason)
         return result
-    if auth_status in (401, 403):
+    if auth_status == 401:
         result["auth"] = "FAIL"
         result["reason"] = "es_auth_rejected"
+        return result
+    if auth_status == 403:
+        # A gateway can deny this route before evaluating Authorization.
+        # Access is denied, but password validity remains unverified.
+        result["auth"] = "NOT_VERIFIED"
+        result["reason"] = "es_auth_access_denied"
         return result
     if auth_status == 404:
         result["reason"] = "es_auth_endpoint_unavailable"
