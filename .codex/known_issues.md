@@ -212,3 +212,7 @@
 ## 2026-10-20 next OFF-1B operator API HTTP limits
 
 - The new API HTTP /healthz check is a bounded anonymous loopback observation only and cannot prove actual launcher PID ownership, SQL/ES/LLM/Worker readiness, or air-gap acceptance. Operator shell PORT may differ from the environment used to launch the already-running server. GitHub Hosted CI cannot reach the private deployment; real Linux health evidence must be collected after a reviewed package is deployed, and current ES mapping_incompatible remains an independent blocker. No new Linux deployment requested yet.
+
+## 2026-10-20 ES HTTPS diagnostic operational limitations
+
+- The next OFF-1B ES HTTPS probe refuses disabled TLS hostname checking. Production ES client currently sets ssl_assert_hostname=False; numeric-IP TLS identity may fail if its certificate lacks matching IP SAN. That is a signal for proper configuration, not grounds for disabling verification. Fixed CA path and literal single ES_INDEX are conservative; alternate CA paths, multiple indices/aliases, chunked responses or oversized mapping bodies require separately reviewed capability without unsafe override. Hosted CI cannot access deployed ES; the live mapping_incompatible issue remains unverified and blocks production acceptance. New PR not merged, Linux not updated.
