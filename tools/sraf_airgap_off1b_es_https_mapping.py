@@ -380,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
                                       else "PRIVATE_IPV4_TLS_GET_ONLY",
                       "results": [observation]}, sort_keys=True, ensure_ascii=False))
     if ("FAIL" in (observation["https_probe"], observation["auth"],
-                   observation["mapping_probe"])
+                   observation["mapping_probe"], observation["tls_validation"])
             or observation["configuration"] == "INVALID"):
         return 1
     if (observation["https_probe"] == "PASS"
