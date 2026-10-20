@@ -183,8 +183,9 @@ verification even when a non-mutating Mapping probe passes.
 Only if the operator EXPLICITLY opts in with `--verify-credentials` does
 the command send a fourth GET to /_security/_authenticate using the same
 username and a fresh, deliberately incorrect, non-disclosed password. It
-must return HTTP 401 or 403 or authentication is FAIL/unverified and the
-Mapping GET is skipped. A verified positive principal and this negative
+must return HTTP 401 specifically; HTTP 403 may be a proxy authorization
+denial without actually checking the password. Otherwise authentication
+is FAIL/unverified and the Mapping GET is skipped. A verified positive principal and this negative
 control are both required for `auth=PASS` and exit 0. A failed login
 may generate an audit event, contribute toward security lockout thresholds
 or trigger an alert; DO NOT select this option without operational approval.
@@ -240,9 +241,11 @@ All original TLS verification, private-IP target scope and redaction constraints
   Do **not** report auth=PASS from that evidence alone. Safe default reports
   auth=NOT_VERIFIED and does not trigger a failed-login audit; optional
   --verify-credentials performs an explicitly authorized one-time invalid
-  password challenge, requires 401/403, then allows authenticated Mapping.
+  password challenge, requires HTTP 401 (not proxy-supplied 403), then allows authenticated Mapping.
 - TLS is an aggregate of every independent HTTPS connection, not just the
   first root request. Later authentication/control/Mapping TLS failures downgrade
   the overall certificate identity state and prevent any final PASS claim.
 - These are local program/test changes only; no Linux deployment proof has been
   collected, no SRAF parent FULL_LIVE or OFF-3 approval, and PR is unmerged.
+
+- More conservative boundary: HTTP 403 from the deliberately invalid password check is not proof the password failed authentication; it might be a proxy's ACL. Only HTTP 401 is accepted as a negative control. The failed-login audit/lockout caveat remains, and the default does not send a control.
