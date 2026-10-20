@@ -143,3 +143,60 @@ Mapping, LLM inventory, SQL Server, worker heartbeat, or offline E2E evidence.
 Deployment recommendation: bundle API HTTP, ES verified HTTPS/Mappings, and LLM
 model inventory into the next useful OFF-1B deployment diagnostics milestone;
 do not roll the Linux environment solely to try this incremental script.
+
+## 2026-10-20 ES HTTPS / Mapping diagnostic slice (PR under review)
+
+A separate standalone operator command now provides a safe, small Elasticsearch
+identity and Mapping diagnosis. This is not a full SRAF acceptance check and
+must not be run in the Linux production environment until the PR passes review,
+is explicitly merged and packaged in a verified deployment.
+
+    python tools/sraf_airgap_off1b_es_https_mapping.py --no-network
+    python tools/sraf_airgap_off1b_es_https_mapping.py
+
+Configuration is derived exclusively from the existing dotenv bootstrap:
+`ES_URL` (literal numeric RFC1918/loopback IPv4 **HTTPS origin only**),
+`ES_USERNAME` + `ES_PASSWORD` (existing runtime Basic credentials), one
+literal `ES_INDEX` or alias and the fixed repository
+`agent/certs/http_ca.crt` trusted CA location. No manual destination, model,
+certificate path, index or credentials are accepted on the command line.
+Missing/unsafe settings are SKIP or INVALID, never silently probed.
+Production Elasticsearch runtime currently disables TLS hostname matching;
+**the diagnostic intentionally does not**. Both certificate chain and the
+numeric IP's certificate identity must validate before sending Basic credentials.
+If the deployment certificate is only valid for a DNS name, the result is
+TLS identity failure, *not* an invitation to disable verification.
+
+The command opens at most two separate HTTPS connections to the already
+allowlisted host:port, in order: (1) anonymous-ish identity GET / using
+configured HTTP Basic auth, requiring a plausible cluster_name/version.number,
+then (2) authenticated GET /{literal-index}/_mapping. Each request has a
+3-second total monotonic asyncio deadline, bounded header/body sizes and
+fail-closed handling of unsupported framing. No redirects, DNS lookups,
+HTTP proxy, model inference, SQL operation, index writes, bulk fetch,
+search/query, HEAD or non-GET requests. All remote response content and raw
+exception messages stay out of the report.
+
+Mapping comparisons reuse `agent.external_capabilities.mapping_compatibility`,
+the same predicate used for Requirement acceptance. A verified incompatible
+mapping reports `mapping_incompatible`; 404 reports `es_index_missing`;
+401/403 reports access denied; more than one resolved index/alias entry is
+SKIP as ambiguous. Mapping PASS does **not** establish query correctness,
+production selector provenance or FULL_LIVE.
+
+Output: `schema=sraf_airgap_off1b_es_https_mapping_v1`,
+`mode=PARTIAL_ONLY_NOT_ACCEPTANCE`, separate `https_probe` and
+`mapping_probe` states, and fixed redacted reason codes. Never emit the
+index/alias, host/IP, full URL, private certificate path, credential, cluster
+name, mapping fields, model name or raw exception. Exit 0 only when both
+narrow observations PASS; exit 1 for evidence-supported FAIL, 2 for SKIP.
+
+Limitations requiring later work: (a) this early bounded probe requires a
+single literal ES_INDEX and a server certificate identifying the numeric IP,
+while some deployments use multiple index selectors or hostname-only certs;
+(b) it intentionally rejects chunked responses and responses above its fixed
+body bound rather than risk a false PASS; (c) mapping compatibility alone does
+not resolve the known live `mapping_incompatible` deployment blocker without
+actual operator-run evidence. A later independently reviewed extension may
+support multiple approved selectors, trusted remote hostname pinning, verified
+aliases and richer transport framing, without weakening TLS or sending data.
