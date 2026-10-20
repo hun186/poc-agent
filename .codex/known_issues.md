@@ -224,3 +224,5 @@
 - 2026-10-20 Actions diagnostic blocker persists on PR #295 after second-review fixes: run #39381020012 completed failure with job steps=null and logs_url=null; fetch_workflow_job_logs returns missing blob. Do not attribute failure to a specific test or runner cause absent independent evidence. Vercel combined status also shows build-rate-limit failure, but this is separate from the GitHub Actions status. Exact-head Hosted CI PASS not yet obtained.
 
 - 2026-10-20 PR #295 third Codex P2: later cert failure was marked tls_validation=FAIL but CLI returned SKIP/incomplete exit 2. Corrected predicate and expanded CLI regressions. No reliable current-head CI PASS or final Codex review yet; previous Hosted failures lacked steps and logs. No Linux change.
+
+- 2026-10-20 PR #295 fourth Codex P2 addressed: on protected /_security/_authenticate HTTP 403, gateway may have denied the path before evaluating Basic credentials, so report `auth=NOT_VERIFIED/es_auth_access_denied` (not bad-password FAIL). New tests include control-opt-in path not attempted. Hosted CI repeated failures remain unverified due to absent steps and missing logs, so no acceptance or merge.
