@@ -193,3 +193,7 @@
 ## 2026-10-20 OFF-1B configured API HTTP next slice (PR under review)
 
 - tools/sraf_airgap_off1b_api_http.py is a separate operator-side CLI that composes tools.sraf_airgap_off1b_auto._effective_runtime_config / _api_bind_endpoint with tools.sraf_airgap_off1_probes.probe_api_health; deliberately reuse the already-reviewed absolute 3s, bounded 64-KiB raw strict loopback GET /healthz rather than creating a second HTTP parser. The probe is never public/proxy-targeted, authenticated, or promoted to application identity/worker readiness. The first TCP-only CLI is unchanged. Packaging/deployed validation deferred until ES/LLM diagnostic stage.
+
+## 2026-10-20 OFF-1B verified ES HTTPS/Mapping preflight (not merged)
+
+- New isolated tools/sraf_airgap_off1b_es_https_mapping.py reuses OFF-1B effective dotenv parsing and ES private-IP URL restrictions, then performs at most two identity-checked TLS HTTP Basic GETs: root ES metadata and a strictly literal configured ES_INDEX/alias mapping. TLS uses Python's verification-enabled SSLContext with fixed repository CA; numeric IP must match certificate SAN. asyncio direct AF_INET numeric socket excludes DNS/proxy and shared deadline bounds read/handshake. Mapping output uses agent.external_capabilities.mapping_compatibility, no schema mutation, no runtime ES client import, no environment-specific endpoint hardcoding or full acceptance. Ambiguous selector/mapping returns SKIP. HOSTED unit-only verification cannot prove live ES mapping blocker resolution.
