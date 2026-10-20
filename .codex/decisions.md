@@ -347,3 +347,7 @@
 ## 2026-10-20 OFF-1B deployment cadence and API HTTP boundary
 
 - Following operator preference, continue developing independently reviewable OFF-1B slices but defer Linux package updates until API /healthz, vetted ES HTTPS identity/mapping and real LLM inventory can run as one useful diagnosis. For configured API HTTP, reuse existing OFF-1A hardened loopback GET and OFF-1B bootstrap instead of reimplementing HTTP or discovering public hosts. Return only a bounded diagnostic partial observation; do not assert FULL_LIVE/worker readiness, follow redirects, or access remote endpoints/credentials.
+
+## 2026-10-20 OFF-1B ES trust boundary
+
+- Never reuse the runtime ES connection's ssl_assert_hostname=False for a security diagnostic; instead build verification-enabled TLS with fixed repo http_ca.crt and numeric IP SAN checking, direct socket.AF_INET connect and no DNS/proxy. Do not send Basic auth until TLS handshake completes. Support GET / ES identity plus one literal GET /{index}/_mapping, with a single 3s monotonic async timeout per request, limited response header/body, no redirects/HTTP writes/search, and stable redacted error classifications. Reuse the existing Requirement mapping_compatibility comparator and refuse ambiguous alias expansion; these narrow successes cannot certify production retrieval, service ownership or FULL_LIVE. Plan Linux deployment only when ES and LLM reviews join the already merged API diagnostics.
