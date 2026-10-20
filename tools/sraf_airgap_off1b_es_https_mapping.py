@@ -11,6 +11,7 @@ import base64
 import json
 from pathlib import Path
 import re
+import secrets
 import socket
 import ssl
 import sys
@@ -185,8 +186,16 @@ def _verified_basic_principal(payload: bytes | None, username: str) -> bool:
     )
 
 
+def _later_tls_failure(result: dict[str, object], reason: str) -> None:
+    """Aggregate TLS across all independent connections, not just first GET."""
+    result["tls_validation"] = (
+        "FAIL" if reason == "es_tls_identity_unverified" else "NOT_VERIFIED"
+    )
+
+
 def _observe(cfg: dict[str, str], *, no_network: bool,
-             root: Path = PROJECT_ROOT) -> dict[str, object]:
+             root: Path = PROJECT_ROOT,
+             verify_credentials: bool = False) -> dict[str, object]:
     endpoint, host = _parse_endpoint(cfg.get("ES_URL"))
     index = _configured_index(cfg.get("ES_INDEX"))
     username, password = cfg.get("ES_USERNAME") or "", cfg.get("ES_PASSWORD") or ""
@@ -201,6 +210,7 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         "https_probe": "SKIP", "mapping_probe": "SKIP",
         "reason": "configuration_incomplete",
         "tls_validation": "NOT_TESTED", "auth": "NOT_TESTED",
+        "credential_control": "NOT_RUN",
         "service_identity": "NOT_TESTED", "feature_acceptance": "NOT_TESTED",
     }
     if endpoint["configuration"] == "INVALID":
@@ -269,8 +279,7 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
     if auth_status is None:
         result["auth"] = "NOT_VERIFIED"
         result["reason"] = "es_auth_transport_unavailable"
-        if auth_reason == "es_tls_identity_unverified":
-            result["tls_validation"] = "FAIL"
+        _later_tls_failure(result, auth_reason)
         return result
     if auth_status in (401, 403):
         result["auth"] = "FAIL"
@@ -287,13 +296,45 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         result["auth"] = "FAIL"
         result["reason"] = "es_principal_unverified"
         return result
-    result["auth"] = "PASS"
+    # A matching principal alone does not prove that the supplied password
+    # caused authentication: proxies may silently replace Authorization.
+    # Default mode never sends deliberately incorrect credentials, since even
+    # one failed attempt may be audited or contribute to an account lockout.
+    result["auth"] = "NOT_VERIFIED"
+    if verify_credentials:
+        # Explicit operator opt-in only. Same user, fresh deliberately invalid
+        # password. If a proxy ignores Authorization, it can still return 200
+        # and cannot produce a false PASS. Never print the challenge value.
+        invalid_password = secrets.token_urlsafe(32)
+        while invalid_password == password:
+            invalid_password = secrets.token_urlsafe(32)
+        control_status, _, control_reason = _https_get(
+            host, port, "/_security/_authenticate",
+            username, invalid_password, ca,
+        )
+        if control_status is None:
+            result["credential_control"] = "INCOMPLETE"
+            result["reason"] = "es_credential_control_unavailable"
+            _later_tls_failure(result, control_reason)
+            return result
+        if control_status not in (401, 403):
+            result["credential_control"] = "FAIL"
+            result["auth"] = "FAIL"
+            result["reason"] = "es_credential_control_not_rejected"
+            return result
+        result["credential_control"] = "PASS"
+        result["auth"] = "PASS"
+    # Without opted-in negative control, mapping may be inspected read-only
+    # but the CLI remains incomplete even if the mapping structure passes.
     # Still an ES-like identity only; neither PID nor service ownership proven.
     mapping_status, mapping_body, mapping_reason = _https_get(
         host, port, f"/{index}/_mapping", username, password, ca)
     if mapping_status is None:
         result["mapping_probe"] = "FAIL"
         result["reason"] = mapping_reason
+        _later_tls_failure(result, mapping_reason)
+        if mapping_reason == "es_tls_identity_unverified":
+            result["auth"] = "NOT_VERIFIED"
     elif mapping_status in (401, 403):
         result["mapping_probe"] = "FAIL"
         result["reason"] = "es_mapping_access_denied"
@@ -312,6 +353,11 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-network", action="store_true")
+    parser.add_argument(
+        "--verify-credentials", action="store_true",
+        help="Opt in to one deliberately rejected password check; can create "
+             "an authentication-failure audit entry or count toward lockout",
+    )
     args = parser.parse_args(argv)
     if Path.cwd().resolve() != PROJECT_ROOT:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
@@ -323,7 +369,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
                           "error": "runtime_configuration_unavailable"}, sort_keys=True))
         return 2
-    observation = _observe(cfg, no_network=args.no_network, root=PROJECT_ROOT)
+    observation = _observe(
+        cfg, no_network=args.no_network, root=PROJECT_ROOT,
+        verify_credentials=args.verify_credentials,
+    )
     print(json.dumps({"schema": SCHEMA, "mode": MODE,
                       "network_mode": "CONFIG_ONLY" if args.no_network
                                       else "PRIVATE_IPV4_TLS_GET_ONLY",
