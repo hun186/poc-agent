@@ -107,3 +107,9 @@
 - 2026-10-20 PR #293 fourth Codex review completed on head 45c03b3389 with one new P2: runtime LLMClient accepts prefixed MODEL_BASE_URL paths like /ollama and /ollama/api/chat but first OFF-1B preflight rejected them. Implemented bounded safe path-segment acceptance only for main LLM endpoints (no path transmitted, no URL/host printed), with regression tests for prefixed paths and strict ES no-prefix rejection. Exact-new-head Hosted CI and Codex review required; PR not merged.
 
 - 2026-10-20 PR #293 fifth Codex exact-head review completed for cf84d5a3c3 (Hosted run 39296228558: 366 PASS, OFF-0 19 schema-only PASS), identified two P2: urlsplit drops empty ?/# delimiter evidence so malformed MODEL_BASE_URL could produce false TCP PASS, and post-rstrip path length test accepted >512 raw trailing slash paths. Corrected with raw delimiter rejection and before-trimming path bound; adversarial tests added. New exact-head Hosted CI and Codex review required before merge.
+
+## 2026-10-20 OFF-1B next slice — configured API HTTP (in review, not merged)
+
+- PR #293 was squash-merged into main at fb206f6f7e7ad21c355755cdd0f84d128237e53b after exact-head Codex 0 findings, Hosted 387 PASS, and all 9 review threads resolved. This does not establish live deployment acceptance.
+- Operator prefers deferring Linux deployment updates until a useful OFF-1B milestone (API health + ES HTTPS/mapping + LLM inventory) is ready, rather than separately deploying the TCP-only slice.
+- New branch feat/sraf-airgap-off1b-configured-api-health adds tools/sraf_airgap_off1b_api_http.py. It reuses the real OFF-1B env bootstrap and OFF-1A strict anonymous 127.0.0.1 GET /healthz engine, using shell PORT rather than PUBLIC_API_BASE, and reports only PARTIAL_ONLY_NOT_ACCEPTANCE. Unit and real-loopback regression tests plus Hosted CI workflow path were added; do not claim CI/review success until exact-head results return, no merge without explicit authorization.
