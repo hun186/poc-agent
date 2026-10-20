@@ -311,7 +311,7 @@ def test_security_auth_endpoint_must_attest_basic_principal(payload):
     (200, b'{"enabled":true}', "FAIL", "es_principal_unverified"),
     (200, b"invalid", "FAIL", "es_principal_unverified"),
     (401, b"{}", "FAIL", "es_auth_rejected"),
-    (403, b"{}", "FAIL", "es_auth_rejected"),
+    (403, b"{}", "NOT_VERIFIED", "es_auth_access_denied"),
     (404, b"{}", "NOT_TESTED", "es_auth_endpoint_unavailable"),
     (500, b"{}", "FAIL", "es_auth_http_unexpected"),
 ])
@@ -634,3 +634,36 @@ def test_cli_credential_control_certificate_failure_returns_failure(
     assert obs["auth"] == "NOT_VERIFIED"
     assert obs["credential_control"] == "INCOMPLETE"
     assert obs["mapping_probe"] == "SKIP"
+
+
+
+@pytest.mark.parametrize("with_control", (False, True))
+def test_protected_auth_403_is_access_denied_not_bad_credentials(
+        monkeypatch, tmp_path, capsys, with_control):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    requests = []
+    def fake(host, port, path, user, password, ca):
+        requests.append((path, password))
+        assert password == "SECRET_PASSWORD"
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        assert path == "/_security/_authenticate"
+        # Gateway forbids access before inspecting Authorization header.
+        return 403, b'{"error":"forbidden"}', "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    command = ["--verify-credentials"] if with_control else []
+    assert es.main(command) == 2
+    payload = json.loads(capsys.readouterr().out)
+    obs = payload["results"][0]
+    assert obs["https_probe"] == "PASS"
+    assert obs["tls_validation"] == "PASS"
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert obs["reason"] == "es_auth_access_denied"
+    assert obs["credential_control"] == "NOT_RUN"
+    assert obs["mapping_probe"] == "SKIP"
+    assert [path for path, _ in requests] == ["/", "/_security/_authenticate"]
+    assert "SECRET_PASSWORD" not in json.dumps(payload)
+    assert "operator" not in json.dumps(payload)
