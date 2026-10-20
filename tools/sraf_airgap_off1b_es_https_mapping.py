@@ -163,6 +163,28 @@ def _mapping_result(body: bytes, selector: str) -> tuple[str, str]:
         return "FAIL", "es_mapping_response_invalid"
 
 
+def _verified_basic_principal(payload: bytes | None, username: str) -> bool:
+    """Require the protected ES auth endpoint to attest this Basic principal.
+
+    A 200 from / or /_mapping cannot establish authentication because both
+    may be anonymously accessible (or a proxy may ignore Authorization).
+    Keep all server-provided principal and realm details out of output.
+    """
+    try:
+        record = json.loads(payload if payload is not None else b"")
+    except (TypeError, ValueError, UnicodeError, RecursionError):
+        return False
+    return (
+        isinstance(record, dict)
+        and record.get("username") == username
+        and record.get("authentication_type") == "realm"
+        and record.get("enabled") is True
+        and isinstance(record.get("authentication_realm"), dict)
+        and isinstance(record["authentication_realm"].get("type"), str)
+        and bool(record["authentication_realm"]["type"])
+    )
+
+
 def _observe(cfg: dict[str, str], *, no_network: bool,
              root: Path = PROJECT_ROOT) -> dict[str, object]:
     endpoint, host = _parse_endpoint(cfg.get("ES_URL"))
@@ -239,8 +261,34 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         result["reason"] = "es_identity_unverified"
         return result
     result["https_probe"] = "PASS"
+    # Authenticate independently of public index/root HTTP 200. The protected
+    # ES Security API attests the *same* Basic principal and realm identity.
+    # No mapping request is allowed to proceed without this evidence.
+    auth_status, auth_body, auth_reason = _https_get(
+        host, port, "/_security/_authenticate", username, password, ca)
+    if auth_status is None:
+        result["auth"] = "NOT_VERIFIED"
+        result["reason"] = "es_auth_transport_unavailable"
+        if auth_reason == "es_tls_identity_unverified":
+            result["tls_validation"] = "FAIL"
+        return result
+    if auth_status in (401, 403):
+        result["auth"] = "FAIL"
+        result["reason"] = "es_auth_rejected"
+        return result
+    if auth_status == 404:
+        result["reason"] = "es_auth_endpoint_unavailable"
+        return result
+    if auth_status != 200:
+        result["auth"] = "FAIL"
+        result["reason"] = "es_auth_http_unexpected"
+        return result
+    if not _verified_basic_principal(auth_body, username):
+        result["auth"] = "FAIL"
+        result["reason"] = "es_principal_unverified"
+        return result
     result["auth"] = "PASS"
-    # Only an ES-like identity is observed. Never certify actual server ownership.
+    # Still an ES-like identity only; neither PID nor service ownership proven.
     mapping_status, mapping_body, mapping_reason = _https_get(
         host, port, f"/{index}/_mapping", username, password, ca)
     if mapping_status is None:
@@ -280,10 +328,12 @@ def main(argv: list[str] | None = None) -> int:
                       "network_mode": "CONFIG_ONLY" if args.no_network
                                       else "PRIVATE_IPV4_TLS_GET_ONLY",
                       "results": [observation]}, sort_keys=True, ensure_ascii=False))
-    if ("FAIL" in (observation["https_probe"], observation["mapping_probe"])
+    if ("FAIL" in (observation["https_probe"], observation["auth"],
+                   observation["mapping_probe"])
             or observation["configuration"] == "INVALID"):
         return 1
     if (observation["https_probe"] == "PASS"
+            and observation["auth"] == "PASS"
             and observation["mapping_probe"] == "PASS"):
         return 0
     return 2
