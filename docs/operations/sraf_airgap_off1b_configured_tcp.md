@@ -259,3 +259,7 @@ All original TLS verification, private-IP target scope and redaction constraints
   for late failures on protected authentication, explicitly opted-in invalid
   credential challenge and mapping requests. Non-TLS transport uncertainty
   stays distinguishable from proved certificate validation failures.
+
+### 2026-10-20 fourth Codex review — 403 gateway-denial classification
+
+- A 401 from the protected `/_security/_authenticate` endpoint is an observed credential rejection. HTTP 403 can be caused by a reverse proxy denying the protected path **without checking the supplied Basic credentials**. Accordingly protected-endpoint HTTP 403 now yields `auth=NOT_VERIFIED`, `reason=es_auth_access_denied` and incomplete exit code 2, not `es_auth_rejected` / exit 1. No negative password control or Mapping GET occurs after 403, including if `--verify-credentials` was requested. The JSON remains redacted and `PARTIAL_ONLY_NOT_ACCEPTANCE`.
