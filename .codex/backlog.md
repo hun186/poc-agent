@@ -245,3 +245,7 @@
 
 - Initial PR in-progress: automatically resolved safe API GET /healthz via real OFF-1A bounded loopback parser, with config-only/real local tests and Hosted CI path. Require exact-head CI PASS, Codex review, and explicit operator merge authorization. No immediate Linux redeploy.
 - Next: design and implement reviewed authorized ES HTTPS TLS/CA + non-mutating cluster/index/alias/mapping checks with precise mapping_incompatible diagnosis; then LLM backend/model inventory with no inference and non-logging credentials. Combine observations into human-friendly dependency diagnostic output only when source evidence is verified; SQL/ODBC, workers and OFF-3/4/5 stay separate acceptance gates. Avoid invented PASS without deployment evidence.
+
+## 2026-10-20 OFF-1B Elasticsearch HTTPS Mapping next PR
+
+- Review Hosted CI and exact-head Codex for the new conservative read-only ES HTTPS GET and mapping compatibility CLI; fix all P1/P2 before requesting explicit user merge. Expand with verified TLS identity for configured hostnames only after trusted destination pinning design, multi-index alias resolution, safe incremental response framing and site-specific certificate checks. Implement separate no-inference LLM inventory next, then combined diagnostic with actionable FAIL/SKIP reasons. Do not update production Linux or claim mapping_incompatible fixed until operator-run live evidence exists. SQL/Workers, OFF-2/3/4/5 remain future independent acceptance work.
