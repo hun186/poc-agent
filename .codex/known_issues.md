@@ -226,3 +226,5 @@
 - 2026-10-20 PR #295 third Codex P2: later cert failure was marked tls_validation=FAIL but CLI returned SKIP/incomplete exit 2. Corrected predicate and expanded CLI regressions. No reliable current-head CI PASS or final Codex review yet; previous Hosted failures lacked steps and logs. No Linux change.
 
 - 2026-10-20 PR #295 fourth Codex P2 addressed: on protected /_security/_authenticate HTTP 403, gateway may have denied the path before evaluating Basic credentials, so report `auth=NOT_VERIFIED/es_auth_access_denied` (not bad-password FAIL). New tests include control-opt-in path not attempted. Hosted CI repeated failures remain unverified due to absent steps and missing logs, so no acceptance or merge.
+
+- 2026-10-20 fifth Codex review P2: protected 403 ambiguity was fixed earlier, but root GET / 403 still falsely declared Basic password rejected. Root 403 now reports access denied and auth NOT_VERIFIED while root identity https_probe=FAIL preserves exit 1. Tests added for both credential-control flags and no subsequent I/O. Hosted Actions failures with missing job steps/log blobs unresolved; a green latest-head run remains mandatory before merge.
