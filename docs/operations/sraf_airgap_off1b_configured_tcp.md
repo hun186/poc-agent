@@ -154,6 +154,10 @@ is explicitly merged and packaged in a verified deployment.
     python tools/sraf_airgap_off1b_es_https_mapping.py --no-network
     python tools/sraf_airgap_off1b_es_https_mapping.py
 
+    # EXPLICIT OPT-IN: makes exactly one intentionally invalid-password
+    # authentication request, which can be audited or count toward lockout:
+    python tools/sraf_airgap_off1b_es_https_mapping.py --verify-credentials
+
 Configuration is derived exclusively from the existing dotenv bootstrap:
 `ES_URL` (literal numeric RFC1918/loopback IPv4 **HTTPS origin only**),
 `ES_USERNAME` + `ES_PASSWORD` (existing runtime Basic credentials), one
@@ -167,13 +171,25 @@ numeric IP's certificate identity must validate before sending Basic credentials
 If the deployment certificate is only valid for a DNS name, the result is
 TLS identity failure, *not* an invitation to disable verification.
 
-The command opens at most three separate HTTPS connections to the already
-allowlisted host:port, in order: (1) ES identity GET / using configured
-HTTP Basic credentials, requiring a plausible cluster_name/version.number,
-(2) protected GET /_security/_authenticate checking the same enabled Basic
-realm principal by username, then (3) GET /{literal-index}/_mapping.
-Anonymous 200 on root or Mapping never proves credentials; failure of the
-protected authentication gate prevents the Mapping GET. Each request has a
+The default command opens at most three separate HTTPS connections to the
+already allowlisted host:port: (1) ES identity GET / using configured Basic
+credentials; (2) protected GET /_security/_authenticate identifying the
+enabled Basic realm principal; and (3) GET /{literal-index}/_mapping.
+A matching principal alone does not prove that the configured password caused
+authentication when a reverse proxy may overwrite the Authorization header.
+Thus the default `auth=NOT_VERIFIED` and exit code 2 cannot claim credential
+verification even when a non-mutating Mapping probe passes.
+
+Only if the operator EXPLICITLY opts in with `--verify-credentials` does
+the command send a fourth GET to /_security/_authenticate using the same
+username and a fresh, deliberately incorrect, non-disclosed password. It
+must return HTTP 401 or 403 or authentication is FAIL/unverified and the
+Mapping GET is skipped. A verified positive principal and this negative
+control are both required for `auth=PASS` and exit 0. A failed login
+may generate an audit event, contribute toward security lockout thresholds
+or trigger an alert; DO NOT select this option without operational approval.
+No negative login test occurs with the default invocation or --no-network.
+Each request has a
 3-second total monotonic asyncio deadline, bounded header/body sizes and
 fail-closed handling of unsupported framing. No redirects, DNS lookups,
 HTTP proxy, model inference, SQL operation, index writes, bulk fetch,
@@ -191,8 +207,13 @@ Output: `schema=sraf_airgap_off1b_es_https_mapping_v1`,
 `mode=PARTIAL_ONLY_NOT_ACCEPTANCE`, separate `https_probe` and
 `mapping_probe` states, and fixed redacted reason codes. Never emit the
 index/alias, host/IP, full URL, private certificate path, credential, cluster
-name, mapping fields, model name or raw exception. Exit 0 only when both
-narrow observations PASS; exit 1 for evidence-supported FAIL, 2 for SKIP.
+name, mapping fields, model name or raw exception. Exit 0 requires valid
+HTTPS identity + protected credential challenge + mapping all PASS;
+exit 1 for evidence-supported FAIL, 2 for SKIP/incomplete/unverified auth.
+Three independent TLS handshakes (four with credential challenge) are
+aggregated; if any later handshake fails, the overall TLS result is no
+longer PASS. A later certificate verification failure explicitly reports
+tls_validation=FAIL, including on the Mapping GET.
 
 Limitations requiring later work: (a) this early bounded probe requires a
 single literal ES_INDEX and a server certificate identifying the numeric IP,
@@ -206,4 +227,22 @@ aliases and richer transport framing, without weakening TLS or sending data.
 
 ### 2026-10-20 Codex P2 authentication correction
 
-- First exact-head review identified that anonymous root/mapping HTTP 200 could be mistaken for authenticated credentials. A protected Elasticsearch Security API GET /_security/_authenticate is now required between root identity and Mapping checks. auth=PASS requires exact username, enabled principal, authentication_type=realm and a nonempty realm type. Wrong identity, malformed response or access denial fail closed, and missing Security API remains incomplete. Mapping is never attempted when auth is unverified. All original TLS verification, private-IP target scope and redaction constraints remain.
+- First exact-head review identified that anonymous root/mapping HTTP 200 could be mistaken for authenticated credentials. A protected Elasticsearch Security API GET /_security/_authenticate is now required between root identity and Mapping checks. auth=PASS requires exact username, enabled principal, authentication_type=realm and a nonempty realm type. Wrong identity, malformed response or access denial fail closed, and missing Security API remains incomplete. Mapping is not attempted when the protected principal is unverified.
+A verified principal without operator-authorized bad-password control
+can still permit a *partial, explicitly unauthenticated* read-only Mapping
+diagnosis, but cannot produce `auth=PASS` or exit 0.
+All original TLS verification, private-IP target scope and redaction constraints remain.
+
+### 2026-10-20 second Codex P2 remediation
+
+- A protected /_security/_authenticate HTTP 200 with matching principal can
+  still be served by an intermediary replacing the supplied Authorization.
+  Do **not** report auth=PASS from that evidence alone. Safe default reports
+  auth=NOT_VERIFIED and does not trigger a failed-login audit; optional
+  --verify-credentials performs an explicitly authorized one-time invalid
+  password challenge, requires 401/403, then allows authenticated Mapping.
+- TLS is an aggregate of every independent HTTPS connection, not just the
+  first root request. Later authentication/control/Mapping TLS failures downgrade
+  the overall certificate identity state and prevent any final PASS claim.
+- These are local program/test changes only; no Linux deployment proof has been
+  collected, no SRAF parent FULL_LIVE or OFF-3 approval, and PR is unmerged.
