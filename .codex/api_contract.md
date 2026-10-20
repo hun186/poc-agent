@@ -201,3 +201,14 @@
 
 - New operator-invoked script tools/sraf_airgap_off1_probes.py requires --check sys-disk|odbc-library|api-health|es-transport|llm-inventory, supports --mode quick|diagnose and bounded loopback port selectors. diagnose checks may not execute in quick.
 - JSON stdout is schema sraf_airgap_off1_partial_probe_v1 with mode=PARTIAL_ONLY_NOT_ACCEPTANCE, check_id, probe, aspect, status, reason, executed, safe numeric/boolean evidence. CLI exits 0 for subprobe PASS, 1 for FAIL/WARN, 2 for SKIP. This is NOT an HTTP endpoint, unified Runner, OFF-0 formal report, or a production acceptance contract.
+
+
+## 2026-10-19 proposed OFF-1B operator CLI (not an HTTP API)
+
+- Entry: python tools/sraf_airgap_off1b_auto.py [--check all|api|es|llm|topic-llm] [--no-network]. Reads configured API/ES/LLM endpoints through config.bootstrap.bootstrap_env() from repository root; requires no manual IP/port. Emits one JSON document schema=sraf_airgap_off1b_configured_tcp_preflight_v1, mode=PARTIAL_ONLY_NOT_ACCEPTANCE, separate config classification and TCP PASS/FAIL/SKIP, and NOT_TESTED for service identity/TLS/auth/feature acceptance. Exit 0 only if all selected TCP subchecks PASS; 1 for invalid config or TCP failure; 2 for skipped/incomplete. No cross-promotion into OFF-0 formal report or OFF-1A HTTP identity.
+
+- 2026-10-19 PR #293 review correction: --check all selects api, es, llm (actual TCP endpoints); --check topic-llm is a no-network feature-flag-only SKIP, exit 2. API config_key PORT reflects the shell launch listener (default 9002), not PUBLIC_API_BASE. Main LLM accepts the two runtime-recognized /api/chat and /api/generate URL suffixes; no URL/path or model name in output. Remains PARTIAL_ONLY_NOT_ACCEPTANCE.
+
+- 2026-10-20 OFF-1B CLI revised main LLM MODEL_BASE_URL path policy: allow ordinary bounded reverse-proxy path prefixes, including /ollama, /gateway/v1/ollama/api/chat, and trailing-slash variants, while rejecting dot-navigation, percent-escape or ambiguous interior slash and URL userinfo/query/fragment. Only numeric RFC1918/loopback host:port receives bounded TCP; no HTTP request path is sent or disclosed. ES keeps strict bare-origin paths only, and all observations stay PARTIAL_ONLY_NOT_ACCEPTANCE.
+
+- 2026-10-20 OFF-1B URL parser further rejects raw query/fragment delimiters '?' and '#' regardless of whether urlsplit's parsed query/fragment is empty, and enforces 512-character raw LLM URL path length before trimming trailing slash. Both cases remain INVALID with no TCP attempt; reporting stays PARTIAL_ONLY_NOT_ACCEPTANCE.

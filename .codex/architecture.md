@@ -179,3 +179,13 @@
 
 - tools/sraf_airgap_off1_probes.py is an independent, single-observation **partial** probe CLI; it does not invoke SRA application initialization, external_capabilities.py's potentially write-producing acceptance path, SQL, Agent/LLM inference, E2E, or OFF-3 unified Runner. The loopback-only no-auth GET channel intentionally avoids arbitrary URL selection and unaudited credential handling. SYS/ODBC probes observe only a subset of their OFF-0 parent check.
 - OFF-0 checked registry semantics remain code-authoritative; its make_report_record still cannot emit PASS/FAIL/WARN because it lacks a reviewed trusted execution-to-report boundary. OFF-1A observation JSON declares PARTIAL_ONLY_NOT_ACCEPTANCE and must not be interpreted as the parent's PASS. Subsequent OFF-1B work should provide authorized SQL/ES mapping/LLM diagnostic boundaries before OFF-3 composes verified full-check outcomes.
+
+
+## 2026-10-19 OFF-1B configured TCP preflight (proposed)
+
+- tools/sraf_airgap_off1b_auto.py is an isolated operator CLI, not application initialization or OFF-3 runner. It calls the existing deployment bootstrap for the effective dotenv precedence from the working repository root, without starting any API/worker/Agent/SQL lifecycle or reading secret values into output.
+- First slice sends at most one bounded TCP connect per actual API launcher bind/ES/main-LLM numeric RFC1918/loopback IPv4 target; TOPIC_LLM_URL is strictly a feature flag and never receives a TCP connect. DNS/public/link-local/non-IPv4 targets are skipped; no HTTP/TLS/auth, DNS, proxy, index, model, or task action is performed. Output includes explicit PARTIAL_ONLY_NOT_ACCEPTANCE and separate configuration versus TCP observations. Authenticated read-only service probes remain an independently reviewed subsequent OFF-1B gate.
+
+- 2026-10-19 PR #293 review parity fix: API bounded TCP target is the launcher shell PORT on numeric loopback, not PUBLIC_API_BASE. The probe CLI's PORT snapshot predates Python dotenv bootstrap, as shell run_sra_api.sh does not source .env into PORT; it is still NOT an attestation of the separately running supervisor's process identity. Main LLM TCP target is MODEL_BASE_URL accepting /api/chat or /api/generate suffix; TOPIC_LLM_URL is only a feature enablement flag in query_terms, and the explicit topic-llm check must never open a socket.
+
+- 2026-10-20 OFF-1B Codex parity refinement: main LLM client appends /api/chat to any configured safe reverse-proxy path prefix and accepts existing /api/chat or /api/generate suffix. TCP-only preflight therefore extracts host/port from bounded ordinary prefixed LLM URLs without sending their paths, but ES URL path handling stays exact bare-origin only. No new destinations, HTTP probes or acceptance authority.

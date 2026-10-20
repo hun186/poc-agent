@@ -223,3 +223,20 @@
 - 2026-10-19 PR #292 Codex exact-head aa8ed6f3df review completed at 2026-10-19T07:25:47Z (previous Hosted run 39211543915: 1003 PASS, OFF-0 19 schema-only PASS). New P2s: parser accepted known Proxy-Status fields using wrong types (e.g. received-status quoted string or error boolean) and incorrectly normalized illegal initial HTAB around RFC 8941 List items. Followup patch validates RFC 9209 and 9532 registered field types including next-protocol as Token OR Byte Sequence, and preserves RFC 8941 legal OWS around commas while rejecting HTAB at list start/end. Raw header guard rejects leading Tab before http.client strips it; strict trailer decoder no longer strips original field data. Four-endpoint live loopback regression vectors added. New exact-head Hosted CI and Codex re-review required; no merged/live acceptance claim.
 
 - 2026-10-19 PR #292 Codex reviewed exact head bdb2148e01 at 08:11 UTC, found P1: valid Proxy-Status trailers all false-FAIL because the strict parser receives the raw trailer CRLF in its RFC 8941 fullmatch. Hosted Actions 39219555536 confirmed 148 FAIL, 979 PASS (not a PASS). Repair slices the already verified final CRLF off the wire line before parsing only the field value; preserve the actual leading/trailing content for OWS rules and reject bad raw line endings. Four-endpoint real TCP regression added. New exact-head Hosted CI / Codex review required, no merge or offline FULL_LIVE claim.
+
+
+## 2026-10-19 OFF-1B operational progression (proposed)
+
+- Operator-confirmed effective deployment endpoints: ES HTTPS private-IP :9001, API HTTP private-IP :9002, main/Topic LLM HTTP private-IP :18080. Existing local API /healthz PASS and API/Workers PID relationships have been observed; complete function acceptance remains pending.
+- Propose first OFF-1B one-command runtime-configured TCP preflight with tests and GitHub Actions. It is NOT live service identity/TLS/auth/ES Mapping/LLM inference/SQL acceptance. Exact-head Hosted CI, Codex review, operator packaging and explicit merge approval are still required.
+- Continue OFF-1B with authenticated bounded read-only ES TLS identity/alias/mapping diagnostics, verified configured LLM backend/model inventory, SQL least-privilege driver/schema checks, worker startup/readiness diagnostics and non-mutating observability. Preserve earlier mapping_incompatible blocker until genuine deployed mapping verified.
+
+- 2026-10-19 PR #293 first exact-head Codex completed with 3 P2 (topic flag network target, API external URL vs launcher PORT, LLM endpoint path parity). Same-branch remediation and adversarial regression tests prepared. Obtain Hosted exact-head Actions PASS and fresh Codex review; keep PR OPEN/unmerged until explicit user command. Runtime supervisor identity binding and true service TLS/auth/mapping/model/SQL acceptance remain future work.
+
+- 2026-10-19 PR #293 second Codex exact-head b04b14798e found 2 P2 (LLM URL trailing slash parity, stale architecture topic TCP claim). Hosted CI 39277783676 FAILED at compile (IndentationError at line 191), not a test pass. Repairs and new regression vectors committed; request fresh exact-head CI and Codex review. No Merge until user command.
+
+- 2026-10-20 PR #293 third Codex review on head 28e98a233c found 1 P2 for accidental Elasticsearch extra-slash normalization. Same-branch remediation scoped rstrip('/') to LLM, plus negative regression tests. Require exact-head Hosted CI PASS and new Codex review; do not merge before explicit instruction.
+
+- 2026-10-20 PR #293 fourth Codex completed with 1 P2: false-INVALID for runtime-supported LLM reverse proxy prefix paths. Corrected in same branch with path-parity + ES isolation regressions and documentation. Next verify new Hosted Actions exact head and request Codex re-review; keep PR open pending explicit merge instruction.
+
+- 2026-10-20 PR #293 fifth Codex on cf84d5a3c3 found 2 P2 (empty query/fragment delimiters; pre-normalization LLM path length limit). Fixed raw URL validation and expanded adversarial no-network/512-char-boundary regressions. Exact-head Hosted CI and Codex re-review outstanding, no authorization to merge.
