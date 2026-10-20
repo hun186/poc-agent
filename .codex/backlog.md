@@ -240,3 +240,8 @@
 - 2026-10-20 PR #293 fourth Codex completed with 1 P2: false-INVALID for runtime-supported LLM reverse proxy prefix paths. Corrected in same branch with path-parity + ES isolation regressions and documentation. Next verify new Hosted Actions exact head and request Codex re-review; keep PR open pending explicit merge instruction.
 
 - 2026-10-20 PR #293 fifth Codex on cf84d5a3c3 found 2 P2 (empty query/fragment delimiters; pre-normalization LLM path length limit). Fixed raw URL validation and expanded adversarial no-network/512-char-boundary regressions. Exact-head Hosted CI and Codex re-review outstanding, no authorization to merge.
+
+## 2026-10-20 OFF-1B next deployment milestone (not yet released)
+
+- Initial PR in-progress: automatically resolved safe API GET /healthz via real OFF-1A bounded loopback parser, with config-only/real local tests and Hosted CI path. Require exact-head CI PASS, Codex review, and explicit operator merge authorization. No immediate Linux redeploy.
+- Next: design and implement reviewed authorized ES HTTPS TLS/CA + non-mutating cluster/index/alias/mapping checks with precise mapping_incompatible diagnosis; then LLM backend/model inventory with no inference and non-logging credentials. Combine observations into human-friendly dependency diagnostic output only when source evidence is verified; SQL/ODBC, workers and OFF-3/4/5 stay separate acceptance gates. Avoid invented PASS without deployment evidence.
