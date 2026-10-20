@@ -208,3 +208,7 @@
 - 2026-10-20 PR #293 fourth Codex exact-head 45c03b3389 found one P2: configured LLM reverse-proxy path prefixes were false-INVALID even though runtime LLMClient may append /api/chat. Corrected preflight path policy only for LLM, preserved strict ES origin; added adversarial and positive regression tests. Hosted CI and Codex exact-head re-review remain pending, no merge authorization.
 
 - 2026-10-20 PR #293 fifth Codex exact-head cf84d5a3c3 found two P2: empty '?' / '#' URL delimiters lost by urlsplit and oversized raw LLM URL paths bypassing length after rstrip('/'). Same-branch fix and negative/boundary tests submitted. Do not cite old 366 PASS as current-head validation; new Hosted run and fresh Codex review pending, PR unmerged.
+
+## 2026-10-20 next OFF-1B operator API HTTP limits
+
+- The new API HTTP /healthz check is a bounded anonymous loopback observation only and cannot prove actual launcher PID ownership, SQL/ES/LLM/Worker readiness, or air-gap acceptance. Operator shell PORT may differ from the environment used to launch the already-running server. GitHub Hosted CI cannot reach the private deployment; real Linux health evidence must be collected after a reviewed package is deployed, and current ES mapping_incompatible remains an independent blocker. No new Linux deployment requested yet.
