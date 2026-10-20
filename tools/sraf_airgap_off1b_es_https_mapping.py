@@ -317,7 +317,9 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
             result["reason"] = "es_credential_control_unavailable"
             _later_tls_failure(result, control_reason)
             return result
-        if control_status not in (401, 403):
+        # 403 can be an intermediary authorization denial, not proof the
+        # supplied Basic password was rejected by Elasticsearch.
+        if control_status != 401:
             result["credential_control"] = "FAIL"
             result["auth"] = "FAIL"
             result["reason"] = "es_credential_control_not_rejected"
