@@ -581,3 +581,56 @@ def test_negative_control_403_does_not_prove_wrong_password_rejection(
     assert obs["mapping_probe"] == "SKIP"
     assert called == ["/", "/_security/_authenticate",
                       "/_security/_authenticate"]
+
+
+
+@pytest.mark.parametrize("failing_path", [
+    "/_security/_authenticate", "/my_index/_mapping",
+])
+def test_cli_returns_failure_for_any_later_certificate_validation(
+        monkeypatch, tmp_path, capsys, failing_path):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    def fake(host, port, path, user, password, ca):
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            if password == "SECRET_PASSWORD":
+                if failing_path == path:
+                    return None, None, "es_tls_identity_unverified"
+                return 200, _auth_document(), "https_response_received"
+            return 401, b"{}", "https_response_received"
+        assert path == "/my_index/_mapping"
+        return None, None, "es_tls_identity_unverified"
+    monkeypatch.setattr(es, "_https_get", fake)
+    args = ["--verify-credentials"] if failing_path.endswith("_mapping") else []
+    assert es.main(args) == 1
+    doc = json.loads(capsys.readouterr().out)
+    result = doc["results"][0]
+    assert result["tls_validation"] == "FAIL"
+    assert result["mapping_probe"] != "PASS"
+    assert doc["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
+
+
+def test_cli_credential_control_certificate_failure_returns_failure(
+        monkeypatch, tmp_path, capsys):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    def fake(host, port, path, user, password, ca):
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        assert path == "/_security/_authenticate"
+        if password == "SECRET_PASSWORD":
+            return 200, _auth_document(), "https_response_received"
+        return None, None, "es_tls_identity_unverified"
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main(["--verify-credentials"]) == 1
+    obs = json.loads(capsys.readouterr().out)["results"][0]
+    assert obs["tls_validation"] == "FAIL"
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert obs["credential_control"] == "INCOMPLETE"
+    assert obs["mapping_probe"] == "SKIP"
