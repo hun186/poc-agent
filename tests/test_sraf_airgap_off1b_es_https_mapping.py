@@ -153,20 +153,26 @@ def test_https_root_and_mapping_positive_are_still_only_partial(
         if path == "/":
             return 200, _root_document(), "https_response_received"
         if path == "/_security/_authenticate":
-            return 200, _auth_document(), "https_response_received"
+            return (200, _auth_document(), "https_response_received") if (
+                password == "SECRET_PASSWORD") else (
+                401, b"{}", "https_response_received")
         return 200, _mapping_document(REQUIREMENT_E2E_INDEX), "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
     obs = es._observe(_cfg(REQUIREMENT_E2E_INDEX),
-                      no_network=False, root=tmp_path)
+                      no_network=False, root=tmp_path,
+                      verify_credentials=True)
     assert [x[2] for x in calls] == [
-        "/", "/_security/_authenticate",
+        "/", "/_security/_authenticate", "/_security/_authenticate",
         "/" + REQUIREMENT_E2E_INDEX + "/_mapping",
     ]
+    assert calls[2][4] != "SECRET_PASSWORD"
+    assert calls[2][3] == "operator"
     assert {x[:2] for x in calls} == {("192.168.0.134", 9001)}
     assert obs["https_probe"] == "PASS"
     assert obs["mapping_probe"] == "PASS"
     assert obs["tls_validation"] == "PASS"
     assert obs["auth"] == "PASS"
+    assert obs["credential_control"] == "PASS"
     assert obs["service_identity"] == "NOT_TESTED"
     assert obs["feature_acceptance"] == "NOT_TESTED"
     result = json.dumps(obs)
@@ -335,17 +341,25 @@ def test_authenticated_only_after_protected_security_endpoint(monkeypatch, tmp_p
     _ca(tmp_path)
     seen = []
     def fake(host, port, path, user, password, ca):
-        seen.append(path)
+        seen.append((path, password))
         if path == "/":
             return 200, _root_document(), "https_response_received"
         if path == "/_security/_authenticate":
-            return 200, _auth_document(), "https_response_received"
+            return ((200, _auth_document(), "https_response_received")
+                    if password == "SECRET_PASSWORD" else
+                    (401, b"{}", "https_response_received"))
         return 200, _mapping_document("my_index"), "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
-    obs = es._observe(_cfg(), no_network=False, root=tmp_path)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path,
+                      verify_credentials=True)
     assert obs["auth"] == "PASS"
+    assert obs["credential_control"] == "PASS"
     assert obs["mapping_probe"] == "PASS"
-    assert seen == ["/", "/_security/_authenticate", "/my_index/_mapping"]
+    assert [x[0] for x in seen] == [
+        "/", "/_security/_authenticate", "/_security/_authenticate",
+        "/my_index/_mapping",
+    ]
+    assert seen[2][1] != "SECRET_PASSWORD"
     assert obs["feature_acceptance"] == "NOT_TESTED"
 
 
@@ -380,3 +394,165 @@ def test_cli_fail_code_for_unverified_principal(monkeypatch, tmp_path, capsys):
     doc = json.loads(capsys.readouterr().out)
     assert doc["results"][0]["auth"] == "FAIL"
     assert doc["results"][0]["mapping_probe"] == "SKIP"
+
+
+
+def test_default_never_sends_bad_password_and_never_claims_auth_pass(
+        monkeypatch, tmp_path):
+    _ca(tmp_path)
+    requests = []
+    def fake(host, port, path, username, password, ca):
+        requests.append((path, username, password))
+        assert password == "SECRET_PASSWORD"
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        return 200, _mapping_document("my_index"), "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path)
+    assert [x[0] for x in requests] == [
+        "/", "/_security/_authenticate", "/my_index/_mapping",
+    ]
+    assert obs["https_probe"] == "PASS"
+    assert obs["mapping_probe"] == "PASS"
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert obs["credential_control"] == "NOT_RUN"
+    assert obs["tls_validation"] == "PASS"
+
+
+def test_default_cli_partial_never_promotes_unverified_auth(
+        monkeypatch, tmp_path, capsys):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    def fake(host, port, path, user, password, ca):
+        assert password == "SECRET_PASSWORD"
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        return 200, _mapping_document("my_index"), "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main([]) == 2
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["results"][0]["auth"] == "NOT_VERIFIED"
+    assert doc["results"][0]["mapping_probe"] == "PASS"
+    assert doc["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
+
+
+def test_proxy_ignores_wrong_password_does_not_false_pass(
+        monkeypatch, tmp_path):
+    _ca(tmp_path)
+    calls = []
+    def fake(host, port, path, user, password, ca):
+        calls.append((path, password))
+        # A broken proxy authenticates every Authorization header using
+        # injected credentials for 'operator', ignoring supplied password.
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        return 200, _mapping_document("my_index"), "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path,
+                      verify_credentials=True)
+    assert [x[0] for x in calls] == [
+        "/", "/_security/_authenticate", "/_security/_authenticate",
+    ]
+    assert calls[1][1] == "SECRET_PASSWORD"
+    assert calls[2][1] != "SECRET_PASSWORD"
+    assert obs["auth"] == "FAIL"
+    assert obs["credential_control"] == "FAIL"
+    assert obs["mapping_probe"] == "SKIP"
+    assert obs["reason"] == "es_credential_control_not_rejected"
+    assert calls[2][1] not in json.dumps(obs)
+
+
+@pytest.mark.parametrize("failure_stage", [
+    "/_security/_authenticate", "/my_index/_mapping",
+])
+@pytest.mark.parametrize("reason,expected_tls", [
+    ("es_tls_identity_unverified", "FAIL"),
+    ("es_https_transport_unavailable", "NOT_VERIFIED"),
+    ("es_ca_invalid", "NOT_VERIFIED"),
+])
+def test_later_connection_failure_never_leaves_tls_pass(
+        monkeypatch, tmp_path, failure_stage, reason, expected_tls):
+    _ca(tmp_path)
+    seen = []
+    def fake(host, port, path, user, password, ca):
+        seen.append(path)
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            if user == "operator" and password == "SECRET_PASSWORD":
+                if failure_stage == path:
+                    return None, None, reason
+                return 200, _auth_document(), "https_response_received"
+            return 401, b"{}", "https_response_received"
+        assert path == "/my_index/_mapping"
+        return None, None, reason
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path,
+                      verify_credentials=True)
+    assert obs["tls_validation"] == expected_tls
+    assert obs["tls_validation"] != "PASS"
+    assert obs["mapping_probe"] != "PASS"
+    if failure_stage == "/_security/_authenticate":
+        assert obs["auth"] != "PASS"
+        assert seen == ["/", "/_security/_authenticate"]
+    else:
+        assert seen[-1] == "/my_index/_mapping"
+        if reason == "es_tls_identity_unverified":
+            assert obs["auth"] == "NOT_VERIFIED"
+
+
+@pytest.mark.parametrize("reason,expected_tls", [
+    ("es_tls_identity_unverified", "FAIL"),
+    ("es_https_transport_unavailable", "NOT_VERIFIED"),
+])
+def test_negative_control_transport_fail_does_not_claim_auth(
+        monkeypatch, tmp_path, reason, expected_tls):
+    _ca(tmp_path)
+    seen = []
+    def fake(host, port, path, user, password, ca):
+        seen.append((path, password))
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            if password == "SECRET_PASSWORD":
+                return 200, _auth_document(), "https_response_received"
+            return None, None, reason
+        pytest.fail("mapping must not be attempted without control")
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path,
+                      verify_credentials=True)
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert obs["credential_control"] == "INCOMPLETE"
+    assert obs["mapping_probe"] == "SKIP"
+    assert obs["tls_validation"] == expected_tls
+    assert len(seen) == 3
+
+
+def test_cli_opted_in_bad_password_control_returns_success(
+        monkeypatch, tmp_path, capsys):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    def fake(host, port, path, user, password, ca):
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            if password == "SECRET_PASSWORD":
+                return 200, _auth_document(), "https_response_received"
+            return 401, b"{}", "https_response_received"
+        return 200, _mapping_document("my_index"), "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main(["--verify-credentials"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["results"][0]["auth"] == "PASS"
+    assert result["results"][0]["credential_control"] == "PASS"
+    assert result["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
