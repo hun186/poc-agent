@@ -263,3 +263,15 @@ All original TLS verification, private-IP target scope and redaction constraints
 ### 2026-10-20 fourth Codex review — 403 gateway-denial classification
 
 - A 401 from the protected `/_security/_authenticate` endpoint is an observed credential rejection. HTTP 403 can be caused by a reverse proxy denying the protected path **without checking the supplied Basic credentials**. Accordingly protected-endpoint HTTP 403 now yields `auth=NOT_VERIFIED`, `reason=es_auth_access_denied` and incomplete exit code 2, not `es_auth_rejected` / exit 1. No negative password control or Mapping GET occurs after 403, including if `--verify-credentials` was requested. The JSON remains redacted and `PARTIAL_ONLY_NOT_ACCEPTANCE`.
+
+### 2026-10-20 fifth Codex review — root-path 403 classification
+
+- On the very first ES identity `GET /`, a 403 might be emitted by a gateway
+  that never evaluates the Basic header, or by Elasticsearch after successfully
+  authenticating a principal that lacks permissions. Treat it as
+  `https_probe=FAIL`, `auth=NOT_VERIFIED`, `reason=es_root_access_denied` and
+  exit code 1 (root identity could not be observed), **not** the incorrect
+  `es_auth_rejected` finding. Retain HTTP 401 as the rejected-credentials
+  classification. Neither root-denied outcome sends a subsequent authentication,
+  negative-password control or Mapping request, even with --verify-credentials.
+  The only visible output is fixed redacted JSON.
