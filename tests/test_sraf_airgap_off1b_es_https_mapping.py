@@ -181,7 +181,7 @@ def test_https_root_and_mapping_positive_are_still_only_partial(
 
 
 @pytest.mark.parametrize("status,expected", [
-    (401, "es_auth_rejected"), (403, "es_auth_rejected"),
+    (401, "es_auth_rejected"), (403, "es_root_access_denied"),
     (404, "es_identity_http_unexpected"), (302, "es_identity_http_unexpected"),
 ])
 def test_root_auth_failures_never_progress_to_mapping(
@@ -667,3 +667,53 @@ def test_protected_auth_403_is_access_denied_not_bad_credentials(
     assert [path for path, _ in requests] == ["/", "/_security/_authenticate"]
     assert "SECRET_PASSWORD" not in json.dumps(payload)
     assert "operator" not in json.dumps(payload)
+
+
+
+@pytest.mark.parametrize("opted_in", (False, True))
+def test_root_gateway_403_is_access_denied_not_rejected_credentials(
+        monkeypatch, tmp_path, capsys, opted_in):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    requests = []
+    def fake(host, port, path, user, password, ca):
+        requests.append((path, password))
+        assert path == "/"
+        assert password == "SECRET_PASSWORD"
+        # Gateway ACL denies before Basic auth; password has not been tested.
+        return 403, b'{"error":"gateway_denied"}', "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    args = ["--verify-credentials"] if opted_in else []
+    assert es.main(args) == 1
+    output = capsys.readouterr().out
+    result = json.loads(output)["results"][0]
+    assert result["https_probe"] == "FAIL"
+    assert result["auth"] == "NOT_VERIFIED"
+    assert result["reason"] == "es_root_access_denied"
+    assert result["credential_control"] == "NOT_RUN"
+    assert result["mapping_probe"] == "SKIP"
+    assert result["tls_validation"] == "PASS"
+    assert requests == [("/", "SECRET_PASSWORD")]
+    assert "SECRET_PASSWORD" not in output
+    assert "operator" not in output
+
+
+def test_root_es_401_is_rejected_and_never_attempts_mapping(
+        monkeypatch, tmp_path, capsys):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    paths = []
+    def fake(host, port, path, user, password, ca):
+        paths.append(path)
+        return 401, b"{}", "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main([]) == 1
+    output = json.loads(capsys.readouterr().out)["results"][0]
+    assert output["https_probe"] == "FAIL"
+    assert output["auth"] == "FAIL"
+    assert output["reason"] == "es_auth_rejected"
+    assert paths == ["/"]
