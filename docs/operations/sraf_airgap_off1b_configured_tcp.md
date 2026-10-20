@@ -249,3 +249,13 @@ All original TLS verification, private-IP target scope and redaction constraints
   collected, no SRAF parent FULL_LIVE or OFF-3 approval, and PR is unmerged.
 
 - More conservative boundary: HTTP 403 from the deliberately invalid password check is not proof the password failed authentication; it might be a proxy's ACL. Only HTTP 401 is accepted as a negative control. The failed-login audit/lockout caveat remains, and the default does not send a control.
+
+### 2026-10-20 third Codex review — certificate failure exit status
+
+- An independently confirmed later TLS certificate identity failure is a true
+  observed FAIL, not an incomplete SKIP. The CLI now returns exit code 1
+  whenever aggregate `tls_validation=FAIL`, even if `https_probe=PASS`
+  and `auth=NOT_VERIFIED` with `mapping_probe=SKIP`. Added CLI regression tests
+  for late failures on protected authentication, explicitly opted-in invalid
+  credential challenge and mapping requests. Non-TLS transport uncertainty
+  stays distinguishable from proved certificate validation failures.
