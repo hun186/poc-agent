@@ -1,0 +1,264 @@
+"""OFF-1B ES HTTPS/mapping: safe configuration, redaction and mapping parity."""
+from __future__ import annotations
+
+import asyncio
+import copy
+import json
+
+import pytest
+
+from agent.es.mock_es_client import REQUIREMENT_E2E_INDEX, REQUIREMENT_E2E_MAPPING
+from tools import sraf_airgap_off1b_es_https_mapping as es
+
+
+def _ca(tmp_path):
+    cert = tmp_path / "agent" / "certs" / "http_ca.crt"
+    cert.parent.mkdir(parents=True)
+    cert.write_text("a test certificate placeholder, not used in network tests")
+    return cert
+
+
+def _cfg(index="my_index"):
+    return {
+        "ES_URL": "https://192.168.0.134:9001",
+        "ES_INDEX": index,
+        "ES_USERNAME": "operator",
+        "ES_PASSWORD": "SECRET_PASSWORD",
+    }
+
+
+def _root_document():
+    return json.dumps({
+        "cluster_name": "INTERNAL_ES_CLUSTER",
+        "version": {"number": "8.13.1"},
+    }).encode()
+
+
+def _mapping_document(index):
+    return json.dumps({index: REQUIREMENT_E2E_MAPPING}).encode()
+
+
+def test_mapping_reuses_real_requirements_predicate():
+    index = REQUIREMENT_E2E_INDEX
+    assert es._mapping_result(_mapping_document(index), index) == (
+        "PASS", "es_mapping_compatible")
+    incompatible = copy.deepcopy(REQUIREMENT_E2E_MAPPING)
+    del incompatible["mappings"]["properties"]["multidim_event_json"]
+    status, reason = es._mapping_result(
+        json.dumps({index: incompatible}).encode(), index)
+    assert (status, reason) == ("FAIL", "mapping_incompatible")
+
+
+@pytest.mark.parametrize("payload,expected", [
+    (b"{}", ("SKIP", "es_mapping_target_ambiguous")),
+    (b'{"a":{"mappings":{}},"b":{"mappings":{}}}',
+     ("SKIP", "es_mapping_target_ambiguous")),
+    (b"[]", ("SKIP", "es_mapping_target_ambiguous")),
+    (b"not json", ("FAIL", "es_mapping_response_invalid")),
+    (b'{"a":{"anything":true}}', ("FAIL", "es_mapping_response_invalid")),
+])
+def test_mapping_response_cannot_false_pass(payload, expected):
+    assert es._mapping_result(payload, "my_index") == expected
+
+
+@pytest.mark.parametrize("bad", (
+    "../index", "/_all", "*", "my,index", "index?x=1", "bad/index",
+    "index%2fsecret", "Upper", ".hidden", " my_index", "my_index ",
+    "index#x", "a" * 260,
+))
+def test_index_selector_rejected(bad):
+    assert es._configured_index(bad) is None
+
+
+@pytest.mark.parametrize("value", (
+    "my_index", "index-2026", "foo.bar", "a" * 255,
+))
+def test_index_selector_accepts_literals(value):
+    assert es._configured_index(value) == value
+
+
+def test_no_network_does_not_open_tls_or_read_secrets(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        es, "_https_get", lambda *_: pytest.fail("no socket allowed"))
+    obs = es._observe(_cfg(), no_network=True, root=tmp_path)
+    assert obs["https_probe"] == "SKIP"
+    assert obs["mapping_probe"] == "SKIP"
+    assert obs["reason"] == "network_disabled"
+    assert "SECRET_PASSWORD" not in json.dumps(obs)
+
+
+@pytest.mark.parametrize("url", [
+    "http://192.168.0.134:9001",
+    "https://8.8.8.8:9001",
+    "https://es.internal:9001",
+    "https://169.254.169.254:9001",
+    "https://192.168.0.134:9001/_search",
+    "https://admin:password@192.168.0.134:9001",
+    "https://192.168.0.134:9001?unsafe=",
+    "https://192.168.0.134:9001#",
+])
+def test_only_private_numeric_https_root_may_probe(
+        monkeypatch, tmp_path, url):
+    _ca(tmp_path)
+    monkeypatch.setattr(
+        es, "_https_get", lambda *_: pytest.fail("unsafe destination called"))
+    cfg = {**_cfg(), "ES_URL": url}
+    obs = es._observe(cfg, no_network=False, root=tmp_path)
+    assert obs["https_probe"] == "SKIP"
+
+
+@pytest.mark.parametrize("remove", ["ES_USERNAME", "ES_PASSWORD", "ES_INDEX"])
+def test_missing_deployment_config_never_network(monkeypatch, tmp_path, remove):
+    _ca(tmp_path)
+    cfg = _cfg()
+    del cfg[remove]
+    monkeypatch.setattr(
+        es, "_https_get", lambda *_: pytest.fail("missing config connected"))
+    obs = es._observe(cfg, no_network=False, root=tmp_path)
+    assert obs["https_probe"] == "SKIP"
+
+
+def test_missing_ca_fails_closed_without_network(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        es, "_https_get", lambda *_: pytest.fail("missing CA connected"))
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path)
+    assert obs["https_probe"] == "SKIP"
+    assert obs["reason"] == "es_ca_missing"
+
+
+def test_ca_symlink_refused(monkeypatch, tmp_path):
+    target = tmp_path / "elsewhere.pem"
+    target.write_text("not trusted")
+    cert = tmp_path / "agent" / "certs" / "http_ca.crt"
+    cert.parent.mkdir(parents=True)
+    cert.symlink_to(target)
+    assert es._trusted_ca_file(tmp_path) is None
+
+
+def test_https_root_and_mapping_positive_are_still_only_partial(
+        monkeypatch, tmp_path):
+    _ca(tmp_path)
+    calls = []
+    def fake(host, port, path, user, password, ca):
+        calls.append((host, port, path, user, password))
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        return 200, _mapping_document(REQUIREMENT_E2E_INDEX), "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(REQUIREMENT_E2E_INDEX),
+                      no_network=False, root=tmp_path)
+    assert [x[2] for x in calls] == ["/", "/" + REQUIREMENT_E2E_INDEX + "/_mapping"]
+    assert {x[:2] for x in calls} == {("192.168.0.134", 9001)}
+    assert obs["https_probe"] == "PASS"
+    assert obs["mapping_probe"] == "PASS"
+    assert obs["tls_validation"] == "PASS"
+    assert obs["auth"] == "PASS"
+    assert obs["service_identity"] == "NOT_TESTED"
+    assert obs["feature_acceptance"] == "NOT_TESTED"
+    result = json.dumps(obs)
+    for value in ("SECRET_PASSWORD", "operator", "my_index", "INTERNAL_ES_CLUSTER", "192.168.0.134"):
+        assert value not in result
+
+
+@pytest.mark.parametrize("status,expected", [
+    (401, "es_auth_rejected"), (403, "es_auth_rejected"),
+    (404, "es_identity_http_unexpected"), (302, "es_identity_http_unexpected"),
+])
+def test_root_auth_failures_never_progress_to_mapping(
+        monkeypatch, tmp_path, status, expected):
+    _ca(tmp_path)
+    calls = []
+    def fake(host, port, path, user, password, ca):
+        calls.append(path)
+        return status, b"{}", "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path)
+    assert calls == ["/"]
+    assert obs["https_probe"] == "FAIL"
+    assert obs["mapping_probe"] == "SKIP"
+    assert obs["reason"] == expected
+
+
+@pytest.mark.parametrize("status,expected", [
+    (401, "es_mapping_access_denied"),
+    (403, "es_mapping_access_denied"),
+    (404, "es_index_missing"),
+    (302, "es_mapping_http_unexpected"),
+])
+def test_mapping_auth_and_index_failures(monkeypatch, tmp_path, status, expected):
+    _ca(tmp_path)
+    def fake(host, port, path, user, password, ca):
+        return ((200, _root_document(), "https_response_received")
+                if path == "/" else
+                (status, b"{}", "https_response_received"))
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path)
+    assert obs["https_probe"] == "PASS"
+    assert obs["mapping_probe"] == "FAIL"
+    assert obs["reason"] == expected
+
+
+def test_mapping_incompatible_is_not_success(monkeypatch, tmp_path):
+    _ca(tmp_path)
+    mismatch = json.dumps({"my_index": {"mappings": {}}}).encode()
+    monkeypatch.setattr(es, "_https_get",
+                        lambda host, port, path, *_:
+                        (200, _root_document() if path == "/" else mismatch,
+                         "https_response_received"))
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path)
+    assert obs["mapping_probe"] == "FAIL"
+    assert obs["reason"] == "mapping_incompatible"
+
+
+@pytest.mark.parametrize("reason,expected_tls", [
+    ("es_tls_identity_unverified", "FAIL"),
+    ("es_https_transport_unavailable", "NOT_VERIFIED"),
+    ("es_ca_invalid", "NOT_VERIFIED"),
+])
+def test_transport_error_no_tls_success(monkeypatch, tmp_path, reason, expected_tls):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "_https_get",
+                        lambda *_: (None, None, reason))
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path)
+    assert obs["https_probe"] == "FAIL"
+    assert obs["tls_validation"] == expected_tls
+    assert obs["mapping_probe"] == "SKIP"
+
+
+def test_actual_deadline_waitfor_bounds_slow_server(monkeypatch, tmp_path):
+    _ca(tmp_path)
+    async def slow(*args):
+        await asyncio.sleep(5)
+        return 200, b"{}"
+    monkeypatch.setattr(es, "_one_https_get", slow)
+    monkeypatch.setattr(es, "DEADLINE_SECONDS", 0.01)
+    monkeypatch.setattr(es.ssl, "create_default_context",
+                        lambda **kwargs: es.ssl.SSLContext(es.ssl.PROTOCOL_TLS_CLIENT))
+    status, body, reason = es._https_get(
+        "127.0.0.1", 9001, "/", "operator", "PRIVATE_SECRET",
+        tmp_path / "agent" / "certs" / "http_ca.crt")
+    assert status is None and body is None
+    assert reason == "es_https_transport_unavailable"
+
+
+def test_cli_config_only_outputs_single_redacted_partial_document(
+        monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda root: _cfg())
+    assert es.main(["--no-network"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
+    assert payload["network_mode"] == "CONFIG_ONLY"
+    assert payload["results"][0]["https_probe"] == "SKIP"
+    assert "SECRET_PASSWORD" not in json.dumps(payload)
+
+
+def test_cli_wrong_root_never_reads_env(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path / "repo")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        es, "_effective_runtime_config",
+        lambda *_: pytest.fail("invalid invocation loaded config"))
+    assert es.main([]) == 2
+    assert "run_from_repository_root" in capsys.readouterr().out
