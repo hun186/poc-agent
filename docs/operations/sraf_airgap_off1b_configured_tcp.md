@@ -167,10 +167,13 @@ numeric IP's certificate identity must validate before sending Basic credentials
 If the deployment certificate is only valid for a DNS name, the result is
 TLS identity failure, *not* an invitation to disable verification.
 
-The command opens at most two separate HTTPS connections to the already
-allowlisted host:port, in order: (1) anonymous-ish identity GET / using
-configured HTTP Basic auth, requiring a plausible cluster_name/version.number,
-then (2) authenticated GET /{literal-index}/_mapping. Each request has a
+The command opens at most three separate HTTPS connections to the already
+allowlisted host:port, in order: (1) ES identity GET / using configured
+HTTP Basic credentials, requiring a plausible cluster_name/version.number,
+(2) protected GET /_security/_authenticate checking the same enabled Basic
+realm principal by username, then (3) GET /{literal-index}/_mapping.
+Anonymous 200 on root or Mapping never proves credentials; failure of the
+protected authentication gate prevents the Mapping GET. Each request has a
 3-second total monotonic asyncio deadline, bounded header/body sizes and
 fail-closed handling of unsupported framing. No redirects, DNS lookups,
 HTTP proxy, model inference, SQL operation, index writes, bulk fetch,
@@ -200,3 +203,7 @@ not resolve the known live `mapping_incompatible` deployment blocker without
 actual operator-run evidence. A later independently reviewed extension may
 support multiple approved selectors, trusted remote hostname pinning, verified
 aliases and richer transport framing, without weakening TLS or sending data.
+
+### 2026-10-20 Codex P2 authentication correction
+
+- First exact-head review identified that anonymous root/mapping HTTP 200 could be mistaken for authenticated credentials. A protected Elasticsearch Security API GET /_security/_authenticate is now required between root identity and Mapping checks. auth=PASS requires exact username, enabled principal, authentication_type=realm and a nonempty realm type. Wrong identity, malformed response or access denial fail closed, and missing Security API remains incomplete. Mapping is never attempted when auth is unverified. All original TLS verification, private-IP target scope and redaction constraints remain.
