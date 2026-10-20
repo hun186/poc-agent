@@ -100,3 +100,46 @@ not be interpreted as already deployed simply because GitHub contains the code.
 
 - URL delimiters '?' and '#' are prohibited outright, even when empty. urlsplit() converts empty query/fragment delimiters into empty strings, but actual LLMClient URL concatenation could otherwise turn /api/chat into query/fragment text. These malformed configs are classified INVALID without network activity.
 - The 512-character raw MODEL_BASE_URL path bound is checked before trailing-slash normalization; an overlong path with hundreds of trailing slash characters must never be accepted. A path exactly 512 characters long remains valid if its normalized segments are safe. Negative and boundary regressions assert no unexpected TCP or secret output.
+
+## 2026-10-20 second incremental slice — configured API HTTP health
+
+The separate `tools/sraf_airgap_off1b_api_http.py` CLI extends the configured
+TCP-only convenience without changing the first slice's API or widening network
+scope. This is the first step toward a single, useful deployment diagnostics stage,
+not a reason to redeploy immediately.
+
+From the real deployed repository root, after this branch is reviewed, merged,
+and deployed in a subsequent verified package:
+
+    python tools/sraf_airgap_off1b_api_http.py --no-network
+    python tools/sraf_airgap_off1b_api_http.py
+
+The script reuses **the exact existing OFF-1B configuration bootstrap** and the
+**reviewed OFF-1A strict bounded HTTP engine**. It observes only an anonymous
+`GET /healthz` on numeric `127.0.0.1` at the launcher's shell `PORT` (default
+9002), with OFF-1A's total 3-second monotonic deadline and 64-KiB body limit.
+No host override, proxy, DNS lookup, redirects, auth, background work, SQL,
+index queries, LLM model call, application import or Worker operation is added.
+`PUBLIC_API_BASE` may be an external reverse proxy and is deliberately not
+used to claim the API listener identity.
+
+The output is one JSON document with schema
+`sraf_airgap_off1b_configured_api_http_v1` and
+`mode=PARTIAL_ONLY_NOT_ACCEPTANCE`. The result distinguishes configuration,
+`http_probe` PASS/FAIL/SKIP, safe numeric HTTP status, and explicit
+`service_identity=NOT_TESTED`, `worker_readiness=NOT_TESTED`,
+`feature_acceptance=NOT_TESTED`. A HTTP 200 is **only /healthz reachable**;
+it is not proof that the listening process belongs to SRA API or that other
+services/Workers and end-to-end Report Jobs work. No host, URL, token, exception,
+model ID or env-file path appears in JSON. CLI exits 0 for HTTP status 200, 1
+for HTTP/config FAIL, and 2 for SKIP or incomplete.
+
+The operator's diagnostic shell can have a different PORT environment from the
+already-running launcher. Runtime supervisor PID/listener identity and actual
+bind attestation still require a separately reviewed, read-only observation.
+Do not treat this first HTTP slice as a replacement for authenticated ES HTTPS
+Mapping, LLM inventory, SQL Server, worker heartbeat, or offline E2E evidence.
+
+Deployment recommendation: bundle API HTTP, ES verified HTTPS/Mappings, and LLM
+model inventory into the next useful OFF-1B deployment diagnostics milestone;
+do not roll the Linux environment solely to try this incremental script.

@@ -343,3 +343,7 @@
 - 2026-10-20 OFF-1B configured probe URL decision: the real LLMClient accepts prefix paths (such as /ollama or /gateway/ollama/api/chat), which do not alter TCP destination. Accept safe ordinary path segments and trailing slash normalization only on MODEL_BASE_URL, without DNS/HTTP/credentials or path logging. ES_URL remains restricted to exact path '' or '/' and never borrows the LLM rule. Reject ambiguous path traversal, percent escapes, doubled interior slashes and query/fragment/userinfo.
 
 - 2026-10-20 OFF-1B strict parsing: detect any literal '?' or '#' in the raw URL (including empty delimiters), since urlsplit cannot distinguish absent and empty query/fragment components; reject before connecting. Verify len(url.path) <= 512 before any LLM trailing-slash normalization, so excessive suffix characters cannot bypass bounds. Keep no arbitrary host/port overrides, no SSRF, and never promote TCP-only observations.
+
+## 2026-10-20 OFF-1B deployment cadence and API HTTP boundary
+
+- Following operator preference, continue developing independently reviewable OFF-1B slices but defer Linux package updates until API /healthz, vetted ES HTTPS identity/mapping and real LLM inventory can run as one useful diagnosis. For configured API HTTP, reuse existing OFF-1A hardened loopback GET and OFF-1B bootstrap instead of reimplementing HTTP or discovering public hosts. Return only a bounded diagnostic partial observation; do not assert FULL_LIVE/worker readiness, follow redirects, or access remote endpoints/credentials.
