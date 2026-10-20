@@ -257,3 +257,5 @@
 - 2026-10-20 PR #295 third Codex review returned 1 P2 for wrong exit 2 on later TLS certificate FAIL; fixed CLI failure check and added auth/control/mapping regression tests. Verify Hosted CI exact head, reply/resolve original thread, request new exact-head Codex review and address any findings before merge. Linux deployment intentionally deferred.
 
 - 2026-10-20 PR #295 fourth review finding P2: protected ES 403 must not imply bad password. Patch and CLI regression tests submitted. Verify exact-head CI and Codex, reply/resolve thread, no merge. Blocked Hosted CI runs still lack readable steps/logs (404); separately investigate runner/billing/permissions status as possible causes before declaring tests passed.
+
+- 2026-10-20 PR #295 fifth Codex P2: root HTTP 403 still labeled rejected credentials. Code and CLI regression fixed (root access-denied + auth unverified, root failure exit 1, no follow-up even under --verify-credentials). Next gates: hosted CI exact head with accessible evidence, inline reply/thread resolve, request Codex exact-head re-review and address findings, only merge on explicit instruction.
