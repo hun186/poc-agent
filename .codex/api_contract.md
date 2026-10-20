@@ -228,3 +228,5 @@
 - 2026-10-20 ES credential-control correction: strict negative challenge requires HTTP 401, never 403. HTTP 403 from a proxy may be authorization denial unrelated to supplied password, thus yields auth FAIL and no Mapping GET. Does not enable credential challenge by default; operator opt-in only.
 
 - 2026-10-20 ES HTTPS/mapping CLI return-status correction: `tls_validation=FAIL` unconditionally contributes an observed failure (exit 1), including when `https_probe=PASS`, `auth=NOT_VERIFIED`, `mapping_probe=SKIP` after a later TLS certificate validation error. P1/P2 review and CI gates unchanged. `NOT_VERIFIED` without independent observed FAIL remains exit 2.
+
+- 2026-10-20 ES Security GET status semantics: protected /_security/_authenticate HTTP 401 -> auth FAIL, reason es_auth_rejected, exit 1; HTTP 403 -> auth NOT_VERIFIED, reason es_auth_access_denied, mapping SKIP, credential_control NOT_RUN and exit 2. Explicit --verify-credentials does not send a negative credential control after a 403. No proxy/Basic credential claim can be inferred from 403.
