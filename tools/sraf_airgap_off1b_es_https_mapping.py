@@ -247,10 +247,17 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
                                     else "NOT_VERIFIED")
         return result
     result["tls_validation"] = "PASS"
-    if status in (401, 403):
+    if status == 401:
         result["https_probe"] = "FAIL"
         result["auth"] = "FAIL"
         result["reason"] = "es_auth_rejected"
+        return result
+    if status == 403:
+        # A gateway can deny GET / before authenticating the Basic header.
+        # Root identity check fails, but password validity is unverified.
+        result["https_probe"] = "FAIL"
+        result["auth"] = "NOT_VERIFIED"
+        result["reason"] = "es_root_access_denied"
         return result
     if status != 200:
         result["https_probe"] = "FAIL"
