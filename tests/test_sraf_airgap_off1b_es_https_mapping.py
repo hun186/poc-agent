@@ -34,6 +34,15 @@ def _root_document():
     }).encode()
 
 
+def _auth_document(username="operator"):
+    return json.dumps({
+        "username": username,
+        "enabled": True,
+        "authentication_type": "realm",
+        "authentication_realm": {"name": "file", "type": "file"},
+    }).encode()
+
+
 def _mapping_document(index):
     return json.dumps({index: REQUIREMENT_E2E_MAPPING}).encode()
 
@@ -143,11 +152,16 @@ def test_https_root_and_mapping_positive_are_still_only_partial(
         calls.append((host, port, path, user, password))
         if path == "/":
             return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
         return 200, _mapping_document(REQUIREMENT_E2E_INDEX), "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
     obs = es._observe(_cfg(REQUIREMENT_E2E_INDEX),
                       no_network=False, root=tmp_path)
-    assert [x[2] for x in calls] == ["/", "/" + REQUIREMENT_E2E_INDEX + "/_mapping"]
+    assert [x[2] for x in calls] == [
+        "/", "/_security/_authenticate",
+        "/" + REQUIREMENT_E2E_INDEX + "/_mapping",
+    ]
     assert {x[:2] for x in calls} == {("192.168.0.134", 9001)}
     assert obs["https_probe"] == "PASS"
     assert obs["mapping_probe"] == "PASS"
@@ -188,9 +202,11 @@ def test_root_auth_failures_never_progress_to_mapping(
 def test_mapping_auth_and_index_failures(monkeypatch, tmp_path, status, expected):
     _ca(tmp_path)
     def fake(host, port, path, user, password, ca):
-        return ((200, _root_document(), "https_response_received")
-                if path == "/" else
-                (status, b"{}", "https_response_received"))
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        return status, b"{}", "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
     obs = es._observe(_cfg(), no_network=False, root=tmp_path)
     assert obs["https_probe"] == "PASS"
@@ -203,8 +219,9 @@ def test_mapping_incompatible_is_not_success(monkeypatch, tmp_path):
     mismatch = json.dumps({"my_index": {"mappings": {}}}).encode()
     monkeypatch.setattr(es, "_https_get",
                         lambda host, port, path, *_:
-                        (200, _root_document() if path == "/" else mismatch,
-                         "https_response_received"))
+                        (200, _root_document() if path == "/" else
+                         _auth_document() if path == "/_security/_authenticate"
+                         else mismatch, "https_response_received"))
     obs = es._observe(_cfg(), no_network=False, root=tmp_path)
     assert obs["mapping_probe"] == "FAIL"
     assert obs["reason"] == "mapping_incompatible"
@@ -262,3 +279,104 @@ def test_cli_wrong_root_never_reads_env(monkeypatch, tmp_path, capsys):
         lambda *_: pytest.fail("invalid invocation loaded config"))
     assert es.main([]) == 2
     assert "run_from_repository_root" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("payload", [
+    b'{}', b'[]', b'broken json',
+    b'{"username":"operator"}',
+    _auth_document("another_user"),
+    json.dumps({"username": "operator", "enabled": True,
+                "authentication_type": "anonymous",
+                "authentication_realm": {"type": "anonymous"}}).encode(),
+    json.dumps({"username": "operator", "enabled": False,
+                "authentication_type": "realm",
+                "authentication_realm": {"type": "file"}}).encode(),
+    json.dumps({"username": "operator", "enabled": True,
+                "authentication_type": "realm",
+                "authentication_realm": {}}).encode(),
+])
+def test_security_auth_endpoint_must_attest_basic_principal(payload):
+    assert es._verified_basic_principal(payload, "operator") is False
+    assert es._verified_basic_principal(_auth_document(), "operator") is True
+
+
+@pytest.mark.parametrize(("status", "document", "auth", "reason"), [
+    (200, _auth_document("wrong_user"), "FAIL", "es_principal_unverified"),
+    (200, b'{"enabled":true}', "FAIL", "es_principal_unverified"),
+    (200, b"invalid", "FAIL", "es_principal_unverified"),
+    (401, b"{}", "FAIL", "es_auth_rejected"),
+    (403, b"{}", "FAIL", "es_auth_rejected"),
+    (404, b"{}", "NOT_TESTED", "es_auth_endpoint_unavailable"),
+    (500, b"{}", "FAIL", "es_auth_http_unexpected"),
+])
+def test_public_root_and_mapping_cannot_fake_authentication(
+        monkeypatch, tmp_path, status, document, auth, reason):
+    _ca(tmp_path)
+    calls = []
+    def fake(host, port, path, user, password, ca):
+        calls.append(path)
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            return status, document, "https_response_received"
+        return 200, _mapping_document("my_index"), "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path)
+    assert calls == ["/", "/_security/_authenticate"]
+    assert obs["https_probe"] == "PASS"
+    assert obs["auth"] == auth
+    assert obs["mapping_probe"] == "SKIP"
+    assert obs["reason"] == reason
+    for private in ("operator", "SECRET_PASSWORD", "wrong_user", "INTERNAL_ES_CLUSTER"):
+        assert private not in json.dumps(obs)
+
+
+def test_authenticated_only_after_protected_security_endpoint(monkeypatch, tmp_path):
+    _ca(tmp_path)
+    seen = []
+    def fake(host, port, path, user, password, ca):
+        seen.append(path)
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        return 200, _mapping_document("my_index"), "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path)
+    assert obs["auth"] == "PASS"
+    assert obs["mapping_probe"] == "PASS"
+    assert seen == ["/", "/_security/_authenticate", "/my_index/_mapping"]
+    assert obs["feature_acceptance"] == "NOT_TESTED"
+
+
+def test_authenticated_endpoint_transport_error_no_mapping(monkeypatch, tmp_path):
+    _ca(tmp_path)
+    seen = []
+    def fake(host, port, path, user, password, ca):
+        seen.append(path)
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        assert path == "/_security/_authenticate"
+        return None, None, "es_tls_identity_unverified"
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path)
+    assert seen == ["/", "/_security/_authenticate"]
+    assert obs["tls_validation"] == "FAIL"
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert obs["mapping_probe"] == "SKIP"
+    assert obs["reason"] == "es_auth_transport_unavailable"
+
+
+def test_cli_fail_code_for_unverified_principal(monkeypatch, tmp_path, capsys):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    def fake(host, port, path, user, password, ca):
+        return (200, _root_document() if path == "/" else
+                _auth_document("wrong_user"), "https_response_received")
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main([]) == 1
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["results"][0]["auth"] == "FAIL"
+    assert doc["results"][0]["mapping_probe"] == "SKIP"
