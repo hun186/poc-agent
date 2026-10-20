@@ -556,3 +556,28 @@ def test_cli_opted_in_bad_password_control_returns_success(
     assert result["results"][0]["auth"] == "PASS"
     assert result["results"][0]["credential_control"] == "PASS"
     assert result["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
+
+
+
+def test_negative_control_403_does_not_prove_wrong_password_rejection(
+        monkeypatch, tmp_path):
+    _ca(tmp_path)
+    called = []
+    def fake(host, port, path, user, password, ca):
+        called.append(path)
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        assert path == "/_security/_authenticate"
+        if password == "SECRET_PASSWORD":
+            return 200, _auth_document(), "https_response_received"
+        # A proxy can deny access to this endpoint with 403 without checking
+        # the supplied credential. Only HTTP 401 is a negative-auth control.
+        return 403, b"{}", "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path,
+                      verify_credentials=True)
+    assert obs["auth"] == "FAIL"
+    assert obs["credential_control"] == "FAIL"
+    assert obs["mapping_probe"] == "SKIP"
+    assert called == ["/", "/_security/_authenticate",
+                      "/_security/_authenticate"]
