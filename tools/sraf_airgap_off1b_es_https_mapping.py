@@ -146,6 +146,35 @@ def _https_get(host: str, port: int, path: str,
         return None, None, "es_https_transport_unavailable"
 
 
+def _mapping_containers_valid(mappings: dict[str, object]) -> bool:
+    """Validate only Mapping field-container shape before the shared predicate.
+
+    A syntactically valid ES JSON response can contain a list at `properties`
+    or `fields`. The production predicate assumes dicts and would otherwise
+    raise AttributeError, leaking a traceback rather than a redacted result.
+    Use iterative bounded traversal; leave field-type compatibility to the
+    existing application predicate.
+    """
+    pending: list[dict[str, object]] = [mappings]
+    seen = 0
+    while pending:
+        node = pending.pop()
+        seen += 1
+        if seen > 4096:
+            return False
+        for container in ("properties", "fields"):
+            if container not in node:
+                continue
+            children = node[container]
+            if not isinstance(children, dict):
+                return False
+            for child in children.values():
+                if not isinstance(child, dict):
+                    return False
+                pending.append(child)
+    return True
+
+
 def _mapping_result(body: bytes, selector: str) -> tuple[str, str]:
     """Reuse the application mapping predicate, never echo index or fields."""
     try:
@@ -157,10 +186,14 @@ def _mapping_result(body: bytes, selector: str) -> tuple[str, str]:
         entry = next(iter(mapping.values()))
         if not isinstance(entry, dict) or not isinstance(entry.get("mappings"), dict):
             return "FAIL", "es_mapping_response_invalid"
+        if not _mapping_containers_valid(entry["mappings"]):
+            return "FAIL", "es_mapping_response_invalid"
         probe = mapping_compatibility(mapping, selector)
         return ("PASS", "es_mapping_compatible") if probe.usable else (
             "FAIL", "mapping_incompatible")
-    except (ValueError, TypeError, RecursionError, UnicodeError):
+    except (ValueError, TypeError, AttributeError, KeyError,
+            RecursionError, UnicodeError):
+        # Malformed untrusted JSON must not escape as an operator traceback.
         return "FAIL", "es_mapping_response_invalid"
 
 
