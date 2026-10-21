@@ -62,7 +62,12 @@ def test_mapping_reuses_real_requirements_predicate():
     (b"{}", ("SKIP", "es_mapping_target_ambiguous")),
     (b'{"a":{"mappings":{}},"b":{"mappings":{}}}',
      ("SKIP", "es_mapping_target_ambiguous")),
-    (b"[]", ("SKIP", "es_mapping_target_ambiguous")),
+    (b"[]", ("FAIL", "es_mapping_response_invalid")),
+    (b"[{}]", ("FAIL", "es_mapping_response_invalid")),
+    (b"[{}, {}]", ("FAIL", "es_mapping_response_invalid")),
+    (b"null", ("FAIL", "es_mapping_response_invalid")),
+    (b'"value"', ("FAIL", "es_mapping_response_invalid")),
+    (b"123", ("FAIL", "es_mapping_response_invalid")),
     (b"not json", ("FAIL", "es_mapping_response_invalid")),
     (b'{"a":{"anything":true}}', ("FAIL", "es_mapping_response_invalid")),
 ])
@@ -785,3 +790,36 @@ def test_mapping_predicate_unexpected_attribute_error_is_redacted(monkeypatch):
     monkeypatch.setattr(es, "mapping_compatibility", defective)
     assert es._mapping_result(_mapping_document("my_index"), "my_index") == (
         "FAIL", "es_mapping_response_invalid")
+
+
+
+@pytest.mark.parametrize("invalid_mapping", (
+    b"[]", b"[{}]", b"[{},{}]", b"null", b'["PRIVATE_TOKEN"]',
+))
+def test_cli_rejects_nonobject_mapping_response_as_observed_failure(
+        monkeypatch, tmp_path, capsys, invalid_mapping):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    seen = []
+    def fake(host, port, path, user, password, ca):
+        seen.append(path)
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        assert path == "/my_index/_mapping"
+        return 200, invalid_mapping, "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main([]) == 1
+    output = capsys.readouterr().out
+    doc = json.loads(output)
+    obs = doc["results"][0]
+    assert obs["mapping_probe"] == "FAIL"
+    assert obs["reason"] == "es_mapping_response_invalid"
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert obs["feature_acceptance"] == "NOT_TESTED"
+    assert "PRIVATE_TOKEN" not in output
+    assert "my_index" not in output
+    assert seen == ["/", "/_security/_authenticate", "/my_index/_mapping"]
