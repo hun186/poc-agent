@@ -337,7 +337,9 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         result["reason"] = "es_auth_endpoint_unavailable"
         return result
     if auth_status != 200:
-        result["auth"] = "FAIL"
+        # 429, 5xx or an intermediary response does not establish whether
+        # the supplied Basic credentials are valid. Do not assert auth FAIL.
+        result["auth"] = "NOT_VERIFIED"
         result["reason"] = "es_auth_http_unexpected"
         return result
     if not _verified_basic_principal(auth_body, username):
