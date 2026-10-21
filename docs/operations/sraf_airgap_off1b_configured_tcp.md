@@ -301,14 +301,25 @@ All original TLS verification, private-IP target scope and redaction constraints
   (CLI exit 1); only a Mapping dictionary with zero/multiple target keys
   retains `SKIP/es_mapping_target_ambiguous`. Added functional and CLI
   regression tests with no raw data leakage.
-- GitHub Actions UI **confirmed** the job was not started because of account
-  payments or Actions spending limit (exact: "The job was not started because
-  recent account payments have failed or your spending limit needs to be
-  increased"). Prior fail-marked jobs with empty steps/404 log blobs were
-  blocked **before tests executed**; do not interpret them as pytest failures,
-  and do not waste more runs until the repository owner resolves the billing
-  issue under GitHub Billing & Licensing. The ubuntu-latest migration to
-  Ubuntu 26 was a notice, not the failed-job cause. The project is still
-  private; hosted CI verification will resume after billing is fixed.
-- All current tests are **pending actual Hosted execution** on the new head.
-  Codex review is a separate gate. No Linux environment changes or merge.
+- Historical GitHub Actions UI annotation **confirmed** the job was not
+  started before the repository visibility change due to payment or Actions
+  spending limit (exact: "The job was not started because recent account
+  payments have failed or your spending limit needs to be increased").
+  The old fail-marked jobs with empty steps/404 log blobs were **NOT_EXECUTED**,
+  not pytest failures. The Ubuntu 26 runner-image migration notice was
+  informational, not the failed-job cause.
+- **Current authoritative update, 2026-10-21:** the repository is now PUBLIC.
+  After that switch, Hosted Actions rerun **#39533967611** on head
+  `c0f663bcd5e69472e40060c3afc0eed675a6d3a6` SUCCEEDED (513 pytest PASS,
+  19 OFF-0 schema-only contract checks PASS). The separate exact-head Hosted
+  Actions **#39534484218** on head
+  `b6f8c4181426084cf039baeb979d586b2aeeda38` also SUCCEEDED (513 pytest
+  PASS in 2.01 seconds, 19 OFF-0 schema-only contract checks PASS).
+  Both runs actually started and passed compile/install and config-only smoke.
+  The prior "do not rerun due to billing" instruction is superseded; continue
+  normal exact-head CI as the PR changes.
+- Ninth-round Codex on `b6f8c4181426084cf039baeb979d586b2aeeda38`
+  identified an outdated PRIVATE/billing status in `.codex/memory.md`; its
+  active summary was corrected to PUBLIC, current real CI successes and
+  historical billing block. Fresh exact-head Codex and CI after edits remain
+  separate merge gates. No Linux runtime acceptance or merge.
