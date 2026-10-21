@@ -181,7 +181,9 @@ def _mapping_result(body: bytes, selector: str) -> tuple[str, str]:
         if len(body) > MAX_BODY:
             return "FAIL", "es_mapping_response_oversized"
         mapping = json.loads(body)
-        if not isinstance(mapping, dict) or len(mapping) != 1:
+        if not isinstance(mapping, dict):
+            return "FAIL", "es_mapping_response_invalid"
+        if len(mapping) != 1:
             return "SKIP", "es_mapping_target_ambiguous"
         entry = next(iter(mapping.values()))
         if not isinstance(entry, dict) or not isinstance(entry.get("mappings"), dict):
