@@ -292,3 +292,23 @@ All original TLS verification, private-IP target scope and redaction constraints
   Regression tests include root/nested arrays, scalar values, unrelated
   fields, CLI output and redaction; legitimate Mapping still uses existing
   compatibility behavior. This does not prove the deployed ES Mapping passes.
+
+### 2026-10-21 seventh Codex and confirmed external Hosted CI blocker
+
+- JSON Mapping responses with top-level arrays/scalars/null are structurally
+  invalid, even when the array has zero or multiple entries. The OFF-1B ES
+  diagnostic now classifies these as `FAIL/es_mapping_response_invalid`
+  (CLI exit 1); only a Mapping dictionary with zero/multiple target keys
+  retains `SKIP/es_mapping_target_ambiguous`. Added functional and CLI
+  regression tests with no raw data leakage.
+- GitHub Actions UI **confirmed** the job was not started because of account
+  payments or Actions spending limit (exact: "The job was not started because
+  recent account payments have failed or your spending limit needs to be
+  increased"). Prior fail-marked jobs with empty steps/404 log blobs were
+  blocked **before tests executed**; do not interpret them as pytest failures,
+  and do not waste more runs until the repository owner resolves the billing
+  issue under GitHub Billing & Licensing. The ubuntu-latest migration to
+  Ubuntu 26 was a notice, not the failed-job cause. The project is still
+  private; hosted CI verification will resume after billing is fixed.
+- All current tests are **pending actual Hosted execution** on the new head.
+  Codex review is a separate gate. No Linux environment changes or merge.
