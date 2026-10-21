@@ -275,3 +275,20 @@ All original TLS verification, private-IP target scope and redaction constraints
   classification. Neither root-denied outcome sends a subsequent authentication,
   negative-password control or Mapping request, even with --verify-credentials.
   The only visible output is fixed redacted JSON.
+
+### 2026-10-21 sixth Codex review — nested Mapping container validation
+
+- A syntactically valid JSON Mapping response can still contain non-object
+  `mappings.properties`, a nested `properties`/`fields` array or a malformed
+  field node. The application `mapping_compatibility()` assumes dict-based
+  field structures; passing these values through could raise `AttributeError`
+  rather than producing a redacted operator result. The standalone diagnostic
+  now validates the shape of all traversed Mapping property/field containers
+  using bounded iterative traversal (maximum 4096 field nodes), then calls
+  the original application predicate unchanged for actual compatibility.
+  Invalid containers or unexpected attribute lookup errors fail closed as
+  `mapping_probe=FAIL`, `reason=es_mapping_response_invalid`, exit 1;
+  raw response content, index names and exception details are not printed.
+  Regression tests include root/nested arrays, scalar values, unrelated
+  fields, CLI output and redaction; legitimate Mapping still uses existing
+  compatibility behavior. This does not prove the deployed ES Mapping passes.
