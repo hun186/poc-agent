@@ -318,7 +318,9 @@ def test_security_auth_endpoint_must_attest_basic_principal(payload):
     (401, b"{}", "FAIL", "es_auth_rejected"),
     (403, b"{}", "NOT_VERIFIED", "es_auth_access_denied"),
     (404, b"{}", "NOT_TESTED", "es_auth_endpoint_unavailable"),
-    (500, b"{}", "FAIL", "es_auth_http_unexpected"),
+    (429, b"{}", "NOT_VERIFIED", "es_auth_http_unexpected"),
+    (500, b"{}", "NOT_VERIFIED", "es_auth_http_unexpected"),
+    (502, b"{}", "NOT_VERIFIED", "es_auth_http_unexpected"),
 ])
 def test_public_root_and_mapping_cannot_fake_authentication(
         monkeypatch, tmp_path, status, document, auth, reason):
@@ -823,3 +825,39 @@ def test_cli_rejects_nonobject_mapping_response_as_observed_failure(
     assert "PRIVATE_TOKEN" not in output
     assert "my_index" not in output
     assert seen == ["/", "/_security/_authenticate", "/my_index/_mapping"]
+
+
+
+@pytest.mark.parametrize("status", (302, 408, 429, 500, 502, 503))
+@pytest.mark.parametrize("verify_credentials", (False, True))
+def test_unexpected_protected_auth_http_is_incomplete_not_bad_password(
+        monkeypatch, tmp_path, capsys, status, verify_credentials):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    paths = []
+    def fake(host, port, path, user, password, ca):
+        paths.append(path)
+        assert password == "SECRET_PASSWORD"
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        assert path == "/_security/_authenticate"
+        # Non-auth service/gateway errors cannot prove credentials invalid.
+        return status, b'{"secret":"NEVER_PRINT_REMOTE_DATA"}', "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    argv = ["--verify-credentials"] if verify_credentials else []
+    assert es.main(argv) == 2
+    result_text = capsys.readouterr().out
+    doc = json.loads(result_text)
+    obs = doc["results"][0]
+    assert obs["https_probe"] == "PASS"
+    assert obs["tls_validation"] == "PASS"
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert obs["reason"] == "es_auth_http_unexpected"
+    assert obs["credential_control"] == "NOT_RUN"
+    assert obs["mapping_probe"] == "SKIP"
+    assert obs["feature_acceptance"] == "NOT_TESTED"
+    assert paths == ["/", "/_security/_authenticate"]
+    for secret in ("SECRET_PASSWORD", "NEVER_PRINT_REMOTE_DATA", "operator"):
+        assert secret not in result_text
