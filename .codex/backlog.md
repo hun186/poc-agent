@@ -261,3 +261,10 @@
 - 2026-10-20 PR #295 fifth Codex P2: root HTTP 403 still labeled rejected credentials. Code and CLI regression fixed (root access-denied + auth unverified, root failure exit 1, no follow-up even under --verify-credentials). Next gates: hosted CI exact head with accessible evidence, inline reply/thread resolve, request Codex exact-head re-review and address findings, only merge on explicit instruction.
 
 - 2026-10-21 PR #295 sixth Codex P2 nested ES mapping container type error addressed with bounded validation and regression tests. Must check exact-head Hosted CI and seventh Codex review, reply/resolve outstanding review thread. Current CI failure (prior #39455950578) lacks job steps/logs; do not merge or suggest Linux deploy until validated. LLM inventory follows ES diagnostic stage.
+
+## 2026-10-21 PR #295 public Hosted CI recovery and ninth-round Codex correction
+
+- GitHub Connector confirms repository is now PUBLIC. Earlier GitHub Actions workflow failures with no job steps/logs were blocked from starting by a billing/spending-limit annotation and are historical NOT_EXECUTED, not pytest FAIL.
+- Actual Hosted rerun #39533967611 on `c0f663bcd5e69472e40060c3afc0eed675a6d3a6` succeeded: 513 pytest PASS and OFF-0 contract 19 PASS. Actual Hosted run #39534484218 on `b6f8c4181426084cf039baeb979d586b2aeeda38` succeeded with 513 pytest PASS in 2.01 s plus OFF-0 19 PASS and compilation/dependencies/config-only smoke green.
+- Ninth-round Codex on `b6f8c4181426084cf039baeb979d586b2aeeda38` found one P2: `.codex/memory.md` incorrectly remained private/billing-blocked despite real successful Hosted runs. Updated active memory, known issues and operator runbook with current public state and historical account-block evidence, retained security distinction between local Hosted PASS and untested Linux ES Mapping.
+- Next gates: verify newest exact-head Hosted Actions PASS and formal Codex review without unresolved P1/P2; do not Merge until user explicitly authorizes. Once merged, proceed to reviewed LLM inventory before consolidated offline deployment diagnostics; mapping_incompatible still needs on-host evidence.
