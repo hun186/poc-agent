@@ -358,7 +358,7 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         invalid_password = secrets.token_urlsafe(32)
         while invalid_password == password:
             invalid_password = secrets.token_urlsafe(32)
-        control_status, _, control_reason = _https_get(
+        control_status, control_body, control_reason = _https_get(
             host, port, "/_security/_authenticate",
             username, invalid_password, ca,
         )
@@ -367,15 +367,25 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
             result["reason"] = "es_credential_control_unavailable"
             _later_tls_failure(result, control_reason)
             return result
-        # 403 can be an intermediary authorization denial, not proof the
-        # supplied Basic password was rejected by Elasticsearch.
-        if control_status != 401:
+        if control_status == 401:
+            # Only HTTP 401 proves that the negative challenge was rejected.
+            result["credential_control"] = "PASS"
+            result["auth"] = "PASS"
+        elif (control_status == 200
+              and _verified_basic_principal(control_body, username)):
+            # A protected principal was attested using a deliberately wrong
+            # password: some intermediary may be replacing Authorization.
             result["credential_control"] = "FAIL"
             result["auth"] = "FAIL"
             result["reason"] = "es_credential_control_not_rejected"
             return result
-        result["credential_control"] = "PASS"
-        result["auth"] = "PASS"
+        else:
+            # 403/429/5xx, redirects and unattested 200 cannot prove the
+            # invalid credential was considered. Never claim password failure.
+            result["credential_control"] = "INCOMPLETE"
+            result["auth"] = "NOT_VERIFIED"
+            result["reason"] = "es_credential_control_unverified"
+            return result
     # Without opted-in negative control, mapping may be inspected read-only
     # but the CLI remains incomplete even if the mapping structure passes.
     # Still an ES-like identity only; neither PID nor service ownership proven.
