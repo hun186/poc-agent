@@ -337,3 +337,27 @@ All original TLS verification, private-IP target scope and redaction constraints
   credentials or private destinations. An independent observed TLS FAIL still
   forces exit 1. CLI negative tests cover common transient status and gateway
   codes with and without explicit credential-control opt-in.
+
+### 2026-10-21 eleventh Codex — deliberately invalid-password challenge outcomes
+
+- The optional `--verify-credentials` sends a deliberately incorrect Basic
+  password only after a verified positive principal. The negative check **PASS**
+  requires HTTP 401, never 403. When a proxy/gateway or server responds with
+  HTTP 403, 429, 5xx, redirects, 404, other unexpected codes, or HTTP 200
+  without an attested matching principal, the diagnostic cannot prove whether
+  the invalid password was examined. It now reports
+  `credential_control=INCOMPLETE`, `auth=NOT_VERIFIED`,
+  `reason=es_credential_control_unverified`, CLI exit 2, and never sends a
+  Mapping GET. A control HTTP 200 containing the matching enabled Basic realm
+  principal means even the deliberately invalid password was accepted or
+  replaced, so it remains an evidence-supported FAIL (exit 1). A control HTTP
+  401 with previous positive principal permits `auth=PASS` and Mapping GET.
+  Control request count and failed-login audit/lockout warning remain unchanged;
+  default mode never sends intentionally invalid credentials. Regression tests
+  include 200 positive/unattested, 302, 403, 404, 408, 429, 500, 502 and 503
+  with correct CLI return codes, request bounds and redaction.
+- GitHub Actions #39543476662 on previously reviewed head
+  `e63c4dbb5bd9c38d0aaba3f005228dae1ae3418a` actually succeeded with
+  527 pytest PASS and 19 OFF-0 schema-only contract PASS, plus green compile,
+  dependencies and config-only checks. This remains historical previous-head
+  evidence until new exact-head CI runs; it is not Linux deployment acceptance.
