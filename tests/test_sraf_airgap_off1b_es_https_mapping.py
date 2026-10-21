@@ -583,8 +583,9 @@ def test_negative_control_403_does_not_prove_wrong_password_rejection(
     monkeypatch.setattr(es, "_https_get", fake)
     obs = es._observe(_cfg(), no_network=False, root=tmp_path,
                       verify_credentials=True)
-    assert obs["auth"] == "FAIL"
-    assert obs["credential_control"] == "FAIL"
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert obs["credential_control"] == "INCOMPLETE"
+    assert obs["reason"] == "es_credential_control_unverified"
     assert obs["mapping_probe"] == "SKIP"
     assert called == ["/", "/_security/_authenticate",
                       "/_security/_authenticate"]
@@ -861,3 +862,82 @@ def test_unexpected_protected_auth_http_is_incomplete_not_bad_password(
     assert paths == ["/", "/_security/_authenticate"]
     for secret in ("SECRET_PASSWORD", "NEVER_PRINT_REMOTE_DATA", "operator"):
         assert secret not in result_text
+
+
+
+@pytest.mark.parametrize("status,body,expected_control,expected_auth,expected_reason", [
+    (200, _auth_document(), "FAIL", "FAIL", "es_credential_control_not_rejected"),
+    (200, b"{}", "INCOMPLETE", "NOT_VERIFIED", "es_credential_control_unverified"),
+    (200, _auth_document("other_user"), "INCOMPLETE", "NOT_VERIFIED",
+     "es_credential_control_unverified"),
+    (302, b"{}", "INCOMPLETE", "NOT_VERIFIED", "es_credential_control_unverified"),
+    (403, b"{}", "INCOMPLETE", "NOT_VERIFIED", "es_credential_control_unverified"),
+    (404, b"{}", "INCOMPLETE", "NOT_VERIFIED", "es_credential_control_unverified"),
+    (408, b"{}", "INCOMPLETE", "NOT_VERIFIED", "es_credential_control_unverified"),
+    (429, b"{}", "INCOMPLETE", "NOT_VERIFIED", "es_credential_control_unverified"),
+    (500, b"{}", "INCOMPLETE", "NOT_VERIFIED", "es_credential_control_unverified"),
+    (502, b"{}", "INCOMPLETE", "NOT_VERIFIED", "es_credential_control_unverified"),
+    (503, b"{}", "INCOMPLETE", "NOT_VERIFIED", "es_credential_control_unverified"),
+])
+def test_opted_in_control_http_is_classified_only_on_credible_attestation(
+        monkeypatch, tmp_path, capsys, status, body, expected_control,
+        expected_auth, expected_reason):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    seen = []
+    def fake(host, port, path, username, password, ca):
+        seen.append((path, password))
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        assert path == "/_security/_authenticate"
+        if password == "SECRET_PASSWORD":
+            return 200, _auth_document(), "https_response_received"
+        return status, body, "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    exit_code = 1 if expected_control == "FAIL" else 2
+    assert es.main(["--verify-credentials"]) == exit_code
+    output = capsys.readouterr().out
+    obs = json.loads(output)["results"][0]
+    assert obs["credential_control"] == expected_control
+    assert obs["auth"] == expected_auth
+    assert obs["reason"] == expected_reason
+    assert obs["mapping_probe"] == "SKIP"
+    assert obs["https_probe"] == "PASS"
+    assert obs["tls_validation"] == "PASS"
+    assert len(seen) == 3
+    assert [x[0] for x in seen] == ["/", "/_security/_authenticate",
+                                      "/_security/_authenticate"]
+    assert seen[-1][1] != "SECRET_PASSWORD"
+    for sensitive in ("SECRET_PASSWORD", "operator", "my_index"):
+        assert sensitive not in output
+    assert seen[-1][1] not in output
+
+
+def test_negative_control_401_is_only_successful_challenge_response(
+        monkeypatch, tmp_path, capsys):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    seen = []
+    def fake(host, port, path, username, password, ca):
+        seen.append(path)
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            if password == "SECRET_PASSWORD":
+                return 200, _auth_document(), "https_response_received"
+            return 401, b'{"error":"PRIVATE_EVIDENCE"}', "https_response_received"
+        return 200, _mapping_document("my_index"), "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main(["--verify-credentials"]) == 0
+    output = capsys.readouterr().out
+    obs = json.loads(output)["results"][0]
+    assert obs["auth"] == "PASS"
+    assert obs["credential_control"] == "PASS"
+    assert obs["mapping_probe"] == "PASS"
+    assert seen == ["/", "/_security/_authenticate",
+                    "/_security/_authenticate", "/my_index/_mapping"]
+    assert "PRIVATE_EVIDENCE" not in output
