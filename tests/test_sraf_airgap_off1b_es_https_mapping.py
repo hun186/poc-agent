@@ -717,3 +717,71 @@ def test_root_es_401_is_rejected_and_never_attempts_mapping(
     assert output["auth"] == "FAIL"
     assert output["reason"] == "es_auth_rejected"
     assert paths == ["/"]
+
+
+
+@pytest.mark.parametrize("malformation", [
+    "top_properties_array",
+    "nested_properties_array",
+    "nested_fields_array",
+    "nested_properties_scalar",
+    "unrelated_property_fields_array",
+    "non_mapping_field_node",
+])
+def test_malformed_nested_es_mapping_returns_redacted_invalid_result(
+        malformation):
+    mapping = copy.deepcopy(REQUIREMENT_E2E_MAPPING)
+    properties = mapping["mappings"]["properties"]
+    if malformation == "top_properties_array":
+        mapping["mappings"]["properties"] = []
+    elif malformation == "nested_properties_array":
+        properties["multidim_event_json"]["properties"] = []
+    elif malformation == "nested_fields_array":
+        properties["communication"]["properties"]["subject"]["fields"] = []
+    elif malformation == "nested_properties_scalar":
+        properties["multidim_event_json"]["properties"] = "SECRET_BAD_SCHEMA"
+    elif malformation == "unrelated_property_fields_array":
+        properties["extra_field"] = {"type": "keyword", "fields": []}
+    else:
+        properties["uuid"] = ["SECRET_BAD_FIELD"]
+    body = json.dumps({"my_index": mapping}).encode()
+    assert es._mapping_result(body, "my_index") == (
+        "FAIL", "es_mapping_response_invalid")
+
+
+def test_malformed_mapping_cli_is_structured_fail_not_traceback(
+        monkeypatch, tmp_path, capsys):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    corrupted = copy.deepcopy(REQUIREMENT_E2E_MAPPING)
+    corrupted["mappings"]["properties"]["multidim_event_json"][
+        "properties"] = ["SECRET_INVALID_NESTED"]
+    mapping_body = json.dumps({"my_index": corrupted}).encode()
+    calls = []
+    def fake(host, port, path, user, password, ca):
+        calls.append(path)
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        return 200, mapping_body, "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main([]) == 1
+    output = capsys.readouterr().out
+    obs = json.loads(output)["results"][0]
+    assert obs["mapping_probe"] == "FAIL"
+    assert obs["reason"] == "es_mapping_response_invalid"
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert "SECRET_INVALID_NESTED" not in output
+    assert "my_index" not in output
+    assert calls == ["/", "/_security/_authenticate", "/my_index/_mapping"]
+
+
+def test_mapping_predicate_unexpected_attribute_error_is_redacted(monkeypatch):
+    def defective(mapping, selector):
+        raise AttributeError("private_host 192.168.0.134 hidden")
+    monkeypatch.setattr(es, "mapping_compatibility", defective)
+    assert es._mapping_result(_mapping_document("my_index"), "my_index") == (
+        "FAIL", "es_mapping_response_invalid")
