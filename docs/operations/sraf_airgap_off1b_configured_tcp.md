@@ -143,3 +143,221 @@ Mapping, LLM inventory, SQL Server, worker heartbeat, or offline E2E evidence.
 Deployment recommendation: bundle API HTTP, ES verified HTTPS/Mappings, and LLM
 model inventory into the next useful OFF-1B deployment diagnostics milestone;
 do not roll the Linux environment solely to try this incremental script.
+
+## 2026-10-20 ES HTTPS / Mapping diagnostic slice (PR under review)
+
+A separate standalone operator command now provides a safe, small Elasticsearch
+identity and Mapping diagnosis. This is not a full SRAF acceptance check and
+must not be run in the Linux production environment until the PR passes review,
+is explicitly merged and packaged in a verified deployment.
+
+    python tools/sraf_airgap_off1b_es_https_mapping.py --no-network
+    python tools/sraf_airgap_off1b_es_https_mapping.py
+
+    # EXPLICIT OPT-IN: makes exactly one intentionally invalid-password
+    # authentication request, which can be audited or count toward lockout:
+    python tools/sraf_airgap_off1b_es_https_mapping.py --verify-credentials
+
+Configuration is derived exclusively from the existing dotenv bootstrap:
+`ES_URL` (literal numeric RFC1918/loopback IPv4 **HTTPS origin only**),
+`ES_USERNAME` + `ES_PASSWORD` (existing runtime Basic credentials), one
+literal `ES_INDEX` or alias and the fixed repository
+`agent/certs/http_ca.crt` trusted CA location. No manual destination, model,
+certificate path, index or credentials are accepted on the command line.
+Missing/unsafe settings are SKIP or INVALID, never silently probed.
+Production Elasticsearch runtime currently disables TLS hostname matching;
+**the diagnostic intentionally does not**. Both certificate chain and the
+numeric IP's certificate identity must validate before sending Basic credentials.
+If the deployment certificate is only valid for a DNS name, the result is
+TLS identity failure, *not* an invitation to disable verification.
+
+The default command opens at most three separate HTTPS connections to the
+already allowlisted host:port: (1) ES identity GET / using configured Basic
+credentials; (2) protected GET /_security/_authenticate identifying the
+enabled Basic realm principal; and (3) GET /{literal-index}/_mapping.
+A matching principal alone does not prove that the configured password caused
+authentication when a reverse proxy may overwrite the Authorization header.
+Thus the default `auth=NOT_VERIFIED` and exit code 2 cannot claim credential
+verification even when a non-mutating Mapping probe passes.
+
+Only if the operator EXPLICITLY opts in with `--verify-credentials` does
+the command send a fourth GET to /_security/_authenticate using the same
+username and a fresh, deliberately incorrect, non-disclosed password. It
+must return HTTP 401 specifically; HTTP 403 may be a proxy authorization
+denial without actually checking the password. Otherwise authentication
+is FAIL/unverified and the Mapping GET is skipped. A verified positive principal and this negative
+control are both required for `auth=PASS` and exit 0. A failed login
+may generate an audit event, contribute toward security lockout thresholds
+or trigger an alert; DO NOT select this option without operational approval.
+No negative login test occurs with the default invocation or --no-network.
+Each request has a
+3-second total monotonic asyncio deadline, bounded header/body sizes and
+fail-closed handling of unsupported framing. No redirects, DNS lookups,
+HTTP proxy, model inference, SQL operation, index writes, bulk fetch,
+search/query, HEAD or non-GET requests. All remote response content and raw
+exception messages stay out of the report.
+
+Mapping comparisons reuse `agent.external_capabilities.mapping_compatibility`,
+the same predicate used for Requirement acceptance. A verified incompatible
+mapping reports `mapping_incompatible`; 404 reports `es_index_missing`;
+401/403 reports access denied; more than one resolved index/alias entry is
+SKIP as ambiguous. Mapping PASS does **not** establish query correctness,
+production selector provenance or FULL_LIVE.
+
+Output: `schema=sraf_airgap_off1b_es_https_mapping_v1`,
+`mode=PARTIAL_ONLY_NOT_ACCEPTANCE`, separate `https_probe` and
+`mapping_probe` states, and fixed redacted reason codes. Never emit the
+index/alias, host/IP, full URL, private certificate path, credential, cluster
+name, mapping fields, model name or raw exception. Exit 0 requires valid
+HTTPS identity + protected credential challenge + mapping all PASS;
+exit 1 for evidence-supported FAIL, 2 for SKIP/incomplete/unverified auth.
+Three independent TLS handshakes (four with credential challenge) are
+aggregated; if any later handshake fails, the overall TLS result is no
+longer PASS. A later certificate verification failure explicitly reports
+tls_validation=FAIL, including on the Mapping GET.
+
+Limitations requiring later work: (a) this early bounded probe requires a
+single literal ES_INDEX and a server certificate identifying the numeric IP,
+while some deployments use multiple index selectors or hostname-only certs;
+(b) it intentionally rejects chunked responses and responses above its fixed
+body bound rather than risk a false PASS; (c) mapping compatibility alone does
+not resolve the known live `mapping_incompatible` deployment blocker without
+actual operator-run evidence. A later independently reviewed extension may
+support multiple approved selectors, trusted remote hostname pinning, verified
+aliases and richer transport framing, without weakening TLS or sending data.
+
+### 2026-10-20 Codex P2 authentication correction
+
+- First exact-head review identified that anonymous root/mapping HTTP 200 could be mistaken for authenticated credentials. A protected Elasticsearch Security API GET /_security/_authenticate is now required between root identity and Mapping checks. auth=PASS requires exact username, enabled principal, authentication_type=realm and a nonempty realm type. Wrong identity, malformed response or access denial fail closed, and missing Security API remains incomplete. Mapping is not attempted when the protected principal is unverified.
+A verified principal without operator-authorized bad-password control
+can still permit a *partial, explicitly unauthenticated* read-only Mapping
+diagnosis, but cannot produce `auth=PASS` or exit 0.
+All original TLS verification, private-IP target scope and redaction constraints remain.
+
+### 2026-10-20 second Codex P2 remediation
+
+- A protected /_security/_authenticate HTTP 200 with matching principal can
+  still be served by an intermediary replacing the supplied Authorization.
+  Do **not** report auth=PASS from that evidence alone. Safe default reports
+  auth=NOT_VERIFIED and does not trigger a failed-login audit; optional
+  --verify-credentials performs an explicitly authorized one-time invalid
+  password challenge, requires HTTP 401 (not proxy-supplied 403), then allows authenticated Mapping.
+- TLS is an aggregate of every independent HTTPS connection, not just the
+  first root request. Later authentication/control/Mapping TLS failures downgrade
+  the overall certificate identity state and prevent any final PASS claim.
+- These are local program/test changes only; no Linux deployment proof has been
+  collected, no SRAF parent FULL_LIVE or OFF-3 approval, and PR is unmerged.
+
+- More conservative boundary: HTTP 403 from the deliberately invalid password check is not proof the password failed authentication; it might be a proxy's ACL. Only HTTP 401 is accepted as a negative control. The failed-login audit/lockout caveat remains, and the default does not send a control.
+
+### 2026-10-20 third Codex review — certificate failure exit status
+
+- An independently confirmed later TLS certificate identity failure is a true
+  observed FAIL, not an incomplete SKIP. The CLI now returns exit code 1
+  whenever aggregate `tls_validation=FAIL`, even if `https_probe=PASS`
+  and `auth=NOT_VERIFIED` with `mapping_probe=SKIP`. Added CLI regression tests
+  for late failures on protected authentication, explicitly opted-in invalid
+  credential challenge and mapping requests. Non-TLS transport uncertainty
+  stays distinguishable from proved certificate validation failures.
+
+### 2026-10-20 fourth Codex review — 403 gateway-denial classification
+
+- A 401 from the protected `/_security/_authenticate` endpoint is an observed credential rejection. HTTP 403 can be caused by a reverse proxy denying the protected path **without checking the supplied Basic credentials**. Accordingly protected-endpoint HTTP 403 now yields `auth=NOT_VERIFIED`, `reason=es_auth_access_denied` and incomplete exit code 2, not `es_auth_rejected` / exit 1. No negative password control or Mapping GET occurs after 403, including if `--verify-credentials` was requested. The JSON remains redacted and `PARTIAL_ONLY_NOT_ACCEPTANCE`.
+
+### 2026-10-20 fifth Codex review — root-path 403 classification
+
+- On the very first ES identity `GET /`, a 403 might be emitted by a gateway
+  that never evaluates the Basic header, or by Elasticsearch after successfully
+  authenticating a principal that lacks permissions. Treat it as
+  `https_probe=FAIL`, `auth=NOT_VERIFIED`, `reason=es_root_access_denied` and
+  exit code 1 (root identity could not be observed), **not** the incorrect
+  `es_auth_rejected` finding. Retain HTTP 401 as the rejected-credentials
+  classification. Neither root-denied outcome sends a subsequent authentication,
+  negative-password control or Mapping request, even with --verify-credentials.
+  The only visible output is fixed redacted JSON.
+
+### 2026-10-21 sixth Codex review — nested Mapping container validation
+
+- A syntactically valid JSON Mapping response can still contain non-object
+  `mappings.properties`, a nested `properties`/`fields` array or a malformed
+  field node. The application `mapping_compatibility()` assumes dict-based
+  field structures; passing these values through could raise `AttributeError`
+  rather than producing a redacted operator result. The standalone diagnostic
+  now validates the shape of all traversed Mapping property/field containers
+  using bounded iterative traversal (maximum 4096 field nodes), then calls
+  the original application predicate unchanged for actual compatibility.
+  Invalid containers or unexpected attribute lookup errors fail closed as
+  `mapping_probe=FAIL`, `reason=es_mapping_response_invalid`, exit 1;
+  raw response content, index names and exception details are not printed.
+  Regression tests include root/nested arrays, scalar values, unrelated
+  fields, CLI output and redaction; legitimate Mapping still uses existing
+  compatibility behavior. This does not prove the deployed ES Mapping passes.
+
+### 2026-10-21 seventh Codex and confirmed external Hosted CI blocker
+
+- JSON Mapping responses with top-level arrays/scalars/null are structurally
+  invalid, even when the array has zero or multiple entries. The OFF-1B ES
+  diagnostic now classifies these as `FAIL/es_mapping_response_invalid`
+  (CLI exit 1); only a Mapping dictionary with zero/multiple target keys
+  retains `SKIP/es_mapping_target_ambiguous`. Added functional and CLI
+  regression tests with no raw data leakage.
+- Historical GitHub Actions UI annotation **confirmed** the job was not
+  started before the repository visibility change due to payment or Actions
+  spending limit (exact: "The job was not started because recent account
+  payments have failed or your spending limit needs to be increased").
+  The old fail-marked jobs with empty steps/404 log blobs were **NOT_EXECUTED**,
+  not pytest failures. The Ubuntu 26 runner-image migration notice was
+  informational, not the failed-job cause.
+- **Current authoritative update, 2026-10-21:** the repository is now PUBLIC.
+  After that switch, Hosted Actions rerun **#39533967611** on head
+  `c0f663bcd5e69472e40060c3afc0eed675a6d3a6` SUCCEEDED (513 pytest PASS,
+  19 OFF-0 schema-only contract checks PASS). The separate exact-head Hosted
+  Actions **#39534484218** on head
+  `b6f8c4181426084cf039baeb979d586b2aeeda38` also SUCCEEDED (513 pytest
+  PASS in 2.01 seconds, 19 OFF-0 schema-only contract checks PASS).
+  Both runs actually started and passed compile/install and config-only smoke.
+  The prior "do not rerun due to billing" instruction is superseded; continue
+  normal exact-head CI as the PR changes.
+- Ninth-round Codex on `b6f8c4181426084cf039baeb979d586b2aeeda38`
+  identified an outdated PRIVATE/billing status in `.codex/memory.md`; its
+  active summary was corrected to PUBLIC, current real CI successes and
+  historical billing block. Fresh exact-head Codex and CI after edits remain
+  separate merge gates. No Linux runtime acceptance or merge.
+
+### 2026-10-21 tenth Codex review — protected authentication transient errors
+
+- On the protected `GET /_security/_authenticate` path, **only HTTP 401**
+  proves rejected Basic credentials. HTTP 403 signals ambiguous ACL/gateway
+  denial (`auth=NOT_VERIFIED`, `es_auth_access_denied`, exit 2). HTTP 404 is
+  unavailable/incomplete. HTTP 429, 500, 502 and any other unexpected
+  status likewise cannot prove a bad password: `auth=NOT_VERIFIED`,
+  `reason=es_auth_http_unexpected`, exit 2. These failures do not initiate
+  Mapping access or any deliberately invalid-password control, even when
+  `--verify-credentials` was requested. Results never display response bodies,
+  credentials or private destinations. An independent observed TLS FAIL still
+  forces exit 1. CLI negative tests cover common transient status and gateway
+  codes with and without explicit credential-control opt-in.
+
+### 2026-10-21 eleventh Codex — deliberately invalid-password challenge outcomes
+
+- The optional `--verify-credentials` sends a deliberately incorrect Basic
+  password only after a verified positive principal. The negative check **PASS**
+  requires HTTP 401, never 403. When a proxy/gateway or server responds with
+  HTTP 403, 429, 5xx, redirects, 404, other unexpected codes, or HTTP 200
+  without an attested matching principal, the diagnostic cannot prove whether
+  the invalid password was examined. It now reports
+  `credential_control=INCOMPLETE`, `auth=NOT_VERIFIED`,
+  `reason=es_credential_control_unverified`, CLI exit 2, and never sends a
+  Mapping GET. A control HTTP 200 containing the matching enabled Basic realm
+  principal means even the deliberately invalid password was accepted or
+  replaced, so it remains an evidence-supported FAIL (exit 1). A control HTTP
+  401 with previous positive principal permits `auth=PASS` and Mapping GET.
+  Control request count and failed-login audit/lockout warning remain unchanged;
+  default mode never sends intentionally invalid credentials. Regression tests
+  include 200 positive/unattested, 302, 403, 404, 408, 429, 500, 502 and 503
+  with correct CLI return codes, request bounds and redaction.
+- GitHub Actions #39543476662 on previously reviewed head
+  `e63c4dbb5bd9c38d0aaba3f005228dae1ae3418a` actually succeeded with
+  527 pytest PASS and 19 OFF-0 schema-only contract PASS, plus green compile,
+  dependencies and config-only checks. This remains historical previous-head
+  evidence until new exact-head CI runs; it is not Linux deployment acceptance.
