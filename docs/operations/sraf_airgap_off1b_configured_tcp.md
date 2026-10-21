@@ -323,3 +323,17 @@ All original TLS verification, private-IP target scope and redaction constraints
   active summary was corrected to PUBLIC, current real CI successes and
   historical billing block. Fresh exact-head Codex and CI after edits remain
   separate merge gates. No Linux runtime acceptance or merge.
+
+### 2026-10-21 tenth Codex review — protected authentication transient errors
+
+- On the protected `GET /_security/_authenticate` path, **only HTTP 401**
+  proves rejected Basic credentials. HTTP 403 signals ambiguous ACL/gateway
+  denial (`auth=NOT_VERIFIED`, `es_auth_access_denied`, exit 2). HTTP 404 is
+  unavailable/incomplete. HTTP 429, 500, 502 and any other unexpected
+  status likewise cannot prove a bad password: `auth=NOT_VERIFIED`,
+  `reason=es_auth_http_unexpected`, exit 2. These failures do not initiate
+  Mapping access or any deliberately invalid-password control, even when
+  `--verify-credentials` was requested. Results never display response bodies,
+  credentials or private destinations. An independent observed TLS FAIL still
+  forces exit 1. CLI negative tests cover common transient status and gateway
+  codes with and without explicit credential-control opt-in.
