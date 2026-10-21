@@ -259,3 +259,5 @@
 - 2026-10-20 PR #295 fourth review finding P2: protected ES 403 must not imply bad password. Patch and CLI regression tests submitted. Verify exact-head CI and Codex, reply/resolve thread, no merge. Blocked Hosted CI runs still lack readable steps/logs (404); separately investigate runner/billing/permissions status as possible causes before declaring tests passed.
 
 - 2026-10-20 PR #295 fifth Codex P2: root HTTP 403 still labeled rejected credentials. Code and CLI regression fixed (root access-denied + auth unverified, root failure exit 1, no follow-up even under --verify-credentials). Next gates: hosted CI exact head with accessible evidence, inline reply/thread resolve, request Codex exact-head re-review and address findings, only merge on explicit instruction.
+
+- 2026-10-21 PR #295 sixth Codex P2 nested ES mapping container type error addressed with bounded validation and regression tests. Must check exact-head Hosted CI and seventh Codex review, reply/resolve outstanding review thread. Current CI failure (prior #39455950578) lacks job steps/logs; do not merge or suggest Linux deploy until validated. LLM inventory follows ES diagnostic stage.
