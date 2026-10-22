@@ -30,6 +30,11 @@ SCHEMA = "sraf_airgap_off1b_es_https_mapping_v1"
 DEADLINE_SECONDS = 3.0
 MAX_HEADERS = 8192
 MAX_BODY = 65536
+# A Mapping response can be substantially larger than root/auth JSON.
+MAX_MAPPING_BODY = 2 * 1024 * 1024
+MAX_CHUNKS = 16384
+MAX_CHUNK_LINE = 256
+MAX_TRAILERS = 32
 MAX_CA_BYTES = 1048576
 _INDEX_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,254}\Z", re.ASCII)
 _FIELD_NAME = re.compile(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+\Z")
@@ -55,6 +60,54 @@ def _trusted_ca_file(root: Path) -> Path | None:
         return ca
     except OSError:
         return None
+
+
+async def _read_chunked_body(reader: asyncio.StreamReader, limit: int) -> bytes:
+    """Decode a bounded HTTP/1.1 chunked entity, not response headers.
+
+    Readexactly + wait_for at the caller enforce bounded memory and a single
+    absolute deadline across all chunks, including a malicious slow sender.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    for _ in range(MAX_CHUNKS):
+        line = await reader.readuntil(b"\r\n")
+        if len(line) > MAX_CHUNK_LINE or b"\r" in line[:-2] or b"\n" in line[:-2]:
+            raise ValueError("invalid_chunk_size_line")
+        size_token, sep, extension = line[:-2].partition(b";")
+        if re.fullmatch(rb"[0-9A-Fa-f]{1,8}", size_token) is None:
+            raise ValueError("invalid_chunk_size")
+        # Ignore bounded, printable extensions; never execute or echo them.
+        if sep and (not extension or any(c < 32 or c > 126 for c in extension)):
+            raise ValueError("invalid_chunk_extension")
+        size = int(size_token, 16)
+        if size > limit - total:
+            raise ValueError("oversized_chunked_body")
+        if size == 0:
+            # A trailer section ends at the first empty line. Bound each line,
+            # field count and total bytes rather than trusting remote metadata.
+            trailer_bytes = 0
+            for _ in range(MAX_TRAILERS + 1):
+                trailer = await reader.readuntil(b"\r\n")
+                trailer_bytes += len(trailer)
+                if trailer_bytes > MAX_HEADERS:
+                    raise ValueError("oversized_chunk_trailers")
+                if trailer == b"\r\n":
+                    return b"".join(chunks)
+                if (len(trailer) > MAX_HEADERS or b":" not in trailer[:-2]
+                        or b"\r" in trailer[:-2] or b"\n" in trailer[:-2]):
+                    raise ValueError("invalid_chunk_trailer")
+                name, value = trailer[:-2].split(b":", 1)
+                if (_FIELD_NAME.fullmatch(name) is None
+                        or any(c < 32 and c != 9 or c == 127 for c in value)):
+                    raise ValueError("invalid_chunk_trailer")
+            raise ValueError("too_many_chunk_trailers")
+        payload = await reader.readexactly(size + 2)
+        if payload[-2:] != b"\r\n":
+            raise ValueError("invalid_chunk_terminator")
+        chunks.append(payload[:-2])
+        total += size
+    raise ValueError("too_many_chunks")
 
 
 async def _one_https_get(host: str, port: int, path: str,
@@ -106,6 +159,7 @@ async def _one_https_get(host: str, port: int, path: str,
         request = (
             f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\n"
             f"Accept: application/json\r\n"
+            "Accept-Encoding: identity\r\n"
             f"Authorization: Basic {credential}\r\n"
             "Connection: close\r\n\r\n"
         )
@@ -120,6 +174,8 @@ async def _one_https_get(host: str, port: int, path: str,
             raise ValueError("invalid_http_status")
         status = int(match.group(1))
         lengths: list[int] = []
+        transfer_encodings: list[bytes] = []
+        max_body = MAX_MAPPING_BODY if path.endswith("/_mapping") else MAX_BODY
         for part in parts[1:]:
             if b":" not in part:
                 raise ValueError("malformed_http_field")
@@ -130,14 +186,18 @@ async def _one_https_get(host: str, port: int, path: str,
                 raise ValueError("malformed_http_value")
             lower = name.lower()
             if lower == b"transfer-encoding":
-                # Fail closed on unsupported transfer coding, never parse blindly.
-                raise ValueError("unsupported_http_framing")
+                transfer_encodings.append(value.strip(b" \t").lower())
             if lower == b"content-length":
                 trimmed = value.strip(b" \t")
                 if re.fullmatch(rb"[0-9]{1,10}", trimmed) is None:
                     raise ValueError("invalid_http_length")
                 lengths.append(int(trimmed))
-        if len(lengths) != 1 or lengths[0] > MAX_BODY:
+        if transfer_encodings:
+            # Reject CL+TE ambiguity / smuggling, duplicate or chained codings.
+            if lengths or transfer_encodings != [b"chunked"]:
+                raise ValueError("unsupported_http_framing")
+            return status, await _read_chunked_body(reader, max_body)
+        if len(lengths) != 1 or lengths[0] > max_body:
             raise ValueError("missing_or_oversized_http_body")
         return status, await reader.readexactly(lengths[0])
     finally:
