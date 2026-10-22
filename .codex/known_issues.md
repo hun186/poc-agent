@@ -80,3 +80,10 @@
 - 2026-10-22 PR #297 reviewed framing boundary: HTTP Content-Encoding must be absent or a single identity token; arbitrary, compressed, duplicated or stacked response encodings may otherwise cause false Mapping success from mislabeled bytes. Now fail closed with sanitized transport classification; use normal Content-Length or bounded HTTP/1.1 chunked plus explicit no-decompression policy.
 
 - 2026-10-22 PR #297 Codex P2: printable but malformed chunk extensions (e.g., `1;foo==bar`) could have been falsely accepted. Decoder now validates full extension grammar using OFF-1 `_CHUNK_HEAD`, and separately bounds chunk hex token to 8 digits and line to 256 bytes. Negative regression tests added; await Hosted CI and exact-head Codex, no Linux confirmation yet.
+
+
+## 2026-10-22 Configured index discovery limits
+
+- Runtime still has a hardcoded default development-index fallback when neither `ES_INDEX` nor canonical YAML `default_indexes` is configured. The configured-target discovery reports `runtime_default_fallback_not_attested` instead of inventing a production target.
+- `config/indexes.yaml` currently contains legacy singular `default_index`, while `config.index_loader.load_index_mapping` recognizes plural `default_indexes`. New operator tool reports the ignored spelling; runtime config migration is a separately reviewed change.
+- Mapping-only role checks do not demonstrate live RAG query success, multidimensional writer compatibility, historical-index retirement, Basic negative credential control or FULL_LIVE deployment acceptance. Distinguish these unfinished checks in operator reports; no automatic index removal or write probes.

@@ -42,3 +42,9 @@
 - 2026-10-22 PR #297 standalone OFF-1B ES HTTPS operator CLI reads HTTP/1.1 `Transfer-Encoding: chunked` in addition to a single Content-Length. Reject CL+TE conflict, duplicate/stacked unsupported codings, oversized/truncated chunks/invalid CRLF/trailers with sanitized error classification. Size limit is 2 MiB decoded for Mapping GET, 64KiB root/auth; 3-second total deadline. Existing reason/TLS identity trust boundaries unchanged; the previously reported es_https_transport_unavailable_ip_san_mismatch from unsupported framing does not prove mapping_incompatible.
 
 - 2026-10-22 PR #297 reviewed transport contract: on either supported body framing mode, `Content-Encoding` absent or exactly one case-insensitive `identity` value; reject gzip/br/deflate, stacked or repeated fields without decompressing. Auth/TLS SAN warning, fixed origin and Mapping acceptance semantics unchanged.
+
+
+## 2026-10-22 OFF-1B ES configured index operator CLI (not HTTP API)
+
+- `python tools/sraf_airgap_off1b_es_index_discovery.py [--no-network] [--strict-ip-san] [--show-index-names]` emits `sraf_airgap_off1b_es_index_discovery_v1`, always `mode=PARTIAL_ONLY_NOT_ACCEPTANCE` and `feature_acceptance=NOT_TESTED`. Results have stable `ES-IDX-XX` check IDs, source types, `ACTIVE_REQUIRED|ACTIVE_OPTIONAL|E2E_FIXTURE` classifications, selector resolution, per-profile static Mapping statuses, separate multidimensional observation, and explicit `query_probe=NOT_TESTED`.
+- No configured index names appear unless explicit operator `--show-index-names`; never use that option in shared logs. No API route, cluster enumeration, documents, SQL/LLM probes or writes. Exit 1 denotes observed critical failure, exit 2 an incomplete/partial result; never return code 0 as FULL_LIVE acceptance.

@@ -403,3 +403,21 @@ PR #297 also enforces `Content-Encoding` to be absent or **a single `identity` v
 
 PR #297 additionally verifies complete constrained chunk-extension token syntax using the existing OFF-1 chunk-head parser; merely printable but malformed extensions (for example, `;foo==bar`) are rejected, not silently treated as a valid Mapping response. The numeric chunk-size digits and total line/decoded-body bounds remain separate limits.
 
+
+
+### 2026-10-22 configured Elasticsearch index discovery (separate, partial-only)
+
+After updating the reviewed tools, run from the repository root:
+
+```bash
+python tools/sraf_airgap_off1b_es_index_discovery.py --no-network
+python tools/sraf_airgap_off1b_es_index_discovery.py
+# Optional: strict verified-IP SAN (recommended for secure identity checking)
+python tools/sraf_airgap_off1b_es_index_discovery.py --strict-ip-san
+```
+
+The tool discovers literal selectors from the effective `ES_INDEX`, the actually selected `config/indexes.yaml` / `indexes.<APP_ENV>.yaml` or explicit `INDEXES_CONFIG(S)` overrides, and explicitly configured `REQUIREMENT_E2E_ES_INDEX`. Topic indices retain index_loader's additive-merge order. It never performs cluster-wide enumeration or wildcard expansion; only a bounded operator-selected list of up to 12 names is queried by read-only Mapping GET. It does not mutate indexes, query documents, run SQL, test LLM inference or prove production RAG behavior.
+
+JSON distinguishes required runtime default, optional topics and explicit E2E fixture; it reports individual failures/warnings and continues other safe selector checks. A historical-looking name in active configuration is **not** automatically legacy. A legacy singular `default_index` is ignored by the current loader, and fallback development defaults are not attested production indexes. Mapping role checks are intentionally lighter than formal Requirement E2E; `query_probe=NOT_TESTED` and `feature_acceptance=NOT_TESTED` even when static Mapping PASS.
+
+By default index names and internal selectors are redacted. An authorized operator may explicitly use `--show-index-names` **only** on secure local output, never in shared logs or public tickets. CA-signed peers with mismatching IP SAN remain WARN_ONLY and may still receive Basic credentials: do not use this mode without separately trusted routing and CA/certificate provenance. `--strict-ip-san` fails closed on SAN mismatch. Normal exit 2 means partial/incomplete; exit 1 means an evidence-backed failure. Neither exit code establishes FULL_LIVE acceptance. The existing single-index CLI remains supported without changes to its default behavior.

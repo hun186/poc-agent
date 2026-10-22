@@ -65,3 +65,9 @@
 - 2026-10-22 PR #296 revised operator profile decision: default standalone OFF-1B CLI **Quick/Diagnose WARN** uses trusted CA but permits stale IP SAN, marking TLS/Mapping non-authoritative WARN/exit 2; --strict-ip-san and --verify-credentials explicitly enforce full IP SAN chain identity. Existing runtime ES trust settings unchanged. Real configured Basic credentials may be sent to a CA-signed but misidentified peer even in default Quick, so this tradeoff must be clear in operator docs and must never be equated with FULL_LIVE acceptance. Observed SAN mismatch must remain visible even if subsequent HTTP/transport parsing fails; don't suppress separate hard CA errors.
 
 - 2026-10-22 PR #297: observed Elasticsearch Mapping uses standards-compliant HTTP chunked response, so extend bounded read-only operator diagnostic rather than change ES server/proxy or disable TLS. Permit single Transfer-Encoding: chunked with bounded trailers and cumulative decoded Mapping <=2MiB; root/auth retain 64KiB, same 3-second absolute deadline and strict refusal of CL+TE ambiguity. Mapping compatibility remains separate from HTTP framing and IP SAN warnings; no LIVE acceptance or runtime ES client changes.
+
+
+## 2026-10-22 ES discovery security and compatibility decision
+
+- Preserve existing single-index OFF-1B API/CLI and introduce a separate operator-only configured-selector CLI. Share vetted CA/private IPv4/Basic principal preflight through opt-in `skip_mapping`; never import runtime `agent.es.es_client` to use its TLS-hostname-bypassing client for diagnostics.
+- Use only operator-selected loader inputs and exact literal configured selectors; do not enumerate `_cat/indices`, expand wildcards, fetch document bodies or classify unused remote indices as legacy from their names. E2E fixture and optional topic Mapping rules are not imposed on unrelated production indexes. Default WARN_ONLY IP SAN evidence cannot certify identity or FULL_LIVE.

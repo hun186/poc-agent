@@ -62,3 +62,10 @@
 - 2026-10-22 PR #296 final gate before operator-authorized merge: check exact-head Hosted Actions PASS plus Codex completion on fix to previous SAN warning loss for a later auth/mapping connection failure. Distinguish old SAN observation WARN from genuine later certificate verification FAIL. After merge, user will pull and incrementally deploy manually; obtain actual private ES TLS/auth/Mapping partial evidence and do not mark FULL_LIVE based on Quick warning mode.
 
 - 2026-10-22 PR #297: verify safely decoded HTTP/1.1 chunked ES Mapping responses with exact-head Hosted tests, Codex review, and operator deployment. Keep conflicting CL/TE, stacked codings, truncated bodies, oversize payloads, malformed CRLF and trailers rejected. Root/auth remain 64KiB, Mapping <=2MiB, 3s deadline. Re-run Linux CLI after explicit authorized Merge; `tls_validation=WARN` remains a non-authoritative result, not FULL_LIVE; separate true Mapping compatibility still pending.
+
+
+## 2026-10-22 ES configured-index discovery review / remaining work
+
+- Verify new `feat/sraf-off1b-es-index-discovery` HEAD with OFF-1B targeted pytest, Hosted CI exact-head and clean Codex review, then resolve findings. Do not merge without operator instruction; no Linux changes.
+- After explicit deployment authorization, run `python tools/sraf_airgap_off1b_es_index_discovery.py` on real air-gapped host and reconcile actual configured indexes, aliases, and roles. Historic `satmeta` may be required as default until live call-chain evidence proves otherwise; do not label it retired from the name or mapping alone.
+- Future independent slices: bounded operator-authorized read-only query capability, evidence-linked alias/selector verification, authorized E2E isolation, and dependency-aware orchestration of SQL/LLM/API/workers/Word checks with no false FULL_LIVE success.
