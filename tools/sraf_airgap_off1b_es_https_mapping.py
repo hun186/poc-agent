@@ -374,7 +374,8 @@ def _later_tls_failure(result: dict[str, object], reason: str) -> None:
 def _observe(cfg: dict[str, str], *, no_network: bool,
              root: Path = PROJECT_ROOT,
              verify_credentials: bool = False,
-             warn_only_ip_san: bool = False) -> dict[str, object]:
+             warn_only_ip_san: bool = False,
+             skip_mapping: bool = False) -> dict[str, object]:
     endpoint, host = _parse_endpoint(cfg.get("ES_URL"))
     index = _configured_index(cfg.get("ES_INDEX"))
     username, password = cfg.get("ES_USERNAME") or "", cfg.get("ES_PASSWORD") or ""
@@ -555,6 +556,12 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
     # Without opted-in negative control, mapping may be inspected read-only
     # but the CLI remains incomplete even if the mapping structure passes.
     # Still an ES-like identity only; neither PID nor service ownership proven.
+    # Discovery reuses the vetted root/protected-principal preflight, then
+    # independently inspects each configured selector against its own profile.
+    # This opt-in never changes legacy OFF-1B single-index semantics.
+    if skip_mapping:
+        result["reason"] = "es_mapping_delegated_to_discovery"
+        return result
     mapping_status, mapping_body, mapping_reason = get(f"/{index}/_mapping")
     if mapping_status is None:
         result["mapping_probe"] = "FAIL"
