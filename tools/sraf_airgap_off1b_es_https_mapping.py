@@ -160,8 +160,10 @@ def _https_get(host: str, port: int, path: str,
         ctx.verify_mode = ssl.CERT_REQUIRED
     except (OSError, ssl.SSLError, ValueError):
         return None, None, "es_ca_invalid"
+    # Allocate outside the guarded call: even malformed/timeout HTTP responses
+    # must preserve peer-SAN mismatch observed before Basic was transmitted.
+    san_status: list[bool] | None = [] if warn_only_ip_san else None
     try:
-        san_status: list[bool] | None = [] if warn_only_ip_san else None
         if warn_only_ip_san:
             probe = _one_https_get(
                 host, port, path, username, password, ctx,
@@ -183,6 +185,8 @@ def _https_get(host: str, port: int, path: str,
     except (TimeoutError, OSError, ssl.SSLError, ValueError,
             asyncio.IncompleteReadError, asyncio.LimitOverrunError,
             RuntimeError):
+        if san_status is not None and False in san_status:
+            return None, None, "es_https_transport_unavailable_ip_san_mismatch"
         return None, None, "es_https_transport_unavailable"
 
 
@@ -264,8 +268,12 @@ def _verified_basic_principal(payload: bytes | None, username: str) -> bool:
 def _later_tls_failure(result: dict[str, object], reason: str) -> None:
     """Aggregate TLS across all independent connections, not just first GET."""
     result["tls_validation"] = (
-        "FAIL" if reason == "es_tls_identity_unverified" else "NOT_VERIFIED"
+        "FAIL" if reason == "es_tls_identity_unverified"
+        else "WARN" if reason == "es_https_transport_unavailable_ip_san_mismatch"
+        else "NOT_VERIFIED"
     )
+    if reason == "es_https_transport_unavailable_ip_san_mismatch":
+        result["identity_warning"] = True
 
 
 def _observe(cfg: dict[str, str], *, no_network: bool,
@@ -338,8 +346,7 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
     if status is None:
         result["https_probe"] = "FAIL"
         result["reason"] = reason
-        result["tls_validation"] = ("FAIL" if reason == "es_tls_identity_unverified"
-                                    else "NOT_VERIFIED")
+        _later_tls_failure(result, reason)
         return result
     result["tls_validation"] = "PASS"
     record_san_result(reason)
@@ -492,10 +499,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-network", action="store_true")
     parser.add_argument(
+        "--strict-ip-san", action="store_true",
+        help="Require leaf certificate IP SAN match; suitable for strict TLS "
+             "identity checking, but not a substitute for FULL_LIVE acceptance",
+    )
+    parser.add_argument(
         "--warn-only-ip-san", action="store_true",
-        help="Opt in to CA-validated but IP-SAN-unverified HTTPS diagnostic: "
-             "sends existing Basic credentials to a peer whose IP identity "
-             "may be wrong, records WARN/exit 2, never certifies acceptance",
+        help="Explicit alias for the default CA-validated diagnostic. Real "
+             "Basic credentials may reach an IP-identity-unverified peer; "
+             "SAN mismatch is WARN, exit 2, never formal acceptance",
     )
     parser.add_argument(
         "--verify-credentials", action="store_true",
@@ -503,8 +515,15 @@ def main(argv: list[str] | None = None) -> int:
              "an authentication-failure audit entry or count toward lockout",
     )
     args = parser.parse_args(argv)
+    if args.strict_ip_san and args.warn_only_ip_san:
+        parser.error("--strict-ip-san cannot be combined with --warn-only-ip-san")
     if args.warn_only_ip_san and args.verify_credentials:
         parser.error("--warn-only-ip-san cannot be combined with --verify-credentials")
+    # Quick/Diagnose uses partial warning by default. Any deliberately wrong
+    # password challenge implicitly requires strict peer identity first.
+    warning_mode = args.warn_only_ip_san or not (
+        args.strict_ip_san or args.verify_credentials
+    )
     if Path.cwd().resolve() != PROJECT_ROOT:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
                           "error": "run_from_repository_root"}, sort_keys=True))
@@ -518,7 +537,7 @@ def main(argv: list[str] | None = None) -> int:
     observation = _observe(
         cfg, no_network=args.no_network, root=PROJECT_ROOT,
         verify_credentials=args.verify_credentials,
-        warn_only_ip_san=args.warn_only_ip_san,
+        warn_only_ip_san=warning_mode,
     )
     print(json.dumps({"schema": SCHEMA, "mode": MODE,
                       "network_mode": "CONFIG_ONLY" if args.no_network
