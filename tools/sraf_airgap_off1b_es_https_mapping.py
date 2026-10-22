@@ -210,6 +210,7 @@ async def _read_http_body(reader: asyncio.StreamReader,
         return await _read_chunked_body(reader, limit)
     if len(lengths) != 1 or lengths[0] > limit:
         raise ValueError("missing_or_oversized_http_body")
+    return await reader.readexactly(lengths[0])
 
 
 def _https_get(host: str, port: int, path: str,
