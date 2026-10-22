@@ -1286,10 +1286,14 @@ def test_earlier_san_warning_survives_later_handshake_without_san_evidence(
 
 
 def _fake_http_stream(payload: bytes) -> asyncio.StreamReader:
-    reader = asyncio.StreamReader(limit=es.MAX_HEADERS)
-    reader.feed_data(payload)
-    reader.feed_eof()
-    return reader
+    # A StreamReader constructor needs an event loop in hosted Python.
+    # Prefeed all bytes + EOF inside the loop; the ensuing reads never block.
+    async def ready() -> asyncio.StreamReader:
+        reader = asyncio.StreamReader(limit=es.MAX_HEADERS)
+        reader.feed_data(payload)
+        reader.feed_eof()
+        return reader
+    return asyncio.run(ready())
 
 
 def _chunked(*pieces: bytes, trailer: bytes = b"") -> bytes:
