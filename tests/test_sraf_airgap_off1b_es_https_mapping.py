@@ -1486,3 +1486,46 @@ def test_duplicate_content_encoding_even_when_each_is_identity_is_rejected():
              b"content-encoding: identity"],
             es.MAX_BODY,
         ))
+
+
+
+@pytest.mark.parametrize("extension", (
+    b"foo==bar",
+    b"foo=",
+    b"=bar",
+    b"foo bar",
+    b"foo=\"quoted\"",
+    b"foo,bar",
+    b"foo/bar",
+    b"foo;bad==value",
+    b"foo\x7f",
+))
+def test_invalid_printable_or_malformed_chunk_extensions_fail_closed(extension):
+    # Codex P2: printable bytes alone are not valid RFC chunk-ext tokens.
+    stream = _fake_http_stream(b"1;" + extension + b"\r\nA\r\n0\r\n\r\n")
+    with pytest.raises(ValueError, match="invalid_chunk_extension"):
+        asyncio.run(es._read_http_body(
+            stream, [b"Transfer-Encoding: chunked"],
+            es.MAX_MAPPING_BODY, http_version=b"HTTP/1.1",
+        ))
+
+
+@pytest.mark.parametrize("head", (
+    b"1",
+    b"1;foo",
+    b"1;foo=bar",
+    b"1;foo=bar;baz",
+    b"1;foo=bar;baz=qux",
+    b"1;foo=token",
+))
+def test_valid_bounded_chunk_extension_token_grammar_still_passes(head):
+    stream = _fake_http_stream(head + b"\r\nA\r\n0\r\n\r\n")
+    assert asyncio.run(es._read_http_body(
+        stream, [b"Transfer-Encoding: chunked"],
+        es.MAX_MAPPING_BODY, http_version=b"HTTP/1.1",
+    )) == b"A"
+
+
+def test_chunked_zero_length_extension_is_valid_but_still_checks_trailers():
+    stream = _fake_http_stream(b"1;a=b\r\nA\r\n0;end=true\r\nX-Checksum: ok\r\n\r\n")
+    assert asyncio.run(es._read_chunked_body(stream, es.MAX_BODY)) == b"A"
