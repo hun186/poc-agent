@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import json
-import re
 from pathlib import Path
 import sys
 from typing import Any, Mapping
@@ -21,6 +20,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent.external_capabilities import mapping_compatibility  # noqa: E402
+from agent.es.reference_text import (  # noqa: E402
+    DEFAULT_REFERENCE_TEXT_FIELD, _VALID_FIELD_PATH,
+)
 from shared.runtime_provenance import index_config_paths  # noqa: E402
 from tools.sraf_airgap_off1b_auto import (  # noqa: E402
     MODE, _effective_runtime_config,
@@ -85,10 +87,18 @@ def _load_declarations(root: Path, cfg: Mapping[str, str]) -> tuple[dict[str, An
             topics = data.get("topic_index_map")
             if isinstance(topics, dict):
                 for topic, declared in topics.items():
-                    if not isinstance(topic, str) or not isinstance(declared, dict):
+                    if not isinstance(topic, str):
+                        notes.append("topic_config_invalid")
+                        continue
+                    if not isinstance(declared, dict):
+                        # Runtime _merge_index_configs replaces this topic,
+                        # even with a non-dict. Do not probe its old selectors.
+                        merged["topic_index_map"][topic] = declared
                         notes.append("topic_config_invalid")
                         continue
                     old = merged["topic_index_map"].get(topic, {})
+                    if not isinstance(old, dict):
+                        old = {}
                     combined = dict(old)
                     combined.update(declared)
                     if "indexes" in declared:
@@ -189,7 +199,7 @@ def inspect_mapping(body: bytes, selector: str, role: str,
             return ("PASS", "e2e_mapping_subset_compatible", resolved, "NOT_TESTED") if probe.usable else (
                 "FAIL", "e2e_mapping_incompatible", resolved, "NOT_TESTED"
             )
-        if not reference_field or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", reference_field) is None:
+        if not reference_field or _VALID_FIELD_PATH.fullmatch(reference_field) is None:
             return "SKIP", "reference_text_selector_invalid", resolved, "NOT_TESTED"
         ref = _field(mapping, reference_field)
         status = "PASS" if ref is not None and ref.get("type") in ("text", "keyword") else "FAIL"
@@ -268,7 +278,11 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
         return report
     port = int(endpoint["port"])
     user, password = cfg["ES_USERNAME"], cfg["ES_PASSWORD"]
-    reference = cfg.get("SRA_REFERENCE_TEXT_FIELD") or "rawInfo.content"
+    configured_reference = (cfg.get("SRA_REFERENCE_TEXT_FIELD") or "").strip()
+    reference = (configured_reference if configured_reference and
+                 _VALID_FIELD_PATH.fullmatch(configured_reference)
+                 else DEFAULT_REFERENCE_TEXT_FIELD)
+    configured_fixture = (cfg.get("REQUIREMENT_E2E_ES_INDEX") or "").strip()
     for i, (target, obs) in enumerate(zip(targets, observations)):
         if i >= MAX_NETWORK_SELECTORS:
             obs["mapping_probe"] = "SKIP"
@@ -304,6 +318,21 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
             obs["mapping_probe"] = "NOT_VERIFIED"
             obs["reason"] = "es_mapping_http_unexpected"
         else:
+            # Map an alias' concrete target before treating the selector as
+            # production-safe. A literal-name-only fixture check is insufficient.
+            # Do not expose either the alias or the concrete backing index.
+            try:
+                resolved_payload = json.loads(body or b"")
+            except (TypeError, ValueError, UnicodeError, RecursionError):
+                resolved_payload = None
+            if (target["classification"] != "E2E_FIXTURE"
+                    and configured_fixture
+                    and isinstance(resolved_payload, dict)
+                    and configured_fixture in resolved_payload):
+                obs["mapping_probe"] = "FAIL"
+                obs["selector_resolution"] = "FIXTURE_CONFLICT"
+                obs["reason"] = "e2e_production_selector_conflict"
+                continue
             verdict, verdict_reason, resolution, md = inspect_mapping(
                 body or b"", name, target["classification"], reference)
             obs["selector_resolution"] = resolution
@@ -340,7 +369,9 @@ def main(argv: list[str] | None = None) -> int:
                           strict_ip_san=args.strict_ip_san,
                           show_index_names=args.show_index_names)
         print(json.dumps(report, sort_keys=True, ensure_ascii=False))
-        if (report["base_probe"]["https_probe"] == "FAIL" or
+        if (report["base_probe"].get("configuration") == "INVALID" or
+            report["base_probe"]["https_probe"] == "FAIL" or
+            report["base_probe"].get("auth") == "FAIL" or
             report["base_probe"]["tls_validation"] == "FAIL" or
             any(item["mapping_probe"] == "FAIL" for item in report["results"])):
             return 1
