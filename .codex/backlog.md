@@ -53,3 +53,6 @@
 ## Compaction Record
 
 - 2026-10-21: Mandatory compaction triggered by >40KB and obsolete/repeated work blocks. All original content preserved in archive, actionable unresolved requirements remain above, and current PR/CI state must be fetched from Hosted GitHub rather than frozen into this file. No Merge or Linux deployment authorized.
+
+
+- 2026-10-22 PR #296: verify the Docker ES new-IP warning-only diagnostic, including actual latest-head Hosted CI, formal Codex review, CA failure remains FAIL, IP SAN mismatch is WARN not verified TLS PASS, mapping non-authoritative WARN, no wrong-password challenge in reduced identity mode and no secret logging. After explicit merge/deploy approval, collect Linux operator observations, then independently fix certificate identity (new IP SAN or reviewed stable DNS name) before FULL_LIVE acceptance. PR is not merged, Docker config unchanged.
