@@ -345,8 +345,9 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
     record_san_result(reason)
     if status == 401:
         result["https_probe"] = "FAIL"
-        result["auth"] = "FAIL"
-        result["reason"] = "es_auth_rejected"
+        result["auth"] = "NOT_VERIFIED" if result["identity_warning"] else "FAIL"
+        result["reason"] = ("es_auth_rejected_identity_unverified"
+                            if result["identity_warning"] else "es_auth_rejected")
         return result
     if status == 403:
         # A gateway can deny GET / before authenticating the Basic header.
@@ -404,7 +405,7 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         result["reason"] = "es_auth_http_unexpected"
         return result
     if not _verified_basic_principal(auth_body, username):
-        result["auth"] = "FAIL"
+        result["auth"] = "NOT_VERIFIED" if result["identity_warning"] else "FAIL"
         result["reason"] = "es_principal_unverified"
         return result
     # A matching principal alone does not prove that the supplied password
@@ -456,20 +457,20 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         _later_tls_failure(result, mapping_reason)
         if mapping_reason == "es_tls_identity_unverified":
             result["auth"] = "NOT_VERIFIED"
-    else:
-        record_san_result(mapping_reason)
-    if mapping_status is None:
-        pass
     elif mapping_status in (401, 403):
+        record_san_result(mapping_reason)
         result["mapping_probe"] = "FAIL"
         result["reason"] = "es_mapping_access_denied"
     elif mapping_status == 404:
+        record_san_result(mapping_reason)
         result["mapping_probe"] = "FAIL"
         result["reason"] = "es_index_missing"
     elif mapping_status != 200:
+        record_san_result(mapping_reason)
         result["mapping_probe"] = "FAIL"
         result["reason"] = "es_mapping_http_unexpected"
     else:
+        record_san_result(mapping_reason)
         result["mapping_probe"], result["reason"] = _mapping_result(
             mapping_body or b"", index)
     # No identity-unverified HTTPS response can attest the intended ES
@@ -527,7 +528,7 @@ def main(argv: list[str] | None = None) -> int:
     if (observation["https_probe"] == "PASS"
             and observation["auth"] == "PASS"
             and observation["mapping_probe"] == "PASS"
-            and observation["tls_validation"] == "PASS"): 
+            and observation["tls_validation"] == "PASS"):
         return 0
     return 2
 
