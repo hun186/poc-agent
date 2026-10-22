@@ -39,3 +39,6 @@
 ## Compaction Record
 
 - 2026-10-21: Archived and condensed >20 dated architecture work blocks per AGENTS.md. Source tree/authorities/trust boundaries remain active; old implemented/reviewed variants are retrievable in archive. Hosted CI and Codex status must be checked for actual current HEAD; Linux deployment and `mapping_incompatible` remain unverified.
+
+
+- 2026-10-22 Docker ES private-IP relocation option PR #296: default remains CA + IP SAN strict. Explicit warning-only mode permits bounded CA-validated read-only Mapping observation with downgraded TLS/Mapping WARN and exit 2, NEVER verified service identity or FULL_LIVE acceptance. A CA-signed impersonating peer may obtain Basic credentials because IP identity is unverified; do not auto-downgrade, only operator-authorized trusted environments, no DNS/proxy/writes, no runtime Elasticsearch client changes and no simultaneous intentional bad-password challenge.
