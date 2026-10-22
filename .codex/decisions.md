@@ -58,3 +58,6 @@
 ## Compaction Record
 
 - 2026-10-21: Mandatory >40 KB and repeated dated work-block compaction. Archive first, then preserve active runtime, provenance, Product and operator trust decisions above. Current GitHub SHA/CI/Codex status must be checked live; no merge or Linux deployment authorized.
+
+
+- 2026-10-22 PR #296 portability policy: keep strict TLS CA-chain + IP SAN as the default; allow only explicit operator --warn-only-ip-san for **partial non-authoritative** Docker ES IP-move troubleshooting. Even when CA chain passes, identity mismatch raises TLS/Mapping WARN and exit 2. Supplied Basic password can be exposed to an impersonating CA-signed peer, so warn mode requires independent routing/CA provenance assurance, is not production acceptance and cannot run --verify-credentials. Prefer leaf IP SAN renewal or reviewed stable verified DNS name for final acceptance. Do not merge without explicit user authorization.
