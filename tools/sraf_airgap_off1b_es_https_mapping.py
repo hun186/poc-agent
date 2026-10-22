@@ -288,7 +288,7 @@ def _mapping_containers_valid(mappings: dict[str, object]) -> bool:
 def _mapping_result(body: bytes, selector: str) -> tuple[str, str]:
     """Reuse the application mapping predicate, never echo index or fields."""
     try:
-        if len(body) > MAX_BODY:
+        if len(body) > MAX_MAPPING_BODY:
             return "FAIL", "es_mapping_response_oversized"
         mapping = json.loads(body)
         if not isinstance(mapping, dict):
