@@ -959,6 +959,10 @@ def test_ca_verified_warning_only_tls_reports_explicit_san_identity(
         seen.append(path)
         return 200, b"{}"
     monkeypatch.setattr(es, "_one_https_get", fake_request)
+    monkeypatch.setattr(
+        es.ssl, "create_default_context",
+        lambda **kwargs: es.ssl.SSLContext(es.ssl.PROTOCOL_TLS_CLIENT),
+    )
     status, body, reason = es._https_get(
         "192.168.0.134", 9001, "/", "operator", "SECRET_PASSWORD",
         _ca(tmp_path), warn_only_ip_san=True,
@@ -973,6 +977,10 @@ def test_ca_only_diagnostic_still_rejects_untrusted_chain(monkeypatch, tmp_path)
     async def reject_chain(*args, **kwargs):
         raise es.ssl.SSLCertVerificationError("certificate verify failed")
     monkeypatch.setattr(es, "_one_https_get", reject_chain)
+    monkeypatch.setattr(
+        es.ssl, "create_default_context",
+        lambda **kwargs: es.ssl.SSLContext(es.ssl.PROTOCOL_TLS_CLIENT),
+    )
     status, body, reason = es._https_get(
         "192.168.0.134", 9001, "/", "operator", "SECRET_PASSWORD",
         _ca(tmp_path), warn_only_ip_san=True,
