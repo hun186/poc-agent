@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import json
+import re
 from pathlib import Path
 import sys
 from typing import Any, Mapping
@@ -188,7 +189,7 @@ def inspect_mapping(body: bytes, selector: str, role: str,
             return ("PASS", "e2e_mapping_subset_compatible", resolved, "NOT_TESTED") if probe.usable else (
                 "FAIL", "e2e_mapping_incompatible", resolved, "NOT_TESTED"
             )
-        if not reference_field or es._configured_index(reference_field.replace(".", "")) is None:
+        if not reference_field or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", reference_field) is None:
             return "SKIP", "reference_text_selector_invalid", resolved, "NOT_TESTED"
         ref = _field(mapping, reference_field)
         status = "PASS" if ref is not None and ref.get("type") in ("text", "keyword") else "FAIL"
@@ -293,6 +294,8 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
             obs["mapping_probe"] = "NOT_VERIFIED"
             obs["reason"] = reason
             if reason == "es_tls_identity_unverified":
+                report["base_probe"]["tls_validation"] = "FAIL"
+                report["base_probe"]["auth"] = "NOT_VERIFIED"
                 # Repeated Basic transmissions to an untrusted peer are unsafe.
                 for remaining in observations[i + 1:]:
                     remaining["reason"] = "es_tls_preflight_blocked"
@@ -309,7 +312,8 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
             obs["reason"] = verdict_reason
             if verdict == "FAIL" and target["classification"] == "ACTIVE_OPTIONAL":
                 obs["mapping_probe"] = "WARN"
-        if reason == "https_response_ca_only_ip_san_mismatch" or base["identity_warning"]:
+        if reason in ("https_response_ca_only_ip_san_mismatch",
+                      "es_https_transport_unavailable_ip_san_mismatch") or base["identity_warning"]:
             report["base_probe"]["identity_warning"] = True
             report["base_probe"]["tls_validation"] = "WARN"
             if obs["mapping_probe"] == "PASS":
