@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import base64
 import json
+from ipaddress import ip_address
 from pathlib import Path
 import re
 import secrets
@@ -58,7 +59,9 @@ def _trusted_ca_file(root: Path) -> Path | None:
 
 async def _one_https_get(host: str, port: int, path: str,
                          username: str, password: str,
-                         context: ssl.SSLContext) -> tuple[int, bytes]:
+                         context: ssl.SSLContext,
+                         *, ip_san_attestation: list[bool] | None = None
+                         ) -> tuple[int, bytes]:
     """One TLS-validated private numeric IPv4 GET, no redirects/proxy/DNS.
 
     Outer wait_for enforces one absolute deadline, even for a slow-dripping
@@ -75,6 +78,28 @@ async def _one_https_get(host: str, port: int, path: str,
             ssl_handshake_timeout=DEADLINE_SECONDS,
             limit=MAX_HEADERS,
         )
+        if ip_san_attestation is not None:
+            # WARNING-ONLY, explicitly opted in: CA chain is still verified.
+            # Inspect the *TLS peer* before sending any Basic Authorization.
+            tls = writer.get_extra_info("ssl_object")
+            if tls is None:
+                raise ValueError("es_peer_certificate_missing")
+            cert = tls.getpeercert()
+            if not isinstance(cert, dict) or not cert:
+                raise ValueError("es_peer_certificate_unreadable")
+            san = cert.get("subjectAltName", ())
+            if not isinstance(san, (tuple, list)):
+                raise ValueError("es_peer_san_invalid")
+            try:
+                expected_ip = ip_address(host)
+                if expected_ip.version != 4:
+                    raise ValueError("es_peer_ip_invalid")
+                ip_san_attestation.append(any(
+                    kind == "IP Address" and ip_address(value) == expected_ip
+                    for kind, value in san
+                ))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("es_peer_san_invalid") from exc
         credential = base64.b64encode(
             (username + ":" + password).encode("utf-8")
         ).decode("ascii")
@@ -123,20 +148,35 @@ async def _one_https_get(host: str, port: int, path: str,
 
 
 def _https_get(host: str, port: int, path: str,
-               username: str, password: str, ca: Path
+               username: str, password: str, ca: Path,
+               *, warn_only_ip_san: bool = False
                ) -> tuple[int | None, bytes | None, str]:
     """Report stable non-secret reasons, never raw transport exceptions."""
     try:
         ctx = ssl.create_default_context(cafile=str(ca))
-        ctx.check_hostname = True
+        # Never relax CA chain validation. Only an explicit diagnostic
+        # opt-in allows IP SAN mismatch; its result cannot certify identity.
+        ctx.check_hostname = not warn_only_ip_san
         ctx.verify_mode = ssl.CERT_REQUIRED
     except (OSError, ssl.SSLError, ValueError):
         return None, None, "es_ca_invalid"
     try:
+        san_status: list[bool] | None = [] if warn_only_ip_san else None
+        if warn_only_ip_san:
+            probe = _one_https_get(
+                host, port, path, username, password, ctx,
+                ip_san_attestation=san_status,
+            )
+        else:
+            probe = _one_https_get(host, port, path, username, password, ctx)
         code, body = asyncio.run(asyncio.wait_for(
-            _one_https_get(host, port, path, username, password, ctx),
-            timeout=DEADLINE_SECONDS,
+            probe, timeout=DEADLINE_SECONDS,
         ))
+        if san_status is not None:
+            if len(san_status) != 1:
+                return None, None, "es_tls_identity_unverified"
+            if not san_status[0]:
+                return code, body, "https_response_ca_only_ip_san_mismatch"
         return code, body, "https_response_received"
     except ssl.SSLCertVerificationError:
         return None, None, "es_tls_identity_unverified"
@@ -230,7 +270,8 @@ def _later_tls_failure(result: dict[str, object], reason: str) -> None:
 
 def _observe(cfg: dict[str, str], *, no_network: bool,
              root: Path = PROJECT_ROOT,
-             verify_credentials: bool = False) -> dict[str, object]:
+             verify_credentials: bool = False,
+             warn_only_ip_san: bool = False) -> dict[str, object]:
     endpoint, host = _parse_endpoint(cfg.get("ES_URL"))
     index = _configured_index(cfg.get("ES_INDEX"))
     username, password = cfg.get("ES_USERNAME") or "", cfg.get("ES_PASSWORD") or ""
@@ -246,6 +287,8 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         "reason": "configuration_incomplete",
         "tls_validation": "NOT_TESTED", "auth": "NOT_TESTED",
         "credential_control": "NOT_RUN",
+        "ip_san_policy": "WARN_ONLY" if warn_only_ip_san else "STRICT",
+        "identity_warning": False,
         "service_identity": "NOT_TESTED", "feature_acceptance": "NOT_TESTED",
     }
     if endpoint["configuration"] == "INVALID":
@@ -259,6 +302,11 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         return result
     if no_network:
         result["reason"] = "network_disabled"
+        return result
+    # Never challenge deliberately bad passwords when the peer's identity
+    # may be unverified; the default diagnostic remains partial-only.
+    if warn_only_ip_san and verify_credentials:
+        result["reason"] = "es_unsafe_tls_credential_control_combination"
         return result
     if host is None:
         result["reason"] = "es_endpoint_outside_private_ipv4_scope"
@@ -274,7 +322,19 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         return result
 
     port = int(endpoint["port"])
-    status, body, reason = _https_get(host, port, "/", username, password, ca)
+    def get(path: str, candidate_password: str = password
+            ) -> tuple[int | None, bytes | None, str]:
+        if warn_only_ip_san:
+            return _https_get(host, port, path, username, candidate_password, ca,
+                              warn_only_ip_san=True)
+        return _https_get(host, port, path, username, candidate_password, ca)
+
+    def record_san_result(reason: str) -> None:
+        if reason == "https_response_ca_only_ip_san_mismatch":
+            result["identity_warning"] = True
+            result["tls_validation"] = "WARN"
+
+    status, body, reason = get("/")
     if status is None:
         result["https_probe"] = "FAIL"
         result["reason"] = reason
@@ -282,6 +342,7 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
                                     else "NOT_VERIFIED")
         return result
     result["tls_validation"] = "PASS"
+    record_san_result(reason)
     if status == 401:
         result["https_probe"] = "FAIL"
         result["auth"] = "FAIL"
@@ -316,13 +377,13 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
     # Authenticate independently of public index/root HTTP 200. The protected
     # ES Security API attests the *same* Basic principal and realm identity.
     # No mapping request is allowed to proceed without this evidence.
-    auth_status, auth_body, auth_reason = _https_get(
-        host, port, "/_security/_authenticate", username, password, ca)
+    auth_status, auth_body, auth_reason = get("/_security/_authenticate")
     if auth_status is None:
         result["auth"] = "NOT_VERIFIED"
         result["reason"] = "es_auth_transport_unavailable"
         _later_tls_failure(result, auth_reason)
         return result
+    record_san_result(auth_reason)
     if auth_status == 401:
         result["auth"] = "FAIL"
         result["reason"] = "es_auth_rejected"
@@ -358,9 +419,8 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         invalid_password = secrets.token_urlsafe(32)
         while invalid_password == password:
             invalid_password = secrets.token_urlsafe(32)
-        control_status, control_body, control_reason = _https_get(
-            host, port, "/_security/_authenticate",
-            username, invalid_password, ca,
+        control_status, control_body, control_reason = get(
+            "/_security/_authenticate", invalid_password,
         )
         if control_status is None:
             result["credential_control"] = "INCOMPLETE"
@@ -389,14 +449,17 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
     # Without opted-in negative control, mapping may be inspected read-only
     # but the CLI remains incomplete even if the mapping structure passes.
     # Still an ES-like identity only; neither PID nor service ownership proven.
-    mapping_status, mapping_body, mapping_reason = _https_get(
-        host, port, f"/{index}/_mapping", username, password, ca)
+    mapping_status, mapping_body, mapping_reason = get(f"/{index}/_mapping")
     if mapping_status is None:
         result["mapping_probe"] = "FAIL"
         result["reason"] = mapping_reason
         _later_tls_failure(result, mapping_reason)
         if mapping_reason == "es_tls_identity_unverified":
             result["auth"] = "NOT_VERIFIED"
+    else:
+        record_san_result(mapping_reason)
+    if mapping_status is None:
+        pass
     elif mapping_status in (401, 403):
         result["mapping_probe"] = "FAIL"
         result["reason"] = "es_mapping_access_denied"
@@ -409,6 +472,15 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
     else:
         result["mapping_probe"], result["reason"] = _mapping_result(
             mapping_body or b"", index)
+    # No identity-unverified HTTPS response can attest the intended ES
+    # target's Mapping, even if its returned JSON is structurally compatible.
+    if result["identity_warning"] and result["mapping_probe"] in ("PASS", "FAIL"):
+        if result["mapping_probe"] == "PASS":
+            result["mapping_probe"] = "WARN"
+            result["reason"] = "es_mapping_compatible_identity_unverified"
+        elif result["reason"] == "mapping_incompatible":
+            result["mapping_probe"] = "WARN"
+            result["reason"] = "mapping_incompatible_identity_unverified"
     return result
 
 
@@ -416,11 +488,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-network", action="store_true")
     parser.add_argument(
+        "--warn-only-ip-san", action="store_true",
+        help="Opt in to CA-validated but IP-SAN-unverified HTTPS diagnostic: "
+             "sends existing Basic credentials to a peer whose IP identity "
+             "may be wrong, records WARN/exit 2, never certifies acceptance",
+    )
+    parser.add_argument(
         "--verify-credentials", action="store_true",
         help="Opt in to one deliberately rejected password check; can create "
              "an authentication-failure audit entry or count toward lockout",
     )
     args = parser.parse_args(argv)
+    if args.warn_only_ip_san and args.verify_credentials:
+        parser.error("--warn-only-ip-san cannot be combined with --verify-credentials")
     if Path.cwd().resolve() != PROJECT_ROOT:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
                           "error": "run_from_repository_root"}, sort_keys=True))
@@ -434,6 +514,7 @@ def main(argv: list[str] | None = None) -> int:
     observation = _observe(
         cfg, no_network=args.no_network, root=PROJECT_ROOT,
         verify_credentials=args.verify_credentials,
+        warn_only_ip_san=args.warn_only_ip_san,
     )
     print(json.dumps({"schema": SCHEMA, "mode": MODE,
                       "network_mode": "CONFIG_ONLY" if args.no_network
@@ -445,7 +526,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if (observation["https_probe"] == "PASS"
             and observation["auth"] == "PASS"
-            and observation["mapping_probe"] == "PASS"):
+            and observation["mapping_probe"] == "PASS"
+            and observation["tls_validation"] == "PASS"): 
         return 0
     return 2
 
