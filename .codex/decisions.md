@@ -58,3 +58,8 @@
 ## Compaction Record
 
 - 2026-10-21: Mandatory >40 KB and repeated dated work-block compaction. Archive first, then preserve active runtime, provenance, Product and operator trust decisions above. Current GitHub SHA/CI/Codex status must be checked live; no merge or Linux deployment authorized.
+
+
+- 2026-10-22 PR #296 portability policy: keep strict TLS CA-chain + IP SAN as the default; allow only explicit operator --warn-only-ip-san for **partial non-authoritative** Docker ES IP-move troubleshooting. Even when CA chain passes, identity mismatch raises TLS/Mapping WARN and exit 2. Supplied Basic password can be exposed to an impersonating CA-signed peer, so warn mode requires independent routing/CA provenance assurance, is not production acceptance and cannot run --verify-credentials. Prefer leaf IP SAN renewal or reviewed stable verified DNS name for final acceptance. Do not merge without explicit user authorization.
+
+- 2026-10-22 PR #296 revised operator profile decision: default standalone OFF-1B CLI **Quick/Diagnose WARN** uses trusted CA but permits stale IP SAN, marking TLS/Mapping non-authoritative WARN/exit 2; --strict-ip-san and --verify-credentials explicitly enforce full IP SAN chain identity. Existing runtime ES trust settings unchanged. Real configured Basic credentials may be sent to a CA-signed but misidentified peer even in default Quick, so this tradeoff must be clear in operator docs and must never be equated with FULL_LIVE acceptance. Observed SAN mismatch must remain visible even if subsequent HTTP/transport parsing fails; don't suppress separate hard CA errors.

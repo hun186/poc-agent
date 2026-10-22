@@ -146,13 +146,18 @@ do not roll the Linux environment solely to try this incremental script.
 
 ## 2026-10-20 ES HTTPS / Mapping diagnostic slice (PR under review)
 
-A separate standalone operator command now provides a safe, small Elasticsearch
-identity and Mapping diagnosis. This is not a full SRAF acceptance check and
-must not be run in the Linux production environment until the PR passes review,
-is explicitly merged and packaged in a verified deployment.
+A separate standalone operator command from merged PR #295 provides bounded
+Elasticsearch identity and Mapping diagnosis. It is not full SRAF acceptance.
+The proposed PR #296 changes the operator CLI default to warning-only
+**diagnostic mode**, while preserving explicit --strict-ip-san for identity
+verification. Do not deploy these new flags until review, explicit Merge
+and a verified incremental release package.
 
     python tools/sraf_airgap_off1b_es_https_mapping.py --no-network
     python tools/sraf_airgap_off1b_es_https_mapping.py
+
+    # Explicit strict server-IP identity diagnostic:
+    python tools/sraf_airgap_off1b_es_https_mapping.py --strict-ip-san
 
     # EXPLICIT OPT-IN: makes exactly one intentionally invalid-password
     # authentication request, which can be audited or count toward lockout:
@@ -165,11 +170,18 @@ literal `ES_INDEX` or alias and the fixed repository
 `agent/certs/http_ca.crt` trusted CA location. No manual destination, model,
 certificate path, index or credentials are accepted on the command line.
 Missing/unsafe settings are SKIP or INVALID, never silently probed.
-Production Elasticsearch runtime currently disables TLS hostname matching;
-**the diagnostic intentionally does not**. Both certificate chain and the
-numeric IP's certificate identity must validate before sending Basic credentials.
-If the deployment certificate is only valid for a DNS name, the result is
-TLS identity failure, *not* an invitation to disable verification.
+Production Elasticsearch runtime currently disables TLS hostname matching.
+The **new PR #296 default Quick/Diagnose mode** retains the trusted CA chain,
+but reports a relocated numeric IP SAN mismatch as an explicit warning. The
+operator's existing Basic username/password are still sent to this
+CA-signed yet IP-identity-unverified endpoint; this is a concrete credential
+interception risk even on a disconnected LAN. TLS identity and Mapping cannot
+be certified PASS from this observation: warn and exit 2.
+Use --strict-ip-san to require both CA chain and numeric IP SAN match before
+sending credentials. --verify-credentials also implicitly selects strict
+mode, and never combines with warning mode. The old --warn-only-ip-san flag
+remains a compatibility alias for the new Quick default. No mode in this
+standalone CLI constitutes FULL_LIVE acceptance.
 
 The default command opens at most three separate HTTPS connections to the
 already allowlisted host:port: (1) ES identity GET / using configured Basic
@@ -361,3 +373,17 @@ All original TLS verification, private-IP target scope and redaction constraints
   527 pytest PASS and 19 OFF-0 schema-only contract PASS, plus green compile,
   dependencies and config-only checks. This remains historical previous-head
   evidence until new exact-head CI runs; it is not Linux deployment acceptance.
+
+
+### 2026-10-22 Docker IP relocation: optional IP SAN warning (PR #296)
+
+The new **default is Quick/Diagnose WARN**, not strict server identity validation. Moving an ES Docker container to a new private IP can leave a CA-valid leaf certificate with the old IP SAN. The default allows the bounded read-only probe to continue while clearly warning. The legacy explicit alias remains supported:
+
+    python tools/sraf_airgap_off1b_es_https_mapping.py --warn-only-ip-san
+    echo "Exit code: $?"
+
+In default Quick mode or when explicitly using the alias, CA chain validation remains CERT_REQUIRED, connections remain fixed to the existing numeric private IPv4 ES_URL with no proxy, DNS, redirect or writes. The TLS peer certificate SAN is inspected before sending Basic Authorization. Any IP SAN mismatch is reported as ip_san_policy=WARN_ONLY, identity_warning=true, tls_validation=WARN, and a compatible/incompatible mapping observation is demoted to mapping_probe=WARN with the *_identity_unverified reason. Exit 2 means INCOMPLETE; never claim TLS identity PASS, Mapping acceptance or FULL_LIVE. Genuine CA-chain/certificate errors, later TLS failure, and invalid/malformed responses are not automatically waived.
+
+**Important risk:** Because the IP identity is not verified, **the default Quick diagnostic** still sends the configured Basic username/password to a CA-signed endpoint which may not be the intended Elasticsearch server. A CA-signed impersonator or wrongly routed Docker connection could capture the credentials. Use only after independently verifying the private network, Docker host, routing and certificate provenance. Prefer renewing the leaf certificate with current IP SAN or separately reviewing a stable verified TLS DNS name for production acceptance. This opt-down is intentionally limited to this standalone non-authoritative operator CLI. Do NOT use the Quick default to certify identity; run --strict-ip-san or --verify-credentials when the deployment needs strict TLS identity assurance.
+
+The explicit --warn-only-ip-san flag cannot combine with --verify-credentials (which deliberately submits an invalid password). Calling --verify-credentials by itself implicitly turns on strict IP SAN checking. The normal invocation is warning-only Quick/Diagnose, and --no-network still performs no socket I/O. This script never updates Elasticsearch runtime TLS settings or Docker certs; operator-run real mapping_incompatible evidence and FULL_LIVE acceptance remain separate.
