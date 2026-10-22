@@ -31,7 +31,6 @@ SCHEMA = "sraf_airgap_off1b_es_index_discovery_v1"
 MAX_SELECTORS = 12
 MAX_YAML_BYTES = 256 * 1024
 MAX_RESOLVED_TARGETS = 8
-MAX_INDEX_NAME_BYTES = 255
 
 
 def _literals(value: object) -> list[str]:
@@ -87,7 +86,9 @@ def discover(root: Path, cfg: dict[str, str]) -> tuple[list[dict[str, object]], 
             if "default_indexes" in data:
                 defaults = _literals(data["default_indexes"])
         except FileNotFoundError:
-            errors.append("index_config_unavailable")
+            # Runtime index_loader skips absent optional environment YAML files.
+            if cfg.get("INDEXES_CONFIG") or cfg.get("INDEX_CONFIG") or cfg.get("INDEXES_CONFIGS"):
+                errors.append("index_config_unavailable")
         except (OSError, ValueError, yaml.YAMLError, UnicodeError):
             errors.append("index_config_invalid")
 
@@ -306,6 +307,10 @@ def observe(cfg: dict[str, str], *, root: Path = PROJECT_ROOT,
     # A positive principal does not prove the supplied password was applied;
     # no negative password challenge is issued by this scanner.
     for item in entries:
+        if summary["tls_validation"] == "FAIL":
+            # Do not continue credential-bearing reads after a hard TLS error.
+            item["reason"] = "blocked_by_tls_failure"
+            continue
         if item["_conflict"]:
             item["index_probe"] = "FAIL"
             item["reason"] = "acceptance_index_conflict"
@@ -318,10 +323,16 @@ def observe(cfg: dict[str, str], *, root: Path = PROJECT_ROOT,
             item["reason"] = "es_tls_identity_unverified"
             continue
         if status == 404:
-            item["index_probe"] = ("FAIL" if item["role"] == "ACTIVE_REQUIRED" else "WARN")
-            item["reason"] = "required_index_missing" if item["role"] == "ACTIVE_REQUIRED" else "optional_or_unresolved_index_missing"
-            if item["role"] == "ACTIVE_REQUIRED":
-                item["role"] = "MISSING_REQUIRED"
+            # Under SAN warning mode even 404 may be from the wrong peer.
+            if summary["identity_warning"]:
+                item["index_probe"] = "NOT_VERIFIED"
+                item["reason"] = "index_missing_identity_unverified"
+            else:
+                item["index_probe"] = ("FAIL" if item["role"] == "ACTIVE_REQUIRED" else "WARN")
+                item["reason"] = ("required_index_missing" if item["role"] == "ACTIVE_REQUIRED"
+                                  else "optional_or_unresolved_index_missing")
+                if item["role"] == "ACTIVE_REQUIRED":
+                    item["role"] = "MISSING_REQUIRED"
             continue
         if status != 200:
             item["index_probe"] = "NOT_VERIFIED"
@@ -355,6 +366,14 @@ def observe(cfg: dict[str, str], *, root: Path = PROJECT_ROOT,
             item["search_probe"] = ("PASS" if search_status == 200 and
                                     summary["tls_validation"] == "PASS" else "NOT_VERIFIED")
             summary["independent_es_checks_continued"] += 1
+    if summary["identity_warning"]:
+        # A later GET can discover SAN mismatch after earlier clean responses.
+        for item in entries:
+            if item["mapping_probe"] == "PASS":
+                item["mapping_probe"] = "WARN"
+                item["reason"] = "mapping_identity_unverified"
+            if item["search_probe"] == "PASS":
+                item["search_probe"] = "NOT_VERIFIED"
     return finish()
 
 
