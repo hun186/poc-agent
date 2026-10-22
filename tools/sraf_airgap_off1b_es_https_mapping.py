@@ -201,6 +201,7 @@ async def _read_http_body(reader: asyncio.StreamReader,
     """Accept unambiguous Content-Length or valid HTTP/1.1 chunked framing."""
     lengths: list[int] = []
     transfer_encodings: list[bytes] = []
+    content_encodings: list[bytes] = []
     for part in fields:
         if b":" not in part:
             raise ValueError("malformed_http_field")
@@ -212,11 +213,17 @@ async def _read_http_body(reader: asyncio.StreamReader,
         lower = name.lower()
         if lower == b"transfer-encoding":
             transfer_encodings.append(value.strip(b" \t").lower())
+        if lower == b"content-encoding":
+            content_encodings.append(value.strip(b" \t").lower())
         if lower == b"content-length":
             trimmed = value.strip(b" \t")
             if re.fullmatch(rb"[0-9]{1,10}", trimmed) is None:
                 raise ValueError("invalid_http_length")
             lengths.append(int(trimmed))
+    if content_encodings and content_encodings != [b"identity"]:
+        # No decompression is performed. A falsely labeled JSON response must
+        # not be certified as Mapping-compatible.
+        raise ValueError("unsupported_content_encoding")
     if transfer_encodings:
         # Reject CL+TE ambiguity / smuggling, duplicate or chained codings.
         if (lengths or transfer_encodings != [b"chunked"]
