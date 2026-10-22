@@ -1404,3 +1404,41 @@ def test_chunked_deadline_remains_absolute_even_when_server_drips_chunks():
         )
     with pytest.raises(TimeoutError):
         asyncio.run(drip())
+
+
+
+def test_chunked_transfer_must_be_http11_not_http10():
+    stream = _fake_http_stream(_chunked(_mapping_document(REQUIREMENT_E2E_INDEX)))
+    with pytest.raises(ValueError, match="unsupported_http_framing"):
+        asyncio.run(es._read_http_body(
+            stream, [b"Transfer-Encoding: chunked"], es.MAX_MAPPING_BODY,
+            http_version=b"HTTP/1.0",
+        ))
+    legacy = b'{"ok":true}'
+    stream2 = _fake_http_stream(legacy)
+    assert asyncio.run(es._read_http_body(
+        stream2, [b"Content-Length: 11"], es.MAX_BODY,
+        http_version=b"HTTP/1.0",
+    )) == legacy
+
+
+@pytest.mark.parametrize("trailer", [
+    b"Content-Length: 999",
+    b"TRANSFER-ENCODING: gzip",
+    b"Host: attacker",
+    b"Authorization: Basic fake",
+    b"Content-Type: text/plain",
+    b"Content-Encoding: gzip",
+    b"Connection: keep-alive",
+    b"proxy-status: fake",
+    b"Proxy-Connection: keep-alive",
+    b"Access-Control-Allow-Origin: *",
+    b"X-Frame-Options: DISABLE",
+])
+def test_forbidden_trailer_cannot_modify_framing_auth_or_response(trailer):
+    payload = b"1\r\nA\r\n0\r\n" + trailer + b"\r\n\r\n"
+    stream = _fake_http_stream(payload)
+    with pytest.raises(ValueError, match="chunk_trailer_field_forbidden"):
+        asyncio.run(es._read_http_body(
+            stream, [b"Transfer-Encoding: chunked"], es.MAX_BODY,
+        ))
