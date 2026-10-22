@@ -361,3 +361,17 @@ All original TLS verification, private-IP target scope and redaction constraints
   527 pytest PASS and 19 OFF-0 schema-only contract PASS, plus green compile,
   dependencies and config-only checks. This remains historical previous-head
   evidence until new exact-head CI runs; it is not Linux deployment acceptance.
+
+
+### 2026-10-22 Docker IP relocation: optional IP SAN warning (PR #296)
+
+Default remains **STRICT**: numeric private IPv4 endpoint, fixed CA chain and matching IP SAN are all required. After moving an ES Docker container to a different IP, the pre-existing leaf certificate may remain CA-valid but no longer identify the new IP. For an explicit operator-approved, non-authoritative observation only, run:
+
+    python tools/sraf_airgap_off1b_es_https_mapping.py --warn-only-ip-san
+    echo "Exit code: $?"
+
+Under this option, CA chain validation remains CERT_REQUIRED, connections remain fixed to the existing numeric private IPv4 ES_URL with no proxy, DNS, redirect or writes. The TLS peer certificate SAN is inspected before sending Basic Authorization. Any IP SAN mismatch is reported as ip_san_policy=WARN_ONLY, identity_warning=true, tls_validation=WARN, and a compatible/incompatible mapping observation is demoted to mapping_probe=WARN with the *_identity_unverified reason. Exit 2 means INCOMPLETE; never claim TLS identity PASS, Mapping acceptance or FULL_LIVE. Genuine CA-chain/certificate errors, later TLS failure, and invalid/malformed responses are not automatically waived.
+
+**Important risk:** Because the IP identity is not verified, this option still sends the configured Basic username/password to a CA-signed endpoint which may not be the intended Elasticsearch server. A CA-signed impersonator or wrongly routed Docker connection could capture the credentials. Use only after independently verifying the private network, Docker host, routing and certificate provenance. Prefer renewing the leaf certificate with current IP SAN or separately reviewing a stable verified TLS DNS name for production acceptance. Never enable warning-only automatically.
+
+Warning mode is incompatible with --verify-credentials (which deliberately submits an invalid password). The normal invocation remains strict, and --no-network still performs no socket I/O. This script never updates Elasticsearch runtime TLS settings or Docker certs; operator-run real mapping_incompatible evidence and FULL_LIVE acceptance remain separate.
