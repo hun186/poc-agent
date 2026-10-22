@@ -386,8 +386,11 @@ def _observe(cfg: dict[str, str], *, no_network: bool,
         return result
     record_san_result(auth_reason)
     if auth_status == 401:
-        result["auth"] = "FAIL"
-        result["reason"] = "es_auth_rejected"
+        # Identity-unverified peers cannot prove the intended ES rejected
+        # the configured password, even when the status itself is HTTP 401.
+        result["auth"] = "NOT_VERIFIED" if result["identity_warning"] else "FAIL"
+        result["reason"] = ("es_auth_rejected_identity_unverified"
+                            if result["identity_warning"] else "es_auth_rejected")
         return result
     if auth_status == 403:
         # A gateway can deny this route before evaluating Authorization.
