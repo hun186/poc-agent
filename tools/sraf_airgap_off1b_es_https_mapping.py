@@ -266,14 +266,20 @@ def _verified_basic_principal(payload: bytes | None, username: str) -> bool:
 
 
 def _later_tls_failure(result: dict[str, object], reason: str) -> None:
-    """Aggregate TLS across all independent connections, not just first GET."""
-    result["tls_validation"] = (
-        "FAIL" if reason == "es_tls_identity_unverified"
-        else "WARN" if reason == "es_https_transport_unavailable_ip_san_mismatch"
-        else "NOT_VERIFIED"
-    )
+    """Preserve an observed IP-SAN mismatch across later request failures.
+
+    An uncertain transport outcome must not erase the already observed
+    wrong-IP certificate (or its Basic-credential exposure). A later proven
+    certificate-chain/identity failure still takes precedence as FAIL.
+    """
     if reason == "es_https_transport_unavailable_ip_san_mismatch":
         result["identity_warning"] = True
+    if reason == "es_tls_identity_unverified":
+        result["tls_validation"] = "FAIL"
+    elif result["identity_warning"]:
+        result["tls_validation"] = "WARN"
+    else:
+        result["tls_validation"] = "NOT_VERIFIED"
 
 
 def _observe(cfg: dict[str, str], *, no_network: bool,
