@@ -26,7 +26,7 @@ from tools.sraf_airgap_off1b_auto import (  # noqa: E402
 )
 from agent.external_capabilities import mapping_compatibility  # noqa: E402
 from tools.sraf_airgap_off1_probes import (  # noqa: E402
-    _TRAILER_HEADER_ONLY_FIELDS, _TRAILER_FORBIDDEN_PREFIXES,
+    _CHUNK_HEAD, _TRAILER_HEADER_ONLY_FIELDS, _TRAILER_FORBIDDEN_PREFIXES,
 )
 
 SCHEMA = "sraf_airgap_off1b_es_https_mapping_v1"
@@ -77,11 +77,12 @@ async def _read_chunked_body(reader: asyncio.StreamReader, limit: int) -> bytes:
         line = await reader.readuntil(b"\r\n")
         if len(line) > MAX_CHUNK_LINE or b"\r" in line[:-2] or b"\n" in line[:-2]:
             raise ValueError("invalid_chunk_size_line")
-        size_token, sep, extension = line[:-2].partition(b";")
+        # Reuse the audited OFF-1 constrained RFC token-extension grammar.
+        # A merely printable extension such as ";foo==bar" is NOT valid.
+        size_token = line[:-2].split(b";", 1)[0]
         if re.fullmatch(rb"[0-9A-Fa-f]{1,8}", size_token) is None:
             raise ValueError("invalid_chunk_size")
-        # Ignore bounded, printable extensions; never execute or echo them.
-        if sep and (not extension or any(c < 32 or c > 126 for c in extension)):
+        if _CHUNK_HEAD.fullmatch(line[:-2]) is None:
             raise ValueError("invalid_chunk_extension")
         size = int(size_token, 16)
         if size > limit - total:
