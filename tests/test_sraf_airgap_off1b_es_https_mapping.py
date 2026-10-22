@@ -941,3 +941,175 @@ def test_negative_control_401_is_only_successful_challenge_response(
     assert seen == ["/", "/_security/_authenticate",
                     "/_security/_authenticate", "/my_index/_mapping"]
     assert "PRIVATE_EVIDENCE" not in output
+
+
+
+@pytest.mark.parametrize("matching", (True, False))
+def test_ca_verified_warning_only_tls_reports_explicit_san_identity(
+        monkeypatch, tmp_path, matching):
+    # Unit seam for real TLS: the connection is CA-verified regardless of SAN,
+    # and the per-connection peer SAN result must never silently become PASS.
+    seen = []
+    async def fake_request(host, port, path, username, password, ctx,
+                           *, ip_san_attestation=None):
+        assert ip_san_attestation is not None
+        assert ctx.verify_mode == es.ssl.CERT_REQUIRED
+        assert ctx.check_hostname is False
+        ip_san_attestation.append(matching)
+        seen.append(path)
+        return 200, b"{}"
+    monkeypatch.setattr(es, "_one_https_get", fake_request)
+    status, body, reason = es._https_get(
+        "192.168.0.134", 9001, "/", "operator", "SECRET_PASSWORD",
+        _ca(tmp_path), warn_only_ip_san=True,
+    )
+    assert status == 200 and body == b"{}"
+    assert reason == ("https_response_received" if matching else
+                      "https_response_ca_only_ip_san_mismatch")
+    assert seen == ["/"]
+
+
+def test_ca_only_diagnostic_still_rejects_untrusted_chain(monkeypatch, tmp_path):
+    async def reject_chain(*args, **kwargs):
+        raise es.ssl.SSLCertVerificationError("certificate verify failed")
+    monkeypatch.setattr(es, "_one_https_get", reject_chain)
+    status, body, reason = es._https_get(
+        "192.168.0.134", 9001, "/", "operator", "SECRET_PASSWORD",
+        _ca(tmp_path), warn_only_ip_san=True,
+    )
+    assert status is None and body is None
+    assert reason == "es_tls_identity_unverified"
+
+
+@pytest.mark.parametrize("mismatch_stage", ["/", "/_security/_authenticate",
+                                            "/my_index/_mapping"])
+def test_ip_san_warning_mode_inspects_mapping_but_never_certifies_identity(
+        monkeypatch, tmp_path, mismatch_stage):
+    _ca(tmp_path)
+    calls = []
+    def fake(host, port, path, username, password, ca, *,
+             warn_only_ip_san=False):
+        assert warn_only_ip_san is True
+        calls.append((path, password))
+        reason = ("https_response_ca_only_ip_san_mismatch"
+                  if path == mismatch_stage else "https_response_received")
+        if path == "/":
+            return 200, _root_document(), reason
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), reason
+        assert path == "/my_index/_mapping"
+        return 200, _mapping_document(REQUIREMENT_E2E_INDEX), reason
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(REQUIREMENT_E2E_INDEX), no_network=False,
+                      root=tmp_path, warn_only_ip_san=True)
+    assert [x[0] for x in calls] == [
+        "/", "/_security/_authenticate",
+        "/" + REQUIREMENT_E2E_INDEX + "/_mapping",
+    ]
+    assert all(x[1] == "SECRET_PASSWORD" for x in calls)
+    assert obs["ip_san_policy"] == "WARN_ONLY"
+    assert obs["identity_warning"] is True
+    assert obs["tls_validation"] == "WARN"
+    assert obs["https_probe"] == "PASS"
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert obs["mapping_probe"] == "WARN"
+    assert obs["reason"] == "es_mapping_compatible_identity_unverified"
+    assert obs["feature_acceptance"] == "NOT_TESTED"
+    assert obs["credential_control"] == "NOT_RUN"
+    for private in ("operator", "SECRET_PASSWORD", "192.168.0.134",
+                    "INTERNAL_ES_CLUSTER"):
+        assert private not in json.dumps(obs)
+
+
+def test_ip_san_warning_mode_preserves_incompatible_mapping_as_warning(
+        monkeypatch, tmp_path):
+    _ca(tmp_path)
+    incompatible = copy.deepcopy(REQUIREMENT_E2E_MAPPING)
+    incompatible["mappings"]["properties"].pop("multidim_event_json")
+    def fake(host, port, path, username, password, ca, *,
+             warn_only_ip_san=False):
+        assert warn_only_ip_san
+        if path == "/":
+            return 200, _root_document(), "https_response_ca_only_ip_san_mismatch"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        return 200, json.dumps({REQUIREMENT_E2E_INDEX: incompatible}).encode(), (
+            "https_response_received")
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(REQUIREMENT_E2E_INDEX), no_network=False,
+                      root=tmp_path, warn_only_ip_san=True)
+    assert obs["tls_validation"] == "WARN"
+    assert obs["mapping_probe"] == "WARN"
+    assert obs["reason"] == "mapping_incompatible_identity_unverified"
+
+
+def test_ip_san_warning_only_cannot_hide_later_tls_failure(monkeypatch, tmp_path):
+    _ca(tmp_path)
+    def fake(host, port, path, username, password, ca, *,
+             warn_only_ip_san=False):
+        assert warn_only_ip_san
+        if path == "/":
+            return 200, _root_document(), "https_response_ca_only_ip_san_mismatch"
+        if path == "/_security/_authenticate":
+            return None, None, "es_tls_identity_unverified"
+        pytest.fail("mapping attempted after certificate-chain failure")
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(), no_network=False, root=tmp_path,
+                      warn_only_ip_san=True)
+    assert obs["tls_validation"] == "FAIL"
+    assert obs["identity_warning"] is True
+    assert obs["mapping_probe"] == "SKIP"
+
+
+def test_warning_mode_cli_exit_incomplete_and_never_claims_acceptance(
+        monkeypatch, tmp_path, capsys):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config",
+                        lambda _: _cfg(REQUIREMENT_E2E_INDEX))
+    called = []
+    def fake(host, port, path, username, password, ca, *,
+             warn_only_ip_san=False):
+        assert warn_only_ip_san
+        called.append(path)
+        reason = "https_response_ca_only_ip_san_mismatch"
+        if path == "/":
+            return 200, _root_document(), reason
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), reason
+        return 200, _mapping_document(REQUIREMENT_E2E_INDEX), reason
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main(["--warn-only-ip-san"]) == 2
+    out = capsys.readouterr().out
+    obs = json.loads(out)["results"][0]
+    assert obs["identity_warning"] is True
+    assert obs["tls_validation"] == "WARN"
+    assert obs["mapping_probe"] == "WARN"
+    assert obs["auth"] == "NOT_VERIFIED"
+    assert len(called) == 3
+    for private in ("SECRET_PASSWORD", "operator", "192.168.0.134",
+                    "INTERNAL_ES_CLUSTER"):
+        assert private not in out
+
+
+def test_warning_mode_prohibits_wrong_password_control(monkeypatch, capsys):
+    monkeypatch.setattr(
+        es, "_https_get", lambda *a, **kw: pytest.fail("no network allowed"))
+    with pytest.raises(SystemExit) as caught:
+        es.main(["--warn-only-ip-san", "--verify-credentials"])
+    assert caught.value.code == 2
+    assert "cannot be combined" in capsys.readouterr().err
+
+
+def test_warning_no_network_never_opens_socket(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config", lambda _: _cfg())
+    monkeypatch.setattr(
+        es, "_https_get", lambda *a, **kw: pytest.fail("no network allowed"))
+    assert es.main(["--no-network", "--warn-only-ip-san"]) == 2
+    obs = json.loads(capsys.readouterr().out)["results"][0]
+    assert obs["reason"] == "network_disabled"
+    assert obs["tls_validation"] == "NOT_TESTED"
+    assert obs["mapping_probe"] == "SKIP"
