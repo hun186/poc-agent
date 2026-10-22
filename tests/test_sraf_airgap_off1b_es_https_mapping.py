@@ -288,7 +288,7 @@ def test_cli_wrong_root_never_reads_env(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(
         es, "_effective_runtime_config",
         lambda *_: pytest.fail("invalid invocation loaded config"))
-    assert es.main([]) == 2
+    assert es.main(["--strict-ip-san"]) == 2
     assert "run_from_repository_root" in capsys.readouterr().out
 
 
@@ -397,7 +397,7 @@ def test_cli_fail_code_for_unverified_principal(monkeypatch, tmp_path, capsys):
         return (200, _root_document() if path == "/" else
                 _auth_document("wrong_user"), "https_response_received")
     monkeypatch.setattr(es, "_https_get", fake)
-    assert es.main([]) == 1
+    assert es.main(["--strict-ip-san"]) == 1
     doc = json.loads(capsys.readouterr().out)
     assert doc["results"][0]["auth"] == "FAIL"
     assert doc["results"][0]["mapping_probe"] == "SKIP"
@@ -442,7 +442,7 @@ def test_default_cli_partial_never_promotes_unverified_auth(
             return 200, _auth_document(), "https_response_received"
         return 200, _mapping_document("my_index"), "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
-    assert es.main([]) == 2
+    assert es.main(["--strict-ip-san"]) == 2
     doc = json.loads(capsys.readouterr().out)
     assert doc["results"][0]["auth"] == "NOT_VERIFIED"
     assert doc["results"][0]["mapping_probe"] == "PASS"
@@ -613,7 +613,7 @@ def test_cli_returns_failure_for_any_later_certificate_validation(
         assert path == "/my_index/_mapping"
         return None, None, "es_tls_identity_unverified"
     monkeypatch.setattr(es, "_https_get", fake)
-    args = ["--verify-credentials"] if failing_path.endswith("_mapping") else []
+    args = ["--verify-credentials"] if failing_path.endswith("_mapping") else ["--strict-ip-san"]
     assert es.main(args) == 1
     doc = json.loads(capsys.readouterr().out)
     result = doc["results"][0]
@@ -662,7 +662,7 @@ def test_protected_auth_403_is_access_denied_not_bad_credentials(
         # Gateway forbids access before inspecting Authorization header.
         return 403, b'{"error":"forbidden"}', "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
-    command = ["--verify-credentials"] if with_control else []
+    command = ["--verify-credentials"] if with_control else ["--strict-ip-san"]
     assert es.main(command) == 2
     payload = json.loads(capsys.readouterr().out)
     obs = payload["results"][0]
@@ -693,7 +693,7 @@ def test_root_gateway_403_is_access_denied_not_rejected_credentials(
         # Gateway ACL denies before Basic auth; password has not been tested.
         return 403, b'{"error":"gateway_denied"}', "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
-    args = ["--verify-credentials"] if opted_in else []
+    args = ["--verify-credentials"] if opted_in else ["--strict-ip-san"]
     assert es.main(args) == 1
     output = capsys.readouterr().out
     result = json.loads(output)["results"][0]
@@ -719,7 +719,7 @@ def test_root_es_401_is_rejected_and_never_attempts_mapping(
         paths.append(path)
         return 401, b"{}", "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
-    assert es.main([]) == 1
+    assert es.main(["--strict-ip-san"]) == 1
     output = json.loads(capsys.readouterr().out)["results"][0]
     assert output["https_probe"] == "FAIL"
     assert output["auth"] == "FAIL"
@@ -776,7 +776,7 @@ def test_malformed_mapping_cli_is_structured_fail_not_traceback(
             return 200, _auth_document(), "https_response_received"
         return 200, mapping_body, "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
-    assert es.main([]) == 1
+    assert es.main(["--strict-ip-san"]) == 1
     output = capsys.readouterr().out
     obs = json.loads(output)["results"][0]
     assert obs["mapping_probe"] == "FAIL"
@@ -815,7 +815,7 @@ def test_cli_rejects_nonobject_mapping_response_as_observed_failure(
         assert path == "/my_index/_mapping"
         return 200, invalid_mapping, "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
-    assert es.main([]) == 1
+    assert es.main(["--strict-ip-san"]) == 1
     output = capsys.readouterr().out
     doc = json.loads(output)
     obs = doc["results"][0]
@@ -847,7 +847,7 @@ def test_unexpected_protected_auth_http_is_incomplete_not_bad_password(
         # Non-auth service/gateway errors cannot prove credentials invalid.
         return status, b'{"secret":"NEVER_PRINT_REMOTE_DATA"}', "https_response_received"
     monkeypatch.setattr(es, "_https_get", fake)
-    argv = ["--verify-credentials"] if verify_credentials else []
+    argv = ["--verify-credentials"] if verify_credentials else ["--strict-ip-san"]
     assert es.main(argv) == 2
     result_text = capsys.readouterr().out
     doc = json.loads(result_text)
@@ -1121,3 +1121,118 @@ def test_warning_no_network_never_opens_socket(monkeypatch, tmp_path, capsys):
     assert obs["reason"] == "network_disabled"
     assert obs["tls_validation"] == "NOT_TESTED"
     assert obs["mapping_probe"] == "SKIP"
+
+
+
+@pytest.mark.parametrize("exc", [
+    TimeoutError("simulated dribbling deadline"),
+    asyncio.IncompleteReadError(partial=b"x", expected=19),
+    ValueError("malformed_http_response"),
+    OSError("socket_lost"),
+])
+def test_san_mismatch_survives_credential_bearing_transport_failure(
+        monkeypatch, tmp_path, exc):
+    # Codex P2: SAN mismatch is known before Authorization, so a broken
+    # response must not erase proof that the peer had a wrong IP identity.
+    async def bad_response(host, port, path, username, password, context,
+                           *, ip_san_attestation=None):
+        assert ip_san_attestation is not None
+        ip_san_attestation.append(False)
+        raise exc
+    monkeypatch.setattr(es, "_one_https_get", bad_response)
+    monkeypatch.setattr(
+        es.ssl, "create_default_context",
+        lambda **kwargs: es.ssl.SSLContext(es.ssl.PROTOCOL_TLS_CLIENT),
+    )
+    status, body, reason = es._https_get(
+        "192.168.0.134", 9001, "/", "operator", "SECRET_PASSWORD",
+        _ca(tmp_path), warn_only_ip_san=True,
+    )
+    assert status is None and body is None
+    assert reason == "es_https_transport_unavailable_ip_san_mismatch"
+
+
+@pytest.mark.parametrize("stage", ["/", "/_security/_authenticate",
+                                    "/" + REQUIREMENT_E2E_INDEX + "/_mapping"])
+def test_mismatched_peer_failing_response_remains_visible_for_every_get(
+        monkeypatch, tmp_path, stage):
+    _ca(tmp_path)
+    def fake(host, port, path, username, password, ca, *,
+             warn_only_ip_san=False):
+        assert warn_only_ip_san is True
+        if path == stage:
+            return None, None, "es_https_transport_unavailable_ip_san_mismatch"
+        if path == "/":
+            return 200, _root_document(), "https_response_received"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        return 200, _mapping_document(REQUIREMENT_E2E_INDEX), "https_response_received"
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(REQUIREMENT_E2E_INDEX), no_network=False,
+                      root=tmp_path, warn_only_ip_san=True)
+    assert obs["identity_warning"] is True
+    assert obs["tls_validation"] == "WARN"
+    assert obs["reason"] in (
+        "es_https_transport_unavailable_ip_san_mismatch",
+        "es_auth_transport_unavailable",
+    )
+    assert obs["auth"] != "PASS"
+    assert obs["mapping_probe"] != "PASS"
+
+
+def test_quick_cli_defaults_to_san_warning_and_never_claims_tls_pass(
+        monkeypatch, tmp_path, capsys):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config",
+                        lambda _: _cfg(REQUIREMENT_E2E_INDEX))
+    calls = []
+    def fake(host, port, path, username, password, ca, *,
+             warn_only_ip_san=False):
+        assert warn_only_ip_san is True
+        calls.append((path, password))
+        if path == "/":
+            return 200, _root_document(), "https_response_ca_only_ip_san_mismatch"
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        return (200, _mapping_document(REQUIREMENT_E2E_INDEX),
+                "https_response_received")
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main([]) == 2
+    obs = json.loads(capsys.readouterr().out)["results"][0]
+    assert obs["ip_san_policy"] == "WARN_ONLY"
+    assert obs["identity_warning"] is True
+    assert obs["tls_validation"] == "WARN"
+    assert obs["mapping_probe"] == "WARN"
+    assert obs["credential_control"] == "NOT_RUN"
+    assert len(calls) == 3
+    assert all(pwd == "SECRET_PASSWORD" for _, pwd in calls)
+
+
+def test_strict_cli_is_explicit_and_failed_ip_san_stops_all_requests(
+        monkeypatch, tmp_path, capsys):
+    _ca(tmp_path)
+    monkeypatch.setattr(es, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(es, "_effective_runtime_config",
+                        lambda _: _cfg())
+    called = []
+    def fake(host, port, path, username, password, ca):
+        called.append(path)
+        return None, None, "es_tls_identity_unverified"
+    monkeypatch.setattr(es, "_https_get", fake)
+    assert es.main(["--strict-ip-san"]) == 1
+    obs = json.loads(capsys.readouterr().out)["results"][0]
+    assert obs["ip_san_policy"] == "STRICT"
+    assert obs["identity_warning"] is False
+    assert obs["tls_validation"] == "FAIL"
+    assert obs["mapping_probe"] == "SKIP"
+    assert called == ["/"]
+
+
+def test_strict_and_warn_explicit_flags_are_mutually_exclusive(capsys):
+    with pytest.raises(SystemExit) as caught:
+        es.main(["--strict-ip-san", "--warn-only-ip-san"])
+    assert caught.value.code == 2
+    assert "cannot be combined" in capsys.readouterr().err
