@@ -1282,3 +1282,121 @@ def test_earlier_san_warning_survives_later_handshake_without_san_evidence(
     )
     for private in ("operator", "SECRET_PASSWORD", "192.168.0.134"):
         assert private not in json.dumps(obs)
+
+
+
+def _fake_http_stream(payload: bytes) -> asyncio.StreamReader:
+    reader = asyncio.StreamReader(limit=es.MAX_HEADERS)
+    reader.feed_data(payload)
+    reader.feed_eof()
+    return reader
+
+
+def _chunked(*pieces: bytes, trailer: bytes = b"") -> bytes:
+    return b"".join(
+        f"{len(piece):x}\r\n".encode("ascii") + piece + b"\r\n"
+        for piece in pieces
+    ) + b"0\r\n" + trailer + b"\r\n"
+
+
+def test_chunked_es_mapping_fixture_decodes_and_uses_existing_predicate():
+    index = REQUIREMENT_E2E_INDEX
+    body = _mapping_document(index)
+    midpoint = max(1, len(body) // 3)
+    stream = _fake_http_stream(_chunked(
+        body[:midpoint], body[midpoint:midpoint * 2], body[midpoint * 2:]
+    ))
+    decoded = asyncio.run(es._read_http_body(
+        stream, [b"Transfer-Encoding: chunked"], es.MAX_MAPPING_BODY,
+    ))
+    assert decoded == body
+    assert es._mapping_result(decoded, index) == (
+        "PASS", "es_mapping_compatible"
+    )
+
+
+def test_chunked_mapping_over_original_64k_cap_remains_bounded_and_compatible():
+    index = REQUIREMENT_E2E_INDEX
+    mapping = {index: {**REQUIREMENT_E2E_MAPPING, "padding": "x" * (es.MAX_BODY + 500)}}
+    body = json.dumps(mapping).encode("utf-8")
+    assert es.MAX_BODY < len(body) < es.MAX_MAPPING_BODY
+    stream = _fake_http_stream(_chunked(body[:50000], body[50000:]))
+    decoded = asyncio.run(es._read_http_body(
+        stream, [b"Transfer-Encoding: Chunked"], es.MAX_MAPPING_BODY,
+    ))
+    assert decoded == body
+    assert es._mapping_result(decoded, index) == ("PASS", "es_mapping_compatible")
+
+
+def test_fixed_length_legacy_http_response_still_supported():
+    body = b'{"ok":true}'
+    stream = _fake_http_stream(body)
+    assert asyncio.run(es._read_http_body(
+        stream, [b"Content-Length: 11"], es.MAX_BODY
+    )) == body
+
+
+@pytest.mark.parametrize("fields", [
+    [b"Transfer-Encoding: chunked", b"Content-Length: 1"],
+    [b"Transfer-Encoding: chunked", b"Transfer-Encoding: chunked"],
+    [b"Transfer-Encoding: gzip, chunked"],
+    [b"Transfer-Encoding: gzip"],
+    [b"Transfer-Encoding: identity"],
+    [b"Content-Length: 1", b"Content-Length: 1"],
+    [],
+])
+def test_chunked_unsafe_or_ambiguous_framing_is_rejected(fields):
+    stream = _fake_http_stream(_chunked(b"x"))
+    with pytest.raises(ValueError):
+        asyncio.run(es._read_http_body(stream, fields, es.MAX_MAPPING_BODY))
+
+
+@pytest.mark.parametrize("payload", [
+    b"zz\r\n",
+    b"1\r\nA\rX",
+    b"1\r\nA\r\n0\r\nX-Invalid",
+    b"1\r\nA\r\n0\r\nX: bad\r\n",
+    b"1\r\nA\r\n0\r\nNot-A-Field\r\n\r\n",
+    b"3\r\nA\r\n0\r\n\r\n",
+    b"100000000\r\n",
+    b"0;" + b"x" * es.MAX_CHUNK_LINE + b"\r\n\r\n",
+    b"1;q=\x00\r\nA\r\n0\r\n\r\n",
+])
+def test_malformed_truncated_or_unbounded_chunks_fail_closed(payload):
+    reader = _fake_http_stream(payload)
+    with pytest.raises((ValueError, asyncio.IncompleteReadError)):
+        asyncio.run(es._read_chunked_body(reader, es.MAX_MAPPING_BODY))
+
+
+def test_chunked_with_bounded_trailers_and_extensions_is_readable():
+    stream = _fake_http_stream(b"3;source=es\r\nabc\r\n0\r\nX-Trace: ok\r\n\r\n")
+    assert asyncio.run(es._read_chunked_body(stream, es.MAX_BODY)) == b"abc"
+
+
+def test_cumulative_chunked_payload_limit_applies_across_chunks():
+    reader = _fake_http_stream(_chunked(b"123456", b"7890"))
+    with pytest.raises(ValueError, match="oversized_chunked_body"):
+        asyncio.run(es._read_chunked_body(reader, 9))
+
+
+def test_large_chunk_size_rejected_before_body_allocation():
+    reader = _fake_http_stream(b"200001\r\n")
+    with pytest.raises(ValueError, match="oversized_chunked_body"):
+        asyncio.run(es._read_chunked_body(reader, es.MAX_MAPPING_BODY))
+
+
+def test_chunked_accepts_exact_body_limit():
+    reader = _fake_http_stream(_chunked(b"a" * 64, b"b" * 32))
+    decoded = asyncio.run(es._read_chunked_body(reader, 96))
+    assert decoded == b"a" * 64 + b"b" * 32
+
+
+def test_chunked_deadline_remains_absolute_even_when_server_drips_chunks():
+    async def drip():
+        reader = asyncio.StreamReader(limit=es.MAX_HEADERS)
+        reader.feed_data(b"1\r\nA\r\n")
+        return await asyncio.wait_for(
+            es._read_chunked_body(reader, es.MAX_BODY), timeout=0.001
+        )
+    with pytest.raises(TimeoutError):
+        asyncio.run(drip())
