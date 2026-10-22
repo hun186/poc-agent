@@ -982,7 +982,7 @@ def test_ca_only_diagnostic_still_rejects_untrusted_chain(monkeypatch, tmp_path)
 
 
 @pytest.mark.parametrize("mismatch_stage", ["/", "/_security/_authenticate",
-                                            "/my_index/_mapping"])
+                                            "/" + REQUIREMENT_E2E_INDEX + "/_mapping"])
 def test_ip_san_warning_mode_inspects_mapping_but_never_certifies_identity(
         monkeypatch, tmp_path, mismatch_stage):
     _ca(tmp_path)
@@ -997,7 +997,7 @@ def test_ip_san_warning_mode_inspects_mapping_but_never_certifies_identity(
             return 200, _root_document(), reason
         if path == "/_security/_authenticate":
             return 200, _auth_document(), reason
-        assert path == "/my_index/_mapping"
+        assert path == "/" + REQUIREMENT_E2E_INDEX + "/_mapping"
         return 200, _mapping_document(REQUIREMENT_E2E_INDEX), reason
     monkeypatch.setattr(es, "_https_get", fake)
     obs = es._observe(_cfg(REQUIREMENT_E2E_INDEX), no_network=False,
