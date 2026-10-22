@@ -25,6 +25,9 @@ from tools.sraf_airgap_off1b_auto import (  # noqa: E402
     MODE, _effective_runtime_config, _parse_endpoint,
 )
 from agent.external_capabilities import mapping_compatibility  # noqa: E402
+from tools.sraf_airgap_off1_probes import (  # noqa: E402
+    _TRAILER_HEADER_ONLY_FIELDS, _TRAILER_FORBIDDEN_PREFIXES,
+)
 
 SCHEMA = "sraf_airgap_off1b_es_https_mapping_v1"
 DEADLINE_SECONDS = 3.0
@@ -99,8 +102,15 @@ async def _read_chunked_body(reader: asyncio.StreamReader, limit: int) -> bytes:
                     raise ValueError("invalid_chunk_trailer")
                 name, value = trailer[:-2].split(b":", 1)
                 if (_FIELD_NAME.fullmatch(name) is None
-                        or any(c < 32 and c != 9 or c == 127 for c in value)):
+                        or any((c < 32 and c != 9) or c == 127 for c in value)):
                     raise ValueError("invalid_chunk_trailer")
+                lower_name = name.lower()
+                if (lower_name == b"proxy-status"
+                        or lower_name in _TRAILER_HEADER_ONLY_FIELDS
+                        or lower_name.startswith(_TRAILER_FORBIDDEN_PREFIXES)):
+                    # Response-only framing, auth/routing and control fields
+                    # cannot be introduced after the JSON body.
+                    raise ValueError("chunk_trailer_field_forbidden")
             raise ValueError("too_many_chunk_trailers")
         payload = await reader.readexactly(size + 2)
         if payload[-2:] != b"\r\n":
@@ -174,7 +184,10 @@ async def _one_https_get(host: str, port: int, path: str,
             raise ValueError("invalid_http_status")
         status = int(match.group(1))
         max_body = MAX_MAPPING_BODY if path.endswith("/_mapping") else MAX_BODY
-        return status, await _read_http_body(reader, parts[1:], max_body)
+        version = parts[0].split(b" ", 1)[0]
+        return status, await _read_http_body(
+            reader, parts[1:], max_body, http_version=version,
+        )
     finally:
         if writer is not None:
             writer.close()
@@ -183,8 +196,9 @@ async def _one_https_get(host: str, port: int, path: str,
 
 
 async def _read_http_body(reader: asyncio.StreamReader,
-                          fields: list[bytes], limit: int) -> bytes:
-    """Accept unambiguous Content-Length or single bounded chunked framing."""
+                          fields: list[bytes], limit: int,
+                          *, http_version: bytes = b"HTTP/1.1") -> bytes:
+    """Accept unambiguous Content-Length or valid HTTP/1.1 chunked framing."""
     lengths: list[int] = []
     transfer_encodings: list[bytes] = []
     for part in fields:
@@ -205,7 +219,8 @@ async def _read_http_body(reader: asyncio.StreamReader,
             lengths.append(int(trimmed))
     if transfer_encodings:
         # Reject CL+TE ambiguity / smuggling, duplicate or chained codings.
-        if lengths or transfer_encodings != [b"chunked"]:
+        if (lengths or transfer_encodings != [b"chunked"]
+                or http_version != b"HTTP/1.1"):
             raise ValueError("unsupported_http_framing")
         return await _read_chunked_body(reader, limit)
     if len(lengths) != 1 or lengths[0] > limit:
