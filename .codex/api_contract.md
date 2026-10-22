@@ -33,3 +33,6 @@
 ## Compaction Record
 
 - 2026-10-21: Archived then condensed >20 dated API/work blocks per AGENTS.md without changing the implementation. Current route support, status contracts, safe input bounds and auth/SQL ownership requirements remain above. Live deployment is not verified by Hosted checks; do not Merge PR #295 without explicit authorization.
+
+
+- 2026-10-22 PR #296 adds an explicit operator CLI-only --warn-only-ip-san diagnostic. The default strict CA + numeric IP SAN identity requirement is unchanged. The opt-in keeps CERT_REQUIRED trusted CA chain, private numeric IP destination and bounded GETs but allows missing IP SAN only as identity_warning=true / tls_validation=WARN. On a peer identity mismatch, a compatible or incompatible mapping observation becomes non-authoritative mapping_probe=WARN with *_identity_unverified reason; exit 2 always indicates incomplete. The configured Basic credentials are still sent to a CA-signed but IP-identity-unverified peer, posing a real impersonation/secret exposure risk, so warning mode cannot combine with --verify-credentials. No official TLS PASS, FULL_LIVE or production ES client change.
