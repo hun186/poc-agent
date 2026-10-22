@@ -399,3 +399,7 @@ PR #297 adds bounded HTTP/1.1 single `Transfer-Encoding: chunked` parsing with s
 After review and explicit merge, the operator can incrementally deploy only the updated `tools/sraf_airgap_off1b_es_https_mapping.py` plus referenced runtime unchanged and rerun `python tools/sraf_airgap_off1b_es_https_mapping.py`. On the Docker IP relocation, `tls_validation=WARN` and `identity_warning=true` still mean unverified peer identity; `mapping_probe=WARN` with `*_identity_unverified` reason means an observation only, never FULL_LIVE/feature acceptance. Header tests and hosted CI do NOT establish actual Mapping compatibility. Confirm the exact Linux command output separately.
 
 PR #297 also enforces `Content-Encoding` to be absent or **a single `identity` value** for both fixed-length and chunked responses. Compressed, duplicate or stacked content encoding is rejected even if the returned bytes happen to look like JSON; the CLI does not decompress remote data or misreport a Mapping compatibility PASS. This matches the live operator observation `Content-Encoding: IDENTITY`.
+
+
+PR #297 additionally verifies complete constrained chunk-extension token syntax using the existing OFF-1 chunk-head parser; merely printable but malformed extensions (for example, `;foo==bar`) are rejected, not silently treated as a valid Mapping response. The numeric chunk-size digits and total line/decoded-body bounds remain separate limits.
+
