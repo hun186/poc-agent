@@ -1236,3 +1236,49 @@ def test_strict_and_warn_explicit_flags_are_mutually_exclusive(capsys):
         es.main(["--strict-ip-san", "--warn-only-ip-san"])
     assert caught.value.code == 2
     assert "cannot be combined" in capsys.readouterr().err
+
+
+
+@pytest.mark.parametrize("failed_stage", (
+    "/_security/_authenticate",
+    "/" + REQUIREMENT_E2E_INDEX + "/_mapping",
+))
+@pytest.mark.parametrize("later_failure,expected_tls", (
+    ("es_https_transport_unavailable", "WARN"),
+    ("es_tls_identity_unverified", "FAIL"),
+))
+def test_earlier_san_warning_survives_later_handshake_without_san_evidence(
+        monkeypatch, tmp_path, failed_stage, later_failure, expected_tls):
+    # The root request already observed the old-IP SAN and sent Basic auth.
+    # A later socket loss *before* inspecting that connection's peer may not
+    # erase this observation. A real CA/certificate failure must still FAIL.
+    _ca(tmp_path)
+    calls = []
+    def fake(host, port, path, username, password, ca, *,
+             warn_only_ip_san=False):
+        assert warn_only_ip_san is True
+        calls.append(path)
+        if path == "/":
+            return (200, _root_document(),
+                    "https_response_ca_only_ip_san_mismatch")
+        if path == failed_stage:
+            return None, None, later_failure
+        if path == "/_security/_authenticate":
+            return 200, _auth_document(), "https_response_received"
+        pytest.fail("Unexpected later mapping request")
+    monkeypatch.setattr(es, "_https_get", fake)
+    obs = es._observe(_cfg(REQUIREMENT_E2E_INDEX), no_network=False,
+                      root=tmp_path, warn_only_ip_san=True)
+    assert obs["identity_warning"] is True
+    assert obs["tls_validation"] == expected_tls
+    assert obs["mapping_probe"] != "PASS"
+    assert obs["auth"] != "PASS"
+    assert obs["credential_control"] == "NOT_RUN"
+    assert calls == (
+        ["/", "/_security/_authenticate"] if failed_stage.endswith(
+            "_authenticate") else
+        ["/", "/_security/_authenticate",
+         "/" + REQUIREMENT_E2E_INDEX + "/_mapping"]
+    )
+    for private in ("operator", "SECRET_PASSWORD", "192.168.0.134"):
+        assert private not in json.dumps(obs)
