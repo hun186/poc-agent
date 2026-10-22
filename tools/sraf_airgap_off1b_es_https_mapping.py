@@ -25,11 +25,19 @@ from tools.sraf_airgap_off1b_auto import (  # noqa: E402
     MODE, _effective_runtime_config, _parse_endpoint,
 )
 from agent.external_capabilities import mapping_compatibility  # noqa: E402
+from tools.sraf_airgap_off1_probes import (  # noqa: E402
+    _CHUNK_HEAD, _TRAILER_HEADER_ONLY_FIELDS, _TRAILER_FORBIDDEN_PREFIXES,
+)
 
 SCHEMA = "sraf_airgap_off1b_es_https_mapping_v1"
 DEADLINE_SECONDS = 3.0
 MAX_HEADERS = 8192
 MAX_BODY = 65536
+# A Mapping response can be substantially larger than root/auth JSON.
+MAX_MAPPING_BODY = 2 * 1024 * 1024
+MAX_CHUNKS = 16384
+MAX_CHUNK_LINE = 256
+MAX_TRAILERS = 32
 MAX_CA_BYTES = 1048576
 _INDEX_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,254}\Z", re.ASCII)
 _FIELD_NAME = re.compile(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+\Z")
@@ -55,6 +63,62 @@ def _trusted_ca_file(root: Path) -> Path | None:
         return ca
     except OSError:
         return None
+
+
+async def _read_chunked_body(reader: asyncio.StreamReader, limit: int) -> bytes:
+    """Decode a bounded HTTP/1.1 chunked entity, not response headers.
+
+    Readexactly + wait_for at the caller enforce bounded memory and a single
+    absolute deadline across all chunks, including a malicious slow sender.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    for _ in range(MAX_CHUNKS):
+        line = await reader.readuntil(b"\r\n")
+        if len(line) > MAX_CHUNK_LINE or b"\r" in line[:-2] or b"\n" in line[:-2]:
+            raise ValueError("invalid_chunk_size_line")
+        # Reuse the audited OFF-1 constrained RFC token-extension grammar.
+        # A merely printable extension such as ";foo==bar" is NOT valid.
+        size_token = line[:-2].split(b";", 1)[0]
+        if re.fullmatch(rb"[0-9A-Fa-f]{1,8}", size_token) is None:
+            raise ValueError("invalid_chunk_size")
+        if _CHUNK_HEAD.fullmatch(line[:-2]) is None:
+            raise ValueError("invalid_chunk_extension")
+        size = int(size_token, 16)
+        if size > limit - total:
+            raise ValueError("oversized_chunked_body")
+        if size == 0:
+            # A trailer section ends at the first empty line. Bound each line,
+            # field count and total bytes rather than trusting remote metadata.
+            trailer_bytes = 0
+            for _ in range(MAX_TRAILERS + 1):
+                trailer = await reader.readuntil(b"\r\n")
+                trailer_bytes += len(trailer)
+                if trailer_bytes > MAX_HEADERS:
+                    raise ValueError("oversized_chunk_trailers")
+                if trailer == b"\r\n":
+                    return b"".join(chunks)
+                if (len(trailer) > MAX_HEADERS or b":" not in trailer[:-2]
+                        or b"\r" in trailer[:-2] or b"\n" in trailer[:-2]):
+                    raise ValueError("invalid_chunk_trailer")
+                name, value = trailer[:-2].split(b":", 1)
+                if (_FIELD_NAME.fullmatch(name) is None
+                        or any((c < 32 and c != 9) or c == 127 for c in value)):
+                    raise ValueError("invalid_chunk_trailer")
+                lower_name = name.lower()
+                if (lower_name == b"proxy-status"
+                        or lower_name in _TRAILER_HEADER_ONLY_FIELDS
+                        or lower_name.startswith(_TRAILER_FORBIDDEN_PREFIXES)):
+                    # Response-only framing, auth/routing and control fields
+                    # cannot be introduced after the JSON body.
+                    raise ValueError("chunk_trailer_field_forbidden")
+            raise ValueError("too_many_chunk_trailers")
+        payload = await reader.readexactly(size + 2)
+        if payload[-2:] != b"\r\n":
+            raise ValueError("invalid_chunk_terminator")
+        chunks.append(payload[:-2])
+        total += size
+    raise ValueError("too_many_chunks")
 
 
 async def _one_https_get(host: str, port: int, path: str,
@@ -106,6 +170,7 @@ async def _one_https_get(host: str, port: int, path: str,
         request = (
             f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\n"
             f"Accept: application/json\r\n"
+            "Accept-Encoding: identity\r\n"
             f"Authorization: Basic {credential}\r\n"
             "Connection: close\r\n\r\n"
         )
@@ -119,32 +184,56 @@ async def _one_https_get(host: str, port: int, path: str,
         if match is None:
             raise ValueError("invalid_http_status")
         status = int(match.group(1))
-        lengths: list[int] = []
-        for part in parts[1:]:
-            if b":" not in part:
-                raise ValueError("malformed_http_field")
-            name, value = part.split(b":", 1)
-            if _FIELD_NAME.fullmatch(name) is None:
-                raise ValueError("malformed_http_field")
-            if any(ch < 32 and ch not in (9,) for ch in value) or b"\x7f" in value:
-                raise ValueError("malformed_http_value")
-            lower = name.lower()
-            if lower == b"transfer-encoding":
-                # Fail closed on unsupported transfer coding, never parse blindly.
-                raise ValueError("unsupported_http_framing")
-            if lower == b"content-length":
-                trimmed = value.strip(b" \t")
-                if re.fullmatch(rb"[0-9]{1,10}", trimmed) is None:
-                    raise ValueError("invalid_http_length")
-                lengths.append(int(trimmed))
-        if len(lengths) != 1 or lengths[0] > MAX_BODY:
-            raise ValueError("missing_or_oversized_http_body")
-        return status, await reader.readexactly(lengths[0])
+        max_body = MAX_MAPPING_BODY if path.endswith("/_mapping") else MAX_BODY
+        version = parts[0].split(b" ", 1)[0]
+        return status, await _read_http_body(
+            reader, parts[1:], max_body, http_version=version,
+        )
     finally:
         if writer is not None:
             writer.close()
         else:
             sock.close()
+
+
+async def _read_http_body(reader: asyncio.StreamReader,
+                          fields: list[bytes], limit: int,
+                          *, http_version: bytes = b"HTTP/1.1") -> bytes:
+    """Accept unambiguous Content-Length or valid HTTP/1.1 chunked framing."""
+    lengths: list[int] = []
+    transfer_encodings: list[bytes] = []
+    content_encodings: list[bytes] = []
+    for part in fields:
+        if b":" not in part:
+            raise ValueError("malformed_http_field")
+        name, value = part.split(b":", 1)
+        if _FIELD_NAME.fullmatch(name) is None:
+            raise ValueError("malformed_http_field")
+        if any(ch < 32 and ch not in (9,) for ch in value) or b"\x7f" in value:
+            raise ValueError("malformed_http_value")
+        lower = name.lower()
+        if lower == b"transfer-encoding":
+            transfer_encodings.append(value.strip(b" \t").lower())
+        if lower == b"content-encoding":
+            content_encodings.append(value.strip(b" \t").lower())
+        if lower == b"content-length":
+            trimmed = value.strip(b" \t")
+            if re.fullmatch(rb"[0-9]{1,10}", trimmed) is None:
+                raise ValueError("invalid_http_length")
+            lengths.append(int(trimmed))
+    if content_encodings and content_encodings != [b"identity"]:
+        # No decompression is performed. A falsely labeled JSON response must
+        # not be certified as Mapping-compatible.
+        raise ValueError("unsupported_content_encoding")
+    if transfer_encodings:
+        # Reject CL+TE ambiguity / smuggling, duplicate or chained codings.
+        if (lengths or transfer_encodings != [b"chunked"]
+                or http_version != b"HTTP/1.1"):
+            raise ValueError("unsupported_http_framing")
+        return await _read_chunked_body(reader, limit)
+    if len(lengths) != 1 or lengths[0] > limit:
+        raise ValueError("missing_or_oversized_http_body")
+    return await reader.readexactly(lengths[0])
 
 
 def _https_get(host: str, port: int, path: str,
@@ -222,7 +311,7 @@ def _mapping_containers_valid(mappings: dict[str, object]) -> bool:
 def _mapping_result(body: bytes, selector: str) -> tuple[str, str]:
     """Reuse the application mapping predicate, never echo index or fields."""
     try:
-        if len(body) > MAX_BODY:
+        if len(body) > MAX_MAPPING_BODY:
             return "FAIL", "es_mapping_response_oversized"
         mapping = json.loads(body)
         if not isinstance(mapping, dict):

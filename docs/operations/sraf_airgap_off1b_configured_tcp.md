@@ -231,8 +231,9 @@ tls_validation=FAIL, including on the Mapping GET.
 Limitations requiring later work: (a) this early bounded probe requires a
 single literal ES_INDEX and a server certificate identifying the numeric IP,
 while some deployments use multiple index selectors or hostname-only certs;
-(b) it intentionally rejects chunked responses and responses above its fixed
-body bound rather than risk a false PASS; (c) mapping compatibility alone does
+(b) as of PR #297 it accepts bounded, single HTTP/1.1 chunked framing
+or unambiguous Content-Length (2 MiB Mapping, 64 KiB root/auth), while refusing
+unbounded/ambiguous responses; (c) mapping compatibility alone does
 not resolve the known live `mapping_incompatible` deployment blocker without
 actual operator-run evidence. A later independently reviewed extension may
 support multiple approved selectors, trusted remote hostname pinning, verified
@@ -387,3 +388,18 @@ In default Quick mode or when explicitly using the alias, CA chain validation re
 **Important risk:** Because the IP identity is not verified, **the default Quick diagnostic** still sends the configured Basic username/password to a CA-signed endpoint which may not be the intended Elasticsearch server. A CA-signed impersonator or wrongly routed Docker connection could capture the credentials. Use only after independently verifying the private network, Docker host, routing and certificate provenance. Prefer renewing the leaf certificate with current IP SAN or separately reviewing a stable verified TLS DNS name for production acceptance. This opt-down is intentionally limited to this standalone non-authoritative operator CLI. Do NOT use the Quick default to certify identity; run --strict-ip-san or --verify-credentials when the deployment needs strict TLS identity assurance.
 
 The explicit --warn-only-ip-san flag cannot combine with --verify-credentials (which deliberately submits an invalid password). Calling --verify-credentials by itself implicitly turns on strict IP SAN checking. The normal invocation is warning-only Quick/Diagnose, and --no-network still performs no socket I/O. This script never updates Elasticsearch runtime TLS settings or Docker certs; operator-run real mapping_incompatible evidence and FULL_LIVE acceptance remain separate.
+
+
+### 2026-10-22 OFF-1B Mapping HTTP chunked support (PR #297)
+
+Live operator evidence after PR #296: Mapping `GET /{literal-index}/_mapping` returned **HTTP 200, `Transfer-Encoding: chunked`, no `Content-Length`, and identity encoding**. The existing diagnostic required a single `Content-Length` and therefore returned `es_https_transport_unavailable_ip_san_mismatch` before it could compare the Mapping. This does **not** demonstrate `mapping_incompatible`.
+
+PR #297 adds bounded HTTP/1.1 single `Transfer-Encoding: chunked` parsing with strict CRLF, cumulative dechunked body limit, chunk count/line limits, bounded trailers, no stacked codings or ambiguous `Content-Length` + Transfer-Encoding framing. Mapping-specific decoded-body maximum is 2 MiB; root and protected auth remain at 64 KiB. A single 3-second absolute GET deadline, fixed private IPv4 origin, CA chain, optional IP SAN warning, header bounds, redaction, no redirects/proxies/DNS/writes and no compression remain intact.
+
+After review and explicit merge, the operator can incrementally deploy only the updated `tools/sraf_airgap_off1b_es_https_mapping.py` plus referenced runtime unchanged and rerun `python tools/sraf_airgap_off1b_es_https_mapping.py`. On the Docker IP relocation, `tls_validation=WARN` and `identity_warning=true` still mean unverified peer identity; `mapping_probe=WARN` with `*_identity_unverified` reason means an observation only, never FULL_LIVE/feature acceptance. Header tests and hosted CI do NOT establish actual Mapping compatibility. Confirm the exact Linux command output separately.
+
+PR #297 also enforces `Content-Encoding` to be absent or **a single `identity` value** for both fixed-length and chunked responses. Compressed, duplicate or stacked content encoding is rejected even if the returned bytes happen to look like JSON; the CLI does not decompress remote data or misreport a Mapping compatibility PASS. This matches the live operator observation `Content-Encoding: IDENTITY`.
+
+
+PR #297 additionally verifies complete constrained chunk-extension token syntax using the existing OFF-1 chunk-head parser; merely printable but malformed extensions (for example, `;foo==bar`) are rejected, not silently treated as a valid Mapping response. The numeric chunk-size digits and total line/decoded-body bounds remain separate limits.
+
