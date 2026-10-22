@@ -56,3 +56,5 @@
 
 
 - 2026-10-22 PR #296: verify the Docker ES new-IP warning-only diagnostic, including actual latest-head Hosted CI, formal Codex review, CA failure remains FAIL, IP SAN mismatch is WARN not verified TLS PASS, mapping non-authoritative WARN, no wrong-password challenge in reduced identity mode and no secret logging. After explicit merge/deploy approval, collect Linux operator observations, then independently fix certificate identity (new IP SAN or reviewed stable DNS name) before FULL_LIVE acceptance. PR is not merged, Docker config unchanged.
+
+- 2026-10-22 PR #296: obtain fresh exact-head Hosted CI and formal Codex no-P1/P2 after shifting Quick CLI default to WARN, introducing --strict-ip-san, preserving legacy alias and repairing Codex P2 SAN warning lost on HTTP-response failures. Test real Linux after user-authorized merge; default warning is not FULL_LIVE and real Basic credentials still reach an identity-unverified CA-certified endpoint on old IP SAN, so do not promote to PASS. Independently design stable TLS DNS identity if portability and end-to-end verified acceptance are both required.
