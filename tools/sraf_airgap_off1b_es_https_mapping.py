@@ -173,38 +173,43 @@ async def _one_https_get(host: str, port: int, path: str,
         if match is None:
             raise ValueError("invalid_http_status")
         status = int(match.group(1))
-        lengths: list[int] = []
-        transfer_encodings: list[bytes] = []
         max_body = MAX_MAPPING_BODY if path.endswith("/_mapping") else MAX_BODY
-        for part in parts[1:]:
-            if b":" not in part:
-                raise ValueError("malformed_http_field")
-            name, value = part.split(b":", 1)
-            if _FIELD_NAME.fullmatch(name) is None:
-                raise ValueError("malformed_http_field")
-            if any(ch < 32 and ch not in (9,) for ch in value) or b"\x7f" in value:
-                raise ValueError("malformed_http_value")
-            lower = name.lower()
-            if lower == b"transfer-encoding":
-                transfer_encodings.append(value.strip(b" \t").lower())
-            if lower == b"content-length":
-                trimmed = value.strip(b" \t")
-                if re.fullmatch(rb"[0-9]{1,10}", trimmed) is None:
-                    raise ValueError("invalid_http_length")
-                lengths.append(int(trimmed))
-        if transfer_encodings:
-            # Reject CL+TE ambiguity / smuggling, duplicate or chained codings.
-            if lengths or transfer_encodings != [b"chunked"]:
-                raise ValueError("unsupported_http_framing")
-            return status, await _read_chunked_body(reader, max_body)
-        if len(lengths) != 1 or lengths[0] > max_body:
-            raise ValueError("missing_or_oversized_http_body")
-        return status, await reader.readexactly(lengths[0])
+        return status, await _read_http_body(reader, parts[1:], max_body)
     finally:
         if writer is not None:
             writer.close()
         else:
             sock.close()
+
+
+async def _read_http_body(reader: asyncio.StreamReader,
+                          fields: list[bytes], limit: int) -> bytes:
+    """Accept unambiguous Content-Length or single bounded chunked framing."""
+    lengths: list[int] = []
+    transfer_encodings: list[bytes] = []
+    for part in fields:
+        if b":" not in part:
+            raise ValueError("malformed_http_field")
+        name, value = part.split(b":", 1)
+        if _FIELD_NAME.fullmatch(name) is None:
+            raise ValueError("malformed_http_field")
+        if any(ch < 32 and ch not in (9,) for ch in value) or b"\x7f" in value:
+            raise ValueError("malformed_http_value")
+        lower = name.lower()
+        if lower == b"transfer-encoding":
+            transfer_encodings.append(value.strip(b" \t").lower())
+        if lower == b"content-length":
+            trimmed = value.strip(b" \t")
+            if re.fullmatch(rb"[0-9]{1,10}", trimmed) is None:
+                raise ValueError("invalid_http_length")
+            lengths.append(int(trimmed))
+    if transfer_encodings:
+        # Reject CL+TE ambiguity / smuggling, duplicate or chained codings.
+        if lengths or transfer_encodings != [b"chunked"]:
+            raise ValueError("unsupported_http_framing")
+        return await _read_chunked_body(reader, limit)
+    if len(lengths) != 1 or lengths[0] > limit:
+        raise ValueError("missing_or_oversized_http_body")
 
 
 def _https_get(host: str, port: int, path: str,
