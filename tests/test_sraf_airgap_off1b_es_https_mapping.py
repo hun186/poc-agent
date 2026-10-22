@@ -1442,3 +1442,47 @@ def test_forbidden_trailer_cannot_modify_framing_auth_or_response(trailer):
         asyncio.run(es._read_http_body(
             stream, [b"Transfer-Encoding: chunked"], es.MAX_BODY,
         ))
+
+
+
+@pytest.mark.parametrize("content_encoding", [
+    b"gzip", b"br", b"deflate", b"identity, gzip", b"gzip, identity",
+    b"", b"identity,identity",
+])
+@pytest.mark.parametrize("chunked", [True, False])
+def test_mapping_refuses_nonidentity_content_encoding_even_if_body_is_json(
+        content_encoding, chunked):
+    body = _mapping_document(REQUIREMENT_E2E_INDEX)
+    payload = _chunked(body) if chunked else body
+    fields = ([b"Transfer-Encoding: chunked"] if chunked else
+              [f"Content-Length: {len(body)}".encode("ascii")])
+    fields += [b"Content-Encoding: " + content_encoding]
+    with pytest.raises(ValueError, match="unsupported_content_encoding"):
+        asyncio.run(es._read_http_body(
+            _fake_http_stream(payload), fields, es.MAX_MAPPING_BODY,
+        ))
+
+
+@pytest.mark.parametrize("fields", [
+    [b"Content-Encoding: identity"],
+    [b"Content-Encoding: IDENTITY"],
+    [],
+])
+def test_identity_or_absent_content_encoding_is_accepted(fields):
+    body = b'{"ok":true}'
+    assert asyncio.run(es._read_http_body(
+        _fake_http_stream(_chunked(body)),
+        [b"Transfer-Encoding: chunked"] + fields, es.MAX_BODY,
+    )) == body
+
+
+def test_duplicate_content_encoding_even_when_each_is_identity_is_rejected():
+    body = b'{"ok":true}'
+    with pytest.raises(ValueError, match="unsupported_content_encoding"):
+        asyncio.run(es._read_http_body(
+            _fake_http_stream(body),
+            [b"Content-Length: 11",
+             b"Content-Encoding: identity",
+             b"content-encoding: identity"],
+            es.MAX_BODY,
+        ))
