@@ -146,10 +146,10 @@ do not roll the Linux environment solely to try this incremental script.
 
 ## 2026-10-20 ES HTTPS / Mapping diagnostic slice (PR under review)
 
-A separate standalone operator command now provides a safe, small Elasticsearch
-identity and Mapping diagnosis. This is not a full SRAF acceptance check and
-must not be run in the Linux production environment until the PR passes review,
-is explicitly merged and packaged in a verified deployment.
+A separate standalone operator command from merged PR #295 provides bounded
+Elasticsearch identity and Mapping diagnosis. It is not full SRAF acceptance.
+The proposed PR #296 --warn-only-ip-san option must not be deployed on Linux
+until review, explicit merge and a verified incremental release package.
 
     python tools/sraf_airgap_off1b_es_https_mapping.py --no-network
     python tools/sraf_airgap_off1b_es_https_mapping.py
@@ -165,11 +165,15 @@ literal `ES_INDEX` or alias and the fixed repository
 `agent/certs/http_ca.crt` trusted CA location. No manual destination, model,
 certificate path, index or credentials are accepted on the command line.
 Missing/unsafe settings are SKIP or INVALID, never silently probed.
-Production Elasticsearch runtime currently disables TLS hostname matching;
-**the diagnostic intentionally does not**. Both certificate chain and the
-numeric IP's certificate identity must validate before sending Basic credentials.
-If the deployment certificate is only valid for a DNS name, the result is
-TLS identity failure, *not* an invitation to disable verification.
+Production Elasticsearch runtime currently disables TLS hostname matching.
+**By default, the diagnostic intentionally DOES enforce it**: both certificate
+chain and the numeric IP's identity must validate before sending Basic credentials.
+A relocated Docker certificate with no matching IP SAN fails the strict mode.
+Only the separately documented explicit --warn-only-ip-san operator opt-in below
+relaxes the IP SAN assertion for a CA-validated, **non-authoritative** partial
+diagnostic. This mode sends real Basic credentials to an IP-identity-unverified
+CA-signed peer (credential interception risk), reports TLS/Mapping WARN and
+exit 2, and is never automatic or FULL_LIVE verification.
 
 The default command opens at most three separate HTTPS connections to the
 already allowlisted host:port: (1) ES identity GET / using configured Basic
