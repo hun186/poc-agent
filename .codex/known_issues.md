@@ -67,3 +67,6 @@
 ## Compaction Record
 
 - 2026-10-21: Triggered by >40 KB, substantial duplicated dated review history and outdated earlier-head statuses. Archive created and content re-read/compared before active rewrite. Kept all ongoing blockers, operator security caveats and release conditions in active summary. Active record is historical evidence; current HEAD/CI/review must be queried live. No Linux deployment or merge authorized.
+
+
+- 2026-10-22 ES Docker container relocation: actual peer verified CA chain but presented 2 IP SAN, 2 DNS SAN, none matching the new ES_URL IP (OpenSSL verify code 64), so strict OFF-1B correctly failed before auth/mapping. PR #296 proposes explicit non-authoritative warning-only IP SAN mode, retaining CA verification but bearing serious Basic-credential exposure risk to a CA-signed impostor. Never default to bypass. Linux Mapping compatibility and full SRAF offline acceptance remain unverified until independently authenticated operator evidence.
