@@ -291,3 +291,101 @@ def test_no_implicit_index_name_in_report_even_when_bad_mapping(tmp_path, monkey
     report = discovery.diagnose(_cfg(), tmp_path)
     assert report["results"][0]["reason"] == "es_mapping_response_invalid"
     assert "operator_only_name" not in json.dumps(report)
+
+
+def test_nonobject_topic_override_replaces_old_indexes_in_selected_runtime(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, """default_indexes: [real_default]
+topic_index_map:
+  sea: {indexes: [stale_index]}
+""")
+    _write_config(tmp_path, """topic_index_map:
+  sea: disabled
+""", "indexes.production.yaml")
+    targets, notes = discovery.discover(_cfg(), tmp_path)
+    assert [target["_selector"] for target in targets] == ["real_default"]
+    assert "topic_config_invalid" in notes
+    calls = _network(monkeypatch)
+    discovery.diagnose(_cfg(), tmp_path)
+    assert calls == ["/real_default/_mapping"]
+
+
+def test_replacing_scalar_topic_with_new_mapping_restores_only_new_indexes(tmp_path):
+    _write_config(tmp_path, "topic_index_map: {sea: disabled}\n")
+    _write_config(tmp_path, """topic_index_map:
+  sea: {indexes: [restored]}
+""", "indexes.production.yaml")
+    targets, _ = discovery.discover(_cfg(), tmp_path)
+    assert [t["_selector"] for t in targets] == ["restored"]
+
+
+def test_alias_backing_index_cannot_point_at_e2e_fixture(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [prod_alias]\n")
+    calls = _network(monkeypatch, {
+        "prod_alias": (200, _mapping("secret_fixture"),
+                       "https_response_received"),
+    })
+    report = discovery.diagnose(
+        _cfg(REQUIREMENT_E2E_ES_INDEX="secret_fixture"), tmp_path)
+    assert calls[0] == "/prod_alias/_mapping"
+    assert report["results"][0]["mapping_probe"] == "FAIL"
+    assert report["results"][0]["selector_resolution"] == "FIXTURE_CONFLICT"
+    assert report["results"][0]["reason"] == "e2e_production_selector_conflict"
+    assert "secret_fixture" not in json.dumps(report)
+    assert "prod_alias" not in json.dumps(report)
+
+
+def test_runtime_valid_hyphenated_reference_field_matches_mapping(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [docs]\n")
+    payload = json.dumps({
+        "docs": {"mappings": {"properties": {
+            "content-text": {"type": "text"}
+        }}}
+    }).encode()
+    _network(monkeypatch, {
+        "docs": (200, payload, "https_response_received")
+    })
+    report = discovery.diagnose(
+        _cfg(SRA_REFERENCE_TEXT_FIELD="content-text"), tmp_path)
+    assert report["results"][0]["mapping_probe"] == "PASS"
+
+
+def test_invalid_reference_field_uses_runtime_default_not_skip(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [docs]\n")
+    _network(monkeypatch)
+    report = discovery.diagnose(
+        _cfg(SRA_REFERENCE_TEXT_FIELD="../index"), tmp_path)
+    assert report["results"][0]["mapping_probe"] == "PASS"
+
+
+def test_cli_propagates_base_auth_failure_exit_one(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: _cfg())
+    monkeypatch.setattr(discovery, "diagnose", lambda *a, **k: {
+        "base_probe": {
+            "configuration": "RESOLVED", "https_probe": "PASS",
+            "auth": "FAIL", "tls_validation": "PASS",
+        }, "results": [], "mode": "PARTIAL_ONLY_NOT_ACCEPTANCE",
+    })
+    assert discovery.main([]) == 1
+    assert json.loads(capsys.readouterr().out)["base_probe"]["auth"] == "FAIL"
+
+
+def test_cli_propagates_invalid_endpoint_configuration_exit_one(
+        tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: _cfg())
+    monkeypatch.setattr(discovery, "diagnose", lambda *a, **k: {
+        "base_probe": {
+            "configuration": "INVALID", "https_probe": "SKIP",
+            "auth": "NOT_TESTED", "tls_validation": "NOT_TESTED",
+        }, "results": [], "mode": "PARTIAL_ONLY_NOT_ACCEPTANCE",
+    })
+    assert discovery.main([]) == 1
