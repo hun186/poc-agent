@@ -134,3 +134,10 @@
 - Formal Codex reviewed initial OFF-1C HEAD `8ba930831971` and raised two P2 findings: strict search 401/403 was incorrectly NOT_VERIFIED/exit 2; malformed/over-limit HTTP response bytes were collapsed into a generic transport-unavailable reason rather than failure.
 - Updated strict search classification to FAIL on HTTP 401/403 without claiming separate credentials outcome. Introduced a fixed response-framing exception and redacted response-invalid code for the optional strict search GET, retaining legacy Mapping/root semantics and NOT_VERIFIED for actual transport failures. Added raw HTTP framing tests, transport classification, CLI exit 1, no-leak and timeout regressions.
 - Current HEAD Hosted CI and fresh exact-head formal Codex review remain pending; do not claim CLEAN or merge. Air-gapped Linux execution remains untested.
+
+## 2026-10-24 OFF-1D bounded readiness matrix (review pending)
+
+- After PR #299 was merged to main at `dcdc8aa332e2fd9f74dd38f2a225fa2fab7d13a3` (Codex CLEAN; 742 pytest and 19 OFF-0 contract checks on the PR head), started `feat/sraf-off1d-readiness-matrix` as the next independent operator-only slice.
+- New `tools/sraf_airgap_off1d_readiness_matrix.py` reuses reviewed host disk / fixed ODBC library-file observations, configured API/ES/LLM private-IP TCP probes and bounded anonymous API /healthz, forming a fixed redacted dependency matrix. It is no-network by default; `--probe-network` explicitly opts in to a maximum of three TCP connects and one loopback HTTP health check, with independent checks continuing after unrelated failures.
+- SQL read, ES authenticated Mapping (existing separate tool only), model inventory/inference, real workers, Word outputs and air-gap isolation are explicitly NOT_TESTED and prevent any FULL_LIVE conclusion; matrix exits 1 for actual observed failures and 2 for incomplete (never 0). No private Linux acceptance, credentials, SQL mutation or production deployment.
+- Deterministic regression tests, workflow integration and operator runbook were added. Current exact-head Hosted CI / formal Codex Review must be verified before merge and are not yet attested here.
