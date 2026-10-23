@@ -73,3 +73,7 @@
 ## 2026-10-23 PR #298 remaining exact-head gates
 
 - Validate remediation of Codex P1+2 P2 on current HEAD through Hosted OFF-1B pytest/OFF-0 contract and fresh Codex review receipt for precisely the reviewed SHA. Reply to the three new findings and resolve threads only after verifying fixes; repeat until CLEAN or report outstanding issues. Keep PR unmerged and obtain real Linux read-only diagnosis only after separate operator-authorized deployment; no production mutation or FULL_LIVE claim.
+
+## 2026-10-23 PR #298 external YAML-path parity follow-up
+
+- Complete Hosted CI tests and exact-head Codex review on the explicit external config-path compatibility fix. Once tests pass, reply to the new P2 Finding, resolve its thread, re-request formal Codex review on latest SHA, and do not Merge without operator authorization. Operator-only Mapping and external-file identification remain NOT_FULL_LIVE; externally managed file provenance must be independently attested.
