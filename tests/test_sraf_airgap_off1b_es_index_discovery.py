@@ -472,6 +472,109 @@ default_indexes: [docs]
     assert notes == []
 
 
+
+@pytest.mark.parametrize("selector_source", ["default", "topic", "environment"])
+def test_runtime_default_e2e_fixture_name_conflict_fails_without_network(
+        tmp_path, monkeypatch, capsys, selector_source):
+    fixture = discovery.REQUIREMENT_E2E_INDEX
+    if selector_source == "default":
+        config = "default_indexes: [" + fixture + "]\n"
+        cfg = _cfg()
+    elif selector_source == "topic":
+        config = "topic_index_map:\n  job: {indexes: [" + fixture + "]}\n"
+        cfg = _cfg(ES_INDEX="normal_docs")
+    else:
+        config = "default_indexes: [normal_docs]\n"
+        cfg = _cfg(ES_INDEX=fixture)
+    _write_config(tmp_path, config)
+    selected, notes = discovery.discover(cfg, tmp_path)
+    assert selected == []
+    assert "e2e_production_selector_conflict" in notes
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("network attempted"))
+    monkeypatch.setattr(discovery.es, "_https_get",
+                        lambda *a, **k: pytest.fail("Mapping attempted"))
+    report = discovery.diagnose(cfg, tmp_path)
+    assert report["selector_discovery"] == "INVALID_CONFIG"
+    assert report["results"] == []
+    assert report["base_probe"]["https_probe"] == "SKIP"
+    assert fixture not in json.dumps(report)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: cfg)
+    assert discovery.main([]) == 1
+    assert json.loads(capsys.readouterr().out)[
+        "selector_discovery"] == "INVALID_CONFIG"
+
+
+def test_runtime_default_fixture_alias_is_conflict_not_compatible(
+        tmp_path, monkeypatch):
+    fixture = discovery.REQUIREMENT_E2E_INDEX
+    _write_config(tmp_path, "default_indexes: [production_alias]\n")
+    calls = _network(monkeypatch, {
+        "production_alias": (
+            200, _mapping(fixture), "https_response_received"),
+    })
+    report = discovery.diagnose(_cfg(), tmp_path)
+    assert calls == ["/production_alias/_mapping"]
+    assert len(report["results"]) == 1
+    assert report["results"][0]["mapping_probe"] == "FAIL"
+    assert report["results"][0]["selector_resolution"] == "FIXTURE_CONFLICT"
+    assert report["results"][0]["reason"] == "e2e_production_selector_conflict"
+    assert fixture not in json.dumps(report)
+
+
+def test_unconfigured_default_fixture_is_protected_but_not_probed(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [normal_docs]\n")
+    calls = _network(monkeypatch)
+    report = discovery.diagnose(_cfg(REQUIREMENT_E2E_ES_INDEX=""), tmp_path)
+    assert calls == ["/normal_docs/_mapping"]
+    assert len(report["results"]) == 1
+    assert report["results"][0]["mapping_probe"] == "PASS"
+
+
+@pytest.mark.parametrize("failure", ["forced-recursion", "deep-yaml"])
+def test_recursive_selected_yaml_is_invalid_config_without_network(
+        tmp_path, monkeypatch, capsys, failure):
+    _write_config(tmp_path, "default_indexes: [stale_index]\n")
+    depth = 1400
+    _write_config(
+        tmp_path,
+        "default_indexes: " + "[" * depth + "docs" + "]" * depth + "\n",
+        "indexes.production.yaml")
+    if failure == "forced-recursion":
+        actual_load = discovery.yaml.safe_load
+        def parser(stream):
+            if "indexes.production.yaml" in str(getattr(stream, "name", "")):
+                raise RecursionError("internal recursion details")
+            return actual_load(stream)
+        monkeypatch.setattr(discovery.yaml, "safe_load", parser)
+    cfg = _cfg(ES_INDEX="explicit_docs")
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("network attempted"))
+    monkeypatch.setattr(discovery.es, "_https_get",
+                        lambda *a, **k: pytest.fail("Mapping attempted"))
+    selected, notes = discovery.discover(cfg, tmp_path)
+    assert selected == []
+    assert "index_config_yaml_invalid" in notes
+    report = discovery.diagnose(cfg, tmp_path)
+    assert report["selector_discovery"] == "INVALID_CONFIG"
+    assert report["results"] == []
+    assert report["base_probe"]["https_probe"] == "SKIP"
+    assert "stale_index" not in json.dumps(report)
+    assert "explicit_docs" not in json.dumps(report)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: cfg)
+    assert discovery.main([]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["selector_discovery"] == "INVALID_CONFIG"
+    assert "internal recursion details" not in json.dumps(output)
+
+
 def test_unbounded_or_unsafe_selector_is_never_sent_or_reported(tmp_path, monkeypatch):
     _write_config(tmp_path, "default_indexes: ['*', '../private', 'good_docs']\n")
     targets, notes = discovery.discover(_cfg(), tmp_path)
