@@ -100,3 +100,8 @@
 - Codex completed formal review of `412b1be26dd8eee1b13e68ad08aea110ec2c1e02` and found one new P2: a later nonempty scalar/list YAML root invalidates the runtime's index loader but operator discovery continued using stale selectors from earlier files, potentially issuing authenticated Mapping GET.
 - Discovery now treats truthy non-object roots and YAML syntax parse errors as fatal `INVALID_CONFIG`: zero discovered selectors, zero network probes (even with explicit `ES_INDEX`/E2E selector), redacted notes, exit code 1. Falsy/empty YAML roots retain runtime's `safe_load(...) or {}` fallback. Regression tests include later invalid YAML/root, explicit external override, no network, no leaked names, and CLI exit.
 - Latest exact-head Hosted CI and formal Codex re-review are separate required gates; do not treat any test pass as live ES/RAG acceptance. No merge or Linux changes authorized.
+
+## 2026-10-23 OFF-1B review follow-up
+
+- Latest PR #298 Codex review of 9f01bed found two P2 problems: index lists defined as scalar values, and unreadable selected YAML, could cause stale configured targets to be diagnosed. Both are addressed in the discovery tool and tested; latest Hosted CI and formal review are still required.
+- No merge and no live deployment performed.
