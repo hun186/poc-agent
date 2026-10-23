@@ -1,6 +1,7 @@
 """Configured ES discovery: deterministic unit evidence only, NOT live acceptance."""
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -175,13 +176,15 @@ def test_readonly_search_rejects_untrusted_or_document_returning_payload(body):
     ((404, b'{"error": "secret"}', "https_response_received"),
      ("FAIL", "es_readonly_search_rejected")),
     ((401, b'{"error": "secret"}', "https_response_received"),
-     ("NOT_VERIFIED", "es_readonly_search_access_denied")),
+     ("FAIL", "es_readonly_search_access_denied")),
     ((403, b'{"error": "secret"}', "https_response_received"),
-     ("NOT_VERIFIED", "es_readonly_search_access_denied")),
+     ("FAIL", "es_readonly_search_access_denied")),
     ((429, b'{"error": "secret"}', "https_response_received"),
      ("NOT_VERIFIED", "es_readonly_search_http_unexpected")),
     ((None, None, "es_https_transport_unavailable"),
      ("NOT_VERIFIED", "es_readonly_search_transport_unavailable")),
+    ((None, None, "es_readonly_search_http_response_invalid"),
+     ("FAIL", "es_readonly_search_response_invalid")),
     ((None, None, "es_tls_identity_unverified"),
      ("NOT_VERIFIED", "readonly_search_tls_not_verified")),
 ])
@@ -198,6 +201,94 @@ def test_readonly_search_response_classifications_are_redacted(
     assert "TOP_SECRET" not in json.dumps(report)
     if response[2] == "es_tls_identity_unverified":
         assert report["base_probe"]["tls_validation"] == "FAIL"
+
+
+
+@pytest.mark.parametrize("status,reason,expected_probe", [
+    (401, "es_readonly_search_access_denied", "FAIL"),
+    (403, "es_readonly_search_access_denied", "FAIL"),
+    (None, "es_readonly_search_response_invalid", "FAIL"),
+])
+def test_readonly_query_rejections_exit_one_and_never_leak_body(
+        tmp_path, monkeypatch, capsys, status, reason, expected_probe):
+    _write_config(tmp_path, "default_indexes: [main_docs]\n")
+    response = ((status, b'{"error":"private_credential"}',
+                 "https_response_received") if status is not None else
+                (None, None, "es_readonly_search_http_response_invalid"))
+    _search_transport(monkeypatch, result=response)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: _cfg())
+    assert discovery.main(["--check-readonly-search", "--strict-ip-san"]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["results"][0]["query_probe"] == expected_probe
+    assert report["results"][0]["query_reason"] == reason
+    assert "private_credential" not in json.dumps(report)
+    assert "main_docs" not in json.dumps(report)
+    assert "TOP_SECRET" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("wire", [
+    # The TLS-established HTTP peer explicitly violates the search 64KiB
+    # budget; no body allocation is necessary after reading the headers.
+    ("fixed-overflow", b"HTTP/1.1 200 OK\r\nContent-Length: 65537\r\n\r\n"),
+    ("chunked-overflow", b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+     b"10001\r\n"),
+    ("malformed-length", b"HTTP/1.1 200 OK\r\nContent-Length: broken\r\n\r\n"),
+    ("conflicting-framing", b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"
+     b"Transfer-Encoding: chunked\r\n\r\n"),
+    ("invalid-status", b"INVALID 200 OK\r\nContent-Length: 2\r\n\r\n{}"),
+    ("unsupported-encoding", b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"
+     b"Content-Encoding: gzip\r\n\r\n{}"),
+])
+def test_search_http_wire_framing_errors_are_distinct_from_network_loss(wire):
+    label, payload = wire
+    async def read_wire():
+        reader = asyncio.StreamReader(limit=discovery.es.MAX_HEADERS)
+        reader.feed_data(payload)
+        reader.feed_eof()
+        return await discovery.es._read_http_response(
+            reader, "/main_docs" + discovery._READONLY_SEARCH_SUFFIX)
+    with pytest.raises(discovery.es._InvalidHTTPResponse):
+        asyncio.run(read_wire())
+
+
+def test_search_https_transport_returns_fixed_redacted_framing_error(
+        tmp_path, monkeypatch):
+    async def bad_reply(*args, **kwargs):
+        raise discovery.es._InvalidHTTPResponse("internal/private/es/response")
+    monkeypatch.setattr(discovery.es, "_one_https_get", bad_reply)
+    monkeypatch.setattr(
+        discovery.es.ssl, "create_default_context",
+        lambda **kwargs: discovery.es.ssl.SSLContext(
+            discovery.es.ssl.PROTOCOL_TLS_CLIENT),
+    )
+    query = "/main_docs" + discovery._READONLY_SEARCH_SUFFIX
+    res = discovery.es._https_get(
+        "192.168.10.5", 9200, query,
+        "operator", "TOP_SECRET", tmp_path / "ca.pem")
+    assert res == (None, None, "es_readonly_search_http_response_invalid")
+    mapping = discovery.es._https_get(
+        "192.168.10.5", 9200, "/main_docs/_mapping",
+        "operator", "TOP_SECRET", tmp_path / "ca.pem")
+    assert mapping == (None, None, "es_https_transport_unavailable")
+
+
+def test_search_https_timeout_remains_not_verified(tmp_path, monkeypatch):
+    async def unavailable(*args, **kwargs):
+        raise TimeoutError("some private address")
+    monkeypatch.setattr(discovery.es, "_one_https_get", unavailable)
+    monkeypatch.setattr(
+        discovery.es.ssl, "create_default_context",
+        lambda **kwargs: discovery.es.ssl.SSLContext(
+            discovery.es.ssl.PROTOCOL_TLS_CLIENT),
+    )
+    assert discovery.es._https_get(
+        "192.168.10.5", 9200,
+        "/main_docs" + discovery._READONLY_SEARCH_SUFFIX,
+        "operator", "TOP_SECRET", tmp_path / "ca.pem",
+    ) == (None, None, "es_https_transport_unavailable")
 
 
 def test_readonly_query_skips_if_mapping_bad_or_tls_not_verified(
