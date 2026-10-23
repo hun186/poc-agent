@@ -87,3 +87,7 @@
 - Runtime still has a hardcoded default development-index fallback when neither `ES_INDEX` nor canonical YAML `default_indexes` is configured. The configured-target discovery reports `runtime_default_fallback_not_attested` instead of inventing a production target.
 - `config/indexes.yaml` currently contains legacy singular `default_index`, while `config.index_loader.load_index_mapping` recognizes plural `default_indexes`. New operator tool reports the ignored spelling; runtime config migration is a separately reviewed change.
 - Mapping-only role checks do not demonstrate live RAG query success, multidimensional writer compatibility, historical-index retirement, Basic negative credential control or FULL_LIVE deployment acceptance. Distinguish these unfinished checks in operator reports; no automatic index removal or write probes.
+
+## 2026-10-23 OFF-1B Codex review trust findings
+
+- PR #298 Codex exact-head review on `1d8beaa5` found three open issues (P1 late Mapping SAN warning lost on fixture alias early exit; P2 identity-unverified 404/incompatible Mapping classified as definitive FAIL; P2 numeric YAML selector normalization mismatch). Fixes and regression tests are committed on the PR branch, but **latest Hosted CI and new formal review must independently verify them**. Neither static Mapping nor WARN_ONLY TLS can prove real Elasticsearch identity or FULL_LIVE readiness.
