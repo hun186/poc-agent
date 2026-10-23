@@ -390,8 +390,86 @@ def test_explicit_e2e_fixture_is_separate_and_conflict_is_not_accepted(tmp_path)
     assert notes == []
     targets2, notes2 = discovery.discover(_cfg(
         REQUIREMENT_E2E_ES_INDEX="main_docs"), tmp_path)
-    assert len(targets2) == 1
+    assert targets2 == []
     assert "e2e_production_selector_conflict" in notes2
+
+
+
+@pytest.mark.parametrize("yaml_text,extra", [
+    ("default_indexes: [production_fixture]\n", {}),
+    ("topic_index_map:\n  sea: {indexes: [production_fixture]}\n",
+     {"ES_INDEX": "production_main"}),
+    ("default_indexes: [production_main, production_fixture]\n", {}),
+])
+def test_literal_fixture_conflict_is_invalid_without_network(
+        tmp_path, monkeypatch, capsys, yaml_text, extra):
+    _write_config(tmp_path, yaml_text)
+    cfg = _cfg(REQUIREMENT_E2E_ES_INDEX="production_fixture", **extra)
+    selected, notes = discovery.discover(cfg, tmp_path)
+    assert selected == []
+    assert "e2e_production_selector_conflict" in notes
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("ES connection attempted"))
+    monkeypatch.setattr(discovery.es, "_https_get",
+                        lambda *a, **k: pytest.fail("Mapping GET attempted"))
+    report = discovery.diagnose(cfg, tmp_path, show_index_names=True)
+    assert report["selector_discovery"] == "INVALID_CONFIG"
+    assert report["results"] == []
+    assert report["base_probe"]["https_probe"] == "SKIP"
+    assert report["feature_acceptance"] == "NOT_TESTED"
+    output = json.dumps(report)
+    assert "production_fixture" not in output
+    assert "production_main" not in output
+    assert "TOP_SECRET" not in output
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: cfg)
+    assert discovery.main([]) == 1
+    assert json.loads(capsys.readouterr().out)[
+        "selector_discovery"] == "INVALID_CONFIG"
+
+
+def test_nonstring_topic_keys_produce_runtime_selected_indices(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, """topic_index_map:
+  123: {indexes: [topic_numeric]}
+  true: {indexes: [topic_boolean]}
+default_indexes: [main_docs]
+""")
+    selected, notes = discovery.discover(_cfg(), tmp_path)
+    assert [v["_selector"] for v in selected] == [
+        "main_docs", "topic_numeric", "topic_boolean",
+    ]
+    assert "topic_config_invalid" not in notes
+    calls = _network(monkeypatch)
+    report = discovery.diagnose(_cfg(), tmp_path)
+    assert calls == [
+        "/main_docs/_mapping", "/topic_numeric/_mapping",
+        "/topic_boolean/_mapping",
+    ]
+    assert [v["mapping_probe"] for v in report["results"]] == [
+        "PASS", "PASS", "PASS",
+    ]
+    exposed = json.dumps(report)
+    for hidden in ("main_docs", "topic_numeric", "topic_boolean",
+                   "TOP_SECRET"):
+        assert hidden not in exposed
+
+
+def test_numeric_topic_key_merges_across_selected_configs(tmp_path):
+    _write_config(tmp_path, """topic_index_map:
+  123: {indexes: [first_numeric]}
+default_indexes: [docs]
+""")
+    _write_config(tmp_path, """topic_index_map:
+  123: {indexes: [second_numeric]}
+""", "indexes.production.yaml")
+    selected, notes = discovery.discover(_cfg(), tmp_path)
+    assert [v["_selector"] for v in selected] == [
+        "docs", "first_numeric", "second_numeric",
+    ]
+    assert notes == []
 
 
 def test_unbounded_or_unsafe_selector_is_never_sent_or_reported(tmp_path, monkeypatch):
