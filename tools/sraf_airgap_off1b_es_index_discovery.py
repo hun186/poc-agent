@@ -71,12 +71,22 @@ def _load_declarations(root: Path, cfg: Mapping[str, str]) -> tuple[dict[str, An
     notes: list[str] = []
     merged: dict[str, Any] = {"topic_index_map": {}, "default_indexes": []}
     paths = index_config_paths(root, cfg, selector_base=root)
+    # Runtime accepts explicitly selected absolute paths outside the checkout.
+    # The implicit built-in defaults remain checkout-local. External files
+    # are not evidence of release provenance, even if they can be diagnosed.
+    explicit_override = bool(
+        cfg.get("INDEXES_CONFIG") or cfg.get("INDEX_CONFIG")
+        or cfg.get("INDEXES_CONFIGS")
+    )
     if len(paths) > MAX_CONFIG_FILES:
         return merged, ["index_config_file_budget_exceeded"]
     for path in paths:
         try:
-            # Restrict this operator tool to the attested repository root.
-            path.relative_to(root.resolve())
+            if not path.is_relative_to(root.resolve()):
+                if not explicit_override:
+                    notes.append("index_config_outside_checkout_not_selected")
+                    continue
+                notes.append("external_index_config_not_release_attested")
             if path.is_symlink():
                 notes.append("index_config_symlink_not_read")
                 continue
