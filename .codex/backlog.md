@@ -62,3 +62,39 @@
 - 2026-10-22 PR #296 final gate before operator-authorized merge: check exact-head Hosted Actions PASS plus Codex completion on fix to previous SAN warning loss for a later auth/mapping connection failure. Distinguish old SAN observation WARN from genuine later certificate verification FAIL. After merge, user will pull and incrementally deploy manually; obtain actual private ES TLS/auth/Mapping partial evidence and do not mark FULL_LIVE based on Quick warning mode.
 
 - 2026-10-22 PR #297: verify safely decoded HTTP/1.1 chunked ES Mapping responses with exact-head Hosted tests, Codex review, and operator deployment. Keep conflicting CL/TE, stacked codings, truncated bodies, oversize payloads, malformed CRLF and trailers rejected. Root/auth remain 64KiB, Mapping <=2MiB, 3s deadline. Re-run Linux CLI after explicit authorized Merge; `tls_validation=WARN` remains a non-authoritative result, not FULL_LIVE; separate true Mapping compatibility still pending.
+
+
+## 2026-10-22 ES configured-index discovery review / remaining work
+
+- Verify new `feat/sraf-off1b-es-index-discovery` HEAD with OFF-1B targeted pytest, Hosted CI exact-head and clean Codex review, then resolve findings. Do not merge without operator instruction; no Linux changes.
+- After explicit deployment authorization, run `python tools/sraf_airgap_off1b_es_index_discovery.py` on real air-gapped host and reconcile actual configured indexes, aliases, and roles. Historic `satmeta` may be required as default until live call-chain evidence proves otherwise; do not label it retired from the name or mapping alone.
+- Future independent slices: bounded operator-authorized read-only query capability, evidence-linked alias/selector verification, authorized E2E isolation, and dependency-aware orchestration of SQL/LLM/API/workers/Word checks with no false FULL_LIVE success.
+
+## 2026-10-23 PR #298 remaining exact-head gates
+
+- Validate remediation of Codex P1+2 P2 on current HEAD through Hosted OFF-1B pytest/OFF-0 contract and fresh Codex review receipt for precisely the reviewed SHA. Reply to the three new findings and resolve threads only after verifying fixes; repeat until CLEAN or report outstanding issues. Keep PR unmerged and obtain real Linux read-only diagnosis only after separate operator-authorized deployment; no production mutation or FULL_LIVE claim.
+
+## 2026-10-23 PR #298 external YAML-path parity follow-up
+
+- Complete Hosted CI tests and exact-head Codex review on the explicit external config-path compatibility fix. Once tests pass, reply to the new P2 Finding, resolve its thread, re-request formal Codex review on latest SHA, and do not Merge without operator authorization. Operator-only Mapping and external-file identification remain NOT_FULL_LIVE; externally managed file provenance must be independently attested.
+
+## 2026-10-23 PR #298 selected YAML failure gate
+
+- Verify current exact-head OFF-1B Hosted CI after fail-closed YAML-root changes; reply to Codex ninth P2 and resolve its review thread only after verification. Request new formal exact-head Codex Review, fix any outstanding P1/P2 before seeking explicit merge authorization. Keep static diagnosis `PARTIAL_ONLY_NOT_ACCEPTANCE`, no Linux/ES changes.
+
+## 2026-10-23 OFF-1B PR #298 verification
+
+- Check Hosted CI on the current exact PR HEAD for index type and YAML read-error fixes; review and resolve two newly raised Codex P2 comments after tests pass.
+- Request formal Codex review on the latest commit, and continue findings remediation without merging. On-host production acceptance remains separately unverified.
+
+## 2026-10-23 PR #298 latest review gate
+
+- Verify exact HEAD after literal-fixture-collision and numeric-topic-key fixes with Hosted OFF-1B/ OFF-0 tests; reply to new P2 comments, review previous unresolved threads, and retry resolution when possible. Submit exact-head formal Codex review after CI. No merge without explicit authorization and no FULL_LIVE claim.
+
+## 2026-10-23 PR #298 next review gates
+
+- Check exact-head Hosted CI for default fixture protection and recursive YAML failure classification; answer and resolve two new P2 threads and submit formal Codex review of latest HEAD only after CI passes. Correct any further P1/P2 findings before authorized merge. The operator probe remains PARTIAL_ONLY_NOT_ACCEPTANCE with no change to air-gapped Linux deployment.
+
+## 2026-10-23 PR #298 latest review gate — fixture naming
+
+- Confirm latest exact-head Hosted CI for shared Runtime E2E fixture naming rule and operator fail-closed validation. Reply to the new P2 Finding, resolve its thread, and request formal exact-head Codex Review after CI passes. Fix further P1/P2 findings; no Merge or FULL_LIVE claims without explicit authorization and evidence.

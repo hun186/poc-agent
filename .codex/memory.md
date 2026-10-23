@@ -75,3 +75,50 @@
 - 2026-10-22 PR #297 second Codex review on head 00cb19a0 found P2 `Reject non-identity response encodings`: the decoder could accept JSON bytes with a contradictory `Content-Encoding: gzip`, leading to false Mapping success. Fixed by validating at most one `Content-Encoding`, strictly `identity` case-insensitively, or no content encoding; reject gzip/deflate/br/stacked/duplicate before reading bodies. Added 18 pytest cases spanning fixed-length + chunked content and regression acceptance of identity/absent. The user's actual live Mapping header said `Content-Encoding: IDENTITY`. Need new exact-head Hosted CI and formal Codex re-review; PR not merged.
 
 - 2026-10-22 PR #297 Codex latest exact-head review at 37125ae12fcbcec28a15c71f5bde1621ad8f9b54 completed with one new P2: chunk-extension acceptance only required printable ASCII, so malformed `1;foo==bar` could be parsed and allow false Mapping PASS. Fixed by reusing the audited `_CHUNK_HEAD` RFC-token subset from OFF-1 while retaining a stricter 8-hex-digit chunk-size cap. Added 9 invalid and 7 valid token/zero-chunk extension tests; exact-head Hosted CI/official re-review still required; PR remains unmerged.
+
+
+## 2026-10-22 OFF-1B configured index discovery (in review)
+
+- New branch `feat/sraf-off1b-es-index-discovery` starts from merged PR #297 main. It introduces operator-only `tools/sraf_airgap_off1b_es_index_discovery.py` with bounded selected-runtime ES targets, differentiated default/topic/E2E roles, safe mapping-only partial diagnostics, per-index continuation and redacted JSON. Existing single-index OFF-1B behavior is unchanged; its preflight gained opt-in `skip_mapping` reuse. No Linux deployment, ES mutation, or FULL_LIVE acceptance is claimed.
+- Runtime `agent/es/es_client.py` aggregates `ES_INDEX` and `INDEX_CONFIG.topic_index_map`; index_loader merges selected index YAMLs additively by topic and honors `default_indexes`, not legacy singular `default_index`. Operator discovery deliberately leaves unspecified runtime's hardcoded development fallback UNRESOLVED and does not assume any development index is present in production.
+- Hosted CI and exact-head Codex Review of this branch remain pending and must be checked against current HEAD before merge; Linux evidence remains separate.
+
+## 2026-10-23 PR #298 exact-head Codex findings and remediation (pending verification)
+
+- Formal Codex review completed for `1d8beaa52dbab672ecffb361045cad1a110633f8` with one P1 (late SAN warning bypassed by fixture-conflict early exit) and two P2 (identity-unverified negative Mapping incorrectly FAIL; YAML numeric index selectors dropped). Prior four P2 threads had been resolved; these three are newly raised.
+- OFF-1B discovery now records SAN mismatches immediately after each Mapping request, downgrades response-derived positive and negative Mapping verdicts to advisory WARN when peer identity is unverified, and mirrors runtime scalar-to-string YAML selector normalization without loading or printing secret-prone runtime config. Added regression tests for late SAN/fixture conflict, base/late warning with negative Mapping evidence, independent continuation, CLI partial exit and numeric YAML selectors.
+- Hosted CI on the remediation branch and fresh exact-head Codex re-review remain pending until verified. This is operator-only PARTIAL_ONLY_NOT_ACCEPTANCE; no Linux or ES changes and no merge authorized.
+
+## 2026-10-23 PR #298 later exact-head review — external deployment index config
+
+- Codex completed review on `7f35d4555a224e4b32cb92f38502b89567121be8` and identified one new P2: discovery rejected explicitly selected `INDEXES_CONFIG`/`INDEX_CONFIG`/`INDEXES_CONFIGS` YAML files outside the repository, despite the runtime accepting their resolved paths.
+- Corrected selected-file reading policy: implicit defaults must stay checkout-local; *explicitly* selected external YAMLs may be read under the unchanged 8-file/256-KiB/read-only bounded policy, and are flagged `external_index_config_not_release_attested`. No external file or selector names are included in default logs; deployment provenance still requires separate attestation.
+- Added regressions for all three explicit selector keys, external multi-file order/topic additive merge, oversized YAML and implicit symlink escape. Hosted CI and formal exact-head Codex re-review of these latest edits remain pending. PR #298 remains unmerged; no Linux/full-live claims.
+
+## 2026-10-23 PR #298 ninth Finding (pending final review)
+
+- Codex completed formal review of `412b1be26dd8eee1b13e68ad08aea110ec2c1e02` and found one new P2: a later nonempty scalar/list YAML root invalidates the runtime's index loader but operator discovery continued using stale selectors from earlier files, potentially issuing authenticated Mapping GET.
+- Discovery now treats truthy non-object roots and YAML syntax parse errors as fatal `INVALID_CONFIG`: zero discovered selectors, zero network probes (even with explicit `ES_INDEX`/E2E selector), redacted notes, exit code 1. Falsy/empty YAML roots retain runtime's `safe_load(...) or {}` fallback. Regression tests include later invalid YAML/root, explicit external override, no network, no leaked names, and CLI exit.
+- Latest exact-head Hosted CI and formal Codex re-review are separate required gates; do not treat any test pass as live ES/RAG acceptance. No merge or Linux changes authorized.
+
+## 2026-10-23 OFF-1B review follow-up
+
+- Latest PR #298 Codex review of 9f01bed found two P2 problems: index lists defined as scalar values, and unreadable selected YAML, could cause stale configured targets to be diagnosed. Both are addressed in the discovery tool and tested; latest Hosted CI and formal review are still required.
+- No merge and no live deployment performed.
+
+## 2026-10-23 PR #298 formal Codex review of 297870df
+
+- Review completed with two P2: literal overlap between a production selector and REQUIREMENT_E2E_ES_INDEX was noted but not made fatal; integer YAML topic keys were dropped though the runtime loader retained them.
+- PR branch remediation makes a literal fixture collision INVALID_CONFIG/exit 1 with zero network access; non-string hashable topic keys now retain their index values without exposing keys. Regression tests cover no network, redaction, CLI failure, numeric/boolean keys and additive merge. Hosted CI and fresh exact-head formal review are pending. No merge or Linux deployment.
+
+## 2026-10-23 PR #298 default-fixture and recursive-YAML findings
+
+- Formal Codex review on `912059cd` completed with two new P2 findings: default Requirement E2E fixture (when no environment override) was not protected from literal/alias production collisions, and YAML recursion depth failures reached the generic incomplete exit instead of invalid configuration.
+- The discovery tool now uses the same built-in default E2E fixture constant as the Runtime with the effective deployment config override, protects both literal and resolved alias conflicts, and does not issue extra probes to an unconfigured fixture. Recursive YAML parse failures are classified as invalid config, clear all stale selector targets, block ES network, and exit 1.
+- Regression cases cover all production selection sources, default fixture alias, no extra implicit network probes, forced and deep YAML recursion, status and redaction. Current Hosted CI and new formal exact-HEAD Codex review are separate pending gates. PR not merged; no on-host production acceptance.
+
+## 2026-10-23 PR #298 E2E fixture naming parity follow-up
+
+- Codex review completed on `35407f23bba2a27a3b5cdab3abc731c759012c05`, raising one P2: selected E2E fixture names could be syntactically safe for Elasticsearch but invalid under the runtime's `requirement_e2e_[a-z0-9._-]{1,238}` contract.
+- The runtime and operator diagnostic now share a compiled E2E index regex pattern from `agent.external_capabilities`. An invalid effective E2E fixture name blocks discovery and all Elasticsearch network probes, yields redacted `e2e_selector_invalid` / `INVALID_CONFIG` and CLI exit 1. Existing valid fixture tests were migrated to runtime-valid names; regression cases verify invalid variants, no secret leakage, no network and runtime parity.
+- Hosted CI and fresh formal Codex review on latest HEAD are distinct required gates. The PR remains unmerged; no Linux or real Elasticsearch acceptance was run.
