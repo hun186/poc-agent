@@ -145,6 +145,82 @@ topic_index_map:
     assert "external_index_config_not_release_attested" in notes
 
 
+
+@pytest.mark.parametrize("invalid_content", [
+    "- malformed\n",
+    "disabled\n",
+    "bad: [unclosed\n",
+])
+def test_invalid_later_selected_yaml_aborts_all_selector_probes(
+        tmp_path, monkeypatch, invalid_content, capsys):
+    _write_config(tmp_path, """default_indexes: [stale_index]
+topic_index_map:
+  other: {indexes: [old_topic]}
+""")
+    _write_config(tmp_path, invalid_content, "indexes.production.yaml")
+    cfg = _cfg(ES_INDEX="explicit_active",
+               REQUIREMENT_E2E_ES_INDEX="fixture_target")
+    targets, notes = discovery.discover(cfg, tmp_path)
+    assert targets == []
+    assert any(n in notes for n in (
+        "index_config_invalid_root", "index_config_yaml_invalid",
+    ))
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("stale ES request attempted"))
+    monkeypatch.setattr(discovery.es, "_https_get",
+                        lambda *a, **k: pytest.fail("stale Mapping GET attempted"))
+    report = discovery.diagnose(cfg, tmp_path)
+    assert report["selector_discovery"] == "INVALID_CONFIG"
+    assert report["results"] == []
+    assert report["feature_acceptance"] == "NOT_TESTED"
+    assert report["base_probe"]["https_probe"] == "SKIP"
+    visible = json.dumps(report)
+    for secret in ("stale_index", "old_topic", "explicit_active",
+                   "fixture_target", "TOP_SECRET"):
+        assert secret not in visible
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: cfg)
+    assert discovery.main([]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["selector_discovery"] == "INVALID_CONFIG"
+
+
+@pytest.mark.parametrize("empty_content", ["", "null\n", "[]\n", "0\n"])
+def test_empty_yaml_root_follows_runtime_empty_mapping_fallback(
+        tmp_path, empty_content):
+    _write_config(tmp_path, "default_indexes: [retained]\n")
+    _write_config(tmp_path, empty_content, "indexes.production.yaml")
+    targets, notes = discovery.discover(_cfg(), tmp_path)
+    assert [v["_selector"] for v in targets] == ["retained"]
+    assert "index_config_invalid_root" not in notes
+    assert "index_config_yaml_invalid" not in notes
+
+
+def test_invalid_external_yaml_root_blocks_prior_file_and_network(
+        tmp_path, monkeypatch):
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    managed = tmp_path / "managed"
+    managed.mkdir()
+    good = managed / "base.yaml"
+    broken = managed / "override.yaml"
+    good.write_text("default_indexes: [stale_external]\n", encoding="utf-8")
+    broken.write_text("- malformed\n", encoding="utf-8")
+    cfg = _cfg(INDEXES_CONFIGS=f"{good},{broken}",
+               ES_INDEX="explicit_active")
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("network attempted"))
+    report = discovery.diagnose(cfg, repo)
+    assert report["selector_discovery"] == "INVALID_CONFIG"
+    assert report["results"] == []
+    assert "external_index_config_not_release_attested" in report["notes"]
+    assert "index_config_invalid_root" in report["notes"]
+    assert str(good) not in json.dumps(report)
+    assert str(broken) not in json.dumps(report)
+
+
 def test_external_selected_config_oversize_is_not_read(tmp_path):
     repo = tmp_path / "checkout"
     repo.mkdir()
