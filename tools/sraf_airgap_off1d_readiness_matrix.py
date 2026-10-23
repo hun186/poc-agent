@@ -141,6 +141,12 @@ def _api_health(cfg: dict[str, str], *, probe_network: bool,
                     and obs.get("http_method") == "GET"
                     and obs.get("healthz_endpoint") == "/healthz"):
                 status = "PASS"
+            elif obs.get("configuration") == "INVALID":
+                status, reason = "FAIL", "configuration_invalid"
+            elif (type(obs.get("http_status")) is int
+                  and 100 <= obs["http_status"] <= 599
+                  and obs["http_status"] != 200):
+                status, reason = "FAIL", "healthz_http_not_200"
             else:
                 status, reason = "SKIP", "unexpected_probe_result"
         elif obs.get("configuration") == "INVALID":
