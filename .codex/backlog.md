@@ -81,3 +81,8 @@
 ## 2026-10-23 PR #298 selected YAML failure gate
 
 - Verify current exact-head OFF-1B Hosted CI after fail-closed YAML-root changes; reply to Codex ninth P2 and resolve its review thread only after verification. Request new formal exact-head Codex Review, fix any outstanding P1/P2 before seeking explicit merge authorization. Keep static diagnosis `PARTIAL_ONLY_NOT_ACCEPTANCE`, no Linux/ES changes.
+
+## 2026-10-23 OFF-1B PR #298 verification
+
+- Check Hosted CI on the current exact PR HEAD for index type and YAML read-error fixes; review and resolve two newly raised Codex P2 comments after tests pass.
+- Request formal Codex review on the latest commit, and continue findings remediation without merging. On-host production acceptance remains separately unverified.
