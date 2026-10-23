@@ -180,32 +180,40 @@ async def _one_https_get(host: str, port: int, path: str,
         )
         writer.write(request.encode("ascii"))
         await writer.drain()
-        # Once TLS and Basic transmission have completed, retain a distinct
-        # fixed classification for malformed/over-budget *response bytes*.
-        # Do not report connection loss or TLS handshake failure as a bad
-        # HTTP response, and never include server data in this exception.
-        try:
-            header = await reader.readuntil(b"\r\n\r\n")
-            if len(header) > MAX_HEADERS or b"\n" in header.replace(b"\r\n", b""):
-                raise ValueError("invalid_http_headers")
-            parts = header[:-4].split(b"\r\n")
-            match = re.fullmatch(rb"HTTP/1\.[01] ([1-5][0-9]{2}) [\t\x20-\x7e\x80-\xff]*", parts[0])
-            if match is None:
-                raise ValueError("invalid_http_status")
-            status = int(match.group(1))
-            max_body = MAX_MAPPING_BODY if path.endswith("/_mapping") else MAX_BODY
-            version = parts[0].split(b" ", 1)[0]
-            body = await _read_http_body(
-                reader, parts[1:], max_body, http_version=version,
-            )
-            return status, body
-        except (ValueError, asyncio.LimitOverrunError) as exc:
-            raise _InvalidHTTPResponse("invalid_http_response") from exc
+        return await _read_http_response(reader, path)
     finally:
         if writer is not None:
             writer.close()
         else:
             sock.close()
+
+
+async def _read_http_response(
+        reader: asyncio.StreamReader, path: str) -> tuple[int, bytes]:
+    """Parse one verified-peer HTTP reply; classify framing errors separately.
+
+    The parser uses bounded headers and entity framing. Actual socket loss
+    and timeout propagate to the transport handler as inconclusive evidence.
+    """
+    try:
+        header = await reader.readuntil(b"\r\n\r\n")
+        if len(header) > MAX_HEADERS or b"\n" in header.replace(b"\r\n", b""):
+            raise ValueError("invalid_http_headers")
+        parts = header[:-4].split(b"\r\n")
+        match = re.fullmatch(
+            rb"HTTP/1\.[01] ([1-5][0-9]{2}) [\t\x20-\x7e\x80-\xff]*",
+            parts[0],
+        )
+        if match is None:
+            raise ValueError("invalid_http_status")
+        status = int(match.group(1))
+        limit = MAX_MAPPING_BODY if path.endswith("/_mapping") else MAX_BODY
+        version = parts[0].split(b" ", 1)[0]
+        return status, await _read_http_body(
+            reader, parts[1:], limit, http_version=version,
+        )
+    except (ValueError, asyncio.LimitOverrunError) as exc:
+        raise _InvalidHTTPResponse("invalid_http_response") from exc
 
 
 async def _read_http_body(reader: asyncio.StreamReader,
