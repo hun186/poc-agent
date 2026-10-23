@@ -128,3 +128,9 @@
 - PR #298 was merged into `main` at merge commit `f0a57fc910655990db2be426ca067f5dbd816776`, after Codex CLEAN on exact HEAD `ea53992f`, 16/16 resolved threads, and Hosted 707 pytest/19 OFF-0 PASS. No Linux rollout was performed.
 - Next independent OFF-1C branch `feat/sraf-off1c-readonly-search-preflight` extends the existing operator-only index diagnostics with `--check-readonly-search --strict-ip-san`. The optional request is a single fixed-size-zero, no-hit Elasticsearch GET on the first required literal selected index after Mapping checks, with strict CA+IP SAN identity and existing fixed private-IP transport. Without explicit flags, old behavior is unchanged. Never log hits/credentials or imply full RAG/LLM/SQL/Word acceptance.
 - Regression tests added for opt-in, wrong/valid data formats, status codes, no additional request in unsafe modes, CLI exit handling and redaction. Latest Hosted CI, formal review and actual operator Linux evidence remain **not yet verified**. No merge authorized for this new branch.
+
+## 2026-10-23 PR #299 first formal Codex review remediation
+
+- Formal Codex reviewed initial OFF-1C HEAD `8ba930831971` and raised two P2 findings: strict search 401/403 was incorrectly NOT_VERIFIED/exit 2; malformed/over-limit HTTP response bytes were collapsed into a generic transport-unavailable reason rather than failure.
+- Updated strict search classification to FAIL on HTTP 401/403 without claiming separate credentials outcome. Introduced a fixed response-framing exception and redacted response-invalid code for the optional strict search GET, retaining legacy Mapping/root semantics and NOT_VERIFIED for actual transport failures. Added raw HTTP framing tests, transport classification, CLI exit 1, no-leak and timeout regressions.
+- Current HEAD Hosted CI and fresh exact-head formal Codex review remain pending; do not claim CLEAN or merge. Air-gapped Linux execution remains untested.
