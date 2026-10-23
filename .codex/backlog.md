@@ -94,3 +94,7 @@
 ## 2026-10-23 PR #298 next review gates
 
 - Check exact-head Hosted CI for default fixture protection and recursive YAML failure classification; answer and resolve two new P2 threads and submit formal Codex review of latest HEAD only after CI passes. Correct any further P1/P2 findings before authorized merge. The operator probe remains PARTIAL_ONLY_NOT_ACCEPTANCE with no change to air-gapped Linux deployment.
+
+## 2026-10-23 PR #298 latest review gate — fixture naming
+
+- Confirm latest exact-head Hosted CI for shared Runtime E2E fixture naming rule and operator fail-closed validation. Reply to the new P2 Finding, resolve its thread, and request formal exact-head Codex Review after CI passes. Fix further P1/P2 findings; no Merge or FULL_LIVE claims without explicit authorization and evidence.
