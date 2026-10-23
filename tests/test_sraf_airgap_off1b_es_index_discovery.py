@@ -396,6 +396,65 @@ def test_explicit_e2e_fixture_is_separate_and_conflict_is_not_accepted(tmp_path)
 
 
 
+
+@pytest.mark.parametrize("bad_fixture", [
+    "fixture_target",
+    "requirement_e2e_",
+    "requirement_e2e_Bad",
+    "requirement_e2e_" + "a" * 239,
+    "requirement_e2e_unsupported+value",
+])
+def test_invalid_explicit_e2e_name_blocks_all_authenticated_probes(
+        tmp_path, monkeypatch, capsys, bad_fixture):
+    from agent.external_capabilities import (
+        CapabilityError, requirement_e2e_es_index,
+    )
+    _write_config(tmp_path, "default_indexes: [production_docs]\n")
+    monkeypatch.setenv("REQUIREMENT_E2E_ES_INDEX", bad_fixture)
+    with pytest.raises(CapabilityError) as error:
+        requirement_e2e_es_index()
+    assert str(error.value) == "elasticsearch_acceptance_index_invalid"
+    cfg = _cfg(ES_INDEX="runtime_docs", REQUIREMENT_E2E_ES_INDEX=bad_fixture)
+    targets, notes = discovery.discover(cfg, tmp_path)
+    assert targets == []
+    assert "e2e_selector_invalid" in notes
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("ES connection attempted"))
+    monkeypatch.setattr(discovery.es, "_https_get",
+                        lambda *a, **k: pytest.fail("Mapping attempted"))
+    report = discovery.diagnose(cfg, tmp_path, show_index_names=True)
+    assert report["selector_discovery"] == "INVALID_CONFIG"
+    assert report["results"] == []
+    assert report["base_probe"]["https_probe"] == "SKIP"
+    assert report["feature_acceptance"] == "NOT_TESTED"
+    output = json.dumps(report)
+    for secret in ("production_docs", "runtime_docs", bad_fixture, "TOP_SECRET"):
+        assert secret not in output
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: cfg)
+    assert discovery.main([]) == 1
+    assert json.loads(capsys.readouterr().out)[
+        "selector_discovery"] == "INVALID_CONFIG"
+
+
+def test_runtime_valid_explicit_e2e_name_matches_discovery(tmp_path, monkeypatch):
+    from agent.external_capabilities import requirement_e2e_es_index
+
+    candidate = "requirement_e2e_valid-foo.1"
+    monkeypatch.setenv("REQUIREMENT_E2E_ES_INDEX", candidate)
+    assert requirement_e2e_es_index() == candidate
+    _write_config(tmp_path, "default_indexes: [production_docs]\n")
+    cfg = _cfg(REQUIREMENT_E2E_ES_INDEX=candidate)
+    targets, notes = discovery.discover(cfg, tmp_path)
+    assert [t["_selector"] for t in targets] == [
+        "production_docs", candidate,
+    ]
+    assert targets[-1]["classification"] == "E2E_FIXTURE"
+    assert "e2e_selector_invalid" not in notes
+
+
 @pytest.mark.parametrize("yaml_text,extra", [
     ("default_indexes: [requirement_e2e_production_fixture]\n", {}),
     ("topic_index_map:\n  sea: {indexes: [requirement_e2e_production_fixture]}\n",
