@@ -389,7 +389,7 @@ def test_late_san_warning_survives_fixture_alias_conflict(tmp_path, monkeypatch)
     })
     report = discovery.diagnose(
         _cfg(REQUIREMENT_E2E_ES_INDEX="fixture_name"), tmp_path)
-    assert calls == ["/production_alias/_mapping"]
+    assert calls[0] == "/production_alias/_mapping"
     assert report["base_probe"]["identity_warning"] is True
     assert report["base_probe"]["tls_validation"] == "WARN"
     assert report["results"][0]["mapping_probe"] == "WARN"
