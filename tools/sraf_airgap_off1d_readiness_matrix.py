@@ -58,10 +58,17 @@ def _reason(value: Any) -> str:
 def _record(key: str, component: str, aspect: str, status: str, reason: str,
             *, executed: bool = False, depends_on: tuple[str, ...] = ()
             ) -> dict[str, Any]:
-    if status not in STATUSES or reason not in REASONS:
-        # Unknown or future probe schemas cannot self-upgrade this matrix
-        # to a success merely by returning a PASS-looking token.
+    if not isinstance(status, str) or status not in STATUSES:
+        # An unknown status is not credible evidence. The provider's words
+        # never escape our fixed, reviewed report schema.
         status, reason, executed = "SKIP", "unexpected_probe_result", False
+    elif not isinstance(reason, str) or reason not in REASONS:
+        # Preserve any definite FAIL (and WARN) severity, even if a provider
+        # introduces a new private/error reason. Only unknown PASS evidence
+        # must be demoted: incomplete is safer than a fabricated success.
+        if status == "PASS":
+            status, executed = "SKIP", False
+        reason = "unexpected_probe_result"
     return {
         "id": key, "component": component, "aspect": aspect,
         "status": status, "reason": reason,
@@ -96,7 +103,12 @@ def _tcp_probe(service: str, cfg: dict[str, str], *, probe_network: bool
         if configuration == "INVALID":
             status, reason, executed = "FAIL", "configuration_invalid", False
         elif probe == "PASS":
-            status, reason, executed = "PASS", obs.get("reason"), True
+            # Require the exact trusted contract, not merely a PASS token.
+            if (configuration == "RESOLVED" and probe_network
+                    and obs.get("reason") == "configured_tcp_connected"):
+                status, reason, executed = "PASS", "configured_tcp_connected", True
+            else:
+                status, reason, executed = "SKIP", "unexpected_probe_result", False
         elif probe == "FAIL":
             status, reason, executed = "FAIL", obs.get("reason"), True
         else:
@@ -118,8 +130,25 @@ def _api_health(cfg: dict[str, str], *, probe_network: bool,
     try:
         obs = api_http._observe(cfg, no_network=False)
         probe = obs.get("http_probe")
-        status = probe if probe in ("PASS", "FAIL") else "SKIP"
         reason = obs.get("reason")
+        if probe == "PASS":
+            # The audited source asserts these fields on a genuine 200.
+            # A contradictory provider payload must never certify health.
+            if (obs.get("configuration") == "RESOLVED"
+                    and type(obs.get("http_status")) is int
+                    and obs["http_status"] == 200
+                    and reason == "healthz_http_200"
+                    and obs.get("http_method") == "GET"
+                    and obs.get("healthz_endpoint") == "/healthz"):
+                status = "PASS"
+            else:
+                status, reason = "SKIP", "unexpected_probe_result"
+        elif obs.get("configuration") == "INVALID":
+            status, reason = "FAIL", "configuration_invalid"
+        elif probe == "FAIL":
+            status = "FAIL"
+        else:
+            status = "SKIP"
     except Exception:
         status, reason = "FAIL", "probe_internal_failure"
     return _record("API-HEALTH", "api", "healthz_http_only", status,
@@ -185,6 +214,23 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         cfg = tcp._effective_runtime_config(PROJECT_ROOT)
+    except ValueError as exc:
+        if str(exc) == "invalid_profile":
+            print(json.dumps({
+                "schema": SCHEMA, "mode": MODE,
+                "overall": "ISSUES_FOUND",
+                "feature_acceptance": "NOT_TESTED",
+                "error": "runtime_profile_invalid",
+            }))
+            return 1
+        print(json.dumps({"schema": SCHEMA, "mode": MODE,
+                          "error": "readiness_matrix_unavailable"}))
+        return 2
+    except Exception:
+        print(json.dumps({"schema": SCHEMA, "mode": MODE,
+                          "error": "readiness_matrix_unavailable"}))
+        return 2
+    try:
         report = build_report(cfg, probe_network=args.probe_network)
     except Exception:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
