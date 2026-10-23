@@ -436,3 +436,4 @@ The query runs only after an `ACTIVE_REQUIRED` selector has a compatible Mapping
 
 This is a new operator-only *proposed* capability to validate via a PR. No live air-gapped host test or production rollout is implied by Hosted CI.
 
+**Review follow-up (2026-10-23).** In the strict optional search mode, HTTP 401 or 403 is an explicit query access failure (exit 1), not an inconclusive transport result. HTTP framing or 64-KiB body violations are also failures (exit 1). In contrast, a network timeout or disconnect remains an incomplete result (exit 2). Only fixed reason codes are emitted; no response body or credential data is logged.
