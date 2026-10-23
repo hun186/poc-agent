@@ -518,10 +518,15 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
             elif status in (400, 404):
                 probe, why = "FAIL", "es_readonly_search_rejected"
             elif status in (401, 403):
-                probe, why = "NOT_VERIFIED", "es_readonly_search_access_denied"
+                # The TLS-verified target explicitly rejected this optional
+                # search; this is a failed query capability, not uncertainty
+                # about whether the earlier Basic principal was authenticated.
+                probe, why = "FAIL", "es_readonly_search_access_denied"
             elif status is None:
                 probe, why = "NOT_VERIFIED", "es_readonly_search_transport_unavailable"
-                if reason == "es_tls_identity_unverified":
+                if reason == "es_readonly_search_http_response_invalid":
+                    probe, why = "FAIL", "es_readonly_search_response_invalid"
+                elif reason == "es_tls_identity_unverified":
                     report["base_probe"]["tls_validation"] = "FAIL"
                     why = "readonly_search_tls_not_verified"
             else:
