@@ -361,6 +361,91 @@ def test_invalid_reference_field_uses_runtime_default_not_skip(
     assert report["results"][0]["mapping_probe"] == "PASS"
 
 
+
+def test_numeric_yaml_index_scalars_match_runtime_normalization(tmp_path, monkeypatch):
+    _write_config(tmp_path, """default_indexes: [123, '123', 0]
+topic_index_map:
+  group: {indexes: [456, '456', 789, null]}
+""")
+    targets, notes = discovery.discover(_cfg(), tmp_path)
+    assert [t["_selector"] for t in targets] == ["123", "0", "456", "789"]
+    assert targets[0]["classification"] == "ACTIVE_REQUIRED"
+    assert notes == []
+    calls = _network(monkeypatch)
+    report = discovery.diagnose(_cfg(), tmp_path)
+    assert calls == [
+        "/123/_mapping", "/0/_mapping", "/456/_mapping", "/789/_mapping",
+    ]
+    assert len(report["results"]) == 4
+
+
+def test_late_san_warning_survives_fixture_alias_conflict(tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [production_alias]\\n")
+    calls = _network(monkeypatch, {
+        "production_alias": (
+            200, _mapping("fixture_name"),
+            "https_response_ca_only_ip_san_mismatch",
+        ),
+    })
+    report = discovery.diagnose(
+        _cfg(REQUIREMENT_E2E_ES_INDEX="fixture_name"), tmp_path)
+    assert calls == ["/production_alias/_mapping"]
+    assert report["base_probe"]["identity_warning"] is True
+    assert report["base_probe"]["tls_validation"] == "WARN"
+    assert report["results"][0]["mapping_probe"] == "WARN"
+    assert report["results"][0]["selector_resolution"] == "FIXTURE_CONFLICT"
+    assert report["results"][0]["reason"] == "es_mapping_identity_unverified"
+    assert "fixture_name" not in json.dumps(report)
+    assert "production_alias" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("target_result", [
+    (404, b"{}", "https_response_received"),
+    (200, _mapping("docs", text=False), "https_response_received"),
+    (200, _mapping("fixture_name"), "https_response_received"),
+])
+def test_base_identity_warning_downgrades_negative_mapping_evidence(
+        tmp_path, monkeypatch, target_result):
+    _write_config(tmp_path, "default_indexes: [docs]\\n")
+    _network(monkeypatch, {"docs": target_result}, base_warning=True)
+    report = discovery.diagnose(
+        _cfg(REQUIREMENT_E2E_ES_INDEX="fixture_name"), tmp_path)
+    assert report["base_probe"]["identity_warning"] is True
+    assert report["base_probe"]["tls_validation"] == "WARN"
+    assert report["results"][0]["mapping_probe"] == "WARN"
+    assert report["results"][0]["reason"] == "es_mapping_identity_unverified"
+    assert report["results"][0]["feature_acceptance"] == "NOT_TESTED"
+
+
+def test_late_san_warning_downgrades_required_not_found_and_continues(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [required, other]\\n")
+    calls = _network(monkeypatch, {
+        "required": (404, b"{}", "https_response_ca_only_ip_san_mismatch"),
+    })
+    report = discovery.diagnose(_cfg(), tmp_path)
+    assert calls == ["/required/_mapping", "/other/_mapping"]
+    assert report["base_probe"]["tls_validation"] == "WARN"
+    assert report["results"][0]["mapping_probe"] == "WARN"
+    assert report["results"][1]["mapping_probe"] == "WARN"
+
+
+def test_cli_san_warning_and_unverified_missing_index_is_partial_only(
+        tmp_path, monkeypatch, capsys):
+    _write_config(tmp_path, "default_indexes: [docs]\\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: _cfg())
+    _network(monkeypatch, {
+        "docs": (404, b"{}", "https_response_ca_only_ip_san_mismatch"),
+    })
+    assert discovery.main([]) == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result["base_probe"]["tls_validation"] == "WARN"
+    assert result["results"][0]["mapping_probe"] == "WARN"
+
+
 def test_cli_propagates_base_auth_failure_exit_one(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
