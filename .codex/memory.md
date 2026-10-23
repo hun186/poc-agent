@@ -94,3 +94,9 @@
 - Codex completed review on `7f35d4555a224e4b32cb92f38502b89567121be8` and identified one new P2: discovery rejected explicitly selected `INDEXES_CONFIG`/`INDEX_CONFIG`/`INDEXES_CONFIGS` YAML files outside the repository, despite the runtime accepting their resolved paths.
 - Corrected selected-file reading policy: implicit defaults must stay checkout-local; *explicitly* selected external YAMLs may be read under the unchanged 8-file/256-KiB/read-only bounded policy, and are flagged `external_index_config_not_release_attested`. No external file or selector names are included in default logs; deployment provenance still requires separate attestation.
 - Added regressions for all three explicit selector keys, external multi-file order/topic additive merge, oversized YAML and implicit symlink escape. Hosted CI and formal exact-head Codex re-review of these latest edits remain pending. PR #298 remains unmerged; no Linux/full-live claims.
+
+## 2026-10-23 PR #298 ninth Finding (pending final review)
+
+- Codex completed formal review of `412b1be26dd8eee1b13e68ad08aea110ec2c1e02` and found one new P2: a later nonempty scalar/list YAML root invalidates the runtime's index loader but operator discovery continued using stale selectors from earlier files, potentially issuing authenticated Mapping GET.
+- Discovery now treats truthy non-object roots and YAML syntax parse errors as fatal `INVALID_CONFIG`: zero discovered selectors, zero network probes (even with explicit `ES_INDEX`/E2E selector), redacted notes, exit code 1. Falsy/empty YAML roots retain runtime's `safe_load(...) or {}` fallback. Regression tests include later invalid YAML/root, explicit external override, no network, no leaked names, and CLI exit.
+- Latest exact-head Hosted CI and formal Codex re-review are separate required gates; do not treat any test pass as live ES/RAG acceptance. No merge or Linux changes authorized.
