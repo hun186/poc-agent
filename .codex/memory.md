@@ -105,3 +105,8 @@
 
 - Latest PR #298 Codex review of 9f01bed found two P2 problems: index lists defined as scalar values, and unreadable selected YAML, could cause stale configured targets to be diagnosed. Both are addressed in the discovery tool and tested; latest Hosted CI and formal review are still required.
 - No merge and no live deployment performed.
+
+## 2026-10-23 PR #298 formal Codex review of 297870df
+
+- Review completed with two P2: literal overlap between a production selector and REQUIREMENT_E2E_ES_INDEX was noted but not made fatal; integer YAML topic keys were dropped though the runtime loader retained them.
+- PR branch remediation makes a literal fixture collision INVALID_CONFIG/exit 1 with zero network access; non-string hashable topic keys now retain their index values without exposing keys. Regression tests cover no network, redaction, CLI failure, numeric/boolean keys and additive merge. Hosted CI and fresh exact-head formal review are pending. No merge or Linux deployment.
