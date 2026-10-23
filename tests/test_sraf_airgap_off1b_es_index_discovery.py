@@ -159,7 +159,7 @@ topic_index_map:
 """)
     _write_config(tmp_path, invalid_content, "indexes.production.yaml")
     cfg = _cfg(ES_INDEX="explicit_active",
-               REQUIREMENT_E2E_ES_INDEX="fixture_target")
+               REQUIREMENT_E2E_ES_INDEX="requirement_e2e_fixture_target")
     targets, notes = discovery.discover(cfg, tmp_path)
     assert targets == []
     assert any(n in notes for n in (
@@ -176,7 +176,7 @@ topic_index_map:
     assert report["base_probe"]["https_probe"] == "SKIP"
     visible = json.dumps(report)
     for secret in ("stale_index", "old_topic", "explicit_active",
-                   "fixture_target", "TOP_SECRET"):
+                   "requirement_e2e_fixture_target", "TOP_SECRET"):
         assert secret not in visible
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
@@ -232,7 +232,7 @@ def test_invalid_truthy_index_value_aborts_all_probes(
         tmp_path, monkeypatch, capsys, invalid):
     _write_config(tmp_path, "default_indexes: [stale_yaml]\n")
     _write_config(tmp_path, invalid, "indexes.production.yaml")
-    cfg = _cfg(ES_INDEX="env_index", REQUIREMENT_E2E_ES_INDEX="fixture")
+    cfg = _cfg(ES_INDEX="env_index", REQUIREMENT_E2E_ES_INDEX="requirement_e2e_fixture")
     selected, notes = discovery.discover(cfg, tmp_path)
     assert selected == []
     assert "index_config_indexes_invalid" in notes
@@ -246,7 +246,7 @@ def test_invalid_truthy_index_value_aborts_all_probes(
     assert report["feature_acceptance"] == "NOT_TESTED"
     assert report["base_probe"]["https_probe"] == "SKIP"
     visible = json.dumps(report)
-    for secret in ("stale_yaml", "env_index", "fixture", "TOP_SECRET"):
+    for secret in ("stale_yaml", "env_index", "requirement_e2e_fixture", "TOP_SECRET"):
         assert secret not in visible
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
@@ -385,26 +385,27 @@ def test_old_named_index_in_active_env_is_not_falsely_declared_legacy(tmp_path):
 def test_explicit_e2e_fixture_is_separate_and_conflict_is_not_accepted(tmp_path):
     _write_config(tmp_path, "default_indexes: [main_docs]\n")
     targets, notes = discovery.discover(_cfg(
-        REQUIREMENT_E2E_ES_INDEX="fixture_index"), tmp_path)
+        REQUIREMENT_E2E_ES_INDEX="requirement_e2e_fixture_index"), tmp_path)
     assert targets[-1]["classification"] == "E2E_FIXTURE"
     assert notes == []
+    _write_config(tmp_path, "default_indexes: [requirement_e2e_main_docs]\n")
     targets2, notes2 = discovery.discover(_cfg(
-        REQUIREMENT_E2E_ES_INDEX="main_docs"), tmp_path)
+        REQUIREMENT_E2E_ES_INDEX="requirement_e2e_main_docs"), tmp_path)
     assert targets2 == []
     assert "e2e_production_selector_conflict" in notes2
 
 
 
 @pytest.mark.parametrize("yaml_text,extra", [
-    ("default_indexes: [production_fixture]\n", {}),
-    ("topic_index_map:\n  sea: {indexes: [production_fixture]}\n",
+    ("default_indexes: [requirement_e2e_production_fixture]\n", {}),
+    ("topic_index_map:\n  sea: {indexes: [requirement_e2e_production_fixture]}\n",
      {"ES_INDEX": "production_main"}),
-    ("default_indexes: [production_main, production_fixture]\n", {}),
+    ("default_indexes: [production_main, requirement_e2e_production_fixture]\n", {}),
 ])
 def test_literal_fixture_conflict_is_invalid_without_network(
         tmp_path, monkeypatch, capsys, yaml_text, extra):
     _write_config(tmp_path, yaml_text)
-    cfg = _cfg(REQUIREMENT_E2E_ES_INDEX="production_fixture", **extra)
+    cfg = _cfg(REQUIREMENT_E2E_ES_INDEX="requirement_e2e_production_fixture", **extra)
     selected, notes = discovery.discover(cfg, tmp_path)
     assert selected == []
     assert "e2e_production_selector_conflict" in notes
@@ -418,7 +419,7 @@ def test_literal_fixture_conflict_is_invalid_without_network(
     assert report["base_probe"]["https_probe"] == "SKIP"
     assert report["feature_acceptance"] == "NOT_TESTED"
     output = json.dumps(report)
-    assert "production_fixture" not in output
+    assert "requirement_e2e_production_fixture" not in output
     assert "production_main" not in output
     assert "TOP_SECRET" not in output
     monkeypatch.chdir(tmp_path)
@@ -474,7 +475,7 @@ default_indexes: [docs]
 
 
 @pytest.mark.parametrize("selector_source", ["default", "topic", "environment"])
-def test_runtime_default_e2e_fixture_name_conflict_fails_without_network(
+def test_runtime_default_e2e_requirement_e2e_fixture_name_conflict_fails_without_network(
         tmp_path, monkeypatch, capsys, selector_source):
     fixture = discovery.REQUIREMENT_E2E_INDEX
     if selector_source == "default":
@@ -772,16 +773,16 @@ def test_alias_backing_index_cannot_point_at_e2e_fixture(
         tmp_path, monkeypatch):
     _write_config(tmp_path, "default_indexes: [prod_alias]\n")
     calls = _network(monkeypatch, {
-        "prod_alias": (200, _mapping("secret_fixture"),
+        "prod_alias": (200, _mapping("requirement_e2e_secret_fixture"),
                        "https_response_received"),
     })
     report = discovery.diagnose(
-        _cfg(REQUIREMENT_E2E_ES_INDEX="secret_fixture"), tmp_path)
+        _cfg(REQUIREMENT_E2E_ES_INDEX="requirement_e2e_secret_fixture"), tmp_path)
     assert calls[0] == "/prod_alias/_mapping"
     assert report["results"][0]["mapping_probe"] == "FAIL"
     assert report["results"][0]["selector_resolution"] == "FIXTURE_CONFLICT"
     assert report["results"][0]["reason"] == "e2e_production_selector_conflict"
-    assert "secret_fixture" not in json.dumps(report)
+    assert "requirement_e2e_secret_fixture" not in json.dumps(report)
     assert "prod_alias" not in json.dumps(report)
 
 
@@ -832,33 +833,33 @@ def test_late_san_warning_survives_fixture_alias_conflict(tmp_path, monkeypatch)
     _write_config(tmp_path, "default_indexes: [production_alias]\n")
     calls = _network(monkeypatch, {
         "production_alias": (
-            200, _mapping("fixture_name"),
+            200, _mapping("requirement_e2e_fixture_name"),
             "https_response_ca_only_ip_san_mismatch",
         ),
     })
     report = discovery.diagnose(
-        _cfg(REQUIREMENT_E2E_ES_INDEX="fixture_name"), tmp_path)
+        _cfg(REQUIREMENT_E2E_ES_INDEX="requirement_e2e_fixture_name"), tmp_path)
     assert calls[0] == "/production_alias/_mapping"
     assert report["base_probe"]["identity_warning"] is True
     assert report["base_probe"]["tls_validation"] == "WARN"
     assert report["results"][0]["mapping_probe"] == "WARN"
     assert report["results"][0]["selector_resolution"] == "FIXTURE_CONFLICT"
     assert report["results"][0]["reason"] == "es_mapping_identity_unverified"
-    assert "fixture_name" not in json.dumps(report)
+    assert "requirement_e2e_fixture_name" not in json.dumps(report)
     assert "production_alias" not in json.dumps(report)
 
 
 @pytest.mark.parametrize("target_result", [
     (404, b"{}", "https_response_received"),
     (200, _mapping("docs", text=False), "https_response_received"),
-    (200, _mapping("fixture_name"), "https_response_received"),
+    (200, _mapping("requirement_e2e_fixture_name"), "https_response_received"),
 ])
 def test_base_identity_warning_downgrades_negative_mapping_evidence(
         tmp_path, monkeypatch, target_result):
     _write_config(tmp_path, "default_indexes: [docs]\n")
     _network(monkeypatch, {"docs": target_result}, base_warning=True)
     report = discovery.diagnose(
-        _cfg(REQUIREMENT_E2E_ES_INDEX="fixture_name"), tmp_path)
+        _cfg(REQUIREMENT_E2E_ES_INDEX="requirement_e2e_fixture_name"), tmp_path)
     assert report["base_probe"]["identity_warning"] is True
     assert report["base_probe"]["tls_validation"] == "WARN"
     assert report["results"][0]["mapping_probe"] == "WARN"
