@@ -58,11 +58,13 @@ def _reason(value: Any) -> str:
 def _record(key: str, component: str, aspect: str, status: str, reason: str,
             *, executed: bool = False, depends_on: tuple[str, ...] = ()
             ) -> dict[str, Any]:
-    if status not in STATUSES:
+    if status not in STATUSES or reason not in REASONS:
+        # Unknown or future probe schemas cannot self-upgrade this matrix
+        # to a success merely by returning a PASS-looking token.
         status, reason, executed = "SKIP", "unexpected_probe_result", False
     return {
         "id": key, "component": component, "aspect": aspect,
-        "status": status, "reason": _reason(reason),
+        "status": status, "reason": reason,
         "executed": bool(executed), "depends_on": list(depends_on),
         "feature_acceptance": "NOT_TESTED",
     }
