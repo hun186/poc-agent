@@ -190,7 +190,11 @@ def test_contradictory_health_pass_is_not_authoritative(monkeypatch, alter):
     assert obs["status"] != "PASS"
     assert obs["feature_acceptance"] == "NOT_TESTED"
     if alter.get("configuration") == "INVALID":
-        assert obs["status"] == "SKIP"  # fake PASS does not override validation
+        assert (obs["status"], obs["reason"]) == (
+            "FAIL", "configuration_invalid")
+    elif type(alter.get("http_status")) is int and alter["http_status"] != 200:
+        assert (obs["status"], obs["reason"]) == (
+            "FAIL", "healthz_http_not_200")
     assert result["overall"] != "FULL_LIVE"
 
 
