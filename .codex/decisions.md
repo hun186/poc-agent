@@ -75,3 +75,7 @@
 ## 2026-10-23 OFF-1B per-request identity evidence
 
 - Capture every Mapping-request IP SAN mismatch before any selector-specific early exit; preserve the warning in the aggregate TLS status. Treat both positive and negative response-derived Mapping verdicts as advisory WARN whenever the intended peer identity is unverified. Keep genuinely strict certificate identity failures and independent local auth/configuration problems distinct and blocking. Match runtime index_loader's YAML scalar stringification while continuing to reject unsafe wildcard/invalid literal selectors.
+
+## 2026-10-23 OFF-1C query diagnostic design
+
+- The optional single read-only search must use verified TLS/IP SAN and an explicitly selected required production index with Mapping compatibility. Reject the request in WARN_ONLY mode. Size zero prevents document hits; responses remain redacted and do not attest RAG or full live readiness.

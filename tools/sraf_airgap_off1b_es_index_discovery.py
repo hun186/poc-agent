@@ -37,6 +37,12 @@ MAX_CONFIG_FILES = 8
 MAX_CONFIG_BYTES = 256 * 1024
 MAX_SELECTORS = 24
 MAX_NETWORK_SELECTORS = 12
+# One user-enabled GET against the first required literal production selector;
+# size=0 excludes document hits and track_total_hits=false avoids counts.
+_READONLY_SEARCH_SUFFIX = (
+    "/_search?size=0&track_total_hits=false&terminate_after=1"
+    "&timeout=1s&allow_partial_search_results=false"
+)
 
 
 def _fixture_index(cfg: Mapping[str, str]) -> str:
@@ -300,8 +306,41 @@ def inspect_mapping(body: bytes, selector: str, role: str,
         return "FAIL", "es_mapping_response_invalid", "UNRESOLVED", "NOT_TESTED"
 
 
+def inspect_readonly_search(body: bytes | None) -> tuple[str, str]:
+    """Validate a bounded zero-hit Elasticsearch search response, no data leaks.
+
+    A syntactically valid 200 alone is not enough: require an actual shard
+    response, no failures or timeout, and zero returned documents. This tests
+    a narrowly scoped search API only, not RAG relevance, total hit counts,
+    live authentication strength, SQL, or FULL_LIVE deployment acceptance.
+    """
+    try:
+        if body is None or len(body) > es.MAX_BODY:
+            raise ValueError("search_body_unavailable")
+        value = json.loads(body)
+        if not isinstance(value, dict) or value.get("timed_out") is not False:
+            raise ValueError("search_timeout_or_invalid")
+        shards = value.get("_shards")
+        if not isinstance(shards, dict):
+            raise ValueError("invalid_shards")
+        total, successful, failed = (
+            shards.get("total"), shards.get("successful"), shards.get("failed")
+        )
+        if (any(type(x) is not int for x in (total, successful, failed))
+                or total < 1 or successful < 1 or successful > total
+                or failed != 0):
+            raise ValueError("incomplete_search")
+        hits = value.get("hits")
+        if not isinstance(hits, dict) or hits.get("hits") != []:
+            raise ValueError("unexpected_document_hits")
+        return "PASS", "es_readonly_search_accepted"
+    except (ValueError, TypeError, AttributeError, RecursionError, UnicodeError):
+        return "FAIL", "es_readonly_search_response_invalid"
+
+
 def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
-             strict_ip_san: bool = False, show_index_names: bool = False
+             strict_ip_san: bool = False, show_index_names: bool = False,
+             check_readonly_search: bool = False
              ) -> dict[str, Any]:
     targets, notes = discover(cfg, root)
     observations: list[dict[str, Any]] = []
@@ -323,13 +362,23 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
             "mapping_probe": "NOT_TESTED",
             "selector_resolution": "NOT_TESTED",
             "multidim_mapping": "NOT_TESTED",
-            "query_probe": "NOT_TESTED", "feature_acceptance": "NOT_TESTED",
+            "query_probe": "NOT_TESTED",
+            "query_reason": "network_disabled" if no_network else "not_requested",
+            "feature_acceptance": "NOT_TESTED",
             "reason": "network_disabled" if no_network else "not_probed",
         }
         if show_index_names:
             obs["selector"] = target["_selector"]
         observations.append(obs)
     if no_network or not targets:
+        report["summary"] = dict(Counter(item["mapping_probe"] for item in observations))
+        return report
+    if check_readonly_search and not strict_ip_san:
+        # The regular Mapping diagnostic has an explicit WARN_ONLY identity
+        # tradeoff; never let a query option silently inherit it.
+        report["notes"].append("readonly_search_requires_strict_ip_san")
+        for obs in observations:
+            obs["query_reason"] = "readonly_search_requires_strict_ip_san"
         report["summary"] = dict(Counter(item["mapping_probe"] for item in observations))
         return report
 
@@ -440,6 +489,50 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
         if report["base_probe"]["identity_warning"] and obs["mapping_probe"] in ("PASS", "FAIL"):
             obs["mapping_probe"] = "WARN"
             obs["reason"] = "es_mapping_identity_unverified"
+    if check_readonly_search:
+        # At most one extra read-only GET, solely against an independently
+        # selected ACTIVE_REQUIRED index whose Mapping was compatible.
+        required = next(
+            ((target, obs) for target, obs in zip(targets, observations)
+             if target["classification"] == "ACTIVE_REQUIRED"),
+            None,
+        )
+        if required is None:
+            report["notes"].append("readonly_search_required_selector_missing")
+        elif (report["base_probe"].get("tls_validation") != "PASS"
+                or report["base_probe"].get("identity_warning")):
+            required[1]["query_reason"] = "readonly_search_tls_not_verified"
+        elif any(obs["selector_resolution"] == "FIXTURE_CONFLICT"
+                 for obs in observations):
+            required[1]["query_reason"] = "readonly_search_fixture_conflict"
+        elif required[1]["mapping_probe"] != "PASS":
+            required[1]["query_reason"] = "readonly_search_mapping_not_compatible"
+        else:
+            name = required[0]["_selector"]
+            status, body, reason = es._https_get(
+                host, port, f"/{name}" + _READONLY_SEARCH_SUFFIX,
+                user, password, ca,
+            )
+            if status == 200:
+                probe, why = inspect_readonly_search(body)
+            elif status in (400, 404):
+                probe, why = "FAIL", "es_readonly_search_rejected"
+            elif status in (401, 403):
+                # The TLS-verified target explicitly rejected this optional
+                # search; this is a failed query capability, not uncertainty
+                # about whether the earlier Basic principal was authenticated.
+                probe, why = "FAIL", "es_readonly_search_access_denied"
+            elif status is None:
+                probe, why = "NOT_VERIFIED", "es_readonly_search_transport_unavailable"
+                if reason == "es_readonly_search_http_response_invalid":
+                    probe, why = "FAIL", "es_readonly_search_response_invalid"
+                elif reason == "es_tls_identity_unverified":
+                    report["base_probe"]["tls_validation"] = "FAIL"
+                    why = "readonly_search_tls_not_verified"
+            else:
+                probe, why = "NOT_VERIFIED", "es_readonly_search_http_unexpected"
+            required[1]["query_probe"] = probe
+            required[1]["query_reason"] = why
     report["summary"] = dict(Counter(item["mapping_probe"] for item in observations))
     return report
 
@@ -448,6 +541,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-network", action="store_true")
     parser.add_argument("--strict-ip-san", action="store_true")
+    parser.add_argument("--check-readonly-search", action="store_true",
+                        help="One extra zero-hit read-only search; requires --strict-ip-san.")
     parser.add_argument("--show-index-names", action="store_true",
                         help="Explicit operator-only local output; never enable in shared logs.")
     args = parser.parse_args(argv)
@@ -459,14 +554,17 @@ def main(argv: list[str] | None = None) -> int:
         cfg = _effective_runtime_config(PROJECT_ROOT)
         report = diagnose(cfg, PROJECT_ROOT, no_network=args.no_network,
                           strict_ip_san=args.strict_ip_san,
-                          show_index_names=args.show_index_names)
+                          show_index_names=args.show_index_names,
+                          check_readonly_search=args.check_readonly_search)
         print(json.dumps(report, sort_keys=True, ensure_ascii=False))
         if (report.get("selector_discovery") == "INVALID_CONFIG" or
             report["base_probe"].get("configuration") == "INVALID" or
             report["base_probe"]["https_probe"] == "FAIL" or
             report["base_probe"].get("auth") == "FAIL" or
             report["base_probe"]["tls_validation"] == "FAIL" or
-            any(item["mapping_probe"] == "FAIL" for item in report["results"])):
+            any(item["mapping_probe"] == "FAIL" or
+                item.get("query_probe") == "FAIL"
+                for item in report["results"])):
             return 1
         return 2  # Always PARTIAL_ONLY_NOT_ACCEPTANCE.
     except Exception:

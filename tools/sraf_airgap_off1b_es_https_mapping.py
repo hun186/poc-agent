@@ -43,6 +43,10 @@ _INDEX_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,254}\Z", re.ASCII)
 _FIELD_NAME = re.compile(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+\Z")
 
 
+class _InvalidHTTPResponse(ValueError):
+    """A TLS-established peer returned invalid HTTP framing, not a socket loss."""
+
+
 def _configured_index(value: str | None) -> str | None:
     """Exactly one literal index/alias, never wildcard, comma or URL control."""
     if not value or value != value.strip():
@@ -176,24 +180,40 @@ async def _one_https_get(host: str, port: int, path: str,
         )
         writer.write(request.encode("ascii"))
         await writer.drain()
-        header = await reader.readuntil(b"\r\n\r\n")
-        if len(header) > MAX_HEADERS or b"\n" in header.replace(b"\r\n", b""):
-            raise ValueError("invalid_http_headers")
-        parts = header[:-4].split(b"\r\n")
-        match = re.fullmatch(rb"HTTP/1\.[01] ([1-5][0-9]{2}) [\t\x20-\x7e\x80-\xff]*", parts[0])
-        if match is None:
-            raise ValueError("invalid_http_status")
-        status = int(match.group(1))
-        max_body = MAX_MAPPING_BODY if path.endswith("/_mapping") else MAX_BODY
-        version = parts[0].split(b" ", 1)[0]
-        return status, await _read_http_body(
-            reader, parts[1:], max_body, http_version=version,
-        )
+        return await _read_http_response(reader, path)
     finally:
         if writer is not None:
             writer.close()
         else:
             sock.close()
+
+
+async def _read_http_response(
+        reader: asyncio.StreamReader, path: str) -> tuple[int, bytes]:
+    """Parse one verified-peer HTTP reply; classify framing errors separately.
+
+    The parser uses bounded headers and entity framing. Actual socket loss
+    and timeout propagate to the transport handler as inconclusive evidence.
+    """
+    try:
+        header = await reader.readuntil(b"\r\n\r\n")
+        if len(header) > MAX_HEADERS or b"\n" in header.replace(b"\r\n", b""):
+            raise ValueError("invalid_http_headers")
+        parts = header[:-4].split(b"\r\n")
+        match = re.fullmatch(
+            rb"HTTP/1\.[01] ([1-5][0-9]{2}) [\t\x20-\x7e\x80-\xff]*",
+            parts[0],
+        )
+        if match is None:
+            raise ValueError("invalid_http_status")
+        status = int(match.group(1))
+        limit = MAX_MAPPING_BODY if path.endswith("/_mapping") else MAX_BODY
+        version = parts[0].split(b" ", 1)[0]
+        return status, await _read_http_body(
+            reader, parts[1:], limit, http_version=version,
+        )
+    except (ValueError, asyncio.LimitOverrunError) as exc:
+        raise _InvalidHTTPResponse("invalid_http_response") from exc
 
 
 async def _read_http_body(reader: asyncio.StreamReader,
@@ -271,6 +291,14 @@ def _https_get(host: str, port: int, path: str,
         return code, body, "https_response_received"
     except ssl.SSLCertVerificationError:
         return None, None, "es_tls_identity_unverified"
+    except _InvalidHTTPResponse:
+        if san_status is not None and False in san_status:
+            return None, None, "es_https_transport_unavailable_ip_san_mismatch"
+        # Existing Mapping/root preflights retain their historical transport
+        # classification. Only explicit strict-search opts into this evidence.
+        if not warn_only_ip_san and "/_search?" in path:
+            return None, None, "es_readonly_search_http_response_invalid"
+        return None, None, "es_https_transport_unavailable"
     except (TimeoutError, OSError, ssl.SSLError, ValueError,
             asyncio.IncompleteReadError, asyncio.LimitOverrunError,
             RuntimeError):

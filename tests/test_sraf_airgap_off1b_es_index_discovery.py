@@ -1,6 +1,7 @@
 """Configured ES discovery: deterministic unit evidence only, NOT live acceptance."""
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -65,6 +66,281 @@ def _network(monkeypatch, results=None, *, base_warning=False):
         ))
     monkeypatch.setattr(discovery.es, "_https_get", https_get)
     return calls
+
+
+
+def _search_response(*, timed_out=False, total=1, successful=1,
+                     failed=0, hits=None):
+    return json.dumps({
+        "took": 1, "timed_out": timed_out,
+        "_shards": {"total": total, "successful": successful,
+                    "skipped": 0, "failed": failed},
+        "hits": {"hits": [] if hits is None else hits},
+    }).encode()
+
+
+def _search_transport(monkeypatch, *, result=None, base_warning=False):
+    """Reuse existing fake Mapping transport, intercept only extra strict GET."""
+    calls = _network(monkeypatch, base_warning=base_warning)
+    mapping_get = discovery.es._https_get
+
+    def get(host, port, path, user, password, ca, **kwargs):
+        if "/_search?" in path:
+            assert kwargs == {}  # STRICT mode: no CA-only SAN relaxation.
+            assert user == "operator" and password == "TOP_SECRET"
+            assert path.endswith(discovery._READONLY_SEARCH_SUFFIX)
+            calls.append(path)
+            return result or (200, _search_response(), "https_response_received")
+        return mapping_get(host, port, path, user, password, ca, **kwargs)
+
+    monkeypatch.setattr(discovery.es, "_https_get", get)
+    return calls
+
+
+def test_readonly_search_is_explicit_strict_and_document_free(tmp_path, monkeypatch):
+    _write_config(tmp_path, """default_indexes: [main_docs]
+topic_index_map:
+  other: {indexes: [secondary_docs]}
+""")
+    calls = _search_transport(monkeypatch)
+    report = discovery.diagnose(
+        _cfg(), tmp_path, strict_ip_san=True, check_readonly_search=True)
+    assert calls == [
+        "/main_docs/_mapping", "/secondary_docs/_mapping",
+        "/main_docs" + discovery._READONLY_SEARCH_SUFFIX,
+    ]
+    assert report["results"][0]["query_probe"] == "PASS"
+    assert report["results"][0]["query_reason"] == "es_readonly_search_accepted"
+    assert report["results"][1]["query_probe"] == "NOT_TESTED"
+    assert all(x["feature_acceptance"] == "NOT_TESTED" for x in report["results"])
+    assert report["feature_acceptance"] == "NOT_TESTED"
+    assert report["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
+    assert "main_docs" not in json.dumps(report)
+    assert "secondary_docs" not in json.dumps(report)
+    assert "TOP_SECRET" not in json.dumps(report)
+
+
+def test_readonly_query_flag_does_not_inherit_warn_only_tls(tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [main_docs]\n")
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("network attempted"))
+    monkeypatch.setattr(discovery.es, "_https_get",
+                        lambda *a, **k: pytest.fail("Mapping attempted"))
+    report = discovery.diagnose(
+        _cfg(), tmp_path, check_readonly_search=True)
+    assert "readonly_search_requires_strict_ip_san" in report["notes"]
+    assert report["base_probe"]["https_probe"] == "SKIP"
+    assert report["results"][0]["query_probe"] == "NOT_TESTED"
+    assert report["results"][0]["query_reason"] == (
+        "readonly_search_requires_strict_ip_san")
+    assert report["results"][0]["mapping_probe"] == "NOT_TESTED"
+
+
+def test_readonly_query_default_and_no_network_never_send_search(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [main_docs]\n")
+    calls = _network(monkeypatch)
+    default_report = discovery.diagnose(_cfg(), tmp_path, strict_ip_san=True)
+    assert calls == ["/main_docs/_mapping"]
+    assert default_report["results"][0]["query_probe"] == "NOT_TESTED"
+    assert default_report["results"][0]["query_reason"] == "not_requested"
+    calls.clear()
+    offline = discovery.diagnose(
+        _cfg(), tmp_path, no_network=True, check_readonly_search=True)
+    assert calls == []
+    assert offline["results"][0]["query_probe"] == "NOT_TESTED"
+
+
+@pytest.mark.parametrize("body", [
+    b"not json",
+    b"[]",
+    b"{}",
+    _search_response(timed_out=True),
+    _search_response(total=0, successful=0),
+    _search_response(total=2, successful=1, failed=1),
+    _search_response(hits=[{"_source": {"secret": "do_not_log"}}]),
+    _search_response(total=True, successful=1),
+    b"x" * (discovery.es.MAX_BODY + 1),
+])
+def test_readonly_search_rejects_untrusted_or_document_returning_payload(body):
+    status, reason = discovery.inspect_readonly_search(body)
+    assert status == "FAIL"
+    assert reason == "es_readonly_search_response_invalid"
+
+
+@pytest.mark.parametrize("response,expected", [
+    ((200, _search_response(), "https_response_received"),
+     ("PASS", "es_readonly_search_accepted")),
+    ((400, b'{"error": "secret"}', "https_response_received"),
+     ("FAIL", "es_readonly_search_rejected")),
+    ((404, b'{"error": "secret"}', "https_response_received"),
+     ("FAIL", "es_readonly_search_rejected")),
+    ((401, b'{"error": "secret"}', "https_response_received"),
+     ("FAIL", "es_readonly_search_access_denied")),
+    ((403, b'{"error": "secret"}', "https_response_received"),
+     ("FAIL", "es_readonly_search_access_denied")),
+    ((429, b'{"error": "secret"}', "https_response_received"),
+     ("NOT_VERIFIED", "es_readonly_search_http_unexpected")),
+    ((None, None, "es_https_transport_unavailable"),
+     ("NOT_VERIFIED", "es_readonly_search_transport_unavailable")),
+    ((None, None, "es_readonly_search_http_response_invalid"),
+     ("FAIL", "es_readonly_search_response_invalid")),
+    ((None, None, "es_tls_identity_unverified"),
+     ("NOT_VERIFIED", "readonly_search_tls_not_verified")),
+])
+def test_readonly_search_response_classifications_are_redacted(
+        tmp_path, monkeypatch, response, expected):
+    _write_config(tmp_path, "default_indexes: [main_docs]\n")
+    calls = _search_transport(monkeypatch, result=response)
+    report = discovery.diagnose(
+        _cfg(), tmp_path, check_readonly_search=True, strict_ip_san=True)
+    assert len(calls) == 2
+    assert (report["results"][0]["query_probe"],
+            report["results"][0]["query_reason"]) == expected
+    assert "secret" not in json.dumps(report)
+    assert "TOP_SECRET" not in json.dumps(report)
+    if response[2] == "es_tls_identity_unverified":
+        assert report["base_probe"]["tls_validation"] == "FAIL"
+
+
+
+@pytest.mark.parametrize("status,reason,expected_probe", [
+    (401, "es_readonly_search_access_denied", "FAIL"),
+    (403, "es_readonly_search_access_denied", "FAIL"),
+    (None, "es_readonly_search_response_invalid", "FAIL"),
+])
+def test_readonly_query_rejections_exit_one_and_never_leak_body(
+        tmp_path, monkeypatch, capsys, status, reason, expected_probe):
+    _write_config(tmp_path, "default_indexes: [main_docs]\n")
+    response = ((status, b'{"error":"private_credential"}',
+                 "https_response_received") if status is not None else
+                (None, None, "es_readonly_search_http_response_invalid"))
+    _search_transport(monkeypatch, result=response)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: _cfg())
+    assert discovery.main(["--check-readonly-search", "--strict-ip-san"]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["results"][0]["query_probe"] == expected_probe
+    assert report["results"][0]["query_reason"] == reason
+    assert "private_credential" not in json.dumps(report)
+    assert "main_docs" not in json.dumps(report)
+    assert "TOP_SECRET" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("wire", [
+    # The TLS-established HTTP peer explicitly violates the search 64KiB
+    # budget; no body allocation is necessary after reading the headers.
+    ("fixed-overflow", b"HTTP/1.1 200 OK\r\nContent-Length: 65537\r\n\r\n"),
+    ("chunked-overflow", b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+     b"10001\r\n"),
+    ("malformed-length", b"HTTP/1.1 200 OK\r\nContent-Length: broken\r\n\r\n"),
+    ("conflicting-framing", b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"
+     b"Transfer-Encoding: chunked\r\n\r\n"),
+    ("invalid-status", b"INVALID 200 OK\r\nContent-Length: 2\r\n\r\n{}"),
+    ("unsupported-encoding", b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"
+     b"Content-Encoding: gzip\r\n\r\n{}"),
+])
+def test_search_http_wire_framing_errors_are_distinct_from_network_loss(wire):
+    label, payload = wire
+    async def read_wire():
+        reader = asyncio.StreamReader(limit=discovery.es.MAX_HEADERS)
+        reader.feed_data(payload)
+        reader.feed_eof()
+        return await discovery.es._read_http_response(
+            reader, "/main_docs" + discovery._READONLY_SEARCH_SUFFIX)
+    with pytest.raises(discovery.es._InvalidHTTPResponse):
+        asyncio.run(read_wire())
+
+
+def test_search_https_transport_returns_fixed_redacted_framing_error(
+        tmp_path, monkeypatch):
+    async def bad_reply(*args, **kwargs):
+        raise discovery.es._InvalidHTTPResponse("internal/private/es/response")
+    monkeypatch.setattr(discovery.es, "_one_https_get", bad_reply)
+    monkeypatch.setattr(
+        discovery.es.ssl, "create_default_context",
+        lambda **kwargs: discovery.es.ssl.SSLContext(
+            discovery.es.ssl.PROTOCOL_TLS_CLIENT),
+    )
+    query = "/main_docs" + discovery._READONLY_SEARCH_SUFFIX
+    res = discovery.es._https_get(
+        "192.168.10.5", 9200, query,
+        "operator", "TOP_SECRET", tmp_path / "ca.pem")
+    assert res == (None, None, "es_readonly_search_http_response_invalid")
+    mapping = discovery.es._https_get(
+        "192.168.10.5", 9200, "/main_docs/_mapping",
+        "operator", "TOP_SECRET", tmp_path / "ca.pem")
+    assert mapping == (None, None, "es_https_transport_unavailable")
+
+
+def test_search_https_timeout_remains_not_verified(tmp_path, monkeypatch):
+    async def unavailable(*args, **kwargs):
+        raise TimeoutError("some private address")
+    monkeypatch.setattr(discovery.es, "_one_https_get", unavailable)
+    monkeypatch.setattr(
+        discovery.es.ssl, "create_default_context",
+        lambda **kwargs: discovery.es.ssl.SSLContext(
+            discovery.es.ssl.PROTOCOL_TLS_CLIENT),
+    )
+    assert discovery.es._https_get(
+        "192.168.10.5", 9200,
+        "/main_docs" + discovery._READONLY_SEARCH_SUFFIX,
+        "operator", "TOP_SECRET", tmp_path / "ca.pem",
+    ) == (None, None, "es_https_transport_unavailable")
+
+
+def test_readonly_query_skips_if_mapping_bad_or_tls_not_verified(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [main_docs]\n")
+    calls = _network(monkeypatch, {
+        "main_docs": (200, _mapping("main_docs", text=False),
+                      "https_response_received"),
+    })
+    report = discovery.diagnose(
+        _cfg(), tmp_path, strict_ip_san=True, check_readonly_search=True)
+    assert calls == ["/main_docs/_mapping"]
+    assert report["results"][0]["query_probe"] == "NOT_TESTED"
+    assert report["results"][0]["query_reason"] == (
+        "readonly_search_mapping_not_compatible")
+    calls.clear()
+    _network(monkeypatch, base_warning=True)
+    report2 = discovery.diagnose(
+        _cfg(), tmp_path, strict_ip_san=True, check_readonly_search=True)
+    assert report2["results"][0]["query_probe"] == "NOT_TESTED"
+    assert report2["results"][0]["query_reason"] == "readonly_search_tls_not_verified"
+
+
+def test_readonly_query_requires_required_production_selector(tmp_path, monkeypatch):
+    _write_config(tmp_path, "topic_index_map:\n  sea: {indexes: [topic_docs]}\n")
+    calls = _network(monkeypatch)
+    report = discovery.diagnose(
+        _cfg(), tmp_path, strict_ip_san=True, check_readonly_search=True)
+    assert calls == ["/topic_docs/_mapping"]
+    assert "readonly_search_required_selector_missing" in report["notes"]
+    assert report["results"][0]["query_probe"] == "NOT_TESTED"
+
+
+def test_readonly_query_cli_requires_both_flags_and_exit_one_on_failure(
+        tmp_path, monkeypatch, capsys):
+    _write_config(tmp_path, "default_indexes: [main_docs]\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: _cfg())
+    calls = _search_transport(
+        monkeypatch, result=(400, b'{"error":"private"}',
+                             "https_response_received"))
+    assert discovery.main(["--check-readonly-search"]) == 2
+    assert calls == []
+    capsys.readouterr()
+    assert discovery.main([
+        "--check-readonly-search", "--strict-ip-san"]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["results"][0]["query_probe"] == "FAIL"
+    assert output["results"][0]["feature_acceptance"] == "NOT_TESTED"
+    assert "private" not in json.dumps(output)
 
 
 def test_index_loader_topic_merge_and_environment_priority(tmp_path):
