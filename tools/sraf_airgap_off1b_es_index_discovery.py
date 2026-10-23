@@ -20,6 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent.external_capabilities import mapping_compatibility  # noqa: E402
+from agent.es.mock_es_client import REQUIREMENT_E2E_INDEX  # noqa: E402
 from agent.es.reference_text import (  # noqa: E402
     DEFAULT_REFERENCE_TEXT_FIELD, _VALID_FIELD_PATH,
 )
@@ -34,6 +35,17 @@ MAX_CONFIG_FILES = 8
 MAX_CONFIG_BYTES = 256 * 1024
 MAX_SELECTORS = 24
 MAX_NETWORK_SELECTORS = 12
+
+
+def _fixture_index(cfg: Mapping[str, str]) -> str:
+    """Match the runtime's configured-or-default Requirement fixture selector.
+
+    Use effective cfg instead of os.environ because this tool reads dotenv
+    layers independently; importing the runtime resolver would otherwise
+    miss those layers. The constant shares its authoritative runtime source.
+    """
+    return (cfg.get("REQUIREMENT_E2E_ES_INDEX") or REQUIREMENT_E2E_INDEX).strip()
+
 # A diagnosis cannot contact ES when any selected runtime config failed to
 # load or could not be safely inspected. Missing files remain nonfatal: the
 # runtime loader also skips them.
@@ -150,8 +162,8 @@ def _load_declarations(root: Path, cfg: Mapping[str, str]) -> tuple[dict[str, An
                 notes.append("topic_config_invalid")
             if "default_indexes" in data:
                 merged["default_indexes"] = _indexes(data["default_indexes"])
-        except yaml.YAMLError:
-            # Runtime fails on invalid YAML syntax as well; never retain
+        except (yaml.YAMLError, RecursionError):
+            # Runtime fails on invalid/deeply recursive YAML as well; never retain
             # stale selectors from previous files after a parse failure.
             notes.append("index_config_yaml_invalid")
             return {"topic_index_map": {}, "default_indexes": []}, sorted(set(notes))
@@ -208,7 +220,8 @@ def discover(cfg: Mapping[str, str], root: Path) -> tuple[list[dict[str, Any]], 
         if isinstance(topic, dict):
             for item in _indexes(topic.get("indexes")):
                 add(item, "ACTIVE_OPTIONAL", "topic_index_map")
-    fixture = (cfg.get("REQUIREMENT_E2E_ES_INDEX") or "").strip()
+    fixture = _fixture_index(cfg)
+    configured_fixture = bool((cfg.get("REQUIREMENT_E2E_ES_INDEX") or "").strip())
     if fixture:
         if es._configured_index(fixture) is None:
             notes.append("e2e_selector_invalid")
@@ -218,7 +231,9 @@ def discover(cfg: Mapping[str, str], root: Path) -> tuple[list[dict[str, Any]], 
             # even in WARN_ONLY mode; it must never appear as Mapping PASS.
             notes.append("e2e_production_selector_conflict")
             return [], sorted(set(notes))
-        else:
+        elif configured_fixture:
+            # Do not probe an unconfigured default fixture in production;
+            # protect its name and alias without assuming it is deployed.
             add(fixture, "E2E_FIXTURE", "explicit_e2e_selector")
     for record in targets.values():
         record["sources"].sort()
@@ -345,7 +360,7 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
     reference = (configured_reference if configured_reference and
                  _VALID_FIELD_PATH.fullmatch(configured_reference)
                  else DEFAULT_REFERENCE_TEXT_FIELD)
-    configured_fixture = (cfg.get("REQUIREMENT_E2E_ES_INDEX") or "").strip()
+    configured_fixture = _fixture_index(cfg)
     for i, (target, obs) in enumerate(zip(targets, observations)):
         if i >= MAX_NETWORK_SELECTORS:
             obs["mapping_probe"] = "SKIP"
