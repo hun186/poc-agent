@@ -221,6 +221,114 @@ def test_invalid_external_yaml_root_blocks_prior_file_and_network(
     assert str(broken) not in json.dumps(report)
 
 
+
+@pytest.mark.parametrize("invalid", [
+    "default_indexes: 123\n",
+    "default_indexes: true\n",
+    "topic_index_map:\n  sea: {indexes: 123}\n",
+    "topic_index_map:\n  sea: {indexes: true}\n",
+])
+def test_invalid_truthy_index_value_aborts_all_probes(
+        tmp_path, monkeypatch, capsys, invalid):
+    _write_config(tmp_path, "default_indexes: [stale_yaml]\n")
+    _write_config(tmp_path, invalid, "indexes.production.yaml")
+    cfg = _cfg(ES_INDEX="env_index", REQUIREMENT_E2E_ES_INDEX="fixture")
+    selected, notes = discovery.discover(cfg, tmp_path)
+    assert selected == []
+    assert "index_config_indexes_invalid" in notes
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("ES connection attempted"))
+    monkeypatch.setattr(discovery.es, "_https_get",
+                        lambda *a, **k: pytest.fail("Mapping request attempted"))
+    report = discovery.diagnose(cfg, tmp_path)
+    assert report["selector_discovery"] == "INVALID_CONFIG"
+    assert report["results"] == []
+    assert report["feature_acceptance"] == "NOT_TESTED"
+    assert report["base_probe"]["https_probe"] == "SKIP"
+    visible = json.dumps(report)
+    for secret in ("stale_yaml", "env_index", "fixture", "TOP_SECRET"):
+        assert secret not in visible
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(discovery, "_effective_runtime_config",
+                        lambda _: cfg)
+    assert discovery.main([]) == 1
+    assert json.loads(capsys.readouterr().out)[
+        "selector_discovery"] == "INVALID_CONFIG"
+
+
+def test_valid_mapping_index_keys_are_normalized_like_runtime(tmp_path):
+    _write_config(tmp_path, "default_indexes: {primary: ignored}\n")
+    selected, notes = discovery.discover(_cfg(), tmp_path)
+    assert [v["_selector"] for v in selected] == ["primary"]
+    assert "index_config_indexes_invalid" not in notes
+
+
+def test_selected_utf8_decode_failure_aborts_prior_config_and_es(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [stale_index]\n")
+    (tmp_path / "config" / "indexes.production.yaml").write_bytes(
+        b"default_indexes: [ok]\n\xff")
+    cfg = _cfg(ES_INDEX="explicit_env")
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("ES connection attempted"))
+    monkeypatch.setattr(discovery.es, "_https_get",
+                        lambda *a, **k: pytest.fail("Mapping attempted"))
+    selected, notes = discovery.discover(cfg, tmp_path)
+    assert selected == []
+    assert "index_config_unavailable" in notes
+    report = discovery.diagnose(cfg, tmp_path)
+    assert report["selector_discovery"] == "INVALID_CONFIG"
+    assert report["results"] == []
+    assert "stale_index" not in json.dumps(report)
+
+
+def test_selected_existing_config_open_failure_aborts_es(
+        tmp_path, monkeypatch):
+    from pathlib import Path
+
+    _write_config(tmp_path, "default_indexes: [stale]\n")
+    _write_config(tmp_path, "default_indexes: [unused]\n",
+                  "indexes.production.yaml")
+    original_open = Path.open
+
+    def reject_one(path, *args, **kwargs):
+        if path.name == "indexes.production.yaml":
+            raise PermissionError("sensitive/operator/config/path")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", reject_one)
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("ES connection attempted"))
+    cfg = _cfg(ES_INDEX="explicit_env")
+    report = discovery.diagnose(cfg, tmp_path)
+    assert report["selector_discovery"] == "INVALID_CONFIG"
+    assert report["results"] == []
+    assert "index_config_unavailable" in report["notes"]
+    assert "sensitive" not in json.dumps(report)
+
+
+def test_missing_selected_config_remains_nonfatal_like_runtime(tmp_path):
+    _write_config(tmp_path, "default_indexes: [present]\n")
+    targets, notes = discovery.discover(_cfg(), tmp_path)
+    assert [x["_selector"] for x in targets] == ["present"]
+    assert "index_config_unavailable" not in notes
+
+
+def test_oversized_selected_config_blocks_even_explicit_env_index(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, "default_indexes: [stale]\n")
+    (tmp_path / "config" / "indexes.production.yaml").write_bytes(
+        b"x" * (discovery.MAX_CONFIG_BYTES + 1))
+    cfg = _cfg(ES_INDEX="explicit_env")
+    monkeypatch.setattr(discovery.es, "_observe",
+                        lambda *a, **k: pytest.fail("ES connection attempted"))
+    report = discovery.diagnose(cfg, tmp_path)
+    assert report["selector_discovery"] == "INVALID_CONFIG"
+    assert report["results"] == []
+    assert "index_config_not_read" in report["notes"]
+
+
 def test_external_selected_config_oversize_is_not_read(tmp_path):
     repo = tmp_path / "checkout"
     repo.mkdir()
@@ -232,7 +340,7 @@ def test_external_selected_config_oversize_is_not_read(tmp_path):
     assert targets == []
     assert "index_config_not_read" in notes
     assert "external_index_config_not_release_attested" in notes
-    assert "runtime_default_fallback_not_attested" in notes
+    assert "runtime_default_fallback_not_attested" not in notes
 
 
 def test_implicit_repo_config_symlink_cannot_read_external_file(tmp_path):
