@@ -67,3 +67,23 @@ do not use reduced-assurance Basic credentials as proof of FULL_LIVE.
 CI exercises deterministic, mocked network boundaries and config-only smoke
 checks. It cannot attest a running private network, SQL Server, ES or LLM
 service. No production deployment is performed by this PR.
+
+## Codex P2 remediation: reliable failure severity (2026-10-24)
+
+A nested API health provider cannot report PASS on its own: the readiness
+matrix requires configuration RESOLVED, an actual integer HTTP status **200**,
+the matching `healthz_http_200` reason, `GET` and `/healthz`. A
+contradictory HTTP 503 is recorded as FAIL rather than a positive health
+attestation. An invalid nested configuration is FAIL. Other malformed
+PASS-looking results are downgraded to non-authoritative SKIP.
+
+When an executed lower-level probe explicitly says FAIL but supplies an unknown
+reason, the reason is sanitized to `unexpected_probe_result` **without**
+downgrading FAIL to SKIP. Exit 1 still indicates ISSUES_FOUND. A malformed
+`APP_ENV` profile rejected by the real configuration bootstrap is reported
+as `runtime_profile_invalid`, `overall=ISSUES_FOUND`, and exit 1; it is not
+treated as routine incomplete acceptance. Unrelated dotenv/runtime-loader
+errors are redacted and remain exit 2. No raw environment value is printed.
+
+These behaviors are validated by deterministic Hosted tests and still do not
+certify private Linux readiness, SQL, ES, LLM, workers, Word or FULL_LIVE.
