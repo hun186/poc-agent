@@ -163,7 +163,7 @@ def test_implicit_repo_config_symlink_cannot_read_external_file(tmp_path):
     repo = tmp_path / "checkout"
     repo.mkdir()
     private = tmp_path / "outside.yaml"
-    private.write_text("default_indexes: [outside_index]\\n", encoding="utf-8")
+    private.write_text("default_indexes: [outside_index]\n", encoding="utf-8")
     (repo / "config").mkdir()
     (repo / "config" / "indexes.yaml").symlink_to(private)
     targets, notes = discovery.discover(_cfg(), repo)
