@@ -77,3 +77,7 @@
 ## 2026-10-23 PR #298 external YAML-path parity follow-up
 
 - Complete Hosted CI tests and exact-head Codex review on the explicit external config-path compatibility fix. Once tests pass, reply to the new P2 Finding, resolve its thread, re-request formal Codex review on latest SHA, and do not Merge without operator authorization. Operator-only Mapping and external-file identification remain NOT_FULL_LIVE; externally managed file provenance must be independently attested.
+
+## 2026-10-23 PR #298 selected YAML failure gate
+
+- Verify current exact-head OFF-1B Hosted CI after fail-closed YAML-root changes; reply to Codex ninth P2 and resolve its review thread only after verification. Request new formal exact-head Codex Review, fix any outstanding P1/P2 before seeking explicit merge authorization. Keep static diagnosis `PARTIAL_ONLY_NOT_ACCEPTANCE`, no Linux/ES changes.
