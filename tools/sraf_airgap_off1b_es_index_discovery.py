@@ -411,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
                           strict_ip_san=args.strict_ip_san,
                           show_index_names=args.show_index_names)
         print(json.dumps(report, sort_keys=True, ensure_ascii=False))
-        if (report["selector_discovery"] == "INVALID_CONFIG" or
+        if (report.get("selector_discovery") == "INVALID_CONFIG" or
             report["base_probe"].get("configuration") == "INVALID" or
             report["base_probe"]["https_probe"] == "FAIL" or
             report["base_probe"].get("auth") == "FAIL" or
