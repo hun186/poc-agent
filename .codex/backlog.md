@@ -112,3 +112,8 @@
 
 - Verify latest exact-head CI for `feat/sraf-off1d-readiness-matrix` (OFF-1B focused tests, OFF-1D tests, OFF-0 19 schema checks and offline CLI). Fix any failures, request formal Codex review and resolve P1/P2 before seeking explicit merge permission.
 - Only after independently authorized Linux deployment, run local OFF-1D matrix and interpret TCP/health/ODBC as partial. Implement later SQL Server authorized read-only proof, LLM model inventory/inference, worker/lease identities, Word DOCX artifact and physical air-gap isolation as separate evidence-producing slices. Never infer these from config/TCP or Hosted CI.
+
+## 2026-10-24 PR #300 formal-review remediation gates
+
+- Confirm exact HEAD Hosted CI for 3 new P2 fixes; reply to comments `4361687822`, `4361687833`, `4361687845`, resolve review threads after CI passes and submit fresh exact-head Codex Review. Do not merge without explicit instruction.
+- Keep default no-network, bounded network optional, partial-only observation and honest NOT_TESTED labels for SQL read, ES Mapping, LLM, workers, Word and network isolation.
