@@ -53,3 +53,7 @@
 
 - `python tools/sraf_airgap_off1b_es_index_discovery.py --check-readonly-search --strict-ip-san` adds at most one literal selected-index Elasticsearch read-only `GET /{index}/_search?size=0&track_total_hits=false&terminate_after=1&timeout=1s&allow_partial_search_results=false` after the existing mandatory root, protected-principal and Mapping probes. Without `--strict-ip-san` the extra option blocks all requests and marks `readonly_search_requires_strict_ip_san`.
 - For each existing per-selector result the new `query_reason` provides a redacted fixed reason; `query_probe` remains NOT_TESTED by default. Only a compatible first ACTIVE_REQUIRED selector may be assessed as PASS/FAIL/NOT_VERIFIED, subject to TLS and role checks. `mode=PARTIAL_ONLY_NOT_ACCEPTANCE` and `feature_acceptance=NOT_TESTED` are unchanged. Query FAIL returns exit 1; incomplete evidence returns exit 2. No document snippets, document counts, URLs or ES response bodies are returned.
+
+## 2026-10-24 OFF-1D local CLI output (proposal, not an API route)
+
+- `python tools/sraf_airgap_off1d_readiness_matrix.py [--probe-network]` returns JSON schema `sraf_airgap_off1d_readiness_matrix_v1`, mode `PARTIAL_ONLY_NOT_ACCEPTANCE`, overall `INCOMPLETE` or `ISSUES_FOUND`, `counts`, and fixed `results` rows of `id/component/aspect/status/reason/executed/depends_on/feature_acceptance`. No network by default, and no secrets/hosts/ports/body in response. Exit 1 denotes an observed failure; exit 2 denotes incomplete, including positive bounded probes. No exit 0 / FULL_LIVE.
