@@ -97,9 +97,14 @@ def _load_declarations(root: Path, cfg: Mapping[str, str]) -> tuple[dict[str, An
                 continue
             with path.open("r", encoding="utf-8") as stream:
                 data = yaml.safe_load(stream)
+            # The runtime loader uses yaml.safe_load(...) or {}. Empty
+            # documents are harmless, but truthy non-object roots raise
+            # during _merge_index_configs() and invalidate the whole load.
+            if not data:
+                data = {}
             if not isinstance(data, dict):
-                notes.append("index_config_invalid")
-                continue
+                notes.append("index_config_invalid_root")
+                return {"topic_index_map": {}, "default_indexes": []}, sorted(set(notes))
             if "default_index" in data and "default_indexes" not in data:
                 # Runtime index_loader ignores this singular legacy spelling.
                 notes.append("legacy_default_index_key_ignored")
@@ -129,7 +134,12 @@ def _load_declarations(root: Path, cfg: Mapping[str, str]) -> tuple[dict[str, An
                 notes.append("topic_config_invalid")
             if "default_indexes" in data:
                 merged["default_indexes"] = _indexes(data["default_indexes"])
-        except (OSError, UnicodeError, yaml.YAMLError, ValueError):
+        except yaml.YAMLError:
+            # Runtime fails on invalid YAML syntax as well; never retain
+            # stale selectors from previous files after a parse failure.
+            notes.append("index_config_yaml_invalid")
+            return {"topic_index_map": {}, "default_indexes": []}, sorted(set(notes))
+        except (OSError, UnicodeError, ValueError):
             notes.append("index_config_unavailable")
     return merged, sorted(set(notes))
 
@@ -137,6 +147,10 @@ def _load_declarations(root: Path, cfg: Mapping[str, str]) -> tuple[dict[str, An
 def discover(cfg: Mapping[str, str], root: Path) -> tuple[list[dict[str, Any]], list[str]]:
     """Discover declared call targets, not every index present on the cluster."""
     merged, notes = _load_declarations(root.resolve(), cfg)
+    # A failed runtime config load has no effective selectors. Do not probe
+    # prior YAML defaults, even when a separate ES_INDEX was provided.
+    if "index_config_invalid_root" in notes or "index_config_yaml_invalid" in notes:
+        return [], notes
     targets: dict[str, dict[str, Any]] = {}
 
     def add(name: str, role: str, source: str) -> None:
@@ -243,7 +257,9 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
     observations: list[dict[str, Any]] = []
     report: dict[str, Any] = {
         "schema": SCHEMA, "mode": MODE, "feature_acceptance": "NOT_TESTED",
-        "selector_discovery": "CONFIGURED_TARGETS_ONLY",
+        "selector_discovery": ("INVALID_CONFIG" if (
+            "index_config_invalid_root" in notes or
+            "index_config_yaml_invalid" in notes) else "CONFIGURED_TARGETS_ONLY"),
         "legacy_classification": "UNRESOLVED_WITHOUT_EXECUTION_EVIDENCE",
         "notes": notes, "base_probe": {"https_probe": "SKIP", "auth": "NOT_TESTED",
                                        "tls_validation": "NOT_TESTED"},
@@ -395,7 +411,8 @@ def main(argv: list[str] | None = None) -> int:
                           strict_ip_san=args.strict_ip_san,
                           show_index_names=args.show_index_names)
         print(json.dumps(report, sort_keys=True, ensure_ascii=False))
-        if (report["base_probe"].get("configuration") == "INVALID" or
+        if (report["selector_discovery"] == "INVALID_CONFIG" or
+            report["base_probe"].get("configuration") == "INVALID" or
             report["base_probe"]["https_probe"] == "FAIL" or
             report["base_probe"].get("auth") == "FAIL" or
             report["base_probe"]["tls_validation"] == "FAIL" or
