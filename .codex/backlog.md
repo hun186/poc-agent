@@ -90,3 +90,7 @@
 ## 2026-10-23 PR #298 latest review gate
 
 - Verify exact HEAD after literal-fixture-collision and numeric-topic-key fixes with Hosted OFF-1B/ OFF-0 tests; reply to new P2 comments, review previous unresolved threads, and retry resolution when possible. Submit exact-head formal Codex review after CI. No merge without explicit authorization and no FULL_LIVE claim.
+
+## 2026-10-23 PR #298 next review gates
+
+- Check exact-head Hosted CI for default fixture protection and recursive YAML failure classification; answer and resolve two new P2 threads and submit formal Codex review of latest HEAD only after CI passes. Correct any further P1/P2 findings before authorized merge. The operator probe remains PARTIAL_ONLY_NOT_ACCEPTANCE with no change to air-gapped Linux deployment.
