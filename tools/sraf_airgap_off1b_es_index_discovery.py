@@ -19,7 +19,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from agent.external_capabilities import mapping_compatibility  # noqa: E402
+from agent.external_capabilities import (  # noqa: E402
+    REQUIREMENT_E2E_INDEX_PATTERN, mapping_compatibility,
+)
 from agent.es.mock_es_client import REQUIREMENT_E2E_INDEX  # noqa: E402
 from agent.es.reference_text import (  # noqa: E402
     DEFAULT_REFERENCE_TEXT_FIELD, _VALID_FIELD_PATH,
@@ -59,6 +61,7 @@ _BLOCKING_CONFIG_NOTES = frozenset({
     "index_config_indexes_invalid",
     "index_config_unavailable",
     "e2e_production_selector_conflict",
+    "e2e_selector_invalid",
 })
 
 
@@ -223,8 +226,12 @@ def discover(cfg: Mapping[str, str], root: Path) -> tuple[list[dict[str, Any]], 
     fixture = _fixture_index(cfg)
     configured_fixture = bool((cfg.get("REQUIREMENT_E2E_ES_INDEX") or "").strip())
     if fixture:
-        if es._configured_index(fixture) is None:
+        if (REQUIREMENT_E2E_INDEX_PATTERN.fullmatch(fixture) is None
+                or es._configured_index(fixture) is None):
+            # Runtime requirement_e2e_es_index() rejects malformed explicit
+            # fixture selectors; never probe ES for invalid configuration.
             notes.append("e2e_selector_invalid")
+            return [], sorted(set(notes))
         elif fixture in targets:
             # A literal collision is a confirmed local configuration error,
             # not remote Mapping evidence. Reject before sending Basic auth
