@@ -107,3 +107,8 @@
 ## 2026-10-23 PR #299 follow-up review gates
 
 - Verify latest exact HEAD after two new Codex P2 fixes with OFF-1B focused pytest, OFF-0 19-check contract and no-network config-only checks. Reply to both Findings, resolve threads after evidence, re-request formal Codex review on latest HEAD and fix any subsequent findings. Do not merge without an explicit user request or imply production SSL/ES verification.
+
+## 2026-10-24 OFF-1D next gates
+
+- Verify latest exact-head CI for `feat/sraf-off1d-readiness-matrix` (OFF-1B focused tests, OFF-1D tests, OFF-0 19 schema checks and offline CLI). Fix any failures, request formal Codex review and resolve P1/P2 before seeking explicit merge permission.
+- Only after independently authorized Linux deployment, run local OFF-1D matrix and interpret TCP/health/ODBC as partial. Implement later SQL Server authorized read-only proof, LLM model inventory/inference, worker/lease identities, Word DOCX artifact and physical air-gap isolation as separate evidence-producing slices. Never infer these from config/TCP or Hosted CI.
