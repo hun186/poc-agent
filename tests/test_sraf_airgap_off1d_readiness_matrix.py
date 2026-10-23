@@ -206,6 +206,11 @@ def test_untrusted_exception_or_reason_is_never_printed(monkeypatch):
         assert marker not in output
     assert _rows(report)["HOST-DISK"]["status"] == "FAIL"
     assert _rows(report)["SQL-ODBC"]["reason"] == "unexpected_probe_result"
+    assert _rows(report)["SQL-ODBC"]["status"] == "SKIP"
+    # An unrecognized PASS-looking response never becomes evidence.
+    assert _rows(report)["API-TCP"]["status"] == "SKIP"
+    assert _rows(report)["ES-TCP"]["status"] == "SKIP"
+    assert _rows(report)["API-HEALTH"]["status"] == "SKIP"
     assert report["feature_acceptance"] == "NOT_TESTED"
 
 
