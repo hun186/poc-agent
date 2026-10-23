@@ -51,10 +51,12 @@ def _health(monkeypatch, *, status="PASS"):
         assert not no_network
         calls.append(True)
         return {
+            "configuration": "RESOLVED",
             "http_probe": status,
             "reason": "healthz_http_200" if status == "PASS"
             else "healthz_http_not_200",
             "http_status": 200 if status == "PASS" else 503,
+            "http_method": "GET", "healthz_endpoint": "/healthz",
         }
 
     monkeypatch.setattr(matrix.api_http, "_observe", observe)
@@ -156,6 +158,131 @@ def test_api_health_observation_is_bounded_and_not_an_identity_claim(
     assert record["feature_acceptance"] == "NOT_TESTED"
     assert report["overall"] == (
         "ISSUES_FOUND" if status == "FAIL" else "INCOMPLETE")
+
+
+
+@pytest.mark.parametrize("alter", [
+    {"configuration": "INVALID"},
+    {"configuration": "MISSING"},
+    {"http_status": 503},
+    {"http_status": True},
+    {"http_status": None},
+    {"reason": "healthz_http_not_200"},
+    {"http_method": "POST"},
+    {"healthz_endpoint": "/ready"},
+])
+def test_contradictory_health_pass_is_not_authoritative(monkeypatch, alter):
+    _local(monkeypatch)
+    _tcp(monkeypatch)
+    fake = {
+        "configuration": "RESOLVED",
+        "http_probe": "PASS",
+        "reason": "healthz_http_200",
+        "http_status": 200,
+        "http_method": "GET",
+        "healthz_endpoint": "/healthz",
+    }
+    fake.update(alter)
+    monkeypatch.setattr(matrix.api_http, "_observe",
+                        lambda *a, **k: fake)
+    result = matrix.build_report(_cfg(), probe_network=True)
+    obs = _rows(result)["API-HEALTH"]
+    assert obs["status"] != "PASS"
+    assert obs["feature_acceptance"] == "NOT_TESTED"
+    if alter.get("configuration") == "INVALID":
+        assert obs["status"] == "SKIP"  # fake PASS does not override validation
+    assert result["overall"] != "FULL_LIVE"
+
+
+@pytest.mark.parametrize("source", ["disk", "odbc", "tcp", "health"])
+def test_unknown_reason_fail_keeps_severity_and_is_redacted(
+        monkeypatch, source, tmp_path, capsys):
+    _local(monkeypatch)
+    _tcp(monkeypatch)
+    _health(monkeypatch)
+    secret_reason = "backend-password=/private/secret"
+    if source == "disk":
+        monkeypatch.setattr(matrix, "probe_disk",
+                            lambda: SimpleNamespace(
+                                status="FAIL", reason=secret_reason,
+                                executed=True))
+    elif source == "odbc":
+        monkeypatch.setattr(matrix, "probe_odbc_library",
+                            lambda: SimpleNamespace(
+                                status="FAIL", reason=secret_reason,
+                                executed=True))
+    elif source == "tcp":
+        original = matrix.tcp._observe
+
+        def fail_tcp(service, cfg, *, no_network):
+            obs = original(service, cfg, no_network=no_network)
+            if service == "es":
+                obs["tcp_probe"] = "FAIL"
+                obs["reason"] = secret_reason
+            return obs
+
+        monkeypatch.setattr(matrix.tcp, "_observe", fail_tcp)
+    else:
+        monkeypatch.setattr(matrix.api_http, "_observe",
+                            lambda *a, **k: {
+                                "configuration": "RESOLVED",
+                                "http_probe": "FAIL",
+                                "reason": secret_reason,
+                                "http_status": 502,
+                                "http_method": "GET",
+                                "healthz_endpoint": "/healthz",
+                            })
+    monkeypatch.setattr(matrix, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(matrix.tcp, "_effective_runtime_config",
+                        lambda root: _cfg())
+    assert matrix.main(["--probe-network"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    row_key = {
+        "disk": "HOST-DISK", "odbc": "SQL-ODBC",
+        "tcp": "ES-TCP", "health": "API-HEALTH",
+    }[source]
+    assert _rows(payload)[row_key]["status"] == "FAIL"
+    assert _rows(payload)[row_key]["reason"] == "unexpected_probe_result"
+    assert payload["overall"] == "ISSUES_FOUND"
+    assert secret_reason not in json.dumps(payload)
+
+
+@pytest.mark.parametrize("bad_profile", [
+    "bad profile", "invalid/profile", "x" * 33, "stage\nleak",
+])
+def test_invalid_app_env_is_error_exit_one_without_probes_or_secrets(
+        tmp_path, monkeypatch, capsys, bad_profile):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(matrix, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setenv("APP_ENV", bad_profile)
+    monkeypatch.setattr(matrix, "probe_disk",
+                        lambda: pytest.fail("probes must not execute"))
+    monkeypatch.setattr(matrix, "probe_odbc_library",
+                        lambda: pytest.fail("probes must not execute"))
+    monkeypatch.setattr(matrix.tcp, "_observe",
+                        lambda *a, **k: pytest.fail("network attempted"))
+    assert matrix.main(["--probe-network"]) == 1
+    output = capsys.readouterr().out
+    report = json.loads(output)
+    assert report["error"] == "runtime_profile_invalid"
+    assert report["overall"] == "ISSUES_FOUND"
+    assert report["feature_acceptance"] == "NOT_TESTED"
+    assert bad_profile not in output
+    assert "FULL_LIVE" not in output
+
+
+def test_unexpected_profile_loader_value_error_is_still_incomplete(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(matrix, "PROJECT_ROOT", tmp_path)
+    def exception(root):
+        raise ValueError("secret from .env parser")
+    monkeypatch.setattr(matrix.tcp, "_effective_runtime_config", exception)
+    assert matrix.main(["--probe-network"]) == 2
+    output = capsys.readouterr().out
+    assert json.loads(output)["error"] == "readiness_matrix_unavailable"
+    assert "secret" not in output
 
 
 def test_invalid_config_is_failure_even_in_no_network_mode(monkeypatch):
