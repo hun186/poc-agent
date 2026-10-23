@@ -116,3 +116,9 @@
 - Formal Codex review on `912059cd` completed with two new P2 findings: default Requirement E2E fixture (when no environment override) was not protected from literal/alias production collisions, and YAML recursion depth failures reached the generic incomplete exit instead of invalid configuration.
 - The discovery tool now uses the same built-in default E2E fixture constant as the Runtime with the effective deployment config override, protects both literal and resolved alias conflicts, and does not issue extra probes to an unconfigured fixture. Recursive YAML parse failures are classified as invalid config, clear all stale selector targets, block ES network, and exit 1.
 - Regression cases cover all production selection sources, default fixture alias, no extra implicit network probes, forced and deep YAML recursion, status and redaction. Current Hosted CI and new formal exact-HEAD Codex review are separate pending gates. PR not merged; no on-host production acceptance.
+
+## 2026-10-23 PR #298 E2E fixture naming parity follow-up
+
+- Codex review completed on `35407f23bba2a27a3b5cdab3abc731c759012c05`, raising one P2: selected E2E fixture names could be syntactically safe for Elasticsearch but invalid under the runtime's `requirement_e2e_[a-z0-9._-]{1,238}` contract.
+- The runtime and operator diagnostic now share a compiled E2E index regex pattern from `agent.external_capabilities`. An invalid effective E2E fixture name blocks discovery and all Elasticsearch network probes, yields redacted `e2e_selector_invalid` / `INVALID_CONFIG` and CLI exit 1. Existing valid fixture tests were migrated to runtime-valid names; regression cases verify invalid variants, no secret leakage, no network and runtime parity.
+- Hosted CI and fresh formal Codex review on latest HEAD are distinct required gates. The PR remains unmerged; no Linux or real Elasticsearch acceptance was run.
