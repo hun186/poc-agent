@@ -103,3 +103,7 @@
 
 - Run exact-head Hosted CI and formal Codex review for the optional strict-TLS zero-hit search check before any merge. The current Docker Elasticsearch IP SAN mismatch prevents a trustworthy live query preflight until operator-managed certificate correction.
 - SQL Server, LLM/Agent inference, workers, Word outputs, real RAG quality and full air-gap acceptance remain separate incomplete implementation and live-verification slices. The new query check does not prove them.
+
+## 2026-10-23 PR #299 follow-up review gates
+
+- Verify latest exact HEAD after two new Codex P2 fixes with OFF-1B focused pytest, OFF-0 19-check contract and no-network config-only checks. Reply to both Findings, resolve threads after evidence, re-request formal Codex review on latest HEAD and fix any subsequent findings. Do not merge without an explicit user request or imply production SSL/ES verification.
