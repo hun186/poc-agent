@@ -34,6 +34,19 @@ MAX_CONFIG_FILES = 8
 MAX_CONFIG_BYTES = 256 * 1024
 MAX_SELECTORS = 24
 MAX_NETWORK_SELECTORS = 12
+# A diagnosis cannot contact ES when any selected runtime config failed to
+# load or could not be safely inspected. Missing files remain nonfatal: the
+# runtime loader also skips them.
+_BLOCKING_CONFIG_NOTES = frozenset({
+    "index_config_file_budget_exceeded",
+    "index_config_outside_checkout_not_selected",
+    "index_config_symlink_not_read",
+    "index_config_not_read",
+    "index_config_invalid_root",
+    "index_config_yaml_invalid",
+    "index_config_indexes_invalid",
+    "index_config_unavailable",
+})
 
 
 def _indexes(value: Any) -> list[str]:
@@ -42,11 +55,13 @@ def _indexes(value: Any) -> list[str]:
         return []
     if isinstance(value, str):
         value = [value]
-    if not isinstance(value, (list, tuple)):
-        return []
+    # Runtime index_loader._normalize_indexes iterates its input, including
+    # YAML mappings (over keys); a truthy scalar raises TypeError. Never
+    # silently discard an invalid scalar and probe stale preceding selectors.
+    items = iter(value)
     out: list[str] = []
     seen: set[str] = set()
-    for item in value:
+    for item in items:
         if item is None:
             continue
         # Mirror config.index_loader._normalize_indexes: YAML scalars
@@ -139,8 +154,16 @@ def _load_declarations(root: Path, cfg: Mapping[str, str]) -> tuple[dict[str, An
             # stale selectors from previous files after a parse failure.
             notes.append("index_config_yaml_invalid")
             return {"topic_index_map": {}, "default_indexes": []}, sorted(set(notes))
+        except TypeError:
+            # Runtime _normalize_indexes raises on truthy non-iterable YAML
+            # index fields, including numbers; do not probe stale ES targets.
+            notes.append("index_config_indexes_invalid")
+            return {"topic_index_map": {}, "default_indexes": []}, sorted(set(notes))
         except (OSError, UnicodeError, ValueError):
+            # Runtime propagates errors opening/decoding a selected existing
+            # config. Continuing would authenticate against stale selectors.
             notes.append("index_config_unavailable")
+            return {"topic_index_map": {}, "default_indexes": []}, sorted(set(notes))
     return merged, sorted(set(notes))
 
 
@@ -149,7 +172,7 @@ def discover(cfg: Mapping[str, str], root: Path) -> tuple[list[dict[str, Any]], 
     merged, notes = _load_declarations(root.resolve(), cfg)
     # A failed runtime config load has no effective selectors. Do not probe
     # prior YAML defaults, even when a separate ES_INDEX was provided.
-    if "index_config_invalid_root" in notes or "index_config_yaml_invalid" in notes:
+    if _BLOCKING_CONFIG_NOTES.intersection(notes):
         return [], notes
     targets: dict[str, dict[str, Any]] = {}
 
@@ -257,9 +280,9 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
     observations: list[dict[str, Any]] = []
     report: dict[str, Any] = {
         "schema": SCHEMA, "mode": MODE, "feature_acceptance": "NOT_TESTED",
-        "selector_discovery": ("INVALID_CONFIG" if (
-            "index_config_invalid_root" in notes or
-            "index_config_yaml_invalid" in notes) else "CONFIGURED_TARGETS_ONLY"),
+        "selector_discovery": ("INVALID_CONFIG" if
+                               _BLOCKING_CONFIG_NOTES.intersection(notes)
+                               else "CONFIGURED_TARGETS_ONLY"),
         "legacy_classification": "UNRESOLVED_WITHOUT_EXECUTION_EVIDENCE",
         "notes": notes, "base_probe": {"https_probe": "SKIP", "auth": "NOT_TESTED",
                                        "tls_validation": "NOT_TESTED"},
