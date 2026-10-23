@@ -86,3 +86,7 @@
 
 - Check Hosted CI on the current exact PR HEAD for index type and YAML read-error fixes; review and resolve two newly raised Codex P2 comments after tests pass.
 - Request formal Codex review on the latest commit, and continue findings remediation without merging. On-host production acceptance remains separately unverified.
+
+## 2026-10-23 PR #298 latest review gate
+
+- Verify exact HEAD after literal-fixture-collision and numeric-topic-key fixes with Hosted OFF-1B/ OFF-0 tests; reply to new P2 comments, review previous unresolved threads, and retry resolution when possible. Submit exact-head formal Codex review after CI. No merge without explicit authorization and no FULL_LIVE claim.
