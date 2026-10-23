@@ -38,18 +38,27 @@ MAX_NETWORK_SELECTORS = 12
 
 def _indexes(value: Any) -> list[str]:
     """Mirror es_client/index_loader's comma expansion and ordered dedup."""
+    if not value:
+        return []
     if isinstance(value, str):
         value = [value]
     if not isinstance(value, (list, tuple)):
         return []
     out: list[str] = []
+    seen: set[str] = set()
     for item in value:
-        if not isinstance(item, str):
+        if item is None:
             continue
-        for name in item.split(","):
+        # Mirror config.index_loader._normalize_indexes: YAML scalars
+        # (including numeric index names) are stringified before splitting.
+        value_text = str(item).strip()
+        if not value_text:
+            continue
+        for name in value_text.split(","):
             name = name.strip()
-            if name and name not in out:
+            if name and name not in seen:
                 out.append(name)
+                seen.add(name)
     return out
 
 
@@ -296,6 +305,13 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
             status, body, reason = es._https_get(
                 host, port, f"/{name}/_mapping", user, password, ca,
                 warn_only_ip_san=True)
+        # A later Mapping GET can reach a different CA-signed TLS peer from
+        # the root/auth preflight. Record its SAN warning BEFORE any local
+        # early exit (including fixture alias conflicts) can bypass it.
+        if reason in ("https_response_ca_only_ip_san_mismatch",
+                      "es_https_transport_unavailable_ip_san_mismatch"):
+            report["base_probe"]["identity_warning"] = True
+            report["base_probe"]["tls_validation"] = "WARN"
         if status == 404:
             obs["mapping_probe"] = (
                 "FAIL" if target["classification"] == "ACTIVE_REQUIRED" else "WARN")
@@ -332,22 +348,22 @@ def diagnose(cfg: dict[str, str], root: Path, *, no_network: bool = False,
                 obs["mapping_probe"] = "FAIL"
                 obs["selector_resolution"] = "FIXTURE_CONFLICT"
                 obs["reason"] = "e2e_production_selector_conflict"
-                continue
-            verdict, verdict_reason, resolution, md = inspect_mapping(
-                body or b"", name, target["classification"], reference)
-            obs["selector_resolution"] = resolution
-            obs["multidim_mapping"] = md
-            obs["mapping_probe"] = verdict
-            obs["reason"] = verdict_reason
-            if verdict == "FAIL" and target["classification"] == "ACTIVE_OPTIONAL":
-                obs["mapping_probe"] = "WARN"
-        if reason in ("https_response_ca_only_ip_san_mismatch",
-                      "es_https_transport_unavailable_ip_san_mismatch") or base["identity_warning"]:
-            report["base_probe"]["identity_warning"] = True
-            report["base_probe"]["tls_validation"] = "WARN"
-            if obs["mapping_probe"] == "PASS":
-                obs["mapping_probe"] = "WARN"
-                obs["reason"] = "es_mapping_identity_unverified"
+            else:
+                verdict, verdict_reason, resolution, md = inspect_mapping(
+                    body or b"", name, target["classification"], reference)
+                obs["selector_resolution"] = resolution
+                obs["multidim_mapping"] = md
+                obs["mapping_probe"] = verdict
+                obs["reason"] = verdict_reason
+                if verdict == "FAIL" and target["classification"] == "ACTIVE_OPTIONAL":
+                    obs["mapping_probe"] = "WARN"
+        # Any identity-unverified peer supplies advisory-only evidence:
+        # neither a positive nor a negative Mapping verdict can be trusted.
+        # Preserve local security/configuration failures (including strict SAN
+        # rejection) as FAIL; only downgrade response-derived verdicts.
+        if report["base_probe"]["identity_warning"] and obs["mapping_probe"] in ("PASS", "FAIL"):
+            obs["mapping_probe"] = "WARN"
+            obs["reason"] = "es_mapping_identity_unverified"
     report["summary"] = dict(Counter(item["mapping_probe"] for item in observations))
     return report
 
