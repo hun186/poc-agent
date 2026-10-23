@@ -380,7 +380,7 @@ topic_index_map:
 
 
 def test_late_san_warning_survives_fixture_alias_conflict(tmp_path, monkeypatch):
-    _write_config(tmp_path, "default_indexes: [production_alias]\\n")
+    _write_config(tmp_path, "default_indexes: [production_alias]\n")
     calls = _network(monkeypatch, {
         "production_alias": (
             200, _mapping("fixture_name"),
@@ -406,7 +406,7 @@ def test_late_san_warning_survives_fixture_alias_conflict(tmp_path, monkeypatch)
 ])
 def test_base_identity_warning_downgrades_negative_mapping_evidence(
         tmp_path, monkeypatch, target_result):
-    _write_config(tmp_path, "default_indexes: [docs]\\n")
+    _write_config(tmp_path, "default_indexes: [docs]\n")
     _network(monkeypatch, {"docs": target_result}, base_warning=True)
     report = discovery.diagnose(
         _cfg(REQUIREMENT_E2E_ES_INDEX="fixture_name"), tmp_path)
@@ -419,7 +419,7 @@ def test_base_identity_warning_downgrades_negative_mapping_evidence(
 
 def test_late_san_warning_downgrades_required_not_found_and_continues(
         tmp_path, monkeypatch):
-    _write_config(tmp_path, "default_indexes: [required, other]\\n")
+    _write_config(tmp_path, "default_indexes: [required, other]\n")
     calls = _network(monkeypatch, {
         "required": (404, b"{}", "https_response_ca_only_ip_san_mismatch"),
     })
@@ -432,7 +432,7 @@ def test_late_san_warning_downgrades_required_not_found_and_continues(
 
 def test_cli_san_warning_and_unverified_missing_index_is_partial_only(
         tmp_path, monkeypatch, capsys):
-    _write_config(tmp_path, "default_indexes: [docs]\\n")
+    _write_config(tmp_path, "default_indexes: [docs]\n")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(discovery, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(discovery, "_effective_runtime_config",
