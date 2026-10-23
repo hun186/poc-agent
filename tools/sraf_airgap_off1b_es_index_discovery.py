@@ -46,6 +46,7 @@ _BLOCKING_CONFIG_NOTES = frozenset({
     "index_config_yaml_invalid",
     "index_config_indexes_invalid",
     "index_config_unavailable",
+    "e2e_production_selector_conflict",
 })
 
 
@@ -126,9 +127,9 @@ def _load_declarations(root: Path, cfg: Mapping[str, str]) -> tuple[dict[str, An
             topics = data.get("topic_index_map")
             if isinstance(topics, dict):
                 for topic, declared in topics.items():
-                    if not isinstance(topic, str):
-                        notes.append("topic_config_invalid")
-                        continue
+                    # Runtime _merge_index_configs preserves hashable YAML
+                    # keys (including int/bool). The key is not emitted and
+                    # only the selected index values reach diagnostic probes.
                     if not isinstance(declared, dict):
                         # Runtime _merge_index_configs replaces this topic,
                         # even with a non-dict. Do not probe its old selectors.
@@ -212,7 +213,11 @@ def discover(cfg: Mapping[str, str], root: Path) -> tuple[list[dict[str, Any]], 
         if es._configured_index(fixture) is None:
             notes.append("e2e_selector_invalid")
         elif fixture in targets:
+            # A literal collision is a confirmed local configuration error,
+            # not remote Mapping evidence. Reject before sending Basic auth
+            # even in WARN_ONLY mode; it must never appear as Mapping PASS.
             notes.append("e2e_production_selector_conflict")
+            return [], sorted(set(notes))
         else:
             add(fixture, "E2E_FIXTURE", "explicit_e2e_selector")
     for record in targets.values():
