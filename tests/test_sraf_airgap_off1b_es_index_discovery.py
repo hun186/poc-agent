@@ -88,6 +88,90 @@ default_indexes: [new_default]
     assert notes == []
 
 
+@pytest.mark.parametrize("override_key", [
+    "INDEXES_CONFIG", "INDEX_CONFIG", "INDEXES_CONFIGS",
+])
+def test_explicit_external_index_file_matches_runtime_selected_targets(
+        tmp_path, monkeypatch, override_key):
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    private = tmp_path / "deployment" / "production.yaml"
+    private.parent.mkdir()
+    private.write_text("""default_indexes: [external_default]
+topic_index_map:
+  sea: {indexes: [external_topic]}
+""", encoding="utf-8")
+    cfg = _cfg(**{override_key: str(private)})
+    targets, notes = discovery.discover(cfg, repo)
+    assert [x["_selector"] for x in targets] == [
+        "external_default", "external_topic",
+    ]
+    assert "external_index_config_not_release_attested" in notes
+    calls = _network(monkeypatch)
+    report = discovery.diagnose(cfg, repo)
+    assert calls == [
+        "/external_default/_mapping", "/external_topic/_mapping",
+    ]
+    assert [i["mapping_probe"] for i in report["results"]] == [
+        "PASS", "PASS",
+    ]
+    visible = json.dumps(report)
+    assert str(private) not in visible
+    assert "external_default" not in visible
+    assert "external_topic" not in visible
+    assert "TOP_SECRET" not in visible
+    assert report["feature_acceptance"] == "NOT_TESTED"
+
+
+def test_external_selected_config_preserves_multi_file_order_and_bounds(tmp_path):
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    first = tmp_path / "managed" / "one.yaml"
+    second = tmp_path / "managed" / "two.yaml"
+    first.parent.mkdir()
+    first.write_text("""default_indexes: [first_default]
+topic_index_map:
+  sea: {indexes: [old_topic]}
+""", encoding="utf-8")
+    second.write_text("""default_indexes: [new_default]
+topic_index_map:
+  sea: {indexes: [new_topic]}
+""", encoding="utf-8")
+    cfg = _cfg(INDEXES_CONFIGS=f"{first},{second}")
+    targets, notes = discovery.discover(cfg, repo)
+    assert [x["_selector"] for x in targets] == [
+        "new_default", "old_topic", "new_topic",
+    ]
+    assert "external_index_config_not_release_attested" in notes
+
+
+def test_external_selected_config_oversize_is_not_read(tmp_path):
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    private = tmp_path / "managed" / "oversized.yaml"
+    private.parent.mkdir()
+    private.write_bytes(b"x" * (discovery.MAX_CONFIG_BYTES + 1))
+    targets, notes = discovery.discover(
+        _cfg(INDEXES_CONFIG=str(private)), repo)
+    assert targets == []
+    assert "index_config_not_read" in notes
+    assert "external_index_config_not_release_attested" in notes
+    assert "runtime_default_fallback_not_attested" in notes
+
+
+def test_implicit_repo_config_symlink_cannot_read_external_file(tmp_path):
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    private = tmp_path / "outside.yaml"
+    private.write_text("default_indexes: [outside_index]\\n", encoding="utf-8")
+    (repo / "config").mkdir()
+    (repo / "config" / "indexes.yaml").symlink_to(private)
+    targets, notes = discovery.discover(_cfg(), repo)
+    assert targets == []
+    assert "index_config_outside_checkout_not_selected" in notes
+    assert "outside_index" not in json.dumps(notes)
+
+
 def test_production_without_development_index_is_supported(tmp_path):
     _write_config(tmp_path, """topic_index_map:
   military: {indexes: [production_ships]}
