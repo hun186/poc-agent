@@ -110,3 +110,9 @@
 
 - Review completed with two P2: literal overlap between a production selector and REQUIREMENT_E2E_ES_INDEX was noted but not made fatal; integer YAML topic keys were dropped though the runtime loader retained them.
 - PR branch remediation makes a literal fixture collision INVALID_CONFIG/exit 1 with zero network access; non-string hashable topic keys now retain their index values without exposing keys. Regression tests cover no network, redaction, CLI failure, numeric/boolean keys and additive merge. Hosted CI and fresh exact-head formal review are pending. No merge or Linux deployment.
+
+## 2026-10-23 PR #298 default-fixture and recursive-YAML findings
+
+- Formal Codex review on `912059cd` completed with two new P2 findings: default Requirement E2E fixture (when no environment override) was not protected from literal/alias production collisions, and YAML recursion depth failures reached the generic incomplete exit instead of invalid configuration.
+- The discovery tool now uses the same built-in default E2E fixture constant as the Runtime with the effective deployment config override, protects both literal and resolved alias conflicts, and does not issue extra probes to an unconfigured fixture. Recursive YAML parse failures are classified as invalid config, clear all stale selector targets, block ES network, and exit 1.
+- Regression cases cover all production selection sources, default fixture alias, no extra implicit network probes, forced and deep YAML recursion, status and redaction. Current Hosted CI and new formal exact-HEAD Codex review are separate pending gates. PR not merged; no on-host production acceptance.
