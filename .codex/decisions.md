@@ -71,3 +71,7 @@
 
 - Preserve existing single-index OFF-1B API/CLI and introduce a separate operator-only configured-selector CLI. Share vetted CA/private IPv4/Basic principal preflight through opt-in `skip_mapping`; never import runtime `agent.es.es_client` to use its TLS-hostname-bypassing client for diagnostics.
 - Use only operator-selected loader inputs and exact literal configured selectors; do not enumerate `_cat/indices`, expand wildcards, fetch document bodies or classify unused remote indices as legacy from their names. E2E fixture and optional topic Mapping rules are not imposed on unrelated production indexes. Default WARN_ONLY IP SAN evidence cannot certify identity or FULL_LIVE.
+
+## 2026-10-23 OFF-1B per-request identity evidence
+
+- Capture every Mapping-request IP SAN mismatch before any selector-specific early exit; preserve the warning in the aggregate TLS status. Treat both positive and negative response-derived Mapping verdicts as advisory WARN whenever the intended peer identity is unverified. Keep genuinely strict certificate identity failures and independent local auth/configuration problems distinct and blocking. Match runtime index_loader's YAML scalar stringification while continuing to reject unsafe wildcard/invalid literal selectors.
