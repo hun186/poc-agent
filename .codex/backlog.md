@@ -69,3 +69,7 @@
 - Verify new `feat/sraf-off1b-es-index-discovery` HEAD with OFF-1B targeted pytest, Hosted CI exact-head and clean Codex review, then resolve findings. Do not merge without operator instruction; no Linux changes.
 - After explicit deployment authorization, run `python tools/sraf_airgap_off1b_es_index_discovery.py` on real air-gapped host and reconcile actual configured indexes, aliases, and roles. Historic `satmeta` may be required as default until live call-chain evidence proves otherwise; do not label it retired from the name or mapping alone.
 - Future independent slices: bounded operator-authorized read-only query capability, evidence-linked alias/selector verification, authorized E2E isolation, and dependency-aware orchestration of SQL/LLM/API/workers/Word checks with no false FULL_LIVE success.
+
+## 2026-10-23 PR #298 remaining exact-head gates
+
+- Validate remediation of Codex P1+2 P2 on current HEAD through Hosted OFF-1B pytest/OFF-0 contract and fresh Codex review receipt for precisely the reviewed SHA. Reply to the three new findings and resolve threads only after verifying fixes; repeat until CLEAN or report outstanding issues. Keep PR unmerged and obtain real Linux read-only diagnosis only after separate operator-authorized deployment; no production mutation or FULL_LIVE claim.
