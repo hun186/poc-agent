@@ -60,3 +60,7 @@
 
 ## Compaction Record — 2026-10-24
 - Complied with AGENTS.md >20 work-record rule; current architecture summary retains active design constraints, original full text is traceable. This documentation change is not Linux deployment acceptance.
+
+## 2026-10-24 OFF-1K partial local owner correlation
+
+- `tools/sraf_airgap_off1k_handoff_owner.py` composes canonical file-bound `verify_worker_identity` Handoff role checks, bounded initial /proc environ read of a single explicitly inherited owner ID, and one known-schema ODBC18/TLS SQL predicate query of lease owner equality. Rechecks PID/start/owner after SQL; no arbitrary path, dotenv evaluation, Worker start/stop, SQL DML/lease mutations or native credential/error exposure. Because bootstrap can load late values, absent initial owner is SKIP, never PID-based guess. `HANDOFF-OWNER` remains independent partial observation, not durable job or process-to-lease-session attestation.
