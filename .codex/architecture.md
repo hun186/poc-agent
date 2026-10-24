@@ -74,3 +74,7 @@
 ## 2026-10-24 OFF-1H worker identity trust boundary
 
 - OFF-1D operator-only `WORKERS` row may optionally reuse canonical launcher-managed Schedule/Handoff identity verifier for two fixed file paths. The underlying /proc verifier checks recorded PID start tick, effective UID, current directory and role command. Neither network access nor SQL activity is needed; worker health, SQL lease ownership, report-job API worker and scheduling progress require separate independent proof.
+
+## 2026-10-24 OFF-1I Handoff SQL lease preflight
+
+- Optional standalone `tools/sraf_airgap_off1i_handoff_lease.py` queries only the known `requirement_handoff_coordinator_leases` table through fixed authorized OFF-1G ODBC TLS transport. Redacted `HANDOFF-LEASE` matrix result is independent of existing `WORKERS` process identity. Query returns SQL-computed flags, not sensitive lease owner/token/timestamps or job records. True local owner binding and renewal/progress require separate future schema-aware, privacy-reviewed evidence.
