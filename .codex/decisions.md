@@ -95,3 +95,7 @@
 ## 2026-10-24 OFF-1H identity before lease decision
 
 - Reuse the production E2E helper `verify_worker_identity` instead of duplicating launcher/`/proc` role semantics. Avoid invoking any worker or observing unrelated processes. Require an explicit operator CLI flag, two canonical fixed root-relative identity files, bounded file sizes and two different verified PIDs. Report only fixed aggregate observation codes; process existence must NEVER imply poll progress, SQL leases, Report Job health or OFF-0/FULL_LIVE acceptance.
+
+## 2026-10-24 OFF-1I lease snapshot evidence boundary
+
+- Only the schema-backed Handoff Coordinator exposes a heartbeat/lease row; Schedule Worker calls `claim_due()` and has no equivalent independent worker heartbeat. A SQL SERVER clock-bounded, credential-redacted SELECT snapshot can prove active DB lease predicates at one instant but never proves local PID association, renewals or progress. Require explicit 3 flags and prior OFF-1G authenticated SQL read; use dedicated DBA-restricted diagnostic account. No dynamic SQL aside from strictly bounded schema identifier. Do not promise complete Worker health.
