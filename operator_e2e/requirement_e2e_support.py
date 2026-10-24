@@ -443,7 +443,7 @@ def _worker_argv_matches(pid: int, role: str) -> bool:
     with open(f"/proc/{pid}/cmdline", "rb") as stream:
         data = stream.read(_WORKER_ARGV_MAX_BYTES + 1)
     if (not data or len(data) > _WORKER_ARGV_MAX_BYTES
-                    or not data.endswith(b"\n")):
+            or not data.endswith(b"\0")):
         return False
     try:
         argv = [arg.decode("utf-8") for arg in data[:-1].split(b"\0")]
