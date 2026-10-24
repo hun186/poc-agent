@@ -56,3 +56,8 @@
 ## Compaction Record
 
 - 2026-10-24: archived both source files first, re-fetched each and verified identical full text and Git blob SHA. Then condensed active records below the 20-block/200-line target. This compaction changes **only documentation**, not any acceptance claim. Verify the new exact PR HEAD with real Hosted tests and formal Codex review before merge.
+
+## 2026-10-24 OFF-1J lease renewal — active work
+
+- PR #305 OFF-1I merged to main as `de698c086977b64c8168a868eda5eb2bb21067a6`, after exact-head Hosted 1,079 focused + 2 legacy E2E + 19 OFF-0 PASS and formal Codex CLEAN. This is NOT real Linux SQL Server acceptance.
+- New `feat/sraf-off1j-handoff-lease-renewal` implements opt-in `HANDOFF-RENEWAL`. Only all four explicit flags `--probe-network --probe-sql-read --probe-worker-lease --probe-lease-renewal` and verified OFF-1I lease-snapshot PASS allow two fixed SQL Server SELECTs in separate bounded TLS ODBC connections 15 seconds apart. SQL computes safety flags and heartbeat epoch milliseconds internally; client compares constant fencing generation and strictly increasing heartbeat marker; no token or owner id fetched, no numeric marker output. An observation of renewal is **not** local worker ownership/Report Job/actual job progress or FULL_LIVE. Real deployment, Hosted CI, Codex review and merge are independent pending gates.
