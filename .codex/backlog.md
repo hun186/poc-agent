@@ -154,3 +154,8 @@
 ## 2026-10-24 PR #304 third review gate
 
 - The new old-harness P2 from second formal Codex review requires verifying that the canonical strict NUL argv reader is tested by **existing** E2E harness tests as well as new OFF-1H unit tests. Existing positive, stale-start, wrong-command and wrong-cwd test behavior was revised, and exact E2E tests were added to the Hosted CI path filter/pytest command. Re-run exact-head CI after memory commits, reply to new P2 thread, resolve and formally re-review final HEAD; don't merge without explicit instruction.
+
+## 2026-10-24 OFF-1I development gates
+
+- Verify exact HEAD Hosted OFF-1B/1I pytest and 19 OFF-0 contract, review all P1/P2 Code Review findings, respond/resolve, request a fresh formal review and do not merge without explicit authorization. Independently verify real Linux SQL lease via a DBA-limited SELECT grant and strict ODBC TLS, not CI.
+- Next after safe lease snapshot: demonstrate Handoff **local** owner association and a bounded pair of heartbeat samples or other durable progress, plus a separate Schedule claim/progress mechanism and API Report Job state. No new worker mutations, scheduling triggers or FULL_LIVE promotions as part of OFF-1I.
