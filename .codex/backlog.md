@@ -44,3 +44,8 @@
 ## Compaction Record
 
 - 2026-10-24: original full files **created in .codex/archive and re-fetched with identical bytes and Git blob SHA** before any active memory rewrite. This active backlog now lists only current unresolved actions and durable design constraints; stale chronological review details remain recoverable. After these documentation commits, require exact-HEAD Hosted CI, formal Codex CLEAN and explicit merge authorization.
+
+## 2026-10-24 OFF-1J pending acceptance gates
+
+- Test exact PR head in GitHub Actions, inspect actual Hosted job log and 19 OFF-0 contracts; request formal Codex Review and address all findings. No GitHub Merge absent user authorization.
+- Authorized private Linux SQL + worker operator run still needed. Next independently design local Handoff PID-to-custom-owner association, progress beyond heartbeats, Schedule Worker independent claim cycle evidence, API Report Job Worker and Word outputs. Never use a valid DB heartbeat to claim production job execution or FULL_LIVE.
