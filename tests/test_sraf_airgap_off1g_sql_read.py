@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from types import SimpleNamespace
 
 import pytest
@@ -25,10 +24,14 @@ def cfg(**changes):
 
 class Cursor:
     def __init__(self, value=1):
-        self.timeout = None
         self.value = value
         self.calls = []
         self.close_count = 0
+
+    def __setattr__(self, name, value):
+        if name == "timeout":
+            raise AttributeError("real pyodbc Cursor has no timeout")
+        super().__setattr__(name, value)
 
     def execute(self, query):
         self.calls.append(query)
@@ -47,6 +50,7 @@ class Connection:
     def __init__(self, cursor):
         self._cursor = cursor
         self.closed = 0
+        self.timeout = None
 
     def cursor(self):
         return self._cursor
@@ -70,7 +74,7 @@ def mock_odbc(monkeypatch, *, driver=True, value=1, raises=False):
         connect=connect,
         drivers=lambda: [sql.DRIVER] if driver else ["SQLite3"],
     )
-    monkeypatch.setitem(sys.modules, "pyodbc", fake)
+    monkeypatch.setattr(sql, "pyodbc", fake)
     return calls, cursor, connection
 
 
@@ -92,7 +96,7 @@ def test_positive_constant_sql_roundtrip_tls_only_and_cleanup(monkeypatch):
     assert "ApplicationIntent=ReadOnly" in cs
     assert "MultiSubnetFailover=No" in cs
     assert kwargs == {"timeout": 3, "autocommit": True}
-    assert cursor.timeout == 3
+    assert conn.timeout == 3
     assert cursor.calls == [sql.QUERY]
     assert cursor.close_count == 1 and conn.closed == 1
     output = json.dumps(obs.serialize())
@@ -124,7 +128,7 @@ def test_positive_constant_sql_roundtrip_tls_only_and_cleanup(monkeypatch):
 ])
 def test_invalid_target_and_credential_config_never_connects(
         monkeypatch, changes):
-    monkeypatch.setitem(sys.modules, "pyodbc", SimpleNamespace(
+    monkeypatch.setattr(sql, "pyodbc", SimpleNamespace(
         connect=lambda *a, **k: pytest.fail("must not connect"),
         drivers=lambda: [sql.DRIVER]))
     obs = sql.probe_sql_constant_read(cfg(**changes))
@@ -172,7 +176,7 @@ def test_contradictory_constant_response_cannot_pass(monkeypatch, bad):
 
 
 def test_missing_sql_configuration_no_import_or_network(monkeypatch):
-    monkeypatch.setitem(sys.modules, "pyodbc", SimpleNamespace(
+    monkeypatch.setattr(sql, "pyodbc", SimpleNamespace(
         connect=lambda *args, **kwargs: pytest.fail("not authorized")))
     obs = sql.probe_sql_constant_read({})
     assert obs.status == "SKIP" and not obs.executed
@@ -240,7 +244,7 @@ def test_nested_sql_provider_cannot_upgrade_or_leak(
 def test_missing_config_and_unrelated_network_do_not_trigger_sql(monkeypatch):
     monkeypatch.setattr(matrix, "probe_sql_constant_read",
                         sql.probe_sql_constant_read)
-    monkeypatch.setitem(sys.modules, "pyodbc", SimpleNamespace(
+    monkeypatch.setattr(sql, "pyodbc", SimpleNamespace(
         connect=lambda *args, **kwargs: pytest.fail("no SQL connection")))
     row = matrix._sql_constant_read(
         probe_network=True, probe_sql_read=True,
