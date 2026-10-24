@@ -126,3 +126,8 @@
 
 - Verify exact-head Hosted CI for new OFF-1E model inventory regressions and 19-check OFF-0 static contract. Request formal Codex code review after CI, correct any findings and resolve comment threads before seeking separate explicit merge authorization.
 - A positive local Ollama model-list observation is not model inference or RAG quality. Unsupported remote/private HTTPS/Ollama proxy and OpenAI-compatible endpoints are SKIP, not positive coverage. Real private Linux LLM and full SQL/ES/Worker/Word isolation acceptance remain pending.
+
+## 2026-10-24 OFF-1F gates
+
+- Review Hosted CI latest HEAD for the one-shot generation probe and shared HTTP GET-preserving refactor, fix regressions, and request formal Codex Review. Reply/resolve any findings before asking for explicit merge authorization. Do not run the opt-in inference against user private Linux deployment without operator action.
+- Future authentic deployment checks still include LLM model response, SQL authorized read, strict ES Mapping/read, worker PID+leases, valid Word artifact and physical air-gap isolation. They are separate acceptance gates.
