@@ -131,3 +131,8 @@
 
 - Review Hosted CI latest HEAD for the one-shot generation probe and shared HTTP GET-preserving refactor, fix regressions, and request formal Codex Review. Reply/resolve any findings before asking for explicit merge authorization. Do not run the opt-in inference against user private Linux deployment without operator action.
 - Future authentic deployment checks still include LLM model response, SQL authorized read, strict ES Mapping/read, worker PID+leases, valid Word artifact and physical air-gap isolation. They are separate acceptance gates.
+
+## 2026-10-24 PR #302 P1 remote-forwarding gate
+
+- Validate latest exact-head Hosted OFF-1A/1B focused CI after Linux `OLLAMA_NO_CLOUD` listener PID attestation and regression coverage, then respond to formal Codex finding #4366124441 and resolve its thread. Request another exact-head formal Codex review. No merge without explicit user instruction.
+- The actual Linux host must prove Ollama version >=0.16.2, running server process PID/executable/socket ownership and active server env `OLLAMA_NO_CLOUD=1`. Separate Docker PID namespace, 0.0.0.0 bind and hidden /proc cause safe SKIP; no fall-through POST. Do not loosen this to an operator-shell env variable or a response-only filter.
