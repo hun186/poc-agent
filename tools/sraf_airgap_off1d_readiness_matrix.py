@@ -89,6 +89,48 @@ def _local_probe(key: str, component: str, aspect: str, fn: Any
                        "probe_internal_failure", executed=True)
 
 
+def _expected_tcp_endpoint(service: str, cfg: dict[str, str]
+                           ) -> tuple[dict[str, object], str | None]:
+    """Reconstruct the reviewed configured endpoint, without any network."""
+    if service == "api":
+        return tcp._api_bind_endpoint(cfg)
+    if service == "es":
+        return tcp._parse_endpoint(cfg.get("ES_URL"))
+    return tcp._parse_endpoint(
+        cfg.get("MODEL_BASE_URL"),
+        allowed_paths=("", "/", "/api/chat", "/api/generate"),
+        normalize_llm_path=True,
+    )
+
+
+def _credible_tcp_pass(service: str, cfg: dict[str, str],
+                       obs: dict[str, Any], *, probe_network: bool) -> bool:
+    """A nested PASS alone must never authorize the dependent health GET."""
+    if not probe_network:
+        return False
+    endpoint, selected_host = _expected_tcp_endpoint(service, cfg)
+    scope = endpoint["host_scope"]
+    allowed = (("LOOPBACK_IPV4",) if service == "api" else
+               ("LOOPBACK_IPV4", "RFC1918_IPV4"))
+    keys = {"api": "PORT", "es": "ES_URL", "llm": "MODEL_BASE_URL"}
+    return (
+        selected_host is not None
+        and endpoint["configuration"] == "RESOLVED"
+        and scope in allowed
+        and type(endpoint["port"]) is int
+        and 1 <= endpoint["port"] <= 65535
+        and obs.get("component") == service
+        and obs.get("config_key") == keys[service]
+        and obs.get("configuration") == "RESOLVED"
+        and obs.get("tcp_probe") == "PASS"
+        and obs.get("reason") == "configured_tcp_connected"
+        and obs.get("host_scope") == scope
+        and obs.get("scheme") == endpoint["scheme"]
+        and type(obs.get("port")) is int
+        and obs["port"] == endpoint["port"]
+    )
+
+
 def _tcp_probe(service: str, cfg: dict[str, str], *, probe_network: bool
                ) -> dict[str, Any]:
     key, component = {
@@ -104,8 +146,7 @@ def _tcp_probe(service: str, cfg: dict[str, str], *, probe_network: bool
             status, reason, executed = "FAIL", "configuration_invalid", False
         elif probe == "PASS":
             # Require the exact trusted contract, not merely a PASS token.
-            if (configuration == "RESOLVED" and probe_network
-                    and obs.get("reason") == "configured_tcp_connected"):
+            if _credible_tcp_pass(service, cfg, obs, probe_network=probe_network):
                 status, reason, executed = "PASS", "configured_tcp_connected", True
             else:
                 status, reason, executed = "SKIP", "unexpected_probe_result", False
