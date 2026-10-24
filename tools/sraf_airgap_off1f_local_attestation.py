@@ -54,20 +54,23 @@ def _owns_socket(pid: int, inode: str) -> bool:
     try:
         with os.scandir(PROC / str(pid) / "fd") as entries:
             count = 0
+            found = False
             for entry in entries:
                 count += 1
                 if count > MAX_FDS:
+                    # A matching fd discovered early does not overcome a
+                    # too-large or incompletely inspected process table.
                     return False
                 if not entry.name.isdecimal():
                     continue
                 try:
                     if os.readlink(entry.path) == f"socket:[{inode}]":
-                        return True
+                        found = True
                 except OSError:
                     continue
     except OSError:
         return False
-    return False
+    return found
 
 
 def server_cloud_disabled(pid: int | None, port: int) -> bool:
