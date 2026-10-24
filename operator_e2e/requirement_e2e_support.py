@@ -400,7 +400,7 @@ _UNIFIED_WORKER_BOOTSTRAP = (
 )
 _WORKER_IDENTITY_MAX_BYTES = 256
 _WORKER_ARGV_MAX_BYTES = 4096
-_WORKER_PYTHON_EXE = re.compile(r"python(?:3(?:\\.[0-9]{1,2})?)?\\Z")
+_WORKER_PYTHON_EXE = re.compile(r"python(?:3(?:\.[0-9]{1,2})?)?\Z")
 
 
 def _read_worker_identity_nofollow(path: Path) -> dict[str, str]:
@@ -421,7 +421,7 @@ def _read_worker_identity_nofollow(path: Path) -> dict[str, str]:
                 raise ValueError("worker_identity_not_regular")
             data = os.read(fd, _WORKER_IDENTITY_MAX_BYTES + 1)
             if (not data or len(data) > _WORKER_IDENTITY_MAX_BYTES
-                    or not data.endswith(b"\\n")):
+                    or not data.endswith(b"\n")):
                 raise ValueError("worker_identity_oversized")
         finally:
             os.close(fd)
@@ -443,10 +443,10 @@ def _worker_argv_matches(pid: int, role: str) -> bool:
     with open(f"/proc/{pid}/cmdline", "rb") as stream:
         data = stream.read(_WORKER_ARGV_MAX_BYTES + 1)
     if (not data or len(data) > _WORKER_ARGV_MAX_BYTES
-            or not data.endswith(b"\\0")):
+                    or not data.endswith(b"\n")):
         return False
     try:
-        argv = [arg.decode("utf-8") for arg in data[:-1].split(b"\\0")]
+        argv = [arg.decode("utf-8") for arg in data[:-1].split(b"\0")]
     except UnicodeError:
         return False
     if (len(argv) != 4
