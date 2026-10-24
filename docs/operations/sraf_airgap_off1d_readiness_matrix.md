@@ -87,3 +87,7 @@ errors are redacted and remain exit 2. No raw environment value is printed.
 
 These behaviors are validated by deterministic Hosted tests and still do not
 certify private Linux readiness, SQL, ES, LLM, workers, Word or FULL_LIVE.
+
+## 2026-10-24 TCP scope review follow-up
+
+The matrix re-parses the configured endpoint before it accepts a nested TCP success. The reported service, configuration key, scheme, integer port, and host scope must match that resolved configuration. The API is restricted to loopback IPv4; ES and LLM are restricted to loopback or RFC1918 IPv4. Contradictory success claims are downgraded to SKIP, and API health is not called if API TCP was not credibly verified. These are socket-level diagnostics, never identity or application acceptance.
