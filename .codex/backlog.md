@@ -136,3 +136,8 @@
 
 - Validate latest exact-head Hosted OFF-1A/1B focused CI after Linux `OLLAMA_NO_CLOUD` listener PID attestation and regression coverage, then respond to formal Codex finding #4366124441 and resolve its thread. Request another exact-head formal Codex review. No merge without explicit user instruction.
 - The actual Linux host must prove Ollama version >=0.16.2, running server process PID/executable/socket ownership and active server env `OLLAMA_NO_CLOUD=1`. Separate Docker PID namespace, 0.0.0.0 bind and hidden /proc cause safe SKIP; no fall-through POST. Do not loosen this to an operator-shell env variable or a response-only filter.
+
+## 2026-10-24 PR #303 OFF-1G follow-up gates
+
+- Verify Hosted Python regression and 19 OFF-0 schema-only checks on exact PR HEAD; correct all findings, request formal Codex Review on the final reviewed HEAD, and do not merge without explicit approval.
+- The SQL probe accepts only operator-selected numeric private IPv4 and separate read-only-designated credentials; `ApplicationIntent=ReadOnly` is a routing hint, not a SQL Server permission fence. A constant `SELECT 1` does not prove any business table, login authorization restriction or complete SQL acceptance. Live Linux proof remains pending.

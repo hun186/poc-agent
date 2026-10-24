@@ -418,7 +418,7 @@ def test_local_odbc_observation_never_claims_sql_connectivity(monkeypatch):
     assert rows["SQL-ODBC"]["status"] == "WARN"
     assert rows["SQL-READ"]["status"] == "NOT_TESTED"
     assert rows["SQL-READ"]["depends_on"] == ["SQL-ODBC"]
-    assert "sql_server_read_only" in rows["SQL-READ"]["aspect"]
+    assert rows["SQL-READ"]["aspect"] == "sql_server_constant_select_only"
 
 
 def test_untrusted_exception_or_reason_is_never_printed(monkeypatch):

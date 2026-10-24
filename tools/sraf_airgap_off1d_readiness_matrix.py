@@ -5,7 +5,9 @@ to network with --probe-network: at most one configured private IPv4 TCP connect
 each for API, ES, and LLM, plus one anonymous 127.0.0.1 GET /healthz when the
 API TCP connection succeeds. A separate triple opt-in can make one local
 bounded LLM generation POST; never contacts SQL, starts workers or tests
-physical network isolation.
+physical network isolation. The optional --probe-sql-read
+switch (also requiring --probe-network) can execute exactly one TLS-verified
+constant SELECT using separate operator-only SQL credentials.
 
 From deployed repository root:
     python tools/sraf_airgap_off1d_readiness_matrix.py
@@ -16,6 +18,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import json
+import os
 from pathlib import Path
 from urllib.parse import urlsplit
 import sys
@@ -27,6 +30,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools import sraf_airgap_off1b_auto as tcp  # noqa: E402
 from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
+from tools.sraf_airgap_off1g_sql_read import (  # noqa: E402
+    ENV_KEYS as SQL_ENV_KEYS, probe_sql_constant_read,
+)
 from tools.sraf_airgap_off1f_llm_inference import (  # noqa: E402
     probe_local_ollama_inference,
 )
@@ -66,6 +72,10 @@ REASONS = frozenset((
     "llm_inference_response_invalid", "llm_inference_model_unverified",
     "llm_inference_generation_unverified", "llm_inference_generation_observed",
     "llm_inference_cloud_disable_unverified", "llm_inference_remote_response",
+    "sql_read_not_requested", "sql_read_odbc_not_passed",
+    "sql_read_config_invalid", "sql_read_driver_unavailable",
+    "sql_read_connection_unverified", "sql_read_response_invalid",
+    "sql_constant_select_observed",
 ))
 
 
@@ -358,10 +368,55 @@ def _llm_inference(cfg: dict[str, str], *, probe_network: bool,
         return result("FAIL", "probe_internal_failure", executed=True)
 
 
+def _sql_constant_read(*, probe_network: bool, probe_sql_read: bool,
+                       odbc_status: str, sql_config: dict[str, str] | None
+                       ) -> dict[str, Any]:
+    """Only a separate operator-supplied constant SELECT, never app tables."""
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record(
+            "SQL-READ", "sql", "sql_server_constant_select_only",
+            status, reason, executed=executed, depends_on=("SQL-ODBC",),
+        )
+
+    if not probe_network or not probe_sql_read:
+        return result("NOT_TESTED", "sql_read_not_requested")
+    if odbc_status != "PASS":
+        return result("SKIP", "sql_read_odbc_not_passed")
+    # No implicit production SQL connection strings, registry DB credentials,
+    # or ambient process secrets are ever consulted by the nested probe.
+    if not isinstance(sql_config, dict):
+        return result("SKIP", "sql_read_config_invalid")
+    try:
+        obs = probe_sql_constant_read(sql_config)
+        if obs.status == "PASS":
+            if (obs.check_id == "SQL-01"
+                    and obs.probe == "sql-constant-read"
+                    and obs.aspect == "sql_server_constant_select_only"
+                    and obs.executed is True
+                    and obs.reason == "sql_constant_select_observed"
+                    and isinstance(obs.evidence, dict)
+                    and obs.evidence.get("constant_select_observed") is True):
+                return result("PASS", "sql_constant_select_observed",
+                              executed=True)
+            return result("SKIP", "unexpected_probe_result")
+        if obs.status == "FAIL":
+            return result("FAIL", _reason(obs.reason),
+                          executed=bool(obs.executed))
+        if obs.status == "SKIP":
+            return result("SKIP", _reason(obs.reason),
+                          executed=bool(obs.executed))
+        return result("SKIP", "unexpected_probe_result")
+    except Exception:
+        return result("SKIP", "sql_read_connection_unverified")
+
+
 def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_model_inventory: bool = False,
                  probe_model_inference: bool = False,
-                 ollama_server_pid: int | None = None
+                 ollama_server_pid: int | None = None,
+                 probe_sql_read: bool = False,
+                 sql_config: dict[str, str] | None = None
                  ) -> dict[str, Any]:
     """Run independent reviewed probes even when another component fails."""
     rows = [
@@ -369,6 +424,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         _local_probe("SQL-ODBC", "sql", "odbc_library_file_only",
                      probe_odbc_library),
     ]
+    odbc_status = rows[1]["status"]
     api = _tcp_probe("api", cfg, probe_network=probe_network)
     rows.append(api)
     rows.append(_api_health(cfg, probe_network=probe_network,
@@ -384,8 +440,10 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         tcp_status=llm["status"],
     )
     rows.extend((
-        _record("SQL-READ", "sql", "sql_server_read_only", "NOT_TESTED",
-                "sql_read_not_implemented", depends_on=("SQL-ODBC",)),
+        _sql_constant_read(
+            probe_network=probe_network, probe_sql_read=probe_sql_read,
+            odbc_status=odbc_status, sql_config=sql_config,
+        ),
         _record("ES-MAPPING", "es", "authenticated_es_mapping", "NOT_TESTED",
                 "es_tls_mapping_not_aggregated", depends_on=("ES-TCP",)),
         inventory,
@@ -424,6 +482,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--probe-network", action="store_true",
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
+    parser.add_argument("--probe-sql-read", action="store_true",
+                        help="With --probe-network, make one TLS-verified ODBC constant SELECT using dedicated operator SRAF_OFF1G_SQL_* secrets.")
     parser.add_argument("--probe-llm-inventory", action="store_true",
                         help="With --probe-network, check anonymous localhost Ollama /api/tags once.")
     parser.add_argument("--probe-llm-inference", action="store_true",
@@ -454,10 +514,16 @@ def main(argv: list[str] | None = None) -> int:
                           "error": "readiness_matrix_unavailable"}))
         return 2
     try:
+        # Do not even inspect credential environment unless *both*
+        # operator flags explicitly opted into SQL connectivity.
+        sql_cfg = ({key: os.environ.get(key) for key in SQL_ENV_KEYS}
+                   if args.probe_network and args.probe_sql_read else None)
         report = build_report(cfg, probe_network=args.probe_network,
                               probe_model_inventory=args.probe_llm_inventory,
                               probe_model_inference=args.probe_llm_inference,
-                              ollama_server_pid=args.ollama_server_pid)
+                              ollama_server_pid=args.ollama_server_pid,
+                              probe_sql_read=args.probe_sql_read,
+                              sql_config=sql_cfg)
     except Exception:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
                           "error": "readiness_matrix_unavailable"}))
