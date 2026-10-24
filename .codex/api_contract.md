@@ -46,3 +46,7 @@
 
 ## Compaction Record — 2026-10-24
 - Preserved all original 2026-10-22 through OFF-1J CLI status details and Product API history in full archive before condensing; no claim of live deployment or actual SQL Server.
+
+## 2026-10-24 OFF-1K optional CLI owner-correlation flag
+
+- `--probe-handoff-owner` requires `--probe-network --probe-sql-read --probe-worker-lease --probe-lease-renewal --probe-worker-identities` and prior `WORKERS` and `HANDOFF-RENEWAL` PASS, so the user's opt-in includes OFF-1J 15-second double SQL heartbeat read. Adds `HANDOFF-OWNER` (depends on WORKERS/HANDOFF-RENEWAL). Uses explicit local process birth env owner ID and a single byte-exact parameterized SQL owner equality predicate. Default is NOT_TESTED/no extra SQL or environ read, positive means identity-only snapshot, feature_acceptance remains NOT_TESTED, no new HTTP route or FULL_LIVE.

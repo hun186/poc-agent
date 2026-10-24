@@ -49,3 +49,8 @@
 
 - Test exact PR head in GitHub Actions, inspect actual Hosted job log and 19 OFF-0 contracts; request formal Codex Review and address all findings. No GitHub Merge absent user authorization.
 - Authorized private Linux SQL + worker operator run still needed. Next independently design local Handoff PID-to-custom-owner association, progress beyond heartbeats, Schedule Worker independent claim cycle evidence, API Report Job Worker and Word outputs. Never use a valid DB heartbeat to claim production job execution or FULL_LIVE.
+
+## 2026-10-24 OFF-1K release gates
+
+- Verify Hosted OFF-1K regression/legacy Worker E2E/19 OFF-0 schema checks on exact current HEAD; request formal Codex Review and resolve findings, then only Merge on explicit user instruction.
+- Later collect operator-authorized Linux/sql instance evidence; assess deployments whose owner comes from dotenv after process launch or uses default `handoff-PID`, with a separately reviewed agent attestation mechanism if needed. Confirm lease renewal owner/generation atomicity and actual successful handoff, Schedule due claim, Report Job Worker, Word and physical isolation independently. Never promote this snapshot to FULL_LIVE.

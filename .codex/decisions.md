@@ -79,3 +79,7 @@
 
 ## Compaction Record — 2026-10-24
 - Preserved unresolved Product/security/SQL/ES/Worker boundaries and their full review chronology, including earlier review and architecture decisions, in named immutable archive.
+
+## 2026-10-24 OFF-1K explicit birth-env owner binding decision
+
+- Do not assume owner=`handoff-<pid>` because `build_coordinator_from_env` may receive `REQUIREMENT_HANDOFF_OWNER_ID` from post-exec `bootstrap_env` dotenv. Only accept a unique bounded printable ASCII owner from canonical verified Handoff PID's **initial** Linux /proc environment, for which bootstrap guarantees OS values take precedence. Avoid printing owner/env; SQL computes exact UTF16 binary owner comparison against a parameter after all six flags plus prior worker/lease-renewal evidence. Revalidate PID/start/env after DB. This is at most point-in-time ownership correlation; real DB renewal on the same generation, job progress, Report Job and DOCX remain distinct gates.

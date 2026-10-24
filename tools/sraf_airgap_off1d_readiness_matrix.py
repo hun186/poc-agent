@@ -30,6 +30,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools import sraf_airgap_off1b_auto as tcp  # noqa: E402
 from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
+from tools.sraf_airgap_off1k_handoff_owner import (  # noqa: E402
+    probe_handoff_local_owner,
+)
 from tools.sraf_airgap_off1j_handoff_renewal import (  # noqa: E402
     probe_handoff_lease_renewal,
 )
@@ -101,6 +104,13 @@ REASONS = frozenset((
     "lease_renewal_result_invalid", "lease_renewal_snapshot_inactive",
     "lease_renewal_wait_interrupted", "lease_renewal_generation_changed",
     "lease_renewal_not_advanced", "lease_renewal_advanced",
+    "owner_not_requested", "owner_upstream_not_passed",
+    "owner_schema_invalid", "owner_sql_config_invalid",
+    "owner_local_identity_unverified", "owner_local_identity_changed",
+    "owner_driver_unavailable", "owner_rows_ambiguous",
+    "owner_row_unavailable", "owner_result_invalid",
+    "owner_binding_unverified", "owner_local_sql_match_observed",
+    "owner_sql_unverified",
 ))
 
 
@@ -568,6 +578,56 @@ def _handoff_lease_renewal(*, probe_network: bool,
     return result("SKIP", "unexpected_probe_result")
 
 
+def _handoff_local_owner(*, probe_network: bool,
+                         probe_sql_read: bool, probe_worker_lease: bool,
+                         probe_lease_renewal: bool,
+                         probe_worker_identities: bool,
+                         probe_handoff_owner: bool,
+                         worker_status: str, renewal_status: str,
+                         sql_config: dict[str, str] | None,
+                         lease_schema: str | None) -> dict[str, Any]:
+    """Bound local inherited owner to DB row; no environment guesses."""
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record(
+            "HANDOFF-OWNER", "workers",
+            "local_inherited_owner_matches_db_lease_only",
+            status, reason, executed=executed,
+            depends_on=("WORKERS", "HANDOFF-RENEWAL"),
+        )
+    if not (probe_network and probe_sql_read and probe_worker_lease
+            and probe_lease_renewal and probe_worker_identities
+            and probe_handoff_owner):
+        return result("NOT_TESTED", "owner_not_requested")
+    if worker_status != "PASS" or renewal_status != "PASS":
+        return result("SKIP", "owner_upstream_not_passed")
+    if not isinstance(sql_config, dict):
+        return result("SKIP", "owner_sql_config_invalid")
+    try:
+        obs = probe_handoff_local_owner(
+            sql_config, project_root=PROJECT_ROOT,
+            schema=lease_schema if lease_schema is not None
+            else LEASE_SCHEMA_DEFAULT,
+        )
+        if obs.status == "PASS":
+            if (obs.check_id == "LEASE-03"
+                    and obs.probe == "handoff-local-owner"
+                    and obs.aspect == "local_inherited_owner_matches_db_lease_only"
+                    and obs.executed is True
+                    and obs.reason == "owner_local_sql_match_observed"
+                    and isinstance(obs.evidence, dict)
+                    and obs.evidence.get("local_owner_match_observed") is True):
+                return result("PASS", "owner_local_sql_match_observed",
+                              executed=True)
+            return result("SKIP", "unexpected_probe_result")
+        if obs.status in ("FAIL", "SKIP"):
+            return result(obs.status, _reason(obs.reason),
+                          executed=bool(obs.executed))
+        return result("SKIP", "unexpected_probe_result")
+    except Exception:
+        return result("SKIP", "owner_local_identity_unverified")
+
+
 def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_model_inventory: bool = False,
                  probe_model_inference: bool = False,
@@ -577,6 +637,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_worker_identities: bool = False,
                  probe_worker_lease: bool = False,
                  probe_lease_renewal: bool = False,
+                 probe_handoff_owner: bool = False,
                  lease_schema: str | None = None
                  ) -> dict[str, Any]:
     """Run independent reviewed probes even when another component fails."""
@@ -610,16 +671,28 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         sql_read_status=sql_read["status"], sql_config=sql_config,
         lease_schema=lease_schema,
     )
+    renewal = _handoff_lease_renewal(
+        probe_network=probe_network, probe_sql_read=probe_sql_read,
+        probe_worker_lease=probe_worker_lease,
+        probe_lease_renewal=probe_lease_renewal,
+        lease_status=lease_snapshot["status"], sql_config=sql_config,
+        lease_schema=lease_schema,
+    )
+    workers = _worker_identities(probe_worker_identities=probe_worker_identities)
+    owner = _handoff_local_owner(
+        probe_network=probe_network, probe_sql_read=probe_sql_read,
+        probe_worker_lease=probe_worker_lease,
+        probe_lease_renewal=probe_lease_renewal,
+        probe_worker_identities=probe_worker_identities,
+        probe_handoff_owner=probe_handoff_owner,
+        worker_status=workers["status"], renewal_status=renewal["status"],
+        sql_config=sql_config, lease_schema=lease_schema,
+    )
     rows.extend((
         sql_read,
         lease_snapshot,
-        _handoff_lease_renewal(
-            probe_network=probe_network, probe_sql_read=probe_sql_read,
-            probe_worker_lease=probe_worker_lease,
-            probe_lease_renewal=probe_lease_renewal,
-            lease_status=lease_snapshot["status"], sql_config=sql_config,
-            lease_schema=lease_schema,
-        ),
+        renewal,
+        owner,
         _record("ES-MAPPING", "es", "authenticated_es_mapping", "NOT_TESTED",
                 "es_tls_mapping_not_aggregated", depends_on=("ES-TCP",)),
         inventory,
@@ -628,7 +701,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                        probe_model_inference=probe_model_inference,
                        inventory_status=inventory["status"],
                        ollama_server_pid=ollama_server_pid),
-        _worker_identities(probe_worker_identities=probe_worker_identities),
+        workers,
         _record("WORD", "report", "real_word_artifact_validation",
                 "NOT_TESTED", "word_artifact_not_implemented",
                 depends_on=("WORKERS", "LLM-INFERENCE")),
@@ -658,6 +731,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
     parser.add_argument("--probe-sql-read", action="store_true",
                         help="With --probe-network, make one TLS-verified ODBC constant SELECT using dedicated operator SRAF_OFF1G_SQL_* secrets.")
+    parser.add_argument("--probe-handoff-owner", action="store_true",
+                        help="With ALL network/SQL/lease/renewal/worker-identity flags, compare the local Handoff process's inherited explicit owner with one SQL lease predicate.")
     parser.add_argument("--probe-lease-renewal", action="store_true",
                         help="With network, SQL-read and worker-lease flags, observe two SQL heartbeat snapshots 15 seconds apart.")
     parser.add_argument("--probe-worker-lease", action="store_true",
@@ -711,6 +786,7 @@ def main(argv: list[str] | None = None) -> int:
                               probe_worker_identities=args.probe_worker_identities,
                               probe_worker_lease=args.probe_worker_lease,
                               probe_lease_renewal=args.probe_lease_renewal,
+                              probe_handoff_owner=args.probe_handoff_owner,
                               lease_schema=lease_schema)
     except Exception:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
