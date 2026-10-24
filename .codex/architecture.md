@@ -47,38 +47,16 @@
 
 - 2026-10-22 OFF-1B transport parsing change PR #297: isolate HTTP response entity frame validation and bounded Chunked decoding for Mapping GET, preserve fixed-length parsing. Use same CA-verified numeric private IPv4 endpoint and default Quick IP SAN WARN. Distinguish HTTP frame acceptance from mapping predicate; chunked decoded Mapping <=2MiB while root/auth <=64KiB. Keep absolute GET timeout, trailer bounds, strict no CL+TE and unsupported stacked coding, no decompression, no shell/DNS/proxy/search/index writes. No real Linux acceptance yet.
 
+## 2026-10-24 OFF-1 Operator Architecture (Current)
+- OFF-1B/1C diagnostics follow configured ES selectors with CA/TLS awareness, bounded read-only Mapping/search; warn-only IP SAN cannot certify ES identity. OFF-1D composes distinct redacted partial rows and defaults to no network.
+- OFF-1E inventory is not LLM inference. OFF-1F local generation requires explicit flags and Linux Ollama listener process/no-cloud attestation; no live Agent/RAG/Word claim.
+- OFF-1G uses a separate diagnostic SQL account, strict numeric-private IPv4 IP-SAN ODBC18 TLS, one literal constant SELECT. OFF-1H independently binds bounded local Schedule/Handoff identity files to /proc start, euid, cwd and exact argv; process identity is not job progress.
+- OFF-1I separately observes SQL Handoff coordinator lease existence/active heartbeat; OFF-1J measures two renewed SQL lease heartbeat snapshots 15 seconds apart with unchanged fencing generation under *four* explicit flags and prior SQL/lease PASS. It never fetches owner/token, associates a local worker PID, or attests Schedule/Report Job progress.
+- SQL Server remains the Requirement Version/Snapshot and Schedule/Handoff authority; API Report Job lifecycle, Agent/LLM/ES, signed Word output and physical airgap remain separate E2E release gates.
 
-## 2026-10-22 OFF-1B configured ES selector discovery
+## Archived History — 2026-10-24
+- `.codex/archive/architecture.md-20261024-180500.md` — original complete 15,245-character architecture, archived and byte/Git-SHA verified before this compaction; includes every previous dated design block.
+- Previous archive `.codex/archive/architecture.md-20261021-165000.md` and its history chain remain intact.
 
-- `tools/sraf_airgap_off1b_es_index_discovery.py` reads only bounded loader-selected index YAML declarations via `shared.runtime_provenance.index_config_paths`, combines literal `ES_INDEX` and topic selectors, and recognizes an E2E fixture only if explicitly selected. It does not list cluster indices. Per-selector `/{literal}/_mapping` resolves a single concrete index or reports ambiguity for multiple alias targets.
-- The new operator CLI reuses vetted OFF-1B private IPv4/CA/protected-principal transport by calling `tools.sraf_airgap_off1b_es_https_mapping._observe(skip_mapping=True)`. Mapping inspection is role-scoped: RAG reference field, optional multidimensional nested-shape observation, or the existing E2E required subset. Query, writeback, credentials and FULL_LIVE acceptance remain untested. Old `_observe` behavior is unchanged unless the opt-in argument is supplied.
-- Maximum 8 config files of 256KiB, 24 declared selectors and 12 network selector GETs; default names are redacted. Partial selector errors do not halt independent selector diagnosis; late TLS identity failure stops remaining ES credential-bearing requests.
-
-## 2026-10-23 OFF-1C operator-only search preflight proposal
-
-- A single optional `--check-readonly-search` check reuses `tools/sraf_airgap_off1b_es_index_discovery.py` and its existing strict-CA numeric-private-IPv4 GET transport; it requires explicit `--strict-ip-san`, a compatible ACTIVE_REQUIRED Mapping and no peer-identity/fixture conflicts. It uses a fixed Elasticsearch zero-document, no-count, terminate-early, one-second query timeout request. There are no document or score outputs and no new HTTP API routes, credentials, search DTOs or storage.
-- Query PASS is endpoint-level partial evidence, not real RAG retrieval or FULL_LIVE acceptance. CI exercises mocked network boundaries, not the air-gapped host.
-
-## 2026-10-24 OFF-1D operator matrix proposal
-
-- `tools/sraf_airgap_off1d_readiness_matrix.py` is an operator-only composition layer above existing OFF-1A/OFF-1B bounded probes; it does not import runtime API/workers, create tasks or connect to SQL. Its default is local disk/ODBC and configuration-only observation; `--probe-network` enables configured numeric private-IP TCP for API/ES/LLM plus dependent loopback /healthz. All unimplemented semantic acceptance probes remain literal NOT_TESTED, with fixed `depends_on` links, redacted reasons and overall INCOMPLETE/ISSUES_FOUND only.
-
-## 2026-10-24 OFF-1E local model-list observation
-
-- Existing OFF-1A `probe_llm_inventory` is reused by the OFF-1D matrix only after two operator flags and positive bounded LLM TCP. The extra anonymous /api/tags GET targets exactly 127.0.0.1 HTTP, only when parsed effective MODEL_BASE_URL maps to that same endpoint without a proxy prefix. The configured MODEL_ID is compared within a 64-KiB, three-second, single GET response; the final report is redacted and model/inference claims stay partial.
-
-## 2026-10-24 OFF-1F limited Ollama inference trust boundary
-
-- A dedicated operator-only one-shot generation probe shares OFF-1A's strict local HTTP wire reader and absolute-deadline socket (GET behavior preserved), adding fixed `POST /api/generate` only after explicit triple CLI authorization, TCP and LLM model inventory pass. A static 8-token request and bounded response may attest an actual generation reply but cannot attest business semantics, Agent/RAG, report artifacts or cross-process worker state. Production LLM client is unchanged.
-
-## 2026-10-24 OFF-1H worker identity trust boundary
-
-- OFF-1D operator-only `WORKERS` row may optionally reuse canonical launcher-managed Schedule/Handoff identity verifier for two fixed file paths. The underlying /proc verifier checks recorded PID start tick, effective UID, current directory and role command. Neither network access nor SQL activity is needed; worker health, SQL lease ownership, report-job API worker and scheduling progress require separate independent proof.
-
-## 2026-10-24 OFF-1I Handoff SQL lease preflight
-
-- Optional standalone `tools/sraf_airgap_off1i_handoff_lease.py` queries only the known `requirement_handoff_coordinator_leases` table through fixed authorized OFF-1G ODBC TLS transport. Redacted `HANDOFF-LEASE` matrix result is independent of existing `WORKERS` process identity. Query returns SQL-computed flags, not sensitive lease owner/token/timestamps or job records. True local owner binding and renewal/progress require separate future schema-aware, privacy-reviewed evidence.
-
-## 2026-10-24 OFF-1J renewal observation boundary
-
-- `tools/sraf_airgap_off1j_handoff_renewal.py` adds a separate optional two-read observation on the existing Handoff lease. It reuses OFF-1G secure operator-only SQL configuration and OFF-1I table/schema/domain semantics. Each read is closed before the next; SQL Server clock validates expiration/recency, client only compares same fencing generation and increasing heartbeat marker. No owner/token fetched, no process identity binding, no production schedule triggers. `HANDOFF-RENEWAL` never upgrades `WORKERS` or `feature_acceptance`.
+## Compaction Record — 2026-10-24
+- Complied with AGENTS.md >20 work-record rule; current architecture summary retains active design constraints, original full text is traceable. This documentation change is not Linux deployment acceptance.
