@@ -93,3 +93,7 @@
 
 ## Compaction Record — 2026-10-24
 - Active known issues retain unresolved production, service, security and acceptance gaps; older dated issue narratives are recoverable from complete full-content archive. No deployment action or FULL_LIVE claim.
+
+## 2026-10-24 OFF-1K local owner evidence limits
+
+- Process initial /proc environ may not contain `REQUIREMENT_HANDOFF_OWNER_ID` added by the existing post-exec bootstrap .env loader, even when runtime Coordinator has an explicit custom owner. Default `handoff-PID` cannot be trusted if dotenv overrides it, so OFF-1K conservatively SKIPs unless a unique valid owner was **already inherited at exec**. Reading >64KiB env or inaccessible PID namespace also SKIPs. Even exact SQL owner match under unchanged live PID is not proof the local process performed the previously observed heartbeat renewal or actually completed jobs. The diagnostic SQL principal must be separately DBA-restricted; Hosting mocks are not the operator's live deployment.
