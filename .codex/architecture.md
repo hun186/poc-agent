@@ -62,3 +62,7 @@
 ## 2026-10-24 OFF-1D operator matrix proposal
 
 - `tools/sraf_airgap_off1d_readiness_matrix.py` is an operator-only composition layer above existing OFF-1A/OFF-1B bounded probes; it does not import runtime API/workers, create tasks or connect to SQL. Its default is local disk/ODBC and configuration-only observation; `--probe-network` enables configured numeric private-IP TCP for API/ES/LLM plus dependent loopback /healthz. All unimplemented semantic acceptance probes remain literal NOT_TESTED, with fixed `depends_on` links, redacted reasons and overall INCOMPLETE/ISSUES_FOUND only.
+
+## 2026-10-24 OFF-1E local model-list observation
+
+- Existing OFF-1A `probe_llm_inventory` is reused by the OFF-1D matrix only after two operator flags and positive bounded LLM TCP. The extra anonymous /api/tags GET targets exactly 127.0.0.1 HTTP, only when parsed effective MODEL_BASE_URL maps to that same endpoint without a proxy prefix. The configured MODEL_ID is compared within a 64-KiB, three-second, single GET response; the final report is redacted and model/inference claims stay partial.
