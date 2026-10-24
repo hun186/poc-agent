@@ -73,3 +73,7 @@
 ## 2026-10-24 OFF-1I operator CLI additive flag
 
 - `--probe-worker-lease` requires `--probe-network --probe-sql-read` and a positive existing SQL-READ check, then runs one fixed parameterized SELECT of Handoff coordinator lease predicates. Adds `HANDOFF-LEASE` (depends_on SQL-READ) to OFF-1D's redacted results. `feature_acceptance=NOT_TESTED` regardless of outcome, including positive lease snapshot; no new HTTP API, no SQL mutations, no claim of local owner or progress.
+
+## 2026-10-24 OFF-1J additive operator-only flag
+
+- `--probe-lease-renewal` requires all `--probe-network --probe-sql-read --probe-worker-lease` and an observed `HANDOFF-LEASE` PASS. Adds distinct `HANDOFF-RENEWAL` row (depends_on SQL-READ and HANDOFF-LEASE), fixed 15-second wait, max two read-only SQL queries with new connections. Redacted outcome is a Handoff DB heartbeat renewal only; full acceptance remains NOT_TESTED and exit 0 is never implied.
