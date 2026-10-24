@@ -66,40 +66,16 @@
 
 - 2026-10-22 PR #297: observed Elasticsearch Mapping uses standards-compliant HTTP chunked response, so extend bounded read-only operator diagnostic rather than change ES server/proxy or disable TLS. Permit single Transfer-Encoding: chunked with bounded trailers and cumulative decoded Mapping <=2MiB; root/auth retain 64KiB, same 3-second absolute deadline and strict refusal of CL+TE ambiguity. Mapping compatibility remains separate from HTTP framing and IP SAN warnings; no LIVE acceptance or runtime ES client changes.
 
+## 2026-10-24 OFF-1 Engineering Decisions (Current)
+- Separate operator diagnostics from production SQL registries, credentials, Worker processes and background jobs. ES diagnostics use strictly bounded selectors, read-only GET and CA; unknown IP SAN in warning-only mode cannot yield validated peer identity and must not trigger sensitive credential challenges.
+- Model inventory is not inference; explicit local-only inference requires verified Ollama listener executable, socket inode, environment OLLAMA_NO_CLOUD=1 and supporting version before even one POST. Neither proves Agent/Word.
+- SQL Server diagnostic uses operator-supplied least-privilege connection via private IPv4/ODBC18 strict TLS. `ApplicationIntent=ReadOnly` is only a routing hint, never an authorization proof; no DML/DDL or business-data reads.
+- OFF-1H process verification reuses canonical `verify_worker_identity`, rejects symlink/FIFO/path races with fd-bound reads and exact argv PID-start/UID/cwd verification. Process existence alone is not useful work.
+- OFF-1I one SQL lease snapshot does not prove local owner. OFF-1J requires an extra FOURTH operator flag for two fixed, separate-connection SQL Server snapshots 15s apart; compare fencing generation and strictly increased heartbeat-at marker. Returns only redacted partial evidence. Because `REQUIREMENT_HANDOFF_OWNER_ID` may be custom, guessing local `handoff-<pid>` ownership is forbidden; true association and Schedule claim cycle still pending.
+- All merges require GitHub current exact HEAD CI success + formal Codex CLEAN + all review threads resolved + explicit user `merge`. No CI mocks may be passed off as actual offline/airgap acceptance.
 
-## 2026-10-22 ES discovery security and compatibility decision
+## Archived History — 2026-10-24
+- `.codex/archive/decisions.md-20261024-180500.md` — full 15,630-character original active decisions verified byte-for-byte with identical Git blob SHA before compaction. Prior decision archives remain discoverable through `.codex/archive/decisions.md-20261021-165000.md`.
 
-- Preserve existing single-index OFF-1B API/CLI and introduce a separate operator-only configured-selector CLI. Share vetted CA/private IPv4/Basic principal preflight through opt-in `skip_mapping`; never import runtime `agent.es.es_client` to use its TLS-hostname-bypassing client for diagnostics.
-- Use only operator-selected loader inputs and exact literal configured selectors; do not enumerate `_cat/indices`, expand wildcards, fetch document bodies or classify unused remote indices as legacy from their names. E2E fixture and optional topic Mapping rules are not imposed on unrelated production indexes. Default WARN_ONLY IP SAN evidence cannot certify identity or FULL_LIVE.
-
-## 2026-10-23 OFF-1B per-request identity evidence
-
-- Capture every Mapping-request IP SAN mismatch before any selector-specific early exit; preserve the warning in the aggregate TLS status. Treat both positive and negative response-derived Mapping verdicts as advisory WARN whenever the intended peer identity is unverified. Keep genuinely strict certificate identity failures and independent local auth/configuration problems distinct and blocking. Match runtime index_loader's YAML scalar stringification while continuing to reject unsafe wildcard/invalid literal selectors.
-
-## 2026-10-23 OFF-1C query diagnostic design
-
-- The optional single read-only search must use verified TLS/IP SAN and an explicitly selected required production index with Mapping compatibility. Reject the request in WARN_ONLY mode. Size zero prevents document hits; responses remain redacted and do not attest RAG or full live readiness.
-
-## 2026-10-24 OFF-1E decision: do not infer inference from inventory
-
-- Reuse audited localhost-only bounded HTTP rather than connecting to arbitrary configured hosts or sending tokens. An explicit operator pair of flags and credible LLM TCP are prerequisites for exactly one GET /api/tags, which cannot execute a model. Never print model names, source URLs, credentials or remote JSON; do not accept an inconsistent nested provider PASS or promote OFF-0/FULL_LIVE from an inventory observation.
-
-## 2026-10-24 OFF-1F model-generation safety decision
-
-- Model inference has CPU/GPU/memory side effects. Therefore require a *third* explicit operator flag, plus positive actual model inventory on exact numeric 127.0.0.1 HTTP. Use a fixed small non-user-supplied prompt, 8 generated-token cap, 20s total client deadline, 64KiB strict HTTP response cap and one request/no retry. Do not assume a timed-out connection cancels server work, do not forcibly unload a model, and do not label a nominal positive generation response as E2E acceptance.
-
-## 2026-10-24 OFF-1F mandatory server-locality decision
-
-- The initial loopback-only and positive model-inventory gates cannot constrain server-side Ollama cloud forwarding. Require positive bounded Linux /proc attestation of the exact localhost listener's actual `ollama serve` process and active `OLLAMA_NO_CLOUD=1` environment, plus read-only version evidence for minimum supported NoCloud release, **before** any generation POST. Opaque aliases and remote response fields must not be trusted as proof of local-only execution; missing identity proof returns non-authoritative SKIP. This conservative condition may exclude Docker/PID-separated deployments but is preferable to silent external model requests.
-
-## 2026-10-24 OFF-1H identity before lease decision
-
-- Reuse the production E2E helper `verify_worker_identity` instead of duplicating launcher/`/proc` role semantics. Avoid invoking any worker or observing unrelated processes. Require an explicit operator CLI flag, two canonical fixed root-relative identity files, bounded file sizes and two different verified PIDs. Report only fixed aggregate observation codes; process existence must NEVER imply poll progress, SQL leases, Report Job health or OFF-0/FULL_LIVE acceptance.
-
-## 2026-10-24 OFF-1I lease snapshot evidence boundary
-
-- Only the schema-backed Handoff Coordinator exposes a heartbeat/lease row; Schedule Worker calls `claim_due()` and has no equivalent independent worker heartbeat. A SQL SERVER clock-bounded, credential-redacted SELECT snapshot can prove active DB lease predicates at one instant but never proves local PID association, renewals or progress. Require explicit 3 flags and prior OFF-1G authenticated SQL read; use dedicated DBA-restricted diagnostic account. No dynamic SQL aside from strictly bounded schema identifier. Do not promise complete Worker health.
-
-## 2026-10-24 OFF-1J separated heartbeat progress evidence
-
-- Handoff Coordinator's `renew_lease` advances DB heartbeat while preserving fencing generation; an active single SQL lease snapshot cannot prove progress. A fourth explicit operator flag is required before adding a fixed 15-second two-read observation of heartbeat advancement under unchanged generation, using actual server time. Local worker association is deferred because the deployment accepts arbitrary `REQUIREMENT_HANDOFF_OWNER_ID`; default `handoff-<pid>` guessing would be non-authoritative. Job dispatch, schedule claims, Report Job, DOCX and isolation require separate proof.
+## Compaction Record — 2026-10-24
+- Preserved unresolved Product/security/SQL/ES/Worker boundaries and their full review chronology, including earlier review and architecture decisions, in named immutable archive.
