@@ -107,3 +107,7 @@
 ## 2026-10-24 OFF-1F process attestation portability limits
 
 - A TCP loopback POST to Ollama could invoke an externally hosted cloud model or an opaque local alias; Codex reported a P1 on PR #302. The restricted generation probe now refuses POST unless actual Linux server PID is supplied and bounded /proc socket/executable/server-environment evidence positively attests `OLLAMA_NO_CLOUD=1`, plus compatible Ollama version. If process /proc access is hidden, host binds wildcard or NoCloud comes only from server.json, it safely SKIPs rather than attempting the model. No authoritative live Linux evidence or complete physical network isolation exists yet. Client deadlines do not stop remote/local server processes.
+
+## 2026-10-24 OFF-1H non-attested worker functionality
+
+- Matching Linux Schedule/Handoff PID identity files to /proc is only point-in-time process evidence, and may safely SKIP if Docker/PID namespace or file access is unavailable. Worker liveness cannot prove scheduling progress, SQL lease ownership, polling/heartbeat, API Report Job worker or Word output. The endpoint-level authorized runtime-evidence API requires separate review. Real deployment testing remains pending.
