@@ -461,7 +461,7 @@ def test_aggregated_counts_and_fixed_dependency_graph(monkeypatch):
     assert len({item["id"] for item in report["results"]}) == 13
     rows = _rows(report)
     assert rows["ES-MAPPING"]["depends_on"] == ["ES-TCP"]
-    assert rows["LLM-INFERENCE"]["depends_on"] == ["LLM-INVENTORY"]
+    assert rows["LLM-INFERENCE"]["depends_on"] == ["LLM-TCP", "LLM-INVENTORY"]
     assert rows["WORKERS"]["depends_on"] == ["API-HEALTH", "SQL-READ"]
     assert rows["WORD"]["depends_on"] == ["WORKERS", "LLM-INFERENCE"]
 

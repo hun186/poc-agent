@@ -66,3 +66,7 @@
 ## 2026-10-24 OFF-1E local model-list observation
 
 - Existing OFF-1A `probe_llm_inventory` is reused by the OFF-1D matrix only after two operator flags and positive bounded LLM TCP. The extra anonymous /api/tags GET targets exactly 127.0.0.1 HTTP, only when parsed effective MODEL_BASE_URL maps to that same endpoint without a proxy prefix. The configured MODEL_ID is compared within a 64-KiB, three-second, single GET response; the final report is redacted and model/inference claims stay partial.
+
+## 2026-10-24 OFF-1F limited Ollama inference trust boundary
+
+- A dedicated operator-only one-shot generation probe shares OFF-1A's strict local HTTP wire reader and absolute-deadline socket (GET behavior preserved), adding fixed `POST /api/generate` only after explicit triple CLI authorization, TCP and LLM model inventory pass. A static 8-token request and bounded response may attest an actual generation reply but cannot attest business semantics, Agent/RAG, report artifacts or cross-process worker state. Production LLM client is unchanged.

@@ -61,3 +61,7 @@
 ## 2026-10-24 OFF-1E operator CLI additive flag
 
 - `python tools/sraf_airgap_off1d_readiness_matrix.py --probe-network --probe-llm-inventory` adds a single optional anonymous localhost Ollama /api/tags inventory observation, bounded by the existing OFF-1A client. LLM-INVENTORY may carry evidence-backed PASS/FAIL/SKIP with a fixed redacted reason. Its default remains NOT_TESTED. The matrix has no new HTTP API route and never promotes LLM-INFERENCE, SQL, ES, workers, Word or FULL_LIVE; CLI exit stays 1 on observed failure, 2 on incompleteness.
+
+## 2026-10-24 OFF-1F CLI-only generation proposal
+
+- `--probe-llm-inference` is optional and requires `--probe-network --probe-llm-inventory`. For local HTTP Ollama and positive inventory only, one bounded `POST /api/generate` returns an `LLM-INFERENCE` operator row with fixed reason, status and dependencies. It does not expose model name, prompt, response or credentials, does not create HTTP API routes, and never promotes FULL_LIVE or changes the matrix's exit policy.

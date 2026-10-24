@@ -99,3 +99,11 @@
 ## 2026-10-24 OFF-1E inventory limitations
 
 - New operator-only local model inventory can report a named model listing only on an explicitly selected 127.0.0.1 anonymous HTTP Ollama path. Remote private IP, DNS, HTTPS, proxy prefixes, alternative model backends, inference correctness, actual Linux deployment and Report Job completion remain unverified. Models might appear in an inventory but be unusable at inference time. Full air-gap acceptance is still outstanding.
+
+## 2026-10-24 OFF-1F incomplete generation acceptance
+
+- An anonymous bounded local Ollama `/api/generate` 200/JSON response cannot attest actual model binary identity, output quality, throughput, production Agent integration, SQL, ES, worker or DOCX health. Even an 8-token / 20s probe may cause large model loading; timeout need not cancel server-side work. User-side Linux operator tests have not run, and OFF-0 schema-only tests remain independent.
+
+## 2026-10-24 OFF-1F process attestation portability limits
+
+- A TCP loopback POST to Ollama could invoke an externally hosted cloud model or an opaque local alias; Codex reported a P1 on PR #302. The restricted generation probe now refuses POST unless actual Linux server PID is supplied and bounded /proc socket/executable/server-environment evidence positively attests `OLLAMA_NO_CLOUD=1`, plus compatible Ollama version. If process /proc access is hidden, host binds wildcard or NoCloud comes only from server.json, it safely SKIPs rather than attempting the model. No authoritative live Linux evidence or complete physical network isolation exists yet. Client deadlines do not stop remote/local server processes.
