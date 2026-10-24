@@ -57,3 +57,7 @@
 ## 2026-10-24 OFF-1D local CLI output (proposal, not an API route)
 
 - `python tools/sraf_airgap_off1d_readiness_matrix.py [--probe-network]` returns JSON schema `sraf_airgap_off1d_readiness_matrix_v1`, mode `PARTIAL_ONLY_NOT_ACCEPTANCE`, overall `INCOMPLETE` or `ISSUES_FOUND`, `counts`, and fixed `results` rows of `id/component/aspect/status/reason/executed/depends_on/feature_acceptance`. No network by default, and no secrets/hosts/ports/body in response. Exit 1 denotes an observed failure; exit 2 denotes incomplete, including positive bounded probes. No exit 0 / FULL_LIVE.
+
+## 2026-10-24 OFF-1E operator CLI additive flag
+
+- `python tools/sraf_airgap_off1d_readiness_matrix.py --probe-network --probe-llm-inventory` adds a single optional anonymous localhost Ollama /api/tags inventory observation, bounded by the existing OFF-1A client. LLM-INVENTORY may carry evidence-backed PASS/FAIL/SKIP with a fixed redacted reason. Its default remains NOT_TESTED. The matrix has no new HTTP API route and never promotes LLM-INFERENCE, SQL, ES, workers, Word or FULL_LIVE; CLI exit stays 1 on observed failure, 2 on incompleteness.
