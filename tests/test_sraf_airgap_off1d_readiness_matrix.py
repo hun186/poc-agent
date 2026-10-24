@@ -33,8 +33,11 @@ def _tcp(monkeypatch, statuses=None):
         calls.append((service, no_network))
         assert "ES_PASSWORD" in cfg
         probe = statuses.get(service, "PASS") if not no_network else "SKIP"
+        endpoint, _ = matrix._expected_tcp_endpoint(service, cfg)
+        key = {"api": "PORT", "es": "ES_URL", "llm": "MODEL_BASE_URL"}[service]
         return {
-            "configuration": "RESOLVED", "tcp_probe": probe,
+            **endpoint, "component": service, "config_key": key,
+            "tcp_probe": probe,
             "reason": ("network_disabled" if no_network else
                        "configured_tcp_connected" if probe == "PASS" else
                        "configured_tcp_unavailable"),
@@ -66,6 +69,7 @@ def _health(monkeypatch, *, status="PASS"):
 def _cfg():
     return {
         "ES_URL": "https://192.168.10.25:9200",
+        "MODEL_BASE_URL": "http://192.168.10.26:11434",
         "ES_PASSWORD": "PRIVATE_CREDENTIAL",
         "ES_USERNAME": "operator-user",
         "MODEL_ID": "secret-model-name",
@@ -136,6 +140,108 @@ def test_tcp_failure_does_not_cancel_other_independent_checks(monkeypatch, faile
         assert rows["API-HEALTH"]["status"] == "PASS"
     assert result["overall"] == "ISSUES_FOUND"
     assert result["counts"]["FAIL"] >= 1
+
+
+
+@pytest.mark.parametrize("service,field,value", [
+    ("api", "host_scope", "DNS_NAME_NOT_PROBED"),
+    ("api", "host_scope", "RFC1918_IPV4"),
+    ("api", "host_scope", "UNRESOLVED"),
+    ("api", "scheme", "https"),
+    ("api", "port", 9003),
+    ("api", "port", True),
+    ("api", "config_key", "PUBLIC_API_BASE"),
+    ("api", "component", "es"),
+    ("es", "host_scope", "DNS_NAME_NOT_PROBED"),
+    ("es", "host_scope", "NON_PRIVATE_IPV4_NOT_PROBED"),
+    ("es", "host_scope", "UNRESOLVED"),
+    ("es", "scheme", "http"),
+    ("es", "port", 9300),
+    ("llm", "host_scope", "NON_IPV4_NOT_PROBED"),
+    ("llm", "scheme", "https"),
+    ("llm", "port", 11435),
+])
+def test_contradictory_tcp_pass_never_authorizes_network_readiness(
+        monkeypatch, service, field, value):
+    _local(monkeypatch)
+    calls = _tcp(monkeypatch)
+    original = matrix.tcp._observe
+
+    def contradictory(name, cfg, *, no_network):
+        result = original(name, cfg, no_network=no_network)
+        if name == service:
+            result[field] = value
+        return result
+
+    monkeypatch.setattr(matrix.tcp, "_observe", contradictory)
+    health = _health(monkeypatch)
+    report = matrix.build_report(_cfg(), probe_network=True)
+    obs = _rows(report)[{"api": "API-TCP", "es": "ES-TCP",
+                         "llm": "LLM-TCP"}[service]]
+    assert obs["status"] == "SKIP"
+    assert obs["reason"] == "unexpected_probe_result"
+    assert not obs["executed"]
+    assert report["overall"] == "INCOMPLETE"
+    if service == "api":
+        assert health == []
+        assert _rows(report)["API-HEALTH"]["status"] == "SKIP"
+        assert _rows(report)["API-HEALTH"]["reason"] == (
+            "upstream_api_tcp_not_passed")
+    else:
+        assert health == [True]
+    assert [x[0] for x in calls] == ["api", "es", "llm"]
+
+
+@pytest.mark.parametrize("service,endpoint_key,endpoint_value", [
+    ("api", "_OFF1B_LAUNCHER_PORT", "999999"),
+    ("es", "ES_URL", "https://8.8.8.8:9200"),
+    ("es", "ES_URL", "https://hostname.local:9200"),
+    ("llm", "MODEL_BASE_URL", "http://[::1]:11434"),
+    ("llm", "MODEL_BASE_URL", "http://172.15.0.2:11434"),
+])
+def test_forged_pass_does_not_override_actual_configured_endpoint_scope(
+        monkeypatch, service, endpoint_key, endpoint_value):
+    _local(monkeypatch)
+    cfg = _cfg()
+    cfg[endpoint_key] = endpoint_value
+    trusted = _cfg()
+    health = _health(monkeypatch)
+    calls = []
+
+    def fake(name, config, *, no_network):
+        # Simulate an inconsistent nested provider that incorrectly claims a
+        # trusted PASS derived from a *different* deployment configuration.
+        calls.append(name)
+        endpoint, _ = matrix._expected_tcp_endpoint(name, trusted)
+        return {
+            **endpoint, "component": name,
+            "config_key": {"api": "PORT", "es": "ES_URL",
+                           "llm": "MODEL_BASE_URL"}[name],
+            "tcp_probe": "PASS", "reason": "configured_tcp_connected",
+        }
+
+    monkeypatch.setattr(matrix.tcp, "_observe", fake)
+    report = matrix.build_report(cfg, probe_network=True)
+    affected = _rows(report)[{"api": "API-TCP", "es": "ES-TCP",
+                              "llm": "LLM-TCP"}[service]]
+    assert affected["status"] == "SKIP"
+    assert affected["reason"] == "unexpected_probe_result"
+    if service == "api":
+        assert health == []
+    assert calls == ["api", "es", "llm"]
+
+
+def test_genuine_private_loopback_targets_still_pass(monkeypatch):
+    _local(monkeypatch)
+    _tcp(monkeypatch)
+    _health(monkeypatch)
+    cfg = _cfg()
+    cfg["ES_URL"] = "https://127.0.0.1:9200"
+    cfg["MODEL_BASE_URL"] = "http://127.0.0.1:11434/api/chat"
+    report = matrix.build_report(cfg, probe_network=True)
+    assert all(_rows(report)[k]["status"] == "PASS" for k in (
+        "API-TCP", "API-HEALTH", "ES-TCP", "LLM-TCP"))
+    assert report["feature_acceptance"] == "NOT_TESTED"
 
 
 @pytest.mark.parametrize("status,reason", [
