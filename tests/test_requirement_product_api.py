@@ -308,10 +308,17 @@ def test_direct_json_oversize_urlencoded_is_rejected_before_preview_service():
         data={"task": '{"profile_version_id":"pv"}',
               "requirements_json": "x" * (1024 * 1024 + 1)},
     )
-    # httpx data={} sends application/x-www-form-urlencoded, not multipart.
-    # Product rejects this oversized field with the bounded HTTP 422 input error.
-    assert response.status_code == 422
-    assert response.json() == {"detail": {"code": "requirement_preview_input_invalid"}}
+    # httpx data={} sends URL-encoded input. Starlette may enforce its form
+    # size cap first (HTTP 400); earlier compatible stacks reach Product's own
+    # bounded validation (HTTP 422). Both must reject before Preview execution.
+    assert response.status_code in (400, 422)
+    detail = response.json()["detail"]
+    if response.status_code == 422:
+        assert detail == {"code": "requirement_preview_input_invalid"}
+    else:
+        assert isinstance(detail, str)
+        assert "size" in detail.lower() and len(detail) <= 256
+    assert len(response.content) <= 512  # No large user-controlled echo.
     assert not preview.calls
 
 
