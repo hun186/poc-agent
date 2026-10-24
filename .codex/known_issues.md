@@ -95,3 +95,7 @@
 ## 2026-10-24 OFF-1D open limitations
 
 - The proposed readiness matrix does not run actual SQL read, remote ES TLS/auth/Mapping, LLM inventory/inference, worker state/leases, Word artifact or physical air-gap validation. Prior known relocated Docker ES IP SAN mismatch is not resolved. All such dependencies remain NOT_TESTED irrespective of local disk/ODBC/TCP/health PASS, and Hosted CI is not private Linux service evidence.
+
+## 2026-10-24 OFF-1E inventory limitations
+
+- New operator-only local model inventory can report a named model listing only on an explicitly selected 127.0.0.1 anonymous HTTP Ollama path. Remote private IP, DNS, HTTPS, proxy prefixes, alternative model backends, inference correctness, actual Linux deployment and Report Job completion remain unverified. Models might appear in an inventory but be unusable at inference time. Full air-gap acceptance is still outstanding.

@@ -79,3 +79,7 @@
 ## 2026-10-23 OFF-1C query diagnostic design
 
 - The optional single read-only search must use verified TLS/IP SAN and an explicitly selected required production index with Mapping compatibility. Reject the request in WARN_ONLY mode. Size zero prevents document hits; responses remain redacted and do not attest RAG or full live readiness.
+
+## 2026-10-24 OFF-1E decision: do not infer inference from inventory
+
+- Reuse audited localhost-only bounded HTTP rather than connecting to arbitrary configured hosts or sending tokens. An explicit operator pair of flags and credible LLM TCP are prerequisites for exactly one GET /api/tags, which cannot execute a model. Never print model names, source URLs, credentials or remote JSON; do not accept an inconsistent nested provider PASS or promote OFF-0/FULL_LIVE from an inventory observation.
