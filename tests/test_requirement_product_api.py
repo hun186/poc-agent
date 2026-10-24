@@ -309,8 +309,9 @@ def test_direct_json_oversize_urlencoded_is_rejected_before_preview_service():
               "requirements_json": "x" * (1024 * 1024 + 1)},
     )
     # httpx data={} sends URL-encoded input. Starlette may enforce its form
-    # size cap first (HTTP 400); earlier compatible stacks reach Product's own
-    # bounded validation (HTTP 422). Both must reject before Preview execution.
+    # size cap first (HTTP 400 in Hosted Starlette 1.9); the deployment-host
+    # Starlette 0.50 stack reached Product's own bounded validation (HTTP 422).
+    # Both must reject before Preview execution.
     assert response.status_code in (400, 422)
     detail = response.json()["detail"]
     if response.status_code == 422:
