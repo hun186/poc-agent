@@ -115,3 +115,7 @@
 ## 2026-10-24 OFF-1I Worker lease limitations
 
 - An active Handoff Coordinator lease could belong to another worker/node. SQL schema does not independently attest Schedule Worker polling or Report Job worker health. Reading one lease snapshot does not establish ongoing heartbeat, local ownership, successful handoff or durable report output. A missing/expired lease may be expected if idle. Hosted pyodbc mocks are not an authorized live SQL Server test. Future verification must independently prove progress/ownership without performing unwanted work.
+
+## 2026-10-24 OFF-1J two-sample limitations
+
+- Heartbeat advancement proves only the DB coordinator renewed one generation between samples. Another host could own the lease; a hung application loop can still heartbeat. No proof of local PID binding, Schedule Worker progress, report jobs or artifact output. A fixed 15-second wait may miss delayed heartbeats and return SKIP even if a worker is legitimate, and timeout cannot guarantee server-side cancellation. Tests run with mocks in Hosted CI; private SQL Server must be separately checked by an authorized operator with least-privilege SELECT and strict TLS.
