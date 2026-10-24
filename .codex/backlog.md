@@ -146,3 +146,7 @@
 
 - Verify exact-head Hosted pytest and 19 OFF-0 schema checks, formally request Codex Review for process/PID re-use, input file safety, canonical role matching and redaction, fix findings, resolve threads, and obtain explicit merge instruction.
 - Later independently verify SQL-backed Schedule/Handoff leases and progress, API lifespan Report Job Worker and DOCX, without conflating local process identity and end-to-end acceptance. No private deployment evidence or merge yet.
+
+## 2026-10-24 PR #304 new P2 review gates
+
+- Check exact HEAD Hosted CI after changing canonical worker identity verifier; verify launcher's WORKER_BOOTSTRAP exact source matches the parser, ensure existing E2E paths remain valid, reply to two Codex P2 threads and resolve. Request new formal review on fixed commit, do not merge without user's instruction. SQL-backed leases and Report Job worker remain separate NOT_TESTED gates.
