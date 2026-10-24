@@ -11,6 +11,9 @@ import json
 from tools.sraf_airgap_off1_probes import (
     MAX_HTTP_BYTES, Observation, _http_post_local_generate,
 )
+from tools.sraf_airgap_off1f_local_attestation import (
+    server_cloud_disabled, supported_local_only_version,
+)
 
 PROMPT = "Reply with a single word: READY."
 MAX_OUTPUT_TOKENS = 8
@@ -28,7 +31,9 @@ def _evidence(status: str, reason: str, *, executed: bool,
                        executed, data)
 
 
-def probe_local_ollama_inference(port: int, model: str) -> Observation:
+def probe_local_ollama_inference(port: int, model: str, *,
+                                 ollama_server_pid: int | None = None
+                                 ) -> Observation:
     """Exactly one POST /api/generate to 127.0.0.1, never model acceptance.
 
     This request can load/compute a real model. A client timeout is not a
@@ -40,6 +45,22 @@ def probe_local_ollama_inference(port: int, model: str) -> Observation:
     if (not isinstance(model, str) or not 1 <= len(model) <= MAX_MODEL_LEN
             or any(ord(c) < 33 or ord(c) > 126 for c in model)):
         return _evidence("SKIP", "llm_inference_model_invalid", executed=False)
+
+    # IMPORTANT: loopback is not proof of local compute. An Ollama
+    # cloud-backed model or alias can forward externally from this server.
+    # Verify the *actual listening server process* has OLLAMA_NO_CLOUD=1,
+    # and verify its version implements the opt-out, before any generation.
+    # The caller's own env, configuration file, model name or inventory
+    # alone is not accepted as evidence.
+    if not server_cloud_disabled(ollama_server_pid, port):
+        return _evidence("SKIP", "llm_inference_cloud_disable_unverified",
+                         executed=False)
+    if not supported_local_only_version(port):
+        return _evidence("SKIP", "llm_inference_cloud_disable_unverified",
+                         executed=False)
+    if not server_cloud_disabled(ollama_server_pid, port):
+        return _evidence("SKIP", "llm_inference_cloud_disable_unverified",
+                         executed=False)
 
     request = json.dumps({
         "model": model,
@@ -77,6 +98,12 @@ def probe_local_ollama_inference(port: int, model: str) -> Observation:
                          executed=True, http_status=200)
     if not isinstance(obj, dict) or "error" in obj:
         return _evidence("FAIL", "llm_inference_response_invalid",
+                         executed=True, http_status=200)
+    # Defense in depth: remote metadata means even a nominally successful
+    # response is not acceptable LOCAL generation evidence. This is NOT a
+    # substitute for the pre-POST listener cloud-disable check above.
+    if any(key in obj for key in ("remote_host", "remote_model")):
+        return _evidence("SKIP", "llm_inference_remote_response",
                          executed=True, http_status=200)
     if obj.get("model") != model:
         return _evidence("SKIP", "llm_inference_model_unverified",
