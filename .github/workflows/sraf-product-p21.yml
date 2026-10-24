@@ -1,0 +1,37 @@
+name: SRAF P2.1 Requirement Product API tests
+
+on:
+  pull_request:
+    paths:
+      - 'tests/test_requirement_product_api.py'
+      - 'sra_api/routers/requirement_tasks.py'
+      - 'sra_api/services/requirement_product_service.py'
+      - 'sra_api/middleware/product_preview_body_limit.py'
+      - 'api/routers/editor_dependencies.py'
+      - '.github/workflows/sraf-product-p21.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  product-api:
+    name: P2.1 API read and Preview regression (no live SQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install project dependencies before pytest
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install 'pytest>=8,<10' 'httpx>=0.28,<1'
+      - name: Compile Product API regression
+        run: python -m compileall -q tests/test_requirement_product_api.py
+      - name: Test P2.1 API and Preview request boundaries
+        run: python -m pytest -q tests/test_requirement_product_api.py
