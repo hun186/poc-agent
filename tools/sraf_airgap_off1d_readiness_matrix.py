@@ -327,6 +327,11 @@ def _llm_inference(cfg: dict[str, str], *, probe_network: bool,
     if (not isinstance(model, str) or not 1 <= len(model) <= 256
             or any(ord(ch) < 33 or ord(ch) > 126 for ch in model)):
         return result("SKIP", "llm_inference_model_invalid")
+    # No PID -> never invoke the generation helper; a value from the
+    # CLI does not attest identity until /proc checks inside the helper.
+    if (type(ollama_server_pid) is not int or ollama_server_pid < 2
+            or ollama_server_pid > 4_194_304):
+        return result("SKIP", "llm_inference_cloud_disable_unverified")
     try:
         obs = probe_local_ollama_inference(
             endpoint["port"], model, ollama_server_pid=ollama_server_pid)
