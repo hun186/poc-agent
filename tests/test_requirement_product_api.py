@@ -300,7 +300,7 @@ def test_preview_body_is_rejected_before_multipart_spooling_even_without_auth():
     assert response.json() == {"detail": {"code": "requirement_preview_input_invalid"}}
 
 
-def test_direct_json_oversize_is_rejected_by_form_parser_before_product_handler():
+def test_direct_json_oversize_urlencoded_is_rejected_before_preview_service():
     preview = PreviewService()
     client, _ = make_client(role="db_operator", preview=preview)
     response = client.post(
@@ -308,9 +308,18 @@ def test_direct_json_oversize_is_rejected_by_form_parser_before_product_handler(
         data={"task": '{"profile_version_id":"pv"}',
               "requirements_json": "x" * (1024 * 1024 + 1)},
     )
-    # Starlette rejects over-1-MiB form fields before Product input handling.
-    # Treat this pre-handler parser error as HTTP 400, not a Product 422.
-    assert response.status_code == 400
+    # httpx data={} sends URL-encoded input. Starlette may enforce its form
+    # size cap first (HTTP 400 in Hosted Starlette 1.9); the deployment-host
+    # Starlette 0.50 stack reached Product's own bounded validation (HTTP 422).
+    # Both must reject before Preview execution.
+    assert response.status_code in (400, 422)
+    detail = response.json()["detail"]
+    if response.status_code == 422:
+        assert detail == {"code": "requirement_preview_input_invalid"}
+    else:
+        assert isinstance(detail, str)
+        assert "size" in detail.lower() and len(detail) <= 256
+    assert len(response.content) <= 512  # No large user-controlled echo.
     assert not preview.calls
 
 

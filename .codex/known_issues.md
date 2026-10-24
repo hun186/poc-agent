@@ -93,3 +93,7 @@
 
 ## Compaction Record — 2026-10-24
 - Active known issues retain unresolved production, service, security and acceptance gaps; older dated issue narratives are recoverable from complete full-content archive. No deployment action or FULL_LIVE claim.
+
+## 2026-10-24 P2.1 pending regression validation
+
+- Oversized URL-encoded Preview `requirements_json` is rejected before Preview service runs but its status depends on the framework version: deployment host with Starlette 0.50 historically returned Product HTTP 422 `requirement_preview_input_invalid`; Hosted PR #289 run #40090472110 with FastAPI 0.162.0 / Starlette 1.9.0 returned framework HTTP 400. That failed run had 64 PASS / 1 FAIL and is **not** acceptance evidence. Test now checks safe bounded 400 or canonical safe 422, always no service call. Unpinned framework versions remain an API-status consistency consideration for clients; pin/normalization needs independent contract decision. Rerun exact-head `python -m pytest -q tests/test_requirement_product_api.py` and formal Review before Merge. OFF-1 Hosted checks cannot replace Product API coverage.
