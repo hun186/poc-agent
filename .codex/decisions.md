@@ -83,3 +83,7 @@
 ## 2026-10-24 OFF-1E decision: do not infer inference from inventory
 
 - Reuse audited localhost-only bounded HTTP rather than connecting to arbitrary configured hosts or sending tokens. An explicit operator pair of flags and credible LLM TCP are prerequisites for exactly one GET /api/tags, which cannot execute a model. Never print model names, source URLs, credentials or remote JSON; do not accept an inconsistent nested provider PASS or promote OFF-0/FULL_LIVE from an inventory observation.
+
+## 2026-10-24 OFF-1F model-generation safety decision
+
+- Model inference has CPU/GPU/memory side effects. Therefore require a *third* explicit operator flag, plus positive actual model inventory on exact numeric 127.0.0.1 HTTP. Use a fixed small non-user-supplied prompt, 8 generated-token cap, 20s total client deadline, 64KiB strict HTTP response cap and one request/no retry. Do not assume a timed-out connection cancels server work, do not forcibly unload a model, and do not label a nominal positive generation response as E2E acceptance.
