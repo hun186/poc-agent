@@ -99,3 +99,7 @@
 ## 2026-10-24 OFF-1E inventory limitations
 
 - New operator-only local model inventory can report a named model listing only on an explicitly selected 127.0.0.1 anonymous HTTP Ollama path. Remote private IP, DNS, HTTPS, proxy prefixes, alternative model backends, inference correctness, actual Linux deployment and Report Job completion remain unverified. Models might appear in an inventory but be unusable at inference time. Full air-gap acceptance is still outstanding.
+
+## 2026-10-24 OFF-1F incomplete generation acceptance
+
+- An anonymous bounded local Ollama `/api/generate` 200/JSON response cannot attest actual model binary identity, output quality, throughput, production Agent integration, SQL, ES, worker or DOCX health. Even an 8-token / 20s probe may cause large model loading; timeout need not cancel server-side work. User-side Linux operator tests have not run, and OFF-0 schema-only tests remain independent.
