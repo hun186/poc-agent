@@ -141,3 +141,8 @@
 
 - Verify Hosted Python regression and 19 OFF-0 schema-only checks on exact PR HEAD; correct all findings, request formal Codex Review on the final reviewed HEAD, and do not merge without explicit approval.
 - The SQL probe accepts only operator-selected numeric private IPv4 and separate read-only-designated credentials; `ApplicationIntent=ReadOnly` is a routing hint, not a SQL Server permission fence. A constant `SELECT 1` does not prove any business table, login authorization restriction or complete SQL acceptance. Live Linux proof remains pending.
+
+## 2026-10-24 OFF-1H release gates
+
+- Verify exact-head Hosted pytest and 19 OFF-0 schema checks, formally request Codex Review for process/PID re-use, input file safety, canonical role matching and redaction, fix findings, resolve threads, and obtain explicit merge instruction.
+- Later independently verify SQL-backed Schedule/Handoff leases and progress, API lifespan Report Job Worker and DOCX, without conflating local process identity and end-to-end acceptance. No private deployment evidence or merge yet.
