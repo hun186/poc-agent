@@ -12,6 +12,8 @@ on:
       - 'tests/test_sraf_airgap_off1e_llm_inventory.py'
       - 'tools/sraf_airgap_off1f_llm_inference.py'
       - 'tests/test_sraf_airgap_off1f_llm_inference.py'
+      - 'tools/sraf_airgap_off1f_local_attestation.py'
+      - 'tests/test_sraf_airgap_off1f_local_attestation.py'
       - 'docs/operations/sraf_airgap_off1f_llm_inference.md'
       - 'docs/operations/sraf_airgap_off1e_llm_inventory.md'
       - 'docs/operations/sraf_airgap_off1d_readiness_matrix.md'
@@ -40,7 +42,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Compile scripts
-        run: python -m compileall -q tools/sraf_airgap_off1b_auto.py tools/sraf_airgap_off1b_api_http.py tools/sraf_airgap_off1b_es_https_mapping.py tools/sraf_airgap_off1b_es_index_discovery.py tests/test_sraf_airgap_off1b_es_https_mapping.py tests/test_sraf_airgap_off1b_es_index_discovery.py tools/sraf_airgap_off1d_readiness_matrix.py tests/test_sraf_airgap_off1d_readiness_matrix.py tests/test_sraf_airgap_off1e_llm_inventory.py tools/sraf_airgap_off1f_llm_inference.py tests/test_sraf_airgap_off1f_llm_inference.py tests/test_sraf_airgap_off1b_auto.py tests/test_sraf_airgap_off1b_api_http.py
+        run: python -m compileall -q tools/sraf_airgap_off1b_auto.py tools/sraf_airgap_off1b_api_http.py tools/sraf_airgap_off1b_es_https_mapping.py tools/sraf_airgap_off1b_es_index_discovery.py tests/test_sraf_airgap_off1b_es_https_mapping.py tests/test_sraf_airgap_off1b_es_index_discovery.py tools/sraf_airgap_off1d_readiness_matrix.py tests/test_sraf_airgap_off1d_readiness_matrix.py tests/test_sraf_airgap_off1e_llm_inventory.py tools/sraf_airgap_off1f_llm_inference.py tests/test_sraf_airgap_off1f_llm_inference.py tools/sraf_airgap_off1f_local_attestation.py tests/test_sraf_airgap_off1f_local_attestation.py tests/test_sraf_airgap_off1b_auto.py tests/test_sraf_airgap_off1b_api_http.py
       - name: Install project dependencies
         run: |
           python -m pip install --upgrade pip
@@ -49,7 +51,7 @@ jobs:
       - name: Run OFF-1B focused tests and OFF-0 contract
         run: |
           python tools/validate_sraf_airgap_off0_contract.py
-          python -m pytest -q tests/test_sraf_airgap_off1b_auto.py tests/test_sraf_airgap_off1b_api_http.py tests/test_sraf_airgap_off1b_es_https_mapping.py tests/test_sraf_airgap_off1b_es_index_discovery.py tests/test_sraf_airgap_off1d_readiness_matrix.py tests/test_sraf_airgap_off1e_llm_inventory.py tests/test_sraf_airgap_off1f_llm_inference.py tests/test_sraf_airgap_off0_contract.py
+          python -m pytest -q tests/test_sraf_airgap_off1b_auto.py tests/test_sraf_airgap_off1b_api_http.py tests/test_sraf_airgap_off1b_es_https_mapping.py tests/test_sraf_airgap_off1b_es_index_discovery.py tests/test_sraf_airgap_off1d_readiness_matrix.py tests/test_sraf_airgap_off1e_llm_inventory.py tests/test_sraf_airgap_off1f_llm_inference.py tests/test_sraf_airgap_off1f_local_attestation.py tests/test_sraf_airgap_off0_contract.py
       - name: Config-only check against CI host (not SRAF environment)
         run: |
           python tools/sraf_airgap_off1b_auto.py --no-network || test "$?" -eq 2
