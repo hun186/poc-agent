@@ -65,6 +65,7 @@ REASONS = frozenset((
     "llm_inference_service_unverified", "llm_inference_http_error",
     "llm_inference_response_invalid", "llm_inference_model_unverified",
     "llm_inference_generation_unverified", "llm_inference_generation_observed",
+    "llm_inference_cloud_disable_unverified", "llm_inference_remote_response",
 ))
 
 
@@ -293,7 +294,8 @@ def _llm_inventory(cfg: dict[str, str], *, probe_network: bool,
 
 def _llm_inference(cfg: dict[str, str], *, probe_network: bool,
                    probe_model_inventory: bool, probe_model_inference: bool,
-                   inventory_status: str) -> dict[str, Any]:
+                   inventory_status: str,
+                   ollama_server_pid: int | None = None) -> dict[str, Any]:
     """Operator-authorized one-shot local model generation, not end-to-end."""
     def result(status: str, reason: str, *, executed: bool = False
                ) -> dict[str, Any]:
@@ -326,7 +328,8 @@ def _llm_inference(cfg: dict[str, str], *, probe_network: bool,
             or any(ord(ch) < 33 or ord(ch) > 126 for ch in model)):
         return result("SKIP", "llm_inference_model_invalid")
     try:
-        obs = probe_local_ollama_inference(endpoint["port"], model)
+        obs = probe_local_ollama_inference(
+            endpoint["port"], model, ollama_server_pid=ollama_server_pid)
         if obs.status == "PASS":
             info = obs.evidence
             if (obs.check_id == "LLM-02"
@@ -352,7 +355,8 @@ def _llm_inference(cfg: dict[str, str], *, probe_network: bool,
 
 def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_model_inventory: bool = False,
-                 probe_model_inference: bool = False
+                 probe_model_inference: bool = False,
+                 ollama_server_pid: int | None = None
                  ) -> dict[str, Any]:
     """Run independent reviewed probes even when another component fails."""
     rows = [
@@ -383,7 +387,8 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         _llm_inference(cfg, probe_network=probe_network,
                        probe_model_inventory=probe_model_inventory,
                        probe_model_inference=probe_model_inference,
-                       inventory_status=inventory["status"]),
+                       inventory_status=inventory["status"],
+                       ollama_server_pid=ollama_server_pid),
         _record("WORKERS", "workers", "process_and_schedule_worker_identity",
                 "NOT_TESTED", "worker_identity_not_implemented",
                 depends_on=("API-HEALTH", "SQL-READ")),
@@ -418,6 +423,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="With --probe-network, check anonymous localhost Ollama /api/tags once.")
     parser.add_argument("--probe-llm-inference", action="store_true",
                         help="With BOTH other flags, run one real local Ollama generation (may load model).")
+    parser.add_argument("--ollama-server-pid", type=int, default=None,
+                        help="Linux Ollama serve PID (only used with triple inference opt-in); verified /proc socket and OLLAMA_NO_CLOUD=1 are mandatory.")
     args = parser.parse_args(argv)
     if Path.cwd().resolve() != PROJECT_ROOT:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
@@ -444,7 +451,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         report = build_report(cfg, probe_network=args.probe_network,
                               probe_model_inventory=args.probe_llm_inventory,
-                              probe_model_inference=args.probe_llm_inference)
+                              probe_model_inference=args.probe_llm_inference,
+                              ollama_server_pid=args.ollama_server_pid)
     except Exception:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
                           "error": "readiness_matrix_unavailable"}))
