@@ -81,37 +81,15 @@
 
 - 2026-10-22 PR #297 Codex P2: printable but malformed chunk extensions (e.g., `1;foo==bar`) could have been falsely accepted. Decoder now validates full extension grammar using OFF-1 `_CHUNK_HEAD`, and separately bounds chunk hex token to 8 digits and line to 256 bytes. Negative regression tests added; await Hosted CI and exact-head Codex, no Linux confirmation yet.
 
+## 2026-10-24 OFF-1 Remaining Verification Gaps (Current)
+- Live ES Mapping remains subject to actual deployment verification; historic `mapping_incompatible` and relocated private ES IP SAN mismatch were not cleared by CI. Strict certificate identity must not be replaced with warn-only diagnostic for acceptance.
+- OFF-1B/1C read-only ES diagnostics, OFF-1E model-list, OFF-1F inference, OFF-1G SQL constant SELECT, OFF-1H Worker PID, OFF-1I SQL lease and OFF-1J heartbeat renewal are **separate partial evidence only**. CI mocks provide no private SQL or Ollama credentials and cannot certify live service health.
+- OFF-1J advanced heartbeat only means some coordinator renewed one lease generation on the DB between two SELECTs. It does not bind to local Handoff PID or guarantee any dispatch/reconciliation progress. Custom `REQUIREMENT_HANDOFF_OWNER_ID` prevents naive PID owner guessing. A loaded or slow coordinator can cause fixed 15s observation to return inconclusive SKIP.
+- Schedule Worker has no independent SQL heartbeat; `claim_due()` mutates scheduling state, so health cannot be proved by triggering it in a diagnostic. API Report Job Worker, Agent/LLM/Elasticsearch, DOCX, output integrity, isolation and SD-1–SD-7 remain pending real operator acceptance.
+- ODBC login/query timeouts do not promise server-side cancellation or precise total wall deadline. The operator must use a DBA-restricted SQL principal, verified private IP SAN TLS, correct schema and explicitly authorized network/SQL/sampling flags.
 
-## 2026-10-22 Configured index discovery limits
+## Archived History — 2026-10-24
+- `.codex/archive/known_issues.md-20261024-180500.md` — entire 17,224-character active known-issues record, byte/Git SHA verified first; all dated OFF-1 and Product limitations traceable through it and `.codex/archive/known_issues.md-20261021-165000.md`.
 
-- Runtime still has a hardcoded default development-index fallback when neither `ES_INDEX` nor canonical YAML `default_indexes` is configured. The configured-target discovery reports `runtime_default_fallback_not_attested` instead of inventing a production target.
-- `config/indexes.yaml` currently contains legacy singular `default_index`, while `config.index_loader.load_index_mapping` recognizes plural `default_indexes`. New operator tool reports the ignored spelling; runtime config migration is a separately reviewed change.
-- Mapping-only role checks do not demonstrate live RAG query success, multidimensional writer compatibility, historical-index retirement, Basic negative credential control or FULL_LIVE deployment acceptance. Distinguish these unfinished checks in operator reports; no automatic index removal or write probes.
-
-## 2026-10-23 OFF-1B Codex review trust findings
-
-- PR #298 Codex exact-head review on `1d8beaa5` found three open issues (P1 late Mapping SAN warning lost on fixture alias early exit; P2 identity-unverified 404/incompatible Mapping classified as definitive FAIL; P2 numeric YAML selector normalization mismatch). Fixes and regression tests are committed on the PR branch, but **latest Hosted CI and new formal review must independently verify them**. Neither static Mapping nor WARN_ONLY TLS can prove real Elasticsearch identity or FULL_LIVE readiness.
-
-## 2026-10-24 OFF-1D open limitations
-
-- The proposed readiness matrix does not run actual SQL read, remote ES TLS/auth/Mapping, LLM inventory/inference, worker state/leases, Word artifact or physical air-gap validation. Prior known relocated Docker ES IP SAN mismatch is not resolved. All such dependencies remain NOT_TESTED irrespective of local disk/ODBC/TCP/health PASS, and Hosted CI is not private Linux service evidence.
-
-## 2026-10-24 OFF-1E inventory limitations
-
-- New operator-only local model inventory can report a named model listing only on an explicitly selected 127.0.0.1 anonymous HTTP Ollama path. Remote private IP, DNS, HTTPS, proxy prefixes, alternative model backends, inference correctness, actual Linux deployment and Report Job completion remain unverified. Models might appear in an inventory but be unusable at inference time. Full air-gap acceptance is still outstanding.
-
-## 2026-10-24 OFF-1F incomplete generation acceptance
-
-- An anonymous bounded local Ollama `/api/generate` 200/JSON response cannot attest actual model binary identity, output quality, throughput, production Agent integration, SQL, ES, worker or DOCX health. Even an 8-token / 20s probe may cause large model loading; timeout need not cancel server-side work. User-side Linux operator tests have not run, and OFF-0 schema-only tests remain independent.
-
-## 2026-10-24 OFF-1F process attestation portability limits
-
-- A TCP loopback POST to Ollama could invoke an externally hosted cloud model or an opaque local alias; Codex reported a P1 on PR #302. The restricted generation probe now refuses POST unless actual Linux server PID is supplied and bounded /proc socket/executable/server-environment evidence positively attests `OLLAMA_NO_CLOUD=1`, plus compatible Ollama version. If process /proc access is hidden, host binds wildcard or NoCloud comes only from server.json, it safely SKIPs rather than attempting the model. No authoritative live Linux evidence or complete physical network isolation exists yet. Client deadlines do not stop remote/local server processes.
-
-## 2026-10-24 OFF-1H non-attested worker functionality
-
-- Matching Linux Schedule/Handoff PID identity files to /proc is only point-in-time process evidence, and may safely SKIP if Docker/PID namespace or file access is unavailable. Worker liveness cannot prove scheduling progress, SQL lease ownership, polling/heartbeat, API Report Job worker or Word output. The endpoint-level authorized runtime-evidence API requires separate review. Real deployment testing remains pending.
-
-## 2026-10-24 OFF-1I Worker lease limitations
-
-- An active Handoff Coordinator lease could belong to another worker/node. SQL schema does not independently attest Schedule Worker polling or Report Job worker health. Reading one lease snapshot does not establish ongoing heartbeat, local ownership, successful handoff or durable report output. A missing/expired lease may be expected if idle. Hosted pyodbc mocks are not an authorized live SQL Server test. Future verification must independently prove progress/ownership without performing unwanted work.
+## Compaction Record — 2026-10-24
+- Active known issues retain unresolved production, service, security and acceptance gaps; older dated issue narratives are recoverable from complete full-content archive. No deployment action or FULL_LIVE claim.
