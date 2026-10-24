@@ -74,6 +74,14 @@ def _initial_owner_from_proc(pid: int) -> str | None:
         os.close(fd)
     if not data or len(data) > ENV_MAX_BYTES or tail or not data.endswith(b"\0"):
         return None
+    return _parse_inherited_owner(data)
+
+
+def _parse_inherited_owner(data: bytes) -> str | None:
+    """Parse exactly one printable ASCII owner among NUL-framed env entries."""
+    if (not isinstance(data, bytes) or not data.endswith(b"\0")
+            or len(data) > ENV_MAX_BYTES):
+        return None
     values = [v[len(_OWNER_KEY):] for v in data[:-1].split(b"\0")
               if v.startswith(_OWNER_KEY)]
     if len(values) != 1:
