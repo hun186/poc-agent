@@ -121,3 +121,8 @@
 ## 2026-10-24 PR #300 TCP scope review gate
 
 - Confirm exact-head Hosted CI after the Codex fourth P2 fix validating reported TCP scope and endpoint invariants. Reply to Finding #4361787008, resolve its review thread only after tests, and issue a fresh formal @codex review for latest HEAD. Retain partial-only and no-network default. Do not merge until user explicitly authorizes.
+
+## 2026-10-24 OFF-1E next gates
+
+- Verify exact-head Hosted CI for new OFF-1E model inventory regressions and 19-check OFF-0 static contract. Request formal Codex code review after CI, correct any findings and resolve comment threads before seeking separate explicit merge authorization.
+- A positive local Ollama model-list observation is not model inference or RAG quality. Unsupported remote/private HTTPS/Ollama proxy and OpenAI-compatible endpoints are SKIP, not positive coverage. Real private Linux LLM and full SQL/ES/Worker/Word isolation acceptance remain pending.
