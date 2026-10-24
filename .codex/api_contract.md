@@ -34,46 +34,15 @@
 
 - 2026-10-21: Archived then condensed >20 dated API/work blocks per AGENTS.md without changing the implementation. Current route support, status contracts, safe input bounds and auth/SQL ownership requirements remain above. Live deployment is not verified by Hosted checks; do not Merge PR #295 without explicit authorization.
 
+## 2026-10-24 OFF-1 Operator CLI Contract (Current)
+- OFF-1B ES Mapping/index selector/search probes and OFF-1D matrix are operator CLI surfaces only, not new authenticated HTTP API routes. Diagnostics are bounded/redacted, default offline, partial-only and never FULL_LIVE. WARN_ONLY ES peer SAN carries credential/identity risk and cannot be treated as identity-verified PASS.
+- OFF-1D `sraf_airgap_off1d_readiness_matrix_v1` outputs fixed component rows, statuses/reasons/dependencies, `feature_acceptance=NOT_TESTED`, `overall=INCOMPLETE|ISSUES_FOUND`; exit 1 on observed FAIL, exit 2 on incomplete including partial PASS. Default no network.
+- `--probe-network --probe-llm-inventory` gates single localhost Ollama inventory GET. `--probe-llm-inference` adds a third explicit opt-in plus verified actual server PID and OLLAMA_NO_CLOUD=1 before bounded generation.
+- `--probe-network --probe-sql-read` gates separate dedicated ODBC18 private-address strict TLS constant SELECT. Adding `--probe-worker-lease` gates one schema-constrained Handoff SQL lease snapshot; adding `--probe-lease-renewal` gates two extra bounded SQL snapshots, separated by fixed 15s, comparing same fencing generation and increasing heartbeat marker. Distinct `HANDOFF-RENEWAL` row depends on `SQL-READ` and `HANDOFF-LEASE`; never reports lease owner/token/timestamp or job progress.
+- Independent `--probe-worker-identities` is local-only `/proc` Schedule/Handoff identity evidence and requires no network; none of these CLI observations promotes API Report Job/DOCX/Worker throughput or physical network-isolation acceptance.
 
-- 2026-10-22 PR #296 adds an explicit operator CLI-only --warn-only-ip-san diagnostic. The default strict CA + numeric IP SAN identity requirement is unchanged. The opt-in keeps CERT_REQUIRED trusted CA chain, private numeric IP destination and bounded GETs but allows missing IP SAN only as identity_warning=true / tls_validation=WARN. On a peer identity mismatch, a compatible or incompatible mapping observation becomes non-authoritative mapping_probe=WARN with *_identity_unverified reason; exit 2 always indicates incomplete. The configured Basic credentials are still sent to a CA-signed but IP-identity-unverified peer, posing a real impersonation/secret exposure risk, so warning mode cannot combine with --verify-credentials. No official TLS PASS, FULL_LIVE or production ES client change.
+## Archived History — 2026-10-24
+- `.codex/archive/api_contract.md-20261024-180500.md` — byte/Git-SHA verified full original 14,199-character active API contract before compaction. Earlier schema/route history remains under `.codex/archive/api_contract.md-20261021-165000.md`.
 
-- 2026-10-22 PR #296 CLI revised: no flag => default Quick/Diagnose WARN IP SAN policy; --strict-ip-san => strict CA + IP SAN; --verify-credentials => strict by implication; --warn-only-ip-san remains compatibility alias to default Quick and must not coexist with either strict/verify. Quick requires CA chain validation and private numeric IPv4, returns tls_validation=WARN + mapping_probe=WARN + exit 2 on mismatched SAN, records identity_warning even if HTTP response transport later fails (`es_https_transport_unavailable_ip_san_mismatch`). Quick still transmits the configured Basic credential after CA-only verification; user must not construe identity or Mapping as FULL_LIVE acceptance.
-
-- 2026-10-22 PR #297 standalone OFF-1B ES HTTPS operator CLI reads HTTP/1.1 `Transfer-Encoding: chunked` in addition to a single Content-Length. Reject CL+TE conflict, duplicate/stacked unsupported codings, oversized/truncated chunks/invalid CRLF/trailers with sanitized error classification. Size limit is 2 MiB decoded for Mapping GET, 64KiB root/auth; 3-second total deadline. Existing reason/TLS identity trust boundaries unchanged; the previously reported es_https_transport_unavailable_ip_san_mismatch from unsupported framing does not prove mapping_incompatible.
-
-- 2026-10-22 PR #297 reviewed transport contract: on either supported body framing mode, `Content-Encoding` absent or exactly one case-insensitive `identity` value; reject gzip/br/deflate, stacked or repeated fields without decompressing. Auth/TLS SAN warning, fixed origin and Mapping acceptance semantics unchanged.
-
-
-## 2026-10-22 OFF-1B ES configured index operator CLI (not HTTP API)
-
-- `python tools/sraf_airgap_off1b_es_index_discovery.py [--no-network] [--strict-ip-san] [--show-index-names]` emits `sraf_airgap_off1b_es_index_discovery_v1`, always `mode=PARTIAL_ONLY_NOT_ACCEPTANCE` and `feature_acceptance=NOT_TESTED`. Results have stable `ES-IDX-XX` check IDs, source types, `ACTIVE_REQUIRED|ACTIVE_OPTIONAL|E2E_FIXTURE` classifications, selector resolution, per-profile static Mapping statuses, separate multidimensional observation, and explicit `query_probe=NOT_TESTED`.
-- No configured index names appear unless explicit operator `--show-index-names`; never use that option in shared logs. No API route, cluster enumeration, documents, SQL/LLM probes or writes. Exit 1 denotes observed critical failure, exit 2 an incomplete/partial result; never return code 0 as FULL_LIVE acceptance.
-
-## 2026-10-23 OFF-1C optional operator search CLI contract (proposed)
-
-- `python tools/sraf_airgap_off1b_es_index_discovery.py --check-readonly-search --strict-ip-san` adds at most one literal selected-index Elasticsearch read-only `GET /{index}/_search?size=0&track_total_hits=false&terminate_after=1&timeout=1s&allow_partial_search_results=false` after the existing mandatory root, protected-principal and Mapping probes. Without `--strict-ip-san` the extra option blocks all requests and marks `readonly_search_requires_strict_ip_san`.
-- For each existing per-selector result the new `query_reason` provides a redacted fixed reason; `query_probe` remains NOT_TESTED by default. Only a compatible first ACTIVE_REQUIRED selector may be assessed as PASS/FAIL/NOT_VERIFIED, subject to TLS and role checks. `mode=PARTIAL_ONLY_NOT_ACCEPTANCE` and `feature_acceptance=NOT_TESTED` are unchanged. Query FAIL returns exit 1; incomplete evidence returns exit 2. No document snippets, document counts, URLs or ES response bodies are returned.
-
-## 2026-10-24 OFF-1D local CLI output (proposal, not an API route)
-
-- `python tools/sraf_airgap_off1d_readiness_matrix.py [--probe-network]` returns JSON schema `sraf_airgap_off1d_readiness_matrix_v1`, mode `PARTIAL_ONLY_NOT_ACCEPTANCE`, overall `INCOMPLETE` or `ISSUES_FOUND`, `counts`, and fixed `results` rows of `id/component/aspect/status/reason/executed/depends_on/feature_acceptance`. No network by default, and no secrets/hosts/ports/body in response. Exit 1 denotes an observed failure; exit 2 denotes incomplete, including positive bounded probes. No exit 0 / FULL_LIVE.
-
-## 2026-10-24 OFF-1E operator CLI additive flag
-
-- `python tools/sraf_airgap_off1d_readiness_matrix.py --probe-network --probe-llm-inventory` adds a single optional anonymous localhost Ollama /api/tags inventory observation, bounded by the existing OFF-1A client. LLM-INVENTORY may carry evidence-backed PASS/FAIL/SKIP with a fixed redacted reason. Its default remains NOT_TESTED. The matrix has no new HTTP API route and never promotes LLM-INFERENCE, SQL, ES, workers, Word or FULL_LIVE; CLI exit stays 1 on observed failure, 2 on incompleteness.
-
-## 2026-10-24 OFF-1F CLI-only generation proposal
-
-- `--probe-llm-inference` is optional and requires `--probe-network --probe-llm-inventory`. For local HTTP Ollama and positive inventory only, one bounded `POST /api/generate` returns an `LLM-INFERENCE` operator row with fixed reason, status and dependencies. It does not expose model name, prompt, response or credentials, does not create HTTP API routes, and never promotes FULL_LIVE or changes the matrix's exit policy.
-
-## 2026-10-24 OFF-1H operator CLI additive option
-
-- `--probe-worker-identities` enables two local Linux Schedule/Handoff process-identity checks. Default `WORKERS` row remains NOT_TESTED. Positive observations are identity-only `PASS` with `feature_acceptance=NOT_TESTED`; missing/unverifiable process evidence returns redacted SKIP. No API routes, SQL writes, worker restart, login/credential disclosure, job execution, lease assurance, full deployment/Word promotion or exit 0.
-
-## 2026-10-24 OFF-1I operator CLI additive flag
-
-- `--probe-worker-lease` requires `--probe-network --probe-sql-read` and a positive existing SQL-READ check, then runs one fixed parameterized SELECT of Handoff coordinator lease predicates. Adds `HANDOFF-LEASE` (depends_on SQL-READ) to OFF-1D's redacted results. `feature_acceptance=NOT_TESTED` regardless of outcome, including positive lease snapshot; no new HTTP API, no SQL mutations, no claim of local owner or progress.
-
-## 2026-10-24 OFF-1J additive operator-only flag
-
-- `--probe-lease-renewal` requires all `--probe-network --probe-sql-read --probe-worker-lease` and an observed `HANDOFF-LEASE` PASS. Adds distinct `HANDOFF-RENEWAL` row (depends_on SQL-READ and HANDOFF-LEASE), fixed 15-second wait, max two read-only SQL queries with new connections. Redacted outcome is a Handoff DB heartbeat renewal only; full acceptance remains NOT_TESTED and exit 0 is never implied.
+## Compaction Record — 2026-10-24
+- Preserved all original 2026-10-22 through OFF-1J CLI status details and Product API history in full archive before condensing; no claim of live deployment or actual SQL Server.
