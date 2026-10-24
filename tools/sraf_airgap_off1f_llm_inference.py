@@ -46,6 +46,10 @@ def probe_local_ollama_inference(port: int, model: str, *,
             or any(ord(c) < 33 or ord(c) > 126 for c in model)):
         return _evidence("SKIP", "llm_inference_model_invalid", executed=False)
 
+    if type(ollama_server_pid) is not int or ollama_server_pid < 2:
+        return _evidence("SKIP", "llm_inference_cloud_disable_unverified",
+                         executed=False)
+
     # IMPORTANT: loopback is not proof of local compute. An Ollama
     # cloud-backed model or alias can forward externally from this server.
     # Verify the *actual listening server process* has OLLAMA_NO_CLOUD=1,
