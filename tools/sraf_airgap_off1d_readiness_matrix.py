@@ -30,6 +30,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools import sraf_airgap_off1b_auto as tcp  # noqa: E402
 from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
+from tools.sraf_airgap_off1h_worker_identity import (  # noqa: E402
+    probe_worker_process_identities,
+)
 from tools.sraf_airgap_off1g_sql_read import (  # noqa: E402
     ENV_KEYS as SQL_ENV_KEYS, probe_sql_constant_read,
 )
@@ -76,6 +79,8 @@ REASONS = frozenset((
     "sql_read_config_invalid", "sql_read_driver_unavailable",
     "sql_read_connection_unverified", "sql_read_response_invalid",
     "sql_constant_select_observed",
+    "worker_process_probe_not_requested", "worker_process_host_unsupported",
+    "worker_process_identity_unverified", "worker_process_identities_verified",
 ))
 
 
@@ -411,12 +416,51 @@ def _sql_constant_read(*, probe_network: bool, probe_sql_read: bool,
         return result("SKIP", "sql_read_connection_unverified")
 
 
+def _worker_identities(*, probe_worker_identities: bool
+                       ) -> dict[str, Any]:
+    """Independent local role/PID evidence, NOT a worker lease or job proof."""
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record(
+            "WORKERS", "workers", "schedule_handoff_process_identity_only",
+            status, reason, executed=executed,
+            depends_on=("API-HEALTH", "SQL-READ"),
+        )
+    if not probe_worker_identities:
+        return result("NOT_TESTED", "worker_process_probe_not_requested")
+    try:
+        obs = probe_worker_process_identities(PROJECT_ROOT)
+        if obs.status == "PASS":
+            ev = obs.evidence
+            if (obs.check_id == "WORKER-01"
+                    and obs.probe == "worker-identities"
+                    and obs.aspect == "schedule_handoff_process_identity_only"
+                    and obs.executed is True
+                    and obs.reason == "worker_process_identities_verified"
+                    and isinstance(ev, dict)
+                    and type(ev.get("verified_role_count")) is int
+                    and ev["verified_role_count"] == 2):
+                return result("PASS", "worker_process_identities_verified",
+                              executed=True)
+            return result("SKIP", "unexpected_probe_result")
+        if obs.status == "SKIP":
+            return result("SKIP", _reason(obs.reason),
+                          executed=bool(obs.executed))
+        if obs.status == "FAIL":
+            return result("FAIL", _reason(obs.reason),
+                          executed=bool(obs.executed))
+        return result("SKIP", "unexpected_probe_result")
+    except Exception:
+        return result("SKIP", "worker_process_identity_unverified")
+
+
 def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_model_inventory: bool = False,
                  probe_model_inference: bool = False,
                  ollama_server_pid: int | None = None,
                  probe_sql_read: bool = False,
-                 sql_config: dict[str, str] | None = None
+                 sql_config: dict[str, str] | None = None,
+                 probe_worker_identities: bool = False
                  ) -> dict[str, Any]:
     """Run independent reviewed probes even when another component fails."""
     rows = [
@@ -452,9 +496,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                        probe_model_inference=probe_model_inference,
                        inventory_status=inventory["status"],
                        ollama_server_pid=ollama_server_pid),
-        _record("WORKERS", "workers", "process_and_schedule_worker_identity",
-                "NOT_TESTED", "worker_identity_not_implemented",
-                depends_on=("API-HEALTH", "SQL-READ")),
+        _worker_identities(probe_worker_identities=probe_worker_identities),
         _record("WORD", "report", "real_word_artifact_validation",
                 "NOT_TESTED", "word_artifact_not_implemented",
                 depends_on=("WORKERS", "LLM-INFERENCE")),
@@ -484,6 +526,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
     parser.add_argument("--probe-sql-read", action="store_true",
                         help="With --probe-network, make one TLS-verified ODBC constant SELECT using dedicated operator SRAF_OFF1G_SQL_* secrets.")
+    parser.add_argument("--probe-worker-identities", action="store_true",
+                        help="Read only canonical local Schedule/Handoff worker identity files and /proc; never leases or jobs.")
     parser.add_argument("--probe-llm-inventory", action="store_true",
                         help="With --probe-network, check anonymous localhost Ollama /api/tags once.")
     parser.add_argument("--probe-llm-inference", action="store_true",
@@ -523,7 +567,8 @@ def main(argv: list[str] | None = None) -> int:
                               probe_model_inference=args.probe_llm_inference,
                               ollama_server_pid=args.ollama_server_pid,
                               probe_sql_read=args.probe_sql_read,
-                              sql_config=sql_cfg)
+                              sql_config=sql_cfg,
+                              probe_worker_identities=args.probe_worker_identities)
     except Exception:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
                           "error": "readiness_matrix_unavailable"}))
