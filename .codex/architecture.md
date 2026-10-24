@@ -78,3 +78,7 @@
 ## 2026-10-24 OFF-1I Handoff SQL lease preflight
 
 - Optional standalone `tools/sraf_airgap_off1i_handoff_lease.py` queries only the known `requirement_handoff_coordinator_leases` table through fixed authorized OFF-1G ODBC TLS transport. Redacted `HANDOFF-LEASE` matrix result is independent of existing `WORKERS` process identity. Query returns SQL-computed flags, not sensitive lease owner/token/timestamps or job records. True local owner binding and renewal/progress require separate future schema-aware, privacy-reviewed evidence.
+
+## 2026-10-24 OFF-1J renewal observation boundary
+
+- `tools/sraf_airgap_off1j_handoff_renewal.py` adds a separate optional two-read observation on the existing Handoff lease. It reuses OFF-1G secure operator-only SQL configuration and OFF-1I table/schema/domain semantics. Each read is closed before the next; SQL Server clock validates expiration/recency, client only compares same fencing generation and increasing heartbeat marker. No owner/token fetched, no process identity binding, no production schedule triggers. `HANDOFF-RENEWAL` never upgrades `WORKERS` or `feature_acceptance`.
