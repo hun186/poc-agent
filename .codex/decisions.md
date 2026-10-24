@@ -87,3 +87,7 @@
 ## 2026-10-24 OFF-1F model-generation safety decision
 
 - Model inference has CPU/GPU/memory side effects. Therefore require a *third* explicit operator flag, plus positive actual model inventory on exact numeric 127.0.0.1 HTTP. Use a fixed small non-user-supplied prompt, 8 generated-token cap, 20s total client deadline, 64KiB strict HTTP response cap and one request/no retry. Do not assume a timed-out connection cancels server work, do not forcibly unload a model, and do not label a nominal positive generation response as E2E acceptance.
+
+## 2026-10-24 OFF-1F mandatory server-locality decision
+
+- The initial loopback-only and positive model-inventory gates cannot constrain server-side Ollama cloud forwarding. Require positive bounded Linux /proc attestation of the exact localhost listener's actual `ollama serve` process and active `OLLAMA_NO_CLOUD=1` environment, plus read-only version evidence for minimum supported NoCloud release, **before** any generation POST. Opaque aliases and remote response fields must not be trusted as proof of local-only execution; missing identity proof returns non-authoritative SKIP. This conservative condition may exclude Docker/PID-separated deployments but is preferable to silent external model requests.
