@@ -478,13 +478,27 @@ def _read_verified_chunked(
     raise http.client.HTTPException("too_many_chunks")
 
 
-def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
-    """One anonymous loopback GET, bounded by an absolute 3-second deadline."""
-    deadline = time.monotonic() + TIMEOUT_SECONDS
+def _http_request(port: int, path: str, *, method: str,
+                  body: bytes | None, deadline_seconds: int
+                  ) -> tuple[int | None, bytes | None]:
+    """Existing strict 64-KiB loopback parser, shared with opt-in POST.
+
+    GET retains its original 3s deadline and wire behavior. POST is only
+    permitted for a fixed local /api/generate endpoint and bounded body.
+    """
+    if (method == "GET" and body is None):
+        headers = {"Accept": "application/json", "Connection": "close"}
+    elif (method == "POST" and path == "/api/generate"
+          and isinstance(body, bytes) and 0 < len(body) <= 1024
+          and deadline_seconds == 20):
+        headers = {"Accept": "application/json", "Content-Type": "application/json",
+                   "Connection": "close"}
+    else:
+        return None, None
+    deadline = time.monotonic() + deadline_seconds
     conn = _DeadlineHTTPConnection(port, deadline=deadline)
     try:
-        conn.request("GET", path, headers={"Accept": "application/json",
-                                          "Connection": "close"})
+        conn.request(method, path, body=body, headers=headers)
         response = conn.getresponse()
         status = response.status
         if response.raw_status_version not in ("HTTP/1.0", "HTTP/1.1"):
@@ -502,6 +516,14 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
         # rejected instead of relying on ambiguous framing precedence.
         lengths = response.headers.get_all("Content-Length", [])
         transfers = response.headers.get_all("Transfer-Encoding", [])
+        if method == "POST":
+            # Do not accept compressed, stacked or contradictory coding for
+            # the bounded generation response. Never auto-decompress.
+            encodings = response.headers.get_all("Content-Encoding", [])
+            if len(encodings) > 1 or (
+                encodings and encodings[0].strip(" \t").lower() != "identity"
+            ):
+                return None, None
         # HTTP/1.1 chunked transfer is valid without Content-Length.
         # Accept only the single, exact coding supported by http.client and
         # verified as decoded by the parser; reject ambiguous or unsupported
@@ -546,6 +568,19 @@ def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
         return None, None
     finally:
         conn.close()
+
+
+def _http_get(port: int, path: str) -> tuple[int | None, bytes | None]:
+    """One anonymous loopback GET, bounded by an absolute 3-second deadline."""
+    return _http_request(port, path, method="GET", body=None,
+                         deadline_seconds=TIMEOUT_SECONDS)
+
+
+def _http_post_local_generate(port: int, body: bytes
+                              ) -> tuple[int | None, bytes | None]:
+    """One anonymous localhost Ollama generation, strict 20s wall deadline."""
+    return _http_request(port, "/api/generate", method="POST", body=body,
+                         deadline_seconds=20)
 
 
 def probe_api_health(port: int) -> Observation:
