@@ -86,7 +86,8 @@ def test_out_of_scope_urls_never_dispatch_inventory(monkeypatch, url):
     result = _check(_config(url=url))
     assert result["status"] == "SKIP"
     assert result["reason"] == "llm_inventory_endpoint_outside_scope"
-    assert url not in json.dumps(result)
+    if url:
+        assert url not in json.dumps(result)
 
 
 @pytest.mark.parametrize("url", [
@@ -114,7 +115,7 @@ def test_unsafe_or_absent_model_name_never_dispatches(monkeypatch, model):
     assert result["status"] == "SKIP"
     assert result["reason"] in ("model_name_not_configured",
                                 "llm_inventory_model_invalid")
-    if isinstance(model, str):
+    if isinstance(model, str) and model:
         assert model not in json.dumps(result)
 
 
