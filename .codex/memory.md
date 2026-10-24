@@ -175,3 +175,8 @@
 
 - PR #302 OFF-1F merged into main at 5b2d0c7ff59347336ef002ab523bd9c880003916 after Hosted CI and exact-head Codex CLEAN. Linux deployment acceptance was not performed.
 - New OFF-1G branch adds optional SQL-READ constant query observation: only explicit --probe-network and --probe-sql-read flags authorize the SQL diagnostic. A separately supplied operator SQL Server connection uses fixed ODBC Driver 18, numeric private IPv4, TLS identity validation, fixed SELECT CAST(1 AS int), and sanitized status only. The SQL principal's actual database write privileges are not attested; a dedicated least-privilege operator identity is required. SQL application tables, workers, DOCX, isolation and complete live acceptance remain NOT_TESTED. Hosted tests and formal Codex review are pending, no merge.
+
+## 2026-10-24 OFF-1H worker-process identity proposal
+
+- PR #303 OFF-1G was merged into main at d010fb04134d1796af41a4e30e6c1a9ae18b86f0 after Hosted 1,008 pytest / 19 OFF-0 schema PASS and Codex CLEAN. This is NOT private Linux SQL acceptance.
+- New OFF-1H branch reuses canonical `operator_e2e.requirement_e2e_support.verify_worker_identity()` to compare fixed local Schedule/Handoff identity files against /proc PID start ticks, euid, project cwd and role command. Only explicit `--probe-worker-identities` allows extra identity inspection, independent of network opt-in. Identity paths/sizes are restricted; statuses/reasons are sanitized, and PID, UID and command line are not emitted. `WORKERS` PASS is solely two observed process identities; SQL lease, progress, Report Job worker, Word and full airgap acceptance remain NOT_TESTED. No live deployment observation, no authorized merge.
