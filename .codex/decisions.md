@@ -99,3 +99,7 @@
 ## 2026-10-24 OFF-1I lease snapshot evidence boundary
 
 - Only the schema-backed Handoff Coordinator exposes a heartbeat/lease row; Schedule Worker calls `claim_due()` and has no equivalent independent worker heartbeat. A SQL SERVER clock-bounded, credential-redacted SELECT snapshot can prove active DB lease predicates at one instant but never proves local PID association, renewals or progress. Require explicit 3 flags and prior OFF-1G authenticated SQL read; use dedicated DBA-restricted diagnostic account. No dynamic SQL aside from strictly bounded schema identifier. Do not promise complete Worker health.
+
+## 2026-10-24 OFF-1J separated heartbeat progress evidence
+
+- Handoff Coordinator's `renew_lease` advances DB heartbeat while preserving fencing generation; an active single SQL lease snapshot cannot prove progress. A fourth explicit operator flag is required before adding a fixed 15-second two-read observation of heartbeat advancement under unchanged generation, using actual server time. Local worker association is deferred because the deployment accepts arbitrary `REQUIREMENT_HANDOFF_OWNER_ID`; default `handoff-<pid>` guessing would be non-authoritative. Job dispatch, schedule claims, Report Job, DOCX and isolation require separate proof.
