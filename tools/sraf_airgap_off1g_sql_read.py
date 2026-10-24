@@ -114,30 +114,37 @@ def probe_sql_constant_read(cfg: dict[str, str]) -> Observation:
     except Exception:
         return _result("SKIP", "sql_read_driver_unavailable")
 
+    db = None
+    cursor = None
     try:
-        # Connection Timeout and the login-timeout parameter are both set.
-        # No input queries or dynamic identifiers are ever executed.
-        with pyodbc.connect(
+        # Strict driver config: no DSN, no TrustServerCertificate override.
+        db = pyodbc.connect(
             connection, timeout=LOGIN_TIMEOUT_SECONDS,
             autocommit=True,
-        ) as db:
-            cursor = db.cursor()
-            try:
-                cursor.timeout = QUERY_TIMEOUT_SECONDS
-                cursor.execute(QUERY)
-                row = cursor.fetchone()
-                # Extra rows indicate a contradictory provider, not PASS.
-                additional = cursor.fetchone()
-                if (row is None or type(row[0]) is not int or row[0] != 1
-                        or additional is not None):
-                    return _result("FAIL", "sql_read_response_invalid",
-                                   executed=True)
-            finally:
-                cursor.close()
+        )
+        cursor = db.cursor()
+        cursor.timeout = QUERY_TIMEOUT_SECONDS
+        cursor.execute(QUERY)
+        row = cursor.fetchone()
+        additional = cursor.fetchone()
+        if (row is None or type(row[0]) is not int or row[0] != 1
+                or additional is not None):
+            return _result("FAIL", "sql_read_response_invalid",
+                           executed=True)
     except Exception:
-        # SQLSTATE/native error messages often contain host, user and
-        # connection text; never disclose or classify them as credential
-        # authority. A timeout also cannot prove the SQL operation stopped.
+        # SQLSTATE/native error strings can contain host, user and SQL text.
+        # A timeout also cannot prove that a remote query was cancelled.
         return _result("SKIP", "sql_read_connection_unverified", executed=True)
+    finally:
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                pass
     return _result("PASS", "sql_constant_select_observed",
                    executed=True, success=True)
