@@ -10,6 +10,8 @@ import ipaddress
 import re
 from typing import Any
 
+import pyodbc
+
 from tools.sraf_airgap_off1_probes import Observation
 
 
@@ -105,10 +107,6 @@ def probe_sql_constant_read(cfg: dict[str, str]) -> Observation:
     if connection is None:
         return _result("SKIP", "sql_read_config_invalid")
     try:
-        import pyodbc
-    except ImportError:
-        return _result("SKIP", "sql_read_driver_unavailable")
-    try:
         if DRIVER not in pyodbc.drivers():
             return _result("SKIP", "sql_read_driver_unavailable")
     except Exception:
@@ -122,8 +120,11 @@ def probe_sql_constant_read(cfg: dict[str, str]) -> Observation:
             connection, timeout=LOGIN_TIMEOUT_SECONDS,
             autocommit=True,
         )
+        # pyodbc's query timeout belongs to Connection, not Cursor.
+        # Set it *before* cursor creation; a fake cursor attribute would
+        # silently pass tests while always failing on real SQL Server.
+        db.timeout = QUERY_TIMEOUT_SECONDS
         cursor = db.cursor()
-        cursor.timeout = QUERY_TIMEOUT_SECONDS
         cursor.execute(QUERY)
         row = cursor.fetchone()
         additional = cursor.fetchone()
