@@ -1,6 +1,7 @@
 """OFF-1H Worker identity: canonical real /proc verifier, fail closed by default."""
 from __future__ import annotations
 
+import io
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from operator_e2e import requirement_e2e_support as canonical
 from tools import sraf_airgap_off1h_worker_identity as worker
 from tools import sraf_airgap_off1d_readiness_matrix as matrix
 
@@ -227,3 +229,110 @@ def test_cli_default_is_off_and_explicit_identity_flag_never_requests_network(
     assert {r["id"]: r for r in report["results"]}["WORKERS"]["status"] == "SKIP"
     assert called == [tmp_path]
     assert report["feature_acceptance"] == "NOT_TESTED"
+
+
+def _stub_proc(monkeypatch, root):
+    monkeypatch.setattr(canonical, "_proc_start_time", lambda pid: "98765")
+    monkeypatch.setattr(canonical, "_proc_uid", lambda pid: os.geteuid())
+    monkeypatch.setattr(canonical, "_proc_cwd", lambda pid: root)
+    monkeypatch.setattr(canonical, "_worker_argv_matches",
+                        lambda pid, role: pid in (1234, 5678) and role in ("schedule", "handoff"))
+
+
+def test_canonical_fd_bound_identity_matches_real_inode(tmp_path, monkeypatch):
+    root = tmp_path.resolve()
+    record = _identity(root, "schedule")
+    _stub_proc(monkeypatch, root)
+    info = canonical.verify_worker_identity(record, "schedule", root)
+    assert info["role"] == "schedule"
+    assert info["pid"] == 1234
+    assert info["alive"] is True
+
+
+def test_canonical_symlink_and_fifo_never_read_or_hang(tmp_path, monkeypatch):
+    root = tmp_path.resolve()
+    record = _identity(root, "schedule")
+    _stub_proc(monkeypatch, root)
+    target = root / "secret"
+    target.write_text(record.read_text())
+    record.unlink()
+    record.symlink_to(target)
+    with pytest.raises(canonical.HarnessFailure) as exc:
+        canonical.verify_worker_identity(record, "schedule", root)
+    assert exc.value.category == "worker_unavailable"
+    record.unlink()
+    os.mkfifo(record)
+    with pytest.raises(canonical.HarnessFailure) as exc:
+        canonical.verify_worker_identity(record, "schedule", root)
+    assert exc.value.category == "worker_unavailable"
+
+
+def test_canonical_post_directory_open_swap_to_symlink_fails_closed(
+        tmp_path, monkeypatch):
+    root = tmp_path.resolve()
+    record = _identity(root, "schedule")
+    _stub_proc(monkeypatch, root)
+    external = root / "other.txt"
+    external.write_text(record.read_text())
+    real_open = os.open
+    swapped = []
+    def substitute_open(path, flags, *args, **kwargs):
+        if kwargs.get("dir_fd") is not None and not swapped:
+            swapped.append(True)
+            record.unlink()
+            record.symlink_to(external)
+        return real_open(path, flags, *args, **kwargs)
+    monkeypatch.setattr(canonical.os, "open", substitute_open)
+    with pytest.raises(canonical.HarnessFailure):
+        canonical.verify_worker_identity(record, "schedule", root)
+    assert swapped == [True]
+
+
+def test_canonical_oversized_and_duplicate_record_rejected(tmp_path, monkeypatch):
+    root = tmp_path.resolve()
+    record = _identity(root, "schedule")
+    _stub_proc(monkeypatch, root)
+    for data in (b"x" * 300,
+                 b"role=schedule\npid=1234\npid=1234\nprocess_start_time=98765\n",
+                 b"role=schedule\npid=1234\nprocess_start_time=98765"):
+        record.write_bytes(data)
+        with pytest.raises(canonical.HarnessFailure):
+            canonical.verify_worker_identity(record, "schedule", root)
+
+
+def _raw_argv(*args):
+    return b"\0".join(arg.encode("utf-8") for arg in args) + b"\0"
+
+
+@pytest.mark.parametrize("argv,expected", [
+    (["python", "-c", canonical._UNIFIED_WORKER_BOOTSTRAP, "schedule-worker"], True),
+    (["python3.11", "-m", "requirement_scheduler.cli", "schedule-worker"], True),
+    (["python3", "-m", "requirement_scheduler", "schedule-worker"], True),
+    (["python", "-c", "import time; time.sleep(60)",
+      "requirement_scheduler.cli", "schedule-worker"], False),
+    (["python", "-c", "import time; time.sleep(60)",
+      "schedule-worker requirement_scheduler.cli"], False),
+    (["python", "-c", canonical._UNIFIED_WORKER_BOOTSTRAP, "handoff-worker"], False),
+    (["python", "-m", "other.script", "schedule-worker"], False),
+    (["bash", "-m", "requirement_scheduler.cli", "schedule-worker"], False),
+    (["python", "-c", canonical._UNIFIED_WORKER_BOOTSTRAP,
+      "schedule-worker", "--unused"], False),
+])
+def test_canonical_exact_nul_delimited_argv_not_substring_spoofed(
+        monkeypatch, argv, expected):
+    content = _raw_argv(*argv)
+    monkeypatch.setattr(canonical, "open", lambda *a, **k: io.BytesIO(content),
+                        raising=False)
+    assert canonical._worker_argv_matches(1234, "schedule") is expected
+
+
+@pytest.mark.parametrize("contents", [
+    b"",
+    b"a" * (canonical._WORKER_ARGV_MAX_BYTES + 1),
+    b"python\0-m\0requirement_scheduler.cli\0schedule-worker",
+    b"\xff\0-m\0requirement_scheduler.cli\0schedule-worker\0",
+])
+def test_canonical_malformed_unbounded_argv_is_rejected(monkeypatch, contents):
+    monkeypatch.setattr(canonical, "open", lambda *a, **k: io.BytesIO(contents),
+                        raising=False)
+    assert not canonical._worker_argv_matches(1234, "schedule")
