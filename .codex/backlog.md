@@ -107,3 +107,17 @@
 ## 2026-10-23 PR #299 follow-up review gates
 
 - Verify latest exact HEAD after two new Codex P2 fixes with OFF-1B focused pytest, OFF-0 19-check contract and no-network config-only checks. Reply to both Findings, resolve threads after evidence, re-request formal Codex review on latest HEAD and fix any subsequent findings. Do not merge without an explicit user request or imply production SSL/ES verification.
+
+## 2026-10-24 OFF-1D next gates
+
+- Verify latest exact-head CI for `feat/sraf-off1d-readiness-matrix` (OFF-1B focused tests, OFF-1D tests, OFF-0 19 schema checks and offline CLI). Fix any failures, request formal Codex review and resolve P1/P2 before seeking explicit merge permission.
+- Only after independently authorized Linux deployment, run local OFF-1D matrix and interpret TCP/health/ODBC as partial. Implement later SQL Server authorized read-only proof, LLM model inventory/inference, worker/lease identities, Word DOCX artifact and physical air-gap isolation as separate evidence-producing slices. Never infer these from config/TCP or Hosted CI.
+
+## 2026-10-24 PR #300 formal-review remediation gates
+
+- Confirm exact HEAD Hosted CI for 3 new P2 fixes; reply to comments `4361687822`, `4361687833`, `4361687845`, resolve review threads after CI passes and submit fresh exact-head Codex Review. Do not merge without explicit instruction.
+- Keep default no-network, bounded network optional, partial-only observation and honest NOT_TESTED labels for SQL read, ES Mapping, LLM, workers, Word and network isolation.
+
+## 2026-10-24 PR #300 TCP scope review gate
+
+- Confirm exact-head Hosted CI after the Codex fourth P2 fix validating reported TCP scope and endpoint invariants. Reply to Finding #4361787008, resolve its review thread only after tests, and issue a fresh formal @codex review for latest HEAD. Retain partial-only and no-network default. Do not merge until user explicitly authorizes.

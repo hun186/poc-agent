@@ -58,3 +58,7 @@
 
 - A single optional `--check-readonly-search` check reuses `tools/sraf_airgap_off1b_es_index_discovery.py` and its existing strict-CA numeric-private-IPv4 GET transport; it requires explicit `--strict-ip-san`, a compatible ACTIVE_REQUIRED Mapping and no peer-identity/fixture conflicts. It uses a fixed Elasticsearch zero-document, no-count, terminate-early, one-second query timeout request. There are no document or score outputs and no new HTTP API routes, credentials, search DTOs or storage.
 - Query PASS is endpoint-level partial evidence, not real RAG retrieval or FULL_LIVE acceptance. CI exercises mocked network boundaries, not the air-gapped host.
+
+## 2026-10-24 OFF-1D operator matrix proposal
+
+- `tools/sraf_airgap_off1d_readiness_matrix.py` is an operator-only composition layer above existing OFF-1A/OFF-1B bounded probes; it does not import runtime API/workers, create tasks or connect to SQL. Its default is local disk/ODBC and configuration-only observation; `--probe-network` enables configured numeric private-IP TCP for API/ES/LLM plus dependent loopback /healthz. All unimplemented semantic acceptance probes remain literal NOT_TESTED, with fixed `depends_on` links, redacted reasons and overall INCOMPLETE/ISSUES_FOUND only.

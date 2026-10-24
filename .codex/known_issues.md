@@ -91,3 +91,7 @@
 ## 2026-10-23 OFF-1B Codex review trust findings
 
 - PR #298 Codex exact-head review on `1d8beaa5` found three open issues (P1 late Mapping SAN warning lost on fixture alias early exit; P2 identity-unverified 404/incompatible Mapping classified as definitive FAIL; P2 numeric YAML selector normalization mismatch). Fixes and regression tests are committed on the PR branch, but **latest Hosted CI and new formal review must independently verify them**. Neither static Mapping nor WARN_ONLY TLS can prove real Elasticsearch identity or FULL_LIVE readiness.
+
+## 2026-10-24 OFF-1D open limitations
+
+- The proposed readiness matrix does not run actual SQL read, remote ES TLS/auth/Mapping, LLM inventory/inference, worker state/leases, Word artifact or physical air-gap validation. Prior known relocated Docker ES IP SAN mismatch is not resolved. All such dependencies remain NOT_TESTED irrespective of local disk/ODBC/TCP/health PASS, and Hosted CI is not private Linux service evidence.

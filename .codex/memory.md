@@ -134,3 +134,21 @@
 - Formal Codex reviewed initial OFF-1C HEAD `8ba930831971` and raised two P2 findings: strict search 401/403 was incorrectly NOT_VERIFIED/exit 2; malformed/over-limit HTTP response bytes were collapsed into a generic transport-unavailable reason rather than failure.
 - Updated strict search classification to FAIL on HTTP 401/403 without claiming separate credentials outcome. Introduced a fixed response-framing exception and redacted response-invalid code for the optional strict search GET, retaining legacy Mapping/root semantics and NOT_VERIFIED for actual transport failures. Added raw HTTP framing tests, transport classification, CLI exit 1, no-leak and timeout regressions.
 - Current HEAD Hosted CI and fresh exact-head formal Codex review remain pending; do not claim CLEAN or merge. Air-gapped Linux execution remains untested.
+
+## 2026-10-24 OFF-1D bounded readiness matrix (review pending)
+
+- After PR #299 was merged to main at `dcdc8aa332e2fd9f74dd38f2a225fa2fab7d13a3` (Codex CLEAN; 742 pytest and 19 OFF-0 contract checks on the PR head), started `feat/sraf-off1d-readiness-matrix` as the next independent operator-only slice.
+- New `tools/sraf_airgap_off1d_readiness_matrix.py` reuses reviewed host disk / fixed ODBC library-file observations, configured API/ES/LLM private-IP TCP probes and bounded anonymous API /healthz, forming a fixed redacted dependency matrix. It is no-network by default; `--probe-network` explicitly opts in to a maximum of three TCP connects and one loopback HTTP health check, with independent checks continuing after unrelated failures.
+- SQL read, ES authenticated Mapping (existing separate tool only), model inventory/inference, real workers, Word outputs and air-gap isolation are explicitly NOT_TESTED and prevent any FULL_LIVE conclusion; matrix exits 1 for actual observed failures and 2 for incomplete (never 0). No private Linux acceptance, credentials, SQL mutation or production deployment.
+- Deterministic regression tests, workflow integration and operator runbook were added. Current exact-head Hosted CI / formal Codex Review must be verified before merge and are not yet attested here.
+
+## 2026-10-24 PR #300 formal Codex review: 3 new P2 findings
+
+- Formal reviewed HEAD `3f35791f4c8a58dcf45aaafa30ee30a5adb0ebd3` completed with three P2 findings: API /healthz nested provider contradictory PASS, unknown FAIL reason incorrectly demoted to SKIP, and invalid APP_ENV profile wrongly returning incomplete exit 2.
+- Remediation in the OFF-1D readiness matrix requires a resolved configuration, integer 200, correct reason/method/path before reporting health PASS. Explicit invalid config or non-200 HTTP responses become FAIL. A reported FAIL retains failure severity even when its reason is redacted. Invalid APP_ENV profiles return redacted `runtime_profile_invalid` with ISSUES_FOUND/exit 1; unknown loader failures still exit 2.
+- Regression cases cover inconsistent provider statuses, non-200 and bool HTTP status, unknown FAIL codes from disk/ODBC/TCP/API, CLI exit and actual bootstrap APP_ENV input. Hosted CI, precise HEAD review and thread resolution are separate gates; PR still OPEN and no live Linux acceptance claimed.
+
+## 2026-10-24 PR #300 latest Codex TCP scope P2
+
+- Formal Codex review of HEAD b38272222ddde370678ed19f09ad0d1c794cbb13 completed with one new P2: untrusted TCP provider PASS could authorize API health even when host_scope was DNS, nonprivate, unresolved or otherwise contradictory. The three preceding P2 threads were already resolved.
+- New remediation requires the effective configured API/ES/LLM endpoint to parse as a numeric in-scope IPv4 address, then verifies service, config key, scheme, integer port, host scope, resolved configuration and positive TCP reason before accepting PASS. API specifically requires LOOPBACK_IPV4. Contradictory provider status is SKIP, so dependent API HTTP is not attempted. Regressions exercise unsafe DNS/public/IPv6 scope, wrong scheme/port/config key, forged provider result against actual config, and valid private/loopback targets. CI and fresh exact-head formal review remain independent gates; no merge or real Linux verification.
