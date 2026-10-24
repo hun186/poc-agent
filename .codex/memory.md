@@ -83,3 +83,8 @@
 ## 2026-10-24 Hosted main integration for OFF-1K PR #307
 
 - PR #289 merged on main at `40b8bb9f1122090f8e025c1054b9b319ab4f92aa` after exact-head Hosted P2.1 65/65 PASS and formal Codex CLEAN. This OFF-1K integration brings forward the P2.1 regression test, dedicated CI workflow, and both original P2.1 memory/known-issues appendices without discarding the OFF-1K operator diagnostics. The older P2.1 notes document contemporaneous pending gates; the current PR #289 state is MERGED. PR #307 prior CLEAN and Hosted tests were at old head `c050de9dc8f7dc5b4fd02de81bd07048b9df7f9c`, not this integration commit. Revalidate exact new OFF-1K PR HEAD with Hosted CI and fresh formal Codex; no Linux acceptance, no implicit merge.
+
+## 2026-10-24 OFF-1K main sync and current Hosted verification
+
+- Preserved both OFF-1K and merged Product PR #289 history with non-force, two-parent merge `d455853eb805fd9594c46fbc9a20bbb7fba1cd8c` (parents OFF-1K `c050de9dc8f7dc5b4fd02de81bd07048b9df7f9c` and main `40b8bb9f1122090f8e025c1054b9b319ab4f92aa`). PR #307 conflicts resolved, now GitHub mergeable; separate user authorization still required for actual merge.
+- On that merge commit Hosted workflow run [#40096081791](https://github.com/hun186/poc-agent/actions/runs/40096081791) returned SUCCESS: 1,154 focused unit regressions, 2 legacy E2E Worker identity tests, OFF-0 schema-only 19 checks PASS; config-only non-network probes remain partial. Vercel deployment status is a separate free-tier quota failure, not an OFF-1 runtime test result. This entry is an additional documentation commit, so fresh exact-final-HEAD Hosted CI and formal Codex review must run before merge. No private Linux SQL or physical air-gap acceptance performed.
