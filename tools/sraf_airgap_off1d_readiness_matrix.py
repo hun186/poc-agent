@@ -3,8 +3,9 @@
 Default is entirely offline except fixed local filesystem observations. Opt in
 to network with --probe-network: at most one configured private IPv4 TCP connect
 each for API, ES, and LLM, plus one anonymous 127.0.0.1 GET /healthz when the
-API TCP connection succeeds. Does not connect to SQL, authenticate to ES,
-invoke models, start workers, inspect artifacts or test physical isolation.
+API TCP connection succeeds. A separate triple opt-in can make one local
+bounded LLM generation POST; never contacts SQL, starts workers or tests
+physical network isolation.
 
 From deployed repository root:
     python tools/sraf_airgap_off1d_readiness_matrix.py
@@ -26,6 +27,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools import sraf_airgap_off1b_auto as tcp  # noqa: E402
 from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
+from tools.sraf_airgap_off1f_llm_inference import (  # noqa: E402
+    probe_local_ollama_inference,
+)
 from tools.sraf_airgap_off1_probes import (  # noqa: E402
     probe_disk, probe_odbc_library, probe_llm_inventory,
 )
@@ -55,6 +59,12 @@ REASONS = frozenset((
     "model_service_unavailable", "model_inventory_oversized",
     "model_inventory_http_error", "model_inventory_invalid",
     "configured_model_listed", "configured_model_not_listed",
+    "llm_inference_not_requested", "llm_inference_inventory_not_passed",
+    "llm_inference_endpoint_invalid", "llm_inference_model_invalid",
+    "llm_inference_request_invalid", "llm_inference_transport_unverified",
+    "llm_inference_service_unverified", "llm_inference_http_error",
+    "llm_inference_response_invalid", "llm_inference_model_unverified",
+    "llm_inference_generation_unverified", "llm_inference_generation_observed",
 ))
 
 
@@ -281,8 +291,68 @@ def _llm_inventory(cfg: dict[str, str], *, probe_network: bool,
         return result("FAIL", "probe_internal_failure", executed=True)
 
 
+def _llm_inference(cfg: dict[str, str], *, probe_network: bool,
+                   probe_model_inventory: bool, probe_model_inference: bool,
+                   inventory_status: str) -> dict[str, Any]:
+    """Operator-authorized one-shot local model generation, not end-to-end."""
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record(
+            "LLM-INFERENCE", "llm", "single_bounded_generation_only",
+            status, reason, executed=executed,
+            depends_on=("LLM-TCP", "LLM-INVENTORY"),
+        )
+
+    # Unlike status-only smoke checks, generation may load a large model.
+    # The operator must opt in explicitly to all three prerequisites.
+    if not (probe_network and probe_model_inventory and probe_model_inference):
+        return result("NOT_TESTED", "llm_inference_not_requested")
+    if inventory_status != "PASS":
+        return result("SKIP", "llm_inference_inventory_not_passed")
+    endpoint, host = _expected_tcp_endpoint("llm", cfg)
+    url = cfg.get("MODEL_BASE_URL")
+    try:
+        path = urlsplit(url).path.rstrip("/")
+    except (TypeError, ValueError):
+        return result("SKIP", "llm_inference_endpoint_invalid")
+    if (endpoint["configuration"] != "RESOLVED" or host != "127.0.0.1"
+            or endpoint["scheme"] != "http"
+            or type(endpoint["port"]) is not int
+            or not 1 <= endpoint["port"] <= 65535
+            or path not in ("", "/api/chat", "/api/generate")):
+        return result("SKIP", "llm_inference_endpoint_invalid")
+    model = cfg.get("MODEL_ID")
+    if (not isinstance(model, str) or not 1 <= len(model) <= 256
+            or any(ord(ch) < 33 or ord(ch) > 126 for ch in model)):
+        return result("SKIP", "llm_inference_model_invalid")
+    try:
+        obs = probe_local_ollama_inference(endpoint["port"], model)
+        if obs.status == "PASS":
+            info = obs.evidence
+            if (obs.check_id == "LLM-02"
+                    and obs.probe == "llm-inference"
+                    and obs.aspect == "single_bounded_generation_only"
+                    and obs.executed is True
+                    and obs.reason == "llm_inference_generation_observed"
+                    and isinstance(info, dict)
+                    and info.get("generation_observed") is True
+                    and type(info.get("http_status")) is int
+                    and info["http_status"] == 200):
+                return result("PASS", "llm_inference_generation_observed",
+                              executed=True)
+            return result("SKIP", "unexpected_probe_result")
+        if obs.status == "FAIL":
+            return result("FAIL", _reason(obs.reason), executed=bool(obs.executed))
+        if obs.status == "SKIP":
+            return result("SKIP", _reason(obs.reason), executed=bool(obs.executed))
+        return result("SKIP", "unexpected_probe_result")
+    except Exception:
+        return result("FAIL", "probe_internal_failure", executed=True)
+
+
 def build_report(cfg: dict[str, str], *, probe_network: bool = False,
-                 probe_model_inventory: bool = False
+                 probe_model_inventory: bool = False,
+                 probe_model_inference: bool = False
                  ) -> dict[str, Any]:
     """Run independent reviewed probes even when another component fails."""
     rows = [
@@ -299,16 +369,21 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
     rows.append(llm)
     # These are genuine NOT_TESTED slices, not simulated results or dependent
     # PASS declarations. Future work must add reviewed real probes.
+    inventory = _llm_inventory(
+        cfg, probe_network=probe_network,
+        probe_model_inventory=probe_model_inventory,
+        tcp_status=llm["status"],
+    )
     rows.extend((
         _record("SQL-READ", "sql", "sql_server_read_only", "NOT_TESTED",
                 "sql_read_not_implemented", depends_on=("SQL-ODBC",)),
         _record("ES-MAPPING", "es", "authenticated_es_mapping", "NOT_TESTED",
                 "es_tls_mapping_not_aggregated", depends_on=("ES-TCP",)),
-        _llm_inventory(cfg, probe_network=probe_network,
+        inventory,
+        _llm_inference(cfg, probe_network=probe_network,
                        probe_model_inventory=probe_model_inventory,
-                       tcp_status=llm["status"]),
-        _record("LLM-INFERENCE", "llm", "model_inference", "NOT_TESTED",
-                "llm_inference_not_implemented", depends_on=("LLM-INVENTORY",)),
+                       probe_model_inference=probe_model_inference,
+                       inventory_status=inventory["status"]),
         _record("WORKERS", "workers", "process_and_schedule_worker_identity",
                 "NOT_TESTED", "worker_identity_not_implemented",
                 depends_on=("API-HEALTH", "SQL-READ")),
@@ -321,8 +396,12 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
     counts = Counter(row["status"] for row in rows)
     return {
         "schema": SCHEMA, "mode": MODE,
-        "network_mode": ("BOUNDED_TCP_AND_LOOPBACK_HTTP" if probe_network
-                         else "LOCAL_ONLY_NO_NETWORK"),
+        "network_mode": (
+            "BOUNDED_TCP_AND_LOOPBACK_HTTP_WITH_OPTIONAL_GENERATION"
+            if probe_network and probe_model_inventory and probe_model_inference
+            else "BOUNDED_TCP_AND_LOOPBACK_HTTP" if probe_network
+            else "LOCAL_ONLY_NO_NETWORK"
+        ),
         "overall": "ISSUES_FOUND" if counts["FAIL"] else "INCOMPLETE",
         "feature_acceptance": "NOT_TESTED",
         "counts": {status: counts[status] for status in
@@ -337,6 +416,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
     parser.add_argument("--probe-llm-inventory", action="store_true",
                         help="With --probe-network, check anonymous localhost Ollama /api/tags once.")
+    parser.add_argument("--probe-llm-inference", action="store_true",
+                        help="With BOTH other flags, run one real local Ollama generation (may load model).")
     args = parser.parse_args(argv)
     if Path.cwd().resolve() != PROJECT_ROOT:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
@@ -362,7 +443,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         report = build_report(cfg, probe_network=args.probe_network,
-                              probe_model_inventory=args.probe_llm_inventory)
+                              probe_model_inventory=args.probe_llm_inventory,
+                              probe_model_inference=args.probe_llm_inference)
     except Exception:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
                           "error": "readiness_matrix_unavailable"}))
