@@ -16,6 +16,7 @@ import argparse
 from collections import Counter
 import json
 from pathlib import Path
+from urllib.parse import urlsplit
 import sys
 from typing import Any
 
@@ -26,7 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from tools import sraf_airgap_off1b_auto as tcp  # noqa: E402
 from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
 from tools.sraf_airgap_off1_probes import (  # noqa: E402
-    probe_disk, probe_odbc_library,
+    probe_disk, probe_odbc_library, probe_llm_inventory,
 )
 
 SCHEMA = "sraf_airgap_off1d_readiness_matrix_v1"
@@ -48,6 +49,12 @@ REASONS = frozenset((
     "worker_identity_not_implemented", "word_artifact_not_implemented",
     "network_isolation_not_attested", "unexpected_probe_result",
     "probe_internal_failure", "configuration_invalid",
+    "llm_inventory_not_requested", "llm_inventory_tcp_not_passed",
+    "llm_inventory_endpoint_outside_scope", "llm_inventory_model_invalid",
+    "model_inventory_auth_required", "model_name_not_configured",
+    "model_service_unavailable", "model_inventory_oversized",
+    "model_inventory_http_error", "model_inventory_invalid",
+    "configured_model_listed", "configured_model_not_listed",
 ))
 
 
@@ -203,7 +210,79 @@ def _api_health(cfg: dict[str, str], *, probe_network: bool,
                    depends_on=("API-TCP",))
 
 
-def build_report(cfg: dict[str, str], *, probe_network: bool = False
+def _llm_inventory(cfg: dict[str, str], *, probe_network: bool,
+                   probe_model_inventory: bool, tcp_status: str
+                   ) -> dict[str, Any]:
+    """One optional anonymous localhost Ollama inventory; never inference."""
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record(
+            "LLM-INVENTORY", "llm", "named_model_inventory_only",
+            status, reason, executed=executed, depends_on=("LLM-TCP",),
+        )
+
+    if not probe_network:
+        return result("NOT_TESTED", "network_disabled")
+    if not probe_model_inventory:
+        return result("NOT_TESTED", "llm_inventory_not_requested")
+    if tcp_status != "PASS":
+        return result("SKIP", "llm_inventory_tcp_not_passed")
+
+    # _http_get uses 127.0.0.1, anonymous HTTP and fixed /api/tags;
+    # never query another host/port, HTTPS or reverse proxy prefix.
+    endpoint, selected_host = _expected_tcp_endpoint("llm", cfg)
+    raw = cfg.get("MODEL_BASE_URL")
+    try:
+        selected_path = urlsplit(raw).path.rstrip("/")
+    except (TypeError, ValueError):
+        return result("SKIP", "llm_inventory_endpoint_outside_scope")
+    if (endpoint["configuration"] != "RESOLVED"
+            or selected_host != "127.0.0.1"
+            or endpoint.get("scheme") != "http"
+            or type(endpoint.get("port")) is not int
+            or selected_path not in ("", "/api/chat", "/api/generate")):
+        return result("SKIP", "llm_inventory_endpoint_outside_scope")
+    model_name = cfg.get("MODEL_ID")
+    if not isinstance(model_name, str) or not model_name:
+        return result("SKIP", "model_name_not_configured")
+    if (len(model_name) > 256
+            or any(ord(ch) < 33 or ord(ch) > 126 for ch in model_name)):
+        return result("SKIP", "llm_inventory_model_invalid")
+    try:
+        obs = probe_llm_inventory(endpoint["port"], model_name,
+                                  backend="ollama")
+        status = obs.status
+        if status == "PASS":
+            fields = obs.evidence
+            if (obs.check_id == "LLM-01"
+                    and obs.probe == "llm-inventory"
+                    and obs.aspect == "named_model_inventory_only"
+                    and obs.executed is True
+                    and obs.reason == "configured_model_listed"
+                    and isinstance(fields, dict)
+                    and fields.get("model_available") is True
+                    and type(fields.get("http_status")) is int
+                    and fields["http_status"] == 200
+                    and type(fields.get("item_count")) is int
+                    and 1 <= fields["item_count"] <= 1000):
+                return result("PASS", "configured_model_listed",
+                              executed=True)
+            return result("SKIP", "unexpected_probe_result")
+        if status == "FAIL":
+            return result("FAIL", _reason(obs.reason),
+                          executed=bool(obs.executed))
+        if (status == "SKIP" and obs.reason == "model_inventory_auth_required"
+                and obs.executed is True
+                and obs.evidence.get("http_status") in (401, 403)):
+            return result("SKIP", "model_inventory_auth_required",
+                          executed=True)
+        return result("SKIP", "unexpected_probe_result")
+    except Exception:
+        return result("FAIL", "probe_internal_failure", executed=True)
+
+
+def build_report(cfg: dict[str, str], *, probe_network: bool = False,
+                 probe_model_inventory: bool = False
                  ) -> dict[str, Any]:
     """Run independent reviewed probes even when another component fails."""
     rows = [
@@ -216,7 +295,8 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False
     rows.append(_api_health(cfg, probe_network=probe_network,
                             tcp_status=api["status"]))
     rows.append(_tcp_probe("es", cfg, probe_network=probe_network))
-    rows.append(_tcp_probe("llm", cfg, probe_network=probe_network))
+    llm = _tcp_probe("llm", cfg, probe_network=probe_network)
+    rows.append(llm)
     # These are genuine NOT_TESTED slices, not simulated results or dependent
     # PASS declarations. Future work must add reviewed real probes.
     rows.extend((
@@ -224,8 +304,9 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False
                 "sql_read_not_implemented", depends_on=("SQL-ODBC",)),
         _record("ES-MAPPING", "es", "authenticated_es_mapping", "NOT_TESTED",
                 "es_tls_mapping_not_aggregated", depends_on=("ES-TCP",)),
-        _record("LLM-INVENTORY", "llm", "model_inventory", "NOT_TESTED",
-                "llm_inventory_not_aggregated", depends_on=("LLM-TCP",)),
+        _llm_inventory(cfg, probe_network=probe_network,
+                       probe_model_inventory=probe_model_inventory,
+                       tcp_status=llm["status"]),
         _record("LLM-INFERENCE", "llm", "model_inference", "NOT_TESTED",
                 "llm_inference_not_implemented", depends_on=("LLM-INVENTORY",)),
         _record("WORKERS", "workers", "process_and_schedule_worker_identity",
@@ -254,6 +335,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--probe-network", action="store_true",
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
+    parser.add_argument("--probe-llm-inventory", action="store_true",
+                        help="With --probe-network, check anonymous localhost Ollama /api/tags once.")
     args = parser.parse_args(argv)
     if Path.cwd().resolve() != PROJECT_ROOT:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
@@ -278,7 +361,8 @@ def main(argv: list[str] | None = None) -> int:
                           "error": "readiness_matrix_unavailable"}))
         return 2
     try:
-        report = build_report(cfg, probe_network=args.probe_network)
+        report = build_report(cfg, probe_network=args.probe_network,
+                              probe_model_inventory=args.probe_llm_inventory)
     except Exception:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
                           "error": "readiness_matrix_unavailable"}))
