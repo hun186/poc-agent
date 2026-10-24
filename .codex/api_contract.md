@@ -65,3 +65,7 @@
 ## 2026-10-24 OFF-1F CLI-only generation proposal
 
 - `--probe-llm-inference` is optional and requires `--probe-network --probe-llm-inventory`. For local HTTP Ollama and positive inventory only, one bounded `POST /api/generate` returns an `LLM-INFERENCE` operator row with fixed reason, status and dependencies. It does not expose model name, prompt, response or credentials, does not create HTTP API routes, and never promotes FULL_LIVE or changes the matrix's exit policy.
+
+## 2026-10-24 OFF-1H operator CLI additive option
+
+- `--probe-worker-identities` enables two local Linux Schedule/Handoff process-identity checks. Default `WORKERS` row remains NOT_TESTED. Positive observations are identity-only `PASS` with `feature_acceptance=NOT_TESTED`; missing/unverifiable process evidence returns redacted SKIP. No API routes, SQL writes, worker restart, login/credential disclosure, job execution, lease assurance, full deployment/Word promotion or exit 0.

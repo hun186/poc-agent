@@ -70,3 +70,7 @@
 ## 2026-10-24 OFF-1F limited Ollama inference trust boundary
 
 - A dedicated operator-only one-shot generation probe shares OFF-1A's strict local HTTP wire reader and absolute-deadline socket (GET behavior preserved), adding fixed `POST /api/generate` only after explicit triple CLI authorization, TCP and LLM model inventory pass. A static 8-token request and bounded response may attest an actual generation reply but cannot attest business semantics, Agent/RAG, report artifacts or cross-process worker state. Production LLM client is unchanged.
+
+## 2026-10-24 OFF-1H worker identity trust boundary
+
+- OFF-1D operator-only `WORKERS` row may optionally reuse canonical launcher-managed Schedule/Handoff identity verifier for two fixed file paths. The underlying /proc verifier checks recorded PID start tick, effective UID, current directory and role command. Neither network access nor SQL activity is needed; worker health, SQL lease ownership, report-job API worker and scheduling progress require separate independent proof.

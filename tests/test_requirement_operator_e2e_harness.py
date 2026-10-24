@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -670,7 +671,18 @@ def test_worker_identity_verification(tmp_path, monkeypatch):
     monkeypatch.setattr("operator_e2e.requirement_e2e_support._proc_start_time", lambda pid: "123")
     monkeypatch.setattr("operator_e2e.requirement_e2e_support._proc_uid", lambda pid: os.geteuid())
     monkeypatch.setattr("operator_e2e.requirement_e2e_support._proc_cwd", lambda pid: tmp_path.resolve())
-    monkeypatch.setattr("operator_e2e.requirement_e2e_support._proc_cmdline", lambda pid: "python -m requirement_scheduler.cli schedule-worker")
+    # The canonical verifier now reads bounded NUL-delimited /proc argv.
+    # Stub the reader actually used, not the obsolete flattened string helper.
+    import operator_e2e.requirement_e2e_support as support
+    argv = b"python\0-m\0requirement_scheduler.cli\0schedule-worker\0"
+    monkeypatch.setattr(
+        support, "open",
+        lambda path, mode: (
+            io.BytesIO(argv) if path == f"/proc/{os.getpid()}/cmdline"
+            and mode == "rb" else pytest.fail("unexpected proc read")
+        ),
+        raising=False,
+    )
     assert verify_worker_identity(identity, "schedule", tmp_path)["alive"] is True
     identity.write_text(f"role=schedule\npid={os.getpid()}\nprocess_start_time=999\n", encoding="utf-8")
     with pytest.raises(HarnessFailure, match="worker_unavailable"):
@@ -683,7 +695,30 @@ def test_worker_identity_rejects_wrong_command_and_cwd(tmp_path, monkeypatch):
     monkeypatch.setattr("operator_e2e.requirement_e2e_support._proc_start_time", lambda pid: "123")
     monkeypatch.setattr("operator_e2e.requirement_e2e_support._proc_uid", lambda pid: os.geteuid())
     monkeypatch.setattr("operator_e2e.requirement_e2e_support._proc_cwd", lambda pid: tmp_path.resolve())
-    monkeypatch.setattr("operator_e2e.requirement_e2e_support._proc_cmdline", lambda pid: "python unrelated.py")
+    import operator_e2e.requirement_e2e_support as support
+    # A real NUL-delimited unrelated argv must be rejected.
+    argv = b"python\0unrelated.py\0handoff-worker\0"
+    monkeypatch.setattr(
+        support, "open",
+        lambda path, mode: (
+            io.BytesIO(argv) if path == f"/proc/{os.getpid()}/cmdline"
+            and mode == "rb" else pytest.fail("unexpected proc read")
+        ),
+        raising=False,
+    )
+    with pytest.raises(HarnessFailure, match="worker_unavailable"):
+        verify_worker_identity(identity, "handoff", tmp_path)
+    # Also preserve the original cwd-negative contract with an otherwise
+    # recognized worker launch command.
+    monkeypatch.setattr(support, "_proc_cwd", lambda pid: tmp_path / "wrong-cwd")
+    worker_argv = b"python\0-m\0requirement_scheduler.cli\0handoff-worker\0"
+    monkeypatch.setattr(
+        support, "open",
+        lambda path, mode: (
+            io.BytesIO(worker_argv) if path == f"/proc/{os.getpid()}/cmdline"
+            and mode == "rb" else pytest.fail("unexpected proc read")
+        ),
+    )
     with pytest.raises(HarnessFailure, match="worker_unavailable"):
         verify_worker_identity(identity, "handoff", tmp_path)
 
