@@ -111,3 +111,7 @@
 ## 2026-10-24 OFF-1H non-attested worker functionality
 
 - Matching Linux Schedule/Handoff PID identity files to /proc is only point-in-time process evidence, and may safely SKIP if Docker/PID namespace or file access is unavailable. Worker liveness cannot prove scheduling progress, SQL lease ownership, polling/heartbeat, API Report Job worker or Word output. The endpoint-level authorized runtime-evidence API requires separate review. Real deployment testing remains pending.
+
+## 2026-10-24 OFF-1I Worker lease limitations
+
+- An active Handoff Coordinator lease could belong to another worker/node. SQL schema does not independently attest Schedule Worker polling or Report Job worker health. Reading one lease snapshot does not establish ongoing heartbeat, local ownership, successful handoff or durable report output. A missing/expired lease may be expected if idle. Hosted pyodbc mocks are not an authorized live SQL Server test. Future verification must independently prove progress/ownership without performing unwanted work.

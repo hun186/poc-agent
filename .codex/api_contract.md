@@ -69,3 +69,7 @@
 ## 2026-10-24 OFF-1H operator CLI additive option
 
 - `--probe-worker-identities` enables two local Linux Schedule/Handoff process-identity checks. Default `WORKERS` row remains NOT_TESTED. Positive observations are identity-only `PASS` with `feature_acceptance=NOT_TESTED`; missing/unverifiable process evidence returns redacted SKIP. No API routes, SQL writes, worker restart, login/credential disclosure, job execution, lease assurance, full deployment/Word promotion or exit 0.
+
+## 2026-10-24 OFF-1I operator CLI additive flag
+
+- `--probe-worker-lease` requires `--probe-network --probe-sql-read` and a positive existing SQL-READ check, then runs one fixed parameterized SELECT of Handoff coordinator lease predicates. Adds `HANDOFF-LEASE` (depends_on SQL-READ) to OFF-1D's redacted results. `feature_acceptance=NOT_TESTED` regardless of outcome, including positive lease snapshot; no new HTTP API, no SQL mutations, no claim of local owner or progress.

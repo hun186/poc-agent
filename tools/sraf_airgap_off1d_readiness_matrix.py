@@ -30,6 +30,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools import sraf_airgap_off1b_auto as tcp  # noqa: E402
 from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
+from tools.sraf_airgap_off1i_handoff_lease import (  # noqa: E402
+    SCHEMA_KEY as LEASE_SCHEMA_KEY, DEFAULT_SCHEMA as LEASE_SCHEMA_DEFAULT,
+    probe_handoff_lease_snapshot,
+)
 from tools.sraf_airgap_off1h_worker_identity import (  # noqa: E402
     probe_worker_process_identities,
 )
@@ -81,6 +85,12 @@ REASONS = frozenset((
     "sql_constant_select_observed",
     "worker_process_probe_not_requested", "worker_process_host_unsupported",
     "worker_process_identity_unverified", "worker_process_identities_verified",
+    "lease_probe_not_requested", "lease_sql_read_not_passed",
+    "lease_schema_invalid", "lease_sql_config_invalid",
+    "lease_driver_unavailable", "lease_row_ambiguous",
+    "lease_row_not_observed", "lease_result_invalid",
+    "lease_active_state_unverified", "lease_active_snapshot_observed",
+    "lease_sql_unverified",
 ))
 
 
@@ -454,13 +464,61 @@ def _worker_identities(*, probe_worker_identities: bool
         return result("SKIP", "worker_process_identity_unverified")
 
 
+def _handoff_lease_snapshot(*, probe_network: bool,
+                            probe_sql_read: bool,
+                            probe_worker_lease: bool,
+                            sql_read_status: str,
+                            sql_config: dict[str, str] | None,
+                            lease_schema: str | None) -> dict[str, Any]:
+    """Independently observe one Handoff DB lease, not Schedule progress."""
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record(
+            "HANDOFF-LEASE", "workers", "handoff_db_lease_snapshot_only",
+            status, reason, executed=executed, depends_on=("SQL-READ",),
+        )
+    if not (probe_network and probe_sql_read and probe_worker_lease):
+        return result("NOT_TESTED", "lease_probe_not_requested")
+    if sql_read_status != "PASS":
+        return result("SKIP", "lease_sql_read_not_passed")
+    if not isinstance(sql_config, dict):
+        return result("SKIP", "lease_sql_config_invalid")
+    try:
+        obs = probe_handoff_lease_snapshot(
+            sql_config, schema=lease_schema if lease_schema is not None
+            else LEASE_SCHEMA_DEFAULT,
+        )
+        if obs.status == "PASS":
+            if (obs.check_id == "LEASE-01"
+                    and obs.probe == "handoff-lease-snapshot"
+                    and obs.aspect == "handoff_db_lease_snapshot_only"
+                    and obs.executed is True
+                    and obs.reason == "lease_active_snapshot_observed"
+                    and isinstance(obs.evidence, dict)
+                    and obs.evidence.get("active_lease_observed") is True):
+                return result("PASS", "lease_active_snapshot_observed",
+                              executed=True)
+            return result("SKIP", "unexpected_probe_result")
+        if obs.status == "FAIL":
+            return result("FAIL", _reason(obs.reason),
+                          executed=bool(obs.executed))
+        if obs.status == "SKIP":
+            return result("SKIP", _reason(obs.reason),
+                          executed=bool(obs.executed))
+    except Exception:
+        return result("SKIP", "lease_sql_unverified")
+    return result("SKIP", "unexpected_probe_result")
+
+
 def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_model_inventory: bool = False,
                  probe_model_inference: bool = False,
                  ollama_server_pid: int | None = None,
                  probe_sql_read: bool = False,
                  sql_config: dict[str, str] | None = None,
-                 probe_worker_identities: bool = False
+                 probe_worker_identities: bool = False,
+                 probe_worker_lease: bool = False,
+                 lease_schema: str | None = None
                  ) -> dict[str, Any]:
     """Run independent reviewed probes even when another component fails."""
     rows = [
@@ -483,10 +541,17 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         probe_model_inventory=probe_model_inventory,
         tcp_status=llm["status"],
     )
+    sql_read = _sql_constant_read(
+        probe_network=probe_network, probe_sql_read=probe_sql_read,
+        odbc_status=odbc_status, sql_config=sql_config,
+    )
     rows.extend((
-        _sql_constant_read(
+        sql_read,
+        _handoff_lease_snapshot(
             probe_network=probe_network, probe_sql_read=probe_sql_read,
-            odbc_status=odbc_status, sql_config=sql_config,
+            probe_worker_lease=probe_worker_lease,
+            sql_read_status=sql_read["status"], sql_config=sql_config,
+            lease_schema=lease_schema,
         ),
         _record("ES-MAPPING", "es", "authenticated_es_mapping", "NOT_TESTED",
                 "es_tls_mapping_not_aggregated", depends_on=("ES-TCP",)),
@@ -526,6 +591,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
     parser.add_argument("--probe-sql-read", action="store_true",
                         help="With --probe-network, make one TLS-verified ODBC constant SELECT using dedicated operator SRAF_OFF1G_SQL_* secrets.")
+    parser.add_argument("--probe-worker-lease", action="store_true",
+                        help="With --probe-network and --probe-sql-read, observe one TLS-verified Handoff lease snapshot (no worker progress proof).")
     parser.add_argument("--probe-worker-identities", action="store_true",
                         help="Read only canonical local Schedule/Handoff worker identity files and /proc; never leases or jobs.")
     parser.add_argument("--probe-llm-inventory", action="store_true",
@@ -562,13 +629,18 @@ def main(argv: list[str] | None = None) -> int:
         # operator flags explicitly opted into SQL connectivity.
         sql_cfg = ({key: os.environ.get(key) for key in SQL_ENV_KEYS}
                    if args.probe_network and args.probe_sql_read else None)
+        lease_schema = (os.environ.get(LEASE_SCHEMA_KEY, LEASE_SCHEMA_DEFAULT)
+                        if args.probe_network and args.probe_sql_read
+                        and args.probe_worker_lease else None)
         report = build_report(cfg, probe_network=args.probe_network,
                               probe_model_inventory=args.probe_llm_inventory,
                               probe_model_inference=args.probe_llm_inference,
                               ollama_server_pid=args.ollama_server_pid,
                               probe_sql_read=args.probe_sql_read,
                               sql_config=sql_cfg,
-                              probe_worker_identities=args.probe_worker_identities)
+                              probe_worker_identities=args.probe_worker_identities,
+                              probe_worker_lease=args.probe_worker_lease,
+                              lease_schema=lease_schema)
     except Exception:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
                           "error": "readiness_matrix_unavailable"}))
