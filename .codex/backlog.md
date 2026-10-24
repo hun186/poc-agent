@@ -150,3 +150,7 @@
 ## 2026-10-24 PR #304 new P2 review gates
 
 - Check exact HEAD Hosted CI after changing canonical worker identity verifier; verify launcher's WORKER_BOOTSTRAP exact source matches the parser, ensure existing E2E paths remain valid, reply to two Codex P2 threads and resolve. Request new formal review on fixed commit, do not merge without user's instruction. SQL-backed leases and Report Job worker remain separate NOT_TESTED gates.
+
+## 2026-10-24 PR #304 third review gate
+
+- The new old-harness P2 from second formal Codex review requires verifying that the canonical strict NUL argv reader is tested by **existing** E2E harness tests as well as new OFF-1H unit tests. Existing positive, stale-start, wrong-command and wrong-cwd test behavior was revised, and exact E2E tests were added to the Hosted CI path filter/pytest command. Re-run exact-head CI after memory commits, reply to new P2 thread, resolve and formally re-review final HEAD; don't merge without explicit instruction.
