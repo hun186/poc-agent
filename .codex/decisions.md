@@ -91,3 +91,7 @@
 ## 2026-10-24 OFF-1F mandatory server-locality decision
 
 - The initial loopback-only and positive model-inventory gates cannot constrain server-side Ollama cloud forwarding. Require positive bounded Linux /proc attestation of the exact localhost listener's actual `ollama serve` process and active `OLLAMA_NO_CLOUD=1` environment, plus read-only version evidence for minimum supported NoCloud release, **before** any generation POST. Opaque aliases and remote response fields must not be trusted as proof of local-only execution; missing identity proof returns non-authoritative SKIP. This conservative condition may exclude Docker/PID-separated deployments but is preferable to silent external model requests.
+
+## 2026-10-24 OFF-1H identity before lease decision
+
+- Reuse the production E2E helper `verify_worker_identity` instead of duplicating launcher/`/proc` role semantics. Avoid invoking any worker or observing unrelated processes. Require an explicit operator CLI flag, two canonical fixed root-relative identity files, bounded file sizes and two different verified PIDs. Report only fixed aggregate observation codes; process existence must NEVER imply poll progress, SQL leases, Report Job health or OFF-0/FULL_LIVE acceptance.
