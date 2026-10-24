@@ -23,6 +23,9 @@ from agent.es.reference_text import get_reference_text_field
 
 MODES = frozenset({"live", "auto", "offline"})
 REQUIREMENT_E2E_MODEL_PREFIX = "requirement-e2e:"
+# Shared runtime/diagnostic name rule; validate effective config before
+# either runtime fixture access or operator-only Elasticsearch probes.
+REQUIREMENT_E2E_INDEX_PATTERN = re.compile(r"requirement_e2e_[a-z0-9._-]{1,238}")
 _REQUIREMENT_ACCEPTANCE_ACTIVE: ContextVar[bool] = ContextVar(
     "requirement_acceptance_active", default=False,
 )
@@ -96,7 +99,7 @@ def requirement_e2e_es_index() -> str:
     from agent.es.mock_es_client import REQUIREMENT_E2E_INDEX
 
     value = (os.getenv("REQUIREMENT_E2E_ES_INDEX") or REQUIREMENT_E2E_INDEX).strip()
-    if not re.fullmatch(r"requirement_e2e_[a-z0-9._-]{1,238}", value):
+    if REQUIREMENT_E2E_INDEX_PATTERN.fullmatch(value) is None:
         raise CapabilityError("elasticsearch_acceptance_index_invalid")
     return value
 

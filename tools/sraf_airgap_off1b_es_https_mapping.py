@@ -1,0 +1,689 @@
+"""OFF-1B reviewed, strictly bounded Elasticsearch HTTPS/mapping diagnosis.
+
+This is an operator-only, read-only diagnostic; it does NOT certify FULL_LIVE.
+Never import the runtime ES client: it currently disables TLS hostname checks.
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import base64
+import json
+from ipaddress import ip_address
+from pathlib import Path
+import re
+import secrets
+import socket
+import ssl
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from tools.sraf_airgap_off1b_auto import (  # noqa: E402
+    MODE, _effective_runtime_config, _parse_endpoint,
+)
+from agent.external_capabilities import mapping_compatibility  # noqa: E402
+from tools.sraf_airgap_off1_probes import (  # noqa: E402
+    _CHUNK_HEAD, _TRAILER_HEADER_ONLY_FIELDS, _TRAILER_FORBIDDEN_PREFIXES,
+)
+
+SCHEMA = "sraf_airgap_off1b_es_https_mapping_v1"
+DEADLINE_SECONDS = 3.0
+MAX_HEADERS = 8192
+MAX_BODY = 65536
+# A Mapping response can be substantially larger than root/auth JSON.
+MAX_MAPPING_BODY = 2 * 1024 * 1024
+MAX_CHUNKS = 16384
+MAX_CHUNK_LINE = 256
+MAX_TRAILERS = 32
+MAX_CA_BYTES = 1048576
+_INDEX_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,254}\Z", re.ASCII)
+_FIELD_NAME = re.compile(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+\Z")
+
+
+class _InvalidHTTPResponse(ValueError):
+    """A TLS-established peer returned invalid HTTP framing, not a socket loss."""
+
+
+def _configured_index(value: str | None) -> str | None:
+    """Exactly one literal index/alias, never wildcard, comma or URL control."""
+    if not value or value != value.strip():
+        return None
+    if not _INDEX_RE.fullmatch(value) or value in (".", ".."):
+        return None
+    return value
+
+
+def _trusted_ca_file(root: Path) -> Path | None:
+    """Use only the existing fixed repository ES CA location, no override."""
+    try:
+        ca = root / "agent" / "certs" / "http_ca.crt"
+        if ca.is_symlink() or not ca.is_file():
+            return None
+        if not 1 <= ca.stat().st_size <= MAX_CA_BYTES:
+            return None
+        return ca
+    except OSError:
+        return None
+
+
+async def _read_chunked_body(reader: asyncio.StreamReader, limit: int) -> bytes:
+    """Decode a bounded HTTP/1.1 chunked entity, not response headers.
+
+    Readexactly + wait_for at the caller enforce bounded memory and a single
+    absolute deadline across all chunks, including a malicious slow sender.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    for _ in range(MAX_CHUNKS):
+        line = await reader.readuntil(b"\r\n")
+        if len(line) > MAX_CHUNK_LINE or b"\r" in line[:-2] or b"\n" in line[:-2]:
+            raise ValueError("invalid_chunk_size_line")
+        # Reuse the audited OFF-1 constrained RFC token-extension grammar.
+        # A merely printable extension such as ";foo==bar" is NOT valid.
+        size_token = line[:-2].split(b";", 1)[0]
+        if re.fullmatch(rb"[0-9A-Fa-f]{1,8}", size_token) is None:
+            raise ValueError("invalid_chunk_size")
+        if _CHUNK_HEAD.fullmatch(line[:-2]) is None:
+            raise ValueError("invalid_chunk_extension")
+        size = int(size_token, 16)
+        if size > limit - total:
+            raise ValueError("oversized_chunked_body")
+        if size == 0:
+            # A trailer section ends at the first empty line. Bound each line,
+            # field count and total bytes rather than trusting remote metadata.
+            trailer_bytes = 0
+            for _ in range(MAX_TRAILERS + 1):
+                trailer = await reader.readuntil(b"\r\n")
+                trailer_bytes += len(trailer)
+                if trailer_bytes > MAX_HEADERS:
+                    raise ValueError("oversized_chunk_trailers")
+                if trailer == b"\r\n":
+                    return b"".join(chunks)
+                if (len(trailer) > MAX_HEADERS or b":" not in trailer[:-2]
+                        or b"\r" in trailer[:-2] or b"\n" in trailer[:-2]):
+                    raise ValueError("invalid_chunk_trailer")
+                name, value = trailer[:-2].split(b":", 1)
+                if (_FIELD_NAME.fullmatch(name) is None
+                        or any((c < 32 and c != 9) or c == 127 for c in value)):
+                    raise ValueError("invalid_chunk_trailer")
+                lower_name = name.lower()
+                if (lower_name == b"proxy-status"
+                        or lower_name in _TRAILER_HEADER_ONLY_FIELDS
+                        or lower_name.startswith(_TRAILER_FORBIDDEN_PREFIXES)):
+                    # Response-only framing, auth/routing and control fields
+                    # cannot be introduced after the JSON body.
+                    raise ValueError("chunk_trailer_field_forbidden")
+            raise ValueError("too_many_chunk_trailers")
+        payload = await reader.readexactly(size + 2)
+        if payload[-2:] != b"\r\n":
+            raise ValueError("invalid_chunk_terminator")
+        chunks.append(payload[:-2])
+        total += size
+    raise ValueError("too_many_chunks")
+
+
+async def _one_https_get(host: str, port: int, path: str,
+                         username: str, password: str,
+                         context: ssl.SSLContext,
+                         *, ip_san_attestation: list[bool] | None = None
+                         ) -> tuple[int, bytes]:
+    """One TLS-validated private numeric IPv4 GET, no redirects/proxy/DNS.
+
+    Outer wait_for enforces one absolute deadline, even for a slow-dripping
+    server. Never return raw response headers, exception details or credentials.
+    """
+    loop = asyncio.get_running_loop()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setblocking(False)
+    writer = None
+    try:
+        await loop.sock_connect(sock, (host, port))
+        reader, writer = await asyncio.open_connection(
+            sock=sock, ssl=context, server_hostname=host,
+            ssl_handshake_timeout=DEADLINE_SECONDS,
+            limit=MAX_HEADERS,
+        )
+        if ip_san_attestation is not None:
+            # WARNING-ONLY, explicitly opted in: CA chain is still verified.
+            # Inspect the *TLS peer* before sending any Basic Authorization.
+            tls = writer.get_extra_info("ssl_object")
+            if tls is None:
+                raise ValueError("es_peer_certificate_missing")
+            cert = tls.getpeercert()
+            if not isinstance(cert, dict) or not cert:
+                raise ValueError("es_peer_certificate_unreadable")
+            san = cert.get("subjectAltName", ())
+            if not isinstance(san, (tuple, list)):
+                raise ValueError("es_peer_san_invalid")
+            try:
+                expected_ip = ip_address(host)
+                if expected_ip.version != 4:
+                    raise ValueError("es_peer_ip_invalid")
+                ip_san_attestation.append(any(
+                    kind == "IP Address" and ip_address(value) == expected_ip
+                    for kind, value in san
+                ))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("es_peer_san_invalid") from exc
+        credential = base64.b64encode(
+            (username + ":" + password).encode("utf-8")
+        ).decode("ascii")
+        request = (
+            f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\n"
+            f"Accept: application/json\r\n"
+            "Accept-Encoding: identity\r\n"
+            f"Authorization: Basic {credential}\r\n"
+            "Connection: close\r\n\r\n"
+        )
+        writer.write(request.encode("ascii"))
+        await writer.drain()
+        return await _read_http_response(reader, path)
+    finally:
+        if writer is not None:
+            writer.close()
+        else:
+            sock.close()
+
+
+async def _read_http_response(
+        reader: asyncio.StreamReader, path: str) -> tuple[int, bytes]:
+    """Parse one verified-peer HTTP reply; classify framing errors separately.
+
+    The parser uses bounded headers and entity framing. Actual socket loss
+    and timeout propagate to the transport handler as inconclusive evidence.
+    """
+    try:
+        header = await reader.readuntil(b"\r\n\r\n")
+        if len(header) > MAX_HEADERS or b"\n" in header.replace(b"\r\n", b""):
+            raise ValueError("invalid_http_headers")
+        parts = header[:-4].split(b"\r\n")
+        match = re.fullmatch(
+            rb"HTTP/1\.[01] ([1-5][0-9]{2}) [\t\x20-\x7e\x80-\xff]*",
+            parts[0],
+        )
+        if match is None:
+            raise ValueError("invalid_http_status")
+        status = int(match.group(1))
+        limit = MAX_MAPPING_BODY if path.endswith("/_mapping") else MAX_BODY
+        version = parts[0].split(b" ", 1)[0]
+        return status, await _read_http_body(
+            reader, parts[1:], limit, http_version=version,
+        )
+    except (ValueError, asyncio.LimitOverrunError) as exc:
+        raise _InvalidHTTPResponse("invalid_http_response") from exc
+
+
+async def _read_http_body(reader: asyncio.StreamReader,
+                          fields: list[bytes], limit: int,
+                          *, http_version: bytes = b"HTTP/1.1") -> bytes:
+    """Accept unambiguous Content-Length or valid HTTP/1.1 chunked framing."""
+    lengths: list[int] = []
+    transfer_encodings: list[bytes] = []
+    content_encodings: list[bytes] = []
+    for part in fields:
+        if b":" not in part:
+            raise ValueError("malformed_http_field")
+        name, value = part.split(b":", 1)
+        if _FIELD_NAME.fullmatch(name) is None:
+            raise ValueError("malformed_http_field")
+        if any(ch < 32 and ch not in (9,) for ch in value) or b"\x7f" in value:
+            raise ValueError("malformed_http_value")
+        lower = name.lower()
+        if lower == b"transfer-encoding":
+            transfer_encodings.append(value.strip(b" \t").lower())
+        if lower == b"content-encoding":
+            content_encodings.append(value.strip(b" \t").lower())
+        if lower == b"content-length":
+            trimmed = value.strip(b" \t")
+            if re.fullmatch(rb"[0-9]{1,10}", trimmed) is None:
+                raise ValueError("invalid_http_length")
+            lengths.append(int(trimmed))
+    if content_encodings and content_encodings != [b"identity"]:
+        # No decompression is performed. A falsely labeled JSON response must
+        # not be certified as Mapping-compatible.
+        raise ValueError("unsupported_content_encoding")
+    if transfer_encodings:
+        # Reject CL+TE ambiguity / smuggling, duplicate or chained codings.
+        if (lengths or transfer_encodings != [b"chunked"]
+                or http_version != b"HTTP/1.1"):
+            raise ValueError("unsupported_http_framing")
+        return await _read_chunked_body(reader, limit)
+    if len(lengths) != 1 or lengths[0] > limit:
+        raise ValueError("missing_or_oversized_http_body")
+    return await reader.readexactly(lengths[0])
+
+
+def _https_get(host: str, port: int, path: str,
+               username: str, password: str, ca: Path,
+               *, warn_only_ip_san: bool = False
+               ) -> tuple[int | None, bytes | None, str]:
+    """Report stable non-secret reasons, never raw transport exceptions."""
+    try:
+        ctx = ssl.create_default_context(cafile=str(ca))
+        # Never relax CA chain validation. Only an explicit diagnostic
+        # opt-in allows IP SAN mismatch; its result cannot certify identity.
+        ctx.check_hostname = not warn_only_ip_san
+        ctx.verify_mode = ssl.CERT_REQUIRED
+    except (OSError, ssl.SSLError, ValueError):
+        return None, None, "es_ca_invalid"
+    # Allocate outside the guarded call: even malformed/timeout HTTP responses
+    # must preserve peer-SAN mismatch observed before Basic was transmitted.
+    san_status: list[bool] | None = [] if warn_only_ip_san else None
+    try:
+        if warn_only_ip_san:
+            probe = _one_https_get(
+                host, port, path, username, password, ctx,
+                ip_san_attestation=san_status,
+            )
+        else:
+            probe = _one_https_get(host, port, path, username, password, ctx)
+        code, body = asyncio.run(asyncio.wait_for(
+            probe, timeout=DEADLINE_SECONDS,
+        ))
+        if san_status is not None:
+            if len(san_status) != 1:
+                return None, None, "es_tls_identity_unverified"
+            if not san_status[0]:
+                return code, body, "https_response_ca_only_ip_san_mismatch"
+        return code, body, "https_response_received"
+    except ssl.SSLCertVerificationError:
+        return None, None, "es_tls_identity_unverified"
+    except _InvalidHTTPResponse:
+        if san_status is not None and False in san_status:
+            return None, None, "es_https_transport_unavailable_ip_san_mismatch"
+        # Existing Mapping/root preflights retain their historical transport
+        # classification. Only explicit strict-search opts into this evidence.
+        if not warn_only_ip_san and "/_search?" in path:
+            return None, None, "es_readonly_search_http_response_invalid"
+        return None, None, "es_https_transport_unavailable"
+    except (TimeoutError, OSError, ssl.SSLError, ValueError,
+            asyncio.IncompleteReadError, asyncio.LimitOverrunError,
+            RuntimeError):
+        if san_status is not None and False in san_status:
+            return None, None, "es_https_transport_unavailable_ip_san_mismatch"
+        return None, None, "es_https_transport_unavailable"
+
+
+def _mapping_containers_valid(mappings: dict[str, object]) -> bool:
+    """Validate only Mapping field-container shape before the shared predicate.
+
+    A syntactically valid ES JSON response can contain a list at `properties`
+    or `fields`. The production predicate assumes dicts and would otherwise
+    raise AttributeError, leaking a traceback rather than a redacted result.
+    Use iterative bounded traversal; leave field-type compatibility to the
+    existing application predicate.
+    """
+    pending: list[dict[str, object]] = [mappings]
+    seen = 0
+    while pending:
+        node = pending.pop()
+        seen += 1
+        if seen > 4096:
+            return False
+        for container in ("properties", "fields"):
+            if container not in node:
+                continue
+            children = node[container]
+            if not isinstance(children, dict):
+                return False
+            for child in children.values():
+                if not isinstance(child, dict):
+                    return False
+                pending.append(child)
+    return True
+
+
+def _mapping_result(body: bytes, selector: str) -> tuple[str, str]:
+    """Reuse the application mapping predicate, never echo index or fields."""
+    try:
+        if len(body) > MAX_MAPPING_BODY:
+            return "FAIL", "es_mapping_response_oversized"
+        mapping = json.loads(body)
+        if not isinstance(mapping, dict):
+            return "FAIL", "es_mapping_response_invalid"
+        if len(mapping) != 1:
+            return "SKIP", "es_mapping_target_ambiguous"
+        entry = next(iter(mapping.values()))
+        if not isinstance(entry, dict) or not isinstance(entry.get("mappings"), dict):
+            return "FAIL", "es_mapping_response_invalid"
+        if not _mapping_containers_valid(entry["mappings"]):
+            return "FAIL", "es_mapping_response_invalid"
+        probe = mapping_compatibility(mapping, selector)
+        return ("PASS", "es_mapping_compatible") if probe.usable else (
+            "FAIL", "mapping_incompatible")
+    except (ValueError, TypeError, AttributeError, KeyError,
+            RecursionError, UnicodeError):
+        # Malformed untrusted JSON must not escape as an operator traceback.
+        return "FAIL", "es_mapping_response_invalid"
+
+
+def _verified_basic_principal(payload: bytes | None, username: str) -> bool:
+    """Require the protected ES auth endpoint to attest this Basic principal.
+
+    A 200 from / or /_mapping cannot establish authentication because both
+    may be anonymously accessible (or a proxy may ignore Authorization).
+    Keep all server-provided principal and realm details out of output.
+    """
+    try:
+        record = json.loads(payload if payload is not None else b"")
+    except (TypeError, ValueError, UnicodeError, RecursionError):
+        return False
+    return (
+        isinstance(record, dict)
+        and record.get("username") == username
+        and record.get("authentication_type") == "realm"
+        and record.get("enabled") is True
+        and isinstance(record.get("authentication_realm"), dict)
+        and isinstance(record["authentication_realm"].get("type"), str)
+        and bool(record["authentication_realm"]["type"])
+    )
+
+
+def _later_tls_failure(result: dict[str, object], reason: str) -> None:
+    """Preserve an observed IP-SAN mismatch across later request failures.
+
+    An uncertain transport outcome must not erase the already observed
+    wrong-IP certificate (or its Basic-credential exposure). A later proven
+    certificate-chain/identity failure still takes precedence as FAIL.
+    """
+    if reason == "es_https_transport_unavailable_ip_san_mismatch":
+        result["identity_warning"] = True
+    if reason == "es_tls_identity_unverified":
+        result["tls_validation"] = "FAIL"
+    elif result["identity_warning"]:
+        result["tls_validation"] = "WARN"
+    else:
+        result["tls_validation"] = "NOT_VERIFIED"
+
+
+def _observe(cfg: dict[str, str], *, no_network: bool,
+             root: Path = PROJECT_ROOT,
+             verify_credentials: bool = False,
+             warn_only_ip_san: bool = False,
+             skip_mapping: bool = False) -> dict[str, object]:
+    endpoint, host = _parse_endpoint(cfg.get("ES_URL"))
+    index = _configured_index(cfg.get("ES_INDEX"))
+    username, password = cfg.get("ES_USERNAME") or "", cfg.get("ES_PASSWORD") or ""
+    ca = _trusted_ca_file(root)
+    result: dict[str, object] = {
+        "component": "es", "config_key": "ES_URL",
+        **endpoint,
+        "configuration": endpoint["configuration"],
+        "index_configured": bool(index),
+        "credentials_configured": bool(username and password),
+        "ca_configured": ca is not None,
+        "https_probe": "SKIP", "mapping_probe": "SKIP",
+        "reason": "configuration_incomplete",
+        "tls_validation": "NOT_TESTED", "auth": "NOT_TESTED",
+        "credential_control": "NOT_RUN",
+        "ip_san_policy": "WARN_ONLY" if warn_only_ip_san else "STRICT",
+        "identity_warning": False,
+        "service_identity": "NOT_TESTED", "feature_acceptance": "NOT_TESTED",
+    }
+    if endpoint["configuration"] == "INVALID":
+        result["reason"] = "es_url_invalid"
+        return result
+    if endpoint["configuration"] != "RESOLVED":
+        result["reason"] = "es_url_missing"
+        return result
+    if endpoint["scheme"] != "https":
+        result["reason"] = "es_https_required"
+        return result
+    if no_network:
+        result["reason"] = "network_disabled"
+        return result
+    # Never challenge deliberately bad passwords when the peer's identity
+    # may be unverified; the default diagnostic remains partial-only.
+    if warn_only_ip_san and verify_credentials:
+        result["reason"] = "es_unsafe_tls_credential_control_combination"
+        return result
+    if host is None:
+        result["reason"] = "es_endpoint_outside_private_ipv4_scope"
+        return result
+    if not index:
+        result["reason"] = "es_index_selector_unavailable"
+        return result
+    if not username or not password or ":" in username:
+        result["reason"] = "es_basic_auth_unavailable"
+        return result
+    if not ca:
+        result["reason"] = "es_ca_missing"
+        return result
+
+    port = int(endpoint["port"])
+    def get(path: str, candidate_password: str = password
+            ) -> tuple[int | None, bytes | None, str]:
+        if warn_only_ip_san:
+            return _https_get(host, port, path, username, candidate_password, ca,
+                              warn_only_ip_san=True)
+        return _https_get(host, port, path, username, candidate_password, ca)
+
+    def record_san_result(reason: str) -> None:
+        if reason == "https_response_ca_only_ip_san_mismatch":
+            result["identity_warning"] = True
+            result["tls_validation"] = "WARN"
+
+    status, body, reason = get("/")
+    if status is None:
+        result["https_probe"] = "FAIL"
+        result["reason"] = reason
+        _later_tls_failure(result, reason)
+        return result
+    result["tls_validation"] = "PASS"
+    record_san_result(reason)
+    if status == 401:
+        result["https_probe"] = "FAIL"
+        result["auth"] = "NOT_VERIFIED" if result["identity_warning"] else "FAIL"
+        result["reason"] = ("es_auth_rejected_identity_unverified"
+                            if result["identity_warning"] else "es_auth_rejected")
+        return result
+    if status == 403:
+        # A gateway can deny GET / before authenticating the Basic header.
+        # Root identity check fails, but password validity is unverified.
+        result["https_probe"] = "FAIL"
+        result["auth"] = "NOT_VERIFIED"
+        result["reason"] = "es_root_access_denied"
+        return result
+    if status != 200:
+        result["https_probe"] = "FAIL"
+        result["reason"] = "es_identity_http_unexpected"
+        return result
+    try:
+        identity = json.loads(body)
+        valid = (isinstance(identity, dict) and
+                 isinstance(identity.get("cluster_name"), str) and
+                 bool(identity["cluster_name"].strip()) and
+                 isinstance(identity.get("version"), dict) and
+                 isinstance(identity["version"].get("number"), str) and
+                 bool(identity["version"]["number"].strip()))
+    except (ValueError, TypeError, UnicodeError, RecursionError):
+        valid = False
+    if not valid:
+        result["https_probe"] = "FAIL"
+        result["reason"] = "es_identity_unverified"
+        return result
+    result["https_probe"] = "PASS"
+    # Authenticate independently of public index/root HTTP 200. The protected
+    # ES Security API attests the *same* Basic principal and realm identity.
+    # No mapping request is allowed to proceed without this evidence.
+    auth_status, auth_body, auth_reason = get("/_security/_authenticate")
+    if auth_status is None:
+        result["auth"] = "NOT_VERIFIED"
+        result["reason"] = "es_auth_transport_unavailable"
+        _later_tls_failure(result, auth_reason)
+        return result
+    record_san_result(auth_reason)
+    if auth_status == 401:
+        # Identity-unverified peers cannot prove the intended ES rejected
+        # the configured password, even when the status itself is HTTP 401.
+        result["auth"] = "NOT_VERIFIED" if result["identity_warning"] else "FAIL"
+        result["reason"] = ("es_auth_rejected_identity_unverified"
+                            if result["identity_warning"] else "es_auth_rejected")
+        return result
+    if auth_status == 403:
+        # A gateway can deny this route before evaluating Authorization.
+        # Access is denied, but password validity remains unverified.
+        result["auth"] = "NOT_VERIFIED"
+        result["reason"] = "es_auth_access_denied"
+        return result
+    if auth_status == 404:
+        result["reason"] = "es_auth_endpoint_unavailable"
+        return result
+    if auth_status != 200:
+        # 429, 5xx or an intermediary response does not establish whether
+        # the supplied Basic credentials are valid. Do not assert auth FAIL.
+        result["auth"] = "NOT_VERIFIED"
+        result["reason"] = "es_auth_http_unexpected"
+        return result
+    if not _verified_basic_principal(auth_body, username):
+        result["auth"] = "NOT_VERIFIED" if result["identity_warning"] else "FAIL"
+        result["reason"] = "es_principal_unverified"
+        return result
+    # A matching principal alone does not prove that the supplied password
+    # caused authentication: proxies may silently replace Authorization.
+    # Default mode never sends deliberately incorrect credentials, since even
+    # one failed attempt may be audited or contribute to an account lockout.
+    result["auth"] = "NOT_VERIFIED"
+    if verify_credentials:
+        # Explicit operator opt-in only. Same user, fresh deliberately invalid
+        # password. If a proxy ignores Authorization, it can still return 200
+        # and cannot produce a false PASS. Never print the challenge value.
+        invalid_password = secrets.token_urlsafe(32)
+        while invalid_password == password:
+            invalid_password = secrets.token_urlsafe(32)
+        control_status, control_body, control_reason = get(
+            "/_security/_authenticate", invalid_password,
+        )
+        if control_status is None:
+            result["credential_control"] = "INCOMPLETE"
+            result["reason"] = "es_credential_control_unavailable"
+            _later_tls_failure(result, control_reason)
+            return result
+        if control_status == 401:
+            # Only HTTP 401 proves that the negative challenge was rejected.
+            result["credential_control"] = "PASS"
+            result["auth"] = "PASS"
+        elif (control_status == 200
+              and _verified_basic_principal(control_body, username)):
+            # A protected principal was attested using a deliberately wrong
+            # password: some intermediary may be replacing Authorization.
+            result["credential_control"] = "FAIL"
+            result["auth"] = "FAIL"
+            result["reason"] = "es_credential_control_not_rejected"
+            return result
+        else:
+            # 403/429/5xx, redirects and unattested 200 cannot prove the
+            # invalid credential was considered. Never claim password failure.
+            result["credential_control"] = "INCOMPLETE"
+            result["auth"] = "NOT_VERIFIED"
+            result["reason"] = "es_credential_control_unverified"
+            return result
+    # Without opted-in negative control, mapping may be inspected read-only
+    # but the CLI remains incomplete even if the mapping structure passes.
+    # Still an ES-like identity only; neither PID nor service ownership proven.
+    # Discovery reuses the vetted root/protected-principal preflight, then
+    # independently inspects each configured selector against its own profile.
+    # This opt-in never changes legacy OFF-1B single-index semantics.
+    if skip_mapping:
+        result["reason"] = "es_mapping_delegated_to_discovery"
+        return result
+    mapping_status, mapping_body, mapping_reason = get(f"/{index}/_mapping")
+    if mapping_status is None:
+        result["mapping_probe"] = "FAIL"
+        result["reason"] = mapping_reason
+        _later_tls_failure(result, mapping_reason)
+        if mapping_reason == "es_tls_identity_unverified":
+            result["auth"] = "NOT_VERIFIED"
+    elif mapping_status in (401, 403):
+        record_san_result(mapping_reason)
+        result["mapping_probe"] = "FAIL"
+        result["reason"] = "es_mapping_access_denied"
+    elif mapping_status == 404:
+        record_san_result(mapping_reason)
+        result["mapping_probe"] = "FAIL"
+        result["reason"] = "es_index_missing"
+    elif mapping_status != 200:
+        record_san_result(mapping_reason)
+        result["mapping_probe"] = "FAIL"
+        result["reason"] = "es_mapping_http_unexpected"
+    else:
+        record_san_result(mapping_reason)
+        result["mapping_probe"], result["reason"] = _mapping_result(
+            mapping_body or b"", index)
+    # No identity-unverified HTTPS response can attest the intended ES
+    # target's Mapping, even if its returned JSON is structurally compatible.
+    if result["identity_warning"] and result["mapping_probe"] in ("PASS", "FAIL"):
+        if result["mapping_probe"] == "PASS":
+            result["mapping_probe"] = "WARN"
+            result["reason"] = "es_mapping_compatible_identity_unverified"
+        elif result["reason"] == "mapping_incompatible":
+            result["mapping_probe"] = "WARN"
+            result["reason"] = "mapping_incompatible_identity_unverified"
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--no-network", action="store_true")
+    parser.add_argument(
+        "--strict-ip-san", action="store_true",
+        help="Require leaf certificate IP SAN match; suitable for strict TLS "
+             "identity checking, but not a substitute for FULL_LIVE acceptance",
+    )
+    parser.add_argument(
+        "--warn-only-ip-san", action="store_true",
+        help="Explicit alias for the default CA-validated diagnostic. Real "
+             "Basic credentials may reach an IP-identity-unverified peer; "
+             "SAN mismatch is WARN, exit 2, never formal acceptance",
+    )
+    parser.add_argument(
+        "--verify-credentials", action="store_true",
+        help="Opt in to one deliberately rejected password check; can create "
+             "an authentication-failure audit entry or count toward lockout",
+    )
+    args = parser.parse_args(argv)
+    if args.strict_ip_san and args.warn_only_ip_san:
+        parser.error("--strict-ip-san cannot be combined with --warn-only-ip-san")
+    if args.warn_only_ip_san and args.verify_credentials:
+        parser.error("--warn-only-ip-san cannot be combined with --verify-credentials")
+    # Quick/Diagnose uses partial warning by default. Any deliberately wrong
+    # password challenge implicitly requires strict peer identity first.
+    warning_mode = args.warn_only_ip_san or not (
+        args.strict_ip_san or args.verify_credentials
+    )
+    if Path.cwd().resolve() != PROJECT_ROOT:
+        print(json.dumps({"schema": SCHEMA, "mode": MODE,
+                          "error": "run_from_repository_root"}, sort_keys=True))
+        return 2
+    try:
+        cfg = _effective_runtime_config(PROJECT_ROOT)
+    except Exception:
+        print(json.dumps({"schema": SCHEMA, "mode": MODE,
+                          "error": "runtime_configuration_unavailable"}, sort_keys=True))
+        return 2
+    observation = _observe(
+        cfg, no_network=args.no_network, root=PROJECT_ROOT,
+        verify_credentials=args.verify_credentials,
+        warn_only_ip_san=warning_mode,
+    )
+    print(json.dumps({"schema": SCHEMA, "mode": MODE,
+                      "network_mode": "CONFIG_ONLY" if args.no_network
+                                      else "PRIVATE_IPV4_TLS_GET_ONLY",
+                      "results": [observation]}, sort_keys=True, ensure_ascii=False))
+    if ("FAIL" in (observation["https_probe"], observation["auth"],
+                   observation["mapping_probe"], observation["tls_validation"])
+            or observation["configuration"] == "INVALID"):
+        return 1
+    if (observation["https_probe"] == "PASS"
+            and observation["auth"] == "PASS"
+            and observation["mapping_probe"] == "PASS"
+            and observation["tls_validation"] == "PASS"):
+        return 0
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

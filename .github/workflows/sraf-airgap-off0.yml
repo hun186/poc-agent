@@ -1,0 +1,37 @@
+name: SRAF OFF-0 contract tests
+
+on:
+  pull_request:
+    paths:
+      - 'docs/operations/sraf_airgap_off0*'
+      - 'tools/validate_sraf_airgap_off0_contract.py'
+      - 'tests/test_sraf_airgap_off0_contract.py'
+      - '.github/workflows/sraf-airgap-off0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: OFF-0 schema and regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate syntax and registry (stdlib, no SRA runtime services)
+        run: |
+          python -m compileall -q tools/validate_sraf_airgap_off0_contract.py tests/test_sraf_airgap_off0_contract.py
+          python tools/validate_sraf_airgap_off0_contract.py
+      - name: Install project dependencies before pytest (AGENTS.md)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install 'pytest>=8,<10'
+      - name: Run OFF-0 safety regressions
+        run: python -m pytest -q tests/test_sraf_airgap_off0_contract.py

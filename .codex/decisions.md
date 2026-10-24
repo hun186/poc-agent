@@ -21,7 +21,7 @@
 
 ### Requirement Product API + Task Center
 
-- The first implementation slice is intentionally limited to Schedule schema v4 Product control-plane persistence and exact migration/catalog validation; Product service/router/create saga/UI remain separate later PRs.
+- Product Schedule schema v4, P1.3/P1.4 create saga, P1.5 Task updates, P1.5A draft activation, and P1.6 low-level ownership fences were implemented in separate earlier slices (merged through PR #286 as documented in earlier commits). P2.1 public Task/Run read and preview is a separate review branch PR #288; do not claim Product UI/P2.2 or live operator acceptance is complete.
 - Integrate Requirement automation into the existing SRA operations console. Reuse existing navigation, Auth/RBAC, audit, service-key system, Requirement Import, Schedule/Handoff, Report Job, and artifact authorities; do not build parallel infrastructure.
 - Persist Product Task identity/kind/state and Product idempotency in Schedule schema v4 using only `requirement_product_tasks` and `requirement_product_requests` in v1.
 - New Product Task/source provisioning remains superuser-only. Service-key automation is limited to already provisioned Tasks.
@@ -40,187 +40,42 @@
 
 ## Recent Decisions
 
-### 2026-10-06 Preserve quoted literals during SQL catalog normalization
-
-- Catalog normalization may remove SQL Server-owned brackets/parentheses/spacing and normalize unquoted syntax only; it must never rewrite characters inside quoted SQL literals.
-- Hash/fingerprint CHECK patterns therefore retain the exact `[^0-9a-f]` character class so structural drift cannot be normalized into equivalence.
-
-
-### 2026-10-06 Implement Product schema v4 as the first isolated slice
-
-- Start implementation with P1.0 only: Schedule schema v4, Product Task/request catalog descriptors, transactional v3→v4 migration/fresh bootstrap, and focused persistence tests.
-- Do not introduce Product router, UI, create saga, activation, input replacement, or Run trigger in this slice; later gates build on the reviewed persistence authority.
-- Keep `requirement_product_requests` reservation refs intentionally non-FK while `requirement_product_tasks.schedule_id/source_id` are real FKs to existing Schedule/Requirement authorities.
-- Persist Product Task `revision` and request-ledger `base_task_revision` / `result_task_revision` as SQL Server BIGINT, matching the approved monotonic revision authority before schema v4 is released.
-
-
-### 2026-10-06 Canonical idempotency hash binds target resources
-
-- Ledger namespace remains principal + operation + idempotency key, so `request_sha256` must distinguish the target resource.
-- Cross-Task or cross-Version reuse of the same key cannot replay an earlier resource even when request bodies are identical or empty.
-
-### 2026-10-06 Persisted run-trigger state precedes lifecycle admission
-
-- Current disabled/provisioning state is a rule for truly new `run_trigger` admission only.
-- Existing same-key requests are resolved by request hash and persisted ledger state first. `failed_recoverable` remains resumable after disable; `failed_terminal` remains the same terminal result.
-
-### 2026-10-06 Serialize manual Run admission with recurring disable
-
-- The Product Task lock is the serialization point between first `run_trigger` reservation and recurring enable/disable.
-- Disable-first rejects without a request row; trigger-first creates one durable admitted request. Later disable does not revoke it.
-
-### 2026-10-06 Product state/revision rules
-
-- `product_state=disabled` is reachable only for recurring Tasks and atomically mirrors Schedule `enabled=false`; re-enable mirrors active/true.
-- Draft proposal creation does not change Product Task revision or `result_task_revision`. In-place Product mutations and successful activation each advance revision exactly once.
-- Mixed in-place + schedule-proposal PATCH is rejected instead of defining a coupled two-phase transaction in v1.
-
-### 2026-10-05 Separate Schedule proposal from activation
-
-- `db_operator` may propose immutable Schedule drafts but cannot activate them. Superuser activation is a distinct idempotent Product operation using the proposal's original `base_task_revision` CAS anchor.
-- Durable retry ancestry is outside Product v1.
-
-### 2026-10-02 Product concurrency and recovery
-
-- Product ownership fencing is transactional with low-level writes and recognizes task-create reservations before the Product Task row exists.
-- Input replacement uses `base_snapshot_id` CAS; committed same-ID import replay must be recovered before preparation/diagnostics.
-- Product create finalization is the atomic execution-release and visibility boundary.
-
-### 2026-09-30 E2E isolation
-
-- Verified E2E authority is carried on per-Agent tool instances and re-opened in worker threads; no process-global fallback may make mocks visible to production jobs.
-
-### 2026-09-23 Verification/provenance
-
-- Keep release verification strict by default. Functional verification does not bypass runtime discovery, active-module, worker identity, or artifact integrity.
-- Port semantic-input corrections without weakening deployment capability/worker/artifact architecture.
+- 2026-10-21: PR #295 ES credential-control truthfulness: only deliberate wrong-password HTTP 401 attests rejection. Protected HTTP 200 returning the same enabled Basic realm principal despite the wrong password proves the control ineffective (FAIL). HTTP 403/429/5xx, redirects and unattested success cannot show acceptance or rejection and must remain NOT_VERIFIED/INCOMPLETE with no Mapping GET.
+- 2026-10-21: PR #295 reports the real configuration/evidence boundary: `PARTIAL_ONLY_NOT_ACCEPTANCE`; root/positive-auth/Mapping GET maximum 3 by default, or 4 with one explicitly authorized failed-login control (`--verify-credentials`), which may create audit events and lockout risk. No default failed login. A distinct TLS identity/cert failure forces failure; independent transport uncertainty remains incomplete.
+- 2026-10-21: ES Mapping JSON may parse while its root/nested field containers have invalid types. Validate bounded `properties`/`fields` dict shape first, reuse application mapping-compatibility predicate only for valid structures, and return a fixed redacted error without stack traces.
+- 2026-10-21: Public Hosted CI became available after repository visibility switched from private; historical billing/spending-limit failures were never started. A successful 539-pytest/19 OFF0-contract run #39551740910 is prior-SHA evidence only, not actual private Linux ES Mapping acceptance. Current-HEAD CI and Codex review must be queried, not inferred from static memory.
+- 2026-10-21: Repository AGENTS.md triggers archival + compaction for active files above 40 KB or >20 dated blocks. All pre-compaction full files archived before summaries. Release gate/explicit merge requirement and live acceptance limitations stay actionable in memory.
+- 2026-10-20: OFF-1B TCP and API HTTP slices intentionally report bounded partial observations; never assert worker, actual ES auth/Mapping, LLM inference, SQL access, artifact or air-gap readiness from TCP connect or `/healthz` alone.
+- 2026-10-16: OFF-0's 19-check schema contract cannot generate unsupported runtime PASS/FAIL/WARN. Unimplemented checks remain honest SKIP and require reviewed OFF-1 probe evidence for promotion.
+- 2026-10-12: Product P2.1 input/HTTP safety boundaries require bounded JSON/CSV/XLSX predecode work, consistent SQL Read Task/Schedule locks, pagination and no cross-Task result sharing. SQL Server concurrency and operator E2E remain separate acceptance gates.
+- 2026-10-08: Product Task PATCH separates in-place CAS from immutable Schedule draft proposals, with privileged draft activation and ownership fences. Do not build a second scheduler/auth store or bypass existing SQL control-plane authority.
 
 ## Archived History
 
-- `.codex/archive/decisions.md-20261006-143100.md` — full active decision history immediately before this compaction, including all dated Product-review decisions through 2026-10-06.
-- `.codex/archive/decisions.md-20260907-120000.md` — earlier complete pre-compaction history through PR #214.
-- `.codex/archive/decisions.md-20260813-000000.md` — earlier retained decision history.
-- Historical details not repeated here remain authoritative for traceability only when not superseded by the current summary.
+- `.codex/archive/decisions.md-20261021-165000.md` — exact full pre-compaction active decisions (47,371 characters), complete Product, OFF-0/1, security, authentication, redaction and deployment chronology, verified identical before summary rewrite.
+- Earlier archive references and pre-compaction decision details are preserved verbatim in that file.
+
+## Compaction Record
+
+- 2026-10-21: Mandatory >40 KB and repeated dated work-block compaction. Archive first, then preserve active runtime, provenance, Product and operator trust decisions above. Current GitHub SHA/CI/Codex status must be checked live; no merge or Linux deployment authorized.
 
 
-### 2026-10-07 One-time Product create uses persisted preallocation + atomic release
+- 2026-10-22 PR #296 portability policy: keep strict TLS CA-chain + IP SAN as the default; allow only explicit operator --warn-only-ip-san for **partial non-authoritative** Docker ES IP-move troubleshooting. Even when CA chain passes, identity mismatch raises TLS/Mapping WARN and exit 2. Supplied Basic password can be exposed to an impersonating CA-signed peer, so warn mode requires independent routing/CA provenance assurance, is not production acceptance and cannot run --verify-credentials. Prefer leaf IP SAN renewal or reviewed stable verified DNS name for final acceptance. Do not merge without explicit user authorization.
 
-- Reserve every cross-authority identity in `requirement_product_requests` before creating Source/Import/Snapshot/Schedule/Task/Version rows.
-- Exact-ID Source and Schedule creation must replay only when semantics match; unique-key or same-ID drift is never treated as success.
-- The one-time initial Batch Run is created only inside the Product finalizer, using the existing locked Schedule materializer and a stable request-derived manual trigger. Product visibility (`active`) and request success commit in that same transaction.
-- The selected preview profile must still be the active approved profile at create time so Requirement commit cannot silently normalize under a different profile version.
+- 2026-10-22 PR #296 revised operator profile decision: default standalone OFF-1B CLI **Quick/Diagnose WARN** uses trusted CA but permits stale IP SAN, marking TLS/Mapping non-authoritative WARN/exit 2; --strict-ip-san and --verify-credentials explicitly enforce full IP SAN chain identity. Existing runtime ES trust settings unchanged. Real configured Basic credentials may be sent to a CA-signed but misidentified peer even in default Quick, so this tradeoff must be clear in operator docs and must never be equated with FULL_LIVE acceptance. Observed SAN mismatch must remain visible even if subsequent HTTP/transport parsing fails; don't suppress separate hard CA errors.
 
+- 2026-10-22 PR #297: observed Elasticsearch Mapping uses standards-compliant HTTP chunked response, so extend bounded read-only operator diagnostic rather than change ES server/proxy or disable TLS. Permit single Transfer-Encoding: chunked with bounded trailers and cumulative decoded Mapping <=2MiB; root/auth retain 64KiB, same 3-second absolute deadline and strict refusal of CL+TE ambiguity. Mapping compatibility remains separate from HTTP framing and IP SAN warnings; no LIVE acceptance or runtime ES client changes.
 
-### 2026-10-07 Product preview profile identity must be transactionally bound at import
+## 2026-10-24 OFF-1 Engineering Decisions (Current)
+- Separate operator diagnostics from production SQL registries, credentials, Worker processes and background jobs. ES diagnostics use strictly bounded selectors, read-only GET and CA; unknown IP SAN in warning-only mode cannot yield validated peer identity and must not trigger sensitive credential challenges.
+- Model inventory is not inference; explicit local-only inference requires verified Ollama listener executable, socket inode, environment OLLAMA_NO_CLOUD=1 and supporting version before even one POST. Neither proves Agent/Word.
+- SQL Server diagnostic uses operator-supplied least-privilege connection via private IPv4/ODBC18 strict TLS. `ApplicationIntent=ReadOnly` is only a routing hint, never an authorization proof; no DML/DDL or business-data reads.
+- OFF-1H process verification reuses canonical `verify_worker_identity`, rejects symlink/FIFO/path races with fd-bound reads and exact argv PID-start/UID/cwd verification. Process existence alone is not useful work.
+- OFF-1I one SQL lease snapshot does not prove local owner. OFF-1J requires an extra FOURTH operator flag for two fixed, separate-connection SQL Server snapshots 15s apart; compare fencing generation and strictly increased heartbeat-at marker. Returns only redacted partial evidence. Because `REQUIREMENT_HANDOFF_OWNER_ID` may be custom, guessing local `handoff-<pid>` ownership is forbidden; true association and Schedule claim cycle still pending.
+- All merges require GitHub current exact HEAD CI success + formal Codex CLEAN + all review threads resolved + explicit user `merge`. No CI mocks may be passed off as actual offline/airgap acceptance.
 
-- A Product create pre-check of the active Requirement profile is insufficient because another superuser can activate a different profile version before the import transaction begins.
-- Product create therefore passes the previewed `profile_version_id + profile_sha256` into Requirement Import authority. Preparation uses that exact version; a new import locks/validates the active profile binding inside the mutation transaction; terminal exact-ID replay verifies persisted import/snapshot profile identity without requiring the profile to remain currently active after success.
+## Archived History — 2026-10-24
+- `.codex/archive/decisions.md-20261024-180500.md` — full 15,630-character original active decisions verified byte-for-byte with identical Git blob SHA before compaction. Prior decision archives remain discoverable through `.codex/archive/decisions.md-20261021-165000.md`.
 
-
-### 2026-10-07 Product create recovery precedes current-active profile admission
-
-- Historical exact-ID import recovery is authoritative once the persisted import/snapshot is bound to the expected profile identity. A later profile activation change must not prevent recovery/finalization of that already-committed Product request.
-- Therefore Product orchestration must not independently reject the current active profile before calling Requirement Import recovery. The Requirement Import transaction enforces active-profile equality only for a genuinely new write.
-- One-time Product create requires at least one accepted Requirement row. Empty direct JSON/header-only uploads fail terminal before durable domain objects or an initial Batch Run are created.
-
-
-### 2026-10-07 Product create selection time is part of durable request semantics
-
-- One-time Product create eligibility must not drift across retries. The selection/expiry evaluation time is the Product request's persisted `created_at`, established when the idempotency reservation is first committed.
-- Retries may occur after Requirement rows expire; if those rows were eligible at the original request time, recovery/finalization continues using that same evaluation instant rather than converting the request to terminal failure.
-
-
-### 2026-10-07 Product one-time finalization separates selection time from audit time
-
-- `_materialize_locked()` accepts an optional semantic `selection_time`; existing scheduler/manual paths default it to `now_utc`.
-- Product one-time finalization passes the reserved Product request `created_at` as `selection_time` so retries select the same rows as the original request.
-- Audit/materialization timestamps continue using current `now_utc`; only eligibility evaluation and item `evaluated_at` use the durable selection instant.
-
-
-### 2026-10-07 Recurring Product create releases only recurrence, not an initial Run
-
-- Reuse the existing Phase 1C recurrence calculation and scheduler worker rather than copying scheduler logic into Product service.
-- The recurring finalizer computes `next_run_at` with `next_occurrence()` and enables the Schedule in the same transaction that makes the Product Task visible and marks the owning request succeeded.
-- Do not create a manual/initial Batch Run for recurring Product create. The scheduler remains the sole authority for scheduled occurrence materialization.
-- Persist the first computed due time in bounded request result metadata so same-key replay returns original create evidence even after the scheduler advances the live Schedule.
-
-
-### 2026-10-07 Recurring create uses separate reservation and release clocks
-
-- Product request `created_at` remains the durable semantic time for preview/replay identity; it is not the authority for recurrence release after potentially long provisioning.
-- Immediately before recurring finalization, the service obtains a fresh UTC release time. The finalizer computes `next_run_at` from that release time using existing Phase 1C recurrence logic.
-- The exact first due is also the authoritative first-run expiry gate. The finalizer must prove the committed snapshot contains at least one row with no expiry or `expires_at > initial_next_run_at` before it can enable recurrence.
-- If no row can participate in the first occurrence, the create request is terminalized while Schedule remains disabled and Product Task remains provisioning; no zero-selected scheduled Run is released.
-
-
-### 2026-10-07 Scheduled Requirement selection is evaluated at scheduled_for
-
-- For scheduled runs, `scheduled_for` is the semantic selection/evaluation time. Worker claim time is operational/audit time only.
-- Delayed scheduler claims therefore do not change expiry-based membership for the occurrence being materialized.
-- This reuses the existing materializer's explicit `selection_time` mechanism; manual/Product one-time paths retain their own reviewed selection-time semantics.
-
-
-### 2026-10-08 Zero-selection Requirement Runs complete at materialization
-
-- A materialized Batch Run with `selected_count == 0` has no downstream handoff work and must not be persisted as `handoff_pending`.
-- Reuse `_terminal_run_recompute()` inside the same materialization transaction after item evidence/checkpoint writes. With no selected items, the canonical terminal state is `completed` with zero success/failure counts and a completion timestamp.
-- This is a scheduler invariant rather than a Product-only special case, so delayed/coalesced scheduled occurrences and manual paths cannot strand empty runs.
-
-
-### 2026-10-08 Product Task PATCH is split into two durable mutation modes
-
-- Classify Task PATCH before reservation. In-place metadata/state and Schedule-version proposal semantics must never share one durable request because they have different revision and privilege behavior.
-- In-place success increments Product Task revision exactly once. Schedule-proposal success creates only an immutable draft and leaves Task revision / active Schedule semantics untouched.
-- Persist the originating Task revision in every `task_update` request; it is the in-place CAS anchor and the future P1.5A activation CAS anchor.
-
-### 2026-10-08 Recover exact Product draft before rebuilding proposal config
-
-- A crash may occur after the preallocated Schedule Version draft commits but before the Product request is marked succeeded.
-- Retry therefore checks the exact request-owned `schedule_version_id` first. If present, it reuses that persisted draft and proceeds to request completion instead of recomputing from a possibly newer active Schedule config.
-- This preserves idempotent draft identity and avoids digest drift after unrelated active-version movement.
-
-### 2026-10-08 Same enabled state must not reschedule recurrence
-
-- An in-place PATCH that repeats the current recurring enabled state may still complete as one Task revision update, but it must preserve the current `next_run_at`.
-- Only an actual disabled→enabled transition recomputes `next_run_at` from the active approved Schedule Version. Active→disabled clears it.
-
-
-### 2026-10-08 Product draft activation uses proposal-origin revision, never current revision
-
-- `task_version_activate` must resolve the exact successful schedule-proposal `task_update` that created the draft and copy its persisted `base_task_revision`.
-- Activation CAS is evaluated against that immutable origin revision. This guarantees that two drafts created from one Task revision cannot both become active after either activation or another in-place Task update advances the revision.
-- Lost-response replay is governed by the activation ledger result; successful replay never re-runs approval or increments Task revision again.
-
-### 2026-10-08 Schedule approval logic is shared through a locked helper
-
-- Low-level Schedule approval and Product activation must not maintain separate recurrence/version-transition implementations.
-- `_approve_version_locked()` is the single SQL-transaction helper for retiring the previous approved version, approving the exact draft, updating active version / next-run state, and emitting Schedule approval audit evidence.
-- Product activation performs Product provenance/CAS checks before calling the helper and commits Product revision/request state in the same transaction.
-
-### 2026-10-08 P1.5A low-level Product approval guard is intentionally interim
-
-- The low-level Schedule approval endpoint must stop being a supported bypass once Product activation exists, so P1.5A adds a Product-ownership read/precheck and stable 409 response.
-- This precheck is not treated as the final concurrency boundary. P1.6 must move ownership/reservation checks into the same transaction/locks as each low-level mutation and cover the documented TOCTOU races.
-
-
-### 2026-10-08 Product activation requires atomic Product-level audit
-
-- Schedule-version approval audit alone is insufficient when activation also mutates Product Task semantics.
-- Successful `task_version_activate` must enqueue `requirement.task.updated` in the same transaction as approval, Task revision increment, and request success.
-- The Product audit payload is explicitly bounded to `task_id`, committed `revision`, and `operation`; Schedule/version identity remains in the existing audit envelope.
-
-### 2026-10-11 Product ownership survives request terminalization
-
-- A `task_create` request's preallocated `schedule_id` / `source_id` is an ownership reservation as soon as it is durable. Low-level mutation fences therefore match the reservation by operation + identity without filtering request state.
-- This is intentional: after a recoverable or terminal provisioning failure, a partially created Schedule/source may still exist and must not become mutable through the legacy low-level API.
-- Once `requirement_product_tasks` exists it is the steady-state ownership authority; checking both authorities closes the provisioning gap.
-- Public mutation code uses explicit guarded methods rather than a generic bypass parameter. Product-internal orchestration retains the existing authority methods.
-
-## 2026-10-12 P1.7 Product input replacement
-
-- Reuse schema v4's `input_replace` operation and optional `base_snapshot_id`/`import_run_id`/`snapshot_id`; no new schema migration.
-- Keep input-replacement CAS inside Requirement Import's existing SQL transaction and record conflict terminally in the Product request ledger. Never recompute the CAS anchor or assign fresh import/snapshot IDs on retries.
-- The Product finalizer verifies preallocated committed import identity rather than the currently active snapshot, because later successful replacements legitimately advance the active snapshot.
-- Preserve the P1.6 public guarded source-import path; Product internal orchestration calls the existing authority-bound `commit()` with preallocated IDs and base snapshot.
-
-- 2026-10-12 P2.1 PR #288 deliberately exposes only Product Task/Run read APIs and side-effect-free Product input preview. P2 mutation endpoints cannot be advertised until durable Run-trigger admission and remaining authorization/error-contract gates are reviewed. Cross-Task semantic dedup/result reuse remains deferred, not implicitly enabled.
+## Compaction Record — 2026-10-24
+- Preserved unresolved Product/security/SQL/ES/Worker boundaries and their full review chronology, including earlier review and architecture decisions, in named immutable archive.

@@ -390,19 +390,100 @@ def _proc_cwd(pid: int) -> Path: return Path(f"/proc/{pid}/cwd").resolve()
 def _proc_cmdline(pid: int) -> str: return Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
 
 
+# Must remain byte-for-byte aligned with WORKER_BOOTSTRAP in run_sra_api.sh.
+# A substring search is NOT worker identity: an unrelated Python process may
+# include arbitrary unused argv values containing both role and module names.
+_UNIFIED_WORKER_BOOTSTRAP = (
+    "from config.bootstrap import bootstrap_env; bootstrap_env(); "
+    "import sys; from requirement_scheduler.cli import main; "
+    "raise SystemExit(main([sys.argv[1]]))"
+)
+_WORKER_IDENTITY_MAX_BYTES = 256
+_WORKER_ARGV_MAX_BYTES = 4096
+_WORKER_PYTHON_EXE = re.compile(r"python(?:3(?:\.[0-9]{1,2})?)?\Z")
+
+
+def _read_worker_identity_nofollow(path: Path) -> dict[str, str]:
+    """Open the checked inode itself: no symlinks, FIFOs or unbounded reads."""
+    directory_fd = os.open(
+        path.parent, os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW
+    )
+    try:
+        fd = os.open(
+            path.name,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK | os.O_NOFOLLOW,
+            dir_fd=directory_fd,
+        )
+        try:
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or not 0 < info.st_size <= _WORKER_IDENTITY_MAX_BYTES):
+                raise ValueError("worker_identity_not_regular")
+            data = os.read(fd, _WORKER_IDENTITY_MAX_BYTES + 1)
+            if (not data or len(data) > _WORKER_IDENTITY_MAX_BYTES
+                    or not data.endswith(b"\n")):
+                raise ValueError("worker_identity_oversized")
+        finally:
+            os.close(fd)
+    finally:
+        os.close(directory_fd)
+    lines = data.decode("ascii").splitlines()
+    if len(lines) != 3 or any("=" not in line for line in lines):
+        raise ValueError("worker_identity_shape")
+    parsed = dict(line.split("=", 1) for line in lines)
+    if len(parsed) != 3:
+        raise ValueError("worker_identity_duplicate_key")
+    return parsed
+
+
+def _worker_argv_matches(pid: int, role: str) -> bool:
+    """Exact supported Python worker invocation; no arbitrary extra args."""
+    if role not in ("schedule", "handoff") or not 2 <= pid <= 4_194_304:
+        return False
+    with open(f"/proc/{pid}/cmdline", "rb") as stream:
+        data = stream.read(_WORKER_ARGV_MAX_BYTES + 1)
+    if (not data or len(data) > _WORKER_ARGV_MAX_BYTES
+            or not data.endswith(b"\0")):
+        return False
+    try:
+        argv = [arg.decode("utf-8") for arg in data[:-1].split(b"\0")]
+    except UnicodeError:
+        return False
+    if (len(argv) != 4
+            or _WORKER_PYTHON_EXE.fullmatch(Path(argv[0]).name) is None
+            or argv[3] != f"{role}-worker"):
+        return False
+    if argv[1] == "-c":
+        return argv[2] == _UNIFIED_WORKER_BOOTSTRAP
+    if argv[1] == "-m":
+        return argv[2] in ("requirement_scheduler.cli", "requirement_scheduler")
+    return False
+
+
 def verify_worker_identity(path: Path, role: str, project_root: Path) -> dict[str, Any]:
     try:
-        info = path.lstat()
-        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid(): raise ValueError
-        values = dict(line.split("=", 1) for line in path.read_text().splitlines())
-        if set(values) != {"role", "pid", "process_start_time"} or values["role"] != role: raise ValueError
+        if role not in ("schedule", "handoff"):
+            raise ValueError("worker_role_invalid")
+        values = _read_worker_identity_nofollow(path)
+        if (set(values) != {"role", "pid", "process_start_time"}
+                or values["role"] != role
+                or not re.fullmatch(r"[0-9]{1,7}", values["pid"])
+                or not re.fullmatch(r"[0-9]{1,24}", values["process_start_time"])):
+            raise ValueError("worker_identity_invalid")
         pid = int(values["pid"])
-        if (_proc_start_time(pid) != values["process_start_time"] or _proc_uid(pid) != os.geteuid()
-                or _proc_cwd(pid) != project_root.resolve()): raise ValueError
-        command = _proc_cmdline(pid)
-        if "requirement_scheduler.cli" not in command or f"{role}-worker" not in command: raise ValueError
+        if not 2 <= pid <= 4_194_304:
+            raise ValueError("worker_pid_invalid")
+        if (_proc_start_time(pid) != values["process_start_time"]
+                or _proc_uid(pid) != os.geteuid()
+                or _proc_cwd(pid) != project_root.resolve()
+                or not _worker_argv_matches(pid, role)):
+            raise ValueError("worker_process_mismatch")
+        # Recheck the start tick after argv inspection, reducing PID-reuse
+        # exposure across independent /proc snapshots.
+        if _proc_start_time(pid) != values["process_start_time"]:
+            raise ValueError("worker_process_changed")
         return {"role": role, "pid": pid, "process_start_time": values["process_start_time"], "alive": True}
-    except (OSError, ValueError, KeyError, StopIteration) as exc:
+    except (OSError, ValueError, KeyError, StopIteration, UnicodeError) as exc:
         raise HarnessFailure("worker_unavailable", stage="RUNTIME_WORKERS", exit_code=ExitCode.PREFLIGHT) from exc
 
 

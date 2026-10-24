@@ -308,8 +308,8 @@ def test_direct_json_oversize_urlencoded_is_rejected_before_preview_service():
         data={"task": '{"profile_version_id":"pv"}',
               "requirements_json": "x" * (1024 * 1024 + 1)},
     )
-    # httpx data={} uses application/x-www-form-urlencoded, not multipart.
-    # The Product input guard rejects the oversized field with a bounded 422.
+    # httpx data={} sends application/x-www-form-urlencoded, not multipart.
+    # Product rejects this oversized field with the bounded HTTP 422 input error.
     assert response.status_code == 422
     assert response.json() == {"detail": {"code": "requirement_preview_input_invalid"}}
     assert not preview.calls
