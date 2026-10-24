@@ -444,3 +444,44 @@ def test_matrix_forwards_explicit_pid_and_refuses_missing_pid(monkeypatch):
     allowed = matrix._llm_inference(_cfg(), **kwargs, ollama_server_pid=4242)
     assert allowed["status"] == "PASS"
     assert calls == [(11434, MODEL, 4242)]
+
+
+def test_cli_triple_opt_in_without_server_pid_does_not_generate(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(matrix, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(matrix.tcp, "_effective_runtime_config",
+                        lambda root: _cfg())
+    monkeypatch.setattr(
+        matrix, "_local_probe",
+        lambda key, component, aspect, fn:
+        matrix._record(key, component, aspect, "SKIP", "network_disabled"))
+    monkeypatch.setattr(
+        matrix, "_tcp_probe",
+        lambda service, cfg, *, probe_network:
+        matrix._record(
+            {"api": "API-TCP", "es": "ES-TCP", "llm": "LLM-TCP"}[service],
+            service, "configured_tcp_only", "PASS", "configured_tcp_connected"))
+    monkeypatch.setattr(
+        matrix, "_api_health",
+        lambda *a, **k: matrix._record(
+            "API-HEALTH", "api", "healthz_http_only", "SKIP",
+            "network_disabled"))
+    monkeypatch.setattr(
+        matrix, "_llm_inventory",
+        lambda cfg, *, probe_network, probe_model_inventory, tcp_status:
+        matrix._record(
+            "LLM-INVENTORY", "llm", "named_model_inventory_only",
+            "PASS", "configured_model_listed", executed=True))
+    monkeypatch.setattr(matrix, "probe_local_ollama_inference",
+                        lambda *args, **kwargs:
+                        pytest.fail("missing server PID must block generation"))
+    assert matrix.main(["--probe-network", "--probe-llm-inventory",
+                        "--probe-llm-inference"]) == 2
+    output = json.loads(capsys.readouterr().out)
+    record = {v["id"]: v for v in output["results"]}["LLM-INFERENCE"]
+    assert record["status"] == "SKIP"
+    assert record["reason"] == "llm_inference_cloud_disable_unverified"
+    assert record["executed"] is False
+    assert output["feature_acceptance"] == "NOT_TESTED"
+    assert "NEVER_PRINT_OR_SEND_ME" not in json.dumps(output)
