@@ -238,11 +238,15 @@ def test_nested_sql_provider_cannot_upgrade_or_leak(
 
 
 def test_missing_config_and_unrelated_network_do_not_trigger_sql(monkeypatch):
-    row, calls = _run_matrix(monkeypatch, sql_config={})
-    # Matrix passes deliberately provided empty config to nested provider;
-    # nested config guard rejects before import/network.
-    assert row["status"] == "PASS"  # provider stub only, not real SQL
-    assert calls == [{}]
+    monkeypatch.setattr(matrix, "probe_sql_constant_read",
+                        sql.probe_sql_constant_read)
+    monkeypatch.setitem(sys.modules, "pyodbc", SimpleNamespace(
+        connect=lambda *args, **kwargs: pytest.fail("no SQL connection")))
+    row = matrix._sql_constant_read(
+        probe_network=True, probe_sql_read=True,
+        odbc_status="PASS", sql_config={})
+    assert row["status"] == "SKIP"
+    assert row["reason"] == "sql_read_config_invalid"
 
 
 def test_cli_no_sql_flags_never_reads_operator_credentials(
