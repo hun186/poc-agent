@@ -117,3 +117,7 @@
 
 - Confirm exact HEAD Hosted CI for 3 new P2 fixes; reply to comments `4361687822`, `4361687833`, `4361687845`, resolve review threads after CI passes and submit fresh exact-head Codex Review. Do not merge without explicit instruction.
 - Keep default no-network, bounded network optional, partial-only observation and honest NOT_TESTED labels for SQL read, ES Mapping, LLM, workers, Word and network isolation.
+
+## 2026-10-24 PR #300 TCP scope review gate
+
+- Confirm exact-head Hosted CI after the Codex fourth P2 fix validating reported TCP scope and endpoint invariants. Reply to Finding #4361787008, resolve its review thread only after tests, and issue a fresh formal @codex review for latest HEAD. Retain partial-only and no-network default. Do not merge until user explicitly authorizes.
