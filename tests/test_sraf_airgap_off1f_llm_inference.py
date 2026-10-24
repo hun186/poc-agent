@@ -12,6 +12,16 @@ from tools import sraf_airgap_off1_probes as transport
 from tools import sraf_airgap_off1f_llm_inference as inference
 
 
+@pytest.fixture(autouse=True)
+def _mock_attested_server(monkeypatch):
+    # HTTP probe unit tests presume that the server's real PID and compatible
+    # no-cloud configuration were already independently verified.
+    monkeypatch.setattr(inference, "server_cloud_disabled",
+                        lambda pid, port: pid == 4242)
+    monkeypatch.setattr(inference, "supported_local_only_version",
+                        lambda port: True)
+
+
 MODEL = "private-model:latest"
 URL = "http://127.0.0.1:11434/api/chat"
 
@@ -48,7 +58,8 @@ def _partial(record):
 
 def test_bounded_generation_body_and_positive_evidence(monkeypatch):
     calls = _fake_post(monkeypatch)
-    obs = inference.probe_local_ollama_inference(11434, MODEL)
+    obs = inference.probe_local_ollama_inference(
+        11434, MODEL, ollama_server_pid=4242)
     assert obs.status == "PASS"
     assert obs.reason == "llm_inference_generation_observed"
     assert obs.executed is True
@@ -73,7 +84,8 @@ def test_bounded_generation_body_and_positive_evidence(monkeypatch):
 def test_invalid_port_or_model_never_makes_post(monkeypatch, port, model):
     monkeypatch.setattr(inference, "_http_post_local_generate",
                         lambda *a: pytest.fail("no POST expected"))
-    obs = inference.probe_local_ollama_inference(port, model)
+    obs = inference.probe_local_ollama_inference(
+        port, model, ollama_server_pid=4242)
     assert obs.status == "SKIP"
     assert obs.executed is False
 
@@ -91,7 +103,8 @@ def test_invalid_port_or_model_never_makes_post(monkeypatch, port, model):
 def test_negative_http_never_false_positive(
         monkeypatch, status, expected, reason):
     calls = _fake_post(monkeypatch, status=status, body=b"SECRET FROM SERVICE")
-    obs = inference.probe_local_ollama_inference(11434, MODEL)
+    obs = inference.probe_local_ollama_inference(
+        11434, MODEL, ollama_server_pid=4242)
     assert obs.status == expected
     assert obs.reason == reason
     assert obs.executed is True
@@ -117,7 +130,8 @@ def test_negative_http_never_false_positive(
 ])
 def test_response_shape_and_identity_must_match(monkeypatch, body, expected_reason):
     _fake_post(monkeypatch, body=body)
-    obs = inference.probe_local_ollama_inference(11434, MODEL)
+    obs = inference.probe_local_ollama_inference(
+        11434, MODEL, ollama_server_pid=4242)
     assert obs.status in ("FAIL", "SKIP")
     assert obs.reason == expected_reason
     assert obs.evidence.get("generation_observed") is False
@@ -127,7 +141,8 @@ def test_response_shape_and_identity_must_match(monkeypatch, body, expected_reas
 
 def test_oversized_http_response_is_failure(monkeypatch):
     _fake_post(monkeypatch, body=b"x" * (transport.MAX_HTTP_BYTES + 1))
-    obs = inference.probe_local_ollama_inference(11434, MODEL)
+    obs = inference.probe_local_ollama_inference(
+        11434, MODEL, ollama_server_pid=4242)
     assert obs.status == "FAIL"
     assert obs.reason == "llm_inference_response_invalid"
 
@@ -147,8 +162,8 @@ def _mock_inventory(monkeypatch, status="PASS"):
 def _fake_nested(monkeypatch, obs=None):
     calls = []
     evidence = {"generation_observed": True, "http_status": 200}
-    def run(port, model):
-        calls.append((port, model))
+    def run(port, model, *, ollama_server_pid=None):
+        calls.append((port, model, ollama_server_pid))
         return obs or SimpleNamespace(
             check_id="LLM-02", probe="llm-inference",
             aspect="single_bounded_generation_only",
@@ -171,7 +186,7 @@ def test_matrix_inference_three_flags_and_inventory_gate(
     calls = _fake_nested(monkeypatch)
     obs = matrix._llm_inference(
         _cfg(), probe_network=network, probe_model_inventory=inventory,
-        probe_model_inference=infer, inventory_status=inventory_status)
+        probe_model_inference=infer, inventory_status=inventory_status, ollama_server_pid=4242)
     assert obs["status"] == expected
     assert obs["depends_on"] == ["LLM-TCP", "LLM-INVENTORY"]
     assert len(calls) == (1 if expected == "PASS" else 0)
@@ -190,7 +205,7 @@ def test_inference_rejects_unsafe_targets(monkeypatch, url):
     calls = _fake_nested(monkeypatch)
     obs = matrix._llm_inference(
         _cfg(url=url), probe_network=True, probe_model_inventory=True,
-        probe_model_inference=True, inventory_status="PASS")
+        probe_model_inference=True, inventory_status="PASS", ollama_server_pid=4242)
     assert obs["status"] == "SKIP"
     assert obs["reason"] == "llm_inference_endpoint_invalid"
     assert calls == []
@@ -220,7 +235,7 @@ def test_nested_inference_cannot_forge_pass(monkeypatch, field, value):
     _fake_nested(monkeypatch, nested)
     obs = matrix._llm_inference(
         _cfg(), probe_network=True, probe_model_inventory=True,
-        probe_model_inference=True, inventory_status="PASS")
+        probe_model_inference=True, inventory_status="PASS", ollama_server_pid=4242)
     assert obs["status"] != "PASS"
     assert obs["feature_acceptance"] == "NOT_TESTED"
 
@@ -244,7 +259,7 @@ def test_matrix_report_partial_with_valid_stubbed_generation(monkeypatch):
     calls = _fake_nested(monkeypatch)
     report = matrix.build_report(
         _cfg(), probe_network=True, probe_model_inventory=True,
-        probe_model_inference=True)
+        probe_model_inference=True, ollama_server_pid=4242)
     rows = {row["id"]: row for row in report["results"]}
     assert rows["LLM-INVENTORY"]["status"] == "PASS"
     assert rows["LLM-INFERENCE"]["status"] == "PASS"
@@ -350,3 +365,82 @@ def test_shared_transport_rejects_compressed_post_reply(monkeypatch):
     monkeypatch.setattr(transport, "_DeadlineHTTPConnection", FakeConnection)
     assert transport._http_post_local_generate(11434, b"{}") == (None, None)
     assert events == [("POST", "/api/generate")]
+
+
+@pytest.mark.parametrize("model", [
+    "gpt-oss:120b-cloud", "my-local-looking-cloud-alias", MODEL,
+])
+def test_cloud_not_disabled_blocks_any_post_even_for_listed_alias(
+        monkeypatch, model):
+    monkeypatch.setattr(inference, "server_cloud_disabled",
+                        lambda *args: False)
+    monkeypatch.setattr(inference, "_http_post_local_generate",
+                        lambda *args: pytest.fail("would forward remote model"))
+    monkeypatch.setattr(inference, "supported_local_only_version",
+                        lambda *args: pytest.fail("version must not be called"))
+    obs = inference.probe_local_ollama_inference(
+        11434, model, ollama_server_pid=4242)
+    assert (obs.status, obs.reason, obs.executed) == (
+        "SKIP", "llm_inference_cloud_disable_unverified", False)
+
+
+@pytest.mark.parametrize("pid", [None, 0, -5, True, 1])
+def test_no_explicit_server_pid_blocks_generation(monkeypatch, pid):
+    monkeypatch.setattr(inference, "_http_post_local_generate",
+                        lambda *args: pytest.fail("no POST permitted"))
+    obs = inference.probe_local_ollama_inference(
+        11434, MODEL, ollama_server_pid=pid)
+    assert obs.status == "SKIP"
+    assert obs.reason == "llm_inference_cloud_disable_unverified"
+    assert not obs.executed
+
+
+def test_old_or_unverified_server_version_blocks_generation(monkeypatch):
+    monkeypatch.setattr(inference, "supported_local_only_version",
+                        lambda port: False)
+    monkeypatch.setattr(inference, "_http_post_local_generate",
+                        lambda *args: pytest.fail("must fail closed"))
+    obs = inference.probe_local_ollama_inference(
+        11434, MODEL, ollama_server_pid=4242)
+    assert (obs.status, obs.executed) == ("SKIP", False)
+
+
+def test_cloud_disable_must_still_hold_after_version_get(monkeypatch):
+    observed = []
+    def check(pid, port):
+        observed.append((pid, port))
+        return len(observed) == 1
+    monkeypatch.setattr(inference, "server_cloud_disabled", check)
+    monkeypatch.setattr(inference, "_http_post_local_generate",
+                        lambda *args: pytest.fail("must not POST"))
+    obs = inference.probe_local_ollama_inference(
+        11434, MODEL, ollama_server_pid=4242)
+    assert obs.status == "SKIP"
+    assert observed == [(4242, 11434), (4242, 11434)]
+
+
+@pytest.mark.parametrize("fields", [
+    {"remote_host": "https://remote.example"},
+    {"remote_model": "gpt-oss:cloud"},
+    {"remote_host": ""},
+])
+def test_remote_response_metadata_never_certifies_local_inference(
+        monkeypatch, fields):
+    _fake_post(monkeypatch, body=_response(**fields))
+    obs = inference.probe_local_ollama_inference(
+        11434, MODEL, ollama_server_pid=4242)
+    assert (obs.status, obs.reason) == ("SKIP", "llm_inference_remote_response")
+    assert "remote" not in json.dumps(obs.evidence)
+
+
+def test_matrix_forwards_explicit_pid_and_refuses_missing_pid(monkeypatch):
+    calls = _fake_nested(monkeypatch)
+    kwargs = dict(probe_network=True, probe_model_inventory=True,
+                  probe_model_inference=True, inventory_status="PASS")
+    skipped = matrix._llm_inference(_cfg(), **kwargs)
+    assert skipped["status"] == "SKIP"
+    assert skipped["reason"] == "llm_inference_cloud_disable_unverified"
+    assert calls == []
+    allowed = matrix._llm_inference(_cfg(), **kwargs, ollama_server_pid=4242)
+    assert allowed["status"] == "PASS"
+    assert calls == [(11434, MODEL, 4242)]
