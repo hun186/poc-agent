@@ -91,3 +91,7 @@
 ## 2026-10-25 OFF-1M incremental read-only linkage decision
 
 - To improve beyond OFF-1L's bare actor-labelled count increment without new production writes or unsafe identity assertions, use one extra explicitly authorized, read-only SQL SELECT returning only three server-computed predicates for current Schedule active version, latest run version and later next-run. Require prior SCHEDULE-CLAIM PASS, never attach a PID identity to created_by or claim the observed row was necessarily created in that 15-second window. Leave future authenticated per-process attribution to separate reviewed work.
+
+## 2026-10-25 OFF-1N operator-only Handoff ack decision
+
+- After positive SCHEDULE-LINK and six explicit opt-ins, read one SQL predicate-only snapshot of the latest scheduled run's persisted Handoff submission/remote-job reference, not the semantic manifest, remote job content, or real API. Treat positive database acknowledgement as partial; do not start production jobs to force success, assume that created_by proves worker PID identity, or downgrade strict TLS/SQL DB privileges.

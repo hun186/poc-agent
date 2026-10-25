@@ -72,3 +72,7 @@
 ## 2026-10-25 OFF-1M SQL-side Schedule run linkage predicates
 
 - New tools/sraf_airgap_off1m_schedule_run_link.py reuses OFF-1G strict TLS/private-IP operator SQL connection and OFF-1L canonical schedule selector. The extra query selects one Schedule, joins its active version and latest actor-labelled scheduled batch run, and projects only three CASE integer flags. OFF-1D requires all five explicit opt-ins and preceding SCHEDULE-CLAIM PASS. No runtime schema/mutation/daemon changes; the latest run can be different from the one OFF-1L counted and cross-table read is not an atomic identity proof.
+
+## 2026-10-25 OFF-1N Handoff persisted-ack read-only observation
+
+- `tools/sraf_airgap_off1n_handoff_ack.py` adds an independent, default-off, fixed SQL predicate read of latest actor-labelled Schedule batch, existing run items and `requirement_handoff_submissions`. The SQL projects two boolean flags (batch marked handed off and one selected item has a report_v1 submission/remote job ID/dispatched time). It inherits OFF-1G strict TLS/private IPv4 ODBC, OFF-1L schedule ID, OFF-1M prior linkage PASS, does not mutate DB or contact remote API. A persisted submission is not remote execution, owner/PID provenance or atomic system-wide evidence.

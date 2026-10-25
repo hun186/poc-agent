@@ -64,3 +64,8 @@
 
 - Run Hosted exact-head focused OFF-1M, OFF-1L and legacy tests, 2 Worker E2E, 19 OFF-0 schema contract checks; then request formal Codex and correct all actionable findings. Merge only on explicit user instruction.
 - Future verified local Schedule PID→SQL authenticated claim and Handoff/Report Job/artifact evidence require separate safe design. OFF-1M only associates *current* active config to latest actor-labelled run; normal SQL Server isolation and a mutable actor label cannot prove atomicity or PID attribution. Private Linux SQL evidence, real E2E, DOCX and physical isolation untested.
+
+## 2026-10-25 OFF-1N acceptance and review gates
+
+- Run Hosted exact-head focused OFF-1N regressions, legacy E2E and OFF-0 19 contract checks; require formal Codex CLEAN and resolved P1/P2 before explicit-user-authorized merge. Live private SQL Server, privileges, TLS/SAN and physical airgap are **not** covered by mocked Hosted CI.
+- OFF-1N persisted Handoff SQL acknowledgement does not attest an authenticated remote Report Job response or success. Need separate real API Report Job execution proof, actual Agent/ES/LLM and Word SHA256 checks, Schedule/Handoff PID attribution, failure/retry and isolation acceptance; never promote database snapshot to FULL_LIVE.
