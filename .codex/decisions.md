@@ -87,3 +87,7 @@
 ## 2026-10-25 OFF-1L non-invasive monitoring decision
 
 - Never trigger claim_due() or alter live schedules for a readiness check. Read only one operator-selected canonical schedule's COUNT_BIG twice in isolated bounded SQL connections; observe a run's actor label without claiming process ownership or completion. Require actual SQL DBA permissions and explicit operator opt-in.
+
+## 2026-10-25 OFF-1M incremental read-only linkage decision
+
+- To improve beyond OFF-1L's bare actor-labelled count increment without new production writes or unsafe identity assertions, use one extra explicitly authorized, read-only SQL SELECT returning only three server-computed predicates for current Schedule active version, latest run version and later next-run. Require prior SCHEDULE-CLAIM PASS, never attach a PID identity to created_by or claim the observed row was necessarily created in that 15-second window. Leave future authenticated per-process attribution to separate reviewed work.

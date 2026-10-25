@@ -96,7 +96,7 @@ def test_default_is_local_only_and_never_networks(monkeypatch):
     assert rows["API-HEALTH"]["status"] == "SKIP"
     assert rows["API-HEALTH"]["depends_on"] == ["API-TCP"]
     assert all(rows[key]["status"] == "NOT_TESTED" for key in (
-        "SQL-READ", "HANDOFF-LEASE", "HANDOFF-RENEWAL", "HANDOFF-OWNER", "SCHEDULE-CLAIM", "ES-MAPPING", "LLM-INVENTORY", "LLM-INFERENCE",
+        "SQL-READ", "HANDOFF-LEASE", "HANDOFF-RENEWAL", "HANDOFF-OWNER", "SCHEDULE-CLAIM", "SCHEDULE-LINK", "ES-MAPPING", "LLM-INVENTORY", "LLM-INFERENCE",
         "WORKERS", "WORD", "ISOLATION"))
     assert all(item["feature_acceptance"] == "NOT_TESTED"
                for item in report["results"])
@@ -456,9 +456,9 @@ def test_aggregated_counts_and_fixed_dependency_graph(monkeypatch):
     _tcp(monkeypatch, {"es": "FAIL"})
     _health(monkeypatch)
     report = matrix.build_report(_cfg(), probe_network=True)
-    assert len(report["results"]) == 17
-    assert sum(report["counts"].values()) == 17
-    assert len({item["id"] for item in report["results"]}) == 17
+    assert len(report["results"]) == 18
+    assert sum(report["counts"].values()) == 18
+    assert len({item["id"] for item in report["results"]}) == 18
     rows = _rows(report)
     assert rows["ES-MAPPING"]["depends_on"] == ["ES-TCP"]
     assert rows["LLM-INFERENCE"]["depends_on"] == ["LLM-TCP", "LLM-INVENTORY"]
@@ -467,6 +467,7 @@ def test_aggregated_counts_and_fixed_dependency_graph(monkeypatch):
     assert rows["HANDOFF-RENEWAL"]["depends_on"] == ["SQL-READ", "HANDOFF-LEASE"]
     assert rows["HANDOFF-OWNER"]["depends_on"] == ["WORKERS", "HANDOFF-RENEWAL"]
     assert rows["SCHEDULE-CLAIM"]["depends_on"] == ["SQL-READ", "WORKERS"]
+    assert rows["SCHEDULE-LINK"]["depends_on"] == ["SQL-READ", "SCHEDULE-CLAIM"]
     assert rows["WORD"]["depends_on"] == ["WORKERS", "LLM-INFERENCE"]
 
 

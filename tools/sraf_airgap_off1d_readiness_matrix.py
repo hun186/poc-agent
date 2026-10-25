@@ -30,6 +30,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools import sraf_airgap_off1b_auto as tcp  # noqa: E402
 from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
+from tools.sraf_airgap_off1m_schedule_run_link import (  # noqa: E402
+    probe_schedule_run_link,
+)
 from tools.sraf_airgap_off1l_schedule_claim import (  # noqa: E402
     SCHEDULE_ID_KEY, probe_schedule_claim_ledger,
 )
@@ -120,6 +123,12 @@ REASONS = frozenset((
     "claim_sql_unverified", "claim_result_invalid",
     "claim_wait_interrupted", "claim_not_advanced",
     "claim_actor_labeled_run_added",
+    "link_not_requested", "link_claim_not_passed",
+    "link_schedule_id_invalid", "link_schema_invalid",
+    "link_sql_config_invalid", "link_driver_unavailable",
+    "link_sql_unverified", "link_rows_ambiguous",
+    "link_schedule_not_observed", "link_result_invalid",
+    "link_predicates_unverified", "link_current_schedule_run_observed",
 ))
 
 
@@ -684,6 +693,52 @@ def _schedule_claim(*, probe_network: bool, probe_sql_read: bool,
     return result("SKIP", "unexpected_probe_result")
 
 
+def _schedule_link(*, probe_network: bool, probe_sql_read: bool,
+                   probe_worker_identities: bool, probe_schedule_claim: bool,
+                   probe_schedule_link: bool, claim_status: str,
+                   sql_config: dict[str, str] | None, schedule_id: str | None,
+                   lease_schema: str | None) -> dict[str, Any]:
+    """Extra explicitly authorized SQL linkage predicates, not PID proof."""
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record("SCHEDULE-LINK", "workers",
+                       "latest_actor_labeled_run_schedule_link_only",
+                       status, reason, executed=executed,
+                       depends_on=("SQL-READ", "SCHEDULE-CLAIM"))
+    if not (probe_network and probe_sql_read and probe_worker_identities
+            and probe_schedule_claim and probe_schedule_link):
+        return result("NOT_TESTED", "link_not_requested")
+    if claim_status != "PASS":
+        return result("SKIP", "link_claim_not_passed")
+    if not isinstance(schedule_id, str) or not schedule_id:
+        return result("SKIP", "link_schedule_id_invalid")
+    if not isinstance(sql_config, dict):
+        return result("SKIP", "link_sql_config_invalid")
+    try:
+        obs = probe_schedule_run_link(
+            sql_config, schedule_id=schedule_id,
+            schema=lease_schema if lease_schema is not None
+            else LEASE_SCHEMA_DEFAULT,
+        )
+        if obs.status == "PASS":
+            if (obs.check_id == "SCHEDULE-02"
+                    and obs.probe == "schedule-run-link"
+                    and obs.aspect == "latest_actor_labeled_run_schedule_link_only"
+                    and obs.executed is True
+                    and obs.reason == "link_current_schedule_run_observed"
+                    and isinstance(obs.evidence, dict)
+                    and obs.evidence.get("link_predicates_observed") is True):
+                return result("PASS", "link_current_schedule_run_observed",
+                              executed=True)
+            return result("SKIP", "unexpected_probe_result")
+        if obs.status in ("SKIP", "FAIL"):
+            return result(obs.status, _reason(obs.reason),
+                          executed=bool(obs.executed))
+    except Exception:
+        return result("SKIP", "link_sql_unverified")
+    return result("SKIP", "unexpected_probe_result")
+
+
 def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_model_inventory: bool = False,
                  probe_model_inference: bool = False,
@@ -695,6 +750,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_lease_renewal: bool = False,
                  probe_handoff_owner: bool = False,
                  probe_schedule_claim: bool = False,
+                 probe_schedule_link: bool = False,
                  schedule_id: str | None = None,
                  lease_schema: str | None = None
                  ) -> dict[str, Any]:
@@ -754,12 +810,21 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         sql_config=sql_config, schedule_id=schedule_id,
         lease_schema=lease_schema,
     )
+    schedule_link = _schedule_link(
+        probe_network=probe_network, probe_sql_read=probe_sql_read,
+        probe_worker_identities=probe_worker_identities,
+        probe_schedule_claim=probe_schedule_claim,
+        probe_schedule_link=probe_schedule_link,
+        claim_status=schedule_claim["status"], sql_config=sql_config,
+        schedule_id=schedule_id, lease_schema=lease_schema,
+    )
     rows.extend((
         sql_read,
         lease_snapshot,
         renewal,
         owner,
         schedule_claim,
+        schedule_link,
         _record("ES-MAPPING", "es", "authenticated_es_mapping", "NOT_TESTED",
                 "es_tls_mapping_not_aggregated", depends_on=("ES-TCP",)),
         inventory,
@@ -798,6 +863,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
     parser.add_argument("--probe-sql-read", action="store_true",
                         help="With --probe-network, make one TLS-verified ODBC constant SELECT using dedicated operator SRAF_OFF1G_SQL_* secrets.")
+    parser.add_argument("--probe-schedule-link", action="store_true",
+                        help="Also require Schedule-claim observed PASS, then read SQL-computed latest-run/active-version/next-run predicates; not PID evidence.")
     parser.add_argument("--probe-schedule-claim", action="store_true",
                         help="With network, SQL-read and worker-identities flags, take two 15s-apart SQL ledger counts for SRAF_OFF1L_SCHEDULE_ID; never calls claim_due.")
     parser.add_argument("--probe-handoff-owner", action="store_true",
@@ -858,6 +925,7 @@ def main(argv: list[str] | None = None) -> int:
                               probe_lease_renewal=args.probe_lease_renewal,
                               probe_handoff_owner=args.probe_handoff_owner,
                               probe_schedule_claim=args.probe_schedule_claim,
+                              probe_schedule_link=args.probe_schedule_link,
                               schedule_id=(os.environ.get(SCHEDULE_ID_KEY)
                                    if (args.probe_network and args.probe_sql_read
                                        and args.probe_worker_identities

@@ -54,3 +54,7 @@
 ## 2026-10-25 OFF-1L optional operator CLI contract
 
 - --probe-schedule-claim requires --probe-network --probe-sql-read --probe-worker-identities, valid SRAF_OFF1L_SCHEDULE_ID (sch_ + 32 lowercase hex), and SQL-READ/WORKERS PASS. SCHEDULE-CLAIM row depends on SQL-READ and WORKERS, reporting NOT_TESTED/SKIP or a strictly grown actor-labelled scheduled-run count. Counts/ID never printed, no new HTTP route, feature_acceptance remains NOT_TESTED.
+
+## 2026-10-25 OFF-1M additional Schedule-link CLI flag
+
+- `--probe-schedule-link` requires `--probe-network --probe-sql-read --probe-worker-identities --probe-schedule-claim` and prior SCHEDULE-CLAIM PASS. Adds `SCHEDULE-LINK` row with dependencies SQL-READ and SCHEDULE-CLAIM. Only SQL-computed 3-flag linkage of enabled/approved active schedule, latest actor-labelled scheduled run and later next-run timestamp can PASS; all missing/malformed/no-link statuses SKIP. It does not emit IDs/timestamps or expose new HTTP APIs and never upgrades `feature_acceptance=NOT_TESTED`.
