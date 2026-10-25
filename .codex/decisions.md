@@ -95,3 +95,7 @@
 ## 2026-10-25 OFF-1N operator-only Handoff ack decision
 
 - After positive SCHEDULE-LINK and six explicit opt-ins, read one SQL predicate-only snapshot of the latest scheduled run's persisted Handoff submission/remote-job reference, not the semantic manifest, remote job content, or real API. Treat positive database acknowledgement as partial; do not start production jobs to force success, assume that created_by proves worker PID identity, or downgrade strict TLS/SQL DB privileges.
+
+## 2026-10-25 OFF-1O observe same-item Report Job checkpoint, not remote success
+
+- Prioritize an additional opt-in, read-only SQL checkpoint using the *same item* for Handoff/report submission/remote-completed/artifact metadata, to avoid cross-item false attribution. Keep remote Report Job API calls, authenticated identifier binding, actual DOCX content validation, and runtime PID evidence as separate acceptance gates. Never label SQL-only observations FULL_LIVE or assume a hash string proves a real artifact.

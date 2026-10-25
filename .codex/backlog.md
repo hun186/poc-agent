@@ -69,3 +69,8 @@
 
 - Run Hosted exact-head focused OFF-1N regressions, legacy E2E and OFF-0 19 contract checks; require formal Codex CLEAN and resolved P1/P2 before explicit-user-authorized merge. Live private SQL Server, privileges, TLS/SAN and physical airgap are **not** covered by mocked Hosted CI.
 - OFF-1N persisted Handoff SQL acknowledgement does not attest an authenticated remote Report Job response or success. Need separate real API Report Job execution proof, actual Agent/ES/LLM and Word SHA256 checks, Schedule/Handoff PID attribution, failure/retry and isolation acceptance; never promote database snapshot to FULL_LIVE.
+
+## 2026-10-25 OFF-1O pending gates
+
+- Verify exact-head Hosted focused tests, Worker E2E and OFF-0 contract; formal Codex Review and all findings resolved before separate user-authorized merge.
+- Future real operator E2E: authenticated read-only Report Job GET for the **same** persisted remote job identity under least privilege; independently validate remote completed status, download/publish DOCX, recompute actual file hash against SQL with secure output-root confinement, trace Agent/LLM/ES, tie schedule/handoff PID safely and demonstrate physical isolation. OFF-1O's SQL checkpoint is NOT remote or file proof.

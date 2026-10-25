@@ -76,3 +76,7 @@
 ## 2026-10-25 OFF-1N Handoff persisted-ack read-only observation
 
 - `tools/sraf_airgap_off1n_handoff_ack.py` adds an independent, default-off, fixed SQL predicate read of latest actor-labelled Schedule batch, existing run items and `requirement_handoff_submissions`. The SQL projects two boolean flags (batch marked handed off and one selected item has a report_v1 submission/remote job ID/dispatched time). It inherits OFF-1G strict TLS/private IPv4 ODBC, OFF-1L schedule ID, OFF-1M prior linkage PASS, does not mutate DB or contact remote API. A persisted submission is not remote execution, owner/PID provenance or atomic system-wide evidence.
+
+## 2026-10-25 OFF-1O Report Job persisted checkpoint
+
+- `tools/sraf_airgap_off1o_report_checkpoint.py` extends the OFF-1D partial readiness matrix with seventh opt-in `--probe-report-checkpoint`. The fixed SQL is bound to the one canonical Schedule ID and checks two only-server-computed flags on the latest actor-labelled run: batch Handoff/reconciliation timestamps, plus ONE matching item with a report_v1 submission and completed remote state, persisted artifact reconciliation, nonempty recorded path and valid-looking SHA256. This is not remote HTTP, DOCX-byte integrity nor actual PID provenance; no new scheduler or execution path.
