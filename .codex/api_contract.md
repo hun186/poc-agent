@@ -66,3 +66,7 @@
 ## 2026-10-25 OFF-1O additional Report checkpoint CLI
 
 - `--probe-report-checkpoint` adds `REPORT-CHECKPOINT` row and requires existing six OFF-1N flags `--probe-network --probe-sql-read --probe-worker-identities --probe-schedule-claim --probe-schedule-link --probe-handoff-ack` plus prior `HANDOFF-ACK: PASS`. The SQL returns only two predicates about the latest actor-labelled run's persisted Handoff/reconciled time and one same item's Report Job completed/artifact reconcile metadata. No IDs, counts, digest, paths, credentials or native SQL errors appear in JSON; no new HTTP route or artifact read. `feature_acceptance=NOT_TESTED` and incomplete overall remain.
+
+## 2026-10-25 OFF-1P optional operator DOCX integrity CLI
+
+- `--probe-docx-bytes` requires seven preceding `--probe-network --probe-sql-read --probe-worker-identities --probe-schedule-claim --probe-schedule-link --probe-handoff-ack --probe-report-checkpoint` flags, real `REPORT-CHECKPOINT: PASS`, canonical SRAF_OFF1L_SCHEDULE_ID and absolute operator SRAF_OFF1P_ARTIFACT_ROOT. Adds `DOCX-BYTES` row depending on SQL-READ/REPORT-CHECKPOINT. One extra SQL read followed by a bounded nofollow local DOCX checksum/ZIP validation. Only digest/ZIP corruption yields FAIL; other inconclusive reads SKIP. No new HTTP route, no leak of file path/digest, no full acceptance.

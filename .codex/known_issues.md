@@ -122,3 +122,7 @@
 ## 2026-10-25 OFF-1O persisted checkpoint is NOT Report Job proof
 
 - `remote_job_state=completed`, `artifact_sha256` and `artifact_reconciled_at` are SQL-stored data; OFF-1O does not authenticate the actual Report Job API status or recompute real DOCX bytes. The presence of one completed selected item cannot certify all items or whole-batch success. Concurrent SQL writes, non-serializable cross-table reads and application actor labels preclude definitive attribution to OFF-1L's specific new row or local PID. Live private SQL/remote API/DOCX and isolation acceptance pending.
+
+## 2026-10-25 OFF-1P evidence limits and private host restrictions
+
+- Real DOCX byte match with a database-recorded digest establishes local published file consistency only: the digest itself was persisted by application, not independent provenance or verified Report Job API status. One completed selected run item does not imply the whole batch succeeded. Operator root must exist, not be symlink and match frozen canonical path fingerprint; fd-relative Linux O_NOFOLLOW and 16MiB file, 64MiB zip-uncompressed limits deliberately SKIP larger/unsupported artifacts. Hosted unit tests use temporary local DOCX and mocked SQL; real SQL deployment/operator privileges, authenticated Report Job GET, Agent/LLM/ES execution, and physical isolation still pending.

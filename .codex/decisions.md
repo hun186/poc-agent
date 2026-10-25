@@ -99,3 +99,7 @@
 ## 2026-10-25 OFF-1O observe same-item Report Job checkpoint, not remote success
 
 - Prioritize an additional opt-in, read-only SQL checkpoint using the *same item* for Handoff/report submission/remote-completed/artifact metadata, to avoid cross-item false attribution. Keep remote Report Job API calls, authenticated identifier binding, actual DOCX content validation, and runtime PID evidence as separate acceptance gates. Never label SQL-only observations FULL_LIVE or assume a hash string proves a real artifact.
+
+## 2026-10-25 OFF-1P bounded real published DOCX byte proof
+
+- Extend SQL-only OFF-1O incrementally with separately opted-in **local file inspection**, not new Report Job APIs or active scheduling. Use frozen output-root fingerprint plus strict publisher path, fd-relative nofollow regular-file reads, capped file/ZIP resource costs and direct SHA256 comparison against SQL. Never print secret-bearing SQL row, path, hash or DOCX contents. Treat only actual byte/hash/structure match as partial PASS; keep remote Report Job / full E2E pending.
