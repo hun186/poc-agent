@@ -30,6 +30,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools import sraf_airgap_off1b_auto as tcp  # noqa: E402
 from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
+from tools.sraf_airgap_off1l_schedule_claim import (  # noqa: E402
+    SCHEDULE_ID_KEY, probe_schedule_claim_ledger,
+)
 from tools.sraf_airgap_off1k_handoff_owner import (  # noqa: E402
     probe_handoff_local_owner,
 )
@@ -111,6 +114,12 @@ REASONS = frozenset((
     "owner_row_unavailable", "owner_result_invalid",
     "owner_binding_unverified", "owner_local_sql_match_observed",
     "owner_sql_unverified",
+    "claim_not_requested", "claim_upstream_not_passed",
+    "claim_schedule_id_invalid", "claim_schema_invalid",
+    "claim_sql_config_invalid", "claim_driver_unavailable",
+    "claim_sql_unverified", "claim_result_invalid",
+    "claim_wait_interrupted", "claim_not_advanced",
+    "claim_actor_labeled_run_added",
 ))
 
 
@@ -628,6 +637,53 @@ def _handoff_local_owner(*, probe_network: bool,
         return result("SKIP", "owner_local_identity_unverified")
 
 
+def _schedule_claim(*, probe_network: bool, probe_sql_read: bool,
+                    probe_worker_identities: bool, probe_schedule_claim: bool,
+                    sql_read_status: str, worker_status: str,
+                    sql_config: dict[str, str] | None, schedule_id: str | None,
+                    lease_schema: str | None) -> dict[str, Any]:
+    """Read-only SQL actor-labelled run growth; never local PID attribution."""
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record("SCHEDULE-CLAIM", "workers",
+                       "schedule_actor_labeled_run_increment_only",
+                       status, reason, executed=executed,
+                       depends_on=("SQL-READ", "WORKERS"))
+
+    if not (probe_network and probe_sql_read and probe_worker_identities
+            and probe_schedule_claim):
+        return result("NOT_TESTED", "claim_not_requested")
+    if sql_read_status != "PASS" or worker_status != "PASS":
+        return result("SKIP", "claim_upstream_not_passed")
+    if (not isinstance(sql_config, dict)
+            or not isinstance(schedule_id, str)
+            or not schedule_id):
+        return result("SKIP", "claim_schedule_id_invalid")
+    try:
+        obs = probe_schedule_claim_ledger(
+            sql_config, schedule_id=schedule_id,
+            schema=lease_schema if lease_schema is not None
+            else LEASE_SCHEMA_DEFAULT,
+        )
+        if obs.status == "PASS":
+            if (obs.check_id == "SCHEDULE-01"
+                    and obs.probe == "schedule-claim-ledger"
+                    and obs.aspect == "schedule_actor_labeled_run_increment_only"
+                    and obs.reason == "claim_actor_labeled_run_added"
+                    and obs.executed is True
+                    and isinstance(obs.evidence, dict)
+                    and obs.evidence.get("run_increment_observed") is True):
+                return result("PASS", "claim_actor_labeled_run_added",
+                              executed=True)
+            return result("SKIP", "unexpected_probe_result")
+        if obs.status in ("SKIP", "FAIL"):
+            return result(obs.status, _reason(obs.reason),
+                          executed=bool(obs.executed))
+    except Exception:
+        return result("SKIP", "claim_sql_unverified")
+    return result("SKIP", "unexpected_probe_result")
+
+
 def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_model_inventory: bool = False,
                  probe_model_inference: bool = False,
@@ -638,6 +694,8 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_worker_lease: bool = False,
                  probe_lease_renewal: bool = False,
                  probe_handoff_owner: bool = False,
+                 probe_schedule_claim: bool = False,
+                 schedule_id: str | None = None,
                  lease_schema: str | None = None
                  ) -> dict[str, Any]:
     """Run independent reviewed probes even when another component fails."""
@@ -688,11 +746,20 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         worker_status=workers["status"], renewal_status=renewal["status"],
         sql_config=sql_config, lease_schema=lease_schema,
     )
+    schedule_claim = _schedule_claim(
+        probe_network=probe_network, probe_sql_read=probe_sql_read,
+        probe_worker_identities=probe_worker_identities,
+        probe_schedule_claim=probe_schedule_claim,
+        sql_read_status=sql_read["status"], worker_status=workers["status"],
+        sql_config=sql_config, schedule_id=schedule_id,
+        lease_schema=lease_schema,
+    )
     rows.extend((
         sql_read,
         lease_snapshot,
         renewal,
         owner,
+        schedule_claim,
         _record("ES-MAPPING", "es", "authenticated_es_mapping", "NOT_TESTED",
                 "es_tls_mapping_not_aggregated", depends_on=("ES-TCP",)),
         inventory,
@@ -731,6 +798,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
     parser.add_argument("--probe-sql-read", action="store_true",
                         help="With --probe-network, make one TLS-verified ODBC constant SELECT using dedicated operator SRAF_OFF1G_SQL_* secrets.")
+    parser.add_argument("--probe-schedule-claim", action="store_true",
+                        help="With network, SQL-read and worker-identities flags, take two 15s-apart SQL ledger counts for SRAF_OFF1L_SCHEDULE_ID; never calls claim_due.")
     parser.add_argument("--probe-handoff-owner", action="store_true",
                         help="With ALL network/SQL/lease/renewal/worker-identity flags, compare the local Handoff process's inherited explicit owner with one SQL lease predicate.")
     parser.add_argument("--probe-lease-renewal", action="store_true",
@@ -787,6 +856,11 @@ def main(argv: list[str] | None = None) -> int:
                               probe_worker_lease=args.probe_worker_lease,
                               probe_lease_renewal=args.probe_lease_renewal,
                               probe_handoff_owner=args.probe_handoff_owner,
+                              probe_schedule_claim=args.probe_schedule_claim,
+                              schedule_id=(os.environ.get(SCHEDULE_ID_KEY)
+                                   if (args.probe_network and args.probe_sql_read
+                                       and args.probe_worker_identities
+                                       and args.probe_schedule_claim) else None),
                               lease_schema=lease_schema)
     except Exception:
         print(json.dumps({"schema": SCHEMA, "mode": MODE,
