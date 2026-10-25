@@ -58,3 +58,7 @@
 ## 2026-10-25 OFF-1M additional Schedule-link CLI flag
 
 - `--probe-schedule-link` requires `--probe-network --probe-sql-read --probe-worker-identities --probe-schedule-claim` and prior SCHEDULE-CLAIM PASS. Adds `SCHEDULE-LINK` row with dependencies SQL-READ and SCHEDULE-CLAIM. Only SQL-computed 3-flag linkage of enabled/approved active schedule, latest actor-labelled scheduled run and later next-run timestamp can PASS; all missing/malformed/no-link statuses SKIP. It does not emit IDs/timestamps or expose new HTTP APIs and never upgrades `feature_acceptance=NOT_TESTED`.
+
+## 2026-10-25 OFF-1N extra Handoff-ack CLI contract
+
+- `--probe-handoff-ack` requires `--probe-network --probe-sql-read --probe-worker-identities --probe-schedule-claim --probe-schedule-link` and an actual previous `SCHEDULE-LINK: PASS`. New `HANDOFF-ACK` row depends on SQL-READ/SCHEDULE-LINK and may PASS only if both SQL-computed acknowledgment predicates are 1; otherwise NOT_TESTED/SKIP. No new HTTP endpoint or job start; no remote job identifiers/data returned, `feature_acceptance=NOT_TESTED`, FULL_LIVE not implied.

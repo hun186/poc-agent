@@ -114,3 +114,7 @@
 ## 2026-10-25 OFF-1M remaining attribution gap
 
 - Actor-labelled run ledger and a currently coherent-looking active-version/latest-run/next-run SQL predicate are **not** authenticated local Schedule PID execution, atomic transaction proof, or exact attribution to OFF-1L's just-counted row. Normal SQL Server read committed isolation permits concurrent table changes; false inference must be prevented by partial-only language. Disabled/reconfigured/quiet schedules legitimately produce SKIP. Real Linux/SQL Server deployment, DBA SELECT privileges, Handoff/Report Job/DOCX and physical airgap remain separate acceptance tasks.
+
+## 2026-10-25 OFF-1N evidence limits
+
+- A valid SQL `requirement_handoff_submissions` row and non-null remote_job_id/dispatched_at only prove recorded handoff acknowledgement; neither the remote HTTP service nor actual Report Job execution is independently checked. Cross-table SELECT is not a serializable history or unique binding to OFF-1L's newly counted run. Actual Handoff/Report Job process correlation, provider job completion, DOCX artifact integrity and private physical airgap acceptance remain pending.
