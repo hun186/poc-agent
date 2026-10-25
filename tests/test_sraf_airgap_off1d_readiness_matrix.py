@@ -96,7 +96,7 @@ def test_default_is_local_only_and_never_networks(monkeypatch):
     assert rows["API-HEALTH"]["status"] == "SKIP"
     assert rows["API-HEALTH"]["depends_on"] == ["API-TCP"]
     assert all(rows[key]["status"] == "NOT_TESTED" for key in (
-        "SQL-READ", "HANDOFF-LEASE", "HANDOFF-RENEWAL", "HANDOFF-OWNER", "SCHEDULE-CLAIM", "SCHEDULE-LINK", "HANDOFF-ACK", "REPORT-CHECKPOINT", "ES-MAPPING", "LLM-INVENTORY", "LLM-INFERENCE",
+        "SQL-READ", "HANDOFF-LEASE", "HANDOFF-RENEWAL", "HANDOFF-OWNER", "SCHEDULE-CLAIM", "SCHEDULE-LINK", "HANDOFF-ACK", "REPORT-CHECKPOINT", "DOCX-BYTES", "ES-MAPPING", "LLM-INVENTORY", "LLM-INFERENCE",
         "WORKERS", "WORD", "ISOLATION"))
     assert all(item["feature_acceptance"] == "NOT_TESTED"
                for item in report["results"])
@@ -456,9 +456,9 @@ def test_aggregated_counts_and_fixed_dependency_graph(monkeypatch):
     _tcp(monkeypatch, {"es": "FAIL"})
     _health(monkeypatch)
     report = matrix.build_report(_cfg(), probe_network=True)
-    assert len(report["results"]) == 20
-    assert sum(report["counts"].values()) == 20
-    assert len({item["id"] for item in report["results"]}) == 20
+    assert len(report["results"]) == 21
+    assert sum(report["counts"].values()) == 21
+    assert len({item["id"] for item in report["results"]}) == 21
     rows = _rows(report)
     assert rows["ES-MAPPING"]["depends_on"] == ["ES-TCP"]
     assert rows["LLM-INFERENCE"]["depends_on"] == ["LLM-TCP", "LLM-INVENTORY"]
@@ -470,6 +470,7 @@ def test_aggregated_counts_and_fixed_dependency_graph(monkeypatch):
     assert rows["SCHEDULE-LINK"]["depends_on"] == ["SQL-READ", "SCHEDULE-CLAIM"]
     assert rows["HANDOFF-ACK"]["depends_on"] == ["SQL-READ", "SCHEDULE-LINK"]
     assert rows["REPORT-CHECKPOINT"]["depends_on"] == ["SQL-READ", "HANDOFF-ACK"]
+    assert rows["DOCX-BYTES"]["depends_on"] == ["SQL-READ", "REPORT-CHECKPOINT"]
     assert rows["WORD"]["depends_on"] == ["WORKERS", "LLM-INFERENCE"]
 
 
