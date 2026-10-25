@@ -97,3 +97,7 @@
 ## 2026-10-25 OFF-1L first Hosted verification — PR #308
 
 - GitHub Actions run #40165593763 on exact feature-and-docs HEAD `1578a4c17e11fdcd32b5d59d25f84c0c85495c8e` **SUCCESS**, inspected Hosted job log: OFF-0 schema-only 19 PASS, 1,179 focused pytest PASS (including OFF-1L strict flags/redaction/SQL-count negatives), and 2 legacy Worker E2E PASS. This is only CI mock ODBC, not live SQL Server, Schedule PID attribution or actual airgap acceptance. This memory evidence update itself produces a new commit requiring fresh exact-HEAD Hosted run and Codex review; no Merge.
+
+## 2026-10-25 OFF-1L Codex P2 response — schema override
+
+- Codex automatic first-review P2 identified that the matrix loaded SRAF_OFF1I_SQL_SCHEMA only for Handoff lease flags and not the independent four-flag Schedule-only check. Now include --probe-schedule-claim in the existing schema-reading condition (still requires network+sql-read) and add direct CLI regression verifying the custom schema flows to the SQL probe without any Handoff opt-in. Existing default and partial/no-network semantics preserved. New HEAD must pass Hosted CI and get fresh exact-head Codex review; no actual private SQL or user merge authorization.

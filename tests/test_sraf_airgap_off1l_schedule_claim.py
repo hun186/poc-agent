@@ -180,3 +180,27 @@ def test_matrix_missing_schedule_id_no_sql(monkeypatch):
         probe_schedule_claim=True, sql_read_status="PASS", worker_status="PASS",
         sql_config=config(), schedule_id=None, lease_schema=None)
     assert result["status"] == "SKIP" and result["reason"] == "claim_schedule_id_invalid"
+
+def test_cli_schedule_only_honors_existing_schema_override_without_handoff_flags(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(matrix, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(matrix.tcp, "_effective_runtime_config",
+                        lambda root: {"safe": "value"})
+    monkeypatch.setenv("SRAF_OFF1I_SQL_SCHEMA", "tenant_sched")
+    monkeypatch.setenv("SRAF_OFF1L_SCHEDULE_ID", SID)
+    observed = []
+
+    def report(*args, **kwargs):
+        observed.append(kwargs)
+        return {"overall": "INCOMPLETE", "feature_acceptance": "NOT_TESTED"}
+    monkeypatch.setattr(matrix, "build_report", report)
+    assert matrix.main(["--probe-network", "--probe-sql-read",
+                        "--probe-worker-identities", "--probe-schedule-claim"]) == 2
+    assert len(observed) == 1
+    assert observed[0]["lease_schema"] == "tenant_sched"
+    assert observed[0]["schedule_id"] == SID
+    assert observed[0]["probe_schedule_claim"] is True
+    assert observed[0]["probe_worker_lease"] is False
+    assert observed[0]["probe_lease_renewal"] is False
+    assert json.loads(capsys.readouterr().out)["overall"] == "INCOMPLETE"

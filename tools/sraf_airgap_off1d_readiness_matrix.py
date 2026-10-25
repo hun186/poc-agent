@@ -844,7 +844,8 @@ def main(argv: list[str] | None = None) -> int:
                    if args.probe_network and args.probe_sql_read else None)
         lease_schema = (os.environ.get(LEASE_SCHEMA_KEY, LEASE_SCHEMA_DEFAULT)
                         if args.probe_network and args.probe_sql_read
-                        and (args.probe_worker_lease or args.probe_lease_renewal)
+                        and (args.probe_worker_lease or args.probe_lease_renewal
+                             or args.probe_schedule_claim)
                         else None)
         report = build_report(cfg, probe_network=args.probe_network,
                               probe_model_inventory=args.probe_llm_inventory,
