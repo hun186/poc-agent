@@ -106,3 +106,7 @@
 ## 2026-10-24 OFF-1K main synchronization note
 
 - PR #289 P2.1 URL-encoded Preview's 400/422 response split and dependency-version contract note were preserved during OFF-1K branch update; PR #289 is now merged into main, though strict HTTP response consistency remains an optional future decision. An earlier OFF-1K Codex CLEAN/CI is stale after this branch integration; run checks again on the exact new HEAD. No real Linux/SQL acceptance inferred.
+
+## 2026-10-25 OFF-1L current limitations
+
+- requirement_batch_runs.created_by is application-supplied and cannot identify which local Schedule PID created a run. A quiet schedule normally yields SKIP in the fixed 15-second window. DBA SELECT privileges, live SQL v4 schema, Report Job and DOCX acceptance cannot be established from Hosted mock ODBC tests.

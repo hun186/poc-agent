@@ -50,3 +50,7 @@
 ## 2026-10-24 OFF-1K optional CLI owner-correlation flag
 
 - `--probe-handoff-owner` requires `--probe-network --probe-sql-read --probe-worker-lease --probe-lease-renewal --probe-worker-identities` and prior `WORKERS` and `HANDOFF-RENEWAL` PASS, so the user's opt-in includes OFF-1J 15-second double SQL heartbeat read. Adds `HANDOFF-OWNER` (depends on WORKERS/HANDOFF-RENEWAL). Uses explicit local process birth env owner ID and a single byte-exact parameterized SQL owner equality predicate. Default is NOT_TESTED/no extra SQL or environ read, positive means identity-only snapshot, feature_acceptance remains NOT_TESTED, no new HTTP route or FULL_LIVE.
+
+## 2026-10-25 OFF-1L optional operator CLI contract
+
+- --probe-schedule-claim requires --probe-network --probe-sql-read --probe-worker-identities, valid SRAF_OFF1L_SCHEDULE_ID (sch_ + 32 lowercase hex), and SQL-READ/WORKERS PASS. SCHEDULE-CLAIM row depends on SQL-READ and WORKERS, reporting NOT_TESTED/SKIP or a strictly grown actor-labelled scheduled-run count. Counts/ID never printed, no new HTTP route, feature_acceptance remains NOT_TESTED.

@@ -54,3 +54,8 @@
 
 - Verify Hosted OFF-1K regression/legacy Worker E2E/19 OFF-0 schema checks on exact current HEAD; request formal Codex Review and resolve findings, then only Merge on explicit user instruction.
 - Later collect operator-authorized Linux/sql instance evidence; assess deployments whose owner comes from dotenv after process launch or uses default `handoff-PID`, with a separately reviewed agent attestation mechanism if needed. Confirm lease renewal owner/generation atomicity and actual successful handoff, Schedule due claim, Report Job Worker, Word and physical isolation independently. Never promote this snapshot to FULL_LIVE.
+
+## 2026-10-25 OFF-1L release gates
+
+- Verify exact-head OFF-1L/legacy OFF-1B Hosted focused tests, 2 Worker E2E, 19 OFF-0 contract checks. Perform formal Codex Review and address findings before any explicit-user-authorized merge.
+- Real private Linux SQL Server operator credentials, schema correctness and actual Schedule Worker -> claim process attribution remain pending. Actor-labelled SQL row creation is not a securely authenticated local PID. Handoff submission/reconciliation, Report Job completion, DOCX and isolation require separate evidence.

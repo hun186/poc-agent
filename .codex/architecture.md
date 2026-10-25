@@ -64,3 +64,7 @@
 ## 2026-10-24 OFF-1K partial local owner correlation
 
 - `tools/sraf_airgap_off1k_handoff_owner.py` composes canonical file-bound `verify_worker_identity` Handoff role checks, bounded initial /proc environ read of a single explicitly inherited owner ID, and one known-schema ODBC18/TLS SQL predicate query of lease owner equality. Rechecks PID/start/owner after SQL; no arbitrary path, dotenv evaluation, Worker start/stop, SQL DML/lease mutations or native credential/error exposure. Because bootstrap can load late values, absent initial owner is SKIP, never PID-based guess. `HANDOFF-OWNER` remains independent partial observation, not durable job or process-to-lease-session attestation.
+
+## 2026-10-25 OFF-1L read-only Schedule SQL ledger observation
+
+- Independent tools/sraf_airgap_off1l_schedule_claim.py observes two 15s-separated SQL COUNT_BIG snapshots for one verified canonical schedule ID with scheduled trigger and worker application-actor predicate. Reuses OFF-1G strict TLS private-IP ODBC principal, SQL-READ and WORKERS matrix gates. No SQL mutations, Requirement content, schedule enumeration or new scheduler; the actor label is not an authenticated process identity.
