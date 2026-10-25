@@ -103,3 +103,7 @@
 ## 2026-10-25 OFF-1P bounded real published DOCX byte proof
 
 - Extend SQL-only OFF-1O incrementally with separately opted-in **local file inspection**, not new Report Job APIs or active scheduling. Use frozen output-root fingerprint plus strict publisher path, fd-relative nofollow regular-file reads, capped file/ZIP resource costs and direct SHA256 comparison against SQL. Never print secret-bearing SQL row, path, hash or DOCX contents. Treat only actual byte/hash/structure match as partial PASS; keep remote Report Job / full E2E pending.
+
+## 2026-10-25 OFF-1P root-file TOCTOU and ZIP corruption resolution
+
+- Do not consider final-component O_NOFOLLOW sufficient if an ancestor can be renamed during an ODBC round trip. Open and pin the output root by per-component O_NOFOLLOW traversal **before** SQL; use only retained dirfd for item/file traversal after SQL. Treat zlib/EOF compressed-stream corruption as explicit artifact structure FAIL when the persisted checksum matches. Avoid showing paths/digests or claiming remote HTTP/full acceptance.

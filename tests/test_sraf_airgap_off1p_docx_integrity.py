@@ -219,7 +219,6 @@ def test_sql_round_trip_ancestor_symlink_swap_cannot_redirect_root(tmp_path, mon
     (root / ITEM / "summary.docx").write_bytes(original)
     outside_parent = tmp_path / "attacker"
     (outside_parent / "outputs" / ITEM).mkdir(parents=True)
-    malicious = original.replace(b"report", b"secret")
     # Different valid ZIP bytes; malicious content only in a different tree.
     altered = io.BytesIO()
     with zipfile.ZipFile(altered, "w", zipfile.ZIP_DEFLATED) as z:

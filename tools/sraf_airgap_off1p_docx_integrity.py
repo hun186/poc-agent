@@ -244,6 +244,8 @@ def probe_docx_byte_integrity(cfg: dict[str, str], *,
         root_fd = _pin_root_directory(root)
         root_fp = output_root_fingerprint(root)
     except (OSError, ValueError):
+        if root_fd is not None:
+            os.close(root_fd)
         return _result("SKIP", "docx_root_invalid")
     try:
         row = _read_reference(connstr, schema, schedule_id)

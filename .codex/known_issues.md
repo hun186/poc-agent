@@ -126,3 +126,7 @@
 ## 2026-10-25 OFF-1P evidence limits and private host restrictions
 
 - Real DOCX byte match with a database-recorded digest establishes local published file consistency only: the digest itself was persisted by application, not independent provenance or verified Report Job API status. One completed selected run item does not imply the whole batch succeeded. Operator root must exist, not be symlink and match frozen canonical path fingerprint; fd-relative Linux O_NOFOLLOW and 16MiB file, 64MiB zip-uncompressed limits deliberately SKIP larger/unsupported artifacts. Hosted unit tests use temporary local DOCX and mocked SQL; real SQL deployment/operator privileges, authenticated Report Job GET, Agent/LLM/ES execution, and physical isolation still pending.
+
+## 2026-10-25 OFF-1P two Codex P2 corrections
+
+- Earlier OFF-1P opened absolute root after SQL, allowing replacement of a parent symlink; fixed by pre-pinning every root path component with O_NOFOLLOW and carrying the FD over the SQL query. ZIP `zlib.error` on a digest-matching corrupt DEFLATE stream now returns FAIL, not SKIP; both reproduced in regression tests. Still no real operator Linux/SQL/DOCX acceptance. Root path whose ancestors are symlinks is conservatively rejected; runtime mutable storage mount/device trust and authenticated remote job response remain independent tasks.

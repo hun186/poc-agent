@@ -136,3 +136,7 @@
 ## 2026-10-25 OFF-1P initial Hosted CI evidence
 
 - On PR #312 commit `3b5af4692f5d3500bb29f9760122124b90e16961`, Actions run #40206818095 completed SUCCESS: 1,257 focused unit PASS, 2 Worker E2E PASS, and OFF-0 19 schema-only checks PASS. Mock ODBC and temporary local DOCX tests are not live Linux SQL/remote Report Job or physical airgap acceptance. Revalidate final HEAD before merging.
+
+## 2026-10-25 OFF-1P formal Codex P2 remediation
+
+- Formal Codex at HEAD `b07b1e07fe23e128c32355cb1411318cd9768197` reported two P2: a mutable ancestor of the configured artifact root could be symlink-swapped during SQL and pass using external data, and `zlib.error` from corrupt ZIP compressed bytes escaped to SKIP. Updated OFF-1P to pin the root descriptor by component-wise nofollow traversal **before** `_read_reference()`, and retain it through SQL and fd-relative read; ZIP validator now treats `zlib.error` / EOF corruption as invalid structure. Two specific reproductions added; Actions #40207552259 at `b290783089098208e587be37f39c600aa0006ab1` **SUCCESS**, Hosted log **1,259 focused + 2 Worker E2E + 19 OFF-0**. The final documentation/FD exception close commit needs fresh exact-head Hosted CI and formal Codex review. No merge and no real deployment acceptance.
