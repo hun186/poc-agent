@@ -68,3 +68,7 @@
 ## 2026-10-25 OFF-1L read-only Schedule SQL ledger observation
 
 - Independent tools/sraf_airgap_off1l_schedule_claim.py observes two 15s-separated SQL COUNT_BIG snapshots for one verified canonical schedule ID with scheduled trigger and worker application-actor predicate. Reuses OFF-1G strict TLS private-IP ODBC principal, SQL-READ and WORKERS matrix gates. No SQL mutations, Requirement content, schedule enumeration or new scheduler; the actor label is not an authenticated process identity.
+
+## 2026-10-25 OFF-1M SQL-side Schedule run linkage predicates
+
+- New tools/sraf_airgap_off1m_schedule_run_link.py reuses OFF-1G strict TLS/private-IP operator SQL connection and OFF-1L canonical schedule selector. The extra query selects one Schedule, joins its active version and latest actor-labelled scheduled batch run, and projects only three CASE integer flags. OFF-1D requires all five explicit opt-ins and preceding SCHEDULE-CLAIM PASS. No runtime schema/mutation/daemon changes; the latest run can be different from the one OFF-1L counted and cross-table read is not an atomic identity proof.

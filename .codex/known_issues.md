@@ -110,3 +110,7 @@
 ## 2026-10-25 OFF-1L current limitations
 
 - requirement_batch_runs.created_by is application-supplied and cannot identify which local Schedule PID created a run. A quiet schedule normally yields SKIP in the fixed 15-second window. DBA SELECT privileges, live SQL v4 schema, Report Job and DOCX acceptance cannot be established from Hosted mock ODBC tests.
+
+## 2026-10-25 OFF-1M remaining attribution gap
+
+- Actor-labelled run ledger and a currently coherent-looking active-version/latest-run/next-run SQL predicate are **not** authenticated local Schedule PID execution, atomic transaction proof, or exact attribution to OFF-1L's just-counted row. Normal SQL Server read committed isolation permits concurrent table changes; false inference must be prevented by partial-only language. Disabled/reconfigured/quiet schedules legitimately produce SKIP. Real Linux/SQL Server deployment, DBA SELECT privileges, Handoff/Report Job/DOCX and physical airgap remain separate acceptance tasks.
