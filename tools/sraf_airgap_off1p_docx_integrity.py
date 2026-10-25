@@ -15,6 +15,7 @@ import re
 import stat
 import sys
 import zipfile
+import zlib
 
 import pyodbc
 
@@ -132,13 +133,34 @@ def _docx_bytes_are_valid(data: bytes) -> bool:
             if pkg.getinfo("word/document.xml").file_size == 0:
                 return False
             return pkg.testzip() is None
-    except (OSError, ValueError, RuntimeError, zipfile.BadZipFile,
-            zipfile.LargeZipFile):
+    except (OSError, ValueError, RuntimeError, zlib.error, EOFError,
+            zipfile.BadZipFile, zipfile.LargeZipFile):
         return False
 
 
-def _inspect_local_docx(root: Path, relative: str, digest: str) -> str:
-    root_fd = parent_fd = file_fd = None
+def _pin_root_directory(root: Path) -> int:
+    """Pin every ancestor with openat(O_NOFOLLOW) before touching SQL."""
+    parts = root.parts
+    if (not root.is_absolute() or len(parts) < 2
+            or any(part in ("", ".", "..") for part in parts[1:])):
+        raise ValueError("root_path_invalid")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    fd = os.open("/", flags)
+    try:
+        for part in parts[1:]:
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        if not stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise ValueError("root_not_directory")
+        return fd
+    except Exception:
+        os.close(fd)
+        raise
+
+
+def _inspect_local_docx(root_fd: int, relative: str, digest: str) -> str:
+    parent_fd = file_fd = None
     try:
         parts = PurePosixPath(relative).parts
         if (len(parts) != 2
@@ -149,7 +171,6 @@ def _inspect_local_docx(root: Path, relative: str, digest: str) -> str:
                 or not parts[1].lower().endswith(".docx")):
             return "docx_path_invalid"
         flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
-        root_fd = os.open(root, flags | os.O_DIRECTORY)
         parent_fd = os.open(parts[0], flags | os.O_DIRECTORY, dir_fd=root_fd)
         file_fd = os.open(parts[1], flags | os.O_NONBLOCK, dir_fd=parent_fd)
         before = os.fstat(file_fd)
@@ -180,7 +201,7 @@ def _inspect_local_docx(root: Path, relative: str, digest: str) -> str:
     except (OSError, ValueError, UnicodeError):
         return "docx_file_unverified"
     finally:
-        for fd in (file_fd, parent_fd, root_fd):
+        for fd in (file_fd, parent_fd):
             if fd is not None:
                 try:
                     os.close(fd)
@@ -203,14 +224,7 @@ def probe_docx_byte_integrity(cfg: dict[str, str], *,
             or "\x00" in artifact_root
             or len(artifact_root.encode("utf-8")) > 1024):
         return _result("SKIP", "docx_root_invalid")
-    try:
-        root = Path(artifact_root)
-        if root.is_symlink() or not root.is_dir():
-            return _result("SKIP", "docx_root_invalid")
-        root = root.resolve(strict=True)
-        root_fp = output_root_fingerprint(root)
-    except (OSError, ValueError):
-        return _result("SKIP", "docx_root_invalid")
+    # No root or file opened until selection/SQL input checks are valid.
     connstr = _connection_string(cfg)
     if connstr is None:
         return _result("SKIP", "docx_sql_config_invalid")
@@ -219,22 +233,37 @@ def probe_docx_byte_integrity(cfg: dict[str, str], *,
             return _result("SKIP", "docx_driver_unavailable")
     except Exception:
         return _result("SKIP", "docx_driver_unavailable")
-    row = _read_reference(connstr, schema, schedule_id)
-    if isinstance(row, str):
-        return _result("SKIP", row, executed=True)
-    item_id, relative, expected, persisted_root_fp = row
-    if (not _SAFE_ITEM_RE.fullmatch(item_id)
-            or not _DIGEST_RE.fullmatch(expected)
-            or not _DIGEST_RE.fullmatch(persisted_root_fp)):
-        return _result("SKIP", "docx_reference_invalid", executed=True)
-    parts = relative.split("/")
-    if len(parts) != 2 or parts[0] != item_id[:64]:
-        return _result("SKIP", "docx_path_invalid", executed=True)
-    if not hmac.compare_digest(root_fp, persisted_root_fp):
-        return _result("SKIP", "docx_root_mismatch", executed=True)
-    result = _inspect_local_docx(root, relative, expected)
-    if result == "docx_local_bytes_match":
-        return _result("PASS", result, executed=True, confirmed=True)
-    if result in ("docx_digest_mismatch", "docx_structure_invalid"):
-        return _result("FAIL", result, executed=True)
-    return _result("SKIP", result, executed=True)
+    # Root descriptor is acquired BEFORE network SQL can yield/release the GIL.
+    # Its ancestors cannot be followed via symlinks or silently redirected
+    # during the SQL round trip. Never reopen the absolute root afterwards.
+    root_fd = None
+    try:
+        root = Path(artifact_root)
+        if ("." in artifact_root.split("/") or ".." in artifact_root.split("/")):
+            return _result("SKIP", "docx_root_invalid")
+        root_fd = _pin_root_directory(root)
+        root_fp = output_root_fingerprint(root)
+    except (OSError, ValueError):
+        return _result("SKIP", "docx_root_invalid")
+    try:
+        row = _read_reference(connstr, schema, schedule_id)
+        if isinstance(row, str):
+            return _result("SKIP", row, executed=True)
+        item_id, relative, expected, persisted_root_fp = row
+        if (not _SAFE_ITEM_RE.fullmatch(item_id)
+                or not _DIGEST_RE.fullmatch(expected)
+                or not _DIGEST_RE.fullmatch(persisted_root_fp)):
+            return _result("SKIP", "docx_reference_invalid", executed=True)
+        parts = relative.split("/")
+        if len(parts) != 2 or parts[0] != item_id[:64]:
+            return _result("SKIP", "docx_path_invalid", executed=True)
+        if not hmac.compare_digest(root_fp, persisted_root_fp):
+            return _result("SKIP", "docx_root_mismatch", executed=True)
+        result = _inspect_local_docx(root_fd, relative, expected)
+        if result == "docx_local_bytes_match":
+            return _result("PASS", result, executed=True, confirmed=True)
+        if result in ("docx_digest_mismatch", "docx_structure_invalid"):
+            return _result("FAIL", result, executed=True)
+        return _result("SKIP", result, executed=True)
+    finally:
+        os.close(root_fd)
