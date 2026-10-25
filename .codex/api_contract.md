@@ -62,3 +62,7 @@
 ## 2026-10-25 OFF-1N extra Handoff-ack CLI contract
 
 - `--probe-handoff-ack` requires `--probe-network --probe-sql-read --probe-worker-identities --probe-schedule-claim --probe-schedule-link` and an actual previous `SCHEDULE-LINK: PASS`. New `HANDOFF-ACK` row depends on SQL-READ/SCHEDULE-LINK and may PASS only if both SQL-computed acknowledgment predicates are 1; otherwise NOT_TESTED/SKIP. No new HTTP endpoint or job start; no remote job identifiers/data returned, `feature_acceptance=NOT_TESTED`, FULL_LIVE not implied.
+
+## 2026-10-25 OFF-1O additional Report checkpoint CLI
+
+- `--probe-report-checkpoint` adds `REPORT-CHECKPOINT` row and requires existing six OFF-1N flags `--probe-network --probe-sql-read --probe-worker-identities --probe-schedule-claim --probe-schedule-link --probe-handoff-ack` plus prior `HANDOFF-ACK: PASS`. The SQL returns only two predicates about the latest actor-labelled run's persisted Handoff/reconciled time and one same item's Report Job completed/artifact reconcile metadata. No IDs, counts, digest, paths, credentials or native SQL errors appear in JSON; no new HTTP route or artifact read. `feature_acceptance=NOT_TESTED` and incomplete overall remain.

@@ -118,3 +118,7 @@
 ## 2026-10-25 OFF-1N evidence limits
 
 - A valid SQL `requirement_handoff_submissions` row and non-null remote_job_id/dispatched_at only prove recorded handoff acknowledgement; neither the remote HTTP service nor actual Report Job execution is independently checked. Cross-table SELECT is not a serializable history or unique binding to OFF-1L's newly counted run. Actual Handoff/Report Job process correlation, provider job completion, DOCX artifact integrity and private physical airgap acceptance remain pending.
+
+## 2026-10-25 OFF-1O persisted checkpoint is NOT Report Job proof
+
+- `remote_job_state=completed`, `artifact_sha256` and `artifact_reconciled_at` are SQL-stored data; OFF-1O does not authenticate the actual Report Job API status or recompute real DOCX bytes. The presence of one completed selected item cannot certify all items or whole-batch success. Concurrent SQL writes, non-serializable cross-table reads and application actor labels preclude definitive attribution to OFF-1L's specific new row or local PID. Live private SQL/remote API/DOCX and isolation acceptance pending.
