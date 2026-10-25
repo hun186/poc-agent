@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 import zipfile
+import zlib
 
 import pytest
 
@@ -206,3 +207,59 @@ def test_matrix_rejects_forged_positive(monkeypatch):
         lease_schema=None,artifact_root="/tmp/allowed")
     assert row["status"] == "SKIP" and row["reason"] == "unexpected_probe_result"
     assert SECRET not in json.dumps(row)
+
+
+def test_sql_round_trip_ancestor_symlink_swap_cannot_redirect_root(tmp_path, monkeypatch):
+    """Reproduce Codex P2: parent replaced while SQL is in progress."""
+    live_parent = tmp_path / "original"
+    live_parent.mkdir()
+    root = live_parent / "outputs"
+    (root / ITEM).mkdir(parents=True)
+    original = payload()
+    (root / ITEM / "summary.docx").write_bytes(original)
+    outside_parent = tmp_path / "attacker"
+    (outside_parent / "outputs" / ITEM).mkdir(parents=True)
+    malicious = original.replace(b"report", b"secret")
+    # Different valid ZIP bytes; malicious content only in a different tree.
+    altered = io.BytesIO()
+    with zipfile.ZipFile(altered, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("word/document.xml", "<document><p>outside-only</p></document>")
+    attack_bytes = altered.getvalue()
+    (outside_parent / "outputs" / ITEM / "summary.docx").write_bytes(attack_bytes)
+    frozen_fp = docx.output_root_fingerprint(root)
+    monkeypatch.setattr(docx.pyodbc, "drivers", lambda: [docx.DRIVER])
+
+    def sql_read(_connstr, _schema, _schedule):
+        live_parent.rename(tmp_path / "renamed_original")
+        live_parent.symlink_to(outside_parent, target_is_directory=True)
+        return (ITEM, ITEM + "/summary.docx",
+                hashlib.sha256(attack_bytes).hexdigest(), frozen_fp)
+
+    monkeypatch.setattr(docx, "_read_reference", sql_read)
+    result = docx.probe_docx_byte_integrity(
+        cfg(), schedule_id=SID, artifact_root=str(root))
+    # A vulnerable absolute-path reopen would read the attacker's bytes and PASS.
+    assert (result.status, result.reason) == ("FAIL", "docx_digest_mismatch")
+    assert not result.evidence["local_docx_byte_match"]
+
+
+def test_bad_deflate_stream_with_matching_sha_is_fail_not_skip(tmp_path, monkeypatch):
+    """Valid ZIP directory plus reserved compressed block must be corruption."""
+    raw = bytearray(payload())
+    with zipfile.ZipFile(io.BytesIO(raw)) as package:
+        entry = package.getinfo("word/document.xml")
+    pos = entry.header_offset
+    name_len = int.from_bytes(raw[pos + 26:pos + 28], "little")
+    extra_len = int.from_bytes(raw[pos + 28:pos + 30], "little")
+    start = pos + 30 + name_len + extra_len
+    raw[start] = (raw[start] & ~0x07) | 0x07
+    corrupted = bytes(raw)
+    with zipfile.ZipFile(io.BytesIO(corrupted)) as package:
+        with pytest.raises(zlib.error):
+            package.testzip()
+    root = setup(tmp_path, monkeypatch, data=corrupted)
+    result = docx.probe_docx_byte_integrity(
+        cfg(), schedule_id=SID, artifact_root=str(root))
+    assert (result.status, result.reason) == ("FAIL", "docx_structure_invalid")
+    assert not result.evidence["local_docx_byte_match"]
