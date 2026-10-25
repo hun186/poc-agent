@@ -93,3 +93,7 @@
 
 - OFF-1K PR #307 merged to main `0702f2be4d9107c1e43f50d1aae7181dded7c9d0` after Hosted 1,154 + 2 Worker E2E + 19 OFF-0 PASS and Codex CLEAN; actual private SQL/Linux acceptance remains pending.
 - OFF-1L `feat/sraf-off1l-schedule-claim-ledger` adds default-off read-only SQL actor-labelled ledger growth observation under four explicit flags: network/sql-read/worker-identities/schedule-claim and prior SQL-READ/WORKERS PASS. Two separate strict ODBC18 private IPv4/TLS SQL COUNT_BIG snapshots scoped to one canonical SRAF_OFF1L_SCHEDULE_ID, 15 seconds apart. Never triggers claim_due or reports run counts, ID or credentials. Growing actor-labelled ledger **does not prove local PID work, Handoff, report or full E2E**. Negative tests, CI workflow and operations guide added. Hosted CI, formal Codex Review and user-authorized merge are pending.
+
+## 2026-10-25 OFF-1L first Hosted verification — PR #308
+
+- GitHub Actions run #40165593763 on exact feature-and-docs HEAD `1578a4c17e11fdcd32b5d59d25f84c0c85495c8e` **SUCCESS**, inspected Hosted job log: OFF-0 schema-only 19 PASS, 1,179 focused pytest PASS (including OFF-1L strict flags/redaction/SQL-count negatives), and 2 legacy Worker E2E PASS. This is only CI mock ODBC, not live SQL Server, Schedule PID attribution or actual airgap acceptance. This memory evidence update itself produces a new commit requiring fresh exact-HEAD Hosted run and Codex review; no Merge.
