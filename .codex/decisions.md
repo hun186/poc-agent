@@ -83,3 +83,7 @@
 ## 2026-10-24 OFF-1K explicit birth-env owner binding decision
 
 - Do not assume owner=`handoff-<pid>` because `build_coordinator_from_env` may receive `REQUIREMENT_HANDOFF_OWNER_ID` from post-exec `bootstrap_env` dotenv. Only accept a unique bounded printable ASCII owner from canonical verified Handoff PID's **initial** Linux /proc environment, for which bootstrap guarantees OS values take precedence. Avoid printing owner/env; SQL computes exact UTF16 binary owner comparison against a parameter after all six flags plus prior worker/lease-renewal evidence. Revalidate PID/start/env after DB. This is at most point-in-time ownership correlation; real DB renewal on the same generation, job progress, Report Job and DOCX remain distinct gates.
+
+## 2026-10-25 OFF-1L non-invasive monitoring decision
+
+- Never trigger claim_due() or alter live schedules for a readiness check. Read only one operator-selected canonical schedule's COUNT_BIG twice in isolated bounded SQL connections; observe a run's actor label without claiming process ownership or completion. Require actual SQL DBA permissions and explicit operator opt-in.

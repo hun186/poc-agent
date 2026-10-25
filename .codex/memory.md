@@ -88,3 +88,16 @@
 
 - Preserved both OFF-1K and merged Product PR #289 history with non-force, two-parent merge `d455853eb805fd9594c46fbc9a20bbb7fba1cd8c` (parents OFF-1K `c050de9dc8f7dc5b4fd02de81bd07048b9df7f9c` and main `40b8bb9f1122090f8e025c1054b9b319ab4f92aa`). PR #307 conflicts resolved, now GitHub mergeable; separate user authorization still required for actual merge.
 - On that merge commit Hosted workflow run [#40096081791](https://github.com/hun186/poc-agent/actions/runs/40096081791) returned SUCCESS: 1,154 focused unit regressions, 2 legacy E2E Worker identity tests, OFF-0 schema-only 19 checks PASS; config-only non-network probes remain partial. Vercel deployment status is a separate free-tier quota failure, not an OFF-1 runtime test result. This entry is an additional documentation commit, so fresh exact-final-HEAD Hosted CI and formal Codex review must run before merge. No private Linux SQL or physical air-gap acceptance performed.
+
+## 2026-10-25 OFF-1L Schedule actor-labelled run observation — current work
+
+- OFF-1K PR #307 merged to main `0702f2be4d9107c1e43f50d1aae7181dded7c9d0` after Hosted 1,154 + 2 Worker E2E + 19 OFF-0 PASS and Codex CLEAN; actual private SQL/Linux acceptance remains pending.
+- OFF-1L `feat/sraf-off1l-schedule-claim-ledger` adds default-off read-only SQL actor-labelled ledger growth observation under four explicit flags: network/sql-read/worker-identities/schedule-claim and prior SQL-READ/WORKERS PASS. Two separate strict ODBC18 private IPv4/TLS SQL COUNT_BIG snapshots scoped to one canonical SRAF_OFF1L_SCHEDULE_ID, 15 seconds apart. Never triggers claim_due or reports run counts, ID or credentials. Growing actor-labelled ledger **does not prove local PID work, Handoff, report or full E2E**. Negative tests, CI workflow and operations guide added. Hosted CI, formal Codex Review and user-authorized merge are pending.
+
+## 2026-10-25 OFF-1L first Hosted verification — PR #308
+
+- GitHub Actions run #40165593763 on exact feature-and-docs HEAD `1578a4c17e11fdcd32b5d59d25f84c0c85495c8e` **SUCCESS**, inspected Hosted job log: OFF-0 schema-only 19 PASS, 1,179 focused pytest PASS (including OFF-1L strict flags/redaction/SQL-count negatives), and 2 legacy Worker E2E PASS. This is only CI mock ODBC, not live SQL Server, Schedule PID attribution or actual airgap acceptance. This memory evidence update itself produces a new commit requiring fresh exact-HEAD Hosted run and Codex review; no Merge.
+
+## 2026-10-25 OFF-1L Codex P2 response — schema override
+
+- Codex automatic first-review P2 identified that the matrix loaded SRAF_OFF1I_SQL_SCHEMA only for Handoff lease flags and not the independent four-flag Schedule-only check. Now include --probe-schedule-claim in the existing schema-reading condition (still requires network+sql-read) and add direct CLI regression verifying the custom schema flows to the SQL probe without any Handoff opt-in. Existing default and partial/no-network semantics preserved. New HEAD must pass Hosted CI and get fresh exact-head Codex review; no actual private SQL or user merge authorization.
