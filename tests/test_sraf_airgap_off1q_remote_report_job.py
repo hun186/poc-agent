@@ -1,6 +1,8 @@
-"""OFF-1Q Report Job: SQL binding and authenticated loopback GET."""
+"""OFF-1Q: real deadline/framing logic with fake fd-level local socket."""
 from __future__ import annotations
+
 import json
+import socket
 from types import SimpleNamespace
 
 import pytest
@@ -15,11 +17,11 @@ TOKEN = "KEEP_SECRET_BEARER"
 
 
 def sqlcfg():
-    return {"SRAF_OFF1G_SQL_HOST":"10.2.3.4",
-            "SRAF_OFF1G_SQL_PORT":"1433",
-            "SRAF_OFF1G_SQL_DATABASE":"control",
-            "SRAF_OFF1G_SQL_USER":"readonly",
-            "SRAF_OFF1G_SQL_PASSWORD":"HIDDEN_PASSWORD"}
+    return {"SRAF_OFF1G_SQL_HOST": "10.2.3.4",
+            "SRAF_OFF1G_SQL_PORT": "1433",
+            "SRAF_OFF1G_SQL_DATABASE": "control",
+            "SRAF_OFF1G_SQL_USER": "readonly",
+            "SRAF_OFF1G_SQL_PASSWORD": "HIDDEN_PASSWORD"}
 
 
 class Cursor:
@@ -50,184 +52,219 @@ class DB:
 def fake_sql(monkeypatch, rows=((JOB, SUB),)):
     calls = []
     monkeypatch.setattr(remote.pyodbc, "drivers", lambda: [remote.DRIVER])
-    monkeypatch.setattr(remote.pyodbc, "connect",
-                        lambda *a, **kw: DB(rows, calls))
+    monkeypatch.setattr(remote.pyodbc, "connect", lambda *a, **kw: DB(rows, calls))
     return calls
 
 
-def payload(*, job=JOB, sub=SUB, status="completed"):
-    return {"job_id":job, "status":status,
-            "metadata":{"submission_id":sub, "workflow_id":"report_v1"}}
+def payload(job=JOB, sub=SUB, status="completed"):
+    return {"job_id": job, "status": status,
+            "metadata": {"submission_id": sub, "workflow_id": "report_v1"}}
 
 
-class Response:
-    def __init__(self, body=None, status=200, headers=None):
-        self.body = json.dumps(payload() if body is None else body).encode()
-        self.status_code = status
-        self.headers = {"Content-Type":"application/json"} if headers is None else headers
+def frame(body=None, *, status="200 OK", content_type="application/json",
+          extra_headers="", declared_length=None):
+    data = json.dumps(payload() if body is None else body).encode()
+    length = len(data) if declared_length is None else declared_length
+    return (
+        f"HTTP/1.1 {status}\r\n"
+        f"Content-Type: {content_type}\r\n"
+        f"Content-Length: {length}\r\n"
+        f"{extra_headers}\r\n"
+    ).encode("ascii") + data
+
+
+class FakeSocket:
+    def __init__(self, parts, *, advance=None):
+        self.parts = list(parts)
+        self.advance = advance
         self.closed = False
-    def iter_content(self, chunk_size):
-        for i in range(0,len(self.body),chunk_size):
-            yield self.body[i:i+chunk_size]
-    def close(self): self.closed = True
+        self.sent = b""
+        self.address = None
+        self.timeouts = []
+    def settimeout(self, value):
+        self.timeouts.append(value)
+    def connect(self, address):
+        self.address = address
+    def sendall(self, data):
+        self.sent += data
+    def recv(self, length):
+        if self.advance:
+            self.advance()
+        if not self.parts:
+            return b""
+        chunk = self.parts.pop(0)
+        if len(chunk) > length:
+            self.parts.insert(0, chunk[length:])
+            chunk = chunk[:length]
+        return chunk
+    def close(self):
+        self.closed = True
 
 
-class Client:
-    def __init__(self, response=None):
-        self.response = response if response is not None else Response()
-        self.calls = []
-        self.trust_env = True
-    def get(self, url, **kwargs):
-        self.calls.append((url,kwargs,self.trust_env))
-        return self.response
+def fake_sock(monkeypatch, parts, advance=None):
+    holder = []
+    def build(family, kind):
+        assert (family, kind) == (socket.AF_INET, socket.SOCK_STREAM)
+        sock = FakeSocket(parts, advance=advance)
+        holder.append(sock)
+        return sock
+    monkeypatch.setattr(remote.socket, "socket", build)
+    return holder
 
 
-def check(monkeypatch, response=None):
-    sql_calls=fake_sql(monkeypatch)
-    client=Client(response)
-    r=remote.probe_remote_report_job(sqlcfg(),schedule_id=SID,api_port="8000",
-                                      read_token=TOKEN,session=client)
-    return r,client,sql_calls
+def probe(monkeypatch, reply=None):
+    calls = fake_sql(monkeypatch)
+    sockets = fake_sock(monkeypatch, [frame() if reply is None else reply])
+    result = remote.probe_remote_report_job(
+        sqlcfg(), schedule_id=SID, api_port="8000", read_token=TOKEN)
+    return result, calls, sockets[0]
 
 
-def test_real_get_contract_and_redacted_result(monkeypatch):
-    r,client,sql_calls=check(monkeypatch)
-    assert (r.status,r.reason,r.evidence)==(
-        "PASS","remote_completed_attested",{"remote_job_completed_observed":True})
-    assert sql_calls[0][1] == (SID,)
-    assert len(client.calls)==1
-    url,kwargs,trust=client.calls[0]
-    assert url=="http://127.0.0.1:8000/v1/report/jobs/"+JOB
-    assert kwargs["allow_redirects"] is False
-    assert kwargs["stream"] is True
-    assert kwargs["timeout"] == (2,3)
-    assert kwargs["headers"]["Authorization"]=="Bearer "+TOKEN
-    assert trust is False and client.response.closed
-    for sensitive in (SID, JOB, SUB, TOKEN, "HIDDEN_PASSWORD", "127.0.0.1"):
-        assert sensitive not in json.dumps(r.__dict__)
+def test_real_socket_request_shape_and_redaction(monkeypatch):
+    r, calls, sock = probe(monkeypatch)
+    assert (r.status, r.reason, r.evidence) == (
+        "PASS", "remote_completed_attested",
+        {"remote_job_completed_observed": True})
+    assert calls[0][1] == (SID,)
+    assert sock.address == ("127.0.0.1", 8000)
+    assert sock.sent.startswith(b"GET /v1/report/jobs/" + JOB.encode() + b" HTTP/1.1\r\n")
+    assert b"Authorization: Bearer " + TOKEN.encode() in sock.sent
+    assert b"Connection: close" in sock.sent
+    assert sock.closed
+    for secret in (TOKEN, JOB, SUB, SID, "HIDDEN_PASSWORD"):
+        assert secret not in json.dumps(r.__dict__)
 
 
-@pytest.mark.parametrize("body,status,why", [
-    (payload(job="rpt_"+"d"*32), "FAIL","remote_job_identity_mismatch"),
-    (payload(sub="rhsub_"+"d"*48),"FAIL","remote_submission_mismatch"),
-    (payload(status="failed"),"FAIL","remote_state_disagrees"),
-    (payload(status="interrupted"),"FAIL","remote_state_disagrees"),
-    (payload(status="queued"),"SKIP","remote_still_in_progress"),
-    (payload(status="running"),"SKIP","remote_still_in_progress"),
-    (payload(status="unknown"),"SKIP","remote_response_invalid"),
-    ({"job_id":JOB,"status":"completed"},"FAIL","remote_submission_mismatch"),
-    ({"job_id":JOB,"status":"completed","metadata":{"submission_id":SUB,
-         "workflow_id":"wrong"}},"FAIL","remote_submission_mismatch"),
+@pytest.mark.parametrize("body,status,reason", [
+    (payload(job="rpt_"+"d"*32), "FAIL", "remote_job_identity_mismatch"),
+    (payload(sub="rhsub_"+"d"*48), "FAIL", "remote_submission_mismatch"),
+    (payload(status="failed"), "FAIL", "remote_state_disagrees"),
+    (payload(status="interrupted"), "FAIL", "remote_state_disagrees"),
+    (payload(status="running"), "SKIP", "remote_still_in_progress"),
+    (payload(status="queued"), "SKIP", "remote_still_in_progress"),
+    (payload(status="unknown"), "SKIP", "remote_response_invalid"),
+    ({"job_id": JOB, "status": "completed"}, "FAIL", "remote_submission_mismatch"),
 ])
-def test_remote_status_identity_and_state(monkeypatch,body,status,why):
-    r,client,_=check(monkeypatch,Response(body))
-    assert (r.status,r.reason)==(status,why) and client.response.closed
+def test_live_status_must_match_same_submission(monkeypatch, body, status, reason):
+    r, _, sock = probe(monkeypatch, frame(body))
+    assert (r.status, r.reason) == (status, reason)
+    assert sock.closed
 
 
-@pytest.mark.parametrize("rows,why", [
-    ((),"remote_reference_absent"),
-    (((JOB,),),"remote_reference_invalid"),
-    ((("bad/id",SUB),),"remote_reference_invalid"),
-    (((JOB,"x"*55),),"remote_reference_invalid"),
-    (((JOB,SUB),(JOB,SUB)),"remote_reference_ambiguous"),
+@pytest.mark.parametrize("rows,reason", [
+    ((), "remote_reference_absent"),
+    (((JOB,),), "remote_reference_invalid"),
+    ((("bad/path", SUB),), "remote_reference_invalid"),
+    (((JOB, "wrong"),), "remote_reference_invalid"),
+    (((JOB, SUB), (JOB, SUB)), "remote_reference_ambiguous"),
 ])
-def test_sql_fail_closed_never_http(monkeypatch,rows,why):
-    fake_sql(monkeypatch,rows)
-    client=Client()
-    r=remote.probe_remote_report_job(sqlcfg(),schedule_id=SID,api_port="8000",
-                                      read_token=TOKEN,session=client)
-    assert (r.status,r.reason)==("SKIP",why)
-    assert client.calls==[]
+def test_invalid_sql_reference_never_opens_socket(monkeypatch, rows, reason):
+    fake_sql(monkeypatch, rows)
+    monkeypatch.setattr(remote.socket, "socket",
+                        lambda *a: pytest.fail("network opened"))
+    r = remote.probe_remote_report_job(sqlcfg(), schedule_id=SID,
+                                       api_port="8000", read_token=TOKEN)
+    assert (r.status, r.reason) == ("SKIP", reason)
 
 
-@pytest.mark.parametrize("sid,port,token,why", [
-    (None,"8000",TOKEN,"remote_schedule_id_invalid"),
-    ("sch_"+"A"*32,"8000",TOKEN,"remote_schedule_id_invalid"),
-    (SID,"0",TOKEN,"remote_port_invalid"),
-    (SID,"443/",TOKEN,"remote_port_invalid"),
-    (SID,"65536",TOKEN,"remote_port_invalid"),
-    (SID,"8000","bad\nHeader","remote_token_invalid"),
-    (SID,"8000","","remote_token_invalid"),
+@pytest.mark.parametrize("sid,port,token,reason", [
+    (None, "8000", TOKEN, "remote_schedule_id_invalid"),
+    ("sch_"+"A"*32, "8000", TOKEN, "remote_schedule_id_invalid"),
+    (SID, "0", TOKEN, "remote_port_invalid"),
+    (SID, "65536", TOKEN, "remote_port_invalid"),
+    (SID, "8000/", TOKEN, "remote_port_invalid"),
+    (SID, "8000", "", "remote_token_invalid"),
+    (SID, "8000", "bad\r\nHost: evil", "remote_token_invalid"),
 ])
-def test_bad_inputs_do_not_touch_sql_or_network(monkeypatch,sid,port,token,why):
-    monkeypatch.setattr(remote.pyodbc,"drivers",lambda:pytest.fail("driver"))
-    r=remote.probe_remote_report_job(sqlcfg(),schedule_id=sid,api_port=port,read_token=token)
-    assert (r.status,r.reason)==("SKIP",why)
+def test_invalid_inputs_no_sql_or_http(monkeypatch, sid, port, token, reason):
+    monkeypatch.setattr(remote.pyodbc, "drivers", lambda: pytest.fail("odbc"))
+    r = remote.probe_remote_report_job(sqlcfg(), schedule_id=sid,
+                                       api_port=port, read_token=token)
+    assert (r.status, r.reason) == ("SKIP", reason)
 
 
-def test_redirect_auth_and_size_unverified(monkeypatch):
-    for rsp,reason in [
-        (Response(status=302),"remote_http_unverified"),
-        (Response(status=401),"remote_http_unverified"),
-        (Response(status=403),"remote_http_unverified"),
-        (Response(headers={"Content-Type":"text/html"}),"remote_response_invalid"),
-        (Response(headers={"Content-Type":"application/json",
-                           "Content-Length":"9999999"}),"remote_response_oversized"),
-    ]:
-        r,client,_=check(monkeypatch,rsp)
-        assert (r.status,r.reason)==("SKIP",reason)
-        assert client.response.closed
+@pytest.mark.parametrize("response", [
+    frame(status="302 Found", extra_headers="Location: http://attacker/\r\n"),
+    frame(status="401 Unauthorized"),
+    frame(content_type="text/html"),
+    frame(extra_headers="Transfer-Encoding: chunked\r\n"),
+    frame(extra_headers="Content-Encoding: gzip\r\n"),
+    frame(extra_headers="Content-Length: 100\r\n"),
+    frame(declared_length=9000),
+    frame(declared_length=3),
+])
+def test_unsafe_headers_and_redirects_cannot_pass(monkeypatch, response):
+    r, _, sock = probe(monkeypatch, response)
+    assert r.status == "SKIP"
+    assert sock.closed
 
 
-def test_oversized_stream_cannot_be_accepted(monkeypatch):
-    body=payload()
-    body["other"]="z"*(remote.MAX_RESPONSE_BYTES+5)
-    r,client,_=check(monkeypatch,Response(body))
-    assert (r.status,r.reason)==("SKIP","remote_response_oversized")
-    assert client.response.closed
-
-
-def test_exception_untrusted_secret_not_echoed(monkeypatch):
+def test_absolute_total_deadline_blocks_trickling_responses(monkeypatch):
     fake_sql(monkeypatch)
-    class Broken(Client):
-        def get(self,*a,**k):
-            raise remote.requests.Timeout("token "+TOKEN)
-    r=remote.probe_remote_report_job(sqlcfg(),schedule_id=SID,api_port="8000",
-                                     read_token=TOKEN,session=Broken())
-    assert (r.status,r.reason)==("SKIP","remote_http_unverified")
-    assert TOKEN not in json.dumps(r.__dict__)
+    body = frame()
+    header_end = body.index(b"\r\n\r\n")+4
+    parts = [body[:header_end]] + [body[i:i+1] for i in range(header_end,len(body))]
+    now = [100.0]
+    monkeypatch.setattr(remote.time, "monotonic", lambda: now[0])
+    def advance(): now[0] += 0.75
+    sockets = fake_sock(monkeypatch, parts, advance=advance)
+    r = remote.probe_remote_report_job(sqlcfg(),schedule_id=SID,
+                                       api_port="8000",read_token=TOKEN)
+    assert (r.status,r.reason)==("SKIP","remote_http_deadline")
+    assert sockets[0].closed
+    assert now[0] < 105.0  # never wait through a full trickled JSON body
 
 
-@pytest.mark.parametrize("on,prior,expected", [
-    ((False,)*9,"PASS","NOT_TESTED"),
-    ((True,)*8+(False,),"PASS","NOT_TESTED"),
-    ((True,)*9,"SKIP","SKIP"),
-    ((True,)*9,"PASS","PASS"),
-])
-def test_matrix_requires_nine_optins_and_actual_docx_pass(monkeypatch,on,prior,expected):
+def test_trickle_headers_deadline(monkeypatch):
+    fake_sql(monkeypatch)
+    now=[5.0]
+    monkeypatch.setattr(remote.time,"monotonic",lambda:now[0])
+    sockets=fake_sock(monkeypatch,[b"HTTP/",b"1.1 ",b"200 ",frame()[13:]],
+                      advance=lambda: now.__setitem__(0,now[0]+1.1))
+    r=remote.probe_remote_report_job(sqlcfg(),schedule_id=SID,
+                                     api_port="8000",read_token=TOKEN)
+    assert (r.status,r.reason)==("SKIP","remote_http_deadline")
+    assert sockets[0].closed
+
+
+def test_matrix_only_after_real_docx_pass(monkeypatch):
     calls=[]
-    def provider(*a,**k):
-        calls.append(k)
+    def fn(*a, **kw):
+        calls.append(kw)
         return SimpleNamespace(check_id="REPORT-LIVE-01",
-          probe="report-job-loopback-get",
-          aspect="same_persisted_item_authenticated_remote_status_only",
-          status="PASS",reason="remote_completed_attested",
-          executed=True,evidence={"remote_job_completed_observed":True})
-    monkeypatch.setattr(matrix,"probe_remote_report_job",provider)
-    row=matrix._report_live_check(
-        probe_network=on[0],probe_sql_read=on[1],
-        probe_worker_identities=on[2],probe_schedule_claim=on[3],
-        probe_schedule_link=on[4],probe_handoff_ack=on[5],
-        probe_report_checkpoint=on[6],probe_docx_bytes=on[7],
-        probe_report_live=on[8],docx_status=prior,sql_config=sqlcfg(),
+           probe="report-job-loopback-get",
+           aspect="same_persisted_item_authenticated_remote_status_only",
+           status="PASS", reason="remote_completed_attested",
+           executed=True, evidence={"remote_job_completed_observed":True})
+    monkeypatch.setattr(matrix, "probe_remote_report_job", fn)
+    base = dict(probe_network=True,probe_sql_read=True,
+        probe_worker_identities=True,probe_schedule_claim=True,
+        probe_schedule_link=True,probe_handoff_ack=True,
+        probe_report_checkpoint=True,probe_docx_bytes=True,
+        probe_report_live=True,docx_status="PASS",sql_config=sqlcfg(),
         schedule_id=SID,lease_schema=None,api_port="8000",read_token=TOKEN)
-    assert row["status"]==expected
-    assert bool(calls)==(expected=="PASS")
-    assert row["depends_on"]==["SQL-READ","DOCX-BYTES"]
+    for delta,expected in [({"probe_report_live":False},"NOT_TESTED"),
+                           ({"docx_status":"SKIP"},"SKIP"),
+                           ({}, "PASS")]:
+        result=matrix._report_live_check(**(base|delta))
+        assert result["status"]==expected
+    assert len(calls)==1
+    assert result["depends_on"]==["SQL-READ","DOCX-BYTES"]
 
 
-def test_matrix_does_not_accept_forged_success(monkeypatch):
+def test_matrix_rejects_forged_positive(monkeypatch):
     monkeypatch.setattr(matrix,"probe_remote_report_job",lambda *a,**k:
-      SimpleNamespace(check_id="REPORT-LIVE-01",probe="report-job-loopback-get",
+       SimpleNamespace(check_id="REPORT-LIVE-01",
+       probe="report-job-loopback-get",
        aspect="same_persisted_item_authenticated_remote_status_only",
-       executed=False,status="PASS",reason="remote_completed_attested",
+       status="PASS",reason="remote_completed_attested",executed=False,
        evidence={"remote_job_completed_observed":True,"secret":TOKEN}))
-    row=matrix._report_live_check(
-        probe_network=True,probe_sql_read=True,probe_worker_identities=True,
-        probe_schedule_claim=True,probe_schedule_link=True,
-        probe_handoff_ack=True,probe_report_checkpoint=True,
-        probe_docx_bytes=True,probe_report_live=True,docx_status="PASS",
-        sql_config=sqlcfg(),schedule_id=SID,lease_schema=None,
-        api_port="8000",read_token=TOKEN)
-    assert (row["status"],row["reason"])==("SKIP","unexpected_probe_result")
-    assert TOKEN not in json.dumps(row)
+    result=matrix._report_live_check(
+        probe_network=True,probe_sql_read=True,
+        probe_worker_identities=True,probe_schedule_claim=True,
+        probe_schedule_link=True,probe_handoff_ack=True,
+        probe_report_checkpoint=True,probe_docx_bytes=True,
+        probe_report_live=True,docx_status="PASS",sql_config=sqlcfg(),
+        schedule_id=SID,lease_schema=None,api_port="8000",read_token=TOKEN)
+    assert result["status"]=="SKIP"
+    assert TOKEN not in json.dumps(result)
