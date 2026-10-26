@@ -30,6 +30,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools import sraf_airgap_off1b_auto as tcp  # noqa: E402
 from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
+from tools.sraf_airgap_off1q_remote_report_job import (  # noqa: E402
+    PORT_KEY as REPORT_LIVE_PORT_KEY,
+    TOKEN_KEY as REPORT_LIVE_TOKEN_KEY,
+    probe_remote_report_job,
+)
 from tools.sraf_airgap_off1p_docx_integrity import (  # noqa: E402
     ARTIFACT_ROOT_KEY, probe_docx_byte_integrity,
 )
@@ -165,6 +170,16 @@ REASONS = frozenset((
     "docx_root_mismatch", "docx_path_invalid",
     "docx_file_unverified", "docx_digest_mismatch",
     "docx_structure_invalid", "docx_local_bytes_match",
+    "remote_not_requested", "remote_docx_not_passed",
+    "remote_schema_invalid", "remote_schedule_id_invalid",
+    "remote_port_invalid", "remote_token_invalid",
+    "remote_sql_config_invalid", "remote_driver_unavailable",
+    "remote_reference_ambiguous", "remote_reference_absent",
+    "remote_reference_invalid", "remote_sql_unverified",
+    "remote_http_unverified", "remote_response_invalid",
+    "remote_response_oversized", "remote_job_identity_mismatch",
+    "remote_submission_mismatch", "remote_state_disagrees",
+    "remote_still_in_progress", "remote_completed_attested",
 ))
 
 
@@ -924,6 +939,57 @@ def _docx_byte_check(*, probe_network: bool, probe_sql_read: bool,
     return result("SKIP", "unexpected_probe_result")
 
 
+def _report_live_check(*, probe_network: bool, probe_sql_read: bool,
+                       probe_worker_identities: bool, probe_schedule_claim: bool,
+                       probe_schedule_link: bool, probe_handoff_ack: bool,
+                       probe_report_checkpoint: bool, probe_docx_bytes: bool,
+                       probe_report_live: bool, docx_status: str,
+                       sql_config: dict[str, str] | None,
+                       schedule_id: str | None, lease_schema: str | None,
+                       api_port: str | None, read_token: str | None
+                       ) -> dict[str, Any]:
+    """Ninth explicit opt-in: SQL-selected job then one authenticated GET."""
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record("REPORT-LIVE", "report",
+                       "same_persisted_item_authenticated_remote_status_only",
+                       status, reason, executed=executed,
+                       depends_on=("SQL-READ", "DOCX-BYTES"))
+    if not (probe_network and probe_sql_read and probe_worker_identities
+            and probe_schedule_claim and probe_schedule_link
+            and probe_handoff_ack and probe_report_checkpoint
+            and probe_docx_bytes and probe_report_live):
+        return result("NOT_TESTED", "remote_not_requested")
+    if docx_status != "PASS":
+        return result("SKIP", "remote_docx_not_passed")
+    if not isinstance(schedule_id, str) or not schedule_id:
+        return result("SKIP", "remote_schedule_id_invalid")
+    if not isinstance(sql_config, dict):
+        return result("SKIP", "remote_sql_config_invalid")
+    try:
+        obs = probe_remote_report_job(
+            sql_config, schedule_id=schedule_id,
+            schema=lease_schema if lease_schema is not None else LEASE_SCHEMA_DEFAULT,
+            api_port=api_port, read_token=read_token,
+        )
+        if obs.status == "PASS":
+            if (obs.check_id == "REPORT-LIVE-01"
+                    and obs.probe == "report-job-loopback-get"
+                    and obs.aspect == "same_persisted_item_authenticated_remote_status_only"
+                    and obs.executed is True
+                    and obs.reason == "remote_completed_attested"
+                    and isinstance(obs.evidence, dict)
+                    and obs.evidence.get("remote_job_completed_observed") is True):
+                return result("PASS", "remote_completed_attested", executed=True)
+            return result("SKIP", "unexpected_probe_result")
+        if obs.status in ("SKIP", "FAIL"):
+            return result(obs.status, _reason(obs.reason),
+                          executed=bool(obs.executed))
+    except Exception:
+        return result("SKIP", "remote_http_unverified")
+    return result("SKIP", "unexpected_probe_result")
+
+
 def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_model_inventory: bool = False,
                  probe_model_inference: bool = False,
@@ -939,6 +1005,9 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_handoff_ack: bool = False,
                  probe_report_checkpoint: bool = False,
                  probe_docx_bytes: bool = False,
+                 probe_report_live: bool = False,
+                 report_live_port: str | None = None,
+                 report_live_token: str | None = None,
                  artifact_root: str | None = None,
                  schedule_id: str | None = None,
                  lease_schema: str | None = None
@@ -1038,6 +1107,18 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         schedule_id=schedule_id, lease_schema=lease_schema,
         artifact_root=artifact_root,
     )
+    report_live = _report_live_check(
+        probe_network=probe_network, probe_sql_read=probe_sql_read,
+        probe_worker_identities=probe_worker_identities,
+        probe_schedule_claim=probe_schedule_claim,
+        probe_schedule_link=probe_schedule_link,
+        probe_handoff_ack=probe_handoff_ack,
+        probe_report_checkpoint=probe_report_checkpoint,
+        probe_docx_bytes=probe_docx_bytes,
+        probe_report_live=probe_report_live, docx_status=docx_bytes["status"],
+        sql_config=sql_config, schedule_id=schedule_id, lease_schema=lease_schema,
+        api_port=report_live_port, read_token=report_live_token,
+    )
     rows.extend((
         sql_read,
         lease_snapshot,
@@ -1048,6 +1129,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         handoff_ack,
         checkpoint,
         docx_bytes,
+        report_live,
         _record("ES-MAPPING", "es", "authenticated_es_mapping", "NOT_TESTED",
                 "es_tls_mapping_not_aggregated", depends_on=("ES-TCP",)),
         inventory,
@@ -1086,6 +1168,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
     parser.add_argument("--probe-sql-read", action="store_true",
                         help="With --probe-network, make one TLS-verified ODBC constant SELECT using dedicated operator SRAF_OFF1G_SQL_* secrets.")
+    parser.add_argument("--probe-report-live", action="store_true",
+                        help="With all eight Schedule/Handoff/Report/DOCX flags and real DOCX-BYTES PASS, do one SQL-bound authenticated localhost GET /v1/report/jobs/{id}, never create or download.")
     parser.add_argument("--probe-docx-bytes", action="store_true",
                         help="With all seven Schedule/Handoff/Report flags and real REPORT-CHECKPOINT PASS, verify one local published DOCX bytes and SQL digest; no remote API.")
     parser.add_argument("--probe-report-checkpoint", action="store_true",
@@ -1158,6 +1242,27 @@ def main(argv: list[str] | None = None) -> int:
                               probe_handoff_ack=args.probe_handoff_ack,
                               probe_report_checkpoint=args.probe_report_checkpoint,
                               probe_docx_bytes=args.probe_docx_bytes,
+                              probe_report_live=args.probe_report_live,
+                              report_live_port=(
+                                  os.environ.get(REPORT_LIVE_PORT_KEY)
+                                  if all((args.probe_network, args.probe_sql_read,
+                                          args.probe_worker_identities,
+                                          args.probe_schedule_claim,
+                                          args.probe_schedule_link,
+                                          args.probe_handoff_ack,
+                                          args.probe_report_checkpoint,
+                                          args.probe_docx_bytes,
+                                          args.probe_report_live)) else None),
+                              report_live_token=(
+                                  os.environ.get(REPORT_LIVE_TOKEN_KEY)
+                                  if all((args.probe_network, args.probe_sql_read,
+                                          args.probe_worker_identities,
+                                          args.probe_schedule_claim,
+                                          args.probe_schedule_link,
+                                          args.probe_handoff_ack,
+                                          args.probe_report_checkpoint,
+                                          args.probe_docx_bytes,
+                                          args.probe_report_live)) else None),
                               artifact_root=(os.environ.get(ARTIFACT_ROOT_KEY)
                                    if (args.probe_network and args.probe_sql_read
                                        and args.probe_worker_identities
