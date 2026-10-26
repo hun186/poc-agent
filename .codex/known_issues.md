@@ -130,3 +130,7 @@
 ## 2026-10-25 OFF-1P two Codex P2 corrections
 
 - Earlier OFF-1P opened absolute root after SQL, allowing replacement of a parent symlink; fixed by pre-pinning every root path component with O_NOFOLLOW and carrying the FD over the SQL query. ZIP `zlib.error` on a digest-matching corrupt DEFLATE stream now returns FAIL, not SKIP; both reproduced in regression tests. Still no real operator Linux/SQL/DOCX acceptance. Root path whose ancestors are symlinks is conservatively rejected; runtime mutable storage mount/device trust and authenticated remote job response remain independent tasks.
+
+## 2026-10-27 OFF-1Q remote status evidence limits
+
+- Only same-host loopback 127.0.0.1 HTTP is permitted; remote/private IPv4 HTTPS status probes not supported in OFF-1Q because validated service identity/TLS and SSRF constraints need independent review. REPORT_JOB_READ token must belong to principal authorized for Handoff-created job; normal owner restrictions can yield 404 SKIP. GET may emit server audit records. The SQL-observed selected item can change between OFF-1P DOCX byte verification and OFF-1Q SQL + HTTP GET; these independent PASS observations do not prove same immutable item or batch, trusted listening PID, Agent/LLM/ES computation or physical isolation.

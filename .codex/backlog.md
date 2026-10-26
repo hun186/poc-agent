@@ -79,3 +79,8 @@
 
 - Exact-HEAD Hosted OFF-1P focused unit, legacy Worker E2E, OFF-0 19 schema checks; formal Codex Review CLEAN and resolved P1/P2 before separate user-authorized merge. Obtain approved Linux deployment operator run with real SQL SELECT-only principal, certificate IP SAN and output root proof. CI mocks SQL Server; no production DOCX verification yet.
 - For actual Report Job proof, build separately reviewed authenticated read-only GET of the **same, persisted remote job ID** and verify status / real artifacts with controlled credential handling and URL safety. OFF-1P proves only one local published DOCX's bytes vs SQL digest, not whether Report Job API actually ran or Agent/ES/LLM, full batch, physical isolation.
+
+## 2026-10-27 OFF-1Q review and acceptance gates
+
+- Require exact-head Hosted OFF-1Q focused pytest + legacy Worker E2E + OFF-0 19; formal Codex Review CLEAN on same HEAD, resolve all P1/P2; then Merge only on explicit separate user command. No real operator SQL/Report Job HTTP authorization supplied; do not declare live PASS.
+- Next live/deployment work: operator-approved real loopback Report Job response under owner-scoped REPORT_JOB_READ principal and independently verified SRAF API listener identity/PID, matching the same immutable run_item in SQL and locally published DOCX in one stable observation; verify remote artifact provenance and Agent/LLM/ES traces; test physical isolation. OFF-1Q only correlates sequential API and SQL snapshots.

@@ -84,3 +84,7 @@
 ## 2026-10-25 OFF-1P actual local DOCX integrity (still partial)
 
 - `tools/sraf_airgap_off1p_docx_integrity.py` extends operator-only readiness with eighth flag `--probe-docx-bytes` after REPORT-CHECKPOINT PASS. One fixed SQL query scoped to the canonical schedule extracts *one* already-completed selected item's publisher relative path, digest and frozen output-root fingerprint in process memory. Separately set deployment root must match canonical fingerprint. Linux openat-style fd-relative O_NOFOLLOW reads up to 16MiB, validates bounded DOCX ZIP and recomputes SHA-256. JSON carries only approved reason/checkpoint boolean; real Report Job HTTP and actual E2E remain distinct future gates.
+
+## 2026-10-27 OFF-1Q one authenticated Report Job status observation
+
+- Default-off operator `REPORT-LIVE` matrix row depends on `SQL-READ` and prior `DOCX-BYTES` PASS with nine explicit flags. After a private TLS/ODBC read restricted to one canonical Schedule ID, resolve one matching report_v1 Handoff submission and remotely persisted job ID in-process, then a single localhost-only authenticated bounded no-proxy/no-redirect GET `/v1/report/jobs/{id}`. Require response job_id, metadata submission/workflow identity and completed state. SQL/probe row/order mirrors OFF-1P but its observations are not atomic and cannot guarantee the earlier DOCX check was for identical run_item.
