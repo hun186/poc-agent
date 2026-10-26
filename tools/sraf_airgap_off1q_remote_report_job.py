@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import json
 import re
+import socket
+import time
 from typing import Any
 
 import pyodbc
-import requests
-
 from tools.sraf_airgap_off1_probes import Observation
 from tools.sraf_airgap_off1g_sql_read import (
     DRIVER, LOGIN_TIMEOUT_SECONDS, QUERY_TIMEOUT_SECONDS, _connection_string,
@@ -114,41 +114,116 @@ def _token_valid(token: Any) -> bool:
             and all(33 <= ord(ch) <= 126 for ch in token))
 
 
-def _remote_status(port: int, token: str, job_id: str,
-                   submission_id: str, *, session: Any = None) -> tuple[str, str]:
-    """One no-proxy, no-redirect, bounded HTTP GET, never echo response."""
-    client = session if session is not None else requests.Session()
-    response = None
+def _recv_with_deadline(sock: socket.socket, deadline: float,
+                        length: int) -> bytes:
+    """Each socket read is individually bounded by the SAME absolute deadline."""
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise TimeoutError("deadline_exceeded")
+    sock.settimeout(left)
+    data = sock.recv(length)
+    if time.monotonic() > deadline:
+        raise TimeoutError("deadline_exceeded")
+    return data
+
+
+def _http_get_one(port: int, token: str, job_id: str) -> bytes:
+    """One fixed IPv4 TCP HTTP/1.1 GET with strict size/framing and total deadline.
+
+    Avoid requests/urllib's per-idle read timeout, DNS, netrc, redirects,
+    proxies, or streaming semantics. Reject chunked/compressed/unknown-length
+    framing; the real FastAPI JSON route supplies Content-Length.
+    """
+    deadline = time.monotonic() + 3.0
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        # Requests' default trust_env=True reads HTTP(S)_PROXY and netrc;
-        # even a loopback URI must never carry this credential to a proxy.
-        client.trust_env = False
-        url = f"http://127.0.0.1:{port}/v1/report/jobs/{job_id}"
-        response = client.get(
-            url, headers={"Authorization": "Bearer " + token,
-                          "Accept": "application/json", "Connection": "close"},
-            allow_redirects=False, timeout=(2, 3), stream=True,
-        )
-        if response.status_code != 200:
-            return "SKIP", "remote_http_unverified"
-        media = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
-        if media != "application/json":
-            return "SKIP", "remote_response_invalid"
-        size_header = response.headers.get("Content-Length")
-        if size_header is not None and (
-                re.fullmatch(r"[0-9]{1,9}", size_header) is None
-                or int(size_header) > MAX_RESPONSE_BYTES):
-            return "SKIP", "remote_response_oversized"
-        chunks: list[bytes] = []
-        total = 0
-        for part in response.iter_content(chunk_size=2048):
-            if not isinstance(part, bytes):
-                return "SKIP", "remote_response_invalid"
-            total += len(part)
-            if total > MAX_RESPONSE_BYTES:
-                return "SKIP", "remote_response_oversized"
-            chunks.append(part)
-        body = json.loads(b"".join(chunks).decode("utf-8"))
+        sock.settimeout(max(0.001, deadline - time.monotonic()))
+        sock.connect(("127.0.0.1", port))
+        if time.monotonic() > deadline:
+            raise TimeoutError("deadline_exceeded")
+        request = (
+            f"GET /v1/report/jobs/{job_id} HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{port}\r\n"
+            f"Authorization: Bearer {token}\r\n"
+            "Accept: application/json\r\n"
+            "Accept-Encoding: identity\r\n"
+            "Connection: close\r\n\r\n"
+        ).encode("ascii")
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise TimeoutError("deadline_exceeded")
+        sock.settimeout(left)
+        sock.sendall(request)
+        if time.monotonic() > deadline:
+            raise TimeoutError("deadline_exceeded")
+        frame = bytearray()
+        while b"\r\n\r\n" not in frame:
+            # 4 KiB maximum HTTP header frame, not just body length.
+            if len(frame) > 4096:
+                raise ValueError("headers_too_large")
+            part = _recv_with_deadline(sock, deadline, 2048)
+            if not part:
+                raise ValueError("incomplete_headers")
+            frame.extend(part)
+            if len(frame) > 4096 + MAX_RESPONSE_BYTES + 4:
+                raise ValueError("frame_too_large")
+        header, body = bytes(frame).split(b"\r\n\r\n", 1)
+        if len(header) > 4096:
+            raise ValueError("headers_too_large")
+        lines = header.split(b"\r\n")
+        if not lines or not re.fullmatch(rb"HTTP/1\.[01] [0-9]{3} [^\r\n]{0,100}",
+                                         lines[0]):
+            raise ValueError("invalid_status_line")
+        if lines[0].split(b" ", 2)[1] != b"200":
+            raise ValueError("http_status_not_200")
+        headers = {}
+        for line in lines[1:]:
+            if b":" not in line:
+                raise ValueError("malformed_header")
+            name, value = line.split(b":", 1)
+            if re.fullmatch(rb"[A-Za-z0-9-]+", name) is None:
+                raise ValueError("header_name_invalid")
+            key = name.lower()
+            if key in headers:
+                raise ValueError("duplicate_header")
+            headers[key] = value.strip()
+        if b"transfer-encoding" in headers or b"content-encoding" in headers:
+            raise ValueError("unsafe_encoding")
+        mime = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
+        if mime != b"application/json":
+            raise ValueError("wrong_media")
+        length_bytes = headers.get(b"content-length", b"")
+        if re.fullmatch(rb"[0-9]{1,5}", length_bytes) is None:
+            raise ValueError("length_invalid")
+        length = int(length_bytes)
+        if not 0 < length <= MAX_RESPONSE_BYTES:
+            raise ValueError("length_unbounded")
+        if len(body) > length:
+            raise ValueError("extra_response_bytes")
+        result = bytearray(body)
+        while len(result) < length:
+            part = _recv_with_deadline(sock, deadline, min(2048, length-len(result)))
+            if not part:
+                raise ValueError("body_truncated")
+            result.extend(part)
+        if time.monotonic() > deadline:
+            raise TimeoutError("deadline_exceeded")
+        return bytes(result)
+    finally:
+        sock.close()
+
+
+def _remote_status(port: int, token: str, job_id: str,
+                   submission_id: str) -> tuple[str, str]:
+    """Bounded HTTP GET; no exception, body or identifiers reach the JSON row."""
+    try:
+        raw = _http_get_one(port, token, job_id)
+    except TimeoutError:
+        return "SKIP", "remote_http_deadline"
+    except (OSError, ValueError, OverflowError, UnicodeError):
+        return "SKIP", "remote_http_unverified"
+    try:
+        body = json.loads(raw.decode("utf-8"))
         if not isinstance(body, dict):
             return "SKIP", "remote_response_invalid"
         if body.get("job_id") != job_id:
@@ -166,25 +241,13 @@ def _remote_status(port: int, token: str, job_id: str,
         if state in ("queued", "running"):
             return "SKIP", "remote_still_in_progress"
         return "SKIP", "remote_response_invalid"
-    except (requests.RequestException, ValueError, UnicodeError, TypeError,
-            OverflowError):
-        return "SKIP", "remote_http_unverified"
-    finally:
-        if response is not None:
-            try:
-                response.close()
-            except Exception:
-                pass
-        if session is None:
-            try:
-                client.close()
-            except Exception:
-                pass
+    except (ValueError, UnicodeError, TypeError):
+        return "SKIP", "remote_response_invalid"
 
 
 def probe_remote_report_job(
     sql_config: dict[str, str], *, schedule_id: str, api_port: str,
-    read_token: str, schema: str = DEFAULT_SCHEMA, session: Any = None,
+    read_token: str, schema: str = DEFAULT_SCHEMA,
 ) -> Observation:
     """Only partial GET evidence. No SQL mutation or job creation."""
     if not isinstance(schema, str) or _SCHEMA_RE.fullmatch(schema) is None:
@@ -208,8 +271,7 @@ def probe_remote_report_job(
     if isinstance(selected, str):
         return _out("SKIP", selected, executed=True)
     try:
-        status, reason = _remote_status(port, read_token, *selected,
-                                        session=session)
+        status, reason = _remote_status(port, read_token, *selected)
     except Exception:
         return _out("SKIP", "remote_http_unverified", executed=True)
     return _out(status, reason, executed=True,
