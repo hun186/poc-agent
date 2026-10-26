@@ -107,3 +107,11 @@
 ## 2026-10-25 OFF-1P root-file TOCTOU and ZIP corruption resolution
 
 - Do not consider final-component O_NOFOLLOW sufficient if an ancestor can be renamed during an ODBC round trip. Open and pin the output root by per-component O_NOFOLLOW traversal **before** SQL; use only retained dirfd for item/file traversal after SQL. Treat zlib/EOF compressed-stream corruption as explicit artifact structure FAIL when the persisted checksum matches. Avoid showing paths/digests or claiming remote HTTP/full acceptance.
+
+## 2026-10-27 OFF-1Q minimal independent remote Report Job GET
+
+- Restrict first live Report Job diagnostic to explicit on-host authenticated read-only GET to a numeric 127.0.0.1 port, no caller-controlled URL, no DNS/proxy/redirect, bounded JSON and short timeout, no retries/job creation. Validate both remote job ID and original report_v1 Handoff submission metadata from same SQL selected item; do not accept HTTP 200 or completed alone as proof. Use owner-allowed REPORT_JOB_READ credential, never expose it or IDs in JSON; leave runtime listener PID trust, atomic SQL-to-file identity and physical airgap as separate future acceptance gates.
+
+## 2026-10-27 OFF-1Q Codex P2 whole-call deadline
+
+- Replace high-level streaming Requests with a reviewed minimal HTTP/1.1 numeric-IPv4 loopback client that applies one monotonic 3s total deadline across every network operation. Keep strict fixed route and regex-checked job IDs, bounded headers/body, Content-Length framing only and immediate socket teardown. Refuse redirects, chunked/compressed responses and unverified content; slower than 3s cannot PASS. No public hostname/proxy/real production acceptance.

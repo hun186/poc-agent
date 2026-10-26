@@ -70,3 +70,7 @@
 ## 2026-10-25 OFF-1P optional operator DOCX integrity CLI
 
 - `--probe-docx-bytes` requires seven preceding `--probe-network --probe-sql-read --probe-worker-identities --probe-schedule-claim --probe-schedule-link --probe-handoff-ack --probe-report-checkpoint` flags, real `REPORT-CHECKPOINT: PASS`, canonical SRAF_OFF1L_SCHEDULE_ID and absolute operator SRAF_OFF1P_ARTIFACT_ROOT. Adds `DOCX-BYTES` row depending on SQL-READ/REPORT-CHECKPOINT. One extra SQL read followed by a bounded nofollow local DOCX checksum/ZIP validation. Only digest/ZIP corruption yields FAIL; other inconclusive reads SKIP. No new HTTP route, no leak of file path/digest, no full acceptance.
+
+## 2026-10-27 OFF-1Q operator-only report-live CLI
+
+- New `--probe-report-live` after the previous 8 explicit flags and prior `DOCX-BYTES: PASS`. Operator also sets `SRAF_OFF1Q_REPORT_API_PORT` (decimal 1..65535 on 127.0.0.1) and `SRAF_OFF1Q_REPORT_JOB_READ_TOKEN` (owner-scoped REPORT_JOB_READ). No caller-supplied URL/hostname allowed. One SQL SELECT obtains same-selected-item report_v1 submission and remote job ID in process, one GET only with no redirects/proxy, 8KiB maximum JSON, requires matching job_id + metadata submission_id/workflow_id + status=completed. Adds `REPORT-LIVE` (depends on SQL-READ/DOCX-BYTES); no new HTTP API, no Word download or job POST; JSON omits identifiers/credentials. Overall remains partial INCOMPLETE; feature_acceptance NOT_TESTED.

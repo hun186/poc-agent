@@ -130,3 +130,15 @@
 ## 2026-10-25 OFF-1P two Codex P2 corrections
 
 - Earlier OFF-1P opened absolute root after SQL, allowing replacement of a parent symlink; fixed by pre-pinning every root path component with O_NOFOLLOW and carrying the FD over the SQL query. ZIP `zlib.error` on a digest-matching corrupt DEFLATE stream now returns FAIL, not SKIP; both reproduced in regression tests. Still no real operator Linux/SQL/DOCX acceptance. Root path whose ancestors are symlinks is conservatively rejected; runtime mutable storage mount/device trust and authenticated remote job response remain independent tasks.
+
+## 2026-10-27 OFF-1Q remote status evidence limits
+
+- Only same-host loopback 127.0.0.1 HTTP is permitted; remote/private IPv4 HTTPS status probes not supported in OFF-1Q because validated service identity/TLS and SSRF constraints need independent review. REPORT_JOB_READ token must belong to principal authorized for Handoff-created job; normal owner restrictions can yield 404 SKIP. GET may emit server audit records. The SQL-observed selected item can change between OFF-1P DOCX byte verification and OFF-1Q SQL + HTTP GET; these independent PASS observations do not prove same immutable item or batch, trusted listening PID, Agent/LLM/ES computation or physical isolation.
+
+## 2026-10-27 OFF-1Q bounded loopback HTTP framing decisions
+
+- Earlier OFF-1Q used Requests stream timeout, which is inactivity-only; trickling listener could delay indefinitely. Replaced with fixed IPv4 socket request and 3s absolute monotonic deadline on connect, send, headers and body reads. Diagnostic deliberately rejects chunked or compressed responses, missing or duplicate Content-Length, headers >4KiB, JSON >8KiB or HTTP redirects: legitimate alternate proxies/servers may produce SKIP rather than PASS. Do not disable these limits for convenience or send credentials to unverified network hosts. Local 127.0.0.1 does not cryptographically attest API listener PID/owner; real operator auth and airgap pending.
+
+## 2026-10-27 OFF-1Q SQL alias binding regression
+
+- Codex review identified SQL Server projection scoping bug `SELECT h.submission_id` outside the `OUTER APPLY` body: alias h only exists within APPLY. Fixed to the outer derived column `i.submission_id`. Fake ODBC executes no SQL parser, so this test checks static projection syntax; live SQL Server execution still operator-pending.
