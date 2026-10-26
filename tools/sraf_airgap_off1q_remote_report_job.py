@@ -30,7 +30,7 @@ MAX_RESPONSE_BYTES = 8192
 # Mirror OFF-1P's TOP(1) selected-item ordering. The h join and item/job
 # constraints are SAME ROW, not a separate batch-level EXISTS predicate.
 _SQL = """
-SELECT TOP (2) i.remote_job_id, h.submission_id
+SELECT TOP (2) i.remote_job_id, i.submission_id
 FROM [{schema}].[requirement_schedules] AS s
 OUTER APPLY (
     SELECT TOP (1) r.batch_run_id

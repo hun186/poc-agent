@@ -30,3 +30,7 @@ Hosted CI uses mocked SQL responses and HTTP sessions: it does NOT connect to a 
 ## Codex review remediation — absolute deadline (2026-10-27)
 
 The first formal Codex Review found a P2: HTTP streaming with an inactivity-only timeout could be delayed indefinitely by a listener sending one byte every few seconds. OFF-1Q now uses a direct numeric IPv4 socket connection to the exact localhost API with **one absolute three-second monotonic deadline across connect, send, HTTP response headers and all JSON content reads**. For deterministic bounded transport it intentionally accepts only HTTP/1.0 or HTTP/1.1 with explicit unique Content-Length, 200 status, uncompressed application/json and <=4 KiB headers / <=8 KiB body. HTTP redirects, chunked transfer encoding, content compression, unknown-length replies and slow trickle are rejected (safe SKIP). Unlike Requests, the transport cannot load a proxy or .netrc configuration or resolve a hostname. This remains an operator-only partial observation; it is not process/PID identity or full Job/Word/Agent acceptance.
+
+## Codex SQL Server OUTER APPLY P2 (2026-10-27)
+
+Second formal Codex Review found an invalid alias in the outer SQL projection: `h` only exists within the nested APPLY subquery. OFF-1Q now reads `i.submission_id` from the APPLY-derived outer alias, with an explicit SQL text regression. Hosted fake ODBC tests cannot replace a live SQL Server parse/execution smoke test; that remains an operator acceptance task.

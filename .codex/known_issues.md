@@ -138,3 +138,7 @@
 ## 2026-10-27 OFF-1Q bounded loopback HTTP framing decisions
 
 - Earlier OFF-1Q used Requests stream timeout, which is inactivity-only; trickling listener could delay indefinitely. Replaced with fixed IPv4 socket request and 3s absolute monotonic deadline on connect, send, headers and body reads. Diagnostic deliberately rejects chunked or compressed responses, missing or duplicate Content-Length, headers >4KiB, JSON >8KiB or HTTP redirects: legitimate alternate proxies/servers may produce SKIP rather than PASS. Do not disable these limits for convenience or send credentials to unverified network hosts. Local 127.0.0.1 does not cryptographically attest API listener PID/owner; real operator auth and airgap pending.
+
+## 2026-10-27 OFF-1Q SQL alias binding regression
+
+- Codex review identified SQL Server projection scoping bug `SELECT h.submission_id` outside the `OUTER APPLY` body: alias h only exists within APPLY. Fixed to the outer derived column `i.submission_id`. Fake ODBC executes no SQL parser, so this test checks static projection syntax; live SQL Server execution still operator-pending.

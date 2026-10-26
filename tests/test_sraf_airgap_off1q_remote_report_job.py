@@ -29,6 +29,11 @@ class Cursor:
         self.rows, self.calls = list(rows), calls
     def execute(self, sql, *args):
         assert sql.lstrip().startswith("SELECT TOP (2)")
+        # SQL Server's APPLY exposes submission_id as column of outer alias i.
+        assert sql.lstrip().startswith(
+            "SELECT TOP (2) i.remote_job_id, i.submission_id"
+        )
+        assert "SELECT TOP (2) i.remote_job_id, h.submission_id" not in sql
         assert "requirement_batch_run_items" in sql
         assert "requirement_handoff_submissions" in sql
         assert "h.run_item_id=i.run_item_id" in sql
