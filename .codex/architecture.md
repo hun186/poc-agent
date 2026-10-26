@@ -80,3 +80,7 @@
 ## 2026-10-25 OFF-1O Report Job persisted checkpoint
 
 - `tools/sraf_airgap_off1o_report_checkpoint.py` extends the OFF-1D partial readiness matrix with seventh opt-in `--probe-report-checkpoint`. The fixed SQL is bound to the one canonical Schedule ID and checks two only-server-computed flags on the latest actor-labelled run: batch Handoff/reconciliation timestamps, plus ONE matching item with a report_v1 submission and completed remote state, persisted artifact reconciliation, nonempty recorded path and valid-looking SHA256. This is not remote HTTP, DOCX-byte integrity nor actual PID provenance; no new scheduler or execution path.
+
+## 2026-10-25 OFF-1P actual local DOCX integrity (still partial)
+
+- `tools/sraf_airgap_off1p_docx_integrity.py` extends operator-only readiness with eighth flag `--probe-docx-bytes` after REPORT-CHECKPOINT PASS. One fixed SQL query scoped to the canonical schedule extracts *one* already-completed selected item's publisher relative path, digest and frozen output-root fingerprint in process memory. Separately set deployment root must match canonical fingerprint. Linux openat-style fd-relative O_NOFOLLOW reads up to 16MiB, validates bounded DOCX ZIP and recomputes SHA-256. JSON carries only approved reason/checkpoint boolean; real Report Job HTTP and actual E2E remain distinct future gates.

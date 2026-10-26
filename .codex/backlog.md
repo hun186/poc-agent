@@ -74,3 +74,8 @@
 
 - Verify exact-head Hosted focused tests, Worker E2E and OFF-0 contract; formal Codex Review and all findings resolved before separate user-authorized merge.
 - Future real operator E2E: authenticated read-only Report Job GET for the **same** persisted remote job identity under least privilege; independently validate remote completed status, download/publish DOCX, recompute actual file hash against SQL with secure output-root confinement, trace Agent/LLM/ES, tie schedule/handoff PID safely and demonstrate physical isolation. OFF-1O's SQL checkpoint is NOT remote or file proof.
+
+## 2026-10-25 OFF-1P release gates and next real-live proof
+
+- Exact-HEAD Hosted OFF-1P focused unit, legacy Worker E2E, OFF-0 19 schema checks; formal Codex Review CLEAN and resolved P1/P2 before separate user-authorized merge. Obtain approved Linux deployment operator run with real SQL SELECT-only principal, certificate IP SAN and output root proof. CI mocks SQL Server; no production DOCX verification yet.
+- For actual Report Job proof, build separately reviewed authenticated read-only GET of the **same, persisted remote job ID** and verify status / real artifacts with controlled credential handling and URL safety. OFF-1P proves only one local published DOCX's bytes vs SQL digest, not whether Report Job API actually ran or Agent/ES/LLM, full batch, physical isolation.

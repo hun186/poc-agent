@@ -127,3 +127,16 @@
 ## 2026-10-25 OFF-1O first Hosted verification — PR #311
 
 - On code/docs HEAD `df923f8507a6f645df88f0bea4fe348afaee8677`, GitHub Actions [#40191149108](https://github.com/hun186/poc-agent/actions/runs/40191149108) returned SUCCESS. Independently inspected Hosted job log: 1,238 focused pytest PASS, 2 legacy Worker E2E PASS and OFF-0 schema-only 19 checks PASS. The test suite uses mock ODBC and cannot claim real Linux/SQL/Report Job HTTP/DOCX/airgap acceptance. This project-memory verification append itself creates another HEAD, requiring a new exact-HEAD Hosted CI and formal Codex review before any user-authorized Merge.
+
+## 2026-10-25 OFF-1P local DOCX byte integrity — current work
+
+- OFF-1O PR #311 merged to main at `aeae06963a7b1412ae2e46172e93f8884e47ebe1` after exact-head 1,238 focused + 2 Worker E2E + 19 OFF-0 PASS and formal Codex CLEAN. Real private SQL/Linux and DOCX bytes remained unverified.
+- OFF-1P `feat/sraf-off1p-docx-integrity` introduces `tools/sraf_airgap_off1p_docx_integrity.py`, `DOCX-BYTES` row gated by all eight explicit operator flags, SQL-READ and the real previous REPORT-CHECKPOINT PASS, one canonical schedule ID, and independently configured absolute SRAF_OFF1P_ARTIFACT_ROOT. Additional fixed, parameterized SQL SELECT returns one latest-scheduled-run completed item's stored run-item ID, relative DOCX path, SHA-256 and frozen output-root fingerprint only **into memory**, never JSON. Root fingerprint must match canonical local root; Linux fd-relative O_NOFOLLOW opens publisher-style item folder and file, caps file at 16MiB, bounds ZIP member count/uncompressed bytes, validates basic DOCX structure and compares actual bytes SHA-256 to SQL. Digest or DOCX corruption FAIL; missing/path or SQL ambiguity SKIP. No writes, HTTP Report Job call, content echo, PID binding, remote execution or FULL_LIVE attestation. New tests/CI/doc/operator safety evidence; latest Hosted CI/review and user Merge remain pending.
+
+## 2026-10-25 OFF-1P initial Hosted CI evidence
+
+- On PR #312 commit `3b5af4692f5d3500bb29f9760122124b90e16961`, Actions run #40206818095 completed SUCCESS: 1,257 focused unit PASS, 2 Worker E2E PASS, and OFF-0 19 schema-only checks PASS. Mock ODBC and temporary local DOCX tests are not live Linux SQL/remote Report Job or physical airgap acceptance. Revalidate final HEAD before merging.
+
+## 2026-10-25 OFF-1P formal Codex P2 remediation
+
+- Formal Codex at HEAD `b07b1e07fe23e128c32355cb1411318cd9768197` reported two P2: a mutable ancestor of the configured artifact root could be symlink-swapped during SQL and pass using external data, and `zlib.error` from corrupt ZIP compressed bytes escaped to SKIP. Updated OFF-1P to pin the root descriptor by component-wise nofollow traversal **before** `_read_reference()`, and retain it through SQL and fd-relative read; ZIP validator now treats `zlib.error` / EOF corruption as invalid structure. Two specific reproductions added; Actions #40207552259 at `b290783089098208e587be37f39c600aa0006ab1` **SUCCESS**, Hosted log **1,259 focused + 2 Worker E2E + 19 OFF-0**. The final documentation/FD exception close commit needs fresh exact-head Hosted CI and formal Codex review. No merge and no real deployment acceptance.

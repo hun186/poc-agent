@@ -30,6 +30,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools import sraf_airgap_off1b_auto as tcp  # noqa: E402
 from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
+from tools.sraf_airgap_off1p_docx_integrity import (  # noqa: E402
+    ARTIFACT_ROOT_KEY, probe_docx_byte_integrity,
+)
 from tools.sraf_airgap_off1o_report_checkpoint import (  # noqa: E402
     probe_report_sql_checkpoint,
 )
@@ -153,6 +156,15 @@ REASONS = frozenset((
     "report_checkpoint_result_invalid",
     "report_checkpoint_not_observed",
     "report_checkpoint_persisted",
+    "docx_not_requested", "docx_checkpoint_not_passed",
+    "docx_root_invalid", "docx_schema_invalid",
+    "docx_schedule_id_invalid", "docx_sql_config_invalid",
+    "docx_driver_unavailable", "docx_reference_ambiguous",
+    "docx_reference_absent", "docx_reference_invalid",
+    "docx_reference_sql_unverified", "docx_host_unsupported",
+    "docx_root_mismatch", "docx_path_invalid",
+    "docx_file_unverified", "docx_digest_mismatch",
+    "docx_structure_invalid", "docx_local_bytes_match",
 ))
 
 
@@ -860,6 +872,58 @@ def _report_checkpoint(*, probe_network: bool, probe_sql_read: bool,
     return result("SKIP", "unexpected_probe_result")
 
 
+def _docx_byte_check(*, probe_network: bool, probe_sql_read: bool,
+                     probe_worker_identities: bool, probe_schedule_claim: bool,
+                     probe_schedule_link: bool, probe_handoff_ack: bool,
+                     probe_report_checkpoint: bool, probe_docx_bytes: bool,
+                     checkpoint_status: str, sql_config: dict[str, str] | None,
+                     schedule_id: str | None, lease_schema: str | None,
+                     artifact_root: str | None) -> dict[str, Any]:
+    """Only after seven prior flags/PASS; checks one local fd-bound file."""
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record("DOCX-BYTES", "report",
+                       "one_persisted_item_local_docx_byte_match_only",
+                       status, reason, executed=executed,
+                       depends_on=("SQL-READ", "REPORT-CHECKPOINT"))
+    if not (probe_network and probe_sql_read and probe_worker_identities
+            and probe_schedule_claim and probe_schedule_link
+            and probe_handoff_ack and probe_report_checkpoint
+            and probe_docx_bytes):
+        return result("NOT_TESTED", "docx_not_requested")
+    if checkpoint_status != "PASS":
+        return result("SKIP", "docx_checkpoint_not_passed")
+    if not isinstance(schedule_id, str) or not schedule_id:
+        return result("SKIP", "docx_schedule_id_invalid")
+    if not isinstance(sql_config, dict):
+        return result("SKIP", "docx_sql_config_invalid")
+    if not isinstance(artifact_root, str) or not artifact_root:
+        return result("SKIP", "docx_root_invalid")
+    try:
+        obs = probe_docx_byte_integrity(
+            sql_config, schedule_id=schedule_id,
+            artifact_root=artifact_root,
+            schema=lease_schema if lease_schema is not None
+            else LEASE_SCHEMA_DEFAULT,
+        )
+        if obs.status == "PASS":
+            if (obs.check_id == "DOCX-BYTES-01"
+                    and obs.probe == "docx-byte-integrity"
+                    and obs.aspect == "one_persisted_item_local_docx_byte_match_only"
+                    and obs.executed is True
+                    and obs.reason == "docx_local_bytes_match"
+                    and isinstance(obs.evidence, dict)
+                    and obs.evidence.get("local_docx_byte_match") is True):
+                return result("PASS", "docx_local_bytes_match", executed=True)
+            return result("SKIP", "unexpected_probe_result")
+        if obs.status in ("SKIP", "FAIL"):
+            return result(obs.status, _reason(obs.reason),
+                          executed=bool(obs.executed))
+    except Exception:
+        return result("SKIP", "docx_file_unverified")
+    return result("SKIP", "unexpected_probe_result")
+
+
 def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_model_inventory: bool = False,
                  probe_model_inference: bool = False,
@@ -874,6 +938,8 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_schedule_link: bool = False,
                  probe_handoff_ack: bool = False,
                  probe_report_checkpoint: bool = False,
+                 probe_docx_bytes: bool = False,
+                 artifact_root: str | None = None,
                  schedule_id: str | None = None,
                  lease_schema: str | None = None
                  ) -> dict[str, Any]:
@@ -960,6 +1026,18 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         ack_status=handoff_ack["status"], sql_config=sql_config,
         schedule_id=schedule_id, lease_schema=lease_schema,
     )
+    docx_bytes = _docx_byte_check(
+        probe_network=probe_network, probe_sql_read=probe_sql_read,
+        probe_worker_identities=probe_worker_identities,
+        probe_schedule_claim=probe_schedule_claim,
+        probe_schedule_link=probe_schedule_link,
+        probe_handoff_ack=probe_handoff_ack,
+        probe_report_checkpoint=probe_report_checkpoint,
+        probe_docx_bytes=probe_docx_bytes,
+        checkpoint_status=checkpoint["status"], sql_config=sql_config,
+        schedule_id=schedule_id, lease_schema=lease_schema,
+        artifact_root=artifact_root,
+    )
     rows.extend((
         sql_read,
         lease_snapshot,
@@ -969,6 +1047,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         schedule_link,
         handoff_ack,
         checkpoint,
+        docx_bytes,
         _record("ES-MAPPING", "es", "authenticated_es_mapping", "NOT_TESTED",
                 "es_tls_mapping_not_aggregated", depends_on=("ES-TCP",)),
         inventory,
@@ -1007,6 +1086,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
     parser.add_argument("--probe-sql-read", action="store_true",
                         help="With --probe-network, make one TLS-verified ODBC constant SELECT using dedicated operator SRAF_OFF1G_SQL_* secrets.")
+    parser.add_argument("--probe-docx-bytes", action="store_true",
+                        help="With all seven Schedule/Handoff/Report flags and real REPORT-CHECKPOINT PASS, verify one local published DOCX bytes and SQL digest; no remote API.")
     parser.add_argument("--probe-report-checkpoint", action="store_true",
                         help="Require six Schedule/Handoff flags plus this consent; read persisted per-item Report completion and artifact reconciliation SQL predicates only (no API/DOCX).")
     parser.add_argument("--probe-handoff-ack", action="store_true",
@@ -1076,6 +1157,15 @@ def main(argv: list[str] | None = None) -> int:
                               probe_schedule_link=args.probe_schedule_link,
                               probe_handoff_ack=args.probe_handoff_ack,
                               probe_report_checkpoint=args.probe_report_checkpoint,
+                              probe_docx_bytes=args.probe_docx_bytes,
+                              artifact_root=(os.environ.get(ARTIFACT_ROOT_KEY)
+                                   if (args.probe_network and args.probe_sql_read
+                                       and args.probe_worker_identities
+                                       and args.probe_schedule_claim
+                                       and args.probe_schedule_link
+                                       and args.probe_handoff_ack
+                                       and args.probe_report_checkpoint
+                                       and args.probe_docx_bytes) else None),
                               schedule_id=(os.environ.get(SCHEDULE_ID_KEY)
                                    if (args.probe_network and args.probe_sql_read
                                        and args.probe_worker_identities
