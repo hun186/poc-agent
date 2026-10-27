@@ -3,7 +3,8 @@
 This is a bounded operator-only process/socket identity check, not a TLS,
 application, API response, Agent, or physical-airgap proof. The proof must be
 rechecked immediately BEFORE the authenticated GET is sent on its socket,
-and after reading the response. No pid discovery, signals or credential reads.
+and after reading the response. Socket-owner enumeration is bounded;
+no signals, processes spawned, or credential reads.
 """
 from __future__ import annotations
 

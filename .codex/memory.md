@@ -70,3 +70,7 @@
 
 - First fix HEAD e9890970dce942aeb118e4170ad59e6554b102b0 Hosted run #40531392216 succeeded: 1,341 focused pytest PASS, 2 Worker E2E PASS, 19 OFF-0 schema-only checks PASS (mock/synthetic and CI-host only; not production acceptance).
 - Added separate real Linux /proc process regression that launches an actual temporary Python-shebang executable named uvicorn with the exact launcher arguments, checks real PID/start/EUID/cwd/cmdline matching and wrong-port rejection, plus hardened shared-owner matrix regression assertion. This new HEAD requires its own Hosted run, formal Codex exact-head re-review, and separate explicit merge authorization.
+
+## 2026-10-27 OFF-1S exact verified Hosted P2 regression (before final documentation SHA)
+
+- Final functional regression commit `663f6e3e1afa500c5b9d8cf72dbb146286ed0d17`: hosted [run #40531972972](https://github.com/hun186/poc-agent/actions/runs/40531972972) completed SUCCESS with **1,342 focused pytest**, **2 Worker E2E**, **19 OFF-0 schema-only contracts**. Includes an actually launched Linux Python-shebang process and /proc identity assertion, synthetic shared socket and unreadable-fd rejection, and pre-send bearer fail-closed checks. Earlier first correction `e9890970dce942aeb118e4170ad59e6554b102b0` also had hosted run #40531392216 success (1,341 focused + 2 E2E + 19 schema-only). Both formal Codex P2 discussions answered; this subsequent documentation-only update changes HEAD and requires fresh exact-head CI and formal review. Production SQL/API/airgap acceptance remains untested; no merge authorization.
