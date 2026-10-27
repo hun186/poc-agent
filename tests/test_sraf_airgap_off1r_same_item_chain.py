@@ -308,7 +308,7 @@ def test_sql_query_columns_follow_real_migration_schema():
     # Keep a complete alias to-table map, including OUTER APPLY outputs.
     for alias, table_cols in (("s", schedule_cols), ("r", batch_cols),
                               ("h", handoff_cols), ("i", item_cols)):
-        mentioned = re.findall(r"\\b" + alias + r"\\.([a-z_][a-z_0-9]*)\\b", query)
+        mentioned = re.findall(r"\b" + alias + r"\.([a-z_][a-z_0-9]*)\b", query)
         assert mentioned
         assert set(mentioned) <= table_cols, (alias, set(mentioned)-table_cols)
     assert "i.remote_job_id IS NOT NULL" in query
