@@ -299,8 +299,49 @@ def test_attestation_refuses_shared_socket_before_bearer(monkeypatch, tmp_path):
     monkeypatch.setattr(listener, "_owns_socket", lambda *a: True)
     monkeypatch.setattr(listener, "_exclusive_socket_owner", lambda *a: False)
     assert listener.attest_api_listener(root, str(PORT)) is None
+    monkeypatch.setattr(matrix, "PROJECT_ROOT", root)
     row, proof = matrix._api_listener_check(
         flags=(True,) * 11, docx_status="PASS", api_port=str(PORT))
-    # The matrix's global root need not match this synthetic test directory:
-    # attestation itself is what must fail closed.
-    assert proof is None if row["status"] == "SKIP" else True
+    assert row["status"] == "SKIP"
+    assert row["reason"] == "api_listener_unverified"
+    assert proof is None
+
+
+@pytest.mark.skipif(os.name != "posix" or not Path("/proc/self/stat").exists(),
+                    reason="Linux procfs process verification only")
+def test_actual_linux_python_shebang_uvicorn_process(tmp_path):
+    """Read real /proc/pid/{stat,status,cwd,cmdline}, not fabricated argv bytes."""
+    import subprocess
+    import sys
+    import time
+
+    script = tmp_path / "uvicorn"
+    script.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(10)\n")
+    script.chmod(0o700)
+    proc = subprocess.Popen(
+        [str(script), "api.main:app", "--host", "0.0.0.0",
+         "--port", str(PORT)],
+        cwd=tmp_path,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        valid = False
+        root_stat = os.stat(tmp_path)
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            start_tick = listener._start_tick(proc.pid)
+            if (start_tick is not None
+                    and listener._same_process(
+                        proc.pid, start_tick, root_stat, PORT)):
+                valid = True
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(0.025)
+        assert valid, "launcher-style Python shebang process must be recognized"
+        assert not listener._same_process(proc.pid, start_tick, root_stat, PORT + 1)
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+        proc.wait(timeout=3)
