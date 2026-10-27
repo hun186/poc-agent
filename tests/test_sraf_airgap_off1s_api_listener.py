@@ -161,7 +161,7 @@ def test_good_guard_before_token_and_after_body(monkeypatch):
 
 
 def test_matrix_eleventh_optin_and_fail_closed_without_token(monkeypatch):
-    matrix.PROJECT_ROOT=Path("/tmp/nonsecret-app")
+    monkeypatch.setattr(matrix,"PROJECT_ROOT",Path("/tmp/nonsecret-app"))
     live_calls=[]
     monkeypatch.setattr(matrix, "probe_remote_report_job",lambda *a,**k:
         live_calls.append(k) or pytest.fail("bearer request should be blocked"))
