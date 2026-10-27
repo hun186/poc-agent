@@ -12,6 +12,7 @@ import re
 import socket
 import time
 from typing import Any
+from collections.abc import Callable
 
 import pyodbc
 from tools.sraf_airgap_off1_probes import Observation
@@ -248,6 +249,7 @@ def _remote_status(port: int, token: str, job_id: str,
 def probe_remote_report_job(
     sql_config: dict[str, str], *, schedule_id: str, api_port: str,
     read_token: str, schema: str = DEFAULT_SCHEMA,
+    listener_guard: Callable[[], tuple[int, str, str] | None] | None = None,
 ) -> Observation:
     """Only partial GET evidence. No SQL mutation or job creation."""
     if not isinstance(schema, str) or _SCHEMA_RE.fullmatch(schema) is None:
@@ -270,8 +272,23 @@ def probe_remote_report_job(
     selected = _sql_reference(connstr, schema, schedule_id)
     if isinstance(selected, str):
         return _out("SKIP", selected, executed=True)
+    binding = None
+    if listener_guard is not None:
+        try:
+            # This check happens AFTER SQL and immediately BEFORE token-bearing
+            # transport; an earlier matrix-wide check could go stale.
+            binding = listener_guard()
+            if binding is None:
+                return _out("SKIP", "api_owner_unverified", executed=True)
+        except Exception:
+            return _out("SKIP", "api_owner_unverified", executed=True)
     try:
         status, reason = _remote_status(port, read_token, *selected)
+        if listener_guard is not None:
+            # Do not attribute a response to the intended listener if its
+            # owner/inode/start identity changed during the GET.
+            if listener_guard() != binding:
+                return _out("SKIP", "api_owner_changed", executed=True)
     except Exception:
         return _out("SKIP", "remote_http_unverified", executed=True)
     return _out(status, reason, executed=True,

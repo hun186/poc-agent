@@ -11,6 +11,7 @@ import hmac
 import os
 from pathlib import Path
 import sys
+from collections.abc import Callable
 
 import pyodbc
 
@@ -128,7 +129,8 @@ def _valid_reference(row, root_fp: str) -> str | None:
 
 def probe_single_item_chain(cfg: dict[str, str], *, schedule_id: str,
                             artifact_root: str, api_port: str, read_token: str,
-                            schema: str = DEFAULT_SCHEMA) -> Observation:
+                            schema: str = DEFAULT_SCHEMA,
+                            listener_guard: Callable[[], tuple[int, str, str] | None] | None = None) -> Observation:
     """One pinned filesystem root, two SQL observations and one fixed GET."""
     if sys.platform != "linux" or not hasattr(os, "O_NOFOLLOW"):
         return _out("SKIP", "chain_host_unsupported")
@@ -188,8 +190,15 @@ def probe_single_item_chain(cfg: dict[str, str], *, schedule_id: str,
 
         # Deliberately compare the API with the *same saved* reference;
         # never call OFF-1Q's separate latest-item SQL selector.
+        binding = None
+        if listener_guard is not None:
+            binding = listener_guard()
+            if binding is None:
+                return _out("SKIP", "api_owner_unverified", executed=True)
         remote_state, remote_reason = _remote_status(port, read_token,
                                                       job_id, submission_id)
+        if listener_guard is not None and listener_guard() != binding:
+            return _out("SKIP", "api_owner_changed", executed=True)
         if remote_state == "FAIL":
             if remote_reason in ("remote_job_identity_mismatch",
                                  "remote_submission_mismatch",
