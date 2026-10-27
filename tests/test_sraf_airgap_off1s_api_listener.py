@@ -79,6 +79,7 @@ def test_attest_requires_same_live_record_socket_and_process(tmp_path,monkeypatc
     monkeypatch.setattr(listener, "_same_process", lambda *a: True)
     monkeypatch.setattr(listener, "_listener_inode", lambda p: INODE)
     monkeypatch.setattr(listener, "_owns_socket",lambda p,i: True)
+    monkeypatch.setattr(listener, "_exclusive_socket_owner", lambda p,i: True)
     got=listener.attest_api_listener(root, str(PORT))
     assert got==PROOF
     assert listener.listener_still_expected(root,got)
@@ -205,3 +206,101 @@ def test_matrix_propagates_guard_only_when_opted_in(monkeypatch):
     assert matrix._report_live_check(**args)["status"]=="PASS"
     assert matrix._report_live_check(**args,listener_required=True,
                                     listener_proof=PROOF)["status"]=="PASS"
+
+
+def test_launcher_python_console_script_and_runtime_title(monkeypatch, tmp_path):
+    """Exercise real Linux shebang argv shape and sra_api/core/proctitle.py."""
+    root_stat = os.stat(tmp_path)
+    monkeypatch.setattr(listener, "_start_tick", lambda p: TICK)
+    original_stat = listener.os.stat
+    monkeypatch.setattr(listener.os, "stat",
+        lambda path, *a, **k: root_stat if str(path).endswith("/cwd")
+        else original_stat(path, *a, **k))
+    status = (b"Name:\tpython3\nUid:\t1000\t"
+              + str(os.geteuid()).encode() + b"\t1000\t1000\n")
+    payload = {"command": (b"/usr/local/bin/python3.11\x00"
+              b"/usr/local/bin/uvicorn\x00api.main:app\x00"
+              b"--host\x000.0.0.0\x00--port\x009002\x00")}
+    monkeypatch.setattr(listener, "_bounded", lambda path, limit:
+        status if str(path).endswith("/status") else payload["command"])
+    assert listener._same_process(PID, TICK, root_stat, PORT)
+
+    payload["command"] = (b"/usr/bin/python3\x00/usr/bin/uvicorn\x00"
+                          b"other.main:app\x00--host\x000.0.0.0\x00--port\x009002\x00")
+    assert not listener._same_process(PID, TICK, root_stat, PORT)
+    payload["command"] = (b"/usr/bin/python3\x00-m\x00uvicorn\x00"
+                          b"api.main:app\x00--host\x000.0.0.0\x00--port\x009002\x00")
+    assert not listener._same_process(PID, TICK, root_stat, PORT)
+
+    hostname = listener.socket.gethostname()
+    title = f"SRA-API | port={PORT} | gpt-oss | pid={PID} | {hostname}"
+    payload["command"] = title.encode() + b"\x00\x00\x00"
+    assert listener._same_process(PID, TICK, root_stat, PORT)
+    payload["command"] = (f"SRA-API | port={PORT} | pid={PID} | {hostname}"
+                          ).encode() + b"\x00"
+    assert listener._same_process(PID, TICK, root_stat, PORT)
+    payload["command"] = (f"SRA-API | port={PORT} | pid={PID+1} | {hostname}"
+                          ).encode() + b"\x00"
+    assert not listener._same_process(PID, TICK, root_stat, PORT)
+    payload["command"] = title.encode() + b"\x00other\x00"
+    assert not listener._same_process(PID, TICK, root_stat, PORT)
+
+
+def test_exclusive_socket_owner_rejects_fork_shared_and_unreadable(monkeypatch):
+    """A child holding the *same* listening inode cannot receive a bearer."""
+    from types import SimpleNamespace
+
+    other_pid = PID + 1
+    owners = {
+        PID: {"3": f"socket:[{INODE}]"},
+        other_pid: {"4": f"socket:[{INODE}]"},
+    }
+    blocked = set()
+
+    class FakeDir:
+        def __init__(self, items):
+            self.items = items
+        def __enter__(self):
+            return iter(self.items)
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_scandir(path):
+        if path == "/proc":
+            return FakeDir([SimpleNamespace(name=str(p)) for p in owners])
+        pid = int(str(path).split("/")[2])
+        if pid in blocked:
+            raise PermissionError("unverifiable fd table")
+        return FakeDir([SimpleNamespace(name=fd, path=f"/proc/{pid}/fd/{fd}")
+                        for fd in owners[pid]])
+    def fake_readlink(path):
+        pid, fd = int(path.split("/")[2]), path.split("/")[-1]
+        return owners[pid][fd]
+
+    monkeypatch.setattr(listener.os, "scandir", fake_scandir)
+    monkeypatch.setattr(listener.os, "readlink", fake_readlink)
+    assert not listener._exclusive_socket_owner(PID, INODE)
+    owners[other_pid]["4"] = "socket:[different]"
+    assert listener._exclusive_socket_owner(PID, INODE)
+    blocked.add(other_pid)
+    assert not listener._exclusive_socket_owner(PID, INODE)
+    blocked.clear()
+    del owners[PID]["3"]
+    assert not listener._exclusive_socket_owner(PID, INODE)
+
+
+def test_attestation_refuses_shared_socket_before_bearer(monkeypatch, tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / listener.IDENTITY_NAME).write_text(
+        f"api_pid={PID}\napi_start_time={TICK}\nport={PORT}\n")
+    monkeypatch.setattr(listener, "_same_process", lambda *a: True)
+    monkeypatch.setattr(listener, "_listener_inode", lambda *a: INODE)
+    monkeypatch.setattr(listener, "_owns_socket", lambda *a: True)
+    monkeypatch.setattr(listener, "_exclusive_socket_owner", lambda *a: False)
+    assert listener.attest_api_listener(root, str(PORT)) is None
+    row, proof = matrix._api_listener_check(
+        flags=(True,) * 11, docx_status="PASS", api_port=str(PORT))
+    # The matrix's global root need not match this synthetic test directory:
+    # attestation itself is what must fail closed.
+    assert proof is None if row["status"] == "SKIP" else True

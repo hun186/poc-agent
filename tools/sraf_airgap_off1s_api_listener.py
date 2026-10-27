@@ -126,17 +126,45 @@ def _same_process(pid: int, start_tick: str, root_stat: os.stat_result,
     command = _bounded(Path(f"/proc/{pid}/cmdline"), MAX_CMD)
     if command is None or not command.endswith(b"\0"):
         return False
-    try:
-        argv = [os.fsdecode(a) for a in command[:-1].split(b"\0")]
-    except UnicodeError:
-        return False
-    # run_sra_api.sh launches exactly:
-    # uvicorn api.main:app --host 0.0.0.0 --port "$PORT"
-    return (len(argv) == 6
-            and Path(argv[0]).name == "uvicorn"
-            and argv[1:5] == ["api.main:app", "--host", "0.0.0.0", "--port"]
-            and argv[5] == str(port)
-            and _start_tick(pid) == start_tick)
+    # setproctitle (called by sra_api/main.py) replaces argv memory with the
+    # exact generated SRA-API title and NUL padding. It can conceal the
+    # original uvicorn argv; corroborate it only with the launcher record,
+    # effective UID, pinned cwd, PID start tick and exclusive socket owner.
+    if command.startswith(b"SRA-API | "):
+        try:
+            raw_title, padding = command.split(b"\0", 1)
+            title = raw_title.decode("utf-8")
+            hostname = socket.gethostname()
+        except (UnicodeError, ValueError):
+            return False
+        if any(padding):
+            return False
+        title_pattern = (
+            rf"SRA-API \| port={port} \| "
+            rf"(?:[A-Za-z0-9][A-Za-z0-9._+-]{{0,80}} \| )?"
+            rf"pid={pid} \| {re.escape(hostname)}"
+        )
+        argv_ok = re.fullmatch(title_pattern, title) is not None
+    else:
+        try:
+            argv = [os.fsdecode(a) for a in command[:-1].split(b"\0")]
+        except UnicodeError:
+            return False
+        # run_sra_api.sh executes uvicorn as a console script. On Linux its
+        # shebang commonly appears as: python3 /path/to/uvicorn <5 args>.
+        # Preserve the original direct-executable case, without accepting
+        # arbitrary python -m or a different application.
+        if (len(argv) == 7
+                and re.fullmatch(r"python(?:[0-9]+(?:\.[0-9]+)?)?",
+                                 Path(argv[0]).name) is not None
+                and Path(argv[1]).is_absolute()
+                and Path(argv[1]).name == "uvicorn"):
+            argv = argv[1:]
+        argv_ok = (len(argv) == 6
+                   and Path(argv[0]).name == "uvicorn"
+                   and argv[1:] == ["api.main:app", "--host", "0.0.0.0",
+                                    "--port", str(port)])
+    return argv_ok and _start_tick(pid) == start_tick
 
 
 def _listener_inode(port: int) -> str | None:
@@ -190,6 +218,68 @@ def _owns_socket(pid: int, inode: str) -> bool:
         return False
 
 
+# Socket-inode uniqueness in /proc/net/tcp is not exclusive *process*
+# ownership: fork(), inherited descriptors, or SCM_RIGHTS can give an
+# unrelated PID the same listener. A partial or permission-denied process
+# table must NOT be interpreted as proof of exclusivity.
+MAX_PROCESSES = 32768
+MAX_GLOBAL_FDS = 131072
+
+
+def _exclusive_socket_owner(pid: int, inode: str) -> bool:
+    """Fail closed unless an inspectable /proc table names only this PID.
+
+    A hidden process, inaccessible fd table, PID churn that cannot be
+    distinguished, or an oversized scan yields SKIP rather than bearer
+    transmission. This is conservative visibility, not cryptographic proof.
+    """
+    target = f"socket:[{inode}]"
+    owner_seen = False
+    process_count = 0
+    total_fds = 0
+    try:
+        with os.scandir("/proc") as processes:
+            for process in processes:
+                if not process.name.isdecimal():
+                    continue
+                process_count += 1
+                if process_count > MAX_PROCESSES:
+                    return False
+                current_pid = int(process.name)
+                fd_path = f"/proc/{current_pid}/fd"
+                try:
+                    with os.scandir(fd_path) as descriptors:
+                        per_pid_fds = 0
+                        for entry in descriptors:
+                            per_pid_fds += 1
+                            total_fds += 1
+                            if per_pid_fds > MAX_FDS or total_fds > MAX_GLOBAL_FDS:
+                                return False
+                            if not entry.name.isdecimal():
+                                continue
+                            try:
+                                link = os.readlink(entry.path)
+                            except FileNotFoundError:
+                                # Descriptor was closed during the scan.
+                                continue
+                            except OSError:
+                                return False
+                            if link == target:
+                                if current_pid != pid:
+                                    return False
+                                owner_seen = True
+                except FileNotFoundError:
+                    # A vanished process is harmless; an existing but
+                    # unreadable table is NOT.
+                    if os.path.exists(f"/proc/{current_pid}"):
+                        return False
+                except OSError:
+                    return False
+    except (OSError, ValueError):
+        return False
+    return owner_seen
+
+
 def attest_api_listener(project_root: Path, api_port: str) -> ListenerProof | None:
     """One fail-closed Linux identity snapshot, with no credential access."""
     port = _port(api_port)
@@ -208,12 +298,13 @@ def attest_api_listener(project_root: Path, api_port: str) -> ListenerProof | No
         if not _same_process(pid, tick, root_stat, port):
             return None
         inode = _listener_inode(port)
-        if inode is None or not _owns_socket(pid, inode):
+        if inode is None or not _owns_socket(pid, inode) or not _exclusive_socket_owner(pid, inode):
             return None
         if (_identity(fd, port) != selected
                 or not _same_process(pid, tick, root_stat, port)
                 or _listener_inode(port) != inode
-                or not _owns_socket(pid, inode)):
+                or not _owns_socket(pid, inode)
+                or not _exclusive_socket_owner(pid, inode)):
             return None
         return ListenerProof(pid, tick, port, inode)
     except (OSError, ValueError, UnicodeError):

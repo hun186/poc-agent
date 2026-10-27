@@ -23,3 +23,33 @@ The checker opens exact repository-root launcher record \`.run_sra_api_api.ident
 This is **process identity corroboration, not cryptographic server authentication**. A malicious process with the *same UID* and filesystem permissions may be able to forge launcher records or invoke a matching command line. Checks are time-separated: a listener might be replaced in the window after the pre-send check and before transmission. No currently available snapshot constitutes an unforgeable binding between TCP session and service process. For a stronger trust model, use mutually authenticated transport or a protected Unix-domain socket with SO_PEERCRED, developed and reviewed separately.
 
 Normal SRAF launcher binds \`0.0.0.0\`; OFF-1S does not claim network isolation or TLS from this socket observation. A \`0.0.0.0\` listener means external reachability still requires independent firewall/network-isolation validation. This check does not establish Report Job artifact provenance, Agent/LLM/ES execution or entire batch success. Prior OFF-1P/Q/R partial checks and \`feature_acceptance=NOT_TESTED\`, overall INCOMPLETE remain. Hosted CI uses synthetic /proc, identity files and fake HTTP sockets, **not** live private API/SQL/airgapped deployment.
+
+
+## 2026-10-27 Codex P2 hardening
+
+The listener process matcher accepts the launcher-issued six-argument direct
+\`uvicorn\` command, the actual seven-argument Linux Python shebang +
+\`/path/to/uvicorn\` console script, and the \`SRA-API | port=... |
+[model | ]pid=... | hostname\` title created by the repository's
+\`sra_api/core/proctitle.py\`. All variants must still satisfy the PID start
+tick, effective UID, exact working directory, launcher identity and port/socket
+requirements. Unrelated applications, arbitrary \`python -m\` invocations and
+incorrect PID/port/title are rejected.
+
+A unique \`/proc/net/tcp\` socket inode alone is not a unique *owner*:
+another process may inherit/receive the listening descriptor and accept
+the credential-bearing connection. The verifier now additionally performs
+a bounded host \`/proc/*/fd\` scan and requires the matching listening socket
+to be held **only by the recorded API PID**. Shared socket ownership, process
+visibility restrictions, permission-denied descriptor tables or capped scans
+return \`SKIP\` rather than transmitting the bearer token. The operator must
+have enough process-inspection rights to make a positive claim; restricted
+normal user environments may remain SKIP, rather than producing a false PASS.
+
+This does not prove visibility of host processes hidden outside the current
+PID namespace, a race-free session-to-process binding, an unforgeable
+same-UID identity record or full air-gap isolation. An operator must verify
+PID and network namespace visibility and appropriate host \`/proc\` permissions
+before relying on any partial PASS. Hosted synthetic regressions cover shared
+listener owners and realistic launch/title variants; they are not a live
+production attestation.
