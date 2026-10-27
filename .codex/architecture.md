@@ -88,3 +88,7 @@
 ## 2026-10-27 OFF-1Q one authenticated Report Job status observation
 
 - Default-off operator `REPORT-LIVE` matrix row depends on `SQL-READ` and prior `DOCX-BYTES` PASS with nine explicit flags. After a private TLS/ODBC read restricted to one canonical Schedule ID, resolve one matching report_v1 Handoff submission and remotely persisted job ID in-process, then a single localhost-only authenticated bounded no-proxy/no-redirect GET `/v1/report/jobs/{id}`. Require response job_id, metadata submission/workflow identity and completed state. SQL/probe row/order mirrors OFF-1P but its observations are not atomic and cannot guarantee the earlier DOCX check was for identical run_item.
+
+## 2026-10-27 OFF-1R same-item partial correlation
+
+- Add one operator-only `tools/sraf_airgap_off1r_same_item_chain.py` and `REPORT-CHAIN` row after prior `REPORT-LIVE: PASS` and tenth explicit flag. One SQL joined result selects one schedule batch/run item and published DOCX/path/SHA/root, Handoff submission, remote job ID. The pinned local directory descriptor and saved SQL tuple are reused to verify actual DOCX bytes and authenticated fixed localhost Report Job response, then a second identical SQL query must still return the same tuple. No new API routes, mutation, scheduler or worker. SQL and HTTP/filesystem snapshots are sequential; their equivalence is not atomic or cryptographic provenance.

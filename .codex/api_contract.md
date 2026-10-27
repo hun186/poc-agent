@@ -74,3 +74,7 @@
 ## 2026-10-27 OFF-1Q operator-only report-live CLI
 
 - New `--probe-report-live` after the previous 8 explicit flags and prior `DOCX-BYTES: PASS`. Operator also sets `SRAF_OFF1Q_REPORT_API_PORT` (decimal 1..65535 on 127.0.0.1) and `SRAF_OFF1Q_REPORT_JOB_READ_TOKEN` (owner-scoped REPORT_JOB_READ). No caller-supplied URL/hostname allowed. One SQL SELECT obtains same-selected-item report_v1 submission and remote job ID in process, one GET only with no redirects/proxy, 8KiB maximum JSON, requires matching job_id + metadata submission_id/workflow_id + status=completed. Adds `REPORT-LIVE` (depends on SQL-READ/DOCX-BYTES); no new HTTP API, no Word download or job POST; JSON omits identifiers/credentials. Overall remains partial INCOMPLETE; feature_acceptance NOT_TESTED.
+
+## 2026-10-27 OFF-1R tenth optional operator CLI flag
+
+- `--probe-report-chain` requires the prior nine OFF-1Q flags, real prior `REPORT-LIVE: PASS`, canonical schedule ID, operator root/port/read-only Report Job token and OFF-1G restricted SQL credentials. Adds a `REPORT-CHAIN` matrix row that depends on SQL-READ, DOCX-BYTES and REPORT-LIVE. This check privately selects 7 immutable-looking SQL reference fields and checks one local DOCX SHA256/ZIP plus same job/submission authenticated GET and rechecks SQL reference. JSON emits only reviewed fixed reason code/status/boolean, never schedule/batch/item/job IDs, path, digest, credential or API body. No new HTTP route, no create/download; overall remains partial, feature_acceptance=NOT_TESTED.
