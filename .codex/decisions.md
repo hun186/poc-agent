@@ -115,3 +115,7 @@
 ## 2026-10-27 OFF-1Q Codex P2 whole-call deadline
 
 - Replace high-level streaming Requests with a reviewed minimal HTTP/1.1 numeric-IPv4 loopback client that applies one monotonic 3s total deadline across every network operation. Keep strict fixed route and regex-checked job IDs, bounded headers/body, Content-Length framing only and immediate socket teardown. Refuse redirects, chunked/compressed responses and unverified content; slower than 3s cannot PASS. No public hostname/proxy/real production acceptance.
+
+## 2026-10-27 OFF-1R single-item SQL reference instead of independent latest selections
+
+- Correct OFF-1P/OFF-1Q evidence mismatch possibility by adding one separately opted-in operator probe rather than retroactively equating earlier PASS observations. Select seven SQL columns from the same joined schedule batch/item/handoff; read file with existing pinned-root OFF-1P protections; authenticate same job/submission via OFF-1Q bounded loopback GET; re-read the SQL tuple and SKIP if changed. Preserve partial-only status; do not claim SQL read-write serializability, API listener/PID authenticity, signed provenance or complete isolated E2E.

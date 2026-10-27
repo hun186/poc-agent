@@ -84,3 +84,8 @@
 
 - Require exact-head Hosted OFF-1Q focused pytest + legacy Worker E2E + OFF-0 19; formal Codex Review CLEAN on same HEAD, resolve all P1/P2; then Merge only on explicit separate user command. No real operator SQL/Report Job HTTP authorization supplied; do not declare live PASS.
 - Next live/deployment work: operator-approved real loopback Report Job response under owner-scoped REPORT_JOB_READ principal and independently verified SRAF API listener identity/PID, matching the same immutable run_item in SQL and locally published DOCX in one stable observation; verify remote artifact provenance and Agent/LLM/ES traces; test physical isolation. OFF-1Q only correlates sequential API and SQL snapshots.
+
+## 2026-10-27 OFF-1R Hosted review and live acceptance gates
+
+- Run exact-HEAD Hosted OFF-1B focused pytest including OFF-1R new tests + legacy Worker E2E + 19 OFF-0 schema checks, then formally request Codex Review on exact HEAD and correct all actionable P1/P2, resolve review threads. Do not merge without an explicit separate user instruction. No valid live SQL/HTTP/airgap acceptance is available in Hosted tests.
+- Future operator-approved real SQL Server execution/permission/TLS SAN and SRAF listener/owner/PID attestation, immutable report job-to-artifact provenance (signed/durable linkage) and real Agent/LLM/ES end-to-end plus network isolation validation remain pending. OFF-1R only correlates a sequential three-observation chain.
