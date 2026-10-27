@@ -65,6 +65,10 @@ def fake_proc(tmp_path, monkeypatch):
 
 def test_launcher_identity_owned_listener_pass_and_private(tmp_path, monkeypatch):
     root, _ = fake_proc(tmp_path, monkeypatch)
+    assert owner._record(root, int(PORT)) == (PID, START)
+    assert owner._process(root, PID, START, int(PORT))
+    assert owner._listener_inode(int(PORT)) == INODE
+    assert owner._owns_socket(PID, INODE)
     result = owner.probe_api_listener_owner(root, PORT)
     assert result.status == "PASS"
     assert result.reason == "api_owner_observed"
