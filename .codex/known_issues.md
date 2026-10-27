@@ -150,3 +150,7 @@
 ## 2026-10-27 OFF-1R SQL migration column owner correction
 
 - The first OFF-1R query draft incorrectly referenced `h.remote_job_id` and `h.dispatched_at` on `requirement_handoff_submissions`. The authoritative `requirement_scheduler.migrations.REQUIRED_COLUMNS` places both on `requirement_batch_run_items`. Replaced with `i.remote_job_id IS NOT NULL` and `i.dispatched_at IS NOT NULL`; Handoff is linked through `h.run_item_id=i.run_item_id` and workflow. Added migration-column/alias parity test, since mocked ODBC tests never parse SQL Server column references. Live SQL Server syntax still requires operator validation.
+
+## 2026-10-27 OFF-1S service listener identity and residual races
+
+- Process identity record is launcher-managed but same-UID writable, not digitally signed. A same-UID malicious process may forge it and imitate expected command line/socket fd; no cryptographic server authentication. Rechecking PID/start/socket after TCP connect and before writing bearer reduces but cannot eliminate the race between verification and send. Listener on 0.0.0.0 is not evidence of firewall/isolation. Fail closed when API uses different uvicorn command/title or nonshared proc/network namespace or when IPv6 listener may shadow IPv4, PID/fd access denied, or socket ambiguous. Operator-hosted test must check actual deployed Uvicorn title and launcher identity; Hosted pytest mocks cannot attest live runtime or private network.

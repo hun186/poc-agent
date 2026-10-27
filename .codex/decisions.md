@@ -119,3 +119,7 @@
 ## 2026-10-27 OFF-1R single-item SQL reference instead of independent latest selections
 
 - Correct OFF-1P/OFF-1Q evidence mismatch possibility by adding one separately opted-in operator probe rather than retroactively equating earlier PASS observations. Select seven SQL columns from the same joined schedule batch/item/handoff; read file with existing pinned-root OFF-1P protections; authenticate same job/submission via OFF-1Q bounded loopback GET; re-read the SQL tuple and SKIP if changed. Preserve partial-only status; do not claim SQL read-write serializability, API listener/PID authenticity, signed provenance or complete isolated E2E.
+
+## 2026-10-27 OFF-1S credential-safe listener check
+
+- Reject treating 127.0.0.1 as process authentication. Use existing launcher identity record, bounded Linux proc state and listening socket inode proof; do not accept arbitrary PID/host/URL, do not spawn/signals/mutate. Crucially, require repeat attestation immediately after TCP connection and BEFORE bearer transmission, with post-body recheck and a safe SKIP if state changes. Keep OFF-1S separately opt-in and preserve legacy flags; do not overstate process attestation as cryptographic security or airgap acceptance.

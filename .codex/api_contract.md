@@ -78,3 +78,7 @@
 ## 2026-10-27 OFF-1R tenth optional operator CLI flag
 
 - `--probe-report-chain` requires the prior nine OFF-1Q flags, real prior `REPORT-LIVE: PASS`, canonical schedule ID, operator root/port/read-only Report Job token and OFF-1G restricted SQL credentials. Adds a `REPORT-CHAIN` matrix row that depends on SQL-READ, DOCX-BYTES and REPORT-LIVE. This check privately selects 7 immutable-looking SQL reference fields and checks one local DOCX SHA256/ZIP plus same job/submission authenticated GET and rechecks SQL reference. JSON emits only reviewed fixed reason code/status/boolean, never schedule/batch/item/job IDs, path, digest, credential or API body. No new HTTP route, no create/download; overall remains partial, feature_acceptance=NOT_TESTED.
+
+## 2026-10-27 OFF-1S eleventh operator CLI flag
+
+- `--probe-api-listener` requires prior ten OFF-1R opt-ins and a real DOCX-BYTES PASS; produces `API-LISTENER` (depends_on DOCX-BYTES). When requested, if API-LISTENER is not PASS, REPORT-LIVE and REPORT-CHAIN are SKIP and cannot open their token-bearing GET. When PASS, their authenticated localhost requests carry a pre-send and post-read listener recheck; changes yield SKIP remote_listener_unverified. Only the existing port and owner-scoped read token env are reused, with no new operator PID override or URL. JSON contains only static reason/status/boolean, never PID, inode, credential, path, job ID or raw /proc data. Feature acceptance remains NOT_TESTED and overall incomplete unless other failures are found.
