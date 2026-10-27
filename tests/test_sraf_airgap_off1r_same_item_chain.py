@@ -149,7 +149,7 @@ def test_corrupt_zip_with_matching_digest_is_fail(tmp_path,monkeypatch):
 
 
 @pytest.mark.parametrize("edit,reason", [
-    ({1:"other"}, "chain_reference_invalid"),
+    ({1:"other"}, "chain_path_invalid"),
     ({2:"../secrets.docx"}, "chain_path_invalid"),
     ({2:"rit_"+"0"*32+"/report.docx"}, "chain_path_invalid"),
     ({3:"g"*64}, "chain_reference_invalid"),
