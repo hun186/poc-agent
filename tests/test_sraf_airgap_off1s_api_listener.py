@@ -61,7 +61,7 @@ def test_expected_process_binds_cwd_euid_start_and_exact_argv(monkeypatch, tmp_p
     monkeypatch.setattr(listener.os, "stat",
         lambda path, *a, **k: root_stat if str(path).endswith("/cwd")
         else original_stat(path, *a, **k))
-    status = b"Name:\tuvicorn\nUid:\t1000\t1000\t" + str(os.geteuid()).encode() + b"\t1000\n"
+    status = b"Name:\tuvicorn\nUid:\t1000\t" + str(os.geteuid()).encode() + b"\t1000\t1000\n"
     cmd = b"uvicorn\x00api.main:app\x00--host\x000.0.0.0\x00--port\x009002\x00"
     monkeypatch.setattr(listener, "_bounded", lambda p, n:
         status if str(p).endswith("/status") else cmd)
