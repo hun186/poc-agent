@@ -78,3 +78,7 @@
 ## 2026-10-27 OFF-1R tenth optional operator CLI flag
 
 - `--probe-report-chain` requires the prior nine OFF-1Q flags, real prior `REPORT-LIVE: PASS`, canonical schedule ID, operator root/port/read-only Report Job token and OFF-1G restricted SQL credentials. Adds a `REPORT-CHAIN` matrix row that depends on SQL-READ, DOCX-BYTES and REPORT-LIVE. This check privately selects 7 immutable-looking SQL reference fields and checks one local DOCX SHA256/ZIP plus same job/submission authenticated GET and rechecks SQL reference. JSON emits only reviewed fixed reason code/status/boolean, never schedule/batch/item/job IDs, path, digest, credential or API body. No new HTTP route, no create/download; overall remains partial, feature_acceptance=NOT_TESTED.
+
+## 2026-10-27 OFF-1S optional local API-owner flag
+
+- --probe-api-owner with --probe-network reads SRAF_OFF1Q_REPORT_API_PORT only (not a token by itself) and observes API-OWNER, default NOT_TESTED, PASS api_owner_observed or SKIP api_owner_unverified. With the earlier Report Job opt-ins present, a failed API-OWNER gates token-bearing REPORT-LIVE/REPORT-CHAIN requests and separate PID/start/inode snapshots immediately before/after GET must match; return SKIP api_owner_changed on instability. Fixed reason schema omits PID/inode/paths/tokens. feature_acceptance remains NOT_TESTED.

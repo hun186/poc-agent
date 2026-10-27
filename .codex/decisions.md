@@ -119,3 +119,7 @@
 ## 2026-10-27 OFF-1R single-item SQL reference instead of independent latest selections
 
 - Correct OFF-1P/OFF-1Q evidence mismatch possibility by adding one separately opted-in operator probe rather than retroactively equating earlier PASS observations. Select seven SQL columns from the same joined schedule batch/item/handoff; read file with existing pinned-root OFF-1P protections; authenticate same job/submission via OFF-1Q bounded loopback GET; re-read the SQL tuple and SKIP if changed. Preserve partial-only status; do not claim SQL read-write serializability, API listener/PID authenticity, signed provenance or complete isolated E2E.
+
+## 2026-10-27 OFF-1S reuse launcher PID record
+
+- Avoid a parallel API identity system. Use existing launcher-generated record with exact PID/start/UID/cwd/argv and TCP LISTEN socket FD. An extra optional operator flag gates bearer GET and rechecks the same PID/start/inode immediately before and after request. Default-off for existing users, and no cryptographic or physical-isolation acceptance claim. Stronger authenticated service process binding is a separate future task.

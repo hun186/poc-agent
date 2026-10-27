@@ -89,3 +89,7 @@
 
 - Run exact-HEAD Hosted OFF-1B focused pytest including OFF-1R new tests + legacy Worker E2E + 19 OFF-0 schema checks, then formally request Codex Review on exact HEAD and correct all actionable P1/P2, resolve review threads. Do not merge without an explicit separate user instruction. No valid live SQL/HTTP/airgap acceptance is available in Hosted tests.
 - Future operator-approved real SQL Server execution/permission/TLS SAN and SRAF listener/owner/PID attestation, immutable report job-to-artifact provenance (signed/durable linkage) and real Agent/LLM/ES end-to-end plus network isolation validation remain pending. OFF-1R only correlates a sequential three-observation chain.
+
+## 2026-10-27 OFF-1S review and operator gates
+
+- Verify exact current HEAD Hosted focused OFF-1S synthetic procfs and guard tests, 2 Worker E2E, 19 OFF-0 checks. Request formal Codex Review CLEAN, fix new findings, and do not merge without explicit separate user instruction. Need real operator Linux proc/net PID namespace compatibility, actual launcher identity file/strict command, bearer GET owner principal and deployment firewall isolation verification. Signed Report Job/Word and Agent/LLM/ES provenance remain pending.

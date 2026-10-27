@@ -150,3 +150,7 @@
 ## 2026-10-27 OFF-1R SQL migration column owner correction
 
 - The first OFF-1R query draft incorrectly referenced `h.remote_job_id` and `h.dispatched_at` on `requirement_handoff_submissions`. The authoritative `requirement_scheduler.migrations.REQUIRED_COLUMNS` places both on `requirement_batch_run_items`. Replaced with `i.remote_job_id IS NOT NULL` and `i.dispatched_at IS NOT NULL`; Handoff is linked through `h.run_item_id=i.run_item_id` and workflow. Added migration-column/alias parity test, since mocked ODBC tests never parse SQL Server column references. Live SQL Server syntax still requires operator validation.
+
+## 2026-10-27 OFF-1S identity limits
+
+- Same-UID tampering of the launcher record is possible; PID/start and socket inode/FD verification is not exclusive, cryptographic or TOCTOU-free. Real launcher binds wildcard IPv4 0.0.0.0 and this probe permits it; does not prove firewall isolation. Requires visible /proc in the same PID/network namespace, exact mode 0600 identity file and expected uvicorn argv; container, PID namespace, socket activation or alternate launchers may produce SKIP. Hosted synthetic /proc cannot replace deployment acceptance.

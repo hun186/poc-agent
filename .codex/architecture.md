@@ -92,3 +92,7 @@
 ## 2026-10-27 OFF-1R same-item partial correlation
 
 - Add one operator-only `tools/sraf_airgap_off1r_same_item_chain.py` and `REPORT-CHAIN` row after prior `REPORT-LIVE: PASS` and tenth explicit flag. One SQL joined result selects one schedule batch/run item and published DOCX/path/SHA/root, Handoff submission, remote job ID. The pinned local directory descriptor and saved SQL tuple are reused to verify actual DOCX bytes and authenticated fixed localhost Report Job response, then a second identical SQL query must still return the same tuple. No new API routes, mutation, scheduler or worker. SQL and HTTP/filesystem snapshots are sequential; their equivalence is not atomic or cryptographic provenance.
+
+## 2026-10-27 OFF-1S API owner observation
+
+- New tools/sraf_airgap_off1s_api_listener_owner.py uses run_sra_api.sh existing .run_sra_api_api.identity (no launcher/API mutation), checks strict Linux UID/PID start/cwd/cmdline and one IPv4 socket LISTEN inode owned by its FDs. New API-OWNER matrix row and opt-in guard around OFF-1Q and OFF-1R bearer GET. Normal OFF-1Q/R behavior remains unchanged without --probe-api-owner. This is an operational partial observation, not authenticated service identity.
