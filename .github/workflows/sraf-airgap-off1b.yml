@@ -27,7 +27,7 @@ on:
       - 'tests/test_sraf_airgap_off1s_api_listener.py'
       - 'docs/operations/sraf_airgap_off1s_api_listener.md'
       - 'tools/sraf_airgap_off1r_same_item_chain.py'
-      - 'tests/test_sraf_airgap_off1r_same_item_chain.py tools/sraf_airgap_off1s_api_listener.py tests/test_sraf_airgap_off1s_api_listener.py'
+      - 'tests/test_sraf_airgap_off1r_same_item_chain.py'
       - 'docs/operations/sraf_airgap_off1r_same_item_chain.md'
       - 'tools/sraf_airgap_off1q_remote_report_job.py'
       - 'tests/test_sraf_airgap_off1q_remote_report_job.py'
