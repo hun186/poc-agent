@@ -55,8 +55,8 @@ OUTER APPLY (
     WHERE i.batch_run_id=r.batch_run_id
       AND i.selection_status=N'selected'
       AND h.workflow_id=N'report_v1'
-      AND h.remote_job_id=i.remote_job_id
-      AND h.dispatched_at IS NOT NULL
+      AND i.remote_job_id IS NOT NULL
+      AND i.dispatched_at IS NOT NULL
       AND i.remote_job_state=N'completed'
       AND i.execution_state=N'completed'
       AND i.remote_completed_at IS NOT NULL

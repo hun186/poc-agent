@@ -46,7 +46,10 @@ class Cursor:
         assert "i.artifact_sha256, r.phase1a_output_root_fingerprint" in sql
         assert "i.remote_job_id, i.submission_id" in sql
         assert "i.remote_job_id, h.submission_id" in sql  # inner APPLY
-        assert "h.remote_job_id=i.remote_job_id" in sql
+        assert "i.remote_job_id IS NOT NULL" in sql
+        assert "i.dispatched_at IS NOT NULL" in sql
+        assert "h.remote_job_id" not in sql
+        assert "h.dispatched_at" not in sql
         assert "h.run_item_id=i.run_item_id" in sql
         assert "h.workflow_id=N'report_v1'" in sql
         assert "ORDER BY i.completed_at DESC, i.run_item_id DESC" in sql
@@ -290,3 +293,25 @@ def test_matrix_rejects_forged_pass_and_secret_leak(monkeypatch):
         artifact_root="/tmp/operator/root",api_port="8123",read_token=TOKEN)
     assert (row["status"],row["reason"])==("SKIP","unexpected_probe_result")
     assert TOKEN not in json.dumps(row)
+
+
+def test_sql_query_columns_follow_real_migration_schema():
+    """Catch invalid table alias/columns that fake ODBC cannot parse."""
+    import re
+    from requirement_scheduler.migrations import REQUIRED_COLUMNS
+
+    query = chain._SQL
+    item_cols = {c.name for c in REQUIRED_COLUMNS["requirement_batch_run_items"]}
+    handoff_cols = {c.name for c in REQUIRED_COLUMNS["requirement_handoff_submissions"]}
+    batch_cols = {c.name for c in REQUIRED_COLUMNS["requirement_batch_runs"]}
+    schedule_cols = {c.name for c in REQUIRED_COLUMNS["requirement_schedules"]}
+    # Keep a complete alias to-table map, including OUTER APPLY outputs.
+    for alias, table_cols in (("s", schedule_cols), ("r", batch_cols),
+                              ("h", handoff_cols), ("i", item_cols)):
+        mentioned = re.findall(r"\\b" + alias + r"\\.([a-z_][a-z_0-9]*)\\b", query)
+        assert mentioned
+        assert set(mentioned) <= table_cols, (alias, set(mentioned)-table_cols)
+    assert "i.remote_job_id IS NOT NULL" in query
+    assert "i.dispatched_at IS NOT NULL" in query
+    assert "h.remote_job_id" not in query
+    assert "h.dispatched_at" not in query

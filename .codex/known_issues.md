@@ -146,3 +146,7 @@
 ## 2026-10-27 OFF-1R sequential chain and runtime validation limitations
 
 - The new REPORT-CHAIN SQL selection binds the same selected item across its local DOCX and remote Job observations, and a second SQL tuple comparison detects some drift. It is **not an atomic cross-system transaction**; ABA selection changes and post-sample changes cannot be excluded, nor does it attest a trusted listener/PID, real job execution provenance, Agent/ES/LLM, full batch or isolation. Root descriptor stays pinned but trusted mount/device remains an operator concern. Hosted fake ODBC cannot prove SQL Server parse/permission; actual SQL syntax/column existence and read-only principal require real private deployment test. API GET may produce audit logs even though operator probe sends no writes.
+
+## 2026-10-27 OFF-1R SQL migration column owner correction
+
+- The first OFF-1R query draft incorrectly referenced `h.remote_job_id` and `h.dispatched_at` on `requirement_handoff_submissions`. The authoritative `requirement_scheduler.migrations.REQUIRED_COLUMNS` places both on `requirement_batch_run_items`. Replaced with `i.remote_job_id IS NOT NULL` and `i.dispatched_at IS NOT NULL`; Handoff is linked through `h.run_item_id=i.run_item_id` and workflow. Added migration-column/alias parity test, since mocked ODBC tests never parse SQL Server column references. Live SQL Server syntax still requires operator validation.
