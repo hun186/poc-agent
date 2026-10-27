@@ -50,7 +50,7 @@ def fake_proc(tmp_path, monkeypatch):
     (proc / str(PID) / "status").write_text(
         "Name:\tuvicorn\nUid:\t" + " ".join([str(os.geteuid())]*4) + "\n")
     (proc / str(PID) / "cmdline").write_bytes(
-        f"/usr/bin/python3\0/venv/bin/uvicorn\0api.main:app\0--host\00.0.0.0\0--port\0{PORT}\0".encode())
+        f"/usr/bin/python3\0/venv/bin/uvicorn\0api.main:app\0--host\x000.0.0.0\0--port\0{PORT}\0".encode())
     (proc / str(PID) / "cwd").symlink_to(root, target_is_directory=True)
     (proc / str(PID) / "exe").symlink_to(sys.executable)
     (proc / str(PID) / "fd" / "7").symlink_to(f"socket:[{INODE}]")
@@ -105,10 +105,10 @@ def test_fail_closed_without_matching_launcher_and_tcp(
         (pidproc / "cwd").symlink_to(tmp_path, target_is_directory=True)
     elif case == "wrong_route":
         (pidproc / "cmdline").write_bytes(
-            f"/usr/bin/python3\0/venv/bin/uvicorn\0evil:app\0--host\00.0.0.0\0--port\0{PORT}\0".encode())
+            f"/usr/bin/python3\0/venv/bin/uvicorn\0evil:app\0--host\x000.0.0.0\0--port\0{PORT}\0".encode())
     elif case == "wrong_port":
         (pidproc / "cmdline").write_bytes(
-            b"/usr/bin/python3\0/venv/bin/uvicorn\0api.main:app\0--host\00.0.0.0\0--port\09999\0")
+            b"/usr/bin/python3\0/venv/bin/uvicorn\0api.main:app\0--host\x000.0.0.0\0--port\09999\0")
     elif case == "wrong_socket":
         (pidproc / "fd" / "7").unlink()
         (pidproc / "fd" / "7").symlink_to("socket:[222222]")
