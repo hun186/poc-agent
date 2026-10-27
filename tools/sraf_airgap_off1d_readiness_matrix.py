@@ -33,6 +33,9 @@ from tools import sraf_airgap_off1b_api_http as api_http  # noqa: E402
 from tools.sraf_airgap_off1r_same_item_chain import (  # noqa: E402
     probe_single_item_chain,
 )
+from tools.sraf_airgap_off1s_api_listener_owner import (  # noqa: E402
+    probe_api_listener_owner, verified_listener_binding,
+)
 from tools.sraf_airgap_off1q_remote_report_job import (  # noqa: E402
     PORT_KEY as REPORT_LIVE_PORT_KEY,
     TOKEN_KEY as REPORT_LIVE_TOKEN_KEY,
@@ -197,6 +200,8 @@ REASONS = frozenset((
     "chain_api_unverified", "chain_recheck_unverified",
     "chain_reference_changed", "chain_same_item_observed",
     "chain_probe_unverified",
+    "api_owner_not_requested", "api_owner_network_disabled",
+    "api_owner_unverified", "api_owner_observed", "api_owner_changed",
 ))
 
 
@@ -956,6 +961,34 @@ def _docx_byte_check(*, probe_network: bool, probe_sql_read: bool,
     return result("SKIP", "unexpected_probe_result")
 
 
+def _api_owner_check(*, probe_network: bool, probe_api_owner: bool,
+                     api_port: str | None, project_root: Path) -> dict[str, Any]:
+    def result(status: str, reason: str, *, executed: bool = False
+               ) -> dict[str, Any]:
+        return _record("API-OWNER", "api",
+                       "launcher_record_process_and_tcp_socket_partial_only",
+                       status, reason, executed=executed)
+    if not probe_api_owner:
+        return result("NOT_TESTED", "api_owner_not_requested")
+    if not probe_network:
+        return result("SKIP", "api_owner_network_disabled")
+    try:
+        obs = probe_api_listener_owner(project_root, api_port)
+        if (obs.status == "PASS" and obs.check_id == "API-OWNER-01"
+                and obs.probe == "sraf-api-listener-owner"
+                and obs.aspect == "launcher_record_process_and_tcp_socket_partial_only"
+                and obs.executed is True and obs.reason == "api_owner_observed"
+                and type(obs.evidence) is dict
+                and obs.evidence == {"api_listener_owner_observed": True}):
+            return result("PASS", "api_owner_observed", executed=True)
+        if obs.status == "SKIP":
+            return result("SKIP", _reason(obs.reason),
+                          executed=bool(obs.executed))
+    except Exception:
+        pass
+    return result("SKIP", "api_owner_unverified")
+
+
 def _report_live_check(*, probe_network: bool, probe_sql_read: bool,
                        probe_worker_identities: bool, probe_schedule_claim: bool,
                        probe_schedule_link: bool, probe_handoff_ack: bool,
@@ -963,7 +996,10 @@ def _report_live_check(*, probe_network: bool, probe_sql_read: bool,
                        probe_report_live: bool, docx_status: str,
                        sql_config: dict[str, str] | None,
                        schedule_id: str | None, lease_schema: str | None,
-                       api_port: str | None, read_token: str | None
+                       api_port: str | None, read_token: str | None,
+                       probe_api_owner: bool = False,
+                       api_owner_status: str = "NOT_TESTED",
+                       project_root: Path = PROJECT_ROOT
                        ) -> dict[str, Any]:
     """Ninth explicit opt-in: SQL-selected job then one authenticated GET."""
     def result(status: str, reason: str, *, executed: bool = False
@@ -979,15 +1015,19 @@ def _report_live_check(*, probe_network: bool, probe_sql_read: bool,
         return result("NOT_TESTED", "remote_not_requested")
     if docx_status != "PASS":
         return result("SKIP", "remote_docx_not_passed")
+    if probe_api_owner and api_owner_status != "PASS":
+        return result("SKIP", "api_owner_unverified")
     if not isinstance(schedule_id, str) or not schedule_id:
         return result("SKIP", "remote_schedule_id_invalid")
     if not isinstance(sql_config, dict):
         return result("SKIP", "remote_sql_config_invalid")
     try:
+        kwargs = ({"listener_guard": lambda: verified_listener_binding(project_root, api_port)}
+                  if probe_api_owner else {})
         obs = probe_remote_report_job(
             sql_config, schedule_id=schedule_id,
             schema=lease_schema if lease_schema is not None else LEASE_SCHEMA_DEFAULT,
-            api_port=api_port, read_token=read_token,
+            api_port=api_port, read_token=read_token, **kwargs,
         )
         if obs.status == "PASS":
             if (obs.check_id == "REPORT-LIVE-01"
@@ -1011,7 +1051,10 @@ def _report_chain_check(*, flags: tuple[bool, ...], live_status: str,
                         sql_config: dict[str, str] | None,
                         schedule_id: str | None, lease_schema: str | None,
                         artifact_root: str | None, api_port: str | None,
-                        read_token: str | None) -> dict[str, Any]:
+                        read_token: str | None,
+                        probe_api_owner: bool = False,
+                        api_owner_status: str = "NOT_TESTED",
+                        project_root: Path = PROJECT_ROOT) -> dict[str, Any]:
     """Tenth explicit opt-in with an independent same-item chain."""
     def result(status: str, reason: str, *, executed: bool = False
                ) -> dict[str, Any]:
@@ -1023,6 +1066,8 @@ def _report_chain_check(*, flags: tuple[bool, ...], live_status: str,
         return result("NOT_TESTED", "chain_not_requested")
     if live_status != "PASS":
         return result("SKIP", "chain_live_not_passed")
+    if probe_api_owner and api_owner_status != "PASS":
+        return result("SKIP", "api_owner_unverified")
     if not isinstance(sql_config, dict):
         return result("SKIP", "chain_sql_config_invalid")
     if not isinstance(schedule_id, str) or not schedule_id:
@@ -1030,10 +1075,13 @@ def _report_chain_check(*, flags: tuple[bool, ...], live_status: str,
     if not isinstance(artifact_root, str) or not artifact_root:
         return result("SKIP", "chain_root_invalid")
     try:
+        kwargs = ({"listener_guard": lambda: verified_listener_binding(project_root, api_port)}
+                  if probe_api_owner else {})
         obs = probe_single_item_chain(
             sql_config, schedule_id=schedule_id, artifact_root=artifact_root,
             api_port=api_port, read_token=read_token,
             schema=lease_schema if lease_schema is not None else LEASE_SCHEMA_DEFAULT,
+            **kwargs,
         )
         if obs.status == "PASS":
             if (obs.check_id == "REPORT-CHAIN-01"
@@ -1070,6 +1118,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
                  probe_docx_bytes: bool = False,
                  probe_report_live: bool = False,
                  probe_report_chain: bool = False,
+                 probe_api_owner: bool = False,
                  report_live_port: str | None = None,
                  report_live_token: str | None = None,
                  artifact_root: str | None = None,
@@ -1171,6 +1220,10 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         schedule_id=schedule_id, lease_schema=lease_schema,
         artifact_root=artifact_root,
     )
+    api_owner = _api_owner_check(
+        probe_network=probe_network, probe_api_owner=probe_api_owner,
+        api_port=report_live_port, project_root=PROJECT_ROOT,
+    )
     report_live = _report_live_check(
         probe_network=probe_network, probe_sql_read=probe_sql_read,
         probe_worker_identities=probe_worker_identities,
@@ -1182,6 +1235,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         probe_report_live=probe_report_live, docx_status=docx_bytes["status"],
         sql_config=sql_config, schedule_id=schedule_id, lease_schema=lease_schema,
         api_port=report_live_port, read_token=report_live_token,
+        probe_api_owner=probe_api_owner, api_owner_status=api_owner["status"],
     )
     chain = _report_chain_check(
         flags=(probe_network, probe_sql_read, probe_worker_identities,
@@ -1192,6 +1246,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         schedule_id=schedule_id, lease_schema=lease_schema,
         artifact_root=artifact_root, api_port=report_live_port,
         read_token=report_live_token,
+        probe_api_owner=probe_api_owner, api_owner_status=api_owner["status"],
     )
     rows.extend((
         sql_read,
@@ -1205,6 +1260,7 @@ def build_report(cfg: dict[str, str], *, probe_network: bool = False,
         docx_bytes,
         report_live,
         chain,
+        api_owner,
         _record("ES-MAPPING", "es", "authenticated_es_mapping", "NOT_TESTED",
                 "es_tls_mapping_not_aggregated", depends_on=("ES-TCP",)),
         inventory,
@@ -1243,6 +1299,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Opt in to private-IP TCP and anonymous loopback API health.")
     parser.add_argument("--probe-sql-read", action="store_true",
                         help="With --probe-network, make one TLS-verified ODBC constant SELECT using dedicated operator SRAF_OFF1G_SQL_* secrets.")
+    parser.add_argument("--probe-api-owner", action="store_true",
+                        help="Opt-in Linux launcher record, PID start/UID/cwd/argv and owned listening socket check; when probing Report Job, guard bearer GET before/after.")
     parser.add_argument("--probe-report-chain", action="store_true",
                         help="After all nine prior flags and actual REPORT-LIVE PASS, verify one SQL-selected item by DOCX bytes and authenticated GET, with final SQL drift check.")
     parser.add_argument("--probe-report-live", action="store_true",
@@ -1321,6 +1379,7 @@ def main(argv: list[str] | None = None) -> int:
                               probe_docx_bytes=args.probe_docx_bytes,
                               probe_report_live=args.probe_report_live,
                               probe_report_chain=args.probe_report_chain,
+                              probe_api_owner=args.probe_api_owner,
                               report_live_port=(
                                   os.environ.get(REPORT_LIVE_PORT_KEY)
                                   if all((args.probe_network, args.probe_sql_read,
@@ -1330,7 +1389,9 @@ def main(argv: list[str] | None = None) -> int:
                                           args.probe_handoff_ack,
                                           args.probe_report_checkpoint,
                                           args.probe_docx_bytes,
-                                          args.probe_report_live)) else None),
+                                          args.probe_report_live))
+                                   or (args.probe_network and args.probe_api_owner)
+                                   else None),
                               report_live_token=(
                                   os.environ.get(REPORT_LIVE_TOKEN_KEY)
                                   if all((args.probe_network, args.probe_sql_read,
