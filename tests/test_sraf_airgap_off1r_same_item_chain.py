@@ -306,8 +306,14 @@ def test_sql_query_columns_follow_real_migration_schema():
     batch_cols = {c.name for c in REQUIRED_COLUMNS["requirement_batch_runs"]}
     schedule_cols = {c.name for c in REQUIRED_COLUMNS["requirement_schedules"]}
     # Keep a complete alias to-table map, including OUTER APPLY outputs.
+    # The OUTER APPLY alias `i` exposes a projected h.submission_id as
+    # `i.submission_id` in the outer SELECT. It is not a native item column.
+    assert "SELECT TOP (2)" in query
+    assert "i.remote_job_id, i.submission_id" in query
+    assert "i.remote_job_id, h.submission_id" in query
     for alias, table_cols in (("s", schedule_cols), ("r", batch_cols),
-                              ("h", handoff_cols), ("i", item_cols)):
+                              ("h", handoff_cols),
+                              ("i", item_cols | {"submission_id"})):
         mentioned = re.findall(r"\b" + alias + r"\.([a-z_][a-z_0-9]*)\b", query)
         assert mentioned
         assert set(mentioned) <= table_cols, (alias, set(mentioned)-table_cols)
