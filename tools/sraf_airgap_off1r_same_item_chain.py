@@ -128,7 +128,8 @@ def _valid_reference(row, root_fp: str) -> str | None:
 
 def probe_single_item_chain(cfg: dict[str, str], *, schedule_id: str,
                             artifact_root: str, api_port: str, read_token: str,
-                            schema: str = DEFAULT_SCHEMA) -> Observation:
+                            schema: str = DEFAULT_SCHEMA,
+                            listener_guard=None) -> Observation:
     """One pinned filesystem root, two SQL observations and one fixed GET."""
     if sys.platform != "linux" or not hasattr(os, "O_NOFOLLOW"):
         return _out("SKIP", "chain_host_unsupported")
@@ -188,8 +189,13 @@ def probe_single_item_chain(cfg: dict[str, str], *, schedule_id: str,
 
         # Deliberately compare the API with the *same saved* reference;
         # never call OFF-1Q's separate latest-item SQL selector.
-        remote_state, remote_reason = _remote_status(port, read_token,
-                                                      job_id, submission_id)
+        if listener_guard is None:
+            remote_state, remote_reason = _remote_status(
+                port, read_token, job_id, submission_id)
+        else:
+            remote_state, remote_reason = _remote_status(
+                port, read_token, job_id, submission_id,
+                listener_guard=listener_guard)
         if remote_state == "FAIL":
             if remote_reason in ("remote_job_identity_mismatch",
                                  "remote_submission_mismatch",
