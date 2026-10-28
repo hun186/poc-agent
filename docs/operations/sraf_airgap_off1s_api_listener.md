@@ -53,3 +53,23 @@ PID and network namespace visibility and appropriate host `/proc` permissions
 before relying on any partial PASS. Hosted synthetic regressions cover shared
 listener owners and realistic launch/title variants; they are not a live
 production attestation.
+
+
+## 2026-10-28 Codex P2: filtered procfs visibility
+
+The exclusive-owner scan must now validate the effective `/proc` mount through
+a bounded read of `/proc/self/mountinfo` before and after scanning descriptor
+tables. An exact, unambiguous procfs mount with `hidepid=0` or no `hidepid`
+setting is required. `hidepid=1/2/4`, other unknown `hidepid` values,
+`subset=pid`, a bind-rooted/overlaid or otherwise unverifiable mount fail
+closed to `SKIP`. This explicitly addresses the case where a filtered
+`/proc` enumeration silently omits another socket owner without raising
+`PermissionError`. The pre-send token gate remains mandatory when OFF-1S
+is opted in.
+
+This mount check only establishes visibility within the **current PID
+namespace**, not host-wide visibility across hidden namespaces, cryptographic
+peer authentication, or absence of races. Operator deployment must still
+confirm namespace placement, mount policy and least-privilege credentials.
+Hosted tests exercise hidden-co-owner and mount-change regressions without
+representing a real private production run.

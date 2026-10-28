@@ -345,3 +345,103 @@ def test_actual_linux_python_shebang_uvicorn_process(tmp_path):
         if proc.poll() is None:
             proc.terminate()
         proc.wait(timeout=3)
+
+
+
+def test_procfs_visibility_rejects_hidepid_filtered_and_ambiguous_mounts(monkeypatch):
+    """Filtered /proc can omit co-owners entirely, without permission errors."""
+    good = (b"53 52 0:30 / /proc rw,nosuid,nodev,noexec,relatime "
+            b"- proc proc rw\n")
+    raw = {"mountinfo": good}
+    monkeypatch.setattr(listener, "_bounded", lambda path, limit:
+        raw["mountinfo"] if str(path) == "/proc/self/mountinfo" else None)
+    assert listener._procfs_unfiltered()
+    for bad in (
+        good.replace(b"proc proc rw", b"proc proc rw,hidepid=1"),
+        good.replace(b"proc proc rw", b"proc proc rw,hidepid=2"),
+        good.replace(b"proc proc rw", b"proc proc rw,hidepid=4"),
+        good.replace(b"proc proc rw", b"proc proc rw,hidepid=ptraceable"),
+        good.replace(b"/proc rw,", b"/proc rw,hidepid=2,"),
+        good.replace(b"proc proc rw", b"proc proc rw,subset=pid"),
+        good.replace(b"0:30 / /proc", b"0:30 /subtree /proc"),
+        good.replace(b"- proc proc rw", b"- tmpfs tmpfs rw"),
+        good + good,
+        b"not a usable mountinfo\n",
+    ):
+        raw["mountinfo"] = bad
+        assert not listener._procfs_unfiltered(), bad
+    raw["mountinfo"] = good.replace(b"proc proc rw", b"proc proc rw,hidepid=0")
+    assert listener._procfs_unfiltered()
+    raw["mountinfo"] = None
+    assert not listener._procfs_unfiltered()
+
+
+def test_hidden_co_owner_is_rejected_before_any_bearer(monkeypatch, tmp_path):
+    """A filtered listing can show only the API PID while hiding its co-owner."""
+    from types import SimpleNamespace
+
+    class Listing:
+        def __init__(self, items):
+            self.items = items
+        def __enter__(self):
+            return iter(self.items)
+        def __exit__(self, *unused):
+            return False
+
+    def scan(path):
+        if path == "/proc":
+            # The kernel silently omitted the unrelated socket co-owner.
+            return Listing([SimpleNamespace(name=str(PID))])
+        if path == f"/proc/{PID}/fd":
+            return Listing([SimpleNamespace(
+                name="3", path=f"/proc/{PID}/fd/3")])
+        raise AssertionError(path)
+
+    monkeypatch.setattr(listener.os, "scandir", scan)
+    monkeypatch.setattr(listener.os, "readlink",
+                        lambda path: f"socket:[{INODE}]")
+    # A complete-looking enumeration is not sufficient if mount is filtered.
+    monkeypatch.setattr(listener, "_procfs_unfiltered", lambda: False)
+    assert not listener._exclusive_socket_owner(PID, INODE)
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / listener.IDENTITY_NAME).write_text(
+        f"api_pid={PID}\napi_start_time={TICK}\nport={PORT}\n")
+    monkeypatch.setattr(listener, "_same_process", lambda *unused: True)
+    monkeypatch.setattr(listener, "_listener_inode", lambda *unused: INODE)
+    monkeypatch.setattr(listener, "_owns_socket", lambda *unused: True)
+    monkeypatch.setattr(matrix, "PROJECT_ROOT", root)
+    row, proof = matrix._api_listener_check(
+        flags=(True,) * 11, docx_status="PASS", api_port=str(PORT))
+    assert row["status"] == "SKIP"
+    assert proof is None
+    assert listener.attest_api_listener(root, str(PORT)) is None
+
+
+def test_procfs_visibility_change_during_exclusive_scan_fails(monkeypatch):
+    """A mount-filtering change across scan also prevents a positive proof."""
+    from types import SimpleNamespace
+
+    class Listing:
+        def __init__(self, entries):
+            self.entries = entries
+        def __enter__(self):
+            return iter(self.entries)
+        def __exit__(self, *unused):
+            return False
+
+    reads = []
+    def visible():
+        reads.append(True)
+        return len(reads) == 1
+
+    monkeypatch.setattr(listener, "_procfs_unfiltered", visible)
+    monkeypatch.setattr(listener.os, "scandir", lambda path:
+        Listing([SimpleNamespace(name=str(PID))]) if path == "/proc"
+        else Listing([SimpleNamespace(
+            name="3", path=f"/proc/{PID}/fd/3")]))
+    monkeypatch.setattr(listener.os, "readlink",
+                        lambda path: f"socket:[{INODE}]")
+    assert not listener._exclusive_socket_owner(PID, INODE)
+    assert len(reads) == 2

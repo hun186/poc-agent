@@ -158,3 +158,8 @@
 ## 2026-10-27 OFF-1S PR #316 shared listener ownership and process argv
 
 - 2 formal P2 on exact head 29e923e: pip-installed uvicorn may have a seven-argument Python-shebang /proc cmdline or sra_api/main.py may apply setproctitle; earlier strict six-arg matcher incorrectly SKIPPED legitimate API. A unique socket inode still can be held by multiple processes; unrecorded socket acceptor can receive bearer even if one known PID owns the inode. Remediation adds exact launch/title alternatives and bounded, conservative global /proc/*/fd exclusivity, with synthetic regression tests. If process visibility is restricted, return SKIP instead of a false identity PASS; PID namespaces and same-UID spoofing still prevent cryptographic/race-free claims. Await exact-head Hosted CI and Codex review, no production attestation.
+
+
+## 2026-10-28 OFF-1S procfs hidepid visibility P2
+
+- A process-list scan cannot claim listener socket exclusivity when procfs `hidepid` silently omits other PIDs. OFF-1S now requires a bounded, unambiguous, unfiltered /proc mountinfo confirmation both before and after the global fd scan, refusing restricted/unknown hidepid, subset or nonstandard root mounts to SKIP. This conservative guard may SKIP on protected installations. PID namespace visibility, root/admin hostile tampering, mount-change races and same-UID impersonation remain beyond this noncryptographic operator diagnostic; actual private runtime acceptance is not established by Hosted CI.

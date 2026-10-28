@@ -225,6 +225,47 @@ def _owns_socket(pid: int, inode: str) -> bool:
 # table must NOT be interpreted as proof of exclusivity.
 MAX_PROCESSES = 32768
 MAX_GLOBAL_FDS = 131072
+MAX_MOUNTINFO = 1024 * 1024
+
+
+def _procfs_unfiltered() -> bool:
+    """Require the effective /proc mount to expose all namespace processes.
+
+    Linux hidepid=1/2/4 may withhold other PIDs or details without raising
+    PermissionError in /proc directory enumeration. Never claim an exclusive
+    socket owner from a filtered PID list. Unrecognized/bind-root/ambiguous
+    mounts are inconclusive; only a single ordinary full procfs mount passes.
+    """
+    raw = _bounded(Path("/proc/self/mountinfo"), MAX_MOUNTINFO)
+    if raw is None:
+        return False
+    matched = 0
+    try:
+        for line in raw.splitlines():
+            pieces = line.split(b" - ")
+            if len(pieces) != 2:
+                return False
+            mount = pieces[0].split()
+            source = pieces[1].split()
+            if len(mount) < 6 or len(source) < 3:
+                return False
+            if mount[4] != b"/proc":
+                continue
+            matched += 1
+            if (mount[3] != b"/" or source[0] != b"proc"
+                    or source[1] != b"proc"):
+                return False
+            options = mount[5].split(b",") + source[2].split(b",")
+            # hidepid may be a superblock option; reject *any* restricted or
+            # ambiguous spelling rather than trusting group exemptions.
+            for option in options:
+                if option.startswith(b"hidepid") and option != b"hidepid=0":
+                    return False
+                if option == b"subset=pid":
+                    return False
+        return matched == 1
+    except (ValueError, UnicodeError):
+        return False
 
 
 def _exclusive_socket_owner(pid: int, inode: str) -> bool:
@@ -234,6 +275,10 @@ def _exclusive_socket_owner(pid: int, inode: str) -> bool:
     distinguished, or an oversized scan yields SKIP rather than bearer
     transmission. This is conservative visibility, not cryptographic proof.
     """
+    # A hidepid mount can *omit* socket co-owners silently. Check mount
+    # visibility before any fd scan, and again afterwards to detect changes.
+    if not _procfs_unfiltered():
+        return False
     target = f"socket:[{inode}]"
     owner_seen = False
     process_count = 0
@@ -278,7 +323,7 @@ def _exclusive_socket_owner(pid: int, inode: str) -> bool:
                     return False
     except (OSError, ValueError):
         return False
-    return owner_seen
+    return owner_seen and _procfs_unfiltered()
 
 
 def attest_api_listener(project_root: Path, api_port: str) -> ListenerProof | None:
