@@ -445,3 +445,87 @@ def test_procfs_visibility_change_during_exclusive_scan_fails(monkeypatch):
                         lambda path: f"socket:[{INODE}]")
     assert not listener._exclusive_socket_owner(PID, INODE)
     assert len(reads) == 2
+
+
+def test_procfs_rejects_submounts_that_mask_process_fd_tables(monkeypatch):
+    """Mounts under /proc/<pid>/fd can conceal shared listeners silently."""
+    good = (b"53 52 0:30 / /proc rw,nosuid,nodev,noexec,relatime "
+            b"- proc proc rw\n")
+    record = {"mountinfo": good}
+    monkeypatch.setattr(listener, "_bounded", lambda path, limit:
+        record["mountinfo"] if str(path) == "/proc/self/mountinfo" else None)
+    # Normal kernel procfs auxiliary submounts need not mask processes.
+    record["mountinfo"] = good + (
+        b"54 53 0:31 / /proc/sys rw - proc proc rw\n"
+        b"55 53 0:32 / /proc/bus ro - proc proc ro\n")
+    assert listener._procfs_unfiltered()
+    for mountpoint in (
+        b"/proc/12346/fd", b"/proc/12346", b"/proc/12346/task/7/fd",
+        b"/proc/00012346/fd", b"/proc/self/fd",
+        b"/proc/thread-self/fd", b"/proc/net/tcp",
+        b"/proc/12346\\057fd", b"/proc//12346/fd",
+    ):
+        record["mountinfo"] = (
+            good + b"54 53 0:31 / " + mountpoint
+            + b" rw,relatime - tmpfs tmpfs rw\n")
+        assert not listener._procfs_unfiltered(), mountpoint
+    record["mountinfo"] = good
+    assert listener._procfs_unfiltered()
+
+
+def test_masked_shared_socket_owner_never_passes_attestation(monkeypatch,
+                                                            tmp_path):
+    """If /proc/<other PID>/fd is masked empty, the API must SKIP."""
+    from types import SimpleNamespace
+
+    other = PID + 1
+    good = (b"53 52 0:30 / /proc rw,nosuid,nodev,noexec,relatime "
+            b"- proc proc rw\n")
+    mount = (b"54 53 0:31 / /proc/" + str(other).encode()
+             + b"/fd rw - tmpfs tmpfs rw\n")
+    raw = {"mountinfo": good + mount}
+    monkeypatch.setattr(listener, "_bounded", lambda path, limit:
+        raw["mountinfo"] if str(path) == "/proc/self/mountinfo" else None)
+
+    class Listing:
+        def __init__(self, values):
+            self.values = values
+        def __enter__(self):
+            return iter(self.values)
+        def __exit__(self, *unused):
+            return False
+
+    def scan(path):
+        if path == "/proc":
+            return Listing([SimpleNamespace(name=str(PID)),
+                            SimpleNamespace(name=str(other))])
+        if path == f"/proc/{PID}/fd":
+            return Listing([SimpleNamespace(
+                name="3", path=f"/proc/{PID}/fd/3")])
+        if path == f"/proc/{other}/fd":
+            # The co-owner exists, but an overmount hides its socket fd.
+            return Listing([])
+        raise AssertionError(path)
+
+    monkeypatch.setattr(listener.os, "scandir", scan)
+    monkeypatch.setattr(listener.os, "readlink",
+                        lambda path: f"socket:[{INODE}]")
+    # Without the submount policy, this incomplete scan falsely succeeds.
+    raw["mountinfo"] = good
+    assert listener._exclusive_socket_owner(PID, INODE)
+    raw["mountinfo"] = good + mount
+    assert not listener._exclusive_socket_owner(PID, INODE)
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / listener.IDENTITY_NAME).write_text(
+        f"api_pid={PID}\napi_start_time={TICK}\nport={PORT}\n")
+    monkeypatch.setattr(listener, "_same_process", lambda *args: True)
+    monkeypatch.setattr(listener, "_listener_inode", lambda *args: INODE)
+    monkeypatch.setattr(listener, "_owns_socket", lambda *args: True)
+    monkeypatch.setattr(matrix, "PROJECT_ROOT", root)
+    row, proof = matrix._api_listener_check(
+        flags=(True,) * 11, docx_status="PASS", api_port=str(PORT))
+    assert (row["status"], row["reason"]) == ("SKIP", "api_listener_unverified")
+    assert proof is None
+    assert listener.attest_api_listener(root, str(PORT)) is None

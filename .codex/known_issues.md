@@ -163,3 +163,7 @@
 ## 2026-10-28 OFF-1S procfs hidepid visibility P2
 
 - A process-list scan cannot claim listener socket exclusivity when procfs `hidepid` silently omits other PIDs. OFF-1S now requires a bounded, unambiguous, unfiltered /proc mountinfo confirmation both before and after the global fd scan, refusing restricted/unknown hidepid, subset or nonstandard root mounts to SKIP. This conservative guard may SKIP on protected installations. PID namespace visibility, root/admin hostile tampering, mount-change races and same-UID impersonation remain beyond this noncryptographic operator diagnostic; actual private runtime acceptance is not established by Hosted CI.
+
+## 2026-10-28 OFF-1S procfs nested mount masking (Codex P2)
+
+- Ordinary top-level `/proc` mount and hidepid=0 do not exclude a bind/tmpfs submount masking another process's `/proc/<PID>/fd`. Former global socket-owner scan could see an empty directory and falsely infer exclusivity while another process still accepted bearer credentials. OFF-1S now rejects procfs descendants capable of shadowing any numeric PID, self/thread-self or net paths, including ambiguous escaped mountpoints. Restricted/unknown mount views must SKIP, not PASS; this is not an atomic mount-namespace attestation or proof against same-UID attackers. Hosted synthetic tests and real operator validation remain separate.

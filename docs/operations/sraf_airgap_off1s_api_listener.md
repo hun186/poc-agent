@@ -73,3 +73,20 @@ peer authentication, or absence of races. Operator deployment must still
 confirm namespace placement, mount policy and least-privilege credentials.
 Hosted tests exercise hidden-co-owner and mount-change regressions without
 representing a real private production run.
+
+
+## 2026-10-28 security review: procfs descendant mounts
+
+Procfs visibility must not be inferred solely from the top-level /proc
+mount. A nested bind or tmpfs mount at /proc/<PID> or /proc/<PID>/fd can
+replace a second process's descriptor listing with an empty directory while
+a socket is still shared. Before and after the bounded owner scan,
+OFF-1S now rejects any mountinfo entry covering a numeric /proc process
+directory or special aliases /proc/self, /proc/thread-self, or /proc/net,
+including descendants; ambiguous escaped paths fail closed. Normal /proc/sys
+and /proc/bus auxiliary mounts are not treated as process descriptor masks.
+
+In these cases API-LISTENER returns SKIP and an opted-in REPORT-LIVE or
+REPORT-CHAIN must not send the read bearer. This is a partial
+namespace-visible, time-separated operator diagnostic; mount/PID namespace
+changes and same-UID tampering remain outside a cryptographic guarantee.

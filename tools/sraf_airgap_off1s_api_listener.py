@@ -249,7 +249,25 @@ def _procfs_unfiltered() -> bool:
             source = pieces[1].split()
             if len(mount) < 6 or len(source) < 3:
                 return False
-            if mount[4] != b"/proc":
+            mountpoint = mount[4]
+            if mountpoint.startswith(b"/proc/"):
+                # A nested tmpfs/bind mount can silently replace another
+                # process's /fd table with an empty directory while the
+                # ordinary /proc mount still looks unfiltered. Inspect ALL
+                # mountpoints, not only those mounted exactly at /proc.
+                child = mountpoint[len(b"/proc/"):]
+                if (not child or b"\\\\" in child or b"//" in child
+                        or any(part in (b"", b".", b"..")
+                               for part in child.split(b"/"))):
+                    return False
+                first = child.split(b"/", 1)[0]
+                if (first.isdecimal()
+                        or first in (b"self", b"thread-self", b"net")):
+                    return False
+                # Normal non-process procfs submounts (e.g. /proc/sys,
+                # /proc/bus) cannot mask /proc/<PID>/fd.
+                continue
+            if mountpoint != b"/proc":
                 continue
             matched += 1
             if (mount[3] != b"/" or source[0] != b"proc"

@@ -123,3 +123,7 @@
 ## 2026-10-27 OFF-1S credential-safe listener check
 
 - Reject treating 127.0.0.1 as process authentication. Use existing launcher identity record, bounded Linux proc state and listening socket inode proof; do not accept arbitrary PID/host/URL, do not spawn/signals/mutate. Crucially, require repeat attestation immediately after TCP connection and BEFORE bearer transmission, with post-body recheck and a safe SKIP if state changes. Keep OFF-1S separately opt-in and preserve legacy flags; do not overstate process attestation as cryptographic security or airgap acceptance.
+
+## 2026-10-28 OFF-1S nested procfs mount policy
+
+- Prefer fail-closed validation of the complete bounded `/proc/self/mountinfo` mountpoint set, not only the `/proc` root. Forbid any descendant overlay of numeric PID directories, self/thread-self or net inspection paths, even when an otherwise legitimate `hidepid=0` procfs root is present. Permit unrelated normal procfs support mounts such as /proc/sys and /proc/bus. Reject ambiguous mountpoint encodings and revalidate before and after fd enumeration; do not send owner-scoped HTTP bearer on any unverifiable view. This remains non-cryptographic, host/PID-namespace-scoped partial evidence.
