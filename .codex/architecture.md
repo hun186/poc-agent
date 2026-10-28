@@ -96,3 +96,15 @@
 ## 2026-10-27 OFF-1S Linux API listener identity partial trust boundary
 
 - New `tools/sraf_airgap_off1s_api_listener.py` independently reads only the launcher-managed API identity file and bounded Linux proc TCP/socket/process attributes, verifying exact run_sra_api.sh Uvicorn argv, effective UID, same cwd root inode and recorded PID/start ticks. The OFF-1D matrix adds an eleventh opt-in `API-LISTENER` row before REPORT-LIVE, and opts into listener guards in both REPORT-LIVE and REPORT-CHAIN. OFF-1Q authenticated fixed 127.0.0.1 GET re-verifies the same proof **on connected TCP socket before sending Authorization** and after response; unverifiable listener yields SKIP without sending token. Existing unguarded OFF-1Q/R flag behavior remains backward compatible when OFF-1S is not requested. No runtime API route, scheduler, SQL mutation or complete service-authentication implementation; synthetic CI cannot prove trusted server binary.
+
+
+## 2026-10-29 OFF-1S task-level listener ownership verification
+
+Process group leadership does not imply one shared Linux FD table. OFF-1S
+exclusive socket-owner proof now inspects every visible
+`/proc/<PID>/task/<TID>/fd` (not solely `/proc/<PID>/fd`), with upper limits
+for process, thread and FD counts, and fails closed on missing/inaccessible
+thread evidence. This guards independent fd tables created by
+`close_range(CLOSE_RANGE_UNSHARE)`; it is still not cryptographic
+listener authentication, atomic socket-to-process proof, full namespace
+visibility, or live SRAF system acceptance.
