@@ -108,3 +108,21 @@
   correction. New exact-head Hosted CI / formal Codex review and thread
   resolution still required. No private operator deployment, SQL/Report Job,
   Agent/LLM/ES/DOCX, or physical isolation acceptance. Merge not authorized.
+
+
+## 2026-10-29 OFF-1S fifth P2 Hosted exact-code/docs verification
+
+- PR #316 functional SHA `8818411b57179a12c89e3e71a21a3583739c2711`
+  Hosted [#40743672662](https://github.com/hun186/poc-agent/actions/runs/40743672662)
+  SUCCESS: **1,350 focused pytest PASS**, **2 Worker E2E PASS**, **19 OFF-0
+  schema-only checks PASS**, compile/config-only PASS. This includes the real
+  Linux CLOSE_RANGE_UNSHARE subprocess regression and fail-closed synthetic
+  thread-table tests.
+- Documentation HEAD `df598facd3d29da4aa9a915a6d5a9aea94125a1c`
+  independently passed exact-HEAD Hosted [#40743853243](https://github.com/hun186/poc-agent/actions/runs/40743853243)
+  with **1,350 focused pytest, 2 Worker E2E and 19 OFF-0 schema-only checks**.
+- Original fifth P2 discussion answered at PR #316 review thread by comment
+  4404419662; completed formal exact-FINAL-HEAD Codex Review and user merge
+  authorization remain separate gates. This evidence-logging commit itself
+  moves HEAD and needs new CI + formal review. No full private live E2E/airgap
+  proof has been obtained.
