@@ -269,9 +269,11 @@ def test_exclusive_socket_owner_rejects_fork_shared_and_unreadable(monkeypatch):
         if path == "/proc":
             return FakeDir([SimpleNamespace(name=str(p)) for p in owners])
         pid = int(str(path).split("/")[2])
+        if str(path).endswith("/task"):
+            return FakeDir([SimpleNamespace(name=str(pid))])
         if pid in blocked:
             raise PermissionError("unverifiable fd table")
-        return FakeDir([SimpleNamespace(name=fd, path=f"/proc/{pid}/fd/{fd}")
+        return FakeDir([SimpleNamespace(name=fd, path=f"/proc/{pid}/task/{pid}/fd/{fd}")
                         for fd in owners[pid]])
     def fake_readlink(path):
         pid, fd = int(path.split("/")[2]), path.split("/")[-1]
@@ -392,9 +394,11 @@ def test_hidden_co_owner_is_rejected_before_any_bearer(monkeypatch, tmp_path):
         if path == "/proc":
             # The kernel silently omitted the unrelated socket co-owner.
             return Listing([SimpleNamespace(name=str(PID))])
-        if path == f"/proc/{PID}/fd":
+        if path == f"/proc/{PID}/task":
+            return Listing([SimpleNamespace(name=str(PID))])
+        if path == f"/proc/{PID}/task/{PID}/fd":
             return Listing([SimpleNamespace(
-                name="3", path=f"/proc/{PID}/fd/3")])
+                name="3", path=f"/proc/{PID}/task/{PID}/fd/3")])
         raise AssertionError(path)
 
     monkeypatch.setattr(listener.os, "scandir", scan)
@@ -437,10 +441,16 @@ def test_procfs_visibility_change_during_exclusive_scan_fails(monkeypatch):
         return len(reads) == 1
 
     monkeypatch.setattr(listener, "_procfs_unfiltered", visible)
-    monkeypatch.setattr(listener.os, "scandir", lambda path:
-        Listing([SimpleNamespace(name=str(PID))]) if path == "/proc"
-        else Listing([SimpleNamespace(
-            name="3", path=f"/proc/{PID}/fd/3")]))
+    def scan(path):
+        if path == "/proc":
+            return Listing([SimpleNamespace(name=str(PID))])
+        if path == f"/proc/{PID}/task":
+            return Listing([SimpleNamespace(name=str(PID))])
+        if path == f"/proc/{PID}/task/{PID}/fd":
+            return Listing([SimpleNamespace(
+                name="3", path=f"/proc/{PID}/task/{PID}/fd/3")])
+        raise AssertionError(path)
+    monkeypatch.setattr(listener.os, "scandir", scan)
     monkeypatch.setattr(listener.os, "readlink",
                         lambda path: f"socket:[{INODE}]")
     assert not listener._exclusive_socket_owner(PID, INODE)
@@ -499,10 +509,14 @@ def test_masked_shared_socket_owner_never_passes_attestation(monkeypatch,
         if path == "/proc":
             return Listing([SimpleNamespace(name=str(PID)),
                             SimpleNamespace(name=str(other))])
-        if path == f"/proc/{PID}/fd":
+        if path == f"/proc/{PID}/task":
+            return Listing([SimpleNamespace(name=str(PID))])
+        if path == f"/proc/{other}/task":
+            return Listing([SimpleNamespace(name=str(other))])
+        if path == f"/proc/{PID}/task/{PID}/fd":
             return Listing([SimpleNamespace(
-                name="3", path=f"/proc/{PID}/fd/3")])
-        if path == f"/proc/{other}/fd":
+                name="3", path=f"/proc/{PID}/task/{PID}/fd/3")])
+        if path == f"/proc/{other}/task/{other}/fd":
             # The co-owner exists, but an overmount hides its socket fd.
             return Listing([])
         raise AssertionError(path)
@@ -529,3 +543,81 @@ def test_masked_shared_socket_owner_never_passes_attestation(monkeypatch,
     assert (row["status"], row["reason"]) == ("SKIP", "api_listener_unverified")
     assert proof is None
     assert listener.attest_api_listener(root, str(PORT)) is None
+
+
+
+def test_nonleader_thread_private_fd_rejects_other_socket_owner(monkeypatch, tmp_path):
+    """Other process leader has no socket, but its unshared worker thread does."""
+    other, worker = PID + 1, PID + 2
+
+    class Dir:
+        def __init__(self, items):
+            self.items = items
+        def __enter__(self):
+            return iter(self.items)
+        def __exit__(self, *unused):
+            return False
+
+    paths = {
+        "/proc": [SimpleNamespace(name=str(PID)),
+                  SimpleNamespace(name=str(other))],
+        f"/proc/{PID}/task": [SimpleNamespace(name=str(PID))],
+        f"/proc/{other}/task": [SimpleNamespace(name=str(other)),
+                                SimpleNamespace(name=str(worker))],
+        f"/proc/{PID}/task/{PID}/fd": [
+            SimpleNamespace(name="3", path=f"/proc/{PID}/task/{PID}/fd/3")],
+        f"/proc/{other}/task/{other}/fd": [],
+        f"/proc/{other}/task/{worker}/fd": [
+            SimpleNamespace(name="4",
+                            path=f"/proc/{other}/task/{worker}/fd/4")],
+    }
+    monkeypatch.setattr(listener.os, "scandir", lambda path: Dir(paths[path]))
+    monkeypatch.setattr(listener.os, "readlink", lambda path: f"socket:[{INODE}]")
+    monkeypatch.setattr(listener, "_procfs_unfiltered", lambda: True)
+    assert not listener._exclusive_socket_owner(PID, INODE)
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / listener.IDENTITY_NAME).write_text(
+        f"api_pid={PID}\\napi_start_time={TICK}\\nport={PORT}\\n")
+    monkeypatch.setattr(listener, "_same_process", lambda *unused: True)
+    monkeypatch.setattr(listener, "_listener_inode", lambda *unused: INODE)
+    monkeypatch.setattr(listener, "_owns_socket", lambda *unused: True)
+    assert listener.attest_api_listener(root, str(PORT)) is None
+    monkeypatch.setattr(matrix, "PROJECT_ROOT", root)
+    row, proof = matrix._api_listener_check(
+        flags=(True,) * 11, docx_status="PASS", api_port=str(PORT))
+    assert row["status"] == "SKIP" and proof is None
+
+
+def test_unreadable_or_churning_thread_fd_table_fails_closed(monkeypatch):
+    """No implicit permission to treat missing task FDs as exclusive."""
+    class Dir:
+        def __init__(self, items):
+            self.items = items
+        def __enter__(self):
+            return iter(self.items)
+        def __exit__(self, *unused):
+            return False
+    failure = {"mode": "denied"}
+    def scan(path):
+        if path == "/proc":
+            return Dir([SimpleNamespace(name=str(PID))])
+        if path == f"/proc/{PID}/task":
+            return Dir([SimpleNamespace(name=str(PID))])
+        if path == f"/proc/{PID}/task/{PID}/fd":
+            if failure["mode"] == "denied":
+                raise PermissionError("denied")
+            if failure["mode"] == "missing":
+                raise FileNotFoundError("vanished task")
+            return Dir([SimpleNamespace(
+                name="3", path=f"/proc/{PID}/task/{PID}/fd/3")])
+        raise AssertionError(path)
+    monkeypatch.setattr(listener.os, "scandir", scan)
+    monkeypatch.setattr(listener.os, "readlink", lambda p: f"socket:[{INODE}]")
+    monkeypatch.setattr(listener, "_procfs_unfiltered", lambda: True)
+    for mode in ("denied", "missing"):
+        failure["mode"] = mode
+        assert not listener._exclusive_socket_owner(PID, INODE)
+    failure["mode"] = "normal"
+    monkeypatch.setattr(listener, "MAX_GLOBAL_THREADS", 0)
+    assert not listener._exclusive_socket_owner(PID, INODE)
