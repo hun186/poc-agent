@@ -89,3 +89,22 @@
 
 - Exact-head Hosted Actions [#40673273006](https://github.com/hun186/poc-agent/actions/runs/40673273006) SUCCESS at code/test SHA `c26c4105da747c9fbc0d2f76edf24f282ed6c1c6`: 1,347 focused pytest PASS, 2 Worker E2E PASS, 19 OFF-0 schema-only contracts PASS, plus compile/config-only checks. Earlier Hosted #40673039274 on `cebc3338` failed 3 focused tests because `bytes.isdecimal()` does not exist; updated to `bytes.isdigit()`, exact-head green. New memory commit changes HEAD and therefore requires refreshed exact-HEAD Hosted CI and formal Codex Review before separately authorized merge.
 - Regression now tests normal procfs auxiliary submounts, numeric-PID/self/thread-self/net overlays, an artificially masked other-process fd table, and fail-closed API-LISTENER. These CI tests simulate mountinfo and fd inventory, **not** operator-approved live Linux/SRAF SQL/Report Job or physical airgap acceptance.
+
+
+## 2026-10-29 OFF-1S PR #316 fifth formal P2 correction — validation pending
+
+- At Hosted PR #316 HEAD `5469b644bf4936468397876299681bc01fcef89f`,
+  formal Codex Review identified a fifth P2: Linux worker threads with
+  `close_range(CLOSE_RANGE_UNSHARE)` may hold listener descriptors outside
+  the leader's `/proc/<PID>/fd`; previous exclusive PID scan could incorrectly
+  bless the listener and transmit Report Job bearer to another accepting thread.
+- Implemented conservative bounded `/proc/<PID>/task/<TID>/fd` enumeration
+  for **every visible thread** in every process. Any inaccessible, changing,
+  oversized or incomplete task table fails closed. Added synthetic
+  non-leader shared-socket, denied/disappearing task and limit tests, plus a
+  real Linux CLOSE_RANGE_UNSHARE child worker regression (skip if unsupported).
+- Prior exact-head Hosted #40673524934 SUCCESS on OLD SHA: 1,347 focused pytest,
+  2 Worker E2E, 19 OFF-0 schema-only PASS. This does **NOT** verify today's
+  correction. New exact-head Hosted CI / formal Codex review and thread
+  resolution still required. No private operator deployment, SQL/Report Job,
+  Agent/LLM/ES/DOCX, or physical isolation acceptance. Merge not authorized.
