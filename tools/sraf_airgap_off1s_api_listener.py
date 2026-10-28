@@ -261,7 +261,7 @@ def _procfs_unfiltered() -> bool:
                                for part in child.split(b"/"))):
                     return False
                 first = child.split(b"/", 1)[0]
-                if (first.isdecimal()
+                if (first.isdigit()
                         or first in (b"self", b"thread-self", b"net")):
                     return False
                 # Normal non-process procfs submounts (e.g. /proc/sys,
