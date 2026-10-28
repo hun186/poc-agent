@@ -90,3 +90,24 @@ In these cases API-LISTENER returns SKIP and an opted-in REPORT-LIVE or
 REPORT-CHAIN must not send the read bearer. This is a partial
 namespace-visible, time-separated operator diagnostic; mount/PID namespace
 changes and same-UID tampering remain outside a cryptographic guarantee.
+
+
+## 2026-10-29 security review: non-leader thread FD tables
+
+Linux threads in one thread group can have **different descriptor tables** after
+`close_range(..., CLOSE_RANGE_UNSHARE)`. A process-leader-only
+`/proc/<PID>/fd` scan may omit an independently owned listener that remains
+open in `/proc/<PID>/task/<TID>/fd`, even after the leader closes its copy.
+The probe now enumerates **all threads of every visible process**, inspecting
+each task-specific fd table with strict per-thread, per-process and global
+limits. Missing or unreadable thread fd tables, disappearing tasks, unexpected
+entries and scan limits refuse attestation and block bearer transmission on
+the explicitly opted-in REPORT-LIVE/REPORT-CHAIN paths. This check remains
+read-only, same-PID-namespace scoped and noncryptographic. The additional
+visibility requirement may SKIP on busy or restricted Linux hosts.
+
+Regression coverage includes synthetic independent thread tables, denied and
+vanished task tables, caps, and a real subprocess with a worker thread using
+`CLOSE_RANGE_UNSHARE` while its leader closes its listening socket copy.
+The real subprocess test is Linux/glibc-dependent and skips when the syscall
+is unavailable. Hosted testing is not private deployment approval or airgap.
