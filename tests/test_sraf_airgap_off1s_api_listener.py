@@ -621,3 +621,81 @@ def test_unreadable_or_churning_thread_fd_table_fails_closed(monkeypatch):
     failure["mode"] = "normal"
     monkeypatch.setattr(listener, "MAX_GLOBAL_THREADS", 0)
     assert not listener._exclusive_socket_owner(PID, INODE)
+
+
+@pytest.mark.skipif(os.name != "posix" or not Path("/proc/self/task").exists(),
+                    reason="Linux /proc thread descriptor tables required")
+def test_real_linux_close_range_unshared_listener(monkeypatch, tmp_path):
+    """A real non-leader thread can hold a socket absent from its leader's fd."""
+    import socket
+    import subprocess
+    import sys
+    import time
+
+    listening = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listening.bind(("127.0.0.1", 0))
+    listening.listen(1)
+    sock_fd = listening.fileno()
+    inode = str(os.fstat(sock_fd).st_ino)
+    marker = tmp_path / "unshared-ready"
+    script = """
+import ctypes, os, pathlib, sys, threading, time
+fd = int(sys.argv[1])
+marker = pathlib.Path(sys.argv[2])
+event = threading.Event()
+def worker():
+    libc = ctypes.CDLL(None, use_errno=True)
+    fn = getattr(libc, "close_range", None)
+    if fn is None:
+        marker.write_text("unsupported")
+        event.set()
+        return
+    fn.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_uint]
+    fn.restype = ctypes.c_int
+    if fn(4095, 4095, 2) != 0:  # CLOSE_RANGE_UNSHARE; keep listener FD.
+        marker.write_text("unsupported")
+        event.set()
+        return
+    event.set()
+    time.sleep(8)
+thread = threading.Thread(target=worker, daemon=True)
+thread.start()
+event.wait(3)
+if not marker.exists():
+    os.close(fd)  # Only leader/shared group loses this FD.
+    marker.write_text("ready")
+thread.join()
+"""
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-c", script, str(sock_fd), str(marker)],
+            pass_fds=(sock_fd,), stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
+        deadline = time.monotonic() + 4
+        while not marker.exists() and time.monotonic() < deadline:
+            if proc.poll() is not None:
+                break
+            time.sleep(0.03)
+        assert marker.exists(), "child never reached unshare barrier"
+        if marker.read_text() == "unsupported":
+            pytest.skip("libc close_range(CLOSE_RANGE_UNSHARE) not supported")
+        assert marker.read_text() == "ready"
+        tids = [int(t) for t in os.listdir(f"/proc/{proc.pid}/task")]
+        assert len(tids) > 1
+        # /proc/<PID>/fd checks only leader files; here the leader is empty.
+        with pytest.raises(FileNotFoundError):
+            os.readlink(f"/proc/{proc.pid}/fd/{sock_fd}")
+        worker_tids = [tid for tid in tids if tid != proc.pid]
+        assert any(
+            os.readlink(f"/proc/{proc.pid}/task/{tid}/fd/{sock_fd}")
+            == f"socket:[{inode}]" for tid in worker_tids)
+        monkeypatch.setattr(listener, "_procfs_unfiltered", lambda: True)
+        # The parent is the proposed API owner; the unshared worker is not.
+        assert not listener._exclusive_socket_owner(os.getpid(), inode)
+    finally:
+        if proc is not None:
+            if proc.poll() is None:
+                proc.terminate()
+            proc.wait(timeout=4)
+        listening.close()
