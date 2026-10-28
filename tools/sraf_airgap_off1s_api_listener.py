@@ -225,6 +225,8 @@ def _owns_socket(pid: int, inode: str) -> bool:
 # table must NOT be interpreted as proof of exclusivity.
 MAX_PROCESSES = 32768
 MAX_GLOBAL_FDS = 131072
+MAX_GLOBAL_THREADS = 131072
+MAX_THREADS_PER_PROCESS = 8192
 MAX_MOUNTINFO = 1024 * 1024
 
 
@@ -287,19 +289,21 @@ def _procfs_unfiltered() -> bool:
 
 
 def _exclusive_socket_owner(pid: int, inode: str) -> bool:
-    """Fail closed unless an inspectable /proc table names only this PID.
+    """Fail closed unless every visible Linux thread FD table excludes co-owners.
 
-    A hidden process, inaccessible fd table, PID churn that cannot be
-    distinguished, or an oversized scan yields SKIP rather than bearer
-    transmission. This is conservative visibility, not cryptographic proof.
+    /proc/<tgid>/fd only reflects the thread-group leader's descriptor table.
+    A thread can use close_range(CLOSE_RANGE_UNSHARE), leaving an independent
+    table that still holds a listener even after the leader closes its copy.
+    Inspect /proc/<tgid>/task/<tid>/fd for *every* thread; never treat a missing
+    task table, unreadable descriptor, bounded-scan overflow or changed procfs
+    mount as evidence of exclusive ownership.
     """
-    # A hidepid mount can *omit* socket co-owners silently. Check mount
-    # visibility before any fd scan, and again afterwards to detect changes.
     if not _procfs_unfiltered():
         return False
     target = f"socket:[{inode}]"
     owner_seen = False
     process_count = 0
+    thread_count = 0
     total_fds = 0
     try:
         with os.scandir("/proc") as processes:
@@ -310,33 +314,55 @@ def _exclusive_socket_owner(pid: int, inode: str) -> bool:
                 if process_count > MAX_PROCESSES:
                     return False
                 current_pid = int(process.name)
-                fd_path = f"/proc/{current_pid}/fd"
+                task_path = f"/proc/{current_pid}/task"
+                per_process_threads = 0
                 try:
-                    with os.scandir(fd_path) as descriptors:
-                        per_pid_fds = 0
-                        for entry in descriptors:
-                            per_pid_fds += 1
-                            total_fds += 1
-                            if per_pid_fds > MAX_FDS or total_fds > MAX_GLOBAL_FDS:
+                    with os.scandir(task_path) as tasks:
+                        for task in tasks:
+                            if not task.name.isdecimal():
                                 return False
-                            if not entry.name.isdecimal():
-                                continue
+                            per_process_threads += 1
+                            thread_count += 1
+                            if (per_process_threads > MAX_THREADS_PER_PROCESS
+                                    or thread_count > MAX_GLOBAL_THREADS):
+                                return False
+                            tid = int(task.name)
+                            fd_path = f"{task_path}/{tid}/fd"
                             try:
-                                link = os.readlink(entry.path)
-                            except FileNotFoundError:
-                                # Descriptor was closed during the scan.
-                                continue
+                                with os.scandir(fd_path) as descriptors:
+                                    per_thread_fds = 0
+                                    for entry in descriptors:
+                                        per_thread_fds += 1
+                                        total_fds += 1
+                                        if (per_thread_fds > MAX_FDS
+                                                or total_fds > MAX_GLOBAL_FDS):
+                                            return False
+                                        if not entry.name.isdecimal():
+                                            continue
+                                        try:
+                                            link = os.readlink(entry.path)
+                                        except FileNotFoundError:
+                                            # An FD closed concurrently; a
+                                            # stable exclusive scan is not proven.
+                                            return False
+                                        except OSError:
+                                            return False
+                                        if link == target:
+                                            if current_pid != pid:
+                                                return False
+                                            owner_seen = True
                             except OSError:
+                                # Even a vanished thread is a non-atomic
+                                # snapshot: fail closed rather than assume
+                                # its independent FD table was harmless.
                                 return False
-                            if link == target:
-                                if current_pid != pid:
-                                    return False
-                                owner_seen = True
+                    if per_process_threads == 0:
+                        return False
                 except FileNotFoundError:
-                    # A vanished process is harmless; an existing but
-                    # unreadable table is NOT.
                     if os.path.exists(f"/proc/{current_pid}"):
                         return False
+                    # Process vanished before scanning its task list.
+                    continue
                 except OSError:
                     return False
     except (OSError, ValueError):
