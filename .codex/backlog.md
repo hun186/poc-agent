@@ -93,3 +93,16 @@
 ## 2026-10-27 OFF-1S CI/review and deployment verification
 
 - Exact-head Hosted OFF-1B tests including OFF-1S, 2 Worker E2E and 19 OFF-0 checks; new formal Codex review, correct every P1/P2 and resolve threads before separately authorized Merge. Operator must validate real launcher api_pid/start/euid/cwd, exact uvicorn command/process-title behaviour, /proc/net/tcp and FD visibility, and private SQL/Report Job live responses. Stronger authenticated local IPC (peer credentials / mTLS), signed artifact provenance, full Agent/LLM/ES and physical network isolation remain separate future gates.
+
+
+## 2026-10-29 OFF-1S PR #316 review follow-up
+
+- New P2 on exact old HEAD `5469b644bf4936468397876299681bc01fcef89f`:
+  non-leader thread with unshared FD table could hold listener unseen by
+  leader-only global scans. Thread-task enumeration and synthetic/real Linux
+  regressions committed; require **new exact-HEAD** Hosted focused pytest,
+  two Worker E2E and 19 OFF-0 checks, reply in the original P2 thread, and
+  complete formal Codex review on the FINAL docs/code HEAD. Do not merge
+  until separate user instruction.
+- Require operator-authorized real private Linux listener/SQL/Report Job
+  evidence; hosted simulated proof is never physical-airgap acceptance.
