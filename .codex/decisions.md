@@ -127,3 +127,14 @@
 ## 2026-10-28 OFF-1S nested procfs mount policy
 
 - Prefer fail-closed validation of the complete bounded `/proc/self/mountinfo` mountpoint set, not only the `/proc` root. Forbid any descendant overlay of numeric PID directories, self/thread-self or net inspection paths, even when an otherwise legitimate `hidepid=0` procfs root is present. Permit unrelated normal procfs support mounts such as /proc/sys and /proc/bus. Reject ambiguous mountpoint encodings and revalidate before and after fd enumeration; do not send owner-scoped HTTP bearer on any unverifiable view. This remains non-cryptographic, host/PID-namespace-scoped partial evidence.
+
+
+## 2026-10-29 OFF-1S thread-level FD scanning security decision
+
+For opt-in bearer GET listener corroboration, do not accept leader-only
+`/proc/<PID>/fd` checks: Linux `CLOSE_RANGE_UNSHARE` can create a separate
+FD table in a worker thread. Inspect each `/proc/<PID>/task/<TID>/fd`
+under conservative global/process/thread/resource bounds. Reject unknown or
+unavailable task views rather than assume they are harmless. Retain existing
+mountinfo and pre-send fail-closed gates, and document that this is not
+strong authenticated peer identity; protected UDS/mTLS remains future work.
