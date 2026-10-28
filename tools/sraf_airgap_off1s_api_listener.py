@@ -256,7 +256,7 @@ def _procfs_unfiltered() -> bool:
                 # ordinary /proc mount still looks unfiltered. Inspect ALL
                 # mountpoints, not only those mounted exactly at /proc.
                 child = mountpoint[len(b"/proc/"):]
-                if (not child or b"\\\\" in child or b"//" in child
+                if (not child or b"\\" in child or b"//" in child
                         or any(part in (b"", b".", b"..")
                                for part in child.split(b"/"))):
                     return False
