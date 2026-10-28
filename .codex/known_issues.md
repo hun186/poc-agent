@@ -167,3 +167,17 @@
 ## 2026-10-28 OFF-1S procfs nested mount masking (Codex P2)
 
 - Ordinary top-level `/proc` mount and hidepid=0 do not exclude a bind/tmpfs submount masking another process's `/proc/<PID>/fd`. Former global socket-owner scan could see an empty directory and falsely infer exclusivity while another process still accepted bearer credentials. OFF-1S now rejects procfs descendants capable of shadowing any numeric PID, self/thread-self or net paths, including ambiguous escaped mountpoints. Restricted/unknown mount views must SKIP, not PASS; this is not an atomic mount-namespace attestation or proof against same-UID attackers. Hosted synthetic tests and real operator validation remain separate.
+
+
+## 2026-10-29 OFF-1S thread FD visibility and private-host test gate
+
+The formal Codex review of PR #316 HEAD `5469b644bf4936468397876299681bc01fcef89f`
+identified a real independent-thread listener-owner bypass: scanning a
+thread-group leader's fd table misses a socket retained only by an unshared
+non-leader thread. Updated source now enumerates bounded task-specific fd
+tables and fails closed on missing/unreadable/over-budget thread evidence.
+A Linux `close_range(CLOSE_RANGE_UNSHARE)` subprocess regression was added,
+subject to the libc/kernel's support. Host scan limits and unrelated inaccessible
+FD tables may produce SKIP; never convert that to PASS or bypass bearer gates.
+No operator-authorized real private Linux/SQL/Report Job/airgap E2E exists;
+GitHub-hosted CI exercises only hosted environment and test fixtures.
