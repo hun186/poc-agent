@@ -181,3 +181,10 @@ subject to the libc/kernel's support. Host scan limits and unrelated inaccessibl
 FD tables may produce SKIP; never convert that to PASS or bypass bearer gates.
 No operator-authorized real private Linux/SQL/Report Job/airgap E2E exists;
 GitHub-hosted CI exercises only hosted environment and test fixtures.
+
+## 2026-10-29 Linux incremental-overlay FastAPI startup hang (active)
+
+- Operator reports a successful 97-file 7z extraction followed by `run_sra_api.sh` waiting 90 seconds for Port 9002; Uvicorn emits `Waiting for application startup` with no completion or Python traceback. Root cause remains unverified pending Linux evidence; the launcher cleans up child processes when readiness fails and resets normal runtime logs at its next launch. Avoid repeating restart until active process/task ownership is understood.
+- In `sra_api/main.py`, the pre-yield lifespan synchronously resolves optional external E2E plan, may run SQL Server schema/migrations under locks when enabled, and initializes/recovers Report Job SQLite. A `live`/`auto` E2E plan actively contacts LLM/ES and can manage a dedicated acceptance index. These are potential blocking operations, not proof of this incident's root cause. Do not run live startup purely for diagnostic testing or flip production modes silently.
+- The default launcher readiness check is a listening socket/PID/start identity comparison, **not** /healthz; Schedule and Handoff Workers start only after that gate. Missing Worker log output therefore follows from the gate failure.
+- An opt-in-free change on an unmerged repair branch adds only bounded phase/elapsed/error-type logging with original exception propagation; it is not a fix for a blocked external service or deployment package mismatch. Exact Linux startup, /healthz and Worker availability remain unverified.
