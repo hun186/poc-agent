@@ -12,6 +12,9 @@ from agent.e2e_preflight_budget import (
     E2E_SERVER_PREFLIGHT_BUDGET_SECONDS, PreflightDeadlineExceeded,
     check_budget, preflight_budget,
 )
+from agent.external_capabilities import (
+    publish_staged_plan, staged_plan_publication,
+)
 from collections.abc import Callable
 from sra_api.services.linux_e2e_preflight_guard import (
     HostPreflightBusy, host_preflight_guard, linux_host_guard_held,
@@ -61,26 +64,29 @@ class OperatorPreflightTracker:
                 raise
         try:
             with preflight_budget(self._budget_seconds):
-                try:
-                    result = operation()
-                    # A provider that returns late cannot publish successful evidence.
-                    check_budget()
-                except PreflightDeadlineExceeded:
-                    self._finish("TIMEOUT")
-                    raise
-                except Exception as exc:
+                with staged_plan_publication() as staged:
                     try:
+                        result = operation()
+                        # Do not publish an E2E BackendPlan until the whole
+                        # operator evidence handler returned before its budget.
                         check_budget()
-                    except PreflightDeadlineExceeded as timeout:
+                        publish_staged_plan(staged)
+                    except PreflightDeadlineExceeded:
                         self._finish("TIMEOUT")
-                        raise timeout from exc
-                    self._finish("FAILED")
-                    raise
-                except BaseException:
-                    self._finish("FAILED")
-                    raise
-                self._finish("COMPLETED")
-                return result
+                        raise
+                    except Exception as exc:
+                        try:
+                            check_budget()
+                        except PreflightDeadlineExceeded as timeout:
+                            self._finish("TIMEOUT")
+                            raise timeout from exc
+                        self._finish("FAILED")
+                        raise
+                    except BaseException:
+                        self._finish("FAILED")
+                        raise
+                    self._finish("COMPLETED")
+                    return result
         finally:
             # Does not drop the host guard on an HTTP disconnect or a client
             # timeout: release occurs only when server-side run() exits.
