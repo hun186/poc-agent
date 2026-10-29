@@ -129,3 +129,8 @@
 - Validate new composed read-only baseline on actual deployed Linux **without restarting services**: `python tools/sraf_runtime_baseline_readonly.py --project-root "$PWD" --api-port 9002`. Record redacted JSON at idle and under controlled Ollama contention; `--no-network` skips even anonymous GET. Comparing samples cannot establish root cause of an old 90s startup stall.
 - Before merge of this new PR: exact-head Hosted focused/Worker E2E/OFF-0 tests, formal Codex Review CLEAN on final HEAD, resolve all P1/P2, explicit separate user merge command. Preserve OFF-1T and OFF-1B independent diagnostics; do not declare private Linux E2E accepted.
 - Independently address E2E deferred-preflight **absolute** monotonic deadline or asynchronous preparation, and Data Agent LiteLLMModel.generate timeout. Current 600s HTTP inactivity timeout is not a strict wall clock limit. Verify real Linux SQL/ES and DOCX with separate operator approval; no automatic high-load test on active service.
+
+## 2026-10-29 E2E Data Agent bounded-probe follow-ups
+
+- Validate actual LiteLLM/smolagents version and Ollama under busy-model load before claiming the E2E-only 30s request timeout reliably ends a stuck network call; Hosted fake timeout tests only prove parameter forwarding and fail-closed classification. Complete exact-HEAD Hosted CI and formal Codex Review; no merge without explicit command.
+- Still design authenticated operator preflight as bounded **whole-operation monotonic deadline** or async status/polling with cancellation/fixture consistency, rather than conflating Requests' 600s per-read timeout with full lifetime. Diagnose heavy report >300s and Field Selector metadata using redacted Linux traces after separately authorized deployment.

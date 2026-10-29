@@ -206,11 +206,63 @@ def test_environment_plan_data_agent_probe_uses_smolagents_content_blocks(monkey
         "model_id": "ollama_chat/probe-model",
         "api_base": "http://model.example:11434",
         "temperature": 0.25,
+        "timeout": 30,
+        "num_retries": 0,
     }
     assert captured["messages"] == [{
         "role": "user",
         "content": [{"type": "text", "text": "Reply with READY."}],
     }]
+
+
+
+def test_e2e_data_agent_probe_timeout_fails_closed_without_raw_exception(monkeypatch):
+    """A busy optional preflight boundary cannot silently become FULL_LIVE."""
+    observed = {}
+
+    class BusyModel:
+        def __init__(self, **kwargs):
+            observed.update(kwargs)
+
+        def generate(self, messages):
+            assert messages[-1]["content"][0]["text"] == "Reply with READY."
+            raise requests_exceptions.Timeout(
+                "private-base-url?key=SECRET timed out under batch load"
+            )
+
+    monkeypatch.setattr("smolagents.LiteLLMModel", BusyModel)
+    monkeypatch.setattr(
+        "agent.data_agent.types.ENV",
+        SimpleNamespace(
+            data_agent_model_id="busy-probe",
+            model_base_url="http://private-model.local:11434",
+            model_temperature=0.1,
+        ),
+    )
+    monkeypatch.setattr(
+        "agent.llm_utils.ollama_client.LLMClient.chat",
+        lambda self, messages, timeout=10: "READY.",
+    )
+    monkeypatch.setattr("agent.es.es_client._build_es", lambda: object())
+
+    with pytest.raises(CapabilityError) as failure:
+        resolve_environment_plan("live")
+
+    assert str(failure.value) == "llm_transport_unavailable"
+    assert observed["model_id"] == "ollama_chat/busy-probe"
+    assert observed["timeout"] == 30 and observed["num_retries"] == 0
+    assert "SECRET" not in str(failure.value)
+
+
+def test_e2e_offline_mode_never_contacts_data_agent(monkeypatch):
+    monkeypatch.setattr(
+        "smolagents.LiteLLMModel",
+        lambda **kwargs: pytest.fail("offline E2E must not construct live model"),
+    )
+    plan = resolve_environment_plan("offline")
+    assert plan.llm_backend == "semantic_mock"
+    assert plan.elasticsearch_backend == "semantic_mock"
+    assert plan.llm_probe == "offline_not_probed"
 
 
 @pytest.mark.parametrize(("ping", "exists", "mapping", "dataset", "category"), [

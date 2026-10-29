@@ -166,3 +166,8 @@
 
 - User explicitly merged #319; main merge SHA `9ffe3dcd0eb760a9daa89904bc814ba266c987b4`, formal Codex Review CLEAN on original `9f4fb24340`, all 3 P2 resolved, Hosted focused/Worker/OFF-0 PASS. Not live Linux acceptance.
 - Follow-up branch `feat/sraf-runtime-baseline-readonly-20261029` introduces `tools/sraf_runtime_baseline_readonly.py` to compose existing OFF-1S launcher API identity, OFF-1A anonymous 3-second loopback /healthz, and OFF-1H worker identity. All results fixed-label/redacted; --no-network disables HTTP, API identity is checked before and after HTTP; no jobs, credentials, SQL, LLM/ES, DB writes or service startup. Point-in-time partial observation ONLY. New tests need exact-head Hosted CI and formal Codex review; no private Linux execution or merge.
+
+## 2026-10-29 post-#320: bounded E2E-only Data Agent READY probe — PR in progress
+
+- PR #320 merged to main as `1b6ca92cabe611eaa87b7e46d302e3c35bd49210`; its composed API-listener/healthz/worker baseline is read-only partial-only. No Linux execution has been observed.
+- New branch `fix/sraf-e2e-data-agent-probe-timeout-20261029` restricts **only** deferred operator E2E Data Agent READY capability probe to LiteLLM completion `timeout=30`, `num_retries=0`. Production `agent/data_agent/builder.py` stays untouched; live E2E fails closed on timeout, auto can degrade with accurate backend plan, offline bypasses live probe. Added fake-boundary regression and Hosted CI path triggers. Tests/CI/review and any real Linux behavior must be checked on exact PR HEAD, not inferred from this note.
