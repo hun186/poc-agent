@@ -40,3 +40,5 @@
 - For detailed architecture, API routes and remaining risks use active `.codex/architecture.md`, `.codex/api_contract.md`, `.codex/known_issues.md`, `.codex/decisions.md`, `.codex/backlog.md` and the current GitHub Hosted PR source.
 
 - 2026-10-30: Follow-up branch after #321 and separate open client-only #322: adds process-local operator runtime-evidence in-flight fencing, superuser read-only status and concurrent/exception/redaction regression. Hosted CI and formal Codex review are pending on this branch, and real Linux acceptance remains outstanding. This is **not** a server-side total deadline or cancellation; #322 is separately reviewed and not merged.
+
+- 2026-10-30: Preflight re-entry status branch AGENTS.md known-issues compaction: archived complete original to `.codex/archive/known_issues.md-20261030-003900.md` (Git blob SHA `641acf028ceabc4fdd61582d6f0bca45b4d589c5`), independently re-read with byte-identity/SHA verification, then condensed active issues; preserves unresolved Linux, timeout/cancellation, OFF-1 and SQL/ES gates. New branch validation/review remains pending on final HEAD.
