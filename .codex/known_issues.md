@@ -41,3 +41,6 @@
 - Use active `.codex/architecture.md`, `.codex/api_contract.md`, `.codex/decisions.md`, `.codex/backlog.md`, `.codex/memory.md` and current GitHub state for authoritative present-day status. Do not eagerly load archived history for ordinary tasks.
 
 - 2026-10-30: Cooperative server 540s E2E budget cannot interrupt SDK calls that ignore request timeout. RUNNING_OVERDUE is not canceled; remote ES fixture writes may already have happened and are not rolled back. Runtime Elasticsearch `.options(...)` and LiteLLM/Ollama behavior under busy private Linux have not been verified. No distributed state/cross-process guard, hard wall-clock preemption or physical FULL_LIVE proof. #322 client-only PR remains independently open.
+
+
+- 2026-10-30: Linux host `flock` coordinates only workers sharing the same UID, canonical project path, mount and lock directory. Separate containers/hosts, namespace/mount changes or attacker with same UID are not resolved by this increment; no durable cross-process Result/BackendPlan or hard SDK cancellation. ES full `_source` equality and count/IDs are sequential reads, not atomic under out-of-band ES writes. No automatic fixture overwrite/deletion/rollback; concurrent external writer or timeout may still leave missing docs for a later authorized retry. Hosted fake ES and subprocess tests cannot replace authorized private Linux/ES checks.

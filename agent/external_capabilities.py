@@ -445,19 +445,68 @@ def prepare_requirement_elasticsearch(
             return compatible
 
         fixtures = MOCK_DOCS[REQUIREMENT_E2E_INDEX]
-        for doc_id, source in fixtures.items():
-            check_budget()
+        for source in fixtures.values():
             validate_requirement_fixture(source)
+
+        def read_fixture_state() -> tuple[int, set[str]] | Probe:
+            """Never overwrite an unexpected document, even when counts match."""
+            count_response = _operator_es_call(
+                client, lambda es: es.count(index=index))
+            count_body = getattr(count_response, "body", count_response)
+            total = int((count_body or {}).get("count", -1))
+            if total < 0 or total > len(fixtures):
+                return Probe(False, "fixture_dataset_drift")
+
+            response = _operator_es_call(
+                client, lambda es: es.mget(index=index, ids=list(fixtures)))
+            body = getattr(response, "body", response)
+            docs = body.get("docs") if isinstance(body, Mapping) else None
+            if not isinstance(docs, list) or len(docs) != len(fixtures):
+                return Probe(False, "fixture_dataset_drift")
+            seen: set[str] = set()
+            present: set[str] = set()
+            for entry in docs:
+                if not isinstance(entry, Mapping):
+                    return Probe(False, "fixture_dataset_drift")
+                doc_id = entry.get("_id")
+                # A concrete index identity is required: an alias or routed
+                # backing index must never be mistaken for our owned fixture.
+                if entry.get("_index") != index:
+                    return Probe(False, "fixture_dataset_drift")
+                if not isinstance(doc_id, str) or doc_id not in fixtures or doc_id in seen:
+                    return Probe(False, "fixture_dataset_drift")
+                seen.add(doc_id)
+                if entry.get("found") is True:
+                    if entry.get("_source") != fixtures[doc_id]:
+                        return Probe(False, "fixture_dataset_drift")
+                    present.add(doc_id)
+                elif entry.get("found") is not False:
+                    return Probe(False, "fixture_dataset_drift")
+            # If the count exceeds the exact set of expected IDs, other IDs
+            # are present. Refuse mutation and avoid hiding index pollution.
+            if seen != set(fixtures) or total != len(present):
+                return Probe(False, "fixture_dataset_drift")
+            return total, present
+
+        initial = read_fixture_state()
+        if isinstance(initial, Probe):
+            return initial
+        _, present = initial
+        for doc_id, source in fixtures.items():
+            if doc_id in present:
+                continue
+            check_budget()
+            # A parallel creator gets a 409 instead of us overwriting data.
             _operator_es_call(client, lambda es: es.index(
-                index=index,
-                id=doc_id,
-                document=source,
-                refresh="wait_for",
+                index=index, id=doc_id, document=source,
+                op_type="create", refresh="wait_for",
             ))
 
-        count_response = _operator_es_call(client, lambda es: es.count(index=index))
-        count_body = getattr(count_response, "body", count_response)
-        if int((count_body or {}).get("count", -1)) != len(fixtures):
+        final = read_fixture_state()
+        if isinstance(final, Probe):
+            return final
+        total, present = final
+        if total != len(fixtures) or present != set(fixtures):
             return Probe(False, "fixture_dataset_drift")
         return Probe(True, "pass")
     except PreflightDeadlineExceeded:
