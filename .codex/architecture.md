@@ -108,3 +108,7 @@ thread evidence. This guards independent fd tables created by
 `close_range(CLOSE_RANGE_UNSHARE)`; it is still not cryptographic
 listener authentication, atomic socket-to-process proof, full namespace
 visibility, or live SRAF system acceptance.
+
+## 2026-10-29 OFF-1T standalone offline listener probe
+
+- tools/sraf_airgap_off1t_api_listener_check.py invokes the existing OFF-1S probe_api_listener, with only an absolute installed repository path and local numeric API port. This adds no new socket verification, API endpoint, authentication flow or database dependency. It reports redacted status, returns 0 for a corroborated snapshot or 2 for inconclusive observations, and never claims full live acceptance.
