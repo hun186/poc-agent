@@ -44,3 +44,6 @@
 
 
 - 2026-10-30: Linux host `flock` coordinates only workers sharing the same UID, canonical project path, mount and lock directory. Separate containers/hosts, namespace/mount changes or attacker with same UID are not resolved by this increment; no durable cross-process Result/BackendPlan or hard SDK cancellation. ES full `_source` equality and count/IDs are sequential reads, not atomic under out-of-band ES writes. No automatic fixture overwrite/deletion/rollback; concurrent external writer or timeout may still leave missing docs for a later authorized retry. Hosted fake ES and subprocess tests cannot replace authorized private Linux/ES checks.
+
+
+- 2026-10-30: Provisional E2E publication fixes an incomplete operator-handler success-to-plan boundary, but cannot revoke an earlier *already published* immutable plan if a later probe reveals environmental drift, and does not propagate plans to other API workers/processes/hosts. After process restart an E2E job still lacks local authority until the same worker receives authorized operator preflight. No durable cross-process plan receipt or atomic ES fixture transaction. Partial writes before failure still require explicit revalidation.
