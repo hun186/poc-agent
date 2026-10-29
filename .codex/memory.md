@@ -133,3 +133,9 @@
 - User-authorized OFF-1S PR #316 merged to main at `078206c3ab9d2945712bfe81b5b97c5ea40a5cc5`; final source HEAD `2555a15fa5c317daed9c6f771439f89abfb6cae2` received exact-head Codex no-major-issues receipt and Hosted #40744110563 SUCCESS (1,350 focused pytest, 2 Worker E2E, 19 OFF-0 schema-only). No live SRAF host acceptance.
 - Overlapping PR #315 still OPEN. Its distinct operator-only diagnostic (without SQL/DOCX preconditions) is useful, but merging it directly would introduce a weaker duplicate listener verifier. OFF-1T instead reuses merged hardened `tools/sraf_airgap_off1s_api_listener.py` and exposes a standalone offline read-only CLI requiring only an absolute deployed root and numeric API port. It emits fixed redacted PASS/SKIP, an explicit partial/not-acceptance scope, no PID/inode/path/token, and never contacts the API or accesses SQL/LLM/ES.
 - New code/tests/runbook and existing OFF-1B Hosted CI integration implemented on `feat/sraf-off1t-standalone-api-listener-check`. New HEAD Hosted CI, actual Linux operator runtime and formal Codex Review remain to be checked separately; **do not Merge** without a new explicit instruction.
+
+## 2026-10-29 OFF-1T standalone operator check
+
+- PR #316 was merged into main at 078206c3ab9d2945712bfe81b5b97c5ea40a5cc5 after reviewed Hosted CI. Real Linux SRAF private-host acceptance remains pending.
+- This new branch adds a local non-network OFF-1T CLI that reuses the merged OFF-1S launcher/listener attestation rather than duplicating verifier logic. Operator supplies an absolute repository root and numeric API port; only a fixed partial PASS/SKIP status is printed. No bearer, external HTTP, SQL query, or scheduled job is executed.
+- PR #315 remains open because its original standalone diagnostic purpose was not covered by the prior full-matrix gate; assess its overlap after OFF-1T review. Hosted exact-HEAD CI and formal Codex review for OFF-1T have not yet been verified. No merge is authorized.
