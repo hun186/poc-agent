@@ -49,11 +49,14 @@ def observe(project_root: Path, api_port: str, *, no_network: bool = False) -> d
         "WORKER-IDENTITIES": _row("SKIP", "worker_identity_unverified"),
     }
     requests_sent = 0
-    valid = (
-        isinstance(project_root, Path) and project_root.is_absolute()
-        and not project_root.is_symlink() and project_root.is_dir()
-        and sys.platform == "linux" and _valid_port(api_port) is not None
-    )
+    try:
+        valid = (
+            isinstance(project_root, Path) and project_root.is_absolute()
+            and not project_root.is_symlink() and project_root.is_dir()
+            and sys.platform == "linux" and _valid_port(api_port) is not None
+        )
+    except (OSError, ValueError):
+        valid = False
     if valid:
         try:
             before = attest_api_listener(project_root, api_port)
@@ -104,7 +107,7 @@ def observe(project_root: Path, api_port: str, *, no_network: bool = False) -> d
         "feature_acceptance": "NOT_TESTED",
         "overall": "PASS" if complete else "INCOMPLETE",
         "checks": checks,
-        "loopback_http_requests": requests_sent,
+        "loopback_http_attempts": requests_sent,
         "external_network_requests": 0,
         "credentials_sent": False,
         "database_queries": 0,

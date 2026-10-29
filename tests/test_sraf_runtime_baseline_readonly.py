@@ -42,7 +42,7 @@ def test_verified_snapshot_is_partial_only_and_redacted(monkeypatch, valid_env):
     assert data["overall"] == "PASS"
     assert data["feature_acceptance"] == "NOT_TESTED"
     assert data["mode"] == "PARTIAL_ONLY_NOT_ACCEPTANCE"
-    assert data["loopback_http_requests"] == 1
+    assert data["loopback_http_attempts"] == 1
     assert (observed["listener"], observed["health"]) == (2, 1)
     assert all(check["status"] == "PASS" for check in data["checks"].values())
     assert data["external_network_requests"] == 0 and data["model_inferences"] == 0
@@ -60,7 +60,7 @@ def test_unverified_listener_never_sends_http(monkeypatch, valid_env):
     assert data["overall"] == "INCOMPLETE"
     assert data["checks"]["API-HEALTH"]["status"] == "SKIP"
     assert data["checks"]["WORKER-IDENTITIES"]["status"] == "PASS"
-    assert data["loopback_http_requests"] == 0
+    assert data["loopback_http_attempts"] == 0
 
 
 def test_listener_changes_after_health_invalidates_both(monkeypatch, valid_env):
@@ -74,7 +74,7 @@ def test_listener_changes_after_health_invalidates_both(monkeypatch, valid_env):
     assert data["checks"]["API-LISTENER"]["status"] == "SKIP"
     assert data["checks"]["API-HEALTH"]["status"] == "SKIP"
     assert data["overall"] == "INCOMPLETE"
-    assert data["loopback_http_requests"] == 1
+    assert data["loopback_http_attempts"] == 1
 
 
 def test_no_network_mode_skips_even_anonymous_get(monkeypatch, valid_env):
@@ -89,7 +89,7 @@ def test_no_network_mode_skips_even_anonymous_get(monkeypatch, valid_env):
     assert len(calls) == 1
     assert data["overall"] == "INCOMPLETE"
     assert data["checks"]["API-HEALTH"]["reason"] == "network_disabled"
-    assert data["loopback_http_requests"] == 0
+    assert data["loopback_http_attempts"] == 0
 
 
 @pytest.mark.parametrize("port", ["0", "-1", "65536", "abc", "9002x",
@@ -103,7 +103,7 @@ def test_invalid_port_never_reaches_probes(monkeypatch, valid_env, port):
                         lambda *_: pytest.fail("bad port reached worker"))
     data = baseline.observe(valid_env, port)
     assert data["overall"] == "INCOMPLETE"
-    assert data["loopback_http_requests"] == 0
+    assert data["loopback_http_attempts"] == 0
 
 
 def test_untrusted_path_never_reaches_probes(monkeypatch, tmp_path):
