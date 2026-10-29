@@ -150,3 +150,34 @@
 ## 2026-10-27 OFF-1R SQL migration column owner correction
 
 - The first OFF-1R query draft incorrectly referenced `h.remote_job_id` and `h.dispatched_at` on `requirement_handoff_submissions`. The authoritative `requirement_scheduler.migrations.REQUIRED_COLUMNS` places both on `requirement_batch_run_items`. Replaced with `i.remote_job_id IS NOT NULL` and `i.dispatched_at IS NOT NULL`; Handoff is linked through `h.run_item_id=i.run_item_id` and workflow. Added migration-column/alias parity test, since mocked ODBC tests never parse SQL Server column references. Live SQL Server syntax still requires operator validation.
+
+## 2026-10-27 OFF-1S service listener identity and residual races
+
+- Process identity record is launcher-managed but same-UID writable, not digitally signed. A same-UID malicious process may forge it and imitate expected command line/socket fd; no cryptographic server authentication. Rechecking PID/start/socket after TCP connect and before writing bearer reduces but cannot eliminate the race between verification and send. Listener on 0.0.0.0 is not evidence of firewall/isolation. Fail closed when API uses different uvicorn command/title or nonshared proc/network namespace or when IPv6 listener may shadow IPv4, PID/fd access denied, or socket ambiguous. Operator-hosted test must check actual deployed Uvicorn title and launcher identity; Hosted pytest mocks cannot attest live runtime or private network.
+
+## 2026-10-27 OFF-1S PR #316 shared listener ownership and process argv
+
+- 2 formal P2 on exact head 29e923e: pip-installed uvicorn may have a seven-argument Python-shebang /proc cmdline or sra_api/main.py may apply setproctitle; earlier strict six-arg matcher incorrectly SKIPPED legitimate API. A unique socket inode still can be held by multiple processes; unrecorded socket acceptor can receive bearer even if one known PID owns the inode. Remediation adds exact launch/title alternatives and bounded, conservative global /proc/*/fd exclusivity, with synthetic regression tests. If process visibility is restricted, return SKIP instead of a false identity PASS; PID namespaces and same-UID spoofing still prevent cryptographic/race-free claims. Await exact-head Hosted CI and Codex review, no production attestation.
+
+
+## 2026-10-28 OFF-1S procfs hidepid visibility P2
+
+- A process-list scan cannot claim listener socket exclusivity when procfs `hidepid` silently omits other PIDs. OFF-1S now requires a bounded, unambiguous, unfiltered /proc mountinfo confirmation both before and after the global fd scan, refusing restricted/unknown hidepid, subset or nonstandard root mounts to SKIP. This conservative guard may SKIP on protected installations. PID namespace visibility, root/admin hostile tampering, mount-change races and same-UID impersonation remain beyond this noncryptographic operator diagnostic; actual private runtime acceptance is not established by Hosted CI.
+
+## 2026-10-28 OFF-1S procfs nested mount masking (Codex P2)
+
+- Ordinary top-level `/proc` mount and hidepid=0 do not exclude a bind/tmpfs submount masking another process's `/proc/<PID>/fd`. Former global socket-owner scan could see an empty directory and falsely infer exclusivity while another process still accepted bearer credentials. OFF-1S now rejects procfs descendants capable of shadowing any numeric PID, self/thread-self or net paths, including ambiguous escaped mountpoints. Restricted/unknown mount views must SKIP, not PASS; this is not an atomic mount-namespace attestation or proof against same-UID attackers. Hosted synthetic tests and real operator validation remain separate.
+
+
+## 2026-10-29 OFF-1S thread FD visibility and private-host test gate
+
+The formal Codex review of PR #316 HEAD `5469b644bf4936468397876299681bc01fcef89f`
+identified a real independent-thread listener-owner bypass: scanning a
+thread-group leader's fd table misses a socket retained only by an unshared
+non-leader thread. Updated source now enumerates bounded task-specific fd
+tables and fails closed on missing/unreadable/over-budget thread evidence.
+A Linux `close_range(CLOSE_RANGE_UNSHARE)` subprocess regression was added,
+subject to the libc/kernel's support. Host scan limits and unrelated inaccessible
+FD tables may produce SKIP; never convert that to PASS or bypass bearer gates.
+No operator-authorized real private Linux/SQL/Report Job/airgap E2E exists;
+GitHub-hosted CI exercises only hosted environment and test fixtures.

@@ -127,7 +127,23 @@ def _recv_with_deadline(sock: socket.socket, deadline: float,
     return data
 
 
-def _http_get_one(port: int, token: str, job_id: str) -> bytes:
+class _ListenerUnverified(Exception):
+    """A verified on-host listener became untrusted; no diagnostic details."""
+
+
+def _guard_listener(guard) -> None:
+    if guard is None:
+        return
+    try:
+        valid = guard()
+    except Exception:
+        raise _ListenerUnverified from None
+    if valid is not True:
+        raise _ListenerUnverified
+
+
+def _http_get_one(port: int, token: str, job_id: str, *,
+                  listener_guard=None) -> bytes:
     """One fixed IPv4 TCP HTTP/1.1 GET with strict size/framing and total deadline.
 
     Avoid requests/urllib's per-idle read timeout, DNS, netrc, redirects,
@@ -141,6 +157,9 @@ def _http_get_one(port: int, token: str, job_id: str) -> bytes:
         sock.connect(("127.0.0.1", port))
         if time.monotonic() > deadline:
             raise TimeoutError("deadline_exceeded")
+        # Critical: validate the *current* listener while already connected,
+        # BEFORE any Authorization header is transmitted on this socket.
+        _guard_listener(listener_guard)
         request = (
             f"GET /v1/report/jobs/{job_id} HTTP/1.1\r\n"
             f"Host: 127.0.0.1:{port}\r\n"
@@ -208,16 +227,23 @@ def _http_get_one(port: int, token: str, job_id: str) -> bytes:
             result.extend(part)
         if time.monotonic() > deadline:
             raise TimeoutError("deadline_exceeded")
+        _guard_listener(listener_guard)
         return bytes(result)
     finally:
         sock.close()
 
 
 def _remote_status(port: int, token: str, job_id: str,
-                   submission_id: str) -> tuple[str, str]:
+                   submission_id: str, *, listener_guard=None) -> tuple[str, str]:
     """Bounded HTTP GET; no exception, body or identifiers reach the JSON row."""
     try:
-        raw = _http_get_one(port, token, job_id)
+        if listener_guard is None:
+            raw = _http_get_one(port, token, job_id)
+        else:
+            raw = _http_get_one(port, token, job_id,
+                                listener_guard=listener_guard)
+    except _ListenerUnverified:
+        return "SKIP", "remote_listener_unverified"
     except TimeoutError:
         return "SKIP", "remote_http_deadline"
     except (OSError, ValueError, OverflowError, UnicodeError):
@@ -248,6 +274,7 @@ def _remote_status(port: int, token: str, job_id: str,
 def probe_remote_report_job(
     sql_config: dict[str, str], *, schedule_id: str, api_port: str,
     read_token: str, schema: str = DEFAULT_SCHEMA,
+    listener_guard=None,
 ) -> Observation:
     """Only partial GET evidence. No SQL mutation or job creation."""
     if not isinstance(schema, str) or _SCHEMA_RE.fullmatch(schema) is None:
@@ -271,7 +298,11 @@ def probe_remote_report_job(
     if isinstance(selected, str):
         return _out("SKIP", selected, executed=True)
     try:
-        status, reason = _remote_status(port, read_token, *selected)
+        if listener_guard is None:
+            status, reason = _remote_status(port, read_token, *selected)
+        else:
+            status, reason = _remote_status(
+                port, read_token, *selected, listener_guard=listener_guard)
     except Exception:
         return _out("SKIP", "remote_http_unverified", executed=True)
     return _out(status, reason, executed=True,

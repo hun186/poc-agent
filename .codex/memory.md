@@ -51,3 +51,78 @@
 ## 2026-10-27 OFF-1R Hosted and first formal Codex evidence
 
 - PR #314 initial code/docs HEAD 6eabeb842fbc7668995c55b1505604c5bb680033 received formal Codex P2 on nonexistent h.remote_job_id / h.dispatched_at in the Handoff SQL table. On latest tested HEAD 448f0650a91ed4027860fa3c880571b815dab38a, changed query to valid Run Item columns i.remote_job_id / i.dispatched_at and added a migration-authoritative REQUIRED_COLUMNS alias check (with the inner h.submission_id to outer i.submission_id APPLY projection represented explicitly). Hosted [#40437841634](https://github.com/hun186/poc-agent/actions/runs/40437841634) completed SUCCESS: **1,328 focused pytest PASS**, **2 Worker identity E2E PASS**, and **19 OFF-0 schema-only contract PASS**. The SQL itself has not executed on real private SQL Server; operator live gate remains. This memory update changes HEAD: require another exact-head Hosted SUCCESS, explicit inline P2 resolution, and fresh formal Codex Review before any separate user-approved Merge.
+
+## 2026-10-27 OFF-1S API listener identity — current PR work
+
+- OFF-1R PR #314 merged with explicit user approval to main `f5dce5434419fe20e0dac28ec9fa55fee991c7ef`; exact-head Codex CLEAN with 0 unresolved threads and Hosted 1,328 focused + 2 Worker E2E + 19 OFF-0 schema-only PASS; no real private SQL/API/DOCX/airgap acceptance.
+- OFF-1S `feat/sraf-off1s-api-listener-identity`: add default-off eleventh `--probe-api-listener`, checking run_sra_api.sh's exact `.run_sra_api_api.identity`, Linux PID start tick, EUID/cwd/exact uvicorn argv, /proc/net/tcp bound listener inode and fd owner. When operator requests it, Report Job bearer calls are blocked unless the attestation passes; reverify listener on the already connected socket before transmitting credentials and again after response. Alternate process/namespace/IPv6 listener/ambiguous inode FAIL CLOSED to SKIP. This is only process corroboration, not cryptographic server identity or zero-TOCTOU, and does not prove network isolation or live end-to-end evidence. Tests, Hosted CI and formal review pending exact HEAD; do not Merge absent separate user command.
+
+## 2026-10-27 OFF-1S first Hosted CI and negative fixture corrections
+
+- OFF-1S PR #316 code/tests/docs HEAD `483266b2d9f21154fbee8bd1995ec4b72e48f383`: Hosted Actions [#40497730636](https://github.com/hun186/poc-agent/actions/runs/40497730636) completed SUCCESS: **1,338 focused pytest PASS**, **2 Worker E2E PASS** and **19 OFF-0 schema-only contract PASS**. Two earlier Hosted red builds were caused by incorrect synthetic `uvicorn --host 0.0.0.0` NUL delimiter encoding and misordered synthetic Linux proc Uid field; both fixtures were corrected without relaxing actual UID/PID/argv checks. Formal Codex review had not yet completed on current HEAD at evidence capture; this documentation commit changes HEAD and requires new exact-head Hosted CI plus fresh completed Codex review before separately authorized Merge. No real API process / private SQL / physical-airgap acceptance was exercised.
+
+## 2026-10-27 OFF-1S PR #316 two exact-head Codex P2 corrections (pending Hosted verification)
+
+- Codex completed formal review on 29e923e23b58b2951a240c083350a0851fb5b2d0 with two P2: actual Python-shebang Uvicorn (7 args) and setproctitle runtime process title were rejected by a strict six-argument matcher; unique listening inode and one matching API PID fd did not exclude a fork-shared/socket-passed listener whose other PID could receive bearer credentials. Both threads require corrections and re-review.
+- New code matches launcher console-script shebang and exact repository SRA-API runtime title under existing UID, pinned root, PID start tick and socket checks. It also requires exclusive visible /proc process fd ownership of the listening inode; shared, unreadable or scan-capped process tables fail closed to SKIP. Added negative and positive regression tests plus operator limitations. The broad global scan may SKIP on insufficient /proc visibility and is not cryptographic/process-atomic proof. HOSTED CI, exact-head formal Codex re-review and operator live acceptance have NOT YET been verified for this new commit; no merge authorized.
+
+## 2026-10-27 OFF-1S PR #316 real procfs regression and Hosted evidence
+
+- First fix HEAD e9890970dce942aeb118e4170ad59e6554b102b0 Hosted run #40531392216 succeeded: 1,341 focused pytest PASS, 2 Worker E2E PASS, 19 OFF-0 schema-only checks PASS (mock/synthetic and CI-host only; not production acceptance).
+- Added separate real Linux /proc process regression that launches an actual temporary Python-shebang executable named uvicorn with the exact launcher arguments, checks real PID/start/EUID/cwd/cmdline matching and wrong-port rejection, plus hardened shared-owner matrix regression assertion. This new HEAD requires its own Hosted run, formal Codex exact-head re-review, and separate explicit merge authorization.
+
+## 2026-10-27 OFF-1S exact verified Hosted P2 regression (before final documentation SHA)
+
+- Final functional regression commit `663f6e3e1afa500c5b9d8cf72dbb146286ed0d17`: hosted [run #40531972972](https://github.com/hun186/poc-agent/actions/runs/40531972972) completed SUCCESS with **1,342 focused pytest**, **2 Worker E2E**, **19 OFF-0 schema-only contracts**. Includes an actually launched Linux Python-shebang process and /proc identity assertion, synthetic shared socket and unreadable-fd rejection, and pre-send bearer fail-closed checks. Earlier first correction `e9890970dce942aeb118e4170ad59e6554b102b0` also had hosted run #40531392216 success (1,341 focused + 2 E2E + 19 schema-only). Both formal Codex P2 discussions answered; this subsequent documentation-only update changes HEAD and requires fresh exact-head CI and formal review. Production SQL/API/airgap acceptance remains untested; no merge authorization.
+
+
+## 2026-10-28 OFF-1S PR #316 third Codex P2 remediation (pending exact-head review)
+
+- Fresh formal Codex review of `5ff30b713801d0b293ab3bb41620f6ce74125cfe` returned one new P2: Linux procfs `hidepid=2/4` may omit non-owned PID directories entirely, so an apparently complete `/proc/*/fd` scan could falsely pass exclusive listener ownership, exposing bearer credentials to an unlisted process. Earlier two P2 Threads had already been answered and resolved; latest prior Hosted #40532441760 SUCCESS (1,342 focused tests + 2 Worker identity E2E + OFF-0 19 schema-only).
+- Added a fail-closed bounded `/proc/self/mountinfo` visibility check before and after descriptor enumeration. Only a single ordinary procfs mount with absent/`hidepid=0` and no filtered subset qualifies; `hidepid=1/2/4`, unknown hidepid values, partial mountinfo or unexpected bind-root mounts SKIP. Added negative hidepid/omitted-owner and mount-change regressions, updated runbook. This is still only same-PID-namespace partial evidence, not a full trusted peer or airgap attestation. New HEAD requires Hosted CI success, formal exact-head Codex review and separate explicit merge approval.
+
+## 2026-10-28 OFF-1S PR #316 procfs submount P2 remediation
+
+- Latest exact-HEAD Codex review on `53b0390cb6aaeaee48e1cd656a29c69336c4558c` identified P2: procfs descendant mounts (e.g. tmpfs over `/proc/<other-pid>/fd`) can conceal a shared socket co-owner even with normal top-level hidepid=0; one old P2 review thread remained unresolved. Corrected the bounded `/proc/self/mountinfo` check to reject mounts masking numeric PID subtrees and /proc/self, /proc/thread-self or /proc/net, with ambiguous path escapes fail-closed, while allowing unrelated normal auxiliary /proc mounts. Added synthetic masked co-owner and negative proc mount regression; operator doc updated. **Do not claim validated** until exact new SHA Hosted tests and formal Codex Review complete, and do not merge without explicit user instruction. No private deployment/physical airgap acceptance.
+
+## 2026-10-28 OFF-1S procfs submount review remediation — Hosted evidence
+
+- Exact-head Hosted Actions [#40673273006](https://github.com/hun186/poc-agent/actions/runs/40673273006) SUCCESS at code/test SHA `c26c4105da747c9fbc0d2f76edf24f282ed6c1c6`: 1,347 focused pytest PASS, 2 Worker E2E PASS, 19 OFF-0 schema-only contracts PASS, plus compile/config-only checks. Earlier Hosted #40673039274 on `cebc3338` failed 3 focused tests because `bytes.isdecimal()` does not exist; updated to `bytes.isdigit()`, exact-head green. New memory commit changes HEAD and therefore requires refreshed exact-HEAD Hosted CI and formal Codex Review before separately authorized merge.
+- Regression now tests normal procfs auxiliary submounts, numeric-PID/self/thread-self/net overlays, an artificially masked other-process fd table, and fail-closed API-LISTENER. These CI tests simulate mountinfo and fd inventory, **not** operator-approved live Linux/SRAF SQL/Report Job or physical airgap acceptance.
+
+
+## 2026-10-29 OFF-1S PR #316 fifth formal P2 correction — validation pending
+
+- At Hosted PR #316 HEAD `5469b644bf4936468397876299681bc01fcef89f`,
+  formal Codex Review identified a fifth P2: Linux worker threads with
+  `close_range(CLOSE_RANGE_UNSHARE)` may hold listener descriptors outside
+  the leader's `/proc/<PID>/fd`; previous exclusive PID scan could incorrectly
+  bless the listener and transmit Report Job bearer to another accepting thread.
+- Implemented conservative bounded `/proc/<PID>/task/<TID>/fd` enumeration
+  for **every visible thread** in every process. Any inaccessible, changing,
+  oversized or incomplete task table fails closed. Added synthetic
+  non-leader shared-socket, denied/disappearing task and limit tests, plus a
+  real Linux CLOSE_RANGE_UNSHARE child worker regression (skip if unsupported).
+- Prior exact-head Hosted #40673524934 SUCCESS on OLD SHA: 1,347 focused pytest,
+  2 Worker E2E, 19 OFF-0 schema-only PASS. This does **NOT** verify today's
+  correction. New exact-head Hosted CI / formal Codex review and thread
+  resolution still required. No private operator deployment, SQL/Report Job,
+  Agent/LLM/ES/DOCX, or physical isolation acceptance. Merge not authorized.
+
+
+## 2026-10-29 OFF-1S fifth P2 Hosted exact-code/docs verification
+
+- PR #316 functional SHA `8818411b57179a12c89e3e71a21a3583739c2711`
+  Hosted [#40743672662](https://github.com/hun186/poc-agent/actions/runs/40743672662)
+  SUCCESS: **1,350 focused pytest PASS**, **2 Worker E2E PASS**, **19 OFF-0
+  schema-only checks PASS**, compile/config-only PASS. This includes the real
+  Linux CLOSE_RANGE_UNSHARE subprocess regression and fail-closed synthetic
+  thread-table tests.
+- Documentation HEAD `df598facd3d29da4aa9a915a6d5a9aea94125a1c`
+  independently passed exact-HEAD Hosted [#40743853243](https://github.com/hun186/poc-agent/actions/runs/40743853243)
+  with **1,350 focused pytest, 2 Worker E2E and 19 OFF-0 schema-only checks**.
+- Original fifth P2 discussion answered at PR #316 review thread by comment
+  4404419662; completed formal exact-FINAL-HEAD Codex Review and user merge
+  authorization remain separate gates. This evidence-logging commit itself
+  moves HEAD and needs new CI + formal review. No full private live E2E/airgap
+  proof has been obtained.
