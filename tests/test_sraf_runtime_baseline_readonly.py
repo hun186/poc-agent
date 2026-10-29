@@ -69,7 +69,7 @@ def test_listener_changes_after_health_invalidates_both(monkeypatch, valid_env):
     monkeypatch.setattr(baseline, "attest_api_listener",
                         lambda *_: next(calls))
     monkeypatch.setattr(baseline, "probe_api_health",
-                        lambda *_: ListenerProof(1234, "10001", 9002, "56789"))
+                        lambda *_: _observation("PASS"))
     data = baseline.observe(valid_env, "9002")
     assert data["checks"]["API-LISTENER"]["status"] == "SKIP"
     assert data["checks"]["API-HEALTH"]["status"] == "SKIP"
