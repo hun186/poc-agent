@@ -111,16 +111,13 @@ def test_changed_fixture_after_create_cannot_pass_final_attestation():
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux flock guard only")
 def test_linux_host_lock_rejects_independent_python_process():
     snippet = (
-        "import sys\\n"
+        "import sys\n"
         "from sra_api.services.linux_e2e_preflight_guard import "
-        "host_preflight_guard, HostPreflightBusy\\n"
-        "try:\\n"
-        "    with host_preflight_guard(): sys.exit(4)\\n"
-        "except HostPreflightBusy: sys.exit(0)\\n"
-    ).replace("\\\\n", "\\n")
-    with host_preflight_guard(): sys.exit(4)\\n"
-        "except HostPreflightBusy: sys.exit(0)\\n"
-    ).replace("\\n", "\n")
+        "host_preflight_guard, HostPreflightBusy\n"
+        "try:\n"
+        "    with host_preflight_guard(): sys.exit(4)\n"
+        "except HostPreflightBusy: sys.exit(0)\n"
+    )
     with host_preflight_guard():
         proc = subprocess.run([sys.executable, "-c", snippet], check=False, timeout=10,
                               capture_output=True, text=True)
