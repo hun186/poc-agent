@@ -111,3 +111,10 @@
 
 - Require final-head Hosted focused CI, 2 legacy Worker E2E, 19 OFF-0 contract checks and formal completed Codex Review; fix new actionable findings and request separate user approval before Merge.
 - Determine whether PR #315 is fully superseded once standalone CLI is reviewed. Keep both existing features' safety guards intact until then. Actual private Linux SRAF operator evidence and full air-gap acceptance remain pending.
+
+
+## 2026-10-29 SRAF high-load reliability release gates
+
+- Validate exact latest PR #319 HEAD with hosted focused/legacy E2E tests and OFF-0 contracts; complete fresh formal `@codex review` and fix any actionable P1/P2 findings before seeking explicit user merge authorization.
+- Request operator-authorized Linux preflight/acceptance separately from normal /healthz and API listener. Observe startup phases, SQL/ES/Worker identity and authentic model/Word execution under controlled busy-Ollama conditions, without reinitializing live DB/leases as an incidental diagnostic.
+- Investigate Data Agent LiteLLMModel.generate timeout/total deadline, real report-generation >300s stage accounting and selector retry/timeout endpoint. Confirm real evidence quality and fallback trace/UI semantics with representative cases.
