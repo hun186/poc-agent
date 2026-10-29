@@ -94,3 +94,6 @@
 
 
 - 2026-10-30 Proposed post-#324 change: On Linux same-host lock contention, superuser `GET /v1/operator-e2e/runtime-evidence` responds 409 `external_e2e_preflight_in_progress` before starting another probe, even if another API process owns the lock; lock unavailable returns 503 `external_e2e_host_guard_unavailable`. Superuser status v1 may show `HOST_LOCK_HELD`, generation 0, elapsed 0 and scope `linux_same_host_lock_observation_only` without disclosing peer identity or outcome. Local status behavior unchanged. API on non-Linux remains process-local. This is not cross-host or persistent coordination.
+
+
+- 2026-10-30: Authenticated operator runtime-evidence GET success schema and status schema unchanged; a *new* local E2E BackendPlan is no longer published on a partial/failing/timed-out handler. Other concurrent threads still see `external_capability_plan_unresolved` until successful final handler completion. HTTP 503 deadline / 409 same-host guard remain as reviewed. No new public API route or production Job behavior.
