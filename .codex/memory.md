@@ -47,3 +47,6 @@
 
 
 - 2026-10-30: Post-#324 PR in development for ES acceptance fixture exact `mget` ID/index/`_source` checks and create-only missing-doc recovery, with pre/post count consistency; Linux same-host UID-private `flock` guard prevents parallel operator preflights across API processes and redacted `HOST_LOCK_HELD` status. No cluster/global mutex, atomic ES transaction, durable job status, hard SDK termination or private Linux FULL_LIVE acceptance. Hosted final-head CI/Codex review pending; no Merge authorized.
+
+
+- 2026-10-30: Post-#325 provisional E2E publication branch: `OperatorPreflightTracker.run` stages any newly resolved `BackendPlan` in a request ContextVar and commits to process-wide authority only after the complete operator evidence handler succeeds under the 540s budget. Other threads cannot consume provisional plan; exception/timeout discards it, retry can revalidate ES fixture. Existing published plans stay immutable and direct `frozen_plan` callers retain compatibility. This does **not** share plan across API processes, provide cross-host lock, unwind ES mutations or force SDK cancellation. New branch Hosted CI/Codex final-head evidence pending; no Merge authorized.
