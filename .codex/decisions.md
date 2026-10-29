@@ -138,3 +138,7 @@ under conservative global/process/thread/resource bounds. Reject unknown or
 unavailable task views rather than assume they are harmless. Retain existing
 mountinfo and pre-send fail-closed gates, and document that this is not
 strong authenticated peer identity; protected UDS/mTLS remains future work.
+
+## 2026-10-29 OFF-1T standalone design
+
+- Reuse merged OFF-1S hardening in a standalone offline CLI rather than merge overlapping PR #315 verifier code. Retain full per-thread descriptor-owner validation, process/mount checks and conservative SKIP. The CLI makes no HTTP call and sends no bearer. Do not equate a local process snapshot with authenticated peer identity, SQL/ES/LLM/report execution or network isolation. PR #315 remains open pending final overlap decision.
