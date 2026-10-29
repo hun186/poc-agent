@@ -208,3 +208,5 @@ GitHub-hosted CI exercises only hosted environment and test fixtures.
 ## 2026-10-29 E2E Data Agent READY LiteLLM request timeout (proposed)
 
 - `timeout=30` with `num_retries=0` is an E2E-only LiteLLM request policy; provider/SDK semantics and network cancellation still require real Ollama validation. It is NOT a strict monotonic bound on entire authenticated 600s preflight, Elasticsearch fixture operations or any normal production Agent generation. Existing API preflight may remain blocked by other external operations or slow-trickle HTTP; do not assert whole E2E preparation is time-limited or safe to auto-run on a busy live server.
+
+- 2026-10-30: E2E runtime-evidence process-local in-flight guard and status do not cancel blocked LLM/ES calls, guarantee server total deadline, persist state across restart, or coordinate separate API processes. HTTP client timeout may leave state RUNNING until actual server unwind. Server-side monotonic budget/cancellation and fixture-state consistency require separate design and Linux acceptance.

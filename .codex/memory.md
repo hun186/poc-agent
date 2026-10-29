@@ -38,3 +38,5 @@
 - `.codex/archive/memory.md-20261027-004300.md` — previous complete Product/OFF-1 history, Git SHA `117c0ddfdc9c28cf3a3969f4474ad47f6cce9dc2`.
 - `.codex/archive/memory.md-20261024-170825.md` and `.codex/archive/backlog.md-20261024-170825.md` — preceding historical evolution. See their references for 2026-10-21/10-06 archives.
 - For detailed architecture, API routes and remaining risks use active `.codex/architecture.md`, `.codex/api_contract.md`, `.codex/known_issues.md`, `.codex/decisions.md`, `.codex/backlog.md` and the current GitHub Hosted PR source.
+
+- 2026-10-30: Follow-up branch after #321 and separate open client-only #322: adds process-local operator runtime-evidence in-flight fencing, superuser read-only status and concurrent/exception/redaction regression. Hosted CI and formal Codex review are pending on this branch, and real Linux acceptance remains outstanding. This is **not** a server-side total deadline or cancellation; #322 is separately reviewed and not merged.

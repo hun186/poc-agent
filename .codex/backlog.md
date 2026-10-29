@@ -134,3 +134,5 @@
 
 - Validate actual LiteLLM/smolagents version and Ollama under busy-model load before claiming the E2E-only 30s request timeout reliably ends a stuck network call; Hosted fake timeout tests only prove parameter forwarding and fail-closed classification. Complete exact-HEAD Hosted CI and formal Codex Review; no merge without explicit command.
 - Still design authenticated operator preflight as bounded **whole-operation monotonic deadline** or async status/polling with cancellation/fixture consistency, rather than conflating Requests' 600s per-read timeout with full lifetime. Diagnose heavy report >300s and Field Selector metadata using redacted Linux traces after separately authorized deployment.
+
+- 2026-10-30 E2E follow-up: after process-local preflight in-flight guard/status, design server-side monotonic total deadline with stage budget propagation, bounded ES/provider calls, truthful `RUNNING_OVERDUE`/terminal `TIMEOUT` semantics, immutable-plan/fixture ownership and safe multi-process polling. Linux live/high-load operator acceptance and real SQL/ES/LLM/DOCX checks remain pending. Do not merge this branch or #322 without separate authorization.
