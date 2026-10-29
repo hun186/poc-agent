@@ -3,6 +3,9 @@ name: SRAF OFF-1B configured TCP preflight tests
 on:
   pull_request:
     paths:
+      - 'sra_api/main.py'
+      - 'sra_api/startup_diagnostics.py'
+      - 'tests/test_sraf_startup_diagnostics.py'
       - 'tools/sraf_airgap_off1b_auto.py'
       - 'tools/sraf_airgap_off1b_api_http.py'
       - 'tools/sraf_airgap_off1b_es_https_mapping.py'
@@ -97,6 +100,10 @@ jobs:
           python tools/validate_sraf_airgap_off0_contract.py
           python -m pytest -q tests/test_sraf_airgap_off1b_auto.py tests/test_sraf_airgap_off1b_api_http.py tests/test_sraf_airgap_off1b_es_https_mapping.py tests/test_sraf_airgap_off1b_es_index_discovery.py tests/test_sraf_airgap_off1d_readiness_matrix.py tests/test_sraf_airgap_off1e_llm_inventory.py tests/test_sraf_airgap_off1f_llm_inference.py tests/test_sraf_airgap_off1f_local_attestation.py tests/test_sraf_airgap_off1g_sql_read.py tests/test_sraf_airgap_off1h_worker_identity.py tests/test_sraf_airgap_off1i_handoff_lease.py tests/test_sraf_airgap_off1j_handoff_renewal.py tests/test_sraf_airgap_off1k_handoff_owner.py tests/test_sraf_airgap_off1l_schedule_claim.py tests/test_sraf_airgap_off1m_schedule_run_link.py tests/test_sraf_airgap_off1n_handoff_ack.py tests/test_sraf_airgap_off1o_report_checkpoint.py tests/test_sraf_airgap_off1p_docx_integrity.py tests/test_sraf_airgap_off1q_remote_report_job.py tests/test_sraf_airgap_off1r_same_item_chain.py tools/sraf_airgap_off1s_api_listener.py tests/test_sraf_airgap_off1s_api_listener.py tests/test_sraf_airgap_off1t_api_listener_check.py tests/test_sraf_airgap_off0_contract.py
           python -m pytest -q tests/test_requirement_operator_e2e_harness.py::test_worker_identity_verification tests/test_requirement_operator_e2e_harness.py::test_worker_identity_rejects_wrong_command_and_cwd
+      - name: Compile and test API startup phase markers (no services)
+        run: |
+          python -m compileall -q sra_api/main.py sra_api/startup_diagnostics.py tests/test_sraf_startup_diagnostics.py
+          python -m pytest -q tests/test_sraf_startup_diagnostics.py tests/test_requirement_startup.py tests/test_report_job_store.py
       - name: Config-only check against CI host (not SRAF environment)
         run: |
           python tools/sraf_airgap_off1b_auto.py --no-network || test "$?" -eq 2
