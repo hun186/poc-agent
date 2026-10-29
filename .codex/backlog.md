@@ -123,3 +123,9 @@
 
 - Confirm latest Hosted workflow success on exact new HEAD; request a new formal Codex review and resolve three existing P2 threads only after fixes are independently checked. Re-review any further P1/P2. Explicit user approval is required before Merge.
 - Follow-up: total monotonic deadline/async status for potentially prolonged Operator E2E preflight, including LiteLLMModel.generate; response timeout alone is not an absolute wall-clock guarantee. Capture safely redacted operator Linux evidence of API readiness, real Report Jobs/DOCX and field-selector fallback under competing model load.
+
+## 2026-10-29 Post-#319 Linux operator baseline and remaining live gates
+
+- Validate new composed read-only baseline on actual deployed Linux **without restarting services**: `python tools/sraf_runtime_baseline_readonly.py --project-root "$PWD" --api-port 9002`. Record redacted JSON at idle and under controlled Ollama contention; `--no-network` skips even anonymous GET. Comparing samples cannot establish root cause of an old 90s startup stall.
+- Before merge of this new PR: exact-head Hosted focused/Worker E2E/OFF-0 tests, formal Codex Review CLEAN on final HEAD, resolve all P1/P2, explicit separate user merge command. Preserve OFF-1T and OFF-1B independent diagnostics; do not declare private Linux E2E accepted.
+- Independently address E2E deferred-preflight **absolute** monotonic deadline or asynchronous preparation, and Data Agent LiteLLMModel.generate timeout. Current 600s HTTP inactivity timeout is not a strict wall clock limit. Verify real Linux SQL/ES and DOCX with separate operator approval; no automatic high-load test on active service.

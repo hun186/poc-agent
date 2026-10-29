@@ -200,3 +200,7 @@ GitHub-hosted CI exercises only hosted environment and test fixtures.
 
 - Three Codex P2 on behavioral HEAD 90b45ef52a29ae6a9ecff1681a50651618d3477e require exact final-head retest: avoid ordinary ES plan-lock contention, enlarge operator-only deferred preflight read budget, classify Requests connection failures without leaking URLs. The proposed 600s harness budget is bounded by HTTP client timeout semantics, not a guaranteed end-to-end process deadline: slow drip responses and unbounded Data Agent LiteLLM generate need further explicit total-deadline design.
 - Even when planned fixes pass Hosted tests, real Linux startup under concurrent LLM work, timed E2E operator preflight, backend statuses, field-selector fallback evidence quality, Workers and signed DOCX remain NOT_TESTED on the patched deployed version. Do not auto-run or claim FULL_LIVE.
+
+## 2026-10-29 Read-only baseline limits
+
+- A healthy /healthz and corroborated launcher-owned API/Worker PIDs are only sequential snapshots, not verified model inference, healthy queues, real Report Job execution, durable provenance or physical isolation. Listener identity may change after check; same-UID impersonation, Linux namespace visibility and hidden procfs restrictions remain outside cryptographic assurance. Run only on authorized Linux host as launcher user; Hosted synthetic/mock tests cannot prove actual API/Worker processes.
