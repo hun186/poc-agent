@@ -181,3 +181,7 @@ subject to the libc/kernel's support. Host scan limits and unrelated inaccessibl
 FD tables may produce SKIP; never convert that to PASS or bypass bearer gates.
 No operator-authorized real private Linux/SQL/Report Job/airgap E2E exists;
 GitHub-hosted CI exercises only hosted environment and test fixtures.
+
+### API lifespan startup timeout after incremental overlay
+
+- 2026-10-29 operator reported Uvicorn stopped at `Waiting for application startup.`, launcher 90-second readiness timeout, Schedule/Handoff logs empty. The current launcher starts workers only after API TCP listen. Lifespan may block while probing live E2E model/ES (`REQUIREMENT_E2E_EXTERNAL_MODE` live/auto), initializing Requirement/Schedule SQL stores, migrating/recovering Report Job SQLite, or creating the report worker; no stage-specific host evidence yet. Added reviewed-literal startup phase diagnostics on separate branch but not a confirmed fix. Incremental `7z` extraction success does not attest a consistent Git/release manifest. Preserve data and current logs; avoid disabling security/tls or killing unknown processes.
