@@ -112,3 +112,7 @@ visibility, or live SRAF system acceptance.
 ## 2026-10-29 OFF-1T standalone offline listener probe
 
 - tools/sraf_airgap_off1t_api_listener_check.py invokes the existing OFF-1S probe_api_listener, with only an absolute installed repository path and local numeric API port. This adds no new socket verification, API endpoint, authentication flow or database dependency. It reports redacted status, returns 0 for a corroborated snapshot or 2 for inconclusive observations, and never claims full live acceptance.
+
+## 2026-10-29 Read-only runtime baseline composition (proposed)
+
+- `tools/sraf_runtime_baseline_readonly.py` reuses reviewed OFF-1S API listener, OFF-1A anonymous bounded loopback GET, and OFF-1H worker-identity predicates. It observes independently and never upgrades three point-in-time PASS rows to Agent/LLM/SQL/ES/DOCX/full-airgap acceptance. API listener is re-checked after HTTP to reduce, not eliminate, identity races. No new endpoint, scheduler, database, credential scope or service lifecycle change.
