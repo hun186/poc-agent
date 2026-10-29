@@ -160,13 +160,13 @@ def get_es() -> Elasticsearch | MockElasticsearch:
 
 def using_mock_es() -> bool:
     from agent.external_capabilities import frozen_plan, requirement_acceptance_active
-    try:
-        plan = frozen_plan()
-    except Exception:
-        plan = None
-    if (requirement_acceptance_active() and plan is not None
-            and plan.elasticsearch_backend == "semantic_mock"):
-        return True
+
+    # Operator preflight holds the E2E plan lock during real LLM/ES probes.
+    # Ordinary reports must never acquire that lock, even for an ES status read.
+    if requirement_acceptance_active():
+        plan = frozen_plan()  # Unprepared verified E2E jobs fail closed.
+        if plan is not None and plan.elasticsearch_backend == "semantic_mock":
+            return True
     return bool(_USING_MOCK_ES or isinstance(_ES, MockElasticsearch))
 
 def init_index_cache(*, live_check: bool = False, force: bool = False) -> None:
@@ -243,15 +243,13 @@ def _requirement_acceptance_index() -> str | None:
         frozen_plan, requirement_acceptance_active, requirement_e2e_es_index,
     )
 
-    # During plan resolution frozen_plan() intentionally raises because no plan
-    # is installed yet.  Preserve the existing semantic-mock behavior, but only
-    # redirect a live backend while executing an explicitly marked E2E Report
-    # Job.  Ordinary production jobs in the same API process keep their hints.
-    try:
-        plan = frozen_plan()
-    except Exception:
+    # Do not enter the potentially long E2E plan lock for ordinary reports.
+    # Within verified acceptance, an unprepared plan must fail closed instead
+    # of silently using the production index.
+    if not requirement_acceptance_active():
         return None
-    if plan is None or not requirement_acceptance_active():
+    plan = frozen_plan()
+    if plan is None:
         return None
     if plan.elasticsearch_backend == "semantic_mock":
         return REQUIREMENT_E2E_INDEX

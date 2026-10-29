@@ -6,6 +6,8 @@ import json
 import os
 import re
 
+from requests import exceptions as requests_exceptions
+
 ALL_EV_FIELDS: Set[str] = {
     "ref_no", "id", "d", "title", "s", "note",
     "weak", "scope", "group_hits",
@@ -214,11 +216,11 @@ def _selector_failure_code(exc: Exception) -> str:
         if id(current) in seen:
             continue
         seen.add(id(current))
-        if isinstance(current, TimeoutError) or type(current).__name__ in {
+        if isinstance(current, (TimeoutError, requests_exceptions.Timeout)) or type(current).__name__ in {
             "ReadTimeout", "ConnectTimeout", "Timeout", "APITimeoutError",
         }:
             return "timeout"
-        if isinstance(current, ConnectionError) or type(current).__name__ in {
+        if isinstance(current, (ConnectionError, requests_exceptions.ConnectionError)) or type(current).__name__ in {
             "APIConnectionError",
         }:
             return "transport_unavailable"

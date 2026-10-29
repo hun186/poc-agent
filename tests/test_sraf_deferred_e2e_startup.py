@@ -114,3 +114,78 @@ def test_selector_valid_hybrid_adds_fields():
     assert result["meta"]["llm_used"]
     assert not result["meta"]["fallback_used"]
     assert result["ev_slim"][0]["id"] == "doc1"
+
+
+def test_regular_es_index_helpers_do_not_acquire_e2e_plan_lock(monkeypatch):
+    from agent.es import es_client
+    from agent import external_capabilities
+
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "live")
+    monkeypatch.setattr(
+        external_capabilities, "frozen_plan",
+        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("E2E lock acquired")),
+    )
+    monkeypatch.setattr(es_client, "_USING_MOCK_ES", False)
+    monkeypatch.setattr(es_client, "_ES", object())
+    # A direct production hint is sufficient to verify index isolation.
+    assert es_client.resolve_index("production-index") == "production-index"
+    assert es_client.using_mock_es() is False
+
+
+def test_acceptance_es_index_fails_closed_before_preflight(monkeypatch):
+    from agent.es import es_client
+
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "live")
+    with requirement_acceptance_scope():
+        with pytest.raises(CapabilityError, match="external_capability_plan_unresolved"):
+            es_client.resolve_index("production-index")
+        with pytest.raises(CapabilityError, match="external_capability_plan_unresolved"):
+            es_client.using_mock_es()
+
+
+def test_selector_connection_failure_has_redacted_transport_fallback():
+    from requests.exceptions import ConnectionError as RequestsConnectionError
+
+    def offline(*_args, **_kwargs):
+        try:
+            raise RequestsConnectionError("private-url bearer=SECRET")
+        except RequestsConnectionError as exc:
+            raise RuntimeError("llm_runtime_failure") from exc
+
+    result = pack_ev_for_llm(
+        [{"ref_no": "來源1", "note": "source fact"}], "摘要",
+        mode="hybrid", call_llm_fn=offline,
+    )
+    assert result["meta"]["llm_error"] == "transport_unavailable"
+    assert result["meta"]["fallback_strategy"] == "rules"
+    assert result["ev_slim"][0]["note"] == "source fact"
+    assert "SECRET" not in str(result)
+
+
+def test_operator_preflight_has_bounded_long_read_budget():
+    from operator_e2e.requirement_e2e_evidence import (
+        E2E_PREFLIGHT_TIMEOUT_SECONDS, RemoteDeploymentEvidenceProvider,
+    )
+
+    class FakeApi:
+        observed = None
+
+        def get(self, path, *, timeout):
+            self.observed = (path, timeout)
+            return {
+                "schema_version": "requirement_e2e_runtime_evidence_v1",
+                "workers": {
+                    "schedule": {"alive": True, "identity_verified": True},
+                    "handoff": {"alive": True, "identity_verified": True},
+                },
+                "artifact_root_fingerprint": "synthetic-only-not-acceptance",
+            }
+
+    api = FakeApi()
+    result = RemoteDeploymentEvidenceProvider(api).preflight("release")
+    assert result["schema_version"] == "requirement_e2e_runtime_evidence_v1"
+    assert api.observed == (
+        "/v1/operator-e2e/runtime-evidence?verification=release",
+        E2E_PREFLIGHT_TIMEOUT_SECONDS,
+    )
+    assert 30 < E2E_PREFLIGHT_TIMEOUT_SECONDS <= 600

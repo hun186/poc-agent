@@ -11,6 +11,12 @@ from operator_e2e.requirement_e2e_support import (
     verify_worker_identity,
 )
 
+# Full E2E preparation is explicitly initiated by the operator, not API
+# startup. It probes several LLM models and prepares the isolated ES fixture
+# sequentially. A fixed 30s HTTP read timeout is shorter than healthy
+# high-load preparations; 10 minutes is a bounded operator-only allowance.
+E2E_PREFLIGHT_TIMEOUT_SECONDS = 600
+
 
 class DeploymentEvidenceProvider(Protocol):
     def preflight(self, verification: str = "release") -> dict[str, Any]: ...
@@ -38,7 +44,8 @@ class RemoteDeploymentEvidenceProvider:
     def preflight(self, verification: str = "release") -> dict[str, Any]:
         try:
             evidence = self.api.get(
-                f"/v1/operator-e2e/runtime-evidence?verification={verification}", timeout=30,
+                f"/v1/operator-e2e/runtime-evidence?verification={verification}",
+                timeout=E2E_PREFLIGHT_TIMEOUT_SECONDS,
             )
         except HarnessFailure as exc:
             if exc.category == "authentication_failed":
