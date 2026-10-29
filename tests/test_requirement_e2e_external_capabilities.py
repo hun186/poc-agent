@@ -402,7 +402,7 @@ def test_production_selector_validator_allows_unrelated_concrete_indexes():
     ) == Probe(True, "pass")
 
 
-def test_prepare_live_requirement_index_creates_and_upserts_exact_fixture_set():
+def test_prepare_live_requirement_index_creates_and_recovers_exact_fixture_set():
     state = {"exists": False, "mapping": None, "docs": {}}
 
     class Indices:
@@ -423,13 +423,22 @@ def test_prepare_live_requirement_index_creates_and_upserts_exact_fixture_set():
         def ping(self):
             return True
 
-        def index(self, *, index, id, document, refresh):
-            assert refresh == "wait_for"
+        def index(self, *, index, id, document, refresh, op_type):
+            assert refresh == "wait_for" and op_type == "create"
+            assert id not in state["docs"]
             state["docs"][id] = copy.deepcopy(document)
             return {"result": "created"}
 
         def count(self, *, index):
             return {"count": len(state["docs"])}
+
+        def mget(self, *, index, ids):
+            return {"docs": [
+                {"_id": doc_id, "_index": index, "found": doc_id in state["docs"],
+                 **({"_source": copy.deepcopy(state["docs"][doc_id])}
+                    if doc_id in state["docs"] else {})}
+                for doc_id in ids
+            ]}
 
     probe = prepare_requirement_elasticsearch(
         Client(), "requirement_e2e_live_fixture", ["news_test", "srp_test"],
@@ -496,12 +505,17 @@ def test_prepare_live_requirement_index_fails_closed_on_dataset_pollution():
         def ping(self):
             return True
 
-        def index(self, *, index, id, document, refresh):
-            state["docs"][id] = copy.deepcopy(document)
-            return {"result": "updated"}
+        def index(self, **_kwargs):
+            raise AssertionError("polluted fixture must not be mutated")
 
         def count(self, *, index):
             return {"count": len(state["docs"])}
+
+        def mget(self, *, index, ids):
+            return {"docs": [
+                {"_id": doc_id, "_index": index, "found": False}
+                for doc_id in ids
+            ]}
 
     assert prepare_requirement_elasticsearch(
         Client(), "requirement_e2e_live_fixture", [],
