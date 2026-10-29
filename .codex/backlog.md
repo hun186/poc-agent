@@ -111,3 +111,8 @@
 
 - Require final-head Hosted focused CI, 2 legacy Worker E2E, 19 OFF-0 contract checks and formal completed Codex Review; fix new actionable findings and request separate user approval before Merge.
 - Determine whether PR #315 is fully superseded once standalone CLI is reviewed. Keep both existing features' safety guards intact until then. Actual private Linux SRAF operator evidence and full air-gap acceptance remain pending.
+
+## 2026-10-29 post-update API startup timeout investigation
+
+- Complete Hosted exact-head startup checkpoint unit tests and existing OFF-1B focused CI; obtain fresh formal Codex Review and address findings before explicit-user-authorized merge.
+- Request redacted current-host flags (`REQUIREMENT_E2E_EXTERNAL_MODE`, `REQUIREMENT_PIPELINE_ENABLED`, `REQUIREMENT_SCHEDULER_ENABLED`) and stage logs after diagnostic deployment. Determine whether model/ES probe, SQL connection/schema/lock, SQLite or a mixed/stale incremental package blocked startup. Do not claim root cause, code fix or full SRAF availability until live operator evidence.
