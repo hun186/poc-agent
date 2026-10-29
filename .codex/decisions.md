@@ -142,3 +142,10 @@ strong authenticated peer identity; protected UDS/mTLS remains future work.
 ## 2026-10-29 OFF-1T standalone design
 
 - Reuse merged OFF-1S hardening in a standalone offline CLI rather than merge overlapping PR #315 verifier code. Retain full per-thread descriptor-owner validation, process/mount checks and conservative SKIP. The CLI makes no HTTP call and sends no bearer. Do not equate a local process snapshot with authenticated peer identity, SQL/ES/LLM/report execution or network isolation. PR #315 remains open pending final overlap decision.
+
+
+## 2026-10-29 E2E preflight versus ordinary SRAF Readiness (PR #319)
+
+- Ordinary FastAPI lifespan, Report Job Worker.start and real production inference must not run E2E live model probes or create/seed a private acceptance ES index. Keep mode *syntax* validated at startup, and freeze the complete capability plan only during an explicit superuser-protected operator runtime-evidence preflight.
+- Verified E2E marker/provenance without a frozen plan must fail closed rather than using real or mock backends without accepted authority. Once prepared, preserve immutable live/auto/offline E2E plan selection and production/semantic-mock scope isolation. A healthy API listener is not equivalent to FULL_LIVE E2E acceptance.
+- When Field Selector fails, preserve rule-based evidence and mark the model stage as degraded `fallback` with a sanitized failure category, not unqualified full success.

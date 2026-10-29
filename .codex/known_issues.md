@@ -181,3 +181,22 @@ subject to the libc/kernel's support. Host scan limits and unrelated inaccessibl
 FD tables may produce SKIP; never convert that to PASS or bypass bearer gates.
 No operator-authorized real private Linux/SQL/Report Job/airgap E2E exists;
 GitHub-hosted CI exercises only hosted environment and test fixtures.
+
+## 2026-10-29 Linux incremental-overlay FastAPI startup hang (active)
+
+- Operator reports a successful 97-file 7z extraction followed by `run_sra_api.sh` waiting 90 seconds for Port 9002; Uvicorn emits `Waiting for application startup` with no completion or Python traceback. Root cause remains unverified pending Linux evidence; the launcher cleans up child processes when readiness fails and resets normal runtime logs at its next launch. Avoid repeating restart until active process/task ownership is understood.
+- In `sra_api/main.py`, the pre-yield lifespan synchronously resolves optional external E2E plan, may run SQL Server schema/migrations under locks when enabled, and initializes/recovers Report Job SQLite. A `live`/`auto` E2E plan actively contacts LLM/ES and can manage a dedicated acceptance index. These are potential blocking operations, not proof of this incident's root cause. Do not run live startup purely for diagnostic testing or flip production modes silently.
+- The default launcher readiness check is a listening socket/PID/start identity comparison, **not** /healthz; Schedule and Handoff Workers start only after that gate. Missing Worker log output therefore follows from the gate failure.
+- An opt-in-free change on an unmerged repair branch adds only bounded phase/elapsed/error-type logging with original exception propagation; it is not a fix for a blocked external service or deployment package mismatch. Exact Linux startup, /healthz and Worker availability remain unverified.
+
+
+## 2026-10-29 Deferred operator E2E and Field Selector under LLM pressure
+
+- E2E Live Acceptance is now operator-prepared rather than blocking ordinary API startup *on the unmerged PR #319 branch only*. Authenticated runtime-evidence GET can still run expensive LLM probes and E2E ES fixture setup, including Data Agent LiteLLMModel.generate without a verified absolute deadline. Only a successfully frozen plan permits verified E2E jobs; a premature E2E job fails closed.
+- The high-load startup correlation is convincing but the exact old 90-second phase split remains unproven without Linux logs from updated instrumentation. Separate SQL Server initialize, ES fixture mutation and SQLite recovery remain deployment side-effect gates; no new restart/fixture/DB action has been executed.
+- Hybrid Field Selector fallback preserves rule-selected fields and marks partial degradation; it does not independently guarantee full evidence adequacy. Chained request ReadTimeout is now categorized without exposing raw exception URLs/tokens. Operator needs redacted traces to distinguish model overload, server fault, retries and token queueing. One recorded report generation phase at 323.668 seconds does not alone disprove the 300-second per-request configured timeout.
+
+## 2026-10-29 PR #319 deferred E2E review constraints
+
+- Three Codex P2 on behavioral HEAD 90b45ef52a29ae6a9ecff1681a50651618d3477e require exact final-head retest: avoid ordinary ES plan-lock contention, enlarge operator-only deferred preflight read budget, classify Requests connection failures without leaking URLs. The proposed 600s harness budget is bounded by HTTP client timeout semantics, not a guaranteed end-to-end process deadline: slow drip responses and unbounded Data Agent LiteLLM generate need further explicit total-deadline design.
+- Even when planned fixes pass Hosted tests, real Linux startup under concurrent LLM work, timed E2E operator preflight, backend statuses, field-selector fallback evidence quality, Workers and signed DOCX remain NOT_TESTED on the patched deployed version. Do not auto-run or claim FULL_LIVE.

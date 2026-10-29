@@ -205,18 +205,26 @@ def ask_with_report(
         # 保底：任何錯誤都不要影響主流程
         packed = {
             "ev_slim": filter_ev_fields(ev_compact, guess_report_need_fields(refined_question or "")),
-            "meta": {"mode": "rules", "llm_used": False, "llm_error": f"{type(ex).__name__}: {ex}", "allow_fields": [], "fields_count": 0}
+            "meta": {
+                "mode": "rules", "llm_used": False, "llm_attempted": False,
+                "fallback_used": True, "fallback_strategy": "rules",
+                "llm_error": "selector_error",
+                "allow_fields": sorted(guess_report_need_fields(refined_question or "")),
+                "fields_count": len(guess_report_need_fields(refined_question or "")),
+            }
         }
     compressed_for_llm["ev"] = packed["ev_slim"]
 
     selector_mode = packed["meta"].get("mode")
-    if packed["meta"].get("llm_used") or packed["meta"].get("llm_error"):
+    if (packed["meta"].get("llm_used") or packed["meta"].get("llm_error")
+            or packed["meta"].get("fallback_used")):
         selector_model = os.getenv("REPORT_FIELD_SELECTOR_MODEL_ID") or REPORT_MODEL_ID
+        degraded = bool(packed["meta"].get("fallback_used"))
         trace.setdefault("llm", {}).setdefault("field_selector", []).append({
             "model_id": selector_model,
-            "status": "error" if packed["meta"].get("llm_error") else "success",
+            "status": "fallback" if degraded else "success",
             "error": packed["meta"].get("llm_error"),
-            "detail": f"mode={selector_mode}" if selector_mode else None,
+            "detail": f"mode={selector_mode}; fallback=rules" if degraded else f"mode={selector_mode}",
         })
     
     em = payload.get("evidence_meta")
@@ -226,7 +234,10 @@ def ask_with_report(
         em["llm_ev_field_selector"] = {
             "mode": packed["meta"].get("mode"),
             "llm_used": packed["meta"].get("llm_used"),
+            "llm_attempted": packed["meta"].get("llm_attempted"),
             "llm_error": packed["meta"].get("llm_error"),
+            "fallback_used": packed["meta"].get("fallback_used", False),
+            "fallback_strategy": packed["meta"].get("fallback_strategy"),
         }
         em["llm_ev_returned"] = len(compressed_for_llm["ev"])
         
