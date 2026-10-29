@@ -106,3 +106,8 @@
   until separate user instruction.
 - Require operator-authorized real private Linux listener/SQL/Report Job
   evidence; hosted simulated proof is never physical-airgap acceptance.
+
+## 2026-10-29 OFF-1T next gates
+
+- Require final-head Hosted focused CI, 2 legacy Worker E2E, 19 OFF-0 contract checks and formal completed Codex Review; fix new actionable findings and request separate user approval before Merge.
+- Determine whether PR #315 is fully superseded once standalone CLI is reviewed. Keep both existing features' safety guards intact until then. Actual private Linux SRAF operator evidence and full air-gap acceptance remain pending.
