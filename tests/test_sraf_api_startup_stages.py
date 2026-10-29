@@ -36,15 +36,18 @@ def test_every_phase_literal_is_reviewed_and_startup_probes_are_traceable():
     tree = ast.parse(source)
     lifespan = next(node for node in tree.body
                     if isinstance(node, ast.AsyncFunctionDef) and node.name == "lifespan")
-    actual = [node.args[0].value for node in ast.walk(lifespan)
-              if isinstance(node, ast.Call)
-              and isinstance(node.func, ast.Attribute)
-              and node.func.attr == "mark"
-              and isinstance(node.func.value, ast.Name)
-              and node.func.value.id == "startup"
-              and len(node.args) == 1
-              and isinstance(node.args[0], ast.Constant)
-              and isinstance(node.args[0].value, str)]
+    calls = [node for node in ast.walk(lifespan)
+             if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Attribute)
+             and node.func.attr == "mark"
+             and isinstance(node.func.value, ast.Name)
+             and node.func.value.id == "startup"
+             and len(node.args) == 1
+             and isinstance(node.args[0], ast.Constant)
+             and isinstance(node.args[0].value, str)]
+    # AST walking is breadth-first; source line order is the execution order
+    # for this static, non-branch-overlapping checkpoint contract.
+    actual = [node.args[0].value for node in sorted(calls, key=lambda n: n.lineno)]
     assert actual == [
         "lifespan.enter", "signing_config.begin", "signing_config.done",
         "external_plan.begin", "external_plan.done",
