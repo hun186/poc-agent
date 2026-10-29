@@ -34,7 +34,12 @@ def runtime_evidence(
 @router.get("/runtime-evidence/status")
 def runtime_evidence_status(user: AuthUser = Depends(require_superuser)) -> dict:
     """Authenticated process-local observation, not a readiness or acceptance claim."""
-    return _preflight_tracker.snapshot()
+    try:
+        return _preflight_tracker.snapshot()
+    except RuntimeError as exc:
+        # Lock failure is a fixed, redacted fail-closed reason; do not leak OS
+        # paths or process identity in the observation endpoint.
+        raise HTTPException(503, detail={"code": "external_e2e_host_guard_unavailable"}) from exc
 
 
 @router.get("/batches/{batch_run_id}/items/{run_item_id}/artifact")
