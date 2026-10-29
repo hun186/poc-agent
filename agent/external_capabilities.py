@@ -18,6 +18,10 @@ from typing import Any, Callable, Mapping, Sequence
 
 from requests import exceptions as requests_exceptions
 
+from agent.e2e_preflight_budget import (
+    PreflightDeadlineExceeded, budget_active, budget_timeout, check_budget,
+)
+
 from agent.es.reference_text import get_reference_text_field
 
 
@@ -270,34 +274,64 @@ def _llm_boundary_exception_category(exc: Exception) -> str:
 def probe_llm_boundaries(boundaries: Mapping[str, Callable[[], str]]) -> Probe:
     results = []
     for name, invoke in boundaries.items():
+        check_budget()
         try:
             value = invoke()
+            check_budget()
             category = "pass" if isinstance(value, str) and value.strip() else "empty_response"
+        except PreflightDeadlineExceeded:
+            raise
         except Exception as exc:
+            check_budget()
             category = _llm_boundary_exception_category(exc)
         results.append((name, category))
     failed = next((category for _, category in results if category != "pass"), None)
     return Probe(failed is None, "pass" if failed is None else failed, tuple(results))
 
 
+def _operator_es_call(client: Any, action: Callable[[Any], Any]) -> Any:
+    """Cap each operator-only ES request without changing production clients."""
+    check_budget()
+    selected = client
+    if budget_active():
+        options = getattr(client, "options", None)
+        if not callable(options):
+            raise CapabilityError("external_e2e_es_deadline_unavailable")
+        try:
+            selected = options(
+                request_timeout=budget_timeout(30.0), max_retries=0,
+                retry_on_timeout=False,
+            )
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise CapabilityError("external_e2e_es_deadline_unavailable") from exc
+    result = action(selected)
+    check_budget()
+    return result
+
+
 def probe_elasticsearch(client: Any, indexes: str | Sequence[str],
                         acceptance_search: Callable[[Any], bool]) -> Probe:
     try:
-        if not client.ping():
+        if not _operator_es_call(client, lambda es: es.ping()):
             return Probe(False, "transport_unavailable")
         targets = [indexes] if isinstance(indexes, str) else list(indexes)
         for index in targets:
-            if not client.indices.exists(index=index):
+            if not _operator_es_call(client, lambda es: es.indices.exists(index=index)):
                 return Probe(False, "index_missing")
-            compatible = mapping_compatibility(client.indices.get_mapping(index=index), index)
+            compatible = mapping_compatibility(
+                _operator_es_call(client, lambda es: es.indices.get_mapping(index=index)), index)
             if not compatible.usable:
                 return compatible
+        check_budget()
         if not acceptance_search(client):
             return Probe(False, "dataset_incompatible")
         return Probe(True, "pass")
+    except PreflightDeadlineExceeded:
+        raise
     except PermissionError:
         return Probe(False, "access_failure")
     except Exception as exc:
+        check_budget()
         meta = getattr(exc, "meta", None)
         status = (getattr(exc, "status_code", None) or getattr(exc, "status", None)
                   or getattr(meta, "status", None))
@@ -337,8 +371,12 @@ def validate_production_index_selectors(
 
     for selector in normalized:
         try:
-            response = resolver(name=selector)
+            response = _operator_es_call(
+                client, lambda es: es.indices.resolve_index(name=selector))
+        except PreflightDeadlineExceeded:
+            raise
         except Exception as exc:
+            check_budget()
             meta = getattr(exc, "meta", None)
             status = (getattr(exc, "status_code", None) or getattr(exc, "status", None)
                       or getattr(meta, "status", None))
@@ -386,14 +424,15 @@ def prepare_requirement_elasticsearch(
     if index in set(protected_indexes):
         return Probe(False, "acceptance_index_conflict")
     try:
-        if not client.ping():
+        if not _operator_es_call(client, lambda es: es.ping()):
             return Probe(False, "transport_unavailable")
-        if not client.indices.exists(index=index):
-            client.indices.create(
+        if not _operator_es_call(client, lambda es: es.indices.exists(index=index)):
+            _operator_es_call(client, lambda es: es.indices.create(
                 index=index,
                 mappings=REQUIREMENT_E2E_MAPPING["mappings"],
-            )
-        mapping_response = client.indices.get_mapping(index=index)
+            ))
+        mapping_response = _operator_es_call(
+            client, lambda es: es.indices.get_mapping(index=index))
         mapping_entry = mapping_response.get(index)
         mapping_meta = (
             (mapping_entry or {}).get("mappings", {}).get("_meta", {})
@@ -407,22 +446,26 @@ def prepare_requirement_elasticsearch(
 
         fixtures = MOCK_DOCS[REQUIREMENT_E2E_INDEX]
         for doc_id, source in fixtures.items():
+            check_budget()
             validate_requirement_fixture(source)
-            client.index(
+            _operator_es_call(client, lambda es: es.index(
                 index=index,
                 id=doc_id,
                 document=source,
                 refresh="wait_for",
-            )
+            ))
 
-        count_response = client.count(index=index)
+        count_response = _operator_es_call(client, lambda es: es.count(index=index))
         count_body = getattr(count_response, "body", count_response)
         if int((count_body or {}).get("count", -1)) != len(fixtures):
             return Probe(False, "fixture_dataset_drift")
         return Probe(True, "pass")
+    except PreflightDeadlineExceeded:
+        raise
     except PermissionError:
         return Probe(False, "access_failure")
     except Exception as exc:
+        check_budget()
         return _elasticsearch_exception_probe(exc, setup=True)
 
 _LOCK = threading.Lock()
