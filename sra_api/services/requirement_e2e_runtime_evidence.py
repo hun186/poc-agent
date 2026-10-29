@@ -133,7 +133,10 @@ def collect_source_evidence(project_root: Path, *, active_paths: list[Path] | No
 def collect_runtime_evidence(project_root: Path, artifact_root: Path,
                              verification: str = "release") -> dict:
     from agent.external_capabilities import frozen_plan, resolve_environment_plan
-    plan = frozen_plan(resolve_environment_plan)
+    # Validate source and artifact-root evidence *before* potentially freezing
+    # any new E2E plan; a failed attestation must not prepare acceptance.
+    source = collect_source_evidence(project_root, verification=verification)
+    root_fingerprint = output_root_fingerprint(artifact_root)
     workers = {}
     for role in ("schedule", "handoff"):
         try:
@@ -141,12 +144,13 @@ def collect_runtime_evidence(project_root: Path, artifact_root: Path,
             workers[role] = {"alive": True, "identity_verified": True}
         except Exception:
             workers[role] = {"alive": False, "identity_verified": False}
+    plan = frozen_plan(resolve_environment_plan)
     return {
         "schema_version": "requirement_e2e_runtime_evidence_v1",
         "observed_at": datetime.now(timezone.utc).isoformat(),
-        "deployment_source": collect_source_evidence(project_root, verification=verification),
+        "deployment_source": source,
         "workers": workers,
-        "artifact_root_fingerprint": output_root_fingerprint(artifact_root),
+        "artifact_root_fingerprint": root_fingerprint,
         "acceptance": plan.evidence() if plan is not None else None,
     }
 
