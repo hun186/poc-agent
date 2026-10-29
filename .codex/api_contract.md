@@ -82,3 +82,10 @@
 ## 2026-10-27 OFF-1S eleventh operator CLI flag
 
 - `--probe-api-listener` requires prior ten OFF-1R opt-ins and a real DOCX-BYTES PASS; produces `API-LISTENER` (depends_on DOCX-BYTES). When requested, if API-LISTENER is not PASS, REPORT-LIVE and REPORT-CHAIN are SKIP and cannot open their token-bearing GET. When PASS, their authenticated localhost requests carry a pre-send and post-read listener recheck; changes yield SKIP remote_listener_unverified. Only the existing port and owner-scoped read token env are reused, with no new operator PID override or URL. JSON contains only static reason/status/boolean, never PID, inode, credential, path, job ID or raw /proc data. Feature acceptance remains NOT_TESTED and overall incomplete unless other failures are found.
+
+
+## 2026-10-30 Operator E2E runtime-evidence re-entry/status API
+
+- Existing superuser-only `GET /v1/operator-e2e/runtime-evidence?verification=release|functional` returns its existing `requirement_e2e_runtime_evidence_v1` object unchanged after successful completion. If another request is already executing its E2E preflight inside this API process, it fails immediately with HTTP 409 `{"detail":{"code":"external_e2e_preflight_in_progress"}}` before invoking another LLM/ES probe.
+- New **superuser-only** `GET /v1/operator-e2e/runtime-evidence/status` returns `{"schema_version":"sraf_operator_preflight_status_v1","state":"NOT_STARTED|RUNNING|COMPLETED|FAILED","generation":0,"elapsed_seconds":0.0,"scope":"process_local_runtime_evidence_only"}`. `generation` increments at each accepted request; `elapsed_seconds` is nonnegative monotonic seconds since that request began or its completed duration.
+- This observational state is **not** E2E backend acceptance and never claims `FULL_LIVE` or server cancellation. `RUNNING` remains RUNNING after any client disconnect/timeout until real server handler exit. `COMPLETED` only means runtime evidence was returned, not real Linux acceptance. The state has no durable, multi-process, or global identity; it resets on process restart. Existing auth/RBAC, worker/job/API and immutable E2E plan contracts are unchanged.

@@ -6,11 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from api.routers.editor_dependencies import require_superuser
 from api.services.auth_store import AuthUser
 from sra_api.routers.requirement_schedules import schedule_service
+from sra_api.services.operator_preflight_state import OperatorPreflightTracker, PreflightInProgress
 from sra_api.services.requirement_e2e_runtime_evidence import (
     ArtifactEvidenceError, configured_published_artifact, configured_runtime_evidence,
 )
 
 router = APIRouter(prefix="/v1/operator-e2e", tags=["operator-e2e"])
+_preflight_tracker = OperatorPreflightTracker()
 
 
 @router.get("/runtime-evidence")
@@ -19,8 +21,20 @@ def runtime_evidence(
     user: AuthUser = Depends(require_superuser),
 ) -> dict:
     """Return bounded verified facts; never paths, process details, or secrets."""
-    try: return configured_runtime_evidence(Path(__file__).resolve().parents[2], verification)
-    except RuntimeError as exc: raise HTTPException(503, detail={"code": str(exc)}) from exc
+    try:
+        return _preflight_tracker.run(
+            lambda: configured_runtime_evidence(Path(__file__).resolve().parents[2], verification)
+        )
+    except PreflightInProgress as exc:
+        raise HTTPException(409, detail={"code": "external_e2e_preflight_in_progress"}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, detail={"code": str(exc)}) from exc
+
+
+@router.get("/runtime-evidence/status")
+def runtime_evidence_status(user: AuthUser = Depends(require_superuser)) -> dict:
+    """Authenticated process-local observation, not a readiness or acceptance claim."""
+    return _preflight_tracker.snapshot()
 
 
 @router.get("/batches/{batch_run_id}/items/{run_item_id}/artifact")
