@@ -91,6 +91,8 @@ class RemoteDeploymentEvidenceProvider:
         except _PreflightClientDeadlineExpired as exc:
             raise HarnessFailure("remote_preflight_client_deadline_exceeded", stage="RUNTIME_WORKERS") from exc
         except HarnessFailure as exc:
+            if exc.category in {"remote_preflight_deadline_conflict", "remote_preflight_deadline_unavailable"}:
+                raise
             if exc.category == "authentication_failed":
                 raise HarnessFailure("remote_evidence_authentication_failed", stage="RUNTIME_WORKERS") from exc
             if exc.category == "authorization_failed":
