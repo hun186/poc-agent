@@ -2,167 +2,39 @@
 
 ## Current Summary
 
-- SRAF is the core report writing system (FastAPI, Agent/LLM/Elasticsearch, Word); Requirement Product, scheduling and Handoff are added automation applications, not its sole identity. Use existing sra_api/, requirement_scheduler/, agent/, SQL Server, and existing authentication and report execution systems. No parallel schedulers or Report Jobs.
-- OFF-1Q is merged into main at 50f44c6b58fd3a2e9e12b98ed9a99a88f598e2c7; earlier OFF-1P main HEAD was ff5ac56ec18a58c812deeca30381aea5b1151f70, from user-authorized OFF-1P PR #312 merge. OFF-1P two Codex P2 findings were corrected with tests; exact-head formal review CLEAN, zero unresolved threads; Hosted 1,259 focused + 2 Worker E2E + 19 OFF-0 PASS. No private Linux/SQL/DOCX/physical airgap live acceptance.
-- OFF-1Q PR #313 merged; its implemented behaviour: New opt-in REPORT-LIVE row requires nine flags and actual DOCX-BYTES PASS, uses fixed read-only SQL to select one completed report_v1 item's remote job/submission IDs, then one authenticated bounded GET against the localhost Report Job API; match returned job_id, metadata submission_id/workflow_id and status=completed. Never start jobs, download Word, print secrets/IDs or infer full live release acceptance. Same SQL item binding is not atomic with the earlier DOCX byte verification; the latest scheduled run may have moved.
-- SQL diagnostic access requires separately DBA-enforced SELECT-only principal, ODBC18, numeric private IPv4, strict CA plus IP-SAN TLS. API GET permits only explicit 127.0.0.1 port with operator-provided owner-scoped REPORT_JOB_READ bearer token and no proxy, redirects or retries. Listener PID, Agent/LLM/ES, full-job provenance, immutable DOCX association and physical airgap remain unverified.
-- Refer to .codex/architecture.md, api_contract.md, known_issues.md, decisions.md, backlog.md for current architecture, limitations and unresolved work. Archive references below retain full prior Product and operator review history; don't load full history routinely.
+- SRAF is the core FastAPI report-writing system (Agent/LLM, Elasticsearch, SQL Server, Word/DOCX). Requirement Product, recurring Schedule and Handoff extend the existing system; they are **not** its only function. Preserve existing `sra_api/`, `agent/`, `requirement_scheduler/`, RBAC, Report Job Worker and immutable Requirement SQL Version/Snapshot authority. No parallel scheduler/queue/Report Job or fake successful results.
+- Main after user-authorized #319 and #320 merges: `9ffe3dcd0eb760a9daa89904bc814ba266c987b4` and `1b6ca92cabe611eaa87b7e46d302e3c35bd49210`. These merges had final-HEAD Codex CLEAN and successful Hosted CI; **not** deployed Linux FULL_LIVE acceptance.
+- PR #319 removes live/auto operator E2E LLM/ES probes and acceptance fixture mutations from normal API startup. Startup validates the E2E mode syntax; authenticated superuser runtime-evidence preflight freezes an immutable E2E backend plan. An E2E-marked Report Job lacking prepared plan fails closed; production reports stay on real LLM/ES. Hybrid/LLM Field Selector failure preserves rule evidence and reports sanitized `fallback` status/error categories. Three historical P2 were fixed (ES plan lock, operator read timeout, Requests ConnectionError classification).
+- PR #320 adds `tools/sraf_runtime_baseline_readonly.py`: OFF-1S launcher/listener identity (same PID/start/socket before/after), OFF-1A anonymous bounded loopback `/healthz`, OFF-1H Schedule/Handoff process identities. Fixed redacted `PARTIAL_ONLY_NOT_ACCEPTANCE` output, no credentials/jobs/DB/ES/model/write/restart; `--no-network` disables the GET. Only a point-in-time partial observation.
+- Current PR #321, branch `fix/sraf-e2e-data-agent-probe-timeout-20261029`: the **operator-only** Data Agent `LiteLLMModel` READY preflight now sets `timeout=30` and `num_retries=0`. Normal `agent/data_agent/builder.py` inference remains unchanged. `live` fails closed on timeout, `auto` records its E2E backend fallback, `offline` makes no live model call. Do not claim an absolute 30s whole-preflight deadline.
+- Other open historical PRs include diagnostic #318 and overlapping OFF-1S #315; prefer merged current code and independently confirm GitHub state before touching either. Issue #290 records startup incident evidence. Current PR #321 is **not merged**.
 
-## Product Durable Contract
+## Durable Product and Runtime Contracts
 
-- Requirement Version/Snapshot immutable; SQL Server authoritative. Separately versioned sra_schedule schema controls recurring schedules, Handoff and coordinator leases; Report Job uses real Agent/LLM/ES/DOCX. Product Task statuses are provisioning/active/disabled and recurring enablement mirrors Schedule. Product create / draft activation requires superuser; Preview is side-effect free.
-- Product durable request idempotency uses principal, operation, key and canonical payload hash incl. cross-resource identities. One-time Task create makes initial manual run anchored to durable request created_at. Recurring first enablement happens after provisioning without an initial manual run. Due claim uses canonical scheduled_for; zero selected run terminalizes completed.
-- Product Task PATCH in-place changes name/recurring enabled; immutable draft proposals alter timezone/recurrence/run_policy/model, never activate in the same request. Mixed modes rejected; preallocated IDs, CAS revision fencing, idempotent draft recovery. Same-state enabled PATCH cannot shift next_run_at; only disabled-to-enabled recomputes.
-- Preview oversized form response 400 vs safe 422 may differ by FastAPI/Starlette; see known_issues. Check Hosted GitHub before claiming later Product phases or PRs complete.
+- Immutable Requirement Version/Snapshot and SQL Server are authoritative. Distinct versioned `sra_schedule` handles recurring schedules/Handoff/leases; API lifespan owns Report Job Worker; report execution uses actual Agent/LLM/ES/DOCX.
+- Product create/activation requires superuser; Preview is side-effect free. Canonical principal/operation/key/payload-hash idempotency includes cross-resource identity. One-shot initial manual run is anchored to request creation; recurring enablement follows provisioning. Same-state enabled PATCH does not shift `next_run_at`; Schedule proposal drafts never auto-activate; CAS revision/owner fencing and immutable history remain mandatory.
+- Auth/RBAC, service principals, redacted diagnostics, protected SQL registry, release provenance, HTTPS CA+IP-SAN and no production ES fixture alias overlap are trust boundaries. OFF-1B warning-only IP-SAN is lower-assurance diagnostic **not** certificate-verified release acceptance; default safety must not be relaxed for convenience.
 
-## Verification and Acceptance
+## Verified Evidence vs Outstanding Gates
 
-- NEVER call mock Hosted CI, 19 OFF-0 schema-only checks, sampled SQL, PID checks or HTTP result FULL_LIVE. Release acceptance stays NOT_TESTED until independently proven.
-- Before Merge: check latest exact PR HEAD, successful Hosted CI, completed formal Codex CLEAN on SAME HEAD and zero unresolved P1/P2/review threads; require separate user's explicit merge command.
-- OFF-1Q first verified Hosted Actions #40360967667 (https://github.com/hun186/poc-agent/actions/runs/40360967667) at code/docs SHA 4fa50cb962344954d05c674bfab1e5aee2c0b50c: 1,289 focused pytest PASS, 2 legacy Worker E2E PASS and OFF-0 19 schema-only PASS. Tests mock ODBC and HTTP; no live private SQL, Report Job or physical isolation. Subsequent archive and memory commits MUST be rechecked on the exact final HEAD.
+- PR #321 code/tests/docs HEAD `a43b279fb138df75bd041dce69efd26842173fac` Hosted Actions [#40874337139](https://github.com/hun186/poc-agent/actions/runs/40874337139) **SUCCESS**: 1,377 focused pytest, 2 legacy Worker E2E, 104 startup/E2E/Job tests (2 warnings), 19 OFF-0 schema-only checks. These simulate external dependencies and use CI-host config; they do **not** contact private Linux SQL/Ollama/ES. A later memory archive/compaction commit changes HEAD and therefore requires new exact-HEAD Hosted validation.
+- Formal Codex on that **old** HEAD completed with **one P1**: active `.codex/memory.md` reached **21 dated work-record headings** under AGENTS.md. The entire 28,578-character original is committed at `.codex/archive/memory.md-20261029-203755.md` (blob SHA `cc97cbe33c3268572f2a99500511c6cec3d84c5a`) in prior branch commit `4fd2885ee57d778521f8bb4245675c7a11ee5afb`; re-fetched with content/blob SHA identical to the prior active file **before** this condensation.
+- Following this compaction, rerun exact-final-HEAD Hosted focused/legacy E2E/OFF-0, reply to and resolve the P1 only after verifying archive + active summary, and submit a fresh completed formal `@codex review` on the final HEAD. Every P1/P2/thread must be resolved. **Never merge without a new explicit user command.**
+- Real Linux API readiness under busy Ollama, E2E live preflight, SQL schema/privileges, strict ES TLS/IP-SAN and Mapping, Worker claim/lease/handoff, real Report Job and DOCX SHA/ZIP, source provenance and physical airgap are still **NOT TESTED** on updated deployed code. A prior 90-second `run_sra_api.sh` startup stall correlated with batch LLM load, but the exact old phase/root cause remains unproven; the user previously stopped heavy work and successfully generated DOCX. No server restart, SQL/ES mutations or live probe initiated by these Hosted commits.
+- The E2E harness's existing `timeout=600` is Requests inactivity/read semantics, **not** monotonic total budget. The new operator-only Data Agent 30s LiteLLM request timeout is **not** an absolute process/HTTP/ES deadline; retry/provider cancellation requires real verification. Future work: total monotonic E2E preflight lifetime or async status with cancellation/fixture consistency, evidence quality under real load, production >300s stage accounting and safe operator-gated live tests. No normal-job latency policy change in #321.
 
-## Recent Changes
+## Recent Changes (active snapshot)
 
-- 2026-10-27 OFF-1Q PR #313: one authenticated Report Job GET correlated to persisted report_v1 SQL submission, ninth explicit operator flag, localhost only, body/auth/proxy/redirection restrictions. MERGED after two P2 corrections and exact-head clean review; live private deployment acceptance pending.
-- 2026-10-27 mandatory active memory compaction: archived full original 27,635 characters first into .codex/archive/memory.md-20261027-004300.md at Git blob SHA 117c0ddfdc9c28cf3a3969f4474ad47f6cce9dc2; re-fetched and compared byte-for-byte before this rewrite.
-- 2026-10-26 OFF-1P PR #312 merged as ff5ac56ec18a58c812deeca30381aea5b1151f70 after 2 Codex P2 fixes; 1,259 focused + 2 Worker E2E + 19 OFF-0; exact-head CLEAN. Local DOCX bytes/digest operator proof only, no production acceptance.
-- 2026-10-25 OFF-1O #311 merged aeae06963a7b1412ae2e46172e93f8884e47ebe1: persisted Report completed artifact checkpoints only; OFF-1N #310 merged c0e37d04aa1e2326ef96fb113d1ac8e4eab0a6de: Handoff acknowledgment only.
-- 2026-10-25 OFF-1M #309 and OFF-1L #308 merged Schedule-run linkage and actor-labelled claims (not PID process attribution). 2026-10-24 OFF-1K/J/I/H/G/F earlier partial probes merged, no real airgap acceptance.
+- 2026-10-29: #321 adds bounded operator-only Data Agent READY options, redacted live timeout regression, offline no-contact regression and Hosted CI path changes; source review pending fresh final-head acceptance after this memory compaction.
+- 2026-10-29: #320 merged after 1,377+2+102 Hosted tests and Codex CLEAN. Only nonmutating Linux baseline diagnostic; private-host execution pending.
+- 2026-10-29: #319 merged after three P2 remediations, 1,361+2+102 Hosted tests and Codex CLEAN. No real Linux high-load acceptance.
+- 2026-10-29: OFF-1S #316 and subsequent OFF-1T hardened standalone operator listener checks were merged. Thread-FD, hidepid/submount and listener-sharing bypasses fail closed; same-UID spoofing, namespace/mount races and actual Linux operator proof remain outstanding.
+- 2026-10-27: OFF-1R #314 and OFF-1Q #313 merged after SQL alias/column and HTTP absolute-deadline corrections; earlier OFF-1P #312 and OFF-1O/N/M/L and OFF-1B–K progressed as separate partial evidence probes, none amounting to atomic cross-system/airgap proof.
+- 2026-10-29: Mandatory memory compaction after 21 dated headings: archived full prior file first, verified byte-for-byte and Git blob SHA; this current summary preserves security contracts, unresolved gates, current PR status and archive routes. Earlier dated PR/CI/review narratives preserved in the archive, not silently deleted.
 
-## Archived History
+## Archived History (do not load routinely)
 
-- .codex/archive/memory.md-20261027-004300.md — byte-identical full original active Project Memory just before this OFF-1Q compaction, including all prior Hosted reviews, testing, Product contracts and OFF-1J through OFF-1P; archived and verified before rewrite. Git blob SHA 117c0ddfdc9c28cf3a3969f4474ad47f6cce9dc2.
-- .codex/archive/memory.md-20261024-170825.md and .codex/archive/backlog.md-20261024-170825.md — previous full Product/airgap evolution, older historical 2026-10-21/10-06 archives linked within.
-- Per AGENTS.md compaction (>20 dated work blocks) originals were archived first. Historic state cannot override current Hosted GitHub. This compaction revalidation remains subject to exact-head CI and formal review.
-
-## 2026-10-27 OFF-1Q Codex P2 absolute HTTP deadline remediation
-
-- Initial formal Codex Review on code/docs HEAD 4fa50cb962344954d05c674bfab1e5aee2c0b50c identified one P2: a trickle-fed HTTP body could evade Requests' per-read timeout and block indefinitely. OFF-1Q replaced streamed Requests GET with one fixed AF_INET numeric 127.0.0.1 socket GET. Connection, send, bounded headers and bounded full-body reads share a 3s monotonic absolute deadline with per-recv remaining timeout; strict HTTP/1.0-1.1 200, exactly one Content-Length, max 8KiB JSON, no chunked/compressed or unsafe redirects. Fake fd-level slow-header and slow-body regressions were added. Actions #40362535218 at e6ae4957f1e9b66c1a2081ba01ec7402266df355 SUCCESS: 1,292 focused pytest + 2 Worker E2E + OFF-0 19 schema-only PASS. This documentation update requires new exact-head Hosted CI and fresh formal Codex review, then explicit user authorization for merge. No actual private Linux SQL or Report Job acceptance claimed.
-
-## 2026-10-27 OFF-1Q second formal Codex P2 — SQL APPLY projection fix
-
-- Formal latest-head Codex Review on `cc8322cba6f8a67125f2a39ed96e580f43adf986` found P2: outer SQL SELECT referenced inner APPLY-only h.submission_id, which is not visible in SQL Server; mocked ODBC did not bind SQL. Fixed projection to `i.submission_id`, the derived APPLY column in outer scope. Added exact SQL projection regression assertion to fake ODBC test. Both earlier 3-second absolute HTTP deadline P2 and this SQL alias P2 require exact new-head CI and fresh formal Codex review; do not Merge before new CLEAN or operator-approved real SQL/HTTP acceptance.
-
-## 2026-10-27 OFF-1R same-item correlation — active work
-
-- OFF-1Q PR #313 was user-authorized merged to main at `50f44c6b58fd3a2e9e12b98ed9a99a88f598e2c7` after 2 formal P2 corrections, exact-head Codex CLEAN and Hosted 1,292 focused pytest + 2 Worker E2E + 19 OFF-0 schema checks PASS; **no** live SQL/Report Job/DOCX/airgap attestation.
-- New branch `feat/sraf-off1r-same-item-chain` adds opt-in `REPORT-CHAIN` after all 10 flags and actual `REPORT-LIVE: PASS`. A **single** in-process seven-column SQL SELECT binds latest scheduled batch, one completed report_v1 run item, DOCX path/hash/root fingerprint and linked remote job/submission. Uses pinned root fd for local file and one authenticated bounded 127.0.0.1 GET with those saved exact same job/submission IDs, then compares a re-read of all seven SQL fields; a mismatch SKIPs rather than declaring a stale combined success. Neither this nor OFF-1P/Q can prove an atomic SQL/HTTP/filesystem transaction, remote process identity, full Agent/LLM/ES execution or physical airgap. Tests/CI/docs and exact-head Codex review to be confirmed separately.
-
-## 2026-10-27 OFF-1R Hosted and first formal Codex evidence
-
-- PR #314 initial code/docs HEAD 6eabeb842fbc7668995c55b1505604c5bb680033 received formal Codex P2 on nonexistent h.remote_job_id / h.dispatched_at in the Handoff SQL table. On latest tested HEAD 448f0650a91ed4027860fa3c880571b815dab38a, changed query to valid Run Item columns i.remote_job_id / i.dispatched_at and added a migration-authoritative REQUIRED_COLUMNS alias check (with the inner h.submission_id to outer i.submission_id APPLY projection represented explicitly). Hosted [#40437841634](https://github.com/hun186/poc-agent/actions/runs/40437841634) completed SUCCESS: **1,328 focused pytest PASS**, **2 Worker identity E2E PASS**, and **19 OFF-0 schema-only contract PASS**. The SQL itself has not executed on real private SQL Server; operator live gate remains. This memory update changes HEAD: require another exact-head Hosted SUCCESS, explicit inline P2 resolution, and fresh formal Codex Review before any separate user-approved Merge.
-
-## 2026-10-27 OFF-1S API listener identity — current PR work
-
-- OFF-1R PR #314 merged with explicit user approval to main `f5dce5434419fe20e0dac28ec9fa55fee991c7ef`; exact-head Codex CLEAN with 0 unresolved threads and Hosted 1,328 focused + 2 Worker E2E + 19 OFF-0 schema-only PASS; no real private SQL/API/DOCX/airgap acceptance.
-- OFF-1S `feat/sraf-off1s-api-listener-identity`: add default-off eleventh `--probe-api-listener`, checking run_sra_api.sh's exact `.run_sra_api_api.identity`, Linux PID start tick, EUID/cwd/exact uvicorn argv, /proc/net/tcp bound listener inode and fd owner. When operator requests it, Report Job bearer calls are blocked unless the attestation passes; reverify listener on the already connected socket before transmitting credentials and again after response. Alternate process/namespace/IPv6 listener/ambiguous inode FAIL CLOSED to SKIP. This is only process corroboration, not cryptographic server identity or zero-TOCTOU, and does not prove network isolation or live end-to-end evidence. Tests, Hosted CI and formal review pending exact HEAD; do not Merge absent separate user command.
-
-## 2026-10-27 OFF-1S first Hosted CI and negative fixture corrections
-
-- OFF-1S PR #316 code/tests/docs HEAD `483266b2d9f21154fbee8bd1995ec4b72e48f383`: Hosted Actions [#40497730636](https://github.com/hun186/poc-agent/actions/runs/40497730636) completed SUCCESS: **1,338 focused pytest PASS**, **2 Worker E2E PASS** and **19 OFF-0 schema-only contract PASS**. Two earlier Hosted red builds were caused by incorrect synthetic `uvicorn --host 0.0.0.0` NUL delimiter encoding and misordered synthetic Linux proc Uid field; both fixtures were corrected without relaxing actual UID/PID/argv checks. Formal Codex review had not yet completed on current HEAD at evidence capture; this documentation commit changes HEAD and requires new exact-head Hosted CI plus fresh completed Codex review before separately authorized Merge. No real API process / private SQL / physical-airgap acceptance was exercised.
-
-## 2026-10-27 OFF-1S PR #316 two exact-head Codex P2 corrections (pending Hosted verification)
-
-- Codex completed formal review on 29e923e23b58b2951a240c083350a0851fb5b2d0 with two P2: actual Python-shebang Uvicorn (7 args) and setproctitle runtime process title were rejected by a strict six-argument matcher; unique listening inode and one matching API PID fd did not exclude a fork-shared/socket-passed listener whose other PID could receive bearer credentials. Both threads require corrections and re-review.
-- New code matches launcher console-script shebang and exact repository SRA-API runtime title under existing UID, pinned root, PID start tick and socket checks. It also requires exclusive visible /proc process fd ownership of the listening inode; shared, unreadable or scan-capped process tables fail closed to SKIP. Added negative and positive regression tests plus operator limitations. The broad global scan may SKIP on insufficient /proc visibility and is not cryptographic/process-atomic proof. HOSTED CI, exact-head formal Codex re-review and operator live acceptance have NOT YET been verified for this new commit; no merge authorized.
-
-## 2026-10-27 OFF-1S PR #316 real procfs regression and Hosted evidence
-
-- First fix HEAD e9890970dce942aeb118e4170ad59e6554b102b0 Hosted run #40531392216 succeeded: 1,341 focused pytest PASS, 2 Worker E2E PASS, 19 OFF-0 schema-only checks PASS (mock/synthetic and CI-host only; not production acceptance).
-- Added separate real Linux /proc process regression that launches an actual temporary Python-shebang executable named uvicorn with the exact launcher arguments, checks real PID/start/EUID/cwd/cmdline matching and wrong-port rejection, plus hardened shared-owner matrix regression assertion. This new HEAD requires its own Hosted run, formal Codex exact-head re-review, and separate explicit merge authorization.
-
-## 2026-10-27 OFF-1S exact verified Hosted P2 regression (before final documentation SHA)
-
-- Final functional regression commit `663f6e3e1afa500c5b9d8cf72dbb146286ed0d17`: hosted [run #40531972972](https://github.com/hun186/poc-agent/actions/runs/40531972972) completed SUCCESS with **1,342 focused pytest**, **2 Worker E2E**, **19 OFF-0 schema-only contracts**. Includes an actually launched Linux Python-shebang process and /proc identity assertion, synthetic shared socket and unreadable-fd rejection, and pre-send bearer fail-closed checks. Earlier first correction `e9890970dce942aeb118e4170ad59e6554b102b0` also had hosted run #40531392216 success (1,341 focused + 2 E2E + 19 schema-only). Both formal Codex P2 discussions answered; this subsequent documentation-only update changes HEAD and requires fresh exact-head CI and formal review. Production SQL/API/airgap acceptance remains untested; no merge authorization.
-
-
-## 2026-10-28 OFF-1S PR #316 third Codex P2 remediation (pending exact-head review)
-
-- Fresh formal Codex review of `5ff30b713801d0b293ab3bb41620f6ce74125cfe` returned one new P2: Linux procfs `hidepid=2/4` may omit non-owned PID directories entirely, so an apparently complete `/proc/*/fd` scan could falsely pass exclusive listener ownership, exposing bearer credentials to an unlisted process. Earlier two P2 Threads had already been answered and resolved; latest prior Hosted #40532441760 SUCCESS (1,342 focused tests + 2 Worker identity E2E + OFF-0 19 schema-only).
-- Added a fail-closed bounded `/proc/self/mountinfo` visibility check before and after descriptor enumeration. Only a single ordinary procfs mount with absent/`hidepid=0` and no filtered subset qualifies; `hidepid=1/2/4`, unknown hidepid values, partial mountinfo or unexpected bind-root mounts SKIP. Added negative hidepid/omitted-owner and mount-change regressions, updated runbook. This is still only same-PID-namespace partial evidence, not a full trusted peer or airgap attestation. New HEAD requires Hosted CI success, formal exact-head Codex review and separate explicit merge approval.
-
-## 2026-10-28 OFF-1S PR #316 procfs submount P2 remediation
-
-- Latest exact-HEAD Codex review on `53b0390cb6aaeaee48e1cd656a29c69336c4558c` identified P2: procfs descendant mounts (e.g. tmpfs over `/proc/<other-pid>/fd`) can conceal a shared socket co-owner even with normal top-level hidepid=0; one old P2 review thread remained unresolved. Corrected the bounded `/proc/self/mountinfo` check to reject mounts masking numeric PID subtrees and /proc/self, /proc/thread-self or /proc/net, with ambiguous path escapes fail-closed, while allowing unrelated normal auxiliary /proc mounts. Added synthetic masked co-owner and negative proc mount regression; operator doc updated. **Do not claim validated** until exact new SHA Hosted tests and formal Codex Review complete, and do not merge without explicit user instruction. No private deployment/physical airgap acceptance.
-
-## 2026-10-28 OFF-1S procfs submount review remediation — Hosted evidence
-
-- Exact-head Hosted Actions [#40673273006](https://github.com/hun186/poc-agent/actions/runs/40673273006) SUCCESS at code/test SHA `c26c4105da747c9fbc0d2f76edf24f282ed6c1c6`: 1,347 focused pytest PASS, 2 Worker E2E PASS, 19 OFF-0 schema-only contracts PASS, plus compile/config-only checks. Earlier Hosted #40673039274 on `cebc3338` failed 3 focused tests because `bytes.isdecimal()` does not exist; updated to `bytes.isdigit()`, exact-head green. New memory commit changes HEAD and therefore requires refreshed exact-HEAD Hosted CI and formal Codex Review before separately authorized merge.
-- Regression now tests normal procfs auxiliary submounts, numeric-PID/self/thread-self/net overlays, an artificially masked other-process fd table, and fail-closed API-LISTENER. These CI tests simulate mountinfo and fd inventory, **not** operator-approved live Linux/SRAF SQL/Report Job or physical airgap acceptance.
-
-
-## 2026-10-29 OFF-1S PR #316 fifth formal P2 correction — validation pending
-
-- At Hosted PR #316 HEAD `5469b644bf4936468397876299681bc01fcef89f`,
-  formal Codex Review identified a fifth P2: Linux worker threads with
-  `close_range(CLOSE_RANGE_UNSHARE)` may hold listener descriptors outside
-  the leader's `/proc/<PID>/fd`; previous exclusive PID scan could incorrectly
-  bless the listener and transmit Report Job bearer to another accepting thread.
-- Implemented conservative bounded `/proc/<PID>/task/<TID>/fd` enumeration
-  for **every visible thread** in every process. Any inaccessible, changing,
-  oversized or incomplete task table fails closed. Added synthetic
-  non-leader shared-socket, denied/disappearing task and limit tests, plus a
-  real Linux CLOSE_RANGE_UNSHARE child worker regression (skip if unsupported).
-- Prior exact-head Hosted #40673524934 SUCCESS on OLD SHA: 1,347 focused pytest,
-  2 Worker E2E, 19 OFF-0 schema-only PASS. This does **NOT** verify today's
-  correction. New exact-head Hosted CI / formal Codex review and thread
-  resolution still required. No private operator deployment, SQL/Report Job,
-  Agent/LLM/ES/DOCX, or physical isolation acceptance. Merge not authorized.
-
-
-## 2026-10-29 OFF-1S fifth P2 Hosted exact-code/docs verification
-
-- PR #316 functional SHA `8818411b57179a12c89e3e71a21a3583739c2711`
-  Hosted [#40743672662](https://github.com/hun186/poc-agent/actions/runs/40743672662)
-  SUCCESS: **1,350 focused pytest PASS**, **2 Worker E2E PASS**, **19 OFF-0
-  schema-only checks PASS**, compile/config-only PASS. This includes the real
-  Linux CLOSE_RANGE_UNSHARE subprocess regression and fail-closed synthetic
-  thread-table tests.
-- Documentation HEAD `df598facd3d29da4aa9a915a6d5a9aea94125a1c`
-  independently passed exact-HEAD Hosted [#40743853243](https://github.com/hun186/poc-agent/actions/runs/40743853243)
-  with **1,350 focused pytest, 2 Worker E2E and 19 OFF-0 schema-only checks**.
-- Original fifth P2 discussion answered at PR #316 review thread by comment
-  4404419662; completed formal exact-FINAL-HEAD Codex Review and user merge
-  authorization remain separate gates. This evidence-logging commit itself
-  moves HEAD and needs new CI + formal review. No full private live E2E/airgap
-  proof has been obtained.
-
-
-## 2026-10-29 OFF-1T independent listener check — in development
-
-- User-authorized OFF-1S PR #316 merged to main at `078206c3ab9d2945712bfe81b5b97c5ea40a5cc5`; final source HEAD `2555a15fa5c317daed9c6f771439f89abfb6cae2` received exact-head Codex no-major-issues receipt and Hosted #40744110563 SUCCESS (1,350 focused pytest, 2 Worker E2E, 19 OFF-0 schema-only). No live SRAF host acceptance.
-- Overlapping PR #315 still OPEN. Its distinct operator-only diagnostic (without SQL/DOCX preconditions) is useful, but merging it directly would introduce a weaker duplicate listener verifier. OFF-1T instead reuses merged hardened `tools/sraf_airgap_off1s_api_listener.py` and exposes a standalone offline read-only CLI requiring only an absolute deployed root and numeric API port. It emits fixed redacted PASS/SKIP, an explicit partial/not-acceptance scope, no PID/inode/path/token, and never contacts the API or accesses SQL/LLM/ES.
-- New code/tests/runbook and existing OFF-1B Hosted CI integration implemented on `feat/sraf-off1t-standalone-api-listener-check`. New HEAD Hosted CI, actual Linux operator runtime and formal Codex Review remain to be checked separately; **do not Merge** without a new explicit instruction.
-
-## 2026-10-29 OFF-1T standalone operator check
-
-- PR #316 was merged into main at 078206c3ab9d2945712bfe81b5b97c5ea40a5cc5 after reviewed Hosted CI. Real Linux SRAF private-host acceptance remains pending.
-- This new branch adds a local non-network OFF-1T CLI that reuses the merged OFF-1S launcher/listener attestation rather than duplicating verifier logic. Operator supplies an absolute repository root and numeric API port; only a fixed partial PASS/SKIP status is printed. No bearer, external HTTP, SQL query, or scheduled job is executed.
-- PR #315 remains open because its original standalone diagnostic purpose was not covered by the prior full-matrix gate; assess its overlap after OFF-1T review. Hosted exact-HEAD CI and formal Codex review for OFF-1T have not yet been verified. No merge is authorized.
-
-## 2026-10-29 SRAF Linux API startup timeout investigation (emergency, unmerged)
-
-- Actual operator command `7z x poc-agent-update.7z -y && ./run_sra_api.sh` extracted 97 files, then launcher returned `API readiness timed out` at the 90-second listener gate; Uvicorn logged `Started server process` and `Waiting for application startup` only. No Linux traceback or live blocking stack yet. Schedule/Handoff workers are intentionally started only **after** API TCP listener detection, so their empty logs do not imply a Worker failure. Never equate extraction success with release provenance or Hosted CI with private Linux acceptance.
-- GitHub main is `c6d431f216a21b06965fc2803bbd9f7e42a32f2b` at investigation start; #316/#317 change operator OFF-1 tools/tests/docs, not `sra_api/main.py` or launcher. No causal attribution to those PRs is proven. PR #315 remains OPEN/overlapping; Issue #290 remains OPEN.
-- Existing FastAPI lifespan executes `frozen_plan(resolve_environment_plan)` (live/auto can perform real LLM and ES probing, including a Data Agent generate call without an explicit timeout), optional synchronous Requirement and Schedule SQL initialize/schema validation, then SQLite Report Job initialization/recovery and Worker start. There are no preexisting phase markers; actual blocking step remains **UNPROVEN**.
-- New unmerged branch `fix/sraf-startup-phase-observability-20261029` adds static, non-secret begin/complete/failure timing markers around existing lifespan phases only; no changed execution ordering, bypass, retry or increased readiness timeout. A regression test verifies timing, exception rethrow and no logged exception message. Final HEAD Hosted CI, formal Codex review and operator Linux execution require separate confirmation. Never merge without explicit user approval.
-- First operator checks are read-only: process/listener/log state; only three safe env feature selectors; Git blob SHA for seven core deployed files. No new live API launch, SQL/ES changes, recovery reset, or Report Job probing was performed by this investigation.
-
-
-## 2026-10-29 PR #319 high-load LLM separation / selector fallback — verification pending
-
-- Operator A/B/C: while Ollama was occupied by large batches, SRAF API listener failed the launcher 90s gate; stopping batch enabled API and real DOCX report production; a later busy Ollama still let already-started SRAF generate reports. Router/Refiner standalone 10s probe gave ReadTimeout but original startup elapsed breakdown was not measured, so the sole root cause is not yet proven.
-- Fix branch splits ordinary startup/readiness from FULL_LIVE E2E Acceptance: lifespan validates configured mode only, Report Job Worker start does not probe, and normal Ollama/Data Agent/ES client acquisition never calls E2E resolver. The existing authenticated operator runtime-evidence endpoint remains the explicit full E2E preflight that installs an immutable backend plan. A marked, fully verified E2E Report Job **fails closed** if no preflight plan exists. Normal reports stay real LLM/ES even with a configured E2E offline/auto/live mode.
-- Field Selector hybrid/LLM invalid response or transport failure uses original rules fallback with `ref_no` and `note` retained. Trace/evidence metadata explicitly distinguishes `status=fallback`, `fallback_strategy=rules`, `llm_attempted`, and a stable redacted error category (including chained ReadTimeout). Report DOCX success is not evidence all model stages succeeded or that content quality is unchanged.
-- New tests and Hosted workflow extended; exact new-head CI, formal Codex review, real Linux operator acceptance, and user-authorized merge are still pending.
-
-## 2026-10-29 PR #319 Codex P2 fixes — awaiting final-head validation
-
-- Formal Codex review of behavioral HEAD `90b45ef52a29ae6a9ecff1681a50651618d3477e` produced three P2: ordinary ES helpers block on E2E plan lock, 30s remote operator preflight too short for deferred model/ES work, and Requests ConnectionError misclassified by Field Selector. Initial Hosted #40835967919 succeeded but is NOT a clean review.
-- Fixes on subsequent HEAD: production ES index/mock-check helpers check acceptance scope before any frozen-plan access; verified acceptance with an unresolved plan fails closed. Operator-only E2E runtime evidence GET uses a bounded 600s request budget, not a startup probe. Field Selector categorizes chained Requests ConnectionError as `transport_unavailable` while keeping sanitized rules fallback. Four focused regressions cover these boundaries.
-- New exact-head Hosted CI, fresh formal Codex review, thread resolution and Linux load/recovery/quality acceptance remain PENDING. No merge authorization; no private Linux service, SQL, ES fixture or production Report Job changed by these GitHub edits.
-
-## 2026-10-29 SRAF merge #319 and offline baseline composition (new PR)
-
-- User explicitly merged #319; main merge SHA `9ffe3dcd0eb760a9daa89904bc814ba266c987b4`, formal Codex Review CLEAN on original `9f4fb24340`, all 3 P2 resolved, Hosted focused/Worker/OFF-0 PASS. Not live Linux acceptance.
-- Follow-up branch `feat/sraf-runtime-baseline-readonly-20261029` introduces `tools/sraf_runtime_baseline_readonly.py` to compose existing OFF-1S launcher API identity, OFF-1A anonymous 3-second loopback /healthz, and OFF-1H worker identity. All results fixed-label/redacted; --no-network disables HTTP, API identity is checked before and after HTTP; no jobs, credentials, SQL, LLM/ES, DB writes or service startup. Point-in-time partial observation ONLY. New tests need exact-head Hosted CI and formal Codex review; no private Linux execution or merge.
+- `.codex/archive/memory.md-20261029-203755.md` — full pre-compaction 174-line active memory (28,578 characters), 21 dated work records, Git blob SHA `cc97cbe33c3268572f2a99500511c6cec3d84c5a`. Created and independently read before any active rewrite.
+- `.codex/archive/memory.md-20261027-004300.md` — previous complete Product/OFF-1 history, Git SHA `117c0ddfdc9c28cf3a3969f4474ad47f6cce9dc2`.
+- `.codex/archive/memory.md-20261024-170825.md` and `.codex/archive/backlog.md-20261024-170825.md` — preceding historical evolution. See their references for 2026-10-21/10-06 archives.
+- For detailed architecture, API routes and remaining risks use active `.codex/architecture.md`, `.codex/api_contract.md`, `.codex/known_issues.md`, `.codex/decisions.md`, `.codex/backlog.md` and the current GitHub Hosted PR source.

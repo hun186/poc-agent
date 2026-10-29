@@ -5,6 +5,7 @@ on:
     paths:
       - 'sra_api/main.py'
       - 'sra_api/services/report_job_worker.py'
+      - 'agent/external_capabilities.py'
       - 'agent/llm_utils/ollama_client.py'
       - 'agent/data_agent/builder.py'
       - 'agent/es/es_client.py'
@@ -12,6 +13,8 @@ on:
       - 'agent/report_agent.py'
       - 'tests/test_report_job_worker.py'
       - 'tests/test_sraf_deferred_e2e_startup.py'
+      - 'tests/test_requirement_e2e_external_capabilities.py'
+      - 'docs/operations/sraf_e2e_preflight_boundaries.md'
       - 'sra_api/startup_diagnostics.py'
       - 'tests/test_sraf_startup_diagnostics.py'
       - 'tools/sraf_airgap_off1b_auto.py'
@@ -113,7 +116,7 @@ jobs:
           python -m pytest -q tests/test_requirement_operator_e2e_harness.py::test_worker_identity_verification tests/test_requirement_operator_e2e_harness.py::test_worker_identity_rejects_wrong_command_and_cwd
       - name: Compile and test API startup phase markers (no services)
         run: |
-          python -m compileall -q sra_api/main.py sra_api/startup_diagnostics.py sra_api/services/report_job_worker.py agent/llm_utils/ollama_client.py agent/data_agent/builder.py agent/es/es_client.py agent/utils/evidence_pack.py agent/report_agent.py tests/test_sraf_startup_diagnostics.py tests/test_sraf_deferred_e2e_startup.py
+          python -m compileall -q sra_api/main.py sra_api/startup_diagnostics.py sra_api/services/report_job_worker.py agent/external_capabilities.py agent/llm_utils/ollama_client.py agent/data_agent/builder.py agent/es/es_client.py agent/utils/evidence_pack.py agent/report_agent.py tests/test_sraf_startup_diagnostics.py tests/test_sraf_deferred_e2e_startup.py
           python -m pytest -q tests/test_sraf_startup_diagnostics.py tests/test_sraf_deferred_e2e_startup.py tests/test_requirement_startup.py tests/test_report_job_store.py tests/test_report_job_worker.py tests/test_requirement_e2e_external_capabilities.py
       - name: Config-only check against CI host (not SRAF environment)
         run: |

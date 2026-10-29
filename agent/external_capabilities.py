@@ -478,12 +478,18 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
             [{"role": "user", "content": "Reply with READY."}], timeout=10))
         for name, model in direct_models.items()
     }
+    # Operator-only READY probe: production Data Agent generation keeps its
+    # separately configured model settings and does not inherit this limit.
+    E2E_DATA_AGENT_PROBE_TIMEOUT_SECONDS = 30
+
     def data_agent_call() -> str:
         from smolagents import LiteLLMModel
         model_id = (ENV.data_agent_model_id if "/" in ENV.data_agent_model_id
                     else f"ollama_chat/{ENV.data_agent_model_id}")
         model = LiteLLMModel(model_id=model_id, api_base=ENV.model_base_url,
-                             temperature=ENV.model_temperature)
+                             temperature=ENV.model_temperature,
+                             timeout=E2E_DATA_AGENT_PROBE_TIMEOUT_SECONDS,
+                             num_retries=0)
         response = model.generate([{
             "role": "user",
             "content": [{"type": "text", "text": "Reply with READY."}],

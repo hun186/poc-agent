@@ -204,3 +204,7 @@ GitHub-hosted CI exercises only hosted environment and test fixtures.
 ## 2026-10-29 Read-only baseline limits
 
 - A healthy /healthz and corroborated launcher-owned API/Worker PIDs are only sequential snapshots, not verified model inference, healthy queues, real Report Job execution, durable provenance or physical isolation. Listener identity may change after check; same-UID impersonation, Linux namespace visibility and hidden procfs restrictions remain outside cryptographic assurance. Run only on authorized Linux host as launcher user; Hosted synthetic/mock tests cannot prove actual API/Worker processes.
+
+## 2026-10-29 E2E Data Agent READY LiteLLM request timeout (proposed)
+
+- `timeout=30` with `num_retries=0` is an E2E-only LiteLLM request policy; provider/SDK semantics and network cancellation still require real Ollama validation. It is NOT a strict monotonic bound on entire authenticated 600s preflight, Elasticsearch fixture operations or any normal production Agent generation. Existing API preflight may remain blocked by other external operations or slow-trickle HTTP; do not assert whole E2E preparation is time-limited or safe to auto-run on a busy live server.
