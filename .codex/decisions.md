@@ -142,3 +142,7 @@ strong authenticated peer identity; protected UDS/mTLS remains future work.
 ## 2026-10-29 OFF-1T standalone design
 
 - Reuse merged OFF-1S hardening in a standalone offline CLI rather than merge overlapping PR #315 verifier code. Retain full per-thread descriptor-owner validation, process/mount checks and conservative SKIP. The CLI makes no HTTP call and sends no bearer. Do not equate a local process snapshot with authenticated peer identity, SQL/ES/LLM/report execution or network isolation. PR #315 remains open pending final overlap decision.
+
+## 2026-10-29 Safe startup logging instead of bypassing failing dependencies
+
+- Maintain existing fail-closed synchronous API lifespan initialization, SQL persistence and Requirement E2E plan semantics. Add narrowly enumerated logging only at startup phase boundaries, via `sra_api/core/startup_stage.py`; log fixed stage identifiers and monotonic durations only, no server address, model ID, SQL, path, credentials or exception contents. Avoid default increasing readiness timeout or disabling LLM/SQL checks without real incident evidence.
