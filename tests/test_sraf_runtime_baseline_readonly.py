@@ -8,6 +8,7 @@ import pytest
 
 from tools import sraf_runtime_baseline_readonly as baseline
 from tools.sraf_airgap_off1_probes import Observation
+from tools.sraf_airgap_off1s_api_listener import ListenerProof
 
 
 def _observation(status, evidence=None):
@@ -30,12 +31,12 @@ def test_verified_snapshot_is_partial_only_and_redacted(monkeypatch, valid_env):
     def listener(root, port):
         assert root == valid_env and port == "9002"
         observed["listener"] += 1
-        return _observation("PASS")
+        return ListenerProof(1234, "10001", 9002, "56789")
     def health(port):
         assert port == 9002
         observed["health"] += 1
         return _observation("PASS", {"http_status": 200})
-    monkeypatch.setattr(baseline, "probe_api_listener", listener)
+    monkeypatch.setattr(baseline, "attest_api_listener", listener)
     monkeypatch.setattr(baseline, "probe_api_health", health)
     data = baseline.observe(valid_env, "9002")
     assert data["overall"] == "PASS"
@@ -52,7 +53,7 @@ def test_verified_snapshot_is_partial_only_and_redacted(monkeypatch, valid_env):
 
 
 def test_unverified_listener_never_sends_http(monkeypatch, valid_env):
-    monkeypatch.setattr(baseline, "probe_api_listener", lambda *_: _observation("SKIP"))
+    monkeypatch.setattr(baseline, "attest_api_listener", lambda *_: None)
     monkeypatch.setattr(baseline, "probe_api_health",
                         lambda *_: pytest.fail("must not open a socket"))
     data = baseline.observe(valid_env, "9002")
@@ -63,11 +64,12 @@ def test_unverified_listener_never_sends_http(monkeypatch, valid_env):
 
 
 def test_listener_changes_after_health_invalidates_both(monkeypatch, valid_env):
-    calls = iter(("PASS", "SKIP"))
-    monkeypatch.setattr(baseline, "probe_api_listener",
-                        lambda *_: _observation(next(calls)))
+    calls = iter((ListenerProof(1234, "10001", 9002, "56789"),
+                  ListenerProof(5678, "20002", 9002, "98765")))
+    monkeypatch.setattr(baseline, "attest_api_listener",
+                        lambda *_: next(calls))
     monkeypatch.setattr(baseline, "probe_api_health",
-                        lambda *_: _observation("PASS"))
+                        lambda *_: ListenerProof(1234, "10001", 9002, "56789"))
     data = baseline.observe(valid_env, "9002")
     assert data["checks"]["API-LISTENER"]["status"] == "SKIP"
     assert data["checks"]["API-HEALTH"]["status"] == "SKIP"
@@ -79,8 +81,8 @@ def test_no_network_mode_skips_even_anonymous_get(monkeypatch, valid_env):
     calls = []
     def listener(*_):
         calls.append(1)
-        return _observation("PASS")
-    monkeypatch.setattr(baseline, "probe_api_listener", listener)
+        return ListenerProof(1234, "10001", 9002, "56789")
+    monkeypatch.setattr(baseline, "attest_api_listener", listener)
     monkeypatch.setattr(baseline, "probe_api_health",
                         lambda *_: pytest.fail("no-network called GET"))
     data = baseline.observe(valid_env, "9002", no_network=True)
@@ -93,7 +95,7 @@ def test_no_network_mode_skips_even_anonymous_get(monkeypatch, valid_env):
 @pytest.mark.parametrize("port", ["0", "-1", "65536", "abc", "9002x",
                                   "09002", "9002;touch /tmp/x", "", "²"])
 def test_invalid_port_never_reaches_probes(monkeypatch, valid_env, port):
-    monkeypatch.setattr(baseline, "probe_api_listener",
+    monkeypatch.setattr(baseline, "attest_api_listener",
                         lambda *_: pytest.fail("bad port reached listener"))
     monkeypatch.setattr(baseline, "probe_api_health",
                         lambda *_: pytest.fail("bad port reached health"))
@@ -105,15 +107,15 @@ def test_invalid_port_never_reaches_probes(monkeypatch, valid_env, port):
 
 
 def test_untrusted_path_never_reaches_probes(monkeypatch, tmp_path):
-    monkeypatch.setattr(baseline, "probe_api_listener",
+    monkeypatch.setattr(baseline, "attest_api_listener",
                         lambda *_: pytest.fail("bad root reached listener"))
     assert baseline.observe(Path("relative-repo"), "9002")["overall"] == "INCOMPLETE"
     assert baseline.observe(tmp_path / "missing", "9002")["overall"] == "INCOMPLETE"
 
 
 def test_http_exception_is_sanitized_and_worker_failure_independent(monkeypatch, valid_env):
-    monkeypatch.setattr(baseline, "probe_api_listener",
-                        lambda *_: _observation("PASS"))
+    monkeypatch.setattr(baseline, "attest_api_listener",
+                        lambda *_: ListenerProof(1234, "10001", 9002, "56789"))
     monkeypatch.setattr(baseline, "probe_api_health",
                         lambda *_: (_ for _ in ()).throw(OSError("Bearer secret private URL")))
     monkeypatch.setattr(baseline, "probe_worker_process_identities",

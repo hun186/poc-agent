@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools.sraf_airgap_off1_probes import probe_api_health  # noqa: E402
 from tools.sraf_airgap_off1h_worker_identity import probe_worker_process_identities  # noqa: E402
-from tools.sraf_airgap_off1s_api_listener import probe_api_listener  # noqa: E402
+from tools.sraf_airgap_off1s_api_listener import attest_api_listener  # noqa: E402
 
 SCHEMA = "sraf_runtime_baseline_readonly_v1"
 MODE = "PARTIAL_ONLY_NOT_ACCEPTANCE"
@@ -56,8 +56,8 @@ def observe(project_root: Path, api_port: str, *, no_network: bool = False) -> d
     )
     if valid:
         try:
-            before = probe_api_listener(project_root, api_port)
-            listener_ok = before.status == "PASS"
+            before = attest_api_listener(project_root, api_port)
+            listener_ok = before is not None
         except Exception:
             listener_ok = False
 
@@ -87,8 +87,8 @@ def observe(project_root: Path, api_port: str, *, no_network: bool = False) -> d
                 checks["API-HEALTH"] = _row("SKIP", "healthz_unverified")
             # A replaced listener invalidates the combined observation.
             try:
-                after = probe_api_listener(project_root, api_port)
-                stable = after.status == "PASS"
+                after = attest_api_listener(project_root, api_port)
+                stable = after == before
             except Exception:
                 stable = False
             if not stable:
