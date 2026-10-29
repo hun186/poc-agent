@@ -126,3 +126,10 @@
   authorization remain separate gates. This evidence-logging commit itself
   moves HEAD and needs new CI + formal review. No full private live E2E/airgap
   proof has been obtained.
+
+
+## 2026-10-29 OFF-1T independent listener check — in development
+
+- User-authorized OFF-1S PR #316 merged to main at `078206c3ab9d2945712bfe81b5b97c5ea40a5cc5`; final source HEAD `2555a15fa5c317daed9c6f771439f89abfb6cae2` received exact-head Codex no-major-issues receipt and Hosted #40744110563 SUCCESS (1,350 focused pytest, 2 Worker E2E, 19 OFF-0 schema-only). No live SRAF host acceptance.
+- Overlapping PR #315 still OPEN. Its distinct operator-only diagnostic (without SQL/DOCX preconditions) is useful, but merging it directly would introduce a weaker duplicate listener verifier. OFF-1T instead reuses merged hardened `tools/sraf_airgap_off1s_api_listener.py` and exposes a standalone offline read-only CLI requiring only an absolute deployed root and numeric API port. It emits fixed redacted PASS/SKIP, an explicit partial/not-acceptance scope, no PID/inode/path/token, and never contacts the API or accesses SQL/LLM/ES.
+- New code/tests/runbook and existing OFF-1B Hosted CI integration implemented on `feat/sraf-off1t-standalone-api-listener-check`. New HEAD Hosted CI, actual Linux operator runtime and formal Codex Review remain to be checked separately; **do not Merge** without a new explicit instruction.
