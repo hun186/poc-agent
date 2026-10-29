@@ -208,3 +208,8 @@ GitHub-hosted CI exercises only hosted environment and test fixtures.
 ## 2026-10-29 E2E Data Agent READY LiteLLM request timeout (proposed)
 
 - `timeout=30` with `num_retries=0` is an E2E-only LiteLLM request policy; provider/SDK semantics and network cancellation still require real Ollama validation. It is NOT a strict monotonic bound on entire authenticated 600s preflight, Elasticsearch fixture operations or any normal production Agent generation. Existing API preflight may remain blocked by other external operations or slow-trickle HTTP; do not assert whole E2E preparation is time-limited or safe to auto-run on a busy live server.
+
+## 2026-10-30 Client deadline does not cancel deferred server E2E preflight
+
+- Linux `ITIMER_REAL` bounds the **operator process waiting** for runtime-evidence GET only. The API server's synchronous `resolve_environment_plan` and ES index setup continue even after socket disconnect; the server may install its plan after the client times out. Client retries can overlap unfinished server work. Operator must inspect redacted server status and ensure no active setup before another authorized live preflight. Further design required for server cancellation/async progress, timeout-aware fixture consistency and whole-operation deadline.
+- A process-global SIGALRM cannot safely be stolen from another component or run outside the main Linux thread. E2E preflight refuses to send credentials if existing signal handler/timer ownership is detected or the Linux call is on a worker thread. Non-Linux operators still have Requests inactivity/read timeouts, NOT a total waiting deadline. Hosted synthetic timer checks and parser tests cannot validate real busy-Ollama/ES behavior.

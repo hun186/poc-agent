@@ -134,3 +134,8 @@
 
 - Validate actual LiteLLM/smolagents version and Ollama under busy-model load before claiming the E2E-only 30s request timeout reliably ends a stuck network call; Hosted fake timeout tests only prove parameter forwarding and fail-closed classification. Complete exact-HEAD Hosted CI and formal Codex Review; no merge without explicit command.
 - Still design authenticated operator preflight as bounded **whole-operation monotonic deadline** or async status/polling with cancellation/fixture consistency, rather than conflating Requests' 600s per-read timeout with full lifetime. Diagnose heavy report >300s and Field Selector metadata using redacted Linux traces after separately authorized deployment.
+
+## 2026-10-30 E2E strict wait guard review and acceptance
+
+- Verify exact HEAD Hosted 19 OFF-0, focused E2E regression, 2 Worker E2E, startup/Job tests and formal Codex Review. Inspect user credentials/exception redaction and Linux SIGALRM handler cleanup, especially real Requests slow-drip compatibility. No merge before a fresh explicit user instruction.
+- The server may keep processing after HTTP client timeout. Design an authenticated asynchronous server-side E2E preflight state machine with safe idempotency, progress/poll, resource isolation and ES fixture consistency, or a cooperative server-side monotonic budget with bounded every-IO client calls. Do not claim a complete cancelable 600s preflight from client enforcement. Validate on a separately authorized real Linux high-load test.

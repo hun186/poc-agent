@@ -38,3 +38,9 @@
 - `.codex/archive/memory.md-20261027-004300.md` — previous complete Product/OFF-1 history, Git SHA `117c0ddfdc9c28cf3a3969f4474ad47f6cce9dc2`.
 - `.codex/archive/memory.md-20261024-170825.md` and `.codex/archive/backlog.md-20261024-170825.md` — preceding historical evolution. See their references for 2026-10-21/10-06 archives.
 - For detailed architecture, API routes and remaining risks use active `.codex/architecture.md`, `.codex/api_contract.md`, `.codex/known_issues.md`, `.codex/decisions.md`, `.codex/backlog.md` and the current GitHub Hosted PR source.
+
+## 2026-10-30 PR #322 — Linux operator preflight client deadline (development)
+
+- PR #321 merged to main at `375dad31ef61de278f5972933799a94ea941ab41` with exact HEAD `21b336297d` reviewed CLEAN and Hosted #40875116434 SUCCESS; the 30s LiteLLM request limit affects only E2E READY probes, not production.
+- Branch `fix/sraf-e2e-operator-client-absolute-deadline-20261030` adds a scoped Linux-main-thread SIGALRM/ITIMER_REAL elapsed-time guard only around the authenticated operator preflight GET, default 600 seconds. The guard refuses preexisting signal handlers/timers and Linux worker-thread execution (fail closed before sending credentials), restores signal state on all outcomes, and classifies elapsed timeout as a redacted `remote_preflight_client_deadline_exceeded`. Windows/other remote operators retain Requests' prior per-read timeout; no absolute cross-platform claim.
+- The server may continue probing LLM/ES or installing its immutable plan **after** the client stops waiting. No server cancellation, fixture rollback, full E2E/airgap acceptance or Linux deployment verification is claimed. Hosted tests/CI and formal Codex review remain pending exact final HEAD. Do not Merge without user authorization.

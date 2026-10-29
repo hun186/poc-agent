@@ -1,8 +1,12 @@
 """Mode-specific evidence acquisition for the shared Requirement E2E flow."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
+import signal
+import sys
+import threading
 
 import requests
 
@@ -16,6 +20,42 @@ from operator_e2e.requirement_e2e_support import (
 # sequentially. A fixed 30s HTTP read timeout is shorter than healthy
 # high-load preparations; 10 minutes is a bounded operator-only allowance.
 E2E_PREFLIGHT_TIMEOUT_SECONDS = 600
+
+
+class _PreflightClientDeadlineExpired(BaseException):
+    """Deliberately bypass broad network-library Exception/retry handlers."""
+
+
+@contextmanager
+def _preflight_client_deadline(seconds: float) -> Iterator[None]:
+    """Bound a Linux operator's *wait* for the GET, not server-side work.
+
+    SIGALRM is process global. Only the Linux main thread may safely own the
+    timer; fail closed on any pre-existing handler/timer rather than clobber it.
+    Remote operators on other platforms retain Requests' inactivity timeout.
+    """
+    if not sys.platform.startswith("linux"):
+        yield
+        return
+    if threading.current_thread() is not threading.main_thread() or not hasattr(signal, "setitimer"):
+        raise HarnessFailure("remote_preflight_deadline_unavailable", stage="RUNTIME_WORKERS")
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    active_seconds, interval = signal.getitimer(signal.ITIMER_REAL)
+    if previous_handler not in (signal.SIG_DFL, signal.SIG_IGN) or active_seconds > 0 or interval > 0:
+        raise HarnessFailure("remote_preflight_deadline_conflict", stage="RUNTIME_WORKERS")
+
+    def expire(_signum, _frame):
+        raise _PreflightClientDeadlineExpired()
+
+    signal.signal(signal.SIGALRM, expire)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, seconds)
+        try:
+            yield
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+    finally:
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 class DeploymentEvidenceProvider(Protocol):
@@ -43,10 +83,13 @@ class RemoteDeploymentEvidenceProvider:
 
     def preflight(self, verification: str = "release") -> dict[str, Any]:
         try:
-            evidence = self.api.get(
-                f"/v1/operator-e2e/runtime-evidence?verification={verification}",
-                timeout=E2E_PREFLIGHT_TIMEOUT_SECONDS,
-            )
+            with _preflight_client_deadline(E2E_PREFLIGHT_TIMEOUT_SECONDS):
+                evidence = self.api.get(
+                    f"/v1/operator-e2e/runtime-evidence?verification={verification}",
+                    timeout=E2E_PREFLIGHT_TIMEOUT_SECONDS,
+                )
+        except _PreflightClientDeadlineExpired as exc:
+            raise HarnessFailure("remote_preflight_client_deadline_exceeded", stage="RUNTIME_WORKERS") from exc
         except HarnessFailure as exc:
             if exc.category == "authentication_failed":
                 raise HarnessFailure("remote_evidence_authentication_failed", stage="RUNTIME_WORKERS") from exc
