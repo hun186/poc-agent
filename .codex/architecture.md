@@ -121,3 +121,6 @@ visibility, or live SRAF system acceptance.
 
 
 - 2026-10-30 Follow-up: `sra_api/services/linux_e2e_preflight_guard.py` holds Linux no-follow same-host `flock` across `OperatorPreflightTracker.run` (including SDK blocks); tracker retains local generation/status, and host-lock observer reports only a busy bit. Separate Linux API processes do **not** share immutable `BackendPlan`. `agent.external_capabilities.prepare_requirement_elasticsearch` pre-checks count and all fixture IDs via `mget`, creates only missing documents, post-checks again. Not a distributed lock or atomic ES fixture transaction.
+
+
+- 2026-10-30: `agent.external_capabilities.staged_plan_publication/publish_staged_plan` provides request-ContextVar-only candidate while operator preflight runs. Only `OperatorPreflightTracker.run` opts in, publishing after complete evidence handler return and budget checks. Other E2E worker threads/processes continue to fail closed while no local frozen plan exists. Existing immediate `frozen_plan` direct-caller contract unchanged. Cross-process plan dissemination/durable result evidence remains unimplemented.
