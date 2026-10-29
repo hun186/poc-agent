@@ -13,6 +13,9 @@ from agent.e2e_preflight_budget import (
     check_budget, preflight_budget,
 )
 from collections.abc import Callable
+from sra_api.services.linux_e2e_preflight_guard import (
+    HostPreflightBusy, host_preflight_guard, linux_host_guard_held,
+)
 from typing import Any, TypeVar
 
 T = TypeVar("T")
@@ -40,32 +43,48 @@ class OperatorPreflightTracker:
         with self._lock:
             if self._active:
                 raise PreflightInProgress("external_e2e_preflight_in_progress")
-            self._active = True
-            self._state = "RUNNING"
-            self._generation += 1
-            self._started = time.monotonic()
-            self._elapsed = 0.0
-        with preflight_budget(self._budget_seconds):
+            # Acquired before RUNNING: a rejected host-level duplicate must
+            # not increment generation or masquerade as a failed execution.
+            guard = host_preflight_guard()
             try:
-                result = operation()
-                # A provider that returns late cannot publish successful evidence.
-                check_budget()
-            except PreflightDeadlineExceeded:
-                self._finish("TIMEOUT")
-                raise
-            except Exception as exc:
-                try:
-                    check_budget()
-                except PreflightDeadlineExceeded as timeout:
-                    self._finish("TIMEOUT")
-                    raise timeout from exc
-                self._finish("FAILED")
-                raise
+                guard.__enter__()
+            except HostPreflightBusy as exc:
+                raise PreflightInProgress("external_e2e_preflight_in_progress") from exc
+            try:
+                self._active = True
+                self._state = "RUNNING"
+                self._generation += 1
+                self._started = time.monotonic()
+                self._elapsed = 0.0
             except BaseException:
-                self._finish("FAILED")
+                guard.__exit__(None, None, None)
                 raise
-            self._finish("COMPLETED")
-            return result
+        try:
+            with preflight_budget(self._budget_seconds):
+                try:
+                    result = operation()
+                    # A provider that returns late cannot publish successful evidence.
+                    check_budget()
+                except PreflightDeadlineExceeded:
+                    self._finish("TIMEOUT")
+                    raise
+                except Exception as exc:
+                    try:
+                        check_budget()
+                    except PreflightDeadlineExceeded as timeout:
+                        self._finish("TIMEOUT")
+                        raise timeout from exc
+                    self._finish("FAILED")
+                    raise
+                except BaseException:
+                    self._finish("FAILED")
+                    raise
+                self._finish("COMPLETED")
+                return result
+        finally:
+            # Does not drop the host guard on an HTTP disconnect or a client
+            # timeout: release occurs only when server-side run() exits.
+            guard.__exit__(None, None, None)
 
     def _finish(self, state: str) -> None:
         with self._lock:
@@ -85,10 +104,17 @@ class OperatorPreflightTracker:
             if self._active and elapsed >= self._budget_seconds:
                 # A hung SDK is still running; do not fabricate cancellation.
                 state = "RUNNING_OVERDUE"
+            scope = "process_local_runtime_evidence_only"
+            if not self._active and linux_host_guard_held():
+                # A peer is holding the host lock; its state, PID, outcome and
+                # generation are deliberately unknown to this process.
+                state = "HOST_LOCK_HELD"
+                scope = "linux_same_host_lock_observation_only"
+                elapsed = 0.0
             return {
                 "schema_version": "sraf_operator_preflight_status_v1",
                 "state": state,
-                "generation": self._generation,
+                "generation": 0 if state == "HOST_LOCK_HELD" else self._generation,
                 "elapsed_seconds": round(elapsed, 3),
-                "scope": "process_local_runtime_evidence_only",
+                "scope": scope,
             }
