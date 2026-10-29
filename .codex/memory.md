@@ -139,3 +139,9 @@
 - PR #316 was merged into main at 078206c3ab9d2945712bfe81b5b97c5ea40a5cc5 after reviewed Hosted CI. Real Linux SRAF private-host acceptance remains pending.
 - This new branch adds a local non-network OFF-1T CLI that reuses the merged OFF-1S launcher/listener attestation rather than duplicating verifier logic. Operator supplies an absolute repository root and numeric API port; only a fixed partial PASS/SKIP status is printed. No bearer, external HTTP, SQL query, or scheduled job is executed.
 - PR #315 remains open because its original standalone diagnostic purpose was not covered by the prior full-matrix gate; assess its overlap after OFF-1T review. Hosted exact-HEAD CI and formal Codex review for OFF-1T have not yet been verified. No merge is authorized.
+
+## 2026-10-29 API readiness timeout after incremental deployment — diagnosis pending
+
+- Operator observed `7z x poc-agent-update.7z -y && ./run_sra_api.sh` with API startup log ending at `Waiting for application startup.`, launcher readiness timeout (90s default), and empty Schedule/Handoff worker logs. In `run_sra_api.sh`, workers start **only after** API listener readiness; thus empty logs are a consequence, not independent root cause.
+- FastAPI `sra_api/main.py` lifespan synchronously runs external E2E model/ES capability plan when explicitly selected, Requirement and Schedule SQL store initialization when enabled, and SQLite Report Job schema/recovery/worker startup. Evidence does not identify which stage blocked; patch adds only whitelisted, redacted per-stage duration logging plus runbook and tests, no feature bypass or forced DB action.
+- Branch `fix/sraf-api-lifespan-startup-stage-diagnostics` is a **diagnostic** candidate, not a confirmed fix. Need exact-head Hosted tests, formal Codex review and a separate user-authorized merge. Need actual deployed safe flags/checkpoint evidence to establish root cause. No access to private runtime or airgap acceptance.
