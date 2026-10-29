@@ -116,3 +116,5 @@ visibility, or live SRAF system acceptance.
 ## 2026-10-29 Read-only runtime baseline composition (proposed)
 
 - `tools/sraf_runtime_baseline_readonly.py` reuses reviewed OFF-1S API listener, OFF-1A anonymous bounded loopback GET, and OFF-1H worker-identity predicates. It observes independently and never upgrades three point-in-time PASS rows to Agent/LLM/SQL/ES/DOCX/full-airgap acceptance. API listener is re-checked after HTTP to reduce, not eliminate, identity races. No new endpoint, scheduler, database, credential scope or service lifecycle change.
+
+- Operator-only E2E cooperative deadline (2026-10-30): `OperatorPreflightTracker.run` scopes `agent/e2e_preflight_budget.py` ContextVar monotonic time budget; capability LLM/ES calls use bounded per-call timeouts and the same budget check before immutable plan write. Source/root checks precede backend resolution. API-status RUNNING_OVERDUE is process-local/observational, not cancellation or a second job system. Normal SRAF reporting has no E2E budget scope.
