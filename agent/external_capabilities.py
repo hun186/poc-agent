@@ -469,6 +469,10 @@ def prepare_requirement_elasticsearch(
                 if not isinstance(entry, Mapping):
                     return Probe(False, "fixture_dataset_drift")
                 doc_id = entry.get("_id")
+                # A concrete index identity is required: an alias or routed
+                # backing index must never be mistaken for our owned fixture.
+                if entry.get("_index") != index:
+                    return Probe(False, "fixture_dataset_drift")
                 if not isinstance(doc_id, str) or doc_id not in fixtures or doc_id in seen:
                     return Probe(False, "fixture_dataset_drift")
                 seen.add(doc_id)
