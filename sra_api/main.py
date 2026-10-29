@@ -34,15 +34,22 @@ from api.security.signed_urls import validate_signing_config
 from api.services.auth_support import PRODUCTION_ENVS
 from sra_api.middleware.product_preview_body_limit import ProductPreviewBodyLimitMiddleware
 from shared.runtime_provenance import requirement_sql_registry_path
+from sra_api.core.startup_stage import StartupStages
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    startup = StartupStages()
+    startup.mark("lifespan.enter")
+    startup.mark("signing_config.begin")
     validate_signing_config()
+    startup.mark("signing_config.done")
     # The API process owns ReportJobWorker and therefore owns/fixes the E2E
     # external plan before any Report Job can be claimed. The operator harness
     # merely asserts this evidence through the authenticated endpoint.
     from agent.external_capabilities import frozen_plan, resolve_environment_plan
+    startup.mark("external_plan.begin")
     frozen_plan(resolve_environment_plan)
+    startup.mark("external_plan.done")
     app.state.requirement_import_service = None
     app.state.requirement_schedule_service = None
     app.state.requirement_product_service = None
@@ -64,7 +71,9 @@ async def lifespan(app: FastAPI):
                 else None
             ),
         )
+        startup.mark("requirement_store.begin")
         requirement_store.initialize()
+        startup.mark("requirement_store.done")
         app.state.requirement_import_service = RequirementImportService(requirement_store, registry)
     if scheduler_enabled:
         from data_ingestion.requirements.connections import SqlRegistry
@@ -73,7 +82,9 @@ async def lifespan(app: FastAPI):
         from sra_api.services.editor_audit import append_audit_event
         registry = SqlRegistry.load(requirement_sql_registry_path(Path.cwd()))
         schedule_store = ScheduleStore(registry, os.getenv("REQUIREMENT_CONTROL_DB_CONNECTION", "requirement_control"), os.getenv("REQUIREMENT_SCHEDULE_DB_SCHEMA", "sra_schedule"), os.getenv("REQUIREMENT_DB_SCHEMA", "sra_requirement"), audit_sink=append_audit_event)
+        startup.mark("schedule_store.begin")
         schedule_store.initialize()
+        startup.mark("schedule_store.done")
         app.state.requirement_schedule_service = ScheduleService(schedule_store)
         if app.state.requirement_import_service is not None:
             from sra_api.services.requirement_product_service import RequirementProductService
@@ -83,15 +94,24 @@ async def lifespan(app: FastAPI):
             )
     store = ReportJobStore(os.getenv("REPORT_JOBS_DB_PATH", ".api_jobs/jobs.sqlite3"), int(os.getenv("REPORT_JOBS_SQLITE_BUSY_TIMEOUT_MS", "5000")))
     reports_root = Path(os.getenv("REPORT_JOBS_REPORTS_ROOT", ".api_jobs/reports"))
+    startup.mark("report_store.begin")
     store.initialize()
+    startup.mark("report_store.done")
+    startup.mark("report_recovery.begin")
     store.recover_running()
+    startup.mark("report_recovery.done")
     worker = ReportJobWorker(store, reports_root)
     app.state.report_job_store = store
     app.state.report_jobs_reports_root = reports_root
     app.state.report_job_worker = worker
+    startup.mark("report_worker.begin")
     worker.start()
+    startup.mark("report_worker.done")
+    startup.mark("lifespan.ready")
     try: yield
-    finally: worker.stop()
+    finally:
+        startup.mark("lifespan.shutdown")
+        worker.stop()
 
 app = FastAPI(
     title="SRA-Structured Retrieval Agent (OpenAI-compatible)",
