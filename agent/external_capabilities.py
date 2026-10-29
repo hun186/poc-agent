@@ -478,11 +478,17 @@ def frozen_plan(resolver: Callable[[str], BackendPlan] | None = None) -> Backend
     mode = parse_mode(os.getenv("REQUIREMENT_E2E_EXTERNAL_MODE"))
     if mode is None:
         return None
+    # E2E jobs must fail closed without waiting on an in-progress operator
+    # resolver that currently holds the immutable-plan lock.
+    if resolver is None and _PLAN is None:
+        raise CapabilityError("external_capability_plan_unresolved")
     with _LOCK:
         if _PLAN is None:
             if resolver is None:
                 raise CapabilityError("external_capability_plan_unresolved")
-            _PLAN = resolver(mode)
+            resolved = resolver(mode)
+            check_budget()  # late SDK result must not become a frozen plan
+            _PLAN = resolved
         elif _PLAN.requested_mode != mode:
             raise CapabilityError("external_capability_plan_frozen")
         return _PLAN
@@ -518,7 +524,8 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
         direct_models["field_selector"] = os.getenv("REPORT_FIELD_SELECTOR_MODEL_ID") or REPORT_MODEL_ID
     boundaries = {
         name: (lambda model=model: LLMClient(model=model).chat(
-            [{"role": "user", "content": "Reply with READY."}], timeout=10))
+            [{"role": "user", "content": "Reply with READY."}],
+            timeout=budget_timeout(10.0)))
         for name, model in direct_models.items()
     }
     # Operator-only READY probe: production Data Agent generation keeps its
@@ -531,12 +538,13 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
                     else f"ollama_chat/{ENV.data_agent_model_id}")
         model = LiteLLMModel(model_id=model_id, api_base=ENV.model_base_url,
                              temperature=ENV.model_temperature,
-                             timeout=E2E_DATA_AGENT_PROBE_TIMEOUT_SECONDS,
+                             timeout=budget_timeout(E2E_DATA_AGENT_PROBE_TIMEOUT_SECONDS),
                              num_retries=0)
         response = model.generate([{
             "role": "user",
             "content": [{"type": "text", "text": "Reply with READY."}],
         }])
+        check_budget()
         return str(response.content or "")
     boundaries["data_agent"] = data_agent_call
     llm = probe_llm_boundaries(boundaries)
@@ -552,10 +560,15 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
             if index not in production_indexes:
                 production_indexes.append(index)
 
+    check_budget()
     acceptance_index = requirement_e2e_es_index()
     try:
         es = _build_es()
+        check_budget()
+    except PreflightDeadlineExceeded:
+        raise
     except Exception:
+        check_budget()
         es_probe = Probe(False, "transport_unavailable")
     else:
         selector_probe = validate_production_index_selectors(
@@ -583,12 +596,14 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
                             False, "importDT", "30d", effective_terms=terms,
                             core_terms=[], syn_terms=[], all_terms=terms,
                         )
-                        response = client.search(index=acceptance_index, body=body)
+                        response = _operator_es_call(
+                            client, lambda es: es.search(index=acceptance_index, body=body))
                         body = getattr(response, "body", response)
                         if not (((body or {}).get("hits") or {}).get("hits") or []):
                             return False
                     return True
                 es_probe = probe_elasticsearch(es, acceptance_index, acceptance_search)
+    check_budget()
     return resolve_plan(mode, llm, es_probe)
 
 
