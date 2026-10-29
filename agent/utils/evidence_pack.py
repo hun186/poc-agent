@@ -205,6 +205,30 @@ def pack_ev_for_llm(ev_compact: List[Dict[str, Any]], q: str) -> Dict[str, Any]:
     }
 '''
 
+def _selector_failure_code(exc: Exception) -> str:
+    """Stable, redacted error code; follow chained Ollama transport failures."""
+    pending: list[BaseException] = [exc]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, TimeoutError) or type(current).__name__ in {
+            "ReadTimeout", "ConnectTimeout", "Timeout", "APITimeoutError",
+        }:
+            return "timeout"
+        if isinstance(current, ConnectionError) or type(current).__name__ in {
+            "APIConnectionError",
+        }:
+            return "transport_unavailable"
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+    return "llm_runtime_failure" if isinstance(exc, RuntimeError) else "selector_error"
+
+
 def pack_ev_for_llm(
     ev_compact: List[Dict[str, Any]],
     q: str,
@@ -228,28 +252,31 @@ def pack_ev_for_llm(
     allow = set(allow_rules)
     llm_used = False
     llm_error = None
+    llm_attempted = False
 
     if mode in ("llm", "hybrid"):
         if call_llm_fn is None:
-            llm_error = "call_llm_fn not provided"
+            llm_error = "selector_not_configured"
         else:
             try:
+                llm_attempted = True
                 allow_llm = llm_select_fields(
-                    q,
-                    call_llm_fn,
-                    model=llm_model,
-                    timeout=llm_timeout,
-                    max_fields=llm_max_fields,
+                    q, call_llm_fn, model=llm_model,
+                    timeout=llm_timeout, max_fields=llm_max_fields,
                 )
                 if allow_llm:
                     llm_used = True
                     if mode == "llm":
                         allow = allow_llm
-                    else:  # hybrid：只加欄位，不減欄位
+                    else:  # hybrid only adds to rules baseline
                         allow = allow_rules | allow_llm
+                else:
+                    llm_error = "invalid_response"
             except Exception as e:
-                llm_error = f"{type(e).__name__}: {e}"
+                # Never expose raw transport exception URLs/tokens to UI/trace.
+                llm_error = _selector_failure_code(e)
 
+    fallback_used = mode in ("llm", "hybrid") and not llm_used
     ev_slim = filter_ev_fields(ev_compact, allow)
 
     return {
@@ -257,7 +284,10 @@ def pack_ev_for_llm(
         "meta": {
             "mode": mode,
             "llm_used": llm_used,
+            "llm_attempted": llm_attempted,
             "llm_error": llm_error,
+            "fallback_used": fallback_used,
+            "fallback_strategy": "rules" if fallback_used else None,
             "allow_fields": sorted(allow),
             "fields_count": len(allow),
         }
