@@ -141,3 +141,6 @@
 
 
 - 2026-10-30 Follow-up gates: Hosted exact-head focused/Worker/19 OFF-0, new Linux subprocess and ES fixture regression, complete Codex Review/CLEAN before separate explicit-user Merge. Verify real configured elasticsearch-py `mget`, `op_type=create`, ACL and refresh semantics on private Linux, under controlled high load with separate opt-in. Investigate stronger distributed lock/lease and real result provenance for multi-host/mount/worker deployments; per-process immutable plan is not shared. Test cross-host out-of-band ES mutation and safe partial fixture recovery. Hard cancellation and full SQL/LLM/DOCX/physical isolation still unverified.
+
+
+- 2026-10-30: Next validation gates for provisional E2E plan: Hosted exact final-HEAD focused pytest + legacy Worker E2E + OFF-0 schema, and formal Codex Review CLEAN (no unresolved P1/P2/threads) before separate user-authorized Merge. Confirm live Linux busy-Ollama provider timeout, ES partial fixture recovery, and multi-worker routing with operator authorization. Stronger signed/durable plan receipt and revalidation/expiry rules for already-frozen plan remain future work; this PR deliberately leaves per-process no-plan fail-closed behaviour, physical airgap/SQL/LLM/DOCX verification and independent #322 untouched.

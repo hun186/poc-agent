@@ -160,3 +160,6 @@ strong authenticated peer identity; protected UDS/mTLS remains future work.
 
 
 - 2026-10-30 Operator E2E partial-fixture design: require ownership Mapping plus count and exact `_index/_id/_source` checks before writes, create only missing IDs using `op_type=create` and recheck; reject any unexpected/modified/aliased entry, never rewrite. Linux operator concurrency uses private UID-owned no-follow file `flock` with nonblocking admission, not daemon threads or duplicate Scheduler/Job queue. Expose only busy observation across processes; fail closed on corrupt/unsafe lock path. Document that Windows and separate hosts retain old scope.
+
+
+- 2026-10-30: Do not globally expose a newly prepared E2E BackendPlan until **all** authenticated runtime evidence is constructed and the operator's cooperative deadline has not expired. Use request-only ContextVar provisional state and an explicit under-lock publication step; preserve immutability, independent Request Job fail-closed semantics and direct legacy `frozen_plan` callers. Do not introduce untrusted shared JSON plan files or silently adopt another process's hybrid/mock selection.

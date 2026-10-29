@@ -517,31 +517,80 @@ def prepare_requirement_elasticsearch(
         check_budget()
         return _elasticsearch_exception_probe(exc, setup=True)
 
+
 _LOCK = threading.Lock()
 _PLAN: BackendPlan | None = None
 
 
+@dataclass
+class _StagedBackendPlan:
+    """Unpublished candidate visible only inside the operator request context."""
+    candidate: BackendPlan | None = None
+
+
+_STAGED_PLAN: ContextVar[_StagedBackendPlan | None] = ContextVar(
+    "operator_e2e_staged_plan", default=None,
+)
+
+
+@contextmanager
+def staged_plan_publication():
+    """Only the operator handler opts in; normal E2E resolution is unchanged."""
+    stage = _StagedBackendPlan()
+    token = _STAGED_PLAN.set(stage)
+    try:
+        yield stage
+    finally:
+        _STAGED_PLAN.reset(token)
+
+
+def publish_staged_plan(stage: _StagedBackendPlan) -> None:
+    """Commit exactly once after complete, timely runtime-evidence success."""
+    global _PLAN
+    if _STAGED_PLAN.get() is not stage:
+        raise CapabilityError("external_capability_plan_stage_invalid")
+    check_budget()
+    if stage.candidate is None:
+        return
+    with _LOCK:
+        check_budget()
+        if _PLAN is not None and _PLAN != stage.candidate:
+            raise CapabilityError("external_capability_plan_frozen")
+        _PLAN = stage.candidate
+        stage.candidate = None
+
+
 def frozen_plan(resolver: Callable[[str], BackendPlan] | None = None) -> BackendPlan | None:
-    """Resolve once per process; a later runtime error never changes backend."""
+    """Resolve once per process; operator requests stage until complete success."""
     global _PLAN
     mode = parse_mode(os.getenv("REQUIREMENT_E2E_EXTERNAL_MODE"))
     if mode is None:
         return None
-    # E2E jobs must fail closed without waiting on an in-progress operator
-    # resolver that currently holds the immutable-plan lock.
-    if resolver is None and _PLAN is None:
+    stage = _STAGED_PLAN.get()
+    # Other threads must not see an operator's provisional plan.
+    if resolver is None and _PLAN is None and (stage is None or stage.candidate is None):
         raise CapabilityError("external_capability_plan_unresolved")
     with _LOCK:
-        if _PLAN is None:
-            if resolver is None:
-                raise CapabilityError("external_capability_plan_unresolved")
-            resolved = resolver(mode)
-            check_budget()  # late SDK result must not become a frozen plan
-            _PLAN = resolved
-        elif _PLAN.requested_mode != mode:
+        if _PLAN is not None:
+            if _PLAN.requested_mode != mode:
+                raise CapabilityError("external_capability_plan_frozen")
+            return _PLAN
+        if stage is not None and stage.candidate is not None:
+            if stage.candidate.requested_mode != mode:
+                raise CapabilityError("external_capability_plan_frozen")
+            return stage.candidate
+        if resolver is None:
+            raise CapabilityError("external_capability_plan_unresolved")
+        resolved = resolver(mode)
+        check_budget()  # late SDK result must not become a frozen plan
+        if resolved.requested_mode != mode:
             raise CapabilityError("external_capability_plan_frozen")
-        return _PLAN
-
+        if stage is None:
+            # Direct/test callers keep their previous immediate-publish contract.
+            _PLAN = resolved
+        else:
+            stage.candidate = resolved
+        return resolved
 
 def install_plan(plan: BackendPlan) -> BackendPlan:
     global _PLAN
