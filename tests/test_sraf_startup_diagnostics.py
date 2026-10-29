@@ -58,7 +58,7 @@ def test_lifespan_wraps_existing_critical_steps_without_bypassing_work():
     ):
         assert f'with startup_phase("{phase}"):' in source
     for operation in (
-        "validate_signing_config()", "frozen_plan(resolve_environment_plan)",
+        "validate_signing_config()", 'parse_mode(os.getenv("REQUIREMENT_E2E_EXTERNAL_MODE"))',
         "requirement_store.initialize()", "schedule_store.initialize()",
         "store.initialize()", "store.recover_running()", "worker.start()",
         "try: yield", "finally: worker.stop()",

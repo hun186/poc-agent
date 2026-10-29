@@ -14,8 +14,7 @@ class ReportJobWorker:
         self.stop_event = threading.Event(); self.thread = None
     def start(self):
         if self.thread and self.thread.is_alive(): return
-        from agent.external_capabilities import frozen_plan, resolve_environment_plan
-        frozen_plan(resolve_environment_plan)
+        # Production jobs must not require a live E2E capability probe.
         self.root.mkdir(parents=True, exist_ok=True)
         self.thread = threading.Thread(target=self.run, name="report-job-worker", daemon=True); self.thread.start()
     def stop(self, timeout=5):
@@ -32,9 +31,12 @@ class ReportJobWorker:
         temp = self.root / f".{job.job_id}.{os.getpid()}.{threading.get_ident()}.tmp"
         try:
             from agent.external_capabilities import (
-                requirement_acceptance_scope, verified_requirement_e2e_job_model,
+                CapabilityError, frozen_plan, requirement_acceptance_scope,
+                verified_requirement_e2e_job_model,
             )
             is_acceptance, effective_model = verified_requirement_e2e_job_model(job)
+            if is_acceptance and frozen_plan() is None:
+                raise CapabilityError("external_capability_plan_unresolved")
             scope = requirement_acceptance_scope() if is_acceptance else nullcontext()
             with scope:
                 payload = SimpleNamespace(model=effective_model, messages=[ChatMessage(role="user", content=job.prompt)], stream=False)

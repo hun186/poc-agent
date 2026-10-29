@@ -44,8 +44,11 @@ async def lifespan(app: FastAPI):
     # external plan before any Report Job can be claimed. The operator harness
     # merely asserts this evidence through the authenticated endpoint.
     with startup_phase("external_plan"):
-        from agent.external_capabilities import frozen_plan, resolve_environment_plan
-        frozen_plan(resolve_environment_plan)
+        from agent.external_capabilities import parse_mode
+        # Normal service startup validates configuration but does not run
+        # expensive LLM/ES acceptance probes or seed the E2E fixture index.
+        # An authenticated operator runtime-evidence request prepares the plan.
+        parse_mode(os.getenv("REQUIREMENT_E2E_EXTERNAL_MODE"))
     app.state.requirement_import_service = None
     app.state.requirement_schedule_service = None
     app.state.requirement_product_service = None

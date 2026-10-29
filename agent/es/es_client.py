@@ -124,11 +124,12 @@ def _build_es() -> Elasticsearch:
 def get_es() -> Elasticsearch | MockElasticsearch:
     global _ES, _USING_MOCK_ES
     from agent.external_capabilities import (
-        frozen_plan, requirement_acceptance_active, resolve_environment_plan,
+        frozen_plan, requirement_acceptance_active,
     )
 
-    plan = frozen_plan(resolve_environment_plan)
-    if (requirement_acceptance_active() and plan is not None
+    acceptance = requirement_acceptance_active()
+    plan = frozen_plan() if acceptance else None
+    if (acceptance and plan is not None
             and plan.elasticsearch_backend == "semantic_mock"):
         # Requirement E2E semantic mocks are execution-scoped.  Never cache this
         # adapter into the process-wide production Elasticsearch singleton.

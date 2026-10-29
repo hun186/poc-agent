@@ -1,4 +1,7 @@
 from pathlib import Path
+
+import pytest
+from agent.external_capabilities import BackendPlan, install_plan, reset_plan_for_tests
 from api.services.report_job_store import ReportJobStore
 from api.services.report_job_worker import ReportJobWorker
 from api.services.turn_execution import AgentTurnResult
@@ -6,6 +9,13 @@ from api.services import report_job_worker
 from agent.external_capabilities import (
     mark_requirement_e2e_model, requirement_acceptance_active,
 )
+
+@pytest.fixture(autouse=True)
+def _isolate_acceptance_plan():
+    reset_plan_for_tests()
+    yield
+    reset_plan_for_tests()
+
 
 HANDOFF_OWNER = "requirement-handoff-runtime"
 HANDOFF_SUBMISSION = "rhsub_" + "a" * 48
@@ -35,6 +45,8 @@ def test_worker_direct_service_and_atomic_docx(tmp_path, monkeypatch):
     assert not list((tmp_path/"reports").glob("*.tmp"))
 def test_worker_scopes_only_verified_requirement_e2e_job(tmp_path, monkeypatch):
     monkeypatch.setenv("REQUIREMENT_HANDOFF_LOGICAL_PRINCIPAL", HANDOFF_OWNER)
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "live")
+    install_plan(BackendPlan("live", "live", "live", "pass", "pass"))
     store=setup_job(
         tmp_path, mark_requirement_e2e_model("m"),
         trusted_handoff=True, owner_id=HANDOFF_OWNER,
@@ -109,3 +121,16 @@ def test_failure_leaves_no_artifact(tmp_path, monkeypatch):
     monkeypatch.setattr(report_job_worker,"execute_agent_turn",lambda **_: (_ for _ in ()).throw(RuntimeError("secret /tmp/x")))
     ReportJobWorker(store,tmp_path/"reports").execute(job)
     assert store.get(job.job_id).status=="failed" and not list((tmp_path/"reports").glob("*"))
+
+
+def test_unprepared_e2e_job_fails_closed_without_running_agent(tmp_path, monkeypatch):
+    monkeypatch.setenv("REQUIREMENT_HANDOFF_LOGICAL_PRINCIPAL", HANDOFF_OWNER)
+    monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "live")
+    store = setup_job(tmp_path, mark_requirement_e2e_model("m"),
+                      trusted_handoff=True, owner_id=HANDOFF_OWNER)
+    job = store.claim_next()
+    monkeypatch.setattr(report_job_worker, "execute_agent_turn",
+                        lambda **_: (_ for _ in ()).throw(AssertionError("E2E ran")))
+    ReportJobWorker(store, tmp_path / "reports").execute(job)
+    assert store.get(job.job_id).status == "failed"
+    assert store.get(job.job_id).error_type == "CapabilityError"

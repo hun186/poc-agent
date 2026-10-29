@@ -184,10 +184,11 @@ _default_client: Optional[LLMClient | DeterministicE2ELLMClient] = None
 def get_default_client() -> LLMClient | DeterministicE2ELLMClient:
     global _default_client
     from agent.external_capabilities import (
-        frozen_plan, requirement_acceptance_active, resolve_environment_plan,
+        frozen_plan, requirement_acceptance_active,
     )
-    plan = frozen_plan(resolve_environment_plan)
-    if (requirement_acceptance_active() and plan is not None
+    acceptance = requirement_acceptance_active()
+    plan = frozen_plan() if acceptance else None
+    if (acceptance and plan is not None
             and plan.llm_backend == "semantic_mock"):
         # Semantic LLM replacement is only valid inside a verified E2E test job.
         # Do not cache it into the production singleton.
@@ -288,10 +289,10 @@ def call_llm(
     except Exception as e:
         print(f"[LLMClient] chat 呼叫失敗：{e}")
         from agent.external_capabilities import frozen_plan, requirement_acceptance_active
-        plan = frozen_plan()
-        if (requirement_acceptance_active() and plan is not None
-                and plan.llm_backend == "live"):
-            raise RuntimeError("e2e_live_llm_runtime_failure") from e
+        if requirement_acceptance_active():
+            plan = frozen_plan()
+            if plan is not None and plan.llm_backend == "live":
+                raise RuntimeError("e2e_live_llm_runtime_failure") from e
         # Production execution must never silently downgrade to an E2E mock or
         # convert a real LLM transport failure into an apparently successful
         # empty response.
