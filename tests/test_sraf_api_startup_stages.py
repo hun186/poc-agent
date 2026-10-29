@@ -11,13 +11,13 @@ from sra_api.core.startup_stage import STAGES, StartupStages
 
 
 def test_checkpoint_logging_uses_only_fixed_literals(caplog):
-    clock_values = iter((10.0, 10.1, 12.25))
+    clock_values = iter((10.0, 10.125, 12.25))
     stages = StartupStages(clock=lambda: next(clock_values))
     with caplog.at_level(logging.INFO, logger="uvicorn.error"):
         stages.mark("lifespan.enter")
         stages.mark("external_plan.begin")
     assert [record.getMessage() for record in caplog.records] == [
-        "SRA_STARTUP phase=lifespan.enter elapsed_ms=99",
+        "SRA_STARTUP phase=lifespan.enter elapsed_ms=125",
         "SRA_STARTUP phase=external_plan.begin elapsed_ms=2250",
     ]
 
