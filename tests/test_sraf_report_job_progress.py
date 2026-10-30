@@ -183,3 +183,24 @@ def test_worker_real_nested_read_timeout_is_failure_not_waiting(tmp_path, monkey
     assert result["progress"]["observation"] == "terminal"
     assert result["progress"]["failure_category"] == "timeout"
     assert "PRIVATE-TOKEN" not in str(result)
+
+
+def test_wrapped_urllib3_response_body_timeout_marks_real_timeout(tmp_path, monkeypatch):
+    """The common Requests response consumption path wraps urllib3 ReadTimeout."""
+    from urllib3.exceptions import ProtocolError, ReadTimeoutError
+    store = new_store(tmp_path)
+    job = store.claim_next()
+
+    def fake_turn(**kwargs):
+        wrapped = ReadTimeoutError(None, "/PRIVATE-ENDPOINT", "PRIVATE-TOKEN")
+        raise requests.exceptions.ConnectionError(
+            ProtocolError("Connection broken", wrapped)
+        )
+
+    monkeypatch.setattr(report_job_worker, "execute_agent_turn", fake_turn)
+    ReportJobWorker(store, tmp_path / "reports").execute(job)
+    result = _view(store.get(job.job_id))
+    assert result["status"] == "failed"
+    assert result["progress"]["failure_category"] == "timeout"
+    assert "PRIVATE-TOKEN" not in str(result)
+    assert "PRIVATE-ENDPOINT" not in str(result)
