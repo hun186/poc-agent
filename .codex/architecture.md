@@ -124,3 +124,6 @@ visibility, or live SRAF system acceptance.
 
 
 - 2026-10-30: `agent.external_capabilities.staged_plan_publication/publish_staged_plan` provides request-ContextVar-only candidate while operator preflight runs. Only `OperatorPreflightTracker.run` opts in, publishing after complete evidence handler return and budget checks. Other E2E worker threads/processes continue to fail closed while no local frozen plan exists. Existing immediate `frozen_plan` direct-caller contract unchanged. Cross-process plan dissemination/durable result evidence remains unimplemented.
+
+
+- 2026-10-30 operator E2E stale-plan revalidation: global `_PLAN_TRUSTED` admission bit for process-local frozen plan; `OperatorPreflightTracker.run` suspends it on entry after Linux host lock, and staged `frozen_plan(resolve_environment_plan)` always recomputes an exact-matching candidate before final handler-side publication restores trust. New verified E2E job threads fail closed during recheck or after drift/failure; normal production Report Jobs have no dependence on this bit. No process-to-process propagation or in-flight cancellation.
