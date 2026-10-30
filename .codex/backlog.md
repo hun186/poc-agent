@@ -38,3 +38,6 @@
 
 
 - 2026-10-30 OFF-1V release gates: check exact PR HEAD Hosted focused+Worker+startup Python and OFF-0 19 schema tests, complete formal Codex Review CLEAN and 0 P1/P2/threads before independent user-authorized Merge. After deployment, operator may manually capture OFF-1U idle and naturally busy snapshots with identical sample counts/intervals into user-controlled files and run OFF-1V offline; compare means/maxima as partial, not certified host/process identity. Future separate authorized real Linux multi-worker lock identity, busy Ollama/ES SDK timeout, ES create-only fixture recovery and SQL/Agent/DOCX acceptance are still NOT_TESTED.
+
+
+- 2026-10-30 OFF-1V follow-up: ensure full Hosted CI on post-Codex-P2 HEAD, verify direct `python tools/sraf_linux_load_compare_offline.py --help` with PYTHONPATH absent and sanitized `10**400`/deep JSON rejection, reply to/resolve both inline review Threads and request a NEW formal final-head Codex Review. No Merge until CLEAN and explicit user instruction.
