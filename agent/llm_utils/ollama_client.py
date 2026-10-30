@@ -2,6 +2,8 @@
 
 import os
 import logging
+import math
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional, Dict, List, Any
@@ -9,6 +11,46 @@ from typing import Optional, Dict, List, Any
 import requests
 
 logger = logging.getLogger(__name__)
+
+# Stable low-cardinality labels only: never log model name, endpoint, request,
+# response or raw exception. 503 is not proof of Ollama/GPU queueing.
+_LLM_STAGES = frozenset({"router", "query_refiner", "report", "pure_llm"})
+
+
+def _llm_failure_category(exc: Exception) -> str:
+    if isinstance(exc, requests.exceptions.ConnectTimeout):
+        return "connect_timeout"
+    if isinstance(exc, requests.exceptions.ReadTimeout):
+        return "read_timeout"
+    if isinstance(exc, requests.exceptions.Timeout):
+        return "transport_timeout"
+    if isinstance(exc, requests.exceptions.HTTPError):
+        response = exc.response
+        code = getattr(response, "status_code", None)
+        if code == 429:
+            return "http_429"
+        if code == 503:
+            return "http_503"
+        if type(code) is int and 500 <= code <= 599:
+            return "http_5xx"
+        if type(code) is int and 400 <= code <= 499:
+            return "http_4xx"
+        return "http_error"
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return "connection_error"
+    if isinstance(exc, requests.exceptions.RequestException):
+        return "request_error"
+    if isinstance(exc, ValueError):
+        return "invalid_response"
+    return "unexpected_error"
+
+
+def _timeout_label(value: Optional[float]) -> str:
+    # This is the Requests setting, not a true end-to-end request deadline.
+    if type(value) in (int, float) and math.isfinite(value) and value > 0:
+        return str(round(value, 3))
+    return "default"
+
 
 class LLMClient:
     """
@@ -213,6 +255,7 @@ def call_llm(
     model: Optional[str] = None,       # ★ 新增：可選 model 覆寫
     include_current_time: bool = False,
     current_time_context_reason: Optional[str] = None,
+    stage: Optional[str] = None,
 ) -> str:
     """
     最建議使用的入口：
@@ -226,7 +269,7 @@ def call_llm(
         return ""
 
     # ==== 精簡版 debug log（不再印全文） ====
-    debug = os.getenv("DEBUG_CALL_LLM", "1") == "1"   # 想完全關掉就設成 0
+    debug = os.getenv("DEBUG_CALL_LLM", "0") == "1"   # 想完全關掉就設成 0
     if debug:
         sp = (system_prompt or "").replace("\n", " ")
         up = prompt.replace("\n", " ")
@@ -280,14 +323,24 @@ def call_llm(
         # 這裡覆寫 payload["model"]，優先權高於 LLMClient 自己的 self.model
         params["model"] = model
 
+    # Only a total observed blocking duration. Queue wait, first token and
+    # generation time cannot be separated from a non-streaming call.
+    stage_label = stage if stage in _LLM_STAGES else "unspecified"
+    timeout_label = _timeout_label(timeout)
+    started = time.perf_counter()
     try:
-        return client.chat(
+        answer = client.chat(
             messages,
             extra_params=params,
             timeout=timeout,
         )
     except Exception as e:
-        print(f"[LLMClient] chat 呼叫失敗：{e}")
+        elapsed = max(0.0, time.perf_counter() - started)
+        logger.warning(
+            "[llm_call] stage=%s outcome=error category=%s elapsed_sec=%.3f "
+            "requests_timeout_sec=%s",
+            stage_label, _llm_failure_category(e), elapsed, timeout_label,
+        )
         from agent.external_capabilities import frozen_plan, requirement_acceptance_active
         if requirement_acceptance_active():
             plan = frozen_plan()
@@ -297,3 +350,10 @@ def call_llm(
         # convert a real LLM transport failure into an apparently successful
         # empty response.
         raise RuntimeError("llm_runtime_failure") from e
+    elapsed = max(0.0, time.perf_counter() - started)
+    (logger.warning if elapsed >= 30.0 else logger.info)(
+        "[llm_call] stage=%s outcome=success category=none elapsed_sec=%.3f "
+        "requests_timeout_sec=%s",
+        stage_label, elapsed, timeout_label,
+    )
+    return answer
