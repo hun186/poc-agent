@@ -184,6 +184,31 @@
       controls();
     }
   }
+  function authorizedDocxFilename(disposition, fallback) {
+    if (typeof disposition !== 'string') return fallback;
+    let filename = '';
+    const extended = /(?:^|;)\s*filename\*\s*=\s*utf-8'[^']*'([^;]+)/i.exec(disposition);
+    if (extended) {
+      try { filename = decodeURIComponent(extended[1].trim()); }
+      catch (_) { return fallback; }
+    } else {
+      const quoted = /(?:^|;)\s*filename\s*=\s*"((?:\\.|[^"\\])*)"/i.exec(disposition);
+      if (quoted) {
+        filename = quoted[1].replace(/\\(.)/g, '$1');
+      } else {
+        const unquoted = /(?:^|;)\s*filename\s*=\s*([^;\s]+)/i.exec(disposition);
+        if (unquoted) filename = unquoted[1];
+      }
+    }
+    filename = filename.trim();
+    // Do not trust Content-Disposition as a local path or arbitrary extension.
+    if (!filename || filename.length > 240 ||
+        /[\/\\\x00-\x1f\x7f]/.test(filename) ||
+        filename === '.' || filename === '..' || !/\.docx$/i.test(filename)) {
+      return fallback;
+    }
+    return filename;
+  }
   async function download() {
     if (!completedId || !safeId(completedId) || !token()) {
       message('只有已完成的任務可以下載，且必須提供有效 Token。', 'error');
@@ -206,7 +231,7 @@
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = 'report-' + id + '.docx';
+      anchor.download = authorizedDocxFilename(response.headers.get('content-disposition'), 'report-' + id + '.docx');
       anchor.style.display = 'none';
       document.body.appendChild(anchor);
       anchor.click();

@@ -17,8 +17,10 @@ const planned = [];
 const timers = new Map();
 let nextTimer = 0;
 let downloadClicks = 0;
-function response(status, body) {
+const downloadedNames = [];
+function response(status, body, disposition = null) {
   return {status, ok: status >= 200 && status < 300,
+    headers: {get: (key) => key.toLowerCase() === 'content-disposition' ? disposition : null},
     json: async () => body, blob: async () => ({size: 10})};
 }
 const document = {
@@ -26,7 +28,7 @@ const document = {
   getElementById: (id) => elements[id],
   addEventListener: (kind, fn) => { events[kind] = fn; },
   body: {appendChild() {}},
-  createElement() { return {style: {}, click() { downloadClicks++; }, remove() {}}; }
+  createElement() { return {style: {}, click() { downloadClicks++; downloadedNames.push(this.download); }, remove() {}}; }
 };
 const window = {addEventListener: (kind, fn) => { events[kind] = fn; }};
 const sandbox = {
@@ -72,12 +74,26 @@ function progress(jobId, status, phase, long=false) {
   await tick();
   assert.equal(elements.downloadBtn.hidden, false);
   assert.equal(timers.size, 0);
-  planned.push(response(200, null));
+  planned.push(response(200, null, 'attachment; filename="requested-report.docx"'));
   await fire('downloadBtn');
   assert.equal(downloadClicks, 1);
+  assert.equal(downloadedNames.at(-1), 'requested-report.docx');
   assert.equal(calls.at(-1).url, '/v1/report/jobs/job-A/word');
   assert.equal(calls.at(-1).opts.headers.Authorization, 'Bearer secret');
-  // The only timer after a download is a local blob URL revocation.
+  planned.push(response(200, null, "attachment; filename*=utf-8''" + encodeURIComponent('資料分析.docx')));
+  await fire('downloadBtn');
+  assert.equal(downloadedNames.at(-1), '資料分析.docx');
+  // Unsafe, malformed or missing filename must not be a path on the user's machine.
+  planned.push(response(200, null, 'attachment; filename="../../evil.docx"'));
+  await fire('downloadBtn');
+  assert.equal(downloadedNames.at(-1), 'report-job-A.docx');
+  planned.push(response(200, null, "attachment; filename*=utf-8''%invalid"));
+  await fire('downloadBtn');
+  assert.equal(downloadedNames.at(-1), 'report-job-A.docx');
+  planned.push(response(200, null));
+  await fire('downloadBtn');
+  assert.equal(downloadedNames.at(-1), 'report-job-A.docx');
+  // The only timers after downloads are local blob URL revocations.
   timers.clear();
   elements.jobId.value = 'job-B';
   planned.push(response(404, {detail: 'SECRET-SERVER-ERROR'}));
