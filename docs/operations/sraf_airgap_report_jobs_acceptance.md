@@ -43,3 +43,9 @@
 - Exit 2／INCOMPLETE：部分檢查未驗證、缺乏授權或超時，不能當 PASS。
 
 限制：這次整合只覆蓋 Report Job/UI 及基礎網路診斷，仍須獨立驗收 ES TLS/IP SAN/Mapping、SQL schema/來源、排程與 Worker lease、原始模型及資料檢索品質、真實瀏覽器操作、OFF-2～5 物理斷網、備份／還原等。以上尚未完成項目保留於 .codex/backlog.md，不得寫成已落地驗收。
+
+## 最新 P2 防護與模式退出碼
+
+輸出目錄的每一層 Linux 父目錄以 O_NOFOLLOW dirfd 固定檢查，私有輸出目錄須由執行 UID 擁有並僅授權本人存取。若中途存在符號連結、不可信或非 sticky 的其他人可寫入父目錄，則拒絕寫入；**目錄驗證失敗時連錯誤證據 JSON 都不寫入**。所有 DOCX、JSON 都以已驗證 dirfd 相對建立，避免路徑被替換而重導向輸出。部署工作目錄若為多人可寫，請指定可信獨立目錄（如 `--output-dir "$HOME/sraf-acceptance-results"`），不可為方便而放寬保護。
+
+`--suite diagnose` 會把所選 API/ES/LLM TCP 探測全部納入頂層判定：任一 FAIL → exit 1/FAIL；無 FAIL 但存在 SKIP → exit 2/INCOMPLETE；全部必要子項 PASS 才 exit 0/PASS_PARTIAL。預設 quick 不要求外部 TCP 探測成功。無網路模式不可宣稱通過真實服務。
