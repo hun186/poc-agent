@@ -174,3 +174,48 @@ def test_two_snapshots_with_different_context_remain_unverified_identity():
     assert result["comparability"] == "UNVERIFIED_CROSS_RUN_IDENTITY"
     assert result["overall"] == "DESCRIPTIVE_COMPARISON"
     assert result["feature_acceptance"] == "NOT_TESTED"
+
+
+def test_documented_direct_script_help_runs_without_pythonpath(tmp_path):
+    """The operator runs python tools/file.py, not python -m tools.file."""
+    import os
+    import subprocess
+    import sys
+    script = Path(__file__).resolve().parents[1] / "tools" / "sraf_linux_load_compare_offline.py"
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path, env=env, timeout=15, capture_output=True, text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--idle-file" in result.stdout and "--busy-file" in result.stdout
+
+
+def test_oversized_rss_integer_fail_closed_in_compare_and_cli(tmp_path, capsys):
+    poisoned = snapshot()
+    poisoned["samples"][0]["rss_mib"] = 10**400
+    assert cli.compare(snapshot(), poisoned)["overall"] == "INCOMPLETE"
+    idle = tmp_path / "idle.json"
+    busy = tmp_path / "busy.json"
+    idle.write_text(json.dumps(snapshot()), encoding="utf-8")
+    busy.write_text(json.dumps(poisoned), encoding="utf-8")
+    assert cli.main(["--idle-file", str(idle), "--busy-file", str(busy)]) == 2
+    output = capsys.readouterr()
+    assert output.err == ""
+    parsed = json.loads(output.out)
+    assert parsed["overall"] == "INCOMPLETE" and parsed["comparison"] is None
+    assert str(10**400) not in output.out
+
+
+def test_deeply_nested_json_returns_sanitized_incomplete(tmp_path, capsys):
+    path = tmp_path / "deep-secret.json"
+    path.write_text("[" * 1500 + "0" + "]" * 1500, encoding="utf-8")
+    valid = tmp_path / "valid.json"
+    valid.write_text(json.dumps(snapshot()), encoding="utf-8")
+    assert cli.main(["--idle-file", str(path), "--busy-file", str(valid)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out)["overall"] == "INCOMPLETE"
+    assert str(path) not in captured.out
