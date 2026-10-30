@@ -239,3 +239,18 @@ def test_invalid_worker_probe_status_cannot_be_trusted(monkeypatch, tmp_path):
     worker = next(r for r in ev["checks"] if r["check"] == "worker_process_identity")
     assert worker["status"] == "SKIP"
     assert "unvalidated_reason_with_secret" not in json.dumps(ev)
+
+
+def test_contradictory_pass_and_bad_role_count_fail_closed(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "probe_worker_process_identities",
+                        lambda root: SimpleNamespace(
+                            status="PASS", reason="worker_process_identities_verified",
+                            evidence={"verified_role_count": 1}))
+    assert _run(tmp_path, "--suite", "diagnose") == 0
+    ev = _evidence(tmp_path)
+    worker = next(r for r in ev["checks"] if r["check"] == "worker_process_identity")
+    assert worker["status"] == "SKIP"
+    assert worker["verified_role_count"] == 0
+    assert next(g for g in ev["manual_gates"]
+                if g["check"] == "schedule_handoff_workers")["status"] == "NOT_TESTED"
