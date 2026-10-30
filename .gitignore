@@ -207,3 +207,6 @@ operator_e2e/e2e.env.local
 operator_e2e/output/requirement_e2e/
 /operator_e2e/operator_e2e/output
 REQUIREMENT_E2E_PROVENANCE.json
+
+# Local airgap acceptance evidence (may include private report DOCX)
+/sraf-acceptance-results/
