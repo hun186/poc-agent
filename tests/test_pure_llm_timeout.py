@@ -15,6 +15,7 @@ def test_pure_llm_uses_its_own_timeout(monkeypatch):
         received["timeout"] = kwargs["timeout"]
         received["include_current_time"] = kwargs["include_current_time"]
         received["current_time_context_reason"] = kwargs["current_time_context_reason"]
+        received["stage"] = kwargs["stage"]
         return "完成"
 
     monkeypatch.setattr(agent_module, "call_llm", fake_call_llm)
@@ -28,6 +29,7 @@ def test_pure_llm_uses_its_own_timeout(monkeypatch):
         "timeout": 900.0,
         "include_current_time": True,
         "current_time_context_reason": "pure_llm_relative_date_resolution",
+        "stage": "pure_llm",
     }
 
 
