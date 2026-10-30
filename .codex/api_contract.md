@@ -24,3 +24,6 @@
 - `.codex/archive/api_contract.md-20261030-101300.md` — byte-identical full original active contract before compaction (Git blob `da9fb52b28dc2effe5d2a8c903a4d915dfcfd04c`, 19,060 characters).
 - `.codex/archive/api_contract.md-20261021-165000.md` — earlier complete version, including detailed Product/ES/operator response classifications.
 - 2026-10-30 compacted under AGENTS.md >20 work records, archive SHA and bytes independently re-fetched before changing active file.
+
+
+- 2026-10-30: no HTTP API changes. OFF-1U operator CLI `python tools/sraf_linux_load_topology_readonly.py --project-root "$PWD" --api-port 9002 [--samples 2..5] [--interval 0..20]` prints one fixed redacted `sraf_linux_load_topology_readonly_v1` JSON with `mode=PARTIAL_ONLY_NOT_ACCEPTANCE`, `feature_acceptance=NOT_TESTED`, per-check `OBSERVED/SKIP/NOT_TESTED` and numeric only `rss_mib`/thread samples. Exit 0 means `PARTIAL_OBSERVATION` only; 2 means `INCOMPLETE`. No network or API interaction.
