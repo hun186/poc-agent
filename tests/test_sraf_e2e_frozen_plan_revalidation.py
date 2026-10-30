@@ -161,3 +161,113 @@ def test_drift_does_not_allow_switch_to_semantic_mock():
         tracker.run(lambda: frozen_plan(lambda _: mixed))
     with pytest.raises(CapabilityError, match="external_capability_plan_revalidation_required"):
         frozen_plan()
+
+
+def test_admitted_plan_survives_operator_suspension_inside_agent_scope():
+    from agent.external_capabilities import (
+        requirement_acceptance_scope, suspend_published_plan,
+    )
+    assert frozen_plan(lambda _: PLAN) == PLAN
+    admitted = frozen_plan()
+    with requirement_acceptance_scope(admitted):
+        assert frozen_plan() == PLAN
+        suspend_published_plan()
+        assert frozen_plan() == PLAN
+    with pytest.raises(CapabilityError, match="external_capability_plan_revalidation_required"):
+        frozen_plan()
+
+
+def test_admitted_plan_reaches_smolagents_tool_worker_thread():
+    from types import SimpleNamespace
+    from agent.external_capabilities import (
+        requirement_acceptance_scope, suspend_published_plan,
+    )
+    from agent.tools_es.common import bind_requirement_acceptance, requirement_acceptance_tool_scope
+    assert frozen_plan(lambda _: PLAN) == PLAN
+    with requirement_acceptance_scope(frozen_plan()):
+        tool = bind_requirement_acceptance(SimpleNamespace())
+    suspend_published_plan()
+    observed = []
+    def remote_tool():
+        with requirement_acceptance_tool_scope(tool):
+            observed.append(frozen_plan())
+    thread = threading.Thread(target=remote_tool)
+    thread.start()
+    thread.join(3)
+    assert not thread.is_alive()
+    assert observed == [PLAN]
+    with pytest.raises(CapabilityError, match="external_capability_plan_revalidation_required"):
+        frozen_plan()
+
+
+def test_report_worker_pins_admitted_plan_for_later_llm_and_es_lookups(monkeypatch, tmp_path):
+    from io import BytesIO
+    from types import SimpleNamespace
+    from zipfile import ZipFile
+    from agent.external_capabilities import suspend_published_plan
+    from sra_api.services.report_job_worker import ReportJobWorker
+    from sra_api.services import report_job_worker as worker_module
+    from agent import external_capabilities
+
+    assert frozen_plan(lambda _: PLAN) == PLAN
+    observed = []
+    class Store:
+        def complete(self, *args):
+            observed.append(("complete", args))
+        def fail(self, *args):
+            observed.append(("fail", args))
+    job = SimpleNamespace(
+        job_id="e2e-accepted-1", filename="result.docx", prompt="bounded report",
+        session_id="demo-session", model="requirement-e2e:test-model",
+    )
+    def fake_turn(**kwargs):
+        assert kwargs["payload"].model == "test-model"
+        assert frozen_plan() == PLAN
+        suspend_published_plan()  # models a concurrent operator rerun
+        # Both model and ES capability lookups use the admitted job's plan.
+        assert frozen_plan().llm_backend == "live"
+        assert frozen_plan().elasticsearch_backend == "live"
+        return SimpleNamespace(output="report", turn_id="demo-turn")
+    monkeypatch.setattr(
+        external_capabilities, "verified_requirement_e2e_job_model",
+        lambda job: (True, "test-model"),
+    )
+    monkeypatch.setattr(worker_module, "execute_agent_turn", fake_turn)
+
+    archive = BytesIO()
+    with ZipFile(archive, "w") as doc:
+        doc.writestr("[Content_Types].xml", "<Types/>")
+    class Export:
+        def build_docx_bytes(self, *_a, **_kw):
+            return archive.getvalue(), "result.docx"
+    monkeypatch.setattr(worker_module, "ExportWordService", Export)
+
+    ReportJobWorker(Store(), tmp_path).execute(job)
+    assert observed and observed[0][0] == "complete", observed
+    with pytest.raises(CapabilityError, match="external_capability_plan_revalidation_required"):
+        frozen_plan()
+
+
+def test_new_report_job_still_denied_after_operator_suspend(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from agent.external_capabilities import suspend_published_plan
+    from sra_api.services.report_job_worker import ReportJobWorker
+    from sra_api.services import report_job_worker as worker_module
+    from agent import external_capabilities
+    assert frozen_plan(lambda _: PLAN) == PLAN
+    suspend_published_plan()
+    seen = []
+    class Store:
+        def complete(self, *_args):
+            pytest.fail("suspended job may not complete")
+        def fail(self, *args):
+            seen.append(args)
+    monkeypatch.setattr(external_capabilities, "verified_requirement_e2e_job_model",
+                        lambda job: (True, "model"))
+    monkeypatch.setattr(worker_module, "execute_agent_turn",
+                        lambda **kwargs: pytest.fail("should fail at admission"))
+    job = SimpleNamespace(job_id="e2e-new", filename="no.docx", prompt="x",
+                          session_id="s", model="requirement-e2e:model")
+    ReportJobWorker(Store(), tmp_path).execute(job)
+    assert len(seen) == 1
+    assert seen[0][1] == "CapabilityError"
