@@ -520,6 +520,17 @@ def prepare_requirement_elasticsearch(
 
 _LOCK = threading.Lock()
 _PLAN: BackendPlan | None = None
+# Admission for *new* verified E2E jobs. A recheck suspends this process's
+# previously published plan; an already-running job is not forcibly canceled.
+_PLAN_TRUSTED = True
+
+
+def suspend_published_plan() -> None:
+    """Fail closed for newly entering E2E jobs during operator revalidation."""
+    global _PLAN_TRUSTED
+    with _LOCK:
+        if _PLAN is not None:
+            _PLAN_TRUSTED = False
 
 
 @dataclass
@@ -546,58 +557,85 @@ def staged_plan_publication():
 
 def publish_staged_plan(stage: _StagedBackendPlan) -> None:
     """Commit exactly once after complete, timely runtime-evidence success."""
-    global _PLAN
+    global _PLAN, _PLAN_TRUSTED
     if _STAGED_PLAN.get() is not stage:
         raise CapabilityError("external_capability_plan_stage_invalid")
     check_budget()
     if stage.candidate is None:
+        # Existing plan may be suspended; do not silently complete without
+        # a fresh candidate for this operator request.
+        with _LOCK:
+            if _PLAN is not None and not _PLAN_TRUSTED:
+                raise CapabilityError("external_capability_plan_revalidation_required")
         return
     with _LOCK:
         check_budget()
         if _PLAN is not None and _PLAN != stage.candidate:
-            raise CapabilityError("external_capability_plan_frozen")
+            raise CapabilityError("external_capability_plan_drift")
         _PLAN = stage.candidate
+        _PLAN_TRUSTED = True
         stage.candidate = None
 
 
 def frozen_plan(resolver: Callable[[str], BackendPlan] | None = None) -> BackendPlan | None:
-    """Resolve once per process; operator requests stage until complete success."""
-    global _PLAN
+    """Only a freshly validated local plan may authorize verified E2E jobs."""
+    global _PLAN, _PLAN_TRUSTED
     mode = parse_mode(os.getenv("REQUIREMENT_E2E_EXTERNAL_MODE"))
     if mode is None:
         return None
     stage = _STAGED_PLAN.get()
-    # Other threads must not see an operator's provisional plan.
-    if resolver is None and _PLAN is None and (stage is None or stage.candidate is None):
-        raise CapabilityError("external_capability_plan_unresolved")
+    # Never block verified E2E worker threads behind a long operator probe.
+    if resolver is None and stage is None:
+        if _PLAN is None:
+            raise CapabilityError("external_capability_plan_unresolved")
+        if not _PLAN_TRUSTED:
+            raise CapabilityError("external_capability_plan_revalidation_required")
     with _LOCK:
+        if _PLAN is not None and _PLAN.requested_mode != mode:
+            raise CapabilityError("external_capability_plan_frozen")
+        if stage is not None:
+            if stage.candidate is not None:
+                if stage.candidate.requested_mode != mode:
+                    raise CapabilityError("external_capability_plan_frozen")
+                return stage.candidate
+            if resolver is None:
+                raise CapabilityError("external_capability_plan_revalidation_required"
+                                      if _PLAN is not None else
+                                      "external_capability_plan_unresolved")
+            # Re-probe existing plans instead of echoing cached capabilities.
+            # The Linux host lock serializes operator calls on the same host.
+            candidate = resolver(mode)
+            check_budget()
+            if candidate.requested_mode != mode:
+                raise CapabilityError("external_capability_plan_frozen")
+            if _PLAN is not None and candidate != _PLAN:
+                raise CapabilityError("external_capability_plan_drift")
+            stage.candidate = candidate
+            return candidate
         if _PLAN is not None:
-            if _PLAN.requested_mode != mode:
-                raise CapabilityError("external_capability_plan_frozen")
+            if not _PLAN_TRUSTED:
+                raise CapabilityError("external_capability_plan_revalidation_required")
             return _PLAN
-        if stage is not None and stage.candidate is not None:
-            if stage.candidate.requested_mode != mode:
-                raise CapabilityError("external_capability_plan_frozen")
-            return stage.candidate
         if resolver is None:
             raise CapabilityError("external_capability_plan_unresolved")
         resolved = resolver(mode)
-        check_budget()  # late SDK result must not become a frozen plan
+        check_budget()
         if resolved.requested_mode != mode:
             raise CapabilityError("external_capability_plan_frozen")
-        if stage is None:
-            # Direct/test callers keep their previous immediate-publish contract.
-            _PLAN = resolved
-        else:
-            stage.candidate = resolved
+        # Maintain direct/non-HTTP caller compatibility. The authenticated
+        # operator handler alone guarantees final evidence before publication.
+        _PLAN = resolved
+        _PLAN_TRUSTED = True
         return resolved
 
+
 def install_plan(plan: BackendPlan) -> BackendPlan:
-    global _PLAN
+    global _PLAN, _PLAN_TRUSTED
     with _LOCK:
         if _PLAN is not None and _PLAN != plan:
             raise CapabilityError("external_capability_plan_frozen")
         _PLAN = plan
+        _PLAN_TRUSTED = True
         return plan
 
 
@@ -706,6 +744,7 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
 
 
 def reset_plan_for_tests() -> None:
-    global _PLAN
+    global _PLAN, _PLAN_TRUSTED
     with _LOCK:
         _PLAN = None
+        _PLAN_TRUSTED = True
