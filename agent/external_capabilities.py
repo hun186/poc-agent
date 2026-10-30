@@ -89,6 +89,18 @@ class BackendPlan:
         }
 
 
+_REQUIREMENT_ADMITTED_PLAN: ContextVar[BackendPlan | None] = ContextVar(
+    "requirement_e2e_admitted_plan", default=None,
+)
+
+
+def admitted_requirement_e2e_plan() -> BackendPlan | None:
+    """Only a verified Report Job's current execution context may hold this."""
+    if not requirement_acceptance_active():
+        return None
+    return _REQUIREMENT_ADMITTED_PLAN.get()
+
+
 def parse_mode(value: str | None) -> str | None:
     if value is None or not value.strip():
         return None
@@ -164,12 +176,19 @@ trusted_requirement_e2e_job_model = verified_requirement_e2e_job_model
 
 
 @contextmanager
-def requirement_acceptance_scope():
-    """Scope acceptance-only routing to one explicitly marked Report Job."""
+def requirement_acceptance_scope(admitted_plan: BackendPlan | None = None):
+    """Scope only a verified Report Job's already-admitted immutable plan.
+
+    Normal API/production work never enters this scope. A plan admitted by the
+    Report Job Worker stays pinned for that job's later LLM/ES tool lookups,
+    including a revalidation that suspends new E2E job admission.
+    """
     token = _REQUIREMENT_ACCEPTANCE_ACTIVE.set(True)
+    plan_token = _REQUIREMENT_ADMITTED_PLAN.set(admitted_plan)
     try:
         yield
     finally:
+        _REQUIREMENT_ADMITTED_PLAN.reset(plan_token)
         _REQUIREMENT_ACCEPTANCE_ACTIVE.reset(token)
 
 
@@ -583,6 +602,12 @@ def frozen_plan(resolver: Callable[[str], BackendPlan] | None = None) -> Backend
     mode = parse_mode(os.getenv("REQUIREMENT_E2E_EXTERNAL_MODE"))
     if mode is None:
         return None
+    # Once the real worker has verified a job and admitted a plan, internal
+    # tool calls keep that immutable reference even during operator rechecks.
+    # Do not provide this bypass to any new job or production request.
+    admitted = admitted_requirement_e2e_plan() if resolver is None else None
+    if admitted is not None:
+        return admitted
     stage = _STAGED_PLAN.get()
     # Never block verified E2E worker threads behind a long operator probe.
     if resolver is None and stage is None:
