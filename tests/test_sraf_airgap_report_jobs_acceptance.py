@@ -97,7 +97,11 @@ def test_real_job_uses_one_post_polls_and_checks_docx_without_secrets(monkeypatc
     monkeypatch.setattr(a.time, "sleep", lambda n: None)
     args = type("Args", (), {"token_env": "SRAF_ACCEPTANCE_TOKEN_TEST", "max_seconds": 60})()
     rows = []
-    assert a._live(9002, object(), args, rows, tmp_path) == 0
+    result_fd = a._secure_output_dir(tmp_path)
+    try:
+        assert a._live(9002, object(), args, rows, result_fd) == 0
+    finally:
+        os.close(result_fd)
     assert [r["check"] for r in rows] == [
         "authentication", "report_create", "report_progress", "report_docx"]
     assert rows[-1]["sha256"]
@@ -130,14 +134,17 @@ def test_no_duplicate_submission_when_first_post_fails(monkeypatch, tmp_path):
 
 def test_evidence_mode_0600_and_refuses_existing_file(tmp_path):
     folder = tmp_path / "output"
-    a._secure_output_dir(folder)
-    assert folder.stat().st_mode & 0o777 == 0o700
-    file = folder / "evidence.json"
-    a._secure_write(file, b'{"result":"PASS_PARTIAL"}')
-    assert file.stat().st_mode & 0o777 == 0o600
-    with pytest.raises(FileExistsError):
-        a._secure_write(file, b"overwrite")
-    assert file.read_bytes() == b'{"result":"PASS_PARTIAL"}'
+    result_fd = a._secure_output_dir(folder)
+    try:
+        assert folder.stat().st_mode & 0o777 == 0o700
+        file = folder / "evidence.json"
+        a._secure_write(file.name, b'{"result":"PASS_PARTIAL"}', result_fd)
+        assert file.stat().st_mode & 0o777 == 0o600
+        with pytest.raises(FileExistsError):
+            a._secure_write(file.name, b"overwrite", result_fd)
+        assert file.read_bytes() == b'{"result":"PASS_PARTIAL"}'
+    finally:
+        os.close(result_fd)
 
 
 def test_listener_guard_fail_closed(monkeypatch):
@@ -166,3 +173,74 @@ def test_default_cli_no_llm_and_redacted_output(monkeypatch, tmp_path, capsys):
     report = json.loads(files[0].read_text())
     assert report["live_report_requested"] is False
     assert report["full_airgap_acceptance"] == "NOT_TESTED"
+
+
+@pytest.mark.parametrize("diagnostic,expected_code,expected_result", [
+    ("FAIL", 1, "FAIL"),
+    ("SKIP", 2, "INCOMPLETE"),
+    ("PASS", 0, "PASS_PARTIAL"),
+])
+def test_diagnose_status_includes_requested_tcp_probes(
+        monkeypatch, tmp_path, diagnostic, expected_code, expected_result):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(a, "ROOT", tmp_path)
+    monkeypatch.setattr(a, "_effective_runtime_config", lambda root: {})
+    monkeypatch.setattr(a, "_api_bind_endpoint", lambda cfg: (
+        {"configuration": "RESOLVED", "port": 9002}, "127.0.0.1"))
+    def fake_quick(port, cfg, rows, suite, no_network):
+        rows.extend(a._row(key, "PASS", "asset_observed") for key in
+                    ("api_health", "ui_page", "ui_javascript", "ui_stylesheet"))
+        rows.append(a._row("tcp_es", diagnostic, "synthetic_probe"))
+        rows.append(a._row("tcp_llm", "PASS", "synthetic_probe"))
+        return None
+    monkeypatch.setattr(a, "_quick", fake_quick)
+    assert a.main(["--suite", "diagnose"]) == expected_code
+    saved = list((tmp_path / "sraf-acceptance-results").glob("*.json"))
+    assert len(saved) == 1
+    evidence = json.loads(saved[0].read_text())
+    assert evidence["result"] == expected_result
+    assert evidence["exit_code"] == expected_code
+
+
+def test_output_dir_rejects_symlinks_without_writing_error_evidence(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(a, "ROOT", tmp_path)
+    target = tmp_path / "outside"
+    target.mkdir()
+    link = tmp_path / "rejected"
+    link.symlink_to(target, target_is_directory=True)
+    assert a.main(["--output-dir", str(link), "--no-network"]) == 2
+    assert list(target.iterdir()) == []
+    other = tmp_path / "linked-parent"
+    other.symlink_to(target, target_is_directory=True)
+    with pytest.raises(OSError):
+        a._secure_output_dir(other / "child")
+
+
+def test_pinned_output_fd_is_not_redirected_by_parent_symlink_swap(tmp_path):
+    parent = tmp_path / "movable"
+    folder = parent / "output"
+    parent.mkdir(mode=0o700)
+    result_fd = a._secure_output_dir(folder)
+    displaced = tmp_path / "old-parent"
+    outsider = tmp_path / "outside"
+    outsider.mkdir(mode=0o700)
+    try:
+        parent.rename(displaced)
+        parent.symlink_to(outsider, target_is_directory=True)
+        a._secure_write("receipt.json", b"safe", result_fd)
+        assert (displaced / "output" / "receipt.json").read_bytes() == b"safe"
+        assert not (outsider / "output" / "receipt.json").exists()
+    finally:
+        os.close(result_fd)
+
+
+def test_rejects_nonsticky_writable_ancestor(tmp_path):
+    parent = tmp_path / "untrusted-parent"
+    parent.mkdir(mode=0o700)
+    parent.chmod(0o777)
+    try:
+        with pytest.raises(a.ObservationError, match="output_ancestor_writable"):
+            a._secure_output_dir(parent / "output")
+    finally:
+        parent.chmod(0o700)
