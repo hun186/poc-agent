@@ -2,6 +2,8 @@
 
 本工具是 OFF-1U 的**離線數值整理器**，只讀取兩份既有的 JSON 快照，驗證它們都符合 `sraf_linux_load_topology_readonly_v1` 的**部分觀測**契約，計算 RSS MiB 與 API Process 執行緒數的描述性差異。
 
+2026-10-30 實機觀測發現 OFF-1S 的全容器 Thread/FD 獨占性掃描兩次都遇到 `FD_LIMIT`，造成 OFF-1U 無法取樣。因此同一 PR 將 OFF-1U 改為**無憑證唯讀專用**的有限 launcher/PID/cwd/UID/Socket 自身持有權檢核，並明確標示 `SOCKET-EXCLUSIVITY=NOT_TESTED`。原本的 OFF-1S 嚴格 Bearer 驗證完全不變。OFF-1V 可接受舊版強驗證與新版有限採樣的部分觀測，但會拒絕混淆兩者的標籤或假冒獨占性 PASS；兩者的實際主機、Workload 與跨 Process 關聯仍不可驗證。
+
 不連線到 API/Ollama/ES/SQL、不進行模型推論、不產生額外負載、不讀取憑證、不修改原始檔案、不啟動/重啟任何服務，也不建立 E2E 工作。**不能**由兩份快照證實同一台主機、同一 PID、同一 Uvicorn Worker、相同採樣間隔、使用者所稱的「忙碌」狀態、共同鎖檔或模型超時原因。
 
 ## 準備已核准的原始觀測資料
@@ -23,6 +25,7 @@ python tools/sraf_linux_load_compare_offline.py --idle-file idle.json --busy-fil
 
 數值欄位只包含兩側每次 RSS 平均 MiB、busy 減 idle 的差值與百分比、兩側觀測樣本的最高執行緒數及差值；沒有 CPU/GPU 使用率、模型 token/s、HTTP 延遲、ES Mapping 或報告成功率。比較器不會從觀測數值反推「忙碌造成了某種失敗」。
 
+- 新版 OFF-1U 快照必須同時包含 `API-LISTENER=OBSERVED/launcher_listener_for_local_sampling_only` 與 `SOCKET-EXCLUSIVITY=NOT_TESTED/global_fd_scan_intentionally_not_run`；舊版則保留原本 `API-LISTENER=OBSERVED/listener_identity_observed` 且不含此欄。OFF-1V 只接受這兩種**精確搭配**；任何混用、額外欄位、偽造獨占性驗證或承認 FULL_LIVE 都拒絕。
 - `comparability=UNVERIFIED_CROSS_RUN_IDENTITY` **永遠維持**，因 OFF-1U 的去識別化 JSON 不含可互相驗證的 Host/Process 身分、觀測時間或 workload marker。兩次觀測可能是不同 API Process。
 - `cross_worker_lock_sharing=NOT_TESTED` 及 `ollama_es_timeout=NOT_TESTED` **永遠維持**。只有另經核准的多 Worker／Ollama／ES 實測才能回答。
 - 樣本數不同會拒絕數值比較；樣本數相同**不能**證明實際時間間隔相同，請操作員手動用相同參數與可信紀錄確認。
