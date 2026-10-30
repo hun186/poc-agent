@@ -632,6 +632,10 @@ def frozen_plan(resolver: Callable[[str], BackendPlan] | None = None) -> Backend
 def install_plan(plan: BackendPlan) -> BackendPlan:
     global _PLAN, _PLAN_TRUSTED
     with _LOCK:
+        # Test/bootstrap installation must not bypass an active operator
+        # suspension of previously published E2E authority.
+        if _PLAN is not None and not _PLAN_TRUSTED:
+            raise CapabilityError("external_capability_plan_revalidation_required")
         if _PLAN is not None and _PLAN != plan:
             raise CapabilityError("external_capability_plan_frozen")
         _PLAN = plan
