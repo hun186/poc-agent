@@ -42,18 +42,20 @@ def test_script_syntax_and_fixed_diagnostic_args(isolated_launcher):
     assert outcome.returncode == 17  # Python process exit code propagates.
     assert capture.read_text(encoding="utf-8").splitlines() == [
         str(project), "tools/sraf_airgap_off1_hub.py", "--suite", "diagnose",
-        "--output-dir", str(Path(env["HOME"]) / "sraf-acceptance-results")
+        "--output-dir", str(project / "sraf-acceptance-results")
     ]
 
 
-def test_missing_home_is_rejected_before_python(isolated_launcher):
-    launcher, _, capture, env = isolated_launcher
-    env["HOME"] = ""
-    outcome = subprocess.run(["bash", str(launcher)],
+def test_unset_home_still_writes_under_project_root(isolated_launcher):
+    launcher, project, capture, env = isolated_launcher
+    env.pop("HOME", None)
+    outcome = subprocess.run(["bash", str(launcher)], cwd="/",
                              env=env, capture_output=True, text=True)
-    assert outcome.returncode == 2
-    assert "HOME is not set" in outcome.stderr
-    assert not capture.exists()
+    assert outcome.returncode == 17
+    assert capture.read_text(encoding="utf-8").splitlines() == [
+        str(project), "tools/sraf_airgap_off1_hub.py", "--suite", "diagnose",
+        "--output-dir", str(project / "sraf-acceptance-results")
+    ]
 
 
 def test_missing_application_python_is_rejected(isolated_launcher):
