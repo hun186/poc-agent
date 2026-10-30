@@ -56,3 +56,6 @@
 
 
 - 2026-10-30: Linux same-host epoch invalidates NEW E2E admissions for old Worker plans after another Worker rechecks, but does not establish cluster-wide E2E authorization or guarantee atomicity between a new Job's epoch observation and a later operator rotation. A Job admitted immediately before the rotation may continue on its pinned Plan, by design. Separate container/mount namespace/tempdir, host, UID, file tampering by same-UID peers, and process-crash availability remain outside this contract. Opaque lock marker is non-secret and not a signed proof. Direct non-HTTP legacy resolver calls are not staged epoch attestations. Private high-load Linux live tests still unexecuted.
+
+
+- 2026-10-30 OFF-1U Linux snapshot intentionally cannot verify all Worker lock sharing: attested OFF-1S proof covers a single listener, local TMPDIR is only a candidate and same Mount Namespace does not prove identical tempdir, project path or all container Worker identities. API RSS/threads without real Ollama/ES request timings cannot identify provider timeout root causes. Actual private Linux idle/busy baseline and separate approved live SDK/ES tests are not run by Hosted CI.

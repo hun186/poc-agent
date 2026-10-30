@@ -25,3 +25,6 @@
 - `.codex/archive/architecture.md-20261030-101300.md` — **byte-identical** original active architecture before this compaction, Git blob SHA `c1c2d6d77777945a20102efae07089da89947a0e` (full 22,750 characters).
 - `.codex/archive/architecture.md-20261021-165000.md` — previous full provenance, Product, OFF-0/1 architecture. See nested archive references for earlier history.
 - 2026-10-30 compaction per `AGENTS.md` >20 work records; archive fetched and checked byte-for-byte and SHA before rewriting active summary.
+
+
+- 2026-10-30 OFF-1U branch (after merged #328): passive operator-only Linux sampling CLI reuses OFF-1S strict listener identity and reads bounded numeric /proc API RSS/thread data at two to five snapshots with no network, credentials or writes. Separately observes operator-vs-attested-listener mount namespace and a local no-follow preflight-lock *candidate* (not proof any API Worker shares that TMPDIR). Model/ES timeout, cross-worker lock identity and FULL_LIVE are always NOT_TESTED; synthetic CI cannot attest private Linux.

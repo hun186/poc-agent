@@ -25,3 +25,6 @@
 - `.codex/archive/decisions.md-20261030-101300.md` — re-fetched exact byte-identical pre-compaction active decisions (Git blob SHA `fd37fe3eba51caa455e1269ee0161540bc694e24`, 25,779 characters), including all detailed historical Product, OFF-1 and E2E trust decisions.
 - `.codex/archive/decisions.md-20261021-165000.md` — earlier complete review and security decision history.
 - 2026-10-30 compaction after >20 dated records follows `AGENTS.md`, preserving current policy and all historical evidence in verified archives.
+
+
+- 2026-10-30: prepare Linux high-load diagnosis with an operator-invoked **read-only, no-network** sampler atop existing OFF-1S listener attestation instead of initiating load or E2E preflight. Require stable PID/start/listener identity before accepting bounded /proc resource samples, never expose PID/paths/ports or read /proc environ. Observe local no-follow lock metadata without creation/flock/epoch read and label all cross-Worker shared-lock and Ollama/ES live timeout findings NOT_TESTED. Preserve production runtime unchanged and require separate authorized real-host validation.
