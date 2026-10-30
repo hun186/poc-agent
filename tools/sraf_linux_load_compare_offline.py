@@ -122,7 +122,7 @@ def _validate_snapshot(value: object) -> list[dict[str, float | int]]:
         "SOCKET-EXCLUSIVITY": (
             "NOT_TESTED", "global_fd_scan_intentionally_not_run"),
     }
-    for key in _EXPECTED_CHECKS:
+    for key in checks:
         row = checks[key]
         if not isinstance(row, dict) or set(row) != {"status", "reason"}:
             raise ComparisonInputError("snapshot_invalid")
