@@ -31,4 +31,4 @@ jobs:
         run: python tools/validate_sraf_airgap_off0_contract.py
       - name: Run synthetic no-network regression suite
         run: |
-          python -m pytest -q tests/test_sraf_airgap_off1_hub.py tests/test_sraf_airgap_report_jobs_acceptance.py tests/test_sraf_airgap_off1_diagnose_launcher.py
+          python -m pytest -q tests/test_sraf_airgap_off1_hub.py tests/test_sraf_airgap_report_jobs_acceptance.py tests/test_sraf_airgap_off1_diagnose_launcher.py tests/test_sraf_airgap_off1h_worker_identity.py
