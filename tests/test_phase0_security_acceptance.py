@@ -172,7 +172,10 @@ def test_concurrent_report_job_initialization_converges_to_canonical_schema(tmp_
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(_initialize_job_store, [path] * 12))
     with sqlite3.connect(path) as con:
-        assert con.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert con.execute("PRAGMA user_version").fetchone()[0] == 2
+        columns = [row[1] for row in con.execute("PRAGMA table_info(report_jobs)")]
+        assert columns[-3:] == ["phase", "phase_updated_at", "failure_category"]
+        assert con.execute("SELECT COUNT(*) FROM report_jobs WHERE phase IS NULL").fetchone()[0] == 0
         tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert not {"report_jobs_new", "report_jobs_old"} & tables
         index = con.execute("SELECT sql FROM sqlite_master WHERE type='index' AND name='uq_report_jobs_owner_idempotency'").fetchone()

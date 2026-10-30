@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from datetime import datetime, timezone
 import zipfile
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -29,6 +30,28 @@ def _view(job):
     result.pop("prompt", None); result.pop("request_hash", None); result.pop("idempotency_key", None); result.pop("docx_basename", None)
     result["status_url"] = f"/v1/report/jobs/{job.job_id}"
     result["download_url"] = f"/v1/report/jobs/{job.job_id}/word"
+    # A stage is an actual Worker checkpoint. Long duration is only a
+    # clock-based observation, never proof of stalled SDK, GPU queue or timeout.
+    active = job.status in ("queued", "running")
+    elapsed = None
+    if active and job.phase_updated_at:
+        try:
+            since = datetime.fromisoformat(job.phase_updated_at)
+            if since.tzinfo is not None:
+                elapsed = round(max(0.0, (datetime.now(timezone.utc) - since).total_seconds()), 3)
+        except (ValueError, TypeError, OverflowError):
+            pass
+    result["progress"] = {
+        "phase": job.phase,
+        "elapsed_seconds": elapsed,
+        "long_running": bool(active and elapsed is not None and elapsed >= 30.0),
+        "observation": (
+            "duration_unavailable" if active and elapsed is None else
+            "long_running" if active and elapsed >= 30.0 else
+            "active" if active else "terminal"
+        ),
+        "failure_category": job.failure_category if job.status == "failed" else None,
+    }
     return result
 
 @router.post("", status_code=202, responses={409: {"description": "Idempotency conflict"}})
