@@ -53,3 +53,6 @@
 
 
 - 2026-10-30: An already-running, previously admitted E2E job can finish using its pinned plan even after a subsequent operator recheck detects drift. Revalidation prevents **new** E2E admissions but cannot roll back already-issued ES/LLM work or guarantee backend remains healthy while in flight. Host/mount sharing and actual Linux provenance still require separate live acceptance.
+
+
+- 2026-10-30: Linux same-host epoch invalidates NEW E2E admissions for old Worker plans after another Worker rechecks, but does not establish cluster-wide E2E authorization or guarantee atomicity between a new Job's epoch observation and a later operator rotation. A Job admitted immediately before the rotation may continue on its pinned Plan, by design. Separate container/mount namespace/tempdir, host, UID, file tampering by same-UID peers, and process-crash availability remain outside this contract. Opaque lock marker is non-secret and not a signed proof. Direct non-HTTP legacy resolver calls are not staged epoch attestations. Private high-load Linux live tests still unexecuted.
