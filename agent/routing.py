@@ -168,6 +168,7 @@ def llm_route_task(user_msg: str, trace: Optional[Dict[str, Any]] = None) -> dic
                 extra_params={"options": {}},
                 timeout=ROUTER_LLM_TIMEOUT,
                 model=ROUTER_MODEL_ID,
+                stage="router",
             )
         t1 = time.perf_counter()
         result = json.loads(raw)
