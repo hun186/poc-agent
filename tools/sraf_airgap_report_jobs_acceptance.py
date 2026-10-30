@@ -352,7 +352,9 @@ def _live(port: int, proof, args, rows: list, result_dir: Path):
     if not valid:
         rows.append(_row("report_docx", "FAIL", "docx_invalid"))
         return 1
-    _secure_write(result_dir / "report.docx", word)
+    filename = ("report-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                + "-" + os.urandom(5).hex() + ".docx")
+    _secure_write(result_dir / filename, word)
     rows.append(_row("report_docx", "PASS", "docx_integrity_checked",
                      size_bytes=len(word), sha256=hashlib.sha256(word).hexdigest()))
     return 0

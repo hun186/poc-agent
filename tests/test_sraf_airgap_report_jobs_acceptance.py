@@ -101,7 +101,9 @@ def test_real_job_uses_one_post_polls_and_checks_docx_without_secrets(monkeypatc
     assert [r["check"] for r in rows] == [
         "authentication", "report_create", "report_progress", "report_docx"]
     assert rows[-1]["sha256"]
-    assert (tmp_path / "report.docx").read_bytes() == docx
+    saved = list(tmp_path.glob("report-*.docx"))
+    assert len(saved) == 1 and saved[0].read_bytes() == docx
+    assert saved[0].stat().st_mode & 0o777 == 0o600
     assert [x[:2] for x in calls] == [
         ("POST", "/v1/report/jobs"),
         ("GET", "/v1/report/jobs/" + job_id),
