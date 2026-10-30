@@ -130,3 +130,6 @@ visibility, or live SRAF system acceptance.
 
 
 - 2026-10-30 Codex P2 follow-up: `_REQUIREMENT_ADMITTED_PLAN` is an execution ContextVar set only after verified E2E Report Job admission, and propagated via bound tool attributes into smolagents worker threads. Later capability reads use the admitted immutable reference even while process-global `_PLAN_TRUSTED=False`. Other threads/job admissions still fail closed. This repairs in-flight disruption without introducing cross-process authority.
+
+
+- 2026-10-30: Linux-only same-host generation fencing in `sra_api/services/linux_e2e_preflight_guard.py`: rotate opaque generation under existing exclusive `flock` at operator entry, associate generation with successful local staged plan publication, compare generation via nonblocking shared `flock` on each NEW verified E2E Job admission. Prior worker plans are invalidated after another worker's recheck, rather than shared. Admitted ContextVar Plan bypasses only for in-flight job. Linux host temp-dir/UID/path isolation, not cluster-wide durable state.
