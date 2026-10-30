@@ -16,6 +16,11 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools import sraf_airgap_report_jobs_acceptance as report_jobs
 from tools.sraf_airgap_off1_probes import probe_disk, probe_odbc_library
