@@ -11,7 +11,7 @@
 
 - Branch `feat/sraf-off1h-worker-observation-hub-20261031` extends **already merged OFF-1 hub** with existing `probe_worker_process_identities(ROOT)` for `--suite diagnose` only. Existing OFF-1H verifies role-specific launcher Schedule/Handoff process identity via bounded local `/proc`, requiring no network, SQL, password, Worker start/stop, lease mutation or model call. `--no-network` still permits the local observation; `--suite quick` remains unchanged.
 - Rows use `worker_process_identity=PASS/SKIP`, fixed sanitized reason, bounded `verified_role_count` (0–2). Error/unknown reason fails closed to SKIP, never leaking paths/PIDs. **Advisory only**: `schedule_handoff_workers=NOT_TESTED` remains the full SQL/Handoff E2E gate; existing required HTTP/TCP exit semantics are unchanged.
-- Added 6 hub regression tests plus existing OFF-1H canonical probe tests in the Hosted workflow; runbook updated. Pre-compaction PR HEAD `9fd5b354` Hosted #41099717838 **SUCCESS: 74 Python tests and 19 OFF-0 schema checks**. Compaction changes HEAD; rerun exact-head CI and formal Codex Review, fix actionable findings, **do not merge without separate user authorization**.
+- Added 7 hub regression tests plus existing OFF-1H canonical probe tests in the Hosted workflow; runbook updated. PASS requires both verified worker roles and consistent fixed status/reason, while contradictory evidence is downgraded to sanitized SKIP. Pre-compaction PR HEAD `9fd5b354` Hosted #41099717838 **SUCCESS: 74 Python tests and 19 OFF-0 schema checks**. Compaction changes HEAD; rerun exact-head CI and formal Codex Review, fix actionable findings, **do not merge without separate user authorization**.
 
 ## Recent Outcomes
 
