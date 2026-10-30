@@ -2,11 +2,6 @@ name: SRAF OFF-1 unified offline hub
 
 on:
   pull_request:
-    paths:
-      - 'tools/sraf_airgap_off1_hub.py'
-      - 'tests/test_sraf_airgap_off1_hub.py'
-      - 'docs/operations/sraf_airgap_off1_hub.md'
-      - '.github/workflows/sraf-off1-unified-hub.yml'
   workflow_dispatch:
 
 permissions:
