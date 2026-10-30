@@ -27,3 +27,6 @@
 
 
 - 2026-10-30: no HTTP API changes. OFF-1U operator CLI `python tools/sraf_linux_load_topology_readonly.py --project-root "$PWD" --api-port 9002 [--samples 2..5] [--interval 0..20]` prints one fixed redacted `sraf_linux_load_topology_readonly_v1` JSON with `mode=PARTIAL_ONLY_NOT_ACCEPTANCE`, `feature_acceptance=NOT_TESTED`, per-check `OBSERVED/SKIP/NOT_TESTED` and numeric only `rss_mib`/thread samples. Exit 0 means `PARTIAL_OBSERVATION` only; 2 means `INCOMPLETE`. No network or API interaction.
+
+
+- 2026-10-30 OFF-1V adds **no API endpoint**. Operator CLI `python tools/sraf_linux_load_compare_offline.py --idle-file idle.json --busy-file busy.json` consumes two strict redacted `sraf_linux_load_topology_readonly_v1` partial JSON snapshots. New `sraf_linux_load_compare_offline_v1` output always includes `mode=PARTIAL_ONLY_NOT_ACCEPTANCE`, `feature_acceptance=NOT_TESTED`, `comparability=UNVERIFIED_CROSS_RUN_IDENTITY`, `cross_worker_lock_sharing=NOT_TESTED` and `ollama_es_timeout=NOT_TESTED`. Exit 0 `DESCRIPTIVE_COMPARISON` yields only same-count RSS/threads deltas; exit 2 `INCOMPLETE` on untrusted/missing/malformed/unmatched data with no input path or raw exception. Nothing validates SRAF live E2E.
