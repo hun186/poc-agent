@@ -12,6 +12,7 @@ from agent.es.es_client import resolve_index as _resolve_es_index
 
 
 _REQUIREMENT_E2E_TOOL_SCOPE_ATTR = "_requirement_e2e_acceptance_scope"
+_REQUIREMENT_E2E_TOOL_PLAN_ATTR = "_requirement_e2e_admitted_plan"
 
 
 def bind_requirement_acceptance(tool: Any) -> Any:
@@ -22,9 +23,16 @@ def bind_requirement_acceptance(tool: Any) -> Any:
     so capture only the current job-scoped acceptance bit on that instance.
     Production tools are bound False and can never activate the E2E scope.
     """
-    from agent.external_capabilities import requirement_acceptance_active
+    from agent.external_capabilities import (
+        admitted_requirement_e2e_plan, requirement_acceptance_active,
+    )
 
-    setattr(tool, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, bool(requirement_acceptance_active()))
+    active = bool(requirement_acceptance_active())
+    setattr(tool, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, active)
+    # smolagents worker threads do not automatically inherit ContextVars.
+    # Bind only the immutable plan from this verified job; production binds None.
+    setattr(tool, _REQUIREMENT_E2E_TOOL_PLAN_ATTR,
+            admitted_requirement_e2e_plan() if active else None)
     return tool
 
 
@@ -33,7 +41,8 @@ def requirement_acceptance_tool_scope(tool: Any):
     from agent.external_capabilities import requirement_acceptance_scope
 
     if getattr(tool, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, False):
-        return requirement_acceptance_scope()
+        return requirement_acceptance_scope(
+            getattr(tool, _REQUIREMENT_E2E_TOOL_PLAN_ATTR, None))
     return nullcontext()
 
 
