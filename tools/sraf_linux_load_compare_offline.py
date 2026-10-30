@@ -16,8 +16,13 @@ import math
 import os
 from pathlib import Path
 import stat
+import sys
 
-from tools.sraf_linux_load_topology_readonly import SCHEMA as SNAPSHOT_SCHEMA
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from tools.sraf_linux_load_topology_readonly import SCHEMA as SNAPSHOT_SCHEMA  # noqa: E402
 
 SCHEMA = "sraf_linux_load_compare_offline_v1"
 MODE = "PARTIAL_ONLY_NOT_ACCEPTANCE"
@@ -127,8 +132,9 @@ def _validate_snapshot(value: object) -> list[dict[str, float | int]]:
         rss = row["rss_mib"]
         threads = row["threads"]
         if (type(row["sample"]) is not int or row["sample"] != index or
-                type(rss) not in (int, float) or not math.isfinite(rss) or
-                not 0.1 <= rss <= MAX_RSS_MIB or round(rss, 1) != rss or
+                type(rss) not in (int, float) or
+                not 0.1 <= rss <= MAX_RSS_MIB or
+                not math.isfinite(rss) or round(rss, 1) != rss or
                 type(threads) is not int or not 1 <= threads <= 131072):
             raise ComparisonInputError("snapshot_invalid")
         samples.append({"rss_mib": float(rss), "threads": threads})
