@@ -31,14 +31,23 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.sraf_airgap_off1_probes import _http_get
-from tools.sraf_airgap_off1b_api_http import _observe as api_health_observe
-from tools.sraf_airgap_off1b_auto import (
-    _api_bind_endpoint, _effective_runtime_config, _observe as tcp_observe,
-)
-from tools.sraf_airgap_off1s_api_listener import (
-    attest_api_listener, listener_still_expected,
-)
+try:
+    # Reuse the real deployed SRAF OFF-1 probes and runtime dotenv precedence.
+    # These imports require the application's installed Python environment.
+    from tools.sraf_airgap_off1_probes import _http_get
+    from tools.sraf_airgap_off1b_api_http import _observe as api_health_observe
+    from tools.sraf_airgap_off1b_auto import (
+        _api_bind_endpoint, _effective_runtime_config, _observe as tcp_observe,
+    )
+    from tools.sraf_airgap_off1s_api_listener import (
+        attest_api_listener, listener_still_expected,
+    )
+except ModuleNotFoundError:
+    # Bare system Python cannot be promised stdlib-only startup: fail clearly
+    # instead of traceback/secret-bearing import paths. No network is attempted.
+    print("SRAF_REPORT_JOBS_ACCEPTANCE=INCOMPLETE "
+          "reason=use_deployed_application_python")
+    raise SystemExit(2) from None
 
 SCHEMA = "sraf_airgap_report_jobs_acceptance_v1"
 MODE = "PARTIAL_ONLY_NOT_AIRGAP_CERTIFICATION"
