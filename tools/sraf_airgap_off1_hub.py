@@ -123,6 +123,11 @@ def main(argv: list[str] | None = None) -> int:
             obs = probe()
             rows.append(report_jobs._row(name, obs.status, obs.reason))
         cfg = report_jobs._effective_runtime_config(ROOT)
+        if args.probe_es_tls_mapping:
+            # Independently observe ES even if API health later fails.
+            # No ES request is possible in default quick/diagnose.
+            # Strict CA+IP SAN and bounded read-only GETs are owned by OFF-1B.
+            rows.append(strict_mapping_observation(cfg, ROOT))
         endpoint, host = report_jobs._api_bind_endpoint(cfg)
         if endpoint["configuration"] != "RESOLVED" or host != "127.0.0.1":
             raise report_jobs.ObservationError("api_port_invalid")
@@ -156,15 +161,10 @@ def main(argv: list[str] | None = None) -> int:
                     "worker_process_identity", "SKIP", "worker_process_identity_unverified",
                     verified_role_count=0,
                 ))
-        if args.probe_es_tls_mapping:
-            # Deliberate separate authorization to send ES Basic auth.
-            # Strict TLS CA and numeric-IP SAN validation are owned by OFF-1B.
-            # No invalid-password challenge: protected principal alone is
-            # insufficient to claim independent credential authentication.
-            rows.append(strict_mapping_observation(cfg, ROOT))
         code = _exit_for_selected(rows, args.suite)
         if args.probe_es_tls_mapping:
-            es_status = rows[-1]["status"]
+            es_status = next(row["status"] for row in rows
+                             if row["check"] == "es_strict_tls_mapping")
             if es_status == "FAIL":
                 code = 1
             elif es_status != "PASS" and code == 0:
