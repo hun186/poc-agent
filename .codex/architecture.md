@@ -127,3 +127,6 @@ visibility, or live SRAF system acceptance.
 
 
 - 2026-10-30 operator E2E stale-plan revalidation: global `_PLAN_TRUSTED` admission bit for process-local frozen plan; `OperatorPreflightTracker.run` suspends it on entry after Linux host lock, and staged `frozen_plan(resolve_environment_plan)` always recomputes an exact-matching candidate before final handler-side publication restores trust. New verified E2E job threads fail closed during recheck or after drift/failure; normal production Report Jobs have no dependence on this bit. No process-to-process propagation or in-flight cancellation.
+
+
+- 2026-10-30 Codex P2 follow-up: `_REQUIREMENT_ADMITTED_PLAN` is an execution ContextVar set only after verified E2E Report Job admission, and propagated via bound tool attributes into smolagents worker threads. Later capability reads use the admitted immutable reference even while process-global `_PLAN_TRUSTED=False`. Other threads/job admissions still fail closed. This repairs in-flight disruption without introducing cross-process authority.
