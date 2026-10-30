@@ -8,6 +8,22 @@
 2. 離線現場**不會**執行 pip、Node、網際網路、Docker 下載或自動重啟服務。
 3. 請使用可信、操作員本人擁有的本機私有輸出路徑，且所有父目錄不允許其他人任意替換；例如 `--output-dir "$HOME/sraf-acceptance-results"`。符號連結、不安全權限與可疑父目錄會拒絕驗收，不能為求方便關閉檢查。
 
+## 不需要再貼長指令：Linux Shell 啟動器
+
+部署更新後，專案根目錄會有 `run_sraf_airgap_off1_diagnose.sh`。操作員只要執行：
+
+```bash
+bash run_sraf_airgap_off1_diagnose.sh
+```
+
+不論從哪個目錄呼叫，腳本會自動切換到自身所在的 SRAF 專案根目錄，並固定呼叫 `python tools/sraf_airgap_off1_hub.py --suite diagnose --output-dir "$HOME/sraf-acceptance-results"`。**不會加上 `--live-report`**，因此不會建立真實任務。它保留 Python 驗收工具原本的退出碼，缺少 HOME 或 Python 時明確失敗。若 API 與 Shell 的預設 Python 不同，指定已部署的應用 Python（不能依賴斷網現場再安裝套件）：
+
+```bash
+SRAF_PYTHON=/path/to/sraf-venv/bin/python bash run_sraf_airgap_off1_diagnose.sh
+```
+
+使用 `bash` 呼叫不需要另外 `chmod +x`；Linux 用 `.sh`，Windows `.bat` 不適用於 SRAF 的 Linux 容器。
+
 ## 一鍵執行（直接複製）
 
 最常用的**只讀 quick**，不提交任何報告、不登入、不查 SQL／ES、不呼叫 LLM：
