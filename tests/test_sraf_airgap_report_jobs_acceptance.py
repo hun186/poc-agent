@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import zipfile
+import zlib
 
 import pytest
 
@@ -244,3 +245,48 @@ def test_rejects_nonsticky_writable_ancestor(tmp_path):
             a._secure_output_dir(parent / "output")
     finally:
         parent.chmod(0o700)
+
+
+def test_http_deadline_after_listener_proof_never_sends_live_post(monkeypatch):
+    """A slow OFF-1S proof cannot allow an already expired Job POST."""
+    clock = [100.0]
+    sent = []
+    closed = []
+    class Socket:
+        def settimeout(self, seconds):
+            assert seconds > 0
+        def connect(self, addr):
+            assert addr == ("127.0.0.1", 9002)
+        def sendall(self, packet):
+            sent.append(packet)
+        def close(self):
+            closed.append(True)
+    monkeypatch.setattr(a.socket, "socket", lambda *args, **kwargs: Socket())
+    monkeypatch.setattr(a.time, "monotonic", lambda: clock[0])
+    def slow_attestation(proof, port):
+        assert port == 9002
+        clock[0] += 13.0
+    monkeypatch.setattr(a, "_guard", slow_attestation)
+    with pytest.raises(a.ObservationError, match="http_deadline"):
+        a._bounded_http(9002, "POST", "/v1/report/jobs",
+                        payload={"prompt": "test"},
+                        token="secret", proof=object())
+    assert sent == []
+    assert closed == [True]
+
+
+def test_deflate_corruption_returns_failed_docx_validation():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("word/document.xml", "<document>" + "test" * 1024 + "</document>")
+    raw = bytearray(buffer.getvalue())
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        member = archive.getinfo("word/document.xml")
+        start = member.header_offset + 30 + len(member.filename.encode()) + len(member.extra)
+    # Raw DEFLATE low bits 110/111 specify the invalid block type 3.
+    raw[start] = (raw[start] & ~0x06) | 0x06
+    with pytest.raises((zlib.error, zipfile.BadZipFile)):
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            archive.testzip()
+    assert not a._validate_docx(bytes(raw))
