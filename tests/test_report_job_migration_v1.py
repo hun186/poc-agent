@@ -9,10 +9,10 @@ def legacy(path):
 
 def test_fresh_and_legacy_migration(tmp_path):
     fresh=tmp_path/'fresh.db'; ReportJobStore(fresh).initialize()
-    with sqlite3.connect(fresh) as con: assert con.execute('PRAGMA user_version').fetchone()[0] == 1
+    with sqlite3.connect(fresh) as con: assert con.execute('PRAGMA user_version').fetchone()[0] == 2
     old=tmp_path/'old.db'; legacy(old); ReportJobStore(old).initialize()
     with sqlite3.connect(old) as con:
-        assert con.execute('PRAGMA user_version').fetchone()[0] == 1
+        assert con.execute('PRAGMA user_version').fetchone()[0] == 2
         assert con.execute("SELECT owner_kind FROM report_jobs WHERE job_id='j'").fetchone()[0] is None
 
 @pytest.mark.parametrize('checkpoint',["staged_validation","first_rename","index_creation","user_version"])
