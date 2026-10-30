@@ -125,20 +125,21 @@ def main(argv: list[str] | None = None) -> int:
             # Advisory only: a missing or unverified Worker may be legitimate.
             try:
                 observed = probe_worker_process_identities(ROOT)
-                if observed.status not in ("PASS", "SKIP") or observed.reason not in (
-                    "worker_process_identities_verified",
-                    "worker_process_identity_unverified",
-                    "worker_process_host_unsupported",
+                count = observed.evidence["verified_role_count"]
+                if type(count) is not int or not 0 <= count <= 2:
+                    raise ValueError("worker_observation_invalid")
+                if (observed.status, observed.reason) not in (
+                    ("PASS", "worker_process_identities_verified"),
+                    ("SKIP", "worker_process_identity_unverified"),
+                    ("SKIP", "worker_process_host_unsupported"),
                 ):
                     raise ValueError("worker_observation_invalid")
+                if (observed.status == "PASS" and count != 2
+                        or observed.reason == "worker_process_host_unsupported" and count != 0):
+                    raise ValueError("worker_observation_inconsistent")
                 rows.append(report_jobs._row(
                     "worker_process_identity", observed.status, observed.reason,
-                    verified_role_count=(
-                        observed.evidence.get("verified_role_count", 0)
-                        if type(observed.evidence.get("verified_role_count", 0)) is int
-                        and 0 <= observed.evidence.get("verified_role_count", 0) <= 2
-                        else 0
-                    ),
+                    verified_role_count=count,
                 ))
             except Exception:
                 # Never serialize /proc exceptions, paths, PIDs or credentials.
