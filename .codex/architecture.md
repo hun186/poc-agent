@@ -28,3 +28,6 @@
 
 
 - 2026-10-30 OFF-1U branch (after merged #328): passive operator-only Linux sampling CLI reuses OFF-1S strict listener identity and reads bounded numeric /proc API RSS/thread data at two to five snapshots with no network, credentials or writes. Separately observes operator-vs-attested-listener mount namespace and a local no-follow preflight-lock *candidate* (not proof any API Worker shares that TMPDIR). Model/ES timeout, cross-worker lock identity and FULL_LIVE are always NOT_TESTED; synthetic CI cannot attest private Linux.
+
+
+- 2026-10-30 OFF-1V offline companion (after #329 merged): separately parses existing OFF-1U redacted JSON from two existing non-symlink, bounded regular files and compares only mean API RSS + peak threads. No live service/proc reads, operator HTTP calls, model load, credential ingress, saved result mutation or alternate Plan authority. No cross-run host/process identity attestation or causal timeout claims. Invalid or unverified snapshots yield INCOMPLETE rather than invented acceptance.
