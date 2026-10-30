@@ -3,7 +3,10 @@
 
 Does NOT contact HTTP, Ollama, ES, SQL, or external network. Does not create a
 lock, invoke preflight, start workers, modify data or generate load. Reuses the
-strict OFF-1S API process attestation, then samples bounded /proc metrics.
+the OFF-1S launcher/PID/cwd/socket *correlation* checks but deliberately
+does NOT run its global exclusive-socket-owner FD scan. This weaker proof is
+permitted ONLY for anonymous local read-only sampling, NEVER for bearer calls.
+It then samples bounded /proc metrics.
 No shared-lock, multi-worker, FULL_LIVE or physical-airgap claim is possible.
 
 Usage on the already-running installed Linux host:
@@ -26,7 +29,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.sraf_airgap_off1s_api_listener import attest_api_listener, _start_tick, _bounded  # noqa: E402
+from tools.sraf_airgap_off1s_api_listener import (  # noqa: E402
+    ListenerProof, _identity, _same_process, _listener_inode, _owns_socket,
+    _start_tick, _bounded,
+)
+from tools.sraf_airgap_off1p_docx_integrity import _pin_root_directory  # noqa: E402
 from tools.sraf_runtime_baseline_readonly import _valid_port  # noqa: E402
 
 SCHEMA = "sraf_linux_load_topology_readonly_v1"
@@ -39,6 +46,47 @@ MAX_THREADS = 131072
 
 def _row(status: str, reason: str) -> dict[str, str]:
     return {"status": status, "reason": reason}
+
+
+def attest_local_sampling_process(project_root: Path, api_port: str) -> ListenerProof | None:
+    """Correlate a launcher-owned PID to a live listener for /proc sampling ONLY.
+
+    This is intentionally *not* OFF-1S's security-grade exclusive-owner
+    attestation. Running its global process/thread/FD scan under container
+    load can hit MAX_GLOBAL_FDS even when the actual API PID is healthy.
+    No token-bearing endpoint may use this proof. It establishes only that
+    the launcher-recorded API PID, start tick, cwd and UID match AND it
+    currently holds the expected unique listening socket. Another process
+    may share it; that's an explicitly NOT_TESTED fact.
+    """
+    port = _valid_port(api_port)
+    if sys.platform != "linux" or port is None or not project_root.is_absolute():
+        return None
+    fd = None
+    try:
+        fd = _pin_root_directory(project_root)
+        root_stat = os.fstat(fd)
+        selected = _identity(fd, port)
+        if selected is None:
+            return None
+        pid, tick = selected
+        if not _same_process(pid, tick, root_stat, port):
+            return None
+        inode = _listener_inode(port)
+        if inode is None or not _owns_socket(pid, inode):
+            return None
+        # Recheck both authorities before accepting a private /proc sample.
+        if (_identity(fd, port) != selected or
+                not _same_process(pid, tick, root_stat, port) or
+                _listener_inode(port) != inode or
+                not _owns_socket(pid, inode)):
+            return None
+        return ListenerProof(pid, tick, port, inode)
+    except (OSError, ValueError, UnicodeError):
+        return None
+    finally:
+        if fd is not None:
+            os.close(fd)
 
 
 def _sample(pid: int, start_tick: str) -> dict[str, int] | None:
@@ -140,6 +188,7 @@ def observe(project_root: Path, api_port: str, *,
             samples: int = 2, interval: float = 1.0) -> dict[str, object]:
     checks = {
         "API-LISTENER": _row("SKIP", "listener_identity_unverified"),
+        "SOCKET-EXCLUSIVITY": _row("NOT_TESTED", "global_fd_scan_intentionally_not_run"),
         "API-MOUNT-NAMESPACE": _row("SKIP", "mount_namespace_unverified"),
         "LOCAL-LOCK-CANDIDATE": _row("SKIP", "local_lock_candidate_unverified"),
         "API-PROCESS-SAMPLES": _row("SKIP", "process_sampling_unverified"),
@@ -167,12 +216,12 @@ def observe(project_root: Path, api_port: str, *,
 
     checks["LOCAL-LOCK-CANDIDATE"] = _local_lock_observation(project_root)
     try:
-        initial = attest_api_listener(project_root, api_port)
+        initial = attest_local_sampling_process(project_root, api_port)
     except Exception:
         initial = None
     if initial is None:
         return result
-    checks["API-LISTENER"] = _row("OBSERVED", "listener_identity_observed")
+    checks["API-LISTENER"] = _row("OBSERVED", "launcher_listener_for_local_sampling_only")
     namespace = _same_mount_namespace(initial.pid)
     if namespace is True:
         checks["API-MOUNT-NAMESPACE"] = _row("OBSERVED", "same_namespace_as_operator_only")
@@ -192,7 +241,7 @@ def observe(project_root: Path, api_port: str, *,
         if index + 1 < samples:
             time.sleep(interval)
     try:
-        stable = attest_api_listener(project_root, api_port) == initial
+        stable = attest_local_sampling_process(project_root, api_port) == initial
     except Exception:
         stable = False
     if not stable:

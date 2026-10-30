@@ -28,3 +28,11 @@
 
 
 - 2026-10-30 OFF-1U branch (after merged #328): passive operator-only Linux sampling CLI reuses OFF-1S strict listener identity and reads bounded numeric /proc API RSS/thread data at two to five snapshots with no network, credentials or writes. Separately observes operator-vs-attested-listener mount namespace and a local no-follow preflight-lock *candidate* (not proof any API Worker shares that TMPDIR). Model/ES timeout, cross-worker lock identity and FULL_LIVE are always NOT_TESTED; synthetic CI cannot attest private Linux.
+
+
+- 2026-10-30 OFF-1V offline companion (after #329 merged): separately parses existing OFF-1U redacted JSON from two existing non-symlink, bounded regular files and compares only mean API RSS + peak threads. No live service/proc reads, operator HTTP calls, model load, credential ingress, saved result mutation or alternate Plan authority. No cross-run host/process identity attestation or causal timeout claims. Invalid or unverified snapshots yield INCOMPLETE rather than invented acceptance.
+
+
+- 2026-10-30 post-#329 real container finding: OFF-1S global exclusive socket FD scan failed repeated `FD_LIMIT` even though launcher/API PID and its own listening socket passed. Revised OFF-1U *only* uses two stable checks of locally pinned deployment launcher record, PID/start tick/UID/cwd, IPv4 listener inode and recorded PID's own socket FD, then bounded /proc RSS/thread samples and a final repeat of that limited proof. No global FD enumeration, no bearer or network, and no modification to strict OFF-1S. Output always includes socket exclusivity NOT_TESTED; OFF-1V strictly recognizes legacy or new partial schema.
+
+- 2026-10-30 OFF-1U fix after operator's real Linux observation: the global exclusive-owner FD scan repeatedly hit FD_LIMIT, despite matching launcher identity, live API process and owned TCP listener. A separate read-only sampling proof now double-checks pinned root, launcher record, PID start tick, UID, cwd and recorded PID's own socket but deliberately skips global FD enumeration. This limited proof cannot authorize authenticated calls; the original OFF-1S exclusive-owner verifier remains unchanged. OFF-1V recognizes the new explicitly nonexclusive schema with NOT_TESTED socket exclusivity.

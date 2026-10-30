@@ -28,3 +28,8 @@
 
 
 - 2026-10-30: prepare Linux high-load diagnosis with an operator-invoked **read-only, no-network** sampler atop existing OFF-1S listener attestation instead of initiating load or E2E preflight. Require stable PID/start/listener identity before accepting bounded /proc resource samples, never expose PID/paths/ports or read /proc environ. Observe local no-follow lock metadata without creation/flock/epoch read and label all cross-Worker shared-lock and Ollama/ES live timeout findings NOT_TESTED. Preserve production runtime unchanged and require separate authorized real-host validation.
+
+
+- 2026-10-30: make the next real Linux comparison step an **offline no-network** tool consuming only pre-existing OFF-1U redacted JSON. Use bounded O_RDONLY/O_NOFOLLOW regular files and strict fail-closed schema/field/count checks; compare only mean RSS and max API Process threads. Never silently upgrade synthetic observations into FULL_LIVE, infer cross-run process continuity or causation, or access real Ollama/ES/SQL. Incomplete snapshots or mismatched sample counts yield sanitized INCOMPLETE, no partial statistics.
+
+- 2026-10-30: Preserve the strict OFF-1S global exclusive socket ownership requirement and its resource caps for any authenticated operation. Repeated FD_LIMIT during diagnostic-only Linux observation warrants a separate OFF-1U local-only proof: correlate verified launcher, stable PID/start, UID/cwd and that PID's listener socket, recheck before/after sampling, but NEVER use it for credentials or full E2E authority. Expose nonexclusive scope and NOT_TESTED socket exclusivity; validate both old/new OFF-1U schemas strictly when OFF-1V compares them. Do not infer that FD_LIMIT means another owner.
