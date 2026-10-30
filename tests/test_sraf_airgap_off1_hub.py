@@ -254,3 +254,66 @@ def test_contradictory_pass_and_bad_role_count_fail_closed(monkeypatch, tmp_path
     assert worker["verified_role_count"] == 0
     assert next(g for g in ev["manual_gates"]
                 if g["check"] == "schedule_handoff_workers")["status"] == "NOT_TESTED"
+
+
+def test_es_strict_probe_is_never_triggered_without_explicit_flag(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "strict_mapping_observation",
+                        lambda *a: pytest.fail("credentials must remain untouched"))
+    assert _run(tmp_path) == 0
+    assert _run(tmp_path, "--suite", "diagnose") == 0
+    # Different output timestamps for quick and diagnose are allowed; no ES probe called.
+
+
+@pytest.mark.parametrize("args", [
+    ("--probe-es-tls-mapping",),
+    ("--suite", "quick", "--probe-es-tls-mapping"),
+    ("--suite", "diagnose", "--no-network", "--probe-es-tls-mapping"),
+    ("--suite", "diagnose", "--live-report", "--probe-es-tls-mapping"),
+])
+def test_strict_es_flag_requires_separate_safe_diagnose_mode(
+        monkeypatch, tmp_path, args):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "strict_mapping_observation",
+                        lambda *a: pytest.fail("invalid mode touched ES"))
+    with pytest.raises(SystemExit) as err:
+        _run(tmp_path, *args)
+    assert err.value.code == 2
+    assert not (tmp_path / "private-output").exists()
+
+
+def test_explicit_es_strict_partial_maintains_manual_gate(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    calls = []
+    def observe(cfg, root):
+        calls.append((cfg, root))
+        return {"check": "es_strict_tls_mapping", "status": "SKIP",
+                "reason": "es_tls_mapping_observed_auth_not_verified",
+                "https_probe": "PASS", "tls_validation": "PASS",
+                "mapping_probe": "PASS", "auth": "NOT_VERIFIED",
+                "credential_control": "NOT_RUN"}
+    monkeypatch.setattr(hub, "strict_mapping_observation", observe)
+    assert _run(tmp_path, "--suite", "diagnose", "--probe-es-tls-mapping") == 2
+    ev = _evidence(tmp_path)
+    assert calls == [({}, tmp_path)]
+    assert ev["result"] == "INCOMPLETE"
+    assert next(r for r in ev["checks"] if r["check"] == "es_strict_tls_mapping") == observe({}, tmp_path)
+    assert next(g for g in ev["manual_gates"]
+                if g["check"] == "es_tls_ca_san_mapping")["status"] == "NOT_TESTED"
+    assert ev["production_release_ready"] is False
+
+
+def test_explicit_es_strict_failure_propagates(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "strict_mapping_observation",
+                        lambda cfg, root: {
+                            "check": "es_strict_tls_mapping", "status": "FAIL",
+                            "reason": "es_tls_identity_failed",
+                            "https_probe": "FAIL", "tls_validation": "FAIL",
+                            "mapping_probe": "SKIP", "auth": "NOT_TESTED",
+                            "credential_control": "NOT_RUN",
+                        })
+    assert _run(tmp_path, "--suite", "diagnose", "--probe-es-tls-mapping") == 1
+    ev = _evidence(tmp_path)
+    assert ev["result"] == "FAIL"
+    assert ev["counts"]["FAIL"] == 1
