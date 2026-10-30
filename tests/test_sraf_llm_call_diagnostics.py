@@ -161,3 +161,70 @@ def test_nonstring_stage_fails_safe_without_breaking_call(fake_client, caplog):
         assert subject.call_llm("text", stage=["secret"]) == "synthetic-answer"
     assert "stage=unspecified" in caplog.text
     assert "secret" not in caplog.text
+
+
+def test_real_response_json_error_is_invalid_response_not_request_error(
+        monkeypatch, caplog, capsys):
+    """Exercise Response.json(): Requests JSONDecodeError inherits RequestException."""
+    monkeypatch.delenv("DEBUG_CALL_LLM", raising=False)
+    response = requests.Response()
+    response.status_code = 200
+    response.encoding = "utf-8"
+    response._content = b"{bad-json-private-response"
+    monkeypatch.setattr(subject.requests, "post", lambda *args, **kwargs: response)
+    monkeypatch.setattr(subject, "get_default_client", lambda:
+                        subject.LLMClient(base_url="http://secret-server.invalid",
+                                          model="SECRET-MODEL"))
+    with caplog.at_level(logging.WARNING, logger=subject.__name__):
+        with pytest.raises(RuntimeError, match="^llm_runtime_failure$"):
+            subject.call_llm("PRIVATE-PROMPT", stage="report")
+    assert "category=invalid_response" in caplog.text
+    assert "category=request_error" not in caplog.text
+    for secret in ("PRIVATE-PROMPT", "bad-json-private-response",
+                   "secret-server.invalid", "SECRET-MODEL"):
+        assert secret not in caplog.text + capsys.readouterr().out
+
+
+def test_response_body_consumption_wrapped_timeout_is_read_timeout(
+        monkeypatch, caplog):
+    """Real Requests response.json() consumption may wrap urllib3 ReadTimeout."""
+    from urllib3.exceptions import ProtocolError, ReadTimeoutError
+
+    class InterruptedBody(requests.Response):
+        @property
+        def content(self):
+            internal = ReadTimeoutError(None, "/api/chat/SECRET", "secret details")
+            raise requests.exceptions.ConnectionError(
+                ProtocolError("Connection broken", internal))
+
+    response = InterruptedBody()
+    response.status_code = 200
+    monkeypatch.delenv("DEBUG_CALL_LLM", raising=False)
+    monkeypatch.setattr(subject.requests, "post", lambda *args, **kwargs: response)
+    monkeypatch.setattr(subject, "get_default_client", lambda:
+                        subject.LLMClient(base_url="http://private-host.invalid",
+                                          model="SECRET-MODEL"))
+    with caplog.at_level(logging.WARNING, logger=subject.__name__):
+        with pytest.raises(RuntimeError, match="^llm_runtime_failure$"):
+            subject.call_llm("PRIVATE-PROMPT", stage="router")
+    assert "category=read_timeout" in caplog.text
+    assert "category=connection_error" not in caplog.text
+    for secret in ("PRIVATE-PROMPT", "/api/chat/SECRET", "secret details",
+                   "private-host.invalid", "SECRET-MODEL"):
+        assert secret not in caplog.text
+
+
+def test_plain_connection_error_stays_connection_error():
+    assert subject._llm_failure_category(
+        requests.exceptions.ConnectionError("ordinary connection refusal")
+    ) == "connection_error"
+
+
+def test_wrapped_timeout_cycle_and_depth_bounded():
+    from urllib3.exceptions import ReadTimeoutError
+    outer = requests.exceptions.ConnectionError("outer")
+    outer.__cause__ = outer  # malicious or unusual graph must terminate
+    assert subject._llm_failure_category(outer) == "connection_error"
+    inner = ReadTimeoutError(None, "untrusted-url", "timeout")
+    outer.args = ("safe", inner)
+    assert subject._llm_failure_category(outer) == "read_timeout"
