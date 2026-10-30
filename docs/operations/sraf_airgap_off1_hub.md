@@ -66,8 +66,11 @@ python tools/sraf_airgap_off1_hub.py --live-report --token-env SRAF_TEST_BEARER 
 | host_odbc_library | OFF-1A `probe_odbc_library` | 只看已知本機函式庫檔案，不連 SQL；屬提醒不代表 SQL 通過 |
 | api_health／UI／靜態資源 | PR #336 `_quick`／OFF-1A | 預設只在本機 127.0.0.1 有界匿名 GET |
 | api_listener | OFF-1S `attest_api_listener` | Linux launcher 身分認證；只讀結果可能 SKIP |
+| worker_process_identity | OFF-1H `probe_worker_process_identities` | `--suite diagnose`（含 `--no-network`）額外讀取本機 Schedule/Handoff Worker 身分紀錄與 `/proc`，只做程序觀察，不查 SQL、不發送 HTTP、不建立工作 |
 | tcp_api／tcp_es／tcp_llm | OFF-1B `tcp_observe` | 只有選 `--suite diagnose` 才檢查，僅私有數字 IPv4；不碰資料／模型 |
 | 真實 Job＋DOCX | PR #336 `_live` | **僅限** `--live-report`，嚴格 listener guard、單筆 POST／輪詢／Word 完整性 |
+
+**OFF-1H 新增部分觀察：** `bash run_sraf_airgap_off1_diagnose.sh` 現在會在原有 HTTP/TCP 診斷之外，讀取兩個既有 Worker 的啟動器身分記錄與 `/proc`，輸出 `worker_process_identity=PASS/SKIP` 和去識別化的 `verified_role_count`（0～2）。本檢查不會修改 Worker、取得租約、觸發 Schedule、查詢 SQL，不能證明完整 Handoff E2E，因此固定 `schedule_handoff_workers=NOT_TESTED`。Worker 不在同一 PID namespace、未部署或證明不足時 SKIP；屬輔助診斷，不改變原本 Report Job／TCP 必要檢查的退出碼，也不會被當成放行的 PASS。真正的 Linux 容器環境還需操作員實測。
 
 統一 JSON 只含固定 `check/status/reason`、無敏感資訊的觀察結論、模式、離線／授權旗標、統計以及 **8 個永遠保留 NOT_TESTED 的獨立人工門檻**。它不輸出密碼、Token、連線字串、SQL、Job ID、原始回應或文件內容。若啟動器證明不足、連線不到、尚未驗證，請先看 JSON 的原因碼，不要一律當作模型故障。
 
