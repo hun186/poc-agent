@@ -2,9 +2,9 @@
 
 ## Current Focus
 
-- **2026-10-31 current Draft PR #339** (branch `feat/sraf-off1h-worker-observation-hub-20261031`) incorporates existing OFF-1H local Schedule/Handoff Worker process identity verification into the operator-only OFF-1 `--suite diagnose` hub. No network, SQL, lease, authentication or Worker process control in the added OFF-1H probe. Emit advisory PASS/SKIP + redacted verified role count; preserve schedule_handoff_workers=NOT_TESTED for full E2E and preserve existing required HTTP/TCP exit logic. Test exact new HEAD Hosted, then formal Codex and separate user Merge.
-- **PR #338 merged 2026-10-31 01:27 Asia/Taipei** into main squash `97f8b81a426a4c98777dd7668dc0143dbf6c0196`: root-level Bash one-click `run_sraf_airgap_off1_diagnose.sh` anchors output in repo `sraf-acceptance-results/`; final HEAD `6795fbfd`, Hosted #41097544331 SUCCESS 29 Python +19 OFF-0, formal Codex CLEAN/no unresolved findings. Do not recreate launcher or loosen existing output security.
-- **PR #337 merged** at `e44ae58ddf64f94938a368ceb4726bd3d3f8a658`; unified OFF-1 hub and strict Report Job opt-in remain existing authority. PR #336 previously merged one real Report Job CLI.
+- **2026-10-31 Draft PR #340 (branch `feat/sraf-off1-es-strict-optin-20261031`)** extends the existing OFF-1 one-click hub with separately selected `--probe-es-tls-mapping` (also an exact allowlisted Shell flag). Normal `quick` and `diagnose` continue without authenticated ES requests. Opt-in reuses canonical OFF-1B strict HTTPS `_observe`: fixed local CA, private numeric IPv4, CA+IP SAN mandatory, limited GET root/protected principal/mapping; no incorrect-password challenge or search/query/write. Redacted fixed-status JSON; strict TLS and mapping partial observations without independently confirmed Basic authentication keep an INCOMPLETE top-level exit 2; detected TLS/mapping FAIL yields exit 1. Full ES manual gate remains NOT_TESTED. Run latest-head Hosted + formal Codex, no merge without explicit separate user approval.
+- **PR #339 is MERGED** (2026-10-31 02:28 Asia/Taipei) squash `b758c2ef944ed6bedd1e63c3654291d18d30a785`; final HEAD `9f8a5858`, 75 Python tests and 19 OFF-0 PASS, formal Codex CLEAN. OFF-1H passive Worker identities advisory only, without SQL/Handoff E2E.
+- PR #338 merged `97f8b81a426a4c98777dd7668dc0143dbf6c0196`; root Bash launcher project-local secure evidence dir. PR #337 merged `e44ae58ddf64f94938a368ceb4726bd3d3f8a658`; unified default-read-only hub. PR #336 merged existing strictly authorized one-live-Job CLI.
 
 ## Recent Outcomes
 
@@ -14,8 +14,7 @@
 
 ## Open Handoffs
 
-- Complete PR #339 exact-head Hosted CI (new OFF-1H + existing Hub/Bash/19 OFF-0), formal Codex Review, resolve actionable findings, and obtain separate explicit user Merge authorization. #336–338 are merged.
-
+- Complete PR #340 exact-head Hosted CI (canonical OFF-1B ES TLS/Mapping and focused shell/hub regression, OFF-0 19), formal Codex Review, resolve any P1/P2 and obtain separate explicit user Merge authorization. #336–339 are already merged.
 
 - Private Linux/offline real E2E, strict ES TLS/IP SAN and Mapping, SQL source/schema, live Ollama/Agent timing, Word artifact and browser visual acceptance, Worker handoff, OFF-2-5 airgap/restore remain NOT TESTED by Hosted CI.
 - Follow AGENTS.md and active .codex/memory.md, architecture.md, api_contract.md, known_issues.md, decisions.md, backlog.md; consult .codex/archive only for historical investigation.
