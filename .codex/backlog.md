@@ -13,7 +13,7 @@
 - SQL Server: separately validate v4 schema/migration and rollback, product/requirement SQL source authority, ODBC Driver 18 TLS identity, dedicated low-privilege SELECT-only principal, CAS/idempotency, signed/owner-scoped service keys. OFF-1G constant SELECT alone cannot prove authorized production SQL operations.
 - Schedule/Handoff: validate real versions, activation, auto-claim, worker identity, lease/renew/ownership, handoff ACK/reconciliation, remote report and SQLite/job/artifact integrity under separate auth; two visible worker processes do not prove E2E.
 - Agent/LLM: measure real provider contention in Ollama's potentially separate container and SRAF DataAgent stage timing under load; timeout/cooperative budget cannot forcibly terminate all blocked SDK calls; do not silently start real report Job during normal startup or diagnose. Actual Word, browser dashboard, and auth/download checks still required.
-- Packaging/airgap: OFF-2 release packaging/provenance, OFF-3/4 offline release/report, OFF-5 backup/restore, physical network isolation, fully automated operator report and faithful NOT_TESTED gates. Guardrail: no synthetic/fixture/Hosted test should become an attestation of on-premises physical airgap or successful Agent+ES+SQL+DOWX chain.
+- Packaging/airgap: OFF-2 release packaging/provenance, OFF-3/4 offline release/report, OFF-5 backup/restore, physical network isolation, fully automated operator report and faithful NOT_TESTED gates. Guardrail: no synthetic/fixture/Hosted test should become an attestation of on-premises physical airgap or successful Agent+ES+SQL+DOCX chain.
 
 ## Deferred Features and Risk
 
