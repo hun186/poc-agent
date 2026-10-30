@@ -305,6 +305,7 @@ def ask_with_report(
             # 可用 REPORT_LLM_TIMEOUT（或舊名 REPORT_TIMEOUT）延長大型報告生成等待秒數
             timeout=REPORT_LLM_TIMEOUT,
             model=REPORT_MODEL_ID,
+            stage="report",
         )
     t1 = time.perf_counter()
     
