@@ -3,7 +3,7 @@
 ## Current Focus
 
 - 2026-10-30 current PR #336 (`feat/sraf-airgap-report-jobs-oneclick-20261030`) delivers an operator-only, stdlib Linux one-command Report Job/UI readiness checker plus explicitly authorized real Agent/LLM/DOCX acceptance. It complements SRAF core reporting; do not add a second queue or authority.
-- The first formal Codex Review at HEAD 3741ab91 completed with two P2 findings: unsafe symlink/output-directory redirection and diagnose TCP FAIL/SKIP ignored by top-level result. Follow-up fixes and tests were committed; new latest-head Hosted CI and formal review are still required. DO NOT merge without separate explicit user authorization.
+- First formal Codex Review HEAD 3741ab91: two P2 output-path and diagnose-exit findings corrected; latest previous CI 28b2e435 SUCCESS (1717 Python/19 OFF-0/Node). Second formal Codex Review HEAD 28b2e435 **COMPLETED with three new P2**: deployed app Python dependency contract incorrectly claimed stdlib-only, HTTP budget expiry after listener guard still allowed POST, corrupt DOCX zlib.error escaped. Corrected docs to explicitly require preinstalled application Python (no online pip), fail before expired send, catch damaged DEFLATE ZIP, and added regression tests. Recheck exact new HEAD Hosted+new formal Codex. DO NOT merge without separate explicit user authorization.
 
 ## Recent Outcomes
 
@@ -13,6 +13,6 @@
 
 ## Open Handoffs
 
-- Verify exact latest PR HEAD CI, reply/resolve both original P2 review threads based on verified corrections, and request new completed formal Codex Review. PR remains draft/unmerged pending user authorization.
+- Validate exact latest PR HEAD Hosted CI, reply/resolve three second-round P2 threads only with verified evidence and request fresh formal review; two first-round threads already resolved. PR stays draft/unmerged pending user authorization.
 - Private Linux/offline real E2E, strict ES TLS/IP SAN and Mapping, SQL source/schema, live Ollama/Agent timing, Word artifact and browser visual acceptance, Worker handoff, OFF-2-5 airgap/restore remain NOT TESTED by Hosted CI.
 - Follow AGENTS.md and active .codex/memory.md, architecture.md, api_contract.md, known_issues.md, decisions.md, backlog.md; consult .codex/archive only for historical investigation.
