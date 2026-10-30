@@ -147,9 +147,9 @@ class ReportJobStore:
         self._migration_checkpoint("index_creation")
         self._validate_v1(con, expected_rows=count)
         self._migration_execute(con, "drop_old", "DROP TABLE report_jobs_old")
-        self._migration_execute(con, "set_version", f"PRAGMA user_version={REPORT_JOB_SCHEMA_VERSION}")
+        self._migration_execute(con, "set_version", "PRAGMA user_version=1")
         self._migration_checkpoint("user_version")
-        if con.execute("PRAGMA user_version").fetchone()[0] != REPORT_JOB_SCHEMA_VERSION: raise RuntimeError("Schema version update failed")
+        if con.execute("PRAGMA user_version").fetchone()[0] != 1: raise RuntimeError("Schema version update failed")
 
     def _migrate_v1_to_v2(self, con: sqlite3.Connection) -> None:
         """Extend only a validated canonical v1 table; one outer transaction."""
