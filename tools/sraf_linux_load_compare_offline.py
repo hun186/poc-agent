@@ -78,7 +78,7 @@ def _read_existing_json(path: Path) -> object:
         return json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_keys,
                           parse_constant=lambda _: (_ for _ in ()).throw(
                               ComparisonInputError("snapshot_invalid")))
-    except (OSError, UnicodeError, ValueError, TypeError) as exc:
+    except (OSError, UnicodeError, ValueError, TypeError, RecursionError) as exc:
         raise ComparisonInputError("snapshot_invalid") from exc
     finally:
         if fd is not None:
@@ -128,7 +128,7 @@ def _validate_snapshot(value: object) -> list[dict[str, float | int]]:
         threads = row["threads"]
         if (type(row["sample"]) is not int or row["sample"] != index or
                 type(rss) not in (int, float) or not math.isfinite(rss) or
-                not 0 < rss <= MAX_RSS_MIB or
+                not 0.1 <= rss <= MAX_RSS_MIB or round(rss, 1) != rss or
                 type(threads) is not int or not 1 <= threads <= 131072):
             raise ComparisonInputError("snapshot_invalid")
         samples.append({"rss_mib": float(rss), "threads": threads})
