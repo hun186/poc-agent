@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
 import stat
 import sys
 import tempfile
@@ -70,7 +71,7 @@ def _secure_lock_fd() -> int:
 @contextmanager
 def host_preflight_guard() -> Iterator[None]:
     if sys.platform != "linux":
-        yield
+        yield None
         return
     try:
         fd = _secure_lock_fd()
@@ -84,7 +85,7 @@ def host_preflight_guard() -> Iterator[None]:
         except OSError as exc:
             raise HostPreflightUnavailable("external_e2e_host_guard_unavailable") from exc
         try:
-            yield
+            yield fd
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
@@ -100,3 +101,56 @@ def linux_host_guard_held() -> bool:
             return False
     except HostPreflightBusy:
         return True
+
+
+# Only non-secret opaque generation markers are stored in the original private
+# lock file. The kernel flock is still the exclusive same-host preflight gate.
+_EPOCH_BYTES = 32
+
+
+def advance_host_preflight_epoch(lock_fd: int | None) -> str | None:
+    """Rotate under an already held exclusive guard; never share a plan."""
+    if sys.platform != "linux":
+        return None
+    if lock_fd is None:
+        raise HostPreflightUnavailable("external_e2e_host_guard_unavailable")
+    epoch = secrets.token_hex(16)
+    try:
+        # A crash while writing yields missing/corrupt data, which readers
+        # reject instead of trusting a stale plan.
+        payload = epoch.encode("ascii")
+        if os.pwrite(lock_fd, payload, 0) != _EPOCH_BYTES:
+            raise HostPreflightUnavailable("external_e2e_host_guard_unavailable")
+        os.ftruncate(lock_fd, _EPOCH_BYTES)
+        os.fsync(lock_fd)
+    except OSError as exc:
+        raise HostPreflightUnavailable("external_e2e_host_guard_unavailable") from exc
+    return epoch
+
+
+def read_host_preflight_epoch() -> str:
+    """Read a complete generation or fail closed (including busy preflight)."""
+    if sys.platform != "linux":
+        raise HostPreflightUnavailable("external_e2e_host_guard_unavailable")
+    try:
+        fd = _secure_lock_fd()
+    except OSError as exc:
+        raise HostPreflightUnavailable("external_e2e_host_guard_unavailable") from exc
+    try:
+        try:
+            # No wait for an in-progress operator SDK call: new E2E jobs
+            # cannot enter while another worker owns the host-level guard.
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise HostPreflightBusy("external_e2e_preflight_in_progress") from exc
+        except OSError as exc:
+            raise HostPreflightUnavailable("external_e2e_host_guard_unavailable") from exc
+        try:
+            raw = os.pread(fd, _EPOCH_BYTES + 1, 0)
+            if (len(raw) != _EPOCH_BYTES or any(ch not in b"0123456789abcdef" for ch in raw)):
+                raise HostPreflightUnavailable("external_e2e_host_guard_unavailable")
+            return raw.decode("ascii")
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
