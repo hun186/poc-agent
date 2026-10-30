@@ -9,12 +9,35 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional, Dict, List, Any
 
 import requests
+from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
 
 logger = logging.getLogger(__name__)
 
 # Stable low-cardinality labels only: never log model name, endpoint, request,
 # response or raw exception. 503 is not proof of Ollama/GPU queueing.
 _LLM_STAGES = frozenset({"router", "query_refiner", "report", "pure_llm"})
+
+
+def _is_wrapped_read_timeout(exc: Exception) -> bool:
+    """Requests may wrap urllib3 body-read timeout in ConnectionError.
+
+    Traverse only a few actual exception objects, never exception text.
+    Requests/urllib3 can wrap it through ProtocolError.args as well as
+    Python cause/context. This is classification only, not a retry policy.
+    """
+    pending: list[BaseException] = [exc]
+    seen: set[int] = set()
+    while pending and len(seen) < 12:
+        item = pending.pop()
+        if id(item) in seen:
+            continue
+        seen.add(id(item))
+        if isinstance(item, Urllib3ReadTimeoutError):
+            return True
+        for candidate in (item.__cause__, item.__context__, *item.args[:4]):
+            if isinstance(candidate, BaseException) and id(candidate) not in seen:
+                pending.append(candidate)
+    return False
 
 
 def _llm_failure_category(exc: Exception) -> str:
@@ -37,7 +60,9 @@ def _llm_failure_category(exc: Exception) -> str:
             return "http_4xx"
         return "http_error"
     if isinstance(exc, requests.exceptions.ConnectionError):
-        return "connection_error"
+        return "read_timeout" if _is_wrapped_read_timeout(exc) else "connection_error"
+    if isinstance(exc, requests.exceptions.JSONDecodeError):
+        return "invalid_response"
     if isinstance(exc, requests.exceptions.RequestException):
         return "request_error"
     if isinstance(exc, ValueError):
