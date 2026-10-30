@@ -11,7 +11,7 @@ python tools/sraf_runtime_baseline_readonly.py --project-root "$PWD" --api-port 
 python tools/sraf_linux_load_topology_readonly.py --project-root "$PWD" --api-port 9002 --samples 3 --interval 5
 ```
 
-以上兩者**不進行任何網路請求**。第二條命令觀察已啟動的 API Listener 所屬 Process 3 個時間點的 `rss_mib` 與 `threads`；不讀取 PID、模型名稱、ES URL、儲存路徑或憑證進輸出。允許 `--samples` 2～5，`--interval` 0～20 秒，預設 2 次／1 秒，最多 80 秒觀測。等待期間不製造負載。PID/start tick 和 socket/process ownership 的前後檢核均重用既有 OFF-1S 嚴格實作；若 Process 被替換或資料讀取不可信，丟棄**整組**數值，回報 `INCOMPLETE`。
+以上兩者**不進行任何網路請求**。第二條命令觀察已啟動的 API Listener 所屬 Process 3 個時間點的 `rss_mib` 與 `threads`；不讀取 PID、模型名稱、ES URL、儲存路徑或憑證進輸出。允許 `--samples` 2～5，`--interval` 0～20 秒，預設 2 次／1 秒，最多 80 秒觀測。等待期間不製造負載。OFF-1U 只重用 OFF-1S 的**啟動器紀錄、PID/Start Tick、UID、CWD、單一 IPv4 Listener Socket，以及被紀錄的 API Process 自己持有 Socket** 等局部檢核，且在採樣前後重新檢核；**不呼叫 OFF-1S 的全容器 Socket 獨占性 FD 掃描**。若 Process 被替換或資料讀取不可信，丟棄**整組**數值，回報 `INCOMPLETE`。這只是無憑證唯讀採樣，不是 OFF-1S 可發送 Bearer 的權限證明。
 
 ## 比對現有工作負載與部署差異
 
@@ -23,8 +23,9 @@ python tools/sraf_linux_load_topology_readonly.py --project-root "$PWD" --api-po
 
 - `API-MOUNT-NAMESPACE=OBSERVED` 只表示**被驗證的單一 API Listener Process** 與觀測 CLI 位於相同 Mount Namespace，不表示所有 Uvicorn/API Worker 相同。
 - `LOCAL-LOCK-CANDIDATE=OBSERVED` 只表示 CLI 根據本機 TMPDIR 候選路徑觀察到符合 Owner／0700 Directory／0600 一般檔／單一 hardlink 的鎖檔。只用 `O_RDONLY|O_NOFOLLOW` 開啟**既存**檔案，沒有 O_CREAT、flock 或 read epoch，更不表示 API Worker 一定使用同一 TMPDIR。
-- `CROSS-WORKER-LOCK-SHARING` 始終 `NOT_TESTED`；若容器、UID、Mount Namespace、Tempdir 或專案真實路徑不同，PR #328 的 Linux flock + epoch 不能被當成已跨 Worker 驗證。需要各 Worker 自己的受信任身分證據和受控重驗，而不是閱讀其他 Worker 的 `/proc/<pid>/environ`（可能洩漏秘密）。
-- 若 OFF-1S 無法驗證 Listener（含多 socket owner 或 procfs 權限限制），不強行透過任意 PID 或 URL 取樣；回報 `SKIP/INCOMPLETE`。這是正確的不確定結果。
+- `CROSS-WORKER-LOCK-SHARING` 與 `SOCKET-EXCLUSIVITY` 始終 `NOT_TESTED`；若容器、UID、Mount Namespace、Tempdir 或專案真實路徑不同，PR #328 的 Linux flock + epoch 不能被當成已跨 Worker 驗證。需要各 Worker 自己的受信任身分證據和受控重驗，而不是閱讀其他 Worker 的 `/proc/<pid>/environ`（可能洩漏秘密）。
+- OFF-1U 新版 `API-LISTENER=OBSERVED` 的 reason 固定為 `launcher_listener_for_local_sampling_only`，並始終輸出 `SOCKET-EXCLUSIVITY=NOT_TESTED/global_fd_scan_intentionally_not_run`。只代表 launcher 記錄的 Process 擁有相符 socket，**沒有證明 socket 未被其他 Process 共用**，不可作為 OFF-1S 或任何 token-bearing API 的前置驗證。若 launcher/PID/Start Tick/CWD/UID/本機 Socket 自身擁有權失效，仍然拒絕採樣。
+- 2026-10-30 實機唯讀診斷案例：`ROOT`、`IDENTITY_FILE`、`TCP_9002_LISTENER`、`PROCFS_VISIBILITY`、`PROCESS_IDENTITY`、`SOCKET_OWNERSHIP` 均為 PASS，但 OFF-1S `EXCLUSIVE_SOCKET_OWNER` 未完成；重複兩次全容器掃描皆回報 `FD_LIMIT`。此類別可能是每 Thread FD 或全容器 FD 上限，**不能**僅據此宣稱存在另一持有者或 API 故障。不得為了採樣直接放寬 OFF-1S 安全上限。
 - 工具不會送任何 bearer，也不包含或列印內部 exception/PID、UID、host path、port、namespace ID、lock inode 等可能增加攻擊面之資訊。
 
 ## 後續仍需明確授權的正式驗收
