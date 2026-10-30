@@ -212,9 +212,13 @@ def test_report_worker_pins_admitted_plan_for_later_llm_and_es_lookups(monkeypat
     assert frozen_plan(lambda _: PLAN) == PLAN
     observed = []
     class Store:
+        def update_phase(self, job_id, phase):
+            assert job_id == "e2e-accepted-1"
+            assert phase in ("docx_export", "finalizing")
+            return True
         def complete(self, *args):
             observed.append(("complete", args))
-        def fail(self, *args):
+        def fail(self, *args, **kwargs):
             observed.append(("fail", args))
     job = SimpleNamespace(
         job_id="e2e-accepted-1", filename="result.docx", prompt="bounded report",
@@ -258,9 +262,12 @@ def test_new_report_job_still_denied_after_operator_suspend(monkeypatch, tmp_pat
     suspend_published_plan()
     seen = []
     class Store:
+        def update_phase(self, *_args):
+            pytest.fail("suspended E2E job must fail before any progress update")
         def complete(self, *_args):
             pytest.fail("suspended job may not complete")
-        def fail(self, *args):
+        def fail(self, *args, **kwargs):
+            assert kwargs["failure_category"] == "execution_error"
             seen.append(args)
     monkeypatch.setattr(external_capabilities, "verified_requirement_e2e_job_model",
                         lambda job: (True, "model"))
