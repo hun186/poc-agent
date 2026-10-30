@@ -59,3 +59,6 @@
 
 
 - 2026-10-30 OFF-1U Linux snapshot intentionally cannot verify all Worker lock sharing: attested OFF-1S proof covers a single listener, local TMPDIR is only a candidate and same Mount Namespace does not prove identical tempdir, project path or all container Worker identities. API RSS/threads without real Ollama/ES request timings cannot identify provider timeout root causes. Actual private Linux idle/busy baseline and separate approved live SDK/ES tests are not run by Hosted CI.
+
+
+- 2026-10-30 OFF-1V offline idle/busy comparison is **descriptive only**: OFF-1U's redacted snapshots lack a trusted host/process identity, capture timestamp, sampling interval, GPU/LLM request latency or workload provenance. Even two syntactically valid partial snapshots cannot prove they measure the same Linux API instance or that Ollama workload caused an RSS/thread change. Hosted fixtures have no real environment observation. The real Linux idle/busy capture, cross-worker mount/UID/TMPDIR verification and approved Ollama/ES timeout/fixture tests remain outstanding; no new shared Plan or active SDK probe.
