@@ -542,6 +542,25 @@ _PLAN: BackendPlan | None = None
 # Admission for *new* verified E2E jobs. A recheck suspends this process's
 # previously published plan; an already-running job is not forcibly canceled.
 _PLAN_TRUSTED = True
+# None preserves legacy direct/test callers. Only a completed operator
+# preflight installs a Linux host-scoped generation for new E2E admissions.
+_PLAN_HOST_EPOCH: str | None = None
+
+
+def _require_current_host_epoch() -> None:
+    """Never inherit another API worker's new plan or stale acceptance."""
+    if _PLAN_HOST_EPOCH is None:
+        return
+    from sra_api.services.linux_e2e_preflight_guard import (
+        HostPreflightBusy, HostPreflightUnavailable,
+        read_host_preflight_epoch,
+    )
+    try:
+        current = read_host_preflight_epoch()
+    except (HostPreflightBusy, HostPreflightUnavailable) as exc:
+        raise CapabilityError("external_capability_plan_revalidation_required") from exc
+    if current != _PLAN_HOST_EPOCH:
+        raise CapabilityError("external_capability_plan_revalidation_required")
 
 
 def suspend_published_plan() -> None:
@@ -556,6 +575,7 @@ def suspend_published_plan() -> None:
 class _StagedBackendPlan:
     """Unpublished candidate visible only inside the operator request context."""
     candidate: BackendPlan | None = None
+    host_epoch: str | None = None
 
 
 _STAGED_PLAN: ContextVar[_StagedBackendPlan | None] = ContextVar(
@@ -564,9 +584,9 @@ _STAGED_PLAN: ContextVar[_StagedBackendPlan | None] = ContextVar(
 
 
 @contextmanager
-def staged_plan_publication():
+def staged_plan_publication(host_epoch: str | None = None):
     """Only the operator handler opts in; normal E2E resolution is unchanged."""
-    stage = _StagedBackendPlan()
+    stage = _StagedBackendPlan(host_epoch=host_epoch)
     token = _STAGED_PLAN.set(stage)
     try:
         yield stage
@@ -576,7 +596,7 @@ def staged_plan_publication():
 
 def publish_staged_plan(stage: _StagedBackendPlan) -> None:
     """Commit exactly once after complete, timely runtime-evidence success."""
-    global _PLAN, _PLAN_TRUSTED
+    global _PLAN, _PLAN_TRUSTED, _PLAN_HOST_EPOCH
     if _STAGED_PLAN.get() is not stage:
         raise CapabilityError("external_capability_plan_stage_invalid")
     check_budget()
@@ -592,6 +612,7 @@ def publish_staged_plan(stage: _StagedBackendPlan) -> None:
         if _PLAN is not None and _PLAN != stage.candidate:
             raise CapabilityError("external_capability_plan_drift")
         _PLAN = stage.candidate
+        _PLAN_HOST_EPOCH = stage.host_epoch
         _PLAN_TRUSTED = True
         stage.candidate = None
 
@@ -640,6 +661,7 @@ def frozen_plan(resolver: Callable[[str], BackendPlan] | None = None) -> Backend
         if _PLAN is not None:
             if not _PLAN_TRUSTED:
                 raise CapabilityError("external_capability_plan_revalidation_required")
+            _require_current_host_epoch()
             return _PLAN
         if resolver is None:
             raise CapabilityError("external_capability_plan_unresolved")
@@ -655,7 +677,7 @@ def frozen_plan(resolver: Callable[[str], BackendPlan] | None = None) -> Backend
 
 
 def install_plan(plan: BackendPlan) -> BackendPlan:
-    global _PLAN, _PLAN_TRUSTED
+    global _PLAN, _PLAN_TRUSTED, _PLAN_HOST_EPOCH
     with _LOCK:
         # Test/bootstrap installation must not bypass an active operator
         # suspension of previously published E2E authority.
@@ -663,6 +685,8 @@ def install_plan(plan: BackendPlan) -> BackendPlan:
             raise CapabilityError("external_capability_plan_revalidation_required")
         if _PLAN is not None and _PLAN != plan:
             raise CapabilityError("external_capability_plan_frozen")
+        if _PLAN is not None:
+            _require_current_host_epoch()
         _PLAN = plan
         _PLAN_TRUSTED = True
         return plan
@@ -773,7 +797,8 @@ def resolve_environment_plan(mode: str) -> BackendPlan:
 
 
 def reset_plan_for_tests() -> None:
-    global _PLAN, _PLAN_TRUSTED
+    global _PLAN, _PLAN_TRUSTED, _PLAN_HOST_EPOCH
     with _LOCK:
         _PLAN = None
         _PLAN_TRUSTED = True
+        _PLAN_HOST_EPOCH = None
