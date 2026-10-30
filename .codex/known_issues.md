@@ -65,3 +65,5 @@
 
 
 - 2026-10-30 OFF-1V direct CLI import and gigantic JSON integers were valid Codex P2 findings on initial PR HEAD; code/test remediation committed. Need final-HEAD Hosted CI and formal Codex review to confirm. These local parsing bugs do not imply real Linux/Ollama/ES high-load acceptance.
+
+- 2026-10-30 actual deployed Linux observation: OFF-1U low-load and high-load both gave INCOMPLETE/zero samples. Six identity checks (root, launcher identity, TCP listener, procfs mount, process, own socket) were PASS; the global exclusive-owner check failed, two detailed scans returned FD_LIMIT. This indicates bounded scan exhaustion, not necessarily a second socket owner or failed API. The limit subtype was not distinguished. New OFF-1U nonexclusive local sampling proof avoids global FD enumeration but is not yet validated against this private installation. Original strict OFF-1S authenticated request gate remains unchanged. Future normal/busy RSS, timeout, full worker-mount identity and ES recovery are NOT_TESTED.
