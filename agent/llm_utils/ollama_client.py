@@ -268,20 +268,12 @@ def call_llm(
     if not prompt:
         return ""
 
-    # ==== 精簡版 debug log（不再印全文） ====
-    debug = os.getenv("DEBUG_CALL_LLM", "0") == "1"   # 想完全關掉就設成 0
-    if debug:
-        sp = (system_prompt or "").replace("\n", " ")
-        up = prompt.replace("\n", " ")
-        print("=" * 50)
-        print(
-            "[call_llm] "
-            f"sys_len={len(system_prompt or '')}, "
-            f"user_len={len(prompt)}, "
-            f"user_preview={up[:500]!r}"
+    # Optional debug always reports sizes only; never dump user/system text.
+    if os.getenv("DEBUG_CALL_LLM", "0") == "1":
+        logger.info(
+            "[call_llm] request_size system_chars=%d user_chars=%d",
+            len(system_prompt or ""), len(prompt),
         )
-        # 如果你想看一點 system_prompt 也可以加（不建議印太多）
-        print(f"[call_llm] system_preview={sp[:400]!r}")
 
     client = get_default_client()
 
@@ -325,7 +317,7 @@ def call_llm(
 
     # Only a total observed blocking duration. Queue wait, first token and
     # generation time cannot be separated from a non-streaming call.
-    stage_label = stage if stage in _LLM_STAGES else "unspecified"
+    stage_label = stage if type(stage) is str and stage in _LLM_STAGES else "unspecified"
     timeout_label = _timeout_label(timeout)
     started = time.perf_counter()
     try:
