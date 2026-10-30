@@ -6,11 +6,6 @@ set -euo pipefail
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 cd -- "$PROJECT_ROOT"
 
-if [[ -z "${HOME:-}" ]]; then
-  printf '%s\n' 'ERROR: HOME is not set; cannot select a private evidence directory.' >&2
-  exit 2
-fi
-
 # Use the already installed SRAF application Python environment.
 # Override only when needed: SRAF_PYTHON=/path/to/venv/bin/python bash ...
 PYTHON_BIN="${SRAF_PYTHON:-python}"
@@ -21,4 +16,4 @@ fi
 
 exec "$PYTHON_BIN" tools/sraf_airgap_off1_hub.py \
   --suite diagnose \
-  --output-dir "$HOME/sraf-acceptance-results"
+  --output-dir "$PROJECT_ROOT/sraf-acceptance-results"
