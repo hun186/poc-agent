@@ -6,38 +6,54 @@
 
 1. 在**已部署的 SRAF 專案根目錄**操作。必須使用與 `./run_sra_api.sh` 相同、依 `requirements.txt` 安裝完成的 Python venv/Conda；不是無依賴、純標準函式庫的系統 Python。
 2. 離線現場**不會**執行 pip、Node、網際網路、Docker 下載或自動重啟服務。
-3. 請使用可信、操作員本人擁有的本機私有輸出路徑，且所有父目錄不允許其他人任意替換；例如 `--output-dir "$HOME/sraf-acceptance-results"`。符號連結、不安全權限與可疑父目錄會拒絕驗收，不能為求方便關閉檢查。
+3. 請使用可信、操作員本人擁有的本機私有輸出路徑，且所有父目錄不允許其他人任意替換；例如 `--output-dir "$PWD/sraf-acceptance-results"`。符號連結、不安全權限與可疑父目錄會拒絕驗收，不能為求方便關閉檢查。
+
+## 不需要再貼長指令：Linux Shell 啟動器
+
+部署更新後，專案根目錄會有 `run_sraf_airgap_off1_diagnose.sh`。操作員只要執行：
+
+```bash
+bash run_sraf_airgap_off1_diagnose.sh
+```
+
+不論從哪個目錄呼叫，腳本會自動切換到自身所在的 SRAF 專案根目錄，並固定呼叫 `python tools/sraf_airgap_off1_hub.py --suite diagnose --output-dir "$PROJECT_ROOT/sraf-acceptance-results"`（`PROJECT_ROOT` 為腳本所在的 SRAF 專案根目錄）。**不會加上 `--live-report`**，因此不會建立真實任務。它保留 Python 驗收工具原本的退出碼，不依賴 `HOME`，缺少 Python 時明確失敗。證據存於專案下的 `sraf-acceptance-results/`，已有根目錄 `.gitignore` 排除；請勿將私有 JSON／DOCX 手動提交 Git。目錄及每層父目錄必須符合既有 O_NOFOLLOW／權限安全規則，若專案在其他使用者可寫的共享掛載下，可能因 `output_ancestor_writable` 而拒絕寫入；不要為求方便放寬權限檢查，改用前述原始 Python CLI 指定可信的私有輸出位置。若 API 與 Shell 的預設 Python 不同，指定已部署的應用 Python（不能依賴斷網現場再安裝套件）：
+
+```bash
+SRAF_PYTHON=/path/to/sraf-venv/bin/python bash run_sraf_airgap_off1_diagnose.sh
+```
+
+使用 `bash` 呼叫不需要另外 `chmod +x`；Linux 用 `.sh`，Windows `.bat` 不適用於 SRAF 的 Linux 容器。
 
 ## 一鍵執行（直接複製）
 
 最常用的**只讀 quick**，不提交任何報告、不登入、不查 SQL／ES、不呼叫 LLM：
 
 ```bash
-python tools/sraf_airgap_off1_hub.py --output-dir "$HOME/sraf-acceptance-results"
+python tools/sraf_airgap_off1_hub.py --output-dir "$PWD/sraf-acceptance-results"
 ```
 
 增加既有 OFF-1B 設定範圍內的 API／ES／LLM **TCP 可達性診斷**；成功建立 TCP 連線不代表 TLS 身分、認證、模型或資料庫功能已驗收：
 
 ```bash
-python tools/sraf_airgap_off1_hub.py --suite diagnose --output-dir "$HOME/sraf-acceptance-results"
+python tools/sraf_airgap_off1_hub.py --suite diagnose --output-dir "$PWD/sraf-acceptance-results"
 ```
 
 **完全不開任何 HTTP/TCP socket** 的設定／本機磁碟／ODBC 庫檔案檢查：
 
 ```bash
-python tools/sraf_airgap_off1_hub.py --suite diagnose --no-network --output-dir "$HOME/sraf-acceptance-results"
+python tools/sraf_airgap_off1_hub.py --suite diagnose --no-network --output-dir "$PWD/sraf-acceptance-results"
 ```
 
 **僅獲得明確授權後**，透過原本 PR #336 的 OFF-1S 嚴格 listener 身分檢查與 Report Job CLI 執行**一筆真實報告**（會消耗 Agent、LLM、ES 工作資源，不可當成單純只讀診斷）：
 
 ```bash
-python tools/sraf_airgap_off1_hub.py --live-report --output-dir "$HOME/sraf-acceptance-results"
+python tools/sraf_airgap_off1_hub.py --live-report --output-dir "$PWD/sraf-acceptance-results"
 ```
 
 若使用已有、最小權限且可撤銷的受控 Token，僅提供**環境變數名稱**，不要在指令列、版本庫或操作紀錄中放入明文：
 
 ```bash
-python tools/sraf_airgap_off1_hub.py --live-report --token-env SRAF_TEST_BEARER --output-dir "$HOME/sraf-acceptance-results"
+python tools/sraf_airgap_off1_hub.py --live-report --token-env SRAF_TEST_BEARER --output-dir "$PWD/sraf-acceptance-results"
 ```
 
 如需指定最長觀察時間：`--max-seconds 1200`（範圍 30～3600），只是觀測等待上限，**不會取消**已被 API 接受的 Job，不會盲目重送 POST。缺少 OFF-1S 嚴格證明時一律不發送憑證、回傳 INCOMPLETE。
