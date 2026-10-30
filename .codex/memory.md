@@ -29,6 +29,8 @@
 - Preserve deployment output dirfd constraints. A group-writable SRAF ancestor can cause `output_ancestor_writable` rather than a successful JSON file; never bypass no-follow/private directory validation to force PASS.
 - Reuse `.codex/architecture.md`, `api_contract.md`, `known_issues.md`, `decisions.md`, `backlog.md` as needed. Never silently promote mocked/fixture/Hosted OFF-0 evidence to full live acceptance.
 
+- 2026-10-31 `.codex/backlog.md` was compacted after archiving exact original 15,076-character contents as `.codex/archive/backlog.md-20261031-031500.md` with matching Git blob `56d811914d7a7c48c926baaffe78fffdef6d4c6a`; current backlog retains all distinct deferred release and operator gates.
+
 ## Archived History
 
 - `.codex/archive/memory.md-20261030-173339.md` — **entire byte-identical pre-compaction active memory** (19,412 characters, Git blob SHA `fb77ea1fe7d4794204aa351520b14ac11f63e2c8`), independently re-fetched and SHA verified before this rewrite. Contains all 20 accumulated dated records and PR #336–338/Codex detailed progress; use only when historically necessary.
