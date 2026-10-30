@@ -62,3 +62,6 @@
 
 
 - 2026-10-30 OFF-1V offline idle/busy comparison is **descriptive only**: OFF-1U's redacted snapshots lack a trusted host/process identity, capture timestamp, sampling interval, GPU/LLM request latency or workload provenance. Even two syntactically valid partial snapshots cannot prove they measure the same Linux API instance or that Ollama workload caused an RSS/thread change. Hosted fixtures have no real environment observation. The real Linux idle/busy capture, cross-worker mount/UID/TMPDIR verification and approved Ollama/ES timeout/fixture tests remain outstanding; no new shared Plan or active SDK probe.
+
+
+- 2026-10-30 OFF-1V direct CLI import and gigantic JSON integers were valid Codex P2 findings on initial PR HEAD; code/test remediation committed. Need final-HEAD Hosted CI and formal Codex review to confirm. These local parsing bugs do not imply real Linux/Ollama/ES high-load acceptance.
