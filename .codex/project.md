@@ -2,9 +2,9 @@
 
 ## Current Focus
 
-- **PR #338 (Draft, 2026-10-31)**: add root-level `run_sraf_airgap_off1_diagnose.sh` as a fixed-argument, read-only Linux Bash launcher for merged OFF-1 hub. Use SRAF's already installed Python, anchor cwd to script location, output to `$PROJECT_ROOT/sraf-acceptance-results` (inside SRAF repository; existing .gitignore excludes generated evidence), preserve CLI exit code. No automatic model job, SQL/ES mutations, restarts or credential use. The former HEAD 0f0f7796 Hosted #41093498319 SUCCESS (29 Python / 19 OFF-0) and Codex CLEAN, but user has since changed the output location: updated launcher, tests, runbook and exact-head CI/formal review are required again. Root/ancestor permission guard is unchanged. Separate approval required to merge.
-- **PR #337 is MERGED** (2026-10-31 00:43 Asia/Taipei), squash merge `e44ae58ddf64f94938a368ceb4726bd3d3f8a658`, exact-head Hosted SUCCESS 26 Python tests +19 OFF-0 schema checks, latest formal Codex CLEAN 0 findings, prior P1 import-path finding resolved. Use this vetted hub; do not create another diagnosis engine.
-- PR #336 previously merged: one real Report Job acceptance flow opt-in, with strict OFF-1S attestation, installed application Python and pinned evidence output. Do not weaken or launch it implicitly.
+- **2026-10-31 current Draft PR #339** (branch `feat/sraf-off1h-worker-observation-hub-20261031`) incorporates existing OFF-1H local Schedule/Handoff Worker process identity verification into the operator-only OFF-1 `--suite diagnose` hub. No network, SQL, lease, authentication or Worker process control in the added OFF-1H probe. Emit advisory PASS/SKIP + redacted verified role count; preserve schedule_handoff_workers=NOT_TESTED for full E2E and preserve existing required HTTP/TCP exit logic. Test exact new HEAD Hosted, then formal Codex and separate user Merge.
+- **PR #338 merged 2026-10-31 01:27 Asia/Taipei** into main squash `97f8b81a426a4c98777dd7668dc0143dbf6c0196`: root-level Bash one-click `run_sraf_airgap_off1_diagnose.sh` anchors output in repo `sraf-acceptance-results/`; final HEAD `6795fbfd`, Hosted #41097544331 SUCCESS 29 Python +19 OFF-0, formal Codex CLEAN/no unresolved findings. Do not recreate launcher or loosen existing output security.
+- **PR #337 merged** at `e44ae58ddf64f94938a368ceb4726bd3d3f8a658`; unified OFF-1 hub and strict Report Job opt-in remain existing authority. PR #336 previously merged one real Report Job CLI.
 
 ## Recent Outcomes
 
@@ -14,7 +14,7 @@
 
 ## Open Handoffs
 
-- Complete PR #338 exact-head Hosted CI including Bash launcher regression, OFF-0 19 schema-only and hub tests; formal Codex review with zero outstanding findings before separate explicit user approval to merge. #336 and #337 are already merged.
+- Complete PR #339 exact-head Hosted CI (new OFF-1H + existing Hub/Bash/19 OFF-0), formal Codex Review, resolve actionable findings, and obtain separate explicit user Merge authorization. #336–338 are merged.
 
 
 - Private Linux/offline real E2E, strict ES TLS/IP SAN and Mapping, SQL source/schema, live Ollama/Agent timing, Word artifact and browser visual acceptance, Worker handoff, OFF-2-5 airgap/restore remain NOT TESTED by Hosted CI.
