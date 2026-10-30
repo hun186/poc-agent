@@ -32,3 +32,6 @@
 - `.codex/archive/backlog.md-20261030-101300.md` — full 21,142-character pre-compaction active backlog, exact matching Git blob SHA `829147a7e4bb496be98a999efd02281a67ffed45`, independently re-fetched before rewrite.
 - `.codex/archive/backlog.md-20261024-170825.md` and `.codex/archive/backlog.md-20261021-165000.md` — prior complete Product/airgap/workflow history.
 - 2026-10-30 compaction per `AGENTS.md` after >20 work records: historical details remain retrievable, but active file lists only current unresolved gates.
+
+
+- 2026-10-30 OFF-1U passive Linux load/topology gate: validate final Hosted CI+OFF-0/legacy Worker tests and formal Codex CLEAN before separate explicit user Merge. Then *only on operator's real Linux host* run read-only baseline `tools/sraf_runtime_baseline_readonly.py --no-network` and new `tools/sraf_linux_load_topology_readonly.py --samples 3 --interval 5` at idle and during already-running approved busy workload; collect sanitized PARTIAL_ONLY output. Verify actual multi-worker TMPDIR/UID/root/mount topology independently; never infer lock sharing from one PID. Ollama/LiteLLM/ES timeouts, dedicated fixture create-only writes, SQL/Handoff/Report Job/DOCX and FULL_LIVE remain independently permission-gated future tests.
