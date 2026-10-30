@@ -4,7 +4,10 @@
 Default: read-only local API/static and bounded network diagnostics; never login,
 invoke a model, create a Job, import the API, or require Node.js.
 --live-report: explicit authorized production Job (one POST, polling, DOCX).
-No remote internet access, package installation, proxies, telemetry or retries.
+Use the *deployed SRAF application's Python interpreter* with its existing
+requirements installed (dotenv, pyodbc etc. imported by reused OFF-1 probes).
+Offline operation needs no pip, internet, Node.js, proxies, or new packages;
+this CLI is NOT an independent stdlib-only tool. No telemetry or retries.
 """
 from __future__ import annotations
 
@@ -22,6 +25,7 @@ import stat
 import sys
 import time
 import zipfile
+import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -113,7 +117,13 @@ def _bounded_http(port: int, method: str, path: str, *, payload=None, token=None
         sock.settimeout(timeout)
         sock.connect(("127.0.0.1", port))
         _guard(proof, port)
-        sock.settimeout(max(0.001, deadline - time.monotonic()))
+        # OFF-1S verification is itself bounded but can consume the HTTP
+        # budget. Never send credentials or a non-idempotent Job POST after
+        # the absolute deadline: there must be positive time remaining.
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ObservationError("http_deadline")
+        sock.settimeout(remaining)
         sock.sendall(packet)
         frame = bytearray()
         while b"\r\n\r\n" not in frame:
@@ -280,7 +290,7 @@ def _validate_docx(raw: bytes):
                 if total > 64 * 1024 * 1024:
                     return False
             return z.getinfo("word/document.xml").file_size > 0 and z.testzip() is None
-    except (OSError, ValueError, RuntimeError, zipfile.BadZipFile):
+    except (OSError, ValueError, RuntimeError, EOFError, zlib.error, zipfile.BadZipFile):
         return False
 
 
