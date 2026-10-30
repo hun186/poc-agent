@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>SRAF 報告任務進度</title>
+  <link rel="stylesheet" href="/static/report_jobs_ui.css">
+  <script src="/static/report_jobs_ui.js" defer></script>
+</head>
+<body>
+  <main class="wrap">
+    <header class="page-header">
+      <div><p class="eyebrow">SRAF · Report Job</p><h1>報告任務進度</h1><p>查看真實 Agent 執行、Word 匯出與完成狀態。耗時過長不代表已逾時。</p></div>
+      <a href="/editor" class="back-link">返回管理頁</a>
+    </header>
+    <section class="panel" aria-labelledby="authTitle">
+      <h2 id="authTitle">身分驗證</h2>
+      <label for="authToken">Bearer Token / 授權服務金鑰</label>
+      <input id="authToken" type="password" autocomplete="off" spellcheck="false" placeholder="輸入具備 Report Job 權限的 Token" aria-describedby="authHint">
+      <p class="hint" id="authHint">僅在此分頁記憶體內使用，不保存於 localStorage、Cookie 或網址。查詢需要 report:job:read；建立及下載另需對應權限。請使用可信任的 HTTPS 或本機連線。</p>
+    </section>
+    <section class="panel" aria-labelledby="createTitle">
+      <h2 id="createTitle">建立新報告</h2>
+      <label for="prompt">報告需求</label>
+      <textarea id="prompt" rows="4" maxlength="30000" placeholder="輸入要交給既有 SRAF Agent 的報告需求"></textarea>
+      <div class="actions"><div class="grow"><label for="filename">Word 檔名（選填）</label><input id="filename" maxlength="180" placeholder="例如：分析報告.docx"></div><button type="button" id="submitBtn">建立並追蹤</button></div>
+      <p class="hint">使用既有 POST /v1/report/jobs；只會在按下建立時提交一次，不會自動重送。</p>
+    </section>
+    <section class="panel" aria-labelledby="watchTitle">
+      <h2 id="watchTitle">查看既有任務</h2>
+      <label for="jobId">Job ID</label>
+      <div class="actions"><input id="jobId" maxlength="128" spellcheck="false" autocomplete="off" placeholder="輸入已建立的 Job ID"><button type="button" id="watchBtn">查詢並追蹤</button><button type="button" class="secondary" id="stopBtn" disabled>停止更新</button></div>
+      <p id="message" class="message" role="status" aria-live="polite">輸入 Token 與 Job ID，或先建立一份報告。</p>
+      <div class="progress" id="progressCard" hidden aria-live="polite">
+        <div class="progress-top"><span class="eyebrow">最近一次成功讀取的狀態</span><span id="lastChecked"></span></div>
+        <h3 id="phaseTitle">尚未取得階段資訊</h3>
+        <div class="status-grid"><div><span>任務狀態</span><strong id="jobStatus">—</strong></div><div><span>階段耗時</span><strong id="phaseElapsed">—</strong></div><div><span>觀察結果</span><strong id="observation">—</strong></div></div>
+        <p id="failureMessage" class="failure" hidden></p>
+        <p class="hint">階段是 Worker 持久化的檢查點；Agent 包含模型、工具及資料檢索，無法從此判斷 Ollama 是否排隊或 GPU 使用率。</p>
+        <button type="button" id="downloadBtn" hidden>下載已完成的 Word</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

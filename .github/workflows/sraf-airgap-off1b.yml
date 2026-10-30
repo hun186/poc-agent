@@ -11,6 +11,14 @@ on:
       - 'sra_api/services/report_job_worker.py'
       - 'sra_api/services/report_job_store.py'
       - 'sra_api/routers/report_jobs.py'
+      - 'sra_api/routers/editor.py'
+      - 'sra_api/static/editor.html'
+      - 'sra_api/static/editor_bootstrap.js'
+      - 'sra_api/static/report_jobs.html'
+      - 'sra_api/static/report_jobs_ui.css'
+      - 'sra_api/static/report_jobs_ui.js'
+      - 'tests/test_report_jobs_ui_static.py'
+      - 'tests/report_jobs_ui_flow.cjs'
       - 'tests/test_sraf_report_job_progress.py'
       - 'tests/test_phase0_security_acceptance.py'
       - 'tests/test_report_job_migration_v1.py'
@@ -156,6 +164,9 @@ jobs:
           python -m compileall -q sra_api/main.py sra_api/startup_diagnostics.py sra_api/services/report_job_worker.py agent/external_capabilities.py agent/llm_utils/ollama_client.py agent/data_agent/builder.py agent/es/es_client.py agent/utils/evidence_pack.py agent/report_agent.py tests/test_sraf_startup_diagnostics.py tests/test_sraf_deferred_e2e_startup.py tests/test_sraf_operator_preflight_state.py tests/test_sraf_e2e_preflight_budget.py tests/test_sraf_e2e_fixture_host_guard.py tests/test_sraf_e2e_plan_publication.py tests/test_sraf_e2e_frozen_plan_revalidation.py tests/test_sraf_e2e_same_host_epoch.py
           python -m pytest -q tests/test_sraf_operator_preflight_state.py tests/test_sraf_e2e_preflight_budget.py tests/test_sraf_e2e_fixture_host_guard.py tests/test_sraf_e2e_plan_publication.py tests/test_sraf_e2e_frozen_plan_revalidation.py tests/test_sraf_e2e_same_host_epoch.py
           python -m pytest -q tests/test_sraf_startup_diagnostics.py tests/test_sraf_deferred_e2e_startup.py tests/test_requirement_startup.py tests/test_report_job_store.py tests/test_report_job_worker.py tests/test_sraf_report_job_progress.py tests/test_report_job_migration_v1.py tests/test_phase0_security_acceptance.py::test_concurrent_report_job_initialization_converges_to_canonical_schema tests/test_requirement_e2e_external_capabilities.py
+          python -m pytest -q tests/test_report_jobs_ui_static.py
+          node --check sra_api/static/report_jobs_ui.js
+          node tests/report_jobs_ui_flow.cjs
       - name: Config-only check against CI host (not SRAF environment)
         run: |
           python tools/sraf_airgap_off1b_auto.py --no-network || test "$?" -eq 2

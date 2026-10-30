@@ -69,12 +69,15 @@ EDITOR_STATIC_ASSETS: dict[str, str] = {
     "editor_audit.js": "application/javascript",
     "editor_documents.js": "application/javascript",
     "editor_bootstrap.js": "application/javascript",
+    "report_jobs_ui.js": "application/javascript",
+    "report_jobs_ui.css": "text/css",
     "excel_to_sql_dashboard_app.js": "application/javascript",
     "excel_to_sql_import_records.js": "application/javascript",
     "excel_to_sql_source_editor_app.js": "application/javascript",
     "excel_to_sql_source_dashboard_app.js": "application/javascript",
     "excel_to_sql_import_center.html": "text/html",
     "agent_data_flow.html": "text/html",
+    "report_jobs.html": "text/html",
     "agent_data_flow.svg": "image/svg+xml",
 }
 
@@ -89,6 +92,20 @@ EDITOR_STATIC_ASSET_ALIASES: dict[str, str] = {
 @router.get("/editor", include_in_schema=False)
 def editor_page() -> FileResponse:
     return FileResponse(static_path("editor.html"))
+
+
+@router.get("/report-jobs", include_in_schema=False)
+def report_jobs_page() -> FileResponse:
+    return FileResponse(
+        static_path("report_jobs.html"),
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+        },
+    )
 
 
 @router.get("/agent-data-flow", include_in_schema=False)
