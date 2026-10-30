@@ -169,3 +169,6 @@ strong authenticated peer identity; protected UDS/mTLS remains future work.
 
 
 - 2026-10-30 Codex P2 resolution: operator revalidation suspends only new verified E2E Report Job admissions; the ReportJobWorker pins the exact plan after successful provenance+admission, and bound per-job tools transmit it to worker threads rather than re-reading suspended process authority. Preserve immutable job behavior through mode/recheck drift; no cancellation or implicit cross-host admission.
+
+
+- 2026-10-30: Instead of sharing an untrusted Plan JSON across API Workers, fence already-published Linux E2E plans against later same-host operator preflight generations. Reuse the existing private flock FD, non-secret opaque marker and no-follow owner/mode checks; refuse new E2E jobs if generation mismatches or cannot be nonblocking read. Never infer acceptance from another Worker; each Worker must independently complete its own source/LLM/ES operator check. Preserve pinned in-flight Job references and normal production routing. Do not treat this as a cross-host lock.
