@@ -3,6 +3,7 @@ import os, threading, time, zipfile
 from contextlib import nullcontext
 
 import requests
+from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
 from pathlib import Path
 from types import SimpleNamespace
 from api.routers.chat_support import ChatMessage
@@ -22,7 +23,7 @@ def _failure_category(exc: Exception) -> str:
         if id(item) in seen:
             continue
         seen.add(id(item))
-        if isinstance(item, (TimeoutError, requests.exceptions.Timeout)):
+        if isinstance(item, (TimeoutError, requests.exceptions.Timeout, Urllib3ReadTimeoutError)):
             return "timeout"
         if isinstance(item, requests.exceptions.HTTPError):
             response = item.response
