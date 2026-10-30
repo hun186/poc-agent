@@ -219,3 +219,51 @@ def test_deeply_nested_json_returns_sanitized_incomplete(tmp_path, capsys):
     assert captured.err == ""
     assert json.loads(captured.out)["overall"] == "INCOMPLETE"
     assert str(path) not in captured.out
+
+
+def nonexclusive_snapshot():
+    value = snapshot()
+    value["checks"]["API-LISTENER"] = {
+        "status": "OBSERVED", "reason": "launcher_listener_for_local_sampling_only"}
+    value["checks"]["SOCKET-EXCLUSIVITY"] = {
+        "status": "NOT_TESTED", "reason": "global_fd_scan_intentionally_not_run"}
+    return value
+
+
+def test_off1v_accepts_new_nonexclusive_local_sampling_with_no_promotion():
+    result = cli.compare(nonexclusive_snapshot(), nonexclusive_snapshot())
+    assert result["overall"] == "DESCRIPTIVE_COMPARISON"
+    assert result["feature_acceptance"] == "NOT_TESTED"
+    assert result["comparability"] == "UNVERIFIED_CROSS_RUN_IDENTITY"
+    assert result["cross_worker_lock_sharing"] == "NOT_TESTED"
+    assert result["ollama_es_timeout"] == "NOT_TESTED"
+
+
+def test_off1v_permits_legacy_and_nonexclusive_inputs_without_claiming_same_authority():
+    result = cli.compare(snapshot(), nonexclusive_snapshot())
+    assert result["overall"] == "DESCRIPTIVE_COMPARISON"
+    assert result["comparability"] == "UNVERIFIED_CROSS_RUN_IDENTITY"
+
+
+@pytest.mark.parametrize("patch", [
+    lambda x: x["checks"]["SOCKET-EXCLUSIVITY"].update({"status": "OBSERVED"}),
+    lambda x: x["checks"]["SOCKET-EXCLUSIVITY"].update({"reason": "exclusive_owner_verified"}),
+    lambda x: x["checks"]["SOCKET-EXCLUSIVITY"].update({"extra": 1}),
+    lambda x: x["checks"]["API-LISTENER"].update({"reason": "listener_identity_observed"}),
+    lambda x: x["checks"].pop("SOCKET-EXCLUSIVITY"),
+])
+def test_nonexclusive_observation_cannot_forge_exclusive_owner(patch):
+    invalid = nonexclusive_snapshot()
+    patch(invalid)
+    result = cli.compare(nonexclusive_snapshot(), invalid)
+    assert result["overall"] == "INCOMPLETE"
+    assert result["comparison"] is None
+
+
+def test_legacy_observation_cannot_silently_import_nonexclusive_check():
+    invalid = snapshot()
+    invalid["checks"]["SOCKET-EXCLUSIVITY"] = {
+        "status": "NOT_TESTED", "reason": "global_fd_scan_intentionally_not_run"}
+    result = cli.compare(snapshot(), invalid)
+    assert result["overall"] == "INCOMPLETE"
+    assert result["comparison"] is None
