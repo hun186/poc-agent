@@ -144,3 +144,9 @@
 
 
 - 2026-10-30: Next validation gates for provisional E2E plan: Hosted exact final-HEAD focused pytest + legacy Worker E2E + OFF-0 schema, and formal Codex Review CLEAN (no unresolved P1/P2/threads) before separate user-authorized Merge. Confirm live Linux busy-Ollama provider timeout, ES partial fixture recovery, and multi-worker routing with operator authorization. Stronger signed/durable plan receipt and revalidation/expiry rules for already-frozen plan remain future work; this PR deliberately leaves per-process no-plan fail-closed behaviour, physical airgap/SQL/LLM/DOCX verification and independent #322 untouched.
+
+
+- 2026-10-30 post-#326 stale-plan recheck gates: exact final-head Hosted OFF-1B focused, legacy Worker, 19 OFF-0, new drift/suspension/in-flight thread regressions, formal completed CLEAN Codex with no open P1/P2/thread; user alone authorizes Merge. Pending: real private Linux observed revalidation under busy Ollama, ES fixture content read/create-only semantics with operator permission, multi-worker/host plan authority and durable secure revalidation epoch if required. This does not preempt already-running jobs, provide hard SDK cancellation or prove full SQL/Agent/Word/physical airgap acceptance.
+
+
+- 2026-10-30 review follow-up: final-head Hosted Python/legacy Worker/19 OFF-0 plus formal Codex re-review must verify the admitted-plan job/thread repair of the P2, including native ReportJobWorker and smolagents tool binding. Resolve initial P2 thread only after reviewer accepts demonstrated fix. Real private Linux busy-LLM, multi-worker plan authority, long-running E2E job semantics under recheck and full SQL/ES/DOCX remain untested.

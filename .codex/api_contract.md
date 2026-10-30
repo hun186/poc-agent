@@ -97,3 +97,6 @@
 
 
 - 2026-10-30: Authenticated operator runtime-evidence GET success schema and status schema unchanged; a *new* local E2E BackendPlan is no longer published on a partial/failing/timed-out handler. Other concurrent threads still see `external_capability_plan_unresolved` until successful final handler completion. HTTP 503 deadline / 409 same-host guard remain as reviewed. No new public API route or production Job behavior.
+
+
+- 2026-10-30 operator revalidation: authenticated `GET /v1/operator-e2e/runtime-evidence` now always revalidates an existing process-local E2E plan. If actual LLM/ES result differs from frozen plan, HTTP 503 carries sanitized `external_capability_plan_drift`; if no candidate was published, HTTP 503 may carry `external_capability_plan_revalidation_required`. During/after failed recheck, new verified E2E Report Jobs cannot obtain that process's old Plan and fail closed with `external_capability_plan_revalidation_required`. Source/transport failures follow existing redacted status/error categories. Success payload and superuser-only status schema remain unchanged. Neither HTTP result nor worker observation supplies cross-process durable authorization.

@@ -35,9 +35,13 @@ class ReportJobWorker:
                 verified_requirement_e2e_job_model,
             )
             is_acceptance, effective_model = verified_requirement_e2e_job_model(job)
-            if is_acceptance and frozen_plan() is None:
+            admitted_plan = frozen_plan() if is_acceptance else None
+            if is_acceptance and admitted_plan is None:
                 raise CapabilityError("external_capability_plan_unresolved")
-            scope = requirement_acceptance_scope() if is_acceptance else nullcontext()
+            # Carry the exact plan admitted before the operator's next
+            # revalidation into this job's whole Agent/ES/Word execution.
+            scope = (requirement_acceptance_scope(admitted_plan)
+                     if is_acceptance else nullcontext())
             with scope:
                 payload = SimpleNamespace(model=effective_model, messages=[ChatMessage(role="user", content=job.prompt)], stream=False)
                 turn = execute_agent_turn(payload=payload, request=None, session_id=job.session_id)

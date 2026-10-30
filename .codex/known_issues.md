@@ -47,3 +47,9 @@
 
 
 - 2026-10-30: Provisional E2E publication fixes an incomplete operator-handler success-to-plan boundary, but cannot revoke an earlier *already published* immutable plan if a later probe reveals environmental drift, and does not propagate plans to other API workers/processes/hosts. After process restart an E2E job still lacks local authority until the same worker receives authorized operator preflight. No durable cross-process plan receipt or atomic ES fixture transaction. Partial writes before failure still require explicit revalidation.
+
+
+- 2026-10-30: Cached E2E Plan revalidation invalidates local *new-job* admission on operator preflight; it cannot revoke a reference already held by a running Report Job or invalidate plans cached in another API worker/container/host. A process crash/restarter loses the plan; no durable distributed authority, revalidation epoch, shared in-flight fencing or cryptographic external-probe attestation. Existing ES partial create-only repair and external writer races remain. A changed backend plan still requires process restart; no unsafe hot-swap. Real private Linux under load and SDK timeout behavior remain untested.
+
+
+- 2026-10-30: An already-running, previously admitted E2E job can finish using its pinned plan even after a subsequent operator recheck detects drift. Revalidation prevents **new** E2E admissions but cannot roll back already-issued ES/LLM work or guarantee backend remains healthy while in flight. Host/mount sharing and actual Linux provenance still require separate live acceptance.

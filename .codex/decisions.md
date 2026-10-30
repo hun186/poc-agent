@@ -163,3 +163,9 @@ strong authenticated peer identity; protected UDS/mTLS remains future work.
 
 
 - 2026-10-30: Do not globally expose a newly prepared E2E BackendPlan until **all** authenticated runtime evidence is constructed and the operator's cooperative deadline has not expired. Use request-only ContextVar provisional state and an explicit under-lock publication step; preserve immutability, independent Request Job fail-closed semantics and direct legacy `frozen_plan` callers. Do not introduce untrusted shared JSON plan files or silently adopt another process's hybrid/mock selection.
+
+
+- 2026-10-30: Existing process-local E2E plan is an immutable prior decision, **not** a timeless current acceptance receipt. At operator runtime-evidence recheck entry, suspend its authority for newly entering verified E2E jobs and re-run actual source/LLM/ES evidence. Only fully successful same-plan revalidation under the preflight deadline restores local admission. Drift/failure/timeout leaves it suspended; do not silently replace a previously published live backend with fallback or permit ordinary `install_plan` to bypass suspension. In-flight E2E jobs already holding a plan are not preempted. Keep ordinary production report behaviour unchanged.
+
+
+- 2026-10-30 Codex P2 resolution: operator revalidation suspends only new verified E2E Report Job admissions; the ReportJobWorker pins the exact plan after successful provenance+admission, and bound per-job tools transmit it to worker threads rather than re-reading suspended process authority. Preserve immutable job behavior through mode/recheck drift; no cancellation or implicit cross-host admission.
