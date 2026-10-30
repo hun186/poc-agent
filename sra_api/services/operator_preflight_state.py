@@ -13,7 +13,7 @@ from agent.e2e_preflight_budget import (
     check_budget, preflight_budget,
 )
 from agent.external_capabilities import (
-    publish_staged_plan, staged_plan_publication,
+    publish_staged_plan, staged_plan_publication, suspend_published_plan,
 )
 from collections.abc import Callable
 from sra_api.services.linux_e2e_preflight_guard import (
@@ -54,6 +54,10 @@ class OperatorPreflightTracker:
             except HostPreflightBusy as exc:
                 raise PreflightInProgress("external_e2e_preflight_in_progress") from exc
             try:
+                # Invalidate cached E2E admission before source/LLM/ES recheck:
+                # no new test job can use yesterday's FULL_LIVE plan mid-probe.
+                # An in-flight job that already took a reference is NOT canceled.
+                suspend_published_plan()
                 self._active = True
                 self._state = "RUNNING"
                 self._generation += 1
