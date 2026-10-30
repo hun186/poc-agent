@@ -28,3 +28,7 @@
 若大量長時間 `outcome=success`，只表示請求的總阻塞時間增加；若 `http_503`，可能是服務忙碌，但仍需 Ollama Server 端排程、GPU 和容器診斷另行佐證。持續在報告中區分「observed timing」與「inferred queue」。
 
 目前所有新測試均為 synthetic `requests`/fake Client，Hosted CI 不接觸私有 Ollama、ES 或 SQL，不能證明 Linux 實機等待行為或模型首 token 進度。下一輪才考慮對獨立 `LiteLLMModel` 觀測和受控的 Report Job status；不得先加入全域佇列、任意 sleep/retry 或直接修改 Ollama queue 設定。
+
+## Codex P2 回歸修正
+
+Requests 在非串流接收 HTTP 回應本文期間，可能透過 urllib3 的 ReadTimeoutError / ProtocolError 包成 requests.exceptions.ConnectionError；此時依 **有限的實際 Exception cause/context/args 物件關聯**分類為 read_timeout，而不是僅根據 ConnectionError 類別判斷。此分類不讀取或列印 Exception 字串，也不代表真正等待位置已確定。另 requests.exceptions.JSONDecodeError 同時繼承 RequestException 與 ValueError，必須在廣泛的 RequestException 分支之前識別，才能將 HTTP 200 + 損壞 JSON 回應標記 invalid_response。新增實際 Response.json() 及回應本文模擬中斷的合成回歸測試；沒有真實 LLM 網路請求。
