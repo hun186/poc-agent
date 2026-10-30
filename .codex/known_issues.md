@@ -31,3 +31,5 @@
 - Older verified archives: `.codex/archive/known_issues.md-20261024-180500.md`, `known_issues.md-20261021-165000.md`, `known_issues.md-20261006-153400.md`, `known_issues.md-20260910-070805.md`. Consult only for an explicit historical trace, not routine project loading.
 
 - **One-command offline Report Job operator acceptance (2026-10-30, proposed PR)**: quick HTTP/UI plus optional real Job proof is not equivalent to ES TLS/SQL/Worker/physical airgap or genuine browser visual test. Strict OFF-1S may skip bearer actions when FD/procfs proof cannot be established; do not infer application outage or weaken that guard. Newly authored tool/CI evidence is pending, not yet deployed.
+
+- **2026-10-30 PR #336 P2 follow-up**: verified Linux dirfd-relative output and rejected invalid output paths prevent error-path symlink writes; configured diagnose TCP FAIL/SKIP changes selected-suite exit. Shared writable parents can legitimately produce INCOMPLETE (use a private operator-owned output location). Neither synthetic CI nor offline quick proves live Agent, ES/SQL, private DOCX, browser or physical airgap.
