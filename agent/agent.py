@@ -434,6 +434,7 @@ def answer_with_routing(
                     timeout=PURE_LLM_TIMEOUT,
                     include_current_time=True,
                     current_time_context_reason="pure_llm_relative_date_resolution",
+                    stage="pure_llm",
                 )
                 pure_record["status"] = "success"
             except Exception as exc:
