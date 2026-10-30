@@ -17,7 +17,8 @@ from agent.external_capabilities import (
 )
 from collections.abc import Callable
 from sra_api.services.linux_e2e_preflight_guard import (
-    HostPreflightBusy, host_preflight_guard, linux_host_guard_held,
+    HostPreflightBusy, advance_host_preflight_epoch, host_preflight_guard,
+    linux_host_guard_held,
 )
 from typing import Any, TypeVar
 
@@ -50,10 +51,14 @@ class OperatorPreflightTracker:
             # not increment generation or masquerade as a failed execution.
             guard = host_preflight_guard()
             try:
-                guard.__enter__()
+                host_guard_fd = guard.__enter__()
             except HostPreflightBusy as exc:
                 raise PreflightInProgress("external_e2e_preflight_in_progress") from exc
             try:
+                # Only a genuinely admitted host-level operator may rotate
+                # this same-host generation. Old workers' local plans then
+                # fail closed for NEW E2E jobs even after our guard releases.
+                host_epoch = advance_host_preflight_epoch(host_guard_fd)
                 # Invalidate cached E2E admission before source/LLM/ES recheck:
                 # no new test job can use yesterday's FULL_LIVE plan mid-probe.
                 # An in-flight job that already took a reference is NOT canceled.
@@ -68,7 +73,7 @@ class OperatorPreflightTracker:
                 raise
         try:
             with preflight_budget(self._budget_seconds):
-                with staged_plan_publication() as staged:
+                with staged_plan_publication(host_epoch) as staged:
                     try:
                         result = operation()
                         # Do not publish an E2E BackendPlan until the whole
