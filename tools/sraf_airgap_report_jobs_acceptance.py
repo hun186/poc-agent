@@ -192,18 +192,60 @@ def _json_response(status, headers, raw, expected_status):
 
 
 def _secure_output_dir(path: Path):
-    path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if path.is_symlink() or not path.is_dir():
+    """Pin every path component with Linux no-follow dirfds; return an owned fd.
+
+    Ancestors must be root/current-UID-owned and not writable by another user,
+    except for a root-owned sticky directory such as /tmp. The final directory
+    must be current-UID-owned and private (0700 or stricter). All later output
+    writes are relative to this pinned fd, never the path after validation.
+    """
+    if os.name != "posix" or not all(hasattr(os, flag) for flag in
+                                       ("O_NOFOLLOW", "O_DIRECTORY")):
+        raise ObservationError("output_dirfd_unsupported")
+    if ".." in path.parts:
         raise ObservationError("output_dir_invalid")
-    if (path.stat().st_mode & 0o077) != 0:
-        raise ObservationError("output_permissions_unsafe")
+    components = Path(os.path.abspath(path)).parts[1:]
+    if not components:
+        raise ObservationError("output_dir_invalid")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open("/", flags)
+    try:
+        for index, component in enumerate(components):
+            last = index == len(components) - 1
+            if last:
+                try:
+                    os.mkdir(component, mode=0o700, dir_fd=fd)
+                except FileExistsError:
+                    pass
+            child = os.open(component, flags, dir_fd=fd)
+            try:
+                mode = os.fstat(child)
+                if mode.st_uid not in (os.geteuid(), 0):
+                    raise ObservationError("output_ancestor_untrusted")
+                if last:
+                    if mode.st_uid != os.geteuid() or mode.st_mode & 0o077:
+                        raise ObservationError("output_permissions_unsafe")
+                elif mode.st_mode & 0o022 and not (
+                    mode.st_uid == 0 and mode.st_mode & stat.S_ISVTX
+                ):
+                    raise ObservationError("output_ancestor_writable")
+            except BaseException:
+                os.close(child)
+                raise
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
 
 
-def _secure_write(path: Path, raw: bytes):
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd = os.open(path, flags, 0o600)
+def _secure_write(name: str, raw: bytes, result_fd: int):
+    """Create one private, unique file in the already verified output dirfd."""
+    if not isinstance(name, str) or re.fullmatch(r"[A-Za-z0-9._-]{1,128}", name) is None or name in (".", ".."):
+        raise ObservationError("output_filename_invalid")
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                 0o600, dir_fd=result_fd)
     try:
         with os.fdopen(fd, "wb") as out:
             out.write(raw)
@@ -211,7 +253,7 @@ def _secure_write(path: Path, raw: bytes):
             os.fsync(out.fileno())
     except BaseException:
         try:
-            path.unlink()
+            os.unlink(name, dir_fd=result_fd)
         except OSError:
             pass
         raise
@@ -266,7 +308,7 @@ def _quick(port: int, cfg: dict, rows: list, suite: str, no_network: bool):
     return proof
 
 
-def _live(port: int, proof, args, rows: list, result_dir: Path):
+def _live(port: int, proof, args, rows: list, result_fd: int):
     if proof is None:
         rows.append(_row("live_report", "SKIP", "listener_unverified_no_credentials_sent"))
         return 2
@@ -354,7 +396,7 @@ def _live(port: int, proof, args, rows: list, result_dir: Path):
         return 1
     filename = ("report-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
                 + "-" + os.urandom(5).hex() + ".docx")
-    _secure_write(result_dir / filename, word)
+    _secure_write(filename, word, result_fd)
     rows.append(_row("report_docx", "PASS", "docx_integrity_checked",
                      size_bytes=len(word), sha256=hashlib.sha256(word).hexdigest()))
     return 0
@@ -389,8 +431,9 @@ def main(argv=None):
               "browser_visual_acceptance": "NOT_TESTED",
               "es_sql_provider_provenance": "NOT_TESTED"}
     code = 2
+    result_fd = None
     try:
-        _secure_output_dir(args.output_dir)
+        result_fd = _secure_output_dir(args.output_dir)
         cfg = _effective_runtime_config(ROOT)
         endpoint, host = _api_bind_endpoint(cfg)
         if endpoint["configuration"] != "RESOLVED" or host != "127.0.0.1":
@@ -398,11 +441,12 @@ def main(argv=None):
         port = int(endpoint["port"])
         proof = _quick(port, cfg, rows, args.suite, args.no_network)
         required = [r for r in rows if r["check"] in
-                    ("api_health", "ui_page", "ui_javascript", "ui_stylesheet")]
+                    ("api_health", "ui_page", "ui_javascript", "ui_stylesheet")
+                    or (args.suite == "diagnose" and r["check"].startswith("tcp_"))]
         code = (1 if any(r["status"] == "FAIL" for r in required) else
                 2 if any(r["status"] != "PASS" for r in required) else 0)
         if args.live_report and code == 0:
-            code = _live(port, proof, args, rows, args.output_dir)
+            code = _live(port, proof, args, rows, result_fd)
         elif args.live_report:
             rows.append(_row("live_report", "SKIP", "quick_checks_not_passed"))
     except ObservationError as exc:
@@ -411,21 +455,27 @@ def main(argv=None):
     except (OSError, ValueError, RuntimeError, EOFError, KeyboardInterrupt):
         rows.append(_row("operator", "SKIP", "operator_environment_or_transport_unavailable"))
         code = 2
+    if result_fd is None:
+        # Never follow a rejected --output-dir on the error/evidence path.
+        print("SRAF_REPORT_JOBS_ACCEPTANCE=INCOMPLETE reason=output_dir_unverified")
+        return 2
     report["result"] = "PASS_PARTIAL" if code == 0 else "FAIL" if code == 1 else "INCOMPLETE"
     report["exit_code"] = code
     report["completed_at_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     try:
         name = "report-jobs-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + os.urandom(3).hex() + ".json"
-        _secure_write(args.output_dir / name, json.dumps(
+        _secure_write(name, json.dumps(
             report, ensure_ascii=False, indent=2, sort_keys=True
-        ).encode("utf-8"))
+        ).encode("utf-8"), result_fd)
         print("SRAF_REPORT_JOBS_ACCEPTANCE=" + report["result"])
         for r in rows:
             print(r["check"] + "=" + r["status"] + " reason=" + r["reason"])
         print("EVIDENCE_FILE=" + str(args.output_dir / name))
-    except OSError:
+    except (OSError, ObservationError):
         print("SRAF_REPORT_JOBS_ACCEPTANCE=INCOMPLETE reason=evidence_write_unavailable")
         return 2
+    finally:
+        os.close(result_fd)
     return code
 
 
