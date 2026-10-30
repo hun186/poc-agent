@@ -20,6 +20,7 @@ on:
       - 'agent/llm_utils/ollama_client.py'
       - 'agent/data_agent/builder.py'
       - 'agent/es/es_client.py'
+      - 'agent/tools_es/common.py'
       - 'agent/utils/evidence_pack.py'
       - 'agent/report_agent.py'
       - 'tests/test_report_job_worker.py'
