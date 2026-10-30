@@ -33,6 +33,7 @@ _EXPECTED_CHECKS = frozenset({
     "API-LISTENER", "API-MOUNT-NAMESPACE", "LOCAL-LOCK-CANDIDATE",
     "API-PROCESS-SAMPLES", "CROSS-WORKER-LOCK-SHARING", "OLLAMA-ES-TIMEOUT",
 })
+_NONEXCLUSIVE_CHECKS = _EXPECTED_CHECKS | {"SOCKET-EXCLUSIVITY"}
 _EXPECTED_FIELDS = frozenset({
     "schema", "mode", "feature_acceptance", "overall", "checks", "samples",
     "network_requests", "credentials_sent", "database_queries",
@@ -105,13 +106,21 @@ def _validate_snapshot(value: object) -> list[dict[str, float | int]]:
     if value["credentials_sent"] is not False:
         raise ComparisonInputError("snapshot_invalid")
     checks = value["checks"]
-    if not isinstance(checks, dict) or set(checks) != _EXPECTED_CHECKS:
+    if not isinstance(checks, dict) or set(checks) not in (
+            _EXPECTED_CHECKS, _NONEXCLUSIVE_CHECKS):
         raise ComparisonInputError("snapshot_invalid")
+    new_observation = "SOCKET-EXCLUSIVITY" in checks
+    expected_listener = (
+        ("OBSERVED", "launcher_listener_for_local_sampling_only")
+        if new_observation else ("OBSERVED", "listener_identity_observed")
+    )
     expected = {
-        "API-LISTENER": ("OBSERVED", "listener_identity_observed"),
+        "API-LISTENER": expected_listener,
         "API-PROCESS-SAMPLES": ("OBSERVED", "process_samples_collected"),
         "CROSS-WORKER-LOCK-SHARING": ("NOT_TESTED", "cannot_prove_from_external_snapshot"),
         "OLLAMA-ES-TIMEOUT": ("NOT_TESTED", "no_model_or_es_request"),
+        "SOCKET-EXCLUSIVITY": (
+            "NOT_TESTED", "global_fd_scan_intentionally_not_run"),
     }
     for key in _EXPECTED_CHECKS:
         row = checks[key]
