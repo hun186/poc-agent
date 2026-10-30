@@ -41,3 +41,5 @@
 
 
 - 2026-10-30 OFF-1V follow-up: ensure full Hosted CI on post-Codex-P2 HEAD, verify direct `python tools/sraf_linux_load_compare_offline.py --help` with PYTHONPATH absent and sanitized `10**400`/deep JSON rejection, reply to/resolve both inline review Threads and request a NEW formal final-head Codex Review. No Merge until CLEAN and explicit user instruction.
+
+- 2026-10-30 OFF-1U actual Linux blocker: two runs returned zero samples because strict OFF-1S global exclusive-owner scan hit FD_LIMIT on both attempts, though the six preliminary listener/PID checks PASS. For PR #330 run final-head Hosted CI on new OFF-1U local nonexclusive PID/socket sampling proof and OFF-1V old/new schema comparison, obtain fresh formal Codex Review CLEAN with zero unresolved threads, and require separate user Merge authorization. After deployment, operator should repeat two safe OFF-1U normal/busy runs; socket exclusivity, cross-worker lock/mount identity, Ollama/ES SDK timeouts and FULL_LIVE remain NOT_TESTED.
