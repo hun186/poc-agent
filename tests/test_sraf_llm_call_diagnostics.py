@@ -142,3 +142,22 @@ def test_generate_remains_compatible_with_existing_nonstreaming_payload(monkeypa
     assert client.generate("prompt", timeout=22.0) == "legacy-output"
     assert received["timeout"] == 22.0
     assert received["json"]["stream"] is False
+
+
+def test_debug_opt_in_never_previews_prompt_or_system_text(
+        monkeypatch, fake_client, caplog, capsys):
+    monkeypatch.setenv("DEBUG_CALL_LLM", "1")
+    with caplog.at_level(logging.INFO, logger=subject.__name__):
+        subject.call_llm("PRIVATE-QUESTION", system_prompt="PRIVATE-SYSTEM",
+                         stage="router")
+    assert "request_size system_chars=14 user_chars=16" in caplog.text
+    assert "PRIVATE-QUESTION" not in caplog.text
+    assert "PRIVATE-SYSTEM" not in caplog.text
+    assert capsys.readouterr().out == ""
+
+
+def test_nonstring_stage_fails_safe_without_breaking_call(fake_client, caplog):
+    with caplog.at_level(logging.INFO, logger=subject.__name__):
+        assert subject.call_llm("text", stage=["secret"]) == "synthetic-answer"
+    assert "stage=unspecified" in caplog.text
+    assert "secret" not in caplog.text
