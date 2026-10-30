@@ -18,6 +18,11 @@ def _prepare(monkeypatch, tmp_path, *, suite_status="PASS", disk_status="PASS",
         else "disk_threshold_met"))
     monkeypatch.setattr(hub, "probe_odbc_library", lambda: SimpleNamespace(
         status=odbc_status, reason="odbc_library_unavailable"))
+    monkeypatch.setattr(hub, "probe_worker_process_identities",
+                        lambda root: SimpleNamespace(
+                            status="PASS",
+                            reason="worker_process_identities_verified",
+                            evidence={"verified_role_count": 2}))
     monkeypatch.setattr(hub.report_jobs, "_effective_runtime_config", lambda root: {})
     monkeypatch.setattr(hub.report_jobs, "_api_bind_endpoint", lambda cfg: (
         {"configuration": "RESOLVED", "port": 9002}, "127.0.0.1"))
@@ -153,3 +158,99 @@ def test_unavailable_runtime_still_produces_incomplete_evidence(monkeypatch, tmp
     assert any(r["reason"] == "operator_environment_or_transport_unavailable"
                for r in ev["checks"])
     assert "PRIVATE_SECRET" not in json.dumps(ev)
+
+
+def test_diagnose_includes_off1h_worker_identity_without_full_acceptance(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    assert _run(tmp_path, "--suite", "diagnose") == 0
+    evidence = _evidence(tmp_path)
+    worker = next(r for r in evidence["checks"]
+                  if r["check"] == "worker_process_identity")
+    assert worker == {
+        "check": "worker_process_identity", "status": "PASS",
+        "reason": "worker_process_identities_verified", "verified_role_count": 2,
+    }
+    assert next(g for g in evidence["manual_gates"]
+                if g["check"] == "schedule_handoff_workers")["status"] == "NOT_TESTED"
+    assert evidence["production_release_ready"] is False
+
+
+def test_quick_does_not_run_worker_observer(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "probe_worker_process_identities",
+                        lambda *a: pytest.fail("quick must not inspect Workers"))
+    assert _run(tmp_path) == 0
+    assert not any(r["check"] == "worker_process_identity"
+                   for r in _evidence(tmp_path)["checks"])
+
+
+def test_diagnose_no_network_still_permits_local_proc_observation(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    touched = []
+    def observe(root):
+        touched.append(root)
+        return SimpleNamespace(status="PASS", reason="worker_process_identities_verified",
+                               evidence={"verified_role_count": 2})
+    monkeypatch.setattr(hub, "probe_worker_process_identities", observe)
+    assert _run(tmp_path, "--suite", "diagnose", "--no-network") == 2
+    assert touched == [tmp_path]
+    ev = _evidence(tmp_path)
+    assert ev["network_mode"] == "NONE"
+    assert any(r["check"] == "worker_process_identity" and r["status"] == "PASS"
+               for r in ev["checks"])
+
+
+def test_unverified_workers_are_advisory_not_fake_success(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "probe_worker_process_identities",
+                        lambda root: SimpleNamespace(
+                            status="SKIP", reason="worker_process_identity_unverified",
+                            evidence={"verified_role_count": 1}))
+    assert _run(tmp_path, "--suite", "diagnose") == 0
+    ev = _evidence(tmp_path)
+    assert next(r for r in ev["checks"]
+                if r["check"] == "worker_process_identity")["status"] == "SKIP"
+    assert next(g for g in ev["manual_gates"]
+                if g["check"] == "schedule_handoff_workers")["status"] == "NOT_TESTED"
+
+
+def test_worker_observer_errors_are_redacted(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    def failure(root):
+        raise OSError("SECRET /proc/1234/cmdline --pass=fake")
+    monkeypatch.setattr(hub, "probe_worker_process_identities", failure)
+    assert _run(tmp_path, "--suite", "diagnose") == 0
+    ev = _evidence(tmp_path)
+    assert next(r for r in ev["checks"] if r["check"] == "worker_process_identity") == {
+        "check": "worker_process_identity", "status": "SKIP",
+        "reason": "worker_process_identity_unverified", "verified_role_count": 0,
+    }
+    assert "SECRET" not in json.dumps(ev)
+
+
+def test_invalid_worker_probe_status_cannot_be_trusted(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "probe_worker_process_identities",
+                        lambda root: SimpleNamespace(
+                            status="PASS", reason="unvalidated_reason_with_secret",
+                            evidence={"verified_role_count": 2}))
+    assert _run(tmp_path, "--suite", "diagnose") == 0
+    ev = _evidence(tmp_path)
+    worker = next(r for r in ev["checks"] if r["check"] == "worker_process_identity")
+    assert worker["status"] == "SKIP"
+    assert "unvalidated_reason_with_secret" not in json.dumps(ev)
+
+
+def test_contradictory_pass_and_bad_role_count_fail_closed(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "probe_worker_process_identities",
+                        lambda root: SimpleNamespace(
+                            status="PASS", reason="worker_process_identities_verified",
+                            evidence={"verified_role_count": 1}))
+    assert _run(tmp_path, "--suite", "diagnose") == 0
+    ev = _evidence(tmp_path)
+    worker = next(r for r in ev["checks"] if r["check"] == "worker_process_identity")
+    assert worker["status"] == "SKIP"
+    assert worker["verified_role_count"] == 0
+    assert next(g for g in ev["manual_gates"]
+                if g["check"] == "schedule_handoff_workers")["status"] == "NOT_TESTED"

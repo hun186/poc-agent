@@ -24,6 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools import sraf_airgap_report_jobs_acceptance as report_jobs
 from tools.sraf_airgap_off1_probes import probe_disk, probe_odbc_library
+from tools.sraf_airgap_off1h_worker_identity import probe_worker_process_identities
 
 ROOT = report_jobs.ROOT
 SCHEMA = "sraf_airgap_off1_unified_hub_v1"
@@ -118,6 +119,34 @@ def main(argv: list[str] | None = None) -> int:
             raise report_jobs.ObservationError("api_port_invalid")
         port = int(endpoint["port"])
         proof = report_jobs._quick(port, cfg, rows, args.suite, args.no_network)
+        if args.suite == "diagnose":
+            # OFF-1H is a no-network /proc and launcher-identity observation.
+            # It cannot establish SQL leases, Handoff execution or readiness.
+            # Advisory only: a missing or unverified Worker may be legitimate.
+            try:
+                observed = probe_worker_process_identities(ROOT)
+                count = observed.evidence["verified_role_count"]
+                if type(count) is not int or not 0 <= count <= 2:
+                    raise ValueError("worker_observation_invalid")
+                if (observed.status, observed.reason) not in (
+                    ("PASS", "worker_process_identities_verified"),
+                    ("SKIP", "worker_process_identity_unverified"),
+                    ("SKIP", "worker_process_host_unsupported"),
+                ):
+                    raise ValueError("worker_observation_invalid")
+                if (observed.status == "PASS" and count != 2
+                        or observed.reason == "worker_process_host_unsupported" and count != 0):
+                    raise ValueError("worker_observation_inconsistent")
+                rows.append(report_jobs._row(
+                    "worker_process_identity", observed.status, observed.reason,
+                    verified_role_count=count,
+                ))
+            except Exception:
+                # Never serialize /proc exceptions, paths, PIDs or credentials.
+                rows.append(report_jobs._row(
+                    "worker_process_identity", "SKIP", "worker_process_identity_unverified",
+                    verified_role_count=0,
+                ))
         code = _exit_for_selected(rows, args.suite)
         if args.live_report:
             if code == 0:
