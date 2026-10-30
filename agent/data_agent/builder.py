@@ -10,6 +10,7 @@ from ..tools_es import ESSearchNews, ESTimeline, ESFetchDocById
 from ..tools_es.common import bind_requirement_acceptance
 from ..tools_stats import AggregateMonthQuarter
 
+from .diagnostics import observe_data_agent_model
 from .types import ENV
 from .prompts import REPORT_DATA_SYSTEM, STYLE_DATA_CODE_SYSTEM
 
@@ -105,12 +106,12 @@ def build_model() -> LiteLLMModel | Model:
     if ENV.tool_choice:
         extra_kwargs["tool_choice"] = ENV.tool_choice
 
-    _SHARED_MODEL = LiteLLMModel(
+    _SHARED_MODEL = observe_data_agent_model(LiteLLMModel(
         model_id=effective_model_id,
         api_base=ENV.model_base_url,
         temperature=ENV.model_temperature,
         extra_generation_kwargs=extra_kwargs or None,
-    )
+    ))
     return _SHARED_MODEL
 
 
