@@ -271,3 +271,16 @@ def test_new_report_job_still_denied_after_operator_suspend(monkeypatch, tmp_pat
     ReportJobWorker(Store(), tmp_path).execute(job)
     assert len(seen) == 1
     assert seen[0][1] == "CapabilityError"
+
+
+def test_admitted_plan_ignores_ambient_mode_change_but_new_jobs_fail(monkeypatch):
+    from agent.external_capabilities import (
+        requirement_acceptance_scope, suspend_published_plan,
+    )
+    assert frozen_plan(lambda _: PLAN) == PLAN
+    with requirement_acceptance_scope(frozen_plan()):
+        suspend_published_plan()
+        monkeypatch.setenv("REQUIREMENT_E2E_EXTERNAL_MODE", "invalid_mode")
+        assert frozen_plan() == PLAN  # already admitted, no late env reparse
+    with pytest.raises(CapabilityError, match="external_mode_invalid"):
+        frozen_plan()
