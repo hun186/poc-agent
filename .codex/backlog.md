@@ -150,3 +150,6 @@
 
 
 - 2026-10-30 review follow-up: final-head Hosted Python/legacy Worker/19 OFF-0 plus formal Codex re-review must verify the admitted-plan job/thread repair of the P2, including native ReportJobWorker and smolagents tool binding. Resolve initial P2 thread only after reviewer accepts demonstrated fix. Real private Linux busy-LLM, multi-worker plan authority, long-running E2E job semantics under recheck and full SQL/ES/DOCX remain untested.
+
+
+- 2026-10-30 post-#327 same-host epoch release gates: Hosted final-HEAD Python focused/Worker/startup and 19 OFF-0 schema checks, synthetic independent Linux process rotation/stale-admission/invalid-marker tests, formal Codex Review CLEAN with 0 open P1/P2/threads, separate user-authorized Merge. Pending real private Linux multiple Uvicorn worker/lock-path identity verification, busy Ollama SDK timeout/retries, live dedicated ES fixture create-only recoverability and authenticated Report Job/DOCX/SQL acceptance. Determine whether deployment uses containers or differing temporary mounts before claiming host coverage; no cross-host durable lease.
