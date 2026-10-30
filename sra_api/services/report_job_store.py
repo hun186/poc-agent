@@ -13,7 +13,7 @@ from typing import Any
 class IdempotencyConflict(Exception):
     pass
 
-REPORT_JOB_SCHEMA_VERSION = 1
+REPORT_JOB_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,9 @@ class ReportJob:
     started_at: str | None = None
     finished_at: str | None = None
     updated_at: str | None = None
+    phase: str = "unobserved"
+    phase_updated_at: str | None = None
+    failure_category: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -79,16 +82,22 @@ class ReportJobStore:
             version = con.execute("PRAGMA user_version").fetchone()[0]
             exists = con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_jobs'").fetchone()
             if not exists:
+                if version != 0:
+                    raise RuntimeError("Report job schema version without canonical table")
                 self._create_v1(con, "report_jobs")
                 self._create_owner_index(con)
-                con.execute(f"PRAGMA user_version={REPORT_JOB_SCHEMA_VERSION}")
                 self._validate_v1(con)
+                self._migrate_v1_to_v2(con)
             elif version == 0:
                 self._migrate_v0(con)
-            elif version != REPORT_JOB_SCHEMA_VERSION:
-                raise RuntimeError(f"Unsupported report job schema version: {version}")
-            else:
+                self._migrate_v1_to_v2(con)
+            elif version == 1:
                 self._validate_v1(con)
+                self._migrate_v1_to_v2(con)
+            elif version == REPORT_JOB_SCHEMA_VERSION:
+                self._validate_v2(con)
+            else:
+                raise RuntimeError(f"Unsupported report job schema version: {version}")
             con.commit()
         except Exception:
             con.rollback()
@@ -142,11 +151,31 @@ class ReportJobStore:
         self._migration_checkpoint("user_version")
         if con.execute("PRAGMA user_version").fetchone()[0] != REPORT_JOB_SCHEMA_VERSION: raise RuntimeError("Schema version update failed")
 
+    def _migrate_v1_to_v2(self, con: sqlite3.Connection) -> None:
+        """Extend only a validated canonical v1 table; one outer transaction."""
+        self._validate_v1(con)
+        self._migration_execute(con, "v2_phase", "ALTER TABLE report_jobs ADD COLUMN phase TEXT NOT NULL DEFAULT 'unobserved'")
+        self._migration_execute(con, "v2_phase_time", "ALTER TABLE report_jobs ADD COLUMN phase_updated_at TEXT")
+        self._migration_execute(con, "v2_failure_category", "ALTER TABLE report_jobs ADD COLUMN failure_category TEXT")
+        self._migration_execute(
+            con, "v2_backfill",
+            "UPDATE report_jobs SET phase=CASE status WHEN 'running' THEN 'unobserved' ELSE status END, "
+            "phase_updated_at=updated_at",
+        )
+        self._migration_checkpoint("v2_backfill")
+        self._migration_execute(con, "v2_user_version", f"PRAGMA user_version={REPORT_JOB_SCHEMA_VERSION}")
+        self._validate_v2(con)
+        self._migration_checkpoint("v2_validated")
+
     @staticmethod
-    def _validate_v1(con: sqlite3.Connection, expected_rows: int | None = None) -> None:
+    def _validate_v1(con: sqlite3.Connection, expected_rows: int | None = None, *, version: int = 1) -> None:
         expected = ["job_id","status","prompt","filename","session_id","model","options_json","metadata_json","idempotency_key","request_hash","owner_kind","owner_id","turn_id","docx_basename","error_type","error_message","created_at","started_at","finished_at","updated_at"]
+        if version == 2:
+            expected += ["phase", "phase_updated_at", "failure_category"]
         info = list(con.execute("PRAGMA table_info(report_jobs)"))
         required = {"status","prompt","session_id","model","options_json","metadata_json","request_hash","created_at","updated_at"}
+        if version == 2:
+            required.add("phase")
         indexes = list(con.execute("PRAGMA index_list(report_jobs)"))
         owner = [r for r in indexes if r[1] == "uq_report_jobs_owner_idempotency" and r[2] == 1 and r[4] == 1]
         global_unique = any([x[2] for x in con.execute(f"PRAGMA index_info({r[1]})")] == ["idempotency_key"] for r in indexes if r[2])
@@ -157,6 +186,16 @@ class ReportJobStore:
                 owner_cols != ["owner_kind", "owner_id", "idempotency_key"] or
                 (expected_rows is not None and count != expected_rows)):
             raise RuntimeError("Canonical report job validation failed")
+
+    @staticmethod
+    def _validate_v2(con: sqlite3.Connection) -> None:
+        ReportJobStore._validate_v1(con, version=2)
+        if con.execute("PRAGMA user_version").fetchone()[0] != REPORT_JOB_SCHEMA_VERSION:
+            raise RuntimeError("Canonical report job schema version mismatch")
+        if con.execute("SELECT 1 FROM report_jobs WHERE phase NOT IN "
+                       "('queued','unobserved','agent_execution','docx_export','finalizing',"
+                       "'completed','failed','interrupted') LIMIT 1").fetchone():
+            raise RuntimeError("Canonical report job phase invalid")
 
     @staticmethod
     def _row(row: sqlite3.Row | None) -> ReportJob | None:
@@ -174,8 +213,8 @@ class ReportJobStore:
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
             try:
-                con.execute("INSERT INTO report_jobs (job_id,status,prompt,filename,session_id,model,options_json,metadata_json,idempotency_key,request_hash,owner_kind,owner_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                            (job_id,"queued",prompt,filename,session_id,model,json.dumps(options,sort_keys=True),json.dumps(metadata,sort_keys=True),idempotency_key,request_hash,owner_kind,owner_id,now,now))
+                con.execute("INSERT INTO report_jobs (job_id,status,prompt,filename,session_id,model,options_json,metadata_json,idempotency_key,request_hash,owner_kind,owner_id,created_at,updated_at,phase,phase_updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            (job_id,"queued",prompt,filename,session_id,model,json.dumps(options,sort_keys=True),json.dumps(metadata,sort_keys=True),idempotency_key,request_hash,owner_kind,owner_id,now,now,"queued",now))
                 return self.get(job_id, connection=con), True
             except sqlite3.IntegrityError:
                 if not idempotency_key:
@@ -198,22 +237,40 @@ class ReportJobStore:
             row = con.execute("SELECT job_id FROM report_jobs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
             if not row:
                 return None
-            changed = con.execute("UPDATE report_jobs SET status='running',started_at=?,updated_at=? WHERE job_id=? AND status='queued'", (now,now,row[0])).rowcount
+            changed = con.execute("UPDATE report_jobs SET status='running',phase='agent_execution',phase_updated_at=?,started_at=?,updated_at=? WHERE job_id=? AND status='queued'", (now,now,now,row[0])).rowcount
             return self.get(row[0], connection=con) if changed == 1 else None
+
+    def update_phase(self, job_id: str, phase: str) -> bool:
+        """CAS-only stage update; never revive a terminal or queued job."""
+        if phase not in ("docx_export", "finalizing"):
+            raise ValueError("unsupported_report_phase")
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as con:
+            return con.execute(
+                "UPDATE report_jobs SET phase=?,phase_updated_at=?,updated_at=? "
+                "WHERE job_id=? AND status='running' AND phase IN ('agent_execution','docx_export') "
+                "AND (phase='agent_execution' OR ?='finalizing')",
+                (phase, now, now, job_id, phase),
+            ).rowcount == 1
 
     def recover_running(self) -> int:
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
-            return con.execute("UPDATE report_jobs SET status='interrupted',error_type='service_restart',error_message='Execution interrupted by service restart',finished_at=?,updated_at=? WHERE status='running'", (now,now)).rowcount
+            return con.execute("UPDATE report_jobs SET status='interrupted',phase='interrupted',phase_updated_at=?,error_type='service_restart',error_message='Execution interrupted by service restart',finished_at=?,updated_at=? WHERE status='running'", (now,now,now)).rowcount
 
     def complete(self, job_id: str, turn_id: str, basename: str) -> None:
         self._finish(job_id, "completed", turn_id=turn_id, basename=basename)
 
-    def fail(self, job_id: str, error_type: str, message: str) -> None:
-        self._finish(job_id, "failed", error_type=error_type, message=message)
+    def fail(self, job_id: str, error_type: str, message: str, *, failure_category: str = "execution_error") -> None:
+        if failure_category not in ("timeout", "rate_limited", "provider_unavailable", "execution_error"):
+            raise ValueError("unsupported_report_failure_category")
+        self._finish(job_id, "failed", error_type=error_type, message=message,
+                     failure_category=failure_category)
 
-    def _finish(self, job_id: str, status: str, *, turn_id=None, basename=None, error_type=None, message=None) -> None:
+    def _finish(self, job_id: str, status: str, *, turn_id=None, basename=None,
+                error_type=None, message=None, failure_category=None) -> None:
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as con:
-            con.execute("UPDATE report_jobs SET status=?,turn_id=?,docx_basename=?,error_type=?,error_message=?,finished_at=?,updated_at=? WHERE job_id=? AND status='running'", (status,turn_id,basename,error_type,message,now,now,job_id))
+            con.execute("UPDATE report_jobs SET status=?,phase=?,phase_updated_at=?,turn_id=?,docx_basename=?,error_type=?,error_message=?,failure_category=?,finished_at=?,updated_at=? WHERE job_id=? AND status='running'",
+                        (status,status,now,turn_id,basename,error_type,message,failure_category,now,now,job_id))
