@@ -53,3 +53,6 @@
 
 
 - **2026-10-31 OFF-2 first independent runtime-byte inventory increment:** a read-only verifier of the existing manifest and its listed runtime hashes with strict external SHA-256 trust anchor and pinned no-follow paths; validate on latest Hosted, Codex Review and conditional merge. Still outstanding: produce a reviewed *complete* signed release bundle, SRAF Python/native ODBC/wheelhouse lock and checksums, OS/architecture compatibility, registry-excluded configuration template, immutable manifest hash distribution, installer, immutable version/rollback, OFF-3/4 full disconnected acceptance, OFF-5 actual restoration. Never use a self-computed target digest as a trusted release signature.
+
+
+- **OFF-2 one-command operator wrapper candidate, 2026-10-31:** provide a bounded Bash entry that consumes only independently provided trusted manifest SHA-256 via `SRAF_OFF2_TRUSTED_MANIFEST_SHA256`, rejects absent/invalid hash and any extra args before invoking the installed Python OFF-2 verifier, no side effects. Run exact latest-head OFF-2 focused CI including new Shell tests and OFF-0 19, request formal Codex and conditional merge only after CLEAN. Additional release bundle signing, wheelhouse, real private Linux and restore evidence remains outstanding.
