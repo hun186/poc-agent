@@ -80,3 +80,19 @@ def test_errors_or_unstructured_responses_are_redacted(monkeypatch, raw):
     assert obs["status"] == "SKIP"
     assert obs["reason"] == "es_strict_observation_unavailable"
     assert "SECRET" not in str(obs)
+
+
+def test_deferred_es_import_error_is_not_disguised_as_skipped_probe(monkeypatch):
+    """AGENTS.md: an unavailable ES module must fail as an import error."""
+    import builtins
+
+    original_import = builtins.__import__
+
+    def fail_only_es_module_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "tools" and "sraf_airgap_off1b_es_https_mapping" in fromlist:
+            raise ImportError("ES_DEPENDENCY_MISSING_DIAGNOSTIC")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fail_only_es_module_import)
+    with pytest.raises(ImportError, match="ES_DEPENDENCY_MISSING_DIAGNOSTIC"):
+        projected.strict_mapping_observation({}, Path("/trusted/sraf"))
