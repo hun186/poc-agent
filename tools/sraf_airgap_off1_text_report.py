@@ -44,7 +44,7 @@ RESULT = {"PASS_PARTIAL": "部分檢查通過", "FAIL": "存在已確認失敗",
 def render_text_report(evidence: dict) -> bytes:
     """Return bounded UTF-8 without interpolating untrusted evidence values."""
     result = evidence.get("result")
-    if result not in RESULT:
+    if not isinstance(result, str) or result not in RESULT:
         result = "INCOMPLETE"
     raw_time = evidence.get("completed_at_utc")
     timestamp = (raw_time if isinstance(raw_time, str) and re.fullmatch(
@@ -73,7 +73,7 @@ def render_text_report(evidence: dict) -> bytes:
         details = CHECKS.get(key) if isinstance(key, str) else None
         label, advice = details if details else ("未識別的檢查", "使用原始受控 JSON 與專案文件人工核對")
         status = row.get("status")
-        if status not in STATUS:
+        if not isinstance(status, str) or status not in STATUS:
             status = "SKIP"
         lines.append(f"- {label}：{STATUS[status]} [{status}]")
         if status != "PASS":
