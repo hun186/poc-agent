@@ -60,3 +60,6 @@
 
 
 - **2026-10-31 可選輸出目錄（待 Hosted 驗證）：** Shared/group-writable project ancestors may legitimately trigger `output_ancestor_writable` and prevent the standard project-local evidence directory. The new shell-only `SRAF_OFF1_OUTPUT_DIR` override accepts an absolute single-line operator path and delegates full nofollow/owner/private-directory enforcement to existing Python. It never chmods, follows symlinks, creates fallback storage, or upgrades actual Linux acceptance. The operator must use a trusted path with trusted ancestors; paths with valid syntax may still be rejected.
+
+
+- **2026-10-31 operator Shell no-network candidate:** `bash run_sraf_airgap_off1_diagnose.sh --no-network` reuses the existing Python hub no-sockets mode. Expected connectivity rows SKIP and total INCOMPLETE/exit 2; local /proc may remain observable but cannot attest Worker leases or authenticated API, SQL, ES, LLM, Word, or physical network isolation. Shell refuses combination with active SQL/ES credentialed flags before invoking Python. Hosted synthetic tests are not real airgap acceptance.
