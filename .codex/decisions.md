@@ -69,3 +69,6 @@
 
 
 - **2026-10-31 OFF-2 no-fallback Shell route:** keep existing standalone Python verifier authoritative; root Bash wrapper requires an explicit, properly shaped external manifest digest environment variable and rejects arguments and missing installed Python with INCOMPLETE/exit 2. Never calculate expected pin from the target checkout, never echo it, and do not create/chmod files, install packages, or add a second verification path. Original PASS_PARTIAL cannot represent package signing/wheelhouse/airgap.
+
+
+- **2026-10-31 OFF-3 safe mode selection:** combine only existing stable, read-only tools behind a root Bash dispatcher with allowlisted quick|diagnose|no-network|release-files. Never reimplement SQL/ES/LLM/Report Job probes, let unknown arguments reach a tool, automatically escalate normal Quick into authenticated Acceptance, or fake Upgrade/Restore. Preserve script-relative physical working directory and existing private evidence behavior. Defer authenticated Acceptance and real offline upgrade/backup until separate risk and fixture gates are approved and tested.
