@@ -393,3 +393,62 @@ def test_sql_read_independent_of_unavailable_api_endpoint(monkeypatch, tmp_path)
     assert calls == ["sql"]
     assert any(r["check"] == "sql_constant_read" for r in ev["checks"])
     assert any(r["check"] == "operator" for r in ev["checks"])
+
+
+@pytest.mark.parametrize("flag,check,reason,manual_gate", [
+    ("--probe-sql-read", "sql_constant_read", "sql_read_response_invalid",
+     "sql_schema_source_permissions"),
+    ("--probe-es-tls-mapping", "es_strict_tls_mapping", "es_tls_identity_failed",
+     "es_tls_ca_san_mapping"),
+])
+def test_database_failure_survives_later_runtime_configuration_error(
+        monkeypatch, tmp_path, flag, check, reason, manual_gate):
+    """Codex P2: later APP_ENV errors cannot turn observed DB FAIL into exit 2."""
+    _prepare(monkeypatch, tmp_path)
+    failure = {"check": check, "status": "FAIL", "reason": reason}
+    if flag == "--probe-sql-read":
+        failure["constant_select_observed"] = False
+        monkeypatch.setattr(hub, "sql_constant_read_observation",
+                            lambda: dict(failure))
+    else:
+        failure.update(https_probe="FAIL", tls_validation="FAIL",
+                       mapping_probe="SKIP", auth="NOT_TESTED",
+                       credential_control="NOT_RUN")
+        monkeypatch.setattr(hub, "strict_mapping_observation",
+                            lambda cfg, root: dict(failure))
+    def later_runtime_failure(root):
+        raise ValueError("APP_ENV invalid; SECRET_SQL_USER_NOT_FOR_LOGGING")
+    # SQL executes before _effective_runtime_config. ES must instead be
+    # exercised after the config but before the subsequent API error.
+    if flag == "--probe-es-tls-mapping":
+        monkeypatch.setattr(hub.report_jobs, "_api_bind_endpoint",
+                            lambda cfg: (_ for _ in ()).throw(
+                                ValueError("SECRET_API_CONFIG")))
+    else:
+        monkeypatch.setattr(hub.report_jobs, "_effective_runtime_config",
+                            later_runtime_failure)
+    assert _run(tmp_path, "--suite", "diagnose", flag) == 1
+    ev = _evidence(tmp_path)
+    assert ev["result"] == "FAIL"
+    assert ev["exit_code"] == 1
+    assert any(row["check"] == check and row["status"] == "FAIL"
+               for row in ev["checks"])
+    assert next(g for g in ev["manual_gates"] if g["check"] == manual_gate)[
+        "status"] == "NOT_TESTED"
+    assert "SECRET" not in json.dumps(ev)
+
+
+def test_sql_incomplete_is_not_promoted_after_runtime_config_error(
+        monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "sql_constant_read_observation",
+                        lambda: {"check": "sql_constant_read", "status": "SKIP",
+                                 "reason": "sql_read_connection_unverified",
+                                 "constant_select_observed": False})
+    monkeypatch.setattr(hub.report_jobs, "_effective_runtime_config",
+                        lambda root: (_ for _ in ()).throw(ValueError("SECRET")))
+    assert _run(tmp_path, "--suite", "diagnose", "--probe-sql-read") == 2
+    evidence = _evidence(tmp_path)
+    assert evidence["result"] == "INCOMPLETE"
+    assert evidence["exit_code"] == 2
+    assert "SECRET" not in json.dumps(evidence)
