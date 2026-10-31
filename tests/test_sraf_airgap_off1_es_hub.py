@@ -89,7 +89,7 @@ def test_deferred_es_import_error_is_not_disguised_as_skipped_probe(monkeypatch)
     original_import = builtins.__import__
 
     def fail_only_es_module_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "tools" and "sraf_airgap_off1b_es_https_mapping" in fromlist:
+        if name == "tools" and "sraf_airgap_off1b_es_https_mapping" in (fromlist or ()):
             raise ImportError("ES_DEPENDENCY_MISSING_DIAGNOSTIC")
         return original_import(name, globals, locals, fromlist, level)
 
