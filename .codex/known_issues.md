@@ -63,3 +63,6 @@
 
 
 - **2026-10-31 operator Shell no-network candidate:** `bash run_sraf_airgap_off1_diagnose.sh --no-network` reuses the existing Python hub no-sockets mode. Expected connectivity rows SKIP and total INCOMPLETE/exit 2; local /proc may remain observable but cannot attest Worker leases or authenticated API, SQL, ES, LLM, Word, or physical network isolation. Shell refuses combination with active SQL/ES credentialed flags before invoking Python. Hosted synthetic tests are not real airgap acceptance.
+
+
+- **2026-10-31 OFF-2 manifest-only integrity is not a finished release system (candidate):** `REQUIREMENT_E2E_PROVENANCE.json` currently records its own `reviewed_runtime_sha` and listed runtime bytes, not independently trusted signing or all release contents. The checker requires out-of-band pinned manifest SHA-256 and compares only listed files without following symlinks; partial PASS does not guarantee manifest completeness, offline dependency/wheelhouse inventory, Docker/OS/ODBC inputs, absence of malicious same-UID writers, rollback, a fully isolated network, or real SRAF E2E. Current worktree may contain newer files than the reviewed manifest and then correctly reports mismatches. Real deployment evidence NOT TESTED.
