@@ -95,7 +95,7 @@ def test_reason_guidance_requires_matching_check_status_and_exact_reason():
     ]}
     txt = render_text_report(evidence).decode("utf-8")
     assert "ODBC Driver 18 已安裝" not in txt
-    assert "數字 IP SAN" not in txt
+    assert "先核對現有 CA" not in txt
     assert "SECRET_PASSWORD" not in txt and "token-secret" not in txt
     assert "未識別的檢查" in txt
     assert txt.count("NOT_TESTED") == 8
