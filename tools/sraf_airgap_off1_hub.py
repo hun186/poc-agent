@@ -177,20 +177,6 @@ def main(argv: list[str] | None = None) -> int:
                     verified_role_count=0,
                 ))
         code = _exit_for_selected(rows, args.suite)
-        if args.probe_es_tls_mapping:
-            es_status = next(row["status"] for row in rows
-                             if row["check"] == "es_strict_tls_mapping")
-            if es_status == "FAIL":
-                code = 1
-            elif es_status != "PASS" and code == 0:
-                code = 2
-        if args.probe_sql_read:
-            sql_status = next(row["status"] for row in rows
-                              if row["check"] == "sql_constant_read")
-            if sql_status == "FAIL":
-                code = 1
-            elif sql_status != "PASS" and code == 0:
-                code = 2
         if args.live_report:
             if code == 0:
                 code = report_jobs._live(port, proof, args, rows, result_fd)
@@ -210,6 +196,23 @@ def main(argv: list[str] | None = None) -> int:
         rows.append(report_jobs._row(
             "operator", "SKIP", "operator_environment_or_transport_unavailable"))
         code = 2
+    # Selected database probes run independently of the API. A later API
+    # configuration/transport exception must NEVER hide an already-attested
+    # SQL/ES failure by reducing exit 1 to INCOMPLETE/exit 2. Evaluate these
+    # closed-status rows AFTER all diagnostic exception handlers.
+    for enabled, check in (
+        (args.probe_es_tls_mapping, "es_strict_tls_mapping"),
+        (args.probe_sql_read, "sql_constant_read"),
+    ):
+        if not enabled:
+            continue
+        status = next((row.get("status") for row in rows
+                       if row.get("check") == check), None)
+        if status == "FAIL":
+            code = 1
+        elif status != "PASS" and code == 0:
+            code = 2
+
     if result_fd is None:
         # Never write even failure JSON through an unverified output path.
         print("SRAF_OFF1_HUB=INCOMPLETE reason=output_dir_unverified")
