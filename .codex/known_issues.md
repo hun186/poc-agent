@@ -66,3 +66,6 @@
 
 
 - **2026-10-31 OFF-2 manifest-only integrity is not a finished release system (candidate):** `REQUIREMENT_E2E_PROVENANCE.json` currently records its own `reviewed_runtime_sha` and listed runtime bytes, not independently trusted signing or all release contents. The checker requires out-of-band pinned manifest SHA-256 and compares only listed files without following symlinks; partial PASS does not guarantee manifest completeness, offline dependency/wheelhouse inventory, Docker/OS/ODBC inputs, absence of malicious same-UID writers, rollback, a fully isolated network, or real SRAF E2E. Current worktree may contain newer files than the reviewed manifest and then correctly reports mismatches. Real deployment evidence NOT TESTED.
+
+
+- **2026-10-31 OFF-2 operator Shell wrapper (candidate):** the trusted manifest pin is operator-provided via a dedicated env value and forwarded to the existing standalone verifier; the wrapper cannot authenticate provenance or an adversarial release sender. Missing or malformed pin is INCOMPLETE with no verifier invocation, not an automatic local digest fallback. It does not inspect private deployment runtime or demonstrate real network isolation.
