@@ -34,10 +34,11 @@ def strict_mapping_observation(cfg: Mapping[str, str], root: Path) -> dict[str, 
         "mapping_probe": "SKIP", "auth": "NOT_TESTED",
         "credential_control": "NOT_RUN",
     }
+    # Delayed import is performed only after an explicit ES opt-in. Keep it
+    # OUTSIDE try/except per AGENTS.md so broken installations are visible
+    # rather than disguised as incomplete ES observations.
+    from tools import sraf_airgap_off1b_es_https_mapping as es
     try:
-        # Delayed import avoids even loading the authenticated probe for
-        # ordinary diagnose/quick and --no-network invocations.
-        from tools import sraf_airgap_off1b_es_https_mapping as es
         raw = es._observe(
             dict(cfg), no_network=False, root=root,
             verify_credentials=False, warn_only_ip_san=False,
