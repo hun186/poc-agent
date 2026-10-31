@@ -29,6 +29,7 @@ def isolated_launcher(tmp_path):
     capture = tmp_path / "captured.txt"
     env = {**os.environ, "SRAF_PYTHON": str(fake_python),
            "SRAF_CAPTURE_FILE": str(capture), "HOME": str(tmp_path)}
+    env.pop("SRAF_OFF1_OUTPUT_DIR", None)
     return launcher, project, capture, env
 
 
