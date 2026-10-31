@@ -161,3 +161,14 @@ SRAF_OFF1_OUTPUT_DIR="$HOME/sraf-private-evidence" bash run_sraf_airgap_off1_dia
 ```
 
 若有需要，`SRAF_PYTHON` 與 `SRAF_OFF1_OUTPUT_DIR` 可以同時設定，診斷的 ES／SQL 旗標仍須由操作員另外明確加上。此 Shell 設定只決定 `--output-dir` 的字串：必須是非空、單行的絕對路徑，拒絕相對路徑；**不建立任何目錄、不改變權限、不嘗試備援輸出、不繞過 Python 的 Linux O_NOFOLLOW／private dirfd／UID/0700 檢查**。新路徑的每層父目錄仍須符合原有安全條件，否則工具應回傳 INCOMPLETE／退出碼 2，不得顯示假成功。輸出的 JSON/TXT 仍是 0600。不要把私人輸出目錄加入版本控制或公開檔案分享。預設命令與所有檢查結果不變；這不是實際完整離線驗收。
+
+
+## 直接從 Linux Shell 執行「不開任何 HTTP／TCP」的安全檢查
+
+如果只要確認本機磁碟、原生 ODBC 庫、API／Schedule／Handoff 啟動者的本機程序可見資訊，**不希望發起任何 HTTP/TCP socket 連線**，使用原本一鍵啟動器的明確選項：
+
+```bash
+bash run_sraf_airgap_off1_diagnose.sh --no-network
+```
+
+Shell 會把 `--no-network` 傳給已存在的 `tools/sraf_airgap_off1_hub.py --suite diagnose`，保留既有 secure JSON/TXT 輸出、工作目錄與 0700／0600 檔案權限，也可搭配 `SRAF_OFF1_OUTPUT_DIR`。所有 API Health／UI／TCP 偵測會標示 `SKIP`；已存在的本地 `/proc` Worker 檢查仍可執行，但不能視為 Worker 完整業務驗收。此模式退出碼通常是 **2／INCOMPLETE**，**不是故障或完整驗收 PASS**；正確意義是「沒有執行網路依賴檢查」。Shell 會在執行任何 Python 前拒絕 `--no-network` 與 `--probe-es-tls-mapping` 或 `--probe-sql-read` 組合，也拒絕重複 `--no-network`。真實 Agent／LLM／ES／SQL／Word／物理 airgap 等八項門檻仍 **NOT_TESTED**，無法因零 socket 檢查而判定正式離線部署通過。
