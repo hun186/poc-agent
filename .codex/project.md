@@ -2,11 +2,10 @@
 
 ## Current Focus
 
-- **2026-10-31 current branch `feat/sraf-off1-shell-no-network-20261031`:** allow explicitly selected root Bash `--no-network` only, forwarding to the existing OFF-1 Python `--suite diagnose --no-network` implementation. Refuse duplicates and combined SQL/ES credentialed flags before executing Python. Preserve existing Bash allowlist, default diagnose, secured project-root or optional private path, 8 manual NOT_TESTED gates and normal INCOMPLETE/exit 2 when connectivity rows are SKIP. Hosted exact-head CI/formal Codex pending; zero socket network probing is not physical airgap acceptance.
-- **PR #345 MERGED** squash `3534c495c937a9016f07f9d5e41952645c9a558d`, latest PR HEAD `b0a357cf887ed2dce99a324edffe487d0c2a4c93`: optional shell `SRAF_OFF1_OUTPUT_DIR` absolute single-line trusted-path override; Python nofollow dirfd remains authoritative. Hosted 438 Python +19 OFF-0 PASS and formal Codex CLEAN after fixing initial P2.
-- **PR #344 MERGED** squash `decd3f233a8195e8c547a01480e4364a28170ba0`: known fixed reason-triples -> Chinese guidance, no native text; CI/Code Review CLEAN.
-- **PR #343 MERGED** squash `d3b0c27e83ad577fde2de4f7911b607893269b46`: Linux E2E operator 600s client-only deadline; no server cancellation, 1745+429 Python and OFF-0 CI PASS.
-- **PR #342 MERGED** squash `a8b10ada280c379d2c7e18160d31f8fea5f78c1c`: private Chinese TXT, and #341/#340 merged partial opt-in SQL and ES.
+- **2026-10-31 active branch `feat/sraf-off2-pinned-provenance-20261031`:** first OFF-2 listed runtime-file SHA-256 integrity verifier, pure offline/read-only. Requires an independently provided digest of the reviewed `REQUIREMENT_E2E_PROVENANCE.json`, validates its strict schema and only its explicitly listed runtime files using nofollow dirfds/bounded reads. PASS_PARTIAL means listed hashes match only, not a package/signature/wheelhouse/deployment/physical-airgap certificate. New Hosted 19 OFF-0 + focused unit tests and exact HEAD Codex Review pending, conditional auto-merge if all gates hold.
+- **PR #346 MERGED**, squash `4ef831aa52b8964b4e41636ef1b41c97ebd6c3d2`, exact HEAD `e3fd5ca2615eef5772baf27a0011268285a8e801`: Shell --no-network, 445 Python/19 OFF-0 Hosted PASS, latest Codex CLEAN, all manual gates NOT_TESTED.
+- **PR #345 MERGED**, squash `3534c495c937a9016f07f9d5e41952645c9a558d`: optional safe output-dir override, 438 Python/19 OFF-0, formal Codex CLEAN after a P2 fix.
+- **PR #344 MERGED**, squash `decd3f233a8195e8c547a01480e4364a28170ba0`: OFF-4 reason-triple static Chinese remediation; Hosted and Codex CLEAN. #343 Linux operator preflight SIGALRM and #340–342 partial OFF-1 probes/TXT are also merged.
 
 ## Recent Outcomes
 
@@ -16,7 +15,8 @@
 
 ## Open Handoffs
 
-- Validate the one-click --no-network flag exact-head Hosted test (root Shell + canonical hub / OFF-0 19) and formal Codex Review, repair P1/P2 and only then conditional auto-merge. Historical #315/#318 and #322 are superseded/closed; PR #336–345 already merged.
+- Validate current OFF-2 pinned manifest listed-byte verifier on exact HEAD Hosted / OFF-0 19, formal Codex Review and zero unresolved findings or review threads, then conditional auto-merge. This is *not* the finished OFF-2 bundle/signing/wheelhouse, OFF-3/4 airgap or OFF-5 restore.
+- Historical PR #315/#318/#322 closed superseded. #344–346 and #336–343 merged with exact-head gates.
 
 - Private Linux/offline real E2E, strict ES TLS/IP SAN and Mapping, SQL source/schema, live Ollama/Agent timing, Word artifact and browser visual acceptance, Worker handoff, OFF-2-5 airgap/restore remain NOT TESTED by Hosted CI.
 - Follow AGENTS.md and active .codex/memory.md, architecture.md, api_contract.md, known_issues.md, decisions.md, backlog.md; consult .codex/archive only for historical investigation.
