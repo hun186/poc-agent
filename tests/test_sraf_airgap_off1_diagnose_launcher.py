@@ -29,6 +29,7 @@ def isolated_launcher(tmp_path):
     capture = tmp_path / "captured.txt"
     env = {**os.environ, "SRAF_PYTHON": str(fake_python),
            "SRAF_CAPTURE_FILE": str(capture), "HOME": str(tmp_path)}
+    env.pop("SRAF_OFF1_OUTPUT_DIR", None)
     return launcher, project, capture, env
 
 
@@ -123,4 +124,36 @@ def test_duplicate_or_unsafe_shell_flags_never_launch_python(
     out = subprocess.run(["bash", str(launcher), *arguments], cwd="/", env=env,
                          capture_output=True, text=True)
     assert out.returncode == 2
+    assert not capture.exists()
+
+
+def test_explicit_absolute_output_dir_is_forwarded_without_touching_folder(
+        isolated_launcher, tmp_path):
+    launcher, project, capture, env = isolated_launcher
+    custom = tmp_path / "private folder with spaces" / "evidence"
+    env["SRAF_OFF1_OUTPUT_DIR"] = str(custom)
+    result = subprocess.run(["bash", str(launcher), "--probe-sql-read"],
+                            cwd="/", env=env, capture_output=True, text=True)
+    assert result.returncode == 17
+    assert capture.read_text(encoding="utf-8").splitlines() == [
+        str(project), "tools/sraf_airgap_off1_hub.py", "--suite", "diagnose",
+        "--output-dir", str(custom), "--probe-sql-read",
+    ]
+    # The shell never creates or fixes a directory; the Python dirfd trust
+    # validator is the *only* authority for creating private output.
+    assert not custom.exists()
+
+
+@pytest.mark.parametrize("unsafe", [
+    "", "relative-folder", "../escape", "/secure\nINJECTED", "/secure\rOUTPUT",
+])
+def test_bad_output_dir_override_fails_before_python(
+        isolated_launcher, unsafe):
+    launcher, _, capture, env = isolated_launcher
+    env["SRAF_OFF1_OUTPUT_DIR"] = unsafe
+    result = subprocess.run(["bash", str(launcher)], cwd="/", env=env,
+                            capture_output=True, text=True)
+    assert result.returncode == 2
+    assert "absolute single-line path" in result.stderr
+    assert "INJECTED" not in result.stderr
     assert not capture.exists()

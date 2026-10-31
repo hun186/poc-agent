@@ -37,6 +37,18 @@ for option in "$@"; do
   esac
 done
 
+# Keep the project-local default. Operators on shared/group-writable mounts
+# may select another existing trusted ancestor, but cannot disable the
+# Python no-follow/UID/mode validation or use a relative path.
+OUTPUT_DIR="$PROJECT_ROOT/sraf-acceptance-results"
+if [[ ${SRAF_OFF1_OUTPUT_DIR+x} ]]; then
+  OUTPUT_DIR="$SRAF_OFF1_OUTPUT_DIR"
+  if [[ -z "$OUTPUT_DIR" || "$OUTPUT_DIR" != /* || "$OUTPUT_DIR" == *[[:cntrl:]]* ]]; then
+    printf '%s\n' 'ERROR: SRAF_OFF1_OUTPUT_DIR must be an absolute single-line path.' >&2
+    exit 2
+  fi
+fi
+
 # Use the already installed SRAF application Python environment.
 # Override only when needed: SRAF_PYTHON=/path/to/venv/bin/python bash ...
 PYTHON_BIN="${SRAF_PYTHON:-python}"
@@ -47,5 +59,5 @@ fi
 
 exec "$PYTHON_BIN" tools/sraf_airgap_off1_hub.py \
   --suite diagnose \
-  --output-dir "$PROJECT_ROOT/sraf-acceptance-results" \
+  --output-dir "$OUTPUT_DIR" \
   "${DIAGNOSTIC_OPTIONS[@]}"
