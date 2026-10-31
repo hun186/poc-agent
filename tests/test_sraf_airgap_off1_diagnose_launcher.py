@@ -84,7 +84,7 @@ def test_explicit_es_flag_is_forwarded_without_other_changes(isolated_launcher):
 
 @pytest.mark.parametrize("arguments", [
     ("--live-report",), ("--probe-es-tls-mapping", "--live-report"),
-    ("--no-network",), ("--bad-flag",), ("",),
+    ("--bad-flag",), ("",),
 ])
 def test_shell_rejects_any_nonallowlisted_option(isolated_launcher, arguments):
     launcher, _, capture, env = isolated_launcher
@@ -157,3 +157,47 @@ def test_bad_output_dir_override_fails_before_python(
     assert "absolute single-line path" in result.stderr
     assert "INJECTED" not in result.stderr
     assert not capture.exists()
+
+
+def test_shell_forwards_socket_free_no_network_without_other_flags(isolated_launcher):
+    launcher, project, capture, env = isolated_launcher
+    out = subprocess.run(["bash", str(launcher), "--no-network"], cwd="/",
+                         env=env, capture_output=True, text=True)
+    assert out.returncode == 17
+    assert capture.read_text(encoding="utf-8").splitlines() == [
+        str(project), "tools/sraf_airgap_off1_hub.py", "--suite", "diagnose",
+        "--output-dir", str(project / "sraf-acceptance-results"), "--no-network",
+    ]
+
+
+@pytest.mark.parametrize("flags", [
+    ("--no-network", "--no-network"),
+    ("--no-network", "--probe-sql-read"),
+    ("--probe-sql-read", "--no-network"),
+    ("--no-network", "--probe-es-tls-mapping"),
+    ("--probe-es-tls-mapping", "--no-network"),
+    ("--probe-sql-read", "--no-network", "--probe-es-tls-mapping"),
+])
+def test_shell_no_network_conflicts_and_duplicates_fail_before_python(
+        isolated_launcher, flags):
+    launcher, _, capture, env = isolated_launcher
+    out = subprocess.run(["bash", str(launcher), *flags], cwd="/",
+                         env=env, capture_output=True, text=True)
+    assert out.returncode == 2
+    assert not capture.exists()
+    assert "ERROR:" in out.stderr
+
+
+def test_no_network_and_safe_output_override_both_forwarded(
+        isolated_launcher, tmp_path):
+    launcher, project, capture, env = isolated_launcher
+    private_out = tmp_path / "operator only" / "evidence"
+    env["SRAF_OFF1_OUTPUT_DIR"] = str(private_out)
+    out = subprocess.run(["bash", str(launcher), "--no-network"], cwd="/",
+                         env=env, capture_output=True, text=True)
+    assert out.returncode == 17
+    assert capture.read_text(encoding="utf-8").splitlines() == [
+        str(project), "tools/sraf_airgap_off1_hub.py", "--suite", "diagnose",
+        "--output-dir", str(private_out), "--no-network",
+    ]
+    assert not private_out.exists()  # Only the Python dirfd can create it.
