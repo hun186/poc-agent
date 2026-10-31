@@ -42,3 +42,5 @@
 
 
 - **2026-10-31 E2E operator guard rebased task:** port old PR #322 client-side SIGALRM safety and tests onto current main without old .codex rewrite, rerun exact-head Hosted E2E/19 OFF-0 and formal review. Full server asynchronous/cancellation-safe E2E status/poll and private Linux high-load validation remain separately planned; do not treat elapsed client deadline as cancellation of ES writes.
+
+- **OFF-4 後續診斷可讀性，2026-10-31：** 將現有 TXT 的通用建議補充為少數嚴格比對的已審查原因碼建議；不輸出原始例外或原因、不加網路/資料庫操作。增加錯配/未知/惡意型別/多項手動 Gate 保留測試；必須通過 exact HEAD Hosted CI、正式 Codex Review 才可 Merge。完成後仍需 OFF-2 套件、獨立現場 SQL/ES/LLM/Worker 與 OFF-5 還原證據。

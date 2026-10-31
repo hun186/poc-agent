@@ -55,3 +55,5 @@
 
 
 - **2026-10-31 operator client wall-clock deadline (rebased follow-up):** Linux SIGALRM is process-global, so an occupied SIGALRM handler/timer or a non-main-thread operator invocation must refuse credentialed preflight before HTTP transmission. The 600s client timer does not cancel server-side E2E plan construction, LLM calls, ES fixture mutations or already-admitted Reports. Remote Windows is still Requests inactivity/read timeout only. Hosted synthetic tests cannot attest real Linux busy model/service behavior. Old PR #322 .codex rewrite is stale and must not be merged over newer active files.
+
+- **2026-10-31 OFF-4 原因碼建議（候選 PR，待驗證）：** 中文 TXT 僅在固定 check/status/reason 三者完全吻合時選取預先審查的繁中建議；不呈現原始 reason、Exception/SQLSTATE、主機／帳密／Token 等，不根據未知理由做任何推論。錯配時退回一般建議；仍需由現場人員核對脫敏 JSON。此報告與 SQL/ES/Worker/物理離線實機驗收無關，Hosted 回歸不代表 FULL_LIVE。

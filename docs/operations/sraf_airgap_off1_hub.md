@@ -144,3 +144,9 @@ Hosted pytest／OFF-0 schema-only／Node 靜態流程僅是**開發驗證**。�
 TXT 包含：時間、Quick／Diagnose、部分結果、已執行檢查的中文名稱與 PASS/FAIL/WARN/SKIP、各項非 PASS 的保守處置建議，以及固定 8 個完整驗收門檻 **NOT_TESTED**。TXT 只透過受限白名單轉換狀態與名稱；不複製 JSON 的原始 `reason`、例外訊息、觀察 payload、主機、帳密、Job ID、SQL 字串、Token 或任何其他未知欄位。更詳細但同樣脫敏的固定原因碼保留在 JSON，供授權工程師查閱。
 
 TXT 產生是**純本機格式化**，不發送第二次健康檢查、SQL、ES、LLM，也不建立 Report Job。若 TXT 寫入失敗，CLI 會回報 `evidence_write_unavailable`／exit 2；已完成的 JSON 可能仍留在私有目錄，其檢查結果必須與「TXT 報告未完整寫出」分開看待。這不是交易式雙檔提交，也不是物理斷網或完整功能驗收證明。
+
+## OFF-4 固定原因碼的分流建議
+
+中文 TXT 在原本的固定檢查項目建議之外，針對**特定 check／status／reason 三欄完全吻合**的已審查組合，提供更精準的離線排除方向，例如專用 SQL ODBC 18 驅動缺失、SQL TLS／IP SAN 無法確認、Elasticsearch TLS 身分或 Mapping 失敗、嚴格 API Listener 無法認證、Worker PID Namespace 未可見等。**原因碼本身仍不寫入 TXT**，僅從程式內固定中文白名單選一條處置建議。未知、格式錯誤或互相矛盾的原因碼一律使用既有保守一般建議，不推論或補寫連線字串、Exception、SQLSTATE、使用者名稱、主機位址、憑證或 Token。完整的固定原因碼保留在私有 JSON。
+
+本增量只改**純本機報告格式化**，既有檢查、退出碼、輸出檔案、權限、SQL/ES Opt-in、LLM/Job 不受影響。任何建議不代表實際修復，所有八項手動驗收門檻仍為 `NOT_TESTED`，實際斷網及業務 E2E 須分別驗收。
