@@ -50,8 +50,14 @@ def render_text_report(evidence: dict) -> bytes:
     timestamp = (raw_time if isinstance(raw_time, str) and re.fullmatch(
         r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00", raw_time
     ) else "未提供")
-    suite = "診斷" if evidence.get("suite") == "diagnose" else "快速檢查"
-    network = "停用" if evidence.get("network_mode") == "NONE" else "限定內網／本機"
+    suite = {"quick": "快速檢查", "diagnose": "診斷"}.get(
+        evidence.get("suite") if isinstance(evidence.get("suite"), str) else None,
+        "未確認",
+    )
+    network = {"NONE": "停用", "BOUNDED_LOCAL_ONLY": "限定內網／本機"}.get(
+        evidence.get("network_mode") if isinstance(evidence.get("network_mode"), str) else None,
+        "未確認",
+    )
     lines = [
         "SRAF OFF-1 離線操作診斷摘要（脫敏 TXT）",
         "================================================",
