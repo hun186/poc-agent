@@ -60,3 +60,6 @@
 
 
 - **OFF-2 read-only listed-runtime byte inventory (candidate, 2026-10-31):** standalone `tools/sraf_airgap_off2_manifest_check.py` imports only the canonical `shared.runtime_provenance.validate_provenance`; from a pinned repository directory descriptor it opens the *existing* `REQUIREMENT_E2E_PROVENANCE.json` and the manifest-listed runtime files with no-follow dirfd traversal, bounded SHA-256 streaming and no payload emission. An operator-provided out-of-band manifest digest is mandatory. No installer, signer, package builder, runtime service dependency, new auth authority, or file write; partial evidence does not alter the existing OFF-1 manual `package_release_provenance=NOT_TESTED` gate.
+
+
+- **OFF-3 partial unified operator entry (candidate):** root run_sraf_airgap_offline.sh is only a conservative mode router: quick delegates directly to the canonical OFF-1 hub, diagnose/no-network to the existing OFF-1 Bash wrapper, release-files to OFF-2 pinned-manifest Bash. It introduces no new API, DB authority, credential mode or test engine; rejects acceptance/upgrade/restore rather than returning fake PASS. Existing standalone entrypoints remain supported, preserving independently authorized SQL/ES and Report Job gates.
