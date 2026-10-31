@@ -27,3 +27,17 @@ python tools/sraf_airgap_off2_manifest_check.py \
 ## 尚未完成
 
 OFF-2 仍需可信 Release Bundle 明細／來源及簽章、wheelhouse 和 Python/native driver 依賴封存、版本綁定、重現性與部署一致性驗收；OFF-3/4 還需實體封網完整鏈路，OFF-5 還需備份、還原與回滾演練。Hosted CI 使用最小合成檔案案例，**不代表真實部署機的 SQL、ES、LLM、Job、Word、網路物理隔離已驗收**。
+
+
+## Linux 一鍵執行：OFF-2（仍需要外部可信摘要）
+
+在將**另一個可信管道**提供、對應正確發行版本的 Manifest SHA-256 設成環境變數後，只需執行：
+
+```bash
+SRAF_OFF2_TRUSTED_MANIFEST_SHA256="<TRUSTED_64_LOWERCASE_HEX>" \
+  bash run_sraf_airgap_off2_verify.sh
+```
+
+或先由現場有權人員以安全方式 export `SRAF_OFF2_TRUSTED_MANIFEST_SHA256`，之後只執行 `bash run_sraf_airgap_off2_verify.sh`。如有不同的既有 Python 環境，使用 `SRAF_PYTHON=/path/to/sraf/bin/python`。Shell 自動切換到自身所在的專案根目錄，不讀取本地 Manifest 作為 trusted pin；沒有 pin、不是 64 碼小寫 SHA-256、Python 不存在或傳入任何其他 Shell 參數，均在呼叫 Python 前返回 **INCOMPLETE／2**，不會偷偷換成弱驗證。Python 的原有 O_NOFOLLOW 與 bounded file scan、結果狀態不變。這個 Shell 不連網、不安裝套件、沒有任何寫入。
+
+**安全限制：**SHA-256 不等於簽章，也不能證明資訊確實來自正式發行者；必須在獨立可信管道確認摘要與版本綁定。Shell 傳入摘要是供本機執行的參數，請勿把它當密碼；不要把正式 Key／Token 放入命令列。離線部署的完整版本／依賴／還原門檻仍未驗證。
