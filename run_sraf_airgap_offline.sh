@@ -2,7 +2,7 @@
 # OFF-3 partial operator dispatcher: routes only previously verified, non-mutating modes.
 set -euo pipefail
 
-if [[ "$#" -gt 1 ]]; then
+if [[ "$#" -gt 1 || ( "$#" -eq 1 && -z "$1" ) ]]; then
   printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files]' >&2
   exit 2
 fi
