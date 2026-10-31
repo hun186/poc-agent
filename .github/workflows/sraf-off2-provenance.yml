@@ -1,0 +1,33 @@
+name: SRAF OFF-2 pinned runtime-file inventory (partial only)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install project dependencies (CI only)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest
+      - name: Compile OFF-2 read-only verifier
+        run: |
+          python -m compileall -q tools/sraf_airgap_off2_manifest_check.py tests/test_sraf_airgap_off2_manifest_check.py
+          python tools/sraf_airgap_off2_manifest_check.py --help
+      - name: Validate OFF-0 baseline (schema-only)
+        run: python tools/validate_sraf_airgap_off0_contract.py
+      - name: Verify synthetic pinned-file cases (not a live package or airgap)
+        run: |
+          python -m pytest -q tests/test_sraf_airgap_off2_manifest_check.py tests/test_sraf_airgap_off0_contract.py
