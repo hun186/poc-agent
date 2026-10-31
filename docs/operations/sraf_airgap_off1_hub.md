@@ -135,3 +135,12 @@ python tools/sraf_airgap_off1_hub.py --live-report --token-env SRAF_TEST_BEARER 
 `es_tls_ca_san_mapping`、`sql_schema_source_permissions`、`schedule_handoff_workers`、`real_agent_llm_es`、`browser_visual`、`package_release_provenance`、`backup_restore_off5`、`physical_airgap` 會保留為 `NOT_TESTED`。若未來把 OFF-1P／1Q、OFF-1 SQL／Handoff 的只讀證據接入，須依它們自身所需的 SQL 身分、schedule ID、owner-bound Token、Listener Guard 等另訂安全範圍及取得授權，不可把單純 TCP PASS 轉換為 SQL／報告功能 PASS。
 
 Hosted pytest／OFF-0 schema-only／Node 靜態流程僅是**開發驗證**。真正 Linux、Ollama 分離容器、Elasticsearch HTTPS/IP SAN、SQL Server、Worker 行為、Word、真實瀏覽器以及物理斷網／備份還原等均須現場以各自獨立的證據驗收。若要驗證原本的單一 Report Job 工具，仍可使用 `tools/sraf_airgap_report_jobs_acceptance.py`；統一入口不替換、不修改它的正式行為。
+
+
+## OFF-4：自動產生中文 TXT 診斷摘要（不新增網路／資料庫操作）
+
+執行相同的一鍵診斷命令後，除了原有的私有 `off1-hub-<UTC時間>-<隨機>.json`，也會在**同一已驗證目錄**寫入相同前綴的 `.txt`，權限同為 **0600**。命令列將印出 `EVIDENCE_FILE=` 與 `TXT_FILE=`。兩份輸出由原本的 `_secure_output_dir` 驗證、同一個已 pin 的 Linux dirfd 配合 O_NOFOLLOW/O_EXCL 寫入，**不會**重新解析不可信任路徑。
+
+TXT 包含：時間、Quick／Diagnose、部分結果、已執行檢查的中文名稱與 PASS/FAIL/WARN/SKIP、各項非 PASS 的保守處置建議，以及固定 8 個完整驗收門檻 **NOT_TESTED**。TXT 只透過受限白名單轉換狀態與名稱；不複製 JSON 的原始 `reason`、例外訊息、觀察 payload、主機、帳密、Job ID、SQL 字串、Token 或任何其他未知欄位。更詳細但同樣脫敏的固定原因碼保留在 JSON，供授權工程師查閱。
+
+TXT 產生是**純本機格式化**，不發送第二次健康檢查、SQL、ES、LLM，也不建立 Report Job。若 TXT 寫入失敗，CLI 會回報 `evidence_write_unavailable`／exit 2；已完成的 JSON 可能仍留在私有目錄，其檢查結果必須與「TXT 報告未完整寫出」分開看待。這不是交易式雙檔提交，也不是物理斷網或完整功能驗收證明。

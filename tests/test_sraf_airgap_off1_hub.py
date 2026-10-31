@@ -452,3 +452,37 @@ def test_sql_incomplete_is_not_promoted_after_runtime_config_error(
     assert evidence["result"] == "INCOMPLETE"
     assert evidence["exit_code"] == 2
     assert "SECRET" not in json.dumps(evidence)
+
+
+def test_off4_txt_companion_is_private_partial_and_no_extra_probes(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "sql_constant_read_observation",
+                        lambda: pytest.fail("TXT must not trigger SQL"))
+    monkeypatch.setattr(hub, "strict_mapping_observation",
+                        lambda *a: pytest.fail("TXT must not trigger ES"))
+    assert _run(tmp_path, "--suite", "diagnose") == 0
+    txt = list((tmp_path / "private-output").glob("off1-hub-*.txt"))
+    assert len(txt) == 1
+    assert txt[0].stat().st_mode & 0o777 == 0o600
+    content = txt[0].read_text(encoding="utf-8")
+    assert "SRAF OFF-1" in content
+    assert "部分檢查通過" in content
+    assert "SQL Schema" in content and "NOT_TESTED" in content
+    assert "完整斷網驗收" in content
+    assert len(list((tmp_path / "private-output").glob("off1-hub-*.json"))) == 1
+
+
+def test_off4_txt_failure_fails_closed_without_forging_success(monkeypatch, tmp_path, capsys):
+    _prepare(monkeypatch, tmp_path)
+    original = hub.report_jobs._secure_write
+    def fail_txt(name, raw, result_fd):
+        if name.endswith(".txt"):
+            raise OSError("PRIVATE_PASSWORD_NOT_FOR_LOGGING")
+        return original(name, raw, result_fd)
+    monkeypatch.setattr(hub.report_jobs, "_secure_write", fail_txt)
+    assert _run(tmp_path) == 2
+    output = capsys.readouterr().out
+    assert "SRAF_OFF1_HUB=INCOMPLETE reason=evidence_write_unavailable" in output
+    assert "PRIVATE_PASSWORD" not in output
+    assert not list((tmp_path / "private-output").glob("off1-hub-*.txt"))
+    assert len(list((tmp_path / "private-output").glob("off1-hub-*.json"))) == 1

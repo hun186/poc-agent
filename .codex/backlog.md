@@ -36,3 +36,6 @@
 
 
 - **After merged #340 — Draft #341:** current one-command SQL-01 integration requires Hosted exact-head regression for original OFF-1G strict ODBC TLS test suite and new hub/shell opt-in safety, 19 OFF-0 schema-only and formal Codex CLEAN with no unresolved threads; no Merge absent explicit user instruction. Schema v4 source/permissions verification is deliberately NOT IMPLEMENTED by this constant-read probe: design a separate bounded read-only metadata evidence query only after identifying authoritative schema contract, permitted tables, principal permissions and operator consent. On-site private SQL TLS/IP SAN, actual Driver 18/ODBC and non-cancelable timeout behavior require independent live evidence.
+
+
+- **OFF-4 current focused increment:** Generate a Chinese 0600 TXT companion to the existing one-command OFF-1 JSON via fixed vocabulary only, add no new probes/secret sources, test fallback on second-file write failure and no-network behavior; require exact-head Hosted and formal Codex. Manual OFF-2 packaging/provenance, full offline deployment and OFF-5 restore remain future separate gates, not completed by a human-readable summary.

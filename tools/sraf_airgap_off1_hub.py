@@ -28,6 +28,7 @@ from tools.sraf_airgap_off1_probes import probe_disk, probe_odbc_library
 from tools.sraf_airgap_off1h_worker_identity import probe_worker_process_identities
 from tools.sraf_airgap_off1_es_hub import strict_mapping_observation
 from tools.sraf_airgap_off1_sql_hub import sql_constant_read_observation
+from tools.sraf_airgap_off1_text_report import render_text_report
 
 ROOT = report_jobs.ROOT
 SCHEMA = "sraf_airgap_off1_unified_hub_v1"
@@ -231,11 +232,14 @@ def main(argv: list[str] | None = None) -> int:
         report_jobs._secure_write(filename, json.dumps(
             evidence, sort_keys=True, indent=2, ensure_ascii=False
         ).encode("utf-8"), result_fd)
+        txt_filename = filename[:-5] + ".txt"
+        report_jobs._secure_write(txt_filename, render_text_report(evidence), result_fd)
         print("SRAF_OFF1_HUB=" + evidence["result"])
         for row in rows:
             print(row["check"] + "=" + row["status"] + " reason=" + row["reason"])
         print("MANUAL_GATES=NOT_TESTED count=" + str(len(MANUAL_GATES)))
         print("EVIDENCE_FILE=" + str(args.output_dir / filename))
+        print("TXT_FILE=" + str(args.output_dir / txt_filename))
     except (OSError, report_jobs.ObservationError):
         print("SRAF_OFF1_HUB=INCOMPLETE reason=evidence_write_unavailable")
         return 2
