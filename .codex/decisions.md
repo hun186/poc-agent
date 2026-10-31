@@ -60,3 +60,6 @@
 
 
 - **2026-10-31 private output path flexibility:** retain default repository-local `sraf-acceptance-results`, allow explicit shell environment override only to another nonempty absolute single-line path. Do not auto-use HOME when project path fails, do not weaken `_secure_output_dir` ancestor ownership/no-follow checks, do not create/chmod from shell, and do not redirect to uncontrolled directories. Python alone decides trusted storage; shared mount failures stay honest INCOMPLETE until operator supplies a genuinely trusted location.
+
+
+- **2026-10-31 no-socket operator one-click choice:** permit `--no-network` in existing shell allowlist instead of creating a separate scanner or duplicating Python probes. Reject ES/SQL active opt-ins and duplicates before process execution, forward `--suite diagnose --no-network` to canonical hub. Local /proc observations may still run. Network rows SKIP and result INCOMPLETE/exit 2 are correct, NOT release failure or certification; no default change or live Report Job authorization.
