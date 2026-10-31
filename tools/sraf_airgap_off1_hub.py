@@ -2,8 +2,9 @@
 """One-command OFF-1 operator hub for an already deployed SRAF application.
 
 Uses the *application's installed Python environment* (not standalone stdlib).
-Default and --suite diagnose are read-only; no SQL query, login, Worker restart,
-Job creation, model request, DNS, internet access or package installation.
+Default and ordinary --suite diagnose are read-only; no SQL query or login,
+Worker restart, Job creation or model request. Optional SQL/ES credentials
+are used only behind their separately selected explicit diagnostic flags.
 --live-report is a separate explicit operator action delegated to the reviewed
 Report Job acceptance and OFF-1S strict listener guard.
 This is PARTIAL evidence, never OFF-2--5 or physical-airgap certification.
