@@ -52,3 +52,6 @@
 
 
 - **2026-10-31 OFF-4 TXT companion remains PARTIAL:** Chinese TXT contains only allowlisted check/status words and generic remediation, never native error/reason/probe payload; the 8 fixed manual gates remain NOT_TESTED even when quick is PASS_PARTIAL. JSON and TXT are separate no-follow 0600 writes, not atomic; if TXT write fails, CLI exits INCOMPLETE while preceding JSON may exist. No UTF-8 terminal, actual offline Linux output-parent permissions, browser display or physical airgap evidence is implied by synthetic CI. 
+
+
+- **2026-10-31 operator client wall-clock deadline (rebased follow-up):** Linux SIGALRM is process-global, so an occupied SIGALRM handler/timer or a non-main-thread operator invocation must refuse credentialed preflight before HTTP transmission. The 600s client timer does not cancel server-side E2E plan construction, LLM calls, ES fixture mutations or already-admitted Reports. Remote Windows is still Requests inactivity/read timeout only. Hosted synthetic tests cannot attest real Linux busy model/service behavior. Old PR #322 .codex rewrite is stale and must not be merged over newer active files.
