@@ -50,3 +50,6 @@
 
 
 - **2026-10-31 OFF-1 root launcher socket-free candidate:** wire only existing `--no-network` Python hub mode through exact Bash allowlist; prohibit duplicate and combined SQL/ES opt-ins before Python. Verify full output to the existing safe private dir and preserved INCOMPLETE/NOT_TESTED semantics in Hosted, perform exact-head Codex Review and conditional Merge. Live physical airgap and dependencies remain pending.
+
+
+- **2026-10-31 OFF-2 first independent runtime-byte inventory increment:** a read-only verifier of the existing manifest and its listed runtime hashes with strict external SHA-256 trust anchor and pinned no-follow paths; validate on latest Hosted, Codex Review and conditional merge. Still outstanding: produce a reviewed *complete* signed release bundle, SRAF Python/native ODBC/wheelhouse lock and checksums, OS/architecture compatibility, registry-excluded configuration template, immutable manifest hash distribution, installer, immutable version/rollback, OFF-3/4 full disconnected acceptance, OFF-5 actual restoration. Never use a self-computed target digest as a trusted release signature.
