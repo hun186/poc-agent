@@ -69,3 +69,6 @@
 
 
 - **2026-10-31 OFF-2 operator Shell wrapper (candidate):** the trusted manifest pin is operator-provided via a dedicated env value and forwarded to the existing standalone verifier; the wrapper cannot authenticate provenance or an adversarial release sender. Missing or malformed pin is INCOMPLETE with no verifier invocation, not an automatic local digest fallback. It does not inspect private deployment runtime or demonstrate real network isolation.
+
+
+- **2026-10-31 OFF-3 current scope (candidate):** unified launcher is a convenience dispatcher, not the full promised offline deployment or E2E Acceptance runner. Quick may do anonymous local HTTP GET, diagnose adds bounded private TCP, no-network does neither; release-files verifies only pinned listed manifest bytes. Original Python and Bash trust boundaries and NOT_TESTED manual release gates are unchanged. There is no authorized upgrade or restore implementation yet; no tested physical network isolation, database migration or Agent/LLM/ES/DOCX end-to-end.
