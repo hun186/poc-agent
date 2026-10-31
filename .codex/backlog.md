@@ -56,3 +56,6 @@
 
 
 - **OFF-2 one-command operator wrapper candidate, 2026-10-31:** provide a bounded Bash entry that consumes only independently provided trusted manifest SHA-256 via `SRAF_OFF2_TRUSTED_MANIFEST_SHA256`, rejects absent/invalid hash and any extra args before invoking the installed Python OFF-2 verifier, no side effects. Run exact latest-head OFF-2 focused CI including new Shell tests and OFF-0 19, request formal Codex and conditional merge only after CLEAN. Additional release bundle signing, wheelhouse, real private Linux and restore evidence remains outstanding.
+
+
+- **2026-10-31 OFF-3 first unified operator CLI candidate:** add a thin, non-privileged root Shell dispatcher with quick/diagnose/no-network/release-files only, reuse all existing tested tools, preserve O_NOFOLLOW/0700/0600 and explicit OFF-2 trust pin; unit tests ensure acceptance/upgrade/restore and arbitrary flags reject before any command. Run latest-head OFF-1/19 OFF-0 CI + Codex CLEAN before conditional merge. Backlog remains real FULL_LIVE Acceptance under explicit operator authorization, offline bundle and reproducible wheelhouse, actual private Linux, OFF-5 restore.
