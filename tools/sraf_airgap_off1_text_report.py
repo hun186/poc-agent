@@ -37,6 +37,41 @@ MANUAL_GATES = {
     "backup_restore_off5": "備份及還原演練",
     "physical_airgap": "實體封閉網路驗收",
 }
+
+# Only exact (check, status, canonical-reason) triples can change the advice.
+# A reason is never printed, and arbitrary/invalid values use CHECKS fallback.
+# Keep the mapping intentionally small; additions require review and tests.
+REASON_GUIDANCE = {
+    ("sql_constant_read", "SKIP", "sql_read_config_invalid"):
+        "檢查操作員專用 SQL 測試環境變數；不得改用正式 Registry 密碼",
+    ("sql_constant_read", "SKIP", "sql_read_driver_unavailable"):
+        "先在離線主機確認 ODBC Driver 18 已安裝；不可為診斷而連線下載套件",
+    ("sql_constant_read", "SKIP", "sql_read_connection_unverified"):
+        "查核內網 SQL 連線、CA／IP SAN 與專用最小權限帳號；不得停用 TLS 憑證驗證",
+    ("sql_constant_read", "FAIL", "sql_read_response_invalid"):
+        "固定常數查詢回應不符合預期；核對驅動與受控查詢端點，不可視為 Schema 已驗證",
+    ("es_strict_tls_mapping", "FAIL", "es_tls_identity_failed"):
+        "先核對現有 CA 與 Elasticsearch 端點的數字 IP SAN；禁止改成忽略 TLS 身分",
+    ("es_strict_tls_mapping", "FAIL", "es_https_identity_failed"):
+        "檢查受控 HTTPS 端點與憑證身分；不可透過 HTTP 或不驗證憑證繞過失敗",
+    ("es_strict_tls_mapping", "FAIL", "es_auth_rejected"):
+        "確認受控 ES 測試身分具足夠唯讀權限；勿反覆嘗試錯誤密碼",
+    ("es_strict_tls_mapping", "FAIL", "es_mapping_failed"):
+        "由授權人員核對索引 Mapping 與必要欄位；診斷模式不會重建索引",
+    ("es_strict_tls_mapping", "SKIP", "es_tls_mapping_observed_auth_not_verified"):
+        "TLS 與 Mapping 可觀察，不代表 Basic 認證已獨立驗證；完整驗收仍須另外授權",
+    ("api_health", "SKIP", "network_disabled"):
+        "本次選用不開網路連線，不能判定 API 是否可達；依需求重新選擇檢查模式",
+    ("api_listener", "SKIP", "api_listener_unverified"):
+        "核對啟動器 PID 身分紀錄與 /proc 可見性；無嚴格身分證據時禁止傳送 Bearer",
+    ("worker_process_identity", "SKIP", "worker_process_identity_unverified"):
+        "Schedule/Handoff 程序可能在其他 PID namespace；檢查容器可見性及啟動紀錄",
+    ("live_report", "SKIP", "prerequisite_checks_not_passed"):
+        "先排除先決檢查失敗；未驗證前不可提交真實報告或擴大授權",
+    ("operator", "SKIP", "operator_environment_or_transport_unavailable"):
+        "檢查應用 Python 相依、部署設定與安全輸出目錄，勿貼出完整環境變數或例外",
+}
+
 STATUS = {"PASS": "通過", "FAIL": "失敗", "WARN": "警告", "SKIP": "證據不足／跳過"}
 RESULT = {"PASS_PARTIAL": "部分檢查通過", "FAIL": "存在已確認失敗", "INCOMPLETE": "未能完成所選檢查"}
 
@@ -83,6 +118,9 @@ def render_text_report(evidence: dict) -> bytes:
             status = "SKIP"
         lines.append(f"- {label}：{STATUS[status]} [{status}]")
         if status != "PASS":
+            reason = row.get("reason")
+            if (details is not None and isinstance(reason, str)):
+                advice = REASON_GUIDANCE.get((key, status, reason), advice)
             lines.append(f"  建議：{advice}")
     if len(rows) > 64:
         lines.append("- 其餘檢查未列出；請由授權工程師核對受控 JSON")
