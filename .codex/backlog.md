@@ -39,3 +39,6 @@
 
 
 - **OFF-4 current focused increment:** Generate a Chinese 0600 TXT companion to the existing one-command OFF-1 JSON via fixed vocabulary only, add no new probes/secret sources, test fallback on second-file write failure and no-network behavior; require exact-head Hosted and formal Codex. Manual OFF-2 packaging/provenance, full offline deployment and OFF-5 restore remain future separate gates, not completed by a human-readable summary.
+
+
+- **2026-10-31 E2E operator guard rebased task:** port old PR #322 client-side SIGALRM safety and tests onto current main without old .codex rewrite, rerun exact-head Hosted E2E/19 OFF-0 and formal review. Full server asynchronous/cancellation-safe E2E status/poll and private Linux high-load validation remain separately planned; do not treat elapsed client deadline as cancellation of ES writes.

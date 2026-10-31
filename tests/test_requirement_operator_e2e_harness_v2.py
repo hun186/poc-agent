@@ -3,6 +3,10 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import signal
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -56,6 +60,83 @@ def test_remote_worker_identity_is_mandatory(role):
     provider = RemoteDeploymentEvidenceProvider(SimpleNamespace(get=lambda *_args, **_kwargs: evidence))
     with pytest.raises(HarnessFailure, match="remote_worker_identity_failed"):
         provider.preflight()
+
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="ITIMER_REAL only on Linux")
+def test_remote_preflight_absolute_client_deadline_interrupts_blocked_read(monkeypatch):
+    """The Linux preflight wait ends even if no read timeout fires."""
+    from operator_e2e import requirement_e2e_evidence as evidence
+
+    class HungApi:
+        def get(self, *_args, **_kwargs):
+            time.sleep(1)
+            raise AssertionError("client wait was not interrupted")
+
+    monkeypatch.setattr(evidence, "E2E_PREFLIGHT_TIMEOUT_SECONDS", 0.08)
+    previous = signal.getsignal(signal.SIGALRM)
+    started = time.monotonic()
+    with pytest.raises(HarnessFailure, match="remote_preflight_client_deadline_exceeded") as failure:
+        RemoteDeploymentEvidenceProvider(HungApi()).preflight()
+    assert failure.value.stage == "RUNTIME_WORKERS"
+    assert time.monotonic() - started < 0.8
+    assert signal.getsignal(signal.SIGALRM) == previous
+    assert signal.getitimer(signal.ITIMER_REAL)[0] == 0
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="ITIMER_REAL only on Linux")
+def test_remote_preflight_preserves_alarm_and_rejects_existing_owner(monkeypatch):
+    from operator_e2e import requirement_e2e_evidence as evidence
+
+    class Api:
+        def get(self, *_args, **_kwargs):
+            raise AssertionError("must never send GET during timer conflict")
+
+    previous = signal.getsignal(signal.SIGALRM)
+    def other_alarm(*_args):
+        return None
+
+    signal.signal(signal.SIGALRM, other_alarm)
+    try:
+        with pytest.raises(HarnessFailure, match="remote_preflight_deadline_conflict"):
+            RemoteDeploymentEvidenceProvider(Api()).preflight()
+    finally:
+        signal.signal(signal.SIGALRM, previous)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="ITIMER_REAL only on Linux")
+def test_remote_preflight_fails_closed_off_main_thread():
+    class Api:
+        def get(self, *_args, **_kwargs):
+            raise AssertionError("thread without safe deadline must not send credentials")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(RemoteDeploymentEvidenceProvider(Api()).preflight)
+        with pytest.raises(HarnessFailure, match="remote_preflight_deadline_unavailable"):
+            future.result()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="ITIMER_REAL only on Linux")
+def test_remote_preflight_linux_deadline_works_with_successful_evidence(monkeypatch):
+    from operator_e2e import requirement_e2e_evidence as evidence
+    monkeypatch.setattr(evidence, "E2E_PREFLIGHT_TIMEOUT_SECONDS", 2)
+
+    class Api:
+        def get(self, path, **kwargs):
+            assert path == "/v1/operator-e2e/runtime-evidence?verification=release"
+            assert kwargs["timeout"] == 2
+            return {
+                "schema_version": "requirement_e2e_runtime_evidence_v1",
+                "workers": {name: {"alive": True, "identity_verified": True}
+                            for name in ("schedule", "handoff")},
+                "artifact_root_fingerprint": "a" * 64,
+            }
+
+    old_handler = signal.getsignal(signal.SIGALRM)
+    result = RemoteDeploymentEvidenceProvider(Api()).preflight()
+    assert result["schema_version"] == "requirement_e2e_runtime_evidence_v1"
+    assert signal.getsignal(signal.SIGALRM) == old_handler
+    assert signal.getitimer(signal.ITIMER_REAL)[0] == 0
 
 
 def test_downloaded_docx_is_independently_checked_and_copied(tmp_path):
