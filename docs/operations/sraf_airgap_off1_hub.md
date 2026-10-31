@@ -150,3 +150,14 @@ TXT 產生是**純本機格式化**，不發送第二次健康檢查、SQL、ES�
 中文 TXT 在原本的固定檢查項目建議之外，針對**特定 check／status／reason 三欄完全吻合**的已審查組合，提供更精準的離線排除方向，例如專用 SQL ODBC 18 驅動缺失、SQL TLS／IP SAN 無法確認、Elasticsearch TLS 身分或 Mapping 失敗、嚴格 API Listener 無法認證、Worker PID Namespace 未可見等。**原因碼本身仍不寫入 TXT**，僅從程式內固定中文白名單選一條處置建議。未知、格式錯誤或互相矛盾的原因碼一律使用既有保守一般建議，不推論或補寫連線字串、Exception、SQLSTATE、使用者名稱、主機位址、憑證或 Token。完整的固定原因碼保留在私有 JSON。
 
 本增量只改**純本機報告格式化**，既有檢查、退出碼、輸出檔案、權限、SQL/ES Opt-in、LLM/Job 不受影響。任何建議不代表實際修復，所有八項手動驗收門檻仍為 `NOT_TESTED`，實際斷網及業務 E2E 須分別驗收。
+
+
+## 共用掛載環境的安全輸出位置（Shell 一鍵指定）
+
+預設仍寫入 SRAF 根目錄下的 `sraf-acceptance-results/`。如果專案位於 group-writable 或可疑的共用掛載，既有 `_secure_output_dir` 可能因 `output_ancestor_writable` 拒絕寫檔。**不可透過 chmod 放寬原有驗證**；可在可信、操作員獨占的絕對路徑下另行選擇證據目錄（示例使用事先確認可信的私人父目錄）：
+
+```bash
+SRAF_OFF1_OUTPUT_DIR="$HOME/sraf-private-evidence" bash run_sraf_airgap_off1_diagnose.sh
+```
+
+若有需要，`SRAF_PYTHON` 與 `SRAF_OFF1_OUTPUT_DIR` 可以同時設定，診斷的 ES／SQL 旗標仍須由操作員另外明確加上。此 Shell 設定只決定 `--output-dir` 的字串：必須是非空、單行的絕對路徑，拒絕相對路徑；**不建立任何目錄、不改變權限、不嘗試備援輸出、不繞過 Python 的 Linux O_NOFOLLOW／private dirfd／UID/0700 檢查**。新路徑的每層父目錄仍須符合原有安全條件，否則工具應回傳 INCOMPLETE／退出碼 2，不得顯示假成功。輸出的 JSON/TXT 仍是 0600。不要把私人輸出目錄加入版本控制或公開檔案分享。預設命令與所有檢查結果不變；這不是實際完整離線驗收。
