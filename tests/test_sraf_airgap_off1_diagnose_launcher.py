@@ -92,3 +92,35 @@ def test_shell_rejects_any_nonallowlisted_option(isolated_launcher, arguments):
     assert result.returncode == 2
     assert "Usage:" in result.stderr
     assert not capture.exists()
+
+
+@pytest.mark.parametrize("arguments,extra", [
+    (("--probe-sql-read",), ["--probe-sql-read"]),
+    (("--probe-sql-read", "--probe-es-tls-mapping"),
+     ["--probe-sql-read", "--probe-es-tls-mapping"]),
+    (("--probe-es-tls-mapping", "--probe-sql-read"),
+     ["--probe-es-tls-mapping", "--probe-sql-read"]),
+])
+def test_shell_forwards_only_selected_optin_probes(isolated_launcher, arguments, extra):
+    launcher, project, capture, env = isolated_launcher
+    out = subprocess.run(["bash", str(launcher), *arguments], cwd="/", env=env,
+                         capture_output=True, text=True)
+    assert out.returncode == 17
+    assert capture.read_text(encoding="utf-8").splitlines() == [
+        str(project), "tools/sraf_airgap_off1_hub.py", "--suite", "diagnose",
+        "--output-dir", str(project / "sraf-acceptance-results"), *extra,
+    ]
+
+
+@pytest.mark.parametrize("arguments", [
+    ("--probe-sql-read", "--probe-sql-read"),
+    ("--probe-es-tls-mapping", "--probe-es-tls-mapping"),
+    ("--probe-sql-read=SECRET",), ("--probe-sql-read", "SECRET"),
+])
+def test_duplicate_or_unsafe_shell_flags_never_launch_python(
+        isolated_launcher, arguments):
+    launcher, _, capture, env = isolated_launcher
+    out = subprocess.run(["bash", str(launcher), *arguments], cwd="/", env=env,
+                         capture_output=True, text=True)
+    assert out.returncode == 2
+    assert not capture.exists()
