@@ -63,3 +63,6 @@
 
 
 - **2026-10-31 no-socket operator one-click choice:** permit `--no-network` in existing shell allowlist instead of creating a separate scanner or duplicating Python probes. Reject ES/SQL active opt-ins and duplicates before process execution, forward `--suite diagnose --no-network` to canonical hub. Local /proc observations may still run. Network rows SKIP and result INCOMPLETE/exit 2 are correct, NOT release failure or certification; no default change or live Report Job authorization.
+
+
+- **2026-10-31 OFF-2 incremental trust boundary:** prior to attempting any archive creation or live file replacement, prove that a *separately supplied* SHA-256 attests the manifest being used and then verify every specifically listed runtime file with bounded O_NOFOLLOW dirfd reads. The existing manifest parser is authoritative for permitted runtime paths. The result must be explicitly PASS_PARTIAL/FAIL/INCOMPLETE and keep full package coverage/signing/dependency completeness/airgap OFF-3/4 and OFF-5 restore gates unverified. Never pull deployment-local SQL registry or secrets into release manifest; no read of arbitrary environment paths.
