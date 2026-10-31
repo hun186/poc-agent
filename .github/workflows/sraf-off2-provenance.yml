@@ -26,8 +26,9 @@ jobs:
         run: |
           python -m compileall -q tools/sraf_airgap_off2_manifest_check.py tests/test_sraf_airgap_off2_manifest_check.py
           python tools/sraf_airgap_off2_manifest_check.py --help
+          bash -n run_sraf_airgap_off2_verify.sh
       - name: Validate OFF-0 baseline (schema-only)
         run: python tools/validate_sraf_airgap_off0_contract.py
       - name: Verify synthetic pinned-file cases (not a live package or airgap)
         run: |
-          python -m pytest -q tests/test_sraf_airgap_off2_manifest_check.py tests/test_sraf_airgap_off0_contract.py
+          python -m pytest -q tests/test_sraf_airgap_off2_manifest_check.py tests/test_sraf_airgap_off2_shell_verify.py tests/test_sraf_airgap_off0_contract.py

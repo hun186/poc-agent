@@ -66,3 +66,6 @@
 
 
 - **2026-10-31 OFF-2 incremental trust boundary:** prior to attempting any archive creation or live file replacement, prove that a *separately supplied* SHA-256 attests the manifest being used and then verify every specifically listed runtime file with bounded O_NOFOLLOW dirfd reads. The existing manifest parser is authoritative for permitted runtime paths. The result must be explicitly PASS_PARTIAL/FAIL/INCOMPLETE and keep full package coverage/signing/dependency completeness/airgap OFF-3/4 and OFF-5 restore gates unverified. Never pull deployment-local SQL registry or secrets into release manifest; no read of arbitrary environment paths.
+
+
+- **2026-10-31 OFF-2 no-fallback Shell route:** keep existing standalone Python verifier authoritative; root Bash wrapper requires an explicit, properly shaped external manifest digest environment variable and rejects arguments and missing installed Python with INCOMPLETE/exit 2. Never calculate expected pin from the target checkout, never echo it, and do not create/chmod files, install packages, or add a second verification path. Original PASS_PARTIAL cannot represent package signing/wheelhouse/airgap.
