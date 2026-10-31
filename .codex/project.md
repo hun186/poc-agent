@@ -2,10 +2,11 @@
 
 ## Current Focus
 
-- **2026-10-31 active branch `feat/sraf-off1-output-dir-override-20261031`** adds only an operator-selected `SRAF_OFF1_OUTPUT_DIR` absolute single-line output path for one-command Bash diagnose while keeping project-local default. The existing Python 0700/UID/no-follow pinned dirfd remains the sole authority; no fallback, permission bypass, network operation or credential usage. Exact-head Hosted CI and formal Codex Review pending.
-- **PR #344 MERGED** squash `decd3f233a8195e8c547a01480e4364a28170ba0`: OFF-4 exact fixed reason-triple Chinese remediation, no native errors. Hosted CI/19 OFF-0 and formal Codex CLEAN. Old overlapping PRs #315/#318 closed as superseded after verifying current stricter implementations.
-- **PR #343 MERGED** squash `d3b0c27e83ad577fde2de4f7911b607893269b46`: E2E Linux operator client-only deadline, Hosted 1745 +429 and 19 OFF-0, Codex CLEAN; historical #322 closed superseded.
-- **PR #342 MERGED** squash `a8b10ada280c379d2c7e18160d31f8fea5f78c1c`: OFF-4 Chinese TXT, 0600 pinned output. **PR #341 MERGED** squash `4dd2ba427a3c1b355351b1c256d894d3404a2d8f`: SQL optional constant SELECT. **PR #340 MERGED** squash `6631806f5ac37e57a536a05ef730ad6867c95b3c`: ES strict mapping opt-in; all partial only.
+- **2026-10-31 current branch `feat/sraf-off1-shell-no-network-20261031`:** allow explicitly selected root Bash `--no-network` only, forwarding to the existing OFF-1 Python `--suite diagnose --no-network` implementation. Refuse duplicates and combined SQL/ES credentialed flags before executing Python. Preserve existing Bash allowlist, default diagnose, secured project-root or optional private path, 8 manual NOT_TESTED gates and normal INCOMPLETE/exit 2 when connectivity rows are SKIP. Hosted exact-head CI/formal Codex pending; zero socket network probing is not physical airgap acceptance.
+- **PR #345 MERGED** squash `3534c495c937a9016f07f9d5e41952645c9a558d`, latest PR HEAD `b0a357cf887ed2dce99a324edffe487d0c2a4c93`: optional shell `SRAF_OFF1_OUTPUT_DIR` absolute single-line trusted-path override; Python nofollow dirfd remains authoritative. Hosted 438 Python +19 OFF-0 PASS and formal Codex CLEAN after fixing initial P2.
+- **PR #344 MERGED** squash `decd3f233a8195e8c547a01480e4364a28170ba0`: known fixed reason-triples -> Chinese guidance, no native text; CI/Code Review CLEAN.
+- **PR #343 MERGED** squash `d3b0c27e83ad577fde2de4f7911b607893269b46`: Linux E2E operator 600s client-only deadline; no server cancellation, 1745+429 Python and OFF-0 CI PASS.
+- **PR #342 MERGED** squash `a8b10ada280c379d2c7e18160d31f8fea5f78c1c`: private Chinese TXT, and #341/#340 merged partial opt-in SQL and ES.
 
 ## Recent Outcomes
 
@@ -15,7 +16,7 @@
 
 ## Open Handoffs
 
-- Validate the selected private-output-path override on exact-head Hosted regression + OFF-0 19 and formal Codex Review; correct blocking Findings and conditional auto-merge if safe. Historical PRs #315/#318 already closed superseded; merged #336–344 remain part of main.
+- Validate the one-click --no-network flag exact-head Hosted test (root Shell + canonical hub / OFF-0 19) and formal Codex Review, repair P1/P2 and only then conditional auto-merge. Historical #315/#318 and #322 are superseded/closed; PR #336–345 already merged.
 
 - Private Linux/offline real E2E, strict ES TLS/IP SAN and Mapping, SQL source/schema, live Ollama/Agent timing, Word artifact and browser visual acceptance, Worker handoff, OFF-2-5 airgap/restore remain NOT TESTED by Hosted CI.
 - Follow AGENTS.md and active .codex/memory.md, architecture.md, api_contract.md, known_issues.md, decisions.md, backlog.md; consult .codex/archive only for historical investigation.

@@ -53,3 +53,6 @@
 
 
 - **2026-10-31 SRAF OFF-1 optional shell evidence directory candidate (pending CI):** after OFF-4 #344 merged as `decd3f233a8195e8c547a01480e4364a28170ba0` with exact-head 19 OFF-0 and Codex CLEAN, added an operator-specified `SRAF_OFF1_OUTPUT_DIR` option to the existing Bash wrapper for shared filesystem deployments. Default project root is unchanged; selected path must be absolute/single line, Bash never touches filesystem permissions or creates the folder, and `report_jobs._secure_output_dir` still enforces O_NOFOLLOW/owner/private dirfd. Tests use a fake Python process and verify unsafe paths fail before exec. Live private Linux permission behavior remains NOT TESTED. Superseded historical PRs #315/#318 closed after checking hardened current main equivalents.
+
+
+- **2026-10-31 OFF-1 Shell no-network candidate (pending Hosted):** after #345 merged on HEAD `3534c495c937a9016f07f9d5e41952645c9a558d` with exact-head 438 Python/19 OFF-0, formal Codex CLEAN after corrected original P2, add `--no-network` to Bash allowlist. This only calls existing OFF-1 hub option and preserves root/local or explicit trusted output path, no SQL/ES/LLM calls or startup mutation; reject duplicate or combination with SQL/ES opt-ins. Synthetic shell tests added; latest-head Hosted CI and formal Codex pending. Real physical airgap and E2E release gates remain NOT_TESTED.

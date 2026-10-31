@@ -47,3 +47,6 @@
 
 
 - **2026-10-31 OFF-1 one-command output safety increment (candidate):** preserve the project-local default, add only optional `SRAF_OFF1_OUTPUT_DIR` absolute single-line env override to existing Bash wrapper, no new flags or credential paths; retain verified Python nofollow-dirfd authority. Test default/override/unsafe values and no fallback; Hosted exact-head and Codex review required. Follow-up live private Linux permission test and complete OFF-2–5 remain NOT_TESTED.
+
+
+- **2026-10-31 OFF-1 root launcher socket-free candidate:** wire only existing `--no-network` Python hub mode through exact Bash allowlist; prohibit duplicate and combined SQL/ES opt-ins before Python. Verify full output to the existing safe private dir and preserved INCOMPLETE/NOT_TESTED semantics in Hosted, perform exact-head Codex Review and conditional Merge. Live physical airgap and dependencies remain pending.
