@@ -43,31 +43,7 @@ done
 OUTPUT_DIR="$PROJECT_ROOT/sraf-acceptance-results"
 if [[ ${SRAF_OFF1_OUTPUT_DIR+x} ]]; then
   OUTPUT_DIR="$SRAF_OFF1_OUTPUT_DIR"
-  if [[ -z "$OUTPUT_DIR" || "$OUTPUT_DIR" != /* || "$OUTPUT_DIR" == *
-# Override only when needed: SRAF_PYTHON=/path/to/venv/bin/python bash ...
-PYTHON_BIN="${SRAF_PYTHON:-python}"
-if ! command -v -- "$PYTHON_BIN" >/dev/null 2>&1; then
-  printf '%s\n' 'ERROR: SRAF Python is not available. Activate the SRAF environment or set SRAF_PYTHON.' >&2
-  exit 127
-fi
-
-exec "$PYTHON_BIN" tools/sraf_airgap_off1_hub.py \
-  --suite diagnose \
-  --output-dir "$OUTPUT_DIR" \
-  "${DIAGNOSTIC_OPTIONS[@]}"
-\n'* || "$OUTPUT_DIR" == *
-# Override only when needed: SRAF_PYTHON=/path/to/venv/bin/python bash ...
-PYTHON_BIN="${SRAF_PYTHON:-python}"
-if ! command -v -- "$PYTHON_BIN" >/dev/null 2>&1; then
-  printf '%s\n' 'ERROR: SRAF Python is not available. Activate the SRAF environment or set SRAF_PYTHON.' >&2
-  exit 127
-fi
-
-exec "$PYTHON_BIN" tools/sraf_airgap_off1_hub.py \
-  --suite diagnose \
-  --output-dir "$PROJECT_ROOT/sraf-acceptance-results" \
-  "${DIAGNOSTIC_OPTIONS[@]}"
-\r'* ]]; then
+  if [[ -z "$OUTPUT_DIR" || "$OUTPUT_DIR" != /* || "$OUTPUT_DIR" == *[[:cntrl:]]* ]]; then
     printf '%s\n' 'ERROR: SRAF_OFF1_OUTPUT_DIR must be an absolute single-line path.' >&2
     exit 2
   fi
@@ -83,5 +59,5 @@ fi
 
 exec "$PYTHON_BIN" tools/sraf_airgap_off1_hub.py \
   --suite diagnose \
-  --output-dir "$PROJECT_ROOT/sraf-acceptance-results" \
+  --output-dir "$OUTPUT_DIR" \
   "${DIAGNOSTIC_OPTIONS[@]}"
