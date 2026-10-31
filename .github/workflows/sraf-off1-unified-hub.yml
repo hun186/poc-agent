@@ -27,8 +27,9 @@ jobs:
           python -m compileall -q tools/sraf_airgap_off1_hub.py tools/sraf_airgap_off1_es_hub.py tools/sraf_airgap_off1_sql_hub.py tools/sraf_airgap_off1_text_report.py
           python tools/sraf_airgap_off1_hub.py --help
           bash -n run_sraf_airgap_off1_diagnose.sh
+          bash -n run_sraf_airgap_offline.sh
       - name: Validate OFF-0 schema-only contract (not runtime acceptance)
         run: python tools/validate_sraf_airgap_off0_contract.py
       - name: Run synthetic no-network regression suite
         run: |
-          python -m pytest -q tests/test_sraf_airgap_off1_hub.py tests/test_sraf_airgap_report_jobs_acceptance.py tests/test_sraf_airgap_off1_diagnose_launcher.py tests/test_sraf_airgap_off1h_worker_identity.py tests/test_sraf_airgap_off1_es_hub.py tests/test_sraf_airgap_off1b_es_https_mapping.py tests/test_sraf_airgap_off1_sql_hub.py tests/test_sraf_airgap_off1g_sql_read.py tests/test_sraf_airgap_off1_text_report.py
+          python -m pytest -q tests/test_sraf_airgap_off1_hub.py tests/test_sraf_airgap_report_jobs_acceptance.py tests/test_sraf_airgap_off1_diagnose_launcher.py tests/test_sraf_airgap_off1h_worker_identity.py tests/test_sraf_airgap_off1_es_hub.py tests/test_sraf_airgap_off1b_es_https_mapping.py tests/test_sraf_airgap_off1_sql_hub.py tests/test_sraf_airgap_off1g_sql_read.py tests/test_sraf_airgap_off1_text_report.py tests/test_sraf_airgap_off3_dispatch.py
