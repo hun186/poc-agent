@@ -145,7 +145,7 @@ def test_explicit_absolute_output_dir_is_forwarded_without_touching_folder(
 
 
 @pytest.mark.parametrize("unsafe", [
-    "", "relative-folder", "../escape", "secret\nINJECTED", "bad\rOUTPUT",
+    "", "relative-folder", "../escape", "/secure\nINJECTED", "/secure\rOUTPUT",
 ])
 def test_bad_output_dir_override_fails_before_python(
         isolated_launcher, unsafe):
