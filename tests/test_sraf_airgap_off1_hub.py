@@ -317,3 +317,138 @@ def test_explicit_es_strict_failure_propagates(monkeypatch, tmp_path):
     ev = _evidence(tmp_path)
     assert ev["result"] == "FAIL"
     assert ev["counts"]["FAIL"] == 1
+
+
+def test_sql_read_not_invoked_without_explicit_flag(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "sql_constant_read_observation",
+                        lambda: pytest.fail("default must not inspect SQL credentials"))
+    assert _run(tmp_path, "--suite", "diagnose") == 0
+
+
+@pytest.mark.parametrize("args", [
+    ("--probe-sql-read",),
+    ("--suite", "quick", "--probe-sql-read"),
+    ("--suite", "diagnose", "--no-network", "--probe-sql-read"),
+    ("--suite", "diagnose", "--live-report", "--probe-sql-read"),
+])
+def test_sql_read_requires_explicit_diagnose_network_no_live(monkeypatch, tmp_path, args):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "sql_constant_read_observation",
+                        lambda: pytest.fail("forbidden flag combination"))
+    with pytest.raises(SystemExit) as err:
+        _run(tmp_path, *args)
+    assert err.value.code == 2
+    assert not (tmp_path / "private-output").exists()
+
+
+def test_sql_read_pass_is_partial_and_schema_not_tested(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    called = []
+    def probe():
+        called.append(True)
+        return {"check": "sql_constant_read", "status": "PASS",
+                "reason": "sql_constant_select_observed",
+                "constant_select_observed": True}
+    monkeypatch.setattr(hub, "sql_constant_read_observation", probe)
+    assert _run(tmp_path, "--suite", "diagnose", "--probe-sql-read") == 0
+    ev = _evidence(tmp_path)
+    assert called == [True]
+    assert ev["result"] == "PASS_PARTIAL"
+    assert next(r for r in ev["checks"] if r["check"] == "sql_constant_read")["status"] == "PASS"
+    assert next(g for g in ev["manual_gates"]
+                if g["check"] == "sql_schema_source_permissions")["status"] == "NOT_TESTED"
+    assert ev["production_release_ready"] is False
+
+
+@pytest.mark.parametrize("status,reason,expected", [
+    ("SKIP", "sql_read_config_invalid", 2),
+    ("FAIL", "sql_read_response_invalid", 1),
+])
+def test_sql_read_incomplete_or_failure_propagates(monkeypatch, tmp_path,
+                                                  status, reason, expected):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "sql_constant_read_observation",
+                        lambda: {"check": "sql_constant_read", "status": status,
+                                 "reason": reason, "constant_select_observed": False})
+    assert _run(tmp_path, "--suite", "diagnose", "--probe-sql-read") == expected
+    ev = _evidence(tmp_path)
+    assert ev["exit_code"] == expected
+    assert next(g for g in ev["manual_gates"]
+                if g["check"] == "sql_schema_source_permissions")["status"] == "NOT_TESTED"
+
+
+def test_sql_read_independent_of_unavailable_api_endpoint(monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    calls = []
+    monkeypatch.setattr(hub, "sql_constant_read_observation",
+                        lambda: (calls.append("sql") or {
+                            "check": "sql_constant_read", "status": "PASS",
+                            "reason": "sql_constant_select_observed",
+                            "constant_select_observed": True}))
+    monkeypatch.setattr(hub.report_jobs, "_api_bind_endpoint",
+                        lambda cfg: ({"configuration": "INVALID"}, None))
+    assert _run(tmp_path, "--suite", "diagnose", "--probe-sql-read") == 1
+    ev = _evidence(tmp_path)
+    assert calls == ["sql"]
+    assert any(r["check"] == "sql_constant_read" for r in ev["checks"])
+    assert any(r["check"] == "operator" for r in ev["checks"])
+
+
+@pytest.mark.parametrize("flag,check,reason,manual_gate", [
+    ("--probe-sql-read", "sql_constant_read", "sql_read_response_invalid",
+     "sql_schema_source_permissions"),
+    ("--probe-es-tls-mapping", "es_strict_tls_mapping", "es_tls_identity_failed",
+     "es_tls_ca_san_mapping"),
+])
+def test_database_failure_survives_later_runtime_configuration_error(
+        monkeypatch, tmp_path, flag, check, reason, manual_gate):
+    """Codex P2: later APP_ENV errors cannot turn observed DB FAIL into exit 2."""
+    _prepare(monkeypatch, tmp_path)
+    failure = {"check": check, "status": "FAIL", "reason": reason}
+    if flag == "--probe-sql-read":
+        failure["constant_select_observed"] = False
+        monkeypatch.setattr(hub, "sql_constant_read_observation",
+                            lambda: dict(failure))
+    else:
+        failure.update(https_probe="FAIL", tls_validation="FAIL",
+                       mapping_probe="SKIP", auth="NOT_TESTED",
+                       credential_control="NOT_RUN")
+        monkeypatch.setattr(hub, "strict_mapping_observation",
+                            lambda cfg, root: dict(failure))
+    def later_runtime_failure(root):
+        raise ValueError("APP_ENV invalid; SECRET_SQL_USER_NOT_FOR_LOGGING")
+    # SQL executes before _effective_runtime_config. ES must instead be
+    # exercised after the config but before the subsequent API error.
+    if flag == "--probe-es-tls-mapping":
+        monkeypatch.setattr(hub.report_jobs, "_api_bind_endpoint",
+                            lambda cfg: (_ for _ in ()).throw(
+                                ValueError("SECRET_API_CONFIG")))
+    else:
+        monkeypatch.setattr(hub.report_jobs, "_effective_runtime_config",
+                            later_runtime_failure)
+    assert _run(tmp_path, "--suite", "diagnose", flag) == 1
+    ev = _evidence(tmp_path)
+    assert ev["result"] == "FAIL"
+    assert ev["exit_code"] == 1
+    assert any(row["check"] == check and row["status"] == "FAIL"
+               for row in ev["checks"])
+    assert next(g for g in ev["manual_gates"] if g["check"] == manual_gate)[
+        "status"] == "NOT_TESTED"
+    assert "SECRET" not in json.dumps(ev)
+
+
+def test_sql_incomplete_is_not_promoted_after_runtime_config_error(
+        monkeypatch, tmp_path):
+    _prepare(monkeypatch, tmp_path)
+    monkeypatch.setattr(hub, "sql_constant_read_observation",
+                        lambda: {"check": "sql_constant_read", "status": "SKIP",
+                                 "reason": "sql_read_connection_unverified",
+                                 "constant_select_observed": False})
+    monkeypatch.setattr(hub.report_jobs, "_effective_runtime_config",
+                        lambda root: (_ for _ in ()).throw(ValueError("SECRET")))
+    assert _run(tmp_path, "--suite", "diagnose", "--probe-sql-read") == 2
+    evidence = _evidence(tmp_path)
+    assert evidence["result"] == "INCOMPLETE"
+    assert evidence["exit_code"] == 2
+    assert "SECRET" not in json.dumps(evidence)

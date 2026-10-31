@@ -24,6 +24,32 @@ SRAF_PYTHON=/path/to/sraf-venv/bin/python bash run_sraf_airgap_off1_diagnose.sh
 
 使用 `bash` 呼叫不需要另外 `chmod +x`；Linux 用 `.sh`，Windows `.bat` 不適用於 SRAF 的 Linux 容器。
 
+## 額外選用：SQL Server TLS 唯讀連線／固定 SELECT（需操作員明確授權）
+
+**預設一般診斷不會嘗試登入 SQL Server，也不會自動從正式 SRAF SQL Registry、.env.local 或 DB 設定檔擷取連線帳密。** 本增量重用已存在的 OFF-1G `probe_sql_constant_read`，只有操作員指定 `--probe-sql-read`，且明確提供 **獨立、專用、最小 SELECT 權限** SQL 帳號時，才會透過已安裝的 `ODBC Driver 18 for SQL Server` 連線並執行**唯一固定 SQL**：
+
+```sql
+SELECT CAST(1 AS int)
+```
+
+必須使用操作員事先在 Linux Shell 以安全方式提供的以下五個環境變數（這裡**不**填實際值）：`SRAF_OFF1G_SQL_HOST`、`SRAF_OFF1G_SQL_PORT`、`SRAF_OFF1G_SQL_DATABASE`、`SRAF_OFF1G_SQL_USER`、`SRAF_OFF1G_SQL_PASSWORD`。Host 必須是 RFC1918 或 Loopback 的數字 IPv4，Port 必須合法，資料庫與使用者名稱限制為安全字面值；拒絕額外 DSN 或連線選項注入。ODBC 連線使用 `Encrypt=Yes;TrustServerCertificate=No;ApplicationIntent=ReadOnly`，**不可**為連線方便改用略過憑證驗證。IP SAN／TLS 名稱不符合時可能回報 SKIP／INCOMPLETE，不應視為網路或帳號一定失效。
+
+已取得操作員授權且設定好專用帳密後，在已部署 SRAF 根目錄執行：
+
+```bash
+bash run_sraf_airgap_off1_diagnose.sh --probe-sql-read
+```
+
+也可同時明確選擇 ES 的獨立驗證（兩個 flag 可以任意順序排列；未選擇的連線不會執行）：
+
+```bash
+bash run_sraf_airgap_off1_diagnose.sh --probe-es-tls-mapping --probe-sql-read
+```
+
+**只讀邊界：**不查使用者表、不讀表內容、不檢查或修改 Schema、不呼叫儲存程序、不建立資料庫、不寫入任何資料，只有一次 ODBC 連線及固定常數 SELECT，正常連線下各最多 3 秒登入與查詢 timeout；Driver/native SQLSTATE／IP／資料庫名稱／使用者／密碼／查詢內容都不會列印在 JSON。底層 Driver 行為與逾時取消效果仍需在真實 Linux 現場驗證。不可搭配 `--no-network`、`--suite quick` 或 `--live-report`。
+
+輸出新增 `sql_constant_read`，`PASS` 代表只觀察到固定 SQL 回傳常數 1；`SKIP` 代表憑證／Driver／連線不確定（退出碼 2），`FAIL` 為已建立查詢但回應內容不符（退出碼 1）。不管 SQL 常數查詢是否 PASS，獨立的 `sql_schema_source_permissions` 手動驗收門檻仍**NOT_TESTED**；**不能**據此推論 Schema v4、正式資料來源、表格存取權限、SQL Registry 或 Schedule/Handoff 已驗證。真正 SQL Schema metadata／版本／權限診斷需後續另定固定查詢及權限規範，不會偷偷擴大本次授權。
+
 ## 額外選用：嚴格 Elasticsearch HTTPS／IP SAN／Mapping 診斷（需要操作員明確授權）
 
 **預設的 `bash run_sraf_airgap_off1_diagnose.sh` 完全不會新增 ES Basic 認證要求**，只執行原本的 private TCP 觀察。當操作員已獲得權限，確認診斷會使用目前設定中的 `ES_USERNAME`／`ES_PASSWORD` 向 ES 發出**最多三個有界唯讀 HTTPS GET**（根識別、`/_security/_authenticate`、指定索引 `/_mapping`）時，才執行：
@@ -91,6 +117,7 @@ python tools/sraf_airgap_off1_hub.py --live-report --token-env SRAF_TEST_BEARER 
 | worker_process_identity | OFF-1H `probe_worker_process_identities` | `--suite diagnose`（含 `--no-network`）額外讀取本機 Schedule/Handoff Worker 身分紀錄與 `/proc`，只做程序觀察，不查 SQL、不發送 HTTP、不建立工作 |
 | tcp_api／tcp_es／tcp_llm | OFF-1B `tcp_observe` | 只有選 `--suite diagnose` 才檢查，僅私有數字 IPv4；不碰資料／模型 |
 | es_strict_tls_mapping | OFF-1B ES HTTPS/Mapping `_observe` | **僅**在 `--suite diagnose --probe-es-tls-mapping` 下使用配置好的 Basic 身分發出有限的嚴格 CA＋IP SAN HTTPS 唯讀 GET；整體認證仍 NOT_VERIFIED |
+| sql_constant_read | OFF-1G `probe_sql_constant_read` | **僅** `--suite diagnose --probe-sql-read`，獨立最小權限帳密與 ODBC Driver 18，固定常數 SELECT；不檢查 Schema／資料來源／帳號權限 |
 | 真實 Job＋DOCX | PR #336 `_live` | **僅限** `--live-report`，嚴格 listener guard、單筆 POST／輪詢／Word 完整性 |
 
 **OFF-1H 新增部分觀察：** `bash run_sraf_airgap_off1_diagnose.sh` 現在會在原有 HTTP/TCP 診斷之外，讀取兩個既有 Worker 的啟動器身分記錄與 `/proc`，輸出 `worker_process_identity=PASS/SKIP` 和去識別化的 `verified_role_count`（0～2）。本檢查不會修改 Worker、取得租約、觸發 Schedule、查詢 SQL，不能證明完整 Handoff E2E，因此固定 `schedule_handoff_workers=NOT_TESTED`。Worker 不在同一 PID namespace、未部署或證明不足時 SKIP；屬輔助診斷，不改變原本 Report Job／TCP 必要檢查的退出碼，也不會被當成放行的 PASS。真正的 Linux 容器環境還需操作員實測。

@@ -2,8 +2,9 @@
 """One-command OFF-1 operator hub for an already deployed SRAF application.
 
 Uses the *application's installed Python environment* (not standalone stdlib).
-Default and --suite diagnose are read-only; no SQL query, login, Worker restart,
-Job creation, model request, DNS, internet access or package installation.
+Default and ordinary --suite diagnose are read-only; no SQL query or login,
+Worker restart, Job creation or model request. Optional SQL/ES credentials
+are used only behind their separately selected explicit diagnostic flags.
 --live-report is a separate explicit operator action delegated to the reviewed
 Report Job acceptance and OFF-1S strict listener guard.
 This is PARTIAL evidence, never OFF-2--5 or physical-airgap certification.
@@ -26,6 +27,7 @@ from tools import sraf_airgap_report_jobs_acceptance as report_jobs
 from tools.sraf_airgap_off1_probes import probe_disk, probe_odbc_library
 from tools.sraf_airgap_off1h_worker_identity import probe_worker_process_identities
 from tools.sraf_airgap_off1_es_hub import strict_mapping_observation
+from tools.sraf_airgap_off1_sql_hub import sql_constant_read_observation
 
 ROOT = report_jobs.ROOT
 SCHEMA = "sraf_airgap_off1_unified_hub_v1"
@@ -76,6 +78,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="Explicitly send configured ES Basic credentials only after "
                              "strict CA+IP SAN verification; bounded read-only GETs. "
                              "Auth still NOT_VERIFIED; never a release certificate.")
+    parser.add_argument("--probe-sql-read", action="store_true",
+                        help="Explicitly connect with separate SRAF_OFF1G_SQL_* credentials "
+                             "for one TLS-checked constant SELECT; never checks SQL schema "
+                             "or application table permissions.")
     parser.add_argument("--live-report", action="store_true",
                         help="EXPLICIT authorization for one real Agent/LLM Report Job")
     parser.add_argument("--token-env", default=None,
@@ -91,6 +97,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.probe_es_tls_mapping and (
             args.suite != "diagnose" or args.no_network or args.live_report):
         parser.error("--probe-es-tls-mapping requires --suite diagnose and "
+                     "cannot combine with --no-network or --live-report")
+    if args.probe_sql_read and (
+            args.suite != "diagnose" or args.no_network or args.live_report):
+        parser.error("--probe-sql-read requires --suite diagnose and "
                      "cannot combine with --no-network or --live-report")
     if args.token_env and re.fullmatch(r"[A-Z_][A-Z0-9_]{0,63}", args.token_env) is None:
         parser.error("invalid --token-env NAME")
@@ -122,6 +132,11 @@ def main(argv: list[str] | None = None) -> int:
                             ("host_odbc_library", probe_odbc_library)):
             obs = probe()
             rows.append(report_jobs._row(name, obs.status, obs.reason))
+        if args.probe_sql_read:
+            # Independently selected, operator-supplied OFF-1G credentials.
+            # Never reuse production SQL registry or infer schema privileges.
+            # Evidence is sanitized; a failed API must not prevent the SQL read.
+            rows.append(sql_constant_read_observation())
         cfg = report_jobs._effective_runtime_config(ROOT)
         if args.probe_es_tls_mapping:
             # Independently observe ES even if API health later fails.
@@ -162,13 +177,6 @@ def main(argv: list[str] | None = None) -> int:
                     verified_role_count=0,
                 ))
         code = _exit_for_selected(rows, args.suite)
-        if args.probe_es_tls_mapping:
-            es_status = next(row["status"] for row in rows
-                             if row["check"] == "es_strict_tls_mapping")
-            if es_status == "FAIL":
-                code = 1
-            elif es_status != "PASS" and code == 0:
-                code = 2
         if args.live_report:
             if code == 0:
                 code = report_jobs._live(port, proof, args, rows, result_fd)
@@ -188,6 +196,23 @@ def main(argv: list[str] | None = None) -> int:
         rows.append(report_jobs._row(
             "operator", "SKIP", "operator_environment_or_transport_unavailable"))
         code = 2
+    # Selected database probes run independently of the API. A later API
+    # configuration/transport exception must NEVER hide an already-attested
+    # SQL/ES failure by reducing exit 1 to INCOMPLETE/exit 2. Evaluate these
+    # closed-status rows AFTER all diagnostic exception handlers.
+    for enabled, check in (
+        (args.probe_es_tls_mapping, "es_strict_tls_mapping"),
+        (args.probe_sql_read, "sql_constant_read"),
+    ):
+        if not enabled:
+            continue
+        status = next((row.get("status") for row in rows
+                       if row.get("check") == check), None)
+        if status == "FAIL":
+            code = 1
+        elif status != "PASS" and code == 0:
+            code = 2
+
     if result_fd is None:
         # Never write even failure JSON through an unverified output path.
         print("SRAF_OFF1_HUB=INCOMPLETE reason=output_dir_unverified")

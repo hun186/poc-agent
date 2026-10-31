@@ -2,9 +2,9 @@
 
 ## Current Focus
 
-- **2026-10-31 Draft PR #340 (branch `feat/sraf-off1-es-strict-optin-20261031`)** extends the existing OFF-1 one-click hub with separately selected `--probe-es-tls-mapping` (also an exact allowlisted Shell flag). Normal `quick` and `diagnose` continue without authenticated ES requests. Opt-in reuses canonical OFF-1B strict HTTPS `_observe`: fixed local CA, private numeric IPv4, CA+IP SAN mandatory, limited GET root/protected principal/mapping; no incorrect-password challenge or search/query/write. Redacted fixed-status JSON; strict TLS and mapping partial observations without independently confirmed Basic authentication keep an INCOMPLETE top-level exit 2; detected TLS/mapping FAIL yields exit 1. Full ES manual gate remains NOT_TESTED. Run latest-head Hosted + formal Codex, no merge without explicit separate user approval.
-- **PR #339 is MERGED** (2026-10-31 02:28 Asia/Taipei) squash `b758c2ef944ed6bedd1e63c3654291d18d30a785`; final HEAD `9f8a5858`, 75 Python tests and 19 OFF-0 PASS, formal Codex CLEAN. OFF-1H passive Worker identities advisory only, without SQL/Handoff E2E.
-- PR #338 merged `97f8b81a426a4c98777dd7668dc0143dbf6c0196`; root Bash launcher project-local secure evidence dir. PR #337 merged `e44ae58ddf64f94938a368ceb4726bd3d3f8a658`; unified default-read-only hub. PR #336 merged existing strictly authorized one-live-Job CLI.
+- **2026-10-31 current Draft PR #341** (branch `feat/sraf-off1-sql-read-optin-20261031`): optional `--probe-sql-read` in existing OFF-1 one-click Bash/Hub reusing canonical OFF-1G fixed `SELECT CAST(1 AS int)` with ODBC 18 `Encrypt=Yes;TrustServerCertificate=No;ApplicationIntent=ReadOnly`. Require separate operator-supplied 5 `SRAF_OFF1G_SQL_*` variables, no production SQL Registry, no application table data, no schema inspection or mutation. Explicitly reject quick/no-network/live-report combinations. Redacted SQL-01 adapter can PASS fixed constant-only, SKIP missing identity/driver/transport and FAIL wrong response. Complete SQL v4/schema/source/permissions remains NOT_TESTED. Exact-head Hosted tests (including original OFF-1G), formal Codex clean and separate user authorization required before Merge.
+- **PR #340 merged** 2026-10-31 10:53 Asia/Taipei squash `6631806f5ac37e57a536a05ef730ad6867c95b3c`, final HEAD `a5b5807b89ae`, 337 Python +19 OFF-0 PASS, formal Codex CLEAN, old P1 deferred import fixed. Opt-in strict ES CA/IP SAN/Mapping mode remains partial, no default authenticated ES requests.
+- PR #339 merged `b758c2ef944ed6bedd1e63c3654291d18d30a785` passive Worker identities; PR #338 merged `97f8b81a426a4c98777dd7668dc0143dbf6c0196` root Bash launcher; PR #337 merged `e44ae58ddf64f94938a368ceb4726bd3d3f8a658` OFF-1 unified hub; PR #336 merged strictly authorized one-live-Job CLI.
 
 ## Recent Outcomes
 
@@ -14,7 +14,7 @@
 
 ## Open Handoffs
 
-- Complete PR #340 exact-head Hosted CI (canonical OFF-1B ES TLS/Mapping and focused shell/hub regression, OFF-0 19), formal Codex Review, resolve any P1/P2 and obtain separate explicit user Merge authorization. #336–339 are already merged.
+- Complete PR #341 exact-head Hosted CI (canonical OFF-1G SQL read, hub+shell focused tests, OFF-0 19), formal Codex Review and all threads, then await separate explicit user Merge authorization. #336–340 are already merged.
 
 - Private Linux/offline real E2E, strict ES TLS/IP SAN and Mapping, SQL source/schema, live Ollama/Agent timing, Word artifact and browser visual acceptance, Worker handoff, OFF-2-5 airgap/restore remain NOT TESTED by Hosted CI.
 - Follow AGENTS.md and active .codex/memory.md, architecture.md, api_contract.md, known_issues.md, decisions.md, backlog.md; consult .codex/archive only for historical investigation.
