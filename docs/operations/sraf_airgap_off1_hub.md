@@ -24,6 +24,28 @@ SRAF_PYTHON=/path/to/sraf-venv/bin/python bash run_sraf_airgap_off1_diagnose.sh
 
 使用 `bash` 呼叫不需要另外 `chmod +x`；Linux 用 `.sh`，Windows `.bat` 不適用於 SRAF 的 Linux 容器。
 
+## 額外選用：嚴格 Elasticsearch HTTPS／IP SAN／Mapping 診斷（需要操作員明確授權）
+
+**預設的 `bash run_sraf_airgap_off1_diagnose.sh` 完全不會新增 ES Basic 認證要求**，只執行原本的 private TCP 觀察。當操作員已獲得權限，確認診斷會使用目前設定中的 `ES_USERNAME`／`ES_PASSWORD` 向 ES 發出**最多三個有界唯讀 HTTPS GET**（根識別、`/_security/_authenticate`、指定索引 `/_mapping`）時，才執行：
+
+```bash
+bash run_sraf_airgap_off1_diagnose.sh --probe-es-tls-mapping
+```
+
+或直接執行已部署 Python（需在 SRAF 根目錄）：
+
+```bash
+python tools/sraf_airgap_off1_hub.py --suite diagnose --probe-es-tls-mapping --output-dir "$PWD/sraf-acceptance-results"
+```
+
+這個選項強制使用既有 OFF-1B 的 **CA 驗證且不得關閉 hostname／數字 IP SAN 檢查**，僅允許私有數字 IPv4 的 HTTPS 根端點；固定 CA 位置為 `agent/certs/http_ca.crt`，且需有一個安全的字面 `ES_INDEX`，有效的 `ES_USERNAME`／`ES_PASSWORD`。缺少配置／CA／索引時為 SKIP／INCOMPLETE，絕不退回不驗證憑證模式，不使用 DNS／proxy、無搜尋查詢、無寫入、無刪除或套件安裝。**禁止**與 `--no-network`、`--live-report` 或 `--suite quick` 併用。
+
+輸出增加 `es_strict_tls_mapping`，只記錄固定的 `https_probe`、`tls_validation`、`mapping_probe`、`auth` 狀態，不記載 IP／索引名稱／帳密／CA 路徑／HTTP 回應。嚴格 TLS 與 Mapping 均可觀察為 PASS，但**這個模式故意不送錯密碼負向對照**（可能觸發登入失敗稽核或帳戶鎖定），因此 `auth=NOT_VERIFIED` 時，整個新檢查仍為 SKIP，`SRAF_OFF1_HUB=INCOMPLETE`／退出碼 2，而非假裝正式認證 PASS。TLS、HTTPS 或 Mapping 的可判定失敗則為 FAIL／退出碼 1。只有普通未額外選用的診斷仍依原先檢查決定退出碼。正式 `es_tls_ca_san_mapping` 手動驗收門檻始終 `NOT_TESTED`。
+
+ES 探針與本機 API 健康檢查分開執行：API 無法連線仍能留下已選用的 ES 診斷結果；但任何部分網路或 TLS 成功都**不是**完整 Agent／Elasticsearch 查詢能力或離線部署驗收。
+
+
+
 ## 一鍵執行（直接複製）
 
 最常用的**只讀 quick**，不提交任何報告、不登入、不查 SQL／ES、不呼叫 LLM：
@@ -68,6 +90,7 @@ python tools/sraf_airgap_off1_hub.py --live-report --token-env SRAF_TEST_BEARER 
 | api_listener | OFF-1S `attest_api_listener` | Linux launcher 身分認證；只讀結果可能 SKIP |
 | worker_process_identity | OFF-1H `probe_worker_process_identities` | `--suite diagnose`（含 `--no-network`）額外讀取本機 Schedule/Handoff Worker 身分紀錄與 `/proc`，只做程序觀察，不查 SQL、不發送 HTTP、不建立工作 |
 | tcp_api／tcp_es／tcp_llm | OFF-1B `tcp_observe` | 只有選 `--suite diagnose` 才檢查，僅私有數字 IPv4；不碰資料／模型 |
+| es_strict_tls_mapping | OFF-1B ES HTTPS/Mapping `_observe` | **僅**在 `--suite diagnose --probe-es-tls-mapping` 下使用配置好的 Basic 身分發出有限的嚴格 CA＋IP SAN HTTPS 唯讀 GET；整體認證仍 NOT_VERIFIED |
 | 真實 Job＋DOCX | PR #336 `_live` | **僅限** `--live-report`，嚴格 listener guard、單筆 POST／輪詢／Word 完整性 |
 
 **OFF-1H 新增部分觀察：** `bash run_sraf_airgap_off1_diagnose.sh` 現在會在原有 HTTP/TCP 診斷之外，讀取兩個既有 Worker 的啟動器身分記錄與 `/proc`，輸出 `worker_process_identity=PASS/SKIP` 和去識別化的 `verified_role_count`（0～2）。本檢查不會修改 Worker、取得租約、觸發 Schedule、查詢 SQL，不能證明完整 Handoff E2E，因此固定 `schedule_handoff_workers=NOT_TESTED`。Worker 不在同一 PID namespace、未部署或證明不足時 SKIP；屬輔助診斷，不改變原本 Report Job／TCP 必要檢查的退出碼，也不會被當成放行的 PASS。真正的 Linux 容器環境還需操作員實測。

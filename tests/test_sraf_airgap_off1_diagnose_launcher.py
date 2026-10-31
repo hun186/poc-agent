@@ -66,3 +66,29 @@ def test_missing_application_python_is_rejected(isolated_launcher):
     assert outcome.returncode == 127
     assert "SRAF Python is not available" in outcome.stderr
     assert not capture.exists()
+
+
+def test_explicit_es_flag_is_forwarded_without_other_changes(isolated_launcher):
+    launcher, project, capture, env = isolated_launcher
+    result = subprocess.run(
+        ["bash", str(launcher), "--probe-es-tls-mapping"],
+        cwd="/", env=env, capture_output=True, text=True)
+    assert result.returncode == 17
+    assert capture.read_text(encoding="utf-8").splitlines() == [
+        str(project), "tools/sraf_airgap_off1_hub.py", "--suite", "diagnose",
+        "--output-dir", str(project / "sraf-acceptance-results"),
+        "--probe-es-tls-mapping",
+    ]
+
+
+@pytest.mark.parametrize("arguments", [
+    ("--live-report",), ("--probe-es-tls-mapping", "--live-report"),
+    ("--no-network",), ("--bad-flag",), ("",),
+])
+def test_shell_rejects_any_nonallowlisted_option(isolated_launcher, arguments):
+    launcher, _, capture, env = isolated_launcher
+    result = subprocess.run(["bash", str(launcher), *arguments],
+                            cwd="/", env=env, capture_output=True, text=True)
+    assert result.returncode == 2
+    assert "Usage:" in result.stderr
+    assert not capture.exists()

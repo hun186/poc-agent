@@ -25,6 +25,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from tools import sraf_airgap_report_jobs_acceptance as report_jobs
 from tools.sraf_airgap_off1_probes import probe_disk, probe_odbc_library
 from tools.sraf_airgap_off1h_worker_identity import probe_worker_process_identities
+from tools.sraf_airgap_off1_es_hub import strict_mapping_observation
 
 ROOT = report_jobs.ROOT
 SCHEMA = "sraf_airgap_off1_unified_hub_v1"
@@ -71,6 +72,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--suite", choices=("quick", "diagnose"), default="quick")
     parser.add_argument("--no-network", action="store_true",
                         help="No HTTP/TCP; report connectivity as SKIP/INCOMPLETE")
+    parser.add_argument("--probe-es-tls-mapping", action="store_true",
+                        help="Explicitly send configured ES Basic credentials only after "
+                             "strict CA+IP SAN verification; bounded read-only GETs. "
+                             "Auth still NOT_VERIFIED; never a release certificate.")
     parser.add_argument("--live-report", action="store_true",
                         help="EXPLICIT authorization for one real Agent/LLM Report Job")
     parser.add_argument("--token-env", default=None,
@@ -83,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.live_report and args.no_network:
         parser.error("--live-report is incompatible with --no-network")
+    if args.probe_es_tls_mapping and (
+            args.suite != "diagnose" or args.no_network or args.live_report):
+        parser.error("--probe-es-tls-mapping requires --suite diagnose and "
+                     "cannot combine with --no-network or --live-report")
     if args.token_env and re.fullmatch(r"[A-Z_][A-Z0-9_]{0,63}", args.token_env) is None:
         parser.error("invalid --token-env NAME")
     if not 30 <= args.max_seconds <= 3600:
@@ -114,6 +123,11 @@ def main(argv: list[str] | None = None) -> int:
             obs = probe()
             rows.append(report_jobs._row(name, obs.status, obs.reason))
         cfg = report_jobs._effective_runtime_config(ROOT)
+        if args.probe_es_tls_mapping:
+            # Independently observe ES even if API health later fails.
+            # No ES request is possible in default quick/diagnose.
+            # Strict CA+IP SAN and bounded read-only GETs are owned by OFF-1B.
+            rows.append(strict_mapping_observation(cfg, ROOT))
         endpoint, host = report_jobs._api_bind_endpoint(cfg)
         if endpoint["configuration"] != "RESOLVED" or host != "127.0.0.1":
             raise report_jobs.ObservationError("api_port_invalid")
@@ -148,6 +162,13 @@ def main(argv: list[str] | None = None) -> int:
                     verified_role_count=0,
                 ))
         code = _exit_for_selected(rows, args.suite)
+        if args.probe_es_tls_mapping:
+            es_status = next(row["status"] for row in rows
+                             if row["check"] == "es_strict_tls_mapping")
+            if es_status == "FAIL":
+                code = 1
+            elif es_status != "PASS" and code == 0:
+                code = 2
         if args.live_report:
             if code == 0:
                 code = report_jobs._live(port, proof, args, rows, result_fd)
