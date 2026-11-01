@@ -203,7 +203,8 @@ def test_harness_omitted_external_mode_adopts_authenticated_deployment_mode(tmp_
     harness = module.Harness(config, tmp_path / "unused.xlsx", "run", result)
     harness.api = FakeApi()
     monkeypatch.setattr(module, "LocalDeploymentEvidenceProvider", FakeEvidenceProvider)
-    monkeypatch.setattr(harness, "validate_input", lambda: (_ for _ in ()).throw(RuntimeError("stop-after-mode")))
+    monkeypatch.setattr(harness, "validate_input", lambda: None)
+    monkeypatch.setattr(harness, "ensure_profile", lambda *_: (_ for _ in ()).throw(RuntimeError("stop-after-mode")))
     monkeypatch.setattr(module, "_validate_deployment_source", lambda *_args, **_kwargs: None)
 
     with pytest.raises(RuntimeError, match="stop-after-mode"):
@@ -247,6 +248,7 @@ def test_harness_omitted_external_mode_fails_closed_when_deployment_mode_missing
     harness = module.Harness(config, tmp_path / "unused.xlsx", "run", result)
     harness.api = FakeApi()
     monkeypatch.setattr(module, "LocalDeploymentEvidenceProvider", FakeEvidenceProvider)
+    monkeypatch.setattr(harness, "validate_input", lambda: None)
 
     with pytest.raises(HarnessFailure, match="external_capability_mode_mismatch") as failure:
         harness.run()
@@ -288,6 +290,7 @@ def test_harness_explicit_external_mode_still_fails_closed_on_mismatch(tmp_path,
     harness = module.Harness(config, tmp_path / "unused.xlsx", "run", result, external_mode="auto")
     harness.api = FakeApi()
     monkeypatch.setattr(module, "LocalDeploymentEvidenceProvider", FakeEvidenceProvider)
+    monkeypatch.setattr(harness, "validate_input", lambda: None)
 
     with pytest.raises(HarnessFailure, match="external_capability_mode_mismatch") as failure:
         harness.run()
