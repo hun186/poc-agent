@@ -75,3 +75,6 @@
 
 
 - **2026-11-01 OFF-2 policy update decision (candidate):** choose an explicit short whitelist of the existing three operator Shell entrypoints and six Python operator tools, not a blanket `tools/` managed root, no dynamic crawling and no self-signed local manifest. Keep the audited policy selection separate from binary byte verification and from package completeness; the canonical Git-reviewed source/manifest policy equality gate stays authoritative. No operator credential, SQL/ES/LLM or production migration scope changes.
+
+
+- **2026-11-02 Issue #354 canonical E2E date policy:** choose null `DeadlineDT` (existing import profile `empty_to_null`/optional expires_at) instead of arbitrary far-future dates or runtime rewrite. Keep original real three prompt/ITEMNO/title data and timestamps exactly unchanged, and keep a hashed historical workbook for tests. Update fixed source XLSX digest only via reviewed new Git binary; do not self-sign or auto-adjust runtime provenance. Live/Release acceptance and external dependencies require separate operator evidence.
