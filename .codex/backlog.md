@@ -62,3 +62,6 @@
 
 
 - **2026-11-01 OFF-2 release completeness follow-up:** after the advisory minimum operator-entrypoint policy-gap audit is reviewed, plan an independently reviewed policy update adding the proper release-tool inventory and external Git trust anchor; generate reproducible full offline wheelhouse/native dependency bundle with documented platform constraints, verify true bundle contents/signature and private Linux install/restore in a separate authorized task. Current read-only coverage audit intentionally does not make this change; exact-head CI and formal Codex review are pending.
+
+
+- **2026-11-01 OFF-3 release-policy route candidate:** after Hosted CI and formal Codex review, conditionally merge the read-only `release-policy` one-command wiring. This option must never silently escalate to `release-files`, authenticated acceptance, packaging, upgrade or restore. Complete trusted signed inventory and full OFF-3/5 acceptance remain outstanding.
