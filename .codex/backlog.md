@@ -71,3 +71,6 @@
 
 
 - **2026-11-01 outstanding operator E2E P1 data correction:** independently review a future-safe/non-expiring canonical three-item XLSX derived from the real Requirement `ITEMNO -> CONTENT` map; compute its exact deterministic SHA-256, update code/env/docs and release provenance as appropriate, verify import/scheduling and new fail-fast behavior with private Linux evidence. Historic #270 cannot merge stale changes into current main. Fail-fast alone is only safety improvement.
+
+
+- **2026-11-02 Issue #354 next proof after binary fixture candidate:** obtain exact-head hosted operator harness + OFF-0/1/2 tests and formal Codex code review; if gates pass, merge. Then independently regenerate and distribute a reviewed release provenance / full signed package, and execute explicitly authorized private Linux FULL_LIVE Requirement→Schedule→Handoff→Report Job→LLM/ES→DOCX acceptance. No source SHA can substitute for signed release-package provenance and no existing durable v2 fixture histories may be automatically altered.
