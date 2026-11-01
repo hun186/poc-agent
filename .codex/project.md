@@ -2,6 +2,9 @@
 
 ## Current Focus
 
+- **2026-11-01 active operator E2E expired-canonical fail-fast candidate:** after #352 merged squash `cc9aa4ad8036dbd08a72441e91bd998d9ccf69a5` exact-head OFF-1/OFF-2 Hosted + Codex clean, current canonical XLSX bytes match old #270 and have now-expired October 2026 `DeadlineDT`. Add local SHA+deadline guard before any API request/authenticated preflight/Requirement import, fixed redacted INPUT_VALIDATION failure, synthetic no-socket regressions, operator instructions. Does NOT repair workbook or permit FULL_LIVE. New corrected golden workbook+SHA/provenance requires separate reviewed PR. Hosted/Review pending.
+
+
 - **2026-11-01 current candidate OFF-2 explicit operator release policy:** based on main `96ba862351a086117e789f378e6c88b64060510d` after #350 and #351 successfully merged, add three operator shell files to explicit `managed_files` and six OFF-1/OFF-2 helper modules to `release_tool_files`, with checkout-local PASS_PARTIAL regression and existing Git review-policy identity tests in Hosted OFF-2 workflow. Does not generate/re-sign any manifest, package files, wheelhouse or modify deployment. Exact-head CI and formal Codex Review pending; no merge before gates. Old #270 still blocked by a P1 on expired canonical fixture dates.
 - **#350 MERGED** squash `1150440fee4b3e4fbb30d908b1bab4a340ff9628`; Hosted OFF-1 476/OFF-2 322 PASS and formal Codex CLEAN. **#351 MERGED** squash `96ba862351a086117e789f378e6c88b64060510d`; exact-head Hosted OFF-1/OFF-2 SUCCESS and formal Codex CLEAN. Both partial-only, not OFF-3 airgap/FULL_LIVE.
 
