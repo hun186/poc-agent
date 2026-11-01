@@ -2,6 +2,9 @@
 
 ## Current Focus
 
+- **2026-11-01 active OFF-2 policy-gap audit candidate**: after confirmed #349 squash merge `8c1ee30a3e243426fc10e2322082c993ca3d3158`, add a zero-network, no-write local check for *explicit* release policy selection of nine minimum OFF-1/OFF-2/OFF-3 entrypoints. Existing manifest-policy selection is presently incomplete; tool reports count-only `INCOMPLETE`, never signs a new manifest or implies package coverage. Hosted CI and formal latest-head Codex review pending. Full wheelhouse, signed bundle, real offline acceptance and OFF-5 restore remain NOT TESTED.
+
+
 - **2026-10-31 active branch feat/sraf-off3-unified-safe-dispatch-20261031:** first OFF-3 thin, conservative root Shell dispatcher for quick, diagnose, no-network and release-files, reusing existing OFF-1 hub/Bash and OFF-2 pin verifier. Unknown options and acceptance/upgrade/restore explicitly rejected; no new privileged probes, SQL/ES/LLM/Job, system mutation or insecure fallback. Exact-head Hosted and formal Codex Review pending. This is **OFF-3 partial read-only routing**, NOT FULL_LIVE or airgap acceptance.
 - **PR #348 MERGED**, squash f39c32fd5caa0f0724e5c17ab94f73ac1b9701ba; OFF-2 standalone one-command Bash trusted-pin check, Hosted OFF-2 322 Python + OFF-1 445 Python and 19 OFF-0 each SUCCESS, exact-head Codex CLEAN.
 - **PR #347 MERGED**, squash 304f031ebf13a26cbb6db12a41d9bbc548127ab6; existing Manifest-listed bytes checked under out-of-band SHA-256 pin with nofollow bounded dirfd. Hosted OFF-2 310 and OFF-1 445 Python, OFF-0 19 PASS, Codex CLEAN after P1 fix. Release completeness/signature/wheelhouse still NOT TESTED.
