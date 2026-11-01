@@ -26,7 +26,7 @@ from python_compat import StrEnum
 fcntl = importlib.import_module("fcntl") if importlib.util.find_spec("fcntl") is not None else None
 msvcrt = importlib.import_module("msvcrt") if importlib.util.find_spec("msvcrt") is not None else None
 
-CANONICAL_SOURCE_SHA256 = "816ffac9039530a86955c590b0fa68830757a620229d85630f5e42c12f542403"
+CANONICAL_SOURCE_SHA256 = "fa5171dce02630ace09b042be3b490995bdedf0152bf9b61af30ba1fe682843d"
 
 
 class StageStatus(StrEnum):
