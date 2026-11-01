@@ -72,3 +72,6 @@
 
 
 - **2026-10-31 OFF-3 current scope (candidate):** unified launcher is a convenience dispatcher, not the full promised offline deployment or E2E Acceptance runner. Quick may do anonymous local HTTP GET, diagnose adds bounded private TCP, no-network does neither; release-files verifies only pinned listed manifest bytes. Original Python and Bash trust boundaries and NOT_TESTED manual release gates are unchanged. There is no authorized upgrade or restore implementation yet; no tested physical network isolation, database migration or Agent/LLM/ES/DOCX end-to-end.
+
+
+- **2026-11-01 OFF-2 release policy gap (new candidate; NOT acceptance):** deployment manifest policy currently lists only the original release tools, not all new OFF-1/OFF-2/OFF-3 operator entrypoints. The advisory tool performs bounded no-follow existence checks and exact selection checks only. A PASS_PARTIAL is not a trusted signed package, byte or wheelhouse attestation; a reported INCOMPLETE must not be bypassed by quietly rewriting the live policy. Hosted/Review and site evidence pending.
