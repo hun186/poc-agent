@@ -30,6 +30,18 @@ def _fixture(root: Path, *, covered: bool = True):
     (root / POLICY).write_text(json.dumps(policy), encoding="utf-8")
 
 
+def test_repository_current_reviewed_policy_covers_minimum_operator_tools():
+    # This is checkout-local policy selection only; no services or signed
+    # bundle validation, and it must never be promoted to FULL_LIVE.
+    root = Path(__file__).resolve().parents[1]
+    assert observe(root) == {
+        "status": "PASS_PARTIAL",
+        "reason": "minimum_policy_selection_only",
+        "files_checked": len(REQUIRED_OPERATOR_FILES),
+        "unlisted_count": 0,
+    }
+
+
 def test_all_explicit_paths_are_only_partial_policy_selection(tmp_path):
     _fixture(tmp_path)
     assert observe(tmp_path) == {
