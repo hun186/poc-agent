@@ -9,7 +9,8 @@ import os
 import sys
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time as datetime_time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Callable
 
@@ -163,6 +164,56 @@ class Harness:
         if expected and expected != digest:
             self.result["input"]["remediation_hint"] = "redeploy the canonical workbook and matching package"
             self.fail("input_sha256_mismatch", "INPUT_VALIDATION", ExitCode.PREFLIGHT)
+        self._validate_canonical_deadlines()
+
+    def _validate_canonical_deadlines(self) -> None:
+        """Fail closed on expired or malformed *canonical* XLSX before network.
+
+        The default workbook is a verified release input, not a dynamically
+        rewritable fixture. Do not silently refresh deadlines or weaken
+        source SHA/provenance: a corrected workbook needs a new reviewed hash.
+        """
+        if self.excel != DEFAULT_EXCEL.resolve():
+            return
+        book = load_workbook(self.excel, read_only=True, data_only=True)
+        try:
+            rows = book.active.iter_rows(values_only=True)
+            headers = next(rows, ())
+            indices = {str(value or "").strip().casefold(): index
+                       for index, value in enumerate(headers)}
+            if "deadlinedt" not in indices or "itemno" not in indices:
+                self.fail("canonical_fixture_deadline_invalid", "INPUT_VALIDATION",
+                          ExitCode.PREFLIGHT)
+            local_tz = ZoneInfo("Asia/Taipei")
+            now = datetime.now(local_tz)
+            found = 0
+            for row in rows:
+                if not row or row[indices["itemno"]] is None:
+                    continue
+                found += 1
+                value = row[indices["deadlinedt"]]
+                if value is None or value == "":
+                    continue
+                if isinstance(value, datetime):
+                    expiry = value
+                elif isinstance(value, date):
+                    expiry = datetime.combine(value, datetime_time.max)
+                else:
+                    self.fail("canonical_fixture_deadline_invalid", "INPUT_VALIDATION",
+                              ExitCode.PREFLIGHT)
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=local_tz)
+                if expiry <= now:
+                    self.result["input"]["remediation_hint"] = (
+                        "publish a reviewed non-expiring canonical XLSX and update its SHA/provenance"
+                    )
+                    self.fail("canonical_fixture_deadline_expired", "INPUT_VALIDATION",
+                              ExitCode.PREFLIGHT)
+            if found != 3:
+                self.fail("canonical_fixture_deadline_invalid", "INPUT_VALIDATION",
+                          ExitCode.PREFLIGHT)
+        finally:
+            book.close()
 
     def _canonical_prompt_content(self) -> dict[str, str] | None:
         if self.excel != DEFAULT_EXCEL.resolve():
@@ -425,6 +476,10 @@ class Harness:
 
     def run(self):
         self.pass_stage("CONFIG_PREFLIGHT")
+        # Local canonical expiry/source checks must finish before even an
+        # authenticated runtime-evidence request, fixture write or login.
+        self.validate_input()
+        self.pass_stage("INPUT_VALIDATION")
         try: health = self.api.get("/healthz", timeout=30)
         except Exception as exc: raise HarnessFailure("api_unreachable", stage="API_READINESS", exit_code=ExitCode.PREFLIGHT) from exc
         self.pass_stage("API_READINESS", status=health.get("status")); self.authenticate(); self.pass_stage("AUTH")
@@ -468,7 +523,6 @@ class Harness:
             self.verification,
         )
         self.pass_stage("RUNTIME_WORKERS", workers=deployment_evidence["workers"])
-        self.validate_input(); self.pass_stage("INPUT_VALIDATION")
         profile_doc = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
         profile, version = self.ensure_profile(profile_doc); self.pass_stage("FIXTURE_PROFILE")
         source = self.ensure_source(profile["profile_id"]); self.pass_stage("FIXTURE_SOURCE")
