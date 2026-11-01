@@ -47,7 +47,7 @@ SRA_E2E_EDITOR_PASSWORD=<managed secret>
 SRA_E2E_MODEL=SRA-Structured Retrieval Agent
 SRA_E2E_REQUIREMENT_ARTIFACT_ROOT=/absolute/production/requirement/artifact/root
 SRA_E2E_BASE_URL=http://127.0.0.1:9002
-SRA_E2E_EXPECTED_SOURCE_SHA=816ffac9039530a86955c590b0fa68830757a620229d85630f5e42c12f542403
+SRA_E2E_EXPECTED_SOURCE_SHA=fa5171dce02630ace09b042be3b490995bdedf0152bf9b61af30ba1fe682843d
 ```
 
 Authentication is mode-specific. Local mode uses an authorized control-plane identity according
@@ -86,9 +86,11 @@ while loaded/discovered/shadowing modules and managed-byte drift fail closed.
 
 ## Canonical XLSX expiry and source integrity (2026-11-01)
 
-The existing canonical workbook has **historical October 2026 `DeadlineDT` values** and must not be reused as if still a live Acceptance fixture. Its contents and hash are currently unchanged, so the harness now validates the pinned XLSX SHA and all three canonical deadlines **locally before network login, authenticated preflight or any fixture import/write**. An already-expired canonical row produces `canonical_fixture_deadline_expired` at `INPUT_VALIDATION` with a preflight exit code. A malformed deadline/row shape produces `canonical_fixture_deadline_invalid`. These are safety failures, **not successful FULL_LIVE acceptance**.
+The canonical three-item workbook was corrected in Issue #354 by clearing only the three expired October 2026 `DeadlineDT` cells. Its original `ITEMNO`, `TITLE`, `CONTENT `, timestamps, and other fields are unchanged and are checked against the original historical source workbook by Hosted regression tests. The import profile already maps empty `DeadlineDT` to an optional null `expires_at`, so the corrected fixture remains reusable instead of expiring on a fixed date.
 
-The separately reviewed corrective work must preserve real `ITEMNO -> CONTENT` mapping, replace canonical deadlines with unbounded/null or explicitly supported durable values, update `CANONICAL_SOURCE_SHA256`, the example `SRA_E2E_EXPECTED_SOURCE_SHA` and this document's digest, and regenerate matching release provenance after review. Do **not** automatically adjust a workbook at runtime, silently reuse an old SHA, or weaken provenance for acceptance. An explicitly supplied `--excel` override still uses its own supplied expected SHA contract and the existing subsequent Requirement expiry/snapshot rules.
+The harness still validates the exact pinned XLSX SHA and all three canonical deadlines **locally before network login, authenticated preflight or any fixture import/write**. An expired or malformed canonical deadline fails closed with `canonical_fixture_deadline_expired` or `canonical_fixture_deadline_invalid` at `INPUT_VALIDATION`. An explicitly supplied `--excel` override retains its separately provided SHA and downstream import/snapshot checks.
+
+**This is not FULL_LIVE or release acceptance.** The source workbook hash is distinct from runtime provenance and from an independently trusted release package signature. The current deployment provenance must be rebuilt against a separately reviewed release/source commit, with an out-of-band trusted digest and complete package inventory, **before** any formal `--verification release` acceptance; do not self-pin the current checkout, weaken provenance, or repair preexisting durable Requirement sets automatically.
 
 ## Input and invocation
 
