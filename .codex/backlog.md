@@ -65,3 +65,6 @@
 
 
 - **2026-11-01 OFF-3 release-policy route candidate:** after Hosted CI and formal Codex review, conditionally merge the read-only `release-policy` one-command wiring. This option must never silently escalate to `release-files`, authenticated acceptance, packaging, upgrade or restore. Complete trusted signed inventory and full OFF-3/5 acceptance remain outstanding.
+
+
+- **2026-11-01 OFF-2 follow-up after selected policy entries (pending):** build and review the *complete* transitive release-tool/dependency closure (shell dependencies, Python wheels/native ODBC, model weights, platform constraints), produce truly trusted signed out-of-band manifest+digest, and test isolated offline installation/upgrade/restore. Nine-entry policy PASS_PARTIAL is not that closure and shall never upgrade OFF-3/OFF-5 manual gates. Separately fix historical #270's expired golden XLSX input as a new current-main correction with source digest, provenance/fixtures and regression tests; do not merge stale old branch.
