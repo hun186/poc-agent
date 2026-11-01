@@ -84,3 +84,6 @@
 
 
 - **2026-11-01 historical #270 P1 impacts current canonical input:** current main and old #270 track identical XLSX blob `eaf084ae3041c9bdbaf25e5ce3ce928d4a1e4cec` with October 2026 expirations. Proposed fail-fast prevents unsafe/expensive authenticated preflight and partial Requirement creation on this invalid default. It does **not** regenerate a valid deterministic XLSX, trusted digest or release provenance; therefore default full E2E remains unavailable until a separate corrected, reviewed artifact is delivered. Do not treat a fail-fast regression PASS as operational acceptance.
+
+
+- **2026-11-02 Issue #354 after workbook correction candidate:** canonical workbook no longer has fixed expired deadlines, but checkout/test success cannot authorize a live E2E run. Existing `REQUIREMENT_E2E_PROVENANCE.json` can still refer to an older reviewed runtime and must be replaced from an independently reviewed source/release build with a trusted out-of-band pin, not locally self-pinned. Existing v2 Requirement Sets/Snapshots and Schedule history must not be mutated or silently repaired. Private SQL/ES/LLM/Worker/Word and OFF-3/OFF-5 remain NOT TESTED.
