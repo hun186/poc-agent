@@ -31,4 +31,4 @@ jobs:
         run: python tools/validate_sraf_airgap_off0_contract.py
       - name: Verify synthetic pinned-file cases (not a live package or airgap)
         run: |
-          python -m pytest -q tests/test_sraf_airgap_off2_manifest_check.py tests/test_sraf_airgap_off2_shell_verify.py tests/test_sraf_airgap_off0_contract.py
+          python -m pytest -q tests/test_sraf_airgap_off2_manifest_check.py tests/test_sraf_airgap_off2_shell_verify.py tests/test_sraf_airgap_off0_contract.py tests/test_sraf_airgap_off2_policy_coverage.py tests/test_deployment_manifest.py
