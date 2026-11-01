@@ -3,14 +3,14 @@
 set -euo pipefail
 
 if [[ "$#" -gt 1 || ( "$#" -eq 1 && -z "$1" ) ]]; then
-  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files]' >&2
+  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy]' >&2
   exit 2
 fi
 MODE="${1:-quick}"
 case "$MODE" in
-  quick|diagnose|no-network|release-files) ;;
+  quick|diagnose|no-network|release-files|release-policy) ;;
   --help|-h)
-    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files]'
+    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy]'
     exit 0
     ;;
   *)
@@ -32,6 +32,16 @@ case "$MODE" in
     ;;
   release-files)
     exec bash "$PROJECT_ROOT/run_sraf_airgap_off2_verify.sh"
+    ;;
+  release-policy)
+    # Advisory local policy selection only: no trusted pin, network, probes,
+    # evidence writes or implicit release/acceptance upgrade.
+    PYTHON_BIN="${SRAF_PYTHON:-python}"
+    if ! command -v -- "$PYTHON_BIN" >/dev/null 2>&1; then
+      printf '%s\n' 'ERROR: SRAF Python is not available.' >&2
+      exit 127
+    fi
+    exec "$PYTHON_BIN" tools/sraf_airgap_off2_policy_coverage.py
     ;;
 esac
 
