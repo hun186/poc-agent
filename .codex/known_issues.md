@@ -81,3 +81,6 @@
 
 
 - **2026-11-01 OFF-2 release policy explicit-selection only (candidate, Hosted pending):** Nine operator entrypoints are now proposed for managed/release-tool path lists. This changes what a newly rebuilt Git-anchored full package *would* need to carry, NOT existing package contents or trusted pins. Missing/old release bytes must fail closed; no real signed bundle/dependency closure, private Linux or OFF-5 restore evidence is implied by the checkout-local policy test. #270 canonical XLSX deadline P1 remains open.
+
+
+- **2026-11-01 historical #270 P1 impacts current canonical input:** current main and old #270 track identical XLSX blob `eaf084ae3041c9bdbaf25e5ce3ce928d4a1e4cec` with October 2026 expirations. Proposed fail-fast prevents unsafe/expensive authenticated preflight and partial Requirement creation on this invalid default. It does **not** regenerate a valid deterministic XLSX, trusted digest or release provenance; therefore default full E2E remains unavailable until a separate corrected, reviewed artifact is delivered. Do not treat a fail-fast regression PASS as operational acceptance.

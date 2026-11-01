@@ -84,6 +84,12 @@ Office files, images, archives, and unknown formats remain exact-only. Deploymen
 normalizes bytes. Generated output remains excluded; inactive Python residue remains warning-only,
 while loaded/discovered/shadowing modules and managed-byte drift fail closed.
 
+## Canonical XLSX expiry and source integrity (2026-11-01)
+
+The existing canonical workbook has **historical October 2026 `DeadlineDT` values** and must not be reused as if still a live Acceptance fixture. Its contents and hash are currently unchanged, so the harness now validates the pinned XLSX SHA and all three canonical deadlines **locally before network login, authenticated preflight or any fixture import/write**. An already-expired canonical row produces `canonical_fixture_deadline_expired` at `INPUT_VALIDATION` with a preflight exit code. A malformed deadline/row shape produces `canonical_fixture_deadline_invalid`. These are safety failures, **not successful FULL_LIVE acceptance**.
+
+The separately reviewed corrective work must preserve real `ITEMNO -> CONTENT` mapping, replace canonical deadlines with unbounded/null or explicitly supported durable values, update `CANONICAL_SOURCE_SHA256`, the example `SRA_E2E_EXPECTED_SOURCE_SHA` and this document's digest, and regenerate matching release provenance after review. Do **not** automatically adjust a workbook at runtime, silently reuse an old SHA, or weaken provenance for acceptance. An explicitly supplied `--excel` override still uses its own supplied expected SHA contract and the existing subsequent Requirement expiry/snapshot rules.
+
 ## Input and invocation
 
 ### Verification policy

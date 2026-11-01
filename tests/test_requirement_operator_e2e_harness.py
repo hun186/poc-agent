@@ -203,7 +203,8 @@ def test_harness_omitted_external_mode_adopts_authenticated_deployment_mode(tmp_
     harness = module.Harness(config, tmp_path / "unused.xlsx", "run", result)
     harness.api = FakeApi()
     monkeypatch.setattr(module, "LocalDeploymentEvidenceProvider", FakeEvidenceProvider)
-    monkeypatch.setattr(harness, "validate_input", lambda: (_ for _ in ()).throw(RuntimeError("stop-after-mode")))
+    monkeypatch.setattr(harness, "validate_input", lambda: None)
+    monkeypatch.setattr(harness, "ensure_profile", lambda *_: (_ for _ in ()).throw(RuntimeError("stop-after-mode")))
     monkeypatch.setattr(module, "_validate_deployment_source", lambda *_args, **_kwargs: None)
 
     with pytest.raises(RuntimeError, match="stop-after-mode"):
@@ -247,6 +248,7 @@ def test_harness_omitted_external_mode_fails_closed_when_deployment_mode_missing
     harness = module.Harness(config, tmp_path / "unused.xlsx", "run", result)
     harness.api = FakeApi()
     monkeypatch.setattr(module, "LocalDeploymentEvidenceProvider", FakeEvidenceProvider)
+    monkeypatch.setattr(harness, "validate_input", lambda: None)
 
     with pytest.raises(HarnessFailure, match="external_capability_mode_mismatch") as failure:
         harness.run()
@@ -288,6 +290,7 @@ def test_harness_explicit_external_mode_still_fails_closed_on_mismatch(tmp_path,
     harness = module.Harness(config, tmp_path / "unused.xlsx", "run", result, external_mode="auto")
     harness.api = FakeApi()
     monkeypatch.setattr(module, "LocalDeploymentEvidenceProvider", FakeEvidenceProvider)
+    monkeypatch.setattr(harness, "validate_input", lambda: None)
 
     with pytest.raises(HarnessFailure, match="external_capability_mode_mismatch") as failure:
         harness.run()
@@ -466,7 +469,10 @@ def test_config_rejects_malformed_source_and_runtime_shas(tmp_path, name, value)
 def test_input_sha_validation_and_evidence_are_input_only(tmp_path):
     from operator_e2e.test_requirement_schedule_e2e import Harness
 
-    excel = Path("operator_e2e/input/requirement_e2e_3items.xlsx")
+    # Exercise SHA evidence on an operator-supplied override, independently
+    # of the canonical fixture's currently expired DeadlineDT entries.
+    excel = tmp_path / "override.xlsx"
+    excel.write_bytes(Path("operator_e2e/input/requirement_e2e_3items.xlsx").read_bytes())
     digest = hashlib.sha256(excel.read_bytes()).hexdigest()
     result = result_document("run")
     config = SimpleNamespace(
@@ -486,6 +492,61 @@ def test_input_sha_validation_and_evidence_are_input_only(tmp_path):
     with pytest.raises(HarnessFailure, match="input_sha256_mismatch") as failure:
         mismatch.validate_input()
     assert failure.value.stage == "INPUT_VALIDATION"
+
+
+def test_canonical_deadline_expired_rejected_before_any_network(tmp_path, monkeypatch):
+    from openpyxl import Workbook
+    from operator_e2e import test_requirement_schedule_e2e as operator
+
+    fixture = tmp_path / "canonical.xlsx"
+    book = Workbook()
+    sheet = book.active
+    sheet.append(["ITEMNO", "TITLE", "CONTENT ", "UPDT", "DeadlineDT",
+                  "CreateApeno", "UpdateApeno", "CrtDT"])
+    for number in range(1, 4):
+        sheet.append([f"item-{number}", "Title", "Real prompt", None,
+                      datetime(2026, 10, 15, 12, 0), None, None, None])
+    book.save(fixture)
+    book.close()
+    monkeypatch.setattr(operator, "DEFAULT_EXCEL", fixture)
+    monkeypatch.setattr(operator, "CANONICAL_SOURCE_SHA256",
+                        hashlib.sha256(fixture.read_bytes()).hexdigest())
+    config = SimpleNamespace(output_dir=tmp_path, token="already-authenticated",
+                             password=None, expected_source_sha=None)
+    harness = operator.Harness(config, fixture.resolve(), "run",
+                               result_document("run"))
+    network_calls = []
+    harness.api.get = lambda *args, **kwargs: network_calls.append("get")
+    harness.api.post = lambda *args, **kwargs: network_calls.append("post")
+
+    with pytest.raises(HarnessFailure, match="canonical_fixture_deadline_expired") as failure:
+        harness.run()
+    assert failure.value.stage == "INPUT_VALIDATION"
+    assert failure.value.exit_code == ExitCode.PREFLIGHT
+    assert not network_calls
+
+
+def test_canonical_no_expiry_passes_local_deadline_validation(tmp_path, monkeypatch):
+    from openpyxl import Workbook
+    from operator_e2e import test_requirement_schedule_e2e as operator
+
+    path = tmp_path / "canonical.xlsx"
+    book = Workbook()
+    sheet = book.active
+    sheet.append(["ITEMNO", "DeadlineDT"])
+    for number in range(3):
+        sheet.append([f"item-{number}", None])
+    book.save(path)
+    book.close()
+    monkeypatch.setattr(operator, "DEFAULT_EXCEL", path)
+    monkeypatch.setattr(operator, "CANONICAL_SOURCE_SHA256",
+                        hashlib.sha256(path.read_bytes()).hexdigest())
+    config = SimpleNamespace(output_dir=tmp_path, token="token",
+                             password=None, expected_source_sha=None)
+    harness = operator.Harness(config, path.resolve(), "run",
+                               result_document("run"))
+    harness.validate_input()
+    assert harness.result["input"]["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def test_runtime_release_authority_is_not_xlsx_source_sha():

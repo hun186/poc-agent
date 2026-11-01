@@ -68,3 +68,6 @@
 
 
 - **2026-11-01 OFF-2 follow-up after selected policy entries (pending):** build and review the *complete* transitive release-tool/dependency closure (shell dependencies, Python wheels/native ODBC, model weights, platform constraints), produce truly trusted signed out-of-band manifest+digest, and test isolated offline installation/upgrade/restore. Nine-entry policy PASS_PARTIAL is not that closure and shall never upgrade OFF-3/OFF-5 manual gates. Separately fix historical #270's expired golden XLSX input as a new current-main correction with source digest, provenance/fixtures and regression tests; do not merge stale old branch.
+
+
+- **2026-11-01 outstanding operator E2E P1 data correction:** independently review a future-safe/non-expiring canonical three-item XLSX derived from the real Requirement `ITEMNO -> CONTENT` map; compute its exact deterministic SHA-256, update code/env/docs and release provenance as appropriate, verify import/scheduling and new fail-fast behavior with private Linux evidence. Historic #270 cannot merge stale changes into current main. Fail-fast alone is only safety improvement.
