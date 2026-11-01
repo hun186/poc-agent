@@ -2,6 +2,10 @@
 
 ## Current Focus
 
+
+- **2026-11-02 Issue #354 / PR #355 candidate (HOSTED/REVIEW PENDING):** corrected only three `DeadlineDT` values in the canonical three-real-Requirement XLSX to empty/null using exact old trusted blob `eaf084ae3041c9bdbaf25e5ce3ce928d4a1e4cec`; read-only CI generation checked every other field identical. New workbook SHA-256 `fa5171dce02630ace09b042be3b490995bdedf0152bf9b61af30ba1fe682843d`, update support constant, example env, operator docs and tests comparing unchanged original `data/要項excel/requirement_e2e_three.xlsx` content. The import profile already maps missing deadline to null expires_at. Existing default checksum/deadline local fail-fast stays active. Do not infer new release provenance, private Linux FULL_LIVE, SQL/ES/LLM or Word success from code-only CI. Prior #352/#353 were MERGED; next exact-head CI and Codex review required before any merge.
+
+
 - **2026-11-01 active operator E2E expired-canonical fail-fast candidate:** after #352 merged squash `cc9aa4ad8036dbd08a72441e91bd998d9ccf69a5` exact-head OFF-1/OFF-2 Hosted + Codex clean, current canonical XLSX bytes match old #270 and have now-expired October 2026 `DeadlineDT`. Add local SHA+deadline guard before any API request/authenticated preflight/Requirement import, fixed redacted INPUT_VALIDATION failure, synthetic no-socket regressions, operator instructions. Does NOT repair workbook or permit FULL_LIVE. New corrected golden workbook+SHA/provenance requires separate reviewed PR. Hosted/Review pending.
 
 
