@@ -1,9 +1,43 @@
 {
   "schema_version": 1,
   "repository": "hun186/poc-agent",
-  "managed_roots": ["agent", "api", "batch_scheduler", "config", "data_ingestion", "requirement_scheduler", "shared", "sra_api"],
-  "managed_files": [".gitattributes", "__init__.py", "app.py", "python_compat.py", "requirements.txt", "run_sra_api.sh", "telemetry.py"],
-  "release_tool_files": ["tools/__init__.py", "tools/deployment_manifest.py", "tools/deployment_manifest_policy.json"],
+  "managed_roots": [
+    "agent",
+    "api",
+    "batch_scheduler",
+    "config",
+    "data_ingestion",
+    "requirement_scheduler",
+    "shared",
+    "sra_api"
+  ],
+  "managed_files": [
+    ".gitattributes",
+    "__init__.py",
+    "app.py",
+    "python_compat.py",
+    "requirements.txt",
+    "run_sra_api.sh",
+    "telemetry.py",
+    "run_sraf_airgap_offline.sh",
+    "run_sraf_airgap_off1_diagnose.sh",
+    "run_sraf_airgap_off2_verify.sh"
+  ],
+  "release_tool_files": [
+    "tools/__init__.py",
+    "tools/deployment_manifest.py",
+    "tools/deployment_manifest_policy.json",
+    "tools/sraf_airgap_off1_hub.py",
+    "tools/sraf_airgap_off1_es_hub.py",
+    "tools/sraf_airgap_off1_sql_hub.py",
+    "tools/sraf_airgap_off1_text_report.py",
+    "tools/sraf_airgap_off2_manifest_check.py",
+    "tools/sraf_airgap_off2_policy_coverage.py"
+  ],
   "allowed_runtime_extra_globs": [],
-  "guarded_root_extensions": [".py", ".sh", ".pth"]
+  "guarded_root_extensions": [
+    ".py",
+    ".sh",
+    ".pth"
+  ]
 }
