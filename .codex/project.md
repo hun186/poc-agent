@@ -2,6 +2,9 @@
 
 ## Current Focus
 
+- **2026-11-01 active OFF-3 release-policy route candidate**: after #350 squash `1150440fee4b3e4fbb30d908b1bab4a340ff9628` (Hosted 476+322 Python, Codex exact-head complete/no findings), add an explicit `release-policy` CLI dispatch to the existing read-only OFF-2 local policy audit, no implicit trust pin, credentialed probes or mutation. Hosted exact-head CI and Codex Review pending. Does not close the policy inventory gap or fulfill airgap/restore acceptance.
+
+
 - **2026-11-01 active OFF-2 policy-gap audit candidate**: after confirmed #349 squash merge `8c1ee30a3e243426fc10e2322082c993ca3d3158`, add a zero-network, no-write local check for *explicit* release policy selection of nine minimum OFF-1/OFF-2/OFF-3 entrypoints. Existing manifest-policy selection is presently incomplete; tool reports count-only `INCOMPLETE`, never signs a new manifest or implies package coverage. Hosted CI and formal latest-head Codex review pending. Full wheelhouse, signed bundle, real offline acceptance and OFF-5 restore remain NOT TESTED.
 
 

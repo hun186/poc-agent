@@ -75,3 +75,6 @@
 
 
 - **2026-11-01 OFF-2 release policy gap (new candidate; NOT acceptance):** deployment manifest policy currently lists only the original release tools, not all new OFF-1/OFF-2/OFF-3 operator entrypoints. The advisory tool performs bounded no-follow existence checks and exact selection checks only. A PASS_PARTIAL is not a trusted signed package, byte or wheelhouse attestation; a reported INCOMPLETE must not be bypassed by quietly rewriting the live policy. Hosted/Review and site evidence pending.
+
+
+- **2026-11-01 release-policy dispatcher mode candidate:** newly wired fixed CLI option observes local policy selection only; it does not read a trusted manifest SHA, attest any signed release/wheelhouse/actual deployment or change policy bytes. A missing/unlisted entry should be visible as INCOMPLETE rather than prompting an automatic repair. Hosted and Codex review pending; private deployment not tested.
