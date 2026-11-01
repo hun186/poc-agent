@@ -78,3 +78,6 @@
 
 
 - **2026-11-01 release-policy dispatcher mode candidate:** newly wired fixed CLI option observes local policy selection only; it does not read a trusted manifest SHA, attest any signed release/wheelhouse/actual deployment or change policy bytes. A missing/unlisted entry should be visible as INCOMPLETE rather than prompting an automatic repair. Hosted and Codex review pending; private deployment not tested.
+
+
+- **2026-11-01 OFF-2 release policy explicit-selection only (candidate, Hosted pending):** Nine operator entrypoints are now proposed for managed/release-tool path lists. This changes what a newly rebuilt Git-anchored full package *would* need to carry, NOT existing package contents or trusted pins. Missing/old release bytes must fail closed; no real signed bundle/dependency closure, private Linux or OFF-5 restore evidence is implied by the checkout-local policy test. #270 canonical XLSX deadline P1 remains open.

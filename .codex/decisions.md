@@ -72,3 +72,6 @@
 
 
 - **2026-10-31 OFF-3 safe mode selection:** combine only existing stable, read-only tools behind a root Bash dispatcher with allowlisted quick|diagnose|no-network|release-files. Never reimplement SQL/ES/LLM/Report Job probes, let unknown arguments reach a tool, automatically escalate normal Quick into authenticated Acceptance, or fake Upgrade/Restore. Preserve script-relative physical working directory and existing private evidence behavior. Defer authenticated Acceptance and real offline upgrade/backup until separate risk and fixture gates are approved and tested.
+
+
+- **2026-11-01 OFF-2 policy update decision (candidate):** choose an explicit short whitelist of the existing three operator Shell entrypoints and six Python operator tools, not a blanket `tools/` managed root, no dynamic crawling and no self-signed local manifest. Keep the audited policy selection separate from binary byte verification and from package completeness; the canonical Git-reviewed source/manifest policy equality gate stays authoritative. No operator credential, SQL/ES/LLM or production migration scope changes.

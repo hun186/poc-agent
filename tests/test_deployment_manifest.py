@@ -30,6 +30,14 @@ def test_policy_declares_expected_runtime_and_release_tool_scope():
     assert {"agent", "sra_api", "requirement_scheduler"} <= set(policy["managed_roots"])
     assert "run_sra_api.sh" in policy["managed_files"]
     assert "tools/deployment_manifest.py" in policy["release_tool_files"]
+    from tools.sraf_airgap_off2_policy_coverage import REQUIRED_OPERATOR_FILES
+    assert set(REQUIRED_OPERATOR_FILES) <= (
+        set(policy["managed_files"]) | set(policy["release_tool_files"])
+    )
+    assert all(path in policy["release_tool_files"] for path in REQUIRED_OPERATOR_FILES
+               if path.startswith("tools/"))
+    assert all(path in policy["managed_files"] for path in REQUIRED_OPERATOR_FILES
+               if not path.startswith("tools/"))
     assert policy["allowed_runtime_extra_globs"] == []
 
 

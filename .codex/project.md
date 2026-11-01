@@ -2,6 +2,10 @@
 
 ## Current Focus
 
+- **2026-11-01 current candidate OFF-2 explicit operator release policy:** based on main `96ba862351a086117e789f378e6c88b64060510d` after #350 and #351 successfully merged, add three operator shell files to explicit `managed_files` and six OFF-1/OFF-2 helper modules to `release_tool_files`, with checkout-local PASS_PARTIAL regression and existing Git review-policy identity tests in Hosted OFF-2 workflow. Does not generate/re-sign any manifest, package files, wheelhouse or modify deployment. Exact-head CI and formal Codex Review pending; no merge before gates. Old #270 still blocked by a P1 on expired canonical fixture dates.
+- **#350 MERGED** squash `1150440fee4b3e4fbb30d908b1bab4a340ff9628`; Hosted OFF-1 476/OFF-2 322 PASS and formal Codex CLEAN. **#351 MERGED** squash `96ba862351a086117e789f378e6c88b64060510d`; exact-head Hosted OFF-1/OFF-2 SUCCESS and formal Codex CLEAN. Both partial-only, not OFF-3 airgap/FULL_LIVE.
+
+
 - **2026-11-01 active OFF-3 release-policy route candidate**: after #350 squash `1150440fee4b3e4fbb30d908b1bab4a340ff9628` (Hosted 476+322 Python, Codex exact-head complete/no findings), add an explicit `release-policy` CLI dispatch to the existing read-only OFF-2 local policy audit, no implicit trust pin, credentialed probes or mutation. Hosted exact-head CI and Codex Review pending. Does not close the policy inventory gap or fulfill airgap/restore acceptance.
 
 
