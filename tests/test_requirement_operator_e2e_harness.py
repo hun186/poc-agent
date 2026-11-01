@@ -635,7 +635,7 @@ def test_runbook_uses_offline_provenance_authority_and_stable_xlsx_digest():
     assert "neither `.git` nor GitHub access is required" in runbook
     assert (
         "SRA_E2E_EXPECTED_SOURCE_SHA="
-        "816ffac9039530a86955c590b0fa68830757a620229d85630f5e42c12f542403"
+        "fa5171dce02630ace09b042be3b490995bdedf0152bf9b61af30ba1fe682843d"
     ) in runbook
 
 
@@ -808,6 +808,58 @@ def test_entrypoint_contains_no_manual_run_or_worker_execution():
     assert 'post(f"/v1/requirement-schedules/{schedule_id}/runs"' not in source.lower()
     assert "schedule-worker --once" not in source
     assert "coordinator.run_once" not in source
+
+
+def test_canonical_xlsx_preserves_real_historical_fields_except_expiry():
+    """Issue #354: compare the original Git-tracked business content byte-for-byte by cell.
+
+    The data/ workbook is a *historical baseline*, not a dynamic production
+    fixture or a source for runtime rewrites. Only E2:E4 may differ.
+    """
+    original = Path("data/要項excel/requirement_e2e_three.xlsx")
+    canonical = Path("operator_e2e/input/requirement_e2e_3items.xlsx")
+    assert hashlib.sha256(original.read_bytes()).hexdigest() == (
+        "816ffac9039530a86955c590b0fa68830757a620229d85630f5e42c12f542403"
+    )
+    from operator_e2e.requirement_e2e_support import CANONICAL_SOURCE_SHA256
+    assert hashlib.sha256(canonical.read_bytes()).hexdigest() == CANONICAL_SOURCE_SHA256
+    old_book = load_workbook(original, read_only=True, data_only=True)
+    new_book = load_workbook(canonical, read_only=True, data_only=True)
+    try:
+        original_rows = list(old_book.active.values)
+        canonical_rows = list(new_book.active.values)
+    finally:
+        old_book.close()
+        new_book.close()
+    assert len(original_rows) == len(canonical_rows) == 4
+    assert original_rows[0] == canonical_rows[0]
+    assert canonical_rows[0] == (
+        "ITEMNO", "TITLE", "CONTENT ", "UPDT", "DeadlineDT",
+        "CreateApeno", "UpdateApeno", "CrtDT",
+    )
+    for historical, current in zip(original_rows[1:], canonical_rows[1:]):
+        assert all(historical[column] == current[column]
+                   for column in range(8) if column != 4)
+        assert historical[4] is not None  # Historical 2026 deadline.
+        assert current[4] is None         # Non-expiring canonical fixture.
+        assert isinstance(current[2], str) and len(current[2].strip()) > 20
+    assert len({row[0] for row in canonical_rows[1:]}) == 3
+
+
+def test_corrected_canonical_input_passes_local_preflight_without_network(tmp_path, monkeypatch):
+    from operator_e2e import test_requirement_schedule_e2e as operator
+    canonical = operator.DEFAULT_EXCEL.resolve()
+    config = SimpleNamespace(
+        output_dir=tmp_path, token="token", password=None,
+        expected_source_sha=None,
+    )
+    harness = operator.Harness(config, canonical, "run", result_document("run"))
+    calls = []
+    harness.api.get = lambda *args, **kwargs: calls.append("GET")
+    harness.api.post = lambda *args, **kwargs: calls.append("POST")
+    harness.validate_input()
+    assert harness.result["input"]["sha256"] == operator.CANONICAL_SOURCE_SHA256
+    assert calls == []
 
 
 def test_tracked_xlsx_fixture_has_canonical_three_item_shape():
