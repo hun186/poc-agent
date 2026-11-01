@@ -59,3 +59,6 @@
 
 
 - **2026-10-31 OFF-3 first unified operator CLI candidate:** add a thin, non-privileged root Shell dispatcher with quick/diagnose/no-network/release-files only, reuse all existing tested tools, preserve O_NOFOLLOW/0700/0600 and explicit OFF-2 trust pin; unit tests ensure acceptance/upgrade/restore and arbitrary flags reject before any command. Run latest-head OFF-1/19 OFF-0 CI + Codex CLEAN before conditional merge. Backlog remains real FULL_LIVE Acceptance under explicit operator authorization, offline bundle and reproducible wheelhouse, actual private Linux, OFF-5 restore.
+
+
+- **2026-11-01 OFF-2 release completeness follow-up:** after the advisory minimum operator-entrypoint policy-gap audit is reviewed, plan an independently reviewed policy update adding the proper release-tool inventory and external Git trust anchor; generate reproducible full offline wheelhouse/native dependency bundle with documented platform constraints, verify true bundle contents/signature and private Linux install/restore in a separate authorized task. Current read-only coverage audit intentionally does not make this change; exact-head CI and formal Codex review are pending.
