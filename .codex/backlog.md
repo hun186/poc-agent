@@ -77,3 +77,6 @@
 
 
 - **2026-11-02 OFF-2 next gate after direct pins audit:** define an independently reviewed per-Python/per-OS/per-architecture transitive dependency lock + wheelhouse SHA inventory, include native ODBC18 and model artifacts with explicit licensing/ABI constraints, and test fully disconnected install/upgrade/restore using an externally trusted release signature/pin. The new read-only direct-pins scanner does not produce or validate this. Current wide constraints must remain INCOMPLETE until a real reproducible package is delivered.
+
+
+- **2026-11-02 OFF-2 next stage after pinned Wheelhouse byte verifier:** establish independently signed/pinned, reviewer-authorized complete per-target Python/OS/ABI lock + transitive Wheel inventory and bundle builder; verify ODBC18 native libraries, models, licenses and offline pip install in a disconnected test environment. `wheel-files` is an untrusted-environment *read-only listed-byte comparison* under external manifest pin, not a whole-package closure, signature or operational acceptance. Existing broad `>=` requirements stay INCOMPLETE until a real reproducible lock is approved.
