@@ -153,7 +153,7 @@ def _read_metadata(directory_fd: int, relative: str) -> tuple[str, str]:
             found[key] = value.strip()
     if set(found) != {"Metadata-Version", "Name", "Version"}:
         raise _InvalidInventory
-    if re.fullmatch(r"[1-4]\\.[0-9]", found["Metadata-Version"]) is None:
+    if re.fullmatch(r"[1-4]\.[0-9]", found["Metadata-Version"]) is None:
         raise _InvalidInventory
     name = _canonical(found["Name"])
     version = found["Version"]
