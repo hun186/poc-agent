@@ -52,7 +52,7 @@ case "$MODE" in
     # The Python ABI reported is precisely the selected SRAF Python runtime.
     PYTHON_BIN="${SRAF_PYTHON:-python}"
     if ! command -v -- "$PYTHON_BIN" >/dev/null 2>&1; then
-      printf '%s\n' '{"schema":"sraf_off2_linux_target_inventory_v2","status":"INCOMPLETE","reason":"application_python_unavailable","scope":"TARGET_IDENTITY_ONLY_NOT_PACKAGE_OR_AIRGAP_ATTESTATION","full_live":"NOT_TESTED","production_release_ready":false}'
+      printf '%s\n' '{"schema":"sraf_off2_linux_target_inventory_v3","status":"INCOMPLETE","reason":"application_python_unavailable","scope":"TARGET_IDENTITY_ONLY_NOT_PACKAGE_OR_AIRGAP_ATTESTATION","full_live":"NOT_TESTED","production_release_ready":false}'
       exit 2
     fi
     exec "$PYTHON_BIN" tools/sraf_airgap_off2_linux_target.py
