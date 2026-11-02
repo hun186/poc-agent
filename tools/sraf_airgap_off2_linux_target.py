@@ -224,6 +224,8 @@ def main(argv: list[str] | None = None) -> int:
         result = {
             "schema": SCHEMA, "status": "INCOMPLETE",
             "reason": "target_identity_unverifiable", "scope": SCOPE,
+            "odbc_binary_header": "UNVERIFIED", "odbc_binary_load": "NOT_TESTED",
+            "wheelhouse_compatibility": "NOT_TESTED",
             "full_live": "NOT_TESTED", "production_release_ready": False,
         }
     print(json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=True))
