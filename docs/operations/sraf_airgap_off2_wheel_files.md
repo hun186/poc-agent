@@ -35,7 +35,7 @@ SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256=<trusted-64-char-lowercase-sha256> bash 
 
 此基本驗證容許標準 `METADATA` 折行 Header（例如多行 License），但對超限中央目錄、無法預先確認條目數量、ZIP64 或多磁碟 ZIP 採保守的 `INCOMPLETE`；若 ZIP 註解內含另一個 EOCD Signature，因與 Python ZipFile 的「最後標記」解析規則可能造成歧義，也在任何 ZipInfo 配置之前拒絕，不先分配大量 `ZipInfo` 物件後才拒絕。
 
-**此工具不解開 Wheel 至磁碟、不執行程式碼、不調用 pip、不下載／安裝／修改資料，也不建立自我可信摘要。** 現在除了兩份各上限 64 KiB 的文字 Metadata，還會用記憶體內有界串流解壓 Wheel 內的非目錄內容，核對 `.dist-info/RECORD` CSV 的涵蓋率、列出大小、SHA-256 與實際內容（ZIP 讀取亦會檢查已讀取檔案的 CRC）。單顆 Wheel 的 RECORD 最多 2 MiB；單顆 Wheel 含 RECORD 的核對解壓量上限 256 MiB，整次命令加總上限 512 MiB，超過一律 `INCOMPLETE`，**不**默默放寬。舊式 `RECORD.jws`／`RECORD.p7s` 可依格式規範不列於 RECORD，外部整顆檔案雜湊涵蓋它們，但**並不**驗證簽章真偽。
+**此工具不解開 Wheel 至磁碟、不執行程式碼、不調用 pip、不下載／安裝／修改資料，也不建立自我可信摘要。** 現在除了兩份各上限 64 KiB 的文字 Metadata，還會用記憶體內有界串流解壓 Wheel 內的非目錄內容，逐列、遇到異常立即拒絕地核對 `.dist-info/RECORD` CSV 的涵蓋率、列出大小、SHA-256 與實際內容（ZIP 讀取亦會檢查已讀取檔案的 CRC）。單顆 Wheel 的 RECORD 最多 2 MiB；單顆 Wheel 含 RECORD 的核對解壓量上限 256 MiB，整次命令加總上限 512 MiB，超過一律 `INCOMPLETE`，**不**默默放寬。舊式 `RECORD.jws`／`RECORD.p7s` 可依格式規範不列於 RECORD，外部整顆檔案雜湊涵蓋它們，但**並不**驗證簽章真偽。
 
 即使 `PASS_PARTIAL`，仍未全面證明 Wheel 格式／各種擴充檔案相容性、RECORD 的所有合法雜湊演算法支援、Requires-Dist 的 transitive closure、平台／ABI／OS、版本衝突、ODBC 原生函式庫、模型權重、授權、來源簽章或離線可安裝性；大型 Wheel 或不支援的格式採保守 `INCOMPLETE`。同名既有檔案在本機並非可信來源。外部 Manifest 摘要是「需要獨立確立的信任錨」，單純 SHA-256 不等於公鑰簽章。
 
