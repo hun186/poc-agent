@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import struct
 import zlib
 import zipfile
 import sys
@@ -26,6 +27,7 @@ MAX_WHEELS = 256
 MAX_WHEEL_BYTES = 512 * 1024 * 1024
 MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024
 MAX_ZIP_MEMBERS = 8192
+MAX_ZIP_CENTRAL_DIRECTORY_BYTES = 4 * 1024 * 1024
 MAX_ZIP_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_METADATA_BYTES = 64 * 1024
 _HASH_CHUNK = 64 * 1024
@@ -103,20 +105,79 @@ def _header_fields(data: bytes) -> dict[str, str]:
     except UnicodeError as exc:
         raise _WheelStructureInvalid from exc
     fields: dict[str, str] = {}
+    previous_key: str | None = None
     for line in lines:
         if not line:
             break
         if line[:1].isspace():
-            raise _WheelStructureInvalid
+            # RFC 822 style folded headers are normal in Wheel metadata,
+            # notably License. Ignore unknown folded values, not the header.
+            if previous_key is None:
+                raise _WheelStructureInvalid
+            if previous_key in fields:
+                fields[previous_key] += " " + line.strip()
+            continue
         key, separator, val = line.partition(":")
         if not separator or not re.fullmatch(r"[A-Za-z][A-Za-z-]*", key):
             raise _WheelStructureInvalid
         key = key.casefold()
+        previous_key = key
         if key in {"name", "version", "metadata-version", "wheel-version"}:
             if key in fields:
                 raise _WheelStructureInvalid
             fields[key] = val.strip()
     return fields
+
+
+
+def _preflight_zip_directory(fd: int) -> None:
+    """Bound central-directory *bytes and records* before ZipFile allocates ZipInfo."""
+    size = os.fstat(fd).st_size
+    # Standard EOCD has a maximum 65,535-byte comment. Deliberately reject
+    # ZIP64 and multi-disk features here (basic validation subset only).
+    tail_size = min(size, 22 + 65535)
+    tail = os.pread(fd, tail_size, size - tail_size)
+    pos = tail.rfind(b"PK\x05\x06")
+    while pos >= 0:
+        if pos + 22 <= len(tail):
+            try:
+                (_, disk, directory_disk, on_disk, count, central_size,
+                 central_offset, comment_size) = struct.unpack_from(
+                    "<4s4H2LH", tail, pos)
+            except struct.error as exc:
+                raise _WheelStructureInvalid from exc
+            if pos + 22 + comment_size == len(tail):
+                break
+        pos = tail.rfind(b"PK\x05\x06", 0, pos)
+    if pos < 0:
+        raise _WheelStructureInvalid
+    eocd_start = size - tail_size + pos
+    if (disk != 0 or directory_disk != 0 or on_disk != count
+            or not 1 <= count <= MAX_ZIP_MEMBERS
+            or central_size <= 0 or central_size > MAX_ZIP_CENTRAL_DIRECTORY_BYTES
+            or central_offset + central_size != eocd_start
+            or count == 0xFFFF or central_size == 0xFFFFFFFF
+            or central_offset == 0xFFFFFFFF
+            or (eocd_start >= 20
+                and os.pread(fd, 4, eocd_start - 20) == b"PK\x06\x07")):
+        raise _WheelStructureInvalid
+    directory = os.pread(fd, central_size, central_offset)
+    if len(directory) != central_size:
+        raise _WheelStructureInvalid
+    offset = 0
+    records = 0
+    while offset < len(directory):
+        if (offset + 46 > len(directory)
+                or directory[offset:offset + 4] != b"PK\x01\x02"):
+            raise _WheelStructureInvalid
+        filename_len, extra_len, comment_len = struct.unpack_from(
+            "<HHH", directory, offset + 28)
+        offset += 46 + filename_len + extra_len + comment_len
+        records += 1
+        if offset > len(directory) or records > MAX_ZIP_MEMBERS:
+            raise _WheelStructureInvalid
+    if offset != len(directory) or records != count:
+        raise _WheelStructureInvalid
 
 
 def _inspect_zip(fd: int, filename: str) -> None:
@@ -128,6 +189,9 @@ def _inspect_zip(fd: int, filename: str) -> None:
     distinfo = f"{parts[0]}-{parts[1]}.dist-info"
     metadata_name = f"{distinfo}/METADATA"
     wheel_name = f"{distinfo}/WHEEL"
+    # ZipFile eagerly materializes every central-directory member. Never
+    # reach it until the raw central directory is bounded and counted.
+    _preflight_zip_directory(fd)
     with os.fdopen(os.dup(fd), "rb") as stream:
         stream.seek(0)
         with zipfile.ZipFile(stream, "r") as wheel:
