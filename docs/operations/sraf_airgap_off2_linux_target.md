@@ -38,3 +38,5 @@ odbc_dependency_resolution、odbc_binary_load、wheelhouse_compatibility、full_
 - `odbc_dependency_resolution=NOT_TESTED`、`odbc_binary_load=NOT_TESTED` **永遠保留**。沒有呼叫 ld.so、ldd、dlopen、ctypes、unixODBC、連線或任何執行器，也不保證 DT_NEEDED 依賴在磁碟存在、具有正確版本、可載入或提供合法 ABI。
 
 以上均**沒有實際執行在你的內網機器**，新增的回歸測試使用合成 ELF 和 GitHub Hosted Ubuntu22.04／Python3.10，不能取代下次你自己執行新版本並提供 JSON。
+
+ELF64 結構安全限制還包括 **PT_DYNAMIC 本身**必須完整被 PT_LOAD 檔案映射覆蓋，而且區段的虛擬位址與原始檔案偏移必須一致；單純 DT_STRTAB 字串引用合法而 PT_DYNAMIC 區段不合法者一律回 INCOMPLETE。不會據此進行動態載入。
