@@ -74,3 +74,6 @@
 
 
 - **2026-11-02 Issue #354 next proof after binary fixture candidate:** obtain exact-head hosted operator harness + OFF-0/1/2 tests and formal Codex code review; if gates pass, merge. Then independently regenerate and distribute a reviewed release provenance / full signed package, and execute explicitly authorized private Linux FULL_LIVE Requirement→Schedule→Handoff→Report Job→LLM/ES→DOCX acceptance. No source SHA can substitute for signed release-package provenance and no existing durable v2 fixture histories may be automatically altered.
+
+
+- **2026-11-02 OFF-2 next gate after direct pins audit:** define an independently reviewed per-Python/per-OS/per-architecture transitive dependency lock + wheelhouse SHA inventory, include native ODBC18 and model artifacts with explicit licensing/ABI constraints, and test fully disconnected install/upgrade/restore using an externally trusted release signature/pin. The new read-only direct-pins scanner does not produce or validate this. Current wide constraints must remain INCOMPLETE until a real reproducible package is delivered.
