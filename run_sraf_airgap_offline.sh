@@ -3,14 +3,14 @@
 set -euo pipefail
 
 if [[ "$#" -gt 1 || ( "$#" -eq 1 && -z "$1" ) ]]; then
-  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files]' >&2
+  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform]' >&2
   exit 2
 fi
 MODE="${1:-quick}"
 case "$MODE" in
-  quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files) ;;
+  quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform) ;;
   --help|-h)
-    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files]'
+    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform]'
     exit 0
     ;;
   *)
@@ -46,6 +46,16 @@ case "$MODE" in
       exit 2
     fi
     exec "$PYTHON_BIN" tools/sraf_airgap_off2_wheel_files.py --expected-manifest-sha256 "$PIN"
+    ;;
+  target-platform)
+    # No credentials, network, external binaries or environment mutation.
+    # The Python ABI reported is precisely the selected SRAF Python runtime.
+    PYTHON_BIN="${SRAF_PYTHON:-python}"
+    if ! command -v -- "$PYTHON_BIN" >/dev/null 2>&1; then
+      printf '%s\n' '{"schema":"sraf_off2_linux_target_inventory_v1","status":"INCOMPLETE","reason":"application_python_unavailable","scope":"TARGET_IDENTITY_ONLY_NOT_PACKAGE_OR_AIRGAP_ATTESTATION","full_live":"NOT_TESTED","production_release_ready":false}'
+      exit 2
+    fi
+    exec "$PYTHON_BIN" tools/sraf_airgap_off2_linux_target.py
     ;;
   release-policy|release-deps)
     # OFF-2 local-only advisory modes. Neither may install, sign,

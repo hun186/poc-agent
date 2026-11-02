@@ -2,6 +2,9 @@
 
 ## Current Focus
 
+- **2026-11-02 OFF-2 Linux target inventory candidate:** after #359 MERGED as `b4e84897716a8c2220d928150875658edc7e39b0` (final Hosted OFF-2 439/OFF-1 493/operator E2E 83 PASS; Codex CLEAN), add explicit `target-platform` root read-only command for actual Linux OS ID/version, CPU, CPython major.minor/SOABI, libc and ODBC Driver 18 default registration only. No secrets, network, pip, native driver load, SQL/ES/LLM/Job, filesystem writes, FULL_LIVE or release attestation. Hosted final-head and Codex review PENDING.
+
+
 - **2026-11-02 OFF-2 Wheel RECORD content integrity candidate, exact-head CI/Review PENDING:** after verified #358 MERGED squash `ec22211406066479085a97a492df65ea507bbd38`, strengthen existing externally pinned `wheel-files` verifier: require `.dist-info/RECORD` covers every Wheel member except RECORD itself and deprecated signature sidecars, verify per-member SHA-256 and listed size over bounded ZIP streaming without extracting/installing/executing; fail closed on absent/forged/unlisted/duplicate RECORD entries. Cap decompressed per Wheel at 256 MiB and across command at 512 MiB. Purely diagnostic `PASS_PARTIAL`; no transitive dependencies, platform ABI, signed release, real air-gap, ODBC or FULL_LIVE. Synthetic Hosted tests and exact-HEAD formal Codex review required before auto-merge.
 
 
