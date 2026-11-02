@@ -35,6 +35,7 @@ MAX_ZIP_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_METADATA_BYTES = 64 * 1024
 MAX_RECORD_BYTES = 2 * 1024 * 1024
 MAX_RECORD_VERIFY_UNCOMPRESSED_BYTES = 256 * 1024 * 1024
+MAX_TOTAL_RECORD_VERIFY_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
 _HASH_CHUNK = 64 * 1024
 SCOPE = "PINNED_WHEEL_BYTES_ONLY_NOT_DEPENDENCY_OR_AIRGAP_ATTESTATION"
 _SHA = re.compile(r"[0-9a-f]{64}")
@@ -188,7 +189,7 @@ def _preflight_zip_directory(fd: int) -> None:
 
 def _verify_record(wheel: zipfile.ZipFile,
                    names: dict[str, zipfile.ZipInfo],
-                   distinfo: str) -> None:
+                   distinfo: str, remaining_budget: int) -> int:
     """Bounded read-only RECORD coverage and actual uncompressed SHA-256.
 
     Do not execute, install, extract to disk or trust metadata alone.  Small
@@ -203,8 +204,14 @@ def _verify_record(wheel: zipfile.ZipFile,
 
     file_entries = {info.filename: info for info in names.values()
                     if not info.is_dir()}
-    if (sum(info.file_size for info in file_entries.values())
-            > MAX_RECORD_VERIFY_UNCOMPRESSED_BYTES):
+    # PEP 427 excludes signature sidecars from RECORD. The externally pinned
+    # whole-archive SHA still covers these bytes, without verifying signatures.
+    optional_signature_files = {record_path + ".jws", record_path + ".p7s"}
+    required_entries = set(file_entries) - optional_signature_files
+    declared_total = sum(info.file_size for path, info in file_entries.items()
+                         if path != record_path and path not in optional_signature_files)
+    if (declared_total > MAX_RECORD_VERIFY_UNCOMPRESSED_BYTES
+            or declared_total > remaining_budget):
         raise _WheelStructureInvalid
     with wheel.open(record_info, "r") as stream:
         record_raw = stream.read(MAX_RECORD_BYTES + 1)
@@ -216,7 +223,7 @@ def _verify_record(wheel: zipfile.ZipFile,
         rows = list(reader)
     except (UnicodeError, csv.Error, ValueError) as exc:
         raise _WheelStructureInvalid from exc
-    if len(rows) != len(file_entries) or len(rows) > MAX_ZIP_MEMBERS:
+    if len(rows) != len(required_entries) or len(rows) > MAX_ZIP_MEMBERS:
         raise _WheelStructureInvalid
     seen: set[str] = set()
     listed: dict[str, tuple[str, str]] = {}
@@ -224,7 +231,7 @@ def _verify_record(wheel: zipfile.ZipFile,
         if len(row) != 3:
             raise _WheelStructureInvalid
         path, digest, length = row
-        if path not in file_entries or path in seen:
+        if path not in required_entries or path in seen:
             raise _WheelStructureInvalid
         seen.add(path)
         listed[path] = (digest, length)
@@ -235,7 +242,7 @@ def _verify_record(wheel: zipfile.ZipFile,
               or not re.fullmatch(r"[A-Za-z0-9_-]{43}", digest[7:])
               or length != str(file_entries[path].file_size)):
             raise _WheelStructureInvalid
-    if seen != set(file_entries):
+    if seen != required_entries:
         raise _WheelStructureInvalid
 
     total_read = 0
@@ -257,9 +264,10 @@ def _verify_record(wheel: zipfile.ZipFile,
         encoded = base64.urlsafe_b64encode(actual.digest()).rstrip(b"=").decode("ascii")
         if record_digest != "sha256=" + encoded:
             raise _WheelStructureInvalid
+    return total_read
 
 
-def _inspect_zip(fd: int, filename: str) -> None:
+def _inspect_zip(fd: int, filename: str, remaining_budget: int) -> int:
     # This is intentionally a conservative PEP 427 *structure* subset.
     # It does not parse/resolve Requires-Dist or execute/decompress payloads.
     parts = filename[:-4].split("-")
@@ -320,10 +328,11 @@ def _inspect_zip(fd: int, filename: str) -> None:
                     or not wheel_fields.get("wheel-version", "").startswith("1.")):
                 raise _WheelStructureInvalid
 
-            _verify_record(wheel, names, distinfo)
+            return _verify_record(wheel, names, distinfo, remaining_budget)
 
 
-def _verify_one_wheel(wheel_dirfd: int, item: dict[str, object]) -> str:
+def _verify_one_wheel(wheel_dirfd: int, item: dict[str, object],
+                      remaining_budget: int) -> tuple[str, int]:
     """Same no-follow FD for hashed file and conservative ZIP metadata read."""
     fd = _open_beneath(wheel_dirfd, str(item["filename"]))
     try:
@@ -342,9 +351,10 @@ def _verify_one_wheel(wheel_dirfd: int, item: dict[str, object]) -> str:
             hasher.update(chunk)
         match = total == item["size"] and hasher.hexdigest() == item["sha256"]
         outcome = "PASS_PARTIAL" if match else "FAIL"
+        decoded_bytes = 0
         if match:
             try:
-                _inspect_zip(fd, str(item["filename"]))
+                decoded_bytes = _inspect_zip(fd, str(item["filename"]), remaining_budget)
             except (zipfile.BadZipFile, zipfile.LargeZipFile, _WheelStructureInvalid,
                     zlib.error, EOFError, OSError, ValueError, RuntimeError,
                     NotImplementedError):
@@ -353,7 +363,7 @@ def _verify_one_wheel(wheel_dirfd: int, item: dict[str, object]) -> str:
         identity = lambda x: (x.st_dev, x.st_ino, x.st_size, x.st_mtime_ns, x.st_ctime_ns)
         if identity(before) != identity(after):
             raise _UnsafeEvidence
-        return outcome
+        return outcome, decoded_bytes
     finally:
         os.close(fd)
 
@@ -377,9 +387,12 @@ def observe(root: Path, expected_manifest_sha256: str | None) -> dict[str, objec
         actual = os.listdir(wheelfd)
         if len(actual) != len(listed) or set(actual) != listed:
             return _result("INCOMPLETE", "wheelhouse_content_incomplete")
+        total_decoded = 0
         for item in wheels:
-            outcome = _verify_one_wheel(wheelfd, item)
+            outcome, decoded_bytes = _verify_one_wheel(
+                wheelfd, item, MAX_TOTAL_RECORD_VERIFY_UNCOMPRESSED_BYTES - total_decoded)
             checked += 1
+            total_decoded += decoded_bytes
             if outcome == "FAIL":
                 return _result("FAIL", "wheel_file_mismatch", checked)
             if outcome == "INCOMPLETE":
