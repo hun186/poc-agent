@@ -2,6 +2,9 @@
 
 ## Current Focus
 
+- **2026-11-02 OFF-2 Wheel RECORD content integrity candidate, exact-head CI/Review PENDING:** after verified #358 MERGED squash `ec22211406066479085a97a492df65ea507bbd38`, strengthen existing externally pinned `wheel-files` verifier: require `.dist-info/RECORD` covers every Wheel member except RECORD itself and deprecated signature sidecars, verify per-member SHA-256 and listed size over bounded ZIP streaming without extracting/installing/executing; fail closed on absent/forged/unlisted/duplicate RECORD entries. Cap decompressed per Wheel at 256 MiB and across command at 512 MiB. Purely diagnostic `PASS_PARTIAL`; no transitive dependencies, platform ABI, signed release, real air-gap, ODBC or FULL_LIVE. Synthetic Hosted tests and exact-HEAD formal Codex review required before auto-merge.
+
+
 - **2026-11-02 current OFF-2 pinned-wheel structural hardening candidate:** start from verified #357 merge `db8d65d7173ea44f2894caf142a4e50e7341aaf5`. Existing externally pinned `wheel-files` accepted opaque hashed `.whl` bytes, including fake non-ZIP files; add a bounded same nofollow descriptor ZIP central-directory and minimal WHEEL/METADATA structural check, fail closed with `wheel_archive_structure_invalid`. No payload extraction/install/network, no PEP 427/RECORD/dependency closure or private Linux acceptance. Synthetic ZIP cases added; Hosted CI/formal Codex Review PENDING.
 
 

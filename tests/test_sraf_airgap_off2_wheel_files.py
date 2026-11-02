@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import hashlib
+import base64
+import csv
 from io import BytesIO
 import json
+import io
 import zipfile
 from pathlib import Path
 
@@ -20,23 +23,58 @@ def _wheel_bytes(*, metadata_name: str = "example-pkg",
                  include_wheel: bool = True,
                  include_metadata: bool = True,
                  folded_license: bool = False,
-                 extra_name: str | None = None) -> bytes:
-    # A tiny *synthetic* structurally valid Wheel archive for parser tests;
-    # this is NOT a genuine package, release, dependency or live acceptance.
+                 extra_name: str | None = None,
+                 record_case: str = "valid",
+                 include_legacy_signature: bool = False) -> bytes:
+    # Synthetic Wheel ZIP only: tests do NOT attest a real dependency bundle.
+    entries: list[tuple[str, bytes]] = [("example_pkg/__init__.py", b"")]
+    if include_wheel:
+        entries.append((f"{DIST_INFO}/WHEEL",
+                        b"Wheel-Version: 1.0\nGenerator: synthetic-test\n"
+                        b"Root-Is-Purelib: true\nTag: py3-none-any\n"))
+    if include_metadata:
+        headers = f"Metadata-Version: 2.1\nName: {metadata_name}\nVersion: 1.0\n"
+        if folded_license:
+            headers += "License: BSD style\n continuation is valid\n"
+        entries.append((f"{DIST_INFO}/METADATA", headers.encode("utf-8")))
+    if extra_name:
+        entries.append((extra_name, b"UNTRUSTED"))
+    if include_legacy_signature:
+        entries.append((f"{DIST_INFO}/RECORD.jws", b"UNVERIFIED_LEGACY_SIGNATURE"))
+
+    out = io.StringIO(newline="")
+    writer = csv.writer(out, lineterminator="\n")
+    for i, (name, data) in enumerate(entries):
+        if name == f"{DIST_INFO}/RECORD.jws":
+            continue
+        if record_case == "missing_entry" and i == 0:
+            continue
+        digest = "sha256=" + base64.urlsafe_b64encode(
+            hashlib.sha256(data).digest()).rstrip(b"=").decode("ascii")
+        if record_case == "bad_hash" and i == 0:
+            digest = "sha256=" + "A" * 43
+        length = str(len(data))
+        if record_case == "bad_size" and i == 0:
+            length = "999"
+        writer.writerow((name, digest, length))
+    if record_case == "extra_row":
+        writer.writerow(("hidden.py", "sha256=" + "A" * 43, "0"))
+    if record_case == "record_hash":
+        writer.writerow((f"{DIST_INFO}/RECORD", "sha256=" + "A" * 43, "12"))
+    else:
+        writer.writerow((f"{DIST_INFO}/RECORD", "", ""))
+
     content = BytesIO()
     with zipfile.ZipFile(content, "w", compression=zipfile.ZIP_DEFLATED) as z:
-        z.writestr("example_pkg/__init__.py", "")
-        if include_wheel:
-            z.writestr(f"{DIST_INFO}/WHEEL",
-                       "Wheel-Version: 1.0\nGenerator: synthetic-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n")
-        if include_metadata:
-            headers = f"Metadata-Version: 2.1\nName: {metadata_name}\nVersion: 1.0\n"
-            if folded_license:
-                headers += "License: BSD style\n continuation is valid\n"
-            z.writestr(f"{DIST_INFO}/METADATA", headers)
-        if extra_name:
-            z.writestr(extra_name, "UNTRUSTED")
+        for name, data in entries:
+            z.writestr(name, data)
+        if record_case != "missing_record":
+            record_bytes = (b"\n" * (2 * 1024 * 1024)
+                            if record_case == "blank_row_bomb"
+                            else out.getvalue().encode("utf-8"))
+            z.writestr(f"{DIST_INFO}/RECORD", record_bytes)
     return content.getvalue()
+
 
 
 def _repin_wheel(root: Path, data: bytes) -> str:
@@ -69,7 +107,7 @@ def _fixture(root: Path) -> str:
 def test_exact_pinned_listed_wheel_bytes_only_partial(tmp_path):
     pin = _fixture(tmp_path)
     assert observe(tmp_path, pin) == {
-        "status": "PASS_PARTIAL", "reason": "pinned_wheel_bytes_and_basic_metadata_only",
+        "status": "PASS_PARTIAL", "reason": "pinned_wheel_bytes_metadata_record_only",
         "wheels_checked": 1,
     }
 
@@ -174,6 +212,92 @@ def test_eocd_signature_in_zip_comment_rejected_before_zipfile(
     assert observe(tmp_path, pin) == {
         "status": "INCOMPLETE", "reason": "wheel_archive_structure_invalid",
         "wheels_checked": 1,
+    }
+
+
+
+@pytest.mark.parametrize("case", [
+    "missing_record", "missing_entry", "bad_hash", "bad_size",
+    "extra_row", "record_hash",
+])
+def test_pinned_wheel_record_missing_mismatched_or_uncovered_fails_closed(
+        tmp_path, case):
+    _fixture(tmp_path)
+    pin = _repin_wheel(tmp_path, _wheel_bytes(record_case=case))
+    assert observe(tmp_path, pin) == {
+        "status": "INCOMPLETE", "reason": "wheel_archive_structure_invalid",
+        "wheels_checked": 1,
+    }
+
+
+def test_record_newline_bomb_rejected_before_materializing_rows(tmp_path, monkeypatch):
+    _fixture(tmp_path)
+    pin = _repin_wheel(tmp_path, _wheel_bytes(record_case="blank_row_bomb"))
+    from tools import sraf_airgap_off2_wheel_files as tool
+    original = tool.csv.reader
+    rows_seen = []
+
+    def guarded_reader(*args, **kwargs):
+        for row in original(*args, **kwargs):
+            rows_seen.append(1)
+            # Eager list(reader) would consume ~2 million records here.
+            assert len(rows_seen) <= 2, "RECORD parser iterated beyond fail-fast"
+            yield row
+
+    monkeypatch.setattr(tool.csv, "reader", guarded_reader)
+    assert observe(tmp_path, pin) == {
+        "status": "INCOMPLETE", "reason": "wheel_archive_structure_invalid",
+        "wheels_checked": 1,
+    }
+    assert len(rows_seen) == 1
+
+
+def test_record_verification_uncompressed_budget_is_fail_closed(tmp_path, monkeypatch):
+    _fixture(tmp_path)
+    from tools import sraf_airgap_off2_wheel_files as tool
+    monkeypatch.setattr(tool, "MAX_RECORD_VERIFY_UNCOMPRESSED_BYTES", 8)
+    pin = _repin_wheel(tmp_path, _wheel_bytes())
+    assert observe(tmp_path, pin)["reason"] == "wheel_archive_structure_invalid"
+
+
+def test_record_csv_bad_or_duplicate_path_is_rejected(tmp_path):
+    _fixture(tmp_path)
+    for case in ("bad_hash", "extra_row", "record_hash"):
+        pin = _repin_wheel(tmp_path, _wheel_bytes(record_case=case))
+        assert observe(tmp_path, pin)["status"] == "INCOMPLETE"
+
+
+
+def test_legacy_signature_sidecar_may_be_omitted_from_record(tmp_path):
+    _fixture(tmp_path)
+    pin = _repin_wheel(tmp_path, _wheel_bytes(include_legacy_signature=True))
+    # Structural acceptance is not trust in the signature's authenticity.
+    assert observe(tmp_path, pin)["status"] == "PASS_PARTIAL"
+
+
+def test_total_decoded_budget_spans_all_wheels(tmp_path, monkeypatch):
+    _fixture(tmp_path)
+    other = "example_pkg-1.0-py2-none-any.whl"
+    data = _wheel_bytes()
+    (tmp_path / "wheelhouse" / other).write_bytes(data)
+    path = tmp_path / MANIFEST
+    payload = json.loads(path.read_text())
+    payload["wheels"].append({
+        "filename": other, "sha256": hashlib.sha256(data).hexdigest(),
+        "size": len(data),
+    })
+    manifest_raw = (json.dumps(payload, sort_keys=True) + "\n").encode()
+    path.write_bytes(manifest_raw)
+    pin = hashlib.sha256(manifest_raw).hexdigest()
+    with zipfile.ZipFile(BytesIO(data)) as z:
+        required_bytes = sum(i.file_size for i in z.infolist()
+                             if i.filename != f"{DIST_INFO}/RECORD.jws")
+    from tools import sraf_airgap_off2_wheel_files as tool
+    monkeypatch.setattr(tool, "MAX_TOTAL_RECORD_VERIFY_UNCOMPRESSED_BYTES",
+                        required_bytes + 1)
+    assert observe(tmp_path, pin) == {
+        "status": "INCOMPLETE", "reason": "wheel_archive_structure_invalid",
+        "wheels_checked": 2,
     }
 
 
