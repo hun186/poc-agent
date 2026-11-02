@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import struct
 from pathlib import Path
 import sys
 
@@ -18,11 +19,28 @@ def linux_target(tmp_path, monkeypatch):
     vendor = tmp_path / "opt" / "microsoft" / "msodbcsql18" / "lib64"
     vendor.mkdir(parents=True)
     library = vendor / "libmsodbcsql-18.5.so.1.1"
-    header = bytearray(64)
+    # Minimal synthetic ELF64 ET_DYN with PT_LOAD and a bounded PT_DYNAMIC:
+    # NEEDED offset points into a mapped on-disk string table. Never run it.
+    strings = b"\x00libodbcinst.so.2\x00"
+    dyn_offset = 176
+    strings_offset = 240
+    size = strings_offset + len(strings)
+    header = bytearray(size)
     header[:4] = b"\x7fELF"
     header[4:7] = bytes((2, 1, 1))
     header[16:18] = (3).to_bytes(2, "little")
     header[18:20] = (62).to_bytes(2, "little")
+    struct.pack_into("<Q", header, 32, 64)
+    struct.pack_into("<HH", header, 54, 56, 2)
+    struct.pack_into("<IIQQQQQQ", header, 64, 1, 4, 0, 0x400000, 0,
+                     size, size, 0x1000)
+    struct.pack_into("<IIQQQQQQ", header, 120, 2, 4, dyn_offset,
+                     0x400000 + dyn_offset, 0, 64, 64, 8)
+    for index, (tag, value) in enumerate((
+            (5, 0x400000 + strings_offset), (10, len(strings)),
+            (1, 1), (0, 0))):
+        struct.pack_into("<qQ", header, dyn_offset + index * 16, tag, value)
+    header[strings_offset:] = strings
     library.write_bytes(header)
     monkeypatch.setattr(tool, "ODBC_DRIVER_ROOT", vendor)
     ini = tmp_path / "odbcinst.ini"
@@ -43,7 +61,7 @@ def test_linux_python_abi_and_odbc_registration_only_partial(linux_target):
     paths, ini = linux_target
     observation = tool.observe(os_paths=paths, odbc_path=ini)
     assert observation["status"] == "PASS_PARTIAL"
-    assert observation["reason"] == "linux_python_target_odbc_elf_header_observed"
+    assert observation["reason"] == "linux_python_target_odbc_dynamic_metadata_observed"
     assert observation["os_id"] == "ubuntu"
     assert observation["os_version_id"] == "22.04"
     assert observation["architecture"] == "x86_64"
@@ -53,6 +71,9 @@ def test_linux_python_abi_and_odbc_registration_only_partial(linux_target):
     assert observation["python_abi"] == "cpython-311-x86_64-linux-gnu"
     assert observation["odbc18"] == "REGISTERED_CONFIG_ONLY"
     assert observation["odbc_binary_header"] == "ELF64_ARCH_MATCH_HEADER_ONLY"
+    assert observation["odbc_dynamic_needed"] == "DT_NEEDED_REFERENCES_PARSED_ONLY"
+    assert observation["odbc_dynamic_needed_count"] == 1
+    assert observation["odbc_dependency_resolution"] == "NOT_TESTED"
     assert observation["odbc_binary_load"] == "NOT_TESTED"
     assert observation["wheelhouse_compatibility"] == "NOT_TESTED"
     assert observation["full_live"] == "NOT_TESTED"
@@ -203,6 +224,71 @@ def test_cross_architecture_vendor_elf_header_matches_aarch64(linux_target, monk
     assert observed["status"] == "PASS_PARTIAL"
     assert observed["architecture"] == "aarch64"
     assert observed["odbc_binary_header"] == "ELF64_ARCH_MATCH_HEADER_ONLY"
+    assert observed["odbc_dynamic_needed_count"] == 1
+
+
+
+@pytest.mark.parametrize("failure", [
+    "no_phdr", "too_many_phdr", "bad_phentsize", "off_end",
+    "no_dynamic", "huge_dynamic", "unmapped_dynamic", "bad_strtab_addr", "strsz_too_big",
+    "needed_oob", "needed_unterminated", "needed_unsafe_name",
+    "missing_dt_null", "duplicate_needed",
+])
+def test_odbc_dynamic_metadata_corruption_rejects_without_load(
+        linux_target, failure):
+    paths, ini = linux_target
+    library = tool.ODBC_DRIVER_ROOT / "libmsodbcsql-18.5.so.1.1"
+    raw = bytearray(library.read_bytes())
+    if failure == "no_phdr":
+        struct.pack_into("<H", raw, 56, 0)
+    elif failure == "too_many_phdr":
+        struct.pack_into("<H", raw, 56, 65535)
+    elif failure == "bad_phentsize":
+        struct.pack_into("<H", raw, 54, 60)
+    elif failure == "off_end":
+        struct.pack_into("<Q", raw, 32, 999999)
+    elif failure == "no_dynamic":
+        struct.pack_into("<I", raw, 120, 0)
+    elif failure == "huge_dynamic":
+        struct.pack_into("<Q", raw, 120 + 32, 65536 + 16)
+    elif failure == "unmapped_dynamic":
+        # PT_LOAD still covers STRTAB at 240, but no longer backs PT_DYNAMIC
+        # at 176. The old parser incorrectly returned PASS_PARTIAL.
+        struct.pack_into("<Q", raw, 64 + 8, 240)
+        struct.pack_into("<Q", raw, 64 + 16, 0x400000 + 240)
+        struct.pack_into("<Q", raw, 64 + 32, len(raw) - 240)
+        struct.pack_into("<Q", raw, 64 + 40, len(raw) - 240)
+    elif failure == "bad_strtab_addr":
+        struct.pack_into("<Q", raw, 176 + 8, 0x500000)
+    elif failure == "strsz_too_big":
+        struct.pack_into("<Q", raw, 192 + 8, 65537)
+    elif failure == "needed_oob":
+        struct.pack_into("<Q", raw, 208 + 8, 50000)
+    elif failure == "needed_unterminated":
+        raw[-1] = ord("x")
+    elif failure == "needed_unsafe_name":
+        raw[241] = ord("/")
+    elif failure == "missing_dt_null":
+        struct.pack_into("<qQ", raw, 224, 22, 0)
+    elif failure == "duplicate_needed":
+        struct.pack_into("<qQ", raw, 224, 1, 1)
+    library.write_bytes(raw)
+    result = tool.observe(os_paths=paths, odbc_path=ini)
+    assert result["status"] == "INCOMPLETE"
+    assert result["reason"] == "odbc18_dynamic_metadata_unverifiable"
+    assert result["odbc_binary_header"] == "ELF64_ARCH_MATCH_HEADER_ONLY"
+    assert result["odbc_dynamic_needed"] == "DYNAMIC_METADATA_UNVERIFIABLE"
+    assert result["odbc_dynamic_needed_count"] == 0
+    assert result["odbc_binary_load"] == "NOT_TESTED"
+    assert str(library) not in json.dumps(result)
+
+
+def test_dynamic_needed_metadata_cannot_be_mistaken_for_library_resolution(linux_target):
+    paths, ini = linux_target
+    result = tool.observe(os_paths=paths, odbc_path=ini)
+    assert result["odbc_dynamic_needed_count"] == 1
+    assert result["odbc_dependency_resolution"] == "NOT_TESTED"
+    assert "libodbcinst.so.2" not in json.dumps(result)
 
 
 def test_cli_rejects_extra_arguments(monkeypatch):

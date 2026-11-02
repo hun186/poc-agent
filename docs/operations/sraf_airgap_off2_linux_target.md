@@ -21,8 +21,22 @@ SRAF_PYTHON=/path/to/sraf-venv/bin/python bash run_sraf_airgap_offline.sh target
 - INCOMPLETE / linux_target_required：不是 Linux。
 - INCOMPLETE / application_python_unavailable：沒有指定或可用的 Python 環境，未執行任何探針。
 
-odbc_binary_load、wheelhouse_compatibility、full_live 一律 NOT_TESTED，production_release_ready 一律 false。PASS_PARTIAL 僅表示可用於下一階段規畫的本機 OS/Python/ODBC 設定觀察，**不是**數位簽章、相依閉包、封網部署、原生 ODBC 驗收或真實業務 E2E。
+odbc_dependency_resolution、odbc_binary_load、wheelhouse_compatibility、full_live 一律 NOT_TESTED，production_release_ready 一律 false。PASS_PARTIAL 僅表示可用於下一階段規畫的本機 OS/Python/ODBC 設定觀察，**不是**數位簽章、相依閉包、封網部署、原生 ODBC 驗收或真實業務 E2E。
 
 可直接複製該行 JSON 供後續審核；**不需要**提供 .env.local、密碼、token、SQL registry、主機日誌或內網路徑。
 
 **2026-11-02 首次實機觀察（用戶提供、不是完整發行證明）：** Ubuntu 22.04、x86_64、CPython 3.10、SOABI `cpython-310-x86_64-linux-gnu`、glibc 2.35、ODBC18 `REGISTERED_CONFIG_ONLY`。該 v1 證據沒有執行 ELF Header 檢查；只有本 PR 合併且部署新腳本後的 v2 重新執行，才能得到 `odbc_binary_header` 實機觀察。不同伺服器／Python venv 需分別盤點，不能假定一致。
+
+### v3：ODBC ELF 動態相依名稱的唯讀解析（不載入、不解決相依）
+
+你提供的 2026-11-02 **v2 實機結果** 已經是 Ubuntu 22.04、x86_64、CPython 3.10、glibc 2.35，且 `odbc_binary_header=ELF64_ARCH_MATCH_HEADER_ONLY`。此結果是單一內網環境的觀察，不代表發行包相容、依賴已可載入或其他機器也符合。
+
+更新到 v3 後，仍使用原本的 `target-platform` 指令。現有 ODBC 18 無符號連結 FD 的 ELF Header 符合架構後，才額外在**同一個唯讀 FD** 上讀取有限的 ELF64 Program Header、PT_DYNAMIC、DT_NEEDED 的字串表引用。最多 64 個 Program Header、64 KiB 動態段、64 KiB 字串表、64 個相依名字；只輸出固定狀態與計數，不輸出或測試任何相依函式庫名稱、磁碟路徑或版本。
+
+- `odbc_dynamic_needed=DT_NEEDED_REFERENCES_PARSED_ONLY` 且計數大於零：僅表示 ELF 內部的動態相依「名稱引用」經過有界檔案內靜態解析。整體依舊只回 `PASS_PARTIAL / linux_python_target_odbc_dynamic_metadata_observed`。
+- `odbc_dynamic_needed=DYNAMIC_METADATA_UNVERIFIABLE`：Program Header、不安全/缺失的動態表或字串引用無法完整安全解析，總體回 `INCOMPLETE / odbc18_dynamic_metadata_unverifiable`。
+- `odbc_dependency_resolution=NOT_TESTED`、`odbc_binary_load=NOT_TESTED` **永遠保留**。沒有呼叫 ld.so、ldd、dlopen、ctypes、unixODBC、連線或任何執行器，也不保證 DT_NEEDED 依賴在磁碟存在、具有正確版本、可載入或提供合法 ABI。
+
+以上均**沒有實際執行在你的內網機器**，新增的回歸測試使用合成 ELF 和 GitHub Hosted Ubuntu22.04／Python3.10，不能取代下次你自己執行新版本並提供 JSON。
+
+ELF64 結構安全限制還包括 **PT_DYNAMIC 本身**必須完整被 PT_LOAD 檔案映射覆蓋，而且區段的虛擬位址與原始檔案偏移必須一致；單純 DT_STRTAB 字串引用合法而 PT_DYNAMIC 區段不合法者一律回 INCOMPLETE。不會據此進行動態載入。
