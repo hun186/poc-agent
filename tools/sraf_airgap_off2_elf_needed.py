@@ -59,7 +59,7 @@ def inspect_needed(fd: int, size: int, header: bytes) -> int:
         raise _ELFDynamicInvalid
     programs_raw = _read(fd, phoff, phnum * 56, size)
     loads: list[tuple[int, int, int]] = []
-    dynamic: tuple[int, int] | None = None
+    dynamic: tuple[int, int, int] | None = None
     for (typ, _flags, offset, vaddr, _paddr, filesz, memsz, _align) in struct.iter_unpack(
             "<IIQQQQQQ", programs_raw):
         if typ not in (_PT_LOAD, _PT_DYNAMIC):
@@ -72,11 +72,21 @@ def inspect_needed(fd: int, size: int, header: bytes) -> int:
         elif typ == _PT_DYNAMIC:
             if dynamic is not None or not 16 <= filesz <= MAX_DYNAMIC_BYTES or filesz % 16:
                 raise _ELFDynamicInvalid
-            dynamic = (offset, filesz)
+            dynamic = (offset, vaddr, filesz)
     if not loads or dynamic is None:
         raise _ELFDynamicInvalid
+    dyn_offset, dyn_vaddr, dyn_size = dynamic
+    # PT_DYNAMIC must be backed by the *same file-to-virtual mapping* in a
+    # PT_LOAD, not merely point at arbitrary bytes elsewhere in the ZIP/ELF.
+    if not any(
+            base_vaddr <= dyn_vaddr
+            and dyn_size <= load_size
+            and dyn_vaddr - base_vaddr <= load_size - dyn_size
+            and dyn_offset == load_offset + dyn_vaddr - base_vaddr
+            for load_offset, base_vaddr, load_size in loads):
+        raise _ELFDynamicInvalid
 
-    raw = _read(fd, dynamic[0], dynamic[1], size)
+    raw = _read(fd, dyn_offset, dyn_size, size)
     strtab: int | None = None
     strsz: int | None = None
     offsets: list[int] = []
