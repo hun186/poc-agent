@@ -23,3 +23,17 @@ SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh runtime-
 一律輸出 `transitive_closure=NOT_TESTED`、`wheelhouse_compatibility=NOT_TESTED`、`package_imports=NOT_TESTED`、`production_release_ready=false`。即使 `PASS_PARTIAL`，也沒有取得可攜式 wheels、完整 lock file、venv 可移植性、原生 ODBC/pyodbc ABI、隔離封網安裝或 OFF-5 還原證據。
 
 **2026-11-02 的實機 v3 ODBC 觀察：** Ubuntu 22.04、x86_64、CPython 3.10、glibc 2.35；ODBC 18 ELF 檔案的 `DT_NEEDED` 名稱引用數量為 **10**，但 `odbc_dependency_resolution`、`odbc_binary_load` 仍 `NOT_TESTED`。新 `runtime-deps` 只盤點 Python Metadata，不會驗證上述 10 個原生依賴是否可以連結。
+
+### v2 缺項定位：僅回傳公開直接需求的順序位置
+
+2026-11-02 實機 v1 回報 `requirements_checked=15`、`installed_direct_count=13`、`missing_direct_count=2`、`unlocked_direct_count=15`、`status=INCOMPLETE`。這只是選定 Python 中兩個直接依賴的 **.dist-info METADATA 未被此工具辨識**；不代表必然有兩套件未安裝，亦不代表其他路徑、legacy egg-info 或不同虛擬環境沒有套件。
+
+v2 在原本 `runtime-deps` 指令的 JSON 新增 `missing_direct_positions`（陣列）、`position_basis=ONE_BASED_NONCOMMENT_REQUIREMENTS_ORDER` 和 `metadata_search_scope=SELECTED_PYTHON_SCHEME_DIST_INFO_ONLY`。位置是該次已安全讀取的 `requirements.txt` **非空白、非註解直接需求行**從 1 起算的位置；最大 256 項，並非整份文件的原始行號。可以與相同 Git Commit 的 `requirements.txt` 對照。這不輸出套件名稱、實際安裝版本或私有絕對路徑。
+
+只有安全完成全部候選 Metadata 掃描、且 `reason=direct_distribution_metadata_missing` 時，位置陣列才具有缺項意義；其他不確定／錯誤結果保持空陣列。務必使用相同選定的 SRAF Python：
+
+```bash
+SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh runtime-deps
+```
+
+**不要直接執行 pip install/upgrade**：先由缺項位置核對公開需求；接著分別確認正式 SRAF Worker 使用的 Python 執行環境、user-site/legacy metadata 和套件來源。即使 15/15 METADATA 都找到，仍無法推定 `>=` 版本條件、實際 import、完整轉遞相依、ABI、Signed Wheelhouse 或離線還原測試已通過。
