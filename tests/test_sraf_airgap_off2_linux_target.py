@@ -230,7 +230,7 @@ def test_cross_architecture_vendor_elf_header_matches_aarch64(linux_target, monk
 
 @pytest.mark.parametrize("failure", [
     "no_phdr", "too_many_phdr", "bad_phentsize", "off_end",
-    "no_dynamic", "huge_dynamic", "bad_strtab_addr", "strsz_too_big",
+    "no_dynamic", "huge_dynamic", "unmapped_dynamic", "bad_strtab_addr", "strsz_too_big",
     "needed_oob", "needed_unterminated", "needed_unsafe_name",
     "missing_dt_null", "duplicate_needed",
 ])
@@ -251,6 +251,13 @@ def test_odbc_dynamic_metadata_corruption_rejects_without_load(
         struct.pack_into("<I", raw, 120, 0)
     elif failure == "huge_dynamic":
         struct.pack_into("<Q", raw, 120 + 32, 65536 + 16)
+    elif failure == "unmapped_dynamic":
+        # PT_LOAD still covers STRTAB at 240, but no longer backs PT_DYNAMIC
+        # at 176. The old parser incorrectly returned PASS_PARTIAL.
+        struct.pack_into("<Q", raw, 64 + 8, 240)
+        struct.pack_into("<Q", raw, 64 + 16, 0x400000 + 240)
+        struct.pack_into("<Q", raw, 64 + 32, len(raw) - 240)
+        struct.pack_into("<Q", raw, 64 + 40, len(raw) - 240)
     elif failure == "bad_strtab_addr":
         struct.pack_into("<Q", raw, 176 + 8, 0x500000)
     elif failure == "strsz_too_big":
