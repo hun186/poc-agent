@@ -14,6 +14,7 @@ bash run_sraf_airgap_offline.sh release-policy
 bash run_sraf_airgap_offline.sh release-deps
 bash run_sraf_airgap_offline.sh wheel-files
 bash run_sraf_airgap_offline.sh target-platform
+bash run_sraf_airgap_offline.sh runtime-deps
 ```
 
 | 模式 | 唯一執行路徑 | 效果和限制 |
@@ -26,6 +27,7 @@ bash run_sraf_airgap_offline.sh target-platform
 | `release-deps` | `tools/sraf_airgap_off2_requirements_audit.py` | 本機唯讀檢查直接 Python 相依是否固定版本；現有 `>=` 應回 `INCOMPLETE`，即使全部 `==` 仍僅為 `PASS_PARTIAL`，不驗證 wheelhouse／ABI／transitive closure |
 | `wheel-files` | `tools/sraf_airgap_off2_wheel_files.py` | 需要獨立取得外部可信 Wheel Manifest SHA-256；只核對列管 Wheel 位元組、拒絕未列管檔案；無法證明 Python 依賴閉包、簽章、ODBC 或封網安裝 |
 | `target-platform` | `tools/sraf_airgap_off2_linux_target.py` | 只用指定的 SRAF Python 和本機唯讀 OS/ODBC 驅動註冊檔，盤點 Linux 發行版、CPU、Python SOABI 與 glibc；輸出固定清單，不讀憑證或測試原生 ODBC；最多 `PASS_PARTIAL` |
+| `runtime-deps` | `tools/sraf_airgap_off2_runtime_deps.py` | 使用所選 Python 唯讀取得直接相依套件安裝中繼資料，僅回報數量及固定狀態；無 pip、import、網路或寫入；不代表需求版本範圍、遞迴相依或 Wheelhouse 相容 |
 
 此統一入口只接受零個或一個固定模式名稱（`--help` 除外），**拒絕** `acceptance`、`upgrade`、`restore`、額外參數與任何探針憑證旗標，不提供由 Quick 自動升級到真正 Job／SQL／ES 探測的方式。需要專用 SQL/ES 授權時，另依既有 OFF-1 原始操作手冊使用明確 opt-in，不能透過統一入口隱式觸發。
 
@@ -40,3 +42,5 @@ bash run_sraf_airgap_offline.sh target-platform
 `wheel-files` 的外部 Pin 格式、Manifest Schema 與安全界線見 [OFF-2 Wheelhouse 位元組驗證](sraf_airgap_off2_wheel_files.md)。所有缺少信任錨的情況均回 `INCOMPLETE`，不得自動產生本機 PIN。
 
 `target-platform` 只觀察執行腳本當下的 Python ABI 與 Linux/ODBC 登錄配置，不會收集完整套件/ODBC 原生 library 版本，也不是封網或實機業務 E2E。使用與正式 SRAF 相同的 Python 環境，例如 `SRAF_PYTHON=/path/to/venv/bin/python bash run_sraf_airgap_offline.sh target-platform`；詳細欄位與安全界線見 [OFF-2 Linux 目標環境盤點](sraf_airgap_off2_linux_target.md)。
+
+`runtime-deps` 的操作方式與證據界線見 [OFF-2 Python 直接相依安裝中繼資料盤點](sraf_airgap_off2_runtime_deps.md)。
