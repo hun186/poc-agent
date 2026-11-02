@@ -197,3 +197,16 @@ def test_quick_missing_python_fails_before_probe(fake_deployment):
     result = _exec(script, env, "quick")
     assert result.returncode == 127
     assert not capture.exists()
+
+def test_wheel_files_operator_command_is_one_line_with_pin():
+    documentation = (
+        Path(__file__).resolve().parents[1] /
+        "docs/operations/sraf_airgap_off2_wheel_files.md"
+    ).read_text(encoding="utf-8")
+    assert (
+        "SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256="
+        "<trusted-64-char-lowercase-sha256> "
+        "bash run_sraf_airgap_offline.sh wheel-files"
+    ) in documentation
+
+
