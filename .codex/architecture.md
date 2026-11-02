@@ -35,3 +35,5 @@
 - This compaction is a documentation-only safety maintenance step; it does not establish new live operational, offline install or restoration evidence.
 
 - **2026-11-02 OFF-2 Python runtime-deps candidate:** separate root `run_sraf_airgap_offline.sh runtime-deps` dispatches stdlib `tools/sraf_airgap_off2_runtime_deps.py` using exactly selected SRAF Python. Passive `requirements.txt` no-follow direct literal parser plus `importlib.metadata` installed distribution names/version text only within that Python's installation scheme; sanitized count-only, no project imports, installer, network, SQL/ES/LLM, writes or new runtime authority. This is not PEP 440/508 version solving, complete transitive dependency lock or offline Wheelhouse attestation.
+
+- **2026-11-02 PR #363 review hardening:** the initial `importlib.metadata` discovery was replaced with root-anchored no-follow scheme directory scanning and bounded, selected dist-info METADATA-only reads. This is an operator-only read-only OFF-2 observation, not SRAF runtime authority, package module import, version solver, verified environment integrity or offline Wheelhouse attestation.
