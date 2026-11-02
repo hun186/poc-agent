@@ -40,6 +40,7 @@ def fake_deployment(tmp_path):
     env = {**os.environ, "SRAF_CAPTURE_FILE": str(capture),
            "SRAF_PYTHON": str(py)}
     env.pop("SRAF_OFF1_OUTPUT_DIR", None)
+    env.pop("SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256", None)
     return script, root, capture, env
 
 
@@ -85,6 +86,39 @@ def test_all_other_modes_delegate_verbatim_to_existing_entrypoints(
     assert capture.read_text().splitlines() == [expected_entry, str(root), *args]
 
 
+def test_wheel_files_with_external_pin_dispatches_only_local_verifier(fake_deployment):
+    script, root, capture, env = fake_deployment
+    pin = "a" * 64
+    env["SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256"] = pin
+    result = _exec(script, env, "wheel-files")
+    assert result.returncode == 17
+    assert capture.read_text().splitlines() == [
+        "python", str(root), "tools/sraf_airgap_off2_wheel_files.py",
+        "--expected-manifest-sha256", pin,
+    ]
+    assert pin not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("pin", ["", "A" * 64, "0" * 63, "not-a-digest"])
+def test_wheel_files_missing_or_untrusted_pin_blocks_before_python(
+        fake_deployment, pin):
+    script, _, capture, env = fake_deployment
+    env["SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256"] = pin
+    result = _exec(script, env, "wheel-files")
+    assert result.returncode == 2
+    assert "INCOMPLETE" in result.stdout
+    assert not capture.exists()
+
+
+def test_wheel_files_missing_interpreter_blocks_before_python(fake_deployment):
+    script, _, capture, env = fake_deployment
+    env["SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256"] = "a" * 64
+    env["SRAF_PYTHON"] = "/not-present/python"
+    result = _exec(script, env, "wheel-files")
+    assert result.returncode == 2
+    assert not capture.exists()
+
+
 def test_release_policy_is_only_local_readonly_advisory_python(fake_deployment):
     script, root, capture, env = fake_deployment
     result = _exec(script, env, "release-policy")
@@ -125,7 +159,7 @@ def test_release_policy_missing_interpreter_fails_before_exec(fake_deployment):
     ("--live-report",), ("quick", "--live-report"), ("quick", "diagnose"),
     ("release-files", "--no-network"), ("release-policy", "--live-report"),
     ("release-policy", "--probe-sql-read"),
-    ("release-deps", "--live-report"), ("release-deps", "--probe-sql-read"),
+    ("release-deps", "--live-report"), ("release-deps", "--probe-sql-read"), ("wheel-files", "--no-network"),
     ("--probe-sql-read",), ("",),
 ])
 def test_forbidden_modes_and_extra_arguments_never_execute(
@@ -153,7 +187,7 @@ def test_help_does_not_run_any_probe(fake_deployment):
     script, _, capture, env = fake_deployment
     result = _exec(script, env, "--help")
     assert result.returncode == 0
-    assert "quick|diagnose|no-network|release-files|release-policy|release-deps" in result.stdout
+    assert "quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files" in result.stdout
     assert not capture.exists()
 
 
