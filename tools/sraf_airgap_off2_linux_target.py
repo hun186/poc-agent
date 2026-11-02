@@ -25,8 +25,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools.sraf_airgap_off2_manifest_check import (_UnsafeEvidence, _fingerprint, _flags, _open_beneath)
+from tools.sraf_airgap_off2_elf_needed import _ELFDynamicInvalid, inspect_needed
 
-SCHEMA = "sraf_off2_linux_target_inventory_v2"
+SCHEMA = "sraf_off2_linux_target_inventory_v3"
 SCOPE = "TARGET_IDENTITY_ONLY_NOT_PACKAGE_OR_AIRGAP_ATTESTATION"
 OS_RELEASE_FILES = (Path("/etc/os-release"), Path("/usr/lib/os-release"))
 ODBC_INST_FILE = Path("/etc/odbcinst.ini")
@@ -109,23 +110,21 @@ def _odbc_driver_entry(path: Path) -> tuple[str, str | None]:
         return "CONFIG_UNVERIFIABLE", None
 
 
-def _odbc_elf_header(driver_path: str | None, arch: str,
-                     *, driver_root: Path = ODBC_DRIVER_ROOT) -> str:
-    """No-follow header-only ELF check, never dlopen/execute or output path.
+def _odbc_elf_evidence(driver_path: str | None, arch: str,
+                       *, driver_root: Path = ODBC_DRIVER_ROOT) -> tuple[str, str, int]:
+    """No-follow, header + bounded dynamic metadata reads on SAME FD.
 
-    Restrict to supported MS ODBC18 vendor path; unusual layouts cannot
-    silently earn evidence. Linux source file can still change after reading.
+    Does not dlopen, resolve dependencies or reveal library names/paths.
     """
+    unverified = ("UNVERIFIED", "NOT_TESTED", 0)
     if arch not in ALLOWED_ARCH or not isinstance(driver_path, str):
-        return "UNVERIFIED"
-    # Only accept a direct child of the known versioned Microsoft directory.
-    # No resolved() paths: resolving would follow symlinks before O_NOFOLLOW.
+        return unverified
     name = driver_path.rsplit("/", 1)[-1]
     if (not _ODBC_LIBRARY_NAME.fullmatch(name)
             or driver_path != str(driver_root / name)
             or not driver_root.is_absolute()
             or ".." in driver_root.parts):
-        return "DRIVER_PATH_UNSUPPORTED"
+        return ("DRIVER_PATH_UNSUPPORTED", "NOT_TESTED", 0)
     basefd = -1
     fd = -1
     try:
@@ -134,28 +133,35 @@ def _odbc_elf_header(driver_path: str | None, arch: str,
         before = os.fstat(fd)
         if (not stat.S_ISREG(before.st_mode)
                 or not 64 <= before.st_size <= MAX_ODBC_LIBRARY_BYTES):
-            return "ELF_FILE_UNVERIFIABLE"
+            return ("ELF_FILE_UNVERIFIABLE", "NOT_TESTED", 0)
         header = os.pread(fd, 64, 0)
-        after = os.fstat(fd)
-        identity = lambda v: (v.st_dev, v.st_ino, v.st_size, v.st_mtime_ns, v.st_ctime_ns)
-        if identity(before) != identity(after) or len(header) != 64:
-            return "ELF_FILE_UNVERIFIABLE"
+        if len(header) != 64:
+            return ("ELF_FILE_UNVERIFIABLE", "NOT_TESTED", 0)
         if (header[:4] != b"\x7fELF" or header[4] != 2
                 or header[5] != 1 or header[6] != 1
                 or int.from_bytes(header[16:18], "little") != 3):
-            return "ELF_HEADER_UNSUPPORTED"
+            return ("ELF_HEADER_UNSUPPORTED", "NOT_TESTED", 0)
         expected = {"x86_64": 62, "aarch64": 183}[arch]
         if int.from_bytes(header[18:20], "little") != expected:
-            return "ELF_ARCH_MISMATCH"
-        return "ELF64_ARCH_MATCH_HEADER_ONLY"
+            return ("ELF_ARCH_MISMATCH", "NOT_TESTED", 0)
+        try:
+            needed_count = inspect_needed(fd, before.st_size, header)
+            dynamic_status = "DT_NEEDED_REFERENCES_PARSED_ONLY"
+        except (_ELFDynamicInvalid, OSError, ValueError, OverflowError):
+            needed_count = 0
+            dynamic_status = "DYNAMIC_METADATA_UNVERIFIABLE"
+        after = os.fstat(fd)
+        identity = lambda v: (v.st_dev, v.st_ino, v.st_size, v.st_mtime_ns, v.st_ctime_ns)
+        if identity(before) != identity(after):
+            return ("ELF_FILE_UNVERIFIABLE", "NOT_TESTED", 0)
+        return ("ELF64_ARCH_MATCH_HEADER_ONLY", dynamic_status, needed_count)
     except (OSError, _UnsafeEvidence, ValueError, TypeError):
-        return "ELF_FILE_UNVERIFIABLE"
+        return ("ELF_FILE_UNVERIFIABLE", "NOT_TESTED", 0)
     finally:
         if fd >= 0:
             os.close(fd)
         if basefd >= 0:
             os.close(basefd)
-
 
 
 def observe(*, os_paths: tuple[Path, ...] = OS_RELEASE_FILES,
@@ -169,7 +175,9 @@ def observe(*, os_paths: tuple[Path, ...] = OS_RELEASE_FILES,
         "architecture": "UNVERIFIED", "python_version": "UNVERIFIED",
         "python_abi": "UNVERIFIED", "libc_family": "UNVERIFIED",
         "libc_version": "UNVERIFIED", "odbc18": "CONFIG_UNVERIFIABLE",
-        "odbc_binary_header": "UNVERIFIED", "odbc_binary_load": "NOT_TESTED", "wheelhouse_compatibility": "NOT_TESTED",
+        "odbc_binary_header": "UNVERIFIED", "odbc_dynamic_needed": "NOT_TESTED",
+        "odbc_dynamic_needed_count": 0, "odbc_dependency_resolution": "NOT_TESTED",
+        "odbc_binary_load": "NOT_TESTED", "wheelhouse_compatibility": "NOT_TESTED",
         "full_live": "NOT_TESTED", "production_release_ready": False,
     }
     if platform.system() != "Linux":
@@ -199,7 +207,8 @@ def observe(*, os_paths: tuple[Path, ...] = OS_RELEASE_FILES,
         driver_root = ODBC_DRIVER_ROOT
     result["odbc18"], driver = _odbc_driver_entry(odbc_path)
     if result["odbc18"] == "REGISTERED_CONFIG_ONLY":
-        result["odbc_binary_header"] = _odbc_elf_header(
+        (result["odbc_binary_header"], result["odbc_dynamic_needed"],
+         result["odbc_dynamic_needed_count"]) = _odbc_elf_evidence(
             driver, result["architecture"], driver_root=driver_root)
     if all(result[k] != "UNVERIFIED" for k in (
             "os_id", "os_version_id", "architecture", "python_version",
@@ -208,9 +217,11 @@ def observe(*, os_paths: tuple[Path, ...] = OS_RELEASE_FILES,
             result["reason"] = "odbc18_registration_unverified"
         elif result["odbc_binary_header"] != "ELF64_ARCH_MATCH_HEADER_ONLY":
             result["reason"] = "odbc18_elf_header_unverified"
+        elif result["odbc_dynamic_needed"] != "DT_NEEDED_REFERENCES_PARSED_ONLY":
+            result["reason"] = "odbc18_dynamic_metadata_unverifiable"
         else:
             result["status"] = "PASS_PARTIAL"
-            result["reason"] = "linux_python_target_odbc_elf_header_observed"
+            result["reason"] = "linux_python_target_odbc_dynamic_metadata_observed"
     return result
 
 
@@ -224,7 +235,9 @@ def main(argv: list[str] | None = None) -> int:
         result = {
             "schema": SCHEMA, "status": "INCOMPLETE",
             "reason": "target_identity_unverifiable", "scope": SCOPE,
-            "odbc_binary_header": "UNVERIFIED", "odbc_binary_load": "NOT_TESTED",
+            "odbc_binary_header": "UNVERIFIED",
+            "odbc_dynamic_needed": "NOT_TESTED", "odbc_dynamic_needed_count": 0,
+            "odbc_dependency_resolution": "NOT_TESTED", "odbc_binary_load": "NOT_TESTED",
             "wheelhouse_compatibility": "NOT_TESTED",
             "full_live": "NOT_TESTED", "production_release_ready": False,
         }
