@@ -217,31 +217,33 @@ def _verify_record(wheel: zipfile.ZipFile,
         record_raw = stream.read(MAX_RECORD_BYTES + 1)
     if len(record_raw) > MAX_RECORD_BYTES:
         raise _WheelStructureInvalid
+    seen: set[str] = set()
+    listed: dict[str, tuple[str, str]] = {}
+    row_count = 0
     try:
         reader = csv.reader(io.StringIO(
             record_raw.decode("utf-8"), newline=""), strict=True)
-        rows = list(reader)
+        # csv.reader is lazy. Never materialize potentially millions of
+        # tiny/blank rows before enforcing the member and row shape bounds.
+        for row in reader:
+            row_count += 1
+            if (row_count > len(required_entries)
+                    or row_count > MAX_ZIP_MEMBERS or len(row) != 3):
+                raise _WheelStructureInvalid
+            path, digest, length = row
+            if path not in required_entries or path in seen:
+                raise _WheelStructureInvalid
+            seen.add(path)
+            listed[path] = (digest, length)
+            if path == record_path:
+                if digest or length:
+                    raise _WheelStructureInvalid
+            elif (not digest.startswith("sha256=")
+                  or not re.fullmatch(r"[A-Za-z0-9_-]{43}", digest[7:])
+                  or length != str(file_entries[path].file_size)):
+                raise _WheelStructureInvalid
     except (UnicodeError, csv.Error, ValueError) as exc:
         raise _WheelStructureInvalid from exc
-    if len(rows) != len(required_entries) or len(rows) > MAX_ZIP_MEMBERS:
-        raise _WheelStructureInvalid
-    seen: set[str] = set()
-    listed: dict[str, tuple[str, str]] = {}
-    for row in rows:
-        if len(row) != 3:
-            raise _WheelStructureInvalid
-        path, digest, length = row
-        if path not in required_entries or path in seen:
-            raise _WheelStructureInvalid
-        seen.add(path)
-        listed[path] = (digest, length)
-        if path == record_path:
-            if digest or length:
-                raise _WheelStructureInvalid
-        elif (not digest.startswith("sha256=")
-              or not re.fullmatch(r"[A-Za-z0-9_-]{43}", digest[7:])
-              or length != str(file_entries[path].file_size)):
-            raise _WheelStructureInvalid
     if seen != required_entries:
         raise _WheelStructureInvalid
 
