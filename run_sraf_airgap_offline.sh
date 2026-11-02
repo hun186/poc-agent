@@ -3,14 +3,14 @@
 set -euo pipefail
 
 if [[ "$#" -gt 1 || ( "$#" -eq 1 && -z "$1" ) ]]; then
-  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform]' >&2
+  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps]' >&2
   exit 2
 fi
 MODE="${1:-quick}"
 case "$MODE" in
-  quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform) ;;
+  quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps) ;;
   --help|-h)
-    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform]'
+    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps]'
     exit 0
     ;;
   *)
@@ -46,6 +46,16 @@ case "$MODE" in
       exit 2
     fi
     exec "$PYTHON_BIN" tools/sraf_airgap_off2_wheel_files.py --expected-manifest-sha256 "$PIN"
+    ;;
+  runtime-deps)
+    # Inspect only selected Python interpreter install metadata, never import
+    # target packages, run pip, connect to services or write an inventory.
+    PYTHON_BIN="${SRAF_PYTHON:-python}"
+    if ! command -v -- "$PYTHON_BIN" >/dev/null 2>&1; then
+      printf '%s\n' '{"schema":"sraf_off2_direct_runtime_inventory_v1","status":"INCOMPLETE","reason":"application_python_unavailable","scope":"INSTALLED_DIRECT_METADATA_ONLY_NOT_VERSION_SOLVER_OR_WHEELHOUSE_ATTESTATION","transitive_closure":"NOT_TESTED","wheelhouse_compatibility":"NOT_TESTED","production_release_ready":false}'
+      exit 2
+    fi
+    exec "$PYTHON_BIN" tools/sraf_airgap_off2_runtime_deps.py
     ;;
   target-platform)
     # No credentials, network, external binaries or environment mutation.
