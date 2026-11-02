@@ -119,6 +119,24 @@ def test_wheel_files_missing_interpreter_blocks_before_python(fake_deployment):
     assert not capture.exists()
 
 
+def test_target_platform_runs_only_application_python_without_network(fake_deployment):
+    script, root, capture, env = fake_deployment
+    result = _exec(script, env, "target-platform")
+    assert result.returncode == 17
+    assert capture.read_text().splitlines() == [
+        "python", str(root), "tools/sraf_airgap_off2_linux_target.py",
+    ]
+
+
+def test_target_platform_missing_python_is_incomplete_before_exec(fake_deployment):
+    script, _, capture, env = fake_deployment
+    env["SRAF_PYTHON"] = "/not-present/python"
+    result = _exec(script, env, "target-platform")
+    assert result.returncode == 2
+    assert "application_python_unavailable" in result.stdout
+    assert not capture.exists()
+
+
 def test_release_policy_is_only_local_readonly_advisory_python(fake_deployment):
     script, root, capture, env = fake_deployment
     result = _exec(script, env, "release-policy")
@@ -159,7 +177,8 @@ def test_release_policy_missing_interpreter_fails_before_exec(fake_deployment):
     ("--live-report",), ("quick", "--live-report"), ("quick", "diagnose"),
     ("release-files", "--no-network"), ("release-policy", "--live-report"),
     ("release-policy", "--probe-sql-read"),
-    ("release-deps", "--live-report"), ("release-deps", "--probe-sql-read"), ("wheel-files", "--no-network"),
+    ("release-deps", "--live-report"), ("release-deps", "--probe-sql-read"), ("target-platform", "--live-report"),
+    ("target-platform", "--probe-sql-read"), ("wheel-files", "--no-network"),
     ("--probe-sql-read",), ("",),
 ])
 def test_forbidden_modes_and_extra_arguments_never_execute(
@@ -187,7 +206,7 @@ def test_help_does_not_run_any_probe(fake_deployment):
     script, _, capture, env = fake_deployment
     result = _exec(script, env, "--help")
     assert result.returncode == 0
-    assert "quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files" in result.stdout
+    assert "quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform" in result.stdout
     assert not capture.exists()
 
 
