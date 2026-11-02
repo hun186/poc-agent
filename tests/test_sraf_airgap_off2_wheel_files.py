@@ -27,10 +27,10 @@ def _wheel_bytes(*, metadata_name: str = "example-pkg",
         z.writestr("example_pkg/__init__.py", "")
         if include_wheel:
             z.writestr(f"{DIST_INFO}/WHEEL",
-                       "Wheel-Version: 1.0\\nGenerator: synthetic-test\\nRoot-Is-Purelib: true\\nTag: py3-none-any\\n")
+                       "Wheel-Version: 1.0\nGenerator: synthetic-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n")
         if include_metadata:
             z.writestr(f"{DIST_INFO}/METADATA",
-                       f"Metadata-Version: 2.1\\nName: {metadata_name}\\nVersion: 1.0\\n")
+                       f"Metadata-Version: 2.1\nName: {metadata_name}\nVersion: 1.0\n")
         if extra_name:
             z.writestr(extra_name, "UNTRUSTED")
     return content.getvalue()
@@ -41,7 +41,7 @@ def _repin_wheel(root: Path, data: bytes) -> str:
     manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
     manifest["wheels"][0]["size"] = len(data)
     manifest["wheels"][0]["sha256"] = hashlib.sha256(data).hexdigest()
-    raw = (json.dumps(manifest, sort_keys=True) + "\\n").encode()
+    raw = (json.dumps(manifest, sort_keys=True) + "\n").encode()
     (root / MANIFEST).write_bytes(raw)
     return hashlib.sha256(raw).hexdigest()
 
@@ -95,11 +95,11 @@ def test_duplicate_archive_member_rejected(tmp_path):
     _fixture(tmp_path)
     content = BytesIO()
     with zipfile.ZipFile(content, "w") as z:
-        z.writestr(f"{DIST_INFO}/WHEEL", "Wheel-Version: 1.0\\n")
+        z.writestr(f"{DIST_INFO}/WHEEL", "Wheel-Version: 1.0\n")
         z.writestr(f"{DIST_INFO}/METADATA",
-                   "Metadata-Version: 2.1\\nName: example-pkg\\nVersion: 1.0\\n")
+                   "Metadata-Version: 2.1\nName: example-pkg\nVersion: 1.0\n")
         with pytest.warns(UserWarning):
-            z.writestr(f"{DIST_INFO}/WHEEL", "Wheel-Version: 1.0\\n")
+            z.writestr(f"{DIST_INFO}/WHEEL", "Wheel-Version: 1.0\n")
     pin = _repin_wheel(tmp_path, content.getvalue())
     assert observe(tmp_path, pin)["reason"] == "wheel_archive_structure_invalid"
 
