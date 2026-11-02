@@ -160,7 +160,7 @@ def _odbc_elf_header(driver_path: str | None, arch: str,
 
 def observe(*, os_paths: tuple[Path, ...] = OS_RELEASE_FILES,
             odbc_path: Path = ODBC_INST_FILE,
-            driver_root: Path = ODBC_DRIVER_ROOT) -> dict[str, object]:
+            driver_root: Path | None = None) -> dict[str, object]:
     """Fixed, sanitized and explicitly partial local target observations."""
     result: dict[str, object] = {
         "schema": SCHEMA, "status": "INCOMPLETE",
@@ -195,6 +195,8 @@ def observe(*, os_paths: tuple[Path, ...] = OS_RELEASE_FILES,
         result["libc_family"] = libc_family
         result["libc_version"] = libc_version
 
+    if driver_root is None:
+        driver_root = ODBC_DRIVER_ROOT
     result["odbc18"], driver = _odbc_driver_entry(odbc_path)
     if result["odbc18"] == "REGISTERED_CONFIG_ONLY":
         result["odbc_binary_header"] = _odbc_elf_header(
