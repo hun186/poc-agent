@@ -19,6 +19,7 @@ DIST_INFO = "example_pkg-1.0.dist-info"
 def _wheel_bytes(*, metadata_name: str = "example-pkg",
                  include_wheel: bool = True,
                  include_metadata: bool = True,
+                 folded_license: bool = False,
                  extra_name: str | None = None) -> bytes:
     # A tiny *synthetic* structurally valid Wheel archive for parser tests;
     # this is NOT a genuine package, release, dependency or live acceptance.
@@ -29,8 +30,10 @@ def _wheel_bytes(*, metadata_name: str = "example-pkg",
             z.writestr(f"{DIST_INFO}/WHEEL",
                        "Wheel-Version: 1.0\nGenerator: synthetic-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n")
         if include_metadata:
-            z.writestr(f"{DIST_INFO}/METADATA",
-                       f"Metadata-Version: 2.1\nName: {metadata_name}\nVersion: 1.0\n")
+            headers = f"Metadata-Version: 2.1\nName: {metadata_name}\nVersion: 1.0\n"
+            if folded_license:
+                headers += "License: BSD style\n continuation is valid\n"
+            z.writestr(f"{DIST_INFO}/METADATA", headers)
         if extra_name:
             z.writestr(extra_name, "UNTRUSTED")
     return content.getvalue()
@@ -101,6 +104,52 @@ def test_duplicate_archive_member_rejected(tmp_path):
         with pytest.warns(UserWarning):
             z.writestr(f"{DIST_INFO}/WHEEL", "Wheel-Version: 1.0\n")
     pin = _repin_wheel(tmp_path, content.getvalue())
+    assert observe(tmp_path, pin)["reason"] == "wheel_archive_structure_invalid"
+
+
+
+def test_legitimate_folded_metadata_header_remains_accepted(tmp_path):
+    _fixture(tmp_path)
+    pin = _repin_wheel(tmp_path, _wheel_bytes(folded_license=True))
+    assert observe(tmp_path, pin)["status"] == "PASS_PARTIAL"
+
+
+def test_excess_central_directory_rejected_before_zipfile_allocation(
+        tmp_path, monkeypatch):
+    _fixture(tmp_path)
+    raw = BytesIO()
+    with zipfile.ZipFile(raw, "w", compression=zipfile.ZIP_STORED) as archive:
+        for i in range(8200):
+            archive.writestr(f"synthetic/{i:05d}.txt", b"")
+    pin = _repin_wheel(tmp_path, raw.getvalue())
+    from tools import sraf_airgap_off2_wheel_files as tool
+
+    def should_not_construct_archive(*args, **kwargs):
+        raise AssertionError("ZipFile called before enforcing central-directory member limit")
+
+    monkeypatch.setattr(tool.zipfile, "ZipFile", should_not_construct_archive)
+    assert observe(tmp_path, pin) == {
+        "status": "INCOMPLETE", "reason": "wheel_archive_structure_invalid",
+        "wheels_checked": 1,
+    }
+
+
+def test_forged_eocd_member_count_rejected_before_zipfile(tmp_path, monkeypatch):
+    _fixture(tmp_path)
+    raw = bytearray(_wheel_bytes())
+    pos = raw.rfind(b"PK\x05\x06")
+    assert pos != -1
+    # EOCD total entries: offset 10. A forged count cannot permit parser allocation.
+    import struct
+    struct.pack_into("<H", raw, pos + 10, 1)
+    pin = _repin_wheel(tmp_path, bytes(raw))
+    from tools import sraf_airgap_off2_wheel_files as tool
+    monkeypatch.setattr(
+        tool.zipfile, "ZipFile",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("ZipFile constructor must not run for inconsistent EOCD")
+        ),
+    )
     assert observe(tmp_path, pin)["reason"] == "wheel_archive_structure_invalid"
 
 
