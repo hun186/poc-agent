@@ -210,8 +210,8 @@ def _verify_record(wheel: zipfile.ZipFile,
     required_entries = set(file_entries) - optional_signature_files
     declared_total = sum(info.file_size for path, info in file_entries.items()
                          if path != record_path and path not in optional_signature_files)
-    if (declared_total > MAX_RECORD_VERIFY_UNCOMPRESSED_BYTES
-            or declared_total > remaining_budget):
+    if (declared_total + record_info.file_size > MAX_RECORD_VERIFY_UNCOMPRESSED_BYTES
+            or declared_total + record_info.file_size > remaining_budget):
         raise _WheelStructureInvalid
     with wheel.open(record_info, "r") as stream:
         record_raw = stream.read(MAX_RECORD_BYTES + 1)
@@ -245,7 +245,7 @@ def _verify_record(wheel: zipfile.ZipFile,
     if seen != required_entries:
         raise _WheelStructureInvalid
 
-    total_read = 0
+    total_read = len(record_raw)
     for path, (record_digest, _) in listed.items():
         if path == record_path:
             continue
