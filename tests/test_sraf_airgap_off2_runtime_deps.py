@@ -73,8 +73,8 @@ def test_missing_distribution_is_incomplete(inventory):
 def test_missing_positions_follow_noncomment_requirement_ordinals(inventory):
     root, site, fastapi, _, pyodbc = inventory
     (root / "requirements.txt").write_text(
-        "# first comment\\n\\nFastAPI>=0.115.0\\n"
-        "  # another comment\\npython-docx==1.1.2\\npyodbc>=5.0.0\\n",
+        "# first comment\n\nFastAPI>=0.115.0\n"
+        "  # another comment\npython-docx==1.1.2\npyodbc>=5.0.0\n",
         encoding="utf-8")
     (fastapi / "METADATA").unlink()
     fastapi.rmdir()
