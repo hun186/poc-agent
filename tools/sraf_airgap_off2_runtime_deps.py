@@ -138,13 +138,17 @@ def _read_metadata(directory_fd: int, relative: str) -> tuple[str, str]:
     if len(header) > _MAX_METADATA_HEADER_LINES:
         raise _InvalidInventory
     found: dict[str, str] = {}
+    previous_key: str | None = None
     for item in header:
         if item.startswith((" ", "\t")):
-            # Folded fields are not recognized, nor silently attached to Name.
-            if "Name" in found or "Version" in found:
+            # Safe continuation of irrelevant metadata only. A folded Name/
+            # Version/Metadata-Version must not become a truncated accepted ID.
+            if previous_key is None or previous_key in (
+                    "Name", "Version", "Metadata-Version"):
                 raise _InvalidInventory
             continue
         key, separator, value = item.partition(":")
+        previous_key = key
         if separator != ":":
             raise _InvalidInventory
         if key in ("Metadata-Version", "Name", "Version"):
