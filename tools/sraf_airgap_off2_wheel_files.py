@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import csv
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -30,6 +33,8 @@ MAX_ZIP_MEMBERS = 8192
 MAX_ZIP_CENTRAL_DIRECTORY_BYTES = 4 * 1024 * 1024
 MAX_ZIP_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_METADATA_BYTES = 64 * 1024
+MAX_RECORD_BYTES = 2 * 1024 * 1024
+MAX_RECORD_VERIFY_UNCOMPRESSED_BYTES = 256 * 1024 * 1024
 _HASH_CHUNK = 64 * 1024
 SCOPE = "PINNED_WHEEL_BYTES_ONLY_NOT_DEPENDENCY_OR_AIRGAP_ATTESTATION"
 _SHA = re.compile(r"[0-9a-f]{64}")
@@ -181,6 +186,79 @@ def _preflight_zip_directory(fd: int) -> None:
         raise _WheelStructureInvalid
 
 
+def _verify_record(wheel: zipfile.ZipFile,
+                   names: dict[str, zipfile.ZipInfo],
+                   distinfo: str) -> None:
+    """Bounded read-only RECORD coverage and actual uncompressed SHA-256.
+
+    Do not execute, install, extract to disk or trust metadata alone.  Small
+    archives only; unsupported large/unusual wheels fail closed as INCOMPLETE.
+    """
+    record_path = f"{distinfo}/RECORD"
+    record_info = names.get(record_path.casefold())
+    if record_info is None or record_info.filename != record_path:
+        raise _WheelStructureInvalid
+    if record_info.file_size > MAX_RECORD_BYTES:
+        raise _WheelStructureInvalid
+
+    file_entries = {info.filename: info for info in names.values()
+                    if not info.is_dir()}
+    if (sum(info.file_size for info in file_entries.values())
+            > MAX_RECORD_VERIFY_UNCOMPRESSED_BYTES):
+        raise _WheelStructureInvalid
+    with wheel.open(record_info, "r") as stream:
+        record_raw = stream.read(MAX_RECORD_BYTES + 1)
+    if len(record_raw) > MAX_RECORD_BYTES:
+        raise _WheelStructureInvalid
+    try:
+        reader = csv.reader(io.StringIO(
+            record_raw.decode("utf-8"), newline=""), strict=True)
+        rows = list(reader)
+    except (UnicodeError, csv.Error, ValueError) as exc:
+        raise _WheelStructureInvalid from exc
+    if len(rows) != len(file_entries) or len(rows) > MAX_ZIP_MEMBERS:
+        raise _WheelStructureInvalid
+    seen: set[str] = set()
+    listed: dict[str, tuple[str, str]] = {}
+    for row in rows:
+        if len(row) != 3:
+            raise _WheelStructureInvalid
+        path, digest, length = row
+        if path not in file_entries or path in seen:
+            raise _WheelStructureInvalid
+        seen.add(path)
+        listed[path] = (digest, length)
+        if path == record_path:
+            if digest or length:
+                raise _WheelStructureInvalid
+        elif (not digest.startswith("sha256=")
+              or not re.fullmatch(r"[A-Za-z0-9_-]{43}", digest[7:])
+              or length != str(file_entries[path].file_size)):
+            raise _WheelStructureInvalid
+    if seen != set(file_entries):
+        raise _WheelStructureInvalid
+
+    total_read = 0
+    for path, (record_digest, _) in listed.items():
+        if path == record_path:
+            continue
+        actual = hashlib.sha256()
+        with wheel.open(file_entries[path], "r") as stream:
+            while True:
+                chunk = stream.read(min(
+                    _HASH_CHUNK,
+                    MAX_RECORD_VERIFY_UNCOMPRESSED_BYTES + 1 - total_read))
+                if not chunk:
+                    break
+                total_read += len(chunk)
+                if total_read > MAX_RECORD_VERIFY_UNCOMPRESSED_BYTES:
+                    raise _WheelStructureInvalid
+                actual.update(chunk)
+        encoded = base64.urlsafe_b64encode(actual.digest()).rstrip(b"=").decode("ascii")
+        if record_digest != "sha256=" + encoded:
+            raise _WheelStructureInvalid
+
+
 def _inspect_zip(fd: int, filename: str) -> None:
     # This is intentionally a conservative PEP 427 *structure* subset.
     # It does not parse/resolve Requires-Dist or execute/decompress payloads.
@@ -241,6 +319,8 @@ def _inspect_zip(fd: int, filename: str) -> None:
                     or meta_fields.get("version") != parts[1]
                     or not wheel_fields.get("wheel-version", "").startswith("1.")):
                 raise _WheelStructureInvalid
+
+            _verify_record(wheel, names, distinfo)
 
 
 def _verify_one_wheel(wheel_dirfd: int, item: dict[str, object]) -> str:
@@ -304,7 +384,7 @@ def observe(root: Path, expected_manifest_sha256: str | None) -> dict[str, objec
                 return _result("FAIL", "wheel_file_mismatch", checked)
             if outcome == "INCOMPLETE":
                 return _result("INCOMPLETE", "wheel_archive_structure_invalid", checked)
-        return _result("PASS_PARTIAL", "pinned_wheel_bytes_and_basic_metadata_only", checked)
+        return _result("PASS_PARTIAL", "pinned_wheel_bytes_metadata_record_only", checked)
     except (_InvalidWheelInventory, _UnsafeEvidence, OSError, ValueError, TypeError,
             UnicodeError, RecursionError, AssertionError):
         return _result("INCOMPLETE", "wheel_inventory_or_files_unverifiable", checked)
