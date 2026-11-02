@@ -24,7 +24,8 @@ def _wheel_bytes(*, metadata_name: str = "example-pkg",
                  include_metadata: bool = True,
                  folded_license: bool = False,
                  extra_name: str | None = None,
-                 record_case: str = "valid") -> bytes:
+                 record_case: str = "valid",
+                 include_legacy_signature: bool = False) -> bytes:
     # Synthetic Wheel ZIP only: tests do NOT attest a real dependency bundle.
     entries: list[tuple[str, bytes]] = [("example_pkg/__init__.py", b"")]
     if include_wheel:
@@ -38,10 +39,14 @@ def _wheel_bytes(*, metadata_name: str = "example-pkg",
         entries.append((f"{DIST_INFO}/METADATA", headers.encode("utf-8")))
     if extra_name:
         entries.append((extra_name, b"UNTRUSTED"))
+    if include_legacy_signature:
+        entries.append((f"{DIST_INFO}/RECORD.jws", b"UNVERIFIED_LEGACY_SIGNATURE"))
 
     out = io.StringIO(newline="")
     writer = csv.writer(out, lineterminator="\n")
     for i, (name, data) in enumerate(entries):
+        if name == f"{DIST_INFO}/RECORD.jws":
+            continue
         if record_case == "missing_entry" and i == 0:
             continue
         digest = "sha256=" + base64.urlsafe_b64encode(
@@ -235,6 +240,40 @@ def test_record_csv_bad_or_duplicate_path_is_rejected(tmp_path):
     for case in ("bad_hash", "extra_row", "record_hash"):
         pin = _repin_wheel(tmp_path, _wheel_bytes(record_case=case))
         assert observe(tmp_path, pin)["status"] == "INCOMPLETE"
+
+
+
+def test_legacy_signature_sidecar_may_be_omitted_from_record(tmp_path):
+    _fixture(tmp_path)
+    pin = _repin_wheel(tmp_path, _wheel_bytes(include_legacy_signature=True))
+    # Structural acceptance is not trust in the signature's authenticity.
+    assert observe(tmp_path, pin)["status"] == "PASS_PARTIAL"
+
+
+def test_total_decoded_budget_spans_all_wheels(tmp_path, monkeypatch):
+    _fixture(tmp_path)
+    other = "example_pkg-1.0-py2-none-any.whl"
+    data = _wheel_bytes()
+    (tmp_path / "wheelhouse" / other).write_bytes(data)
+    path = tmp_path / MANIFEST
+    payload = json.loads(path.read_text())
+    payload["wheels"].append({
+        "filename": other, "sha256": hashlib.sha256(data).hexdigest(),
+        "size": len(data),
+    })
+    manifest_raw = (json.dumps(payload, sort_keys=True) + "\n").encode()
+    path.write_bytes(manifest_raw)
+    pin = hashlib.sha256(manifest_raw).hexdigest()
+    with zipfile.ZipFile(BytesIO(data)) as z:
+        required_bytes = sum(i.file_size for i in z.infolist()
+                             if i.filename != f"{DIST_INFO}/RECORD.jws")
+    from tools import sraf_airgap_off2_wheel_files as tool
+    monkeypatch.setattr(tool, "MAX_TOTAL_RECORD_VERIFY_UNCOMPRESSED_BYTES",
+                        required_bytes + 1)
+    assert observe(tmp_path, pin) == {
+        "status": "INCOMPLETE", "reason": "wheel_archive_structure_invalid",
+        "wheels_checked": 2,
+    }
 
 
 def test_missing_or_invalid_external_pin_never_opens_trust(tmp_path):
