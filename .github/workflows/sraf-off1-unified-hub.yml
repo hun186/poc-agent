@@ -24,7 +24,7 @@ jobs:
           python -m pip install pytest
       - name: Compile and inspect offline operator entry
         run: |
-          python -m compileall -q tools/sraf_airgap_off1_hub.py tools/sraf_airgap_off1_es_hub.py tools/sraf_airgap_off1_sql_hub.py tools/sraf_airgap_off1_text_report.py tools/sraf_airgap_off2_policy_coverage.py
+          python -m compileall -q tools/sraf_airgap_off1_hub.py tools/sraf_airgap_off1_es_hub.py tools/sraf_airgap_off1_sql_hub.py tools/sraf_airgap_off1_text_report.py tools/sraf_airgap_off2_policy_coverage.py tools/sraf_airgap_off2_requirements_audit.py
           python tools/sraf_airgap_off1_hub.py --help
           bash -n run_sraf_airgap_off1_diagnose.sh
           bash -n run_sraf_airgap_offline.sh
