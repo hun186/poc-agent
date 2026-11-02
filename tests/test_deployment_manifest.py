@@ -31,6 +31,7 @@ def test_policy_declares_expected_runtime_and_release_tool_scope():
     assert "run_sra_api.sh" in policy["managed_files"]
     assert "tools/deployment_manifest.py" in policy["release_tool_files"]
     assert "tools/sraf_airgap_off2_requirements_audit.py" in policy["release_tool_files"]
+    assert "tools/sraf_airgap_off2_wheel_files.py" in policy["release_tool_files"]
     from tools.sraf_airgap_off2_policy_coverage import REQUIRED_OPERATOR_FILES
     assert set(REQUIRED_OPERATOR_FILES) <= (
         set(policy["managed_files"]) | set(policy["release_tool_files"])

@@ -34,3 +34,6 @@
 
 
 - **2026-11-02 OFF-2 dependency-pin gap:** root `requirements.txt` still uses broad `>=` constraints and is not a reproducible lock. Proposed `release-deps` direct-only no-network audit intentionally returns INCOMPLETE for this state. Even all `==` direct requirements only reach PASS_PARTIAL; transitive pins, wheel hashes, target Python/OS/ABI, pyodbc/ODBC native libs, models, isolated install and signed release authority are NOT TESTED. Never auto-pin guessed versions or treat a local hash as release trust.
+
+
+- **2026-11-02 OFF-2 wheel manifest pin candidate (not full acceptance):** only a separately trusted SHA-256 can authorize comparing local `SRAF_WHEELHOUSE_MANIFEST.json` and listed Wheel bytes; self-hash is not trusted. Strict no-follow bounded scans reject additions and links. Output PASS_PARTIAL cannot establish Wheel ZIP validity, transitively required versions, target architecture/native ODBC, signed upstream provenance, isolated pip installation or OFF-3/OFF-5. Current project contains no complete independently trusted Wheelhouse package; expected operator result without pin is INCOMPLETE.

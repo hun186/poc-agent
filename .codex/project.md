@@ -2,6 +2,9 @@
 
 ## Current Focus
 
+- **2026-11-02 OFF-2 wheel-byte verifier candidate (CI/Review pending):** after #356 merged at `dfe816da1994de908258438be272f7c3a1f14771`, add explicit `wheel-files` mode requiring `SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256` from independent review. Local nofollow dirfd validates a bounded `SRAF_WHEELHOUSE_MANIFEST.json` plus exact `wheelhouse/` wheel filenames/bytes/sizes, rejects extras/links and never installs/unpacks/downloads. Even PASS_PARTIAL is listed Wheel bytes only; no transitive closure, lock, signatures, platform ABI, ODBC, models, live airgap/restore. Hosted CI and formal exact-head Codex review PENDING.
+
+
 - **2026-11-02 OFF-2 direct-requirement lock diagnostic candidate:** after #355 merged into `44702989719ff2a63663e06407b456dcf96ef1c5`, add a bounded no-follow, zero-network/no-write checker for direct `requirements.txt` exact pins and an explicit `release-deps` root launcher mode. Existing >= dependencies must report INCOMPLETE; even an all-== set is only PASS_PARTIAL without transitive wheelhouse/native ODBC/platform lock. Add synthetic safety/dispatch CI and explicitly select the new release tool. Hosted exact-head and formal Codex review PENDING; no private Linux FULL_LIVE or signed release claimed.
 
 

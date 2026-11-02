@@ -3,14 +3,14 @@
 set -euo pipefail
 
 if [[ "$#" -gt 1 || ( "$#" -eq 1 && -z "$1" ) ]]; then
-  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps]' >&2
+  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files]' >&2
   exit 2
 fi
 MODE="${1:-quick}"
 case "$MODE" in
-  quick|diagnose|no-network|release-files|release-policy|release-deps) ;;
+  quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files) ;;
   --help|-h)
-    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps]'
+    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files]'
     exit 0
     ;;
   *)
@@ -32,6 +32,20 @@ case "$MODE" in
     ;;
   release-files)
     exec bash "$PROJECT_ROOT/run_sraf_airgap_off2_verify.sh"
+    ;;
+  wheel-files)
+    # External digest is mandatory and cannot be minted from local bytes.
+    PIN="${SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256:-}"
+    if [[ ! "$PIN" =~ ^[0-9a-f]{64}$ ]]; then
+      printf '%s\n' 'SRAF_OFF2_WHEELS=INCOMPLETE reason=trusted_wheel_inventory_digest_not_supplied wheels_checked=0 scope=PINNED_WHEEL_BYTES_ONLY_NOT_DEPENDENCY_OR_AIRGAP_ATTESTATION'
+      exit 2
+    fi
+    PYTHON_BIN="${SRAF_PYTHON:-python}"
+    if ! command -v -- "$PYTHON_BIN" >/dev/null 2>&1; then
+      printf '%s\n' 'SRAF_OFF2_WHEELS=INCOMPLETE reason=application_python_unavailable wheels_checked=0 scope=PINNED_WHEEL_BYTES_ONLY_NOT_DEPENDENCY_OR_AIRGAP_ATTESTATION'
+      exit 2
+    fi
+    exec "$PYTHON_BIN" tools/sraf_airgap_off2_wheel_files.py --expected-manifest-sha256 "$PIN"
     ;;
   release-policy|release-deps)
     # OFF-2 local-only advisory modes. Neither may install, sign,
