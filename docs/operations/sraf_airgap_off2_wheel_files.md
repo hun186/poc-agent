@@ -32,7 +32,7 @@ SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256=<trusted-64-char-lowercase-sha256> bash 
 - 正確 Pin 的 Wheel 是任意位元組、壞 ZIP、缺少／偽造基本 Metadata 或 ZIP 結構異常：`INCOMPLETE / wheel_archive_structure_invalid`。
 - 全部列管檔案的位元組與基本 ZIP／Metadata 結構核對一致：僅 `PASS_PARTIAL / pinned_wheel_bytes_and_basic_metadata_only`。
 
-此基本驗證容許標準 `METADATA` 折行 Header（例如多行 License），但對超限中央目錄、無法預先確認條目數量、ZIP64 或多磁碟 ZIP 採保守的 `INCOMPLETE`，不先分配大量 `ZipInfo` 物件後才拒絕。
+此基本驗證容許標準 `METADATA` 折行 Header（例如多行 License），但對超限中央目錄、無法預先確認條目數量、ZIP64 或多磁碟 ZIP 採保守的 `INCOMPLETE`；若 ZIP 註解內含另一個 EOCD Signature，因與 Python ZipFile 的「最後標記」解析規則可能造成歧義，也在任何 ZipInfo 配置之前拒絕，不先分配大量 `ZipInfo` 物件後才拒絕。
 
 **此工具不解開 Wheel 至磁碟、不執行程式碼、不調用 pip、不下載／安裝／修改資料，也不建立自我可信摘要。** 唯獨為核對基本封裝結構會有界地讀取／解壓兩個 ZIP 內的文字 Metadata（每項最多 64 KiB），不讀取或執行 Wheel payload。即使 `PASS_PARTIAL`，仍未檢驗所有 ZIP 內容的 CRC／完整 PEP 427 合規性、RECORD 紀錄、Requires-Dist transitive closure、平台／ABI／OS、版本衝突、ODBC 原生函式庫、模型權重、授權、來源簽章或離線可安裝性；同名既有檔案在本機並非可信來源。外部 Manifest 摘要是「需要獨立確立的信任錨」，單純 SHA-256 不等於公鑰簽章。
 
