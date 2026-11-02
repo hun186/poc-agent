@@ -137,19 +137,20 @@ def _preflight_zip_directory(fd: int) -> None:
     # ZIP64 and multi-disk features here (basic validation subset only).
     tail_size = min(size, 22 + 65535)
     tail = os.pread(fd, tail_size, size - tail_size)
+    # CPython zipfile._EndRecData selects the LAST EOCD signature from
+    # the final 65,557 bytes. Never skip it in favor of an earlier matching
+    # record: a second signature inside the ZIP comment could make our safe
+    # preflight and ZipFile parse different central directories.
     pos = tail.rfind(b"PK\x05\x06")
-    while pos >= 0:
-        if pos + 22 <= len(tail):
-            try:
-                (_, disk, directory_disk, on_disk, count, central_size,
-                 central_offset, comment_size) = struct.unpack_from(
-                    "<4s4H2LH", tail, pos)
-            except struct.error as exc:
-                raise _WheelStructureInvalid from exc
-            if pos + 22 + comment_size == len(tail):
-                break
-        pos = tail.rfind(b"PK\x05\x06", 0, pos)
-    if pos < 0:
+    if pos < 0 or pos + 22 > len(tail):
+        raise _WheelStructureInvalid
+    try:
+        (_, disk, directory_disk, on_disk, count, central_size,
+         central_offset, comment_size) = struct.unpack_from(
+            "<4s4H2LH", tail, pos)
+    except struct.error as exc:
+        raise _WheelStructureInvalid from exc
+    if pos + 22 + comment_size != len(tail):
         raise _WheelStructureInvalid
     eocd_start = size - tail_size + pos
     if (disk != 0 or directory_disk != 0 or on_disk != count
