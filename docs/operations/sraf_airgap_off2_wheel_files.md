@@ -3,8 +3,7 @@
 執行入口（需由受信任管道預先取得 Manifest 的 SHA-256）：
 
 ```bash
-SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256=<trusted-64-char-lowercase-sha256> \\
-  bash run_sraf_airgap_offline.sh wheel-files
+SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256=<trusted-64-char-lowercase-sha256> bash run_sraf_airgap_offline.sh wheel-files
 ```
 
 *上述摘要必須來自獨立、已審核的發行程序，不能在待驗證部署目錄直接計算後就當作可信值。*
