@@ -102,6 +102,18 @@ def test_pinned_but_invalid_inventory_not_accepted(tmp_path, change):
     }
 
 
+def test_duplicate_json_property_and_boolean_version_rejected(tmp_path):
+    _fixture(tmp_path)
+    path = tmp_path / MANIFEST
+    for raw in (
+        b'{"schema_version":1,"schema_version":1,"repository":"hun186/poc-agent","wheels":[]}',
+        b'{"schema_version":true,"repository":"hun186/poc-agent","wheels":[]}',
+    ):
+        path.write_bytes(raw)
+        pin = hashlib.sha256(raw).hexdigest()
+        assert observe(tmp_path, pin)["status"] == "INCOMPLETE"
+
+
 def test_manifest_symlink_not_followed(tmp_path):
     pin = _fixture(tmp_path)
     path = tmp_path / MANIFEST
