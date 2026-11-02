@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import zlib
 import zipfile
 import sys
 
@@ -138,7 +139,7 @@ def _inspect_zip(fd: int, filename: str) -> None:
             for info in entries:
                 name = info.filename
                 segments = name.rstrip("/").split("/")
-                if (not name or "\\\\" in name or "\\x00" in name
+                if (not name or "\\" in name or "\x00" in name
                         or name.startswith("/") or
                         any(x in {"", ".", ".."} for x in segments)
                         or (info.flag_bits & 1)
@@ -170,7 +171,7 @@ def _inspect_zip(fd: int, filename: str) -> None:
             meta_fields = _header_fields(metadata)
             wheel_fields = _header_fields(wheel_metadata)
             if (not meta_fields.get("metadata-version")
-                    or not re.fullmatch(r"[0-9]+\\.[0-9]+", meta_fields["metadata-version"])
+                    or not re.fullmatch(r"[0-9]+\.[0-9]+", meta_fields["metadata-version"])
                     or _package_key(meta_fields.get("name", "")) != _package_key(parts[0])
                     or meta_fields.get("version") != parts[1]
                     or not wheel_fields.get("wheel-version", "").startswith("1.")):
@@ -195,16 +196,19 @@ def _verify_one_wheel(wheel_dirfd: int, item: dict[str, object]) -> str:
                 raise _UnsafeEvidence
             hasher.update(chunk)
         match = total == item["size"] and hasher.hexdigest() == item["sha256"]
+        outcome = "PASS_PARTIAL" if match else "FAIL"
         if match:
             try:
                 _inspect_zip(fd, str(item["filename"]))
-            except (zipfile.BadZipFile, zipfile.LargeZipFile, _WheelStructureInvalid):
-                return "INCOMPLETE"
+            except (zipfile.BadZipFile, zipfile.LargeZipFile, _WheelStructureInvalid,
+                    zlib.error, EOFError, OSError, ValueError, RuntimeError,
+                    NotImplementedError):
+                outcome = "INCOMPLETE"
         after = os.fstat(fd)
         identity = lambda x: (x.st_dev, x.st_ino, x.st_size, x.st_mtime_ns, x.st_ctime_ns)
         if identity(before) != identity(after):
             raise _UnsafeEvidence
-        return "PASS_PARTIAL" if match else "FAIL"
+        return outcome
     finally:
         os.close(fd)
 
