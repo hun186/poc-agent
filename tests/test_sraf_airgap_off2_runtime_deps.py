@@ -115,6 +115,22 @@ def test_bounded_selected_metadata_fails_closed(inventory, tmp_path, kind):
     assert "private" not in json.dumps(value).lower()
 
 
+def test_safe_folded_unrelated_metadata_is_accepted(inventory):
+    root, site, fastapi, _, _ = inventory
+    (fastapi / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: fastapi\nVersion: 0.116.0\n"
+        "Description: multi-line narrative\n detail without identity change\n\n")
+    assert result(root, site)["status"] == "PASS_PARTIAL"
+
+
+def test_folded_identity_header_is_never_accepted(inventory):
+    root, site, fastapi, _, _ = inventory
+    (fastapi / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: fastapi\n extra identity bytes\n"
+        "Version: 0.116.0\n\n")
+    assert result(root, site)["reason"] == "installed_distribution_metadata_unverifiable"
+
+
 def test_unrelated_oversized_metadata_must_not_be_read(inventory):
     root, site, _, _, _ = inventory
     unrelated = add_dist(site, "unrelated", "9.9")
