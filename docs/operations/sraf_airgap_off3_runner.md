@@ -20,7 +20,7 @@ bash run_sraf_airgap_offline.sh release-deps
 | `diagnose` | `run_sraf_airgap_off1_diagnose.sh` | 既有唯讀 API／ES／LLM TCP 及本地 Worker 觀察；不登入、生成或寫 SQL；部分檢查不能視為 E2E |
 | `no-network` | `run_sraf_airgap_off1_diagnose.sh --no-network` | 完全不發起 HTTP/TCP 探針，保留本地資源與可見的 Worker /proc；連線項目正確地 SKIP/INCOMPLETE |
 | `release-files` | `run_sraf_airgap_off2_verify.sh` | 須另以 `SRAF_OFF2_TRUSTED_MANIFEST_SHA256` 提供外部可信 Manifest 摘要；只核對列管檔案 SHA-256，不能推論發行完整性、簽章、模型／wheelhouse |
-| `release-policy` | `tools/sraf_airgap_off2_policy_coverage.py` | 本機唯讀核對九個最低必要入口是否被發行政策明確列管；目前有缺口而回報 `INCOMPLETE`，只有選擇齊全才回 `PASS_PARTIAL`，**不**驗證簽章、Hash、wheelhouse 或實際 airgap |
+| `release-policy` | `tools/sraf_airgap_off2_policy_coverage.py` | 本機唯讀核對九個最低必要入口是否被發行政策明確列管；若有缺列則回報 `INCOMPLETE`；現有明確列管已補齊，但也只能回 `PASS_PARTIAL`，**不**驗證簽章、Hash、wheelhouse 或實際 airgap |
 | `release-deps` | `tools/sraf_airgap_off2_requirements_audit.py` | 本機唯讀檢查直接 Python 相依是否固定版本；現有 `>=` 應回 `INCOMPLETE`，即使全部 `==` 仍僅為 `PASS_PARTIAL`，不驗證 wheelhouse／ABI／transitive closure |
 
 此統一入口只接受零個或一個固定模式名稱（`--help` 除外），**拒絕** `acceptance`、`upgrade`、`restore`、額外參數與任何探針憑證旗標，不提供由 Quick 自動升級到真正 Job／SQL／ES 探測的方式。需要專用 SQL/ES 授權時，另依既有 OFF-1 原始操作手冊使用明確 opt-in，不能透過統一入口隱式觸發。
