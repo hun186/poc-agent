@@ -80,3 +80,5 @@
 
 
 - **2026-11-02 OFF-2 next stage after pinned Wheelhouse byte verifier:** establish independently signed/pinned, reviewer-authorized complete per-target Python/OS/ABI lock + transitive Wheel inventory and bundle builder; verify ODBC18 native libraries, models, licenses and offline pip install in a disconnected test environment. `wheel-files` is an untrusted-environment *read-only listed-byte comparison* under external manifest pin, not a whole-package closure, signature or operational acceptance. Existing broad `>=` requirements stay INCOMPLETE until a real reproducible lock is approved.
+
+- **2026-11-02 OFF-2 next real wheelhouse gates:** after basic Wheel ZIP/metadata shape checks, independently build a complete target Linux Python ABI lock/wheelhouse, verify RECORD and actual wheel file members plus Requires-Dist closure and platform tags, include trusted native ODBC/model supplies, obtain external signatures, then run actual disconnected install/upgrade/restore. Basic metadata checks are explicitly NOT those gates.

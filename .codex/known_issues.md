@@ -37,3 +37,9 @@
 
 
 - **2026-11-02 OFF-2 wheel manifest pin candidate (not full acceptance):** only a separately trusted SHA-256 can authorize comparing local `SRAF_WHEELHOUSE_MANIFEST.json` and listed Wheel bytes; self-hash is not trusted. Strict no-follow bounded scans reject additions and links. Output PASS_PARTIAL cannot establish Wheel ZIP validity, transitively required versions, target architecture/native ODBC, signed upstream provenance, isolated pip installation or OFF-3/OFF-5. Current project contains no complete independently trusted Wheelhouse package; expected operator result without pin is INCOMPLETE.
+
+- **2026-11-02 pinned-wheel basic ZIP structure verification candidate:** byte hashes alone accepted arbitrary `.whl` binary; conservative ZIP/WHEEL/METADATA checks add only structure evidence. A `PASS_PARTIAL` must still not imply record/file CRC validation, target Python platform ABI, Wheels' Requires-Dist closure, native ODBC/models, upstream origin, signed release or isolated private Linux installation. No private E2E/restore acceptance.
+
+- **2026-11-02 wheel archive pre-parse memory bound (PR #358):** Python `zipfile.ZipFile` eagerly constructs all ZipInfo objects; simply checking len(infolist()) later was insufficient for untrusted pinned ZIPs. The bounded preflight rejects oversized, ambiguous, ZIP64 or multi-disk central directories before parser allocation; a small safe subset may still return INCOMPLETE for exotic valid archives rather than falsely passing. Foldering of standard metadata headers is supported. Actual wheelhouse/RECORD/ABI/offline install remains NOT TESTED.
+
+- **2026-11-02 ZIP EOCD ambiguity (PR #358):** CPython ZIP reader chooses last EOCD signature; security preflight must use precisely the same selected record or fail closed. Later signatures inside comments are rejected before ZipInfo allocation. No test of actual oversized private deployment Wheelhouse or full package signature/restore is implied.

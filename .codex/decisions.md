@@ -37,3 +37,5 @@
 
 
 - **2026-11-02 OFF-2 direct dependency audit candidate:** a stdlib-only, bounded/no-follow local read of managed `requirements.txt` with fixed statuses/counts is preferable to invoking pip, guessing versions or treating VCS/direct URLs/markers as locked. Its allowlisted `release-deps` mode never establishes complete package provenance, full wheelhouse, Python/OS/native ODBC compatibility, physical airgap or restoration.
+
+- **2026-11-02 OFF-2 Wheel verifier hardening candidate:** retain independently trusted external inventory digest and same no-follow wheel FD, then parse bounded ZIP central directory and two small textual metadata files to reject arbitrary bytes with a .whl extension. Never extract or execute Wheel payloads, and do not claim PEP 427/PEP 508/PEP 440/RECORD/platform ABI/dependency closure, signed bundles or air-gap installation.

@@ -24,13 +24,16 @@ SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256=<trusted-64-char-lowercase-sha256> bash 
 }
 ```
 
-工具先使用外部 pin 核對 Manifest 的原始位元組，再以 no-follow dirfd 驗證 Wheel 路徑、指定大小及 SHA-256，拒絕未列管檔案、檔名衝突、Symlink、異常大小與不可讀檔案。Manifest 最多 128 KiB、256 顆 Wheel，單檔最多 512 MiB、列管總量最多 4 GiB；超過上限必須回報 `INCOMPLETE`，不是放寬檢查。
+工具先使用外部 pin 核對 Manifest 的原始位元組，再以同一個 no-follow 檔案描述符驗證 Wheel 指定大小與 SHA-256，檢查 ZIP 中央目錄、基本 `.dist-info/WHEEL` 和 `.dist-info/METADATA`、Wheel 發行名稱／版本一致性。拒絕未列管檔案、大小／Digest 錯配、ZIP 路徑穿越、重複名稱、符號連結、加密檔案或不支援的壓縮格式。Manifest 最多 128 KiB、256 顆 Wheel，單檔最多 512 MiB、列管總量最多 4 GiB；ZIP 於建立 `ZipFile` 解析物件之前，先以限長讀取 EOCD／中央目錄並驗證真正條目數量；最多 8192 個條目與 4 MiB 中央目錄、宣告解壓總量 2 GiB，WHEEL／METADATA 各最多 64 KiB。超過上限必須回報 `INCOMPLETE`，不是放寬檢查。
 
 - 缺少或格式錯誤的外部摘要：`INCOMPLETE`，不讀取不受信任的 Manifest。
 - 摘要與 Manifest 不符或 Wheel 位元組／檔案長度不符：`FAIL`。
 - 沒有 Wheel、額外檔案、未知 Schema、不安全目錄或無法驗證：`INCOMPLETE`。
-- 全部列管檔案核對一致：僅 `PASS_PARTIAL`。
+- 正確 Pin 的 Wheel 是任意位元組、壞 ZIP、缺少／偽造基本 Metadata 或 ZIP 結構異常：`INCOMPLETE / wheel_archive_structure_invalid`。
+- 全部列管檔案的位元組與基本 ZIP／Metadata 結構核對一致：僅 `PASS_PARTIAL / pinned_wheel_bytes_and_basic_metadata_only`。
 
-**此工具不解壓或執行 Wheel，不調用 pip，不會下載／安裝／修改資料，也不建立自我可信摘要。** 即使 `PASS_PARTIAL`，也沒有檢查 Wheel 是否為合法格式、是否覆蓋 requirements 的完整 transitive closure、平台/ABI/OS、依賴版本衝突、原生 ODBC、模型權重、授權、來源簽章或離線可安裝性；同名既有檔案在本機並非可信來源。外部 Manifest 摘要是「需要獨立確立的信任錨」，單純 SHA-256 不等於公鑰簽章。
+此基本驗證容許標準 `METADATA` 折行 Header（例如多行 License），但對超限中央目錄、無法預先確認條目數量、ZIP64 或多磁碟 ZIP 採保守的 `INCOMPLETE`；若 ZIP 註解內含另一個 EOCD Signature，因與 Python ZipFile 的「最後標記」解析規則可能造成歧義，也在任何 ZipInfo 配置之前拒絕，不先分配大量 `ZipInfo` 物件後才拒絕。
+
+**此工具不解開 Wheel 至磁碟、不執行程式碼、不調用 pip、不下載／安裝／修改資料，也不建立自我可信摘要。** 唯獨為核對基本封裝結構會有界地讀取／解壓兩個 ZIP 內的文字 Metadata（每項最多 64 KiB），不讀取或執行 Wheel payload。即使 `PASS_PARTIAL`，仍未檢驗所有 ZIP 內容的 CRC／完整 PEP 427 合規性、RECORD 紀錄、Requires-Dist transitive closure、平台／ABI／OS、版本衝突、ODBC 原生函式庫、模型權重、授權、來源簽章或離線可安裝性；同名既有檔案在本機並非可信來源。外部 Manifest 摘要是「需要獨立確立的信任錨」，單純 SHA-256 不等於公鑰簽章。
 
 目前 repo 沒有可受信任的完整 Wheelhouse Manifest／套件，預期此檢查是 `INCOMPLETE`。這是 OFF-2 後續可實施的局部位元組門檻，不能代替原有 `release-files`、`release-policy`、`release-deps`，或 OFF-3／OFF-5 真實封網部署、升級與還原驗收。

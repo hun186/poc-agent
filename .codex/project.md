@@ -2,6 +2,9 @@
 
 ## Current Focus
 
+- **2026-11-02 current OFF-2 pinned-wheel structural hardening candidate:** start from verified #357 merge `db8d65d7173ea44f2894caf142a4e50e7341aaf5`. Existing externally pinned `wheel-files` accepted opaque hashed `.whl` bytes, including fake non-ZIP files; add a bounded same nofollow descriptor ZIP central-directory and minimal WHEEL/METADATA structural check, fail closed with `wheel_archive_structure_invalid`. No payload extraction/install/network, no PEP 427/RECORD/dependency closure or private Linux acceptance. Synthetic ZIP cases added; Hosted CI/formal Codex Review PENDING.
+
+
 - **2026-11-02 OFF-2 wheel-byte verifier candidate (CI/Review pending):** after #356 merged at `dfe816da1994de908258438be272f7c3a1f14771`, add explicit `wheel-files` mode requiring `SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256` from independent review. Local nofollow dirfd validates a bounded `SRAF_WHEELHOUSE_MANIFEST.json` plus exact `wheelhouse/` wheel filenames/bytes/sizes, rejects extras/links and never installs/unpacks/downloads. Even PASS_PARTIAL is listed Wheel bytes only; no transitive closure, lock, signatures, platform ABI, ODBC, models, live airgap/restore. Hosted CI and formal exact-head Codex review PENDING.
 
 
