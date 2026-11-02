@@ -69,7 +69,10 @@ def _wheel_bytes(*, metadata_name: str = "example-pkg",
         for name, data in entries:
             z.writestr(name, data)
         if record_case != "missing_record":
-            z.writestr(f"{DIST_INFO}/RECORD", out.getvalue().encode("utf-8"))
+            record_bytes = (b"\n" * (2 * 1024 * 1024)
+                            if record_case == "blank_row_bomb"
+                            else out.getvalue().encode("utf-8"))
+            z.writestr(f"{DIST_INFO}/RECORD", record_bytes)
     return content.getvalue()
 
 
@@ -225,6 +228,28 @@ def test_pinned_wheel_record_missing_mismatched_or_uncovered_fails_closed(
         "status": "INCOMPLETE", "reason": "wheel_archive_structure_invalid",
         "wheels_checked": 1,
     }
+
+
+def test_record_newline_bomb_rejected_before_materializing_rows(tmp_path, monkeypatch):
+    _fixture(tmp_path)
+    pin = _repin_wheel(tmp_path, _wheel_bytes(record_case="blank_row_bomb"))
+    from tools import sraf_airgap_off2_wheel_files as tool
+    original = tool.csv.reader
+    rows_seen = []
+
+    def guarded_reader(*args, **kwargs):
+        for row in original(*args, **kwargs):
+            rows_seen.append(1)
+            # Eager list(reader) would consume ~2 million records here.
+            assert len(rows_seen) <= 2, "RECORD parser iterated beyond fail-fast"
+            yield row
+
+    monkeypatch.setattr(tool.csv, "reader", guarded_reader)
+    assert observe(tmp_path, pin) == {
+        "status": "INCOMPLETE", "reason": "wheel_archive_structure_invalid",
+        "wheels_checked": 1,
+    }
+    assert len(rows_seen) == 1
 
 
 def test_record_verification_uncompressed_budget_is_fail_closed(tmp_path, monkeypatch):
