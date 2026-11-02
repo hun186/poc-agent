@@ -19,16 +19,16 @@ def linux_target(tmp_path, monkeypatch):
     vendor.mkdir(parents=True)
     library = vendor / "libmsodbcsql-18.5.so.1.1"
     header = bytearray(64)
-    header[:4] = b"\\x7fELF"
+    header[:4] = b"\x7fELF"
     header[4:7] = bytes((2, 1, 1))
     header[16:18] = (3).to_bytes(2, "little")
     header[18:20] = (62).to_bytes(2, "little")
     library.write_bytes(header)
     monkeypatch.setattr(tool, "ODBC_DRIVER_ROOT", vendor)
     ini = tmp_path / "odbcinst.ini"
-    ini.write_text("[ODBC Driver 18 for SQL Server]\\n"
-                   "Description=Secret private host\\n"
-                   f"Driver={library}\\n", encoding="utf-8")
+    ini.write_text("[ODBC Driver 18 for SQL Server]\n"
+                   "Description=Secret private host\n"
+                   f"Driver={library}\n", encoding="utf-8")
     monkeypatch.setattr(tool.platform, "system", lambda: "Linux")
     monkeypatch.setattr(tool.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(tool.platform, "libc_ver", lambda: ("glibc", "2.35"))
