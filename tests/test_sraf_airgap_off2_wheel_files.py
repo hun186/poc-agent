@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import hashlib
+from io import BytesIO
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -11,11 +13,45 @@ from tools.sraf_airgap_off2_wheel_files import MANIFEST, observe, main
 
 WHEEL = "example_pkg-1.0-py3-none-any.whl"
 
+DIST_INFO = "example_pkg-1.0.dist-info"
+
+
+def _wheel_bytes(*, metadata_name: str = "example-pkg",
+                 include_wheel: bool = True,
+                 include_metadata: bool = True,
+                 extra_name: str | None = None) -> bytes:
+    # A tiny *synthetic* structurally valid Wheel archive for parser tests;
+    # this is NOT a genuine package, release, dependency or live acceptance.
+    content = BytesIO()
+    with zipfile.ZipFile(content, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        z.writestr("example_pkg/__init__.py", "")
+        if include_wheel:
+            z.writestr(f"{DIST_INFO}/WHEEL",
+                       "Wheel-Version: 1.0\\nGenerator: synthetic-test\\nRoot-Is-Purelib: true\\nTag: py3-none-any\\n")
+        if include_metadata:
+            z.writestr(f"{DIST_INFO}/METADATA",
+                       f"Metadata-Version: 2.1\\nName: {metadata_name}\\nVersion: 1.0\\n")
+        if extra_name:
+            z.writestr(extra_name, "UNTRUSTED")
+    return content.getvalue()
+
+
+def _repin_wheel(root: Path, data: bytes) -> str:
+    (root / "wheelhouse" / WHEEL).write_bytes(data)
+    manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
+    manifest["wheels"][0]["size"] = len(data)
+    manifest["wheels"][0]["sha256"] = hashlib.sha256(data).hexdigest()
+    raw = (json.dumps(manifest, sort_keys=True) + "\\n").encode()
+    (root / MANIFEST).write_bytes(raw)
+    return hashlib.sha256(raw).hexdigest()
+
+
+
 
 def _fixture(root: Path) -> str:
     folder = root / "wheelhouse"
     folder.mkdir()
-    data = b"NOT_A_VALID_WHEEL_ZIP_CONTENT"
+    data = _wheel_bytes()
     (folder / WHEEL).write_bytes(data)
     manifest = {
         "schema_version": 1, "repository": "hun186/poc-agent",
@@ -30,9 +66,42 @@ def _fixture(root: Path) -> str:
 def test_exact_pinned_listed_wheel_bytes_only_partial(tmp_path):
     pin = _fixture(tmp_path)
     assert observe(tmp_path, pin) == {
-        "status": "PASS_PARTIAL", "reason": "pinned_wheel_bytes_match_only",
+        "status": "PASS_PARTIAL", "reason": "pinned_wheel_bytes_and_basic_metadata_only",
         "wheels_checked": 1,
     }
+
+
+
+@pytest.mark.parametrize("data,description", [
+    (b"random bytes but correct external SHA", "arbitrary_binary"),
+    (_wheel_bytes(include_wheel=False), "missing_wheel"),
+    (_wheel_bytes(include_metadata=False), "missing_metadata"),
+    (_wheel_bytes(metadata_name="forged-package"), "name_mismatch"),
+    (_wheel_bytes(extra_name="../outside.py"), "zip_traversal"),
+    (_wheel_bytes(extra_name="example_pkg/../escape.py"), "nested_zip_traversal"),
+])
+def test_pinned_bytes_with_invalid_wheel_archive_fail_closed(tmp_path, data, description):
+    _fixture(tmp_path)
+    pin = _repin_wheel(tmp_path, data)
+    result = observe(tmp_path, pin)
+    assert result == {
+        "status": "INCOMPLETE",
+        "reason": "wheel_archive_structure_invalid",
+        "wheels_checked": 1,
+    }, description
+
+
+def test_duplicate_archive_member_rejected(tmp_path):
+    _fixture(tmp_path)
+    content = BytesIO()
+    with zipfile.ZipFile(content, "w") as z:
+        z.writestr(f"{DIST_INFO}/WHEEL", "Wheel-Version: 1.0\\n")
+        z.writestr(f"{DIST_INFO}/METADATA",
+                   "Metadata-Version: 2.1\\nName: example-pkg\\nVersion: 1.0\\n")
+        with pytest.warns(UserWarning):
+            z.writestr(f"{DIST_INFO}/WHEEL", "Wheel-Version: 1.0\\n")
+    pin = _repin_wheel(tmp_path, content.getvalue())
+    assert observe(tmp_path, pin)["reason"] == "wheel_archive_structure_invalid"
 
 
 def test_missing_or_invalid_external_pin_never_opens_trust(tmp_path):
