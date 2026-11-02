@@ -34,3 +34,6 @@
 - `.codex/archive/decisions.md-20261102-004437.md` — **verified exact Git-blob copy** of the full 16,600-character pre-compaction active decisions (blob `bdcc88ec04fa18f58647c3796502ae1dac61c6bd`). Detailed prior OFF-1A–T/SQL/ES/LLM, PR decisions and compatibility limits remain available without inflating active context.
 - `.codex/archive/decisions.md-20261030-101300.md` — earlier verified full decision chronology, plus `decisions.md-20261021-165000.md`.
 - **Compaction rule:** keep all operative/current decision boundaries in this summary; historic snapshots and superseded pending/review status live in the exact archived originals, not as current claims.
+
+
+- **2026-11-02 OFF-2 direct dependency audit candidate:** a stdlib-only, bounded/no-follow local read of managed `requirements.txt` with fixed statuses/counts is preferable to invoking pip, guessing versions or treating VCS/direct URLs/markers as locked. Its allowlisted `release-deps` mode never establishes complete package provenance, full wheelhouse, Python/OS/native ODBC compatibility, physical airgap or restoration.

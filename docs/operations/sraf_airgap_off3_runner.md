@@ -11,6 +11,7 @@ bash run_sraf_airgap_offline.sh diagnose
 bash run_sraf_airgap_offline.sh no-network
 bash run_sraf_airgap_offline.sh release-files
 bash run_sraf_airgap_offline.sh release-policy
+bash run_sraf_airgap_offline.sh release-deps
 ```
 
 | 模式 | 唯一執行路徑 | 效果和限制 |
@@ -19,7 +20,8 @@ bash run_sraf_airgap_offline.sh release-policy
 | `diagnose` | `run_sraf_airgap_off1_diagnose.sh` | 既有唯讀 API／ES／LLM TCP 及本地 Worker 觀察；不登入、生成或寫 SQL；部分檢查不能視為 E2E |
 | `no-network` | `run_sraf_airgap_off1_diagnose.sh --no-network` | 完全不發起 HTTP/TCP 探針，保留本地資源與可見的 Worker /proc；連線項目正確地 SKIP/INCOMPLETE |
 | `release-files` | `run_sraf_airgap_off2_verify.sh` | 須另以 `SRAF_OFF2_TRUSTED_MANIFEST_SHA256` 提供外部可信 Manifest 摘要；只核對列管檔案 SHA-256，不能推論發行完整性、簽章、模型／wheelhouse |
-| `release-policy` | `tools/sraf_airgap_off2_policy_coverage.py` | 本機唯讀核對九個最低必要入口是否被發行政策明確列管；目前有缺口而回報 `INCOMPLETE`，只有選擇齊全才回 `PASS_PARTIAL`，**不**驗證簽章、Hash、wheelhouse 或實際 airgap |
+| `release-policy` | `tools/sraf_airgap_off2_policy_coverage.py` | 本機唯讀核對九個最低必要入口是否被發行政策明確列管；若有缺列則回報 `INCOMPLETE`；現有明確列管已補齊，但也只能回 `PASS_PARTIAL`，**不**驗證簽章、Hash、wheelhouse 或實際 airgap |
+| `release-deps` | `tools/sraf_airgap_off2_requirements_audit.py` | 本機唯讀檢查直接 Python 相依是否固定版本；現有 `>=` 應回 `INCOMPLETE`，即使全部 `==` 仍僅為 `PASS_PARTIAL`，不驗證 wheelhouse／ABI／transitive closure |
 
 此統一入口只接受零個或一個固定模式名稱（`--help` 除外），**拒絕** `acceptance`、`upgrade`、`restore`、額外參數與任何探針憑證旗標，不提供由 Quick 自動升級到真正 Job／SQL／ES 探測的方式。需要專用 SQL/ES 授權時，另依既有 OFF-1 原始操作手冊使用明確 opt-in，不能透過統一入口隱式觸發。
 
@@ -28,3 +30,5 @@ bash run_sraf_airgap_offline.sh release-policy
 現階段完成的是 **OFF-3 唯讀模式派送**。正式 Acceptance 仍需要獨立超級使用者授權、隔離 SQL/ES fixture、Schedule/Handoff/LLM/Report Job/DOCX 真實鏈路、明確可恢復狀態及物理封網證據；Upgrade/Restore 也尚未實作，不得聲稱完成。
 
 `release-policy` 不需外部 Manifest pin，僅做本機政策選取檢查；其意義、限制與安全輸出參見 [OFF-2 發行政策覆蓋率](sraf_airgap_off2_policy_coverage.md)。若希望檢查真實列管檔案的可信 SHA-256，仍必須另外執行 `release-files` 並提供外部可信 pin，不得以 `release-policy` 取代。
+
+`release-deps` 的固定狀態與限制參見 [OFF-2 Python 直接相依版本鎖定預檢](sraf_airgap_off2_requirements_audit.md)；絕不可用這項結果代替 `release-files` 的外部 pin 或線下實際安裝／還原驗證。

@@ -2,6 +2,9 @@
 
 ## Current Focus
 
+- **2026-11-02 OFF-2 direct-requirement lock diagnostic candidate:** after #355 merged into `44702989719ff2a63663e06407b456dcf96ef1c5`, add a bounded no-follow, zero-network/no-write checker for direct `requirements.txt` exact pins and an explicit `release-deps` root launcher mode. Existing >= dependencies must report INCOMPLETE; even an all-== set is only PASS_PARTIAL without transitive wheelhouse/native ODBC/platform lock. Add synthetic safety/dispatch CI and explicitly select the new release tool. Hosted exact-head and formal Codex review PENDING; no private Linux FULL_LIVE or signed release claimed.
+
+
 
 - **2026-11-02 Issue #354 / PR #355 candidate (HOSTED/REVIEW PENDING):** corrected only three `DeadlineDT` values in the canonical three-real-Requirement XLSX to empty/null using exact old trusted blob `eaf084ae3041c9bdbaf25e5ce3ce928d4a1e4cec`; read-only CI generation checked every other field identical. New workbook SHA-256 `fa5171dce02630ace09b042be3b490995bdedf0152bf9b61af30ba1fe682843d`, update support constant, example env, operator docs and tests comparing unchanged original `data/要項excel/requirement_e2e_three.xlsx` content. The import profile already maps missing deadline to null expires_at. Existing default checksum/deadline local fail-fast stays active. Do not infer new release provenance, private Linux FULL_LIVE, SQL/ES/LLM or Word success from code-only CI. Prior #352/#353 were MERGED; next exact-head CI and Codex review required before any merge.
 

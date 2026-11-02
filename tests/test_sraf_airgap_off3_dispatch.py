@@ -94,6 +94,23 @@ def test_release_policy_is_only_local_readonly_advisory_python(fake_deployment):
     ]
 
 
+def test_release_deps_is_only_bounded_local_audit(fake_deployment):
+    script, root, capture, env = fake_deployment
+    result = _exec(script, env, "release-deps")
+    assert result.returncode == 17
+    assert capture.read_text().splitlines() == [
+        "python", str(root), "tools/sraf_airgap_off2_requirements_audit.py",
+    ]
+
+
+def test_release_deps_missing_python_fails_before_any_exec(fake_deployment):
+    script, _, capture, env = fake_deployment
+    env["SRAF_PYTHON"] = "/not-present/python"
+    result = _exec(script, env, "release-deps")
+    assert result.returncode == 127
+    assert not capture.exists()
+
+
 def test_release_policy_missing_interpreter_fails_before_exec(fake_deployment):
     script, _, capture, env = fake_deployment
     env["SRAF_PYTHON"] = "/not-present/python"
@@ -107,7 +124,9 @@ def test_release_policy_missing_interpreter_fails_before_exec(fake_deployment):
     ("acceptance",), ("upgrade",), ("restore",),
     ("--live-report",), ("quick", "--live-report"), ("quick", "diagnose"),
     ("release-files", "--no-network"), ("release-policy", "--live-report"),
-    ("release-policy", "--probe-sql-read"), ("--probe-sql-read",), ("",),
+    ("release-policy", "--probe-sql-read"),
+    ("release-deps", "--live-report"), ("release-deps", "--probe-sql-read"),
+    ("--probe-sql-read",), ("",),
 ])
 def test_forbidden_modes_and_extra_arguments_never_execute(
         fake_deployment, arguments):
@@ -134,7 +153,7 @@ def test_help_does_not_run_any_probe(fake_deployment):
     script, _, capture, env = fake_deployment
     result = _exec(script, env, "--help")
     assert result.returncode == 0
-    assert "quick|diagnose|no-network|release-files|release-policy" in result.stdout
+    assert "quick|diagnose|no-network|release-files|release-policy|release-deps" in result.stdout
     assert not capture.exists()
 
 
