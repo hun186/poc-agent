@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import stat
 import sys
 import sysconfig
 
@@ -23,14 +24,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.sraf_airgap_off2_manifest_check import _UnsafeEvidence, _fingerprint, _flags
+from tools.sraf_airgap_off2_manifest_check import (_UnsafeEvidence, _fingerprint, _flags, _open_beneath)
 
-SCHEMA = "sraf_off2_linux_target_inventory_v1"
+SCHEMA = "sraf_off2_linux_target_inventory_v2"
 SCOPE = "TARGET_IDENTITY_ONLY_NOT_PACKAGE_OR_AIRGAP_ATTESTATION"
 OS_RELEASE_FILES = (Path("/etc/os-release"), Path("/usr/lib/os-release"))
 ODBC_INST_FILE = Path("/etc/odbcinst.ini")
 MAX_RELEASE_BYTES = 16 * 1024
 MAX_ODBC_BYTES = 32 * 1024
+MAX_ODBC_LIBRARY_BYTES = 128 * 1024 * 1024
+ODBC_DRIVER_ROOT = Path("/opt/microsoft/msodbcsql18/lib64")
+_ODBC_LIBRARY_NAME = re.compile(r"libmsodbcsql-18\.[0-9]{1,3}\.so\.[0-9]{1,3}\.[0-9]{1,3}")
 ALLOWED_OS_IDS = frozenset((
     "ubuntu", "debian", "rhel", "rocky", "almalinux", "centos", "fedora",
     "ol", "sles", "opensuse-leap", "amzn", "alpine",
@@ -89,26 +93,74 @@ def _read_os_release(paths: tuple[Path, ...]) -> tuple[str, str] | None:
     return None
 
 
-def _odbc_registration(path: Path) -> str:
-    """Inspect a default unixODBC driver definition only; never load a .so."""
-    # A custom ODBCSYSINI/ODBCINSTINI can redirect unixODBC configuration.
-    # Never claim system-default registration reflects the active driver.
+def _odbc_driver_entry(path: Path) -> tuple[str, str | None]:
+    """Registration-only configuration parser; never return a path to stdout."""
     if os.environ.get("ODBCSYSINI") or os.environ.get("ODBCINSTINI"):
-        return "CONFIG_OVERRIDE_UNVERIFIED"
+        return "CONFIG_OVERRIDE_UNVERIFIED", None
     try:
-        value = _read_bounded(path, MAX_ODBC_BYTES)
+        raw = _read_bounded(path, MAX_ODBC_BYTES)
         cfg = configparser.ConfigParser(interpolation=None, strict=True)
-        cfg.read_string(value)
-        if cfg.has_section(_DRIVER_SECTION) and cfg.get(
-                _DRIVER_SECTION, "Driver", fallback="").strip():
-            return "REGISTERED_CONFIG_ONLY"
-        return "NOT_REGISTERED_IN_DEFAULT_CONFIG"
+        cfg.read_string(raw)
+        driver = (cfg.get(_DRIVER_SECTION, "Driver", fallback="").strip()
+                  if cfg.has_section(_DRIVER_SECTION) else "")
+        return (("REGISTERED_CONFIG_ONLY", driver) if driver else
+                ("NOT_REGISTERED_IN_DEFAULT_CONFIG", None))
     except (OSError, UnicodeError, ValueError, _UnsafeEvidence, configparser.Error):
-        return "CONFIG_UNVERIFIABLE"
+        return "CONFIG_UNVERIFIABLE", None
+
+
+def _odbc_elf_header(driver_path: str | None, arch: str,
+                     *, driver_root: Path = ODBC_DRIVER_ROOT) -> str:
+    """No-follow header-only ELF check, never dlopen/execute or output path.
+
+    Restrict to supported MS ODBC18 vendor path; unusual layouts cannot
+    silently earn evidence. Linux source file can still change after reading.
+    """
+    if arch not in ALLOWED_ARCH or not isinstance(driver_path, str):
+        return "UNVERIFIED"
+    # Only accept a direct child of the known versioned Microsoft directory.
+    # No resolved() paths: resolving would follow symlinks before O_NOFOLLOW.
+    name = driver_path.rsplit("/", 1)[-1]
+    if (not _ODBC_LIBRARY_NAME.fullmatch(name)
+            or driver_path != str(driver_root / name)
+            or not driver_root.is_absolute()
+            or ".." in driver_root.parts):
+        return "DRIVER_PATH_UNSUPPORTED"
+    basefd = -1
+    fd = -1
+    try:
+        basefd = os.open("/", _flags(directory=True))
+        fd = _open_beneath(basefd, driver_path.removeprefix("/"))
+        before = os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode)
+                or not 64 <= before.st_size <= MAX_ODBC_LIBRARY_BYTES):
+            return "ELF_FILE_UNVERIFIABLE"
+        header = os.pread(fd, 64, 0)
+        after = os.fstat(fd)
+        identity = lambda v: (v.st_dev, v.st_ino, v.st_size, v.st_mtime_ns, v.st_ctime_ns)
+        if identity(before) != identity(after) or len(header) != 64:
+            return "ELF_FILE_UNVERIFIABLE"
+        if (header[:4] != b"\x7fELF" or header[4] != 2
+                or header[5] != 1 or header[6] != 1
+                or int.from_bytes(header[16:18], "little") != 3):
+            return "ELF_HEADER_UNSUPPORTED"
+        expected = {"x86_64": 62, "aarch64": 183}[arch]
+        if int.from_bytes(header[18:20], "little") != expected:
+            return "ELF_ARCH_MISMATCH"
+        return "ELF64_ARCH_MATCH_HEADER_ONLY"
+    except (OSError, _UnsafeEvidence, ValueError, TypeError):
+        return "ELF_FILE_UNVERIFIABLE"
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        if basefd >= 0:
+            os.close(basefd)
+
 
 
 def observe(*, os_paths: tuple[Path, ...] = OS_RELEASE_FILES,
-            odbc_path: Path = ODBC_INST_FILE) -> dict[str, object]:
+            odbc_path: Path = ODBC_INST_FILE,
+            driver_root: Path = ODBC_DRIVER_ROOT) -> dict[str, object]:
     """Fixed, sanitized and explicitly partial local target observations."""
     result: dict[str, object] = {
         "schema": SCHEMA, "status": "INCOMPLETE",
@@ -117,7 +169,7 @@ def observe(*, os_paths: tuple[Path, ...] = OS_RELEASE_FILES,
         "architecture": "UNVERIFIED", "python_version": "UNVERIFIED",
         "python_abi": "UNVERIFIED", "libc_family": "UNVERIFIED",
         "libc_version": "UNVERIFIED", "odbc18": "CONFIG_UNVERIFIABLE",
-        "odbc_binary_load": "NOT_TESTED", "wheelhouse_compatibility": "NOT_TESTED",
+        "odbc_binary_header": "UNVERIFIED", "odbc_binary_load": "NOT_TESTED", "wheelhouse_compatibility": "NOT_TESTED",
         "full_live": "NOT_TESTED", "production_release_ready": False,
     }
     if platform.system() != "Linux":
@@ -143,15 +195,20 @@ def observe(*, os_paths: tuple[Path, ...] = OS_RELEASE_FILES,
         result["libc_family"] = libc_family
         result["libc_version"] = libc_version
 
-    result["odbc18"] = _odbc_registration(odbc_path)
+    result["odbc18"], driver = _odbc_driver_entry(odbc_path)
+    if result["odbc18"] == "REGISTERED_CONFIG_ONLY":
+        result["odbc_binary_header"] = _odbc_elf_header(
+            driver, result["architecture"], driver_root=driver_root)
     if all(result[k] != "UNVERIFIED" for k in (
             "os_id", "os_version_id", "architecture", "python_version",
             "python_abi", "libc_family", "libc_version")):
-        if result["odbc18"] == "REGISTERED_CONFIG_ONLY":
-            result["status"] = "PASS_PARTIAL"
-            result["reason"] = "linux_python_target_and_odbc_config_observed"
-        else:
+        if result["odbc18"] != "REGISTERED_CONFIG_ONLY":
             result["reason"] = "odbc18_registration_unverified"
+        elif result["odbc_binary_header"] != "ELF64_ARCH_MATCH_HEADER_ONLY":
+            result["reason"] = "odbc18_elf_header_unverified"
+        else:
+            result["status"] = "PASS_PARTIAL"
+            result["reason"] = "linux_python_target_odbc_elf_header_observed"
     return result
 
 
