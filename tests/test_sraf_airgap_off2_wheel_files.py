@@ -153,6 +153,30 @@ def test_forged_eocd_member_count_rejected_before_zipfile(tmp_path, monkeypatch)
     assert observe(tmp_path, pin)["reason"] == "wheel_archive_structure_invalid"
 
 
+
+@pytest.mark.parametrize("comment", [
+    b"archive notes PK\x05\x06 trailing false signature",
+    b"archive notes PK\x05\x06" + b"X" * 32,
+])
+def test_eocd_signature_in_zip_comment_rejected_before_zipfile(
+        tmp_path, monkeypatch, comment):
+    _fixture(tmp_path)
+    content = BytesIO(_wheel_bytes())
+    with zipfile.ZipFile(content, "a") as z:
+        z.comment = comment
+    pin = _repin_wheel(tmp_path, content.getvalue())
+    from tools import sraf_airgap_off2_wheel_files as tool
+
+    def refuse_zipfile_allocation(*args, **kwargs):
+        raise AssertionError("ambiguous EOCD reached eager ZipInfo constructor")
+
+    monkeypatch.setattr(tool.zipfile, "ZipFile", refuse_zipfile_allocation)
+    assert observe(tmp_path, pin) == {
+        "status": "INCOMPLETE", "reason": "wheel_archive_structure_invalid",
+        "wheels_checked": 1,
+    }
+
+
 def test_missing_or_invalid_external_pin_never_opens_trust(tmp_path):
     _fixture(tmp_path)
     for invalid in (None, "", "0" * 63, "F" * 64, "invalid"):
