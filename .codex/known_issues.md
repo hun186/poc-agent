@@ -31,3 +31,6 @@
 - `.codex/archive/known_issues.md-20261102-004437.md` — **verified exact Git-blob copy** of the full pre-compaction 19,358-character active file (blob `17f7986f9f3af8cd8158387dec477a852889a822`). This contains detailed chronology, P1/P2 findings, historic operational constraints and current Issue #354.
 - `.codex/archive/known_issues.md-20261030-162500.md` and `known_issues.md-20261030-003900.md` — prior verified compactions. Older archives (20261024, 20261021, 20261006, 20260910) are for explicit historical audit only.
 - **Compaction scope:** retain all operative unresolved safety and private-Linux release gates above; old chronological review-running/pending notes are superseded by actual Hosted GitHub state, never treated as present-day claims.
+
+
+- **2026-11-02 OFF-2 dependency-pin gap:** root `requirements.txt` still uses broad `>=` constraints and is not a reproducible lock. Proposed `release-deps` direct-only no-network audit intentionally returns INCOMPLETE for this state. Even all `==` direct requirements only reach PASS_PARTIAL; transitive pins, wheel hashes, target Python/OS/ABI, pyodbc/ODBC native libs, models, isolated install and signed release authority are NOT TESTED. Never auto-pin guessed versions or treat a local hash as release trust.
