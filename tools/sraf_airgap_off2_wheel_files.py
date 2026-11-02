@@ -48,10 +48,13 @@ def _validate(raw: bytes) -> list[dict[str, object]]:
         value = json.loads(raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
     except (UnicodeError, ValueError) as exc:
         raise _InvalidWheelInventory from exc
-    if not isinstance(value, dict) or set(value) != {
-        "schema_version", "repository", "wheels"
-    } or type(value.get("schema_version")) is not int
-            or value.get("schema_version") != 1 or value.get("repository") != "hun186/poc-agent":
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"schema_version", "repository", "wheels"}
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+        or value.get("repository") != "hun186/poc-agent"
+    ):
         raise _InvalidWheelInventory
     entries = value["wheels"]
     if not isinstance(entries, list) or not 1 <= len(entries) <= MAX_WHEELS:
