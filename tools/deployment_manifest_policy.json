@@ -34,7 +34,8 @@
     "tools/sraf_airgap_off2_manifest_check.py",
     "tools/sraf_airgap_off2_policy_coverage.py",
     "tools/sraf_airgap_off2_requirements_audit.py",
-    "tools/sraf_airgap_off2_wheel_files.py"
+    "tools/sraf_airgap_off2_wheel_files.py",
+    "tools/sraf_airgap_off2_linux_target.py"
   ],
   "allowed_runtime_extra_globs": [],
   "guarded_root_extensions": [
