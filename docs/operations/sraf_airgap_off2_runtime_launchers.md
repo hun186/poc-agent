@@ -41,3 +41,5 @@ SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh runtime-
 工具不會產生或回傳真實主機／帳號／PID、執行檔路徑、PATH 字串、shebang 內容、版本、環境變數、服務 Token、`/proc/<pid>/cmdline` 或 `/proc/<pid>/environ`；不呼叫 pip、import smolagents/pyodbc、建立連線、重啟服務、觸發 SQL/ES/LLM 或變更檔案。
 
 如果結果為 `INCOMPLETE`，勿藉此重裝或重啟；先確認是在**正式服務啟動時的同一個 UID、PATH、SRAF_PYTHON／Python venv**下執行。後續正式發行仍需獨立證明完整轉遞鎖定、可信 Wheelhouse、pyodbc/ODBC18 原生載入、SQL TLS、封網安裝與還原和 FULL_LIVE E2E。
+
+**虛擬環境防誤判：** 不僅核對 Python 執行檔 dev/inode，還會要求兩個執行入口的**環境選擇目錄**（例如不同 venv 的 `bin/`）具備相同目錄 inode 和保守的相同正規化路徑字串。兩個 venv 的 `bin/python` 即使 symlink 到同一個底層 Python binary，也會報 `MISMATCH`／`INCOMPLETE`；不能因 binary 相同就推定 `sys.prefix`、`pyvenv.cfg` 或套件搜尋目錄相同。仍未驗證實際在執行中的程序。
