@@ -31,28 +31,27 @@ def probes(tmp_path, monkeypatch):
     })
     monkeypatch.setattr(target.host_probe, "probe_disk", lambda:
                         SimpleNamespace(status="PASS"))
-    monkeypatch.setattr(target.worker_probe, "probe_worker_process_identities",
-                        lambda root: SimpleNamespace(
-                            status="PASS",
-                            reason="worker_process_identities_verified",
-                            evidence={"verified_role_count": 2}))
-    monkeypatch.setattr(target.listener_probe, "_pin_root_directory",
-                        lambda root: os.open(root, os.O_RDONLY))
-    monkeypatch.setattr(target.listener_probe, "_identity",
-                        lambda fd, port: (1234, "45678"))
-    monkeypatch.setattr(target.listener_probe, "_same_process",
-                        lambda pid, start, stat, port: True)
-    monkeypatch.setattr(target.listener_probe, "_listener_inode",
-                        lambda port: "123456")
-    monkeypatch.setattr(target.listener_probe, "_owns_socket",
-                        lambda pid, inode: True)
-    monkeypatch.setattr(target.listener_probe, "_procfs_unfiltered",
-                        lambda: True)
-    # Full strict listener scan must never be invoked by this quickcheck.
-    monkeypatch.setattr(target.listener_probe, "_exclusive_socket_owner",
-                        lambda *a: pytest.fail("unrequested global FD scan"))
-    monkeypatch.setattr(target.listener_probe, "attest_api_listener",
-                        lambda *a: pytest.fail("unrequested strict attestation"))
+    def worker(root):
+        return SimpleNamespace(
+            status="PASS", reason="worker_process_identities_verified",
+            evidence={"verified_role_count": 2})
+    monkeypatch.setattr(target, "_load_worker_identity_probe",
+                        lambda: worker)
+
+    api_stub = SimpleNamespace(
+        _pin_root_directory=lambda root: os.open(root, os.O_RDONLY),
+        _identity=lambda fd, port: (1234, "45678"),
+        _same_process=lambda pid, start, st, port: True,
+        _listener_inode=lambda port: "123456",
+        _owns_socket=lambda pid, inode: True,
+        _procfs_unfiltered=lambda: True,
+        _exclusive_socket_owner=lambda *args:
+            pytest.fail("unrequested global FD scan"),
+        attest_api_listener=lambda *args:
+            pytest.fail("unrequested strict attestation"),
+    )
+    monkeypatch.setattr(target, "_load_api_listener_module",
+                        lambda: api_stub)
     return tmp_path
 
 
@@ -99,7 +98,7 @@ def test_prints_human_summary_and_one_shareable_redacted_json(probes, capsys, mo
 def test_failed_component_isolated_and_errors_are_redacted(probes, monkeypatch):
     def broken(root):
         raise RuntimeError("private-password SECRET /private/host 9999")
-    monkeypatch.setattr(target.worker_probe, "probe_worker_process_identities", broken)
+    monkeypatch.setattr(target, "_load_worker_identity_probe", lambda: broken)
     output = target.observe(probes)
     rows = {r["id"]: r for r in output["checks"]}
     assert output["status"] == "INCOMPLETE"
@@ -155,7 +154,7 @@ def test_inconsistent_distribution_counts_fail_closed(probes, monkeypatch, field
 
 
 def test_first_api_prerequisite_failure_is_named_without_any_pid(probes, monkeypatch):
-    monkeypatch.setattr(target.listener_probe, "_listener_inode",
+    monkeypatch.setattr(target._load_api_listener_module(), "_listener_inode",
                         lambda port: None)
     out = target.observe(probes)
     row = {x["id"]: x for x in out["checks"]}["api_listener_preflight"]
@@ -168,8 +167,8 @@ def test_first_api_prerequisite_failure_is_named_without_any_pid(probes, monkeyp
 
 
 def test_worker_pass_without_both_roles_must_fail_closed(probes, monkeypatch):
-    monkeypatch.setattr(target.worker_probe, "probe_worker_process_identities",
-                        lambda root: SimpleNamespace(
+    monkeypatch.setattr(target, "_load_worker_identity_probe",
+                        lambda: lambda root: SimpleNamespace(
                             status="PASS",
                             reason="worker_process_identities_verified",
                             evidence={"verified_role_count": 1}))
@@ -195,12 +194,39 @@ def test_bad_cli_args_never_start_a_probe(probes, monkeypatch):
     assert caught.value.code == 2
 
 
-def test_operator_quickcheck_does_not_depend_on_evidence_directory(probes, monkeypatch):
-    # The existing OFF-1 hub output path can fail due shared-mount ownership.
-    # This one-command local check deliberately never calls its output guard.
-    from tools import sraf_airgap_report_jobs_acceptance as reports
-    monkeypatch.setattr(reports, "_secure_output_dir",
-                        lambda p: pytest.fail("quickcheck must not write"))
+def test_operator_quickcheck_does_not_depend_on_evidence_directory(probes):
+    before = {p.name for p in probes.iterdir()}
     result = target.observe(probes)
+    after = {p.name for p in probes.iterdir()}
     assert result["status"] == "PASS_PARTIAL"
     assert result["evidence_file_written"] is False
+    assert before == after
+    assert not (probes / "sraf-acceptance-results").exists()
+
+
+def test_missing_native_pyodbc_only_marks_api_listener_incomplete(probes, monkeypatch):
+    def missing():
+        raise ImportError("libodbc.so SECRET /internal/path")
+    monkeypatch.setattr(target, "_load_api_listener_module", missing)
+    result = target.observe(probes)
+    rows = {r["id"]: r for r in result["checks"]}
+    assert result["status"] == "INCOMPLETE"
+    assert result["passive_checks_observed"] == 5
+    assert rows["api_listener_preflight"]["status"] == "INCOMPLETE"
+    assert rows["worker_process_identity"]["status"] == "PASS_PARTIAL"
+    assert "SECRET" not in json.dumps(result)
+    assert "/internal/path" not in json.dumps(result)
+
+
+def test_missing_python_dotenv_only_marks_worker_incomplete(probes, monkeypatch):
+    def missing():
+        raise ModuleNotFoundError("dotenv SECRET /internal/path")
+    monkeypatch.setattr(target, "_load_worker_identity_probe", missing)
+    result = target.observe(probes)
+    rows = {r["id"]: r for r in result["checks"]}
+    assert result["status"] == "INCOMPLETE"
+    assert result["passive_checks_observed"] == 5
+    assert rows["worker_process_identity"]["status"] == "INCOMPLETE"
+    assert rows["api_listener_preflight"]["status"] == "PASS_PARTIAL"
+    assert "SECRET" not in json.dumps(result)
+    assert "/internal/path" not in json.dumps(result)
