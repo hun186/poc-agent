@@ -21,8 +21,19 @@ from tools import sraf_airgap_off2_linux_target as platform_probe
 from tools import sraf_airgap_off2_user_site as deps_probe
 from tools import sraf_airgap_off2_runtime_launchers as launch_probe
 from tools import sraf_airgap_off1_probes as host_probe
-from tools import sraf_airgap_off1h_worker_identity as worker_probe
-from tools import sraf_airgap_off1s_api_listener as listener_probe
+
+# The existing worker/listener modules transitively depend on pyodbc/dotenv.
+# Load ONLY when their individual check runs, so an unavailable native
+# dependency cannot prevent independent platform/deps/launcher/disk results.
+def _load_worker_identity_probe():
+    from tools.sraf_airgap_off1h_worker_identity import probe_worker_process_identities
+    return probe_worker_process_identities
+
+
+def _load_api_listener_module():
+    from tools import sraf_airgap_off1s_api_listener
+    return sraf_airgap_off1s_api_listener
+
 
 SCHEMA = "sraf_local_deploy_quickcheck_v1"
 MODE = "LOCAL_PASSIVE_NO_NETWORK_NO_ARTIFACTS"
@@ -121,7 +132,7 @@ def _disk() -> dict[str, object]:
 
 
 def _workers(root: Path) -> dict[str, object]:
-    result = worker_probe.probe_worker_process_identities(root)
+    result = _load_worker_identity_probe()(root)
     count = result.evidence.get("verified_role_count")
     if type(count) is not int or not 0 <= count <= 2:
         return _row("worker_process_identity", "INCOMPLETE",
@@ -147,6 +158,7 @@ def _api_preflight(root: Path) -> dict[str, object]:
     passed = 0
     fd = None
     try:
+        listener_probe = _load_api_listener_module()
         fd = listener_probe._pin_root_directory(root)
         passed += 1
         stage = _API_STAGES[1]
