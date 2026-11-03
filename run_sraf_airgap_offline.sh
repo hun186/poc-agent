@@ -3,14 +3,14 @@
 set -euo pipefail
 
 if [[ "$#" -gt 1 || ( "$#" -eq 1 && -z "$1" ) ]]; then
-  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps]' >&2
+  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site]' >&2
   exit 2
 fi
 MODE="${1:-quick}"
 case "$MODE" in
-  quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps) ;;
+  quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site) ;;
   --help|-h)
-    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps]'
+    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site]'
     exit 0
     ;;
   *)
@@ -56,6 +56,16 @@ case "$MODE" in
       exit 2
     fi
     exec "$PYTHON_BIN" tools/sraf_airgap_off2_runtime_deps.py
+    ;;
+  runtime-deps-user-site)
+    # Explicit opt-in diagnostic, separate from strict scheme-only runtime-deps.
+    # Never import declared packages, run pip, or imply user-site release trust.
+    PYTHON_BIN="${SRAF_PYTHON:-python}"
+    if ! command -v -- "$PYTHON_BIN" >/dev/null 2>&1; then
+      printf '%s\n' '{"schema":"sraf_off2_direct_runtime_user_site_inventory_v1","status":"INCOMPLETE","reason":"application_python_unavailable","scope":"SCHEME_PLUS_ACTIVE_USER_SITE_METADATA_ONLY_NOT_DEPLOYMENT_ATTESTATION","transitive_closure":"NOT_TESTED","wheelhouse_compatibility":"NOT_TESTED","production_release_ready":false}'
+      exit 2
+    fi
+    exec "$PYTHON_BIN" tools/sraf_airgap_off2_user_site.py
     ;;
   target-platform)
     # No credentials, network, external binaries or environment mutation.
