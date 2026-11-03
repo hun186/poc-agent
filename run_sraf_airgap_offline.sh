@@ -3,14 +3,14 @@
 set -euo pipefail
 
 if [[ "$#" -gt 1 || ( "$#" -eq 1 && -z "$1" ) ]]; then
-  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site|runtime-launchers]' >&2
+  printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site|runtime-launchers|deploy-check]' >&2
   exit 2
 fi
 MODE="${1:-quick}"
 case "$MODE" in
-  quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site|runtime-launchers) ;;
+  quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site|runtime-launchers|deploy-check) ;;
   --help|-h)
-    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site|runtime-launchers]'
+    printf '%s\n' 'Usage: bash run_sraf_airgap_offline.sh [quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site|runtime-launchers|deploy-check]'
     exit 0
     ;;
   *)
@@ -66,6 +66,16 @@ case "$MODE" in
       exit 2
     fi
     exec "$PYTHON_BIN" tools/sraf_airgap_off2_user_site.py
+    ;;
+  deploy-check)
+    # One-command local passive observation; stdout-only, no output-dir,
+    # network, credentials, package installs or service/worker mutation.
+    PYTHON_BIN="${SRAF_PYTHON:-python}"
+    if ! command -v -- "$PYTHON_BIN" >/dev/null 2>&1; then
+      printf '%s\n' 'SRAF_DEPLOY_CHECK=INCOMPLETE reason=application_python_unavailable'
+      exit 2
+    fi
+    exec "$PYTHON_BIN" tools/sraf_local_deploy_quickcheck.py
     ;;
   runtime-launchers)
     # Passive current-shell PATH and uvicorn script shebang only.
