@@ -37,3 +37,23 @@ SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh runtime-
 ```
 
 **不要直接執行 pip install/upgrade**：先由缺項位置核對公開需求；接著分別確認正式 SRAF Worker 使用的 Python 執行環境、user-site/legacy metadata 和套件來源。即使 15/15 METADATA 都找到，仍無法推定 `>=` 版本條件、實際 import、完整轉遞相依、ABI、Signed Wheelhouse 或離線還原測試已通過。
+
+### 可選 user-site 診斷（新增，與原 scheme-only 模式完全分離）
+
+2026-11-03 實機 v2 `runtime-deps` 回報缺項位置 `[7,12]`，對照第一方 `requirements.txt` 是 `smolagents>=1.0.0` 和 `pyodbc>=5.0.0`。操作者在**同一個 shell 的 Python** 使用標準函式庫發現兩者 `DIST_INFO`，且均為 `scheme=False, user_site=True, sys_path=True, metadata_symlink=False`。因此 v2 的 13/15 是**檢查範圍限制，不是兩項確定未安裝**，不應自行 pip install。
+
+**不修改原本** `runtime-deps` scheme-only 判定。若需要只評估使用者目前交互執行環境是否能看見更多直接套件，可以明確執行：
+
+```bash
+bash run_sraf_airgap_offline.sh runtime-deps-user-site
+```
+
+新指令先完成原本嚴格限域的 scheme-only `.dist-info` 掃描；僅當有未找到的第一方直接需求，且 `site.ENABLE_USER_SITE is True`、未用 `-s` 禁用 user-site、`site.getusersitepackages()` 為絕對而無相對或 dot 段、並且**字面上**存在於選定 Python 的 `sys.path` 時，才額外掃描該單一 user-site 目錄。使用既有逐層 `O_NOFOLLOW`、最多 4096 項目、每項目 METADATA 最多 1 MiB，且**只讀取 scheme 未找到的直接需求候選**；不讀取無關 METADATA，不載入模組，不跑 pip、程式入口點、SQL、ES 或 LLM。若 user-site 不活躍或安全讀取有歧義，回 `INCOMPLETE`。
+
+新 JSON `sraf_off2_direct_runtime_user_site_inventory_v1` 輸出：
+- `scheme_installed_direct_count` 與 `user_site_fallback_direct_count` 分開計算，`installed_direct_count` 為兩個來源已安全觀察到的數量之和。
+- `user_site_active` 是目前檢查程序的 user-site 宣告／搜尋路徑狀態，**不是** Worker、排程器或其他服務帳號的觀察。
+- `metadata_search_scope=SELECTED_PYTHON_SCHEME_PLUS_ACTIVE_USER_SITE_DIST_INFO_ONLY`，且 `user_site_release_attested=false`；即使 `status=PASS_PARTIAL`，仍絕不代表 user-site 套件可以被正式 release 使用或經可信來源／簽章確認。
+- `missing_direct_positions` 只有在兩個掃描都安全完成且仍有缺項時有意義；任何可疑來源／非活躍 user-site 都回固定 `INCOMPLETE` 原因，無臆測位置。
+
+**重要：** `package_imports=NOT_TESTED`、`transitive_closure=NOT_TESTED`、`wheelhouse_compatibility=NOT_TESTED`、`production_release_ready=false` 永遠不變；也不驗證版本 `>=` 條件、真實 `smolagents` import、`pyodbc` 原生載入、ODBC18 DLL／ELF 相依、SQL TLS、隔離封網安裝與 OFF-5 還原。正式部署仍應以**同一個服務 UID、Python／venv 與禁用 user-site 的乾淨安裝**建立可追溯、可重現的 signed Wheelhouse，不依賴私人 user-site。

@@ -35,6 +35,7 @@ def test_policy_declares_expected_runtime_and_release_tool_scope():
     assert "tools/sraf_airgap_off2_linux_target.py" in policy["release_tool_files"]
     assert "tools/sraf_airgap_off2_elf_needed.py" in policy["release_tool_files"]
     assert "tools/sraf_airgap_off2_runtime_deps.py" in policy["release_tool_files"]
+    assert "tools/sraf_airgap_off2_user_site.py" in policy["release_tool_files"]
     from tools.sraf_airgap_off2_policy_coverage import REQUIRED_OPERATOR_FILES
     assert set(REQUIRED_OPERATOR_FILES) <= (
         set(policy["managed_files"]) | set(policy["release_tool_files"])
