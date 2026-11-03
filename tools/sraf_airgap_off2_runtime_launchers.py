@@ -54,7 +54,12 @@ def _same_file(a: str | None, b: str | None) -> bool | None:
         return None
     return ((left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
             and (left_parent.st_dev, left_parent.st_ino)
-            == (right_parent.st_dev, right_parent.st_ino))
+            == (right_parent.st_dev, right_parent.st_ino)
+            # Keep the environment-selecting directory spelling stable too:
+            # two differently named aliases to the same dir must not silently
+            # claim equivalent sys.prefix/pyvenv.cfg resolution.
+            and os.path.normpath(os.path.dirname(a))
+            == os.path.normpath(os.path.dirname(b)))
 
 
 def _read_shebang(path: str) -> tuple[str, ...] | None:
