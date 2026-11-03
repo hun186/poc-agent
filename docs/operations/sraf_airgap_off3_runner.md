@@ -5,6 +5,7 @@
 在 SRAF 根目錄執行；也可以在其他目錄用絕對路徑呼叫：
 
 ```bash
+bash run_sraf_airgap_offline.sh deploy-check # 推薦：一次輸出本機安全快檢測，不寫檔、不連網
 bash run_sraf_airgap_offline.sh
 bash run_sraf_airgap_offline.sh quick
 bash run_sraf_airgap_offline.sh diagnose
@@ -32,6 +33,7 @@ bash run_sraf_airgap_offline.sh runtime-launchers
 | `runtime-deps` | `tools/sraf_airgap_off2_runtime_deps.py` | 使用所選 Python 唯讀取得直接相依套件安裝中繼資料，僅回報數量及固定狀態；無 pip、import、網路或寫入；不代表需求版本範圍、遞迴相依或 Wheelhouse 相容 |
 | `runtime-deps-user-site` | `tools/sraf_airgap_off2_user_site.py` | **明確選用**：在原本 scheme `.dist-info` 未找到的直接相依中，額外唯讀檢查已啟用、且確實出現在 `sys.path` 的 Python user-site。保留分開計數與 `production_release_ready=false`，不等於服務 UID 可用或正式離線部署驗收 |
 | `runtime-launchers` | `tools/sraf_airgap_off2_runtime_launchers.py` | **明確選用的靜態環境檢查**：只比較目前 shell PATH 的 `python` 是否與所選 Python 相同、`uvicorn` 安全讀取的 shebang 是否指向相同直譯器，不執行 `uvicorn`／API／Worker 或讀取正在執行程序與 `/proc`；不輸出私有路徑，最多 PASS_PARTIAL |
+| `deploy-check` | `tools/sraf_local_deploy_quickcheck.py` | **推薦的一鍵落地快檢測**：在目前 SRAF Python 下整合平台及 ODBC 靜態中繼資料、15 項直接相依 Metadata、Python／Uvicorn 入口、磁碟、現有 Schedule/Handoff Worker 身分及 API 9002 的六項安全前置檢查。免先建輸出目錄、只印摘要與一行可分享的去識別 JSON、不連網、不啟動 Job／服務、不安裝；**不**執行完整 Socket 獨占掃描或宣稱 release-ready |
 
 此統一入口只接受零個或一個固定模式名稱（`--help` 除外），**拒絕** `acceptance`、`upgrade`、`restore`、額外參數與任何探針憑證旗標，不提供由 Quick 自動升級到真正 Job／SQL／ES 探測的方式。需要專用 SQL/ES 授權時，另依既有 OFF-1 原始操作手冊使用明確 opt-in，不能透過統一入口隱式觸發。
 
@@ -52,3 +54,5 @@ bash run_sraf_airgap_offline.sh runtime-launchers
 若 `runtime-deps` 只在 user-site 有缺項，使用獨立的 `runtime-deps-user-site`；**不會悄悄擴充預設的 scheme-only 驗證**。詳情見 [OFF-2 runtime-deps 操作文件](sraf_airgap_off2_runtime_deps.md)。
 
 `runtime-launchers` 只代表執行當下 shell PATH 與可驗證 `uvicorn` 腳本的靜態比對；即使 PASS_PARTIAL 也 **完全不代表** 執行中的 API／Schedule/Handoff/Report Job 程序使用相同 Python、UID 或 user-site，也沒有驗證套件匯入與原生 pyodbc。詳見 [OFF-2 runtime launcher 靜態比對](sraf_airgap_off2_runtime_launchers.md)。
+
+**一般日常部署快檢測請優先用 `deploy-check`**，不是先跑多項手動 Python heredoc。當專案位於共享掛載、既有 `quick`/`no-network` 報告路徑因安全上層目錄而回 `output_dir_unverified` 時，`deploy-check` 仍能直接用終端機完成唯讀診斷，且不會更改既有 report 的 nofollow／0700 保護。它保留原 `quick`／`diagnose` 模式相容性；使用方式及輸出範圍見 [一鍵落地快檢測](sraf_local_deploy_quickcheck.md)。
