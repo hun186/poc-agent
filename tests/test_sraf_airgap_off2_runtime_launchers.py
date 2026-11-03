@@ -55,6 +55,54 @@ def test_python_mismatch_is_incomplete_even_when_uvicorn_matches(identities, tmp
     assert out["path_python_identity"] == "MISMATCH"
 
 
+def test_two_venvs_sharing_base_python_never_count_as_identical(tmp_path):
+    base = tmp_path / "python3-base"
+    base.write_bytes(b"fake python shared base")
+    base.chmod(0o755)
+    a = tmp_path / "venvA" / "bin"
+    b = tmp_path / "venvB" / "bin"
+    a.mkdir(parents=True)
+    b.mkdir(parents=True)
+    (a / "python").symlink_to(base)
+    (b / "python").symlink_to(base)
+    console = tmp_path / "uvicorn"
+    console.write_text(f"#!{a / 'python'}\n")
+
+    # The binaries have the same device/inode, but different venv/bin
+    # entrypoints must not be reported as matching environments.
+    assert target._same_file(str(a / "python"), str(b / "python")) is False
+    out = target.observe(
+        selected=str(a / "python"),
+        python_path=str(b / "python"),
+        uvicorn_path=str(console),
+    )
+    assert out["status"] == "INCOMPLETE"
+    assert out["path_python_identity"] == "MISMATCH"
+    assert out["production_release_ready"] is False
+
+
+def test_uvicorn_other_venv_is_not_accepted_when_path_python_matches(tmp_path):
+    base = tmp_path / "python3-base"
+    base.write_bytes(b"fake python shared base")
+    base.chmod(0o755)
+    a = tmp_path / "first-venv" / "bin"
+    b = tmp_path / "second-venv" / "bin"
+    a.mkdir(parents=True)
+    b.mkdir(parents=True)
+    (a / "python").symlink_to(base)
+    (b / "python").symlink_to(base)
+    cli = tmp_path / "uvicorn"
+    cli.write_text(f"#!{b / 'python'}\n")
+    out = target.observe(
+        selected=str(a / "python"),
+        python_path=str(a / "python"),
+        uvicorn_path=str(cli),
+    )
+    assert out["status"] == "INCOMPLETE"
+    assert out["uvicorn_shebang_identity"] == "MISMATCH"
+    assert out["production_release_ready"] is False
+
+
 def test_uvicorn_shebang_mismatch_is_incomplete(identities, tmp_path):
     exe, cli = identities
     other = tmp_path / "other-python"
