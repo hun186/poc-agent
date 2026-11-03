@@ -7,7 +7,15 @@ from pathlib import Path
 import pytest
 
 from tools import sraf_airgap_off2_user_site as target
-from tests.test_sraf_airgap_off2_runtime_deps import add_dist
+
+def add_dist(site: Path, name: str, version: str) -> Path:
+    folder = site / f"{name}-{version}.dist-info"
+    folder.mkdir()
+    (folder / "METADATA").write_text(
+        f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n\n",
+        encoding="utf-8",
+    )
+    return folder
 
 
 @pytest.fixture
