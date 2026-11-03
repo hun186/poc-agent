@@ -1,0 +1,100 @@
+# SRAF Backlog — Active Work and Historic Archive
+
+## Current Focus — Draft PR #340, 2026-10-31
+
+- Integrate **explicit opt-in strict ES HTTPS/CA/IP SAN and literal-index Mapping** into existing OFF-1 hub and optional one-click Bash flag `--probe-es-tls-mapping`. The default `diagnose` must not send ES credentials. Selected mode must stay bounded read-only, fail closed for missing configuration, and must not send an invalid-password credential-control challenge or relax TLS.
+- Verify exact newest PR HEAD: Hosted Python hub/launcher/strict ES projection + existing OFF-1B HTTPS parser regressions, 19 OFF-0 schema-only checks, Shell syntax, full formal Codex review and zero unresolved P1/P2 or review threads. **Do not merge without separate user authorization**.
+- Runtime tests on the private Linux host (ES CA file and configured literal index, SSL IP SAN, service/reverse proxy authentication, credentials, Mapping and false-response behaviors) are **NOT TESTED** by Hosted CI. Independent password authentication is not established without negative control, which requires separate authorization due account-lockout/audit risks; never claim full ES gate PASS from these partial observations.
+
+## Pending Release and Operations Gates
+
+- OFF-1: collect private Linux operator evidence under the actual SRAF Python environment; prove launcher/API ownership, output root parent trust and actual `/healthz`/Report Job UI; check Schedule/Handoff processes in the correct PID namespace. If the repo ancestor is group writable or symlinked, private dirfd evidence must refuse output, not disable protection.
+- ES: independently validate correct CA+IP SAN and expected service, `ES_INDEX` selector/mapping compatibility, protected authentication and authenticated read-only query capability; optional fixture/source integrity and dedicated index creation require **separate explicit consent and no production overlap**. Never infer FULL_LIVE from TCP.
+- SQL Server: separately validate v4 schema/migration and rollback, product/requirement SQL source authority, ODBC Driver 18 TLS identity, dedicated low-privilege SELECT-only principal, CAS/idempotency, signed/owner-scoped service keys. OFF-1G constant SELECT alone cannot prove authorized production SQL operations.
+- Schedule/Handoff: validate real versions, activation, auto-claim, worker identity, lease/renew/ownership, handoff ACK/reconciliation, remote report and SQLite/job/artifact integrity under separate auth; two visible worker processes do not prove E2E.
+- Agent/LLM: measure real provider contention in Ollama's potentially separate container and SRAF DataAgent stage timing under load; timeout/cooperative budget cannot forcibly terminate all blocked SDK calls; do not silently start real report Job during normal startup or diagnose. Actual Word, browser dashboard, and auth/download checks still required.
+- Packaging/airgap: OFF-2 release packaging/provenance, OFF-3/4 offline release/report, OFF-5 backup/restore, physical network isolation, fully automated operator report and faithful NOT_TESTED gates. Guardrail: no synthetic/fixture/Hosted test should become an attestation of on-premises physical airgap or successful Agent+ES+SQL+DOCX chain.
+
+## Deferred Features and Risk
+
+- Check exact hosted state before acting on historical PR #288/P2.1 and #328 or #322 handoffs; archived discussions may be obsolete. Keep release gates anchored in current exact-HEAD evidence.
+- Product Task/Requirement schema v4, immutable SQL authority and provenance, owner-scoped idempotency, snapshot/version CAS, signed worker/runner plans and service boundaries must be preserved. UI, security and production HTTP flows have separate release gates.
+- JT-1 Job Task, Workflow Registry, LangGraph integration, cross-host durable E2E plan lease/attestation, HA/retention/cancel/retry/webhooks, audit filtering, SQL/ES lineage are deferred unless independently implemented and verified.
+- Known limitations remain: no hard SDK call cancellation, ES fixture operations non-atomic with independent writers, no cross-system SQL/HTTP/files transaction, E2E Plan host/UID/namespace fencing only, already-admitted jobs can outlive later plan drift, and external process writers/parallel containers are outside the current local evidence model.
+
+## Recent Outcomes
+
+- #319 removed heavy E2E preflight from ordinary startup. #333–335 implemented actual DataAgent timings, Report Job progress and UI, subject to separate live acceptance.
+- #336–339 merged with user permission: #336 authorized one real Report Job CLI; #337 one-command read-only OFF-1 hub; #338 root Bash launcher and project-local private evidence; #339 passive local Schedule/Handoff identity observation. All are **partial** probes; no automatic SQL/ES/LLM jobs from regular diagnose.
+- PR #339 final `9f8a5858` Hosted #41100220011 SUCCESS (75 Python, 19 OFF-0), Codex CLEAN; squash merge `b758c2ef944ed6bedd1e63c3654291d18d30a785`. Real Linux Worker PID namespaces not yet accepted.
+
+## Archived History
+
+- `.codex/archive/backlog.md-20261031-031500.md`: **complete byte-identical pre-compaction backlog** (15,076 chars, Git blob SHA `56d811914d7a7c48c926baaffe78fffdef6d4c6a`), independently fetched and SHA checked before rewriting this active document. Includes historical dated requests / PR checks / findings and earlier deferred tasks; consult only when a historical handoff needs re-evaluation.
+- Existing `.codex/archive/` retains older project records; current source code and live GitHub PR/CI state take precedence over archived statuses.
+- 2026-10-31: compacted per AGENTS.md dated-entry threshold to keep active handoff focused without deleting historical full evidence.
+
+
+- **After merged #340 — Draft #341:** current one-command SQL-01 integration requires Hosted exact-head regression for original OFF-1G strict ODBC TLS test suite and new hub/shell opt-in safety, 19 OFF-0 schema-only and formal Codex CLEAN with no unresolved threads; no Merge absent explicit user instruction. Schema v4 source/permissions verification is deliberately NOT IMPLEMENTED by this constant-read probe: design a separate bounded read-only metadata evidence query only after identifying authoritative schema contract, permitted tables, principal permissions and operator consent. On-site private SQL TLS/IP SAN, actual Driver 18/ODBC and non-cancelable timeout behavior require independent live evidence.
+
+
+- **OFF-4 current focused increment:** Generate a Chinese 0600 TXT companion to the existing one-command OFF-1 JSON via fixed vocabulary only, add no new probes/secret sources, test fallback on second-file write failure and no-network behavior; require exact-head Hosted and formal Codex. Manual OFF-2 packaging/provenance, full offline deployment and OFF-5 restore remain future separate gates, not completed by a human-readable summary.
+
+
+- **2026-10-31 E2E operator guard rebased task:** port old PR #322 client-side SIGALRM safety and tests onto current main without old .codex rewrite, rerun exact-head Hosted E2E/19 OFF-0 and formal review. Full server asynchronous/cancellation-safe E2E status/poll and private Linux high-load validation remain separately planned; do not treat elapsed client deadline as cancellation of ES writes.
+
+- **OFF-4 後續診斷可讀性，2026-10-31：** 將現有 TXT 的通用建議補充為少數嚴格比對的已審查原因碼建議；不輸出原始例外或原因、不加網路/資料庫操作。增加錯配/未知/惡意型別/多項手動 Gate 保留測試；必須通過 exact HEAD Hosted CI、正式 Codex Review 才可 Merge。完成後仍需 OFF-2 套件、獨立現場 SQL/ES/LLM/Worker 與 OFF-5 還原證據。
+
+
+- **2026-10-31 OFF-1 one-command output safety increment (candidate):** preserve the project-local default, add only optional `SRAF_OFF1_OUTPUT_DIR` absolute single-line env override to existing Bash wrapper, no new flags or credential paths; retain verified Python nofollow-dirfd authority. Test default/override/unsafe values and no fallback; Hosted exact-head and Codex review required. Follow-up live private Linux permission test and complete OFF-2–5 remain NOT_TESTED.
+
+
+- **2026-10-31 OFF-1 root launcher socket-free candidate:** wire only existing `--no-network` Python hub mode through exact Bash allowlist; prohibit duplicate and combined SQL/ES opt-ins before Python. Verify full output to the existing safe private dir and preserved INCOMPLETE/NOT_TESTED semantics in Hosted, perform exact-head Codex Review and conditional Merge. Live physical airgap and dependencies remain pending.
+
+
+- **2026-10-31 OFF-2 first independent runtime-byte inventory increment:** a read-only verifier of the existing manifest and its listed runtime hashes with strict external SHA-256 trust anchor and pinned no-follow paths; validate on latest Hosted, Codex Review and conditional merge. Still outstanding: produce a reviewed *complete* signed release bundle, SRAF Python/native ODBC/wheelhouse lock and checksums, OS/architecture compatibility, registry-excluded configuration template, immutable manifest hash distribution, installer, immutable version/rollback, OFF-3/4 full disconnected acceptance, OFF-5 actual restoration. Never use a self-computed target digest as a trusted release signature.
+
+
+- **OFF-2 one-command operator wrapper candidate, 2026-10-31:** provide a bounded Bash entry that consumes only independently provided trusted manifest SHA-256 via `SRAF_OFF2_TRUSTED_MANIFEST_SHA256`, rejects absent/invalid hash and any extra args before invoking the installed Python OFF-2 verifier, no side effects. Run exact latest-head OFF-2 focused CI including new Shell tests and OFF-0 19, request formal Codex and conditional merge only after CLEAN. Additional release bundle signing, wheelhouse, real private Linux and restore evidence remains outstanding.
+
+
+- **2026-10-31 OFF-3 first unified operator CLI candidate:** add a thin, non-privileged root Shell dispatcher with quick/diagnose/no-network/release-files only, reuse all existing tested tools, preserve O_NOFOLLOW/0700/0600 and explicit OFF-2 trust pin; unit tests ensure acceptance/upgrade/restore and arbitrary flags reject before any command. Run latest-head OFF-1/19 OFF-0 CI + Codex CLEAN before conditional merge. Backlog remains real FULL_LIVE Acceptance under explicit operator authorization, offline bundle and reproducible wheelhouse, actual private Linux, OFF-5 restore.
+
+
+- **2026-11-01 OFF-2 release completeness follow-up:** after the advisory minimum operator-entrypoint policy-gap audit is reviewed, plan an independently reviewed policy update adding the proper release-tool inventory and external Git trust anchor; generate reproducible full offline wheelhouse/native dependency bundle with documented platform constraints, verify true bundle contents/signature and private Linux install/restore in a separate authorized task. Current read-only coverage audit intentionally does not make this change; exact-head CI and formal Codex review are pending.
+
+
+- **2026-11-01 OFF-3 release-policy route candidate:** after Hosted CI and formal Codex review, conditionally merge the read-only `release-policy` one-command wiring. This option must never silently escalate to `release-files`, authenticated acceptance, packaging, upgrade or restore. Complete trusted signed inventory and full OFF-3/5 acceptance remain outstanding.
+
+
+- **2026-11-01 OFF-2 follow-up after selected policy entries (pending):** build and review the *complete* transitive release-tool/dependency closure (shell dependencies, Python wheels/native ODBC, model weights, platform constraints), produce truly trusted signed out-of-band manifest+digest, and test isolated offline installation/upgrade/restore. Nine-entry policy PASS_PARTIAL is not that closure and shall never upgrade OFF-3/OFF-5 manual gates. Separately fix historical #270's expired golden XLSX input as a new current-main correction with source digest, provenance/fixtures and regression tests; do not merge stale old branch.
+
+
+- **2026-11-01 outstanding operator E2E P1 data correction:** independently review a future-safe/non-expiring canonical three-item XLSX derived from the real Requirement `ITEMNO -> CONTENT` map; compute its exact deterministic SHA-256, update code/env/docs and release provenance as appropriate, verify import/scheduling and new fail-fast behavior with private Linux evidence. Historic #270 cannot merge stale changes into current main. Fail-fast alone is only safety improvement.
+
+
+- **2026-11-02 Issue #354 next proof after binary fixture candidate:** obtain exact-head hosted operator harness + OFF-0/1/2 tests and formal Codex code review; if gates pass, merge. Then independently regenerate and distribute a reviewed release provenance / full signed package, and execute explicitly authorized private Linux FULL_LIVE Requirement→Schedule→Handoff→Report Job→LLM/ES→DOCX acceptance. No source SHA can substitute for signed release-package provenance and no existing durable v2 fixture histories may be automatically altered.
+
+
+- **2026-11-02 OFF-2 next gate after direct pins audit:** define an independently reviewed per-Python/per-OS/per-architecture transitive dependency lock + wheelhouse SHA inventory, include native ODBC18 and model artifacts with explicit licensing/ABI constraints, and test fully disconnected install/upgrade/restore using an externally trusted release signature/pin. The new read-only direct-pins scanner does not produce or validate this. Current wide constraints must remain INCOMPLETE until a real reproducible package is delivered.
+
+
+- **2026-11-02 OFF-2 next stage after pinned Wheelhouse byte verifier:** establish independently signed/pinned, reviewer-authorized complete per-target Python/OS/ABI lock + transitive Wheel inventory and bundle builder; verify ODBC18 native libraries, models, licenses and offline pip install in a disconnected test environment. `wheel-files` is an untrusted-environment *read-only listed-byte comparison* under external manifest pin, not a whole-package closure, signature or operational acceptance. Existing broad `>=` requirements stay INCOMPLETE until a real reproducible lock is approved.
+
+- **2026-11-02 OFF-2 next real wheelhouse gates:** after basic Wheel ZIP/metadata shape checks, independently build a complete target Linux Python ABI lock/wheelhouse, verify RECORD and actual wheel file members plus Requires-Dist closure and platform tags, include trusted native ODBC/model supplies, obtain external signatures, then run actual disconnected install/upgrade/restore. Basic metadata checks are explicitly NOT those gates.
+
+- **2026-11-02 OFF-2 next target-dependent work:** operator runs `target-platform` using the real deployed SRAF Python in private Linux, reviews sanitized one-line JSON and fixes missing distro/driver facts without disclosing credentials. Separately compile a signed and independently reviewed Python/OS/architecture-specific full transitive wheel/native ODBC/model package, then perform isolated disconnected install/upgrade/restore and authorized live SQL/ES/Agent/LLM/DOCX. The inventory PASS_PARTIAL alone is not compatibility or FULL_LIVE.
+
+- **2026-11-02 OFF-2 after real target inventory:** once reviewed target-platform v2 available on private Ubuntu 22.04 x86_64 Python3.10, rerun with the actual SRAF interpreter and inspect sanitized `odbc_binary_header`. A header match is still NOT a library load or SQL TLS proof; obtain target-specific CPython3.10 full transitive pinned wheelhouse incl native pyodbc, ODBC18 dependency/license provenance and model assets; then external signed manifest and disconnected installation/restore tests. Never generalize one host's PASS_PARTIAL to other deployment hosts.
+
+- **2026-11-02 post-v2 real target:** once v3 PT_DYNAMIC parser passes Hosted and formal Codex and is deployed, run `target-platform` again with actual private SRAF Python and share only sanitized one-line JSON. For true build readiness next require approved target-CPython3.10 x86_64 complete transitive pinned wheels + native ODBC18 dependencies/signatures/licensing, actual disconnected installation/restore and authorized least-privilege SQL TLS, ES SAN, LLM/Agent/Handoff/DOCX acceptance. ELF DT_NEEDED name parsing cannot replace any of these gates.
+
+- **2026-11-02 next target-specific release gate:** after `runtime-deps` merged run it on the same actual SRAF CPython3.10 interpreter and review sanitized direct-present/missing/unpinned counts. A complete and independently reviewed signed target-pinned transitive lock and actual wheels + pyodbc/ODBC18 native assets/model packages are still missing. Require offline isolated install/upgrade/rollback, and authorized SQL TLS/ES/Agent/Handoff/DOCX FULL_LIVE; no incidental production changes.
+
+- **2026-11-02 real target runtime metadata deficit:** first runtime-deps v1 result was 13/15 direct wheel dist-info present, 2 unobserved, 15 unlocked. After ordinal v2 merge, rerun with actual CPython3.10 SRAF interpreter and correlate missing 1-based positions with requirements.txt. Investigate venv/user site/legacy metadata before any package install. Full cp310 signed transitive lock/wheelhouse, native ODBC18 load, SQL TLS, airgap/install/restore and FULL_LIVE remain NOT_TESTED.
+
+- **2026-11-03 after observed user-site cause:** original v2 13/15 only searches sysconfig scheme; smolagents/pyodbc are visible in current interactive Python user-site, not missing installs. Once opt-in user-site diagnostic passes latest-head CI and formal clean review, run only on intended same interpreter to observe separate scheme/fallback counts. Confirm real SRAF API, Worker, Schedule and Report Job service UID and Python environment separately; **user-site present for interactive account does not prove service**. Pending: independently reviewed exact-CPython3.10 full transitive trusted lock/wheelhouse, native ODBC18 load/pyodbc ABI and authorized SQL TLS, disconnected install/restore, FULL_LIVE.
+
+- **2026-11-03 next actual API/Worker environment gate:** after completing Hosted+formal clean review on opt-in `runtime-launchers`, run it from real operator's intended shell to compare PATH `uvicorn` script shebang against selected Python, report only sanitized JSON. A static match does **not** verify actual service account, PID, environment or user-site; separately plan operator-authorized safe runtime attestation without exposing live credentials/command lines and without restarting services. Next full OFF-2 work still needs independently reviewed transitive pinned cp310 wheelhouse, pyodbc/ODBC18 dynamic load/SQL TLS, disconnected install+restore, FULL_LIVE.
+
+- **2026-11-03 after one-command deploy-check candidate**: Validate latest-head Hosted Ubuntu22.04 CPython3.10, OFF-2, OFF-1, operator fixture, formal Codex clean review before Auto-Merge. Then operator runs only `bash run_sraf_airgap_offline.sh deploy-check` on actual host; use one JSON summary, not manually re-running six or more Python snippets. Follow-on separate authorized gates only for full OFF-1S exclusive socket ownership, API health, actual Worker/service interpreter/UID/venv, Python imports/native ODBC, trusted transitive cp310 Wheelhouse, ES/SQL TLS, real report job, offline install/restore and FULL_LIVE.
