@@ -28,6 +28,7 @@ bash run_sraf_airgap_offline.sh runtime-deps
 | `wheel-files` | `tools/sraf_airgap_off2_wheel_files.py` | 需要獨立取得外部可信 Wheel Manifest SHA-256；只核對列管 Wheel 位元組、拒絕未列管檔案；無法證明 Python 依賴閉包、簽章、ODBC 或封網安裝 |
 | `target-platform` | `tools/sraf_airgap_off2_linux_target.py` | 只用指定的 SRAF Python 和本機唯讀 OS/ODBC 驅動註冊檔，盤點 Linux 發行版、CPU、Python SOABI 與 glibc；輸出固定清單，不讀憑證或測試原生 ODBC；最多 `PASS_PARTIAL` |
 | `runtime-deps` | `tools/sraf_airgap_off2_runtime_deps.py` | 使用所選 Python 唯讀取得直接相依套件安裝中繼資料，僅回報數量及固定狀態；無 pip、import、網路或寫入；不代表需求版本範圍、遞迴相依或 Wheelhouse 相容 |
+| `runtime-deps-user-site` | `tools/sraf_airgap_off2_user_site.py` | **明確選用**：在原本 scheme `.dist-info` 未找到的直接相依中，額外唯讀檢查已啟用、且確實出現在 `sys.path` 的 Python user-site。保留分開計數與 `production_release_ready=false`，不等於服務 UID 可用或正式離線部署驗收 |
 
 此統一入口只接受零個或一個固定模式名稱（`--help` 除外），**拒絕** `acceptance`、`upgrade`、`restore`、額外參數與任何探針憑證旗標，不提供由 Quick 自動升級到真正 Job／SQL／ES 探測的方式。需要專用 SQL/ES 授權時，另依既有 OFF-1 原始操作手冊使用明確 opt-in，不能透過統一入口隱式觸發。
 
@@ -44,3 +45,5 @@ bash run_sraf_airgap_offline.sh runtime-deps
 `target-platform` 只觀察執行腳本當下的 Python ABI 與 Linux/ODBC 登錄配置，不會收集完整套件/ODBC 原生 library 版本，也不是封網或實機業務 E2E。使用與正式 SRAF 相同的 Python 環境，例如 `SRAF_PYTHON=/path/to/venv/bin/python bash run_sraf_airgap_offline.sh target-platform`；詳細欄位與安全界線見 [OFF-2 Linux 目標環境盤點](sraf_airgap_off2_linux_target.md)。
 
 `runtime-deps` 的操作方式與證據界線見 [OFF-2 Python 直接相依安裝中繼資料盤點](sraf_airgap_off2_runtime_deps.md)。
+
+若 `runtime-deps` 只在 user-site 有缺項，使用獨立的 `runtime-deps-user-site`；**不會悄悄擴充預設的 scheme-only 驗證**。詳情見 [OFF-2 runtime-deps 操作文件](sraf_airgap_off2_runtime_deps.md)。
