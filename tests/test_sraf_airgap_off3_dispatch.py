@@ -173,6 +173,26 @@ def test_runtime_launchers_missing_python_is_incomplete(fake_deployment):
     assert not capture.exists()
 
 
+def test_deploy_check_selects_exact_application_python_without_evidence_dir(fake_deployment):
+    script, root, capture, env = fake_deployment
+    result = _exec(script, env, "deploy-check")
+    assert result.returncode == 17
+    assert capture.read_text().splitlines() == [
+        "python", str(root), "tools/sraf_local_deploy_quickcheck.py",
+    ]
+    assert not (root / "sraf-acceptance-results").exists()
+
+
+def test_deploy_check_missing_python_is_safe_and_does_not_run(fake_deployment):
+    script, root, capture, env = fake_deployment
+    env["SRAF_PYTHON"] = "/not-present/python"
+    result = _exec(script, env, "deploy-check")
+    assert result.returncode == 2
+    assert "application_python_unavailable" in result.stdout
+    assert not capture.exists()
+    assert not (root / "sraf-acceptance-results").exists()
+
+
 def test_target_platform_runs_only_application_python_without_network(fake_deployment):
     script, root, capture, env = fake_deployment
     result = _exec(script, env, "target-platform")
@@ -234,6 +254,7 @@ def test_release_policy_missing_interpreter_fails_before_exec(fake_deployment):
     ("release-deps", "--live-report"), ("release-deps", "--probe-sql-read"), ("target-platform", "--live-report"),
     ("target-platform", "--probe-sql-read"),
     ("runtime-deps", "--live-report"), ("runtime-deps", "--probe-sql-read"),
+    ("deploy-check", "--live-report"), ("deploy-check", "--probe-sql-read"),
     ("runtime-launchers", "--probe-sql-read"), ("runtime-launchers", "--live-report"),
     ("runtime-deps-user-site", "--live-report"), ("runtime-deps-user-site", "--probe-sql-read"), ("wheel-files", "--no-network"),
     ("--probe-sql-read",), ("",),
@@ -263,7 +284,7 @@ def test_help_does_not_run_any_probe(fake_deployment):
     script, _, capture, env = fake_deployment
     result = _exec(script, env, "--help")
     assert result.returncode == 0
-    assert "quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site|runtime-launchers" in result.stdout
+    assert "quick|diagnose|no-network|release-files|release-policy|release-deps|wheel-files|target-platform|runtime-deps|runtime-deps-user-site|runtime-launchers|deploy-check" in result.stdout
     assert not capture.exists()
 
 
