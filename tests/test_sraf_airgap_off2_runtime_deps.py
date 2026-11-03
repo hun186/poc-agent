@@ -45,7 +45,10 @@ def test_all_direct_metadata_present_still_only_partial(inventory):
         "schema": target.SCHEMA, "scope": target.SCOPE,
         "status": "PASS_PARTIAL", "reason": "direct_distribution_metadata_observed_only",
         "requirements_checked": 3, "installed_direct_count": 3,
-        "missing_direct_count": 0, "unlocked_direct_count": 2,
+        "missing_direct_count": 0, "missing_direct_positions": [],
+        "position_basis": "ONE_BASED_NONCOMMENT_REQUIREMENTS_ORDER",
+        "metadata_search_scope": "SELECTED_PYTHON_SCHEME_DIST_INFO_ONLY",
+        "unlocked_direct_count": 2,
         "exact_text_matches": 1, "transitive_closure": "NOT_TESTED",
         "wheelhouse_compatibility": "NOT_TESTED", "package_imports": "NOT_TESTED",
         "production_release_ready": False,
@@ -63,6 +66,38 @@ def test_missing_distribution_is_incomplete(inventory):
     assert value["status"] == "INCOMPLETE"
     assert value["reason"] == "direct_distribution_metadata_missing"
     assert value["missing_direct_count"] == 1
+    assert value["missing_direct_positions"] == [3]
+    assert value["position_basis"] == "ONE_BASED_NONCOMMENT_REQUIREMENTS_ORDER"
+
+
+def test_missing_positions_follow_noncomment_requirement_ordinals(inventory):
+    root, site, fastapi, _, pyodbc = inventory
+    (root / "requirements.txt").write_text(
+        "# first comment\n\nFastAPI>=0.115.0\n"
+        "  # another comment\npython-docx==1.1.2\npyodbc>=5.0.0\n",
+        encoding="utf-8")
+    (fastapi / "METADATA").unlink()
+    fastapi.rmdir()
+    (pyodbc / "METADATA").unlink()
+    pyodbc.rmdir()
+    value = result(root, site)
+    assert value["requirements_checked"] == 3
+    assert value["installed_direct_count"] == 1
+    assert value["missing_direct_count"] == 2
+    assert value["missing_direct_positions"] == [1, 3]
+    assert value["metadata_search_scope"] == "SELECTED_PYTHON_SCHEME_DIST_INFO_ONLY"
+    assert "fastapi" not in json.dumps(value).lower()
+    assert str(root) not in json.dumps(value)
+
+
+def test_failed_metadata_read_never_guesses_missing_positions(inventory):
+    root, site, fastapi, _, _ = inventory
+    (fastapi / "METADATA").write_bytes(b"x" * (target._MAX_METADATA_BYTES + 1))
+    value = result(root, site)
+    assert value["status"] == "INCOMPLETE"
+    assert value["reason"] == "installed_distribution_metadata_unverifiable"
+    assert value["missing_direct_positions"] == []
+    assert value["missing_direct_count"] == 3
 
 
 def test_exact_version_text_mismatch_is_incomplete(inventory):

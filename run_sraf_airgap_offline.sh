@@ -52,7 +52,7 @@ case "$MODE" in
     # target packages, run pip, connect to services or write an inventory.
     PYTHON_BIN="${SRAF_PYTHON:-python}"
     if ! command -v -- "$PYTHON_BIN" >/dev/null 2>&1; then
-      printf '%s\n' '{"schema":"sraf_off2_direct_runtime_inventory_v1","status":"INCOMPLETE","reason":"application_python_unavailable","scope":"INSTALLED_DIRECT_METADATA_ONLY_NOT_VERSION_SOLVER_OR_WHEELHOUSE_ATTESTATION","transitive_closure":"NOT_TESTED","wheelhouse_compatibility":"NOT_TESTED","production_release_ready":false}'
+      printf '%s\n' '{"schema":"sraf_off2_direct_runtime_inventory_v2","status":"INCOMPLETE","reason":"application_python_unavailable","scope":"INSTALLED_DIRECT_METADATA_ONLY_NOT_VERSION_SOLVER_OR_WHEELHOUSE_ATTESTATION","transitive_closure":"NOT_TESTED","wheelhouse_compatibility":"NOT_TESTED","production_release_ready":false}'
       exit 2
     fi
     exec "$PYTHON_BIN" tools/sraf_airgap_off2_runtime_deps.py

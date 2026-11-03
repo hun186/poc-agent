@@ -28,7 +28,7 @@ from tools.sraf_airgap_off2_requirements_audit import (
     _LITERAL_REQUIREMENT, _EXACT_VERSION,
 )
 
-SCHEMA = "sraf_off2_direct_runtime_inventory_v1"
+SCHEMA = "sraf_off2_direct_runtime_inventory_v2"
 SCOPE = "INSTALLED_DIRECT_METADATA_ONLY_NOT_VERSION_SOLVER_OR_WHEELHOUSE_ATTESTATION"
 _MAX_DIRECT = 256
 _MAX_DISTS_SCAN = 4096
@@ -205,11 +205,22 @@ def _metadata_snapshot(targets: set[str], locations: tuple[str, ...]) -> dict[st
 
 
 def _result(status: str, reason: str, declared: int = 0, present: int = 0,
-            unlocked: int = 0, exact_matches: int = 0) -> dict[str, object]:
+            unlocked: int = 0, exact_matches: int = 0,
+            missing_positions: tuple[int, ...] = ()) -> dict[str, object]:
+    # Ordinals refer ONLY to validated non-comment direct requirements, using
+    # first-party file order. They do not enumerate private installed names.
+    if (len(missing_positions) > _MAX_DIRECT
+            or any(type(n) is not int or n < 1 or n > declared
+                   for n in missing_positions)
+            or len(set(missing_positions)) != len(missing_positions)):
+        raise _InvalidInventory
     return {
         "schema": SCHEMA, "scope": SCOPE, "status": status, "reason": reason,
         "requirements_checked": declared, "installed_direct_count": present,
         "missing_direct_count": max(0, declared - present),
+        "missing_direct_positions": list(missing_positions),
+        "position_basis": "ONE_BASED_NONCOMMENT_REQUIREMENTS_ORDER",
+        "metadata_search_scope": "SELECTED_PYTHON_SCHEME_DIST_INFO_ONLY",
         "unlocked_direct_count": unlocked, "exact_text_matches": exact_matches,
         "transitive_closure": "NOT_TESTED", "wheelhouse_compatibility": "NOT_TESTED",
         "package_imports": "NOT_TESTED", "production_release_ready": False,
@@ -231,8 +242,15 @@ def observe(root: Path, *, locations: tuple[str, ...] | None = None) -> dict[str
         present = len(installed)
         matches = sum(v is not None and installed.get(k) == v for k, v in wanted.items())
         if present != count:
+            # Only disclose 1-based positions from the already-public source
+            # requirements, not package names/versions or deployment paths.
+            missing_positions = tuple(
+                index for index, name in enumerate(wanted, start=1)
+                if name not in installed
+            )
             return _result("INCOMPLETE", "direct_distribution_metadata_missing",
-                           count, present, unlocked, matches)
+                           count, present, unlocked, matches,
+                           missing_positions)
         if matches != count - unlocked:
             return _result("INCOMPLETE", "exact_direct_version_text_mismatch",
                            count, present, unlocked, matches)
