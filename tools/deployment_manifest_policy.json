@@ -38,7 +38,8 @@
     "tools/sraf_airgap_off2_linux_target.py",
     "tools/sraf_airgap_off2_elf_needed.py",
     "tools/sraf_airgap_off2_runtime_deps.py",
-    "tools/sraf_airgap_off2_user_site.py"
+    "tools/sraf_airgap_off2_user_site.py",
+    "tools/sraf_airgap_off2_runtime_launchers.py"
   ],
   "allowed_runtime_extra_globs": [],
   "guarded_root_extensions": [
