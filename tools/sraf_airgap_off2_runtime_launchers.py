@@ -33,18 +33,28 @@ _SAFE_PATH = re.compile(r"/[A-Za-z0-9_+./-]{1,4095}")
 
 
 def _same_file(a: str | None, b: str | None) -> bool | None:
-    """Only compare regular-file identity; never execute or read interpreters."""
+    """Compare binary AND environment-selecting parent directory, never exec."""
     if not a or not b or not isinstance(a, str) or not isinstance(b, str):
         return None
     if _SAFE_PATH.fullmatch(a) is None or _SAFE_PATH.fullmatch(b) is None:
         return None
     try:
         left, right = os.stat(a), os.stat(b)
+        # Crucial: two independent venv/bin/python symlinks can resolve to
+        # the SAME base Python binary, but the entrypoint's parent directory
+        # is what selects pyvenv.cfg and sys.prefix. A shared inode by itself
+        # therefore cannot establish environment identity.
+        left_parent = os.stat(os.path.dirname(a))
+        right_parent = os.stat(os.path.dirname(b))
     except (OSError, ValueError, TypeError):
         return None
-    if not stat.S_ISREG(left.st_mode) or not stat.S_ISREG(right.st_mode):
+    if (not stat.S_ISREG(left.st_mode) or not stat.S_ISREG(right.st_mode)
+            or not stat.S_ISDIR(left_parent.st_mode)
+            or not stat.S_ISDIR(right_parent.st_mode)):
         return None
-    return (left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
+    return ((left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
+            and (left_parent.st_dev, left_parent.st_ino)
+            == (right_parent.st_dev, right_parent.st_ino))
 
 
 def _read_shebang(path: str) -> tuple[str, ...] | None:
