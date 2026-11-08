@@ -71,6 +71,9 @@ EDITOR_STATIC_ASSETS: dict[str, str] = {
     "editor_bootstrap.js": "application/javascript",
     "report_jobs_ui.js": "application/javascript",
     "report_jobs_ui.css": "text/css",
+    "requirement_product_explorer.js": "application/javascript",
+    "requirement_product_explorer.css": "text/css",
+    "requirement_product_explorer.html": "text/html",
     "excel_to_sql_dashboard_app.js": "application/javascript",
     "excel_to_sql_import_records.js": "application/javascript",
     "excel_to_sql_source_editor_app.js": "application/javascript",
@@ -98,6 +101,21 @@ def editor_page() -> FileResponse:
 def report_jobs_page() -> FileResponse:
     return FileResponse(
         static_path("report_jobs.html"),
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+        },
+    )
+
+
+@router.get("/requirement-product", include_in_schema=False)
+def requirement_product_explorer_page() -> FileResponse:
+    """Read-only Product API browser; authentication is enforced by the API itself."""
+    return FileResponse(
+        static_path("requirement_product_explorer.html"),
         media_type="text/html",
         headers={
             "Cache-Control": "no-store",
