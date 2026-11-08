@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   report-job-ui:
-    name: Report Job UI/idempotency synthetic (Python \${{ matrix.python-version }})
+    name: Report Job UI/idempotency synthetic (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -32,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: \${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}
       - name: Install dependencies before pytest (AGENTS.md)
         run: |
           python -m pip install --upgrade pip
