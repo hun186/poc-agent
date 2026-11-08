@@ -11,6 +11,8 @@ on:
       - 'sra_api/static/requirement_product_explorer.html'
       - 'sra_api/static/requirement_product_explorer.css'
       - 'sra_api/static/requirement_product_explorer.js'
+      - 'sra_api/static/requirement_product_preview.js'
+      - 'tests/requirement_product_preview_flow.cjs'
       - 'sra_api/static/editor.html'
       - 'sra_api/static/editor_bootstrap.js'
       - 'tests/test_requirement_product_explorer_static.py'

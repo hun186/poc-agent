@@ -8,16 +8,48 @@
   <title>SRAF 需求任務與執行紀錄</title>
   <link rel="stylesheet" href="/static/requirement_product_explorer.css">
   <script src="/static/requirement_product_explorer.js" defer></script>
+  <script src="/static/requirement_product_preview.js" defer></script>
 </head>
 <body>
   <main class="wrap">
-    <header><div><h1>需求任務與執行紀錄</h1><p>唯讀檢視 Product API 的真實任務、批次與項目狀態；不啟動或修改排程。</p></div><a href="/editor">返回管理頁</a></header>
+    <header><div><h1>需求任務與執行紀錄</h1><p>檢視 Product API 任務、批次與項目，並使用既有不持久化的資料預覽；不啟動或修改排程。</p></div><a href="/editor">返回管理頁</a></header>
     <section class="panel">
       <h2>驗證與讀取</h2>
       <label for="authToken">已授權的 Bearer Token</label>
       <input id="authToken" type="password" autocomplete="off" spellcheck="false" placeholder="僅在本分頁使用，不儲存">
       <p class="hint">Token 不保存於瀏覽器儲存空間、Cookie 或網址。請在可信任的 HTTPS／本機環境使用。</p>
       <div class="actions"><button id="loadTasks" type="button">載入任務</button><span id="message" role="status" aria-live="polite">尚未查詢。</span></div>
+    </section>
+    <section class="panel" aria-labelledby="previewTitle">
+      <h2 id="previewTitle">Requirement 輸入預覽（不建立任務）</h2>
+      <p class="hint">使用現有 <code>POST /v1/requirement-task-previews</code> 的無持久化預覽能力。需具備 db_operator 權限及已核准的 Profile Version。每次由使用者點選才送出，不啟動排程、不寫入任務或 SQL。</p>
+      <label for="previewProfile">已核准的 Profile Version ID</label>
+      <input id="previewProfile" maxlength="128" autocomplete="off" spellcheck="false" placeholder="貼上既有、已核准的 Profile Version ID">
+      <label for="previewMode">輸入方式</label>
+      <select id="previewMode">
+        <option value="file">上傳 CSV／JSON／XLSX 檔</option>
+        <option value="json">直接貼上 JSON 陣列</option>
+      </select>
+      <div id="previewFileGroup">
+        <label for="previewFile">輸入檔案（最大 10 MiB）</label>
+        <input type="file" id="previewFile" accept=".csv,.json,.xlsx">
+      </div>
+      <div id="previewJsonGroup" hidden>
+        <label for="previewJson">JSON 陣列（UTF-8 最多 1 MiB）</label>
+        <textarea id="previewJson" rows="6" spellcheck="false" placeholder='[{"ITEMNO":"1","TITLE":"範例需求"}]'></textarea>
+      </div>
+      <div class="actions">
+        <button id="previewBtn" type="button">檢查並預覽（不儲存）</button>
+        <button id="previewClearBtn" type="button" class="secondary">清除預覽</button>
+      </div>
+      <p id="previewMessage" class="hint" role="status" aria-live="polite">尚未預覽。</p>
+      <div id="previewResult" hidden>
+        <dl class="detail-grid" id="previewSummary"></dl>
+        <h3>標準化預覽資料（API 最多回傳 100 筆）</h3>
+        <div class="scroll"><table><thead><tr><th>來源列</th><th>外部 ID</th><th>標題</th><th>內容摘要</th><th>截止時間</th></tr></thead><tbody id="previewRows"></tbody></table></div>
+        <h3>錯誤與警告（API 取樣）</h3>
+        <div id="previewDiagnostics" class="preview-diagnostics"></div>
+      </div>
     </section>
     <section class="panel">
       <h2>任務</h2>
