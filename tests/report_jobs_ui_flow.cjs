@@ -7,10 +7,12 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '..', 'sra_api', 'static', 'report_jobs_ui.js'), 'utf8');
 const ids = ['authToken','prompt','filename','jobId','watchBtn','stopBtn','submitBtn','downloadBtn',
   'progressCard','message','phaseTitle','jobStatus','phaseElapsed','observation','lastChecked','failureMessage',
-  'retrySubmitBtn','discardSubmitBtn'];
+  'retrySubmitBtn','discardSubmitBtn','listJobsBtn','jobListMessage','jobRows','jobPrev','jobNext','jobPage'];
 const elements = Object.fromEntries(ids.map(id => [id, {
-  value: '', hidden: false, disabled: false, textContent: '', className: '', handlers: {},
-  addEventListener(kind, fn) { this.handlers[kind] = fn; }
+  value: '', hidden: false, disabled: false, textContent: '', className: '', handlers: {}, children: [],
+  addEventListener(kind, fn) { this.handlers[kind] = fn; },
+  appendChild(child) { this.children.push(child); },
+  replaceChildren(...xs) { this.children = xs; }
 }]));
 const events = {};
 const calls = [];
@@ -29,7 +31,14 @@ const document = {
   getElementById: (id) => elements[id],
   addEventListener: (kind, fn) => { events[kind] = fn; },
   body: {appendChild() {}},
-  createElement() { return {style: {}, click() { downloadClicks++; downloadedNames.push(this.download); }, remove() {}}; }
+  createElement(tag) { return {
+    tag, style: {}, children: [], textContent: '', handlers: {}, disabled: false,
+    addEventListener(kind, fn) { this.handlers[kind] = fn; },
+    appendChild(child) { this.children.push(child); },
+    replaceChildren(...xs) { this.children = xs; },
+    click() { downloadClicks++; downloadedNames.push(this.download); },
+    remove() {}
+  }; }
 };
 let uuidCounter = 0;
 const window = {
@@ -227,6 +236,49 @@ function progress(jobId, status, phase, long=false) {
   assert.equal(elements.submitBtn.disabled, false);
   events.pagehide();
   assert.equal(elements.authToken.value, '');
+
+  // Explicit owner history GET displays only safe metadata, never extra fields.
+  elements.authToken.value = 'secret';
+  fire('authToken','input');
+  planned.push(response(200, {items:[
+    {job_id:'job-history-A',status:'completed',phase:'completed',
+      created_at:'2026-11-08T10:00:00Z',filename:'secret.docx',prompt:'DO NOT SHOW'}
+  ],limit:20,offset:0}));
+  fire('listJobsBtn');
+  await tick();  // DOM click listener does not return the fetch Promise.
+  assert.equal(calls.at(-1).url,'/v1/report/jobs?limit=20&offset=0');
+  assert.equal(calls.at(-1).opts.method,'GET');
+  assert.equal(calls.at(-1).opts.headers.Authorization,'Bearer secret');
+  assert.equal(elements.jobRows.children.length,1,
+    'history status=' + elements.jobListMessage.textContent +
+    ' pending=' + planned.length + ' last_url=' + calls.at(-1).url);
+  assert.equal(elements.jobRows.children[0].children[0].textContent,'job-history-A');
+  assert.equal(elements.jobRows.children[0].children[2].textContent,'報告已完成');
+  assert.equal(elements.jobPrev.disabled,true);
+  assert.equal(elements.jobNext.disabled,true);
+  assert.doesNotMatch(JSON.stringify(elements.jobRows.children),/DO NOT SHOW/);
+  // A Job in this list uses the existing owner-authorized status route.
+  planned.push(response(200, progress('job-history-A','completed','completed')));
+  elements.jobRows.children[0].children[4].children[0].handlers.click();
+  await tick();
+  assert.equal(calls.at(-1).url,'/v1/report/jobs/job-history-A');
+  assert.equal(elements.jobId.value,'job-history-A');
+
+  // Switching identity during GET aborts and clears old owner history.
+  let releaseHistory;
+  planned.push(new Promise(resolve => {releaseHistory=resolve;}));
+  fire('listJobsBtn');
+  await tick();
+  const signal=calls.at(-1).opts.signal;
+  assert.equal(signal.aborted,false);
+  elements.authToken.value='new-owner';
+  fire('authToken','input');
+  assert.equal(signal.aborted,true);
+  assert.equal(elements.jobRows.children.length,0);
+  assert.equal(elements.progressCard.hidden,true);
+  releaseHistory(response(200,{items:[{job_id:'job-history-A',status:'completed',phase:'completed'}],limit:20,offset:0}));
+  await tick();  // settle the old fetch after the account-change abort.
+  assert.equal(elements.jobRows.children.length,0);
 
   console.log('Report Job UI behavior PASS: owner-scope headers, live phases, terminal stops, errors, download and token change');
 })().catch(err => { console.error(err); process.exitCode = 1; });

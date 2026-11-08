@@ -46,6 +46,14 @@ def test_report_job_ui_real_status_contract_and_no_token_persistence():
     assert "credentials: 'omit'" in js
     assert "cache: 'no-store'" in js
     assert "textContent" in js
+    assert 'id="listJobsBtn"' in html
+    assert 'id="jobRows"' in html
+    assert 'id="jobPrev"' in html and 'id="jobNext"' in html
+    assert "/v1/report/jobs?limit=20&offset=" in js
+    assert "method: 'GET'" in js
+    assert "historyGeneration" in js
+    assert "clearHistory();" in js
+    assert "item.job_id" in js
     assert 'id="retrySubmitBtn"' in html
     assert 'id="discardSubmitBtn"' in html
     assert "'Idempotency-Key': attempt.key" in js
