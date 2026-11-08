@@ -3,7 +3,7 @@
 # Run with: bash run_sraf_airgap_off1_diagnose.sh
 set -euo pipefail
 
-PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd -- "$PROJECT_ROOT"
 
 # Both active database probes require explicit operator choices.

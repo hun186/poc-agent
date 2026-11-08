@@ -33,7 +33,7 @@ case "${1:-}" in
 esac
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-if [[ ! -f "$PROJECT_ROOT/run_sraf_airgap_offline.sh" ]]; then
+if [[ ! -f "$PROJECT_ROOT/scripts/diagnostics/run_sraf_airgap_offline.sh" ]]; then
   printf '%s\n' 'SRAF_ONE_CLICK=INCOMPLETE reason=missing_canonical_dispatcher' >&2
   exit 2
 fi
@@ -45,4 +45,4 @@ printf '%s\n' \
   '注意：PASS_PARTIAL 不代表正式部署或 FULL_LIVE 驗收。'
 
 # 保留原模式的 stdout、最後 JSON 行與退出碼；不拷貝、重寫任何探測邏輯。
-exec bash "$PROJECT_ROOT/run_sraf_airgap_offline.sh" deploy-check
+exec bash "$PROJECT_ROOT/scripts/diagnostics/run_sraf_airgap_offline.sh" deploy-check
