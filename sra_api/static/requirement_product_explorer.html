@@ -26,11 +26,15 @@
     </section>
     <section class="panel" id="runsPanel" hidden>
       <h2>執行批次 <small id="currentTask"></small></h2>
+      <div class="detail-actions"><button type="button" id="taskDetailBtn">檢視任務詳細</button></div>
+      <dl id="taskDetails" class="detail-grid" hidden aria-live="polite"></dl>
       <div class="scroll"><table><thead><tr><th>批次 ID</th><th>狀態</th><th>觸發方式</th><th>完成／失敗</th><th>操作</th></tr></thead><tbody id="runsRows"></tbody></table></div>
       <div class="pager"><button id="runPrev" type="button" disabled>上一頁</button><span id="runPage">第 1 頁</span><button id="runNext" type="button" disabled>下一頁</button></div>
     </section>
     <section class="panel" id="itemsPanel" hidden>
       <h2>執行項目 <small id="currentRun"></small></h2>
+      <div class="detail-actions"><button type="button" id="runDetailBtn">檢視批次詳細</button></div>
+      <dl id="runDetails" class="detail-grid" hidden aria-live="polite"></dl>
       <div class="scroll"><table><thead><tr><th>項目 ID</th><th>Requirement</th><th>選取</th><th>狀態</th><th>成果</th></tr></thead><tbody id="itemRows"></tbody></table></div>
       <div class="pager"><button id="itemPrev" type="button" disabled>上一頁</button><span id="itemPage">第 1 頁</span><button id="itemNext" type="button" disabled>下一頁</button></div>
     </section>
