@@ -1,6 +1,12 @@
 # SRAF Backlog — Active, 2026-11-03
 
-## Current Focus: One-command on-premises read-only deploy-check
+## Current Focus: Decouple passive OFF-1S import from native SQL (2026-11-08)
+
+- #367 deployment `deploy-check` is **MERGED** at `988b617d9d9327af6064ab2443dc815515b511d8`; default remains six read-only local observations with no socket-exclusivity attestation or credentials. Do not repeat manual heredocs as the recommended operator workflow.
+- Candidate now: OFF-1S listener imports OFF-1P/Q, eagerly pulling optional `pyodbc` even for safe six-stage socket prerequisites. Extract existing stdlib-only nofollow root/port validation without changing semantics; allow API identity stage to remain available when `pyodbc` cannot import. Keep canonical Worker identity fail-closed without `dotenv`; do not claim Worker probe was fixed. Targeted import-denial regression plus Hosted OFF-0/1/2/operator and exact-head Codex mandatory before merge.
+- After review, actual user Linux `deploy-check` result, strict nofollow report directory/POST-free health observation, and independently authorized live E2E remain open; do not grant release/production acceptance from these partial code changes.
+
+## Previous milestone (merged #367; historical candidate language below)
 
 - Deliver **`bash run_sraf_airgap_offline.sh deploy-check`**: one no-network/no-artifact SRAF check wrapping existing OFF-2 target-platform, active-user-site direct Metadata, static PATH launchers, OFF-1 host disk, canonical Schedule/Handoff identity and bounded API9002 six-stage listener preflight. Do NOT force the operator to copy/paste sequential heredocs. Per-check errors must not abort independent checks (native pyodbc/python-dotenv may be missing); share only sanitized fixed status/count JSON.
 - Existing `quick`, `diagnose` and `no-network` modes remain unchanged. Their strict `_secure_output_dir` ancestry guard is security-critical; shared mount `output_dir_unverified` must NOT be bypassed by weakening permissions. New `deploy-check` uses stdout only, leaves report directories untouched.

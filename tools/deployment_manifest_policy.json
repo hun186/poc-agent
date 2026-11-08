@@ -28,6 +28,7 @@
     "tools/deployment_manifest.py",
     "tools/deployment_manifest_policy.json",
     "tools/sraf_airgap_off1_hub.py",
+    "tools/sraf_airgap_off1_identity_primitives.py",
     "tools/sraf_airgap_off1_es_hub.py",
     "tools/sraf_airgap_off1_sql_hub.py",
     "tools/sraf_airgap_off1_text_report.py",

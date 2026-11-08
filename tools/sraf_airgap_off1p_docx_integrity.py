@@ -21,6 +21,7 @@ import pyodbc
 
 from requirement_scheduler.artifacts import output_root_fingerprint
 from tools.sraf_airgap_off1_probes import Observation
+from tools.sraf_airgap_off1_identity_primitives import _pin_root_directory
 from tools.sraf_airgap_off1g_sql_read import (
     DRIVER, LOGIN_TIMEOUT_SECONDS, QUERY_TIMEOUT_SECONDS, _connection_string,
 )
@@ -137,26 +138,6 @@ def _docx_bytes_are_valid(data: bytes) -> bool:
             zipfile.BadZipFile, zipfile.LargeZipFile):
         return False
 
-
-def _pin_root_directory(root: Path) -> int:
-    """Pin every ancestor with openat(O_NOFOLLOW) before touching SQL."""
-    parts = root.parts
-    if (not root.is_absolute() or len(parts) < 2
-            or any(part in ("", ".", "..") for part in parts[1:])):
-        raise ValueError("root_path_invalid")
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-    fd = os.open("/", flags)
-    try:
-        for part in parts[1:]:
-            child = os.open(part, flags, dir_fd=fd)
-            os.close(fd)
-            fd = child
-        if not stat.S_ISDIR(os.fstat(fd).st_mode):
-            raise ValueError("root_not_directory")
-        return fd
-    except Exception:
-        os.close(fd)
-        raise
 
 
 def _inspect_local_docx(root_fd: int, relative: str, digest: str) -> str:

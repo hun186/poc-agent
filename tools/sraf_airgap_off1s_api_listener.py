@@ -17,8 +17,7 @@ import stat
 import sys
 
 from tools.sraf_airgap_off1_probes import Observation
-from tools.sraf_airgap_off1p_docx_integrity import _pin_root_directory
-from tools.sraf_airgap_off1q_remote_report_job import _port
+from tools.sraf_airgap_off1_identity_primitives import _pin_root_directory, _port
 
 IDENTITY_NAME = ".run_sra_api_api.identity"
 MAX_PID = 4_194_304
