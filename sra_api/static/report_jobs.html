@@ -25,8 +25,8 @@
       <h2 id="createTitle">建立新報告</h2>
       <label for="prompt">報告需求</label>
       <textarea id="prompt" rows="4" maxlength="30000" placeholder="輸入要交給既有 SRAF Agent 的報告需求"></textarea>
-      <div class="actions"><div class="grow"><label for="filename">Word 檔名（選填）</label><input id="filename" maxlength="180" placeholder="例如：分析報告.docx"></div><button type="button" id="submitBtn">建立並追蹤</button></div>
-      <p class="hint">使用既有 POST /v1/report/jobs；只會在按下建立時提交一次，不會自動重送。</p>
+      <div class="actions"><div class="grow"><label for="filename">Word 檔名（選填）</label><input id="filename" maxlength="180" placeholder="例如：分析報告.docx"></div><button type="button" id="submitBtn">建立並追蹤</button><button type="button" id="retrySubmitBtn" class="secondary" hidden>以同一識別碼重試未確認請求</button><button type="button" id="discardSubmitBtn" class="secondary" hidden>放棄本頁重試資料</button></div>
+      <p class="hint">每次建立使用隨機 Idempotency-Key。網路或伺服器回應不明時，僅能由你明確點選「以同一識別碼重試」，使用相同報告內容和 Key；不會在背景自動重送。重試資料只暫存於分頁記憶體，離開頁面或更換 Token 後會清除。若放棄重試，原請求仍可能已建立報告；重新建立前請先核對。</p>
     </section>
     <section class="panel" aria-labelledby="watchTitle">
       <h2 id="watchTitle">查看既有任務</h2>
