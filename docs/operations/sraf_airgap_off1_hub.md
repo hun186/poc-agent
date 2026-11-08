@@ -10,16 +10,16 @@
 
 ## 不需要再貼長指令：Linux Shell 啟動器
 
-部署更新後，專案根目錄會有 `run_sraf_airgap_off1_diagnose.sh`。操作員只要執行：
+部署更新後，進階診斷腳本位於 `scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh`。請從專案根目錄執行；日常六項本機唯讀快檢仍應優先使用根目錄的 `./0_一鍵快檢_SRAF.sh`。操作員只要執行：
 
 ```bash
-bash run_sraf_airgap_off1_diagnose.sh
+bash scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh
 ```
 
 不論從哪個目錄呼叫，腳本會自動切換到自身所在的 SRAF 專案根目錄，並固定呼叫 `python tools/sraf_airgap_off1_hub.py --suite diagnose --output-dir "$PROJECT_ROOT/sraf-acceptance-results"`（`PROJECT_ROOT` 為腳本所在的 SRAF 專案根目錄）。**不會加上 `--live-report`**，因此不會建立真實任務。它保留 Python 驗收工具原本的退出碼，不依賴 `HOME`，缺少 Python 時明確失敗。證據存於專案下的 `sraf-acceptance-results/`，已有根目錄 `.gitignore` 排除；請勿將私有 JSON／DOCX 手動提交 Git。目錄及每層父目錄必須符合既有 O_NOFOLLOW／權限安全規則，若專案在其他使用者可寫的共享掛載下，可能因 `output_ancestor_writable` 而拒絕寫入；不要為求方便放寬權限檢查，改用前述原始 Python CLI 指定可信的私有輸出位置。若 API 與 Shell 的預設 Python 不同，指定已部署的應用 Python（不能依賴斷網現場再安裝套件）：
 
 ```bash
-SRAF_PYTHON=/path/to/sraf-venv/bin/python bash run_sraf_airgap_off1_diagnose.sh
+SRAF_PYTHON=/path/to/sraf-venv/bin/python bash scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh
 ```
 
 使用 `bash` 呼叫不需要另外 `chmod +x`；Linux 用 `.sh`，Windows `.bat` 不適用於 SRAF 的 Linux 容器。
@@ -37,13 +37,13 @@ SELECT CAST(1 AS int)
 已取得操作員授權且設定好專用帳密後，在已部署 SRAF 根目錄執行：
 
 ```bash
-bash run_sraf_airgap_off1_diagnose.sh --probe-sql-read
+bash scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh --probe-sql-read
 ```
 
 也可同時明確選擇 ES 的獨立驗證（兩個 flag 可以任意順序排列；未選擇的連線不會執行）：
 
 ```bash
-bash run_sraf_airgap_off1_diagnose.sh --probe-es-tls-mapping --probe-sql-read
+bash scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh --probe-es-tls-mapping --probe-sql-read
 ```
 
 **只讀邊界：**不查使用者表、不讀表內容、不檢查或修改 Schema、不呼叫儲存程序、不建立資料庫、不寫入任何資料，只有一次 ODBC 連線及固定常數 SELECT，正常連線下各最多 3 秒登入與查詢 timeout；Driver/native SQLSTATE／IP／資料庫名稱／使用者／密碼／查詢內容都不會列印在 JSON。底層 Driver 行為與逾時取消效果仍需在真實 Linux 現場驗證。不可搭配 `--no-network`、`--suite quick` 或 `--live-report`。
@@ -52,10 +52,10 @@ bash run_sraf_airgap_off1_diagnose.sh --probe-es-tls-mapping --probe-sql-read
 
 ## 額外選用：嚴格 Elasticsearch HTTPS／IP SAN／Mapping 診斷（需要操作員明確授權）
 
-**預設的 `bash run_sraf_airgap_off1_diagnose.sh` 完全不會新增 ES Basic 認證要求**，只執行原本的 private TCP 觀察。當操作員已獲得權限，確認診斷會使用目前設定中的 `ES_USERNAME`／`ES_PASSWORD` 向 ES 發出**最多三個有界唯讀 HTTPS GET**（根識別、`/_security/_authenticate`、指定索引 `/_mapping`）時，才執行：
+**預設的 `bash scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh` 完全不會新增 ES Basic 認證要求**，只執行原本的 private TCP 觀察。當操作員已獲得權限，確認診斷會使用目前設定中的 `ES_USERNAME`／`ES_PASSWORD` 向 ES 發出**最多三個有界唯讀 HTTPS GET**（根識別、`/_security/_authenticate`、指定索引 `/_mapping`）時，才執行：
 
 ```bash
-bash run_sraf_airgap_off1_diagnose.sh --probe-es-tls-mapping
+bash scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh --probe-es-tls-mapping
 ```
 
 或直接執行已部署 Python（需在 SRAF 根目錄）：
@@ -120,7 +120,7 @@ python tools/sraf_airgap_off1_hub.py --live-report --token-env SRAF_TEST_BEARER 
 | sql_constant_read | OFF-1G `probe_sql_constant_read` | **僅** `--suite diagnose --probe-sql-read`，獨立最小權限帳密與 ODBC Driver 18，固定常數 SELECT；不檢查 Schema／資料來源／帳號權限 |
 | 真實 Job＋DOCX | PR #336 `_live` | **僅限** `--live-report`，嚴格 listener guard、單筆 POST／輪詢／Word 完整性 |
 
-**OFF-1H 新增部分觀察：** `bash run_sraf_airgap_off1_diagnose.sh` 現在會在原有 HTTP/TCP 診斷之外，讀取兩個既有 Worker 的啟動器身分記錄與 `/proc`，輸出 `worker_process_identity=PASS/SKIP` 和去識別化的 `verified_role_count`（0～2）。本檢查不會修改 Worker、取得租約、觸發 Schedule、查詢 SQL，不能證明完整 Handoff E2E，因此固定 `schedule_handoff_workers=NOT_TESTED`。Worker 不在同一 PID namespace、未部署或證明不足時 SKIP；屬輔助診斷，不改變原本 Report Job／TCP 必要檢查的退出碼，也不會被當成放行的 PASS。真正的 Linux 容器環境還需操作員實測。
+**OFF-1H 新增部分觀察：** `bash scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh` 現在會在原有 HTTP/TCP 診斷之外，讀取兩個既有 Worker 的啟動器身分記錄與 `/proc`，輸出 `worker_process_identity=PASS/SKIP` 和去識別化的 `verified_role_count`（0～2）。本檢查不會修改 Worker、取得租約、觸發 Schedule、查詢 SQL，不能證明完整 Handoff E2E，因此固定 `schedule_handoff_workers=NOT_TESTED`。Worker 不在同一 PID namespace、未部署或證明不足時 SKIP；屬輔助診斷，不改變原本 Report Job／TCP 必要檢查的退出碼，也不會被當成放行的 PASS。真正的 Linux 容器環境還需操作員實測。
 
 統一 JSON 只含固定 `check/status/reason`、無敏感資訊的觀察結論、模式、離線／授權旗標、統計以及 **8 個永遠保留 NOT_TESTED 的獨立人工門檻**。它不輸出密碼、Token、連線字串、SQL、Job ID、原始回應或文件內容。若啟動器證明不足、連線不到、尚未驗證，請先看 JSON 的原因碼，不要一律當作模型故障。
 
@@ -157,7 +157,7 @@ TXT 產生是**純本機格式化**，不發送第二次健康檢查、SQL、ES�
 預設仍寫入 SRAF 根目錄下的 `sraf-acceptance-results/`。如果專案位於 group-writable 或可疑的共用掛載，既有 `_secure_output_dir` 可能因 `output_ancestor_writable` 拒絕寫檔。**不可透過 chmod 放寬原有驗證**；可在可信、操作員獨占的絕對路徑下另行選擇證據目錄（示例使用事先確認可信的私人父目錄）：
 
 ```bash
-SRAF_OFF1_OUTPUT_DIR="$HOME/sraf-private-evidence" bash run_sraf_airgap_off1_diagnose.sh
+SRAF_OFF1_OUTPUT_DIR="$HOME/sraf-private-evidence" bash scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh
 ```
 
 若有需要，`SRAF_PYTHON` 與 `SRAF_OFF1_OUTPUT_DIR` 可以同時設定，診斷的 ES／SQL 旗標仍須由操作員另外明確加上。此 Shell 設定只決定 `--output-dir` 的字串：必須是非空、單行的絕對路徑，拒絕相對路徑；**不建立任何目錄、不改變權限、不嘗試備援輸出、不繞過 Python 的 Linux O_NOFOLLOW／private dirfd／UID/0700 檢查**。新路徑的每層父目錄仍須符合原有安全條件，否則工具應回傳 INCOMPLETE／退出碼 2，不得顯示假成功。輸出的 JSON/TXT 仍是 0600。不要把私人輸出目錄加入版本控制或公開檔案分享。預設命令與所有檢查結果不變；這不是實際完整離線驗收。
@@ -168,7 +168,7 @@ SRAF_OFF1_OUTPUT_DIR="$HOME/sraf-private-evidence" bash run_sraf_airgap_off1_dia
 如果只要確認本機磁碟、原生 ODBC 庫、API／Schedule／Handoff 啟動者的本機程序可見資訊，**不希望發起任何 HTTP/TCP socket 連線**，使用原本一鍵啟動器的明確選項：
 
 ```bash
-bash run_sraf_airgap_off1_diagnose.sh --no-network
+bash scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh --no-network
 ```
 
 Shell 會把 `--no-network` 傳給已存在的 `tools/sraf_airgap_off1_hub.py --suite diagnose`，保留既有 secure JSON/TXT 輸出、工作目錄與 0700／0600 檔案權限，也可搭配 `SRAF_OFF1_OUTPUT_DIR`。所有 API Health／UI／TCP 偵測會標示 `SKIP`；已存在的本地 `/proc` Worker 檢查仍可執行，但不能視為 Worker 完整業務驗收。此模式退出碼通常是 **2／INCOMPLETE**，**不是故障或完整驗收 PASS**；正確意義是「沒有執行網路依賴檢查」。Shell 會在執行任何 Python 前拒絕 `--no-network` 與 `--probe-es-tls-mapping` 或 `--probe-sql-read` 組合，也拒絕重複 `--no-network`。真實 Agent／LLM／ES／SQL／Word／物理 airgap 等八項門檻仍 **NOT_TESTED**，無法因零 socket 檢查而判定正式離線部署通過。
