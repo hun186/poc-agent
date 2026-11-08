@@ -333,12 +333,14 @@ def sql_source_stats(
                 if actual and actual not in allowed:
                     allowed.append(actual)
             groups = []
-            for col in allowed:
+# SQL Server NVARCHAR(4000) truncates distinct long source/audit values before GROUP BY.
+            # Keep the entire value as the grouping key; any UI abbreviation must be post-aggregation.
+                        for col in allowed:
                 if col in virtual_group_fields:
                     expr = virtual_group_fields[col]
-                    cursor.execute(f"SELECT TOP ({top_n}) COALESCE(NULLIF(CAST({expr} AS NVARCHAR(4000)), ''), '-') AS group_value, COUNT(DISTINCT {quote_object_path(table)}.{quote_ident(hash_field)}) AS count FROM {quote_object_path(table)} INNER JOIN {quote_object_path(audit_table)} aud ON aud.destination_table = ? AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)}{where_sql} GROUP BY COALESCE(NULLIF(CAST({expr} AS NVARCHAR(4000)), ''), '-') ORDER BY count DESC, group_value ASC", tuple([table] + params))
+                    cursor.execute(f"SELECT TOP ({top_n}) COALESCE(NULLIF(CAST({expr} AS NVARCHAR(MAX)), ''), '-') AS group_value, COUNT(DISTINCT {quote_object_path(table)}.{quote_ident(hash_field)}) AS count FROM {quote_object_path(table)} INNER JOIN {quote_object_path(audit_table)} aud ON aud.destination_table = ? AND aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)}{where_sql} GROUP BY COALESCE(NULLIF(CAST({expr} AS NVARCHAR(MAX)), ''), '-') ORDER BY count DESC, group_value ASC", tuple([table] + params))
                 else:
-                    cursor.execute(f"SELECT TOP ({top_n}) COALESCE(NULLIF(CAST({quote_ident(col)} AS NVARCHAR(4000)), ''), '-') AS group_value, COUNT(*) AS count FROM {quote_object_path(table)}{where_sql} GROUP BY COALESCE(NULLIF(CAST({quote_ident(col)} AS NVARCHAR(4000)), ''), '-') ORDER BY count DESC, group_value ASC", tuple(params))
+                    cursor.execute(f"SELECT TOP ({top_n}) COALESCE(NULLIF(CAST({quote_ident(col)} AS NVARCHAR(MAX)), ''), '-') AS group_value, COUNT(*) AS count FROM {quote_object_path(table)}{where_sql} GROUP BY COALESCE(NULLIF(CAST({quote_ident(col)} AS NVARCHAR(MAX)), ''), '-') ORDER BY count DESC, group_value ASC", tuple(params))
                 buckets = []
                 for r in cursor.fetchall():
                     data = _row_to_dict(cursor, r)
