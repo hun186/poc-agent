@@ -30,9 +30,9 @@ SCOPE = "POLICY_SELECTION_ONLY_NOT_RELEASE_OR_AIRGAP_ATTESTATION"
 # The selection must be exact: broad "tools/" inclusion is not sufficient to
 # audit independently reviewed release-tool paths.
 REQUIRED_OPERATOR_FILES = (
-    "run_sraf_airgap_offline.sh",
-    "run_sraf_airgap_off1_diagnose.sh",
-    "run_sraf_airgap_off2_verify.sh",
+    "scripts/diagnostics/run_sraf_airgap_offline.sh",
+    "scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh",
+    "scripts/diagnostics/run_sraf_airgap_off2_verify.sh",
     "tools/sraf_airgap_off1_hub.py",
     "tools/sraf_airgap_off1_es_hub.py",
     "tools/sraf_airgap_off1_sql_hub.py",

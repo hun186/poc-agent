@@ -5,7 +5,7 @@
 在 SRAF 根目錄以**正式 SRAF Python**執行：
 
 ```bash
-SRAF_PYTHON=/path/to/sraf-venv/bin/python bash run_sraf_airgap_offline.sh target-platform
+SRAF_PYTHON=/path/to/sraf-venv/bin/python bash scripts/diagnostics/run_sraf_airgap_offline.sh target-platform
 ```
 
 未指定 SRAF_PYTHON 時使用 PATH 中的 python；這個結果可能不是正式 venv 的 ABI 證據。

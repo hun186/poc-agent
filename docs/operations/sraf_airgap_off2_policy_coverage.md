@@ -12,7 +12,7 @@ python tools/sraf_airgap_off2_policy_coverage.py
 - `policy_or_tool_unverifiable`：政策內容、大小或至少一個必要入口無法安全驗證；不輸出具體檔名或私有路徑。
 - `minimum_policy_selection_only`：政策只達到「九個最低必要操作入口有明確列管」，仍只為 `PASS_PARTIAL`，未檢驗位元組 Hash 或套件內容。
 
-**重要可信界線：**目前政策與必要檔案是*本機唯讀觀察*，本檢查沒有獨立可信 Digest／簽章，也沒有核對發行套件完整性。它不取代 `run_sraf_airgap_off2_verify.sh` 的外部 Manifest pin、`tools/deployment_manifest.py` 的 Git reviewed-commit 契約，也不意味 wheelhouse、Python/native ODBC、models、TLS、SQL/ES/LLM、真實空網環境、OFF-3 全鏈路或 OFF-5 Restore 驗收成功。
+**重要可信界線：**目前政策與必要檔案是*本機唯讀觀察*，本檢查沒有獨立可信 Digest／簽章，也沒有核對發行套件完整性。它不取代 `scripts/diagnostics/run_sraf_airgap_off2_verify.sh` 的外部 Manifest pin、`tools/deployment_manifest.py` 的 Git reviewed-commit 契約，也不意味 wheelhouse、Python/native ODBC、models、TLS、SQL/ES/LLM、真實空網環境、OFF-3 全鏈路或 OFF-5 Restore 驗收成功。
 
 這個工具不會自動將缺漏入口加入發行政策，因為修改政策必須另外依 Git-reviewed release manifest 流程重新建立信任，不可把一份本機新建清單當成合法發行包。下一階段應制定完整可重建的發行清單與簽章／依賴鎖，再進行可信套件驗收。
 

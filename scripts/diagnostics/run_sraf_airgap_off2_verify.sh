@@ -7,7 +7,7 @@ if [[ "$#" -ne 0 ]]; then
   exit 2
 fi
 
-PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd -- "$PROJECT_ROOT"
 
 # A local computed digest cannot serve as an independent release trust anchor.

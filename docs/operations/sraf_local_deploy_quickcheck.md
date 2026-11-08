@@ -16,18 +16,18 @@
 
 也能用 `bash 0_一鍵快檢_SRAF.sh`，不依賴本地 executable bit；輸入 `--help` 只看中文提示。若 Linux 桌面管理員支援「在終端機執行」，可選擇從檔案管理員開啟；雙擊會否執行由桌面環境的安全政策決定，工具**不會**變更系統設定或安裝圖示。
 
-這是既有安全入口的**薄層捷徑**，實際呼叫 `bash run_sraf_airgap_offline.sh deploy-check`，不接收其他模式、不跳過安全條件，最後一行 `SRAF_DEPLOY_CHECK_JSON=...` 及退出碼保持不變。
+這是既有安全入口的**薄層捷徑**，實際呼叫 `bash scripts/diagnostics/run_sraf_airgap_offline.sh deploy-check`，不接收其他模式、不跳過安全條件，最後一行 `SRAF_DEPLOY_CHECK_JSON=...` 及退出碼保持不變。
 
 ### 給工程師的原始指令
 
 ```bash
-bash run_sraf_airgap_offline.sh deploy-check
+bash scripts/diagnostics/run_sraf_airgap_offline.sh deploy-check
 ```
 
 使用既有的 SRAF Python；確實需要指定直譯器時：
 
 ```bash
-SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh deploy-check
+SRAF_PYTHON=/path/to/actual-sraf-python bash scripts/diagnostics/run_sraf_airgap_offline.sh deploy-check
 ```
 
 這個模式不會要求你先逐項執行 `runtime-deps-user-site`、`runtime-launchers`、Worker Identity Python heredoc，或 API Socket 前置檢查。安全可執行的探測器採個別載入；例如選定 Python 缺少 `pyodbc` 原生載入能力時，API Listener 六項**不連線**身分前置檢查仍可獨立匯入；實際能否觀察成功仍取決於 /proc 與啟動記錄。即使缺少可選的 `python-dotenv`，Canonical Worker identity 的被動 /proc 驗證仍可執行；只有**明確選用** E2E 環境檔解析時才需要載入 dotenv。Worker 的 PID/角色/時間資訊不一致時仍會回 `INCOMPLETE`，其他項目不受此影響。所有檢查會依序執行；即使單項 `INCOMPLETE`，仍收集其他安全可執行項目，並以固定、去識別化的狀態回報。
@@ -36,7 +36,7 @@ SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh deploy-c
 
 GitHub PR #367 已提供單一入口，PR #368／#369 也已通過各自最新 HEAD 的 Hosted 測試與正式 Codex Review 並合併，分別排除被動 API 身分與 Worker 身分檢查因可選 `pyodbc`／`python-dotenv` 的**匯入階段**問題。這些是程式與 CI 證據，**不是**目前部署機器的即時成功證據。
 
-請從正在運作 SRAF 的 Linux checkout 僅執行上方**一行** `bash run_sraf_airgap_offline.sh deploy-check`；輸出最後一行 `SRAF_DEPLOY_CHECK_JSON=` 即是本次六項去識別診斷。回報時提供此行即可，不需提供 API 密碼、內網 IP、設定檔或六份獨立 Python 指令。若顯示 `INCOMPLETE`，先依該行的固定 `checks[].reason` 和 `first_unverified_gate`（若存在）定位，勿因 CI PASS 就手動重啟服務、降低路徑權限檢查或擅自執行具憑證的診斷。
+請從正在運作 SRAF 的 Linux checkout 僅執行上方**一行** `bash scripts/diagnostics/run_sraf_airgap_offline.sh deploy-check`；輸出最後一行 `SRAF_DEPLOY_CHECK_JSON=` 即是本次六項去識別診斷。回報時提供此行即可，不需提供 API 密碼、內網 IP、設定檔或六份獨立 Python 指令。若顯示 `INCOMPLETE`，先依該行的固定 `checks[].reason` 和 `first_unverified_gate`（若存在）定位，勿因 CI PASS 就手動重啟服務、降低路徑權限檢查或擅自執行具憑證的診斷。
 
 ## 6 個本機唯讀檢查
 

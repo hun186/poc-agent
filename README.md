@@ -10,7 +10,7 @@
 
 若終端或檔案管理員不允許直接執行，可以使用 `bash 0_一鍵快檢_SRAF.sh`；使用 `--help` 可以只看中文說明、不做檢測。可以在支援的 Linux 檔案管理員選「在終端機執行」，但是否提供雙擊執行取決於桌面安全設定，**不會自行更改系統權限**。
 
-這個入口固定呼叫經審查的 `run_sraf_airgap_offline.sh deploy-check`，僅做六項本機唯讀檢查，**不連網、不寫檔、不登入、不執行 SQL／ES／LLM／Report Job、不重啟服務**。保留原始退出碼及輸出最後的 `SRAF_DEPLOY_CHECK_JSON=...`，可提供工程師定位問題。即使 `PASS_PARTIAL` 也**不是**正式 release、FULL_LIVE 或離線安裝驗收。完整說明參考 [SRAF 一鍵快檢手冊](docs/operations/sraf_local_deploy_quickcheck.md)。
+這個入口固定呼叫 `scripts/diagnostics/run_sraf_airgap_offline.sh deploy-check`，僅做六項本機唯讀檢查，**不連網、不寫檔、不登入、不執行 SQL／ES／LLM／Report Job、不重啟服務**。保留原始退出碼及輸出最後的 `SRAF_DEPLOY_CHECK_JSON=...`，可提供工程師定位問題。即使 `PASS_PARTIAL` 也**不是**正式 release、FULL_LIVE 或離線安裝驗收。進階檢測腳本已整理到 [`scripts/diagnostics/`](scripts/diagnostics/README.md)，不需日常操作。完整說明參考 [SRAF 一鍵快檢手冊](docs/operations/sraf_local_deploy_quickcheck.md)。
 
 
 ## 專案簡介 (Project Overview)

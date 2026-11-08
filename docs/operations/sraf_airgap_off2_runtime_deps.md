@@ -5,7 +5,7 @@
 在 SRAF 根目錄執行，優先使用實際 SRAF 的 Python 環境：
 
 ```bash
-SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh runtime-deps
+SRAF_PYTHON=/path/to/actual-sraf-python bash scripts/diagnostics/run_sraf_airgap_offline.sh runtime-deps
 ```
 
 未指定 `SRAF_PYTHON` 時使用 `PATH` 的 `python`；所見結果只能代表這個 Python，不代表 Worker 的另一個虛擬環境。
@@ -33,7 +33,7 @@ v2 在原本 `runtime-deps` 指令的 JSON 新增 `missing_direct_positions`（�
 只有安全完成全部候選 Metadata 掃描、且 `reason=direct_distribution_metadata_missing` 時，位置陣列才具有缺項意義；其他不確定／錯誤結果保持空陣列。務必使用相同選定的 SRAF Python：
 
 ```bash
-SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh runtime-deps
+SRAF_PYTHON=/path/to/actual-sraf-python bash scripts/diagnostics/run_sraf_airgap_offline.sh runtime-deps
 ```
 
 **不要直接執行 pip install/upgrade**：先由缺項位置核對公開需求；接著分別確認正式 SRAF Worker 使用的 Python 執行環境、user-site/legacy metadata 和套件來源。即使 15/15 METADATA 都找到，仍無法推定 `>=` 版本條件、實際 import、完整轉遞相依、ABI、Signed Wheelhouse 或離線還原測試已通過。
@@ -45,7 +45,7 @@ SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh runtime-
 **不修改原本** `runtime-deps` scheme-only 判定。若需要只評估使用者目前交互執行環境是否能看見更多直接套件，可以明確執行：
 
 ```bash
-bash run_sraf_airgap_offline.sh runtime-deps-user-site
+bash scripts/diagnostics/run_sraf_airgap_offline.sh runtime-deps-user-site
 ```
 
 新指令先完成原本嚴格限域的 scheme-only `.dist-info` 掃描；僅當有未找到的第一方直接需求，且 `site.ENABLE_USER_SITE is True`、未用 `-s` 禁用 user-site、`site.getusersitepackages()` 為絕對而無相對或 dot 段、並且**字面上**存在於選定 Python 的 `sys.path` 時，才額外掃描該單一 user-site 目錄。使用既有逐層 `O_NOFOLLOW`、最多 4096 項目、每項目 METADATA 最多 1 MiB，且**只讀取 scheme 未找到的直接需求候選**；不讀取無關 METADATA，不載入模組，不跑 pip、程式入口點、SQL、ES 或 LLM。若 user-site 不活躍或安全讀取有歧義，回 `INCOMPLETE`。

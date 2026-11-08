@@ -19,19 +19,19 @@ case "$MODE" in
     ;;
 esac
 
-PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd -- "$PROJECT_ROOT"
 
 # Reuse authoritative existing entrypoints; never build a second probe path.
 case "$MODE" in
   diagnose)
-    exec bash "$PROJECT_ROOT/run_sraf_airgap_off1_diagnose.sh"
+    exec bash "$PROJECT_ROOT/scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh"
     ;;
   no-network)
-    exec bash "$PROJECT_ROOT/run_sraf_airgap_off1_diagnose.sh" --no-network
+    exec bash "$PROJECT_ROOT/scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh" --no-network
     ;;
   release-files)
-    exec bash "$PROJECT_ROOT/run_sraf_airgap_off2_verify.sh"
+    exec bash "$PROJECT_ROOT/scripts/diagnostics/run_sraf_airgap_off2_verify.sh"
     ;;
   wheel-files)
     # External digest is mandatory and cannot be minted from local bytes.

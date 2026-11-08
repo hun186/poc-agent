@@ -11,13 +11,13 @@
 在 SRAF 根目錄以與原先唯讀 Metadata 診斷相同的 Python／shell 環境執行：
 
 ```bash
-bash run_sraf_airgap_offline.sh runtime-launchers
+bash scripts/diagnostics/run_sraf_airgap_offline.sh runtime-launchers
 ```
 
 若指定 SRAF 的 Python：
 
 ```bash
-SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh runtime-launchers
+SRAF_PYTHON=/path/to/actual-sraf-python bash scripts/diagnostics/run_sraf_airgap_offline.sh runtime-launchers
 ```
 
 此工具由選定 Python 呼叫並進行以下**靜態**檢查：

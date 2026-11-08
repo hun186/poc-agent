@@ -1,6 +1,11 @@
 # SRAF Backlog — Active, 2026-11-08
 
-## Current Focus: Zero-memory Linux operator discoverability + private host evidence
+## Current Focus: Advanced diagnostics subdirectory migration + private host evidence
+
+- **Candidate 2026-11-08 (CI/review PENDING):** move the three advanced `run_sraf_airgap_*.sh` entrypoints to `scripts/diagnostics/`, while keeping `0_一鍵快檢_SRAF.sh` and `run_sra_api.sh` in root. Fix internal scripts' path-to-root, old command references, tests/CI and explicit release policy coverage. New `scripts/diagnostics/README.md` explains engineering-only modes. External callers of legacy root-relative advanced script paths will need updating, without hidden compatibility wrappers.
+- **After merge still pending:** private Linux operator runs unchanged zero-argument root shortcut; inspect only `SRAF_DEPLOY_CHECK_JSON=...`. Strict identity and FULL_LIVE remain NOT TESTED.
+
+## Previous current focus: One-click already merged
 
 - **#371 VERIFIED MERGED 2026-11-08** (squash `10691986dadb71b45ef01f7ea0f03354e3de15fb`): executable root `0_一鍵快檢_SRAF.sh` sorts first; no args runs exactly existing `deploy-check`, `--help` shows Chinese safety/readout guidance; other args rejected. Top README, operator docs, Git-reviewed explicit root file policy and subprocess tests delivered. Hosted latest-head OFF-0/1/2 Python3.10/operator fixture and formal Codex completed clean; no desktop-trust change, default mode change or new probe.
 - **After reviewed merge:** actual Linux operator must still execute the shortcut and provide `SRAF_DEPLOY_CHECK_JSON=...`; no ChatGPT-hosted code review proves that private host works or that full OFF-1S/SQL/ES/LLM/Word/airgap acceptance has passed.

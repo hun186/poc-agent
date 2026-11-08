@@ -1,6 +1,11 @@
 # SRAF Project Handoff
 
-## Current Focus — 2026-11-08: discoverable zero-memory operator entry and private-host follow-up
+## Current Focus — 2026-11-08: advanced diagnostic launcher folder cleanup (PR pending)
+
+- **Candidate; Hosted CI / formal Codex Review PENDING:** move only the three seldom-used `run_sraf_airgap_offline.sh`, `run_sraf_airgap_off1_diagnose.sh`, and `run_sraf_airgap_off2_verify.sh` files from repository root into `scripts/diagnostics/`. Leave `./0_一鍵快檢_SRAF.sh` and `run_sra_api.sh` at root with unchanged invocation and semantics. Correct the moved scripts' project-root calculation to `../..`, delegate to their new paths, update release policy explicit selectors, OFF-2 policy coverage, CI Bash syntax checks, fake-deployment tests and operator docs. No new probes, privilege, report trust or FULL_LIVE claims. Old advanced root-relative commands must be updated externally; the root wrappers are deliberately removed to avoid clutter.
+- **Next true operator handoff (not Hosted CI):** on private Linux update checkout and run only `./0_一鍵快檢_SRAF.sh` then share sanitized final `SRAF_DEPLOY_CHECK_JSON=...` to observe real host. Do not fabricate root location, installed dependencies or live SQL/ES/LLM release acceptance.
+
+## Previous current focus (one-click already merged)
 
 - **#371 VERIFIED MERGED** (squash `10691986dadb71b45ef01f7ea0f03354e3de15fb`): executable root `0_一鍵快檢_SRAF.sh` (sorts first) delegates *only* to existing `run_sraf_airgap_offline.sh deploy-check`. `--help` shows Chinese safety tips; invalid options fail closed. README/runbooks link it and the script is explicitly release-selected. Latest PR head `1108117d8e7f277906bd539500b4e2ce767769fc`: Hosted OFF-1 517, OFF-2 577, Python3.10 494, operator E2E 83 and OFF-0 19 PASS; formal Codex completed clean, no review threads or pending checks, Auto-Merge Gate verified. This is code-level evidence, **not** an actual private Linux run.
 - Actual private Linux observation, strict OFF-1S full process/socket authority, SQL/ES/LLM/Report Job/DOCX and airgap FULL_LIVE remain separately NOT TESTED; one-command operator output still required even if this PR merges.

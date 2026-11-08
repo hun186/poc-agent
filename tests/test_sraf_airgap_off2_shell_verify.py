@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-SOURCE = Path(__file__).resolve().parents[1] / "run_sraf_airgap_off2_verify.sh"
+SOURCE = Path(__file__).resolve().parents[1] / "scripts/diagnostics/run_sraf_airgap_off2_verify.sh"
 PIN = "a" * 64
 
 
@@ -18,7 +18,8 @@ def launcher(tmp_path):
         pytest.skip("Linux Bash not available")
     root = tmp_path / "SRAF shared install"
     root.mkdir()
-    script = root / SOURCE.name
+    (root / "scripts" / "diagnostics").mkdir(parents=True)
+    script = root / "scripts" / "diagnostics" / SOURCE.name
     script.write_bytes(SOURCE.read_bytes())
     python_bin = tmp_path / "app python"
     python_bin.write_text(

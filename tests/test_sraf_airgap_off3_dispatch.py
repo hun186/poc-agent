@@ -8,7 +8,8 @@ import subprocess
 
 import pytest
 
-SOURCE = Path(__file__).resolve().parents[1] / "run_sraf_airgap_offline.sh"
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / "scripts/diagnostics/run_sraf_airgap_offline.sh"
 
 
 @pytest.fixture
@@ -18,7 +19,8 @@ def fake_deployment(tmp_path):
     root = tmp_path / "SRAF offline root with spaces"
     root.mkdir()
     (root / "tools").mkdir()
-    script = root / SOURCE.name
+    (root / "scripts" / "diagnostics").mkdir(parents=True)
+    script = root / "scripts" / "diagnostics" / SOURCE.name
     script.write_bytes(SOURCE.read_bytes())
     capture = tmp_path / "capture.txt"
     py = tmp_path / "application python"
@@ -31,7 +33,7 @@ def fake_deployment(tmp_path):
         ("run_sraf_airgap_off1_diagnose.sh", 19),
         ("run_sraf_airgap_off2_verify.sh", 23),
     ]:
-        stub = root / name
+        stub = root / "scripts" / "diagnostics" / name
         stub.write_text(
             f"#!/usr/bin/env bash\nprintf '%s\\n' '{name}' \"$PWD\" \"$@\" > \"$SRAF_CAPTURE_FILE\"\nexit {exitcode}\n",
             encoding="utf-8",
@@ -297,13 +299,12 @@ def test_quick_missing_python_fails_before_probe(fake_deployment):
 
 def test_wheel_files_operator_command_is_one_line_with_pin():
     documentation = (
-        Path(__file__).resolve().parents[1] /
-        "docs/operations/sraf_airgap_off2_wheel_files.md"
+        ROOT / "docs/operations/sraf_airgap_off2_wheel_files.md"
     ).read_text(encoding="utf-8")
     assert (
         "SRAF_OFF2_TRUSTED_WHEEL_MANIFEST_SHA256="
         "<trusted-64-char-lowercase-sha256> "
-        "bash run_sraf_airgap_offline.sh wheel-files"
+        "bash scripts/diagnostics/run_sraf_airgap_offline.sh wheel-files"
     ) in documentation
 
 
@@ -311,7 +312,7 @@ def test_wheel_files_operator_command_is_one_line_with_pin():
 
 # Accessible, zero-memory operator shortcut: this is a thin OFF-3 alias, not
 # another probe, report writer, privileged menu or service launcher.
-ONE_CLICK = SOURCE.parent / "0_一鍵快檢_SRAF.sh"
+ONE_CLICK = ROOT / "0_一鍵快檢_SRAF.sh"
 
 
 def _copy_one_click(fake_deployment):
@@ -328,7 +329,7 @@ def test_one_click_file_is_executable_and_release_selected():
     assert ONE_CLICK.is_file()
     assert ONE_CLICK.stat().st_mode & stat.S_IXUSR
     policy = json.loads(
-        (SOURCE.parent / "tools/deployment_manifest_policy.json").read_text(
+        (ROOT / "tools/deployment_manifest_policy.json").read_text(
             encoding="utf-8"
         )
     )
@@ -385,3 +386,38 @@ def test_one_click_preserves_final_json_and_underlying_exit_code(fake_deployment
         'SRAF_DEPLOY_CHECK_JSON={"status":"INCOMPLETE"}'
     )
     assert not (root / "sraf-acceptance-results").exists()
+
+
+def test_advanced_shell_entries_live_only_under_diagnostics_and_are_pinned():
+    import json
+
+    root = ROOT
+    advanced = (
+        "run_sraf_airgap_offline.sh",
+        "run_sraf_airgap_off1_diagnose.sh",
+        "run_sraf_airgap_off2_verify.sh",
+    )
+    policy = json.loads(
+        (root / "tools/deployment_manifest_policy.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    for name in advanced:
+        assert not (root / name).exists()
+        nested = "scripts/diagnostics/" + name
+        assert (root / nested).is_file()
+        assert nested in policy["managed_files"]
+        assert name not in policy["managed_files"]
+    assert (root / "0_一鍵快檢_SRAF.sh").is_file()
+    assert (root / "run_sra_api.sh").is_file()
+
+
+def test_advanced_launchers_are_shell_syntax_valid_after_move():
+    for name in (
+        "run_sraf_airgap_offline.sh",
+        "run_sraf_airgap_off1_diagnose.sh",
+        "run_sraf_airgap_off2_verify.sh",
+    ):
+        script = ROOT / "scripts" / "diagnostics" / name
+        assert subprocess.run(["bash", "-n", str(script)],
+                              capture_output=True, text=True).returncode == 0
