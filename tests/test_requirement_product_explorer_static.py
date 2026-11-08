@@ -64,3 +64,43 @@ def test_product_explorer_browser_flow():
         result = subprocess.run(args, cwd=STATIC.parents[1],
                                 capture_output=True, text=True, timeout=20, check=False)
         assert result.returncode == 0, result.stderr[-2000:]
+
+
+
+def test_product_preview_ui_is_opt_in_bounded_and_no_persistence():
+    html = (STATIC / "requirement_product_explorer.html").read_text(encoding="utf-8")
+    js = (STATIC / "requirement_product_preview.js").read_text(encoding="utf-8")
+    assert 'src="/static/requirement_product_preview.js"' in html
+    assert 'id="previewProfile"' in html
+    assert 'id="previewMode"' in html
+    assert 'id="previewFile"' in html
+    assert 'id="previewJson"' in html
+    assert 'id="previewBtn"' in html
+    assert editor_static_asset("requirement_product_preview.js").media_type == "application/javascript"
+    assert "MAX_FILE = 10 * 1024 * 1024" in js
+    assert "MAX_JSON = 1024 * 1024" in js
+    assert "POST" in js and "/v1/requirement-task-previews" in js
+    assert "append('task'" in js
+    assert "append('requirements_json'" in js
+    assert "append('file'" in js
+    assert "credentials: 'omit'" in js
+    assert "redirect: 'error'" in js
+    assert "textContent" in js
+    assert "controller.abort()" in js
+    assert "window.addEventListener('pagehide'" in js
+    for forbidden in ("innerHTML", "localStorage", "sessionStorage", "document.cookie",
+                      "location.search", "eval(", "new Function("):
+        assert forbidden not in js
+    with TestClient(app) as client:
+        assert client.get("/static/requirement_product_preview.js").status_code == 200
+
+
+def test_product_preview_simulated_browser_flow():
+    node = shutil.which("node")
+    assert node is not None, "Node.js required for browser test"
+    script = STATIC / "requirement_product_preview.js"
+    suite = Path(__file__).with_name("requirement_product_preview_flow.cjs")
+    for args in ([node, "--check", str(script)], [node, str(suite)]):
+        proc = subprocess.run(args, cwd=STATIC.parents[1], capture_output=True,
+                              text=True, timeout=20, check=False)
+        assert proc.returncode == 0, proc.stderr[-2500:]
