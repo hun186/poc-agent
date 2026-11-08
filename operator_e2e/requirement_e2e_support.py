@@ -18,9 +18,17 @@ from enum import IntEnum
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
 
-from dotenv import dotenv_values
-
 from python_compat import StrEnum
+
+
+def dotenv_values(path: Path):
+    """Load dotenv only when an explicit E2E environment file is selected.
+
+    Passive Worker process identity verification must not require the
+    optional dotenv parser; the live E2E configuration path still does.
+    """
+    from dotenv import dotenv_values as parse_dotenv_values
+    return parse_dotenv_values(path)
 
 
 fcntl = importlib.import_module("fcntl") if importlib.util.find_spec("fcntl") is not None else None
