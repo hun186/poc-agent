@@ -36,6 +36,7 @@
   let completedId = '';
   let pendingSubmission = null;
   let authVersion = 0;
+  let downloadController = null;
 
   function message(value, tone) {
     $('message').textContent = value;
@@ -53,6 +54,10 @@
     $('discardSubmitBtn').disabled = busySubmit || !pendingSubmission;
     $('prompt').disabled = busySubmit || Boolean(pendingSubmission);
     $('filename').disabled = busySubmit || Boolean(pendingSubmission);
+  }
+  function abortDownload() {
+    if (downloadController !== null) downloadController.abort();
+    downloadController = null;
   }
   function stop(text) {
     generation += 1;
@@ -144,6 +149,7 @@
     if (!parsed) { message('Job ID 格式不正確。', 'error'); return; }
     if (!token()) { message('請先提供具備 report:job:read 權限的 Token。', 'error'); return; }
     stop();
+    abortDownload();
     currentId = parsed;
     completedId = '';
     $('jobId').value = parsed;
@@ -267,13 +273,23 @@
       message('只有已完成的任務可以下載，且必須提供有效 Token。', 'error');
       return;
     }
+    // Reject overlapping downloads and bind the response to this identity + Job.
+    if (downloadController !== null) return;
     const id = completedId;
+    const version = authVersion;
+    const access = token();
+    const ctrl = new AbortController();
+    downloadController = ctrl;
+    const stillAuthorized = () =>
+      !ctrl.signal.aborted && downloadController === ctrl &&
+      authVersion === version && completedId === id;
     $('downloadBtn').disabled = true;
     try {
       const response = await fetch('/v1/report/jobs/' + encodeURIComponent(id) + '/word', {
-        method: 'GET', headers: {Authorization: 'Bearer ' + token()},
-        cache: 'no-store', credentials: 'omit', redirect: 'error'
+        method: 'GET', headers: {Authorization: 'Bearer ' + access},
+        signal: ctrl.signal, cache: 'no-store', credentials: 'omit', redirect: 'error'
       });
+      if (!stillAuthorized()) return;
       if (!response.ok) {
         message(response.status === 401 || response.status === 403 || response.status === 404
           ? '無法下載：沒有權限或找不到成果。'
@@ -281,6 +297,8 @@
         return;
       }
       const blob = await response.blob();
+      // A token or selected Job may change while the browser reads the bytes.
+      if (!stillAuthorized()) return;
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -291,9 +309,10 @@
       anchor.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
       message('已向瀏覽器提供 Word 下載。', 'success');
-    } catch (err) {
-      message('下載連線失敗；請檢查網路與權限後再試。', 'error');
+    } catch (_) {
+      if (stillAuthorized()) message('下載連線失敗；請檢查網路與權限後再試。', 'error');
     } finally {
+      if (downloadController === ctrl) downloadController = null;
       $('downloadBtn').disabled = false;
     }
   }
@@ -306,6 +325,7 @@
   $('authToken').addEventListener('input', function () {
     ++authVersion;
     pendingSubmission = null;
+    abortDownload();
     if (watching) stop('認證已變更；請重新查詢以確認權限。');
     completedId = '';
     $('downloadBtn').hidden = true;
@@ -324,6 +344,7 @@
     ++authVersion;
     pendingSubmission = null;
     $('authToken').value = '';
+    abortDownload();
     stop();
     controls();
   });

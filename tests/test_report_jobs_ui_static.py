@@ -53,6 +53,10 @@ def test_report_job_ui_real_status_contract_and_no_token_persistence():
     assert "pendingSubmission = attempt" in js
     assert "pendingSubmission = null" in js
     assert "await sendCreate(pendingSubmission)" in js
+    assert "abortDownload();" in js
+    assert "signal: ctrl.signal" in js
+    assert "authVersion === version && completedId === id" in js
+    assert "if (!stillAuthorized()) return;" in js
     for forbidden in ("localStorage.", "sessionStorage.", "innerHTML", "document.cookie",
                       "eval(", "window.prompt(", "location.search"):
         assert forbidden not in js
