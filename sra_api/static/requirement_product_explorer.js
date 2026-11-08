@@ -183,6 +183,12 @@
     page('task', 0, 0);
     note('認證已變更，已清除上一個帳號的畫面資料；請重新載入。');
   });
+  window.addEventListener('pagehide', () => {
+    ++state.revision;
+    $('authToken').value = '';
+    resetRuns();
+    clearRows('taskRows');
+  });
   page('task', 0, 0);
   page('run', 0, 0);
   page('item', 0, 0);
