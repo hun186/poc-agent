@@ -295,6 +295,7 @@ def sql_source_stats(
     import_end_ts: str | None = None,
     top_n: int = 20,
     chart_bucket: str = "day",
+    include_numeric_summaries: bool = False,
     connect: Callable[[dict[str, Any]], Any] = _connect,
 ) -> dict[str, Any]:
     cfg = load_json_config(config_path)
@@ -346,6 +347,48 @@ def sql_source_stats(
                     data = _row_to_dict(cursor, r)
                     buckets.append({"value": str(data.get("group_value") or "-"), "count": int(data.get("count") or 0)})
                 groups.append({"field": col, "buckets": buckets})
+            # Optional: one read-only filtered SQL aggregate for up to six task-owned
+            # numeric columns.  FLOAT averages/totals are explicitly approximate.
+            # Do not issue this extra scan for ordinary dashboard requests.
+            numeric_types = {
+                "bigint", "int", "smallint", "tinyint",
+                "decimal", "numeric", "float", "real", "money", "smallmoney",
+            }
+            numeric_columns = [
+                str(column["name"])
+                for column in columns
+                if str(column.get("data_type") or "").lower() in numeric_types
+                and str(column.get("name") or "").lower() not in {hash_field.lower(), *SYSTEM_COLUMNS}
+            ]
+            numeric_summaries: list[dict[str, Any]] = []
+            if include_numeric_summaries and numeric_columns:
+                selected_numeric = numeric_columns[:6]
+                projections: list[str] = []
+                for index, name in enumerate(selected_numeric):
+                    identifier = quote_ident(name)
+                    projections.extend([
+                        f"COUNT_BIG({identifier}) AS [count_{index}]",
+                        f"MIN({identifier}) AS [min_{index}]",
+                        f"MAX({identifier}) AS [max_{index}]",
+                        f"AVG(CAST({identifier} AS FLOAT)) AS [average_{index}]",
+                        f"SUM(CAST({identifier} AS FLOAT)) AS [sum_{index}]",
+                    ])
+                cursor.execute(
+                    f"SELECT {', '.join(projections)} FROM {quote_object_path(table)}{where_sql}",
+                    tuple(params),
+                )
+                summary_row = cursor.fetchone()
+                summary_values = _row_to_dict(cursor, summary_row) if summary_row else {}
+                for index, name in enumerate(selected_numeric):
+                    numeric_summaries.append({
+                        "column": name,
+                        "count": int(summary_values.get(f"count_{index}") or 0),
+                        "min": _json_safe(summary_values.get(f"min_{index}")),
+                        "max": _json_safe(summary_values.get(f"max_{index}")),
+                        "average": _json_safe(summary_values.get(f"average_{index}")),
+                        "sum": _json_safe(summary_values.get(f"sum_{index}")),
+                        "approximate": True,
+                    })
             chart_join_conditions = [
                 "aud.destination_table = ?",
                 f"aud.hash_value = {quote_object_path(table)}.{quote_ident(hash_field)}",
@@ -390,7 +433,7 @@ ORDER BY bucket_start ASC
                     "count": int(data.get("count") or 0),
                 })
             groupable_columns = [*virtual_group_fields.keys(), *[n for n in column_names if n.lower() not in {hash_field.lower()}]]
-            return {"ok": True, "config_path": str(Path(config_path)), "destination_table": table, "hash_field": hash_field, "columns": columns, "groupable_columns": groupable_columns, "username_options": username_options, "total": total, "groups": groups, "chart_bucket": chart_bucket, "chart_bucket_label": chart_bucket_label, "import_time_series": import_time_series, "filtered_series": import_time_series}
+            return {"ok": True, "config_path": str(Path(config_path)), "destination_table": table, "hash_field": hash_field, "columns": columns, "groupable_columns": groupable_columns, "username_options": username_options, "total": total, "groups": groups, "chart_bucket": chart_bucket, "chart_bucket_label": chart_bucket_label, "import_time_series": import_time_series, "filtered_series": import_time_series, "numeric_summaries": numeric_summaries, "numeric_summaries_enabled": bool(include_numeric_summaries), "numeric_summary_available_columns": len(numeric_columns), "numeric_summary_limit": 6}
         finally:
             cursor.close()
     finally:

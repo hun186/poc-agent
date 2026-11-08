@@ -25,7 +25,7 @@ def test_excel_pages_static_scripts_are_served_by_static_route():
         script_urls.update(re.findall(r'<script src="([^"]+)"', html))
 
     assert "/static/excel_to_sql_source_editor_app.js?v=sort-20260703-audit-metadata" in script_urls
-    assert "/static/excel_to_sql_source_dashboard_app.js?v=20260703-source-dashboard-group-grid" in script_urls
+    assert "/static/excel_to_sql_source_dashboard_app.js?v=20261108-optional-numeric-summary" in script_urls
     for script_url in sorted(script_urls):
         response = TestClient(app).get(script_url)
 
@@ -469,3 +469,15 @@ def test_editor_navigation_links_agent_data_flow_page():
     assert 'id="agentDataFlowBtn"' in html
     assert "代理人資料流程圖" in html
     assert "location.href = '/agent-data-flow'" in js
+
+
+def test_sql_source_dashboard_numeric_opt_in_and_asset_version():
+    html = (STATIC_ROOT / "excel_to_sql_source_dashboard.html").read_text(encoding="utf-8")
+    js = (STATIC_ROOT / "excel_to_sql_source_dashboard_app.js").read_text(encoding="utf-8")
+
+    assert 'id="includeNumericSummaries"' in html
+    assert 'id="numericSummaries"' in html
+    assert 'v=20261108-optional-numeric-summary' in html
+    assert "params.set('include_numeric_summaries'" in js
+    assert "renderNumericSummaries(data);" in js
+    assert "escapeHtml(item.column)" in js

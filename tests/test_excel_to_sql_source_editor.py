@@ -376,12 +376,13 @@ def test_source_stats_route_requires_data_editor_and_uses_enabled_task_whitelist
 
     app.dependency_overrides[editor_dependencies.current_user] = data_editor_user
     response = client.get(
-        "/v1/excel-to-sql/source-stats?config=config/excel_to_sql/allowed.json&group_by=username&chart_bucket=week"
+        "/v1/excel-to-sql/source-stats?config=config/excel_to_sql/allowed.json&group_by=username&chart_bucket=week&include_numeric_summaries=true"
     )
 
     assert response.status_code == 200
     assert response.json()["total"] == 3
     assert captured_stats_kwargs["chart_bucket"] == "week"
+    assert captured_stats_kwargs["include_numeric_summaries"] is True
 
 def test_source_stats_group_by_uses_full_nvarchar_values(monkeypatch):
     """SQL shape regression: two distinct values after 4,000 chars must not coalesce."""
@@ -400,3 +401,80 @@ def test_source_stats_group_by_uses_full_nvarchar_values(monkeypatch):
     assert any("GROUP BY COALESCE(NULLIF(CAST([content] AS NVARCHAR(MAX)), ''), '-')" in sql for sql in grouping_sql)
     assert any("GROUP BY COALESCE(NULLIF(CAST(aud.source_file AS NVARCHAR(MAX)), ''), '-')" in sql for sql in grouping_sql)
     assert all("NVARCHAR(4000)" not in sql for sql in grouping_sql)
+
+def test_numeric_summaries_are_opt_in_and_exclude_system_columns(monkeypatch):
+    conn = FakeConnection()
+    monkeypatch.setattr(table_editor, "load_json_config", lambda path: CFG)
+    monkeypatch.setattr(
+        table_editor,
+        "_load_columns",
+        lambda cursor, table: [
+            {"name": "hash_value", "data_type": "char"},
+            {"name": "title", "data_type": "nvarchar"},
+            {"name": "cost", "data_type": "decimal"},
+            {"name": "quantity", "data_type": "int"},
+            {"name": "row_no", "data_type": "int"},
+        ],
+    )
+
+    result = table_editor.sql_source_stats(
+        "config/excel_to_sql/task.json", group_by=["title"],
+        connect=lambda cfg: conn,
+    )
+
+    assert result["numeric_summaries_enabled"] is False
+    assert result["numeric_summaries"] == []
+    assert result["numeric_summary_available_columns"] == 2
+    assert all("COUNT_BIG(" not in sql for sql, _ in conn.cursor_obj.calls)
+
+
+def test_numeric_summaries_use_one_bounded_filtered_aggregate(monkeypatch):
+    class NumericCursor(FakeCursor):
+        def execute(self, sql, *params):
+            if "COUNT_BIG([cost])" in sql:
+                self.calls.append((sql, params))
+                self.description = [
+                    (name,) for name in (
+                        "count_0", "min_0", "max_0", "average_0", "sum_0",
+                        "count_1", "min_1", "max_1", "average_1", "sum_1",
+                    )
+                ]
+                self._one = (2, 1.25, 3.75, 2.5, 5.0, 1, 7, 7, 7.0, 7.0)
+                return self
+            return super().execute(sql, *params)
+
+    conn = FakeConnection()
+    conn.cursor_obj = NumericCursor()
+    monkeypatch.setattr(table_editor, "load_json_config", lambda path: CFG)
+    monkeypatch.setattr(
+        table_editor,
+        "_load_columns",
+        lambda cursor, table: [
+            {"name": "hash_value", "data_type": "char"},
+            {"name": "title", "data_type": "nvarchar"},
+            {"name": "cost", "data_type": "decimal"},
+            {"name": "quantity", "data_type": "int"},
+            {"name": "row_no", "data_type": "int"},
+        ],
+    )
+
+    result = table_editor.sql_source_stats(
+        "config/excel_to_sql/task.json",
+        group_by=["title"], q="alpha", include_numeric_summaries=True,
+        connect=lambda cfg: conn,
+    )
+
+    assert result["numeric_summaries_enabled"] is True
+    assert result["numeric_summary_available_columns"] == 2
+    assert [item["column"] for item in result["numeric_summaries"]] == ["cost", "quantity"]
+    assert result["numeric_summaries"][0] == {
+        "column": "cost", "count": 2, "min": 1.25, "max": 3.75,
+        "average": 2.5, "sum": 5.0, "approximate": True,
+    }
+    aggregate_calls = [(sql, args) for sql, args in conn.cursor_obj.calls if "COUNT_BIG([cost])" in sql]
+    assert len(aggregate_calls) == 1
+    sql, args = aggregate_calls[0]
+    assert "COUNT_BIG([quantity])" in sql
+    assert "COUNT_BIG([row_no])" not in sql
+    assert "FROM [dbo].[Target] WHERE " in sql
+    assert args and any("alpha" in str(param) for param in args[0])

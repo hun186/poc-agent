@@ -5,6 +5,8 @@ on:
     paths:
       - 'data_ingestion/excel_to_sql/table_editor.py'
       - 'sra_api/routers/excel_to_sql.py'
+      - 'sra_api/static/excel_to_sql_source_dashboard_app.js'
+      - 'sra_api/static/excel_to_sql_source_dashboard.html'
       - 'tests/test_excel_to_sql_source_editor.py'
       - 'tests/test_excel_to_sql_dashboard_static.py'
       - '.github/workflows/sraf-sql-source-stats.yml'
@@ -36,5 +38,7 @@ jobs:
           python -m pip install 'pytest>=8,<10' 'httpx>=0.28,<1'
       - name: Check syntax
         run: python -m compileall -q data_ingestion/excel_to_sql/table_editor.py tests/test_excel_to_sql_source_editor.py
+      - name: Check source dashboard JavaScript syntax
+        run: node --check sra_api/static/excel_to_sql_source_dashboard_app.js
       - name: Run source-editor API and dashboard regressions (no live SQL)
         run: python -m pytest -q tests/test_excel_to_sql_source_editor.py tests/test_excel_to_sql_dashboard_static.py
