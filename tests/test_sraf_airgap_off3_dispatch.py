@@ -386,3 +386,38 @@ def test_one_click_preserves_final_json_and_underlying_exit_code(fake_deployment
         'SRAF_DEPLOY_CHECK_JSON={"status":"INCOMPLETE"}'
     )
     assert not (root / "sraf-acceptance-results").exists()
+
+
+def test_advanced_shell_entries_live_only_under_diagnostics_and_are_pinned():
+    import json
+
+    root = ROOT
+    advanced = (
+        "run_sraf_airgap_offline.sh",
+        "run_sraf_airgap_off1_diagnose.sh",
+        "run_sraf_airgap_off2_verify.sh",
+    )
+    policy = json.loads(
+        (root / "tools/deployment_manifest_policy.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    for name in advanced:
+        assert not (root / name).exists()
+        nested = "scripts/diagnostics/" + name
+        assert (root / nested).is_file()
+        assert nested in policy["managed_files"]
+        assert name not in policy["managed_files"]
+    assert (root / "0_一鍵快檢_SRAF.sh").is_file()
+    assert (root / "run_sra_api.sh").is_file()
+
+
+def test_advanced_launchers_are_shell_syntax_valid_after_move():
+    for name in (
+        "run_sraf_airgap_offline.sh",
+        "run_sraf_airgap_off1_diagnose.sh",
+        "run_sraf_airgap_off2_verify.sh",
+    ):
+        script = ROOT / "scripts" / "diagnostics" / name
+        assert subprocess.run(["bash", "-n", str(script)],
+                              capture_output=True, text=True).returncode == 0
