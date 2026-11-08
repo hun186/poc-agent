@@ -52,6 +52,46 @@ assert 'tools.sraf_airgap_off1q_remote_report_job' not in sys.modules
 
 
 
+
+def test_worker_identity_remains_passive_without_optional_dotenv(tmp_path):
+    """Worker identity uses canonical verifier without importing dotenv parser."""
+    import subprocess
+    import sys
+
+    script = """
+import builtins
+from pathlib import Path
+import sys
+
+original = builtins.__import__
+def without_optional(name, *args, **kwargs):
+    if name.split('.')[0] in ('dotenv', 'pyodbc'):
+        raise ModuleNotFoundError('blocked optional module for test')
+    return original(name, *args, **kwargs)
+
+builtins.__import__ = without_optional
+from tools import sraf_airgap_off1h_worker_identity as worker
+from operator_e2e import requirement_e2e_support as canonical
+assert callable(canonical.verify_worker_identity)
+assert 'dotenv' not in sys.modules
+observation = worker.probe_worker_process_identities(Path(sys.argv[1]))
+assert observation.status == 'SKIP'
+assert observation.evidence['verified_role_count'] == 0
+assert canonical.load_e2e_environment(
+    Path(sys.argv[1]) / 'nonexistent.env',
+    {'SRA_E2E_SAFE_TEST': 'value', 'UNRELATED': 'ignore'},
+) == {'SRA_E2E_SAFE_TEST': 'value'}
+assert 'dotenv' not in sys.modules
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path)],
+        cwd=str(target.PROJECT_ROOT), capture_output=True, text=True, timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+
 @pytest.fixture
 def probes(tmp_path, monkeypatch):
     monkeypatch.setattr(target, "PROJECT_ROOT", tmp_path)
