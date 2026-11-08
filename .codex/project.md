@@ -1,6 +1,11 @@
 # SRAF Project Handoff
 
-## Current Focus — 2026-11-08 (Hosted PR work, no live machine mutation)
+## Current Focus — 2026-11-08 (latest: follow-up OFF-1H native-free passive import)
+
+- #368 **MERGED** at `2330c6e263026aa438ed71ca74043729f00b64a9`: OFF-1S passive API listener import no longer requires SQL modules; all exact-head synthetic Hosted and formal Codex code review completed clean. Actual private Linux rerun NOT TESTED.
+- Next candidate: canonical OFF-1H Worker process identity imported `operator_e2e.requirement_e2e_support` where top-level optional `python-dotenv` blocked even read-only process observation. Make the dotenv parser lazy only on explicit E2E file, preserve callable compatibility and all Worker verification. Hosted Python3.10/3.11/OFF-1/2/E2E and latest SHA formal Codex review **PENDING**; do not infer Worker health, report success or Release readiness.
+
+## Earlier 2026-11-08 status (superseded)
 
 - #367 is **MERGED** (squash `988b617d9d9327af6064ab2443dc815515b511d8`): `deploy-check` is the now-available single-command, no-network/no-file passive 6-check operator entry. Its actual private Linux rerun is not established by GitHub.
 - Current candidate: avoid loading pyodbc/Report Job SQL from passive OFF-1S API listener imports. Move existing `O_NOFOLLOW` root guard and strict port parser unchanged into a stdlib-only shared tool; re-export compatibility from OFF-1P/Q and validate with subprocess blocked-native-import regression. Hosted exact-head CI and formal Codex review **PENDING**; no claim of strict listener/socket exclusivity, native ODBC, SQL/ES/LLM or FULL_LIVE.

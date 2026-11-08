@@ -18,7 +18,7 @@ bash run_sraf_airgap_offline.sh deploy-check
 SRAF_PYTHON=/path/to/actual-sraf-python bash run_sraf_airgap_offline.sh deploy-check
 ```
 
-這個模式不會要求你先逐項執行 `runtime-deps-user-site`、`runtime-launchers`、Worker Identity Python heredoc，或 API Socket 前置檢查。安全可執行的探測器採個別載入；例如選定 Python 缺少 `pyodbc` 原生載入能力時，API Listener 六項**不連線**身分前置檢查仍可獨立匯入；實際能否觀察成功仍取決於 /proc 與啟動記錄。若缺少 `python-dotenv`，Canonical Worker identity 子檢查可能回 `INCOMPLETE`，其他項目不受此影響。所有檢查會依序執行；即使單項 `INCOMPLETE`，仍收集其他安全可執行項目，並以固定、去識別化的狀態回報。
+這個模式不會要求你先逐項執行 `runtime-deps-user-site`、`runtime-launchers`、Worker Identity Python heredoc，或 API Socket 前置檢查。安全可執行的探測器採個別載入；例如選定 Python 缺少 `pyodbc` 原生載入能力時，API Listener 六項**不連線**身分前置檢查仍可獨立匯入；實際能否觀察成功仍取決於 /proc 與啟動記錄。即使缺少可選的 `python-dotenv`，Canonical Worker identity 的被動 /proc 驗證仍可執行；只有**明確選用** E2E 環境檔解析時才需要載入 dotenv。Worker 的 PID/角色/時間資訊不一致時仍會回 `INCOMPLETE`，其他項目不受此影響。所有檢查會依序執行；即使單項 `INCOMPLETE`，仍收集其他安全可執行項目，並以固定、去識別化的狀態回報。
 
 ## 6 個本機唯讀檢查
 
