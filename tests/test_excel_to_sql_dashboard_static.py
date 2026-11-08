@@ -285,3 +285,9 @@ def test_sql_source_stats_page_and_navigation_are_wired():
     assert "重要屬性分群統計" in html
     assert "匯入使用者、來源 Excel、匯入日期" in html
     assert "匯入執行起" in html
+
+def test_dashboard_limit_handler_has_matching_bumped_asset_url():
+    html = (STATIC_ROOT / 'excel_to_sql_dashboard.html').read_text(encoding='utf-8')
+    js = DASHBOARD_JS.read_text(encoding='utf-8')
+    assert "$('limit').addEventListener('change', applyAuditFilters);" in js
+    assert '/static/excel_to_sql_dashboard_app.js?v=20261108-source-stats-limit-change' in html
