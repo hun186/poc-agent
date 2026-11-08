@@ -1,6 +1,12 @@
 # SRAF Project Handoff
 
-## Current Focus
+## Current Focus — 2026-11-08 (Hosted PR work, no live machine mutation)
+
+- #367 is **MERGED** (squash `988b617d9d9327af6064ab2443dc815515b511d8`): `deploy-check` is the now-available single-command, no-network/no-file passive 6-check operator entry. Its actual private Linux rerun is not established by GitHub.
+- Current candidate: avoid loading pyodbc/Report Job SQL from passive OFF-1S API listener imports. Move existing `O_NOFOLLOW` root guard and strict port parser unchanged into a stdlib-only shared tool; re-export compatibility from OFF-1P/Q and validate with subprocess blocked-native-import regression. Hosted exact-head CI and formal Codex review **PENDING**; no claim of strict listener/socket exclusivity, native ODBC, SQL/ES/LLM or FULL_LIVE.
+- Keep one-command operator usability and failure isolation as the next priority without weakening any security gate. Review actual latest GitHub before considering merges.
+
+## Historical work snapshots (past pending statuses superseded by current GitHub)
 
 - **2026-11-02 OFF-2 Linux target inventory candidate:** after #359 MERGED as `b4e84897716a8c2220d928150875658edc7e39b0` (final Hosted OFF-2 439/OFF-1 493/operator E2E 83 PASS; Codex CLEAN), add explicit `target-platform` root read-only command for actual Linux OS ID/version, CPU, CPython major.minor/SOABI, libc and ODBC Driver 18 default registration only. No secrets, network, pip, native driver load, SQL/ES/LLM/Job, filesystem writes, FULL_LIVE or release attestation. Hosted final-head and Codex review PENDING.
 
