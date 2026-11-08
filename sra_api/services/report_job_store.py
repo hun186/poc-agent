@@ -224,6 +224,29 @@ class ReportJobStore:
                     raise IdempotencyConflict("Idempotency-Key was already used for a different request")
                 return self._row(row), False
 
+    def list_owned_summaries(self, *, owner_kind: str, owner_id: str, limit: int = 20, offset: int = 0) -> list[dict[str, Any]]:
+        """Read only this exact principal's Job metadata, never prompts/secrets.
+
+        Legacy rows with NULL owner identifiers are deliberately invisible.
+        No admin cross-owner enumeration and no schema mutation.
+        """
+        if (not isinstance(owner_kind, str) or not owner_kind
+                or not isinstance(owner_id, str) or not owner_id
+                or isinstance(limit, bool) or not isinstance(limit, int)
+                or not 1 <= limit <= 100
+                or isinstance(offset, bool) or not isinstance(offset, int)
+                or not 0 <= offset <= 10000):
+            raise ValueError("invalid_report_job_list")
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT job_id,status,filename,created_at,started_at,finished_at,"
+                "phase,phase_updated_at,failure_category "
+                "FROM report_jobs WHERE owner_kind=? AND owner_id=? "
+                "ORDER BY created_at DESC,job_id DESC LIMIT ? OFFSET ?",
+                (owner_kind, owner_id, limit, offset),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def get(self, job_id: str, connection: sqlite3.Connection | None = None) -> ReportJob | None:
         if connection is not None:
             return self._row(connection.execute("SELECT * FROM report_jobs WHERE job_id=?", (job_id,)).fetchone())
