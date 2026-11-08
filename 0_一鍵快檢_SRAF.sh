@@ -3,6 +3,12 @@
 # 這是便於找到的入口；實際安全檢查仍由已審查的 OFF-3 deploy-check 執行。
 set -euo pipefail
 
+# An explicitly supplied empty argument is invalid, not equivalent to no args.
+if [[ "$#" -gt 1 || ( "$#" -eq 1 && -z "$1" ) ]]; then
+  printf '%s\\n' 'SRAF_ONE_CLICK=INCOMPLETE reason=unsupported_option' >&2
+  exit 2
+fi
+
 case "${1:-}" in
   "")
     ;;
