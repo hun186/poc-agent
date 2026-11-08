@@ -3,7 +3,7 @@
 在專案根目錄：
 
 ```bash
-bash run_sraf_airgap_offline.sh release-deps
+bash scripts/diagnostics/run_sraf_airgap_offline.sh release-deps
 ```
 
 或直接：`python tools/sraf_airgap_off2_requirements_audit.py`。
