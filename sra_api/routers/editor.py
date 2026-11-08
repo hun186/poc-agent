@@ -72,6 +72,7 @@ EDITOR_STATIC_ASSETS: dict[str, str] = {
     "report_jobs_ui.js": "application/javascript",
     "report_jobs_ui.css": "text/css",
     "requirement_product_explorer.js": "application/javascript",
+    "requirement_product_preview.js": "application/javascript",
     "requirement_product_explorer.css": "text/css",
     "requirement_product_explorer.html": "text/html",
     "excel_to_sql_dashboard_app.js": "application/javascript",
