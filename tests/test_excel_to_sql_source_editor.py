@@ -382,3 +382,21 @@ def test_source_stats_route_requires_data_editor_and_uses_enabled_task_whitelist
     assert response.status_code == 200
     assert response.json()["total"] == 3
     assert captured_stats_kwargs["chart_bucket"] == "week"
+
+def test_source_stats_group_by_uses_full_nvarchar_values(monkeypatch):
+    """SQL shape regression: two distinct values after 4,000 chars must not coalesce."""
+    conn = FakeConnection()
+    monkeypatch.setattr(table_editor, "load_json_config", lambda path: CFG)
+
+    payload = table_editor.sql_source_stats(
+        "config/excel_to_sql/task.json",
+        group_by=["content", "_source_excel"],
+        connect=lambda cfg: conn,
+    )
+
+    assert [group["field"] for group in payload["groups"]] == ["content", "_source_excel"]
+    grouping_sql = [sql for sql, _ in conn.cursor_obj.calls if " AS group_value" in sql and "GROUP BY" in sql]
+    assert len(grouping_sql) == 2
+    assert any("GROUP BY COALESCE(NULLIF(CAST([content] AS NVARCHAR(MAX)), ''), '-')" in sql for sql in grouping_sql)
+    assert any("GROUP BY COALESCE(NULLIF(CAST(aud.source_file AS NVARCHAR(MAX)), ''), '-')" in sql for sql in grouping_sql)
+    assert all("NVARCHAR(4000)" not in sql for sql in grouping_sql)
