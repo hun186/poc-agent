@@ -1,12 +1,16 @@
-# SRAF Backlog — Active, 2026-11-03
+# SRAF Backlog — Active, 2026-11-08
 
-## Current Focus: Decouple canonical Worker passive import from optional E2E dotenv (2026-11-08)
+## Current Focus: Real private Linux one-command passive observation (outside GitHub)
 
-- #368 completed/verified and squash merged `2330c6e263026aa438ed71ca74043729f00b64a9`: API9002 six prerequisite stages no longer import native SQL/pyodbc. No live host rerun; strict listener exclusive socket proof remains NOT_TESTED.
-- Candidate: `operator_e2e.requirement_e2e_support` loads `python-dotenv` at import time, blocking OFF-1H Worker passive process identity if that optional E2E file parser is absent. Defer parser import until explicit E2E env-file parsing; keep canonical process identity checks and typed E2E config behavior intact. Test both optional imports denied and legacy E2E loader semantics with latest-head Hosted + formal Codex; no real service/SQL/ES/LLM or native driver test.
-- After this increment, operator-run `deploy-check` actual Linux output and authorized full OFF-1S/SQL/ES/Agent/Report Job/airgap remain pending.
+- #367, #368 and #369 **MERGED**. #368 squash `2330c6e263026aa438ed71ca74043729f00b64a9` decoupled passive OFF-1S from optional native SQL; #369 squash `bcd51f9aaea9072f055c8502ac0c0a74616c7d67` decoupled passive OFF-1H from optional E2E dotenv. Both exact latest heads had all Hosted CI success and formal Codex reviews completed clean with zero unresolved findings/threads.
+- **Pending actual operator evidence**: execute **one command** on the running Linux checkout, `bash run_sraf_airgap_offline.sh deploy-check`, share only its final sanitized `SRAF_DEPLOY_CHECK_JSON=...` line. Do not replay six separate heredocs. The tool does not write reports, contact localhost, import target packages, authorize Bearer or execute SQL/ES/LLM/Report Job. Host runtime remains NOT TESTED in Hosted CI.
+- After reviewing actual output, decide the narrowest necessary follow-up. Strict API listener exclusive-owner proof, trusted evidence directory, anonymous HTTP health, service runtime/interpreter and independently authorized SQL/ES/Agent live acceptance are **separate** checks; no automatic escalation from `PASS_PARTIAL`.
 
-## Previous current focus (#368, now merged; historical below)
+## Completed #369 candidate (historical; merged) 
+
+- The prior lazy `python-dotenv` import candidate is complete in #369, not pending. This section preserves history without making the old candidate the current task.
+
+## Completed #368 candidate (historical; merged)
 
 - #367 deployment `deploy-check` is **MERGED** at `988b617d9d9327af6064ab2443dc815515b511d8`; default remains six read-only local observations with no socket-exclusivity attestation or credentials. Do not repeat manual heredocs as the recommended operator workflow.
 - Candidate now: OFF-1S listener imports OFF-1P/Q, eagerly pulling optional `pyodbc` even for safe six-stage socket prerequisites. Extract existing stdlib-only nofollow root/port validation without changing semantics; allow API identity stage to remain available when `pyodbc` cannot import. Keep canonical Worker identity fail-closed without `dotenv`; do not claim Worker probe was fixed. Targeted import-denial regression plus Hosted OFF-0/1/2/operator and exact-head Codex mandatory before merge.
