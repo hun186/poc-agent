@@ -7,7 +7,7 @@ async function api(path){ const token=authToken(); if(!token) throw new Error('�
 async function loadMe(){ try{ const me=await api('/v1/auth/me'); const user=me.user||me||{}; $('whoami').textContent=user.username?`${user.username}（${user.role||'-'}）`:'未登入'; return Boolean(user.username); }catch(e){ $('whoami').textContent='未登入'; show('status',e.message,'error'); return false; } }
 async function loadTasks(){ const data=await api('/v1/excel-to-sql/dashboard-tasks'); const tasks=data.tasks||[]; $('task').innerHTML=tasks.map(t=>`<option value="${escapeHtml(t.config_path||'')}">${escapeHtml(t.name||t.config_path||'未命名任務')}</option>`).join('')||'<option value="">未找到已啟用任務</option>'; if(tasks[0]) $('config').value=tasks[0].config_path||''; $('task').onchange=()=>{ $('config').value=$('task').value; loadStats(); }; }
 function escapeHtml(v){ return SraAuditTools.escapeHtml(v); }
-function appendFilters(params){ params.set('config',$('config').value.trim()); params.set('q',$('query').value.trim()); params.set('source_file_filter',$('sourceFileFilter').value.trim()); params.set('hash_value_filter',$('hashFilter').value.trim()); params.set('payload_filter',$('payloadFilter').value.trim()); params.set('import_start_ts',$('importStartFilter').value); params.set('import_end_ts',$('importEndFilter').value); params.set('top_n',String(Math.max(1,Math.min(100,Number($('topN').value||20))))); params.set('chart_bucket',$('chartBucket').value); if($('rowNoFilter').value) params.set('row_no_filter',$('rowNoFilter').value); $('usernameFilter').value.split(',').map(v=>v.trim()).filter(Boolean).forEach(v=>params.append('username_filter',v)); selectedGroups().forEach(v=>params.append('group_by',v)); }
+function appendFilters(params){ params.set('config',$('config').value.trim()); params.set('q',$('query').value.trim()); params.set('source_file_filter',$('sourceFileFilter').value.trim()); params.set('hash_value_filter',$('hashFilter').value.trim()); params.set('payload_filter',$('payloadFilter').value.trim()); params.set('import_start_ts',$('importStartFilter').value); params.set('import_end_ts',$('importEndFilter').value); params.set('top_n',String(Math.max(1,Math.min(100,Number($('topN').value||20))))); params.set('chart_bucket',$('chartBucket').value); params.set('include_numeric_summaries',$('includeNumericSummaries').checked?'true':'false'); if($('rowNoFilter').value) params.set('row_no_filter',$('rowNoFilter').value); $('usernameFilter').value.split(',').map(v=>v.trim()).filter(Boolean).forEach(v=>params.append('username_filter',v)); selectedGroups().forEach(v=>params.append('group_by',v)); }
 function selectedGroups(){ const boxes=Array.from(document.querySelectorAll('[data-group-field]:checked')).map(x=>x.value); return boxes.length?boxes:state.selectedGroups; }
 function renderGroupFields(groupable){ state.groupable=groupable||[]; if(!state.selectedGroups.length) state.selectedGroups=state.groupable.slice(0,4); $('groupFields').innerHTML=state.groupable.map(name=>`<label title="${escapeHtml(name)}"><input type="checkbox" data-group-field value="${escapeHtml(name)}" ${state.selectedGroups.includes(name)?'checked':''}/> <span>${escapeHtml(name)}</span></label>`).join('')||'<div class="muted">此資料表沒有可分群欄位</div>'; document.querySelectorAll('[data-group-field]').forEach(el=>el.onchange=()=>{state.selectedGroups=selectedGroups();}); }
 function renderImportTimeSeries(data) {
@@ -22,7 +22,31 @@ function renderImportTimeSeries(data) {
     emptyText: '目前篩選條件下無匯入時間統計資料',
   });
 }
-function renderStats(data){ $('summaryCards').innerHTML=`<div class="stat-card"><span class="muted">資料列總數</span><strong>${data.total||0}</strong></div><div class="stat-card"><span class="muted">目的表</span><strong style="font-size:18px">${escapeHtml(data.destination_table||'-')}</strong></div><div class="stat-card"><span class="muted">分群欄位數</span><strong>${(data.groups||[]).length}</strong></div>`; renderImportTimeSeries(data); $('groups').innerHTML=(data.groups||[]).map(group=>{ const max=Math.max(...(group.buckets||[]).map(b=>b.count||0),1); const rows=(group.buckets||[]).map(b=>`<div class="bucket"><div><div>${escapeHtml(b.value||'-')}</div><div class="bar"><span style="width:${Math.max(2,Math.round((b.count||0)*100/max))}%"></span></div></div><strong>${b.count||0}</strong></div>`).join('')||'<div class="muted">無資料</div>'; return `<article class="card group-card"><h3>依 ${escapeHtml(group.field)} 分群</h3>${rows}</article>`; }).join('')||'<p class="muted">尚未載入統計。</p>'; }
+function renderNumericSummaries(data) {
+  const target = $('numericSummaries');
+  if (!data.numeric_summaries_enabled) { target.innerHTML = ''; return; }
+  const summaries = data.numeric_summaries || [];
+  const format = value => value === null || value === undefined ? '—' : escapeHtml(String(value));
+  if (!summaries.length) {
+    target.innerHTML = '<section class="card"><h3>數值欄位摘要</h3><p class="muted">目前資料表沒有可統計的數值欄位。</p></section>';
+    return;
+  }
+  const limitNote = data.numeric_summary_available_columns > summaries.length
+    ? '<p class="muted">為控制查詢負擔，目前僅顯示前 6 個數值欄位。</p>' : '';
+  target.innerHTML = '<section class="card"><h3>數值欄位摘要</h3>'
+    + '<p class="muted">均值及合計採浮點近似；最小值、最大值沿用資料庫原始數值。</p>'
+    + limitNote
+    + '<div class="numeric-grid">' + summaries.map(item =>
+      '<article class="numeric-card"><strong>' + escapeHtml(item.column) + '</strong>'
+      + '<div>非空值筆數：' + format(item.count) + '</div>'
+      + '<div>最小值：' + format(item.min) + '</div>'
+      + '<div>最大值：' + format(item.max) + '</div>'
+      + '<div>均值（約）：' + format(item.average) + '</div>'
+      + '<div>合計（約）：' + format(item.sum) + '</div></article>'
+    ).join('') + '</div></section>';
+}
+function renderStats(data){ $('summaryCards').innerHTML=`<div class="stat-card"><span class="muted">資料列總數</span><strong>${data.total||0}</strong></div><div class="stat-card"><span class="muted">目的表</span><strong style="font-size:18px">${escapeHtml(data.destination_table||'-')}</strong></div><div class="stat-card"><span class="muted">分群欄位數</span><strong>${(data.groups||[]).length}</strong></div>`; renderNumericSummaries(data); renderImportTimeSeries(data); $('groups').innerHTML=(data.groups||[]).map(group=>{ const max=Math.max(...(group.buckets||[]).map(b=>b.count||0),1); const rows=(group.buckets||[]).map(b=>`<div class="bucket"><div><div>${escapeHtml(b.value||'-')}</div><div class="bar"><span style="width:${Math.max(2,Math.round((b.count||0)*100/max))}%"></span></div></div><strong>${b.count||0}</strong></div>`).join('')||'<div class="muted">無資料</div>'; return `<article class="card group-card"><h3>依 ${escapeHtml(group.field)} 分群</h3>${rows}</article>`; }).join('')||'<p class="muted">尚未載入統計。</p>'; }
 async function loadStats(){ try{ const params=new URLSearchParams(); appendFilters(params); const data=await api('/v1/excel-to-sql/source-stats?'+params.toString()); renderGroupFields(data.groupable_columns||[]); renderStats(data); show('status','統計已更新。','ok'); }catch(e){ show('status',e.message,'error'); } }
 $('loadBtn').onclick=loadStats;
+$('includeNumericSummaries').onchange=loadStats;
 loadMe().then(ok=>ok?loadTasks():Promise.reject()).then(loadStats).catch(()=>{});
