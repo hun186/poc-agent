@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from datetime import datetime, timezone
 import zipfile
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from api.services.report_job_service import DEFAULT_REPORT_MODEL, create_job
@@ -84,6 +84,23 @@ def _audit_owner_mismatch(job, principal, operation):
         "job_id": job.job_id,
         "operation": operation,
     })
+
+@router.get("")
+def list_my_jobs(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=10000),
+    principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_READ)),
+):
+    """Owner-scoped, read-only list; admin scope never grants global enumeration."""
+    items = _store(request).list_owned_summaries(
+        owner_kind=principal.kind,
+        owner_id=principal.subject,
+        limit=limit,
+        offset=offset,
+    )
+    return {"items": items, "limit": limit, "offset": offset}
+
 
 @router.get("/{job_id}", responses={404: {"description": "Not found"}})
 def status(job_id: str, request: Request, principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_READ))):
