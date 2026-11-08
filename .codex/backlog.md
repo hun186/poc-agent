@@ -2,7 +2,7 @@
 
 ## Current Focus: Zero-memory Linux operator discoverability + private host evidence
 
-- **2026-11-08 candidate (CI/Review PENDING):** add executable root `0_一鍵快檢_SRAF.sh`, named to sort at the top of checkout; no args runs exactly existing `deploy-check`, `--help` displays Chinese offline safety/readout guidance; all other arguments rejected. Add top README link, root operator docs, release policy selection and subprocess tests. It is intentionally not a desktop auto-trusted launcher, not a changed default quick behavior and not a new probe.
+- **#371 VERIFIED MERGED 2026-11-08** (squash `10691986dadb71b45ef01f7ea0f03354e3de15fb`): executable root `0_一鍵快檢_SRAF.sh` sorts first; no args runs exactly existing `deploy-check`, `--help` shows Chinese safety/readout guidance; other args rejected. Top README, operator docs, Git-reviewed explicit root file policy and subprocess tests delivered. Hosted latest-head OFF-0/1/2 Python3.10/operator fixture and formal Codex completed clean; no desktop-trust change, default mode change or new probe.
 - **After reviewed merge:** actual Linux operator must still execute the shortcut and provide `SRAF_DEPLOY_CHECK_JSON=...`; no ChatGPT-hosted code review proves that private host works or that full OFF-1S/SQL/ES/LLM/Word/airgap acceptance has passed.
 
 ## Previous current focus (real private Linux observation; still open)
