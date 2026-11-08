@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "run_sraf_airgap_off1_diagnose.sh"
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh"
 
 
 @pytest.fixture
@@ -18,7 +18,8 @@ def isolated_launcher(tmp_path):
     project = tmp_path / "SRAF project with spaces"
     project.mkdir()
     (project / "tools").mkdir()
-    launcher = project / SCRIPT.name
+    (project / "scripts" / "diagnostics").mkdir(parents=True)
+    launcher = project / "scripts" / "diagnostics" / SCRIPT.name
     launcher.write_bytes(SCRIPT.read_bytes())
     fake_python = tmp_path / "app python"
     fake_python.write_text(
