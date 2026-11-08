@@ -12,8 +12,9 @@ import re
 import stat
 from typing import Any
 
+
 def _pin_root_directory(root: Path) -> int:
-    """Pin every ancestor with openat(O_NOFOLLOW) before touching SQL."""
+    """Pin every ancestor with openat(O_NOFOLLOW) before reading any trusted file."""
     parts = root.parts
     if (not root.is_absolute() or len(parts) < 2
             or any(part in ("", ".", "..") for part in parts[1:])):
@@ -31,7 +32,6 @@ def _pin_root_directory(root: Path) -> int:
     except Exception:
         os.close(fd)
         raise
-
 
 
 def _port(value: Any) -> int | None:
