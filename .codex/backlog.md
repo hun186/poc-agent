@@ -1,6 +1,11 @@
 # SRAF Backlog — Active, 2026-11-08
 
-## Current Focus: Real private Linux one-command passive observation (outside GitHub)
+## Current Focus: Zero-memory Linux operator discoverability + private host evidence
+
+- **2026-11-08 candidate (CI/Review PENDING):** add executable root `0_一鍵快檢_SRAF.sh`, named to sort at the top of checkout; no args runs exactly existing `deploy-check`, `--help` displays Chinese offline safety/readout guidance; all other arguments rejected. Add top README link, root operator docs, release policy selection and subprocess tests. It is intentionally not a desktop auto-trusted launcher, not a changed default quick behavior and not a new probe.
+- **After reviewed merge:** actual Linux operator must still execute the shortcut and provide `SRAF_DEPLOY_CHECK_JSON=...`; no ChatGPT-hosted code review proves that private host works or that full OFF-1S/SQL/ES/LLM/Word/airgap acceptance has passed.
+
+## Previous current focus (real private Linux observation; still open)
 
 - #367, #368 and #369 **MERGED**. #368 squash `2330c6e263026aa438ed71ca74043729f00b64a9` decoupled passive OFF-1S from optional native SQL; #369 squash `bcd51f9aaea9072f055c8502ac0c0a74616c7d67` decoupled passive OFF-1H from optional E2E dotenv. Both exact latest heads had all Hosted CI success and formal Codex reviews completed clean with zero unresolved findings/threads.
 - **Pending actual operator evidence**: execute **one command** on the running Linux checkout, `bash run_sraf_airgap_offline.sh deploy-check`, share only its final sanitized `SRAF_DEPLOY_CHECK_JSON=...` line. Do not replay six separate heredocs. The tool does not write reports, contact localhost, import target packages, authorize Bearer or execute SQL/ES/LLM/Report Job. Host runtime remains NOT TESTED in Hosted CI.
