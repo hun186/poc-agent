@@ -248,7 +248,9 @@ function progress(jobId, status, phase, long=false) {
   assert.equal(calls.at(-1).url,'/v1/report/jobs?limit=20&offset=0');
   assert.equal(calls.at(-1).opts.method,'GET');
   assert.equal(calls.at(-1).opts.headers.Authorization,'Bearer secret');
-  assert.equal(elements.jobRows.children.length,1);
+  assert.equal(elements.jobRows.children.length,1,
+    'history status=' + elements.jobListMessage.textContent +
+    ' pending=' + planned.length + ' last_url=' + calls.at(-1).url);
   assert.equal(elements.jobRows.children[0].children[0].textContent,'job-history-A');
   assert.equal(elements.jobRows.children[0].children[2].textContent,'報告已完成');
   assert.equal(elements.jobPrev.disabled,true);
