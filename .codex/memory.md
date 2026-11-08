@@ -153,3 +153,9 @@
 - 目的：回應 SQL 來源資料統計儀表板應比照 ES 文件異動統計，直接呈現適合 SQL 來源資料的關鍵屬性分群，而不是只提供單一手動 group-by。
 - 主要修改：`/v1/excel-to-sql/source-stats` 回傳 `attribute_groups`，包含依匯入使用者、來源 Excel、匯入日期與目前選擇資料欄位的分群統計；前端新增「重要屬性分群統計」卡片區。
 - 驗證：`node --check sra_api/static/excel_to_sql_source_stats_app.js`、`python -m py_compile data_ingestion/excel_to_sql/table_editor.py`、`PYTHONPATH=. pytest tests/test_excel_to_sql_dashboard_static.py::test_sql_source_stats_page_and_navigation_are_wired -q`。
+
+### 2026-11-08 PR #148 old-branch P2 follow-up (not merged)
+
+- Corrected Codex P2 cache-version Finding for July SQL stats PR by bumping the dashboard JS URL to match its modified limit handler. Added a static regression test.
+- Verification: exact latest-head Hosted CI and completed formal Codex re-review PENDING. No local pytest, real browser or live SQL acceptance claimed.
+- Integration: this July feature branch is more than 1,900 commits behind 2026-11-08 main and cannot merge as-is. Its statistics API/UI must be integrated and security-reviewed against current main without reviving obsolete project-memory snapshots.
