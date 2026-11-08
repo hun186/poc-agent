@@ -11,6 +11,41 @@ import pytest
 from tools import sraf_local_deploy_quickcheck as target
 
 
+
+def test_listener_passive_import_without_pyodbc_or_dotenv(tmp_path):
+    """Passive socket prerequisites remain importable without SQL/native E2E deps."""
+    import subprocess
+    import sys
+
+    script = """
+import builtins
+import sys
+
+original = builtins.__import__
+def without_optional(name, *args, **kwargs):
+    if name.split('.')[0] in ('pyodbc', 'dotenv'):
+        raise ModuleNotFoundError('blocked optional module for test')
+    return original(name, *args, **kwargs)
+
+builtins.__import__ = without_optional
+from tools import sraf_airgap_off1s_api_listener as listener
+from tools import sraf_airgap_off1_identity_primitives as primitives
+assert listener._pin_root_directory is primitives._pin_root_directory
+assert listener._port is primitives._port
+assert listener._port('9002') == 9002
+assert listener._port('0') is None
+assert 'tools.sraf_airgap_off1p_docx_integrity' not in sys.modules
+assert 'tools.sraf_airgap_off1q_remote_report_job' not in sys.modules
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(target.PROJECT_ROOT), capture_output=True, text=True, timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+
 @pytest.fixture
 def probes(tmp_path, monkeypatch):
     monkeypatch.setattr(target, "PROJECT_ROOT", tmp_path)
