@@ -9,6 +9,14 @@
   let controller = null;
   let busy = false;
   function message(value) { $('previewMessage').textContent = value; }
+  function clearProfileOptions() {
+    $('previewProfileSelect').replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '請先按載入清單；也可以直接輸入 ID';
+    $('previewProfileSelect').appendChild(placeholder);
+    $('previewProfileSelect').value = '';
+  }
   function clearResult() {
     $('previewResult').hidden = true;
     $('previewSummary').replaceChildren();
@@ -23,6 +31,8 @@
   }
   function controls() {
     $('previewBtn').disabled = busy;
+    $('loadProfilesBtn').disabled = busy;
+    $('previewProfileSelect').disabled = busy;
     $('previewClearBtn').disabled = busy;
     $('previewProfile').disabled = busy;
     $('previewMode').disabled = busy;
@@ -149,6 +159,55 @@
       message('預覽結果無法確認（網路、授權或回應契約異常）；本頁不會自動重新送出。');
     }
   }
+  async function loadProfiles() {
+    if (busy) return;
+    const access = $('authToken').value.trim();
+    if (!access) { message('請先輸入具備 Requirement 清單讀取權限的 Token。'); return; }
+    invalidate();
+    clearProfileOptions();
+    const run = generation;
+    const ctrl = new AbortController();
+    controller = ctrl;
+    busy = true;
+    controls();
+    message('正在讀取目前帳號可見的 Profile 清單…');
+    try {
+      const response = await fetch('/v1/requirement-import-profiles', {
+        method: 'GET', headers: {Authorization: 'Bearer ' + access},
+        signal: ctrl.signal, credentials: 'omit', cache: 'no-store', redirect: 'error'
+      });
+      if (run !== generation || ctrl.signal.aborted) return;
+      if (!response.ok) throw new Error('http_' + response.status);
+      const data = await response.json();
+      if (run !== generation || ctrl.signal.aborted) return;
+      if (!data || !Array.isArray(data.items)) throw new Error('invalid_contract');
+      let count = 0;
+      for (const profile of data.items) {
+        if (count >= 100) break;
+        if (!profile || typeof profile !== 'object' || Array.isArray(profile) ||
+            !(profile.enabled === true || profile.enabled === 1) ||
+            typeof profile.active_version_id !== 'string' ||
+            profile.active_version_id.length < 1 || profile.active_version_id.length > 128 ||
+            typeof profile.profile_id !== 'string') continue;
+        const option = document.createElement('option');
+        option.value = profile.active_version_id;
+        option.textContent = String(profile.name || profile.profile_id).slice(0, 80) +
+          '｜' + profile.active_version_id;
+        $('previewProfileSelect').appendChild(option);
+        count++;
+      }
+      message(count ? '已讀取 ' + count + ' 個可選 Profile；請選取版本，後端將核驗其核准狀態。'
+        : '未找到可選的已啟用 Profile，仍可貼上已核准的版本 ID。');
+    } catch (_) {
+      if (run !== generation || ctrl.signal.aborted) return;
+      clearProfileOptions();
+      message('無法取得 Profile 清單（權限、服務或網路異常）。可手動輸入已核准的版本 ID。');
+    } finally {
+      if (controller === ctrl) controller = null;
+      busy = false;
+      controls();
+    }
+  }
   async function submitPreview() {
     if (busy) return;
     let payload;
@@ -187,6 +246,14 @@
       controls();
     }
   }
+  $('loadProfilesBtn').addEventListener('click', loadProfiles);
+  $('previewProfileSelect').addEventListener('change', function () {
+    const value = $('previewProfileSelect').value;
+    if (!value) return;
+    $('previewProfile').value = value;
+    invalidate();
+    message('已選取 Profile Version；請提供資料再預覽。');
+  });
   $('previewBtn').addEventListener('click', submitPreview);
   $('previewClearBtn').addEventListener('click', function () {
     invalidate();
@@ -203,14 +270,19 @@
   }
   $('authToken').addEventListener('input', function () {
     invalidate();
+    clearProfileOptions();
+    $('previewProfile').value = '';
     message('Token 已變更，先前的預覽已清除。');
   });
   window.addEventListener('pagehide', function () {
     invalidate();
+    clearProfileOptions();
+    $('previewProfile').value = '';
     $('authToken').value = '';
     $('previewFile').value = '';
     $('previewJson').value = '';
   });
   controls();
+  clearProfileOptions();
   selectMode();
 })();

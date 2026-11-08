@@ -23,6 +23,14 @@
     <section class="panel" aria-labelledby="previewTitle">
       <h2 id="previewTitle">Requirement 輸入預覽（不建立任務）</h2>
       <p class="hint">使用現有 <code>POST /v1/requirement-task-previews</code> 的無持久化預覽能力。需具備 db_operator 權限及已核准的 Profile Version。每次由使用者點選才送出，不啟動排程、不寫入任務或 SQL。</p>
+      <div class="actions">
+        <button id="loadProfilesBtn" type="button" class="secondary">載入可用 Profile 清單</button>
+      </div>
+      <label for="previewProfileSelect">從已啟用 Profile 選取 Active Version（選填）</label>
+      <select id="previewProfileSelect" aria-describedby="profilePickerHint">
+        <option value="">請先按載入清單；也可以直接輸入 ID</option>
+      </select>
+      <p id="profilePickerHint" class="hint">只顯示前 100 個符合條件的 Profile。後端仍會獨立確認版本是否已核准；無法讀取清單時可以手動輸入 ID。</p>
       <label for="previewProfile">已核准的 Profile Version ID</label>
       <input id="previewProfile" maxlength="128" autocomplete="off" spellcheck="false" placeholder="貼上既有、已核准的 Profile Version ID">
       <label for="previewMode">輸入方式</label>

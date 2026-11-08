@@ -76,6 +76,11 @@ def test_product_preview_ui_is_opt_in_bounded_and_no_persistence():
     assert 'id="previewFile"' in html
     assert 'id="previewJson"' in html
     assert 'id="previewBtn"' in html
+    assert 'id="loadProfilesBtn"' in html
+    assert 'id="previewProfileSelect"' in html
+    assert "/v1/requirement-import-profiles" in js
+    assert "clearProfileOptions()" in js
+    assert "profile.active_version_id" in js
     assert editor_static_asset("requirement_product_preview.js").media_type == "application/javascript"
     assert "MAX_FILE = 10 * 1024 * 1024" in js
     assert "MAX_JSON = 1024 * 1024" in js
