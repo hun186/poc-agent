@@ -46,6 +46,13 @@ def test_product_explorer_is_readonly_and_does_not_store_tokens():
     assert "method: 'GET'" in js
     assert "credentials: 'omit'" in js
     assert "redirect: 'error'" in js
+    assert 'id="taskDetailBtn"' in html
+    assert 'id="runDetailBtn"' in html
+    assert 'id="taskDetails"' in html
+    assert 'id="runDetails"' in html
+    assert "loadTaskDetail()" in js and "loadRunDetail()" in js
+    assert "item.task_id !== id" in js
+    assert "item.run_id !== id || item.task_id !== state.taskId" in js
 
 
 def test_product_explorer_browser_flow():
