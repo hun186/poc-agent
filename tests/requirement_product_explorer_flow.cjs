@@ -17,7 +17,8 @@ function element(tag = '') {
 const ids = [
   'authToken', 'loadTasks', 'message', 'taskRows', 'taskPrev', 'taskNext', 'taskPage',
   'runsPanel', 'currentTask', 'runsRows', 'runPrev', 'runNext', 'runPage',
-  'itemsPanel', 'currentRun', 'itemRows', 'itemPrev', 'itemNext', 'itemPage'
+  'itemsPanel', 'currentRun', 'itemRows', 'itemPrev', 'itemNext', 'itemPage',
+  'taskDetailBtn', 'taskDetails', 'runDetailBtn', 'runDetails'
 ];
 const nodes = Object.fromEntries(ids.map(id => [id, element()]));
 const document = { getElementById: id => {
@@ -69,20 +70,54 @@ async function selectFirst(tableId, index) {
   responses.push({items: [{run_id: 'run_B', status: 'running',
     trigger: {type: 'scheduled'}, counts: {succeeded: 2, failed: 0}}]});
   await selectFirst('taskRows', 4);
-  assert.equal(calls[1].url, '/v1/requirement-tasks/task_A/runs?limit=20&offset=0');
+  assert.equal(calls.at(-1).url, '/v1/requirement-tasks/task_A/runs?limit=20&offset=0');
   assert.equal(nodes.runsPanel.hidden, false);
   assert.equal(nodes.runsRows.children[0].children[0].textContent, 'run_B');
+
+  responses.push({task_id: 'task_A', name: '<script>task detail</script>',
+    revision: 3, source_id: 'source-x',
+    execution_kind: 'one_time', product_state: 'active',
+    schedule: {enabled: true, active_version_id: 'version-7', next_run_at: null}});
+  await fire('taskDetailBtn');
+  assert.equal(calls.at(-1).url, '/v1/requirement-tasks/task_A');
+  assert.equal(nodes.taskDetails.hidden, false);
+  assert.equal(nodes.taskDetails.children[3].textContent, '<script>task detail</script>');
+  assert.equal(nodes.taskDetails.children[9].textContent, '3');
+
 
   responses.push({items: [{run_item_id: 'item_C', requirement_id: 'requirement_D',
     selection_status: 'selected', status: 'completed', artifact: {available: true}}]});
   await selectFirst('runsRows', 4);
-  assert.equal(calls[2].url, '/v1/requirement-runs/run_B/items?limit=20&offset=0');
+  assert.equal(calls.at(-1).url, '/v1/requirement-runs/run_B/items?limit=20&offset=0');
   assert.equal(nodes.itemsRows, undefined);
   assert.equal(nodes.itemsPanel.hidden, false);
   assert.equal(nodes.itemRows.children[0].children[4].textContent, '有成果');
 
+  responses.push({run_id:'run_B', task_id:'task_A', status:'running',
+    binding:{schedule_id:'schedule-1', schedule_version_id:'version-7',
+      snapshot_id:'snap-1'}, trigger:{type:'scheduled',scheduled_for:'2026-11-09T03:00:00Z'},
+    counts:{selected:3,skipped:1,succeeded:2,failed:0},
+    deadline_elapsed_during_execution:false});
+  await fire('runDetailBtn');
+  assert.equal(calls.at(-1).url, '/v1/requirement-runs/run_B');
+  assert.equal(nodes.runDetails.hidden, false);
+  assert.equal(nodes.runDetails.children[1].textContent, 'run_B');
+  assert.equal(nodes.runDetails.children[3].textContent, 'task_A');
+
+
+
+  // An in-flight detail result for the old bearer must never repopulate the UI.
+  let finishOld;
+  responses.push(new Promise(resolve => {finishOld = resolve;}));
+  const pending = fire('runDetailBtn');
+  await new Promise(resolve => setImmediate(resolve));
   nodes.authToken.value = 'SECRET-TOKEN-2';
   fire('authToken', 'input');
+  finishOld({run_id:'run_B',task_id:'task_A',status:'completed'});
+  await pending;
+  assert.equal(nodes.runDetails.hidden, true);
+  assert.equal(nodes.runDetails.children.length, 0);
+
   assert.equal(nodes.taskRows.children.length, 0);
   assert.equal(nodes.runsPanel.hidden, true);
   assert.equal(nodes.itemsPanel.hidden, true);

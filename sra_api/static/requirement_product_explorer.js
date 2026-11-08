@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const LIMIT = 20;
   const safeId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id);
-  const state = {revision: 0, taskId: '', runId: '', taskOffset: 0, runOffset: 0, itemOffset: 0};
+  const state = {revision: 0, taskId: '', runId: '', taskOffset: 0, runOffset: 0, itemOffset: 0, taskDetailRev: 0, runDetailRev: 0};
 
   function note(text) { $('message').textContent = text; }
   function text(value) {
@@ -49,7 +49,7 @@
       body.appendChild(tr);
     }
   }
-  async function api(path) {
+  async function requestJson(path) {
     const token = $('authToken').value.trim();
     if (!token) throw new Error('missing_token');
     const response = await fetch(path, {
@@ -57,7 +57,10 @@
       credentials: 'omit', cache: 'no-store', redirect: 'error'
     });
     if (!response.ok) throw new Error('http_' + response.status);
-    const payload = await response.json();
+    return response.json();
+  }
+  async function api(path) {
+    const payload = await requestJson(path);
     if (!payload || !Array.isArray(payload.items)) throw new Error('invalid_contract');
     return payload.items;
   }
@@ -73,7 +76,86 @@
       note('無法確認查詢結果，請檢查連線或稍後重試；未執行任何寫入。');
     }
   }
+
+  function clearDetails(kind) {
+    ++state[kind + 'DetailRev'];
+    $(kind + 'Details').hidden = true;
+    $(kind + 'Details').replaceChildren();
+  }
+  function presentDetails(kind, fields) {
+    const target = $(kind + 'Details');
+    target.replaceChildren();
+    for (const [label, value] of fields) {
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      dd.textContent = text(value);
+      target.appendChild(dt);
+      target.appendChild(dd);
+    }
+    target.hidden = false;
+  }
+  async function loadTaskDetail() {
+    const id = state.taskId;
+    if (!safeId(id)) return;
+    const rev = state.revision;
+    const detailRev = ++state.taskDetailRev;
+    $('taskDetails').hidden = true;
+    $('taskDetails').replaceChildren();
+    note('正在讀取任務詳細資料…');
+    try {
+      const item = await requestJson('/v1/requirement-tasks/' + encodeURIComponent(id));
+      if (rev !== state.revision || detailRev !== state.taskDetailRev || state.taskId !== id) return;
+      if (!item || Array.isArray(item) || item.task_id !== id) throw new Error('invalid_contract');
+      const schedule = item.schedule || {};
+      presentDetails('task', [
+        ['任務 ID', item.task_id], ['任務名稱', item.name],
+        ['執行型態', item.execution_kind], ['產品狀態', item.product_state],
+        ['修訂版', item.revision], ['來源 ID', item.source_id],
+        ['排程 ID', item.schedule_id],
+        ['排程啟用', typeof schedule.enabled === 'boolean' ? (schedule.enabled ? '是' : '否') : null],
+        ['啟用排程版本', schedule.active_version_id],
+        ['下次排程時間', schedule.next_run_at],
+        ['建立時間', item.created_at], ['更新時間', item.updated_at]
+      ]);
+      note('已讀取目前任務的授權詳細資料。');
+    } catch (error) {
+      if (rev === state.revision && detailRev === state.taskDetailRev) showError(error);
+    }
+  }
+  async function loadRunDetail() {
+    const id = state.runId;
+    if (!safeId(id)) return;
+    const rev = state.revision;
+    const detailRev = ++state.runDetailRev;
+    $('runDetails').hidden = true;
+    $('runDetails').replaceChildren();
+    note('正在讀取批次詳細資料…');
+    try {
+      const item = await requestJson('/v1/requirement-runs/' + encodeURIComponent(id));
+      if (rev !== state.revision || detailRev !== state.runDetailRev || state.runId !== id) return;
+      if (!item || Array.isArray(item) || item.run_id !== id || item.task_id !== state.taskId) {
+        throw new Error('invalid_contract');
+      }
+      const binding = item.binding || {}, trigger = item.trigger || {}, counts = item.counts || {};
+      presentDetails('run', [
+        ['批次 ID', item.run_id], ['任務 ID', item.task_id],
+        ['執行狀態', item.status], ['排程 ID', binding.schedule_id],
+        ['排程版本', binding.schedule_version_id], ['需求快照 ID', binding.snapshot_id],
+        ['觸發方式', trigger.type], ['排程時間', trigger.scheduled_for],
+        ['選取數', counts.selected], ['略過數', counts.skipped],
+        ['完成數', counts.succeeded], ['失敗數', counts.failed],
+        ['錯誤分類', item.error_category],
+        ['執行中超過期限', item.deadline_elapsed_during_execution === true ? '是' : '否'],
+        ['建立時間', item.created_at], ['結束時間', item.completed_at]
+      ]);
+      note('已讀取目前批次的授權詳細資料；僅代表 API 回報狀態。');
+    } catch (error) {
+      if (rev === state.revision && detailRev === state.runDetailRev) showError(error);
+    }
+  }
   function resetItems() {
+    clearDetails('run');
     state.runId = '';
     state.itemOffset = 0;
     $('itemsPanel').hidden = true;
@@ -81,6 +163,7 @@
     clearRows('itemRows');
   }
   function resetRuns() {
+    clearDetails('task');
     state.taskId = '';
     state.runOffset = 0;
     $('runsPanel').hidden = true;
@@ -117,6 +200,7 @@
     const rev = ++state.revision;
     state.taskId = taskId;
     state.runOffset = offset;
+    clearDetails('task');
     resetItems();
     $('runsPanel').hidden = false;
     $('currentTask').textContent = taskId;
@@ -147,6 +231,7 @@
     const rev = ++state.revision;
     state.runId = runId;
     state.itemOffset = offset;
+    clearDetails('run');
     $('itemsPanel').hidden = false;
     $('currentRun').textContent = runId;
     clearRows('itemRows');
@@ -168,6 +253,8 @@
       if (rev === state.revision) { page('item', offset, 0); showError(error); }
     }
   }
+  $('taskDetailBtn').addEventListener('click', loadTaskDetail);
+  $('runDetailBtn').addEventListener('click', loadRunDetail);
   $('loadTasks').addEventListener('click', () => loadTasks(0));
   $('taskPrev').addEventListener('click', () => loadTasks(Math.max(0, state.taskOffset - LIMIT)));
   $('taskNext').addEventListener('click', () => loadTasks(state.taskOffset + LIMIT));
