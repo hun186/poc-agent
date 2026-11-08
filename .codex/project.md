@@ -1,11 +1,12 @@
 # SRAF Project Handoff
 
-## Current Focus — 2026-11-08 (latest: follow-up OFF-1H native-free passive import)
+## Current Focus — 2026-11-08: operator one-command real-host validation
 
-- #368 **MERGED** at `2330c6e263026aa438ed71ca74043729f00b64a9`: OFF-1S passive API listener import no longer requires SQL modules; all exact-head synthetic Hosted and formal Codex code review completed clean. Actual private Linux rerun NOT TESTED.
-- Next candidate: canonical OFF-1H Worker process identity imported `operator_e2e.requirement_e2e_support` where top-level optional `python-dotenv` blocked even read-only process observation. Make the dotenv parser lazy only on explicit E2E file, preserve callable compatibility and all Worker verification. Hosted Python3.10/3.11/OFF-1/2/E2E and latest SHA formal Codex review **PENDING**; do not infer Worker health, report success or Release readiness.
+- #367, #368 and #369 have **MERGED**. #368 squash `2330c6e263026aa438ed71ca74043729f00b64a9` removed optional native SQL from OFF-1S passive imports; #369 squash `bcd51f9aaea9072f055c8502ac0c0a74616c7d67` deferred dotenv parsing until an explicitly selected E2E env file, freeing OFF-1H passive Worker imports. Both have exact PR-HEAD Hosted OFF-0/1/1B/2 Python3.10/operator E2E and formal Codex code-review completed clean (no findings/threads); no local production change proven.
+- **Next Open Handoff (outside Hosted GitHub):** on the actual private Linux running instance, execute just `bash run_sraf_airgap_offline.sh deploy-check` from the deployed checkout and share only `SRAF_DEPLOY_CHECK_JSON=...`; do **not** restart or alter services or run individual Python heredocs. This collects six non-network/no-write partial checks; missing native SQL/optional E2E dotenv must not suppress independent listener/Worker imports. No remote host access or actual operator result was available in this GitHub-only session.
+- Even all six observations remain `PASS_PARTIAL`; strict full OFF-1S exclusive socket proof, anonymous HTTP health, service interpreter/UID, SQL/ES/LLM/Report Job/DOCX FULL_LIVE and real airgap/restore remain separate. Do not auto-promote readiness or silently perform credentialed probes.
 
-## Earlier 2026-11-08 status (superseded)
+## Earlier 2026-11-08 candidate status (superseded by completed #368/#369)
 
 - #367 is **MERGED** (squash `988b617d9d9327af6064ab2443dc815515b511d8`): `deploy-check` is the now-available single-command, no-network/no-file passive 6-check operator entry. Its actual private Linux rerun is not established by GitHub.
 - Current candidate: avoid loading pyodbc/Report Job SQL from passive OFF-1S API listener imports. Move existing `O_NOFOLLOW` root guard and strict port parser unchanged into a stdlib-only shared tool; re-export compatibility from OFF-1P/Q and validate with subprocess blocked-native-import regression. Hosted exact-head CI and formal Codex review **PENDING**; no claim of strict listener/socket exclusivity, native ODBC, SQL/ES/LLM or FULL_LIVE.
