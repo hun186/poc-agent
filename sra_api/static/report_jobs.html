@@ -28,6 +28,20 @@
       <div class="actions"><div class="grow"><label for="filename">Word 檔名（選填）</label><input id="filename" maxlength="180" placeholder="例如：分析報告.docx"></div><button type="button" id="submitBtn">建立並追蹤</button><button type="button" id="retrySubmitBtn" class="secondary" hidden>以同一識別碼重試未確認請求</button><button type="button" id="discardSubmitBtn" class="secondary" hidden>放棄本頁重試資料</button></div>
       <p class="hint">每次建立使用隨機 Idempotency-Key。網路或伺服器回應不明時，僅能由你明確點選「以同一識別碼重試」，使用相同報告內容和 Key；不會在背景自動重送。重試資料只暫存於分頁記憶體，離開頁面或更換 Token 後會清除。若放棄重試，原請求仍可能已建立報告；重新建立前請先核對。</p>
     </section>
+    <section class="panel" aria-labelledby="historyTitle">
+      <h2 id="historyTitle">我的報告任務（僅目前 Token 所屬帳號）</h2>
+      <p class="hint">只會從既有授權資料庫取得自己的任務摘要，不會列出其他帳號的工作或讀取報告 Prompt。請按下方按鈕明確讀取，最多每頁 20 筆。</p>
+      <div class="actions">
+        <button id="listJobsBtn" type="button" class="secondary">讀取我的報告紀錄</button>
+        <span id="jobListMessage" class="hint" role="status" aria-live="polite">尚未讀取。</span>
+      </div>
+      <div class="scroll"><table class="history-table"><thead><tr><th>Job ID</th><th>狀態</th><th>執行階段</th><th>建立時間</th><th>操作</th></tr></thead><tbody id="jobRows"></tbody></table></div>
+      <div class="actions">
+        <button id="jobPrev" type="button" class="secondary" disabled>上一頁</button>
+        <span id="jobPage" class="hint">第 1 頁</span>
+        <button id="jobNext" type="button" class="secondary" disabled>下一頁</button>
+      </div>
+    </section>
     <section class="panel" aria-labelledby="watchTitle">
       <h2 id="watchTitle">查看既有任務</h2>
       <label for="jobId">Job ID</label>
