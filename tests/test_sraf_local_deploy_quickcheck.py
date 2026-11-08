@@ -12,6 +12,12 @@ from tools import sraf_local_deploy_quickcheck as target
 
 
 
+def test_passive_listener_helper_explicitly_selected_for_release():
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads((root / "tools/deployment_manifest_policy.json").read_text(encoding="utf-8"))
+    assert "tools/sraf_airgap_off1_identity_primitives.py" in policy["release_tool_files"]
+
+
 def test_listener_passive_import_without_pyodbc_or_dotenv(tmp_path):
     """Passive socket prerequisites remain importable without SQL/native E2E deps."""
     import subprocess
