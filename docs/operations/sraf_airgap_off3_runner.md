@@ -4,30 +4,30 @@
 
 忘記模式與指令時，優先找根目錄排在前面的 **`0_一鍵快檢_SRAF.sh`**：`./0_一鍵快檢_SRAF.sh` 或 `bash 0_一鍵快檢_SRAF.sh`；無參數執行現有的六項本機唯讀 `deploy-check`，`--help` 僅輸出中文說明，不會進入正式驗收。它不改變既有統一入口的預設 `quick` 模式，相關限制見 [一鍵落地快檢測](sraf_local_deploy_quickcheck.md)。
 
-在 SRAF 根目錄執行；也可以在其他目錄用絕對路徑呼叫：
+進階腳本已移至 `scripts/diagnostics/`，避免擁擠根目錄；在 SRAF 根目錄執行以下工程師模式，也可以從其他工作目錄使用指向完整檔案的絕對路徑：
 
 ```bash
-bash run_sraf_airgap_offline.sh deploy-check # 推薦：一次輸出本機安全快檢測，不寫檔、不連網
-bash run_sraf_airgap_offline.sh
-bash run_sraf_airgap_offline.sh quick
-bash run_sraf_airgap_offline.sh diagnose
-bash run_sraf_airgap_offline.sh no-network
-bash run_sraf_airgap_offline.sh release-files
-bash run_sraf_airgap_offline.sh release-policy
-bash run_sraf_airgap_offline.sh release-deps
-bash run_sraf_airgap_offline.sh wheel-files
-bash run_sraf_airgap_offline.sh target-platform
-bash run_sraf_airgap_offline.sh runtime-deps
-bash run_sraf_airgap_offline.sh runtime-deps-user-site
-bash run_sraf_airgap_offline.sh runtime-launchers
+bash scripts/diagnostics/run_sraf_airgap_offline.sh deploy-check # 推薦：一次輸出本機安全快檢測，不寫檔、不連網
+bash scripts/diagnostics/run_sraf_airgap_offline.sh
+bash scripts/diagnostics/run_sraf_airgap_offline.sh quick
+bash scripts/diagnostics/run_sraf_airgap_offline.sh diagnose
+bash scripts/diagnostics/run_sraf_airgap_offline.sh no-network
+bash scripts/diagnostics/run_sraf_airgap_offline.sh release-files
+bash scripts/diagnostics/run_sraf_airgap_offline.sh release-policy
+bash scripts/diagnostics/run_sraf_airgap_offline.sh release-deps
+bash scripts/diagnostics/run_sraf_airgap_offline.sh wheel-files
+bash scripts/diagnostics/run_sraf_airgap_offline.sh target-platform
+bash scripts/diagnostics/run_sraf_airgap_offline.sh runtime-deps
+bash scripts/diagnostics/run_sraf_airgap_offline.sh runtime-deps-user-site
+bash scripts/diagnostics/run_sraf_airgap_offline.sh runtime-launchers
 ```
 
 | 模式 | 唯一執行路徑 | 效果和限制 |
 | --- | --- | --- |
 | 預設／`quick` | `tools/sraf_airgap_off1_hub.py --suite quick` | 唯讀本地／匿名 API Health/靜態 UI 觀察；**可能開啟本機 HTTP**，但不登入、不觸發 SQL／ES Basic、LLM 或 Report Job；證據寫入既有安全 JSON/TXT |
-| `diagnose` | `run_sraf_airgap_off1_diagnose.sh` | 既有唯讀 API／ES／LLM TCP 及本地 Worker 觀察；不登入、生成或寫 SQL；部分檢查不能視為 E2E |
-| `no-network` | `run_sraf_airgap_off1_diagnose.sh --no-network` | 完全不發起 HTTP/TCP 探針，保留本地資源與可見的 Worker /proc；連線項目正確地 SKIP/INCOMPLETE |
-| `release-files` | `run_sraf_airgap_off2_verify.sh` | 須另以 `SRAF_OFF2_TRUSTED_MANIFEST_SHA256` 提供外部可信 Manifest 摘要；只核對列管檔案 SHA-256，不能推論發行完整性、簽章、模型／wheelhouse |
+| `diagnose` | `scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh` | 既有唯讀 API／ES／LLM TCP 及本地 Worker 觀察；不登入、生成或寫 SQL；部分檢查不能視為 E2E |
+| `no-network` | `scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh --no-network` | 完全不發起 HTTP/TCP 探針，保留本地資源與可見的 Worker /proc；連線項目正確地 SKIP/INCOMPLETE |
+| `release-files` | `scripts/diagnostics/run_sraf_airgap_off2_verify.sh` | 須另以 `SRAF_OFF2_TRUSTED_MANIFEST_SHA256` 提供外部可信 Manifest 摘要；只核對列管檔案 SHA-256，不能推論發行完整性、簽章、模型／wheelhouse |
 | `release-policy` | `tools/sraf_airgap_off2_policy_coverage.py` | 本機唯讀核對九個最低必要入口是否被發行政策明確列管；若有缺列則回報 `INCOMPLETE`；現有明確列管已補齊，但也只能回 `PASS_PARTIAL`，**不**驗證簽章、Hash、wheelhouse 或實際 airgap |
 | `release-deps` | `tools/sraf_airgap_off2_requirements_audit.py` | 本機唯讀檢查直接 Python 相依是否固定版本；現有 `>=` 應回 `INCOMPLETE`，即使全部 `==` 仍僅為 `PASS_PARTIAL`，不驗證 wheelhouse／ABI／transitive closure |
 | `wheel-files` | `tools/sraf_airgap_off2_wheel_files.py` | 需要獨立取得外部可信 Wheel Manifest SHA-256；只核對列管 Wheel 位元組、拒絕未列管檔案；無法證明 Python 依賴閉包、簽章、ODBC 或封網安裝 |
@@ -49,7 +49,7 @@ bash run_sraf_airgap_offline.sh runtime-launchers
 
 `wheel-files` 的外部 Pin 格式、Manifest Schema 與安全界線見 [OFF-2 Wheelhouse 位元組驗證](sraf_airgap_off2_wheel_files.md)。所有缺少信任錨的情況均回 `INCOMPLETE`，不得自動產生本機 PIN。
 
-`target-platform` 只觀察執行腳本當下的 Python ABI 與 Linux/ODBC 登錄配置，不會收集完整套件/ODBC 原生 library 版本，也不是封網或實機業務 E2E。使用與正式 SRAF 相同的 Python 環境，例如 `SRAF_PYTHON=/path/to/venv/bin/python bash run_sraf_airgap_offline.sh target-platform`；詳細欄位與安全界線見 [OFF-2 Linux 目標環境盤點](sraf_airgap_off2_linux_target.md)。
+`target-platform` 只觀察執行腳本當下的 Python ABI 與 Linux/ODBC 登錄配置，不會收集完整套件/ODBC 原生 library 版本，也不是封網或實機業務 E2E。使用與正式 SRAF 相同的 Python 環境，例如 `SRAF_PYTHON=/path/to/venv/bin/python bash scripts/diagnostics/run_sraf_airgap_offline.sh target-platform`；詳細欄位與安全界線見 [OFF-2 Linux 目標環境盤點](sraf_airgap_off2_linux_target.md)。
 
 `runtime-deps` 的操作方式與證據界線見 [OFF-2 Python 直接相依安裝中繼資料盤點](sraf_airgap_off2_runtime_deps.md)。
 
