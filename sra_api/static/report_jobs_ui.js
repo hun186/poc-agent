@@ -37,7 +37,108 @@
   let pendingSubmission = null;
   let authVersion = 0;
   let downloadController = null;
+  let historyGeneration = 0;
+  let historyController = null;
+  let historyBusy = false;
+  let historyOffset = 0;
 
+  function clearHistory() {
+    ++historyGeneration;
+    if (historyController !== null) historyController.abort();
+    historyController = null;
+    historyBusy = false;
+    historyOffset = 0;
+    $('jobRows').replaceChildren();
+    $('jobPrev').disabled = true;
+    $('jobNext').disabled = true;
+    $('jobPage').textContent = '第 1 頁';
+    $('listJobsBtn').disabled = false;
+  }
+  function renderHistory(items, offset) {
+    const tbody = $('jobRows');
+    tbody.replaceChildren();
+    for (const item of items) {
+      if (!item || typeof item !== 'object' ||
+          !safeId(item.job_id) ||
+          !Object.prototype.hasOwnProperty.call(statuses, item.status) ||
+          !Object.prototype.hasOwnProperty.call(phases, item.phase)) {
+        throw new Error('invalid_contract');
+      }
+      const tr = document.createElement('tr');
+      for (const value of [
+        item.job_id, statuses[item.status], phases[item.phase], item.created_at
+      ]) {
+        const td = document.createElement('td');
+        td.textContent = value === null || value === undefined ? '—' : String(value);
+        tr.appendChild(td);
+      }
+      const td = document.createElement('td');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'secondary';
+      button.textContent = '追蹤';
+      const id = item.job_id;
+      button.addEventListener('click', function () { watch(id); });
+      td.appendChild(button);
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+    if (!items.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.textContent = '此頁沒有符合目前身分的報告任務。';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+    historyOffset = offset;
+    $('jobPage').textContent = '第 ' + (Math.floor(offset / 20) + 1) + ' 頁';
+    $('jobPrev').disabled = offset === 0;
+    $('jobNext').disabled = items.length < 20;
+  }
+  async function loadHistory(offset) {
+    if (historyBusy) return;
+    const access = token();
+    if (!access) {
+      $('jobListMessage').textContent = '請先輸入具備 report:job:read 權限的 Token。';
+      return;
+    }
+    const run = ++historyGeneration;
+    const ctrl = new AbortController();
+    historyController = ctrl;
+    historyBusy = true;
+    $('listJobsBtn').disabled = true;
+    $('jobPrev').disabled = true;
+    $('jobNext').disabled = true;
+    $('jobRows').replaceChildren();
+    $('jobListMessage').textContent = '正在讀取目前身分的報告清單…';
+    try {
+      const response = await fetch('/v1/report/jobs?limit=20&offset=' + offset, {
+        method: 'GET', headers: {Authorization: 'Bearer ' + access},
+        signal: ctrl.signal, credentials: 'omit', cache: 'no-store', redirect: 'error'
+      });
+      if (run !== historyGeneration || ctrl.signal.aborted) return;
+      if (!response.ok) throw new Error('http_' + response.status);
+      const data = await response.json();
+      if (run !== historyGeneration || ctrl.signal.aborted) return;
+      if (!data || !Array.isArray(data.items) || data.items.length > 20 ||
+          data.limit !== 20 || data.offset !== offset) {
+        throw new Error('invalid_contract');
+      }
+      renderHistory(data.items, offset);
+      $('jobListMessage').textContent = '已讀取此頁本人報告摘要；點選「追蹤」查看真正執行狀態。';
+    } catch (_) {
+      if (run !== historyGeneration || ctrl.signal.aborted) return;
+      $('jobListMessage').textContent = '無法取得報告清單（權限或服務異常）；未顯示任何其他帳號資料。';
+      $('jobRows').replaceChildren();
+    } finally {
+      if (historyController === ctrl) {
+        historyController = null;
+        historyBusy = false;
+        $('listJobsBtn').disabled = false;
+      }
+    }
+  }
   function message(value, tone) {
     $('message').textContent = value;
     $('message').className = 'message' + (tone ? ' ' + tone : '');
@@ -316,6 +417,13 @@
       $('downloadBtn').disabled = false;
     }
   }
+  $('listJobsBtn').addEventListener('click', function () { loadHistory(0); });
+  $('jobPrev').addEventListener('click', function () {
+    if (!historyBusy && historyOffset > 0) loadHistory(Math.max(0, historyOffset - 20));
+  });
+  $('jobNext').addEventListener('click', function () {
+    if (!historyBusy) loadHistory(historyOffset + 20);
+  });
   $('watchBtn').addEventListener('click', function () { watch($('jobId').value.trim()); });
   $('stopBtn').addEventListener('click', function () { stop('已停止自動查詢。原任務仍由伺服器執行，不會被取消。'); });
   $('submitBtn').addEventListener('click', submit);
@@ -325,6 +433,9 @@
   $('authToken').addEventListener('input', function () {
     ++authVersion;
     pendingSubmission = null;
+    clearHistory();
+    $('jobListMessage').textContent = '身分已變更；請重新讀取自己的清單。';
+    $('progressCard').hidden = true;
     abortDownload();
     if (watching) stop('認證已變更；請重新查詢以確認權限。');
     completedId = '';
@@ -344,6 +455,8 @@
     ++authVersion;
     pendingSubmission = null;
     $('authToken').value = '';
+    clearHistory();
+    $('progressCard').hidden = true;
     abortDownload();
     stop();
     controls();
