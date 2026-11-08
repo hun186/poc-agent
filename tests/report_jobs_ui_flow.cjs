@@ -6,7 +6,8 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'sra_api', 'static', 'report_jobs_ui.js'), 'utf8');
 const ids = ['authToken','prompt','filename','jobId','watchBtn','stopBtn','submitBtn','downloadBtn',
-  'progressCard','message','phaseTitle','jobStatus','phaseElapsed','observation','lastChecked','failureMessage'];
+  'progressCard','message','phaseTitle','jobStatus','phaseElapsed','observation','lastChecked','failureMessage',
+  'retrySubmitBtn','discardSubmitBtn'];
 const elements = Object.fromEntries(ids.map(id => [id, {
   value: '', hidden: false, disabled: false, textContent: '', className: '', handlers: {},
   addEventListener(kind, fn) { this.handlers[kind] = fn; }
@@ -30,7 +31,11 @@ const document = {
   body: {appendChild() {}},
   createElement() { return {style: {}, click() { downloadClicks++; downloadedNames.push(this.download); }, remove() {}}; }
 };
-const window = {addEventListener: (kind, fn) => { events[kind] = fn; }};
+let uuidCounter = 0;
+const window = {
+  addEventListener: (kind, fn) => { events[kind] = fn; },
+  crypto: {randomUUID() {uuidCounter++; return '00000000-0000-4000-8000-' + String(uuidCounter).padStart(12,'0');}}
+};
 const sandbox = {
   document, window, AbortController, console,
   fetch: async (url, opts) => {
@@ -113,6 +118,8 @@ function progress(jobId, status, phase, long=false) {
   await tick();
   assert.equal(calls.at(-2).url, '/v1/report/jobs');
   assert.equal(JSON.parse(calls.at(-2).opts.body).prompt, 'PRIVATE PROMPT');
+  assert.equal(calls.at(-2).opts.headers['Idempotency-Key'], 'sraf-report-00000000-0000-4000-8000-000000000001');
+  assert.equal(elements.retrySubmitBtn.hidden, true);
   assert.equal(elements.prompt.value, '');
   assert.equal(elements.jobId.value, 'job-C');
   assert.match(elements.phaseTitle.textContent, /等待/);
@@ -138,5 +145,66 @@ function progress(jobId, status, phase, long=false) {
   assert.equal(timers.size, 0);
   assert.equal(elements.stopBtn.disabled, true);
   assert.equal(elements.downloadBtn.hidden, true);
+  // A transport failure leaves an ambiguous POST result: no blind retry.
+  elements.prompt.value = 'SECOND PRIVATE PROMPT';
+  elements.filename.value = 'second.docx';
+  planned.push(Promise.reject(new Error('connection dropped')));
+  const beforeUnknown = calls.length;
+  await fire('submitBtn');
+  assert.equal(calls.length, beforeUnknown + 1);
+  assert.equal(elements.retrySubmitBtn.hidden, false);
+  assert.equal(elements.discardSubmitBtn.hidden, false);
+  assert.equal(elements.submitBtn.disabled, true);
+  assert.equal(elements.prompt.disabled, true);
+  const firstAttempt = calls.at(-1);
+  const firstKey = firstAttempt.opts.headers['Idempotency-Key'];
+  assert.ok(firstKey.startsWith('sraf-report-'));
+  assert.match(elements.message.textContent, /相同識別碼/);
+  await fire('submitBtn');
+  assert.equal(calls.length, beforeUnknown + 1, 'new unkeyed POST must be blocked while unresolved');
+  // Reuse the ORIGINAL body and key even if page data was programmatically modified.
+  elements.prompt.value = 'DO NOT SUBMIT NEW VALUE';
+  planned.push(response(202, {job_id:'job-retry',status:'queued'}));
+  planned.push(response(200, progress('job-retry','queued','queued')));
+  await fire('retrySubmitBtn');
+  await tick();
+  const posts = calls.filter(c => c.url === '/v1/report/jobs');
+  const last = posts.at(-1);
+  assert.equal(last.opts.headers['Idempotency-Key'], firstKey);
+  assert.equal(last.opts.body, firstAttempt.opts.body);
+  assert.equal(elements.retrySubmitBtn.hidden, true);
+  assert.equal(elements.submitBtn.disabled, false);
+  assert.equal(elements.prompt.disabled, false);
+  assert.equal(elements.jobId.value, 'job-retry');
+  assert.match(elements.phaseTitle.textContent, /等待/);
+
+  // Determinate HTTP 409 is not an ambiguous transport result: no retry.
+  elements.prompt.value = 'THIRD PRIVATE PROMPT';
+  planned.push(response(409,{detail:'never leak server error'}));
+  await fire('submitBtn');
+  assert.equal(elements.retrySubmitBtn.hidden, true);
+  assert.doesNotMatch(elements.message.textContent, /never leak/);
+  assert.match(elements.message.textContent, /識別碼衝突/);
+
+  // Manual discard warns that the original request can still exist.
+  elements.prompt.value = 'FOURTH PRIVATE PROMPT';
+  planned.push(Promise.reject(new Error('network uncertain')));
+  await fire('submitBtn');
+  assert.equal(elements.retrySubmitBtn.hidden, false);
+  fire('discardSubmitBtn');
+  assert.equal(elements.retrySubmitBtn.hidden, true);
+  assert.match(elements.message.textContent, /可能產生重複/);
+
+  // Changing credentials invalidates any pending attempt and clear on pagehide.
+  planned.push(Promise.reject(new Error('network uncertain')));
+  await fire('submitBtn');
+  assert.equal(elements.retrySubmitBtn.hidden, false);
+  elements.authToken.value = 'switch-account';
+  fire('authToken','input');
+  assert.equal(elements.retrySubmitBtn.hidden, true);
+  assert.equal(elements.submitBtn.disabled, false);
+  events.pagehide();
+  assert.equal(elements.authToken.value, '');
+
   console.log('Report Job UI behavior PASS: owner-scope headers, live phases, terminal stops, errors, download and token change');
 })().catch(err => { console.error(err); process.exitCode = 1; });
