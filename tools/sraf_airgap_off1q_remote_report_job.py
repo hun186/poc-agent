@@ -15,6 +15,7 @@ from typing import Any
 
 import pyodbc
 from tools.sraf_airgap_off1_probes import Observation
+from tools.sraf_airgap_off1_identity_primitives import _port
 from tools.sraf_airgap_off1g_sql_read import (
     DRIVER, LOGIN_TIMEOUT_SECONDS, QUERY_TIMEOUT_SECONDS, _connection_string,
 )
@@ -101,12 +102,6 @@ def _sql_reference(connstr: str, schema: str, schedule_id: str
             except Exception:
                 pass
 
-
-def _port(value: Any) -> int | None:
-    if not isinstance(value, str) or re.fullmatch(r"[0-9]{1,5}", value) is None:
-        return None
-    n = int(value)
-    return n if 1 <= n <= 65535 else None
 
 
 def _token_valid(token: Any) -> bool:
