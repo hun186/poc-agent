@@ -2,7 +2,7 @@
 
 ## Current Focus: Advanced diagnostics subdirectory migration + private host evidence
 
-- **Candidate 2026-11-08 (CI/review PENDING):** move the three advanced `run_sraf_airgap_*.sh` entrypoints to `scripts/diagnostics/`, while keeping `0_一鍵快檢_SRAF.sh` and `run_sra_api.sh` in root. Fix internal scripts' path-to-root, old command references, tests/CI and explicit release policy coverage. New `scripts/diagnostics/README.md` explains engineering-only modes. External callers of legacy root-relative advanced script paths will need updating, without hidden compatibility wrappers.
+- **#373 VERIFIED MERGED 2026-11-08** (squash `41f528d6302d86d1d67fe6b140cf416b928aa182`, exact PR head `edec19989cc7bc0cd9d63ccfa4ad809401d1364a`): moved the three advanced `run_sraf_airgap_*.sh` entrypoints to `scripts/diagnostics/`, while keeping `0_一鍵快檢_SRAF.sh` and `run_sra_api.sh` in root. Fix internal scripts' path-to-root, old command references, tests/CI and explicit release policy coverage. New `scripts/diagnostics/README.md` explains engineering-only modes. External callers of legacy root-relative advanced script paths will need updating, without hidden compatibility wrappers. Latest-head Hosted OFF-0 19, OFF-1 519, OFF-2 577, target Python3.10 496, operator E2E 83 passed; formal Codex Review completed clean with zero findings and no review threads. No private host verification.
 - **After merge still pending:** private Linux operator runs unchanged zero-argument root shortcut; inspect only `SRAF_DEPLOY_CHECK_JSON=...`. Strict identity and FULL_LIVE remain NOT TESTED.
 
 ## Previous current focus: One-click already merged
