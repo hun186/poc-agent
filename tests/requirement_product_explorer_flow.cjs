@@ -23,10 +23,12 @@ const nodes = Object.fromEntries(ids.map(id => [id, element()]));
 const document = { getElementById: id => {
   assert.ok(nodes[id], 'unknown DOM id: ' + id); return nodes[id];
 }, createElement: tag => element(tag)};
+const pageEvents = {};
+const window = {addEventListener(kind, fn) {pageEvents[kind] = fn;}};
 const calls = [];
 const responses = [];
 const sandbox = {
-  document, encodeURIComponent, console,
+  document, window, encodeURIComponent, console,
   fetch: async (url, options) => {
     calls.push({url, options});
     assert.equal(options.method, 'GET');
@@ -86,5 +88,8 @@ async function selectFirst(tableId, index) {
   assert.equal(nodes.itemsPanel.hidden, true);
   assert.equal(nodes.taskNext.disabled, true);
   assert.ok(!JSON.stringify(calls).includes('SECRET-TOKEN-2'));
+  assert.equal(typeof pageEvents.pagehide, 'function');
+  pageEvents.pagehide();
+  assert.equal(nodes.authToken.value, '');
   console.log('Product read-only explorer flow PASS: no automatic requests, task/run/item reads, safe DOM, auth reset');
 })().catch(error => { console.error(error); process.exitCode = 1; });
