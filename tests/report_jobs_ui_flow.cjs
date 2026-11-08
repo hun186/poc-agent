@@ -98,6 +98,28 @@ function progress(jobId, status, phase, long=false) {
   planned.push(response(200, null));
   await fire('downloadBtn');
   assert.equal(downloadedNames.at(-1), 'report-job-A.docx');
+  // A DOCX fetch accepted under the old bearer must not download after a
+  // principal switch, even if response.blob() completes after AbortController.abort().
+  let releaseBlob;
+  const delayedDownload = response(200, null, 'attachment; filename="prior-owner.docx"');
+  delayedDownload.blob = () => new Promise(resolve => { releaseBlob = resolve; });
+  const clicksBeforeChange = downloadClicks;
+  planned.push(delayedDownload);
+  const pendingDownload = fire('downloadBtn');
+  await tick();
+  assert.equal(typeof releaseBlob, 'function');
+  const signalForOldOwner = calls.at(-1).opts.signal;
+  assert.equal(signalForOldOwner.aborted, false);
+  elements.authToken.value = 'another-owner-token';
+  fire('authToken', 'input');
+  assert.equal(signalForOldOwner.aborted, true);
+  releaseBlob({size: 10});
+  await pendingDownload;
+  assert.equal(downloadClicks, clicksBeforeChange);
+  assert.equal(elements.downloadBtn.hidden, true);
+  elements.authToken.value = 'secret';
+  fire('authToken', 'input');
+
   // The only timers after downloads are local blob URL revocations.
   timers.clear();
   elements.jobId.value = 'job-B';
