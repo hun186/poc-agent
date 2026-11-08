@@ -244,7 +244,8 @@ function progress(jobId, status, phase, long=false) {
     {job_id:'job-history-A',status:'completed',phase:'completed',
       created_at:'2026-11-08T10:00:00Z',filename:'secret.docx',prompt:'DO NOT SHOW'}
   ],limit:20,offset:0}));
-  await fire('listJobsBtn');
+  fire('listJobsBtn');
+  await tick();  // DOM click listener does not return the fetch Promise.
   assert.equal(calls.at(-1).url,'/v1/report/jobs?limit=20&offset=0');
   assert.equal(calls.at(-1).opts.method,'GET');
   assert.equal(calls.at(-1).opts.headers.Authorization,'Bearer secret');
@@ -266,7 +267,7 @@ function progress(jobId, status, phase, long=false) {
   // Switching identity during GET aborts and clears old owner history.
   let releaseHistory;
   planned.push(new Promise(resolve => {releaseHistory=resolve;}));
-  const pendingHistory=fire('listJobsBtn');
+  fire('listJobsBtn');
   await tick();
   const signal=calls.at(-1).opts.signal;
   assert.equal(signal.aborted,false);
@@ -276,7 +277,7 @@ function progress(jobId, status, phase, long=false) {
   assert.equal(elements.jobRows.children.length,0);
   assert.equal(elements.progressCard.hidden,true);
   releaseHistory(response(200,{items:[{job_id:'job-history-A',status:'completed',phase:'completed'}],limit:20,offset:0}));
-  await pendingHistory;
+  await tick();  // settle the old fetch after the account-change abort.
   assert.equal(elements.jobRows.children.length,0);
 
   console.log('Report Job UI behavior PASS: owner-scope headers, live phases, terminal stops, errors, download and token change');
