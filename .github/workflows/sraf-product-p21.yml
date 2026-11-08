@@ -7,6 +7,14 @@ on:
       - 'sra_api/routers/requirement_tasks.py'
       - 'sra_api/services/requirement_product_service.py'
       - 'sra_api/middleware/product_preview_body_limit.py'
+      - 'sra_api/routers/editor.py'
+      - 'sra_api/static/requirement_product_explorer.html'
+      - 'sra_api/static/requirement_product_explorer.css'
+      - 'sra_api/static/requirement_product_explorer.js'
+      - 'sra_api/static/editor.html'
+      - 'sra_api/static/editor_bootstrap.js'
+      - 'tests/test_requirement_product_explorer_static.py'
+      - 'tests/requirement_product_explorer_flow.cjs'
       - 'api/routers/editor_dependencies.py'
       - '.github/workflows/sraf-product-p21.yml'
   workflow_dispatch:
@@ -35,3 +43,5 @@ jobs:
         run: python -m compileall -q tests/test_requirement_product_api.py
       - name: Test P2.1 API and Preview request boundaries
         run: python -m pytest -q tests/test_requirement_product_api.py
+      - name: Test read-only Product browser route and simulated UI behavior
+        run: python -m pytest -q tests/test_requirement_product_explorer_static.py
