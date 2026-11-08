@@ -2,7 +2,7 @@
 
 ## Current Focus — 2026-11-08: discoverable zero-memory operator entry and private-host follow-up
 
-- Candidate executable `0_一鍵快檢_SRAF.sh` (filename sorted first; stdout-only zero-argument launch) delegates *only* to existing reviewed `run_sraf_airgap_offline.sh deploy-check`. `--help` prints Chinese guidance, unsupported args fail closed, no privileged menu, no default `quick` change or new probe. README and operator runbook link it; synthetic fake-deployment tests and explicit Git-reviewed root file selection added. **Hosted latest-HEAD CI / formal Codex review / Merge Gate PENDING.**
+- **#371 VERIFIED MERGED** (squash `10691986dadb71b45ef01f7ea0f03354e3de15fb`): executable root `0_一鍵快檢_SRAF.sh` (sorts first) delegates *only* to existing `run_sraf_airgap_offline.sh deploy-check`. `--help` shows Chinese safety tips; invalid options fail closed. README/runbooks link it and the script is explicitly release-selected. Latest PR head `1108117d8e7f277906bd539500b4e2ce767769fc`: Hosted OFF-1 517, OFF-2 577, Python3.10 494, operator E2E 83 and OFF-0 19 PASS; formal Codex completed clean, no review threads or pending checks, Auto-Merge Gate verified. This is code-level evidence, **not** an actual private Linux run.
 - Actual private Linux observation, strict OFF-1S full process/socket authority, SQL/ES/LLM/Report Job/DOCX and airgap FULL_LIVE remain separately NOT TESTED; one-command operator output still required even if this PR merges.
 
 ## Earlier current focus (host observation remains open)
