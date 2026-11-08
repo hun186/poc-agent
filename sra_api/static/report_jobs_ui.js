@@ -34,6 +34,8 @@
   let busySubmit = false;
   let currentId = '';
   let completedId = '';
+  let pendingSubmission = null;
+  let authVersion = 0;
 
   function message(value, tone) {
     $('message').textContent = value;
@@ -44,7 +46,13 @@
   function controls() {
     $('watchBtn').disabled = watching || busySubmit;
     $('stopBtn').disabled = !watching;
-    $('submitBtn').disabled = busySubmit;
+    $('submitBtn').disabled = busySubmit || Boolean(pendingSubmission);
+    $('retrySubmitBtn').hidden = !pendingSubmission;
+    $('retrySubmitBtn').disabled = busySubmit || !pendingSubmission;
+    $('discardSubmitBtn').hidden = !pendingSubmission;
+    $('discardSubmitBtn').disabled = busySubmit || !pendingSubmission;
+    $('prompt').disabled = busySubmit || Boolean(pendingSubmission);
+    $('filename').disabled = busySubmit || Boolean(pendingSubmission);
   }
   function stop(text) {
     generation += 1;
@@ -146,43 +154,88 @@
     message('查詢中…');
     poll(generation);
   }
+  async function sendCreate(attempt) {
+    if (busySubmit || !attempt || !token() || attempt.authVersion !== authVersion) return;
+    const access = token();
+    stop();
+    busySubmit = true;
+    controls();
+    message('正在確認報告建立結果；不會自動重送請求。');
+    try {
+      const response = await fetch('/v1/report/jobs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + access,
+          'Idempotency-Key': attempt.key
+        },
+        body: attempt.body,
+        cache: 'no-store', credentials: 'omit', redirect: 'error'
+      });
+      // A token change might invalidate ownership while the request is in flight.
+      if (authVersion !== attempt.authVersion) return;
+      if (!response.ok) {
+        if (response.status === 408 || response.status === 429 || response.status >= 500) {
+          pendingSubmission = attempt;
+          message('伺服器回應異常（HTTP ' + response.status +
+            '），結果尚未確認。只能使用下方相同識別碼明確重試，勿重新建立相同報告。', 'warning');
+          return;
+        }
+        pendingSubmission = null;
+        message(response.status === 401 || response.status === 403
+          ? 'Token 無效或沒有 Report Job 建立權限。'
+          : response.status === 409
+            ? '建立識別碼衝突；請先由已授權管道查驗，未自動重送。'
+            : '建立失敗（HTTP ' + response.status + '）；請檢查輸入及權限。',
+          'error');
+        return;
+      }
+      if (response.status !== 202) throw new Error('unexpected_status');
+      const data = await response.json();
+      if (authVersion !== attempt.authVersion) return;
+      if (!data || !safeId(data.job_id)) throw new Error('invalid_contract');
+      pendingSubmission = null;
+      $('prompt').value = '';
+      $('jobId').value = data.job_id;
+      message('已取得任務 ID；開始讀取實際進度。');
+      watch(data.job_id);
+    } catch (_) {
+      if (authVersion !== attempt.authVersion) return;
+      pendingSubmission = attempt;
+      message('無法確認伺服器是否已接收此報告。請使用下方相同識別碼明確重試，或先從已授權管道核對；不會自動重送。', 'warning');
+    } finally {
+      busySubmit = false;
+      controls();
+    }
+  }
   async function submit() {
+    if (busySubmit || pendingSubmission) return;
     const access = token();
     const prompt = $('prompt').value.trim();
     const filename = $('filename').value.trim();
     if (!access) { message('請先提供有 report:job:create 權限的 Token。', 'error'); return; }
     if (!prompt) { message('請先輸入報告需求。', 'error'); return; }
-    if (busySubmit) return;
-    stop();
-    busySubmit = true;
-    controls();
-    message('正在建立任務；此請求不會自動重送。');
-    try {
-      const payload = {prompt: prompt};
-      if (filename) payload.filename = filename;
-      const response = await fetch('/v1/report/jobs', {
-        method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + access},
-        body: JSON.stringify(payload), cache: 'no-store', credentials: 'omit', redirect: 'error'
-      });
-      if (!response.ok) {
-        message(response.status === 401 || response.status === 403
-          ? 'Token 無效或沒有 Report Job 建立權限。'
-          : '建立失敗（HTTP ' + response.status + '）；請檢查資料及權限。', 'error');
-        return;
-      }
-      if (response.status !== 202) throw new Error('unexpected_status');
-      const data = await response.json();
-      if (!safeId(data.job_id)) throw new Error('invalid_contract');
-      $('prompt').value = '';
-      $('jobId').value = data.job_id;
-      message('已收到任務 ID，開始查詢進度。');
-      watch(data.job_id);
-    } catch (err) {
-      message('無法確認建立結果。請先從其他已授權管道核對，勿直接重送以免產生重複任務。', 'error');
-    } finally {
-      busySubmit = false;
-      controls();
+    // Fail closed without a cryptographically random request identity.
+    const nonce = window.crypto && typeof window.crypto.randomUUID === 'function'
+      ? window.crypto.randomUUID() : null;
+    if (!nonce || !/^[a-f0-9-]{36}$/i.test(nonce)) {
+      message('瀏覽器沒有安全的隨機識別碼功能；請使用可信任 HTTPS 或本機連線建立報告。', 'error');
+      return;
     }
+    const payload = {prompt: prompt};
+    if (filename) payload.filename = filename;
+    await sendCreate({key: 'sraf-report-' + nonce, body: JSON.stringify(payload), authVersion});
+  }
+  async function retrySubmit() {
+    if (!pendingSubmission) return;
+    // The original body and key are reused unchanged; no fresh POST identity.
+    await sendCreate(pendingSubmission);
+  }
+  function discardSubmit() {
+    if (busySubmit || !pendingSubmission) return;
+    pendingSubmission = null;
+    controls();
+    message('已放棄本頁的待確認重試資料。原請求仍可能已建立報告；重新送出前請先核對，否則可能產生重複任務。', 'warning');
   }
   function authorizedDocxFilename(disposition, fallback) {
     if (typeof disposition !== 'string') return fallback;
@@ -247,11 +300,16 @@
   $('watchBtn').addEventListener('click', function () { watch($('jobId').value.trim()); });
   $('stopBtn').addEventListener('click', function () { stop('已停止自動查詢。原任務仍由伺服器執行，不會被取消。'); });
   $('submitBtn').addEventListener('click', submit);
+  $('retrySubmitBtn').addEventListener('click', retrySubmit);
+  $('discardSubmitBtn').addEventListener('click', discardSubmit);
   $('downloadBtn').addEventListener('click', download);
   $('authToken').addEventListener('input', function () {
+    ++authVersion;
+    pendingSubmission = null;
     if (watching) stop('認證已變更；請重新查詢以確認權限。');
     completedId = '';
     $('downloadBtn').hidden = true;
+    controls();
   });
   document.addEventListener('visibilitychange', function () {
     if (!watching) return;
@@ -262,6 +320,12 @@
       poll(generation);
     }
   });
-  window.addEventListener('pagehide', function () { stop(); });
+  window.addEventListener('pagehide', function () {
+    ++authVersion;
+    pendingSubmission = null;
+    $('authToken').value = '';
+    stop();
+    controls();
+  });
   controls();
 })();

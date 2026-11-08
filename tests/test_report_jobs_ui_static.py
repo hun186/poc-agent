@@ -46,6 +46,13 @@ def test_report_job_ui_real_status_contract_and_no_token_persistence():
     assert "credentials: 'omit'" in js
     assert "cache: 'no-store'" in js
     assert "textContent" in js
+    assert 'id="retrySubmitBtn"' in html
+    assert 'id="discardSubmitBtn"' in html
+    assert "'Idempotency-Key': attempt.key" in js
+    assert "window.crypto.randomUUID()" in js
+    assert "pendingSubmission = attempt" in js
+    assert "pendingSubmission = null" in js
+    assert "await sendCreate(pendingSubmission)" in js
     for forbidden in ("localStorage.", "sessionStorage.", "innerHTML", "document.cookie",
                       "eval(", "window.prompt(", "location.search"):
         assert forbidden not in js
