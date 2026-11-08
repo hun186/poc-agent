@@ -2,6 +2,8 @@
 
 > **這是現有 OFF-1 與 OFF-2 工具的薄層派送器，不是完整 OFF-3 Acceptance runner，也不代表 OFF-2/4/5 已完成。** 已部署的 SRAF Python 環境必須事先可用，這個腳本不執行 pip、npm、GitHub、ChatGPT、資料庫修改、Agent 生成、重啟、程序終止或還原。
 
+忘記模式與指令時，優先找根目錄排在前面的 **`0_一鍵快檢_SRAF.sh`**：`./0_一鍵快檢_SRAF.sh` 或 `bash 0_一鍵快檢_SRAF.sh`；無參數執行現有的六項本機唯讀 `deploy-check`，`--help` 僅輸出中文說明，不會進入正式驗收。它不改變既有統一入口的預設 `quick` 模式，相關限制見 [一鍵落地快檢測](sraf_local_deploy_quickcheck.md)。
+
 在 SRAF 根目錄執行；也可以在其他目錄用絕對路徑呼叫：
 
 ```bash

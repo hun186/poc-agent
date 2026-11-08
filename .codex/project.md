@@ -1,6 +1,11 @@
 # SRAF Project Handoff
 
-## Current Focus — 2026-11-08: operator one-command real-host validation
+## Current Focus — 2026-11-08: discoverable zero-memory operator entry and private-host follow-up
+
+- Candidate executable `0_一鍵快檢_SRAF.sh` (filename sorted first; stdout-only zero-argument launch) delegates *only* to existing reviewed `run_sraf_airgap_offline.sh deploy-check`. `--help` prints Chinese guidance, unsupported args fail closed, no privileged menu, no default `quick` change or new probe. README and operator runbook link it; synthetic fake-deployment tests and explicit Git-reviewed root file selection added. **Hosted latest-HEAD CI / formal Codex review / Merge Gate PENDING.**
+- Actual private Linux observation, strict OFF-1S full process/socket authority, SQL/ES/LLM/Report Job/DOCX and airgap FULL_LIVE remain separately NOT TESTED; one-command operator output still required even if this PR merges.
+
+## Earlier current focus (host observation remains open)
 
 - #367, #368 and #369 have **MERGED**. #368 squash `2330c6e263026aa438ed71ca74043729f00b64a9` removed optional native SQL from OFF-1S passive imports; #369 squash `bcd51f9aaea9072f055c8502ac0c0a74616c7d67` deferred dotenv parsing until an explicitly selected E2E env file, freeing OFF-1H passive Worker imports. Both have exact PR-HEAD Hosted OFF-0/1/1B/2 Python3.10/operator E2E and formal Codex code-review completed clean (no findings/threads); no local production change proven.
 - **Next Open Handoff (outside Hosted GitHub):** on the actual private Linux running instance, execute just `bash run_sraf_airgap_offline.sh deploy-check` from the deployed checkout and share only `SRAF_DEPLOY_CHECK_JSON=...`; do **not** restart or alter services or run individual Python heredocs. This collects six non-network/no-write partial checks; missing native SQL/optional E2E dotenv must not suppress independent listener/Worker imports. No remote host access or actual operator result was available in this GitHub-only session.

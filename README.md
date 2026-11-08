@@ -1,5 +1,18 @@
 # SRA-Structured Retrieval Agent Project Analysis
 
+## 忘記指令？從這裡開始（Linux SRAF 落地部署快檢）
+
+**到 SRAF 專案資料夾找排在前面的 `0_一鍵快檢_SRAF.sh`。** 只要執行它，不需要記 `deploy-check` 等參數：
+
+```bash
+./0_一鍵快檢_SRAF.sh
+```
+
+若終端或檔案管理員不允許直接執行，可以使用 `bash 0_一鍵快檢_SRAF.sh`；使用 `--help` 可以只看中文說明、不做檢測。可以在支援的 Linux 檔案管理員選「在終端機執行」，但是否提供雙擊執行取決於桌面安全設定，**不會自行更改系統權限**。
+
+這個入口固定呼叫經審查的 `run_sraf_airgap_offline.sh deploy-check`，僅做六項本機唯讀檢查，**不連網、不寫檔、不登入、不執行 SQL／ES／LLM／Report Job、不重啟服務**。保留原始退出碼及輸出最後的 `SRAF_DEPLOY_CHECK_JSON=...`，可提供工程師定位問題。即使 `PASS_PARTIAL` 也**不是**正式 release、FULL_LIVE 或離線安裝驗收。完整說明參考 [SRAF 一鍵快檢手冊](docs/operations/sraf_local_deploy_quickcheck.md)。
+
+
 ## 專案簡介 (Project Overview)
 本專案是一個基於 **FastAPI** 和 **Elasticsearch** 建構的 **RAG (Retrieval-Augmented Generation)** 代理人系統，稱為 **SRA (Structured Retrieval Agent)**。
 核心設計是透過一個 **Router Agent** 分析使用者的意圖，將任務分流到不同的子代理人（Reporting, Style Transfer, Doc Follow-up），並支援基於 Topic 的動態索引檢索。同時具備完整的對話歷史 (Session Store) 與遙測 (Telemetry) 機制。
