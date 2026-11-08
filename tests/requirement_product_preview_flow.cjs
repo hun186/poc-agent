@@ -5,7 +5,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '..', 'sra_api', 'static', 'requirement_product_preview.js'), 'utf8');
 const ids = ['authToken','previewProfile','previewMode','previewFile','previewJson','previewFileGroup','previewJsonGroup',
-  'previewBtn','previewClearBtn','previewMessage','previewResult','previewSummary','previewRows','previewDiagnostics'];
+  'previewBtn','previewClearBtn','previewMessage','previewResult','previewSummary','previewRows','previewDiagnostics',
+  'loadProfilesBtn','previewProfileSelect'];
 function element(tag='') {
   return {tag, value:'', files:[], hidden:false, disabled:false, textContent:'', children:[], events:{},
     addEventListener(kind, fn){this.events[kind] = fn;},
@@ -26,14 +27,19 @@ const calls=[], planned=[];
 const sandbox={document,window,FormData,TextEncoder,AbortController,console,
   fetch:async (url,opts) => {
     calls.push({url,opts});
-    assert.equal(url, '/v1/requirement-task-previews');
-    assert.equal(opts.method,'POST');
+    assert.ok(opts.method === 'POST' || opts.method === 'GET');
     assert.equal(opts.credentials,'omit');
     assert.equal(opts.cache,'no-store');
     assert.equal(opts.redirect,'error');
     assert.equal(opts.headers.Authorization,'Bearer a-secret');
-    assert.ok(!Object.keys(opts.headers).some(k=>k.toLowerCase()==='content-type'),'browser owns multipart boundary');
-    assert.ok(opts.body instanceof FormData);
+    if (opts.method === 'POST') {
+      assert.equal(url, '/v1/requirement-task-previews');
+      assert.ok(!Object.keys(opts.headers).some(k=>k.toLowerCase()==='content-type'),'browser owns multipart boundary');
+      assert.ok(opts.body instanceof FormData);
+    } else {
+      assert.equal(url, '/v1/requirement-import-profiles');
+      assert.equal(opts.body, undefined);
+    }
     assert.ok(planned.length,'unexpected request');
     return planned.shift();
   }
@@ -93,6 +99,22 @@ const result=(profile='pv_1')=>({
   await fire('previewBtn');
   assert.match(el.previewMessage.textContent,/db_operator/);
   assert.doesNotMatch(el.previewMessage.textContent,/PRIVATE_ERROR_DATA/);
+  // Profile inventory is opt-in; show only enabled profiles with active versions.
+  planned.push(response(200, {items:[
+    {profile_id:'pr_1',name:'中文 Profile',enabled:true,active_version_id:'pv_active'},
+    {profile_id:'pr_2',name:'停用版',enabled:false,active_version_id:'pv_disabled'},
+    {profile_id:'pr_3',name:'無核准版本',enabled:true,active_version_id:null}
+  ]}));
+  await fire('loadProfilesBtn');
+  assert.equal(calls.at(-1).url,'/v1/requirement-import-profiles');
+  assert.equal(el.previewProfileSelect.children.length,2);
+  assert.equal(el.previewProfileSelect.children[1].value,'pv_active');
+  assert.match(el.previewProfileSelect.children[1].textContent,/中文 Profile/);
+  el.previewProfileSelect.value='pv_active';
+  fire('previewProfileSelect','change');
+  assert.equal(el.previewProfile.value,'pv_active');
+  assert.equal(el.previewResult.hidden,true);
+
   // A stale response after a bearer switch must not repopulate earlier preview data.
   let resume;
   planned.push(new Promise(resolve=>{resume=resolve;}));
@@ -101,6 +123,8 @@ const result=(profile='pv_1')=>({
   const signal=calls.at(-1).opts.signal;
   el.authToken.value='another-principal';fire('authToken','input');
   assert.equal(signal.aborted,true);
+  assert.equal(el.previewProfileSelect.children.length,1);
+  assert.equal(el.previewProfile.value,'');
   resume(response(200,result()));
   await pending;
   assert.equal(el.previewResult.hidden,true);
