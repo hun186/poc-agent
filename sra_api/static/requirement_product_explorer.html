@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>SRAF 需求任務與執行紀錄</title>
+  <link rel="stylesheet" href="/static/requirement_product_explorer.css">
+  <script src="/static/requirement_product_explorer.js" defer></script>
+</head>
+<body>
+  <main class="wrap">
+    <header><div><h1>需求任務與執行紀錄</h1><p>唯讀檢視 Product API 的真實任務、批次與項目狀態；不啟動或修改排程。</p></div><a href="/editor">返回管理頁</a></header>
+    <section class="panel">
+      <h2>驗證與讀取</h2>
+      <label for="authToken">已授權的 Bearer Token</label>
+      <input id="authToken" type="password" autocomplete="off" spellcheck="false" placeholder="僅在本分頁使用，不儲存">
+      <p class="hint">Token 不保存於瀏覽器儲存空間、Cookie 或網址。請在可信任的 HTTPS／本機環境使用。</p>
+      <div class="actions"><button id="loadTasks" type="button">載入任務</button><span id="message" role="status" aria-live="polite">尚未查詢。</span></div>
+    </section>
+    <section class="panel">
+      <h2>任務</h2>
+      <div class="scroll"><table><thead><tr><th>任務</th><th>類型／狀態</th><th>排程</th><th>下一次執行</th><th>操作</th></tr></thead><tbody id="taskRows"></tbody></table></div>
+      <div class="pager"><button id="taskPrev" type="button" disabled>上一頁</button><span id="taskPage">第 1 頁</span><button id="taskNext" type="button" disabled>下一頁</button></div>
+    </section>
+    <section class="panel" id="runsPanel" hidden>
+      <h2>執行批次 <small id="currentTask"></small></h2>
+      <div class="scroll"><table><thead><tr><th>批次 ID</th><th>狀態</th><th>觸發方式</th><th>完成／失敗</th><th>操作</th></tr></thead><tbody id="runsRows"></tbody></table></div>
+      <div class="pager"><button id="runPrev" type="button" disabled>上一頁</button><span id="runPage">第 1 頁</span><button id="runNext" type="button" disabled>下一頁</button></div>
+    </section>
+    <section class="panel" id="itemsPanel" hidden>
+      <h2>執行項目 <small id="currentRun"></small></h2>
+      <div class="scroll"><table><thead><tr><th>項目 ID</th><th>Requirement</th><th>選取</th><th>狀態</th><th>成果</th></tr></thead><tbody id="itemRows"></tbody></table></div>
+      <div class="pager"><button id="itemPrev" type="button" disabled>上一頁</button><span id="itemPage">第 1 頁</span><button id="itemNext" type="button" disabled>下一頁</button></div>
+    </section>
+    <p class="hint">僅顯示各頁取得的資料，每頁最多 20 筆。若沒有取得資料，不代表底層 SQL／Worker 一定正常；仍須實機驗證。</p>
+  </main>
+</body>
+</html>
