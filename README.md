@@ -13,6 +13,10 @@
 這個入口固定呼叫 `scripts/diagnostics/run_sraf_airgap_offline.sh deploy-check`，僅做六項本機唯讀檢查，**不連網、不寫檔、不登入、不執行 SQL／ES／LLM／Report Job、不重啟服務**。保留原始退出碼及輸出最後的 `SRAF_DEPLOY_CHECK_JSON=...`，可提供工程師定位問題。即使 `PASS_PARTIAL` 也**不是**正式 release、FULL_LIVE 或離線安裝驗收。進階檢測腳本已整理到 [`scripts/diagnostics/`](scripts/diagnostics/README.md)，不需日常操作。完整說明參考 [SRAF 一鍵快檢手冊](docs/operations/sraf_local_deploy_quickcheck.md)。
 
 
+## 元件與 E2E 分層診斷（新入口）
+
+Linux 部署機可使用 `bash 1_完整診斷驗收_SRAF.sh` 執行 L0 六項被動檢查及 L1 API／ES／LLM 的匿名有界健康觀察。需對 SQL／ES 進行唯讀有憑證探測或對本機 Ollama 發送一次生成請求時，必須加上 `--level L2` 及獨立 opt-in；執行一筆真實 Report Job＋Word 時則需要 `--level L3 --live-report`、可信私人輸出目錄與既有測試 Token。**預設不寫入、不呼叫模型、不提交 Job；L3 不代表完整 Requirement→Schedule→Handoff E2E。** 詳見 [SRAF 分層診斷操作手冊](docs/operations/sraf_layered_diagnostics.md)。原本 `0_一鍵快檢_SRAF.sh` 仍是完全不連網的日常快檢。
+
 ## 專案簡介 (Project Overview)
 本專案是一個基於 **FastAPI** 和 **Elasticsearch** 建構的 **RAG (Retrieval-Augmented Generation)** 代理人系統，稱為 **SRA (Structured Retrieval Agent)**。
 核心設計是透過一個 **Router Agent** 分析使用者的意圖，將任務分流到不同的子代理人（Reporting, Style Transfer, Doc Follow-up），並支援基於 Topic 的動態索引檢索。同時具備完整的對話歷史 (Session Store) 與遙測 (Telemetry) 機制。
