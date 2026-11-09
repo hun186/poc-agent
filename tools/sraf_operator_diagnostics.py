@@ -105,8 +105,8 @@ def _health_status(raw: dict[str, object]) -> tuple[str, str]:
 
 
 def _l1_rows() -> tuple[dict[str, str] | None, list[dict[str, object]]]:
+    from tools import sraf_airgap_off1b_auto as tcp
     try:
-        from tools import sraf_airgap_off1b_auto as tcp
         with redirect_stdout(io.StringIO()):
             cfg = tcp._effective_runtime_config(ROOT)
     except Exception:
