@@ -68,6 +68,9 @@
       <h2 id="allRunsTitle">跨任務執行紀錄</h2>
       <p class="hint">使用現有已授權 Product API，按需求讀取跨任務的批次。只顯示每頁 20 筆；不自動輪詢、不建立或取消工作。</p>
       <div class="actions"><button id="loadAllRuns" type="button">讀取所有任務的批次</button></div>
+      <label for="lookupRunId">已有批次 ID？直接定位</label>
+      <div class="actions"><input id="lookupRunId" type="text" maxlength="128" autocomplete="off" spellcheck="false" placeholder="貼上已知 Run ID"><button id="lookupRunBtn" type="button">依 ID 查看批次</button></div>
+      <p class="hint">先以目前 Token 向既有 Product API 查證批次及所屬任務，再顯示執行項目；不會建立任務、改變狀態或修改資料。</p>
       <div class="scroll"><table><thead><tr><th>批次 ID</th><th>任務 ID</th><th>狀態</th><th>觸發</th><th>完成／失敗</th><th>操作</th></tr></thead><tbody id="allRunRows"></tbody></table></div>
       <div class="pager"><button id="allRunPrev" type="button" disabled>上一頁</button><span id="allRunPage">第 1 頁</span><button id="allRunNext" type="button" disabled>下一頁</button></div>
     </section>
