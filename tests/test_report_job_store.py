@@ -56,3 +56,30 @@ def test_owner_summary_list_is_bounded_parameterized_and_secret_free(tmp_path):
     ]:
         with pytest.raises(ValueError, match="invalid_report_job_list"):
             store.list_owned_summaries(**kwargs)
+
+def test_owner_status_filter_is_parameterized_and_applies_before_pagination(tmp_path):
+    store = make(tmp_path)
+    for job_id, owner in (("rpt_A1", "owner-a"), ("rpt_A2", "owner-a"), ("rpt_B", "owner-b")):
+        store.create(
+            job_id=job_id, prompt="NEVER_LIST_PROMPT", filename="a.docx",
+            session_id="session", model="model", options={}, metadata={},
+            idempotency_key=job_id, request_hash=job_id,
+            owner_kind="service", owner_id=owner,
+        )
+    claimed = store.claim_next()
+    assert claimed is not None and claimed.status == "running"
+    running = store.list_owned_summaries(
+        owner_kind="service", owner_id=claimed.owner_id, status="running", limit=1,
+    )
+    assert len(running) == 1 and running[0]["job_id"] == claimed.job_id
+    assert all(item["status"] == "queued" for item in store.list_owned_summaries(
+        owner_kind="service", owner_id="owner-a", status="queued", limit=1,
+    ))
+    assert store.list_owned_summaries(
+        owner_kind="service", owner_id="owner-b", status="running",
+    ) == ([] if claimed.owner_id != "owner-b" else running)
+    for invalid in ("finished", "running' OR 1=1 --", "", "RUNNING"):
+        with pytest.raises(ValueError, match="invalid_report_job_list"):
+            store.list_owned_summaries(
+                owner_kind="service", owner_id="owner-a", status=invalid
+            )
