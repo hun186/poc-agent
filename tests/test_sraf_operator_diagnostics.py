@@ -448,7 +448,7 @@ def test_bad_report_contract_is_never_converted_to_success():
     text = render_report({"level": "L1", "status": "PASS_PARTIAL",
                           "checks": [{"id": "L1.api_health", "status": "PASS"}]})
     assert "格式不完整" in text
-    assert "正常。" not in text
+    assert "綜合判定：正常" not in text
 
 
 def test_relative_report_dir_refuses_before_any_probe(probes):
