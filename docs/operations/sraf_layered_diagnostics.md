@@ -89,3 +89,27 @@ bash 1_完整診斷驗收_SRAF.sh --report-dir /trusted/private/maintenance-repo
 這個 `--report-dir` 與 L3 原有的 `--output-dir` 不同。指定時，既有 OFF-1 no-follow 安全檢查會先驗證所有祖先目錄及目前使用者獨佔的 0700 最終目錄，之後才執行探針。兩份報告以 `sraf-diagnostics-UTC時間-隨機碼.txt`／`.json` 寫入，使用 O_EXCL、O_NOFOLLOW、0600。輸出 `REPORT_SAVE=PASS` 才表示雙檔已寫入；`REPORT_SAVE=INCOMPLETE` 表示保存未完成且結束碼為 2。不得因共享掛載目錄拒絕而放寬權限或轉存至不可信路徑。終端不會顯示任何私人輸出路徑、Token、密碼、IP、PID 或原始例外資訊。
 
 末行 `SRAF_DIAGNOSTICS_JSON=` 仍保留供原有程式解析。預設模式**不寫入診斷檔案**；只有明確選用 `--report-dir` 才保存。此中文判讀與本機報告不需要 Internet，也不需要回傳給 ChatGPT。即使元件觀察通過，`production_release_ready=false`、物理斷網／Wheelhouse／備份還原依舊不成立。
+
+## 統一入口的純離線 L0 模式與省事保存方式（2026-11-09）
+
+新版同一個根目錄入口可以做**真正零網路**的 L0 六項本機快檢，不啟動 API／ES／LLM TCP，也不執行 SQL、模型或 Job：
+
+~~~bash
+bash 1_完整診斷驗收_SRAF.sh --level L0
+~~~
+
+預設不帶參數仍是 L1（會使用有界的本機／私有 TCP 和匿名 /healthz）。L0 的中文診斷摘要只報告六項被動觀察，其餘項目均為 NOT_TESTED。即使 L0 或 L1 PASS_PARTIAL，也不是正式部署或全功能驗收。
+
+**最簡單的離線報告保存方法：**
+
+~~~bash
+bash 1_完整診斷驗收_SRAF.sh --save-report
+# 如需完全不連網且保存診斷
+bash 1_完整診斷驗收_SRAF.sh --level L0 --save-report
+~~~
+
+選用 --save-report 時，程式會從 Linux 帳號資料庫判定目前使用者的**真正主目錄**，在該目錄下建立最終子目錄 .sraf-maintenance-reports（若尚未存在，僅會建立這一層，權限 0700）。原有 OFF-1 no-follow 安全檢查仍會逐層驗證目錄所有權及祖先權限；TXT/JSON 以 O_EXCL、O_NOFOLLOW、0600 寫入。這與 SRAF 的專案根目錄或共用掛載目錄無關，不會自動 chmod、更不會將正式敏感憑證寫入報告。**只有明確選擇 --save-report 或 --report-dir 才會寫入檔案。**
+
+若指定 --report-dir，仍須是存在可信祖先的**絕對路徑**。例如命令中的 /trusted/private/... 只是範例，主機不會預先產生該目錄；傳入相對路徑（如 maintenance-reports）會明確顯示 report_dir_relative 和 --save-report 的修正提示。若共享掛載、祖先所有權或 0700 最終目錄不符合要求，會明確拒絕並提供固定安全指引；切勿 chmod 777。終端不輸出主目錄、帳號身分或私人完整檔案路徑。
+
+根目錄舊 0_一鍵快檢_SRAF.sh 的完整離線功能已可用 --level L0 表達；如更新器僅單向複製新增／修改檔案，GitHub 的刪檔可能不會移除 Linux 上的舊腳本。維護人員應先確認新入口 L0 的私有主機結果，再清理已不再使用的舊路徑。原 OFF-3 deploy-check 核心診斷工具繼續保留供工程師使用。

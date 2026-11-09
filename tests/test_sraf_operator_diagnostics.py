@@ -217,6 +217,7 @@ def test_l3_passes_original_launcher_port_even_after_dotenv(probes):
 
 def test_l3_child_job_sees_original_unset_port_and_restores_env(monkeypatch):
     from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
     monkeypatch.setenv("SRAF_TEST_BEARER", "do-not-print")
     monkeypatch.setenv("PORT", "12345")  # simulates dotenv loaded by L1
     def fake_job(argv):
@@ -300,6 +301,7 @@ def test_l3_real_e2e_unavailable_upstream_never_mutates(probes):
 def test_full_e2e_harness_trusted_private_env_live_only_and_no_stdout_leak(
         monkeypatch, tmp_path):
     from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
     from operator_e2e import test_requirement_schedule_e2e as harness
     operator = tmp_path / "operator_e2e"
     operator.mkdir()
@@ -307,7 +309,7 @@ def test_full_e2e_harness_trusted_private_env_live_only_and_no_stdout_leak(
     env.write_text("SRA_E2E_BASE_URL=http://127.0.0.1:9002\n", encoding="utf-8")
     env.chmod(0o600)
     monkeypatch.setattr(target, "ROOT", tmp_path)
-    monkeypatch.setattr(jobs, "_secure_output_dir",
+    monkeypatch.setattr(store, "_secure_output_dir",
                         lambda path: os.open(tmp_path, os.O_RDONLY))
     observed = []
     def synthetic_harness(argv):
@@ -329,13 +331,14 @@ def test_full_e2e_harness_trusted_private_env_live_only_and_no_stdout_leak(
 
 def test_full_e2e_functional_not_reported_as_release(monkeypatch, tmp_path):
     from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
     from operator_e2e import test_requirement_schedule_e2e as harness
     (tmp_path / "operator_e2e").mkdir()
     env = tmp_path / "operator_e2e" / "e2e.env.local"
     env.write_text("private=1\n", encoding="utf-8")
     env.chmod(0o600)
     monkeypatch.setattr(target, "ROOT", tmp_path)
-    monkeypatch.setattr(jobs, "_secure_output_dir",
+    monkeypatch.setattr(store, "_secure_output_dir",
                         lambda path: os.open(tmp_path, os.O_RDONLY))
     def synthetic_harness(argv):
         print("REQUIREMENT_E2E = PASS")
@@ -352,9 +355,10 @@ def test_full_e2e_functional_not_reported_as_release(monkeypatch, tmp_path):
 
 def test_full_e2e_private_env_missing_does_not_call_harness(monkeypatch, tmp_path):
     from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
     from operator_e2e import test_requirement_schedule_e2e as harness
     monkeypatch.setattr(target, "ROOT", tmp_path)
-    monkeypatch.setattr(jobs, "_secure_output_dir",
+    monkeypatch.setattr(store, "_secure_output_dir",
                         lambda path: os.open(tmp_path, os.O_RDONLY))
     monkeypatch.setattr(harness, "main", forbidden)
     assert target._full_e2e_status(
@@ -364,13 +368,14 @@ def test_full_e2e_private_env_missing_does_not_call_harness(monkeypatch, tmp_pat
 
 def test_full_e2e_private_env_group_readable_is_rejected(monkeypatch, tmp_path):
     from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
     from operator_e2e import test_requirement_schedule_e2e as harness
     (tmp_path / "operator_e2e").mkdir()
     env = tmp_path / "operator_e2e" / "e2e.env.local"
     env.write_text("private=1\n", encoding="utf-8")
     env.chmod(0o644)
     monkeypatch.setattr(target, "ROOT", tmp_path)
-    monkeypatch.setattr(jobs, "_secure_output_dir",
+    monkeypatch.setattr(store, "_secure_output_dir",
                         lambda path: os.open(tmp_path, os.O_RDONLY))
     monkeypatch.setattr(harness, "main", forbidden)
     assert target._full_e2e_status(
@@ -459,6 +464,7 @@ def test_relative_report_dir_refuses_before_any_probe(probes):
 def test_optional_private_maintenance_report_written_as_both_formats(
         monkeypatch, probes, capsys, tmp_path):
     from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
     calls = []
     def private_dir(path):
         calls.append("guard")
@@ -468,8 +474,8 @@ def test_optional_private_maintenance_report_written_as_both_formats(
         assert name.endswith((".json", ".txt"))
         calls.append(name.rsplit(".", 1)[-1])
         assert b"SECRET_PASSWORD" not in raw
-    monkeypatch.setattr(jobs, "_secure_output_dir", private_dir)
-    monkeypatch.setattr(jobs, "_secure_write", write)
+    monkeypatch.setattr(store, "_secure_output_dir", private_dir)
+    monkeypatch.setattr(store, "_secure_write", write)
     code = target.main(["--report-dir", str(tmp_path)])
     printed = capsys.readouterr().out
     assert code == 0
@@ -483,7 +489,8 @@ def test_optional_private_maintenance_report_written_as_both_formats(
 def test_private_maintenance_report_invalid_trust_prevents_any_probes(
         monkeypatch, tmp_path, capsys):
     from tools import sraf_airgap_report_jobs_acceptance as jobs
-    monkeypatch.setattr(jobs, "_secure_output_dir", forbidden)
+    from tools import sraf_private_report_store as store
+    monkeypatch.setattr(store, "_secure_output_dir", forbidden)
     monkeypatch.setattr(target, "run", forbidden)
     assert target.main(["--report-dir", str(tmp_path)]) == 2
     assert "report_dir_unverified" in capsys.readouterr().out
@@ -492,9 +499,10 @@ def test_private_maintenance_report_invalid_trust_prevents_any_probes(
 def test_private_report_write_failure_returns_incomplete_without_exposing_path(
         monkeypatch, probes, capsys, tmp_path):
     from tools import sraf_airgap_report_jobs_acceptance as jobs
-    monkeypatch.setattr(jobs, "_secure_output_dir",
+    from tools import sraf_private_report_store as store
+    monkeypatch.setattr(store, "_secure_output_dir",
                         lambda path: os.open(tmp_path, os.O_RDONLY))
-    monkeypatch.setattr(jobs, "_secure_write", forbidden)
+    monkeypatch.setattr(store, "_secure_write", forbidden)
     assert target.main(["--report-dir", str(tmp_path)]) == 2
     output = capsys.readouterr().out
     assert "REPORT_SAVE=INCOMPLETE reason=report_write_unavailable" in output
@@ -552,3 +560,155 @@ def test_raw_failure_cannot_become_success_by_fallback_description():
     assert "[失敗] API /healthz：匿名 GET /healthz HTTP 檢查" in text
     assert "[失敗] Elasticsearch 連線：僅檢查 TCP 連線" in text
     assert "unknown_but_safe_reason" not in text
+
+
+
+def test_level_l0_observes_six_local_checks_without_any_tcp_or_health(probes):
+    for name in ("_l1_rows", "_sql_status", "_es_status", "_llm_status",
+                 "_live_status", "_full_e2e_status"):
+        probes.setattr(target, name, forbidden)
+    result = target.run(args("L0"))
+    assert result["level"] == "L0"
+    assert result["status"] == "PASS_PARTIAL"
+    assert len(result["checks"]) == len(target.L0_CHECKS) + len(target.L1_CHECKS) + len(target.L2_CHECKS) + 2
+    assert all(x["status"] == "NOT_TESTED" for x in result["checks"]
+               if x["id"].startswith(("L1.", "L2.", "L3.")))
+    assert result["production_release_ready"] is False
+
+
+@pytest.mark.parametrize("argv", [
+    ["--level", "L0", "--probe-sql-read"],
+    ["--level", "L0", "--probe-es-tls-mapping"],
+    ["--level", "L0", "--probe-llm-inference", "--ollama-server-pid", "1000"],
+    ["--level", "L0", "--live-report"],
+    ["--level", "L0", "--full-e2e"],
+    ["--level", "L0", "--output-dir", "/tmp/x"],
+    ["--level", "L0", "--token-env", "TEST_TOKEN"],
+    ["--save-report", "--report-dir", "/trusted/path"],
+])
+def test_l0_disallows_unsafe_flags_and_explicit_save_conflicts(monkeypatch, argv):
+    monkeypatch.setattr(target, "run", forbidden)
+    with pytest.raises(SystemExit) as ex:
+        target.main(argv)
+    assert ex.value.code == 2
+
+
+def test_report_relative_path_gives_actionable_hint_without_running(probes, capsys):
+    probes.setattr(target, "run", forbidden)
+    assert target.main(["--report-dir", "maintenance-reports"]) == 2
+    output = capsys.readouterr().out
+    assert "reason=report_dir_relative" in output
+    assert "--save-report" in output
+
+
+def test_home_save_does_not_trust_home_environment(monkeypatch, probes, capsys, tmp_path):
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
+    import pwd
+    from types import SimpleNamespace
+    trusted_home = tmp_path / "operator-home"
+    trusted_home.mkdir()
+    untrusted_home = tmp_path / "untrusted"
+    untrusted_home.mkdir()
+    monkeypatch.setenv("HOME", str(untrusted_home))
+    monkeypatch.setattr(pwd, "getpwuid", lambda uid: SimpleNamespace(pw_dir=str(trusted_home)))
+    observed = []
+    def secure_dir(path):
+        observed.append(path)
+        return os.open(tmp_path, os.O_RDONLY)
+    monkeypatch.setattr(store, "_secure_output_dir", secure_dir)
+    monkeypatch.setattr(store, "_secure_write", lambda name, raw, fd: None)
+    assert target.main(["--level", "L0", "--save-report"]) == 0
+    assert observed == [trusted_home / ".sraf-maintenance-reports"]
+    output = capsys.readouterr().out
+    assert "REPORT_SAVE=PASS" in output
+    assert str(trusted_home) not in output
+    assert str(untrusted_home) not in output
+    assert output.splitlines()[-1].startswith("SRAF_DIAGNOSTICS_JSON=")
+
+
+def test_home_save_with_missing_account_is_fail_closed_before_probes(
+        monkeypatch, probes, capsys):
+    import pwd
+    def no_account(uid):
+        raise KeyError("notfound")
+    monkeypatch.setattr(pwd, "getpwuid", no_account)
+    monkeypatch.setattr(target, "run", forbidden)
+    assert target.main(["--save-report"]) == 2
+    assert "reason=account_home_unverified" in capsys.readouterr().out
+
+
+def test_home_save_rejects_unsafe_ancestors_without_running(
+        monkeypatch, probes, capsys, tmp_path):
+    import pwd
+    from types import SimpleNamespace
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
+    monkeypatch.setattr(pwd, "getpwuid",
+                        lambda uid: SimpleNamespace(pw_dir=str(tmp_path)))
+    monkeypatch.setattr(store, "_secure_output_dir", forbidden)
+    monkeypatch.setattr(target, "run", forbidden)
+    assert target.main(["--save-report"]) == 2
+    printed = capsys.readouterr().out
+    assert "reason=report_dir_unverified" in printed
+    assert "chmod 777" in printed
+    assert str(tmp_path) not in printed
+
+
+def test_human_report_identifies_l0_but_does_not_promote_services():
+    from tools.sraf_diagnostics_report import render_report
+    rows = [target._row("L0." + name, "PASS_PARTIAL", "observed")
+            for name in target.L0_CHECKS]
+    rows.extend(target._row("L1." + name, "NOT_TESTED", "probe_not_requested")
+                for name in target.L1_CHECKS)
+    rows.extend(target._row("L2." + name, "NOT_TESTED", "probe_not_requested")
+                for name in target.L2_CHECKS)
+    rows.extend((
+        target._row("L3.report_job_docx", "NOT_TESTED", "probe_not_requested"),
+        target._row("L3.requirement_schedule_handoff_e2e", "NOT_TESTED",
+                    "probe_not_requested"),
+    ))
+    report = render_report({"level": "L0", "status": "PASS_PARTIAL", "checks": rows})
+    assert "執行層級：L0" in report
+    assert "本次未執行 SQL 功能測試" in report
+    assert "API 健康狀態尚未通過 HTTP 200 確認" in report
+    assert "已執行：6 項" in report
+
+
+
+def test_private_store_is_importable_without_dotenv_or_pyodbc(tmp_path):
+    import subprocess
+    script = r"""
+import builtins
+orig = builtins.__import__
+def blocked(name, *args, **kwargs):
+    if name.split(".")[0] in ("dotenv", "pyodbc"):
+        raise ModuleNotFoundError("blocked optional dependency")
+    return orig(name, *args, **kwargs)
+builtins.__import__ = blocked
+from tools.sraf_private_report_store import _secure_output_dir, _secure_write
+from pathlib import Path
+import os
+root = Path(os.environ["TEST_SAFE_PARENT"])
+fd = _secure_output_dir(root / "new-private")
+try:
+    _secure_write("test.txt", b"offline", fd)
+finally:
+    os.close(fd)
+assert (root / "new-private" / "test.txt").read_bytes() == b"offline"
+assert (root / "new-private").stat().st_mode & 0o077 == 0
+assert (root / "new-private" / "test.txt").stat().st_mode & 0o077 == 0
+"""
+    env = {**os.environ, "TEST_SAFE_PARENT": str(tmp_path)}
+    done = subprocess.run([sys.executable, "-c", script],
+                          cwd=ROOT, env=env, capture_output=True,
+                          text=True, timeout=15)
+    assert done.returncode == 0, done.stderr
+
+
+def test_old_report_job_acceptance_reuses_same_trusted_store():
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
+    assert jobs.ObservationError is store.ObservationError
+    assert jobs._secure_output_dir is store._secure_output_dir
+    assert jobs._secure_write is store._secure_write

@@ -42,6 +42,7 @@ REQUIRED_OPERATOR_FILES = (
     "1_完整診斷驗收_SRAF.sh",
     "tools/sraf_operator_diagnostics.py",
     "tools/sraf_diagnostics_report.py",
+    "tools/sraf_private_report_store.py",
 )
 
 
