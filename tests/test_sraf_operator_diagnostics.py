@@ -22,6 +22,7 @@ def args(level="L1", **overrides):
         "probe_es_tls_mapping": False, "probe_llm_inference": False,
         "ollama_server_pid": None, "live_report": False,
         "token_env": None, "output_dir": None, "max_seconds": 1200,
+        "full_e2e": False, "verification": "release",
     }
     values.update(overrides)
     return Namespace(**values)
@@ -49,7 +50,7 @@ def forbidden(*a, **kw):
 
 
 def test_default_l1_never_sql_es_llm_or_report_job(probes):
-    for name in ("_sql_status", "_es_status", "_llm_status", "_live_status"):
+    for name in ("_sql_status", "_es_status", "_llm_status", "_live_status", "_full_e2e_status"):
         probes.setattr(target, name, forbidden)
     result = target.run(args())
     assert result["status"] == "PASS_PARTIAL"
@@ -137,6 +138,11 @@ def test_l3_success_still_does_not_claim_schedule_e2e(probes):
     ["--level", "L3", "--live-report", "--token-env", "GOOD", "--output-dir", "relative"],
     ["--level", "L3", "--live-report", "--token-env", "GOOD", "--output-dir", "/tmp/x", "--probe-sql-read"],
     ["--level", "L1", "--max-seconds", "99999"],
+    ["--level", "L1", "--full-e2e", "--output-dir", "/private"],
+    ["--level", "L3", "--full-e2e", "--output-dir", "relative"],
+    ["--level", "L3", "--full-e2e", "--live-report", "--output-dir", "/private"],
+    ["--level", "L3", "--full-e2e", "--token-env", "SRAF_TEST_BEARER", "--output-dir", "/private"],
+    ["--level", "L1", "--verification", "functional"],
 ])
 def test_invalid_authorization_fails_before_probes(monkeypatch, argv):
     monkeypatch.setattr(target, "run", forbidden)
@@ -260,3 +266,113 @@ def test_invalid_launcher_port_does_not_perform_untrusted_preflight(monkeypatch)
     assert ports == [0]
     assert status == "INCOMPLETE"
     assert observations[-1]["status"] == "INCOMPLETE"
+
+
+def test_l3_real_full_e2e_only_with_explicit_optin(probes):
+    seen = []
+    probes.setattr(target, "_live_status", forbidden)
+    probes.setattr(target, "_full_e2e_status",
+                   lambda selection: (seen.append(selection.verification) or
+                                      ("PASS_PARTIAL", "live_requirement_chain_observed_not_airgap")))
+    result = target.run(args("L3", full_e2e=True, verification="release",
+                             output_dir="/private"))
+    assert seen == ["release"]
+    assert result["status"] == "PASS_PARTIAL"
+    assert result["full_requirement_schedule_handoff_e2e"] == "OBSERVED_PARTIAL"
+    assert result["l3_full_e2e_requested"] is True
+    assert result["production_release_ready"] is False
+    assert next(r for r in result["checks"]
+                if r["id"] == "L3.report_job_docx")["status"] == "NOT_TESTED"
+
+
+def test_l3_real_e2e_unavailable_upstream_never_mutates(probes):
+    def l1():
+        return {}, [target._row("L1." + name,
+                                "SKIP" if name == "llm_tcp" else "PASS",
+                                "observed") for name in target.L1_CHECKS]
+    probes.setattr(target, "_l1_rows", l1)
+    probes.setattr(target, "_full_e2e_status", forbidden)
+    result = target.run(args("L3", full_e2e=True, output_dir="/private"))
+    assert result["status"] == "INCOMPLETE"
+    assert result["full_requirement_schedule_handoff_e2e"] == "INCOMPLETE_OR_FAILED"
+
+
+def test_full_e2e_harness_trusted_private_env_live_only_and_no_stdout_leak(
+        monkeypatch, tmp_path):
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from operator_e2e import test_requirement_schedule_e2e as harness
+    operator = tmp_path / "operator_e2e"
+    operator.mkdir()
+    env = operator / "e2e.env.local"
+    env.write_text("SRA_E2E_BASE_URL=http://127.0.0.1:9002\n", encoding="utf-8")
+    env.chmod(0o600)
+    monkeypatch.setattr(target, "ROOT", tmp_path)
+    monkeypatch.setattr(jobs, "_secure_output_dir",
+                        lambda path: os.open(tmp_path, os.O_RDONLY))
+    observed = []
+    def synthetic_harness(argv):
+        observed.append(argv)
+        assert argv[argv.index("--external-mode") + 1] == "live"
+        assert argv[argv.index("--verification") + 1] == "release"
+        print("SECRET PATH AND TOKEN MUST NOT BE FORWARDED")
+        print("REQUIREMENT_E2E = PASS")
+        print("FUNCTIONAL_RESULT = PASS")
+        print("SOURCE_ATTESTATION = VERIFIED")
+        print("DEPLOYMENT_ACCEPTANCE = ESTABLISHED")
+        return 0
+    monkeypatch.setattr(harness, "main", synthetic_harness)
+    status, reason = target._full_e2e_status(
+        args("L3", full_e2e=True, output_dir="/private"))
+    assert (status, reason) == ("PASS_PARTIAL", "live_requirement_chain_observed_not_airgap")
+    assert len(observed) == 1
+
+
+def test_full_e2e_functional_not_reported_as_release(monkeypatch, tmp_path):
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from operator_e2e import test_requirement_schedule_e2e as harness
+    (tmp_path / "operator_e2e").mkdir()
+    env = tmp_path / "operator_e2e" / "e2e.env.local"
+    env.write_text("private=1\n", encoding="utf-8")
+    env.chmod(0o600)
+    monkeypatch.setattr(target, "ROOT", tmp_path)
+    monkeypatch.setattr(jobs, "_secure_output_dir",
+                        lambda path: os.open(tmp_path, os.O_RDONLY))
+    def synthetic_harness(argv):
+        print("REQUIREMENT_E2E = PASS")
+        print("FUNCTIONAL_RESULT = PASS")
+        print("SOURCE_ATTESTATION = MISMATCH")
+        print("DEPLOYMENT_ACCEPTANCE = NOT_ESTABLISHED")
+        return 0
+    monkeypatch.setattr(harness, "main", synthetic_harness)
+    assert target._full_e2e_status(
+        args("L3", full_e2e=True, verification="functional",
+             output_dir="/private")) == (
+             "PASS_PARTIAL", "functional_live_chain_observed_not_release")
+
+
+def test_full_e2e_private_env_missing_does_not_call_harness(monkeypatch, tmp_path):
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from operator_e2e import test_requirement_schedule_e2e as harness
+    monkeypatch.setattr(target, "ROOT", tmp_path)
+    monkeypatch.setattr(jobs, "_secure_output_dir",
+                        lambda path: os.open(tmp_path, os.O_RDONLY))
+    monkeypatch.setattr(harness, "main", forbidden)
+    assert target._full_e2e_status(
+        args("L3", full_e2e=True, output_dir="/private")) == (
+        "SKIP", "e2e_private_environment_unverified")
+
+
+def test_full_e2e_private_env_group_readable_is_rejected(monkeypatch, tmp_path):
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from operator_e2e import test_requirement_schedule_e2e as harness
+    (tmp_path / "operator_e2e").mkdir()
+    env = tmp_path / "operator_e2e" / "e2e.env.local"
+    env.write_text("private=1\n", encoding="utf-8")
+    env.chmod(0o644)
+    monkeypatch.setattr(target, "ROOT", tmp_path)
+    monkeypatch.setattr(jobs, "_secure_output_dir",
+                        lambda path: os.open(tmp_path, os.O_RDONLY))
+    monkeypatch.setattr(harness, "main", forbidden)
+    assert target._full_e2e_status(
+        args("L3", full_e2e=True, output_dir="/private")) == (
+        "SKIP", "e2e_private_environment_unverified")
