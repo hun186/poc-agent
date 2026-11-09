@@ -310,82 +310,28 @@ def test_wheel_files_operator_command_is_one_line_with_pin():
 
 
 
-# Accessible, zero-memory operator shortcut: this is a thin OFF-3 alias, not
-# another probe, report writer, privileged menu or service launcher.
-ONE_CLICK = ROOT / "0_一鍵快檢_SRAF.sh"
+# One root diagnostic entrypoint; old zero-network behavior is --level L0
+# in the reviewed unified operator CLI. The existing OFF-3 deploy-check remains
+# an engineering-only canonical passive driver under scripts/diagnostics/.
+UNIFIED = ROOT / "1_完整診斷驗收_SRAF.sh"
 
 
-def _copy_one_click(fake_deployment):
-    script, root, capture, env = fake_deployment
-    shortcut = root / ONE_CLICK.name
-    shutil.copy2(ONE_CLICK, shortcut)
-    return shortcut, root, capture, env
-
-
-def test_one_click_file_is_executable_and_release_selected():
+def test_single_unified_operator_shortcut_is_pinned_and_has_offline_l0():
     import json
     import stat
 
-    assert ONE_CLICK.is_file()
-    assert ONE_CLICK.stat().st_mode & stat.S_IXUSR
+    assert UNIFIED.is_file()
+    assert UNIFIED.stat().st_mode & stat.S_IXUSR
+    assert not (ROOT / "0_一鍵快檢_SRAF.sh").exists()
     policy = json.loads(
-        (ROOT / "tools/deployment_manifest_policy.json").read_text(
-            encoding="utf-8"
-        )
+        (ROOT / "tools/deployment_manifest_policy.json").read_text(encoding="utf-8")
     )
-    assert ONE_CLICK.name in policy["managed_files"]
-
-
-def test_one_click_with_zero_args_is_only_passive_deploy_check(fake_deployment):
-    shortcut, root, capture, env = _copy_one_click(fake_deployment)
-    assert subprocess.run(["bash", "-n", str(shortcut)]).returncode == 0
-    # An executable checkout file can be launched without remembering 'bash'.
-    result = subprocess.run([str(shortcut)], cwd="/", env=env,
-                            capture_output=True, text=True)
-    assert result.returncode == 17
-    assert "一鍵快檢" in result.stdout
-    assert "FULL_LIVE" in result.stdout
-    assert capture.read_text().splitlines() == [
-        "python", str(root), "tools/sraf_local_deploy_quickcheck.py",
-    ]
-    assert not (root / "sraf-acceptance-results").exists()
-
-
-def test_one_click_help_and_invalid_options_never_start_probe(fake_deployment):
-    shortcut, root, capture, env = _copy_one_click(fake_deployment)
-    help_result = subprocess.run(["bash", str(shortcut), "--help"], cwd="/",
-                                 env=env, capture_output=True, text=True)
-    assert help_result.returncode == 0
-    assert "deploy-check" not in help_result.stdout
-    assert "SRAF_DEPLOY_CHECK_JSON=" in help_result.stdout
-    assert not capture.exists()
-    for option in ("quick", "diagnose", "acceptance", "--probe-es-tls-mapping", ""):
-        result = subprocess.run(["bash", str(shortcut), option], cwd="/",
-                                env=env, capture_output=True, text=True)
-        assert result.returncode == 2
-        assert "unsupported_option" in result.stderr
-        assert not capture.exists()
-    assert not (root / "sraf-acceptance-results").exists()
-
-
-def test_one_click_preserves_final_json_and_underlying_exit_code(fake_deployment):
-    shortcut, root, capture, env = _copy_one_click(fake_deployment)
-    py = Path(env["SRAF_PYTHON"])
-    # Real coordinator owns the last JSON line. The shortcut must never append
-    # a banner/extra warning after it, including on nonzero exit.
-    py.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf '%s\\n' 'SRAF_DEPLOY_CHECK_JSON={\"status\":\"INCOMPLETE\"}'\n"
-        "exit 2\n",
-        encoding="utf-8",
-    )
-    result = subprocess.run(["bash", str(shortcut)], cwd="/", env=env,
-                            capture_output=True, text=True)
-    assert result.returncode == 2
-    assert result.stdout.splitlines()[-1] == (
-        'SRAF_DEPLOY_CHECK_JSON={"status":"INCOMPLETE"}'
-    )
-    assert not (root / "sraf-acceptance-results").exists()
+    assert UNIFIED.name in policy["managed_files"]
+    assert "0_一鍵快檢_SRAF.sh" not in policy["managed_files"]
+    script = UNIFIED.read_text(encoding="utf-8")
+    assert "sraf_operator_diagnostics.py" in script
+    assert subprocess.run(["bash", "-n", str(UNIFIED)],
+                          capture_output=True, text=True).returncode == 0
 
 
 def test_advanced_shell_entries_live_only_under_diagnostics_and_are_pinned():
@@ -408,7 +354,8 @@ def test_advanced_shell_entries_live_only_under_diagnostics_and_are_pinned():
         assert (root / nested).is_file()
         assert nested in policy["managed_files"]
         assert name not in policy["managed_files"]
-    assert (root / "0_一鍵快檢_SRAF.sh").is_file()
+    assert (root / "1_完整診斷驗收_SRAF.sh").is_file()
+    assert not (root / "0_一鍵快檢_SRAF.sh").exists()
     assert (root / "run_sra_api.sh").is_file()
 
 
