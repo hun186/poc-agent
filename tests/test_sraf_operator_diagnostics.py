@@ -376,3 +376,126 @@ def test_full_e2e_private_env_group_readable_is_rejected(monkeypatch, tmp_path):
     assert target._full_e2e_status(
         args("L3", full_e2e=True, output_dir="/private")) == (
         "SKIP", "e2e_private_environment_unverified")
+
+
+def test_maintenance_report_distinguishes_worker_identity_from_service_outage():
+    from tools.sraf_diagnostics_report import render_report
+    rows = []
+    for name in target.L0_CHECKS:
+        rows.append(target._row("L0." + name,
+                                "INCOMPLETE" if name == "worker_process_identity"
+                                else "PASS" if name == "host_disk" else "PASS_PARTIAL",
+                                "worker_process_identity_unverified"
+                                if name == "worker_process_identity" else "sample_observed"))
+    for name in target.L1_CHECKS:
+        rows.append(target._row("L1." + name, "PASS",
+                                "healthz_http_200" if name == "api_health"
+                                else "configured_tcp_connected", 43))
+    for name in target.L2_CHECKS:
+        rows.append(target._row("L2." + name, "NOT_TESTED", "probe_not_requested"))
+    rows.extend((target._row("L3.report_job_docx", "NOT_TESTED", "probe_not_requested"),
+                 target._row("L3.requirement_schedule_handoff_e2e", "NOT_TESTED",
+                             "probe_not_requested")))
+    result = {"level": "L1", "status": "INCOMPLETE", "checks": rows}
+    output = render_report(result)
+    assert "API /healthz 已回傳 200" in output
+    assert "Elasticsearch：TCP 連線可達" in output
+    assert "LLM：TCP 連線可達" in output
+    assert "0/2 不能解讀為兩個都掛掉" in output
+    assert "尚未執行 SQL 功能測試" in output
+    assert "尚未執行 Report Job" in output
+    assert "綜合判定：待確認 (INCOMPLETE)" in output
+    assert output.index("【二、需維護人員確認的項目") < output.index("【三、維護結論")
+
+
+def test_human_report_does_not_infer_es_llm_functionality_from_tcp():
+    from tools.sraf_diagnostics_report import render_report
+    rows = [target._row(name, "PASS_PARTIAL", "test_observed")
+            for name in ("L0." + n for n in target.L0_CHECKS)]
+    rows.extend(target._row("L1." + n, "PASS", "configured_tcp_connected")
+                for n in target.L1_CHECKS)
+    rows.extend(target._row("L2." + n, "NOT_TESTED", "probe_not_requested")
+                for n in target.L2_CHECKS)
+    rows.append(target._row("L3.report_job_docx", "NOT_TESTED", "probe_not_requested"))
+    rows.append(target._row("L3.requirement_schedule_handoff_e2e",
+                            "NOT_TESTED", "probe_not_requested"))
+    output = render_report({"level": "L1", "status": "PASS_PARTIAL", "checks": rows})
+    assert "未驗證 TLS 憑證、身分、Mapping 或實際搜尋" in output
+    assert "尚未測試" not in output or "功能驗收" in output
+    assert "不能等同正式上線" in output
+
+
+def test_human_report_never_uses_arbitrary_reason_or_sensitive_values():
+    from tools.sraf_diagnostics_report import render_report
+    rows = [target._row(name, "INCOMPLETE", "unknown_but_valid_reason")
+            for name in ("L0." + n for n in target.L0_CHECKS)]
+    rows.extend(target._row("L1." + n, "INCOMPLETE", "unknown_but_valid_reason")
+                for n in target.L1_CHECKS)
+    rows.extend(target._row("L2." + n, "NOT_TESTED", "probe_not_requested")
+                for n in target.L2_CHECKS)
+    rows.extend(target._row("L3.report_job_docx", "NOT_TESTED", "probe_not_requested")
+                for _ in range(1))
+    rows.append(target._row("L3.requirement_schedule_handoff_e2e",
+                            "NOT_TESTED", "probe_not_requested"))
+    output = render_report({"level": "L1", "status": "INCOMPLETE",
+                            "checks": rows, "private": "SECRET_API_PASSWORD"})
+    assert "unknown_but_valid_reason" not in output
+    assert "SECRET_API_PASSWORD" not in output
+
+
+def test_bad_report_contract_is_never_converted_to_success():
+    from tools.sraf_diagnostics_report import render_report
+    text = render_report({"level": "L1", "status": "PASS_PARTIAL",
+                          "checks": [{"id": "L1.api_health", "status": "PASS"}]})
+    assert "格式不完整" in text
+    assert "正常。" not in text
+
+
+def test_relative_report_dir_refuses_before_any_probe(probes):
+    probes.setattr(target, "run", forbidden)
+    assert target.main(["--report-dir", "not/absolute"]) == 2
+
+
+def test_optional_private_maintenance_report_written_as_both_formats(
+        monkeypatch, probes, capsys, tmp_path):
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    calls = []
+    def private_dir(path):
+        calls.append("guard")
+        return os.open(tmp_path, os.O_RDONLY)
+    def write(name, raw, fd):
+        assert name.startswith("sraf-diagnostics-")
+        assert name.endswith((".json", ".txt"))
+        calls.append(name.rsplit(".", 1)[-1])
+        assert b"SECRET_PASSWORD" not in raw
+    monkeypatch.setattr(jobs, "_secure_output_dir", private_dir)
+    monkeypatch.setattr(jobs, "_secure_write", write)
+    code = target.main(["--report-dir", str(tmp_path)])
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert calls == ["guard", "txt", "json"]
+    assert "REPORT_SAVE=PASS reason=private_txt_json_written" in printed
+    assert "SRAF_DIAGNOSTICS_JSON=" in printed.splitlines()[-1]
+    assert "【二、需維護人員確認的項目" in printed
+    assert str(tmp_path) not in printed
+
+
+def test_private_maintenance_report_invalid_trust_prevents_any_probes(
+        monkeypatch, tmp_path, capsys):
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    monkeypatch.setattr(jobs, "_secure_output_dir", forbidden)
+    monkeypatch.setattr(target, "run", forbidden)
+    assert target.main(["--report-dir", str(tmp_path)]) == 2
+    assert "report_dir_unverified" in capsys.readouterr().out
+
+
+def test_private_report_write_failure_returns_incomplete_without_exposing_path(
+        monkeypatch, probes, capsys, tmp_path):
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    monkeypatch.setattr(jobs, "_secure_output_dir",
+                        lambda path: os.open(tmp_path, os.O_RDONLY))
+    monkeypatch.setattr(jobs, "_secure_write", forbidden)
+    assert target.main(["--report-dir", str(tmp_path)]) == 2
+    output = capsys.readouterr().out
+    assert "REPORT_SAVE=INCOMPLETE reason=report_write_unavailable" in output
+    assert str(tmp_path) not in output
