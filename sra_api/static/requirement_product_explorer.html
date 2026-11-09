@@ -64,6 +64,13 @@
       <div class="scroll"><table><thead><tr><th>任務</th><th>類型／狀態</th><th>排程</th><th>下一次執行</th><th>操作</th></tr></thead><tbody id="taskRows"></tbody></table></div>
       <div class="pager"><button id="taskPrev" type="button" disabled>上一頁</button><span id="taskPage">第 1 頁</span><button id="taskNext" type="button" disabled>下一頁</button></div>
     </section>
+    <section class="panel" aria-labelledby="allRunsTitle">
+      <h2 id="allRunsTitle">跨任務執行紀錄</h2>
+      <p class="hint">使用現有已授權 Product API，按需求讀取跨任務的批次。只顯示每頁 20 筆；不自動輪詢、不建立或取消工作。</p>
+      <div class="actions"><button id="loadAllRuns" type="button">讀取所有任務的批次</button></div>
+      <div class="scroll"><table><thead><tr><th>批次 ID</th><th>任務 ID</th><th>狀態</th><th>觸發</th><th>完成／失敗</th><th>操作</th></tr></thead><tbody id="allRunRows"></tbody></table></div>
+      <div class="pager"><button id="allRunPrev" type="button" disabled>上一頁</button><span id="allRunPage">第 1 頁</span><button id="allRunNext" type="button" disabled>下一頁</button></div>
+    </section>
     <section class="panel" id="runsPanel" hidden>
       <h2>執行批次 <small id="currentTask"></small></h2>
       <div class="detail-actions"><button type="button" id="taskDetailBtn">檢視任務詳細</button></div>
@@ -73,7 +80,7 @@
     </section>
     <section class="panel" id="itemsPanel" hidden>
       <h2>執行項目 <small id="currentRun"></small></h2>
-      <div class="detail-actions"><button type="button" id="runDetailBtn">檢視批次詳細</button></div>
+      <div class="detail-actions"><button type="button" id="runDetailBtn">檢視批次詳細</button> <button type="button" id="openRunTaskBtn" hidden>查看所屬任務批次</button></div>
       <dl id="runDetails" class="detail-grid" hidden aria-live="polite"></dl>
       <div class="scroll"><table><thead><tr><th>項目 ID</th><th>Requirement</th><th>選取</th><th>狀態</th><th>成果</th></tr></thead><tbody id="itemRows"></tbody></table></div>
       <div class="pager"><button id="itemPrev" type="button" disabled>上一頁</button><span id="itemPage">第 1 頁</span><button id="itemNext" type="button" disabled>下一頁</button></div>
