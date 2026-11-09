@@ -309,7 +309,7 @@ def test_full_e2e_harness_trusted_private_env_live_only_and_no_stdout_leak(
     env.write_text("SRA_E2E_BASE_URL=http://127.0.0.1:9002\n", encoding="utf-8")
     env.chmod(0o600)
     monkeypatch.setattr(target, "ROOT", tmp_path)
-    monkeypatch.setattr(jobs, "_secure_output_dir",
+    monkeypatch.setattr(store, "_secure_output_dir",
                         lambda path: os.open(tmp_path, os.O_RDONLY))
     observed = []
     def synthetic_harness(argv):
@@ -338,7 +338,7 @@ def test_full_e2e_functional_not_reported_as_release(monkeypatch, tmp_path):
     env.write_text("private=1\n", encoding="utf-8")
     env.chmod(0o600)
     monkeypatch.setattr(target, "ROOT", tmp_path)
-    monkeypatch.setattr(jobs, "_secure_output_dir",
+    monkeypatch.setattr(store, "_secure_output_dir",
                         lambda path: os.open(tmp_path, os.O_RDONLY))
     def synthetic_harness(argv):
         print("REQUIREMENT_E2E = PASS")
@@ -358,7 +358,7 @@ def test_full_e2e_private_env_missing_does_not_call_harness(monkeypatch, tmp_pat
     from tools import sraf_private_report_store as store
     from operator_e2e import test_requirement_schedule_e2e as harness
     monkeypatch.setattr(target, "ROOT", tmp_path)
-    monkeypatch.setattr(jobs, "_secure_output_dir",
+    monkeypatch.setattr(store, "_secure_output_dir",
                         lambda path: os.open(tmp_path, os.O_RDONLY))
     monkeypatch.setattr(harness, "main", forbidden)
     assert target._full_e2e_status(
@@ -375,7 +375,7 @@ def test_full_e2e_private_env_group_readable_is_rejected(monkeypatch, tmp_path):
     env.write_text("private=1\n", encoding="utf-8")
     env.chmod(0o644)
     monkeypatch.setattr(target, "ROOT", tmp_path)
-    monkeypatch.setattr(jobs, "_secure_output_dir",
+    monkeypatch.setattr(store, "_secure_output_dir",
                         lambda path: os.open(tmp_path, os.O_RDONLY))
     monkeypatch.setattr(harness, "main", forbidden)
     assert target._full_e2e_status(
@@ -474,8 +474,8 @@ def test_optional_private_maintenance_report_written_as_both_formats(
         assert name.endswith((".json", ".txt"))
         calls.append(name.rsplit(".", 1)[-1])
         assert b"SECRET_PASSWORD" not in raw
-    monkeypatch.setattr(jobs, "_secure_output_dir", private_dir)
-    monkeypatch.setattr(jobs, "_secure_write", write)
+    monkeypatch.setattr(store, "_secure_output_dir", private_dir)
+    monkeypatch.setattr(store, "_secure_write", write)
     code = target.main(["--report-dir", str(tmp_path)])
     printed = capsys.readouterr().out
     assert code == 0
@@ -490,7 +490,7 @@ def test_private_maintenance_report_invalid_trust_prevents_any_probes(
         monkeypatch, tmp_path, capsys):
     from tools import sraf_airgap_report_jobs_acceptance as jobs
     from tools import sraf_private_report_store as store
-    monkeypatch.setattr(jobs, "_secure_output_dir", forbidden)
+    monkeypatch.setattr(store, "_secure_output_dir", forbidden)
     monkeypatch.setattr(target, "run", forbidden)
     assert target.main(["--report-dir", str(tmp_path)]) == 2
     assert "report_dir_unverified" in capsys.readouterr().out
@@ -500,9 +500,9 @@ def test_private_report_write_failure_returns_incomplete_without_exposing_path(
         monkeypatch, probes, capsys, tmp_path):
     from tools import sraf_airgap_report_jobs_acceptance as jobs
     from tools import sraf_private_report_store as store
-    monkeypatch.setattr(jobs, "_secure_output_dir",
+    monkeypatch.setattr(store, "_secure_output_dir",
                         lambda path: os.open(tmp_path, os.O_RDONLY))
-    monkeypatch.setattr(jobs, "_secure_write", forbidden)
+    monkeypatch.setattr(store, "_secure_write", forbidden)
     assert target.main(["--report-dir", str(tmp_path)]) == 2
     output = capsys.readouterr().out
     assert "REPORT_SAVE=INCOMPLETE reason=report_write_unavailable" in output
@@ -616,8 +616,8 @@ def test_home_save_does_not_trust_home_environment(monkeypatch, probes, capsys, 
     def secure_dir(path):
         observed.append(path)
         return os.open(tmp_path, os.O_RDONLY)
-    monkeypatch.setattr(jobs, "_secure_output_dir", secure_dir)
-    monkeypatch.setattr(jobs, "_secure_write", lambda name, raw, fd: None)
+    monkeypatch.setattr(store, "_secure_output_dir", secure_dir)
+    monkeypatch.setattr(store, "_secure_write", lambda name, raw, fd: None)
     assert target.main(["--level", "L0", "--save-report"]) == 0
     assert observed == [trusted_home / ".sraf-maintenance-reports"]
     output = capsys.readouterr().out
@@ -646,7 +646,7 @@ def test_home_save_rejects_unsafe_ancestors_without_running(
     from tools import sraf_private_report_store as store
     monkeypatch.setattr(pwd, "getpwuid",
                         lambda uid: SimpleNamespace(pw_dir=str(tmp_path)))
-    monkeypatch.setattr(jobs, "_secure_output_dir", forbidden)
+    monkeypatch.setattr(store, "_secure_output_dir", forbidden)
     monkeypatch.setattr(target, "run", forbidden)
     assert target.main(["--save-report"]) == 2
     printed = capsys.readouterr().out
