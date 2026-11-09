@@ -118,7 +118,7 @@ def test_l3_missing_api_health_never_submits(probes):
 
 def test_l3_success_still_does_not_claim_schedule_e2e(probes):
     probes.setattr(target, "_live_status",
-                   lambda a: ("PASS_PARTIAL", "one_report_job_docx_observed_only"))
+                   lambda a, original_port: ("PASS_PARTIAL", "one_report_job_docx_observed_only"))
     result = target.run(args("L3", live_report=True, token_env="SRAF_TEST_BEARER",
                              output_dir="/private"))
     assert result["status"] == "PASS_PARTIAL"
@@ -180,3 +180,47 @@ def test_root_launcher_help_has_no_probes():
                           env=env, capture_output=True, text=True, timeout=12)
     assert done.returncode == 0, done.stderr
     assert "--level" in done.stdout
+
+
+def test_l1_missing_import_is_not_a_fake_skip(probes):
+    def broken():
+        raise ModuleNotFoundError("missing optional deployment dependency")
+    probes.setattr(target, "_l1_rows", broken)
+    result = target.run(args())
+    assert result["status"] == "INCOMPLETE"
+    assert all(row["reason"] == "l1_dependency_import_unavailable"
+               for row in result["checks"] if row["id"].startswith("L1."))
+
+
+def test_l3_passes_original_launcher_port_even_after_dotenv(probes):
+    probes.setenv("PORT", "9005")
+    def loaded_env():
+        os.environ["PORT"] = "12345"
+        return {}, [target._row("L1." + name, "PASS", "observed")
+                    for name in target.L1_CHECKS]
+    probes.setattr(target, "_l1_rows", loaded_env)
+    observed = []
+    probes.setattr(target, "_live_status",
+                   lambda selection, launcher_port:
+                   (observed.append(launcher_port) or
+                    ("PASS_PARTIAL", "one_report_job_docx_observed_only")))
+    target.run(args("L3", live_report=True, token_env="SRAF_TEST_BEARER",
+                    output_dir="/private"))
+    assert observed == ["9005"]
+
+
+def test_l3_child_job_sees_original_unset_port_and_restores_env(monkeypatch):
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    monkeypatch.setenv("SRAF_TEST_BEARER", "do-not-print")
+    monkeypatch.setenv("PORT", "12345")  # simulates dotenv loaded by L1
+    def fake_job(argv):
+        assert "PORT" not in os.environ
+        assert argv[argv.index("--token-env") + 1] == "SRAF_TEST_BEARER"
+        print("SRAF_REPORT_JOBS_ACCEPTANCE=PASS_PARTIAL")
+        print("EVIDENCE_FILE=/secret/private/location")
+        return 0
+    monkeypatch.setattr(jobs, "main", fake_job)
+    status, reason = target._live_status(
+        args("L3", token_env="SRAF_TEST_BEARER", output_dir="/private"), None)
+    assert (status, reason) == ("PASS_PARTIAL", "one_report_job_docx_observed_only")
+    assert os.environ["PORT"] == "12345"
