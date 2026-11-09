@@ -552,3 +552,114 @@ def test_raw_failure_cannot_become_success_by_fallback_description():
     assert "[失敗] API /healthz：匿名 GET /healthz HTTP 檢查" in text
     assert "[失敗] Elasticsearch 連線：僅檢查 TCP 連線" in text
     assert "unknown_but_safe_reason" not in text
+
+
+
+def test_level_l0_observes_six_local_checks_without_any_tcp_or_health(probes):
+    for name in ("_l1_rows", "_sql_status", "_es_status", "_llm_status",
+                 "_live_status", "_full_e2e_status"):
+        probes.setattr(target, name, forbidden)
+    result = target.run(args("L0"))
+    assert result["level"] == "L0"
+    assert result["status"] == "PASS_PARTIAL"
+    assert len(result["checks"]) == len(target.L0_CHECKS) + len(target.L1_CHECKS) + len(target.L2_CHECKS) + 2
+    assert all(x["status"] == "NOT_TESTED" for x in result["checks"]
+               if x["id"].startswith(("L1.", "L2.", "L3.")))
+    assert result["production_release_ready"] is False
+
+
+@pytest.mark.parametrize("argv", [
+    ["--level", "L0", "--probe-sql-read"],
+    ["--level", "L0", "--probe-es-tls-mapping"],
+    ["--level", "L0", "--probe-llm-inference", "--ollama-server-pid", "1000"],
+    ["--level", "L0", "--live-report"],
+    ["--level", "L0", "--full-e2e"],
+    ["--level", "L0", "--output-dir", "/tmp/x"],
+    ["--level", "L0", "--token-env", "TEST_TOKEN"],
+    ["--save-report", "--report-dir", "/trusted/path"],
+])
+def test_l0_disallows_unsafe_flags_and_explicit_save_conflicts(monkeypatch, argv):
+    monkeypatch.setattr(target, "run", forbidden)
+    with pytest.raises(SystemExit) as ex:
+        target.main(argv)
+    assert ex.value.code == 2
+
+
+def test_report_relative_path_gives_actionable_hint_without_running(probes, capsys):
+    probes.setattr(target, "run", forbidden)
+    assert target.main(["--report-dir", "maintenance-reports"]) == 2
+    output = capsys.readouterr().out
+    assert "reason=report_dir_relative" in output
+    assert "--save-report" in output
+
+
+def test_home_save_does_not_trust_home_environment(monkeypatch, probes, capsys, tmp_path):
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    import pwd
+    from types import SimpleNamespace
+    trusted_home = tmp_path / "operator-home"
+    trusted_home.mkdir()
+    untrusted_home = tmp_path / "untrusted"
+    untrusted_home.mkdir()
+    monkeypatch.setenv("HOME", str(untrusted_home))
+    monkeypatch.setattr(pwd, "getpwuid", lambda uid: SimpleNamespace(pw_dir=str(trusted_home)))
+    observed = []
+    def secure_dir(path):
+        observed.append(path)
+        return os.open(tmp_path, os.O_RDONLY)
+    monkeypatch.setattr(jobs, "_secure_output_dir", secure_dir)
+    monkeypatch.setattr(jobs, "_secure_write", lambda name, raw, fd: None)
+    assert target.main(["--level", "L0", "--save-report"]) == 0
+    assert observed == [trusted_home / ".sraf-maintenance-reports"]
+    output = capsys.readouterr().out
+    assert "REPORT_SAVE=PASS" in output
+    assert str(trusted_home) not in output
+    assert str(untrusted_home) not in output
+    assert output.splitlines()[-1].startswith("SRAF_DIAGNOSTICS_JSON=")
+
+
+def test_home_save_with_missing_account_is_fail_closed_before_probes(
+        monkeypatch, probes, capsys):
+    import pwd
+    def no_account(uid):
+        raise KeyError("notfound")
+    monkeypatch.setattr(pwd, "getpwuid", no_account)
+    monkeypatch.setattr(target, "run", forbidden)
+    assert target.main(["--save-report"]) == 2
+    assert "reason=account_home_unverified" in capsys.readouterr().out
+
+
+def test_home_save_rejects_unsafe_ancestors_without_running(
+        monkeypatch, probes, capsys, tmp_path):
+    import pwd
+    from types import SimpleNamespace
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    monkeypatch.setattr(pwd, "getpwuid",
+                        lambda uid: SimpleNamespace(pw_dir=str(tmp_path)))
+    monkeypatch.setattr(jobs, "_secure_output_dir", forbidden)
+    monkeypatch.setattr(target, "run", forbidden)
+    assert target.main(["--save-report"]) == 2
+    printed = capsys.readouterr().out
+    assert "reason=report_dir_unverified" in printed
+    assert "chmod 777" in printed
+    assert str(tmp_path) not in printed
+
+
+def test_human_report_identifies_l0_but_does_not_promote_services():
+    from tools.sraf_diagnostics_report import render_report
+    rows = [target._row("L0." + name, "PASS_PARTIAL", "observed")
+            for name in target.L0_CHECKS]
+    rows.extend(target._row("L1." + name, "NOT_TESTED", "probe_not_requested")
+                for name in target.L1_CHECKS)
+    rows.extend(target._row("L2." + name, "NOT_TESTED", "probe_not_requested")
+                for name in target.L2_CHECKS)
+    rows.extend((
+        target._row("L3.report_job_docx", "NOT_TESTED", "probe_not_requested"),
+        target._row("L3.requirement_schedule_handoff_e2e", "NOT_TESTED",
+                    "probe_not_requested"),
+    ))
+    report = render_report({"level": "L0", "status": "PASS_PARTIAL", "checks": rows})
+    assert "執行層級：L0" in report
+    assert "本次未執行 SQL 功能測試" in report
+    assert "API 健康狀態尚未通過 HTTP 200 確認" in report
+    assert "已執行：6 項" in report
