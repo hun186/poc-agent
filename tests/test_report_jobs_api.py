@@ -77,3 +77,25 @@ def test_report_job_history_is_owner_only_even_for_admin(tmp_path, monkeypatch):
         assert one.json()["items"][0]["job_id"] in {
             first.json()["job_id"], second.json()["job_id"]
         }
+
+def test_report_job_history_status_filter_contract(tmp_path, monkeypatch):
+    monkeypatch.setenv("REPORT_JOBS_DB_PATH", str(tmp_path / "filtered.db"))
+    monkeypatch.setenv("REPORT_JOBS_REPORTS_ROOT", str(tmp_path / "reports"))
+    auth = bearer(monkeypatch, tmp_path, ["report:job:create", "report:job:read"])
+    with TestClient(app) as client:
+        assert client.get("/v1/report/jobs?status=unknown", headers=auth).status_code == 422
+        assert client.get("/v1/report/jobs?status=running%27%20OR%201%3D1",
+                          headers=auth).status_code == 422
+        job = client.post("/v1/report/jobs", json={"prompt": "PRIVATE_STATUS_TEST"},
+                          headers={**auth, "Idempotency-Key": "status-test"})
+        assert job.status_code == 202
+        for status in ("queued", "running", "completed", "failed", "interrupted"):
+            response = client.get("/v1/report/jobs?limit=10&offset=0&status=" + status,
+                                  headers=auth)
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["status"] == status
+            assert payload["limit"] == 10
+            assert all(item["status"] == status for item in payload["items"])
+            assert "PRIVATE_STATUS_TEST" not in response.text
+        assert client.get("/v1/report/jobs", headers=auth).json()["status"] is None
