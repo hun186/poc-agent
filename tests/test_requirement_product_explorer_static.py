@@ -54,6 +54,11 @@ def test_product_explorer_is_readonly_and_does_not_store_tokens():
     assert 'id="allRunRows"' in html
     assert 'id="allRunPrev"' in html and 'id="allRunNext"' in html
     assert 'id="openRunTaskBtn"' in html
+    assert 'id="lookupRunId"' in html
+    assert 'id="lookupRunBtn"' in html
+    assert "async function lookupRunById()" in js
+    assert "run.run_id !== id || !safeId(run.task_id)" in js
+    assert "'lookupRunId').value.trim() !== id" in js
     assert "/v1/requirement-runs?limit=" in js
     assert "openAllRun(run.run_id, run.task_id)" in js
     assert "runs.length > LIMIT" in js
