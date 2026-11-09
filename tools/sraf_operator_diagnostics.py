@@ -35,11 +35,11 @@ L1_CHECKS = ("api_tcp", "api_health", "es_tcp", "llm_tcp")
 L2_CHECKS = ("sql_constant_read", "es_tls_mapping", "llm_inference")
 
 
-def _row(name: str, status: str, reason: str, elapsed_ms: int = 0) -> dict[str, object]:
+def _row(name: str, status: str, reason: str, elapsed_ms: int | None = None) -> dict[str, object]:
     if status not in STATES or not SAFE_REASON.fullmatch(reason):
         status, reason = "INCOMPLETE", "probe_contract_unverified"
     return {"id": name, "status": status, "reason": reason,
-            "elapsed_ms": max(0, min(elapsed_ms, 3_600_000))}
+            "elapsed_ms": (None if elapsed_ms is None else max(0, min(elapsed_ms, 3_600_000)))}
 
 
 def _run(name: str, fn) -> dict[str, object]:
@@ -214,7 +214,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         l0_status = "INCOMPLETE"
         rows.extend(_row("L0." + name, "INCOMPLETE", "local_probe_unavailable")
                     for name in L0_CHECKS)
-    cfg, l1 = _l1_rows()
+    try:
+        cfg, l1 = _l1_rows()
+    except Exception:
+        cfg = None
+        l1 = [_row("L1." + name, "SKIP", "runtime_probe_unavailable")
+              for name in L1_CHECKS]
     rows.extend(l1)
     l1_by_id = {row["id"]: row["status"] for row in l1}
 
@@ -307,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     print("SRAF 分層診斷 | " + args.level + " | " + result["status"])
     for row in result["checks"]:
         print(row["id"] + "=" + row["status"] + " reason=" + row["reason"]
-              + " elapsed_ms=" + str(row["elapsed_ms"]))
+              + " elapsed_ms=" + (str(row["elapsed_ms"]) if row["elapsed_ms"] is not None else "not_measured"))
     print("SRAF_DIAGNOSTICS_JSON=" + json.dumps(result, sort_keys=True,
           ensure_ascii=True, separators=(",", ":")))
     return 1 if result["status"] == "FAIL" else 2 if result["status"] == "INCOMPLETE" else 0
