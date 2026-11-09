@@ -29,7 +29,7 @@ def args(level="L1", **overrides):
 
 @pytest.fixture
 def probes(monkeypatch):
-    def local():
+    def local(launcher_port=None):
         return "PASS_PARTIAL", [
             target._row("L0." + name, "PASS_PARTIAL", "local_observed")
             for name in target.L0_CHECKS
@@ -224,3 +224,39 @@ def test_l3_child_job_sees_original_unset_port_and_restores_env(monkeypatch):
         args("L3", token_env="SRAF_TEST_BEARER", output_dir="/private"), None)
     assert (status, reason) == ("PASS_PARTIAL", "one_report_job_docx_observed_only")
     assert os.environ["PORT"] == "12345"
+
+
+def test_disk_warning_preserves_each_original_l0_observation(monkeypatch):
+    from tools import sraf_local_deploy_quickcheck as quick
+    rows = [dict(id=name, status="PASS_PARTIAL", reason="sample_observed")
+            for name in target.L0_CHECKS]
+    rows[3] = dict(id="host_disk", status="WARN", reason="disk_space_low")
+    seen_ports = []
+    def observe(root, *, api_port=9002):
+        seen_ports.append(api_port)
+        return {"schema": quick.SCHEMA, "status": "INCOMPLETE", "checks": rows}
+    monkeypatch.setattr(quick, "observe", observe)
+    overall, results = target._local_rows("9005")
+    assert overall == "INCOMPLETE"
+    assert seen_ports == [9005]
+    assert [r["status"] for r in results].count("WARN") == 1
+    assert len(results) == 6
+    assert results[3]["reason"] == "disk_space_low"
+    assert results[0]["status"] == "PASS_PARTIAL"
+
+
+def test_invalid_launcher_port_does_not_perform_untrusted_preflight(monkeypatch):
+    from tools import sraf_local_deploy_quickcheck as quick
+    ports = []
+    def observe(root, *, api_port=9002):
+        ports.append(api_port)
+        return {"schema": quick.SCHEMA, "status": "INCOMPLETE",
+                "checks": [dict(id=name,
+                                status="INCOMPLETE" if name == "api_listener_preflight" else "PASS_PARTIAL",
+                                reason="api_listener_prerequisite_unverified" if name == "api_listener_preflight"
+                                       else "sample_observed") for name in target.L0_CHECKS]}
+    monkeypatch.setattr(quick, "observe", observe)
+    status, observations = target._local_rows("INVALID_PORT")
+    assert ports == [0]
+    assert status == "INCOMPLETE"
+    assert observations[-1]["status"] == "INCOMPLETE"
