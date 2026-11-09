@@ -18,7 +18,8 @@ const ids = [
   'authToken', 'loadTasks', 'message', 'taskRows', 'taskPrev', 'taskNext', 'taskPage',
   'runsPanel', 'currentTask', 'runsRows', 'runPrev', 'runNext', 'runPage',
   'itemsPanel', 'currentRun', 'itemRows', 'itemPrev', 'itemNext', 'itemPage',
-  'taskDetailBtn', 'taskDetails', 'runDetailBtn', 'runDetails'
+  'taskDetailBtn', 'taskDetails', 'runDetailBtn', 'runDetails',
+  'loadAllRuns', 'allRunRows', 'allRunPrev', 'allRunNext', 'allRunPage', 'openRunTaskBtn'
 ];
 const nodes = Object.fromEntries(ids.map(id => [id, element()]));
 const document = { getElementById: id => {
@@ -105,6 +106,51 @@ async function selectFirst(tableId, index) {
   assert.equal(nodes.runDetails.children[3].textContent, 'task_A');
 
 
+
+  // Global Run API is already available; this UI must use that existing GET.
+  responses.push({items:[{run_id:'run_Global',task_id:'task_Global',status:'running',
+    trigger:{type:'manual'},counts:{succeeded:4,failed:1}}]});
+  await fire('loadAllRuns');
+  assert.equal(calls.at(-1).url,'/v1/requirement-runs?limit=20&offset=0');
+  assert.equal(nodes.allRunRows.children[0].children[0].textContent,'run_Global');
+  assert.equal(nodes.allRunRows.children[0].children[1].textContent,'task_Global');
+  assert.equal(nodes.allRunNext.disabled,true);
+  responses.push({items:[{run_item_id:'item_global',requirement_id:'req_global',
+    selection_status:'selected',status:'completed',artifact:{available:false}}]});
+  await selectFirst('allRunRows',5);
+  assert.equal(calls.at(-1).url,'/v1/requirement-runs/run_Global/items?limit=20&offset=0');
+  assert.equal(nodes.itemsPanel.hidden,false);
+  assert.equal(nodes.openRunTaskBtn.hidden,false);
+  assert.equal(nodes.itemRows.children[0].children[0].textContent,'item_global');
+  responses.push({run_id:'run_Global',task_id:'task_Global',status:'running',
+    binding:{snapshot_id:'snap'},trigger:{type:'manual'},counts:{succeeded:4,failed:1}});
+  await fire('runDetailBtn');
+  assert.equal(calls.at(-1).url,'/v1/requirement-runs/run_Global');
+  assert.equal(nodes.runDetails.hidden,false);
+  // Return to the canonical task-scoped view without assuming the Run was on page 1.
+  responses.push({items:[{run_id:'run_Global',task_id:'task_Global',status:'running',
+    trigger:{type:'manual'},counts:{succeeded:4,failed:1}}]});
+  fire('openRunTaskBtn');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls.at(-1).url,'/v1/requirement-tasks/task_Global/runs?limit=20&offset=0');
+  assert.equal(nodes.runsPanel.hidden,false);
+  assert.equal(nodes.itemsPanel.hidden,true);
+
+  // Changing the bearer while a global history GET is in flight must discard it.
+  let resolveHistory;
+  responses.push(new Promise(resolve=>{resolveHistory=resolve;}));
+  fire('loadAllRuns');
+  await new Promise(resolve=>setImmediate(resolve));
+  const previousRows=nodes.allRunRows.children.length;
+  nodes.authToken.value='SECRET-TOKEN-2';
+  fire('authToken','input');
+  resolveHistory({items:[{run_id:'oldRun',task_id:'oldTask'}]});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(previousRows,0);
+  assert.equal(nodes.allRunRows.children.length,0);
+  assert.equal(nodes.allRunNext.disabled,true);
+  nodes.authToken.value='SECRET-TOKEN-1';
+  fire('authToken','input');
 
   // An in-flight detail result for the old bearer must never repopulate the UI.
   let finishOld;

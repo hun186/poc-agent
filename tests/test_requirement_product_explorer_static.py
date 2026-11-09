@@ -50,6 +50,13 @@ def test_product_explorer_is_readonly_and_does_not_store_tokens():
     assert 'id="runDetailBtn"' in html
     assert 'id="taskDetails"' in html
     assert 'id="runDetails"' in html
+    assert 'id="loadAllRuns"' in html
+    assert 'id="allRunRows"' in html
+    assert 'id="allRunPrev"' in html and 'id="allRunNext"' in html
+    assert 'id="openRunTaskBtn"' in html
+    assert "/v1/requirement-runs?limit=" in js
+    assert "openAllRun(run.run_id, run.task_id)" in js
+    assert "runs.length > LIMIT" in js
     assert "loadTaskDetail()" in js and "loadRunDetail()" in js
     assert "item.task_id !== id" in js
     assert "item.run_id !== id || item.task_id !== state.taskId" in js
