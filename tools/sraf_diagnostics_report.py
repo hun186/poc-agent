@@ -123,7 +123,7 @@ def render_report(report: dict[str, object]) -> str:
     warnings = sorted((r for r in selected if r["status"] in FOCUS),
                       key=lambda row: (PRIORITY[row["status"]],
                                        row["id"]))
-    level = report.get("level") if report.get("level") in ("L1", "L2", "L3") else "UNKNOWN"
+    level = report.get("level") if report.get("level") in ("L0", "L1", "L2", "L3") else "UNKNOWN"
     overall = report.get("status") if report.get("status") in STATUS else "INCOMPLETE"
 
     lines = [
