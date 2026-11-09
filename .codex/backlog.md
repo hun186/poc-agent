@@ -59,3 +59,5 @@
 - `.codex/archive/backlog.md-20261103-182200.md`: complete verbatim pre-compaction backlog, including all historic work/date blocks and unresolved handoffs, archived before rewriting this active file for AGENTS.md memory compaction; consult only for historical evidence.
 - `.codex/archive/backlog.md-20261031-031500.md`: earlier complete pre-compaction backlog, Git blob SHA `56d811914d7a7c48c926baaffe78fffdef6d4c6a`; existing archives remain.
 - Compacted 2026-11-03 after AGENTS.md dated-record threshold; full history retained in archives; current code, exact-head PR/CI and actual operator evidence supersede stale historical draft labels.
+
+- **2026-11-09 layered diagnostics candidate:** implement/test one root L0/L1 default and explicitly selected L2 SQL/ES/local Ollama, L3 single real Report Job + DOCX (existing safe backend); full Requirement→Schedule→Handoff→Report Job E2E remains NOT_IMPLEMENTED in unified runner, pending isolated fixture, authoritative scheduler activity and separate operator consent. No real Linux test or release-ready claim until independently observed.
