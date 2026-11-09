@@ -69,3 +69,23 @@ CLI PASS_PARTIAL 退出碼 0、FAIL 退出碼 1、INCOMPLETE 退出碼 2；只�
 單向增量更新須一併同步根目錄 Shell 與 tools/sraf_operator_diagnostics.py，以及它依賴的既有模組，無需在部署機執行 Git。Hosted CI 不代表部署機 SQL／ES／LLM 或真實 E2E 證據。
 
 若部署 API 使用自訂 shell PORT，分層入口會以啟動前選定的 PORT 執行 L0 六項 Listener 前置檢查並保留該 Port 供 L3 驗收；原本獨立的 0_一鍵快檢_SRAF.sh 仍固定檢查 9002，行為不變。磁碟不足會保留獨立 WARN 與其餘元件結果，而非覆蓋為全部 INCOMPLETE。未量測耗時的項目顯示 not_measured，不能當成 0ms。
+
+## 內網維護人員：中文診斷與離線報告
+
+預設執行仍然是原本的安全 L0／L1 模式，不登入、不查 SQL、不呼叫模型或建立 Job：
+
+~~~bash
+bash 1_完整診斷驗收_SRAF.sh
+~~~
+
+新版終端報告直接顯示：每項實際觀察與驗證範圍、中文狀態、是否未測、依嚴重程度排序的待釐清項目與維護建議。ES／LLM TCP 可達不能被寫成搜尋／推論功能正常；API /healthz HTTP 200 也不等於整套報告業務鏈通過。Worker `worker_process_identity_unverified` 只表示程序身分證據不足，首個 Schedule 身分不符時會停止、不能用 0／2 推論兩個 Worker 都壞掉。避免手動改身份紀錄／權限或重啟服務。
+
+要在沒有外網的內網**留存 TXT＋JSON**，可指定額外的私人診斷目錄：
+
+~~~bash
+bash 1_完整診斷驗收_SRAF.sh --report-dir /trusted/private/maintenance-reports
+~~~
+
+這個 `--report-dir` 與 L3 原有的 `--output-dir` 不同。指定時，既有 OFF-1 no-follow 安全檢查會先驗證所有祖先目錄及目前使用者獨佔的 0700 最終目錄，之後才執行探針。兩份報告以 `sraf-diagnostics-UTC時間-隨機碼.txt`／`.json` 寫入，使用 O_EXCL、O_NOFOLLOW、0600。輸出 `REPORT_SAVE=PASS` 才表示雙檔已寫入；`REPORT_SAVE=INCOMPLETE` 表示保存未完成且結束碼為 2。不得因共享掛載目錄拒絕而放寬權限或轉存至不可信路徑。終端不會顯示任何私人輸出路徑、Token、密碼、IP、PID 或原始例外資訊。
+
+末行 `SRAF_DIAGNOSTICS_JSON=` 仍保留供原有程式解析。預設模式**不寫入診斷檔案**；只有明確選用 `--report-dir` 才保存。此中文判讀與本機報告不需要 Internet，也不需要回傳給 ChatGPT。即使元件觀察通過，`production_release_ready=false`、物理斷網／Wheelhouse／備份還原依舊不成立。

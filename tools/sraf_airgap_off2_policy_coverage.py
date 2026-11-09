@@ -41,6 +41,7 @@ REQUIRED_OPERATOR_FILES = (
     "tools/sraf_airgap_off2_policy_coverage.py",
     "1_完整診斷驗收_SRAF.sh",
     "tools/sraf_operator_diagnostics.py",
+    "tools/sraf_diagnostics_report.py",
 )
 
 

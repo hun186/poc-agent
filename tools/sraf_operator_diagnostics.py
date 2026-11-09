@@ -10,6 +10,7 @@ restart. Full Requirement E2E requires a separate explicit --full-e2e opt-in.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
@@ -23,6 +24,8 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from tools.sraf_diagnostics_report import render_report  # noqa: E402
 
 SCHEMA = "sraf_operator_layered_diagnostics_v2"
 LEVELS = ("L1", "L2", "L3")
@@ -385,6 +388,25 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
+def _write_private_operator_report(result: dict[str, object], text: str,
+                                   directory_fd: int) -> bool:
+    """Persist only the sanitized diagnosis and fixed schema evidence.
+
+    Directory trust is established before any network/LLM/SQL test runs.
+    The existing OFF-1 secure writer uses O_EXCL, O_NOFOLLOW and 0600 mode.
+    """
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    filename = "sraf-diagnostics-" + stamp + "-" + os.urandom(5).hex()
+    encoded = json.dumps(result, sort_keys=True, ensure_ascii=True,
+                         separators=(",", ":")).encode("utf-8")
+    if len(encoded) > 65536 or len(text.encode("utf-8")) > 65536:
+        return False
+    jobs._secure_write(filename + ".txt", text.encode("utf-8"), directory_fd)
+    jobs._secure_write(filename + ".json", encoded, directory_fd)
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--level", choices=LEVELS, default="L1")
@@ -398,6 +420,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verification", choices=("release", "functional"), default="release")
     parser.add_argument("--token-env")
     parser.add_argument("--output-dir")
+    parser.add_argument("--report-dir", help="Optional private trusted directory for sanitized Chinese TXT + JSON; no auto-chmod, no raw logs")
     parser.add_argument("--max-seconds", type=int, default=1200)
     args = parser.parse_args(argv)
 
@@ -419,13 +442,42 @@ def main(argv: list[str] | None = None) -> int:
     if Path.cwd().resolve() != ROOT:
         print("SRAF_DIAGNOSTICS=INCOMPLETE reason=run_from_repository_root")
         return 2
-    result = run(args)
-    print("SRAF 分層診斷 | " + args.level + " | " + result["status"])
+    report_fd = None
+    if args.report_dir:
+        # Directory must be safe BEFORE any real observation or side effects;
+        # failure never falls back to a weaker location or chmods ancestors.
+        try:
+            if not Path(args.report_dir).is_absolute():
+                raise ValueError("relative_report_dir")
+            from tools import sraf_airgap_report_jobs_acceptance as jobs
+            report_fd = jobs._secure_output_dir(Path(args.report_dir))
+        except Exception:
+            print("SRAF_DIAGNOSTICS=INCOMPLETE reason=report_dir_unverified")
+            return 2
+    try:
+        result = run(args)
+        text_report = render_report(result)
+        print(text_report, end="")
+        if report_fd is not None:
+            try:
+                saved = _write_private_operator_report(result, text_report, report_fd)
+            except Exception:
+                saved = False
+            result["report_save"] = "PASS" if saved else "INCOMPLETE"
+            print("REPORT_SAVE=" + result["report_save"]
+                  + " reason=" + ("private_txt_json_written"
+                                if saved else "report_write_unavailable"))
+        print("SRAF 分層診斷 | " + args.level + " | " + result["status"])
+    finally:
+        if report_fd is not None:
+            os.close(report_fd)
     for row in result["checks"]:
         print(row["id"] + "=" + row["status"] + " reason=" + row["reason"]
               + " elapsed_ms=" + (str(row["elapsed_ms"]) if row["elapsed_ms"] is not None else "not_measured"))
     print("SRAF_DIAGNOSTICS_JSON=" + json.dumps(result, sort_keys=True,
           ensure_ascii=True, separators=(",", ":")))
+    if result.get("report_save") == "INCOMPLETE":
+        return 2
     return 1 if result["status"] == "FAIL" else 2 if result["status"] == "INCOMPLETE" else 0
 
 

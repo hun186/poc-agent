@@ -44,7 +44,8 @@
     "tools/sraf_airgap_off2_user_site.py",
     "tools/sraf_airgap_off2_runtime_launchers.py",
     "tools/sraf_local_deploy_quickcheck.py",
-    "tools/sraf_operator_diagnostics.py"
+    "tools/sraf_operator_diagnostics.py",
+    "tools/sraf_diagnostics_report.py"
   ],
   "allowed_runtime_extra_globs": [],
   "guarded_root_extensions": [
