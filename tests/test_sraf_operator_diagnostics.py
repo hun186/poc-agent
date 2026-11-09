@@ -420,7 +420,7 @@ def test_human_report_does_not_infer_es_llm_functionality_from_tcp():
     rows.append(target._row("L3.requirement_schedule_handoff_e2e",
                             "NOT_TESTED", "probe_not_requested"))
     output = render_report({"level": "L1", "status": "PASS_PARTIAL", "checks": rows})
-    assert "未驗證 TLS 憑證、身分、Mapping 或實際搜尋" in output
+    assert "不驗證 TLS 憑證、身分、Mapping 或實際搜尋" in output
     assert "尚未測試" not in output or "功能驗收" in output
     assert "不能等同正式上線" in output
 
@@ -499,3 +499,56 @@ def test_private_report_write_failure_returns_incomplete_without_exposing_path(
     output = capsys.readouterr().out
     assert "REPORT_SAVE=INCOMPLETE reason=report_write_unavailable" in output
     assert str(tmp_path) not in output
+
+
+@pytest.mark.parametrize("state,reason", [
+    ("FAIL", "healthz_http_unavailable"),
+    ("SKIP", "api_tcp_not_verified"),
+    ("INCOMPLETE", "healthz_unverified"),
+])
+def test_failed_or_skipped_api_health_description_never_claims_http_pass(
+        state, reason):
+    from tools.sraf_diagnostics_report import render_report
+    rows = [target._row("L0." + n, "PASS_PARTIAL", "observed")
+            for n in target.L0_CHECKS]
+    for n in target.L1_CHECKS:
+        if n == "api_health":
+            rows.append(target._row("L1." + n, state, reason))
+        else:
+            rows.append(target._row("L1." + n, "PASS",
+                                    "configured_tcp_connected"))
+    rows.extend(target._row("L2." + n, "NOT_TESTED", "probe_not_requested")
+                for n in target.L2_CHECKS)
+    rows.extend((
+        target._row("L3.report_job_docx", "NOT_TESTED", "probe_not_requested"),
+        target._row("L3.requirement_schedule_handoff_e2e",
+                    "NOT_TESTED", "probe_not_requested"),
+    ))
+    report = render_report({"level": "L1", "status": "INCOMPLETE", "checks": rows})
+    api_line = next(line for line in report.splitlines()
+                    if line.lstrip().startswith("[" + {
+                        "FAIL": "失敗", "SKIP": "未完成", "INCOMPLETE": "待確認",
+                    }[state] + "] API /healthz："))
+    assert "通過" not in api_line
+    assert "已收到" not in api_line
+    assert "HTTP 檢查" in api_line
+    assert "API 健康狀態尚未通過 HTTP 200 確認" in report
+
+
+def test_raw_failure_cannot_become_success_by_fallback_description():
+    from tools.sraf_diagnostics_report import render_report
+    rows = [target._row("L0." + n, "FAIL", "unknown_but_safe_reason")
+            for n in target.L0_CHECKS]
+    rows.extend(target._row("L1." + n, "FAIL", "unknown_but_safe_reason")
+                for n in target.L1_CHECKS)
+    rows.extend(target._row("L2." + n, "NOT_TESTED", "probe_not_requested")
+                for n in target.L2_CHECKS)
+    rows.extend([
+        target._row("L3.report_job_docx", "NOT_TESTED", "probe_not_requested"),
+        target._row("L3.requirement_schedule_handoff_e2e",
+                    "NOT_TESTED", "probe_not_requested"),
+    ])
+    text = render_report({"level": "L1", "status": "FAIL", "checks": rows})
+    assert "[失敗] API /healthz：匿名 GET /healthz HTTP 檢查" in text
+    assert "[失敗] Elasticsearch 連線：僅檢查 TCP 連線" in text
+    assert "unknown_but_safe_reason" not in text
