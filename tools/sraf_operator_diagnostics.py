@@ -253,10 +253,10 @@ def _full_e2e_status(args: argparse.Namespace) -> tuple[str, str]:
     activation, real Agent/ES/LLM and DOCX work; never run without operator
     opt-in and private environment/output evidence. No semantic mocks.
     """
-    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
     # Guard all output-directory ancestors BEFORE reading credentials, creating
     # fixtures or running the harness. Unlike L1, this mode writes real files.
-    output_fd = jobs._secure_output_dir(Path(args.output_dir))
+    output_fd = store._secure_output_dir(Path(args.output_dir))
     os.close(output_fd)
 
     env_file = ROOT / "operator_e2e" / "e2e.env.local"
@@ -402,15 +402,15 @@ def _write_private_operator_report(result: dict[str, object], text: str,
     Directory trust is established before any network/LLM/SQL test runs.
     The existing OFF-1 secure writer uses O_EXCL, O_NOFOLLOW and 0600 mode.
     """
-    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    from tools import sraf_private_report_store as store
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     filename = "sraf-diagnostics-" + stamp + "-" + os.urandom(5).hex()
     encoded = json.dumps(result, sort_keys=True, ensure_ascii=True,
                          separators=(",", ":")).encode("utf-8")
     if len(encoded) > 65536 or len(text.encode("utf-8")) > 65536:
         return False
-    jobs._secure_write(filename + ".txt", text.encode("utf-8"), directory_fd)
-    jobs._secure_write(filename + ".json", encoded, directory_fd)
+    store._secure_write(filename + ".txt", text.encode("utf-8"), directory_fd)
+    store._secure_write(filename + ".json", encoded, directory_fd)
     return True
 
 
@@ -478,9 +478,9 @@ def main(argv: list[str] | None = None) -> int:
     if report_path is not None:
         # The existing OFF-1 guard may create only the final 0700 directory;
         # never auto-create intermediate parents or relax shared mounts.
-        from tools import sraf_airgap_report_jobs_acceptance as jobs
+        from tools import sraf_private_report_store as store
         try:
-            report_fd = jobs._secure_output_dir(report_path)
+            report_fd = store._secure_output_dir(report_path)
         except Exception:
             print("SRAF_DIAGNOSTICS=INCOMPLETE reason=report_dir_unverified")
             print("操作建議：檢查目錄是否存在、所有權與權限；如所在的"
