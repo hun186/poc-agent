@@ -49,3 +49,5 @@ L3 要求 L0 六項可觀察、L1 匿名 API 健康與 ES／LLM TCP 成功，並
 CLI PASS_PARTIAL 退出碼 0、FAIL 退出碼 1、INCOMPLETE 退出碼 2；只是**所選診斷子集**狀態，不是正式 Release Gate。安全驗證缺失時，禁止停用 TLS、放寬目錄權限、跳過 Listener 保護。原 0_一鍵快檢_SRAF.sh 和其他 OFF-1/OFF-2 工具不變。
 
 單向增量更新須一併同步根目錄 Shell 與 tools/sraf_operator_diagnostics.py，以及它依賴的既有模組，無需在部署機執行 Git。Hosted CI 不代表部署機 SQL／ES／LLM 或真實 E2E 證據。
+
+若部署 API 使用自訂 shell PORT，分層入口會以啟動前選定的 PORT 執行 L0 六項 Listener 前置檢查並保留該 Port 供 L3 驗收；原本獨立的 0_一鍵快檢_SRAF.sh 仍固定檢查 9002，行為不變。磁碟不足會保留獨立 WARN 與其餘元件結果，而非覆蓋為全部 INCOMPLETE。未量測耗時的項目顯示 not_measured，不能當成 0ms。
