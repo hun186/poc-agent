@@ -402,8 +402,8 @@ def test_maintenance_report_distinguishes_worker_identity_from_service_outage():
     assert "Elasticsearch：TCP 連線可達" in output
     assert "LLM：TCP 連線可達" in output
     assert "0/2 不能解讀為兩個都掛掉" in output
-    assert "尚未執行 SQL 功能測試" in output
-    assert "尚未執行 Report Job" in output
+    assert "本次未執行 SQL 功能測試" in output
+    assert "本次未執行 Report Job" in output
     assert "綜合判定：待確認 (INCOMPLETE)" in output
     assert output.index("【二、需維護人員確認的項目") < output.index("【三、維護結論")
 
