@@ -19,7 +19,8 @@ const ids = [
   'runsPanel', 'currentTask', 'runsRows', 'runPrev', 'runNext', 'runPage',
   'itemsPanel', 'currentRun', 'itemRows', 'itemPrev', 'itemNext', 'itemPage',
   'taskDetailBtn', 'taskDetails', 'runDetailBtn', 'runDetails',
-  'loadAllRuns', 'allRunRows', 'allRunPrev', 'allRunNext', 'allRunPage', 'openRunTaskBtn'
+  'loadAllRuns', 'allRunRows', 'allRunPrev', 'allRunNext', 'allRunPage', 'openRunTaskBtn',
+  'lookupRunId', 'lookupRunBtn'
 ];
 const nodes = Object.fromEntries(ids.map(id => [id, element()]));
 const document = { getElementById: id => {
@@ -135,6 +136,49 @@ async function selectFirst(tableId, index) {
   assert.equal(calls.at(-1).url,'/v1/requirement-tasks/task_Global/runs?limit=20&offset=0');
   assert.equal(nodes.runsPanel.hidden,false);
   assert.equal(nodes.itemsPanel.hidden,true);
+
+  // Direct lookup is strict, bounded, authorized and does not assume a task ID.
+  const beforeInvalid = calls.length;
+  nodes.lookupRunId.value = '../private';
+  await fire('lookupRunBtn');
+  assert.equal(calls.length, beforeInvalid);
+  assert.match(nodes.message.textContent, /格式不正確/);
+  nodes.lookupRunId.value = 'run_Lookup';
+  responses.push({run_id:'run_NOT_requested',task_id:'task_Other'});
+  await fire('lookupRunBtn');
+  assert.equal(calls.length,beforeInvalid+1);
+  assert.equal(calls.at(-1).url,'/v1/requirement-runs/run_Lookup');
+  assert.equal(nodes.itemsPanel.hidden,true);
+  assert.match(nodes.message.textContent,/無法確認/);
+
+  responses.push({run_id:'run_Lookup',task_id:'task_Verified',status:'completed'});
+  responses.push({items:[{run_item_id:'item_verified',requirement_id:'req_v',
+    selection_status:'selected',status:'completed',artifact:{available:true}}]});
+  await fire('lookupRunBtn');
+  assert.equal(calls.at(-2).url,'/v1/requirement-runs/run_Lookup');
+  assert.equal(calls.at(-1).url,'/v1/requirement-runs/run_Lookup/items?limit=20&offset=0');
+  assert.equal(nodes.itemRows.children[0].children[0].textContent,'item_verified');
+  assert.equal(nodes.openRunTaskBtn.hidden,false);
+  responses.push({run_id:'run_Lookup',task_id:'task_Verified',status:'completed',
+    binding:{},trigger:{type:'manual'},counts:{}});
+  await fire('runDetailBtn');
+  assert.equal(nodes.runDetails.children[3].textContent,'task_Verified');
+
+  // In-flight lookup from an old identity cannot resolve to an items GET.
+  let resolveLookup;
+  responses.push(new Promise(resolve=>{resolveLookup=resolve;}));
+  const pendingLookup=fire('lookupRunBtn');
+  await new Promise(resolve=>setImmediate(resolve));
+  const beforeSwitch = calls.length;
+  nodes.authToken.value='SECRET-TOKEN-2';
+  fire('authToken','input');
+  resolveLookup({run_id:'run_Lookup',task_id:'task_Verified'});
+  await pendingLookup;
+  assert.equal(calls.length,beforeSwitch);
+  assert.equal(nodes.itemsPanel.hidden,true);
+  assert.equal(nodes.lookupRunId.value,'');
+  nodes.authToken.value='SECRET-TOKEN-1';
+  fire('authToken','input');
 
   // Changing the bearer while a global history GET is in flight must discard it.
   let resolveHistory;

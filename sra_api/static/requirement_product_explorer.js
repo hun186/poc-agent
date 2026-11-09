@@ -199,6 +199,28 @@
       if (rev === state.revision) { page('allRun', offset, 0); showError(error); }
     }
   }
+  async function lookupRunById() {
+    const id = $('lookupRunId').value.trim();
+    if (!safeId(id)) {
+      note('批次 ID 格式不正確；請輸入 1–128 個英數字、底線或連字號。');
+      return;
+    }
+    const rev = ++state.revision;
+    resetRuns();
+    note('正在查證此批次及所屬任務…');
+    try {
+      // Do not trust a caller-supplied task ID. Verify the run's canonical
+      // task identity through the already-authorized Product run presenter.
+      const run = await requestJson('/v1/requirement-runs/' + encodeURIComponent(id));
+      if (rev !== state.revision || $('lookupRunId').value.trim() !== id) return;
+      if (!run || Array.isArray(run) || run.run_id !== id || !safeId(run.task_id)) {
+        throw new Error('invalid_contract');
+      }
+      await openAllRun(run.run_id, run.task_id);
+    } catch (error) {
+      if (rev === state.revision) showError(error);
+    }
+  }
   async function openAllRun(runId, taskId) {
     if (!safeId(runId) || !safeId(taskId)) return;
     // The global list already came from an authorized Product presenter.
@@ -295,6 +317,7 @@
   $('openRunTaskBtn').addEventListener('click', () => {
     if (safeId(state.taskId)) loadRuns(state.taskId, 0);
   });
+  $('lookupRunBtn').addEventListener('click', lookupRunById);
   $('loadAllRuns').addEventListener('click', () => loadAllRuns(0));
   $('allRunPrev').addEventListener('click', () => loadAllRuns(Math.max(0, state.allRunOffset - LIMIT)));
   $('allRunNext').addEventListener('click', () => loadAllRuns(state.allRunOffset + LIMIT));
@@ -314,6 +337,7 @@
     clearRows('taskRows');
     clearRows('allRunRows');
     state.allRunOffset = 0;
+    $('lookupRunId').value = '';
     page('allRun', 0, 0);
     page('task', 0, 0);
     note('認證已變更，已清除上一個帳號的畫面資料；請重新載入。');
@@ -325,6 +349,7 @@
     clearRows('taskRows');
     clearRows('allRunRows');
     state.allRunOffset = 0;
+    $('lookupRunId').value = '';
     page('allRun', 0, 0);
   });
   page('task', 0, 0);
