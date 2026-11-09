@@ -183,7 +183,7 @@ def _llm_status(cfg: dict[str, str], ollama_pid: int) -> tuple[str, str]:
     return "INCOMPLETE", "llm_contract_unverified"
 
 
-def _live_status(args: argparse.Namespace) -> tuple[str, str]:
+def _live_status(args: argparse.Namespace, launcher_port: str | None) -> tuple[str, str]:
     # The existing reviewed operator CLI enforces strict OFF-1S owner proof,
     # single POST, bounded polling, DOCX validation and no-follow private
     # evidence storage; do not implement another HTTP/report-job client.
@@ -194,8 +194,22 @@ def _live_status(args: argparse.Namespace) -> tuple[str, str]:
               "--token-env", args.token_env, "--output-dir", args.output_dir,
               "--max-seconds", str(args.max_seconds)]
     captured = io.StringIO()
-    with redirect_stdout(captured):
-        code = jobs.main(params)
+    # OFF-1B bootstrap loads dotenv into os.environ; the original launcher
+    # PORT is the shell value BEFORE that load, not a later dotenv fallback.
+    # Preserve that selection when delegating to the existing Jobs CLI.
+    prior_port = os.environ.get("PORT")
+    try:
+        if launcher_port is None:
+            os.environ.pop("PORT", None)
+        else:
+            os.environ["PORT"] = launcher_port
+        with redirect_stdout(captured):
+            code = jobs.main(params)
+    finally:
+        if prior_port is None:
+            os.environ.pop("PORT", None)
+        else:
+            os.environ["PORT"] = prior_port
     # Never forward path-bearing evidence filenames, job IDs or log contents.
     lines = captured.getvalue().splitlines()
     if code == 0 and "SRAF_REPORT_JOBS_ACCEPTANCE=PASS_PARTIAL" in lines:
@@ -206,6 +220,8 @@ def _live_status(args: argparse.Namespace) -> tuple[str, str]:
 
 
 def run(args: argparse.Namespace) -> dict[str, object]:
+    # Capture launch-time PORT before the runtime dotenv bootstrap changes env.
+    launcher_port = os.environ.get("PORT")
     rows: list[dict[str, object]] = []
     try:
         l0_status, l0 = _local_rows()
@@ -216,9 +232,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     for name in L0_CHECKS)
     try:
         cfg, l1 = _l1_rows()
+    except ModuleNotFoundError:
+        cfg = None
+        l1 = [_row("L1." + name, "INCOMPLETE", "l1_dependency_import_unavailable")
+              for name in L1_CHECKS]
     except Exception:
         cfg = None
-        l1 = [_row("L1." + name, "SKIP", "runtime_probe_unavailable")
+        l1 = [_row("L1." + name, "INCOMPLETE", "runtime_probe_unavailable")
               for name in L1_CHECKS]
     rows.extend(l1)
     l1_by_id = {row["id"]: row["status"] for row in l1}
@@ -249,7 +269,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 l1_by_id.get("L1.llm_tcp") != "PASS"):
             rows.append(_row("L3.report_job_docx", "SKIP", "prerequisites_not_verified"))
         else:
-            rows.append(_run("L3.report_job_docx", lambda: _live_status(args)))
+            rows.append(_run("L3.report_job_docx", lambda: _live_status(args, launcher_port)))
     else:
         rows.append(_row("L3.report_job_docx", "NOT_TESTED", "probe_not_requested"))
     # This runner never creates Requirement/Schedule fixtures. An observed Job
