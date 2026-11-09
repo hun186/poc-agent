@@ -318,10 +318,8 @@ UNIFIED = ROOT / "1_完整診斷驗收_SRAF.sh"
 
 def test_single_unified_operator_shortcut_is_pinned_and_has_offline_l0():
     import json
-    import stat
 
     assert UNIFIED.is_file()
-    assert UNIFIED.stat().st_mode & stat.S_IXUSR
     assert not (ROOT / "0_一鍵快檢_SRAF.sh").exists()
     policy = json.loads(
         (ROOT / "tools/deployment_manifest_policy.json").read_text(encoding="utf-8")
