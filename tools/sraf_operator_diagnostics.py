@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-SCHEMA = "sraf_operator_layered_diagnostics_v1"
+SCHEMA = "sraf_operator_layered_diagnostics_v2"
 LEVELS = ("L1", "L2", "L3")
 STATES = frozenset(("PASS", "PASS_PARTIAL", "WARN", "FAIL", "SKIP", "INCOMPLETE", "NOT_TESTED"))
 SAFE_REASON = re.compile(r"[a-z][a-z0-9_]{0,79}\Z", re.ASCII)
