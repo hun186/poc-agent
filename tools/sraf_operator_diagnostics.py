@@ -5,17 +5,18 @@ Default L1 is bounded read-only local checks plus anonymous HTTP/TCP.
 L2 probes run only on separate opt-in flags. L3 submits exactly one existing
 Report Job only with a named scoped token, trusted output directory and the
 reviewed OFF-1S listener guard. No hidden model call, SQL write, or worker
-restart. Full Requirement -> Schedule -> Handoff E2E is NOT performed here.
+restart. Full Requirement E2E requires a separate explicit --full-e2e opt-in.
 """
 from __future__ import annotations
 
 import argparse
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 import os
 from pathlib import Path
 import re
+import stat
 import sys
 import time
 
@@ -227,6 +228,71 @@ def _live_status(args: argparse.Namespace, launcher_port: str | None) -> tuple[s
     return "SKIP", "report_job_acceptance_incomplete"
 
 
+
+class _BoundedOutput(io.TextIOBase):
+    """Keep only a bounded tail of the existing E2E CLI's operator output.
+
+    Never print or serialize its possible fixture paths, IDs or diagnostics.
+    Its own durable private result.json and summary.txt remain authoritative.
+    """
+    def __init__(self):
+        self.tail = ""
+
+    def write(self, value: str) -> int:
+        self.tail = (self.tail + value)[-16384:]
+        return len(value)
+
+
+def _full_e2e_status(args: argparse.Namespace) -> tuple[str, str]:
+    """Run the EXISTING live-only Requirement/Schedule/Handoff harness once.
+
+    This harness performs authorized SQL writes, actual automatic Schedule
+    activation, real Agent/ES/LLM and DOCX work; never run without operator
+    opt-in and private environment/output evidence. No semantic mocks.
+    """
+    from tools import sraf_airgap_report_jobs_acceptance as jobs
+    # Guard all output-directory ancestors BEFORE reading credentials, creating
+    # fixtures or running the harness. Unlike L1, this mode writes real files.
+    output_fd = jobs._secure_output_dir(Path(args.output_dir))
+    os.close(output_fd)
+
+    env_file = ROOT / "operator_e2e" / "e2e.env.local"
+    try:
+        metadata = env_file.lstat()
+        if (not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+                or metadata.st_mode & 0o077
+                or metadata.st_size <= 0 or metadata.st_size > 65536):
+            return "SKIP", "e2e_private_environment_unverified"
+    except OSError:
+        return "SKIP", "e2e_private_environment_unverified"
+
+    from operator_e2e import test_requirement_schedule_e2e as harness
+    # The verified original harness already enforces canonical XLSX/source
+    # authority, local worker identities, strict mode agreement, scoped tokens,
+    # lease/auto-claim/Handoff and DOCX reconciliation; never clone its calls.
+    params = ["--mode", "local", "--external-mode", "live",
+              "--verification", args.verification,
+              "--env-file", str(env_file), "--output-dir", args.output_dir]
+    output = _BoundedOutput()
+    with redirect_stdout(output), redirect_stderr(output):
+        code = harness.main(params)
+
+    lines = set(output.tail.splitlines())
+    verified = (code == 0 and "REQUIREMENT_E2E = PASS" in lines
+                and "FUNCTIONAL_RESULT = PASS" in lines)
+    if verified and args.verification == "release" and (
+            "SOURCE_ATTESTATION = VERIFIED" in lines
+            and "DEPLOYMENT_ACCEPTANCE = ESTABLISHED" in lines):
+        return "PASS_PARTIAL", "live_requirement_chain_observed_not_airgap"
+    if verified and args.verification == "functional" and (
+            "DEPLOYMENT_ACCEPTANCE = NOT_ESTABLISHED" in lines):
+        return "PASS_PARTIAL", "functional_live_chain_observed_not_release"
+    if "REQUIREMENT_E2E = FAIL" in lines:
+        return "FAIL", "requirement_e2e_harness_failed"
+    return "INCOMPLETE", "requirement_e2e_evidence_unverified"
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
     # Capture launch-time PORT before the runtime dotenv bootstrap changes env.
     launcher_port = os.environ.get("PORT")
@@ -270,20 +336,24 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         rows.extend(_row("L2." + name, "NOT_TESTED", "probe_not_requested")
                     for name in L2_CHECKS)
 
-    if args.level == "L3":
-        if (l0_status != "PASS_PARTIAL" or
-                l1_by_id.get("L1.api_health") != "PASS" or
-                l1_by_id.get("L1.es_tcp") != "PASS" or
-                l1_by_id.get("L1.llm_tcp") != "PASS"):
-            rows.append(_row("L3.report_job_docx", "SKIP", "prerequisites_not_verified"))
-        else:
-            rows.append(_run("L3.report_job_docx", lambda: _live_status(args, launcher_port)))
+    l3_ready = (l0_status == "PASS_PARTIAL"
+                and all(l1_by_id.get("L1." + name) == "PASS"
+                        for name in L1_CHECKS))
+    if args.level == "L3" and args.live_report:
+        rows.append(_run("L3.report_job_docx", lambda: _live_status(args, launcher_port))
+                    if l3_ready else
+                    _row("L3.report_job_docx", "SKIP", "prerequisites_not_verified"))
     else:
         rows.append(_row("L3.report_job_docx", "NOT_TESTED", "probe_not_requested"))
-    # This runner never creates Requirement/Schedule fixtures. An observed Job
-    # does NOT prove Requirement -> Scheduler -> Handoff full E2E.
-    rows.append(_row("L3.requirement_schedule_handoff_e2e", "NOT_TESTED",
-                     "full_e2e_not_implemented"))
+    if args.level == "L3" and args.full_e2e:
+        rows.append(_run("L3.requirement_schedule_handoff_e2e",
+                         lambda: _full_e2e_status(args))
+                    if l3_ready else
+                    _row("L3.requirement_schedule_handoff_e2e", "SKIP",
+                         "prerequisites_not_verified"))
+    else:
+        rows.append(_row("L3.requirement_schedule_handoff_e2e", "NOT_TESTED",
+                         "probe_not_requested"))
 
     selected = [row for row in rows if row["status"] != "NOT_TESTED"]
     if any(row["status"] == "FAIL" for row in selected):
@@ -295,16 +365,22 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         overall = "INCOMPLETE"
     else:
         overall = "PASS_PARTIAL"
+    full_e2e = next(row for row in rows
+                    if row["id"] == "L3.requirement_schedule_handoff_e2e")
     return {
         "schema": SCHEMA, "level": args.level, "status": overall,
         "production_release_ready": False,
-        "full_requirement_schedule_handoff_e2e": "NOT_TESTED",
+        "full_requirement_schedule_handoff_e2e": (
+            "OBSERVED_PARTIAL" if full_e2e["status"] == "PASS_PARTIAL"
+            else "NOT_TESTED" if full_e2e["status"] == "NOT_TESTED"
+            else "INCOMPLETE_OR_FAILED"),
         "physical_airgap": "NOT_TESTED",
         "l2_selected": [name for name, flag in (
             ("sql_constant_read", args.probe_sql_read),
             ("es_tls_mapping", args.probe_es_tls_mapping),
             ("llm_inference", args.probe_llm_inference)) if flag],
         "l3_job_requested": args.live_report,
+        "l3_full_e2e_requested": args.full_e2e,
         "checks": rows,
     }
 
@@ -317,6 +393,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--probe-llm-inference", action="store_true")
     parser.add_argument("--ollama-server-pid", type=int)
     parser.add_argument("--live-report", action="store_true")
+    parser.add_argument("--full-e2e", action="store_true",
+                        help="Run existing REAL local Requirement -> Schedule -> Handoff -> DOCX harness; SQL/ES writes and LLM cost; requires private e2e.env.local and output-dir")
+    parser.add_argument("--verification", choices=("release", "functional"), default="release")
     parser.add_argument("--token-env")
     parser.add_argument("--output-dir")
     parser.add_argument("--max-seconds", type=int, default=1200)
@@ -325,12 +404,16 @@ def main(argv: list[str] | None = None) -> int:
     l2_selected = any((args.probe_sql_read, args.probe_es_tls_mapping,
                        args.probe_llm_inference))
     if (args.level == "L1" and l2_selected
-            or args.level == "L3" and (not args.live_report or l2_selected)
-            or args.level != "L3" and (args.live_report or args.token_env or args.output_dir)
+            or args.level == "L3" and (args.live_report == args.full_e2e or l2_selected)
+            or args.level != "L3" and (args.live_report or args.full_e2e or args.token_env or args.output_dir)
+            or args.verification != "release" and not args.full_e2e
+            or args.full_e2e and args.token_env
             or args.probe_llm_inference != (args.ollama_server_pid is not None)
-            or args.level == "L3" and (
+            or args.level == "L3" and args.live_report and (
                 not args.token_env or not TOKEN_NAME.fullmatch(args.token_env)
                 or not args.output_dir or not Path(args.output_dir).is_absolute())
+            or args.level == "L3" and args.full_e2e and (
+                not args.output_dir or not Path(args.output_dir).is_absolute())
             or args.max_seconds < 30 or args.max_seconds > 3600):
         parser.error("invalid layered diagnostic flags or missing explicit authorization")
     if Path.cwd().resolve() != ROOT:
