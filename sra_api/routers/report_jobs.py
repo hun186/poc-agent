@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Literal
 from pathlib import Path
 from datetime import datetime, timezone
 import zipfile
@@ -90,6 +91,7 @@ def list_my_jobs(
     request: Request,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=10000),
+    status: Literal["queued", "running", "completed", "failed", "interrupted"] | None = Query(default=None),
     principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_READ)),
 ):
     """Owner-scoped, read-only list; admin scope never grants global enumeration."""
@@ -98,8 +100,9 @@ def list_my_jobs(
         owner_id=principal.subject,
         limit=limit,
         offset=offset,
+        status=status,
     )
-    return {"items": items, "limit": limit, "offset": offset}
+    return {"items": items, "limit": limit, "offset": offset, "status": status}
 
 
 @router.get("/{job_id}", responses={404: {"description": "Not found"}})

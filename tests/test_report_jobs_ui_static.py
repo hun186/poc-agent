@@ -46,6 +46,9 @@ def test_report_job_ui_real_status_contract_and_no_token_persistence():
     assert "credentials: 'omit'" in js
     assert "cache: 'no-store'" in js
     assert "textContent" in js
+    assert 'id="jobStatusFilter"' in html
+    assert "'jobStatusFilter').addEventListener('change'" in js
+    assert "&status=" in js
     assert 'id="listJobsBtn"' in html
     assert 'id="jobRows"' in html
     assert 'id="jobPrev"' in html and 'id="jobNext"' in html

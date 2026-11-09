@@ -98,6 +98,11 @@
   }
   async function loadHistory(offset) {
     if (historyBusy) return;
+    const filter = $('jobStatusFilter').value;
+    if (filter && !Object.prototype.hasOwnProperty.call(statuses, filter)) {
+      $('jobListMessage').textContent = '不支援的狀態篩選，請重新選擇。';
+      return;
+    }
     const access = token();
     if (!access) {
       $('jobListMessage').textContent = '請先輸入具備 report:job:read 權限的 Token。';
@@ -113,7 +118,8 @@
     $('jobRows').replaceChildren();
     $('jobListMessage').textContent = '正在讀取目前身分的報告清單…';
     try {
-      const response = await fetch('/v1/report/jobs?limit=20&offset=' + offset, {
+      const response = await fetch('/v1/report/jobs?limit=20&offset=' + offset +
+        (filter ? '&status=' + encodeURIComponent(filter) : ''), {
         method: 'GET', headers: {Authorization: 'Bearer ' + access},
         signal: ctrl.signal, credentials: 'omit', cache: 'no-store', redirect: 'error'
       });
@@ -122,7 +128,9 @@
       const data = await response.json();
       if (run !== historyGeneration || ctrl.signal.aborted) return;
       if (!data || !Array.isArray(data.items) || data.items.length > 20 ||
-          data.limit !== 20 || data.offset !== offset) {
+          data.limit !== 20 || data.offset !== offset ||
+          data.status !== (filter || null) ||
+          (filter && data.items.some(item => item.status !== filter))) {
         throw new Error('invalid_contract');
       }
       renderHistory(data.items, offset);
@@ -417,6 +425,10 @@
       $('downloadBtn').disabled = false;
     }
   }
+  $('jobStatusFilter').addEventListener('change', function () {
+    clearHistory();
+    $('jobListMessage').textContent = '篩選已變更；請按「讀取我的報告紀錄」取得新的授權清單。';
+  });
   $('listJobsBtn').addEventListener('click', function () { loadHistory(0); });
   $('jobPrev').addEventListener('click', function () {
     if (!historyBusy && historyOffset > 0) loadHistory(Math.max(0, historyOffset - 20));

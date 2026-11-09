@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '..', 'sra_api', 'static', 'report_jobs_ui.js'), 'utf8');
 const ids = ['authToken','prompt','filename','jobId','watchBtn','stopBtn','submitBtn','downloadBtn',
   'progressCard','message','phaseTitle','jobStatus','phaseElapsed','observation','lastChecked','failureMessage',
-  'retrySubmitBtn','discardSubmitBtn','listJobsBtn','jobListMessage','jobRows','jobPrev','jobNext','jobPage'];
+  'retrySubmitBtn','discardSubmitBtn','listJobsBtn','jobListMessage','jobRows','jobPrev','jobNext','jobPage','jobStatusFilter'];
 const elements = Object.fromEntries(ids.map(id => [id, {
   value: '', hidden: false, disabled: false, textContent: '', className: '', handlers: {}, children: [],
   addEventListener(kind, fn) { this.handlers[kind] = fn; },
@@ -243,7 +243,7 @@ function progress(jobId, status, phase, long=false) {
   planned.push(response(200, {items:[
     {job_id:'job-history-A',status:'completed',phase:'completed',
       created_at:'2026-11-08T10:00:00Z',filename:'secret.docx',prompt:'DO NOT SHOW'}
-  ],limit:20,offset:0}));
+  ],limit:20,offset:0,status:null}));
   fire('listJobsBtn');
   await tick();  // DOM click listener does not return the fetch Promise.
   assert.equal(calls.at(-1).url,'/v1/report/jobs?limit=20&offset=0');
@@ -264,6 +264,34 @@ function progress(jobId, status, phase, long=false) {
   assert.equal(calls.at(-1).url,'/v1/report/jobs/job-history-A');
   assert.equal(elements.jobId.value,'job-history-A');
 
+  // Status filter is applied server-side before pagination, never to an arbitrary page.
+  const beforeFilter = calls.length;
+  elements.jobStatusFilter.value = 'failed';
+  fire('jobStatusFilter', 'change');
+  assert.equal(calls.length, beforeFilter, 'filter change must not auto-fetch');
+  assert.equal(elements.jobRows.children.length, 0);
+  assert.equal(elements.jobPage.textContent, '第 1 頁');
+  planned.push(response(200, {items:[{
+    job_id:'job-failed',status:'failed',phase:'failed',
+    created_at:'2026-11-09T03:00:00Z'
+  }],limit:20,offset:0,status:'failed'}));
+  fire('listJobsBtn');
+  await tick();
+  assert.equal(calls.at(-1).url,'/v1/report/jobs?limit=20&offset=0&status=failed');
+  assert.equal(elements.jobRows.children.length,1);
+  assert.equal(elements.jobRows.children[0].children[0].textContent,'job-failed');
+  assert.equal(elements.jobNext.disabled,true);
+  planned.push(response(200,{items:[{
+    job_id:'job-suspect',status:'running',phase:'agent_execution'
+  }],limit:20,offset:0,status:'failed'}));
+  fire('listJobsBtn');
+  await tick();
+  assert.equal(elements.jobRows.children.length,0,
+    'must reject a server response inconsistent with selected status');
+  assert.match(elements.jobListMessage.textContent,/無法取得/);
+  elements.jobStatusFilter.value = '';
+  fire('jobStatusFilter','change');
+
   // Switching identity during GET aborts and clears old owner history.
   let releaseHistory;
   planned.push(new Promise(resolve => {releaseHistory=resolve;}));
@@ -276,7 +304,7 @@ function progress(jobId, status, phase, long=false) {
   assert.equal(signal.aborted,true);
   assert.equal(elements.jobRows.children.length,0);
   assert.equal(elements.progressCard.hidden,true);
-  releaseHistory(response(200,{items:[{job_id:'job-history-A',status:'completed',phase:'completed'}],limit:20,offset:0}));
+  releaseHistory(response(200,{items:[{job_id:'job-history-A',status:'completed',phase:'completed'}],limit:20,offset:0,status:null}));
   await tick();  // settle the old fetch after the account-change abort.
   assert.equal(elements.jobRows.children.length,0);
 
