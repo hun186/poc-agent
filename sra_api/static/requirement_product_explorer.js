@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const LIMIT = 20;
   const safeId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id);
-  const state = {revision: 0, taskId: '', runId: '', taskOffset: 0, runOffset: 0, itemOffset: 0, taskDetailRev: 0, runDetailRev: 0};
+  const state = {revision: 0, taskId: '', runId: '', taskOffset: 0, runOffset: 0, itemOffset: 0, allRunOffset: 0, taskDetailRev: 0, runDetailRev: 0};
 
   function note(text) { $('message').textContent = text; }
   function text(value) {
@@ -159,6 +159,7 @@
     state.runId = '';
     state.itemOffset = 0;
     $('itemsPanel').hidden = true;
+    $('openRunTaskBtn').hidden = true;
     $('currentRun').textContent = '';
     clearRows('itemRows');
   }
@@ -170,6 +171,43 @@
     $('currentTask').textContent = '';
     clearRows('runsRows');
     resetItems();
+  }
+  async function loadAllRuns(offset) {
+    const rev = ++state.revision;
+    state.allRunOffset = offset;
+    resetRuns();
+    clearRows('allRunRows');
+    note('讀取跨任務執行紀錄中…');
+    try {
+      const runs = await api('/v1/requirement-runs?limit=' + LIMIT + '&offset=' + offset);
+      if (rev !== state.revision) return;
+      if (runs.length > LIMIT || runs.some(run => !safeId(run.run_id) || !safeId(run.task_id))) {
+        throw new Error('invalid_contract');
+      }
+      table('allRunRows', runs, [
+        run => run.run_id, run => run.task_id, run => run.status,
+        run => run.trigger && run.trigger.type,
+        run => text(run.counts && run.counts.succeeded) + ' / ' +
+          text(run.counts && run.counts.failed)
+      ], '查看項目', {
+        id: run => run.run_id,
+        open: run => openAllRun(run.run_id, run.task_id)
+      });
+      page('allRun', offset, runs.length);
+      note('已讀取跨任務批次；選取批次可查看執行項目或所屬任務。');
+    } catch (error) {
+      if (rev === state.revision) { page('allRun', offset, 0); showError(error); }
+    }
+  }
+  async function openAllRun(runId, taskId) {
+    if (!safeId(runId) || !safeId(taskId)) return;
+    // The global list already came from an authorized Product presenter.
+    // Bind its task_id for the existing run-detail identity assertion.
+    ++state.revision;
+    resetRuns();
+    state.taskId = taskId;
+    $('openRunTaskBtn').hidden = false;
+    await loadItems(runId, 0);
   }
   async function loadTasks(offset) {
     const rev = ++state.revision;
@@ -203,6 +241,7 @@
     clearDetails('task');
     resetItems();
     $('runsPanel').hidden = false;
+    $('openRunTaskBtn').hidden = true;
     $('currentTask').textContent = taskId;
     clearRows('runsRows');
     note('讀取執行批次中…');
@@ -253,6 +292,12 @@
       if (rev === state.revision) { page('item', offset, 0); showError(error); }
     }
   }
+  $('openRunTaskBtn').addEventListener('click', () => {
+    if (safeId(state.taskId)) loadRuns(state.taskId, 0);
+  });
+  $('loadAllRuns').addEventListener('click', () => loadAllRuns(0));
+  $('allRunPrev').addEventListener('click', () => loadAllRuns(Math.max(0, state.allRunOffset - LIMIT)));
+  $('allRunNext').addEventListener('click', () => loadAllRuns(state.allRunOffset + LIMIT));
   $('taskDetailBtn').addEventListener('click', loadTaskDetail);
   $('runDetailBtn').addEventListener('click', loadRunDetail);
   $('loadTasks').addEventListener('click', () => loadTasks(0));
@@ -267,6 +312,9 @@
     resetRuns();
     state.taskOffset = 0;
     clearRows('taskRows');
+    clearRows('allRunRows');
+    state.allRunOffset = 0;
+    page('allRun', 0, 0);
     page('task', 0, 0);
     note('認證已變更，已清除上一個帳號的畫面資料；請重新載入。');
   });
@@ -275,8 +323,12 @@
     $('authToken').value = '';
     resetRuns();
     clearRows('taskRows');
+    clearRows('allRunRows');
+    state.allRunOffset = 0;
+    page('allRun', 0, 0);
   });
   page('task', 0, 0);
   page('run', 0, 0);
   page('item', 0, 0);
+  page('allRun', 0, 0);
 })();
