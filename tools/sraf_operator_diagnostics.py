@@ -21,11 +21,11 @@ import stat
 import sys
 import time
 
-from tools.sraf_diagnostics_report import render_report
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from tools.sraf_diagnostics_report import render_report  # noqa: E402
 
 SCHEMA = "sraf_operator_layered_diagnostics_v2"
 LEVELS = ("L1", "L2", "L3")
