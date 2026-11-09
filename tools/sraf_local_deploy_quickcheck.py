@@ -148,12 +148,14 @@ def _workers(root: Path) -> dict[str, object]:
                 worker_business_execution="NOT_TESTED")
 
 
-def _api_preflight(root: Path) -> dict[str, object]:
+def _api_preflight(root: Path, port: int = 9002) -> dict[str, object]:
     """Reuse OFF-1S strict prerequisites, without its expensive global FD scan.
 
     The six checks here never attest *exclusive* socket ownership or grant
     any listener proof. Keeping those explicitly NOT_TESTED is essential.
     """
+    if type(port) is not int or not 1 <= port <= 65535:
+        return _api_result(0, _API_STAGES[0])
     stage = _API_STAGES[0]
     passed = 0
     fd = None
@@ -162,17 +164,17 @@ def _api_preflight(root: Path) -> dict[str, object]:
         fd = listener_probe._pin_root_directory(root)
         passed += 1
         stage = _API_STAGES[1]
-        identity = listener_probe._identity(fd, 9002)
+        identity = listener_probe._identity(fd, port)
         if identity is None:
             return _api_result(passed, stage)
         passed += 1
         pid, start = identity
         stage = _API_STAGES[2]
-        if not listener_probe._same_process(pid, start, os.fstat(fd), 9002):
+        if not listener_probe._same_process(pid, start, os.fstat(fd), port):
             return _api_result(passed, stage)
         passed += 1
         stage = _API_STAGES[3]
-        inode = listener_probe._listener_inode(9002)
+        inode = listener_probe._listener_inode(port)
         if inode is None:
             return _api_result(passed, stage)
         passed += 1
@@ -207,7 +209,7 @@ def _api_result(passed: int, failed_at: str | None) -> dict[str, object]:
                 api_http_health="NOT_TESTED")
 
 
-def observe(root: Path) -> dict[str, object]:
+def observe(root: Path, *, api_port: int = 9002) -> dict[str, object]:
     """Independent probes: a failed check never masks subsequent observations."""
     rows = []
     if (not isinstance(root, Path) or not root.is_absolute()
@@ -221,7 +223,8 @@ def observe(root: Path) -> dict[str, object]:
                 ("static_launchers", _launchers),
                 ("host_disk", _disk),
                 ("worker_process_identity", lambda: _workers(root)),
-                ("api_listener_preflight", lambda: _api_preflight(root))):
+                ("api_listener_preflight", lambda: _api_preflight(root)
+                 if api_port == 9002 else _api_preflight(root, api_port))):
             try:
                 result = run()
                 if result["id"] != name:
