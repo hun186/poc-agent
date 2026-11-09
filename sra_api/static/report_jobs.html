@@ -32,6 +32,15 @@
       <h2 id="historyTitle">我的報告任務（僅目前 Token 所屬帳號）</h2>
       <p class="hint">只會從既有授權資料庫取得自己的任務摘要，不會列出其他帳號的工作或讀取報告 Prompt。請按下方按鈕明確讀取，最多每頁 20 筆。</p>
       <div class="actions">
+        <label for="jobStatusFilter">狀態篩選</label>
+        <select id="jobStatusFilter" aria-label="報告任務狀態篩選">
+          <option value="">全部狀態</option>
+          <option value="queued">等待執行</option>
+          <option value="running">執行中</option>
+          <option value="completed">已完成</option>
+          <option value="failed">執行失敗</option>
+          <option value="interrupted">服務中斷</option>
+        </select>
         <button id="listJobsBtn" type="button" class="secondary">讀取我的報告紀錄</button>
         <span id="jobListMessage" class="hint" role="status" aria-live="polite">尚未讀取。</span>
       </div>
