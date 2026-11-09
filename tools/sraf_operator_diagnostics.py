@@ -28,7 +28,7 @@ if str(ROOT) not in sys.path:
 from tools.sraf_diagnostics_report import render_report  # noqa: E402
 
 SCHEMA = "sraf_operator_layered_diagnostics_v2"
-LEVELS = ("L1", "L2", "L3")
+LEVELS = ("L0", "L1", "L2", "L3")
 STATES = frozenset(("PASS", "PASS_PARTIAL", "WARN", "FAIL", "SKIP", "INCOMPLETE", "NOT_TESTED"))
 SAFE_REASON = re.compile(r"[a-z][a-z0-9_]{0,79}\Z", re.ASCII)
 TOKEN_NAME = re.compile(r"[A-Z_][A-Z0-9_]{0,63}\Z", re.ASCII)
@@ -307,16 +307,23 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         l0_status = "INCOMPLETE"
         rows.extend(_row("L0." + name, "INCOMPLETE", "local_probe_unavailable")
                     for name in L0_CHECKS)
-    try:
-        cfg, l1 = _l1_rows()
-    except ModuleNotFoundError:
+    if args.level == "L0":
+        # Preserve the original standalone zero-network/no-HTTP guarantee.
+        # Never resolve dotenv, import optional networking clients or open TCP.
         cfg = None
-        l1 = [_row("L1." + name, "INCOMPLETE", "l1_dependency_import_unavailable")
+        l1 = [_row("L1." + name, "NOT_TESTED", "probe_not_requested")
               for name in L1_CHECKS]
-    except Exception:
-        cfg = None
-        l1 = [_row("L1." + name, "INCOMPLETE", "runtime_probe_unavailable")
-              for name in L1_CHECKS]
+    else:
+        try:
+            cfg, l1 = _l1_rows()
+        except ModuleNotFoundError:
+            cfg = None
+            l1 = [_row("L1." + name, "INCOMPLETE", "l1_dependency_import_unavailable")
+                  for name in L1_CHECKS]
+        except Exception:
+            cfg = None
+            l1 = [_row("L1." + name, "INCOMPLETE", "runtime_probe_unavailable")
+                  for name in L1_CHECKS]
     rows.extend(l1)
     l1_by_id = {row["id"]: row["status"] for row in l1}
 
@@ -421,12 +428,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--token-env")
     parser.add_argument("--output-dir")
     parser.add_argument("--report-dir", help="Optional private trusted directory for sanitized Chinese TXT + JSON; no auto-chmod, no raw logs")
+    parser.add_argument("--save-report", action="store_true",
+                        help="Save sanitized TXT+JSON under the current Unix account home in a private 0700 directory; no path setup needed")
     parser.add_argument("--max-seconds", type=int, default=1200)
     args = parser.parse_args(argv)
 
     l2_selected = any((args.probe_sql_read, args.probe_es_tls_mapping,
                        args.probe_llm_inference))
-    if (args.level == "L1" and l2_selected
+    if (args.save_report and args.report_dir
+            or args.level in ("L0", "L1") and l2_selected
             or args.level == "L3" and (args.live_report == args.full_e2e or l2_selected)
             or args.level != "L3" and (args.live_report or args.full_e2e or args.token_env or args.output_dir)
             or args.verification != "release" and not args.full_e2e
@@ -443,16 +453,38 @@ def main(argv: list[str] | None = None) -> int:
         print("SRAF_DIAGNOSTICS=INCOMPLETE reason=run_from_repository_root")
         return 2
     report_fd = None
-    if args.report_dir:
-        # Directory must be safe BEFORE any real observation or side effects;
-        # failure never falls back to a weaker location or chmods ancestors.
+    report_path = None
+    if args.save_report:
+        # Resolve the real account home via the passwd database, NOT $HOME
+        # (which can be inherited from an untrusted invoking environment).
+        # OFF-1 dirfd validation still independently checks every ancestor.
+        import pwd
         try:
-            if not Path(args.report_dir).is_absolute():
-                raise ValueError("relative_report_dir")
-            from tools import sraf_airgap_report_jobs_acceptance as jobs
-            report_fd = jobs._secure_output_dir(Path(args.report_dir))
+            home = Path(pwd.getpwuid(os.geteuid()).pw_dir)
+            if not home.is_absolute() or ".." in home.parts:
+                raise ValueError("home_not_absolute")
+            report_path = home / ".sraf-maintenance-reports"
+        except (KeyError, OSError, ValueError):
+            print("SRAF_DIAGNOSTICS=INCOMPLETE reason=account_home_unverified")
+            print("操作建議：請管理員確認目前 Linux 帳號的主目錄，不要降低安全權限。")
+            return 2
+    elif args.report_dir:
+        report_path = Path(args.report_dir)
+        if not report_path.is_absolute():
+            print("SRAF_DIAGNOSTICS=INCOMPLETE reason=report_dir_relative")
+            print("操作建議：請改用 --save-report（自動使用帳號私人目錄），"
+                  "或以 --report-dir 指定可信的絕對路徑。")
+            return 2
+    if report_path is not None:
+        # The existing OFF-1 guard may create only the final 0700 directory;
+        # never auto-create intermediate parents or relax shared mounts.
+        from tools import sraf_airgap_report_jobs_acceptance as jobs
+        try:
+            report_fd = jobs._secure_output_dir(report_path)
         except Exception:
             print("SRAF_DIAGNOSTICS=INCOMPLETE reason=report_dir_unverified")
+            print("操作建議：檢查目錄是否存在、所有權與權限；如所在的"
+                  "共享目錄不可信，改用 --save-report。請勿 chmod 777。")
             return 2
     try:
         result = run(args)
