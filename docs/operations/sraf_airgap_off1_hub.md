@@ -10,7 +10,7 @@
 
 ## 不需要再貼長指令：Linux Shell 啟動器
 
-部署更新後，進階診斷腳本位於 `scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh`。請從專案根目錄執行；日常六項本機唯讀快檢仍應優先使用根目錄的 `./0_一鍵快檢_SRAF.sh`。操作員只要執行：
+部署更新後，進階診斷腳本位於 `scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh`。請從專案根目錄執行；日常六項本機唯讀快檢請使用根目錄的 `bash 1_完整診斷驗收_SRAF.sh --level L0`（純離線、不寫檔），不帶參數會跑 L1 有界 TCP／HTTP；請勿誤用預設模式替代離線快檢。操作員只要執行：
 
 ```bash
 bash scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh
