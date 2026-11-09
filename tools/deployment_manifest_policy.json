@@ -21,6 +21,7 @@
     "telemetry.py",
     "scripts/diagnostics/run_sraf_airgap_offline.sh",
     "0_一鍵快檢_SRAF.sh",
+    "1_完整診斷驗收_SRAF.sh",
     "scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh",
     "scripts/diagnostics/run_sraf_airgap_off2_verify.sh"
   ],
@@ -42,7 +43,8 @@
     "tools/sraf_airgap_off2_runtime_deps.py",
     "tools/sraf_airgap_off2_user_site.py",
     "tools/sraf_airgap_off2_runtime_launchers.py",
-    "tools/sraf_local_deploy_quickcheck.py"
+    "tools/sraf_local_deploy_quickcheck.py",
+    "tools/sraf_operator_diagnostics.py"
   ],
   "allowed_runtime_extra_globs": [],
   "guarded_root_extensions": [
