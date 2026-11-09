@@ -20,7 +20,6 @@
     "run_sra_api.sh",
     "telemetry.py",
     "scripts/diagnostics/run_sraf_airgap_offline.sh",
-    "0_一鍵快檢_SRAF.sh",
     "1_完整診斷驗收_SRAF.sh",
     "scripts/diagnostics/run_sraf_airgap_off1_diagnose.sh",
     "scripts/diagnostics/run_sraf_airgap_off2_verify.sh"
