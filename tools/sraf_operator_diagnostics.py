@@ -25,7 +25,7 @@ if str(ROOT) not in sys.path:
 
 SCHEMA = "sraf_operator_layered_diagnostics_v1"
 LEVELS = ("L1", "L2", "L3")
-STATES = frozenset(("PASS", "PASS_PARTIAL", "FAIL", "SKIP", "INCOMPLETE", "NOT_TESTED"))
+STATES = frozenset(("PASS", "PASS_PARTIAL", "WARN", "FAIL", "SKIP", "INCOMPLETE", "NOT_TESTED"))
 SAFE_REASON = re.compile(r"[a-z][a-z0-9_]{0,79}\Z", re.ASCII)
 TOKEN_NAME = re.compile(r"[A-Z_][A-Z0-9_]{0,63}\Z", re.ASCII)
 L0_CHECKS = ("target_platform", "direct_distribution_metadata",
@@ -51,9 +51,17 @@ def _run(name: str, fn) -> dict[str, object]:
     return _row(name, status, reason, int((time.monotonic() - start) * 1000))
 
 
-def _local_rows() -> tuple[str, list[dict[str, object]]]:
+def _local_rows(launcher_port: str | None) -> tuple[str, list[dict[str, object]]]:
     from tools import sraf_local_deploy_quickcheck as quick
-    report = quick.observe(ROOT)
+    # Standalone quickcheck retains its 9002 default; this layered entrypoint
+    # observes the actual pre-dotenv launcher PORT without credential/FD scan.
+    if launcher_port is None or launcher_port == "":
+        api_port = 9002
+    elif re.fullmatch(r"[0-9]{1,5}", launcher_port):
+        api_port = int(launcher_port)
+    else:
+        api_port = 0  # explicitly invalid, fail closed without a socket probe
+    report = quick.observe(ROOT, api_port=api_port)
     checks = report.get("checks", [])
     if (report.get("schema") != quick.SCHEMA or
             not isinstance(checks, list) or len(checks) != len(L0_CHECKS)):
@@ -63,7 +71,7 @@ def _local_rows() -> tuple[str, list[dict[str, object]]]:
         if not isinstance(check, dict) or check.get("id") != expected:
             raise ValueError("local_contract_unverified")
         status, reason = check.get("status"), check.get("reason")
-        if status not in ("PASS", "PASS_PARTIAL", "INCOMPLETE"):
+        if status not in ("PASS", "PASS_PARTIAL", "WARN", "INCOMPLETE"):
             raise ValueError("local_status_unverified")
         rows.append(_row("L0." + expected, status, reason))
     if report.get("status") != ("PASS_PARTIAL" if all(
@@ -224,7 +232,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     launcher_port = os.environ.get("PORT")
     rows: list[dict[str, object]] = []
     try:
-        l0_status, l0 = _local_rows()
+        l0_status, l0 = _local_rows(launcher_port)
         rows.extend(l0)
     except Exception:
         l0_status = "INCOMPLETE"
@@ -280,7 +288,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     selected = [row for row in rows if row["status"] != "NOT_TESTED"]
     if any(row["status"] == "FAIL" for row in selected):
         overall = "FAIL"
-    elif (any(row["status"] in ("SKIP", "INCOMPLETE") for row in selected)
+    elif (any(row["status"] in ("SKIP", "INCOMPLETE", "WARN") for row in selected)
           or args.level == "L2" and not any((args.probe_sql_read,
                                               args.probe_es_tls_mapping,
                                               args.probe_llm_inference))):
