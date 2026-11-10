@@ -8,7 +8,7 @@ import calendar
 import json
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -162,5 +162,7 @@ def query_period_bounds(date_from: Optional[str], date_to: Optional[str], precis
     if date_from:
         bounds["gte"] = floor(date_from)
     if date_to:
-        bounds["lte"] = ceiling(date_to)
+        # ES date values may contain hours; using lte YYYY-MM-DD excludes times
+        # later that day. A next-midnight exclusive boundary is exact.
+        bounds["lt"] = (date.fromisoformat(ceiling(date_to)) + timedelta(days=1)).isoformat()
     return bounds
