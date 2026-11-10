@@ -225,6 +225,7 @@ class ESSearchNews(Tool):
                     date_from=date_from,
                     date_to=date_to,
                     allowed_years=allowed_years,
+                    include_source_hit_ordinal=date_scoped,
                     effective_terms=effective_terms,
                     term_groups=term_groups,
                     query_for_snippet=raw_query,
