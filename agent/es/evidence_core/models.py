@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
+from .date_utils import EventTimeRecord
+
 
 @dataclass(frozen=True)
 class EvidenceBuildConfig:
@@ -23,6 +25,8 @@ class Citation:
     uuid: Optional[str] = None
     subject: Optional[str] = None
     event_ids: List[str] = field(default_factory=list)
+    block_index: Optional[int] = None
+    linked_dates: List[EventTimeRecord] = field(default_factory=list)
 
 
 @dataclass
@@ -36,6 +40,7 @@ class HitDoc:
     citations: List[Citation] = field(default_factory=list)
     article_date_iso: Optional[str] = None
     event_dates: List[str] = field(default_factory=list)
+    event_time_records: List[EventTimeRecord] = field(default_factory=list)
 
     selectedMessage: Any = None
     highValue: Any = None
