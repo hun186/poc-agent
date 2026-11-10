@@ -67,3 +67,4 @@ class EvidenceSnippet:
     weak_evidence: bool = False
     event_time_candidates: List[dict] = field(default_factory=list)
     matched_event_time_candidates: List[dict] = field(default_factory=list)
+    structured_time_context: bool = False
