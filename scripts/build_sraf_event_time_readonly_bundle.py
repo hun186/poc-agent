@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build a small no-Git-on-Linux, stdlib ZIP sidecar for SRAF #393.
 
-Run ONLY on a Windows development checkout or hosted CI. The archive carries
+Run on the Windows development checkout AFTER git fetch has updated the
+desired PR #395 source version, or on hosted CI as a fallback. The archive carries
 an explicit allowlist of Python source and a one-command runner. It does not
 copy .env, private TLS certificates, reports, databases, secrets, or .git.
 Linux receives a ZIP over the EXISTING one-way incremental Robocopy/7z route.
@@ -58,9 +59,12 @@ README = """SRAF #393 / PR #395 | NEWS_TEST STRICT READ-ONLY SIDECAR
 This folder is a self-contained source-only diagnostic subset; it is NOT a
 runtime update, deployment script, migration, or official release approval.
 
-Copy sraf-date-readonly.zip from Windows/GitHub into the EXISTING ONE-WAY
-incremental transfer channel. Prefer extraction next to the live poc-agent
-folder (no active runtime files overwritten):
+Primary workflow: Windows local git fetch / select PR #395 source,
+run 'python scripts/build_sraf_event_time_readonly_bundle.py' locally, and
+upload dist/sraf-date-readonly.zip using your existing ONE-WAY incremental
+transfer path. GitHub Actions artifact is an optional fallback, not required.
+Prefer extraction next to the live poc-agent folder (no active runtime files
+overwritten):
 
     cd /mntCZJ/TopicClassification
     7z x /path/to/sraf-date-readonly.zip -y
