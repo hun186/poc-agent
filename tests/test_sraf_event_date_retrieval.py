@@ -232,3 +232,83 @@ def test_statistics_never_turn_coarse_or_unresolved_event_dates_into_pub_days():
     assert result["doc_count"] == 0
     assert result["active_days"] == 0
     assert result["day_counts"] == {}
+
+
+def test_year_only_event_with_parenthesized_day_does_not_fake_january_first():
+    evidence = _snippets([{
+        "article_date_iso": "2026-08-01",
+        "Event": [{"event_id": "E1", "time_iso": "2020", "time_precision": "year"}],
+        "evidence_snippets": [{"event_ids": ["E1"], "text": "今(1)日展開救援"}],
+    }], "2020-06-01", "2020-06-30")
+    assert len(evidence) == 1
+    assert evidence[0]["date_iso"] == ""
+    assert evidence[0]["event_time_precision"] == "year"
+    assert evidence[0]["event_time_start_iso"] == "2020-01-01"
+    assert evidence[0]["event_time_end_iso"] == "2020-12-31"
+
+
+def test_linked_real_day_can_support_parenthesized_day_without_false_article_date():
+    evidence = _snippets([{
+        "article_date_iso": "2026-08-01",
+        "Event": [{"event_id": "E1", "time_iso": "2020-06-01", "time_precision": "day"}],
+        "evidence_snippets": [{"event_ids": ["E1"], "text": "今(1)日展開救援"}],
+    }], "2020-06-01", "2020-06-30")
+    assert len(evidence) == 1
+    assert evidence[0]["date_iso"] == "2020-06-01"
+
+
+def test_report_compression_and_packing_preserve_coarse_event_window_and_uncertainty():
+    from agent.utils.citations import (
+        compress_evidence, build_citations_from_ev, _build_citations_from_payload,
+    )
+    from agent.utils.evidence_pack import pack_ev_for_llm
+
+    source = _snippets([{
+        "article_date_iso": "2026-08-01",
+        "Event": [{"event_id": "E1", "time_iso": "2020", "time_precision": "year"}],
+        "evidence_snippets": [
+            {"event_ids": ["E1"], "text": "年度救援摘要"},
+            {"text": "未連結日期的背景"},
+        ],
+    }], "2020-06-01", "2020-06-30")
+    compact = compress_evidence(source)
+    assert len(compact) == 2
+    by_note = {row["note"]: row for row in compact}
+    coarse = by_note["年度救援摘要"]
+    unknown = by_note["未連結日期的背景"]
+    assert coarse["d"] is None
+    assert coarse["date_window"] == {
+        "precision": "year", "start": "2020-01-01", "end": "2020-12-31",
+    }
+    assert unknown["d"] is None
+    assert unknown["date_unresolved"] is True
+
+    def selector(_prompt, **_kwargs):
+        return '{"fields":["ref_no","note"]}'
+
+    packed = pack_ev_for_llm(compact, "摘要", mode="llm", call_llm_fn=selector)
+    packed_by_note = {row["note"]: row for row in packed["ev_slim"]}
+    assert packed_by_note["年度救援摘要"]["date_window"] == coarse["date_window"]
+    assert packed_by_note["未連結日期的背景"]["date_unresolved"] is True
+    assert all("d" not in r or r["d"] is None for r in packed["ev_slim"])
+
+    compressed_citations = build_citations_from_ev(compact)
+    assert next(c for c in compressed_citations if c["text"] == "年度救援摘要")["date_window"] == coarse["date_window"]
+    assert next(c for c in compressed_citations if c["text"] == "未連結日期的背景")["date_unresolved"] is True
+
+    full_citations = _build_citations_from_payload({"evidence_snippets": source, "ev": compact})
+    assert next(c for c in full_citations if c["text"] == "年度救援摘要")["date_iso"] is None
+    assert next(c for c in full_citations if c["text"] == "年度救援摘要")["date_window"] == coarse["date_window"]
+    assert next(c for c in full_citations if c["text"] == "未連結日期的背景")["date_unresolved"] is True
+
+
+def test_article_only_legacy_report_date_still_exists():
+    from agent.utils.citations import compress_evidence
+
+    ev = _snippets([{
+        "article_date_iso": "2025-06-20",
+        "evidence_snippets": [{"text": "舊資料"}],
+    }])
+    compact = compress_evidence(ev)
+    assert compact[0]["d"] == "2025-06-20"
+    assert "date_window" in compact[0]  # legacy day is still explicit
