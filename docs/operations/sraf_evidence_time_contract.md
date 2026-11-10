@@ -33,6 +33,13 @@ defined within the document may still be resolved conservatively.
   or first-of-month day to evidence, statistics, or API presentation. Query
   endpoints are inclusive at the day level, implemented with exclusive
   next-day `lt` bounds on indexed timestamps.
+- **Legacy missing/empty `time_precision`** can encode `YYYY`, `YYYY-MM`,
+  day or ISO timestamp with an explicit offset. ES date normalization hides
+  that source precision. Candidate retrieval must conservatively cover the
+  enclosing calendar years plus a UTC boundary day on either side, then
+  block-local Evidence time intervals enforce exact query semantics. This
+  broader legacy candidate scan requires separate real-index performance
+  acceptance; it is not a reason to treat a year/month as an exact day.
 - Explicitly unknown/invalid precision is not promoted to a valid time.
 - Article publication date remains separately available as `article_date_iso`
   and is **not** an event-date fallback in a structured event document.
