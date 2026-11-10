@@ -26,31 +26,36 @@ Windows 開發端製作 `poc-agent-update.7z`、單向傳輸並增量覆蓋的�
 `.env*`、CA 憑證、SQL 設定、新聞／報告、Git、API 主程式或任何資料。
 Linux 上只需要現有 Python 環境與既有 SRAF 憑證，完全不動正在執行的 SRAF。
 
-### 第一步：Windows／外網開發端製包（只執行一次）
+### 第一步：Windows 本機 Git fetch → 選取 #395 → 本機打包
 
-優先在 GitHub Actions 的
-[`SRAF Event date read-only sidecar for incremental transfer`](https://github.com/hun186/poc-agent/actions/workflows/sraf-event-date-readonly-bundle.yml)
-找到 #395 **最新 head SHA 的成功 Run**，下載名為
-`sraf-event-date-readonly-no-git` 的 Artifact，從 GitHub 提供的下載檔
-解出真正的 `sraf-date-readonly.zip`。
+**正式沿用的流程是 Windows 本機 Git 更新與打包；GitHub Actions Artifact 僅為備援或 CI 驗證，不是必要的下載來源。**
 
-如果 Windows 開發機已經有**對應 PR #395 版本**的原始碼，也可在
-Windows 端自行製包（**不是**在 Linux 上製包或 Git 更新）：
+在既有 Windows SRAF 原始碼目錄（例如 `D:\\shared\\TopicClassification\\poc-agent`）先更新遠端 refs。由於 #395 尚未合併 main，最安全的方式是在**Windows 本機**建立獨立工作目錄，避免讓原有主分支或未提交修改被測試版覆蓋：
 
-```powershell
-python scripts/build_sraf_event_time_readonly_bundle.py
+```bat
+cd /d D:\shared\TopicClassification\poc-agent
+git fetch origin
+git worktree add --detach ..\sraf-date-probe origin/fix/sraf-evidence-structured-event-time-20261110
+cd ..\sraf-date-probe
+python scripts\build_sraf_event_time_readonly_bundle.py
 ```
 
-會產生 `dist/sraf-date-readonly.zip`。包內
-`_sraf_date_readonly/manifest.json` 記錄各個檔案 SHA-256，
-供檢查增量傳輸後檔案一致性。這個 ZIP 不會封入整個 SRAF Repo。
+完成後會得到 `dist\\sraf-date-readonly.zip`。這是**在 Windows 執行 Git**；
+Linux 不會執行 Git。如果你的 Windows 本機**已經切到** #395 對應的工作目錄，則不必額外建立 worktree，直接在該目錄執行製包 Python 即可。
+
+產包前可在 Windows 用 `git rev-parse HEAD` 確認當前原始碼 SHA，並與 #395 最新 HEAD 比對；若程式碼版本不同，不可宣稱產包與最新 Code Review 一致。ZIP 內的 `_sraf_date_readonly/manifest.json` 會記錄 SHA 與各檔案 SHA-256。
+
+GitHub Actions 仍會進行同一工具的安全測試與可選的 CI 產包。只有當你不方便在 Windows 本機產包時，才需改用
+[`SRAF Event date read-only sidecar for incremental transfer`](https://github.com/hun186/poc-agent/actions/workflows/sraf-event-date-readonly-bundle.yml)
+的 `sraf-event-date-readonly-no-git` Artifact，解出其中的
+`sraf-date-readonly.zip`。
 
 ### 第二步：透過原有單向增量傳檔管道傳入 Linux
 
-將 **`sraf-date-readonly.zip`** 當作獨立增量檔案，沿用現有的
-Windows → Linux Robocopy／7z 傳輸流程送到
-`/mntCZJ/TopicClassification/`；不須變更既有
-`133_rocopy_7z_poc-agent...` BAT、`poc-agent-update.7z` 正式更新內容，
+將**你剛才在 Windows 本機製作的 `dist\\sraf-date-readonly.zip`**
+當作獨立增量檔案，沿用你原本的 Windows → Linux Robocopy／7z
+上傳管道送到
+`/mntCZJ/TopicClassification/`；不必為了驗收改動既有正式 SRAF 增量部署腳本或 `poc-agent-update.7z` 的程式內容；獨立 ZIP 必須確實由原管道送達，不能假設現有 BAT 自動包含它，
 更不須切換或停止現有服務。
 
 如果既有流程只能將檔案增量覆蓋到 `poc-agent` 目錄內，也可以把 ZIP
