@@ -198,7 +198,11 @@ def parse_es_hits(
             # Only the citation's own linked temporal rows can help infer year,
             # never an unrelated timeline elsewhere in the same article.
             linked_days = [r.interval.iso for r in matches]
-            di = infer_date_for_snippet(c.text or "", None if matches else article_date_iso, linked_days)
+            day_precision_dates = [r.interval.iso for r in matches if r.interval.precision == "day"]
+            di = infer_date_for_snippet(
+                c.text or "", None if matches else article_date_iso, linked_days,
+                day_precision_dates=day_precision_dates,
+            )
             if di and is_valid_year(di):
                 c.date_iso = di
             c.uuid = uuid
