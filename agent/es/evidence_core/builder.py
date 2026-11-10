@@ -143,6 +143,11 @@ def build_hits_and_evidence(
     if evidence:
         kept = {e.uuid for e in evidence if e.uuid}
         filtered = [h for h in out_hits if h.uuid in kept]
+    elif date_from or date_to:
+        # A document-level ES date match does not establish that one of its
+        # Evidence citations belongs to the matching event. Do not expose a
+        # date-filtered document with zero date-valid supporting evidence.
+        filtered = []
     else:
         filtered = out_hits
 
