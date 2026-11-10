@@ -89,3 +89,37 @@ Both behaviors are explicit decisions; neither is an automatic merge artifact.
       reprocessing, service restart or Mapping migration is authorized here.
 - [ ] Keep [Issue #393](https://github.com/hun186/poc-agent/issues/393)
       open for live acceptance even after a reviewed code merge.
+
+## 2026-11-10 P2: refill date-qualified ES candidates after Evidence filtering
+
+Legacy missing/empty `time_precision` requires a widened ES date candidate
+window, so the first `size` ES hits can contain only out-of-range records.
+The canonical search tool now applies Evidence validation, then fetches further
+ES candidates using bounded `from` pagination of the **same body and score
+order**, re-evaluating the accumulated hits under the existing global
+strict/relaxed matching policy. This applies to explicit `date_from/date_to`
+and four-digit query-year conditions. Undated searches keep their original
+single-request search and normal fallback.
+
+`query_meta.date_candidate_refill` exposes `candidates_scanned`,
+`pages_fetched`, `candidate_scan_limit`, `result_count`,
+`search_exhausted` and `incomplete_due_to_scan_limit`. Reaching the
+safe candidate budget before the requested number of valid hits sets
+`query_meta.result_incomplete=true` and
+`note=date_candidate_scan_limit_reached` — it must **never** be presented
+as a proven exhaustive zero-result query.
+
+Candidate budget: `min(10000, max(256, requested_size * 32))`,
+with refill page size at most 1000 and **no `from + size` beyond 10000**.
+The bounded scan is not an exhaustive index-wide search; results above the
+budget remain unknown and must be marked incomplete, not silently ignored.
+Ordinary ES `from` paging across a concurrently refreshed index is not a
+point-in-time snapshot, and tie ordering may move between pages. Operator
+read-only acceptance should evaluate real index window, retry behavior,
+ordering stability, runtime cost and reporting UX before declaring live PASS.
+
+Offline regressions in `tests/test_sraf_date_evidence_refill.py` include
+ranked false positives before the valid candidate, early completion, exhausted
+result sets, bounded truncation, natural-language query years and unchanged
+unfiltered one-shot behavior. GitHub CI includes these tests on Python 3.10
+and 3.11. **No production ES data, schema or service has been modified.**
