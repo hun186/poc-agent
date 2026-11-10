@@ -211,6 +211,40 @@ def test_tool_forward_refills_date_query_and_surfaces_candidate_stats(monkeypatc
     assert result["query_meta"].get("result_incomplete") is not True
 
 
+def test_tool_forward_reports_incomplete_when_bounded_candidates_are_all_filtered(monkeypatch):
+    import agent.tools_es.search_news as search_module
+
+    rows = [_hit(i, "2025-06-01") for i in range(300)]
+    offsets = []
+    monkeypatch.setattr(
+        search_module, "compute_effective_terms",
+        lambda q: ([], {}, False, [], [], []),
+    )
+    monkeypatch.setattr(search_module, "resolve_index", lambda _: "news_test")
+    monkeypatch.setattr(search_module, "log_duration", lambda *a, **kw: nullcontext())
+    monkeypatch.setattr(search_module, "log_total", lambda *a, **kw: None)
+
+    def fake_es(body, *, index):
+        assert index == "news_test"
+        offset = body.get("from", 0)
+        offsets.append(offset)
+        return _response(rows, offset, body["size"])
+
+    monkeypatch.setattr(search_module, "_safe_es_search", fake_es)
+    result = search_module.ESSearchNews.forward.__wrapped__(
+        object(), query="救援", size=3,
+        date_from="2025-06-17", date_to="2025-06-17",
+    )
+    assert result["hits"] == []
+    assert result["evidence_snippets"] == []
+    assert len(offsets) > 1
+    assert result["query_meta"]["result_incomplete"] is True
+    assert result["query_meta"]["note"] == "date_candidate_scan_limit_reached"
+    scan = result["query_meta"]["date_candidate_refill"]
+    assert scan["candidates_scanned"] == scan["candidate_scan_limit"] == 256
+    assert scan["search_exhausted"] is False
+
+
 def test_year_in_query_also_refills_and_no_date_query_stays_one_shot(monkeypatch):
     import agent.tools_es.search_news as search_module
 
