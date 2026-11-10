@@ -15,7 +15,10 @@ The retrieval path first correlates each Evidence `event_ids` with its
 structured `Event.event_id` and any `Event_Timeline.event_ids`. It includes
 both a core Event date and distinct Timeline milestones. Identical periods are
 deduplicated (preferring Event provenance). Multiple different candidate dates
-remain visible and are never collapsed into an arbitrary first day.
+within one coherent event ID remain visible and are never collapsed into an
+arbitrary first day. An identifier reused in **different blocks with conflicting
+time claims** is unresolvable without source-block provenance and is explicitly
+excluded from date-qualified Evidence rather than cross-joined.
 
 - `Event_Timeline=[]` is valid; a dated `Event` suffices for date retrieval.
 - An Event-only document and a Timeline-only document can each be found by
