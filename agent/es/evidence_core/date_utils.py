@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Any, List, Optional, Set
 
 from .json_utils import as_blocks, json_load_maybe
@@ -114,3 +115,15 @@ def is_valid_year(di: str) -> bool:
         return 1900 <= y <= 2100
     except Exception:
         return False
+
+def explicit_full_date_in_text(text: str) -> Optional[str]:
+    """Only accept literal YYYY/MM/DD evidence dates; never invent article year."""
+    match = _YMD.search(text or "")
+    if not match:
+        return None
+    try:
+        y, m, d = (int(match.group(k)) for k in ("y", "m", "d"))
+        date(y, m, d)
+    except ValueError:
+        return None
+    return norm_date(y, m, d)
