@@ -112,6 +112,21 @@ def _ids(value: Any) -> List[str]:
     return [str(item).strip() for item in value if item is not None and str(item).strip()]
 
 
+def event_ids_in_block(block: dict) -> set[str]:
+    """Return all declared local IDs, including undated or invalid Events.
+
+    An ID occurring in an undated block still reserves that ID locally;
+    absent parent offsets must not make it globally unique merely because
+    only another block happens to have a valid time.
+    """
+    result: set[str] = set()
+    for record in _records(block, "Event"):
+        result.update(_ids(record.get("event_id")))
+    for record in _records(block, "Event_Timeline"):
+        result.update(_ids(record.get("event_ids")))
+    return result
+
+
 def collect_linked_times(blocks: List[dict]) -> Tuple[Dict[str, List[StructuredTime]], bool]:
     """Build an event-id lookup, refusing conflicting ID reuse across blocks.
 
