@@ -371,6 +371,16 @@ def test_report_compression_structured_dangling_link_does_not_borrow_article_dat
     assert build_citations_from_ev(compact)[0]["date_iso"] is None
 
 
+def test_explicit_complete_evidence_date_survives_report_without_borrowing_article():
+    hit = _hit([_event("E2")], [], [_snippet(["E1"], "2008年7月20日發生重大事件")])
+    evidence = _evidence(hit, "2008-07-01", "2008-07-31")
+    compact = compress_evidence(evidence)
+    assert compact[0]["d"] == "2008-07-20"
+    assert compact[0]["tp"] == "day"
+    assert compact[0]["times"][0]["source"] == "evidence_text"
+    assert build_citations_from_ev(compact)[0]["date_iso"] == "2008-07-20"
+
+
 def test_report_compression_precise_date_remains_exact():
     hit = _hit([_event("E1")], [], [_snippet(["E1"])])
     evidence = _evidence(hit)
