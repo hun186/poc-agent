@@ -214,6 +214,41 @@ def test_main_never_prints_sensitive_exceptions(monkeypatch, capsys):
     assert json.loads(result)["reason"] == "unhandled_probe_error"
 
 
+def test_separate_worktree_can_use_existing_deployment_configuration_without_mutation(
+    monkeypatch, tmp_path, capsys
+):
+    deployment = tmp_path / "deployed"
+    deployment.mkdir()
+    (deployment / "run_sra_api.sh").write_text("# no execution")
+    captured = []
+    monkeypatch.setattr(probe, "PROJECT_ROOT", Path.cwd())
+
+    def fake_live(root):
+        captured.append(root)
+        return {"status": "PASS_PARTIAL", "identity": "STRICT_TLS_CA_IP_SAN_VERIFIED"}
+
+    monkeypatch.setattr(probe, "_strict_live_observe", fake_live)
+    assert probe.main(["--run", "--config-root", str(deployment)]) == 2
+    assert captured == [deployment.resolve()]
+    output = capsys.readouterr().out
+    assert str(deployment) not in output
+    assert json.loads(output)["status"] == "PASS_PARTIAL"
+
+
+def test_invalid_config_root_never_loads_credentials_or_contacts_es(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setattr(probe, "PROJECT_ROOT", Path.cwd())
+    monkeypatch.setattr(
+        probe, "_strict_live_observe",
+        lambda root: (_ for _ in ()).throw(AssertionError("unexpected IO")),
+    )
+    assert probe.main(["--run", "--config-root", str(tmp_path)]) == 2
+    report = json.loads(capsys.readouterr().out)
+    assert report["reason"] == "configured_repository_root_invalid"
+    assert str(tmp_path) not in json.dumps(report)
+
+
 def test_query_source_uri_size_cap_never_sends_oversized_path():
     try:
         probe._search_request({"size": 1, "query": {"match": {"x": "A" * 30000}}})
