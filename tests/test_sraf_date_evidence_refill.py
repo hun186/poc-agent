@@ -48,7 +48,54 @@ def _builder(rows: list):
         rows,
         date_from="2025-06-17", date_to="2025-06-17",
         effective_terms=[], term_groups=[], query_for_snippet="救援",
+        include_source_hit_ordinal=True,
     )
+
+
+def test_same_uuid_across_indices_never_joins_wrong_hit_to_evidence():
+    # Codex P2: two ES documents can have identical source UUID values but
+    # different actual ES identities. Rejected June 1 doc must NEVER borrow
+    # the June 17 doc's Evidence or survive final trim as the first result.
+    earlier = _hit(1, "2025-06-01")
+    valid = _hit(2, "2025-06-17")
+    earlier["_source"]["uuid"] = valid["_source"]["uuid"] = "shared-uuid"
+    earlier["_source"]["multidim_event_json"][0]["article_title"] = "錯誤來源"
+    valid["_source"]["multidim_event_json"][0]["article_title"] = "正確來源"
+    earlier["_index"] = "archive"
+    valid["_index"] = "news_test"
+    rows = [earlier, valid]
+
+    hits, evidence, _, meta = refill_date_filtered_evidence(
+        body={"size": 1},
+        first_response=_response(rows, 0, 1),
+        requested_size=1,
+        search_next=lambda next_body: _response(
+            rows, next_body["from"], next_body["size"]
+        ),
+        build_evidence=_builder,
+    )
+    assert len(hits) == len(evidence) == 1
+    assert hits[0]["uuid"] == evidence[0]["uuid"] == "shared-uuid"
+    assert hits[0]["article_title"] == "正確來源"
+    assert hits[0]["citations"][0]["text"] == evidence[0]["text"]
+    assert "__sraf_source_hit_ordinal" not in hits[0]
+    assert "__sraf_source_hit_ordinal" not in evidence[0]
+    assert meta["result_limit_satisfied"] is True
+
+
+def test_same_uuid_documents_with_different_dates_keep_only_right_source_even_without_refill():
+    rows = [
+        _hit(1, "2025-06-01"),
+        _hit(2, "2025-06-17"),
+    ]
+    for row in rows:
+        row["_source"]["uuid"] = "same-uuid"
+    filtered_hits, evidence, _ = _builder(rows)
+    assert len(filtered_hits) == 1
+    assert len(evidence) == 1
+    assert filtered_hits[0]["__sraf_source_hit_ordinal"] == 1
+    assert evidence[0]["__sraf_source_hit_ordinal"] == 1
+    assert filtered_hits[0]["article_date_iso"] == "2026-08-01"
 
 
 def test_first_es_page_only_has_legacy_date_false_positives_then_refills():
