@@ -58,6 +58,9 @@ class EvidenceSnippet:
     paragraph_id: Optional[str] = None
     source_id: Optional[str] = None
     event_ids: List[str] = field(default_factory=list)
+    event_time_precision: Optional[str] = None
+    event_time_start_iso: Optional[str] = None
+    event_time_end_iso: Optional[str] = None
 
     synonym_hits: List[str] = field(default_factory=list)
     match_policy: str = "strict"
