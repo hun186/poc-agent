@@ -9,7 +9,7 @@ class AggregateMonthQuarter(Tool):
     '''
     1.時間粒度
      (1)先把 snippet 的日期轉成 datetime：
-      i.article_date_iso → date_iso → date 依序嘗試
+      i.date_iso → article_date_iso → date 依序嘗試；粗精度或未歸屬事件不假裝成日
       ii.支援 "2025-06-21T00:00:00.000Z" 這種格式
      (2)以「日」當作最小單位，date_key = "YYYY-MM-DD"
     2.去重單位：(uuid, date)
