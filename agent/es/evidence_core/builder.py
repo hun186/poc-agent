@@ -196,6 +196,7 @@ def build_hits_and_evidence(
             **({"event_time_precision": e.event_time_precision} if e.event_time_precision else {}),
             **({"event_time_start_iso": e.event_time_start_iso} if e.event_time_start_iso else {}),
             **({"event_time_end_iso": e.event_time_end_iso} if e.event_time_end_iso else {}),
+            **({"event_time_unresolved": True} if e.event_time_unresolved else {}),
             **({"synonym_hits": e.synonym_hits} if e.synonym_hits else {}),
             "match_policy": e.match_policy,
             "match_scope": e.match_scope,
