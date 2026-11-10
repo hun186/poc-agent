@@ -12,6 +12,8 @@ from agent.es.evidence_core.models import EvidenceBuildConfig
 from agent.es.evidence_core.builder import build_hits_and_evidence
 from agent.es.query_body import build_main_query_body
 from agent.tools_stats import AggregateMonthQuarter
+from agent.utils.citations import compress_evidence, build_citations_from_ev, _build_citations_from_payload
+from agent.utils.evidence_pack import pack_ev_for_llm
 
 
 def _hit(event=None, timeline=None, snippets=None, article="2009-06-15", *, multidim=None):
@@ -319,6 +321,63 @@ def test_legacy_aggregator_prefers_explicit_evidence_date_over_article_date():
         "uuid": "old", "date_iso": "2008-07-20", "article_date_iso": "2009-06-15"
     }])
     assert stats["day_counts"] == {"2008-07-20": 1}
+
+
+@pytest.mark.parametrize("when,precision,display", [
+    ("2020-06-17", "year", "2020"),
+    ("2020-06-17", "month", "2020-06"),
+])
+def test_report_compression_preserves_partial_precision_not_article_day(when, precision, display):
+    hit = _hit([_event(when=when, precision=precision)], [], [_snippet(["E1"])])
+    evidence = _evidence(hit, "2020-06-01", "2020-06-30")
+    compact = compress_evidence(evidence)
+    assert compact[0]["d"] == display
+    assert compact[0]["tp"] == precision
+    packed = pack_ev_for_llm(compact, "年度事件整理", mode="rules")
+    assert packed["ev_slim"][0]["tp"] == precision
+    assert len(packed["ev_slim"][0]["times"]) == 1
+    citations = build_citations_from_ev(compact)
+    assert citations[0]["date_iso"] is None
+    assert citations[0]["date_precision"] == precision
+    assert citations[0]["event_time_candidates"][0]["date_start"] == (
+        "2020-01-01" if precision == "year" else "2020-06-01"
+    )
+    payload_citations = _build_citations_from_payload({"evidence_snippets": evidence, "ev": compact})
+    assert payload_citations[0]["date_iso"] is None
+
+
+def test_report_compression_does_not_use_article_date_for_multiple_linked_dates():
+    hit = _hit([_event("E1")], [
+        {"event_ids": ["E1"], "time_iso": "2008-08-01"}
+    ], [_snippet(["E1"])])
+    evidence = _evidence(hit)
+    compact = compress_evidence(evidence)
+    assert compact[0]["d"] is None
+    assert compact[0]["tp"] == "multiple"
+    assert len(compact[0]["times"]) == 2
+    packed = pack_ev_for_llm(compact, "時間軸", mode="rules")
+    assert len(packed["ev_slim"][0]["times"]) == 2
+    assert build_citations_from_ev(compact)[0]["date_iso"] is None
+
+
+def test_report_compression_structured_dangling_link_does_not_borrow_article_date():
+    hit = _hit([_event("E2")], [], [_snippet(["E1"])])
+    evidence = _evidence(hit)
+    assert evidence[0]["date_iso"] == ""
+    assert evidence[0]["structured_time_context"] is True
+    compact = compress_evidence(evidence)
+    assert compact[0]["d"] is None
+    assert compact[0]["tp"] == "unknown"
+    assert build_citations_from_ev(compact)[0]["date_iso"] is None
+
+
+def test_report_compression_precise_date_remains_exact():
+    hit = _hit([_event("E1")], [], [_snippet(["E1"])])
+    evidence = _evidence(hit)
+    compact = compress_evidence(evidence)
+    assert compact[0]["d"] == "2008-07-20"
+    assert compact[0]["tp"] == "day"
+    assert build_citations_from_ev(compact)[0]["date_iso"] == "2008-07-20"
 
 
 def _query(**overrides):
