@@ -112,9 +112,10 @@ def parse_es_hits(
         )
         article_date_iso = (
             mapped_article_date
-            or parse_article_date_iso(raw_content)
-            or None  # An event date is not an article publication date.
-        )
+            if mapped_article_date else (
+                None if has_structured_events else parse_article_date_iso(raw_content)
+            )
+        )  # Do not infer publication from event dates in structured content.
         
         # citations: inner_hits 優先
         citations: List[Citation] = []
