@@ -45,15 +45,21 @@ def _structured_date_filter(date_from: Optional[str], date_to: Optional[str]) ->
         by_precision: List[Dict[str, Any]] = []
         for precision in ("second", "minute", "hour", "day", "month", "year"):
             date_range = {"range": {field: query_period_bounds(date_from, date_to, precision)}}
-            if precision == "day":
-                precision_test = {"bool": {"should": [
-                    {"term": {precision_field: "day"}},
-                    {"term": {precision_field: ""}},  # legacy explicit empty
-                    {"bool": {"must_not": [{"exists": {"field": precision_field}}]}}
-                ], "minimum_should_match": 1}}
-            else:
-                precision_test = {"term": {precision_field: precision}}
+            precision_test = {"term": {precision_field: precision}}
             by_precision.append({"bool": {"filter": [precision_test, date_range]}})
+        # Legacy missing/empty precision may hold either a date-only value
+        # or a timestamp with an explicit offset. Elasticsearch normalizes
+        # the latter to UTC, potentially on the adjacent calendar day.
+        # Widen candidate retrieval and rely on the Evidence date parser
+        # to validate the actual precision and original local day.
+        legacy_precision = {"bool": {"should": [
+            {"term": {precision_field: ""}},
+            {"bool": {"must_not": [{"exists": {"field": precision_field}}]}}
+        ], "minimum_should_match": 1}}
+        by_precision.append({"bool": {"filter": [
+            legacy_precision,
+            {"range": {field: query_period_bounds(date_from, date_to, "second")}},
+        ]}})
         candidates.append(_nested(
             f"{MD_PATH}.{child}",
             {"bool": {"should": by_precision, "minimum_should_match": 1}},
