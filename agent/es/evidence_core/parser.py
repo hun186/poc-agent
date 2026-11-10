@@ -71,7 +71,7 @@ def parse_es_hits(
             value = [value]
         return [str(item).strip() for item in value if str(item).strip()]
 
-    def citation_from_source(item: Any) -> Citation | None:
+    def citation_from_source(item: Any, block_index: int) -> Citation | None:
         if not isinstance(item, dict):
             return None
         text = normalized_text(item.get("text"))
@@ -82,6 +82,7 @@ def parse_es_hits(
             source_id=normalized_text(item.get("source_id")) or None,
             paragraph_id=normalized_text(item.get("paragraph_id")) or None,
             event_ids=normalized_ids(item.get("event_ids")),
+            block_index=block_index,
         )
 
     for h in es_hits or []:
@@ -101,6 +102,8 @@ def parse_es_hits(
 
         # Structured Event/Timeline correlation takes priority over text heuristics.
         time_lookup, has_structured_events = collect_linked_times(blocks)
+        # Keep local block scope; IDs in separate multidim objects can repeat.
+        local_time_lookups = [collect_linked_times([block])[0] for block in blocks]
         # timeline / article date
         tl_dates = collect_timeline_dates(src, topk=config.timeline_dates_topk)
         mapped_article_date = next(
@@ -140,12 +143,25 @@ def parse_es_hits(
                     pid = nested.get("paragraph_id")
                     event_ids = normalized_ids(nested.get("event_ids"))
 
+                # ES nested inner_hits identify the enclosing multidim block
+                # through their _nested chain. Absent offset is only safe to
+                # infer if there is precisely one block in the parent source.
+                block_index = 0 if len(blocks) == 1 else None
+                nested_location = eh.get("_nested")
+                while isinstance(nested_location, dict):
+                    if str(nested_location.get("field", "")).split(".")[-1] == "multidim_event_json":
+                        candidate = nested_location.get("offset")
+                        block_index = candidate if type(candidate) is int and 0 <= candidate < len(blocks) else None
+                        break
+                    nested_location = nested_location.get("_nested")
+
                 if txt:
                     citations.append(Citation(
                         text=txt,
                         source_id=normalized_text(sid) or None,
                         paragraph_id=normalized_text(pid) or None,
                         event_ids=event_ids,
+                        block_index=block_index,
                     ))
 
             if citations:
@@ -155,14 +171,14 @@ def parse_es_hits(
         # inner hit. Its selected _source still contains authoritative structured
         # evidence, so use that before considering legacy raw content.
         if not citations:
-            for block in blocks:
+            for block_index, block in enumerate(blocks):
                 snippets = json_load_maybe(block.get("evidence_snippets"))
                 if isinstance(snippets, dict):
                     snippets = [snippets]
                 if not isinstance(snippets, list):
                     continue
                 for item in snippets:
-                    citation = citation_from_source(item)
+                    citation = citation_from_source(item, block_index)
                     if citation is not None:
                         citations.append(citation)
                     if len(citations) >= config.citations_per_doc:
@@ -186,7 +202,20 @@ def parse_es_hits(
         # their historical publication-date fallback in snippet.py.
         uuid = src.get("uuid")
         for c in citations:
-            c.linked_times, c.linked_complete = linked_dates_for_ids(c.event_ids, time_lookup)
+            if c.block_index is not None:
+                scoped_lookup = local_time_lookups[c.block_index]
+            elif len(blocks) > 1:
+                # Unlocated inner_hits cannot be assigned to a duplicated
+                # identifier across independent blocks even if dates agree.
+                scoped_lookup = {}
+                if c.event_ids and all(
+                    sum(eid in local for local in local_time_lookups) == 1
+                    for eid in c.event_ids
+                ):
+                    scoped_lookup = time_lookup
+            else:
+                scoped_lookup = time_lookup
+            c.linked_times, c.linked_complete = linked_dates_for_ids(c.event_ids, scoped_lookup)
             if c.linked_times:
                 if c.linked_complete and len(c.linked_times) == 1:
                     point = c.linked_times[0]
