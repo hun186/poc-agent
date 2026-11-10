@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'agent/tools_stats.py'
+      - 'agent/utils/citations.py'
+      - 'agent/utils/evidence_pack.py'
       - 'agent/es/query_body.py'
       - 'agent/es/date_filters.py'
       - 'agent/es/temporal.py'
