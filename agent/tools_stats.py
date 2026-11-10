@@ -1,6 +1,7 @@
 # agent/tools_stats.py
 from smolagents import Tool
 from datetime import datetime
+import re
 from collections import Counter
 from typing import List, Dict, Any, Tuple, Set
 
@@ -9,7 +10,7 @@ class AggregateMonthQuarter(Tool):
     '''
     1.時間粒度
      (1)先把 snippet 的日期轉成 datetime：
-      i.article_date_iso → date_iso → date 依序嘗試
+      i.結構化匹配 Event 日期 → date_iso → 文章日期（僅 legacy）
       ii.支援 "2025-06-21T00:00:00.000Z" 這種格式
      (2)以「日」當作最小單位，date_key = "YYYY-MM-DD"
     2.去重單位：(uuid, date)
@@ -57,40 +58,42 @@ class AggregateMonthQuarter(Tool):
     def _is_valid_year(self, dt: datetime) -> bool:
         return 1900 <= dt.year <= 2100
     
-    def _extract_date(self, s: Dict[str, Any]) -> datetime | None:
-        """
-        從 snippet 中盡量抓出一個 ISO 日期字串，轉成 datetime。
-        優先順序：
-        1) article_date_iso
-        2) date_iso
-        3) date
-        ※ 若是 list 取第 1 個；若結尾有 'Z' 先去掉再丟給 fromisoformat。
-        """
-        date_str = (
-            s.get("article_date_iso")
-            or s.get("date_iso")
-            or s.get("date")
-        )
-        if not date_str:
+    def _parse_day(self, value: Any) -> datetime | None:
+        if isinstance(value, list):
+            value = value[0] if value else None
+        if not isinstance(value, str) or not re.match(r"^\\d{4}-\\d{2}-\\d{2}(?:$|T)", value):
             return None
-
-        # 可能是 list，例如 ["2025-06-21T00:00:00.000Z"]
-        if isinstance(date_str, list):
-            if not date_str:
-                return None
-            date_str = date_str[0]
-
-        if not isinstance(date_str, str):
-            return None
-
-        # 去掉尾巴的 Z（ISO8601 with Z）
-        if date_str.endswith("Z"):
-            date_str = date_str[:-1]
-
         try:
-            return datetime.fromisoformat(date_str)
-        except Exception:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return dt if self._is_valid_year(dt) else None
+        except ValueError:
             return None
+
+    def _extract_dates(self, s: Dict[str, Any]) -> List[datetime]:
+        """Return day-level dates without replacing structured events by article days."""
+        candidates = s.get("event_time_candidates")
+        if isinstance(candidates, list) and candidates:
+            matched = s.get("matched_event_time_candidates")
+            if not isinstance(matched, list):
+                matched = candidates
+            days = []
+            seen = set()
+            for point in matched:
+                if not isinstance(point, dict) or point.get("time_precision") != "day":
+                    continue
+                dt = self._parse_day(point.get("date_start"))
+                if dt and dt.date() not in seen:
+                    seen.add(dt.date())
+                    days.append(dt)
+            return days
+        # Legacy unstructured evidence: citation date before publication date.
+        dt = self._parse_day(s.get("date_iso") or s.get("article_date_iso") or s.get("date"))
+        return [dt] if dt else []
+
+    def _extract_date(self, s: Dict[str, Any]) -> datetime | None:
+        """Backward-compatible single-date helper for external callers."""
+        dates = self._extract_dates(s)
+        return dates[0] if dates else None
 
     def _extract_uuid(self, s: Dict[str, Any]) -> str | None:
         """
@@ -115,37 +118,24 @@ class AggregateMonthQuarter(Tool):
         doc_day_seen: Set[Tuple[str, str]] = set()  # (uuid, date_key) 去重
 
         for s in evidence_snippets:
-            dt = self._extract_date(s)
-            if dt is None:
-                continue
-            if not self._is_valid_year(dt):
-                continue   # 避免奇怪年份干擾統計
-
             uuid = self._extract_uuid(s)
             if uuid is None:
-                # 沒有 uuid 就沒辦法做「文件 × 日期」的去重，只能跳過
                 continue
+            for dt in self._extract_dates(s):
+                if not self._is_valid_year(dt):
+                    continue
+                doc_ids.add(uuid)
+                date_key = dt.strftime("%Y-%m-%d")
+                key = (uuid, date_key)
+                if key in doc_day_seen:
+                    continue
+                doc_day_seen.add(key)
 
-            doc_ids.add(uuid)
-
-            # 以「日」為最小時間單位
-            date_key = dt.strftime("%Y-%m-%d")
-
-            # 同一份文件在同一天只算一次
-            key = (uuid, date_key)
-            if key in doc_day_seen:
-                continue
-            doc_day_seen.add(key)
-
-            # 月 / 季 key
-            month_key = f"{dt.year:04d}-{dt.month:02d}"
-            q = (dt.month - 1) // 3 + 1
-            quarter_key = f"{dt.year:04d}-Q{q}"
-
-            # 計數
-            day_counter[date_key] += 1
-            month_counter[month_key] += 1
-            quarter_counter[quarter_key] += 1
+                month_key = f"{dt.year:04d}-{dt.month:02d}"
+                quarter_key = f"{dt.year:04d}-Q{(dt.month - 1) // 3 + 1}"
+                day_counter[date_key] += 1
+                month_counter[month_key] += 1
+                quarter_counter[quarter_key] += 1
 
         return {
             # 有幾篇不同 uuid 的文件參與計算
