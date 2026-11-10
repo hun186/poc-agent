@@ -26,6 +26,7 @@ class Citation:
     subject: Optional[str] = None
     event_ids: List[str] = field(default_factory=list)
     linked_times: List[StructuredTime] = field(default_factory=list)
+    block_index: Optional[int] = None
     linked_complete: bool = False
 
 
