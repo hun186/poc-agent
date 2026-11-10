@@ -334,7 +334,8 @@ def main(argv: list[str] | None = None) -> int:
         # No raw URLs, query JSON, index responses or credentials in errors.
         output.update(status="INCOMPLETE", reason="unhandled_probe_error")
     print(json.dumps(output, sort_keys=True, ensure_ascii=False))
-    return 1 if output["status"] == "FAIL" else 2 if output["status"] != "PASS_PARTIAL" else 0
+    # Observation-only PARTIAL is never a formal release acceptance exit 0.
+    return 1 if output["status"] == "FAIL" else 2
 
 
 if __name__ == "__main__":
