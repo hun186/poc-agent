@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 _TIME_PREFIX = re.compile(r"^(\d{4})(?:-(\d{2})(?:-(\d{2})(?:T.+)?)?)?$")
-_PRECISIONS = {"year": 1, "month": 2, "day": 3}
+_PRECISIONS = {"year": 1, "month": 2, "day": 3, "hour": 4, "minute": 5, "second": 6}
 
 
 @dataclass(frozen=True)
@@ -48,7 +48,7 @@ def parse_structured_time(value: Any, precision: Any, source: str) -> Optional[S
         except ValueError:
             return None
     year_s, month_s, day_s = match.groups()
-    granularity = 3 if day_s else (2 if month_s else 1)
+    granularity = (6 if "T" in raw else (3 if day_s else (2 if month_s else 1)))
     if precision is None or precision == "":
         level = granularity
     elif isinstance(precision, str) and precision.strip().lower() in _PRECISIONS:
@@ -71,6 +71,10 @@ def parse_structured_time(value: Any, precision: Any, source: str) -> Optional[S
             ym = f"{year_s}-{month:02d}"
             return StructuredTime(ym, "month", f"{ym}-01", f"{ym}-{last:02d}", source)
         ymd = f"{year_s}-{month:02d}-{day:02d}"
+        if level > 3:
+            # Keep the original literal time/offset and its stated granularity,
+            # while the search/legacy aggregate operate on its local date.
+            return StructuredTime(raw, str(precision).strip().lower(), ymd, ymd, source)
         return StructuredTime(ymd, "day", ymd, ymd, source)
     except (TypeError, ValueError):
         return None
