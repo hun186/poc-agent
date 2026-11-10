@@ -208,6 +208,7 @@ def build_hits_and_evidence(
             **({"event_ids": e.event_ids} if e.event_ids else {}),
             **({"event_time_candidates": e.event_time_candidates} if e.event_time_candidates else {}),
             **({"matched_event_time_candidates": e.matched_event_time_candidates} if e.event_time_candidates else {}),
+            **({"structured_time_context": True} if e.structured_time_context else {}),
             **({"synonym_hits": e.synonym_hits} if e.synonym_hits else {}),
             "match_policy": e.match_policy,
             "match_scope": e.match_scope,
