@@ -46,15 +46,22 @@ def build_evidence_snippet(
          "date_start": point.start, "date_end": point.end, "source": point.source}
         for point in c.linked_times
     ]
+    matched_points = [
+        point for point in c.linked_times
+        if point.overlaps(date_from, date_to) and (
+            not allowed_years or any(
+                point.overlaps(f"{year}-01-01", f"{year}-12-31")
+                for year in allowed_years
+            )
+        )
+    ]
+    matched_event_time_candidates = [
+        {"time_iso": point.time_iso, "time_precision": point.precision,
+         "date_start": point.start, "date_end": point.end, "source": point.source}
+        for point in matched_points
+    ]
     if c.linked_times:
-        if (date_from or date_to) and not any(
-            point.overlaps(date_from, date_to) for point in c.linked_times
-        ):
-            return None
-        if allowed_years and not any(
-            point.overlaps(f"{year}-01-01", f"{year}-12-31")
-            for point in c.linked_times for year in allowed_years
-        ):
+        if (date_from or date_to or allowed_years) and not matched_points:
             return None
         di = c.date_iso if c.linked_complete and len(c.linked_times) == 1 else None
     elif h.has_structured_events:
@@ -96,4 +103,5 @@ def build_evidence_snippet(
         source_id=c.source_id,
         event_ids=c.event_ids,
         event_time_candidates=event_time_candidates,
+        matched_event_time_candidates=matched_event_time_candidates,
     )
