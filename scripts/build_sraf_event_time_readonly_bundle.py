@@ -140,6 +140,7 @@ def build(root: Path, output: Path, *, source_head: str | None = None) -> dict:
     git_root = Path(_git_bytes(root, "rev-parse", "--show-toplevel").decode("utf-8").strip())
     if git_root.resolve() != root.resolve():
         raise ValueError("source_root_not_git_toplevel")
+    _git_bytes(root, "cat-file", "-e", f"{head}^{{commit}}")
     _verify_builder_checkout(root, head)
 
     # The commit, not the working tree, is the content authority. This makes
