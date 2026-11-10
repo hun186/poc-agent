@@ -16,9 +16,12 @@ structured `Event.event_id` and any `Event_Timeline.event_ids`. It includes
 both a core Event date and distinct Timeline milestones. Identical periods are
 deduplicated (preferring Event provenance). Multiple different candidate dates
 within one coherent event ID remain visible and are never collapsed into an
-arbitrary first day. An identifier reused in **different blocks with conflicting
-time claims** is unresolvable without source-block provenance and is explicitly
-excluded from date-qualified Evidence rather than cross-joined.
+arbitrary first day. Event IDs are **local to each multidim object**, so
+structured source Evidence is correlated within its originating block.
+Nested inner hits use Elasticsearch's enclosing `_nested.offset` where
+available; a multi-block inner hit with no trustworthy origin cannot borrow
+another block's repeated ID. Unlocated inner hits whose ID is uniquely
+defined within the document may still be resolved conservatively.
 
 - `Event_Timeline=[]` is valid; a dated `Event` suffices for date retrieval.
 - An Event-only document and a Timeline-only document can each be found by
@@ -92,3 +95,17 @@ The query-layer OR is intentionally a **document candidate filter**, not
 proof that a keyword and date belong to one Event. The Evidence link/date
 stage is the additional guard. For unclear evidence without reliable
 `event_ids`, preserve uncertainty rather than inventing a linked event.
+
+## Report LLM and final citations
+
+The compressed report Evidence `d` is a date **only when precise**. With one
+month/year interval it may be the abbreviated `YYYY-MM` or `YYYY`, always
+accompanied by `tp` precision and query-matched `times` intervals. Multiple
+intervals provide `tp=multiple` and `times`; unresolved evidence provides
+`tp=unknown`, and neither case is substituted by article publication date.
+The report field selector must retain `tp`/`times` for structured Evidence.
+Final citation `date_iso` remains blank for month/year/multiple/unknown,
+while `date_precision` and candidate time intervals preserve provenance.
+Known `hour/minute/second` input precision retains its original `time_iso`
+inside candidate metadata, with its local event day projected for daily
+search/aggregation. The event's explicit offset is preserved, not inferred.
