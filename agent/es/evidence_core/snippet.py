@@ -6,6 +6,7 @@ from typing import Optional
 
 from .models import Citation, EvidenceSnippet, HitDoc
 from .date_utils import normalize_iso_date
+from ..temporal import parse_temporal_interval
 
 
 def make_fallback_snippet(text: str, q: str, width: int) -> Optional[str]:
@@ -37,20 +38,45 @@ def build_evidence_snippet(
     if not c.text:
         return None
 
-    # 日期：citation.date_iso → 文章日期 → 第一個事件日期
-    di = c.date_iso or h.article_date_iso
-    if not di and h.event_dates:
-        di = h.event_dates[0]
-    norm_di = normalize_iso_date(di)
-
-    if norm_di:
-        if date_from and norm_di < date_from:
-            return None
-        if date_to and norm_di > date_to:
-            return None
-
+    lower_input = parse_temporal_interval(date_from) if date_from else None
+    upper_input = parse_temporal_interval(date_to) if date_to else None
+    lower = lower_input.start if lower_input else None
+    upper = upper_input.end if upper_input else None
+    limited = bool(date_from or date_to)
     article_norm = normalize_iso_date(h.article_date_iso)
-    snippet_norm = normalize_iso_date(di)
+    chosen = parse_temporal_interval(c.date_iso, "day") if c.date_iso else None
+
+    if chosen is not None:
+        # Explicit date in the citation text is stronger than article metadata.
+        if limited and not chosen.intersects(lower, upper):
+            return None
+    elif c.linked_dates:
+        # Only the citation's event_ids and (when known) multidim block may
+        # authorize use of an extracted Event or Timeline date.
+        candidates = [
+            record for record in c.linked_dates
+            if not limited or record.interval.intersects(lower, upper)
+        ]
+        if limited and not candidates:
+            return None  # A genuinely linked but out-of-range citation.
+        event_candidates = [record for record in candidates if record.source == "Event"]
+        preferred = event_candidates or candidates
+        periods = {(r.interval.start, r.interval.end) for r in preferred}
+        if len(periods) == 1:
+            chosen = preferred[0].interval
+        # Multiple incompatible linked dates: retain an uncertain citation,
+        # never invent a unique event day.
+    elif not h.event_time_records and article_norm:
+        # Legacy material with no structured event timestamps at all may still
+        # use its publication date, preserving old article-only semantics.
+        chosen = parse_temporal_interval(article_norm, "day")
+        if limited and chosen and not chosen.intersects(lower, upper):
+            return None
+
+    # For a coarse month/year, reporting its first day as an observed event
+    # day is false precision. Keep date_iso empty and expose an explicit window.
+    snippet_date = chosen.iso if chosen and chosen.precision == "day" else ""
+    uncertain = limited and not snippet_date and chosen is None
 
     uuid = h.uuid or c.uuid
     if not uuid:
@@ -59,8 +85,12 @@ def build_evidence_snippet(
     return EvidenceSnippet(
         uuid=uuid,
         text=c.text,
-        date_iso=(snippet_norm or article_norm or ""),
-        article_date_iso=(article_norm or snippet_norm or ""),
+        date_iso=snippet_date,
+        article_date_iso=article_norm or "",
+        event_time_precision=chosen.precision if chosen else None,
+        event_time_start_iso=chosen.start.isoformat() if chosen else None,
+        event_time_end_iso=chosen.end.isoformat() if chosen else None,
+        weak_evidence=uncertain,
         subject=h.subject,
         article_title=h.article_title,
         paragraph_id=c.paragraph_id,
