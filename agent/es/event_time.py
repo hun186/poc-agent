@@ -103,35 +103,57 @@ def _ids(value: Any) -> List[str]:
 
 
 def collect_linked_times(blocks: List[dict]) -> Tuple[Dict[str, List[StructuredTime]], bool]:
-    """Find Event times first, then Timeline time for IDs without Event dates.
+    """Build an event-id lookup, refusing conflicting ID reuse across blocks.
 
-    Detect structure independently of valid dates, so a dangling event_id cannot
-    silently fall back to the unrelated article publication date.
+    GLM event IDs are only guaranteed in a local structured block. When the
+    same identifier reappears in multiple blocks with incompatible temporal
+    claims, _source Evidence without reliable block context must not be
+    joined to another block's event date.
     """
     events: Dict[str, List[StructuredTime]] = {}
     timeline: Dict[str, List[StructuredTime]] = {}
+    block_claims: Dict[str, tuple] = {}
+    conflicts = set()
     has_structure = False
     for block in blocks:
+        local_events: Dict[str, List[StructuredTime]] = {}
+        local_timeline: Dict[str, List[StructuredTime]] = {}
+        mentioned = set()
         for item in _records(block, "Event"):
             has_structure = True
             eid = item.get("event_id")
             if eid is None or not str(eid).strip():
                 continue
+            eid = str(eid).strip()
+            mentioned.add(eid)
             point = parse_structured_time(item.get("time_iso"), item.get("time_precision"), "Event")
             if point:
-                events.setdefault(str(eid).strip(), []).append(point)
+                events.setdefault(eid, []).append(point)
+                local_events.setdefault(eid, []).append(point)
         for item in _records(block, "Event_Timeline"):
             has_structure = True
+            ids = _ids(item.get("event_ids"))
+            mentioned.update(ids)
             point = parse_structured_time(item.get("time_iso"), item.get("time_precision"), "Event_Timeline")
             if point:
-                for eid in _ids(item.get("event_ids")):
+                for eid in ids:
                     timeline.setdefault(eid, []).append(point)
+                    local_timeline.setdefault(eid, []).append(point)
+
+        for eid in mentioned:
+            signature = tuple(sorted({
+                (p.source, p.precision, p.start, p.end)
+                for p in local_events.get(eid, []) + local_timeline.get(eid, [])
+            }))
+            if eid in block_claims and block_claims[eid] != signature:
+                conflicts.add(eid)
+            block_claims[eid] = signature
 
     answer: Dict[str, List[StructuredTime]] = {}
     for eid in events.keys() | timeline.keys():
-        unique = []
-        # Both Event and Timeline dates are relevant to the linked event.
-        # Dedupe identical periods, retaining Event provenance first.
+        if eid in conflicts:
+            continue
+        unique: List[StructuredTime] = []
         for point in events.get(eid, []) + timeline.get(eid, []):
             if not any(
                 (p.start, p.end, p.precision) == (point.start, point.end, point.precision)
