@@ -5,4 +5,10 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd -- "$ROOT"
 PYTHON_BIN="${SRAF_PYTHON:-python}"
-exec "$PYTHON_BIN" "$ROOT/tools/sraf_event_time_readonly_acceptance.py" --run "$@"
+# Optional deployment config from another checkout without altering any
+# running service tree. No config path/credential is printed.
+EXTRA=()
+if [[ -n "${SRAF_CONFIG_ROOT:-}" ]]; then
+  EXTRA+=(--config-root "$SRAF_CONFIG_ROOT")
+fi
+exec "$PYTHON_BIN" "$ROOT/tools/sraf_event_time_readonly_acceptance.py" --run "${EXTRA[@]}" "$@"
