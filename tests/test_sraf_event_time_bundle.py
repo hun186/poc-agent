@@ -83,9 +83,14 @@ def test_zip_contains_single_runner_and_does_not_touch_deployed_repo(tmp_path):
     assert "SRAF_CONFIG_ROOT" in runner
     assert 'exec "$PYTHON_BIN"' in runner
     for forbidden in ("git fetch", "git worktree", "git pull", "git checkout",
-                      "rm -rf", "sudo", "systemctl", "run_sra_api.sh"):
+                      "rm -rf", "sudo", "systemctl"):
         assert forbidden not in runner
     assert "poc-agent" in runner
+    # The name run_sra_api.sh is allowed only as a file-existence guard;
+    # it must never be invoked by the diagnostic runner.
+    assert '[[ -f "$PARENT/run_sra_api.sh" ]]' in runner
+    assert "bash run_sra_api.sh" not in runner
+    assert "./run_sra_api.sh" not in runner
 
 
 @pytest.mark.parametrize("head", ["not-a-hash", "A" * 40, "123"])
