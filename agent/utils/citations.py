@@ -66,6 +66,16 @@ def _compact_event_time(s: Dict[str, Any]) -> Dict[str, Any]:
         else:
             dt = None
         return {"d": dt, "tp": precision, "times": times}
+    if not times and isinstance(s.get("date_iso"), str):
+        # A structured document may have a dangling event_id but its Evidence
+        # literal contains a full YYYY-MM-DD; parser only accepts an explicit
+        # validated full date here, not a guessed publication year.
+        literal = s["date_iso"]
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", literal):
+            return {"d": literal, "tp": "day", "times": [{
+                "time_iso": literal, "time_precision": "day",
+                "date_start": literal, "date_end": literal, "source": "evidence_text",
+            }]}
     return {"d": None, "tp": "multiple" if times else "unknown", "times": times}
 
 
