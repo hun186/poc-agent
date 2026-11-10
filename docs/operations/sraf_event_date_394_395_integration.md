@@ -1,5 +1,5 @@
 # SRAF #393 — concurrent PR #394 / #395 integration record
-Date: 2026-11-10. **Candidate only; both PRs are Draft and NOT MERGED.**
+Date: 2026-11-10. **Candidate only; #394 CLOSED without merge, #395 OPEN and ready for formal review. Neither PR has merged to main.**
 
 ## Why integration was required
 
@@ -17,9 +17,8 @@ This is not a trivial git-conflict resolution: #394 introduces
 `tp/times` report compaction.
 
 **Single implementation decision:** integrate on #395 rather than import both
-different helpers, nested queries and two competing citation schemas. The
-#394 code remains intact on its own Draft branch for audit, but must not be
-merged independently. This avoids duplicate temporal sources of truth.
+different helpers, nested queries and two competing citation schemas. The #394 branch and code remain intact for audit after its PR was CLOSED
+without merge. It must not be merged independently. This avoids duplicate temporal sources of truth.
 
 ## Reconciliation (not a blanket cherry-pick)
 
@@ -78,7 +77,8 @@ Both behaviors are explicit decisions; neither is an automatic merge artifact.
 - [ ] One consolidated code path with both PRs' relevant regressions passing
 - [ ] All latest-head hosted CI successful; no stale-head PASS reuse
 - [ ] Independent formal Codex review on that same head, zero unresolved P1/P2
-- [ ] Do not merge #394 and #395 separately
+- [x] Close #394 without merge; retain its historical branch and review record
+- [ ] Merge only canonical #395 once every P0 gate passes
 - [ ] **Real private `news_test` ES Mapping, time-zone, _nested offsets, and
       operator report/LLM/DOCX flows remain NOT TESTED.** No live writes,
       reprocessing, service restart or Mapping migration is authorized here.
