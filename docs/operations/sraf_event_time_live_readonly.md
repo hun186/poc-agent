@@ -6,11 +6,11 @@
 
 本工具僅對固定 `news_test` index 觀察：
 - Elasticsearch 服務身份、受保護的 Basic principal 資訊以及嚴格 CA + **IP SAN** TLS 驗證
-- `multidim_event_json` → `Event`、`Event_Timeline`、`evidence_snippets` 的實際 nested Mapping，以及事件日期的 `date` 欄位
+- 實際 index 名稱**必須**為 `news_test`（拒絕解析至其他實體 index 的同名 alias）；`multidim_event_json` → `Event`、`Event_Timeline`、`evidence_snippets` 必須為 nested，且 `time_iso:date`、`time_precision:keyword`、`event_id/event_ids:keyword`、`evidence_snippets.text:text` 等必要葉節點型別皆符合
 - 從真實 Event、Timeline 各抽取最多一筆 ES 文件（記憶體處理，不輸出原文），在同一個結構化區塊內比對 Evidence `event_ids`
-- 對抽樣事件日期實際發出 SRAF `_structured_date_filter()` 的 nested 日期查詢，並用 `_id` 對應查詢目標；如果資料足夠，額外檢查 2 個候選 ES 分頁沒有重複文件
+- 對抽樣 Event 的實際 precision，從 SRAF `_structured_date_filter()` **抽取該筆資料所需的單一 nested 分支**進行日期 GET 查詢（避免完整 14 分支 GET URL 超過 Elasticsearch 預設 4 KiB request-line 限制），再以 `_id` 對應查詢目標；其他精度分支未經此樣本驗證。資料足夠時額外觀察 2 個 ES 分頁沒有重複文件，並拒絕意外 `_index`
 
-**只允許：** 嚴格 TLS、原生 GET `/`、GET `/_security/_authenticate`、GET `/news_test/_mapping`、最多四次 GET `/news_test/_search?source=...`。沒有 ES 寫入、Mapping 更新、重跑 GLM、SQL 寫入、LLM 生成、API／worker 重啟、scroll／PIT、檔案寫入或敏感資料輸出。所有 HTTP 請求使用既有已審核的 `OFF-1B` HTTPS GET 傳輸，不匯入會放寬 TLS hostname 驗證的 runtime ES client。
+**只允許：** 嚴格 TLS、原生 GET `/`、GET `/_security/_authenticate`、GET `/news_test/_mapping`、最多四次 GET `/news_test/_search?source=...`。沒有 ES 寫入、Mapping 更新、重跑 GLM、SQL 寫入、LLM 生成、API／worker 重啟、scroll／PIT、檔案寫入或敏感資料輸出。GET URI 限長至 3072 字元，留出 HTTP request-line framing 空間。所有 HTTP 請求使用既有已審核的 `OFF-1B` HTTPS GET 傳輸，不匯入會放寬 TLS hostname 驗證的 runtime ES client。
 
 **驗收結果不等於正式上線**：只抽少量真實文件，未完整覆蓋 Event-only／Timeline-only／缺失精度／跨 index 同 UUID／不同本地時區／10k 預算補取。這些仍須額外獨立的唯讀 E2E 測量，否則 #395 不應視為全實機驗收。
 
