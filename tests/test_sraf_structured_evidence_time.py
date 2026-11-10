@@ -195,6 +195,28 @@ def test_invalid_or_unknown_times_are_not_claimed_exact(when, precision):
     assert _evidence(hit, "2020-01-01", "2020-12-31") == []
 
 
+@pytest.mark.parametrize("precision,stamp", [
+    ("hour", "2026-08-18T05:00:00"),
+    ("minute", "2026-08-18T05:04:00"),
+    ("second", "2026-08-18T05:04:03+08:00"),
+])
+def test_valid_subday_times_stay_searchable_and_count_for_the_correct_day(precision, stamp):
+    point = parse_structured_time(stamp, precision, "Event")
+    assert point is not None and point.precision == precision
+    assert point.start == point.end == "2026-08-18"
+    hit = _hit([_event(when=stamp, precision=precision)], [], [_snippet(["E1"])])
+    found = _evidence(hit, "2026-08-18", "2026-08-18")
+    assert found[0]["date_iso"] == "2026-08-18"
+    assert AggregateMonthQuarter().forward(found)["day_counts"] == {"2026-08-18": 1}
+
+
+def test_empty_legacy_precision_infers_day_without_dropping_event():
+    hit = _hit([_event(when="2026-08-18", precision="")], [], [_snippet(["E1"])])
+    assert _evidence(hit, "2026-08-18", "2026-08-18")[0]["date_iso"] == "2026-08-18"
+    body = _query(date_from="2026-08-18", date_to="2026-08-18")
+    assert '"time_precision": ""' in str(body) or "time_precision': ''" in str(body)
+
+
 def test_json_block_shapes_and_stable_ids():
     hit = _hit(multidim=json.dumps([{
         "article_date_iso": "2009-06-15",
@@ -209,15 +231,45 @@ def test_legacy_no_structured_event_keeps_publication_date_fallback():
     assert _evidence(hit, "2009-06-01", "2009-06-30")[0]["date_iso"] == "2009-06-15"
 
 
-def test_multiblock_duplicate_id_with_conflicting_dates_fails_closed():
+def test_multiblock_duplicate_id_source_evidence_stays_in_its_own_block():
     first = {"Event": [_event("E1", "2008-07-20")], "evidence_snippets": [_snippet(["E1"])]}
     second = {"Event": [_event("E1", "2009-06-15")]}
     hit = _hit(multidim=[first, second])
-    assert _evidence(hit, "2008-07-01", "2008-07-31") == []
+    found = _evidence(hit, "2008-07-01", "2008-07-31")
+    assert len(found) == 1
+    assert found[0]["date_iso"] == "2008-07-20"
     assert _evidence(hit, "2009-06-01", "2009-06-30") == []
     parsed, _ = parse_es_hits([hit], query_for_snippet="重大事件", config=EvidenceBuildConfig())
-    assert parsed[0].citations[0].event_ids == ["E1"]
-    assert parsed[0].citations[0].linked_times == []
+    assert parsed[0].citations[0].block_index == 0
+    assert len(parsed[0].citations[0].linked_times) == 1
+
+
+def test_multiblock_inner_hit_without_origin_must_not_cross_join_reused_id():
+    hit = _hit(multidim=[
+        {"Event": [_event("E1", "2008-07-20")]},
+        {"Event": [_event("E1", "2009-06-15")]},
+    ])
+    hit["inner_hits"] = {"evi": {"hits": {"hits": [{
+        "_source": {"text": "重大事件造成影響", "event_ids": ["E1"]}
+    }]}}}
+    assert _evidence(hit, "2008-07-01", "2008-07-31") == []
+    assert _evidence(hit, "2009-06-01", "2009-06-30") == []
+
+
+def test_multiblock_inner_hit_with_offset_uses_correct_parent_event():
+    hit = _hit(multidim=[
+        {"Event": [_event("E1", "2008-07-20")]},
+        {"Event": [_event("E1", "2009-06-15")]},
+    ])
+    hit["inner_hits"] = {"evi": {"hits": {"hits": [{
+        "_nested": {"field": "multidim_event_json", "offset": 1,
+                    "_nested": {"field": "evidence_snippets", "offset": 0}},
+        "_source": {"text": "重大事件造成影響", "event_ids": ["E1"]}
+    }]}}}
+    matched = _evidence(hit, "2009-06-01", "2009-06-30")
+    assert len(matched) == 1
+    assert matched[0]["date_iso"] == "2009-06-15"
+    assert _evidence(hit, "2008-07-01", "2008-07-31") == []
 
 
 def test_multiblock_identical_id_and_date_keeps_link():
