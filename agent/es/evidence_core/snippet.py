@@ -105,4 +105,5 @@ def build_evidence_snippet(
         event_time_candidates=event_time_candidates,
         matched_event_time_candidates=matched_event_time_candidates,
         structured_time_context=h.has_structured_events,
+        source_hit_ordinal=h.source_hit_ordinal,
     )
