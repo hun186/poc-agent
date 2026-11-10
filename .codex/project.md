@@ -1,5 +1,11 @@
 # SRAF Project Handoff
 
+## Current Focus — 2026-11-10: #393 dual Event / Timeline date query and scoped Evidence candidate (PR pending)
+
+- **#392 VERIFIED MERGED** squash `555452ed5dcf88f014d0980e55301ee31387e73f` after exact-head four Hosted successes, completed Codex latest-head review, zero unresolved threads; root 0_ alias retired in GitHub, unified `1_完整診斷驗收_SRAF.sh --level L0` retained. The private one-way-sync host may still contain the old 0_ file; Linux acceptance remains separate.
+- **#393 in progress:** two nested ES date sources, year/month/day intersection, citation event_id and block-local authority; unknown citations stay unproven and coarse periods do not become invented days. New regression workflow targets Python3.10/3.11. **Hosted CI, actual ES index Mapping/runtime, formal Codex Review and merge all PENDING.** No GLM data rewrite, index migration, restart, or real credentialed query. High-risk P0 data semantics: review/approval required before merge; do not silently auto-merge.
+
+
 ## Current Focus — 2026-11-08: advanced diagnostic launcher folder cleanup MERGED / private host still pending
 
 - **#373 VERIFIED MERGED** (squash `41f528d6302d86d1d67fe6b140cf416b928aa182`; exact PR head `edec19989cc7bc0cd9d63ccfa4ad809401d1364a`): moved only the three seldom-used `run_sraf_airgap_offline.sh`, `run_sraf_airgap_off1_diagnose.sh`, and `run_sraf_airgap_off2_verify.sh` files from repository root into `scripts/diagnostics/`. Leave `./0_一鍵快檢_SRAF.sh` and `run_sra_api.sh` at root with unchanged invocation and semantics. Correct the moved scripts' project-root calculation to `../..`, delegate to their new paths, update release policy explicit selectors, OFF-2 policy coverage, CI Bash syntax checks, fake-deployment tests and operator docs. No new probes, privilege, report trust or FULL_LIVE claims. Old advanced root-relative commands must be updated externally; the root wrappers were deliberately removed to avoid clutter. Latest-head Hosted OFF-1 519, OFF-2 577, target Python3.10 496, operator E2E 83, OFF-0 19 schema-only PASS; formal Codex completed zero findings and zero unresolved threads. This proves reviewed code in GitHub, not private Linux acceptance.
