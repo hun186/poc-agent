@@ -261,6 +261,7 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
             key = (str(sid), note)
             ref_no = ref_map.get(key)
         doc_id = sid  # 或 doc_id = pick_doc_id(s)
+        time_projection = _compact_event_time(s)
         citations.append({
             "text": s.get("text"),
             #"source_id": s.get("source_id") or s.get("uuid"),
@@ -276,6 +277,7 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
             **({"event_time_candidates": s.get("matched_event_time_candidates")
                 if isinstance(s.get("matched_event_time_candidates"), list)
                 else s.get("event_time_candidates")} if s.get("event_time_candidates") else {}),
+            **({"date_precision": time_projection["tp"]} if time_projection.get("tp") else {}),
             "subject": s.get("subject"),
             "article_title": s.get("article_title"),
 
