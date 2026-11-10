@@ -62,6 +62,7 @@ def build_hits_and_evidence(
     query_for_snippet: str,
     config: Optional[EvidenceBuildConfig] = None,
     allowed_years: Optional[Set[int]] = None,
+    include_source_hit_ordinal: bool = False,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
     config = config or EvidenceBuildConfig()
     term_groups = term_groups or []
@@ -145,8 +146,11 @@ def build_hits_and_evidence(
 
     # 5) filtered_hits：只留有 evidence 的 doc
     if evidence:
-        kept = {e.uuid for e in evidence if e.uuid}
-        filtered = [h for h in out_hits if h.uuid in kept]
+        # UUID is application metadata, not an ES hit identity: independent
+        # indices can carry the same UUID with different event dates. Match
+        # Evidence back to its source hit, never to a different same-UUID hit.
+        kept = {e.source_hit_ordinal for e in evidence}
+        filtered = [h for h in out_hits if h.source_hit_ordinal in kept]
     elif date_from or date_to or allowed_years:
         # A document-level ES date match does not establish that one of its
         # Evidence citations belongs to the matching event. Do not expose a
@@ -167,6 +171,8 @@ def build_hits_and_evidence(
     filtered_hits_dict = [
         {
             "uuid": h.uuid,
+            **({"__sraf_source_hit_ordinal": h.source_hit_ordinal}
+               if include_source_hit_ordinal else {}),
             "subject": h.subject,
             "score": h.score,
             "citations": [
@@ -198,6 +204,8 @@ def build_hits_and_evidence(
     evidence_dict = [
         {
             "uuid": e.uuid,
+            **({"__sraf_source_hit_ordinal": e.source_hit_ordinal}
+               if include_source_hit_ordinal else {}),
             "text": e.text,
             "date_iso": e.date_iso,
             "article_date_iso": e.article_date_iso,
