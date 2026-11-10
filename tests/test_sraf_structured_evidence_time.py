@@ -237,6 +237,27 @@ def test_json_block_shapes_and_stable_ids():
     assert _evidence(hit, "2008-07-01", "2008-07-31")[0]["date_iso"] == "2008-07-20"
 
 
+@pytest.mark.parametrize("inferred", [None, ""])
+def test_legacy_timestamp_without_precision_gets_canonical_second(inferred):
+    stamp = "2020-06-17T11:00:00Z"
+    point = parse_structured_time(stamp, inferred, "Event")
+    assert point is not None and point.precision == "second"
+    hit = _hit([_event(when=stamp, precision=inferred)], [], [_snippet(["E1"])])
+    evidence = _evidence(hit, "2020-06-17", "2020-06-17")
+    assert evidence[0]["date_iso"] == "2020-06-17"
+    assert evidence[0]["event_time_candidates"][0]["time_precision"] == "second"
+    assert AggregateMonthQuarter().forward(evidence)["day_counts"] == {"2020-06-17": 1}
+
+
+def test_unknown_structured_event_never_counts_article_as_an_event_day():
+    hit = _hit([_event("E2")], [], [_snippet(["E1"])])
+    evidence = _evidence(hit)
+    assert evidence[0]["date_iso"] == ""
+    assert evidence[0]["article_date_iso"] == "2009-06-15"
+    assert AggregateMonthQuarter().forward(evidence)["day_counts"] == {}
+    assert AggregateMonthQuarter().forward(evidence)["doc_count"] == 0
+
+
 def test_legacy_no_structured_event_keeps_publication_date_fallback():
     hit = _hit(snippets=[_snippet(["E1"])])
     assert _evidence(hit, "2009-06-01", "2009-06-30")[0]["date_iso"] == "2009-06-15"
