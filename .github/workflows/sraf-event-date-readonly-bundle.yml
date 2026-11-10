@@ -1,0 +1,64 @@
+name: SRAF Event date read-only sidecar for incremental transfer
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/build_sraf_event_time_readonly_bundle.py'
+      - 'tests/test_sraf_event_time_bundle.py'
+      - 'tests/test_sraf_event_time_readonly_acceptance.py'
+      - 'tools/sraf_event_time_readonly_acceptance.py'
+      - 'tools/sraf_airgap_off1b_auto.py'
+      - 'tools/sraf_airgap_off1b_es_https_mapping.py'
+      - 'tools/sraf_airgap_off1_probes.py'
+      - 'agent/es/event_time.py'
+      - 'agent/es/query_body.py'
+      - 'agent/external_capabilities.py'
+      - 'config/bootstrap.py'
+      - '.github/workflows/sraf-event-date-readonly-bundle.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-bundle:
+    name: Create no-Git sidecar ZIP and verify isolated Python imports
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Packaging is from the PR HEAD, never from the auto-generated
+          # PR merge commit or unrelated main checkout.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install only offline probe test dependencies
+        run: python -m pip install 'pytest>=8,<10' python-dotenv requests
+      - name: Validate redaction, strict TLS and no-Git sidecar
+        run: |
+          python -m pytest -q tests/test_sraf_event_time_readonly_acceptance.py tests/test_sraf_event_time_bundle.py
+      - name: Build single-direction transfer ZIP
+        run: |
+          python scripts/build_sraf_event_time_readonly_bundle.py \
+            --source-head "$(git rev-parse HEAD)" \
+            --output "$RUNNER_TEMP/sraf-date-readonly.zip"
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import os
+          archive = Path(os.environ['RUNNER_TEMP']) / 'sraf-date-readonly.zip'
+          with ZipFile(archive) as zipped:
+              assert zipped.testzip() is None
+              assert all(item.startswith('_sraf_date_readonly/') for item in zipped.namelist())
+              assert len(zipped.namelist()) >= 10
+          print("bundle_integrity=PASS")
+          PY
+      - name: Upload ZIP for Windows one-way incremental transfer
+        uses: actions/upload-artifact@v4
+        with:
+          name: sraf-event-date-readonly-no-git
+          path: ${{ runner.temp }}/sraf-date-readonly.zip
+          if-no-files-found: error
+          retention-days: 14
