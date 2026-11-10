@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from agent.es.event_time import parse_structured_time, collect_linked_times, query_period_bounds
+from agent.es.event_time import parse_structured_time, collect_linked_times, query_period_bounds, query_untyped_period_bounds
 from agent.es.evidence_core.parser import parse_es_hits
 from agent.es.evidence_core.models import EvidenceBuildConfig
 from agent.es.evidence_core.builder import build_hits_and_evidence
@@ -547,7 +547,7 @@ def test_merged_394_395_legacy_missing_precision_utc_candidate_bounds():
         date_filter = legacy_cases[0]["bool"]["filter"][1]
         field = child["nested"]["path"] + ".time_iso"
         assert date_filter == {"range": {
-            field: {"gte": "2026-08-17", "lt": "2026-08-20"}
+            field: {"gte": "2025-12-31", "lt": "2027-01-02"}
         }}
 
     for declared in (None, ""):
@@ -558,6 +558,29 @@ def test_merged_394_395_legacy_missing_precision_utc_candidate_bounds():
             assert len(evidence) == 1
             assert evidence[0]["date_iso"] == "2026-08-18"
             assert evidence[0]["event_time_candidates"][0]["time_precision"] == "second"
+
+
+@pytest.mark.parametrize("value,expected_precision,expected_start", [
+    ("2020", "year", "2020-01-01"),
+    ("2020-06", "month", "2020-06-01"),
+])
+@pytest.mark.parametrize("missing_precision", [None, ""])
+def test_merged_394_395_legacy_untyped_partial_interval_is_retrieved(
+    value, expected_precision, expected_start, missing_precision
+):
+    # Review P2: widening just ±one day around June 17 loses old ISO
+    # year/month values indexed at Jan 1/June 1. The candidate query must
+    # cover those stored instants, while postfilter uses actual precision.
+    bounds = query_untyped_period_bounds("2020-06-17", "2020-06-17")
+    assert bounds == {"gte": "2019-12-31", "lt": "2021-01-02"}
+    assert bounds["gte"] <= expected_start < bounds["lt"]
+    hit = _hit([_event("E1", value, missing_precision)], [], [_snippet(["E1"])])
+    evidence = _evidence(hit, "2020-06-17", "2020-06-17")
+    assert len(evidence) == 1
+    assert evidence[0]["date_iso"] == ""
+    assert evidence[0]["event_time_candidates"][0]["time_precision"] == expected_precision
+    assert AggregateMonthQuarter().forward(evidence)["day_counts"] == {}
+    assert _evidence(hit, "2021-06-17", "2021-06-17") == []
 
 
 def test_merged_394_parenthesized_day_with_two_distinct_months_is_ambiguous():
