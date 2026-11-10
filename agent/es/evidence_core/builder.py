@@ -21,11 +21,12 @@ def collect_snippets(
     date_to: Optional[str],
     term_groups: List[Set[str]],
     min_groups_required: Optional[int],
+    allowed_years: Optional[Set[int]] = None,
 ) -> List[EvidenceSnippet]:
     out: List[EvidenceSnippet] = []
     for h in hits:
         for c in h.citations:
-            ev = build_evidence_snippet(h, c, date_from=date_from, date_to=date_to)
+            ev = build_evidence_snippet(h, c, date_from=date_from, date_to=date_to, allowed_years=allowed_years)
             if ev is None:
                 continue
 
@@ -60,6 +61,7 @@ def build_hits_and_evidence(
     term_groups: List[Set[str]],
     query_for_snippet: str,
     config: Optional[EvidenceBuildConfig] = None,
+    allowed_years: Optional[Set[int]] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
     config = config or EvidenceBuildConfig()
     term_groups = term_groups or []
@@ -82,6 +84,7 @@ def build_hits_and_evidence(
         date_from=date_from, date_to=date_to,
         term_groups=term_groups,
         min_groups_required=None,
+        allowed_years=allowed_years,
     )
     logger.info("build_hits_and_evidence: evidence strict=%d", len(evidence))
 
@@ -99,6 +102,7 @@ def build_hits_and_evidence(
                 date_from=date_from, date_to=date_to,
                 term_groups=term_groups,
                 min_groups_required=req,
+                allowed_years=allowed_years,
             )
             logger.info("build_hits_and_evidence: evidence relaxed(req=%d)=%d", req, len(tmp))
             if tmp:
@@ -111,7 +115,7 @@ def build_hits_and_evidence(
         for h in out_hits[:config.max_docs_for_fallback]:
             if not h.citations:
                 continue
-            ev = build_evidence_snippet(h, h.citations[0], date_from=date_from, date_to=date_to)
+            ev = build_evidence_snippet(h, h.citations[0], date_from=date_from, date_to=date_to, allowed_years=allowed_years)
             if ev:
                 evidence.append(ev)
         logger.info("build_hits_and_evidence: evidence fallback(no_terms)=%d", len(evidence))
@@ -123,7 +127,7 @@ def build_hits_and_evidence(
 
         for h in out_hits:
             for c in h.citations:
-                ev = build_evidence_snippet(h, c, date_from=date_from, date_to=date_to)
+                ev = build_evidence_snippet(h, c, date_from=date_from, date_to=date_to, allowed_years=allowed_years)
                 if not ev:
                     continue
 
@@ -143,7 +147,7 @@ def build_hits_and_evidence(
     if evidence:
         kept = {e.uuid for e in evidence if e.uuid}
         filtered = [h for h in out_hits if h.uuid in kept]
-    elif date_from or date_to:
+    elif date_from or date_to or allowed_years:
         # A document-level ES date match does not establish that one of its
         # Evidence citations belongs to the matching event. Do not expose a
         # date-filtered document with zero date-valid supporting evidence.
