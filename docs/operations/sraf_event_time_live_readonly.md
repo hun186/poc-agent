@@ -18,65 +18,65 @@
 
 **此節是 SRAF 常態部署的唯一預設操作方式；不需要另外建立 Git Worktree、另行 checkout PR，或在 Linux 執行 Git。**
 
-原本的 Windows 來源是 \`D:\shared\TopicClassification\poc-agent\`，已存在的本機 BAT 是 \`133_rocopy_7z_poc-agent_pr_ref_runtime_complete.bat\`（BAT 保留在原本 Windows 所在位置；不假設它在 GitHub repo 裡）。正常執行時，**不要附加 \`--pr\`、\`--ref\` 或 \`--offline\`**：
+原本的 Windows 來源是 `D:\shared\TopicClassification\poc-agent`，已存在的本機 BAT 是 `133_rocopy_7z_poc-agent_pr_ref_runtime_complete.bat`（BAT 保留在原本 Windows 所在位置；不假設它在 GitHub repo 裡）。正常執行時，**不要附加 `--pr`、`--ref` 或 `--offline`**：
 
-\`\`\`bat
+```bat
 REM 在 BAT 實際所在資料夾執行；也可以直接雙擊原 BAT。
 call "133_rocopy_7z_poc-agent_pr_ref_runtime_complete.bat"
-\`\`\`
+```
 
 這支既有 BAT 的流程包含：
 
-1. 先在 **Windows 原本的同一份 \`poc-agent\` Git 目錄**確認／更新 \`origin/main\`（內含 Git fetch、必要時 fast-forward，對真實本機修改則 fail closed）；不額外建立 Worktree。
-2. 清理專用的 \`D:\temp\poc-agent-package\` 暫存包，以 Robocopy 的 \`/MAXAGE\`（預設 3 天）做增量選檔；另依 Requirement E2E provenance manifest **強制帶入並 hash 驗證所有管理中的 runtime files**，避免僅依檔案日期漏掉必要程式。
-3. 排除 \`.git\`、\`.env.local\`、\`e2e.env.local\`、快取及其他暫存資訊；建立 \`D:\temp\poc-agent-update.7z\`，並在製包失敗時停止。
-4. 沿用原有 Windows → Linux 單向上傳方式（不要將示例指令當成新的上傳系統）；將 \`poc-agent-update.7z\` 送至既有 Linux 部署位置。
+1. 先在 **Windows 原本的同一份 `poc-agent` Git 目錄**確認／更新 `origin/main`（內含 Git fetch、必要時 fast-forward，對真實本機修改則 fail closed）；不額外建立 Worktree。
+2. 清理專用的 `D:\temp\poc-agent-package` 暫存包，以 Robocopy 的 `/MAXAGE`（預設 3 天）做增量選檔；另依 Requirement E2E provenance manifest **強制帶入並 hash 驗證所有管理中的 runtime files**，避免僅依檔案日期漏掉必要程式。
+3. 排除 `.git`、`.env.local`、`e2e.env.local`、快取及其他暫存資訊；建立 `D:\temp\poc-agent-update.7z`，並在製包失敗時停止。
+4. 沿用原有 Windows → Linux 單向上傳方式（不要將示例指令當成新的上傳系統）；將 `poc-agent-update.7z` 送至既有 Linux 部署位置。
 5. 在 Linux **沿用現有覆蓋解壓程序**，例如檔案已上傳至部署目錄時：
 
-\`\`\`bash
+```bash
 cd /mntCZJ/TopicClassification/poc-agent
 7z x poc-agent-update.7z -y
-\`\`\`
+```
 
-以上解壓是**增量覆蓋**，不執行 \`git fetch\`／\`git pull\`、不做 \`/MIR\` 清空、也不會自動刪除曾經同步但後來從 GitHub 移除的舊檔。若需 API／Worker 重啟及驗收，仍使用既有另行授權的維護程序；製包與解壓本身不代表 \`FULL_LIVE\` 通過。
+以上解壓是**增量覆蓋**，不執行 `git fetch`／`git pull`、不做 `/MIR` 清空、也不會自動刪除曾經同步但後來從 GitHub 移除的舊檔。若需 API／Worker 重啟及驗收，仍使用既有另行授權的維護程序；製包與解壓本身不代表 `FULL_LIVE` 通過。
 
-**#395 尚未合併時：** BAT 不帶參數只會打包正式 \`main\`，**不會包含 #395 的日期修正**。雖然這支 BAT 支援 \`--pr 395\`（在同一個 Windows Git 目錄暫時切到 PR commit 並在製包後還原，不需 Worktree），但它產生的是**整個未合併 PR 的增量部署包**，不只是日期唯讀診斷；在 P0 審查／實機驗收及明確風險決策之前，**不可把這個 PR 模式壓縮包覆蓋到正在運作的 Linux 部署目錄**。常態仍採上述無參數 main 部署。
+**#395 尚未合併時：** BAT 不帶參數只會打包正式 `main`，**不會包含 #395 的日期修正**。雖然這支 BAT 支援 `--pr 395`（在同一個 Windows Git 目錄暫時切到 PR commit 並在製包後還原，不需 Worktree），但它產生的是**整個未合併 PR 的增量部署包**，不只是日期唯讀診斷；在 P0 審查／實機驗收及明確風險決策之前，**不可把這個 PR 模式壓縮包覆蓋到正在運作的 Linux 部署目錄**。常態仍採上述無參數 main 部署。
 
 ### 之前誤建的 Windows Worktree 如何還原
 
-若曾執行 \`git worktree add --detach ..\sraf-date-probe ...\`，在原本 Windows \`poc-agent\` 目錄內執行：
+若曾執行 `git worktree add --detach ..\sraf-date-probe ...`，在原本 Windows `poc-agent` 目錄內執行：
 
-\`\`\`bat
+```bat
 cd /d D:\shared\TopicClassification\poc-agent
 git worktree list
 git -C ..\sraf-date-probe status --short
 git worktree remove ..\sraf-date-probe
 git worktree list
 git status -sb
-\`\`\`
+```
 
-\`git worktree remove\` 若因本機新增／修改檔案而拒絕，就**停止檢查**，不可強制刪除；它不需要對原本 \`main\` 執行 reset 或 clean。先前單獨執行的 \`git fetch origin\` 也不會修改原本工作檔案，無須回滾。
+`git worktree remove` 若因本機新增／修改檔案而拒絕，就**停止檢查**，不可強制刪除；它不需要對原本 `main` 執行 reset 或 clean。先前單獨執行的 `git fetch origin` 也不會修改原本工作檔案，無須回滾。
 
 ## #395 合併前的額外唯讀實機日期驗收（非 BAT 正式部署）
 
-既有獨立 \`sraf-date-readonly.zip\` 是為了在**不覆蓋正式 API 模組**的情況下讀取 \`news_test\`；它**不是**常態增量部署，也不應取代上面的 BAT。若要合併前額外執行此測試，應由 [Sidecar CI workflow](https://github.com/hun186/poc-agent/actions/workflows/sraf-event-date-readonly-bundle.yml) 的**對應 PR HEAD**產出 \`sraf-event-date-readonly-no-git\` Artifact，再從中取得 \`sraf-date-readonly.zip\`，沿用既有單向傳送路徑上傳；**Windows 不必建立 Worktree，也不必把整個未合併 PR 覆蓋到正式 Linux**。
+既有獨立 `sraf-date-readonly.zip` 是為了在**不覆蓋正式 API 模組**的情況下讀取 `news_test`；它**不是**常態增量部署，也不應取代上面的 BAT。若要合併前額外執行此測試，應由 [Sidecar CI workflow](https://github.com/hun186/poc-agent/actions/workflows/sraf-event-date-readonly-bundle.yml) 的**對應 PR HEAD**產出 `sraf-event-date-readonly-no-git` Artifact，再從中取得 `sraf-date-readonly.zip`，沿用既有單向傳送路徑上傳；**Windows 不必建立 Worktree，也不必把整個未合併 PR 覆蓋到正式 Linux**。
 
-若單獨 ZIP 傳到 \`/mntCZJ/TopicClassification/\`：
+若單獨 ZIP 傳到 `/mntCZJ/TopicClassification/`：
 
-\`\`\`bash
+```bash
 cd /mntCZJ/TopicClassification
 7z x sraf-date-readonly.zip -y
 bash _sraf_date_readonly/run.sh
-\`\`\`
+```
 
-此工具只從現有部署目錄讀取 \`.env.local\`／CA，使用嚴格 TLS GET 觀察固定 \`news_test\`，不重新啟動 SRAF；若工具放在 \`poc-agent/_sraf_date_readonly\` 獨立子目錄，則執行 \`bash /mntCZJ/TopicClassification/poc-agent/_sraf_date_readonly/run.sh\`。若只檢查腳本可啟動而不連內網：
+此工具只從現有部署目錄讀取 `.env.local`／CA，使用嚴格 TLS GET 觀察固定 `news_test`，不重新啟動 SRAF；若工具放在 `poc-agent/_sraf_date_readonly` 獨立子目錄，則執行 `bash /mntCZJ/TopicClassification/poc-agent/_sraf_date_readonly/run.sh`。若只檢查腳本可啟動而不連內網：
 
-\`\`\`bash
+```bash
 cd /mntCZJ/TopicClassification/_sraf_date_readonly
 python tools/sraf_event_time_readonly_acceptance.py --no-network
-\`\`\`
+```
 
-這個 Sidecar 不證明完整多精度日期覆蓋、真正 Report／DOCX E2E 或正式 release readiness；沒有操作人員的真實 \`news_test\` 證據時標記為 \`NOT_TESTED\`。**不因 Sidecar 存在而改變常態 BAT 操作，也不預設執行 Sidecar。**
+這個 Sidecar 不證明完整多精度日期覆蓋、真正 Report／DOCX E2E 或正式 release readiness；沒有操作人員的真實 `news_test` 證據時標記為 `NOT_TESTED`。**不因 Sidecar 存在而改變常態 BAT 操作，也不預設執行 Sidecar。**
 
 ## 輸出與判定（安全可貼回對話）
 
