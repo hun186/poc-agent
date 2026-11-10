@@ -313,6 +313,11 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--run", action="store_true", help="opt in to strict-TLS GET-only private index checks")
     mode.add_argument("--no-network", action="store_true", help="default: no config, network or ES access")
+    parser.add_argument(
+        "--config-root", default=None,
+        help="Existing deployed SRAF repository for local dotenv/CA only; "
+             "useful when running probe code from a separate Git worktree",
+    )
     args = parser.parse_args(argv)
     output: dict[str, Any] = {
         "schema": SCHEMA, "index": INDEX, "read_only": True,
@@ -327,7 +332,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(output, sort_keys=True, ensure_ascii=False))
         return 2
     try:
-        output.update(_strict_live_observe(PROJECT_ROOT))
+        cfg_root = Path(args.config_root).resolve() if args.config_root else PROJECT_ROOT
+        if not cfg_root.is_dir() or not (cfg_root / "run_sra_api.sh").is_file():
+            raise ObservationError("configured_repository_root_invalid")
+        # Never print the config root; dotenv/certificate are read only.
+        output.update(_strict_live_observe(cfg_root))
     except ObservationError as exc:
         output.update(status="INCOMPLETE", reason=str(exc))
     except Exception:
