@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import Optional, Set
 
 from .models import Citation, EvidenceSnippet, HitDoc
 from .date_utils import normalize_iso_date
@@ -27,6 +27,7 @@ def build_evidence_snippet(
     *,
     date_from: Optional[str],
     date_to: Optional[str],
+    allowed_years: Optional[Set[int]] = None,
 ) -> Optional[EvidenceSnippet]:
     """
     把單一 hit + citation 轉成一筆 evidence_snippet：
@@ -50,6 +51,11 @@ def build_evidence_snippet(
             point.overlaps(date_from, date_to) for point in c.linked_times
         ):
             return None
+        if allowed_years and not any(
+            point.overlaps(f"{year}-01-01", f"{year}-12-31")
+            for point in c.linked_times for year in allowed_years
+        ):
+            return None
         di = c.date_iso if c.linked_complete and len(c.linked_times) == 1 else None
     elif h.has_structured_events:
         # No resolvable link: use an explicit YYYY-MM-DD in the evidence if
@@ -67,6 +73,9 @@ def build_evidence_snippet(
         if date_from and norm_di < date_from:
             return None
         if date_to and norm_di > date_to:
+            return None
+    if allowed_years and not c.linked_times:
+        if not norm_di or int(norm_di[:4]) not in allowed_years:
             return None
 
     article_norm = normalize_iso_date(h.article_date_iso)
