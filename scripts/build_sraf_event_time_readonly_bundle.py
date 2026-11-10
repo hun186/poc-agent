@@ -2,7 +2,9 @@
 """Build a small no-Git-on-Linux, stdlib ZIP sidecar for SRAF #393.
 
 Run on the Windows development checkout AFTER git fetch has updated the
-desired PR #395 source version, or on hosted CI as a fallback. The archive carries
+desired PR #395 source version, or on hosted CI as a fallback. All packaged
+source bytes are read from the named Git commit (not the mutable working tree).
+The archive carries
 an explicit allowlist of Python source and a one-command runner. It does not
 copy .env, private TLS certificates, reports, databases, secrets, or .git.
 Linux receives a ZIP over the EXISTING one-way incremental Robocopy/7z route.
@@ -63,6 +65,8 @@ Primary workflow: Windows local git fetch / select PR #395 source,
 run 'python scripts/build_sraf_event_time_readonly_bundle.py' locally, and
 upload dist/sraf-date-readonly.zip using your existing ONE-WAY incremental
 transfer path. GitHub Actions artifact is an optional fallback, not required.
+All bundled source files come from the stated Git commit, not dirty Windows
+working-tree files; the builder itself must match that Git commit.
 Prefer extraction next to the live poc-agent folder (no active runtime files
 overwritten):
 
@@ -104,22 +108,54 @@ def _source_head(root: Path) -> str:
         return "NOT_VERIFIED"
 
 
+
+def _git_bytes(root: Path, *args: str) -> bytes:
+    try:
+        return subprocess.check_output(
+            ["git", *args], cwd=root, timeout=10, stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("source_git_object_unavailable") from exc
+
+
+def _verify_builder_checkout(root: Path, head: str) -> None:
+    """Refuse an edited builder: its generated runner/README are not Git blobs."""
+    try:
+        check = subprocess.run(
+            ["git", "diff", "--no-ext-diff", "--quiet", head, "--",
+             "scripts/build_sraf_event_time_readonly_bundle.py"],
+            cwd=root, timeout=10, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("builder_provenance_unavailable") from exc
+    if check.returncode != 0:
+        raise ValueError("builder_worktree_differs_from_commit")
+
+
 def build(root: Path, output: Path, *, source_head: str | None = None) -> dict:
+    head = source_head if source_head is not None else _source_head(root)
+    if not re.fullmatch(r"[0-9a-f]{40}", head):
+        raise ValueError("source_head_unverified")
+    git_root = Path(_git_bytes(root, "rev-parse", "--show-toplevel").decode("utf-8").strip())
+    if git_root.resolve() != root.resolve():
+        raise ValueError("source_root_not_git_toplevel")
+    _verify_builder_checkout(root, head)
+
+    # The commit, not the working tree, is the content authority. This makes
+    # Windows CRLF conversion and uncommitted local edits harmless to the ZIP.
     files: dict[str, bytes] = {}
     for path in FILES:
         if path.startswith("/") or ".." in Path(path).parts:
             raise ValueError("unsafe_file_allowlist")
-        file = root / path
-        if not file.is_file() or file.is_symlink():
-            raise FileNotFoundError(f"missing_or_symlink_source:{path}")
-        files[path] = file.read_bytes()
+        files[path] = _git_bytes(root, "show", f"{head}:{path}")
     files["run.sh"] = RUNNER.encode("utf-8")
     files["README.txt"] = README.encode("utf-8")
-    head = source_head or _source_head(root)
     manifest = {
         "schema": "sraf_event_time_readonly_sidecar_v1",
         "scope": "fixed_news_test_get_only",
         "source_head": head,
+        "source_integrity": "GIT_COMMIT_OBJECTS_VERIFIED",
         "file_count": len(files),
         "files_sha256": {
             k: hashlib.sha256(v).hexdigest() for k, v in sorted(files.items())
@@ -146,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--source-head", default=None,
-        help="Optional 40-char reviewed SHA, from build CI. No Git on Linux.",
+        help="Optional 40-char Git commit to package. Only verified Git objects are bundled.",
     )
     args = parser.parse_args(argv)
     if args.source_head and not re.fullmatch(r"[0-9a-f]{40}", args.source_head):
@@ -157,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         "artifact": str(args.output),
         "file_count": manifest["file_count"],
         "source_head": manifest["source_head"],
+        "source_integrity": manifest["source_integrity"],
         "contains_credentials": False,
         "linux_git_required": False,
         "full_live_acceptance": False,

@@ -43,7 +43,7 @@ python scripts\build_sraf_event_time_readonly_bundle.py
 完成後會得到 `dist\\sraf-date-readonly.zip`。這是**在 Windows 執行 Git**；
 Linux 不會執行 Git。如果你的 Windows 本機**已經切到** #395 對應的工作目錄，則不必額外建立 worktree，直接在該目錄執行製包 Python 即可。
 
-產包前可在 Windows 用 `git rev-parse HEAD` 確認當前原始碼 SHA，並與 #395 最新 HEAD 比對；若程式碼版本不同，不可宣稱產包與最新 Code Review 一致。ZIP 內的 `_sraf_date_readonly/manifest.json` 會記錄 SHA 與各檔案 SHA-256。
+產包前可在 Windows 用 `git rev-parse HEAD` 確認當前原始碼 SHA，並與 #395 最新 HEAD 比對；若版本不同，不可宣稱產包與最新 Code Review 一致。**製包程式直接由該 Git Commit 讀取 allowlist 的 blob 原始碼，不使用 Windows 工作目錄的修改內容**（因此不受本機未提交變更或 CRLF 影響）；產包程式本身若與該 Commit 不一致，會拒絕產包。Windows 製包仍需要 Git，Linux 執行 Sidecar 不需要 Git。ZIP 的 `_sraf_date_readonly/manifest.json` 記錄 SHA、`source_integrity=GIT_COMMIT_OBJECTS_VERIFIED` 及各檔案 SHA-256；此欄位只證明來源 Git 物件與 ZIP 的一致性，**不是**正式 Review／LIVE 驗收結論。
 
 GitHub Actions 仍會進行同一工具的安全測試與可選的 CI 產包。只有當你不方便在 Windows 本機產包時，才需改用
 [`SRAF Event date read-only sidecar for incremental transfer`](https://github.com/hun186/poc-agent/actions/workflows/sraf-event-date-readonly-bundle.yml)

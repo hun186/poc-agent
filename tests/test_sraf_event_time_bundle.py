@@ -15,7 +15,7 @@ from scripts import build_sraf_event_time_readonly_bundle as bundle
 
 def _unpack(tmp_path: Path):
     archive = tmp_path / "sraf-date-readonly.zip"
-    manifest = bundle.build(bundle.ROOT, archive, source_head="a" * 40)
+    manifest = bundle.build(bundle.ROOT, archive)
     with ZipFile(archive) as zipped:
         names = zipped.namelist()
         assert len(names) == len(set(names))
@@ -32,7 +32,8 @@ def _unpack(tmp_path: Path):
 
 def test_allowlisted_zip_never_contains_active_runtime_or_private_configuration(tmp_path):
     extracted, manifest = _unpack(tmp_path)
-    assert manifest["source_head"] == "a" * 40
+    assert manifest["source_head"] == bundle._source_head(bundle.ROOT)
+    assert manifest["source_integrity"] == "GIT_COMMIT_OBJECTS_VERIFIED"
     assert manifest["no_git_required_on_linux"] is True
     assert manifest["active_runtime_overwrite"] is False
     assert not (extracted / ".env.local").exists()
@@ -98,3 +99,47 @@ def test_builder_rejects_invalid_explicit_source_head(head, tmp_path):
     with pytest.raises(SystemExit):
         bundle.main(["--output", str(tmp_path / "artifact.zip"),
                      "--source-head", head])
+
+
+def _local_git_repo(tmp_path: Path, monkeypatch):
+    """Small real Git fixture: no user config, network, or deployed sources."""
+    root = tmp_path / "repo"
+    (root / "scripts").mkdir(parents=True)
+    (root / "agent" / "es").mkdir(parents=True)
+    builder_file = root / "scripts" / "build_sraf_event_time_readonly_bundle.py"
+    source_file = root / "agent" / "es" / "event_time.py"
+    builder_file.write_text("# committed builder fixture\n", encoding="utf-8")
+    source_file.write_text("ORIGINAL = True\n", encoding="utf-8")
+    for args in [
+        ["git", "init", "-q"], ["git", "add", "."],
+        ["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+         "commit", "-qm", "fixture"],
+    ]:
+        subprocess.run(args, cwd=root, check=True, capture_output=True, timeout=10)
+    monkeypatch.setattr(bundle, "FILES", ("agent/es/event_time.py",))
+    return root, builder_file, source_file, subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=root, text=True,
+    ).strip()
+
+
+def test_bundle_uses_committed_blobs_not_dirty_windows_worktree(tmp_path, monkeypatch):
+    root, _, source_file, head = _local_git_repo(tmp_path, monkeypatch)
+    source_file.write_text("UNCOMMITTED = True\n", encoding="utf-8")
+    archive = tmp_path / "provenance.zip"
+    manifest = bundle.build(root, archive, source_head=head)
+    with ZipFile(archive) as zipped:
+        assert zipped.read("_sraf_date_readonly/agent/es/event_time.py") == b"ORIGINAL = True\n"
+    assert manifest["source_head"] == head
+    assert manifest["source_integrity"] == "GIT_COMMIT_OBJECTS_VERIFIED"
+
+
+def test_bundle_rejects_modified_builder_and_wrong_commit(tmp_path, monkeypatch):
+    root, builder_file, _, head = _local_git_repo(tmp_path, monkeypatch)
+    builder_file.write_text("# uncommitted generator edit\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="builder_worktree_differs_from_commit"):
+        bundle.build(root, tmp_path / "unreviewed.zip", source_head=head)
+    assert not (tmp_path / "unreviewed.zip").exists()
+    builder_file.write_text("# committed builder fixture\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="source_git_object_unavailable"):
+        bundle.build(root, tmp_path / "wrong-commit.zip", source_head="a" * 40)
+    assert not (tmp_path / "wrong-commit.zip").exists()
