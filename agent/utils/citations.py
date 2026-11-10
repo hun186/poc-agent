@@ -19,6 +19,24 @@ def _normalize_snip_text(s: str) -> str:
 
 
 
+def _event_date_fields(s: dict) -> dict:
+    """Preserve event temporal authority without reusing publication as event day."""
+    precision = s.get("event_time_precision")
+    unresolved = bool(s.get("event_time_unresolved"))
+    coarse = precision in ("year", "month")
+    day = s.get("date_iso")
+    if not day and not coarse and not unresolved:
+        day = s.get("article_date_iso")  # backward-compatible undated legacy source
+    window = None
+    if precision in ("year", "month", "day") and s.get("event_time_start_iso") and s.get("event_time_end_iso"):
+        window = {
+            "precision": precision,
+            "start": s["event_time_start_iso"],
+            "end": s["event_time_end_iso"],
+        }
+    return {"d": day or None, "date_window": window, "date_unresolved": unresolved}
+
+
 def compress_evidence(snippets: list[dict], max_samples: int = 300) -> list[dict]:
     if not snippets:
         return []
@@ -81,7 +99,9 @@ def compress_evidence(snippets: list[dict], max_samples: int = 300) -> list[dict
             "ref_no": idx,  # 給 LLM 用來寫「來源①、②…」
             #"id": s.get("uuid"),
             "id": pick_doc_id(s),
-            "d": s.get("date_iso") or s.get("article_date_iso"),
+            "d": _event_date_fields(s)["d"],
+            **({"date_window": _event_date_fields(s)["date_window"]} if _event_date_fields(s)["date_window"] else {}),
+            **({"date_unresolved": True} if _event_date_fields(s)["date_unresolved"] else {}),
             "title": s.get("article_title") or s.get("subject"),
             "s": s.get("subject"),
             "note": s.get("text"),
@@ -123,6 +143,8 @@ def build_citations_from_ev(ev_compact: List[Dict[str, Any]]) -> List[Dict[str, 
             "uuid": str(doc_id),
             "paragraph_id": None,   # 壓縮時沒保留就先 None
             "date_iso": e.get("d"),
+            **({"date_window": e["date_window"]} if e.get("date_window") else {}),
+            **({"date_unresolved": True} if e.get("date_unresolved") else {}),
             "subject": e.get("s"),
             "article_title": e.get("title"),
             "ref_no": ref_no,
@@ -216,7 +238,9 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
             "source_id": str(doc_id) if doc_id else None,
             "uuid": str(doc_id) if doc_id else None,
             "paragraph_id": s.get("paragraph_id"),
-            "date_iso": s.get("article_date_iso") or s.get("date_iso"),
+            "date_iso": _event_date_fields(s)["d"],
+            **({"date_window": _event_date_fields(s)["date_window"]} if _event_date_fields(s)["date_window"] else {}),
+            **({"date_unresolved": True} if _event_date_fields(s)["date_unresolved"] else {}),
             "subject": s.get("subject"),
             "article_title": s.get("article_title"),
 
