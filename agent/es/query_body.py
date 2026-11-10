@@ -3,7 +3,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from .reference_text import get_reference_text_field
-from .event_time import query_period_bounds
+from .event_time import query_period_bounds, query_untyped_period_bounds
 
 
 MD_PATH = "multidim_event_json"
@@ -50,15 +50,17 @@ def _structured_date_filter(date_from: Optional[str], date_to: Optional[str]) ->
         # Legacy missing/empty precision may hold either a date-only value
         # or a timestamp with an explicit offset. Elasticsearch normalizes
         # the latter to UTC, potentially on the adjacent calendar day.
-        # Widen candidate retrieval and rely on the Evidence date parser
-        # to validate the actual precision and original local day.
+        # Widen candidate retrieval to the enclosing years plus UTC boundary
+        # days (not just subday dates: raw "2020" and "2020-06" may be
+        # stored as first-of-year/month). Rely on the Evidence parser to
+        # validate actual precision and original local day.
         legacy_precision = {"bool": {"should": [
             {"term": {precision_field: ""}},
             {"bool": {"must_not": [{"exists": {"field": precision_field}}]}}
         ], "minimum_should_match": 1}}
         by_precision.append({"bool": {"filter": [
             legacy_precision,
-            {"range": {field: query_period_bounds(date_from, date_to, "second")}},
+            {"range": {field: query_untyped_period_bounds(date_from, date_to)}},
         ]}})
         candidates.append(_nested(
             f"{MD_PATH}.{child}",
