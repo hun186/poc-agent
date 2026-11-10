@@ -61,14 +61,18 @@ class AggregateMonthQuarter(Tool):
         """
         從 snippet 中盡量抓出一個 ISO 日期字串，轉成 datetime。
         優先順序：
-        1) article_date_iso
-        2) date_iso
+        1) date_iso (citation-linked event day)
+        2) article_date_iso (legacy publication-only fallback)
         3) date
         ※ 若是 list 取第 1 個；若結尾有 'Z' 先去掉再丟給 fromisoformat。
         """
+        # An approximate event year/month or unresolved attribution must not
+        # become an invented day through the article-date fallback.
+        if s.get("event_time_precision") in ("year", "month") or s.get("event_time_unresolved"):
+            return None
         date_str = (
-            s.get("article_date_iso")
-            or s.get("date_iso")
+            s.get("date_iso")
+            or s.get("article_date_iso")
             or s.get("date")
         )
         if not date_str:
