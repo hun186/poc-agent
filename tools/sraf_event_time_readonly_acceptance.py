@@ -172,8 +172,12 @@ def _candidate_source_summary(hits: list[dict]) -> dict[str, int]:
     return summary
 
 
-def _sample_day(hit: dict) -> str | None:
-    """Find an observed Event/Timeline period; no publication-date fallback."""
+def _sample_period(hit: dict) -> tuple[str, str, str] | None:
+    """Return source-local day, nested child, and declared precision category.
+
+    Missing precision requires the legacy ES filter branch; using inferred
+    day here would exclude the very documents under test.
+    """
     from agent.es.event_time import parse_structured_time
     src = hit.get("_source") or {}
     for block in _as_blocks(src.get("multidim_event_json")):
@@ -186,12 +190,49 @@ def _sample_day(hit: dict) -> str | None:
             for row in rows:
                 if not isinstance(row, dict):
                     continue
+                declared = row.get("time_precision")
                 point = parse_structured_time(
-                    row.get("time_iso"), row.get("time_precision"), child
+                    row.get("time_iso"), declared, child
                 )
                 if point is not None:
-                    return point.start
+                    selected_precision = (
+                        declared.strip().lower()
+                        if isinstance(declared, str) and declared.strip()
+                        else "legacy"
+                    )
+                    return point.start, child, selected_precision
     return None
+
+
+def _sampled_sraf_date_clause(day: str, child: str, precision: str) -> dict:
+    """Reuse a selected precision branch of the SRAF nested date query DSL.
+
+    The entire 14-branch union exceeds the Elasticsearch default 4KiB HTTP
+    request-line limit as a GET URI. Observing one real source-local branch
+    is a PARTIAL validation of the production query, not full live acceptance.
+    """
+    from agent.es.query_body import _structured_date_filter
+    order = ("second", "minute", "hour", "day", "month", "year", "legacy")
+    if child not in ("Event", "Event_Timeline") or precision not in order:
+        raise ObservationError("sampled_date_clause_invalid")
+    full = _structured_date_filter(day, day)
+    outer = full.get("nested")
+    if not isinstance(outer, dict) or outer.get("path") != "multidim_event_json":
+        raise ObservationError("sraf_date_filter_contract_changed")
+    try:
+        child_clause = outer["query"]["bool"]["should"][(
+            "Event", "Event_Timeline"
+        ).index(child)]["nested"]
+        branches = child_clause["query"]["bool"]["should"]
+        single = branches[order.index(precision)]
+    except (IndexError, TypeError, KeyError):
+        raise ObservationError("sraf_date_filter_contract_changed") from None
+    if child_clause.get("path") != f"multidim_event_json.{child}":
+        raise ObservationError("sraf_date_filter_contract_changed")
+    return {"nested": {
+        **outer,
+        "query": {"nested": {**child_clause, "query": single}},
+    }}
 
 
 def _search_request(body: dict) -> str:
@@ -209,7 +250,6 @@ def _strict_live_observe(root: Path) -> dict[str, Any]:
     from tools.sraf_airgap_off1b_es_https_mapping import (
         _https_get, _trusted_ca_file, _verified_basic_principal,
     )
-    from agent.es.query_body import _structured_date_filter
     cfg = _effective_runtime_config(root)
     endpoint, host = _parse_endpoint(cfg.get("ES_URL"))
     username, password = cfg.get("ES_USERNAME") or "", cfg.get("ES_PASSWORD") or ""
@@ -294,16 +334,16 @@ def _strict_live_observe(root: Path) -> dict[str, Any]:
         "OBSERVED" if coverage["evidence_linked"] else "NOT_OBSERVED"
     )
 
-    chosen = next((h for h in candidates if _sample_day(h) and h.get("_id") is not None), None)
+    chosen = next((h for h in candidates if _sample_period(h) and h.get("_id") is not None), None)
     if chosen is None:
         result["date_filter"] = "NOT_OBSERVED"
     else:
-        when = _sample_day(chosen)
+        when, child, precision = _sample_period(chosen)
         matched = search({
             "size": 1, "_source": False,
             "query": {"bool": {"filter": [
                 {"ids": {"values": [str(chosen["_id"])]}},
-                _structured_date_filter(when, when),
+                _sampled_sraf_date_clause(when, child, precision),
             ]}},
         })
         result["date_filter"] = (
