@@ -35,15 +35,11 @@ def _total(result: Any) -> int | None:
 
 
 def _dedupe_key(hit: dict) -> tuple | None:
-    # _id is a unique ES identity in its _index, but source.uuid is not
-    # necessarily unique across indexes. When _id is unavailable (mocks),
-    # source.uuid is a conservative fallback to avoid double-counting.
+    # Only the ES pair (_index, _id) establishes document identity.
+    # Application UUID may recur across indices; do not deduplicate it.
     doc_id = hit.get("_id")
     if doc_id is not None:
         return (hit.get("_index"), str(doc_id))
-    source = hit.get("_source")
-    if isinstance(source, dict) and source.get("uuid") is not None:
-        return ("source_uuid", str(source["uuid"]))
     return None
 
 
@@ -120,14 +116,24 @@ def refill_date_filtered_evidence(
         response = search_next(next_body)
         expected_page_size = next_size
 
-    result_hits = eligible_hits[:requested_size]
-    retained_uuids = {str(hit.get("uuid")) for hit in result_hits if hit.get("uuid") is not None}
-    result_evidence = [
-        row for row in eligible_evidence
-        if row.get("uuid") is not None and str(row["uuid"]) in retained_uuids
+    # The builder returns a private ordinal scoped to the accumulated ES hit
+    # array. Unlike source.uuid this preserves index/id identity, and no
+    # evidence can be silently attributed to another same-UUID document.
+    origin = "__sraf_source_hit_ordinal"
+    if any(type(row.get(origin)) is not int for row in eligible_hits + eligible_evidence):
+        raise ValueError("date-qualified Evidence origin missing from builder")
+    selected = eligible_hits[:requested_size]
+    retained_ordinals = {row[origin] for row in selected}
+    selected_evidence = [
+        row for row in eligible_evidence if row[origin] in retained_ordinals
     ]
-    # Duplicate UUID is normalized by the existing Evidence builder; retain
-    # the same match count shape rather than double-counting across pages.
+    # Internal provenance is used only for filtering and never exposed as a
+    # new public result field to report/LLM consumers.
+    result_hits = [{k: v for k, v in row.items() if k != origin} for row in selected]
+    result_evidence = [
+        {k: v for k, v in row.items() if k != origin}
+        for row in selected_evidence
+    ]
     result_synonyms = sum(1 for row in result_evidence if row.get("synonym_hits"))
     limit_reached = (
         len(result_hits) < requested_size and not exhausted and scanned >= budget
