@@ -61,6 +61,7 @@ class EvidenceSnippet:
     event_time_precision: Optional[str] = None
     event_time_start_iso: Optional[str] = None
     event_time_end_iso: Optional[str] = None
+    event_time_unresolved: bool = False
 
     synonym_hits: List[str] = field(default_factory=list)
     match_policy: str = "strict"
