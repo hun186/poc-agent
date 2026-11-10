@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 from elasticsearch import BadRequestError
@@ -210,10 +211,17 @@ class ESSearchNews(Tool):
 
         # === T4: 後處理：hits + evidence ===
         with log_duration("[es_search_news][T4] build_hits_and_evidence"):
+            # Query builder treats literal 4-digit years as date filters when
+            # no explicit range is supplied. Evidence filtering must agree.
+            allowed_years = (
+                set(int(y) for y in re.findall(r"(?:19|20)\d{2}", es_query))
+                if not (date_from or date_to) else None
+            )
             filtered_hits, evidence_snippets, syn_snippets = build_hits_and_evidence(
                 hits,
                 date_from=date_from,
                 date_to=date_to,
+                allowed_years=allowed_years,
                 effective_terms=effective_terms,
                 term_groups=term_groups,
                 query_for_snippet=raw_query,
