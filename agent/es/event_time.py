@@ -204,10 +204,15 @@ def query_period_bounds(date_from: Optional[str], date_to: Optional[str], precis
         return value
 
     bounds = {}
+    subday = precision in ("hour", "minute", "second")
+    # An ISO timestamp with +14:00/-12:00 can be indexed by Elasticsearch
+    # on the adjacent UTC day. Date queries are only candidate retrieval:
+    # widen a day for subday timestamps, then apply local-calendar checks to
+    # the ORIGINAL literal and event_id scope in the Evidence stage.
     if date_from:
-        bounds["gte"] = floor(date_from)
+        lower = date.fromisoformat(floor(date_from))
+        bounds["gte"] = (lower - timedelta(days=1) if subday else lower).isoformat()
     if date_to:
-        # ES date values may contain hours; using lte YYYY-MM-DD excludes times
-        # later that day. A next-midnight exclusive boundary is exact.
-        bounds["lt"] = (date.fromisoformat(ceiling(date_to)) + timedelta(days=1)).isoformat()
+        upper = date.fromisoformat(ceiling(date_to)) + timedelta(days=1)
+        bounds["lt"] = (upper + timedelta(days=1) if subday else upper).isoformat()
     return bounds
