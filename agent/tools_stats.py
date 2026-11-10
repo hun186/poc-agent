@@ -86,7 +86,12 @@ class AggregateMonthQuarter(Tool):
                     seen.add(dt.date())
                     days.append(dt)
             return days
-        # Legacy unstructured evidence: citation date before publication date.
+        if s.get("structured_time_context"):
+            # Dangling structured event IDs do not license publication-day
+            # counts. A validated explicit date in the evidence is still okay.
+            dt = self._parse_day(s.get("date_iso"))
+            return [dt] if dt else []
+        # Truly legacy unstructured evidence: date_iso before publication date.
         dt = self._parse_day(s.get("date_iso") or s.get("article_date_iso") or s.get("date"))
         return [dt] if dt else []
 
