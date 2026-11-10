@@ -10,7 +10,7 @@ from requests import exceptions as requests_exceptions
 
 ALL_EV_FIELDS: Set[str] = {
     "ref_no", "id", "d", "title", "s", "note",
-    "weak", "scope", "group_hits",
+    "weak", "scope", "group_hits", "tp", "times",
 }
 
 FIELD_DESC: Dict[str, str] = {
@@ -23,10 +23,12 @@ FIELD_DESC: Dict[str, str] = {
     "weak": "是否弱證據，用於可信度/篩選說明",
     "scope": "命中範圍/匹配類型，用於解釋為何命中",
     "group_hits": "群組命中細節，用於除錯/解釋命中原因",
+    "tp": "結構化事件日期精度 year/month/day/hour/minute/second/multiple/unknown",
+    "times": "關聯事件中符合查詢的時間區間，不能改寫為文章日期",
 }
 
 # 固定欄位輸出順序（很重要：token/快取穩定）
-FIELD_ORDER: List[str] = ["ref_no", "note", "d", "title", "s", "id", "weak", "scope", "group_hits"]
+FIELD_ORDER: List[str] = ["ref_no", "note", "d", "tp", "times", "title", "s", "id", "weak", "scope", "group_hits"]
 
 DEFAULT_FIELDS: Set[str] = {"ref_no", "note", "d", "title"}  # 你 prompt 也寫 note 必填，這裡就對齊
 
@@ -131,7 +133,7 @@ def llm_select_fields(
 
     # 控制最大欄位數：保留最重要的優先順序
     # （避免 LLM 一口氣全選）
-    priority = ["ref_no", "note", "d", "title", "s", "id", "weak", "scope", "group_hits"]
+    priority = ["ref_no", "note", "d", "tp", "times", "title", "s", "id", "weak", "scope", "group_hits"]
     if len(allow) > max_fields:
         trimmed = []
         for f in priority:
@@ -174,6 +176,13 @@ def filter_ev_fields(ev: List[Dict[str, Any]], allow_fields: Set[str]) -> List[D
 
     out: List[Dict[str, Any]] = []
     for row in (ev or []):
+        # Structured event provenance is non-optional: never let the report
+        # field selector remove precision and turn an interval into a date.
+        if row.get("tp"):
+            row_allow = allow | {"tp", "d", "times"}
+        else:
+            row_allow = allow
+        row_order = [k for k in FIELD_ORDER if k in row_allow]
         slim: Dict[str, Any] = {}
 
         # ref_no / note 強制要有（就算空，也要保留）
@@ -181,7 +190,7 @@ def filter_ev_fields(ev: List[Dict[str, Any]], allow_fields: Set[str]) -> List[D
         slim["note"] = row.get("note") or row.get("text") or ""
 
         # 其他欄位：有值才輸出（token 立刻省一截）
-        for k in allow_ordered:
+        for k in row_order:
             if k in ("ref_no", "note"):
                 continue
             v = row.get(k)
