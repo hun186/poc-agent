@@ -85,7 +85,7 @@ def parse_es_hits(
             block_index=block_index,
         )
 
-    for h in es_hits or []:
+    for source_hit_ordinal, h in enumerate(es_hits or []):
         src = h.get("_source", {}) or {}
         # `raw_content` is retained as an internal compatibility name. Its value
         # is the configured context-rich agent reference text, which may be raw
@@ -258,6 +258,7 @@ def parse_es_hits(
             article_date_iso=article_date_iso,
             event_dates=tl_dates[:config.timeline_dates_topk],
             has_structured_events=has_structured_events,
+            source_hit_ordinal=source_hit_ordinal,
             selectedMessage=src.get("selectedMessage"),
             highValue=(((src.get("ai") or {}).get("classLabels") or {}).get("highValue")),
         ))
