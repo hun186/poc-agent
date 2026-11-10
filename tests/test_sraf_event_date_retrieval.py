@@ -197,3 +197,38 @@ def test_no_fake_article_date_from_timeline_and_absent_temporal_rows():
     parsed, _ = parse_es_hits([hit], query_for_snippet="查明", config=EvidenceBuildConfig())
     assert parsed[0].article_date_iso is None
     assert parsed[0].citations[0].linked_dates[0].interval.iso == "2025-06-20"
+
+
+def test_stat_aggregation_uses_linked_event_day_before_publication_day():
+    from agent.tools_stats import AggregateMonthQuarter
+
+    evidence = _snippets([{
+        "article_date_iso": "2026-08-03",
+        "Event": [{"event_id": "E1", "time_iso": "2025-06-12", "time_precision": "day"}],
+        "evidence_snippets": [{"event_ids": ["E1"], "text": "事件當日救援"}],
+    }])
+    stats = AggregateMonthQuarter().forward(evidence_snippets=evidence)
+    assert stats["day_counts"] == {"2025-06-12": 1}
+    assert stats["month_counts"] == {"2025-06": 1}
+    assert stats["active_days"] == 1
+
+
+def test_statistics_never_turn_coarse_or_unresolved_event_dates_into_pub_days():
+    from agent.tools_stats import AggregateMonthQuarter
+
+    evidence = _snippets([{
+        "article_date_iso": "2026-08-03",
+        "Event": [{"event_id": "E1", "time_iso": "2025", "time_precision": "year"}],
+        "evidence_snippets": [
+            {"event_ids": ["E1"], "text": "全年事件"},
+            {"text": "沒有事件關聯的說明"},
+        ],
+    }])
+    assert evidence[0]["event_time_precision"] == "year"
+    assert evidence[0]["date_iso"] == ""
+    assert evidence[1]["event_time_unresolved"] is True
+    result = AggregateMonthQuarter().forward(evidence_snippets=evidence)
+    assert result["snippet_count"] == 2
+    assert result["doc_count"] == 0
+    assert result["active_days"] == 0
+    assert result["day_counts"] == {}
