@@ -61,7 +61,7 @@ class AggregateMonthQuarter(Tool):
     def _parse_day(self, value: Any) -> datetime | None:
         if isinstance(value, list):
             value = value[0] if value else None
-        if not isinstance(value, str) or not re.match(r"^\\d{4}-\\d{2}-\\d{2}(?:$|T)", value):
+        if not isinstance(value, str) or not re.match(r"^\d{4}-\d{2}-\d{2}(?:$|T)", value):
             return None
         try:
             dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
