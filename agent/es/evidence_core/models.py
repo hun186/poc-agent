@@ -42,6 +42,7 @@ class HitDoc:
     article_date_iso: Optional[str] = None
     event_dates: List[str] = field(default_factory=list)
     has_structured_events: bool = False
+    source_hit_ordinal: int = -1
 
     selectedMessage: Any = None
     highValue: Any = None
@@ -68,3 +69,4 @@ class EvidenceSnippet:
     event_time_candidates: List[dict] = field(default_factory=list)
     matched_event_time_candidates: List[dict] = field(default_factory=list)
     structured_time_context: bool = False
+    source_hit_ordinal: int = -1
