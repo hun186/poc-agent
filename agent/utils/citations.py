@@ -19,6 +19,56 @@ def _normalize_snip_text(s: str) -> str:
 
 
 
+def _compact_event_time(s: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep event time precision, never promote article publication to event time."""
+    candidates = s.get("event_time_candidates")
+    structured = bool(s.get("structured_time_context")) or (
+        isinstance(candidates, list) and bool(candidates)
+    )
+    if not structured:
+        return {"d": s.get("date_iso") or s.get("article_date_iso")}
+
+    matched = s.get("matched_event_time_candidates")
+    if not isinstance(matched, list):
+        matched = candidates if isinstance(candidates, list) else []
+    times: List[Dict[str, Any]] = []
+    seen = set()
+    for point in matched:
+        if not isinstance(point, dict):
+            continue
+        precision = point.get("time_precision")
+        start = point.get("date_start")
+        end = point.get("date_end")
+        iso = point.get("time_iso")
+        if not all(isinstance(x, str) and x for x in (precision, start, end, iso)):
+            continue
+        key = (iso, precision, start, end, point.get("source"))
+        if key in seen:
+            continue
+        seen.add(key)
+        times.append({
+            "time_iso": iso, "time_precision": precision,
+            "date_start": start, "date_end": end,
+            "source": point.get("source"),
+        })
+
+    if len(times) == 1:
+        point = times[0]
+        precision = point["time_precision"]
+        # The LLM may read partial dates with their explicit precision; the
+        # final citation date_iso remains blank for year/month below.
+        if precision == "year":
+            dt = point["date_start"][:4]
+        elif precision == "month":
+            dt = point["date_start"][:7]
+        elif precision in ("day", "hour", "minute", "second"):
+            dt = point["date_start"]
+        else:
+            dt = None
+        return {"d": dt, "tp": precision, "times": times}
+    return {"d": None, "tp": "multiple" if times else "unknown", "times": times}
+
+
 def compress_evidence(snippets: list[dict], max_samples: int = 300) -> list[dict]:
     if not snippets:
         return []
@@ -81,7 +131,7 @@ def compress_evidence(snippets: list[dict], max_samples: int = 300) -> list[dict
             "ref_no": idx,  # 給 LLM 用來寫「來源①、②…」
             #"id": s.get("uuid"),
             "id": pick_doc_id(s),
-            "d": s.get("date_iso") or s.get("article_date_iso"),
+            **_compact_event_time(s),
             "title": s.get("article_title") or s.get("subject"),
             "s": s.get("subject"),
             "note": s.get("text"),
@@ -122,7 +172,9 @@ def build_citations_from_ev(ev_compact: List[Dict[str, Any]]) -> List[Dict[str, 
             "source_id": str(doc_id),
             "uuid": str(doc_id),
             "paragraph_id": None,   # 壓縮時沒保留就先 None
-            "date_iso": e.get("d"),
+            "date_iso": e.get("d") if e.get("tp") in (None, "day", "hour", "minute", "second") else None,
+            **({"date_precision": e.get("tp")} if e.get("tp") else {}),
+            **({"event_time_candidates": e.get("times")} if e.get("times") else {}),
             "subject": e.get("s"),
             "article_title": e.get("title"),
             "ref_no": ref_no,
@@ -216,7 +268,14 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
             "source_id": str(doc_id) if doc_id else None,
             "uuid": str(doc_id) if doc_id else None,
             "paragraph_id": s.get("paragraph_id"),
-            "date_iso": s.get("article_date_iso") or s.get("date_iso"),
+            "date_iso": (
+                s.get("date_iso") or None
+                if s.get("structured_time_context") or s.get("event_time_candidates")
+                else s.get("date_iso") or s.get("article_date_iso")
+            ),
+            **({"event_time_candidates": s.get("matched_event_time_candidates")
+                if isinstance(s.get("matched_event_time_candidates"), list)
+                else s.get("event_time_candidates")} if s.get("event_time_candidates") else {}),
             "subject": s.get("subject"),
             "article_title": s.get("article_title"),
 
