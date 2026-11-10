@@ -8,6 +8,8 @@ from .json_utils import as_blocks, json_load_maybe
 from .date_utils import (
     parse_article_date_iso,
     collect_timeline_dates,
+    collect_event_time_records,
+    normalize_iso_date,
     infer_date_for_snippet,
     is_valid_year,
 )
@@ -99,15 +101,17 @@ def parse_es_hits(
 
         # timeline / article date
         tl_dates = collect_timeline_dates(src, topk=config.timeline_dates_topk)
+        time_records = collect_event_time_records(src)
+        all_dates = list(dict.fromkeys(
+            tl_dates + [record.interval.iso for record in time_records]
+        ))[:config.timeline_dates_topk]
         mapped_article_date = next(
-            (block.get("article_date_iso") for block in blocks if block.get("article_date_iso")),
+            (normalize_iso_date(block.get("article_date_iso"))
+             for block in blocks if normalize_iso_date(block.get("article_date_iso"))),
             None,
         )
-        article_date_iso = (
-            mapped_article_date
-            or parse_article_date_iso(raw_content)
-            or (tl_dates[0] if tl_dates else None)
-        )
+        # An Event timestamp is NOT an article publication date.
+        article_date_iso = mapped_article_date or parse_article_date_iso(raw_content)
         
         # citations: inner_hits 優先
         citations: List[Citation] = []
@@ -151,7 +155,7 @@ def parse_es_hits(
         # inner hit. Its selected _source still contains authoritative structured
         # evidence, so use that before considering legacy raw content.
         if not citations:
-            for block in blocks:
+            for block_index, block in enumerate(blocks):
                 snippets = json_load_maybe(block.get("evidence_snippets"))
                 if isinstance(snippets, dict):
                     snippets = [snippets]
@@ -160,6 +164,7 @@ def parse_es_hits(
                 for item in snippets:
                     citation = citation_from_source(item)
                     if citation is not None:
+                        citation.block_index = block_index
                         citations.append(citation)
                     if len(citations) >= config.citations_per_doc:
                         break
@@ -180,15 +185,24 @@ def parse_es_hits(
         # per-citation date inference + attach uuid/subject
         uuid = src.get("uuid")
         for c in citations:
-            di = infer_date_for_snippet(c.text or "", article_date_iso, tl_dates)
-            if di:
+            matches = [
+                record for record in time_records
+                if c.event_ids and set(c.event_ids).intersection(record.event_ids)
+                and (c.block_index is None or record.block_index == c.block_index)
+            ]
+            # Inner-hit evidence may not expose its outer block offset. Reused
+            # IDs in different blocks are ambiguous: do not cross-link them.
+            if c.block_index is None and len({r.block_index for r in matches}) > 1:
+                matches = []
+            c.linked_dates = matches
+            # Only the citation's own linked temporal rows can help infer year,
+            # never an unrelated timeline elsewhere in the same article.
+            linked_days = [r.interval.iso for r in matches]
+            di = infer_date_for_snippet(c.text or "", article_date_iso, linked_days)
+            if di and is_valid_year(di):
                 c.date_iso = di
             c.uuid = uuid
             c.subject = subject
-
-        for c in citations:
-            if c.date_iso and not is_valid_year(c.date_iso):
-                c.date_iso = None
 
         out_hits.append(HitDoc(
             uuid=uuid,
@@ -198,7 +212,8 @@ def parse_es_hits(
             raw_content=raw_content,
             citations=citations[:config.citations_per_doc],
             article_date_iso=article_date_iso,
-            event_dates=tl_dates[:config.timeline_dates_topk],
+            event_dates=all_dates,
+            event_time_records=time_records,
             selectedMessage=src.get("selectedMessage"),
             highValue=(((src.get("ai") or {}).get("classLabels") or {}).get("highValue")),
         ))
