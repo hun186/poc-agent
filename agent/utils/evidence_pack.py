@@ -10,7 +10,7 @@ from requests import exceptions as requests_exceptions
 
 ALL_EV_FIELDS: Set[str] = {
     "ref_no", "id", "d", "title", "s", "note",
-    "weak", "scope", "group_hits",
+    "weak", "scope", "group_hits", "date_window", "date_unresolved",
 }
 
 FIELD_DESC: Dict[str, str] = {
@@ -23,10 +23,12 @@ FIELD_DESC: Dict[str, str] = {
     "weak": "是否弱證據，用於可信度/篩選說明",
     "scope": "命中範圍/匹配類型，用於解釋為何命中",
     "group_hits": "群組命中細節，用於除錯/解釋命中原因",
+    "date_window": "事件日期精度及日曆起迄（year/month/day），不等於發表日期",
+    "date_unresolved": "事件日期歸屬無法核實；不得從文章發表日推定事件日期",
 }
 
 # 固定欄位輸出順序（很重要：token/快取穩定）
-FIELD_ORDER: List[str] = ["ref_no", "note", "d", "title", "s", "id", "weak", "scope", "group_hits"]
+FIELD_ORDER: List[str] = ["ref_no", "note", "d", "date_window", "date_unresolved", "title", "s", "id", "weak", "scope", "group_hits"]
 
 DEFAULT_FIELDS: Set[str] = {"ref_no", "note", "d", "title"}  # 你 prompt 也寫 note 必填，這裡就對齊
 
@@ -131,7 +133,7 @@ def llm_select_fields(
 
     # 控制最大欄位數：保留最重要的優先順序
     # （避免 LLM 一口氣全選）
-    priority = ["ref_no", "note", "d", "title", "s", "id", "weak", "scope", "group_hits"]
+    priority = ["ref_no", "note", "d", "date_window", "date_unresolved", "title", "s", "id", "weak", "scope", "group_hits"]
     if len(allow) > max_fields:
         trimmed = []
         for f in priority:
@@ -279,6 +281,9 @@ def pack_ev_for_llm(
                 llm_error = _selector_failure_code(e)
 
     fallback_used = mode in ("llm", "hybrid") and not llm_used
+    # Temporal authority is not a discretionary style field. Always retain it,
+    # including when an LLM field selector asks to drop it for token savings.
+    allow |= {"date_window", "date_unresolved"}
     ev_slim = filter_ev_fields(ev_compact, allow)
 
     return {
