@@ -43,11 +43,12 @@ def _structured_date_filter(date_from: Optional[str], date_to: Optional[str]) ->
         field = f"{MD_PATH}.{child}.time_iso"
         precision_field = f"{MD_PATH}.{child}.time_precision"
         by_precision: List[Dict[str, Any]] = []
-        for precision in ("day", "month", "year"):
+        for precision in ("second", "minute", "hour", "day", "month", "year"):
             date_range = {"range": {field: query_period_bounds(date_from, date_to, precision)}}
             if precision == "day":
                 precision_test = {"bool": {"should": [
                     {"term": {precision_field: "day"}},
+                    {"term": {precision_field: ""}},  # legacy explicit empty
                     {"bool": {"must_not": [{"exists": {"field": precision_field}}]}}
                 ], "minimum_should_match": 1}}
             else:
