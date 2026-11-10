@@ -14,31 +14,82 @@
 
 **驗收結果不等於正式上線**：只抽少量真實文件，未完整覆蓋 Event-only／Timeline-only／缺失精度／跨 index 同 UUID／不同本地時區／10k 預算補取。這些仍須額外獨立的唯讀 E2E 測量，否則 #395 不應視為全實機驗收。
 
-## 一鍵執行（已在 #395 獨立工作樹時）
+## 交付方式：沿用 Windows Robocopy／7z 的單向增量部署，不在 Linux 用 Git
 
-```bash
-bash scripts/sraf_event_time_readonly.sh
+**重要環境契約：** Linux 的 `/mntCZJ/TopicClassification/poc-agent` 是
+Windows 開發端製作 `poc-agent-update.7z`、單向傳輸並增量覆蓋的部署結果，
+**不是 Git checkout**。絕不要求 Linux 執行 `git fetch`、`git pull`、
+`git status`、`git worktree`，也不假設 Linux 有外網。
+
+為了在 #395 尚未合併 main 前做唯讀實機驗證，採用**獨立 Sidecar ZIP**：
+它只含驗收 Python 檔及必要的少量只讀匯入模組，**不包含**
+`.env*`、CA 憑證、SQL 設定、新聞／報告、Git、API 主程式或任何資料。
+Linux 上只需要現有 Python 環境與既有 SRAF 憑證，完全不動正在執行的 SRAF。
+
+### 第一步：Windows／外網開發端製包（只執行一次）
+
+優先在 GitHub Actions 的
+[`SRAF Event date read-only sidecar for incremental transfer`](https://github.com/hun186/poc-agent/actions/workflows/sraf-event-date-readonly-bundle.yml)
+找到 #395 **最新 head SHA 的成功 Run**，下載名為
+`sraf-event-date-readonly-no-git` 的 Artifact，從 GitHub 提供的下載檔
+解出真正的 `sraf-date-readonly.zip`。
+
+如果 Windows 開發機已經有**對應 PR #395 版本**的原始碼，也可在
+Windows 端自行製包（**不是**在 Linux 上製包或 Git 更新）：
+
+```powershell
+python scripts/build_sraf_event_time_readonly_bundle.py
 ```
 
-無參數直接執行底層 Python 指令是 `--no-network`，絕不嘗試 ES 連線：
+會產生 `dist/sraf-date-readonly.zip`。包內
+`_sraf_date_readonly/manifest.json` 記錄各個檔案 SHA-256，
+供檢查增量傳輸後檔案一致性。這個 ZIP 不會封入整個 SRAF Repo。
+
+### 第二步：透過原有單向增量傳檔管道傳入 Linux
+
+將 **`sraf-date-readonly.zip`** 當作獨立增量檔案，沿用現有的
+Windows → Linux Robocopy／7z 傳輸流程送到
+`/mntCZJ/TopicClassification/`；不須變更既有
+`133_rocopy_7z_poc-agent...` BAT、`poc-agent-update.7z` 正式更新內容，
+更不須切換或停止現有服務。
+
+如果既有流程只能將檔案增量覆蓋到 `poc-agent` 目錄內，也可以把 ZIP
+或解壓後的 `_sraf_date_readonly/` 放在該目錄下的獨立子資料夾；
+只要不覆蓋其他原有模組即可。Sidecar `run.sh` 能自動判斷
+`_sraf_date_readonly` 是與 `poc-agent` 平行，還是位在其下。
+
+### 第三步：Linux 端一鍵執行（不使用 Git）
+
+若 ZIP 傳到 `/mntCZJ/TopicClassification/`：
 
 ```bash
+cd /mntCZJ/TopicClassification
+7z x sraf-date-readonly.zip -y
+bash _sraf_date_readonly/run.sh
+```
+
+若原本增量包已經將 `_sraf_date_readonly/` 覆蓋到
+`/mntCZJ/TopicClassification/poc-agent/`，只需：
+
+```bash
+bash /mntCZJ/TopicClassification/poc-agent/_sraf_date_readonly/run.sh
+```
+
+Runner 只會**讀取**原部署目錄的 `.env.local`／CA 憑證，執行固定索引
+`news_test` 的嚴格 HTTPS GET 唯讀驗收；無須重啟 `run_sra_api.sh`
+或安裝另一個系統服務。若非預設路徑，使用
+`SRAF_CONFIG_ROOT=/實際/部署目錄` 指定原有 SRAF 目錄。
+
+若只想先檢查 Python 腳本能否啟動而**不碰內網 ES**：
+
+```bash
+cd /mntCZJ/TopicClassification/_sraf_date_readonly
 python tools/sraf_event_time_readonly_acceptance.py --no-network
 ```
 
-### 不要切換正在運作的 SRAF 主目錄：使用獨立 Worktree
-
-如果目前的 Linux 目錄是 `main`，又不希望更動已部署的程式碼，請在**原有部署 checkout**中執行：
-
-```bash
-DEPLOYED_ROOT="$PWD"
-git fetch origin fix/sraf-evidence-structured-event-time-20261110
-git worktree add --detach ../sraf-date-readonly origin/fix/sraf-evidence-structured-event-time-20261110
-cd ../sraf-date-readonly
-SRAF_CONFIG_ROOT="$DEPLOYED_ROOT" bash scripts/sraf_event_time_readonly.sh
-```
-
-驗收程式碼從獨立工作樹載入；原始部署的 `.env.local` 和 `agent/certs/http_ca.crt` 只會被讀取，**不需複製憑證或密碼到新目錄**。上述 Git 指令不更新、重啟或停掉原有 API 服務；使用 `git worktree` 會建立一份獨立的 Git 工作樹。確認原目錄確實是預期的 SRAF repo，並留意 `../sraf-date-readonly` 不要覆蓋既有目錄。
+以上不更新原本 Linux 工作樹、不搬動持久資料、不要求 /MIR、
+刪除過期檔案、清空部署目錄、改寫 .env、重新啟動 API、重新索引或
+執行 SQL/LLM。
 
 ## 輸出與判定（安全可貼回對話）
 
