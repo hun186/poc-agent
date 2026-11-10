@@ -237,6 +237,21 @@ def test_same_day_distinct_subday_milestones_retained_but_day_count_deduped():
     assert AggregateMonthQuarter().forward(evidence)["day_counts"] == {"2026-08-18": 1}
 
 
+def test_indexed_utc_offset_does_not_drop_local_calendar_event_day():
+    # 2026-08-18 00:42 +08:00 is 2026-08-17 UTC, while -12:00
+    # near 23:59 belongs to Aug 19 UTC. ES candidate range must include
+    # both; postfilter keeps the original literal's local event date.
+    assert query_period_bounds("2026-08-18", "2026-08-18", "minute") == {
+        "gte": "2026-08-17", "lt": "2026-08-20",
+    }
+    for stamp in ("2026-08-18T00:42:00+08:00", "2026-08-18T23:59:00-12:00"):
+        hit = _hit([_event(when=stamp, precision="minute")], [], [_snippet(["E1"])])
+        evidence = _evidence(hit, "2026-08-18", "2026-08-18")
+        assert evidence[0]["date_iso"] == "2026-08-18"
+        assert evidence[0]["event_time_candidates"][0]["time_iso"] == stamp
+        assert _evidence(hit, "2026-08-17", "2026-08-17") == []
+
+
 def test_empty_legacy_precision_infers_day_without_dropping_event():
     hit = _hit([_event(when="2026-08-18", precision="")], [], [_snippet(["E1"])])
     assert _evidence(hit, "2026-08-18", "2026-08-18")[0]["date_iso"] == "2026-08-18"
