@@ -96,7 +96,7 @@ def build_evidence_snippet(
         uuid=uuid,
         text=c.text,
         date_iso=(snippet_norm or (article_norm if not h.has_structured_events else None) or ""),
-        article_date_iso=(article_norm or snippet_norm or ""),
+        article_date_iso=(article_norm or (snippet_norm if not h.has_structured_events else None) or ""),
         subject=h.subject,
         article_title=h.article_title,
         paragraph_id=c.paragraph_id,
