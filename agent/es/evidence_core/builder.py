@@ -169,6 +169,10 @@ def build_hits_and_evidence(
                     **({"uuid": c.uuid} if c.uuid else {}),
                     **({"subject": c.subject} if c.subject else {}),
                     **({"event_ids": c.event_ids} if c.event_ids else {}),
+                    **({"event_time_candidates": [
+                        {"time_iso": p.time_iso, "time_precision": p.precision, "date_start": p.start,
+                         "date_end": p.end, "source": p.source} for p in c.linked_times
+                    ]} if c.linked_times else {}),
                 }
                 for c in (h.citations or [])
             ],
@@ -193,6 +197,7 @@ def build_hits_and_evidence(
             **({"paragraph_id": e.paragraph_id} if e.paragraph_id is not None else {}),
             **({"source_id": e.source_id} if e.source_id is not None else {}),
             **({"event_ids": e.event_ids} if e.event_ids else {}),
+            **({"event_time_candidates": e.event_time_candidates} if e.event_time_candidates else {}),
             **({"synonym_hits": e.synonym_hits} if e.synonym_hits else {}),
             "match_policy": e.match_policy,
             "match_scope": e.match_scope,
