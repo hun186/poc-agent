@@ -40,8 +40,16 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 cd -- "$ROOT"
 PYTHON_BIN="${SRAF_PYTHON:-python}"
-# Sidecar and poc-agent are siblings under TopicClassification.
-DEPLOY_ROOT="${SRAF_CONFIG_ROOT:-$(dirname -- "$ROOT")/poc-agent}"
+# Support both existing overlay (poc-agent/_sraf_date_readonly) and an
+# isolated sibling (TopicClassification/_sraf_date_readonly), with override.
+PARENT="$(cd -- "$ROOT/.." && pwd -P)"
+if [[ -n "${SRAF_CONFIG_ROOT:-}" ]]; then
+  DEPLOY_ROOT="$SRAF_CONFIG_ROOT"
+elif [[ -f "$PARENT/run_sra_api.sh" ]]; then
+  DEPLOY_ROOT="$PARENT"
+else
+  DEPLOY_ROOT="$PARENT/poc-agent"
+fi
 exec "$PYTHON_BIN" tools/sraf_event_time_readonly_acceptance.py \
   --run --config-root "$DEPLOY_ROOT" "$@"
 """
@@ -50,15 +58,17 @@ README = """SRAF #393 / PR #395 | NEWS_TEST STRICT READ-ONLY SIDECAR
 This folder is a self-contained source-only diagnostic subset; it is NOT a
 runtime update, deployment script, migration, or official release approval.
 
-Copy sraf-date-readonly.zip from Windows/GitHub into the existing ONE-WAY
-incremental transfer channel, then extract next to the live poc-agent folder:
+Copy sraf-date-readonly.zip from Windows/GitHub into the EXISTING ONE-WAY
+incremental transfer channel. Prefer extraction next to the live poc-agent
+folder (no active runtime files overwritten):
 
     cd /mntCZJ/TopicClassification
     7z x /path/to/sraf-date-readonly.zip -y
     bash _sraf_date_readonly/run.sh
 
-No git pull/fetch/worktree on Linux. The original deployed
-/mntCZJ/TopicClassification/poc-agent is NOT overwritten or restarted.
+No git pull/fetch/worktree on Linux. An existing 7z overlay can instead
+place _sraf_date_readonly *inside* poc-agent; the runner auto-detects either
+layout. No active runtime source is overwritten or restarted.
 By default the runner reads ONLY the existing poc-agent .env.local and CA.
 To choose another deployed directory, set SRAF_CONFIG_ROOT before execution.
 
