@@ -11,6 +11,7 @@ from agent.es.evidence_core.parser import parse_es_hits
 from agent.es.evidence_core.models import EvidenceBuildConfig
 from agent.es.evidence_core.builder import build_hits_and_evidence
 from agent.es.query_body import build_main_query_body
+from agent.tools_stats import AggregateMonthQuarter
 
 
 def _hit(event=None, timeline=None, snippets=None, article="2009-06-15", *, multidim=None):
@@ -216,6 +217,49 @@ def test_multiblock_duplicate_id_preserves_ambiguity():
     assert len(found) == 1
     assert found[0]["date_iso"] == ""
     assert len(found[0]["event_time_candidates"]) == 2
+
+
+def test_aggregate_counts_actual_event_date_not_article_publication_date():
+    hit = _hit([_event()], [], [_snippet(["E1"])])
+    evidence = _evidence(hit, "2008-07-01", "2008-07-31")
+    assert evidence[0]["article_date_iso"] == "2009-06-15"
+    stats = AggregateMonthQuarter().forward(evidence)
+    assert stats["day_counts"] == {"2008-07-20": 1}
+    assert stats["month_counts"] == {"2008-07": 1}
+    assert stats["quarter_counts"] == {"2008-Q3": 1}
+
+
+def test_aggregate_uses_only_query_matched_milestones_not_all_linked_dates():
+    hit = _hit(
+        [_event("E1", "2008-07-20")],
+        [{"event_ids": ["E1"], "time_iso": "2009-01-01"}],
+        [_snippet(["E1"])],
+    )
+    selected = _evidence(hit, "2008-07-01", "2008-07-31")
+    assert len(selected[0]["event_time_candidates"]) == 2
+    assert len(selected[0]["matched_event_time_candidates"]) == 1
+    assert AggregateMonthQuarter().forward(selected)["day_counts"] == {"2008-07-20": 1}
+    unfiltered = _evidence(hit)
+    assert AggregateMonthQuarter().forward(unfiltered)["day_counts"] == {
+        "2008-07-20": 1, "2009-01-01": 1
+    }
+
+
+def test_month_precision_never_gets_counted_as_first_day_of_month():
+    hit = _hit([_event(when="2020-06-17", precision="month")], [], [_snippet(["E1"])])
+    evidence = _evidence(hit, "2020-06-01", "2020-06-30")
+    assert evidence[0]["date_iso"] == ""
+    stats = AggregateMonthQuarter().forward(evidence)
+    assert stats["snippet_count"] == 1
+    assert stats["day_counts"] == {}
+    assert stats["doc_count"] == 0
+
+
+def test_legacy_aggregator_prefers_explicit_evidence_date_over_article_date():
+    stats = AggregateMonthQuarter().forward([{
+        "uuid": "old", "date_iso": "2008-07-20", "article_date_iso": "2009-06-15"
+    }])
+    assert stats["day_counts"] == {"2008-07-20": 1}
 
 
 def _query(**overrides):
