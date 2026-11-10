@@ -10,9 +10,11 @@ from .date_utils import (
     collect_timeline_dates,
     infer_date_for_snippet,
     is_valid_year,
+    explicit_full_date_in_text,
 )
 from .snippet import make_fallback_snippet
 from ..reference_text import get_reference_text
+from ..event_time import collect_linked_times, linked_dates_for_ids
 
 
 def parse_es_hits(
@@ -97,6 +99,8 @@ def parse_es_hits(
         if blocks:
             article_title = blocks[0].get("article_title")
 
+        # Structured Event/Timeline correlation takes priority over text heuristics.
+        time_lookup, has_structured_events = collect_linked_times(blocks)
         # timeline / article date
         tl_dates = collect_timeline_dates(src, topk=config.timeline_dates_topk)
         mapped_article_date = next(
@@ -106,7 +110,7 @@ def parse_es_hits(
         article_date_iso = (
             mapped_article_date
             or parse_article_date_iso(raw_content)
-            or (tl_dates[0] if tl_dates else None)
+            or None  # An event date is not an article publication date.
         )
         
         # citations: inner_hits 優先
@@ -177,12 +181,25 @@ def parse_es_hits(
 
         stats["n_total_citations"] += len(citations)
 
-        # per-citation date inference + attach uuid/subject
+        # Link evidence by event_ids; never assign unrelated article dates to
+        # a structured Event. Legacy documents without Event/Timeline preserve
+        # their historical publication-date fallback in snippet.py.
         uuid = src.get("uuid")
         for c in citations:
-            di = infer_date_for_snippet(c.text or "", article_date_iso, tl_dates)
-            if di:
-                c.date_iso = di
+            c.linked_times, c.linked_complete = linked_dates_for_ids(c.event_ids, time_lookup)
+            if c.linked_times:
+                if c.linked_complete and len(c.linked_times) == 1:
+                    point = c.linked_times[0]
+                    if point.precision == "day":
+                        c.date_iso = point.start
+            elif has_structured_events:
+                # If the link is dangling, only trust an explicit full date in
+                # evidence text. Do NOT borrow article year for an ambiguous MD.
+                c.date_iso = explicit_full_date_in_text(c.text)
+            else:
+                di = infer_date_for_snippet(c.text or "", article_date_iso, tl_dates)
+                if di:
+                    c.date_iso = di
             c.uuid = uuid
             c.subject = subject
 
@@ -199,6 +216,7 @@ def parse_es_hits(
             citations=citations[:config.citations_per_doc],
             article_date_iso=article_date_iso,
             event_dates=tl_dates[:config.timeline_dates_topk],
+            has_structured_events=has_structured_events,
             selectedMessage=src.get("selectedMessage"),
             highValue=(((src.get("ai") or {}).get("classLabels") or {}).get("highValue")),
         ))
