@@ -7,30 +7,45 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import copy
+import pytest
 from urllib.parse import parse_qs, urlsplit
 
 from tools import sraf_event_time_readonly_acceptance as probe
 
 
 def _mapping(valid=True):
-    def child(*, date=False):
-        props = {"time_iso": {"type": "date"}} if date else {
-            "event_ids": {"type": "keyword"}
-        }
+    def child(*, kind):
+        if kind == "Event":
+            props = {
+                "event_id": {"type": "keyword"},
+                "time_iso": {"type": "date"},
+                "time_precision": {"type": "keyword"},
+            }
+        elif kind == "Event_Timeline":
+            props = {
+                "event_ids": {"type": "keyword"},
+                "time_iso": {"type": "date"},
+                "time_precision": {"type": "keyword"},
+            }
+        else:
+            props = {
+                "event_ids": {"type": "keyword"},
+                "text": {"type": "text"},
+            }
         return {"type": "nested", "properties": props}
     return {
         "news_test": {"mappings": {"properties": {
             "multidim_event_json": {
                 "type": "nested", "properties": {
-                    "Event": child(date=True),
-                    "Event_Timeline": child(date=True) if valid
+                    "Event": child(kind="Event"),
+                    "Event_Timeline": child(kind="Event_Timeline") if valid
                     else {"type": "object", "properties": {}},
-                    "evidence_snippets": child(),
+                    "evidence_snippets": child(kind="evidence_snippets"),
                 },
             },
         }}}
     }
-
 
 def _doc(doc_id, day="2025-06-17"):
     return {"_index": "news_test", "_id": doc_id, "_source": {
@@ -139,6 +154,59 @@ def test_mapping_requires_real_nested_structure_and_index_is_fixed():
     assert url.startswith("/news_test/_search?source=")
     assert "source_content_type=application%2Fjson" in url
     assert "/_update" not in url and "/_bulk" not in url
+
+
+@pytest.mark.parametrize("child,field,problem", [
+    ("Event", "event_id", "event_event_id_not_keyword"),
+    ("Event", "time_precision", "event_time_precision_not_keyword"),
+    ("Event_Timeline", "event_ids", "event_timeline_event_ids_not_keyword"),
+    ("Event_Timeline", "time_precision", "event_timeline_time_precision_not_keyword"),
+    ("evidence_snippets", "event_ids", "evidence_snippets_event_ids_not_keyword"),
+    ("evidence_snippets", "text", "evidence_snippets_text_not_text"),
+])
+def test_missing_or_wrong_leaf_types_block_live_mapping_success(child, field, problem):
+    original = _mapping()
+    item = original["news_test"]["mappings"]["properties"]["multidim_event_json"]["properties"][child]["properties"]
+    no_field = copy.deepcopy(original)
+    del no_field["news_test"]["mappings"]["properties"]["multidim_event_json"]["properties"][child]["properties"][field]
+    _, problems = probe._properties(no_field)
+    assert problem in problems
+
+    wrong_type = copy.deepcopy(original)
+    wrong_type["news_test"]["mappings"]["properties"]["multidim_event_json"]["properties"][child]["properties"][field]["type"] = "object"
+    _, problems = probe._properties(wrong_type)
+    assert problem in problems
+
+
+def test_alias_or_unexpected_mapping_index_cannot_be_attested_as_news_test():
+    alias_mapping = {"production_news": _mapping()["news_test"]}
+    _, problems = probe._properties(alias_mapping)
+    assert problems == ["mapping_target_not_fixed_index"]
+    with pytest.raises(probe.ObservationError, match="search_hit_unexpected_index"):
+        probe._hits(_response([
+            {**_doc("private"), "_index": "production_news"},
+        ]))
+
+
+@pytest.mark.parametrize("child", ["Event", "Event_Timeline"])
+@pytest.mark.parametrize("precision", [
+    "second", "minute", "hour", "day", "month", "year", "legacy",
+])
+def test_real_date_probe_request_fits_es_default_http_get_limit(child, precision):
+    # This is the actual selected precision branch from SRAF's nested query
+    # builder, not just a manually truncated example URL.
+    nested_clause = probe._sampled_sraf_date_clause("2025-06-17", child, precision)
+    body = {
+        "size": 1, "_source": False,
+        "query": {"bool": {"filter": [
+            {"ids": {"values": ["abc123"]}},
+            nested_clause,
+        ]}},
+    }
+    path = probe._search_request(body)
+    assert len(("GET " + path + " HTTP/1.1").encode("ascii")) < 4096
+    assert "multidim_event_json" in nested_clause["nested"]["path"]
+    assert "multidim_event_json." + child in str(nested_clause)
 
 
 def test_strict_tls_real_sample_checks_dates_link_and_two_pages_without_leaking_content(
