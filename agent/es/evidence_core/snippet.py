@@ -37,12 +37,32 @@ def build_evidence_snippet(
     if not c.text:
         return None
 
-    # 日期：citation.date_iso → 文章日期 → 第一個事件日期
-    di = c.date_iso or h.article_date_iso
-    if not di and h.event_dates:
-        di = h.event_dates[0]
+    # Structured event date is authoritative for a linked citation. A
+    # multiple-event citation can match any linked interval but must not
+    # pretend to have one arbitrary exact day.
+    event_time_candidates = [
+        {"time_iso": point.time_iso, "time_precision": point.precision,
+         "date_start": point.start, "date_end": point.end, "source": point.source}
+        for point in c.linked_times
+    ]
+    if c.linked_times:
+        if (date_from or date_to) and not any(
+            point.overlaps(date_from, date_to) for point in c.linked_times
+        ):
+            return None
+        di = c.date_iso if c.linked_complete and len(c.linked_times) == 1 else None
+    elif h.has_structured_events:
+        # No resolvable link: use an explicit YYYY-MM-DD in the evidence if
+        # present, but never replace a missing event date with article date.
+        di = c.date_iso
+        if (date_from or date_to) and not di:
+            return None
+    else:
+        # Backward compatibility for legacy documents without structured events.
+        di = c.date_iso or h.article_date_iso
+        if not di and h.event_dates:
+            di = h.event_dates[0]
     norm_di = normalize_iso_date(di)
-
     if norm_di:
         if date_from and norm_di < date_from:
             return None
@@ -59,11 +79,12 @@ def build_evidence_snippet(
     return EvidenceSnippet(
         uuid=uuid,
         text=c.text,
-        date_iso=(snippet_norm or article_norm or ""),
+        date_iso=(snippet_norm or (article_norm if not h.has_structured_events else None) or ""),
         article_date_iso=(article_norm or snippet_norm or ""),
         subject=h.subject,
         article_title=h.article_title,
         paragraph_id=c.paragraph_id,
         source_id=c.source_id,
         event_ids=c.event_ids,
+        event_time_candidates=event_time_candidates,
     )
