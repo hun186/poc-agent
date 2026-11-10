@@ -150,3 +150,31 @@ ranked false positives before the valid candidate, early completion, exhausted
 result sets, bounded truncation, natural-language query years and unchanged
 unfiltered one-shot behavior. GitHub CI includes these tests on Python 3.10
 and 3.11. **No production ES data, schema or service has been modified.**
+
+## P2: search completeness must reach the report, not just the search tool
+
+The search tool's `query_meta.result_incomplete=true` is authoritative when a
+bounded ES candidate scan ends before enough date-valid documents were
+confirmed. Data Agent-generated `query_meta` must retain
+`date_candidate_refill` and `note`; its runtime merges the original
+`raw_search_result.query_meta` before route/trace and refuses to let an
+optimistic reconstructed metadata object mask the original incomplete status.
+
+The final report path is explicitly **fail-closed on incomplete, zero-evidence
+search**: it returns a user-visible explanation, no citations and skips the
+report LLM instead of publishing a misleading "no event/news" report.
+
+An incomplete scan with **some** verified evidence may still produce a
+strictly qualified *partial* report: the report LLM receives
+`search_status.incomplete=true` in its input JSON, and a deterministic
+warning is prefixed to the final report text/DOCX even if the model ignores
+that flag. The final result also exposes `result_incomplete`,
+`search_status` and `query_meta` for downstream UIs and logs.
+This remains a partial evidence analysis, **not** a complete-event count or
+exhaustive zero-result claim.
+
+Tests in `tests/test_sraf_report_search_completeness.py` assert Data Agent
+raw-status authority, trace preservation, no LLM call for empty truncated
+search, visible warning in partial output, and unchanged complete-report
+behavior. Host CI tests remain synthetic; private `news_test` and actual
+operator report/Word flow are NOT TESTED.
