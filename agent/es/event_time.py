@@ -165,10 +165,12 @@ def collect_linked_times(blocks: List[dict]) -> Tuple[Dict[str, List[StructuredT
             continue
         unique: List[StructuredTime] = []
         for point in events.get(eid, []) + timeline.get(eid, []):
-            if not any(
-                (p.start, p.end, p.precision) == (point.start, point.end, point.precision)
-                for p in unique
-            ):
+            # Year/month/day periods can be de-duplicated by interval. Finer
+            # timestamps on the same day must retain distinct hours/minutes.
+            def identity(p: StructuredTime) -> tuple:
+                subday = p.precision in ("hour", "minute", "second")
+                return (p.start, p.end, p.precision, p.time_iso if subday else None)
+            if not any(identity(p) == identity(point) for p in unique):
                 unique.append(point)
         answer[eid] = unique
     return answer, has_structure
