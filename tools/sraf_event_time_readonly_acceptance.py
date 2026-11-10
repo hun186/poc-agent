@@ -91,9 +91,28 @@ def _total_at_least_two(document: dict) -> bool:
     return isinstance(count, int) and count >= 2
 
 
+def _json_load_maybe(value: Any) -> Any:
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (ValueError, TypeError):
+            return value
+    return value
+
+
+def _as_blocks(value: Any) -> list[dict]:
+    # Keep the read-only probe independent of the runtime Evidence package;
+    # that package's __init__ eagerly imports unrelated report dependencies.
+    raw = _json_load_maybe(value)
+    if isinstance(raw, dict):
+        return [raw]
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    return []
+
+
 def _candidate_source_summary(hits: list[dict]) -> dict[str, int]:
     """Evaluate true source-local IDs. No article text, IDs or dates printed."""
-    from agent.es.evidence_core.json_utils import as_blocks, json_load_maybe
     from agent.es.event_time import (
         collect_linked_times, linked_dates_for_ids,
     )
@@ -107,14 +126,14 @@ def _candidate_source_summary(hits: list[dict]) -> dict[str, int]:
         source = hit.get("_source")
         if not isinstance(source, dict):
             continue
-        for block in as_blocks(source.get("multidim_event_json")):
+        for block in _as_blocks(source.get("multidim_event_json")):
             summary["blocks"] += 1
             lookup, _ = collect_linked_times([block])
             for key, metric in (
                 ("Event", "events_dated"),
                 ("Event_Timeline", "timelines_dated"),
             ):
-                raw = json_load_maybe(block.get(key)) or []
+                raw = _json_load_maybe(block.get(key)) or []
                 if isinstance(raw, dict):
                     raw = [raw]
                 if isinstance(raw, list):
@@ -122,7 +141,7 @@ def _candidate_source_summary(hits: list[dict]) -> dict[str, int]:
                         bool(isinstance(row, dict) and row.get("time_iso"))
                         for row in raw
                     )
-            snippets = json_load_maybe(block.get("evidence_snippets")) or []
+            snippets = _json_load_maybe(block.get("evidence_snippets")) or []
             if isinstance(snippets, dict):
                 snippets = [snippets]
             if not isinstance(snippets, list):
@@ -141,12 +160,11 @@ def _candidate_source_summary(hits: list[dict]) -> dict[str, int]:
 
 def _sample_day(hit: dict) -> str | None:
     """Find an observed Event/Timeline period; no publication-date fallback."""
-    from agent.es.evidence_core.json_utils import as_blocks, json_load_maybe
     from agent.es.event_time import parse_structured_time
     src = hit.get("_source") or {}
-    for block in as_blocks(src.get("multidim_event_json")):
+    for block in _as_blocks(src.get("multidim_event_json")):
         for child in ("Event", "Event_Timeline"):
-            rows = json_load_maybe(block.get(child)) or []
+            rows = _json_load_maybe(block.get(child)) or []
             if isinstance(rows, dict):
                 rows = [rows]
             if not isinstance(rows, list):
