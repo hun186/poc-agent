@@ -72,9 +72,15 @@ def parse_structured_time(value: Any, precision: Any, source: str) -> Optional[S
             return StructuredTime(ym, "month", f"{ym}-01", f"{ym}-{last:02d}", source)
         ymd = f"{year_s}-{month:02d}-{day:02d}"
         if level > 3:
-            # Keep the original literal time/offset and its stated granularity,
-            # while the search/legacy aggregate operate on its local date.
-            return StructuredTime(raw, str(precision).strip().lower(), ymd, ymd, source)
+            # Missing/empty precision is legacy data: infer the canonical
+            # granularity from the timestamp instead of serializing "none"/"".
+            # An ISO timestamp with unspecified precision conservatively
+            # expresses its literal (normalized) second-level resolution.
+            effective_precision = (
+                str(precision).strip().lower() if precision else
+                {4: "hour", 5: "minute", 6: "second"}[level]
+            )
+            return StructuredTime(raw, effective_precision, ymd, ymd, source)
         return StructuredTime(ymd, "day", ymd, ymd, source)
     except (TypeError, ValueError):
         return None
