@@ -104,4 +104,5 @@ def build_evidence_snippet(
         event_ids=c.event_ids,
         event_time_candidates=event_time_candidates,
         matched_event_time_candidates=matched_event_time_candidates,
+        structured_time_context=h.has_structured_events,
     )
