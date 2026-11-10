@@ -10,7 +10,9 @@ on:
       - 'agent/utils/evidence_pack.py'
       - 'agent/es/evidence_core/**'
       - 'agent/tools_es/search_news.py'
+      - 'agent/tools_es/date_refill.py'
       - 'tests/test_sraf_structured_evidence_time.py'
+      - 'tests/test_sraf_date_evidence_refill.py'
       - 'tests/test_nested_event_mapping.py'
       - 'tests/test_multidim_shape_normalization.py'
       - '.github/workflows/sraf-evidence-time-contract.yml'
@@ -42,7 +44,7 @@ jobs:
           python -m pip install 'pytest>=8,<10'
       - name: Compile Evidence and query contract
         run: |
-          python -m compileall -q agent/es/event_time.py agent/es/query_body.py agent/es/evidence_core agent/tools_stats.py agent/utils/citations.py agent/utils/evidence_pack.py tests/test_sraf_structured_evidence_time.py
+          python -m compileall -q agent/es/event_time.py agent/es/query_body.py agent/es/evidence_core agent/tools_stats.py agent/utils/citations.py agent/utils/evidence_pack.py agent/tools_es/date_refill.py agent/tools_es/search_news.py tests/test_sraf_structured_evidence_time.py tests/test_sraf_date_evidence_refill.py
       - name: Run synthetic Evidence and nested-query regressions (no ES connection)
         run: |
-          python -m pytest -q tests/test_sraf_structured_evidence_time.py tests/test_nested_event_mapping.py tests/test_multidim_shape_normalization.py tests/test_query_terms_contract.py
+          python -m pytest -q tests/test_sraf_structured_evidence_time.py tests/test_sraf_date_evidence_refill.py tests/test_nested_event_mapping.py tests/test_multidim_shape_normalization.py tests/test_query_terms_contract.py
