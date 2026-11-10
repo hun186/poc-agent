@@ -8,7 +8,7 @@ import calendar
 import json
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -38,9 +38,15 @@ def parse_structured_time(value: Any, precision: Any, source: str) -> Optional[S
     """
     if not isinstance(value, str):
         return None
-    match = _TIME_PREFIX.fullmatch(value.strip())
+    raw = value.strip()
+    match = _TIME_PREFIX.fullmatch(raw)
     if not match:
         return None
+    if "T" in raw:
+        try:
+            datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
     year_s, month_s, day_s = match.groups()
     granularity = 3 if day_s else (2 if month_s else 1)
     if precision is None or precision == "":
@@ -124,8 +130,13 @@ def collect_linked_times(blocks: List[dict]) -> Tuple[Dict[str, List[StructuredT
     answer: Dict[str, List[StructuredTime]] = {}
     for eid in events.keys() | timeline.keys():
         unique = []
-        for point in (events.get(eid) or timeline.get(eid) or []):
-            if point not in unique:
+        # Both Event and Timeline dates are relevant to the linked event.
+        # Dedupe identical periods, retaining Event provenance first.
+        for point in events.get(eid, []) + timeline.get(eid, []):
+            if not any(
+                (p.start, p.end, p.precision) == (point.start, point.end, point.precision)
+                for p in unique
+            ):
                 unique.append(point)
         answer[eid] = unique
     return answer, has_structure
