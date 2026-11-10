@@ -470,6 +470,69 @@ def test_explicit_complete_evidence_date_survives_report_without_borrowing_artic
     assert build_citations_from_ev(compact)[0]["date_iso"] == "2008-07-20"
 
 
+def test_identical_text_different_event_days_survives_report_compression_and_citation_mapping():
+    # Latest Codex P2: both evidence rows have the same uuid/text, but each
+    # proves a different structured event time. Never drop June 17 after June 1.
+    hit = _hit([
+        _event("E1", "2025-06-01"),
+        _event("E2", "2025-06-17"),
+    ], [], [
+        _snippet(["E1"], "同樣文字的救援行動"),
+        _snippet(["E2"], "同樣文字的救援行動"),
+    ], article="2026-08-01")
+    evidence = _evidence(hit, "2025-06-01", "2025-06-30")
+    assert len(evidence) == 2
+    assert {e["date_iso"] for e in evidence} == {"2025-06-01", "2025-06-17"}
+    stats = AggregateMonthQuarter().forward(evidence)
+    assert stats["active_days"] == 2
+    compressed = compress_evidence(evidence)
+    assert len(compressed) == 2
+    assert [c["d"] for c in compressed] == ["2025-06-01", "2025-06-17"]
+    assert [c["ref_no"] for c in compressed] == [1, 2]
+    assert [c["times"][0]["time_iso"] for c in compressed] == [
+        "2025-06-01", "2025-06-17"
+    ]
+    compact_citations = build_citations_from_ev(compressed)
+    assert [c["date_iso"] for c in compact_citations] == [
+        "2025-06-01", "2025-06-17"
+    ]
+    expanded = _build_citations_from_payload({
+        "evidence_snippets": evidence, "ev": compressed,
+    })
+    assert [(c["date_iso"], c["ref_no"]) for c in expanded] == [
+        ("2025-06-01", 1), ("2025-06-17", 2)
+    ]
+
+
+def test_identical_text_same_event_time_deduplicates_without_losing_provenance():
+    hit = _hit([_event("E1", "2025-06-17")], [], [
+        _snippet(["E1"], "同一事件兩次引用"),
+        _snippet(["E1"], "同一事件兩次引用"),
+    ])
+    evidence = _evidence(hit, "2025-06-01", "2025-06-30")
+    assert len(evidence) == 2
+    compact = compress_evidence(evidence)
+    assert len(compact) == 1
+    assert compact[0]["d"] == "2025-06-17"
+    assert compact[0]["times"][0]["source"] == "Event"
+
+
+def test_identical_text_different_precision_does_not_erase_year_or_day():
+    hit = _hit([
+        _event("E1", "2020", "year"),
+        _event("E2", "2020-06-17", "day"),
+    ], [], [
+        _snippet(["E1"], "同一篇的年月檢索"),
+        _snippet(["E2"], "同一篇的年月檢索"),
+    ])
+    evidence = _evidence(hit, "2020-06-01", "2020-06-30")
+    assert len(evidence) == 2
+    compact = compress_evidence(evidence)
+    assert len(compact) == 2
+    assert {c["tp"] for c in compact} == {"year", "day"}
+    assert {c["times"][0]["time_precision"] for c in compact} == {"year", "day"}
+
+
 def test_report_compression_precise_date_remains_exact():
     hit = _hit([_event("E1")], [], [_snippet(["E1"])])
     evidence = _evidence(hit)
