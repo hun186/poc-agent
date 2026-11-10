@@ -1,0 +1,51 @@
+name: SRAF Event and Timeline date retrieval regressions
+
+on:
+  pull_request:
+    paths:
+      - 'agent/es/query_body.py'
+      - 'agent/es/date_filters.py'
+      - 'agent/es/temporal.py'
+      - 'agent/es/evidence_core/**'
+      - 'tests/test_sraf_event_date_retrieval.py'
+      - 'tests/test_nested_event_mapping.py'
+      - '.github/workflows/sraf-event-date-retrieval.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  date-evidence-regression:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        if: matrix.python == '3.11'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Select and verify interpreter
+        run: |
+          if [[ '${{ matrix.python }}' == '3.10' ]]; then
+            echo 'PY=/usr/bin/python3.10' >> "$GITHUB_ENV"
+            /usr/bin/python3.10 -c 'import sys; assert sys.version_info[:2] == (3, 10)'
+            /usr/bin/python3.10 -m pip --version
+          else
+            echo 'PY=python' >> "$GITHUB_ENV"
+            python -c 'import sys; assert sys.version_info[:2] == (3, 11)'
+          fi
+      - name: Install project dependencies before validation
+        run: |
+          "$PY" -m pip install --upgrade pip
+          "$PY" -m pip install -r requirements.txt
+          "$PY" -m pip install pytest
+      - name: Compile and run temporal retrieval and existing regressions
+        run: |
+          "$PY" -m compileall -q agent/es/query_body.py agent/es/date_filters.py agent/es/temporal.py agent/es/evidence_core tests/test_sraf_event_date_retrieval.py
+          "$PY" -m pytest -q tests/test_sraf_event_date_retrieval.py tests/test_nested_event_mapping.py tests/test_multidim_shape_normalization.py
