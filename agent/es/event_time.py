@@ -203,6 +203,23 @@ def linked_dates_for_ids(
     return points, complete
 
 
+def query_untyped_period_bounds(date_from: Optional[str], date_to: Optional[str]) -> dict:
+    """Conservative ES candidate bounds for legacy absent/empty precision.
+
+    A missing time_precision can mean year, month, day, or a timestamp with
+    an explicit offset. ES cannot infer which from a date-mapped time_iso,
+    so the year-wide envelope must include partial periods' normalized first
+    day, plus one UTC conversion guard day at both boundaries. The subsequent
+    block-local Evidence parser always enforces the real source precision.
+    """
+    bounds = query_period_bounds(date_from, date_to, "year")
+    if "gte" in bounds:
+        bounds["gte"] = (date.fromisoformat(bounds["gte"]) - timedelta(days=1)).isoformat()
+    if "lt" in bounds:
+        bounds["lt"] = (date.fromisoformat(bounds["lt"]) + timedelta(days=1)).isoformat()
+    return bounds
+
+
 def query_period_bounds(date_from: Optional[str], date_to: Optional[str], precision: str) -> dict:
     """Broaden ES range for stored partial dates, never alter caller's date range."""
     def floor(value: str) -> str:
