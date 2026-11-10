@@ -74,6 +74,22 @@ def test_two_events_never_choose_first_date_as_exact_day():
     assert _evidence(hit, "2010-01-01", "2010-12-31") == []
 
 
+def test_date_scoped_document_is_not_retained_without_matching_event_evidence():
+    # ES may match Event E1's date while the only Evidence belongs to E2.
+    hit = _hit(
+        [_event("E1", "2008-07-20"), _event("E2", "2009-06-15")],
+        [],
+        [_snippet(["E2"], "重大事件造成影響")],
+    )
+    hits, evidence, _ = build_hits_and_evidence(
+        [hit], date_from="2008-07-01", date_to="2008-07-31",
+        effective_terms=[], term_groups=[], query_for_snippet="重大事件",
+    )
+    assert hits == []
+    assert evidence == []
+    assert _evidence(hit, "2009-06-01", "2009-06-30")[0]["date_iso"] == "2009-06-15"
+
+
 def test_dangling_event_id_does_not_fall_back_to_article_date():
     hit = _hit([_event("E2")], [], [_snippet(["E1"])])
     assert _evidence(hit, "2009-06-01", "2009-06-30") == []
