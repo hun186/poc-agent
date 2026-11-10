@@ -221,6 +221,22 @@ def test_valid_subday_times_stay_searchable_and_count_for_the_correct_day(precis
     assert AggregateMonthQuarter().forward(found)["day_counts"] == {"2026-08-18": 1}
 
 
+def test_same_day_distinct_subday_milestones_retained_but_day_count_deduped():
+    hit = _hit(
+        [_event("E1", "2026-08-18T05:00:00", "hour")],
+        [{"event_ids": ["E1"], "time_iso": "2026-08-18T17:00:00",
+          "time_precision": "hour"}],
+        [_snippet(["E1"])],
+    )
+    evidence = _evidence(hit, "2026-08-18", "2026-08-18")
+    assert len(evidence) == 1
+    assert evidence[0]["date_iso"] == ""  # two distinct time points
+    assert {p["time_iso"] for p in evidence[0]["event_time_candidates"]} == {
+        "2026-08-18T05:00:00", "2026-08-18T17:00:00"
+    }
+    assert AggregateMonthQuarter().forward(evidence)["day_counts"] == {"2026-08-18": 1}
+
+
 def test_empty_legacy_precision_infers_day_without_dropping_event():
     hit = _hit([_event(when="2026-08-18", precision="")], [], [_snippet(["E1"])])
     assert _evidence(hit, "2026-08-18", "2026-08-18")[0]["date_iso"] == "2026-08-18"
