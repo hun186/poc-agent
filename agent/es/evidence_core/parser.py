@@ -190,7 +190,7 @@ def parse_es_hits(
             if c.linked_times:
                 if c.linked_complete and len(c.linked_times) == 1:
                     point = c.linked_times[0]
-                    if point.precision == "day":
+                    if point.precision in ("day", "hour", "minute", "second"):
                         c.date_iso = point.start
             elif has_structured_events:
                 # If the link is dangling, only trust an explicit full date in
