@@ -2,7 +2,7 @@
 
 > **這是現有 OFF-1 與 OFF-2 工具的薄層派送器，不是完整 OFF-3 Acceptance runner，也不代表 OFF-2/4/5 已完成。** 已部署的 SRAF Python 環境必須事先可用，這個腳本不執行 pip、npm、GitHub、ChatGPT、資料庫修改、Agent 生成、重啟、程序終止或還原。
 
-忘記模式與指令時，優先找根目錄排在前面的 **`0_一鍵快檢_SRAF.sh`**：`./0_一鍵快檢_SRAF.sh` 或 `bash 0_一鍵快檢_SRAF.sh`；無參數執行現有的六項本機唯讀 `deploy-check`，`--help` 僅輸出中文說明，不會進入正式驗收。它不改變既有統一入口的預設 `quick` 模式，相關限制見 [一鍵落地快檢測](sraf_local_deploy_quickcheck.md)。
+忘記模式與指令時，日常本機六項唯讀快檢請從專案根目錄執行 **`bash 1_完整診斷驗收_SRAF.sh --level L0`**；此模式不連網、不寫檔、不呼叫 SQL／ES／LLM／Report Job。注意統一入口不帶參數的預設是 L1，會進行有界 TCP 與匿名 /healthz；若要完全不連網，請務必選 `--level L0`。既有 OFF-3 `deploy-check` 工程診斷仍可使用，參考 [一鍵落地快檢測](sraf_local_deploy_quickcheck.md)。
 
 進階腳本已移至 `scripts/diagnostics/`，避免擁擠根目錄；在 SRAF 根目錄執行以下工程師模式，也可以從其他工作目錄使用指向完整檔案的絕對路徑：
 

@@ -64,11 +64,11 @@ bash 1_完整診斷驗收_SRAF.sh --level L3 --full-e2e \
 
 每項回傳 PASS、PASS_PARTIAL、FAIL、SKIP、INCOMPLETE 或 NOT_TESTED，以及固定去識別原因碼、耗時毫秒。最後一行 SRAF_DIAGNOSTICS_JSON=... 可分享，包含選定層級、結果、個別檢查，並固定 production_release_ready=false，即使現有 E2E Harness 在 release 模式通過亦不把 physical_airgap 變成 PASS。原 OFF-1 Job 證據寫到**可信私人目錄**，但新終端摘要不包含 Token、密碼、PID、主機／SQL 連線、Job ID、私有輸出路徑。
 
-CLI PASS_PARTIAL 退出碼 0、FAIL 退出碼 1、INCOMPLETE 退出碼 2；只是**所選診斷子集**狀態，不是正式 Release Gate。安全驗證缺失時，禁止停用 TLS、放寬目錄權限、跳過 Listener 保護。原 0_一鍵快檢_SRAF.sh 和其他 OFF-1/OFF-2 工具不變。
+CLI PASS_PARTIAL 退出碼 0、FAIL 退出碼 1、INCOMPLETE 退出碼 2；只是**所選診斷子集**狀態，不是正式 Release Gate。安全驗證缺失時，禁止停用 TLS、放寬目錄權限、跳過 Listener 保護。原 OFF-1/OFF-2 工程診斷工具保留；根目錄舊 0_一鍵快檢_SRAF.sh 已由統一入口 --level L0 取代並停止發行。
 
 單向增量更新須一併同步根目錄 Shell 與 tools/sraf_operator_diagnostics.py，以及它依賴的既有模組，無需在部署機執行 Git。Hosted CI 不代表部署機 SQL／ES／LLM 或真實 E2E 證據。
 
-若部署 API 使用自訂 shell PORT，分層入口會以啟動前選定的 PORT 執行 L0 六項 Listener 前置檢查並保留該 Port 供 L3 驗收；原本獨立的 0_一鍵快檢_SRAF.sh 仍固定檢查 9002，行為不變。磁碟不足會保留獨立 WARN 與其餘元件結果，而非覆蓋為全部 INCOMPLETE。未量測耗時的項目顯示 not_measured，不能當成 0ms。
+若部署 API 使用自訂 shell PORT，分層入口會以啟動前選定的 PORT 執行 L0 六項 Listener 前置檢查並保留該 Port 供 L3 驗收；舊的 OFF-3 canonical deploy-check 仍固定檢查 9002，統一入口 L0 可觀察啟動時選定的 PORT。磁碟不足會保留獨立 WARN 與其餘元件結果，而非覆蓋為全部 INCOMPLETE。未量測耗時的項目顯示 not_measured，不能當成 0ms。
 
 ## 內網維護人員：中文診斷與離線報告
 
@@ -112,4 +112,4 @@ bash 1_完整診斷驗收_SRAF.sh --level L0 --save-report
 
 若指定 --report-dir，仍須是存在可信祖先的**絕對路徑**。例如命令中的 /trusted/private/... 只是範例，主機不會預先產生該目錄；傳入相對路徑（如 maintenance-reports）會明確顯示 report_dir_relative 和 --save-report 的修正提示。若共享掛載、祖先所有權或 0700 最終目錄不符合要求，會明確拒絕並提供固定安全指引；切勿 chmod 777。終端不輸出主目錄、帳號身分或私人完整檔案路徑。
 
-根目錄舊 0_一鍵快檢_SRAF.sh 的完整離線功能已可用 --level L0 表達；如更新器僅單向複製新增／修改檔案，GitHub 的刪檔可能不會移除 Linux 上的舊腳本。維護人員應先確認新入口 L0 的私有主機結果，再清理已不再使用的舊路徑。原 OFF-3 deploy-check 核心診斷工具繼續保留供工程師使用。
+根目錄舊 0_一鍵快檢_SRAF.sh 已由 --level L0 取代並停止隨新版發行；如更新器僅單向複製新增／修改檔案，GitHub 的刪檔可能不會移除 Linux 上的舊腳本。維護人員應先確認新入口 L0 的私有主機結果，再清理已不再使用的舊路徑。原 OFF-3 deploy-check 核心診斷工具繼續保留供工程師使用。

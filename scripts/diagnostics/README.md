@@ -2,7 +2,7 @@
 
 ## 平常只需要一鍵快檢
 
-在 **SRAF 專案根目錄** 執行 `./0_一鍵快檢_SRAF.sh`（或 `bash 0_一鍵快檢_SRAF.sh`），無需記住或進入本資料夾。這是純本機、唯讀、無網路、無輸出檔的六項被動觀察；最後一行 `SRAF_DEPLOY_CHECK_JSON=...` 可提供工程師診斷。即使得到 `PASS_PARTIAL`，**也不是正式 FULL_LIVE、空網安裝或 Release 驗收**。
+在 **SRAF 專案根目錄** 執行 `bash 1_完整診斷驗收_SRAF.sh --level L0`。這是純本機、唯讀、無網路、無輸出檔的六項被動觀察；中文報告與末行 `SRAF_DIAGNOSTICS_JSON=...` 可供現場維護。即使得到 `PASS_PARTIAL`，**也不是正式 FULL_LIVE、空網安裝或 Release 驗收**。
 
 ## 僅供工程師明確選用的進階入口
 
@@ -32,4 +32,4 @@ bash scripts/diagnostics/run_sraf_airgap_off2_verify.sh
 
 ### 搬遷相容性
 
-舊的 `bash run_sraf_airgap_offline.sh ...`、`bash run_sraf_airgap_off1_diagnose.sh ...` 和 `bash run_sraf_airgap_off2_verify.sh` **根目錄路徑已移除**。若有外部部署排程、自訂指令或腳本直接呼叫舊路徑，請先更新為 `scripts/diagnostics/...`；**不提供與整理目的衝突的根目錄隱藏轉接腳本**。正式 API 啟動 `run_sra_api.sh` 與一鍵快檢 `0_一鍵快檢_SRAF.sh` 的入口與指令均不變。
+舊的 `bash run_sraf_airgap_offline.sh ...`、`bash run_sraf_airgap_off1_diagnose.sh ...` 和 `bash run_sraf_airgap_off2_verify.sh` **根目錄路徑已移除**。若有外部部署排程、自訂指令或腳本直接呼叫舊路徑，請先更新為 `scripts/diagnostics/...`；**不提供與整理目的衝突的根目錄隱藏轉接腳本**。正式 API 啟動 `run_sra_api.sh` 不變；日常診斷已統一為 `1_完整診斷驗收_SRAF.sh`，純離線使用 `--level L0`。根目錄舊 `0_一鍵快檢_SRAF.sh` 已停止隨版本發行，但單向增量同步的部署主機可能仍殘留；請先確認新 L0，再由維護人員進行一次性舊檔清理。

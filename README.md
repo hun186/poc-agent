@@ -1,21 +1,25 @@
 # SRA-Structured Retrieval Agent Project Analysis
 
-## 忘記指令？從這裡開始（Linux SRAF 落地部署快檢）
+## Linux 部署一鍵診斷（單一入口）
 
-**到 SRAF 專案資料夾找排在前面的 `0_一鍵快檢_SRAF.sh`。** 只要執行它，不需要記 `deploy-check` 等參數：
+根目錄保留一個維護人員入口：`1_完整診斷驗收_SRAF.sh`。依需求選擇檢查深度：
 
 ```bash
-./0_一鍵快檢_SRAF.sh
+# 預設 L1：L0 六項本機觀察 + API /healthz、API/ES/LLM 有界連線
+bash 1_完整診斷驗收_SRAF.sh
+
+# L0：完全不連網、不寫檔、不登入、不查 SQL／ES、不推論、不提交 Job
+bash 1_完整診斷驗收_SRAF.sh --level L0
+
+# 額外保存私有中文 TXT + JSON：Linux 帳號 HOME/.sraf-maintenance-reports
+bash 1_完整診斷驗收_SRAF.sh --save-report
 ```
 
-若終端或檔案管理員不允許直接執行，可以使用 `bash 0_一鍵快檢_SRAF.sh`；使用 `--help` 可以只看中文說明、不做檢測。可以在支援的 Linux 檔案管理員選「在終端機執行」，但是否提供雙擊執行取決於桌面安全設定，**不會自行更改系統權限**。
-
-這個入口固定呼叫 `scripts/diagnostics/run_sraf_airgap_offline.sh deploy-check`，僅做六項本機唯讀檢查，**不連網、不寫檔、不登入、不執行 SQL／ES／LLM／Report Job、不重啟服務**。保留原始退出碼及輸出最後的 `SRAF_DEPLOY_CHECK_JSON=...`，可提供工程師定位問題。即使 `PASS_PARTIAL` 也**不是**正式 release、FULL_LIVE 或離線安裝驗收。進階檢測腳本已整理到 [`scripts/diagnostics/`](scripts/diagnostics/README.md)，不需日常操作。完整說明參考 [SRAF 一鍵快檢手冊](docs/operations/sraf_local_deploy_quickcheck.md)。
-
+新入口會直接提供繁體中文維護結論、問題優先次序、處置建議與最後的 `SRAF_DIAGNOSTICS_JSON=...` 機器資料。保存報告屬於**明確 opt-in**，仍需通過既有可信 no-follow 私有目錄安全檢查。L0／L1 的 `PASS_PARTIAL` 不代表完整上線或真實 E2E 驗收。進階診斷仍保留在 `scripts/diagnostics/`，其中既有 OFF-3 `deploy-check` 原始被動診斷未移除。根目錄舊 `0_一鍵快檢_SRAF.sh` 已合併為 `--level L0` 而不再發行。單向增量同步**可能保留部署機先前的舊檔**；請先驗證新 L0 再由維護人員清理，不要假設遠端同步會自動刪除。詳見 [分層診斷與內網報告](docs/operations/sraf_layered_diagnostics.md) 和 [原始被動快檢技術說明](docs/operations/sraf_local_deploy_quickcheck.md)。
 
 ## 元件與 E2E 分層診斷（新入口）
 
-Linux 部署機可使用 `bash 1_完整診斷驗收_SRAF.sh` 執行 L0 六項被動檢查及 L1 API／ES／LLM 的匿名有界健康觀察。需要完全不連網時請使用 `bash 1_完整診斷驗收_SRAF.sh --level L0`。需對 SQL／ES 進行唯讀有憑證探測或對本機 Ollama 發送一次生成請求時，必須加上 `--level L2` 及獨立 opt-in；執行一筆真實 Report Job＋Word 時則需要 `--level L3 --live-report`、可信私人輸出目錄與既有測試 Token。**預設不寫入、不呼叫模型、不提交 Job；L3 `--live-report` 只驗一筆 Job；另可用 `--full-e2e`＋`--verification release` 明確授權既有 Requirement→Schedule→Handoff→Report Job→DOCX 真實 E2E，並強制 live 模式及私人 0600 操作環境檔。** 執行結果直接顯示中文維護摘要、判定依據與安全處置方向；可選用 `--save-report` 自動將私人 TXT＋JSON 存在 Linux 帳號的安全主目錄（或指定受信任的絕對路徑 `--report-dir`），不需把結果傳出內網。詳見 [SRAF 分層診斷操作手冊](docs/operations/sraf_layered_diagnostics.md)。原本 `0_一鍵快檢_SRAF.sh` 仍是完全不連網的日常快檢。
+Linux 部署機可使用 `bash 1_完整診斷驗收_SRAF.sh` 執行 L0 六項被動檢查及 L1 API／ES／LLM 的匿名有界健康觀察。需要完全不連網時請使用 `bash 1_完整診斷驗收_SRAF.sh --level L0`。需對 SQL／ES 進行唯讀有憑證探測或對本機 Ollama 發送一次生成請求時，必須加上 `--level L2` 及獨立 opt-in；執行一筆真實 Report Job＋Word 時則需要 `--level L3 --live-report`、可信私人輸出目錄與既有測試 Token。**預設不寫入、不呼叫模型、不提交 Job；L3 `--live-report` 只驗一筆 Job；另可用 `--full-e2e`＋`--verification release` 明確授權既有 Requirement→Schedule→Handoff→Report Job→DOCX 真實 E2E，並強制 live 模式及私人 0600 操作環境檔。** 執行結果直接顯示中文維護摘要、判定依據與安全處置方向；可選用 `--save-report` 自動將私人 TXT＋JSON 存在 Linux 帳號的安全主目錄（或指定受信任的絕對路徑 `--report-dir`），不需把結果傳出內網。詳見 [SRAF 分層診斷操作手冊](docs/operations/sraf_layered_diagnostics.md)。完全不連網的日常快檢現由同一入口的 `--level L0` 提供。
 
 ## 專案簡介 (Project Overview)
 本專案是一個基於 **FastAPI** 和 **Elasticsearch** 建構的 **RAG (Retrieval-Augmented Generation)** 代理人系統，稱為 **SRA (Structured Retrieval Agent)**。
