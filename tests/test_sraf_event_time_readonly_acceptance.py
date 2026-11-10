@@ -98,9 +98,10 @@ def _fake_transport(monkeypatch, *, valid_mapping=True, tls_failure=False,
             assert params["source_content_type"] == ["application/json"]
             assert request_body["size"] <= 1
             assert request_body.get("from", 0) <= 1
-            if "ids" in str(request_body):
+            query = request_body.get("query") or {}
+            if "ids" in query.get("bool", {}).get("filter", [{}])[0]:
                 body = _response([_doc("a")], count=1)
-            elif "Event_Timeline.time_iso" in str(request_body):
+            elif "Event_Timeline.time_iso" in json.dumps(query):
                 body = _response([] if missing_timeline else [_doc("a")], count=1)
             else:
                 body = _response(
