@@ -79,7 +79,7 @@ class AggregateMonthQuarter(Tool):
             days = []
             seen = set()
             for point in matched:
-                if not isinstance(point, dict) or point.get("time_precision") != "day":
+                if not isinstance(point, dict) or point.get("time_precision") not in ("day", "hour", "minute", "second"):
                     continue
                 dt = self._parse_day(point.get("date_start"))
                 if dt and dt.date() not in seen:
