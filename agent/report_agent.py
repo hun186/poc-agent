@@ -23,6 +23,50 @@ from .report_prompt import REPORT_SYSTEM_PROMPT
 from .report_stats import compress_stats
 
 
+def _incomplete_date_search(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Recover incomplete ES state even when Data Agent rewrites query_meta."""
+    raw = payload.get("raw_search_result")
+    raw_qm = raw.get("query_meta") if isinstance(raw, dict) else None
+    qm = payload.get("query_meta")
+    if not isinstance(qm, dict):
+        qm = {}
+    if not isinstance(raw_qm, dict):
+        raw_qm = {}
+    status = payload.get("search_status")
+    incomplete = (
+        raw_qm.get("result_incomplete") is True
+        or qm.get("result_incomplete") is True
+        or payload.get("result_incomplete") is True
+        or (isinstance(status, dict) and status.get("incomplete") is True)
+    )
+    if not incomplete:
+        return None
+    refill = raw_qm.get("date_candidate_refill")
+    if not isinstance(refill, dict):
+        refill = qm.get("date_candidate_refill")
+    if not isinstance(refill, dict):
+        refill = status.get("date_candidate_refill") if isinstance(status, dict) else {}
+    if not isinstance(refill, dict):
+        refill = {}
+    reason = (
+        raw_qm.get("note") or qm.get("note") or
+        (status.get("reason") if isinstance(status, dict) else None)
+        or "date_candidate_scan_limit_reached"
+    )
+    quality = {
+        "incomplete": True,
+        "reason": reason,
+        "date_candidate_refill": refill,
+    }
+    qm["result_incomplete"] = True
+    qm["note"] = reason
+    qm["date_candidate_refill"] = refill
+    payload["query_meta"] = qm
+    payload["result_incomplete"] = True
+    payload["search_status"] = quality
+    return quality
+
+
 class ReportAgent:
     """
     run() 回傳 dict（含 citations），
@@ -77,6 +121,35 @@ def ask_with_report(
         qm["refined_question"] = refined_question
         payload["query_meta"] = qm
 
+    # A bounded date scan with no verified Evidence is not a "no news"
+    # verdict. Do not ask the LLM to write an apparently complete report.
+    search_quality = _incomplete_date_search(payload)
+    if search_quality and not (payload.get("evidence_snippets") or []):
+        warning = (
+            "日期查詢未完成：Elasticsearch 候選資料掃描已達安全上限，"
+            "目前沒有足夠的有效證據判斷是否存在相關事件。"
+            "這不代表沒有新聞；本次不產生正式零結果分析報告，"
+            "應縮小查詢條件或由維護者進行唯讀檢索驗證。"
+        )
+        result = {
+            "question": original_question or "[未提供使用者提問]",
+            "q": refined_question or original_question,
+            "q0": original_question,
+            "answer": warning,
+            "citations": [],
+            "reasoning": warning,
+            "used_uuids": [],
+            "refno_uuid_map": {},
+            "result_incomplete": True,
+            "search_status": search_quality,
+            "query_meta": payload["query_meta"],
+        }
+        if trace.get("data_agent"):
+            result["data_agent"] = trace["data_agent"]
+        log_total("[report] ask_with_report[TOTAL]", t_total_start,
+                  extra={"incomplete_search": True, "report_llm_skipped": True})
+        return result
+
     # 你可以用環境變數控管給 LLM 的最大片段數
     MAX_EV_FOR_LLM = int(os.getenv("REPORT_MAX_EVIDENCE_SNIPS", "120"))
 
@@ -126,6 +199,7 @@ def ask_with_report(
             payload.get("time_range", {}).get("date_to"),
         ],
         "agg": compress_stats(payload.get("stats") or {}),
+        **({"search_status": search_quality} if search_quality else {}),
         #"ev": compress_evidence(payload.get("evidence_snippets") or []),
         "ev": compress_evidence(picked_for_llm, max_samples=MAX_EV_FOR_LLM),
     }
@@ -308,6 +382,18 @@ def ask_with_report(
             stage="report",
         )
     t1 = time.perf_counter()
+    if search_quality:
+        # LLM models can ignore search_status; ensure answer/DOCX always
+        # prominently qualifies partial data as non-exhaustive.
+        warning = (
+            "⚠️ 日期檢索結果不完整：已達安全候選掃描上限。"
+            "下列內容僅根據目前已確認的部分證據撰寫，"
+            "不可視為完整事件統計或據此認定沒有其他事件。"
+        )
+        report_text = warning + "\n\n" + (
+            report_text if isinstance(report_text, str) else str(report_text)
+        )
+
     
     # ★ 修復 LLM 產出的所有 Markdown 表格（不限欄數）
     #print(f"DEBUG: report_text before Sanitized Markdown Row: {report_text}")
@@ -369,6 +455,15 @@ def ask_with_report(
         "used_uuids": used_uuids,
         "refno_uuid_map": refno_uuid_map,
     }
+
+    if search_quality:
+        result["result_incomplete"] = True
+        result["search_status"] = search_quality
+        result["query_meta"] = payload["query_meta"]
+        result["reasoning"] = (
+            "日期檢索達到安全掃描上限，以下僅為部分證據分析；"
+            "事件統計與缺失事件的推論均不具完整性。"
+        )
 
     # ★ 把資料整備代理人的 log 掛回給前端用
     data_agent = trace.get("data_agent")
