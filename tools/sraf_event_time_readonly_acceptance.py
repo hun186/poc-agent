@@ -97,7 +97,7 @@ def _candidate_source_summary(hits: list[dict]) -> dict[str, int]:
     from agent.es.event_time import (
         collect_linked_times, linked_dates_for_ids,
     )
-    from agent.es.evidence_core.parser import normalized_ids
+    from agent.es.event_time import _ids
     summary = {
         "documents": len(hits), "blocks": 0, "events_dated": 0,
         "timelines_dated": 0, "evidence_with_event_ids": 0,
@@ -130,7 +130,7 @@ def _candidate_source_summary(hits: list[dict]) -> dict[str, int]:
             for snippet in snippets:
                 if not isinstance(snippet, dict):
                     continue
-                ids = normalized_ids(snippet.get("event_ids"))
+                ids = _ids(snippet.get("event_ids"))
                 if not ids:
                     continue
                 summary["evidence_with_event_ids"] += 1
