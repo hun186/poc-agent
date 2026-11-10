@@ -178,3 +178,24 @@ raw-status authority, trace preservation, no LLM call for empty truncated
 search, visible warning in partial output, and unchanged complete-report
 behavior. Host CI tests remain synthetic; private `news_test` and actual
 operator report/Word flow are NOT TESTED.
+
+## ES document identity across multiple indices
+
+A `uuid` in `_source` is application-level metadata, **not** a globally
+unique Elasticsearch hit ID across configured indices. Two ES hits may share
+that UUID while describing unrelated Event dates. Both Evidence parsing and
+candidate result trimming therefore bind each verified citation to the exact
+source hit's **private accumulated ordinal**, itself derived from the ordered
+ES hits list. The builder matches by that ordinal, never by UUID. Date-scoped
+pagination temporarily carries `__sraf_source_hit_ordinal` through the
+private builder contract and strips it from final public hits and Evidence.
+
+ES pagination deduplicates only on `(_index,_id)` when these fields exist.
+It does not merge two documents just because the same UUID appears in their
+sources. `tests/test_sraf_date_evidence_refill.py` includes cross-index
+same-UUID, different-event-date regressions. A filtered document from index
+A must **never** borrow a matching citation originating in index B.
+
+This prevents one concrete cross-index false attribution but does **not**
+provide snapshot consistency for ES `from` queries under concurrent writes.
+Production read-only multi-index and scroll/order acceptance is still pending.
