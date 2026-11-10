@@ -496,6 +496,92 @@ def test_year_in_query_uses_same_dual_source_filter():
     assert "multidim_event_json.Event_Timeline.time_iso" in str(filters)
 
 
+def test_merged_394_395_legacy_missing_precision_utc_candidate_bounds():
+    # Codex P2: explicit precision had been fixed but missing/empty legacy
+    # time_precision still queried a narrow UTC day. Both need an expanded
+    # candidate range; Evidence then verifies the original local day.
+    body = _query(date_from="2026-08-18", date_to="2026-08-18")
+    first = body["query"]["function_score"]["query"]["bool"]["filter"][0]
+    children = first["nested"]["query"]["bool"]["should"]
+    for child in children:
+        by_precision = child["nested"]["query"]["bool"]["should"]
+        legacy_cases = [
+            entry for entry in by_precision
+            if isinstance(entry, dict)
+            and "bool" in entry
+            and any(
+                isinstance(filt, dict) and "bool" in filt
+                and {"term", "bool"} <= {next(iter(i)) for i in filt["bool"]["should"]}
+                for filt in entry["bool"].get("filter", [])
+            )
+        ]
+        assert len(legacy_cases) == 1
+        date_filter = legacy_cases[0]["bool"]["filter"][1]
+        field = child["nested"]["path"] + ".time_iso"
+        assert date_filter == {"range": {
+            field: {"gte": "2026-08-17", "lt": "2026-08-20"}
+        }}
+
+    for declared in (None, ""):
+        for stamp in ("2026-08-18T00:42:00+08:00",
+                      "2026-08-18T23:59:00-12:00"):
+            hit = _hit([_event(when=stamp, precision=declared)], [], [_snippet(["E1"])])
+            evidence = _evidence(hit, "2026-08-18", "2026-08-18")
+            assert len(evidence) == 1
+            assert evidence[0]["date_iso"] == "2026-08-18"
+            assert evidence[0]["event_time_candidates"][0]["time_precision"] == "second"
+
+
+def test_merged_394_parenthesized_day_with_two_distinct_months_is_ambiguous():
+    # PR #394 Codex P2: March 1 and June 1 must not be resolved to
+    # whichever matching "(1)日" comes first. Both dated milestones remain.
+    hit = _hit(
+        [_event("E1", "2025-03-01", "day")],
+        [{"event_ids": ["E1"], "time_iso": "2025-06-01", "time_precision": "day"}],
+        [_snippet(["E1"], "今(1)日救援進展")],
+        article="2026-08-01",
+    )
+    june = _evidence(hit, "2025-06-01", "2025-06-30")
+    assert len(june) == 1
+    assert june[0]["date_iso"] == ""
+    assert {p["time_iso"] for p in june[0]["event_time_candidates"]} == {
+        "2025-03-01", "2025-06-01"
+    }
+    assert [p["time_iso"] for p in june[0]["matched_event_time_candidates"]] == [
+        "2025-06-01"
+    ]
+    assert AggregateMonthQuarter().forward(june)["day_counts"] == {"2025-06-01": 1}
+    assert _evidence(hit, "2025-07-01", "2025-07-31") == []
+
+
+def test_merged_394_reused_id_in_second_block_source_evidence_is_local():
+    hit = _hit(multidim=[
+        {"Event": [_event("E1", "2025-07-02")],
+         "evidence_snippets": [_snippet(["E1"], "七月資料")]},
+        {"Event": [_event("E1", "2025-06-02")],
+         "evidence_snippets": [_snippet(["E1"], "六月資料")]},
+    ])
+    june = _evidence(hit, "2025-06-01", "2025-06-30")
+    assert len(june) == 1
+    assert june[0]["text"] == "六月資料"
+    assert june[0]["date_iso"] == "2025-06-02"
+    july = _evidence(hit, "2025-07-01", "2025-07-31")
+    assert len(july) == 1
+    assert july[0]["text"] == "七月資料"
+
+
+def test_merged_394_parenthesized_day_cannot_convert_year_into_first_january():
+    hit = _hit([_event("E1", "2020", "year")], [], [
+        _snippet(["E1"], "今(1)日展開救援")
+    ], article="2026-08-01")
+    june = _evidence(hit, "2020-06-01", "2020-06-30")
+    assert len(june) == 1
+    assert june[0]["date_iso"] == ""
+    assert june[0]["event_time_candidates"][0]["time_precision"] == "year"
+    assert june[0]["event_time_candidates"][0]["date_start"] == "2020-01-01"
+    assert june[0]["matched_event_time_candidates"][0]["date_end"] == "2020-12-31"
+
+
 def test_no_date_query_has_no_date_filter_and_preserves_fallback_fields():
     body = _query(query="重大事件", date_from=None, date_to=None)
     assert not body["query"]["function_score"]["query"]["bool"]["filter"]
