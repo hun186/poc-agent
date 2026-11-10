@@ -76,7 +76,7 @@ def build_evidence_snippet(
     # For a coarse month/year, reporting its first day as an observed event
     # day is false precision. Keep date_iso empty and expose an explicit window.
     snippet_date = chosen.iso if chosen and chosen.precision == "day" else ""
-    uncertain = limited and not snippet_date and chosen is None
+    uncertain = chosen is None and (limited or bool(h.event_time_records))
 
     uuid = h.uuid or c.uuid
     if not uuid:
@@ -91,6 +91,7 @@ def build_evidence_snippet(
         event_time_start_iso=chosen.start.isoformat() if chosen else None,
         event_time_end_iso=chosen.end.isoformat() if chosen else None,
         weak_evidence=uncertain,
+        event_time_unresolved=uncertain,
         subject=h.subject,
         article_title=h.article_title,
         paragraph_id=c.paragraph_id,
