@@ -90,6 +90,28 @@ def test_date_scoped_document_is_not_retained_without_matching_event_evidence():
     assert _evidence(hit, "2009-06-01", "2009-06-30")[0]["date_iso"] == "2009-06-15"
 
 
+def test_query_year_filters_evidence_by_its_linked_event_not_other_event_in_document():
+    hit = _hit(
+        [_event("E1", "2008-07-20"), _event("E2", "2009-06-15")],
+        [],
+        [_snippet(["E2"], "重大事件造成影響")],
+    )
+    hits, evidence, _ = build_hits_and_evidence(
+        [hit], date_from=None, date_to=None,
+        allowed_years={2008}, effective_terms=[], term_groups=[],
+        query_for_snippet="2008年重大事件",
+    )
+    assert hits == []
+    assert evidence == []
+    _, matching, _ = build_hits_and_evidence(
+        [hit], date_from=None, date_to=None,
+        allowed_years={2009}, effective_terms=[], term_groups=[],
+        query_for_snippet="2009年重大事件",
+    )
+    assert len(matching) == 1
+    assert matching[0]["date_iso"] == "2009-06-15"
+
+
 def test_dangling_event_id_does_not_fall_back_to_article_date():
     hit = _hit([_event("E2")], [], [_snippet(["E1"])])
     assert _evidence(hit, "2009-06-01", "2009-06-30") == []
