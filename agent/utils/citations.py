@@ -79,6 +79,26 @@ def _compact_event_time(s: Dict[str, Any]) -> Dict[str, Any]:
     return {"d": None, "tp": "multiple" if times else "unknown", "times": times}
 
 
+def _compact_time_identity(row: Dict[str, Any]) -> tuple:
+    """Stable identity for an Evidence time projection (raw or compressed).
+
+    Same document + same text can support different Events or Timeline dates.
+    Those are separate citations, not duplicates. Conversely identical
+    event-time claims should not inflate citations merely because a point
+    appeared in a different field order.
+    """
+    times = row.get("times")
+    canonical = []
+    if isinstance(times, list):
+        for item in times:
+            if not isinstance(item, dict):
+                continue
+            canonical.append(tuple(str(item.get(k) or "") for k in (
+                "time_iso", "time_precision", "date_start", "date_end", "source"
+            )))
+    return (str(row.get("tp") or ""), str(row.get("d") or ""), tuple(sorted(set(canonical))))
+
+
 def compress_evidence(snippets: list[dict], max_samples: int = 300) -> list[dict]:
     if not snippets:
         return []
@@ -114,7 +134,10 @@ def compress_evidence(snippets: list[dict], max_samples: int = 300) -> list[dict
         if not uuid or not txt_norm:
             continue
 
-        key = (uuid, txt_norm)          # ★ 避免不同文章因文字相同被誤去重
+        # A snippet's event-time provenance is part of its meaning.
+        # Do not drop a June 17 event merely because June 1 had the same
+        # (uuid, text); identical time/text remains deduplicated.
+        key = (uuid, txt_norm, _compact_time_identity(_compact_event_time(s)))
         if key in seen:
             continue
         seen.add(key)
@@ -246,8 +269,9 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
         note = _normalize_snip_text(e.get("note") or "")
         if not ev_id or not note:
             continue
-        key = (str(ev_id), note)
-        # 後寫覆蓋沒關係，通常是一對一
+        key = (str(ev_id), note, _compact_time_identity(e))
+        # Time-specific references must not cross-attach to another
+        # citation with identical UUID and text but a different Event.
         ref_map[key] = ref_no
 
     # === 2) 走 evidence_snippets，盡量掛上正確的 ref_no ===
@@ -268,7 +292,7 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
         sid = pick_doc_id(s)
         note = _normalize_snip_text(s.get("text") or "")
         if sid and note:
-            key = (str(sid), note)
+            key = (str(sid), note, _compact_time_identity(_compact_event_time(s)))
             ref_no = ref_map.get(key)
         doc_id = sid  # 或 doc_id = pick_doc_id(s)
         time_projection = _compact_event_time(s)
