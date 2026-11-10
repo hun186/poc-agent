@@ -93,14 +93,36 @@ def test_timeline_only_date_is_correlated_by_event_id():
     assert evidence[0]["event_time_candidates"][0]["source"] == "Event_Timeline"
 
 
-def test_event_date_wins_even_if_related_timeline_has_other_date():
+def test_event_and_related_timeline_dates_are_both_searchable_without_fake_exact_day():
     hit = _hit(
         [_event("E1", "2008-07-20")],
         [{"event_ids": ["E1"], "time_iso": "2009-01-01"}],
         [_snippet(["E1"])],
     )
-    assert len(_evidence(hit, "2008-07-01", "2008-07-31")) == 1
-    assert _evidence(hit, "2009-01-01", "2009-01-31") == []
+    for start, end in [("2008-07-01", "2008-07-31"), ("2009-01-01", "2009-01-31")]:
+        evidence = _evidence(hit, start, end)
+        assert len(evidence) == 1
+        assert evidence[0]["date_iso"] == ""  # two milestones, no arbitrary single day
+        assert {p["source"] for p in evidence[0]["event_time_candidates"]} == {
+            "Event", "Event_Timeline"
+        }
+    assert _evidence(hit, "2010-01-01", "2010-12-31") == []
+
+
+def test_identical_event_and_timeline_day_is_not_duplicated():
+    hit = _hit(
+        [_event("E1", "2008-07-20")],
+        [{"event_ids": ["E1"], "time_iso": "2008-07-20"}],
+        [_snippet(["E1"])],
+    )
+    evidence = _evidence(hit, "2008-07-01", "2008-07-31")
+    assert evidence[0]["date_iso"] == "2008-07-20"
+    assert evidence[0]["event_time_candidates"][0]["source"] == "Event"
+    assert len(evidence[0]["event_time_candidates"]) == 1
+
+
+def test_malformed_timestamp_is_not_assumed_valid():
+    assert parse_structured_time("2020-06-17Tnot-a-time", "day", "Event") is None
 
 
 @pytest.mark.parametrize("when,precision,expected,inside,outside", [
