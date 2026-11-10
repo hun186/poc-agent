@@ -14,7 +14,7 @@ from .date_utils import (
 )
 from .snippet import make_fallback_snippet
 from ..reference_text import get_reference_text
-from ..event_time import collect_linked_times, linked_dates_for_ids
+from ..event_time import collect_linked_times, linked_dates_for_ids, event_ids_in_block
 
 
 def parse_es_hits(
@@ -104,6 +104,7 @@ def parse_es_hits(
         time_lookup, has_structured_events = collect_linked_times(blocks)
         # Keep local block scope; IDs in separate multidim objects can repeat.
         local_time_lookups = [collect_linked_times([block])[0] for block in blocks]
+        block_declared_ids = [event_ids_in_block(block) for block in blocks]
         # timeline / article date
         tl_dates = collect_timeline_dates(src, topk=config.timeline_dates_topk)
         mapped_article_date = next(
@@ -206,14 +207,24 @@ def parse_es_hits(
             if c.block_index is not None:
                 scoped_lookup = local_time_lookups[c.block_index]
             elif len(blocks) > 1:
-                # Unlocated inner_hits cannot be assigned to a duplicated
-                # identifier across independent blocks even if dates agree.
-                scoped_lookup = {}
-                if c.event_ids and all(
-                    sum(eid in local for local in local_time_lookups) == 1
-                    for eid in c.event_ids
-                ):
-                    scoped_lookup = time_lookup
+                # A missing inner-hit parent offset is safe only when ALL
+                # referenced IDs are declared in exactly one SAME block.
+                # Count undated/invalid IDs too: otherwise an undated E1 in
+                # block 0 could borrow block 1's valid E1 event time.
+                owners = set()
+                for eid in c.event_ids:
+                    occurrences = [
+                        i for i, declared in enumerate(block_declared_ids)
+                        if eid in declared
+                    ]
+                    if len(occurrences) != 1:
+                        owners.clear()
+                        break
+                    owners.add(occurrences[0])
+                scoped_lookup = (
+                    local_time_lookups[next(iter(owners))]
+                    if c.event_ids and len(owners) == 1 else {}
+                )
             else:
                 scoped_lookup = time_lookup
             c.linked_times, c.linked_complete = linked_dates_for_ids(c.event_ids, scoped_lookup)
