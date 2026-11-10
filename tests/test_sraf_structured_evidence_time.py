@@ -55,6 +55,15 @@ def test_structured_event_date_beats_different_article_date_and_empty_timeline()
     assert _evidence(hit, "2009-06-01", "2009-06-30") == []
 
 
+def test_missing_article_date_is_not_invented_from_structured_event_or_raw_text():
+    hit = _hit([_event()], [], [_snippet(["E1"])], article=None)
+    hit["_source"]["rawInfo"] = {"content": "2008年7月20日事件相關正文"}
+    evidence = _evidence(hit, "2008-07-01", "2008-07-31")
+    assert len(evidence) == 1
+    assert evidence[0]["date_iso"] == "2008-07-20"
+    assert evidence[0]["article_date_iso"] == ""
+
+
 def test_text_month_day_cannot_borrow_publication_year_over_structured_event():
     hit = _hit([_event()], [], [_snippet(["E1"], "7月20日發生重大事件")])
     evidence = _evidence(hit, "2008-07-01", "2008-07-31")
