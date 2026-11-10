@@ -3,6 +3,7 @@ name: SRAF Event and Timeline date retrieval regressions
 on:
   pull_request:
     paths:
+      - 'agent/tools_stats.py'
       - 'agent/es/query_body.py'
       - 'agent/es/date_filters.py'
       - 'agent/es/temporal.py'
