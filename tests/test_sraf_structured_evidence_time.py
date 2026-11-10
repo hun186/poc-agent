@@ -319,6 +319,34 @@ def test_multiblock_inner_hit_without_origin_must_not_cross_join_reused_id():
     assert _evidence(hit, "2009-06-01", "2009-06-30") == []
 
 
+def test_merged_394_undated_reused_id_cannot_borrow_another_blocks_date():
+    # PR #394 Codex P1: no parent offset, E1 exists in both blocks,
+    # but only one has a valid date. This is NOT a globally unique E1.
+    hit = _hit(multidim=[
+        {"Event": [{"event_id": "E1", "time_iso": None}]},
+        {"Event": [_event("E1", "2025-06-15")]},
+    ])
+    hit["inner_hits"] = {"evi": {"hits": {"hits": [{
+        "_source": {"text": "救援進展", "event_ids": ["E1"]}
+    }]}}}
+    parsed, _ = parse_es_hits(
+        [hit], query_for_snippet="救援", config=EvidenceBuildConfig()
+    )
+    assert parsed[0].citations[0].linked_times == []
+    assert _evidence(hit, "2025-06-01", "2025-06-30") == []
+
+
+def test_merged_394_unlocated_inner_hit_cannot_mix_ids_from_different_blocks():
+    hit = _hit(multidim=[
+        {"Event": [_event("E1", "2025-06-15")]},
+        {"Event": [_event("E2", "2025-06-16")]},
+    ])
+    hit["inner_hits"] = {"evi": {"hits": {"hits": [{
+        "_source": {"text": "救援進展", "event_ids": ["E1", "E2"]}
+    }]}}}
+    assert _evidence(hit, "2025-06-01", "2025-06-30") == []
+
+
 def test_multiblock_inner_hit_with_offset_uses_correct_parent_event():
     hit = _hit(multidim=[
         {"Event": [_event("E1", "2008-07-20")]},
