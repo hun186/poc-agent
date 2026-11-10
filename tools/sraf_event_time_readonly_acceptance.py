@@ -20,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 SCHEMA = "sraf_event_time_news_test_readonly_v1"
 INDEX = "news_test"  # fixed literal: no wildcard, alias expansion or operator URL
-MAX_SEARCH_PATH = 10000
+MAX_SEARCH_PATH = 3072  # fit within ES default 4 KiB GET request line
 SOURCE_FIELDS = [
     "uuid",
     "multidim_event_json.article_date_iso",
@@ -43,7 +43,9 @@ def _properties(mapping_response: Any) -> tuple[dict, list[str]]:
     """Validate the specific two-level nested mapping needed by #395."""
     if not isinstance(mapping_response, dict) or len(mapping_response) != 1:
         return {}, ["mapping_target_not_unique"]
-    entry = next(iter(mapping_response.values()))
+    if next(iter(mapping_response)) != INDEX:
+        return {}, ["mapping_target_not_fixed_index"]
+    entry = mapping_response[INDEX]
     if not isinstance(entry, dict):
         return {}, ["mapping_response_invalid"]
     node = ((entry.get("mappings") or {}).get("properties") or {}).get(
@@ -64,10 +66,17 @@ def _properties(mapping_response: Any) -> tuple[dict, list[str]]:
         if not isinstance(child_props, dict):
             errors.append(f"{child.lower()}_properties_missing")
             continue
-        if child in ("Event", "Event_Timeline"):
-            time_field = child_props.get("time_iso")
-            if not isinstance(time_field, dict) or time_field.get("type") != "date":
-                errors.append(f"{child.lower()}_time_iso_not_date")
+        required = (
+            {"event_id": "keyword", "time_iso": "date",
+             "time_precision": "keyword"} if child == "Event" else
+            {"event_ids": "keyword", "time_iso": "date",
+             "time_precision": "keyword"} if child == "Event_Timeline" else
+            {"event_ids": "keyword", "text": "text"}
+        )
+        for field_name, expected_type in required.items():
+            field = child_props.get(field_name)
+            if not isinstance(field, dict) or field.get("type") != expected_type:
+                errors.append(f"{child.lower()}_{field_name}_not_{expected_type}")
     return props, errors
 
 
@@ -82,7 +91,12 @@ def _hits(document: Any) -> list[dict]:
     rows = ((document.get("hits") or {}).get("hits") or [])
     if not isinstance(rows, list):
         raise ObservationError("search_hits_invalid")
-    return [row for row in rows if isinstance(row, dict)]
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ObservationError("search_hit_shape_invalid")
+        if row.get("_index") != INDEX:
+            raise ObservationError("search_hit_unexpected_index")
+    return rows
 
 
 def _total_at_least_two(document: dict) -> bool:
