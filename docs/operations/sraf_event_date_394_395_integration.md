@@ -49,8 +49,13 @@ Retain linked candidates and use their period intersection instead.
 
 #395's Codex P2: legacy missing/empty `time_precision` plus a timestamp
 with explicit timezone offset might be indexed by ES on an adjacent UTC day.
-The dedicated legacy branch uses a conservatively widened date range and
-the Evidence stage checks the source-local calendar day and event link.
+The dedicated legacy branch uses a conservatively widened **year-wide**
+date candidate range (one extra UTC boundary day on each side): an absent
+precision can encode \`YYYY\`, \`YYYY-MM\`, a literal day, or an offset-bearing
+timestamp, and ES mapping cannot infer its source granularity. The Evidence
+stage checks original period and event link. This is safe but can be broader
+than a specific-day ES search, so realistic read-only performance is a
+separate operator gate.
 
 Other regressions preserved: Event-only with empty Timeline; Timeline-only;
 nonmatching dates; multiple Event IDs; invalid precision; hour/minute/second;
