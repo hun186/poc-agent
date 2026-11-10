@@ -95,7 +95,7 @@ def collect_timeline_dates(src: dict, *, topk: int) -> List[str]:
     return uniq
 
 
-def infer_date_for_snippet(text: str, article_date_iso: Optional[str], timeline_dates: List[str]) -> Optional[str]:
+def infer_date_for_snippet(text: str, article_date_iso: Optional[str], timeline_dates: List[str], *, day_precision_dates: Optional[List[str]] = None) -> Optional[str]:
     if not text:
         return None
     # The citation's own full date has precedence over the article metadata.
@@ -123,7 +123,10 @@ def infer_date_for_snippet(text: str, article_date_iso: Optional[str], timeline_
         dd = int(m.group('d'))
         if art_y and art_m:
             return norm_date(art_y, art_m, dd)
-        for di in timeline_dates:
+        # A year/month period's first day is an interval boundary, not an
+        # observed calendar day. Only real day-resolution records may supply
+        # a bare parenthesized day (e.g. 今(1)日).
+        for di in (timeline_dates if day_precision_dates is None else day_precision_dates):
             valid = normalize_iso_date(di)
             if valid and int(valid[8:10]) == dd:
                 return valid
