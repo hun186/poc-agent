@@ -209,14 +209,21 @@ def test_legacy_no_structured_event_keeps_publication_date_fallback():
     assert _evidence(hit, "2009-06-01", "2009-06-30")[0]["date_iso"] == "2009-06-15"
 
 
-def test_multiblock_duplicate_id_preserves_ambiguity():
+def test_multiblock_duplicate_id_with_conflicting_dates_fails_closed():
     first = {"Event": [_event("E1", "2008-07-20")], "evidence_snippets": [_snippet(["E1"])]}
     second = {"Event": [_event("E1", "2009-06-15")]}
     hit = _hit(multidim=[first, second])
-    found = _evidence(hit, "2008-07-01", "2008-07-31")
-    assert len(found) == 1
-    assert found[0]["date_iso"] == ""
-    assert len(found[0]["event_time_candidates"]) == 2
+    assert _evidence(hit, "2008-07-01", "2008-07-31") == []
+    assert _evidence(hit, "2009-06-01", "2009-06-30") == []
+    parsed, _ = parse_es_hits([hit], query_for_snippet="重大事件", config=EvidenceBuildConfig())
+    assert parsed[0].citations[0].event_ids == ["E1"]
+    assert parsed[0].citations[0].linked_times == []
+
+
+def test_multiblock_identical_id_and_date_keeps_link():
+    block = {"Event": [_event("E1", "2008-07-20")], "evidence_snippets": [_snippet(["E1"])]}
+    hit = _hit(multidim=[block, {"Event": [_event("E1", "2008-07-20")]}])
+    assert _evidence(hit, "2008-07-01", "2008-07-31")[0]["date_iso"] == "2008-07-20"
 
 
 def test_aggregate_counts_actual_event_date_not_article_publication_date():
