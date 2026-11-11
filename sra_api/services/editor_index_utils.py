@@ -162,6 +162,18 @@ def get_index_field_metadata_map(index: str) -> tuple[dict[str, dict[str, Any]],
                 meta["has_properties"] = True
             if meta:
                 out[path] = meta
+            # Multi-fields (e.g. title.keyword) are real searchable ES fields,
+            # but are declared in 'fields', not in 'properties'. Preserve their
+            # types so mapping-aware search doesn't silently return match_none.
+            subfields = definition.get("fields")
+            if isinstance(subfields, dict):
+                for subname, subdef in subfields.items():
+                    if not isinstance(subdef, dict):
+                        continue
+                    subpath = f"{path}.{subname}"
+                    subtype = str(subdef.get("type") or "")
+                    if subtype:
+                        out[subpath] = {"type": subtype}
             child_props = definition.get("properties")
             if isinstance(child_props, dict):
                 _walk(child_props, path)
