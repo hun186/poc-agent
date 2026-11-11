@@ -1,0 +1,47 @@
+name: SRAF Editor mapping-aware search (synthetic)
+
+on:
+  pull_request:
+    paths:
+      - 'sra_api/routers/editor.py'
+      - 'sra_api/services/editor_search_query.py'
+      - 'sra_api/static/editor_documents.js'
+      - 'sra_api/static/editor.html'
+      - 'config/editor_form.default.json'
+      - 'tests/test_editor_search_query.py'
+      - 'tests/test_editor_form_config_mapping.py'
+      - 'tests/test_editor_form_static.py'
+      - '.github/workflows/sraf-editor-search.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  editor-search:
+    name: Editor search Python ${{ matrix.python-version }} (no live ES)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install project dependencies before pytest (AGENTS.md)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install 'pytest>=8,<10' 'httpx>=0.28,<1'
+      - name: Check Python and UI syntax
+        run: |
+          python -m compileall -q sra_api/routers/editor.py sra_api/services/editor_search_query.py tests/test_editor_search_query.py
+          node --check sra_api/static/editor_documents.js
+          python -m json.tool config/editor_form.default.json > /dev/null
+      - name: Execute editor API and static regression (synthetic only)
+        run: python -m pytest -q tests/test_editor_search_query.py tests/test_editor_form_config_mapping.py tests/test_editor_form_static.py
