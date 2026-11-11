@@ -4,6 +4,7 @@ function collectSearchQuery(pageOverride) {
   return new URLSearchParams({
     index: $('indexSelect').value,
     q: $('query').value,
+    search_mode: $('searchMode').value,
     size: String(size),
     page: String(page),
     start_ts: toIsoOrEmpty($('searchStartTs').value.trim()),
@@ -29,7 +30,9 @@ async function searchDocs(pageOverride=null) {
     state.searchPage = Number(data.page || state.searchPage || 1);
     state.searchHasMore = Boolean(data.has_more);
     updateSearchPagerButtons();
-    setStatus('searchStatus', `共 ${data.total || 0} 筆，目前第 ${state.searchPage} 頁，顯示 ${data.hits.length} 筆`, 'ok');
+    const searchWarnings = Array.isArray(data.warnings) ? data.warnings.filter(w => typeof w === 'string').slice(0, 5) : [];
+    setStatus('searchStatus', `共 ${data.total || 0} 筆，目前第 ${state.searchPage} 頁，顯示 ${data.hits.length} 筆` +
+      (searchWarnings.length ? '\n注意：' + searchWarnings.join('；') : ''), searchWarnings.length ? '' : 'ok');
     $('hits').innerHTML = data.hits.map((h, idx) => `<div class="hit"><div class="row" style="align-items:flex-start;"><div style="flex:0 0 auto;"><input type="checkbox" data-hit-check="${idx}" /></div><div style="flex:1;"><strong>${esc(titleFromSource(h.source))}</strong><div class="muted">${esc(h.index)} / ${esc(h.id)}</div><div class="row"><button data-hit="${idx}">載入</button><button class="danger" data-delete-hit="${idx}">刪除</button></div></div></div></div>`).join('');
     document.querySelectorAll('[data-hit]').forEach(btn => btn.onclick = () => loadDoc(data.hits[Number(btn.dataset.hit)].index, data.hits[Number(btn.dataset.hit)].id));
     document.querySelectorAll('[data-delete-hit]').forEach(btn => btn.onclick = () => deleteSingleHit(Number(btn.dataset.deleteHit)));
