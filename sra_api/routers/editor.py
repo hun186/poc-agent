@@ -16,11 +16,13 @@ from api.services.auth_store import AuthUser
 from api.services.editor_audit import append_audit_event, diff_values
 from api.services.editor_files import extract_text_from_upload
 from api.services.editor_form_config import get_editor_schema, public_editor_form_config
+from api.services.editor_search_query import build_editor_search_query
 from api.services.editor_index_utils import (
     coerce_source_by_mapping,
     current_indexes,
     ensure_allowed_index,
     get_index_field_paths,
+    get_index_field_metadata_map,
     get_index_field_type_map,
     get_index_object_paths,
     make_uuid_from_source,
@@ -187,7 +189,8 @@ def editor_form_config(
 @router.get("/v1/editor/search")
 def search_documents(
     index: str = Query(..., description="要查詢的 Elasticsearch index"),
-    q: str = Query("", description="關鍵字；空白時列出最近文件"),
+    q: str = Query("", max_length=256, description="關鍵字；空白時列出最近文件"),
+    search_mode: str = Query("auto", pattern="^(auto|text|contains)$", description="自動／全文／包含字串"),
     size: int = Query(20, ge=1, le=200),
     page: int = Query(1, ge=1),
     start_ts: str = Query("", description="起始時間（ISO8601）"),
@@ -199,7 +202,8 @@ def search_documents(
     schema = get_editor_schema(index=index)
     filters: list[dict[str, Any]] = []
     date_field = str(schema.get("search_date_field") or "importDT")
-    mapping_field_paths, mapping_ok = get_index_field_paths(index)
+    mapping_metadata, mapping_ok = get_index_field_metadata_map(index)
+    mapping_field_paths = set(mapping_metadata)
     warnings: list[str] = []
     if not mapping_ok:
         warnings.append("無法讀取 index mapping，已略過日期欄位存在性檢查。")
@@ -213,17 +217,17 @@ def search_documents(
     if range_filter:
         filters.append({"range": {date_field: range_filter}})
 
-    text_query: dict[str, Any]
-    if q.strip():
-        text_query = {
-            "simple_query_string": {
-                "query": q.strip(),
-                "fields": schema.get("search_fields") or ["title^3", "subject^3", "uuid^2", "content", "full_text", "rawInfo.content"],
-                "default_operator": "and",
-            }
-        }
-    else:
-        text_query = {"match_all": {}}
+    text_query, search_warnings = build_editor_search_query(
+        q,
+        schema.get("search_fields") or [
+            "title^3", "subject^3", "uuid^2", "content",
+            "full_text", "rawInfo.content", "rawInfo.title^3",
+        ],
+        mapping_metadata,
+        mapping_ok,
+        mode=search_mode,
+    )
+    warnings.extend(search_warnings)
 
     query: dict[str, Any] = {"bool": {"must": [text_query]}}
     if filters:
