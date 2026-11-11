@@ -212,7 +212,11 @@ def test_original_long_fulltext_query_is_not_rejected_by_substring_bounds():
 
 
 @pytest.mark.parametrize("mode", ["auto", "text", "contains"])
-@pytest.mark.parametrize("term", ["report -secret", "report (-secret)", "subject_part -sensitive"])
+@pytest.mark.parametrize("term", [
+    "report -secret", "report (-secret)", "report +-secret",
+    "report+-secret", "report (+-secret)", "report|+-secret",
+    "subject_part -sensitive",
+])
 def test_document_negation_never_bypassed_by_another_nested_context(mode, term):
     # The old root SQS executes negation once across its configured fields.
     # A new OR of separately scoped root/nested clauses would allow an
