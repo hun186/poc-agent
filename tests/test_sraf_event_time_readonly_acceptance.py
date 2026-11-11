@@ -76,7 +76,7 @@ def _response(documents, *, count=2):
 
 
 def _fake_transport(monkeypatch, *, valid_mapping=True, tls_failure=False,
-                    missing_timeline=False, paging_dup=False):
+                    san_mismatch=False, missing_timeline=False, paging_dup=False):
     from tools import sraf_airgap_off1b_auto as conf
     from tools import sraf_airgap_off1b_es_https_mapping as es
     monkeypatch.setattr(conf, "_effective_runtime_config", lambda root: {
@@ -89,13 +89,15 @@ def _fake_transport(monkeypatch, *, valid_mapping=True, tls_failure=False,
     )
     requests = []
 
-    def fake_get(host, port, path, username, password, ca):
+    def fake_get(host, port, path, username, password, ca, *, warn_only_ip_san=False):
         assert host == "192.168.0.18" and port == 9200
         assert username == "readonly_user"
         assert password == "SENSITIVE_PASS_DO_NOT_PRINT"
         assert str(ca) == "/tmp/fake-ca.pem"
         requests.append(path)
         if tls_failure:
+            return None, None, "es_tls_identity_unverified"
+        if san_mismatch and not warn_only_ip_san:
             return None, None, "es_tls_identity_unverified"
         if path == "/":
             body = {"cluster_name": "SENSITIVE_CLUSTER",
@@ -125,7 +127,9 @@ def _fake_transport(monkeypatch, *, valid_mapping=True, tls_failure=False,
                 )
         else:
             raise AssertionError("unexpected endpoint")
-        return 200, json.dumps(body, ensure_ascii=False).encode(), "https_response_received"
+        reason = ("https_response_ca_only_ip_san_mismatch"
+                  if san_mismatch else "https_response_received")
+        return 200, json.dumps(body, ensure_ascii=False).encode(), reason
 
     monkeypatch.setattr(es, "_https_get", fake_get)
     return requests
@@ -255,6 +259,64 @@ def test_ca_or_ip_san_rejection_fail_closed_before_auth_and_mapping(monkeypatch)
     assert requests == ["/"]
 
 
+def test_strict_san_mismatch_still_blocks_basic_auth(monkeypatch):
+    requests = _fake_transport(monkeypatch, san_mismatch=True)
+    with pytest.raises(probe.ObservationError, match="es_tls_identity_unverified"):
+        probe._strict_live_observe(Path.cwd())
+    assert requests == ["/"]
+
+
+def test_ca_verified_san_mismatch_warns_and_date_queries_continue(monkeypatch):
+    requests = _fake_transport(monkeypatch, san_mismatch=True)
+    report = probe._strict_live_observe(Path.cwd(), warn_only_ip_san=True)
+    assert report["status"] == "PASS_PARTIAL"
+    assert report["mapping"] == "PASS"
+    assert report["date_filter"] == "PASS"
+    assert report["paging"] == "PASS"
+    assert report["identity"] == "CA_VERIFIED_IP_SAN_MISMATCH"
+    assert report["tls_validation"] == "WARN"
+    assert report["ip_san_policy"] == "WARN_ONLY"
+    assert report["identity_warning"] is True
+    assert report["release_tls_identity_verified"] is False
+    assert report["tls_warning"] == "ip_san_mismatch_ca_chain_verified"
+    assert requests[:3] == [
+        "/", "/_security/_authenticate", "/news_test/_mapping",
+    ]
+    serialized = json.dumps(report)
+    assert "SENSITIVE" not in serialized
+    assert "192.168.0.18" not in serialized
+
+
+def test_ca_failure_still_blocks_warning_mode(monkeypatch):
+    requests = _fake_transport(monkeypatch, tls_failure=True)
+    with pytest.raises(probe.ObservationError, match="es_tls_identity_unverified"):
+        probe._strict_live_observe(Path.cwd(), warn_only_ip_san=True)
+    assert requests == ["/"]
+
+
+def test_san_warning_cannot_hide_incomplete_date_sample(monkeypatch):
+    _fake_transport(monkeypatch, san_mismatch=True, missing_timeline=True)
+    report = probe._strict_live_observe(Path.cwd(), warn_only_ip_san=True)
+    assert report["tls_validation"] == "WARN"
+    assert report["status"] == "INCOMPLETE"
+
+
+def test_warn_only_is_not_release_tls_attestation_even_if_san_matches(monkeypatch):
+    _fake_transport(monkeypatch)
+    report = probe._strict_live_observe(Path.cwd(), warn_only_ip_san=True)
+    assert report["status"] == "PASS_PARTIAL"
+    assert report["identity"] == "CA_VERIFIED_IP_SAN_MATCH_OBSERVED"
+    assert report["release_tls_identity_verified"] is False
+
+
+def test_shell_launcher_explicit_warning_mode_and_strict_override():
+    shell = (Path(__file__).resolve().parents[1] /
+             "scripts/sraf_event_time_readonly.sh").read_text()
+    assert "TLS_ARGS=(--warn-only-ip-san)" in shell
+    assert "--strict-ip-san" in shell
+    assert '"${TLS_ARGS[@]}"' in shell
+
+
 def test_rare_sample_is_incomplete_not_false_pass(monkeypatch):
     _fake_transport(monkeypatch, missing_timeline=True)
     observed = probe._strict_live_observe(Path.cwd())
@@ -268,6 +330,26 @@ def test_unstable_paging_cannot_pass(monkeypatch):
     observed = probe._strict_live_observe(Path.cwd())
     assert observed["paging"] == "INCONCLUSIVE"
     assert observed["status"] == "INCOMPLETE"
+
+
+def test_warning_flag_requires_explicit_run():
+    with pytest.raises(SystemExit) as exc:
+        probe.main(["--warn-only-ip-san"])
+    assert exc.value.code == 2
+
+
+def test_cli_warn_mode_is_explicit_and_redacted(monkeypatch, capsys):
+    monkeypatch.setattr(probe, "PROJECT_ROOT", Path.cwd())
+    called = []
+    def fake_observe(root, *, warn_only_ip_san=False):
+        called.append((root, warn_only_ip_san))
+        return {"status": "PASS_PARTIAL", "identity_warning": True,
+                "tls_validation": "WARN"}
+    monkeypatch.setattr(probe, "_strict_live_observe", fake_observe)
+    assert probe.main(["--run", "--warn-only-ip-san"]) == 2
+    output = json.loads(capsys.readouterr().out)
+    assert output["identity_warning"] is True
+    assert called == [(Path.cwd(), True)]
 
 
 def test_main_never_prints_sensitive_exceptions(monkeypatch, capsys):
