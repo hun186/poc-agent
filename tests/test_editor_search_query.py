@@ -61,6 +61,15 @@ def test_nested_text_and_substring_queries_keep_nested_path():
                "evidence_snippets.text" in str(n["query"]) for n in nested)
     assert any(n["path"] == "multidim_event_json" and
                "wildcard" in n["query"] for n in nested)
+    # The ES nested-child mapping requires both the outer and inner contexts.
+    assert any(
+        n["path"] == "multidim_event_json" and any(
+            child.get("nested", {}).get("path")
+            == "multidim_event_json.evidence_snippets"
+            for child in _walk(n["query"])
+        )
+        for n in nested
+    )
 
 
 def test_regular_words_preserve_full_text_and_explicit_contains_is_opt_in():
