@@ -76,7 +76,8 @@ def _response(documents, *, count=2):
 
 
 def _fake_transport(monkeypatch, *, valid_mapping=True, tls_failure=False,
-                    san_mismatch=False, missing_timeline=False, paging_dup=False):
+                    san_mismatch=False, missing_timeline=False, paging_dup=False,
+                    failure_path=None, failure_kind=None):
     from tools import sraf_airgap_off1b_auto as conf
     from tools import sraf_airgap_off1b_es_https_mapping as es
     monkeypatch.setattr(conf, "_effective_runtime_config", lambda root: {
@@ -99,6 +100,18 @@ def _fake_transport(monkeypatch, *, valid_mapping=True, tls_failure=False,
             return None, None, "es_tls_identity_unverified"
         if san_mismatch and not warn_only_ip_san:
             return None, None, "es_tls_identity_unverified"
+        if failure_path == path:
+            reason = ("https_response_ca_only_ip_san_mismatch"
+                      if san_mismatch else "https_response_received")
+            if failure_kind == "401":
+                return 401, b"not authorized", reason
+            if failure_kind == "invalid_json":
+                return 200, b"SENSITIVE_BAD_JSON_NOT_TO_PRINT", reason
+            if failure_kind == "transport":
+                return None, None, "es_https_transport_unavailable_ip_san_mismatch"
+            if failure_kind == "ca_failure":
+                return None, None, "es_tls_identity_unverified"
+            raise AssertionError("invalid fake failure_kind")
         if path == "/":
             body = {"cluster_name": "SENSITIVE_CLUSTER",
                     "version": {"number": "8.13.1"}}
@@ -292,6 +305,58 @@ def test_ca_failure_still_blocks_warning_mode(monkeypatch):
     with pytest.raises(probe.ObservationError, match="es_tls_identity_unverified"):
         probe._strict_live_observe(Path.cwd(), warn_only_ip_san=True)
     assert requests == ["/"]
+
+
+@pytest.mark.parametrize("failure_path,failure_kind,expected_reason,expected_tls", [
+    ("/", "401", "es_http_rejected", "WARN"),
+    ("/_security/_authenticate", "401", "es_http_rejected", "WARN"),
+    ("/_security/_authenticate", "invalid_json", "es_response_not_json", "WARN"),
+    ("/news_test/_mapping", "transport",
+     "es_https_transport_unavailable_ip_san_mismatch", "WARN"),
+    ("/news_test/_mapping", "ca_failure", "es_tls_identity_unverified", "FAIL"),
+])
+def test_warning_survives_broken_http_and_later_tls_failures(
+    monkeypatch, capsys, failure_path, failure_kind, expected_reason, expected_tls
+):
+    # On the real entrypoint path, earlier CA-verified SAN mismatch must remain
+    # in the redacted JSON even when the peer misbehaves after Basic was sent.
+    requests = _fake_transport(
+        monkeypatch, san_mismatch=True,
+        failure_path=failure_path, failure_kind=failure_kind,
+    )
+    monkeypatch.setattr(probe, "PROJECT_ROOT", Path.cwd())
+    assert probe.main(["--run", "--warn-only-ip-san"]) == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "INCOMPLETE"
+    assert result["reason"] == expected_reason
+    assert result["identity_warning"] is True
+    assert result["tls_validation"] == expected_tls
+    assert result["identity"] == "CA_VERIFIED_IP_SAN_MISMATCH"
+    assert result["release_tls_identity_verified"] is False
+    assert result["tls_warning"] == "ip_san_mismatch_ca_chain_verified"
+    assert requests[0] == "/"
+    serialized = json.dumps(result)
+    for secret in ("SENSITIVE", "192.168.0.18", "readonly_user"):
+        assert secret not in serialized
+
+
+def test_unexpected_probe_failure_also_preserves_prior_san_warning(monkeypatch, capsys):
+    _fake_transport(monkeypatch, san_mismatch=True)
+    monkeypatch.setattr(probe, "PROJECT_ROOT", Path.cwd())
+    monkeypatch.setattr(
+        probe, "_candidate_source_summary",
+        lambda hits: (_ for _ in ()).throw(
+            RuntimeError("SENSITIVE_ARTICLE_AND_PASSWORD")
+        )
+    )
+    assert probe.main(["--run", "--warn-only-ip-san"]) == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "INCOMPLETE"
+    assert result["reason"] == "unhandled_probe_error"
+    assert result["identity_warning"] is True
+    assert result["tls_validation"] == "WARN"
+    assert result["release_tls_identity_verified"] is False
+    assert "SENSITIVE_ARTICLE_AND_PASSWORD" not in json.dumps(result)
 
 
 def test_san_warning_cannot_hide_incomplete_date_sample(monkeypatch):
