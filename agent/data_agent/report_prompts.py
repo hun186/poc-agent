@@ -257,6 +257,11 @@ REPORT_DATA_SYSTEM = """
        "is_manual_entity_query":   search_qm.get("is_manual_entity_query"),
        "term_groups":         search_qm.get("term_groups"),
        "raw_query":           search_qm.get("query"),
+
+       # 5) ES 候選分頁達到掃描上限時，這些欄位是資料完整性證據。
+       "result_incomplete": search_qm.get("result_incomplete", False),
+       "date_candidate_refill": search_qm.get("date_candidate_refill"),
+       "note": search_qm.get("note"),
    }
 
    payload = {
@@ -275,6 +280,12 @@ REPORT_DATA_SYSTEM = """
        },
        "evidence_snippets": evidence_snippets,
        "raw_search_result": search_result,
+       "result_incomplete": search_qm.get("result_incomplete") is True,
+       "search_status": {
+           "incomplete": search_qm.get("result_incomplete") is True,
+           "reason": search_qm.get("note"),
+           "date_candidate_refill": search_qm.get("date_candidate_refill"),
+       },
 
        # 把這輪查詢用到的關鍵字 / 同義詞 / ES 實際 query 一起塞進來
        "query_meta": query_meta,
@@ -288,6 +299,9 @@ REPORT_DATA_SYSTEM = """
 
 【嚴格規則】
 
+- 當 search_result.query_meta.result_incomplete 為 True 時，即使 evidence_snippets
+  為空，也不可宣稱查無資料；payload 必須保留掃描上限、不完整狀態與原因，
+  讓後續報告階段顯示明確警告或停止產生零結果報告。
 - 程式必須包在單一 <code>...</code> 區塊中，內容是純 Python 程式。
 - 禁止在 <code> 區塊之外輸出任何 Markdown 或自然語言。
 - 呼叫工具時：

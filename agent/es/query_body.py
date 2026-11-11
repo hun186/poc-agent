@@ -3,6 +3,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from .reference_text import get_reference_text_field
+from .event_time import query_period_bounds, query_untyped_period_bounds
 
 
 MD_PATH = "multidim_event_json"
@@ -33,6 +34,44 @@ def _in_multidim_child(
         _nested(f"{MD_PATH}.{child}", query, **child_options),
         **(outer_options or {}),
     )
+
+
+def _structured_date_filter(date_from: Optional[str], date_to: Optional[str]) -> Dict[str, Any]:
+    """Match Event or Timeline periods, retaining both nested boundaries."""
+    candidates: List[Dict[str, Any]] = []
+    for child in ("Event", "Event_Timeline"):
+        field = f"{MD_PATH}.{child}.time_iso"
+        precision_field = f"{MD_PATH}.{child}.time_precision"
+        by_precision: List[Dict[str, Any]] = []
+        for precision in ("second", "minute", "hour", "day", "month", "year"):
+            date_range = {"range": {field: query_period_bounds(date_from, date_to, precision)}}
+            precision_test = {"term": {precision_field: precision}}
+            by_precision.append({"bool": {"filter": [precision_test, date_range]}})
+        # Legacy missing/empty precision may hold either a date-only value
+        # or a timestamp with an explicit offset. Elasticsearch normalizes
+        # the latter to UTC, potentially on the adjacent calendar day.
+        # Widen candidate retrieval to the enclosing years plus UTC boundary
+        # days (not just subday dates: raw "2020" and "2020-06" may be
+        # stored as first-of-year/month). Rely on the Evidence parser to
+        # validate actual precision and original local day.
+        legacy_precision = {"bool": {"should": [
+            {"term": {precision_field: ""}},
+            {"bool": {"must_not": [{"exists": {"field": precision_field}}]}}
+        ], "minimum_should_match": 1}}
+        by_precision.append({"bool": {"filter": [
+            legacy_precision,
+            {"range": {field: query_untyped_period_bounds(date_from, date_to)}},
+        ]}})
+        candidates.append(_nested(
+            f"{MD_PATH}.{child}",
+            {"bool": {"should": by_precision, "minimum_should_match": 1}},
+            score_mode="none",
+        ))
+    return _in_multidim(
+        {"bool": {"should": candidates, "minimum_should_match": 1}},
+        score_mode="none",
+    )
+
 
 def build_main_query_body(
     query: Optional[str],
@@ -66,28 +105,14 @@ def build_main_query_body(
     q = (query or "").strip()
     years_in_q = list(dict.fromkeys(re.findall(r'(?:19|20)\d{2}', q)))
 
-    # 日期過濾：nested range
+    # The Event/Timeline date is a period, not necessarily an exact day.
     if with_date and (date_from or date_to):
-        rng = {"range": {"multidim_event_json.Event_Timeline.time_iso": {}}}
-        if date_from:
-            rng["range"]["multidim_event_json.Event_Timeline.time_iso"]["gte"] = date_from
-        if date_to:
-            rng["range"]["multidim_event_json.Event_Timeline.time_iso"]["lte"] = date_to
-        filters.append(_in_multidim_child(
-            "Event_Timeline", rng,
-            outer_options={"score_mode": "none"}, score_mode="none",
-        ))
+        filters.append(_structured_date_filter(date_from, date_to))
     elif with_date and years_in_q:
-        year_should = [{
-            "range": {"multidim_event_json.Event_Timeline.time_iso": {
-                "gte": f"{y}-01-01", "lte": f"{y}-12-31"
-            }}
-        } for y in years_in_q]
-        filters.append(_in_multidim_child(
-            "Event_Timeline",
-            {"bool": {"should": year_should, "minimum_should_match": 1}},
-            outer_options={"score_mode": "none"}, score_mode="none",
-        ))
+        filters.append({"bool": {"should": [
+            _structured_date_filter(f"{y}-01-01", f"{y}-12-31")
+            for y in years_in_q
+        ], "minimum_should_match": 1}})
 
     shoulds: List[Dict[str, Any]] = []
 
@@ -294,6 +319,7 @@ def build_main_query_body(
             "multidim_event_json.article_title",
             "multidim_event_json.article_date_iso",
             "multidim_event_json.evidence_snippets",
+            "multidim_event_json.Event",
             "multidim_event_json.Event_Timeline",
             "selectedMessage",
             "ai.classLabels.highValue",
@@ -379,6 +405,7 @@ def build_fallback_query_body(
             "multidim_event_json.evidence_snippets",
             "multidim_event_json.article_title",
             "multidim_event_json.article_date_iso",
+            "multidim_event_json.Event",
             "multidim_event_json.Event_Timeline"
         ],
         "query": {"bool": {"should": shoulds, "minimum_should_match": 1, "filter": filters}},

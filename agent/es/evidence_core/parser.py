@@ -10,9 +10,11 @@ from .date_utils import (
     collect_timeline_dates,
     infer_date_for_snippet,
     is_valid_year,
+    explicit_full_date_in_text,
 )
 from .snippet import make_fallback_snippet
 from ..reference_text import get_reference_text
+from ..event_time import collect_linked_times, linked_dates_for_ids, event_ids_in_block
 
 
 def parse_es_hits(
@@ -69,7 +71,7 @@ def parse_es_hits(
             value = [value]
         return [str(item).strip() for item in value if str(item).strip()]
 
-    def citation_from_source(item: Any) -> Citation | None:
+    def citation_from_source(item: Any, block_index: int) -> Citation | None:
         if not isinstance(item, dict):
             return None
         text = normalized_text(item.get("text"))
@@ -80,9 +82,10 @@ def parse_es_hits(
             source_id=normalized_text(item.get("source_id")) or None,
             paragraph_id=normalized_text(item.get("paragraph_id")) or None,
             event_ids=normalized_ids(item.get("event_ids")),
+            block_index=block_index,
         )
 
-    for h in es_hits or []:
+    for source_hit_ordinal, h in enumerate(es_hits or []):
         src = h.get("_source", {}) or {}
         # `raw_content` is retained as an internal compatibility name. Its value
         # is the configured context-rich agent reference text, which may be raw
@@ -97,6 +100,11 @@ def parse_es_hits(
         if blocks:
             article_title = blocks[0].get("article_title")
 
+        # Structured Event/Timeline correlation takes priority over text heuristics.
+        time_lookup, has_structured_events = collect_linked_times(blocks)
+        # Keep local block scope; IDs in separate multidim objects can repeat.
+        local_time_lookups = [collect_linked_times([block])[0] for block in blocks]
+        block_declared_ids = [event_ids_in_block(block) for block in blocks]
         # timeline / article date
         tl_dates = collect_timeline_dates(src, topk=config.timeline_dates_topk)
         mapped_article_date = next(
@@ -105,9 +113,10 @@ def parse_es_hits(
         )
         article_date_iso = (
             mapped_article_date
-            or parse_article_date_iso(raw_content)
-            or (tl_dates[0] if tl_dates else None)
-        )
+            if mapped_article_date else (
+                None if has_structured_events else parse_article_date_iso(raw_content)
+            )
+        )  # Do not infer publication from event dates in structured content.
         
         # citations: inner_hits 優先
         citations: List[Citation] = []
@@ -136,12 +145,25 @@ def parse_es_hits(
                     pid = nested.get("paragraph_id")
                     event_ids = normalized_ids(nested.get("event_ids"))
 
+                # ES nested inner_hits identify the enclosing multidim block
+                # through their _nested chain. Absent offset is only safe to
+                # infer if there is precisely one block in the parent source.
+                block_index = 0 if len(blocks) == 1 else None
+                nested_location = eh.get("_nested")
+                while isinstance(nested_location, dict):
+                    if str(nested_location.get("field", "")).split(".")[-1] == "multidim_event_json":
+                        candidate = nested_location.get("offset")
+                        block_index = candidate if type(candidate) is int and 0 <= candidate < len(blocks) else None
+                        break
+                    nested_location = nested_location.get("_nested")
+
                 if txt:
                     citations.append(Citation(
                         text=txt,
                         source_id=normalized_text(sid) or None,
                         paragraph_id=normalized_text(pid) or None,
                         event_ids=event_ids,
+                        block_index=block_index,
                     ))
 
             if citations:
@@ -151,14 +173,14 @@ def parse_es_hits(
         # inner hit. Its selected _source still contains authoritative structured
         # evidence, so use that before considering legacy raw content.
         if not citations:
-            for block in blocks:
+            for block_index, block in enumerate(blocks):
                 snippets = json_load_maybe(block.get("evidence_snippets"))
                 if isinstance(snippets, dict):
                     snippets = [snippets]
                 if not isinstance(snippets, list):
                     continue
                 for item in snippets:
-                    citation = citation_from_source(item)
+                    citation = citation_from_source(item, block_index)
                     if citation is not None:
                         citations.append(citation)
                     if len(citations) >= config.citations_per_doc:
@@ -177,12 +199,48 @@ def parse_es_hits(
 
         stats["n_total_citations"] += len(citations)
 
-        # per-citation date inference + attach uuid/subject
+        # Link evidence by event_ids; never assign unrelated article dates to
+        # a structured Event. Legacy documents without Event/Timeline preserve
+        # their historical publication-date fallback in snippet.py.
         uuid = src.get("uuid")
         for c in citations:
-            di = infer_date_for_snippet(c.text or "", article_date_iso, tl_dates)
-            if di:
-                c.date_iso = di
+            if c.block_index is not None:
+                scoped_lookup = local_time_lookups[c.block_index]
+            elif len(blocks) > 1:
+                # A missing inner-hit parent offset is safe only when ALL
+                # referenced IDs are declared in exactly one SAME block.
+                # Count undated/invalid IDs too: otherwise an undated E1 in
+                # block 0 could borrow block 1's valid E1 event time.
+                owners = set()
+                for eid in c.event_ids:
+                    occurrences = [
+                        i for i, declared in enumerate(block_declared_ids)
+                        if eid in declared
+                    ]
+                    if len(occurrences) != 1:
+                        owners.clear()
+                        break
+                    owners.add(occurrences[0])
+                scoped_lookup = (
+                    local_time_lookups[next(iter(owners))]
+                    if c.event_ids and len(owners) == 1 else {}
+                )
+            else:
+                scoped_lookup = time_lookup
+            c.linked_times, c.linked_complete = linked_dates_for_ids(c.event_ids, scoped_lookup)
+            if c.linked_times:
+                if c.linked_complete and len(c.linked_times) == 1:
+                    point = c.linked_times[0]
+                    if point.precision in ("day", "hour", "minute", "second"):
+                        c.date_iso = point.start
+            elif has_structured_events:
+                # If the link is dangling, only trust an explicit full date in
+                # evidence text. Do NOT borrow article year for an ambiguous MD.
+                c.date_iso = explicit_full_date_in_text(c.text)
+            else:
+                di = infer_date_for_snippet(c.text or "", article_date_iso, tl_dates)
+                if di:
+                    c.date_iso = di
             c.uuid = uuid
             c.subject = subject
 
@@ -199,6 +257,8 @@ def parse_es_hits(
             citations=citations[:config.citations_per_doc],
             article_date_iso=article_date_iso,
             event_dates=tl_dates[:config.timeline_dates_topk],
+            has_structured_events=has_structured_events,
+            source_hit_ordinal=source_hit_ordinal,
             selectedMessage=src.get("selectedMessage"),
             highValue=(((src.get("ai") or {}).get("classLabels") or {}).get("highValue")),
         ))

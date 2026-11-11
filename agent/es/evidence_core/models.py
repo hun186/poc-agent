@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
+from ..event_time import StructuredTime
+
 
 @dataclass(frozen=True)
 class EvidenceBuildConfig:
@@ -23,6 +25,9 @@ class Citation:
     uuid: Optional[str] = None
     subject: Optional[str] = None
     event_ids: List[str] = field(default_factory=list)
+    linked_times: List[StructuredTime] = field(default_factory=list)
+    block_index: Optional[int] = None
+    linked_complete: bool = False
 
 
 @dataclass
@@ -36,6 +41,8 @@ class HitDoc:
     citations: List[Citation] = field(default_factory=list)
     article_date_iso: Optional[str] = None
     event_dates: List[str] = field(default_factory=list)
+    has_structured_events: bool = False
+    source_hit_ordinal: int = -1
 
     selectedMessage: Any = None
     highValue: Any = None
@@ -59,3 +66,7 @@ class EvidenceSnippet:
     match_scope: str = "none"
     group_hits: int = 0
     weak_evidence: bool = False
+    event_time_candidates: List[dict] = field(default_factory=list)
+    matched_event_time_candidates: List[dict] = field(default_factory=list)
+    structured_time_context: bool = False
+    source_hit_ordinal: int = -1

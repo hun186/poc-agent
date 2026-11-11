@@ -19,6 +19,86 @@ def _normalize_snip_text(s: str) -> str:
 
 
 
+def _compact_event_time(s: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep event time precision, never promote article publication to event time."""
+    candidates = s.get("event_time_candidates")
+    structured = bool(s.get("structured_time_context")) or (
+        isinstance(candidates, list) and bool(candidates)
+    )
+    if not structured:
+        return {"d": s.get("date_iso") or s.get("article_date_iso")}
+
+    matched = s.get("matched_event_time_candidates")
+    if not isinstance(matched, list):
+        matched = candidates if isinstance(candidates, list) else []
+    times: List[Dict[str, Any]] = []
+    seen = set()
+    for point in matched:
+        if not isinstance(point, dict):
+            continue
+        precision = point.get("time_precision")
+        start = point.get("date_start")
+        end = point.get("date_end")
+        iso = point.get("time_iso")
+        if not all(isinstance(x, str) and x for x in (precision, start, end, iso)):
+            continue
+        key = (iso, precision, start, end, point.get("source"))
+        if key in seen:
+            continue
+        seen.add(key)
+        times.append({
+            "time_iso": iso, "time_precision": precision,
+            "date_start": start, "date_end": end,
+            "source": point.get("source"),
+        })
+
+    if len(times) == 1:
+        point = times[0]
+        precision = point["time_precision"]
+        # The LLM may read partial dates with their explicit precision; the
+        # final citation date_iso remains blank for year/month below.
+        if precision == "year":
+            dt = point["date_start"][:4]
+        elif precision == "month":
+            dt = point["date_start"][:7]
+        elif precision in ("day", "hour", "minute", "second"):
+            dt = point["date_start"]
+        else:
+            dt = None
+        return {"d": dt, "tp": precision, "times": times}
+    if not times and isinstance(s.get("date_iso"), str):
+        # A structured document may have a dangling event_id but its Evidence
+        # literal contains a full YYYY-MM-DD; parser only accepts an explicit
+        # validated full date here, not a guessed publication year.
+        literal = s["date_iso"]
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", literal):
+            return {"d": literal, "tp": "day", "times": [{
+                "time_iso": literal, "time_precision": "day",
+                "date_start": literal, "date_end": literal, "source": "evidence_text",
+            }]}
+    return {"d": None, "tp": "multiple" if times else "unknown", "times": times}
+
+
+def _compact_time_identity(row: Dict[str, Any]) -> tuple:
+    """Stable identity for an Evidence time projection (raw or compressed).
+
+    Same document + same text can support different Events or Timeline dates.
+    Those are separate citations, not duplicates. Conversely identical
+    event-time claims should not inflate citations merely because a point
+    appeared in a different field order.
+    """
+    times = row.get("times")
+    canonical = []
+    if isinstance(times, list):
+        for item in times:
+            if not isinstance(item, dict):
+                continue
+            canonical.append(tuple(str(item.get(k) or "") for k in (
+                "time_iso", "time_precision", "date_start", "date_end", "source"
+            )))
+    return (str(row.get("tp") or ""), str(row.get("d") or ""), tuple(sorted(set(canonical))))
+
+
 def compress_evidence(snippets: list[dict], max_samples: int = 300) -> list[dict]:
     if not snippets:
         return []
@@ -54,7 +134,10 @@ def compress_evidence(snippets: list[dict], max_samples: int = 300) -> list[dict
         if not uuid or not txt_norm:
             continue
 
-        key = (uuid, txt_norm)          # ★ 避免不同文章因文字相同被誤去重
+        # A snippet's event-time provenance is part of its meaning.
+        # Do not drop a June 17 event merely because June 1 had the same
+        # (uuid, text); identical time/text remains deduplicated.
+        key = (uuid, txt_norm, _compact_time_identity(_compact_event_time(s)))
         if key in seen:
             continue
         seen.add(key)
@@ -81,7 +164,7 @@ def compress_evidence(snippets: list[dict], max_samples: int = 300) -> list[dict
             "ref_no": idx,  # 給 LLM 用來寫「來源①、②…」
             #"id": s.get("uuid"),
             "id": pick_doc_id(s),
-            "d": s.get("date_iso") or s.get("article_date_iso"),
+            **_compact_event_time(s),
             "title": s.get("article_title") or s.get("subject"),
             "s": s.get("subject"),
             "note": s.get("text"),
@@ -122,7 +205,9 @@ def build_citations_from_ev(ev_compact: List[Dict[str, Any]]) -> List[Dict[str, 
             "source_id": str(doc_id),
             "uuid": str(doc_id),
             "paragraph_id": None,   # 壓縮時沒保留就先 None
-            "date_iso": e.get("d"),
+            "date_iso": e.get("d") if e.get("tp") in (None, "day", "hour", "minute", "second") else None,
+            **({"date_precision": e.get("tp")} if e.get("tp") else {}),
+            **({"event_time_candidates": e.get("times")} if e.get("times") else {}),
             "subject": e.get("s"),
             "article_title": e.get("title"),
             "ref_no": ref_no,
@@ -184,8 +269,9 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
         note = _normalize_snip_text(e.get("note") or "")
         if not ev_id or not note:
             continue
-        key = (str(ev_id), note)
-        # 後寫覆蓋沒關係，通常是一對一
+        key = (str(ev_id), note, _compact_time_identity(e))
+        # Time-specific references must not cross-attach to another
+        # citation with identical UUID and text but a different Event.
         ref_map[key] = ref_no
 
     # === 2) 走 evidence_snippets，盡量掛上正確的 ref_no ===
@@ -206,9 +292,10 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
         sid = pick_doc_id(s)
         note = _normalize_snip_text(s.get("text") or "")
         if sid and note:
-            key = (str(sid), note)
+            key = (str(sid), note, _compact_time_identity(_compact_event_time(s)))
             ref_no = ref_map.get(key)
         doc_id = sid  # 或 doc_id = pick_doc_id(s)
+        time_projection = _compact_event_time(s)
         citations.append({
             "text": s.get("text"),
             #"source_id": s.get("source_id") or s.get("uuid"),
@@ -216,7 +303,15 @@ def _build_citations_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
             "source_id": str(doc_id) if doc_id else None,
             "uuid": str(doc_id) if doc_id else None,
             "paragraph_id": s.get("paragraph_id"),
-            "date_iso": s.get("article_date_iso") or s.get("date_iso"),
+            "date_iso": (
+                s.get("date_iso") or None
+                if s.get("structured_time_context") or s.get("event_time_candidates")
+                else s.get("date_iso") or s.get("article_date_iso")
+            ),
+            **({"event_time_candidates": s.get("matched_event_time_candidates")
+                if isinstance(s.get("matched_event_time_candidates"), list)
+                else s.get("event_time_candidates")} if s.get("event_time_candidates") else {}),
+            **({"date_precision": time_projection["tp"]} if time_projection.get("tp") else {}),
             "subject": s.get("subject"),
             "article_title": s.get("article_title"),
 

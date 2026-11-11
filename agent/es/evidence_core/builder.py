@@ -21,11 +21,12 @@ def collect_snippets(
     date_to: Optional[str],
     term_groups: List[Set[str]],
     min_groups_required: Optional[int],
+    allowed_years: Optional[Set[int]] = None,
 ) -> List[EvidenceSnippet]:
     out: List[EvidenceSnippet] = []
     for h in hits:
         for c in h.citations:
-            ev = build_evidence_snippet(h, c, date_from=date_from, date_to=date_to)
+            ev = build_evidence_snippet(h, c, date_from=date_from, date_to=date_to, allowed_years=allowed_years)
             if ev is None:
                 continue
 
@@ -60,6 +61,8 @@ def build_hits_and_evidence(
     term_groups: List[Set[str]],
     query_for_snippet: str,
     config: Optional[EvidenceBuildConfig] = None,
+    allowed_years: Optional[Set[int]] = None,
+    include_source_hit_ordinal: bool = False,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
     config = config or EvidenceBuildConfig()
     term_groups = term_groups or []
@@ -82,6 +85,7 @@ def build_hits_and_evidence(
         date_from=date_from, date_to=date_to,
         term_groups=term_groups,
         min_groups_required=None,
+        allowed_years=allowed_years,
     )
     logger.info("build_hits_and_evidence: evidence strict=%d", len(evidence))
 
@@ -99,6 +103,7 @@ def build_hits_and_evidence(
                 date_from=date_from, date_to=date_to,
                 term_groups=term_groups,
                 min_groups_required=req,
+                allowed_years=allowed_years,
             )
             logger.info("build_hits_and_evidence: evidence relaxed(req=%d)=%d", req, len(tmp))
             if tmp:
@@ -111,7 +116,7 @@ def build_hits_and_evidence(
         for h in out_hits[:config.max_docs_for_fallback]:
             if not h.citations:
                 continue
-            ev = build_evidence_snippet(h, h.citations[0], date_from=date_from, date_to=date_to)
+            ev = build_evidence_snippet(h, h.citations[0], date_from=date_from, date_to=date_to, allowed_years=allowed_years)
             if ev:
                 evidence.append(ev)
         logger.info("build_hits_and_evidence: evidence fallback(no_terms)=%d", len(evidence))
@@ -123,7 +128,7 @@ def build_hits_and_evidence(
 
         for h in out_hits:
             for c in h.citations:
-                ev = build_evidence_snippet(h, c, date_from=date_from, date_to=date_to)
+                ev = build_evidence_snippet(h, c, date_from=date_from, date_to=date_to, allowed_years=allowed_years)
                 if not ev:
                     continue
 
@@ -141,8 +146,16 @@ def build_hits_and_evidence(
 
     # 5) filtered_hits：只留有 evidence 的 doc
     if evidence:
-        kept = {e.uuid for e in evidence if e.uuid}
-        filtered = [h for h in out_hits if h.uuid in kept]
+        # UUID is application metadata, not an ES hit identity: independent
+        # indices can carry the same UUID with different event dates. Match
+        # Evidence back to its source hit, never to a different same-UUID hit.
+        kept = {e.source_hit_ordinal for e in evidence}
+        filtered = [h for h in out_hits if h.source_hit_ordinal in kept]
+    elif date_from or date_to or allowed_years:
+        # A document-level ES date match does not establish that one of its
+        # Evidence citations belongs to the matching event. Do not expose a
+        # date-filtered document with zero date-valid supporting evidence.
+        filtered = []
     else:
         filtered = out_hits
 
@@ -158,6 +171,8 @@ def build_hits_and_evidence(
     filtered_hits_dict = [
         {
             "uuid": h.uuid,
+            **({"__sraf_source_hit_ordinal": h.source_hit_ordinal}
+               if include_source_hit_ordinal else {}),
             "subject": h.subject,
             "score": h.score,
             "citations": [
@@ -169,6 +184,10 @@ def build_hits_and_evidence(
                     **({"uuid": c.uuid} if c.uuid else {}),
                     **({"subject": c.subject} if c.subject else {}),
                     **({"event_ids": c.event_ids} if c.event_ids else {}),
+                    **({"event_time_candidates": [
+                        {"time_iso": p.time_iso, "time_precision": p.precision, "date_start": p.start,
+                         "date_end": p.end, "source": p.source} for p in c.linked_times
+                    ]} if c.linked_times else {}),
                 }
                 for c in (h.citations or [])
             ],
@@ -185,6 +204,8 @@ def build_hits_and_evidence(
     evidence_dict = [
         {
             "uuid": e.uuid,
+            **({"__sraf_source_hit_ordinal": e.source_hit_ordinal}
+               if include_source_hit_ordinal else {}),
             "text": e.text,
             "date_iso": e.date_iso,
             "article_date_iso": e.article_date_iso,
@@ -193,6 +214,9 @@ def build_hits_and_evidence(
             **({"paragraph_id": e.paragraph_id} if e.paragraph_id is not None else {}),
             **({"source_id": e.source_id} if e.source_id is not None else {}),
             **({"event_ids": e.event_ids} if e.event_ids else {}),
+            **({"event_time_candidates": e.event_time_candidates} if e.event_time_candidates else {}),
+            **({"matched_event_time_candidates": e.matched_event_time_candidates} if e.event_time_candidates else {}),
+            **({"structured_time_context": True} if e.structured_time_context else {}),
             **({"synonym_hits": e.synonym_hits} if e.synonym_hits else {}),
             "match_policy": e.match_policy,
             "match_scope": e.match_scope,

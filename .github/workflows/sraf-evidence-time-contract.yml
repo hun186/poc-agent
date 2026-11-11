@@ -1,0 +1,58 @@
+name: SRAF Evidence event-time contract (offline)
+
+on:
+  pull_request:
+    paths:
+      - 'agent/es/event_time.py'
+      - 'agent/es/query_body.py'
+      - 'agent/tools_stats.py'
+      - 'agent/utils/citations.py'
+      - 'agent/utils/evidence_pack.py'
+      - 'agent/es/evidence_core/**'
+      - 'agent/tools_es/search_news.py'
+      - 'agent/tools_es/date_refill.py'
+      - 'tools/sraf_event_time_readonly_acceptance.py'
+      - 'scripts/sraf_event_time_readonly.sh'
+      - 'agent/data_agent/runtime.py'
+      - 'agent/data_agent/report_prompts.py'
+      - 'agent/report_agent.py'
+      - 'tests/test_sraf_structured_evidence_time.py'
+      - 'tests/test_sraf_date_evidence_refill.py'
+      - 'tests/test_sraf_report_search_completeness.py'
+      - 'tests/test_sraf_event_time_readonly_acceptance.py'
+      - 'tests/test_nested_event_mapping.py'
+      - 'tests/test_multidim_shape_normalization.py'
+      - '.github/workflows/sraf-evidence-time-contract.yml'
+      - 'docs/operations/sraf_evidence_time_contract.md'
+      - 'docs/operations/sraf_event_time_live_readonly.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-event-time:
+    name: Offline Evidence event dates Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install project dependencies (hosted only)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install 'pytest>=8,<10'
+      - name: Compile Evidence and query contract
+        run: |
+          python -m compileall -q agent/es/event_time.py agent/es/query_body.py agent/es/evidence_core agent/tools_stats.py agent/utils/citations.py agent/utils/evidence_pack.py agent/tools_es/date_refill.py agent/tools_es/search_news.py tools/sraf_event_time_readonly_acceptance.py agent/data_agent/runtime.py agent/data_agent/report_prompts.py agent/report_agent.py tests/test_sraf_structured_evidence_time.py tests/test_sraf_date_evidence_refill.py
+      - name: Run synthetic Evidence and nested-query regressions (no ES connection)
+        run: |
+          python -m pytest -q tests/test_sraf_structured_evidence_time.py tests/test_sraf_date_evidence_refill.py tests/test_sraf_report_search_completeness.py tests/test_sraf_event_time_readonly_acceptance.py tests/test_nested_event_mapping.py tests/test_multidim_shape_normalization.py tests/test_query_terms_contract.py

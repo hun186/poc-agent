@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 from elasticsearch import BadRequestError
@@ -12,6 +13,7 @@ from agent.es.es_client import safe_search as _safe_es_search
 from agent.es.query_terms import compute_effective_terms
 from agent.es.evidence import build_hits_and_evidence
 from agent.es.query_body import build_main_query_body, build_fallback_query_body
+from .date_refill import refill_date_filtered_evidence
 from agent.utils.profiler import log_duration, log_total
 
 from .common import (
@@ -52,12 +54,12 @@ class ESSearchNews(Tool):
         },
         "date_from": {
             "type": "string",
-            "description": "ISO 起始日期（YYYY-MM-DD）；nested 過濾 Event_Timeline.time_iso",
+            "description": "ISO 起始日期（YYYY-MM-DD）；nested 檢索 Event 與 Event_Timeline 時間區間",
             "nullable": True
         },
         "date_to": {
             "type": "string",
-            "description": "ISO 結束日期（YYYY-MM-DD）；nested 過濾 Event_Timeline.time_iso",
+            "description": "ISO 結束日期（YYYY-MM-DD）；nested 檢索 Event 與 Event_Timeline 時間區間",
             "nullable": True
         },
         "selected_boost": {
@@ -177,10 +179,17 @@ class ESSearchNews(Tool):
             raise
 
         hits = ((res.get("hits") or {}).get("hits") or []) if isinstance(res, dict) else []
+        # Query-body years also constrain time: align Evidence-stage refill.
+        allowed_years = (
+            set(int(y) for y in re.findall(r"(?:19|20)\d{2}", es_query))
+            if not (date_from or date_to) else None
+        )
+        date_scoped = bool(date_from or date_to or allowed_years)
+        date_refill_meta: Optional[Dict[str, Any]] = None
 
-        # 0 hit：有日期就不 fallback，直接回空
+        # A truly empty ES date query does not call the script-free fallback.
         if not hits:
-            if date_from or date_to:
+            if date_scoped:
                 query_meta = build_query_meta(
                     raw_query=raw_query,
                     es_query=es_query,
@@ -210,14 +219,31 @@ class ESSearchNews(Tool):
 
         # === T4: 後處理：hits + evidence ===
         with log_duration("[es_search_news][T4] build_hits_and_evidence"):
-            filtered_hits, evidence_snippets, syn_snippets = build_hits_and_evidence(
-                hits,
-                date_from=date_from,
-                date_to=date_to,
-                effective_terms=effective_terms,
-                term_groups=term_groups,
-                query_for_snippet=raw_query,
-            )
+            def _build_candidates(candidate_hits: List[Dict[str, Any]]):
+                return build_hits_and_evidence(
+                    candidate_hits,
+                    date_from=date_from,
+                    date_to=date_to,
+                    allowed_years=allowed_years,
+                    include_source_hit_ordinal=date_scoped,
+                    effective_terms=effective_terms,
+                    term_groups=term_groups,
+                    query_for_snippet=raw_query,
+                )
+
+            if date_scoped:
+                filtered_hits, evidence_snippets, syn_snippets, date_refill_meta = (
+                    refill_date_filtered_evidence(
+                        body=body,
+                        first_response=res,
+                        requested_size=size,
+                        search_next=lambda next_body: _safe_es_search(next_body, index=index),
+                        build_evidence=_build_candidates,
+                    )
+                )
+            else:
+                # Keep no-date queries as one request with their old fallback.
+                filtered_hits, evidence_snippets, syn_snippets = _build_candidates(hits)
 
         strong_snippets = [ev for ev in evidence_snippets if not ev.get("weak_evidence")]
         weak_snippets = [ev for ev in evidence_snippets if ev.get("weak_evidence")]
@@ -248,6 +274,13 @@ class ESSearchNews(Tool):
             date_from=date_from,
             date_to=date_to,
         )
+
+        if date_refill_meta is not None:
+            query_meta["date_candidate_refill"] = date_refill_meta
+            if date_refill_meta["incomplete_due_to_scan_limit"]:
+                # A bounded, unfinished candidate scan is not proof of no news.
+                query_meta["result_incomplete"] = True
+                query_meta["note"] = "date_candidate_scan_limit_reached"
 
         dbg(
             f"[es_search_news] hits={len(filtered_hits)}, "

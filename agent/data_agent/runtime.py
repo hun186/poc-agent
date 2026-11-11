@@ -38,23 +38,40 @@ def _extract_payload(result: Any) -> Dict[str, Any]:
 
 
 def _get_query_meta_from_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge agent and raw ES metadata without losing an incomplete scan.
+
+    The Data Agent's LLM constructs payload.query_meta itself. A missing or
+    falsely optimistic field in that projection cannot override the original
+    ES tool's bounded-scan warning.
     """
-    盡量保留既有結構：
-      1) payload["query_meta"]
-      2) payload["raw_search_result"]["query_meta"]
-    """
-    qm: Dict[str, Any] = {}
+    raw = payload.get("raw_search_result")
+    raw_qm = raw.get("query_meta") if isinstance(raw, dict) else None
     p_qm = payload.get("query_meta")
+    qm: Dict[str, Any] = {}
+    if isinstance(raw_qm, dict):
+        qm.update(raw_qm)
     if isinstance(p_qm, dict):
         qm.update(p_qm)
-        return qm
-
-    raw = payload.get("raw_search_result")
-    if isinstance(raw, dict):
-        raw_qm = raw.get("query_meta")
-        if isinstance(raw_qm, dict):
-            qm.update(raw_qm)
+    if isinstance(raw_qm, dict) and raw_qm.get("result_incomplete") is True:
+        qm["result_incomplete"] = True
+        if isinstance(raw_qm.get("date_candidate_refill"), dict):
+            qm["date_candidate_refill"] = raw_qm["date_candidate_refill"]
+        qm["note"] = raw_qm.get("note") or "date_candidate_scan_limit_reached"
     return qm
+
+
+def _propagate_search_completeness(payload: Dict[str, Any]) -> None:
+    """Normalize search completeness before routing, tracing and writing."""
+    meta = _get_query_meta_from_payload(payload)
+    payload["query_meta"] = meta
+    if meta.get("result_incomplete") is True:
+        payload["result_incomplete"] = True
+        payload["search_status"] = {
+            "incomplete": True,
+            "reason": meta.get("note") or "date_candidate_scan_limit_reached",
+            "date_candidate_refill": meta.get("date_candidate_refill") or {},
+        }
+
 
 
 def _norm_compare_text(s: str) -> str:
@@ -242,9 +259,9 @@ def run_data_agent(
 
     payload = _extract_payload(result)
 
-    # 盡量避免覆寫：若 query_meta 不是 dict，先補成 dict
-    if not isinstance(payload.get("query_meta"), dict):
-        payload["query_meta"] = {}
+    # Raw ES incompleteness is authoritative, even if the Data Agent
+    # reconstructs query_meta without the diagnostic fields.
+    _propagate_search_completeness(payload)
 
     # route/topic/indexes 寫回 payload（以「上游 router」為準）
     _apply_route_meta(payload, route=route, index_hint=index_hint)
