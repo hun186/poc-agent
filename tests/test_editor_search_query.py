@@ -209,3 +209,19 @@ def test_original_long_fulltext_query_is_not_rejected_by_substring_bounds():
     )
     assert query["simple_query_string"]["query"] == long_query.strip()
     assert warnings == []
+
+
+@pytest.mark.parametrize("mode", ["auto", "text", "contains"])
+@pytest.mark.parametrize("term", ["report -secret", "report (-secret)", "subject_part -sensitive"])
+def test_document_negation_never_bypassed_by_another_nested_context(mode, term):
+    # The old root SQS executes negation once across its configured fields.
+    # A new OR of separately scoped root/nested clauses would allow an
+    # excluded document back through a nested hit. Keep the legacy contract.
+    query, warnings = build_editor_search_query(
+        term, FIELDS, _mapping(), True, mode,
+    )
+    assert "simple_query_string" in query
+    assert query["simple_query_string"]["query"] == term
+    assert query["simple_query_string"]["default_operator"] == "and"
+    assert not any("wildcard" in n or "nested" in n for n in _walk(query))
+    assert any("排除詞" in warning for warning in warnings)
