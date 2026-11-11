@@ -5,6 +5,7 @@ on:
     paths:
       - 'sra_api/routers/editor.py'
       - 'sra_api/services/editor_search_query.py'
+      - 'sra_api/services/editor_index_utils.py'
       - 'sra_api/static/editor_documents.js'
       - 'sra_api/static/editor.html'
       - 'config/editor_form.default.json'
@@ -40,7 +41,7 @@ jobs:
           python -m pip install 'pytest>=8,<10' 'httpx>=0.28,<1'
       - name: Check Python and UI syntax
         run: |
-          python -m compileall -q sra_api/routers/editor.py sra_api/services/editor_search_query.py tests/test_editor_search_query.py
+          python -m compileall -q sra_api/routers/editor.py sra_api/services/editor_search_query.py sra_api/services/editor_index_utils.py tests/test_editor_search_query.py
           node --check sra_api/static/editor_documents.js
           python -m json.tool config/editor_form.default.json > /dev/null
       - name: Execute editor API and static regression (synthetic only)
