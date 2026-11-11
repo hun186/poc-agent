@@ -166,3 +166,39 @@ def test_editor_ui_displays_search_warnings_and_search_mode():
     assert 'id="searchMode"' in html
     assert "data.warnings" in js
     assert "search_mode: $('searchMode').value" in js
+
+
+def test_mapping_reader_exposes_real_multifield_types(monkeypatch):
+    from api.services import editor_index_utils as utils
+
+    class FakeIndices:
+        def get_mapping(self, *, index):
+            assert index == "news_test"
+            return {"news_test": {"mappings": {"properties": {
+                "title": {"type": "text", "fields": {
+                    "keyword": {"type": "keyword", "ignore_above": 256},
+                    "suggest": {"type": "search_as_you_type"},
+                }},
+            }}}}
+
+    monkeypatch.setattr(utils.es_client, "get_es",
+                        lambda: SimpleNamespace(indices=FakeIndices()))
+    metadata, ok = utils.get_index_field_metadata_map("news_test")
+    assert ok
+    assert metadata["title"]["fields"] == ["keyword", "suggest"]
+    assert metadata["title.keyword"]["type"] == "keyword"
+    assert metadata["title.suggest"]["type"] == "search_as_you_type"
+    query, warnings = build_editor_search_query(
+        "a_title", ["title.keyword^3"], metadata, True,
+    )
+    assert query["simple_query_string"]["fields"] == ["title.keyword^3"]
+    assert not warnings
+
+
+def test_original_long_fulltext_query_is_not_rejected_by_substring_bounds():
+    long_query = "report " * 60
+    query, warnings = build_editor_search_query(
+        long_query, ["subject^3"], _mapping(), True,
+    )
+    assert query["simple_query_string"]["query"] == long_query.strip()
+    assert warnings == []
