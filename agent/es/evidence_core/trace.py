@@ -99,6 +99,6 @@ class EvidenceTrace:
             "documents": self.documents,
             "citations": self.citations,
         }
-        _LOG.info("SRAF_EVIDENCE_TRACE=%s", json.dumps(
+        _LOG.warning("SRAF_EVIDENCE_TRACE=%s", json.dumps(
             payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True,
         ))
