@@ -123,6 +123,7 @@ def parse_es_hits(
         # citations: inner_hits 優先
         citations: List[Citation] = []
         chosen_mode = "none"
+        source_items_examined = 0
         ih_hits = named_inner_hits(h, "evi")
         if ih_hits:
             for eh in ih_hits[:config.inner_hit_topk]:
@@ -184,6 +185,8 @@ def parse_es_hits(
                 if not isinstance(snippets, list):
                     continue
                 for item in snippets:
+                    if trace is not None:
+                        source_items_examined += 1
                     citation = citation_from_source(item, block_index)
                     if citation is not None:
                         citations.append(citation)
@@ -219,6 +222,12 @@ def parse_es_hits(
                 parsed_count=len(citations),
                 selected_count=min(len(citations), config.citations_per_doc),
                 mode=chosen_mode,
+                # If source parsing hit its cap, remaining source items were
+                # NOT examined. Their date/topic/validity is still unknown.
+                source_uninspected_after_cap=(
+                    max(0, raw_source_count - source_items_examined)
+                    if chosen_mode == "source" else 0
+                ),
             )
 
         # Link evidence by event_ids; never assign unrelated article dates to
