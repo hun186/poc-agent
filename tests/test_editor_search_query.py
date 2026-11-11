@@ -129,9 +129,10 @@ def test_editor_search_api_substring_and_date_filter_with_mapping(monkeypatch):
     monkeypatch.setattr(routes, "get_editor_schema", lambda index: {
         "search_fields": FIELDS, "search_date_field": "importDT",
     })
-    monkeypatch.setattr(routes, "get_index_field_metadata_map", lambda index: {
-        **_mapping(), "importDT": {"type": "date"}
-    } and ({**_mapping(), "importDT": {"type": "date"}}, True))
+    monkeypatch.setattr(
+        routes, "get_index_field_metadata_map",
+        lambda index: ({**_mapping(), "importDT": {"type": "date"}}, True),
+    )
     monkeypatch.setattr(routes.es_client, "get_es", lambda: fake)
     monkeypatch.setattr(routes.es_client, "using_mock_es", lambda: False)
     response = routes.search_documents(
