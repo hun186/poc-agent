@@ -36,7 +36,11 @@ SOURCE_FIELDS = [
 
 
 class ObservationError(Exception):
-    """Never include server payloads, endpoints or raw transport exceptions."""
+    """Only stable sanitized failure reasons and prior SAN-warning evidence."""
+
+    def __init__(self, reason: str, *, identity_warning: bool = False):
+        super().__init__(reason)
+        self.identity_warning = identity_warning
 
 
 def _properties(mapping_response: Any) -> tuple[dict, list[str]]:
@@ -283,7 +287,8 @@ def _strict_live_observe(root: Path, *, warn_only_ip_san: bool = False) -> dict[
             status, payload, reason = _https_get(
                 host, port, path, username, password, ca,
             )
-        if reason == "https_response_ca_only_ip_san_mismatch":
+        if reason in ("https_response_ca_only_ip_san_mismatch",
+                      "es_https_transport_unavailable_ip_san_mismatch"):
             identity_warning = True
         if status is None:
             raise ObservationError(reason)
@@ -296,122 +301,136 @@ def _strict_live_observe(root: Path, *, warn_only_ip_san: bool = False) -> dict[
         except (ValueError, TypeError, UnicodeError, RecursionError):
             raise ObservationError("es_response_not_json") from None
 
-    identity = get("/")
-    if (not isinstance(identity, dict)
-            or not isinstance(identity.get("cluster_name"), str)
-            or not isinstance(identity.get("version"), dict)):
-        raise ObservationError("es_identity_unverified")
-    principal = get("/_security/_authenticate")
-    if not _verified_basic_principal(
-        json.dumps(principal).encode("utf-8"), username
-    ):
-        raise ObservationError("es_principal_unverified")
-    mapping = get(f"/{INDEX}/_mapping", expected_bytes=2 * 1024 * 1024)
-    _, mapping_errors = _properties(mapping)
-    result: dict[str, Any] = {
-        "identity": (
-            "CA_VERIFIED_IP_SAN_MISMATCH" if identity_warning else
-            "CA_VERIFIED_IP_SAN_MATCH_OBSERVED" if warn_only_ip_san else
-            "STRICT_TLS_CA_IP_SAN_VERIFIED"
-        ),
-        "ip_san_policy": "WARN_ONLY" if warn_only_ip_san else "STRICT",
-        "tls_validation": "WARN" if identity_warning else "PASS",
-        "identity_warning": identity_warning,
-        "release_tls_identity_verified": not warn_only_ip_san,
-        **({"tls_warning": "ip_san_mismatch_ca_chain_verified"} if identity_warning else {}),
-        "principal": "PROTECTED_ENDPOINT_ATTESTED_NO_NEGATIVE_PASSWORD_CHALLENGE",
-        "mapping": "PASS" if not mapping_errors else "FAIL",
-        "mapping_issues": mapping_errors,
-    }
-    if mapping_errors:
-        result["status"] = "FAIL"
-        return result
-
-    def search(body: dict) -> dict:
-        response = get(_search_request(body))
-        if not isinstance(response, dict):
-            raise ObservationError("search_json_invalid")
-        _hits(response)
-        return response
-
-    def query_exists(child: str, offset: int = 0) -> dict:
-        return {
-            "size": 1, "from": offset, "track_total_hits": 2,
-            "_source": {"includes": SOURCE_FIELDS},
-            "query": {"nested": {
-                "path": "multidim_event_json",
+    try:
+        identity = get("/")
+        if (not isinstance(identity, dict)
+                or not isinstance(identity.get("cluster_name"), str)
+                or not isinstance(identity.get("version"), dict)):
+            raise ObservationError("es_identity_unverified")
+        principal = get("/_security/_authenticate")
+        if not _verified_basic_principal(
+            json.dumps(principal).encode("utf-8"), username
+        ):
+            raise ObservationError("es_principal_unverified")
+        mapping = get(f"/{INDEX}/_mapping", expected_bytes=2 * 1024 * 1024)
+        _, mapping_errors = _properties(mapping)
+        result: dict[str, Any] = {
+            "identity": (
+                "CA_VERIFIED_IP_SAN_MISMATCH" if identity_warning else
+                "CA_VERIFIED_IP_SAN_MATCH_OBSERVED" if warn_only_ip_san else
+                "STRICT_TLS_CA_IP_SAN_VERIFIED"
+            ),
+            "ip_san_policy": "WARN_ONLY" if warn_only_ip_san else "STRICT",
+            "tls_validation": "WARN" if identity_warning else "PASS",
+            "identity_warning": identity_warning,
+            "release_tls_identity_verified": not warn_only_ip_san,
+            **({"tls_warning": "ip_san_mismatch_ca_chain_verified"} if identity_warning else {}),
+            "principal": "PROTECTED_ENDPOINT_ATTESTED_NO_NEGATIVE_PASSWORD_CHALLENGE",
+            "mapping": "PASS" if not mapping_errors else "FAIL",
+            "mapping_issues": mapping_errors,
+        }
+        if mapping_errors:
+            result["status"] = "FAIL"
+            return result
+    
+        def search(body: dict) -> dict:
+            response = get(_search_request(body))
+            if not isinstance(response, dict):
+                raise ObservationError("search_json_invalid")
+            _hits(response)
+            return response
+    
+        def query_exists(child: str, offset: int = 0) -> dict:
+            return {
+                "size": 1, "from": offset, "track_total_hits": 2,
+                "_source": {"includes": SOURCE_FIELDS},
                 "query": {"nested": {
-                    "path": f"multidim_event_json.{child}",
-                    "query": {"exists": {
-                        "field": f"multidim_event_json.{child}.time_iso"
+                    "path": "multidim_event_json",
+                    "query": {"nested": {
+                        "path": f"multidim_event_json.{child}",
+                        "query": {"exists": {
+                            "field": f"multidim_event_json.{child}.time_iso"
+                        }},
                     }},
                 }},
-            }},
-        }
-
-    ev_response = search(query_exists("Event"))
-    tl_response = search(query_exists("Event_Timeline"))
-    candidates = _hits(ev_response) + _hits(tl_response)
-    coverage = _candidate_source_summary(candidates)
-    result["source_sample"] = coverage
-    result["event_sample"] = "OBSERVED" if _hits(ev_response) else "NOT_OBSERVED"
-    result["timeline_sample"] = "OBSERVED" if _hits(tl_response) else "NOT_OBSERVED"
-    result["evidence_link"] = (
-        "OBSERVED" if coverage["evidence_linked"] else "NOT_OBSERVED"
-    )
-
-    chosen = next((h for h in candidates if _sample_period(h) and h.get("_id") is not None), None)
-    if chosen is None:
-        result["date_filter"] = "NOT_OBSERVED"
-    else:
-        when, child, precision = _sample_period(chosen)
-        matched = search({
-            "size": 1, "_source": False,
-            "query": {"bool": {"filter": [
-                {"ids": {"values": [str(chosen["_id"])]}},
-                _sampled_sraf_date_clause(when, child, precision),
-            ]}},
-        })
-        result["date_filter"] = (
-            "PASS" if any(
-                row.get("_id") == chosen["_id"]
-                for row in _hits(matched)
-            ) else "FAIL"
+            }
+    
+        ev_response = search(query_exists("Event"))
+        tl_response = search(query_exists("Event_Timeline"))
+        candidates = _hits(ev_response) + _hits(tl_response)
+        coverage = _candidate_source_summary(candidates)
+        result["source_sample"] = coverage
+        result["event_sample"] = "OBSERVED" if _hits(ev_response) else "NOT_OBSERVED"
+        result["timeline_sample"] = "OBSERVED" if _hits(tl_response) else "NOT_OBSERVED"
+        result["evidence_link"] = (
+            "OBSERVED" if coverage["evidence_linked"] else "NOT_OBSERVED"
         )
-
-    # Exactly two bounded GET pages, no _scroll, PIT, profile or deep search.
-    if _total_at_least_two(ev_response):
-        second = search(query_exists("Event", offset=1))
-        p0, p1 = _hits(ev_response), _hits(second)
-        result["paging"] = (
-            "PASS" if p0 and p1 and (
-                p0[0].get("_index"), p0[0].get("_id")
-            ) != (
-                p1[0].get("_index"), p1[0].get("_id")
-            ) else "INCONCLUSIVE"
-        )
-    else:
-        result["paging"] = "NOT_OBSERVED"
-
-    if result.get("date_filter") == "FAIL":
-        result["status"] = "FAIL"
-    elif all(result.get(k) in ("PASS", "OBSERVED") for k in (
-        "event_sample", "timeline_sample", "evidence_link", "date_filter", "paging",
-    )):
-        result["status"] = "PASS_PARTIAL"
-    else:
-        result["status"] = "INCOMPLETE"
-    # Later GETs can see a different CA-signed peer; never lose their SAN warning.
-    if identity_warning:
-        result.update(
-            identity="CA_VERIFIED_IP_SAN_MISMATCH",
-            tls_validation="WARN",
-            identity_warning=True,
-            release_tls_identity_verified=False,
-            tls_warning="ip_san_mismatch_ca_chain_verified",
-        )
-    # PASS_PARTIAL describes only date-query samples, never FULL_LIVE.
-    return result
+    
+        chosen = next((h for h in candidates if _sample_period(h) and h.get("_id") is not None), None)
+        if chosen is None:
+            result["date_filter"] = "NOT_OBSERVED"
+        else:
+            when, child, precision = _sample_period(chosen)
+            matched = search({
+                "size": 1, "_source": False,
+                "query": {"bool": {"filter": [
+                    {"ids": {"values": [str(chosen["_id"])]}},
+                    _sampled_sraf_date_clause(when, child, precision),
+                ]}},
+            })
+            result["date_filter"] = (
+                "PASS" if any(
+                    row.get("_id") == chosen["_id"]
+                    for row in _hits(matched)
+                ) else "FAIL"
+            )
+    
+        # Exactly two bounded GET pages, no _scroll, PIT, profile or deep search.
+        if _total_at_least_two(ev_response):
+            second = search(query_exists("Event", offset=1))
+            p0, p1 = _hits(ev_response), _hits(second)
+            result["paging"] = (
+                "PASS" if p0 and p1 and (
+                    p0[0].get("_index"), p0[0].get("_id")
+                ) != (
+                    p1[0].get("_index"), p1[0].get("_id")
+                ) else "INCONCLUSIVE"
+            )
+        else:
+            result["paging"] = "NOT_OBSERVED"
+    
+        if result.get("date_filter") == "FAIL":
+            result["status"] = "FAIL"
+        elif all(result.get(k) in ("PASS", "OBSERVED") for k in (
+            "event_sample", "timeline_sample", "evidence_link", "date_filter", "paging",
+        )):
+            result["status"] = "PASS_PARTIAL"
+        else:
+            result["status"] = "INCOMPLETE"
+        # Later GETs can see a different CA-signed peer; never lose their SAN warning.
+        if identity_warning:
+            result.update(
+                identity="CA_VERIFIED_IP_SAN_MISMATCH",
+                tls_validation="WARN",
+                identity_warning=True,
+                release_tls_identity_verified=False,
+                tls_warning="ip_san_mismatch_ca_chain_verified",
+            )
+        # PASS_PARTIAL describes only date-query samples, never FULL_LIVE.
+        return result
+    except Exception as exc:
+        # A mismatched SAN was already observed before Basic credentials were
+        # transmitted. Preserve that evidence even when later HTTP/JSON,
+        # Mapping or date checks abort.
+        if identity_warning:
+            if isinstance(exc, ObservationError):
+                exc.identity_warning = True
+                raise
+            # Never expose the raw exception or private ES response.
+            raise ObservationError(
+                "unhandled_probe_error", identity_warning=True
+            ) from None
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -454,6 +473,18 @@ def main(argv: list[str] | None = None) -> int:
             output.update(_strict_live_observe(cfg_root))
     except ObservationError as exc:
         output.update(status="INCOMPLETE", reason=str(exc))
+        if exc.identity_warning:
+            output.update(
+                ip_san_policy="WARN_ONLY",
+                identity="CA_VERIFIED_IP_SAN_MISMATCH",
+                tls_validation=(
+                    "FAIL" if str(exc) == "es_tls_identity_unverified"
+                    else "WARN"
+                ),
+                identity_warning=True,
+                release_tls_identity_verified=False,
+                tls_warning="ip_san_mismatch_ca_chain_verified",
+            )
     except Exception:
         # No raw URLs, query JSON, index responses or credentials in errors.
         output.update(status="INCOMPLETE", reason="unhandled_probe_error")
