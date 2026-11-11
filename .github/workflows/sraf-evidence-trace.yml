@@ -1,0 +1,40 @@
+name: SRAF Evidence Trace privacy and regression (offline)
+
+on:
+  pull_request:
+    paths:
+      - 'agent/es/evidence_core/**'
+      - 'tests/test_sraf_evidence_trace.py'
+      - '.github/workflows/sraf-evidence-trace.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-trace:
+    name: Evidence trace synthetic Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - name: Checkout exact PR HEAD
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install all project runtime dependencies first (AGENTS.md)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install 'pytest>=8,<10'
+      - name: Compile Evidence files
+        run: |
+          python -m compileall -q agent/es/evidence_core tests/test_sraf_evidence_trace.py
+      - name: Synthetic no-network selection and trace regressions
+        run: |
+          python -m pytest -q tests/test_sraf_evidence_trace.py tests/test_sraf_structured_evidence_time.py tests/test_sraf_date_evidence_refill.py
