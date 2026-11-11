@@ -189,7 +189,7 @@ def editor_form_config(
 @router.get("/v1/editor/search")
 def search_documents(
     index: str = Query(..., description="要查詢的 Elasticsearch index"),
-    q: str = Query("", max_length=256, description="關鍵字；空白時列出最近文件"),
+    q: str = Query("", description="關鍵字；空白時列出最近文件"),
     search_mode: str = Query("auto", pattern="^(auto|text|contains)$", description="自動／全文／包含字串"),
     size: int = Query(20, ge=1, le=200),
     page: int = Query(1, ge=1),
