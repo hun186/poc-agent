@@ -15,8 +15,9 @@ _CONTAINS_FIELDS = {
 _MAX_CONTAINS_FIELDS = 6
 _LITERAL = re.compile(r"[\w-]+", re.UNICODE)
 # SQS negation across separately-scoped nested clauses is NOT document-global.
+# Account for documented +-term, parens and OR operator-adjacent exclusions.
 # Keep the legacy single-query behavior for signed exclusion expressions.
-_DOCUMENT_NEGATION = re.compile(r"(?:^|[\s(])-(?=\S)")
+_DOCUMENT_NEGATION = re.compile(r"(?:^|[\s(+|])-(?=\S)")
 
 
 def _field_spec(field: str) -> tuple[str, float] | None:
