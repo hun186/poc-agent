@@ -11,4 +11,11 @@ EXTRA=()
 if [[ -n "${SRAF_CONFIG_ROOT:-}" ]]; then
   EXTRA+=(--config-root "$SRAF_CONFIG_ROOT")
 fi
-exec "$PYTHON_BIN" "$ROOT/tools/sraf_event_time_readonly_acceptance.py" --run "${EXTRA[@]}" "$@"
+# This operator-only launcher defaults to CA-verified SAN warnings for
+# changing LAN/air-gap IPs. --strict-ip-san restores strict identity checks.
+TLS_ARGS=(--warn-only-ip-san)
+if [[ "${1:-}" == "--strict-ip-san" ]]; then
+  shift
+  TLS_ARGS=()
+fi
+exec "$PYTHON_BIN" "$ROOT/tools/sraf_event_time_readonly_acceptance.py" --run "${TLS_ARGS[@]}" "${EXTRA[@]}" "$@"
