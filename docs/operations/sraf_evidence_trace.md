@@ -19,7 +19,7 @@ together as a global total or treated as an end-to-end request trace.
 The record reports:
 - Per ES hit *ordinal* (not index/ES ID/UUID): source evidence candidates,
   received `evi` inner hits, parsed citations, selected after parser cap,
-  and `inner|source|fallback|none` source selection.
+  and `inner|source|fallback|none` source selection. `parser.source_uninspected_after_cap` records raw source items never examined after the source parser reaches its per-document cap (for example 25 source rows → 20 parsed → 5 uninspected). This is **not** the count of proven valid Evidence excluded: those rows were never date/format/topic validated. `parser.citations_capped` is separate, for already parsed citations that were then trimmed.
 - Per parsed citation (ordinal within that hit), strict/relaxed/zero-term/
   any-term fallback stage outcome. Date rejection reason codes:
   `empty_text`, `date_unmatched`, `date_unknown`, `date_before`,
