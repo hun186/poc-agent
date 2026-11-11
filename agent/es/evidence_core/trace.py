@@ -44,6 +44,7 @@ class EvidenceTrace:
     def parsed_hit(
         self, *, ordinal: int, source_count: int, inner_count: int,
         parsed_count: int, selected_count: int, mode: str,
+        source_uninspected_after_cap: int = 0,
     ) -> None:
         # Never capture _index/_id/uuid/title/source text or event IDs.
         if mode not in {"inner", "source", "fallback", "none"}:
@@ -54,12 +55,16 @@ class EvidenceTrace:
         self.counts["parser.citations_parsed"] += parsed_count
         self.counts["parser.citations_selected"] += selected_count
         self.counts["parser.citations_capped"] += max(0, parsed_count - selected_count)
+        # Source-loop cap stops *before* skipped items are validated; these
+        # are possible candidates, NOT proven valid Evidence citations.
+        self.counts["parser.source_uninspected_after_cap"] += max(0, source_uninspected_after_cap)
         if len(self.documents) < _MAX_HIT_RECORDS:
             self.documents.append({
                 "hit_ordinal": ordinal, "mode": mode,
                 "source_candidates": source_count,
                 "inner_returned": inner_count,
                 "parsed": parsed_count, "selected": selected_count,
+                "source_uninspected_after_cap": max(0, source_uninspected_after_cap),
             })
         else:
             self.documents_overflow += 1
