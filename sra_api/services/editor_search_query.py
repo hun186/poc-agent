@@ -108,8 +108,13 @@ def build_editor_search_query(
             warnings.append("Mapping 無法取得，不能安全判定 keyword 欄位；此次無法保證包含字串搜尋。")
         else:
             contain_clauses: list[tuple[str, dict[str, Any]]] = []
+            seen_exact: set[str] = set()
             for path, weight in eligible:
-                if path not in _CONTAINS_FIELDS or len(contain_clauses) >= _MAX_CONTAINS_FIELDS:
+                # Configured title.keyword is a real searchable field: its
+                # allowed parent is title, rather than an arbitrary wildcard
+                # path. Never enable substring on unreviewed custom fields.
+                base_path = path[:-len(".keyword")] if path.endswith(".keyword") else path
+                if base_path not in _CONTAINS_FIELDS or len(contain_clauses) >= _MAX_CONTAINS_FIELDS:
                     continue
                 meta = metadata.get(path, {})
                 exact_path: str | None = None
@@ -117,7 +122,8 @@ def build_editor_search_query(
                     exact_path = path
                 elif meta.get("type") in {"text", "match_only_text"} and "keyword" in meta.get("fields", []):
                     exact_path = f"{path}.keyword"
-                if exact_path:
+                if exact_path and exact_path not in seen_exact:
+                    seen_exact.add(exact_path)
                     contain_clauses.append((path, {"wildcard": {exact_path: {
                         "value": f"*{term}*", "case_insensitive": True,
                         "boost": weight,
