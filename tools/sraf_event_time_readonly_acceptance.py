@@ -244,7 +244,7 @@ def _search_request(body: dict) -> str:
     return path
 
 
-def _strict_live_observe(root: Path) -> dict[str, Any]:
+def _strict_live_observe(root: Path, *, warn_only_ip_san: bool = False) -> dict[str, Any]:
     # Delayed imports keep --no-network independent from dotenv and ES clients.
     from tools.sraf_airgap_off1b_auto import _effective_runtime_config, _parse_endpoint
     from tools.sraf_airgap_off1b_es_https_mapping import (
@@ -262,12 +262,29 @@ def _strict_live_observe(root: Path) -> dict[str, Any]:
     if ca is None:
         raise ObservationError("trusted_ca_missing")
     port = int(endpoint["port"])
+    identity_warning = False
 
     def get(path: str, expected_bytes: int = 65536) -> Any:
-        # Strict-IP-SAN and CA identity, no warn-only exception or ES runtime.
-        status, payload, reason = _https_get(
-            host, port, path, username, password, ca,
-        )
+        nonlocal identity_warning
+        # The operator-only diagnostic keeps CA verification mandatory and
+        # examines IP SAN before sending Basic credentials. A mismatched SAN
+        # is only a CA-verified observation, NOT strict endpoint identity.
+        if warn_only_ip_san:
+            status, payload, reason = _https_get(
+                host, port, path, username, password, ca,
+                warn_only_ip_san=True,
+            )
+            if status is not None and reason not in (
+                "https_response_received",
+                "https_response_ca_only_ip_san_mismatch",
+            ):
+                raise ObservationError("es_tls_observation_inconclusive")
+        else:
+            status, payload, reason = _https_get(
+                host, port, path, username, password, ca,
+            )
+        if reason == "https_response_ca_only_ip_san_mismatch":
+            identity_warning = True
         if status is None:
             raise ObservationError(reason)
         if status != 200:
@@ -292,7 +309,16 @@ def _strict_live_observe(root: Path) -> dict[str, Any]:
     mapping = get(f"/{INDEX}/_mapping", expected_bytes=2 * 1024 * 1024)
     _, mapping_errors = _properties(mapping)
     result: dict[str, Any] = {
-        "identity": "STRICT_TLS_CA_IP_SAN_VERIFIED",
+        "identity": (
+            "CA_VERIFIED_IP_SAN_MISMATCH" if identity_warning else
+            "CA_VERIFIED_IP_SAN_MATCH_OBSERVED" if warn_only_ip_san else
+            "STRICT_TLS_CA_IP_SAN_VERIFIED"
+        ),
+        "ip_san_policy": "WARN_ONLY" if warn_only_ip_san else "STRICT",
+        "tls_validation": "WARN" if identity_warning else "PASS",
+        "identity_warning": identity_warning,
+        "release_tls_identity_verified": not warn_only_ip_san,
+        **({"tls_warning": "ip_san_mismatch_ca_chain_verified"} if identity_warning else {}),
         "principal": "PROTECTED_ENDPOINT_ATTESTED_NO_NEGATIVE_PASSWORD_CHALLENGE",
         "mapping": "PASS" if not mapping_errors else "FAIL",
         "mapping_issues": mapping_errors,
@@ -375,22 +401,36 @@ def _strict_live_observe(root: Path) -> dict[str, Any]:
         result["status"] = "PASS_PARTIAL"
     else:
         result["status"] = "INCOMPLETE"
-    # We cannot establish FULL_LIVE from two small observations even with
-    # valid nested Mapping, strict TLS and linked source evidence.
+    # Later GETs can see a different CA-signed peer; never lose their SAN warning.
+    if identity_warning:
+        result.update(
+            identity="CA_VERIFIED_IP_SAN_MISMATCH",
+            tls_validation="WARN",
+            identity_warning=True,
+            release_tls_identity_verified=False,
+            tls_warning="ip_san_mismatch_ca_chain_verified",
+        )
+    # PASS_PARTIAL describes only date-query samples, never FULL_LIVE.
     return result
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--run", action="store_true", help="opt in to strict-TLS GET-only private index checks")
+    mode.add_argument("--run", action="store_true", help="opt in to CA-validated GET-only private index checks")
     mode.add_argument("--no-network", action="store_true", help="default: no config, network or ES access")
+    parser.add_argument(
+        "--warn-only-ip-san", action="store_true",
+        help="operator only: retain CA verification but warn and continue if the leaf IP SAN differs; weakens peer IP identity",
+    )
     parser.add_argument(
         "--config-root", default=None,
         help="Existing deployed SRAF repository for local dotenv/CA only; "
              "useful when running probe code from a separate Git worktree",
     )
     args = parser.parse_args(argv)
+    if args.warn_only_ip_san and not args.run:
+        parser.error("--warn-only-ip-san requires --run")
     output: dict[str, Any] = {
         "schema": SCHEMA, "index": INDEX, "read_only": True,
         "scope": "MAPPING_EVENT_TIMELINE_SOURCE_LINK_DATE_QUERY_SMALL_PAGING",
@@ -408,7 +448,10 @@ def main(argv: list[str] | None = None) -> int:
         if not cfg_root.is_dir() or not (cfg_root / "run_sra_api.sh").is_file():
             raise ObservationError("configured_repository_root_invalid")
         # Never print the config root; dotenv/certificate are read only.
-        output.update(_strict_live_observe(cfg_root))
+        if args.warn_only_ip_san:
+            output.update(_strict_live_observe(cfg_root, warn_only_ip_san=True))
+        else:
+            output.update(_strict_live_observe(cfg_root))
     except ObservationError as exc:
         output.update(status="INCOMPLETE", reason=str(exc))
     except Exception:
