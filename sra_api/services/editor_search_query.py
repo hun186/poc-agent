@@ -31,25 +31,25 @@ def _field_spec(field: str) -> tuple[str, float] | None:
     return path, weight
 
 
-def _nested_parent(path: str, metadata: dict[str, dict[str, Any]]) -> str | None:
+def _nested_parents(path: str, metadata: dict[str, dict[str, Any]]) -> list[str]:
+    """Return outer-to-inner nested ancestors; both levels must be entered."""
     parts = path.split(".")
     parents = (".".join(parts[:i]) for i in range(1, len(parts)))
-    nested = [p for p in parents if metadata.get(p, {}).get("type") == "nested"]
-    return nested[-1] if nested else None
+    return [p for p in parents if metadata.get(p, {}).get("type") == "nested"]
+
+
+def _wrap_nested(path: str, clause: dict[str, Any],
+                 metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    for parent in reversed(_nested_parents(path, metadata)):
+        clause = {"nested": {"path": parent, "query": clause, "score_mode": "max"}}
+    return clause
 
 
 def _grouped_query(
     clauses: list[tuple[str, dict[str, Any]]],
     metadata: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    out = []
-    for path, clause in clauses:
-        parent = _nested_parent(path, metadata)
-        if parent:
-            out.append({"nested": {"path": parent, "query": clause, "score_mode": "max"}})
-        else:
-            out.append(clause)
-    return out
+    return [_wrap_nested(path, clause, metadata) for path, clause in clauses]
 
 
 def build_editor_search_query(
@@ -83,7 +83,8 @@ def build_editor_search_query(
         path, weight = spec
         if mapping_ok and metadata.get(path, {}).get("type") not in _TEXT_TYPES:
             continue
-        parent = _nested_parent(path, metadata) if mapping_ok else None
+        nested_parents = _nested_parents(path, metadata) if mapping_ok else []
+        parent = nested_parents[-1] if nested_parents else None
         field = path + (f"^{weight:g}" if weight != 1 else "")
         groups[parent].append(field)
         eligible.append((path, weight))
@@ -94,9 +95,9 @@ def build_editor_search_query(
             "query": term, "fields": fields, "default_operator": "and",
         }}
         if nested_path is not None:
-            clause = {"nested": {
-                "path": nested_path, "query": clause, "score_mode": "max",
-            }}
+            # A nested child within a nested parent needs BOTH query contexts.
+            first_field = fields[0].split("^", 1)[0]
+            clause = _wrap_nested(first_field, clause, metadata)
         should.append(clause)
 
     contains = mode == "contains" or (mode == "auto" and "_" in term)
