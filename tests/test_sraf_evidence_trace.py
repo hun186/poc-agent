@@ -165,7 +165,9 @@ def test_date_invalid_structured_event_is_never_restored_by_trace(monkeypatch, c
 def test_source_cap_observes_uninspected_not_proven_valid(monkeypatch, caplog):
     """A source-side 25→20 cap is a distinct loss from post-parse capping."""
     monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
-    h = _hit(["金磚 峰會 valid"] * 25)
+    h = _hit(["金磚 峰會 valid"] * 25, event_dates={
+        "E1": "2023-08-24", "E2": "2023-08-24",
+    })
     with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
         _, evidence, _ = _build([h], config=EvidenceBuildConfig(citations_per_doc=20))
     t, = _traces(caplog)
