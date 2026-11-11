@@ -160,3 +160,19 @@ def test_date_invalid_structured_event_is_never_restored_by_trace(monkeypatch, c
     assert result["counters"]["strict.date_unmatched"] == 1
     assert result["output_evidence"] == 0
     # Trace visibility cannot change date-qualified Evidence or public output.
+
+
+def test_source_cap_observes_uninspected_not_proven_valid(monkeypatch, caplog):
+    """A source-side 25→20 cap is a distinct loss from post-parse capping."""
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    h = _hit(["金磚 峰會 valid"] * 25)
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        _, evidence, _ = _build([h], config=EvidenceBuildConfig(citations_per_doc=20))
+    t, = _traces(caplog)
+    assert len(evidence) == 20  # no automatic refill or change in selection
+    assert t["counters"]["parser.source_candidates"] == 25
+    assert t["counters"]["parser.citations_parsed"] == 20
+    assert t["counters"]["parser.citations_capped"] == 0
+    assert t["counters"]["parser.source_uninspected_after_cap"] == 5
+    assert t["documents"][0]["source_uninspected_after_cap"] == 5
+    assert t["counters"]["strict.accepted"] == 20
