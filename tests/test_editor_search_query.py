@@ -191,8 +191,15 @@ def test_mapping_reader_exposes_real_multifield_types(monkeypatch):
     query, warnings = build_editor_search_query(
         "a_title", ["title.keyword^3"], metadata, True,
     )
-    assert query["simple_query_string"]["fields"] == ["title.keyword^3"]
-    assert not warnings
+    assert query["bool"]["minimum_should_match"] == 1
+    text_queries = [n["simple_query_string"] for n in _walk(query)
+                    if "simple_query_string" in n]
+    assert any(q["fields"] == ["title.keyword^3"] for q in text_queries)
+    keyword_queries = [n["wildcard"] for n in _walk(query) if "wildcard" in n]
+    assert {"title.keyword": {
+        "value": "*a_title*", "case_insensitive": True, "boost": 3.0,
+    }} in keyword_queries
+    assert any("包含字串" in warning for warning in warnings)
 
 
 def test_original_long_fulltext_query_is_not_rejected_by_substring_bounds():
