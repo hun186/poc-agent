@@ -14,6 +14,9 @@ _CONTAINS_FIELDS = {
 }
 _MAX_CONTAINS_FIELDS = 6
 _LITERAL = re.compile(r"[\w-]+", re.UNICODE)
+# SQS negation across separately-scoped nested clauses is NOT document-global.
+# Keep the legacy single-query behavior for signed exclusion expressions.
+_DOCUMENT_NEGATION = re.compile(r"(?:^|[\s(])-(?=\S)")
 
 
 def _field_spec(field: str) -> tuple[str, float] | None:
@@ -72,6 +75,23 @@ def build_editor_search_query(
         return {"match_all": {}}, []
 
     warnings: list[str] = []
+    if _DOCUMENT_NEGATION.search(term):
+        # Each nested OR branch evaluates its own -excluded term and can admit
+        # a root document excluded by another branch. A cross-context parser
+        # would be required to preserve every SQS Boolean expression. Use the
+        # exact legacy single-context form rather than invent different
+        # document-level negation semantics; no substring OR can bypass it.
+        legacy_fields = [f for f in search_fields
+                         if isinstance(f, str) and _field_spec(f) is not None]
+        warnings.append(
+            "含排除詞的進階查詢維持既有全文模式，避免跨 nested 欄位繞過排除條件；"
+            "這類查詢暫不支援部分字串補查。"
+        )
+        if not legacy_fields:
+            return {"match_none": {}}, warnings
+        return {"simple_query_string": {
+            "query": term, "fields": legacy_fields, "default_operator": "and",
+        }}, warnings
     groups: dict[str | None, list[str]] = defaultdict(list)
     eligible: list[tuple[str, float]] = []
     for raw in search_fields:
