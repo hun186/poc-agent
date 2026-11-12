@@ -13,6 +13,7 @@ from agent.utils.citations import build_refno_uuid_map
 from agent.utils.evidence_pack import pack_ev_for_llm
 from agent.utils.evidence_pack import filter_ev_fields
 from agent.utils.evidence_pack import guess_report_need_fields
+from agent.utils.report_evidence_trace import emit_report_evidence_trace
 from agent.utils.profiler import log_duration, log_total
 from agent.utils.markdown_tables import sanitize_markdown_tables, replace_table_cell_br
 from agent.refiners.query_refiner import refine_question_for_data_agent
@@ -125,6 +126,12 @@ def ask_with_report(
     # verdict. Do not ask the LLM to write an apparently complete report.
     search_quality = _incomplete_date_search(payload)
     if search_quality and not (payload.get("evidence_snippets") or []):
+        # Emit a count-only stop event; this path must never call report LLM.
+        emit_report_evidence_trace(
+            incoming=0, strong=0, weak=0, picked=0, compressed=0,
+            llm_input=0, max_for_llm=0, prompt_chars=0,
+            skipped_incomplete=True,
+        )
         warning = (
             "日期查詢未完成：Elasticsearch 候選資料掃描已達安全上限，"
             "目前沒有足夠的有效證據判斷是否存在相關事件。"
@@ -358,16 +365,16 @@ def ask_with_report(
     
     print(f"MAX_EV_FOR_LLM:{MAX_EV_FOR_LLM}")
     print(f"MAX_EV_FOR_FRONTEND_CFG:{MAX_EV_FOR_FRONTEND_CFG}")
-    print("=== DEBUG: EV (for LLM) ===")
-    for e in ev_for_llm:
-        print({
-            "ref_no": e.get("ref_no"),
-            "id": e.get("id"),
-            "d": e.get("d"),
-            "title": e.get("title"),
-            "note_preview": (e.get("note") or "")[:100].replace("\n", " "),
-            "keys": list(e.keys()),  # 這行對診斷欄位精簡很有用
-        })
+    # Previous unconditional debug output exposed original Evidence, titles,
+    # dates and document IDs to application stdout. Use count-only observability
+    # when explicitly opted in; do not print snippets/prompt even on error.
+    emit_report_evidence_trace(
+        incoming=len(ev_all), strong=len(ev_strong), weak=len(ev_weak),
+        picked=len(picked_for_llm), compressed=len(ev_compact),
+        llm_input=len(ev_for_llm), max_for_llm=MAX_EV_FOR_LLM,
+        prompt_chars=len(user_prompt), truncated_notes=truncated_notes,
+        truncated_titles=truncated_titles,
+    )
     t0 = time.perf_counter()
     with log_duration("[report] call_llm(report)",
         extra={"model_id": REPORT_MODEL_ID, "timeout_sec": REPORT_LLM_TIMEOUT},
