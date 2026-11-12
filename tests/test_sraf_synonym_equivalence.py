@@ -131,7 +131,8 @@ def test_shared_noncore_alias_does_not_collapse_distinct_entities(monkeypatch):
         {"甲機構": ["共同簡稱"], "乙機構": ["共同簡稱"]},
     )
     assert core == ["甲機構", "乙機構"]
-    assert len(axes) == 2
+    assert axes == [{"甲機構"}, {"乙機構"}]
+    assert not match_topic("共同簡稱發布公告", "", "", axes)[0]
 
 
 def test_query_builder_carries_generated_full_name_into_es_synonym_clauses(monkeypatch):
