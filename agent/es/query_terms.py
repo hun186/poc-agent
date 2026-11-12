@@ -449,6 +449,21 @@ def compute_effective_terms(q: str) -> Tuple[
             if candidate != rep and candidate not in aliases:
                 aliases.append(candidate)
 
+    # 兩個未被 LLM 明確視為同一實體的語意軸若共享非核心別名，
+    # 該別名具歧義，不應單憑它就讓多個必要語意軸同時通過。
+    alias_owners: Dict[str, set[str]] = {}
+    for rep, aliases in aliases_by_representative.items():
+        for alias in aliases:
+            alias_owners.setdefault(alias, set()).add(rep)
+    ambiguous_aliases = {
+        alias for alias, owners in alias_owners.items() if len(owners) > 1
+    }
+    if ambiguous_aliases:
+        for rep, aliases in aliases_by_representative.items():
+            aliases_by_representative[rep] = [
+                alias for alias in aliases if alias not in ambiguous_aliases
+            ]
+
     # 5.2) 對合併後的語意軸增加簡繁變體；不可重新創立已合併的別名軸。
     seed_items: List[Tuple[str, List[str]]] = list(aliases_by_representative.items())
     zh_augmented: Dict[str, List[str]] = {}
