@@ -54,6 +54,20 @@ def test_llm_explicit_alias_core_does_not_become_second_required_axis(monkeypatc
         assert match_topic(phrase, None, None, axes)[0]
 
 
+def test_single_common_core_can_retrieve_full_official_name_when_llm_supplies_alias(monkeypatch):
+    core, grouped, _, _, effective, axes = _compute(
+        monkeypatch,
+        ["桃園機場"],
+        {"桃園機場": ["桃園國際機場", "臺灣桃園國際機場"]},
+    )
+    assert core == ["桃園機場"]
+    assert grouped["桃園機場"] == ["桃園國際機場", "臺灣桃園國際機場"]
+    assert effective == ["桃園機場", "桃園國際機場", "臺灣桃園國際機場"]
+    assert len(axes) == 1
+    assert match_topic("臺灣桃園國際機場最新動態", "", "", axes)[0]
+    assert not match_topic("松山機場最新動態", "", "", axes)[0]
+
+
 def test_official_name_to_common_name_is_symmetric(monkeypatch):
     core, grouped, _, _, _, axes = _compute(
         monkeypatch,
