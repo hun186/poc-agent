@@ -66,3 +66,38 @@ Mapping/inner_hits performance remain **NOT TESTED**.
 No Git commands are required on the user's one-way-incremental Linux
 deployment host. This code must not be overlaid onto the running service
 from an unmerged PR as routine acceptance.
+
+
+## Integrated #404/#405 rescue stages (2026-11-12)
+
+The retrieval trace is now integrated with the current merged Evidence pipeline
+instead of reverting to the old pre-rescue builder. With both trace and rescue
+flags enabled, it also includes **fixed-name count-only** counters:
+
+- `source_refill.strict_candidates` and `source_refill.weak_candidates`:
+  eligible source-only candidates found by the already-bounded, same-ES-hit
+  #405 stage. These are NOT all source evidence entries, nor complete reasons
+  for why other `_source` entries were excluded.
+- `source_refill.strict_selected` and `source_refill.weak_selected`:
+  candidates actually selected into Evidence under the shared low-count target.
+- `source_refill.unselected_by_target`: *eligible* source candidates not
+  selected after the existing bounded refill (never claim date invalidity).
+- `bounded_rescue.selected`: weak Evidence actually added from already-parsed
+  citations by #404.
+
+Counters are zero/absent when their feature stage is disabled, rather than
+fabricating dates, identities or hypothetical candidates. The original
+`strict_accepted` counter is **before** #404/#405 additions; final
+`output_evidence` is **after** additions. Date and topic reasons for original
+strict/relaxed/fallback passes are unchanged. Refilling is still protected by
+`SRAF_EVIDENCE_RESCUE=1` and separately by
+`SRAF_EVIDENCE_SOURCE_REFILL=1`, both default OFF; the Trace flag is
+independent and does not activate either.
+
+These are **per-builder evaluations**, not per-request global totals and not
+the final Report Agent/LLM context. A date-refill ES query may evaluate many
+builder iterations; do not sum them as unique Evidence. Report-stage count-only
+trace remains separate in PR #402, and there is no per-citation cross-stage
+correlation key in these safe logs. Sensitive names and source material must
+never be added to the trace payload. Private `news_test` and the user's
+2023-08-24 example remain unverified.
