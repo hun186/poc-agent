@@ -77,3 +77,10 @@
 - **2026-11-10 #395 P2 search completeness across report pipeline:** Latest Codex found `result_incomplete` was lost when Data Agent rebuilt `query_meta`, and report LLM received only question/date/stats/evidence. New candidate changes propagate raw ES incomplete status through `agent/data_agent/runtime.py`, Data Agent report prompt, trace, `agent/report_agent.py`; incomplete empty searches return an explanatory non-report with zero report-LLM calls, while incomplete nonempty reports get deterministic warning + `search_status`. Tests in `tests/test_sraf_report_search_completeness.py`. Await latest head CI and independent Codex review; do not merge or declare live PASS.
 
 - **2026-11-10 #395 live verification handoff:** Build standalone `sraf-date-readonly.zip` on Windows/CI from latest reviewed PR HEAD; transfer using existing one-way 7z/Robocopy update mechanism; extract `_sraf_date_readonly` next to SRAF and invoke `bash _sraf_date_readonly/run.sh` (no Linux Git commands). Read redacted `news_test` JSON; assess strict CA+SAN, nested Mapping, Event/Timeline/date/Evidence/paging; record PASS_PARTIAL/INCOMPLETE truthfully. Live ES, report LLM/DOCX and performance remain pending. No auto Merge #395 based only on packaging or synthetic results.
+
+
+## 2026-11-12 P1 — 官方全名／通稱的語意軸去重（供使用者確認）
+
+- **Candidate PR not merged:** `agent/es/query_terms.py` Prompt 查核官方全名↔通稱/簡稱/俗稱、等價核心詞併為一軸、無歧義的簡繁變體、共享歧義非核心別名剔除；固定案例離線測試、Python3.10/3.11 CI、正式 Review、使用者前後對照需完成。
+- **Outstanding, separately scoped:** 實際 `news_test` analyzer、mapping、ES candidate retrieval and date-scoped Evidence/report recall still NOT TESTED; LLM未產生官方別名時不保證召回；LLM關閉時的人工同義詞家族目前仍可能形成多個必要核心詞，須另設計精準同義詞 family group 接口與負例測試。
+- **Merge warning:** 目前 `#400/#401/#402` 同時修改 active `.codex`；本工作依 `AGENTS.md` 先以 immutable SHA 驗證後保存五檔全文到 `.codex/archive/*-20261112-103600.md`，並濃縮 active 文件。合併前須保留所有 PR 的仍有效 API 合約/架構決策與 open issues，不可覆蓋他分支；使用者要求先看結果確認，不預先 merge。
