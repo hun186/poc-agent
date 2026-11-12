@@ -25,16 +25,87 @@ MAX_SOURCE_TEXT_CHARS = 2048
 MAX_SOURCE_TOTAL_CHARS = 32768
 MAX_SOURCE_JSON_CHARS = 160000
 MAX_SOURCE_CANDIDATES = 12
+MAX_IDS_PER_FIELD = 12
+MAX_ENCODED_IDS_CHARS = 512
+MAX_SINGLE_ID_CHARS = 128
+MAX_METADATA_ID_CHARS = 128
+MAX_EVENT_TIME_CHARS = 64
+MAX_EVENT_PRECISION_CHARS = 32
 
 
-def _bounded_records(value: Any, max_count: int) -> bool:
-    """Reject oversized structured Event/Timeline collections without parsing."""
-    if isinstance(value, str) and len(value) > MAX_SOURCE_JSON_CHARS:
-        return False
+def _bounded_ids(value: Any) -> Optional[List[str]]:
+    """Never decode oversized JSON IDs or normalize an unbounded list."""
+    if isinstance(value, str) and len(value) > MAX_ENCODED_IDS_CHARS:
+        return None
     value = json_load_maybe(value)
-    if isinstance(value, list):
-        return len(value) <= max_count
-    return value is None or isinstance(value, dict)
+    if not isinstance(value, list):
+        value = [value]
+    if len(value) > MAX_IDS_PER_FIELD:
+        return None
+    result: List[str] = []
+    for raw in value:
+        if not isinstance(raw, str) or len(raw) > MAX_SINGLE_ID_CHARS:
+            return None
+        term = raw.strip()
+        if not term:
+            return None
+        result.append(term)
+    return result
+
+
+def _bounded_metadata_id(value: Any) -> Optional[str]:
+    if value is None:
+        return ""
+    if not isinstance(value, str) or len(value) > MAX_METADATA_ID_CHARS:
+        return None
+    return value
+
+
+def _bounded_time(value: Any, limit: int) -> bool:
+    return value is None or (isinstance(value, str) and len(value) <= limit)
+
+
+def _project_records(value: Any, kind: str) -> Optional[List[dict]]:
+    """Allow only bounded Event/Timeline identity and date fields."""
+    if isinstance(value, str) and len(value) > MAX_SOURCE_JSON_CHARS:
+        return None
+    value = json_load_maybe(value)
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, list) or len(value) > MAX_SOURCE_EVENTS_PER_FIELD:
+        return None
+    output: List[dict] = []
+    for row in value:
+        if not isinstance(row, dict):
+            return None
+        if not _bounded_time(row.get("time_iso"), MAX_EVENT_TIME_CHARS):
+            return None
+        if not _bounded_time(row.get("time_precision"), MAX_EVENT_PRECISION_CHARS):
+            return None
+        if kind == "Event":
+            raw_id = row.get("event_id")
+            if raw_id is not None and (
+                not isinstance(raw_id, str) or len(raw_id) > MAX_SINGLE_ID_CHARS
+            ):
+                return None
+            output.append({
+                "event_id": raw_id,
+                "time_iso": row.get("time_iso"),
+                "time_precision": row.get("time_precision"),
+            })
+        else:
+            raw_ids = row.get("event_ids")
+            ids = [] if raw_ids is None else _bounded_ids(raw_ids)
+            if ids is None:
+                return None
+            output.append({
+                "event_ids": ids,
+                "time_iso": row.get("time_iso"),
+                "time_precision": row.get("time_precision"),
+            })
+    return output
 
 
 def _source_projection(source: Any) -> Optional[dict]:
@@ -54,12 +125,10 @@ def _source_projection(source: Any) -> Optional[dict]:
     total_chars = 0
     has_structured = False
     for block in blocks:
-        if not _bounded_records(block.get("Event"), MAX_SOURCE_EVENTS_PER_FIELD):
+        events = _project_records(block.get("Event"), "Event")
+        timeline = _project_records(block.get("Event_Timeline"), "Event_Timeline")
+        if events is None or timeline is None:
             return None
-        if not _bounded_records(block.get("Event_Timeline"), MAX_SOURCE_EVENTS_PER_FIELD):
-            return None
-        events = json_load_maybe(block.get("Event"))
-        timeline = json_load_maybe(block.get("Event_Timeline"))
         if events or timeline:
             has_structured = True
 
@@ -88,18 +157,31 @@ def _source_projection(source: Any) -> Optional[dict]:
                 continue
             if total_chars + len(text) > MAX_SOURCE_TOTAL_CHARS:
                 break
-            # Minimal allowlisted fields prevent copying arbitrary ES properties.
+            # Validate before JSON decoding in the downstream source parser.
+            # Reject oversized/ambiguous IDs; truncating them could invent
+            # a complete Event linkage by dropping unresolved event_ids.
+            ids = _bounded_ids(item.get("event_ids"))
+            sid = _bounded_metadata_id(item.get("source_id"))
+            pid = _bounded_metadata_id(item.get("paragraph_id"))
+            if ids is None or not ids or sid is None or pid is None:
+                continue
             output_snippets.append({
                 "text": text,
-                "source_id": item.get("source_id"),
-                "paragraph_id": item.get("paragraph_id"),
-                "event_ids": item.get("event_ids"),
+                "source_id": sid,
+                "paragraph_id": pid,
+                "event_ids": ids,
             })
             kept_citations += 1
             total_chars += len(text)
         projected.append({
-            "article_title": block.get("article_title"),
-            "article_date_iso": block.get("article_date_iso"),
+            # Original HitDoc carries the authoritative title; the source
+            # parser needs only bounded structured date fields.
+            "article_title": None,
+            "article_date_iso": (
+                block.get("article_date_iso")
+                if _bounded_time(block.get("article_date_iso"), MAX_EVENT_TIME_CHARS)
+                else None
+            ),
             "Event": events,
             "Event_Timeline": timeline,
             "evidence_snippets": output_snippets,
