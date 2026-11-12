@@ -17,6 +17,14 @@ _LOG = logging.getLogger("sraf.evidence_trace")
 _MAX_HIT_RECORDS = 64
 _MAX_CITATION_RECORDS = 256
 
+# Fixed internal-only stage count identifiers for #404/#405 opt-in rescue.
+# Never accept caller-provided strings or event/document values as keys.
+_STAGE_COUNTS = frozenset({
+    "source_refill.strict_candidates", "source_refill.weak_candidates",
+    "source_refill.strict_selected", "source_refill.weak_selected",
+    "source_refill.unselected_by_target", "bounded_rescue.selected",
+})
+
 # Keep all public trace fields fixed, not influenced by Elasticsearch values.
 _REASONS = frozenset({
     "accepted", "date_unmatched", "date_unknown", "date_before",
@@ -83,6 +91,11 @@ class EvidenceTrace:
             })
         else:
             self.citations_overflow += 1
+
+    def stage_count(self, key: str, count: int) -> None:
+        """Count only a fixed, bounded internal rescue stage; never free text."""
+        if key in _STAGE_COUNTS and type(count) is int and 0 <= count <= 1_000_000:
+            self.counts[key] += count
 
     def emit(self, *, output_hits: int, output_evidence: int,
              strict_count: int, relaxed_used: bool) -> None:
