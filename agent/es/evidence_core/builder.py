@@ -128,6 +128,8 @@ def build_hits_and_evidence(
         rescue_enabled and os.getenv("SRAF_EVIDENCE_SOURCE_REFILL", "") == "1"
     )
     source_weak_candidates = []
+    source_strong = []
+    source_strong_added = 0
     if source_enabled and evidence:
         # Source-only candidates are from already strong-anchored ES hits,
         # revalidated against their own structured Event/Timeline dates.
@@ -198,8 +200,7 @@ def build_hits_and_evidence(
         # even when no weak source candidates were eligible.
         evidence_trace.stage_count(
             "source_refill.unselected_by_target",
-            max(0, len(source_strong) - source_strong_added)
-            if "source_strong" in locals() else 0,
+            max(0, len(source_strong) - source_strong_added),
         )
 
     # 2) relax
