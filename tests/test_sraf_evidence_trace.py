@@ -199,7 +199,9 @@ def test_trace_counts_inner_hit_omissions_and_source_rescue_without_data(monkeyp
         "金磚 fourth SOURCE_SECRET",
         "峰會 fifth SOURCE_SECRET",
     ]
-    hit = _hit(rows)
+    hit = _hit(rows, event_dates={
+        "E1": "2023-08-24", "E2": "2023-08-24",
+    })
     hit["inner_hits"] = {"evi": {"hits": {"hits": [
         _inner_hit(text) for text in rows[:3]
     ]}}}
@@ -239,7 +241,9 @@ def test_trace_source_strict_selected_precedes_weak(monkeypatch, caplog):
         "金磚 峰會 source strong",
         "金磚 source weak",
     ]
-    hit = _hit(rows)
+    hit = _hit(rows, event_dates={
+        "E1": "2023-08-24", "E2": "2023-08-24",
+    })
     hit["inner_hits"] = {"evi": {"hits": {"hits": [
         _inner_hit(text) for text in rows[:3]
     ]}}}
