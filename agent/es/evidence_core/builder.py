@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .models import EvidenceBuildConfig, EvidenceSnippet, HitDoc
 from .parser import parse_es_hits
 from .snippet import build_evidence_snippet
+from .rescue import bounded_rescue
 from .topic_match import match_topic
 from .text_norm import normalize_for_match
 
@@ -88,6 +90,22 @@ def build_hits_and_evidence(
         allowed_years=allowed_years,
     )
     logger.info("build_hits_and_evidence: evidence strict=%d", len(evidence))
+
+    # Opt-in only: a small, date-qualified weak rescue from already strict-
+    # anchored documents. Do not run the existing zero-result relax branch
+    # for a partially successful query, and do not issue new ES/LLM calls.
+    if os.getenv("SRAF_EVIDENCE_RESCUE", "") == "1" and evidence:
+        rescued = bounded_rescue(
+            out_hits, evidence,
+            date_from=date_from, date_to=date_to,
+            allowed_years=allowed_years, term_groups=term_groups,
+        )
+        if rescued:
+            logger.info(
+                "build_hits_and_evidence: bounded_rescue_count=%d",
+                len(rescued),
+            )
+            evidence.extend(rescued)
 
     # 2) relax
     if not evidence and out_hits and term_groups:

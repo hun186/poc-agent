@@ -24,3 +24,6 @@
 
 ## Archived History
 - Full pre-compaction known issues: `.codex/archive/known_issues.md-20261112-103600.md`, verified source SHA `3a5dec9e56b9999c45c5873d7f593b630f4a6358`.
+
+
+- **2026-11-12 #397 P1-b residual (candidate not merged):** Per-invocation bounded rescue sees only parser-selected citations. When ES returns `inner_hits.size=3`, untouched `_source` Evidence remains unexamined; do not claim full five-candidate recall. A date-scoped `date_refill` can invoke builder repeatedly and this rescue budget is per builder, **not a global ES scan/token/Report Job cap**. Real `news_test` Event/Timeline/Mapping, p50/p95, source diversity, token cost and Guterres sample remain NOT TESTED. Other open #401/#402 may conflict in builder/memory and need deliberate integration.

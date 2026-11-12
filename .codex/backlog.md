@@ -84,3 +84,9 @@
 - **Candidate PR not merged:** `agent/es/query_terms.py` Prompt 查核官方全名↔通稱/簡稱/俗稱、等價核心詞併為一軸、無歧義的簡繁變體、共享歧義非核心別名剔除；固定案例離線測試、Python3.10/3.11 CI、正式 Review、使用者前後對照需完成。
 - **Outstanding, separately scoped:** 實際 `news_test` analyzer、mapping、ES candidate retrieval and date-scoped Evidence/report recall still NOT TESTED; LLM未產生官方別名時不保證召回；LLM關閉時的人工同義詞家族目前仍可能形成多個必要核心詞，須另設計精準同義詞 family group 接口與負例測試。
 - **Merge warning:** 目前 `#400/#401/#402` 同時修改 active `.codex`；本工作依 `AGENTS.md` 先以 immutable SHA 驗證後保存五檔全文到 `.codex/archive/*-20261112-103600.md`，並濃縮 active 文件。合併前須保留所有 PR 的仍有效 API 合約/架構決策與 open issues，不可覆蓋他分支；使用者要求先看結果確認，不預先 merge。
+
+
+## 2026-11-12 #397 P1-b bounded rescuer (candidate)
+
+- Unmerged opt-in `SRAF_EVIDENCE_RESCUE=1` bounded parser-citation pool supports low-count strict (1–2) date-safe same-document weak rescue with hard caps and deterministic scoring. Python3.10/3.11 CI and independent latest-HEAD Codex review required. Keep off until actual operator evidence acceptance.
+- **Next P1-c/d:** cover ES `inner_hits.size=3` source Evidence omissions without unbounded memory/re-fetch; global per-request budget/dedup and coverage/token-aware high-volume selection; integrate opt-in #401/#402 Evidence Trace for per-stage counts and reason codes; real `news_test` 5→1 incident diagnosis, recall/precision/latency p50/p95 still needed. Rebase/reconcile active `.codex` with open PRs and preserve #403 name-axis decision.

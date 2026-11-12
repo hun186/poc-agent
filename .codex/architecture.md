@@ -22,3 +22,6 @@
 
 ## Archived History
 - Full pre-compaction architecture: `.codex/archive/architecture.md-20261112-103600.md`, verified source SHA `f4637f782b33c39c410eff822fd1bc6a44d6c80b`.
+
+
+- **2026-11-12 unmerged #397 P1-b:** `agent/es/evidence_core/rescue.py` is an isolated opt-in deterministic candidate stage invoked by `builder.py` immediately after nonzero strict Evidence. It does not fetch ES source, call LLM, change `date_refill`, or alter public API shape. A strong Evidence-text strict citation anchors its original source-hit ordinal; rescue may add at most two marked-weak same-hit date-validated citations. Hard per-call doc/citation/text/pool caps and default-off environment gate preserve the production baseline.
