@@ -90,3 +90,9 @@
 
 - Unmerged opt-in `SRAF_EVIDENCE_RESCUE=1` bounded parser-citation pool supports low-count strict (1–2) date-safe same-document weak rescue with hard caps and deterministic scoring. Python3.10/3.11 CI and independent latest-HEAD Codex review required. Keep off until actual operator evidence acceptance.
 - **Next P1-c/d:** cover ES `inner_hits.size=3` source Evidence omissions without unbounded memory/re-fetch; global per-request budget/dedup and coverage/token-aware high-volume selection; integrate opt-in #401/#402 Evidence Trace for per-stage counts and reason codes; real `news_test` 5→1 incident diagnosis, recall/precision/latency p50/p95 still needed. Rebase/reconcile active `.codex` with open PRs and preserve #403 name-axis decision.
+
+## 2026-11-12 — #397 P1-c source Evidence refill (first bounded slice)
+
+- Candidate PR: default-OFF `SRAF_EVIDENCE_SOURCE_REFILL=1` **requires** `SRAF_EVIDENCE_RESCUE=1`; bounded source-only reparse for structured Evidence omitted by ES `inner_hits.size=3`, same strict-anchored original ordinal, canonical Event/Timeline date guard, strong-first/weak-marked candidate fill up to combined 3. Python3.10/3.11, date/refill/topic regression and independent exact-head formal Review are mandatory.
+- **Further P1-c:** real Guterres 2023-08-24 5→1 root-cause analysis with per-segment reasons (see #401/#402 Evidence Trace); never infer 5 candidates were all present in `_source`. When enabled, consider query-level/phase-level global budgets, source diversity, evidence re-ranking, explicit count of uninspected source rows and safe operator comparison.
+- **P1-d:** token-budget/coverage-aware high-volume top-k, deterministic signal and full report LLM validation still unresolved. No private `news_test`, p50/p95, Report Job, generated DOCX or airgap rollout was run. Integrate open #401/#402 active memory and builder changes before merging.

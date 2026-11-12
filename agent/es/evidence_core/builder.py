@@ -8,7 +8,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .models import EvidenceBuildConfig, EvidenceSnippet, HitDoc
 from .parser import parse_es_hits
 from .snippet import build_evidence_snippet
-from .rescue import bounded_rescue
+from .rescue import bounded_rescue, TARGET_EVIDENCE_COUNT
+from .source_refill import source_refill_candidates
 from .topic_match import match_topic
 from .text_norm import normalize_for_match
 
@@ -91,10 +92,38 @@ def build_hits_and_evidence(
     )
     logger.info("build_hits_and_evidence: evidence strict=%d", len(evidence))
 
-    # Opt-in only: a small, date-qualified weak rescue from already strict-
-    # anchored documents. Do not run the existing zero-result relax branch
-    # for a partially successful query, and do not issue new ES/LLM calls.
-    if os.getenv("SRAF_EVIDENCE_RESCUE", "") == "1" and evidence:
+    # Both stages are default OFF. Source refill additionally requires the
+    # original bounded-rescue opt-in; never affect existing installations.
+    rescue_enabled = os.getenv("SRAF_EVIDENCE_RESCUE", "") == "1"
+    source_enabled = (
+        rescue_enabled and os.getenv("SRAF_EVIDENCE_SOURCE_REFILL", "") == "1"
+    )
+    source_weak_candidates = []
+    if source_enabled and evidence:
+        # Source-only candidates are from already strong-anchored ES hits,
+        # revalidated against their own structured Event/Timeline dates.
+        source_strong, source_weak_candidates = source_refill_candidates(
+            es_hits, out_hits, evidence,
+            query_for_snippet=query_for_snippet,
+            date_from=date_from, date_to=date_to,
+            allowed_years=allowed_years, term_groups=term_groups,
+        )
+        source_strong_added = 0
+        for h, citation, source_ev in source_strong:
+            if len(evidence) >= TARGET_EVIDENCE_COUNT:
+                break
+            h.citations.append(citation)
+            evidence.append(source_ev)
+            source_strong_added += 1
+        if source_strong_added:
+            logger.info(
+                "build_hits_and_evidence: source_refill_strict_count=%d",
+                source_strong_added,
+            )
+
+    # First rescue from already-parsed citations before considering weaker
+    # source-only candidates; strict Evidence always stays at the front.
+    if rescue_enabled and evidence:
         rescued = bounded_rescue(
             out_hits, evidence,
             date_from=date_from, date_to=date_to,
@@ -106,6 +135,20 @@ def build_hits_and_evidence(
                 len(rescued),
             )
             evidence.extend(rescued)
+
+    if source_enabled and source_weak_candidates and evidence:
+        source_weak_added = 0
+        for h, citation, source_ev in source_weak_candidates:
+            if len(evidence) >= TARGET_EVIDENCE_COUNT:
+                break
+            h.citations.append(citation)
+            evidence.append(source_ev)
+            source_weak_added += 1
+        if source_weak_added:
+            logger.info(
+                "build_hits_and_evidence: source_refill_weak_count=%d",
+                source_weak_added,
+            )
 
     # 2) relax
     if not evidence and out_hits and term_groups:
