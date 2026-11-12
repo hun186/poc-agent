@@ -60,3 +60,31 @@ post-dedup removal reasons, cross-stage IDs, additional ES lookups or
 automatic candidate recovery. Those remain #397 P1-b/c/d and a future
 privacy-safe cross-stage trace step. No Git commands are required on the
 one-way Windows→Linux incremental deployment host.
+
+
+## 2026-11-12 integration with merged retrieval Evidence Trace #401
+
+This report-stage diagnostic is rebuilt on top of current `main`, after
+#401's retrieval trace and #403–#405 name/low-count/source Evidence changes.
+The two emitted records have distinct fixed schemas:
+
+- Retrieval: `SRAF_EVIDENCE_TRACE=...` (schema
+  `sraf_evidence_retrieval_trace_v1`) is **per builder invocation**;
+  #404/#405 add count-only parsed/source refill candidate and selected counts.
+- Report: `SRAF_REPORT_EVIDENCE_TRACE=...` (schema
+  `sraf_report_evidence_counts_v1`) measures the **actual pre-report-LLM**
+  lists and prompt **character** length, not estimated tokens or successful
+  report output. An incomplete and empty date scan logs skipped and never calls
+  the model.
+
+The opt-in `SRAF_EVIDENCE_TRACE=1` enables observation for both stages
+independently of `SRAF_EVIDENCE_RESCUE` and
+`SRAF_EVIDENCE_SOURCE_REFILL`; all features default OFF.
+
+**Important:** the random retrieval and report trace IDs are not correlated.
+No individual citation is joined across these two logs, and date-refill may
+invoke the retrieval builder repeatedly. Counts cannot yet prove which
+specific Evidence survived report de-duplication or reconstruct a unique
+end-to-end set; adding secure request correlation is a separate #397 task.
+The report stage also retains pre-existing prompt trace storage in other
+logging locations, which must be audited separately before sharing logs.
