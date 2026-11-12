@@ -15,7 +15,7 @@
 
 ## Recent Changes
 - **2026-11-12 official/common names PR (NOT MERGED):** `agent/es/query_terms.py` keeps the original single synonym LLM expansion call; Prompt explicitly checks official full name ⇄ common name/short name/colloquial alias. Core terms explicitly named in another core's LLM synonym list are coalesced into one semantic axis with stable input-order representative, including chain links; ambiguous noncore aliases shared across unrelated axes are omitted. Tests use fixed mocked LLM outputs and real production grouping, topic matcher and generated ES DSL. Hosted CI/review/live private ES are pending; no deployment or approval implied.
-- **2026-11-12 archive-first compaction:** Five original active files archived verbatim under `.codex/archive/*-20261112-103600.md` and independently verified same Git blob SHA before rewriting. Historical outcomes, implementation details and exact test numbers remain in archives; do not promote previous candidate PRs to merged without current GitHub evidence.
+- **2026-11-12 archive-first compaction and P1 contract preservation:** Five original active files archived verbatim under `.codex/archive/*-20261112-103600.md` and independently verified same Git blob SHA. Four active summaries were compacted; independent Codex Review found the first api_contract compaction dropped still-applicable Product/Preview contracts, so the **entire original active API contract was restored** from its SHA-verified archive and only an internal keyword note appended. Detailed history remains archived. Do not promote unmerged candidates to production.
 
 ## Archived History
 - Original unabridged memory: `.codex/archive/memory.md-20261112-103600.md` (verified Git blob SHA `6441409ff5b433d4362c8af5de0b856f2775ff02`).
