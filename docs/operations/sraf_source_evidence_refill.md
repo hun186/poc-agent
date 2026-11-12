@@ -38,7 +38,7 @@ not assert that a specific user's private article has this exact cause.
 - Limit: source-reparse at most 3 strict-anchored ES documents, 8 blocks/doc,
   48 source citations inspected/doc, 12 projected citations/doc, 2,048 chars
   per candidate, 32,768 source-text chars/doc, 160,000 chars max for JSON
-  `multidim_event_json`, 12 held candidates globally, at most **2 extra**
+  `multidim_event_json`, 12 held candidates globally; each Event/link field allows at most 12 IDs, 512 encoded ID chars, 128 chars per individual ID, 128 chars per source/paragraph ID, and bounded Event/Timeline date fields, at most **2 extra**
   selected with combined 3-Evidence target. Oversized fields are skipped or
   rejected. Existing ES date-page cap remains unchanged.
 
