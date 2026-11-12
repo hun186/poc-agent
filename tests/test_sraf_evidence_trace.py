@@ -178,3 +178,111 @@ def test_source_cap_observes_uninspected_not_proven_valid(monkeypatch, caplog):
     assert t["counters"]["parser.source_uninspected_after_cap"] == 5
     assert t["documents"][0]["source_uninspected_after_cap"] == 5
     assert t["counters"]["strict.accepted"] == 20
+
+
+
+def _inner_hit(text: str, eid: str = "E1") -> dict:
+    return {
+        "_source": {"text": text, "event_ids": [eid]},
+        "_nested": {"field": "multidim_event_json", "offset": 0},
+    }
+
+
+def test_trace_counts_inner_hit_omissions_and_source_rescue_without_data(monkeypatch, caplog):
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    monkeypatch.setenv("SRAF_EVIDENCE_RESCUE", "1")
+    monkeypatch.setenv("SRAF_EVIDENCE_SOURCE_REFILL", "1")
+    rows = [
+        "金磚 峰會 first STRONG_SECRET",
+        "unrelated inner secret",
+        "second unrelated inner secret",
+        "金磚 fourth SOURCE_SECRET",
+        "峰會 fifth SOURCE_SECRET",
+    ]
+    hit = _hit(rows)
+    hit["inner_hits"] = {"evi": {"hits": {"hits": [
+        _inner_hit(text) for text in rows[:3]
+    ]}}}
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        _, evidence, _ = _build([hit])
+    assert len(evidence) == 3
+    assert evidence[0]["match_policy"] == "strict"
+    assert [row["match_policy"] for row in evidence[1:]] == [
+        "bounded_rescue", "bounded_rescue"
+    ]
+    trace, = _traces(caplog)
+    counts = trace["counters"]
+    assert trace["strict_accepted"] == 1
+    assert counts["parser.source_candidates"] == 5
+    assert counts["parser.inner_returned"] == 3
+    assert counts["strict.topic_rejected"] == 2
+    assert counts["source_refill.weak_candidates"] == 2
+    assert counts["source_refill.weak_selected"] == 2
+    assert counts["bounded_rescue.selected"] == 0
+    assert trace["output_evidence"] == 3
+    serialized = json.dumps(trace, ensure_ascii=False)
+    for secret in [
+        "STRONG_SECRET", "SOURCE_SECRET", "SENSITIVE-UUID",
+        "SENSITIVE-ES-ID", "SENSITIVE-TITLE", "金磚", "峰會",
+    ]:
+        assert secret not in serialized
+
+
+def test_trace_source_strict_selected_precedes_weak(monkeypatch, caplog):
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    monkeypatch.setenv("SRAF_EVIDENCE_RESCUE", "1")
+    monkeypatch.setenv("SRAF_EVIDENCE_SOURCE_REFILL", "1")
+    rows = [
+        "金磚 峰會 initial strong",
+        "irrelevant first inner",
+        "irrelevant second inner",
+        "金磚 峰會 source strong",
+        "金磚 source weak",
+    ]
+    hit = _hit(rows)
+    hit["inner_hits"] = {"evi": {"hits": {"hits": [
+        _inner_hit(text) for text in rows[:3]
+    ]}}}
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        _, evidence, _ = _build([hit])
+    assert [row["match_policy"] for row in evidence] == [
+        "strict", "strict", "bounded_rescue"
+    ]
+    trace, = _traces(caplog)
+    counts = trace["counters"]
+    assert counts["source_refill.strict_candidates"] == 1
+    assert counts["source_refill.strict_selected"] == 1
+    assert counts["source_refill.weak_candidates"] == 1
+    assert counts["source_refill.weak_selected"] == 1
+    assert counts["source_refill.unselected_by_target"] == 0
+    assert trace["strict_accepted"] == 1  # original pre-rescue count
+
+
+def test_trace_records_original_bounded_rescue_when_source_flag_off(monkeypatch, caplog):
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    monkeypatch.setenv("SRAF_EVIDENCE_RESCUE", "1")
+    monkeypatch.delenv("SRAF_EVIDENCE_SOURCE_REFILL", raising=False)
+    hit = _hit([
+        "金磚 峰會 baseline strong", "金磚 weak one", "峰會 weak two"
+    ])
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        _, evidence, _ = _build([hit])
+    assert len(evidence) == 3
+    trace, = _traces(caplog)
+    assert trace["counters"]["bounded_rescue.selected"] == 2
+    assert "source_refill.strict_candidates" not in trace["counters"]
+
+
+def test_trace_rejects_arbitrary_key_and_non_integer_count(monkeypatch, caplog):
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    trace = EvidenceTrace.from_env()
+    assert trace is not None
+    trace.stage_count("SENSITIVE-EVENT-ID", 3)
+    trace.stage_count("source_refill.weak_selected", True)
+    trace.stage_count("bounded_rescue.selected", 9999999999)
+    trace.stage_count("bounded_rescue.selected", 2)
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        trace.emit(output_hits=0, output_evidence=0, strict_count=0, relaxed_used=False)
+    record, = _traces(caplog)
+    assert record["counters"] == {"bounded_rescue.selected": 2}
+    assert "SENSITIVE-EVENT-ID" not in json.dumps(record)
