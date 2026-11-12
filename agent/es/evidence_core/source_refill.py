@@ -151,9 +151,11 @@ def _source_projection(source: Any) -> Optional[dict]:
             if not isinstance(item, dict):
                 continue
             text = item.get("text")
-            if not isinstance(text, str) or not text.strip():
+            # Native _source lists can contain very large strings. Reject on
+            # length before strip() (which may allocate a full second string).
+            if not isinstance(text, str) or len(text) > MAX_SOURCE_TEXT_CHARS:
                 continue
-            if len(text) > MAX_SOURCE_TEXT_CHARS:
+            if not text.strip():
                 continue
             if total_chars + len(text) > MAX_SOURCE_TOTAL_CHARS:
                 break
