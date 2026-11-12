@@ -409,3 +409,22 @@ def test_rejected_id_does_not_create_partial_event_link(monkeypatch):
     rows[3]["event_ids"] = ["E1", "E_UNKNOWN" * 100]
     _, ev, _ = _build([_hit(rows, inner_rows=rows[:3])])
     assert [x["text"] for x in ev] == ["甲軸乙軸丙軸核心"]
+
+
+def test_oversized_native_source_text_is_rejected_before_strip(monkeypatch):
+    _enable(monkeypatch)
+
+    class StripBomb(str):
+        def strip(self, *_args, **_kwargs):
+            raise AssertionError("oversized source string must not be copied by strip")
+
+    rows = [
+        _snippet("甲軸乙軸丙軸核心"),
+        _snippet("無關一"), _snippet("無關二"),
+        _snippet(StripBomb(" " + "甲軸" * 2000 + " ")),
+        _snippet("乙軸安全的下一段"),
+    ]
+    _, evidence, _ = _build([_hit(rows, inner_rows=rows[:3])])
+    assert [e["text"] for e in evidence] == [
+        "甲軸乙軸丙軸核心", "乙軸安全的下一段"
+    ]
