@@ -20,3 +20,7 @@
 ## Archived History
 - Original unabridged memory: `.codex/archive/memory.md-20261112-103600.md` (verified Git blob SHA `6441409ff5b433d4362c8af5de0b856f2775ff02`).
 - Other originals: architecture `f4637f782b33c39c410eff822fd1bc6a44d6c80b`, api_contract `3ca0b353bac76615fa2aaa336b7c5d2e0ab3c313`, known_issues `3a5dec9e56b9999c45c5873d7f593b630f4a6358`, decisions `723b3602d143d5df5d15f773d23e43dbdebb6db2`; all same archive timestamp, SHA verified.
+
+
+- **2026-11-12 #403 MERGED:** official/common name single-axis synonym fix passed exact-head Python3.10/3.11 83 each, OFF-1/2/operator CI, independent Codex review complete clean; squash `d7e1387c75845979ca3f3fdce15d37e1dbd1694a`. Real private ES recall remains NOT TESTED.
+- **2026-11-12 #397 P1-b candidate (NOT MERGED):** Opt-in `SRAF_EVIDENCE_RESCUE=1` bounded same-hit weak Evidence candidate pool, with canonical date-check and strong strict anchor, only for 1-2 strict candidates; no extra ES/LLM and default unchanged. `tests/test_sraf_bounded_evidence_rescue.py` and dual-version Hosted CI created; **latest-head Hosted CI and independent Codex code review PENDING** at drafting, real ES/LLM/Report Job and Linux deployment NOT TESTED. Existing #401/#402 Evidence Trace pending and overlap builder/active memory; reconcile before merging.
