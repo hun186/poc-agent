@@ -341,3 +341,71 @@ def test_no_inner_hits_source_already_parsed_is_not_re_read(monkeypatch):
         "甲軸乙軸丙軸核心", "甲軸直接從source讀取"
     ]
     assert ev[1]["match_policy"] == "bounded_rescue"
+
+
+@pytest.mark.parametrize("field", ["event_ids", "source_id", "paragraph_id"])
+def test_source_identifier_bomb_rejected_before_parse(monkeypatch, field):
+    _enable(monkeypatch)
+    rows = [
+        _snippet("甲軸乙軸丙軸核心"),
+        _snippet("無關一"), _snippet("無關二"),
+        _snippet("甲軸惡意超長欄位"),
+        _snippet("乙軸正常後續"),
+    ]
+    if field == "event_ids":
+        # Reproduces the P1 review: short text, 100k JSON-encoded IDs.
+        rows[3][field] = json.dumps(["E1"] * 100_000)
+    else:
+        rows[3][field] = "X" * 600_000
+    h = _hit(rows, inner_rows=rows[:3])
+    _, evidence, _ = _build([h])
+    assert [ev["text"] for ev in evidence] == [
+        "甲軸乙軸丙軸核心", "乙軸正常後續"
+    ]
+    assert len(str(evidence)) < 10000
+
+
+@pytest.mark.parametrize("encoded", [False, True])
+def test_source_event_ids_over_cardinality_cap_are_not_truncated(monkeypatch, encoded):
+    _enable(monkeypatch)
+    rows = [
+        _snippet("甲軸乙軸丙軸核心"),
+        _snippet("無關一"), _snippet("無關二"),
+        _snippet("甲軸不應只取部分Event"),
+        _snippet("乙軸後續合法資料"),
+    ]
+    ids = ["E1"] * (source_refill.MAX_IDS_PER_FIELD + 1)
+    rows[3]["event_ids"] = json.dumps(ids) if encoded else ids
+    _, ev, _ = _build([_hit(rows, inner_rows=rows[:3])])
+    assert [x["text"] for x in ev] == [
+        "甲軸乙軸丙軸核心", "乙軸後續合法資料"
+    ]
+
+
+def test_oversized_structured_timeline_identifiers_fail_closed(monkeypatch):
+    _enable(monkeypatch)
+    rows = [
+        _snippet("甲軸乙軸丙軸核心"),
+        _snippet("無關一"), _snippet("無關二"),
+        _snippet("甲軸理應放棄這個結構化文件"),
+    ]
+    h = _hit(rows, inner_rows=rows[:3])
+    h["_source"]["multidim_event_json"][0]["Event_Timeline"] = [{
+        "event_ids": json.dumps(["E1"] * 100_000),
+        "time_iso": D0,
+        "time_precision": "day",
+    }]
+    _, ev, _ = _build([h])
+    assert [x["text"] for x in ev] == ["甲軸乙軸丙軸核心"]
+
+
+def test_rejected_id_does_not_create_partial_event_link(monkeypatch):
+    _enable(monkeypatch)
+    rows = [
+        _snippet("甲軸乙軸丙軸核心"),
+        _snippet("無關一"), _snippet("無關二"),
+        _snippet("甲軸包含無法確認的事件"),
+    ]
+    rows[3]["event_ids"] = ["E1", "E_UNKNOWN" * 100]
+    _, ev, _ = _build([_hit(rows, inner_rows=rows[:3])])
+    assert [x["text"] for x in ev] == ["甲軸乙軸丙軸核心"]
