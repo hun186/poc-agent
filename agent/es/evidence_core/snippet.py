@@ -28,7 +28,6 @@ def build_evidence_snippet(
     date_from: Optional[str],
     date_to: Optional[str],
     allowed_years: Optional[Set[int]] = None,
-    rejection_reason: Optional[list[str]] = None,
 ) -> Optional[EvidenceSnippet]:
     """
     把單一 hit + citation 轉成一筆 evidence_snippet：
@@ -36,14 +35,8 @@ def build_evidence_snippet(
     - 套用 date_from / date_to 篩選
     - 帶上 uuid / subject / article_title / paragraph_id / source_id
     """
-    def reject(code: str) -> None:
-        # Strict fixed reason codes, never store evidence text or dates.
-        if rejection_reason is not None:
-            rejection_reason.append(code)
-        return None
-
     if not c.text:
-        return reject("empty_text")
+        return None
 
     # Structured event date is authoritative for a linked citation. A
     # multiple-event citation can match any linked interval but must not
@@ -69,14 +62,14 @@ def build_evidence_snippet(
     ]
     if c.linked_times:
         if (date_from or date_to or allowed_years) and not matched_points:
-            return reject("date_unmatched")
+            return None
         di = c.date_iso if c.linked_complete and len(c.linked_times) == 1 else None
     elif h.has_structured_events:
         # No resolvable link: use an explicit YYYY-MM-DD in the evidence if
         # present, but never replace a missing event date with article date.
         di = c.date_iso
         if (date_from or date_to) and not di:
-            return reject("date_unknown")
+            return None
     else:
         # Backward compatibility for legacy documents without structured events.
         di = c.date_iso or h.article_date_iso
@@ -85,19 +78,19 @@ def build_evidence_snippet(
     norm_di = normalize_iso_date(di)
     if norm_di:
         if date_from and norm_di < date_from:
-            return reject("date_before")
+            return None
         if date_to and norm_di > date_to:
-            return reject("date_after")
+            return None
     if allowed_years and not c.linked_times:
         if not norm_di or int(norm_di[:4]) not in allowed_years:
-            return reject("year_unmatched")
+            return None
 
     article_norm = normalize_iso_date(h.article_date_iso)
     snippet_norm = normalize_iso_date(di)
 
     uuid = h.uuid or c.uuid
     if not uuid:
-        return reject("no_uuid")
+        return None
 
     return EvidenceSnippet(
         uuid=uuid,

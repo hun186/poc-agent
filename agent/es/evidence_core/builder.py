@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .models import EvidenceBuildConfig, EvidenceSnippet, HitDoc
 from .parser import parse_es_hits
-from .trace import EvidenceTrace
 from .snippet import build_evidence_snippet
+from .rescue import bounded_rescue, TARGET_EVIDENCE_COUNT
+from .source_refill import source_refill_candidates
 from .topic_match import match_topic
 from .text_norm import normalize_for_match
 
@@ -23,24 +25,12 @@ def collect_snippets(
     term_groups: List[Set[str]],
     min_groups_required: Optional[int],
     allowed_years: Optional[Set[int]] = None,
-    trace: EvidenceTrace | None = None,
-    stage: str = "strict",
 ) -> List[EvidenceSnippet]:
     out: List[EvidenceSnippet] = []
     for h in hits:
-        for citation_ordinal, c in enumerate(h.citations):
-            reason: list[str] | None = [] if trace is not None else None
-            ev = build_evidence_snippet(
-                h, c, date_from=date_from, date_to=date_to,
-                allowed_years=allowed_years, rejection_reason=reason,
-            )
+        for c in h.citations:
+            ev = build_evidence_snippet(h, c, date_from=date_from, date_to=date_to, allowed_years=allowed_years)
             if ev is None:
-                if trace is not None:
-                    trace.citation(
-                        stage=stage, hit_ordinal=h.source_hit_ordinal,
-                        citation_ordinal=citation_ordinal,
-                        reason=reason[0] if reason else "date_unknown",
-                    )
                 continue
 
             ok, hit_terms, scope, gh = match_topic(
@@ -48,17 +38,7 @@ def collect_snippets(
                 min_groups_required=min_groups_required
             )
             if not ok:
-                if trace is not None:
-                    trace.citation(
-                        stage=stage, hit_ordinal=h.source_hit_ordinal,
-                        citation_ordinal=citation_ordinal, reason="topic_rejected",
-                    )
                 continue
-            if trace is not None:
-                trace.citation(
-                    stage=stage, hit_ordinal=h.source_hit_ordinal,
-                    citation_ordinal=citation_ordinal, reason="accepted",
-                )
 
             ev.match_policy = "relaxed" if min_groups_required is not None else "strict"
             ev.match_scope = scope
@@ -91,11 +71,7 @@ def build_hits_and_evidence(
     term_groups = term_groups or []
     effective_terms = effective_terms or []
 
-    evidence_trace = EvidenceTrace.from_env()
-    out_hits, stats = parse_es_hits(
-        es_hits, query_for_snippet=query_for_snippet, config=config,
-        trace=evidence_trace,
-    )
+    out_hits, stats = parse_es_hits(es_hits, query_for_snippet=query_for_snippet, config=config)
 
     logger.info(
         "build_hits_and_evidence: es_hits=%d out_hits=%d citations=%d inner_used=%d source_evidence_used=%d fallback_used=%d "
@@ -113,10 +89,66 @@ def build_hits_and_evidence(
         term_groups=term_groups,
         min_groups_required=None,
         allowed_years=allowed_years,
-        trace=evidence_trace, stage="strict",
     )
-    strict_evidence_count = len(evidence)
     logger.info("build_hits_and_evidence: evidence strict=%d", len(evidence))
+
+    # Both stages are default OFF. Source refill additionally requires the
+    # original bounded-rescue opt-in; never affect existing installations.
+    rescue_enabled = os.getenv("SRAF_EVIDENCE_RESCUE", "") == "1"
+    source_enabled = (
+        rescue_enabled and os.getenv("SRAF_EVIDENCE_SOURCE_REFILL", "") == "1"
+    )
+    source_weak_candidates = []
+    if source_enabled and evidence:
+        # Source-only candidates are from already strong-anchored ES hits,
+        # revalidated against their own structured Event/Timeline dates.
+        source_strong, source_weak_candidates = source_refill_candidates(
+            es_hits, out_hits, evidence,
+            query_for_snippet=query_for_snippet,
+            date_from=date_from, date_to=date_to,
+            allowed_years=allowed_years, term_groups=term_groups,
+        )
+        source_strong_added = 0
+        for h, citation, source_ev in source_strong:
+            if len(evidence) >= TARGET_EVIDENCE_COUNT:
+                break
+            h.citations.append(citation)
+            evidence.append(source_ev)
+            source_strong_added += 1
+        if source_strong_added:
+            logger.info(
+                "build_hits_and_evidence: source_refill_strict_count=%d",
+                source_strong_added,
+            )
+
+    # First rescue from already-parsed citations before considering weaker
+    # source-only candidates; strict Evidence always stays at the front.
+    if rescue_enabled and evidence:
+        rescued = bounded_rescue(
+            out_hits, evidence,
+            date_from=date_from, date_to=date_to,
+            allowed_years=allowed_years, term_groups=term_groups,
+        )
+        if rescued:
+            logger.info(
+                "build_hits_and_evidence: bounded_rescue_count=%d",
+                len(rescued),
+            )
+            evidence.extend(rescued)
+
+    if source_enabled and source_weak_candidates and evidence:
+        source_weak_added = 0
+        for h, citation, source_ev in source_weak_candidates:
+            if len(evidence) >= TARGET_EVIDENCE_COUNT:
+                break
+            h.citations.append(citation)
+            evidence.append(source_ev)
+            source_weak_added += 1
+        if source_weak_added:
+            logger.info(
+                "build_hits_and_evidence: source_refill_weak_count=%d",
+                source_weak_added,
+            )
 
     # 2) relax
     if not evidence and out_hits and term_groups:
@@ -133,7 +165,6 @@ def build_hits_and_evidence(
                 term_groups=term_groups,
                 min_groups_required=req,
                 allowed_years=allowed_years,
-                trace=evidence_trace, stage="relaxed",
             )
             logger.info("build_hits_and_evidence: evidence relaxed(req=%d)=%d", req, len(tmp))
             if tmp:
@@ -146,17 +177,7 @@ def build_hits_and_evidence(
         for h in out_hits[:config.max_docs_for_fallback]:
             if not h.citations:
                 continue
-            reason: list[str] | None = [] if evidence_trace is not None else None
-            ev = build_evidence_snippet(
-                h, h.citations[0], date_from=date_from, date_to=date_to,
-                allowed_years=allowed_years, rejection_reason=reason,
-            )
-            if evidence_trace is not None:
-                evidence_trace.citation(
-                    stage="fallback_no_terms", hit_ordinal=h.source_hit_ordinal,
-                    citation_ordinal=0,
-                    reason="fallback_selected" if ev else (reason[0] if reason else "date_unknown"),
-                )
+            ev = build_evidence_snippet(h, h.citations[0], date_from=date_from, date_to=date_to, allowed_years=allowed_years)
             if ev:
                 evidence.append(ev)
         logger.info("build_hits_and_evidence: evidence fallback(no_terms)=%d", len(evidence))
@@ -167,36 +188,16 @@ def build_hits_and_evidence(
         eff_norm = [(normalize_for_match(t), t) for t in effective_terms if t]
 
         for h in out_hits:
-            for citation_ordinal, c in enumerate(h.citations):
-                reason: list[str] | None = [] if evidence_trace is not None else None
-                ev = build_evidence_snippet(
-                    h, c, date_from=date_from, date_to=date_to,
-                    allowed_years=allowed_years, rejection_reason=reason,
-                )
+            for c in h.citations:
+                ev = build_evidence_snippet(h, c, date_from=date_from, date_to=date_to, allowed_years=allowed_years)
                 if not ev:
-                    if evidence_trace is not None:
-                        evidence_trace.citation(
-                            stage="fallback_any_term", hit_ordinal=h.source_hit_ordinal,
-                            citation_ordinal=citation_ordinal,
-                            reason=reason[0] if reason else "date_unknown",
-                        )
                     continue
 
                 haystack_norm = normalize_for_match((ev.text or "") + " " + (h.subject or "") + " " + (h.article_title or ""))
                 hit_terms = [orig for norm, orig in eff_norm if norm and norm in haystack_norm]
                 if not hit_terms:
-                    if evidence_trace is not None:
-                        evidence_trace.citation(
-                            stage="fallback_any_term", hit_ordinal=h.source_hit_ordinal,
-                            citation_ordinal=citation_ordinal, reason="topic_rejected",
-                        )
                     continue
 
-                if evidence_trace is not None:
-                    evidence_trace.citation(
-                        stage="fallback_any_term", hit_ordinal=h.source_hit_ordinal,
-                        citation_ordinal=citation_ordinal, reason="fallback_selected",
-                    )
                 ev.match_scope = "fallback_any_term"
                 ev.weak_evidence = True
                 ev.synonym_hits = sorted(set(hit_terms))
@@ -286,10 +287,4 @@ def build_hits_and_evidence(
         for e in evidence
     ]
 
-    if evidence_trace is not None:
-        evidence_trace.emit(
-            output_hits=len(filtered_hits_dict), output_evidence=len(evidence_dict),
-            strict_count=strict_evidence_count,
-            relaxed_used=any(e.match_policy == "relaxed" for e in evidence),
-        )
     return filtered_hits_dict, evidence_dict, syn_snippets

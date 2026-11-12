@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from .models import EvidenceBuildConfig, HitDoc, Citation
-from .trace import EvidenceTrace
 from .json_utils import as_blocks, json_load_maybe
 from .date_utils import (
     parse_article_date_iso,
@@ -23,7 +22,6 @@ def parse_es_hits(
     *,
     query_for_snippet: str,
     config: EvidenceBuildConfig,
-    trace: EvidenceTrace | None = None,
 ) -> Tuple[List[HitDoc], Dict[str, int]]:
     stats = {
         "n_es_hits": len(es_hits or []),
@@ -122,8 +120,6 @@ def parse_es_hits(
         
         # citations: inner_hits 優先
         citations: List[Citation] = []
-        chosen_mode = "none"
-        source_items_examined = 0
         ih_hits = named_inner_hits(h, "evi")
         if ih_hits:
             for eh in ih_hits[:config.inner_hit_topk]:
@@ -171,7 +167,6 @@ def parse_es_hits(
                     ))
 
             if citations:
-                chosen_mode = "inner"
                 stats["n_inner_used"] += 1
 
         # A document can match another nested clause and therefore have no `evi`
@@ -185,8 +180,6 @@ def parse_es_hits(
                 if not isinstance(snippets, list):
                     continue
                 for item in snippets:
-                    if trace is not None:
-                        source_items_examined += 1
                     citation = citation_from_source(item, block_index)
                     if citation is not None:
                         citations.append(citation)
@@ -195,40 +188,16 @@ def parse_es_hits(
                 if len(citations) >= config.citations_per_doc:
                     break
             if citations:
-                chosen_mode = "source"
                 stats["n_source_evidence_used"] += 1
 
         # Legacy fallback, only when neither inner hits nor structured source won.
         if not citations:
             snippet = make_fallback_snippet(raw_content, query_for_snippet or "", width=config.fallback_width)
             if snippet:
-                chosen_mode = "fallback"
                 stats["n_fallback_used"] += 1
                 citations.append(Citation(text=snippet))
 
         stats["n_total_citations"] += len(citations)
-        if trace is not None:
-            raw_source_count = 0
-            for block in blocks:
-                raw_items = json_load_maybe(block.get("evidence_snippets"))
-                if isinstance(raw_items, list):
-                    raw_source_count += len(raw_items)
-                elif isinstance(raw_items, dict):
-                    raw_source_count += 1
-            trace.parsed_hit(
-                ordinal=source_hit_ordinal,
-                source_count=raw_source_count,
-                inner_count=len(ih_hits),
-                parsed_count=len(citations),
-                selected_count=min(len(citations), config.citations_per_doc),
-                mode=chosen_mode,
-                # If source parsing hit its cap, remaining source items were
-                # NOT examined. Their date/topic/validity is still unknown.
-                source_uninspected_after_cap=(
-                    max(0, raw_source_count - source_items_examined)
-                    if chosen_mode == "source" else 0
-                ),
-            )
 
         # Link evidence by event_ids; never assign unrelated article dates to
         # a structured Event. Legacy documents without Event/Timeline preserve
