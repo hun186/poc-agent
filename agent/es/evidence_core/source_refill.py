@@ -115,6 +115,10 @@ def _source_projection(source: Any) -> Optional[dict]:
     raw_blocks = source.get("multidim_event_json")
     if isinstance(raw_blocks, str) and len(raw_blocks) > MAX_SOURCE_JSON_CHARS:
         return None
+    # as_blocks(list) traverses the entire list and allocates a second copy:
+    # check native cardinality BEFORE any normalization or iteration.
+    if isinstance(raw_blocks, list) and len(raw_blocks) > MAX_SOURCE_BLOCKS:
+        return None
     blocks = as_blocks(raw_blocks)
     if not blocks or len(blocks) > MAX_SOURCE_BLOCKS:
         return None
