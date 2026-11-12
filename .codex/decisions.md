@@ -27,3 +27,6 @@
 
 ## Archived History
 - Full pre-compaction decisions: `.codex/archive/decisions.md-20261112-103600.md`, verified source SHA `723b3602d143d5df5d15f773d23e43dbdebb6db2`.
+
+
+- **2026-11-12 #397 P1-b design (not merged):** To avoid unsafe broadening, default `SRAF_EVIDENCE_RESCUE` OFF. Opt-in eligible only when 1-2 strict citations exist, ≥2 topic groups, strong strict Evidence-text anchor in same ES source-hit ordinal, canonical Event/Timeline date validator passes and candidate has a topic **text** match. Mark rescued citations weak, deterministically prefer topic-group count and ES relevance; skip oversized text, cap candidates/characters/inspected citations/documents. No model/ES calls, no cross-doc UUID correlation, no relaxation of zero-count existing fallback. Leave global adaptive P1-c and token-budget P1-d separate.
