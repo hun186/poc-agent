@@ -428,3 +428,31 @@ def test_oversized_native_source_text_is_rejected_before_strip(monkeypatch):
     assert [e["text"] for e in evidence] == [
         "甲軸乙軸丙軸核心", "乙軸安全的下一段"
     ]
+
+
+def test_native_oversized_block_list_rejected_before_iteration():
+    class NeverIterate(list):
+        def __iter__(self):
+            raise AssertionError("must enforce native list cap before as_blocks")
+
+    source = {
+        "uuid": "test",
+        "multidim_event_json": NeverIterate(
+            [{}] * (source_refill.MAX_SOURCE_BLOCKS + 1)
+        ),
+    }
+    assert source_refill._source_projection(source) is None
+
+
+def test_native_allowed_block_count_preserves_normal_source_refill(monkeypatch):
+    _enable(monkeypatch)
+    rows = [
+        _snippet("甲軸乙軸丙軸核心"),
+        _snippet("無關一"), _snippet("無關二"),
+        _snippet("乙軸正常來源補充"),
+    ]
+    h = _hit(rows, inner_rows=rows[:3])
+    assert isinstance(h["_source"]["multidim_event_json"], list)
+    assert [e["text"] for e in _build([h])[1]] == [
+        "甲軸乙軸丙軸核心", "乙軸正常來源補充"
+    ]
