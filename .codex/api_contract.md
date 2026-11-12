@@ -67,3 +67,7 @@
 - **2026-11-09 Report Job history filter candidate:** `GET /v1/report/jobs?limit=20&offset=0&status=failed` accepts only optional `status ∈ {queued,running,completed,failed,interrupted}`; other values are HTTP 422. Response adds `status: <selected enum|null>` and retains owner-scoped `items/limit/offset` safe summary projection, no total. Filter applies to owner's database query before page window. No new privilege, cross-owner admin listing, write, SQL migration or mutable job action.
 
 - **2026-11-09 Product manual Run lookup candidate (no new API):** authorized browser reads existing `GET /v1/requirement-runs/{run_id}` where server presenter returns `run_id, task_id`; only after matching requested ID and checking safe task ID does browser read `GET /v1/requirement-runs/{run_id}/items?limit=20&offset=0`. No direct arbitrary task binding, new route, write or scheduler trigger. Token changes drop in-flight lookup and clear query input.
+
+## Keyword equivalence (internal, no API surface changed)
+
+- SRAF official/common synonym coalescence in `agent/es/query_terms.py` alters only the internal keyword group to Evidence topic matcher handoff. It does not change any public route, Product/Preview contracts, Excel→SQL source-stats, Report Job auth/idempotency/list, SQLite/SQL/ES writes, date handling, or LLM call count. This candidate remains unmerged pending latest-head CI/Review and user confirmation.
