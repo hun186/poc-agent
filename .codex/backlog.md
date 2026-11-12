@@ -78,6 +78,25 @@
 
 - **2026-11-10 #395 live verification handoff:** Build standalone `sraf-date-readonly.zip` on Windows/CI from latest reviewed PR HEAD; transfer using existing one-way 7z/Robocopy update mechanism; extract `_sraf_date_readonly` next to SRAF and invoke `bash _sraf_date_readonly/run.sh` (no Linux Git commands). Read redacted `news_test` JSON; assess strict CA+SAN, nested Mapping, Event/Timeline/date/Evidence/paging; record PASS_PARTIAL/INCOMPLETE truthfully. Live ES, report LLM/DOCX and performance remain pending. No auto Merge #395 based only on packaging or synthetic results.
 
-- **2026-11-11 #397 report-side P1-a counts candidate PR #402 (OPEN):** default-disabled `SRAF_EVIDENCE_TRACE=1` reports exact Data Agent Evidence strong/weak/picked/compact/field-packed/LLM-bound count with prompt *character* length, and logs zero-report incomplete skip. Removes prior unconditional content-bearing per-evidence stdout loop. New standalone Python3.10/3.11 tests + workflow staged; code-head 6/6 Hosted success, latest doc-head Hosted+formal review and live Report Job/DOCX pending. No new LLM calls/ES writes or report behavior changes.
-- **Unfinished #397:** #401 parser reason trace and #402 report-stage counts cannot yet correlate a single citation across ES candidate pages → parser → topic/date → dedup → LLM. Add future bounded request-scoped correlation (no raw UUID/content); track per-snippet compression/drop reason, unique source coverage, hard tokenizer-specific budget and high/low deterministic recall before enabling any automatic extra model pass. Existing ES/report debug logs, and especially `trace["llm"]["report"]` containing the prompt, require independent privacy audit. Do not call `prompt_chars` a token budget.
-- **Concurrent PR merge order:** #400 Editor, #401 retrieval, and #402 report are independent branches from main. Required .codex compactions overlap. Before merge reconcile active project memory/archive links without discarding other branches, check latest-head CI/Codex/security and operator release constraints; never auto-merge #396 SAN trust exception in passing.
+
+## 2026-11-12 P1 — 官方全名／通稱的語意軸去重（供使用者確認）
+
+- **Candidate PR not merged:** `agent/es/query_terms.py` Prompt 查核官方全名↔通稱/簡稱/俗稱、等價核心詞併為一軸、無歧義的簡繁變體、共享歧義非核心別名剔除；固定案例離線測試、Python3.10/3.11 CI、正式 Review、使用者前後對照需完成。
+- **Outstanding, separately scoped:** 實際 `news_test` analyzer、mapping、ES candidate retrieval and date-scoped Evidence/report recall still NOT TESTED; LLM未產生官方別名時不保證召回；LLM關閉時的人工同義詞家族目前仍可能形成多個必要核心詞，須另設計精準同義詞 family group 接口與負例測試。
+- **Merge warning:** 目前 `#400/#401/#402` 同時修改 active `.codex`；本工作依 `AGENTS.md` 先以 immutable SHA 驗證後保存五檔全文到 `.codex/archive/*-20261112-103600.md`，並濃縮 active 文件。合併前須保留所有 PR 的仍有效 API 合約/架構決策與 open issues，不可覆蓋他分支；使用者要求先看結果確認，不預先 merge。
+
+
+## 2026-11-12 #397 P1-b bounded rescuer (candidate)
+
+- Unmerged opt-in `SRAF_EVIDENCE_RESCUE=1` bounded parser-citation pool supports low-count strict (1–2) date-safe same-document weak rescue with hard caps and deterministic scoring. Python3.10/3.11 CI and independent latest-HEAD Codex review required. Keep off until actual operator evidence acceptance.
+- **Next P1-c/d:** cover ES `inner_hits.size=3` source Evidence omissions without unbounded memory/re-fetch; global per-request budget/dedup and coverage/token-aware high-volume selection; integrate opt-in #401/#402 Evidence Trace for per-stage counts and reason codes; real `news_test` 5→1 incident diagnosis, recall/precision/latency p50/p95 still needed. Rebase/reconcile active `.codex` with open PRs and preserve #403 name-axis decision.
+
+## 2026-11-12 — #397 P1-c source Evidence refill (first bounded slice)
+
+- Candidate PR: default-OFF `SRAF_EVIDENCE_SOURCE_REFILL=1` **requires** `SRAF_EVIDENCE_RESCUE=1`; bounded source-only reparse for structured Evidence omitted by ES `inner_hits.size=3`, same strict-anchored original ordinal, canonical Event/Timeline date guard, strong-first/weak-marked candidate fill up to combined 3. Python3.10/3.11, date/refill/topic regression and independent exact-head formal Review are mandatory.
+- **Further P1-c:** real Guterres 2023-08-24 5→1 root-cause analysis with per-segment reasons (see #401/#402 Evidence Trace); never infer 5 candidates were all present in `_source`. When enabled, consider query-level/phase-level global budgets, source diversity, evidence re-ranking, explicit count of uninspected source rows and safe operator comparison.
+- **P1-d:** token-budget/coverage-aware high-volume top-k, deterministic signal and full report LLM validation still unresolved. No private `news_test`, p50/p95, Report Job, generated DOCX or airgap rollout was run. Integrate open #401/#402 active memory and builder changes before merging.
+
+## 2026-11-12 — #397 P1-a trace integration (#401)
+- Candidate PR #401 rebased through an explicit two-parent main integration, preserving #403/#404/#405 and restoring reviewed count-only retrieval trace. Added counters for selected #404 weak candidates and #405 bounded source strict/weak candidate/selection; keep `SRAF_EVIDENCE_TRACE=1` separate from both refill flags. Verify parser cap, Event/Timeline date failures, 5→1 case, privacy, 500+ items, and exact default-OFF equality with dual-version Hosted CI and independent exact-head Review before merge.
+- **Still open:** #402 report-stage actual Evidence/LLM-input count-only trace and removal of raw per-citation log; true private `news_test` operator case, per-request cross-stage ID/union counts, p50/p95, token budget, source diversity, and true report correctness remain NOT TESTED. Review and integrate #402 from current main without overwriting either trace or existing Excel/Product/Report API contracts.
