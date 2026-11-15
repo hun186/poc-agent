@@ -68,6 +68,7 @@ def manifest():
         ("running", ExecutionState.RUNNING),
         ("completed", ExecutionState.COMPLETED),
         ("failed", ExecutionState.FAILED),
+        ("cancelled", ExecutionState.FAILED),
         ("interrupted", ExecutionState.RECOVERY_REQUIRED),
     ],
 )
@@ -169,3 +170,16 @@ def test_submit_auth_and_semantic_conflicts_are_unchanged(
         report_gateway.submit(manifest(), idempotency_key=submission_id("i"))
     assert caught.value.category == category
     assert caught.value.safe_message == safe_message
+
+
+def test_cancelled_native_job_is_terminal_and_exposes_safe_failure(tmp_path):
+    translated = translate_native_state("cancelled")
+    assert translated.state == ExecutionState.FAILED
+    assert translated.safe_error is not None
+    assert translated.safe_error.category == FailureCategory.REMOTE_EXECUTION_FAILED
+    assert translated.safe_error.safe_message == "remote_execution_cancelled"
+    report_gateway, session = gateway(tmp_path, Response(200, {"status": "cancelled"}))
+    observed = report_gateway.inspect(ExecutionHandle("submission", "job-1"))
+    assert observed.state == ExecutionState.FAILED
+    assert observed.safe_error.safe_message == "remote_execution_cancelled"
+    assert session.call[0][0] == "GET"
