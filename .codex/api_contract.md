@@ -79,6 +79,10 @@
 ## 2026-11-15 #413 internal ES page admission candidate (NOT MERGED)
 - Internal-only refill_date_filtered_evidence gains optional callable admit_next_page, default None. With None, output and query_meta remain unchanged. If a future trusted caller injects a policy and rejects additional pages, the returned date_candidate_refill metadata contains incomplete_due_to_page_admission=true and note=additional_page_admission_denied; search_news preserves result_incomplete=true on this signal. No public HTTP route, request-schema, auth, report result, or source/LLM semantics are intentionally changed by this candidate. Such injection is NOT enabled in current production tool routing.
 
+## 2026-11-15 #413 B0 — internal planner types only (NOT MERGED)
+- No public HTTP API or existing request/response change. Internal `QueryConstraints` carries server-owned frozen user question, separate event/analysis DateWindow, indexes, field filters, entities, core terms and user-locked keyword policy.
+- `RoundEvidenceSummary` is strictly request-wide, not #414 slice health. `AdaptiveRetrievalPlanner.propose_next(constraints, history, budget)` accepts an externally injected callable and returns a bounded internal `PlannerDecision`: stop / date_recheck / search with only candidate optional terms and target aspects. No direct ES call, LLM runtime wiring or automatic Chat/Job dispatch.
+
 ## 2026-11-15 #413 Report Job queue-control candidate (NOT MERGED)
 - POST /v1/report/jobs: unchanged request and 202 response. Optional internal REPORT_JOBS_MAX_ACTIVE=N (1..10000, default 0/unlimited); if N active queued+running jobs already exist, return 429 with Retry-After: 30. Exact owner/idempotency-key replay of an existing job still returns 202; hash mismatch remains 409.
 - POST /v1/report/jobs/{job_id}/cancel: requires REPORT_JOB_CREATE plus same owner (or REPORT_JOB_ADMIN); only queued jobs CAS to cancelled and return {job_id,status:"cancelled"}. Missing/cross-owner returns 404; running/completed/other terminal returns 409. NOT a running-job abort endpoint.
