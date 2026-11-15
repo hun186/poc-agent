@@ -12,11 +12,17 @@ from .models import HitDoc
 from .snippet import build_evidence_snippet
 from .topic_match import match_topic
 from .question_anchor import ExplicitQuestionAnchor, text_explicitly_mentions_anchor
+from .event_anchor import same_event_as_strict_anchor
 
 
 MAX_SHADOW_CITATIONS = 256
 MAX_SHADOW_TEXT_CHARS = 262_144
 MAX_SHADOW_SINGLE_TEXT_CHARS = 4096
+# Max local strict-text anchors used to establish same-Event provenance in
+# this *diagnostic*. Drop later anchors conservatively rather than scan any
+# unbounded article/actor context or build an unconstrained Cartesian product.
+MAX_SHADOW_STRICT_SUBJECT_ANCHORS = 128
+MAX_SHADOW_STRICT_SUBJECT_ANCHORS_PER_HIT = 16
 
 
 @dataclass(frozen=True)
@@ -31,6 +37,10 @@ class TopicShadowCounts:
     explicit_subject_available: int = 0
     explicit_subject_direct_two_group_only: int = 0
     explicit_subject_not_direct_two_group_only: int = 0
+    strict_subject_text_anchors_in_sample: int = 0
+    same_event_subject_context_two_group_only: int = 0
+    no_same_event_subject_context_two_group_only: int = 0
+    subject_anchors_dropped_by_cap: int = 0
 
 
 def observe_topic_shadow(
@@ -56,6 +66,9 @@ def observe_topic_shadow(
     inspected = date_eligible = strict_count = 0
     unanchored_text = meta_only = oversized = chars = 0
     explicit_direct = explicit_not_direct = 0
+    strict_subject_anchors: dict[int, list] = {}
+    no_direct_candidates: list[tuple[HitDoc, object]] = []
+    anchors_count = anchors_dropped = 0
 
     for hit in hits:
         if inspected >= MAX_SHADOW_CITATIONS:
@@ -87,6 +100,25 @@ def observe_topic_shadow(
             )
             if accepted:
                 strict_count += 1
+                if (
+                    explicit_anchor is not None
+                    and hit.has_structured_events
+                    and text_explicitly_mentions_anchor(evidence.text, explicit_anchor)
+                    # The anchor's three semantic axes must be validated
+                    # independently by its TEXT, not borrowed from metadata.
+                    and match_topic(evidence.text, None, None, term_groups)[0]
+                ):
+                    current = strict_subject_anchors.setdefault(
+                        hit.source_hit_ordinal, [],
+                    )
+                    if (
+                        anchors_count < MAX_SHADOW_STRICT_SUBJECT_ANCHORS
+                        and len(current) < MAX_SHADOW_STRICT_SUBJECT_ANCHORS_PER_HIT
+                    ):
+                        current.append(evidence)
+                        anchors_count += 1
+                    else:
+                        anchors_dropped += 1
             elif groups_hit >= 2:
                 if scope in ("text", "mixed"):
                     unanchored_text += 1
@@ -98,8 +130,23 @@ def observe_topic_shadow(
                             explicit_direct += 1
                         else:
                             explicit_not_direct += 1
+                            no_direct_candidates.append((hit, citation))
                 elif scope == "meta":
                     meta_only += 1
+
+    # Resolve missing-literal candidates only against *already date-qualified*
+    # strictly text-matched subject evidence in the SAME original source hit,
+    # SAME structured block and overlapping Event ID. In particular, legacy
+    # docs cannot claim "same Event" from an article-wide match.
+    same_event_context = no_context = 0
+    for hit, citation in no_direct_candidates:
+        if hit.has_structured_events and any(
+            same_event_as_strict_anchor(hit, citation, anchor)
+            for anchor in strict_subject_anchors.get(hit.source_hit_ordinal, ())
+        ):
+            same_event_context += 1
+        else:
+            no_context += 1
 
     return TopicShadowCounts(
         inspected=inspected,
@@ -112,4 +159,8 @@ def observe_topic_shadow(
         explicit_subject_available=int(explicit_anchor is not None),
         explicit_subject_direct_two_group_only=explicit_direct,
         explicit_subject_not_direct_two_group_only=explicit_not_direct,
+        strict_subject_text_anchors_in_sample=anchors_count,
+        same_event_subject_context_two_group_only=same_event_context,
+        no_same_event_subject_context_two_group_only=no_context,
+        subject_anchors_dropped_by_cap=anchors_dropped,
     )
