@@ -37,6 +37,12 @@ _STAGE_COUNTS = frozenset({
     "shadow_3to2.explicit_subject_available",
     "shadow_3to2.explicit_subject_direct_two_group_only",
     "shadow_3to2.explicit_subject_not_direct_two_group_only",
+    # Strong self-contained subject text is required before same Event
+    # can supply contextual *shadow* evidence. None of these counts admits it.
+    "shadow_3to2.strict_subject_text_anchors_in_sample",
+    "shadow_3to2.same_event_subject_context_two_group_only",
+    "shadow_3to2.no_same_event_subject_context_two_group_only",
+    "shadow_3to2.subject_anchors_dropped_by_cap",
     # Diagnostic only: one parser slice is never a re-query permission.
     "health.date_eligible", "health.known_uninspected", "health.known_capped",
     "health.reason.SEARCH_INCOMPLETE",
