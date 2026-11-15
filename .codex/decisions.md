@@ -74,3 +74,7 @@
 
 ## 2026-11-15 #413 — partial Evidence is preferable to silent timeout (CANDIDATE)
 - Add an optional trusted-internal next-ES-page admission hook before enabling adaptive rounds, with a monotonic deadline and reserved generation time, no user-facing algorithm feature flag. If denied, retain only canonical date/topic-validated Evidence and explicitly mark search incomplete; never silently return no relevant articles or fabricate unexamined citations. In-flight ES/network cancellation and end-to-end OpenWebUI/proxy deadline are separate obligations and require independent validation.
+
+## 2026-11-15 #413 long-report execution decision (PR CANDIDATE)
+- Build future adaptive N-round retrieval inside the existing Report Job Worker/Agent; do not keep a Chat Completions HTTP connection open for 30m retrieval+10m generation. Preserve standard single-round Chat response, optionally submit a durable deep Job after single-round results only when verified user/tenant ownership, idempotency and resource admission are established; return a status link, not a promised completed DOCX.
+- First narrow foundation: optional transactional bounded queue admission and queued-only cancellation, default preserving existing HTTP behavior. No unreviewed mode flag enables a fake adaptive job. Browser capability links, per-round canonical verified Evidence checkpoints, request-wide budget/stop and final OpenWebUI opt-in remain separate gates.
