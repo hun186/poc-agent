@@ -3,8 +3,8 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const validId = /^[A-Za-z0-9_-]{1,128}$/;
-  const terminal = new Set(['completed', 'failed', 'interrupted']);
-  const statuses = {queued: '等待執行', running: '執行中', completed: '已完成', failed: '執行失敗', interrupted: '服務中斷'};
+  const terminal = new Set(['completed', 'failed', 'interrupted', 'cancelled']);
+  const statuses = {queued: '等待執行', running: '執行中', completed: '已完成', failed: '執行失敗', interrupted: '服務中斷', cancelled: '已取消'};
   const phases = {
     queued: '等待 Worker 領取',
     unobserved: '舊任務：執行階段未觀測',
@@ -13,7 +13,8 @@
     finalizing: '正在寫入與驗證文件',
     completed: '報告已完成',
     failed: '報告執行失敗',
-    interrupted: '執行因服務中斷而停止'
+    interrupted: '執行因服務中斷而停止',
+    cancelled: '排隊中的任務已取消'
   };
   const reasons = {
     active: '執行中',
@@ -235,6 +236,7 @@
         stop();
         message(job.status === 'completed' ? '報告已完成，可下載 Word 文件。' :
           job.status === 'interrupted' ? '服務已中斷此任務；系統不會自動重跑。' :
+           job.status === 'cancelled' ? '排隊中的報告任務已取消，不會執行或產生 Word。' :
             '任務已失敗，請查看分類原因。', job.status === 'completed' ? 'success' : 'error');
       } else {
         message(progressMessage(job.progress), job.progress.long_running ? 'warning' : '');

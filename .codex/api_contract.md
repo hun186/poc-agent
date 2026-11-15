@@ -82,3 +82,11 @@
 ## 2026-11-15 #413 B0 — internal planner types only (NOT MERGED)
 - No public HTTP API or existing request/response change. Internal `QueryConstraints` carries server-owned frozen user question, separate event/analysis DateWindow, indexes, field filters, entities, core terms and user-locked keyword policy.
 - `RoundEvidenceSummary` is strictly request-wide, not #414 slice health. `AdaptiveRetrievalPlanner.propose_next(constraints, history, budget)` accepts an externally injected callable and returns a bounded internal `PlannerDecision`: stop / date_recheck / search with only candidate optional terms and target aspects. No direct ES call, LLM runtime wiring or automatic Chat/Job dispatch.
+
+## 2026-11-15 #413 Report Job queue-control candidate (NOT MERGED)
+- POST /v1/report/jobs: unchanged request and 202 response. Optional internal REPORT_JOBS_MAX_ACTIVE=N (1..10000, default 0/unlimited); if N active queued+running jobs already exist, return 429 with Retry-After: 30. Exact owner/idempotency-key replay of an existing job still returns 202; hash mismatch remains 409.
+- POST /v1/report/jobs/{job_id}/cancel: requires REPORT_JOB_CREATE plus same owner (or REPORT_JOB_ADMIN); only queued jobs CAS to cancelled and return {job_id,status:"cancelled"}. Missing/cross-owner returns 404; running/completed/other terminal returns 409. NOT a running-job abort endpoint.
+- GET /v1/report/jobs?status=cancelled: additional allowed filter; GET status shows cancelled terminal; GET /word returns 409 (no DOCX). Existing endpoints, response keys and permissions otherwise unchanged.
+
+## 2026-11-15 #417 cancelled Report Job -> Requirement Handoff terminal mapping
+- Existing Requirement execution schema does not have a neutral cancelled state. Gateway translates a cancelled queued Report Job to terminal FAILED with REMOTE_EXECUTION_FAILED category and a sanitized remote_execution_cancelled reason. The reconciler closes the Requirement item, updates failure count and does not download an artifact or keep polling indefinitely. Queued-only cancellation remains owner/administrator authorized; running jobs cannot be cancelled through this route. Offline reconciliation tests, not private SQL/ES/DOCX live acceptance.

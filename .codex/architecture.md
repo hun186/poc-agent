@@ -56,3 +56,7 @@
 ## 2026-11-15 #413 B0 — independent multi-round strategy boundary (CANDIDATE)
 - Initial Data Agent/keyword extraction and original ES/Evidence/date pipeline are unchanged. New `agent/adaptive_retrieval/{contracts,planner}.py` is a callable, unconnected second-stage strategy planner with distinct Chinese prompt and strict, fail-closed model-output schema.
 - Request-wide summaries and immutable, trusted-input original date/analysis-date/index/field/entity/keyword constraints are required before making decisions. The planner cannot execute ES, write Report Jobs, alter server-owned constraints or repair parsed dates by itself. Future adapter must preserve only SHOULD optional semantic terms, canonical date/topic checks and cross-round evidence dedup/monotonic checkpoints.
+
+## 2026-11-15 #413 asynchronous Report Job prerequisite (candidate; NOT MERGED)
+- Extend existing SQLite v2 ReportJobStore only; do not create a second queue. Store.create optionally performs one BEGIN IMMEDIATE idempotency/replay + queued/running admission-count + insert. HTTP Report Job submission uses REPORT_JOBS_MAX_ACTIVE (0 = historical unlimited). Worker remains single local daemon; admission is not a distributed GPU quota.
+- A new CAS queued→cancelled transition permits immediate queued-job cancellation by its verified owner/admin through existing RBAC. No in-flight cancellation, no cross-restart resume and no adaptive agent execution yet.

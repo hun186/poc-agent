@@ -83,3 +83,7 @@
 ## 2026-11-15 #413 B0 — independent planner is NOT an executable deep report
 - New planner and prompt enforce only schema/structural immutability and trust separation. DateWindow source_text is **not** proof of actual date intent; caller must derive and verify original date/precision/analysis-period. Request-wide Evidence quality evaluator does not yet exist, nor the trusted index/field/owner adapter, ES query compiler with OPTIONAL/SHOULD semantics, checkpoints, 1800s hard enforcement, cancellation, restart recovery or OpenWebUI UX.
 - Planner `BudgetSnapshot` is a preflight hint, not an atomic/provider transport deadline. No runtime integration/production route, no private LLM/ES access; Hosted and CI tests only. See `docs/operations/sraf_adaptive_planner_boundary.md`.
+
+## 2026-11-15 #413 Report Job admission/cancellation candidate limitations
+- No verified hard 30-minute adaptive retrieval budget, 10-minute generation reservation, resumable per-round checkpoint, real in-flight cancellation, browser-safe signed status link, Chat API automatic dispatch, or true capacity control for out-of-band Requirement/Handoff submissions. The optional admission cap covers HTTP Report Job creations sharing this one SQLite store, not all GPU/ES workloads or multiple hosts with separate DB files.
+- Running Job cancellation intentionally returns 409 because current Agent/ES/LLM calls are not cooperatively cancellable. Startup still marks running→interrupted; no fake continuation. Exact-head Hosted CI and formal Codex review pending; NO private LIVE acceptance.

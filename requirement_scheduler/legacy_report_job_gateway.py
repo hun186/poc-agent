@@ -13,11 +13,15 @@ _TRANSIENT = {429, 502, 503, 504}
 def translate_native_state(value: str, observed_at: datetime | None = None) -> ExecutionStatus:
     states = {"queued": ExecutionState.PENDING, "running": ExecutionState.RUNNING,
               "completed": ExecutionState.COMPLETED, "failed": ExecutionState.FAILED,
-              "interrupted": ExecutionState.RECOVERY_REQUIRED}
+              "cancelled": ExecutionState.FAILED, "interrupted": ExecutionState.RECOVERY_REQUIRED}
     if value not in states:
         raise ExecutionFailure(FailureCategory.RECONCILIATION_UNKNOWN, "remote_state_unknown")
     failure = None
     if value == "failed": failure = ExecutionFailure(FailureCategory.REMOTE_EXECUTION_FAILED, "remote_execution_failed")
+    # A cancelled queued Report Job is terminal, not an unknown/retryable state.
+    # Existing Requirement execution schema has no neutral cancelled state;
+    # FAILED closes the Handoff item without attempting any artifact download.
+    if value == "cancelled": failure = ExecutionFailure(FailureCategory.REMOTE_EXECUTION_FAILED, "remote_execution_cancelled")
     if value == "interrupted": failure = ExecutionFailure(FailureCategory.RECONCILIATION_UNKNOWN, "remote_execution_interrupted")
     return ExecutionStatus(states[value], observed_at or datetime.now(timezone.utc), failure)
 

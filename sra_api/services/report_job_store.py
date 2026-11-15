@@ -13,6 +13,11 @@ from typing import Any
 class IdempotencyConflict(Exception):
     pass
 
+
+class ReportJobAdmissionFull(Exception):
+    """Active Report Job admission ceiling; does not reject idempotent replays."""
+    pass
+
 REPORT_JOB_SCHEMA_VERSION = 2
 
 
@@ -194,7 +199,7 @@ class ReportJobStore:
             raise RuntimeError("Canonical report job schema version mismatch")
         if con.execute("SELECT 1 FROM report_jobs WHERE phase NOT IN "
                        "('queued','unobserved','agent_execution','docx_export','finalizing',"
-                       "'completed','failed','interrupted') LIMIT 1").fetchone():
+                       "'completed','failed','interrupted','cancelled') LIMIT 1").fetchone():
             raise RuntimeError("Canonical report job phase invalid")
 
     @staticmethod
@@ -208,10 +213,34 @@ class ReportJobStore:
 
     def create(self, *, job_id: str, prompt: str, filename: str | None, session_id: str,
                model: str, options: dict, metadata: dict, idempotency_key: str | None,
-               request_hash: str, owner_kind: str | None = None, owner_id: str | None = None) -> tuple[ReportJob, bool]:
+               request_hash: str, owner_kind: str | None = None, owner_id: str | None = None,
+               max_active_jobs: int | None = None) -> tuple[ReportJob, bool]:
+        if max_active_jobs is not None and (
+            isinstance(max_active_jobs, bool) or not isinstance(max_active_jobs, int)
+            or not 1 <= max_active_jobs <= 10000
+        ):
+            raise ValueError("invalid_report_job_admission_limit")
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
+            # An idempotent replay must return the original job even when the
+            # admission ceiling is full. Keep replay + admission + insert in the
+            # same SQLite write transaction to prevent concurrent overbooking.
+            if idempotency_key:
+                existing = con.execute(
+                    "SELECT * FROM report_jobs WHERE owner_kind IS ? AND owner_id IS ? AND idempotency_key=?",
+                    (owner_kind, owner_id, idempotency_key),
+                ).fetchone()
+                if existing is not None:
+                    if existing["request_hash"] != request_hash:
+                        raise IdempotencyConflict("Idempotency-Key was already used for a different request")
+                    return self._row(existing), False
+            if max_active_jobs is not None:
+                active_count = con.execute(
+                    "SELECT COUNT(*) FROM report_jobs WHERE status IN ('queued','running')"
+                ).fetchone()[0]
+                if active_count >= max_active_jobs:
+                    raise ReportJobAdmissionFull("report_job_queue_full")
             try:
                 con.execute("INSERT INTO report_jobs (job_id,status,prompt,filename,session_id,model,options_json,metadata_json,idempotency_key,request_hash,owner_kind,owner_id,created_at,updated_at,phase,phase_updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                             (job_id,"queued",prompt,filename,session_id,model,json.dumps(options,sort_keys=True),json.dumps(metadata,sort_keys=True),idempotency_key,request_hash,owner_kind,owner_id,now,now,"queued",now))
@@ -236,7 +265,7 @@ class ReportJobStore:
                 or not 1 <= limit <= 100
                 or isinstance(offset, bool) or not isinstance(offset, int)
                 or not 0 <= offset <= 10000
-                or status not in {None, "queued", "running", "completed", "failed", "interrupted"}):
+                or status not in {None, "queued", "running", "completed", "failed", "interrupted", "cancelled"}):
             raise ValueError("invalid_report_job_list")
         # Restrict SQL fragments to fixed, reviewed literals. Status is always a bind.
         sql = (
@@ -259,6 +288,20 @@ class ReportJobStore:
             return self._row(connection.execute("SELECT * FROM report_jobs WHERE job_id=?", (job_id,)).fetchone())
         with self._connect() as con:
             return self._row(con.execute("SELECT * FROM report_jobs WHERE job_id=?", (job_id,)).fetchone())
+
+    def cancel_queued(self, job_id: str, *, owner_kind: str | None, owner_id: str | None) -> bool:
+        """Atomically cancel only an unclaimed Job belonging to the verified owner.
+
+        In-flight Agent/LLM/ES calls cannot be stopped by this operation.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as con:
+            return con.execute(
+                "UPDATE report_jobs SET status='cancelled',phase='cancelled',"
+                "phase_updated_at=?,finished_at=?,updated_at=? "
+                "WHERE job_id=? AND status='queued' AND owner_kind IS ? AND owner_id IS ?",
+                (now, now, now, job_id, owner_kind, owner_id),
+            ).rowcount == 1
 
     def claim_next(self) -> ReportJob | None:
         now = datetime.now(timezone.utc).isoformat()
