@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import re
 from typing import Literal
 from pathlib import Path
 from datetime import datetime, timezone
@@ -26,6 +27,16 @@ class ReportJobCreate(BaseModel):
     options: dict = Field(default_factory=dict, max_length=0)
     metadata: dict = Field(default_factory=dict)
 
+_SAFE_BROWSER_JOB_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\\Z")
+
+
+def _browser_status_url(job_id: str) -> str | None:
+    """Browser prefill only: never contains a token or bypasses Job ownership."""
+    if not isinstance(job_id, str) or not _SAFE_BROWSER_JOB_ID.fullmatch(job_id):
+        return None
+    return f"/report-jobs#job={job_id}"
+
+
 def _store(request: Request): return request.app.state.report_job_store
 
 def _max_active_jobs() -> int | None:
@@ -43,6 +54,7 @@ def _view(job):
     result.pop("prompt", None); result.pop("request_hash", None); result.pop("idempotency_key", None); result.pop("docx_basename", None)
     result["status_url"] = f"/v1/report/jobs/{job.job_id}"
     result["download_url"] = f"/v1/report/jobs/{job.job_id}/word"
+    result["browser_status_url"] = _browser_status_url(job.job_id)
     # A stage is an actual Worker checkpoint. Long duration is only a
     # clock-based observation, never proof of stalled SDK, GPU queue or timeout.
     active = job.status in ("queued", "running")
@@ -76,7 +88,7 @@ def submit(payload: ReportJobCreate, request: Request, idempotency_key: str | No
         raise HTTPException(409, str(exc)) from exc
     except ReportJobAdmissionFull as exc:
         raise HTTPException(429, "Report job queue is full", headers={"Retry-After": "30"}) from exc
-    return {"job_id": job.job_id, "status": job.status, "status_url": f"/v1/report/jobs/{job.job_id}", "download_url": f"/v1/report/jobs/{job.job_id}/word"}
+    return {"job_id": job.job_id, "status": job.status, "status_url": f"/v1/report/jobs/{job.job_id}", "download_url": f"/v1/report/jobs/{job.job_id}/word", "browser_status_url": _browser_status_url(job.job_id)}
 
 def _authorized(job, principal):
     return REPORT_JOB_ADMIN in principal.scopes or (job.owner_kind == principal.kind and job.owner_id == principal.subject)
