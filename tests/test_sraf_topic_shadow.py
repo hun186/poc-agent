@@ -204,9 +204,9 @@ def test_shadow_does_not_infer_subject_from_metadata_only():
     anchor = derive_explicit_question_anchor("主題：加薩", GROUPS)
     assert anchor is not None
     hit = HitDoc(
-        uuid="synthetic", subject="加薩 停火 醫療", article_title=None, score=1.0,
+        uuid="synthetic", subject="加薩", article_title=None, score=1.0,
         raw_content="", citations=[
-            Citation(text="聯合國 人道援助", date_iso="2023-08-24"),
+            Citation(text="聯合國", date_iso="2023-08-24"),
         ],
     )
     shadow = observe_topic_shadow(
