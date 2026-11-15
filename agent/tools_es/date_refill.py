@@ -51,6 +51,7 @@ def refill_date_filtered_evidence(
     search_next: Callable[[Dict[str, Any]], Dict[str, Any]],
     build_evidence: Callable[[List[dict]], Tuple[List[dict], List[dict], int]],
     max_candidates: int = MAX_DATE_CANDIDATES,
+    admit_next_page: Callable[[], bool] | None = None,
 ) -> Tuple[List[dict], List[dict], int, Dict[str, Any]]:
     """Refill eligible documents, preserving original ES score order.
 
@@ -78,6 +79,7 @@ def refill_date_filtered_evidence(
     eligible_evidence: List[dict] = []
     matched_synonyms = 0
     exhausted = False
+    admission_denied = False
 
     while True:
         batch = _hits(response)
@@ -110,6 +112,19 @@ def refill_date_filtered_evidence(
         next_size = min(page_size, budget - scanned)
         if next_size <= 0:
             break
+        # A future request-wide controller may spend its *remaining* ES-call
+        # and generation-time budget before launching another date-refill
+        # page. Default None retains the original behavior exactly.
+        # Failure or invalid admission results fail closed; already verified
+        # Evidence remains available and the result is marked incomplete.
+        if admit_next_page is not None:
+            try:
+                admitted = admit_next_page() is True
+            except Exception:
+                admitted = False
+            if not admitted:
+                admission_denied = True
+                break
         next_body = dict(body)
         next_body["size"] = next_size
         next_body["from"] = scanned
@@ -138,7 +153,13 @@ def refill_date_filtered_evidence(
     limit_reached = (
         len(result_hits) < requested_size and not exhausted and scanned >= budget
     )
-    return result_hits, result_evidence, result_synonyms, {
+    # An opt-in admission gate must never silently transform a truncated
+    # search into a complete response. No new fields when gate is absent.
+    admission_incomplete = (
+        bool(admission_denied) and len(result_hits) < requested_size
+        and not exhausted
+    )
+    meta = {
         "enabled": True,
         "requested_size": requested_size,
         "candidate_scan_limit": budget,
@@ -154,3 +175,8 @@ def refill_date_filtered_evidence(
             else "es_candidates_exhausted"
         ),
     }
+    if admit_next_page is not None:
+        meta["incomplete_due_to_page_admission"] = admission_incomplete
+        if admission_incomplete:
+            meta["note"] = "additional_page_admission_denied"
+    return result_hits, result_evidence, result_synonyms, meta
