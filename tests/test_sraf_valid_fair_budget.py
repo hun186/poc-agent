@@ -212,3 +212,18 @@ def test_byte_quota_when_zero_capacity_fails_closed():
     assert source_text_quotas([2, 1], -1) == [0, 0]
     assert source_text_quotas([2, 1], 99999999) == [0, 0]
     assert source_text_quotas([2, 1], 0) == [0, 0]
+
+
+def test_unused_text_reservation_flows_forward_to_last_long_valid_doc(monkeypatch):
+    """Many tiny earlier docs must not strand available global text budget."""
+    _enable(monkeypatch)
+    hits = [_hit(1, f"tiny-{i}", inner=False) for i in range(300)]
+    last = _hit(1, "last-long", inner=False)
+    last["_source"]["multidim_event_json"][0]["evidence_snippets"][0]["text"] = (
+        "甲軸乙軸丙軸" + "Z" * 3990
+    )
+    hits.append(last)
+    _, evidence, _ = _build(hits)
+    assert len(evidence) == 301
+    assert evidence[-1]["uuid"] == "last-long"
+    assert len(evidence[-1]["text"]) > 3900

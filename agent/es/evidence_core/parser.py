@@ -49,6 +49,9 @@ def parse_es_hits(
     fair_text_quotas = source_text_quotas(fair_quotas) if fair_quotas else []
     source_items_scanned_total = 0
     source_text_chars_total = 0
+    # Actual unused text from earlier ES hits is safely transferable to later
+    # hits, while their untouched reserved allocations remain protected.
+    fair_text_released = 0
 
     def named_inner_hits(node: Any, name: str) -> List[Dict[str, Any]]:
         """Find child inner hits in a multi-level nested ES response."""
@@ -251,7 +254,8 @@ def parse_es_hits(
                             continue
                         if (source_text_chars_total + len(raw_text) > SHARED_SOURCE_TEXT_MAX_CHARS
                             or (fair_text_quotas and
-                                per_hit_text_chars + len(raw_text) > fair_text_quotas[source_hit_ordinal])):
+                                per_hit_text_chars + len(raw_text) >
+                                fair_text_quotas[source_hit_ordinal] + fair_text_released)):
                             source_stopped = True
                             break
                         source_text_chars_total += len(raw_text)
@@ -388,5 +392,11 @@ def parse_es_hits(
             selectedMessage=src.get("selectedMessage"),
             highValue=(((src.get("ai") or {}).get("classLabels") or {}).get("highValue")),
         ))
+        if fair_text_quotas:
+            fair_text_released += (
+                fair_text_quotas[source_hit_ordinal] - per_hit_text_chars
+            )
+            # Never transfer future documents' reserved capacity backward.
+            assert fair_text_released >= 0
 
     return out_hits, stats

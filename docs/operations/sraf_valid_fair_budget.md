@@ -43,3 +43,6 @@ snippet per active ES document when the 1MiB global budget permits; if many
 sources collectively exceed that budget, some long snippets can still be
 uninspected. Direct ES named inner matches count toward planned demand even
 when source snippets are absent.
+
+Unused actual text allocation from earlier ES hits can be passed forward to
+later hits, but future reserved allocations cannot be consumed ahead of time.
