@@ -161,3 +161,35 @@ def test_unstructured_docs_do_not_unintentionally_gain_large_budget(monkeypatch)
         config=EvidenceBuildConfig(shared_citation_budget=1024),
     )
     assert len(parsed[0].citations) == 20
+
+
+def test_partial_source_scan_never_erases_valid_inner_hit(monkeypatch):
+    """Codex P2: 256 long wrong-date rows can exhaust the byte budget first."""
+    monkeypatch.setenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET", "1")
+    hit = _hit(260)
+    items = hit["_source"]["multidim_event_json"][0]["evidence_snippets"]
+    for i in range(259):
+        items[i]["event_ids"] = ["E2"]
+        items[i]["text"] = "甲軸乙軸丙軸" + "X" * 4088
+    items[-1]["event_ids"] = ["E1"]
+    items[-1]["text"] = "甲軸乙軸丙軸最後唯一有效資訊"
+    hit["inner_hits"]["evi"]["hits"]["hits"] = [{
+        "_nested": {"field": "multidim_event_json", "offset": 0,
+                    "_nested": {"field": "evidence_snippets", "offset": 259}},
+        "_source": items[-1],
+    }]
+    _, ev, _ = _build([hit])
+    assert len(ev) == 1
+    assert ev[0]["text"] == "甲軸乙軸丙軸最後唯一有效資訊"
+    assert ev[0]["date_iso"] == D0
+    monkeypatch.delenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET", raising=False)
+    assert _build([hit])[1][0]["text"] == ev[0]["text"]
+
+
+def test_numeric_paragraph_id_survives_json_normalization():
+    hit = _hit(1, inner=False)
+    parsed, _ = parse_es_hits(
+        [hit], query_for_snippet="甲軸乙軸丙軸",
+        config=EvidenceBuildConfig(),
+    )
+    assert parsed[0].citations[0].paragraph_id == "0"

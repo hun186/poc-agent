@@ -55,3 +55,5 @@
 
 ## 2026-11-15 #397 — Experimental request-shared structured Evidence candidate budget (CANDIDATE)
 - Experimental budget cannot guarantee exhaustive recall beyond 1024 citations / 2048 rows / 1MiB source text; global budget consumed in ES hit order may starve later documents, even with date/topic filtering after parsing. `_source` presence/size, nested Event/Timeline identity and private ES Mapping remain unverified. `SRAF_REPORT_DIVERSE_EVIDENCE` changes only downstream report selection; Report LLM 120 count is independent and still not a token limit. Private full E2E and performance gates unresolved.
+
+- **Codex #411 P2 fix at new HEAD (recheck pending):** preserve inner-hit citations by deduplicated, bounded union with source citations even if 1MiB source scan cuts off before a date-valid tail match; restore exact default-OFF parsed-before-selected trace count semantics; preserve numeric string paragraph/source IDs after JSON normalization. Added partial-source and numeric-ID regressions. Latest-head full Hosted CI/formal independent Codex re-review remain required before merge.

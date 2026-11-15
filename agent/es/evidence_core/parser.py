@@ -63,8 +63,13 @@ def parse_es_hits(
         return found
 
     def normalized_text(value: Any) -> str:
-        """Normalize scalar/one-element-array ES source values without raising."""
+        """Normalize values, preserving numeric string IDs such as '001'."""
+        original = value if isinstance(value, str) else None
         value = json_load_maybe(value)
+        # json_load_maybe("123") becomes int(123); do not lose paragraph
+        # and source IDs whose literal scalar form is a numeric string.
+        if original is not None and type(value) in (int, float):
+            return original.strip()
         if isinstance(value, str):
             return value.strip()
         if isinstance(value, list):
@@ -140,7 +145,10 @@ def parse_es_hits(
         source_items_examined = 0
         ih_hits = named_inner_hits(h, "evi")
         if ih_hits:
-            for eh in ih_hits[:min(config.inner_hit_topk, per_doc_limit)]:
+            for eh in ih_hits[:(
+                min(config.inner_hit_topk, per_doc_limit)
+                if flexible else config.inner_hit_topk
+            )]:
                 esrc = (eh.get("_source") or {})
                 txt = normalized_text(esrc.get("text"))
                 sid = esrc.get("source_id")
@@ -236,10 +244,30 @@ def parse_es_hits(
                 if source_stopped or len(source_citations) >= per_doc_limit:
                     break
             if source_citations:
-                if chosen_mode == "inner":
-                    stats["n_inner_used"] -= 1
-                citations = source_citations
-                chosen_mode = "source"
+                if prefer_source and citations:
+                    # Never let a partial source scan erase already verified
+                    # ES nested matches, including a date-valid inner hit near
+                    # the source tail. De-duplicate by block/text/source/event,
+                    # without weakening downstream Event/Timeline date guards.
+                    seen = {
+                        (c.block_index, c.text, c.source_id, c.paragraph_id,
+                         tuple(c.event_ids)) for c in citations
+                    }
+                    combined = list(citations)
+                    for c in source_citations:
+                        identity = (c.block_index, c.text, c.source_id,
+                                    c.paragraph_id, tuple(c.event_ids))
+                        if identity in seen:
+                            continue
+                        if len(combined) >= per_doc_limit:
+                            break
+                        seen.add(identity)
+                        combined.append(c)
+                    citations = combined
+                    chosen_mode = "inner+source"
+                else:
+                    citations = source_citations
+                    chosen_mode = "source"
                 stats["n_source_evidence_used"] += 1
 
         # Legacy fallback, only when neither inner hits nor structured source won.
@@ -270,7 +298,7 @@ def parse_es_hits(
                 # NOT examined. Their date/topic/validity is still unknown.
                 source_uninspected_after_cap=(
                     max(0, raw_source_count - source_items_examined)
-                    if chosen_mode == "source" else 0
+                    if chosen_mode in ("source", "inner+source") else 0
                 ),
             )
 
