@@ -456,3 +456,87 @@ def test_native_allowed_block_count_preserves_normal_source_refill(monkeypatch):
     assert [e["text"] for e in _build([h])[1]] == [
         "甲軸乙軸丙軸核心", "乙軸正常來源補充"
     ]
+
+
+
+def test_same_day_other_event_weak_source_cannot_borrow_e1_anchor(monkeypatch):
+    """Independent date validity is necessary but not a topic relationship."""
+    _enable(monkeypatch)
+    rows = [
+        _snippet("甲軸乙軸丙軸 E1 核心", "E1"),
+        _snippet("無關一", "E1"),
+        _snippet("無關二", "E1"),
+        _snippet("甲軸 E2 不相關", "E2"),
+        _snippet("乙軸 E1 正確補充", "E1"),
+    ]
+    hit = _hit(rows, inner_rows=rows[:3])
+    hit["_source"]["multidim_event_json"][0]["Event"][1]["time_iso"] = D0
+    _, evidence, _ = _build([hit])
+    assert [e["text"] for e in evidence] == [
+        "甲軸乙軸丙軸 E1 核心", "乙軸 E1 正確補充",
+    ]
+    assert evidence[1]["weak_evidence"] is True
+
+
+def test_same_event_id_in_other_valid_block_not_source_weak_anchor(monkeypatch):
+    """Two local block E1 IDs do not make a shared topical Event."""
+    _enable(monkeypatch)
+    strong = _snippet("甲軸乙軸丙軸 block0 強", "E1")
+    ignore1 = _snippet("無關一", "E1")
+    ignore2 = _snippet("無關二", "E1")
+    blocks = [
+        {
+            "article_date_iso": D0,
+            "Event": [{"event_id": "E1", "time_iso": D0}],
+            "Event_Timeline": [],
+            "evidence_snippets": [
+                strong, ignore1, ignore2,
+                _snippet("甲軸 block0 弱補充", "E1"),
+            ],
+        },
+        {
+            "article_date_iso": D0,
+            "Event": [{"event_id": "E1", "time_iso": D0}],
+            "Event_Timeline": [],
+            "evidence_snippets": [_snippet("乙軸 block1 其他事件", "E1")],
+        },
+    ]
+    hit = _hit([], inner_rows=[strong, ignore1, ignore2], multidim=blocks)
+    _, evidence, _ = _build([hit])
+    assert [e["text"] for e in evidence] == [
+        "甲軸乙軸丙軸 block0 強", "甲軸 block0 弱補充",
+    ]
+
+
+def test_independent_strict_source_text_may_come_from_other_valid_event(monkeypatch):
+    """A full text-level strict match does not borrow another Event's topic."""
+    _enable(monkeypatch)
+    rows = [
+        _snippet("甲軸乙軸丙軸 E1 核心", "E1"),
+        _snippet("無關一", "E1"),
+        _snippet("無關二", "E1"),
+        _snippet("甲軸乙軸丙軸 E2 獨立強證據", "E2"),
+    ]
+    hit = _hit(rows, inner_rows=rows[:3])
+    hit["_source"]["multidim_event_json"][0]["Event"][1]["time_iso"] = D0
+    _, evidence, _ = _build([hit])
+    assert [e["text"] for e in evidence] == [
+        "甲軸乙軸丙軸 E1 核心", "甲軸乙軸丙軸 E2 獨立強證據",
+    ]
+    assert [e["match_policy"] for e in evidence] == ["strict", "strict"]
+
+
+def test_metadata_completes_strict_axes_but_not_other_event_anchor(monkeypatch):
+    """Subject metadata can be global to the article, not to each Event."""
+    _enable(monkeypatch)
+    rows = [
+        _snippet("甲軸乙軸丙軸 E1 核心", "E1"),
+        _snippet("無關一", "E1"),
+        _snippet("無關二", "E1"),
+        _snippet("乙軸 丙軸 E2 其他事件", "E2"),
+    ]
+    hit = _hit(rows, inner_rows=rows[:3])
+    hit["_source"]["communication"]["subject"] = "甲軸"
+    hit["_source"]["multidim_event_json"][0]["Event"][1]["time_iso"] = D0
+    _, evidence, _ = _build([hit])
+    assert [e["text"] for e in evidence] == ["甲軸乙軸丙軸 E1 核心"]
