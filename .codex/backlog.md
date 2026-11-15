@@ -78,4 +78,65 @@
 
 - **2026-11-10 #395 live verification handoff:** Build standalone `sraf-date-readonly.zip` on Windows/CI from latest reviewed PR HEAD; transfer using existing one-way 7z/Robocopy update mechanism; extract `_sraf_date_readonly` next to SRAF and invoke `bash _sraf_date_readonly/run.sh` (no Linux Git commands). Read redacted `news_test` JSON; assess strict CA+SAN, nested Mapping, Event/Timeline/date/Evidence/paging; record PASS_PARTIAL/INCOMPLETE truthfully. Live ES, report LLM/DOCX and performance remain pending. No auto Merge #395 based only on packaging or synthetic results.
 
-- **2026-11-11 #398 Editor search implementation candidate:** Track the mapping-aware substring/nested query branch as unverified until latest-head Hosted CI and formal Codex Review. Follow-up: read-only real-index `this_is_a_title`/`this_is`/`a_title` samples, keyword subfield availability and nested parents, no-expensive-query cluster policy, p50/p95 latency/total hits across large indices, date=importDT UI clarity and content field coverage. Bounded leading-wildcard queries may still be expensive and are not an endorsed large-index strategy: if benchmarks fail, switch to reviewed ngram/search_as_you_type migration in a *separate* explicitly authorized PR, never auto-reindex live ES.
+
+## 2026-11-12 P1 — 官方全名／通稱的語意軸去重（供使用者確認）
+
+- **Candidate PR not merged:** `agent/es/query_terms.py` Prompt 查核官方全名↔通稱/簡稱/俗稱、等價核心詞併為一軸、無歧義的簡繁變體、共享歧義非核心別名剔除；固定案例離線測試、Python3.10/3.11 CI、正式 Review、使用者前後對照需完成。
+- **Outstanding, separately scoped:** 實際 `news_test` analyzer、mapping、ES candidate retrieval and date-scoped Evidence/report recall still NOT TESTED; LLM未產生官方別名時不保證召回；LLM關閉時的人工同義詞家族目前仍可能形成多個必要核心詞，須另設計精準同義詞 family group 接口與負例測試。
+- **Merge warning:** 目前 `#400/#401/#402` 同時修改 active `.codex`；本工作依 `AGENTS.md` 先以 immutable SHA 驗證後保存五檔全文到 `.codex/archive/*-20261112-103600.md`，並濃縮 active 文件。合併前須保留所有 PR 的仍有效 API 合約/架構決策與 open issues，不可覆蓋他分支；使用者要求先看結果確認，不預先 merge。
+
+
+## 2026-11-12 #397 P1-b bounded rescuer (candidate)
+
+- Unmerged opt-in `SRAF_EVIDENCE_RESCUE=1` bounded parser-citation pool supports low-count strict (1–2) date-safe same-document weak rescue with hard caps and deterministic scoring. Python3.10/3.11 CI and independent latest-HEAD Codex review required. Keep off until actual operator evidence acceptance.
+- **Next P1-c/d:** cover ES `inner_hits.size=3` source Evidence omissions without unbounded memory/re-fetch; global per-request budget/dedup and coverage/token-aware high-volume selection; integrate opt-in #401/#402 Evidence Trace for per-stage counts and reason codes; real `news_test` 5→1 incident diagnosis, recall/precision/latency p50/p95 still needed. Rebase/reconcile active `.codex` with open PRs and preserve #403 name-axis decision.
+
+## 2026-11-12 — #397 P1-c source Evidence refill (first bounded slice)
+
+- Candidate PR: default-OFF `SRAF_EVIDENCE_SOURCE_REFILL=1` **requires** `SRAF_EVIDENCE_RESCUE=1`; bounded source-only reparse for structured Evidence omitted by ES `inner_hits.size=3`, same strict-anchored original ordinal, canonical Event/Timeline date guard, strong-first/weak-marked candidate fill up to combined 3. Python3.10/3.11, date/refill/topic regression and independent exact-head formal Review are mandatory.
+- **Further P1-c:** real Guterres 2023-08-24 5→1 root-cause analysis with per-segment reasons (see #401/#402 Evidence Trace); never infer 5 candidates were all present in `_source`. When enabled, consider query-level/phase-level global budgets, source diversity, evidence re-ranking, explicit count of uninspected source rows and safe operator comparison.
+- **P1-d:** token-budget/coverage-aware high-volume top-k, deterministic signal and full report LLM validation still unresolved. No private `news_test`, p50/p95, Report Job, generated DOCX or airgap rollout was run. Integrate open #401/#402 active memory and builder changes before merging.
+
+## 2026-11-12 — #397 P1-a trace integration (#401)
+- Candidate PR #401 rebased through an explicit two-parent main integration, preserving #403/#404/#405 and restoring reviewed count-only retrieval trace. Added counters for selected #404 weak candidates and #405 bounded source strict/weak candidate/selection; keep `SRAF_EVIDENCE_TRACE=1` separate from both refill flags. Verify parser cap, Event/Timeline date failures, 5→1 case, privacy, 500+ items, and exact default-OFF equality with dual-version Hosted CI and independent exact-head Review before merge.
+- **Still open:** #402 report-stage actual Evidence/LLM-input count-only trace and removal of raw per-citation log; true private `news_test` operator case, per-request cross-stage ID/union counts, p50/p95, token budget, source diversity, and true report correctness remain NOT TESTED. Review and integrate #402 from current main without overwriting either trace or existing Excel/Product/Report API contracts.
+
+## 2026-11-12 — #397 P1-a Report Evidence Trace (#402 current-main integration)
+- #401 retrieval Trace **MERGED** at `87a58cd2557e5826b2ef00d122fe97b9407709d9` with 7/7 Hosted CI and exact-head review clean. #402 is next: count-only actual pre-report-LLM Evidence pick/compression/pack, remove existing unconditional raw Evidence note/title/date/ID stdout, and test single shared opt-in flag on latest main. This candidate must pass new Python 3.10/3.11 CI and independent latest-head review before merge.
+- **Future:** per-request safe correlation between ES candidate builder iterations and report LLM input, per-snippet deterministic removal reason codes, global candidate/byte/token budgets, high-volume source diversity and live `news_test` 2023-08-24 Guterres 5→1 diagnosis. Report chars not token counts; private LLM/DOCX and existing logger secrecy need separate scrutiny. #400 editor substring Mapping/performance acceptance and #396 LAN TLS IP SAN warning are separate blocked PRs.
+
+
+## 2026-11-15 #397 P1-d — source-diverse report Evidence candidate (NOT MERGED)
+- Candidate source diversity only: exact-head Python3.10/3.11 Hosted regression and formal Codex Review required before considering merge. Remaining #397 P1-d: whole-prompt model-specific token budget, time/topic/quality-aware ranking, cross-stage per-snippet reasons, 5→1 real `news_test` diagnosis, p50/p95 and report/DOCX accuracy acceptance. Do not conflate input bytes/chars with tokens.
+
+
+## 2026-11-15 #397 P1-a — identified source coverage counters (NOT MERGED)
+- Candidate identified-source counters aid coverage comparison of opt-in #407 selector. Remaining: per-snippet reason correlation, unknown-ID source coverage, Event/Timeline-specific attribution, true token budgets, p50/p95 and real Guterres 5→1 replay on private ES. Exact latest-head CI/Codex and confidentiality gate required.
+
+
+## 2026-11-15 #397 P1-e — offline source-coverage comparison candidate (NOT MERGED)
+- Operator may compare count-only baseline vs opt-in diverse selector using a reviewed CLI, but must verify same question/ES index/date/corpus externally and run actual private Guterres 5→1 recall + report/LLM/DOCX p50/p95, precision and true tokens. Candidate compare utility does not satisfy those acceptance gates; exact-head Hosted CI/Codex required.
+
+
+## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
+- P1 NEXT, separate from count-display PR: eliminate **unconditional single-document Evidence truncation** in ES nested (`inner_hits.size=3`) and parser source (`citations_per_doc=20`) for large server-structured records when safe request/global budget remains. Design bounded retrieval/pagination per query/time/field, global Evidence+byte/timeout/token caps, accepted/uninspected reason counters and cancellation; test 1 document 500 items with global remainder plus 2 docs and Event/Timeline guard. Private `news_test`, output precision/recall and LLM/DOCX acceptance must be independently verified.
+
+
+## 2026-11-15 #397 — Experimental request-shared structured Evidence candidate budget (CANDIDATE)
+- Follow-up shared budget: per-request matched-valid (post date/topic) cap rather than raw-citation-first, fair later-source allocation/round-robin, budget-exhaustion reason trace, bytes/token-aware final prompt and 500+/multi-index private ES p50/p95/precision/recall tests. Do not claim this opt-in 1024-candidate slice solves all 500/day server records or hidden ES retrieval pagination limits.
+
+
+## 2026-11-15 — #397 P1-d / postfilter Evidence fairness (CANDIDATE, NOT MERGED)
+- Created separate double opt-in `SRAF_EVIDENCE_SHARED_SOURCE_BUDGET=1` AND `SRAF_EVIDENCE_VALID_FAIR_BUDGET=1`, leaving main/#411 shared-source mode and default OFF untouched. Pre-source parser quotas water-filled by original ES hit ordinal within 2048 scanned/parsed citations and 1MiB shared source text; a deterministic strong-first round robin limits only date/topic-validated Evidence to 1024. Fixed count-only trace records eligible/selected/not_selected. No ES re-query/LLM/SQL/auth changes. 
+- Synthetic 500+12 structured records, 980 wrong-date then 120 valid, invalid topic, later valid doc rescue, same UUID across indices, long text budget, and trace privacy tests. Hosted Python3.10/3.11 exact-head CI, formal Codex Review and real private ES/LLM/DOCX/performance acceptance are PENDING. Candidate quotas can still scan a bounded prefix and cannot prove exhaustive recall, perfect fairness or token budgets.
+
+## 2026-11-15 #413 — adaptive retrieval agent follow-up (A0 diagnostics only)
+- A0 candidate reports per-builder count-only health but **must not** autonomously re-query from a slice: date-refill may call the builder repeatedly, ES may return only `inner_hits.size=3`, and unknown source rows are not proven date/topic valid.
+- Next independently reviewed A1: request-wide aggregation and immutable original question/date/index/RBAC/field constraints, hard request deadline with generation reserve, ES/LLM/candidate/token/page count budget, no-drift facets and monotonic evidence checkpoints. Then B: conditional N-round query reformulation with real OpenWebUI-compatible progress/cancellation protocol. C: private live acceptance and two-flag retirement plan; do not enable `SRAF_EVIDENCE_SHARED_SOURCE_BUDGET`/`SRAF_EVIDENCE_VALID_FAIR_BUDGET` by default before acceptance.
+
+## 2026-11-15 #413 next after #414 — retrieval health / OpenWebUI
+- #414 merged as diagnostics only: no request-level quality aggregation, actual adaptive rounds, hard deadline, cancellation, progress transport or automatic #411/#412 flag retirement. Redact unsafe stdout in search tool before adding more repeated queries.
+- Next request-level planner must preserve immutable date/index/field/permission bounds, monotonic validated Evidence checkpoints, hard ES/LLM/token/time budgets and generation reserve; requires actual OpenWebUI/proxy SSE or Job progress acceptance and real disconnect/cancellation tests. Do not enable experimental flags or claim FULL_LIVE before operator acceptance.
+
+## 2026-11-15 #413 A1 follow-up — request-wide budgets (in progress)
+- PR #414 and #415 have been verified merged; per-builder health and limited ES stdout redaction exist. Candidate optional date-refill admission adds an atomic ES page count + monotonic generation-reserve guard, not an automatic runtime budget. Next integration requires a single request-wide trusted coordinator across first ES, candidate refill, optional N rounds and Report LLM with timeouts, byte/token and call budgets, cancellation, non-drifting date/index/field/RBAC, checkpointed Evidence and verified OpenWebUI visible progress. Do not falsely interpret optional admission or synthetic PASS as completed multi-round agent.

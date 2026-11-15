@@ -188,9 +188,15 @@ def expand_synonyms_grouped_llm(q: str, core_terms: List[str]) -> Dict[str, List
     【同義詞擴充】
     1. value 陣列中可以包含：
        - 其他 core_terms 中的同義寫法
-       - 同一實體的正式名稱、別名、全名、縮寫、精確外文名稱、常見譯名
+       - 同一實體的官方正式名稱、完整全稱、通稱、常用簡稱、俗稱、別名、縮寫、精確外文名稱、常見譯名
        - 轉寫、拼寫或標點差異，以及本 query 語境中的高度等價表述
        - 文種／風格詞可包含實際資料中合理且常用的近等價文種名稱
+    1.1 對每個可以確認身分的實體名稱做「雙向」查漏：
+        - query 用通稱／簡稱／俗稱時，檢查是否有該實體可靠的官方正式名稱與全稱。
+        - query 用官方名稱／全稱時，檢查是否有該實體真實常用的通稱／簡稱。
+        - 例如「桃園機場」與「臺灣桃園國際機場」可為同一機場的名稱變體；
+          不得僅依字面相近而推測，亦不得把松山機場或機場捷運列為同義詞。
+        - 只加入確定指向同一實體的名稱；不存在或不確定的名稱不要生成。
     2. 「高度相關」不等於同義。不要加入上下位概念、兄弟類別、元件、
        原因、結果、影響、對策、關聯人物／組織／事件／地點、歷史或類比案例，
        也不要加入只因媒體共現、同一地區或同一技術體系而相關的詞。
@@ -409,18 +415,58 @@ def compute_effective_terms(q: str) -> Tuple[
         if clean_syns:
             grouped_synonyms[k] = clean_syns
 
-    # 5.1) 補上中文關鍵詞的簡繁變體（含沒有 LLM 同義詞的核心詞）
-    zh_augmented: Dict[str, List[str]] = {}
-    # 來源同時包含：
-    # - grouped_synonyms（LLM 已分組）
-    # - ordered_core_candidates（LLM 未分組或無同義詞的核心詞）
-    seed_items: List[Tuple[str, List[str]]] = []
-    for k, syns in grouped_synonyms.items():
-        seed_items.append((k, syns))
-    for core in ordered_core_candidates:
-        if core not in grouped_synonyms:
-            seed_items.append((core, []))
+    # 5.1) 將 LLM 明確指為等價的 *核心詞* 合併成唯一語意軸。
+    # 不依子字串包含或共同出現合併，也不因不同語意軸共享普通別名就合併。
+    # 同一核心詞即使已在另一組的 synonyms 裡，也不得變成第二個必須命中的軸。
+    parent = {core: core for core in ordered_core_candidates}
+    core_order = {core: i for i, core in enumerate(ordered_core_candidates)}
 
+    def representative(core: str) -> str:
+        while parent[core] != core:
+            parent[core] = parent[parent[core]]
+            core = parent[core]
+        return core
+
+    for key, synonyms in grouped_synonyms.items():
+        if key not in parent:
+            continue
+        for alias in synonyms:
+            if alias not in parent:
+                continue
+            left, right = representative(key), representative(alias)
+            if left != right:
+                earlier, later = (
+                    (left, right) if core_order[left] < core_order[right]
+                    else (right, left)
+                )
+                parent[later] = earlier
+
+    aliases_by_representative: Dict[str, List[str]] = {}
+    for core in ordered_core_candidates:
+        rep = representative(core)
+        aliases = aliases_by_representative.setdefault(rep, [])
+        for candidate in [core, *grouped_synonyms.get(core, [])]:
+            if candidate != rep and candidate not in aliases:
+                aliases.append(candidate)
+
+    # 兩個未被 LLM 明確視為同一實體的語意軸若共享非核心別名，
+    # 該別名具歧義，不應單憑它就讓多個必要語意軸同時通過。
+    alias_owners: Dict[str, set[str]] = {}
+    for rep, aliases in aliases_by_representative.items():
+        for alias in aliases:
+            alias_owners.setdefault(alias, set()).add(rep)
+    ambiguous_aliases = {
+        alias for alias, owners in alias_owners.items() if len(owners) > 1
+    }
+    if ambiguous_aliases:
+        for rep, aliases in aliases_by_representative.items():
+            aliases_by_representative[rep] = [
+                alias for alias in aliases if alias not in ambiguous_aliases
+            ]
+
+    # 5.2) 對合併後的語意軸增加簡繁變體；不可重新創立已合併的別名軸。
+    seed_items: List[Tuple[str, List[str]]] = list(aliases_by_representative.items())
+    zh_augmented: Dict[str, List[str]] = {}
     for k, syns in seed_items:
         expanded: List[str] = []
         for t in [k, *syns]:
@@ -430,31 +476,8 @@ def compute_effective_terms(q: str) -> Tuple[
         if expanded:
             zh_augmented[k] = expanded
 
+    core_terms = list(aliases_by_representative)
     grouped_synonyms = zh_augmented
-
-    rep_keys = list(grouped_synonyms.keys())
-    rep_key_set = set(rep_keys)
-
-    all_syn_values: set[str] = set()
-    for syns in grouped_synonyms.values():
-        for s in syns:
-            all_syn_values.add(s)
-
-    isolated_cores: List[str] = []
-    for t in ordered_core_candidates:
-        if t in rep_key_set:
-            continue
-        if t in all_syn_values:
-            continue
-        isolated_cores.append(t)
-
-    core_terms: List[str] = rep_keys + [
-        t for t in isolated_cores if t not in rep_key_set
-    ]
-    if not core_terms:
-        core_terms = ordered_core_candidates
-
-    grouped_synonyms = {k: v for k, v in grouped_synonyms.items() if k in core_terms}
 
     # 扁平化同義詞
     syn_terms_flat: List[str] = []

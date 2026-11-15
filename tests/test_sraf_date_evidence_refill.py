@@ -325,3 +325,169 @@ def test_year_in_query_also_refills_and_no_date_query_stays_one_shot(monkeypatch
     assert offsets == [0]  # no date -> original single ES query
     assert len(plain["hits"]) >= 1
     assert "date_candidate_refill" not in plain["query_meta"]
+
+def test_opt_in_page_admission_denial_preserves_first_valid_date_evidence():
+    """No second ES call after budget denial; return verified partial records."""
+    from agent.tools_es.retrieval_budget import ESPageAdmissionBudget
+
+    rows = [
+        _hit(1, "2025-06-17"), _hit(2, "2025-06-01"),
+        _hit(3, "2025-06-17"), _hit(4, "2025-06-17"),
+    ]
+    calls = []
+    denied = ESPageAdmissionBudget(
+        max_additional_es_calls=0, deadline_monotonic=100.0,
+        generation_reserve_seconds=20.0, clock=lambda: 0.0,
+    )
+    hits, evidence, _, meta = refill_date_filtered_evidence(
+        body={"size": 2}, first_response=_response(rows, 0, 2),
+        requested_size=3,
+        search_next=lambda body: calls.append(body) or _response(rows, 2, 2),
+        build_evidence=_builder,
+        admit_next_page=denied,
+    )
+    assert not calls
+    assert [h["uuid"] for h in hits] == ["doc-1"]
+    assert [e["uuid"] for e in evidence] == ["doc-1"]
+    assert meta["incomplete_due_to_page_admission"] is True
+    assert meta["incomplete_due_to_scan_limit"] is False
+    assert meta["note"] == "additional_page_admission_denied"
+    assert meta["pages_fetched"] == 1
+
+
+def test_opt_in_page_admission_enables_bounded_additional_es_call():
+    from agent.tools_es.retrieval_budget import ESPageAdmissionBudget
+
+    rows = [
+        _hit(1, "2025-06-17"), _hit(2, "2025-06-01"),
+        _hit(3, "2025-06-17"), _hit(4, "2025-06-17"),
+    ]
+    calls = []
+    budget = ESPageAdmissionBudget(
+        max_additional_es_calls=1, deadline_monotonic=100.0,
+        generation_reserve_seconds=20.0, clock=lambda: 60.0,
+    )
+
+    def additional_search(body):
+        calls.append(body)
+        return _response(rows, body["from"], body["size"])
+
+    hits, ev, _, meta = refill_date_filtered_evidence(
+        body={"size": 2}, first_response=_response(rows, 0, 2),
+        requested_size=3, search_next=additional_search,
+        build_evidence=_builder, admit_next_page=budget,
+    )
+    assert len(calls) == 1
+    assert [x["uuid"] for x in hits] == ["doc-1", "doc-3", "doc-4"]
+    assert [x["uuid"] for x in ev] == ["doc-1", "doc-3", "doc-4"]
+    assert meta["incomplete_due_to_page_admission"] is False
+    assert meta["result_limit_satisfied"] is True
+
+
+def test_generation_reserve_denies_page_before_call_without_false_success():
+    from agent.tools_es.retrieval_budget import ESPageAdmissionBudget
+
+    rows = [_hit(1, "2025-06-01"), _hit(2, "2025-06-17")]
+    budget = ESPageAdmissionBudget(
+        max_additional_es_calls=10, deadline_monotonic=100,
+        generation_reserve_seconds=20, clock=lambda: 80,
+    )
+    hits, evidence, _, meta = refill_date_filtered_evidence(
+        body={"size": 1}, first_response=_response(rows, 0, 1),
+        requested_size=1,
+        search_next=lambda body: pytest.fail("budget denied but ES called"),
+        build_evidence=_builder, admit_next_page=budget,
+    )
+    assert hits == evidence == []
+    assert meta["incomplete_due_to_page_admission"] is True
+
+
+@pytest.mark.parametrize("bad_policy", [
+    lambda: "yes",
+    lambda: None,
+    lambda: (_ for _ in ()).throw(ValueError("PRIVATE_POLICY_DETAILS")),
+])
+def test_invalid_page_admission_fails_closed_and_keeps_private_error_out(
+    bad_policy, capsys,
+):
+    rows = [_hit(1, "2025-06-01"), _hit(2, "2025-06-17")]
+    _, _, _, meta = refill_date_filtered_evidence(
+        body={"size": 1}, first_response=_response(rows, 0, 1),
+        requested_size=1,
+        search_next=lambda _: pytest.fail("non-boolean policy was admitted"),
+        build_evidence=_builder, admit_next_page=bad_policy,
+    )
+    assert meta["incomplete_due_to_page_admission"] is True
+    assert "PRIVATE_POLICY_DETAILS" not in capsys.readouterr().out
+
+
+def test_optional_page_gate_absent_retains_exact_legacy_metadata_and_results():
+    rows = [_hit(1, "2025-06-01"), _hit(2, "2025-06-17")]
+    args = dict(
+        body={"size": 1}, first_response=_response(rows, 0, 1),
+        requested_size=1,
+        search_next=lambda b: _response(rows, b["from"], b["size"]),
+        build_evidence=_builder,
+    )
+    old = refill_date_filtered_evidence(**args)
+    same = refill_date_filtered_evidence(**args, admit_next_page=None)
+    assert old == same
+    assert "incomplete_due_to_page_admission" not in old[3]
+
+
+def test_es_page_admission_budget_validates_and_is_thread_safe():
+    from concurrent.futures import ThreadPoolExecutor
+    from agent.tools_es.retrieval_budget import ESPageAdmissionBudget
+
+    with pytest.raises(ValueError, match="invalid_es_call_budget"):
+        ESPageAdmissionBudget(max_additional_es_calls=True,
+                              deadline_monotonic=100, generation_reserve_seconds=2)
+    with pytest.raises(ValueError, match="invalid_deadline"):
+        ESPageAdmissionBudget(max_additional_es_calls=2,
+                              deadline_monotonic=float("nan"), generation_reserve_seconds=2)
+    with pytest.raises(ValueError, match="invalid_generation_reserve"):
+        ESPageAdmissionBudget(max_additional_es_calls=2,
+                              deadline_monotonic=100, generation_reserve_seconds=-1)
+    budget = ESPageAdmissionBudget(
+        max_additional_es_calls=2, deadline_monotonic=100,
+        generation_reserve_seconds=1, clock=lambda: 10,
+    )
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(lambda _: budget(), range(30)))
+    assert sum(results) == 2
+    assert budget() is False
+
+
+def test_search_tool_marks_optional_page_budget_incomplete_from_authoritative_meta(
+    monkeypatch,
+):
+    import agent.tools_es.search_news as search_module
+
+    monkeypatch.setattr(
+        search_module, "compute_effective_terms",
+        lambda q: ([], {}, False, [], [], []),
+    )
+    monkeypatch.setattr(search_module, "resolve_index", lambda _: "news_test")
+    monkeypatch.setattr(search_module, "log_duration",
+                        lambda *a, **kw: nullcontext())
+    monkeypatch.setattr(search_module, "log_total", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        search_module, "_safe_es_search",
+        lambda body, *, index: _response([_hit(1, "2025-06-01")], 0, 1),
+    )
+
+    def denied_refill(**kwargs):
+        return [], [], 0, {
+            "incomplete_due_to_scan_limit": False,
+            "incomplete_due_to_page_admission": True,
+            "note": "additional_page_admission_denied",
+        }
+
+    monkeypatch.setattr(search_module, "refill_date_filtered_evidence",
+                        denied_refill)
+    result = search_module.ESSearchNews.forward.__wrapped__(
+        object(), query="救援", size=1,
+        date_from="2025-06-17", date_to="2025-06-17",
+    )
+    assert result["query_meta"]["result_incomplete"] is True
+    assert result["query_meta"]["note"] == "additional_page_admission_denied"

@@ -5,6 +5,7 @@ from fastapi import Request
 from api.core.url_utils import abs_url
 from api.core.presenters.citation_views import build_citation_views
 from api.core.presenters.sections import AgentPresentation, DataAgentSection
+from api.core.presenters.evidence_usage import evidence_usage_rows
 
 def _norm(s: str) -> str:
     return " ".join((s or "").strip().split())
@@ -75,7 +76,10 @@ def build_markdown(
     md.extend(_render_citations(pres, request))
     #md.extend(_render_citations(pres, request, allow_details=allow_details))
     #md.extend(_render_data_agent(pres.da_section))
-    md.extend(_render_data_agent(pres.da_section, allow_details=allow_details))
+    md.extend(_render_data_agent(
+        pres.da_section, allow_details=allow_details,
+        evidence_usage=pres.evidence_usage,
+    ))
     md.extend(_render_reasoning(pres, allow_details=allow_details))
     md.extend(_render_raw_json(pres, allow_details=allow_details))
     return "\n\n".join([x for x in md if x and x.strip()])
@@ -121,9 +125,15 @@ def _render_citations(pres: AgentPresentation, request: Request) -> List[str]:
 
     return out
 
-def _render_data_agent(da_section: Optional[DataAgentSection], *, allow_details: bool = True) -> List[str]:
+def _render_data_agent(
+    da_section: Optional[DataAgentSection], *, allow_details: bool = True,
+    evidence_usage: Optional[dict] = None,
+) -> List[str]:
+    rows = evidence_usage_rows(evidence_usage or {})
     if not da_section:
-        return []
+        return (["## 資料整備紀錄（Data Agent）\n",
+                 "- Evidence 篩選與使用紀錄：",
+                 *[f"  - {label}：{value}" for label, value in rows]] if rows else [])
 
     mode = da_section.mode
     elapsed = da_section.elapsed_sec
@@ -193,6 +203,10 @@ def _render_data_agent(da_section: Optional[DataAgentSection], *, allow_details:
 
         if parts:
             lines.append("- 統計概況：" + "；".join(parts))
+
+    if rows:
+        lines.append("- Evidence 篩選與使用紀錄：")
+        lines.extend(f"  - {label}：{value}" for label, value in rows)
 
     # 關鍵詞：依 mode 顯示（你 style/report 的欄位本來就不同）
     mode_norm = str(mode or "").lower()
