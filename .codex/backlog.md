@@ -211,3 +211,9 @@
 - [ ] Complete exact-head Python 3.10/3.11 Hosted CI and independent Codex Review, fix any findings, conditionally merge (no parallel source/builder PR).
 - [ ] Extend count-only shadow with conservative same ES hit + block-local + overlapping Event IDs borrowing from validated date-matched **direct subject text** Evidence; do not let global document title, cross-event, cross-UUID or unrelated source establish a required subject. Keep absent/ambiguous original fail closed.
 - [ ] Genuine human-assessed private news_test read-only same-snapshot Gaza 2025 5/10 vs 25/40, Sudan false positives, Event-only/date-null and Guterres 2023 cases; profile p50/p95 and token budget. Implement robust original-question entity requirements in ordinary prose separately before any automatic nonzero strict 3→2 promotion and #413 multiround worker.
+
+
+## 2026-11-15 #406 after Event-local contextual 3→2 shadow
+- [ ] Latest-HEAD Hosted dual-Python, formal Codex review and conditional merge (never parallel-modify Evidence Builder/Trace).
+- [ ] Distinguish two fully TEXT-matched auxiliary axes from text+metadata-assisted two-group candidates in contextual shadow (avoid treating title/metadata as proof). Add mismatch/negative/comparison and optional typed semantic quality gates before any promotion; actual normal user questions need trustworthy entity extraction rather than only `主題：...` label.
+- [ ] Run real private read-only `news_test` same-snapshot Gaza/Sudan 5/10 vs 25/40, Guterres Event-only 2023-08-24 and missing Timeline; compare p50/p95 and source fairness, eventual report tokenizer-based input budget. Implement conditional 3→2 only after documented precision/recall target and operator acceptance, then share core with actual #413 N-round Job Worker.

@@ -217,3 +217,137 @@ def test_shadow_does_not_infer_subject_from_metadata_only():
     # A metadata-only topical anchor never substitutes for an actual
     # literal subject mention in the text, even when other axes match.
     assert shadow.explicit_subject_direct_two_group_only == 0
+
+
+
+def test_same_event_context_shadow_never_borrows_across_hit_or_block(
+    monkeypatch, caplog,
+):
+    """Same-day E2, reused block-local E1 and another ES hit stay separate."""
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    monkeypatch.delenv("SRAF_EVIDENCE_RESCUE", raising=False)
+    monkeypatch.delenv("SRAF_EVIDENCE_SOURCE_REFILL", raising=False)
+    strong = _hit()
+    block0 = strong["_source"]["multidim_event_json"][0]
+    # Make E2 independently date-valid; neither day nor article ID is proof
+    # that E2's unrelated assistance shares the E1/Gaza subject.
+    block0["Event"][1]["time_iso"] = "2023-08-24"
+    block0["evidence_snippets"].append({
+        "text": "聯合國 醫療 SECOND-EVENT-SECRET", "event_ids": ["E2"],
+    })
+    # Both blocks use the same *local* Event ID string E1 on the same day.
+    strong["_source"]["multidim_event_json"].append({
+        "article_date_iso": "2023-08-24",
+        "Event": [{"event_id": "E1", "time_iso": "2023-08-24"}],
+        "Event_Timeline": [],
+        "evidence_snippets": [{
+            "text": "聯合國 醫療 OTHER-BLOCK-SECRET", "event_ids": ["E1"],
+        }],
+    })
+    other = _hit()
+    other["_id"] = "SECOND-DOC-SECRET"
+    other["_source"]["uuid"] = "OTHER-UUID-SECRET"
+    other["_source"]["multidim_event_json"][0]["evidence_snippets"] = [{
+        "text": "聯合國 醫療 OTHER-HIT-SECRET", "event_ids": ["E1"],
+    }]
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        result = _build(
+            [strong, other],
+            original_question="主題：加薩\n請整理人道醫療 SECRET-QUESTION",
+        )
+    evidence = result[1]
+    # Strict pipeline is unchanged; context rescues are NEVER promoted.
+    assert len(evidence) == 1
+    assert evidence[0]["match_policy"] == "strict"
+
+    tr = _trace(caplog)
+    counts = tr["counters"]
+    assert counts["shadow_3to2.strict_subject_text_anchors_in_sample"] == 1
+    assert counts["shadow_3to2.same_event_subject_context_two_group_only"] == 1
+    assert counts["shadow_3to2.no_same_event_subject_context_two_group_only"] == 3
+    assert counts["shadow_3to2.explicit_subject_not_direct_two_group_only"] == 4
+    assert counts["shadow_3to2.explicit_subject_direct_two_group_only"] == 2
+    assert counts["shadow_3to2.explicit_subject_available"] == 1
+    assert tr["output_evidence"] == tr["strict_accepted"] == 1
+    serialized = json.dumps(tr, ensure_ascii=False)
+    for secret in ("SECRET-", "OTHER-UUID", "加薩", "聯合國", "2023-08-24"):
+        assert secret not in serialized
+
+
+def test_same_event_context_shadow_requires_strict_text_anchor_and_structured_ids():
+    from agent.es.evidence_core.question_anchor import derive_explicit_question_anchor
+
+    subject = derive_explicit_question_anchor("主題：加薩", GROUPS)
+    assert subject is not None
+    # Both candidates are text-two-group. Subject in global article metadata
+    # does NOT turn a strict E1 passage without required subject in its own
+    # text into an anchor, even if strict group count includes metadata.
+    metadata_only = HitDoc(
+        uuid="one", subject="加薩", article_title=None, score=0.0,
+        raw_content="", has_structured_events=True, source_hit_ordinal=0,
+        citations=[
+            Citation(
+                text="停火 人道援助", date_iso="2023-08-24",
+                event_ids=["E1"], block_index=0,
+            ),
+            Citation(
+                text="聯合國 醫療", date_iso="2023-08-24",
+                event_ids=["E1"], block_index=0,
+            ),
+        ],
+    )
+    no_subject = observe_topic_shadow(
+        [metadata_only], date_from="2023-08-24", date_to="2023-08-24",
+        allowed_years=None, term_groups=GROUPS, explicit_anchor=subject,
+    )
+    assert no_subject is not None
+    assert no_subject.strict_subject_text_anchors_in_sample == 0
+    assert no_subject.same_event_subject_context_two_group_only == 0
+
+    # Legacy same-hit context is explicitly NOT evidence of same Event;
+    # it remains a separate unverified category.
+    legacy = HitDoc(
+        uuid="one", subject=None, article_title=None, score=0.0,
+        raw_content="", has_structured_events=False, source_hit_ordinal=1,
+        citations=[
+            Citation(text="加薩 停火 人道援助", date_iso="2023-08-24"),
+            Citation(text="聯合國 醫療", date_iso="2023-08-24"),
+        ],
+    )
+    legacy_count = observe_topic_shadow(
+        [legacy], date_from="2023-08-24", date_to="2023-08-24",
+        allowed_years=None, term_groups=GROUPS, explicit_anchor=subject,
+    )
+    assert legacy_count is not None
+    assert legacy_count.strict_subject_text_anchors_in_sample == 0
+    assert legacy_count.same_event_subject_context_two_group_only == 0
+    assert legacy_count.no_same_event_subject_context_two_group_only == 1
+
+
+def test_subject_context_anchor_cap_is_bounded():
+    from agent.es.evidence_core.question_anchor import derive_explicit_question_anchor
+    from agent.es.evidence_core.topic_shadow import MAX_SHADOW_STRICT_SUBJECT_ANCHORS_PER_HIT
+
+    subject = derive_explicit_question_anchor("主題：加薩", GROUPS)
+    assert subject is not None
+    row = Citation(
+        text="加薩 停火 人道援助", date_iso="2023-08-24",
+        event_ids=["E1"], block_index=0,
+    )
+    hit = HitDoc(
+        uuid="id", subject=None, article_title=None, score=0.0,
+        raw_content="", has_structured_events=True, source_hit_ordinal=0,
+        citations=[row for _ in range(MAX_SHADOW_CITATIONS + 10)],
+    )
+    result = observe_topic_shadow(
+        [hit], date_from="2023-08-24", date_to="2023-08-24",
+        allowed_years=None, term_groups=GROUPS, explicit_anchor=subject,
+    )
+    assert result is not None
+    assert result.strict_subject_text_anchors_in_sample == MAX_SHADOW_STRICT_SUBJECT_ANCHORS_PER_HIT
+    assert result.subject_anchors_dropped_by_cap == (
+        MAX_SHADOW_CITATIONS - MAX_SHADOW_STRICT_SUBJECT_ANCHORS_PER_HIT
+    )
+    assert result.uninspected_by_cap == 10
