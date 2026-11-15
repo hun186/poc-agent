@@ -164,3 +164,8 @@
 ## 2026-11-15 #413 B2 Report Job browser fragment prefill (PR CANDIDATE)
 - [ ] Exact-head Hosted Report Job UI/Node and offline regression, independent formal Codex Review and Merge Gate.
 - [ ] Before producing a deep-report link in `/v1/chat/completions`, implement explicit authorized Job dispatch with durable admission, owner-bound idempotency, correctly preserved original question/query constraints, real N-round execution and verified browser/proxy permissions. Do NOT include service keys or access tokens in query strings/fragments, or pretend a `#job=` link is a signed one-click capability.
+
+
+## 2026-11-15 #413 B3 browser URL producer (PR CANDIDATE)
+- [ ] Confirm exact-head Hosted Report Job UI/API regressions, independent Code Review and Merge Gate for additive `browser_status_url`.
+- [ ] Wire to Chat only after trusted user/tenant-bound deep Report Job creation is accepted and actual N-round worker mode is implemented; return a stable status prefill and explicitly say `QUEUED/RUNNING` until Word exists. Check OpenWebUI/forward proxy original scheme/host configuration before constructing an absolute external URL. Never place service keys in URL.
