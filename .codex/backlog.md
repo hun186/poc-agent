@@ -141,6 +141,13 @@
 ## 2026-11-15 #413 A1 follow-up — request-wide budgets (in progress)
 - PR #414 and #415 have been verified merged; per-builder health and limited ES stdout redaction exist. Candidate optional date-refill admission adds an atomic ES page count + monotonic generation-reserve guard, not an automatic runtime budget. Next integration requires a single request-wide trusted coordinator across first ES, candidate refill, optional N rounds and Report LLM with timeouts, byte/token and call budgets, cancellation, non-drifting date/index/field/RBAC, checkpointed Evidence and verified OpenWebUI visible progress. Do not falsely interpret optional admission or synthetic PASS as completed multi-round agent.
 
+## 2026-11-15 #413 B0 dual-agent contract follow-up (candidate, NOT MERGED)
+- [ ] Hosted exact HEAD Python3.10/3.11 planner + existing date/keyword regressions, formal independent Codex review, thread cleanup and normal branch protection gate.
+- [ ] Build truly **request-wide** validated Evidence checkpoint/coverage evaluator (current #414 is only one builder slice); freeze user-authored temporal/fixed field/index/owner constraints using a trusted original-text verifier, not freeform Data Agent JSON.
+- [ ] Bind independent round-2..N planner to a trusted ES query adapter; keep initial core entities, optional SHOULD semantic terms, index/field/date restrictions, original Event/Timeline postfilter, monotonic cross-index/Event-block/time Evidence dedup, robust budget admission and explicit INCOMPLETE.
+- [ ] Add genuine Job-mode N-round controller in existing ReportJobWorker, total retrieval 1800s + generation reserve, LLM/ES/token/round budgets, cooperative cancellation, restart-aware checkpoints; reuse first-round validated evidence only with owner/scope proof. #417 queued cancellation foundation is separate/open.
+- [ ] Authorize and perform private news_test/LLM/DOCX, OpenWebUI two-link auth, data consistency/p95 and full privacy/timeout acceptance before production enablement/flag retirement.
+
 ## 2026-11-15 #413 Report Job async implementation follow-up (first foundation PR CANDIDATE)
 - [ ] Exact-head Hosted Python 3.10/3.11 CI, formal independent Codex review and security-thread resolution for queue admission + queued-only cancel. Then merge only per Auto-Merge v2 gate.
 - [ ] Add strictly validated durable adaptive_multiround mode, round checkpoints with validated canonical Event/Timeline date and source identity, immutable query/tenant/permissions; LLM plan/query drift guard; request-wide ES/LLM/token 1800s retrieval and ~2400s total budget with generation reserve, cooperative cancellation/timeouts and actual restart policy.
