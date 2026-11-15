@@ -140,3 +140,6 @@
 
 ## 2026-11-15 #413 A1 follow-up — request-wide budgets (in progress)
 - PR #414 and #415 have been verified merged; per-builder health and limited ES stdout redaction exist. Candidate optional date-refill admission adds an atomic ES page count + monotonic generation-reserve guard, not an automatic runtime budget. Next integration requires a single request-wide trusted coordinator across first ES, candidate refill, optional N rounds and Report LLM with timeouts, byte/token and call budgets, cancellation, non-drifting date/index/field/RBAC, checkpointed Evidence and verified OpenWebUI visible progress. Do not falsely interpret optional admission or synthetic PASS as completed multi-round agent.
+
+## 2026-11-15 #400 editor search follow-up
+- [ ] Confirm actual news_test mapping/field combinations and underscore-substring behaviors using read-only private ES; benchmark p50/p95 and maximum broad-query cost, inspect search.allow_expensive_queries; verify latest head CI/review and branch rules before allowing merge/production enablement.
