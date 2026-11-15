@@ -14,6 +14,7 @@ from .rescue import bounded_rescue, TARGET_EVIDENCE_COUNT
 from .source_refill import source_refill_candidates
 from .topic_match import match_topic
 from .text_norm import normalize_for_match
+from .fair_budget import MAX_SCAN_CITATIONS, MAX_VALID_EVIDENCE, select_valid_fair_evidence
 
 
 logger = logging.getLogger(__name__)
@@ -95,7 +96,13 @@ def build_hits_and_evidence(
     # Experimental, default-OFF. Use already-returned _source only; bounded
     # global candidate+scan+text budgets, not an uncapped single-document scan.
     if os.getenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET") == "1":
-        config = replace(config, shared_citation_budget=1024)
+        if os.getenv("SRAF_EVIDENCE_VALID_FAIR_BUDGET") == "1":
+            config = replace(
+                config, shared_citation_budget=MAX_SCAN_CITATIONS,
+                valid_postfilter_budget=MAX_VALID_EVIDENCE,
+            )
+        else:
+            config = replace(config, shared_citation_budget=1024)
     term_groups = term_groups or []
     effective_terms = effective_terms or []
 
@@ -293,6 +300,23 @@ def build_hits_and_evidence(
                 evidence.append(ev)
 
         logger.info("build_hits_and_evidence: evidence fallback(effective_terms)=%d", len(evidence))
+
+    # The second opt-in limits only validated Evidence, rather than using up
+    # the 1024 count on out-of-date or off-topic parser candidates. Allocation
+    # already protected later ES hits from earlier source monopolization.
+    if config.valid_postfilter_budget:
+        eligible_count = len(evidence)
+        evidence = select_valid_fair_evidence(evidence, config.valid_postfilter_budget)
+        if evidence_trace is not None:
+            evidence_trace.stage_count("valid_budget.eligible", eligible_count)
+            evidence_trace.stage_count("valid_budget.selected", len(evidence))
+            evidence_trace.stage_count(
+                "valid_budget.not_selected", eligible_count - len(evidence),
+            )
+        logger.info(
+            "build_hits_and_evidence: valid_budget eligible=%d selected=%d",
+            eligible_count, len(evidence),
+        )
 
     # 5) filtered_hits：只留有 evidence 的 doc
     if evidence:
