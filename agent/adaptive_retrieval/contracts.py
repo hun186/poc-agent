@@ -25,6 +25,14 @@ def _bounded_text(value: str, *, limit: int = 160) -> str:
     return value.strip()
 
 
+def _original_question(value: str) -> str:
+    """Keep human multiline questions intact; reject only unsafe controls."""
+    if (type(value) is not str or not value.strip() or len(value) > 4096
+            or any(ord(ch) < 32 and ch not in "\\n\\r\\t" for ch in value)):
+        raise ValueError("invalid_adaptive_question")
+    return value
+
+
 def _terms(values: tuple[str, ...], *, limit: int = 8) -> tuple[str, ...]:
     if type(values) is not tuple or len(values) > limit:
         raise ValueError("invalid_adaptive_terms")
@@ -84,7 +92,7 @@ class QueryConstraints:
     keyword_policy: str = "flexible"
 
     def __post_init__(self) -> None:
-        _bounded_text(self.question, limit=4096)
+        _original_question(self.question)
         if type(self.event_date) is not DateWindow or type(self.analysis_date) is not DateWindow:
             raise ValueError("invalid_date_constraint")
         if type(self.allowed_indexes) is not tuple or not 1 <= len(self.allowed_indexes) <= 8:
