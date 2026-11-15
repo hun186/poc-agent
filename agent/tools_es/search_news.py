@@ -265,10 +265,12 @@ class ESSearchNews(Tool):
 
         if date_refill_meta is not None:
             query_meta["date_candidate_refill"] = date_refill_meta
-            if date_refill_meta["incomplete_due_to_scan_limit"]:
-                # A bounded, unfinished candidate scan is not proof of no news.
+            if (date_refill_meta["incomplete_due_to_scan_limit"]
+                    or date_refill_meta.get("incomplete_due_to_page_admission") is True):
+                # Never claim complete evidence when the original scan window
+                # or a future request-wide page gate ends early.
                 query_meta["result_incomplete"] = True
-                query_meta["note"] = "date_candidate_scan_limit_reached"
+                query_meta["note"] = date_refill_meta["note"]
 
         dbg(
             f"[es_search_news] hits={len(filtered_hits)}, "
