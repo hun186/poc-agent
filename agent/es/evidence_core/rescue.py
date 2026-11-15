@@ -12,6 +12,7 @@ from typing import List, Optional, Set
 from .models import EvidenceSnippet, HitDoc
 from .snippet import build_evidence_snippet
 from .topic_match import match_topic
+from .event_anchor import same_event_as_strict_anchor
 
 
 MIN_STRICT_TO_RESCUE = 1
@@ -65,6 +66,11 @@ def bounded_rescue(
     if not trusted_origins:
         return []
 
+    trusted_strict = [
+        ev for ev in strict_evidence
+        if not ev.weak_evidence and ev.match_scope in ("text", "mixed")
+    ]
+
     # Stable source-hit ordinal, never application uuid: uuid is not unique
     # across ES indices or across different multidim event blocks.
     candidates = []
@@ -101,6 +107,16 @@ def bounded_rescue(
                 allowed_years=allowed_years,
             )
             if evidence is None:
+                continue
+            # The original strict Evidence may anchor this ES hit, but in
+            # structured multi-Event articles it cannot authorize a weak
+            # snippet from a different Event or block just because its date
+            # independently matches the user's window.
+            if not any(
+                same_event_as_strict_anchor(hit, citation, anchor)
+                for anchor in trusted_strict
+                if anchor.source_hit_ordinal == hit.source_hit_ordinal
+            ):
                 continue
             ok, _, _, _ = match_topic(
                 evidence.text, hit.subject, hit.article_title, term_groups

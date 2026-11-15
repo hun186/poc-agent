@@ -76,3 +76,5 @@ class EvidenceSnippet:
     matched_event_time_candidates: List[dict] = field(default_factory=list)
     structured_time_context: bool = False
     source_hit_ordinal: int = -1
+    # Internal-only parser block identity; not part of public Evidence JSON.
+    block_index: Optional[int] = None

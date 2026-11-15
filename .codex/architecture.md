@@ -60,3 +60,7 @@
 ## 2026-11-15 #413 asynchronous Report Job prerequisite (candidate; NOT MERGED)
 - Extend existing SQLite v2 ReportJobStore only; do not create a second queue. Store.create optionally performs one BEGIN IMMEDIATE idempotency/replay + queued/running admission-count + insert. HTTP Report Job submission uses REPORT_JOBS_MAX_ACTIVE (0 = historical unlimited). Worker remains single local daemon; admission is not a distributed GPU quota.
 - A new CAS queued→cancelled transition permits immediate queued-job cancellation by its verified owner/admin through existing RBAC. No in-flight cancellation, no cross-restart resume and no adaptive agent execution yet.
+
+
+## 2026-11-15 #406 candidate: Event-scoped weak rescue origin guard
+- Existing opt-in `agent/es/evidence_core/rescue.py` now consults `event_anchor.same_event_as_strict_anchor` after independent linked Event/Timeline date validation. `snippet.py` propagates internal Citation.block_index to EvidenceSnippet.block_index (never serialized in builder public JSON); structured multi-Event weak borrowing requires same source_hit_ordinal, same block_index and intersecting bounded Event IDs, whereas truly legacy nonstructured same-hit rescue remains unchanged. This is a *rescue gate*, not a query-level subject classifier, trusted original-question anchor or live N-round function.

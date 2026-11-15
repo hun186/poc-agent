@@ -176,3 +176,9 @@
 - [ ] Read-only private news_test same-snapshot A/B on 2025 Gaza (5/10 vs 25/40) and Event-only date examples. Determine where parser/inner_hits/strict group cutoffs actually happen and identify false positives.
 - [ ] Implement trusted original-question entity/subject anchors and same-ES-hit/block-local matching; distinguish auxiliary groups and meta-only, do not cross-borrow events or UUID. Only then trial conditional 3→2 under bounded validated candidate/token/source budgets, without auto enabling flags.
 - [ ] Standardize reusable single-round Evidence selection contract before #413 N-round execution PR. Existing #418/#419 are isolated planner/admission helpers, NOT a live deep report.
+
+
+## 2026-11-15 #406 after parsed weak rescue same-Event guard
+- [ ] Verify PR candidate latest-head Hosted dual-Python full Evidence regressions and formal Codex review, resolve any findings and conditionally merge.
+- [ ] Apply the same source-hit/block/Event context rule to **weak candidates** created by `source_refill_candidates` (#405) in a separately serialized PR. Strict direct-text matches in any valid Event should remain independently allowable when verified; never lend anchor to unrelated weak E2.
+- [ ] Obtain trusted required original-question entity anchors before enabling any automatic two-group relaxation; compare actual private news_test 5/10 vs 25/40 A/B and invalid cross-topic sources. Old and new rescue remain default-OFF pending operator acceptance.
