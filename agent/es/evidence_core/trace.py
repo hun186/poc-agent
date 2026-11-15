@@ -24,6 +24,14 @@ _STAGE_COUNTS = frozenset({
     "source_refill.strict_selected", "source_refill.weak_selected",
     "source_refill.unselected_by_target", "bounded_rescue.selected",
     "valid_budget.eligible", "valid_budget.selected", "valid_budget.not_selected",
+    # Diagnostic only: one parser slice is never a re-query permission.
+    "health.date_eligible", "health.known_uninspected", "health.known_capped",
+    "health.reason.SEARCH_INCOMPLETE",
+    "health.reason.NO_PARSED_CANDIDATES",
+    "health.reason.NO_DATE_ELIGIBLE_CITATIONS",
+    "health.reason.NO_STRICT_TOPIC_EVIDENCE",
+    "health.reason.LOW_STRICT_COVERAGE",
+    "health.reason.REQUEST_LEVEL_ASSESSMENT_REQUIRED",
 })
 
 # Keep all public trace fields fixed, not influenced by Elasticsearch values.
