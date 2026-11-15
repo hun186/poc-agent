@@ -41,12 +41,13 @@ def test_report_job_ui_real_status_contract_and_no_token_persistence():
     assert "/v1/report/jobs/" in js
     assert "phase.elapsed" not in js  # respect existing progress.elapsed_seconds
     for phase in ("queued", "unobserved", "agent_execution", "docx_export",
-                  "finalizing", "completed", "failed", "interrupted"):
+                  "finalizing", "completed", "failed", "interrupted", "cancelled"):
         assert phase + ":" in js
     assert "credentials: 'omit'" in js
     assert "cache: 'no-store'" in js
     assert "textContent" in js
     assert 'id="jobStatusFilter"' in html
+    assert '<option value="cancelled">已取消</option>' in html
     assert "'jobStatusFilter').addEventListener('change'" in js
     assert "&status=" in js
     assert 'id="listJobsBtn"' in html
