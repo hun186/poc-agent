@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, List, Tuple
 
 from .builder import build_agent, normalize_model_id
 from .types import ENV
+from agent.tools_es.question_scope import bind_original_report_question
 
 logger = logging.getLogger(__name__)
 
@@ -254,7 +255,12 @@ def run_data_agent(
     code_agent = build_agent(mode=mode)
 
     question_for_agent = _pack_question_for_agent(question or "", index_hint=index_hint)
-    result = code_agent.run(question_for_agent)
+    # The LLM may rewrite the actual es_search_news(query=...) tool argument.
+    # Keep the unmodified caller-supplied question request-local for later
+    # diagnostics. Never infer it from the rewritten question or tool output.
+    report_mode = (mode or "").strip().lower() in ("report", "sra_report")
+    with bind_original_report_question(question_raw if report_mode else None):
+        result = code_agent.run(question_for_agent)
     elapsed = time.time() - t0
 
     payload = _extract_payload(result)

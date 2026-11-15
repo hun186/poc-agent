@@ -187,3 +187,9 @@
 ## 2026-11-15 #406 after E1/E2 source-only weak rescue hardening
 - [ ] Exact-head Hosted Python3.10/3.11 and independent Codex review of source refill guard, then conditional merge; no parallel core-edit PR.
 - [ ] Build trusted original-user subject anchors to distinguish Gaza from unrelated Sudan even in *strict* or zero-only fallback; use same-block/local Event checks and bounded candidate rescue. Run private news_test same-snapshot precision/recall, Event-only date and p50/p95 A/B before enabling #404/#405, retiring #411/#412 flags, or wiring #413 real multi-round engine.
+
+
+## 2026-11-15 #406 next after original-question provenance context
+- [ ] Verify dual-Python exact-HEAD Hosted tests and Codex review, no unresolved Findings, conditional Merge.
+- [ ] Extract high-confidence subject anchors strictly from verified original report question (not LLM query or broad synonym group); distinguish required entity vs auxiliary facet and negative/comparison constraints, allow no-anchor result. Keep outputs trace-only/shadow for safety and privacy.
+- [ ] Connect subject anchor diagnostics to bounded 3→2 shadow via the same internal single-round builder; check Event/block/owner scope, private news_test A/B precision-recall and p95 before any automatic two-group Evidence promotion or default flag retirement. Do not connect live #413 N-round worker ahead of this.
