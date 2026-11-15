@@ -4,6 +4,7 @@ from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 from api.core.presenters.text_sanitize import normalize_text_for_docx
 from api.core.presenters.sections import DataAgentSection
+from api.core.presenters.evidence_usage import evidence_usage_rows
 from api.core.presenters.docx.config import DocxRenderConfig  # ★新增
 
 def _truncate(s: str, n: int) -> str:
@@ -36,18 +37,27 @@ def add_data_agent_section(
     da_section: Optional[DataAgentSection],
     *,
     cfg: Optional[DocxRenderConfig] = None,   # ★新增
+    evidence_usage: Optional[dict] = None,
 ) -> None:
     """
     將 extract_data_agent_section(out) 回傳的 da_section 寫入 Word。
     ★ 注意：只吃 da_section，不再解析 out
     """
     cfg = cfg or DocxRenderConfig()           # ★新增：保底預設
-    if not da_section:
+    rows = evidence_usage_rows(evidence_usage or {})
+    if not da_section and not rows:
         return
 
     # ==== 標題 ====
     doc.add_page_break()
     doc.add_heading("資料整備紀錄（Data Agent）", level=2)
+    if not da_section:
+        doc.add_heading("Evidence 篩選與使用紀錄", level=3)
+        for label, value in rows:
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"{label}：").bold = True
+            p.add_run(normalize_text_for_docx(value))
+        return
 
     mode = da_section.mode
     elapsed = da_section.elapsed_sec
@@ -146,6 +156,13 @@ def add_data_agent_section(
             p = doc.add_paragraph()
             p.add_run("統計概況：").bold = True
             p.add_run("；".join(items))
+
+    if rows:
+        doc.add_heading("Evidence 篩選與使用紀錄", level=3)
+        for label, value in rows:
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"{label}：").bold = True
+            p.add_run(normalize_text_for_docx(value))
 
     # ==== 關鍵字樣態（保留你原本格式）====
     mode_norm = (str(mode or "")).lower()

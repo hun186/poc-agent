@@ -13,6 +13,8 @@ from agent.utils.citations import build_refno_uuid_map
 from agent.utils.evidence_pack import pack_ev_for_llm
 from agent.utils.evidence_pack import filter_ev_fields
 from agent.utils.evidence_pack import guess_report_need_fields
+from agent.utils.report_evidence_trace import emit_report_evidence_trace, count_identified_sources
+from agent.utils.report_evidence_selection import select_source_diverse_evidence
 from agent.utils.profiler import log_duration, log_total
 from agent.utils.markdown_tables import sanitize_markdown_tables, replace_table_cell_br
 from agent.refiners.query_refiner import refine_question_for_data_agent
@@ -125,6 +127,12 @@ def ask_with_report(
     # verdict. Do not ask the LLM to write an apparently complete report.
     search_quality = _incomplete_date_search(payload)
     if search_quality and not (payload.get("evidence_snippets") or []):
+        # Emit a count-only stop event; this path must never call report LLM.
+        emit_report_evidence_trace(
+            incoming=0, strong=0, weak=0, picked=0, compressed=0,
+            llm_input=0, max_for_llm=0, prompt_chars=0,
+            skipped_incomplete=True,
+        )
         warning = (
             "日期查詢未完成：Elasticsearch 候選資料掃描已達安全上限，"
             "目前沒有足夠的有效證據判斷是否存在相關事件。"
@@ -143,6 +151,17 @@ def ask_with_report(
             "result_incomplete": True,
             "search_status": search_quality,
             "query_meta": payload["query_meta"],
+        }
+        result["evidence_usage"] = {
+            "schema": "sraf_report_evidence_usage_v1",
+            "selection_mode": ("source_diverse" if os.getenv("SRAF_REPORT_DIVERSE_EVIDENCE") == "1" else "strong_first"),
+            "llm_skipped_incomplete": True,
+            **{key: 0 for key in (
+                "incoming", "strong", "weak", "picked", "compressed", "llm_input",
+                "incoming_identified_sources", "picked_identified_sources",
+                "llm_input_identified_sources", "max_for_llm", "prompt_chars",
+                "truncated_notes", "truncated_titles",
+            )},
         }
         if trace.get("data_agent"):
             result["data_agent"] = trace["data_agent"]
@@ -164,11 +183,17 @@ def ask_with_report(
     ev_strong = [e for e in ev_all if not e.get("weak_evidence")]
     ev_weak   = [e for e in ev_all if e.get("weak_evidence")]
     
-    # 強證據優先，不夠再補弱證據
-    picked_for_llm = ev_strong[:MAX_EV_FOR_LLM]
-    if len(picked_for_llm) < MAX_EV_FOR_LLM:
-        need = MAX_EV_FOR_LLM - len(picked_for_llm)
-        picked_for_llm += ev_weak[:need]
+    # Keep existing behavior by default. Optional P1-d selection avoids one
+    # source exhausting a large Evidence pool; only already-verified snippets
+    # reach this stage, and no report token-budget guarantee is implied.
+    if os.getenv("SRAF_REPORT_DIVERSE_EVIDENCE") == "1":
+        picked_for_llm = select_source_diverse_evidence(ev_all, MAX_EV_FOR_LLM)
+    else:
+        # 強證據優先，不夠再補弱證據
+        picked_for_llm = ev_strong[:MAX_EV_FOR_LLM]
+        if len(picked_for_llm) < MAX_EV_FOR_LLM:
+            need = MAX_EV_FOR_LLM - len(picked_for_llm)
+            picked_for_llm += ev_weak[:need]
     
     # （可選）讓 payload 留個統計，方便 debug / 前端顯示
     payload["evidence_meta"] = {
@@ -358,16 +383,44 @@ def ask_with_report(
     
     print(f"MAX_EV_FOR_LLM:{MAX_EV_FOR_LLM}")
     print(f"MAX_EV_FOR_FRONTEND_CFG:{MAX_EV_FOR_FRONTEND_CFG}")
-    print("=== DEBUG: EV (for LLM) ===")
-    for e in ev_for_llm:
-        print({
-            "ref_no": e.get("ref_no"),
-            "id": e.get("id"),
-            "d": e.get("d"),
-            "title": e.get("title"),
-            "note_preview": (e.get("note") or "")[:100].replace("\n", " "),
-            "keys": list(e.keys()),  # 這行對診斷欄位精簡很有用
-        })
+    # Previous unconditional debug output exposed original Evidence, titles,
+    # dates and document IDs to application stdout. Use count-only observability
+    # when explicitly opted in; do not print snippets/prompt even on error.
+    # The field selector may omit the document ID from LLM-visible rows.
+    # Count their original source identities via the stable compressed ref_no
+    # before logging counts; never log or hash the IDs themselves.
+    llm_ref_nos = {
+        e.get("ref_no") for e in ev_for_llm
+        if isinstance(e, dict) and isinstance(e.get("ref_no"), int)
+    }
+    llm_source_rows = [
+        e for e in ev_compact if e.get("ref_no") in llm_ref_nos
+    ]
+    evidence_usage = {
+        "schema": "sraf_report_evidence_usage_v1",
+        "selection_mode": ("source_diverse" if os.getenv("SRAF_REPORT_DIVERSE_EVIDENCE") == "1" else "strong_first"),
+        "llm_skipped_incomplete": False,
+        "incoming": len(ev_all), "strong": len(ev_strong), "weak": len(ev_weak),
+        "picked": len(picked_for_llm), "compressed": len(ev_compact),
+        "llm_input": len(ev_for_llm),
+        "incoming_identified_sources": count_identified_sources(ev_all),
+        "picked_identified_sources": count_identified_sources(picked_for_llm),
+        "llm_input_identified_sources": count_identified_sources(llm_source_rows),
+        "max_for_llm": MAX_EV_FOR_LLM, "prompt_chars": len(user_prompt),
+        "truncated_notes": truncated_notes, "truncated_titles": truncated_titles,
+    }
+    emit_report_evidence_trace(
+        incoming=evidence_usage["incoming"], strong=evidence_usage["strong"],
+        weak=evidence_usage["weak"],
+        picked=evidence_usage["picked"], compressed=evidence_usage["compressed"],
+        llm_input=evidence_usage["llm_input"], max_for_llm=evidence_usage["max_for_llm"],
+        prompt_chars=evidence_usage["prompt_chars"],
+        truncated_notes=evidence_usage["truncated_notes"],
+        truncated_titles=evidence_usage["truncated_titles"],
+        incoming_identified_sources=evidence_usage["incoming_identified_sources"],
+        picked_identified_sources=evidence_usage["picked_identified_sources"],
+        llm_input_identified_sources=evidence_usage["llm_input_identified_sources"],
+    )
     t0 = time.perf_counter()
     with log_duration("[report] call_llm(report)",
         extra={"model_id": REPORT_MODEL_ID, "timeout_sec": REPORT_LLM_TIMEOUT},
@@ -454,6 +507,7 @@ def ask_with_report(
         "reasoning": reasoning,
         "used_uuids": used_uuids,
         "refno_uuid_map": refno_uuid_map,
+        "evidence_usage": evidence_usage,  # Count-only, not sent to the report LLM.
     }
 
     if search_quality:

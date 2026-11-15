@@ -67,3 +67,14 @@
 - **2026-11-09 Report Job history filter candidate:** `GET /v1/report/jobs?limit=20&offset=0&status=failed` accepts only optional `status ∈ {queued,running,completed,failed,interrupted}`; other values are HTTP 422. Response adds `status: <selected enum|null>` and retains owner-scoped `items/limit/offset` safe summary projection, no total. Filter applies to owner's database query before page window. No new privilege, cross-owner admin listing, write, SQL migration or mutable job action.
 
 - **2026-11-09 Product manual Run lookup candidate (no new API):** authorized browser reads existing `GET /v1/requirement-runs/{run_id}` where server presenter returns `run_id, task_id`; only after matching requested ID and checking safe task ID does browser read `GET /v1/requirement-runs/{run_id}/items?limit=20&offset=0`. No direct arbitrary task binding, new route, write or scheduler trigger. Token changes drop in-flight lookup and clear query input.
+
+## Keyword equivalence (internal, no API surface changed)
+
+- SRAF official/common synonym coalescence in `agent/es/query_terms.py` alters only the internal keyword group to Evidence topic matcher handoff. It does not change any public route, Product/Preview contracts, Excel→SQL source-stats, Report Job auth/idempotency/list, SQLite/SQL/ES writes, date handling, or LLM call count. This candidate remains unmerged pending latest-head CI/Review and user confirmation.
+
+
+## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
+- Optional top-level `evidence_usage` in structured SRA_REPORT results (and thus JSON-format chat output) is `sraf_report_evidence_usage_v1`: fixed enum selection mode (`source_diverse|strong_first`), boolean `llm_skipped_incomplete`, allowlisted nonnegative counters `incoming, strong, weak, picked, compressed, llm_input`, known document source counts at incoming/picked/LLM input, max_for_llm, prompt_chars, truncated notes/titles. No user content, document IDs, tokens or new routes; default Markdown and Word Data Agent section show identically formatted count lines. Older snapshots without field remain unchanged.
+
+## 2026-11-15 #413 internal ES page admission candidate (NOT MERGED)
+- Internal-only refill_date_filtered_evidence gains optional callable admit_next_page, default None. With None, output and query_meta remain unchanged. If a future trusted caller injects a policy and rejects additional pages, the returned date_candidate_refill metadata contains incomplete_due_to_page_admission=true and note=additional_page_admission_denied; search_news preserves result_incomplete=true on this signal. No public HTTP route, request-schema, auth, report result, or source/LLM semantics are intentionally changed by this candidate. Such injection is NOT enabled in current production tool routing.

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import json
 from contextlib import nullcontext
 from functools import wraps
 from typing import Any, Dict, Iterable, List, Optional, Sequence
@@ -178,5 +177,7 @@ def build_query_meta(
         "date_from": date_from,
         "date_to": date_to,
     }
-    dbg("[es_tools] query_meta =", json.dumps(qm, ensure_ascii=False))
+    # Metadata intentionally carries the authorized question to the caller,
+    # but logging must not duplicate private prompts, index hints or terms.
+    dbg("[es_tools] query_meta populated (content redacted)")
     return qm

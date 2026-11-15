@@ -4,6 +4,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from .models import EvidenceBuildConfig, HitDoc, Citation
+from .trace import EvidenceTrace
+from .fair_budget import allocate_fair_source_quotas, source_text_quotas
 from .json_utils import as_blocks, json_load_maybe
 from .date_utils import (
     parse_article_date_iso,
@@ -16,12 +18,19 @@ from .snippet import make_fallback_snippet
 from ..reference_text import get_reference_text
 from ..event_time import collect_linked_times, linked_dates_for_ids, event_ids_in_block
 
+# Hard ceilings for opt-in shared source scanning; never derive from raw input.
+SHARED_SOURCE_SCAN_MAX_ITEMS = 2048
+SHARED_SOURCE_TEXT_MAX_CHARS = 1048576
+SHARED_SOURCE_SINGLE_TEXT_MAX_CHARS = 4096
+SHARED_SOURCE_JSON_MAX_CHARS = 2097152
+
 
 def parse_es_hits(
     es_hits: List[Dict[str, Any]],
     *,
     query_for_snippet: str,
     config: EvidenceBuildConfig,
+    trace: EvidenceTrace | None = None,
 ) -> Tuple[List[HitDoc], Dict[str, int]]:
     stats = {
         "n_es_hits": len(es_hits or []),
@@ -32,6 +41,17 @@ def parse_es_hits(
     }
 
     out_hits: List[HitDoc] = []
+    flexible = 0 < config.shared_citation_budget <= 2048
+    fair_quotas = (
+        allocate_fair_source_quotas(es_hits or [], config.shared_citation_budget)
+        if flexible and config.valid_postfilter_budget else []
+    )
+    fair_text_quotas = source_text_quotas(fair_quotas) if fair_quotas else []
+    source_items_scanned_total = 0
+    source_text_chars_total = 0
+    # Actual unused text from earlier ES hits is safely transferable to later
+    # hits, while their untouched reserved allocations remain protected.
+    fair_text_released = 0
 
     def named_inner_hits(node: Any, name: str) -> List[Dict[str, Any]]:
         """Find child inner hits in a multi-level nested ES response."""
@@ -52,8 +72,13 @@ def parse_es_hits(
         return found
 
     def normalized_text(value: Any) -> str:
-        """Normalize scalar/one-element-array ES source values without raising."""
+        """Normalize values, preserving numeric string IDs such as '001'."""
+        original = value if isinstance(value, str) else None
         value = json_load_maybe(value)
+        # json_load_maybe("123") becomes int(123); do not lose paragraph
+        # and source IDs whose literal scalar form is a numeric string.
+        if original is not None and type(value) in (int, float):
+            return original.strip()
         if isinstance(value, str):
             return value.strip()
         if isinstance(value, list):
@@ -118,11 +143,25 @@ def parse_es_hits(
             )
         )  # Do not infer publication from event dates in structured content.
         
-        # citations: inner_hits 優先
+        # Default: preserve inner_hits-first/20-per-document behavior. Opt-in
+        # shared budget may use more _source rows if the request has headroom.
+        remaining = (max(0, config.shared_citation_budget - stats["n_total_citations"])
+                     if flexible else config.citations_per_doc)
+        per_doc_limit = (remaining if flexible and has_structured_events
+                         else min(config.citations_per_doc, remaining))
+        if fair_quotas:
+            per_doc_limit = min(per_doc_limit, fair_quotas[source_hit_ordinal])
+        per_hit_scanned = 0
+        per_hit_text_chars = 0
         citations: List[Citation] = []
+        chosen_mode = "none"
+        source_items_examined = 0
         ih_hits = named_inner_hits(h, "evi")
         if ih_hits:
-            for eh in ih_hits[:config.inner_hit_topk]:
+            for eh in ih_hits[:(
+                min(config.inner_hit_topk, per_doc_limit)
+                if flexible else config.inner_hit_topk
+            )]:
                 esrc = (eh.get("_source") or {})
                 txt = normalized_text(esrc.get("text"))
                 sid = esrc.get("source_id")
@@ -167,37 +206,128 @@ def parse_es_hits(
                     ))
 
             if citations:
+                chosen_mode = "inner"
                 stats["n_inner_used"] += 1
 
-        # A document can match another nested clause and therefore have no `evi`
-        # inner hit. Its selected _source still contains authoritative structured
-        # evidence, so use that before considering legacy raw content.
-        if not citations:
+        # Default: fall back to the selected _source only when no inner hits.
+        # Opt-in: the SAME returned structured _source may contain hundreds of
+        # legitimate citations beyond inner_hits.size=3. Prefer that complete
+        # source within shared global count/scan/text ceilings; linked Event
+        # dates are still validated later for each citation individually.
+        prefer_source = flexible and has_structured_events and per_doc_limit > 0
+        if (not citations or prefer_source) and per_doc_limit > 0:
+            source_citations: List[Citation] = []
+            source_stopped = False
             for block_index, block in enumerate(blocks):
-                snippets = json_load_maybe(block.get("evidence_snippets"))
+                raw = block.get("evidence_snippets")
+                if prefer_source and isinstance(raw, str) and len(raw) > SHARED_SOURCE_JSON_MAX_CHARS:
+                    source_stopped = True
+                    break
+                snippets = json_load_maybe(raw)
                 if isinstance(snippets, dict):
                     snippets = [snippets]
                 if not isinstance(snippets, list):
                     continue
                 for item in snippets:
+                    if prefer_source:
+                        if (source_items_scanned_total >= SHARED_SOURCE_SCAN_MAX_ITEMS
+                            or source_text_chars_total >= SHARED_SOURCE_TEXT_MAX_CHARS
+                            or (fair_quotas and per_hit_scanned >= fair_quotas[source_hit_ordinal])):
+                            source_stopped = True
+                            break
+                        source_items_scanned_total += 1
+                        per_hit_scanned += 1
+                        raw_text = item.get("text") if isinstance(item, dict) else None
+                        # Structured ES data may store text as a single-item
+                        # list. The legacy normalizer accepts this shape: do
+                        # not lose legitimate date-linked Evidence in opt-in
+                        # mode. Bound the container shape *before* measuring
+                        # string length; never recursively flatten arbitrary
+                        # lists or alter the original source value.
+                        if isinstance(raw_text, list) and len(raw_text) == 1:
+                            raw_text = raw_text[0]
+                        # Oversized individual snippets remain uninspected;
+                        # never turn them into a fabricated/truncated citation.
+                        if not isinstance(raw_text, str) or len(raw_text) > SHARED_SOURCE_SINGLE_TEXT_MAX_CHARS:
+                            if trace is not None:
+                                source_items_examined += 1
+                            continue
+                        if (source_text_chars_total + len(raw_text) > SHARED_SOURCE_TEXT_MAX_CHARS
+                            or (fair_text_quotas and
+                                per_hit_text_chars + len(raw_text) >
+                                fair_text_quotas[source_hit_ordinal] + fair_text_released)):
+                            source_stopped = True
+                            break
+                        source_text_chars_total += len(raw_text)
+                        per_hit_text_chars += len(raw_text)
+                    if trace is not None:
+                        source_items_examined += 1
                     citation = citation_from_source(item, block_index)
                     if citation is not None:
-                        citations.append(citation)
-                    if len(citations) >= config.citations_per_doc:
+                        source_citations.append(citation)
+                    if len(source_citations) >= per_doc_limit:
+                        source_stopped = True
                         break
-                if len(citations) >= config.citations_per_doc:
+                if source_stopped or len(source_citations) >= per_doc_limit:
                     break
-            if citations:
+            if source_citations:
+                if prefer_source and citations:
+                    # Never let a partial source scan erase already verified
+                    # ES nested matches, including a date-valid inner hit near
+                    # the source tail. De-duplicate by block/text/source/event,
+                    # without weakening downstream Event/Timeline date guards.
+                    seen = {
+                        (c.block_index, c.text, c.source_id, c.paragraph_id,
+                         tuple(c.event_ids)) for c in citations
+                    }
+                    combined = list(citations)
+                    for c in source_citations:
+                        identity = (c.block_index, c.text, c.source_id,
+                                    c.paragraph_id, tuple(c.event_ids))
+                        if identity in seen:
+                            continue
+                        if len(combined) >= per_doc_limit:
+                            break
+                        seen.add(identity)
+                        combined.append(c)
+                    citations = combined
+                    chosen_mode = "inner+source"
+                else:
+                    citations = source_citations
+                    chosen_mode = "source"
                 stats["n_source_evidence_used"] += 1
 
         # Legacy fallback, only when neither inner hits nor structured source won.
-        if not citations:
+        if not citations and per_doc_limit > 0:
             snippet = make_fallback_snippet(raw_content, query_for_snippet or "", width=config.fallback_width)
             if snippet:
+                chosen_mode = "fallback"
                 stats["n_fallback_used"] += 1
                 citations.append(Citation(text=snippet))
 
         stats["n_total_citations"] += len(citations)
+        if trace is not None:
+            raw_source_count = 0
+            for block in blocks:
+                raw_items = json_load_maybe(block.get("evidence_snippets"))
+                if isinstance(raw_items, list):
+                    raw_source_count += len(raw_items)
+                elif isinstance(raw_items, dict):
+                    raw_source_count += 1
+            trace.parsed_hit(
+                ordinal=source_hit_ordinal,
+                source_count=raw_source_count,
+                inner_count=len(ih_hits),
+                parsed_count=len(citations),
+                selected_count=min(len(citations), per_doc_limit),
+                mode=chosen_mode,
+                # If source parsing hit its cap, remaining source items were
+                # NOT examined. Their date/topic/validity is still unknown.
+                source_uninspected_after_cap=(
+                    max(0, raw_source_count - source_items_examined)
+                    if chosen_mode in ("source", "inner+source") else 0
+                ),
+            )
 
         # Link evidence by event_ids; never assign unrelated article dates to
         # a structured Event. Legacy documents without Event/Timeline preserve
@@ -254,7 +384,7 @@ def parse_es_hits(
             article_title=article_title,
             score=h.get("_score"),
             raw_content=raw_content,
-            citations=citations[:config.citations_per_doc],
+            citations=citations[:per_doc_limit],
             article_date_iso=article_date_iso,
             event_dates=tl_dates[:config.timeline_dates_topk],
             has_structured_events=has_structured_events,
@@ -262,5 +392,11 @@ def parse_es_hits(
             selectedMessage=src.get("selectedMessage"),
             highValue=(((src.get("ai") or {}).get("classLabels") or {}).get("highValue")),
         ))
+        if fair_text_quotas:
+            fair_text_released += (
+                fair_text_quotas[source_hit_ordinal] - per_hit_text_chars
+            )
+            # Never transfer future documents' reserved capacity backward.
+            assert fair_text_released >= 0
 
     return out_hits, stats
