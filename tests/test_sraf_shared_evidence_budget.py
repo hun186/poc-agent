@@ -193,3 +193,31 @@ def test_numeric_paragraph_id_survives_json_normalization():
         config=EvidenceBuildConfig(),
     )
     assert parsed[0].citations[0].paragraph_id == "0"
+
+
+def test_single_item_array_text_keeps_all_date_valid_source_rows(monkeypatch):
+    """Codex P2: the legacy parser already supports one-element text arrays."""
+    doc = _hit(4, inner=False)
+    items = doc["_source"]["multidim_event_json"][0]["evidence_snippets"]
+    for item in items:
+        item["text"] = [item["text"]]
+    monkeypatch.delenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET", raising=False)
+    legacy = _build([doc])[1]
+    assert len(legacy) == 4
+    monkeypatch.setenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET", "1")
+    enabled = _build([doc])[1]
+    assert enabled == legacy
+    assert len(enabled) == 4
+    assert all(row["date_iso"] == D0 for row in enabled)
+
+
+def test_single_item_array_text_enforces_original_byte_caps(monkeypatch):
+    monkeypatch.setenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET", "1")
+    doc = _hit(3, inner=False)
+    items = doc["_source"]["multidim_event_json"][0]["evidence_snippets"]
+    items[0]["text"] = ["甲軸乙軸丙軸" + "X" * 5000]  # beyond 4096
+    items[1]["text"] = ["甲軸乙軸丙軸正常內容"]
+    items[2]["text"] = [["甲軸乙軸丙軸不接受巢狀陣列"]]  # unsupported nested list
+    _, rows, _ = _build([doc])
+    assert [r["text"] for r in rows] == ["甲軸乙軸丙軸正常內容"]
+    assert len(items[0]["text"][0]) > 4096

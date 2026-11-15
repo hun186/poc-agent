@@ -223,6 +223,14 @@ def parse_es_hits(
                             break
                         source_items_scanned_total += 1
                         raw_text = item.get("text") if isinstance(item, dict) else None
+                        # Structured ES data may store text as a single-item
+                        # list. The legacy normalizer accepts this shape: do
+                        # not lose legitimate date-linked Evidence in opt-in
+                        # mode. Bound the container shape *before* measuring
+                        # string length; never recursively flatten arbitrary
+                        # lists or alter the original source value.
+                        if isinstance(raw_text, list) and len(raw_text) == 1:
+                            raw_text = raw_text[0]
                         # Oversized individual snippets remain uninspected;
                         # never turn them into a fabricated/truncated citation.
                         if not isinstance(raw_text, str) or len(raw_text) > SHARED_SOURCE_SINGLE_TEXT_MAX_CHARS:

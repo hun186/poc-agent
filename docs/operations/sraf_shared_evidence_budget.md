@@ -32,3 +32,7 @@ event and source instead of indefinitely increasing candidate quotas.
 
 No private IP, credentials, unredacted source snippets or user prompts should
 be committed to the repository.
+
+The opt-in scanner accepts the historical one-element array text representation
+(`text: ["內容"]`) with the same per-snippet and shared-text ceilings; arbitrary
+nested or multi-valued text arrays are not accepted by this experimental path.
