@@ -81,4 +81,4 @@
 
 ## 2026-11-15 #413 B0 — internal planner types only (NOT MERGED)
 - No public HTTP API or existing request/response change. Internal `QueryConstraints` carries server-owned frozen user question, separate event/analysis DateWindow, indexes, field filters, entities, core terms and user-locked keyword policy.
-- `RoundEvidenceSummary` is strictly request-wide, not #414 slice health. `AdaptiveRetrievalPlanner.propose_next(constraints, history, budget)` accepts an externally injected callable and returns a bounded internal `PlannerDecision`: stop / date_review / search with only candidate optional terms and target aspects. No direct ES call, LLM runtime wiring or automatic Chat/Job dispatch.
+- `RoundEvidenceSummary` is strictly request-wide, not #414 slice health. `AdaptiveRetrievalPlanner.propose_next(constraints, history, budget)` accepts an externally injected callable and returns a bounded internal `PlannerDecision`: stop / date_recheck / search with only candidate optional terms and target aspects. No direct ES call, LLM runtime wiring or automatic Chat/Job dispatch.
