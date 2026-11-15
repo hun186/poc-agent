@@ -120,3 +120,7 @@
 
 ## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
 - P1 NEXT, separate from count-display PR: eliminate **unconditional single-document Evidence truncation** in ES nested (`inner_hits.size=3`) and parser source (`citations_per_doc=20`) for large server-structured records when safe request/global budget remains. Design bounded retrieval/pagination per query/time/field, global Evidence+byte/timeout/token caps, accepted/uninspected reason counters and cancellation; test 1 document 500 items with global remainder plus 2 docs and Event/Timeline guard. Private `news_test`, output precision/recall and LLM/DOCX acceptance must be independently verified.
+
+
+## 2026-11-15 #397 — Experimental request-shared structured Evidence candidate budget (CANDIDATE)
+- Follow-up shared budget: per-request matched-valid (post date/topic) cap rather than raw-citation-first, fair later-source allocation/round-robin, budget-exhaustion reason trace, bytes/token-aware final prompt and 500+/multi-index private ES p50/p95/precision/recall tests. Do not claim this opt-in 1024-candidate slice solves all 500/day server records or hidden ES retrieval pagination limits.

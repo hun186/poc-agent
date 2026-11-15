@@ -52,3 +52,7 @@
 
 ## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
 - Use shared strict numeric-only Evidence usage contract and one common display formatter for Word/OpenWebUI; no direct ingestion of arbitrary logs into DOCX or browser, and no IDs/prompts in added count metrics. Preserve existing `SRAF_EVIDENCE_TRACE` logger and default-OFF source-diverse choice independently. Explicitly distinguish known-source retention from topic coverage and whole-corpus completeness.
+
+
+## 2026-11-15 #397 — Experimental request-shared structured Evidence candidate budget (CANDIDATE)
+- Never remove parser limits wholesale. Opt-in source preference only for documents with structured Event/Timeline, with a shared 1024 candidate and separate 2048 source-row/1MiB text ceilings; no additional ES round trip or automatic live enablement. Retain Event IDs & block-local date guard before Evidence survives, and leave unstructured/default-off path stable. Production activation requires operator acceptance/reversal.

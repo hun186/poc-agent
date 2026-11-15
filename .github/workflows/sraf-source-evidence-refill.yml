@@ -36,7 +36,7 @@ jobs:
           python -m pip install 'pytest>=8,<10'
       - name: Compile source-refill and Evidence modules
         run: |
-          python -m compileall -q agent/es/evidence_core tests/test_sraf_source_evidence_refill.py
+          python -m compileall -q agent/es/evidence_core tests/test_sraf_shared_evidence_budget.py tests/test_sraf_source_evidence_refill.py
       - name: Run source, bounded rescue, Event date and keyword regressions
         run: |
           python -m pytest -q tests/test_sraf_shared_evidence_budget.py tests/test_sraf_source_evidence_refill.py tests/test_sraf_bounded_evidence_rescue.py tests/test_sraf_structured_evidence_time.py tests/test_sraf_date_evidence_refill.py tests/test_sraf_synonym_equivalence.py tests/test_query_terms_contract.py

@@ -133,7 +133,8 @@ def parse_es_hits(
         # shared budget may use more _source rows if the request has headroom.
         remaining = (max(0, config.shared_citation_budget - stats["n_total_citations"])
                      if flexible else config.citations_per_doc)
-        per_doc_limit = remaining if flexible else config.citations_per_doc
+        per_doc_limit = (remaining if flexible and has_structured_events
+                         else min(config.citations_per_doc, remaining))
         citations: List[Citation] = []
         chosen_mode = "none"
         source_items_examined = 0

@@ -51,3 +51,7 @@
 
 ## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
 - The new reporting counts describe **already returned** Evidence only, not raw `_source`/inner_hits truncation or genuine ES recall. Parser default `citations_per_doc=20`, nested `inner_hits.size=3`, bounded source refill 12 parsed citations (with total/document caps); server-structured single-document 500 daily items can be truncated before Report Agent even when total Report LLM cap=120 has headroom. This needs a separately reviewed retrieval-global-budget design with safe date/topic fidelity, pagination and bounded work, not blind removal of input memory limits. `prompt_chars` is not tokens. No live acceptance.
+
+
+## 2026-11-15 #397 — Experimental request-shared structured Evidence candidate budget (CANDIDATE)
+- Experimental budget cannot guarantee exhaustive recall beyond 1024 citations / 2048 rows / 1MiB source text; global budget consumed in ES hit order may starve later documents, even with date/topic filtering after parsing. `_source` presence/size, nested Event/Timeline identity and private ES Mapping remain unverified. `SRAF_REPORT_DIVERSE_EVIDENCE` changes only downstream report selection; Report LLM 120 count is independent and still not a token limit. Private full E2E and performance gates unresolved.
