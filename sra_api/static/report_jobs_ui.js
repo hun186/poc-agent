@@ -475,5 +475,18 @@
     stop();
     controls();
   });
+  // A fragment contains only an opaque Job ID, never an authorization token.
+  // Browser fragments are not sent in HTTP requests; no fetch is performed
+  // until the user supplies their own credential and clicks the watch button.
+  function prefillLinkedJob() {
+    const fragment = window.location && typeof window.location.hash === 'string'
+      ? window.location.hash : '';
+    if (fragment.length > 133) return;
+    const match = /^#job=([A-Za-z0-9_-]{1,128})$/.exec(fragment);
+    if (!match) return;
+    $('jobId').value = match[1];
+    message('已載入指定的報告任務 ID。請輸入您的 Token，再按「追蹤」確認權限與真正進度。');
+  }
+  prefillLinkedJob();
   controls();
 })();
