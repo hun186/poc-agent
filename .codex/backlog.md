@@ -153,3 +153,9 @@
 - [ ] Add strictly validated durable adaptive_multiround mode, round checkpoints with validated canonical Event/Timeline date and source identity, immutable query/tenant/permissions; LLM plan/query drift guard; request-wide ES/LLM/token 1800s retrieval and ~2400s total budget with generation reserve, cooperative cancellation/timeouts and actual restart policy.
 - [ ] Only AFTER real adaptive worker exists, add opt-in authorized Chat Completions post-single-round dispatch with stable per-turn idempotency, protected single-round Evidence checkpoint re-use and secure browser status/Word capability. Avoid treating shared OpenWebUI service key or unverified headers as distinct user identity. When no trusted user identity, leave auto dispatch disabled.
 - [ ] Validate resource queue timeout/retention and per-owner fairness; no background GPU starvation for single-round chat. Test private Linux ES/LLM, real DOCX, browser-proxy links, disconnect, service restart and p95 before enabling defaults. OpenWebUI SSE P2.
+
+
+## 2026-11-15 #413 B1 request-wide admission follow-up (PR CANDIDATE)
+- [ ] Exact-head Python3.10/3.11 Hosted CI and formal Codex Review of the isolated atomic request budget; merge only with approvals/protection satisfied.
+- [ ] Wire budget into a **trusted, Job-only** adaptive coordinator after canonical date/index/field/owner validation and real request-wide Evidence checkpoint; admit every ES/LLM call including initial search; add provider-level per-call timeouts and cooperative cancellation before claiming 1800s/2400s enforcement.
+- [ ] Expand to token/bytes budgets, retry accounting, restart persistence and per-owner GPU fairness; independently validate private Linux/ES/LLM/Word, browser capability and OpenWebUI single-round-plus-deep-Job link flow. Do not enable automatic Chat dispatch or retire experimental Evidence flags on this helper alone.
