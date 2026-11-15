@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from typing import Literal
 from pathlib import Path
 from datetime import datetime, timezone
@@ -7,7 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from api.services.report_job_service import DEFAULT_REPORT_MODEL, create_job
-from api.services.report_job_store import IdempotencyConflict
+from api.services.report_job_store import IdempotencyConflict, ReportJobAdmissionFull
 from api.security.models import AuthPrincipal
 from api.security.principal import require_scopes
 from api.security.scopes import REPORT_JOB_ADMIN, REPORT_JOB_CREATE, REPORT_JOB_DOWNLOAD, REPORT_JOB_READ
@@ -26,6 +27,17 @@ class ReportJobCreate(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 def _store(request: Request): return request.app.state.report_job_store
+
+def _max_active_jobs() -> int | None:
+    """Optional process-wide admission ceiling; zero keeps legacy behavior."""
+    raw = os.getenv("REPORT_JOBS_MAX_ACTIVE", "0")
+    try:
+        value = int(raw)
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError("invalid_REPORT_JOBS_MAX_ACTIVE") from exc
+    if not 0 <= value <= 10000:
+        raise RuntimeError("invalid_REPORT_JOBS_MAX_ACTIVE")
+    return value or None
 def _view(job):
     result = job.to_dict()
     result.pop("prompt", None); result.pop("request_hash", None); result.pop("idempotency_key", None); result.pop("docx_basename", None)
@@ -58,9 +70,12 @@ def _view(job):
 @router.post("", status_code=202, responses={409: {"description": "Idempotency conflict"}})
 def submit(payload: ReportJobCreate, request: Request, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_CREATE))):
     try:
-        job, _ = create_job(_store(request), idempotency_key=idempotency_key, owner_kind=principal.kind, owner_id=principal.subject, **payload.model_dump())
+        job, _ = create_job(_store(request), idempotency_key=idempotency_key, owner_kind=principal.kind, owner_id=principal.subject,
+                            max_active_jobs=_max_active_jobs(), **payload.model_dump())
     except IdempotencyConflict as exc:
         raise HTTPException(409, str(exc)) from exc
+    except ReportJobAdmissionFull as exc:
+        raise HTTPException(429, "Report job queue is full", headers={"Retry-After": "30"}) from exc
     return {"job_id": job.job_id, "status": job.status, "status_url": f"/v1/report/jobs/{job.job_id}", "download_url": f"/v1/report/jobs/{job.job_id}/word"}
 
 def _authorized(job, principal):
@@ -91,7 +106,7 @@ def list_my_jobs(
     request: Request,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=10000),
-    status: Literal["queued", "running", "completed", "failed", "interrupted"] | None = Query(default=None),
+    status: Literal["queued", "running", "completed", "failed", "interrupted", "cancelled"] | None = Query(default=None),
     principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_READ)),
 ):
     """Owner-scoped, read-only list; admin scope never grants global enumeration."""
@@ -114,6 +129,25 @@ def status(job_id: str, request: Request, principal: AuthPrincipal = Depends(req
         raise HTTPException(404, "Report job not found")
     _audit_admin_cross_owner(job, principal, "read")
     return _view(job)
+
+@router.post("/{job_id}/cancel", responses={
+    200: {"description": "Queued job cancelled"},
+    404: {"description": "Not found"},
+    409: {"description": "Already started; running cancellation is not supported"},
+})
+def cancel(job_id: str, request: Request, principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_CREATE))):
+    job = _store(request).get(job_id)
+    if not job or not _authorized(job, principal):
+        if job:
+            _audit_owner_mismatch(job, principal, "cancel")
+        raise HTTPException(404, "Report job not found")
+    _audit_admin_cross_owner(job, principal, "cancel")
+    if not _store(request).cancel_queued(
+        job_id, owner_kind=job.owner_kind, owner_id=job.owner_id
+    ):
+        raise HTTPException(409, "Only queued report jobs can be cancelled")
+    return {"job_id": job_id, "status": "cancelled"}
+
 
 @router.get("/{job_id}/word", responses={200: {"content": {DOCX: {"schema": {"type": "string", "format": "binary"}}}}, 404: {"description": "Not found"}, 409: {"description": "Not completed"}, 500: {"description": "Artifact unavailable"}})
 def download(job_id: str, request: Request, principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_DOWNLOAD))):
