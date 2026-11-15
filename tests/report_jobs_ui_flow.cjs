@@ -66,7 +66,7 @@ function fire(id, kind='click') { return elements[id].handlers[kind](); }
 function progress(jobId, status, phase, long=false) {
   return {job_id: jobId, status, progress: {
     phase, elapsed_seconds: long ? 45 : 1, long_running: long,
-    observation: status === 'completed' || status === 'failed' ? 'terminal' : long ? 'long_running' : 'active',
+    observation: status === 'completed' || status === 'failed' || status === 'cancelled' ? 'terminal' : long ? 'long_running' : 'active',
     failure_category: status === 'failed' ? 'timeout' : null
   }};
 }
@@ -166,6 +166,18 @@ function progress(jobId, status, phase, long=false) {
   assert.equal(elements.downloadBtn.hidden, true);
   assert.equal(timers.size, 0);
 
+  // Queued-only cancellation is terminal; never endlessly poll or offer a Word download.
+  elements.jobId.value = 'job-cancelled';
+  planned.push(response(200, progress('job-cancelled','cancelled','cancelled')));
+  fire('watchBtn');
+  await tick();
+  assert.match(elements.jobStatus.textContent, /已取消/);
+  assert.match(elements.phaseTitle.textContent, /已取消/);
+  assert.match(elements.message.textContent, /已取消/);
+  assert.equal(elements.downloadBtn.hidden, true);
+  assert.equal(elements.stopBtn.disabled, true);
+  assert.equal(timers.size, 0);
+
   elements.jobId.value = 'job-E';
   planned.push(response(200, progress('job-E','running','docx_export')));
   fire('watchBtn');
@@ -263,6 +275,17 @@ function progress(jobId, status, phase, long=false) {
   await tick();
   assert.equal(calls.at(-1).url,'/v1/report/jobs/job-history-A');
   assert.equal(elements.jobId.value,'job-history-A');
+
+  // Both filtered and unfiltered histories must handle persisted cancelled status.
+  planned.push(response(200, {items:[{
+    job_id:'job-history-cancelled',status:'cancelled',phase:'cancelled',
+    created_at:'2026-11-09T01:00:00Z'
+  }],limit:20,offset:0,status:null}));
+  fire('listJobsBtn');
+  await tick();
+  assert.equal(elements.jobRows.children.length,1);
+  assert.equal(elements.jobRows.children[0].children[1].textContent,'已取消');
+  assert.equal(elements.jobRows.children[0].children[2].textContent,'排隊中的任務已取消');
 
   // Status filter is applied server-side before pagination, never to an arbitrary page.
   const beforeFilter = calls.length;
