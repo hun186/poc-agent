@@ -112,3 +112,17 @@ def test_comparison_refuses_same_trace_without_implying_quality():
     obj = {"trace_id": "a" * 16, "counts": {"incoming": 1}, "skipped": False}
     with pytest.raises(ValueError):
         compare_count_traces(obj, obj)
+
+
+def test_fifo_without_writer_rejected_without_waiting(tmp_path, capsys):
+    """Regression for Codex P2: a FIFO must not block during the initial open."""
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("requires POSIX FIFO and nonblocking open")
+    pipe = tmp_path / "blocked_fifo"
+    os.mkfifo(pipe)
+    with pytest.raises(ValueError, match="untrusted_file"):
+        read_count_trace(str(pipe))
+    assert main(["--baseline", str(pipe), "--candidate", str(pipe)]) == 2
+    safe = capsys.readouterr().out
+    assert '"status": "INCOMPLETE"' in safe
+    assert str(pipe) not in safe

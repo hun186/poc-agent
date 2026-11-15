@@ -43,3 +43,5 @@
 
 ## 2026-11-15 #397 P1-e — offline source-coverage comparison candidate (NOT MERGED)
 - Added read-only stdlib `tools/sraf_evidence_trace_compare.py` to compare one baseline and one candidate opt-in report count trace with after-minus-before incoming/picked/compressed/actual LLM counts, known source coverage, prompt characters. Strict regular-file size/no-follow/schema/ambiguity handling, fixed numeric-only output; Python3.10/3.11 Hosted CI and formal Codex Review PENDING. No live ES/LLM/DOCX acceptance, token counts, correlation or production changes.
+
+- **2026-11-15 PR #409 formal Codex P2 fix (pending re-review):** initial HEAD `d187297` had blocking FIFO read when `os.open(O_RDONLY)` ran before regular-file `fstat` check. Now add `O_NONBLOCK` for input open with FIFO regression (reject `untrusted_file`, no path leak); latest-head Hosted CI and fresh formal Codex Review required. Do not infer reviewed merge or live acceptance from this change.

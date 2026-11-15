@@ -45,3 +45,5 @@
 
 ## 2026-11-15 #397 P1-e — offline source-coverage comparison candidate (NOT MERGED)
 - Numeric comparison of independent random trace IDs cannot prove runs share the same question, date range, index or data state. File parser accepts only one schema-v1 count record, fails closed on ambiguous inputs and gives no real prompt/token/source-quality guarantee. Any operator logs beyond the count-only record remain private and should not be passed to GitHub.
+
+- **2026-11-15 #409 input hardening:** POSIX FIFO without a writer can block at `os.open` even if `fstat` would reject the type. PR #409 candidate now opens with `O_NONBLOCK` before regular-file check and tests that case. Review/CI on new HEAD pending; utility still not production/live report validation.

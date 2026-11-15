@@ -22,6 +22,7 @@ counts and after-minus-before deltas. It never outputs source IDs, trace IDs,
 local file names, original questions, titles or Evidence text. It does not
 contact Elasticsearch, SQL, an LLM, or write any result files. Inputs must be
 regular files no larger than 64 KiB; symlinks are rejected where supported.
+POSIX FIFO input is opened nonblocking and refused instead of hanging.
 
 **Interpretation:** `PASS_PARTIAL` confirms only that two individually
 well-formed count records were compared. It does **not** establish that runs

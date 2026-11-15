@@ -40,7 +40,10 @@ def _read_limited_regular_file(path: str) -> str:
     """Open a bounded regular file without following symlinks on POSIX."""
     if not hasattr(os, "O_NOFOLLOW") and os.path.islink(path):
         raise ValueError("untrusted_file")
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    # O_NONBLOCK is essential: opening a FIFO with no writer otherwise hangs
+    # before fstat can reject a non-regular file.
+    flags = (os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+             | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     fd = os.open(path, flags)
     try:
         st = os.fstat(fd)
