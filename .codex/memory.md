@@ -35,3 +35,7 @@
 
 ## 2026-11-15 #397 P1-d — source-diverse report Evidence candidate (NOT MERGED)
 - On a separate PR from main `24e11fee3801426a32e7d57ac01ba9fb3f8c92dd`, added default-OFF `SRAF_REPORT_DIVERSE_EVIDENCE=1` deterministic strong-first source round-robin before existing compression/field selection. Unit + synthetic Report Agent regression and Python3.10/3.11 Hosted workflow added; exact-head Hosted CI, formal Codex review and merge remain PENDING. No private ES/LLM/DOCX run, token guarantee or date-retrieval widening.
+
+
+## 2026-11-15 #397 P1-a — identified source coverage counters (NOT MERGED)
+- Candidate adds opt-in count-only `incoming_identified_sources`, `picked_identified_sources`, `llm_input_identified_sources` to existing report trace. The third uses original ref_no lineage because LLM field selector may omit IDs; raw UUID/source/title/text never logged. Existing trace remains off by default; latest-head CI and independent formal Codex Review pending. No live data acceptance.
