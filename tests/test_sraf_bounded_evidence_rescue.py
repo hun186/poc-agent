@@ -218,3 +218,102 @@ def test_bounded_rescue_is_pure_and_does_not_call_external_system(monkeypatch):
         [hit], [only_weak_anchor], date_from="2023-08-24",
         date_to="2023-08-24", allowed_years=None, term_groups=AXES,
     ) == []
+
+
+
+def test_different_valid_event_same_day_does_not_borrow_weak_topic_anchor(monkeypatch):
+    """Both events pass the date filter; only E1 is linked to strict Evidence."""
+    monkeypatch.setenv("SRAF_EVIDENCE_RESCUE", "1")
+    monkeypatch.delenv("SRAF_EVIDENCE_SOURCE_REFILL", raising=False)
+    hit = _hit([
+        _citation("甲軸乙軸丙軸 E1 完整", "E1"),
+        _citation("甲軸 E2 另一件事", "E2"),
+        _citation("乙軸 E1 延伸", "E1"),
+    ])
+    # Same date for both structured Events; a date-only guard would admit E2.
+    hit["_source"]["multidim_event_json"][0]["Event"][1]["time_iso"] = "2023-08-24"
+    _, evidence, _ = _build([hit])
+    assert [row["text"] for row in evidence] == [
+        "甲軸乙軸丙軸 E1 完整", "乙軸 E1 延伸",
+    ]
+    assert evidence[1]["match_policy"] == "bounded_rescue"
+
+
+def test_reused_event_id_in_another_valid_block_cannot_borrow_anchor(monkeypatch):
+    """Block-local Event ID E1 is not the same event across two blocks."""
+    monkeypatch.setenv("SRAF_EVIDENCE_RESCUE", "1")
+    monkeypatch.delenv("SRAF_EVIDENCE_SOURCE_REFILL", raising=False)
+    hit = _hit([
+        _citation("甲軸乙軸丙軸 block0 strong", "E1"),
+        _citation("甲軸 block0 weak", "E1"),
+    ])
+    hit["_source"]["multidim_event_json"].append({
+        "article_date_iso": "2023-08-24",
+        "Event": [{"event_id": "E1", "time_iso": "2023-08-24",
+                   "time_precision": "day"}],
+        "Event_Timeline": [],
+        "evidence_snippets": [_citation("乙軸 block1 unrelated", "E1")],
+    })
+    _, evidence, _ = _build([hit])
+    assert [row["text"] for row in evidence] == [
+        "甲軸乙軸丙軸 block0 strong", "甲軸 block0 weak",
+    ]
+
+
+def test_missing_block_or_event_identity_fails_closed_for_structured_hit():
+    from agent.es.evidence_core.event_anchor import same_event_as_strict_anchor
+
+    hit = HitDoc(
+        uuid="id", subject=None, article_title=None, score=0.0,
+        raw_content="", source_hit_ordinal=7, has_structured_events=True,
+    )
+    strong = EvidenceSnippet(
+        uuid="id", text="strong", date_iso="2023-08-24",
+        article_date_iso="2023-08-24", source_hit_ordinal=7,
+        block_index=0, event_ids=["E1"],
+    )
+    assert same_event_as_strict_anchor(
+        hit, Citation(text="weak", event_ids=["E1"], block_index=0), strong,
+    )
+    assert not same_event_as_strict_anchor(
+        hit, Citation(text="weak", event_ids=["E2"], block_index=0), strong,
+    )
+    assert not same_event_as_strict_anchor(
+        hit, Citation(text="weak", event_ids=["E1"], block_index=1), strong,
+    )
+    assert not same_event_as_strict_anchor(
+        hit, Citation(text="weak", event_ids=["E1"], block_index=None), strong,
+    )
+    assert not same_event_as_strict_anchor(
+        hit, Citation(text="weak", event_ids=["E1"], block_index=0),
+        EvidenceSnippet(
+            uuid="id", text="strong", date_iso="2023-08-24",
+            article_date_iso="2023-08-24", source_hit_ordinal=7,
+            block_index=None, event_ids=["E1"],
+        ),
+    )
+    assert not same_event_as_strict_anchor(
+        hit, Citation(text="weak", event_ids=["E1"], block_index=0),
+        EvidenceSnippet(
+            uuid="id", text="strong", date_iso="2023-08-24",
+            article_date_iso="2023-08-24", source_hit_ordinal=8,
+            block_index=0, event_ids=["E1"],
+        ),
+    )
+    assert not same_event_as_strict_anchor(
+        hit, Citation(text="weak", event_ids=["E1"] * 17, block_index=0), strong,
+    )
+
+
+def test_legacy_nonstructured_same_hit_rescue_behavior_is_retained():
+    from agent.es.evidence_core.event_anchor import same_event_as_strict_anchor
+
+    legacy = HitDoc(
+        uuid="id", subject=None, article_title=None, score=0.0,
+        raw_content="", source_hit_ordinal=3, has_structured_events=False,
+    )
+    anchor = EvidenceSnippet(
+        uuid="id", text="strong", date_iso="2023-08-24",
+        article_date_iso="2023-08-24", source_hit_ordinal=3,
+    )
+    assert same_event_as_strict_anchor(legacy, Citation(text="weak"), anchor)
