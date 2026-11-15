@@ -107,15 +107,15 @@ def test_rejects_date_like_noop_and_empty_new_plan(terms):
     assert decision.reason_code in {"PLANNER_FAILED_CLOSED", "NO_NEW_QUERY_PLAN"}
 
 
-def test_date_suspicion_is_a_review_request_not_a_modified_search():
+def test_date_suspicion_only_requests_automatic_recheck_not_search():
     proposal = response(
-        action="date_review", code="DATE_PARSE_SUSPECTED",
+        action="date_recheck", code="DATE_PARSE_SUSPECTED",
         terms=[], aspects=[],
     )
     result = AdaptiveRetrievalPlanner(
         lambda *_args, **_kwargs: proposal
     ).propose_next(constraints=make_scope(), history=(round1(),), budget=budget())
-    assert result.action == "date_review"
+    assert result.action == "date_recheck"
     assert not result.should_search
     assert result.optional_terms == ()
     scope = make_scope()
@@ -293,7 +293,7 @@ def test_binding_rejects_manually_crafted_date_or_unsafe_plan():
         PlannerDecision("search", "COVERAGE_GAP", ("2024年",), ("外交",)),
         PlannerDecision("search", "COVERAGE_GAP", ("古特雷斯",), ("外交",)),
         PlannerDecision("search", "COVERAGE_GAP", (), ("外交",)),
-        PlannerDecision("date_review", "DATE_PARSE_SUSPECTED"),
+        PlannerDecision("date_recheck", "DATE_PARSE_SUSPECTED"),
     ):
         with pytest.raises(ValueError):
             bind_next_round_plan(
