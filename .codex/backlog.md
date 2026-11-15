@@ -124,3 +124,8 @@
 
 ## 2026-11-15 #397 — Experimental request-shared structured Evidence candidate budget (CANDIDATE)
 - Follow-up shared budget: per-request matched-valid (post date/topic) cap rather than raw-citation-first, fair later-source allocation/round-robin, budget-exhaustion reason trace, bytes/token-aware final prompt and 500+/multi-index private ES p50/p95/precision/recall tests. Do not claim this opt-in 1024-candidate slice solves all 500/day server records or hidden ES retrieval pagination limits.
+
+
+## 2026-11-15 — #397 P1-d / postfilter Evidence fairness (CANDIDATE, NOT MERGED)
+- Created separate double opt-in `SRAF_EVIDENCE_SHARED_SOURCE_BUDGET=1` AND `SRAF_EVIDENCE_VALID_FAIR_BUDGET=1`, leaving main/#411 shared-source mode and default OFF untouched. Pre-source parser quotas water-filled by original ES hit ordinal within 2048 scanned/parsed citations and 1MiB shared source text; a deterministic strong-first round robin limits only date/topic-validated Evidence to 1024. Fixed count-only trace records eligible/selected/not_selected. No ES re-query/LLM/SQL/auth changes. 
+- Synthetic 500+12 structured records, 980 wrong-date then 120 valid, invalid topic, later valid doc rescue, same UUID across indices, long text budget, and trace privacy tests. Hosted Python3.10/3.11 exact-head CI, formal Codex Review and real private ES/LLM/DOCX/performance acceptance are PENDING. Candidate quotas can still scan a bounded prefix and cannot prove exhaustive recall, perfect fairness or token budgets.
