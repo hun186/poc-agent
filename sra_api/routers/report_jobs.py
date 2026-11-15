@@ -27,7 +27,7 @@ class ReportJobCreate(BaseModel):
     options: dict = Field(default_factory=dict, max_length=0)
     metadata: dict = Field(default_factory=dict)
 
-_SAFE_BROWSER_JOB_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\\Z")
+_SAFE_BROWSER_JOB_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 
 
 def _browser_status_url(job_id: str) -> str | None:
