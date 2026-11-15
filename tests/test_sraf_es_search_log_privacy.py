@@ -126,3 +126,41 @@ def test_tool_meta_debug_redacts_but_preserves_authorized_values(monkeypatch, ca
     assert meta["query"] == "SECRET_QUERY"
     assert meta["core_terms"] == ["SECRET_CORE"]
     assert "content redacted" in _assert_redacted(capsys)
+
+
+
+def test_es_tool_passes_only_bound_original_question_to_shadow_builder(
+    monkeypatch, capsys,
+):
+    """One tool instance's original question survives the worker boundary.
+
+    The CodeAgent rewritten query, or a stale prior-tool context, is not an
+    authority for a required subject. This is a non-network plumbing test.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from agent.tools_es.common import bind_requirement_acceptance
+    from agent.tools_es.question_scope import bind_original_report_question
+
+    _prepare(monkeypatch, responder=lambda body, *, index: _response(with_hits=True))
+    observed = []
+
+    def capture(_hits, **kwargs):
+        observed.append((kwargs.get("original_question"), kwargs["query_for_snippet"]))
+        return ([{"uuid": "SECRET_DOC_ID"}], [], 0)
+
+    monkeypatch.setattr(search_module, "build_hits_and_evidence", capture)
+    original = "主題：加薩\nSECRET_ORIGINAL_QUESTION"
+    with bind_original_report_question(original):
+        report_tool = bind_requirement_acceptance(search_module.ESSearchNews())
+    with bind_original_report_question(None):
+        bare_tool = bind_requirement_acceptance(search_module.ESSearchNews())
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(report_tool.forward, query="SECRET_QUERY", size=5).result()
+        executor.submit(bare_tool.forward, query="SECRET_QUERY", size=5).result()
+
+    assert observed == [(original, "SECRET_QUERY"), (None, "SECRET_QUERY")]
+    logged = capsys.readouterr()
+    assert "SECRET_ORIGINAL_QUESTION" not in logged.out + logged.err
+    assert "主題：加薩" not in logged.out + logged.err

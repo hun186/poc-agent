@@ -68,3 +68,7 @@
 
 ## 2026-11-15 #406 per-request original report question propagation candidate
 - ReportAgent already gives DataAgent `question_raw`. DataAgent's `run_data_agent` establishes a bounded ContextVar before creating each fresh CodeAgent/ES tool instance. `bind_requirement_acceptance` now captures that value alongside (not replacing) the existing E2E acceptance scope; decorated Tool.forward restores the question within each worker-thread call, resetting after every call. No service/global state or ES tool-generated arguments are trusted as the original. This is private transport plumbing for future subject shadow, **not** a new permission or a report selection rule.
+
+
+## 2026-11-15 #406 original subject shadow integration (candidate)
+- The existing ReportAgent → DataAgent `question_raw` source is carried to new per-request ES tool instances via #427 scoped worker execution. `ESSearchNews.forward` now passes `get_original_report_question()` through an internal optional `original_question` parameter to canonical `build_hits_and_evidence`. Only under existing Evidence Trace, builder parses the conservative #426 explicit subject marker (not LLM keywords) and injects a value object into `topic_shadow.observe_topic_shadow`. Counts record direct literal subject presence vs not present among date-qualified rejected two-group slices, with no raw content output, no ES/LLM extra call, and no change in report admission. Real multi-Event document-context borrowing remains later work, not implicitly authorized by metadata.

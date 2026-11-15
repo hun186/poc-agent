@@ -32,6 +32,11 @@ _STAGE_COUNTS = frozenset({
     "shadow_3to2.meta_only_two_group_only",
     "shadow_3to2.oversized_or_over_budget",
     "shadow_3to2.uninspected_by_cap",
+    # Explicit original-question literal subject, used ONLY for counts; no
+    # subject text or derived axis labels appear in serialized traces.
+    "shadow_3to2.explicit_subject_available",
+    "shadow_3to2.explicit_subject_direct_two_group_only",
+    "shadow_3to2.explicit_subject_not_direct_two_group_only",
     # Diagnostic only: one parser slice is never a re-query permission.
     "health.date_eligible", "health.known_uninspected", "health.known_capped",
     "health.reason.SEARCH_INCOMPLETE",

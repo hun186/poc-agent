@@ -13,6 +13,7 @@ from agent.es.query_terms import compute_effective_terms
 from agent.es.evidence import build_hits_and_evidence
 from agent.es.query_body import build_main_query_body, build_fallback_query_body
 from .date_refill import refill_date_filtered_evidence
+from .question_scope import get_original_report_question
 from agent.utils.profiler import log_duration, log_total
 
 from .common import (
@@ -221,6 +222,11 @@ class ESSearchNews(Tool):
                     effective_terms=effective_terms,
                     term_groups=term_groups,
                     query_for_snippet=raw_query,
+                    # Only an authenticated ReportAgent's bounded per-tool
+                    # original provenance may supply an explicit subject.
+                    # Direct ES tools, style calls or missing originals yield
+                    # None; the LLM-rewritten raw_query is never substituted.
+                    original_question=get_original_report_question(),
                 )
 
             if date_scoped:

@@ -17,6 +17,7 @@ from .topic_match import match_topic
 from .text_norm import normalize_for_match
 from .fair_budget import MAX_SCAN_CITATIONS, MAX_VALID_EVIDENCE, select_valid_fair_evidence
 from .topic_shadow import observe_topic_shadow
+from .question_anchor import derive_explicit_question_anchor
 
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ def build_hits_and_evidence(
     config: Optional[EvidenceBuildConfig] = None,
     allowed_years: Optional[Set[int]] = None,
     include_source_hit_ordinal: bool = False,
+    original_question: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
     config = config or EvidenceBuildConfig()
     # Experimental, default-OFF. Use already-returned _source only; bounded
@@ -137,15 +139,25 @@ def build_hits_and_evidence(
     # fallback) Evidence output remains authoritative. Neither two-group
     # matches nor meta-only matches can enter the report from this shadow.
     if evidence_trace is not None:
+        # Derive only from original user report question, NOT the CodeAgent
+        # search rewrite or ES query. Candidate contract is conservatively
+        # explicit; no-anchor and ambiguous cases return None.
+        explicit_anchor = derive_explicit_question_anchor(
+            original_question, term_groups,
+        )
         shadow = observe_topic_shadow(
             out_hits, date_from=date_from, date_to=date_to,
             allowed_years=allowed_years, term_groups=term_groups,
+            explicit_anchor=explicit_anchor,
         )
         if shadow is not None:
             for key in (
                 "inspected", "date_eligible", "strict_in_sample",
                 "unanchored_text_two_group_only", "meta_only_two_group_only",
                 "oversized_or_over_budget", "uninspected_by_cap",
+                "explicit_subject_available",
+                "explicit_subject_direct_two_group_only",
+                "explicit_subject_not_direct_two_group_only",
             ):
                 evidence_trace.stage_count(
                     "shadow_3to2." + key, getattr(shadow, key),
