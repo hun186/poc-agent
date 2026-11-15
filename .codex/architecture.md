@@ -64,3 +64,7 @@
 
 ## 2026-11-15 #406 candidate: Event-scoped weak rescue origin guard
 - Existing opt-in `agent/es/evidence_core/rescue.py` now consults `event_anchor.same_event_as_strict_anchor` after independent linked Event/Timeline date validation. `snippet.py` propagates internal Citation.block_index to EvidenceSnippet.block_index (never serialized in builder public JSON); structured multi-Event weak borrowing requires same source_hit_ordinal, same block_index and intersecting bounded Event IDs, whereas truly legacy nonstructured same-hit rescue remains unchanged. This is a *rescue gate*, not a query-level subject classifier, trusted original-question anchor or live N-round function.
+
+
+## 2026-11-15 #406 per-request original report question propagation candidate
+- ReportAgent already gives DataAgent `question_raw`. DataAgent's `run_data_agent` establishes a bounded ContextVar before creating each fresh CodeAgent/ES tool instance. `bind_requirement_acceptance` now captures that value alongside (not replacing) the existing E2E acceptance scope; decorated Tool.forward restores the question within each worker-thread call, resetting after every call. No service/global state or ES tool-generated arguments are trusted as the original. This is private transport plumbing for future subject shadow, **not** a new permission or a report selection rule.

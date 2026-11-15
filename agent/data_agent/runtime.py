@@ -252,14 +252,15 @@ def run_data_agent(
         trace = {}
 
     t0 = time.time()
-    code_agent = build_agent(mode=mode)
-
     question_for_agent = _pack_question_for_agent(question or "", index_hint=index_hint)
-    # The LLM may rewrite the actual es_search_news(query=...) tool argument.
-    # Keep the unmodified caller-supplied question request-local for later
-    # diagnostics. Never infer it from the rewritten question or tool output.
+    # smolagents can run tool.forward in a worker thread. ContextVars do
+    # NOT propagate to a new worker thread automatically, so bind the
+    # original question BEFORE per-request tool instances are constructed.
+    # bind_requirement_acceptance captures the bounded value per instance;
+    # its forward decorator restores it only for that tool call.
     report_mode = (mode or "").strip().lower() in ("report", "sra_report")
     with bind_original_report_question(question_raw if report_mode else None):
+        code_agent = build_agent(mode=mode)
         result = code_agent.run(question_for_agent)
     elapsed = time.time() - t0
 

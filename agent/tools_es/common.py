@@ -8,10 +8,17 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from typing import Iterable
 
 from agent.es.es_client import resolve_index as _resolve_es_index
+from .question_scope import (
+    bind_original_report_question, get_original_report_question,
+)
 
 
 _REQUIREMENT_E2E_TOOL_SCOPE_ATTR = "_requirement_e2e_acceptance_scope"
 _REQUIREMENT_E2E_TOOL_PLAN_ATTR = "_requirement_e2e_admitted_plan"
+# One Report/Data Agent creates fresh ES tool objects per request. Attach the
+# bounded caller-supplied ORIGINAL question to each object so tool worker
+# threads can restore provenance without passing it as an LLM tool argument.
+_REPORT_QUESTION_TOOL_ATTR = "_sraf_original_report_question_for_tool"
 
 
 def bind_requirement_acceptance(tool: Any) -> Any:
@@ -27,6 +34,7 @@ def bind_requirement_acceptance(tool: Any) -> Any:
     )
 
     active = bool(requirement_acceptance_active())
+    setattr(tool, _REPORT_QUESTION_TOOL_ATTR, get_original_report_question())
     setattr(tool, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, active)
     # smolagents worker threads do not automatically inherit ContextVars.
     # Bind only the immutable plan from this verified job; production binds None.
@@ -49,8 +57,13 @@ def propagate_requirement_acceptance(func):
     """Decorator for Tool.forward methods that may run in worker threads."""
     @wraps(func)
     def wrapped(self, *args, **kwargs):
+        # Both scopes are tool-instance-bound and reset after every call.
+        # The established Requirement E2E authorization guard is unchanged.
         with requirement_acceptance_tool_scope(self):
-            return func(self, *args, **kwargs)
+            with bind_original_report_question(
+                getattr(self, _REPORT_QUESTION_TOOL_ATTR, None)
+            ):
+                return func(self, *args, **kwargs)
     return wrapped
 
 

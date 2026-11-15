@@ -199,3 +199,9 @@
 - [ ] Exact HEAD Python3.10/3.11 Hosted CI and Codex Review; merge only after gates.
 - [ ] Connect the explicit candidate to bounded `topic_shadow.py` via original report ContextVar, count only date-qualified, same-event text-anchored 3→2 candidates without exposing original terms. Do not activate automatic promotion before operator news_test A/B.
 - [ ] Later expand to true general user-intent entity/required-subject detection with independently validated trustworthy equivalence aliases, negation and multi-entity constraints; invalid/uncertain must fail closed. Confirm source-level subject/UUID doesn't authorize another Event or source, and preserve legacy output.
+
+
+## 2026-11-15 #406 next after worker-thread original question safety
+- [ ] Exact-HEAD dual-Python Hosted, independent Codex Review and merged branch gate; inspect Requirement E2E tool scope regressions and scope reset across thread exceptions.
+- [ ] Wire original question via Tool.forward to internal bounded per-builder `topic_shadow`, using #426 explicit candidate only under Trace, and same Event/block linking for indirect document context. Don't expose subject in count-only logs or enable automatic promotion. Verify real private smolagents/report runner can deliver context across its actual thread model.
+- [ ] Private news_test snapshot A/B Gaza/UN/Sudan precision-recall, count trace, Event-only date plus report token budget before considering new default rules or #413 N-round runtime wiring.
