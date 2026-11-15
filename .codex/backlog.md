@@ -159,3 +159,8 @@
 - [ ] Exact-head Python3.10/3.11 Hosted CI and formal Codex Review of the isolated atomic request budget; merge only with approvals/protection satisfied.
 - [ ] Wire budget into a **trusted, Job-only** adaptive coordinator after canonical date/index/field/owner validation and real request-wide Evidence checkpoint; admit every ES/LLM call including initial search; add provider-level per-call timeouts and cooperative cancellation before claiming 1800s/2400s enforcement.
 - [ ] Expand to token/bytes budgets, retry accounting, restart persistence and per-owner GPU fairness; independently validate private Linux/ES/LLM/Word, browser capability and OpenWebUI single-round-plus-deep-Job link flow. Do not enable automatic Chat dispatch or retire experimental Evidence flags on this helper alone.
+
+
+## 2026-11-15 #413 B2 Report Job browser fragment prefill (PR CANDIDATE)
+- [ ] Exact-head Hosted Report Job UI/Node and offline regression, independent formal Codex Review and Merge Gate.
+- [ ] Before producing a deep-report link in `/v1/chat/completions`, implement explicit authorized Job dispatch with durable admission, owner-bound idempotency, correctly preserved original question/query constraints, real N-round execution and verified browser/proxy permissions. Do NOT include service keys or access tokens in query strings/fragments, or pretend a `#job=` link is a signed one-click capability.
