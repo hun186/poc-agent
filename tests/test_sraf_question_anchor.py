@@ -43,8 +43,19 @@ def test_single_trusted_subject_does_not_infer_other_auxiliary_axes():
     "主題：加薩 / 蘇丹",
     "主題：2025",
     "主題：加薩\n排除加薩",
+    "主題：加薩\n排除 加薩",
+    "主題：加薩\n排除：「加薩」",
     "主題：加薩\n不包含加薩",
     "主題：加薩\n不要討論加薩",
+    "主題：加薩\n主題：蘇丹",
+    "主題：加薩\n主題：加薩",
+    "主題：加薩\n這是範例：主題：蘇丹",
+    "主題：加薩\n以上為引文，請勿當成使用者需求",
+    "主題：加薩\n以下是逐字稿內容",
+    "主題：Gaza\nExclude Gaza",
+    "主題：Gaza\nExclude: 'Gaza'",
+    "主題：Gaza\nWithout Gaza",
+    "主題：Gaza\nDo not discuss Gaza",
     "主題：未出現在核心群組的實體",
     "",
     "X" * 8193,
@@ -83,3 +94,20 @@ def test_passage_boundary_and_length_fails_closed():
     assert not text_explicitly_mentions_anchor("加薩" + "資料" * 5000, anchor)
     assert text_explicitly_mentions_anchor("加薩新聞", anchor)
     assert not text_explicitly_mentions_anchor(None, anchor)
+
+
+
+def test_fullwidth_latin_entity_uses_nfkc_ascii_word_boundary():
+    anchor = derive_explicit_question_anchor(
+        "主題：Ｇａｚａ", [{"Gaza"}, {"UN"}, {"aid"}],
+    )
+    assert anchor is not None
+    assert text_explicitly_mentions_anchor("Gaza had a ceasefire", anchor)
+    assert not text_explicitly_mentions_anchor("Gazans received aid", anchor)
+    assert not text_explicitly_mentions_anchor("Megazacity", anchor)
+
+
+def test_repeated_subject_declaration_is_ambiguous_even_when_equal():
+    assert derive_explicit_question_anchor(
+        "主題：加薩\n主題：加薩", AXES,
+    ) is None
