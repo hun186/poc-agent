@@ -202,6 +202,9 @@ def test_trace_counts_inner_hit_omissions_and_source_rescue_without_data(monkeyp
     hit = _hit(rows, event_dates={
         "E1": "2023-08-24", "E2": "2023-08-24",
     })
+    # This test measures two same-Event refill candidates. Cross-Event
+    # borrowing is now forbidden and separately verified by #406 tests.
+    hit["_source"]["multidim_event_json"][0]["evidence_snippets"][4]["event_ids"] = ["E1"]
     hit["inner_hits"] = {"evi": {"hits": {"hits": [
         _inner_hit(text) for text in rows[:3]
     ]}}}
@@ -244,6 +247,9 @@ def test_trace_source_strict_selected_precedes_weak(monkeypatch, caplog):
     hit = _hit(rows, event_dates={
         "E1": "2023-08-24", "E2": "2023-08-24",
     })
+    # This test measures two same-Event refill candidates. Cross-Event
+    # borrowing is now forbidden and separately verified by #406 tests.
+    hit["_source"]["multidim_event_json"][0]["evidence_snippets"][4]["event_ids"] = ["E1"]
     hit["inner_hits"] = {"evi": {"hits": {"hits": [
         _inner_hit(text) for text in rows[:3]
     ]}}}
