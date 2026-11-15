@@ -74,3 +74,6 @@
 
 ## 2026-11-15 #413 — partial Evidence is preferable to silent timeout (CANDIDATE)
 - Add an optional trusted-internal next-ES-page admission hook before enabling adaptive rounds, with a monotonic deadline and reserved generation time, no user-facing algorithm feature flag. If denied, retain only canonical date/topic-validated Evidence and explicitly mark search incomplete; never silently return no relevant articles or fabricate unexamined citations. In-flight ES/network cancellation and end-to-end OpenWebUI/proxy deadline are separate obligations and require independent validation.
+
+## 2026-11-15 #400 editor acceptance gate
+- Keep index mapping checks and bounded query generation for editor user-substring behavior, but do not claim safe production leading wildcard cost without real ES index/p50-p95 and search.allow_expensive_queries policy evidence. Old .codex bulk compaction must not replace latest valid main contracts; archived old notes may be retained as historical provenance.
