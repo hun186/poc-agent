@@ -227,3 +227,34 @@ def test_unused_text_reservation_flows_forward_to_last_long_valid_doc(monkeypatc
     assert len(evidence) == 301
     assert evidence[-1]["uuid"] == "last-long"
     assert len(evidence[-1]["text"]) > 3900
+
+
+def test_multilevel_nested_evi_count_preserves_late_date_valid_inner_hits(monkeypatch):
+    """Codex P2: the planner must match parser's recursive inner-hit layout."""
+    _enable(monkeypatch)
+    doc = _hit(3, "multi-level")
+    source = doc["_source"]["multidim_event_json"][0]
+    three = source.pop("evidence_snippets")
+    three[0]["event_ids"] = ["E2"]  # out of requested date
+    three[1]["event_ids"] = ["E1"]
+    three[2]["event_ids"] = ["E1"]
+    doc["inner_hits"] = {
+        "event_block": {"hits": {"hits": [{
+            "_nested": {"field": "multidim_event_json", "offset": 0},
+            "inner_hits": {"evi": {"hits": {"hits": [
+                {"_source": item, "_nested": {
+                    "field": "multidim_event_json", "offset": 0
+                }} for item in three
+            ]}}},
+        }]}}
+    }
+    from agent.es.evidence_core.fair_budget import _count_returned_evi_nested
+    assert _count_returned_evi_nested(doc) == 3
+    assert allocate_fair_source_quotas([doc]) == [3]
+    _, evidence, _ = _build([doc])
+    assert len(evidence) == 2
+    assert [row["paragraph_id"] for row in evidence] == ["1", "2"]
+    assert all(row["date_iso"] == D0 for row in evidence)
+    # Both modes must produce same verified Evidence with ample budget.
+    monkeypatch.delenv("SRAF_EVIDENCE_VALID_FAIR_BUDGET", raising=False)
+    assert _build([doc])[1] == evidence

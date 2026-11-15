@@ -19,6 +19,45 @@ MAX_JSON_CHARS = 2097152
 MAX_TEXT_CHARS = 1048576
 
 
+def _count_returned_evi_nested(hit: Any) -> int:
+    """Bounded count of all named evi inner hits, including multilevel nests.
+
+    Follow only returned ES inner_hits and their hit children, not _source or
+    arbitrary payloads. The parser already traverses nested inner-hit wrappers
+    and the planner must not underallocate when evi is nested under event_block.
+    """
+    if not isinstance(hit, dict):
+        return 0
+    stack = [hit]
+    inspected = 0
+    found = 0
+    # Hard cap traversal as well as counted hits to avoid unbounded planning.
+    while stack and inspected < MAX_SCAN_CITATIONS * 2 and found < MAX_SCAN_CITATIONS:
+        node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        inspected += 1
+        nested = node.get("inner_hits")
+        if not isinstance(nested, dict):
+            continue
+        for name, info in nested.items():
+            if not isinstance(info, dict):
+                continue
+            hits = info.get("hits")
+            rows = hits.get("hits") if isinstance(hits, dict) else None
+            if not isinstance(rows, list):
+                continue
+            if name == "evi":
+                found += min(len(rows), MAX_SCAN_CITATIONS - found)
+            # Other named wrappers may themselves contain named evi hits.
+            # Existing source-level ES responses are already materialized.
+            # Only traverse enough hit objects for the bounded plan.
+            available = max(0, MAX_SCAN_CITATIONS * 2 - inspected - len(stack))
+            stack.extend(row for row in rows[:available] if isinstance(row, dict)
+                         and isinstance(row.get("inner_hits"), dict))
+    return found
+
+
 def _source_demand(hit: Any) -> int:
     """Bounded estimate; unknown formats retain at least one fallback slot.
 
@@ -27,11 +66,7 @@ def _source_demand(hit: Any) -> int:
     """
     if not isinstance(hit, dict):
         return 1
-    outer_hits = hit.get("inner_hits")
-    inner = outer_hits.get("evi") if isinstance(outer_hits, dict) else None
-    inner_rows = inner.get("hits") if isinstance(inner, dict) else None
-    inner_rows = inner_rows.get("hits") if isinstance(inner_rows, dict) else None
-    inner_count = len(inner_rows) if isinstance(inner_rows, list) else 0
+    inner_count = _count_returned_evi_nested(hit)
     source = hit.get("_source")
     if not isinstance(source, dict):
         return max(1, min(inner_count, MAX_SCAN_CITATIONS))
