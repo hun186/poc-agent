@@ -43,6 +43,12 @@ _STAGE_COUNTS = frozenset({
     "shadow_3to2.same_event_subject_context_two_group_only",
     "shadow_3to2.no_same_event_subject_context_two_group_only",
     "shadow_3to2.subject_anchors_dropped_by_cap",
+    # #406 text provenance refinement: fixed count-only split between
+    # >=2 independent body text groups and metadata-assisted candidates.
+    "shadow_3to2.text_two_axis_only",
+    "shadow_3to2.metadata_assisted_two_axis_only",
+    "shadow_3to2.same_event_two_text_axis_only",
+    "shadow_3to2.no_same_event_two_text_axis_only",
     # Diagnostic only: one parser slice is never a re-query permission.
     "health.date_eligible", "health.known_uninspected", "health.known_capped",
     "health.reason.SEARCH_INCOMPLETE",
