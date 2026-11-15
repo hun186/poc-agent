@@ -6,7 +6,7 @@ import pytest
 
 from agent.adaptive_retrieval import (
     AdaptiveRetrievalPlanner, BudgetSnapshot, DateWindow,
-    QueryConstraints, RoundEvidenceSummary,
+    QueryConstraints, RoundEvidenceSummary, bind_next_round_plan, PlannerDecision,
 )
 
 
@@ -268,3 +268,44 @@ def test_event_and_analysis_time_remain_distinct_facets():
     assert decision.should_search
     assert '"start":"2023-08-25"' in prompts[0]
     assert '"end":"2023-11-24"' in prompts[0]
+
+
+def test_bound_search_plan_reuses_frozen_dates_fields_indexes_and_entities():
+    scope = make_scope()
+    decision = AdaptiveRetrievalPlanner(
+        lambda *_args, **_kwargs: response(),
+    ).propose_next(constraints=scope, history=(round1(),), budget=budget())
+    plan = bind_next_round_plan(
+        constraints=scope, history=(round1(),), decision=decision,
+    )
+    assert plan.round_number == 2
+    assert plan.constraints is scope
+    assert plan.constraints.event_date.start == "2023-08-24"
+    assert plan.constraints.allowed_indexes == ("news_test",)
+    assert plan.constraints.fixed_fields == (("category", "policy"),)
+    assert plan.constraints.required_entities == ("古特雷斯", "金磚峰會")
+    assert plan.optional_terms == ("聯合國聲明", "外交回應")
+
+
+def test_binding_rejects_manually_crafted_date_or_unsafe_plan():
+    scope = make_scope()
+    for crafted in (
+        PlannerDecision("search", "COVERAGE_GAP", ("2024年",), ("外交",)),
+        PlannerDecision("search", "COVERAGE_GAP", ("古特雷斯",), ("外交",)),
+        PlannerDecision("search", "COVERAGE_GAP", (), ("外交",)),
+        PlannerDecision("date_review", "DATE_PARSE_SUSPECTED"),
+    ):
+        with pytest.raises(ValueError):
+            bind_next_round_plan(
+                constraints=scope, history=(round1(),), decision=crafted,
+            )
+    with pytest.raises(ValueError):
+        bind_next_round_plan(
+            constraints=make_scope(locked=True), history=(round1(),),
+            decision=PlannerDecision("search", "COVERAGE_GAP", ("聯合國",), ("外交",)),
+        )
+    with pytest.raises(ValueError):
+        bind_next_round_plan(
+            constraints=scope, history=(round1(incomplete=True),),
+            decision=PlannerDecision("search", "COVERAGE_GAP", ("聯合國",), ("外交",)),
+        )
