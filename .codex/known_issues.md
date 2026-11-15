@@ -96,3 +96,7 @@
 
 ## 2026-11-15 #413 Report Job fragment link boundary (PR candidate)
 - `/report-jobs#job=<id>` is only a client-side prefill for an already-created Report Job. Authentication remains a manually entered, authorized bearer and status/Word are always owner-checked by the API. It does not grant unauthenticated browser downloads or make OpenWebUI automatically schedule an adaptive job. A private proxy/browser flow still needs live acceptance.
+
+
+## 2026-11-15 #413 B3 browser URL API boundary (PR CANDIDATE)
+- `browser_status_url` is a relative UI fragment prefill, NOT a signed browser-access capability; the user must still authenticate and the server checks owner. Creating a normal Report Job does not mean adaptive multi-round retrieval ran, or that Word is downloadable while QUEUED. Absolute external host/proxy integration and private acceptance are not established.
