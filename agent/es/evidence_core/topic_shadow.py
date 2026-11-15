@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Set
 
-from .models import HitDoc
+from .models import Citation, EvidenceSnippet, HitDoc
 from .snippet import build_evidence_snippet
 from .topic_match import match_topic
 from .question_anchor import ExplicitQuestionAnchor, text_explicitly_mentions_anchor
@@ -66,8 +66,8 @@ def observe_topic_shadow(
     inspected = date_eligible = strict_count = 0
     unanchored_text = meta_only = oversized = chars = 0
     explicit_direct = explicit_not_direct = 0
-    strict_subject_anchors: dict[int, list] = {}
-    no_direct_candidates: list[tuple[HitDoc, object]] = []
+    strict_subject_anchors: dict[int, list[EvidenceSnippet]] = {}
+    no_direct_candidates: list[tuple[HitDoc, Citation]] = []
     anchors_count = anchors_dropped = 0
 
     for hit in hits:
