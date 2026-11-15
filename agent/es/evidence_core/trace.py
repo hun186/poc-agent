@@ -24,6 +24,14 @@ _STAGE_COUNTS = frozenset({
     "source_refill.strict_selected", "source_refill.weak_selected",
     "source_refill.unselected_by_target", "bounded_rescue.selected",
     "valid_budget.eligible", "valid_budget.selected", "valid_budget.not_selected",
+    # #406: count-only hypothetical two-group candidates. No trust anchor
+    # or report selection is implied by these counters.
+    "shadow_3to2.inspected", "shadow_3to2.date_eligible",
+    "shadow_3to2.strict_in_sample",
+    "shadow_3to2.unanchored_text_two_group_only",
+    "shadow_3to2.meta_only_two_group_only",
+    "shadow_3to2.oversized_or_over_budget",
+    "shadow_3to2.uninspected_by_cap",
     # Diagnostic only: one parser slice is never a re-query permission.
     "health.date_eligible", "health.known_uninspected", "health.known_capped",
     "health.reason.SEARCH_INCOMPLETE",
