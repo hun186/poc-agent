@@ -43,3 +43,4 @@ class AgentPresentation:
     raw_json_line_count: int
     auto_collapse_json: bool
     raw_json_md: str  # 已包好 ```json 的 Markdown block
+    evidence_usage: Dict[str, Any] = field(default_factory=dict)
