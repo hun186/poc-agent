@@ -11,6 +11,7 @@ from typing import List, Optional, Set
 from .models import HitDoc
 from .snippet import build_evidence_snippet
 from .topic_match import match_topic
+from .question_anchor import ExplicitQuestionAnchor, text_explicitly_mentions_anchor
 
 
 MAX_SHADOW_CITATIONS = 256
@@ -27,6 +28,9 @@ class TopicShadowCounts:
     meta_only_two_group_only: int = 0
     oversized_or_over_budget: int = 0
     uninspected_by_cap: int = 0
+    explicit_subject_available: int = 0
+    explicit_subject_direct_two_group_only: int = 0
+    explicit_subject_not_direct_two_group_only: int = 0
 
 
 def observe_topic_shadow(
@@ -36,6 +40,7 @@ def observe_topic_shadow(
     date_to: Optional[str],
     allowed_years: Optional[Set[int]],
     term_groups: List[Set[str]],
+    explicit_anchor: Optional[ExplicitQuestionAnchor] = None,
 ) -> TopicShadowCounts | None:
     """Count hypothetical 3->2 differences without selecting or storing Evidence.
 
@@ -50,6 +55,7 @@ def observe_topic_shadow(
     total = sum(len(h.citations) for h in hits)
     inspected = date_eligible = strict_count = 0
     unanchored_text = meta_only = oversized = chars = 0
+    explicit_direct = explicit_not_direct = 0
 
     for hit in hits:
         if inspected >= MAX_SHADOW_CITATIONS:
@@ -84,6 +90,14 @@ def observe_topic_shadow(
             elif groups_hit >= 2:
                 if scope in ("text", "mixed"):
                     unanchored_text += 1
+                    # This is literal subject presence in the passage only,
+                    # not validated 2-group precision nor an Event borrow.
+                    # A subject in document metadata is NOT a direct anchor.
+                    if explicit_anchor is not None:
+                        if text_explicitly_mentions_anchor(evidence.text, explicit_anchor):
+                            explicit_direct += 1
+                        else:
+                            explicit_not_direct += 1
                 elif scope == "meta":
                     meta_only += 1
 
@@ -95,4 +109,7 @@ def observe_topic_shadow(
         meta_only_two_group_only=meta_only,
         oversized_or_over_budget=oversized,
         uninspected_by_cap=min(max(0, total - inspected), 1_000_000),
+        explicit_subject_available=int(explicit_anchor is not None),
+        explicit_subject_direct_two_group_only=explicit_direct,
+        explicit_subject_not_direct_two_group_only=explicit_not_direct,
     )
