@@ -111,3 +111,8 @@
 ## 2026-11-15 #413 B2 — safe static Report Job deep-link prefill (PR CANDIDATE, NOT MERGED)
 - Existing owner-scoped `/report-jobs` browser can prefill a valid opaque Job ID from a bounded `#job=<id>` fragment. No credential, session, raw question or signed token in URL; no fetch until the user supplies their own bearer and presses Track. Existing `/v1/report/jobs/{id}` owner authorization and `/word` completion guard remain authoritative.
 - Independent no-network Node regression checks valid/invalid fragments and strict non-automatic status request; existing Report Job UI static/Node flow and Python3.10/3.11 Hosted workflow remain required. HEAD-specific CI and Codex review PENDING at PR creation; no adaptive Job dispatch, OpenWebUI integration, browser capability token or private proxy acceptance claimed.
+
+
+## 2026-11-15 #413 B3 — additive browser URL in Report Job API (PR CANDIDATE, NOT MERGED)
+- `POST /v1/report/jobs` 202 and authorized GET Job status now return a `browser_status_url` pointing to #420's existing safe fragment-prefill page. Server-side strict ID validation omits usable fragment for malformed legacy IDs; no new credential, bypass, browser capability or download guarantee.
+- New synthetic real SQLite/ServiceKeyStore/TestClient test validates queued creation, cross-owner 404, unauthenticated 401, queued Word 409 and no credential in link. Python3.10/3.11 Hosted exact-head CI, independent Codex Review and private browser/proxy acceptance PENDING; normal single-round chat unchanged.
