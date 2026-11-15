@@ -74,3 +74,8 @@
 
 ## 2026-11-15 #413 — partial Evidence is preferable to silent timeout (CANDIDATE)
 - Add an optional trusted-internal next-ES-page admission hook before enabling adaptive rounds, with a monotonic deadline and reserved generation time, no user-facing algorithm feature flag. If denied, retain only canonical date/topic-validated Evidence and explicitly mark search incomplete; never silently return no relevant articles or fabricate unexamined citations. In-flight ES/network cancellation and end-to-end OpenWebUI/proxy deadline are separate obligations and require independent validation.
+
+## 2026-11-15 #413 B0 — user-approved two-agent strategy (CANDIDATE)
+- Keep original first-round keyword extraction/prompt. Build a **separate round-2..N AdaptiveRetrievalPlanner** using prior search history, verified Evidence coverage gaps and cumulative budget to propose new optional semantic search axes. Both agents must reuse the same canonical ES, Event/Timeline date verifier, Evidence filtering and report modules; no second retrieval stack.
+- Hard date/analysis periods, index, fields, core entities and manual-only keywords remain frozen in trusted server-owned QueryConstraints. Search result shortage never relaxes date. If original date parsing is demonstrably wrong, planner may only request trusted reparse; revalidated versioned scope/checkpoint is later work, never direct LLM date mutation.
+- No production integration before #397 single-round verified health, query-plan adapter, long Job budget/cancel and private acceptance.
