@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from requirement_scheduler.execution import ExecutionHandle, ExecutionState, ExecutionStatus
 from requirement_scheduler.reconciliation import RequirementReconciler
+from requirement_scheduler.legacy_report_job_gateway import translate_native_state
 from requirement_scheduler.store import ScheduleStore
 from tests.requirement_handoff_stateful_dbapi import StatefulDatabase, durable_submission, initial_state, lease
 
@@ -52,3 +53,24 @@ def test_stale_predecessor_reconciliation_response_cannot_mutate_sql():
     with pytest.raises(RuntimeError,match="lease_lost"):
         ScheduleStore(db,"db").record_reconciliation(row,ExecutionStatus(ExecutionState.RUNNING,NOW),lease())
     assert db.state["item"]["state"] == "pending" and db.state["audits"] == []
+
+
+def test_cancelled_report_job_closes_handoff_without_polling_or_artifact():
+    data,row=stateful_row("running")
+    row["handle"]=ExecutionHandle("submission","job-1")
+    db=StatefulDatabase(data)
+    actual=ScheduleStore(db,"db")
+
+    class DurableOwnerStore:
+        def list_unfinished_handoffs(self,**kwargs):
+            return [row] if db.state["item"]["state"] == "running" else []
+        def record_reconciliation(self,item,status,proof):
+            actual.record_reconciliation(item,status,proof)
+
+    service=Service(translate_native_state("cancelled"))
+    reconciler=RequirementReconciler(DurableOwnerStore(),service)
+    assert reconciler.reconcile_batch(lease(),limit=20).processed == 1
+    assert db.state["item"]["state"] == "failed"
+    assert db.state["run"]["failure_count"] == 1
+    assert service.events == []  # no DOCX download after terminal cancellation
+    assert reconciler.reconcile_batch(lease(),limit=20).processed == 0
