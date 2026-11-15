@@ -205,3 +205,9 @@
 - [ ] Exact-HEAD dual-Python Hosted, independent Codex Review and merged branch gate; inspect Requirement E2E tool scope regressions and scope reset across thread exceptions.
 - [ ] Wire original question via Tool.forward to internal bounded per-builder `topic_shadow`, using #426 explicit candidate only under Trace, and same Event/block linking for indirect document context. Don't expose subject in count-only logs or enable automatic promotion. Verify real private smolagents/report runner can deliver context across its actual thread model.
 - [ ] Private news_test snapshot A/B Gaza/UN/Sudan precision-recall, count trace, Event-only date plus report token budget before considering new default rules or #413 N-round runtime wiring.
+
+
+## 2026-11-15 #406 after explicit-subject 3→2 shadow hookup
+- [ ] Complete exact-head Python 3.10/3.11 Hosted CI and independent Codex Review, fix any findings, conditionally merge (no parallel source/builder PR).
+- [ ] Extend count-only shadow with conservative same ES hit + block-local + overlapping Event IDs borrowing from validated date-matched **direct subject text** Evidence; do not let global document title, cross-event, cross-UUID or unrelated source establish a required subject. Keep absent/ambiguous original fail closed.
+- [ ] Genuine human-assessed private news_test read-only same-snapshot Gaza 2025 5/10 vs 25/40, Sudan false positives, Event-only/date-null and Guterres 2023 cases; profile p50/p95 and token budget. Implement robust original-question entity requirements in ordinary prose separately before any automatic nonzero strict 3→2 promotion and #413 multiround worker.
