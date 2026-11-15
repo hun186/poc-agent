@@ -11,6 +11,7 @@ from api.core.presenters.sections import (
 )
 
 from shared.citations.citation_id import pick_doc_id
+from api.core.presenters.evidence_usage import safe_evidence_usage
 
 import unicodedata
 
@@ -47,6 +48,7 @@ def extract_presentation(
             auto_collapse_json=(line_count > json_collapse_threshold),
             raw_json_md=raw_json_md,
             turn_id=None,  # ✅ 新增
+            evidence_usage={},
         )
 
     user_question = extract_user_question(out)
@@ -92,6 +94,7 @@ def extract_presentation(
         auto_collapse_json=auto_collapse,
         raw_json_md=raw_json_md,
         turn_id=turn_id,  # ✅ 新增
+        evidence_usage=safe_evidence_usage(out.get("evidence_usage")),
     )
 
 def extract_user_question(out: dict) -> str:

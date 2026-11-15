@@ -71,3 +71,7 @@
 ## Keyword equivalence (internal, no API surface changed)
 
 - SRAF official/common synonym coalescence in `agent/es/query_terms.py` alters only the internal keyword group to Evidence topic matcher handoff. It does not change any public route, Product/Preview contracts, Excel→SQL source-stats, Report Job auth/idempotency/list, SQLite/SQL/ES writes, date handling, or LLM call count. This candidate remains unmerged pending latest-head CI/Review and user confirmation.
+
+
+## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
+- Optional top-level `evidence_usage` in structured SRA_REPORT results (and thus JSON-format chat output) is `sraf_report_evidence_usage_v1`: fixed enum selection mode (`source_diverse|strong_first`), boolean `llm_skipped_incomplete`, allowlisted nonnegative counters `incoming, strong, weak, picked, compressed, llm_input`, known document source counts at incoming/picked/LLM input, max_for_llm, prompt_chars, truncated notes/titles. No user content, document IDs, tokens or new routes; default Markdown and Word Data Agent section show identically formatted count lines. Older snapshots without field remain unchanged.

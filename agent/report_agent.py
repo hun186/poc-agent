@@ -152,6 +152,17 @@ def ask_with_report(
             "search_status": search_quality,
             "query_meta": payload["query_meta"],
         }
+        result["evidence_usage"] = {
+            "schema": "sraf_report_evidence_usage_v1",
+            "selection_mode": ("source_diverse" if os.getenv("SRAF_REPORT_DIVERSE_EVIDENCE") == "1" else "strong_first"),
+            "llm_skipped_incomplete": True,
+            **{key: 0 for key in (
+                "incoming", "strong", "weak", "picked", "compressed", "llm_input",
+                "incoming_identified_sources", "picked_identified_sources",
+                "llm_input_identified_sources", "max_for_llm", "prompt_chars",
+                "truncated_notes", "truncated_titles",
+            )},
+        }
         if trace.get("data_agent"):
             result["data_agent"] = trace["data_agent"]
         log_total("[report] ask_with_report[TOTAL]", t_total_start,
@@ -385,15 +396,30 @@ def ask_with_report(
     llm_source_rows = [
         e for e in ev_compact if e.get("ref_no") in llm_ref_nos
     ]
+    evidence_usage = {
+        "schema": "sraf_report_evidence_usage_v1",
+        "selection_mode": ("source_diverse" if os.getenv("SRAF_REPORT_DIVERSE_EVIDENCE") == "1" else "strong_first"),
+        "llm_skipped_incomplete": False,
+        "incoming": len(ev_all), "strong": len(ev_strong), "weak": len(ev_weak),
+        "picked": len(picked_for_llm), "compressed": len(ev_compact),
+        "llm_input": len(ev_for_llm),
+        "incoming_identified_sources": count_identified_sources(ev_all),
+        "picked_identified_sources": count_identified_sources(picked_for_llm),
+        "llm_input_identified_sources": count_identified_sources(llm_source_rows),
+        "max_for_llm": MAX_EV_FOR_LLM, "prompt_chars": len(user_prompt),
+        "truncated_notes": truncated_notes, "truncated_titles": truncated_titles,
+    }
     emit_report_evidence_trace(
-        incoming=len(ev_all), strong=len(ev_strong), weak=len(ev_weak),
-        picked=len(picked_for_llm), compressed=len(ev_compact),
-        llm_input=len(ev_for_llm), max_for_llm=MAX_EV_FOR_LLM,
-        prompt_chars=len(user_prompt), truncated_notes=truncated_notes,
-        truncated_titles=truncated_titles,
-        incoming_identified_sources=count_identified_sources(ev_all),
-        picked_identified_sources=count_identified_sources(picked_for_llm),
-        llm_input_identified_sources=count_identified_sources(llm_source_rows),
+        incoming=evidence_usage["incoming"], strong=evidence_usage["strong"],
+        weak=evidence_usage["weak"],
+        picked=evidence_usage["picked"], compressed=evidence_usage["compressed"],
+        llm_input=evidence_usage["llm_input"], max_for_llm=evidence_usage["max_for_llm"],
+        prompt_chars=evidence_usage["prompt_chars"],
+        truncated_notes=evidence_usage["truncated_notes"],
+        truncated_titles=evidence_usage["truncated_titles"],
+        incoming_identified_sources=evidence_usage["incoming_identified_sources"],
+        picked_identified_sources=evidence_usage["picked_identified_sources"],
+        llm_input_identified_sources=evidence_usage["llm_input_identified_sources"],
     )
     t0 = time.perf_counter()
     with log_duration("[report] call_llm(report)",
@@ -481,6 +507,7 @@ def ask_with_report(
         "reasoning": reasoning,
         "used_uuids": used_uuids,
         "refno_uuid_map": refno_uuid_map,
+        "evidence_usage": evidence_usage,  # Count-only, not sent to the report LLM.
     }
 
     if search_quality:

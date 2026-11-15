@@ -39,3 +39,7 @@
 
 ## 2026-11-15 #397 P1-e — offline source-coverage comparison candidate (NOT MERGED)
 - Ancillary operator-only `tools/sraf_evidence_trace_compare.py` consumes two saved count-only log records with stdlib and emits only numeric deltas; independent of FastAPI, ES, LLM, SQL, Schedule/Handoff, runtime Report Jobs and DOCX. No persistent output or network activity.
+
+
+## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
+- Report Agent creates a numeric-only `evidence_usage` after actual field-selection/LLM-input boundary; the presenter validates fixed schema/mode/integer bounds before shared labels feed both `markdown_presenter._render_data_agent` and `docx.data_agent_section.add_data_agent_section`. Source identifiers/notes/prompts stay out; no new external search/LLM call. Raw log `SRAF_EVIDENCE_TRACE=1` remains separately opt-in.

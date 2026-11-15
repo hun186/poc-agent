@@ -47,3 +47,7 @@
 - Numeric comparison of independent random trace IDs cannot prove runs share the same question, date range, index or data state. File parser accepts only one schema-v1 count record, fails closed on ambiguous inputs and gives no real prompt/token/source-quality guarantee. Any operator logs beyond the count-only record remain private and should not be passed to GitHub.
 
 - **2026-11-15 #409 input hardening:** POSIX FIFO without a writer can block at `os.open` even if `fstat` would reject the type. PR #409 candidate now opens with `O_NONBLOCK` before regular-file check and tests that case. Review/CI on new HEAD pending; utility still not production/live report validation.
+
+
+## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
+- The new reporting counts describe **already returned** Evidence only, not raw `_source`/inner_hits truncation or genuine ES recall. Parser default `citations_per_doc=20`, nested `inner_hits.size=3`, bounded source refill 12 parsed citations (with total/document caps); server-structured single-document 500 daily items can be truncated before Report Agent even when total Report LLM cap=120 has headroom. This needs a separately reviewed retrieval-global-budget design with safe date/topic fidelity, pagination and bounded work, not blind removal of input memory limits. `prompt_chars` is not tokens. No live acceptance.

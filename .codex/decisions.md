@@ -48,3 +48,7 @@
 
 ## 2026-11-15 #397 P1-e — offline source-coverage comparison candidate (NOT MERGED)
 - Prefer one opt-in offline stdlib compare CLI over collecting private report/ES content or adding live API probes. Strict read-only bounded regular input, one record per file, numeric allowlist output, generic INCOMPLETE error with no local paths/raw payload. Comparison success is `PASS_PARTIAL`, never full report or token acceptance.
+
+
+## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
+- Use shared strict numeric-only Evidence usage contract and one common display formatter for Word/OpenWebUI; no direct ingestion of arbitrary logs into DOCX or browser, and no IDs/prompts in added count metrics. Preserve existing `SRAF_EVIDENCE_TRACE` logger and default-OFF source-diverse choice independently. Explicitly distinguish known-source retention from topic coverage and whole-corpus completeness.
