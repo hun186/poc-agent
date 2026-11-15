@@ -74,3 +74,6 @@
 
 ## 2026-11-15 #413 — partial Evidence is preferable to silent timeout (CANDIDATE)
 - Add an optional trusted-internal next-ES-page admission hook before enabling adaptive rounds, with a monotonic deadline and reserved generation time, no user-facing algorithm feature flag. If denied, retain only canonical date/topic-validated Evidence and explicitly mark search incomplete; never silently return no relevant articles or fabricate unexamined citations. In-flight ES/network cancellation and end-to-end OpenWebUI/proxy deadline are separate obligations and require independent validation.
+
+## 2026-11-15 #396 security decision pending
+- No change to production ES TLS policy. A CA-signed IP SAN mismatch remains an endpoint identity warning, not success; warn-only mode for isolated read-only probe is security-sensitive and blocked from merge pending independent approval / actual operator trust evidence.
