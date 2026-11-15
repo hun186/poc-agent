@@ -217,3 +217,9 @@
 - [ ] Latest-HEAD Hosted dual-Python, formal Codex review and conditional merge (never parallel-modify Evidence Builder/Trace).
 - [ ] Distinguish two fully TEXT-matched auxiliary axes from text+metadata-assisted two-group candidates in contextual shadow (avoid treating title/metadata as proof). Add mismatch/negative/comparison and optional typed semantic quality gates before any promotion; actual normal user questions need trustworthy entity extraction rather than only `主題：...` label.
 - [ ] Run real private read-only `news_test` same-snapshot Gaza/Sudan 5/10 vs 25/40, Guterres Event-only 2023-08-24 and missing Timeline; compare p50/p95 and source fairness, eventual report tokenizer-based input budget. Implement conditional 3→2 only after documented precision/recall target and operator acceptance, then share core with actual #413 N-round Job Worker.
+
+
+## 2026-11-16 #406 next after two-text-axis shadow metrics
+- [ ] Latest HEAD Hosted CI Python3.10/3.11 and independent Codex Review with zero unresolved findings; conditional merge only.
+- [ ] Preserve exact provenance: do NOT promote mixed one-text + one-metadata candidates merely because same Event matches; compare two-text-axis hypothetical candidates against the original question's validated required entities and issue constraints and block cross-Event source subject borrowing.
+- [ ] Finish true original question named-entity/negation/conjunction semantics for naturally phrased questions (not only `主題：...`), private read-only news_test Gaza/Sudan 5/10 versus 25/40 and Guterres Event-only A/B with precision/recall, p50/p95 and token-size/cost budget, then decide gating for conditional 3→2 and N-round reuse.

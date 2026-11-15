@@ -41,6 +41,12 @@ class TopicShadowCounts:
     same_event_subject_context_two_group_only: int = 0
     no_same_event_subject_context_two_group_only: int = 0
     subject_anchors_dropped_by_cap: int = 0
+    # Existing "text/mixed" means >=1 group mentioned in the passage.
+    # The following split requires TWO independent groups from text alone.
+    text_two_axis_only: int = 0
+    metadata_assisted_two_axis_only: int = 0
+    same_event_two_text_axis_only: int = 0
+    no_same_event_two_text_axis_only: int = 0
 
 
 def observe_topic_shadow(
@@ -66,8 +72,10 @@ def observe_topic_shadow(
     inspected = date_eligible = strict_count = 0
     unanchored_text = meta_only = oversized = chars = 0
     explicit_direct = explicit_not_direct = 0
+    two_text = metadata_assisted = 0
+    same_event_two_text = no_event_two_text = 0
     strict_subject_anchors: dict[int, list[EvidenceSnippet]] = {}
-    no_direct_candidates: list[tuple[HitDoc, Citation]] = []
+    no_direct_candidates: list[tuple[HitDoc, Citation, bool]] = []
     anchors_count = anchors_dropped = 0
 
     for hit in hits:
@@ -122,6 +130,18 @@ def observe_topic_shadow(
             elif groups_hit >= 2:
                 if scope in ("text", "mixed"):
                     unanchored_text += 1
+                    # A mixed-scope candidate can have only ONE text group
+                    # and borrow the other from article title/metadata. For
+                    # quality comparison, independently count TEXT-only axes
+                    # using the same canonical match_topic semantics.
+                    _, _, _, text_axis_count = match_topic(
+                        evidence.text, None, None, term_groups,
+                    )
+                    is_two_text_axes = text_axis_count >= 2
+                    if is_two_text_axes:
+                        two_text += 1
+                    else:
+                        metadata_assisted += 1
                     # This is literal subject presence in the passage only,
                     # not validated 2-group precision nor an Event borrow.
                     # A subject in document metadata is NOT a direct anchor.
@@ -130,7 +150,9 @@ def observe_topic_shadow(
                             explicit_direct += 1
                         else:
                             explicit_not_direct += 1
-                            no_direct_candidates.append((hit, citation))
+                            no_direct_candidates.append((
+                                hit, citation, is_two_text_axes,
+                            ))
                 elif scope == "meta":
                     meta_only += 1
 
@@ -139,14 +161,19 @@ def observe_topic_shadow(
     # SAME structured block and overlapping Event ID. In particular, legacy
     # docs cannot claim "same Event" from an article-wide match.
     same_event_context = no_context = 0
-    for hit, citation in no_direct_candidates:
-        if hit.has_structured_events and any(
+    for hit, citation, is_two_text_axes in no_direct_candidates:
+        has_event_context = hit.has_structured_events and any(
             same_event_as_strict_anchor(hit, citation, anchor)
             for anchor in strict_subject_anchors.get(hit.source_hit_ordinal, ())
-        ):
+        )
+        if has_event_context:
             same_event_context += 1
+            if is_two_text_axes:
+                same_event_two_text += 1
         else:
             no_context += 1
+            if is_two_text_axes:
+                no_event_two_text += 1
 
     return TopicShadowCounts(
         inspected=inspected,
@@ -163,4 +190,8 @@ def observe_topic_shadow(
         same_event_subject_context_two_group_only=same_event_context,
         no_same_event_subject_context_two_group_only=no_context,
         subject_anchors_dropped_by_cap=anchors_dropped,
+        text_two_axis_only=two_text,
+        metadata_assisted_two_axis_only=metadata_assisted,
+        same_event_two_text_axis_only=same_event_two_text,
+        no_same_event_two_text_axis_only=no_event_two_text,
     )

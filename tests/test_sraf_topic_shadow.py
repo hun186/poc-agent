@@ -90,6 +90,8 @@ def test_shadow_observes_low_nonzero_strict_without_promoting_or_leaking(monkeyp
     # Both the relevant short snippet and a non-Gaza generic one are
     # visible as *UNANCHORED* hypothetical matches, never selected.
     assert counters["shadow_3to2.unanchored_text_two_group_only"] == 2
+    assert counters["shadow_3to2.text_two_axis_only"] == 2
+    assert counters["shadow_3to2.metadata_assisted_two_axis_only"] == 0
     assert trace["output_evidence"] == trace["strict_accepted"] == 1
     raw = json.dumps(trace, ensure_ascii=False)
     for secret in ("PRIVATE-", "STRONG-SECRET", "RELEVANT-SECRET",
@@ -351,3 +353,110 @@ def test_subject_context_anchor_cap_is_bounded():
         MAX_SHADOW_CITATIONS - MAX_SHADOW_STRICT_SUBJECT_ANCHORS_PER_HIT
     )
     assert result.uninspected_by_cap == 10
+
+
+
+def test_two_axis_shadow_distinguishes_body_text_from_metadata_boost():
+    """Both legacy scope 'mixed' and true two-body axes were previously merged."""
+    from agent.es.evidence_core.question_anchor import derive_explicit_question_anchor
+
+    original = derive_explicit_question_anchor("主題：加薩", GROUPS)
+    assert original is not None
+    results = observe_topic_shadow(
+        [
+            HitDoc(
+                uuid="a", subject="加薩", article_title=None, score=0,
+                raw_content="", source_hit_ordinal=0,
+                citations=[Citation(text="聯合國", date_iso="2023-08-24")],
+            ),
+            HitDoc(
+                uuid="b", subject=None, article_title=None, score=0,
+                raw_content="", source_hit_ordinal=1,
+                citations=[Citation(text="聯合國 醫療", date_iso="2023-08-24")],
+            ),
+        ],
+        date_from="2023-08-24", date_to="2023-08-24",
+        allowed_years=None, term_groups=GROUPS, explicit_anchor=original,
+    )
+    assert results is not None
+    assert results.unanchored_text_two_group_only == 2
+    assert results.meta_only_two_group_only == 0
+    assert results.text_two_axis_only == 1
+    assert results.metadata_assisted_two_axis_only == 1
+    assert results.explicit_subject_not_direct_two_group_only == 2
+    # No structured Event proof, so no one may claim same Event.
+    assert results.same_event_two_text_axis_only == 0
+    assert results.no_same_event_two_text_axis_only == 1
+
+
+def test_same_event_coverage_quality_excludes_one_text_axis_metadata_only():
+    """An Event context alone does not create a second *text* group."""
+    from agent.es.evidence_core.question_anchor import derive_explicit_question_anchor
+
+    anchor = derive_explicit_question_anchor("主題：加薩", GROUPS)
+    assert anchor is not None
+
+    def source_hit(ordinal, subject, weak_text):
+        return HitDoc(
+            uuid=f"synthetic-{ordinal}", subject=subject, article_title=None,
+            score=0, raw_content="", source_hit_ordinal=ordinal,
+            has_structured_events=True, citations=[
+                Citation(
+                    text="加薩 停火 人道援助", date_iso="2023-08-24",
+                    event_ids=["E1"], block_index=0,
+                ),
+                Citation(
+                    text=weak_text, date_iso="2023-08-24",
+                    event_ids=["E1"], block_index=0,
+                ),
+            ],
+        )
+
+    result = observe_topic_shadow(
+        [
+            source_hit(0, "醫療", "聯合國"),  # two axes only with metadata
+            source_hit(1, None, "聯合國 醫療"),  # two axes from own text
+        ],
+        date_from="2023-08-24", date_to="2023-08-24",
+        allowed_years=None, term_groups=GROUPS, explicit_anchor=anchor,
+    )
+    assert result is not None
+    assert result.strict_subject_text_anchors_in_sample == 2
+    assert result.unanchored_text_two_group_only == 2
+    assert result.text_two_axis_only == 1
+    assert result.metadata_assisted_two_axis_only == 1
+    # Old context counter remains for backwards compatibility; only the
+    # new refined measure is text-supported for future quality decisions.
+    assert result.same_event_subject_context_two_group_only == 2
+    assert result.same_event_two_text_axis_only == 1
+    assert result.no_same_event_two_text_axis_only == 0
+
+
+def test_two_text_group_count_only_trace_does_not_change_report_selection(
+    monkeypatch, caplog,
+):
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    for key in ("SRAF_EVIDENCE_RESCUE", "SRAF_EVIDENCE_SOURCE_REFILL",
+                "SRAF_EVIDENCE_SHARED_SOURCE_BUDGET",
+                "SRAF_EVIDENCE_VALID_FAIR_BUDGET"):
+        monkeypatch.delenv(key, raising=False)
+    row = _hit()
+    row["_source"]["communication"]["subject"] = "聯合國"
+    question = "主題：加薩\n請分析停火 SECRET-QUESTION"
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        baseline = _build([row], original_question=question)
+    trace = _trace(caplog)
+    count = trace["counters"]
+    assert count["shadow_3to2.text_two_axis_only"] >= 1
+    assert count["shadow_3to2.metadata_assisted_two_axis_only"] == 0
+    assert count["shadow_3to2.text_two_axis_only"] + count[
+        "shadow_3to2.metadata_assisted_two_axis_only"
+    ] == count["shadow_3to2.unanchored_text_two_group_only"]
+    caplog.clear()
+    monkeypatch.delenv("SRAF_EVIDENCE_TRACE", raising=False)
+    no_trace = _build([row], original_question=question)
+    assert no_trace == baseline
+    raw = json.dumps(trace, ensure_ascii=False)
+    for hidden in ("SECRET-QUESTION", "加薩", "聯合國", "2023-08-24"):
+        assert hidden not in raw

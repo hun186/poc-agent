@@ -162,6 +162,9 @@ def build_hits_and_evidence(
                 "same_event_subject_context_two_group_only",
                 "no_same_event_subject_context_two_group_only",
                 "subject_anchors_dropped_by_cap",
+                "text_two_axis_only", "metadata_assisted_two_axis_only",
+                "same_event_two_text_axis_only",
+                "no_same_event_two_text_axis_only",
             ):
                 evidence_trace.stage_count(
                     "shadow_3to2." + key, getattr(shadow, key),
