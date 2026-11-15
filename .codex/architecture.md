@@ -72,3 +72,7 @@
 
 ## 2026-11-15 #406 original subject shadow integration (candidate)
 - The existing ReportAgent → DataAgent `question_raw` source is carried to new per-request ES tool instances via #427 scoped worker execution. `ESSearchNews.forward` now passes `get_original_report_question()` through an internal optional `original_question` parameter to canonical `build_hits_and_evidence`. Only under existing Evidence Trace, builder parses the conservative #426 explicit subject marker (not LLM keywords) and injects a value object into `topic_shadow.observe_topic_shadow`. Counts record direct literal subject presence vs not present among date-qualified rejected two-group slices, with no raw content output, no ES/LLM extra call, and no change in report admission. Real multi-Event document-context borrowing remains later work, not implicitly authorized by metadata.
+
+
+## 2026-11-15 #406 trace-only Event-local subject borrowing (candidate)
+- `agent/es/evidence_core/topic_shadow.py` now divides rejected two-group, nonliteral subject passages into (a) same structured Event/block as an already date-validated strict TEXT-only, original-question-subject Evidence source, and (b) no such provable context. Uses the existing `event_anchor.same_event_as_strict_anchor` to preserve ES-hit and per-block Event identity; legacy same-document context intentionally cannot qualify as *same Event*. Per-hit and global anchor caps bound worst-case comparisons. The entire stage is still within `SRAF_EVIDENCE_TRACE=1` and remains outside report Evidence admission and output API.
