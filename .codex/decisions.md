@@ -44,3 +44,7 @@
 
 ## 2026-11-15 #397 P1-a — identified source coverage counters (NOT MERGED)
 - Reuse existing opt-in `SRAF_EVIDENCE_TRACE=1` and emit numeric identified-source coverage for incoming/picked/actual LLM-input rows; no independent second trace channel or ID hashes. Reconcile post-field-selector rows by existing `ref_no` instead of requiring the LLM to receive UUIDs. Keep additive v1 count-only log schema, no HTTP/API response change.
+
+
+## 2026-11-15 #397 P1-e — offline source-coverage comparison candidate (NOT MERGED)
+- Prefer one opt-in offline stdlib compare CLI over collecting private report/ES content or adding live API probes. Strict read-only bounded regular input, one record per file, numeric allowlist output, generic INCOMPLETE error with no local paths/raw payload. Comparison success is `PASS_PARTIAL`, never full report or token acceptance.

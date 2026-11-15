@@ -35,3 +35,7 @@
 
 ## 2026-11-15 #397 P1-d — source-diverse report Evidence candidate (NOT MERGED)
 - Optional report-only selection stage between date/topic-verified Data Agent Evidence and `compress_evidence`: source-diverse, strong-first bounded by existing `REPORT_MAX_EVIDENCE_SNIPS`; default OFF. Reuses canonical `pick_doc_id`; does not change ES, Event/Timeline verification, source ingest, Report Job ownership or API contracts. Existing compression/citation numbering remains authoritative.
+
+
+## 2026-11-15 #397 P1-e — offline source-coverage comparison candidate (NOT MERGED)
+- Ancillary operator-only `tools/sraf_evidence_trace_compare.py` consumes two saved count-only log records with stdlib and emits only numeric deltas; independent of FastAPI, ES, LLM, SQL, Schedule/Handoff, runtime Report Jobs and DOCX. No persistent output or network activity.
