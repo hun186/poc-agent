@@ -97,7 +97,7 @@ def test_wrong_date_evidence_never_borrows_core_event_date(monkeypatch):
     hit = _hit(500, other_date_every=2)
     _, ev, _ = _build([hit])
     assert len(ev) == 250
-    assert all(int(e["paragraph_id"]) % 2 == 0 for e in ev)
+    assert all(int(e["text"].rsplit("第", 1)[1].split("筆", 1)[0]) % 2 == 0 for e in ev)
     assert _build([hit], date_from="2024-01-01", date_to="2024-01-31")[1] == []
 
 
