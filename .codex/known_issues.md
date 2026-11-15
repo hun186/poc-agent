@@ -41,3 +41,7 @@
 
 ## 2026-11-15 #397 P1-a — identified source coverage counters (NOT MERGED)
 - Source-coverage counters count only records with canonical doc IDs; missing IDs make totals a lower bound, and the field-selector lineage assumes `ref_no` remains in LLM rows (already required by citation contract). A numeric count does not validate citation/date correctness, topic diversity or private LLM report output; no raw identifiers may be logged.
+
+
+## 2026-11-15 #397 P1-e — offline source-coverage comparison candidate (NOT MERGED)
+- Numeric comparison of independent random trace IDs cannot prove runs share the same question, date range, index or data state. File parser accepts only one schema-v1 count record, fails closed on ambiguous inputs and gives no real prompt/token/source-quality guarantee. Any operator logs beyond the count-only record remain private and should not be passed to GitHub.

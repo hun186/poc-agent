@@ -112,3 +112,7 @@
 
 ## 2026-11-15 #397 P1-a — identified source coverage counters (NOT MERGED)
 - Candidate identified-source counters aid coverage comparison of opt-in #407 selector. Remaining: per-snippet reason correlation, unknown-ID source coverage, Event/Timeline-specific attribution, true token budgets, p50/p95 and real Guterres 5→1 replay on private ES. Exact latest-head CI/Codex and confidentiality gate required.
+
+
+## 2026-11-15 #397 P1-e — offline source-coverage comparison candidate (NOT MERGED)
+- Operator may compare count-only baseline vs opt-in diverse selector using a reviewed CLI, but must verify same question/ES index/date/corpus externally and run actual private Guterres 5→1 recall + report/LLM/DOCX p50/p95, precision and true tokens. Candidate compare utility does not satisfy those acceptance gates; exact-head Hosted CI/Codex required.
