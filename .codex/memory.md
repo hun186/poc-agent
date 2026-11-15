@@ -49,3 +49,13 @@
 
 ## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
 - Candidate branch: source-of-truth numeric-only `report_agent.evidence_usage` (existing pre-LLM counters and opt-in selection mode) exposed to the shared validated presentation model, Word Data Agent appendix and OpenWebUI Markdown Data Agent section. One shared formatter and synthetic real-renderer DOCX/Markdown parity tests in Python3.10/3.11 CI. Hosted CI, independent exact-head Codex Review and private Linux/Report Job DOCX still PENDING; no production run.
+
+
+## 2026-11-15 #397 — Experimental request-shared structured Evidence candidate budget (CANDIDATE)
+- Default-OFF `SRAF_EVIDENCE_SHARED_SOURCE_BUDGET=1` candidate scans existing structured `_source` to supplement `inner_hits.size=3` and legacy 20-per-doc truncation under a single fixed request-global 1024 candidate / 2048 scanned rows / 1MiB text budget; no extra ES or LLM calls. Event/Timeline and topic checks still apply. Synthetic 500-row and multi-doc tests plus Python3.10/3.11 Hosted CI/formal Codex review PENDING; private `news_test`/LLM/DOCX/latency not tested. Preserve default behavior and OFF until validated.
+
+- **Codex #411 P2 fix at new HEAD (recheck pending):** preserve inner-hit citations by deduplicated, bounded union with source citations even if 1MiB source scan cuts off before a date-valid tail match; restore exact default-OFF parsed-before-selected trace count semantics; preserve numeric string paragraph/source IDs after JSON normalization. Added partial-source and numeric-ID regressions. Latest-head full Hosted CI/formal independent Codex re-review remain required before merge.
+
+- **2026-11-15 PR #411 latest Codex P2 array-text follow-up:** preserve existing one-element list-valued `text` (e.g. `['內容']`) under opt-in shared-source scan by bounding the one-item container then validating the inner string against original 4096-char and 1MiB request ceilings; reject nested/multi-valued arrays. Regression covers default OFF vs ON, four date-valid rows and oversized input rejection. Exact-head Python3.10/3.11 CI and fresh formal Codex Review still required; no private ES/LLM/DOCX claim.
+
+- **2026-11-15 PR #411 Codex P3 Trace fix (pending latest-head re-review):** add fixed `inner+source` parser-mode enum to `EvidenceTrace.parsed_hit` allowlist (previously silently downgraded to `none`). Add default-OFF `inner` versus opt-in `inner+source` diagnostic count/absence-of-private-text regression to existing Python3.10/3.11 Evidence Trace workflow. Still no private ES/report/latency acceptance.

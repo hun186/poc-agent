@@ -43,3 +43,7 @@
 
 ## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
 - Report Agent creates a numeric-only `evidence_usage` after actual field-selection/LLM-input boundary; the presenter validates fixed schema/mode/integer bounds before shared labels feed both `markdown_presenter._render_data_agent` and `docx.data_agent_section.add_data_agent_section`. Source identifiers/notes/prompts stay out; no new external search/LLM call. Raw log `SRAF_EVIDENCE_TRACE=1` remains separately opt-in.
+
+
+## 2026-11-15 #397 — Experimental request-shared structured Evidence candidate budget (CANDIDATE)
+- Evidence builder sets a shared parser budget only with explicit opt-in; parser may favor bounded `_source` for structured Event documents while preserving original within-block Event/Timeline identity, ES-hit ordinal and strict postfilter. Unstructured sources and default-off retain old inner_hits-first/20-per-doc semantics. Fixed whole-builder counts/scanned rows/text chars cap availability; no API or storage change.
