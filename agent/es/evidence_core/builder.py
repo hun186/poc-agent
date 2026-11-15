@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .models import EvidenceBuildConfig, EvidenceSnippet, HitDoc
 from .parser import parse_es_hits
 from .trace import EvidenceTrace
+from .retrieval_health import assess_retrieval_slice
 from .snippet import build_evidence_snippet
 from .rescue import bounded_rescue, TARGET_EVIDENCE_COUNT
 from .source_refill import source_refill_candidates
@@ -401,6 +402,16 @@ def build_hits_and_evidence(
     ]
 
     if evidence_trace is not None:
+        # A parser invocation may be one of several date-refill pages: this
+        # conservative signal is only an input to a future request-level
+        # quality/deadline planner, never an automatic extra ES/LLM call.
+        health = assess_retrieval_slice(
+            evidence_trace.counts, strict_accepted=strict_evidence_count,
+        )
+        evidence_trace.stage_count("health.date_eligible", health.date_eligible)
+        evidence_trace.stage_count("health.known_uninspected", health.known_uninspected)
+        evidence_trace.stage_count("health.known_capped", health.known_capped)
+        evidence_trace.stage_count("health.reason." + health.reason, 1)
         evidence_trace.emit(
             output_hits=len(filtered_hits_dict), output_evidence=len(evidence_dict),
             strict_count=strict_evidence_count,
