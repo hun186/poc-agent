@@ -37,3 +37,9 @@ Test OFF / #411-only / both-on against the same *authorized private* ES
 index/query/date, multi-Event and mismatched-date cases, actual report
 citations, p50/p95 wall time, memory, model token counts and DOCX before
 any production enablement. Do not log source payloads or credentials.
+
+The fair text allocation reserves at least one up-to-4096-character source
+snippet per active ES document when the 1MiB global budget permits; if many
+sources collectively exceed that budget, some long snippets can still be
+uninspected. Direct ES named inner matches count toward planned demand even
+when source snippets are absent.

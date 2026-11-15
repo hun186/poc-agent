@@ -177,3 +177,38 @@ def test_helper_invalid_limits_fail_closed():
     assert allocate_fair_source_quotas([a, b], -1) == [0, 0]
     assert allocate_fair_source_quotas([a, b], 999999) == [0, 0]
     assert select_valid_fair_evidence([1, 2, 3], -1) == []
+
+
+def test_single_later_long_valid_source_does_not_lose_byte_allocation(monkeypatch):
+    _enable(monkeypatch)
+    a, b = _hit(2000, "huge-wrong", inner=False), _hit(1, "tiny-long", inner=False)
+    for row in a["_source"]["multidim_event_json"][0]["evidence_snippets"]:
+        row["event_ids"] = ["E2"]
+    b["_source"]["multidim_event_json"][0]["evidence_snippets"][0]["text"] = (
+        "甲軸乙軸丙軸" + "Y" * 2500
+    )
+    from agent.es.evidence_core.fair_budget import source_text_quotas
+    byte_shares = source_text_quotas(allocate_fair_source_quotas([a, b]))
+    assert byte_shares[1] >= 2500
+    assert sum(byte_shares) <= 1048576
+    _, ev, _ = _build([a, b])
+    assert len(ev) == 1
+    assert ev[0]["uuid"] == "tiny-long"
+
+
+def test_nested_evi_only_source_keeps_all_three_inner_hits(monkeypatch):
+    _enable(monkeypatch)
+    doc = _hit(3, "inner-only")
+    del doc["_source"]["multidim_event_json"][0]["evidence_snippets"]
+    quotas = allocate_fair_source_quotas([doc])
+    assert quotas == [3]
+    _, rows, _ = _build([doc])
+    assert len(rows) == 3
+    assert all(row["uuid"] == "inner-only" for row in rows)
+
+
+def test_byte_quota_when_zero_capacity_fails_closed():
+    from agent.es.evidence_core.fair_budget import source_text_quotas
+    assert source_text_quotas([2, 1], -1) == [0, 0]
+    assert source_text_quotas([2, 1], 99999999) == [0, 0]
+    assert source_text_quotas([2, 1], 0) == [0, 0]

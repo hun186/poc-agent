@@ -27,12 +27,17 @@ def _source_demand(hit: Any) -> int:
     """
     if not isinstance(hit, dict):
         return 1
+    outer_hits = hit.get("inner_hits")
+    inner = outer_hits.get("evi") if isinstance(outer_hits, dict) else None
+    inner_rows = inner.get("hits") if isinstance(inner, dict) else None
+    inner_rows = inner_rows.get("hits") if isinstance(inner_rows, dict) else None
+    inner_count = len(inner_rows) if isinstance(inner_rows, list) else 0
     source = hit.get("_source")
     if not isinstance(source, dict):
-        return 1
+        return max(1, min(inner_count, MAX_SCAN_CITATIONS))
     raw = source.get("multidim_event_json")
     if isinstance(raw, str) and len(raw) > MAX_JSON_CHARS:
-        return 1
+        return max(1, min(inner_count, MAX_SCAN_CITATIONS))
     blocks = as_blocks(raw)
     structured = any(
         isinstance(block, dict) and (block.get("Event") or block.get("Event_Timeline"))
@@ -57,7 +62,7 @@ def _source_demand(hit: Any) -> int:
     if not structured:
         size = min(size, 20)
     # Preserve returned inner matches/fallback even without source snippets.
-    return max(1, min(size, MAX_SCAN_CITATIONS))
+    return max(1, min(max(size, inner_count), MAX_SCAN_CITATIONS))
 
 
 def allocate_fair_source_quotas(
@@ -95,10 +100,22 @@ def source_text_quotas(
     citation_quotas: list[int], capacity: int = MAX_TEXT_CHARS,
 ) -> list[int]:
     """Reserve a bounded share of source text characters for every hit."""
-    total = sum(citation_quotas)
-    if total <= 0:
+    if type(capacity) is not int or not 0 <= capacity <= MAX_TEXT_CHARS:
         return [0] * len(citation_quotas)
-    return [capacity * quota // total for quota in citation_quotas]
+    active = sum(1 for quota in citation_quotas if quota > 0)
+    total = sum(citation_quotas)
+    if total <= 0 or active == 0:
+        return [0] * len(citation_quotas)
+    # Without a minimum fair text share, a later source with one legitimate
+    # 2500-char snippet would get only ~512 bytes beside a 2000-row source
+    # and be silently dropped. Reserve one 4096-char snippet whenever the
+    # number of documents permits it; never exceed the global ceiling.
+    minimum = min(4096, capacity // active)
+    remaining = capacity - minimum * active
+    return [
+        (minimum + remaining * quota // total) if quota > 0 else 0
+        for quota in citation_quotas
+    ]
 
 
 def select_valid_fair_evidence(
