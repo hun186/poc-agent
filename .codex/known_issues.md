@@ -79,3 +79,6 @@
 ## 2026-11-15 #413 opt-in ES page admission limitations (CANDIDATE)
 - ESPageAdmissionBudget gates only *future additional* date-refill ES calls when a trusted caller explicitly passes it. It cannot cancel an already-running ES transport request, bound the *first* search, account for all Data Agent/Report Agent or LLM calls, prove cross-host budgets, or surface real OpenWebUI streaming progress. Its deadline is only an admission check; a permitted in-flight ES call may overrun a wall-clock limit. Never enable N-round expansion from this alone.
 - When admission is denied, previously verified Evidence stays intact, but the answer must be labeled incomplete, never reported as exhaustive ES recall. Default without callback preserves legacy behavior and metadata. Private live verification and latest-HEAD Hosted/Review pending.
+
+## 2026-11-15 #396 reconciled but not release-ready
+- Git merge conflict from stale .codex snapshots addressed while retaining latest main memory; valid CA chain without matching endpoint SAN cannot establish peer identity. WARN/PASS_PARTIAL is not FULL_LIVE; private network trust acceptance and security review remain required.
