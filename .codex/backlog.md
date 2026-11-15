@@ -182,3 +182,8 @@
 - [ ] Verify PR candidate latest-head Hosted dual-Python full Evidence regressions and formal Codex review, resolve any findings and conditionally merge.
 - [ ] Apply the same source-hit/block/Event context rule to **weak candidates** created by `source_refill_candidates` (#405) in a separately serialized PR. Strict direct-text matches in any valid Event should remain independently allowable when verified; never lend anchor to unrelated weak E2.
 - [ ] Obtain trusted required original-question entity anchors before enabling any automatic two-group relaxation; compare actual private news_test 5/10 vs 25/40 A/B and invalid cross-topic sources. Old and new rescue remain default-OFF pending operator acceptance.
+
+
+## 2026-11-15 #406 after E1/E2 source-only weak rescue hardening
+- [ ] Exact-head Hosted Python3.10/3.11 and independent Codex review of source refill guard, then conditional merge; no parallel core-edit PR.
+- [ ] Build trusted original-user subject anchors to distinguish Gaza from unrelated Sudan even in *strict* or zero-only fallback; use same-block/local Event checks and bounded candidate rescue. Run private news_test same-snapshot precision/recall, Event-only date and p50/p95 A/B before enabling #404/#405, retiring #411/#412 flags, or wiring #413 real multi-round engine.

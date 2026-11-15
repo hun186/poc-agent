@@ -14,6 +14,7 @@ from .models import Citation, EvidenceBuildConfig, EvidenceSnippet, HitDoc
 from .parser import parse_es_hits
 from .snippet import build_evidence_snippet
 from .topic_match import match_topic
+from .event_anchor import same_event_as_strict_anchor
 
 
 MAX_SOURCE_DOCUMENTS = 3
@@ -294,6 +295,25 @@ def source_refill_candidates(
                 min_groups_required=1,
             )
             if not text_ok:
+                continue
+            # A weak _source citation cannot borrow a strong Evidence's
+            # topic relevance from a different Event in the same ES hit.
+            # A wholly independent strict TEXT match is allowed after its
+            # own canonical Event/Timeline date check; metadata-only axes
+            # cannot authorize a different Event.
+            independent_strict, _, _, _ = match_topic(
+                evidence.text, None, None, term_groups,
+            )
+            same_event = any(
+                same_event_as_strict_anchor(h, citation, anchor)
+                for anchor in strict_evidence
+                if (
+                    not anchor.weak_evidence
+                    and anchor.match_scope in ("text", "mixed")
+                    and anchor.source_hit_ordinal == ordinal
+                )
+            )
+            if not independent_strict and not same_event:
                 continue
             strict_ok, terms, scope, groups = match_topic(
                 evidence.text, h.subject, h.article_title, term_groups,
