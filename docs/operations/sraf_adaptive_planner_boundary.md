@@ -15,7 +15,7 @@
                └─> canonical Event/Timeline 日期／主題驗證 → Evidence 公平篩選
                     └─> request-wide Evidence checkpoint + 缺口評估（尚待實作）
                          └─> 獨立 AdaptiveRetrievalPlanner（本 PR）
-                              ├─ 停止／日期需要可信糾錯
+                              ├─ 停止／日期進入自動校驗
                               └─ 新可選詞 + 目標分析面向（受 Guard 約束）
                                    └─> 新語意查詢計畫 → 第 2～N 輪 ES
                                         └─> 共用原 Evidence 引擎 → 累積 checkpoint
@@ -53,11 +53,11 @@ ES call 數不能當成語意輪次數。新規劃詞是**候選 optional/SHOULD
 Evidence 引擎逐條檢核，不能以文章發佈日代替；LLM planner 不能回傳
 `date_from`／`date_to`／`index_hint`／`permissions` 等欄位。
 
-若 LLM 懷疑上游**解析錯**，只回 `date_review`，立即**停止新搜尋**。
+若 LLM 懷疑上游**解析錯**，只回 `date_recheck`，由未來獨立的**全自動日期校驗器**處理；不是要求使用者或管理員人工覆核。校驗期間立即**停止新搜尋**。
 必須由另個可信解析糾錯流程對照使用者原文／可信上下文，版本化修正條件，
 且對已存 Evidence checkpoint 全量重驗，才可續查。本 PR **尚未實作**
 可信日期再解析／修正與 checkpoint revalidation。人工原文已鎖定的日期
-不能藉由 `date_review` 改成比較容易查到的範圍。
+不能藉由 `date_recheck` 改成比較容易查到的範圍。
 
 `DateWindow.source_text` 是可稽核的上游文字來源聲稱，
 **不等於已完成語意驗證**。正式接線前，須實作可追溯的可信日期原文驗證，
