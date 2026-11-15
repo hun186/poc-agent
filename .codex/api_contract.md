@@ -90,3 +90,8 @@
 
 ## 2026-11-15 #417 cancelled Report Job -> Requirement Handoff terminal mapping
 - Existing Requirement execution schema does not have a neutral cancelled state. Gateway translates a cancelled queued Report Job to terminal FAILED with REMOTE_EXECUTION_FAILED category and a sanitized remote_execution_cancelled reason. The reconciler closes the Requirement item, updates failure count and does not download an artifact or keep polling indefinitely. Queued-only cancellation remains owner/administrator authorized; running jobs cannot be cancelled through this route. Offline reconciliation tests, not private SQL/ES/DOCX live acceptance.
+
+
+## 2026-11-15 #413 B3 — optional authenticated browser prefill URL (PR CANDIDATE)
+- On successful `POST /v1/report/jobs`, the existing 202 response gains additive `browser_status_url: "/report-jobs#job=<opaque_id>"` for a generated safe ID. Authorized `GET /v1/report/jobs/{job_id}` also gains this field; for a malformed legacy ID it is `null` rather than an unsafe fragment.
+- This URL is NOT an unauthenticated signed link or direct `.docx` download. The page only pre-fills an ID. Its user must supply their own `report:job:read` Bearer and explicitly track; Word still requires owner/`report:job:download` plus status=completed. No automatic deep Job dispatch or Chat API response change in this PR.
