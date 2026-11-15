@@ -55,7 +55,7 @@ class EvidenceTrace:
         source_uninspected_after_cap: int = 0,
     ) -> None:
         # Never capture _index/_id/uuid/title/source text or event IDs.
-        if mode not in {"inner", "source", "fallback", "none"}:
+        if mode not in {"inner", "source", "inner+source", "fallback", "none"}:
             mode = "none"
         self.counts["parser.hits"] += 1
         self.counts["parser.source_candidates"] += source_count

@@ -290,3 +290,38 @@ def test_trace_rejects_arbitrary_key_and_non_integer_count(monkeypatch, caplog):
     record, = _traces(caplog)
     assert record["counters"] == {"bounded_rescue.selected": 2}
     assert "SENSITIVE-EVENT-ID" not in json.dumps(record)
+
+
+def test_shared_budget_combined_inner_source_trace_is_not_reported_as_none(
+        monkeypatch, caplog):
+    """Codex P3: preserve exact parser path in numeric-only retrieval trace."""
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    h = _hit(["金磚 峰會 one", "金磚 峰會 two",
+              "金磚 峰會 three", "金磚 峰會 four"])
+    h["inner_hits"] = {"evi": {"hits": {"hits": [{
+        "_source": {"text": "金磚 峰會 one", "event_ids": ["E1"]},
+        "_nested": {"field": "multidim_event_json", "offset": 0},
+    }]}}}
+    monkeypatch.delenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET", raising=False)
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        _, old_ev, _ = _build([h])
+    old_trace = _traces(caplog)[-1]
+    assert len(old_ev) == 1
+    assert old_trace["documents"][0]["mode"] == "inner"
+    caplog.clear()
+
+    monkeypatch.setenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET", "1")
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        _, evidence, _ = _build([h])
+    record, = _traces(caplog)
+    assert len(evidence) == 4
+    assert record["documents"][0]["mode"] == "inner+source"
+    assert record["documents"][0]["inner_returned"] == 1
+    assert record["documents"][0]["source_candidates"] == 4
+    assert record["documents"][0]["selected"] == 4
+    assert record["counters"]["strict.accepted"] == 4
+    # No evidence texts/UUIDs leak into the fixed enum/count trace.
+    encoded = json.dumps(record, ensure_ascii=False)
+    for secret in ("金磚", "峰會", "SENSITIVE-UUID", "SENSITIVE-TITLE",
+                   "2023-08-24"):
+        assert secret not in encoded
