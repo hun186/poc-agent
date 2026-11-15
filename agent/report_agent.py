@@ -13,7 +13,7 @@ from agent.utils.citations import build_refno_uuid_map
 from agent.utils.evidence_pack import pack_ev_for_llm
 from agent.utils.evidence_pack import filter_ev_fields
 from agent.utils.evidence_pack import guess_report_need_fields
-from agent.utils.report_evidence_trace import emit_report_evidence_trace
+from agent.utils.report_evidence_trace import emit_report_evidence_trace, count_identified_sources
 from agent.utils.report_evidence_selection import select_source_diverse_evidence
 from agent.utils.profiler import log_duration, log_total
 from agent.utils.markdown_tables import sanitize_markdown_tables, replace_table_cell_br
@@ -375,12 +375,25 @@ def ask_with_report(
     # Previous unconditional debug output exposed original Evidence, titles,
     # dates and document IDs to application stdout. Use count-only observability
     # when explicitly opted in; do not print snippets/prompt even on error.
+    # The field selector may omit the document ID from LLM-visible rows.
+    # Count their original source identities via the stable compressed ref_no
+    # before logging counts; never log or hash the IDs themselves.
+    llm_ref_nos = {
+        e.get("ref_no") for e in ev_for_llm
+        if isinstance(e, dict) and isinstance(e.get("ref_no"), int)
+    }
+    llm_source_rows = [
+        e for e in ev_compact if e.get("ref_no") in llm_ref_nos
+    ]
     emit_report_evidence_trace(
         incoming=len(ev_all), strong=len(ev_strong), weak=len(ev_weak),
         picked=len(picked_for_llm), compressed=len(ev_compact),
         llm_input=len(ev_for_llm), max_for_llm=MAX_EV_FOR_LLM,
         prompt_chars=len(user_prompt), truncated_notes=truncated_notes,
         truncated_titles=truncated_titles,
+        incoming_identified_sources=count_identified_sources(ev_all),
+        picked_identified_sources=count_identified_sources(picked_for_llm),
+        llm_input_identified_sources=count_identified_sources(llm_source_rows),
     )
     t0 = time.perf_counter()
     with log_duration("[report] call_llm(report)",

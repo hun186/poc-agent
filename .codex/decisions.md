@@ -40,3 +40,7 @@
 
 ## 2026-11-15 #397 P1-d — source-diverse report Evidence candidate (NOT MERGED)
 - Preserve default strict-first report Evidence selection; alternative is explicit opt-in `SRAF_REPORT_DIVERSE_EVIDENCE=1`, round-robin among prevalidated source IDs within strong/weak classes. Unknown IDs are separate groups; no data mutation/ES fetch/LLM call. Deterministic count coverage is preferable to silently promising semantic ranking or a token limit. Keep feature off for live use until separately approved evidence.
+
+
+## 2026-11-15 #397 P1-a — identified source coverage counters (NOT MERGED)
+- Reuse existing opt-in `SRAF_EVIDENCE_TRACE=1` and emit numeric identified-source coverage for incoming/picked/actual LLM-input rows; no independent second trace channel or ID hashes. Reconcile post-field-selector rows by existing `ref_no` instead of requiring the LLM to receive UUIDs. Keep additive v1 count-only log schema, no HTTP/API response change.

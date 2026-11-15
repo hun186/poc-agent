@@ -8,7 +8,7 @@ from contextlib import nullcontext
 import json
 import logging
 
-from agent.utils.report_evidence_trace import emit_report_evidence_trace
+from agent.utils.report_evidence_trace import emit_report_evidence_trace, count_identified_sources
 
 
 def _logs(caplog):
@@ -104,6 +104,9 @@ def test_reporting_trace_is_exact_pre_llm_counts_and_no_text(
     assert c["picked"] == c["compressed"] == c["llm_input"] == 2
     assert c["strong_or_weak_unselected"] == 1
     assert c["max_for_llm"] == 2
+    assert c["incoming_identified_sources"] == 3
+    assert c["picked_identified_sources"] == 2
+    assert c["llm_input_identified_sources"] == 2
     assert c["prompt_chars"] > 0
     assert not entry["report_llm_skipped_incomplete_search"]
     safe_record = json.dumps(entry, ensure_ascii=False)
@@ -179,5 +182,56 @@ def test_tracer_never_accepts_source_text_or_prompt_in_schema(monkeypatch, caplo
         "incoming", "strong", "weak", "picked", "compressed", "llm_input",
         "max_for_llm", "prompt_chars", "truncated_notes", "truncated_titles",
         "strong_or_weak_unselected", "removed_during_compression",
-        "removed_after_field_selection",
+        "removed_after_field_selection", "incoming_identified_sources",
+        "picked_identified_sources", "llm_input_identified_sources",
     }
+
+
+def test_distinct_identified_sources_are_counted_without_ids_in_log(
+        monkeypatch, caplog):
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    monkeypatch.setenv("SRAF_REPORT_DIVERSE_EVIDENCE", "1")
+    monkeypatch.setenv("REPORT_MAX_EVIDENCE_SNIPS", "2")
+    source = [
+        _snippet(1, text="A-first"),
+        _snippet(1, text="A-second"),
+        _snippet(2, text="B-only"),
+    ]
+    report, calls = _stub_report(monkeypatch, source)
+    with caplog.at_level(logging.WARNING, logger="sraf.report_evidence_trace"):
+        report.ask_with_report("synthetic")
+    c = _logs(caplog)[0]["counters"]
+    assert c["incoming_identified_sources"] == 2
+    assert c["picked_identified_sources"] == 2
+    assert c["llm_input_identified_sources"] == 2
+    assert len(calls[0]["ev"]) == 2
+    assert "SENSITIVE-UUID" not in json.dumps(_logs(caplog))
+
+
+def test_identified_source_count_survives_field_selector_dropping_id(
+        monkeypatch, caplog):
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    report, _ = _stub_report(monkeypatch, [_snippet(1), _snippet(2)])
+    # The ordinary field selector need not expose source identity to the LLM.
+    monkeypatch.setattr(
+        report, "pack_ev_for_llm",
+        lambda ev, *a, **kw: {
+            "ev_slim": [
+                {"ref_no": e["ref_no"], "note": e["note"]} for e in ev
+            ],
+            "meta": {"mode": "rules", "allow_fields": ["ref_no", "note"],
+                     "fields_count": 2, "llm_used": False,
+                     "fallback_used": False},
+        },
+    )
+    with caplog.at_level(logging.WARNING, logger="sraf.report_evidence_trace"):
+        report.ask_with_report("synthetic")
+    c = _logs(caplog)[0]["counters"]
+    assert c["incoming_identified_sources"] == 2
+    assert c["picked_identified_sources"] == 2
+    assert c["llm_input_identified_sources"] == 2
+    assert count_identified_sources([
+        {"text": "unidentified"},
+        {"uuid": "same"}, {"source_id": "same"},
+        {"id": "other"},
+    ]) == 2

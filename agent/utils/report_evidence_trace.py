@@ -9,6 +9,24 @@ import json
 import logging
 import os
 import secrets
+from typing import Any, Iterable
+
+from shared.citations.citation_id import pick_doc_id
+
+
+def count_identified_sources(snippets: Iterable[dict[str, Any]]) -> int:
+    """Count known document identities without logging, hashing or exposing IDs.
+
+    Snippets without a canonical ID are excluded; this is intentionally a
+    lower-bound on document coverage, not the count of all distinct documents.
+    """
+    ids: set[str] = set()
+    for snippet in snippets:
+        if isinstance(snippet, dict):
+            doc_id = pick_doc_id(snippet)
+            if doc_id:
+                ids.add(doc_id)
+    return len(ids)
 
 _LOG = logging.getLogger("sraf.report_evidence_trace")
 
@@ -18,6 +36,9 @@ def emit_report_evidence_trace(
     picked: int, compressed: int, llm_input: int,
     max_for_llm: int, prompt_chars: int,
     truncated_notes: int = 0, truncated_titles: int = 0,
+    incoming_identified_sources: int = 0,
+    picked_identified_sources: int = 0,
+    llm_input_identified_sources: int = 0,
     skipped_incomplete: bool = False,
 ) -> None:
     """One invocation per report attempt, before its report LLM request.
@@ -38,6 +59,9 @@ def emit_report_evidence_trace(
         "prompt_chars": prompt_chars,
         "truncated_notes": truncated_notes,
         "truncated_titles": truncated_titles,
+        "incoming_identified_sources": incoming_identified_sources,
+        "picked_identified_sources": picked_identified_sources,
+        "llm_input_identified_sources": llm_input_identified_sources,
     }
     # No user-controlled content or data fields are accepted by this logger.
     counts = {key: max(0, int(value)) for key, value in raw_counts.items()}

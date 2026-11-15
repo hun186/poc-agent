@@ -108,3 +108,7 @@
 
 ## 2026-11-15 #397 P1-d — source-diverse report Evidence candidate (NOT MERGED)
 - Candidate source diversity only: exact-head Python3.10/3.11 Hosted regression and formal Codex Review required before considering merge. Remaining #397 P1-d: whole-prompt model-specific token budget, time/topic/quality-aware ranking, cross-stage per-snippet reasons, 5→1 real `news_test` diagnosis, p50/p95 and report/DOCX accuracy acceptance. Do not conflate input bytes/chars with tokens.
+
+
+## 2026-11-15 #397 P1-a — identified source coverage counters (NOT MERGED)
+- Candidate identified-source counters aid coverage comparison of opt-in #407 selector. Remaining: per-snippet reason correlation, unknown-ID source coverage, Event/Timeline-specific attribution, true token budgets, p50/p95 and real Guterres 5→1 replay on private ES. Exact latest-head CI/Codex and confidentiality gate required.

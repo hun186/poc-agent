@@ -37,3 +37,7 @@
 
 ## 2026-11-15 #397 P1-d — source-diverse report Evidence candidate (NOT MERGED)
 - Opt-in source-diverse selector is count-bounded only. It cannot infer topical importance, guarantee temporal/issue coverage, ensure true tokenizer-aware whole-prompt budgets or recover missing ES Evidence. Default OFF pending exact-head review/CI and real private precision, coverage, latency and DOCX comparisons. No automatic live enabling or production release acceptance.
+
+
+## 2026-11-15 #397 P1-a — identified source coverage counters (NOT MERGED)
+- Source-coverage counters count only records with canonical doc IDs; missing IDs make totals a lower bound, and the field-selector lineage assumes `ref_no` remains in LLM rows (already required by citation contract). A numeric count does not validate citation/date correctness, topic diversity or private LLM report output; no raw identifiers may be logged.
