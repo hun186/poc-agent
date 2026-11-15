@@ -312,7 +312,7 @@ def test_binding_rejects_manually_crafted_date_or_unsafe_plan():
 
 
 def test_multiline_user_question_is_preserved_without_accepting_control_bytes():
-    original = "請分析 2023 年 8 月 24 日古特雷斯的發言。\\n並補充外交背景。"
+    original = "請分析 2023 年 8 月 24 日古特雷斯的發言。\n並補充外交背景。"
     scope = QueryConstraints(
         question=original, event_date=DateWindow(),
         analysis_date=DateWindow(), allowed_indexes=("news_test",),
@@ -320,6 +320,6 @@ def test_multiline_user_question_is_preserved_without_accepting_control_bytes():
     assert scope.question == original
     with pytest.raises(ValueError, match="invalid_adaptive_question"):
         QueryConstraints(
-            question="unsafe\\x00question", event_date=DateWindow(),
+            question="unsafe\x00question", event_date=DateWindow(),
             analysis_date=DateWindow(), allowed_indexes=("news_test",),
         )
