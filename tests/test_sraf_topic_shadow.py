@@ -44,11 +44,12 @@ def _hit() -> dict:
     }
 
 
-def _build(rows: list[dict], *, groups=GROUPS):
+def _build(rows: list[dict], *, groups=GROUPS, original_question=None):
     return build_hits_and_evidence(
         rows, date_from="2023-08-24", date_to="2023-08-24",
         effective_terms=["加薩", "停火", "人道援助"],
         term_groups=groups, query_for_snippet="PRIVATE-QUERY",
+        original_question=original_question,
     )
 
 
@@ -140,3 +141,79 @@ def test_shadow_excludes_meta_only_and_bounded_oversized_text():
     assert result.oversized_or_over_budget == 1
     assert result.date_eligible == 1
     assert result.unanchored_text_two_group_only == 0
+
+
+
+def test_explicit_original_subject_shadow_is_count_only_and_keeps_output(monkeypatch, caplog):
+    """A text anchor is a count, NOT an authorization to admit a weak snippet."""
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    for flag in ("SRAF_EVIDENCE_RESCUE", "SRAF_EVIDENCE_SOURCE_REFILL",
+                 "SRAF_EVIDENCE_SHARED_SOURCE_BUDGET", "SRAF_EVIDENCE_VALID_FAIR_BUDGET"):
+        monkeypatch.delenv(flag, raising=False)
+    rows = [_hit()]
+    question = "主題：加薩\n請分析2023年的停火、醫療與人道援助 PRIVATE-QUESTION"
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        baseline = _build(rows)
+    no_anchor = _trace(caplog)["counters"]
+    assert no_anchor["shadow_3to2.explicit_subject_available"] == 0
+    assert no_anchor["shadow_3to2.explicit_subject_direct_two_group_only"] == 0
+    assert no_anchor["shadow_3to2.explicit_subject_not_direct_two_group_only"] == 0
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+        observed = _build(rows, original_question=question)
+    assert observed == baseline
+    trace = _trace(caplog)
+    count = trace["counters"]
+    assert count["shadow_3to2.explicit_subject_available"] == 1
+    assert count["shadow_3to2.explicit_subject_direct_two_group_only"] == 1
+    assert count["shadow_3to2.explicit_subject_not_direct_two_group_only"] == 1
+    assert count["shadow_3to2.strict_in_sample"] == 1
+    assert count["shadow_3to2.date_eligible"] == 3
+    # The E2 citation from the next day was excluded BEFORE direct matching.
+    assert count["shadow_3to2.unanchored_text_two_group_only"] == 2
+    serialized = json.dumps(trace, ensure_ascii=False)
+    for secret in ("PRIVATE-", "加薩", "停火", "2023-08-24", "人道援助"):
+        assert secret not in serialized
+
+
+def test_rewritten_query_or_ambiguous_original_never_establishes_shadow_anchor(
+    monkeypatch, caplog,
+):
+    monkeypatch.setenv("SRAF_EVIDENCE_TRACE", "1")
+    for original in (
+        None,
+        "請分析加薩停火議題",  # natural prose not explicitly labeled
+        "主題：加薩\n主題：蘇丹",
+        "主題：加薩\n排除 加薩",
+        "X" * 8193,
+    ):
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="sraf.evidence_trace"):
+            _build([_hit()], original_question=original)
+        count = _trace(caplog)["counters"]
+        assert count["shadow_3to2.explicit_subject_available"] == 0
+        assert count["shadow_3to2.explicit_subject_direct_two_group_only"] == 0
+        assert count["shadow_3to2.explicit_subject_not_direct_two_group_only"] == 0
+
+
+def test_shadow_does_not_infer_subject_from_metadata_only():
+    from agent.es.evidence_core.question_anchor import derive_explicit_question_anchor
+
+    anchor = derive_explicit_question_anchor("主題：加薩", GROUPS)
+    assert anchor is not None
+    hit = HitDoc(
+        uuid="synthetic", subject="加薩 停火 醫療", article_title=None, score=1.0,
+        raw_content="", citations=[
+            Citation(text="聯合國 人道援助", date_iso="2023-08-24"),
+        ],
+    )
+    shadow = observe_topic_shadow(
+        [hit], date_from="2023-08-24", date_to="2023-08-24",
+        allowed_years=None, term_groups=GROUPS, explicit_anchor=anchor,
+    )
+    assert shadow is not None
+    # A metadata-only topical anchor never substitutes for an actual
+    # literal subject mention in the text, even when other axes match.
+    assert shadow.explicit_subject_direct_two_group_only == 0
