@@ -23,7 +23,13 @@ _SUBJECT_LINE = re.compile(
     r"(?:必要主題|必要主體|主要主體|主題)[ \t]*[：:][ \t]*(.+?)"
 )
 _SINGLE_SUBJECT = re.compile(r"[\w\u4e00-\u9fff\- ]{2,64}", re.UNICODE)
-_NEGATIONS = ("排除", "不包含", "不含", "不討論", "不要討論")
+_NEGATIONS = (
+    "排除", "不包含", "不含", "不討論", "不要討論", "不涉及",
+    "exclude", "excluding", "without", "omit", "notabout", "donotdiscuss",
+)
+# Quote/context signals are conservative abstentions, not a general
+# language understanding system. A quoted "主題" line is not authorization.
+_QUOTED_CONTEXT = ("引文", "逐字稿", "引用文字", "引用範例", "quotedtext", "quotedpassage")
 
 
 @dataclass(frozen=True)
@@ -58,13 +64,26 @@ def derive_explicit_question_anchor(
     found = _SUBJECT_LINE.fullmatch(first)
     if found is None:
         return None
+    # A second claim anywhere in the rest of the question (including an
+    # example or a quoted paragraph) makes the requirement ambiguous.
+    # The caller is free to use ordinary unanchored Evidence selection.
+    remainder = original_question[original_question.find(first) + len(first):]
+    if re.search(r"(?:必要主題|必要主體|主要主體|主題)[ \t]*[：:]", remainder):
+        return None
+    normalized_question = normalize_for_match(original_question)
+    if any(marker in normalized_question for marker in _QUOTED_CONTEXT):
+        return None
     name = found.group(1).strip(" \t。")
     if not _SINGLE_SUBJECT.fullmatch(name):
         return None
     normalized = normalize_for_match(name)
     if len(normalized) < 2 or normalized.isnumeric():
         return None
-    if any(f"{word}{name}" in original_question for word in _NEGATIONS):
+    # Normalize whitespace, quotes, fullwidth punctuation and case before
+    # checking for recognizable excluded subjects. If a conflict is merely
+    # suspected, abstain; never treat the leading label as permission to
+    # override a later negative instruction.
+    if any(word + normalized in normalized_question for word in _NEGATIONS):
         return None
 
     found_axes = []
@@ -93,7 +112,7 @@ def text_explicitly_mentions_anchor(
     """
     if not isinstance(text, str) or len(text) > _MAX_TEXT_CHARS:
         return False
-    name = anchor.literal
+    name = unicodedata.normalize("NFKC", anchor.literal)
     if name.isascii():
         haystack = unicodedata.normalize("NFKC", text).casefold()
         return bool(re.search(
