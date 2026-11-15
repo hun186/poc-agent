@@ -92,3 +92,7 @@
 ## 2026-11-15 #413 B1 admission boundary (PR candidate; NOT MERGED)
 - `RequestAdmissionBudget` is an isolated fail-closed admission helper for future adaptive retrieval. The default 1800s retrieval cutoff plus 600s reserve controls **new admissions**, not already-running IO, stop signals, prompt tokens, queue waits, worker restarts, or cross-process contention. No production report/Chat path uses it yet; never describe as 30-minute hard cancellation or live multi-round retrieval.
 - Full dependencies/runtime tests require Hosted CI; private ES/proxy/LLM/DOCX acceptance remains NOT_TESTED.
+
+
+## 2026-11-15 #413 Report Job fragment link boundary (PR candidate)
+- `/report-jobs#job=<id>` is only a client-side prefill for an already-created Report Job. Authentication remains a manually entered, authorized bearer and status/Word are always owner-checked by the API. It does not grant unauthenticated browser downloads or make OpenWebUI automatically schedule an adaptive job. A private proxy/browser flow still needs live acceptance.
