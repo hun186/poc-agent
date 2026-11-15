@@ -199,7 +199,7 @@ class ReportJobStore:
             raise RuntimeError("Canonical report job schema version mismatch")
         if con.execute("SELECT 1 FROM report_jobs WHERE phase NOT IN "
                        "('queued','unobserved','agent_execution','docx_export','finalizing',"
-                       "'completed','failed','interrupted') LIMIT 1").fetchone():
+                       "'completed','failed','interrupted','cancelled') LIMIT 1").fetchone():
             raise RuntimeError("Canonical report job phase invalid")
 
     @staticmethod
