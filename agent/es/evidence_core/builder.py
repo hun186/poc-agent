@@ -16,6 +16,7 @@ from .source_refill import source_refill_candidates
 from .topic_match import match_topic
 from .text_norm import normalize_for_match
 from .fair_budget import MAX_SCAN_CITATIONS, MAX_VALID_EVIDENCE, select_valid_fair_evidence
+from .topic_shadow import observe_topic_shadow
 
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,23 @@ def build_hits_and_evidence(
         trace=evidence_trace, stage="strict",
     )
     strict_evidence_count = len(evidence)
+    # #406: diagnostic only. The existing strict (or legacy zero-only
+    # fallback) Evidence output remains authoritative. Neither two-group
+    # matches nor meta-only matches can enter the report from this shadow.
+    if evidence_trace is not None:
+        shadow = observe_topic_shadow(
+            out_hits, date_from=date_from, date_to=date_to,
+            allowed_years=allowed_years, term_groups=term_groups,
+        )
+        if shadow is not None:
+            for key in (
+                "inspected", "date_eligible", "strict_in_sample",
+                "unanchored_text_two_group_only", "meta_only_two_group_only",
+                "oversized_or_over_budget", "uninspected_by_cap",
+            ):
+                evidence_trace.stage_count(
+                    "shadow_3to2." + key, getattr(shadow, key),
+                )
     logger.info("build_hits_and_evidence: evidence strict=%d", len(evidence))
 
     # Both stages are default OFF. Source refill additionally requires the

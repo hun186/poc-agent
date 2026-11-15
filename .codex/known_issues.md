@@ -100,3 +100,7 @@
 
 ## 2026-11-15 #413 B3 browser URL API boundary (PR CANDIDATE)
 - `browser_status_url` is a relative UI fragment prefill, NOT a signed browser-access capability; the user must still authenticate and the server checks owner. Creating a normal Report Job does not mean adaptive multi-round retrieval ran, or that Word is downloadable while QUEUED. Absolute external host/proxy integration and private acceptance are not established.
+
+
+## 2026-11-15 #406 topic-shadow limits
+- New #406 count-only 3→2 shadow is intentionally **not subject anchoring**: two matching auxiliary groups may be unrelated (e.g., generic humanitarian/UN story from another country). Cannot auto-relax or claim extra verified Evidence. Output contains no private terms; only existing SRAF_EVIDENCE_TRACE=1 emits fixed-key counts. Its 256-citation sample sees only already parsed/surfaced citations and has additional caps; ES inner_hits/source omissions and candidate order bias remain unverified. Actual anchor trust, conditional 3→2 selection, token budgeting, private news_test precision/recall and false-positive validation remain blocked on later explicitly accepted steps. Latest HEAD Hosted CI/review pending.

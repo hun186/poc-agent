@@ -169,3 +169,10 @@
 ## 2026-11-15 #413 B3 browser URL producer (PR CANDIDATE)
 - [ ] Confirm exact-head Hosted Report Job UI/API regressions, independent Code Review and Merge Gate for additive `browser_status_url`.
 - [ ] Wire to Chat only after trusted user/tenant-bound deep Report Job creation is accepted and actual N-round worker mode is implemented; return a stable status prefill and explicitly say `QUEUED/RUNNING` until Word exists. Check OpenWebUI/forward proxy original scheme/host configuration before constructing an absolute external URL. Never place service keys in URL.
+
+
+## 2026-11-15 #406 — next after single-round 3→2 count-only shadow
+- [ ] Run exact-head dual-Python CI and independent formal Codex review; conditional merge with clean findings and branch policy.
+- [ ] Read-only private news_test same-snapshot A/B on 2025 Gaza (5/10 vs 25/40) and Event-only date examples. Determine where parser/inner_hits/strict group cutoffs actually happen and identify false positives.
+- [ ] Implement trusted original-question entity/subject anchors and same-ES-hit/block-local matching; distinguish auxiliary groups and meta-only, do not cross-borrow events or UUID. Only then trial conditional 3→2 under bounded validated candidate/token/source budgets, without auto enabling flags.
+- [ ] Standardize reusable single-round Evidence selection contract before #413 N-round execution PR. Existing #418/#419 are isolated planner/admission helpers, NOT a live deep report.
