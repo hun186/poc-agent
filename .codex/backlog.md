@@ -140,3 +140,6 @@
 
 ## 2026-11-15 #413 A1 follow-up — request-wide budgets (in progress)
 - PR #414 and #415 have been verified merged; per-builder health and limited ES stdout redaction exist. Candidate optional date-refill admission adds an atomic ES page count + monotonic generation-reserve guard, not an automatic runtime budget. Next integration requires a single request-wide trusted coordinator across first ES, candidate refill, optional N rounds and Report LLM with timeouts, byte/token and call budgets, cancellation, non-drifting date/index/field/RBAC, checkpointed Evidence and verified OpenWebUI visible progress. Do not falsely interpret optional admission or synthetic PASS as completed multi-round agent.
+
+## 2026-11-15 #396 IP SAN probe
+- [ ] Independently approve or reject diagnostic warn-only SAN mismatch against explicit LAN/CA threat model; preserve strict CA and default strict-IP-SAN for production; verify private operator read-only samples, then repeat latest HEAD CI/review and verify merge gate. PR remains OPEN pending security decision.
