@@ -1,0 +1,41 @@
+name: SRAF adaptive planner scope and date guard (offline)
+
+on:
+  pull_request:
+    paths:
+      - 'agent/adaptive_retrieval/**'
+      - 'tests/test_sraf_adaptive_planner_contract.py'
+      - 'docs/operations/sraf_adaptive_planner_boundary.md'
+      - '.github/workflows/sraf-adaptive-planner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adaptive-planner-contract:
+    name: Adaptive planner synthetic Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - name: Checkout exact PR HEAD
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install full requirements (AGENTS.md)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install 'pytest>=8,<10'
+      - name: Compile modules and tests
+        run: |
+          python -m compileall -q agent/adaptive_retrieval tests/test_sraf_adaptive_planner_contract.py
+      - name: Offline protected scope and existing date/keyword regressions
+        run: |
+          python -m pytest -q tests/test_sraf_adaptive_planner_contract.py tests/test_sraf_synonym_equivalence.py tests/test_sraf_date_evidence_refill.py tests/test_sraf_retrieval_health.py
