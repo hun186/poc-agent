@@ -116,3 +116,7 @@
 
 ## 2026-11-15 #397 P1-e — offline source-coverage comparison candidate (NOT MERGED)
 - Operator may compare count-only baseline vs opt-in diverse selector using a reviewed CLI, but must verify same question/ES index/date/corpus externally and run actual private Guterres 5→1 recall + report/LLM/DOCX p50/p95, precision and true tokens. Candidate compare utility does not satisfy those acceptance gates; exact-head Hosted CI/Codex required.
+
+
+## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
+- P1 NEXT, separate from count-display PR: eliminate **unconditional single-document Evidence truncation** in ES nested (`inner_hits.size=3`) and parser source (`citations_per_doc=20`) for large server-structured records when safe request/global budget remains. Design bounded retrieval/pagination per query/time/field, global Evidence+byte/timeout/token caps, accepted/uninspected reason counters and cancellation; test 1 document 500 items with global remainder plus 2 docs and Event/Timeline guard. Private `news_test`, output precision/recall and LLM/DOCX acceptance must be independently verified.

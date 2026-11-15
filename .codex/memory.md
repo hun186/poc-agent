@@ -45,3 +45,7 @@
 - Added read-only stdlib `tools/sraf_evidence_trace_compare.py` to compare one baseline and one candidate opt-in report count trace with after-minus-before incoming/picked/compressed/actual LLM counts, known source coverage, prompt characters. Strict regular-file size/no-follow/schema/ambiguity handling, fixed numeric-only output; Python3.10/3.11 Hosted CI and formal Codex Review PENDING. No live ES/LLM/DOCX acceptance, token counts, correlation or production changes.
 
 - **2026-11-15 PR #409 formal Codex P2 fix (pending re-review):** initial HEAD `d187297` had blocking FIFO read when `os.open(O_RDONLY)` ran before regular-file `fstat` check. Now add `O_NONBLOCK` for input open with FIFO regression (reject `untrusted_file`, no path leak); latest-head Hosted CI and fresh formal Codex Review required. Do not infer reviewed merge or live acceptance from this change.
+
+
+## 2026-11-15 #397 — Report Evidence count-only Word/OpenWebUI visibility (CANDIDATE, NOT MERGED)
+- Candidate branch: source-of-truth numeric-only `report_agent.evidence_usage` (existing pre-LLM counters and opt-in selection mode) exposed to the shared validated presentation model, Word Data Agent appendix and OpenWebUI Markdown Data Agent section. One shared formatter and synthetic real-renderer DOCX/Markdown parity tests in Python3.10/3.11 CI. Hosted CI, independent exact-head Codex Review and private Linux/Report Job DOCX still PENDING; no production run.

@@ -107,7 +107,8 @@ class ExportWordService:
                     p.add_run(f"\n{short_txt}")
 
         # Data Agent
-        add_data_agent_section(doc, pres.da_section, cfg=cfg)
+        add_data_agent_section(doc, pres.da_section, cfg=cfg,
+                               evidence_usage=pres.evidence_usage)
 
         # 推理內容
         if pres.reasoning:
