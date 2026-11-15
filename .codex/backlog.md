@@ -193,3 +193,9 @@
 - [ ] Verify dual-Python exact-HEAD Hosted tests and Codex review, no unresolved Findings, conditional Merge.
 - [ ] Extract high-confidence subject anchors strictly from verified original report question (not LLM query or broad synonym group); distinguish required entity vs auxiliary facet and negative/comparison constraints, allow no-anchor result. Keep outputs trace-only/shadow for safety and privacy.
 - [ ] Connect subject anchor diagnostics to bounded 3→2 shadow via the same internal single-round builder; check Event/block/owner scope, private news_test A/B precision-recall and p95 before any automatic two-group Evidence promotion or default flag retirement. Do not connect live #413 N-round worker ahead of this.
+
+
+## 2026-11-15 #406 after explicit original-question subject candidate
+- [ ] Exact HEAD Python3.10/3.11 Hosted CI and Codex Review; merge only after gates.
+- [ ] Connect the explicit candidate to bounded `topic_shadow.py` via original report ContextVar, count only date-qualified, same-event text-anchored 3→2 candidates without exposing original terms. Do not activate automatic promotion before operator news_test A/B.
+- [ ] Later expand to true general user-intent entity/required-subject detection with independently validated trustworthy equivalence aliases, negation and multi-entity constraints; invalid/uncertain must fail closed. Confirm source-level subject/UUID doesn't authorize another Event or source, and preserve legacy output.
