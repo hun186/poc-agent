@@ -72,3 +72,6 @@
 ## 2026-11-15 #413 A0 — health diagnostics scope (CANDIDATE)
 - `health.reason.*` in opt-in retrieval trace describes **one builder evaluation**, not global ES completeness, query drift, document recall, sufficient topic coverage, or permission to spend another LLM/ES round. Known source caps are unknown-uninspected rows, never asserted to be valid Evidence. Strict date eligibility counts apply only to parsed and validated citations.
 - No current OpenWebUI Chat Completions SSE/heartbeat integration or hard end-to-end cancellation contract is established; no real ES, private proxy timeout, LLM, Report Job/DOCX, p50/p95 or production enablement acceptance has been performed for #413 A0. Exact-head CI and independent formal Review remain required.
+
+## 2026-11-15 #413 ES stdout privacy boundary (CANDIDATE)
+- Search tool unconditionally printed raw queries, ES DSL and error payloads even with ES_TOOLS_DEBUG=0; profiler logged input question and opt-in debug printed query_meta. Narrow candidate redacts those paths only. Other paths (query_terms LLM error, es_client initialization, trace["llm"]["report"], proxies) are NOT audited/cleared by this change; do not claim whole-application log privacy. Hosted exact-head tests, formal Codex review and operator rollout pending.

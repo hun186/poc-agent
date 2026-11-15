@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import time
-import json
 import re
 from typing import Any, Dict, List, Optional
 
@@ -128,7 +127,7 @@ class ESSearchNews(Tool):
         es_query = raw_query  # 目前等同 raw_query；未來你要加特殊語法也可改這裡
         index = resolve_index(index_hint)
 
-        dbg("[es_search_news] index =", index, "query =", raw_query)
+        dbg("[es_search_news] search request accepted (content redacted)")
 
         # === T1: 抽詞 ===
         with log_duration("[es_search_news][T1] compute_effective_terms"):
@@ -164,18 +163,14 @@ class ESSearchNews(Tool):
                 syn_terms=syn_terms_flat,
                 all_terms=all_terms,
             )
-        print("[es_search_news] body =", json.dumps(body, ensure_ascii=False)[:4000])
+        dbg("[es_search_news] ES query body prepared (content redacted)")
 
         # === T3: ES 查詢 ===
         try:
-            with log_duration("[es_search_news][T3] _safe_es_search", extra={"index": index, "size": size}):
+            with log_duration("[es_search_news][T3] _safe_es_search", extra={"size": size}):
                 res = _safe_es_search(body, index=index)
-                
-                shards = (res or {}).get("_shards") if isinstance(res, dict) else None
-                print("[es_search_news] index_type=", type(index), "index=", index)
-                print("[es_search_news] _shards=", shards)
-        except BadRequestError as e:
-            print("[es_search_news] ES BadRequestError:", getattr(e, "info", e))
+        except BadRequestError:
+            print("[es_search_news] ES BadRequestError (details suppressed)")
             raise
 
         hits = ((res.get("hits") or {}).get("hits") or []) if isinstance(res, dict) else []
@@ -209,11 +204,8 @@ class ESSearchNews(Tool):
             body = build_fallback_query_body(es_query, must_high_value, must_selected, size)
             try:
                 res = _safe_es_search(body, index=index)
-                shards = (res or {}).get("_shards") if isinstance(res, dict) else None
-                print("[es_search_news] index_type=", type(index), "index=", index)
-                print("[es_search_news] _shards=", shards)
-            except BadRequestError as e:
-                print("[es_search_news] ES BadRequestError (fallback):", getattr(e, "info", e))
+            except BadRequestError:
+                print("[es_search_news] ES BadRequestError (fallback; details suppressed)")
                 raise
             hits = ((res.get("hits") or {}).get("hits") or []) if isinstance(res, dict) else []
 
@@ -248,17 +240,13 @@ class ESSearchNews(Tool):
         strong_snippets = [ev for ev in evidence_snippets if not ev.get("weak_evidence")]
         weak_snippets = [ev for ev in evidence_snippets if ev.get("weak_evidence")]
 
-        log_total(
-            "[es_search_news][TOTAL]",
-            t_start,
-            extra={"代理人ES文本查詢工具查詢字串": raw_query},
-        )
+        # Log timing and counts, never the raw question, ES DSL, index or terms.
+        log_total("[es_search_news][TOTAL]", t_start)
 
         print(
-            f"[es_search_news] query={raw_query!r}, es_query={es_query!r}, "
-            f"hits={len(filtered_hits)}, "
-            f"snippets_after_filter={len(evidence_snippets)}, "
-            f"effective_terms={effective_terms}, "
+            f"[es_search_news] hits={len(filtered_hits)} "
+            f"snippets_after_filter={len(evidence_snippets)} "
+            f"effective_term_count={len(effective_terms or [])} "
             f"synonym_hit_snippets={syn_snippets}"
         )
         
