@@ -14,7 +14,7 @@
         └─> 第 1 輪 ES → 同語意計畫的 date-refill/inner_hits/_source 補抓
                └─> canonical Event/Timeline 日期／主題驗證 → Evidence 公平篩選
                     └─> request-wide Evidence checkpoint + 缺口評估（尚待實作）
-                         └─> 独立 AdaptiveRetrievalPlanner（本 PR）
+                         └─> 獨立 AdaptiveRetrievalPlanner（本 PR）
                               ├─ 停止／日期需要可信糾錯
                               └─ 新可選詞 + 目標分析面向（受 Guard 約束）
                                    └─> 新語意查詢計畫 → 第 2～N 輪 ES
@@ -85,7 +85,11 @@ callable（可在未來受控 Worker 中傳入既有 `call_llm`）；匯入模�
 }
 ```
 
-不允許增添其他欄位。任何非法提案、LLM 失敗、前輪資料不完整、人工鎖詞、
+不允許增添其他欄位。
+
+新增的 `bind_next_round_plan` 必須再次驗證決策、request-wide 歷史、人工鎖詞與日期樣式，再輸出帶著原始 frozen `QueryConstraints` 的 `BoundNextRoundPlan`；未來 ES adapter 不得另行從 LLM 字串讀入日期／索引／欄位。
+
+任何非法提案、LLM 失敗、前輪資料不完整、人工鎖詞、
 預算不足、連續無增量、達輪數上限都**fail closed**。
 本 PR 的 `BudgetSnapshot` 是只讀准入提示，**不是** 1800 秒硬中止、
 真實 ES/LLM 計費、跨程序原子配額或可取消在途 HTTP。
