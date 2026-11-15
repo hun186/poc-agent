@@ -133,3 +133,7 @@
 ## 2026-11-15 #413 — adaptive retrieval agent follow-up (A0 diagnostics only)
 - A0 candidate reports per-builder count-only health but **must not** autonomously re-query from a slice: date-refill may call the builder repeatedly, ES may return only `inner_hits.size=3`, and unknown source rows are not proven date/topic valid.
 - Next independently reviewed A1: request-wide aggregation and immutable original question/date/index/RBAC/field constraints, hard request deadline with generation reserve, ES/LLM/candidate/token/page count budget, no-drift facets and monotonic evidence checkpoints. Then B: conditional N-round query reformulation with real OpenWebUI-compatible progress/cancellation protocol. C: private live acceptance and two-flag retirement plan; do not enable `SRAF_EVIDENCE_SHARED_SOURCE_BUDGET`/`SRAF_EVIDENCE_VALID_FAIR_BUDGET` by default before acceptance.
+
+## 2026-11-15 #413 next after #414 — retrieval health / OpenWebUI
+- #414 merged as diagnostics only: no request-level quality aggregation, actual adaptive rounds, hard deadline, cancellation, progress transport or automatic #411/#412 flag retirement. Redact unsafe stdout in search tool before adding more repeated queries.
+- Next request-level planner must preserve immutable date/index/field/permission bounds, monotonic validated Evidence checkpoints, hard ES/LLM/token/time budgets and generation reserve; requires actual OpenWebUI/proxy SSE or Job progress acceptance and real disconnect/cancellation tests. Do not enable experimental flags or claim FULL_LIVE before operator acceptance.
