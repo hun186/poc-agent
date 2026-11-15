@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import replace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .models import EvidenceBuildConfig, EvidenceSnippet, HitDoc
@@ -91,6 +92,10 @@ def build_hits_and_evidence(
     include_source_hit_ordinal: bool = False,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
     config = config or EvidenceBuildConfig()
+    # Experimental, default-OFF. Use already-returned _source only; bounded
+    # global candidate+scan+text budgets, not an uncapped single-document scan.
+    if os.getenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET") == "1":
+        config = replace(config, shared_citation_budget=1024)
     term_groups = term_groups or []
     effective_terms = effective_terms or []
 

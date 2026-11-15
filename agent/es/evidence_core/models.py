@@ -11,6 +11,9 @@ from ..event_time import StructuredTime
 class EvidenceBuildConfig:
     inner_hit_topk: int = 35
     citations_per_doc: int = 20
+    # 0 keeps legacy per-document behavior; nonzero uses one request-shared
+    # citation budget, never an unbounded document-specific allocation.
+    shared_citation_budget: int = 0
     fallback_width: int = 180
     max_docs_for_fallback: int = 10000
     timeline_dates_topk: int = 20
