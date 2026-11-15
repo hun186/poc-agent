@@ -5,9 +5,10 @@ The existing first-round search and canonical Evidence validation remain the
 only execution authority. See docs/operations/sraf_adaptive_planner_boundary.md.
 """
 from .contracts import BudgetSnapshot, DateWindow, QueryConstraints, RoundEvidenceSummary
-from .planner import AdaptiveRetrievalPlanner, PlannerDecision
+from .planner import AdaptiveRetrievalPlanner, BoundNextRoundPlan, PlannerDecision, bind_next_round_plan
 
 __all__ = [
     "AdaptiveRetrievalPlanner", "BudgetSnapshot", "DateWindow",
-    "PlannerDecision", "QueryConstraints", "RoundEvidenceSummary",
+    "PlannerDecision", "BoundNextRoundPlan", "bind_next_round_plan",
+    "QueryConstraints", "RoundEvidenceSummary",
 ]
