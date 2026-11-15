@@ -104,3 +104,7 @@
 ## 2026-11-12 — #397 P1-a Report Evidence Trace (#402 current-main integration)
 - #401 retrieval Trace **MERGED** at `87a58cd2557e5826b2ef00d122fe97b9407709d9` with 7/7 Hosted CI and exact-head review clean. #402 is next: count-only actual pre-report-LLM Evidence pick/compression/pack, remove existing unconditional raw Evidence note/title/date/ID stdout, and test single shared opt-in flag on latest main. This candidate must pass new Python 3.10/3.11 CI and independent latest-head review before merge.
 - **Future:** per-request safe correlation between ES candidate builder iterations and report LLM input, per-snippet deterministic removal reason codes, global candidate/byte/token budgets, high-volume source diversity and live `news_test` 2023-08-24 Guterres 5→1 diagnosis. Report chars not token counts; private LLM/DOCX and existing logger secrecy need separate scrutiny. #400 editor substring Mapping/performance acceptance and #396 LAN TLS IP SAN warning are separate blocked PRs.
+
+
+## 2026-11-15 #397 P1-d — source-diverse report Evidence candidate (NOT MERGED)
+- Candidate source diversity only: exact-head Python3.10/3.11 Hosted regression and formal Codex Review required before considering merge. Remaining #397 P1-d: whole-prompt model-specific token budget, time/topic/quality-aware ranking, cross-stage per-snippet reasons, 5→1 real `news_test` diagnosis, p50/p95 and report/DOCX accuracy acceptance. Do not conflate input bytes/chars with tokens.

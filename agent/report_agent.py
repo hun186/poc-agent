@@ -14,6 +14,7 @@ from agent.utils.evidence_pack import pack_ev_for_llm
 from agent.utils.evidence_pack import filter_ev_fields
 from agent.utils.evidence_pack import guess_report_need_fields
 from agent.utils.report_evidence_trace import emit_report_evidence_trace
+from agent.utils.report_evidence_selection import select_source_diverse_evidence
 from agent.utils.profiler import log_duration, log_total
 from agent.utils.markdown_tables import sanitize_markdown_tables, replace_table_cell_br
 from agent.refiners.query_refiner import refine_question_for_data_agent
@@ -171,11 +172,17 @@ def ask_with_report(
     ev_strong = [e for e in ev_all if not e.get("weak_evidence")]
     ev_weak   = [e for e in ev_all if e.get("weak_evidence")]
     
-    # 強證據優先，不夠再補弱證據
-    picked_for_llm = ev_strong[:MAX_EV_FOR_LLM]
-    if len(picked_for_llm) < MAX_EV_FOR_LLM:
-        need = MAX_EV_FOR_LLM - len(picked_for_llm)
-        picked_for_llm += ev_weak[:need]
+    # Keep existing behavior by default. Optional P1-d selection avoids one
+    # source exhausting a large Evidence pool; only already-verified snippets
+    # reach this stage, and no report token-budget guarantee is implied.
+    if os.getenv("SRAF_REPORT_DIVERSE_EVIDENCE") == "1":
+        picked_for_llm = select_source_diverse_evidence(ev_all, MAX_EV_FOR_LLM)
+    else:
+        # 強證據優先，不夠再補弱證據
+        picked_for_llm = ev_strong[:MAX_EV_FOR_LLM]
+        if len(picked_for_llm) < MAX_EV_FOR_LLM:
+            need = MAX_EV_FOR_LLM - len(picked_for_llm)
+            picked_for_llm += ev_weak[:need]
     
     # （可選）讓 payload 留個統計，方便 debug / 前端顯示
     payload["evidence_meta"] = {
