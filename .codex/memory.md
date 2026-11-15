@@ -100,3 +100,9 @@
 
 ## 2026-11-15 #418 verified merged architecture
 - PR #418 was squash merged at dd33e6c965db38d6bea300ca7ffd6d0306578aae; only the isolated B0 adaptive planner contract/prompt and date_recheck proposal guard are shipped in main. No live N-round executor or automated date verifier is yet delivered. #417 remains an independent queue foundation until merged.
+
+
+## 2026-11-15 #413 B1 — request-wide call admission primitive (PR CANDIDATE, NOT MERGED)
+- Add isolated `agent/adaptive_retrieval/request_budget.py`: per-request monotonic 2400s total / 600s generation reserve (1800s retrieval admissions), atomic round/ES/planner call caps and nonrefundable counters. It snapshots the existing planner `BudgetSnapshot`; no environmental flag, runtime attachment, new ES/LLM call or public API.
+- Separate tests cover 30-minute cutoff, untrusted/failed clock, exact cap, 160 concurrent admissions, and no admissible planner hint without a round. Python compile static check in development sandbox passed; **Hosted exact-head Python3.10/3.11 CI and formal Codex Review PENDING** at creation. No private ES/LLM/Word/OpenWebUI acceptance.
+- Admission is not an enforced in-flight transport timeout, token limiter, persistent checkpoint, queued-job cancel or distributed process/GPU quota. A later trusted Report Job coordinator must call it before every actual ES/LLM attempt and separately enforce provider timeouts and request-wide scope.
