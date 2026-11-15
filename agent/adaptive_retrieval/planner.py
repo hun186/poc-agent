@@ -208,3 +208,54 @@ class AdaptiveRetrievalPlanner:
             # Do not expose raw exception, provider output, or private question.
             # Failure must never cause a fallback ES/LLM re-query.
             return _stop("PLANNER_FAILED_CLOSED")
+
+
+@dataclass(frozen=True)
+class BoundNextRoundPlan:
+    """Immutable strategy intent for a FUTURE trusted ES adapter.
+
+    No Elasticsearch DSL or IO is created by binding. A later adapter must
+    independently recheck index/RBAC and time/call admission before each call.
+    """
+
+    round_number: int
+    constraints: QueryConstraints
+    optional_terms: tuple[str, ...]
+    target_aspects: tuple[str, ...]
+
+
+def bind_next_round_plan(
+    *,
+    constraints: QueryConstraints,
+    history: tuple[RoundEvidenceSummary, ...],
+    decision: PlannerDecision,
+) -> BoundNextRoundPlan:
+    """Fail closed unless the proposal remains within the original scope.
+
+    The adapter must use ONLY plan.constraints for date/index/field/auth scope;
+    the model's optional semantic terms are never allowed to become new ANDs.
+    """
+    if (type(constraints) is not QueryConstraints
+            or constraints.keyword_policy != "flexible"
+            or type(history) is not tuple or not history
+            or any(type(entry) is not RoundEvidenceSummary or
+                   entry.number != number or not entry.request_wide
+                   for number, entry in enumerate(history, 1))
+            or history[-1].coverage_sufficient or history[-1].result_incomplete):
+        raise ValueError("untrusted_next_round_scope")
+    if (type(decision) is not PlannerDecision or not decision.should_search
+            or decision.reason_code != "COVERAGE_GAP"):
+        raise ValueError("invalid_next_round_decision")
+    # Validate again at the trust boundary; manually crafted PlannerDecision
+    # values must not bypass date-term, deduplication or size checks.
+    terms = _list_of_terms(list(decision.optional_terms), limit=8, max_chars=100)
+    aspects = _list_of_terms(list(decision.target_aspects), limit=5, max_chars=120)
+    if not terms or not aspects:
+        raise ValueError("invalid_next_round_decision")
+    used = {t.casefold() for item in history for t in item.search_terms}
+    if all(t.casefold() in used for t in terms):
+        raise ValueError("unchanged_next_round_query")
+    return BoundNextRoundPlan(
+        round_number=history[-1].number + 1, constraints=constraints,
+        optional_terms=terms, target_aspects=aspects,
+    )
