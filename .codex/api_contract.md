@@ -78,3 +78,6 @@
 
 ## 2026-11-15 #413 internal ES page admission candidate (NOT MERGED)
 - Internal-only refill_date_filtered_evidence gains optional callable admit_next_page, default None. With None, output and query_meta remain unchanged. If a future trusted caller injects a policy and rejects additional pages, the returned date_candidate_refill metadata contains incomplete_due_to_page_admission=true and note=additional_page_admission_denied; search_news preserves result_incomplete=true on this signal. No public HTTP route, request-schema, auth, report result, or source/LLM semantics are intentionally changed by this candidate. Such injection is NOT enabled in current production tool routing.
+
+## 2026-11-15 #400 editor-only search (OPEN)
+- Mapping-aware editor search optionally searches bounded underscore substrings in selected permitted fields, including nested structures, through existing editor authorization and response shape. This is an editor search feature, not automatic multi-round Evidence retrieval. Public query performance and Elasticsearch mapping compatibility require private acceptance before release.
