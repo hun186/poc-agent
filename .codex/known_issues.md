@@ -116,3 +116,7 @@
 
 ## 2026-11-15 #406 raw question binding limitations
 - The ES tool ordinarily sees a DataAgent-generated query, not necessarily the user's original report question. A new context-scoped channel can carry `question_raw` during synchronous CodeAgent execution without putting it in the tool's generated `query` argument; this does NOT verify identity/authentication, apply subject filters or survive an explicit thread/process boundary. If no authentic original is supplied, future anchors MUST fail closed rather than use the rewritten search prompt. Do not log or add original text to public Evidence Trace; existing higher-level authorized query metadata has separate privacy rules. Hosted only; no private LLM/ES acceptance.
+
+
+## 2026-11-15 #406 explicit subject interpretation limits
+- Exact first-line `主題：實體` is a conservative *candidate* anchor only. Ordinary natural language, compound/overlapping names, comparable entities, unclear exclusions, LLM-only synonyms and unmatched groups intentionally yield no subject guard. Fixed-term exact matching and substring text scan may still produce ambiguity in adversarial terms or text; English ASCII word boundaries are used. This PR does not change Evidence output, report quality, underlying ES retrieval, ownership, event alignment or model token budget. Future shadow must use the verified unrefined report question ContextVar (#425), keep source/Event guards, and never print user text in Trace. No private ES/LLM acceptance.
