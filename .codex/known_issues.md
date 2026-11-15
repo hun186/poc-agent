@@ -87,3 +87,8 @@
 ## 2026-11-15 #413 Report Job admission/cancellation candidate limitations
 - No verified hard 30-minute adaptive retrieval budget, 10-minute generation reservation, resumable per-round checkpoint, real in-flight cancellation, browser-safe signed status link, Chat API automatic dispatch, or true capacity control for out-of-band Requirement/Handoff submissions. The optional admission cap covers HTTP Report Job creations sharing this one SQLite store, not all GPU/ES workloads or multiple hosts with separate DB files.
 - Running Job cancellation intentionally returns 409 because current Agent/ES/LLM calls are not cooperatively cancellable. Startup still marks running→interrupted; no fake continuation. Exact-head Hosted CI and formal Codex review pending; NO private LIVE acceptance.
+
+
+## 2026-11-15 #413 B1 admission boundary (PR candidate; NOT MERGED)
+- `RequestAdmissionBudget` is an isolated fail-closed admission helper for future adaptive retrieval. The default 1800s retrieval cutoff plus 600s reserve controls **new admissions**, not already-running IO, stop signals, prompt tokens, queue waits, worker restarts, or cross-process contention. No production report/Chat path uses it yet; never describe as 30-minute hard cancellation or live multi-round retrieval.
+- Full dependencies/runtime tests require Hosted CI; private ES/proxy/LLM/DOCX acceptance remains NOT_TESTED.
