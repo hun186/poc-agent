@@ -14,6 +14,9 @@ class EvidenceBuildConfig:
     # 0 keeps legacy per-document behavior; nonzero uses one request-shared
     # citation budget, never an unbounded document-specific allocation.
     shared_citation_budget: int = 0
+    # Explicit second opt-in: use scan budget before filter and cap only
+    # date/topic-verified output with fair ES-hit ordinal selection.
+    valid_postfilter_budget: int = 0
     fallback_width: int = 180
     max_docs_for_fallback: int = 10000
     timeline_dates_topk: int = 20

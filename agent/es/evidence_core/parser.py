@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple
 
 from .models import EvidenceBuildConfig, HitDoc, Citation
 from .trace import EvidenceTrace
+from .fair_budget import allocate_fair_source_quotas, source_text_quotas
 from .json_utils import as_blocks, json_load_maybe
 from .date_utils import (
     parse_article_date_iso,
@@ -40,7 +41,12 @@ def parse_es_hits(
     }
 
     out_hits: List[HitDoc] = []
-    flexible = 0 < config.shared_citation_budget <= 1024
+    flexible = 0 < config.shared_citation_budget <= 2048
+    fair_quotas = (
+        allocate_fair_source_quotas(es_hits or [], config.shared_citation_budget)
+        if flexible and config.valid_postfilter_budget else []
+    )
+    fair_text_quotas = source_text_quotas(fair_quotas) if fair_quotas else []
     source_items_scanned_total = 0
     source_text_chars_total = 0
 
@@ -140,6 +146,10 @@ def parse_es_hits(
                      if flexible else config.citations_per_doc)
         per_doc_limit = (remaining if flexible and has_structured_events
                          else min(config.citations_per_doc, remaining))
+        if fair_quotas:
+            per_doc_limit = min(per_doc_limit, fair_quotas[source_hit_ordinal])
+        per_hit_scanned = 0
+        per_hit_text_chars = 0
         citations: List[Citation] = []
         chosen_mode = "none"
         source_items_examined = 0
@@ -218,10 +228,12 @@ def parse_es_hits(
                 for item in snippets:
                     if prefer_source:
                         if (source_items_scanned_total >= SHARED_SOURCE_SCAN_MAX_ITEMS
-                            or source_text_chars_total >= SHARED_SOURCE_TEXT_MAX_CHARS):
+                            or source_text_chars_total >= SHARED_SOURCE_TEXT_MAX_CHARS
+                            or (fair_quotas and per_hit_scanned >= fair_quotas[source_hit_ordinal])):
                             source_stopped = True
                             break
                         source_items_scanned_total += 1
+                        per_hit_scanned += 1
                         raw_text = item.get("text") if isinstance(item, dict) else None
                         # Structured ES data may store text as a single-item
                         # list. The legacy normalizer accepts this shape: do
@@ -237,10 +249,13 @@ def parse_es_hits(
                             if trace is not None:
                                 source_items_examined += 1
                             continue
-                        if source_text_chars_total + len(raw_text) > SHARED_SOURCE_TEXT_MAX_CHARS:
+                        if (source_text_chars_total + len(raw_text) > SHARED_SOURCE_TEXT_MAX_CHARS
+                            or (fair_text_quotas and
+                                per_hit_text_chars + len(raw_text) > fair_text_quotas[source_hit_ordinal])):
                             source_stopped = True
                             break
                         source_text_chars_total += len(raw_text)
+                        per_hit_text_chars += len(raw_text)
                     if trace is not None:
                         source_items_examined += 1
                     citation = citation_from_source(item, block_index)

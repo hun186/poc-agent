@@ -23,6 +23,7 @@ _STAGE_COUNTS = frozenset({
     "source_refill.strict_candidates", "source_refill.weak_candidates",
     "source_refill.strict_selected", "source_refill.weak_selected",
     "source_refill.unselected_by_target", "bounded_rescue.selected",
+    "valid_budget.eligible", "valid_budget.selected", "valid_budget.not_selected",
 })
 
 # Keep all public trace fields fixed, not influenced by Elasticsearch values.
