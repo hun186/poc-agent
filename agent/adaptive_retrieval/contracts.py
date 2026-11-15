@@ -28,7 +28,7 @@ def _bounded_text(value: str, *, limit: int = 160) -> str:
 def _original_question(value: str) -> str:
     """Keep human multiline questions intact; reject only unsafe controls."""
     if (type(value) is not str or not value.strip() or len(value) > 4096
-            or any(ord(ch) < 32 and ch not in "\\n\\r\\t" for ch in value)):
+            or any(ord(ch) < 32 and ch not in "\n\r\t" for ch in value)):
         raise ValueError("invalid_adaptive_question")
     return value
 
