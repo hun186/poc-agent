@@ -179,7 +179,12 @@ def observe_canonical_round(
                 point.start, point.end,
             ))
         if not when and not time_parts and (date_from or date_to):
-            raise ValueError("date_scoped_evidence_without_time")
+            # Legacy unstructured Evidence without a known date can pass
+            # the old topic-only builder even with a caller date window.
+            # Do not abort other valid rows, but NEVER count this one as
+            # date+topic verified in a new request-wide ledger.
+            fallback_rows += 1
+            continue
         # In an unbounded query, a legacy undated Evidence may still be
         # topic-valid; it never acquires an invented date.
         temporal_key = tuple(sorted(time_parts)) if time_parts else (
