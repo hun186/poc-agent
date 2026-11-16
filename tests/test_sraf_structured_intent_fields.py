@@ -49,7 +49,7 @@ def test_intent_selects_text_only_not_keyword_or_dates():
         "locations", "stance", "party_name", "party_role", "time_iso",
     }
     assert select_text_fields("加薩地區新聞回顧") == ()
-    assert select_text_fields("影響" * 2000) == ()  # bounded question
+    assert select_text_fields("影響" * 3000) == ()  # bounded question
 
 
 def test_nested_context_each_field_is_separate_and_unmapped_safe():
