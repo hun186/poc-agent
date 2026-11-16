@@ -2,6 +2,8 @@
 from __future__ import annotations
 from typing import Any
 
+from .nround_progress import nround_progress_rows, safe_nround_progress
+
 SCHEMA = "sraf_report_evidence_usage_v1"
 MODES = {"strong_first": "強證據優先（原模式）", "source_diverse": "來源多樣性（強證據優先）"}
 REVIEW_SCHEMA = "sraf_report_evidence_review_v1"
@@ -195,6 +197,11 @@ def safe_evidence_usage(raw: Any) -> dict[str, Any]:
     topic = safe_topic_adaptive(raw.get("topic_adaptive"))
     if topic:
         clean["topic_adaptive"] = topic
+    # Future N-round Report Job may attach count-only coordinator progress.
+    # Never carry private question, ES identities or evidence from raw input.
+    nround = safe_nround_progress(raw.get("nround_progress"))
+    if nround:
+        clean["nround_progress"] = nround
     return clean
 
 
@@ -223,6 +230,7 @@ def evidence_usage_rows(raw: Any) -> list[tuple[str, str]]:
     ]
     lines.extend(topic_adaptive_rows(u.get("topic_adaptive")))
     lines.extend(review_rows(u.get("review")))
+    lines.extend(nround_progress_rows(u.get("nround_progress")))
     if u["llm_skipped_incomplete"]:
         lines.append(("報告 LLM", "未執行（日期檢索不完整且無有效證據）"))
     return lines
