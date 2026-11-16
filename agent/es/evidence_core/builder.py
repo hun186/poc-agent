@@ -471,6 +471,11 @@ def build_hits_and_evidence(
             "uuid": e.uuid,
             **({"__sraf_source_hit_ordinal": e.source_hit_ordinal}
                if include_source_hit_ordinal else {}),
+            # Only available when opt-in internal provenance is requested.
+            # Prevent two distinct nested blocks with identical Event IDs
+            # and text being accidentally deduplicated across planner rounds.
+            **({"__sraf_block_index": e.block_index}
+               if include_source_hit_ordinal and e.block_index is not None else {}),
             "text": e.text,
             "date_iso": e.date_iso,
             "article_date_iso": e.article_date_iso,

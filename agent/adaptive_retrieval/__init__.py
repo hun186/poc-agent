@@ -6,9 +6,11 @@ only execution authority. See docs/operations/sraf_adaptive_planner_boundary.md.
 """
 from .contracts import BudgetSnapshot, DateWindow, QueryConstraints, RoundEvidenceSummary
 from .planner import AdaptiveRetrievalPlanner, BoundNextRoundPlan, PlannerDecision, bind_next_round_plan
+from .evidence_ledger import RequestWideEvidenceLedger, RoundObservation, observe_canonical_round
 
 __all__ = [
     "AdaptiveRetrievalPlanner", "BudgetSnapshot", "DateWindow",
     "PlannerDecision", "BoundNextRoundPlan", "bind_next_round_plan",
     "QueryConstraints", "RoundEvidenceSummary",
+    "RequestWideEvidenceLedger", "RoundObservation", "observe_canonical_round",
 ]
