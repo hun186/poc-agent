@@ -293,3 +293,50 @@ def test_undated_legacy_topic_evidence_only_when_no_date_filter():
     assert bounded.fallback_rows == 1
     assert bounded.validated_rows == 0
     assert len(bounded.verified_evidence) == 0
+
+
+
+def test_unique_event_owner_normalizes_missing_inner_hit_parent_offset():
+    # Same structured citation appears in two search rounds with different
+    # ES result paths. The first inner hit has no parent block offset;
+    # the next is parsed from full _source with explicit block_index=1.
+    # It must NOT inflate newly_verified_evidence on the second round.
+    from test_sraf_structured_evidence_time import _event, _snippet
+    evidence = _snippet(["E1"], "重大事件造成影響")
+    hit = {
+        "_index": "news_test", "_id": "MULTIBLOCK-NO-PARENT",
+        "_source": {
+            "uuid": "MULTIBLOCK-NO-PARENT",
+            "multidim_event_json": [
+                {"Event": [_event("E2", D1)], "Event_Timeline": [],
+                 "evidence_snippets": []},
+                {"Event": [_event("E1", D0)], "Event_Timeline": [],
+                 "evidence_snippets": [evidence]},
+            ],
+        },
+    }
+    without_parent = copy.deepcopy(hit)
+    without_parent["inner_hits"] = {
+        "evi": {"hits": {"hits": [
+            {"_source": copy.deepcopy(evidence)},
+        ]}},
+    }
+    def capture(raw):
+        return observe_canonical_round(
+            [raw], date_from=D0, date_to=D0,
+            term_groups=[{"重大事件"}, {"造成"}, {"影響"}],
+            effective_terms=["重大事件"],
+            query_for_snippet="重大事件造成影響",
+            original_question="請分析重大事件造成的影響",
+            complete=True,
+        )
+    inner = capture(without_parent)
+    source = capture(hit)
+    assert inner.parser_output_rows == source.parser_output_rows == 1
+    assert len(inner.verified_evidence) == len(source.verified_evidence) == 1
+    assert inner.verified_evidence == source.verified_evidence
+    ledger = RequestWideEvidenceLedger()
+    first = _append(ledger, inner)
+    second = _append(ledger, source, search=("補充事件資料",))
+    assert first.verified_evidence == second.verified_evidence == 1
+    assert second.newly_verified_evidence == 0
