@@ -73,7 +73,7 @@ def test_two_rounds_are_canonical_and_report_ready_only_after_assessment():
     assert not c.admit_es_call()
     plan = c.plan_next_round()
     assert plan.approved and plan.round_number == 2
-    assert plan.plan.constraints is scope()
+    assert plan.plan.constraints == scope()  # immutable value; coordinator checks identity
     assert plan.plan.constraints.event_date.start == D0
     assert calls == ["planner"]
     assert c.safe_progress()["round"] == 2
@@ -147,12 +147,15 @@ def test_es_index_must_be_within_frozen_authorized_indexes():
 
 
 def test_pending_round_cannot_be_report_ready_when_es_budget_exhausts():
-    c, _, _ = coordinator(max_es_calls=1, max_rounds=3)
+    clock = [0.0]
+    c, _, _ = coordinator(clock=clock, max_es_calls=2, max_rounds=3)
     assert c.start() and c.admit_es_call()
     finish(c, [_hit(1, "A", inner=False)])
     assert c.plan_next_round().approved
-    # A next round was admitted, but cannot run any ES. The prior round
-    # does not make this abandoned NEW round complete.
+    # The second round was legitimately admitted while ES quota remained,
+    # but the 30-minute cutoff arrives before any new ES call. A previous
+    # completed round must not make this pending round report-ready.
+    clock[0] = 1800.0
     assert not c.admit_es_call()
     progress = c.safe_progress()
     assert progress["termination"] == "RESOURCE_BUDGET_EXHAUSTED"
