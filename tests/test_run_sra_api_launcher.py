@@ -701,8 +701,11 @@ def test_api_listener_final_gate_rejects_spoofed_start_tick(launcher_env) -> Non
     _write_executable(
         fake_awk,
         'if [[ "$1" == *"fields[20]"* ]] && [ -s "$FAKE_PORT_PID_FILE" ]; then '
-        'read -r ready_pid _ < "$FAKE_PORT_PID_FILE" || :; '
-        'if [ "$2" = "/proc/$ready_pid/stat" ]; then echo 0; exit 0; fi; fi; '
+        'ready_pid=""; while read -r candidate _; do '
+        'if [[ "$candidate" =~ ^[0-9]+$ ]]; then ready_pid="$candidate"; break; fi; '
+        'done < "$FAKE_PORT_PID_FILE"; '
+        'if [ -n "$ready_pid" ] && [ "$2" = "/proc/$ready_pid/stat" ]; then '
+        'echo 0; exit 0; fi; fi; '
         f'exec "{real_awk}" "$@"',
     )
     result = subprocess.run(
