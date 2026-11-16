@@ -26,6 +26,7 @@ import sys
 import time
 import zipfile
 import zlib
+from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -194,6 +195,77 @@ def _json_response(status, headers, raw, expected_status):
     return result
 
 
+# These namespaces are standard WordprocessingML/OPC names, not LLM output.
+_WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+_RELS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_OFFICE_REL = ("http://schemas.openxmlformats.org/"
+               "officeDocument/2006/relationships/officeDocument")
+_DOC_CONTENT_TYPE = (
+    "application/vnd.openxmlformats-officedocument."
+    "wordprocessingml.document.main+xml"
+)
+_MAX_DOCUMENT_XML = 16 * 1024 * 1024
+_MAX_META_XML = 512 * 1024
+
+
+def _ooxml_report_content_is_valid(z: zipfile.ZipFile) -> bool:
+    """Basic OPC linkage, Word XML shape and nonempty report paragraph.
+
+    This is stronger than ZIP+CRC but NOT a guarantee of MS Word rendering,
+    report meaning or source correctness. Never expose XML in diagnostics.
+    """
+    def load_xml(name: str, bound: int):
+        info = z.getinfo(name)
+        if not 0 < info.file_size <= bound:
+            return None
+        raw = z.read(name)
+        # Reject DTD/entity definitions (unneeded in a generated Word report).
+        if b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
+            return None
+        try:
+            return ET.fromstring(raw)
+        except (ET.ParseError, ValueError, RecursionError):
+            return None
+
+    try:
+        ct = load_xml("[Content_Types].xml", _MAX_META_XML)
+        rels = load_xml("_rels/.rels", _MAX_META_XML)
+        doc = load_xml("word/document.xml", _MAX_DOCUMENT_XML)
+    except (KeyError, ValueError, RuntimeError, OSError,
+            EOFError, zlib.error, zipfile.BadZipFile):
+        return False
+    if ct is None or rels is None or doc is None:
+        return False
+    if ct.tag != f"{{{_CT_NS}}}Types" or rels.tag != f"{{{_RELS_NS}}}Relationships":
+        return False
+    if doc.tag != f"{{{_WORD_NS}}}document":
+        return False
+    content_type = any(
+        child.tag == f"{{{_CT_NS}}}Override"
+        and child.get("PartName") == "/word/document.xml"
+        and child.get("ContentType") == _DOC_CONTENT_TYPE
+        for child in ct
+    )
+    office_target = any(
+        child.tag == f"{{{_RELS_NS}}}Relationship"
+        and child.get("Type") == _OFFICE_REL
+        and child.get("Target") in ("word/document.xml", "/word/document.xml")
+        and child.get("TargetMode") != "External"
+        for child in rels
+    )
+    body = doc.find(f"{{{_WORD_NS}}}body")
+    if not content_type or not office_target or body is None:
+        return False
+    # A completed SRAF report must have at least one nonblank text run in a
+    # paragraph (including one inside a table). Empty/skeleton DOCX is FAIL.
+    return any(
+        run.text and run.text.strip()
+        for para in body.iter(f"{{{_WORD_NS}}}p")
+        for run in para.iter(f"{{{_WORD_NS}}}t")
+    )
+
+
 def _validate_docx(raw: bytes):
     if not 0 < len(raw) <= MAX_DOCX:
         return False
@@ -214,7 +286,8 @@ def _validate_docx(raw: bytes):
                 total += info.file_size
                 if total > 64 * 1024 * 1024:
                     return False
-            return z.getinfo("word/document.xml").file_size > 0 and z.testzip() is None
+            return (z.testzip() is None and
+                    _ooxml_report_content_is_valid(z))
     except (OSError, ValueError, RuntimeError, EOFError, zlib.error, zipfile.BadZipFile):
         return False
 
