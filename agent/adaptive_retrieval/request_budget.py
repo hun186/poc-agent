@@ -45,6 +45,9 @@ class RequestAdmissionBudget:
         self._reserve = generation_reserve_seconds
         self._max = {"round": max_rounds, "es": max_es_calls, "planner": max_planner_calls}
         self._used = {"round": 0, "es": 0, "planner": 0}
+        # Request-local, once-only claim for one completed Evidence history.
+        # A strategy claim is nonrefundable, even if the planner fails.
+        self._strategy_claimed_after = -1
 
     def _read_time(self) -> float:
         value = self._clock()
@@ -67,6 +70,31 @@ class RequestAdmissionBudget:
                     or (kind != "round" and self._used["round"] == 0)):
                 return False
             self._used[kind] += 1
+            return True
+
+    def claim_next_strategy(self, completed_rounds: int) -> bool:
+        """Atomically consume ONE planner slot for ONE completed history.
+
+        Prevent repeated/concurrent LLM planning on the same Evidence round,
+        and reject exhausted next-round quota BEFORE paying for planner LLM.
+        This is a pure admission operation; no model or ES call is performed.
+        """
+        if type(completed_rounds) is not int or completed_rounds < 1:
+            return False
+        with self._lock:
+            try:
+                now = self._read_time()
+            except Exception:
+                return False
+            if (now < self._start or now >= self._retrieval_end
+                    or self._used["round"] != completed_rounds
+                    or self._strategy_claimed_after >= completed_rounds
+                    or self._used["round"] >= self._max["round"]
+                    or self._used["planner"] >= self._max["planner"]
+                    or self._used["es"] >= self._max["es"]):
+                return False
+            self._strategy_claimed_after = completed_rounds
+            self._used["planner"] += 1
             return True
 
     def snapshot(self) -> BudgetSnapshot:
