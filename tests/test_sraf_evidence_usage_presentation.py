@@ -130,7 +130,7 @@ def _topic_summary(mode="shadow", *, selected=0):
     return {
         "schema": "sraf_topic_adaptive_report_v1",
         "scope": "data_agent_tool_slices_not_global_recall",
-        "mode": mode, "slices": 1, "strict": 1, "proposed": 2,
+        "mode": mode, "truncated": False, "slices": 1, "strict": 1, "proposed": 2,
         "selected": selected, "no_anchor": 0, "not_low": 0,
         "attempted": 1, "uninspected": 0,
     }
@@ -212,3 +212,26 @@ def test_request_local_topic_audit_survives_tool_thread_but_not_next_request():
     assert summary(first, mode="shadow")["proposed"] == 2
     assert summary(second, mode="shadow")["proposed"] == 2
     assert len(first) == len(second) == 1
+
+
+
+def test_topic_audit_after_32_slices_is_labeled_incomplete():
+    from agent.es.evidence_core.topic_audit import bind_sink, record, summary
+    from api.core.presenters.evidence_usage import topic_adaptive_rows
+    counts = {key: 0 for key in (
+        "inspected", "date_eligible", "two_text_axes", "direct_subject",
+        "same_event_context", "blocked_meta_only", "blocked_unanchored",
+        "uninspected_by_cap", "proposed", "selected",
+    )}
+    sink = []
+    with bind_sink(sink):
+        for i in range(33):
+            record(mode="shadow", status="shadow", strict=1,
+                   counts={**counts, "proposed": 1 if i == 32 else 0})
+    result = summary(sink, mode="shadow")
+    assert result["slices"] == 32
+    assert result["truncated"] is True
+    assert result["proposed"] == 0
+    text = str(topic_adaptive_rows(result))
+    assert "檢索歷程不完整" in text
+    assert "前 32 批" in text
