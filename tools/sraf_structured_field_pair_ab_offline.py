@@ -125,10 +125,10 @@ def _parse(data: dict, keys: list[tuple[str, str]]) -> dict:
             "strict", "relaxed", "adaptive_two_axis"
         )),
         "strong": sum(not row.get("weak_evidence") and
-                      row.get("match_scope") != "fallback_any_term"
+                      row.get("match_scope") in ("text", "meta", "mixed")
                       for row in evidence),
         "weak": sum(bool(row.get("weak_evidence")) and
-                    row.get("match_scope") != "fallback_any_term"
+                    row.get("match_scope") in ("text", "meta", "mixed")
                     for row in evidence),
         "policies": policies,
     }
