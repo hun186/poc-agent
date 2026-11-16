@@ -26,7 +26,20 @@ RUNTIME_HOSTNAME="$(hostname)"
 INVOCATION_START_TIME="$(awk '{print $22}' "/proc/$$/stat")"
 # Clock for a future restart's diagnostic audit only. No readiness decisions
 # depend on this clock, and neither endpoint nor credentials are logged.
-STARTUP_CLOCK_MS="$(date +%s%3N)"
+startup_clock_ms() {
+  # /proc/uptime is monotonic across wall-clock/NTP adjustments.
+  # Linux provides centisecond precision, sufficient for startup diagnosis.
+  local uptime seconds centiseconds
+  IFS=' ' read -r uptime _ < /proc/uptime || { printf 'unavailable'; return 0; }
+  if [[ "$uptime" =~ ^([0-9]{1,12})\.([0-9]{2})$ ]]; then
+    seconds="${BASH_REMATCH[1]}"
+    centiseconds="${BASH_REMATCH[2]}"
+    printf '%s' "$((10#$seconds * 1000 + 10#$centiseconds * 10))"
+  else
+    printf 'unavailable'
+  fi
+}
+STARTUP_CLOCK_MS="$(startup_clock_ms)"
 
 cd "$BASE_DIR"
 
@@ -40,9 +53,9 @@ audit() {
 }
 
 startup_elapsed_ms() {
-  # Linux deployment uses GNU date. Invalid values cannot alter launcher flow.
+  # Keep timing independent of wall-clock changes; invalid clocks only affect logs.
   local now
-  now="$(date +%s%3N 2>/dev/null || true)"
+  now="$(startup_clock_ms)"
   if [[ "$now" =~ ^[0-9]{13,}$ && "$1" =~ ^[0-9]{13,}$ ]] && [ "$now" -ge "$1" ]; then
     printf '%s' "$((now - $1))"
   else
@@ -476,7 +489,7 @@ OWNED_API_PID="$!"
 write_api_identity "$OWNED_API_PID"
 audit "STARTUP_TIMING phase=api_process_spawned elapsed_ms=$(startup_elapsed_ms "$STARTUP_CLOCK_MS")"
 
-API_READINESS_STARTED_MS="$(date +%s%3N)"
+API_READINESS_STARTED_MS="$(startup_clock_ms)"
 API_READINESS_POLLS=0
 API_READINESS_MATCHED_IN_LOOP=0
 deadline=$((SECONDS + API_READINESS_TIMEOUT_SECONDS))
