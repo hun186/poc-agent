@@ -1,12 +1,16 @@
 # agent/es/query_body.py
+import os
 import re
+import logging
 from typing import Any, Dict, List, Optional
 
 from .reference_text import get_reference_text_field
 from .event_time import query_period_bounds, query_untyped_period_bounds
+from .structured_intent_fields import build_intent_shoulds
 
 
 MD_PATH = "multidim_event_json"
+_LOG = logging.getLogger("sraf.structured_field_plan")
 
 
 def _nested(path: str, query: Dict[str, Any], **options: Any) -> Dict[str, Any]:
@@ -90,6 +94,7 @@ def build_main_query_body(
     core_terms: Optional[List[str]] = None,
     syn_terms: Optional[List[str]] = None,
     all_terms: Optional[List[str]] = None,
+    original_question: Optional[str] = None,
 ) -> Dict[str, Any]:
     reference_text_field = get_reference_text_field()
     core_terms = core_terms or []
@@ -290,6 +295,23 @@ def build_main_query_body(
 
     # 把 nested evidence 放進 should
     shoulds.append(evidence_nested)
+
+    # Optional mapping-aware GLM structure boost. Intent is taken only from
+    # the original user question, never from the LLM-rewritten ES query.
+    # 'shadow' builds the plan for observability without sending extra ES
+    # clauses; 'on' adds SHOULD score boosts only. No filters or citations.
+    field_mode = os.getenv("SRAF_STRUCTURED_FIELD_EXPANSION", "off")
+    if field_mode in ("shadow", "on"):
+        planned = build_intent_shoulds(
+            search_query=q, original_question=original_question,
+        )
+        _LOG.warning(
+            "SRAF_STRUCTURED_FIELD_PLAN mode=%s proposed_clauses=%d applied=%d "
+            "mapping_source=GLM_BLUEPRINT_NOT_LIVE_VERIFIED",
+            field_mode, len(planned), len(planned) if field_mode == "on" else 0,
+        )
+        if field_mode == "on":
+            shoulds.extend(planned)
 
     base_bool = {
         "bool": {

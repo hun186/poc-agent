@@ -35,6 +35,7 @@ FILES = (
     "agent/es/reference_text.py",
     "agent/es/event_time.py",
     "agent/es/query_body.py",
+    "agent/es/structured_intent_fields.py",
     "docs/operations/sraf_event_time_live_readonly.md",
 )
 RUNNER = """#!/usr/bin/env bash
