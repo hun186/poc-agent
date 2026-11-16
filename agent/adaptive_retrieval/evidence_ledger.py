@@ -59,6 +59,7 @@ class RoundObservation:
     verified_evidence: frozenset[str]
     verified_sources: frozenset[str]
     parser_output_rows: int
+    validated_rows: int
     fallback_rows: int
     complete: bool
 
@@ -75,10 +76,12 @@ class RoundObservation:
                 or len(self.verified_evidence) > MAX_EVIDENCE
                 or type(self.parser_output_rows) is not int
                 or not 0 <= self.parser_output_rows <= MAX_EVIDENCE
-                or len(self.verified_evidence) > self.parser_output_rows
+                or type(self.validated_rows) is not int
+                or not 0 <= self.validated_rows <= self.parser_output_rows
+                or len(self.verified_evidence) > self.validated_rows
                 or type(self.fallback_rows) is not int
-                or self.fallback_rows != self.parser_output_rows - len(
-                    self.verified_evidence)
+                or self.fallback_rows != self.parser_output_rows -
+                    self.validated_rows
                 or type(self.complete) is not bool):
             raise ValueError("invalid_round_observation")
 
@@ -122,6 +125,7 @@ def observe_canonical_round(
     evidence_keys: set[str] = set()
     verified_sources: set[str] = set()
     fallback_rows = 0
+    validated_rows = 0
     for row in evidence:
         ordinal = row.get("__sraf_source_hit_ordinal")
         if type(ordinal) is not int or not 0 <= ordinal < len(source_keys):
@@ -161,6 +165,7 @@ def observe_canonical_round(
             if type(value) is not str or len(value) > 256:
                 raise ValueError("invalid_verified_identity")
             return value
+        validated_rows += 1
         key = _digest((source_keys[ordinal], block, when, tuple(sorted(ids)),
                        prop("source_id"), prop("paragraph_id"), contents))
         evidence_keys.add(key)
@@ -172,6 +177,7 @@ def observe_canonical_round(
         verified_evidence=frozenset(evidence_keys),
         verified_sources=frozenset(verified_sources),
         parser_output_rows=len(evidence),
+        validated_rows=validated_rows,
         fallback_rows=fallback_rows,
         complete=complete,
     )
@@ -235,6 +241,7 @@ class RequestWideEvidenceLedger:
         self._audits.append({
             "round": record.number, "candidate_sources": len(observation.candidate_sources),
             "parser_output": observation.parser_output_rows,
+            "validated_rows": observation.validated_rows,
             "fallback": observation.fallback_rows,
             "verified_in_round": len(observation.verified_evidence),
             "new_verified": len(gained), "new_sources": len(gained_sources),
