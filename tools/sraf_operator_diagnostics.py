@@ -179,9 +179,12 @@ def _sql_status() -> tuple[str, str]:
     return "INCOMPLETE", "sql_contract_unverified"
 
 
-def _es_status(cfg: dict[str, str]) -> tuple[str, str]:
-    from tools.sraf_airgap_off1_es_hub import strict_mapping_observation
-    raw = strict_mapping_observation(cfg, ROOT)
+def _es_status(cfg: dict[str, str], *, warn_only_ip_san: bool = False) -> tuple[str, str]:
+    from tools.sraf_airgap_off1_es_hub import (
+        ca_only_mapping_observation, strict_mapping_observation,
+    )
+    raw = (ca_only_mapping_observation(cfg, ROOT) if warn_only_ip_san
+           else strict_mapping_observation(cfg, ROOT))
     status, reason = raw.get("status"), raw.get("reason")
     # A strict TLS/Mapping observation with no independent credential negative
     # control is deliberately SKIP, not a certified authenticated ES PASS.
@@ -190,6 +193,10 @@ def _es_status(cfg: dict[str, str]) -> tuple[str, str]:
         "es_auth_rejected", "es_mapping_failed", "es_strict_incomplete",
         "es_strict_observation_unavailable",
         "es_tls_mapping_observed_auth_not_verified",
+        "es_ca_only_observation_unavailable",
+        "es_ca_only_incomplete",
+        "es_ca_only_mapping_unverified",
+        "es_ca_only_mapping_observed_ip_san_unverified",
     }
     if status in ("FAIL", "SKIP") and reason in allowed:
         return status, reason
@@ -362,7 +369,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             elif cfg is None or l1_by_id.get("L1." + ("es_tcp" if name == "es_tls_mapping" else "llm_tcp")) != "PASS":
                 rows.append(_row("L2." + name, "SKIP", "upstream_not_verified"))
             elif name == "es_tls_mapping":
-                rows.append(_run("L2." + name, lambda: _es_status(cfg)))
+                # The default remains strict. Only the explicit L2 opt-in can
+                # observe a CA-verified peer whose IP SAN does not match.
+                if getattr(args, "es_warn_only_ip_san", False):
+                    rows.append(_run("L2." + name,
+                                     lambda: _es_status(cfg, warn_only_ip_san=True)))
+                else:
+                    rows.append(_run("L2." + name, lambda: _es_status(cfg)))
             else:
                 rows.append(_run("L2." + name, lambda: _llm_status(cfg, args.ollama_server_pid)))
     else:
@@ -442,6 +455,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--level", choices=LEVELS, default="L1")
     parser.add_argument("--probe-sql-read", action="store_true")
     parser.add_argument("--probe-es-tls-mapping", action="store_true")
+    parser.add_argument(
+        "--es-warn-only-ip-san", action="store_true",
+        help="L2 ES opt-in: require CA chain but warn on IP SAN mismatch; "
+             "Basic credentials may reach a CA-trusted wrong-name peer. "
+             "Always INCOMPLETE, never TLS identity acceptance.",
+    )
     parser.add_argument("--probe-llm-inference", action="store_true")
     parser.add_argument("--ollama-server-pid", type=int)
     parser.add_argument("--live-report", action="store_true")
@@ -458,7 +477,9 @@ def main(argv: list[str] | None = None) -> int:
 
     l2_selected = any((args.probe_sql_read, args.probe_es_tls_mapping,
                        args.probe_llm_inference))
-    if (args.save_report and args.report_dir
+    if (args.es_warn_only_ip_san and not (
+            args.level == "L2" and args.probe_es_tls_mapping)
+            or args.save_report and args.report_dir
             or args.level in ("L0", "L1") and l2_selected
             or args.level == "L3" and (args.live_report == args.full_e2e or l2_selected)
             or args.level != "L3" and (args.live_report or args.full_e2e or args.token_env or args.output_dir)
