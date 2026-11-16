@@ -47,6 +47,14 @@ def _proc_start(pid: int) -> str:
     return tick
 
 
+def _proc_executable(pid: int) -> str:
+    return Path(f"/proc/{pid}/exe").resolve(strict=True).name
+
+
+def _proc_cwd_stat(pid: int) -> os.stat_result:
+    return os.stat(f"/proc/{pid}/cwd")
+
+
 def recent_verified_launcher(root: Path) -> bool:
     """Proof of a *recent launcher process*, not proof of Worker readiness.
 
@@ -99,11 +107,10 @@ def recent_verified_launcher(root: Path) -> bool:
         uids = [line.split() for line in proc_status.splitlines() if line.startswith(b"Uid:")]
         if len(uids) != 1 or len(uids[0]) < 3 or int(uids[0][2]) != os.geteuid():
             return False
-        proc_cwd = os.stat(f"/proc/{pid}/cwd")
+        proc_cwd = _proc_cwd_stat(pid)
         if (proc_cwd.st_dev, proc_cwd.st_ino) != (root_stat.st_dev, root_stat.st_ino):
             return False
-        exe = Path(f"/proc/{pid}/exe").resolve(strict=True)
-        if exe.name != "bash":
+        if _proc_executable(pid) != "bash":
             return False
         raw = _read_limited(Path(f"/proc/{pid}/cmdline"))
         if not raw or len(raw) > MAX_READ or not raw.endswith(b"\0"):
