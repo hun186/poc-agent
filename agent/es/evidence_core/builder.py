@@ -18,6 +18,7 @@ from .text_norm import normalize_for_match
 from .fair_budget import MAX_SCAN_CITATIONS, MAX_VALID_EVIDENCE, select_valid_fair_evidence
 from .topic_shadow import observe_topic_shadow
 from .question_anchor import derive_explicit_question_anchor
+from .topic_adaptive import consider_low_count, log_adaptive
 
 
 logger = logging.getLogger(__name__)
@@ -252,6 +253,38 @@ def build_hits_and_evidence(
             "source_refill.unselected_by_target",
             max(0, len(source_strong) - source_strong_added),
         )
+
+    # Conditional 3->2 adaptive proposal for *low but nonzero* valid Evidence.
+    # An opt-in mode is required; unlike the legacy zero-only fallback this
+    # can add material to an existing strict result, so the rules are narrower:
+    # two TEXT axes, a verified explicit original-question subject, and the
+    # canonical per-citation Event/Timeline date guard. No ES or LLM call.
+    adaptive_mode = os.getenv("SRAF_TOPIC_MATCH_ADAPTIVE", "off")
+    if adaptive_mode in ("shadow", "on"):
+        anchor = derive_explicit_question_anchor(original_question, term_groups)
+        adaptive = consider_low_count(
+            out_hits, evidence,
+            date_from=date_from, date_to=date_to,
+            allowed_years=allowed_years, groups=term_groups,
+            anchor=anchor, mode=adaptive_mode,
+        )
+        log_adaptive(adaptive, mode=adaptive_mode, strict_count=strict_evidence_count)
+        if evidence_trace is not None:
+            for key in (
+                "inspected", "date_eligible", "two_text_axes",
+                "direct_subject", "same_event_context",
+                "blocked_meta_only", "blocked_unanchored",
+                "uninspected_by_cap", "proposed", "selected",
+            ):
+                evidence_trace.stage_count(
+                    "adaptive_3to2." + key, getattr(adaptive, key),
+                )
+            evidence_trace.stage_count(
+                "adaptive_3to2.attempted",
+                int(adaptive.status in ("shadow", "applied")),
+            )
+        if adaptive_mode == "on" and adaptive.candidates:
+            evidence.extend(adaptive.candidates)
 
     # 2) relax
     if not evidence and out_hits and term_groups:
