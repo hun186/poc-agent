@@ -19,7 +19,7 @@
 
 ## 嚴格隱私與品質邊界
 
-輸出一律通過 `safe_nround_progress` 的欄位白名單與型別檢查。最多 8 輪，相關列必須完整且依序、統計間保持數學一致；所有私有字串／來源資訊／未知欄位無條件剔除。偽造的 `live_es=LIVE_PASSED`、`report_job=COMPLETED`、`checkpoint_resume=YES`、錯誤計數、型別不對或未完成輪次卻謊稱可以生成 Word 的輸入直接拒絕，**不會被輸出到 DOCX 或 Markdown**。
+輸出一律通過 `safe_nround_progress` 的欄位白名單與型別檢查。最多 8 輪，相關列必須完整且依序、統計間保持數學一致；所有私有字串／來源資訊／未知欄位無條件剔除。為防止 Markdown 的既有「原始 JSON」除錯附錄繞過顯示白名單，提取器也只對其中的 `evidence_usage` 欄位產生安全副本再序列化；不修改原始 `out`。此範圍並不會自動隱藏其他被刻意輸出的原始問題或正式引用內容。偽造的 `live_es=LIVE_PASSED`、`report_job=COMPLETED`、`checkpoint_resume=YES`、錯誤計數、型別不對或未完成輪次卻謊稱可以生成 Word 的輸入直接拒絕，**不會被輸出到 DOCX 或 Markdown**。
 
 此規則預設不更動原有 Evidence 使用統計；若 `evidence_usage` 沒有 `nround_progress` 或不合規，維持原有 Word／Markdown 行為。
 
