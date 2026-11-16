@@ -23,7 +23,7 @@ HANDOFF_STATE_FILE=""
 API_READINESS_TIMEOUT_SECONDS="${API_READINESS_TIMEOUT_SECONDS:-90}"
 LAUNCHER_UID="$(id -u)"
 RUNTIME_HOSTNAME="$(hostname)"
-INVOCATION_START_TIME="$(awk '{print $22}' "/proc/$/stat")"
+INVOCATION_START_TIME="$(awk '{print $22}' "/proc/$$/stat")"
 # Clock for a future restart's diagnostic audit only. No readiness decisions
 # depend on this clock, and neither endpoint nor credentials are logged.
 STARTUP_CLOCK_MS="$(date +%s%3N)"
