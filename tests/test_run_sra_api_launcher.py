@@ -652,11 +652,15 @@ def test_launcher_audits_startup_timing_without_mutating_readiness(launcher_env)
     # Delay only the fixture listener, never production code or timeout.
     env["FAKE_UVICORN_READY_DELAY"] = "0.3"
     proc = _start(env)
+    audit_path = Path(env["BASE_DIR"]) / "SRA-API_kill_audit.log"
     try:
         _wait_for(events, "handoff-worker", timeout=4)
+        # Worker child may emit an event before its parent finishes writing
+        # the identity and final timing record. Wait for the actual evidence.
+        _wait_for(audit_path, "STARTUP_TIMING phase=handoff_spawned", timeout=4)
     finally:
         _stop(proc)
-    audit = (Path(env["BASE_DIR"]) / "SRA-API_kill_audit.log").read_text()
+    audit = audit_path.read_text()
     rows = [line.split("STARTUP_TIMING ", 1)[1] for line in audit.splitlines()
             if "STARTUP_TIMING " in line]
     fields = [dict(word.split("=", 1) for word in row.split()) for row in rows]
