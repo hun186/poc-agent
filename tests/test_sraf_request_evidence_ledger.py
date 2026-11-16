@@ -287,5 +287,9 @@ def test_undated_legacy_topic_evidence_only_when_no_date_filter():
     assert unbounded.parser_output_rows == 1
     assert len(unbounded.verified_evidence) == 1
     bounded = observe("2020-06-18", "2020-06-18")
-    assert bounded.parser_output_rows == 0
+    # Legacy parser may emit an undated row, but the new request-wide
+    # ledger must not upgrade it into date-verified research Evidence.
+    assert bounded.parser_output_rows == 1
+    assert bounded.fallback_rows == 1
+    assert bounded.validated_rows == 0
     assert len(bounded.verified_evidence) == 0
