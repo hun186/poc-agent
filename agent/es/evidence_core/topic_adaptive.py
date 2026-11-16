@@ -151,16 +151,18 @@ def consider_low_count(
     )
 
 
-def log_adaptive(result: AdaptiveResult, *, mode: str, strict_count: int) -> None:
+def log_adaptive(result: AdaptiveResult, *, mode: str, strict_count: int,
+                 anchor_source: str = "none") -> None:
     """Mandatory privacy-safe audit whenever operator opts into shadow/on."""
     if mode not in {"shadow", "on"}:
         return
     _LOG.warning(
-        "SRAF_TOPIC_ADAPTIVE mode=%s status=%s strict=%d inspected=%d "
+        "SRAF_TOPIC_ADAPTIVE mode=%s status=%s anchor_source=%s strict=%d inspected=%d "
         "date_eligible=%d two_text_axes=%d direct_subject=%d same_event=%d "
         "blocked_meta_only=%d blocked_unanchored=%d uninspected_by_cap=%d "
         "proposed=%d selected=%d",
-        mode, result.status, strict_count, result.inspected,
+        mode, result.status, (anchor_source if anchor_source in ("explicit", "prose")
+                              else "none"), strict_count, result.inspected,
         result.date_eligible, result.two_text_axes, result.direct_subject,
         result.same_event_context, result.blocked_meta_only,
         result.blocked_unanchored, result.uninspected_by_cap,
