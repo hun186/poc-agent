@@ -224,16 +224,16 @@ def _ooxml_report_content_is_valid(z: zipfile.ZipFile) -> bool:
         # alternate byte encodings before searching for XML markup: otherwise
         # UTF-16 NUL interleaving can hide <!DOCTYPE / <!ENTITY from a byte
         # scan, and ElementTree may expand internal entities.
-        if (b"\\x00" in raw or raw.startswith((b"\\xff\\xfe", b"\\xfe\\xff"))):
+        if b"\x00" in raw or raw.startswith((b"\xff\xfe", b"\xfe\xff")):
             return None
         try:
             raw.decode("utf-8")
         except UnicodeError:
             return None
-        declaration = re.match(rb"\\s*<\\?xml\\b[^>]{0,256}\\?>", raw, re.IGNORECASE)
+        declaration = re.match(rb"\s*<\?xml\b[^>]{0,256}\?>", raw, re.IGNORECASE)
         if declaration:
             encoding = re.search(
-                rb"\\bencoding\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"]",
+                rb"\bencoding\s*=\s*['\"]([^'\"]+)['\"]",
                 declaration.group(0), re.IGNORECASE,
             )
             if encoding and encoding.group(1).lower() not in (
