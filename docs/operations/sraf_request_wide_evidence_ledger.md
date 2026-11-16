@@ -8,7 +8,7 @@
 
 ## 設計
 
-1. `observe_canonical_round`：必須提供本輪實際 ES hits 與同一次查詢的日期、主題群組、effective_terms、原始問句；內部仍呼叫 SRAF 正式 `build_hits_and_evidence`，保留 Event-only、Event ID／block-local 與 Topic Match 驗證。
+1. `observe_canonical_round`：必須提供本輪實際 ES hits 與同一次查詢的日期、主題群組、effective_terms、原始問句；內部仍呼叫 SRAF 正式 `build_hits_and_evidence`，保留 Event-only、Event ID／block-local 與 Topic Match 驗證。特別注意：**year/month 精度與一個 Evidence 關聯多個 Event 日期時，canonical date_iso 合法地可能為空**；本 ledger 以經原日期驗證器認定的 matched_event_time_candidates（含 time_precision、date_start/date_end、Event 或 Timeline 來源）作時間身分，不會把年／月虛構成精確日。沒有使用者日期限制時也允許合法的未標日原文，但不得在有日期限制時硬收沒有相關日期的片段。
 2. 僅接受有合法 `match_scope=text/meta/mixed`、`match_policy=strict/relaxed/adaptive_two_axis`、`group_hits>0` 的 Evidence。舊式 `fallback_any_term` 與 `fallback_no_terms` **可以計入 Parser 輸出與 fallback 數量，但不能被視為已通過 Topic Match 的研究證據**。
 3. 使用原始 ES `(_index,_id)`、nested block 索引、Event IDs、日期、段落 ID、來源 ID 與原文的 SHA-256 安全雜湊產生唯一 Evidence 身分，跨輪次重複、同頁重複不虛增。為支援同文件不同 nested 區塊的正確識別，既有 builder 只在 `include_source_hit_ordinal=True` 的內部選用模式提供 `__sraf_block_index`；公開 Evidence 格式不變。
 4. `RequestWideEvidenceLedger` 累計不同 Evidence、不同有效來源、每輪新 Evidence、新來源、Parser fallback 數；最多 8 輪、每輪 1000 ES 文件／4096 Evidence、總計最多 16384 唯一雜湊。輸出 `safe_audit` 只有固定欄位整數與布林，不含文章文字、日期、Event ID、來源 ID、雜湊或原始問句。
