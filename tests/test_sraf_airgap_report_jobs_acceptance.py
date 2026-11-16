@@ -12,11 +12,27 @@ from tools import sraf_airgap_report_jobs_acceptance as a
 
 
 def _docx():
+    from docx import Document
     buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as out:
-        out.writestr("[Content_Types].xml", "<Types/>")
-        out.writestr("word/document.xml", "<document><body>OK</body></document>")
+    doc = Document()
+    doc.add_heading("SRAF 測試報告", level=1)
+    doc.add_paragraph("此為 Report Job 合成測試中的可閱讀文字，不代表真實 LLM 生成。")
+    doc.save(buffer)
     return buffer.getvalue()
+
+
+def _with_part(base: bytes, member: str, replacement: bytes | None) -> bytes:
+    """Change/remove exactly one file without leaking Word content to logs."""
+    result = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(base)) as original:
+        with zipfile.ZipFile(result, "w") as output:
+            for info in original.infolist():
+                if info.filename == member:
+                    if replacement is not None:
+                        output.writestr(info, replacement)
+                else:
+                    output.writestr(info, original.read(info.filename))
+    return result.getvalue()
 
 
 def test_valid_docx_and_negative_zip():
@@ -290,3 +306,64 @@ def test_deflate_corruption_returns_failed_docx_validation():
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
             archive.testzip()
     assert not a._validate_docx(bytes(raw))
+
+
+
+@pytest.mark.parametrize("member,bad", [
+    ("word/document.xml", b"<document/>"),
+    ("word/document.xml", b"<document><body>fake Word</body></document>"),
+    ("word/document.xml", b'<?xml version="1.0"?><!DOCTYPE w [<!ENTITY x "bad">]><document/>'),
+    ("word/document.xml", b"<broken"),
+    ("[Content_Types].xml", b"<Types/>"),
+    ("_rels/.rels", b"<Relationships/>"),
+    ("_rels/.rels", b"<invalid"),
+])
+def test_crc_valid_but_not_wordprocessingml_is_rejected(member, bad):
+    # All variants are structurally valid ZIP containers with successful CRC.
+    damaged = _with_part(_docx(), member, bad)
+    with zipfile.ZipFile(io.BytesIO(damaged)) as z:
+        assert z.testzip() is None
+    assert not a._validate_docx(damaged)
+
+
+@pytest.mark.parametrize("member", [
+    "[Content_Types].xml", "word/document.xml", "_rels/.rels",
+])
+def test_missing_opc_part_fails_even_when_zip_is_valid(member):
+    invalid = _with_part(_docx(), member, None)
+    with zipfile.ZipFile(io.BytesIO(invalid)) as z:
+        assert z.testzip() is None
+    assert not a._validate_docx(invalid)
+
+
+def test_empty_wordprocessingml_report_is_not_a_successful_docx():
+    from docx import Document
+    b = io.BytesIO()
+    Document().save(b)
+    assert not a._validate_docx(b.getvalue())
+    assert a._validate_docx(_docx())
+
+
+def test_wrong_root_relationship_or_content_type_fails():
+    original = _docx()
+    with zipfile.ZipFile(io.BytesIO(original)) as z:
+        ct = z.read("[Content_Types].xml")
+        rel = z.read("_rels/.rels")
+    altered_ct = ct.replace(
+        b"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+        b"application/octet-stream",
+    )
+    assert altered_ct != ct
+    assert not a._validate_docx(_with_part(original, "[Content_Types].xml", altered_ct))
+    altered_rel = rel.replace(b"word/document.xml", b"word/missing.xml")
+    assert altered_rel != rel
+    assert not a._validate_docx(_with_part(original, "_rels/.rels", altered_rel))
+
+
+def test_document_text_must_really_be_wordprocessingml_not_zip_named_docx():
+    from docx import Document
+    b = io.BytesIO()
+    doc = Document()
+    doc.add_paragraph("")  # A Word paragraph element exists, but no report body.
+    doc.save(b)
+    assert not a._validate_docx(b.getvalue())
