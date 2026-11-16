@@ -29,6 +29,7 @@ def launcher_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
     events = tmp_path / "events"
     _write_executable(
         bin_dir / "uvicorn",
+        'sleep "${FAKE_UVICORN_READY_DELAY:-0}"; '
         "printf '\\n%s LISTEN\\n' \"$BASHPID\" >> \"$FAKE_PORT_PID_FILE\"; "
         'echo "api:$*" >> "$TEST_EVENTS"; '
         'trap \'echo api-term >> "$TEST_EVENTS"; exit 0\' TERM INT; '
@@ -643,3 +644,37 @@ def test_kill_audit_is_appended_not_cleared(launcher_env) -> None:
     _wait_for(events, "handoff-worker")
     _stop(proc)
     assert audit.read_text(encoding="utf-8").startswith("permanent-history\n")
+
+
+
+def test_launcher_audits_startup_timing_without_mutating_readiness(launcher_env) -> None:
+    env, events = launcher_env
+    # Delay only the fixture listener, never production code or timeout.
+    env["FAKE_UVICORN_READY_DELAY"] = "0.3"
+    proc = _start(env)
+    try:
+        _wait_for(events, "handoff-worker", timeout=4)
+    finally:
+        _stop(proc)
+    audit = (Path(env["BASE_DIR"]) / "SRA-API_kill_audit.log").read_text()
+    rows = [line.split("STARTUP_TIMING ", 1)[1] for line in audit.splitlines()
+            if "STARTUP_TIMING " in line]
+    fields = [dict(word.split("=", 1) for word in row.split()) for row in rows]
+    names = [row["phase"] for row in fields]
+    expected = [
+        "deployment_bootstrap_complete", "old_runtime_checked",
+        "api_process_spawned", "api_listener_verified",
+        "schedule_spawned", "handoff_spawned",
+    ]
+    assert names == expected
+    for row in fields:
+        assert row["elapsed_ms"].isdigit()
+    assert [int(row["elapsed_ms"]) for row in fields] == sorted(
+        int(row["elapsed_ms"]) for row in fields
+    )
+    listener = fields[3]
+    assert listener["in_loop"] == "1"
+    assert int(listener["polls"]) >= 2
+    assert int(listener["wait_ms"]) >= 180
+    assert "api.main" not in audit
+    assert "REQUIREMENT_HANDOFF_CREDENTIAL" not in audit
