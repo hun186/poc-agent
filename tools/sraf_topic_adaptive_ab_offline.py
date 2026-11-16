@@ -112,8 +112,8 @@ def main(argv: list[str]) -> int:
         return 2
     try:
         metrics = compare(_private_read(argv[1]))
-    except (OSError, ValueError, TypeError, KeyError, IndexError,
-            RecursionError, OverflowError):
+    except Exception:
+        # Never echo details from malformed private snapshots or parser errors.
         print("RESULT=INCOMPLETE reason=invalid_or_unsafe_snapshot")
         return 2
     print("SRAF_TOPIC_ADAPTIVE_AB=" +
