@@ -187,3 +187,61 @@ def test_fifo_input_does_not_block_and_is_rejected(tmp_path):
     result = _run(a, b)
     assert result.returncode == 2
     assert "INCOMPLETE" in result.stdout
+
+
+
+def test_zero_baseline_and_zero_enhanced_are_valid_ab_comparisons():
+    a = _source("PRIVATE-GOOD", "加薩 停火 人道援助")
+    b = compare_pair(
+        _case("baseline", []),
+        _case("structured_on", [a]),
+    )
+    assert b["baseline_candidates"] == 0
+    assert b["baseline_strict_evidence"] == 0
+    assert b["valid_sources_gained"] == 1
+    assert b["new_candidate_sources_with_valid_evidence"] == 1
+    lost = compare_pair(
+        _case("baseline", [a]), _case("structured_on", []),
+    )
+    assert lost["candidate_lost_sources"] == 1
+    assert lost["valid_sources_lost"] == 1
+    assert lost["enhanced_date_topic_valid_evidence"] == 0
+    both = compare_pair(
+        _case("baseline", []), _case("structured_on", []),
+    )
+    assert both["baseline_candidates"] == both["enhanced_candidates"] == 0
+
+
+def test_fallback_effective_term_is_weak_not_strict_evidence():
+    # No two axes are matched, but single "加薩" matches effective_terms,
+    # causing legacy fallback_any_term (policy defaults to strict).
+    only_one = _source("PRIVATE-FALLBACK", "加薩")
+    a = compare_pair(
+        _case("baseline", [only_one]),
+        _case("structured_on", [only_one]),
+    )
+    assert a["baseline_date_topic_valid_evidence"] == 1
+    assert a["baseline_strict_evidence"] == 0
+    assert a["enhanced_strict_evidence"] == 0
+    assert a["baseline_weak_evidence"] == 1
+    assert a["baseline_strong_evidence"] == 0
+
+
+def test_private_cli_supports_zero_hit_baseline_without_weakening_old_cli(tmp_path):
+    from tools.sraf_topic_adaptive_ab_offline import _private_read
+    baseline = tmp_path / "empty.json"
+    enhanced = tmp_path / "with_valid.json"
+    _private(baseline, _case("baseline", []))
+    _private(enhanced, _case("structured_on", [
+        _source("SENSITIVE-NEW", "加薩 停火 人道援助"),
+    ]))
+    # Old Topic Match same-snapshot A/B still rejects an empty input.
+    with pytest.raises(ValueError):
+        _private_read(str(baseline))
+    assert _private_read(str(baseline), allow_empty_hits=True)["es_hits"] == []
+    result = _run(baseline, enhanced)
+    assert result.returncode == 0, result.stderr
+    metrics = json.loads(result.stdout.strip().split("=", 1)[1])
+    assert metrics["baseline_candidates"] == 0
+    assert metrics["valid_sources_gained"] == 1
+    assert "SENSITIVE" not in result.stdout + result.stderr
