@@ -105,8 +105,13 @@ def safe_topic_adaptive(raw: Any) -> dict[str, Any]:
             or (raw["mode"] != "on" and vals["selected"] != 0)
             or (raw["mode"] == "off" and vals["slices"] != 0)):
         return {}
+    prose = raw.get("prose_shadow_slices", 0)
+    if (type(prose) is not int or not 0 <= prose <= vals["attempted"]
+            or (prose and raw["mode"] != "shadow")):
+        return {}
     return {"schema": TOPIC_SCHEMA, "scope": TOPIC_SCOPE,
-            "mode": raw["mode"], "truncated": raw["truncated"], **vals}
+            "mode": raw["mode"], "truncated": raw["truncated"],
+            "prose_shadow_slices": prose, **vals}
 
 
 def topic_adaptive_rows(raw: Any) -> list[tuple[str, str]]:
@@ -134,6 +139,13 @@ def topic_adaptive_rows(raw: Any) -> list[tuple[str, str]]:
             f"因原問題未明確指定必要主題：{r['no_anchor']} 批；"
             f"原本證據並非低量：{r['not_low']} 批；"
             f"實際進行候選評估：{r['attempted']} 批",
+        ))
+    if r["prose_shadow_slices"]:
+        rows.append((
+            "自然語句主題推估（僅觀察）",
+            f"有 {r['prose_shadow_slices']} 個工具批次從原始問句的開頭"
+            "推測可能的必要主題，僅試算較寬鬆候選；這不是已驗證的實體辨識，"
+            "也不會讓這些候選自動加入正式報告",
         ))
     if r["truncated"]:
         rows.append(("檢索歷程不完整",
