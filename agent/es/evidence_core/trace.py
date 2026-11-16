@@ -49,6 +49,13 @@ _STAGE_COUNTS = frozenset({
     "shadow_3to2.metadata_assisted_two_axis_only",
     "shadow_3to2.same_event_two_text_axis_only",
     "shadow_3to2.no_same_event_two_text_axis_only",
+    # Per-builder adaptive decisions: counts only, never question/terms/IDs.
+    "adaptive_3to2.attempted", "adaptive_3to2.inspected",
+    "adaptive_3to2.date_eligible", "adaptive_3to2.two_text_axes",
+    "adaptive_3to2.direct_subject", "adaptive_3to2.same_event_context",
+    "adaptive_3to2.blocked_meta_only", "adaptive_3to2.blocked_unanchored",
+    "adaptive_3to2.uninspected_by_cap", "adaptive_3to2.proposed",
+    "adaptive_3to2.selected",
     # Diagnostic only: one parser slice is never a re-query permission.
     "health.date_eligible", "health.known_uninspected", "health.known_capped",
     "health.reason.SEARCH_INCOMPLETE",
