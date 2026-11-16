@@ -19,6 +19,7 @@ from .fair_budget import MAX_SCAN_CITATIONS, MAX_VALID_EVIDENCE, select_valid_fa
 from .topic_shadow import observe_topic_shadow
 from .question_anchor import derive_explicit_question_anchor
 from .topic_adaptive import consider_low_count, log_adaptive
+from .topic_audit import record as record_topic_audit
 
 
 logger = logging.getLogger(__name__)
@@ -269,6 +270,16 @@ def build_hits_and_evidence(
             anchor=anchor, mode=adaptive_mode,
         )
         log_adaptive(adaptive, mode=adaptive_mode, strict_count=strict_evidence_count)
+        record_topic_audit(
+            mode=adaptive_mode, status=adaptive.status,
+            strict=strict_evidence_count,
+            counts={key: getattr(adaptive, key) for key in (
+                'inspected', 'date_eligible', 'two_text_axes',
+                'direct_subject', 'same_event_context',
+                'blocked_meta_only', 'blocked_unanchored',
+                'uninspected_by_cap', 'proposed', 'selected',
+            )},
+        )
         if evidence_trace is not None:
             for key in (
                 "inspected", "date_eligible", "two_text_axes",
