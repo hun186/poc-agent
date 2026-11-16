@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from typing import Iterable
 
 from agent.es.es_client import resolve_index as _resolve_es_index
+from agent.es.evidence_core.topic_audit import current_sink, bind_sink
 from .question_scope import (
     bind_original_report_question, get_original_report_question,
 )
@@ -19,6 +20,7 @@ _REQUIREMENT_E2E_TOOL_PLAN_ATTR = "_requirement_e2e_admitted_plan"
 # bounded caller-supplied ORIGINAL question to each object so tool worker
 # threads can restore provenance without passing it as an LLM tool argument.
 _REPORT_QUESTION_TOOL_ATTR = "_sraf_original_report_question_for_tool"
+_REPORT_AUDIT_TOOL_ATTR = "_sraf_topic_audit_sink_for_tool"
 
 
 def bind_requirement_acceptance(tool: Any) -> Any:
@@ -35,6 +37,7 @@ def bind_requirement_acceptance(tool: Any) -> Any:
 
     active = bool(requirement_acceptance_active())
     setattr(tool, _REPORT_QUESTION_TOOL_ATTR, get_original_report_question())
+    setattr(tool, _REPORT_AUDIT_TOOL_ATTR, current_sink())
     setattr(tool, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, active)
     # smolagents worker threads do not automatically inherit ContextVars.
     # Bind only the immutable plan from this verified job; production binds None.
@@ -63,7 +66,8 @@ def propagate_requirement_acceptance(func):
             with bind_original_report_question(
                 getattr(self, _REPORT_QUESTION_TOOL_ATTR, None)
             ):
-                return func(self, *args, **kwargs)
+                with bind_sink(getattr(self, _REPORT_AUDIT_TOOL_ATTR, None)):
+                    return func(self, *args, **kwargs)
     return wrapped
 
 

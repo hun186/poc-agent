@@ -76,6 +76,79 @@ def review_rows(raw: Any) -> list[tuple[str, str]]:
     return rows
 
 
+TOPIC_SCHEMA = "sraf_topic_adaptive_report_v1"
+TOPIC_SCOPE = "data_agent_tool_slices_not_global_recall"
+TOPIC_MODES = {"off", "shadow", "on"}
+TOPIC_KEYS = ("slices", "strict", "proposed", "selected",
+              "no_anchor", "not_low", "attempted", "uninspected")
+
+
+def safe_topic_adaptive(raw: Any) -> dict[str, Any]:
+    """Strictly count-only audit; never pass model-/question-supplied strings."""
+    if not isinstance(raw, dict) or raw.get("schema") != TOPIC_SCHEMA:
+        return {}
+    if raw.get("scope") != TOPIC_SCOPE or raw.get("mode") not in TOPIC_MODES:
+        return {}
+    if type(raw.get("truncated")) is not bool:
+        return {}
+    vals = {}
+    for key in TOPIC_KEYS:
+        value = raw.get(key)
+        if type(value) is not int or not 0 <= value <= 1_000_000:
+            return {}
+        vals[key] = value
+    if (vals["slices"] > 32 or vals["attempted"] > vals["slices"]
+            or vals["no_anchor"] > vals["slices"]
+            or vals["not_low"] > vals["slices"]
+            or vals["selected"] > vals["proposed"]
+            or vals["selected"] > 2 * vals["attempted"]
+            or (raw["mode"] != "on" and vals["selected"] != 0)
+            or (raw["mode"] == "off" and vals["slices"] != 0)):
+        return {}
+    return {"schema": TOPIC_SCHEMA, "scope": TOPIC_SCOPE,
+            "mode": raw["mode"], "truncated": raw["truncated"], **vals}
+
+
+def topic_adaptive_rows(raw: Any) -> list[tuple[str, str]]:
+    r = safe_topic_adaptive(raw)
+    if not r:
+        return []
+    if r["mode"] == "off":
+        status = "未啟用：沿用原本嚴格篩選，沒有計算 3→2 候選"
+    elif r["mode"] == "shadow":
+        status = "觀察模式：有計算較寬鬆候選，但正式報告仍使用原本篩選結果"
+    else:
+        status = "受控啟用：僅有符合必要主題及日期限制的弱證據才可能加入"
+    if r["slices"] == 0 and r["mode"] != "off":
+        status += "；本次未取得可用的工具階段紀錄"
+    rows = [
+        ("主題檢索智慧放寬", status),
+        ("嚴格篩選與預估增補",
+         f"工具檢查批次 {r['slices']} 次；原規則合格計數合計 {r['strict']} 段；"
+         f"2 組命中且通過必要主題限制的候選 {r['proposed']} 段；"
+         f"在初步檢索階段實際加入 {r['selected']} 段"),
+    ]
+    if r["mode"] != "off":
+        rows.append((
+            "未放寬的原因",
+            f"因原問題未明確指定必要主題：{r['no_anchor']} 批；"
+            f"原本證據並非低量：{r['not_low']} 批；"
+            f"實際進行候選評估：{r['attempted']} 批",
+        ))
+    if r["truncated"]:
+        rows.append(("檢索歷程不完整",
+                     "此次工具執行超過 32 個批次，以下計數僅涵蓋前 32 批；"
+                     "後續仍可能加入弱證據，不能把此統計視為全程總數"))
+    if r["uninspected"]:
+        rows.append(("檢索抽樣範圍提醒",
+                     f"仍有 {r['uninspected']} 筆解析器候選未被本層檢查，"
+                     "不能宣稱已找齊所有資料"))
+    rows.append(("檢索歷程計數說明",
+                 "以上為 Data Agent 工具處理批次合計，補抓或分頁可能重複計數；"
+                 "不是最終報告實際引用數，也不代表資料相關性或召回率已通過人工驗證"))
+    return rows
+
+
 NUMERIC = ("incoming", "strong", "weak", "picked", "compressed", "llm_input",
            "incoming_identified_sources", "picked_identified_sources",
            "llm_input_identified_sources", "max_for_llm", "prompt_chars",
@@ -107,6 +180,9 @@ def safe_evidence_usage(raw: Any) -> dict[str, Any]:
     review = safe_review(raw.get("review"))
     if review:
         clean["review"] = review
+    topic = safe_topic_adaptive(raw.get("topic_adaptive"))
+    if topic:
+        clean["topic_adaptive"] = topic
     return clean
 
 
@@ -133,6 +209,7 @@ def evidence_usage_rows(raw: Any) -> list[tuple[str, str]]:
         ("Prompt 長度", f"{u['prompt_chars']} 字元（非 Token 數）"),
         ("計數限制", "僅統計已取得、具有文件 ID 的來源；不代表議題覆蓋或檢索完整性"),
     ]
+    lines.extend(topic_adaptive_rows(u.get("topic_adaptive")))
     lines.extend(review_rows(u.get("review")))
     if u["llm_skipped_incomplete"]:
         lines.append(("報告 LLM", "未執行（日期檢索不完整且無有效證據）"))

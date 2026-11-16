@@ -164,6 +164,8 @@ def ask_with_report(
                 "truncated_notes", "truncated_titles",
             )},
         }
+        if isinstance(payload.get("topic_adaptive_audit"), dict):
+            result["evidence_usage"]["topic_adaptive"] = payload["topic_adaptive_audit"]
         if trace.get("data_agent"):
             result["data_agent"] = trace["data_agent"]
         log_total("[report] ask_with_report[TOTAL]", t_total_start,
@@ -432,6 +434,7 @@ def ask_with_report(
         "picked_identified_sources": count_identified_sources(picked_for_llm),
         "llm_input_identified_sources": count_identified_sources(llm_source_rows),
         "review": evidence_review,
+        "topic_adaptive": payload.get("topic_adaptive_audit"),
         "max_for_llm": MAX_EV_FOR_LLM, "prompt_chars": len(user_prompt),
         "truncated_notes": truncated_notes, "truncated_titles": truncated_titles,
     }
