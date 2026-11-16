@@ -19,7 +19,7 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 
 def _private_read(path_text: str) -> dict:
     path = Path(path_text)
-    fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    fd = os.open(str(path), os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
     try:
         info = os.fstat(fd)
         if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
