@@ -62,7 +62,7 @@
 
 - `[Content_Types].xml` 必須有正確根元素及 Word 主文件 ContentType Override；`_rels/.rels` 必須指向內部 `word/document.xml` 的 officeDocument relationship。
 - `word/document.xml` 必須是合法 WordprocessingML document/body，並含有至少一段非空 `w:t` 文字，避免空殼 DOCX 成功。
-- 對三個 XML 限制單檔解壓大小（主文 16 MiB，關係/內容型別 512 KiB），禁止 DTD/ENTITY，沿用 ZIP 64 MiB 總解壓上限、成員路徑安全、CRC 與私人輸出檔權限。
+- 對三個 XML 限制單檔解壓大小（主文 16 MiB，關係/內容型別 512 KiB），僅接受目前 SRAF Word 匯出器使用的 UTF-8／ASCII XML 編碼並禁止 DTD/ENTITY（UTF-16 與不明編碼保守拒絕），沿用 ZIP 64 MiB 總解壓上限、成員路徑安全、CRC 與私人輸出檔權限。
 - 失敗僅呈現既有 `report_docx=FAIL reason=docx_invalid`，不回傳來源內容、Token、完整 XML 或 DOCX 內文。
 
 以上只是 OOXML 靜態相容性與非空的加強，並不能判定報告語意品質、引用來源真實性或跨 Office 版本的視覺排版。最新部署機真實 `--live-report` L3-A 仍需操作員授權執行，GitHub 合成測試不應誤稱正式實機通過。
