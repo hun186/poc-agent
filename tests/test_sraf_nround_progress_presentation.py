@@ -98,7 +98,10 @@ def test_private_unknown_values_are_never_copied_to_word_or_markdown():
     serialized = json.dumps(sanitized, ensure_ascii=False)
     assert "PRIVATE" not in serialized
     assert set(sanitized["nround_progress"]) == set(sample())
-    md, doc = _render_both(_output(usage))
+    source_output = _output(usage)
+    unchanged = copy.deepcopy(source_output)
+    md, doc = _render_both(source_output)
+    assert source_output == unchanged  # rendering must not mutate caller JSON
     assert "PRIVATE" not in md + "\n".join(doc)
     assert len(nround_progress_rows(raw)) > 0
 
