@@ -79,3 +79,16 @@ def test_bad_schema_fails_without_echoing_contents(tmp_path):
     )
     assert res.returncode == 2
     assert "PRIVATE-CONTENT" not in (res.stdout + res.stderr)
+
+
+
+def test_fifo_input_is_rejected_without_blocking_or_leaking_path(tmp_path):
+    fifo = tmp_path / "sensitive_fifo"
+    os.mkfifo(fifo, 0o600)
+    result = subprocess.run(
+        [sys.executable, "-m", "tools.sraf_topic_adaptive_ab_offline", str(fifo)],
+        cwd=ROOT, capture_output=True, text=True, timeout=6,
+    )
+    assert result.returncode == 2
+    assert "RESULT=INCOMPLETE reason=invalid_or_unsafe_snapshot" in result.stdout
+    assert str(fifo) not in (result.stdout + result.stderr)
