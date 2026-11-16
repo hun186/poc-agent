@@ -102,6 +102,14 @@ def _parse(data: dict, keys: list[tuple[str, str]]) -> dict:
         if scope == "fallback_any_term":
             policies["fallback_any_term"] += 1
             continue
+        if scope == "none":
+            # Legacy no-effective-terms fallback reuses default
+            # match_policy='strict', weak_evidence=False, but did NOT
+            # pass any Topic Match group. It must not raise valid sources.
+            policies["fallback_no_terms"] += 1
+            continue
+        if scope not in ("text", "meta", "mixed"):
+            raise ValueError("unknown_evidence_match_scope")
         if policy not in ("strict", "relaxed", "adaptive_two_axis"):
             raise ValueError("unknown_evidence_match_policy")
         valid_sources.add(source)
@@ -157,6 +165,8 @@ def compare_pair(base: dict, enhanced: dict) -> dict:
         "enhanced_parser_output_evidence": right["parser_output"],
         "baseline_any_term_fallback_evidence": left["policies"]["fallback_any_term"],
         "enhanced_any_term_fallback_evidence": right["policies"]["fallback_any_term"],
+        "baseline_no_terms_fallback_evidence": left["policies"]["fallback_no_terms"],
+        "enhanced_no_terms_fallback_evidence": right["policies"]["fallback_no_terms"],
         "baseline_date_topic_valid_evidence": left["evidence"],
         "enhanced_date_topic_valid_evidence": right["evidence"],
         "baseline_strong_evidence": left["strong"],
