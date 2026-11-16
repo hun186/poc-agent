@@ -64,13 +64,25 @@ startup_elapsed_ms() {
 }
 
 process_start_time() {
-  awk '{print $22}' "/proc/$1/stat" 2>/dev/null || true
+  local pid="$1"
+  [[ "$pid" =~ ^[0-9]{1,7}$ ]] || return 1
+  # /proc/<pid>/stat field 2 (comm) is parenthesized and may contain spaces.
+  # Strip through the LAST ') ' before counting from field 3 (state).
+  # Field 22 (starttime) is the 20th field of the remainder.
+  awk '{
+    suffix = $0
+    if (!sub(/^.*[)] /, "", suffix)) exit 1
+    n = split(suffix, fields, /[[:space:]]+/)
+    if (n < 20 || fields[20] !~ /^[0-9]+$/) exit 1
+    print fields[20]
+  }' "/proc/$pid/stat" 2>/dev/null
 }
 
 process_is_live() {
-  local pid="$1"
+  local pid="$1" state
   kill -0 "$pid" 2>/dev/null || return 1
-  [ "$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null || true)" != "Z" ]
+  state="$(awk '/^State:/{print $2; exit}' "/proc/$pid/status" 2>/dev/null || true)"
+  [[ -n "$state" && "$state" != Z && "$state" != X ]]
 }
 
 process_effective_uid() {
@@ -502,7 +514,10 @@ while [ "$SECONDS" -lt "$deadline" ]; do
   fi
   sleep 0.1
 done
-if ! pid_is_listener "$OWNED_API_PID"; then
+# The final post-deadline check must use the SAME start-tick authority as
+# the polling loop; a matching socket PID alone is not sufficient.
+if ! pid_is_listener "$OWNED_API_PID" ||
+   [ "$(process_start_time "$OWNED_API_PID")" != "$OWNED_API_START" ]; then
   audit "STARTUP_TIMING phase=api_readiness_timeout polls=$API_READINESS_POLLS wait_ms=$(startup_elapsed_ms "$API_READINESS_STARTED_MS")"
   echo "[run_sra_api] API readiness timed out." >&2; exit 1
 fi

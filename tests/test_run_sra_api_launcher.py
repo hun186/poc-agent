@@ -31,6 +31,8 @@ def launcher_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
         bin_dir / "uvicorn",
         'sleep "${FAKE_UVICORN_READY_DELAY:-0}"; '
         "printf '\\n%s LISTEN\\n' \"$BASHPID\" >> \"$FAKE_PORT_PID_FILE\"; "
+        'if [ "${FAKE_UVICORN_SPACED_COMM:-0}" = 1 ]; then '
+        'printf "SRAF API title" > "/proc/$BASHPID/comm"; fi; '
         'echo "api:$*" >> "$TEST_EVENTS"; '
         'trap \'echo api-term >> "$TEST_EVENTS"; exit 0\' TERM INT; '
         'while :; do sleep 0.05; done',
@@ -574,8 +576,9 @@ def test_start_time_change_before_kill_fails_closed(launcher_env, titled_process
     fake_awk = Path(env["PATH"].split(":", 1)[0]) / "awk"
     _write_executable(
         fake_awk,
-        f"if [ \"$1\" = '{{print $22}}' ] && [ \"$2\" = \"/proc/{stale.pid}/stat\" ] && [ -f \"{marker}\" ]; then "
-        f'v=$({real_awk} \'{{print $22}}\' "$2"); echo $((v+1)); else exec {real_awk} "$@"; fi',
+        f'if [[ "$1" == *"fields[20]"* ]] && [ "$2" = "/proc/{stale.pid}/stat" ] && '
+        f'[ -f "{marker}" ]; then '
+        f'v=$({real_awk} "$1" "$2"); echo $((v+1)); else exec {real_awk} "$@"; fi',
     )
     try:
         result = subprocess.run(["bash", str(LAUNCHER)], env=env, capture_output=True, text=True, timeout=5)
@@ -651,6 +654,8 @@ def test_launcher_audits_startup_timing_without_mutating_readiness(launcher_env)
     env, events = launcher_env
     # Delay only the fixture listener, never production code or timeout.
     env["FAKE_UVICORN_READY_DELAY"] = "0.3"
+    # Real /proc stat comm with embedded spaces formerly shifted awk field 22.
+    env["FAKE_UVICORN_SPACED_COMM"] = "1"
     proc = _start(env)
     audit_path = Path(env["BASE_DIR"]) / "SRA-API_kill_audit.log"
     try:
@@ -682,3 +687,37 @@ def test_launcher_audits_startup_timing_without_mutating_readiness(launcher_env)
     assert int(listener["wait_ms"]) >= 180
     assert "api.main" not in audit
     assert "REQUIREMENT_HANDOFF_CREDENTIAL" not in audit
+
+
+
+def test_api_listener_final_gate_rejects_spoofed_start_tick(launcher_env) -> None:
+    env, events = launcher_env
+    env["FAKE_UVICORN_READY_DELAY"] = "0.3"
+    real_awk = shutil.which("awk")
+    assert real_awk
+    # The initial API identity uses the real start tick. Only after the
+    # fixture binds its fake listener do the checks see a changed start tick.
+    fake_awk = Path(env["PATH"].split(":", 1)[0]) / "awk"
+    _write_executable(
+        fake_awk,
+        'if [[ "$1" == *"fields[20]"* ]] && [ -s "$FAKE_PORT_PID_FILE" ]; then '
+        'ready_pid=""; while read -r candidate _; do '
+        'if [[ "$candidate" =~ ^[0-9]+$ ]]; then ready_pid="$candidate"; break; fi; '
+        'done < "$FAKE_PORT_PID_FILE"; '
+        'if [ -n "$ready_pid" ] && [ "$2" = "/proc/$ready_pid/stat" ]; then '
+        'echo 0; exit 0; fi; fi; '
+        f'exec "{real_awk}" "$@"',
+    )
+    result = subprocess.run(
+        ["bash", str(LAUNCHER)], env=env,
+        capture_output=True, text=True, timeout=6
+    )
+    assert result.returncode != 0
+    audit = (Path(env["BASE_DIR"]) / "SRA-API_kill_audit.log").read_text()
+    assert "phase=api_readiness_timeout" in audit
+    assert "phase=api_listener_verified" not in audit
+    assert "phase=schedule_spawned" not in audit
+    assert "phase=handoff_spawned" not in audit
+    assert not any(line.startswith("python:") for line in (
+        events.read_text().splitlines() if events.exists() else []
+    ))
