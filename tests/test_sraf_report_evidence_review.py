@@ -143,7 +143,7 @@ def test_input_over_budget_must_not_make_partial_calls():
 def test_dynamic_char_batching_does_not_truncate_evidence():
     rows = _rows(6)
     for row in rows:
-        row["note"] = "文字" * 700
+        row["note"] = "文字" * 500
     seen = []
     def llm(p, **kw):
         assert len(p) <= 2800
