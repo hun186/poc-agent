@@ -264,3 +264,28 @@ def test_private_cli_supports_zero_hit_baseline_without_weakening_old_cli(tmp_pa
     assert metrics["baseline_candidates"] == 0
     assert metrics["valid_sources_gained"] == 1
     assert "SENSITIVE" not in result.stdout + result.stderr
+
+
+
+def test_no_effective_terms_fallback_cannot_claim_valid_topic_evidence():
+    # No effective_terms and no matching topic axis. Existing builder
+    # returns the first date-valid citation as fallback_no_terms but leaves
+    # match_policy='strict' and weak_evidence=False. It is not a strict
+    # group match; A/B must not claim a source gained.
+    irrelevant = _source("PRIVATE-NOT-TOPIC", "蘇丹會議與地方產業")
+    base = _case("baseline", [])
+    enhanced = _case("structured_on", [irrelevant])
+    base["effective_terms"] = []
+    enhanced["effective_terms"] = []
+    metrics = compare_pair(base, enhanced)
+    assert metrics["candidate_new_sources"] == 1
+    assert metrics["enhanced_parser_output_evidence"] == 1
+    assert metrics["enhanced_no_terms_fallback_evidence"] == 1
+    assert metrics["enhanced_any_term_fallback_evidence"] == 0
+    assert metrics["enhanced_strict_evidence"] == 0
+    assert metrics["enhanced_strong_evidence"] == 0
+    assert metrics["enhanced_date_topic_valid_evidence"] == 0
+    assert metrics["enhanced_valid_sources"] == 0
+    assert metrics["valid_sources_gained"] == 0
+    assert metrics["new_candidate_sources_without_valid_evidence"] == 1
+    assert "PRIVATE" not in json.dumps(metrics)
