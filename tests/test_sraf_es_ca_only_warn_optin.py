@@ -155,7 +155,8 @@ def test_l2_ca_only_explicit_mode_cannot_upgrade_overall_to_pass(monkeypatch):
     result = diagnostics.run(flags)
     assert calls == [True]
     assert result["status"] == "INCOMPLETE"
-    assert next(c for c in result["checks"] if c["id"] == "L2.es_tls_mapping") == (
-        diagnostics._row("L2.es_tls_mapping", "SKIP",
-                         "es_ca_only_mapping_observed_ip_san_unverified"))
+    observed = next(c for c in result["checks"] if c["id"] == "L2.es_tls_mapping")
+    assert observed["status"] == "SKIP"
+    assert observed["reason"] == "es_ca_only_mapping_observed_ip_san_unverified"
+    assert type(observed["elapsed_ms"]) is int and observed["elapsed_ms"] >= 0
     assert result["production_release_ready"] is False
