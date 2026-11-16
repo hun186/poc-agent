@@ -17,7 +17,7 @@ from agent.es.evidence_core.builder import build_hits_and_evidence
 MAX_FILE_BYTES = 8 * 1024 * 1024
 
 
-def _private_read(path_text: str) -> dict:
+def _private_read(path_text: str, *, allow_empty_hits: bool = False) -> dict:
     path = Path(path_text)
     fd = os.open(str(path), os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
     try:
@@ -34,7 +34,8 @@ def _private_read(path_text: str) -> dict:
     hits = data.get("es_hits")
     groups = data.get("term_groups")
     terms = data.get("effective_terms")
-    if not isinstance(hits, list) or not 0 < len(hits) <= 1000:
+    if (not isinstance(hits, list) or len(hits) > 1000
+            or (not allow_empty_hits and not hits)):
         raise ValueError("snapshot_invalid")
     if any(not isinstance(x, dict) for x in hits):
         raise ValueError("snapshot_invalid")
