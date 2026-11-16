@@ -15,7 +15,7 @@
 
 ## 準備快照（操作員自行取得，工具不查 ES）
 
-兩個 JSON 文件均需是使用者自己持有的私人資料，請勿上傳 GitHub。檔案擁有者須與執行帳號相同、權限 0600、大小 1B–8 MiB、不是 symlink／FIFO。
+兩個 JSON 文件均需是使用者自己持有的私人資料，**允許任一組 `es_hits=[]`，以免把最重要的零命中基準／增強案例誤判為無效測試**；請勿上傳 GitHub。檔案擁有者須與執行帳號相同、權限 0600、大小 1B–8 MiB、不是 symlink／FIFO。
 
 沿用既有 tools/sraf_topic_adaptive_ab_offline.py 的 snapshot schema：
 
@@ -46,7 +46,7 @@ python -m tools.sraf_structured_field_pair_ab_offline \
 - `new_candidate_sources_with_valid_evidence`：新增文件中，有通過 SRAF 原有日期和 Topic Match 驗證者的來源數。
 - `new_candidate_sources_without_valid_evidence`：增強搜尋新增文件，但未能產生合格 Evidence 的來源數。
 - `valid_sources_gained`、`valid_sources_lost`：即使總數持平，也要觀察有沒有失去原本的有效來源。
-- `baseline_strict_evidence`、`enhanced_strict_evidence`：舊有嚴格 Topic Match 合格段數；另分強弱 Evidence。
+- `baseline_strict_evidence`、`enhanced_strict_evidence`：真正嚴格 Topic Match 合格段數（明確排除雖沿用 `match_policy=strict`、但實際 `match_scope=fallback_any_term` 的舊式弱證據）；另分強弱 Evidence。
 - `human_precision_assessment=REQUIRED`；`same_es_index_mapping_verified=NOT_TESTED`；`query_elapsed_and_token_cost=NOT_MEASURED`；`report_docx=NOT_TESTED`：避免把離線比較誤認成正式品質或部署驗收。
 
 ## 對照條件與安全限制
