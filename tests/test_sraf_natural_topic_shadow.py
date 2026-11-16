@@ -62,6 +62,7 @@ def test_shadow_observes_prose_without_adding_or_leaking(monkeypatch, caplog):
                  "SRAF_EVIDENCE_VALID_FAIR_BUDGET"):
         monkeypatch.delenv(flag, raising=False)
     question = "請分析加薩的停火情勢 PRIVATE-QUESTION"
+    monkeypatch.delenv("SRAF_TOPIC_MATCH_ADAPTIVE", raising=False)
     baseline = _build([_hit()], original_question=question)
     assert len(baseline[1]) == 1
     monkeypatch.setenv("SRAF_TOPIC_MATCH_ADAPTIVE", "shadow")
