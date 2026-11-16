@@ -13,6 +13,7 @@
         "content",
         "full_text",
         "rawInfo.content",
+        "rawInfo.title^3",
         "communication.subject^3",
         "multidim_event_json.article_title^3",
         "multidim_event_json.evidence_snippets.text^2"
