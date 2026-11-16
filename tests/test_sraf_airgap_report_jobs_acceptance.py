@@ -367,3 +367,42 @@ def test_document_text_must_really_be_wordprocessingml_not_zip_named_docx():
     doc.add_paragraph("")  # A Word paragraph element exists, but no report body.
     doc.save(b)
     assert not a._validate_docx(b.getvalue())
+
+
+
+def test_unknown_xml_encoding_is_invalid_without_exception():
+    original = _docx()
+    content = (
+        b'<?xml version="1.0" encoding="not-an-encoding"?>'
+        b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>'
+    )
+    altered = _with_part(original, "[Content_Types].xml", content)
+    with zipfile.ZipFile(io.BytesIO(altered)) as archive:
+        assert archive.testzip() is None
+    assert a._validate_docx(altered) is False
+
+
+def test_utf16_entity_declarations_cannot_bypass_xml_guard():
+    original = _docx()
+    doc_xml = (
+        '<?xml version="1.0" encoding="utf-16"?>'
+        '<!DOCTYPE w:document [<!ENTITY injected "danger">]>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body><w:p><w:r><w:t>&injected;</w:t></w:r></w:p></w:body>'
+        '</w:document>'
+    ).encode("utf-16")
+    altered = _with_part(original, "word/document.xml", doc_xml)
+    with zipfile.ZipFile(io.BytesIO(altered)) as archive:
+        assert archive.testzip() is None
+    assert a._validate_docx(altered) is False
+
+
+def test_non_utf8_wordprocessingml_is_not_authorized_even_without_dtd():
+    original = _docx()
+    doc_xml = (
+        '<?xml version="1.0" encoding="utf-16"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body><w:p><w:r><w:t>visible</w:t></w:r></w:p></w:body>'
+        '</w:document>'
+    ).encode("utf-16")
+    assert not a._validate_docx(_with_part(original, "word/document.xml", doc_xml))
