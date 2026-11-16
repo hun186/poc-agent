@@ -198,3 +198,94 @@ def test_round_cap_and_invalid_public_receipts_fail_closed():
             verified_sources=frozenset({"0" * 64}), parser_output_rows=0,
             validated_rows=0, fallback_rows=0, complete=True,
         )
+
+
+
+def _structured_observe(events, timeline, *, start="2020-06-18",
+                        end="2020-06-18", eids=("E1",)):
+    from test_sraf_structured_evidence_time import _hit as time_hit, _snippet
+    hit = time_hit(
+        events, timeline, [_snippet(list(eids), "重大事件造成影響")],
+        article="2009-06-15",
+    )
+    hit["_id"] = "EVENT-STRUCTURED"
+    hit["_index"] = "news_test"
+    return observe_canonical_round(
+        [hit], date_from=start, date_to=end,
+        term_groups=[{"重大事件"}, {"造成"}, {"影響"}],
+        effective_terms=["重大事件"],
+        query_for_snippet="重大事件造成影響",
+        original_question="請分析重大事件造成的影響",
+        complete=True,
+    )
+
+
+@pytest.mark.parametrize("stamp,precision,day", [
+    ("2020-06-17", "month", "2020-06-18"),
+    ("2020-06-17", "year", "2020-12-18"),
+    ("2020-06", "month", "2020-06-18"),
+    ("2020", "year", "2020-12-18"),
+])
+def test_coarse_event_precision_remains_valid_without_inventing_a_day(
+        stamp, precision, day):
+    obs = _structured_observe([
+        {"event_id": "E1", "time_iso": stamp,
+         "time_precision": precision},
+    ], [], start=day, end=day)
+    assert obs.parser_output_rows == 1
+    assert obs.validated_rows == 1
+    assert len(obs.verified_evidence) == 1
+    assert obs.fallback_rows == 0
+    ledger = RequestWideEvidenceLedger()
+    record = _append(ledger, obs)
+    assert record.verified_evidence == 1
+    assert record.known_sources == 1
+    assert "2020-06" not in json.dumps(ledger.safe_audit())
+
+
+def test_multiple_matched_event_times_are_kept_without_asserting_one_day():
+    events = [
+        {"event_id": "E1", "time_iso": "2020-06-17",
+         "time_precision": "day"},
+        {"event_id": "E2", "time_iso": "2020-06-18",
+         "time_precision": "day"},
+    ]
+    obs = _structured_observe(
+        events, [], start="2020-06-17", end="2020-06-18",
+        eids=("E1", "E2"),
+    )
+    assert obs.validated_rows == 1
+    assert len(obs.verified_evidence) == 1
+    assert len(obs.verified_sources) == 1
+
+
+def test_multiple_events_same_date_in_other_block_do_not_conflate():
+    obs = _structured_observe([
+        {"event_id": "E1", "time_iso": "2020-06-17",
+         "time_precision": "day"},
+    ], [], start="2020-06-17", end="2020-06-17")
+    assert obs.validated_rows == 1
+
+
+def test_undated_legacy_topic_evidence_only_when_no_date_filter():
+    from test_sraf_structured_evidence_time import _hit as time_hit, _snippet
+    hit = time_hit(None, None, [
+        _snippet([], "重大事件造成影響")
+    ], article=None)
+    hit["_id"] = "UNDATED"
+    hit["_index"] = "news_test"
+    def observe(date_from, date_to):
+        return observe_canonical_round(
+            [hit], date_from=date_from, date_to=date_to,
+            term_groups=[{"重大事件"}, {"造成"}, {"影響"}],
+            effective_terms=["重大事件"],
+            query_for_snippet="重大事件造成影響",
+            original_question="請分析重大事件造成的影響",
+            complete=True,
+        )
+    unbounded = observe(None, None)
+    assert unbounded.parser_output_rows == 1
+    assert len(unbounded.verified_evidence) == 1
+    bounded = observe("2020-06-18", "2020-06-18")
+    assert bounded.parser_output_rows == 0
+    assert len(bounded.verified_evidence) == 0
