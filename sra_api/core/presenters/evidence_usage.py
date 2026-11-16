@@ -89,6 +89,8 @@ def safe_topic_adaptive(raw: Any) -> dict[str, Any]:
         return {}
     if raw.get("scope") != TOPIC_SCOPE or raw.get("mode") not in TOPIC_MODES:
         return {}
+    if type(raw.get("truncated")) is not bool:
+        return {}
     vals = {}
     for key in TOPIC_KEYS:
         value = raw.get(key)
@@ -104,7 +106,7 @@ def safe_topic_adaptive(raw: Any) -> dict[str, Any]:
             or (raw["mode"] == "off" and vals["slices"] != 0)):
         return {}
     return {"schema": TOPIC_SCHEMA, "scope": TOPIC_SCOPE,
-            "mode": raw["mode"], **vals}
+            "mode": raw["mode"], "truncated": raw["truncated"], **vals}
 
 
 def topic_adaptive_rows(raw: Any) -> list[tuple[str, str]]:
@@ -133,6 +135,10 @@ def topic_adaptive_rows(raw: Any) -> list[tuple[str, str]]:
             f"原本證據並非低量：{r['not_low']} 批；"
             f"實際進行候選評估：{r['attempted']} 批",
         ))
+    if r["truncated"]:
+        rows.append(("檢索歷程不完整",
+                     "此次工具執行超過 32 個批次，以下計數僅涵蓋前 32 批；"
+                     "後續仍可能加入弱證據，不能把此統計視為全程總數"))
     if r["uninspected"]:
         rows.append(("檢索抽樣範圍提醒",
                      f"仍有 {r['uninspected']} 筆解析器候選未被本層檢查，"
