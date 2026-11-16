@@ -163,6 +163,7 @@ class ESSearchNews(Tool):
                 core_terms=core_terms,
                 syn_terms=syn_terms_flat,
                 all_terms=all_terms,
+                original_question=get_original_report_question(),
             )
         dbg("[es_search_news] ES query body prepared (content redacted)")
 
