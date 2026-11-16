@@ -189,6 +189,43 @@ def test_mismatched_worker_terminates_retry_without_success(
     assert result["startup_retry_attempts"] == 1
 
 
+def test_worker_completes_between_probe_and_starting_gate(tmp_path, monkeypatch):
+    """The stale first probe must not hide a real canonical readiness recovery."""
+    transitions = iter((True, False))
+    monkeypatch.setattr(starting, "confirmed_starting",
+                        lambda root: next(transitions))
+    results = iter((_pending(), _passed()))
+    calls = []
+    def canonical_probe(root):
+        calls.append("canonical")
+        return next(results)
+    report = starting.retry_worker_row(
+        tmp_path, _pending(), canonical_probe, sleep=lambda seconds: None)
+    assert calls == ["canonical", "canonical"]
+    assert report["status"] == "PASS_PARTIAL"
+    assert report["reason"] == "worker_process_identities_verified_after_startup_retry"
+    assert report["startup_retry_attempts"] == 1
+    assert report["startup_phase"] == "STARTING"
+
+
+def test_invalid_identity_still_fails_after_boundary_recheck(tmp_path, monkeypatch):
+    transitions = iter((True, False))
+    monkeypatch.setattr(starting, "confirmed_starting",
+                        lambda root: next(transitions))
+    calls = []
+    def canonical_probe(root):
+        calls.append("canonical")
+        return {
+            **_pending(),
+            "reason": "worker_process_identity_unverified",
+        }
+    report = starting.retry_worker_row(
+        tmp_path, _pending(), canonical_probe, sleep=lambda seconds: None)
+    assert calls == ["canonical", "canonical"]
+    assert report["status"] == "INCOMPLETE"
+    assert report["startup_retry_result"] == "UNVERIFIED"
+
+
 def test_partial_or_forged_result_not_promoted_to_pass(tmp_path, monkeypatch):
     monkeypatch.setattr(starting, "confirmed_starting", lambda root: True)
     suspect = {**_passed(), "verified_role_count": 1}
