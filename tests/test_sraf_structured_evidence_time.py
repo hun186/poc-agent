@@ -705,7 +705,7 @@ def test_no_date_query_has_no_date_filter_and_preserves_fallback_fields():
 def test_main_query_sort_is_event_timeline_neutral_score_first():
     """Same score: Event-only, Timeline-only and unknown dates do not get an
     artificial missing nested-date penalty. ImportDT is *not* event recency."""
-    body = _query("2023-08-24", "2023-08-24")
+    body = _query(date_from="2023-08-24", date_to="2023-08-24")
     sort = body["sort"]
     assert sort[0] == {"_score": {"order": "desc"}}
     assert sort[1] == {"importDT": {"order": "desc", "missing": "_last"}}
@@ -720,7 +720,7 @@ def test_main_query_sort_is_event_timeline_neutral_score_first():
 
 def test_sort_compat_does_not_imitate_joint_max_event_date():
     """Synthetic candidate classes share the same ES sorting inputs."""
-    body = _query("2023-08-24", "2023-08-24")
+    body = _query(date_from="2023-08-24", date_to="2023-08-24")
     assert body["sort"][0]["_score"]["order"] == "desc"
     records = [
         {"kind": "event_only", "score": 4, "import_dt": "2024-01-01",
@@ -744,4 +744,4 @@ def test_sort_compat_does_not_imitate_joint_max_event_date():
     # An otherwise identical score+importDT is an unresolved tie without
     # a mapped stable docvalue, PIT or unique key; do not claim full stability.
     assert len({(r["score"], r["import_dt"]) for r in records}) == len(records)
-    assert body["sort"] == _query("2023-08-24", "2023-08-24")["sort"]
+    assert body["sort"] == _query(date_from="2023-08-24", date_to="2023-08-24")["sort"]
