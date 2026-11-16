@@ -212,19 +212,38 @@ def test_zero_baseline_and_zero_enhanced_are_valid_ab_comparisons():
     assert both["baseline_candidates"] == both["enhanced_candidates"] == 0
 
 
-def test_fallback_effective_term_is_weak_not_strict_evidence():
-    # No two axes are matched, but single "加薩" matches effective_terms,
-    # causing legacy fallback_any_term (policy defaults to strict).
-    only_one = _source("PRIVATE-FALLBACK", "加薩")
+def test_legacy_any_term_fallback_is_output_not_canonical_topic_evidence():
+    # The extra effective term matches, but NONE of the required topic
+    # groups matches. Legacy fallback emits a weak parser row with policy
+    # still 'strict' while its actual match_scope is fallback_any_term.
+    only_one = _source("PRIVATE-FALLBACK", "專有補充")
+    baseline = _case("baseline", [only_one])
+    enhanced = _case("structured_on", [only_one])
+    baseline["effective_terms"] = ["專有補充"]
+    enhanced["effective_terms"] = ["專有補充"]
+    a = compare_pair(baseline, enhanced)
+    assert a["baseline_parser_output_evidence"] == 1
+    assert a["baseline_any_term_fallback_evidence"] == 1
+    assert a["baseline_date_topic_valid_evidence"] == 0
+    assert a["baseline_strict_evidence"] == 0
+    assert a["baseline_valid_sources"] == 0
+    assert a["enhanced_date_topic_valid_evidence"] == 0
+    assert a["enhanced_strict_evidence"] == 0
+
+
+def test_relaxed_topic_one_axis_is_not_counted_as_strict_evidence():
+    # Zero strict and two-axis matches; the old gradual 3→2→1 path admits
+    # this under policy=relaxed. Unlike any-term fallback it DID pass a
+    # group matcher and must be identified separately from strict.
+    only_one = _source("PRIVATE-RELAXED", "加薩")
     a = compare_pair(
         _case("baseline", [only_one]),
         _case("structured_on", [only_one]),
     )
+    assert a["baseline_parser_output_evidence"] == 1
     assert a["baseline_date_topic_valid_evidence"] == 1
     assert a["baseline_strict_evidence"] == 0
-    assert a["enhanced_strict_evidence"] == 0
-    assert a["baseline_weak_evidence"] == 1
-    assert a["baseline_strong_evidence"] == 0
+    assert a["baseline_any_term_fallback_evidence"] == 0
 
 
 def test_private_cli_supports_zero_hit_baseline_without_weakening_old_cli(tmp_path):
