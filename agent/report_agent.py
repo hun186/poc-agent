@@ -15,6 +15,7 @@ from agent.utils.evidence_pack import filter_ev_fields
 from agent.utils.evidence_pack import guess_report_need_fields
 from agent.utils.report_evidence_trace import emit_report_evidence_trace, count_identified_sources
 from agent.utils.report_evidence_selection import select_source_diverse_evidence
+from agent.utils.report_evidence_review import review_report_evidence
 from agent.utils.profiler import log_duration, log_total
 from agent.utils.markdown_tables import sanitize_markdown_tables, replace_table_cell_br
 from agent.refiners.query_refiner import refine_question_for_data_agent
@@ -340,6 +341,30 @@ def ask_with_report(
         }
         em["llm_ev_returned"] = len(compressed_for_llm["ev"])
         
+    # Optional pre-synthesis relevance review: the original question is the
+    # authority, while the model may return only ref_no relevance decisions.
+    # Default OFF until independent live precision/latency acceptance.
+    compressed_before_review = len(ev_compact)
+    reviewed_rows, evidence_review = review_report_evidence(
+        original_question, compressed_for_llm["ev"],
+        call_llm_fn=call_llm,
+        model=os.getenv("REPORT_EVIDENCE_REVIEW_MODEL_ID") or REPORT_MODEL_ID,
+    )
+    if evidence_review["status"] == "applied":
+        allowed_refs = {row["ref_no"] for row in reviewed_rows}
+        ev_compact = [row for row in ev_compact if row["ref_no"] in allowed_refs]
+        compressed_for_llm["ev"] = reviewed_rows
+        payload["ev"] = ev_compact
+    if isinstance(em, dict):
+        em["llm_ev_returned"] = len(compressed_for_llm["ev"])
+        em["evidence_review"] = {
+            "mode": evidence_review["mode"],
+            "status": evidence_review["status"],
+            "reason": evidence_review["reason"],
+            "before": evidence_review["before"],
+            "after": evidence_review["after"],
+        }
+
     # === related_articles：建議只列出 LLM 有用到的這些 doc ===
     ev_full = payload.get("evidence_snippets") or []
     
@@ -401,11 +426,12 @@ def ask_with_report(
         "selection_mode": ("source_diverse" if os.getenv("SRAF_REPORT_DIVERSE_EVIDENCE") == "1" else "strong_first"),
         "llm_skipped_incomplete": False,
         "incoming": len(ev_all), "strong": len(ev_strong), "weak": len(ev_weak),
-        "picked": len(picked_for_llm), "compressed": len(ev_compact),
+        "picked": len(picked_for_llm), "compressed": compressed_before_review,
         "llm_input": len(ev_for_llm),
         "incoming_identified_sources": count_identified_sources(ev_all),
         "picked_identified_sources": count_identified_sources(picked_for_llm),
         "llm_input_identified_sources": count_identified_sources(llm_source_rows),
+        "review": evidence_review,
         "max_for_llm": MAX_EV_FOR_LLM, "prompt_chars": len(user_prompt),
         "truncated_notes": truncated_notes, "truncated_titles": truncated_titles,
     }
