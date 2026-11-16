@@ -54,7 +54,7 @@ class NextRoundAdmission:
             "approved": self.approved,
             "reason": self.reason,
             "round": self.round_number,
-            "scope": "strategy_only_no_es_or_llm_execution_authorized",
+            "scope": "strategy_only_no_es_execution_authorized",
         }
 
 
@@ -74,8 +74,8 @@ def propose_budgeted_next_round(
 
     A snapshot is taken before spending the planner slot: the existing
     planner's own guard expects a positive remaining_planner_calls hint.
-    The actual planner call is protected by the nonrefundable admit("planner")
-    immediately before use. A new round is re-admitted after the call, so an
+    The actual planner call is protected by the nonrefundable, atomic
+    claim_next_strategy(completed_rounds) immediately before use. A new round is re-admitted after the call, so an
     expired clock cannot authorize subsequent ES work.
     """
     def stop(reason: str) -> NextRoundAdmission:
@@ -83,7 +83,8 @@ def propose_budgeted_next_round(
             reason = "PLANNER_STOPPED"
         return NextRoundAdmission(
             approved=False, reason=reason,
-            round_number=(len(history) + 1 if type(history) is tuple else 0),
+            round_number=(min(32, len(history) + 1)
+                          if type(history) is tuple else 0),
         )
 
     if (type(constraints) is not QueryConstraints
@@ -117,7 +118,10 @@ def propose_budgeted_next_round(
             snapshot.remaining_planner_calls < 1 or
             snapshot.remaining_seconds <= snapshot.generation_reserve_seconds):
         return stop("RESOURCE_BUDGET_EXHAUSTED")
-    if not budget.admit("planner"):
+    # One lock-protected, nonrefundable claim; rejects both concurrent
+    # attempts on the SAME history and an exhausted next-round quota before
+    # any Planner LLM call. Generic admit("planner") alone cannot do this.
+    if not budget.claim_next_strategy(len(history)):
         return stop("RESOURCE_BUDGET_EXHAUSTED")
     decision = planner.propose_next(
         constraints=constraints, history=history, budget=snapshot,
