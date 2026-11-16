@@ -139,14 +139,12 @@ def _topic_summary(mode="shadow", *, selected=0):
 def test_topic_match_adaptive_log_is_plain_language_in_word_and_markdown():
     from api.core.presenters.evidence_usage import safe_topic_adaptive
     for mode, selected in (("shadow", 0), ("on", 2)):
-        usage = {**_usage(), "topic_adaptive": {
-            **_topic_summary(mode, selected=selected),
-            "question": "PRIVATE-QUESTION",
-            "uuid": "PRIVATE-UUID",
-            "content": "PRIVATE-EVIDENCE",
-        }}
-        clean = safe_evidence_usage(usage)
-        assert safe_topic_adaptive(usage["topic_adaptive"])
+        usage = {**_usage(), "topic_adaptive": _topic_summary(mode, selected=selected)}
+        dirty = {**usage, "topic_adaptive": {**usage["topic_adaptive"],
+            "question": "PRIVATE-QUESTION", "uuid": "PRIVATE-UUID",
+            "content": "PRIVATE-EVIDENCE"}}
+        clean = safe_evidence_usage(dirty)
+        assert safe_topic_adaptive(dirty["topic_adaptive"])
         assert "PRIVATE" not in json.dumps(clean)
         md, doc = _render_both(_output(usage))
         text = "\n".join(doc)
