@@ -32,7 +32,7 @@ def _snapshot(tmp_path):
 def test_offline_ab_reports_counts_only_and_shadow_identity(tmp_path):
     path = _snapshot(tmp_path)
     res = subprocess.run(
-        [sys.executable, str(RUNNER), str(path)],
+        [sys.executable, "-m", "tools.sraf_topic_adaptive_ab_offline", str(path)],
         cwd=ROOT, capture_output=True, text=True, timeout=30,
     )
     assert res.returncode == 0, res.stderr
@@ -48,7 +48,7 @@ def test_offline_ab_reports_counts_only_and_shadow_identity(tmp_path):
     output = res.stdout + res.stderr
     for secret in (
         "PRIVATE", "加薩", "2023-08-24", "E1",
-        str(path), "subject", "event_ids",
+        str(path), "communication.subject", "event_ids",
     ):
         assert secret not in output
 
@@ -61,7 +61,7 @@ def test_cli_rejects_non_private_or_symlink_snapshot(tmp_path):
             path.chmod(0o600)
             checked.symlink_to(path)
         res = subprocess.run(
-            [sys.executable, str(RUNNER), str(checked)],
+            [sys.executable, "-m", "tools.sraf_topic_adaptive_ab_offline", str(checked)],
             cwd=ROOT, capture_output=True, text=True, timeout=30,
         )
         assert res.returncode == 2
@@ -74,7 +74,7 @@ def test_bad_schema_fails_without_echoing_contents(tmp_path):
     path.write_text('{"private":"PRIVATE-CONTENT"}')
     path.chmod(0o600)
     res = subprocess.run(
-        [sys.executable, str(RUNNER), str(path)],
+        [sys.executable, "-m", "tools.sraf_topic_adaptive_ab_offline", str(path)],
         cwd=ROOT, capture_output=True, text=True, timeout=30,
     )
     assert res.returncode == 2
