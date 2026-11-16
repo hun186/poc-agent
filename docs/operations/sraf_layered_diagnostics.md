@@ -11,6 +11,14 @@ bash 1_完整診斷驗收_SRAF.sh --help
 
 **預設 L1**：沿用原有六項唯讀 L0 快檢，再使用既有有界探針確認 API／Elasticsearch／LLM 私網 TCP 可達性，並向本機 API 發送**匿名** GET /healthz。不登入、不執行模型、不查 SQL、不建立 Job、不寫檔、不重啟服務、不改動正式資料。L0 全部通過時仍最多回報 PASS_PARTIAL，不是正式部署／發行簽章／物理斷網證明。L1 的 ES／LLM TCP 可達並不代表服務認證、模型推論或索引查詢已正常。
 
+## Worker STARTING 過渡期唯讀診斷（2026-11-16）
+
+執行 `1_完整診斷驗收_SRAF.sh` 時，如果既有權威 Worker 身分核對未通過，只有在**啟動器身分檔（0600、目前使用者所有、bounded/no-follow）與真實 Bash／proc 啟動時間、UID、cwd、run_sra_api.sh 路徑一致，且啟動器年齡不超過 120 秒**，並且 Worker 記錄只能是「尚未建立」或「已經被原權威驗證器 VERIFIED」，才進入 STARTING 過渡期。
+
+STARTING 是暫態觀察值（`startup_phase=STARTING`），**不是 PASS**。最多 6 次，每隔 2 秒重新使用既有權威 Worker 驗證器核對（最多 12 秒的睡眠等待）。若兩個角色在短暫重試後都核對成功，保留原先 L0 `PASS_PARTIAL` 的有限語義，標記 `worker_process_identities_verified_after_startup_retry`；若超過重試界線，標記 `worker_startup_retry_exhausted` 且仍為 `INCOMPLETE`。若偵測到無效、被替換或不匹配的身分紀錄，立即退出暫態重試，維持 `INCOMPLETE`。
+
+此功能只作用在分層診斷入口，不更動 Worker 啟動器、原始身分檔、SQL／ES、Handoff 或排程行為；非啟動過渡期不等待、不做額外操作。它不會自動重啟、修復檔案或默默讓未驗證程序通過，且不代表 Worker 業務或 L3 E2E 成功。
+
 ## L2：需逐項選用的元件功能測試
 
 ~~~bash
