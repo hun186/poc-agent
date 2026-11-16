@@ -120,6 +120,19 @@ def test_invalid_output_or_model_failure_preserves_all():
                             '"confidence":"high"}]}', [1]) is None
 
 
+def test_deeply_nested_llm_json_falls_back_without_aborting_report():
+    invalid = "[" * 1100 + "0" + "]" * 1100
+    rows = _rows(2)
+    kept, meta = review_report_evidence(
+        "問題", rows, mode="on", model="fake",
+        call_llm_fn=lambda prompt, **kw: invalid,
+    )
+    assert kept == rows
+    assert meta["status"] == "fallback"
+    assert meta["reason"] == "invalid_response"
+    assert meta["removed"] == 0 and meta["anomaly"]
+
+
 def test_input_over_budget_must_not_make_partial_calls():
     calls = []
     def llm(*a, **kw):
