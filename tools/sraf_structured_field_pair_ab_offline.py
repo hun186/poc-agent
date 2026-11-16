@@ -94,23 +94,34 @@ def _parse(data: dict, keys: list[tuple[str, str]]) -> dict:
         if type(ordinal) is not int or not 0 <= ordinal < len(keys):
             raise ValueError("evidence_source_provenance_invalid")
         source = keys[ordinal]
+        policy = item.get("match_policy")
+        scope = item.get("match_scope")
+        # A legacy any-effective-term fallback can retain match_policy
+        # 'strict' despite having ZERO Topic Match axes. It is a parser
+        # output, but never claim it as a date+topic-accepted Evidence.
+        if scope == "fallback_any_term":
+            policies["fallback_any_term"] += 1
+            continue
+        if policy not in ("strict", "relaxed", "adaptive_two_axis"):
+            raise ValueError("unknown_evidence_match_policy")
         valid_sources.add(source)
         if not item.get("weak_evidence"):
             strong_sources.add(source)
-        policy = item.get("match_policy")
-        # Legacy any-effective-term fallback sets match_scope but retains
-        # default match_policy='strict'. Never overcount it as strict.
-        if item.get("match_scope") == "fallback_any_term":
-            policies["fallback_any_term"] += 1
-        elif (policy == "strict" and not item.get("weak_evidence")):
-            policies["strict"] += 1
-        elif policy in ("relaxed", "adaptive_two_axis"):
-            policies[policy] += 1
+        policies[policy] += 1
     return {
         "valid_sources": valid_sources, "strong_sources": strong_sources,
-        "evidence": len(evidence), "strong": sum(
-            not row.get("weak_evidence") for row in evidence
-        ), "weak": sum(bool(row.get("weak_evidence")) for row in evidence),
+        # Distinguish total parser output from snippets that actually
+        # passed a Topic Match group threshold (strict or relaxed).
+        "parser_output": len(evidence),
+        "evidence": sum(policies[p] for p in (
+            "strict", "relaxed", "adaptive_two_axis"
+        )),
+        "strong": sum(not row.get("weak_evidence") and
+                      row.get("match_scope") != "fallback_any_term"
+                      for row in evidence),
+        "weak": sum(bool(row.get("weak_evidence")) and
+                    row.get("match_scope") != "fallback_any_term"
+                    for row in evidence),
         "policies": policies,
     }
 
@@ -142,6 +153,10 @@ def compare_pair(base: dict, enhanced: dict) -> dict:
         "enhanced_candidates": len(b_docs),
         "candidate_new_sources": len(additional_docs),
         "candidate_lost_sources": len(a_docs - b_docs),
+        "baseline_parser_output_evidence": left["parser_output"],
+        "enhanced_parser_output_evidence": right["parser_output"],
+        "baseline_any_term_fallback_evidence": left["policies"]["fallback_any_term"],
+        "enhanced_any_term_fallback_evidence": right["policies"]["fallback_any_term"],
         "baseline_date_topic_valid_evidence": left["evidence"],
         "enhanced_date_topic_valid_evidence": right["evidence"],
         "baseline_strong_evidence": left["strong"],
