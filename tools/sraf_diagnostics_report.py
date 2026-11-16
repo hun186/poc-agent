@@ -41,6 +41,8 @@ PRIORITY = {"FAIL": 0, "WARN": 1, "INCOMPLETE": 2, "SKIP": 3}
 # a known safe code. Never append raw exceptions, argv or environment values.
 EXPLANATION = {
     "worker_process_identity_unverified": "無法將已記錄的 Worker 身分與目前程序匹配；不等於兩個 Worker 均已停止",
+    "worker_process_identities_verified_after_startup_retry": "STARTING 過渡期內短暫重試後，兩個 Worker 身分均完成核對；不代表業務執行已驗收",
+    "worker_startup_retry_exhausted": "已核實近期啟動器並觀察到 STARTING，但有限重試後 Worker 身分仍未核實；維持待確認，不自動重啟",
     "host_disk": "磁碟不足可能影響 DOCX、證據或報告產生",
     "disk_space_low": "低於既有磁碟最低門檻",
     "configured_tcp_connected": "已建立有界 TCP 連線",
