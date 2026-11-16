@@ -1,0 +1,53 @@
+name: SRAF request-local N-round coordinator (offline)
+
+on:
+  pull_request:
+    paths:
+      - 'agent/adaptive_retrieval/coordinator.py'
+      - 'agent/adaptive_retrieval/next_round_gate.py'
+      - 'agent/adaptive_retrieval/evidence_ledger.py'
+      - 'agent/adaptive_retrieval/request_budget.py'
+      - 'agent/adaptive_retrieval/planner.py'
+      - 'agent/es/evidence_core/builder.py'
+      - 'tests/test_sraf_nround_coordinator.py'
+      - 'docs/operations/sraf_nround_request_coordinator.md'
+      - '.github/workflows/sraf-nround-coordinator.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coordinator-contract:
+    name: N-round coordinator Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - name: Checkout exact PR HEAD
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install project test requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install 'pytest>=8,<10'
+      - name: Compile coordinator and existing admission contracts
+        run: |
+          python -m compileall -q agent/adaptive_retrieval tests/test_sraf_nround_coordinator.py
+      - name: Verify no-network N-round integration and prior safety regressions
+        run: |
+          python -m pytest -q \
+            tests/test_sraf_nround_coordinator.py \
+            tests/test_sraf_request_evidence_ledger.py \
+            tests/test_sraf_nround_plan_budget_gate.py \
+            tests/test_sraf_adaptive_planner_contract.py \
+            tests/test_sraf_request_admission_budget.py \
+            tests/test_sraf_structured_evidence_time.py \
+            tests/test_sraf_shared_evidence_budget.py
