@@ -52,7 +52,7 @@ def _parse_decisions(raw: Any, refs: list[int]) -> set[int] | None:
         return None
     try:
         result = json.loads(raw.strip())
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError):
         return None
     if not isinstance(result, dict) or set(result) != {"decisions"}:
         return None
