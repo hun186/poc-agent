@@ -261,6 +261,8 @@ class AdaptiveRequestCoordinator:
                     self._phase == "TERMINAL"
                     and self._terminal_reason in _RECOVERABLE_REPORT_STOPS
                     and bool(self._ledger.history)
+                    # Never hand off a partially started later search.
+                    and self._round == len(self._ledger.history)
                     and all(
                         r.request_wide and not r.result_incomplete
                         for r in self._ledger.history
