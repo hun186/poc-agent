@@ -18,6 +18,7 @@ import json
 from typing import Any
 
 from agent.es.evidence_core.builder import build_hits_and_evidence
+from agent.es.event_time import parse_structured_time
 from .contracts import RoundEvidenceSummary, _terms
 
 MAX_HITS = 1000
@@ -143,13 +144,47 @@ def observe_canonical_round(
         contents = row.get("text")
         when = row.get("date_iso")
         if (type(contents) is not str or not 0 < len(contents) <= 16384
-                or type(when) is not str or len(when) != 10):
+                or type(when) is not str):
             raise ValueError("invalid_verified_evidence")
-        try:
-            if when != date.fromisoformat(when).isoformat():
-                raise ValueError("invalid_date")
-        except ValueError as exc:
-            raise ValueError("invalid_verified_evidence_date") from exc
+        # The canonical parser intentionally leaves date_iso empty when a
+        # structured Event has only YEAR/MONTH precision or multiple matched
+        # dates. Do not invent a day or reject otherwise valid Evidence.
+        if when:
+            try:
+                if len(when) != 10 or when != date.fromisoformat(when).isoformat():
+                    raise ValueError("invalid_date")
+            except ValueError as exc:
+                raise ValueError("invalid_verified_evidence_date") from exc
+        matched = row.get("matched_event_time_candidates", [])
+        if type(matched) is not list or len(matched) > 64:
+            raise ValueError("invalid_matched_time_candidates")
+        time_parts: list[tuple[str, str, str, str, str]] = []
+        for item in matched:
+            if type(item) is not dict:
+                raise ValueError("invalid_matched_time_candidates")
+            source = item.get("source")
+            if source not in ("Event", "Event_Timeline"):
+                raise ValueError("invalid_matched_time_candidates")
+            point = parse_structured_time(
+                item.get("time_iso"), item.get("time_precision"), source,
+            )
+            if (point is None or point.time_iso != item.get("time_iso")
+                    or point.precision != item.get("time_precision")
+                    or point.start != item.get("date_start")
+                    or point.end != item.get("date_end")
+                    or not point.overlaps(date_from, date_to)):
+                raise ValueError("invalid_matched_time_candidates")
+            time_parts.append((
+                point.source, point.precision, point.time_iso,
+                point.start, point.end,
+            ))
+        if not when and not time_parts and (date_from or date_to):
+            raise ValueError("date_scoped_evidence_without_time")
+        # In an unbounded query, a legacy undated Evidence may still be
+        # topic-valid; it never acquires an invented date.
+        temporal_key = tuple(sorted(time_parts)) if time_parts else (
+            ("exact_day", when) if when else ("unbounded_undated",),
+        )
         ids = row.get("event_ids", [])
         if (type(ids) is not list or len(ids) > 32
                 or any(type(v) is not str or not 0 < len(v) <= 256 for v in ids)):
@@ -166,8 +201,9 @@ def observe_canonical_round(
                 raise ValueError("invalid_verified_identity")
             return value
         validated_rows += 1
-        key = _digest((source_keys[ordinal], block, when, tuple(sorted(ids)),
-                       prop("source_id"), prop("paragraph_id"), contents))
+        key = _digest((source_keys[ordinal], block, temporal_key,
+                       tuple(sorted(ids)), prop("source_id"),
+                       prop("paragraph_id"), contents))
         evidence_keys.add(key)
         verified_sources.add(source_keys[ordinal])
     # If one identical passage appears twice in the same parser slice,
