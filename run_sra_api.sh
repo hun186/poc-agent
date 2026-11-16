@@ -56,7 +56,7 @@ startup_elapsed_ms() {
   # Keep timing independent of wall-clock changes; invalid clocks only affect logs.
   local now
   now="$(startup_clock_ms)"
-  if [[ "$now" =~ ^[0-9]{13,}$ && "$1" =~ ^[0-9]{13,}$ ]] && [ "$now" -ge "$1" ]; then
+  if [[ "$now" =~ ^[0-9]{1,15}$ && "$1" =~ ^[0-9]{1,15}$ ]] && [ "$now" -ge "$1" ]; then
     printf '%s' "$((now - $1))"
   else
     printf 'unavailable'
