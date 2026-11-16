@@ -8,7 +8,7 @@
 - 增強組：SRAF_STRUCTURED_FIELD_EXPANSION=on 的 ES query 結果（structured_on）。
 - 兩組必須使用相同的原問句、term_groups、effective_terms、日期範圍、snippet query、索引範圍與其它查詢參數；**工具僅能檢查快照內前六個參數是否相同，不能驗證實際 ES DSL 與 Index Mapping**。
 - 檢查快照中的每個 ES hit 必須有不重複的（_index, _id）；跨索引重複 ID 仍是不同文件。不能把 UUID、文章標題或同一事件 ID 當作 ES 文件身分。
-- 比較候選 hit 數、新增與失去的來源、經既有 Event/Timeline／event_ids 日期和 Topic Match（嚴格或降低群組門檻）驗證的 Evidence 數、強弱 Evidence、各組有效來源數、新增有效來源與原本有效來源損失。現有 fallback_any_term 雖可能輸出片段，**沒有通過 Topic Match 群組門檻**，因此只能算 Parser 輸出，不能算有效主題 Evidence 或有效來源。
+- 比較候選 hit 數、新增與失去的來源、經既有 Event/Timeline／event_ids 日期和 Topic Match（嚴格或降低群組門檻）驗證的 Evidence 數、強弱 Evidence、各組有效來源數、新增有效來源與原本有效來源損失。現有 fallback_any_term（任一有效關鍵詞）與 fallback_no_terms（沒有有效詞就取首段）雖可能輸出片段，**沒有通過 Topic Match 群組門檻**，因此只能算 Parser 輸出，不能算有效主題 Evidence 或有效來源。
 - 另外顯示**新增候選但沒有任何有效 Evidence 的來源數**。可直接驗證「ES 多撈到文章，卻沒有改善合格證據」這種反例。
 - 所有輸出是固定欄位純計數，不會包含原始問題、日期、來源 ID、Event IDs、正文、Token、SQL／ES 連線資訊，也不會把任何快照傳給外部。
 - 仍需研究人員逐篇標記真實相關性。僅通過 canonical 日期＋主題規則不等於人類判定的 precision，也不等於完全召回率。
