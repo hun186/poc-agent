@@ -59,7 +59,8 @@ def safe_nround_progress(raw: Any) -> dict[str, Any]:
     if type(raw) is not dict or raw.get("schema") != SCHEMA:
         return {}
     phase, reason = raw.get("phase"), raw.get("termination")
-    if phase not in _PHASES or reason not in _TERMINATIONS:
+    if (type(phase) is not str or type(reason) is not str
+            or phase not in _PHASES or reason not in _TERMINATIONS):
         return {}
     if (raw.get("live_es") != "NOT_EXECUTED_BY_COORDINATOR"
             or raw.get("report_job") != "NOT_INTEGRATED"
@@ -67,7 +68,7 @@ def safe_nround_progress(raw: Any) -> dict[str, Any]:
         return {}
     current = _count(raw.get("round"), 8)
     completed = _count(raw.get("completed_rounds"), 8)
-    es_slots = _count(raw.get("es_calls_admitted_this_round"), 24)
+    es_slots = _count(raw.get("es_calls_admitted_this_round"), 1000)
     report_ready = raw.get("ready_for_external_report_generation")
     if (None in (current, completed, es_slots)
             or type(report_ready) is not bool
