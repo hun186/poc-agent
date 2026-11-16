@@ -18,7 +18,8 @@ import json
 from typing import Any
 
 from agent.es.evidence_core.builder import build_hits_and_evidence
-from agent.es.event_time import parse_structured_time
+from agent.es.evidence_core.json_utils import as_blocks
+from agent.es.event_time import event_ids_in_block, parse_structured_time
 from .contracts import RoundEvidenceSummary, _terms
 
 MAX_HITS = 1000
@@ -198,6 +199,33 @@ def observe_canonical_round(
         if block is not None and (type(block) is not int or block < 0
                                   or block > 100_000):
             raise ValueError("invalid_verified_block")
+        if block is None and ids:
+            # The canonical parser accepts some multi-block inner hits
+            # without a parent _nested offset only when all Event IDs
+            # identify one unique block. Reconstruct that SAME safe owner
+            # from the original _source, so the same passage arriving via
+            # an explicit-offset inner hit or _source gets ONE identity.
+            raw_source = es_hits[ordinal].get("_source")
+            blocks = as_blocks(
+                raw_source.get("multidim_event_json")
+                if type(raw_source) is dict else None
+            )
+            if len(blocks) == 1:
+                block = 0
+            elif len(blocks) > 1:
+                declarations = [event_ids_in_block(b) for b in blocks]
+                owners: set[int] = set()
+                for eid in ids:
+                    occurrences = [
+                        i for i, declared in enumerate(declarations)
+                        if eid in declared
+                    ]
+                    if len(occurrences) != 1:
+                        owners.clear()
+                        break
+                    owners.add(occurrences[0])
+                if len(owners) == 1:
+                    block = next(iter(owners))
         def prop(name):
             value = row.get(name)
             if value is None:
