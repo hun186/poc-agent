@@ -19,6 +19,7 @@ from .fair_budget import MAX_SCAN_CITATIONS, MAX_VALID_EVIDENCE, select_valid_fa
 from .topic_shadow import observe_topic_shadow
 from .question_anchor import derive_explicit_question_anchor
 from .topic_adaptive import consider_low_count, log_adaptive
+from .prose_anchor import propose_prose_shadow_anchor
 from .topic_audit import record as record_topic_audit
 
 
@@ -263,16 +264,24 @@ def build_hits_and_evidence(
     adaptive_mode = os.getenv("SRAF_TOPIC_MATCH_ADAPTIVE", "off")
     if adaptive_mode in ("shadow", "on"):
         anchor = derive_explicit_question_anchor(original_question, term_groups)
+        anchor_source = "explicit" if anchor is not None else "none"
+        # A natural-prose match is a hypothesis ONLY.  It can improve
+        # SHADOW coverage measurements, NEVER grant admission in ON mode.
+        if adaptive_mode == "shadow" and anchor is None:
+            anchor = propose_prose_shadow_anchor(original_question, term_groups)
+            if anchor is not None:
+                anchor_source = "prose"
         adaptive = consider_low_count(
             out_hits, evidence,
             date_from=date_from, date_to=date_to,
             allowed_years=allowed_years, groups=term_groups,
             anchor=anchor, mode=adaptive_mode,
         )
-        log_adaptive(adaptive, mode=adaptive_mode, strict_count=strict_evidence_count)
+        log_adaptive(adaptive, mode=adaptive_mode, strict_count=strict_evidence_count,
+                     anchor_source=anchor_source)
         record_topic_audit(
             mode=adaptive_mode, status=adaptive.status,
-            strict=strict_evidence_count,
+            strict=strict_evidence_count, anchor_source=anchor_source,
             counts={key: getattr(adaptive, key) for key in (
                 'inspected', 'date_eligible', 'two_text_axes',
                 'direct_subject', 'same_event_context',
