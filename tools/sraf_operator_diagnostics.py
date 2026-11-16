@@ -70,18 +70,41 @@ def _local_rows(launcher_port: str | None) -> tuple[str, list[dict[str, object]]
     if (report.get("schema") != quick.SCHEMA or
             not isinstance(checks, list) or len(checks) != len(L0_CHECKS)):
         raise ValueError("local_contract_unverified")
-    rows = []
+    # Authenticate the ORIGINAL quickcheck contract before any optional retry.
     for expected, check in zip(L0_CHECKS, checks):
         if not isinstance(check, dict) or check.get("id") != expected:
             raise ValueError("local_contract_unverified")
-        status, reason = check.get("status"), check.get("reason")
-        if status not in ("PASS", "PASS_PARTIAL", "WARN", "INCOMPLETE"):
+        if check.get("status") not in ("PASS", "PASS_PARTIAL", "WARN", "INCOMPLETE"):
             raise ValueError("local_status_unverified")
-        rows.append(_row("L0." + expected, status, reason))
-    if report.get("status") != ("PASS_PARTIAL" if all(
-            row["status"] in ("PASS", "PASS_PARTIAL") for row in rows) else "INCOMPLETE"):
+    original_good = all(row["status"] in ("PASS", "PASS_PARTIAL") for row in checks)
+    if report.get("status") != ("PASS_PARTIAL" if original_good else "INCOMPLETE"):
         raise ValueError("local_summary_mismatch")
-    return report["status"], rows
+
+    rows = []
+    for expected, check in zip(L0_CHECKS, checks):
+        if (expected == "worker_process_identity"
+                and check["status"] == "INCOMPLETE"
+                and check.get("reason") == "worker_process_identity_unverified"):
+            from tools import sraf_worker_startup_transition as transition
+            # Only a recent, independently verified SRAF launcher with missing
+            # Worker identities can authorize this finite passive delay.
+            check = transition.retry_worker_row(ROOT, check, quick._workers)
+        row = _row("L0." + expected, check["status"], check["reason"])
+        if (expected == "worker_process_identity"
+                and check.get("startup_phase") == "STARTING"
+                and check.get("startup_retry_result") in (
+                    "RECOVERED", "UNVERIFIED", "INCOMPLETE")
+                and type(check.get("startup_retry_attempts")) is int
+                and 1 <= check["startup_retry_attempts"] <= 6):
+            row.update(
+                startup_phase="STARTING",
+                startup_retry_result=check["startup_retry_result"],
+                startup_retry_attempts=check["startup_retry_attempts"],
+            )
+        rows.append(row)
+    return ("PASS_PARTIAL" if all(
+        row["status"] in ("PASS", "PASS_PARTIAL") for row in rows
+    ) else "INCOMPLETE"), rows
 
 
 def _tcp_status(raw: dict[str, object]) -> tuple[str, str]:
