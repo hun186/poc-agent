@@ -220,12 +220,32 @@ def _ooxml_report_content_is_valid(z: zipfile.ZipFile) -> bool:
         if not 0 < info.file_size <= bound:
             return None
         raw = z.read(name)
-        # Reject DTD/entity definitions (unneeded in a generated Word report).
+        # The SRAF Word exporter emits UTF-8 OOXML. Reject UTF-16 and
+        # alternate byte encodings before searching for XML markup: otherwise
+        # UTF-16 NUL interleaving can hide <!DOCTYPE / <!ENTITY from a byte
+        # scan, and ElementTree may expand internal entities.
+        if (b"\\x00" in raw or raw.startswith((b"\\xff\\xfe", b"\\xfe\\xff"))):
+            return None
+        try:
+            raw.decode("utf-8")
+        except UnicodeError:
+            return None
+        declaration = re.match(rb"\\s*<\\?xml\\b[^>]{0,256}\\?>", raw, re.IGNORECASE)
+        if declaration:
+            encoding = re.search(
+                rb"\\bencoding\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"]",
+                declaration.group(0), re.IGNORECASE,
+            )
+            if encoding and encoding.group(1).lower() not in (
+                b"utf-8", b"us-ascii",
+            ):
+                return None
+        # Valid XML DTD markup has ASCII delimiter bytes under UTF-8/ASCII.
         if b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
             return None
         try:
             return ET.fromstring(raw)
-        except (ET.ParseError, ValueError, RecursionError):
+        except (ET.ParseError, ValueError, RecursionError, LookupError):
             return None
 
     try:
