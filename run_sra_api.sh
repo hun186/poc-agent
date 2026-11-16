@@ -71,7 +71,7 @@ process_start_time() {
   # Field 22 (starttime) is the 20th field of the remainder.
   awk '{
     suffix = $0
-    if (!sub(/^.*\\) /, "", suffix)) exit 1
+    if (!sub(/^.*[)] /, "", suffix)) exit 1
     n = split(suffix, fields, /[[:space:]]+/)
     if (n < 20 || fields[20] !~ /^[0-9]+$/) exit 1
     print fields[20]
