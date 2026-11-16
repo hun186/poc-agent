@@ -24,6 +24,22 @@ API_READINESS_TIMEOUT_SECONDS="${API_READINESS_TIMEOUT_SECONDS:-90}"
 LAUNCHER_UID="$(id -u)"
 RUNTIME_HOSTNAME="$(hostname)"
 INVOCATION_START_TIME="$(awk '{print $22}' "/proc/$$/stat")"
+# Clock for a future restart's diagnostic audit only. No readiness decisions
+# depend on this clock, and neither endpoint nor credentials are logged.
+startup_clock_ms() {
+  # /proc/uptime is monotonic across wall-clock/NTP adjustments.
+  # Linux provides centisecond precision, sufficient for startup diagnosis.
+  local uptime seconds centiseconds
+  IFS=' ' read -r uptime _ < /proc/uptime || { printf 'unavailable'; return 0; }
+  if [[ "$uptime" =~ ^([0-9]{1,12})\.([0-9]{2})$ ]]; then
+    seconds="${BASH_REMATCH[1]}"
+    centiseconds="${BASH_REMATCH[2]}"
+    printf '%s' "$((10#$seconds * 1000 + 10#$centiseconds * 10))"
+  else
+    printf 'unavailable'
+  fi
+}
+STARTUP_CLOCK_MS="$(startup_clock_ms)"
 
 cd "$BASE_DIR"
 
@@ -34,6 +50,17 @@ exec 8<>"$TAKEOVER_LOCK_FILE"
 
 audit() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$KILL_AUDIT_LOG"
+}
+
+startup_elapsed_ms() {
+  # Keep timing independent of wall-clock changes; invalid clocks only affect logs.
+  local now
+  now="$(startup_clock_ms)"
+  if [[ "$now" =~ ^[0-9]{1,15}$ && "$1" =~ ^[0-9]{1,15}$ ]] && [ "$now" -ge "$1" ]; then
+    printf '%s' "$((now - $1))"
+  else
+    printf 'unavailable'
+  fi
 }
 
 process_start_time() {
@@ -387,6 +414,7 @@ esac
 [ -n "$HANDOFF_STATE_FILE" ] && [[ "$HANDOFF_STATE_FILE" != *$'\n'* ]] || {
   echo "[run_sra_api] Deployment bootstrap returned an invalid state path." >&2; exit 1; }
 import_handoff_state || { echo "[run_sra_api] Generated Handoff state validation failed." >&2; exit 1; }
+audit "STARTUP_TIMING phase=deployment_bootstrap_complete elapsed_ms=$(startup_elapsed_ms "$STARTUP_CLOCK_MS")"
 
 if flock -n 9; then
   write_launcher_identity
@@ -445,6 +473,7 @@ fi
 reclaim_worker schedule
 reclaim_worker handoff
 inspect_port
+audit "STARTUP_TIMING phase=old_runtime_checked elapsed_ms=$(startup_elapsed_ms "$STARTUP_CLOCK_MS")"
 
 # Normal logs may be reset for a new launch. The permanent audit log is append-only.
 : > "$API_LOG"
@@ -458,22 +487,36 @@ uvicorn api.main:app --host 0.0.0.0 --port "$PORT" 9>&- > >(cap_log "$API_LOG" 9
 CHILD_PIDS+=("$!"); CHILD_NAMES+=("SRA API")
 OWNED_API_PID="$!"
 write_api_identity "$OWNED_API_PID"
+audit "STARTUP_TIMING phase=api_process_spawned elapsed_ms=$(startup_elapsed_ms "$STARTUP_CLOCK_MS")"
 
+API_READINESS_STARTED_MS="$(startup_clock_ms)"
+API_READINESS_POLLS=0
+API_READINESS_MATCHED_IN_LOOP=0
 deadline=$((SECONDS + API_READINESS_TIMEOUT_SECONDS))
 while [ "$SECONDS" -lt "$deadline" ]; do
-  process_is_live "$OWNED_API_PID" || { echo "[run_sra_api] API exited before readiness." >&2; exit 1; }
-  if pid_is_listener "$OWNED_API_PID" && [ "$(process_start_time "$OWNED_API_PID")" = "$OWNED_API_START" ]; then break; fi
+  process_is_live "$OWNED_API_PID" || { audit "STARTUP_TIMING phase=api_process_exited polls=$API_READINESS_POLLS wait_ms=$(startup_elapsed_ms "$API_READINESS_STARTED_MS")"; echo "[run_sra_api] API exited before readiness." >&2; exit 1; }
+  API_READINESS_POLLS=$((API_READINESS_POLLS + 1))
+  if pid_is_listener "$OWNED_API_PID" && [ "$(process_start_time "$OWNED_API_PID")" = "$OWNED_API_START" ]; then
+    API_READINESS_MATCHED_IN_LOOP=1
+    break
+  fi
   sleep 0.1
 done
-pid_is_listener "$OWNED_API_PID" || { echo "[run_sra_api] API readiness timed out." >&2; exit 1; }
+if ! pid_is_listener "$OWNED_API_PID"; then
+  audit "STARTUP_TIMING phase=api_readiness_timeout polls=$API_READINESS_POLLS wait_ms=$(startup_elapsed_ms "$API_READINESS_STARTED_MS")"
+  echo "[run_sra_api] API readiness timed out." >&2; exit 1
+fi
+audit "STARTUP_TIMING phase=api_listener_verified in_loop=$API_READINESS_MATCHED_IN_LOOP polls=$API_READINESS_POLLS wait_ms=$(startup_elapsed_ms "$API_READINESS_STARTED_MS") elapsed_ms=$(startup_elapsed_ms "$STARTUP_CLOCK_MS")"
 
 WORKER_BOOTSTRAP='from config.bootstrap import bootstrap_env; bootstrap_env(); import sys; from requirement_scheduler.cli import main; raise SystemExit(main([sys.argv[1]]))'
 python -c "$WORKER_BOOTSTRAP" schedule-worker 9>&- > >(cap_log "$SCHEDULE_LOG" 9>&- >/dev/null 2>&1) 2>&1 &
 CHILD_PIDS+=("$!"); CHILD_NAMES+=("Requirement Schedule Worker")
 OWNED_SCHEDULE_PID="$!"; write_worker_identity schedule "$OWNED_SCHEDULE_PID"
+audit "STARTUP_TIMING phase=schedule_spawned elapsed_ms=$(startup_elapsed_ms "$STARTUP_CLOCK_MS")"
 python -c "$WORKER_BOOTSTRAP" handoff-worker 9>&- > >(cap_log "$HANDOFF_LOG" 9>&- >/dev/null 2>&1) 2>&1 &
 CHILD_PIDS+=("$!"); CHILD_NAMES+=("Requirement Handoff Worker")
 OWNED_HANDOFF_PID="$!"; write_worker_identity handoff "$OWNED_HANDOFF_PID"
+audit "STARTUP_TIMING phase=handoff_spawned elapsed_ms=$(startup_elapsed_ms "$STARTUP_CLOCK_MS")"
 [ "${TAKEOVER_COORDINATION_HELD:-0}" -eq 0 ] || { flock -u 8; TAKEOVER_COORDINATION_HELD=0; }
 
 exited_pid=""
