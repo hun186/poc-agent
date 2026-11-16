@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, List, Tuple
 
 from .builder import build_agent, normalize_model_id
 from .types import ENV
+from agent.es.evidence_core.topic_audit import bind_sink, summary as topic_audit_summary
 from agent.tools_es.question_scope import bind_original_report_question
 
 logger = logging.getLogger(__name__)
@@ -259,12 +260,20 @@ def run_data_agent(
     # bind_requirement_acceptance captures the bounded value per instance;
     # its forward decorator restores it only for that tool call.
     report_mode = (mode or "").strip().lower() in ("report", "sra_report")
-    with bind_original_report_question(question_raw if report_mode else None):
-        code_agent = build_agent(mode=mode)
-        result = code_agent.run(question_for_agent)
+    topic_audit_sink: list[dict] = []
+    with bind_sink(topic_audit_sink):
+        with bind_original_report_question(question_raw if report_mode else None):
+            code_agent = build_agent(mode=mode)
+            result = code_agent.run(question_for_agent)
     elapsed = time.time() - t0
 
     payload = _extract_payload(result)
+    if report_mode:
+        # Derive independently of what the Data Agent LLM chose to copy.
+        # Counts are not the same as full retrieval recall.
+        payload["topic_adaptive_audit"] = topic_audit_summary(
+            topic_audit_sink, mode=os.getenv("SRAF_TOPIC_MATCH_ADAPTIVE", "off")
+        )
 
     # Raw ES incompleteness is authoritative, even if the Data Agent
     # reconstructs query_meta without the diagnostic fields.
