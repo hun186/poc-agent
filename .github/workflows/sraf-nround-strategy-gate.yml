@@ -1,0 +1,44 @@
+name: SRAF N-round strategy admission gate (synthetic no IO)
+
+on:
+  pull_request:
+    paths:
+      - 'agent/adaptive_retrieval/next_round_gate.py'
+      - 'agent/adaptive_retrieval/planner.py'
+      - 'agent/adaptive_retrieval/request_budget.py'
+      - 'agent/adaptive_retrieval/contracts.py'
+      - 'tests/test_sraf_nround_plan_budget_gate.py'
+      - 'docs/operations/sraf_nround_strategy_gate.md'
+      - '.github/workflows/sraf-nround-strategy-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nround-strategy:
+    name: N-round strategy synthetic Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - name: Checkout PR HEAD
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install runtime test requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install 'pytest>=8,<10'
+      - name: Compile gate and regression
+        run: |
+          python -m compileall -q agent/adaptive_retrieval tests/test_sraf_nround_plan_budget_gate.py
+      - name: Run admission and existing planner regressions
+        run: |
+          python -m pytest -q tests/test_sraf_nround_plan_budget_gate.py tests/test_sraf_adaptive_planner_contract.py tests/test_sraf_request_admission_budget.py
