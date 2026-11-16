@@ -27,7 +27,6 @@ _OFFLINE_FLAGS = (
     "SRAF_EVIDENCE_SHARED_SOURCE_BUDGET",
     "SRAF_EVIDENCE_VALID_FAIR_BUDGET",
 )
-_MAX_METRIC = 1_000_000
 
 
 @contextmanager
@@ -99,8 +98,13 @@ def _parse(data: dict, keys: list[tuple[str, str]]) -> dict:
         if not item.get("weak_evidence"):
             strong_sources.add(source)
         policy = item.get("match_policy")
-        if policy in ("strict", "relaxed", "fallback_any_term",
-                      "adaptive_two_axis"):
+        # Legacy any-effective-term fallback sets match_scope but retains
+        # default match_policy='strict'. Never overcount it as strict.
+        if item.get("match_scope") == "fallback_any_term":
+            policies["fallback_any_term"] += 1
+        elif (policy == "strict" and not item.get("weak_evidence")):
+            policies["strict"] += 1
+        elif policy in ("relaxed", "adaptive_two_axis"):
             policies[policy] += 1
     return {
         "valid_sources": valid_sources, "strong_sources": strong_sources,
@@ -167,7 +171,10 @@ def main(argv: list[str]) -> int:
         print("SRAF_STRUCTURED_AB=INCOMPLETE reason=two_private_snapshots_required")
         return 2
     try:
-        metrics = compare_pair(_private_read(argv[1]), _private_read(argv[2]))
+        metrics = compare_pair(
+            _private_read(argv[1], allow_empty_hits=True),
+            _private_read(argv[2], allow_empty_hits=True),
+        )
     except Exception:
         # No traceback, path, ES ID, question, date or source content.
         print("SRAF_STRUCTURED_AB=INCOMPLETE reason=invalid_or_unmatched_private_snapshots")
