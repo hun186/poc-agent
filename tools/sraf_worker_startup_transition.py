@@ -166,26 +166,44 @@ def retry_worker_row(root: Path, initial: dict[str, object],
             or initial.get("reason") != "worker_process_identity_unverified"
             or not confirmed_starting(root)):
         return initial
+    def canonical_recheck() -> dict[str, object]:
+        try:
+            result = probe_worker(root)
+        except Exception:
+            return {}
+        return result if isinstance(result, dict) else {}
+
+    def is_verified(value: dict[str, object]) -> bool:
+        return (
+            value.get("id") == "worker_process_identity"
+            and value.get("status") == "PASS_PARTIAL"
+            and value.get("reason") == "recorded_schedule_handoff_process_identity_only"
+            and type(value.get("verified_role_count")) is int
+            and value["verified_role_count"] == 2
+        )
+
+    def recovered(value: dict[str, object], attempt: int) -> dict[str, object]:
+        return {
+            **value,
+            "reason": "worker_process_identities_verified_after_startup_retry",
+            "startup_phase": "STARTING",
+            "startup_retry_result": "RECOVERED",
+            "startup_retry_attempts": attempt,
+        }
+
     for attempt in range(1, RETRIES + 1):
         sleep(POLL_SECONDS)
-        try:
-            current = probe_worker(root)
-        except Exception:
-            current = {}
-        if (current.get("status") == "PASS_PARTIAL"
-                and current.get("reason") == "recorded_schedule_handoff_process_identity_only"
-                and type(current.get("verified_role_count")) is int
-                and current["verified_role_count"] == 2):
-            return {
-                **current,
-                "reason": "worker_process_identities_verified_after_startup_retry",
-                "startup_phase": "STARTING",
-                "startup_retry_result": "RECOVERED",
-                "startup_retry_attempts": attempt,
-            }
-        # A record that is present but invalid, an unrelated launcher,
-        # or a process that has exited terminates retry without granting trust.
+        current = canonical_recheck()
+        if is_verified(current):
+            return recovered(current, attempt)
+        # If records have appeared or the launcher changed between the above
+        # probe and this gate, STARTING is no longer justified. The two roles
+        # may have JUST become ready, however: do one last authoritative
+        # canonical verification rather than reporting stale INCOMPLETE.
         if not confirmed_starting(root):
+            final = canonical_recheck()
+            if is_verified(final):
+                return recovered(final, attempt)
             return {
                 **initial, "startup_phase": "STARTING",
                 "startup_retry_result": "UNVERIFIED",
