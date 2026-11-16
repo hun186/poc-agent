@@ -699,3 +699,49 @@ def test_merged_394_parenthesized_day_cannot_convert_year_into_first_january():
 def test_no_date_query_has_no_date_filter_and_preserves_fallback_fields():
     body = _query(query="重大事件", date_from=None, date_to=None)
     assert not body["query"]["function_score"]["query"]["bool"]["filter"]
+
+
+
+def test_main_query_sort_is_event_timeline_neutral_score_first():
+    """Same score: Event-only, Timeline-only and unknown dates do not get an
+    artificial missing nested-date penalty. ImportDT is *not* event recency."""
+    body = _query("2023-08-24", "2023-08-24")
+    sort = body["sort"]
+    assert sort[0] == {"_score": {"order": "desc"}}
+    assert sort[1] == {"importDT": {"order": "desc", "missing": "_last"}}
+    assert len(sort) == 2
+    assert "Event_Timeline.time_iso" not in str(sort)
+    assert "Event.time_iso" not in str(sort)
+    # The safety-critical Event OR Timeline filter remains unchanged.
+    filters = body["query"]["function_score"]["query"]["bool"]["filter"]
+    assert "multidim_event_json.Event.time_iso" in str(filters)
+    assert "multidim_event_json.Event_Timeline.time_iso" in str(filters)
+
+
+def test_sort_compat_does_not_imitate_joint_max_event_date():
+    """Synthetic candidate classes share the same ES sorting inputs."""
+    body = _query("2023-08-24", "2023-08-24")
+    assert body["sort"][0]["_score"]["order"] == "desc"
+    records = [
+        {"kind": "event_only", "score": 4, "import_dt": "2024-01-01",
+         "event_dates": ["2023-08-24"], "timeline_dates": []},
+        {"kind": "timeline_only", "score": 4, "import_dt": "2024-01-02",
+         "event_dates": [], "timeline_dates": ["2023-08-24"]},
+        {"kind": "both", "score": 4, "import_dt": "2024-01-03",
+         "event_dates": ["2023-08-24"], "timeline_dates": ["2023-08-23"]},
+        {"kind": "unknown", "score": 4, "import_dt": "2024-01-04",
+         "event_dates": [], "timeline_dates": []},
+        {"kind": "multi_event", "score": 5, "import_dt": "2023-01-01",
+         "event_dates": ["2022-01-01", "2023-08-24"],
+         "timeline_dates": []},
+    ]
+    order = sorted(records, key=lambda x: (x["score"], x["import_dt"]), reverse=True)
+    assert [r["kind"] for r in order] == [
+        "multi_event", "unknown", "both", "timeline_only", "event_only"
+    ]
+    assert [r["kind"] for r in order[:3]] + [
+        r["kind"] for r in order[3:]] == [r["kind"] for r in order]
+    # An otherwise identical score+importDT is an unresolved tie without
+    # a mapped stable docvalue, PIT or unique key; do not claim full stability.
+    assert len({(r["score"], r["import_dt"]) for r in records}) == len(records)
+    assert body["sort"] == _query("2023-08-24", "2023-08-24")["sort"]
