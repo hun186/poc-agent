@@ -135,3 +135,19 @@ bash 1_完整診斷驗收_SRAF.sh --level L0 --save-report
 若指定 --report-dir，仍須是存在可信祖先的**絕對路徑**。例如命令中的 /trusted/private/... 只是範例，主機不會預先產生該目錄；傳入相對路徑（如 maintenance-reports）會明確顯示 report_dir_relative 和 --save-report 的修正提示。若共享掛載、祖先所有權或 0700 最終目錄不符合要求，會明確拒絕並提供固定安全指引；切勿 chmod 777。終端不輸出主目錄、帳號身分或私人完整檔案路徑。
 
 根目錄舊 0_一鍵快檢_SRAF.sh 已由 --level L0 取代並停止隨新版發行；如更新器僅單向複製新增／修改檔案，GitHub 的刪檔可能不會移除 Linux 上的舊腳本。維護人員應先確認新入口 L0 的私有主機結果，再清理已不再使用的舊路徑。原 OFF-3 deploy-check 核心診斷工具繼續保留供工程師使用。
+
+
+## Launcher 啟動延遲的無干擾計時（下次受控啟動後觀察）
+
+2026-11-16 Linux 診斷曾量得 API 子程序出生到 Schedule Worker 出生約 89.90 秒，而 `API_READINESS_TIMEOUT_SECONDS` 預設是 90 秒。現有 Uvicorn Startup phase 計時約 3.43 秒並不包含子程序匯入前期，也無法證明 Listener 首次就緒時間。不能直接把等待歸因於 Worker SQL、`lsof` 或 Uvicorn 的某一個元件。
+
+Launcher 在**下次啟動**將 `STARTUP_TIMING` 固定欄位追加到既有 `SRA-API_kill_audit.log`（不覆寫、無 PID／IP／帳密），包括 `deployment_bootstrap_complete`、`old_runtime_checked`、`api_process_spawned`、`api_listener_verified`、`schedule_spawned`、`handoff_spawned`。Listener 行會輸出 `wait_ms`、`polls`、`in_loop`；`in_loop=1` 代表原等待迴圈辨識成功，0 代表僅在最後一次檢查辨識。等待逾時或 API 子程序退出另記原因碼。
+
+可在部署機無須重啟、唯讀查看**已產生**的時序摘要：
+
+```bash
+cd /mntCZJ/TopicClassification/poc-agent
+grep 'STARTUP_TIMING' SRA-API_kill_audit.log | tail -n 12
+```
+
+這些欄位只代表程序建立及 Listener 身分核對，不代表 Worker SQL 初始化、排程業務可用或 L3 E2E 通過。`elapsed_ms` 相對 Launcher 開始執行；`wait_ms` 相對 API readiness 迴圈開始。原有 90 秒上限、Listener PID／`/proc` 啟動 tick 身分驗證及不接管無關程序的行為均不變。增量解壓但尚未重新啟動不會產生歷史時序。
