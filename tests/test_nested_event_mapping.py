@@ -51,9 +51,11 @@ def test_query_enters_outer_and_child_nested_paths_and_uses_new_timeline_fields(
     rendered = str(body)
     assert "multidim_event_json.Event_Timeline.time_iso" in rendered
     assert "multidim_event_json.Event_Timeline.date_iso" not in rendered
-    sort_nested = body["sort"][1]["multidim_event_json.Event_Timeline.time_iso"]["nested"]
-    assert sort_nested["path"] == "multidim_event_json"
-    assert sort_nested["nested"]["path"] == "multidim_event_json.Event_Timeline"
+    # Timeline is still used by the date filter, not as an unfair tie-breaker.
+    assert body["sort"] == [
+        {"_score": {"order": "desc"}},
+        {"importDT": {"order": "desc", "missing": "_last"}},
+    ]
 
 
 def test_mock_mapping_matches_production_nested_paths_and_timeline_names():

@@ -341,19 +341,17 @@ def build_main_query_body(
             },
             "require_field_match": False
         },
+        # Compatibility ordering: _score remains authoritative. Do NOT use
+        # Timeline-only date as a tie-breaker: an Event-only document with an
+        # otherwise valid time_iso then receives a missing nested sort value.
+        # We deliberately use the existing root import timestamp as a neutral
+        # *document* tie-breaker, not as a claimed event date. Neither two
+        # sequential nested sort fields nor importDT compute the max of both
+        # Event and Event_Timeline dates. True joint event-recency sorting
+        # requires a separate mapped/root derived sort value and migration.
         "sort": [
-            "_score",
-            {
-              "multidim_event_json.Event_Timeline.time_iso": {
-                  "order": "desc",
-                  "mode": "max",
-                  "nested": {
-                      "path": "multidim_event_json",
-                      "nested": {"path": "multidim_event_json.Event_Timeline"}
-                  }
-              }
-            },
-            {"importDT": {"order": "desc"}}
+            {"_score": {"order": "desc"}},
+            {"importDT": {"order": "desc", "missing": "_last"}},
         ],
         "track_total_hits": True
     }
