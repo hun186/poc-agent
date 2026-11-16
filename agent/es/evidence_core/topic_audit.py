@@ -37,7 +37,13 @@ def bind_sink(sink: list[dict] | None) -> Iterator[None]:
 
 def record(*, mode: str, status: str, strict: int, counts: dict[str, int]) -> None:
     sink = current_sink()
-    if sink is None or len(sink) >= _MAX_RECORDS:
+    if sink is None:
+        return
+    if len(sink) >= _MAX_RECORDS:
+        # One fixed sentinel signals that later counters were not observed;
+        # never report the first 32 slices as a complete request total.
+        if len(sink) == _MAX_RECORDS:
+            sink.append({"mode": mode, "status": "truncated"})
         return
     if mode not in _MODES or status not in _STATUSES:
         return
@@ -64,6 +70,8 @@ def summary(sink: list[dict] | None, *, mode: str) -> dict:
         "scope": "data_agent_tool_slices_not_global_recall",
         "mode": mode,
         "slices": min(_MAX_RECORDS, len(valid)),
+        "truncated": any(isinstance(r, dict) and
+                         r.get("status") == "truncated" for r in rows),
         "strict": total("strict"),
         "proposed": total("proposed"),
         "selected": total("selected"),
