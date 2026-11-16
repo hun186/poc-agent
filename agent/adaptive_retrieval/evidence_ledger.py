@@ -209,6 +209,7 @@ class RequestWideEvidenceLedger:
                 or len(self._history) >= self._max_rounds
                 or (self._history and (
                     self._history[-1].result_incomplete or
+                    not self._history[-1].request_wide or
                     self._history[-1].coverage_sufficient))):
             raise ValueError("round_not_admissible")
         _terms(search_terms)
