@@ -78,3 +78,70 @@ def strict_mapping_observation(cfg: Mapping[str, str], root: Path) -> dict[str, 
     except Exception:
         # Never leak native TLS/HTTP failures, endpoints or credentials.
         return absent
+
+
+def ca_only_mapping_observation(cfg: Mapping[str, str], root: Path) -> dict[str, object]:
+    """Explicit operator-only CA-verified ES observation with IP SAN warning.
+
+    This invokes the reviewed OFF-1B warn-only transport only when the caller
+    opts in. A mismatch never certifies TLS peer identity, authentication, or
+    mapping acceptance. Independent Basic negative control remains disabled.
+    CA verification is still required. Credentials may reach a host with a
+    CA-trusted certificate for a DIFFERENT name; keep this mode out of
+    routine checks and full-live release gates.
+    """
+    absent = {
+        "check": "es_ca_only_tls_mapping", "status": "SKIP",
+        "reason": "es_ca_only_observation_unavailable",
+    }
+    # Deferred import: preserve the strict hub's visible import failure behavior.
+    from tools import sraf_airgap_off1b_es_https_mapping as es
+    try:
+        raw = es._observe(
+            dict(cfg), no_network=False, root=root,
+            verify_credentials=False, warn_only_ip_san=True,
+        )
+        if not isinstance(raw, dict):
+            return absent
+        if (raw.get("ip_san_policy") != "WARN_ONLY"
+                or raw.get("credential_control") != "NOT_RUN"
+                or type(raw.get("identity_warning")) is not bool
+                or any(raw.get(k) not in choices
+                       for k, choices in _OBSERVED.items())):
+            return absent
+
+        row = {"check": "es_ca_only_tls_mapping", "status": "SKIP",
+               "reason": "es_ca_only_incomplete"}
+        # An invalid CA chain is always a failure, even in the warning mode.
+        if raw["tls_validation"] == "FAIL":
+            row.update(status="FAIL", reason="es_tls_identity_failed")
+        elif raw["https_probe"] == "FAIL":
+            row.update(status="FAIL", reason="es_https_identity_failed")
+        elif raw["auth"] == "FAIL":
+            row.update(status="FAIL", reason="es_auth_rejected")
+        elif raw["mapping_probe"] == "FAIL":
+            # Never assert the intended index is incompatible when the server
+            # identity could not be attested by matching SAN.
+            if raw["identity_warning"]:
+                row["reason"] = "es_ca_only_mapping_unverified"
+            else:
+                row.update(status="FAIL", reason="es_mapping_failed")
+        elif (raw["https_probe"] == "PASS"
+              and raw["auth"] == "NOT_VERIFIED"
+              and raw["identity_warning"] is True
+              and raw["tls_validation"] == "WARN"
+              and raw["mapping_probe"] == "WARN"):
+            # CA chain and ES-like protected responses were observed, but
+            # hostname/IP identity, auth negative control, and mapping are not
+            # formally certified.
+            row["reason"] = "es_ca_only_mapping_observed_ip_san_unverified"
+        elif (raw["https_probe"] == "PASS"
+              and raw["auth"] == "NOT_VERIFIED"
+              and raw["identity_warning"] is False
+              and raw["tls_validation"] == "PASS"
+              and raw["mapping_probe"] == "PASS"):
+            row["reason"] = "es_tls_mapping_observed_auth_not_verified"
+        return row
+    except Exception:
+        # Never leak TLS/HTTP internals, configured addresses or Basic auth.
+        return absent

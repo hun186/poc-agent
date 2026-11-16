@@ -32,6 +32,20 @@ bash 1_完整診斷驗收_SRAF.sh --level L2 --probe-es-tls-mapping
 bash 1_完整診斷驗收_SRAF.sh --level L2 --probe-llm-inference --ollama-server-pid 12345
 ~~~
 
+### LAN IP 可能更動時的 CA-only 診斷（明確選用）
+
+普通 SRAF ES 用戶端目前使用私有 `agent/certs/http_ca.crt` 做 CA 驗證，但 `ssl_assert_hostname=False`，不強制憑證 IP SAN 與 LAN IP 相符；這是歷史運行設定。**這不等於能證明遠端 ES 是指定節點**，尤其同一 CA 為多台服務簽發憑證時可能受到冒用風險。
+
+分層診斷預設仍用嚴格 IP SAN 判定。需要核對與既有 Runtime 相同的 CA-only 情況，並且**已確認 CA 為可信獨立 ES CA、願意承擔錯誤節點憑證的風險**時，才可以由操作員明確選擇：
+
+~~~bash
+bash 1_完整診斷驗收_SRAF.sh --level L2 --probe-es-tls-mapping --es-warn-only-ip-san
+~~~
+
+此選項會使用既有 OFF-1B `warn_only_ip_san`，保留可信 CA 憑證鏈驗證與 HTTPS、受控唯讀根／登入身分／Mapping GET，仍會傳送**既有 ES Basic 帳密**，故不適合對不可信內網端點試探。IP SAN 不符時改用 `SKIP reason=es_ca_only_mapping_observed_ip_san_unverified` 表示僅觀察到類似 ES 的受控回應，**不能變成 PASS 或 FULL_LIVE 正式驗收**；CA 鏈失敗仍為 FAIL。它也沒有執行獨立錯誤帳密負向控制，不承認充分的認證證據。
+
+此選項不修改正式用戶端、不觸碰 ES 索引、不修改正式私有設定，也不會自動出現在一般 L1 或 L3。最終建議以穩定 DNS 名稱及相符 DNS SAN，或經核准且綁定特定 ES 憑證指紋的驗證取代暫時放寬，避免長期依賴 CA-only 對未知 IP 的身分驗證。
+
 可一次選用多個 L2 選項；**未選的不執行，標記 NOT_TESTED**。L2 SQL 始終是 OFF-1G 的一次 TLS 驗證後固定常數 SELECT，不檢查真實資料表、Schema v4、帳號只讀性。ES 使用 OFF-1B 嚴格 CA＋IP SAN 的唯讀根身分、認證與 Mapping GET；既有 Hub 未執行獨立錯誤憑證控制，不能以觀察到 Mapping 推論完整認證已證實，因此保守標記 SKIP。LLM 僅支援既有 OFF-1D 本機無雲 Ollama /api/tags＋一次有界推論，必須驗證程序、Socket、OLLAMA_NO_CLOUD；遠端／OpenAI 相容端點不會假裝通過。
 
 以上沿用既有安全函式，不修改資料庫、ES、排程，也不呼叫正式 API POST。L2 缺少全部 opt-in 時回報 INCOMPLETE。
