@@ -123,3 +123,94 @@ def test_incomplete_zero_evidence_reports_skipped_without_llm(monkeypatch):
     assert not calls
     assert out["evidence_usage"]["llm_skipped_incomplete"] is True
     assert "報告 LLM" in dict(evidence_usage_rows(out["evidence_usage"]))
+
+
+
+def _topic_summary(mode="shadow", *, selected=0):
+    return {
+        "schema": "sraf_topic_adaptive_report_v1",
+        "scope": "data_agent_tool_slices_not_global_recall",
+        "mode": mode, "slices": 1, "strict": 1, "proposed": 2,
+        "selected": selected, "no_anchor": 0, "not_low": 0,
+        "attempted": 1, "uninspected": 0,
+    }
+
+
+def test_topic_match_adaptive_log_is_plain_language_in_word_and_markdown():
+    from api.core.presenters.evidence_usage import safe_topic_adaptive
+    for mode, selected in (("shadow", 0), ("on", 2)):
+        usage = {**_usage(), "topic_adaptive": {
+            **_topic_summary(mode, selected=selected),
+            "question": "PRIVATE-QUESTION",
+            "uuid": "PRIVATE-UUID",
+            "content": "PRIVATE-EVIDENCE",
+        }}
+        clean = safe_evidence_usage(usage)
+        assert safe_topic_adaptive(usage["topic_adaptive"])
+        assert "PRIVATE" not in json.dumps(clean)
+        md, doc = _render_both(_output(usage))
+        text = "\n".join(doc)
+        for label, value in evidence_usage_rows(usage):
+            assert f"{label}：{value}" in md
+            assert f"{label}：{value}" in text
+        assert "主題檢索智慧放寬" in text
+        assert "估計" not in text  # Distinguish bounded proposal from precision.
+        assert "PRIVATE" not in (md + text)
+
+
+def test_invalid_topic_adaptive_metrics_never_reach_docx():
+    from api.core.presenters.evidence_usage import safe_topic_adaptive
+    base = _topic_summary()
+    for invalid in (
+        {**base, "mode": "PRIVATE"},
+        {**base, "selected": 1},
+        {**base, "proposed": True},
+        {**base, "slices": 33},
+        {**base, "strict": "1"},
+        {**base, "scope": "wrong"},
+    ):
+        assert safe_topic_adaptive(invalid) == {}
+        usage = {**_usage(), "topic_adaptive": invalid}
+        md, doc = _render_both(_output(usage))
+        assert "主題檢索智慧放寬" not in md
+        assert "主題檢索智慧放寬" not in "\n".join(doc)
+
+
+def test_request_local_topic_audit_survives_tool_thread_but_not_next_request():
+    from concurrent.futures import ThreadPoolExecutor
+    from agent.es.evidence_core.topic_audit import (
+        bind_sink, current_sink, record, summary,
+    )
+    from agent.tools_es.common import (
+        bind_requirement_acceptance, propagate_requirement_acceptance,
+    )
+
+    class SyntheticTool:
+        @propagate_requirement_acceptance
+        def forward(self):
+            record(
+                mode="shadow", status="shadow", strict=1,
+                counts={k: v for k, v in (
+                    ("inspected", 4), ("date_eligible", 3),
+                    ("two_text_axes", 2), ("direct_subject", 1),
+                    ("same_event_context", 1),
+                    ("blocked_meta_only", 0), ("blocked_unanchored", 0),
+                    ("uninspected_by_cap", 0), ("proposed", 2),
+                    ("selected", 0),
+                )},
+            )
+            return current_sink() is not None
+
+    first, second = [], []
+    with bind_sink(first):
+        one = bind_requirement_acceptance(SyntheticTool())
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(one.forward).result() is True
+    with bind_sink(second):
+        two = bind_requirement_acceptance(SyntheticTool())
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(two.forward).result() is True
+    assert current_sink() is None
+    assert summary(first, mode="shadow")["proposed"] == 2
+    assert summary(second, mode="shadow")["proposed"] == 2
+    assert len(first) == len(second) == 1
