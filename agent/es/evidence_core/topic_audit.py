@@ -35,7 +35,8 @@ def bind_sink(sink: list[dict] | None) -> Iterator[None]:
         _SINK.reset(token)
 
 
-def record(*, mode: str, status: str, strict: int, counts: dict[str, int]) -> None:
+def record(*, mode: str, status: str, strict: int, counts: dict[str, int],
+           anchor_source: str = "none") -> None:
     sink = current_sink()
     if sink is None:
         return
@@ -53,6 +54,8 @@ def record(*, mode: str, status: str, strict: int, counts: dict[str, int]) -> No
            not 0 <= counts[k] <= _MAX_VALUE for k in _FIELDS):
         return
     sink.append({"mode": mode, "status": status, "strict": strict,
+                 "anchor_source": (anchor_source if anchor_source in
+                                   {"explicit", "prose"} else "none"),
                  **{key: counts[key] for key in _FIELDS}})
 
 
@@ -79,4 +82,8 @@ def summary(sink: list[dict] | None, *, mode: str) -> dict:
         "not_low": sum(r["status"] == "strict_not_low" for r in valid),
         "attempted": sum(r["status"] in {"shadow", "applied"} for r in valid),
         "uninspected": total("uninspected_by_cap"),
+        "prose_shadow_slices": sum(
+            r.get("anchor_source") == "prose" and r["status"] == "shadow"
+            for r in valid
+        ),
     }
