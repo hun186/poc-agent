@@ -67,6 +67,7 @@ class WorkerScopeBinding:
         self._check_branches = check_single_branch_coverage
         self._lock = Lock()
         self._attested_rounds: set[int] = set()
+        self._preflight_plans: dict[int, FrozenSingleQueryPlan] = {}
 
     def _check_live_policy(self) -> None:
         try:
@@ -87,9 +88,13 @@ class WorkerScopeBinding:
                     or plan.coordinator is not self._coordinator
                     or plan.authorized_indexes != self._authorized_indexes
                     or plan.branch_code != "CANONICAL_MAIN"
-                    or plan.round_number in self._attested_rounds):
+                    or plan.round_number in self._attested_rounds
+                    or plan.round_number in self._preflight_plans):
                 raise WorkerScopeBindingError("wrong_job_query_manifest")
             self._check_live_policy()
+            # This exact plan, not merely a matching same-round plan, was
+            # explicitly authorized before any ES request was issued.
+            self._preflight_plans[plan.round_number] = plan
 
     def attest(
         self, plan: FrozenSingleQueryPlan, receipt: CompletedSingleQueryRound,
@@ -103,6 +108,11 @@ class WorkerScopeBinding:
                     or plan.authorized_indexes != self._authorized_indexes
                     or plan.branch_code != "CANONICAL_MAIN"
                     or plan.round_number != receipt.round_number
+                    or self._preflight_plans.get(plan.round_number) is not plan
+                    or receipt._execution_token is not plan._execution_token
+                    or self._coordinator._single_query_claimed_round != plan.round_number
+                    or self._coordinator._single_query_claim_token is not plan._execution_token
+                    or self._coordinator._es_slots_this_round < 2
                     or self._coordinator.safe_progress()["phase"] != "SEARCHING"
                     or self._coordinator.safe_progress()["round"] != plan.round_number
                     or plan.round_number in self._attested_rounds
@@ -111,10 +121,18 @@ class WorkerScopeBinding:
                     or type(receipt.pages_completed) is not int
                     or receipt.pages_completed < 1
                     or type(receipt.unique_sources) is not int
-                    or receipt.unique_sources != len(receipt.hits)):
+                    or receipt.unique_sources != len(receipt.hits)
+                    or any(
+                        type(hit) is not dict
+                        or hit.get("_index") not in self._constraints.allowed_indexes
+                        or type(hit.get("_id")) is not str
+                        or type(hit.get("_source")) is not dict
+                        for hit in receipt.hits
+                    )):
                 raise WorkerScopeBindingError("job_query_receipt_unverified")
             self._check_live_policy()
             self._attested_rounds.add(plan.round_number)
+            del self._preflight_plans[plan.round_number]
             return True
 
     def safe_audit(self) -> dict[str, int | str | bool]:
