@@ -13,6 +13,10 @@ from agent.adaptive_retrieval.trusted_execution_loop import (
 from agent.adaptive_retrieval.worker_scope_binding import (
     WorkerScopeBinding, WorkerScopeBindingError,
 )
+from agent.adaptive_retrieval.round_query_execution import (
+    CompletedSingleQueryRound, FrozenSingleQueryPlan,
+    execute_single_frozen_query,
+)
 from test_sraf_nround_trusted_execution_loop import (
     _setup, _verified_page,
 )
@@ -207,3 +211,100 @@ def test_non_boolean_or_throwing_index_permission_cannot_grant_any_es():
             _run(c, scope, ev, es, binding)
         assert "PRIVATE_SECRET_ERROR" not in str(err.value)
         assert es.calls == []
+
+
+
+def _frozen_plan(c, scope, binding):
+    assert c.safe_progress()["phase"] == "SEARCHING"
+    return FrozenSingleQueryPlan(
+        coordinator=c, constraints=scope,
+        authorized_indexes=("news_test",),
+        round_number=1, next_round_plan=None,
+        _owner_binding_token=binding._binding_token,
+    )
+
+
+def test_forged_receipt_without_actual_execution_or_claim_rejected():
+    c, scope, ev, *_ = _setup()
+    assert c.start()
+    binding = _binding(c, scope)
+    plan = _frozen_plan(c, scope, binding)
+    binding.preflight(plan)
+    # A fabricated "complete" source list, without a PIT open or ES call,
+    # cannot be used to establish job authorization or query completeness.
+    fake = CompletedSingleQueryRound(
+        hits=(), round_number=1, pages_completed=1, unique_sources=0,
+    )
+    with pytest.raises(WorkerScopeBindingError,
+                       match="job_query_receipt_unverified"):
+        binding.attest(plan, fake)
+    assert binding.safe_audit()["rounds_attested"] == 0
+
+
+def test_cross_job_owner_scope_cannot_reuse_other_jobs_plan():
+    c, scope, ev, *_ = _setup()
+    assert c.start()
+    first = _binding(c, scope, job=_job(scope, owner_id="OWNER_FIRST"))
+    second = _binding(c, scope, job=_job(scope, owner_id="OWNER_SECOND"))
+    plan = _frozen_plan(c, scope, first)
+    first.preflight(plan)
+    with pytest.raises(WorkerScopeBindingError,
+                       match="wrong_job_query_manifest"):
+        second.preflight(plan)
+    assert second.safe_audit()["rounds_attested"] == 0
+
+
+def test_actual_executed_pit_receipt_is_single_use_for_exact_preflight_plan():
+    c, scope, ev, *_ = _setup()
+    assert c.start()
+    binding = _binding(c, scope)
+    plan = _frozen_plan(c, scope, binding)
+    binding.preflight(plan)
+    receipt = execute_single_frozen_query(
+        plan=plan, client=FakeES(_verified_page("A")),
+    )
+    assert binding.attest(plan, receipt) is True
+    assert binding.safe_audit()["rounds_attested"] == 1
+    with pytest.raises(WorkerScopeBindingError,
+                       match="job_query_receipt_unverified"):
+        binding.attest(plan, receipt)
+    assert binding.safe_audit()["rounds_attested"] == 1
+
+
+def test_same_round_different_plan_cannot_attest_other_plans_real_receipt():
+    c, scope, ev, *_ = _setup()
+    assert c.start()
+    binding = _binding(c, scope)
+    original = _frozen_plan(c, scope, binding)
+    binding.preflight(original)
+    receipt = execute_single_frozen_query(
+        plan=original, client=FakeES(_verified_page("A")),
+    )
+    replacement = _frozen_plan(c, scope, binding)
+    assert replacement is not original
+    assert replacement._execution_token is not original._execution_token
+    with pytest.raises(WorkerScopeBindingError,
+                       match="job_query_receipt_unverified"):
+        binding.attest(replacement, receipt)
+    assert binding.attest(original, receipt) is True
+
+
+def test_unauthorized_index_in_synthetic_receipt_cannot_attest():
+    c, scope, ev, *_ = _setup()
+    assert c.start()
+    binding = _binding(c, scope)
+    plan = _frozen_plan(c, scope, binding)
+    binding.preflight(plan)
+    assert c.claim_single_query_execution(
+        1, execution_token=plan._execution_token)
+    assert c.admit_es_call(execution_token=plan._execution_token)
+    assert c.admit_es_call(execution_token=plan._execution_token)
+    forged = CompletedSingleQueryRound(
+        hits=({"_index": "UNAUTHORIZED_INDEX", "_id": "x", "_source": {}},),
+        round_number=1, pages_completed=1, unique_sources=1,
+        _execution_token=plan._execution_token,
+    )
+    with pytest.raises(WorkerScopeBindingError,
+                       match="job_query_receipt_unverified"):
+        binding.attest(plan, forged)
+    assert binding.safe_audit()["rounds_attested"] == 0
