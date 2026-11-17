@@ -22,14 +22,18 @@
    原有主題下的 *optional/SHOULD* 召回詞，不得改寫日期、索引或必要詞。
    真正合格 Evidence 仍須再經 canonical parser 的日期與 Topic Match 驗證。
 3. `required_entities` 必須來自可信的原始 `QueryConstraints`；
-   現已將**每一項必要實體**編成 ES `bool.filter` 內獨立的強制條件，
-   候選命中可來自通信主旨、文章標題、核心實體或具正確
-   `multidim_event_json` 外層＋Event／Timeline／Person／涉入方／
-   Evidence 內層 nested context 的匹配欄位。每項必要實體皆須在
-   同一文件中至少有一項文本匹配，後續 Planner 提出的 optional terms
-   只用於 SHOULD 加分，不得修改這些強制條件。
-   **注意：這仍是文件候選召回，不代表某一條 Event 已通過完整實體
-   歸屬、日期和 Evidence 主題驗證。**
+   現已將**所有必要實體**編成 ES `bool.filter` 內的一組
+   `bool.should`（`minimum_should_match=1`）候選條件；
+   每篇文章只需命中其中至少一個必要實體，避免「美國與中國」的比較
+   分析錯誤排除僅針對單一國家的來源。每個實體的候選命中可來自
+   通信主旨、文章標題、核心實體或具正確 `multidim_event_json`
+   外層＋Event／Timeline／Person／涉入方／Evidence 內層 nested
+   context 的匹配欄位。後續 Planner 提出的 optional terms 只用於
+   SHOULD 加分，不得修改原始必要實體或其候選濾網。
+   **注意：這是文件級召回的必要實體聯集；尚未證明整個 request
+   已涵蓋所有必要實體，更不代表某一條 Event 已通過完整歸屬、
+   日期和 Evidence 主題驗證。** 後續正式可信 coverage 評估必須
+   檢查各必要實體／分析面向是否得到跨文件的合格 Evidence。
    `fixed_fields` 與獨立 `analysis_date` 的硬限制仍未完成可信
    mapping／驗證，遇到這兩種條件仍**明確拒絕執行**，絕不略過。
    此模組尚未接正式用戶 API、RBAC 或 ReportJobWorker，
