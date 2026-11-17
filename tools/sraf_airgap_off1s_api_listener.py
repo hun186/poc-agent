@@ -223,7 +223,13 @@ def _owns_socket(pid: int, inode: str) -> bool:
 # unrelated PID the same listener. A partial or permission-denied process
 # table must NOT be interpreted as proof of exclusivity.
 MAX_PROCESSES = 32768
-MAX_GLOBAL_FDS = 131072
+# Threads may share one FD table; scanning all thread-local tables is required
+# because close_range(CLOSE_RANGE_UNSHARE) can make them independent. Do not
+# de-duplicate by PID or FD number: that would hide a co-owned listener.
+# A real Linux acceptance observed 548 FDs in one thread and hit the old
+# global limit at 131073 before the ownership scan could finish. Retain a
+# finite, fail-closed global work budget while allowing moderately busy hosts.
+MAX_GLOBAL_FDS = 1_048_576
 MAX_GLOBAL_THREADS = 131072
 MAX_THREADS_PER_PROCESS = 8192
 MAX_MOUNTINFO = 1024 * 1024

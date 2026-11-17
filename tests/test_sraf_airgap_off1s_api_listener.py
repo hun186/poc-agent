@@ -699,3 +699,71 @@ thread.join()
                 proc.terminate()
             proc.wait(timeout=4)
         listening.close()
+
+
+def test_global_fd_budget_retains_all_thread_checks(monkeypatch):
+    """Each thread table still counts; larger finite cap must never skip scans.
+
+    Two threads expose the same three FD numbers, but an unshared thread table
+    could contain a distinct listener. A too-small global cap fails closed;
+    capacity at the exact boundary permits the complete proof.
+    """
+    from types import SimpleNamespace
+
+    fd_tables = {
+        str(PID): {
+            "3": f"socket:[{INODE}]",
+            "4": "anon_inode:[eventfd]",
+            "5": "socket:[other]",
+        },
+        str(PID + 1): {
+            "3": "socket:[other]",
+            "4": "anon_inode:[eventfd]",
+            "5": "socket:[another]",
+        },
+    }
+
+    class FakeDir:
+        def __init__(self, entries):
+            self.entries = entries
+
+        def __enter__(self):
+            return iter(self.entries)
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def scan(path):
+        path = str(path)
+        if path == "/proc":
+            return FakeDir([SimpleNamespace(name=str(PID))])
+        if path == f"/proc/{PID}/task":
+            return FakeDir([SimpleNamespace(name=tid) for tid in fd_tables])
+        for tid, descriptors in fd_tables.items():
+            prefix = f"/proc/{PID}/task/{tid}/fd"
+            if path == prefix:
+                return FakeDir([
+                    SimpleNamespace(name=num, path=f"{prefix}/{num}")
+                    for num in descriptors
+                ])
+        raise AssertionError("unexpected procfs path")
+
+    def readlink(path):
+        tid, fd = str(path).split("/")[-3], str(path).split("/")[-1]
+        return fd_tables[tid][fd]
+
+    assert listener.MAX_GLOBAL_FDS == 1_048_576  # host scan exceeded old 131072
+    monkeypatch.setattr(listener, "_procfs_unfiltered", lambda: True)
+    monkeypatch.setattr(listener.os, "scandir", scan)
+    monkeypatch.setattr(listener.os, "readlink", readlink)
+    monkeypatch.setattr(listener, "MAX_GLOBAL_FDS", 5)
+    assert not listener._exclusive_socket_owner(PID, INODE)
+    monkeypatch.setattr(listener, "MAX_GLOBAL_FDS", 6)
+    assert listener._exclusive_socket_owner(PID, INODE)
+    # Per-thread cap remains a separate fail-closed guard.
+    monkeypatch.setattr(listener, "MAX_FDS", 2)
+    assert not listener._exclusive_socket_owner(PID, INODE)
+    # The cap is independent of the complete owner-only proof.
+    monkeypatch.setattr(listener, "MAX_FDS", 4096)
+    monkeypatch.setattr(listener, "MAX_GLOBAL_FDS", 4)
+    assert not listener._exclusive_socket_owner(PID, INODE)

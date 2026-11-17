@@ -111,3 +111,36 @@ vanished task tables, caps, and a real subprocess with a worker thread using
 `CLOSE_RANGE_UNSHARE` while its leader closes its listening socket copy.
 The real subprocess test is Linux/glibc-dependent and skips when the syscall
 is unavailable. Hosted testing is not private deployment approval or airgap.
+
+## 2026-11-17 Linux stage acceptance: FD scan budget
+
+On the deployed SRAF host, the six cheap listener preconditions were observed
+(`PREFLIGHT_COUNT=6`), API `/healthz` independently returned HTTP 200, and
+both worker identities were verified. Strict OFF-1S still returned
+`INCOMPLETE`. A local, read-only trace identified the early return from
+`_exclusive_socket_owner` at the global FD budget, not an alternate socket
+owner: `per_thread_fds=548` of 4096, `total_fds=131073` of 131072.
+
+Because all visible threads must be checked, including possible independent
+FD tables after `CLOSE_RANGE_UNSHARE`, it is not safe to skip repeat-looking
+tables or to assume per-process FD ownership proves global exclusivity. The
+finite global FD scan budget was increased to **1,048,576** while retaining:
+the 4096 per-thread cap, full procfs visibility checks, process/thread caps,
+unreadable/disappearing FD fail-closed behavior, co-owner rejection, and
+repeated identity attestation before any bearer-bearing HTTP request.
+
+**This change is not yet host acceptance.** The actual complete host-wide FD
+scan, scan duration, procfs races, and potential remaining limits must be
+observed after deployment. If OFF-1S still reports `INCOMPLETE`, do not turn
+off the owner check, add `sudo`, suppress errors, or treat A1's anonymous
+`/healthz` result as permission to send a bearer token. Re-run:
+
+```sh
+python tools/sraf_runtime_baseline_readonly.py --project-root "$PWD" --api-port 9002
+```
+
+A fresh result of `API-LISTENER=PASS` alongside `API-HEALTH=PASS` and
+`WORKER-IDENTITIES=PASS` is the desired **limited** A2 acceptance, not a
+full Report Job, ES/SQL/LLM or N-round E2E certificate. Synthetic CI tests
+validate threshold behavior and existing security rejection cases; only the
+actual Linux operator run can confirm this deployment environment.
