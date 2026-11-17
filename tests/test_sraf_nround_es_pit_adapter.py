@@ -336,14 +336,18 @@ def test_all_required_entities_compile_as_hard_nested_aware_filters():
     body = es.searches[0]["body"]
     criteria = body["query"]["function_score"]["query"]["bool"]
     assert "filter" in criteria
-    # Date remains a hard filter; each entity gets one additional hard filter.
+    # Date remains hard; all immutable required entities are combined
+    # as an OR inside another hard filter, allowing cross-document research.
     filters = criteria["filter"]
-    assert len(filters) == 3
+    assert len(filters) == 2
     encoded = json.dumps(filters[0], ensure_ascii=False)
     assert "multidim_event_json.Event.time_iso" in encoded
     assert "multidim_event_json.Event_Timeline.time_iso" in encoded
 
-    for entity_filter, expected in zip(filters[1:], scoped.required_entities):
+    assert filters[1]["bool"]["minimum_should_match"] == 1
+    assert len(filters[1]["bool"]["should"]) == len(scoped.required_entities)
+    for entity_filter, expected in zip(
+            filters[1]["bool"]["should"], scoped.required_entities):
         assert entity_filter["bool"]["minimum_should_match"] == 1
         outer_and_root = entity_filter["bool"]["should"]
         assert outer_and_root[0] == {
@@ -362,6 +366,9 @@ def test_all_required_entities_compile_as_hard_nested_aware_filters():
         # No required entity may exist exclusively in an optional query boost.
         assert expected in json.dumps(entity_filter, ensure_ascii=False)
     assert result.request_wide_attested is False
+    # One article mentioning only China must not be eliminated simply
+    # because the original question also requires US coverage.
+    assert filters[1]["bool"]["minimum_should_match"] == 1
 
 
 def test_required_entities_not_changed_by_optional_strategy_terms():
