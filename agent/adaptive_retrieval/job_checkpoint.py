@@ -22,6 +22,10 @@ _COLUMNS = (
     "es_calls_this_round", "termination", "lease_hash", "revision",
 )
 _PHASES = frozenset(("SEARCHING", "ASSESSING", "ASSESSED", "PLANNING", "TERMINAL"))
+# Per-round phase order; crossing into a *new* round restarts at SEARCHING.
+_PHASE_ORDER = {phase: index for index, phase in enumerate(
+    ("SEARCHING", "ASSESSING", "ASSESSED", "PLANNING", "TERMINAL")
+)}
 _AUDIT_FIELDS = frozenset((
     "round", "candidate_sources", "parser_output", "validated_rows",
     "fallback", "verified_in_round", "new_verified", "new_sources",
@@ -209,6 +213,9 @@ class NroundCheckpointStore:
             if row is None or row["lease_hash"] != self._hash(lease_token):
                 return False
             old_round = row["round_number"]
+            if (number == old_round
+                    and _PHASE_ORDER[phase] < _PHASE_ORDER[row["phase"]]):
+                return False
             if (number < old_round or number > old_round + 1
                     or completed < row["completed_rounds"]
                     or completed > row["completed_rounds"] + 1
