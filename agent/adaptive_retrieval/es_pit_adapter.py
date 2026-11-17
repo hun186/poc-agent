@@ -149,6 +149,7 @@ def search_fenced_es_round(
         optional_terms: tuple[str, ...] = ()
     else:
         if (type(plan) is not BoundNextRoundPlan
+                or plan is not coordinator._approved_plan
                 or plan.constraints is not constraints
                 or plan.round_number != round_number
                 or round_number < 2):
