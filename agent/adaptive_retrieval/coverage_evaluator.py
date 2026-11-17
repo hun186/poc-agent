@@ -124,6 +124,7 @@ class RequestWideCoverageEvaluator:
         }
         self._rounds = 0
         self._failed = False
+        self._failure_reason = "NONE"
         self._lock = Lock()
         self._last: CoverageAssessment | None = None
 
@@ -152,6 +153,7 @@ class RequestWideCoverageEvaluator:
                 raise ValueError("invalid_coverage_round")
             if not observation.complete or not request_wide_attested:
                 self._failed = True
+                self._failure_reason = "ROUND_INCOMPLETE_OR_UNATTESTED"
                 result = CoverageAssessment(
                     round_number, tuple(t.label for t in self._targets),
                     False, False, True, 0, 0, len(self._targets),
@@ -159,6 +161,8 @@ class RequestWideCoverageEvaluator:
                 self._last = result
                 return result
             if witnesses and not callable(semantic_verifier):
+                self._failed = True
+                self._failure_reason = "SEMANTIC_VERIFIER_MISSING"
                 raise ValueError("semantic_verifier_required")
             proposed: dict[int, set[tuple[str, str]]] = {
                 i: set(pairs) for i, pairs in self._support.items()
@@ -183,6 +187,7 @@ class RequestWideCoverageEvaluator:
                             (witness.evidence_digest, witness.source_digest))
             except Exception:
                 self._failed = True
+                self._failure_reason = "SEMANTIC_OR_PROVENANCE_REJECTED"
                 raise ValueError("coverage_verification_failed") from None
             missing: list[str] = []
             for index, target in enumerate(self._targets):
@@ -208,7 +213,7 @@ class RequestWideCoverageEvaluator:
     def safe_audit(self) -> dict[str, int | bool | str]:
         with self._lock:
             if self._last is None:
-                return {
+                result: dict[str, int | bool | str] = {
                     "schema": "sraf_nround_coverage_provenance_v1",
                     "round": 0,
                     "required_targets": len(self._targets),
@@ -221,4 +226,16 @@ class RequestWideCoverageEvaluator:
                     "semantic_verifier": "EXTERNAL_TRUSTED_CALLBACK",
                     "live_job": "NOT_INTEGRATED",
                 }
-            return self._last.safe_audit()
+            else:
+                result = self._last.safe_audit()
+            # A prior successful round must NOT conceal an aborted later
+            # semantic/provenance verification. Keep previous counts for
+            # diagnostics but NEVER present stale sufficiency as current proof.
+            result["failed_closed"] = self._failed
+            result["failure_reason"] = self._failure_reason
+            if self._failed:
+                result["coverage_sufficient"] = False
+                result["request_wide_attested"] = False
+                result["result_incomplete"] = True
+                result["missing_targets"] = len(self._targets)
+            return result
