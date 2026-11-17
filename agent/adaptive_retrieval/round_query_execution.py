@@ -48,9 +48,9 @@ class FrozenSingleQueryPlan:
                 or type(self.constraints) is not QueryConstraints
                 or self.coordinator._constraints is not self.constraints
                 or type(self.authorized_indexes) is not tuple
+                or any(type(v) is not str for v in self.authorized_indexes)
                 or not set(self.constraints.allowed_indexes).issubset(
                     set(self.authorized_indexes))
-                or any(type(v) is not str for v in self.authorized_indexes)
                 or self.branch_code != "CANONICAL_MAIN"
                 or type(self.round_number) is not int
                 or not 1 <= self.round_number <= 8):
@@ -126,6 +126,9 @@ def execute_single_frozen_query(
                 and coordinator._approved_plan is not plan.next_round_plan)):
         raise RoundQueryPlanError("stale_frozen_query_plan")
 
+    if not coordinator.claim_single_query_execution(plan.round_number):
+        raise RoundQueryPlanError("query_plan_already_claimed_or_mixed")
+
     try:
         result = search_fenced_es_round(
             coordinator=coordinator,
@@ -137,7 +140,7 @@ def execute_single_frozen_query(
             max_pages=max_pages,
             request_timeout_seconds=request_timeout_seconds,
         )
-    except LiveRoundESFailure as exc:
+    except LiveRoundESFailure:
         # Never return partial evidence, nor allow an assessor to declare
         # completeness after a failed scheduled branch.
         coordinator.cancel()
