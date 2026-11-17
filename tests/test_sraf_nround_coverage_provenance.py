@@ -260,3 +260,60 @@ def test_concurrent_same_round_witness_submission_cannot_double_append():
         results = list(pool.map(work, range(10)))
     assert sum(x is not None for x in results) == 1
     assert evaluator.safe_audit()["round"] == 1
+
+
+def test_failed_later_verification_invalidates_previous_sufficient_public_audit():
+    evaluator = RequestWideCoverageEvaluator(
+        constraints=_scope(), target_aspects=(),
+        min_evidence_per_target=1, min_sources_per_target=1,
+    )
+    a = _observe("PRIVATE_DOC_A")
+    accepted = evaluator.assess_round(
+        round_number=1, observation=a,
+        witnesses=_witnesses(a, 0),
+        semantic_verifier=_accept, request_wide_attested=True,
+    )
+    assert accepted.coverage_sufficient is True
+    assert evaluator.safe_audit()["coverage_sufficient"] is True
+
+    b = _observe("PRIVATE_DOC_B")
+    valid_second = _witnesses(b, 0)[0]
+    invalid_source = _witnesses(a, 0)[0].source_digest
+    invalid_witness = EvidenceFacetWitness(
+        0, valid_second.evidence_digest, invalid_source)
+    with pytest.raises(ValueError, match="coverage_verification_failed"):
+        evaluator.assess_round(
+            round_number=2, observation=b, witnesses=(invalid_witness,),
+            semantic_verifier=_accept, request_wide_attested=True,
+        )
+    public = evaluator.safe_audit()
+    assert public["round"] == 1  # no second-round commit
+    assert public["verified_sources"] == 1  # prior counts retained for diagnosis
+    assert public["coverage_sufficient"] is False
+    assert public["request_wide_attested"] is False
+    assert public["result_incomplete"] is True
+    assert public["failed_closed"] is True
+    assert public["failure_reason"] == "SEMANTIC_OR_PROVENANCE_REJECTED"
+    for secret in ("PRIVATE_DOC", "PRIVATE_ASPECT", invalid_source):
+        assert secret not in json.dumps(public, ensure_ascii=False)
+
+
+def test_absent_verifier_after_valid_round_is_terminal_not_stale_success():
+    evaluator = RequestWideCoverageEvaluator(
+        constraints=_scope(), target_aspects=(),
+        min_evidence_per_target=1, min_sources_per_target=1,
+    )
+    a, b = _observe("PRIVATE_DOC_A"), _observe("PRIVATE_DOC_B")
+    assert evaluator.assess_round(
+        round_number=1, observation=a, witnesses=_witnesses(a, 0),
+        semantic_verifier=_accept, request_wide_attested=True,
+    ).coverage_sufficient
+    with pytest.raises(ValueError, match="semantic_verifier_required"):
+        evaluator.assess_round(
+            round_number=2, observation=b, witnesses=_witnesses(b, 0),
+            semantic_verifier=None, request_wide_attested=True,
+        )
+    public = evaluator.safe_audit()
+    assert public["coverage_sufficient"] is False
+    assert public["failed_closed"] is True
+    assert public["failure_reason"] == "SEMANTIC_VERIFIER_MISSING"
