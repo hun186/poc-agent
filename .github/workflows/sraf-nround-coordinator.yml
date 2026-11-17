@@ -12,6 +12,7 @@ on:
       - 'agent/es/evidence_core/builder.py'
       - 'tests/test_sraf_nround_coordinator.py'
       - 'tests/test_sraf_nround_coverage_provenance.py'
+      - 'tests/test_sraf_nround_coverage_coordinator_bridge.py'
       - 'docs/operations/sraf_nround_request_coordinator.md'
       - '.github/workflows/sraf-nround-coordinator.yml'
   workflow_dispatch:
@@ -48,6 +49,7 @@ jobs:
           python -m pytest -q \
             tests/test_sraf_nround_coordinator.py \
             tests/test_sraf_nround_coverage_provenance.py \
+            tests/test_sraf_nround_coverage_coordinator_bridge.py \
             tests/test_sraf_request_evidence_ledger.py \
             tests/test_sraf_nround_plan_budget_gate.py \
             tests/test_sraf_adaptive_planner_contract.py \
