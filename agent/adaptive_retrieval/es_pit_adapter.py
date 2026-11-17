@@ -131,15 +131,24 @@ def _query(
     )
     if type(body) is not dict or type(body.get("query")) is not dict:
         raise LiveRoundESFailure("invalid_es_query_builder")
-    # Each immutable required entity is a hard document-level candidate
-    # constraint, never a Planner-supplied SHOULD boost. The existing Event
-    # date filter and topic Evidence revalidation remain fully in effect.
+    # Preserve all request-wide required entities, but do NOT force every
+    # document to mention all of them: comparative research may need sources
+    # focused on only one side. At least one required entity must match each
+    # candidate document; request-wide entity/aspect coverage is still the
+    # future trusted evaluator's responsibility, NEVER this page chain's.
+    # Planner-proposed optional terms cannot change this immutable filter.
     try:
         filters = body["query"]["function_score"]["query"]["bool"]["filter"]
         if type(filters) is not list:
             raise TypeError("unexpected query shape")
-        for required in constraints.required_entities:
-            filters.append(_required_entity_filter(required))
+        if constraints.required_entities:
+            filters.append({"bool": {
+                "should": [
+                    _required_entity_filter(entity)
+                    for entity in constraints.required_entities
+                ],
+                "minimum_should_match": 1,
+            }})
     except (KeyError, TypeError, AttributeError):
         raise LiveRoundESFailure("invalid_es_query_builder") from None
     # PIT _shard_doc breaks ties across documents with identical _score and
