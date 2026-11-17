@@ -9,6 +9,7 @@ no signals, processes spawned, or credential reads.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextvars import ContextVar
 import os
 from pathlib import Path
 import re
@@ -234,6 +235,13 @@ MAX_GLOBAL_THREADS = 131072
 MAX_THREADS_PER_PROCESS = 8192
 MAX_MOUNTINFO = 1024 * 1024
 
+# The only retryable failure is an FD that vanished after enumeration. Keep
+# the failure evidence scoped to this attestation (never process-global), so
+# unrelated requests cannot accidentally inherit a retry authorization.
+_FD_CHURN_MARKER: ContextVar[list[bool] | None] = ContextVar(
+    "sraf_off1s_fd_churn_marker", default=None,
+)
+
 
 def _procfs_unfiltered() -> bool:
     """Require the effective /proc mount to expose all namespace processes.
@@ -347,8 +355,12 @@ def _exclusive_socket_owner(pid: int, inode: str) -> bool:
                                         try:
                                             link = os.readlink(entry.path)
                                         except FileNotFoundError:
-                                            # An FD closed concurrently; a
-                                            # stable exclusive scan is not proven.
+                                            # The scan is incomplete; never
+                                            # skip the vanished FD and claim
+                                            # exclusive ownership on this pass.
+                                            marker = _FD_CHURN_MARKER.get()
+                                            if marker is not None:
+                                                marker.append(True)
                                             return False
                                         except OSError:
                                             return False
@@ -375,6 +387,32 @@ def _exclusive_socket_owner(pid: int, inode: str) -> bool:
     return owner_seen and _procfs_unfiltered()
 
 
+def _exclusive_owner_with_churn_recheck(
+    pid: int, inode: str, remaining_rechecks: list[int],
+) -> bool:
+    """One fresh full scan after an *identified* FD-disappeared race only.
+
+    An incomplete pass NEVER counts as proof. A new pass must check every
+    visible thread FD table from the beginning under the same strict guards.
+    All other reasons (co-owner, unreadable FD, permission, procfs visibility,
+    caps) fail closed with no automatic retry. The caller grants at most one
+    recheck across BOTH required exclusive-owner stages.
+    """
+    transient: list[bool] = []
+    token = _FD_CHURN_MARKER.set(transient)
+    try:
+        first_ok = _exclusive_socket_owner(pid, inode)
+    finally:
+        _FD_CHURN_MARKER.reset(token)
+    if first_ok:
+        return True
+    if not transient or remaining_rechecks[0] <= 0:
+        return False
+    remaining_rechecks[0] -= 1
+    # The recheck itself is strict, single pass, with no secondary retries.
+    return _exclusive_socket_owner(pid, inode)
+
+
 def attest_api_listener(project_root: Path, api_port: str) -> ListenerProof | None:
     """One fail-closed Linux identity snapshot, with no credential access."""
     port = _port(api_port)
@@ -393,13 +431,17 @@ def attest_api_listener(project_root: Path, api_port: str) -> ListenerProof | No
         if not _same_process(pid, tick, root_stat, port):
             return None
         inode = _listener_inode(port)
-        if inode is None or not _owns_socket(pid, inode) or not _exclusive_socket_owner(pid, inode):
+        # At most ONE fresh full scan per attestation, only for a confirmed
+        # vanished descriptor. Do not relax either required owner proof.
+        remaining_rechecks = [1]
+        if (inode is None or not _owns_socket(pid, inode)
+                or not _exclusive_owner_with_churn_recheck(pid, inode, remaining_rechecks)):
             return None
         if (_identity(fd, port) != selected
                 or not _same_process(pid, tick, root_stat, port)
                 or _listener_inode(port) != inode
                 or not _owns_socket(pid, inode)
-                or not _exclusive_socket_owner(pid, inode)):
+                or not _exclusive_owner_with_churn_recheck(pid, inode, remaining_rechecks)):
             return None
         return ListenerProof(pid, tick, port, inode)
     except (OSError, ValueError, UnicodeError):
