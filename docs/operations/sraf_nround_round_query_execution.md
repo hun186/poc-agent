@@ -18,6 +18,12 @@ ES DSL、索引、日期，也不允許假裝包含第二條隱藏查詢。
 - 每輪一次性 claim，拒絕在同輪已經執行其他未列入計畫的 ES IO
   之後，再宣稱這是唯一 canonical 查詢。重複呼叫同一或另一份
   manifest 都不能繼續花費 ES/LLM 額度。
+- claim 另外核發**不公開的同輪執行權杖**；PIT open 和每一個
+  `search_after` 分頁扣預算時，都必須帶相同權杖。
+  claim 後即使另一段程式試圖直接透過舊 ES adapter 執行（未帶
+  權杖），也必須立即標記 `UNTRACKED_QUERY_ADMISSION` 並中止
+  目前執行中的 canonical 查詢；不可繼續回報 query_plan_complete。
+  未 claim 的舊離線單輪測試仍沿用不帶權杖的既有路徑。
 - 使用既有 `search_fenced_es_round` 真正執行受信任 client
   注入的 Elasticsearch PIT open → 全部分頁 search_after → close。
   每次 ES 開啟與分頁照舊由 request-local 預算及分頁完整性閘門控制。
