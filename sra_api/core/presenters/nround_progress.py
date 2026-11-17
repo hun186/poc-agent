@@ -101,6 +101,7 @@ def safe_nround_progress(raw: Any) -> dict[str, Any]:
                 or nums["verified_in_round"] > nums["validated_rows"]
                 or nums["new_verified"] > nums["verified_in_round"]
                 or nums["new_sources"] > nums["candidate_sources"]
+                or nums["new_sources"] > nums["new_verified"]
                 or nums["cumulative_verified"] !=
                     previous_evidence + nums["new_verified"]
                 or nums["cumulative_sources"] !=
