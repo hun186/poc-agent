@@ -4,9 +4,13 @@ on:
   pull_request:
     paths:
       - 'agent/adaptive_retrieval/es_page_fence.py'
+      - 'agent/adaptive_retrieval/round_query_execution.py'
+      - 'agent/adaptive_retrieval/es_pit_adapter.py'
       - 'agent/adaptive_retrieval/coordinator.py'
       - 'agent/adaptive_retrieval/request_budget.py'
       - 'tests/test_sraf_nround_es_page_fence.py'
+      - 'tests/test_sraf_nround_round_query_execution.py'
+      - 'docs/operations/sraf_nround_round_query_execution.md'
       - 'docs/operations/sraf_nround_es_page_fence.md'
       - '.github/workflows/sraf-nround-es-page-fence.yml'
   workflow_dispatch:
@@ -35,5 +39,5 @@ jobs:
           python -m pip install 'pytest>=8,<10'
       - name: Compile and test both new page fence and coordinator
         run: |
-          python -m compileall -q agent/adaptive_retrieval/es_page_fence.py tests/test_sraf_nround_es_page_fence.py
-          python -m pytest -q tests/test_sraf_nround_es_page_fence.py tests/test_sraf_nround_coordinator.py tests/test_sraf_request_evidence_ledger.py
+          python -m compileall -q agent/adaptive_retrieval/round_query_execution.py agent/adaptive_retrieval/es_page_fence.py tests/test_sraf_nround_round_query_execution.py
+          python -m pytest -q tests/test_sraf_nround_round_query_execution.py tests/test_sraf_nround_es_pit_adapter.py tests/test_sraf_nround_es_page_fence.py tests/test_sraf_nround_coordinator.py tests/test_sraf_request_evidence_ledger.py
