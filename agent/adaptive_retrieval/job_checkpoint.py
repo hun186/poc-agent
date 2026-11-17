@@ -9,11 +9,14 @@ from __future__ import annotations
 
 from contextlib import closing
 import hashlib
+import json
 from pathlib import Path
 import re
 import secrets
 import sqlite3
 from typing import Any
+
+from api.services.report_job_store import ReportJob, ReportJobStore
 
 _JOB_ID = re.compile(r"rpt_[0-9a-f]{32}\Z")
 _TABLE = "sraf_nround_checkpoints"
@@ -59,6 +62,7 @@ _ALLOWED_REASONS = frozenset((
     "INVALID_CONTEXT", "INCONSISTENT_ROUND_HISTORY", "PLANNER_STOPPED",
     "UNTRUSTED_NEXT_ROUND_SCOPE", "LATE_BUDGET_EXHAUSTED",
     "STALE_ROUND_HISTORY", "NO_NEW_STRATEGY",
+    "UNTRACKED_QUERY_ADMISSION",
 ))
 
 
@@ -217,43 +221,172 @@ class NroundCheckpointStore:
             return token if cur.rowcount == 1 else None
         return self._write(op)
 
+    @staticmethod
+    def _running_report_job_matches(
+        con: sqlite3.Connection, claimed_job: ReportJob,
+    ) -> bool:
+        """Read the existing Report Job claim in the SAME SQLite transaction.
+
+        Compare owner, original prompt and all immutable admission fields,
+        not just an untrusted job_id or status flag. No private field leaves
+        this method. This is a single-machine, same-file SQLite authority
+        check, NOT a substitute for actual owner index RBAC.
+        """
+        # Structural/index/version validation must happen inside the same
+        # transaction BEFORE either sidecar claim or progress mutation.
+        # A lookalike report_jobs table is never acceptable authority.
+        ReportJobStore._validate_v2(con)
+        if (type(claimed_job) is not ReportJob
+                or claimed_job.status != "running"
+                or claimed_job.phase != "agent_execution"
+                or type(claimed_job.owner_kind) is not str
+                or not claimed_job.owner_kind.strip()
+                or type(claimed_job.owner_id) is not str
+                or not claimed_job.owner_id.strip()
+                or type(claimed_job.session_id) is not str
+                or not claimed_job.session_id.strip()
+                or type(claimed_job.started_at) is not str
+                or not claimed_job.started_at):
+            return False
+        row = con.execute(
+            """SELECT job_id,status,phase,prompt,filename,session_id,model,
+                      options_json,metadata_json,idempotency_key,request_hash,
+                      owner_kind,owner_id,created_at,started_at
+               FROM report_jobs WHERE job_id=?""",
+            (claimed_job.job_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        fields = (
+            "job_id", "prompt", "filename", "session_id", "model",
+            "idempotency_key", "request_hash", "owner_kind", "owner_id",
+            "created_at", "started_at",
+        )
+        return (
+            row["status"] == "running"
+            and row["phase"] == "agent_execution"
+            and all(row[name] == getattr(claimed_job, name) for name in fields)
+            and json.loads(row["options_json"]) == claimed_job.options
+            and json.loads(row["metadata_json"]) == claimed_job.metadata
+        )
+
+    def _same_report_job_database(self, store: ReportJobStore) -> bool:
+        return (
+            type(store) is ReportJobStore
+            and self.db_path.resolve() == store.db_path.resolve()
+        )
+
+    def claim_for_running_report_job(
+        self, report_store: ReportJobStore, claimed_job: ReportJob,
+    ) -> str | None:
+        """Claim the queued sidecar ONLY if the actual Report Job is running.
+
+        SELECT of canonical report_jobs and sidecar QUEUED→RUNNING CAS occur
+        in ONE BEGIN IMMEDIATE SQLite transaction. No token is issued for a
+        queued, interrupted, failed, owner-replaced or different-DB Job.
+        Existing unbound claim() remains for historic isolated tests;
+        production Worker must use this stricter method.
+        """
+        try:
+            # Path.resolve(), mkdir/open and schema checks are all inside
+            # the sanitized boundary; never expose private DB path details.
+            if (not self._same_report_job_database(report_store)
+                    or type(claimed_job) is not ReportJob
+                    or not self._valid_id(claimed_job.job_id)):
+                return None
+            token = secrets.token_urlsafe(32)
+
+            def op(con):
+                if not self._running_report_job_matches(con, claimed_job):
+                    return None
+                cur = con.execute(
+                    f"""UPDATE {_TABLE}
+                        SET state='RUNNING', phase='SEARCHING', lease_hash=?,
+                            revision=revision+1
+                        WHERE job_id=? AND state='QUEUED'""",
+                    (self._hash(token), claimed_job.job_id),
+                )
+                return token if cur.rowcount == 1 else None
+
+            return self._write(op)
+        except Exception:
+            raise ValueError("nround_report_job_claim_unverified") from None
+
+    def record_progress_for_running_report_job(
+        self, report_store: ReportJobStore, claimed_job: ReportJob,
+        lease_token: str, progress: dict[str, Any],
+    ) -> bool:
+        """Persist count-only N-round progress iff the same Job remains running.
+
+        This checks the ReportJob identity AND hashed sidecar lease in the
+        same write transaction. It never creates a Word and never marks the
+        ReportJob completed or eligible for download.
+        """
+        try:
+            phase, number, completed, es_calls, reason = _validated_counts(progress)
+            if (not self._same_report_job_database(report_store)
+                    or type(claimed_job) is not ReportJob
+                    or not self._valid_id(claimed_job.job_id)
+                    or type(lease_token) is not str
+                    or re.fullmatch(r"[A-Za-z0-9_-]{43}", lease_token) is None):
+                return False
+
+            def op(con):
+                if not self._running_report_job_matches(con, claimed_job):
+                    return False
+                return self._record_progress_locked(
+                    con, claimed_job.job_id, lease_token,
+                    phase, number, completed, es_calls, reason,
+                )
+
+            return self._write(op)
+        except Exception:
+            raise ValueError("nround_report_job_progress_unverified") from None
+
     def record_progress(self, job_id: str, lease_token: str,
                         progress: dict[str, Any]) -> bool:
         phase, number, completed, es_calls, reason = _validated_counts(progress)
         if (not self._valid_id(job_id) or type(lease_token) is not str
                 or re.fullmatch(r"[A-Za-z0-9_-]{43}", lease_token) is None):
             return False
+        return self._write(lambda con: self._record_progress_locked(
+            con, job_id, lease_token, phase, number, completed, es_calls, reason,
+        ))
+
+    def _record_progress_locked(
+        self, con: sqlite3.Connection, job_id: str, lease_token: str,
+        phase: str, number: int, completed: int, es_calls: int, reason: str,
+    ) -> bool:
+        """Shared monotonic lease-CAS, ALWAYS within caller's transaction."""
+        row = con.execute(
+            f"SELECT * FROM {_TABLE} WHERE job_id=? AND state='RUNNING'",
+            (job_id,),
+        ).fetchone()
+        if row is None or row["lease_hash"] != self._hash(lease_token):
+            return False
+        old_round = row["round_number"]
+        if (number == old_round
+                and _PHASE_ORDER[phase] < _PHASE_ORDER[row["phase"]]):
+            return False
+        if (number < old_round or number > old_round + 1
+                or completed < row["completed_rounds"]
+                or completed > row["completed_rounds"] + 1
+                or (number == old_round
+                    and es_calls < row["es_calls_this_round"])
+                or (number > old_round
+                    and completed < number - 1)):
+            return False
         new_state = "RETRIEVAL_STOPPED" if phase == "TERMINAL" else "RUNNING"
-        def op(con):
-            row = con.execute(
-                f"SELECT * FROM {_TABLE} WHERE job_id=? AND state='RUNNING'",
-                (job_id,),
-            ).fetchone()
-            if row is None or row["lease_hash"] != self._hash(lease_token):
-                return False
-            old_round = row["round_number"]
-            if (number == old_round
-                    and _PHASE_ORDER[phase] < _PHASE_ORDER[row["phase"]]):
-                return False
-            if (number < old_round or number > old_round + 1
-                    or completed < row["completed_rounds"]
-                    or completed > row["completed_rounds"] + 1
-                    or (number == old_round
-                        and es_calls < row["es_calls_this_round"])
-                    or (number > old_round
-                        and completed < number - 1)):
-                return False
-            con.execute(
-                f"""UPDATE {_TABLE}
-                    SET state=?,phase=?,round_number=?,completed_rounds=?,
-                        es_calls_this_round=?,termination=?,revision=revision+1,
-                        lease_hash=CASE WHEN ?='RETRIEVAL_STOPPED' THEN NULL ELSE lease_hash END
-                    WHERE job_id=?""",
-                (new_state, phase, number, completed, es_calls, reason,
-                 new_state, job_id),
-            )
-            return True
-        return self._write(op)
+        con.execute(
+            f"""UPDATE {_TABLE}
+                SET state=?,phase=?,round_number=?,completed_rounds=?,
+                    es_calls_this_round=?,termination=?,revision=revision+1,
+                    lease_hash=CASE WHEN ?='RETRIEVAL_STOPPED' THEN NULL ELSE lease_hash END
+                WHERE job_id=?""",
+            (new_state, phase, number, completed, es_calls, reason,
+             new_state, job_id),
+        )
+        return True
 
     def interrupt_running(self) -> int:
         """Startup recovery: no automatic replay, never fabricate completion."""
