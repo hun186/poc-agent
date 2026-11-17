@@ -201,3 +201,54 @@ def test_existing_legacy_unbound_checkpoint_path_remains_isolated(tmp_path):
     public = sidecar.get_public(J)
     assert public["state"] == "RUNNING"
     assert public["report_generation_authorized"] is False
+
+
+
+@pytest.mark.parametrize("drift", ["wrong_user_version", "missing_owner_index"])
+def test_schema_drift_refuses_new_claim_before_sidecar_update(tmp_path, drift):
+    reports, sidecar, job = setup(tmp_path)
+    with sqlite3.connect(reports.db_path) as con:
+        if drift == "wrong_user_version":
+            con.execute("PRAGMA user_version=999")
+        else:
+            con.execute("DROP INDEX uq_report_jobs_owner_idempotency")
+    with pytest.raises(ValueError, match="nround_report_job_claim_unverified"):
+        sidecar.claim_for_running_report_job(reports, job)
+    assert sidecar.get_public(J)["state"] == "QUEUED"
+    assert sidecar.get_public(J)["revision"] == 0
+
+
+@pytest.mark.parametrize("drift", ["wrong_user_version", "missing_owner_index"])
+def test_schema_drift_refuses_progress_after_valid_lease(tmp_path, drift):
+    reports, sidecar, job = setup(tmp_path)
+    token = sidecar.claim_for_running_report_job(reports, job)
+    assert token
+    before = sidecar.get_public(J)
+    with sqlite3.connect(reports.db_path) as con:
+        if drift == "wrong_user_version":
+            con.execute("PRAGMA user_version=999")
+        else:
+            con.execute("DROP INDEX uq_report_jobs_owner_idempotency")
+    with pytest.raises(ValueError, match="nround_report_job_progress_unverified"):
+        sidecar.record_progress_for_running_report_job(
+            reports, job, token, progress())
+    assert sidecar.get_public(J) == before
+
+
+def test_both_atomic_methods_redact_private_filesystem_path_failure(tmp_path):
+    from pathlib import Path
+    # The 'parent' is a regular file, not a directory. Both SQLite store
+    # handles intentionally target an invalid path with a private name.
+    parent = tmp_path / "PRIVATE_NO_DIRECTORY"
+    parent.write_text("file not directory")
+    bad = parent / "PRIVATE_jobs.sqlite3"
+    reports = ReportJobStore(bad)
+    sidecar = NroundCheckpointStore(bad)
+    _, _, claimed = setup(tmp_path / "real_claim")
+    with pytest.raises(ValueError, match="nround_report_job_claim_unverified") as err:
+        sidecar.claim_for_running_report_job(reports, claimed)
+    assert "PRIVATE_" not in str(err.value)
+    with pytest.raises(ValueError, match="nround_report_job_progress_unverified") as err2:
+        sidecar.record_progress_for_running_report_job(
+            reports, claimed, "x" * 43, progress())
+    assert "PRIVATE_" not in str(err2.value)
