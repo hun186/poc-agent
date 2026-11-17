@@ -50,3 +50,36 @@ ASSESSED
 `tests/test_sraf_nround_coordinator.py` 以合成 ES hit 與假 LLM 驗證：兩輪完成與去重、Event-only／錯 Event 日期、空結果、未完整及未 request-wide 評估、越權索引拒絕、未完成新輪不可 handoff、30 分鐘截止、鎖定關鍵字、模型異常、LLM 期間取消、Parser 期間取消、同輪併發、公開進度隱私與 ES 原子額度。
 
 後續正式路線仍需：授權 ES adapter、PIT／分頁完整性、每輪品質判斷器、Report Job durable checkpoints、重啟／取消／timeout 對帳、引用 Evidence 到 Word、與 OpenWebUI 的非阻塞 Job 連結。以上不屬本 PR 完成項目。
+
+
+## 2026-11-17：canonical Evidence 評估與 N 輪協調器的單次綁定
+
+`AdaptiveRequestCoordinator.complete_round(...)` 增加完全選用且
+**尚未在正式 Worker 啟用**的三個參數：
+`coverage_evaluator`、`coverage_witnesses`、`semantic_verifier`。
+
+- 協調器對 ES hit 執行既有的 **同一次** `observe_canonical_round`
+  Event／Timeline 日期、主題與來源驗證，再把這份不可變
+  `RoundObservation` 交給已綁定相同 `QueryConstraints` 物件的
+  `RequestWideCoverageEvaluator`，杜絕「另外解析一遍不同內容」
+  的驗證歧異。
+- 使用評估器時，協調器會**無條件以實際覆蓋度評估結果取代**
+  來自外部的 `coverage_sufficient`、`missing_aspects`，
+  不允許呼叫端聲稱 sufficient=True 就繞過來源多樣性與語意缺口。
+  評估器不能自行發明 `request_wide_attested=True`；仍須有可信
+  全輪查詢與完整分頁的獨立證明。
+- 若評估器的 immutable scope 不是當輪原本的同一個物件、證據配對
+  失真、未提供可信語意驗證回呼、判定過程取消或出現例外，
+  協調器必須在不寫入 Ledger 的情況下轉為終止狀態；不能呼叫 LLM
+  補查，也不能把該輪列為已完成可生成報告。**即使本輪完全沒有
+  Evidence witness，只要語意驗證回呼缺失，仍屬執行依賴故障、
+  不可將它當成「證據不足」而自動啟動下一輪。** 若語意驗證回呼
+  存在、只是沒有驗證成功的 Evidence，才是可繼續規劃的缺口。
+- 舊有無評估器的 `complete_round` 介面暫時保留，供尚未切換的
+  隔離測試／相容程式使用；**正式 N 輪 Worker 不得採信舊有呼叫者
+  直接傳入的 sufficiency boolean。** 不可單靠新模組就啟用功能。
+
+本階段僅新增資料流契約與回歸測試。尚未有私有 Evidence 回查原文的
+語意驗證服務、Job 擁有者 RBAC、完整 ES query-plan completion 証明、
+持久化 Job 與 Word 輸出。Linux 端需更新至合併後 main，
+才能執行 `tests/test_sraf_nround_coverage_coordinator_bridge.py` 離線驗證。
