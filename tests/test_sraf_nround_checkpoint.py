@@ -126,7 +126,8 @@ def test_monotonic_progress_rejects_rollbacks_and_round_skips(tmp_path):
         st.record_progress(J, lease, progress(round_number=3))
     assert st.record_progress(J, lease, progress(phase="ASSESSED", completed=1, es_calls=2))
     assert st.record_progress(J, lease, progress(round_number=2, completed=1))
-    assert not st.record_progress(J, lease, progress(round_number=1, completed=1))
+    with pytest.raises(ValueError, match="untrusted_nround_progress"):
+        st.record_progress(J, lease, progress(round_number=1, completed=1))
     assert st.get_public(J)["round_number"] == 2
 
 
@@ -169,6 +170,18 @@ def test_existing_incompatible_table_is_never_overwritten(tmp_path):
     with sqlite3.connect(path) as con:
         assert con.execute(
             "SELECT secret FROM sraf_nround_checkpoints").fetchone()[0] == "preserve_me"
+
+
+def test_unhashable_phase_and_invalid_lease_are_rejected_safely(tmp_path):
+    st = store(tmp_path)
+    st.create(J)
+    lease = st.claim(J)
+    wrong = progress()
+    wrong["phase"] = {"PRIVATE_SOURCE": "not_a_phase"}
+    with pytest.raises(ValueError, match="untrusted_nround_progress"):
+        st.record_progress(J, lease, wrong)
+    assert not st.record_progress(J, "非ASCII", progress())
+    assert st.record_progress(J, lease, progress())
 
 
 def test_refuse_invalid_ids_without_table_mutation(tmp_path):
