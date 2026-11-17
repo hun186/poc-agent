@@ -122,7 +122,8 @@ def test_monotonic_progress_rejects_rollbacks_and_round_skips(tmp_path):
     lease = st.claim(J)
     assert st.record_progress(J, lease, progress(es_calls=2))
     assert not st.record_progress(J, lease, progress(es_calls=1))
-    assert not st.record_progress(J, lease, progress(round_number=3))
+    with pytest.raises(ValueError, match="untrusted_nround_progress"):
+        st.record_progress(J, lease, progress(round_number=3))
     assert st.record_progress(J, lease, progress(phase="ASSESSED", completed=1, es_calls=2))
     assert st.record_progress(J, lease, progress(round_number=2, completed=1))
     assert not st.record_progress(J, lease, progress(round_number=1, completed=1))
