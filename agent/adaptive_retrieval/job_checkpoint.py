@@ -21,6 +21,18 @@ _COLUMNS = (
     "job_id", "state", "phase", "round_number", "completed_rounds",
     "es_calls_this_round", "termination", "lease_hash", "revision",
 )
+_EXPECTED_COLUMN_META = (
+    # name, declared SQLite type, NOT NULL flag, DEFAULT expression, PK ordinal
+    ("job_id", "TEXT", 0, None, 1),
+    ("state", "TEXT", 1, None, 0),
+    ("phase", "TEXT", 1, None, 0),
+    ("round_number", "INTEGER", 1, "0", 0),
+    ("completed_rounds", "INTEGER", 1, "0", 0),
+    ("es_calls_this_round", "INTEGER", 1, "0", 0),
+    ("termination", "TEXT", 1, "'NONE'", 0),
+    ("lease_hash", "TEXT", 0, None, 0),
+    ("revision", "INTEGER", 1, "0", 0),
+)
 _PHASES = frozenset(("SEARCHING", "ASSESSING", "ASSESSED", "PLANNING", "TERMINAL"))
 # Per-round phase order; crossing into a *new* round restarts at SEARCHING.
 _PHASE_ORDER = {phase: index for index, phase in enumerate(
@@ -97,7 +109,8 @@ def _validated_counts(progress: dict[str, Any]) -> tuple[str, int, int, int, str
                 or audit["cumulative_sources"] < previous_sources
                 or audit["cumulative_sources"] > audit["cumulative_verified"]
                 or audit["new_verified"] != audit["cumulative_verified"] - previous_verified
-                or audit["new_sources"] != audit["cumulative_sources"] - previous_sources):
+                or audit["new_sources"] != audit["cumulative_sources"] - previous_sources
+                or audit["new_sources"] > audit["new_verified"]):
             raise ValueError("untrusted_nround_audit")
         previous_verified = audit["cumulative_verified"]
         previous_sources = audit["cumulative_sources"]
@@ -157,9 +170,15 @@ class NroundCheckpointStore:
                     lease_hash TEXT,
                     revision INTEGER NOT NULL DEFAULT 0
                 )""")
-            actual = tuple(row["name"] for row in con.execute(
-                f"PRAGMA table_info({_TABLE})"))
-            if actual != _COLUMNS:
+            info = tuple(
+                (row["name"], row["type"].upper(), row["notnull"],
+                 row["dflt_value"], row["pk"])
+                for row in con.execute(f"PRAGMA table_info({_TABLE})")
+            )
+            # Names alone are insufficient: an externally created same-shape
+            # table without a PRIMARY KEY admits duplicate job IDs and makes
+            # two-worker claim fencing unsafe. Refuse all schema variations.
+            if info != _EXPECTED_COLUMN_META:
                 raise RuntimeError("incompatible_nround_checkpoint_schema")
         self._write(init)
 
