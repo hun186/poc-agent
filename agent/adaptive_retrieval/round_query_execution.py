@@ -46,6 +46,11 @@ class FrozenSingleQueryPlan:
     _execution_token: object = field(
         default_factory=object, compare=False, repr=False,
     )
+    # The future Worker-bound path stamps its exact owner-scope binding
+    # onto the frozen plan; the unbound isolated ES path stays None.
+    _owner_binding_token: object | None = field(
+        default=None, compare=False, repr=False,
+    )
 
     def __post_init__(self) -> None:
         if (type(self.coordinator) is not AdaptiveRequestCoordinator
