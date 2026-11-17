@@ -1,0 +1,220 @@
+"""Synthetic executable N-round loop, no real ES provider or Report Job."""
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from agent.adaptive_retrieval.contracts import DateWindow, QueryConstraints
+from agent.adaptive_retrieval.coordinator import AdaptiveRequestCoordinator
+from agent.adaptive_retrieval.coverage_evaluator import RequestWideCoverageEvaluator
+from agent.adaptive_retrieval.planner import AdaptiveRetrievalPlanner
+from agent.adaptive_retrieval.request_budget import RequestAdmissionBudget
+from agent.adaptive_retrieval.trusted_execution_loop import (
+    TrustedNroundExecutionError, run_trusted_nround,
+)
+from test_sraf_nround_es_pit_adapter import FakeES, _page
+from test_sraf_shared_evidence_budget import _hit as canonical_hit, D0
+
+
+def _setup(*, max_es_calls=24):
+    clock = [0.0]
+    constraints = QueryConstraints(
+        question="PRIVATE_請分析2023年甲軸乙軸丙軸與外交影響",
+        event_date=DateWindow(D0, D0, "day", "explicit_user", D0),
+        analysis_date=DateWindow(),
+        allowed_indexes=("news_test",),
+        required_entities=("甲軸",),
+        original_core_terms=("甲軸", "乙軸", "丙軸"),
+    )
+    planner_calls = []
+    def fake_planner(prompt, *, system_prompt):
+        planner_calls.append(1)
+        return json.dumps({
+            "action": "search", "reason_code": "COVERAGE_GAP",
+            "optional_terms": ["聯合國聲明"],
+            "target_aspects": ["外交回應"],
+        }, ensure_ascii=False)
+    budget = RequestAdmissionBudget(
+        clock=lambda: clock[0], max_es_calls=max_es_calls)
+    coordinator = AdaptiveRequestCoordinator(
+        constraints=constraints,
+        term_groups=(("甲軸",), ("乙軸",), ("丙軸",)),
+        effective_terms=("甲軸", "乙軸", "丙軸"),
+        budget=budget, planner=AdaptiveRetrievalPlanner(fake_planner),
+    )
+    evaluator = RequestWideCoverageEvaluator(
+        constraints=constraints, target_aspects=("外交回應",),
+        min_evidence_per_target=2, min_sources_per_target=2,
+    )
+    return coordinator, constraints, evaluator, budget, planner_calls, clock
+
+
+def _verified_page(name, *, count=2):
+    doc = canonical_hit(count, "PRIVATE_DOC_" + name, inner=False)
+    doc["sort"] = [5.0, 100, name]
+    return _page([doc])
+
+
+def _run(c, scope, ev, es, *, assessor=None, attestor=None, **kwargs):
+    return run_trusted_nround(
+        coordinator=c,
+        constraints=scope, evaluator=ev,
+        authorized_indexes=("news_test",), es_client=es,
+        semantic_assessor=(
+            (lambda target, evidence: True) if assessor is None else assessor),
+        attest_whole_query_scope=(
+            (lambda plan, result: True) if attestor is None else attestor),
+        query_for_snippet="甲軸乙軸丙軸",
+        **kwargs,
+    )
+
+
+def test_full_two_round_synthetic_loop_uses_real_pit_bridge_and_semantic_coverage():
+    c, scope, evaluator, budget, planner_calls, clock = _setup()
+    es = FakeES(_verified_page("A"), _verified_page("B"))
+    inspected = []
+    def assess(target, private):
+        inspected.append((target.kind, private.text, private.date_iso))
+        return True
+    attest_calls = []
+    def attest(plan, result):
+        attest_calls.append((
+            plan.round_number, result.query_plan_complete,
+            result.request_wide_attested))
+        return True
+    result = _run(c, scope, evaluator, es, assessor=assess, attestor=attest)
+    assert len(result.rounds) == 2
+    assert [r.round_number for r in result.rounds] == [1, 2]
+    assert planner_calls == [1]
+    assert attest_calls == [(1, True, False), (2, True, False)]
+    assert len(inspected) == 8  # 2 passages x 2 facets x 2 rounds
+    assert all(when == D0 for _, _, when in inspected)
+    assert c.safe_progress()["termination"] == "SUFFICIENT"
+    assert c.safe_progress()["completed_rounds"] == 2
+    assert c.history[0].coverage_sufficient is False
+    assert c.history[1].coverage_sufficient is True
+    assert c.history[1].known_sources == 2
+    assert c.history[1].newly_verified_evidence == 2
+    assert len(es.searches) == 2
+    assert [kind for kind, _ in es.calls] == [
+        "open", "search", "close", "open", "search", "close"]
+    assert budget.snapshot().remaining_es_calls == 20  # two PIT opens + two pages
+    safe = json.dumps(result.safe_audit(), ensure_ascii=False)
+    assert result.safe_audit()["report_job"] == "NOT_INTEGRATED"
+    assert result.safe_audit()["word_generated"] is False
+    for secret in ("PRIVATE_DOC", "news_test", "甲軸", D0):
+        assert secret not in safe
+    assert "PRIVATE_DOC" not in repr(result)
+
+
+def test_external_request_wide_scope_proof_required_even_with_complete_pit():
+    c, scope, ev, _, calls, _ = _setup()
+    es = FakeES(_verified_page("A"))
+    semantics = []
+    with pytest.raises(TrustedNroundExecutionError, match="trusted_nround_execution_failed"):
+        _run(c, scope, ev, es, assessor=lambda *a: semantics.append(1) or True,
+             attestor=lambda *_: False)
+    assert semantics == []
+    assert len(es.searches) == 1
+    assert c.history == ()
+    assert c.safe_progress()["phase"] == "TERMINAL"
+    assert c.safe_progress()["ready_for_external_report_generation"] is False
+    assert calls == []
+
+
+def test_caller_attestor_non_boolean_cannot_pretend_to_be_true():
+    c, scope, ev, _, calls, _ = _setup()
+    with pytest.raises(TrustedNroundExecutionError):
+        _run(c, scope, ev, FakeES(_verified_page("A")),
+             attestor=lambda *_: "true")
+    assert c.history == ()
+    assert calls == []
+
+
+def test_semantic_verifier_failure_never_commits_coverage_or_plans_more_rounds():
+    c, scope, ev, _, calls, _ = _setup()
+    def invalid_semantics(*_):
+        raise RuntimeError("PRIVATE_LLM_RESPONSE_URL")
+    with pytest.raises(TrustedNroundExecutionError) as err:
+        _run(c, scope, ev, FakeES(_verified_page("A")),
+             assessor=invalid_semantics)
+    assert "PRIVATE_" not in str(err.value)
+    assert c.history == ()
+    assert calls == []
+    assert c.safe_progress()["termination"] == "CANCELLED"
+
+
+def test_missing_semantic_assessor_rejected_before_first_es_io():
+    c, scope, ev, _, calls, _ = _setup()
+    es = FakeES(_verified_page("A"))
+    with pytest.raises(TrustedNroundExecutionError, match="invalid_trusted_nround_context"):
+        run_trusted_nround(
+            coordinator=c, constraints=scope,
+            evaluator=ev, authorized_indexes=("news_test",),
+            es_client=es, semantic_assessor=None,
+            attest_whole_query_scope=lambda *_: True,
+            query_for_snippet="甲軸乙軸丙軸",
+        )
+    assert es.calls == []
+    assert c.safe_progress()["phase"] == "CREATED"
+
+
+def test_failed_pit_or_partial_shards_cannot_return_partial_rounds():
+    c, scope, ev, _, calls, _ = _setup()
+    es = FakeES(_page([canonical_hit(1, "PRIVATE")], successful=1))
+    with pytest.raises(TrustedNroundExecutionError):
+        _run(c, scope, ev, es)
+    assert c.history == ()
+    assert calls == []
+    assert c.safe_progress()["phase"] == "TERMINAL"
+
+
+def test_operator_cap_does_not_publish_incomplete_multi_round_result():
+    c, scope, ev, budget, calls, _ = _setup()
+    es = FakeES(_verified_page("A"))
+    with pytest.raises(TrustedNroundExecutionError):
+        _run(c, scope, ev, es, max_rounds=1)
+    assert c.safe_progress()["phase"] == "TERMINAL"
+    assert c.safe_progress()["ready_for_external_report_generation"] is False
+    assert c.safe_progress()["completed_rounds"] == 1
+    assert calls == []  # no unexecutable next strategy was purchased
+    assert budget.rounds_started == 1
+
+
+@pytest.mark.parametrize("cutoff_at", ["after_scope", "after_semantic"])
+def test_expired_retrieval_budget_after_callbacks_fails_closed(cutoff_at):
+    c, scope, ev, _, calls, clock = _setup()
+    es = FakeES(_verified_page("A"))
+    def attest(*_):
+        if cutoff_at == "after_scope":
+            clock[0] = 1900.0
+        return True
+    semantic_calls = []
+    def assessor(*_):
+        semantic_calls.append(1)
+        if cutoff_at == "after_semantic":
+            clock[0] = 1900.0
+        return True
+    with pytest.raises(TrustedNroundExecutionError):
+        _run(c, scope, ev, es, attestor=attest, assessor=assessor)
+    assert c.safe_progress()["phase"] == "TERMINAL"
+    assert c.safe_progress()["completed_rounds"] == 0
+    assert calls == []
+    assert len(semantic_calls) == (0 if cutoff_at == "after_scope" else 1)
+
+
+def test_cancel_during_semantic_callback_is_not_reversed():
+    c, scope, ev, _, calls, clock = _setup()
+    es = FakeES(_verified_page("A"))
+    semantic_calls = []
+    def cancel(*_):
+        semantic_calls.append(1)
+        c.cancel()
+        return True
+    with pytest.raises(TrustedNroundExecutionError):
+        _run(c, scope, ev, es, assessor=cancel)
+    assert c.safe_progress()["phase"] == "TERMINAL"
+    assert c.history == ()
+    assert calls == []
+    assert semantic_calls == [1]
