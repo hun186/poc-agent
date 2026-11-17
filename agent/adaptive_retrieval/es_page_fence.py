@@ -60,7 +60,9 @@ def _page_hits(raw: Any, size: int, allowed_indexes: tuple[str, ...]) -> list[di
     failed = shards.get("failed")
     if (any(type(v) is not int for v in (total, successful, skipped, failed))
             or total < 1 or successful < 0 or skipped < 0 or failed != 0
-            or successful + skipped != total):
+            # Elasticsearch includes skipped shards among successful shards.
+            # Adding skipped to successful could mask unallocated shards.
+            or successful != total or skipped > successful):
         raise PageFenceError("partial_es_shards")
     hits_section = raw.get("hits")
     if type(hits_section) is not dict or type(hits_section.get("hits")) is not list:
