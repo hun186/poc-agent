@@ -76,6 +76,11 @@ class FakeES:
         self.closing = closing
         self.calls = []
         self.searches = []
+        self.transport_options = []
+
+    def options(self, **kwargs):
+        self.transport_options.append(kwargs)
+        return self
 
     def open_point_in_time(self, **kwargs):
         self.calls.append(("open", kwargs))
@@ -123,9 +128,15 @@ def test_complete_pit_chain_has_identity_stable_sort_and_no_report_permission():
     opened = es.calls[0][1]
     assert opened["index"] == "news_test"
     assert opened["ignore_unavailable"] is False
-    assert opened["allow_no_indices"] is False
+    assert opened["allow_partial_search_results"] is False
+    assert all(o["max_retries"] == 0 and o["retry_on_timeout"] is False
+               and o["retry_on_status"] == () for o in es.transport_options)
+    assert all(1 <= o["request_timeout"] <= 30
+               for o in es.transport_options)
+    assert "request_timeout" not in opened
     assert "index" not in es.searches[0]
     assert es.searches[0]["allow_partial_search_results"] is False
+    assert "request_timeout" not in es.searches[0]
     first, second = (request["body"] for request in es.searches)
     assert first["pit"]["id"] == "PRIVATE-PIT-1"
     assert second["pit"]["id"] == "PRIVATE-PIT-2"
@@ -147,7 +158,7 @@ def test_complete_pit_chain_has_identity_stable_sort_and_no_report_permission():
 @pytest.mark.parametrize("problem", [
     "missing_pit", "open_exception", "transport_exception",
     "partial_shards", "timed_out", "bad_index", "full_page_limit",
-    "failed_cleanup",
+    "failed_cleanup", "negative_cleanup",
 ])
 def test_all_transport_and_page_failures_refuse_partial_evidence(problem):
     c, scope, budget = _coordinator()
@@ -172,6 +183,12 @@ def test_all_transport_and_page_failures_refuse_partial_evidence(problem):
     elif problem == "failed_cleanup":
         es = FakeES(_page([_hit(1)]),
                     closing=RuntimeError("PRIVATE-CLEANUP-DETAIL"))
+    elif problem == "negative_cleanup":
+        es = FakeES(_page([_hit(1)]))
+        def failed_close(**kwargs):
+            es.calls.append(("close", kwargs))
+            return {"succeeded": False}
+        es.close_point_in_time = failed_close
     with pytest.raises(LiveRoundESFailure) as err:
         _run(c, scope, es, page_size=1, max_pages=1)
     assert "PRIVATE" not in str(err.value)
