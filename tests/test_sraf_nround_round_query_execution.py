@@ -185,3 +185,69 @@ def test_concurrent_same_round_execution_only_one_can_enter_transport():
         results = list(pool.map(work, (p1, p2)))
     assert sorted(results) == ["complete", "denied"]
     assert [kind for kind, _ in es.calls] == ["open", "search", "close"]
+
+
+def test_untracked_direct_es_adapter_interleaved_at_pit_open_poison_claim():
+    """Codex P2 regression: another adapter must not share claimed ES slots."""
+    from agent.adaptive_retrieval.es_pit_adapter import (
+        LiveRoundESFailure, search_fenced_es_round,
+    )
+    c, scope, _ = _coordinator()
+    attempts = []
+
+    class InterleavedClient(FakeES):
+        def open_point_in_time(self, **kwargs):
+            # The frozen plan is already claimed when PIT opening starts.
+            other = FakeES(_page([]))
+            try:
+                search_fenced_es_round(
+                    coordinator=c, constraints=scope,
+                    authorized_indexes=("news_test",), client=other)
+            except LiveRoundESFailure:
+                attempts.append("direct_denied")
+            else:
+                attempts.append("BYPASS")
+            assert other.calls == []
+            return super().open_point_in_time(**kwargs)
+
+    first = InterleavedClient(_page([]))
+    with pytest.raises(RoundQueryPlanError, match="frozen_query_execution_failed"):
+        execute_single_frozen_query(plan=_plan(c, scope), client=first)
+    assert attempts == ["direct_denied"]
+    assert c.safe_progress()["phase"] == "TERMINAL"
+    assert c.safe_progress()["termination"] == "UNTRACKED_QUERY_ADMISSION"
+    assert not c.safe_progress()["ready_for_external_report_generation"]
+
+
+def test_untracked_direct_admission_interleaved_on_search_invalidates_receipt():
+    c, scope, _ = _coordinator()
+    external = []
+
+    class InterleavedClient(FakeES):
+        def search(self, **kwargs):
+            # Frozen plan opened PIT legitimately; unrelated code now
+            # attempts another ES request without its opaque token.
+            external.append(c.admit_es_call())
+            return super().search(**kwargs)
+
+    es = InterleavedClient(_page([]))
+    with pytest.raises(RoundQueryPlanError, match="frozen_query_execution_failed"):
+        execute_single_frozen_query(plan=_plan(c, scope), client=es)
+    assert external == [False]
+    assert c.safe_progress()["termination"] == "UNTRACKED_QUERY_ADMISSION"
+
+
+def test_forged_token_while_claimed_is_fail_closed():
+    c, scope, _ = _coordinator()
+    p = _plan(c, scope)
+    assert c.claim_single_query_execution(
+        1, execution_token=p._execution_token)
+    assert not c.admit_es_call(execution_token=object())
+    assert c.safe_progress()["termination"] == "UNTRACKED_QUERY_ADMISSION"
+    assert not c.admit_es_call(execution_token=p._execution_token)
+
+
+def test_token_cannot_be_used_when_no_frozen_plan_was_claimed():
+    c, scope, _ = _coordinator()
+    assert not c.admit_es_call(execution_token=object())
+    assert c.safe_progress()["termination"] == "UNTRACKED_QUERY_ADMISSION"
