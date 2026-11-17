@@ -172,6 +172,7 @@ def search_fenced_es_round(
     page_size: int = 50,
     max_pages: int = 20,
     request_timeout_seconds: int = 20,
+    execution_token: object | None = None,
 ) -> FencedESRound:
     """Run ONE full PIT page chain after worker-owned authorization and budget.
 
@@ -231,6 +232,7 @@ def search_fenced_es_round(
     fence = RoundESPageFence(
         coordinator=coordinator, constraints=constraints,
         round_number=round_number, page_size=page_size, max_pages=max_pages,
+        execution_token=execution_token,
     )
     # Validate the complete DSL before admitting any ES IO.
     try:
@@ -247,7 +249,7 @@ def search_fenced_es_round(
     try:
         # Account for PIT-open as an ES IO, not merely metadata. Each page
         # independently claims a second nonrefundable slot before search.
-        if not coordinator.admit_es_call():
+        if not coordinator.admit_es_call(execution_token=execution_token):
             raise LiveRoundESFailure("es_retrieval_budget_exhausted")
         pit_resp = _response(client.options(
             request_timeout=_timeout(coordinator, request_timeout_seconds),
