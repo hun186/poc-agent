@@ -752,6 +752,7 @@ def test_global_fd_budget_retains_all_thread_checks(monkeypatch):
         tid, fd = str(path).split("/")[-3], str(path).split("/")[-1]
         return fd_tables[tid][fd]
 
+    assert listener.MAX_GLOBAL_FDS == 1_048_576  # host scan exceeded old 131072
     monkeypatch.setattr(listener, "_procfs_unfiltered", lambda: True)
     monkeypatch.setattr(listener.os, "scandir", scan)
     monkeypatch.setattr(listener.os, "readlink", readlink)
