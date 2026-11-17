@@ -51,6 +51,13 @@ def _cursor(hit: dict[str, Any]) -> tuple[object, ...]:
 def _page_hits(raw: Any, size: int, allowed_indexes: tuple[str, ...]) -> list[dict]:
     if type(raw) is not dict or raw.get("timed_out") is not False:
         raise PageFenceError("es_timeout_or_bad_page")
+    # terminate_after may produce a short hit page despite undiscovered hits;
+    # short-page pagination completion is unsound if this flag is true.
+    if raw.get("terminated_early") is True or raw.get("is_partial") is True:
+        raise PageFenceError("es_search_terminated_early")
+    if (raw.get("terminated_early") not in (None, True, False)
+            or raw.get("is_partial") not in (None, True, False)):
+        raise PageFenceError("untrusted_es_completeness_flags")
     shards = raw.get("_shards")
     if type(shards) is not dict:
         raise PageFenceError("untrusted_es_shards")
