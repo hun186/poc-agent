@@ -144,3 +144,37 @@ A fresh result of `API-LISTENER=PASS` alongside `API-HEALTH=PASS` and
 full Report Job, ES/SQL/LLM or N-round E2E certificate. Synthetic CI tests
 validate threshold behavior and existing security rejection cases; only the
 actual Linux operator run can confirm this deployment environment.
+
+## 2026-11-17 follow-up: intermittent strict listener attestation
+
+After deploying PR #451, a real Linux operator run observed a full 10/10-stage
+attest_api_listener() PASS (two complete exclusive-owner scans at 1.142 s
+and 1.128 s), but the ordinary runtime baseline sometimes returned
+listener_identity_unverified at BEFORE_HEALTH in ~0.065 s without issuing
+an HTTP request. A successful separate scan does not override a later
+fail-closed INCOMPLETE. The actual early-fail reason remains unknown.
+
+The new operator-only diagnostic instruments the existing OFF-1S functions
+with a local Python trace: it does not change any authentication behavior.
+Output is whitelisted stage labels, failure reasons, bounded counts and
+durations, never launcher PID, socket inode, command line, private paths,
+secrets, exception strings or bearer tokens. There is no HTTP, SQL, ES, LLM,
+report write, or process mutation. From the same Unix user/namespace:
+
+```sh
+cd /mntCZJ/TopicClassification/poc-agent
+PYTHONDONTWRITEBYTECODE=1 python tools/sraf_off1s_stage_diagnostic_readonly.py --attempts 3
+```
+
+These three attempts are independent *operator observations*, not automatic
+retries in the live authenticated request path and never authorize a bearer
+request. A result may contain both PASS and INCOMPLETE. Read failure_stage,
+failure_reason and the sanitized events for the first failed stage.
+fd_disappeared is transient descriptor churn; another_socket_owner or a
+visibility failure must remain fail-closed. Partial scans prove nothing.
+
+Even if three diagnostic attempts pass, separately re-run the ordinary
+runtime-baseline test: the diagnostic cannot certify /healthz, Worker or E2E.
+Python tracing adds overhead: do not use its latency as production timing.
+Unrecognized source changes return source_changed/UNOBSERVED rather than
+a guessed failure reason.
