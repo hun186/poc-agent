@@ -178,3 +178,44 @@ runtime-baseline test: the diagnostic cannot certify /healthz, Worker or E2E.
 Python tracing adds overhead: do not use its latency as production timing.
 Unrecognized source changes return source_changed/UNOBSERVED rather than
 a guessed failure reason.
+
+## 2026-11-17: observed FD churn and one bounded full rescan
+
+New live Linux OFF-1S diagnostics observed three independent attestation
+attempts: first INCOMPLETE at 458,281 scanned FDs, second PASS with two
+complete scans of 525,893 FDs each, third INCOMPLETE at 245,482 FDs.
+The two incomplete attempts reported fd_disappeared, not co-owner or
+missing procfs visibility. This is direct host evidence of closing
+descriptors during long, thread-by-thread procfs inspection.
+
+To reduce false-negative operator and API identities while preserving a
+strict fail-closed gate, the attestation now allows **at most ONE** fresh,
+complete exclusive-owner scan across its two required checks, **ONLY** if
+the preceding scan failed because a descriptor disappeared after directory
+enumeration. The failed pass is discarded and never counted as ownership
+evidence. The replacement pass starts from the beginning, checks all
+processes/threads/FDs, uses the same limits and procfs visibility gates,
+and cannot retry itself. A co-owner, permission failure, FD-read error,
+procfs mount problem, scan cap, invalid task entry or any second churn
+event still rejects attestation.
+
+Failure classification is scoped per attestation using ContextVar; no
+process-global mutable retry flag or token bypass. All existing before-
+and-after checks remain, including the second independent full ownership
+proof. The operator diagnostic reports recovered_fd_churn on an observed
+successful recovery, but does NOT authorize any bearer-bearing request.
+
+**Limits:** At 500k+ scanned FDs, each full scan may cost several seconds.
+One recheck adds host CPU/time; production authenticated HTTP deadlines
+may still be exceeded and must continue to fail closed. CI is synthetic.
+After merging and packaging main, validate real Linux with:
+
+```sh
+cd /mntCZJ/TopicClassification/poc-agent
+PYTHONDONTWRITEBYTECODE=1 python tools/sraf_off1s_stage_diagnostic_readonly.py --attempts 3
+PYTHONDONTWRITEBYTECODE=1 python tools/sraf_runtime_baseline_readonly.py --project-root "$PWD" --api-port 9002
+```
+
+Do not deploy an unmerged branch, raise the FD budget again without evidence,
+disable checking, issue sudo, infer API/ES/LLM correctness from this scan,
+or claim full Report Job / N-round E2E acceptance.
