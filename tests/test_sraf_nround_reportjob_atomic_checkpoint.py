@@ -80,7 +80,8 @@ def test_other_database_cannot_claim_sidecar_for_matching_report_job_id(tmp_path
     reports, sidecar, job = setup(tmp_path / "a")
     other_reports, other_sidecar, other_job = setup(tmp_path / "b")
     assert sidecar.claim_for_running_report_job(other_reports, job) is None
-    assert sidecar.claim_for_running_report_job(reports, other_job) is not None
+    assert sidecar.claim_for_running_report_job(reports, other_job) is None
+    assert sidecar.claim_for_running_report_job(reports, job) is not None
     assert other_sidecar.claim_for_running_report_job(other_reports, other_job) is not None
 
 
