@@ -106,6 +106,8 @@ def test_exactly_full_last_page_requires_extra_empty_page():
     (lambda r: r.update({"terminated_early": True}), "es_search_terminated_early"),
     (lambda r: r.update({"is_partial": True}), "es_search_terminated_early"),
     (lambda r: r.update({"terminated_early": "false"}), "untrusted_es_completeness_flags"),
+    (lambda r: r.update({"terminated_early": 1}), "untrusted_es_completeness_flags"),
+    (lambda r: r.update({"is_partial": 0}), "untrusted_es_completeness_flags"),
     (lambda r: r["_shards"].update({"failed": 1, "total": 3}), "partial_es_shards"),
     (lambda r: r["_shards"].update({"successful": 1}), "partial_es_shards"),
     (lambda r: r["_shards"].update({"successful": 1, "skipped": 1}), "partial_es_shards"),
