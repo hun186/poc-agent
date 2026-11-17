@@ -129,6 +129,14 @@ def test_no_nround_payload_preserves_existing_word_and_markdown():
         {"new_verified": 8}),
     lambda p: p["canonical_evidence_history"][1].update(
         {"new_verified": 0, "cumulative_verified": 2}),
+
+    lambda p: p["canonical_evidence_history"][0].update(
+        {"new_verified": 1, "cumulative_verified": 1}),
+    lambda p: [
+        row.update({"candidate_sources": 0, "new_sources": 0,
+                    "cumulative_sources": 0})
+        for row in p["canonical_evidence_history"]
+    ],
     lambda p: p["canonical_evidence_history"][1].update(
         {"candidate_sources": True}),
     lambda p: p["canonical_evidence_history"][1].update(
@@ -168,6 +176,27 @@ def test_source_growth_requires_at_least_one_new_verified_evidence_per_new_sourc
     usage = {**_usage(), "nround_progress": raw}
     md, word = _render_both(_output(usage))
     assert "多輪智慧檢索歷程" not in md + "\n".join(word)
+
+
+def test_round_verified_union_and_source_provenance_never_fake_word_readiness():
+    union = sample()
+    union["canonical_evidence_history"][0].update({
+        "new_verified": 1, "cumulative_verified": 1,
+        # verified_in_round still 2; impossible under set union.
+    })
+    union["canonical_evidence_history"][1]["cumulative_verified"] = 2
+    no_sources = sample()
+    for row in no_sources["canonical_evidence_history"]:
+        row.update({
+            "candidate_sources": 0, "new_sources": 0,
+            "cumulative_sources": 0,
+        })
+    for invalid in (union, no_sources):
+        assert safe_nround_progress(invalid) == {}
+        assert nround_progress_rows(invalid) == []
+        usage = {**_usage(), "nround_progress": invalid}
+        md, paragraphs = _render_both(_output(usage))
+        assert "多輪智慧檢索歷程" not in md + "\\n".join(paragraphs)
 
 
 def test_terminal_incomplete_snapshot_is_visible_but_never_report_ready():
