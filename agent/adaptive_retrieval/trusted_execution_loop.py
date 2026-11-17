@@ -16,6 +16,7 @@ No production switch is provided.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from copy import deepcopy
 from typing import Any, Callable
 
 from .contracts import QueryConstraints
@@ -76,6 +77,7 @@ def run_trusted_nround(
     max_pages: int = 20,
     request_timeout_seconds: int = 20,
     max_semantic_checks_per_round: int = 512,
+    checkpoint_sink: Callable[[dict[str, object]], bool] | None = None,
 ) -> TrustedNroundExecutionResult:
     """Execute bounded real client calls but NEVER claim independent RBAC.
 
@@ -102,6 +104,8 @@ def run_trusted_nround(
                 or job_scope_binding._authorized_indexes != authorized_indexes))
             or type(query_for_snippet) is not str
             or not 0 < len(query_for_snippet) <= 2048
+            or (checkpoint_sink is not None and
+                not callable(checkpoint_sink))
             or type(max_rounds) is not int
             or not 1 <= max_rounds <= 8
             or coordinator.safe_progress()["phase"] != "CREATED"):
@@ -109,9 +113,31 @@ def run_trusted_nround(
 
     completed: list[CompletedSingleQueryRound] = []
     next_plan: BoundNextRoundPlan | None = None
+
+    def _persist_checkpoint() -> None:
+        # This only emits coordinator-created, count-only safe progress;
+        # callback MUST atomically fence it against the actual persisted
+        # Report Job and N-round lease, and MUST return literal True.
+        if checkpoint_sink is None:
+            return
+        try:
+            snapshot = deepcopy(coordinator.safe_progress())
+            if (type(snapshot) is not dict
+                    or snapshot.get("schema") !=
+                       "sraf_nround_coordinator_progress_v1"
+                    or checkpoint_sink(snapshot) is not True):
+                raise TrustedNroundExecutionError("nround_checkpoint_write_denied")
+        except Exception:
+            # A completed round may have reached TERMINAL/SUFFICIENT before
+            # the durable sink failed. Ordinary cancel() is a no-op once
+            # terminal, so explicitly revoke that stale report readiness.
+            coordinator.revoke_unpersisted_report_readiness()
+            raise TrustedNroundExecutionError("nround_checkpoint_write_denied") from None
+
     try:
         if not coordinator.start():
             raise TrustedNroundExecutionError("first_round_not_admitted")
+        _persist_checkpoint()
         for _ in range(max_rounds):
             progress = coordinator.safe_progress()
             if progress["phase"] != "SEARCHING":
@@ -140,6 +166,9 @@ def run_trusted_nround(
             if (fetched.request_wide_attested is not False
                     or fetched.query_plan_complete is not True):
                 raise TrustedNroundExecutionError("untrusted_query_receipt")
+            # Record charged ES operations before the more expensive
+            # private semantic/LLM work; no raw hits enter the sink.
+            _persist_checkpoint()
             # This is intentionally an EXTERNAL proof requirement. No
             # source-candidate count or PIT-page success alone can assert
             # whole-question scope completeness. Strictly boolean True.
@@ -213,6 +242,7 @@ def run_trusted_nround(
                 semantic_verifier=grant.semantic_verifier,
             )
             completed.append(fetched)
+            _persist_checkpoint()
             progress = coordinator.safe_progress()
             if progress["phase"] == "TERMINAL":
                 break
@@ -223,6 +253,9 @@ def run_trusted_nround(
             if len(completed) >= max_rounds:
                 raise TrustedNroundExecutionError("operator_round_cap_reached")
             admission = coordinator.plan_next_round()
+            # Persist either the new SEARCHING round or terminal planner
+            # stop before starting any further PIT request.
+            _persist_checkpoint()
             if not admission.approved:
                 break
             if (admission.plan is None

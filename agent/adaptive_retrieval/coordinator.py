@@ -354,6 +354,25 @@ class AdaptiveRequestCoordinator:
             self._terminate_locked("CANCELLED")
             return True
 
+    def revoke_unpersisted_report_readiness(self) -> bool:
+        """Fail closed if a REQUIRED external checkpoint could not persist.
+
+        Unlike ordinary cancel(), this may invalidate a *previously*
+        recoverable TERMINAL state (e.g. SUFFICIENT) because its required
+        durable checkpoint was not recorded. Preserve history counts but
+        never leave a stale ready_for_external_report_generation=True.
+        This is an internal Worker-safety hook, not user cancellation.
+        """
+        with self._lock:
+            if self._phase == "TERMINAL":
+                if self._terminal_reason not in _RECOVERABLE_REPORT_STOPS:
+                    return False
+                self._terminal_reason = "CANCELLED"
+                self._approved_plan = None
+                return True
+            self._terminate_locked("CANCELLED")
+            return True
+
     @property
     def history(self) -> tuple[RoundEvidenceSummary, ...]:
         """Private server-side per-round history; NOT a client/audit payload."""
