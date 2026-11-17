@@ -232,6 +232,10 @@ class NroundCheckpointStore:
         this method. This is a single-machine, same-file SQLite authority
         check, NOT a substitute for actual owner index RBAC.
         """
+        # Structural/index/version validation must happen inside the same
+        # transaction BEFORE either sidecar claim or progress mutation.
+        # A lookalike report_jobs table is never acceptable authority.
+        ReportJobStore._validate_v2(con)
         if (type(claimed_job) is not ReportJob
                 or claimed_job.status != "running"
                 or claimed_job.phase != "agent_execution"
@@ -283,27 +287,29 @@ class NroundCheckpointStore:
         Existing unbound claim() remains for historic isolated tests;
         production Worker must use this stricter method.
         """
-        if (not self._same_report_job_database(report_store)
-                or type(claimed_job) is not ReportJob
-                or not self._valid_id(claimed_job.job_id)):
-            return None
-        token = secrets.token_urlsafe(32)
-
-        def op(con):
-            if not self._running_report_job_matches(con, claimed_job):
-                return None
-            cur = con.execute(
-                f"""UPDATE {_TABLE}
-                    SET state='RUNNING', phase='SEARCHING', lease_hash=?,
-                        revision=revision+1
-                    WHERE job_id=? AND state='QUEUED'""",
-                (self._hash(token), claimed_job.job_id),
-            )
-            return token if cur.rowcount == 1 else None
-
         try:
+            # Path.resolve(), mkdir/open and schema checks are all inside
+            # the sanitized boundary; never expose private DB path details.
+            if (not self._same_report_job_database(report_store)
+                    or type(claimed_job) is not ReportJob
+                    or not self._valid_id(claimed_job.job_id)):
+                return None
+            token = secrets.token_urlsafe(32)
+
+            def op(con):
+                if not self._running_report_job_matches(con, claimed_job):
+                    return None
+                cur = con.execute(
+                    f"""UPDATE {_TABLE}
+                        SET state='RUNNING', phase='SEARCHING', lease_hash=?,
+                            revision=revision+1
+                        WHERE job_id=? AND state='QUEUED'""",
+                    (self._hash(token), claimed_job.job_id),
+                )
+                return token if cur.rowcount == 1 else None
+
             return self._write(op)
-        except (sqlite3.Error, KeyError, TypeError, ValueError):
+        except Exception:
             raise ValueError("nround_report_job_claim_unverified") from None
 
     def record_progress_for_running_report_job(
@@ -316,25 +322,25 @@ class NroundCheckpointStore:
         same write transaction. It never creates a Word and never marks the
         ReportJob completed or eligible for download.
         """
-        phase, number, completed, es_calls, reason = _validated_counts(progress)
-        if (not self._same_report_job_database(report_store)
-                or type(claimed_job) is not ReportJob
-                or not self._valid_id(claimed_job.job_id)
-                or type(lease_token) is not str
-                or re.fullmatch(r"[A-Za-z0-9_-]{43}", lease_token) is None):
-            return False
-
-        def op(con):
-            if not self._running_report_job_matches(con, claimed_job):
-                return False
-            return self._record_progress_locked(
-                con, claimed_job.job_id, lease_token,
-                phase, number, completed, es_calls, reason,
-            )
-
         try:
+            phase, number, completed, es_calls, reason = _validated_counts(progress)
+            if (not self._same_report_job_database(report_store)
+                    or type(claimed_job) is not ReportJob
+                    or not self._valid_id(claimed_job.job_id)
+                    or type(lease_token) is not str
+                    or re.fullmatch(r"[A-Za-z0-9_-]{43}", lease_token) is None):
+                return False
+
+            def op(con):
+                if not self._running_report_job_matches(con, claimed_job):
+                    return False
+                return self._record_progress_locked(
+                    con, claimed_job.job_id, lease_token,
+                    phase, number, completed, es_calls, reason,
+                )
+
             return self._write(op)
-        except (sqlite3.Error, KeyError, TypeError, ValueError):
+        except Exception:
             raise ValueError("nround_report_job_progress_unverified") from None
 
     def record_progress(self, job_id: str, lease_token: str,
