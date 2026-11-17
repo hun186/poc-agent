@@ -19,6 +19,7 @@ from .evidence_ledger import (
     MAX_ROUNDS, RequestWideEvidenceLedger, observe_canonical_round,
 )
 from .next_round_gate import NextRoundAdmission, propose_budgeted_next_round
+from .planner import BoundNextRoundPlan
 from .planner import AdaptiveRetrievalPlanner
 from .request_budget import RequestAdmissionBudget
 
@@ -89,9 +90,13 @@ class AdaptiveRequestCoordinator:
         self._round = 0
         self._es_slots_this_round = 0
         self._search_terms = constraints.original_core_terms
+        # Retain the exact approved plan object for a later trusted ES adapter.
+        # A caller cannot replace it with a same-round plan of its own making.
+        self._approved_plan: BoundNextRoundPlan | None = None
 
     def _terminate_locked(self, reason: str) -> None:
         self._phase = "TERMINAL"
+        self._approved_plan = None
         self._terminal_reason = (
             reason if reason in _TERMINATIONS else "PLANNER_STOPPED"
         )
@@ -228,6 +233,7 @@ class AdaptiveRequestCoordinator:
                 self._round = admission.round_number
                 self._es_slots_this_round = 0
                 self._search_terms = admission.plan.optional_terms
+                self._approved_plan = admission.plan
                 self._phase = "SEARCHING"
             return admission
 
