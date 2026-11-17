@@ -137,6 +137,34 @@ def run_trusted_nround(
             # Same original immutable scope and canonical Event/Timeline date
             # validity. The grant cannot invent passage/source pairs; it only
             # accepts a separate trusted semantic assessor's boolean verdict.
+            def guarded_semantic_assessor(
+                target: CoverageTarget, evidence: PrivateCanonicalEvidence,
+            ) -> bool:
+                # Check BEFORE EVERY provider callback, not merely after
+                # all witnesses: a cancelled/expired request must never
+                # initiate more paid LLM calls for remaining passages.
+                status = coordinator.safe_progress()
+                budget = coordinator._budget.snapshot()
+                if (status["phase"] != "SEARCHING"
+                        or status["round"] != frozen.round_number
+                        or budget.remaining_seconds <=
+                           budget.generation_reserve_seconds):
+                    raise TrustedNroundExecutionError(
+                        "semantic_callback_not_admissible")
+                verdict = semantic_assessor(target, evidence)
+                # An in-flight provider call cannot be forcibly cancelled
+                # here, but another call must not start after it expires
+                # or the coordinator is cancelled.
+                status = coordinator.safe_progress()
+                budget = coordinator._budget.snapshot()
+                if (status["phase"] != "SEARCHING"
+                        or status["round"] != frozen.round_number
+                        or budget.remaining_seconds <=
+                           budget.generation_reserve_seconds):
+                    raise TrustedNroundExecutionError(
+                        "semantic_callback_expired")
+                return verdict
+
             grant = prepare_private_semantic_grant(
                 constraints=constraints,
                 evaluator=evaluator,
@@ -145,7 +173,7 @@ def run_trusted_nround(
                 effective_terms=list(coordinator._effective),
                 query_for_snippet=query_for_snippet,
                 complete=True,
-                assessor=semantic_assessor,
+                assessor=guarded_semantic_assessor,
                 max_semantic_checks=max_semantic_checks_per_round,
             )
             remaining = coordinator._budget.snapshot()
@@ -168,6 +196,10 @@ def run_trusted_nround(
                 break
             if progress["phase"] != "ASSESSED":
                 raise TrustedNroundExecutionError("unexpected_assessment_phase")
+            # Don't purchase a planner slot or admit an unexecutable next
+            # round once the narrower operator-level cap is reached.
+            if len(completed) >= max_rounds:
+                raise TrustedNroundExecutionError("operator_round_cap_reached")
             admission = coordinator.plan_next_round()
             if not admission.approved:
                 break
