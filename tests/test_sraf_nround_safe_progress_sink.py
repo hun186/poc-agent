@@ -145,3 +145,41 @@ def test_invalid_sink_fails_before_any_start_or_es():
         _run(c, scope, ev, es, sink=123)
     assert c.safe_progress()["phase"] == "CREATED"
     assert es.calls == []
+
+
+
+@pytest.mark.parametrize("failure_mode", ["false", "exception"])
+def test_terminal_checkpoint_failure_revokes_prior_sufficient_report_readiness(
+    failure_mode,
+):
+    c, scope, ev, _, planners, _ = _setup()
+    es = FakeES(_verified_page("A"), _verified_page("B"))
+    events = []
+
+    def persist(snapshot):
+        events.append((snapshot["phase"], snapshot["termination"]))
+        if (snapshot["phase"] == "TERMINAL"
+                and snapshot["termination"] == "SUFFICIENT"):
+            # The coordinator has already accepted adequate Evidence and
+            # would expose ready=True unless the sink failure revokes it.
+            assert c.safe_progress()["ready_for_external_report_generation"] is True
+            if failure_mode == "exception":
+                raise OSError("PRIVATE_CHECKPOINT_DB_PATH")
+            return False
+        return True
+
+    with pytest.raises(TrustedNroundExecutionError,
+                       match="trusted_nround_execution_failed") as err:
+        _run(c, scope, ev, es, sink=persist)
+    assert "PRIVATE_" not in str(err.value)
+    assert events[-1] == ("TERMINAL", "SUFFICIENT")
+    status = c.safe_progress()
+    assert status["phase"] == "TERMINAL"
+    assert status["termination"] == "CANCELLED"
+    assert status["ready_for_external_report_generation"] is False
+    assert status["completed_rounds"] == 2
+    assert planners == [1]
+    assert len(es.searches) == 2
+    # Historical canonical source/evidence counts are retained for
+    # diagnosis, but are NOT a report/Word handoff authorization.
+    assert len(status["canonical_evidence_history"]) == 2
