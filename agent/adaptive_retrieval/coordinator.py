@@ -38,6 +38,7 @@ _TERMINATIONS = frozenset((
     "INVALID_CONTEXT", "INCONSISTENT_ROUND_HISTORY", "PLANNER_STOPPED",
     "UNTRUSTED_NEXT_ROUND_SCOPE", "LATE_BUDGET_EXHAUSTED",
     "STALE_ROUND_HISTORY", "NO_NEW_STRATEGY",
+    "UNTRACKED_QUERY_ADMISSION",
 ))
 _RECOVERABLE_REPORT_STOPS = frozenset((
     "SUFFICIENT", "ROUND_BUDGET_EXHAUSTED", "RESOURCE_BUDGET_EXHAUSTED",
@@ -95,6 +96,10 @@ class AdaptiveRequestCoordinator:
         # Retain the exact approved plan object for a later trusted ES adapter.
         # A caller cannot replace it with a same-round plan of its own making.
         self._approved_plan: BoundNextRoundPlan | None = None
+        # Guard the opt-in strict single-query executor against repeat claims
+        # or an extra query branch silently outside its frozen manifest.
+        self._single_query_claimed_round = 0
+        self._single_query_claim_token: object | None = None
 
     def _terminate_locked(self, reason: str) -> None:
         self._phase = "TERMINAL"
@@ -116,11 +121,43 @@ class AdaptiveRequestCoordinator:
             self._phase = "SEARCHING"
             return True
 
-    def admit_es_call(self) -> bool:
-        """Nonrefundable slot for one *future* adapter ES call, no IO here."""
+    def claim_single_query_execution(self, round_number: int, *,
+                                     execution_token: object) -> bool:
+        """Claim the ONLY supported canonical query branch for this round.
+
+        Does not run or authorize ES: the injected trusted caller must
+        independently verify index/tenant RBAC; the transport still reserves
+        nonrefundable per-ES-operation slots. Prevent duplicate invocations
+        or mixing a prior untracked ES call with a one-branch completion
+        receipt. This is a non-production accounting guard.
+        """
+        with self._lock:
+            if (type(round_number) is not int
+                    or type(execution_token) is not object
+                    or self._phase != "SEARCHING"
+                    or self._round != round_number
+                    or self._budget.rounds_started != round_number
+                    or self._single_query_claimed_round == round_number
+                    or self._es_slots_this_round != 0):
+                return False
+            self._single_query_claimed_round = round_number
+            self._single_query_claim_token = execution_token
+            return True
+
+    def admit_es_call(self, *, execution_token: object | None = None) -> bool:
+        """Reserve one ES IO; a frozen plan requires its exact opaque token."""
         with self._lock:
             if (self._phase != "SEARCHING"
                     or self._budget.rounds_started != self._round):
+                return False
+            if self._single_query_claimed_round == self._round:
+                if execution_token is not self._single_query_claim_token:
+                    # A concurrent bypass attempt destroys the exclusive
+                    # single-branch proof, even if its ES call was rejected.
+                    self._terminate_locked("UNTRACKED_QUERY_ADMISSION")
+                    return False
+            elif execution_token is not None:
+                self._terminate_locked("UNTRACKED_QUERY_ADMISSION")
                 return False
             if not self._budget.admit("es"):
                 self._terminate_locked("RESOURCE_BUDGET_EXHAUSTED")
