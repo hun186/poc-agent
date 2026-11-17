@@ -95,6 +95,9 @@ class AdaptiveRequestCoordinator:
         # Retain the exact approved plan object for a later trusted ES adapter.
         # A caller cannot replace it with a same-round plan of its own making.
         self._approved_plan: BoundNextRoundPlan | None = None
+        # Guard the opt-in strict single-query executor against repeat claims
+        # or an extra query branch silently outside its frozen manifest.
+        self._single_query_claimed_round = 0
 
     def _terminate_locked(self, reason: str) -> None:
         self._phase = "TERMINAL"
@@ -114,6 +117,26 @@ class AdaptiveRequestCoordinator:
             self._round = 1
             self._es_slots_this_round = 0
             self._phase = "SEARCHING"
+            return True
+
+    def claim_single_query_execution(self, round_number: int) -> bool:
+        """Claim the ONLY supported canonical query branch for this round.
+
+        Does not run or authorize ES: the injected trusted caller must
+        independently verify index/tenant RBAC; the transport still reserves
+        nonrefundable per-ES-operation slots. Prevent duplicate invocations
+        or mixing a prior untracked ES call with a one-branch completion
+        receipt. This is a non-production accounting guard.
+        """
+        with self._lock:
+            if (type(round_number) is not int
+                    or self._phase != "SEARCHING"
+                    or self._round != round_number
+                    or self._budget.rounds_started != round_number
+                    or self._single_query_claimed_round == round_number
+                    or self._es_slots_this_round != 0):
+                return False
+            self._single_query_claimed_round = round_number
             return True
 
     def admit_es_call(self) -> bool:
