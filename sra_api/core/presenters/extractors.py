@@ -74,7 +74,17 @@ def extract_presentation(
     answer = normalize_text_for_markdown(out.get("answer") or "")
     reasoning = normalize_text_for_markdown(out.get("reasoning") or "")
 
-    raw_json_str = json.dumps(out, ensure_ascii=False, indent=2)
+    # The Markdown raw-JSON appendix intentionally displays the output
+    # object. Do not bypass the shared Evidence audit sanitizer there:
+    # otherwise extra private keys inside a supplied nround_progress or
+    # evidence_usage may appear in that appendix despite safe Word rows.
+    # This is a shallow copy; the caller's object remains untouched.
+    clean_usage = safe_evidence_usage(out.get("evidence_usage"))
+    raw_json_out = (
+        {**out, "evidence_usage": clean_usage}
+        if "evidence_usage" in out else out
+    )
+    raw_json_str = json.dumps(raw_json_out, ensure_ascii=False, indent=2)
     line_count = raw_json_str.count("\n") + 1
     auto_collapse = line_count > json_collapse_threshold
     raw_json_md = f"```json\n{raw_json_str}\n```"
@@ -94,7 +104,7 @@ def extract_presentation(
         auto_collapse_json=auto_collapse,
         raw_json_md=raw_json_md,
         turn_id=turn_id,  # ✅ 新增
-        evidence_usage=safe_evidence_usage(out.get("evidence_usage")),
+        evidence_usage=clean_usage,
     )
 
 def extract_user_question(out: dict) -> str:
