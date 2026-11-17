@@ -20,6 +20,9 @@ on:
       - 'tests/test_sraf_nround_private_semantic_binding.py'
       - 'tests/test_sraf_nround_trusted_execution_loop.py'
       - 'tests/test_sraf_nround_safe_progress_sink.py'
+      - 'tests/test_sraf_nround_claimed_job_runner.py'
+      - 'sra_api/services/sraf_nround_claimed_job_runner.py'
+      - 'docs/operations/sraf_nround_claimed_job_runner.md'
       - 'docs/operations/sraf_nround_safe_progress_sink.md'
       - 'tests/test_sraf_nround_worker_scope_binding.py'
       - 'tests/test_sraf_nround_persisted_claimed_job_scope.py'
@@ -67,6 +70,7 @@ jobs:
             tests/test_sraf_nround_private_semantic_binding.py \
             tests/test_sraf_nround_trusted_execution_loop.py \
             tests/test_sraf_nround_safe_progress_sink.py \
+            tests/test_sraf_nround_claimed_job_runner.py \
             tests/test_sraf_nround_worker_scope_binding.py \
             tests/test_sraf_nround_persisted_claimed_job_scope.py \
             tests/test_sraf_nround_coverage_coordinator_bridge.py \
