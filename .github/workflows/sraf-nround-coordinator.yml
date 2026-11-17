@@ -6,12 +6,15 @@ on:
       - 'agent/adaptive_retrieval/coordinator.py'
       - 'agent/adaptive_retrieval/next_round_gate.py'
       - 'agent/adaptive_retrieval/evidence_ledger.py'
+      - 'agent/adaptive_retrieval/private_semantic_binding.py'
       - 'agent/adaptive_retrieval/coverage_evaluator.py'
       - 'agent/adaptive_retrieval/request_budget.py'
       - 'agent/adaptive_retrieval/planner.py'
       - 'agent/es/evidence_core/builder.py'
       - 'tests/test_sraf_nround_coordinator.py'
       - 'tests/test_sraf_nround_coverage_provenance.py'
+      - 'tests/test_sraf_nround_private_semantic_binding.py'
+      - 'docs/operations/sraf_nround_private_semantic_binding.md'
       - 'tests/test_sraf_nround_coverage_coordinator_bridge.py'
       - 'docs/operations/sraf_nround_request_coordinator.md'
       - '.github/workflows/sraf-nround-coordinator.yml'
@@ -49,6 +52,7 @@ jobs:
           python -m pytest -q \
             tests/test_sraf_nround_coordinator.py \
             tests/test_sraf_nround_coverage_provenance.py \
+            tests/test_sraf_nround_private_semantic_binding.py \
             tests/test_sraf_nround_coverage_coordinator_bridge.py \
             tests/test_sraf_request_evidence_ledger.py \
             tests/test_sraf_nround_plan_budget_gate.py \
