@@ -263,3 +263,38 @@ def test_second_semantic_round_requires_genuine_coordinator_plan():
     with pytest.raises(LiveRoundESFailure, match="untrusted_next_round_strategy"):
         _run(c, scope, es, plan=plan)
     assert es.calls == []
+
+
+def test_active_round_two_only_accepts_exact_coordinator_approved_plan():
+    # Construct a genuine canonical round 1 and let the coordinator itself
+    # approve round 2. A forged same-round plan is then invalid, even when
+    # it points at the exact same frozen QueryConstraints object.
+    from test_sraf_shared_evidence_budget import _hit as canonical_hit
+
+    c, scope, budget = _coordinator()
+    assert c.admit_es_call()  # canonical synthetic round 1 used one ES slot
+    first = c.complete_round(
+        [canonical_hit(1, "A", inner=False)],
+        query_for_snippet="甲軸乙軸丙軸", complete=True,
+        request_wide_attested=True,
+        missing_aspects=("外交回應",), coverage_sufficient=False,
+    )
+    assert first.number == 1
+    admission = c.plan_next_round()
+    assert admission.approved and admission.plan is not None
+    assert c.safe_progress()["round"] == 2
+    assert admission.plan is c._approved_plan
+
+    fake = replace(admission.plan, optional_terms=("未准入的新搜尋詞",))
+    es = FakeES(_page([]))
+    with pytest.raises(LiveRoundESFailure, match="untrusted_next_round_strategy"):
+        _run(c, scope, es, plan=fake)
+    assert es.calls == []
+    # The actual planner-approved strategy can request a full PIT chain.
+    result = _run(c, scope, es, plan=admission.plan)
+    assert result.hits == []
+    assert result.request_wide_attested is False
+    request_dump = json.dumps(es.searches[0]["body"], ensure_ascii=False)
+    assert "聯合國聲明" in request_dump
+    assert "未准入的新搜尋詞" not in request_dump
+    assert c.safe_progress()["phase"] == "SEARCHING"
