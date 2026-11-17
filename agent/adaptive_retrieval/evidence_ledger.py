@@ -64,6 +64,9 @@ class RoundObservation:
     validated_rows: int
     fallback_rows: int
     complete: bool
+    # Canonical source and Evidence identity pairs for future trusted
+    # aspect verification. No raw passages or identifying _id values.
+    evidence_source_pairs: frozenset[tuple[str, str]] = frozenset()
 
     def __post_init__(self) -> None:
         if (type(self.candidate_sources) is not frozenset
@@ -84,7 +87,18 @@ class RoundObservation:
                 or type(self.fallback_rows) is not int
                 or self.fallback_rows != self.parser_output_rows -
                     self.validated_rows
-                or type(self.complete) is not bool):
+                or type(self.complete) is not bool
+                or type(self.evidence_source_pairs) is not frozenset
+                or len(self.evidence_source_pairs) > MAX_EVIDENCE
+                or any(type(pair) is not tuple or len(pair) != 2
+                       or type(pair[0]) is not str or type(pair[1]) is not str
+                       or len(pair[0]) != 64 or len(pair[1]) != 64
+                       or pair[0] not in self.verified_evidence
+                       or pair[1] not in self.verified_sources
+                       for pair in self.evidence_source_pairs)
+                or {pair[0] for pair in self.evidence_source_pairs} != (
+                    self.verified_evidence if self.evidence_source_pairs
+                    else frozenset())):
             raise ValueError("invalid_round_observation")
 
 
@@ -126,6 +140,7 @@ def observe_canonical_round(
         raise ValueError("round_evidence_over_cap")
     evidence_keys: set[str] = set()
     verified_sources: set[str] = set()
+    evidence_sources: set[tuple[str, str]] = set()
     fallback_rows = 0
     validated_rows = 0
     for row in evidence:
@@ -239,6 +254,7 @@ def observe_canonical_round(
                        prop("paragraph_id"), contents))
         evidence_keys.add(key)
         verified_sources.add(source_keys[ordinal])
+        evidence_sources.add((key, source_keys[ordinal]))
     # If one identical passage appears twice in the same parser slice,
     # parser output count can exceed unique verified evidence identities.
     return RoundObservation(
@@ -249,6 +265,7 @@ def observe_canonical_round(
         validated_rows=validated_rows,
         fallback_rows=fallback_rows,
         complete=complete,
+        evidence_source_pairs=frozenset(evidence_sources),
     )
 
 
