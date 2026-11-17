@@ -172,6 +172,13 @@ def execute_claimed_nround_job(
                 or public.get("checkpoint_resume_supported") is not False
                 or type(public.get("revision")) is not int):
             raise ClaimedNroundJobExecutionError("unverified_nround_checkpoint")
+        # Codex P2: successful PIT authorization is not a lifetime grant.
+        # A policy can be revoked while the final semantic provider is busy.
+        # Recheck both current owner/index and complete-question branch scope
+        # at the actual private Evidence handoff boundary, after the terminal
+        # SQLite read and before returning *any* private retrieval result.
+        binding._check_live_policy()
+        scope._assert_live()
         return ClaimedNroundRetrieval(
             _private_result=result,
             _checkpoint_revision=public["revision"],
