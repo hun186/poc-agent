@@ -24,6 +24,7 @@ from .coverage_evaluator import CoverageTarget, RequestWideCoverageEvaluator
 from .evidence_ledger import PrivateCanonicalEvidence
 from .planner import BoundNextRoundPlan
 from .private_semantic_binding import prepare_private_semantic_grant
+from .worker_scope_binding import WorkerScopeBinding
 from .round_query_execution import (
     CompletedSingleQueryRound, FrozenSingleQueryPlan,
     execute_single_frozen_query,
@@ -67,8 +68,9 @@ def run_trusted_nround(
     semantic_assessor: Callable[[CoverageTarget, PrivateCanonicalEvidence], bool],
     attest_whole_query_scope: Callable[
         [FrozenSingleQueryPlan, CompletedSingleQueryRound], bool,
-    ],
+    ] | None,
     query_for_snippet: str,
+    job_scope_binding: WorkerScopeBinding | None = None,
     max_rounds: int = 8,
     page_size: int = 50,
     max_pages: int = 20,
@@ -90,7 +92,14 @@ def run_trusted_nround(
             or coordinator._constraints is not constraints
             or evaluator._constraints is not constraints
             or not callable(semantic_assessor)
-            or not callable(attest_whole_query_scope)
+            or (job_scope_binding is None and
+                not callable(attest_whole_query_scope))
+            or (job_scope_binding is not None and (
+                type(job_scope_binding) is not WorkerScopeBinding
+                or attest_whole_query_scope is not None
+                or job_scope_binding._constraints is not constraints
+                or job_scope_binding._coordinator is not coordinator
+                or job_scope_binding._authorized_indexes != authorized_indexes))
             or type(query_for_snippet) is not str
             or not 0 < len(query_for_snippet) <= 2048
             or type(max_rounds) is not int
@@ -113,7 +122,16 @@ def run_trusted_nround(
                 authorized_indexes=authorized_indexes,
                 round_number=progress["round"],
                 next_round_plan=next_plan,
+                _owner_binding_token=(
+                    job_scope_binding._binding_token
+                    if job_scope_binding is not None else None
+                ),
             )
+            # The scoped path verifies the actual claimed job's owner and
+            # allowed-index policy BEFORE opening a PIT. Legacy callback
+            # mode exists only for isolated compatibility tests.
+            if job_scope_binding is not None:
+                job_scope_binding.preflight(frozen)
             fetched = execute_single_frozen_query(
                 plan=frozen, client=es_client, page_size=page_size,
                 max_pages=max_pages,
@@ -125,7 +143,11 @@ def run_trusted_nround(
             # This is intentionally an EXTERNAL proof requirement. No
             # source-candidate count or PIT-page success alone can assert
             # whole-question scope completeness. Strictly boolean True.
-            if attest_whole_query_scope(frozen, fetched) is not True:
+            if job_scope_binding is not None:
+                attested = job_scope_binding.attest(frozen, fetched)
+            else:
+                attested = attest_whole_query_scope(frozen, fetched)
+            if attested is not True:
                 raise TrustedNroundExecutionError("query_scope_not_attested")
             if (coordinator.safe_progress()["phase"] != "SEARCHING"
                     or coordinator.safe_progress()["round"] != frozen.round_number):

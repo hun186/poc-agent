@@ -46,6 +46,11 @@ class FrozenSingleQueryPlan:
     _execution_token: object = field(
         default_factory=object, compare=False, repr=False,
     )
+    # The future Worker-bound path stamps its exact owner-scope binding
+    # onto the frozen plan; the unbound isolated ES path stays None.
+    _owner_binding_token: object | None = field(
+        default=None, compare=False, repr=False,
+    )
 
     def __post_init__(self) -> None:
         if (type(self.coordinator) is not AdaptiveRequestCoordinator
@@ -84,6 +89,12 @@ class CompletedSingleQueryRound:
     unique_sources: int
     # Only the one explicitly supported search query was executed completely.
     query_plan_complete: bool = True
+    # Execution-issued, unlogged receipt identity. The technical proof
+    # may be accepted only by the SAME FrozenSingleQueryPlan and coordinator
+    # that successfully claimed and executed the PIT chain.
+    _execution_token: object = field(
+        default_factory=object, compare=False, repr=False,
+    )
 
     @property
     def request_wide_attested(self) -> bool:
@@ -132,7 +143,8 @@ def execute_single_frozen_query(
         raise RoundQueryPlanError("stale_frozen_query_plan")
 
     if not coordinator.claim_single_query_execution(
-            plan.round_number, execution_token=plan._execution_token):
+            plan.round_number, execution_token=plan._execution_token,
+            owner_token=plan._owner_binding_token):
         raise RoundQueryPlanError("query_plan_already_claimed_or_mixed")
 
     try:
@@ -182,6 +194,7 @@ def execute_single_frozen_query(
             round_number=plan.round_number,
             pages_completed=audit["pages_accepted"],
             unique_sources=audit["sources_accepted"],
+            _execution_token=plan._execution_token,
         )
     except Exception:
         coordinator.cancel()
