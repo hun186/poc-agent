@@ -49,3 +49,20 @@ PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider \
 測試包含兩輪進度的單調落盤、初始寫入失敗不發 ES、
 PIT 後寫入失敗不得進入 LLM、第二輪前寫入失敗不得再查 ES、
 錯誤訊息去私密化，以及呼叫端修改快照也不能污染 coordinator。
+
+## Codex P2 修正：Terminal 後持久化失敗不可殘留報告授權
+
+若一輪已經在記憶體內被判為 `TERMINAL/SUFFICIENT`，
+但**必要的** `checkpoint_sink` 回傳拒絕或丟出例外，
+原有的 `coordinator.cancel()` 會因已是 terminal 而不再改變狀態，
+可能讓公開進度殘留
+`ready_for_external_report_generation=True`。
+
+新增加了內部 `revoke_unpersisted_report_readiness()`：
+在 checkpoint 寫入失敗時，即使先前已經是可報告的 terminal，
+仍將對外 stop reason 轉成非可報告的 `CANCELLED`，
+保留已驗證的 Evidence 計數以供診斷，但
+`ready_for_external_report_generation` 一律轉為 False。
+這不改變正常 user-cancel 的既有語意，只保護失敗的持久化接線；
+CI 以 terminal 時 callback 回傳 False 及丟出含私人路徑的
+`OSError` 兩種情境驗證，皆不輸出私人錯誤內容或 Word 授權。
