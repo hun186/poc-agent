@@ -130,6 +130,9 @@ def run_trusted_nround(
             if (coordinator.safe_progress()["phase"] != "SEARCHING"
                     or coordinator.safe_progress()["round"] != frozen.round_number):
                 raise TrustedNroundExecutionError("query_scope_changed")
+            remaining = coordinator._budget.snapshot()
+            if remaining.remaining_seconds <= remaining.generation_reserve_seconds:
+                raise TrustedNroundExecutionError("retrieval_deadline_expired")
 
             # Same original immutable scope and canonical Event/Timeline date
             # validity. The grant cannot invent passage/source pairs; it only
@@ -145,6 +148,9 @@ def run_trusted_nround(
                 assessor=semantic_assessor,
                 max_semantic_checks=max_semantic_checks_per_round,
             )
+            remaining = coordinator._budget.snapshot()
+            if remaining.remaining_seconds <= remaining.generation_reserve_seconds:
+                raise TrustedNroundExecutionError("semantic_assessment_over_deadline")
             coordinator.complete_round(
                 list(fetched.hits),
                 query_for_snippet=query_for_snippet,
