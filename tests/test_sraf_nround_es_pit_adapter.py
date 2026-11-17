@@ -298,3 +298,30 @@ def test_active_round_two_only_accepts_exact_coordinator_approved_plan():
     assert "聯合國聲明" in request_dump
     assert "未准入的新搜尋詞" not in request_dump
     assert c.safe_progress()["phase"] == "SEARCHING"
+
+
+def test_installed_elasticsearch_client_has_strict_real_pit_api_signature():
+    """Contract against the actual installed ES client, without networking.
+
+    The fake ES(**kwargs) below cannot detect unsupported generated-client
+    keyword arguments. An older/unsupported client must fail CI, not silently
+    run a PIT with partially missing shards.
+    """
+    import inspect
+    from elasticsearch import Elasticsearch
+
+    pit_args = inspect.signature(Elasticsearch.open_point_in_time).parameters
+    search_args = inspect.signature(Elasticsearch.search).parameters
+    option_args = inspect.signature(Elasticsearch.options).parameters
+
+    assert "allow_no_indices" not in pit_args
+    assert {"index", "keep_alive", "ignore_unavailable",
+            "allow_partial_search_results"}.issubset(pit_args)
+    assert {"body", "allow_partial_search_results"}.issubset(search_args)
+    assert {"request_timeout", "max_retries", "retry_on_timeout",
+            "retry_on_status"}.issubset(option_args)
+    # No request is made: .options configures transport only.
+    client = Elasticsearch("http://localhost:9200")
+    checked = client.options(request_timeout=5, max_retries=0,
+                             retry_on_timeout=False, retry_on_status=())
+    assert isinstance(checked, Elasticsearch)
