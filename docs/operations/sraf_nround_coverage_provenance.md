@@ -41,10 +41,11 @@ Report Job Worker、OpenWebUI、私人 ES、LLM 或 Word。**
 
 目前只能由**未來的可信上層**在取得完整 canonical Evidence 後，
 產生語意證據配對、注入可信語意驗證器，並傳入已核實的整輪完整性。
-本 PR 並**沒有**把 `CoverageAssessment.coverage_sufficient`
-直接連到 `AdaptiveRequestCoordinator.complete_round`，
-也沒有更新 Report Job；在配對來源能對應真正私有原文的可信轉接程式
-完成之前，不應使用它來放行真實報告。
+本階段的第二個 PR 已將 `CoverageAssessment.coverage_sufficient`
+接入 `AdaptiveRequestCoordinator.complete_round` 的明確選用模式，
+但**仍未**接入正式 Report Job；在配對來源能對應私有原文的可信
+語意驗證、完整查詢與使用者 RBAC 都完成之前，不得拿這個離線模式
+放行真實 N 輪報告。
 
 下一個工項：
 - 完成 Evidence 身分配對到私有段落的可信語意驗證轉接，而不洩漏內容到進度 log
