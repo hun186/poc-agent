@@ -124,12 +124,15 @@ def test_db_job_becomes_terminal_before_pit_no_es_and_no_semantic(tmp_path):
     adapter, _, _ = scoped(st, job, c, scope)
     st.fail(J, "ForcedStop", "PRIVATE_STOP_REASON")
     es = FakeES(_verified_page("A"))
-    with pytest.raises(TrustedNroundExecutionError):
+    # The persisted adapter refuses even to build a binding; stronger
+    # than waiting until the loop starts and cancels its coordinator.
+    with pytest.raises(PersistedNroundJobScopeError,
+                       match="claimed_job_not_current"):
         execute(c, scope, ev, adapter, es)
     assert es.calls == []
     assert c.history == ()
     assert planners == []
-    assert c.safe_progress()["phase"] == "TERMINAL"
+    assert c.safe_progress()["phase"] == "CREATED"
 
 
 def test_job_recovered_interrupted_before_pit_denied(tmp_path):
@@ -138,7 +141,8 @@ def test_job_recovered_interrupted_before_pit_denied(tmp_path):
     adapter, _, _ = scoped(st, job, c, scope)
     assert st.recover_running() == 1
     es = FakeES(_verified_page("A"))
-    with pytest.raises(TrustedNroundExecutionError):
+    with pytest.raises(PersistedNroundJobScopeError,
+                       match="claimed_job_not_current"):
         execute(c, scope, ev, adapter, es)
     assert es.calls == []
 
@@ -159,7 +163,8 @@ def test_owner_or_session_changed_in_db_denied_even_while_running(tmp_path):
         with sqlite3.connect(st.db_path) as conn:
             conn.execute(f"UPDATE report_jobs SET {column}=? WHERE job_id=?", (value, J))
         es = FakeES(_verified_page("A"))
-        with pytest.raises(TrustedNroundExecutionError):
+        with pytest.raises(PersistedNroundJobScopeError,
+                           match="claimed_job_not_current"):
             execute(c, scope, ev, adapter, es)
         assert es.calls == []
 
