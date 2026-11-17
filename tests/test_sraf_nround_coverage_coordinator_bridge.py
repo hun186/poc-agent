@@ -198,3 +198,32 @@ def test_legacy_path_cannot_silently_drop_new_witnesses():
             coverage_witnesses=_witnesses(c, a, target_indexes=(0,)),
         )
     assert c.safe_progress()["termination"] == "EVIDENCE_VALIDATION_FAILED"
+
+
+def test_zero_witnesses_without_verifier_is_dependency_failure_not_coverage_gap():
+    c, _, calls = coordinator()
+    evaluator = RequestWideCoverageEvaluator(
+        constraints=c._constraints, target_aspects=("後續影響",))
+    assert c.start() and c.admit_es_call()
+    with pytest.raises(ValueError, match="round_assessment_failed"):
+        _assess(c, evaluator, [], witnesses=(), verifier=None)
+    assert c.safe_progress()["termination"] == "EVIDENCE_VALIDATION_FAILED"
+    assert c.safe_progress()["completed_rounds"] == 0
+    assert c.safe_progress()["ready_for_external_report_generation"] is False
+    assert not c.admit_es_call()
+    assert calls == []
+
+
+def test_zero_witnesses_with_live_verifier_is_legitimate_coverage_gap():
+    c, _, calls = coordinator()
+    evaluator = RequestWideCoverageEvaluator(
+        constraints=c._constraints, target_aspects=("後續影響",))
+    assert c.start() and c.admit_es_call()
+    record = _assess(
+        c, evaluator, [], witnesses=(), verifier=lambda *_: False,
+    )
+    assert not record.coverage_sufficient
+    assert record.request_wide
+    assert c.safe_progress()["phase"] == "ASSESSED"
+    assert c.plan_next_round().approved
+    assert calls == ["planner"]
