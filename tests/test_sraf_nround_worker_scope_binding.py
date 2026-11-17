@@ -296,7 +296,8 @@ def test_unauthorized_index_in_synthetic_receipt_cannot_attest():
     plan = _frozen_plan(c, scope, binding)
     binding.preflight(plan)
     assert c.claim_single_query_execution(
-        1, execution_token=plan._execution_token)
+        1, execution_token=plan._execution_token,
+        owner_token=binding._binding_token)
     assert c.admit_es_call(execution_token=plan._execution_token)
     assert c.admit_es_call(execution_token=plan._execution_token)
     forged = CompletedSingleQueryRound(
@@ -308,3 +309,78 @@ def test_unauthorized_index_in_synthetic_receipt_cannot_attest():
                        match="job_query_receipt_unverified"):
         binding.attest(plan, forged)
     assert binding.safe_audit()["rounds_attested"] == 0
+
+
+
+def test_owner_bound_executor_cannot_run_es_before_preflight():
+    c, scope, ev, *_ = _setup()
+    assert c.start()
+    binding = _binding(c, scope)
+    plan = _frozen_plan(c, scope, binding)
+    es = FakeES(_verified_page("A"))
+    from agent.adaptive_retrieval.round_query_execution import (
+        RoundQueryPlanError,
+    )
+    with pytest.raises(RoundQueryPlanError,
+                       match="query_plan_already_claimed_or_mixed"):
+        execute_single_frozen_query(plan=plan, client=es)
+    assert es.calls == []  # no PIT opened before Job policy approval
+    assert c.safe_progress()["phase"] == "SEARCHING"
+    binding.preflight(plan)
+    receipt = execute_single_frozen_query(plan=plan, client=es)
+    assert binding.attest(plan, receipt) is True
+    assert [kind for kind, _ in es.calls] == ["open", "search", "close"]
+
+
+def test_late_preflight_after_legacy_es_execution_is_refused():
+    c, scope, ev, *_ = _setup()
+    assert c.start()
+    from agent.adaptive_retrieval.round_query_execution import (
+        FrozenSingleQueryPlan,
+    )
+    unbound_plan = FrozenSingleQueryPlan(
+        coordinator=c, constraints=scope,
+        authorized_indexes=("news_test",), round_number=1,
+        next_round_plan=None,
+    )
+    assert execute_single_frozen_query(
+        plan=unbound_plan, client=FakeES(_verified_page("A")),
+    ).query_plan_complete
+    binding = _binding(c, scope)
+    bound_plan = _frozen_plan(c, scope, binding)
+    with pytest.raises(WorkerScopeBindingError,
+                       match="job_query_preflight_too_late"):
+        binding.preflight(bound_plan)
+    assert binding.safe_audit()["rounds_attested"] == 0
+
+
+def test_direct_legacy_es_admission_after_owner_preflight_is_denied():
+    c, scope, ev, *_ = _setup()
+    assert c.start()
+    binding = _binding(c, scope)
+    plan = _frozen_plan(c, scope, binding)
+    binding.preflight(plan)
+    assert not c.admit_es_call()  # no token => invalid during owner preflight
+    assert c.safe_progress()["termination"] == "UNTRACKED_QUERY_ADMISSION"
+    es = FakeES(_verified_page("A"))
+    from agent.adaptive_retrieval.round_query_execution import (
+        RoundQueryPlanError,
+    )
+    with pytest.raises(RoundQueryPlanError):
+        execute_single_frozen_query(plan=plan, client=es)
+    assert es.calls == []
+
+
+def test_another_owners_frozen_claim_cannot_steal_preflight():
+    c, scope, ev, *_ = _setup()
+    assert c.start()
+    authorized = _binding(c, scope)
+    another = _binding(
+        c, scope, job=_job(scope, owner_id="PRIVATE_OTHER"),
+    )
+    plan = _frozen_plan(c, scope, authorized)
+    authorized.preflight(plan)
+    assert not c.claim_single_query_execution(
+        round_number=1, execution_token=plan._execution_token,
+        owner_token=another._binding_token)
+    assert c.safe_progress()["termination"] == "UNTRACKED_QUERY_ADMISSION"
