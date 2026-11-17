@@ -11,7 +11,7 @@ and recheck the real search transport.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from hashlib import sha256
 import json
@@ -51,6 +51,24 @@ def _es_source_keys(raw_hits: list[dict]) -> tuple[str, ...]:
     if len(set(identities)) != len(identities):
         raise ValueError("duplicate_es_source_identity")
     return tuple(identities)
+
+
+@dataclass(frozen=True)
+class PrivateCanonicalEvidence:
+    """Private, validated in-memory Evidence data. Never serialize to audit."""
+
+    text: str = field(repr=False)
+    date_iso: str = field(repr=False)
+    matched_event_times: tuple[tuple[str, str, str, str, str], ...] = field(repr=False)
+    event_ids: tuple[str, ...] = field(repr=False)
+
+    def safe_audit(self) -> dict[str, int | bool]:
+        return {
+            "has_text": bool(self.text),
+            "has_exact_day": bool(self.date_iso),
+            "matched_event_times": len(self.matched_event_times),
+            "event_ids": len(self.event_ids),
+        }
 
 
 @dataclass(frozen=True)
@@ -107,6 +125,7 @@ def observe_canonical_round(
     term_groups: list[set[str]], effective_terms: list[str],
     query_for_snippet: str, original_question: str,
     complete: bool,
+    private_evidence: dict[tuple[str, str], PrivateCanonicalEvidence] | None = None,
 ) -> RoundObservation:
     """Validate a *single* page/round with the current canonical parser.
 
@@ -114,6 +133,11 @@ def observe_canonical_round(
     This function cannot prove a live ES request occurred, nor can it infer
     absence of uninspected/omitted pages from the hit list alone.
     """
+    # A private collector is an explicit worker-only opt-in. Never mutate
+    # caller state until the ENTIRE canonical round has passed validation.
+    if private_evidence is not None and (
+            type(private_evidence) is not dict or private_evidence):
+        raise ValueError("invalid_private_evidence_collector")
     source_keys = _es_source_keys(es_hits)
     if (type(complete) is not bool or type(term_groups) is not list
             or not 1 <= len(term_groups) <= 32
@@ -141,6 +165,7 @@ def observe_canonical_round(
     evidence_keys: set[str] = set()
     verified_sources: set[str] = set()
     evidence_sources: set[tuple[str, str]] = set()
+    staged_private: dict[tuple[str, str], PrivateCanonicalEvidence] = {}
     fallback_rows = 0
     validated_rows = 0
     for row in evidence:
@@ -254,10 +279,21 @@ def observe_canonical_round(
                        prop("paragraph_id"), contents))
         evidence_keys.add(key)
         verified_sources.add(source_keys[ordinal])
-        evidence_sources.add((key, source_keys[ordinal]))
+        pair = (key, source_keys[ordinal])
+        evidence_sources.add(pair)
+        if private_evidence is not None:
+            item = PrivateCanonicalEvidence(
+                text=contents, date_iso=when,
+                matched_event_times=tuple(time_parts),
+                event_ids=tuple(ids),
+            )
+            previous = staged_private.get(pair)
+            if previous is not None and previous != item:
+                raise ValueError("inconsistent_verified_private_evidence")
+            staged_private[pair] = item
     # If one identical passage appears twice in the same parser slice,
     # parser output count can exceed unique verified evidence identities.
-    return RoundObservation(
+    observation = RoundObservation(
         candidate_sources=frozenset(source_keys),
         verified_evidence=frozenset(evidence_keys),
         verified_sources=frozenset(verified_sources),
@@ -267,6 +303,11 @@ def observe_canonical_round(
         complete=complete,
         evidence_source_pairs=frozenset(evidence_sources),
     )
+    if private_evidence is not None:
+        if set(staged_private) != observation.evidence_source_pairs:
+            raise ValueError("private_evidence_provenance_incomplete")
+        private_evidence.update(staged_private)
+    return observation
 
 
 class RequestWideEvidenceLedger:
