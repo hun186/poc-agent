@@ -176,6 +176,12 @@ class AdaptiveRequestCoordinator:
                 if (type(coverage_evaluator) is not RequestWideCoverageEvaluator
                         or coverage_evaluator._constraints is not self._constraints):
                     raise ValueError("untrusted_coverage_scope")
+                # Unavailable semantic verification is NOT a mere missing
+                # Evidence aspect: never buy another LLM/ES round when the
+                # required independent verifier is missing, including when
+                # zero verified Evidence witnesses were observed.
+                if not callable(semantic_verifier):
+                    raise ValueError("semantic_verifier_required")
                 assessed = coverage_evaluator.assess_round(
                     round_number=self._round, observation=observation,
                     witnesses=coverage_witnesses,
