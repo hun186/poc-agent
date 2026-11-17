@@ -36,8 +36,14 @@
   可信 Worker 需要真正建置可審計的 query-plan manifest 與跨索引／
   子題清單，不能僅將回呼設為 `lambda: True`。
 - 語意 `semantic_assessor` 必須由可信服務實作，並依每次請求預算限制
-  provider timeout／token 數；目前只控制最大驗證次數，
-  **不具備**對長時間執行中的模型 SDK 真正取消的能力。
+  provider timeout／token 數；目前控制最大驗證次數，且**每一筆
+  Evidence／面向的 callback 啟動前及返回後都重新確認** coordinator
+  尚未取消、Round 身分未變、30 分鐘檢索額度尚未用完。
+  任一項失敗就拒絕後續的模型呼叫；但對已經開始的長時間模型 SDK
+  請求仍**不具備**直接強制取消的能力。
+- 若達到本次呼叫的 `max_rounds`，會在調用
+  `coordinator.plan_next_round()` **之前**停止並 fail closed，
+  不浪費額外的 LLM Planner 呼叫或下一輪的 admission。
 - 已有的 `QueryConstraints` 固定欄位／獨立分析日期硬條件仍不支援時
   由 ES adapter 拒絕；不能為啟用功能自動放寬。
 - 整個 30 分鐘檢索截止條件必須在取回 ES、scope attestor、語意驗證
