@@ -202,7 +202,6 @@ def test_all_transport_and_page_failures_refuse_partial_evidence(problem):
 def test_fail_closed_scope_cannot_silently_drop_field_entity_analysis_date():
     c, scope, _ = _coordinator()
     for changed in (
-        replace(scope, required_entities=("PRIVATE_ENTITY",)),
         replace(scope, fixed_fields=(("news.flag", "yes"),)),
         replace(scope, analysis_date=DateWindow(
             "2023-01-01", "2023-12-31", "year",
@@ -325,3 +324,75 @@ def test_installed_elasticsearch_client_has_strict_real_pit_api_signature():
     checked = client.options(request_timeout=5, max_retries=0,
                              retry_on_timeout=False, retry_on_status=())
     assert isinstance(checked, Elasticsearch)
+
+
+def test_all_required_entities_compile_as_hard_nested_aware_filters():
+    c, original, _ = _coordinator()
+    scoped = replace(original, required_entities=("甲軸", "聯合國"))
+    c._constraints = scoped
+    es = FakeES(_page([]))
+    result = _run(c, scoped, es)
+    assert result.hits == []
+    body = es.searches[0]["body"]
+    criteria = body["query"]["function_score"]["query"]["bool"]
+    assert "filter" in criteria
+    # Date remains hard; all immutable required entities are combined
+    # as an OR inside another hard filter, allowing cross-document research.
+    filters = criteria["filter"]
+    assert len(filters) == 2
+    encoded = json.dumps(filters[0], ensure_ascii=False)
+    assert "multidim_event_json.Event.time_iso" in encoded
+    assert "multidim_event_json.Event_Timeline.time_iso" in encoded
+
+    assert filters[1]["bool"]["minimum_should_match"] == 1
+    assert len(filters[1]["bool"]["should"]) == len(scoped.required_entities)
+    for entity_filter, expected in zip(
+            filters[1]["bool"]["should"], scoped.required_entities):
+        assert entity_filter["bool"]["minimum_should_match"] == 1
+        outer_and_root = entity_filter["bool"]["should"]
+        assert outer_and_root[0] == {
+            "match_phrase": {"communication.subject": expected}}
+        nested_outer = outer_and_root[1]["nested"]
+        assert nested_outer["path"] == "multidim_event_json"
+        assert nested_outer["score_mode"] == "none"
+        child_clauses = nested_outer["query"]["bool"]["should"]
+        for child in ("Event", "Event_Timeline", "Person",
+                      "Involved_Parties", "evidence_snippets"):
+            path = "multidim_event_json." + child
+            selected = [entry["nested"] for entry in child_clauses
+                        if "nested" in entry and entry["nested"]["path"] == path]
+            assert len(selected) == 1
+            assert selected[0]["query"]["bool"]["minimum_should_match"] == 1
+        # No required entity may exist exclusively in an optional query boost.
+        assert expected in json.dumps(entity_filter, ensure_ascii=False)
+    assert result.request_wide_attested is False
+    # One article mentioning only China must not be eliminated simply
+    # because the original question also requires US coverage.
+    assert filters[1]["bool"]["minimum_should_match"] == 1
+
+
+def test_required_entities_not_changed_by_optional_strategy_terms():
+    from agent.adaptive_retrieval.es_pit_adapter import _query
+    c, original, _ = _coordinator()
+    scoped = replace(original, required_entities=("甲軸",))
+    base = _query(scoped, optional_terms=(), page_size=2)
+    evolved = _query(scoped, optional_terms=("額外新詞",), page_size=2)
+    before = base["query"]["function_score"]["query"]["bool"]["filter"]
+    after = evolved["query"]["function_score"]["query"]["bool"]["filter"]
+    assert before == after
+    assert "額外新詞" not in json.dumps(after, ensure_ascii=False)
+    assert "額外新詞" in json.dumps(evolved, ensure_ascii=False)
+    assert "甲軸" in json.dumps(after, ensure_ascii=False)
+
+
+def test_invalid_query_builder_cannot_drop_required_entity_hard_filters(monkeypatch):
+    from agent.adaptive_retrieval import es_pit_adapter as module
+    c, original, _ = _coordinator()
+    scoped = replace(original, required_entities=("甲軸",))
+    c._constraints = scoped
+    es = FakeES()
+    monkeypatch.setattr(module, "build_main_query_body", lambda **kw: {
+        "query": {"function_score": {"query": {"match_all": {}}}}})
+    with pytest.raises(LiveRoundESFailure, match="invalid_es_query_builder"):
+        _run(c, scoped, es)
+    assert es.calls == []

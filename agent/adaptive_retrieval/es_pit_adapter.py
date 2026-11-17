@@ -59,6 +59,51 @@ def _timeout(coordinator: AdaptiveRequestCoordinator, limit_seconds: int) -> int
     return min(seconds, limit_seconds)
 
 
+def _required_entity_filter(entity: str) -> dict[str, Any]:
+    """Require each server-owned entity somewhere in known SRAF text fields.
+
+    Outer and child nested contexts must be entered separately. This is a
+    conservative document *candidate* constraint: downstream canonical
+    Evidence checks still decide whether any Event is admissible.
+    """
+    outer_should = [
+        {"match_phrase": {"multidim_event_json.article_title": entity}},
+        {"match_phrase": {"multidim_event_json.core_entities": entity}},
+    ]
+    children = {
+        "Event": ("subject", "object", "location"),
+        "Event_Timeline": ("description",),
+        "Person": ("name",),
+        "Involved_Parties": ("party_name",),
+        "evidence_snippets": ("text",),
+    }
+    for child, fields in children.items():
+        path = f"multidim_event_json.{child}"
+        outer_should.append({"nested": {
+            "path": path, "score_mode": "none",
+            "query": {"bool": {
+                "should": [
+                    {"match_phrase": {f"{path}.{field}": entity}}
+                    for field in fields
+                ],
+                "minimum_should_match": 1,
+            }},
+        }})
+    return {"bool": {
+        "should": [
+            {"match_phrase": {"communication.subject": entity}},
+            {"nested": {
+                "path": "multidim_event_json", "score_mode": "none",
+                "query": {"bool": {
+                    "should": outer_should,
+                    "minimum_should_match": 1,
+                }},
+            }},
+        ],
+        "minimum_should_match": 1,
+    }}
+
+
 def _query(
     constraints: QueryConstraints,
     *,
@@ -86,6 +131,26 @@ def _query(
     )
     if type(body) is not dict or type(body.get("query")) is not dict:
         raise LiveRoundESFailure("invalid_es_query_builder")
+    # Preserve all request-wide required entities, but do NOT force every
+    # document to mention all of them: comparative research may need sources
+    # focused on only one side. At least one required entity must match each
+    # candidate document; request-wide entity/aspect coverage is still the
+    # future trusted evaluator's responsibility, NEVER this page chain's.
+    # Planner-proposed optional terms cannot change this immutable filter.
+    try:
+        filters = body["query"]["function_score"]["query"]["bool"]["filter"]
+        if type(filters) is not list:
+            raise TypeError("unexpected query shape")
+        if constraints.required_entities:
+            filters.append({"bool": {
+                "should": [
+                    _required_entity_filter(entity)
+                    for entity in constraints.required_entities
+                ],
+                "minimum_should_match": 1,
+            }})
+    except (KeyError, TypeError, AttributeError):
+        raise LiveRoundESFailure("invalid_es_query_builder") from None
     # PIT _shard_doc breaks ties across documents with identical _score and
     # importDT, making the next page's cursor stable within one PIT.
     body["sort"] = [
@@ -135,11 +200,10 @@ def search_fenced_es_round(
                                       "search", "close_point_in_time"))):
         raise LiveRoundESFailure("untrusted_es_adapter_context")
 
-    # Fixed fields, mandatory entities and analysis-date semantics are not
-    # supported by this first transport slice. Reject rather than silently
-    # dropping a user-specified hard scope. Never turn a date into importDT.
-    if (constraints.fixed_fields or constraints.required_entities
-            or constraints.analysis_date.source != "none"):
+    # Root/child mapping-aware mandatory entities are compiled below, but
+    # fixed-field and analysis-date semantics still need a trusted dedicated
+    # adapter. Reject rather than silently dropping either hard scope.
+    if constraints.fixed_fields or constraints.analysis_date.source != "none":
         raise LiveRoundESFailure("unsupported_es_hard_scope")
 
     round_number = coordinator.safe_progress()["round"]
