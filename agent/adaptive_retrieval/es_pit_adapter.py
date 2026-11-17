@@ -131,8 +131,8 @@ def search_fenced_es_round(
             or type(request_timeout_seconds) is not int
             or not 1 <= request_timeout_seconds <= 30
             or not all(callable(getattr(client, method, None))
-                       for method in ("open_point_in_time", "search",
-                                      "close_point_in_time"))):
+                       for method in ("options", "open_point_in_time",
+                                      "search", "close_point_in_time"))):
         raise LiveRoundESFailure("untrusted_es_adapter_context")
 
     # Fixed fields, mandatory entities and analysis-date semantics are not
@@ -184,11 +184,16 @@ def search_fenced_es_round(
         # independently claims a second nonrefundable slot before search.
         if not coordinator.admit_es_call():
             raise LiveRoundESFailure("es_retrieval_budget_exhausted")
-        pit_resp = _response(client.open_point_in_time(
-            index=",".join(constraints.allowed_indexes),
-            keep_alive="1m",
-            ignore_unavailable=False, allow_no_indices=False,
+        pit_resp = _response(client.options(
             request_timeout=_timeout(coordinator, request_timeout_seconds),
+            max_retries=0, retry_on_timeout=False, retry_on_status=(),
+        ).open_point_in_time(
+            index=",".join(constraints.allowed_indexes),
+            keep_alive="1m", ignore_unavailable=False,
+            # Requires Elasticsearch Python client/server supporting PIT
+            # allow_partial_search_results=False (8.17+). Fail closed on
+            # older versions; never create a PIT with missing shards.
+            allow_partial_search_results=False,
         ))
         pit_id = _pit(pit_resp.get("id"))
 
@@ -198,10 +203,11 @@ def search_fenced_es_round(
             body["pit"] = {"id": pit_id, "keep_alive": "1m"}
             if ticket.search_after is not None:
                 body["search_after"] = list(ticket.search_after)
-            response = _response(client.search(
-                body=body,
+            response = _response(client.options(
                 request_timeout=_timeout(coordinator, request_timeout_seconds),
-                allow_partial_search_results=False,
+                max_retries=0, retry_on_timeout=False, retry_on_status=(),
+            ).search(
+                body=body, allow_partial_search_results=False,
             ))
             next_id = response.get("pit_id")
             if next_id is not None:
@@ -220,7 +226,12 @@ def search_fenced_es_round(
         coordinator.cancel() if error is not None else None
         if pit_id is not None:
             try:
-                client.close_point_in_time(id=pit_id)
+                closed = _response(client.options(
+                    request_timeout=min(5, request_timeout_seconds),
+                    max_retries=0, retry_on_timeout=False, retry_on_status=(),
+                ).close_point_in_time(id=pit_id))
+                if closed.get("succeeded") is not True:
+                    raise LiveRoundESFailure("es_pit_cleanup_unverified")
             except Exception:
                 # A failed PIT-close cannot authorize or complete anything;
                 # report the cleanup failure instead of asserting full health.
