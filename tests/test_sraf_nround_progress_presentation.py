@@ -128,6 +128,8 @@ def test_no_nround_payload_preserves_existing_word_and_markdown():
     lambda p: p["canonical_evidence_history"][1].update(
         {"new_verified": 8}),
     lambda p: p["canonical_evidence_history"][1].update(
+        {"new_verified": 0, "cumulative_verified": 2}),
+    lambda p: p["canonical_evidence_history"][1].update(
         {"candidate_sources": True}),
     lambda p: p["canonical_evidence_history"][1].update(
         {"fallback": 3}),
@@ -154,6 +156,18 @@ def test_untrusted_counts_fail_closed_without_echoing_raw_data(change):
     text = md + "\n".join(doc)
     assert "多輪智慧檢索歷程" not in text
     assert "Evidence 選取模式" in text
+
+
+def test_source_growth_requires_at_least_one_new_verified_evidence_per_new_source():
+    raw = sample()
+    raw["canonical_evidence_history"][1].update({
+        "new_verified": 0, "cumulative_verified": 2,
+        # new_sources=1, cumulative_sources=2 already in the fixture.
+    })
+    assert safe_nround_progress(raw) == {}
+    usage = {**_usage(), "nround_progress": raw}
+    md, word = _render_both(_output(usage))
+    assert "多輪智慧檢索歷程" not in md + "\n".join(word)
 
 
 def test_terminal_incomplete_snapshot_is_visible_but_never_report_ready():
