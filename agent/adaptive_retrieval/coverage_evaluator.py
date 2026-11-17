@@ -58,13 +58,14 @@ class CoverageAssessment:
     result_incomplete: bool
     verified_evidence: int
     verified_sources: int
+    required_targets: int
 
     def safe_audit(self) -> dict[str, int | bool | str]:
         """Expose counts only; no target text, evidence keys or source IDs."""
         return {
             "schema": "sraf_nround_coverage_provenance_v1",
             "round": self.round_number,
-            "required_targets": len(self.missing_aspects) if self.result_incomplete else -1,
+            "required_targets": self.required_targets,
             "missing_targets": len(self.missing_aspects),
             "coverage_sufficient": self.coverage_sufficient,
             "request_wide_attested": self.request_wide_attested,
@@ -153,7 +154,7 @@ class RequestWideCoverageEvaluator:
                 self._failed = True
                 result = CoverageAssessment(
                     round_number, tuple(t.label for t in self._targets),
-                    False, False, True, 0, 0,
+                    False, False, True, 0, 0, len(self._targets),
                 )
                 self._last = result
                 return result
@@ -197,7 +198,7 @@ class RequestWideCoverageEvaluator:
             }
             assessment = CoverageAssessment(
                 round_number, tuple(missing), not missing, True, False,
-                len(all_evidence), len(all_sources),
+                len(all_evidence), len(all_sources), len(self._targets),
             )
             self._support = proposed
             self._last = assessment
@@ -220,6 +221,4 @@ class RequestWideCoverageEvaluator:
                     "semantic_verifier": "EXTERNAL_TRUSTED_CALLBACK",
                     "live_job": "NOT_INTEGRATED",
                 }
-            result = self._last.safe_audit()
-            result["required_targets"] = len(self._targets)
-            return result
+            return self._last.safe_audit()
