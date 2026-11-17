@@ -232,3 +232,53 @@ def test_post_pit_policy_revocation_denies_attestation(tmp_path):
     assert len(es.searches) == 1
     assert calls == [1, 1]
     assert c.history == ()
+
+
+@pytest.mark.parametrize("revocation", ["owner_index", "question_branch", "report_job"])
+def test_semantic_witness_rechecks_persisted_owner_and_scope_after_provider(
+    tmp_path, revocation,
+):
+    """Revocation during one paid LLM witness must suppress remaining calls."""
+    c, scope, ev, _, planners, _ = _setup()
+    store, claimed = claimed_job(tmp_path, scope)
+    permission = {"valid": True}
+    access = lambda _, index: (
+        index == "news_test"
+        and (permission["valid"] or revocation != "owner_index")
+    )
+    branches = lambda _, original, choices: (
+        original is scope and choices == ("CANONICAL_MAIN",)
+        and (permission["valid"] or revocation != "question_branch")
+    )
+    adapter, _, _ = scoped(
+        store, claimed, c, scope, access=access, coverage=branches,
+    )
+    binding = adapter.make_binding()
+    calls = []
+
+    def semantic(_target, _evidence):
+        calls.append("paid")
+        if revocation == "report_job":
+            store.fail(J, "Revoked", "PRIVATE_SQLITE_CREDENTIAL")
+        else:
+            permission["valid"] = False
+        return True
+
+    es = FakeES(_verified_page("A"))
+    with pytest.raises(TrustedNroundExecutionError,
+                       match="trusted_nround_execution_failed") as exc:
+        run_trusted_nround(
+            coordinator=c, constraints=scope, evaluator=ev,
+            authorized_indexes=("news_test",),
+            es_client=es, semantic_assessor=semantic,
+            attest_whole_query_scope=None, job_scope_binding=binding,
+            query_for_snippet="甲軸乙軸丙軸",
+        )
+    assert str(exc.value) == "trusted_nround_execution_failed"
+    assert calls == ["paid"]  # No second / third / fourth paid witness
+    assert len(es.searches) == 1
+    assert planners == []
+    assert c.history == ()
+    assert c.safe_progress()["ready_for_external_report_generation"] is False
+    assert c.safe_progress()["phase"] == "TERMINAL"
+    assert "PRIVATE_" not in str(exc.value)
