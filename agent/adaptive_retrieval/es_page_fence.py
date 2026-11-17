@@ -55,8 +55,8 @@ def _page_hits(raw: Any, size: int, allowed_indexes: tuple[str, ...]) -> list[di
     # short-page pagination completion is unsound if this flag is true.
     if raw.get("terminated_early") is True or raw.get("is_partial") is True:
         raise PageFenceError("es_search_terminated_early")
-    if (raw.get("terminated_early") not in (None, True, False)
-            or raw.get("is_partial") not in (None, True, False)):
+    if any(type(raw.get(flag)) not in (type(None), bool)
+           for flag in ("terminated_early", "is_partial")):
         raise PageFenceError("untrusted_es_completeness_flags")
     shards = raw.get("_shards")
     if type(shards) is not dict:
