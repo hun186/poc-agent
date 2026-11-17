@@ -101,6 +101,7 @@ class RoundESPageFence:
         self, *, coordinator: AdaptiveRequestCoordinator,
         constraints: QueryConstraints, round_number: int,
         page_size: int = 50, max_pages: int = 24,
+        execution_token: object | None = None,
     ) -> None:
         if (type(coordinator) is not AdaptiveRequestCoordinator
                 or type(constraints) is not QueryConstraints
@@ -116,6 +117,7 @@ class RoundESPageFence:
         self._coordinator = coordinator
         self._constraints = constraints
         self._round = round_number
+        self._execution_token = execution_token
         self._size = page_size
         self._limit = max_pages
         self._lock = Lock()
@@ -150,7 +152,8 @@ class RoundESPageFence:
             if self._page_count >= self._limit:
                 self._abort("es_page_limit_exhausted")
                 raise PageFenceError("es_page_limit_exhausted")
-            if not self._coordinator.admit_es_call():
+            if not self._coordinator.admit_es_call(
+                    execution_token=self._execution_token):
                 self._abort("es_page_budget_exhausted")
                 raise PageFenceError("es_page_budget_exhausted")
             self._pending = PageTicket(
