@@ -9,6 +9,8 @@
 
 Worker 意外中斷後，僅能在 **單機且確定舊 Worker 已停止** 的情況下呼叫 interrupt_running()，把仍在 RUNNING 的作業改為 INTERRUPTED 並讓舊租約失效。不可將其視為已完成或自動重跑；目前不支援 checkpoint resume。
 
+若協調器在第一輪開始前就被取消，或首次預算准入遭拒，允許 round=0、已完成輪次=0 的 TERMINAL 進度；仍禁止視為完成檢索或獲得 Word 生成權限。
+
 record_progress 接收 AdaptiveRequestCoordinator.safe_progress() 的固定格式，嚴格驗證整數、輪次、Evidence 累計、狀態代碼與稽核欄位。資料庫不保存原始提問、關鍵詞、來源 ID、文章片段、雜湊或 exception 字串。get_public 固定回報 checkpoint_resume_supported=false 及 report_generation_authorized=false。
 
 ## 重要限制
