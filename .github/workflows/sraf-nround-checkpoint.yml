@@ -8,6 +8,8 @@ on:
       - 'agent/adaptive_retrieval/evidence_ledger.py'
       - 'tests/test_sraf_nround_checkpoint.py'
       - 'tests/test_sraf_nround_reportjob_atomic_checkpoint.py'
+      - 'tests/test_sraf_nround_fail_owned_lease.py'
+      - 'docs/operations/sraf_nround_fail_owned_lease.md'
       - 'docs/operations/sraf_nround_checkpoint.md'
       - 'docs/operations/sraf_nround_reportjob_atomic_checkpoint.md'
       - '.github/workflows/sraf-nround-checkpoint.yml'
@@ -39,4 +41,4 @@ jobs:
       - name: Verify compilation and atomic offline checkpoint behavior
         run: |
           python -m compileall -q agent/adaptive_retrieval/job_checkpoint.py tests/test_sraf_nround_checkpoint.py
-          python -m pytest -q tests/test_sraf_nround_checkpoint.py tests/test_sraf_nround_reportjob_atomic_checkpoint.py
+          python -m pytest -q tests/test_sraf_nround_checkpoint.py tests/test_sraf_nround_reportjob_atomic_checkpoint.py tests/test_sraf_nround_fail_owned_lease.py
