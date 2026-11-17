@@ -202,7 +202,16 @@ def run_trusted_nround(
                            budget.generation_reserve_seconds):
                     raise TrustedNroundExecutionError(
                         "semantic_callback_not_admissible")
+                if job_scope_binding is not None:
+                    # The PIT attestation is not a lifetime owner/RBAC grant:
+                    # revalidate actual persisted Job and policies immediately
+                    # before each potentially paid semantic/LLM witness.
+                    job_scope_binding.recheck_semantic_authorization(frozen)
                 verdict = semantic_assessor(target, evidence)
+                if job_scope_binding is not None:
+                    # Revocation during a provider call cannot undo that IO,
+                    # but must prevent the remaining witnesses and handoff.
+                    job_scope_binding.recheck_semantic_authorization(frozen)
                 # An in-flight provider call cannot be forcibly cancelled
                 # here, but another call must not start after it expires
                 # or the coordinator is cancelled.
