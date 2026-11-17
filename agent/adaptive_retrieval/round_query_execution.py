@@ -143,7 +143,8 @@ def execute_single_frozen_query(
         raise RoundQueryPlanError("stale_frozen_query_plan")
 
     if not coordinator.claim_single_query_execution(
-            plan.round_number, execution_token=plan._execution_token):
+            plan.round_number, execution_token=plan._execution_token,
+            owner_token=plan._owner_binding_token):
         raise RoundQueryPlanError("query_plan_already_claimed_or_mixed")
 
     try:
