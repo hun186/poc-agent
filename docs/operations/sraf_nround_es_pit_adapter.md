@@ -31,7 +31,15 @@
    且每次使用剩餘的 30 分鐘檢索截止額度縮短 timeout。
    取得 `search_after` 後在同一 PIT 接續搜尋，額外
    `_shard_doc` 排序作穩定 tie-breaker。禁止 `ignore_unavailable`、
-   `allow_no_indices`、`allow_partial_search_results` 的寬鬆模式。
+   `allow_partial_search_results` 的寬鬆模式；PIT open API 不支援
+   `allow_no_indices` 參數，使用具體索引白名單加
+   `ignore_unavailable=False`，並要求 PIT open 可明確傳入
+   `allow_partial_search_results=False`（Elasticsearch Python Client
+   8.17+ 支援）；若舊版 Client 不支援此保護，呼叫會失敗並拒絕驗收，
+   不會自動退到寬鬆模式。傳輸層一律透過
+   `client.options(request_timeout=..., max_retries=0, retry_on_timeout=False)`
+   控制各次請求，禁止透明重試延長超時；PIT close 也必須回傳
+   `succeeded=True`，否則本次操作不視為完整成功。
 5. 僅完整、無逾時、無重複來源、無失敗分片且符合所有頁面／來源數上限的
    結果才可透過 `take_complete_hits` 輸出；部分結果一律拒絕，
    `coordinator.cancel()`，並使用固定錯誤代碼不暴露文章、索引、
