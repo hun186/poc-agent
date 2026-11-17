@@ -388,6 +388,36 @@ class NroundCheckpointStore:
         )
         return True
 
+    def fail_owned_lease(self, job_id: str, lease_token: str) -> bool:
+        """Fail ONLY this running sidecar with its actual lease, no global blast.
+
+        A future background Worker invokes this after a fatal ES/LLM/
+        checkpoint/authorization failure. Crucially, do NOT require the
+        ReportJob row to remain running: a revocation or worker restart
+        may be exactly why the N-round sidecar must stop. Never revive a
+        completed/failed/interrupted/cancelled job and never grant Word.
+        """
+        if (not self._valid_id(job_id)
+                or type(lease_token) is not str
+                or re.fullmatch(r"[A-Za-z0-9_-]{43}", lease_token) is None):
+            return False
+
+        def op(con):
+            cur = con.execute(
+                f"""UPDATE {_TABLE}
+                    SET state='FAILED',phase='TERMINAL',
+                        termination='CANCELLED', lease_hash=NULL,
+                        revision=revision+1
+                    WHERE job_id=? AND state='RUNNING' AND lease_hash=?""",
+                (job_id, self._hash(lease_token)),
+            )
+            return cur.rowcount == 1
+
+        try:
+            return self._write(op)
+        except Exception:
+            raise ValueError("nround_lease_failure_unverified") from None
+
     def interrupt_running(self) -> int:
         """Startup recovery: no automatic replay, never fabricate completion."""
         def op(con):
