@@ -122,6 +122,10 @@ def run_trusted_nround(
                 authorized_indexes=authorized_indexes,
                 round_number=progress["round"],
                 next_round_plan=next_plan,
+                _owner_binding_token=(
+                    job_scope_binding._binding_token
+                    if job_scope_binding is not None else None
+                ),
             )
             # The scoped path verifies the actual claimed job's owner and
             # allowed-index policy BEFORE opening a PIT. Legacy callback
